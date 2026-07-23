@@ -3,9 +3,14 @@ set -Eeuo pipefail
 
 # Canonical MCP-Plan VPS deployer.
 # Install once with:
-#   install -m 755 /var/www/mcp-plan-source/ops/pullmcp /usr/local/bin/pullmcp
+#   install -m 755 /var/www/mcp-plan-source/mcp/ops/pullmcp /usr/local/bin/pullmcp
 
-SOURCE="${MCP_PLAN_SOURCE:-/var/www/mcp-plan-source}"
+REPO="${MCP_PLAN_REPO:-${MCP_PLAN_SOURCE:-/var/www/mcp-plan-source}}"
+if [[ -d "$REPO/mcp" ]]; then
+  SOURCE="$REPO/mcp"
+else
+  SOURCE="$REPO"
+fi
 RUNTIME="${MCP_PLAN_RUNTIME:-/var/www/mcp-plan-backend}"
 PM2_NAME="mcp-plan-backend"
 PM2_BIN="$(command -v pm2)"
@@ -54,7 +59,7 @@ for command_name in git node npm curl ss psql; do
 done
 [[ -x "$PM2_BIN" ]]
 
-[[ -d "$SOURCE/.git" ]]
+[[ -d "$REPO/.git" ]]
 [[ -s "$RUNTIME/.env" ]]
 
 echo "1) Pull source..."
