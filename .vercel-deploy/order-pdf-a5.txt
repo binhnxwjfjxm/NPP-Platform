@@ -1,2 +1,0 @@
-Deploy single-order PDF A5 and printable navigation.
-Source merge: 0468d7f0e4316ff75bc64ae283730ae3c535a3d1

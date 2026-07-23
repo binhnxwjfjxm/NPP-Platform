@@ -1,5 +1,6 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { asObject, readJsonValue } from "./runtime/json-response.mjs";
@@ -12,7 +13,7 @@ async function source() {
 }
 
 test("F05 runtime smoke script has valid syntax", () => {
-  const result = spawnSync(process.execPath, ["--check", scriptPath.pathname], {
+  const result = spawnSync(process.execPath, ["--check", fileURLToPath(scriptPath)], {
     encoding: "utf8"
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -94,3 +95,4 @@ test("F05 runtime smoke never prints backend or service-role secrets", async () 
   assert.doesNotMatch(text, /console\.(?:log|error)\([^\n]*(?:backendToken|serviceRole)/);
   assert.doesNotMatch(text, /JSON\.stringify\([^)]*(?:backendToken|serviceRole)/);
 });
+
