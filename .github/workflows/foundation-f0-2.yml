@@ -13,6 +13,9 @@ permissions:
 jobs:
   verify-foundation:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,6 +25,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: mcp/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -34,7 +38,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: runtime-hardcode-findings
-          path: runtime-hardcode-findings.txt
+          path: mcp/runtime-hardcode-findings.txt
           if-no-files-found: error
 
       - name: Test direct mutation scanner and retirement policy
@@ -82,8 +86,8 @@ jobs:
         with:
           name: direct-db-mutation-findings
           path: |
-            direct-db-mutation-findings.txt
-            direct-db-mutation-findings.json
+            mcp/direct-db-mutation-findings.txt
+            mcp/direct-db-mutation-findings.json
           if-no-files-found: error
 
       - name: Verify deploy and frontend gateway auth contracts

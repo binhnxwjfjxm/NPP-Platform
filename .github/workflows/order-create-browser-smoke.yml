@@ -4,15 +4,15 @@ on:
   pull_request:
     paths:
       - ".github/workflows/order-create-browser-smoke.yml"
-      - "src/features/orders/**"
-      - "src/app/orders/**"
-      - "src/app/api/backend/orders/**"
-      - "src/app/api/products/**"
-      - "src/lib/api/**"
-      - "src/ui/overlay/**"
-      - "src/app/order-create-workspace.css"
-      - "test/orders-create-ui-contract.test.mjs"
-      - "test/ui/order-create-**"
+      - "mcp/src/features/orders/**"
+      - "mcp/src/app/orders/**"
+      - "mcp/src/app/api/backend/orders/**"
+      - "mcp/src/app/api/products/**"
+      - "mcp/src/lib/api/**"
+      - "mcp/src/ui/overlay/**"
+      - "mcp/src/app/order-create-workspace.css"
+      - "mcp/test/orders-create-ui-contract.test.mjs"
+      - "mcp/test/ui/order-create-**"
   workflow_dispatch:
 
 permissions:
@@ -22,6 +22,9 @@ jobs:
   browser-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: mcp
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,6 +34,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: mcp/package-lock.json
 
       - name: Install application dependencies
         run: npm ci
@@ -79,6 +83,6 @@ jobs:
         with:
           name: order-create-browser-smoke-evidence
           path: |
-            test-results/order-create-smoke
-            .next/static/css
+            mcp/test-results/order-create-smoke
+            mcp/.next/static/css
           if-no-files-found: error

@@ -4,15 +4,15 @@ on:
   pull_request:
     paths:
       - ".github/workflows/export-reader-runtime-smoke.yml"
-      - "src/app/api/exports/**"
-      - "src/app/api/pdf/**"
-      - "src/app/api/mcp-session-report/**"
-      - "src/features/exports/**"
-      - "src/lib/export/**"
-      - "src/lib/mcp/session-report**"
-      - "test/export-reader-copy-contract.test.mjs"
-      - "test/ui/export-reader-**"
-      - "package.json"
+      - "mcp/src/app/api/exports/**"
+      - "mcp/src/app/api/pdf/**"
+      - "mcp/src/app/api/mcp-session-report/**"
+      - "mcp/src/features/exports/**"
+      - "mcp/src/lib/export/**"
+      - "mcp/src/lib/mcp/session-report**"
+      - "mcp/test/export-reader-copy-contract.test.mjs"
+      - "mcp/test/ui/export-reader-**"
+      - "mcp/package.json"
   workflow_dispatch:
 
 permissions:
@@ -22,6 +22,9 @@ jobs:
   export-reader-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mcp
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,6 +34,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: mcp/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -73,5 +77,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: export-reader-runtime-evidence
-          path: test-results/export-reader-smoke
+          path: mcp/test-results/export-reader-smoke
           if-no-files-found: error

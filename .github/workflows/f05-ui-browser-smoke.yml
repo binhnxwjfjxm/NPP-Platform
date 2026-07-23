@@ -4,30 +4,30 @@ on:
   pull_request:
     paths:
       - ".github/workflows/f05-ui-browser-smoke.yml"
-      - "src/features/mcp/**"
-      - "src/features/mcp-settings/**"
-      - "src/features/dashboard/**"
-      - "src/features/settings/**"
-      - "src/ui/layout/**"
-      - "src/ui/shell/**"
-      - "src/ui/feedback/**"
-      - "src/lib/interaction/**"
-      - "src/app/layout.tsx"
-      - "src/app/manifest.ts"
-      - "src/app/npp-theme.css"
-      - "src/app/app-shell-contract.css"
-      - "src/app/page.tsx"
-      - "src/app/settings/**"
-      - "src/app/mcp-setting/**"
-      - "src/app/routes/**"
-      - "src/app/visits/**"
-      - "src/app/api/**"
-      - "src/lib/api/**"
-      - "test/ui/f05-ui-**"
-      - "test/ui/mcp-settings-dialog-browser-smoke.mjs"
-      - "test/ui/interaction-feedback-**"
-      - "test/ui/app-shell-browser-acceptance-smoke.mjs"
-      - "test/ui/route-customer-photo-management-browser-smoke.mjs"
+      - "mcp/src/features/mcp/**"
+      - "mcp/src/features/mcp-settings/**"
+      - "mcp/src/features/dashboard/**"
+      - "mcp/src/features/settings/**"
+      - "mcp/src/ui/layout/**"
+      - "mcp/src/ui/shell/**"
+      - "mcp/src/ui/feedback/**"
+      - "mcp/src/lib/interaction/**"
+      - "mcp/src/app/layout.tsx"
+      - "mcp/src/app/manifest.ts"
+      - "mcp/src/app/npp-theme.css"
+      - "mcp/src/app/app-shell-contract.css"
+      - "mcp/src/app/page.tsx"
+      - "mcp/src/app/settings/**"
+      - "mcp/src/app/mcp-setting/**"
+      - "mcp/src/app/routes/**"
+      - "mcp/src/app/visits/**"
+      - "mcp/src/app/api/**"
+      - "mcp/src/lib/api/**"
+      - "mcp/test/ui/f05-ui-**"
+      - "mcp/test/ui/mcp-settings-dialog-browser-smoke.mjs"
+      - "mcp/test/ui/interaction-feedback-**"
+      - "mcp/test/ui/app-shell-browser-acceptance-smoke.mjs"
+      - "mcp/test/ui/route-customer-photo-management-browser-smoke.mjs"
   workflow_dispatch:
 
 permissions:
@@ -37,6 +37,9 @@ jobs:
   browser-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: mcp
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,6 +49,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: mcp/package-lock.json
 
       - name: Install application dependencies
         run: npm ci
@@ -97,6 +101,6 @@ jobs:
         with:
           name: f05-ui-browser-smoke-evidence
           path: |
-            test-results/f05-ui-smoke
-            .next/static/css
+            mcp/test-results/f05-ui-smoke
+            mcp/.next/static/css
           if-no-files-found: error
