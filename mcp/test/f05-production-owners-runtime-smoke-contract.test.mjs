@@ -28,10 +28,14 @@ test("production guard requires explicit mode, exact installation identity, non-
     NPP_F05_EXPECTED_INSTALLATION_ID: "installation-a", MCP_INSTALLATION_ID: "installation-a",
     NPP_F05_EXPECTED_NPP_CODE: "NPP-A", MCP_NPP_CODE: "NPP-A",
     MCP_API_BASE_URL: "https://gateway.example.com", SUPABASE_URL: "https://project.supabase.co",
-    BACKEND_API_TOKEN: "b".repeat(32), SUPABASE_SERVICE_ROLE_KEY: "s".repeat(32)
+    BACKEND_API_TOKEN: "b".repeat(32), SUPABASE_SERVICE_ROLE_KEY: "s".repeat(32),
+    R2_ENDPOINT: "https://example.r2.cloudflarestorage.com",
+    R2_BUCKET_NAME: "mcp-smoke-test",
+    R2_ACCESS_KEY_ID: "r2-access-key",
+    R2_SECRET_ACCESS_KEY: "r2-secret-access-key"
   };
   assert.doesNotThrow(() => assertF05ProductionSmokeGuard(valid));
-  for (const key of ["NPP_F05_RUNTIME_SMOKE_GUARDED", "NPP_F05_EXPECTED_INSTALLATION_ID", "NPP_F05_EXPECTED_NPP_CODE", "BACKEND_API_TOKEN", "SUPABASE_SERVICE_ROLE_KEY"]) {
+  for (const key of ["NPP_F05_RUNTIME_SMOKE_GUARDED", "NPP_F05_EXPECTED_INSTALLATION_ID", "NPP_F05_EXPECTED_NPP_CODE", "BACKEND_API_TOKEN", "SUPABASE_SERVICE_ROLE_KEY", "R2_ENDPOINT", "R2_BUCKET_NAME", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"]) {
     assert.throws(() => assertF05ProductionSmokeGuard({ ...valid, [key]: "" }), /f05_smoke_guard/);
   }
   assert.throws(() => assertF05ProductionSmokeGuard({ ...valid, MCP_INSTALLATION_ID: "wrong" }), /identity_mismatch/);

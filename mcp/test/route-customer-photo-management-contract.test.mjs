@@ -12,7 +12,7 @@ const [master, manager, client, profile, preview, css, backend, migration, workf
   read("../src/features/mcp/McpCustomerProfileSheet.module.css"),
   read("../apps/backend/foundation/outlet-media.js"),
   read("../supabase/migrations/20260720210000_allow_route_customer_profile_media.sql"),
-  read("../.github/workflows/f05-ui-browser-smoke.yml"),
+  read("../../.github/workflows/f05-ui-browser-smoke.yml"),
   read("../test/ui/route-customer-photo-management-browser-smoke.mjs")
 ]);
 

@@ -16,7 +16,7 @@ const settingsBrowserSmoke = await readFile("test/ui/mcp-settings-dialog-browser
 const browserSmoke = await readFile("test/ui/app-shell-browser-acceptance-smoke.mjs", "utf8");
 const actionSmoke = await readFile("test/ui/mcp-session-actions-browser-smoke.mjs", "utf8");
 const actionMock = await readFile("test/ui/mcp-session-actions-mock-backend.mjs", "utf8");
-const workflow = await readFile(".github/workflows/f05-ui-browser-smoke.yml", "utf8");
+const workflow = await readFile("../.github/workflows/f05-ui-browser-smoke.yml", "utf8");
 
 test("AppShell owns one menu trigger, one scroll region and at most five bottom shortcuts", () => {
   assert.match(appShell, /const BOTTOM_NAV_LIMIT = 5/);
