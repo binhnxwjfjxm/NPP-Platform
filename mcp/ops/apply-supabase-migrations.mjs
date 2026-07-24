@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { basename, join } from "node:path";
-import { fileURLToPath } from "node:url";
+
+import { isMainModule } from "../scripts/esm-entrypoint.mjs";
 
 const REQUIRED_TARGET_SCOPED_MIGRATION = "20260722060000_add_target_scoped_archive_proof_claims.sql";
 const LEGACY_BASELINE_MAX_VERSION = "20260720224600_preserve_archive_terminal_failure.sql";
@@ -254,8 +255,7 @@ async function main() {
   await applySupabaseMigrations({ envPath: process.argv[2], migrationsDir: process.argv[3] });
 }
 
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-if (isMain) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   main().catch((error) => {
     console.error(error instanceof MigrationError ? error.code : "migration_runner_failed");
     process.exit(1);
