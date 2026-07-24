@@ -1,15 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildAuthContext, sanitizeToken } from '../index.js';
+import { buildAuthContext, extractBearerToken, tokenMatches } from '../index.js';
 
-test('builds an auth context with defaults', () => {
+test('builds an auth context without inventing an installation', () => {
   const context = buildAuthContext();
   assert.equal(context.actorId, 'system:anonymous');
-  assert.equal(context.installationId, 'default');
+  assert.equal(context.installationId, null);
   assert.ok(context.requestId.startsWith('req_'));
 });
 
-test('sanitizes bearer token input', () => {
-  assert.equal(sanitizeToken('  replace-with-local-token   '), 'replace-with-local-token');
-  assert.equal(sanitizeToken(''), null);
+test('preserves the server-owned installation identifier', () => {
+  const context = buildAuthContext({ installationId: 'npp-hung-phat' });
+  assert.equal(context.installationId, 'npp-hung-phat');
+});
+
+test('extracts and compares bearer tokens without truncation', () => {
+  const expected = '0123456789abcdef0123456789abcdef';
+  assert.equal(extractBearerToken(`Bearer ${expected}`), expected);
+  assert.equal(extractBearerToken('Basic abc'), null);
+  assert.equal(tokenMatches(expected, expected), true);
+  assert.equal(tokenMatches(`${expected}x`, expected), false);
+  assert.equal(tokenMatches('wrong', expected), false);
 });
