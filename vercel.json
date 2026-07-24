@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "builds": [
     {
-      "src": "mcp/package.json",
+      "src": "npp-core/web/package.json",
       "use": "@vercel/next"
     }
   ],
