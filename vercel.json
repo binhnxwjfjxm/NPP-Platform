@@ -6,6 +6,9 @@
   "devCommand": "npm --prefix mcp run dev",
   "outputDirectory": "mcp/.next",
   "git": {
-    "deploymentEnabled": false
+    "deploymentEnabled": {
+      "*": false,
+      "main": true
+    }
   }
 }
