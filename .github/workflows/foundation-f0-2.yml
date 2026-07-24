@@ -76,7 +76,15 @@ jobs:
         run: npm run test:windows-path
 
       - name: Verify workflow workspace paths
-        run: npm run test:workflow-paths
+        run: npm run test:workflow-paths 2>&1 | tee workflow-path-audit.log
+
+      - name: Upload workflow path diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workflow-path-audit
+          path: mcp/workflow-path-audit.log
+          if-no-files-found: error
 
       - name: Upload hardcode audit diagnostics
         if: always()
