@@ -19,7 +19,7 @@ test("Vercel builds the nested MCP Next.js package", () => {
   assert.equal(config.outputDirectory, undefined);
 });
 
-test("Git-triggered Vercel deployments stay disabled", () => {
+test("automatic Vercel deployments stay locked by default", () => {
   assert.equal(config.git?.deploymentEnabled, false);
   assert.match(workflow, /^\s{2}workflow_dispatch:\s*$/m);
   assert.match(workflow, /^\s{2}issue_comment:\s*$/m);
@@ -33,10 +33,13 @@ test("comment deployment requires the exact guarded command", () => {
   assert.match(workflow, /github\.actor/);
 });
 
-test("manual deploy targets the linked project without committing credentials", () => {
-  assert.match(workflow, /VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2/);
-  assert.match(workflow, /VERCEL_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk/);
-  assert.match(workflow, /VERCEL_TOKEN: \$\{\{ secrets\.VERCEL_TOKEN \}\}/);
-  assert.doesNotMatch(workflow, /vcp_[A-Za-z0-9_-]+/);
-  assert.match(workflow, /vercel@56\.5\.0 deploy --prebuilt --prod/);
+test("special command opens one Git gate and always re-locks it", () => {
+  assert.match(workflow, /permissions:\s*\n\s+contents: write/);
+  assert.match(workflow, /deploymentEnabled: true/);
+  assert.match(workflow, /deploymentEnabled: false/);
+  assert.match(workflow, /open one-shot production gate \[skip ci\]/);
+  assert.match(workflow, /re-lock automatic deployments \[skip ci\]/);
+  assert.match(workflow, /Allow Vercel to accept the production event/);
+  assert.match(workflow, /if: always\(\)/);
+  assert.doesNotMatch(workflow, /VERCEL_TOKEN|vcp_[A-Za-z0-9_-]+/);
 });
