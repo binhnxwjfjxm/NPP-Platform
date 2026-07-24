@@ -33,6 +33,9 @@ jobs:
       - name: Audit runtime hardcodes
         run: npm run audit:runtime-config
 
+      - name: Verify Windows entrypoint paths
+        run: npm run test:windows-path
+
       - name: Upload hardcode audit diagnostics
         if: always()
         uses: actions/upload-artifact@v4
