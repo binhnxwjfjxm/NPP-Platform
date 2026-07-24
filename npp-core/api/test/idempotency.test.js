@@ -128,15 +128,18 @@ function successResponse(requestId, body = { status: 'processed' }) {
   };
 }
 
-function execute({
-  store,
-  key = 'request-001',
-  payload = { order: 'create', amount: 12 },
-  requestContext = contextFor(),
-  requestId = 'req_current',
-  extraHeaders,
-  onProcess = async () => successResponse(requestId),
-}) {
+function execute(options) {
+  const {
+    store,
+    payload = { order: 'create', amount: 12 },
+    requestContext = contextFor(),
+    requestId = 'req_current',
+    extraHeaders,
+    onProcess,
+  } = options;
+  const key = Object.prototype.hasOwnProperty.call(options, 'key') ? options.key : 'request-001';
+  const processRequest = onProcess ?? (async () => successResponse(requestId));
+
   return executeRequestWithIdempotency({
     idempotencyStore: store,
     req: requestFor(key, extraHeaders),
@@ -145,7 +148,7 @@ function execute({
     receivedAt,
     route: '/api/idempotency-test',
     payload,
-    onProcess,
+    onProcess: processRequest,
   });
 }
 
