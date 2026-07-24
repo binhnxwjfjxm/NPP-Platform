@@ -8,12 +8,15 @@ const workflow = await readFile(
   "utf8"
 );
 
-test("Vercel builds the MCP workspace from repository root", () => {
-  assert.equal(config.framework, "nextjs");
-  assert.equal(config.installCommand, "npm --prefix mcp ci");
-  assert.equal(config.buildCommand, "npm --prefix mcp run build");
-  assert.equal(config.devCommand, "npm --prefix mcp run dev");
-  assert.equal(config.outputDirectory, "mcp/.next");
+test("Vercel builds the nested MCP Next.js package", () => {
+  assert.deepEqual(config.builds, [
+    {
+      src: "mcp/package.json",
+      use: "@vercel/next"
+    }
+  ]);
+  assert.equal(config.framework, undefined);
+  assert.equal(config.outputDirectory, undefined);
 });
 
 test("Git-triggered Vercel deployments stay disabled", () => {
