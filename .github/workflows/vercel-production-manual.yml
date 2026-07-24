@@ -2,18 +2,12 @@ name: Manual Vercel production deploy
 
 on:
   workflow_dispatch:
-    inputs:
-      ref:
-        description: Git ref to deploy
-        required: true
-        default: main
-        type: string
   issue_comment:
     types:
       - created
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: vercel-production-manual
@@ -30,43 +24,79 @@ jobs:
         contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
-      VERCEL_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    timeout-minutes: 10
     steps:
-      - name: Checkout selected ref
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || 'main' }}
+          ref: main
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 24
 
-      - name: Require Vercel token
+      - name: Configure deployment identity
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${VERCEL_TOKEN:-}" ]]; then
-            echo "::error::Repository secret VERCEL_TOKEN is required for manual deployment."
-            exit 1
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Open one-shot production gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from "node:fs/promises";
+
+          const path = "vercel.json";
+          const config = JSON.parse(await readFile(path, "utf8"));
+          if (config.git?.deploymentEnabled !== false) {
+            throw new Error("vercel_deployment_gate_not_locked");
+          }
+          config.git = { ...(config.git || {}), deploymentEnabled: true };
+          await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
+          NODE
+          git add vercel.json
+          git commit -m "chore(vercel): open one-shot production gate [skip ci]"
+          git push origin HEAD:main
+
+      - name: Allow Vercel to accept the production event
+        run: sleep 45
+
+      - name: Re-lock automatic deployments
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from "node:fs/promises";
+
+          const path = "vercel.json";
+          const config = JSON.parse(await readFile(path, "utf8"));
+          config.git = { ...(config.git || {}), deploymentEnabled: false };
+          await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
+          NODE
+          git add vercel.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(vercel): re-lock automatic deployments [skip ci]"
+            git push origin HEAD:main
           fi
 
-      - name: Link project locally
+      - name: Verify repository is locked
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p .vercel
-          printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
-
-      - name: Pull production settings
-        run: npx --yes vercel@56.5.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
-
-      - name: Build production output
-        run: npx --yes vercel@56.5.0 build --prod --token="$VERCEL_TOKEN"
-
-      - name: Deploy production output
-        run: npx --yes vercel@56.5.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+          git fetch origin main
+          git show origin/main:vercel.json | node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const config = JSON.parse(readFileSync(0, "utf8"));
+            if (config.git?.deploymentEnabled !== false) {
+              throw new Error("vercel_deployment_gate_left_open");
+            }
+          '
