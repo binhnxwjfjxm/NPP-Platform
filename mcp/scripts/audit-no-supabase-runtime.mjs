@@ -46,6 +46,8 @@ const IGNORED_DIRECTORIES = new Set([
   "docs"
 ]);
 
+const TEST_FILE_PATTERN = /(?:^|\/)[^/]+\.(?:test|spec)\.[^.]+$/i;
+
 const RULES = [
   ["SUPABASE_ENV", /\bSUPABASE_(?:URL|ANON_KEY|PUBLISHABLE_KEY|SERVICE_ROLE_KEY|SECRET_KEY|REST_URL|DB_PASSWORD|CONNECTION_STRING|JWKS_URL)\b/g],
   ["SUPABASE_ADAPTER", /\bsupabase(?:Rest|Rpc|Request|Insert|Patch|Delete|ServiceRoleKey|Url)\b|supabase-adapter/gi],
@@ -65,14 +67,17 @@ async function filesBelow(relativePath) {
   const absolutePath = path.join(MCP_ROOT, relativePath);
   const info = await stat(absolutePath).catch(() => null);
   if (!info) return [];
-  if (info.isFile()) return [normalizePath(relativePath)];
+  if (info.isFile()) {
+    const normalized = normalizePath(relativePath);
+    return TEST_FILE_PATTERN.test(normalized) ? [] : [normalized];
+  }
 
   const files = [];
   for (const entry of await readdir(absolutePath, { withFileTypes: true })) {
     if (entry.isDirectory() && IGNORED_DIRECTORIES.has(entry.name)) continue;
     const child = normalizePath(path.join(relativePath, entry.name));
     if (entry.isDirectory()) files.push(...await filesBelow(child));
-    else if (SOURCE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) files.push(child);
+    else if (SOURCE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()) && !TEST_FILE_PATTERN.test(child)) files.push(child);
   }
   return files;
 }
