@@ -1,49 +1,41 @@
 import { Pool } from 'pg';
-import { loadConfig } from '../config.js';
 
-let pool;
+let sharedPool;
 
-function buildSslConfig(mode) {
-  if (!mode || mode === 'disable') {
-    return false;
-  }
-
-  if (mode === 'require') {
-    return { rejectUnauthorized: false };
-  }
-
-  return { rejectUnauthorized: false };
+export function buildSslConfig(mode) {
+  if (mode === 'disable') return false;
+  if (mode === 'require') return { rejectUnauthorized: false };
+  if (mode === 'verify-full') return { rejectUnauthorized: true };
+  throw new Error('invalid_database_ssl_mode');
 }
 
-export function createPgPool(config = loadConfig()) {
-  const ssl = buildSslConfig(config.databaseSslMode);
-
-  pool = new Pool({
+export function createPgPool(config, PoolImplementation = Pool) {
+  if (!config?.databaseUrl) throw new Error('missing_database_url');
+  return new PoolImplementation({
     connectionString: config.databaseUrl,
-    ssl,
+    ssl: buildSslConfig(config.databaseSslMode),
     max: 5,
     idleTimeoutMillis: 30000,
   });
-
-  return pool;
 }
 
-export function getPool(config = loadConfig()) {
-  if (!pool) {
-    pool = createPgPool(config);
-  }
+export function getPool(config) {
+  if (!sharedPool) sharedPool = createPgPool(config);
+  return sharedPool;
+}
 
-  return pool;
+export async function queryReady(config, executor) {
+  const queryExecutor = executor ?? getPool(config);
+  return queryExecutor.query('SELECT 1 AS ok');
 }
 
 export async function closePool() {
-  if (pool) {
-    await pool.end();
-    pool = undefined;
-  }
+  if (!sharedPool) return;
+  const pool = sharedPool;
+  sharedPool = undefined;
+  await pool.end();
 }
 
-export async function queryOne(config = loadConfig()) {
-  const currentPool = getPool(config);
-  return currentPool.query('SELECT 1 as ok');
+export function setPoolForTest(pool) {
+  sharedPool = pool;
 }
