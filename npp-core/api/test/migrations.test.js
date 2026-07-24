@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runMigrations } from '../src/migrations/index.js';
+import { CORE_API_MIGRATIONS, runMigrations } from '../src/migrations/index.js';
 
 function fakeAdapter(existingIds = []) {
   const calls = [];
@@ -42,4 +42,14 @@ test('rolls back when a migration fails', async () => {
     /boom/,
   );
   assert.equal(adapter.calls.at(-1).sql, 'ROLLBACK');
+});
+
+test('registers idempotency from the shared SQL migration file', () => {
+  const migration = CORE_API_MIGRATIONS.find(({ id }) => id === '002_core_idempotency');
+
+  assert.ok(migration);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS shared\.core_idempotency_records/);
+  assert.match(migration.sql, /UNIQUE \(installation_id, actor_id, http_method, route, idempotency_key\)/);
+  assert.match(migration.sql, /status IN \('processing', 'completed', 'failed'\)/);
+  assert.match(migration.sql, /response_body jsonb/);
 });
