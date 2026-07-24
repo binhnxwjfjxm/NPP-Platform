@@ -18,7 +18,7 @@ on:
   pull_request:
     paths:
       - "src/**"
-      - "package-lock.json"
+      - "tsconfig.json"
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -34,7 +34,7 @@ jobs:
 `);
 
   assert.ok(errors.some((error) => error.includes("legacy_root_path_filter:src/**")));
-  assert.ok(errors.some((error) => error.includes("legacy_root_path_filter:package-lock.json")));
+  assert.ok(errors.some((error) => error.includes("legacy_root_path_filter:tsconfig.json")));
   assert.ok(errors.some((error) => error.includes("npm_without_workspace_working_directory")));
   assert.ok(errors.some((error) => error.includes("npm_cache_missing_workspace_lockfile")));
   assert.ok(errors.some((error) => error.includes("artifact_path_missing_workspace:test-results/smoke")));
@@ -64,6 +64,27 @@ jobs:
           path: |
             mcp/test-results/smoke
             mcp/.next/static/css
+`);
+  assert.deepEqual(errors, []);
+});
+
+test("auditor accepts root workspace dependency triggers", () => {
+  const errors = auditWorkflowText("core-foundation.yml", `
+on:
+  pull_request:
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "npp-core/**"
+jobs:
+  verify-core:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: npp-core
+    steps:
+      - run: npm --prefix .. ci
+      - run: npm --prefix .. run verify:core-api
 `);
   assert.deepEqual(errors, []);
 });
