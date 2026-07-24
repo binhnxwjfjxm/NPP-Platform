@@ -19,8 +19,8 @@ test("Vercel builds the nested MCP Next.js package", () => {
   assert.equal(config.outputDirectory, undefined);
 });
 
-test("Git-triggered Vercel deployments stay disabled", () => {
-  assert.equal(config.git?.deploymentEnabled, false);
+test("one-shot production gate is explicitly open", () => {
+  assert.equal(config.git?.deploymentEnabled, true);
   assert.match(workflow, /^\s{2}workflow_dispatch:\s*$/m);
   assert.match(workflow, /^\s{2}issue_comment:\s*$/m);
   assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request):\s*$/m);
