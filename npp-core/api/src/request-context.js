@@ -24,22 +24,20 @@ function normalizeScopes(scopes = {}) {
 
 function normalizePrincipal(principal = {}) {
   return Object.freeze({
-    actorId: principal.actorId ?? 'system:anonymous',
-    employeeId: principal.employeeId ?? null,
-    roles: Object.freeze([...(principal.roles ?? [])]),
-    permissions: Object.freeze([...(principal.permissions ?? [])]),
+    actorId: typeof principal.actorId === 'string' && principal.actorId.trim() ? principal.actorId.trim() : 'system:anonymous',
+    employeeId: typeof principal.employeeId === 'string' && principal.employeeId.trim() ? principal.employeeId.trim() : null,
+    roles: frozenStrings(principal.roles),
+    permissions: frozenStrings(principal.permissions),
     scopes: normalizeScopes(principal.scopes),
-    sourceApp: principal.sourceApp ?? 'npp-core-api',
+    sourceApp: typeof principal.sourceApp === 'string' && principal.sourceApp.trim() ? principal.sourceApp.trim() : 'npp-core-api',
   });
 }
 
 export function createAnonymousPrincipal() {
   return normalizePrincipal({
     actorId: 'system:anonymous',
-    employeeId: null,
     roles: ['anonymous'],
     permissions: [],
-    scopes: { warehouseIds: [] },
     sourceApp: 'npp-core-api',
   });
 }
@@ -47,14 +45,12 @@ export function createAnonymousPrincipal() {
 export function createBootstrapPrincipal(config) {
   return normalizePrincipal({
     actorId: config.coreBootstrapActorId,
-    employeeId: null,
     roles: ['bootstrap'],
     permissions: [
       PERMISSIONS.coreConfigRead,
       PERMISSIONS.coreHealthAuthenticatedRead,
       PERMISSIONS.coreIdempotencyTestWrite,
     ],
-    scopes: { warehouseIds: [] },
     sourceApp: 'npp-core-api',
   });
 }
