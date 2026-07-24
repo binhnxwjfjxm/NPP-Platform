@@ -43,7 +43,7 @@ jobs:
             esac
           done
 
-          for example in mcp/.env.example npp-core/.env.example
+          for example in mcp/.env.example npp-core/api/.env.example npp-core/web/.env.example
           do
             if git check-ignore --no-index --quiet "$example"; then
               echo "::error::$example must remain committable"
@@ -51,13 +51,16 @@ jobs:
             fi
           done
 
-      - name: Verify NPP Core workspace hold
+      - name: Verify NPP Core foundation boundary
         working-directory: .
         run: |
           set -euo pipefail
           test -s npp-core/README.md
-          grep -Fq "Phase 0 — repository baseline" npp-core/README.md
-          grep -Fq "Do not jump ahead of the current phase gate." npp-core/README.md
+          test -s npp-core/api/package.json
+          test -s npp-core/web/package.json
+          grep -Fq "Phase 0 repository baseline is complete." npp-core/README.md
+          grep -Fq "Phase 1 monorepo foundation is being implemented" npp-core/README.md
+          grep -Fq "It does **not** contain inventory, purchasing, sales, accounting, XNT" npp-core/README.md
 
       - name: Setup Node
         uses: actions/setup-node@v4
