@@ -8,12 +8,27 @@ export const PERMISSIONS = Object.freeze({
 
 const PERMISSION_REGISTRY = new Set(Object.values(PERMISSIONS));
 
+function frozenStrings(value) {
+  if (!Array.isArray(value)) return Object.freeze([]);
+  return Object.freeze([...new Set(value.filter((item) => typeof item === 'string').map((item) => item.trim()).filter(Boolean))]);
+}
+
+function normalizeScopes(scopes = {}) {
+  return Object.freeze({
+    branchIds: frozenStrings(scopes.branchIds),
+    warehouseIds: frozenStrings(scopes.warehouseIds),
+    territoryIds: frozenStrings(scopes.territoryIds),
+  });
+}
+
 function normalizePrincipal(principal = {}) {
   return Object.freeze({
-    actorId: principal.actorId ?? 'system:anonymous',
-    roles: Object.freeze([...(principal.roles ?? [])]),
-    permissions: Object.freeze([...(principal.permissions ?? [])]),
-    sourceApp: principal.sourceApp ?? 'npp-core-api',
+    actorId: typeof principal.actorId === 'string' && principal.actorId.trim() ? principal.actorId.trim() : 'system:anonymous',
+    employeeId: typeof principal.employeeId === 'string' && principal.employeeId.trim() ? principal.employeeId.trim() : null,
+    roles: frozenStrings(principal.roles),
+    permissions: frozenStrings(principal.permissions),
+    scopes: normalizeScopes(principal.scopes),
+    sourceApp: typeof principal.sourceApp === 'string' && principal.sourceApp.trim() ? principal.sourceApp.trim() : 'npp-core-api',
   });
 }
 
@@ -29,7 +44,7 @@ export function createAnonymousPrincipal() {
 export function createBootstrapPrincipal(config) {
   return normalizePrincipal({
     actorId: config.coreBootstrapActorId,
-    roles: ['bootstrap', 'admin'],
+    roles: ['bootstrap'],
     permissions: [PERMISSIONS.coreConfigRead, PERMISSIONS.coreHealthAuthenticatedRead],
     sourceApp: 'npp-core-api',
   });
@@ -40,8 +55,10 @@ export function createRequestContext({ config, principal = createAnonymousPrinci
   return Object.freeze({
     installationId: config.installationId,
     actorId: normalizedPrincipal.actorId,
+    employeeId: normalizedPrincipal.employeeId,
     roles: normalizedPrincipal.roles,
     permissions: normalizedPrincipal.permissions,
+    scopes: normalizedPrincipal.scopes,
     requestId,
     sourceApp: normalizedPrincipal.sourceApp,
     receivedAt,
@@ -49,8 +66,10 @@ export function createRequestContext({ config, principal = createAnonymousPrinci
       requestId,
       installationId: config.installationId,
       actorId: normalizedPrincipal.actorId,
+      employeeId: normalizedPrincipal.employeeId,
       roles: normalizedPrincipal.roles,
       permissions: normalizedPrincipal.permissions,
+      scopes: normalizedPrincipal.scopes,
       sourceApp: normalizedPrincipal.sourceApp,
       receivedAt,
     }),
@@ -59,11 +78,7 @@ export function createRequestContext({ config, principal = createAnonymousPrinci
 
 export function authenticateRequest(req, config) {
   const candidate = extractBearerToken(req.headers.authorization);
-  if (!candidate) {
-    return { ok: false, code: 'UNAUTHORIZED', statusCode: 401 };
-  }
-
-  if (!tokenMatches(candidate, config.backendApiToken)) {
+  if (!candidate || !tokenMatches(candidate, config.backendApiToken)) {
     return { ok: false, code: 'UNAUTHORIZED', statusCode: 401 };
   }
 
@@ -78,7 +93,7 @@ export function requirePermission(requestContext, permission) {
     return { ok: false, code: 'FORBIDDEN', statusCode: 403 };
   }
 
-  if (!requestContext.permissions.includes(permission)) {
+  if (!Array.isArray(requestContext?.permissions) || !requestContext.permissions.includes(permission)) {
     return { ok: false, code: 'FORBIDDEN', statusCode: 403 };
   }
 
@@ -88,9 +103,15 @@ export function requirePermission(requestContext, permission) {
 export function safeRequestContext(requestContext) {
   return Object.freeze({
     actorId: requestContext.actorId,
+    employeeId: requestContext.employeeId,
     installationId: requestContext.installationId,
     roles: [...requestContext.roles],
     permissions: [...requestContext.permissions],
+    scopes: {
+      branchIds: [...requestContext.scopes.branchIds],
+      warehouseIds: [...requestContext.scopes.warehouseIds],
+      territoryIds: [...requestContext.scopes.territoryIds],
+    },
     requestId: requestContext.requestId,
     sourceApp: requestContext.sourceApp,
     receivedAt: requestContext.receivedAt,
