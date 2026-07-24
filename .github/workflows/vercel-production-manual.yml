@@ -1,0 +1,61 @@
+name: Manual Vercel production deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vercel-production-manual
+  cancel-in-progress: false
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      VERCEL_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Checkout selected ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Require Vercel token
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${VERCEL_TOKEN:-}" ]]; then
+            echo "::error::Repository secret VERCEL_TOKEN is required for manual deployment."
+            exit 1
+          fi
+
+      - name: Link project locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .vercel
+          printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
+
+      - name: Pull production settings
+        run: npx --yes vercel@56.5.0 pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build production output
+        run: npx --yes vercel@56.5.0 build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy production output
+        run: npx --yes vercel@56.5.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
