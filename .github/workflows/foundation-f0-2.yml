@@ -20,6 +20,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify root ignore coverage
+        working-directory: .
+        run: |
+          set -euo pipefail
+          for candidate in \
+            mcp/coverage/.probe \
+            mcp/.turbo/.probe \
+            mcp/.env.production \
+            npp-core/node_modules/.probe \
+            npp-core/.next/.probe \
+            npp-core/.env.local
+          do
+            match="$(git check-ignore --no-index --verbose "$candidate")"
+            echo "$match"
+            case "$match" in
+              .gitignore:*) ;;
+              *)
+                echo "::error::$candidate is not protected by the root .gitignore"
+                exit 1
+                ;;
+            esac
+          done
+
+          for example in mcp/.env.example npp-core/.env.example
+          do
+            if git check-ignore --no-index --quiet "$example"; then
+              echo "::error::$example must remain committable"
+              exit 1
+            fi
+          done
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -32,6 +63,9 @@ jobs:
 
       - name: Audit runtime hardcodes
         run: npm run audit:runtime-config
+
+      - name: Verify Windows entrypoint paths
+        run: npm run test:windows-path
 
       - name: Upload hardcode audit diagnostics
         if: always()
