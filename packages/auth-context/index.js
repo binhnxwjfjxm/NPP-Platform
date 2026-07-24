@@ -6,7 +6,10 @@ export function buildAuthContext(input = {}) {
     requestId: input.requestId ?? createRequestId('req'),
     actorId: input.actorId ?? 'system:anonymous',
     roles: Object.freeze([...(input.roles ?? [])]),
+    permissions: Object.freeze([...(input.permissions ?? [])]),
     installationId: input.installationId ?? null,
+    sourceApp: input.sourceApp ?? 'npp-core-api',
+    receivedAt: input.receivedAt ?? new Date().toISOString(),
   });
 }
 

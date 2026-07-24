@@ -11,15 +11,18 @@ export function withRequestContext(req, res, handler) {
   return handler(req, res);
 }
 
-export function sendJson(res, statusCode, payload) {
-  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+export function sendJson(res, statusCode, payload, requestId) {
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json',
+    'x-request-id': requestId,
+  });
   res.end(JSON.stringify(payload));
 }
 
 export function sendSuccess(res, data, requestId, receivedAt) {
-  sendJson(res, 200, createSuccessEnvelope(data, requestId, receivedAt));
+  sendJson(res, 200, createSuccessEnvelope(data, requestId, receivedAt), requestId);
 }
 
 export function sendError(res, error, requestId, receivedAt) {
-  sendJson(res, error.statusCode ?? 500, createErrorEnvelope(error, requestId, receivedAt));
+  sendJson(res, error.statusCode ?? 500, createErrorEnvelope(error, requestId, receivedAt), requestId);
 }

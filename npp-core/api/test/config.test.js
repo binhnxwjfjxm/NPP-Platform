@@ -11,6 +11,7 @@ function validEnv(overrides = {}) {
     DATABASE_URL: 'postgresql://user:password@db.example.com:5432/npp_platform',
     DATABASE_SSL_MODE: 'require',
     BACKEND_API_TOKEN: '0123456789abcdef0123456789abcdef',
+    CORE_BOOTSTRAP_ACTOR_ID: 'bootstrap:core-api',
     CORS_ORIGINS: 'https://npp.example.com',
     ...overrides,
   };
@@ -24,6 +25,7 @@ test('production config is fail-fast', () => {
   assert.throws(() => loadConfig(validEnv({ DATABASE_URL: 'https://db.example.com' })), /invalid_database_url/);
   assert.throws(() => loadConfig(validEnv({ DATABASE_SSL_MODE: 'loose' })), /invalid_database_ssl_mode/);
   assert.throws(() => loadConfig(validEnv({ BACKEND_API_TOKEN: 'replace-with-local-token' })), /backend_api_token/);
+  assert.throws(() => loadConfig(validEnv({ CORE_BOOTSTRAP_ACTOR_ID: '' })), /missing_core_bootstrap_actor_id/);
 });
 
 test('loadConfig returns validated server-owned values', () => {
@@ -33,6 +35,7 @@ test('loadConfig returns validated server-owned values', () => {
   assert.equal(config.installationId, 'npp-hung-phat');
   assert.equal(config.databaseSslMode, 'require');
   assert.deepEqual(config.corsOrigins, ['https://npp.example.com']);
+  assert.equal(config.coreBootstrapActorId, 'bootstrap:core-api');
 });
 
 test('getSanitizedConfig omits secrets', () => {

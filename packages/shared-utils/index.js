@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto';
+
 export function createRequestId(prefix = 'req') {
-  const suffix = Math.random().toString(36).slice(2, 10);
-  return `${prefix}_${suffix}`;
+  return `${prefix}_${randomUUID()}`;
 }
 
 export function sanitizeConfigRecord(input = {}) {
