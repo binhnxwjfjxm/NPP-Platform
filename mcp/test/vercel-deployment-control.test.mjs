@@ -19,7 +19,15 @@ test("Vercel builds the MCP workspace from repository root", () => {
 test("Git-triggered Vercel deployments stay disabled", () => {
   assert.equal(config.git?.deploymentEnabled, false);
   assert.match(workflow, /^\s{2}workflow_dispatch:\s*$/m);
+  assert.match(workflow, /^\s{2}issue_comment:\s*$/m);
   assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request):\s*$/m);
+});
+
+test("comment deployment requires the exact guarded command", () => {
+  assert.match(workflow, /github\.event\.issue\.number == 5/);
+  assert.match(workflow, /github\.event\.comment\.body == '\/deploy-vercel-production'/);
+  assert.match(workflow, /\[\"binhnxwjfjxm\",\"khuongbinhinfo-a11y\"\]/);
+  assert.match(workflow, /github\.actor/);
 });
 
 test("manual deploy targets the linked project without committing credentials", () => {
