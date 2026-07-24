@@ -33,10 +33,10 @@ async function runtimeFixture() {
   await executable(path.join(fakeBin, "install"), `#!/usr/bin/env bash
 set -euo pipefail
 args=("$@")
-source_index=$((${#args[@]} - 2))
-dest_index=$((${#args[@]} - 1))
-source_path="${args[$source_index]}"
-dest_path="${args[$dest_index]}"
+source_index=$((\${#args[@]} - 2))
+dest_index=$((\${#args[@]} - 1))
+source_path="\${args[$source_index]}"
+dest_path="\${args[$dest_index]}"
 cp "$source_path" "$CAPTURE_DIR/$(basename "$dest_path")"
 `);
 
