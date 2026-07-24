@@ -1,0 +1,57 @@
+name: Cleanup stale branches
+
+on:
+  push:
+    branches:
+      - agent/heroku-postgres-cutover
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout active branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/heroku-postgres-cutover
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Delete completed and superseded branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          branches=(
+            agent/phase-0-core-placeholder
+            agent/phase-0-deploy-paths
+            agent/phase-0-next-step
+            agent/phase-0-workflow-paths
+            agent/remove-supabase-runtime
+            agent/vercel-comment-deploy
+            agent/vercel-deploy-once
+            agent/vercel-git-gate-command
+            agent/vercel-manual-deploy
+            agent/vercel-nested-next-builder
+          )
+
+          for branch in "${branches[@]}"; do
+            if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+              echo "Deleting $branch"
+              git push origin --delete "$branch"
+            else
+              echo "Already absent: $branch"
+            fi
+          done
+
+      - name: Remove this one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/cleanup-stale-branches.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore(repo): remove one-shot branch cleanup workflow'
+          git push origin HEAD:agent/heroku-postgres-cutover
