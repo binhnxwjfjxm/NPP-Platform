@@ -21,7 +21,7 @@ test('core Vercel project cannot deploy automatically from Git pushes', async ()
   assert.equal(config.git?.deploymentEnabled, false);
 });
 
-test('root Vercel project builds and routes to Core web', async () => {
+test('root Vercel project builds and preserves routes to Core web', async () => {
   const config = await readJson('../../vercel.json');
   assert.equal(config.version, 2);
   assert.equal(config.builds?.length, 1);
@@ -29,7 +29,7 @@ test('root Vercel project builds and routes to Core web', async () => {
   assert.equal(config.builds[0]?.use, '@vercel/next');
   assert.equal(config.routes?.length, 1);
   assert.equal(config.routes[0]?.src, '/(.*)');
-  assert.equal(config.routes[0]?.dest, 'npp-core/web');
+  assert.equal(config.routes[0]?.dest, 'npp-core/web/$1');
   assert.equal(config.build?.env?.NEXT_PUBLIC_CORE_API_URL, 'https://hung-phat-945da1547594.herokuapp.com');
   assert.equal(config.build?.env?.NEXT_PUBLIC_APP_NAME, 'NPP Core');
   assert.equal(config.git?.deploymentEnabled, false);
