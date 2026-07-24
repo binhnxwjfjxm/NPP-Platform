@@ -8,10 +8,10 @@ async function read(relativePath) {
   return readFile(new URL(relativePath, root), "utf8");
 }
 
-test("Heroku starts the nested backend from the repository root", async () => {
-  assert.equal((await read("Procfile")).trim(), "web: npm start");
+test("Heroku runs the Core API from the repository root", async () => {
+  assert.equal((await read("Procfile")).trim(), "web: npm run start:core-api");
   const pkg = JSON.parse(await read("package.json"));
-  assert.deepEqual(pkg.workspaces, ["mcp/apps/backend"]);
-  assert.equal(pkg.scripts.start, "npm --workspace mcp-plan-backend run start");
-  assert.equal(pkg.scripts["heroku-postbuild"], "npm run build");
+  assert.deepEqual(pkg.workspaces, ["mcp", "mcp/apps/backend", "npp-core/api", "npp-core/web", "packages/*"]);
+  assert.equal(pkg.scripts.start, "npm run start:core-api");
+  assert.equal(pkg.scripts["heroku-postbuild"], "npm run build:core-api");
 });

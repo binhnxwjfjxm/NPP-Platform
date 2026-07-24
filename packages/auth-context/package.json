@@ -1,0 +1,17 @@
+{
+  "name": "@npp/auth-context",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "scripts": {
+    "build": "node --check index.js",
+    "test": "node --test test/auth-context.test.js",
+    "verify": "npm run build && npm run test"
+  },
+  "dependencies": {
+    "@npp/shared-utils": "*"
+  }
+}

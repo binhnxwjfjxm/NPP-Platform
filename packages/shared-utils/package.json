@@ -1,0 +1,14 @@
+{
+  "name": "@npp/shared-utils",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "scripts": {
+    "build": "node --check index.js",
+    "test": "node --test test/shared-utils.test.js",
+    "verify": "npm run build && npm run test"
+  }
+}

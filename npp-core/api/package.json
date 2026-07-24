@@ -1,0 +1,25 @@
+{
+  "name": "npp-core-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "build": "node --check src/server.js && node --check src/config.js && node --check src/http-utils.js && node --check src/db/pool.js && node --check src/migrations/index.js",
+    "test": "node --test test/*.test.js",
+    "verify": "npm run build && npm run test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@npp/auth-context": "*",
+    "@npp/contracts": "*",
+    "@npp/domain-types": "*",
+    "@npp/shared-utils": "*",
+    "@npp/test-helpers": "*",
+    "pg": "^8.12.0"
+  }
+}

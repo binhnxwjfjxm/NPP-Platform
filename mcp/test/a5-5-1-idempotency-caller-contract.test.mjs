@@ -83,7 +83,7 @@ test("AI analysis keeps the same caller key when persisting the AI result", asyn
   assert.match(route, /request\.headers\.get\("idempotency-key"\)/);
   assert.match(route, /IDEMPOTENCY_KEY_REQUIRED/);
   assert.match(route, /persistAgentResult\([\s\S]*?idempotencyKey/);
-  assert.match(route, /idempotencyKey\n\s*}\);/);
+  assert.match(route, /idempotencyKey\r?\n\s*}\);/);
   assert.match(proxy, /idempotencyKey\?: string;/);
   assert.match(proxy, /options\.idempotencyKey \|\| request\?\.headers\.get\("idempotency-key"\)/);
 });
