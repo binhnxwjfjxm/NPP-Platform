@@ -1,8 +1,8 @@
-import { createRequestId } from '@npp/shared-utils';
+import { resolveRequestId } from '@npp/shared-utils';
 import { createErrorEnvelope, createSuccessEnvelope } from '@npp/contracts';
 
 export function withRequestContext(req, res, handler) {
-  const requestId = req.headers['x-request-id'] || createRequestId('req');
+  const requestId = resolveRequestId(req.headers['x-request-id'], 'req');
   const receivedAt = new Date().toISOString();
 
   req.requestId = requestId;
@@ -17,6 +17,11 @@ export function sendJson(res, statusCode, payload, requestId) {
     'x-request-id': requestId,
   });
   res.end(JSON.stringify(payload));
+}
+
+export function sendNoContent(res, statusCode, requestId) {
+  res.writeHead(statusCode, { 'x-request-id': requestId });
+  res.end();
 }
 
 export function sendSuccess(res, data, requestId, receivedAt) {
