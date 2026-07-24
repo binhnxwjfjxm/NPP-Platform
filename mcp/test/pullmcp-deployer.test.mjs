@@ -5,9 +5,11 @@ import { spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { applySupabaseMigrations } from "../ops/apply-supabase-migrations.mjs";
 
 const script = await readFile(new URL("../ops/pullmcp", import.meta.url), "utf8");
+const pullmcpPath = fileURLToPath(new URL("../ops/pullmcp", import.meta.url));
 const migrationRunner = await readFile(new URL("../ops/apply-supabase-migrations.mjs", import.meta.url), "utf8");
 const PRIOR_BASELINE = "20260720224500_lock_archive_intent_claims.sql";
 const BASELINE = "20260720224600_preserve_archive_terminal_failure.sql";
@@ -271,7 +273,7 @@ test("a migration failure leaves the runtime untouched and performs no PM2 mutat
   }
   await makeExecutable(join(fakeBin, "pm2"), `#!/usr/bin/env bash\nif [[ "$1" == "pid" ]]; then echo 0; exit 0; fi\nprintf '%s\\n' "$*" >> "${mutationLog}"\nexit 0\n`);
 
-  const result = spawnSync("bash", [new URL("../ops/pullmcp", import.meta.url).pathname], {
+  const result = spawnSync("bash", [pullmcpPath], {
     encoding: "utf8",
     env: {
       ...process.env,
