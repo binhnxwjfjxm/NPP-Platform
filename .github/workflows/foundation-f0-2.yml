@@ -20,6 +20,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Upload runtime source snapshot
+        if: github.event_name == 'pull_request' && github.head_ref == 'agent/remove-supabase-runtime'
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-source-snapshot
+          path: |
+            mcp/apps/backend
+            mcp/src
+            mcp/ops
+            mcp/scripts
+            mcp/supabase
+            mcp/package.json
+            mcp/package-lock.json
+            mcp/next.config.mjs
+            mcp/.env.example
+            .github/workflows
+            database
+          if-no-files-found: warn
+
       - name: Verify root ignore coverage
         working-directory: .
         run: |
@@ -73,7 +92,9 @@ jobs:
         run: npm run audit:runtime-config
 
       - name: Verify Supabase runtime retirement
-        run: npm run test:no-supabase-runtime 2>&1 | tee supabase-runtime-audit.log
+        run: |
+          set -o pipefail
+          npm run test:no-supabase-runtime 2>&1 | tee supabase-runtime-audit.log
 
       - name: Upload Supabase runtime diagnostics
         if: always()
