@@ -1,123 +1,19 @@
-name: Apply Provider Retirement Source
+name: Provider Retirement Staging
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - ".github/provider-retirement/**"
   push:
     branches:
-      - agent/remove-supabase-runtime
+      - main
 
 permissions:
-  contents: write
-
-concurrency:
-  group: provider-retirement-source-${{ github.ref }}
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  apply-provider-retirement:
-    if: github.event_name != 'pull_request' || github.head_ref == 'agent/remove-supabase-runtime'
+  staging-only:
+    if: false
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout branch head
-        uses: actions/checkout@v4
-        with:
-          ref: agent/remove-supabase-runtime
-          fetch-depth: 0
-          persist-credentials: true
-          show-progress: false
-
-      - name: Diagnose and decode prepared source
-        id: decode
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -u
-          exec > >(tee /tmp/provider-retirement-debug.txt) 2>&1
-          echo "pwd=$PWD"
-          echo "head=$(git rev-parse HEAD)"
-          find .github/provider-retirement/chunks -maxdepth 1 -type f -name 'pair-*' -printf '%f %s bytes\n' | sort
-          mapfile -t chunks < <(find .github/provider-retirement/chunks -maxdepth 1 -type f -name 'pair-*' | sort)
-          echo "chunk_count=${#chunks[@]}"
-          test "${#chunks[@]}" -gt 0 || exit 21
-          cat "${chunks[@]}" | tr -d '\r\n\t ' > /tmp/provider-retirement.b64
-          echo "base64_chars=$(wc -c < /tmp/provider-retirement.b64)"
-          python - <<'PY'
-          from pathlib import Path
-          import base64
-          source = Path('/tmp/provider-retirement.b64').read_bytes()
-          print(f'base64_mod4={len(source) % 4}')
-          try:
-              decoded = base64.b64decode(source, validate=True)
-          except Exception as error:
-              print(f'base64_error={type(error).__name__}:{error}')
-              raise
-          Path('/tmp/provider-retirement.tar.gz').write_bytes(decoded)
-          print(f'decoded_bytes={len(decoded)}')
-          print(f'decoded_magic={decoded[:8].hex()}')
-          PY
-          gzip -t /tmp/provider-retirement.tar.gz
-          mkdir -p /tmp/provider-retirement
-          tar -tzf /tmp/provider-retirement.tar.gz > /tmp/provider-retirement-files.txt
-          echo "archive_entries=$(wc -l < /tmp/provider-retirement-files.txt)"
-          sed -n '1,300p' /tmp/provider-retirement-files.txt
-          if grep -Eq '(^/|(^|/)\.\.(/|$))' /tmp/provider-retirement-files.txt; then
-            echo 'unsafe_archive_path=true'
-            exit 22
-          fi
-          tar -xzf /tmp/provider-retirement.tar.gz -C /tmp/provider-retirement
-          touch /tmp/provider-retirement-decoded
-
-      - name: Upload payload diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: provider-retirement-decode
-          path: |
-            /tmp/provider-retirement-debug.txt
-            /tmp/provider-retirement-files.txt
-          if-no-files-found: warn
-
-      - name: Require successful decode
-        shell: bash
-        run: test -f /tmp/provider-retirement-decoded
-
-      - name: Apply prepared source
-        shell: bash
-        run: |
-          set -euo pipefail
-          if test -f /tmp/provider-retirement/apply.sh; then
-            bash /tmp/provider-retirement/apply.sh "$GITHUB_WORKSPACE"
-          elif test -d /tmp/provider-retirement/repo; then
-            cp -a /tmp/provider-retirement/repo/. "$GITHUB_WORKSPACE/"
-          else
-            cp -a /tmp/provider-retirement/. "$GITHUB_WORKSPACE/"
-          fi
-          rm -rf .github/provider-retirement/chunks
-          rm -f .github/workflows/apply-provider-retirement-payload.yml
-
-      - name: Refresh npm lockfiles
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm --prefix mcp install --package-lock-only --ignore-scripts
-          npm --prefix mcp/apps/backend install --package-lock-only --ignore-scripts
-
-      - name: Validate and commit source
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f mcp/package.json
-          test -f mcp/apps/backend/package.json
-          test -f mcp/scripts/audit-no-supabase-runtime.mjs
-          node --check mcp/scripts/audit-no-supabase-runtime.mjs
-          git diff --check
-          if git diff --quiet && git diff --cached --quiet; then
-            echo 'Prepared source produced no changes.' >&2
-            exit 1
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git commit -m 'refactor(mcp): replace Supabase runtime with Heroku Postgres'
-          git push origin HEAD:agent/remove-supabase-runtime
+      - run: echo "PR superseded by clean Heroku PostgreSQL cutover branch."
