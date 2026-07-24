@@ -1,32 +1,16 @@
+import { readFileSync } from 'node:fs';
+
 const IDENTIFIER_PATTERN = /^[a-z0-9][a-z0-9._-]{1,127}$/;
+const CORE_IDEMPOTENCY_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/002_core_idempotency.sql', import.meta.url),
+  'utf8',
+);
 
-const CORE_API_MIGRATIONS = Object.freeze([
-  {
+export const CORE_API_MIGRATIONS = Object.freeze([
+  Object.freeze({
     id: '002_core_idempotency',
-    sql: `
-      CREATE TABLE IF NOT EXISTS shared.core_idempotency_records (
-        id bigserial PRIMARY KEY,
-        installation_id text NOT NULL,
-        actor_id text NOT NULL,
-        http_method text NOT NULL,
-        route text NOT NULL,
-        idempotency_key text NOT NULL,
-        request_fingerprint text NOT NULL,
-        request_id text NOT NULL,
-        status text NOT NULL CHECK (status IN ('processing', 'completed', 'failed')),
-        response_status integer NOT NULL DEFAULT 0,
-        response_content_type text NOT NULL DEFAULT 'application/json',
-        response_body jsonb NOT NULL DEFAULT '{}'::jsonb,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now(),
-        completed_at timestamptz NULL,
-        UNIQUE (installation_id, actor_id, http_method, route, idempotency_key)
-      );
-
-      CREATE INDEX IF NOT EXISTS core_idempotency_records_status_idx
-      ON shared.core_idempotency_records (status);
-    `,
-  },
+    sql: CORE_IDEMPOTENCY_SQL,
+  }),
 ]);
 
 function validateMigration(migration) {
@@ -76,5 +60,3 @@ export async function runMigrations(adapter, migrations = []) {
     throw error;
   }
 }
-
-export { CORE_API_MIGRATIONS };
