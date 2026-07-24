@@ -138,11 +138,11 @@ export function auditWorkflowText(filename, text) {
     const block = job.lines.join("\n");
     const commands = runCommands(job.lines);
     const runsNpm = commands.some((command) => /(^|\s)npm(?:\s|$)/.test(command));
-    if (runsNpm && !/working-directory:\s*(?:mcp|npp-core)(?:\/[^\s]+)?\s*$/.test(block)) {
+    if (runsNpm && !/working-directory:\s*(?:mcp|npp-core)(?:\/[^\s]+)?\s*$/m.test(block)) {
       errors.push(`${filename}:${job.name}:npm_without_workspace_working_directory`);
     }
 
-    if (/cache:\s*npm\s*$/.test(block)) {
+    if (/cache:\s*npm\s*$/m.test(block)) {
       const cachePath = block.match(/cache-dependency-path:\s*([^\s]+)\s*$/m)?.[1];
       if (!cachePath || !hasWorkspacePrefix(unquote(cachePath))) {
         errors.push(`${filename}:${job.name}:npm_cache_missing_workspace_lockfile`);
