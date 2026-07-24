@@ -49,7 +49,7 @@ function workflowJobBlocks(text) {
 function runCommands(lines) {
   const commands = [];
   for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index].match(/^(\s*)run:\s*(.*)$/);
+    const match = lines[index].match(/^(\s*)(?:-\s+)?run:\s*(.*)$/);
     if (!match) continue;
     const baseIndent = match[1].length;
     const inline = match[2].trim();
