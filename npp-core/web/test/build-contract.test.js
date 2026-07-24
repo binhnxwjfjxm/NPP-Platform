@@ -1,6 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
-test('core web skeleton contract exists', () => {
-  assert.ok(true);
+const projectRoot = new URL('../', import.meta.url);
+
+async function readJson(relativePath) {
+  return JSON.parse(await readFile(new URL(relativePath, projectRoot), 'utf8'));
+}
+
+test('core web package exposes independent build and verification scripts', async () => {
+  const pkg = await readJson('package.json');
+  assert.equal(pkg.name, 'npp-core-web');
+  assert.equal(pkg.scripts.build, 'next build');
+  assert.match(pkg.scripts.verify, /typecheck/);
+  assert.match(pkg.scripts.verify, /build/);
+});
+
+test('core Vercel project cannot deploy automatically from Git pushes', async () => {
+  const config = await readJson('vercel.json');
+  assert.equal(config.git?.deploymentEnabled, false);
 });
