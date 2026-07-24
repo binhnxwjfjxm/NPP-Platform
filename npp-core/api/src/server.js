@@ -1,15 +1,16 @@
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createSuccessEnvelope } from '@npp/contracts';
 import { loadConfig, getSanitizedConfig } from './config.js';
-import { closePool, queryReady } from './db/pool.js';
-import { sendSuccess, sendError, sendNoContent } from './http-utils.js';
+import { closePool, getPool, queryReady } from './db/pool.js';
+import { sendJson, sendSuccess, sendError, sendNoContent } from './http-utils.js';
 import { authenticateRequest, createAnonymousPrincipal, createRequestContext, requirePermission, PERMISSIONS, safeRequestContext } from './request-context.js';
 import { resolveRequestId } from '@npp/shared-utils';
+import { createPostgresIdempotencyStore, executeRequestWithIdempotency, readJsonBody } from './idempotency.js';
 
 const __filename = fileURLToPath(import.meta.url);
-const CORS_ALLOWED_METHODS = 'GET, OPTIONS';
-const CORS_ALLOWED_HEADERS = 'authorization, content-type, x-request-id';
+const CORS_ALLOWED_HEADERS = 'authorization, content-type, idempotency-key, x-request-id';
 
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -21,6 +22,20 @@ function closeHttpServer(server) {
   });
 }
 
+async function defaultIdempotencyTestHandler({ payload, requestContext, requestId, receivedAt }) {
+  return {
+    statusCode: 200,
+    contentType: 'application/json',
+    requestId,
+    body: createSuccessEnvelope({
+      status: 'processed',
+      payload,
+      actorId: requestContext.actorId,
+      installationId: requestContext.installationId,
+    }, requestId, receivedAt),
+  };
+}
+
 export function createCoreApiServer(options = {}) {
   const runtimeConfig = options.config ?? loadConfig();
   const allowedOrigins = new Set(runtimeConfig.corsOrigins);
@@ -29,6 +44,9 @@ export function createCoreApiServer(options = {}) {
   const createContext = options.createRequestContext ?? createRequestContext;
   const authorize = options.requirePermission ?? requirePermission;
   const anonymousPrincipal = options.createAnonymousPrincipal ?? createAnonymousPrincipal;
+  const idempotencyStore = options.idempotencyStore
+    ?? createPostgresIdempotencyStore(options.idempotencyAdapter ?? getPool(runtimeConfig));
+  const idempotencyTestHandler = options.idempotencyTestHandler ?? defaultIdempotencyTestHandler;
 
   return http.createServer(async (req, res) => {
     const receivedAt = new Date().toISOString();
@@ -53,23 +71,35 @@ export function createCoreApiServer(options = {}) {
     }
 
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-    const knownPublicPath = ['/health/live', '/health/ready'];
-    const knownProtectedPath = ['/api/config', '/health/authenticated'];
-    const knownPath = new Set([...knownPublicPath, ...knownProtectedPath]);
+    const allowedMethods = new Map([
+      ['/health/live', new Set(['GET'])],
+      ['/health/ready', new Set(['GET'])],
+      ['/api/config', new Set(['GET'])],
+      ['/health/authenticated', new Set(['GET'])],
+      ['/api/idempotency-test', new Set(['POST'])],
+    ]);
 
-    if (req.method === 'OPTIONS' && knownPath.has(url.pathname)) {
+    if (req.method === 'OPTIONS' && allowedMethods.has(url.pathname)) {
       if (!origin) {
         sendError(res, createError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405), requestId, receivedAt);
         return;
       }
-      res.setHeader('Access-Control-Allow-Methods', CORS_ALLOWED_METHODS);
+
+      const requestedMethod = String(req.headers['access-control-request-method'] ?? '').toUpperCase();
+      if (requestedMethod && !allowedMethods.get(url.pathname).has(requestedMethod)) {
+        sendError(res, createError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405), requestId, receivedAt);
+        return;
+      }
+
+      const routeMethods = [...allowedMethods.get(url.pathname), 'OPTIONS'].join(', ');
+      res.setHeader('Access-Control-Allow-Methods', routeMethods);
       res.setHeader('Access-Control-Allow-Headers', CORS_ALLOWED_HEADERS);
       res.setHeader('Access-Control-Max-Age', '600');
       sendNoContent(res, 204, requestId);
       return;
     }
 
-    if (knownPath.has(url.pathname) && req.method !== 'GET') {
+    if (allowedMethods.has(url.pathname) && !allowedMethods.get(url.pathname).has(req.method)) {
       sendError(res, createError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405), requestId, receivedAt);
       return;
     }
@@ -149,6 +179,67 @@ export function createCoreApiServer(options = {}) {
         installationId: requestContext.installationId,
         requestId: requestContext.requestId,
       }, requestId, receivedAt);
+      return;
+    }
+
+    if (url.pathname === '/api/idempotency-test') {
+      const authResult = authenticate(req, runtimeConfig);
+      if (!authResult.ok) {
+        res.setHeader('WWW-Authenticate', 'Bearer');
+        sendError(res, createError('UNAUTHORIZED', 'Authorization required', {}, false, 401), requestId, receivedAt);
+        return;
+      }
+
+      const requestContext = createContext({
+        config: runtimeConfig,
+        principal: authResult.principal,
+        requestId,
+        receivedAt,
+      });
+      req.requestContext = requestContext;
+
+      const permission = authorize(requestContext, PERMISSIONS.coreIdempotencyTestWrite);
+      if (!permission.ok) {
+        sendError(res, createError('FORBIDDEN', 'Permission denied', {}, false, 403), requestId, receivedAt);
+        return;
+      }
+
+      let payload;
+      try {
+        payload = await readJsonBody(req);
+      } catch (error) {
+        sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), requestId, receivedAt);
+        return;
+      }
+
+      try {
+        const executionResult = await executeRequestWithIdempotency({
+          idempotencyStore,
+          req,
+          requestContext,
+          requestId,
+          receivedAt,
+          route: '/api/idempotency-test',
+          payload,
+          onProcess: () => idempotencyTestHandler({ payload, requestContext, requestId, receivedAt }),
+        });
+
+        res.setHeader('Cache-Control', 'no-store');
+        sendJson(
+          res,
+          executionResult.response.statusCode,
+          executionResult.response.body,
+          executionResult.response.requestId ?? requestId,
+          executionResult.response.contentType,
+        );
+      } catch {
+        sendError(
+          res,
+          createError('IDEMPOTENCY_STORAGE_ERROR', 'Idempotency storage unavailable', {}, true, 503),
+          requestId,
+          receivedAt,
+        );
+      }
       return;
     }
 

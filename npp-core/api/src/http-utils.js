@@ -11,9 +11,9 @@ export function withRequestContext(req, res, handler) {
   return handler(req, res);
 }
 
-export function sendJson(res, statusCode, payload, requestId) {
+export function sendJson(res, statusCode, payload, requestId, contentType = 'application/json') {
   res.writeHead(statusCode, {
-    'Content-Type': 'application/json',
+    'Content-Type': contentType,
     'x-request-id': requestId,
   });
   res.end(JSON.stringify(payload));

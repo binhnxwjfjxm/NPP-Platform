@@ -4,6 +4,7 @@ import { createRequestId } from '@npp/shared-utils';
 export const PERMISSIONS = Object.freeze({
   coreConfigRead: 'core.config.read',
   coreHealthAuthenticatedRead: 'core.health.authenticated.read',
+  coreIdempotencyTestWrite: 'core.idempotency.test.write',
 });
 
 const PERMISSION_REGISTRY = new Set(Object.values(PERMISSIONS));
@@ -45,7 +46,11 @@ export function createBootstrapPrincipal(config) {
   return normalizePrincipal({
     actorId: config.coreBootstrapActorId,
     roles: ['bootstrap'],
-    permissions: [PERMISSIONS.coreConfigRead, PERMISSIONS.coreHealthAuthenticatedRead],
+    permissions: [
+      PERMISSIONS.coreConfigRead,
+      PERMISSIONS.coreHealthAuthenticatedRead,
+      PERMISSIONS.coreIdempotencyTestWrite,
+    ],
     sourceApp: 'npp-core-api',
   });
 }

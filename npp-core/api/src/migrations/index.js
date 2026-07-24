@@ -1,4 +1,17 @@
+import { readFileSync } from 'node:fs';
+
 const IDENTIFIER_PATTERN = /^[a-z0-9][a-z0-9._-]{1,127}$/;
+const CORE_IDEMPOTENCY_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/002_core_idempotency.sql', import.meta.url),
+  'utf8',
+);
+
+export const CORE_API_MIGRATIONS = Object.freeze([
+  Object.freeze({
+    id: '002_core_idempotency',
+    sql: CORE_IDEMPOTENCY_SQL,
+  }),
+]);
 
 function validateMigration(migration) {
   if (!migration || !IDENTIFIER_PATTERN.test(String(migration.id ?? ''))) {
