@@ -20,3 +20,13 @@ test('core Vercel project cannot deploy automatically from Git pushes', async ()
   const config = await readJson('vercel.json');
   assert.equal(config.git?.deploymentEnabled, false);
 });
+
+test('root Vercel project builds Core web with the public Core API origin', async () => {
+  const config = await readJson('../../vercel.json');
+  assert.equal(config.builds?.length, 1);
+  assert.equal(config.builds[0]?.src, 'npp-core/web/package.json');
+  assert.equal(config.builds[0]?.use, '@vercel/next');
+  assert.equal(config.build?.env?.NEXT_PUBLIC_CORE_API_URL, 'https://hung-phat-945da1547594.herokuapp.com');
+  assert.equal(config.build?.env?.NEXT_PUBLIC_APP_NAME, 'NPP Core');
+  assert.equal(config.git?.deploymentEnabled, false);
+});
