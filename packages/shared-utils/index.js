@@ -1,10 +1,18 @@
 import { randomUUID } from 'node:crypto';
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const SAFE_REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 export function createRequestId(prefix = 'req') {
   const suffix = randomUUID().replaceAll('-', '');
   return `${prefix}_${suffix}`;
+}
+
+export function normalizeRequestId(value, prefix = 'req') {
+  if (typeof value === 'string' && SAFE_REQUEST_ID_PATTERN.test(value)) {
+    return value;
+  }
+  return createRequestId(prefix);
 }
 
 export function resolveRequestId(value, prefix = 'req') {

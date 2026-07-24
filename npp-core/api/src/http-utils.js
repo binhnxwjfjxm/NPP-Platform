@@ -1,8 +1,8 @@
-import { resolveRequestId } from '@npp/shared-utils';
+import { createRequestId, normalizeRequestId } from '@npp/shared-utils';
 import { createErrorEnvelope, createSuccessEnvelope } from '@npp/contracts';
 
 export function withRequestContext(req, res, handler) {
-  const requestId = resolveRequestId(req.headers['x-request-id'], 'req');
+  const requestId = normalizeRequestId(req.headers['x-request-id']);
   const receivedAt = new Date().toISOString();
 
   req.requestId = requestId;
@@ -14,14 +14,10 @@ export function withRequestContext(req, res, handler) {
 export function sendJson(res, statusCode, payload, requestId) {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json',
+    'cache-control': 'no-store',
     'x-request-id': requestId,
   });
   res.end(JSON.stringify(payload));
-}
-
-export function sendNoContent(res, statusCode, requestId) {
-  res.writeHead(statusCode, { 'x-request-id': requestId });
-  res.end();
 }
 
 export function sendSuccess(res, data, requestId, receivedAt) {
@@ -29,5 +25,17 @@ export function sendSuccess(res, data, requestId, receivedAt) {
 }
 
 export function sendError(res, error, requestId, receivedAt) {
-  sendJson(res, error.statusCode ?? 500, createErrorEnvelope(error, requestId, receivedAt), requestId);
+  const headers = {
+    'cache-control': 'no-store',
+    'x-request-id': requestId,
+  };
+  if (error.statusCode === 401) {
+    headers['www-authenticate'] = 'Bearer';
+  }
+
+  res.writeHead(error.statusCode ?? 500, {
+    'Content-Type': 'application/json',
+    ...headers,
+  });
+  res.end(JSON.stringify(createErrorEnvelope(error, requestId, receivedAt)));
 }
