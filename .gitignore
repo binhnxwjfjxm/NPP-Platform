@@ -1,0 +1,41 @@
+# Dependencies
+**/node_modules/
+
+# Framework and build outputs
+**/.next/
+**/out/
+**/dist/
+**/build/
+**/coverage/
+**/.turbo/
+**/.vercel/
+**/.wrangler/
+
+# Local environment files
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+
+# Logs and generated test output
+*.log
+**/test-results/
+**/playwright-report/
+mcp/direct-db-mutation-findings.json
+mcp/direct-db-mutation-findings.txt
+mcp/runtime-hardcode-findings.txt
+
+# TypeScript
+**/*.tsbuildinfo
+
+# Python tooling used by operational scripts
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+
+# Local cloud tooling state
+**/.gcloud/
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
