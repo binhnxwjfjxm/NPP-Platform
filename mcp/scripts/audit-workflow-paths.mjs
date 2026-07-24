@@ -9,8 +9,6 @@ const DEFAULT_REPO_ROOT = path.resolve(SCRIPT_DIR, "../..");
 const WORKSPACE_ROOTS = ["mcp/", "npp-core/", "packages/", "database/"];
 const LEGACY_FILTER_ROOTS = ["src/", "test/", "apps/", "supabase/", "scripts/", "ops/", "agent-backend/"];
 const LEGACY_ROOT_FILES = new Set([
-  "package.json",
-  "package-lock.json",
   "next.config.js",
   "next.config.mjs",
   "next.config.ts",
