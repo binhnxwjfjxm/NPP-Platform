@@ -51,6 +51,14 @@ jobs:
             fi
           done
 
+      - name: Verify NPP Core workspace hold
+        working-directory: .
+        run: |
+          set -euo pipefail
+          test -s npp-core/README.md
+          grep -Fq "Phase 0 — repository baseline" npp-core/README.md
+          grep -Fq "Do not jump ahead of the current phase gate." npp-core/README.md
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
