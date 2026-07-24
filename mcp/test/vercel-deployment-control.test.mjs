@@ -16,8 +16,11 @@ test("Vercel builds the MCP workspace from repository root", () => {
   assert.equal(config.outputDirectory, "mcp/.next");
 });
 
-test("Git-triggered Vercel deployments stay disabled", () => {
-  assert.equal(config.git?.deploymentEnabled, false);
+test("one-shot Vercel gate enables only the main branch", () => {
+  assert.deepEqual(config.git?.deploymentEnabled, {
+    "*": false,
+    main: true
+  });
   assert.match(workflow, /^\s{2}workflow_dispatch:\s*$/m);
   assert.match(workflow, /^\s{2}issue_comment:\s*$/m);
   assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request):\s*$/m);
