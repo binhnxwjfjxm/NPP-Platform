@@ -34,6 +34,10 @@ function unauthorizedHeaders() {
   return { Authorization: 'Bearer not-a-valid-token' };
 }
 
+function closeServer(target) {
+  return new Promise((resolve, reject) => target.close((error) => (error ? reject(error) : resolve())));
+}
+
 test.before(async () => {
   server = await startServer({
     config: testConfig(),
@@ -52,6 +56,22 @@ test('GET /health/live remains public and returns 200', async () => {
   assert.ok(body.receivedAt);
 });
 
+test('safe incoming request ids are preserved and unsafe values are replaced', async () => {
+  const safeResponse = await fetch('http://127.0.0.1:3005/health/live', {
+    headers: { 'x-request-id': 'trace-123:core' },
+  });
+  const safeBody = await safeResponse.json();
+  assert.equal(safeBody.requestId, 'trace-123:core');
+  assert.equal(safeResponse.headers.get('x-request-id'), 'trace-123:core');
+
+  const unsafeResponse = await fetch('http://127.0.0.1:3005/health/live', {
+    headers: { 'x-request-id': 'unsafe request id' },
+  });
+  const unsafeBody = await unsafeResponse.json();
+  assert.ok(unsafeBody.requestId.startsWith('req_'));
+  assert.notEqual(unsafeBody.requestId, 'unsafe request id');
+});
+
 test('GET /health/ready remains compatible', async () => {
   const response = await fetch('http://127.0.0.1:3005/health/ready');
   const body = await response.json();
@@ -61,23 +81,41 @@ test('GET /health/ready remains compatible', async () => {
   assert.equal(response.headers.get('x-request-id'), body.requestId);
 });
 
+test('allowed browser preflight supports authenticated GET requests', async () => {
+  const response = await fetch('http://127.0.0.1:3005/api/config', {
+    method: 'OPTIONS',
+    headers: {
+      Origin: 'http://127.0.0.1:3003',
+      'Access-Control-Request-Method': 'GET',
+      'Access-Control-Request-Headers': 'authorization,x-request-id',
+    },
+  });
+
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get('access-control-allow-origin'), 'http://127.0.0.1:3003');
+  assert.match(response.headers.get('access-control-allow-methods'), /GET/);
+  assert.match(response.headers.get('access-control-allow-headers'), /authorization/);
+  assert.ok(response.headers.get('x-request-id'));
+});
+
 test('protected route without bearer token returns 401', async () => {
   const response = await fetch('http://127.0.0.1:3005/api/config');
   const body = await response.json();
 
   assert.equal(response.status, 401);
   assert.equal(body.error.code, 'UNAUTHORIZED');
+  assert.equal(response.headers.get('www-authenticate'), 'Bearer');
   assert.equal(response.headers.get('x-request-id'), body.requestId);
 });
 
-test('protected route with invalid token returns 401', async () => {
-  const response = await fetch('http://127.0.0.1:3005/api/config', {
-    headers: unauthorizedHeaders(),
-  });
-  const body = await response.json();
+test('invalid and truncated bearer tokens return 401', async () => {
+  for (const headers of [unauthorizedHeaders(), { Authorization: `Bearer ${token.slice(0, 24)}` }]) {
+    const response = await fetch('http://127.0.0.1:3005/api/config', { headers });
+    const body = await response.json();
 
-  assert.equal(response.status, 401);
-  assert.equal(body.error.code, 'UNAUTHORIZED');
+    assert.equal(response.status, 401);
+    assert.equal(body.error.code, 'UNAUTHORIZED');
+  }
 });
 
 test('valid bootstrap token can access permitted endpoints', async () => {
@@ -91,8 +129,12 @@ test('valid bootstrap token can access permitted endpoints', async () => {
   assert.equal(configBody.data.config.installationId, 'npp-hung-phat');
   assert.equal(configBody.data.authContext.installationId, 'npp-hung-phat');
   assert.equal(configBody.data.authContext.actorId, 'bootstrap:core-api');
+  assert.equal(configBody.data.authContext.employeeId, null);
+  assert.deepEqual(configBody.data.authContext.roles, ['bootstrap']);
+  assert.deepEqual(configBody.data.authContext.scopes.warehouseIds, []);
   assert.ok(!('databaseUrl' in configBody.data.config));
   assert.ok(!('backendApiToken' in configBody.data.config));
+  assert.equal(configResponse.headers.get('cache-control'), 'no-store');
   assert.equal(configResponse.headers.get('x-request-id'), configBody.requestId);
 
   const authResponse = await fetch('http://127.0.0.1:3005/health/authenticated', {
@@ -104,6 +146,7 @@ test('valid bootstrap token can access permitted endpoints', async () => {
   assert.equal(authBody.data.status, 'authenticated');
   assert.equal(authBody.data.actorId, 'bootstrap:core-api');
   assert.equal(authBody.data.installationId, 'npp-hung-phat');
+  assert.equal(authResponse.headers.get('cache-control'), 'no-store');
   assert.equal(authResponse.headers.get('x-request-id'), authBody.requestId);
 });
 
@@ -122,17 +165,20 @@ test('authenticated principal without the required permission returns 403', asyn
     }),
   });
 
-  const response = await fetch('http://127.0.0.1:3006/health/authenticated', {
-    headers: authorizedHeaders(),
-  });
-  const body = await response.json();
+  try {
+    const response = await fetch('http://127.0.0.1:3006/health/authenticated', {
+      headers: authorizedHeaders(),
+    });
+    const body = await response.json();
 
-  assert.equal(response.status, 403);
-  assert.equal(body.error.code, 'FORBIDDEN');
-  await new Promise((resolve, reject) => unauthorizedServer.close((error) => (error ? reject(error) : resolve())));
+    assert.equal(response.status, 403);
+    assert.equal(body.error.code, 'FORBIDDEN');
+  } finally {
+    await closeServer(unauthorizedServer);
+  }
 });
 
-test('unknown permission is denied by default', async () => {
+test('unknown or missing permissions are denied by default', () => {
   const context = createRequestContext({
     config: testConfig(),
     principal: {
@@ -143,12 +189,11 @@ test('unknown permission is denied by default', async () => {
     },
   });
 
-  const authz = requirePermission(context, 'core.permission.unknown');
-  assert.equal(authz.ok, false);
-  assert.equal(authz.statusCode, 403);
+  assert.equal(requirePermission(context, 'core.permission.unknown').ok, false);
+  assert.equal(requirePermission(undefined, PERMISSIONS.coreConfigRead).ok, false);
 });
 
-test('spoofed headers do not override server-owned context', async () => {
+test('spoofed identity headers do not override server-owned context', async () => {
   const response = await fetch('http://127.0.0.1:3005/api/config', {
     headers: {
       ...authorizedHeaders(),
@@ -167,6 +212,16 @@ test('spoofed headers do not override server-owned context', async () => {
   assert.ok(!body.data.requestContext.permissions.includes('spoofed-permission'));
 });
 
+test('CORS uses exact origin matching', async () => {
+  const response = await fetch('http://127.0.0.1:3005/health/live', {
+    headers: { Origin: 'http://malicious.example.com' },
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 403);
+  assert.equal(body.error.code, 'CORS_ORIGIN_NOT_ALLOWED');
+});
+
 test('separate requests receive separate request IDs', async () => {
   const responseOne = await fetch('http://127.0.0.1:3005/health/live');
   const responseTwo = await fetch('http://127.0.0.1:3005/health/live');
@@ -179,7 +234,5 @@ test('separate requests receive separate request IDs', async () => {
 });
 
 test.after(async () => {
-  if (server) {
-    await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-  }
+  if (server) await closeServer(server);
 });
