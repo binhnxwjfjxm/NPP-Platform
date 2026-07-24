@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "npm --prefix mcp ci",
+  "buildCommand": "npm --prefix mcp run build",
+  "devCommand": "npm --prefix mcp run dev",
+  "outputDirectory": "mcp/.next",
+  "git": {
+    "deploymentEnabled": false
+  }
+}
