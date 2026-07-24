@@ -93,6 +93,17 @@ function validateBackendToken(token, nodeEnv) {
   }
 }
 
+function validateCoreBootstrapActorId(value, nodeEnv) {
+  const actorId = text(value);
+  if (!actorId) {
+    fail('missing_core_bootstrap_actor_id', 'CORE_BOOTSTRAP_ACTOR_ID is required');
+  }
+  if (nodeEnv === 'production' && /replace|change[-_ ]?me|example|local[-_ ]?token/i.test(actorId)) {
+    fail('core_bootstrap_actor_id_placeholder', 'CORE_BOOTSTRAP_ACTOR_ID contains a placeholder value');
+  }
+  return actorId;
+}
+
 function loadEnvFile() {
   const envPath = path.resolve(__dirname, '..', '.env');
   try {
@@ -120,6 +131,7 @@ export function loadConfig(envInput) {
   const nodeEnv = text(env.NODE_ENV) || SAFE_DEFAULTS.NODE_ENV;
   const backendApiToken = required(env, 'BACKEND_API_TOKEN');
   validateBackendToken(backendApiToken, nodeEnv);
+  const coreBootstrapActorId = validateCoreBootstrapActorId(env.CORE_BOOTSTRAP_ACTOR_ID, nodeEnv);
 
   return Object.freeze({
     nodeEnv,
@@ -129,6 +141,7 @@ export function loadConfig(envInput) {
     databaseUrl: parseDatabaseUrl(required(env, 'DATABASE_URL')),
     databaseSslMode: parseSslMode(env.DATABASE_SSL_MODE),
     backendApiToken,
+    coreBootstrapActorId,
     corsOrigins: parseCorsOrigins(env.CORS_ORIGINS, { nodeEnv }),
   });
 }

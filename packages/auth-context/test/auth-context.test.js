@@ -5,13 +5,21 @@ import { buildAuthContext, extractBearerToken, tokenMatches } from '../index.js'
 test('builds an auth context without inventing an installation', () => {
   const context = buildAuthContext();
   assert.equal(context.actorId, 'system:anonymous');
+  assert.equal(context.employeeId, null);
   assert.equal(context.installationId, null);
+  assert.deepEqual(context.scopes.branchIds, []);
   assert.ok(context.requestId.startsWith('req_'));
 });
 
-test('preserves the server-owned installation identifier', () => {
-  const context = buildAuthContext({ installationId: 'npp-hung-phat' });
+test('preserves server-owned identity and scopes', () => {
+  const context = buildAuthContext({
+    installationId: 'npp-hung-phat',
+    employeeId: 'employee-1',
+    scopes: { warehouseIds: ['warehouse-1', 'warehouse-1'] },
+  });
   assert.equal(context.installationId, 'npp-hung-phat');
+  assert.equal(context.employeeId, 'employee-1');
+  assert.deepEqual(context.scopes.warehouseIds, ['warehouse-1']);
 });
 
 test('extracts and compares bearer tokens without truncation', () => {

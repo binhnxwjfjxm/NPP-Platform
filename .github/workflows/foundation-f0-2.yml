@@ -59,7 +59,8 @@ jobs:
           test -s npp-core/api/package.json
           test -s npp-core/web/package.json
           grep -Fq "Phase 0 repository baseline is complete." npp-core/README.md
-          grep -Fq "Phase 1 monorepo foundation is being implemented" npp-core/README.md
+          grep -Fq "Phase 1 monorepo foundation is complete" npp-core/README.md
+          grep -Fq "Phase 2 now adds the Core API request-context and authorization boundary." npp-core/README.md
           grep -Fq "It does **not** contain inventory, purchasing, sales, accounting, XNT" npp-core/README.md
 
       - name: Setup Node

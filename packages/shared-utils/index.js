@@ -1,6 +1,19 @@
+import { randomUUID } from 'node:crypto';
+
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
 export function createRequestId(prefix = 'req') {
-  const suffix = Math.random().toString(36).slice(2, 10);
+  const suffix = randomUUID().replaceAll('-', '');
   return `${prefix}_${suffix}`;
+}
+
+export function resolveRequestId(value, prefix = 'req') {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  if (typeof candidate === 'string') {
+    const normalized = candidate.trim();
+    if (REQUEST_ID_PATTERN.test(normalized)) return normalized;
+  }
+  return createRequestId(prefix);
 }
 
 export function sanitizeConfigRecord(input = {}) {
