@@ -3,11 +3,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, getSanitizedConfig } from './config.js';
 import { closePool, queryReady } from './db/pool.js';
-import { sendSuccess, sendError } from './http-utils.js';
+import { sendSuccess, sendError, sendNoContent } from './http-utils.js';
 import { authenticateRequest, createAnonymousPrincipal, createRequestContext, requirePermission, PERMISSIONS, safeRequestContext } from './request-context.js';
-import { createRequestId } from '@npp/shared-utils';
+import { resolveRequestId } from '@npp/shared-utils';
 
 const __filename = fileURLToPath(import.meta.url);
+const CORS_ALLOWED_METHODS = 'GET, OPTIONS';
+const CORS_ALLOWED_HEADERS = 'authorization, content-type, x-request-id';
 
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -31,7 +33,7 @@ export function createCoreApiServer(options = {}) {
   return http.createServer(async (req, res) => {
     const receivedAt = new Date().toISOString();
     const origin = req.headers.origin;
-    const requestId = createRequestId('req');
+    const requestId = resolveRequestId(req.headers['x-request-id'], 'req');
     const anonymousContext = createContext({
       config: runtimeConfig,
       principal: anonymousPrincipal(),
@@ -51,12 +53,23 @@ export function createCoreApiServer(options = {}) {
     }
 
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-    const allowedMethods = new Set(['GET']);
     const knownPublicPath = ['/health/live', '/health/ready'];
     const knownProtectedPath = ['/api/config', '/health/authenticated'];
     const knownPath = new Set([...knownPublicPath, ...knownProtectedPath]);
 
-    if (knownPath.has(url.pathname) && !allowedMethods.has(req.method)) {
+    if (req.method === 'OPTIONS' && knownPath.has(url.pathname)) {
+      if (!origin) {
+        sendError(res, createError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405), requestId, receivedAt);
+        return;
+      }
+      res.setHeader('Access-Control-Allow-Methods', CORS_ALLOWED_METHODS);
+      res.setHeader('Access-Control-Allow-Headers', CORS_ALLOWED_HEADERS);
+      res.setHeader('Access-Control-Max-Age', '600');
+      sendNoContent(res, 204, requestId);
+      return;
+    }
+
+    if (knownPath.has(url.pathname) && req.method !== 'GET') {
       sendError(res, createError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405), requestId, receivedAt);
       return;
     }
@@ -79,6 +92,7 @@ export function createCoreApiServer(options = {}) {
     if (url.pathname === '/api/config') {
       const authResult = authenticate(req, runtimeConfig);
       if (!authResult.ok) {
+        res.setHeader('WWW-Authenticate', 'Bearer');
         sendError(res, createError('UNAUTHORIZED', 'Authorization required', {}, false, 401), requestId, receivedAt);
         return;
       }
@@ -97,6 +111,7 @@ export function createCoreApiServer(options = {}) {
         return;
       }
 
+      res.setHeader('Cache-Control', 'no-store');
       sendSuccess(res, {
         config: getSanitizedConfig(runtimeConfig),
         authContext: requestContext.authContext,
@@ -108,6 +123,7 @@ export function createCoreApiServer(options = {}) {
     if (url.pathname === '/health/authenticated') {
       const authResult = authenticate(req, runtimeConfig);
       if (!authResult.ok) {
+        res.setHeader('WWW-Authenticate', 'Bearer');
         sendError(res, createError('UNAUTHORIZED', 'Authorization required', {}, false, 401), requestId, receivedAt);
         return;
       }
@@ -126,6 +142,7 @@ export function createCoreApiServer(options = {}) {
         return;
       }
 
+      res.setHeader('Cache-Control', 'no-store');
       sendSuccess(res, {
         status: 'authenticated',
         actorId: requestContext.actorId,
