@@ -1,26 +1,36 @@
 # NPP Core
 
-`npp-core` is the reserved workspace for the future distributor core platform.
+`npp-core` contains the distributor Core application that will own official purchasing, sales, inventory, receivables, payables, costing, reporting, permissions, and audit workflows.
 
 ## Current phase
 
-This directory is intentionally held at **Phase 0 — repository baseline**. Do not add Core business logic, database schemas, inventory flows, purchasing, sales, accounting, or XNT features here until every Phase 0 gate in `NPP_PLATFORM_MASTER_PLAN.md` is verified green.
+Phase 0 repository baseline is complete. Phase 1 monorepo foundation is being implemented, with the minimum Phase 2 API/web skeleton needed to verify independent builds and Heroku process wiring.
 
-## Planned scope
+Current workspaces:
 
-Later phases may introduce:
+- `api` — NPP Core API skeleton, local port `3004`;
+- `web` — NPP Core web skeleton, local port `3003`.
 
-- `api` — Core API and platform services;
-- `web` — Core web application;
-- shared contracts and domain packages as defined by the monorepo plan;
-- database migrations through the repository migration strategy.
+MCP remains a separate application and backend inside the same monorepo. Its current runtime, domain ownership, and local ports remain unchanged during this phase.
 
-The exact structure must follow the Master Plan and be introduced phase by phase. Empty local folders are not a source of truth because Git does not track empty directories.
+## Current boundaries
+
+This phase contains infrastructure only:
+
+- health/config/error-envelope contracts;
+- fail-fast runtime configuration;
+- PostgreSQL pool and migration-runner foundation;
+- shared package skeletons;
+- placeholder AppShell/login/dashboard pages;
+- independent build, test, and CI commands.
+
+It does **not** contain inventory, purchasing, sales, accounting, XNT, or other Core business logic.
 
 ## Guardrails
 
 - Keep MCP operational while Core is developed separately.
 - Never commit secrets or local environment files.
-- Every new workspace must build and test independently.
-- Database changes require reviewed migrations.
-- Do not jump ahead of the current phase gate.
+- Every workspace must build and test independently.
+- Database changes require reviewed migrations and a clean-database rehearsal.
+- Core and MCP share one PostgreSQL installation but retain schema and service ownership boundaries.
+- Do not deploy a feature branch or enable automatic Heroku/Vercel deployment.

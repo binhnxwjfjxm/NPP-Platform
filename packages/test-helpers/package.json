@@ -1,0 +1,14 @@
+{
+  "name": "@npp/test-helpers",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "scripts": {
+    "build": "node --check index.js",
+    "test": "node --test test/test-helpers.test.js",
+    "verify": "npm run build && npm run test"
+  }
+}

@@ -1,0 +1,57 @@
+name: Core Foundation
+
+on:
+  pull_request:
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "Procfile"
+      - "npp-core/**"
+      - "packages/**"
+      - "database/**"
+      - ".github/workflows/core-foundation.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "Procfile"
+      - "npp-core/**"
+      - "packages/**"
+      - "database/**"
+      - ".github/workflows/core-foundation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-core-foundation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspaces
+        run: npm ci
+
+      - name: Verify shared packages
+        run: npm run verify:packages
+
+      - name: Verify Core API
+        run: npm run verify:core-api
+
+      - name: Verify Core web
+        run: npm run verify:core-web
+
+      - name: Verify Heroku Core process contract
+        run: |
+          test "$(cat Procfile)" = "web: npm run start:core-api"
+          node --test mcp/test/heroku-root-contract.test.mjs

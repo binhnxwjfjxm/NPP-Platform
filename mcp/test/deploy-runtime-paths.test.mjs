@@ -43,12 +43,19 @@ cp "$source_path" "$CAPTURE_DIR/$(basename "$dest_path")"
   return { root, runtime, fakeBin, capture };
 }
 
+const hasBash = (() => {
+  const result = spawnSync("bash", ["--version"], { encoding: "utf8" });
+  return !result.error && result.status === 0;
+})();
+
+const shellTest = hasBash ? test : test.skip;
+
 test("cleanup service template has no fixed VPS runtime path", () => {
   assert.match(serviceTemplate, /@MCP_RUNTIME_DIR@/);
   assert.doesNotMatch(serviceTemplate, /\/var\/www\/mcp-plan-backend/);
 });
 
-test("installer renders every service path from MCP_RUNTIME_DIR", async () => {
+shellTest("installer renders every service path from MCP_RUNTIME_DIR", async () => {
   const fixture = await runtimeFixture();
   const result = spawnSync("bash", [installerPath], {
     encoding: "utf8",
@@ -69,7 +76,7 @@ test("installer renders every service path from MCP_RUNTIME_DIR", async () => {
   assert.match(rendered, new RegExp(`${fixture.runtime.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/ops/run-outlet-media-cleanup\\.sh`));
 });
 
-test("installer rejects a relative runtime directory", () => {
+shellTest("installer rejects a relative runtime directory", () => {
   const result = spawnSync("bash", [installerPath], {
     encoding: "utf8",
     env: { ...process.env, MCP_RUNTIME_DIR: "relative/runtime" }
