@@ -3,6 +3,8 @@ name: Core Foundation
 on:
   pull_request:
     paths:
+      - "package.json"
+      - "package-lock.json"
       - "Procfile"
       - "npp-core/**"
       - "packages/**"
@@ -12,6 +14,8 @@ on:
     branches:
       - main
     paths:
+      - "package.json"
+      - "package-lock.json"
       - "Procfile"
       - "npp-core/**"
       - "packages/**"
