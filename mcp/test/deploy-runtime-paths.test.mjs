@@ -50,7 +50,7 @@ const hasBash = (() => {
 
 const shellTest = hasBash ? test : test.skip;
 
-shellTest("cleanup service template has no fixed VPS runtime path", () => {
+test("cleanup service template has no fixed VPS runtime path", () => {
   assert.match(serviceTemplate, /@MCP_RUNTIME_DIR@/);
   assert.doesNotMatch(serviceTemplate, /\/var\/www\/mcp-plan-backend/);
 });
