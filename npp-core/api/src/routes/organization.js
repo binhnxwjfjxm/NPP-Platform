@@ -5,8 +5,8 @@
 
 import { createSuccessEnvelope, createErrorEnvelope } from '@npp/contracts';
 import { sendJson, sendSuccess, sendError, sendNoContent } from '../http-utils.js';
-import { readJsonBody } from '../idempotency.js';
-import { buildAuditRecord, insertAuditRecord, buildOutboxEvent, insertOutboxEvent, withAuditOutboxTransaction } from '../audit-outbox.js';
+import { readJsonBody, normalizeIdempotencyKey } from '../idempotency.js';
+import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
 import * as branchService from '../services/branch.js';
 import * as warehouseService from '../services/warehouse.js';
 import * as locationService from '../services/location.js';
@@ -18,36 +18,96 @@ function createError(code, message, details = {}, retryable = false, statusCode 
   return { code, message, details, retryable, statusCode };
 }
 
-/**
- * Helper to parse URL and extract path params
- */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function parseUrl(pathname) {
   const match = pathname.match(/^\/api\/([^/]+)(?:\/([^/]+))?$/);
   if (!match) return null;
   return { resource: match[1], id: match[2] };
 }
 
+function parseBooleanParam(value) {
+  if (value === null) return undefined;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw Object.assign(new Error('INVALID_QUERY_PARAMETER'), {
+    code: 'INVALID_QUERY_PARAMETER',
+    publicMessage: 'Query parameter must be true or false',
+    statusCode: 400,
+  });
+}
+
+function parsePositiveIntParam(value, defaultValue, maxValue) {
+  if (value === null) return defaultValue;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > maxValue) {
+    throw Object.assign(new Error('INVALID_QUERY_PARAMETER'), {
+      code: 'INVALID_QUERY_PARAMETER',
+      publicMessage: `Query parameter must be an integer between 0 and ${maxValue}`,
+      statusCode: 400,
+    });
+  }
+  return parsed;
+}
+
+function requireIdempotencyKey(req, requestId, receivedAt) {
+  const rawKey = req.headers['idempotency-key'];
+  if (rawKey === undefined || rawKey === null) {
+    return {
+      statusCode: 400,
+      body: createErrorEnvelope(
+        { code: 'MISSING_IDEMPOTENCY_KEY', message: 'Idempotency-Key header is required', statusCode: 400 },
+        requestId,
+        receivedAt,
+      ),
+    };
+  }
+  try {
+    normalizeIdempotencyKey(rawKey);
+    return null;
+  } catch (error) {
+    return {
+      statusCode: 400,
+      body: createErrorEnvelope(
+        { code: error.code, message: 'Idempotency-Key must be 1-128 characters and contain only letters, numbers, dots, underscores, or hyphens', statusCode: error.statusCode },
+        requestId,
+        receivedAt,
+      ),
+    };
+  }
+}
+
 /**
  * Handler for GET /api/branches
  * List all branches for current installation
  */
-async function handleGetBranches(req, res, { requestContext, idempotencyStore, getPool, requestId, receivedAt, authenticate, authorize, PERMISSIONS, createContext }) {
+async function handleGetBranches(req, res, { requestContext, getPool, requestId, receivedAt }) {
   const url = new URL(`http://localhost${req.url}`);
-  const active = url.searchParams.get('active');
-  const limit = Math.min(parseInt(url.searchParams.get('limit') || '100'), 1000);
-  const offset = Math.max(parseInt(url.searchParams.get('offset') || '0'), 0);
+  let active, limit, offset;
+  try {
+    active = parseBooleanParam(url.searchParams.get('active'));
+    limit = parsePositiveIntParam(url.searchParams.get('limit'), 100, 1000);
+    offset = parsePositiveIntParam(url.searchParams.get('offset'), 0, 10000);
+  } catch (error) {
+    if (error.statusCode) {
+      sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), requestId, receivedAt);
+      return;
+    }
+    sendError(res, createError('INTERNAL_ERROR', 'Failed to parse query parameters', {}, true, 500), requestId, receivedAt);
+    return;
+  }
 
   const pool = getPool();
   try {
     const result = await branchService.listBranches(pool, {
       installationId: requestContext.installationId,
-      active: active === 'true' ? true : active === 'false' ? false : undefined,
+      active,
       limit,
       offset,
     });
 
     sendSuccess(res, result.branches, requestId, receivedAt);
-  } catch (error) {
+  } catch {
     sendError(res, createError('INTERNAL_ERROR', 'Failed to list branches', {}, true, 500), requestId, receivedAt);
   }
 }
@@ -56,7 +116,13 @@ async function handleGetBranches(req, res, { requestContext, idempotencyStore, g
  * Handler for POST /api/branches
  * Create a new branch (idempotent)
  */
-async function handlePostBranches(req, res, { requestContext, idempotencyStore, getPool, idempotencyKey, executeRequestWithIdempotency, requestId, receivedAt }) {
+async function handlePostBranches(req, res, { requestContext, idempotencyStore, getPool, executeRequestWithIdempotency, requestId, receivedAt }) {
+  const missingKey = requireIdempotencyKey(req, requestId, receivedAt);
+  if (missingKey) {
+    sendError(res, createError(missingKey.body.error?.code ?? 'MISSING_IDEMPOTENCY_KEY', missingKey.body.error?.message ?? 'Idempotency-Key header is required', {}, false, 400), requestId, receivedAt);
+    return;
+  }
+
   let payload;
   try {
     payload = await readJsonBody(req);
@@ -77,64 +143,50 @@ async function handlePostBranches(req, res, { requestContext, idempotencyStore, 
       route: '/api/branches',
       payload,
       onProcess: async () => {
-        let branch;
-        await withAuditOutboxTransaction(pool, async (client) => {
-          const serviceResult = await branchService.createBranch(client, {
-            installationId: requestContext.installationId,
-            payload,
-            createdBy: requestContext.actorId,
-          });
-
-          if (!serviceResult.ok) {
-            return {
-              statusCode: serviceResult.code === 'DUPLICATE_CODE' ? 409 : 400,
-              contentType: 'application/json',
-              requestId,
-              body: createErrorEnvelope({
-                code: serviceResult.code,
-                message: serviceResult.message,
-                details: {},
-                retryable: serviceResult.retryable ?? false,
-              }, requestId, receivedAt),
-            };
-          }
-
-          branch = serviceResult.branch;
-
-          // Create audit record
-          const auditRecord = buildAuditRecord({
-            requestContext,
-            action: 'create',
-            resourceType: 'branch',
-            resourceId: branch.id,
-            afterData: branch,
-            metadata: { code: branch.code },
-          });
-
-          await insertAuditRecord(client, auditRecord);
-
-          // Optionally create outbox event
-          const outboxEvent = buildOutboxEvent({
-            requestContext,
-            aggregateType: 'branch',
-            aggregateId: branch.id,
-            eventType: 'branch.created',
-            eventVersion: 1,
-            payload: branch,
-            metadata: { code: branch.code },
-          });
-
-          await insertOutboxEvent(client, outboxEvent);
+        const serviceResult = await branchService.createBranch(pool, {
+          installationId: requestContext.installationId,
+          payload,
+          createdBy: requestContext.actorId,
         });
 
-        if (branch) {
+        if (!serviceResult.ok) {
           return {
-            statusCode: 201,
+            statusCode: serviceResult.code === 'DUPLICATE_CODE' ? 409 : 400,
             contentType: 'application/json',
             requestId,
-            body: createSuccessEnvelope(branch, requestId, receivedAt),
+            body: createErrorEnvelope({
+              code: serviceResult.code,
+              message: serviceResult.message,
+              details: {},
+              retryable: serviceResult.retryable ?? false,
+            }, requestId, receivedAt),
           };
         }
+
+        const branch = serviceResult.branch;
+
+        await withAuditOutboxTransaction({
+          adapter: pool,
+          mutate: async (client) => {
+            const auditRecord = buildAuditRecord({
+              requestContext,
+              action: 'create',
+              resourceType: 'branch',
+              resourceId: branch.id,
+              afterData: branch,
+              metadata: { code: branch.code },
+            });
+            await insertAuditRecord(client, auditRecord);
+            return { branch };
+          },
+        });
+
+        return {
+          statusCode: 201,
+          contentType: 'application/json',
+          requestId,
+          body: createSuccessEnvelope(branch, requestId, receivedAt),
+        };
       },
     });
 
@@ -202,62 +254,68 @@ async function handlePatchBranchById(req, res, { requestContext, getPool, reques
   const pool = getPool();
 
   try {
-    await withAuditOutboxTransaction(pool, async (client) => {
-      if (typeof payload.isActive === 'boolean') {
-        // Change active status
-        const result = await branchService.updateBranchStatus(client, {
-          id: parsed.id,
-          installationId: requestContext.installationId,
-          isActive: payload.isActive,
-          updatedBy: requestContext.actorId,
-        });
+    const result = await withAuditOutboxTransaction({
+      adapter: pool,
+      mutate: async (client) => {
+        if (typeof payload.isActive === 'boolean') {
+          const statusResult = await branchService.updateBranchStatus(client, {
+            id: parsed.id,
+            installationId: requestContext.installationId,
+            isActive: payload.isActive,
+            updatedBy: requestContext.actorId,
+          });
 
-        if (!result.ok) {
-          const statusCode = result.code === 'NOT_FOUND' ? 404 : result.code === 'CANNOT_DEACTIVATE' ? 409 : 400;
-          sendError(res, createError(result.code, result.message, {}, result.retryable ?? false, statusCode), requestId, receivedAt);
-          return;
+          if (!statusResult.ok) {
+            throw Object.assign(new Error('BRANCH_STATUS_UPDATE_FAILED'), { serviceResult: statusResult });
+          }
+
+          const auditRecord = buildAuditRecord({
+            requestContext,
+            action: payload.isActive ? 'activate' : 'deactivate',
+            resourceType: 'branch',
+            resourceId: statusResult.branch.id,
+            afterData: statusResult.branch,
+            metadata: { code: statusResult.branch.code },
+          });
+
+          await insertAuditRecord(client, auditRecord);
+          return { branch: statusResult.branch };
         }
 
-        const auditRecord = buildAuditRecord({
-          requestContext,
-          action: payload.isActive ? 'activate' : 'deactivate',
-          resourceType: 'branch',
-          resourceId: result.branch.id,
-          afterData: result.branch,
-          metadata: { code: result.branch.code },
-        });
-
-        await insertAuditRecord(client, auditRecord);
-        sendSuccess(res, result.branch, requestId, receivedAt);
-      } else {
-        // Update branch details
-        const result = await branchService.updateBranch(client, {
+        const updateResult = await branchService.updateBranch(client, {
           id: parsed.id,
           installationId: requestContext.installationId,
           payload,
           updatedBy: requestContext.actorId,
         });
 
-        if (!result.ok) {
-          const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
-          sendError(res, createError(result.code, result.message, {}, false, statusCode), requestId, receivedAt);
-          return;
+        if (!updateResult.ok) {
+          throw Object.assign(new Error('BRANCH_UPDATE_FAILED'), { serviceResult: updateResult });
         }
 
         const auditRecord = buildAuditRecord({
           requestContext,
           action: 'update',
           resourceType: 'branch',
-          resourceId: result.branch.id,
-          afterData: result.branch,
-          metadata: { code: result.branch.code },
+          resourceId: updateResult.branch.id,
+          afterData: updateResult.branch,
+          metadata: { code: updateResult.branch.code },
         });
 
         await insertAuditRecord(client, auditRecord);
-        sendSuccess(res, result.branch, requestId, receivedAt);
-      }
+        return { branch: updateResult.branch };
+      },
     });
-  } catch {
+
+    sendSuccess(res, result.branch, requestId, receivedAt);
+  } catch (error) {
+    if (error?.serviceResult) {
+      const result = error.serviceResult;
+      const statusCode = result.code === 'NOT_FOUND' ? 404 : result.code === 'CANNOT_DEACTIVATE' ? 409 : 400;
+      sendError(res, createError(result.code, result.message, {}, result.retryable ?? false, statusCode), requestId, receivedAt);
+      return;
+    }
+
     sendError(res, createError('INTERNAL_ERROR', 'Failed to update branch', {}, true, 500), requestId, receivedAt);
   }
 }
@@ -382,6 +440,8 @@ export async function handleOrganizationRoutes(req, res, options) {
   return false; // Not handled
 }
 
+export { requireIdempotencyKey };
+
 // ============================================================
 // WAREHOUSE HANDLERS
 // ============================================================
@@ -389,16 +449,27 @@ export async function handleOrganizationRoutes(req, res, options) {
 async function handleGetWarehouses(req, res, { requestContext, getPool, requestId, receivedAt }) {
   const url = new URL(`http://localhost${req.url}`);
   const branchId = url.searchParams.get('branchId');
-  const active = url.searchParams.get('active');
-  const limit = Math.min(parseInt(url.searchParams.get('limit') || '100'), 1000);
-  const offset = Math.max(parseInt(url.searchParams.get('offset') || '0'), 0);
+  let active, limit, offset;
+
+  try {
+    active = parseBooleanParam(url.searchParams.get('active'));
+    limit = parsePositiveIntParam(url.searchParams.get('limit'), 100, 1000);
+    offset = parsePositiveIntParam(url.searchParams.get('offset'), 0, 10000);
+  } catch (error) {
+    if (error.statusCode) {
+      sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), requestId, receivedAt);
+      return;
+    }
+    sendError(res, createError('INTERNAL_ERROR', 'Failed to parse query parameters', {}, true, 500), requestId, receivedAt);
+    return;
+  }
 
   const pool = getPool();
   try {
     const result = await warehouseService.listWarehouses(pool, {
       installationId: requestContext.installationId,
       branchId,
-      active: active === 'true' ? true : active === 'false' ? false : undefined,
+      active,
       limit,
       offset,
     });
@@ -410,6 +481,12 @@ async function handleGetWarehouses(req, res, { requestContext, getPool, requestI
 }
 
 async function handlePostWarehouses(req, res, { requestContext, idempotencyStore, getPool, executeRequestWithIdempotency, requestId, receivedAt }) {
+  const missingKey = requireIdempotencyKey(req, requestId, receivedAt);
+  if (missingKey) {
+    sendError(res, createError(missingKey.body.error?.code ?? 'MISSING_IDEMPOTENCY_KEY', missingKey.body.error?.message ?? 'Idempotency-Key header is required', {}, false, 400), requestId, receivedAt);
+    return;
+  }
+
   let payload;
   try {
     payload = await readJsonBody(req);
@@ -430,62 +507,49 @@ async function handlePostWarehouses(req, res, { requestContext, idempotencyStore
       route: '/api/warehouses',
       payload,
       onProcess: async () => {
-        let warehouse;
-        await withAuditOutboxTransaction(pool, async (client) => {
-          const serviceResult = await warehouseService.createWarehouse(client, {
-            installationId: requestContext.installationId,
-            payload,
-            createdBy: requestContext.actorId,
-          });
-
-          if (!serviceResult.ok) {
-            return {
-              statusCode: (serviceResult.code === 'DUPLICATE_CODE' || serviceResult.code === 'BRANCH_INACTIVE') ? 409 : 400,
-              contentType: 'application/json',
-              requestId,
-              body: createErrorEnvelope({
-                code: serviceResult.code,
-                message: serviceResult.message,
-                details: {},
-                retryable: serviceResult.retryable ?? false,
-              }, requestId, receivedAt),
-            };
-          }
-
-          warehouse = serviceResult.warehouse;
-
-          const auditRecord = buildAuditRecord({
-            requestContext,
-            action: 'create',
-            resourceType: 'warehouse',
-            resourceId: warehouse.id,
-            afterData: warehouse,
-            metadata: { code: warehouse.code },
-          });
-
-          await insertAuditRecord(client, auditRecord);
-
-          const outboxEvent = buildOutboxEvent({
-            requestContext,
-            aggregateType: 'warehouse',
-            aggregateId: warehouse.id,
-            eventType: 'warehouse.created',
-            eventVersion: 1,
-            payload: warehouse,
-            metadata: { code: warehouse.code },
-          });
-
-          await insertOutboxEvent(client, outboxEvent);
+        const serviceResult = await warehouseService.createWarehouse(pool, {
+          installationId: requestContext.installationId,
+          payload,
+          createdBy: requestContext.actorId,
         });
 
-        if (warehouse) {
+        if (!serviceResult.ok) {
           return {
-            statusCode: 201,
+            statusCode: (serviceResult.code === 'DUPLICATE_CODE' || serviceResult.code === 'BRANCH_INACTIVE') ? 409 : 400,
             contentType: 'application/json',
             requestId,
-            body: createSuccessEnvelope(warehouse, requestId, receivedAt),
+            body: createErrorEnvelope({
+              code: serviceResult.code,
+              message: serviceResult.message,
+              details: {},
+              retryable: serviceResult.retryable ?? false,
+            }, requestId, receivedAt),
           };
         }
+
+        const warehouse = serviceResult.warehouse;
+        await withAuditOutboxTransaction({
+          adapter: pool,
+          mutate: async (client) => {
+            const auditRecord = buildAuditRecord({
+              requestContext,
+              action: 'create',
+              resourceType: 'warehouse',
+              resourceId: warehouse.id,
+              afterData: warehouse,
+              metadata: { code: warehouse.code },
+            });
+            await insertAuditRecord(client, auditRecord);
+            return { warehouse };
+          },
+        });
+
+        return {
+          statusCode: 201,
+          contentType: 'application/json',
+          requestId,
+          body: createSuccessEnvelope(warehouse, requestId, receivedAt),
+        };
       },
     });
 
@@ -546,60 +610,68 @@ async function handlePatchWarehouseById(req, res, { requestContext, getPool, req
   const pool = getPool();
 
   try {
-    await withAuditOutboxTransaction(pool, async (client) => {
-      if (typeof payload.isActive === 'boolean') {
-        const result = await warehouseService.updateWarehouseStatus(client, {
-          id: parsed.id,
-          installationId: requestContext.installationId,
-          isActive: payload.isActive,
-          updatedBy: requestContext.actorId,
-        });
+    const result = await withAuditOutboxTransaction({
+      adapter: pool,
+      mutate: async (client) => {
+        if (typeof payload.isActive === 'boolean') {
+          const statusResult = await warehouseService.updateWarehouseStatus(client, {
+            id: parsed.id,
+            installationId: requestContext.installationId,
+            isActive: payload.isActive,
+            updatedBy: requestContext.actorId,
+          });
 
-        if (!result.ok) {
-          const statusCode = result.code === 'NOT_FOUND' ? 404 : result.code === 'CANNOT_DEACTIVATE' ? 409 : 400;
-          sendError(res, createError(result.code, result.message, {}, result.retryable ?? false, statusCode), requestId, receivedAt);
-          return;
+          if (!statusResult.ok) {
+            throw Object.assign(new Error('WAREHOUSE_STATUS_UPDATE_FAILED'), { serviceResult: statusResult });
+          }
+
+          const auditRecord = buildAuditRecord({
+            requestContext,
+            action: payload.isActive ? 'activate' : 'deactivate',
+            resourceType: 'warehouse',
+            resourceId: statusResult.warehouse.id,
+            afterData: statusResult.warehouse,
+            metadata: { code: statusResult.warehouse.code },
+          });
+
+          await insertAuditRecord(client, auditRecord);
+          return { warehouse: statusResult.warehouse };
         }
 
-        const auditRecord = buildAuditRecord({
-          requestContext,
-          action: payload.isActive ? 'activate' : 'deactivate',
-          resourceType: 'warehouse',
-          resourceId: result.warehouse.id,
-          afterData: result.warehouse,
-          metadata: { code: result.warehouse.code },
-        });
-
-        await insertAuditRecord(client, auditRecord);
-        sendSuccess(res, result.warehouse, requestId, receivedAt);
-      } else {
-        const result = await warehouseService.updateWarehouse(client, {
+        const updateResult = await warehouseService.updateWarehouse(client, {
           id: parsed.id,
           installationId: requestContext.installationId,
           payload,
           updatedBy: requestContext.actorId,
         });
 
-        if (!result.ok) {
-          const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
-          sendError(res, createError(result.code, result.message, {}, false, statusCode), requestId, receivedAt);
-          return;
+        if (!updateResult.ok) {
+          throw Object.assign(new Error('WAREHOUSE_UPDATE_FAILED'), { serviceResult: updateResult });
         }
 
         const auditRecord = buildAuditRecord({
           requestContext,
           action: 'update',
           resourceType: 'warehouse',
-          resourceId: result.warehouse.id,
-          afterData: result.warehouse,
-          metadata: { code: result.warehouse.code },
+          resourceId: updateResult.warehouse.id,
+          afterData: updateResult.warehouse,
+          metadata: { code: updateResult.warehouse.code },
         });
 
         await insertAuditRecord(client, auditRecord);
-        sendSuccess(res, result.warehouse, requestId, receivedAt);
-      }
+        return { warehouse: updateResult.warehouse };
+      },
     });
-  } catch {
+
+    sendSuccess(res, result.warehouse, requestId, receivedAt);
+  } catch (error) {
+    if (error?.serviceResult) {
+      const result = error.serviceResult;
+      const statusCode = result.code === 'NOT_FOUND' ? 404 : result.code === 'CANNOT_DEACTIVATE' ? 409 : 400;
+      sendError(res, createError(result.code, result.message, {}, result.retryable ?? false, statusCode), requestId, receivedAt);
+      return;
+    }
+
     sendError(res, createError('INTERNAL_ERROR', 'Failed to update warehouse', {}, true, 500), requestId, receivedAt);
   }
 }
@@ -611,16 +683,27 @@ async function handlePatchWarehouseById(req, res, { requestContext, getPool, req
 async function handleGetLocations(req, res, { requestContext, getPool, requestId, receivedAt }) {
   const url = new URL(`http://localhost${req.url}`);
   const warehouseId = url.searchParams.get('warehouseId');
-  const active = url.searchParams.get('active');
-  const limit = Math.min(parseInt(url.searchParams.get('limit') || '100'), 1000);
-  const offset = Math.max(parseInt(url.searchParams.get('offset') || '0'), 0);
+  let active, limit, offset;
+
+  try {
+    active = parseBooleanParam(url.searchParams.get('active'));
+    limit = parsePositiveIntParam(url.searchParams.get('limit'), 100, 1000);
+    offset = parsePositiveIntParam(url.searchParams.get('offset'), 0, 10000);
+  } catch (error) {
+    if (error.statusCode) {
+      sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), requestId, receivedAt);
+      return;
+    }
+    sendError(res, createError('INTERNAL_ERROR', 'Failed to parse query parameters', {}, true, 500), requestId, receivedAt);
+    return;
+  }
 
   const pool = getPool();
   try {
     const result = await locationService.listWarehouseLocations(pool, {
       installationId: requestContext.installationId,
       warehouseId,
-      active: active === 'true' ? true : active === 'false' ? false : undefined,
+      active,
       limit,
       offset,
     });
@@ -632,6 +715,12 @@ async function handleGetLocations(req, res, { requestContext, getPool, requestId
 }
 
 async function handlePostLocations(req, res, { requestContext, idempotencyStore, getPool, executeRequestWithIdempotency, requestId, receivedAt }) {
+  const missingKey = requireIdempotencyKey(req, requestId, receivedAt);
+  if (missingKey) {
+    sendError(res, createError(missingKey.body.error?.code ?? 'MISSING_IDEMPOTENCY_KEY', missingKey.body.error?.message ?? 'Idempotency-Key header is required', {}, false, 400), requestId, receivedAt);
+    return;
+  }
+
   let payload;
   try {
     payload = await readJsonBody(req);
@@ -652,62 +741,49 @@ async function handlePostLocations(req, res, { requestContext, idempotencyStore,
       route: '/api/warehouse-locations',
       payload,
       onProcess: async () => {
-        let location;
-        await withAuditOutboxTransaction(pool, async (client) => {
-          const serviceResult = await locationService.createWarehouseLocation(client, {
-            installationId: requestContext.installationId,
-            payload,
-            createdBy: requestContext.actorId,
-          });
-
-          if (!serviceResult.ok) {
-            return {
-              statusCode: (serviceResult.code === 'DUPLICATE_CODE' || serviceResult.code === 'WAREHOUSE_INACTIVE') ? 409 : 400,
-              contentType: 'application/json',
-              requestId,
-              body: createErrorEnvelope({
-                code: serviceResult.code,
-                message: serviceResult.message,
-                details: {},
-                retryable: serviceResult.retryable ?? false,
-              }, requestId, receivedAt),
-            };
-          }
-
-          location = serviceResult.location;
-
-          const auditRecord = buildAuditRecord({
-            requestContext,
-            action: 'create',
-            resourceType: 'warehouse_location',
-            resourceId: location.id,
-            afterData: location,
-            metadata: { code: location.code },
-          });
-
-          await insertAuditRecord(client, auditRecord);
-
-          const outboxEvent = buildOutboxEvent({
-            requestContext,
-            aggregateType: 'warehouse_location',
-            aggregateId: location.id,
-            eventType: 'warehouse_location.created',
-            eventVersion: 1,
-            payload: location,
-            metadata: { code: location.code },
-          });
-
-          await insertOutboxEvent(client, outboxEvent);
+        const serviceResult = await locationService.createWarehouseLocation(pool, {
+          installationId: requestContext.installationId,
+          payload,
+          createdBy: requestContext.actorId,
         });
 
-        if (location) {
+        if (!serviceResult.ok) {
           return {
-            statusCode: 201,
+            statusCode: (serviceResult.code === 'DUPLICATE_CODE' || serviceResult.code === 'WAREHOUSE_INACTIVE') ? 409 : 400,
             contentType: 'application/json',
             requestId,
-            body: createSuccessEnvelope(location, requestId, receivedAt),
+            body: createErrorEnvelope({
+              code: serviceResult.code,
+              message: serviceResult.message,
+              details: {},
+              retryable: serviceResult.retryable ?? false,
+            }, requestId, receivedAt),
           };
         }
+
+        const location = serviceResult.location;
+        await withAuditOutboxTransaction({
+          adapter: pool,
+          mutate: async (client) => {
+            const auditRecord = buildAuditRecord({
+              requestContext,
+              action: 'create',
+              resourceType: 'warehouse_location',
+              resourceId: location.id,
+              afterData: location,
+              metadata: { code: location.code },
+            });
+            await insertAuditRecord(client, auditRecord);
+            return { location };
+          },
+        });
+
+        return {
+          statusCode: 201,
+          contentType: 'application/json',
+          requestId,
+          body: createSuccessEnvelope(location, requestId, receivedAt),
+        };
       },
     });
 
@@ -768,60 +844,68 @@ async function handlePatchLocationById(req, res, { requestContext, getPool, requ
   const pool = getPool();
 
   try {
-    await withAuditOutboxTransaction(pool, async (client) => {
-      if (typeof payload.isActive === 'boolean') {
-        const result = await locationService.updateWarehouseLocationStatus(client, {
-          id: parsed.id,
-          installationId: requestContext.installationId,
-          isActive: payload.isActive,
-          updatedBy: requestContext.actorId,
-        });
+    const result = await withAuditOutboxTransaction({
+      adapter: pool,
+      mutate: async (client) => {
+        if (typeof payload.isActive === 'boolean') {
+          const statusResult = await locationService.updateWarehouseLocationStatus(client, {
+            id: parsed.id,
+            installationId: requestContext.installationId,
+            isActive: payload.isActive,
+            updatedBy: requestContext.actorId,
+          });
 
-        if (!result.ok) {
-          const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
-          sendError(res, createError(result.code, result.message, {}, result.retryable ?? false, statusCode), requestId, receivedAt);
-          return;
+          if (!statusResult.ok) {
+            throw Object.assign(new Error('LOCATION_STATUS_UPDATE_FAILED'), { serviceResult: statusResult });
+          }
+
+          const auditRecord = buildAuditRecord({
+            requestContext,
+            action: payload.isActive ? 'activate' : 'deactivate',
+            resourceType: 'warehouse_location',
+            resourceId: statusResult.location.id,
+            afterData: statusResult.location,
+            metadata: { code: statusResult.location.code },
+          });
+
+          await insertAuditRecord(client, auditRecord);
+          return { location: statusResult.location };
         }
 
-        const auditRecord = buildAuditRecord({
-          requestContext,
-          action: payload.isActive ? 'activate' : 'deactivate',
-          resourceType: 'warehouse_location',
-          resourceId: result.location.id,
-          afterData: result.location,
-          metadata: { code: result.location.code },
-        });
-
-        await insertAuditRecord(client, auditRecord);
-        sendSuccess(res, result.location, requestId, receivedAt);
-      } else {
-        const result = await locationService.updateWarehouseLocation(client, {
+        const updateResult = await locationService.updateWarehouseLocation(client, {
           id: parsed.id,
           installationId: requestContext.installationId,
           payload,
           updatedBy: requestContext.actorId,
         });
 
-        if (!result.ok) {
-          const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
-          sendError(res, createError(result.code, result.message, {}, false, statusCode), requestId, receivedAt);
-          return;
+        if (!updateResult.ok) {
+          throw Object.assign(new Error('LOCATION_UPDATE_FAILED'), { serviceResult: updateResult });
         }
 
         const auditRecord = buildAuditRecord({
           requestContext,
           action: 'update',
           resourceType: 'warehouse_location',
-          resourceId: result.location.id,
-          afterData: result.location,
-          metadata: { code: result.location.code },
+          resourceId: updateResult.location.id,
+          afterData: updateResult.location,
+          metadata: { code: updateResult.location.code },
         });
 
         await insertAuditRecord(client, auditRecord);
-        sendSuccess(res, result.location, requestId, receivedAt);
-      }
+        return { location: updateResult.location };
+      },
     });
-  } catch {
+
+    sendSuccess(res, result.location, requestId, receivedAt);
+  } catch (error) {
+    if (error?.serviceResult) {
+      const result = error.serviceResult;
+      const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
+      sendError(res, createError(result.code, result.message, {}, result.retryable ?? false, statusCode), requestId, receivedAt);
+      return;
+    }
+
     sendError(res, createError('INTERNAL_ERROR', 'Failed to update location', {}, true, 500), requestId, receivedAt);
   }
 }

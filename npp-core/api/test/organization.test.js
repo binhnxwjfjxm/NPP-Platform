@@ -5,6 +5,7 @@ import { createSuccessEnvelope } from '@npp/contracts';
 import { loadConfig } from '../src/config.js';
 import { getPool, closePool } from '../src/db/pool.js';
 import { startServer } from '../src/server.js';
+import { requireIdempotencyKey } from '../src/routes/organization.js';
 import * as branchService from '../src/services/branch.js';
 import * as warehouseService from '../src/services/warehouse.js';
 import * as locationService from '../src/services/location.js';
@@ -358,4 +359,22 @@ test('Validation — empty name rejected', async () => {
   } finally {
     await closePool();
   }
+});
+
+test('Organization route helper — missing Idempotency-Key returns an error envelope', () => {
+  const req = { headers: {} };
+  const response = requireIdempotencyKey(req, 'req-id', '2026-07-25T00:00:00.000Z');
+
+  assert.ok(response);
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.body.error.code, 'MISSING_IDEMPOTENCY_KEY');
+});
+
+test('Organization route helper — invalid Idempotency-Key returns a validation error', () => {
+  const req = { headers: { 'idempotency-key': ' invalid key ' } };
+  const response = requireIdempotencyKey(req, 'req-id', '2026-07-25T00:00:00.000Z');
+
+  assert.ok(response);
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.body.error.code, 'IDEMPOTENCY_KEY_INVALID');
 });
