@@ -90,14 +90,16 @@ export async function listWarehousesForBranch(client, { branchId, installationId
 }
 
 export async function updateWarehouse(client, { id, installationId, name, warehouseType, updatedBy, expectedUpdatedAt = null }) {
-  const now = new Date().toISOString();
-  const params = [name, warehouseType, now, updatedBy, id, installationId];
+  const params = [name, warehouseType, updatedBy, id, installationId];
   let query = `UPDATE shared.warehouses
-     SET name = $1, warehouse_type = $2, updated_at = $3, updated_by = $4
-     WHERE id = $5 AND installation_id = $6`;
+     SET name = $1,
+         warehouse_type = $2,
+         updated_at = GREATEST(clock_timestamp(), updated_at + interval '1 microsecond'),
+         updated_by = $3
+     WHERE id = $4 AND installation_id = $5`;
 
   if (expectedUpdatedAt) {
-    query += ` AND updated_at = $7`;
+    query += ` AND updated_at = $6`;
     params.push(expectedUpdatedAt);
   }
 
@@ -108,14 +110,15 @@ export async function updateWarehouse(client, { id, installationId, name, wareho
 }
 
 export async function updateWarehouseActiveStatus(client, { id, installationId, isActive, updatedBy, expectedUpdatedAt = null }) {
-  const now = new Date().toISOString();
-  const params = [isActive, now, updatedBy, id, installationId];
+  const params = [isActive, updatedBy, id, installationId];
   let query = `UPDATE shared.warehouses
-     SET is_active = $1, updated_at = $2, updated_by = $3
-     WHERE id = $4 AND installation_id = $5`;
+     SET is_active = $1,
+         updated_at = GREATEST(clock_timestamp(), updated_at + interval '1 microsecond'),
+         updated_by = $2
+     WHERE id = $3 AND installation_id = $4`;
 
   if (expectedUpdatedAt) {
-    query += ` AND updated_at = $6`;
+    query += ` AND updated_at = $5`;
     params.push(expectedUpdatedAt);
   }
 
