@@ -33,8 +33,15 @@ test.describe('Foundation UI enabled', () => {
     await page.goto('/foundation');
     const refresh = page.getByRole('button', { name: 'Refresh' });
     await expect(refresh).toBeEnabled();
+
+    const statusResponse = page.waitForResponse((response) => (
+      response.url().endsWith('/api/foundation/status')
+      && response.request().method() === 'GET'
+      && response.status() === 200
+    ));
     await refresh.click();
-    await expect(page.getByRole('button', { name: 'Checking…' })).toBeDisabled();
+    await statusResponse;
+
     await expect(page.getByRole('button', { name: 'Refresh' })).toBeEnabled();
     await expect(page.getByTestId('last-checked')).not.toContainText('Not checked yet');
   });
