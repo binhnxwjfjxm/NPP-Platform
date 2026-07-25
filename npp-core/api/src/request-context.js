@@ -6,7 +6,7 @@ export const PERMISSIONS = Object.freeze({
   coreHealthAuthenticatedRead: 'core.health.authenticated.read',
   coreIdempotencyTestWrite: 'core.idempotency.test.write',
   coreAuditOutboxTestWrite: 'core.audit-outbox.test.write',
-  coreR2StoragePresignWrite: 'core.r2_storage.presign.write',
+  coreStorageR2TestWrite: 'core.storage.r2.test.write',
 });
 
 const PERMISSION_REGISTRY = new Set(Object.values(PERMISSIONS));
@@ -53,7 +53,7 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.coreHealthAuthenticatedRead,
       PERMISSIONS.coreIdempotencyTestWrite,
       PERMISSIONS.coreAuditOutboxTestWrite,
-      PERMISSIONS.coreR2StoragePresignWrite,
+      PERMISSIONS.coreStorageR2TestWrite,
     ],
     sourceApp: 'npp-core-api',
   });
@@ -90,22 +90,14 @@ export function authenticateRequest(req, config) {
   if (!candidate || !tokenMatches(candidate, config.backendApiToken)) {
     return { ok: false, code: 'UNAUTHORIZED', statusCode: 401 };
   }
-
-  return {
-    ok: true,
-    principal: createBootstrapPrincipal(config),
-  };
+  return { ok: true, principal: createBootstrapPrincipal(config) };
 }
 
 export function requirePermission(requestContext, permission) {
-  if (!PERMISSION_REGISTRY.has(permission)) {
-    return { ok: false, code: 'FORBIDDEN', statusCode: 403 };
-  }
-
+  if (!PERMISSION_REGISTRY.has(permission)) return { ok: false, code: 'FORBIDDEN', statusCode: 403 };
   if (!Array.isArray(requestContext?.permissions) || !requestContext.permissions.includes(permission)) {
     return { ok: false, code: 'FORBIDDEN', statusCode: 403 };
   }
-
   return { ok: true };
 }
 
