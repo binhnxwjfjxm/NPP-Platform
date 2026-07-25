@@ -231,17 +231,19 @@ function usage() {
 }
 
 export async function runMigrationCommand(command, env = process.env) {
-  const databaseUrl = parseDatabaseUrl(env.DATABASE_URL);
-  assertMigrationSafety({
-    nodeEnv: env.NODE_ENV,
-    allowProduction: env[PRODUCTION_ALLOW_ENV],
-    productionConfirm: env[PRODUCTION_CONFIRM_ENV],
-  });
-
-  const identifier = sanitizeDatabaseIdentifier(databaseUrl);
-  jsonLog({ timestamp: new Date().toISOString(), command, databaseIdentifier: identifier, status: 'started' });
+  let databaseUrl = null;
+  let identifier = 'database:unknown';
 
   try {
+    databaseUrl = parseDatabaseUrl(env.DATABASE_URL);
+    assertMigrationSafety({
+      nodeEnv: env.NODE_ENV,
+      allowProduction: env[PRODUCTION_ALLOW_ENV],
+      productionConfirm: env[PRODUCTION_CONFIRM_ENV],
+    });
+    identifier = sanitizeDatabaseIdentifier(databaseUrl);
+    jsonLog({ timestamp: new Date().toISOString(), command, databaseIdentifier: identifier, status: 'started' });
+
     let result;
     if (command === 'status') result = await migrationStatus({ databaseUrl });
     else if (command === 'migrate') result = await migrationMigrate({ databaseUrl });
