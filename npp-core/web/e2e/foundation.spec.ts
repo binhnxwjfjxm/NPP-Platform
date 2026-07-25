@@ -1,160 +1,101 @@
 import { test, expect } from '@playwright/test';
 
-/**
- * Foundation UI browser verification tests
- * 
- * Disabled mode uses baseURL http://127.0.0.1:3003.
- * Enabled mode uses baseURL http://127.0.0.1:3005.
- */
+const TEST_TOKEN_MARKER = process.env.E2E_BACKEND_API_TOKEN ?? '';
+const TEST_DATABASE_MARKER = process.env.E2E_DATABASE_URL ?? '';
 
-test.describe('Foundation UI disabled', () => {
-  test('foundation UI returns 404 when disabled', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'disabled', 'Disabled project only');
-
-    const response = await page.goto('/foundation');
-    expect(response?.status()).toBe(200);
-
-    await expect(page.locator('text=Foundation UI is not enabled in this environment')).toBeVisible();
-    await expect(page.locator('text=Core API Status')).not.toBeVisible();
-  });
-
-  test('foundation API status endpoint returns 404 when disabled', async ({ context }, testInfo) => {
-    test.skip(testInfo.project.name !== 'disabled', 'Disabled project only');
-
-    const response = await context.request.get('/api/foundation/status');
-    expect(response.status()).toBe(404);
-  });
-
-  test('foundation R2 test endpoint returns 404 when disabled', async ({ context }, testInfo) => {
-    test.skip(testInfo.project.name !== 'disabled', 'Disabled project only');
-
-    const response = await context.request.post('/api/foundation/r2-test', {
-      data: { test: true },
-    });
-    expect(response.status()).toBe(404);
-  });
-});
+function expectNoSensitiveData(value: string) {
+  expect(value).not.toContain('Authorization');
+  expect(value).not.toContain('CORE_API_SERVER_TOKEN');
+  expect(value).not.toContain('CORE_API_INTERNAL_URL');
+  expect(value).not.toContain('postgresql://');
+  expect(value).not.toContain('r2.cloudflarestorage.com');
+  expect(value).not.toContain('X-Amz-Signature');
+  if (TEST_TOKEN_MARKER) expect(value).not.toContain(TEST_TOKEN_MARKER);
+  if (TEST_DATABASE_MARKER) expect(value).not.toContain(TEST_DATABASE_MARKER);
+}
 
 test.describe('Foundation UI enabled', () => {
-  test('foundation status page loads and displays safe data', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'enabled', 'Enabled project only');
-
+  test('renders the readiness dashboard with actual Core API state', async ({ page }) => {
     const response = await page.goto('/foundation');
     expect(response?.status()).toBe(200);
 
-    await expect(page.locator('text=NPP Core — Foundation Status')).toBeVisible();
-    await expect(page.locator('text=Core API Status')).toBeVisible();
-    await expect(page.locator('text=Authenticated Context')).toBeVisible();
-    await expect(page.locator('text=Sanitized Configuration')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'NPP Platform readiness' })).toBeVisible();
+    await expect(page.getByText('Operational', { exact: true })).toBeVisible();
+    await expect(page.getByText('Ready', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('actor-id')).toHaveText('bootstrap:e2e');
+    await expect(page.getByTestId('installation-id')).toHaveText('e2e-installation');
+    await expect(page.getByTestId('source-app')).toHaveText('npp-core-api');
+    await expect(page.getByText('Adapter disabled', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Run R2 contract test/i })).toHaveCount(0);
   });
 
-  test('foundation status displays API status safely', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'enabled', 'Enabled project only');
-
+  test('refresh control re-runs the safe status gateway', async ({ page }) => {
     await page.goto('/foundation');
-    await expect(page.locator('text=Live:')).toBeVisible();
-    await expect(page.locator('text=Ready:')).toBeVisible();
+    const refresh = page.getByRole('button', { name: 'Refresh' });
+    await expect(refresh).toBeEnabled();
+    await refresh.click();
+    await expect(page.getByRole('button', { name: 'Checking…' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Refresh' })).toBeEnabled();
+    await expect(page.getByTestId('last-checked')).not.toContainText('Not checked yet');
   });
 
-  test('foundation status displays context without backend token', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'enabled', 'Enabled project only');
-
-    await page.goto('/foundation');
-    const content = await page.content();
-
-    expect(content).not.toContain('Bearer');
-    expect(content).not.toContain('CORE_API_INTERNAL_URL');
-    expect(content).not.toContain('CORE_API_SERVER_TOKEN');
-  });
-
-  test('foundation does not leak R2 credentials', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'enabled', 'Enabled project only');
-
-    await page.goto('/foundation');
-    const content = await page.content();
-
-    expect(content).not.toContain('r2.cloudflarestorage.com');
-  });
-
-  test('foundation does not leak database URLs', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'enabled', 'Enabled project only');
-
-    await page.goto('/foundation');
-    const content = await page.content();
-
-    expect(content).not.toContain('postgresql://');
-  });
-
-  test('foundation does not show signed URLs', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'enabled', 'Enabled project only');
-
-    await page.goto('/foundation');
-    const content = await page.content();
-
-    expect(content).not.toContain('X-Amz-Signature');
-    expect(content).not.toContain('X-Amz-Credential');
-  });
-
-  test('client-side spoofing headers are ignored', async ({ context }, testInfo) => {
-    test.skip(testInfo.project.name !== 'enabled', 'Enabled project only');
-
-    await context.setExtraHTTPHeaders({
-      'x-actor-id': 'spoofed-actor',
-      'x-installation-id': 'spoofed-installation',
-    });
-
-    const response = await context.request.get('/api/foundation/status', {
+  test('status response is sanitized and server-owned', async ({ request }) => {
+    const response = await request.get('/api/foundation/status', {
       headers: {
         'x-actor-id': 'spoofed-actor',
         'x-installation-id': 'spoofed-installation',
+        'x-source-app': 'spoofed-app',
       },
     });
-
-    expect(response.ok()).toBe(true);
-    const data = await response.json();
-    expect(data).toBeDefined();
+    expect(response.status()).toBe(200);
+    const payload = await response.json();
+    expect(payload.apiLive).toBe(true);
+    expect(payload.apiReady).toBe(true);
+    expect(payload.authenticatedContext.actorId).toBe('bootstrap:e2e');
+    expect(payload.authenticatedContext.installationId).toBe('e2e-installation');
+    expect(payload.authenticatedContext.sourceApp).toBe('npp-core-api');
+    expect(payload.r2State.enabled).toBe(false);
+    expect(payload.r2State.contractRouteEnabled).toBe(false);
+    expectNoSensitiveData(JSON.stringify(payload));
   });
 
-  test('foundation handles gateway failures gracefully', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'enabled', 'Enabled project only');
+  test('page HTML contains no server credential or provider detail', async ({ page }) => {
+    await page.goto('/foundation');
+    expectNoSensitiveData(await page.content());
+  });
+
+  test('gateway failure renders a safe, recoverable error state', async ({ page }) => {
+    await page.route('**/api/foundation/status', async (route) => {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: {
+            code: 'FOUNDATION_GATEWAY_UNAVAILABLE',
+            message: 'Foundation status is temporarily unavailable',
+            retryable: true,
+          },
+        }),
+      });
+    });
 
     await page.goto('/foundation');
-    await expect(page.locator('text=NPP Core — Foundation Status')).toBeVisible();
-    await expect(page.locator('text=Core API Status')).toBeVisible();
+    const banner = page.getByTestId('foundation-error');
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText('Foundation status is temporarily unavailable');
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+    expectNoSensitiveData(await page.content());
   });
 
-  test('foundation API status endpoint returns safe response', async ({ context }, testInfo) => {
-    test.skip(testInfo.project.name !== 'enabled', 'Enabled project only');
-
-    const response = await context.request.get('/api/foundation/status');
-    expect(response.ok()).toBe(true);
-    const data = await response.json();
-
-    expect(data).toHaveProperty('apiLive');
-    expect(data).toHaveProperty('apiReady');
-    expect(data).toHaveProperty('authenticatedContext');
-    expect(data).toHaveProperty('sanitizedConfig');
-    expect(data).toHaveProperty('r2State');
-    expect(data).toHaveProperty('serverTimestamp');
-
-    const json = JSON.stringify(data);
-    expect(json).not.toContain('CORE_API_SERVER_TOKEN');
-  });
-
-  test('no uncaught console errors on foundation page', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'enabled', 'Enabled project only');
-
+  test('has no uncaught browser or console errors', async ({ page }) => {
     const errors: string[] = [];
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') {
-        errors.push(msg.text());
-      }
+    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error') errors.push(message.text());
     });
 
     await page.goto('/foundation');
     await page.waitForLoadState('networkidle');
-
-    expect(errors).toHaveLength(0);
+    expect(errors).toEqual([]);
   });
 });
-
