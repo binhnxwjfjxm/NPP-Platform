@@ -94,7 +94,7 @@ export async function updateWarehouseLocation(client, { id, installationId, name
   let query = `UPDATE shared.warehouse_locations
      SET name = $1,
          location_type = $2,
-         updated_at = GREATEST(clock_timestamp(), updated_at + interval '1 microsecond'),
+         updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
          updated_by = $3
      WHERE id = $4 AND installation_id = $5`;
 
@@ -113,7 +113,7 @@ export async function updateWarehouseLocationActiveStatus(client, { id, installa
   const params = [isActive, updatedBy, id, installationId];
   let query = `UPDATE shared.warehouse_locations
      SET is_active = $1,
-         updated_at = GREATEST(clock_timestamp(), updated_at + interval '1 microsecond'),
+         updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
          updated_by = $2
      WHERE id = $3 AND installation_id = $4`;
 
