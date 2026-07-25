@@ -947,48 +947,34 @@ Gate: authenticated health + migration rehearsal + deny-by-default permission pa
 ### Phase 2b — Core UI foundation + browser verification
 
 ```text
-[ ] /foundation internal UI route (foundation test disabled in .env by default)
-[ ] Foundation UI displays safe status:
-    - API live/ready status from /health/live and /health/ready
-    - Authenticated context: actor ID, installation ID, request ID
-    - Sanitized config: Node environment, server port, installation ID
-    - R2 adapter state: enabled/disabled, no credentials/bucket/endpoint
-    - Server timestamp
-[ ] NO secrets exposed: No tokens, DB URLs, R2 credentials, signed URLs, or headers in UI
-[ ] Server-side gateway routes using server-only variables:
-    - GET /api/foundation/status: Calls Core API /health/authenticated + /health/ready, returns safe status
-    - POST /api/foundation/r2-test: Tests R2 presign endpoint (mocked/disabled by default in CI, enabled via FOUNDATION_R2_TEST_ENABLED)
-    - Token never reaches browser (server-only CORE_API_SERVER_TOKEN variable)
-[ ] Server-only environment variables:
-    - CORE_API_INTERNAL_URL=http://127.0.0.1:3004 (server-side only)
-    - CORE_API_SERVER_TOKEN=<test-placeholder> (server-side only, never in browser)
-    - FOUNDATION_TEST_UI_ENABLED=false (disabled by default)
-    - FOUNDATION_R2_TEST_ENABLED=false (disabled by default in CI)
-[ ] Playwright browser test suite:
-    - Route smoke tests: / , /login, /dashboard load without 404, no uncaught console errors, static assets present
-    - Foundation UI disabled: /foundation returns 404 when FOUNDATION_TEST_UI_ENABLED=false
-    - Foundation UI enabled: /foundation shows safe status when enabled, no secrets present
-    - Spoofing resilience: Client-side header spoofing (x-actor-id, x-installation-id) ignored, server context always authoritative
-    - Gateway failures: Graceful error handling when Core API unreachable
-    - No browser leaks: FormData/localStorage/cookies/console contain no secrets
-[ ] Playwright configuration:
-    - Browser: Chromium
-    - Webserver: Starts Core web (port 3003) + Core API (port 3004) before tests
-    - Base URL: http://localhost:3003
-    - Tests use actual Core API + ephemeral PostgreSQL, no mocks
-    - Traces/screenshots on failure
-[ ] GitHub Actions core-ui-e2e.yml workflow:
-    - Services: PostgreSQL 16 (ephemeral)
-    - Setup: Node 20, install deps, build Core API, verify Core web typecheck/build
-    - Test: Run Playwright tests with 3 retries, upload artifacts (traces, videos, reports)
-    - Trigger: npp-core/web/**, Core API auth/health/config, Playwright config/tests, workflow itself
-    - Secrets: R2 disabled in CI, no production credentials
-[ ] Documentation: docs/operations/ui-e2e-foundation.md explains purpose, server-only pattern, local setup, CI configuration
+[x] /foundation internal UI route, disabled by default
+[x] Foundation UI displays actual Core API live/ready status, authenticated server-owned context, sanitized config, R2 state and checked timestamp
+[x] Server-side gateway allowlists only required Core API endpoints, validates success envelopes, applies timeout and fails closed
+[x] Browser receives no backend token, database URL, R2 credentials, provider endpoint, bucket name, signed URL or raw upstream error
+[x] /foundation, /api/foundation/status and /api/foundation/r2-test return true 404 responses when disabled
+[x] R2 contract action is hidden by default, uses a server-generated idempotency key and is not executed in CI
+[x] Chromium browser tests cover /, /login, /dashboard, enabled/disabled foundation states, spoofing, redaction, refresh, safe failures and same-origin assets
+[x] Browser verification uses actual local Core API plus ephemeral PostgreSQL 16; no production service or provider is called
+[x] Core API regression, Core web typecheck/build, Foundation F0.2 and migration rehearsal remain green
+[x] Operations runbook documents local execution, CI, security boundaries and production-readiness exclusions
 ```
 
-Gate: Foundation UI secure (no secrets), authenticated gateway works, E2E tests pass on actual Core API + ephemeral PostgreSQL, spoofing attempts don't override server context, no browser console errors.
+Gate: **CLOSED**. PR #24 passed Core Foundation, Foundation F0.2, migration rehearsal and Chromium browser E2E, then was squash-merged to `main` at commit `5a2ef5d5a8571645a563fc3123140733b6d04551`.
 
-**Status:** Implementation in progress on branch `agent/phase-2-ui-e2e-gate`.
+**Status:** Completed on `2026-07-25`. This status does not claim a production deployment, production backup/restore verification, R2 production configuration or provider smoke test.
+
+Sau gate này mới chọn vertical business slice đầu tiên. Chưa tự chọn inventory, sales, purchasing hoặc MCP cutover. Mỗi business feature tiếp theo phải đi theo lát dọc:
+
+```text
+migration
+-> backend API
+-> frontend UI
+-> unit test
+-> integration test
+-> browser/E2E test
+-> CI
+-> merge
+```
 
 ### Phase 3 — Master data
 
