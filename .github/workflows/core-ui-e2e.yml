@@ -70,8 +70,15 @@ jobs:
       - name: Install workspaces
         run: npm ci
 
+      - name: Run Core API migrations
+        run: npm --workspace npp-core-api run migration:migrate
+        env:
+          NODE_ENV: test
+
       - name: Verify Core API
         run: npm --workspace npp-core-api run verify
+        env:
+          NODE_ENV: test
 
       - name: Verify Core web
         run: npm --workspace npp-core-web run verify

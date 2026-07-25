@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS shared.branches (
   created_by text NOT NULL CHECK (char_length(created_by) BETWEEN 1 AND 128),
   updated_by text NOT NULL CHECK (char_length(updated_by) BETWEEN 1 AND 128),
   CONSTRAINT branches_code_installation_unique
-    UNIQUE (installation_id, code)
+    UNIQUE (installation_id, code),
+  CONSTRAINT branches_id_installation_unique
+    UNIQUE (installation_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS branches_installation_idx

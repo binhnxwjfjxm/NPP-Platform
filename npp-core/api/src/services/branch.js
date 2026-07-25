@@ -26,7 +26,9 @@ function validatePhone(phone) {
 }
 
 function validateExpectedUpdatedAt(value) {
-  if (value === undefined || value === null) return null;
+  if (value === undefined || value === null) {
+    return { ok: false, code: 'MISSING_EXPECTED_UPDATED_AT', message: 'expectedUpdatedAt is required' };
+  }
   if (typeof value !== 'string' || !value.trim()) {
     return { ok: false, code: 'INVALID_EXPECTED_UPDATED_AT', message: 'expectedUpdatedAt must be a non-empty string' };
   }

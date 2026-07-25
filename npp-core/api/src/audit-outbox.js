@@ -233,6 +233,11 @@ export async function withAuditOutboxTransaction({ adapter, mutate }) {
       insertOutboxEvent,
     });
 
+    if (result && result.skipAudit === true) {
+      await client.query('ROLLBACK');
+      return result;
+    }
+
     if (writeState.auditCount !== 1) throw new Error('audit_record_required');
     const expectsOutbox = result?.eventId !== undefined && result?.eventId !== null;
     if (expectsOutbox && writeState.outboxCount !== 1) throw new Error('outbox_event_required');

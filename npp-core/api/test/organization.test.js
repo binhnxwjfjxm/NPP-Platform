@@ -16,7 +16,7 @@ function testEnv(overrides = {}) {
     HOST: '127.0.0.1',
     PORT: '3008',
     INSTALLATION_ID: 'test-installation',
-    DATABASE_URL: 'postgresql://user:password@127.0.0.1:5432/npp_platform',
+    DATABASE_URL: process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || 'postgresql://user:password@127.0.0.1:5432/npp_platform',
     DATABASE_SSL_MODE: 'disable',
     BACKEND_API_TOKEN: 'test-token-0123456789abcdef',
     CORE_BOOTSTRAP_ACTOR_ID: 'test:bootstrap',
@@ -101,6 +101,82 @@ test('Branch service — duplicate code conflict', async () => {
   }
 });
 
+test('Branch service — patch operations require expectedUpdatedAt', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+
+  try {
+    const branchResult = await branchService.createBranch(pool, {
+      installationId: config.installationId,
+      payload: {
+        code: `BR-${randomUUID().substring(0, 8)}`,
+        name: 'Branch',
+      },
+      createdBy: 'test:user1',
+    });
+
+    assert.ok(branchResult.ok);
+
+    const result = await branchService.updateBranchStatus(pool, {
+      id: branchResult.branch.id,
+      installationId: config.installationId,
+      isActive: false,
+      updatedBy: 'test:user1',
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.code, 'MISSING_EXPECTED_UPDATED_AT');
+  } finally {
+    await closePool();
+  }
+});
+
+test('Branch service — stale expectedUpdatedAt returns conflict and retains beforeData', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+
+  try {
+    const branchResult = await branchService.createBranch(pool, {
+      installationId: config.installationId,
+      payload: {
+        code: `BR-${randomUUID().substring(0, 8)}`,
+        name: 'Branch stale',
+      },
+      createdBy: 'test:user1',
+    });
+
+    assert.ok(branchResult.ok);
+
+    const firstUpdate = await branchService.updateBranch(pool, {
+      id: branchResult.branch.id,
+      installationId: config.installationId,
+      payload: {
+        name: 'Branch updated once',
+        expectedUpdatedAt: branchResult.branch.updated_at,
+      },
+      updatedBy: 'test:user1',
+    });
+
+    assert.ok(firstUpdate.ok);
+    assert.ok(firstUpdate.beforeData);
+
+    const staleUpdate = await branchService.updateBranch(pool, {
+      id: branchResult.branch.id,
+      installationId: config.installationId,
+      payload: {
+        name: 'Branch stale update',
+        expectedUpdatedAt: branchResult.branch.updated_at,
+      },
+      updatedBy: 'test:user1',
+    });
+
+    assert.equal(staleUpdate.ok, false);
+    assert.equal(staleUpdate.code, 'CONFLICT');
+  } finally {
+    await closePool();
+  }
+});
+
 test('Warehouse service — create and list', async () => {
   const config = loadConfig(testEnv());
   const pool = getPool(config);
@@ -174,6 +250,7 @@ test('Warehouse service — cannot create under inactive branch', async () => {
       installationId: config.installationId,
       isActive: false,
       updatedBy: 'test:user1',
+      expectedUpdatedAt: branchResult.branch.updated_at,
     });
 
     assert.ok(deactivateResult.ok);
@@ -288,6 +365,7 @@ test('Branch deactivation — cannot deactivate if has active warehouses', async
       installationId: config.installationId,
       isActive: false,
       updatedBy: 'test:user1',
+      expectedUpdatedAt: branchResult.branch.updated_at,
     });
 
     assert.equal(deactivateResult.ok, false);
@@ -300,6 +378,7 @@ test('Branch deactivation — cannot deactivate if has active warehouses', async
       installationId: config.installationId,
       isActive: false,
       updatedBy: 'test:user1',
+      expectedUpdatedAt: warehouseResult.warehouse.updated_at,
     });
 
     assert.ok(warehouseDeactivateResult.ok);
@@ -310,6 +389,7 @@ test('Branch deactivation — cannot deactivate if has active warehouses', async
       installationId: config.installationId,
       isActive: false,
       updatedBy: 'test:user1',
+      expectedUpdatedAt: branchResult.branch.updated_at,
     });
 
     assert.ok(finalDeactivateResult.ok);

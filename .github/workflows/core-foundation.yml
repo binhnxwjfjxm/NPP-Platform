@@ -33,6 +33,20 @@ jobs:
     defaults:
       run:
         working-directory: npp-core
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_npp_core
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 10s
+          --health-retries 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,7 +62,16 @@ jobs:
       - name: Verify shared packages
         run: npm --prefix .. run verify:packages
 
+      - name: Run database migrations
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
+          NODE_ENV: test
+        run: npm --prefix ./api run migration:migrate
+
       - name: Verify Core API
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
+          NODE_ENV: test
         run: npm --prefix .. run verify:core-api
 
       - name: Verify Core web

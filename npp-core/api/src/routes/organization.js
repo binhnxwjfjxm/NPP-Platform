@@ -77,6 +77,20 @@ function requireIdempotencyKey(req, requestId, receivedAt) {
   }
 }
 
+function requireExpectedUpdatedAt(payload) {
+  if (!payload || typeof payload.expectedUpdatedAt !== 'string' || !payload.expectedUpdatedAt.trim()) {
+    return {
+      statusCode: 400,
+      error: {
+        code: 'MISSING_EXPECTED_UPDATED_AT',
+        message: 'expectedUpdatedAt is required for patch operations',
+        statusCode: 400,
+      },
+    };
+  }
+  return null;
+}
+
 /**
  * Handler for GET /api/branches
  * List all branches for current installation
@@ -143,13 +157,35 @@ async function handlePostBranches(req, res, { requestContext, idempotencyStore, 
       route: '/api/branches',
       payload,
       onProcess: async () => {
-        const serviceResult = await branchService.createBranch(pool, {
-          installationId: requestContext.installationId,
-          payload,
-          createdBy: requestContext.actorId,
+        const transactionResult = await withAuditOutboxTransaction({
+          adapter: pool,
+          mutate: async (client) => {
+            const serviceResult = await branchService.createBranch(client, {
+              installationId: requestContext.installationId,
+              payload,
+              createdBy: requestContext.actorId,
+            });
+
+            if (!serviceResult.ok) {
+              return { skipAudit: true, serviceResult };
+            }
+
+            const branch = serviceResult.branch;
+            const auditRecord = buildAuditRecord({
+              requestContext,
+              action: 'create',
+              resourceType: 'branch',
+              resourceId: branch.id,
+              afterData: branch,
+              metadata: { code: branch.code },
+            });
+            await insertAuditRecord(client, auditRecord);
+            return { branch };
+          },
         });
 
-        if (!serviceResult.ok) {
+        if (transactionResult?.skipAudit) {
+          const serviceResult = transactionResult.serviceResult;
           return {
             statusCode: serviceResult.code === 'DUPLICATE_CODE' ? 409 : 400,
             contentType: 'application/json',
@@ -163,23 +199,7 @@ async function handlePostBranches(req, res, { requestContext, idempotencyStore, 
           };
         }
 
-        const branch = serviceResult.branch;
-
-        await withAuditOutboxTransaction({
-          adapter: pool,
-          mutate: async (client) => {
-            const auditRecord = buildAuditRecord({
-              requestContext,
-              action: 'create',
-              resourceType: 'branch',
-              resourceId: branch.id,
-              afterData: branch,
-              metadata: { code: branch.code },
-            });
-            await insertAuditRecord(client, auditRecord);
-            return { branch };
-          },
-        });
+        const branch = transactionResult.branch;
 
         return {
           statusCode: 201,
@@ -251,6 +271,12 @@ async function handlePatchBranchById(req, res, { requestContext, getPool, reques
     return;
   }
 
+  const expectedUpdatedAtError = requireExpectedUpdatedAt(payload);
+  if (expectedUpdatedAtError) {
+    sendError(res, createError(expectedUpdatedAtError.error.code, expectedUpdatedAtError.error.message, {}, false, expectedUpdatedAtError.statusCode), requestId, receivedAt);
+    return;
+  }
+
   const pool = getPool();
 
   try {
@@ -263,6 +289,7 @@ async function handlePatchBranchById(req, res, { requestContext, getPool, reques
             installationId: requestContext.installationId,
             isActive: payload.isActive,
             updatedBy: requestContext.actorId,
+            expectedUpdatedAt: payload.expectedUpdatedAt,
           });
 
           if (!statusResult.ok) {
@@ -274,6 +301,7 @@ async function handlePatchBranchById(req, res, { requestContext, getPool, reques
             action: payload.isActive ? 'activate' : 'deactivate',
             resourceType: 'branch',
             resourceId: statusResult.branch.id,
+            beforeData: statusResult.beforeData || null,
             afterData: statusResult.branch,
             metadata: { code: statusResult.branch.code },
           });
@@ -298,6 +326,7 @@ async function handlePatchBranchById(req, res, { requestContext, getPool, reques
           action: 'update',
           resourceType: 'branch',
           resourceId: updateResult.branch.id,
+          beforeData: updateResult.beforeData || null,
           afterData: updateResult.branch,
           metadata: { code: updateResult.branch.code },
         });
@@ -513,30 +542,20 @@ async function handlePostWarehouses(req, res, { requestContext, idempotencyStore
       route: '/api/warehouses',
       payload,
       onProcess: async () => {
-        const serviceResult = await warehouseService.createWarehouse(pool, {
-          installationId: requestContext.installationId,
-          payload,
-          createdBy: requestContext.actorId,
-        });
-
-        if (!serviceResult.ok) {
-          return {
-            statusCode: (serviceResult.code === 'DUPLICATE_CODE' || serviceResult.code === 'BRANCH_INACTIVE') ? 409 : 400,
-            contentType: 'application/json',
-            requestId,
-            body: createErrorEnvelope({
-              code: serviceResult.code,
-              message: serviceResult.message,
-              details: {},
-              retryable: serviceResult.retryable ?? false,
-            }, requestId, receivedAt),
-          };
-        }
-
-        const warehouse = serviceResult.warehouse;
-        await withAuditOutboxTransaction({
+        const transactionResult = await withAuditOutboxTransaction({
           adapter: pool,
           mutate: async (client) => {
+            const serviceResult = await warehouseService.createWarehouse(client, {
+              installationId: requestContext.installationId,
+              payload,
+              createdBy: requestContext.actorId,
+            });
+
+            if (!serviceResult.ok) {
+              return { skipAudit: true, serviceResult };
+            }
+
+            const warehouse = serviceResult.warehouse;
             const auditRecord = buildAuditRecord({
               requestContext,
               action: 'create',
@@ -550,6 +569,22 @@ async function handlePostWarehouses(req, res, { requestContext, idempotencyStore
           },
         });
 
+        if (transactionResult?.skipAudit) {
+          const serviceResult = transactionResult.serviceResult;
+          return {
+            statusCode: (serviceResult.code === 'DUPLICATE_CODE' || serviceResult.code === 'BRANCH_INACTIVE') ? 409 : 400,
+            contentType: 'application/json',
+            requestId,
+            body: createErrorEnvelope({
+              code: serviceResult.code,
+              message: serviceResult.message,
+              details: {},
+              retryable: serviceResult.retryable ?? false,
+            }, requestId, receivedAt),
+          };
+        }
+
+        const warehouse = transactionResult.warehouse;
         return {
           statusCode: 201,
           contentType: 'application/json',
@@ -613,6 +648,12 @@ async function handlePatchWarehouseById(req, res, { requestContext, getPool, req
     return;
   }
 
+  const expectedUpdatedAtError = requireExpectedUpdatedAt(payload);
+  if (expectedUpdatedAtError) {
+    sendError(res, createError(expectedUpdatedAtError.error.code, expectedUpdatedAtError.error.message, {}, false, expectedUpdatedAtError.statusCode), requestId, receivedAt);
+    return;
+  }
+
   const pool = getPool();
 
   try {
@@ -625,6 +666,7 @@ async function handlePatchWarehouseById(req, res, { requestContext, getPool, req
             installationId: requestContext.installationId,
             isActive: payload.isActive,
             updatedBy: requestContext.actorId,
+            expectedUpdatedAt: payload.expectedUpdatedAt,
           });
 
           if (!statusResult.ok) {
@@ -636,6 +678,7 @@ async function handlePatchWarehouseById(req, res, { requestContext, getPool, req
             action: payload.isActive ? 'activate' : 'deactivate',
             resourceType: 'warehouse',
             resourceId: statusResult.warehouse.id,
+            beforeData: statusResult.beforeData || null,
             afterData: statusResult.warehouse,
             metadata: { code: statusResult.warehouse.code },
           });
@@ -660,6 +703,7 @@ async function handlePatchWarehouseById(req, res, { requestContext, getPool, req
           action: 'update',
           resourceType: 'warehouse',
           resourceId: updateResult.warehouse.id,
+          beforeData: updateResult.beforeData || null,
           afterData: updateResult.warehouse,
           metadata: { code: updateResult.warehouse.code },
         });
@@ -753,30 +797,20 @@ async function handlePostLocations(req, res, { requestContext, idempotencyStore,
       route: '/api/warehouse-locations',
       payload,
       onProcess: async () => {
-        const serviceResult = await locationService.createWarehouseLocation(pool, {
-          installationId: requestContext.installationId,
-          payload,
-          createdBy: requestContext.actorId,
-        });
-
-        if (!serviceResult.ok) {
-          return {
-            statusCode: (serviceResult.code === 'DUPLICATE_CODE' || serviceResult.code === 'WAREHOUSE_INACTIVE') ? 409 : 400,
-            contentType: 'application/json',
-            requestId,
-            body: createErrorEnvelope({
-              code: serviceResult.code,
-              message: serviceResult.message,
-              details: {},
-              retryable: serviceResult.retryable ?? false,
-            }, requestId, receivedAt),
-          };
-        }
-
-        const location = serviceResult.location;
-        await withAuditOutboxTransaction({
+        const transactionResult = await withAuditOutboxTransaction({
           adapter: pool,
           mutate: async (client) => {
+            const serviceResult = await locationService.createWarehouseLocation(client, {
+              installationId: requestContext.installationId,
+              payload,
+              createdBy: requestContext.actorId,
+            });
+
+            if (!serviceResult.ok) {
+              return { skipAudit: true, serviceResult };
+            }
+
+            const location = serviceResult.location;
             const auditRecord = buildAuditRecord({
               requestContext,
               action: 'create',
@@ -790,6 +824,22 @@ async function handlePostLocations(req, res, { requestContext, idempotencyStore,
           },
         });
 
+        if (transactionResult?.skipAudit) {
+          const serviceResult = transactionResult.serviceResult;
+          return {
+            statusCode: (serviceResult.code === 'DUPLICATE_CODE' || serviceResult.code === 'WAREHOUSE_INACTIVE') ? 409 : 400,
+            contentType: 'application/json',
+            requestId,
+            body: createErrorEnvelope({
+              code: serviceResult.code,
+              message: serviceResult.message,
+              details: {},
+              retryable: serviceResult.retryable ?? false,
+            }, requestId, receivedAt),
+          };
+        }
+
+        const location = transactionResult.location;
         return {
           statusCode: 201,
           contentType: 'application/json',
@@ -853,6 +903,12 @@ async function handlePatchLocationById(req, res, { requestContext, getPool, requ
     return;
   }
 
+  const expectedUpdatedAtError = requireExpectedUpdatedAt(payload);
+  if (expectedUpdatedAtError) {
+    sendError(res, createError(expectedUpdatedAtError.error.code, expectedUpdatedAtError.error.message, {}, false, expectedUpdatedAtError.statusCode), requestId, receivedAt);
+    return;
+  }
+
   const pool = getPool();
 
   try {
@@ -865,6 +921,7 @@ async function handlePatchLocationById(req, res, { requestContext, getPool, requ
             installationId: requestContext.installationId,
             isActive: payload.isActive,
             updatedBy: requestContext.actorId,
+            expectedUpdatedAt: payload.expectedUpdatedAt,
           });
 
           if (!statusResult.ok) {
@@ -876,6 +933,7 @@ async function handlePatchLocationById(req, res, { requestContext, getPool, requ
             action: payload.isActive ? 'activate' : 'deactivate',
             resourceType: 'warehouse_location',
             resourceId: statusResult.location.id,
+            beforeData: statusResult.beforeData || null,
             afterData: statusResult.location,
             metadata: { code: statusResult.location.code },
           });
@@ -900,6 +958,7 @@ async function handlePatchLocationById(req, res, { requestContext, getPool, requ
           action: 'update',
           resourceType: 'warehouse_location',
           resourceId: updateResult.location.id,
+          beforeData: updateResult.beforeData || null,
           afterData: updateResult.location,
           metadata: { code: updateResult.location.code },
         });

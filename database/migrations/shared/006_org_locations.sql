@@ -27,7 +27,9 @@ CREATE TABLE IF NOT EXISTS shared.warehouse_locations (
   CONSTRAINT warehouse_locations_warehouse_fk
     FOREIGN KEY (installation_id, warehouse_id) REFERENCES shared.warehouses (installation_id, id) ON DELETE RESTRICT,
   CONSTRAINT warehouse_locations_code_warehouse_unique
-    UNIQUE (warehouse_id, code)
+    UNIQUE (warehouse_id, code),
+  CONSTRAINT warehouse_locations_id_installation_unique
+    UNIQUE (installation_id, id)
 );
 
 CREATE INDEX IF NOT EXISTS warehouse_locations_installation_idx
