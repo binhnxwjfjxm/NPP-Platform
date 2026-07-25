@@ -1,6 +1,7 @@
 import * as branchRepo from '../db/repositories/branch.js';
 
 const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function normalizeCode(code) {
   if (typeof code !== 'string') return '';
@@ -10,6 +11,10 @@ function normalizeCode(code) {
 function normalizeText(text) {
   if (typeof text !== 'string') return '';
   return text.trim();
+}
+
+function validateEntityId(id) {
+  return typeof id === 'string' && UUID_PATTERN.test(id.trim());
 }
 
 function validateEmail(email) {
@@ -113,7 +118,11 @@ export async function createBranch(client, { installationId, payload, createdBy 
 }
 
 export async function getBranch(client, { installationId, id }) {
-  const branch = await branchRepo.getBranchByIdForInstallation(client, { id, installationId });
+  if (!validateEntityId(id)) {
+    return { ok: false, code: 'NOT_FOUND', message: 'Branch not found' };
+  }
+
+  const branch = await branchRepo.getBranchByIdForInstallation(client, { id: id.trim(), installationId });
   if (!branch) {
     return { ok: false, code: 'NOT_FOUND', message: 'Branch not found' };
   }
@@ -126,7 +135,12 @@ export async function listBranches(client, { installationId, active, limit, offs
 }
 
 export async function updateBranch(client, { id, installationId, payload, updatedBy }) {
-  const existing = await branchRepo.getBranchByIdForInstallation(client, { id, installationId });
+  if (!validateEntityId(id)) {
+    return { ok: false, code: 'INVALID_ID', message: 'Branch ID must be a valid UUID' };
+  }
+
+  const normalizedId = id.trim();
+  const existing = await branchRepo.getBranchByIdForInstallation(client, { id: normalizedId, installationId });
   if (!existing) {
     return { ok: false, code: 'NOT_FOUND', message: 'Branch not found' };
   }
@@ -140,7 +154,7 @@ export async function updateBranch(client, { id, installationId, payload, update
   }
 
   const updated = await branchRepo.updateBranch(client, {
-    id,
+    id: normalizedId,
     installationId,
     name: validation.normalized.name,
     address: validation.normalized.address,
@@ -163,7 +177,12 @@ export async function updateBranch(client, { id, installationId, payload, update
 }
 
 export async function updateBranchStatus(client, { id, installationId, isActive, updatedBy, expectedUpdatedAt }) {
-  const existing = await branchRepo.getBranchByIdForInstallation(client, { id, installationId });
+  if (!validateEntityId(id)) {
+    return { ok: false, code: 'INVALID_ID', message: 'Branch ID must be a valid UUID' };
+  }
+
+  const normalizedId = id.trim();
+  const existing = await branchRepo.getBranchByIdForInstallationForUpdate(client, { id: normalizedId, installationId });
   if (!existing) {
     return { ok: false, code: 'NOT_FOUND', message: 'Branch not found' };
   }
@@ -182,7 +201,7 @@ export async function updateBranchStatus(client, { id, installationId, isActive,
   }
 
   if (!isActive) {
-    const hasActive = await branchRepo.hasActiveWarehouses(client, { branchId: id, installationId });
+    const hasActive = await branchRepo.hasActiveWarehouses(client, { branchId: normalizedId, installationId });
     if (hasActive) {
       return {
         ok: false,
@@ -194,7 +213,7 @@ export async function updateBranchStatus(client, { id, installationId, isActive,
   }
 
   const updated = await branchRepo.updateBranchActiveStatus(client, {
-    id,
+    id: normalizedId,
     installationId,
     isActive,
     updatedBy,
