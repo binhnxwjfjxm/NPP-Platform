@@ -5,12 +5,29 @@ import { createSuccessEnvelope } from '@npp/contracts';
 import { loadConfig, getSanitizedConfig } from './config.js';
 import { closePool, getPool, queryReady } from './db/pool.js';
 import { sendJson, sendSuccess, sendError, sendNoContent } from './http-utils.js';
-import { authenticateRequest, createAnonymousPrincipal, createRequestContext, requirePermission, PERMISSIONS, safeRequestContext } from './request-context.js';
+import {
+  authenticateRequest,
+  createAnonymousPrincipal,
+  createRequestContext,
+  requirePermission,
+  PERMISSIONS,
+  safeRequestContext,
+} from './request-context.js';
 import { resolveRequestId } from '@npp/shared-utils';
-import { createPostgresIdempotencyStore, executeRequestWithIdempotency, readJsonBody } from './idempotency.js';
-import { withAuditOutboxTransaction, buildAuditRecord, insertAuditRecord, buildOutboxEvent, insertOutboxEvent } from './audit-outbox.js';
+import {
+  createPostgresIdempotencyStore,
+  executeRequestWithIdempotency,
+  readJsonBody,
+} from './idempotency.js';
+import {
+  withAuditOutboxTransaction,
+  buildAuditRecord,
+  insertAuditRecord,
+  buildOutboxEvent,
+  insertOutboxEvent,
+} from './audit-outbox.js';
 import { createOptionalR2StorageAdapter } from './storage/r2-adapter.js';
-import { buildR2ObjectKey } from './storage/object-key.js';
+import { executeR2ContractOperation } from './storage/r2-contract.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const CORS_ALLOWED_HEADERS = 'authorization, content-type, idempotency-key, x-request-id';
@@ -64,41 +81,6 @@ async function defaultIdempotencyTestHandler({ payload, requestContext, requestI
   };
 }
 
-async function defaultStoragePresignMutation({ client, requestContext, requestId, payload }) {
-  const auditRecord = buildAuditRecord({
-    requestContext,
-    action: 'core.storage.r2.presign',
-    resourceType: 'storage.presign',
-    afterData: {
-      objectKey: payload.objectKey,
-      contentType: payload.contentType || null,
-      expiresIn: payload.expiresIn ?? null,
-    },
-    metadata: {},
-  });
-
-  const outboxEvent = buildOutboxEvent({
-    requestContext,
-    aggregateType: 'core.storage.r2.presign',
-    aggregateId: requestId,
-    eventType: 'core.storage.r2.presign.created',
-    eventVersion: 1,
-    payload: {
-      objectKey: payload.objectKey,
-      expiresIn: payload.expiresIn ?? null,
-    },
-    metadata: {},
-  });
-
-  await insertAuditRecord(client, auditRecord);
-  await insertOutboxEvent(client, outboxEvent);
-
-  return {
-    auditId: auditRecord.auditId,
-    eventId: outboxEvent.eventId,
-  };
-}
-
 export function createCoreApiServer(options = {}) {
   const runtimeConfig = options.config ?? loadConfig();
   const allowedOrigins = new Set(runtimeConfig.corsOrigins);
@@ -113,6 +95,7 @@ export function createCoreApiServer(options = {}) {
   const auditOutboxAdapter = options.auditOutboxAdapter ?? getPool(runtimeConfig);
   const auditOutboxMutation = options.auditOutboxMutation ?? defaultAuditOutboxMutation;
   const storageAdapter = options.storageAdapter ?? createOptionalR2StorageAdapter(runtimeConfig);
+  const storageContractOperation = options.storageContractOperation ?? executeR2ContractOperation;
 
   return http.createServer(async (req, res) => {
     const receivedAt = new Date().toISOString();
@@ -144,8 +127,10 @@ export function createCoreApiServer(options = {}) {
       ['/health/authenticated', new Set(['GET'])],
       ['/api/idempotency-test', new Set(['POST'])],
       ['/api/audit-outbox-test', new Set(['POST'])],
-      ['/api/storage/r2/presign-put', new Set(['POST'])],
     ]);
+    if (runtimeConfig.r2ContractRouteEnabled) {
+      allowedMethods.set('/api/storage/r2-test', new Set(['POST']));
+    }
 
     if (req.method === 'OPTIONS' && allowedMethods.has(url.pathname)) {
       if (!origin) {
@@ -169,6 +154,11 @@ export function createCoreApiServer(options = {}) {
 
     if (allowedMethods.has(url.pathname) && !allowedMethods.get(url.pathname).has(req.method)) {
       sendError(res, createError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405), requestId, receivedAt);
+      return;
+    }
+
+    if (url.pathname === '/api/storage/r2-test' && !runtimeConfig.r2ContractRouteEnabled) {
+      sendError(res, createError('NOT_FOUND', 'Route not found', {}, false, 404), requestId, receivedAt);
       return;
     }
 
@@ -344,15 +334,13 @@ export function createCoreApiServer(options = {}) {
       try {
         const result = await withAuditOutboxTransaction({
           adapter: auditOutboxAdapter,
-          mutate: async (client, helpers) => {
-            return auditOutboxMutation({
-              client,
-              requestContext,
-              requestId,
-              payload,
-              ...helpers,
-            });
-          },
+          mutate: async (client, helpers) => auditOutboxMutation({
+            client,
+            requestContext,
+            requestId,
+            payload,
+            ...helpers,
+          }),
         });
 
         res.setHeader('Cache-Control', 'no-store');
@@ -371,7 +359,7 @@ export function createCoreApiServer(options = {}) {
       return;
     }
 
-    if (url.pathname === '/api/storage/r2/presign-put') {
+    if (url.pathname === '/api/storage/r2-test') {
       const authResult = authenticate(req, runtimeConfig);
       if (!authResult.ok) {
         res.setHeader('WWW-Authenticate', 'Bearer');
@@ -387,7 +375,7 @@ export function createCoreApiServer(options = {}) {
       });
       req.requestContext = requestContext;
 
-      const permission = authorize(requestContext, PERMISSIONS.coreR2StoragePresignWrite);
+      const permission = authorize(requestContext, PERMISSIONS.coreStorageR2TestWrite);
       if (!permission.ok) {
         sendError(res, createError('FORBIDDEN', 'Permission denied', {}, false, 403), requestId, receivedAt);
         return;
@@ -401,23 +389,6 @@ export function createCoreApiServer(options = {}) {
         return;
       }
 
-      let objectKey = typeof payload.objectKey === 'string' ? payload.objectKey.trim() : '';
-      if (!objectKey && payload && typeof payload.keyComponents === 'object' && payload.keyComponents !== null) {
-        try {
-          objectKey = buildR2ObjectKey(payload.keyComponents);
-        } catch (error) {
-          sendError(res, createError(error.code ?? 'INVALID_OBJECT_KEY', error.publicMessage ?? error.message, {}, false, error.statusCode ?? 400), requestId, receivedAt);
-          return;
-        }
-      }
-
-      if (!objectKey) {
-        sendError(res, createError('INVALID_OBJECT_KEY', 'objectKey or keyComponents is required', {}, false, 400), requestId, receivedAt);
-        return;
-      }
-
-      payload = { ...payload, objectKey };
-
       try {
         const executionResult = await executeRequestWithIdempotency({
           idempotencyStore,
@@ -425,45 +396,20 @@ export function createCoreApiServer(options = {}) {
           requestContext,
           requestId,
           receivedAt,
-          route: '/api/storage/r2/presign-put',
+          route: '/api/storage/r2-test',
           payload,
           onProcess: async () => {
-            if (!storageAdapter) {
-              throw Object.assign(new Error('STORAGE_DISABLED'), {
-                code: 'STORAGE_DISABLED',
-                publicMessage: 'R2 storage is not configured',
-                statusCode: 503,
-              });
-            }
-
-            const presignResult = await storageAdapter.getPresignedPutUrl({
-              key: objectKey,
-              contentType: typeof payload.contentType === 'string' ? payload.contentType : undefined,
-              expiresIn: typeof payload.expiresIn === 'number' ? payload.expiresIn : undefined,
+            const result = await storageContractOperation({
+              storageAdapter,
+              auditAdapter: auditOutboxAdapter,
+              requestContext,
+              payload,
             });
-
-            await withAuditOutboxTransaction({
-              adapter: auditOutboxAdapter,
-              mutate: async (client, helpers) => {
-                const mutationResult = await defaultStoragePresignMutation({
-                  client,
-                  requestContext,
-                  requestId,
-                  payload,
-                });
-                return mutationResult;
-              },
-            });
-
             return {
               statusCode: 200,
               contentType: 'application/json',
               requestId,
-              body: createSuccessEnvelope({
-                objectKey: payload.objectKey,
-                presignedUrl: presignResult.url,
-                expiresIn: presignResult.expiresIn,
-              }, requestId, receivedAt),
+              body: createSuccessEnvelope(result, requestId, receivedAt),
             };
           },
         });
