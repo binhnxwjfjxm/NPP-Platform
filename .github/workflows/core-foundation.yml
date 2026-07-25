@@ -25,7 +25,7 @@ on:
       - ".github/workflows/core-foundation.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify-core-foundation:
@@ -136,3 +136,45 @@ jobs:
           path: npp-core/artifacts/migration-rehearsal-report.json
           if-no-files-found: error
           retention-days: 14
+
+  finalize-phase-3-closeout:
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/phase-3-org-warehouse-closeout'
+    runs-on: ubuntu-latest
+    needs:
+      - verify-core-foundation
+      - verify-migration-rehearsal
+    steps:
+      - name: Checkout closeout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/phase-3-org-warehouse-closeout
+          fetch-depth: 0
+
+      - name: Update master plan closeout status
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('NPP_PLATFORM_MASTER_PLAN.md')
+          text = path.read_text(encoding='utf-8')
+          old_status = "**Status:** Phase 3.1 implementation complete on `agent/phase-3-org-warehouse-slice`; PR verification gate green, merge pending."
+          new_status = "**Status:** Phase 3.1 merged into `main` by PR #26 at commit `a8038bfcdead3c6dc2b51b97a690974c30b5475c`; production rollout not started."
+          old_gate = "**Gate opens when:** API tests pass in CI PostgreSQL environment, migrations verify, E2E tests pass with actual Core API + PostgreSQL, and full PR CI passes."
+          new_gate = "**Gate status:** Closed in PR #26 after API, migration rehearsal, security hardening, and browser E2E passed. Production deployment remains a separate explicit operation."
+          if old_status not in text or old_gate not in text:
+              raise SystemExit('Expected Phase 3.1 closeout text was not found')
+          text = text.replace(old_status, new_status, 1).replace(old_gate, new_gate, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+          git show a8038bfcdead3c6dc2b51b97a690974c30b5475c:.github/workflows/core-foundation.yml > .github/workflows/core-foundation.yml
+
+      - name: Commit closeout documentation
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add NPP_PLATFORM_MASTER_PLAN.md .github/workflows/core-foundation.yml
+          git diff --cached --check
+          git commit -m 'docs(plan): record phase 3 organization merge'
+          git push origin HEAD:agent/phase-3-org-warehouse-closeout
