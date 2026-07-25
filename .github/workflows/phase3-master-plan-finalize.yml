@@ -1,0 +1,84 @@
+name: Phase 3 master plan finalize
+
+on:
+  push:
+    branches:
+      - agent/phase-3-org-warehouse-slice
+    paths:
+      - '.github/workflows/phase3-master-plan-finalize.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/phase-3-org-warehouse-slice
+          fetch-depth: 0
+
+      - name: Update Phase 3.1 status and remove temporary workflow
+        shell: python
+        run: |
+          from pathlib import Path
+
+          plan_path = Path('NPP_PLATFORM_MASTER_PLAN.md')
+          workflow_path = Path('.github/workflows/phase3-master-plan-finalize.yml')
+          text = plan_path.read_text(encoding='utf-8')
+
+          old = '''**Status:** Phase 3.1 hardening in progress on `agent/phase-3-org-warehouse-slice`.
+
+**Completed:**
+- [x] Migrations: branches, warehouses, warehouse_locations tables with proper constraints
+- [x] Repository layer for all three entities
+- [x] Service layer with validation (code normalization, parent existence, parent active checks)
+- [x] API endpoints (GET, POST, PATCH) with idempotency and audit
+- [x] Permission model (read/write splits)
+- [x] Optimistic concurrency control via expectedUpdatedAt on PATCH
+- [x] Transaction semantics enforced: POST creates entity + audit within transaction; rollback on error preserves clean DB
+- [x] Audit records: before/after data, action type, metadata
+- [x] Regression tests: expectedUpdatedAt validation, stale conflict, install-scoped isolation, before/after audit data
+- [x] GitHub Actions workflow: PostgreSQL service + migration step for CI
+- [x] Tests read environment variables (TEST_DATABASE_URL) not hardcoded local URL
+- [ ] UI components and routes
+- [ ] Frontend gateway
+- [ ] E2E Playwright tests
+- [ ] CI verification (awaiting environment setup)'''
+
+          new = '''**Status:** Phase 3.1 implementation complete on `agent/phase-3-org-warehouse-slice`; PR verification gate green, merge pending.
+
+**Completed:**
+- [x] Migrations: branches, warehouses, warehouse_locations tables with proper constraints
+- [x] Repository layer for all three entities
+- [x] Service layer with validation (code normalization, parent existence, parent active checks)
+- [x] API endpoints (GET, POST, PATCH) with idempotency and audit
+- [x] Permission model (read/write splits)
+- [x] Optimistic concurrency control via expectedUpdatedAt on PATCH
+- [x] Transaction semantics enforced: POST creates entity + audit within transaction; rollback on error preserves clean DB
+- [x] Audit records: before/after data, action type, metadata
+- [x] Regression tests: expectedUpdatedAt validation, stale conflict, install-scoped isolation, before/after audit data
+- [x] GitHub Actions workflow: PostgreSQL service + migration step for CI
+- [x] Tests read environment variables (TEST_DATABASE_URL) not hardcoded local URL
+- [x] Next.js server-only frontend gateway for organization resources
+- [x] `/organization` UI for branches, warehouses, and warehouse locations
+- [x] Playwright vertical-slice E2E with actual Core API + PostgreSQL
+- [x] Full PR CI verification: Foundation F0.2, Core Foundation, and Core UI/Browser E2E'''
+
+          if old not in text:
+              raise SystemExit('Phase 3.1 status block was not found; refusing to rewrite the master plan')
+
+          plan_path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          workflow_path.unlink()
+
+      - name: Commit master plan closure
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add NPP_PLATFORM_MASTER_PLAN.md .github/workflows/phase3-master-plan-finalize.yml
+          git diff --cached --check
+          git commit -m 'docs(plan): close phase 3 organization slice'
+          git push origin HEAD:agent/phase-3-org-warehouse-slice
