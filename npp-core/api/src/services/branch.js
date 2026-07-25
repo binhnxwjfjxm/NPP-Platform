@@ -29,10 +29,24 @@ function validateExpectedUpdatedAt(value) {
   if (value === undefined || value === null) {
     return { ok: false, code: 'MISSING_EXPECTED_UPDATED_AT', message: 'expectedUpdatedAt is required' };
   }
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      return { ok: false, code: 'INVALID_EXPECTED_UPDATED_AT', message: 'expectedUpdatedAt must be a valid date-time' };
+    }
+    return { ok: true, value: value.toISOString() };
+  }
+
   if (typeof value !== 'string' || !value.trim()) {
     return { ok: false, code: 'INVALID_EXPECTED_UPDATED_AT', message: 'expectedUpdatedAt must be a non-empty string' };
   }
-  return { ok: true, value: value.trim() };
+
+  const parsed = new Date(value.trim());
+  if (Number.isNaN(parsed.getTime())) {
+    return { ok: false, code: 'INVALID_EXPECTED_UPDATED_AT', message: 'expectedUpdatedAt must be a valid date-time' };
+  }
+
+  return { ok: true, value: parsed.toISOString() };
 }
 
 export function validateBranchInput(payload) {
