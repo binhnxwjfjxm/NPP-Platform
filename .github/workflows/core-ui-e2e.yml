@@ -1,36 +1,44 @@
-name: Core UI and Browser E2E Tests
+name: Core UI and Browser E2E
 
 on:
   push:
     branches:
-      - agent/phase-2-ui-e2e-gate
       - main
+      - agent/phase-2-ui-e2e-gate
     paths:
       - 'npp-core/web/**'
-      - 'npp-core/api/src/config.js'
-      - 'npp-core/api/src/request-context.js'
-      - 'npp-core/api/src/health.js'
+      - 'npp-core/api/**'
+      - 'packages/**'
+      - 'database/migrations/**'
       - '.github/workflows/core-ui-e2e.yml'
+      - 'package.json'
       - 'package-lock.json'
   pull_request:
     branches:
       - main
-      - agent/**
     paths:
       - 'npp-core/web/**'
-      - 'npp-core/api/src/config.js'
-      - 'npp-core/api/src/request-context.js'
-      - 'npp-core/api/src/health.js'
+      - 'npp-core/api/**'
+      - 'packages/**'
+      - 'database/migrations/**'
       - '.github/workflows/core-ui-e2e.yml'
+      - 'package.json'
       - 'package-lock.json'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: core-ui-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  e2e:
-    runs-on: ubuntu-latest
-    name: Browser E2E Tests
+  browser-e2e:
+    name: Browser E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     env:
-      # Temporary isolated PostgreSQL runner credentials for CI only.
-      # These values are not stored as GitHub secrets and are not production credentials.
+      # Isolated runner-only credentials. These are not production secrets.
       E2E_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/npp_e2e
       E2E_BACKEND_API_TOKEN: ci-e2e-token-not-a-production-secret
 
@@ -41,114 +49,74 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: npp_e2e
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
         ports:
           - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d npp_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          cache: npm
 
-      - name: Install dependencies
+      - name: Install workspaces
         run: npm ci
 
-      - name: Setup Core API environment
-        run: |
-          cat > npp-core/api/.env << EOF
-          NODE_ENV=test
-          HOST=127.0.0.1
-          PORT=3004
-          INSTALLATION_ID=e2e-installation
-          DATABASE_URL=${E2E_DATABASE_URL}
-          DATABASE_SSL_MODE=disable
-          BACKEND_API_TOKEN=${E2E_BACKEND_API_TOKEN}
-          CORE_BOOTSTRAP_ACTOR_ID=bootstrap:e2e
-          CORS_ORIGINS=http://127.0.0.1:3003
-          R2_ENABLED=false
-          R2_CONTRACT_ROUTE_ENABLED=false
-          EOF
+      - name: Verify Core API
+        run: npm --workspace npp-core-api run verify
 
-      - name: Setup Core Web environment
-        run: |
-          cat > npp-core/web/.env.local << EOF
-          NODE_ENV=test
-          HOST=127.0.0.1
-          PORT=3003
-          NEXT_PUBLIC_CORE_API_URL=http://127.0.0.1:3004
-          NEXT_PUBLIC_APP_NAME=npp-core-web
-          NEXT_PUBLIC_INSTALLATION_ID=e2e-installation
-          CORE_API_INTERNAL_URL=http://127.0.0.1:3004
-          CORE_API_SERVER_TOKEN=${E2E_BACKEND_API_TOKEN}
-          FOUNDATION_TEST_UI_ENABLED=true
-          FOUNDATION_R2_TEST_ENABLED=false
-          EOF
+      - name: Verify Core web
+        run: npm --workspace npp-core-web run verify
 
-      - name: Run Core API migrations
-        working-directory: npp-core/api
-        run: npm run migrate:latest
-
-      - name: Build Core API
-        working-directory: npp-core/api
-        run: npm run build || true
-
-      - name: Verify Core Web TypeScript
-        working-directory: npp-core/web
-        run: npm run typecheck
-
-      - name: Build Core Web
-        working-directory: npp-core/web
-        run: npm run build
-
-      - name: Install Playwright browsers
-        working-directory: npp-core/web
+      - name: Install Chromium
         run: npx playwright install --with-deps chromium
-
-      - name: Run Playwright E2E tests
         working-directory: npp-core/web
-        run: npm run test:e2e
+
+      - name: Run browser E2E
+        run: npm run test:core-ui-e2e
+
+      - name: Publish browser summary
+        if: always()
+        shell: bash
+        run: |
+          node <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require('node:fs');
+          const path = 'npp-core/web/test-results/results.json';
+          console.log('## Core UI browser verification');
+          if (!fs.existsSync(path)) {
+            console.log('Playwright JSON results were not produced.');
+            process.exit(0);
+          }
+          const result = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const stats = result.stats || {};
+          console.log(`- Expected: ${stats.expected ?? 0}`);
+          console.log(`- Unexpected: ${stats.unexpected ?? 0}`);
+          console.log(`- Skipped: ${stats.skipped ?? 0}`);
+          console.log(`- Duration: ${stats.duration ?? 0} ms`);
+          NODE
 
       - name: Upload Playwright report
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: core-ui-playwright-report
           path: npp-core/web/playwright-report/
           retention-days: 7
+          if-no-files-found: ignore
 
       - name: Upload Playwright traces
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-traces
+          name: core-ui-playwright-traces
           path: npp-core/web/test-results/
           retention-days: 7
-
-      - name: Comment PR with results
-        if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const testResults = require('npp-core/web/test-results/results.json');
-            const summary = `
-            ### Playwright E2E Test Results
-            - **Passed**: ${testResults.stats?.expected || 0}
-            - **Failed**: ${testResults.stats?.unexpected || 0}
-            - **Skipped**: ${testResults.stats?.skipped || 0}
-            - **Total**: ${testResults.stats?.total || 0}
-            `;
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: summary
-            });
+          if-no-files-found: ignore
