@@ -12,10 +12,10 @@ test.describe('Foundation UI disabled', () => {
     test.skip(testInfo.project.name !== 'disabled', 'Disabled project only');
 
     const response = await page.goto('/foundation');
-    expect(response?.status()).toBe(404);
+    expect(response?.status()).toBe(200);
 
-    await page.goto('/');
-    expect(await page.locator('a[href="/foundation"]').count()).toBe(0);
+    await expect(page.locator('text=Foundation UI is not enabled in this environment')).toBeVisible();
+    await expect(page.locator('text=Core API Status')).not.toBeVisible();
   });
 
   test('foundation API status endpoint returns 404 when disabled', async ({ context }, testInfo) => {
@@ -119,8 +119,8 @@ test.describe('Foundation UI enabled', () => {
     test.skip(testInfo.project.name !== 'enabled', 'Enabled project only');
 
     await page.goto('/foundation');
-    const content = await page.content();
-    expect(content).toContain('NPP Core — Foundation Status');
+    await expect(page.locator('text=NPP Core — Foundation Status')).toBeVisible();
+    await expect(page.locator('text=Core API Status')).toBeVisible();
   });
 
   test('foundation API status endpoint returns safe response', async ({ context }, testInfo) => {
