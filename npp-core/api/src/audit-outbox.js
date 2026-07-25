@@ -1,27 +1,45 @@
 import { randomUUID } from 'node:crypto';
 
-const SECRET_KEY_PATTERN = /(?:secret|token|password|passphrase|db_?url|connection_?string|api_?key|auth_?token|private_?key)/i;
+const SECRET_KEY_PATTERN = /(?:secret|token|password|passphrase|db_?url|database_?url|connection_?string|api_?key|auth_?token|private_?key)/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function shouldRedactKey(key) {
   return typeof key === 'string' && SECRET_KEY_PATTERN.test(key);
 }
 
+function isPlainObject(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 function sanitizeJsonValue(value) {
-  if (Array.isArray(value)) {
-    return value.map(sanitizeJsonValue);
-  }
+  if (Array.isArray(value)) return value.map(sanitizeJsonValue);
+  if (!isPlainObject(value)) return value;
 
-  if (value && typeof value === 'object' && value.constructor === Object) {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, child]) => {
-        if (shouldRedactKey(key)) {
-          return [key, null];
-        }
-        return [key, sanitizeJsonValue(child)];
-      }),
-    );
-  }
+  return Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [
+      key,
+      shouldRedactKey(key) ? null : sanitizeJsonValue(child),
+    ]),
+  );
+}
 
+function requireString(value, errorCode) {
+  if (typeof value !== 'string' || !value.trim()) throw new Error(errorCode);
+  return value.trim();
+}
+
+function validateRequestContext(requestContext) {
+  if (!requestContext) throw new Error('missing_request_context');
+  requireString(requestContext.installationId, 'missing_installation_id');
+  requireString(requestContext.actorId, 'missing_actor_id');
+  requireString(requestContext.sourceApp, 'missing_source_app');
+  requireString(requestContext.requestId, 'missing_request_id');
+}
+
+function validateUuid(value, errorCode) {
+  if (typeof value !== 'string' || !UUID_PATTERN.test(value)) throw new Error(errorCode);
   return value;
 }
 
@@ -34,23 +52,25 @@ export function buildAuditRecord({
   beforeData = null,
   afterData = null,
   metadata = {},
+  occurredAt = new Date().toISOString(),
 }) {
-  if (!requestContext) throw new Error('missing_request_context');
-  return {
-    auditId,
+  validateRequestContext(requestContext);
+
+  return Object.freeze({
+    auditId: validateUuid(auditId, 'invalid_audit_id'),
     installationId: requestContext.installationId,
     actorId: requestContext.actorId,
-    employeeId: requestContext.employeeId,
+    employeeId: requestContext.employeeId ?? null,
     sourceApp: requestContext.sourceApp,
     requestId: requestContext.requestId,
-    action: String(action ?? 'unknown').trim() || 'unknown',
-    resourceType: String(resourceType ?? 'unknown').trim() || 'unknown',
-    resourceId: resourceId == null ? null : String(resourceId),
+    action: requireString(action, 'audit_action_required'),
+    resourceType: requireString(resourceType, 'audit_resource_type_required'),
+    resourceId: resourceId == null ? null : requireString(String(resourceId), 'invalid_audit_resource_id'),
     beforeData: beforeData == null ? null : sanitizeJsonValue(beforeData),
     afterData: afterData == null ? null : sanitizeJsonValue(afterData),
-    metadata: sanitizeJsonValue(metadata),
-    occurredAt: new Date().toISOString(),
-  };
+    metadata: sanitizeJsonValue(metadata ?? {}),
+    occurredAt,
+  });
 }
 
 export function buildOutboxEvent({
@@ -59,43 +79,43 @@ export function buildOutboxEvent({
   aggregateType,
   aggregateId,
   eventType,
-  eventVersion,
+  eventVersion = 1,
   payload,
   metadata = {},
-  status = 'pending',
-  attempts = 0,
   availableAt = new Date().toISOString(),
   createdAt = new Date().toISOString(),
-  publishedAt = null,
-  lastError = null,
 }) {
-  if (!requestContext) throw new Error('missing_request_context');
+  validateRequestContext(requestContext);
   if (payload === undefined) throw new Error('payload_required');
-  return {
-    eventId,
+
+  const normalizedVersion = Number(eventVersion);
+  if (!Number.isInteger(normalizedVersion) || normalizedVersion < 1) {
+    throw new Error('invalid_event_version');
+  }
+
+  return Object.freeze({
+    eventId: validateUuid(eventId, 'invalid_event_id'),
     installationId: requestContext.installationId,
-    aggregateType: String(aggregateType ?? 'unknown').trim() || 'unknown',
-    aggregateId: String(aggregateId ?? requestContext.requestId),
-    eventType: String(eventType ?? 'unknown').trim() || 'unknown',
-    eventVersion: Number(eventVersion ?? 1),
+    aggregateType: requireString(aggregateType, 'aggregate_type_required'),
+    aggregateId: requireString(String(aggregateId ?? ''), 'aggregate_id_required'),
+    eventType: requireString(eventType, 'event_type_required'),
+    eventVersion: normalizedVersion,
     payload: sanitizeJsonValue(payload),
-    metadata: sanitizeJsonValue(metadata),
+    metadata: sanitizeJsonValue(metadata ?? {}),
     requestId: requestContext.requestId,
     actorId: requestContext.actorId,
     sourceApp: requestContext.sourceApp,
-    status,
-    attempts,
+    status: 'pending',
+    attempts: 0,
     availableAt,
     createdAt,
-    publishedAt,
-    lastError,
-  };
+    publishedAt: null,
+    lastError: null,
+  });
 }
 
 function validateDbClient(client) {
-  if (!client || typeof client.query !== 'function') {
-    throw new Error('invalid_db_client');
-  }
+  if (!client || typeof client.query !== 'function') throw new Error('invalid_db_client');
 }
 
 export async function insertAuditRecord(client, record) {
@@ -178,31 +198,52 @@ export async function insertOutboxEvent(client, event) {
   );
 }
 
+function createTrackedClient(client, writeState) {
+  return Object.freeze({
+    query: async (sql, values = []) => {
+      const result = await client.query(sql, values);
+      const normalizedSql = String(sql).trim().replace(/\s+/g, ' ').toLowerCase();
+      if (normalizedSql.startsWith('insert into shared.core_audit_records')) {
+        writeState.auditCount += 1;
+      }
+      if (normalizedSql.startsWith('insert into shared.core_outbox_events')) {
+        writeState.outboxCount += 1;
+      }
+      return result;
+    },
+  });
+}
+
 export async function withAuditOutboxTransaction({ adapter, mutate }) {
   if (!adapter || typeof adapter.connect !== 'function') {
     throw new Error('invalid_audit_outbox_adapter');
   }
-  if (typeof mutate !== 'function') {
-    throw new Error('invalid_mutation_callback');
-  }
+  if (typeof mutate !== 'function') throw new Error('invalid_mutation_callback');
 
   const client = await adapter.connect();
+  const writeState = { auditCount: 0, outboxCount: 0 };
+  const trackedClient = createTrackedClient(client, writeState);
+
   try {
     await client.query('BEGIN');
-    const result = await mutate(client, {
+    const result = await mutate(trackedClient, {
       buildAuditRecord,
       buildOutboxEvent,
       insertAuditRecord,
       insertOutboxEvent,
     });
+
+    if (writeState.auditCount !== 1) throw new Error('audit_record_required');
+    const expectsOutbox = result?.eventId !== undefined && result?.eventId !== null;
+    if (expectsOutbox && writeState.outboxCount !== 1) throw new Error('outbox_event_required');
+    if (!expectsOutbox && writeState.outboxCount !== 0) throw new Error('unexpected_outbox_event');
+
     await client.query('COMMIT');
     return result;
   } catch (error) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => {});
     throw error;
   } finally {
-    if (typeof client.release === 'function') {
-      await client.release();
-    }
+    if (typeof client.release === 'function') await client.release();
   }
 }
