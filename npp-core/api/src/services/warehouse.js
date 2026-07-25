@@ -3,6 +3,7 @@ import * as branchRepo from '../db/repositories/branch.js';
 
 const WAREHOUSE_TYPES = Object.freeze(['main', 'distribution', 'vehicle', 'quarantine', 'returns', 'transit', 'other']);
 const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function normalizeCode(code) {
   if (typeof code !== 'string') return '';
@@ -12,6 +13,10 @@ function normalizeCode(code) {
 function normalizeText(text) {
   if (typeof text !== 'string') return '';
   return text.trim();
+}
+
+function validateEntityId(id) {
+  return typeof id === 'string' && UUID_PATTERN.test(id.trim());
 }
 
 function validateExpectedUpdatedAt(value) {
@@ -48,8 +53,8 @@ export function validateWarehouseInput(payload, { allowBranchIdUpdate = false } 
   }
 
   if (allowBranchIdUpdate) {
-    if (!payload.branchId || typeof payload.branchId !== 'string' || !payload.branchId.trim()) {
-      return { ok: false, code: 'INVALID_BRANCH_ID', message: 'Branch ID is required' };
+    if (!validateEntityId(payload.branchId)) {
+      return { ok: false, code: 'INVALID_BRANCH_ID', message: 'Branch ID must be a valid UUID' };
     }
   }
 
@@ -82,7 +87,10 @@ export async function createWarehouse(client, { installationId, payload, created
   const validation = validateWarehouseInput(payload, { allowBranchIdUpdate: true });
   if (!validation.ok) return { ok: false, code: validation.code, message: validation.message };
 
-  const branch = await branchRepo.getBranchByIdForInstallation(client, { id: validation.normalized.branchId, installationId });
+  const branch = await branchRepo.getBranchByIdForInstallationForShare(client, {
+    id: validation.normalized.branchId,
+    installationId,
+  });
   if (!branch) {
     return { ok: false, code: 'BRANCH_NOT_FOUND', message: 'Branch not found or does not belong to this installation' };
   }
@@ -107,18 +115,27 @@ export async function createWarehouse(client, { installationId, payload, created
 }
 
 export async function getWarehouse(client, { installationId, id }) {
-  const warehouse = await warehouseRepo.getWarehouseByIdForInstallation(client, { id, installationId });
+  if (!validateEntityId(id)) {
+    return { ok: false, code: 'NOT_FOUND', message: 'Warehouse not found' };
+  }
+
+  const warehouse = await warehouseRepo.getWarehouseByIdForInstallation(client, { id: id.trim(), installationId });
   if (!warehouse) return { ok: false, code: 'NOT_FOUND', message: 'Warehouse not found' };
   return { ok: true, warehouse };
 }
 
 export async function listWarehouses(client, { installationId, branchId, active, limit, offset }) {
   if (branchId) {
-    const branch = await branchRepo.getBranchByIdForInstallation(client, { id: branchId, installationId });
+    if (!validateEntityId(branchId)) {
+      return { ok: false, code: 'INVALID_BRANCH_ID', message: 'Branch ID must be a valid UUID' };
+    }
+
+    const normalizedBranchId = branchId.trim();
+    const branch = await branchRepo.getBranchByIdForInstallation(client, { id: normalizedBranchId, installationId });
     if (!branch) return { ok: false, code: 'NOT_FOUND', message: 'Branch not found' };
 
     const warehouses = await warehouseRepo.listWarehousesForBranch(client, {
-      branchId,
+      branchId: normalizedBranchId,
       installationId,
       active,
       limit,
@@ -132,7 +149,12 @@ export async function listWarehouses(client, { installationId, branchId, active,
 }
 
 export async function updateWarehouse(client, { id, installationId, payload, updatedBy }) {
-  const existing = await warehouseRepo.getWarehouseByIdForInstallation(client, { id, installationId });
+  if (!validateEntityId(id)) {
+    return { ok: false, code: 'INVALID_ID', message: 'Warehouse ID must be a valid UUID' };
+  }
+
+  const normalizedId = id.trim();
+  const existing = await warehouseRepo.getWarehouseByIdForInstallation(client, { id: normalizedId, installationId });
   if (!existing) return { ok: false, code: 'NOT_FOUND', message: 'Warehouse not found' };
 
   const validation = validateWarehouseInput({ code: existing.code, branchId: existing.branch_id, ...payload });
@@ -144,7 +166,7 @@ export async function updateWarehouse(client, { id, installationId, payload, upd
   }
 
   const updated = await warehouseRepo.updateWarehouse(client, {
-    id,
+    id: normalizedId,
     installationId,
     name: validation.normalized.name,
     warehouseType: validation.normalized.warehouseType,
@@ -160,7 +182,12 @@ export async function updateWarehouse(client, { id, installationId, payload, upd
 }
 
 export async function updateWarehouseStatus(client, { id, installationId, isActive, updatedBy, expectedUpdatedAt }) {
-  const existing = await warehouseRepo.getWarehouseByIdForInstallation(client, { id, installationId });
+  if (!validateEntityId(id)) {
+    return { ok: false, code: 'INVALID_ID', message: 'Warehouse ID must be a valid UUID' };
+  }
+
+  const normalizedId = id.trim();
+  const existing = await warehouseRepo.getWarehouseByIdForInstallationForUpdate(client, { id: normalizedId, installationId });
   if (!existing) return { ok: false, code: 'NOT_FOUND', message: 'Warehouse not found' };
 
   const expectedUpdatedAtValidation = validateExpectedUpdatedAt(expectedUpdatedAt);
@@ -176,15 +203,23 @@ export async function updateWarehouseStatus(client, { id, installationId, isActi
     return { ok: true, warehouse: existing, beforeData: existing };
   }
 
-  if (!isActive) {
-    const hasActive = await warehouseRepo.hasActiveLocations(client, { warehouseId: id, installationId });
+  if (isActive) {
+    const branch = await branchRepo.getBranchByIdForInstallationForShare(client, {
+      id: existing.branch_id,
+      installationId,
+    });
+    if (!branch?.is_active) {
+      return { ok: false, code: 'BRANCH_INACTIVE', message: 'Cannot activate warehouse under inactive branch', retryable: false };
+    }
+  } else {
+    const hasActive = await warehouseRepo.hasActiveLocations(client, { warehouseId: normalizedId, installationId });
     if (hasActive) {
       return { ok: false, code: 'CANNOT_DEACTIVATE', message: 'Cannot deactivate a warehouse that has active locations', retryable: false };
     }
   }
 
   const updated = await warehouseRepo.updateWarehouseActiveStatus(client, {
-    id,
+    id: normalizedId,
     installationId,
     isActive,
     updatedBy,
