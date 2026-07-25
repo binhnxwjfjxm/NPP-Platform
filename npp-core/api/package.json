@@ -10,10 +10,14 @@
     "build": "node --check src/server.js && node --check src/config.js && node --check src/http-utils.js && node --check src/request-context.js && node --check src/idempotency.js && node --check src/audit-outbox.js && node --check src/db/pool.js && node --check src/migrations/index.js && node --check src/migrations/cli.js && node --check scripts/rehearse-migrations.js",
     "test": "node --test test/*.test.js",
     "verify": "npm run build && npm run test",
-    "migrations:status": "node src/migrations/cli.js status",
-    "migrations:migrate": "node src/migrations/cli.js migrate",
-    "migrations:verify": "node src/migrations/cli.js verify",
-    "rehearse:migrations": "node scripts/rehearse-migrations.js"
+    "migration:status": "node src/migrations/cli.js status",
+    "migration:migrate": "node src/migrations/cli.js migrate",
+    "migration:verify": "node src/migrations/cli.js verify",
+    "migration:rehearse": "node scripts/rehearse-migrations.js",
+    "migrations:status": "npm run migration:status",
+    "migrations:migrate": "npm run migration:migrate",
+    "migrations:verify": "npm run migration:verify",
+    "rehearse:migrations": "npm run migration:rehearse"
   },
   "engines": {
     "node": ">=20"
