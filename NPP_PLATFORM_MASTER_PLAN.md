@@ -994,7 +994,7 @@ migration
 - purchasing
 - MCP cutover
 
-**Status:** Phase 3.1 hardening in progress on `agent/phase-3-org-warehouse-slice`.
+**Status:** Phase 3.1 implementation complete on `agent/phase-3-org-warehouse-slice`; PR verification gate green, merge pending.
 
 **Completed:**
 - [x] Migrations: branches, warehouses, warehouse_locations tables with proper constraints
@@ -1008,10 +1008,10 @@ migration
 - [x] Regression tests: expectedUpdatedAt validation, stale conflict, install-scoped isolation, before/after audit data
 - [x] GitHub Actions workflow: PostgreSQL service + migration step for CI
 - [x] Tests read environment variables (TEST_DATABASE_URL) not hardcoded local URL
-- [ ] UI components and routes
-- [ ] Frontend gateway
-- [ ] E2E Playwright tests
-- [ ] CI verification (awaiting environment setup)
+- [x] Next.js server-only frontend gateway for organization resources
+- [x] `/organization` UI for branches, warehouses, and warehouse locations
+- [x] Playwright vertical-slice E2E with actual Core API + PostgreSQL
+- [x] Full PR CI verification: Foundation F0.2, Core Foundation, and Core UI/Browser E2E
 
 **Gate opens when:** API tests pass in CI PostgreSQL environment, migrations verify, E2E tests pass with actual Core API + PostgreSQL, and full PR CI passes.
 
