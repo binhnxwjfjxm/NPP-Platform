@@ -1,239 +1,150 @@
-# Core UI & Playwright E2E Foundation Testing Guide
+# Core UI and Browser Verification Foundation
 
-## Overview
+## Purpose
 
-This document explains the foundation UI component and the server-side API gateway pattern used in NPP Core's Phase 2b — Core UI foundation + browser verification gate.
+The `/foundation` surface verifies the NPP Core foundation through a real browser while keeping the Core API token and provider configuration on the Next.js server. It is an internal diagnostic surface, not a production administration console.
 
-**Purpose**: Verify that the Core API foundation works correctly through a real browser client, and ensure security boundaries are maintained (no token leakage, no credential exposure).
+This foundation does not confirm production deployment, production database backup/restore readiness, or Cloudflare R2 provider readiness.
 
-## Architecture Pattern: Server-Side Gateway
+## Routes
 
-### Why Server-Side Gateway?
-
-The Core API token must **never** reach the browser. If a frontend token is exposed via GitHub secret leak or dependency compromise, attackers could impersonate the web server to the API.
-
-### The Pattern
-
-```
-Browser → Next.js Server Route (/api/foundation/status)
-                ↓
-         Server-only variables (CORE_API_SERVER_TOKEN)
-                ↓
-         Core API (/health/authenticated)
-                ↓
-         Response sanitized (no secrets)
-                ↓
-Browser (safe data only)
+```text
+GET  /foundation
+GET  /api/foundation/status
+POST /api/foundation/r2-test
 ```
 
-**Key Principle**: Use `process.env` (which includes all env vars) for server-only routes, never `process.env.NEXT_PUBLIC_*`.
+All three routes are hidden when `FOUNDATION_TEST_UI_ENABLED` is not exactly `true`. The page uses Next.js `notFound()` so the disabled contract is an actual 404 rather than a client-side warning.
 
-### Implementation Files
+The R2 action is additionally hidden when `FOUNDATION_R2_TEST_ENABLED` is not exactly `true`. It never runs automatically during page load.
 
-- **Foundation UI Page**: `npp-core/web/app/foundation/page.tsx` — React component fetches from `/api/foundation/status` and displays safe data
-- **Gateway Routes**: `npp-core/web/app/api/foundation/`:
-  - `status/route.ts` — Calls Core API health endpoints, returns sanitized status
-  - `r2-test/route.ts` — Tests R2 adapter presign endpoint (disabled by default)
+## Server-side gateway
 
-## Environment Variables
+The browser calls only same-origin Next.js routes:
 
-### Server-Only (Never NEXT_PUBLIC_*)
-
-These variables are **only** accessible on the Next.js server and never exposed to the browser.
-
-```bash
-# npp-core/web/.env or .env.local
-CORE_API_INTERNAL_URL=http://127.0.0.1:3004        # Internal URL for server-side calls
-CORE_API_SERVER_TOKEN=test-placeholder-token        # Backend API token (keep secret!)
-FOUNDATION_TEST_UI_ENABLED=false                    # Enable/disable test UI
-FOUNDATION_R2_TEST_ENABLED=false                    # Enable/disable R2 test
+```text
+browser
+  -> Next.js foundation gateway
+  -> Authorization header added on the server
+  -> allowlisted Core API route
+  -> response envelope validated and sanitized
+  -> safe browser response
 ```
 
-### Public (Safe for Browser)
+The gateway allowlist contains only:
 
-```bash
-NEXT_PUBLIC_CORE_API_URL=http://127.0.0.1:3004    # Frontend app config
-NEXT_PUBLIC_INSTALLATION_ID=npp-local              # Non-sensitive app info
+```text
+/health/live
+/health/ready
+/health/authenticated
+/api/config
+/api/storage/r2-test
 ```
 
-## Development Setup
+It is not a generic proxy. Requests have a bounded timeout and a safe request ID. Raw upstream errors, internal URLs, authorization headers, database URLs, provider responses and signed URLs are not returned to the browser.
 
-### 1. Enable Foundation UI Locally
+Required server-only variables:
 
-```bash
-cd npp-core/web
-
-# Copy env template and edit
-cp .env.example .env.local
-
-# Set foundation UI to enabled
-echo "FOUNDATION_TEST_UI_ENABLED=true" >> .env.local
-echo "FOUNDATION_R2_TEST_ENABLED=false" >> .env.local  # Safe default
-
-# Set server token (use dummy value for local testing)
-echo "CORE_API_SERVER_TOKEN=local-test-token" >> .env.local
+```text
+CORE_API_INTERNAL_URL
+CORE_API_SERVER_TOKEN
+FOUNDATION_TEST_UI_ENABLED
+FOUNDATION_R2_TEST_ENABLED
 ```
 
-### 2. Start Services
+No token or secret may use a `NEXT_PUBLIC_` prefix.
 
-```bash
-# Terminal 1: Core API (port 3004)
-cd npp-core/api
-npm run dev
+## Foundation status
 
-# Terminal 2: Core Web (port 3003)
-cd npp-core/web
-npm run dev
+The UI displays only safe fields:
 
-# Terminal 3: Visit foundation UI
-open http://localhost:3003/foundation
+- Core web loaded;
+- Core API live contract;
+- PostgreSQL readiness contract;
+- authenticated actor, installation, source app and request ID;
+- sanitized node environment, installation, database SSL mode and CORS origin count;
+- R2 enabled/disabled state and numeric limits;
+- last checked timestamp.
+
+The UI never displays the Core API token, database URL, R2 endpoint, bucket name, access keys, signed URLs or raw provider details.
+
+## R2 contract action
+
+The R2 button appears only when `FOUNDATION_R2_TEST_ENABLED=true` and the sanitized Core API config reports both the adapter and Core contract route enabled. The server generates the idempotency key and sends a small server-owned payload to `POST /api/storage/r2-test`. Browser input cannot select a bucket or object key.
+
+R2 remains disabled in CI. No Cloudflare credential is present and no provider call is made.
+
+## Local browser verification
+
+Use an isolated PostgreSQL database and a test-only backend token. Do not use production values.
+
+PowerShell example:
+
+```powershell
+$env:E2E_DATABASE_URL="<isolated-local-test-postgres-url>"
+$env:E2E_BACKEND_API_TOKEN="<local-test-only-token>"
+npx playwright install chromium
+npm run test:core-ui-e2e
 ```
 
-### 3. View Foundation Status
+Playwright starts:
 
-Once enabled, the foundation UI at `http://localhost:3003/foundation` displays:
-
-- **Core API Status**: Live and ready health checks
-- **Authenticated Context**: Actor ID, installation ID, request tracking
-- **Sanitized Config**: Environment, port, non-sensitive settings
-- **R2 State**: Whether object storage adapter is enabled (with NO credentials shown)
-- **Server Timestamp**: When status was captured
-
-## Running Playwright E2E Tests
-
-### Locally (With Foundation Enabled)
-
-```bash
-cd npp-core/web
-
-# Development (foundation disabled by default)
-npm run test:e2e        # Runs with default .env (foundation disabled)
-
-# Headed mode (see browser)
-npm run test:e2e:headed
-
-# View report after tests
-npm run test:e2e:report
+```text
+Core API                 http://127.0.0.1:3004
+Core web, UI disabled    http://127.0.0.1:3003
+Core web, UI enabled     http://127.0.0.1:3005
 ```
 
-### In CI
+The API web server command runs repository migrations against the E2E database before starting. Existing servers are not reused, which prevents stale environment flags from invalidating the disabled/enabled tests.
 
-Foundation UI is **enabled** in CI to test the gateway pattern:
-- `.env.local` is created with `FOUNDATION_TEST_UI_ENABLED=true`
-- R2 test is **disabled** (`FOUNDATION_R2_TEST_ENABLED=false`) to avoid real file ops
-- PostgreSQL is ephemeral (test database recreated each run)
-- Reports uploaded as CI artifacts
+The default reporter never opens a browser report server. To inspect a completed report manually:
 
-**CI Workflow**: `.github/workflows/core-ui-e2e.yml`
-
-## Test Coverage
-
-### Routes Smoke Tests (`e2e/routes.spec.ts`)
-
-✓ `/`, `/login`, `/dashboard` load without 404  
-✓ No uncaught console errors  
-✓ No sensitive data in HTML  
-✓ Static assets (CSS, JS) load successfully  
-
-### Foundation UI Tests (`e2e/foundation.spec.ts`)
-
-✓ Foundation UI returns 404 when disabled (default)  
-✓ Foundation API endpoints return 404 when disabled  
-✓ When enabled, foundation page displays safe status  
-✓ API status shows without backend token exposure  
-✓ No R2 credentials/bucket/endpoint leaked  
-✓ No database URLs leaked  
-✓ No signed URLs leaked  
-✓ Client-side spoofing (fake headers) ignored  
-✓ Gateway failures handled gracefully  
-✓ No uncaught errors on foundation page  
-
-## Security Checklist
-
-- [ ] Core API token (`CORE_API_SERVER_TOKEN`) never appears on any page
-- [ ] R2 credentials (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) never in browser
-- [ ] Database URL (`DATABASE_URL`) never in browser  
-- [ ] Signed URLs (with `X-Amz-Signature`) never returned to browser
-- [ ] Authorization headers never sent from browser to Core API
-- [ ] Server-only variables use `process.env`, not `process.env.NEXT_PUBLIC_*`
-- [ ] Gateway routes sanitize responses (remove secrets before JSON response)
-- [ ] Console logs don't include tokens or credentials
-- [ ] localStorage/sessionStorage/cookies don't contain auth tokens
-
-## Troubleshooting
-
-### Foundation UI Shows "Not Found" Instead of Status
-
-**Issue**: Page returns 404 or "Foundation UI is not enabled"  
-**Solution**: Check that `FOUNDATION_TEST_UI_ENABLED=true` is set in `.env.local`
-
-```bash
-echo "FOUNDATION_TEST_UI_ENABLED=true" >> npp-core/web/.env.local
-npm run dev
+```text
+npm --workspace npp-core-web run test:e2e:report
 ```
 
-### Playwright Tests Hang or Timeout
+## Browser coverage
 
-**Issue**: Tests wait for servers to start  
-**Solution**: Ensure Core API and Core Web are not already running on ports 3004 and 3003
+The suite uses Chromium and verifies:
 
-```bash
-# Kill existing processes
-lsof -i :3004 -i :3003 | xargs kill -9
+- `/`, `/login` and `/dashboard` render without browser/page errors;
+- same-origin CSS, JavaScript, font and image assets do not fail;
+- `/foundation` and both gateway routes are true 404s when disabled;
+- enabled status reflects the actual local Core API and PostgreSQL;
+- actor and installation remain server-owned despite spoofed headers;
+- browser HTML and JSON responses contain no credential-shaped data;
+- Refresh re-runs the gateway;
+- a gateway outage renders a safe recoverable error state;
+- the R2 action remains hidden in CI.
 
-# Run tests
-npm run test:e2e
+## CI
+
+`.github/workflows/core-ui-e2e.yml` uses Ubuntu 24.04, Node 20, an isolated PostgreSQL 16 service, temporary runner-only credentials, Core API verification, Core web unit/typecheck/build verification and Chromium Playwright E2E. Reports, traces, screenshots and videos are retained only on failure.
+
+The workflow does not call Vercel, Heroku, Supabase, Cloudflare R2 or any other production service. It does not contain production provider credentials.
+
+## Security and operational boundaries
+
+- Foundation UI is disabled by default.
+- Missing server gateway configuration fails closed.
+- Production requires HTTPS for the internal Core API URL.
+- No arbitrary upstream target is accepted from the browser.
+- No authorization header is logged or returned.
+- Playwright uses test-only credentials.
+- Report and trace directories are ignored by Git.
+- Production deployment remains a separate accountable action after merge.
+
+## Phase gate
+
+The Phase 2 UI/browser gate remains open until the PR is green and merged. Only after that gate closes should the first business vertical slice be selected:
+
+```text
+migration
+-> backend API
+-> frontend UI
+-> unit test
+-> integration test
+-> browser/E2E test
+-> CI
+-> merge
 ```
-
-### "Failed to fetch foundation status" Error
-
-**Issue**: Gateway route can't reach Core API  
-**Solution**: Check Core API is running and `CORE_API_INTERNAL_URL` is correct
-
-```bash
-# Test Core API directly
-curl http://127.0.0.1:3004/health/live
-
-# Check env var
-cat npp-core/web/.env.local | grep CORE_API_INTERNAL_URL
-```
-
-### R2 Test Returns "Disabled" in CI
-
-**Issue**: R2 presign endpoint not tested in CI  
-**Expected**: This is by design. R2 test is disabled by default (`FOUNDATION_R2_TEST_ENABLED=false`)  
-**To Enable**: Set `FOUNDATION_R2_TEST_ENABLED=true` in CI workflow (requires R2 test credentials)
-
-## Phase 2b Gate Requirements
-
-To pass the Phase 2b — Core UI foundation + browser verification gate:
-
-- [ ] Foundation UI secure (no secrets in UI, API responses, or logs)
-- [ ] Authenticated gateway works (server-side token used for Core API calls)
-- [ ] E2E tests pass on actual Core API + ephemeral PostgreSQL
-- [ ] Spoofing attempts don't override server context
-- [ ] No browser console errors
-- [ ] CI workflow runs Playwright tests with PostgreSQL service
-- [ ] All routes smoke test pass (no 404s, no leaks)
-- [ ] Foundation disabled by default in `.env.example`
-- [ ] Documentation complete (this file)
-
-## Related Files
-
-- **Foundation UI Component**: [npp-core/web/app/foundation/page.tsx](../../npp-core/web/app/foundation/page.tsx)
-- **Status Gateway Route**: [npp-core/web/app/api/foundation/status/route.ts](../../npp-core/web/app/api/foundation/status/route.ts)
-- **R2 Test Gateway Route**: [npp-core/web/app/api/foundation/r2-test/route.ts](../../npp-core/web/app/api/foundation/r2-test/route.ts)
-- **Playwright Config**: [npp-core/web/playwright.config.ts](../../npp-core/web/playwright.config.ts)
-- **E2E Test Suite**: [npp-core/web/e2e/](../../npp-core/web/e2e/)
-- **CI Workflow**: [.github/workflows/core-ui-e2e.yml](../../.github/workflows/core-ui-e2e.yml)
-- **Master Plan**: [NPP_PLATFORM_MASTER_PLAN.md](../../NPP_PLATFORM_MASTER_PLAN.md#phase-2b--core-ui-foundation--browser-verification)
-
-## Next: Phase 3 — Master Data
-
-After Phase 2b gate passes, the platform can begin Phase 3 work:
-- Installation/company configuration
-- Branches, warehouses, locations
-- Users, employees, roles, scopes
-- Master data import and validation
-
-The foundation established here (secure gateway pattern, E2E testing, context propagation) will be reused throughout Phase 3 and beyond.
