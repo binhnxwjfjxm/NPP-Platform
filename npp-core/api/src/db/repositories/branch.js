@@ -42,6 +42,30 @@ export async function getBranchByIdForInstallation(client, { id, installationId 
   return result.rows[0] || null;
 }
 
+export async function getBranchByIdForInstallationForShare(client, { id, installationId }) {
+  const result = await client.query(
+    `SELECT id, installation_id, code, name, address, phone, email, is_active, created_at, updated_at, created_by, updated_by
+     FROM shared.branches
+     WHERE id = $1 AND installation_id = $2
+     FOR SHARE`,
+    [id, installationId],
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function getBranchByIdForInstallationForUpdate(client, { id, installationId }) {
+  const result = await client.query(
+    `SELECT id, installation_id, code, name, address, phone, email, is_active, created_at, updated_at, created_by, updated_by
+     FROM shared.branches
+     WHERE id = $1 AND installation_id = $2
+     FOR UPDATE`,
+    [id, installationId],
+  );
+
+  return result.rows[0] || null;
+}
+
 export async function getBranchByCode(client, { installationId, code }) {
   const result = await client.query(
     `SELECT id, installation_id, code, name, address, phone, email, is_active, created_at, updated_at, created_by, updated_by
