@@ -5,10 +5,29 @@ import { createSuccessEnvelope } from '@npp/contracts';
 import { loadConfig, getSanitizedConfig } from './config.js';
 import { closePool, getPool, queryReady } from './db/pool.js';
 import { sendJson, sendSuccess, sendError, sendNoContent } from './http-utils.js';
-import { authenticateRequest, createAnonymousPrincipal, createRequestContext, requirePermission, PERMISSIONS, safeRequestContext } from './request-context.js';
+import {
+  authenticateRequest,
+  createAnonymousPrincipal,
+  createRequestContext,
+  requirePermission,
+  PERMISSIONS,
+  safeRequestContext,
+} from './request-context.js';
 import { resolveRequestId } from '@npp/shared-utils';
-import { createPostgresIdempotencyStore, executeRequestWithIdempotency, readJsonBody } from './idempotency.js';
-import { withAuditOutboxTransaction, buildAuditRecord, insertAuditRecord, buildOutboxEvent, insertOutboxEvent } from './audit-outbox.js';
+import {
+  createPostgresIdempotencyStore,
+  executeRequestWithIdempotency,
+  readJsonBody,
+} from './idempotency.js';
+import {
+  withAuditOutboxTransaction,
+  buildAuditRecord,
+  insertAuditRecord,
+  buildOutboxEvent,
+  insertOutboxEvent,
+} from './audit-outbox.js';
+import { createOptionalR2StorageAdapter } from './storage/r2-adapter.js';
+import { executeR2ContractOperation } from './storage/r2-contract.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const CORS_ALLOWED_HEADERS = 'authorization, content-type, idempotency-key, x-request-id';
@@ -75,6 +94,8 @@ export function createCoreApiServer(options = {}) {
   const idempotencyTestHandler = options.idempotencyTestHandler ?? defaultIdempotencyTestHandler;
   const auditOutboxAdapter = options.auditOutboxAdapter ?? getPool(runtimeConfig);
   const auditOutboxMutation = options.auditOutboxMutation ?? defaultAuditOutboxMutation;
+  const storageAdapter = options.storageAdapter ?? createOptionalR2StorageAdapter(runtimeConfig);
+  const storageContractOperation = options.storageContractOperation ?? executeR2ContractOperation;
 
   return http.createServer(async (req, res) => {
     const receivedAt = new Date().toISOString();
@@ -107,6 +128,9 @@ export function createCoreApiServer(options = {}) {
       ['/api/idempotency-test', new Set(['POST'])],
       ['/api/audit-outbox-test', new Set(['POST'])],
     ]);
+    if (runtimeConfig.r2ContractRouteEnabled) {
+      allowedMethods.set('/api/storage/r2-test', new Set(['POST']));
+    }
 
     if (req.method === 'OPTIONS' && allowedMethods.has(url.pathname)) {
       if (!origin) {
@@ -130,6 +154,11 @@ export function createCoreApiServer(options = {}) {
 
     if (allowedMethods.has(url.pathname) && !allowedMethods.get(url.pathname).has(req.method)) {
       sendError(res, createError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405), requestId, receivedAt);
+      return;
+    }
+
+    if (url.pathname === '/api/storage/r2-test' && !runtimeConfig.r2ContractRouteEnabled) {
+      sendError(res, createError('NOT_FOUND', 'Route not found', {}, false, 404), requestId, receivedAt);
       return;
     }
 
@@ -305,15 +334,13 @@ export function createCoreApiServer(options = {}) {
       try {
         const result = await withAuditOutboxTransaction({
           adapter: auditOutboxAdapter,
-          mutate: async (client, helpers) => {
-            return auditOutboxMutation({
-              client,
-              requestContext,
-              requestId,
-              payload,
-              ...helpers,
-            });
-          },
+          mutate: async (client, helpers) => auditOutboxMutation({
+            client,
+            requestContext,
+            requestId,
+            payload,
+            ...helpers,
+          }),
         });
 
         res.setHeader('Cache-Control', 'no-store');
@@ -328,6 +355,95 @@ export function createCoreApiServer(options = {}) {
           requestId,
           receivedAt,
         );
+      }
+      return;
+    }
+
+    if (url.pathname === '/api/storage/r2-test') {
+      const authResult = authenticate(req, runtimeConfig);
+      if (!authResult.ok) {
+        res.setHeader('WWW-Authenticate', 'Bearer');
+        sendError(res, createError('UNAUTHORIZED', 'Authorization required', {}, false, 401), requestId, receivedAt);
+        return;
+      }
+
+      const requestContext = createContext({
+        config: runtimeConfig,
+        principal: authResult.principal,
+        requestId,
+        receivedAt,
+      });
+      req.requestContext = requestContext;
+
+      const permission = authorize(requestContext, PERMISSIONS.coreStorageR2TestWrite);
+      if (!permission.ok) {
+        sendError(res, createError('FORBIDDEN', 'Permission denied', {}, false, 403), requestId, receivedAt);
+        return;
+      }
+
+      let payload;
+      try {
+        payload = await readJsonBody(req);
+      } catch (error) {
+        sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), requestId, receivedAt);
+        return;
+      }
+
+      try {
+        const executionResult = await executeRequestWithIdempotency({
+          idempotencyStore,
+          req,
+          requestContext,
+          requestId,
+          receivedAt,
+          route: '/api/storage/r2-test',
+          payload,
+          onProcess: async () => {
+            const result = await storageContractOperation({
+              storageAdapter,
+              auditAdapter: auditOutboxAdapter,
+              requestContext,
+              payload,
+            });
+            return {
+              statusCode: 200,
+              contentType: 'application/json',
+              requestId,
+              body: createSuccessEnvelope(result, requestId, receivedAt),
+            };
+          },
+        });
+
+        res.setHeader('Cache-Control', 'no-store');
+        sendJson(
+          res,
+          executionResult.response.statusCode,
+          executionResult.response.body,
+          executionResult.response.requestId ?? requestId,
+          executionResult.response.contentType,
+        );
+      } catch (error) {
+        if (typeof error?.code === 'string' && error.code.startsWith('STORAGE_')) {
+          sendError(
+            res,
+            createError(
+              error.code,
+              error.publicMessage ?? 'Storage operation failed',
+              error.details ?? {},
+              Boolean(error.retryable),
+              error.statusCode ?? 500,
+            ),
+            requestId,
+            receivedAt,
+          );
+        } else {
+          sendError(
+            res,
+            createError('IDEMPOTENCY_STORAGE_ERROR', 'Idempotency storage unavailable', {}, true, 503),
+            requestId,
+            receivedAt,
+          );
+        }
       }
       return;
     }
