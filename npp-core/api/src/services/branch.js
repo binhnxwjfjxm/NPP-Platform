@@ -1,5 +1,4 @@
 import * as branchRepo from '../db/repositories/branch.js';
-import * as warehouseRepo from '../db/repositories/warehouse.js';
 
 const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
 
@@ -183,7 +182,7 @@ export async function updateBranchStatus(client, { id, installationId, isActive,
   }
 
   if (!isActive) {
-    const hasActive = await warehouseRepo.hasActiveWarehouses(client, { branchId: id, installationId });
+    const hasActive = await branchRepo.hasActiveWarehouses(client, { branchId: id, installationId });
     if (hasActive) {
       return {
         ok: false,
