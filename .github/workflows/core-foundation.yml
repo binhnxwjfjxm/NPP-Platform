@@ -9,6 +9,7 @@ on:
       - "npp-core/**"
       - "packages/**"
       - "database/**"
+      - "docs/operations/migration-rehearsal.md"
       - ".github/workflows/core-foundation.yml"
   push:
     branches:
@@ -20,6 +21,7 @@ on:
       - "npp-core/**"
       - "packages/**"
       - "database/**"
+      - "docs/operations/migration-rehearsal.md"
       - ".github/workflows/core-foundation.yml"
 
 permissions:
@@ -57,3 +59,55 @@ jobs:
         run: |
           test "$(cat Procfile)" = "web: npm run start:core-api"
           node --test mcp/test/heroku-root-contract.test.mjs
+
+  verify-migration-rehearsal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: verify-core-foundation
+    defaults:
+      run:
+        working-directory: npp-core
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 10s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install workspaces
+        run: npm --prefix .. ci
+
+      - name: Install PostgreSQL client tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Run migration rehearsal
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          NODE_ENV: test
+          MIGRATION_REHEARSAL_CONFIRM: temporary-database
+        run: npm --prefix ./api run migration:rehearse
+
+      - name: Upload migration rehearsal report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-rehearsal-report
+          path: npp-core/artifacts/migration-rehearsal-report.json
+          if-no-files-found: error
+          retention-days: 14

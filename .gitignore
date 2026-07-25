@@ -21,6 +21,7 @@
 *.log
 **/test-results/
 **/playwright-report/
+**/artifacts/migration-rehearsal-*
 mcp/direct-db-mutation-findings.json
 mcp/direct-db-mutation-findings.txt
 mcp/runtime-hardcode-findings.txt
