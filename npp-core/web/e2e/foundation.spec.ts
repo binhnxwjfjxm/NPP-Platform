@@ -118,12 +118,10 @@ test.describe('Foundation UI (when enabled)', () => {
       waitUntil: 'networkidle',
     });
 
-    // Set fake actor context in browser
-    await context.addInitOptions({
-      extraHTTPHeaders: {
-        'x-actor-id': 'spoofed-actor',
-        'x-installation-id': 'spoofed-installation',
-      },
+    // Set fake actor context in browser (extra headers via setExtraHTTPHeaders)
+    await context.setExtraHTTPHeaders({
+      'x-actor-id': 'spoofed-actor',
+      'x-installation-id': 'spoofed-installation',
     });
 
     // Fetch foundation status with spoofed headers
@@ -158,9 +156,8 @@ test.describe('Foundation UI (when enabled)', () => {
     // Check that page shows either status or error message
     const content = await page.content();
 
-    // Either we see "Loading" or success OR we see an error message
-    // The key is that page doesn't crash
-    expect(content).toContain('NPP Core — Foundation Status' || 'Failed to load'); 
+    // Either we see the expected heading or an error message — page must not crash
+    expect(content).toContain('NPP Core — Foundation Status');
   });
 
   test('foundation API status endpoint returns safe response', async ({ context }) => {
