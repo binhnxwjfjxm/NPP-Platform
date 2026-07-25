@@ -78,7 +78,7 @@ export async function updateBranch(client, { id, installationId, name, address, 
          address = $2,
          phone = $3,
          email = $4,
-         updated_at = GREATEST(clock_timestamp(), updated_at + interval '1 microsecond'),
+         updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
          updated_by = $5
      WHERE id = $6 AND installation_id = $7`;
 
@@ -97,7 +97,7 @@ export async function updateBranchActiveStatus(client, { id, installationId, isA
   const params = [isActive, updatedBy, id, installationId];
   let query = `UPDATE shared.branches
      SET is_active = $1,
-         updated_at = GREATEST(clock_timestamp(), updated_at + interval '1 microsecond'),
+         updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
          updated_by = $2
      WHERE id = $3 AND installation_id = $4`;
 
