@@ -10,6 +10,11 @@ const SAFE_DEFAULTS = Object.freeze({
   HOST: '127.0.0.1',
   PORT: '3004',
   DATABASE_SSL_MODE: 'disable',
+  R2_ENABLED: 'false',
+  R2_REGION: 'auto',
+  R2_PRESIGNED_URL_MAX_SECONDS: '900',
+  R2_MAX_OBJECT_BYTES: '5242880',
+  R2_CONTRACT_ROUTE_ENABLED: 'false',
 });
 
 function text(value) {
@@ -33,6 +38,14 @@ function parsePort(value) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
     fail('invalid_port', 'PORT must be an integer from 1 to 65535');
+  }
+  return parsed;
+}
+
+function parsePositiveInteger(value, name, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    fail(`invalid_${name.toLowerCase()}`, `${name} must be an integer from ${min} to ${max}`);
   }
   return parsed;
 }
@@ -66,21 +79,19 @@ function parseBoolean(value, { defaultValue = false } = {}) {
   fail('invalid_boolean', 'Boolean environment value must be true, false, 1, or 0');
 }
 
-function parseR2EndpointUrl(value) {
-  const textValue = text(value);
-  if (!textValue) return '';
-
+function parseHttpUrl(value, name, { optional = false } = {}) {
+  const raw = text(value);
+  if (!raw && optional) return '';
+  if (!raw) fail(`missing_${name.toLowerCase()}`, `${name} is required`);
   let parsed;
   try {
-    parsed = new URL(textValue);
+    parsed = new URL(raw);
   } catch {
-    fail('invalid_r2_endpoint_url', 'R2_ENDPOINT_URL must be a valid URL');
+    fail(`invalid_${name.toLowerCase()}`, `${name} must be a valid URL`);
   }
-
   if (!['http:', 'https:'].includes(parsed.protocol)) {
-    fail('invalid_r2_endpoint_url', 'R2_ENDPOINT_URL must use http or https');
+    fail(`invalid_${name.toLowerCase()}`, `${name} must use http or https`);
   }
-
   return parsed.toString();
 }
 
@@ -121,9 +132,7 @@ function validateBackendToken(token, nodeEnv) {
 
 function validateCoreBootstrapActorId(value, nodeEnv) {
   const actorId = text(value);
-  if (!actorId) {
-    fail('missing_core_bootstrap_actor_id', 'CORE_BOOTSTRAP_ACTOR_ID is required');
-  }
+  if (!actorId) fail('missing_core_bootstrap_actor_id', 'CORE_BOOTSTRAP_ACTOR_ID is required');
   if (nodeEnv === 'production' && /replace|change[-_ ]?me|example|local[-_ ]?token/i.test(actorId)) {
     fail('core_bootstrap_actor_id_placeholder', 'CORE_BOOTSTRAP_ACTOR_ID contains a placeholder value');
   }
@@ -159,20 +168,32 @@ export function loadConfig(envInput) {
   validateBackendToken(backendApiToken, nodeEnv);
   const coreBootstrapActorId = validateCoreBootstrapActorId(env.CORE_BOOTSTRAP_ACTOR_ID, nodeEnv);
 
-  const r2StorageEnabled = parseBoolean(env.R2_STORAGE_ENABLED, { defaultValue: false });
-  const r2BucketName = text(env.R2_BUCKET_NAME);
-  const r2Region = text(env.R2_REGION);
-  const r2EndpointUrl = parseR2EndpointUrl(env.R2_ENDPOINT_URL);
+  const r2Enabled = parseBoolean(env.R2_ENABLED, { defaultValue: false });
+  const r2ContractRouteEnabled = parseBoolean(env.R2_CONTRACT_ROUTE_ENABLED, { defaultValue: false });
+  const r2Region = text(env.R2_REGION) || SAFE_DEFAULTS.R2_REGION;
+  const r2Endpoint = text(env.R2_ENDPOINT) ? parseHttpUrl(env.R2_ENDPOINT, 'R2_ENDPOINT') : '';
+  const r2Bucket = text(env.R2_BUCKET);
   const r2AccessKeyId = text(env.R2_ACCESS_KEY_ID);
   const r2SecretAccessKey = text(env.R2_SECRET_ACCESS_KEY);
-  const r2ForcePathStyle = parseBoolean(env.R2_FORCE_PATH_STYLE, { defaultValue: false });
+  const r2PublicBaseUrl = text(env.R2_PUBLIC_BASE_URL)
+    ? parseHttpUrl(env.R2_PUBLIC_BASE_URL, 'R2_PUBLIC_BASE_URL', { optional: true })
+    : '';
+  const r2PresignedUrlMaxSeconds = parsePositiveInteger(
+    env.R2_PRESIGNED_URL_MAX_SECONDS,
+    'R2_PRESIGNED_URL_MAX_SECONDS',
+    { min: 1, max: 604800 },
+  );
+  const r2MaxObjectBytes = parsePositiveInteger(
+    env.R2_MAX_OBJECT_BYTES,
+    'R2_MAX_OBJECT_BYTES',
+    { min: 1, max: 1073741824 },
+  );
 
-  if (r2StorageEnabled) {
-    if (!r2BucketName) fail('missing_r2_bucket_name', 'R2_BUCKET_NAME is required when R2_STORAGE_ENABLED=true');
-    if (!r2Region) fail('missing_r2_region', 'R2_REGION is required when R2_STORAGE_ENABLED=true');
-    if (!r2EndpointUrl) fail('missing_r2_endpoint_url', 'R2_ENDPOINT_URL is required when R2_STORAGE_ENABLED=true');
-    if (!r2AccessKeyId) fail('missing_r2_access_key_id', 'R2_ACCESS_KEY_ID is required when R2_STORAGE_ENABLED=true');
-    if (!r2SecretAccessKey) fail('missing_r2_secret_access_key', 'R2_SECRET_ACCESS_KEY is required when R2_STORAGE_ENABLED=true');
+  if (r2Enabled) {
+    if (!r2Endpoint) fail('missing_r2_endpoint', 'R2_ENDPOINT is required when R2_ENABLED=true');
+    if (!r2Bucket) fail('missing_r2_bucket', 'R2_BUCKET is required when R2_ENABLED=true');
+    if (!r2AccessKeyId) fail('missing_r2_access_key_id', 'R2_ACCESS_KEY_ID is required when R2_ENABLED=true');
+    if (!r2SecretAccessKey) fail('missing_r2_secret_access_key', 'R2_SECRET_ACCESS_KEY is required when R2_ENABLED=true');
   }
 
   return Object.freeze({
@@ -185,13 +206,16 @@ export function loadConfig(envInput) {
     backendApiToken,
     coreBootstrapActorId,
     corsOrigins: parseCorsOrigins(env.CORS_ORIGINS, { nodeEnv }),
-    r2StorageEnabled,
-    r2BucketName,
+    r2Enabled,
+    r2Endpoint,
     r2Region,
-    r2EndpointUrl,
+    r2Bucket,
     r2AccessKeyId,
     r2SecretAccessKey,
-    r2ForcePathStyle,
+    r2PublicBaseUrl,
+    r2PresignedUrlMaxSeconds,
+    r2MaxObjectBytes,
+    r2ContractRouteEnabled,
   });
 }
 
@@ -203,5 +227,14 @@ export function getSanitizedConfig(config) {
     installationId: config.installationId,
     databaseSslMode: config.databaseSslMode,
     corsOrigins: [...config.corsOrigins],
+    storage: Object.freeze({
+      enabled: config.r2Enabled,
+      contractRouteEnabled: config.r2ContractRouteEnabled,
+      bucketConfigured: Boolean(config.r2Bucket),
+      region: config.r2Region,
+      publicBaseUrlConfigured: Boolean(config.r2PublicBaseUrl),
+      presignedUrlMaxSeconds: config.r2PresignedUrlMaxSeconds,
+      maxObjectBytes: config.r2MaxObjectBytes,
+    }),
   });
 }
