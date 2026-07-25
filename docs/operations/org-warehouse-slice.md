@@ -1,355 +1,233 @@
 # Phase 3 Slice 1 — Organization and Warehouse
 
-## Overview
+## Purpose
 
-Phase 3 Slice 1 implements the minimal organization hierarchy for NPP Core:
+This slice delivers the first NPP Core master-data hierarchy:
 
-- **Installation/Company**: Scoped context (read from config, not modifiable in this slice)
-- **Branches**: Physical or logical organization branches within an installation
-- **Warehouses**: Physical or logical storage facilities within a branch
-- **Warehouse Locations**: Specific storage areas within a warehouse
-
-All entities are scoped to an installation and enforce referential integrity with activation constraints.
-
-## Data Model
-
-### Branches
-```sql
-shared.branches
-- id (uuid PK)
-- installation_id  (text FK, NOT NULL)
-- code (text UNIQUE per installation, NOT NULL, 1-64 chars)
-- name (text NOT NULL, 1-256 chars)
-- address (text, nullable, 0-512 chars)
-- phone (text, nullable, 0-20 chars)
-- email (text, nullable, 0-256 chars)
-- is_active (boolean DEFAULT true)
-- created_at, updated_at (timestamptz with timezone)
-- created_by, updated_by (actor_id, NOT NULL)
+```text
+installation/company context
+→ branches
+→ warehouses
+→ warehouse locations
 ```
 
-**Constraints:**
-- `installation_id` and `code` are unique together
-- No hard delete
-- Foreign key references from `warehouses.branch_id` have ON DELETE RESTRICT
+The installation/company context is server-owned and read-only in this slice. Users can list, create, update, activate, and deactivate branches, warehouses, and warehouse locations.
 
-### Warehouses
-```sql
-shared.warehouses
-- id (uuid PK)
-- installation_id (text FK, NOT NULL)
-- branch_id (uuid FK to branches, ON DELETE RESTRICT)
-- code (text UNIQUE per installation, NOT NULL, 1-64 chars)
-- name (text NOT NULL, 1-256 chars)
-- warehouse_type (enum: main, distribution, vehicle, quarantine, returns, transit, other)
-- is_active (boolean DEFAULT true)
-- created_at, updated_at (timestamptz with timezone)
-- created_by, updated_by (actor_id, NOT NULL)
+## Scope
+
+Included:
+
+- PostgreSQL migrations for `shared.branches`, `shared.warehouses`, and `shared.warehouse_locations`
+- installation-scoped repositories and services
+- authenticated Core API routes
+- deny-by-default read/write permissions
+- required create idempotency
+- optimistic concurrency for PATCH
+- transactional audit records
+- server-only Next.js gateway
+- protected `/organization` browser UI
+- PostgreSQL-backed integration tests and Playwright E2E
+
+Not included:
+
+- users/employees/roles UI
+- customers, suppliers, products, sales, purchasing, or inventory ledger
+- MCP cutover
+- production deployment
+- asynchronous organization-domain event publication
+
+## Data ownership and constraints
+
+### Branch
+
+- UUID primary key
+- unique `(installation_id, code)`
+- uppercase code matching `[A-Z0-9_-]{1,64}`
+- no hard delete
+
+### Warehouse
+
+- UUID primary key
+- unique `(installation_id, code)`
+- composite foreign key `(installation_id, branch_id)` to the owning branch
+- cannot be created or reactivated under an inactive branch
+- a branch cannot be deactivated while it has active warehouses
+
+### Warehouse location
+
+- UUID primary key
+- unique `(warehouse_id, code)`
+- composite foreign key `(installation_id, warehouse_id)` to the owning warehouse
+- cannot be created or reactivated under an inactive warehouse
+- a warehouse cannot be deactivated while it has active locations
+
+Parent reads used by child create/reactivation take `FOR SHARE` locks. Parent deactivation takes `FOR UPDATE` before checking active children. This serializes concurrent create/reactivate and deactivate operations so an inactive parent cannot commit with a newly active child.
+
+## Core API
+
+```text
+GET    /api/branches
+POST   /api/branches
+GET    /api/branches/:id
+PATCH  /api/branches/:id
+
+GET    /api/warehouses
+POST   /api/warehouses
+GET    /api/warehouses/:id
+PATCH  /api/warehouses/:id
+
+GET    /api/warehouse-locations
+POST   /api/warehouse-locations
+GET    /api/warehouse-locations/:id
+PATCH  /api/warehouse-locations/:id
 ```
 
-**Constraints:**
-- `installation_id` and `code` are unique together
-- `branch_id` is scoped to same installation
-- Cannot create warehouse under inactive branch
-- Cannot deactivate branch if it has active warehouses
+Query parameters:
 
-### Warehouse Locations
-```sql
-shared.warehouse_locations
-- id (uuid PK)
-- installation_id (text FK, NOT NULL)
-- warehouse_id (uuid FK to warehouses, ON DELETE RESTRICT)
-- code (text UNIQUE per warehouse, NOT NULL, 1-64 chars)
-- name (text NOT NULL, 1-256 chars)
-- location_type (enum: storage, receiving, shipping, quarantine, returns, damaged, other)
-- is_active (boolean DEFAULT true)
-- created_at, updated_at (timestamptz with timezone)
-- created_by, updated_by (actor_id, NOT NULL)
-```
+- list routes: `active`, `limit`, `offset`
+- warehouses: optional `branchId`
+- warehouse locations: optional `warehouseId`
 
-**Constraints:**
-- `warehouse_id` and `code` are unique together
-- Cannot create location under inactive warehouse
-- Cannot deactivate warehouse if it has active locations
-
-## API Routes
-
-### Branches
-```
-GET    /api/branches                 — List branches (query: active, limit, offset)
-POST   /api/branches                 — Create branch (idempotent with idempotency-key)
-GET    /api/branches/:id             — Get branch by ID
-PATCH  /api/branches/:id             — Update branch or change active status
-```
-
-### Warehouses
-```
-GET    /api/warehouses               — List warehouses (query: branchId, active, limit, offset)
-POST   /api/warehouses               — Create warehouse (idempotent)
-GET    /api/warehouses/:id           — Get warehouse by ID
-PATCH  /api/warehouses/:id           — Update warehouse or change active status
-```
-
-### Warehouse Locations
-```
-GET    /api/warehouse-locations      — List locations (query: warehouseId, active, limit, offset)
-POST   /api/warehouse-locations      — Create location (idempotent)
-GET    /api/warehouse-locations/:id  — Get location by ID
-PATCH  /api/warehouse-locations/:id  — Update location or change active status
-```
-
-## Response Format
-
-**Success:**
-```json
-{
-  "data": { /* entity or array of entities */ },
-  "requestId": "req_...",
-  "receivedAt": "2026-07-25T00:00:00.000Z"
-}
-```
-
-**Error:**
-```json
-{
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "User-friendly message",
-    "details": {},
-    "retryable": false
-  },
-  "requestId": "req_...",
-  "receivedAt": "2026-07-25T00:00:00.000Z"
-}
-```
+Malformed UUID path or parent-filter values are rejected before PostgreSQL is queried. GET-by-ID returns not found; mutation and invalid-filter requests return a client error rather than a retryable 500.
 
 ## Permissions
 
-- `core.branch.read` — Read branches
-- `core.branch.write` — Create/update/activate/deactivate branches
-- `core.warehouse.read` — Read warehouses
-- `core.warehouse.write` — Create/update/activate/deactivate warehouses
-- `core.warehouse.location.read` — Read warehouse locations
-- `core.warehouse.location.write` — Create/update/activate/deactivate locations
+- `core.branch.read`
+- `core.branch.write`
+- `core.warehouse.read`
+- `core.warehouse.write`
+- `core.warehouse.location.read`
+- `core.warehouse.location.write`
 
-Bootstrap principal has all permissions for testing.
+Authentication and request context are server-owned. Installation, actor, source application, and permissions cannot be supplied through business payloads.
 
-## Validation
+## Browser gateway security
 
-### Code
-- Trimmed and normalized to uppercase
-- Must be 1-64 characters
-- Must be unique within scope (branch: installation, warehouse: installation, location: warehouse)
-- Allowed characters: alphanumeric, hyphen, underscore
+The browser calls only same-origin routes:
 
-### Name
-- Trimmed
-- Must be 1-256 characters
-- Not empty
+```text
+/organization
+/api/organization/:resource
+/api/organization/:resource/:id
+```
 
-### Email (optional)
-- Basic format validation (must contain @ and . if provided)
-- Max 256 characters
+The Next.js gateway attaches `CORE_API_SERVER_TOKEN` only on the server. That token is never sent to browser JavaScript or HTML.
 
-### Phone (optional)
-- Basic format validation (digits, spaces, dashes, plus)
-- Max 20 characters
+The organization page and gateway require HTTP Basic authentication before the privileged backend token is attached. Configure server-only variables:
+
+```text
+CORE_WEB_ADMIN_USERNAME
+CORE_WEB_ADMIN_PASSWORD
+CORE_API_INTERNAL_URL
+CORE_API_SERVER_TOKEN
+```
+
+Rules:
+
+- missing web-admin credentials deny access with 503
+- invalid or missing Basic credentials return 401
+- production access requires HTTPS
+- browser responses use `Cache-Control: no-store`
+- these variables must not use the production database URL and must not be exposed as `NEXT_PUBLIC_*`
+
+This Basic Auth boundary is an interim internal-admin gate. A later user/employee authentication slice may replace it with the canonical NPP Core session flow without changing the Core API authorization contract.
 
 ## Idempotency
 
-POST routes support idempotency via request fingerprinting:
+Every POST requires an `Idempotency-Key` header.
 
-- **Key:** `Idempotency-Key` header (client-provided), scoped by installation + actor + route
-- **Fingerprint:** SHA256 of request body for conflict detection
-- **Behavior:**
-  - Same key + same payload → Same response (cached)
-  - Same key + different payload → 409 Conflict
-  - Retry without key → New submission (potentially duplicate)
+The key is scoped by installation, actor, and route. The request body is fingerprinted:
 
-## Audit
+- same key and same payload returns the stored response
+- same key and different payload returns conflict
+- missing or malformed key is rejected
 
-Every mutation (POST, PATCH) records exactly one audit record in the same transaction:
+## Optimistic concurrency
 
-```json
-{
-  "audit_id": "uuid",
-  "installation_id": "...",
-  "actor_id": "...",
-  "action": "create|update|activate|deactivate",
-  "resource_type": "branch|warehouse|warehouse_location",
-  "resource_id": "...",
-  "before_data": null, // for create
-  "after_data": { /* entity */ },
-  "metadata": { "code": "...", ... },
-  "occurred_at": "2026-07-25T00:00:00.000Z"
-}
-```
+Every PATCH requires `expectedUpdatedAt`.
 
-No audit record creation is retryable (uses same transaction as mutation).
+- matching value allows the update
+- stale value returns `409 CONFLICT`
+- invalid or missing value returns a client error
+- timestamps are normalized to millisecond precision so values returned through JSON can be reused safely
 
-## Outbox Events
+## Transaction and audit contract
 
-Every successful mutation also creates one outbox event for eventual distribution:
+Every successful mutation performs the entity change and exactly one audit insert in the same PostgreSQL transaction. The response is sent only after commit.
 
-```json
-{
-  "event_id": "uuid",
-  "event_type": "branch.created|warehouse.created|warehouse_location.created",
-  "aggregate_type": "branch|warehouse|warehouse_location",
-  "aggregate_id": "...",
-  "event_version": 1,
-  "payload": { /* entity */ },
-  "status": "pending"
-}
-```
+Audit data includes:
 
-Events are published asynchronously (not in this slice).
+- installation and actor
+- request ID and source application
+- action: create, update, activate, or deactivate
+- resource type and resource ID
+- before/after snapshots where applicable
+- code metadata
 
-## Business Rules
+An audit failure rolls back the entity mutation.
 
-### Cannot Deactivate
-- **Branch**: If it has active warehouses
-- **Warehouse**: If it has active locations
+## Outbox decision
 
-**Rationale**: Prevents orphaned structures. Must deactivate children first.
+This slice intentionally does **not** create organization-domain outbox events.
 
-### Cannot Create
-- **Warehouse**: Under inactive branch
-- **Location**: Under inactive warehouse
+There is no approved consumer or event contract for branch, warehouse, or location changes yet. Emitting pending events without a consumer would create an operational queue with no delivery ownership. Outbox publication must be introduced in a later slice together with:
 
-**Rationale**: Maintains hierarchy integrity.
+- named consumer(s)
+- versioned event schemas
+- retry/dead-letter policy
+- replay and monitoring ownership
+- regression tests for delivery semantics
 
-### Activation
-- Activating a branch/warehouse/location just sets `is_active = true` (no further checks)
-- Siblings don't need to be active for a sibling to be active
+The shared transaction helper permits audit-only mutations for this reason. Documentation and tests must not claim one outbox event per organization mutation.
 
-## Local Development
+## Validation and CI
 
-### Setup
+Core API verification runs against a disposable PostgreSQL service and applies registered migrations before tests.
+
+Coverage includes:
+
+- installation isolation
+- composite parent ownership
+- required idempotency
+- audit rollback and before/after data
+- required and stale `expectedUpdatedAt`
+- malformed UUID rejection
+- hierarchy row-lock queries
+- parent-active reactivation rules
+- migration rehearsal
+
+Browser E2E runs the actual Next.js app, Core API, and PostgreSQL. It verifies:
+
+- anonymous organization gateway access is rejected
+- authenticated `/organization` loads
+- create branch → create warehouse → create location
+- deactivate location
+- browser assets and console remain clean
+
+Primary commands:
+
 ```bash
-cd npp-core/api
-npm install
-```
-
-### Environment
-```bash
-export NODE_ENV=development
-export INSTALLATION_ID=local-npp
-export DATABASE_URL=postgresql://user:password@localhost:5432/npp_platform
-export DATABASE_SSL_MODE=disable
-export BACKEND_API_TOKEN=dev-token
-```
-
-### Migrations
-```bash
-npm run migration:migrate
-npm run migration:verify
-npm run migration:rehearse
-```
-
-### Development Server
-```bash
-npm run dev    # with --watch
-# Server runs on http://127.0.0.1:3004
-```
-
-### Tests
-```bash
-npm run test              # Run all tests
-npm run build             # Syntax check
-npm run verify            # Build + test
-```
-
-## Testing
-
-### Unit/Integration Tests
-- Services: code validation, code normalization
-- Repositories: CRUD operations, constraints
-- Business rules: deactivation conflicts, parent validation
-- Audit/Outbox: record creation without dupe events
-
-Location: `test/organization.test.js`
-
-### E2E Tests
-- Require actual Core API + PostgreSQL
-- Create branch → warehouse → location
-- Update and list operations
-- Deactivation order rules
-- Conflict error handling
-- Idempotency on retry
-
-Location: `npp-core/web/e2e/organization.spec.ts` (TODO)
-
-### CI
-```bash
-npm --workspace npp-core-api run migration:migrate
-npm --workspace npp-core-api run test
+npm --workspace npp-core-api run build
 npm --workspace npp-core-api run verify
+npm run migration:rehearse
+npm run verify:core-web
+npm run test:core-ui-e2e
 ```
 
-## Security Boundaries
+Required PR workflows:
 
-- Installation scope is server-owned (from config)
-- Cannot spoof installation via headers or body
-- actorId/roles are server-owned (from auth token)
-- Permissions are enforced at action level
-- No client-provided IDs in POST payloads
-- Audit/outbox cannot be directly manipulated
+- Foundation F0.2
+- Core Foundation
+- Core UI and Browser E2E
 
-## Schema Enums
+## Deployment safety
 
-### Warehouse Types
-- `main`: Primary warehouse
-- `distribution`: Regional distribution center
-- `vehicle`: Mobile warehouse (vehicle/truck)
-- `quarantine`: Quality hold area
-- `returns`: Customer return processing
-- `transit`: In-transit inventory
-- `other`: Custom type
+Merging this slice does not deploy production or run production migrations.
 
-### Location Types
-- `storage`: General storage shelf/bin
-- `receiving`: Inbound dock
-- `shipping`: Outbound marshaling
-- `quarantine`: Quality hold
-- `returns`: Return processing
-- `damaged`: Scrap/damage holding
-- `other`: Custom type
+Production rollout remains a separate explicit operation and requires:
 
-## Production Exclusions
-
-This slice does NOT include:
-- Inventory balance calculation
-- Stock reservation/allocation
-- Inventory movement posting
-- Costing or FIFO/WAVG
-- Multi-tenant isolation (one installation/app only)
-- Inventory aging or reporting
-- Lot/expiry tracking
-- Import/export of organization structure
-
-## Future Slices
-
-After Phase 3.1 gates:
-- **Phase 3.2**: Users, employees, roles, permissions
-- **Phase 3.3**: Customers, customer groups, addresses
-- **Phase 3.4**: Suppliers, supplier terms
-- **Phase 3.5**: Products, SKU, categories, brands
-- **Phase 4**: Inventory ledger and movement foundation
-- **Phase 5**: Purchasing end-to-end
-- **Phase 6**: Sales end-to-end
-
-## Known Limitations
-
-- Only one installation supported (production needs multi-tenancy setup)
-- No bulk operations
-- Limited to serial code generation (no numeric sequences in this slice)
-- No archive/soft-delete strategy yet (hard NOT NULL constraints)
-- Activation/deactivation is synchronous (no async jobs)
-
-## References
-
-- Master plan: `NPP_PLATFORM_MASTER_PLAN.md` (Section 2.4, 3 Phase setup)
-- Request context: `npp-core/api/src/request-context.js`
-- Audit/Outbox: `npp-core/api/src/audit-outbox.js`
-- Idempotency: `npp-core/api/src/idempotency.js`
+- provider configuration audit
+- server-only web-admin credentials
+- confirmed database backup and restore readiness before migration
+- manual Heroku deployment and health checks
+- separate Vercel production deployment command and route verification
