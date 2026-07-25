@@ -35,6 +35,11 @@ test.describe('Core web route smoke', () => {
     await expectHealthyRoute(page, '/dashboard');
   });
 
+  test('organization page loads cleanly', async ({ page }) => {
+    await expectHealthyRoute(page, '/organization');
+    await expect(page.getByTestId('organization-page')).toBeVisible();
+  });
+
   test('same-origin static assets are present and load', async ({ page }) => {
     await page.goto('/');
     const assets = page.locator('link[rel="stylesheet"], script[src]');
