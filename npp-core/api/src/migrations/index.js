@@ -5,11 +5,19 @@ const CORE_IDEMPOTENCY_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/002_core_idempotency.sql', import.meta.url),
   'utf8',
 );
+const CORE_AUDIT_OUTBOX_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/003_core_audit_outbox.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '002_core_idempotency',
     sql: CORE_IDEMPOTENCY_SQL,
+  }),
+  Object.freeze({
+    id: '003_core_audit_outbox',
+    sql: CORE_AUDIT_OUTBOX_SQL,
   }),
 ]);
 

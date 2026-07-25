@@ -5,6 +5,7 @@ export const PERMISSIONS = Object.freeze({
   coreConfigRead: 'core.config.read',
   coreHealthAuthenticatedRead: 'core.health.authenticated.read',
   coreIdempotencyTestWrite: 'core.idempotency.test.write',
+  coreAuditOutboxTestWrite: 'core.audit-outbox.test.write',
 });
 
 const PERMISSION_REGISTRY = new Set(Object.values(PERMISSIONS));
@@ -50,6 +51,7 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.coreConfigRead,
       PERMISSIONS.coreHealthAuthenticatedRead,
       PERMISSIONS.coreIdempotencyTestWrite,
+      PERMISSIONS.coreAuditOutboxTestWrite,
     ],
     sourceApp: 'npp-core-api',
   });
