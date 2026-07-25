@@ -74,20 +74,7 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
           TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
           NODE_ENV: test
-        shell: bash
-        run: |
-          mkdir -p artifacts
-          set -o pipefail
-          npm --prefix .. run verify:core-api 2>&1 | tee artifacts/core-api-verify.log
-
-      - name: Upload Core API verification log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: core-api-verification-log
-          path: npp-core/artifacts/core-api-verify.log
-          if-no-files-found: error
-          retention-days: 7
+        run: npm --prefix .. run verify:core-api
 
       - name: Verify Core web
         run: npm --prefix .. run verify:core-web
