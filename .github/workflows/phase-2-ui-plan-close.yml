@@ -1,0 +1,78 @@
+name: Close Phase 2 UI Plan Status
+
+on:
+  push:
+    branches:
+      - agent/phase-2-ui-e2e-plan-close
+    paths:
+      - '.github/workflows/phase-2-ui-plan-close.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update-plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout plan branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/phase-2-ui-e2e-plan-close
+          fetch-depth: 0
+
+      - name: Close Phase 2 UI browser gate in master plan
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('NPP_PLATFORM_MASTER_PLAN.md')
+          text = path.read_text(encoding='utf-8')
+          start_marker = '### Phase 2b — Core UI foundation + browser verification'
+          end_marker = '### Phase 3 — Master data'
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          replacement = '''### Phase 2b — Core UI foundation + browser verification
+
+          ```text
+          [x] /foundation internal UI route, disabled by default
+          [x] Foundation UI displays actual Core API live/ready status, authenticated server-owned context, sanitized config, R2 state and checked timestamp
+          [x] Server-side gateway allowlists only required Core API endpoints, validates success envelopes, applies timeout and fails closed
+          [x] Browser receives no backend token, database URL, R2 credentials, provider endpoint, bucket name, signed URL or raw upstream error
+          [x] /foundation, /api/foundation/status and /api/foundation/r2-test return true 404 responses when disabled
+          [x] R2 contract action is hidden by default, uses a server-generated idempotency key and is not executed in CI
+          [x] Chromium browser tests cover /, /login, /dashboard, enabled/disabled foundation states, spoofing, redaction, refresh, safe failures and same-origin assets
+          [x] Browser verification uses actual local Core API plus ephemeral PostgreSQL 16; no production service or provider is called
+          [x] Core API regression, Core web typecheck/build, Foundation F0.2 and migration rehearsal remain green
+          [x] Operations runbook documents local execution, CI, security boundaries and production-readiness exclusions
+          ```
+
+          Gate: **CLOSED**. PR #24 passed Core Foundation, Foundation F0.2, migration rehearsal and Chromium browser E2E, then was squash-merged to `main` at commit `5a2ef5d5a8571645a563fc3123140733b6d04551`.
+
+          **Status:** Completed on `2026-07-25`. This status does not claim a production deployment, production backup/restore verification, R2 production configuration or provider smoke test.
+
+          Sau gate này mới chọn vertical business slice đầu tiên. Chưa tự chọn inventory, sales, purchasing hoặc MCP cutover. Mỗi business feature tiếp theo phải đi theo lát dọc:
+
+          ```text
+          migration
+          -> backend API
+          -> frontend UI
+          -> unit test
+          -> integration test
+          -> browser/E2E test
+          -> CI
+          -> merge
+          ```
+
+          '''
+          updated = text[:start] + replacement + text[end:]
+          path.write_text(updated, encoding='utf-8')
+          PY
+
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add NPP_PLATFORM_MASTER_PLAN.md
+          git commit -m "docs(plan): close Phase 2 UI browser gate"
+          git push origin HEAD:agent/phase-2-ui-e2e-plan-close
