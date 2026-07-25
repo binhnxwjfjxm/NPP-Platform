@@ -58,6 +58,32 @@ function parseSslMode(value) {
   return mode;
 }
 
+function parseBoolean(value, { defaultValue = false } = {}) {
+  const normalized = text(value).toLowerCase();
+  if (!normalized) return defaultValue;
+  if (['1', 'true', 'yes'].includes(normalized)) return true;
+  if (['0', 'false', 'no'].includes(normalized)) return false;
+  fail('invalid_boolean', 'Boolean environment value must be true, false, 1, or 0');
+}
+
+function parseR2EndpointUrl(value) {
+  const textValue = text(value);
+  if (!textValue) return '';
+
+  let parsed;
+  try {
+    parsed = new URL(textValue);
+  } catch {
+    fail('invalid_r2_endpoint_url', 'R2_ENDPOINT_URL must be a valid URL');
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    fail('invalid_r2_endpoint_url', 'R2_ENDPOINT_URL must use http or https');
+  }
+
+  return parsed.toString();
+}
+
 export function parseCorsOrigins(value, { nodeEnv = 'development' } = {}) {
   const raw = text(value);
   if (!raw) {
@@ -133,6 +159,22 @@ export function loadConfig(envInput) {
   validateBackendToken(backendApiToken, nodeEnv);
   const coreBootstrapActorId = validateCoreBootstrapActorId(env.CORE_BOOTSTRAP_ACTOR_ID, nodeEnv);
 
+  const r2StorageEnabled = parseBoolean(env.R2_STORAGE_ENABLED, { defaultValue: false });
+  const r2BucketName = text(env.R2_BUCKET_NAME);
+  const r2Region = text(env.R2_REGION);
+  const r2EndpointUrl = parseR2EndpointUrl(env.R2_ENDPOINT_URL);
+  const r2AccessKeyId = text(env.R2_ACCESS_KEY_ID);
+  const r2SecretAccessKey = text(env.R2_SECRET_ACCESS_KEY);
+  const r2ForcePathStyle = parseBoolean(env.R2_FORCE_PATH_STYLE, { defaultValue: false });
+
+  if (r2StorageEnabled) {
+    if (!r2BucketName) fail('missing_r2_bucket_name', 'R2_BUCKET_NAME is required when R2_STORAGE_ENABLED=true');
+    if (!r2Region) fail('missing_r2_region', 'R2_REGION is required when R2_STORAGE_ENABLED=true');
+    if (!r2EndpointUrl) fail('missing_r2_endpoint_url', 'R2_ENDPOINT_URL is required when R2_STORAGE_ENABLED=true');
+    if (!r2AccessKeyId) fail('missing_r2_access_key_id', 'R2_ACCESS_KEY_ID is required when R2_STORAGE_ENABLED=true');
+    if (!r2SecretAccessKey) fail('missing_r2_secret_access_key', 'R2_SECRET_ACCESS_KEY is required when R2_STORAGE_ENABLED=true');
+  }
+
   return Object.freeze({
     nodeEnv,
     host: text(env.HOST) || SAFE_DEFAULTS.HOST,
@@ -143,6 +185,13 @@ export function loadConfig(envInput) {
     backendApiToken,
     coreBootstrapActorId,
     corsOrigins: parseCorsOrigins(env.CORS_ORIGINS, { nodeEnv }),
+    r2StorageEnabled,
+    r2BucketName,
+    r2Region,
+    r2EndpointUrl,
+    r2AccessKeyId,
+    r2SecretAccessKey,
+    r2ForcePathStyle,
   });
 }
 

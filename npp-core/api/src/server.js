@@ -9,6 +9,8 @@ import { authenticateRequest, createAnonymousPrincipal, createRequestContext, re
 import { resolveRequestId } from '@npp/shared-utils';
 import { createPostgresIdempotencyStore, executeRequestWithIdempotency, readJsonBody } from './idempotency.js';
 import { withAuditOutboxTransaction, buildAuditRecord, insertAuditRecord, buildOutboxEvent, insertOutboxEvent } from './audit-outbox.js';
+import { createOptionalR2StorageAdapter } from './storage/r2-adapter.js';
+import { buildR2ObjectKey } from './storage/object-key.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const CORS_ALLOWED_HEADERS = 'authorization, content-type, idempotency-key, x-request-id';
@@ -62,6 +64,41 @@ async function defaultIdempotencyTestHandler({ payload, requestContext, requestI
   };
 }
 
+async function defaultStoragePresignMutation({ client, requestContext, requestId, payload }) {
+  const auditRecord = buildAuditRecord({
+    requestContext,
+    action: 'core.storage.r2.presign',
+    resourceType: 'storage.presign',
+    afterData: {
+      objectKey: payload.objectKey,
+      contentType: payload.contentType || null,
+      expiresIn: payload.expiresIn ?? null,
+    },
+    metadata: {},
+  });
+
+  const outboxEvent = buildOutboxEvent({
+    requestContext,
+    aggregateType: 'core.storage.r2.presign',
+    aggregateId: requestId,
+    eventType: 'core.storage.r2.presign.created',
+    eventVersion: 1,
+    payload: {
+      objectKey: payload.objectKey,
+      expiresIn: payload.expiresIn ?? null,
+    },
+    metadata: {},
+  });
+
+  await insertAuditRecord(client, auditRecord);
+  await insertOutboxEvent(client, outboxEvent);
+
+  return {
+    auditId: auditRecord.auditId,
+    eventId: outboxEvent.eventId,
+  };
+}
+
 export function createCoreApiServer(options = {}) {
   const runtimeConfig = options.config ?? loadConfig();
   const allowedOrigins = new Set(runtimeConfig.corsOrigins);
@@ -75,6 +112,7 @@ export function createCoreApiServer(options = {}) {
   const idempotencyTestHandler = options.idempotencyTestHandler ?? defaultIdempotencyTestHandler;
   const auditOutboxAdapter = options.auditOutboxAdapter ?? getPool(runtimeConfig);
   const auditOutboxMutation = options.auditOutboxMutation ?? defaultAuditOutboxMutation;
+  const storageAdapter = options.storageAdapter ?? createOptionalR2StorageAdapter(runtimeConfig);
 
   return http.createServer(async (req, res) => {
     const receivedAt = new Date().toISOString();
@@ -106,6 +144,7 @@ export function createCoreApiServer(options = {}) {
       ['/health/authenticated', new Set(['GET'])],
       ['/api/idempotency-test', new Set(['POST'])],
       ['/api/audit-outbox-test', new Set(['POST'])],
+      ['/api/storage/r2/presign-put', new Set(['POST'])],
     ]);
 
     if (req.method === 'OPTIONS' && allowedMethods.has(url.pathname)) {
@@ -325,6 +364,122 @@ export function createCoreApiServer(options = {}) {
         sendError(
           res,
           createError('AUDIT_OUTBOX_TRANSACTION_FAILED', 'Audit/outbox transaction failed', {}, true, 503),
+          requestId,
+          receivedAt,
+        );
+      }
+      return;
+    }
+
+    if (url.pathname === '/api/storage/r2/presign-put') {
+      const authResult = authenticate(req, runtimeConfig);
+      if (!authResult.ok) {
+        res.setHeader('WWW-Authenticate', 'Bearer');
+        sendError(res, createError('UNAUTHORIZED', 'Authorization required', {}, false, 401), requestId, receivedAt);
+        return;
+      }
+
+      const requestContext = createContext({
+        config: runtimeConfig,
+        principal: authResult.principal,
+        requestId,
+        receivedAt,
+      });
+      req.requestContext = requestContext;
+
+      const permission = authorize(requestContext, PERMISSIONS.coreR2StoragePresignWrite);
+      if (!permission.ok) {
+        sendError(res, createError('FORBIDDEN', 'Permission denied', {}, false, 403), requestId, receivedAt);
+        return;
+      }
+
+      let payload;
+      try {
+        payload = await readJsonBody(req);
+      } catch (error) {
+        sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), requestId, receivedAt);
+        return;
+      }
+
+      let objectKey = typeof payload.objectKey === 'string' ? payload.objectKey.trim() : '';
+      if (!objectKey && payload && typeof payload.keyComponents === 'object' && payload.keyComponents !== null) {
+        try {
+          objectKey = buildR2ObjectKey(payload.keyComponents);
+        } catch (error) {
+          sendError(res, createError(error.code ?? 'INVALID_OBJECT_KEY', error.publicMessage ?? error.message, {}, false, error.statusCode ?? 400), requestId, receivedAt);
+          return;
+        }
+      }
+
+      if (!objectKey) {
+        sendError(res, createError('INVALID_OBJECT_KEY', 'objectKey or keyComponents is required', {}, false, 400), requestId, receivedAt);
+        return;
+      }
+
+      payload = { ...payload, objectKey };
+
+      try {
+        const executionResult = await executeRequestWithIdempotency({
+          idempotencyStore,
+          req,
+          requestContext,
+          requestId,
+          receivedAt,
+          route: '/api/storage/r2/presign-put',
+          payload,
+          onProcess: async () => {
+            if (!storageAdapter) {
+              throw Object.assign(new Error('STORAGE_DISABLED'), {
+                code: 'STORAGE_DISABLED',
+                publicMessage: 'R2 storage is not configured',
+                statusCode: 503,
+              });
+            }
+
+            const presignResult = await storageAdapter.getPresignedPutUrl({
+              key: objectKey,
+              contentType: typeof payload.contentType === 'string' ? payload.contentType : undefined,
+              expiresIn: typeof payload.expiresIn === 'number' ? payload.expiresIn : undefined,
+            });
+
+            await withAuditOutboxTransaction({
+              adapter: auditOutboxAdapter,
+              mutate: async (client, helpers) => {
+                const mutationResult = await defaultStoragePresignMutation({
+                  client,
+                  requestContext,
+                  requestId,
+                  payload,
+                });
+                return mutationResult;
+              },
+            });
+
+            return {
+              statusCode: 200,
+              contentType: 'application/json',
+              requestId,
+              body: createSuccessEnvelope({
+                objectKey: payload.objectKey,
+                presignedUrl: presignResult.url,
+                expiresIn: presignResult.expiresIn,
+              }, requestId, receivedAt),
+            };
+          },
+        });
+
+        res.setHeader('Cache-Control', 'no-store');
+        sendJson(
+          res,
+          executionResult.response.statusCode,
+          executionResult.response.body,
+          executionResult.response.requestId ?? requestId,
+          executionResult.response.contentType,
+        );
+      } catch {
+        sendError(
+          res,
+          createError('IDEMPOTENCY_STORAGE_ERROR', 'Idempotency storage unavailable', {}, true, 503),
           requestId,
           receivedAt,
         );
