@@ -8,6 +8,8 @@ function requiredTestEnv(name: 'E2E_DATABASE_URL' | 'E2E_BACKEND_API_TOKEN'): st
 
 const databaseUrl = requiredTestEnv('E2E_DATABASE_URL');
 const backendToken = requiredTestEnv('E2E_BACKEND_API_TOKEN');
+const webAdminUsername = 'e2e-admin';
+const webAdminPassword = 'e2e-password';
 const apiEnvironment = {
   NODE_ENV: 'test',
   HOST: '127.0.0.1',
@@ -28,7 +30,17 @@ const commonWebEnvironment = {
   NEXT_PUBLIC_APP_NAME: 'NPP Core',
   CORE_API_INTERNAL_URL: 'http://127.0.0.1:3004',
   CORE_API_SERVER_TOKEN: backendToken,
+  CORE_WEB_ADMIN_USERNAME: webAdminUsername,
+  CORE_WEB_ADMIN_PASSWORD: webAdminPassword,
   FOUNDATION_R2_TEST_ENABLED: 'false',
+};
+const authenticatedBrowser = {
+  ...devices['Desktop Chrome'],
+  baseURL: 'http://127.0.0.1:3003',
+  httpCredentials: {
+    username: webAdminUsername,
+    password: webAdminPassword,
+  },
 };
 
 export default defineConfig({
@@ -51,6 +63,16 @@ export default defineConfig({
     {
       name: 'routes',
       testMatch: /routes\.spec\.ts/,
+      use: authenticatedBrowser,
+    },
+    {
+      name: 'organization',
+      testMatch: /organization\.spec\.ts/,
+      use: authenticatedBrowser,
+    },
+    {
+      name: 'organization-auth',
+      testMatch: /organization-auth\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3003' },
     },
     {

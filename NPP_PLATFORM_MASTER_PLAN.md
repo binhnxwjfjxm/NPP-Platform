@@ -976,11 +976,50 @@ migration
 -> merge
 ```
 
+### Phase 3 Slice 1 — Organization and Warehouse Structure
+
+**Scope:**
+- installation/company config (read-only for now)
+- branches (list, get, create, update, activate/deactivate)
+- warehouses (list, get, create, update, activate/deactivate)
+- warehouse locations (list, get, create, update, activate/deactivate)
+
+**Features NOT in this slice:**
+- users/employees/roles/scopes
+- customers/customer groups
+- suppliers/supplier terms
+- products/SKU
+- inventory ledger
+- sales
+- purchasing
+- MCP cutover
+
+**Status:** Phase 3.1 implementation complete on `agent/phase-3-org-warehouse-slice`; PR verification gate green, merge pending.
+
+**Completed:**
+- [x] Migrations: branches, warehouses, warehouse_locations tables with proper constraints
+- [x] Repository layer for all three entities
+- [x] Service layer with validation (code normalization, parent existence, parent active checks)
+- [x] API endpoints (GET, POST, PATCH) with idempotency and audit
+- [x] Permission model (read/write splits)
+- [x] Optimistic concurrency control via expectedUpdatedAt on PATCH
+- [x] Transaction semantics enforced: POST creates entity + audit within transaction; rollback on error preserves clean DB
+- [x] Audit records: before/after data, action type, metadata
+- [x] Regression tests: expectedUpdatedAt validation, stale conflict, install-scoped isolation, before/after audit data
+- [x] GitHub Actions workflow: PostgreSQL service + migration step for CI
+- [x] Tests read environment variables (TEST_DATABASE_URL) not hardcoded local URL
+- [x] Next.js server-only frontend gateway for organization resources
+- [x] `/organization` UI for branches, warehouses, and warehouse locations
+- [x] Playwright vertical-slice E2E with actual Core API + PostgreSQL
+- [x] Full PR CI verification: Foundation F0.2, Core Foundation, and Core UI/Browser E2E
+
+**Gate opens when:** API tests pass in CI PostgreSQL environment, migrations verify, E2E tests pass with actual Core API + PostgreSQL, and full PR CI passes.
+
 ### Phase 3 — Master data
 
 ```text
 [ ] installation/company config
-[ ] branches/warehouses/locations
+[x] branches/warehouses/locations (Phase 3.1)
 [ ] users/employees/roles/scopes
 [ ] customers/customer groups/addresses
 [ ] suppliers/supplier terms
