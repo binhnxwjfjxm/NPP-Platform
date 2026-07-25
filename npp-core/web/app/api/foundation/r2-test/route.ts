@@ -1,76 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  isFoundationR2TestEnabled,
+  isFoundationUiEnabled,
+  normalizeFoundationGatewayError,
+  resolveFoundationRequestId,
+  runFoundationR2Test,
+} from '../../../../lib/foundation-gateway';
 
-export const POST = async (request: NextRequest) => {
-  // Check if foundation UI and R2 test are enabled
-  const foundationEnabled = process.env.FOUNDATION_TEST_UI_ENABLED === 'true';
-  const r2TestEnabled = process.env.FOUNDATION_R2_TEST_ENABLED === 'true';
+export const dynamic = 'force-dynamic';
 
-  if (!foundationEnabled) {
-    return NextResponse.json({ error: 'Not Found' }, { status: 404 });
+export async function POST(request: NextRequest) {
+  if (!isFoundationUiEnabled() || !isFoundationR2TestEnabled()) {
+    return new NextResponse(null, { status: 404 });
   }
 
-  if (!r2TestEnabled) {
-    return NextResponse.json(
-      {
-        testRan: false,
-        reason: 'R2 test is disabled by default in CI and local development',
-        enabled: false,
-      },
-      { status: 200 }
-    );
-  }
-
+  const requestId = resolveFoundationRequestId(request.headers.get('x-request-id'));
   try {
-    const coreApiUrl = process.env.CORE_API_INTERNAL_URL || 'http://127.0.0.1:3004';
-    const coreApiToken = process.env.CORE_API_SERVER_TOKEN || 'test-token';
-
-    // Test R2 presign endpoint
-    const r2Response = await fetch(`${coreApiUrl}/api/storage/r2/presign-put`, {
-      method: 'POST',
+    const result = await runFoundationR2Test(requestId);
+    return NextResponse.json(result, {
+      status: 200,
       headers: {
-        'Authorization': `Bearer ${coreApiToken}`,
-        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        'x-request-id': requestId,
       },
-      body: JSON.stringify({
-        key: 'test/foundation-test.txt',
-        contentType: 'text/plain',
-      }),
-    });
-
-    if (!r2Response.ok) {
-      const errorText = await r2Response.text();
-      return NextResponse.json(
-        {
-          testRan: true,
-          success: false,
-          statusCode: r2Response.status,
-          error: 'R2 presign endpoint returned error',
-          // Never include the actual error details or any credentials
-        },
-        { status: 200 }
-      );
-    }
-
-    const r2Data = await r2Response.json();
-
-    // Return only safe test results (no signed URLs, no credentials)
-    return NextResponse.json({
-      testRan: true,
-      success: true,
-      presignEnabled: true,
-      message: 'R2 presign endpoint is working',
-      // Don't expose the actual signed URL or any credentials
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const normalized = normalizeFoundationGatewayError(error);
     return NextResponse.json(
       {
-        testRan: true,
-        success: false,
-        error: 'Failed to test R2 presign endpoint',
-        reason: message,
+        error: {
+          code: normalized.code,
+          message: normalized.publicMessage,
+          retryable: normalized.retryable,
+        },
+        requestId,
+        checkedAt: new Date().toISOString(),
       },
-      { status: 200 }
+      {
+        status: normalized.statusCode,
+        headers: {
+          'Cache-Control': 'no-store',
+          'x-request-id': requestId,
+        },
+      },
     );
   }
-};
+}
