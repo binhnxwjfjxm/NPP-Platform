@@ -29,6 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     name: Browser E2E Tests
     env:
+      # Temporary isolated PostgreSQL runner credentials for CI only.
+      # These values are not stored as GitHub secrets and are not production credentials.
       E2E_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/npp_e2e
       E2E_BACKEND_API_TOKEN: ci-e2e-token-not-a-production-secret
 

@@ -10,8 +10,6 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.js",
     "test:e2e": "playwright test",
-    "test:e2e:headed": "playwright test --headed",
-    "test:e2e:report": "playwright show-report",
     "verify": "npm run typecheck && npm run test && npm run build && npm run test:e2e"
   },
   "dependencies": {

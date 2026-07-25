@@ -17,44 +17,45 @@ const E2E_BACKEND_API_TOKEN = requiredTestEnv('E2E_BACKEND_API_TOKEN');
  * Playwright configuration for Core UI and browser verification tests
  * 
  * Tests run against:
- * - Core Web: http://localhost:3003
- * - Core API: http://localhost:3004 (started before tests)
- * - PostgreSQL: ephemeral service (in CI) or local test instance
- * 
- * Secrets are never exposed to browser:
- * - CORE_API_SERVER_TOKEN is server-only (never in NEXT_PUBLIC_*)
- * - R2 credentials and endpoints not in browser
- * - Database URLs not accessible from browser
+ * - Core Web disabled mode: http://127.0.0.1:3003
+ * - Core Web enabled mode: http://127.0.0.1:3005
+ * - Core API: http://127.0.0.1:3004
+ * - PostgreSQL: local test instance or CI service
  */
 export default defineConfig({
   testDir: './e2e',
-  // Run all tests serially to avoid port conflicts
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 3 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: [
-    ['html'],
-    ['json', { outputFile: 'test-results/results.json' }],
-    ['junit', { outputFile: 'test-results/results.xml' }],
+    ['list'],
+    ['html', { open: 'never' }],
   ],
 
   use: {
-    baseURL: 'http://127.0.0.1:3003',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
 
   projects: [
     {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      name: 'disabled',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://127.0.0.1:3003',
+      },
+    },
+    {
+      name: 'enabled',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://127.0.0.1:3005',
+      },
     },
   ],
 
-  // Start Core API and Core Web servers before tests
   webServer: [
-    // Core API must start first (needed for health checks)
     {
       command: 'npm --workspace npp-core-api run dev',
       url: 'http://127.0.0.1:3004/health/live',
@@ -74,7 +75,6 @@ export default defineConfig({
       },
       timeout: 120 * 1000,
     },
-    // Core Web starts second
     {
       command: 'npm --workspace npp-core-web run dev',
       url: 'http://127.0.0.1:3003',
@@ -83,6 +83,23 @@ export default defineConfig({
         NODE_ENV: 'test',
         HOST: '127.0.0.1',
         PORT: '3003',
+        NEXT_PUBLIC_CORE_API_URL: 'http://127.0.0.1:3004',
+        NEXT_PUBLIC_INSTALLATION_ID: 'e2e-installation',
+        CORE_API_INTERNAL_URL: 'http://127.0.0.1:3004',
+        CORE_API_SERVER_TOKEN: E2E_BACKEND_API_TOKEN,
+        FOUNDATION_TEST_UI_ENABLED: 'false',
+        FOUNDATION_R2_TEST_ENABLED: 'false',
+      },
+      timeout: 120 * 1000,
+    },
+    {
+      command: 'npm --workspace npp-core-web exec -- next dev -p 3005',
+      url: 'http://127.0.0.1:3005',
+      reuseExistingServer: !process.env.CI,
+      env: {
+        NODE_ENV: 'test',
+        HOST: '127.0.0.1',
+        PORT: '3005',
         NEXT_PUBLIC_CORE_API_URL: 'http://127.0.0.1:3004',
         NEXT_PUBLIC_INSTALLATION_ID: 'e2e-installation',
         CORE_API_INTERNAL_URL: 'http://127.0.0.1:3004',
