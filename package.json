@@ -24,6 +24,7 @@
     "rehearse:core-api": "npm run migration:rehearse",
     "build:core-web": "npm --workspace npp-core-web run build",
     "verify:core-web": "npm --workspace npp-core-web run typecheck && npm --workspace npp-core-web run test && npm --workspace npp-core-web run build",
+    "test:core-ui-e2e": "npm --workspace npp-core-web run test:e2e",
     "verify": "npm run verify:mcp && npm run verify:packages && npm run verify:core-api && npm run verify:core-web",
     "start:core-api": "npm --workspace npp-core-api run start",
     "start": "npm run start:core-api",
