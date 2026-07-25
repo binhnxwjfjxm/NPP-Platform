@@ -1,6 +1,5 @@
 import * as warehouseRepo from '../db/repositories/warehouse.js';
 import * as branchRepo from '../db/repositories/branch.js';
-import * as locationRepo from '../db/repositories/location.js';
 
 const WAREHOUSE_TYPES = Object.freeze(['main', 'distribution', 'vehicle', 'quarantine', 'returns', 'transit', 'other']);
 const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
@@ -178,7 +177,7 @@ export async function updateWarehouseStatus(client, { id, installationId, isActi
   }
 
   if (!isActive) {
-    const hasActive = await locationRepo.hasActiveLocations(client, { warehouseId: id, installationId });
+    const hasActive = await warehouseRepo.hasActiveLocations(client, { warehouseId: id, installationId });
     if (hasActive) {
       return { ok: false, code: 'CANNOT_DEACTIVATE', message: 'Cannot deactivate a warehouse that has active locations', retryable: false };
     }
