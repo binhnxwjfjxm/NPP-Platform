@@ -20,6 +20,7 @@
     "verify:packages": "npm --workspace @npp/contracts run verify && npm --workspace @npp/domain-types run verify && npm --workspace @npp/shared-utils run verify && npm --workspace @npp/auth-context run verify && npm --workspace @npp/test-helpers run verify",
     "build:core-api": "npm --workspace npp-core-api run build",
     "verify:core-api": "npm --workspace npp-core-api run verify",
+    "rehearse:core-api": "npm --workspace npp-core-api run rehearse:migrations",
     "build:core-web": "npm --workspace npp-core-web run build",
     "verify:core-web": "npm --workspace npp-core-web run typecheck && npm --workspace npp-core-web run test && npm --workspace npp-core-web run build",
     "verify": "npm run verify:mcp && npm run verify:packages && npm run verify:core-api && npm run verify:core-web",

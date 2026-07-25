@@ -7,9 +7,13 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "build": "node --check src/server.js && node --check src/config.js && node --check src/http-utils.js && node --check src/request-context.js && node --check src/idempotency.js && node --check src/audit-outbox.js && node --check src/db/pool.js && node --check src/migrations/index.js",
+    "build": "node --check src/server.js && node --check src/config.js && node --check src/http-utils.js && node --check src/request-context.js && node --check src/idempotency.js && node --check src/audit-outbox.js && node --check src/db/pool.js && node --check src/migrations/index.js && node --check src/migrations/cli.js && node --check scripts/rehearse-migrations.js",
     "test": "node --test test/*.test.js",
-    "verify": "npm run build && npm run test"
+    "verify": "npm run build && npm run test",
+    "migrations:status": "node src/migrations/cli.js status",
+    "migrations:migrate": "node src/migrations/cli.js migrate",
+    "migrations:verify": "node src/migrations/cli.js verify",
+    "rehearse:migrations": "node scripts/rehearse-migrations.js"
   },
   "engines": {
     "node": ">=20"
