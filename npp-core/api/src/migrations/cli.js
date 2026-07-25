@@ -1,7 +1,12 @@
+import { createHash } from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 import { CORE_API_MIGRATIONS, runMigrations } from './index.js';
 
-const PRODUCTION_ALLOW_ENV = 'MIGRATION_ALLOW_PRODUCTION';
+export const PRODUCTION_ALLOW_ENV = 'MIGRATION_ALLOW_PRODUCTION';
+export const PRODUCTION_CONFIRM_ENV = 'MIGRATION_PRODUCTION_CONFIRM';
+export const PRODUCTION_CONFIRM_VALUE = 'I_UNDERSTAND_THIS_TARGETS_PRODUCTION';
 
 function fail(code, message) {
   const error = new Error(message);
@@ -9,7 +14,7 @@ function fail(code, message) {
   throw error;
 }
 
-function parseDatabaseUrl(value) {
+export function parseDatabaseUrl(value) {
   if (!value) fail('missing_database_url', 'DATABASE_URL is required for migration commands');
   let url;
   try {
@@ -23,56 +28,94 @@ function parseDatabaseUrl(value) {
   return url.toString();
 }
 
-function sanitizeDatabaseIdentifier(connectionString) {
+function hashIdentifier(value) {
+  return createHash('sha256').update(String(value)).digest('hex').slice(0, 12);
+}
+
+export function sanitizeDatabaseIdentifier(connectionString) {
   try {
     const url = new URL(connectionString);
-    const dbName = url.pathname ? url.pathname.slice(1) : 'unknown';
-    return `database:${dbName || 'unknown'}`;
+    const dbName = url.pathname ? decodeURIComponent(url.pathname.slice(1)) : 'unknown';
+    return `database:${hashIdentifier(dbName || 'unknown')}`;
   } catch {
     return 'database:unknown';
   }
 }
 
-function shouldRejectProduction(nodeEnv) {
-  const normalized = String(nodeEnv ?? '').trim().toLowerCase();
-  return normalized === 'production' && process.env[PRODUCTION_ALLOW_ENV] !== 'true';
+export function redactSensitiveText(value, connectionString) {
+  let text = String(value ?? '');
+  if (connectionString) text = text.split(String(connectionString)).join('[REDACTED_DATABASE_URL]');
+  text = text.replace(/postgres(?:ql)?:\/\/[^\s'"`]+/gi, '[REDACTED_DATABASE_URL]');
+
+  try {
+    const url = new URL(connectionString);
+    const sensitiveParts = [url.username, url.password, url.hostname].filter(Boolean);
+    for (const part of sensitiveParts) {
+      text = text.split(decodeURIComponent(part)).join('[REDACTED]');
+      text = text.split(part).join('[REDACTED]');
+    }
+  } catch {
+    // The generic PostgreSQL URL pattern above still protects raw URLs.
+  }
+
+  return text;
+}
+
+export function assertMigrationSafety({
+  nodeEnv = process.env.NODE_ENV,
+  allowProduction = process.env[PRODUCTION_ALLOW_ENV],
+  productionConfirm = process.env[PRODUCTION_CONFIRM_ENV],
+} = {}) {
+  const isProduction = String(nodeEnv ?? '').trim().toLowerCase() === 'production';
+  if (!isProduction) return;
+
+  if (allowProduction !== 'true' || productionConfirm !== PRODUCTION_CONFIRM_VALUE) {
+    fail(
+      'production_migration_forbidden',
+      `Production migration commands require both ${PRODUCTION_ALLOW_ENV}=true and ${PRODUCTION_CONFIRM_ENV}=${PRODUCTION_CONFIRM_VALUE}`,
+    );
+  }
 }
 
 function jsonLog(payload) {
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-async function createPool(connectionString) {
-  const pool = new Pool({ connectionString });
-  return pool;
+function createPool(connectionString) {
+  return new Pool({ connectionString });
 }
 
 async function closePool(pool) {
-  if (!pool) return;
-  await pool.end();
+  if (pool) await pool.end();
 }
 
-async function getAppliedMigrations(adapter) {
-  const result = await adapter.query(`
-    SELECT id FROM shared.schema_migrations ORDER BY id
-  `);
-  return (result.rows ?? []).map((row) => String(row.id));
+async function schemaMigrationsTableExists(adapter) {
+  const result = await adapter.query(
+    `SELECT to_regclass('shared.schema_migrations') IS NOT NULL AS exists`,
+  );
+  return result.rows?.[0]?.exists === true;
 }
 
-function buildMigrationStatus(applied, all) {
+export function buildMigrationStatus(applied, all = CORE_API_MIGRATIONS) {
   const appliedSet = new Set(applied);
-  return {
-    applied,
-    pending: all.filter((migration) => !appliedSet.has(migration.id)).map((migration) => migration.id),
-  };
+  return Object.freeze({
+    applied: Object.freeze([...applied]),
+    pending: Object.freeze(all.filter((migration) => !appliedSet.has(migration.id)).map((migration) => migration.id)),
+  });
+}
+
+export async function migrationStatusWithAdapter(adapter, migrations = CORE_API_MIGRATIONS) {
+  if (!(await schemaMigrationsTableExists(adapter))) return buildMigrationStatus([], migrations);
+  const result = await adapter.query('SELECT id FROM shared.schema_migrations ORDER BY id');
+  const applied = (result.rows ?? []).map((row) => String(row.id));
+  return buildMigrationStatus(applied, migrations);
 }
 
 export async function migrationStatus({ databaseUrl }) {
   const connectionString = parseDatabaseUrl(databaseUrl);
-  const pool = await createPool(connectionString);
+  const pool = createPool(connectionString);
   try {
-    const applied = await getAppliedMigrations(pool);
-    return buildMigrationStatus(applied, CORE_API_MIGRATIONS);
+    return await migrationStatusWithAdapter(pool);
   } finally {
     await closePool(pool);
   }
@@ -80,128 +123,136 @@ export async function migrationStatus({ databaseUrl }) {
 
 export async function migrationMigrate({ databaseUrl }) {
   const connectionString = parseDatabaseUrl(databaseUrl);
-  const pool = await createPool(connectionString);
+  const pool = createPool(connectionString);
   try {
     const result = await runMigrations(pool, CORE_API_MIGRATIONS);
-    return { applied: result.applied };
+    return Object.freeze({ applied: result.applied });
   } finally {
     await closePool(pool);
   }
 }
 
-async function queryObjectExistence(adapter, schema, name, type) {
-  const result = await adapter.query(
-    `SELECT COUNT(1) AS count FROM information_schema.${type}s WHERE table_schema = $1 AND ${type}_name = $2`,
-    [schema, name],
-  );
-  return Number(result.rows[0]?.count ?? 0) > 0;
+async function tableExists(adapter, schema, table) {
+  const result = await adapter.query('SELECT to_regclass($1) IS NOT NULL AS exists', [`${schema}.${table}`]);
+  return result.rows?.[0]?.exists === true;
 }
 
-async function queryConstraintExists(adapter, constraintName) {
+async function constraintExists(adapter, schema, table, constraint) {
   const result = await adapter.query(
-    `SELECT COUNT(1) AS count FROM pg_constraint WHERE conname = $1`,
-    [constraintName],
+    `SELECT EXISTS (
+       SELECT 1
+       FROM pg_constraint c
+       JOIN pg_class t ON t.oid = c.conrelid
+       JOIN pg_namespace n ON n.oid = t.relnamespace
+       WHERE n.nspname = $1 AND t.relname = $2 AND c.conname = $3
+     ) AS exists`,
+    [schema, table, constraint],
   );
-  return Number(result.rows[0]?.count ?? 0) > 0;
+  return result.rows?.[0]?.exists === true;
 }
 
-async function queryTriggerExists(adapter, triggerName) {
+async function triggerExists(adapter, schema, table, trigger) {
   const result = await adapter.query(
-    `SELECT COUNT(1) AS count FROM pg_trigger WHERE tgname = $1`,
-    [triggerName],
+    `SELECT EXISTS (
+       SELECT 1
+       FROM pg_trigger g
+       JOIN pg_class t ON t.oid = g.tgrelid
+       JOIN pg_namespace n ON n.oid = t.relnamespace
+       WHERE n.nspname = $1 AND t.relname = $2 AND g.tgname = $3 AND NOT g.tgisinternal
+     ) AS exists`,
+    [schema, table, trigger],
   );
-  return Number(result.rows[0]?.count ?? 0) > 0;
+  return result.rows?.[0]?.exists === true;
+}
+
+async function indexExists(adapter, schema, index) {
+  const result = await adapter.query(
+    'SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND indexname = $2) AS exists',
+    [schema, index],
+  );
+  return result.rows?.[0]?.exists === true;
+}
+
+export function collectVerificationIssues({ status, tables, constraints, triggers, indexes }) {
+  const issues = [];
+  if (status.pending.length > 0) issues.push(`pending migrations: ${status.pending.join(', ')}`);
+
+  for (const [name, exists] of Object.entries(tables)) {
+    if (!exists) issues.push(`missing table ${name}`);
+  }
+  for (const [name, exists] of Object.entries(constraints)) {
+    if (!exists) issues.push(`missing constraint ${name}`);
+  }
+  for (const [name, exists] of Object.entries(triggers)) {
+    if (!exists) issues.push(`missing trigger ${name}`);
+  }
+  for (const [name, exists] of Object.entries(indexes)) {
+    if (!exists) issues.push(`missing index ${name}`);
+  }
+  return issues;
+}
+
+export async function migrationVerifyWithAdapter(adapter) {
+  const status = await migrationStatusWithAdapter(adapter);
+  const tables = {
+    'shared.schema_migrations': await tableExists(adapter, 'shared', 'schema_migrations'),
+    'shared.core_idempotency_records': await tableExists(adapter, 'shared', 'core_idempotency_records'),
+    'shared.core_audit_records': await tableExists(adapter, 'shared', 'core_audit_records'),
+    'shared.core_outbox_events': await tableExists(adapter, 'shared', 'core_outbox_events'),
+  };
+  const constraints = {
+    core_idempotency_records_scope_key: await constraintExists(adapter, 'shared', 'core_idempotency_records', 'core_idempotency_records_scope_key'),
+    core_idempotency_records_state_shape: await constraintExists(adapter, 'shared', 'core_idempotency_records', 'core_idempotency_records_state_shape'),
+    core_outbox_events_published_state: await constraintExists(adapter, 'shared', 'core_outbox_events', 'core_outbox_events_published_state'),
+  };
+  const triggers = {
+    core_audit_records_append_only: await triggerExists(adapter, 'shared', 'core_audit_records', 'core_audit_records_append_only'),
+  };
+  const indexes = {
+    core_outbox_events_pending_available_idx: await indexExists(adapter, 'shared', 'core_outbox_events_pending_available_idx'),
+  };
+
+  const issues = collectVerificationIssues({ status, tables, constraints, triggers, indexes });
+  return Object.freeze({ verified: issues.length === 0, issues: Object.freeze(issues) });
 }
 
 export async function migrationVerify({ databaseUrl }) {
   const connectionString = parseDatabaseUrl(databaseUrl);
-  const pool = await createPool(connectionString);
+  const pool = createPool(connectionString);
   try {
-    const status = await migrationStatus({ databaseUrl: connectionString });
-    const missing = [];
-
-    if (status.pending.length > 0) {
-      missing.push(`pending migrations: ${status.pending.join(', ')}`);
-    }
-
-    const requiredTables = [
-      { schema: 'shared', name: 'schema_migrations' },
-      { schema: 'shared', name: 'core_idempotency_records' },
-      { schema: 'shared', name: 'core_audit_records' },
-      { schema: 'shared', name: 'core_outbox_events' },
-    ];
-
-    for (const table of requiredTables) {
-      const exists = await queryObjectExistence(pool, table.schema, table.name, 'table');
-      if (!exists) missing.push(`missing table ${table.schema}.${table.name}`);
-    }
-
-    const requiredConstraints = [
-      'core_idempotency_records_scope_key',
-      'core_idempotency_records_state_shape',
-      'core_outbox_events_published_state',
-    ];
-
-    for (const constraint of requiredConstraints) {
-      const exists = await queryConstraintExists(pool, constraint);
-      if (!exists) missing.push(`missing constraint ${constraint}`);
-    }
-
-    const requiredTrigger = 'core_audit_records_append_only';
-    if (!(await queryTriggerExists(pool, requiredTrigger))) {
-      missing.push(`missing trigger ${requiredTrigger}`);
-    }
-
-    if (missing.length > 0) {
-      return { verified: false, issues: missing };
-    }
-
-    return { verified: true, issues: [] };
+    return await migrationVerifyWithAdapter(pool);
   } finally {
     await closePool(pool);
   }
 }
 
 function usage() {
-  console.error('Usage: node src/migrations/cli.js <status|migrate|verify>');
+  process.stderr.write('Usage: node src/migrations/cli.js <status|migrate|verify>\n');
 }
 
-async function handleCommand(command) {
-  const databaseUrl = parseDatabaseUrl(process.env.DATABASE_URL);
-  if (shouldRejectProduction(process.env.NODE_ENV)) {
-    fail('production_migration_forbidden', 'Migration commands are not allowed in production without explicit MIGRATION_ALLOW_PRODUCTION=true');
-  }
+export async function runMigrationCommand(command, env = process.env) {
+  const databaseUrl = parseDatabaseUrl(env.DATABASE_URL);
+  assertMigrationSafety({
+    nodeEnv: env.NODE_ENV,
+    allowProduction: env[PRODUCTION_ALLOW_ENV],
+    productionConfirm: env[PRODUCTION_CONFIRM_ENV],
+  });
 
   const identifier = sanitizeDatabaseIdentifier(databaseUrl);
-  const baseLog = {
-    timestamp: new Date().toISOString(),
-    command,
-    databaseIdentifier: identifier,
-    status: 'started',
-  };
-  jsonLog(baseLog);
+  jsonLog({ timestamp: new Date().toISOString(), command, databaseIdentifier: identifier, status: 'started' });
 
-  let result;
   try {
-    if (command === 'status') {
-      result = await migrationStatus({ databaseUrl });
-    } else if (command === 'migrate') {
-      result = await migrationMigrate({ databaseUrl });
-    } else if (command === 'verify') {
-      result = await migrationVerify({ databaseUrl });
-    } else {
+    let result;
+    if (command === 'status') result = await migrationStatus({ databaseUrl });
+    else if (command === 'migrate') result = await migrationMigrate({ databaseUrl });
+    else if (command === 'verify') result = await migrationVerify({ databaseUrl });
+    else {
       usage();
-      process.exit(1);
+      return 2;
     }
 
-    jsonLog({
-      timestamp: new Date().toISOString(),
-      command,
-      databaseIdentifier: identifier,
-      status: 'success',
-      result,
-    });
-    process.exit(command === 'verify' && result.verified === false ? 1 : 0);
+    jsonLog({ timestamp: new Date().toISOString(), command, databaseIdentifier: identifier, status: 'success', result });
+    return command === 'verify' && result.verified === false ? 1 : 0;
   } catch (error) {
     jsonLog({
       timestamp: new Date().toISOString(),
@@ -210,18 +261,20 @@ async function handleCommand(command) {
       status: 'error',
       error: {
         code: error.code || 'UNKNOWN_ERROR',
-        message: String(error.message),
+        message: redactSensitiveText(error.message, databaseUrl),
       },
     });
-    process.exit(1);
+    return 1;
   }
 }
 
-if (process.argv[1].endsWith('cli.js') || process.argv[1].endsWith('cli.mjs')) {
+const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMainModule) {
   const command = process.argv[2];
   if (!command) {
     usage();
-    process.exit(1);
+    process.exitCode = 2;
+  } else {
+    process.exitCode = await runMigrationCommand(command);
   }
-  handleCommand(command);
 }
