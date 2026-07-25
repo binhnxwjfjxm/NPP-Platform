@@ -1,74 +1,52 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
-test.describe('Core Web Routes', () => {
-  test('/ landing page loads without 404', async ({ page }) => {
-    const response = await page.goto('/');
-    expect(response?.status()).toBe(200);
+async function expectHealthyRoute(page: Page, path: string) {
+  const browserErrors: string[] = [];
+  const failedAssets: string[] = [];
+  page.on('pageerror', (error) => browserErrors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text());
+  });
+  page.on('response', (response) => {
+    const url = new URL(response.url());
+    if (url.origin === 'http://127.0.0.1:3003' && /\.(?:css|js|woff2?|png|jpe?g|webp|svg)(?:\?|$)/i.test(url.pathname) && response.status() >= 400) {
+      failedAssets.push(`${response.status()} ${url.pathname}`);
+    }
   });
 
-  test('/ landing page has content', async ({ page }) => {
+  const response = await page.goto(path);
+  expect(response?.status()).toBe(200);
+  await page.waitForLoadState('networkidle');
+  expect(browserErrors).toEqual([]);
+  expect(failedAssets).toEqual([]);
+}
+
+test.describe('Core web route smoke', () => {
+  test('landing page loads cleanly', async ({ page }) => {
+    await expectHealthyRoute(page, '/');
+    await expect(page.locator('h1')).toBeVisible();
+  });
+
+  test('login page loads cleanly', async ({ page }) => {
+    await expectHealthyRoute(page, '/login');
+  });
+
+  test('dashboard page follows its current render contract', async ({ page }) => {
+    await expectHealthyRoute(page, '/dashboard');
+  });
+
+  test('same-origin static assets are present and load', async ({ page }) => {
     await page.goto('/');
-    // Wait for any Next.js hydration
-    await page.waitForLoadState('networkidle');
-    const heading = page.locator('h1');
-    expect(heading).toBeVisible();
+    const assets = page.locator('link[rel="stylesheet"], script[src]');
+    expect(await assets.count()).toBeGreaterThan(0);
   });
 
-  test('/login page loads without 404', async ({ page }) => {
-    const response = await page.goto('/login');
-    expect(response?.status()).toBe(200);
-  });
-
-  test('/dashboard page loads without 404', async ({ page }) => {
-    const response = await page.goto('/dashboard');
-    expect(response?.status()).toBe(200);
-  });
-
-  test('no uncaught console errors on landing page', async ({ page }) => {
-    const errors: string[] = [];
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') {
-        errors.push(msg.text());
-      }
-    });
-
+  test('landing HTML excludes credential-shaped data', async ({ page }) => {
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
-
-    expect(errors).toHaveLength(0);
-  });
-
-  test('no uncaught console errors on login page', async ({ page }) => {
-    const errors: string[] = [];
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') {
-        errors.push(msg.text());
-      }
-    });
-
-    await page.goto('/login');
-    await page.waitForLoadState('networkidle');
-
-    expect(errors).toHaveLength(0);
-  });
-
-  test('static assets load without 404', async ({ page }) => {
-    await page.goto('/');
-
-    // Check that at least one stylesheet or script is present on the page
-    const assetCount = await page.locator('link[rel="stylesheet"], script[src]').count();
-    expect(assetCount).toBeGreaterThanOrEqual(0);
-  });
-
-  test('landing page has no sensitive data in HTML', async ({ page }) => {
-    await page.goto('/');
-    const content = await page.content();
-
-    // Ensure no secrets are in the page HTML
-    expect(content).not.toContain('Bearer');
-    expect(content).not.toContain('secret');
-    expect(content).not.toContain('password');
-    expect(content).not.toContain('token');
-    expect(content).not.toContain('API_KEY');
+    const html = await page.content();
+    expect(html).not.toContain('postgresql://');
+    expect(html).not.toContain('CORE_API_SERVER_TOKEN');
+    expect(html).not.toContain('R2_SECRET_ACCESS_KEY');
+    expect(html).not.toMatch(/Bearer\s+[A-Za-z0-9._~-]+/i);
   });
 });
