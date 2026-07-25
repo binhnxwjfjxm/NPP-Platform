@@ -54,6 +54,11 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3003' },
     },
     {
+      name: 'organization',
+      testMatch: /organization\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3003' },
+    },
+    {
       name: 'foundation-disabled',
       testMatch: /foundation-disabled\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3003' },
