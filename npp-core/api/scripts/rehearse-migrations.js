@@ -77,6 +77,7 @@ export function buildSpawnEnv(connectionString, sourceEnv = process.env) {
   env.PGUSER = decodeURIComponent(parsed.username || '');
   env.PGPASSWORD = decodeURIComponent(parsed.password || '');
   env.PGDATABASE = decodeURIComponent(parsed.pathname.slice(1));
+  if (parsed.searchParams.get('sslmode')) env.PGSSLMODE = parsed.searchParams.get('sslmode');
   delete env.DATABASE_URL;
   return { env, databaseName: env.PGDATABASE };
 }
@@ -331,8 +332,8 @@ async function backupDatabase(sourceDatabaseUrl, backupPath, sourceEnv) {
 }
 
 async function restoreDatabase(restoreDatabaseUrl, backupPath, sourceEnv) {
-  const { env } = buildSpawnEnv(restoreDatabaseUrl, sourceEnv);
-  runCommand('pg_restore', ['--no-owner', '--exit-on-error', backupPath], env);
+  const { env, databaseName } = buildSpawnEnv(restoreDatabaseUrl, sourceEnv);
+  runCommand('pg_restore', ['--no-owner', '--exit-on-error', '--dbname', databaseName, backupPath], env);
 }
 
 function arraysMatch(left, right) {
@@ -369,7 +370,7 @@ export async function cleanupResources({ sourceDatabaseName, restoreDatabaseName
 
   if (backupPath) {
     try {
-      operations.removeBackup(backupPath);
+      await operations.removeBackup(backupPath);
       cleanup.backup = 'removed';
     } catch (error) {
       cleanup.backup = 'failed';
