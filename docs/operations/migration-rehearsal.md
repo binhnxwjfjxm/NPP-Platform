@@ -1,57 +1,110 @@
 # Migration Rehearsal
 
-This document describes the Phase 2 migration rehearsal foundation for the Core API.
+This runbook describes the Phase 2 migration rehearsal foundation for the NPP Core API. It verifies migrations against disposable PostgreSQL databases only. It does **not** confirm that any production backup exists or that production is ready for migration.
 
 ## Purpose
 
-The migration rehearsal runner verifies that the shared PostgreSQL schema migrations for `npp-core/api`:
+The rehearsal proves that the current Core migrations:
 
-- apply cleanly to a fresh database
-- are idempotent on a second run
-- create the expected `shared.*` tables, constraints, triggers, and indexes
-- accept sample rehearsal data
-- survive a `pg_dump`/`pg_restore` cycle
-- reconcile pre-backup and post-restore schema/data snapshots
+- apply cleanly to a fresh database;
+- apply nothing on a second run;
+- create the required `shared` tables, constraints, indexes, and audit append-only trigger;
+- accept non-sensitive sample foundation data;
+- survive a logical custom-format `pg_dump` and `pg_restore` cycle;
+- reconcile migration IDs, row counts, data checksums, constraints, indexes, and triggers;
+- clean up source and restored rehearsal databases even after failure.
 
-## Files added
+## Commands
 
-- `npp-core/api/src/migrations/cli.js`
-- `npp-core/api/scripts/rehearse-migrations.js`
-- `npp-core/api/test/rehearse-migrations.test.js`
-- `npp-core/api/package.json` scripts for migration and rehearsal commands
-- `.github/workflows/core-foundation.yml` new job for rehearsal validation
-
-## Usage
-
-Run the rehearsal locally from the `npp-core/api` workspace:
+From the repository root:
 
 ```bash
-cd npp-core/api
-npm run rehearse:migrations
+npm run migration:rehearse
 ```
 
-This writes a JSON report to `artifacts/migration-rehearsal-report.json`.
-
-## Environment requirements
-
-- `DATABASE_URL` must point to a PostgreSQL database that accepts temporary database creation
-- `NODE_ENV` must not be `production`
-- `pg_dump` and `pg_restore` must be available on the runner
-
-Example:
+From `npp-core/api`:
 
 ```bash
-export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
-export NODE_ENV=development
-npm run rehearse:migrations
+npm run migration:status
+npm run migration:migrate
+npm run migration:verify
+npm run migration:rehearse
 ```
 
-## CI integration
+The API server never runs migrations automatically during startup.
 
-The workflow includes a `verify-migration-rehearsal` job that:
+## Local prerequisites
 
-- starts a PostgreSQL service container
-- installs PostgreSQL client tools
-- runs the rehearsal script against a temporary database
+- PostgreSQL with permission to create and drop disposable databases.
+- PostgreSQL client tools: `pg_dump` and `pg_restore`.
+- Node.js and npm versions declared by the repository.
+- A backend-only connection variable pointing to a temporary PostgreSQL instance.
 
-This validates migration rehearsal as part of the foundation verification workflow.
+Required variable names:
+
+```text
+DATABASE_URL=postgresql://<user>:<password>@<temporary-host>:<port>/<admin-database>
+NODE_ENV=test
+MIGRATION_REHEARSAL_CONFIRM=temporary-database
+```
+
+Do not use a production connection string. The rehearsal creates randomly named source and restore databases on the supplied PostgreSQL cluster.
+
+Production migration commands are blocked unless both explicit confirmations are present:
+
+```text
+MIGRATION_ALLOW_PRODUCTION=true
+MIGRATION_PRODUCTION_CONFIRM=I_UNDERSTAND_THIS_TARGETS_PRODUCTION
+```
+
+Those production confirmations must not be used for this rehearsal task.
+
+## Report
+
+The runner writes:
+
+```text
+npp-core/artifacts/migration-rehearsal-report.json
+```
+
+The runtime report is ignored by Git and uploaded by CI whether the rehearsal succeeds or fails. It contains:
+
+- start and finish timestamps;
+- success or failure status;
+- PostgreSQL server version;
+- hashed source and restored database identifiers;
+- first-run and second-run migration IDs;
+- pre-backup and post-restore snapshots;
+- reconciliation results;
+- source, restore, and backup cleanup results;
+- sanitized errors without raw connection strings, usernames, passwords, or hostnames.
+
+A passing report requires:
+
+- all expected migrations applied on the first run;
+- no migrations applied on the second run;
+- all required schema objects present;
+- backup and restore completed;
+- every reconciliation field equal;
+- both temporary databases dropped;
+- temporary dump removed;
+- no report errors.
+
+## CI
+
+The `verify-migration-rehearsal` job in `.github/workflows/core-foundation.yml` starts a disposable PostgreSQL 16 service, installs PostgreSQL client tools, runs the full rehearsal, and uploads the JSON report with `if: always()`.
+
+The workflow has no deployment permission and does not call Heroku, Supabase, Vercel, or any production database.
+
+## Production gate before a real migration
+
+A production migration remains blocked until all of the following are separately confirmed:
+
+- a current production backup is verifiably available;
+- restore rehearsal has completed successfully;
+- pre/post reconciliation criteria are approved;
+- an accountable operator has approved the change;
+- a maintenance window is scheduled;
+- rollback criteria and the rollback decision owner are documented.
+
+This runbook and its CI result are rehearsal evidence only. They are not evidence that production backup, restore, or cutover readiness has been completed.
