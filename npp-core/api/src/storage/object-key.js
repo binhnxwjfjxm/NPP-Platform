@@ -1,37 +1,96 @@
+import { randomUUID } from 'node:crypto';
 import { createStorageError, STORAGE_ERROR_CODES } from './errors.js';
 
-function normalizeSegment(value, name) {
-  const text = String(value ?? '').trim();
-  if (!text) {
-    throw createStorageError(STORAGE_ERROR_CODES.keyInvalid, `${name} is required to generate a storage key`, { statusCode: 400 });
-  }
-  if (text.includes('..')) {
-    throw createStorageError(STORAGE_ERROR_CODES.keyInvalid, `${name} cannot contain path traversal`, { statusCode: 400 });
-  }
-  return encodeURIComponent(text);
+export const DEFAULT_STORAGE_NAMESPACES = Object.freeze([
+  '_rehearsal',
+  'contracts',
+  'documents',
+  'exports',
+  'images',
+  'uploads',
+]);
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const INSTALLATION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const NAMESPACE_PATTERN = /^_?[a-z0-9][a-z0-9_-]{0,63}$/;
+
+function invalid(message) {
+  throw createStorageError(STORAGE_ERROR_CODES.keyInvalid, message, {
+    retryable: false,
+    statusCode: 400,
+  });
 }
 
-export function buildR2ObjectKey({ installationId, namespace, objectName, version, suffix } = {}) {
-  const installationSegment = normalizeSegment(installationId, 'installationId');
-  const namespaceSegment = normalizeSegment(namespace, 'namespace');
-  const objectSegment = normalizeSegment(objectName, 'objectName');
+export function normalizeInstallationSegment(value) {
+  const normalized = String(value ?? '').trim();
+  if (!INSTALLATION_PATTERN.test(normalized) || normalized.includes('..')) {
+    invalid('Installation identifier is not valid for storage');
+  }
+  return normalized;
+}
 
-  const segments = [installationSegment, namespaceSegment, objectSegment];
-  if (typeof version === 'string' && version.trim()) {
-    segments.push(`v${encodeURIComponent(version.trim())}`);
+export function normalizeStorageNamespace(value, allowedNamespaces = DEFAULT_STORAGE_NAMESPACES) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (!NAMESPACE_PATTERN.test(normalized)) invalid('Storage namespace is invalid');
+  if (!new Set(allowedNamespaces).has(normalized)) invalid('Storage namespace is not allowed');
+  return normalized;
+}
+
+export function sanitizeStorageFilename(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) invalid('Storage filename is required');
+  if (raw.includes('\0') || raw.includes('/') || raw.includes('\\') || raw === '.' || raw === '..') {
+    invalid('Storage filename contains an unsafe path component');
   }
 
-  let key = segments.join('/');
-  if (typeof suffix === 'string' && suffix.trim()) {
-    const suffixText = suffix.trim().replace(/^\.+/, '');
-    if (suffixText) {
-      key += `.${encodeURIComponent(suffixText)}`;
-    }
-  }
+  const ascii = raw
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/^\.+/, '')
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/\.{2,}/g, '.')
+    .replace(/^[-_.]+|[-_.]+$/g, '');
 
-  if (key.length > 1024) {
-    throw createStorageError(STORAGE_ERROR_CODES.keyInvalid, 'Storage key is too long', { statusCode: 400 });
-  }
+  if (!ascii) invalid('Storage filename is invalid after normalization');
+  const limited = ascii.slice(0, 180).replace(/[-_.]+$/g, '');
+  if (!limited) invalid('Storage filename is invalid after normalization');
+  return limited;
+}
 
+export function buildR2ObjectKey({
+  installationId,
+  namespace,
+  filename,
+  now = new Date(),
+  uuid = randomUUID(),
+  allowedNamespaces = DEFAULT_STORAGE_NAMESPACES,
+} = {}) {
+  const installation = normalizeInstallationSegment(installationId);
+  const safeNamespace = normalizeStorageNamespace(namespace, allowedNamespaces);
+  const safeFilename = sanitizeStorageFilename(filename);
+  const timestamp = now instanceof Date ? now : new Date(now);
+  if (Number.isNaN(timestamp.getTime())) invalid('Storage key date is invalid');
+  if (!UUID_PATTERN.test(String(uuid))) invalid('Storage key UUID is invalid');
+
+  const year = String(timestamp.getUTCFullYear()).padStart(4, '0');
+  const month = String(timestamp.getUTCMonth() + 1).padStart(2, '0');
+  const key = `${installation}/${safeNamespace}/${year}/${month}/${String(uuid).toLowerCase()}-${safeFilename}`;
+  if (key.length > 1024) invalid('Storage key is too long');
   return key;
+}
+
+export function assertInstallationScopedObjectKey({ key, installationId } = {}) {
+  const normalizedKey = String(key ?? '').trim();
+  const installation = normalizeInstallationSegment(installationId);
+  if (!normalizedKey || normalizedKey.length > 1024) invalid('Storage key is invalid');
+  if (normalizedKey.startsWith('/') || normalizedKey.includes('\\') || normalizedKey.includes('\0')) {
+    invalid('Storage key contains an unsafe path component');
+  }
+  const segments = normalizedKey.split('/');
+  if (segments.some((segment) => !segment || segment === '.' || segment === '..')) {
+    invalid('Storage key contains an unsafe path component');
+  }
+  if (segments[0] !== installation) invalid('Storage key is outside the installation scope');
+  return normalizedKey;
 }
