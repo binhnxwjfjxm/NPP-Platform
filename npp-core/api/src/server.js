@@ -8,12 +8,38 @@ import { sendJson, sendSuccess, sendError, sendNoContent } from './http-utils.js
 import { authenticateRequest, createAnonymousPrincipal, createRequestContext, requirePermission, PERMISSIONS, safeRequestContext } from './request-context.js';
 import { resolveRequestId } from '@npp/shared-utils';
 import { createPostgresIdempotencyStore, executeRequestWithIdempotency, readJsonBody } from './idempotency.js';
+import { withAuditOutboxTransaction, buildAuditRecord, insertAuditRecord, buildOutboxEvent, insertOutboxEvent } from './audit-outbox.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const CORS_ALLOWED_HEADERS = 'authorization, content-type, idempotency-key, x-request-id';
 
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
+}
+
+async function defaultAuditOutboxMutation({ client, requestContext, payload }) {
+  const auditRecord = buildAuditRecord({
+    requestContext,
+    action: 'core.audit_outbox_test',
+    resourceType: 'audit-outbox-test',
+    afterData: payload,
+    metadata: {},
+  });
+
+  const outboxEvent = buildOutboxEvent({
+    requestContext,
+    aggregateType: 'core.audit_outbox_test',
+    aggregateId: requestContext.requestId,
+    eventType: 'core.audit_outbox.test.created',
+    eventVersion: 1,
+    payload,
+    metadata: {},
+  });
+
+  await insertAuditRecord(client, auditRecord);
+  await insertOutboxEvent(client, outboxEvent);
+
+  return { auditId: auditRecord.auditId, eventId: outboxEvent.eventId };
 }
 
 function closeHttpServer(server) {
@@ -47,6 +73,8 @@ export function createCoreApiServer(options = {}) {
   const idempotencyStore = options.idempotencyStore
     ?? createPostgresIdempotencyStore(options.idempotencyAdapter ?? getPool(runtimeConfig));
   const idempotencyTestHandler = options.idempotencyTestHandler ?? defaultIdempotencyTestHandler;
+  const auditOutboxAdapter = options.auditOutboxAdapter ?? getPool(runtimeConfig);
+  const auditOutboxMutation = options.auditOutboxMutation ?? defaultAuditOutboxMutation;
 
   return http.createServer(async (req, res) => {
     const receivedAt = new Date().toISOString();
@@ -77,6 +105,7 @@ export function createCoreApiServer(options = {}) {
       ['/api/config', new Set(['GET'])],
       ['/health/authenticated', new Set(['GET'])],
       ['/api/idempotency-test', new Set(['POST'])],
+      ['/api/audit-outbox-test', new Set(['POST'])],
     ]);
 
     if (req.method === 'OPTIONS' && allowedMethods.has(url.pathname)) {
@@ -236,6 +265,66 @@ export function createCoreApiServer(options = {}) {
         sendError(
           res,
           createError('IDEMPOTENCY_STORAGE_ERROR', 'Idempotency storage unavailable', {}, true, 503),
+          requestId,
+          receivedAt,
+        );
+      }
+      return;
+    }
+
+    if (url.pathname === '/api/audit-outbox-test') {
+      const authResult = authenticate(req, runtimeConfig);
+      if (!authResult.ok) {
+        res.setHeader('WWW-Authenticate', 'Bearer');
+        sendError(res, createError('UNAUTHORIZED', 'Authorization required', {}, false, 401), requestId, receivedAt);
+        return;
+      }
+
+      const requestContext = createContext({
+        config: runtimeConfig,
+        principal: authResult.principal,
+        requestId,
+        receivedAt,
+      });
+      req.requestContext = requestContext;
+
+      const permission = authorize(requestContext, PERMISSIONS.coreAuditOutboxTestWrite);
+      if (!permission.ok) {
+        sendError(res, createError('FORBIDDEN', 'Permission denied', {}, false, 403), requestId, receivedAt);
+        return;
+      }
+
+      let payload;
+      try {
+        payload = await readJsonBody(req);
+      } catch (error) {
+        sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), requestId, receivedAt);
+        return;
+      }
+
+      try {
+        const result = await withAuditOutboxTransaction({
+          adapter: auditOutboxAdapter,
+          mutate: async (client, helpers) => {
+            return auditOutboxMutation({
+              client,
+              requestContext,
+              requestId,
+              payload,
+              ...helpers,
+            });
+          },
+        });
+
+        res.setHeader('Cache-Control', 'no-store');
+        sendSuccess(res, {
+          auditId: result.auditId,
+          eventId: result.eventId,
+        }, requestId, receivedAt);
+      } catch {
+        sendError(
+          res,
+          createError('AUDIT_OUTBOX_TRANSACTION_FAILED', 'Audit/outbox transaction failed', {}, true, 503),
           requestId,
           receivedAt,
         );

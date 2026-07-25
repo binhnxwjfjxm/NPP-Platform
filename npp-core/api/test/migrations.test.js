@@ -53,3 +53,17 @@ test('registers idempotency from the shared SQL migration file', () => {
   assert.match(migration.sql, /status IN \('processing', 'completed', 'failed'\)/);
   assert.match(migration.sql, /response_body jsonb/);
 });
+
+test('registers constrained append-only audit and transactional outbox migration', () => {
+  const migration = CORE_API_MIGRATIONS.find(({ id }) => id === '003_core_audit_outbox');
+
+  assert.ok(migration);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS shared\.core_audit_records/);
+  assert.match(migration.sql, /CREATE TRIGGER core_audit_records_append_only/);
+  assert.match(migration.sql, /BEFORE UPDATE OR DELETE ON shared\.core_audit_records/);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS shared\.core_outbox_events/);
+  assert.match(migration.sql, /event_version integer NOT NULL CHECK \(event_version > 0\)/);
+  assert.match(migration.sql, /attempts integer NOT NULL DEFAULT 0 CHECK \(attempts >= 0\)/);
+  assert.match(migration.sql, /status IN \('pending', 'published', 'failed'\)/);
+  assert.match(migration.sql, /WHERE status = 'pending'/);
+});

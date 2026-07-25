@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "build": "node --check src/server.js && node --check src/config.js && node --check src/http-utils.js && node --check src/request-context.js && node --check src/idempotency.js && node --check src/db/pool.js && node --check src/migrations/index.js",
+    "build": "node --check src/server.js && node --check src/config.js && node --check src/http-utils.js && node --check src/request-context.js && node --check src/idempotency.js && node --check src/audit-outbox.js && node --check src/db/pool.js && node --check src/migrations/index.js",
     "test": "node --test test/*.test.js",
     "verify": "npm run build && npm run test"
   },
