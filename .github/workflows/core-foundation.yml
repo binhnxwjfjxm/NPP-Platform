@@ -151,51 +151,53 @@ jobs:
           fetch-depth: 0
 
       - name: Update Phase 3.1 status
-        shell: python
+        shell: bash
         run: |
+          python <<'PY'
           from pathlib import Path
 
           path = Path('NPP_PLATFORM_MASTER_PLAN.md')
           text = path.read_text(encoding='utf-8')
           old = '''**Status:** Phase 3.1 hardening in progress on `agent/phase-3-org-warehouse-slice`.
 
-**Completed:**
-- [x] Migrations: branches, warehouses, warehouse_locations tables with proper constraints
-- [x] Repository layer for all three entities
-- [x] Service layer with validation (code normalization, parent existence, parent active checks)
-- [x] API endpoints (GET, POST, PATCH) with idempotency and audit
-- [x] Permission model (read/write splits)
-- [x] Optimistic concurrency control via expectedUpdatedAt on PATCH
-- [x] Transaction semantics enforced: POST creates entity + audit within transaction; rollback on error preserves clean DB
-- [x] Audit records: before/after data, action type, metadata
-- [x] Regression tests: expectedUpdatedAt validation, stale conflict, install-scoped isolation, before/after audit data
-- [x] GitHub Actions workflow: PostgreSQL service + migration step for CI
-- [x] Tests read environment variables (TEST_DATABASE_URL) not hardcoded local URL
-- [ ] UI components and routes
-- [ ] Frontend gateway
-- [ ] E2E Playwright tests
-- [ ] CI verification (awaiting environment setup)'''
+          **Completed:**
+          - [x] Migrations: branches, warehouses, warehouse_locations tables with proper constraints
+          - [x] Repository layer for all three entities
+          - [x] Service layer with validation (code normalization, parent existence, parent active checks)
+          - [x] API endpoints (GET, POST, PATCH) with idempotency and audit
+          - [x] Permission model (read/write splits)
+          - [x] Optimistic concurrency control via expectedUpdatedAt on PATCH
+          - [x] Transaction semantics enforced: POST creates entity + audit within transaction; rollback on error preserves clean DB
+          - [x] Audit records: before/after data, action type, metadata
+          - [x] Regression tests: expectedUpdatedAt validation, stale conflict, install-scoped isolation, before/after audit data
+          - [x] GitHub Actions workflow: PostgreSQL service + migration step for CI
+          - [x] Tests read environment variables (TEST_DATABASE_URL) not hardcoded local URL
+          - [ ] UI components and routes
+          - [ ] Frontend gateway
+          - [ ] E2E Playwright tests
+          - [ ] CI verification (awaiting environment setup)'''
           new = '''**Status:** Phase 3.1 implementation complete on `agent/phase-3-org-warehouse-slice`; PR verification gate green, merge pending.
 
-**Completed:**
-- [x] Migrations: branches, warehouses, warehouse_locations tables with proper constraints
-- [x] Repository layer for all three entities
-- [x] Service layer with validation (code normalization, parent existence, parent active checks)
-- [x] API endpoints (GET, POST, PATCH) with idempotency and audit
-- [x] Permission model (read/write splits)
-- [x] Optimistic concurrency control via expectedUpdatedAt on PATCH
-- [x] Transaction semantics enforced: POST creates entity + audit within transaction; rollback on error preserves clean DB
-- [x] Audit records: before/after data, action type, metadata
-- [x] Regression tests: expectedUpdatedAt validation, stale conflict, install-scoped isolation, before/after audit data
-- [x] GitHub Actions workflow: PostgreSQL service + migration step for CI
-- [x] Tests read environment variables (TEST_DATABASE_URL) not hardcoded local URL
-- [x] Next.js server-only frontend gateway for organization resources
-- [x] `/organization` UI for branches, warehouses, and warehouse locations
-- [x] Playwright vertical-slice E2E with actual Core API + PostgreSQL
-- [x] Full PR CI verification: Foundation F0.2, Core Foundation, and Core UI/Browser E2E'''
+          **Completed:**
+          - [x] Migrations: branches, warehouses, warehouse_locations tables with proper constraints
+          - [x] Repository layer for all three entities
+          - [x] Service layer with validation (code normalization, parent existence, parent active checks)
+          - [x] API endpoints (GET, POST, PATCH) with idempotency and audit
+          - [x] Permission model (read/write splits)
+          - [x] Optimistic concurrency control via expectedUpdatedAt on PATCH
+          - [x] Transaction semantics enforced: POST creates entity + audit within transaction; rollback on error preserves clean DB
+          - [x] Audit records: before/after data, action type, metadata
+          - [x] Regression tests: expectedUpdatedAt validation, stale conflict, install-scoped isolation, before/after audit data
+          - [x] GitHub Actions workflow: PostgreSQL service + migration step for CI
+          - [x] Tests read environment variables (TEST_DATABASE_URL) not hardcoded local URL
+          - [x] Next.js server-only frontend gateway for organization resources
+          - [x] `/organization` UI for branches, warehouses, and warehouse locations
+          - [x] Playwright vertical-slice E2E with actual Core API + PostgreSQL
+          - [x] Full PR CI verification: Foundation F0.2, Core Foundation, and Core UI/Browser E2E'''
           if old not in text:
               raise SystemExit('Phase 3.1 status block was not found')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
 
       - name: Commit master plan closure
         shell: bash
