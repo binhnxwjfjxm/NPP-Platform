@@ -8,10 +8,10 @@ const workflow = await readFile(
   "utf8"
 );
 
-test("Vercel builds the nested MCP Next.js package", () => {
+test("Vercel builds the nested NPP Core Next.js package", () => {
   assert.deepEqual(config.builds, [
     {
-      src: "mcp/package.json",
+      src: "npp-core/web/package.json",
       use: "@vercel/next"
     }
   ]);
@@ -29,7 +29,7 @@ test("automatic Vercel deployments stay locked by default", () => {
 test("comment deployment requires the exact guarded command", () => {
   assert.match(workflow, /github\.event\.issue\.number == 5/);
   assert.match(workflow, /github\.event\.comment\.body == '\/deploy-vercel-production'/);
-  assert.match(workflow, /\[\"binhnxwjfjxm\",\"khuongbinhinfo-a11y\"\]/);
+  assert.match(workflow, /\["binhnxwjfjxm","khuongbinhinfo-a11y"\]/);
   assert.match(workflow, /github\.actor/);
 });
 
