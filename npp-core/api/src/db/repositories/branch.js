@@ -72,14 +72,18 @@ export async function listBranchesForInstallation(client, { installationId, acti
 }
 
 export async function updateBranch(client, { id, installationId, name, address, phone, email, updatedBy, expectedUpdatedAt = null }) {
-  const now = new Date().toISOString();
-  const params = [name, address || null, phone || null, email || null, now, updatedBy, id, installationId];
+  const params = [name, address || null, phone || null, email || null, updatedBy, id, installationId];
   let query = `UPDATE shared.branches
-     SET name = $1, address = $2, phone = $3, email = $4, updated_at = $5, updated_by = $6
-     WHERE id = $7 AND installation_id = $8`;
+     SET name = $1,
+         address = $2,
+         phone = $3,
+         email = $4,
+         updated_at = GREATEST(clock_timestamp(), updated_at + interval '1 microsecond'),
+         updated_by = $5
+     WHERE id = $6 AND installation_id = $7`;
 
   if (expectedUpdatedAt) {
-    query += ` AND updated_at = $9`;
+    query += ` AND updated_at = $8`;
     params.push(expectedUpdatedAt);
   }
 
@@ -90,14 +94,15 @@ export async function updateBranch(client, { id, installationId, name, address, 
 }
 
 export async function updateBranchActiveStatus(client, { id, installationId, isActive, updatedBy, expectedUpdatedAt = null }) {
-  const now = new Date().toISOString();
-  const params = [isActive, now, updatedBy, id, installationId];
+  const params = [isActive, updatedBy, id, installationId];
   let query = `UPDATE shared.branches
-     SET is_active = $1, updated_at = $2, updated_by = $3
-     WHERE id = $4 AND installation_id = $5`;
+     SET is_active = $1,
+         updated_at = GREATEST(clock_timestamp(), updated_at + interval '1 microsecond'),
+         updated_by = $2
+     WHERE id = $3 AND installation_id = $4`;
 
   if (expectedUpdatedAt) {
-    query += ` AND updated_at = $6`;
+    query += ` AND updated_at = $5`;
     params.push(expectedUpdatedAt);
   }
 
