@@ -422,13 +422,28 @@ export function createCoreApiServer(options = {}) {
           executionResult.response.requestId ?? requestId,
           executionResult.response.contentType,
         );
-      } catch {
-        sendError(
-          res,
-          createError('IDEMPOTENCY_STORAGE_ERROR', 'Idempotency storage unavailable', {}, true, 503),
-          requestId,
-          receivedAt,
-        );
+      } catch (error) {
+        if (typeof error?.code === 'string' && error.code.startsWith('STORAGE_')) {
+          sendError(
+            res,
+            createError(
+              error.code,
+              error.publicMessage ?? 'Storage operation failed',
+              error.details ?? {},
+              Boolean(error.retryable),
+              error.statusCode ?? 500,
+            ),
+            requestId,
+            receivedAt,
+          );
+        } else {
+          sendError(
+            res,
+            createError('IDEMPOTENCY_STORAGE_ERROR', 'Idempotency storage unavailable', {}, true, 503),
+            requestId,
+            receivedAt,
+          );
+        }
       }
       return;
     }
