@@ -994,7 +994,7 @@ migration
 - purchasing
 - MCP cutover
 
-**Status:** Phase 3.1 implementation complete on `agent/phase-3-org-warehouse-slice`; PR verification gate green, merge pending.
+**Status:** Phase 3.1 merged into `main` by PR #26 at commit `a8038bfcdead3c6dc2b51b97a690974c30b5475c`; production rollout not started.
 
 **Completed:**
 - [x] Migrations: branches, warehouses, warehouse_locations tables with proper constraints
@@ -1013,7 +1013,7 @@ migration
 - [x] Playwright vertical-slice E2E with actual Core API + PostgreSQL
 - [x] Full PR CI verification: Foundation F0.2, Core Foundation, and Core UI/Browser E2E
 
-**Gate opens when:** API tests pass in CI PostgreSQL environment, migrations verify, E2E tests pass with actual Core API + PostgreSQL, and full PR CI passes.
+**Gate status:** Closed in PR #26 after API, migration rehearsal, security hardening, and browser E2E passed. Production deployment remains a separate explicit operation.
 
 ### Phase 3 — Master data
 
