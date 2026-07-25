@@ -220,7 +220,7 @@ async function handleGetBranchById(req, res, { requestContext, getPool, requestI
 
   const pool = getPool();
   try {
-    const result = await branchService.getBranch(pool, { id: parsed.id });
+    const result = await branchService.getBranch(pool, { installationId: requestContext.installationId, id: parsed.id });
     if (!result.ok) {
       sendError(res, createError('NOT_FOUND', 'Branch not found', {}, false, 404), requestId, receivedAt);
       return;
@@ -474,6 +474,12 @@ async function handleGetWarehouses(req, res, { requestContext, getPool, requestI
       offset,
     });
 
+    if (!result.ok) {
+      const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
+      sendError(res, createError(result.code, result.message, {}, result.retryable ?? false, statusCode), requestId, receivedAt);
+      return;
+    }
+
     sendSuccess(res, result.warehouses, requestId, receivedAt);
   } catch (error) {
     sendError(res, createError('INTERNAL_ERROR', 'Failed to list warehouses', {}, true, 500), requestId, receivedAt);
@@ -580,7 +586,7 @@ async function handleGetWarehouseById(req, res, { requestContext, getPool, reque
 
   const pool = getPool();
   try {
-    const result = await warehouseService.getWarehouse(pool, { id: parsed.id });
+    const result = await warehouseService.getWarehouse(pool, { installationId: requestContext.installationId, id: parsed.id });
     if (!result.ok) {
       sendError(res, createError('NOT_FOUND', 'Warehouse not found', {}, false, 404), requestId, receivedAt);
       return;
@@ -708,6 +714,12 @@ async function handleGetLocations(req, res, { requestContext, getPool, requestId
       offset,
     });
 
+    if (!result.ok) {
+      const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
+      sendError(res, createError(result.code, result.message, {}, result.retryable ?? false, statusCode), requestId, receivedAt);
+      return;
+    }
+
     sendSuccess(res, result.locations, requestId, receivedAt);
   } catch (error) {
     sendError(res, createError('INTERNAL_ERROR', 'Failed to list locations', {}, true, 500), requestId, receivedAt);
@@ -814,7 +826,7 @@ async function handleGetLocationById(req, res, { requestContext, getPool, reques
 
   const pool = getPool();
   try {
-    const result = await locationService.getWarehouseLocation(pool, { id: parsed.id });
+    const result = await locationService.getWarehouseLocation(pool, { installationId: requestContext.installationId, id: parsed.id });
     if (!result.ok) {
       sendError(res, createError('NOT_FOUND', 'Location not found', {}, false, 404), requestId, receivedAt);
       return;

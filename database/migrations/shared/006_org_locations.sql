@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS shared.warehouse_locations (
   id uuid NOT NULL PRIMARY KEY,
   installation_id text NOT NULL CHECK (char_length(installation_id) BETWEEN 1 AND 128),
   warehouse_id uuid NOT NULL,
-  code text NOT NULL CHECK (char_length(code) BETWEEN 1 AND 64),
+  code text NOT NULL CHECK (char_length(code) BETWEEN 1 AND 64 AND code ~ '^[A-Z0-9_-]{1,64}$'),
   name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 256),
   location_type shared.location_type_enum NOT NULL,
   is_active boolean NOT NULL DEFAULT true,
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS shared.warehouse_locations (
   created_by text NOT NULL CHECK (char_length(created_by) BETWEEN 1 AND 128),
   updated_by text NOT NULL CHECK (char_length(updated_by) BETWEEN 1 AND 128),
   CONSTRAINT warehouse_locations_warehouse_fk
-    FOREIGN KEY (warehouse_id) REFERENCES shared.warehouses (id) ON DELETE RESTRICT,
+    FOREIGN KEY (installation_id, warehouse_id) REFERENCES shared.warehouses (installation_id, id) ON DELETE RESTRICT,
   CONSTRAINT warehouse_locations_code_warehouse_unique
     UNIQUE (warehouse_id, code)
 );

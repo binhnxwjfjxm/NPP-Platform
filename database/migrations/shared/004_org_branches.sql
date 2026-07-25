@@ -5,7 +5,7 @@
 CREATE TABLE IF NOT EXISTS shared.branches (
   id uuid NOT NULL PRIMARY KEY,
   installation_id text NOT NULL CHECK (char_length(installation_id) BETWEEN 1 AND 128),
-  code text NOT NULL CHECK (char_length(code) BETWEEN 1 AND 64),
+  code text NOT NULL CHECK (char_length(code) BETWEEN 1 AND 64 AND code ~ '^[A-Z0-9_-]{1,64}$'),
   name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 256),
   address text NULL CHECK (address IS NULL OR char_length(address) <= 512),
   phone text NULL CHECK (phone IS NULL OR char_length(phone) <= 20),

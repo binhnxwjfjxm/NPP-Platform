@@ -1,10 +1,9 @@
 import * as locationRepo from '../db/repositories/location.js';
 import * as warehouseRepo from '../db/repositories/warehouse.js';
 
-// Location types are strictly defined
 const LOCATION_TYPES = Object.freeze(['storage', 'receiving', 'shipping', 'quarantine', 'returns', 'damaged', 'other']);
+const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
 
-// Trim and uppercase code for consistency
 function normalizeCode(code) {
   if (typeof code !== 'string') return '';
   return code.trim().toUpperCase();
@@ -15,13 +14,18 @@ function normalizeText(text) {
   return text.trim();
 }
 
+function validateExpectedUpdatedAt(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string' || !value.trim()) {
+    return { ok: false, code: 'INVALID_EXPECTED_UPDATED_AT', message: 'expectedUpdatedAt must be a non-empty string' };
+  }
+  return { ok: true, value: value.trim() };
+}
+
 function isValidLocationType(type) {
   return typeof type === 'string' && LOCATION_TYPES.includes(type);
 }
 
-/**
- * Validate and normalize warehouse location creation payload
- */
 export function validateLocationInput(payload, { allowWarehouseIdUpdate = false } = {}) {
   if (!payload || typeof payload !== 'object') {
     return { ok: false, code: 'INVALID_INPUT', message: 'Location data is required' };
@@ -34,12 +38,12 @@ export function validateLocationInput(payload, { allowWarehouseIdUpdate = false 
   }
 
   const code = normalizeCode(payload.code);
-  if (!code || code.length < 1 || code.length > 64) {
-    return { ok: false, code: 'INVALID_CODE', message: 'Code must be 1-64 characters' };
+  if (!CODE_PATTERN.test(code)) {
+    return { ok: false, code: 'INVALID_CODE', message: 'Code must be 1-64 characters and contain only uppercase letters, digits, hyphens, or underscores' };
   }
 
   const name = normalizeText(payload.name);
-  if (!name || name.length < 1 || name.length > 256) {
+  if (!name || name.length > 256) {
     return { ok: false, code: 'INVALID_NAME', message: 'Name is required and must be 1-256 characters' };
   }
 
@@ -58,31 +62,27 @@ export function validateLocationInput(payload, { allowWarehouseIdUpdate = false 
   };
 }
 
-/**
- * Create a new warehouse location with validation and conflict check
- */
 export async function createWarehouseLocation(client, { installationId, payload, createdBy }) {
   const validation = validateLocationInput(payload, { allowWarehouseIdUpdate: true });
-  if (!validation.ok) {
-    return { ok: false, code: validation.code, message: validation.message };
-  }
+  if (!validation.ok) return { ok: false, code: validation.code, message: validation.message };
 
-  // Verify warehouse exists and belongs to installation
-  const warehouse = await warehouseRepo.getWarehouseById(client, { id: validation.normalized.warehouseId });
-  if (!warehouse || warehouse.installation_id !== installationId) {
+  const warehouse = await warehouseRepo.getWarehouseByIdForInstallation(client, {
+    id: validation.normalized.warehouseId,
+    installationId,
+  });
+  if (!warehouse) {
     return { ok: false, code: 'WAREHOUSE_NOT_FOUND', message: 'Warehouse not found or does not belong to this installation' };
   }
 
-  // Verify warehouse is active
   if (!warehouse.is_active) {
     return { ok: false, code: 'WAREHOUSE_INACTIVE', message: 'Cannot create location under inactive warehouse' };
   }
 
-  // Check for duplicate code within this warehouse
-  const existing = await locationRepo.getWarehouseLocationByCode(client, { warehouseId: validation.normalized.warehouseId, code: validation.normalized.code });
-  if (existing) {
-    return { ok: false, code: 'DUPLICATE_CODE', message: 'A location with this code already exists in this warehouse', retryable: false };
-  }
+  const existing = await locationRepo.getWarehouseLocationByCode(client, {
+    warehouseId: validation.normalized.warehouseId,
+    code: validation.normalized.code,
+  });
+  if (existing) return { ok: false, code: 'DUPLICATE_CODE', message: 'A location with this code already exists in this warehouse', retryable: false };
 
   const location = await locationRepo.insertWarehouseLocation(client, {
     installationId,
@@ -96,44 +96,41 @@ export async function createWarehouseLocation(client, { installationId, payload,
   return { ok: true, location };
 }
 
-/**
- * Get warehouse location by ID
- */
-export async function getWarehouseLocation(client, { id }) {
-  const location = await locationRepo.getWarehouseLocationById(client, { id });
-  if (!location) {
-    return { ok: false, code: 'NOT_FOUND', message: 'Location not found' };
-  }
+export async function getWarehouseLocation(client, { installationId, id }) {
+  const location = await locationRepo.getWarehouseLocationByIdForInstallation(client, { id, installationId });
+  if (!location) return { ok: false, code: 'NOT_FOUND', message: 'Location not found' };
   return { ok: true, location };
 }
 
-/**
- * List warehouse locations
- */
 export async function listWarehouseLocations(client, { installationId, warehouseId, active, limit, offset }) {
-  let locations;
   if (warehouseId) {
-    locations = await locationRepo.listWarehouseLocationsForWarehouse(client, { warehouseId, active, limit, offset });
-  } else {
-    locations = await locationRepo.listWarehouseLocationsForInstallation(client, { installationId, active, limit, offset });
+    const warehouse = await warehouseRepo.getWarehouseByIdForInstallation(client, { id: warehouseId, installationId });
+    if (!warehouse) return { ok: false, code: 'NOT_FOUND', message: 'Warehouse not found' };
+
+    const locations = await locationRepo.listWarehouseLocationsForWarehouse(client, {
+      warehouseId,
+      installationId,
+      active,
+      limit,
+      offset,
+    });
+    return { ok: true, locations };
   }
+
+  const locations = await locationRepo.listWarehouseLocationsForInstallation(client, { installationId, active, limit, offset });
   return { ok: true, locations };
 }
 
-/**
- * Update warehouse location details
- */
 export async function updateWarehouseLocation(client, { id, installationId, payload, updatedBy }) {
-  // First check if location exists
-  const existing = await locationRepo.getWarehouseLocationById(client, { id });
-  if (!existing || existing.installation_id !== installationId) {
-    return { ok: false, code: 'NOT_FOUND', message: 'Location not found' };
-  }
+  const existing = await locationRepo.getWarehouseLocationByIdForInstallation(client, { id, installationId });
+  if (!existing) return { ok: false, code: 'NOT_FOUND', message: 'Location not found' };
 
-  // Validate input - only name and locationType can be updated
   const validation = validateLocationInput({ code: existing.code, warehouseId: existing.warehouse_id, ...payload });
-  if (!validation.ok) {
-    return { ok: false, code: validation.code, message: validation.message };
+  if (!validation.ok) return { ok: false, code: validation.code, message: validation.message };
+
+  const expectedUpdatedAtValidation = validateExpectedUpdatedAt(payload.expectedUpdatedAt);
+  if (expectedUpdatedAtValidation && !expectedUpdatedAtValidation.ok) {
+    return { ok: false, code: expectedUpdatedAtValidation.code, message: expectedUpdatedAtValidation.message };
   }
 
   const updated = await locationRepo.updateWarehouseLocation(client, {
@@ -142,22 +139,31 @@ export async function updateWarehouseLocation(client, { id, installationId, payl
     name: validation.normalized.name,
     locationType: validation.normalized.locationType,
     updatedBy,
+    expectedUpdatedAt: expectedUpdatedAtValidation?.value ?? null,
   });
 
-  return { ok: true, location: updated };
+  if (!updated) {
+    return { ok: false, code: 'CONFLICT', message: 'Location update conflict: expectedUpdatedAt does not match current record', retryable: false };
+  }
+
+  return { ok: true, location: updated, beforeData: existing };
 }
 
-/**
- * Activate/deactivate a warehouse location
- */
-export async function updateWarehouseLocationStatus(client, { id, installationId, isActive, updatedBy }) {
-  const existing = await locationRepo.getWarehouseLocationById(client, { id });
-  if (!existing || existing.installation_id !== installationId) {
-    return { ok: false, code: 'NOT_FOUND', message: 'Location not found' };
+export async function updateWarehouseLocationStatus(client, { id, installationId, isActive, updatedBy, expectedUpdatedAt }) {
+  const existing = await locationRepo.getWarehouseLocationByIdForInstallation(client, { id, installationId });
+  if (!existing) return { ok: false, code: 'NOT_FOUND', message: 'Location not found' };
+
+  const expectedUpdatedAtValidation = validateExpectedUpdatedAt(expectedUpdatedAt);
+  if (expectedUpdatedAtValidation && !expectedUpdatedAtValidation.ok) {
+    return { ok: false, code: expectedUpdatedAtValidation.code, message: expectedUpdatedAtValidation.message };
+  }
+
+  if (typeof isActive !== 'boolean') {
+    return { ok: false, code: 'INVALID_ACTIVE_STATUS', message: 'isActive must be a boolean' };
   }
 
   if (existing.is_active === isActive) {
-    return { ok: true, location: existing };
+    return { ok: true, location: existing, beforeData: existing };
   }
 
   const updated = await locationRepo.updateWarehouseLocationActiveStatus(client, {
@@ -165,7 +171,12 @@ export async function updateWarehouseLocationStatus(client, { id, installationId
     installationId,
     isActive,
     updatedBy,
+    expectedUpdatedAt: expectedUpdatedAtValidation?.value ?? null,
   });
 
-  return { ok: true, location: updated };
+  if (!updated) {
+    return { ok: false, code: 'CONFLICT', message: 'Location status update conflict: expectedUpdatedAt does not match current record', retryable: false };
+  }
+
+  return { ok: true, location: updated, beforeData: existing };
 }

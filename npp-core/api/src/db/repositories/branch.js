@@ -31,6 +31,17 @@ export async function getBranchById(client, { id }) {
   return result.rows[0] || null;
 }
 
+export async function getBranchByIdForInstallation(client, { id, installationId }) {
+  const result = await client.query(
+    `SELECT id, installation_id, code, name, address, phone, email, is_active, created_at, updated_at, created_by, updated_by
+     FROM shared.branches
+     WHERE id = $1 AND installation_id = $2`,
+    [id, installationId],
+  );
+
+  return result.rows[0] || null;
+}
+
 export async function getBranchByCode(client, { installationId, code }) {
   const result = await client.query(
     `SELECT id, installation_id, code, name, address, phone, email, is_active, created_at, updated_at, created_by, updated_by
@@ -60,31 +71,39 @@ export async function listBranchesForInstallation(client, { installationId, acti
   return result.rows;
 }
 
-export async function updateBranch(client, { id, installationId, name, address, phone, email, updatedBy }) {
+export async function updateBranch(client, { id, installationId, name, address, phone, email, updatedBy, expectedUpdatedAt = null }) {
   const now = new Date().toISOString();
-
-  const result = await client.query(
-    `UPDATE shared.branches
+  const params = [name, address || null, phone || null, email || null, now, updatedBy, id, installationId];
+  let query = `UPDATE shared.branches
      SET name = $1, address = $2, phone = $3, email = $4, updated_at = $5, updated_by = $6
-     WHERE id = $7 AND installation_id = $8
-     RETURNING id, installation_id, code, name, address, phone, email, is_active, created_at, updated_at, created_by, updated_by`,
-    [name, address || null, phone || null, email || null, now, updatedBy, id, installationId],
-  );
+     WHERE id = $7 AND installation_id = $8`;
 
+  if (expectedUpdatedAt) {
+    query += ` AND updated_at = $9`;
+    params.push(expectedUpdatedAt);
+  }
+
+  query += ` RETURNING id, installation_id, code, name, address, phone, email, is_active, created_at, updated_at, created_by, updated_by`;
+
+  const result = await client.query(query, params);
   return result.rows[0] || null;
 }
 
-export async function updateBranchActiveStatus(client, { id, installationId, isActive, updatedBy }) {
+export async function updateBranchActiveStatus(client, { id, installationId, isActive, updatedBy, expectedUpdatedAt = null }) {
   const now = new Date().toISOString();
-
-  const result = await client.query(
-    `UPDATE shared.branches
+  const params = [isActive, now, updatedBy, id, installationId];
+  let query = `UPDATE shared.branches
      SET is_active = $1, updated_at = $2, updated_by = $3
-     WHERE id = $4 AND installation_id = $5
-     RETURNING id, installation_id, code, name, address, phone, email, is_active, created_at, updated_at, created_by, updated_by`,
-    [isActive, now, updatedBy, id, installationId],
-  );
+     WHERE id = $4 AND installation_id = $5`;
 
+  if (expectedUpdatedAt) {
+    query += ` AND updated_at = $6`;
+    params.push(expectedUpdatedAt);
+  }
+
+  query += ` RETURNING id, installation_id, code, name, address, phone, email, is_active, created_at, updated_at, created_by, updated_by`;
+
+  const result = await client.query(query, params);
   return result.rows[0] || null;
 }
 
@@ -92,10 +111,10 @@ export async function updateBranchActiveStatus(client, { id, installationId, isA
  * Check if a branch has active warehouses
  * Used to prevent deactivation of branches with active children
  */
-export async function hasActiveWarehouses(client, { branchId }) {
+export async function hasActiveWarehouses(client, { branchId, installationId }) {
   const result = await client.query(
-    `SELECT COUNT(*) as count FROM shared.warehouses WHERE branch_id = $1 AND is_active = true`,
-    [branchId],
+    `SELECT COUNT(*) as count FROM shared.warehouses WHERE branch_id = $1 AND installation_id = $2 AND is_active = true`,
+    [branchId, installationId],
   );
 
   return (result.rows[0]?.count || 0) > 0;

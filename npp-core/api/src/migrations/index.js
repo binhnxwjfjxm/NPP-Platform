@@ -9,6 +9,18 @@ const CORE_AUDIT_OUTBOX_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/003_core_audit_outbox.sql', import.meta.url),
   'utf8',
 );
+const ORG_BRANCHES_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/004_org_branches.sql', import.meta.url),
+  'utf8',
+);
+const ORG_WAREHOUSES_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/005_org_warehouses.sql', import.meta.url),
+  'utf8',
+);
+const ORG_LOCATIONS_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/006_org_locations.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
@@ -18,6 +30,18 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '003_core_audit_outbox',
     sql: CORE_AUDIT_OUTBOX_SQL,
+  }),
+  Object.freeze({
+    id: '004_org_branches',
+    sql: ORG_BRANCHES_SQL,
+  }),
+  Object.freeze({
+    id: '005_org_warehouses',
+    sql: ORG_WAREHOUSES_SQL,
+  }),
+  Object.freeze({
+    id: '006_org_locations',
+    sql: ORG_LOCATIONS_SQL,
   }),
 ]);
 

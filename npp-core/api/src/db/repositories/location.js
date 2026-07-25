@@ -31,6 +31,17 @@ export async function getWarehouseLocationById(client, { id }) {
   return result.rows[0] || null;
 }
 
+export async function getWarehouseLocationByIdForInstallation(client, { id, installationId }) {
+  const result = await client.query(
+    `SELECT id, installation_id, warehouse_id, code, name, location_type, is_active, created_at, updated_at, created_by, updated_by
+     FROM shared.warehouse_locations
+     WHERE id = $1 AND installation_id = $2`,
+    [id, installationId],
+  );
+
+  return result.rows[0] || null;
+}
+
 export async function getWarehouseLocationByCode(client, { warehouseId, code }) {
   const result = await client.query(
     `SELECT id, installation_id, warehouse_id, code, name, location_type, is_active, created_at, updated_at, created_by, updated_by
@@ -60,11 +71,11 @@ export async function listWarehouseLocationsForInstallation(client, { installati
   return result.rows;
 }
 
-export async function listWarehouseLocationsForWarehouse(client, { warehouseId, active, limit = 100, offset = 0 }) {
+export async function listWarehouseLocationsForWarehouse(client, { warehouseId, installationId, active, limit = 100, offset = 0 }) {
   let query = `SELECT id, installation_id, warehouse_id, code, name, location_type, is_active, created_at, updated_at, created_by, updated_by
                FROM shared.warehouse_locations
-               WHERE warehouse_id = $1`;
-  const params = [warehouseId];
+               WHERE warehouse_id = $1 AND installation_id = $2`;
+  const params = [warehouseId, installationId];
 
   if (active !== undefined) {
     query += ` AND is_active = $${params.length + 1}`;
@@ -78,30 +89,38 @@ export async function listWarehouseLocationsForWarehouse(client, { warehouseId, 
   return result.rows;
 }
 
-export async function updateWarehouseLocation(client, { id, installationId, name, locationType, updatedBy }) {
+export async function updateWarehouseLocation(client, { id, installationId, name, locationType, updatedBy, expectedUpdatedAt = null }) {
   const now = new Date().toISOString();
-
-  const result = await client.query(
-    `UPDATE shared.warehouse_locations
+  const params = [name, locationType, now, updatedBy, id, installationId];
+  let query = `UPDATE shared.warehouse_locations
      SET name = $1, location_type = $2, updated_at = $3, updated_by = $4
-     WHERE id = $5 AND installation_id = $6
-     RETURNING id, installation_id, warehouse_id, code, name, location_type, is_active, created_at, updated_at, created_by, updated_by`,
-    [name, locationType, now, updatedBy, id, installationId],
-  );
+     WHERE id = $5 AND installation_id = $6`;
 
+  if (expectedUpdatedAt) {
+    query += ` AND updated_at = $7`;
+    params.push(expectedUpdatedAt);
+  }
+
+  query += ` RETURNING id, installation_id, warehouse_id, code, name, location_type, is_active, created_at, updated_at, created_by, updated_by`;
+
+  const result = await client.query(query, params);
   return result.rows[0] || null;
 }
 
-export async function updateWarehouseLocationActiveStatus(client, { id, installationId, isActive, updatedBy }) {
+export async function updateWarehouseLocationActiveStatus(client, { id, installationId, isActive, updatedBy, expectedUpdatedAt = null }) {
   const now = new Date().toISOString();
-
-  const result = await client.query(
-    `UPDATE shared.warehouse_locations
+  const params = [isActive, now, updatedBy, id, installationId];
+  let query = `UPDATE shared.warehouse_locations
      SET is_active = $1, updated_at = $2, updated_by = $3
-     WHERE id = $4 AND installation_id = $5
-     RETURNING id, installation_id, warehouse_id, code, name, location_type, is_active, created_at, updated_at, created_by, updated_by`,
-    [isActive, now, updatedBy, id, installationId],
-  );
+     WHERE id = $4 AND installation_id = $5`;
 
+  if (expectedUpdatedAt) {
+    query += ` AND updated_at = $6`;
+    params.push(expectedUpdatedAt);
+  }
+
+  query += ` RETURNING id, installation_id, warehouse_id, code, name, location_type, is_active, created_at, updated_at, created_by, updated_by`;
+
+  const result = await client.query(query, params);
   return result.rows[0] || null;
 }
