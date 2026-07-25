@@ -976,11 +976,45 @@ migration
 -> merge
 ```
 
+### Phase 3 Slice 1 — Organization and Warehouse Structure
+
+**Scope:**
+- installation/company config (read-only for now)
+- branches (list, get, create, update, activate/deactivate)
+- warehouses (list, get, create, update, activate/deactivate)
+- warehouse locations (list, get, create, update, activate/deactivate)
+
+**Features NOT in this slice:**
+- users/employees/roles/scopes
+- customers/customer groups
+- suppliers/supplier terms
+- products/SKU
+- inventory ledger
+- sales
+- purchasing
+- MCP cutover
+
+**Status:** Implementation in progress on `agent/phase-3-org-warehouse-slice`.
+
+**Completed:**
+- [x] Migrations: branches, warehouses, warehouse_locations tables with proper constraints
+- [x] Repository layer for all three entities
+- [x] Service layer with validation (code normalization, parent existence, parent active checks)
+- [x] API endpoints (GET, POST, PATCH) with idempotency and audit
+- [x] Permission model (read/write splits)
+- [x] Integration tests for core business logic
+- [ ] UI components and routes
+- [ ] Frontend gateway
+- [ ] E2E Playwright tests
+- [ ] CI verification
+
+**Gate opens when:** API tests pass, migrations verify, E2E tests pass with actual Core API + PostgreSQL, and PR CI passes.
+
 ### Phase 3 — Master data
 
 ```text
 [ ] installation/company config
-[ ] branches/warehouses/locations
+[x] branches/warehouses/locations (Phase 3.1)
 [ ] users/employees/roles/scopes
 [ ] customers/customer groups/addresses
 [ ] suppliers/supplier terms

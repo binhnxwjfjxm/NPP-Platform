@@ -28,6 +28,7 @@ import {
 } from './audit-outbox.js';
 import { createOptionalR2StorageAdapter } from './storage/r2-adapter.js';
 import { executeR2ContractOperation } from './storage/r2-contract.js';
+import { handleOrganizationRoutes } from './routes/organization.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const CORS_ALLOWED_HEADERS = 'authorization, content-type, idempotency-key, x-request-id';
@@ -445,6 +446,24 @@ export function createCoreApiServer(options = {}) {
           );
         }
       }
+      return;
+    }
+
+    // Organization and warehouse routes
+    const orgRouteContext = {
+      config: runtimeConfig,
+      idempotencyStore,
+      getPool: () => getPool(runtimeConfig),
+      executeRequestWithIdempotency,
+      requestId,
+      receivedAt,
+      authenticate,
+      authorize,
+      PERMISSIONS,
+      createContext,
+    };
+
+    if (await handleOrganizationRoutes(req, res, orgRouteContext)) {
       return;
     }
 
