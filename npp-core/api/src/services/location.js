@@ -3,6 +3,7 @@ import * as warehouseRepo from '../db/repositories/warehouse.js';
 
 const LOCATION_TYPES = Object.freeze(['storage', 'receiving', 'shipping', 'quarantine', 'returns', 'damaged', 'other']);
 const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function normalizeCode(code) {
   if (typeof code !== 'string') return '';
@@ -12,6 +13,10 @@ function normalizeCode(code) {
 function normalizeText(text) {
   if (typeof text !== 'string') return '';
   return text.trim();
+}
+
+function validateEntityId(id) {
+  return typeof id === 'string' && UUID_PATTERN.test(id.trim());
 }
 
 function validateExpectedUpdatedAt(value) {
@@ -48,8 +53,8 @@ export function validateLocationInput(payload, { allowWarehouseIdUpdate = false 
   }
 
   if (allowWarehouseIdUpdate) {
-    if (!payload.warehouseId || typeof payload.warehouseId !== 'string' || !payload.warehouseId.trim()) {
-      return { ok: false, code: 'INVALID_WAREHOUSE_ID', message: 'Warehouse ID is required' };
+    if (!validateEntityId(payload.warehouseId)) {
+      return { ok: false, code: 'INVALID_WAREHOUSE_ID', message: 'Warehouse ID must be a valid UUID' };
     }
   }
 
@@ -82,7 +87,7 @@ export async function createWarehouseLocation(client, { installationId, payload,
   const validation = validateLocationInput(payload, { allowWarehouseIdUpdate: true });
   if (!validation.ok) return { ok: false, code: validation.code, message: validation.message };
 
-  const warehouse = await warehouseRepo.getWarehouseByIdForInstallation(client, {
+  const warehouse = await warehouseRepo.getWarehouseByIdForInstallationForShare(client, {
     id: validation.normalized.warehouseId,
     installationId,
   });
@@ -113,18 +118,27 @@ export async function createWarehouseLocation(client, { installationId, payload,
 }
 
 export async function getWarehouseLocation(client, { installationId, id }) {
-  const location = await locationRepo.getWarehouseLocationByIdForInstallation(client, { id, installationId });
+  if (!validateEntityId(id)) {
+    return { ok: false, code: 'NOT_FOUND', message: 'Location not found' };
+  }
+
+  const location = await locationRepo.getWarehouseLocationByIdForInstallation(client, { id: id.trim(), installationId });
   if (!location) return { ok: false, code: 'NOT_FOUND', message: 'Location not found' };
   return { ok: true, location };
 }
 
 export async function listWarehouseLocations(client, { installationId, warehouseId, active, limit, offset }) {
   if (warehouseId) {
-    const warehouse = await warehouseRepo.getWarehouseByIdForInstallation(client, { id: warehouseId, installationId });
+    if (!validateEntityId(warehouseId)) {
+      return { ok: false, code: 'INVALID_WAREHOUSE_ID', message: 'Warehouse ID must be a valid UUID' };
+    }
+
+    const normalizedWarehouseId = warehouseId.trim();
+    const warehouse = await warehouseRepo.getWarehouseByIdForInstallation(client, { id: normalizedWarehouseId, installationId });
     if (!warehouse) return { ok: false, code: 'NOT_FOUND', message: 'Warehouse not found' };
 
     const locations = await locationRepo.listWarehouseLocationsForWarehouse(client, {
-      warehouseId,
+      warehouseId: normalizedWarehouseId,
       installationId,
       active,
       limit,
@@ -138,7 +152,12 @@ export async function listWarehouseLocations(client, { installationId, warehouse
 }
 
 export async function updateWarehouseLocation(client, { id, installationId, payload, updatedBy }) {
-  const existing = await locationRepo.getWarehouseLocationByIdForInstallation(client, { id, installationId });
+  if (!validateEntityId(id)) {
+    return { ok: false, code: 'INVALID_ID', message: 'Location ID must be a valid UUID' };
+  }
+
+  const normalizedId = id.trim();
+  const existing = await locationRepo.getWarehouseLocationByIdForInstallation(client, { id: normalizedId, installationId });
   if (!existing) return { ok: false, code: 'NOT_FOUND', message: 'Location not found' };
 
   const validation = validateLocationInput({ code: existing.code, warehouseId: existing.warehouse_id, ...payload });
@@ -150,7 +169,7 @@ export async function updateWarehouseLocation(client, { id, installationId, payl
   }
 
   const updated = await locationRepo.updateWarehouseLocation(client, {
-    id,
+    id: normalizedId,
     installationId,
     name: validation.normalized.name,
     locationType: validation.normalized.locationType,
@@ -166,7 +185,12 @@ export async function updateWarehouseLocation(client, { id, installationId, payl
 }
 
 export async function updateWarehouseLocationStatus(client, { id, installationId, isActive, updatedBy, expectedUpdatedAt }) {
-  const existing = await locationRepo.getWarehouseLocationByIdForInstallation(client, { id, installationId });
+  if (!validateEntityId(id)) {
+    return { ok: false, code: 'INVALID_ID', message: 'Location ID must be a valid UUID' };
+  }
+
+  const normalizedId = id.trim();
+  const existing = await locationRepo.getWarehouseLocationByIdForInstallation(client, { id: normalizedId, installationId });
   if (!existing) return { ok: false, code: 'NOT_FOUND', message: 'Location not found' };
 
   const expectedUpdatedAtValidation = validateExpectedUpdatedAt(expectedUpdatedAt);
@@ -182,8 +206,18 @@ export async function updateWarehouseLocationStatus(client, { id, installationId
     return { ok: true, location: existing, beforeData: existing };
   }
 
+  if (isActive) {
+    const warehouse = await warehouseRepo.getWarehouseByIdForInstallationForShare(client, {
+      id: existing.warehouse_id,
+      installationId,
+    });
+    if (!warehouse?.is_active) {
+      return { ok: false, code: 'WAREHOUSE_INACTIVE', message: 'Cannot activate location under inactive warehouse', retryable: false };
+    }
+  }
+
   const updated = await locationRepo.updateWarehouseLocationActiveStatus(client, {
-    id,
+    id: normalizedId,
     installationId,
     isActive,
     updatedBy,
