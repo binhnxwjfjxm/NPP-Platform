@@ -9,6 +9,10 @@
   ],
   "routes": [
     {
+      "src": "/api/organization/(.*)",
+      "dest": "/npp-core/web/api/organization/$1"
+    },
+    {
       "src": "/(.*)",
       "dest": "npp-core/web/$1"
     }
