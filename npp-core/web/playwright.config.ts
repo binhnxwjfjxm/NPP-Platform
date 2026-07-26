@@ -88,7 +88,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'cmd.exe /c npm --prefix ../api run dev',
+      command: 'npm --prefix ../api run dev',
       url: 'http://127.0.0.1:3004/health/live',
       reuseExistingServer: false,
       env: apiEnvironment,
