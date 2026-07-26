@@ -77,24 +77,11 @@ jobs:
           NODE_ENV: test
 
       - name: Verify Core API
-        shell: bash
-        run: |
-          set -o pipefail
-          mkdir -p npp-core/artifacts
-          npm --workspace npp-core-api run verify 2>&1 | tee npp-core/artifacts/core-ui-api-verify.log
+        run: npm --workspace npp-core-api run verify
         env:
           DATABASE_URL: ${{ env.E2E_DATABASE_URL }}
           TEST_DATABASE_URL: ${{ env.E2E_DATABASE_URL }}
           NODE_ENV: test
-
-      - name: Upload Core UI API verification log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: core-ui-api-verification-log-${{ github.run_id }}
-          path: npp-core/artifacts/core-ui-api-verify.log
-          retention-days: 7
-          if-no-files-found: error
 
       - name: Verify Core web
         run: npm --workspace npp-core-web run verify
