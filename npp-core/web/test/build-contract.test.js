@@ -27,6 +27,14 @@ test('Core web Vercel project cannot deploy automatically from Git pushes', asyn
   assert.equal(config.routes, undefined);
 });
 
+test('legacy repository-root Vercel config remains locked without nested routing', async () => {
+  const config = await readJson('../../vercel.json');
+  assert.equal(config.git?.deploymentEnabled, false);
+  assert.equal(config.builds, undefined);
+  assert.equal(config.routes, undefined);
+  assert.equal(config.build, undefined);
+});
+
 test('manual production workflow toggles the Core web project gate', async () => {
   const workflow = await readText('../../.github/workflows/vercel-production-manual.yml');
   assert.match(workflow, /const path = "npp-core\/web\/vercel\.json"/);
