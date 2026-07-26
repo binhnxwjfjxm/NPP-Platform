@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   createEmployee,
-  listEmployees,
+  listAllEmployees,
   normalizeEmployeeGatewayError,
   resolveEmployeeRequestId,
 } from '../../../../lib/employee-gateway';
@@ -31,7 +31,7 @@ function errorResponse(error: unknown, requestId: string) {
 export async function GET(request: NextRequest) {
   const requestId = resolveEmployeeRequestId(request.headers.get('x-request-id'));
   try {
-    const data = await listEmployees<unknown[]>(requestId, request.nextUrl.searchParams);
+    const data = await listAllEmployees<unknown>(requestId, request.nextUrl.searchParams);
     return NextResponse.json({ data, requestId }, { status: 200, headers: responseHeaders(requestId) });
   } catch (error) {
     return errorResponse(error, requestId);
