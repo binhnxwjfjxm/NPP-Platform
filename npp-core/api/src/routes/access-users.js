@@ -2,7 +2,7 @@ import { createSuccessEnvelope } from '@npp/contracts';
 import { sendJson, sendSuccess, sendError } from '../http-utils.js';
 import { readJsonBody, normalizeIdempotencyKey, executeRequestWithIdempotency } from '../idempotency.js';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
-import * as accessService from '../services/access.js';
+import * as accessService from '../services/access-users.js';
 
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -269,16 +269,11 @@ export async function handleAccessUserRoutes(req, res, options) {
     await executeUserMutation(req, res, context, {
       route: '/api/access/users',
       statusCode: 201,
-      action: async (client, payload) => {
-        if (payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'roleIds')) {
-          return { ok: false, code: 'INVALID_INPUT', message: 'Vai trò phải được gán qua endpoint chuyên biệt' };
-        }
-        return accessService.createUser(client, {
-          installationId: requestContext.installationId,
-          payload,
-          createdBy: requestContext.actorId,
-        });
-      },
+      action: (client, payload) => accessService.createUser(client, {
+        installationId: requestContext.installationId,
+        payload,
+        createdBy: requestContext.actorId,
+      }),
     });
     return true;
   }
