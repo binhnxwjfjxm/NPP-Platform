@@ -20,6 +20,7 @@ export async function insertEmployee(client, {
       (id, installation_id, code, full_name, job_title, phone, email, branch_id,
        is_active, created_at, updated_at, created_by, updated_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10, $11, $12)
+     ON CONFLICT (installation_id, code) DO NOTHING
      RETURNING ${SELECT_COLUMNS}`,
     [
       id,
