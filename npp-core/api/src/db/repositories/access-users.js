@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 const USER_COLUMNS = 'id, installation_id, employee_id, login_name, is_active, created_at, updated_at, created_by, updated_by';
 const USER_SELECT_COLUMNS = 'u.id, u.installation_id, u.employee_id, u.login_name, u.is_active, u.created_at, u.updated_at, u.created_by, u.updated_by';
 const USER_WITH_EMPLOYEE_COLUMNS = `${USER_SELECT_COLUMNS}, e.code AS employee_code, e.full_name AS employee_full_name`;
+const USER_GROUP_COLUMNS = `${USER_SELECT_COLUMNS}, e.code, e.full_name`;
 
 export async function listUsersForInstallation(client, {
   installationId,
@@ -46,7 +47,7 @@ export async function listUsersForInstallation(client, {
 
   params.push(limit, offset);
   query += `
-    GROUP BY ${USER_WITH_EMPLOYEE_COLUMNS}
+    GROUP BY ${USER_GROUP_COLUMNS}
     ORDER BY u.login_name ASC
     LIMIT $${params.length - 1}
     OFFSET $${params.length}
@@ -103,7 +104,7 @@ export async function getUserForInstallationWithRoles(client, { id, installation
        ON e.installation_id = u.installation_id
       AND e.id = u.employee_id
      WHERE u.installation_id = $1 AND u.id = $2
-     GROUP BY ${USER_WITH_EMPLOYEE_COLUMNS}`,
+     GROUP BY ${USER_GROUP_COLUMNS}`,
     [installationId, id],
   );
   return result.rows[0] || null;
