@@ -1,4 +1,4 @@
-import { listEmployees, resolveEmployeeRequestId } from '../../../lib/employee-gateway';
+import { listAllEmployees, resolveEmployeeRequestId } from '../../../lib/employee-gateway';
 import { listOrganizationResource, resolveOrganizationRequestId } from '../../../lib/organization-gateway';
 import type { Branch } from '../../../lib/organization-types';
 import type { Employee } from '../../../lib/employee-types';
@@ -13,10 +13,7 @@ export default async function EmployeesPage() {
 
   try {
     const [employeeData, branchData] = await Promise.all([
-      listEmployees<Employee[]>(
-        resolveEmployeeRequestId(undefined),
-        new URLSearchParams({ limit: '1000' }),
-      ),
+      listAllEmployees<Employee>(resolveEmployeeRequestId(undefined)),
       listOrganizationResource<Branch[]>(
         'branches',
         resolveOrganizationRequestId(undefined),
