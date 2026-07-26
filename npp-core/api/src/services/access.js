@@ -16,6 +16,10 @@ function isValidUuid(value) {
   return typeof value === 'string' && UUID_PATTERN.test(value.trim());
 }
 
+function hasOwn(value, key) {
+  return Boolean(value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, key));
+}
+
 function normalizePermissionKeys(value) {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.filter((item) => typeof item === 'string').map((item) => item.trim()).filter(Boolean))];
@@ -58,7 +62,7 @@ function notFoundRole() {
 }
 
 export function listPermissions(client) {
-  return accessRepo.syncPermissionCatalog(client).then(() => accessRepo.listPermissionCatalog(client));
+  return accessRepo.listPermissionCatalog(client);
 }
 
 function normalizeRoleCatalogRows(rows) {
@@ -100,6 +104,10 @@ function validateRoleInput(payload) {
     return { ok: false, code: 'INVALID_DESCRIPTION', message: 'Mô tả vai trò không vượt quá 512 ký tự' };
   }
 
+  if (hasOwn(payload, 'isActive') && typeof payload.isActive !== 'boolean') {
+    return { ok: false, code: 'INVALID_ACTIVE_STATUS', message: 'isActive phải là kiểu boolean' };
+  }
+
   const permissionKeys = normalizePermissionKeys(payload.permissionKeys);
   if (permissionKeys.some((key) => !isKnownPermissionKey(key))) {
     return { ok: false, code: 'INVALID_PERMISSION_KEY', message: 'Danh sách quyền chứa quyền không hợp lệ' };
@@ -111,6 +119,7 @@ function validateRoleInput(payload) {
       code,
       name,
       description: description || null,
+      isActive: payload.isActive !== false,
       permissionKeys,
     },
   };
@@ -146,7 +155,7 @@ export async function createRole(client, { installationId, payload, createdBy })
     code: validation.normalized.code,
     name: validation.normalized.name,
     description: validation.normalized.description,
-    isActive: payload?.isActive !== false,
+    isActive: validation.normalized.isActive,
     createdBy,
     updatedBy: createdBy,
   });
@@ -174,11 +183,18 @@ export async function updateRole(client, { id, installationId, payload, updatedB
 
   const existingPermissionKeys = await accessRepo.listRolePermissionKeys(client, { installationId, roleId: existing.id });
 
-  if (Object.prototype.hasOwnProperty.call(payload ?? {}, 'code')) {
+  if (hasOwn(payload, 'code')) {
     const nextCode = normalizeCode(payload.code);
-    if (nextCode && nextCode !== existing.code) {
+    if (!CODE_PATTERN.test(nextCode)) {
+      return { ok: false, code: 'INVALID_CODE', message: 'Mã vai trò phải gồm chữ hoa, số, dấu gạch ngang hoặc gạch dưới' };
+    }
+    if (nextCode !== existing.code) {
       return { ok: false, code: 'CODE_IMMUTABLE', message: 'Mã vai trò không thể thay đổi sau khi tạo' };
     }
+  }
+
+  if (hasOwn(payload, 'isActive') && typeof payload.isActive !== 'boolean') {
+    return { ok: false, code: 'INVALID_ACTIVE_STATUS', message: 'isActive phải là kiểu boolean' };
   }
 
   const nextName = payload?.name === undefined ? existing.name : normalizeText(payload.name);
@@ -186,12 +202,13 @@ export async function updateRole(client, { id, installationId, payload, updatedB
   const nextPermissionKeys = payload?.permissionKeys === undefined
     ? existingPermissionKeys
     : normalizePermissionKeys(payload.permissionKeys);
-  const nextIsActive = typeof payload?.isActive === 'boolean' ? payload.isActive : existing.is_active;
+  const nextIsActive = payload?.isActive === undefined ? existing.is_active : payload.isActive;
 
   const validation = validateRoleInput({
     code: existing.code,
     name: nextName,
     description: nextDescription,
+    isActive: nextIsActive,
     permissionKeys: nextPermissionKeys,
   });
   if (!validation.ok) return validation;
@@ -241,10 +258,9 @@ export async function updateRole(client, { id, installationId, payload, updatedB
   const role = await accessRepo.getRoleForInstallationWithPermissions(client, { installationId, id: updated.id });
   if (!role) return conflictResult('Vai trò đang có thay đổi, vui lòng tải lại dữ liệu');
 
-  const freshRole = await accessRepo.getRoleForInstallationWithPermissions(client, { installationId, id: role.id });
   return {
     ok: true,
-    role: normalizeRoleCatalogRows([freshRole])[0],
+    role: normalizeRoleCatalogRows([role])[0],
     beforeData: { ...existing, permission_keys: existingPermissionKeys },
     changed: true,
   };
@@ -285,7 +301,9 @@ export async function updateRoleStatus(client, { id, installationId, isActive, u
 }
 
 export async function updateRolePermissions(client, { id, installationId, permissionKeys, updatedBy, expectedUpdatedAt }) {
-  const existing = await accessRepo.getRoleByIdForInstallationForUpdate(client, { installationId, id });
+  if (!isValidUuid(id)) return { ok: false, code: 'INVALID_ID', message: 'Mã vai trò không hợp lệ' };
+
+  const existing = await accessRepo.getRoleByIdForInstallationForUpdate(client, { installationId, id: id.trim() });
   if (!existing) return notFoundRole();
   const existingPermissionKeys = await accessRepo.listRolePermissionKeys(client, { installationId, roleId: existing.id });
 
@@ -310,6 +328,17 @@ export async function updateRolePermissions(client, { id, installationId, permis
     const snapshot = { ...existing, permission_keys: existingPermissionKeys };
     return { ok: true, role: snapshot, beforeData: snapshot, changed: false };
   }
+
+  const updated = await accessRepo.updateRoleRecord(client, {
+    id: existing.id,
+    installationId,
+    name: existing.name,
+    description: existing.description,
+    isActive: existing.is_active,
+    updatedBy,
+    expectedUpdatedAt: expected.value,
+  });
+  if (!updated) return conflictResult('Tập quyền của vai trò đã thay đổi, vui lòng tải lại dữ liệu');
 
   await accessRepo.replaceRolePermissions(client, {
     installationId,
