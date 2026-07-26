@@ -18,7 +18,7 @@ export default async function BranchesPage() {
     <OrganizationWorkspace
       scope="branches"
       title="Chi nhánh"
-      subtitle="Danh sách chi nhánh, tìm kiếm theo mã hoặc tên, thêm mới, chỉnh sửa và bật tắt trạng thái."
+      subtitle="Quản lý danh mục chi nhánh và thông tin liên hệ phục vụ vận hành, hạch toán và báo cáo."
       initialData={initialData}
       initialError={initialError}
     />
