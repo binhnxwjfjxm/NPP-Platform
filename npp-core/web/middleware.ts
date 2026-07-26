@@ -26,13 +26,18 @@ function parseBasicAuthorization(value: string | null): { username: string; pass
   }
 }
 
+function isOrganizationApiPath(pathname: string): boolean {
+  return pathname.startsWith('/api/organization/')
+    || pathname.startsWith('/npp-core/web/api/organization/');
+}
+
 function deny(request: NextRequest, status: 401 | 503, code: string, message: string) {
   const headers = new Headers({
     'Cache-Control': 'no-store',
     ...(status === 401 ? { 'WWW-Authenticate': `Basic realm="${BASIC_REALM}", charset="UTF-8"` } : {}),
   });
 
-  if (request.nextUrl.pathname.startsWith('/api/')) {
+  if (isOrganizationApiPath(request.nextUrl.pathname)) {
     return NextResponse.json({ error: { code, message, retryable: false } }, { status, headers });
   }
 
@@ -65,5 +70,12 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/organization/:path*', '/api/organization/:path*'],
+  matcher: [
+    '/dashboard/:path*',
+    '/organization/:path*',
+    '/api/organization/:path*',
+    '/npp-core/web/dashboard/:path*',
+    '/npp-core/web/organization/:path*',
+    '/npp-core/web/api/organization/:path*',
+  ],
 };

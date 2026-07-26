@@ -19,6 +19,13 @@ test("Vercel builds the nested NPP Core Next.js package", () => {
   assert.equal(config.outputDirectory, undefined);
 });
 
+test("public organization API routes reach the nested Next.js functions", () => {
+  assert.deepEqual(config.routes?.[0], {
+    src: "/api/organization/(.*)",
+    dest: "/npp-core/web/api/organization/$1"
+  });
+});
+
 test("automatic Vercel deployments stay locked by default", () => {
   assert.equal(config.git?.deploymentEnabled, false);
   assert.match(workflow, /^\s{2}workflow_dispatch:\s*$/m);
