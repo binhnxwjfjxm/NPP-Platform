@@ -72,6 +72,31 @@ function serviceStatus(result) {
   }
 }
 
+function normalizedPermissionKeys(value) {
+  return Array.isArray(value)
+    ? [...new Set(value.filter((item) => typeof item === 'string').map((item) => item.trim()).filter(Boolean))].sort()
+    : [];
+}
+
+function permissionSetsDiffer(beforeData, afterData) {
+  const before = normalizedPermissionKeys(beforeData?.permission_keys);
+  const after = normalizedPermissionKeys(afterData?.permission_keys);
+  return before.length !== after.length || before.some((key, index) => key !== after[index]);
+}
+
+export function deriveRoleAuditAction(serviceResult) {
+  if (serviceResult?.changed === false) return 'noop';
+
+  const beforeData = serviceResult?.beforeData;
+  const afterData = serviceResult?.role;
+
+  if (beforeData && afterData && beforeData.is_active !== afterData.is_active) {
+    return afterData.is_active ? 'activate' : 'deactivate';
+  }
+  if (permissionSetsDiffer(beforeData, afterData)) return 'replace_permissions';
+  return 'update';
+}
+
 async function handleListPermissions(req, res, context) {
   try {
     const permissions = await accessService.listPermissions(context.getPool());
@@ -265,15 +290,9 @@ async function handlePatchRole(req, res, context, id) {
             }
 
             const role = serviceResult.role;
-            const action = typeof payload.isActive === 'boolean'
-              ? (payload.isActive ? 'activate' : 'deactivate')
-              : Object.prototype.hasOwnProperty.call(payload, 'permissionKeys')
-                ? 'replace_permissions'
-                : 'update';
-
             await insertAuditRecord(client, buildAuditRecord({
               requestContext: context.requestContext,
-              action: serviceResult.changed === false ? 'noop' : action,
+              action: deriveRoleAuditAction(serviceResult),
               resourceType: 'role',
               resourceId: role.id,
               beforeData: serviceResult.beforeData ?? null,
