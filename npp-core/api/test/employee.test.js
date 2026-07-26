@@ -36,6 +36,17 @@ async function createBranch(pool, installationId, suffix = randomUUID().slice(0,
   return result.branch;
 }
 
+function createBarrier(target) {
+  let arrived = 0;
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  return async () => {
+    arrived += 1;
+    if (arrived === target) release();
+    await gate;
+  };
+}
+
 test('Employee service — create, normalize and list by branch', async () => {
   const config = loadConfig(testEnv());
   const pool = getPool(config);
@@ -143,6 +154,96 @@ test('Employee service — stale expectedUpdatedAt returns conflict', async () =
     assert.equal(stale.ok, false);
     assert.equal(stale.code, 'CONFLICT');
   } finally {
+    await closePool();
+  }
+});
+
+test('Employee service — stale no-op status is rejected and current no-op is explicit', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+  try {
+    const created = await employeeService.createEmployee(pool, {
+      installationId: config.installationId,
+      payload: {
+        code: `NV-${randomUUID().slice(0, 8)}`,
+        fullName: 'Nhân sự kiểm tra trạng thái',
+      },
+      createdBy: 'test:user',
+    });
+    assert.ok(created.ok);
+
+    const changed = await employeeService.updateEmployee(pool, {
+      id: created.employee.id,
+      installationId: config.installationId,
+      payload: {
+        fullName: 'Nhân sự đã cập nhật',
+        expectedUpdatedAt: created.employee.updated_at,
+      },
+      updatedBy: 'test:user',
+    });
+    assert.ok(changed.ok);
+
+    const staleNoOp = await employeeService.updateEmployeeStatus(pool, {
+      id: created.employee.id,
+      installationId: config.installationId,
+      isActive: true,
+      updatedBy: 'test:user',
+      expectedUpdatedAt: created.employee.updated_at,
+    });
+    assert.equal(staleNoOp.ok, false);
+    assert.equal(staleNoOp.code, 'CONFLICT');
+
+    const currentNoOp = await employeeService.updateEmployeeStatus(pool, {
+      id: created.employee.id,
+      installationId: config.installationId,
+      isActive: true,
+      updatedBy: 'test:user',
+      expectedUpdatedAt: changed.employee.updated_at,
+    });
+    assert.ok(currentNoOp.ok);
+    assert.equal(currentNoOp.changed, false);
+  } finally {
+    await closePool();
+  }
+});
+
+test('Employee service — concurrent duplicate codes resolve as one success and one conflict', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+  const firstClient = await pool.connect();
+  const secondClient = await pool.connect();
+  try {
+    const barrier = createBarrier(2);
+    const wrapClient = (client) => ({
+      query: async (text, values) => {
+        if (
+          typeof text === 'string'
+          && text.includes('FROM shared.employees')
+          && text.includes('WHERE installation_id = $1 AND code = $2')
+        ) {
+          await barrier();
+        }
+        return client.query(text, values);
+      },
+    });
+    const code = `NV-${randomUUID().slice(0, 8).toUpperCase()}`;
+    const input = {
+      installationId: config.installationId,
+      payload: { code, fullName: 'Nhân sự cạnh tranh' },
+      createdBy: 'test:user',
+    };
+
+    const results = await Promise.all([
+      employeeService.createEmployee(wrapClient(firstClient), input),
+      employeeService.createEmployee(wrapClient(secondClient), input),
+    ]);
+
+    assert.equal(results.filter((result) => result.ok).length, 1);
+    const conflict = results.find((result) => !result.ok);
+    assert.equal(conflict.code, 'DUPLICATE_CODE');
+  } finally {
+    firstClient.release();
+    secondClient.release();
     await closePool();
   }
 });
