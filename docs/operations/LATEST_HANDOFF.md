@@ -1,7 +1,7 @@
 # NPP Platform — Latest Handoff
 
 > Updated: 2026-07-26  
-> Current checkpoint: Phase 3.2A employee directory implementation in progress.
+> Current checkpoint: Phase 3.2B role and permission foundation in progress.
 
 ## Production status
 
@@ -28,24 +28,24 @@ Auto Deploy: locked
 - Canonical Vercel routes from project root `npp-core/web`.
 - Office-style shell polish, fixed/collapsible sidebar, nested navigation and Hưng Phát branding merged by PR #32.
 
-## Current Phase 3.2A work
+## Current Phase 3.2B work
 
-The product owner has accepted the current UI as an interim baseline and released the hold on the next master-data slice.
+Phase 3.2A employee directory is complete on `main`. The next master-data slice is the role and permission foundation.
 
 Active branch:
 
 ```text
-agent/core-employee-directory
+agent/core-role-permission-foundation
 ```
 
 Scope:
 
-- canonical business employee records;
-- optional branch assignment;
+- canonical permission catalog and role records;
+- installation-scoped role membership and permission assignment;
 - list/get/create/update/activate/deactivate;
 - idempotent create, optimistic concurrency and transactional audit;
 - server-only Core web gateway;
-- `/access/employees` administration UI;
+- `/access/roles` administration UI;
 - API integration and Playwright browser tests.
 
 Explicitly excluded from this slice:
@@ -53,11 +53,11 @@ Explicitly excluded from this slice:
 - passwords and password hashes;
 - authentication-provider integration;
 - user identities and employee-user links;
-- roles, permission assignments and data scopes;
+- role-user assignment and data scopes;
 - replacing Vercel Basic Auth;
 - production migration or deployment before CI and migration safety gates.
 
-See `docs/operations/employee-directory-slice.md`.
+See `docs/operations/role-permission-slice.md`.
 
 ## Backups and migration evidence
 
@@ -68,7 +68,7 @@ Phase 3.1 production migration verify: PASS
 Phase 3.1 post-migration backup: b002
 ```
 
-These are historical Phase 3.1 artifacts only. Do not use them as evidence for migration `007`. Before any Phase 3.2A production migration, audit the provider again and create a new verified backup plus restore rehearsal.
+These are historical Phase 3.1 artifacts only. Do not use them as evidence for migration `007` or `008`. Before any later production migration, audit the provider again and create a new verified backup plus restore rehearsal.
 
 ## Rules that remain active
 

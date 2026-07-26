@@ -25,6 +25,10 @@ const HR_EMPLOYEES_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/007_hr_employees.sql', import.meta.url),
   'utf8',
 );
+const ACCESS_ROLES_PERMISSIONS_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/008_access_roles_permissions.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
@@ -50,6 +54,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '007_hr_employees',
     sql: HR_EMPLOYEES_SQL,
+  }),
+  Object.freeze({
+    id: '008_access_roles_permissions',
+    sql: ACCESS_ROLES_PERMISSIONS_SQL,
   }),
 ]);
 

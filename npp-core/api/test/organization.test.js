@@ -11,11 +11,12 @@ import * as warehouseService from '../src/services/warehouse.js';
 import * as locationService from '../src/services/location.js';
 
 function testEnv(overrides = {}) {
+  const installationId = overrides.INSTALLATION_ID ?? `test-installation-${randomUUID().slice(0, 8)}`;
   return {
     NODE_ENV: 'test',
     HOST: '127.0.0.1',
     PORT: '3008',
-    INSTALLATION_ID: 'test-installation',
+    INSTALLATION_ID: installationId,
     DATABASE_URL: process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || 'postgresql://user:password@127.0.0.1:5432/npp_platform',
     DATABASE_SSL_MODE: 'disable',
     BACKEND_API_TOKEN: 'test-token-0123456789abcdef',

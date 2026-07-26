@@ -3,6 +3,10 @@ import { test, expect, type Page } from '@playwright/test';
 const TEST_TOKEN_MARKER = process.env.E2E_BACKEND_API_TOKEN ?? '';
 const TEST_DATABASE_MARKER = process.env.E2E_DATABASE_URL ?? '';
 
+function uniqueSuffix() {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
+}
+
 async function expectHealthyRoute(page: Page, path: string) {
   const browserErrors: string[] = [];
   const failedAssets: string[] = [];
@@ -132,6 +136,117 @@ test.describe('Core web route smoke', () => {
     expectNoSensitiveData(await page.content());
     expectNoEnglishMainFlow(await page.locator('body').innerText());
     expect(browserEmployeeGets).toEqual([]);
+  });
+
+  test('role and permission workspace loads through the nested access menu without browser-side initial reload', async ({ page }) => {
+    const browserAccessGets: string[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (
+        request.method() === 'GET'
+        && url.origin === 'http://127.0.0.1:3003'
+        && url.pathname.startsWith('/api/access/')
+      ) {
+        browserAccessGets.push(`${url.pathname}${url.search}`);
+      }
+    });
+
+    await expectHealthyRoute(page, '/access/roles');
+    await expect(page.getByTestId('roles-page')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Vai trò & phân quyền', exact: true })).toBeVisible();
+    await expect(page.getByTestId('access-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('nav-roles')).toBeVisible();
+    expectNoSensitiveData(await page.content());
+    expectNoEnglishMainFlow(await page.locator('body').innerText());
+    expect(browserAccessGets).toEqual([]);
+  });
+
+  test('role and permission workspace supports create, edit, filter, toggle, and stale conflict handling', async ({ page }) => {
+    const suffix = uniqueSuffix();
+    const roleCode = `RL-${suffix}`;
+    const initialName = `Vai trò ${suffix}`;
+    const updatedName = `Vai trò ${suffix} đã sửa`;
+    let conflictPage;
+
+    await page.goto('/access/roles');
+    await expect(page.getByTestId('roles-page')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Vai trò & phân quyền', exact: true })).toBeVisible();
+
+    await page.getByTestId('roles-topbar-create-button').click();
+    const editorDialog = page.getByRole('dialog');
+    await expect(editorDialog.getByRole('heading', { name: 'Thêm vai trò quản trị', exact: true })).toBeVisible();
+    await expect(editorDialog.getByText('Ma trận quyền', { exact: true })).toBeVisible();
+    await expect(editorDialog.getByRole('heading', { name: 'Chọn quyền theo module', exact: true })).toBeVisible();
+    await expect(editorDialog.getByText('Mã vai trò', { exact: true })).toBeVisible();
+
+    await page.getByTestId('role-code-input').fill(roleCode.toLowerCase());
+    await page.getByTestId('role-name-input').fill(initialName);
+    await page.getByTestId('role-description-input').fill(`Mô tả ${suffix}`);
+    const roleReadPermission = page.getByTestId('permission-core.role.read');
+    const permissionReadPermission = page.getByTestId('permission-core.permission.read');
+    await roleReadPermission.evaluate((element) => {
+      (element as HTMLInputElement).click();
+    });
+    await permissionReadPermission.evaluate((element) => {
+      (element as HTMLInputElement).click();
+    });
+    await page.getByRole('button', { name: 'Tạo vai trò' }).click();
+
+    const row = page.getByTestId(`role-row-${roleCode}`);
+    await expect(row).toBeVisible();
+    await expect(row).toContainText(initialName);
+    await expect(row).toContainText('2 quyền');
+    await expect(row).toContainText('Đang hoạt động');
+
+    await page.getByTestId('roles-search-input').fill(roleCode);
+    await expect(row).toBeVisible();
+    await page.getByTestId('roles-status-filter').selectOption('active');
+    await expect(row).toBeVisible();
+    await page.getByTestId('roles-status-filter').selectOption('inactive');
+    await expect(row).toHaveCount(0);
+    await page.getByTestId('roles-status-filter').selectOption('all');
+    await page.getByTestId('roles-search-input').fill('');
+
+    await page.getByTestId(`edit-role-${roleCode}`).click();
+    await expect(page.getByTestId('role-code-input')).toHaveValue(roleCode);
+    await page.getByTestId('role-name-input').fill(updatedName);
+    await page.getByTestId('role-description-input').fill(`Mô tả ${suffix} đã sửa`);
+    await page.getByTestId('permission-core.permission.read').evaluate((element) => {
+      (element as HTMLInputElement).click();
+    });
+    await page.getByTestId('permission-core.role.write').evaluate((element) => {
+      (element as HTMLInputElement).click();
+    });
+    await page.getByRole('button', { name: 'Lưu thay đổi' }).click();
+
+    await expect(row).toContainText(updatedName);
+    await expect(row).toContainText('2 quyền');
+
+    await page.getByTestId(`toggle-role-${roleCode}`).click();
+    await page.getByRole('button', { name: 'Xác nhận' }).click();
+    await expect(row).toContainText('Ngừng hoạt động');
+
+    await page.getByTestId('roles-status-filter').selectOption('inactive');
+    await expect(row).toBeVisible();
+
+    await page.getByTestId(`toggle-role-${roleCode}`).click();
+    await page.getByRole('button', { name: 'Xác nhận' }).click();
+    await page.getByTestId('roles-status-filter').selectOption('all');
+    await expect(row).toContainText('Đang hoạt động');
+
+    await page.getByTestId(`edit-role-${roleCode}`).click();
+    await page.getByTestId('role-name-input').fill(`${updatedName} chờ xung đột`);
+
+    conflictPage = await page.context().newPage();
+    await conflictPage.goto('/access/roles');
+    await conflictPage.getByTestId(`edit-role-${roleCode}`).click();
+    await conflictPage.getByTestId('role-name-input').fill(`${updatedName} xung đột`);
+    await conflictPage.getByRole('button', { name: 'Lưu thay đổi' }).click();
+
+    await page.getByRole('button', { name: 'Lưu thay đổi' }).click();
+    await expect(page.getByRole('status')).toContainText('Vai trò đang có thay đổi, vui lòng tải lại dữ liệu');
+
+    await conflictPage.close();
   });
 
   test('same-origin static assets are present and load', async ({ page }) => {

@@ -67,3 +67,15 @@ test('registers constrained append-only audit and transactional outbox migration
   assert.match(migration.sql, /status IN \('pending', 'published', 'failed'\)/);
   assert.match(migration.sql, /WHERE status = 'pending'/);
 });
+
+test('registers canonical access role and permission schema migration', () => {
+  const migration = CORE_API_MIGRATIONS.find(({ id }) => id === '008_access_roles_permissions');
+
+  assert.ok(migration);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS shared\.permission_catalog/);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS shared\.roles/);
+  assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS shared\.role_permissions/);
+  assert.match(migration.sql, /roles_code_immutable/);
+  assert.match(migration.sql, /INSERT INTO shared\.permission_catalog/);
+  assert.match(migration.sql, /ON CONFLICT \(permission_key\) DO UPDATE/);
+});
