@@ -2,28 +2,19 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const config = JSON.parse(await readFile(new URL("../../vercel.json", import.meta.url), "utf8"));
+const config = JSON.parse(
+  await readFile(new URL("../../npp-core/web/vercel.json", import.meta.url), "utf8")
+);
 const workflow = await readFile(
   new URL("../../.github/workflows/vercel-production-manual.yml", import.meta.url),
   "utf8"
 );
 
-test("Vercel builds the nested NPP Core Next.js package", () => {
-  assert.deepEqual(config.builds, [
-    {
-      src: "npp-core/web/package.json",
-      use: "@vercel/next"
-    }
-  ]);
+test("Vercel uses the NPP Core web package as its project root", () => {
+  assert.equal(config.builds, undefined);
+  assert.equal(config.routes, undefined);
   assert.equal(config.framework, undefined);
   assert.equal(config.outputDirectory, undefined);
-});
-
-test("public organization API routes reach the nested Next.js functions", () => {
-  assert.deepEqual(config.routes?.[0], {
-    src: "/api/organization/(.*)",
-    dest: "/npp-core/web/api/organization/$1"
-  });
 });
 
 test("automatic Vercel deployments stay locked by default", () => {
@@ -40,8 +31,11 @@ test("comment deployment requires the exact guarded command", () => {
   assert.match(workflow, /github\.actor/);
 });
 
-test("special command opens one Git gate and always re-locks it", () => {
+test("special command opens and re-locks the nested Core web gate", () => {
   assert.match(workflow, /permissions:\s*\n\s+contents: write/);
+  assert.match(workflow, /const path = "npp-core\/web\/vercel\.json"/);
+  assert.match(workflow, /git add npp-core\/web\/vercel\.json/);
+  assert.match(workflow, /git show origin\/main:npp-core\/web\/vercel\.json/);
   assert.match(workflow, /deploymentEnabled: true/);
   assert.match(workflow, /deploymentEnabled: false/);
   assert.match(workflow, /open one-shot production gate \[skip ci\]/);
