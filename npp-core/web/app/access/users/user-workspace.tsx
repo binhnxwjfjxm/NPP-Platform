@@ -2,11 +2,10 @@
 
 import { useMemo, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
-import shellStyles from '../../components/app-shell.module.css';
-import styles from '../../organization/organization.module.css';
-import type { AccessUser, AccessRole } from '../../../lib/access-types';
+import styles from './user-workspace.module.css';
+import type { AccessRole, AccessUser } from '../../../lib/access-types';
 import type { Employee } from '../../../lib/employee-types';
-import { formatCompactNumber, formatDateTime, matchTerm, normalizeSearch, toUpperCode } from '../../../lib/organization-types';
+import { formatDateTime, matchTerm, normalizeSearch } from '../../../lib/organization-types';
 
 type FilterState = 'all' | 'active' | 'inactive';
 type EditorState = { mode: 'create' | 'edit'; userId: string | null } | null;
@@ -31,12 +30,37 @@ type ApiEnvelope<T> = {
   error?: { code?: string; message?: string; retryable?: boolean };
 };
 
+class ApiRequestError extends Error {
+  code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.code = code;
+  }
+}
+
 function joinClasses(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(' ');
 }
 
 function emptyDraft(): UserDraft {
   return { loginName: '', employeeId: '', isActive: true, roleIds: [] };
+}
+
+function sortedIds(ids: string[]) {
+  return [...new Set(ids)].sort();
+}
+
+function sameIds(left: string[], right: string[]) {
+  const a = sortedIds(left);
+  const b = sortedIds(right);
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function idempotencyKey(suffix: string) {
+  const random = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  return `web-${suffix}-${Date.now()}-${random}`;
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -50,13 +74,10 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   const payload = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
+  const code = payload.error?.code || 'REQUEST_FAILED';
   const message = payload.error?.message || 'Không thực hiện được yêu cầu người dùng';
-  if (!response.ok) {
-    throw new Error(message);
-  }
-  if (payload.data === undefined) {
-    throw new Error(message);
-  }
+  if (!response.ok) throw new ApiRequestError(code, message);
+  if (payload.data === undefined) throw new ApiRequestError('INVALID_RESPONSE', message);
   return payload.data;
 }
 
@@ -67,212 +88,287 @@ export default function UserWorkspace({
   initialError = null,
 }: Props) {
   const [users, setUsers] = useState(initialUsers);
-  const [roles, setRoles] = useState(initialRoles);
-  const [employees, setEmployees] = useState(initialEmployees);
+  const [roles] = useState(initialRoles);
+  const [employees] = useState(initialEmployees);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialError);
   const [notice, setNotice] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterState>('all');
   const [editor, setEditor] = useState<EditorState>(null);
   const [toggleState, setToggleState] = useState<ToggleState>(null);
   const [draft, setDraft] = useState<UserDraft>(emptyDraft());
 
-  const normalizedSearch = normalizeSearch(search);
-  const employeeMap = useMemo(() => new Map(employees.map((emp) => [emp.id, emp])), [employees]);
+  const employeeMap = useMemo(() => new Map(employees.map((employee) => [employee.id, employee])), [employees]);
   const roleMap = useMemo(() => new Map(roles.map((role) => [role.id, role])), [roles]);
+  const normalizedSearch = normalizeSearch(search);
+
+  const eligibleEmployees = useMemo(() => {
+    const linkedEmployeeIds = new Set(users.map((user) => user.employee_id).filter(Boolean));
+    return employees
+      .filter((employee) => employee.is_active && !linkedEmployeeIds.has(employee.id))
+      .sort((left, right) => left.code.localeCompare(right.code));
+  }, [employees, users]);
 
   const visibleUsers = useMemo(() => users
     .filter((user) => {
       const matchesStatus = statusFilter === 'all'
         || (statusFilter === 'active' ? user.is_active : !user.is_active);
       const employee = employeeMap.get(user.employee_id ?? '');
+      const roleText = (user.role_ids ?? [])
+        .map((roleId) => roleMap.get(roleId)?.name ?? '')
+        .join(' ');
       const matchesText = !normalizedSearch || matchTerm(
         user.login_name,
         employee?.full_name ?? '',
         employee?.code ?? '',
+        roleText,
       ).includes(normalizedSearch);
       return matchesStatus && matchesText;
     })
-    .sort((left, right) => left.login_name.localeCompare(right.login_name)), [normalizedSearch, employeeMap, users, statusFilter]);
+    .sort((left, right) => left.login_name.localeCompare(right.login_name)), [employeeMap, normalizedSearch, roleMap, statusFilter, users]);
 
   const counts = useMemo(() => {
     const active = users.filter((user) => user.is_active).length;
-    return {
-      total: users.length,
-      active,
-      inactive: users.length - active,
-    };
+    return { total: users.length, active, inactive: users.length - active };
   }, [users]);
 
-  const handleCreateClick = () => {
-    setEditor({ mode: 'create', userId: null });
-    setDraft(emptyDraft());
-  };
+  const editingUser = editor?.mode === 'edit'
+    ? users.find((user) => user.id === editor.userId) ?? null
+    : null;
 
-  const handleEditClick = (userId: string) => {
-    const user = users.find((u) => u.id === userId);
+  const selectableRoles = useMemo(() => {
+    const assigned = new Set(editingUser?.role_ids ?? []);
+    return roles
+      .filter((role) => role.is_active || assigned.has(role.id))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }, [editingUser?.role_ids, roles]);
+
+  async function reloadUsers(successMessage = 'Dữ liệu người dùng đã được tải lại.') {
+    setBusy('reload');
+    setError(null);
+    setConflict(false);
+    try {
+      const nextUsers = await requestJson<AccessUser[]>('/api/access/users?limit=1000');
+      setUsers(nextUsers);
+      setNotice(successMessage);
+      return nextUsers;
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Không tải lại được dữ liệu người dùng');
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function openCreate() {
+    setError(null);
+    setNotice(null);
+    setConflict(false);
+    setDraft(emptyDraft());
+    setEditor({ mode: 'create', userId: null });
+  }
+
+  function openEdit(userId: string) {
+    const user = users.find((item) => item.id === userId);
     if (!user) return;
-    setEditor({ mode: 'edit', userId });
+    setError(null);
+    setNotice(null);
+    setConflict(false);
     setDraft({
       loginName: user.login_name,
       employeeId: user.employee_id ?? '',
       isActive: user.is_active,
-      roleIds: user.role_ids ?? [],
+      roleIds: [...(user.role_ids ?? [])],
     });
-  };
+    setEditor({ mode: 'edit', userId });
+  }
 
-  const handleCancel = () => {
+  function closeEditor() {
     setEditor(null);
     setDraft(emptyDraft());
-  };
+  }
 
-  const handleDraftChange = (key: keyof UserDraft, value: unknown) => {
-    setDraft((prev) => ({ ...prev, [key]: value }));
-  };
+  function toggleRole(roleId: string) {
+    setDraft((current) => ({
+      ...current,
+      roleIds: current.roleIds.includes(roleId)
+        ? current.roleIds.filter((id) => id !== roleId)
+        : [...current.roleIds, roleId],
+    }));
+  }
 
-  const handleSave = async () => {
+  function handleFailure(caught: unknown) {
+    if (caught instanceof ApiRequestError && caught.code === 'CONFLICT') {
+      setConflict(true);
+      setError(`${caught.message}. Hãy tải lại dữ liệu trước khi lưu tiếp.`);
+      return;
+    }
+    setConflict(false);
+    setError(caught instanceof Error ? caught.message : 'Lỗi không xác định');
+  }
+
+  async function saveEditor() {
     if (!editor) return;
     setBusy('save');
     setError(null);
     setNotice(null);
+    setConflict(false);
 
     try {
       if (editor.mode === 'create') {
-        const payload = {
-          loginName: draft.loginName,
-          employeeId: draft.employeeId || null,
-          isActive: draft.isActive,
-          roleIds: draft.roleIds,
-        };
-        const newUser = await requestJson<AccessUser>('/api/access/users', {
+        const created = await requestJson<AccessUser>('/api/access/users', {
           method: 'POST',
-          body: JSON.stringify(payload),
-          headers: { 'Idempotency-Key': `web-${Date.now()}-${Math.random()}` },
+          body: JSON.stringify({
+            loginName: draft.loginName,
+            employeeId: draft.employeeId,
+            isActive: draft.isActive,
+          }),
+          headers: { 'Idempotency-Key': idempotencyKey('user-create') },
         });
-        setUsers((prev) => [...prev, newUser]);
-        setNotice('Người dùng được tạo thành công');
-      } else if (editor.userId) {
-        const statusPayload = {
-          isActive: draft.isActive,
-          expectedUpdatedAt: users.find((u) => u.id === editor.userId)?.updated_at,
-        };
-        const updatedUser = await requestJson<AccessUser>(`/api/access/users/${editor.userId}`, {
-          method: 'PATCH',
-          body: JSON.stringify(statusPayload),
-          headers: { 'Idempotency-Key': `web-${Date.now()}-${Math.random()}` },
-        });
-        setUsers((prev) => prev.map((u) => (u.id === editor.userId ? updatedUser : u)));
-
-        if (draft.roleIds.length > 0 || (users.find((u) => u.id === editor.userId)?.role_ids?.length ?? 0) > 0) {
-          const rolePayload = {
-            roleIds: draft.roleIds,
-            expectedUpdatedAt: updatedUser.updated_at,
-          };
-          const updatedUserWithRoles = await requestJson<AccessUser>(`/api/access/users/${editor.userId}/roles`, {
-            method: 'PATCH',
-            body: JSON.stringify(rolePayload),
-            headers: { 'Idempotency-Key': `web-${Date.now()}-${Math.random()}-roles` },
-          });
-          setUsers((prev) => prev.map((u) => (u.id === editor.userId ? updatedUserWithRoles : u)));
-        }
-
-        setNotice('Người dùng được cập nhật thành công');
+        setUsers((current) => [...current, created]);
+        setNotice('Đã tạo người dùng với tập vai trò trống. Có thể gán vai trò bằng thao tác Sửa.');
+        closeEditor();
+        return;
       }
-      setEditor(null);
-      setDraft(emptyDraft());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lỗi không xác định');
+
+      if (!editor.userId) return;
+      const original = users.find((user) => user.id === editor.userId);
+      if (!original) throw new Error('Người dùng không còn tồn tại trong danh sách hiện tại');
+
+      let latest = original;
+      let changed = false;
+
+      if (draft.isActive !== original.is_active) {
+        latest = await requestJson<AccessUser>(`/api/access/users/${original.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            isActive: draft.isActive,
+            expectedUpdatedAt: latest.updated_at,
+          }),
+          headers: { 'Idempotency-Key': idempotencyKey('user-status') },
+        });
+        setUsers((current) => current.map((user) => (user.id === latest.id ? latest : user)));
+        changed = true;
+      }
+
+      if (!sameIds(draft.roleIds, original.role_ids ?? [])) {
+        latest = await requestJson<AccessUser>(`/api/access/users/${original.id}/roles`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            roleIds: sortedIds(draft.roleIds),
+            expectedUpdatedAt: latest.updated_at,
+          }),
+          headers: { 'Idempotency-Key': idempotencyKey('user-roles') },
+        });
+        setUsers((current) => current.map((user) => (user.id === latest.id ? latest : user)));
+        changed = true;
+      }
+
+      setNotice(changed ? 'Đã cập nhật người dùng.' : 'Không có thay đổi cần lưu.');
+      closeEditor();
+    } catch (caught) {
+      handleFailure(caught);
     } finally {
       setBusy(null);
     }
-  };
+  }
 
-  const handleToggleClick = (userId: string) => {
-    const user = users.find((u) => u.id === userId);
-    if (!user) return;
-    setToggleState({ userId, nextActive: !user.is_active });
-  };
-
-  const handleToggleConfirm = async () => {
+  async function confirmToggle() {
     if (!toggleState) return;
+    const user = users.find((item) => item.id === toggleState.userId);
+    if (!user) return;
+
     setBusy('toggle');
     setError(null);
     setNotice(null);
-
+    setConflict(false);
     try {
-      const user = users.find((u) => u.id === toggleState.userId);
-      if (!user) throw new Error('Người dùng không tìm thấy');
-
-      const updated = await requestJson<AccessUser>(`/api/access/users/${toggleState.userId}`, {
+      const updated = await requestJson<AccessUser>(`/api/access/users/${user.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
           isActive: toggleState.nextActive,
           expectedUpdatedAt: user.updated_at,
         }),
-        headers: { 'Idempotency-Key': `web-${Date.now()}-${toggleState.userId}` },
+        headers: { 'Idempotency-Key': idempotencyKey('user-toggle') },
       });
-      setUsers((prev) => prev.map((u) => (u.id === toggleState.userId ? updated : u)));
-      setNotice(`Trạng thái người dùng ${toggleState.nextActive ? 'được kích hoạt' : 'bị vô hiệu hóa'}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lỗi khi thay đổi trạng thái');
-    } finally {
+      setUsers((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setNotice(toggleState.nextActive ? 'Đã kích hoạt người dùng.' : 'Đã vô hiệu hóa người dùng.');
       setToggleState(null);
+    } catch (caught) {
+      handleFailure(caught);
+    } finally {
       setBusy(null);
     }
-  };
-
-  const handleToggleCancel = () => {
-    setToggleState(null);
-  };
+  }
 
   return (
-    <AppShell title="Quản lý Người dùng">
-      <div className={shellStyles.container}>
-        <div className={styles.header}>
-          <div className={styles.headerLeft}>
-            <h1>Quản lý Người dùng</h1>
-            <div className={styles.stats}>
-              <span>Tổng: {formatCompactNumber(counts.total)}</span>
-              <span>Đang hoạt động: {formatCompactNumber(counts.active)}</span>
-              <span>Không hoạt động: {formatCompactNumber(counts.inactive)}</span>
-            </div>
+    <AppShell title="Người dùng">
+      <main className={styles.page}>
+        <header className={styles.header}>
+          <div className={styles.headerText}>
+            <p className={styles.kicker}>Nhân sự &amp; phân quyền</p>
+            <h1 className={styles.title}>Người dùng</h1>
+            <p className={styles.subtitle}>
+              Quản lý tài khoản nội bộ liên kết với nhân sự. Tài khoản chưa phải thông tin đăng nhập thật và có thể tồn tại với tập vai trò trống.
+            </p>
           </div>
-          <button className={styles.primaryButton} onClick={handleCreateClick} disabled={busy !== null}>
-            Thêm Người dùng
-          </button>
-        </div>
+          <div className={styles.headerActions}>
+            <button className={styles.secondaryButton} type="button" onClick={() => reloadUsers()} disabled={busy !== null}>
+              Tải lại
+            </button>
+            <button className={styles.primaryButton} type="button" onClick={openCreate} disabled={busy !== null || eligibleEmployees.length === 0}>
+              Thêm người dùng
+            </button>
+          </div>
+        </header>
 
-        {error && <div className={styles.errorNotice}>{error}</div>}
-        {notice && <div className={styles.successNotice}>{notice}</div>}
+        <section className={styles.summaryGrid} aria-label="Tổng quan người dùng">
+          <article className={styles.summaryCard}><span>Tổng tài khoản</span><strong>{counts.total}</strong></article>
+          <article className={styles.summaryCard}><span>Đang hoạt động</span><strong>{counts.active}</strong></article>
+          <article className={styles.summaryCard}><span>Không hoạt động</span><strong>{counts.inactive}</strong></article>
+        </section>
 
-        <div className={styles.controls}>
-          <div className={styles.search}>
+        {error && (
+          <div className={styles.errorNotice} role="alert">
+            {error}
+            {conflict && (
+              <div className={styles.conflictActions}>
+                <button className={styles.secondaryButton} type="button" onClick={() => reloadUsers('Đã tải lại phiên bản mới nhất.')} disabled={busy !== null}>
+                  Tải lại dữ liệu
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        {notice && <div className={styles.notice} role="status">{notice}</div>}
+
+        <section className={styles.toolbar} aria-label="Bộ lọc người dùng">
+          <label className={styles.field}>
+            Tìm kiếm
             <input
-              type="text"
-              placeholder="Tìm kiếm theo tên đăng nhập hoặc tên nhân sự..."
+              type="search"
               value={search}
-              onChange={(e) => setSearch(e.currentTarget.value)}
-              disabled={busy !== null}
+              onChange={(event) => setSearch(event.currentTarget.value)}
+              placeholder="Tên đăng nhập, nhân sự hoặc vai trò"
             />
-          </div>
-          <div className={styles.filters}>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.currentTarget.value as FilterState)}
-              disabled={busy !== null}
-            >
-              <option value="all">Tất cả trạng thái</option>
+          </label>
+          <label className={styles.field}>
+            Trạng thái
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as FilterState)}>
+              <option value="all">Tất cả</option>
               <option value="active">Đang hoạt động</option>
               <option value="inactive">Không hoạt động</option>
             </select>
+          </label>
+          <div className={styles.headerActions}>
+            <span className={styles.muted}>{visibleUsers.length} kết quả</span>
           </div>
-        </div>
+        </section>
 
-        <div className={styles.list}>
-          {visibleUsers.length === 0 ? (
-            <div className={styles.empty}>Không có người dùng nào</div>
-          ) : (
+        <section className={styles.tableSection}>
+          <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
                 <tr>
@@ -280,142 +376,188 @@ export default function UserWorkspace({
                   <th>Nhân sự</th>
                   <th>Vai trò</th>
                   <th>Trạng thái</th>
-                  <th>Cập nhật lần cuối</th>
+                  <th>Cập nhật</th>
                   <th>Hành động</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleUsers.map((user) => {
                   const employee = employeeMap.get(user.employee_id ?? '');
-                  const userRoles = (user.role_ids ?? []).map((id) => roleMap.get(id)).filter(Boolean) as AccessRole[];
+                  const userRoles = (user.role_ids ?? [])
+                    .map((roleId) => roleMap.get(roleId))
+                    .filter((role): role is AccessRole => Boolean(role));
                   return (
                     <tr key={user.id}>
-                      <td className={styles.code}>{user.login_name}</td>
-                      <td>{employee?.full_name || employee?.code || '(không liên kết)'}</td>
-                      <td>{userRoles.length === 0 ? '(không có)' : userRoles.map((r) => r.code).join(', ')}</td>
+                      <td className={styles.loginName}>{user.login_name}</td>
                       <td>
-                        <span className={joinClasses(styles.badge, user.is_active ? styles.badgeActive : styles.badgeInactive)}>
+                        <div className={styles.employeeCell}>
+                          <strong>{employee?.full_name ?? user.employee_full_name ?? 'Không xác định'}</strong>
+                          <span>{employee?.code ?? user.employee_code ?? ''}</span>
+                        </div>
+                      </td>
+                      <td>
+                        {userRoles.length > 0 ? (
+                          <div className={styles.roleList}>
+                            {userRoles.map((role) => <span key={role.id} className={styles.roleChip}>{role.name}</span>)}
+                          </div>
+                        ) : <span className={styles.muted}>Chưa gán vai trò</span>}
+                      </td>
+                      <td>
+                        <span className={joinClasses(styles.statusBadge, user.is_active ? styles.active : styles.inactive)}>
                           {user.is_active ? 'Hoạt động' : 'Không hoạt động'}
                         </span>
                       </td>
-                      <td className={styles.timestamp}>{formatDateTime(user.updated_at)}</td>
-                      <td className={styles.actions}>
-                        <button
-                          className={styles.actionButton}
-                          onClick={() => handleEditClick(user.id)}
-                          disabled={busy !== null}
-                        >
-                          Sửa
-                        </button>
-                        <button
-                          className={joinClasses(styles.actionButton, user.is_active ? styles.actionDanger : styles.actionSuccess)}
-                          onClick={() => handleToggleClick(user.id)}
-                          disabled={busy !== null}
-                        >
-                          {user.is_active ? 'Vô hiệu hóa' : 'Kích hoạt'}
-                        </button>
+                      <td>{formatDateTime(user.updated_at)}</td>
+                      <td>
+                        <div className={styles.rowActions}>
+                          <button className={styles.secondaryButton} type="button" onClick={() => openEdit(user.id)} disabled={busy !== null}>Sửa</button>
+                          <button
+                            className={user.is_active ? styles.dangerButton : styles.successButton}
+                            type="button"
+                            onClick={() => setToggleState({ userId: user.id, nextActive: !user.is_active })}
+                            disabled={busy !== null}
+                          >
+                            {user.is_active ? 'Vô hiệu hóa' : 'Kích hoạt'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
                 })}
+                {visibleUsers.length === 0 && (
+                  <tr><td colSpan={6} className={styles.emptyState}>Không có người dùng phù hợp.</td></tr>
+                )}
               </tbody>
             </table>
-          )}
-        </div>
+          </div>
+        </section>
 
         {editor && (
-          <div className={styles.editor}>
-            <div className={styles.editorContent}>
-              <h2>{editor.mode === 'create' ? 'Tạo Người dùng' : 'Sửa Người dùng'}</h2>
-              <div className={styles.editorForm}>
-                <div className={styles.formGroup}>
-                  <label>Tên đăng nhập</label>
-                  <input
-                    type="text"
-                    value={draft.loginName}
-                    onChange={(e) => handleDraftChange('loginName', e.currentTarget.value)}
-                    disabled={editor.mode === 'edit' || busy !== null}
-                    placeholder="ví dụ: john.doe"
-                  />
+          <div className={styles.modalBackdrop} role="presentation">
+            <section className={styles.modalPanel} role="dialog" aria-modal="true" aria-labelledby="user-editor-title">
+              <header className={styles.modalHeader}>
+                <div>
+                  <h2 id="user-editor-title">{editor.mode === 'create' ? 'Thêm người dùng' : 'Cập nhật người dùng'}</h2>
+                  <p>{editor.mode === 'create' ? 'Tạo tài khoản nội bộ với tập vai trò trống.' : 'Chỉ trạng thái và tập vai trò có thể thay đổi.'}</p>
                 </div>
+                <button className={styles.closeButton} type="button" onClick={closeEditor} aria-label="Đóng" disabled={busy !== null}>×</button>
+              </header>
 
-                {editor.mode === 'create' && (
-                  <div className={styles.formGroup}>
-                    <label>Nhân sự (Bắt buộc)</label>
+              <div className={styles.modalBody}>
+                <div className={styles.formGrid}>
+                  <label className={styles.field}>
+                    Tên đăng nhập
+                    <input
+                      value={draft.loginName}
+                      onChange={(event) => setDraft((current) => ({ ...current, loginName: event.currentTarget.value }))}
+                      disabled={editor.mode === 'edit' || busy !== null}
+                      placeholder="vi-du.nguyen"
+                      autoComplete="off"
+                    />
+                  </label>
+
+                  {editor.mode === 'create' ? (
+                    <label className={styles.field}>
+                      Nhân sự đang hoạt động chưa có tài khoản
+                      <select
+                        value={draft.employeeId}
+                        onChange={(event) => setDraft((current) => ({ ...current, employeeId: event.currentTarget.value }))}
+                        disabled={busy !== null}
+                      >
+                        <option value="">Chọn nhân sự</option>
+                        {eligibleEmployees.map((employee) => (
+                          <option key={employee.id} value={employee.id}>{employee.full_name} — {employee.code}</option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : (
+                    <label className={styles.field}>
+                      Nhân sự liên kết
+                      <input value={`${editingUser?.employee_full_name ?? ''}${editingUser?.employee_code ? ` — ${editingUser.employee_code}` : ''}`} disabled />
+                    </label>
+                  )}
+
+                  <label className={styles.field}>
+                    Trạng thái
                     <select
-                      value={draft.employeeId}
-                      onChange={(e) => handleDraftChange('employeeId', e.currentTarget.value)}
+                      value={draft.isActive ? 'active' : 'inactive'}
+                      onChange={(event) => setDraft((current) => ({ ...current, isActive: event.currentTarget.value === 'active' }))}
                       disabled={busy !== null}
                     >
-                      <option value="">-- Chọn nhân sự --</option>
-                      {employees.map((emp) => (
-                        <option key={emp.id} value={emp.id}>
-                          {emp.full_name} ({emp.code})
-                        </option>
-                      ))}
+                      <option value="active">Hoạt động</option>
+                      <option value="inactive">Không hoạt động</option>
                     </select>
-                  </div>
-                )}
+                  </label>
 
-                {editor.mode === 'edit' && (
-                  <div className={styles.formGroup}>
-                    <label>Vai trò</label>
-                    <div className={styles.checkboxGroup}>
-                      {roles.map((role) => (
-                        <label key={role.id} className={styles.checkboxLabel}>
-                          <input
-                            type="checkbox"
-                            checked={draft.roleIds.includes(role.id)}
-                            onChange={(e) => {
-                              if (e.currentTarget.checked) {
-                                handleDraftChange('roleIds', [...draft.roleIds, role.id]);
-                              } else {
-                                handleDraftChange('roleIds', draft.roleIds.filter((id) => id !== role.id));
-                              }
-                            }}
-                            disabled={busy !== null}
-                          />
-                          {role.name} ({role.code})
-                        </label>
-                      ))}
+                  {editor.mode === 'edit' && (
+                    <div className={styles.field}>
+                      Vai trò
+                      <div className={styles.checkboxGrid}>
+                        {selectableRoles.map((role) => {
+                          const assigned = draft.roleIds.includes(role.id);
+                          return (
+                            <label key={role.id} className={styles.roleOption}>
+                              <input
+                                type="checkbox"
+                                checked={assigned}
+                                onChange={() => toggleRole(role.id)}
+                                disabled={busy !== null}
+                              />
+                              <span>
+                                <strong>{role.name}</strong>
+                                {!role.is_active && <small>Vai trò không hoạt động — bỏ chọn để thu hồi</small>}
+                              </span>
+                            </label>
+                          );
+                        })}
+                        {selectableRoles.length === 0 && <span className={styles.muted}>Không có vai trò đang hoạt động.</span>}
+                      </div>
                     </div>
-                  </div>
-                )}
-
-                <div className={styles.formActions}>
-                  <button className={styles.primaryButton} onClick={handleSave} disabled={busy !== null}>
-                    {busy === 'save' ? 'Đang lưu...' : 'Lưu'}
-                  </button>
-                  <button className={styles.secondaryButton} onClick={handleCancel} disabled={busy !== null}>
-                    Hủy
-                  </button>
+                  )}
                 </div>
               </div>
-            </div>
+
+              <footer className={styles.modalFooter}>
+                <button className={styles.secondaryButton} type="button" onClick={closeEditor} disabled={busy !== null}>Hủy</button>
+                <button
+                  className={styles.primaryButton}
+                  type="button"
+                  onClick={saveEditor}
+                  disabled={busy !== null || (editor.mode === 'create' && (!draft.loginName.trim() || !draft.employeeId))}
+                >
+                  {busy === 'save' ? 'Đang lưu…' : 'Lưu'}
+                </button>
+              </footer>
+            </section>
           </div>
         )}
 
         {toggleState && (
-          <div className={styles.modal}>
-            <div className={styles.modalContent}>
-              <h3>Xác nhận</h3>
-              <p>
-                {toggleState.nextActive
-                  ? 'Bạn chắc muốn kích hoạt người dùng này?'
-                  : 'Bạn chắc muốn vô hiệu hóa người dùng này?'}
-              </p>
-              <div className={styles.modalActions}>
-                <button className={styles.primaryButton} onClick={handleToggleConfirm} disabled={busy !== null}>
-                  {busy === 'toggle' ? 'Đang xử lý...' : 'Xác nhận'}
-                </button>
-                <button className={styles.secondaryButton} onClick={handleToggleCancel} disabled={busy !== null}>
-                  Hủy
-                </button>
+          <div className={styles.modalBackdrop} role="presentation">
+            <section className={joinClasses(styles.modalPanel, styles.confirmPanel)} role="dialog" aria-modal="true" aria-labelledby="toggle-user-title">
+              <header className={styles.modalHeader}>
+                <div>
+                  <h3 id="toggle-user-title">Xác nhận thay đổi trạng thái</h3>
+                </div>
+                <button className={styles.closeButton} type="button" onClick={() => setToggleState(null)} aria-label="Đóng" disabled={busy !== null}>×</button>
+              </header>
+              <div className={styles.modalBody}>
+                <p className={styles.confirmText}>
+                  {toggleState.nextActive
+                    ? 'Kích hoạt lại người dùng này? Nhân sự liên kết phải đang hoạt động.'
+                    : 'Vô hiệu hóa người dùng này? Các vai trò được giữ nguyên để phục vụ audit và có thể dùng lại khi kích hoạt.'}
+                </p>
               </div>
-            </div>
+              <footer className={styles.modalFooter}>
+                <button className={styles.secondaryButton} type="button" onClick={() => setToggleState(null)} disabled={busy !== null}>Hủy</button>
+                <button className={toggleState.nextActive ? styles.successButton : styles.dangerButton} type="button" onClick={confirmToggle} disabled={busy !== null}>
+                  {busy === 'toggle' ? 'Đang xử lý…' : 'Xác nhận'}
+                </button>
+              </footer>
+            </section>
           </div>
         )}
-      </div>
+      </main>
     </AppShell>
   );
 }
