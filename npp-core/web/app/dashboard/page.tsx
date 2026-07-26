@@ -18,7 +18,7 @@ export default async function DashboardPage() {
     <OrganizationWorkspace
       scope="overview"
       title="Tổng quan"
-      subtitle="Theo dõi nhanh cấu trúc chi nhánh, kho hàng và vị trí kho bằng dữ liệu thật từ Core."
+      subtitle="Tổng hợp cơ cấu đơn vị, kho hàng và vị trí lưu trữ phục vụ công tác quản trị nội bộ."
       initialData={initialData}
       initialError={initialError}
     />

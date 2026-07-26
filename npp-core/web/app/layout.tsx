@@ -17,8 +17,11 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'NPP Core',
-  description: 'Bảng điều khiển quản trị NPP Core',
+  title: {
+    default: 'Hưng Phát Company',
+    template: '%s · Hưng Phát Company',
+  },
+  description: 'Hệ thống quản trị nội bộ Hưng Phát Company',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

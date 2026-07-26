@@ -18,7 +18,7 @@ export default async function WarehousesPage() {
     <OrganizationWorkspace
       scope="warehouses"
       title="Kho hàng"
-      subtitle="Quản lý kho theo chi nhánh mẹ, giữ nguyên idempotency và expectedUpdatedAt khi thao tác."
+      subtitle="Quản lý danh mục kho theo chi nhánh, loại hình vận hành và trạng thái sử dụng."
       initialData={initialData}
       initialError={initialError}
     />

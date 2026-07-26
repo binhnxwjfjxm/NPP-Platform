@@ -161,7 +161,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 
   const payload = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
   if (!response.ok || payload.data === undefined) {
-    throw new Error(payload.error?.message || 'Yêu cầu tới gateway đã thất bại');
+    throw new Error(payload.error?.message || 'Không thể kết nối dịch vụ dữ liệu. Vui lòng thử lại.');
   }
 
   return payload.data;
@@ -277,7 +277,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
           scope: 'warehouses' as const,
           code: warehouse.code,
           name: warehouse.name,
-          relation: branch ? `${branch.code} · ${branch.name}` : 'Không rõ chi nhánh',
+          relation: branch ? `${branch.code} · ${branch.name}` : 'Chưa xác định chi nhánh',
           updated_at: warehouse.updated_at,
           is_active: warehouse.is_active,
         };
@@ -313,13 +313,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
   }, [branches, locations, warehouses]);
 
   useEffect(() => {
-    if (scope === 'overview') {
-      setLoading(false);
-      return;
-    }
-
-    void loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setLoading(false);
   }, [scope]);
 
   async function loadAll() {
@@ -337,7 +331,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
       setBranches(nextBranches);
       setWarehouses(nextWarehouses);
       setLocations(nextLocations);
-      setNotice(initialNotice('Dữ liệu đã được đồng bộ.'));
+      setNotice(initialNotice('Dữ liệu đã được cập nhật.'));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Không tải được dữ liệu tổ chức');
     } finally {
@@ -541,7 +535,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
         onClick={() => void loadAll()}
         disabled={busy !== null}
       >
-        {busy === 'load' ? 'Đang đồng bộ…' : 'Làm mới'}
+        {busy === 'load' ? 'Đang cập nhật…' : 'Cập nhật dữ liệu'}
       </button>
       {scope !== 'overview' ? (
         <button
@@ -550,14 +544,14 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
           className={joinClasses(shellStyles.actionButton, shellStyles.actionButtonPrimary)}
           onClick={() => openCreate(scope)}
         >
-          {scope === 'branches' ? 'Thêm chi nhánh' : scope === 'warehouses' ? 'Thêm kho' : 'Thêm vị trí'}
+          {scope === 'branches' ? 'Thêm chi nhánh' : scope === 'warehouses' ? 'Thêm kho hàng' : 'Thêm vị trí'}
         </button>
       ) : null}
     </>
   );
 
   return (
-    <AppShell title={title} subtitle={subtitle} kicker={scope === 'overview' ? 'NPP Core · Tổng quan dữ liệu' : 'NPP Core · Quản trị tổ chức'} actions={shellActions}>
+    <AppShell title={title} subtitle={subtitle} kicker={scope === 'overview' ? 'Báo cáo quản trị' : 'Danh mục tổ chức và kho'} actions={shellActions}>
       <section className={styles.page} data-testid={scope === 'overview' ? 'organization-overview-page' : `${scope}-page`}>
         {(loading && !branches.length && !warehouses.length && !locations.length) ? (
           <div className={styles.skeletonGrid} aria-hidden="true">
@@ -600,23 +594,23 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
             <section className={styles.panel}>
               <div className={styles.panelHeader}>
                 <div>
-                  <p className={styles.panelKicker}>Lối tắt</p>
-                  <h2>Đi thẳng tới màn quản trị</h2>
+                  <p className={styles.panelKicker}>Danh mục nghiệp vụ</p>
+                  <h2>Truy cập nhanh</h2>
                 </div>
-                <span className={styles.panelChip}>{counts.branches.total + counts.warehouses.total + counts.locations.total} bản ghi</span>
+                <span className={styles.panelChip}>{counts.branches.total + counts.warehouses.total + counts.locations.total} hồ sơ</span>
               </div>
               <div className={styles.quickLinks}>
                 <Link className={styles.quickLink} href="/organization/branches">
                   <strong>Chi nhánh</strong>
-                  <span>{counts.branches.total} bản ghi gốc</span>
+                  <span>{counts.branches.total} hồ sơ gốc</span>
                 </Link>
                 <Link className={styles.quickLink} href="/organization/warehouses">
                   <strong>Kho hàng</strong>
-                  <span>{counts.warehouses.total} bản ghi gốc</span>
+                  <span>{counts.warehouses.total} hồ sơ gốc</span>
                 </Link>
                 <Link className={styles.quickLink} href="/organization/locations">
                   <strong>Vị trí kho</strong>
-                  <span>{counts.locations.total} bản ghi gốc</span>
+                  <span>{counts.locations.total} hồ sơ gốc</span>
                 </Link>
               </div>
             </section>
@@ -624,8 +618,8 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
             <section className={joinClasses(styles.panel, styles.spanTwo)}>
               <div className={styles.panelHeader}>
                 <div>
-                  <p className={styles.panelKicker}>Quan hệ dữ liệu</p>
-                  <h2>Cây tổ chức hiện có</h2>
+                  <p className={styles.panelKicker}>Cơ cấu vận hành</p>
+                  <h2>Cơ cấu chi nhánh và kho</h2>
                 </div>
                 <span className={styles.panelChip}>{formatDateTime(initialData.checkedAt)}</span>
               </div>
@@ -655,17 +649,17 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                   ))}
                 </div>
               ) : (
-                <div className={styles.emptyState}>Chưa có dữ liệu chi nhánh để hiển thị cây tổ chức.</div>
+                <div className={styles.emptyState}>Chưa có dữ liệu chi nhánh để hiển thị cơ cấu.</div>
               )}
             </section>
 
             <section className={joinClasses(styles.panel, styles.spanTwo)}>
               <div className={styles.panelHeader}>
                 <div>
-                  <p className={styles.panelKicker}>Hoạt động gần nhất</p>
-                  <h2>Những bản ghi vừa thay đổi</h2>
+                  <p className={styles.panelKicker}>Cập nhật gần đây</p>
+                  <h2>Những hồ sơ vừa thay đổi</h2>
                 </div>
-                <span className={styles.panelChip}>Từ dữ liệu thật</span>
+                <span className={styles.panelChip}>Dữ liệu hệ thống</span>
               </div>
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
@@ -673,7 +667,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                     <tr>
                       <th>Mã</th>
                       <th>Tên</th>
-                      <th>Liên kết</th>
+                      <th>Đơn vị liên quan</th>
                       <th>Trạng thái</th>
                       <th>Cập nhật</th>
                     </tr>
@@ -690,7 +684,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                     )) : (
                       <tr>
                         <td colSpan={5}>
-                          <div className={styles.emptyState}>Chưa có bản ghi nào.</div>
+                          <div className={styles.emptyState}>Chưa có hồ sơ nào.</div>
                         </td>
                       </tr>
                     )}
@@ -703,7 +697,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
           <>
             <section className={styles.toolbar}>
               <div className={styles.toolbarSearch}>
-                <label htmlFor={`${scope}-search`}>Tìm kiếm theo mã hoặc tên</label>
+                <label htmlFor={`${scope}-search`}>Tra cứu theo mã hoặc tên</label>
                 <input
                   id={`${scope}-search`}
                   data-testid={`${scope}-search-input`}
@@ -727,7 +721,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
               </div>
               <div className={styles.toolbarActions}>
                 <button type="button" className={joinClasses(shellStyles.actionButton)} onClick={() => void loadAll()} disabled={busy !== null}>
-                  {busy === 'load' ? 'Đang đồng bộ…' : 'Làm mới'}
+                  {busy === 'load' ? 'Đang cập nhật…' : 'Cập nhật dữ liệu'}
                 </button>
                 <button
                   type="button"
@@ -735,7 +729,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                   className={joinClasses(shellStyles.actionButton, shellStyles.actionButtonPrimary)}
                   onClick={() => openCreate(scope)}
                 >
-                  {scope === 'branches' ? 'Thêm chi nhánh' : scope === 'warehouses' ? 'Thêm kho' : 'Thêm vị trí'}
+                  {scope === 'branches' ? 'Thêm chi nhánh' : scope === 'warehouses' ? 'Thêm kho hàng' : 'Thêm vị trí'}
                 </button>
               </div>
             </section>
@@ -744,10 +738,10 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
               <section className={styles.tableSection}>
                 <div className={styles.sectionHeader}>
                   <div>
-                    <p className={styles.panelKicker}>Danh sách dạng bảng</p>
+                    <p className={styles.panelKicker}>Danh mục quản lý</p>
                     <h2>Chi nhánh</h2>
                   </div>
-                  <span className={styles.panelChip}>{formatCompactNumber(visibleBranches.length)} dòng</span>
+                  <span className={styles.panelChip}>{formatCompactNumber(visibleBranches.length)} hồ sơ</span>
                 </div>
                 <div className={styles.tableWrap}>
                   <table className={styles.table} data-testid="branch-table">
@@ -758,7 +752,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                         <th>Liên hệ</th>
                         <th>Trạng thái</th>
                         <th>Cập nhật</th>
-                        <th>Thao tác</th>
+                        <th>Xử lý</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -781,9 +775,9 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                           <td>{formatDateTime(branch.updated_at)}</td>
                           <td>
                             <div className={styles.rowActions}>
-                              <button type="button" data-testid={`edit-branch-${branch.code}`} onClick={() => openEdit('branches', branch.id)}>Sửa</button>
+                              <button type="button" data-testid={`edit-branch-${branch.code}`} onClick={() => openEdit('branches', branch.id)}>Chỉnh sửa</button>
                               <button type="button" data-testid={`toggle-branch-${branch.code}`} onClick={() => openToggle('branches', branch.id, !branch.is_active)}>
-                                {branch.is_active ? 'Tắt' : 'Bật'}
+                                {branch.is_active ? 'Ngừng dùng' : 'Kích hoạt'}
                               </button>
                             </div>
                           </td>
@@ -805,10 +799,10 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
               <section className={styles.tableSection}>
                 <div className={styles.sectionHeader}>
                   <div>
-                    <p className={styles.panelKicker}>Danh sách dạng bảng</p>
+                    <p className={styles.panelKicker}>Danh mục quản lý</p>
                     <h2>Kho hàng</h2>
                   </div>
-                  <span className={styles.panelChip}>{formatCompactNumber(visibleWarehouses.length)} dòng</span>
+                  <span className={styles.panelChip}>{formatCompactNumber(visibleWarehouses.length)} hồ sơ</span>
                 </div>
                 <div className={styles.tableWrap}>
                   <table className={styles.table} data-testid="warehouse-table">
@@ -819,7 +813,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                         <th>Thuộc chi nhánh</th>
                         <th>Loại kho</th>
                         <th>Trạng thái</th>
-                        <th>Thao tác</th>
+                        <th>Xử lý</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -834,14 +828,14 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                                 <span>{formatDateTime(warehouse.updated_at)}</span>
                               </div>
                             </td>
-                            <td className={styles.relationCell}>{branch ? `${branch.code} · ${branch.name}` : 'Không rõ chi nhánh'}</td>
+                            <td className={styles.relationCell}>{branch ? `${branch.code} · ${branch.name}` : 'Chưa xác định chi nhánh'}</td>
                             <td>{typeLabel('warehouses', warehouse.warehouse_type)}</td>
                             <td><span className={joinClasses(styles.statusPill, statusClass(warehouse.is_active))}>{entityStatusLabel(warehouse.is_active)}</span></td>
                             <td>
                               <div className={styles.rowActions}>
-                                <button type="button" data-testid={`edit-warehouse-${warehouse.code}`} onClick={() => openEdit('warehouses', warehouse.id)}>Sửa</button>
+                                <button type="button" data-testid={`edit-warehouse-${warehouse.code}`} onClick={() => openEdit('warehouses', warehouse.id)}>Chỉnh sửa</button>
                                 <button type="button" data-testid={`toggle-warehouse-${warehouse.code}`} onClick={() => openToggle('warehouses', warehouse.id, !warehouse.is_active)}>
-                                  {warehouse.is_active ? 'Tắt' : 'Bật'}
+                                  {warehouse.is_active ? 'Ngừng dùng' : 'Kích hoạt'}
                                 </button>
                               </div>
                             </td>
@@ -864,10 +858,10 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
               <section className={styles.tableSection}>
                 <div className={styles.sectionHeader}>
                   <div>
-                    <p className={styles.panelKicker}>Danh sách dạng bảng</p>
+                    <p className={styles.panelKicker}>Danh mục quản lý</p>
                     <h2>Vị trí kho</h2>
                   </div>
-                  <span className={styles.panelChip}>{formatCompactNumber(visibleLocations.length)} dòng</span>
+                  <span className={styles.panelChip}>{formatCompactNumber(visibleLocations.length)} hồ sơ</span>
                 </div>
                 <div className={styles.tableWrap}>
                   <table className={styles.table} data-testid="location-table">
@@ -875,10 +869,10 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                       <tr>
                         <th>Mã</th>
                         <th>Tên</th>
-                        <th>Chuỗi liên kết</th>
+                        <th>Cơ cấu trực thuộc</th>
                         <th>Loại vị trí</th>
                         <th>Trạng thái</th>
-                        <th>Thao tác</th>
+                        <th>Xử lý</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -895,15 +889,15 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                               </div>
                             </td>
                             <td className={styles.relationCell}>
-                              {branch && warehouse ? `${branch.code} · ${warehouse.code} · ${warehouse.name}` : 'Không rõ chuỗi liên kết'}
+                              {branch && warehouse ? `${branch.code} · ${warehouse.code} · ${warehouse.name}` : 'Chưa xác định quan hệ kho'}
                             </td>
                             <td>{typeLabel('locations', location.location_type)}</td>
                             <td><span className={joinClasses(styles.statusPill, statusClass(location.is_active))}>{entityStatusLabel(location.is_active)}</span></td>
                             <td>
                               <div className={styles.rowActions}>
-                                <button type="button" data-testid={`edit-location-${location.code}`} onClick={() => openEdit('locations', location.id)}>Sửa</button>
+                                <button type="button" data-testid={`edit-location-${location.code}`} onClick={() => openEdit('locations', location.id)}>Chỉnh sửa</button>
                                 <button type="button" data-testid={`toggle-location-${location.code}`} onClick={() => openToggle('locations', location.id, !location.is_active)}>
-                                  {location.is_active ? 'Tắt' : 'Bật'}
+                                  {location.is_active ? 'Ngừng dùng' : 'Kích hoạt'}
                                 </button>
                               </div>
                             </td>

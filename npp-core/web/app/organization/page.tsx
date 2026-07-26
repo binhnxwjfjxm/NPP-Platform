@@ -18,7 +18,7 @@ export default async function OrganizationPage() {
     <OrganizationWorkspace
       scope="overview"
       title="Tổ chức"
-      subtitle="Điểm vào quản trị cấu trúc tổ chức, xem tổng quan và nhảy nhanh sang từng màn chi tiết."
+      subtitle="Theo dõi cơ cấu chi nhánh, kho hàng và vị trí lưu trữ trong toàn hệ thống."
       initialData={initialData}
       initialError={initialError}
     />

@@ -1,7 +1,11 @@
 :root {
   color-scheme: light;
-  --page-bg: #f7f3ec;
-  --page-fg: #20170f;
+  --page-bg: #f4f3f0;
+  --page-fg: #2f2925;
+  --office-brown: #5b3425;
+  --office-brown-dark: #3c241b;
+  --office-border: #ded8d2;
+  --office-muted: #6d645f;
 }
 
 * {
@@ -11,17 +15,21 @@
 html {
   min-height: 100%;
   background: var(--page-bg);
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: var(--font-sans), 'Segoe UI', sans-serif;
   background:
-    radial-gradient(circle at top left, rgba(183, 197, 142, 0.22), transparent 26%),
-    radial-gradient(circle at top right, rgba(214, 198, 159, 0.18), transparent 24%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.46), transparent 180px),
     var(--page-bg);
   color: var(--page-fg);
+  font-family: var(--font-sans), 'Segoe UI', Arial, sans-serif;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
@@ -35,6 +43,15 @@ textarea {
   font: inherit;
 }
 
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(91, 52, 37, 0.18);
+  outline-offset: 2px;
+}
+
 code,
 pre,
 kbd {
@@ -42,5 +59,26 @@ kbd {
 }
 
 ::selection {
-  background: rgba(111, 140, 57, 0.2);
+  background: rgba(91, 52, 37, 0.18);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: #c8c0ba;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #aaa099;
+  background-clip: padding-box;
 }
