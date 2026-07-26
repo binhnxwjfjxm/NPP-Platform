@@ -1,11 +1,13 @@
 .editorModal {
-  width: min(100%, 1080px);
+  width: min(1120px, calc(100vw - 36px));
+  max-height: calc(100vh - 36px);
+  overflow: auto;
 }
 
 .editorLayout {
   display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-  gap: 12px;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
+  gap: 16px;
   align-items: start;
 }
 
@@ -13,19 +15,24 @@
 .permissionColumn {
   min-width: 0;
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .permissionColumn {
-  padding: 14px;
-  border: 1px solid #e2ddd8;
-  border-radius: 11px;
-  background: #fbfaf8;
+  padding: 16px;
+  border: 1px solid #e2dfdc;
+  border-radius: 12px;
+  background: #fafafa;
 }
 
 .permissionGroup {
   display: grid;
   gap: 8px;
+}
+
+.permissionGroup + .permissionGroup {
+  padding-top: 4px;
+  border-top: 1px solid #ece9e6;
 }
 
 .permissionGroupHeader {
@@ -36,64 +43,99 @@
 }
 
 .permissionGroupHeader strong {
-  color: #4f3023;
-  font-size: 0.82rem;
+  color: #3f3733;
+  font-size: 0.84rem;
   font-weight: 740;
 }
 
 .permissionGroupCount {
-  color: #7b706a;
-  font-size: 0.68rem;
-  font-weight: 650;
+  display: none;
 }
 
 .permissionList {
   display: grid;
-  gap: 8px;
+  max-height: min(62vh, 660px);
+  gap: 12px;
+  overflow: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
 }
 
 .permissionItem {
   display: grid;
-  gap: 2px;
-  padding: 8px 9px;
-  border: 1px solid #e4ddd6;
-  border-radius: 9px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 4px;
+  padding: 11px 12px;
+  border: 1px solid #e2dfdc;
+  border-radius: 10px;
   background: #fff;
+  box-shadow: 0 2px 7px rgba(42, 37, 34, 0.035);
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.permissionItem:hover {
+  border-color: #cfc7c1;
+  box-shadow: 0 5px 14px rgba(42, 37, 34, 0.07);
+  transform: translateY(-1px);
 }
 
 .permissionItem label {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  color: #403833;
-  font-size: 0.76rem;
-  font-weight: 650;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  color: #38322f;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  cursor: pointer;
 }
 
-.permissionItem input {
-  margin-top: 2px;
-  accent-color: #6b402e;
+.permissionItem label span {
+  min-width: 0;
+  line-height: 1.38;
+  overflow-wrap: anywhere;
+}
+
+.permissionItem input,
+.permissionItem input[type='checkbox'] {
+  width: 18px !important;
+  min-width: 18px !important;
+  height: 18px !important;
+  min-height: 18px !important;
+  margin: 1px 0 0 !important;
+  padding: 0 !important;
+  border-radius: 4px;
+  box-shadow: none !important;
+  accent-color: #493a33;
+  cursor: pointer;
 }
 
 .permissionKey {
-  color: #8b6552;
-  font-family: var(--font-mono), monospace;
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
+  display: none;
 }
 
 .permissionMeta {
-  color: #6e645d;
-  font-size: 0.7rem;
-  line-height: 1.4;
+  grid-column: 2;
+  color: #716a66;
+  font-size: 0.71rem;
+  line-height: 1.45;
+}
+
+/* Internal verification permissions stay in the canonical registry, but are not assignable in the product UI. */
+.permissionItem:has(input[data-testid='permission-core.audit-outbox.test.write']),
+.permissionItem:has(input[data-testid='permission-core.idempotency.test.write']),
+.permissionItem:has(input[data-testid='permission-core.storage.r2.test.write']) {
+  display: none;
 }
 
 .permissionEmpty {
   padding: 14px 12px;
-  border: 1px dashed #d8d0c8;
+  border: 1px dashed #d8d2cd;
   border-radius: 10px;
-  color: #786d66;
+  color: #786f69;
   font-size: 0.76rem;
   text-align: center;
 }
@@ -120,28 +162,72 @@
 }
 
 .editorColumn textarea:focus {
-  border-color: #8b6552;
-  outline: 3px solid rgba(91, 52, 37, 0.11);
+  border-color: #8a7a70;
+  outline: 3px solid rgba(73, 58, 51, 0.12);
 }
 
 .inlineToggle {
-  display: inline-flex;
+  display: inline-flex !important;
+  grid-template-columns: none !important;
   align-items: center;
   gap: 8px;
   color: #5c534d;
   font-size: 0.78rem;
   font-weight: 650;
+  letter-spacing: 0;
+  cursor: pointer;
 }
 
-.inlineToggle input {
-  width: 18px;
-  height: 18px;
-  accent-color: #6b402e;
+.inlineToggle input,
+.inlineToggle input[type='checkbox'] {
+  width: 18px !important;
+  min-width: 18px !important;
+  height: 18px !important;
+  min-height: 18px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  accent-color: #493a33;
 }
 
 @media (max-width: 980px) {
+  .editorModal {
+    width: min(720px, calc(100vw - 24px));
+    max-height: calc(100vh - 24px);
+  }
+
   .editorLayout,
   .fieldRow {
     grid-template-columns: 1fr;
+  }
+
+  .permissionList {
+    max-height: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .editorModal {
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+    padding: 14px;
+  }
+
+  .permissionColumn {
+    padding: 12px;
+  }
+
+  .permissionItem {
+    padding: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .permissionItem {
+    transition: none;
+  }
+
+  .permissionItem:hover {
+    transform: none;
   }
 }
