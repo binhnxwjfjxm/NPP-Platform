@@ -1,10 +1,10 @@
-import OrganizationWorkspace from './organization-workspace';
-import { loadOrganizationSnapshot } from '../../lib/organization-snapshot';
-import { createEmptyOrganizationSnapshot } from '../../lib/organization-types';
+import OrganizationWorkspace from '../organization-workspace';
+import { loadOrganizationSnapshot } from '../../../lib/organization-snapshot';
+import { createEmptyOrganizationSnapshot } from '../../../lib/organization-types';
 
 export const dynamic = 'force-dynamic';
 
-export default async function OrganizationPage() {
+export default async function BranchesPage() {
   let initialData = createEmptyOrganizationSnapshot();
   let initialError: string | null = null;
 
@@ -16,9 +16,9 @@ export default async function OrganizationPage() {
 
   return (
     <OrganizationWorkspace
-      scope="overview"
-      title="Tổ chức"
-      subtitle="Điểm vào quản trị cấu trúc tổ chức, xem tổng quan và nhảy nhanh sang từng màn chi tiết."
+      scope="branches"
+      title="Chi nhánh"
+      subtitle="Danh sách chi nhánh, tìm kiếm theo mã hoặc tên, thêm mới, chỉnh sửa và bật tắt trạng thái."
       initialData={initialData}
       initialError={initialError}
     />
