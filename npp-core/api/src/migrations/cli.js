@@ -199,17 +199,31 @@ export async function migrationVerifyWithAdapter(adapter) {
     'shared.core_idempotency_records': await tableExists(adapter, 'shared', 'core_idempotency_records'),
     'shared.core_audit_records': await tableExists(adapter, 'shared', 'core_audit_records'),
     'shared.core_outbox_events': await tableExists(adapter, 'shared', 'core_outbox_events'),
+    'shared.branches': await tableExists(adapter, 'shared', 'branches'),
+    'shared.warehouses': await tableExists(adapter, 'shared', 'warehouses'),
+    'shared.warehouse_locations': await tableExists(adapter, 'shared', 'warehouse_locations'),
+    'shared.employees': await tableExists(adapter, 'shared', 'employees'),
   };
   const constraints = {
     core_idempotency_records_scope_key: await constraintExists(adapter, 'shared', 'core_idempotency_records', 'core_idempotency_records_scope_key'),
     core_idempotency_records_state_shape: await constraintExists(adapter, 'shared', 'core_idempotency_records', 'core_idempotency_records_state_shape'),
     core_outbox_events_published_state: await constraintExists(adapter, 'shared', 'core_outbox_events', 'core_outbox_events_published_state'),
+    branches_code_installation_unique: await constraintExists(adapter, 'shared', 'branches', 'branches_code_installation_unique'),
+    warehouses_code_installation_unique: await constraintExists(adapter, 'shared', 'warehouses', 'warehouses_code_installation_unique'),
+    warehouse_locations_code_warehouse_unique: await constraintExists(adapter, 'shared', 'warehouse_locations', 'warehouse_locations_code_warehouse_unique'),
+    employees_code_installation_unique: await constraintExists(adapter, 'shared', 'employees', 'employees_code_installation_unique'),
+    employees_branch_installation_fk: await constraintExists(adapter, 'shared', 'employees', 'employees_branch_installation_fk'),
   };
   const triggers = {
     core_audit_records_append_only: await triggerExists(adapter, 'shared', 'core_audit_records', 'core_audit_records_append_only'),
   };
   const indexes = {
     core_outbox_events_pending_available_idx: await indexExists(adapter, 'shared', 'core_outbox_events_pending_available_idx'),
+    branches_installation_active_idx: await indexExists(adapter, 'shared', 'branches_installation_active_idx'),
+    warehouses_installation_branch_idx: await indexExists(adapter, 'shared', 'warehouses_installation_branch_idx'),
+    warehouse_locations_installation_warehouse_idx: await indexExists(adapter, 'shared', 'warehouse_locations_installation_warehouse_idx'),
+    employees_installation_active_idx: await indexExists(adapter, 'shared', 'employees_installation_active_idx'),
+    employees_installation_branch_idx: await indexExists(adapter, 'shared', 'employees_installation_branch_idx'),
   };
 
   const issues = collectVerificationIssues({ status, tables, constraints, triggers, indexes });
