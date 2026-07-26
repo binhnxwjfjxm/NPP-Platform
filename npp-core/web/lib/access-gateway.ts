@@ -198,3 +198,50 @@ export function patchAccessRole<T>(id: string, requestId: string, body: unknown,
     idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}`,
   });
 }
+
+export function listAccessUsers<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
+  return requestAccess<T>({ path: '/users', method: 'GET', requestId, searchParams });
+}
+
+export function getAccessUser<T>(id: string, requestId: string): Promise<T> {
+  if (!UUID_PATTERN.test(id)) {
+    throw new AccessGatewayError('INVALID_USER_ID', 'Mã người dùng không hợp lệ', 400, false);
+  }
+  return requestAccess<T>({ path: `/users/${id}`, method: 'GET', requestId });
+}
+
+export function createAccessUser<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestAccess<T>({
+    path: '/users',
+    method: 'POST',
+    requestId,
+    body,
+    idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}`,
+  });
+}
+
+export function patchAccessUser<T>(id: string, requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  if (!UUID_PATTERN.test(id)) {
+    throw new AccessGatewayError('INVALID_USER_ID', 'Mã người dùng không hợp lệ', 400, false);
+  }
+  return requestAccess<T>({
+    path: `/users/${id}`,
+    method: 'PATCH',
+    requestId,
+    body,
+    idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}`,
+  });
+}
+
+export function patchAccessUserRoles<T>(id: string, requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  if (!UUID_PATTERN.test(id)) {
+    throw new AccessGatewayError('INVALID_USER_ID', 'Mã người dùng không hợp lệ', 400, false);
+  }
+  return requestAccess<T>({
+    path: `/users/${id}/roles`,
+    method: 'PATCH',
+    requestId,
+    body,
+    idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}`,
+  });
+}

@@ -1,7 +1,7 @@
 # NPP Platform — Latest Handoff
 
 > Updated: 2026-07-26  
-> Current checkpoint: Phase 3.2A and Phase 3.2B production closeout complete on `main`.
+> Current checkpoint: Phase 3.2A and Phase 3.2B production closeout complete on `main`; Phase 3.2C implementation is under review in PR #41.
 
 ## Production status
 
@@ -87,7 +87,7 @@ Migration rehearsal     PASS
 Core UI/Browser E2E     PASS
 ```
 
-Still excluded and deferred:
+Still excluded and deferred after Phase 3.2B:
 
 - user identities and employee-user links;
 - passwords, password hashes, sessions and MFA;
@@ -111,18 +111,39 @@ Key production evidence:
 - Browser HTML did not expose `CORE_API_SERVER_TOKEN`, `CORE_API_INTERNAL_URL`, `BACKEND_API_TOKEN`, or `DATABASE_URL`.
 - Vercel production deployment remains `READY` and still points at the approved production commit.
 
-Still not started:
+## Phase 3.2C implementation under review
 
-- user identity;
-- login/session management;
-- role-user assignment;
-- branch, warehouse, and territory scope assignment.
+PR #41 on branch `agent/core-user-role-assignment` implements the next explicitly approved access slice.
 
-See `docs/operations/role-permission-slice.md` and `docs/operations/role-permission-review-checklist.md`.
+Current implementation scope:
+
+- migration `009_access_users_role_assignments`;
+- canonical `shared.users` and `shared.user_roles` tables;
+- installation-scoped user records linked one-to-one with employees;
+- normalized immutable `login_name` and immutable employee link;
+- active/inactive user lifecycle;
+- zero-role users with deny-by-default semantics;
+- dedicated `core.user.read`, `core.user.write` and `core.user-role.write` permissions;
+- atomic role replacement with optimistic concurrency;
+- Core API routes and server-only Core web gateway;
+- Vietnamese `/access/users` administration UI;
+- transaction audit, idempotency and regression tests.
+
+Security and product boundaries that remain unchanged:
+
+- no password or password hash exists;
+- login/session management is not implemented;
+- MFA and recovery flows are not implemented;
+- no external authentication provider has been selected;
+- branch, warehouse and territory scopes are not implemented;
+- Basic Auth and backend bootstrap token remain active;
+- no production migration or deployment has occurred for Phase 3.2C.
+
+PR #41 must not merge until migration rehearsal, Core Foundation, Core UI/Browser E2E and review gates are green. See `docs/operations/user-role-assignment-slice.md`.
 
 ## Next checkpoint
 
-Phase 3.2 is closed out. Do not begin Phase 3.2C until the product owner explicitly approves the next business slice.
+Complete review and CI for Phase 3.2C. After merge, production closeout remains a separate explicitly approved task requiring a fresh provider audit, verified backup, restore rehearsal and reconciliation. Do not begin login/session management or data scopes inside the Phase 3.2C PR.
 
 ## Backups and migration evidence
 
@@ -133,7 +154,7 @@ Phase 3.1 production migration verify: PASS
 Phase 3.1 post-migration backup: b002
 ```
 
-These are historical Phase 3.1 artifacts only. Do not use them as evidence for migration `007` or `008`. Before any later production migration, audit the provider again and create a new verified backup plus restore rehearsal.
+These are historical Phase 3.1 artifacts only. Do not use them as evidence for migration `007`, `008` or `009`. Before any later production migration, audit the provider again and create a new verified backup plus restore rehearsal.
 
 ## Rules that remain active
 

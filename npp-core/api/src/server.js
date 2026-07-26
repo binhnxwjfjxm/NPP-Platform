@@ -30,6 +30,7 @@ import { createOptionalR2StorageAdapter } from './storage/r2-adapter.js';
 import { executeR2ContractOperation } from './storage/r2-contract.js';
 import { handleOrganizationRoutes } from './routes/organization.js';
 import { handleEmployeeRoutes } from './routes/employees.js';
+import { handleAccessUserRoutes } from './routes/access-users.js';
 import { handleAccessRoutes } from './routes/access.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -425,6 +426,7 @@ export function createCoreApiServer(options = {}) {
     };
 
     if (await handleEmployeeRoutes(req, res, routeContext)) return;
+    if (await handleAccessUserRoutes(req, res, routeContext)) return;
     if (await handleAccessRoutes(req, res, routeContext)) return;
     if (await handleOrganizationRoutes(req, res, routeContext)) return;
 

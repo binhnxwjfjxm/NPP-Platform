@@ -33,6 +33,7 @@ const organizationItems = [
 const accessItems = [
   { href: '/access/roles', label: 'Vai trò & phân quyền', icon: 'panel' as const, testId: 'nav-roles' },
   { href: '/access/employees', label: 'Danh mục nhân sự', icon: 'user' as const, testId: 'nav-employees' },
+  { href: '/access/users', label: 'Người dùng', icon: 'user' as const, testId: 'nav-users' },
 ];
 
 function Icon({ name }: { name: IconName }) {
