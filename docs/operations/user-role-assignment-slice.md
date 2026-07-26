@@ -1,14 +1,14 @@
 # Phase 3.2C — User Identity and Role Assignment
 
-> Status: implementation in progress on PR #41  
-> Branch: `agent/core-user-role-assignment`  
+> Status: merged to `main` by PR #41  
+> Merge commit: `082a26dfefdcab5dccb51bea6e6726e0e4f9ad82`  
 > Production status: not migrated and not deployed
 
 ## Objective
 
 Add canonical internal user accounts for NPP Core, link each account to one business employee and manage installation-scoped role assignments without introducing real login credentials or sessions.
 
-## Included scope
+## Delivered scope
 
 - Migration `009_access_users_role_assignments`.
 - Canonical `shared.users` table.
@@ -27,7 +27,7 @@ Add canonical internal user accounts for NPP Core, link each account to one busi
 - Server-only Core web gateway.
 - Vietnamese `/access/users` administration UI.
 - Idempotency, optimistic concurrency and transactional audit.
-- PostgreSQL integration and browser regression coverage before merge.
+- PostgreSQL integration, permission-boundary and browser regression coverage.
 
 ## Explicitly excluded
 
@@ -93,20 +93,19 @@ Creation produces a zero-role user. Role assignment is only accepted by the dedi
 - Modal backdrops are viewport-fixed, cover the topbar and keep headers visible while modal bodies scroll.
 - Stale concurrency errors expose a reload action.
 
-## Delivery gate
+## Merge gate evidence
 
 ```text
-migration 009 clean apply and rerun
--> API/repository regression tests
--> permission separation tests
--> Core web typecheck/test/build
--> browser E2E
--> Foundation F0.2
--> Core Foundation
--> migration rehearsal
--> CI green
--> review
--> squash merge
+migration 009 clean apply and rerun     PASS
+API/repository regression tests         PASS
+permission separation tests             PASS
+Core web typecheck/test/build            PASS
+browser E2E                              PASS
+Foundation F0.2                          PASS
+Core Foundation                          PASS
+migration rehearsal                      PASS
+review threads resolved                  PASS
+squash merge                              PASS
 ```
 
 Production closeout is a separate activity and requires a newly verified backup, restore rehearsal, migration reconciliation, backend/frontend deployment approvals and production smoke tests.
