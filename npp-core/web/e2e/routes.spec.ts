@@ -115,6 +115,25 @@ test.describe('Core web route smoke', () => {
     expect(browserGatewayGets).toEqual([]);
   });
 
+  test('employee directory loads through the nested access menu without browser-side initial reload', async ({ page }) => {
+    const browserEmployeeGets: string[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (request.method() === 'GET' && url.origin === 'http://127.0.0.1:3003' && url.pathname === '/api/access/employees') {
+        browserEmployeeGets.push(url.pathname);
+      }
+    });
+
+    await expectHealthyRoute(page, '/access/employees');
+    await expect(page.getByTestId('employees-page')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Danh mục nhân sự', exact: true })).toBeVisible();
+    await expect(page.getByTestId('access-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('nav-employees')).toBeVisible();
+    expectNoSensitiveData(await page.content());
+    expectNoEnglishMainFlow(await page.locator('body').innerText());
+    expect(browserEmployeeGets).toEqual([]);
+  });
+
   test('same-origin static assets are present and load', async ({ page }) => {
     await page.goto('/dashboard');
     const assets = page.locator('link[rel="stylesheet"], script[src], img[src="/logo-transparent.png"]');

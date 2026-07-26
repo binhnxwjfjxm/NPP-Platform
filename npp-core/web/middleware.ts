@@ -44,12 +44,12 @@ export function middleware(request: NextRequest) {
   const configuredPassword = process.env.CORE_WEB_ADMIN_PASSWORD;
 
   if (!configuredUsername || !configuredPassword) {
-    return deny(request, 503, 'ORGANIZATION_AUTH_NOT_CONFIGURED', 'Organization access is not configured');
+    return deny(request, 503, 'CORE_WEB_AUTH_NOT_CONFIGURED', 'Core web access is not configured');
   }
 
   const forwardedProtocol = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
   if (process.env.NODE_ENV === 'production' && forwardedProtocol !== 'https' && request.nextUrl.protocol !== 'https:') {
-    return deny(request, 503, 'ORGANIZATION_HTTPS_REQUIRED', 'Organization access requires HTTPS');
+    return deny(request, 503, 'CORE_WEB_HTTPS_REQUIRED', 'Core web access requires HTTPS');
   }
 
   const credentials = parseBasicAuthorization(request.headers.get('authorization'));
@@ -65,5 +65,11 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/organization/:path*', '/api/organization/:path*'],
+  matcher: [
+    '/dashboard/:path*',
+    '/organization/:path*',
+    '/access/:path*',
+    '/api/organization/:path*',
+    '/api/access/:path*',
+  ],
 };

@@ -30,6 +30,10 @@ const organizationItems = [
   { href: '/organization/locations', label: 'Vị trí kho', icon: 'locations' as const, testId: 'nav-locations' },
 ];
 
+const accessItems = [
+  { href: '/access/employees', label: 'Danh mục nhân sự', icon: 'user' as const, testId: 'nav-employees' },
+];
+
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, React.ReactNode> = {
     dashboard: (
@@ -102,6 +106,7 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [organizationOpen, setOrganizationOpen] = useState(pathname.startsWith('/organization'));
+  const [accessOpen, setAccessOpen] = useState(pathname.startsWith('/access'));
 
   useEffect(() => {
     setCollapsed(window.localStorage.getItem('npp-core-sidebar-collapsed') === '1');
@@ -109,14 +114,20 @@ export function AppShell({
 
   useEffect(() => {
     if (pathname.startsWith('/organization')) setOrganizationOpen(true);
+    if (pathname.startsWith('/access')) setAccessOpen(true);
     setMobileOpen(false);
   }, [pathname]);
 
   const organizationActive = pathname.startsWith('/organization');
+  const accessActive = pathname.startsWith('/access');
   const logoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim() || '/logo-transparent.png';
 
-  const childrenWithState = useMemo(
+  const organizationChildren = useMemo(
     () => organizationItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })),
+    [pathname],
+  );
+  const accessChildren = useMemo(
+    () => accessItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })),
     [pathname],
   );
 
@@ -128,14 +139,14 @@ export function AppShell({
     });
   }
 
-  function toggleOrganization() {
+  function openGroup(setOpen: React.Dispatch<React.SetStateAction<boolean>>) {
     if (collapsed) {
       setCollapsed(false);
       persistCollapsed(false);
-      setOrganizationOpen(true);
+      setOpen(true);
       return;
     }
-    setOrganizationOpen((current) => !current);
+    setOpen((current) => !current);
   }
 
   return (
@@ -188,7 +199,7 @@ export function AppShell({
               <button
                 type="button"
                 className={`${styles.navItem} ${styles.navGroupButton}`}
-                onClick={toggleOrganization}
+                onClick={() => openGroup(setOrganizationOpen)}
                 aria-expanded={organizationOpen}
                 data-testid="organization-menu-toggle"
                 title={collapsed ? 'Tổ chức và kho hàng' : undefined}
@@ -204,7 +215,44 @@ export function AppShell({
               </button>
 
               <div className={`${styles.subnav} ${organizationOpen && !collapsed ? styles.subnavOpen : ''}`}>
-                {childrenWithState.map((item) => (
+                {organizationChildren.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    prefetch
+                    className={`${styles.subnavItem} ${item.active ? styles.subnavItemActive : ''}`}
+                    data-testid={item.testId}
+                  >
+                    <span className={styles.subnavRail} aria-hidden="true" />
+                    <span className={styles.subnavIcon}><Icon name={item.icon} /></span>
+                    <span>{item.label}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            <p className={styles.navLabel}>Quản trị hệ thống</p>
+            <div className={`${styles.navGroup} ${accessActive ? styles.navGroupActive : ''}`}>
+              <button
+                type="button"
+                className={`${styles.navItem} ${styles.navGroupButton}`}
+                onClick={() => openGroup(setAccessOpen)}
+                aria-expanded={accessOpen}
+                data-testid="access-menu-toggle"
+                title={collapsed ? 'Nhân sự và phân quyền' : undefined}
+              >
+                <span className={styles.navIcon}><Icon name="user" /></span>
+                <span className={styles.navCopy}>
+                  <span className={styles.navTitle}>Nhân sự &amp; phân quyền</span>
+                  <span className={styles.navHint}>Hồ sơ, tài khoản và phạm vi truy cập</span>
+                </span>
+                <span className={`${styles.chevron} ${accessOpen ? styles.chevronOpen : ''}`}>
+                  <Icon name="chevron" />
+                </span>
+              </button>
+
+              <div className={`${styles.subnav} ${accessOpen && !collapsed ? styles.subnavOpen : ''}`}>
+                {accessChildren.map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}
