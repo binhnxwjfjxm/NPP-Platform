@@ -189,7 +189,7 @@ test('Employee API — authenticated idempotent create writes one employee and a
 
     const auditCount = await pool.query(
       `SELECT count(*)::int AS count
-       FROM shared.audit_events
+       FROM shared.core_audit_records
        WHERE installation_id = $1 AND resource_type = 'employee' AND resource_id = $2`,
       [config.installationId, firstBody.data.id],
     );
