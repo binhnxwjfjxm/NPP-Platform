@@ -15,7 +15,7 @@ Auto Deploy: OFF
 
 - Production web deployment commit: `6661d82785ef17510093e66f77eb06f5976e374e`.
 - Production backend release before closeout: `v17`, source `b932ecb5`.
-- Production backend release after closeout: `v18`, deployed from `main` at `12eb33551b9210fa9d1dd7d5e828bf4d611fef18`.
+- Current production backend release: `v18`, release ID `c694af5f-aed3-4ccb-9fa7-ffcdfcf0cd78`, deployed from `main` at `12eb33551b9210fa9d1dd7d5e828bf4d611fef18`.
 - Vercel production deployment ID: `dpl_AmoRj8DMe5z6WYbrPqZTUzbPCTDy`.
 - Vercel Auto Deploy remained OFF after closeout.
 - Heroku Auto Deploy remained OFF after closeout.
