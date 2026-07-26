@@ -1,0 +1,271 @@
+/* Phase 3.2 UI polish: neutral coffee-brown palette, whiter surfaces, and restrained motion. */
+
+:root {
+  --npp-page: #f8f8f7;
+  --npp-surface: #ffffff;
+  --npp-surface-soft: #fafafa;
+  --npp-border: #e4e1de;
+  --npp-border-strong: #d5d0cc;
+  --npp-text: #2f2b29;
+  --npp-text-muted: #6f6965;
+  --npp-brown-950: #191412;
+  --npp-brown-900: #241c18;
+  --npp-brown-800: #382c27;
+  --npp-brown-700: #493a33;
+  --npp-brown-600: #574239;
+  --npp-taupe: #b8a79a;
+}
+
+html,
+body {
+  background: var(--npp-page);
+  color: var(--npp-text);
+}
+
+/* Shell and navigation */
+[data-testid="app-sidebar"] {
+  background: linear-gradient(180deg, var(--npp-brown-900) 0%, var(--npp-brown-950) 100%) !important;
+  color: #f7f5f3 !important;
+  box-shadow: 10px 0 32px rgba(25, 20, 18, 0.14) !important;
+}
+
+[data-testid="app-sidebar"] [class*="navItem"],
+[data-testid="app-sidebar"] [class*="subnavItem"],
+[data-testid="app-sidebar"] button {
+  transition:
+    background-color 170ms ease,
+    background 170ms ease,
+    border-color 170ms ease,
+    color 170ms ease,
+    box-shadow 170ms ease,
+    transform 150ms ease !important;
+}
+
+[data-testid="app-sidebar"] [class*="navItemActive"] {
+  border-color: rgba(184, 167, 154, 0.2) !important;
+  background: linear-gradient(180deg, var(--npp-brown-700), var(--npp-brown-800)) !important;
+  box-shadow:
+    inset 3px 0 0 var(--npp-taupe),
+    0 5px 14px rgba(15, 12, 11, 0.2) !important;
+}
+
+[data-testid="app-sidebar"] [class*="navItemActive"] [class*="navIcon"],
+[data-testid="app-sidebar"] [class*="navGroupActive"] [class*="navIcon"] {
+  color: #d5c9c1 !important;
+}
+
+[data-testid="app-sidebar"] [class*="subnavItemActive"] {
+  background: rgba(184, 167, 154, 0.14) !important;
+  color: #ffffff !important;
+}
+
+[data-testid="app-sidebar"] [class*="subnavItemActive"] [class*="subnavRail"] {
+  background: var(--npp-taupe) !important;
+}
+
+[data-testid="app-sidebar"] [class*="userAvatar"] {
+  background: var(--npp-brown-700) !important;
+  color: #e4d9d2 !important;
+}
+
+/* Brand copy beside the logo: visually keep only “Hưng Phát”. */
+[data-testid="app-sidebar"] a[aria-label="Hưng Phát Company - Trang tổng quan"] [class*="brandText"] {
+  display: flex !important;
+  align-items: center;
+}
+
+[data-testid="app-sidebar"] a[aria-label="Hưng Phát Company - Trang tổng quan"] [class*="brandText"] strong {
+  font-size: 0 !important;
+}
+
+[data-testid="app-sidebar"] a[aria-label="Hưng Phát Company - Trang tổng quan"] [class*="brandText"] strong::after {
+  content: "Hưng Phát";
+  font-size: 0.98rem;
+  font-weight: 760;
+  letter-spacing: 0.01em;
+}
+
+[data-testid="app-sidebar"] a[aria-label="Hưng Phát Company - Trang tổng quan"] [class*="brandText"] small {
+  display: none !important;
+}
+
+/* Whiter app background and top bar. */
+[data-testid="app-sidebar"] ~ div[class*="main"] {
+  background: var(--npp-page) !important;
+}
+
+[data-testid="app-sidebar"] ~ div[class*="main"] > header {
+  border-bottom-color: rgba(74, 66, 61, 0.1) !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+}
+
+[data-testid="app-sidebar"] ~ div[class*="main"] [class*="kicker"] {
+  color: #6d625c !important;
+}
+
+[data-testid="app-sidebar"] ~ div[class*="main"] [class*="subtitle"] {
+  color: var(--npp-text-muted) !important;
+}
+
+[data-testid="app-sidebar"] ~ div[class*="main"] [class*="actionButton"] {
+  border-color: var(--npp-border-strong) !important;
+  background: linear-gradient(180deg, #ffffff, #f7f7f6) !important;
+  color: #463f3b !important;
+}
+
+[data-testid="app-sidebar"] ~ div[class*="main"] [class*="actionButtonPrimary"] {
+  border-color: var(--npp-brown-800) !important;
+  background: linear-gradient(180deg, var(--npp-brown-700), var(--npp-brown-800)) !important;
+  color: #ffffff !important;
+  box-shadow:
+    0 2px 0 #241c18,
+    0 6px 14px rgba(41, 32, 28, 0.18) !important;
+}
+
+[data-testid="app-sidebar"] ~ div[class*="main"] [class*="actionButtonPrimary"]:hover {
+  border-color: var(--npp-brown-700) !important;
+  background: linear-gradient(180deg, var(--npp-brown-600), var(--npp-brown-700)) !important;
+}
+
+/* Route content enters gently; shell chrome remains visually stable. */
+[data-testid="app-sidebar"] ~ div[class*="main"] > main {
+  animation: npp-route-enter 180ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes npp-route-enter {
+  from {
+    opacity: 0.25;
+    transform: translateY(4px);
+    filter: blur(0.6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* Organization and employee surfaces share organization.module.css. */
+[class*="organization-module"][class*="summaryCard"],
+[class*="organization-module"][class*="panel"],
+[class*="organization-module"][class*="tableSection"],
+[class*="organization-module"][class*="toolbar"],
+[class*="organization-module"][class*="modal"],
+[class*="organization-module"][class*="dialog"] {
+  border-color: var(--npp-border) !important;
+  background: var(--npp-surface) !important;
+  box-shadow: 0 6px 18px rgba(42, 37, 34, 0.055) !important;
+}
+
+[class*="organization-module"][class*="quickLink"],
+[class*="organization-module"][class*="treeCard"],
+[class*="organization-module"][class*="panelChip"],
+[class*="organization-module"][class*="treeStats"] span {
+  border-color: var(--npp-border) !important;
+  background: var(--npp-surface-soft) !important;
+}
+
+[class*="organization-module"][class*="summaryCard"]::before {
+  background: var(--npp-brown-700) !important;
+}
+
+[class*="organization-module"][class*="summaryCard"] strong,
+[class*="organization-module"] h2,
+[class*="organization-module"] h3,
+[class*="organization-module"][class*="quickLink"] strong {
+  color: #3f3733 !important;
+}
+
+[class*="organization-module"] input,
+[class*="organization-module"] select,
+[class*="organization-module"] textarea {
+  border-color: var(--npp-border-strong) !important;
+  background: #ffffff !important;
+  color: var(--npp-text) !important;
+}
+
+[class*="organization-module"] input:focus,
+[class*="organization-module"] select:focus,
+[class*="organization-module"] textarea:focus {
+  border-color: #8a7a70 !important;
+  outline-color: rgba(73, 58, 51, 0.12) !important;
+}
+
+/* Role and permission editor surfaces. */
+[class*="role-workspace-module"][class*="permissionColumn"],
+[class*="role-workspace-module"][class*="permissionItem"] {
+  border-color: var(--npp-border) !important;
+  background: var(--npp-surface) !important;
+}
+
+[class*="role-workspace-module"][class*="permissionColumn"] {
+  background: var(--npp-surface-soft) !important;
+}
+
+[class*="role-workspace-module"] input,
+[class*="role-workspace-module"] textarea {
+  accent-color: var(--npp-brown-700) !important;
+}
+
+[class*="role-workspace-module"] textarea:focus {
+  border-color: #8a7a70 !important;
+  outline-color: rgba(73, 58, 51, 0.12) !important;
+}
+
+[class*="role-workspace-module"][class*="permissionGroupHeader"] strong,
+[class*="role-workspace-module"][class*="permissionKey"] {
+  color: #564941 !important;
+}
+
+/* Login: cleaner white background, neutral brown, and one-line brand beside logo. */
+main:has(img[alt="Logo Hưng Phát Company"]) {
+  background:
+    linear-gradient(135deg, rgba(73, 58, 51, 0.035), transparent 42%),
+    var(--npp-page) !important;
+}
+
+main:has(img[alt="Logo Hưng Phát Company"]) section {
+  border-color: var(--npp-border) !important;
+  background: #ffffff !important;
+  box-shadow: 0 22px 55px rgba(39, 34, 31, 0.11) !important;
+}
+
+main:has(img[alt="Logo Hưng Phát Company"]) section > div:first-child strong {
+  font-size: 0 !important;
+}
+
+main:has(img[alt="Logo Hưng Phát Company"]) section > div:first-child strong::after {
+  content: "Hưng Phát";
+  color: #3f3733;
+  font-size: 1rem;
+  font-weight: 760;
+}
+
+main:has(img[alt="Logo Hưng Phát Company"]) section > div:first-child div > span {
+  display: none !important;
+}
+
+main:has(img[alt="Logo Hưng Phát Company"]) [class*="panel"] {
+  border-color: var(--npp-border) !important;
+  background: #fafafa !important;
+}
+
+main:has(img[alt="Logo Hưng Phát Company"]) h1,
+main:has(img[alt="Logo Hưng Phát Company"]) [class*="hint"] {
+  color: #443b36 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+
+  [data-testid="app-sidebar"] ~ div[class*="main"] > main {
+    animation: none !important;
+  }
+}
