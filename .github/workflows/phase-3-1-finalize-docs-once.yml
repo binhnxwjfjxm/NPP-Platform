@@ -1,0 +1,57 @@
+name: Finalize Phase 3.1 docs once
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: write
+
+concurrency:
+  group: phase-3-1-finalize-docs-once
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: >-
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/close-phase-3-1-docs' &&
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply guarded Phase 3.1 closeout
+        run: python tools/phase-3-1-finalize-docs.py
+
+      - name: Verify closeout content
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F '**Status:** **CLOSED on `2026-07-26`.**' NPP_PLATFORM_MASTER_PLAN.md
+          grep -F '**Product checkpoint:** Do not open another Phase 3 slice yet.' NPP_PLATFORM_MASTER_PLAN.md
+          grep -F '**Execution checkpoint `2026-07-26`:** Phase 3.1 is closed in production.' NPP_PLATFORM_MASTER_PLAN.md
+          test ! -e .github/workflows/phase-3-1-finalize-docs-once.yml
+          test ! -e tools/phase-3-1-finalize-docs.py
+          git diff --check
+
+      - name: Commit final closeout
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'docs(plan): close Phase 3.1 production [skip ci]'
+          git push origin HEAD:main
