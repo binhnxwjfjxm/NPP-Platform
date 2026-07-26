@@ -3,7 +3,7 @@
 > Original branch: `agent/core-role-permission-foundation`  
 > Pull request: `#34`  
 > Merge commit: `f4cdb1e555dff2dc265ea95179a481b21bbba3d1`  
-> Status: merged to `main`; production migration and deployment pending  
+> Status: merged to `main`; production closeout complete
 > Parent roadmap item: users / employees / roles / scopes
 
 ## Goal
@@ -80,4 +80,4 @@ New permissions:
 
 ## Production boundary
 
-The merge does not prove that migration `008` is applied in production. Before production migration or deployment, obtain fresh provider evidence for backup, restore rehearsal, reconciliation, migration verification, release health and smoke tests.
+The merge did not prove that migration `008` was already applied in production. That proof is now recorded separately in the Phase 3.2 production closeout docs through backup, restore rehearsal, reconciliation, migration verification, release health and smoke tests.
