@@ -1,20 +1,46 @@
+:root {
+  color-scheme: light;
+  --page-bg: #f7f3ec;
+  --page-fg: #20170f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--page-bg);
+}
+
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: Arial, Helvetica, sans-serif;
-  background: #f6f7fb;
-  color: #111827;
+  font-family: var(--font-sans), 'Segoe UI', sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(183, 197, 142, 0.22), transparent 26%),
+    radial-gradient(circle at top right, rgba(214, 198, 159, 0.18), transparent 24%),
+    var(--page-bg);
+  color: var(--page-fg);
 }
 
-.shell {
-  padding: 32px;
+a {
+  color: inherit;
 }
 
-.card {
-  max-width: 960px;
-  margin: 0 auto;
-  background: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
-  padding: 24px;
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+code,
+pre,
+kbd {
+  font-family: var(--font-mono), monospace;
+}
+
+::selection {
+  background: rgba(111, 140, 57, 0.2);
 }
