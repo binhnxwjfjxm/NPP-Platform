@@ -51,7 +51,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFile, writeFile } from "node:fs/promises";
 
-          const path = "vercel.json";
+          const path = "npp-core/web/vercel.json";
           const config = JSON.parse(await readFile(path, "utf8"));
           if (config.git?.deploymentEnabled !== false) {
             throw new Error("vercel_deployment_gate_not_locked");
@@ -59,7 +59,7 @@ jobs:
           config.git = { ...(config.git || {}), deploymentEnabled: true };
           await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
           NODE
-          git add vercel.json
+          git add npp-core/web/vercel.json
           git commit -m "chore(vercel): open one-shot production gate [skip ci]"
           git push origin HEAD:main
 
@@ -76,12 +76,12 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFile, writeFile } from "node:fs/promises";
 
-          const path = "vercel.json";
+          const path = "npp-core/web/vercel.json";
           const config = JSON.parse(await readFile(path, "utf8"));
           config.git = { ...(config.git || {}), deploymentEnabled: false };
           await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
           NODE
-          git add vercel.json
+          git add npp-core/web/vercel.json
           if ! git diff --cached --quiet; then
             git commit -m "chore(vercel): re-lock automatic deployments [skip ci]"
             git push origin HEAD:main
@@ -93,7 +93,7 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin main
-          git show origin/main:vercel.json | node --input-type=module -e '
+          git show origin/main:npp-core/web/vercel.json | node --input-type=module -e '
             import { readFileSync } from "node:fs";
             const config = JSON.parse(readFileSync(0, "utf8"));
             if (config.git?.deploymentEnabled !== false) {

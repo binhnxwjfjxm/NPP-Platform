@@ -8,6 +8,10 @@ async function readJson(relativePath) {
   return JSON.parse(await readFile(new URL(relativePath, projectRoot), 'utf8'));
 }
 
+async function readText(relativePath) {
+  return readFile(new URL(relativePath, projectRoot), 'utf8');
+}
+
 test('core web package exposes independent build and verification scripts', async () => {
   const pkg = await readJson('package.json');
   assert.equal(pkg.name, 'npp-core-web');
@@ -16,27 +20,25 @@ test('core web package exposes independent build and verification scripts', asyn
   assert.match(pkg.scripts.verify, /build/);
 });
 
-test('core Vercel project cannot deploy automatically from Git pushes', async () => {
+test('Core web Vercel project cannot deploy automatically from Git pushes', async () => {
   const config = await readJson('vercel.json');
   assert.equal(config.git?.deploymentEnabled, false);
+  assert.equal(config.builds, undefined);
+  assert.equal(config.routes, undefined);
 });
 
-test('root Vercel project builds and preserves routes to Core web', async () => {
+test('legacy repository-root Vercel config remains locked without nested routing', async () => {
   const config = await readJson('../../vercel.json');
-  assert.equal(config.version, 2);
-  assert.equal(config.builds?.length, 1);
-  assert.equal(config.builds[0]?.src, 'npp-core/web/package.json');
-  assert.equal(config.builds[0]?.use, '@vercel/next');
-  assert.equal(config.routes?.length, 2);
-  assert.deepEqual(config.routes[0], {
-    src: '/api/organization/(.*)',
-    dest: '/npp-core/web/api/organization/$1',
-  });
-  assert.deepEqual(config.routes[1], {
-    src: '/(.*)',
-    dest: 'npp-core/web/$1',
-  });
-  assert.equal(config.build?.env?.NEXT_PUBLIC_CORE_API_URL, 'https://hung-phat-945da1547594.herokuapp.com');
-  assert.equal(config.build?.env?.NEXT_PUBLIC_APP_NAME, 'NPP Core');
   assert.equal(config.git?.deploymentEnabled, false);
+  assert.equal(config.builds, undefined);
+  assert.equal(config.routes, undefined);
+  assert.equal(config.build, undefined);
+});
+
+test('manual production workflow toggles the Core web project gate', async () => {
+  const workflow = await readText('../../.github/workflows/vercel-production-manual.yml');
+  assert.match(workflow, /const path = "npp-core\/web\/vercel\.json"/);
+  assert.match(workflow, /git add npp-core\/web\/vercel\.json/);
+  assert.match(workflow, /git show origin\/main:npp-core\/web\/vercel\.json/);
+  assert.doesNotMatch(workflow, /const path = "vercel\.json"/);
 });

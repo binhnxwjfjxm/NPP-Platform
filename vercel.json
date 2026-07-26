@@ -1,28 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "version": 2,
-  "builds": [
-    {
-      "src": "npp-core/web/package.json",
-      "use": "@vercel/next"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/organization/(.*)",
-      "dest": "/npp-core/web/api/organization/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "npp-core/web/$1"
-    }
-  ],
-  "build": {
-    "env": {
-      "NEXT_PUBLIC_CORE_API_URL": "https://hung-phat-945da1547594.herokuapp.com",
-      "NEXT_PUBLIC_APP_NAME": "NPP Core"
-    }
-  },
   "git": {
     "deploymentEnabled": false
   }
