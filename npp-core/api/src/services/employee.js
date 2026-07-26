@@ -29,27 +29,26 @@ function validatePhone(value) {
   return !value || /^[0-9\s\-+()]{5,20}$/.test(value);
 }
 
+function normalizeDateTime(value) {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const parsed = new Date(value.trim());
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 function validateExpectedUpdatedAt(value) {
   if (value === undefined || value === null || value === '') {
     return { ok: false, code: 'MISSING_EXPECTED_UPDATED_AT', message: 'expectedUpdatedAt is required' };
   }
-
-  if (value instanceof Date) {
-    if (Number.isNaN(value.getTime())) {
-      return { ok: false, code: 'INVALID_EXPECTED_UPDATED_AT', message: 'expectedUpdatedAt must be a valid date-time' };
-    }
-    return { ok: true, value: value.toISOString() };
-  }
-
-  if (typeof value !== 'string' || !value.trim()) {
+  const normalized = normalizeDateTime(value);
+  if (!normalized) {
     return { ok: false, code: 'INVALID_EXPECTED_UPDATED_AT', message: 'expectedUpdatedAt must be a valid date-time' };
   }
+  return { ok: true, value: normalized };
+}
 
-  const parsed = new Date(value.trim());
-  if (Number.isNaN(parsed.getTime())) {
-    return { ok: false, code: 'INVALID_EXPECTED_UPDATED_AT', message: 'expectedUpdatedAt must be a valid date-time' };
-  }
-  return { ok: true, value: parsed.toISOString() };
+function conflictResult(message = 'Employee update conflict') {
+  return { ok: false, code: 'CONFLICT', message, retryable: false };
 }
 
 export function validateEmployeeInput(payload, { codeRequired = true } = {}) {
@@ -129,18 +128,24 @@ export async function createEmployee(client, { installationId, payload, createdB
   });
   if (!branchResult.ok) return branchResult;
 
-  const employee = await employeeRepo.insertEmployee(client, {
-    installationId,
-    code: validation.normalized.code,
-    fullName: validation.normalized.fullName,
-    jobTitle: validation.normalized.jobTitle,
-    phone: validation.normalized.phone,
-    email: validation.normalized.email,
-    branchId: validation.normalized.branchId,
-    createdBy,
-  });
-
-  return { ok: true, employee };
+  try {
+    const employee = await employeeRepo.insertEmployee(client, {
+      installationId,
+      code: validation.normalized.code,
+      fullName: validation.normalized.fullName,
+      jobTitle: validation.normalized.jobTitle,
+      phone: validation.normalized.phone,
+      email: validation.normalized.email,
+      branchId: validation.normalized.branchId,
+      createdBy,
+    });
+    return { ok: true, employee };
+  } catch (error) {
+    if (error?.code === '23505' && error?.constraint === 'employees_code_installation_unique') {
+      return { ok: false, code: 'DUPLICATE_CODE', message: 'An employee with this code already exists' };
+    }
+    throw error;
+  }
 }
 
 export async function getEmployee(client, { installationId, id }) {
@@ -206,10 +211,8 @@ export async function updateEmployee(client, { id, installationId, payload, upda
     expectedUpdatedAt: expected.value,
   });
 
-  if (!employee) {
-    return { ok: false, code: 'CONFLICT', message: 'Employee update conflict', retryable: false };
-  }
-  return { ok: true, employee, beforeData: existing };
+  if (!employee) return conflictResult();
+  return { ok: true, employee, beforeData: existing, changed: true };
 }
 
 export async function updateEmployeeStatus(client, {
@@ -232,7 +235,12 @@ export async function updateEmployeeStatus(client, {
 
   const expected = validateExpectedUpdatedAt(expectedUpdatedAt);
   if (!expected.ok) return expected;
-  if (existing.is_active === isActive) return { ok: true, employee: existing, beforeData: existing };
+  if (normalizeDateTime(existing.updated_at) !== expected.value) {
+    return conflictResult('Employee status update conflict');
+  }
+  if (existing.is_active === isActive) {
+    return { ok: true, employee: existing, beforeData: existing, changed: false };
+  }
 
   const employee = await employeeRepo.updateEmployeeActiveStatus(client, {
     id: existing.id,
@@ -241,8 +249,6 @@ export async function updateEmployeeStatus(client, {
     updatedBy,
     expectedUpdatedAt: expected.value,
   });
-  if (!employee) {
-    return { ok: false, code: 'CONFLICT', message: 'Employee status update conflict', retryable: false };
-  }
-  return { ok: true, employee, beforeData: existing };
+  if (!employee) return conflictResult('Employee status update conflict');
+  return { ok: true, employee, beforeData: existing, changed: true };
 }
