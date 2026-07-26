@@ -1,7 +1,7 @@
 # NPP Platform — Latest Handoff
 
 > Updated: 2026-07-26  
-> Current checkpoint: Phase 3.2B merged to `main`; production migration and deployment are pending separate safety gates.
+> Current checkpoint: Phase 3.2A and Phase 3.2B production closeout complete on `main`.
 
 ## Production status
 
@@ -16,7 +16,22 @@ Organization Basic Auth gate: active
 Auto Deploy: locked
 ```
 
-No Phase 3.2B production migration or deployment has been performed from this checkpoint.
+Phase 3.2 closeout evidence:
+
+- Main SHA: `12eb33551b9210fa9d1dd7d5e828bf4d611fef18`.
+- Vercel production deployment commit: `6661d82785ef17510093e66f77eb06f5976e374e`.
+- Vercel production deployment ID: `dpl_AmoRj8DMe5z6WYbrPqZTUzbPCTDy`.
+- Commit `12eb335` only re-locked Vercel Auto Deploy.
+- Pre-migration backup: `b005`.
+- Restore rehearsal: PASS.
+- Migrations `002` through `008`: applied.
+- `migration:verify`: `true`, `issues=[]`.
+- Post-migration backup: `b006`.
+- Heroku release `v17`: source `b932ecb5` and Phase 3.2A only.
+- Heroku release `v18`: release ID `c694af5f-aed3-4ccb-9fa7-ffcdfcf0cd78`, current production backend release from `main` at `12eb33551b9210fa9d1dd7d5e828bf4d611fef18`.
+- Smoke tests for Employee, Role and Permission routes: PASS.
+- Vercel Auto Deploy: OFF.
+- Heroku Auto Deploy: OFF.
 
 ## Phase 3.1 delivered
 
@@ -39,7 +54,7 @@ No Phase 3.2B production migration or deployment has been performed from this ch
 - PostgreSQL integration and Playwright regression coverage.
 - Merged by PR #33.
 
-Production evidence for migration `007` must still be audited directly before it is reused as a dependency for any later production migration.
+Production evidence for migrations `007` and `008` is recorded in `docs/operations/phase-3-2-production-closeout.md`. Audit the provider again before any later production migration or deployment.
 
 ## Phase 3.2B merged
 
@@ -81,24 +96,33 @@ Still excluded and deferred:
 - replacing Vercel Basic Auth;
 - customers, suppliers, products, inventory, sales, purchasing and MCP cutover.
 
+## Phase 3.2 production closeout
+
+Production closeout for Phase 3.2A and Phase 3.2B is complete.
+
+Key production evidence:
+
+- Production database was already verified through migrations `002` to `008`.
+- Restore rehearsal used backup `b005` against temporary PostgreSQL and passed.
+- Post-migration backup `b006` completed successfully.
+- Heroku release `v18` is the current backend release, release ID `c694af5f-aed3-4ccb-9fa7-ffcdfcf0cd78`, and was deployed from `main`.
+- Direct Heroku API smoke passed for `/health/live`, `/health/ready`, `/api/access/permissions`, and `/api/access/roles`.
+- Vercel smoke passed for `/api/access/permissions`, `/api/access/roles`, `/access/roles`, and `/access/employees`.
+- Browser HTML did not expose `CORE_API_SERVER_TOKEN`, `CORE_API_INTERNAL_URL`, `BACKEND_API_TOKEN`, or `DATABASE_URL`.
+- Vercel production deployment remains `READY` and still points at the approved production commit.
+
+Still not started:
+
+- user identity;
+- login/session management;
+- role-user assignment;
+- branch, warehouse, and territory scope assignment.
+
 See `docs/operations/role-permission-slice.md` and `docs/operations/role-permission-review-checklist.md`.
 
 ## Next checkpoint
 
-Before migration `008` or a new Core release reaches production:
-
-1. audit the actual Heroku provider state;
-2. verify a fresh pre-migration backup;
-3. complete a restore rehearsal with evidence;
-4. record pre-migration reconciliation counts;
-5. run migration through the repository migration runner;
-6. verify migration and post-migration counts;
-7. deploy Core API manually from `main` and check `/health/live` plus `/health/ready`;
-8. deploy Core web separately through the exact Issue #5 command;
-9. smoke `/`, `/login`, `/dashboard`, `/access/employees`, `/access/roles` and the corresponding API routes;
-10. re-lock all deployment gates and record provider evidence.
-
-Do not select the next business-domain slice until the product owner decides whether to productionize Phase 3.2B first or continue with another non-production foundation slice.
+Phase 3.2 is closed out. Do not begin Phase 3.2C until the product owner explicitly approves the next business slice.
 
 ## Backups and migration evidence
 
