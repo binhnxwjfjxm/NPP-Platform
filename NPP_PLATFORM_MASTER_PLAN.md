@@ -994,7 +994,7 @@ migration
 - purchasing
 - MCP cutover
 
-**Status:** Phase 3.1 merged into `main` by PR #26 at commit `a8038bfcdead3c6dc2b51b97a690974c30b5475c`; production rollout not started.
+**Status:** **CLOSED on `2026-07-26`.** Phase 3.1 code, database migration, Core API runtime, Core web UI, canonical organization routing, authentication gate and production smoke have all completed.
 
 **Completed:**
 - [x] Migrations: branches, warehouses, warehouse_locations tables with proper constraints
@@ -1012,10 +1012,18 @@ migration
 - [x] `/organization` UI for branches, warehouses, and warehouse locations
 - [x] Playwright vertical-slice E2E with actual Core API + PostgreSQL
 - [x] Full PR CI verification: Foundation F0.2, Core Foundation, and Core UI/Browser E2E
+- [x] Vietnamese AppShell, dashboard and dedicated branch/warehouse/location administration routes merged by PR #28
+- [x] Production migrations `002_core_idempotency` through `006_org_locations` applied and verified after backup + restore rehearsal
+- [x] Vercel canonical `/api/organization/*` routing and Basic Auth middleware verified in production
+- [x] Vercel project root set to `npp-core/web`; nested `/npp-core/web/*` paths return `404`
+- [x] Production deployment `dpl_BugXwqsXxFGma3obV3QSAPP2YFu7` is `READY` on `https://npp-platform.vercel.app`
+- [x] Root and Core web Auto Deploy gates are re-locked with `deploymentEnabled=false`
 
-**Gate status:** Closed in PR #26 after API, migration rehearsal, security hardening, and browser E2E passed. Production deployment remains a separate explicit operation.
+**Gate status:** **CLOSED.** PRs #26, #28, #29 and #30 passed their required CI gates. Production PostgreSQL migrations were verified, Core API live/ready returned `200`, the Core web production deployment reached `READY`, canonical organization API routing stopped returning Vercel `404`, nested build paths were removed, and browser authentication remained active.
 
-**Closeout record:** Documentation finalized by PR #27; no production deployment, production migration, or provider change was performed.
+**Closeout record:** See `docs/operations/phase-3-org-warehouse-closeout.md` and `docs/operations/LATEST_HANDOFF.md`. Backups `b1` and `b002` remain the recorded pre/post migration snapshots; provider state must still be audited before any later migration or deploy.
+
+**Product checkpoint:** Do not open another Phase 3 slice yet. The product owner requested a small UI-adjustment pass on the deployed shell/dashboard/organization screens before selecting the next master-data slice.
 
 ### Phase 3 — Master data
 
@@ -1216,6 +1224,8 @@ Không xóa ledger/chứng từ để giảm dung lượng. Chỉ prune temp upl
 ---
 
 ## 22. Việc tiếp theo theo đúng thứ tự
+
+**Execution checkpoint `2026-07-26`:** Phase 3.1 is closed in production. Pause the roadmap here for the product-owner UI adjustment request. Do not start users, customers, suppliers, products, inventory, sales, purchasing or MCP cutover until that UI pass is specified and completed.
 
 ```text
 1. Hoàn tất Phase 0: MCP chạy/build/test sau khi chuyển vào /mcp.
