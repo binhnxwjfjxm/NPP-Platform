@@ -93,15 +93,13 @@ test('migration 009 applies idempotently and installs scoped constraints and per
   const permissions = await pool.query(
     `SELECT permission_key
      FROM shared.permission_catalog
-     WHERE permission_key = ANY($1::text[])
-     ORDER BY permission_key`,
+     WHERE permission_key = ANY($1::text[])`,
     [[PERMISSIONS.coreUserRead, PERMISSIONS.coreUserWrite, PERMISSIONS.coreUserRoleWrite]],
   );
-  assert.deepEqual(permissions.rows.map((row) => row.permission_key), [
-    PERMISSIONS.coreUserRead,
-    PERMISSIONS.coreUserRoleWrite,
-    PERMISSIONS.coreUserWrite,
-  ]);
+  assert.deepEqual(
+    permissions.rows.map((row) => row.permission_key).sort(),
+    [PERMISSIONS.coreUserRead, PERMISSIONS.coreUserWrite, PERMISSIONS.coreUserRoleWrite].sort(),
+  );
 });
 
 test('user creation normalizes login, creates zero roles and rejects role assignment in create', async () => {
