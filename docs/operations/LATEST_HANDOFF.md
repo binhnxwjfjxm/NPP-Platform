@@ -28,7 +28,7 @@ Phase 3.2 closeout evidence:
 - `migration:verify`: `true`, `issues=[]`.
 - Post-migration backup: `b006`.
 - Heroku release `v17`: source `b932ecb5` and Phase 3.2A only.
-- Heroku release `v18`: current production backend release from `main` at `12eb33551b9210fa9d1dd7d5e828bf4d611fef18`.
+- Heroku release `v18`: release ID `c694af5f-aed3-4ccb-9fa7-ffcdfcf0cd78`, current production backend release from `main` at `12eb33551b9210fa9d1dd7d5e828bf4d611fef18`.
 - Smoke tests for Employee, Role and Permission routes: PASS.
 - Vercel Auto Deploy: OFF.
 - Heroku Auto Deploy: OFF.
@@ -54,7 +54,7 @@ Phase 3.2 closeout evidence:
 - PostgreSQL integration and Playwright regression coverage.
 - Merged by PR #33.
 
-Production evidence for migration `007` must still be audited directly before it is reused as a dependency for any later production migration.
+Production evidence for migrations `007` and `008` is recorded in `docs/operations/phase-3-2-production-closeout.md`. Audit the provider again before any later production migration or deployment.
 
 ## Phase 3.2B merged
 
@@ -104,8 +104,8 @@ Key production evidence:
 
 - Production database was already verified through migrations `002` to `008`.
 - Restore rehearsal used backup `b005` against temporary PostgreSQL and passed.
-- Post-migration backup `b006` completed successfully after the production backend release.
-- Heroku release `v18` is the current backend release and was deployed from `main`.
+- Post-migration backup `b006` completed successfully.
+- Heroku release `v18` is the current backend release, release ID `c694af5f-aed3-4ccb-9fa7-ffcdfcf0cd78`, and was deployed from `main`.
 - Direct Heroku API smoke passed for `/health/live`, `/health/ready`, `/api/access/permissions`, and `/api/access/roles`.
 - Vercel smoke passed for `/api/access/permissions`, `/api/access/roles`, `/access/roles`, and `/access/employees`.
 - Browser HTML did not expose `CORE_API_SERVER_TOKEN`, `CORE_API_INTERNAL_URL`, `BACKEND_API_TOKEN`, or `DATABASE_URL`.
