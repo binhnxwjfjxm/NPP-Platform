@@ -220,8 +220,8 @@ export async function migrationVerifyWithAdapter(adapter) {
   const indexes = {
     core_outbox_events_pending_available_idx: await indexExists(adapter, 'shared', 'core_outbox_events_pending_available_idx'),
     branches_installation_active_idx: await indexExists(adapter, 'shared', 'branches_installation_active_idx'),
-    warehouses_installation_branch_idx: await indexExists(adapter, 'shared', 'warehouses_installation_branch_idx'),
-    warehouse_locations_installation_warehouse_idx: await indexExists(adapter, 'shared', 'warehouse_locations_installation_warehouse_idx'),
+    warehouses_branch_idx: await indexExists(adapter, 'shared', 'warehouses_branch_idx'),
+    warehouse_locations_warehouse_idx: await indexExists(adapter, 'shared', 'warehouse_locations_warehouse_idx'),
     employees_installation_active_idx: await indexExists(adapter, 'shared', 'employees_installation_active_idx'),
     employees_installation_branch_idx: await indexExists(adapter, 'shared', 'employees_installation_branch_idx'),
   };
