@@ -1,4 +1,5 @@
 import * as accessRepo from '../db/repositories/access.js';
+import * as employeeRepo from '../db/repositories/employee.js';
 import { PERMISSION_CATALOG, isKnownPermissionKey } from '../access/permissions.js';
 
 const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
@@ -352,6 +353,303 @@ export async function updateRolePermissions(client, { id, installationId, permis
     ok: true,
     role: normalizeRoleCatalogRows([role])[0],
     beforeData: { ...existing, permission_keys: existingPermissionKeys },
+    changed: true,
+  };
+}
+
+function normalizeUserRow(row) {
+  return {
+    id: row.id,
+    installation_id: row.installation_id,
+    employee_id: row.employee_id,
+    employee_code: row.employee_code || null,
+    employee_full_name: row.employee_full_name || null,
+    login_name: row.login_name,
+    is_active: row.is_active,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    created_by: row.created_by,
+    updated_by: row.updated_by,
+    role_ids: Array.isArray(row.role_ids) ? row.role_ids.filter(Boolean) : [],
+  };
+}
+
+function normalizeLoginName(value) {
+  return normalizeText(value).toLowerCase();
+}
+
+function validateUserInput(payload, { requireEmployee = false } = {}) {
+  if (!payload || typeof payload !== 'object') {
+    return { ok: false, code: 'INVALID_INPUT', message: 'Dữ liệu người dùng là bắt buộc' };
+  }
+
+  const loginName = normalizeLoginName(payload.loginName ?? payload.login_name ?? '');
+  if (!loginName || loginName.length > 128 || !/^[a-z0-9._-]+$/.test(loginName)) {
+    return { ok: false, code: 'INVALID_LOGIN_NAME', message: 'loginName là bắt buộc và chỉ chứa chữ thường, chữ số, chấm, gạch dưới hoặc gạch ngang' };
+  }
+
+  const employeeId = hasOwn(payload, 'employeeId') ? normalizeText(payload.employeeId) : undefined;
+  if (employeeId === '' || employeeId === null) {
+    if (requireEmployee) {
+      return { ok: false, code: 'INVALID_EMPLOYEE_ID', message: 'employeeId là bắt buộc' };
+    }
+  } else if (employeeId !== undefined && !isValidUuid(employeeId)) {
+    return { ok: false, code: 'INVALID_EMPLOYEE_ID', message: 'employeeId không hợp lệ' };
+  }
+
+  const isActive = hasOwn(payload, 'isActive') ? payload.isActive : undefined;
+  if (isActive !== undefined && typeof isActive !== 'boolean') {
+    return { ok: false, code: 'INVALID_ACTIVE_STATUS', message: 'isActive phải là kiểu boolean' };
+  }
+
+  const roleIds = Array.isArray(payload.roleIds)
+    ? [...new Set(payload.roleIds.filter((item) => typeof item === 'string').map((item) => item.trim()).filter(Boolean))]
+    : undefined;
+  if (roleIds && roleIds.some((id) => !isValidUuid(id))) {
+    return { ok: false, code: 'INVALID_ROLE_ID', message: 'roleIds chứa mã không hợp lệ' };
+  }
+
+  return {
+    ok: true,
+    normalized: {
+      loginName,
+      employeeId: employeeId === '' ? null : employeeId,
+      isActive,
+      roleIds,
+    },
+  };
+}
+
+async function validateUserRelations(client, installationId, { employeeId, requireEmployeeActive = false, roleIds }) {
+  if (employeeId) {
+    const employee = await employeeRepo.getEmployeeByIdForInstallation(client, { installationId, id: employeeId });
+    if (!employee) {
+      return { ok: false, code: 'INVALID_EMPLOYEE_ID', message: 'Nhân sự liên kết không tồn tại' };
+    }
+    if (requireEmployeeActive && !employee.is_active) {
+      return { ok: false, code: 'INVALID_EMPLOYEE_ID', message: 'Nhân sự liên kết phải đang hoạt động' };
+    }
+  }
+
+  if (roleIds && roleIds.length > 0) {
+    const existingRoleIds = await accessRepo.listActiveRoleIdsByIds(client, { installationId, roleIds });
+    const missing = roleIds.filter((id) => !existingRoleIds.includes(id));
+    if (missing.length > 0) {
+      return { ok: false, code: 'INVALID_ROLE_ID', message: `roleIds chứa mã vai trò không hợp lệ hoặc vai trò không hoạt động: ${missing.join(', ')}` };
+    }
+  }
+
+  return { ok: true };
+}
+
+function userStatusChanged(existing, normalized) {
+  return normalized.isActive !== undefined && normalized.isActive !== existing.is_active;
+}
+
+function roleIdsChanged(existingRoleIds, normalizedRoleIds) {
+  const nextRoleIds = normalizedRoleIds === undefined ? existingRoleIds : [...new Set(normalizedRoleIds)];
+  const currentRoleIds = [...new Set(existingRoleIds)];
+  nextRoleIds.sort();
+  currentRoleIds.sort();
+  return nextRoleIds.length !== currentRoleIds.length || nextRoleIds.some((id, index) => id !== currentRoleIds[index]);
+}
+
+export async function listUsers(client, { installationId, active, search, limit, offset }) {
+  const users = await accessRepo.listUsersForInstallation(client, { installationId, active, search, limit, offset });
+  return { ok: true, users: users.map(normalizeUserRow) };
+}
+
+export async function getUser(client, { installationId, id }) {
+  if (!isValidUuid(id)) return { ok: false, code: 'NOT_FOUND', message: 'Người dùng không tồn tại' };
+  const user = await accessRepo.getUserForInstallationWithRoles(client, { installationId, id: id.trim() });
+  if (!user) return { ok: false, code: 'NOT_FOUND', message: 'Người dùng không tồn tại' };
+  return { ok: true, user: normalizeUserRow(user) };
+}
+
+export async function createUser(client, { installationId, payload, createdBy }) {
+  const validation = validateUserInput(payload, { requireEmployee: true });
+  if (!validation.ok) return validation;
+
+  const normalized = validation.normalized;
+  const relationValidation = await validateUserRelations(client, installationId, {
+    employeeId: normalized.employeeId,
+    requireEmployeeActive: normalized.isActive !== false,
+    roleIds: normalized.roleIds,
+  });
+  if (!relationValidation.ok) return relationValidation;
+
+  const duplicateLogin = await accessRepo.getUserByLoginNameForInstallation(client, {
+    installationId,
+    loginName: normalized.loginName,
+  });
+  if (duplicateLogin) {
+    return { ok: false, code: 'DUPLICATE_LOGIN', message: 'Tên đăng nhập đã tồn tại', retryable: false };
+  }
+
+  const duplicateEmployee = await accessRepo.getUserByEmployeeIdForInstallation(client, {
+    installationId,
+    employeeId: normalized.employeeId,
+  });
+  if (duplicateEmployee) {
+    return { ok: false, code: 'DUPLICATE_EMPLOYEE', message: 'Nhân sự đã được liên kết với một người dùng khác', retryable: false };
+  }
+
+  let user;
+  try {
+    user = await accessRepo.insertUser(client, {
+      installationId,
+      employeeId: normalized.employeeId,
+      loginName: normalized.loginName,
+      isActive: normalized.isActive !== undefined ? normalized.isActive : true,
+      createdBy,
+      updatedBy: createdBy,
+    });
+  } catch (error) {
+    if (error && error.code === '23505') {
+      if (String(error.constraint).includes('users_installation_login_unique')) {
+        return { ok: false, code: 'DUPLICATE_LOGIN', message: 'Tên đăng nhập đã tồn tại', retryable: false };
+      }
+      if (String(error.constraint).includes('users_installation_employee_unique')) {
+        return { ok: false, code: 'DUPLICATE_EMPLOYEE', message: 'Nhân sự đã được liên kết với một người dùng khác', retryable: false };
+      }
+    }
+    throw error;
+  }
+
+  if (!user) {
+    return { ok: false, code: 'DUPLICATE_LOGIN', message: 'Tên đăng nhập đã tồn tại', retryable: false };
+  }
+
+  if (normalized.roleIds && normalized.roleIds.length > 0) {
+    await accessRepo.replaceUserRoles(client, {
+      installationId,
+      userId: user.id,
+      roleIds: normalized.roleIds,
+      createdBy,
+    });
+  }
+
+  const createdUser = await accessRepo.getUserForInstallationWithRoles(client, { installationId, id: user.id });
+  return { ok: true, user: normalizeUserRow(createdUser) };
+}
+
+export async function updateUserStatus(client, { id, installationId, payload, updatedBy }) {
+  if (!isValidUuid(id)) return { ok: false, code: 'INVALID_ID', message: 'Mã người dùng không hợp lệ' };
+
+  const validation = validateUserInput(payload, { requireEmployee: false });
+  if (!validation.ok) return validation;
+
+  const normalized = validation.normalized;
+  if (normalized.loginName !== undefined || normalized.employeeId !== undefined || normalized.roleIds !== undefined) {
+    return { ok: false, code: 'INVALID_INPUT', message: 'Chỉ hỗ trợ cập nhật trạng thái người dùng' };
+  }
+
+  if (normalized.isActive === undefined) {
+    return { ok: false, code: 'INVALID_INPUT', message: 'isActive là bắt buộc để cập nhật trạng thái' };
+  }
+
+  const existing = await accessRepo.getUserForInstallationWithRoles(client, { installationId, id: id.trim() });
+  if (!existing) return { ok: false, code: 'NOT_FOUND', message: 'Người dùng không tồn tại' };
+
+  const userForUpdate = await accessRepo.getUserByIdForInstallationForUpdate(client, { installationId, id: id.trim() });
+  if (!userForUpdate) return { ok: false, code: 'NOT_FOUND', message: 'Người dùng không tồn tại' };
+
+  const expected = validateExpectedUpdatedAt(payload?.expectedUpdatedAt);
+  if (!expected.ok) return expected;
+  if (normalizeDateTime(existing.updated_at) !== expected.value) {
+    return { ok: false, code: 'CONFLICT', message: 'Người dùng đang có thay đổi, vui lòng tải lại dữ liệu', retryable: false };
+  }
+
+  if (!userStatusChanged(existing, normalized)) {
+    return { ok: true, user: normalizeUserRow(existing), beforeData: normalizeUserRow(existing), changed: false };
+  }
+
+  if (normalized.isActive && normalized.isActive !== existing.is_active) {
+    const relationValidation = await validateUserRelations(client, installationId, {
+      employeeId: existing.employee_id,
+      requireEmployeeActive: true,
+    });
+    if (!relationValidation.ok) return relationValidation;
+  }
+
+  const updated = await accessRepo.updateUserActiveStatus(client, {
+    id: existing.id,
+    installationId,
+    isActive: normalized.isActive,
+    updatedBy,
+    expectedUpdatedAt: expected.value,
+  });
+
+  if (!updated) {
+    return { ok: false, code: 'CONFLICT', message: 'Người dùng đang có thay đổi, vui lòng tải lại dữ liệu', retryable: false };
+  }
+
+  const user = await accessRepo.getUserForInstallationWithRoles(client, { installationId, id: existing.id });
+  return {
+    ok: true,
+    user: normalizeUserRow(user),
+    beforeData: normalizeUserRow(existing),
+    changed: true,
+  };
+}
+
+export async function replaceUserRoles(client, { id, installationId, payload, updatedBy }) {
+  if (!isValidUuid(id)) return { ok: false, code: 'INVALID_ID', message: 'Mã người dùng không hợp lệ' };
+
+  const validation = validateUserInput(payload, { requireEmployee: false });
+  if (!validation.ok) return validation;
+
+  const normalized = validation.normalized;
+  if (!Array.isArray(payload.roleIds)) {
+    return { ok: false, code: 'INVALID_INPUT', message: 'roleIds là bắt buộc' };
+  }
+
+  const existing = await accessRepo.getUserForInstallationWithRoles(client, { installationId, id: id.trim() });
+  if (!existing) return { ok: false, code: 'NOT_FOUND', message: 'Người dùng không tồn tại' };
+
+  const userForUpdate = await accessRepo.getUserByIdForInstallationForUpdate(client, { installationId, id: id.trim() });
+  if (!userForUpdate) return { ok: false, code: 'NOT_FOUND', message: 'Người dùng không tồn tại' };
+
+  const expected = validateExpectedUpdatedAt(payload?.expectedUpdatedAt);
+  if (!expected.ok) return expected;
+  if (normalizeDateTime(existing.updated_at) !== expected.value) {
+    return { ok: false, code: 'CONFLICT', message: 'Người dùng đang có thay đổi, vui lòng tải lại dữ liệu', retryable: false };
+  }
+
+  const normalizedRoleIds = normalized.roleIds ?? [];
+  const changed = roleIdsChanged(Array.isArray(existing.role_ids) ? existing.role_ids : [], normalizedRoleIds);
+  if (!changed) {
+    return { ok: true, user: normalizeUserRow(existing), beforeData: normalizeUserRow(existing), changed: false };
+  }
+
+  const relationValidation = await validateUserRelations(client, installationId, {
+    roleIds: normalizedRoleIds,
+  });
+  if (!relationValidation.ok) return relationValidation;
+
+  const updated = await accessRepo.updateUserRecord(client, {
+    id: existing.id,
+    installationId,
+    updatedBy,
+    expectedUpdatedAt: expected.value,
+  });
+
+  if (!updated) {
+    return { ok: false, code: 'CONFLICT', message: 'Người dùng đang có thay đổi, vui lòng tải lại dữ liệu', retryable: false };
+  }
+
+  await accessRepo.replaceUserRoles(client, {
+    installationId,
+    userId: existing.id,
+    roleIds: normalizedRoleIds,
+    createdBy: updatedBy,
+  });
+
+  const user = await accessRepo.getUserForInstallationWithRoles(client, { installationId, id: existing.id });
+  return {
+    ok: true,
+    user: normalizeUserRow(user),
+    beforeData: normalizeUserRow(existing),
     changed: true,
   };
 }

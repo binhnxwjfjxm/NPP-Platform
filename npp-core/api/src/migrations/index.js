@@ -29,6 +29,10 @@ const ACCESS_ROLES_PERMISSIONS_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/008_access_roles_permissions.sql', import.meta.url),
   'utf8',
 );
+const ACCESS_USERS_ROLE_ASSIGNMENTS_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/009_access_users_role_assignments.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
@@ -58,6 +62,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '008_access_roles_permissions',
     sql: ACCESS_ROLES_PERMISSIONS_SQL,
+  }),
+  Object.freeze({
+    id: '009_access_users_role_assignments',
+    sql: ACCESS_USERS_ROLE_ASSIGNMENTS_SQL,
   }),
 ]);
 

@@ -54,16 +54,22 @@ function serviceStatus(result) {
     case 'NOT_FOUND':
       return 404;
     case 'DUPLICATE_CODE':
+    case 'DUPLICATE_IDENTITY':
+    case 'DUPLICATE_LOGIN':
+    case 'DUPLICATE_EMPLOYEE':
     case 'CONFLICT':
     case 'CODE_IMMUTABLE':
       return 409;
     case 'INVALID_PERMISSION_KEY':
     case 'INVALID_INPUT':
     case 'INVALID_CODE':
+    case 'INVALID_LOGIN_NAME':
     case 'INVALID_NAME':
     case 'INVALID_DESCRIPTION':
     case 'INVALID_ACTIVE_STATUS':
     case 'INVALID_ID':
+    case 'INVALID_EMPLOYEE_ID':
+    case 'INVALID_ROLE_ID':
     case 'MISSING_EXPECTED_UPDATED_AT':
     case 'INVALID_EXPECTED_UPDATED_AT':
       return 400;
@@ -82,6 +88,14 @@ function permissionSetsDiffer(beforeData, afterData) {
   const before = normalizedPermissionKeys(beforeData?.permission_keys);
   const after = normalizedPermissionKeys(afterData?.permission_keys);
   return before.length !== after.length || before.some((key, index) => key !== after[index]);
+}
+
+function deriveUserAuditAction(serviceResult) {
+  if (serviceResult?.changed === false) return 'noop';
+  if (serviceResult?.beforeData && (serviceResult?.user || serviceResult?.userIdentity)) {
+    return 'update';
+  }
+  return 'create';
 }
 
 export function deriveRoleAuditAction(serviceResult) {
@@ -148,6 +162,318 @@ async function handleGetRole(req, res, context, id) {
     sendSuccess(res, result.role, context.requestId, context.receivedAt);
   } catch {
     sendError(res, createError('INTERNAL_ERROR', 'Không thể tải vai trò', {}, true, 500), context.requestId, context.receivedAt);
+  }
+}
+
+async function handleListUsers(req, res, context) {
+  const url = new URL(`http://localhost${req.url}`);
+  let active;
+  let limit;
+  let offset;
+  try {
+    active = parseBooleanParam(url.searchParams.get('active'));
+    limit = parsePositiveIntParam(url.searchParams.get('limit'), 100, 1000);
+    offset = parsePositiveIntParam(url.searchParams.get('offset'), 0, 10_000_000);
+  } catch (error) {
+    sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), context.requestId, context.receivedAt);
+    return;
+  }
+
+  const search = url.searchParams.get('q') ?? url.searchParams.get('search') ?? '';
+  try {
+    const result = await accessService.listUsers(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      active,
+      search,
+      limit,
+      offset,
+    });
+    sendSuccess(res, result.users, context.requestId, context.receivedAt);
+  } catch {
+    sendError(res, createError('INTERNAL_ERROR', 'Không thể tải danh sách người dùng', {}, true, 500), context.requestId, context.receivedAt);
+  }
+}
+
+async function handleGetUser(req, res, context, id) {
+  try {
+    const result = await accessService.getUser(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      id,
+    });
+    if (!result.ok) {
+      sendError(res, createError(result.code, result.message, {}, false, serviceStatus(result)), context.requestId, context.receivedAt);
+      return;
+    }
+    sendSuccess(res, result.user, context.requestId, context.receivedAt);
+  } catch {
+    sendError(res, createError('INTERNAL_ERROR', 'Không thể tải người dùng', {}, true, 500), context.requestId, context.receivedAt);
+  }
+}
+
+async function handleCreateUser(req, res, context) {
+  const keyResult = requireIdempotencyKey(req);
+  if (!keyResult.ok) {
+    sendError(res, createError(keyResult.code, keyResult.message, {}, false, 400), context.requestId, context.receivedAt);
+    return;
+  }
+
+  let payload;
+  try {
+    payload = await readJsonBody(req);
+  } catch (error) {
+    sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), context.requestId, context.receivedAt);
+    return;
+  }
+
+  try {
+    const execution = await executeRequestWithIdempotency({
+      idempotencyStore: context.idempotencyStore,
+      req,
+      requestContext: context.requestContext,
+      requestId: context.requestId,
+      receivedAt: context.receivedAt,
+      route: '/api/access/users',
+      payload,
+      onProcess: async () => {
+        const result = await withAuditOutboxTransaction({
+          adapter: context.getPool(),
+          mutate: async (client) => {
+            const serviceResult = await accessService.createUser(client, {
+              installationId: context.requestContext.installationId,
+              payload,
+              createdBy: context.requestContext.actorId,
+            });
+
+            if (!serviceResult.ok) {
+              return { skipAudit: true, serviceResult };
+            }
+
+            const user = serviceResult.user;
+            await insertAuditRecord(client, buildAuditRecord({
+              requestContext: context.requestContext,
+              action: deriveUserAuditAction(serviceResult),
+              resourceType: 'user',
+              resourceId: user.id,
+              afterData: user,
+              metadata: { employeeId: user.employee_id, loginName: user.login_name },
+            }));
+            return { user };
+          },
+        });
+
+        if (result.skipAudit) {
+          return {
+            statusCode: serviceStatus(result.serviceResult) || 400,
+            contentType: 'application/json',
+            requestId: context.requestId,
+            body: {
+              error: {
+                code: result.serviceResult.code,
+                message: result.serviceResult.message,
+                retryable: Boolean(result.serviceResult.retryable),
+                details: {},
+              },
+              requestId: context.requestId,
+              receivedAt: context.receivedAt,
+            },
+          };
+        }
+
+        return {
+          statusCode: 201,
+          contentType: 'application/json',
+          requestId: context.requestId,
+          body: createSuccessEnvelope(result.user, context.requestId, context.receivedAt),
+        };
+      },
+    });
+
+    res.setHeader('Cache-Control', 'no-store');
+    sendJson(
+      res,
+      execution.response.statusCode,
+      execution.response.body,
+      execution.response.requestId ?? context.requestId,
+      execution.response.contentType,
+    );
+  } catch {
+    sendError(res, createError('IDEMPOTENCY_STORAGE_ERROR', 'Kho idempotency tạm thời không sẵn sàng', {}, true, 503), context.requestId, context.receivedAt);
+  }
+}
+
+async function handlePatchUser(req, res, context, id) {
+  const keyResult = requireIdempotencyKey(req);
+  if (!keyResult.ok) {
+    sendError(res, createError(keyResult.code, keyResult.message, {}, false, 400), context.requestId, context.receivedAt);
+    return;
+  }
+
+  let payload;
+  try {
+    payload = await readJsonBody(req);
+  } catch (error) {
+    sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), context.requestId, context.receivedAt);
+    return;
+  }
+
+  try {
+    const execution = await executeRequestWithIdempotency({
+      idempotencyStore: context.idempotencyStore,
+      req,
+      requestContext: context.requestContext,
+      requestId: context.requestId,
+      receivedAt: context.receivedAt,
+      route: `/api/access/users/${id}`,
+      payload,
+      onProcess: async () => {
+        return await withAuditOutboxTransaction({
+          adapter: context.getPool(),
+          mutate: async (client) => {
+            const serviceResult = await accessService.updateUserStatus(client, {
+              id,
+              installationId: context.requestContext.installationId,
+              payload,
+              updatedBy: context.requestContext.actorId,
+            });
+
+            if (!serviceResult.ok) {
+              return {
+                statusCode: serviceStatus(serviceResult) || 400,
+                contentType: 'application/json',
+                requestId: context.requestId,
+                body: {
+                  error: {
+                    code: serviceResult.code,
+                    message: serviceResult.message,
+                    retryable: Boolean(serviceResult.retryable),
+                    details: {},
+                  },
+                  requestId: context.requestId,
+                  receivedAt: context.receivedAt,
+                },
+              };
+            }
+
+            const user = serviceResult.user;
+            await insertAuditRecord(client, buildAuditRecord({
+              requestContext: context.requestContext,
+              action: deriveUserAuditAction(serviceResult),
+              resourceType: 'user',
+              resourceId: user.id,
+              beforeData: serviceResult.beforeData ?? null,
+              afterData: user,
+              metadata: { employeeId: user.employee_id, loginName: user.login_name },
+            }));
+
+            return {
+              statusCode: 200,
+              contentType: 'application/json',
+              requestId: context.requestId,
+              body: createSuccessEnvelope(user, context.requestId, context.receivedAt),
+            };
+          },
+        });
+      },
+    });
+
+    res.setHeader('Cache-Control', 'no-store');
+    sendJson(
+      res,
+      execution.response.statusCode,
+      execution.response.body,
+      execution.response.requestId ?? context.requestId,
+      execution.response.contentType,
+    );
+  } catch {
+    sendError(res, createError('IDEMPOTENCY_STORAGE_ERROR', 'Kho idempotency tạm thời không sẵn sàng', {}, true, 503), context.requestId, context.receivedAt);
+  }
+}
+
+async function handlePatchUserRoles(req, res, context, id) {
+  const keyResult = requireIdempotencyKey(req);
+  if (!keyResult.ok) {
+    sendError(res, createError(keyResult.code, keyResult.message, {}, false, 400), context.requestId, context.receivedAt);
+    return;
+  }
+
+  let payload;
+  try {
+    payload = await readJsonBody(req);
+  } catch (error) {
+    sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), context.requestId, context.receivedAt);
+    return;
+  }
+
+  try {
+    const execution = await executeRequestWithIdempotency({
+      idempotencyStore: context.idempotencyStore,
+      req,
+      requestContext: context.requestContext,
+      requestId: context.requestId,
+      receivedAt: context.receivedAt,
+      route: `/api/access/users/${id}/roles`,
+      payload,
+      onProcess: async () => {
+        return await withAuditOutboxTransaction({
+          adapter: context.getPool(),
+          mutate: async (client) => {
+            const result = await accessService.replaceUserRoles(client, {
+              id,
+              installationId: context.requestContext.installationId,
+              payload,
+              updatedBy: context.requestContext.actorId,
+            });
+
+            if (!result.ok) {
+              return {
+                statusCode: serviceStatus(result) || 400,
+                contentType: 'application/json',
+                requestId: context.requestId,
+                body: {
+                  error: {
+                    code: result.code,
+                    message: result.message,
+                    retryable: Boolean(result.retryable),
+                    details: {},
+                  },
+                  requestId: context.requestId,
+                  receivedAt: context.receivedAt,
+                },
+              };
+            }
+
+            const user = result.user;
+            await insertAuditRecord(client, buildAuditRecord({
+              requestContext: context.requestContext,
+              action: deriveUserAuditAction(result),
+              resourceType: 'user',
+              resourceId: user.id,
+              beforeData: result.beforeData ?? null,
+              afterData: user,
+              metadata: { employeeId: user.employee_id, loginName: user.login_name },
+            }));
+
+            return {
+              statusCode: 200,
+              contentType: 'application/json',
+              requestId: context.requestId,
+              body: createSuccessEnvelope(user, context.requestId, context.receivedAt),
+            };
+          },
+        });
+      },
+    });
+
+    res.setHeader('Cache-Control', 'no-store');
+    sendJson(
+      res,
+      execution.response.statusCode,
+      execution.response.body,
+      execution.response.requestId ?? context.requestId,
+      execution.response.contentType,
+    );
+  } catch {
+    sendError(res, createError('IDEMPOTENCY_STORAGE_ERROR', 'Kho idempotency tạm thời không sẵn sàng', {}, true, 503), context.requestId, context.receivedAt);
   }
 }
 
@@ -364,12 +690,17 @@ export async function handleAccessRoutes(req, res, options) {
   });
 
   const method = String(req.method || 'GET').toUpperCase();
-  const permission = pathname === '/api/access/permissions'
+  const isPermissionRoute = pathname === '/api/access/permissions';
+  const isRoleRoute = pathname === '/api/access/roles' || pathname.startsWith('/api/access/roles/');
+  const isUserRoute = pathname === '/api/access/users' || pathname.startsWith('/api/access/users/');
+  const permission = isPermissionRoute
     ? options.authorize(requestContext, options.PERMISSIONS.corePermissionRead)
-    : options.authorize(
-      requestContext,
-      method === 'GET' ? options.PERMISSIONS.coreRoleRead : options.PERMISSIONS.coreRoleWrite,
-    );
+    : isUserRoute
+      ? options.authorize(requestContext, method === 'GET' ? options.PERMISSIONS.coreUserRead : options.PERMISSIONS.coreUserWrite)
+      : options.authorize(
+        requestContext,
+        method === 'GET' ? options.PERMISSIONS.coreRoleRead : options.PERMISSIONS.coreRoleWrite,
+      );
 
   if (!permission.ok) {
     sendError(res, createError('FORBIDDEN', 'Không có quyền truy cập', {}, false, 403), options.requestId, options.receivedAt);
@@ -389,14 +720,38 @@ export async function handleAccessRoutes(req, res, options) {
     await handleCreateRole(req, res, context);
     return true;
   }
-
-  const match = pathname.match(/^\/api\/access\/roles\/([^/]+)$/);
-  if (match && method === 'GET') {
-    await handleGetRole(req, res, context, match[1]);
+  if (pathname === '/api/access/users' && method === 'GET') {
+    await handleListUsers(req, res, context);
     return true;
   }
-  if (match && method === 'PATCH') {
-    await handlePatchRole(req, res, context, match[1]);
+  if (pathname === '/api/access/users' && method === 'POST') {
+    await handleCreateUser(req, res, context);
+    return true;
+  }
+
+  const roleMatch = pathname.match(/^\/api\/access\/roles\/([^/]+)$/);
+  if (roleMatch && method === 'GET') {
+    await handleGetRole(req, res, context, roleMatch[1]);
+    return true;
+  }
+  if (roleMatch && method === 'PATCH') {
+    await handlePatchRole(req, res, context, roleMatch[1]);
+    return true;
+  }
+
+  const userMatch = pathname.match(/^\/api\/access\/users\/([^/]+)$/);
+  if (userMatch && method === 'GET') {
+    await handleGetUser(req, res, context, userMatch[1]);
+    return true;
+  }
+  if (userMatch && method === 'PATCH') {
+    await handlePatchUser(req, res, context, userMatch[1]);
+    return true;
+  }
+
+  const userRolesMatch = pathname.match(/^\/api\/access\/users\/([^/]+)\/roles$/);
+  if (userRolesMatch && method === 'PATCH') {
+    await handlePatchUserRoles(req, res, context, userRolesMatch[1]);
     return true;
   }
 
