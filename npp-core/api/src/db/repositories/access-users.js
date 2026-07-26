@@ -118,13 +118,14 @@ export async function insertUser(client, {
   createdBy,
 }) {
   const id = randomUUID();
+  const now = new Date().toISOString();
   const result = await client.query(
     `INSERT INTO shared.users (
        id, installation_id, employee_id, login_name, is_active,
        created_at, updated_at, created_by, updated_by
-     ) VALUES ($1, $2, $3, $4, $5, now(), now(), $6, $6)
+     ) VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $7)
      RETURNING ${USER_COLUMNS}`,
-    [id, installationId, employeeId, loginName, Boolean(isActive), createdBy],
+    [id, installationId, employeeId, loginName, Boolean(isActive), now, createdBy],
   );
   return result.rows[0] || null;
 }
