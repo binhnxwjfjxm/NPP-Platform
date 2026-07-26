@@ -127,21 +127,20 @@ body {
   background: linear-gradient(180deg, var(--npp-brown-600), var(--npp-brown-700)) !important;
 }
 
-/* Route content enters gently; shell chrome remains visually stable. */
+/* Route content enters gently; do not retain a transform/filter containing block after the animation. */
 [data-testid="app-sidebar"] ~ div[class*="main"] > main {
-  animation: npp-route-enter 180ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: npp-route-enter 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  animation-fill-mode: none;
 }
 
 @keyframes npp-route-enter {
   from {
     opacity: 0.25;
     transform: translateY(4px);
-    filter: blur(0.6px);
   }
   to {
     opacity: 1;
-    transform: none;
-    filter: none;
+    transform: translateY(0);
   }
 }
 
