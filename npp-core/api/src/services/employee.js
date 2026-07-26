@@ -128,24 +128,20 @@ export async function createEmployee(client, { installationId, payload, createdB
   });
   if (!branchResult.ok) return branchResult;
 
-  try {
-    const employee = await employeeRepo.insertEmployee(client, {
-      installationId,
-      code: validation.normalized.code,
-      fullName: validation.normalized.fullName,
-      jobTitle: validation.normalized.jobTitle,
-      phone: validation.normalized.phone,
-      email: validation.normalized.email,
-      branchId: validation.normalized.branchId,
-      createdBy,
-    });
-    return { ok: true, employee };
-  } catch (error) {
-    if (error?.code === '23505' && error?.constraint === 'employees_code_installation_unique') {
-      return { ok: false, code: 'DUPLICATE_CODE', message: 'An employee with this code already exists' };
-    }
-    throw error;
+  const employee = await employeeRepo.insertEmployee(client, {
+    installationId,
+    code: validation.normalized.code,
+    fullName: validation.normalized.fullName,
+    jobTitle: validation.normalized.jobTitle,
+    phone: validation.normalized.phone,
+    email: validation.normalized.email,
+    branchId: validation.normalized.branchId,
+    createdBy,
+  });
+  if (!employee) {
+    return { ok: false, code: 'DUPLICATE_CODE', message: 'An employee with this code already exists' };
   }
+  return { ok: true, employee };
 }
 
 export async function getEmployee(client, { installationId, id }) {
