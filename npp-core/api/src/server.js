@@ -29,6 +29,7 @@ import {
 import { createOptionalR2StorageAdapter } from './storage/r2-adapter.js';
 import { executeR2ContractOperation } from './storage/r2-contract.js';
 import { handleOrganizationRoutes } from './routes/organization.js';
+import { handleEmployeeRoutes } from './routes/employees.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const CORS_ALLOWED_HEADERS = 'authorization, content-type, idempotency-key, x-request-id';
@@ -58,7 +59,6 @@ async function defaultAuditOutboxMutation({ client, requestContext, payload }) {
 
   await insertAuditRecord(client, auditRecord);
   await insertOutboxEvent(client, outboxEvent);
-
   return { auditId: auditRecord.auditId, eventId: outboxEvent.eventId };
 }
 
@@ -108,7 +108,6 @@ export function createCoreApiServer(options = {}) {
       requestId,
       receivedAt,
     });
-
     req.requestContext = anonymousContext;
 
     if (origin && !allowedOrigins.has(origin)) {
@@ -138,13 +137,11 @@ export function createCoreApiServer(options = {}) {
         sendError(res, createError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405), requestId, receivedAt);
         return;
       }
-
       const requestedMethod = String(req.headers['access-control-request-method'] ?? '').toUpperCase();
       if (requestedMethod && !allowedMethods.get(url.pathname).has(requestedMethod)) {
         sendError(res, createError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405), requestId, receivedAt);
         return;
       }
-
       const routeMethods = [...allowedMethods.get(url.pathname), 'OPTIONS'].join(', ');
       res.setHeader('Access-Control-Allow-Methods', routeMethods);
       res.setHeader('Access-Control-Allow-Headers', CORS_ALLOWED_HEADERS);
@@ -185,7 +182,6 @@ export function createCoreApiServer(options = {}) {
         sendError(res, createError('UNAUTHORIZED', 'Authorization required', {}, false, 401), requestId, receivedAt);
         return;
       }
-
       const requestContext = createContext({
         config: runtimeConfig,
         principal: authResult.principal,
@@ -193,13 +189,11 @@ export function createCoreApiServer(options = {}) {
         receivedAt,
       });
       req.requestContext = requestContext;
-
       const permission = authorize(requestContext, PERMISSIONS.coreConfigRead);
       if (!permission.ok) {
         sendError(res, createError('FORBIDDEN', 'Permission denied', {}, false, 403), requestId, receivedAt);
         return;
       }
-
       res.setHeader('Cache-Control', 'no-store');
       sendSuccess(res, {
         config: getSanitizedConfig(runtimeConfig),
@@ -216,7 +210,6 @@ export function createCoreApiServer(options = {}) {
         sendError(res, createError('UNAUTHORIZED', 'Authorization required', {}, false, 401), requestId, receivedAt);
         return;
       }
-
       const requestContext = createContext({
         config: runtimeConfig,
         principal: authResult.principal,
@@ -224,13 +217,11 @@ export function createCoreApiServer(options = {}) {
         receivedAt,
       });
       req.requestContext = requestContext;
-
       const permission = authorize(requestContext, PERMISSIONS.coreHealthAuthenticatedRead);
       if (!permission.ok) {
         sendError(res, createError('FORBIDDEN', 'Permission denied', {}, false, 403), requestId, receivedAt);
         return;
       }
-
       res.setHeader('Cache-Control', 'no-store');
       sendSuccess(res, {
         status: 'authenticated',
@@ -248,7 +239,6 @@ export function createCoreApiServer(options = {}) {
         sendError(res, createError('UNAUTHORIZED', 'Authorization required', {}, false, 401), requestId, receivedAt);
         return;
       }
-
       const requestContext = createContext({
         config: runtimeConfig,
         principal: authResult.principal,
@@ -256,7 +246,6 @@ export function createCoreApiServer(options = {}) {
         receivedAt,
       });
       req.requestContext = requestContext;
-
       const permission = authorize(requestContext, PERMISSIONS.coreIdempotencyTestWrite);
       if (!permission.ok) {
         sendError(res, createError('FORBIDDEN', 'Permission denied', {}, false, 403), requestId, receivedAt);
@@ -270,7 +259,6 @@ export function createCoreApiServer(options = {}) {
         sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), requestId, receivedAt);
         return;
       }
-
       try {
         const executionResult = await executeRequestWithIdempotency({
           idempotencyStore,
@@ -282,7 +270,6 @@ export function createCoreApiServer(options = {}) {
           payload,
           onProcess: () => idempotencyTestHandler({ payload, requestContext, requestId, receivedAt }),
         });
-
         res.setHeader('Cache-Control', 'no-store');
         sendJson(
           res,
@@ -292,12 +279,7 @@ export function createCoreApiServer(options = {}) {
           executionResult.response.contentType,
         );
       } catch {
-        sendError(
-          res,
-          createError('IDEMPOTENCY_STORAGE_ERROR', 'Idempotency storage unavailable', {}, true, 503),
-          requestId,
-          receivedAt,
-        );
+        sendError(res, createError('IDEMPOTENCY_STORAGE_ERROR', 'Idempotency storage unavailable', {}, true, 503), requestId, receivedAt);
       }
       return;
     }
@@ -309,7 +291,6 @@ export function createCoreApiServer(options = {}) {
         sendError(res, createError('UNAUTHORIZED', 'Authorization required', {}, false, 401), requestId, receivedAt);
         return;
       }
-
       const requestContext = createContext({
         config: runtimeConfig,
         principal: authResult.principal,
@@ -317,7 +298,6 @@ export function createCoreApiServer(options = {}) {
         receivedAt,
       });
       req.requestContext = requestContext;
-
       const permission = authorize(requestContext, PERMISSIONS.coreAuditOutboxTestWrite);
       if (!permission.ok) {
         sendError(res, createError('FORBIDDEN', 'Permission denied', {}, false, 403), requestId, receivedAt);
@@ -331,7 +311,6 @@ export function createCoreApiServer(options = {}) {
         sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), requestId, receivedAt);
         return;
       }
-
       try {
         const result = await withAuditOutboxTransaction({
           adapter: auditOutboxAdapter,
@@ -343,19 +322,10 @@ export function createCoreApiServer(options = {}) {
             ...helpers,
           }),
         });
-
         res.setHeader('Cache-Control', 'no-store');
-        sendSuccess(res, {
-          auditId: result.auditId,
-          eventId: result.eventId,
-        }, requestId, receivedAt);
+        sendSuccess(res, { auditId: result.auditId, eventId: result.eventId }, requestId, receivedAt);
       } catch {
-        sendError(
-          res,
-          createError('AUDIT_OUTBOX_TRANSACTION_FAILED', 'Audit/outbox transaction failed', {}, true, 503),
-          requestId,
-          receivedAt,
-        );
+        sendError(res, createError('AUDIT_OUTBOX_TRANSACTION_FAILED', 'Audit/outbox transaction failed', {}, true, 503), requestId, receivedAt);
       }
       return;
     }
@@ -367,7 +337,6 @@ export function createCoreApiServer(options = {}) {
         sendError(res, createError('UNAUTHORIZED', 'Authorization required', {}, false, 401), requestId, receivedAt);
         return;
       }
-
       const requestContext = createContext({
         config: runtimeConfig,
         principal: authResult.principal,
@@ -375,7 +344,6 @@ export function createCoreApiServer(options = {}) {
         receivedAt,
       });
       req.requestContext = requestContext;
-
       const permission = authorize(requestContext, PERMISSIONS.coreStorageR2TestWrite);
       if (!permission.ok) {
         sendError(res, createError('FORBIDDEN', 'Permission denied', {}, false, 403), requestId, receivedAt);
@@ -389,7 +357,6 @@ export function createCoreApiServer(options = {}) {
         sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), requestId, receivedAt);
         return;
       }
-
       try {
         const executionResult = await executeRequestWithIdempotency({
           idempotencyStore,
@@ -414,7 +381,6 @@ export function createCoreApiServer(options = {}) {
             };
           },
         });
-
         res.setHeader('Cache-Control', 'no-store');
         sendJson(
           res,
@@ -438,19 +404,13 @@ export function createCoreApiServer(options = {}) {
             receivedAt,
           );
         } else {
-          sendError(
-            res,
-            createError('IDEMPOTENCY_STORAGE_ERROR', 'Idempotency storage unavailable', {}, true, 503),
-            requestId,
-            receivedAt,
-          );
+          sendError(res, createError('IDEMPOTENCY_STORAGE_ERROR', 'Idempotency storage unavailable', {}, true, 503), requestId, receivedAt);
         }
       }
       return;
     }
 
-    // Organization and warehouse routes
-    const orgRouteContext = {
+    const routeContext = {
       config: runtimeConfig,
       idempotencyStore,
       getPool: () => getPool(runtimeConfig),
@@ -463,9 +423,8 @@ export function createCoreApiServer(options = {}) {
       createContext,
     };
 
-    if (await handleOrganizationRoutes(req, res, orgRouteContext)) {
-      return;
-    }
+    if (await handleEmployeeRoutes(req, res, routeContext)) return;
+    if (await handleOrganizationRoutes(req, res, routeContext)) return;
 
     sendError(res, createError('NOT_FOUND', 'Route not found', {}, false, 404), requestId, receivedAt);
   });
