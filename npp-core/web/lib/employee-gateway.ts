@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto';
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REQUEST_TIMEOUT_MS = 8_000;
+const EMPLOYEE_PAGE_SIZE = 1000;
+const MAX_EMPLOYEE_OFFSET = 10_000_000;
 const ALLOWED_QUERY_KEYS = new Set(['active', 'limit', 'offset', 'branchId']);
 
 interface CoreEnvelope<T> {
@@ -147,6 +149,36 @@ async function requestCore<T>({
 
 export function listEmployees<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
   return requestCore<T>({ method: 'GET', requestId, searchParams });
+}
+
+export async function listAllEmployees<T>(
+  requestId: string,
+  searchParams = new URLSearchParams(),
+): Promise<T[]> {
+  const filters = new URLSearchParams(searchParams);
+  filters.delete('limit');
+  filters.delete('offset');
+
+  const employees: T[] = [];
+  let offset = 0;
+  while (true) {
+    const pageParams = new URLSearchParams(filters);
+    pageParams.set('limit', String(EMPLOYEE_PAGE_SIZE));
+    pageParams.set('offset', String(offset));
+    const page = await requestCore<T[]>({ method: 'GET', requestId, searchParams: pageParams });
+    employees.push(...page);
+
+    if (page.length < EMPLOYEE_PAGE_SIZE) return employees;
+    offset += page.length;
+    if (offset > MAX_EMPLOYEE_OFFSET) {
+      throw new EmployeeGatewayError(
+        'EMPLOYEE_DIRECTORY_TOO_LARGE',
+        'Danh mục nhân sự vượt quá giới hạn đồng bộ hiện tại',
+        422,
+        false,
+      );
+    }
+  }
 }
 
 export function getEmployee<T>(id: string, requestId: string): Promise<T> {
