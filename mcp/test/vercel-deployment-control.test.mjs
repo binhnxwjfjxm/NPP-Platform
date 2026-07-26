@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const config = JSON.parse(
+const coreConfig = JSON.parse(
   await readFile(new URL("../../npp-core/web/vercel.json", import.meta.url), "utf8")
+);
+const rootConfig = JSON.parse(
+  await readFile(new URL("../../vercel.json", import.meta.url), "utf8")
 );
 const workflow = await readFile(
   new URL("../../.github/workflows/vercel-production-manual.yml", import.meta.url),
@@ -11,14 +14,21 @@ const workflow = await readFile(
 );
 
 test("Vercel uses the NPP Core web package as its project root", () => {
-  assert.equal(config.builds, undefined);
-  assert.equal(config.routes, undefined);
-  assert.equal(config.framework, undefined);
-  assert.equal(config.outputDirectory, undefined);
+  assert.equal(coreConfig.builds, undefined);
+  assert.equal(coreConfig.routes, undefined);
+  assert.equal(coreConfig.framework, undefined);
+  assert.equal(coreConfig.outputDirectory, undefined);
+});
+
+test("legacy repository-root config is inert and locked", () => {
+  assert.equal(rootConfig.git?.deploymentEnabled, false);
+  assert.equal(rootConfig.builds, undefined);
+  assert.equal(rootConfig.routes, undefined);
+  assert.equal(rootConfig.build, undefined);
 });
 
 test("automatic Vercel deployments stay locked by default", () => {
-  assert.equal(config.git?.deploymentEnabled, false);
+  assert.equal(coreConfig.git?.deploymentEnabled, false);
   assert.match(workflow, /^\s{2}workflow_dispatch:\s*$/m);
   assert.match(workflow, /^\s{2}issue_comment:\s*$/m);
   assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request):\s*$/m);
