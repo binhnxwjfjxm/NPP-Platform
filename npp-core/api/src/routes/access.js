@@ -257,7 +257,8 @@ async function handlePatchRole(req, res, context, id) {
     return;
   }
 
-  if (typeof payload.expectedUpdatedAt !== 'string' || !payload.expectedUpdatedAt.trim()) {
+  const expectedUpdatedAt = payload?.expectedUpdatedAt;
+  if (typeof expectedUpdatedAt !== 'string' || !expectedUpdatedAt.trim()) {
     sendError(res, createError('MISSING_EXPECTED_UPDATED_AT', 'expectedUpdatedAt là bắt buộc cho thao tác cập nhật', {}, false, 400), context.requestId, context.receivedAt);
     return;
   }
