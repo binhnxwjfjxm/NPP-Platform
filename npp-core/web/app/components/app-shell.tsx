@@ -24,9 +24,7 @@ function iconFor(href: string): string {
 }
 
 function isActive(pathname: string, href: string): boolean {
-  if (href === '/organization') {
-    return pathname === '/organization' || pathname.startsWith('/organization/');
-  }
+  if (href === '/organization') return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -114,4 +112,3 @@ export function AppShell({ title, subtitle, kicker = 'NPP Core · Quản trị n
     </div>
   );
 }
-
