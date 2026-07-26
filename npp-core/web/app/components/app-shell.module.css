@@ -632,16 +632,35 @@
     flex: 0 0 38px;
   }
 
+  .shellCollapsed .brandText,
+  .shellCollapsed .navCopy,
+  .shellCollapsed .chevron,
+  .shellCollapsed .userCopy,
   .brandText,
   .navCopy,
-  .navLabel,
   .chevron,
   .userCopy {
     display: grid;
   }
 
+  .shellCollapsed .navLabel,
+  .navLabel {
+    display: block;
+  }
+
+  .shellCollapsed .brandRow,
   .brandRow {
+    justify-content: flex-start;
     flex-direction: row;
+  }
+
+  .shellCollapsed .navItem {
+    justify-content: flex-start;
+    padding-inline: 10px;
+  }
+
+  .shellCollapsed .userPlaceholder {
+    justify-content: flex-start;
   }
 }
 
