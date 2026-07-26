@@ -33,9 +33,6 @@ INSERT INTO shared.permission_catalog (
   ('core.warehouse.location.write', 'Tổ chức', 'Quản lý vị trí kho', 'Cho phép tạo, cập nhật và thay đổi trạng thái vị trí kho.', true, now()),
   ('core.employee.read', 'Nhân sự', 'Xem nhân sự', 'Cho phép đọc hồ sơ nhân sự nghiệp vụ.', true, now()),
   ('core.employee.write', 'Nhân sự', 'Quản lý nhân sự', 'Cho phép tạo, cập nhật và thay đổi trạng thái hồ sơ nhân sự.', true, now()),
-  ('core.user.read', 'Nhân sự', 'Xem người dùng', 'Cho phép đọc thông tin định danh người dùng và liên kết vai trò/nhân viên.', true, now()),
-  ('core.user.write', 'Nhân sự', 'Quản lý người dùng', 'Cho phép tạo, cập nhật và quản lý liên kết vai trò/nhân viên của người dùng.', true, now()),
-  ('core.user-role.write', 'Nhân sự', 'Quản lý liên kết vai trò người dùng', 'Cho phép thay thế toàn bộ tập vai trò của người dùng một cách nguyên tử.', true, now()),
   ('core.permission.read', 'Phân quyền', 'Xem danh mục quyền', 'Cho phép đọc danh mục quyền chuẩn hóa của Core Platform.', true, now()),
   ('core.role.read', 'Phân quyền', 'Xem vai trò', 'Cho phép đọc danh sách và chi tiết vai trò quản trị.', true, now()),
   ('core.role.write', 'Phân quyền', 'Quản lý vai trò', 'Cho phép tạo, cập nhật, bật/tắt và thay thế tập quyền của vai trò.', true, now())
