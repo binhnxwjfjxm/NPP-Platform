@@ -33,7 +33,7 @@ const organizationItems = [
 const accessItems = [
   { href: '/access/roles', label: 'Vai trò & phân quyền', icon: 'panel' as const, testId: 'nav-roles' },
   { href: '/access/employees', label: 'Danh mục nhân sự', icon: 'user' as const, testId: 'nav-employees' },
-  { href: '/access/users', label: 'Quản lý Người dùng', icon: 'user' as const, testId: 'nav-users' },
+  { href: '/access/users', label: 'Người dùng', icon: 'user' as const, testId: 'nav-users' },
 ];
 
 function Icon({ name }: { name: IconName }) {
@@ -243,10 +243,10 @@ export function AppShell({
                 data-testid="access-menu-toggle"
                 title={collapsed ? 'Nhân sự và phân quyền' : undefined}
               >
-                <span className={styles.navIcon}><Icon name="user" /></span>
+                <span className={styles.navIcon}><Icon name="panel" /></span>
                 <span className={styles.navCopy}>
                   <span className={styles.navTitle}>Nhân sự &amp; phân quyền</span>
-                  <span className={styles.navHint}>Hồ sơ, tài khoản và phạm vi truy cập</span>
+                  <span className={styles.navHint}>Nhân viên, vai trò và quyền truy cập</span>
                 </span>
                 <span className={`${styles.chevron} ${accessOpen ? styles.chevronOpen : ''}`}>
                   <Icon name="chevron" />
@@ -273,53 +273,42 @@ export function AppShell({
         </div>
 
         <div className={styles.sidebarFooter}>
-          <div className={styles.userPlaceholder} title={collapsed ? 'Tài khoản người dùng' : undefined}>
-            <span className={styles.userAvatar}><Icon name="user" /></span>
-            <span className={styles.userCopy}>
-              <strong>Tài khoản người dùng</strong>
-              <small>Đăng nhập sẽ được bổ sung</small>
-            </span>
+          <div className={styles.userAvatar}>QT</div>
+          <div className={styles.userCopy}>
+            <strong>Quản trị hệ thống</strong>
+            <span>Hưng Phát Company</span>
           </div>
         </div>
       </aside>
 
-      <button
-        type="button"
-        className={`${styles.backdrop} ${mobileOpen ? '' : styles.backdropHidden}`}
-        onClick={() => setMobileOpen(false)}
-        aria-label="Đóng thanh điều hướng"
-      />
-
       <div className={styles.main}>
         <header className={styles.topbar}>
-          <div className={styles.topbarLeft}>
-            <button
-              type="button"
-              className={styles.mobileMenuButton}
-              onClick={() => setMobileOpen((value) => !value)}
-              aria-label="Mở thanh điều hướng"
-              aria-expanded={mobileOpen}
-            >
-              <Icon name="panel" />
-            </button>
-            <div className={styles.titleBlock}>
-              <p className={styles.kicker}>{kicker}</p>
-              <h1 className={styles.title}>{title}</h1>
-              {subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
-            </div>
+          <button
+            type="button"
+            className={styles.mobileMenuButton}
+            onClick={() => setMobileOpen((current) => !current)}
+            aria-label={mobileOpen ? 'Đóng điều hướng' : 'Mở điều hướng'}
+          >
+            <Icon name="panel" />
+          </button>
+          <div className={styles.pageHeading}>
+            <span className={styles.kicker}>{kicker}</span>
+            <strong>{title}</strong>
+            {subtitle ? <small>{subtitle}</small> : null}
           </div>
-
-          <div className={styles.topbarActions}>
-            {actions}
-            <span className={styles.statusPill}>
-              <span className={styles.statusDot} aria-hidden="true" />
-              Hệ thống trực tuyến
-            </span>
-          </div>
+          <div className={styles.actions}>{actions}</div>
         </header>
-
         <main className={styles.content}>{children}</main>
       </div>
+
+      {mobileOpen ? (
+        <button
+          type="button"
+          className={styles.mobileBackdrop}
+          aria-label="Đóng điều hướng"
+          onClick={() => setMobileOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
