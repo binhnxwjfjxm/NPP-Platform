@@ -15,6 +15,8 @@ export const PERMISSIONS = Object.freeze({
   coreWarehouseWrite: 'core.warehouse.write',
   coreWarehouseLocationRead: 'core.warehouse.location.read',
   coreWarehouseLocationWrite: 'core.warehouse.location.write',
+  coreEmployeeRead: 'core.employee.read',
+  coreEmployeeWrite: 'core.employee.write',
 });
 
 const PERMISSION_REGISTRY = new Set(Object.values(PERMISSIONS));
@@ -70,6 +72,8 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.coreWarehouseWrite,
       PERMISSIONS.coreWarehouseLocationRead,
       PERMISSIONS.coreWarehouseLocationWrite,
+      PERMISSIONS.coreEmployeeRead,
+      PERMISSIONS.coreEmployeeWrite,
     ],
     sourceApp: 'npp-core-api',
   });
