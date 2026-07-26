@@ -56,13 +56,16 @@ test.describe('Core web route smoke', () => {
   test('login page loads cleanly in Vietnamese', async ({ page }) => {
     await expectHealthyRoute(page, '/login');
     await expect(page.getByRole('heading', { name: 'Đăng nhập để vào không gian quản trị' })).toBeVisible();
+    await expect(page.getByText('Hưng Phát Company')).toBeVisible();
     expectNoSensitiveData(await page.content());
   });
 
-  test('dashboard page follows the new organization shell contract', async ({ page }) => {
+  test('dashboard page follows the office shell contract', async ({ page }) => {
     await expectHealthyRoute(page, '/dashboard');
     await expect(page.getByTestId('organization-overview-page')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Tổng quan', exact: true })).toBeVisible();
+    await expect(page.getByText('Hưng Phát Company')).toBeVisible();
+    await expect(page.getByTestId('app-sidebar')).toHaveCSS('position', 'fixed');
     expectNoSensitiveData(await page.content());
     expectNoEnglishMainFlow(await page.locator('body').innerText());
   });
@@ -75,9 +78,46 @@ test.describe('Core web route smoke', () => {
     expectNoEnglishMainFlow(await page.locator('body').innerText());
   });
 
+  test('sidebar collapses and organization children remain nested', async ({ page }) => {
+    await expectHealthyRoute(page, '/dashboard');
+
+    await page.getByTestId('organization-menu-toggle').click();
+    await expect(page.getByTestId('nav-branches')).toBeVisible();
+    await expect(page.getByTestId('nav-warehouses')).toBeVisible();
+    await expect(page.getByTestId('nav-locations')).toBeVisible();
+
+    await page.getByTestId('sidebar-collapse-button').click();
+    await expect(page.locator('[data-collapsed="true"]')).toBeVisible();
+
+    await page.getByTestId('organization-menu-toggle').click();
+    await expect(page.locator('[data-collapsed="false"]')).toBeVisible();
+  });
+
+  test('organization route navigation does not repeat browser-side list loading', async ({ page }) => {
+    const browserGatewayGets: string[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (
+        request.method() === 'GET'
+        && url.origin === 'http://127.0.0.1:3003'
+        && url.pathname.startsWith('/api/organization/')
+      ) {
+        browserGatewayGets.push(url.pathname);
+      }
+    });
+
+    await expectHealthyRoute(page, '/dashboard');
+    await page.getByTestId('organization-menu-toggle').click();
+    await page.getByTestId('nav-branches').click();
+    await expect(page).toHaveURL(/\/organization\/branches$/);
+    await expect(page.getByTestId('branches-page')).toBeVisible();
+    await page.waitForTimeout(250);
+    expect(browserGatewayGets).toEqual([]);
+  });
+
   test('same-origin static assets are present and load', async ({ page }) => {
     await page.goto('/dashboard');
-    const assets = page.locator('link[rel="stylesheet"], script[src]');
+    const assets = page.locator('link[rel="stylesheet"], script[src], img[src="/logo-transparent.png"]');
     expect(await assets.count()).toBeGreaterThan(0);
   });
 });
