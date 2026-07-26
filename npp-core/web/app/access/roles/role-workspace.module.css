@@ -124,10 +124,10 @@
   line-height: 1.45;
 }
 
-/* Internal verification permissions stay in the canonical registry, but are not assignable in the product UI. */
-.permissionItem:has(input[data-testid='permission-core.audit-outbox.test.write']),
-.permissionItem:has(input[data-testid='permission-core.idempotency.test.write']),
-.permissionItem:has(input[data-testid='permission-core.storage.r2.test.write']) {
+/* Unassigned verification permissions stay out of the product UI; existing grants remain visible so they can be revoked. */
+.permissionItem:has(input[data-testid='permission-core.audit-outbox.test.write']:not(:checked)),
+.permissionItem:has(input[data-testid='permission-core.idempotency.test.write']:not(:checked)),
+.permissionItem:has(input[data-testid='permission-core.storage.r2.test.write']:not(:checked)) {
   display: none;
 }
 
