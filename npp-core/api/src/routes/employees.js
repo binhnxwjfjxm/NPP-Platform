@@ -63,7 +63,7 @@ async function handleList(req, res, context) {
   try {
     active = parseBooleanParam(url.searchParams.get('active'));
     limit = parsePositiveIntParam(url.searchParams.get('limit'), 100, 1000);
-    offset = parsePositiveIntParam(url.searchParams.get('offset'), 0, 10000);
+    offset = parsePositiveIntParam(url.searchParams.get('offset'), 0, 10_000_000);
   } catch (error) {
     sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), context.requestId, context.receivedAt);
     return;
@@ -224,6 +224,8 @@ async function handlePatch(req, res, context, id) {
         }
 
         const employee = serviceResult.employee;
+        if (serviceResult.changed === false) return { employee };
+
         await insertAuditRecord(client, buildAuditRecord({
           requestContext: context.requestContext,
           action: typeof payload.isActive === 'boolean'
@@ -256,7 +258,7 @@ async function handlePatch(req, res, context, id) {
 
 export async function handleEmployeeRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
-  if (!pathname.startsWith('/api/employees')) return false;
+  if (pathname !== '/api/employees' && !pathname.startsWith('/api/employees/')) return false;
 
   const authResult = options.authenticate(req, options.config);
   if (!authResult.ok) {
