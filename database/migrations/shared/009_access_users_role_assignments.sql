@@ -9,9 +9,9 @@ INSERT INTO shared.permission_catalog (
   is_system,
   created_at
 ) VALUES
-  ('core.user.read', 'Nhân sự', 'Xem người dùng', 'Cho phép đọc tài khoản người dùng nội bộ và liên kết nhân sự, vai trò.', true, now()),
-  ('core.user.write', 'Nhân sự', 'Quản lý người dùng', 'Cho phép tạo tài khoản và thay đổi trạng thái hoạt động của người dùng.', true, now()),
-  ('core.user-role.write', 'Nhân sự', 'Gán vai trò người dùng', 'Cho phép thay thế nguyên tử tập vai trò được gán cho người dùng.', true, now())
+  ('core.user.read', 'Nhân sự', 'Xem người dùng', 'Cho phép đọc thông tin định danh người dùng và liên kết vai trò/nhân viên.', true, now()),
+  ('core.user.write', 'Nhân sự', 'Quản lý người dùng', 'Cho phép tạo, cập nhật và quản lý liên kết vai trò/nhân viên của người dùng.', true, now()),
+  ('core.user-role.write', 'Nhân sự', 'Quản lý liên kết vai trò người dùng', 'Cho phép thay thế toàn bộ tập vai trò của người dùng một cách nguyên tử.', true, now())
 ON CONFLICT (permission_key) DO UPDATE
 SET module = EXCLUDED.module,
     label = EXCLUDED.label,
