@@ -27,9 +27,15 @@ test('root Vercel project builds and preserves routes to Core web', async () => 
   assert.equal(config.builds?.length, 1);
   assert.equal(config.builds[0]?.src, 'npp-core/web/package.json');
   assert.equal(config.builds[0]?.use, '@vercel/next');
-  assert.equal(config.routes?.length, 1);
-  assert.equal(config.routes[0]?.src, '/(.*)');
-  assert.equal(config.routes[0]?.dest, 'npp-core/web/$1');
+  assert.equal(config.routes?.length, 2);
+  assert.deepEqual(config.routes[0], {
+    src: '/api/organization/(.*)',
+    dest: '/npp-core/web/api/organization/$1',
+  });
+  assert.deepEqual(config.routes[1], {
+    src: '/(.*)',
+    dest: 'npp-core/web/$1',
+  });
   assert.equal(config.build?.env?.NEXT_PUBLIC_CORE_API_URL, 'https://hung-phat-945da1547594.herokuapp.com');
   assert.equal(config.build?.env?.NEXT_PUBLIC_APP_NAME, 'NPP Core');
   assert.equal(config.git?.deploymentEnabled, false);
