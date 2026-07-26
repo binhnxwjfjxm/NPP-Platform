@@ -156,7 +156,7 @@ test('Employee API — authenticated idempotent create writes one employee and a
     server = await startServer({ config });
     const key = `employee-${randomUUID()}`;
     const payload = {
-      code: `NV-${randomUUID().slice(0, 8)}`,
+      code: `NV-${randomUUID().slice(0, 8).toUpperCase()}`,
       fullName: 'Nhân sự qua API',
       jobTitle: 'Nhân viên kho',
       branchId: branch.id,
