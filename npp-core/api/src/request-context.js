@@ -1,25 +1,8 @@
 import { buildAuthContext, extractBearerToken, tokenMatches } from '@npp/auth-context';
 import { createRequestId } from '@npp/shared-utils';
+import { PERMISSION_REGISTRY, PERMISSIONS } from './access/permissions.js';
 
-export const PERMISSIONS = Object.freeze({
-  coreConfigRead: 'core.config.read',
-  coreHealthAuthenticatedRead: 'core.health.authenticated.read',
-  coreIdempotencyTestWrite: 'core.idempotency.test.write',
-  coreAuditOutboxTestWrite: 'core.audit-outbox.test.write',
-  coreStorageR2TestWrite: 'core.storage.r2.test.write',
-  coreOrganizationRead: 'core.organization.read',
-  coreOrganizationWrite: 'core.organization.write',
-  coreBranchRead: 'core.branch.read',
-  coreBranchWrite: 'core.branch.write',
-  coreWarehouseRead: 'core.warehouse.read',
-  coreWarehouseWrite: 'core.warehouse.write',
-  coreWarehouseLocationRead: 'core.warehouse.location.read',
-  coreWarehouseLocationWrite: 'core.warehouse.location.write',
-  coreEmployeeRead: 'core.employee.read',
-  coreEmployeeWrite: 'core.employee.write',
-});
-
-const PERMISSION_REGISTRY = new Set(Object.values(PERMISSIONS));
+export { PERMISSIONS } from './access/permissions.js';
 
 function frozenStrings(value) {
   if (!Array.isArray(value)) return Object.freeze([]);
@@ -74,6 +57,9 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.coreWarehouseLocationWrite,
       PERMISSIONS.coreEmployeeRead,
       PERMISSIONS.coreEmployeeWrite,
+      PERMISSIONS.corePermissionRead,
+      PERMISSIONS.coreRoleRead,
+      PERMISSIONS.coreRoleWrite,
     ],
     sourceApp: 'npp-core-api',
   });

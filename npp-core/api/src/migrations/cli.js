@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 import { CORE_API_MIGRATIONS, runMigrations } from './index.js';
+import { PERMISSION_CATALOG } from '../access/permissions.js';
 
 export const PRODUCTION_ALLOW_ENV = 'MIGRATION_ALLOW_PRODUCTION';
 export const PRODUCTION_CONFIRM_ENV = 'MIGRATION_PRODUCTION_CONFIRM';
@@ -151,6 +152,14 @@ async function constraintExists(adapter, schema, table, constraint) {
   return result.rows?.[0]?.exists === true;
 }
 
+async function indexExists(adapter, schema, index) {
+  const result = await adapter.query(
+    'SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND indexname = $2) AS exists',
+    [schema, index],
+  );
+  return result.rows?.[0]?.exists === true;
+}
+
 async function triggerExists(adapter, schema, table, trigger) {
   const result = await adapter.query(
     `SELECT EXISTS (
@@ -165,12 +174,55 @@ async function triggerExists(adapter, schema, table, trigger) {
   return result.rows?.[0]?.exists === true;
 }
 
-async function indexExists(adapter, schema, index) {
+async function permissionCatalogRows(adapter) {
   const result = await adapter.query(
-    'SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = $1 AND indexname = $2) AS exists',
-    [schema, index],
+    `SELECT permission_key, module, label, description, is_system
+     FROM shared.permission_catalog
+     ORDER BY permission_key ASC`,
   );
-  return result.rows?.[0]?.exists === true;
+  return result.rows ?? [];
+}
+
+function comparePermissionCatalog(rows) {
+  const issues = [];
+  const expected = new Map(PERMISSION_CATALOG.map((entry) => [
+    entry.permissionKey,
+    {
+      module: entry.module,
+      label: entry.label,
+      description: entry.description,
+      is_system: entry.isSystem,
+    },
+  ]));
+  const actual = new Map((rows ?? []).map((row) => [
+    String(row.permission_key),
+    {
+      module: String(row.module),
+      label: String(row.label),
+      description: String(row.description),
+      is_system: Boolean(row.is_system),
+    },
+  ]));
+
+  for (const [permissionKey, expectedRow] of expected.entries()) {
+    const actualRow = actual.get(permissionKey);
+    if (!actualRow) {
+      issues.push(`missing permission catalog row ${permissionKey}`);
+      continue;
+    }
+    if (actualRow.module !== expectedRow.module) issues.push(`permission catalog module mismatch for ${permissionKey}`);
+    if (actualRow.label !== expectedRow.label) issues.push(`permission catalog label mismatch for ${permissionKey}`);
+    if (actualRow.description !== expectedRow.description) issues.push(`permission catalog description mismatch for ${permissionKey}`);
+    if (actualRow.is_system !== expectedRow.is_system) issues.push(`permission catalog system flag mismatch for ${permissionKey}`);
+  }
+
+  for (const permissionKey of actual.keys()) {
+    if (!expected.has(permissionKey)) {
+      issues.push(`unexpected permission catalog row ${permissionKey}`);
+    }
+  }
+
+  return issues;
 }
 
 export function collectVerificationIssues({ status, tables, constraints, triggers, indexes }) {
@@ -203,6 +255,9 @@ export async function migrationVerifyWithAdapter(adapter) {
     'shared.warehouses': await tableExists(adapter, 'shared', 'warehouses'),
     'shared.warehouse_locations': await tableExists(adapter, 'shared', 'warehouse_locations'),
     'shared.employees': await tableExists(adapter, 'shared', 'employees'),
+    'shared.permission_catalog': await tableExists(adapter, 'shared', 'permission_catalog'),
+    'shared.roles': await tableExists(adapter, 'shared', 'roles'),
+    'shared.role_permissions': await tableExists(adapter, 'shared', 'role_permissions'),
   };
   const constraints = {
     core_idempotency_records_scope_key: await constraintExists(adapter, 'shared', 'core_idempotency_records', 'core_idempotency_records_scope_key'),
@@ -213,9 +268,16 @@ export async function migrationVerifyWithAdapter(adapter) {
     warehouse_locations_code_warehouse_unique: await constraintExists(adapter, 'shared', 'warehouse_locations', 'warehouse_locations_code_warehouse_unique'),
     employees_code_installation_unique: await constraintExists(adapter, 'shared', 'employees', 'employees_code_installation_unique'),
     employees_branch_installation_fk: await constraintExists(adapter, 'shared', 'employees', 'employees_branch_installation_fk'),
+    permission_catalog_pkey: await constraintExists(adapter, 'shared', 'permission_catalog', 'permission_catalog_pkey'),
+    roles_code_installation_unique: await constraintExists(adapter, 'shared', 'roles', 'roles_code_installation_unique'),
+    roles_id_installation_unique: await constraintExists(adapter, 'shared', 'roles', 'roles_id_installation_unique'),
+    role_permissions_pkey: await constraintExists(adapter, 'shared', 'role_permissions', 'role_permissions_pkey'),
+    role_permissions_role_installation_fk: await constraintExists(adapter, 'shared', 'role_permissions', 'role_permissions_role_installation_fk'),
+    role_permissions_permission_catalog_fk: await constraintExists(adapter, 'shared', 'role_permissions', 'role_permissions_permission_catalog_fk'),
   };
   const triggers = {
     core_audit_records_append_only: await triggerExists(adapter, 'shared', 'core_audit_records', 'core_audit_records_append_only'),
+    roles_code_immutable: await triggerExists(adapter, 'shared', 'roles', 'roles_code_immutable'),
   };
   const indexes = {
     core_outbox_events_pending_available_idx: await indexExists(adapter, 'shared', 'core_outbox_events_pending_available_idx'),
@@ -224,9 +286,17 @@ export async function migrationVerifyWithAdapter(adapter) {
     warehouse_locations_warehouse_idx: await indexExists(adapter, 'shared', 'warehouse_locations_warehouse_idx'),
     employees_installation_active_idx: await indexExists(adapter, 'shared', 'employees_installation_active_idx'),
     employees_installation_branch_idx: await indexExists(adapter, 'shared', 'employees_installation_branch_idx'),
+    permission_catalog_module_idx: await indexExists(adapter, 'shared', 'permission_catalog_module_idx'),
+    roles_installation_active_idx: await indexExists(adapter, 'shared', 'roles_installation_active_idx'),
+    roles_installation_code_idx: await indexExists(adapter, 'shared', 'roles_installation_code_idx'),
+    role_permissions_role_idx: await indexExists(adapter, 'shared', 'role_permissions_role_idx'),
+    role_permissions_permission_idx: await indexExists(adapter, 'shared', 'role_permissions_permission_idx'),
   };
 
   const issues = collectVerificationIssues({ status, tables, constraints, triggers, indexes });
+  if (tables['shared.permission_catalog']) {
+    issues.push(...comparePermissionCatalog(await permissionCatalogRows(adapter)));
+  }
   return Object.freeze({ verified: issues.length === 0, issues: Object.freeze(issues) });
 }
 

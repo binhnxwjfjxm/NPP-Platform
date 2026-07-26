@@ -1023,14 +1023,15 @@ migration
 
 **Closeout record:** See `docs/operations/phase-3-org-warehouse-closeout.md` and `docs/operations/LATEST_HANDOFF.md`. Backups `b1` and `b002` remain the recorded pre/post migration snapshots; provider state must still be audited before any later migration or deploy.
 
-**Product checkpoint:** Do not open another Phase 3 slice yet. The product owner requested a small UI-adjustment pass on the deployed shell/dashboard/organization screens before selecting the next master-data slice.
+**Product checkpoint:** Phase 3.2A employee directory is complete on `main`. Phase 3.2B role and permission foundation is the next master-data slice; keep later customer/supplier/product/inventory work paused until this slice is closed.
 
 ### Phase 3 — Master data
 
 ```text
 [ ] installation/company config
 [x] branches/warehouses/locations (Phase 3.1)
-[ ] users/employees/roles/scopes
+[x] employees (Phase 3.2A)
+[ ] roles/permissions/scopes (Phase 3.2B)
 [ ] customers/customer groups/addresses
 [ ] suppliers/supplier terms
 [ ] products/SKU/categories/brands
@@ -1225,7 +1226,7 @@ Không xóa ledger/chứng từ để giảm dung lượng. Chỉ prune temp upl
 
 ## 22. Việc tiếp theo theo đúng thứ tự
 
-**Execution checkpoint `2026-07-26`:** Phase 3.1 is closed in production. Pause the roadmap here for the product-owner UI adjustment request. Do not start users, customers, suppliers, products, inventory, sales, purchasing or MCP cutover until that UI pass is specified and completed.
+**Execution checkpoint `2026-07-26`:** Phase 3.1 is closed in production. Phase 3.2A employee directory is complete on main. Proceed with Phase 3.2B role and permission foundation before any users, customers, suppliers, products, inventory, sales, purchasing or MCP cutover work.
 
 ```text
 1. Hoàn tất Phase 0: MCP chạy/build/test sau khi chuyển vào /mcp.
