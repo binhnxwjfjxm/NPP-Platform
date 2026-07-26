@@ -18,7 +18,7 @@ export default async function LocationsPage() {
     <OrganizationWorkspace
       scope="locations"
       title="Vị trí kho"
-      subtitle="Quản lý vị trí theo chuỗi chi nhánh -> kho -> vị trí kho, không gọi backend trực tiếp từ browser."
+      subtitle="Quản lý vị trí lưu trữ trực thuộc từng kho để chuẩn hóa dữ liệu kho vận."
       initialData={initialData}
       initialError={initialError}
     />
