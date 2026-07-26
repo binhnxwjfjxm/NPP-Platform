@@ -1,0 +1,42 @@
+name: Core UI Mobile Fix Once
+
+on:
+  push:
+    branches:
+      - agent/core-ui-office-polish
+    paths:
+      - .github/workflows/core-ui-mobile-fix-once.yml
+      - tools/core-ui-mobile-fix.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[mobile-fix-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/core-ui-office-polish
+          fetch-depth: 0
+
+      - name: Apply responsive fix
+        run: python tools/core-ui-mobile-fix.py
+
+      - name: Remove one-shot files
+        run: |
+          rm .github/workflows/core-ui-mobile-fix-once.yml
+          rm tools/core-ui-mobile-fix.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add npp-core/web/app/components/app-shell.module.css \
+                  .github/workflows/core-ui-mobile-fix-once.yml \
+                  tools/core-ui-mobile-fix.py
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(core-web): preserve expanded navigation on mobile [mobile-fix-applied]"
+          git push origin HEAD:agent/core-ui-office-polish
