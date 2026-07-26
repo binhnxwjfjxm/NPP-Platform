@@ -1,7 +1,7 @@
 # NPP Platform — Latest Handoff
 
 > Updated: 2026-07-26  
-> Current checkpoint: Phase 3.2B role and permission foundation in progress.
+> Current checkpoint: Phase 3.2B merged to `main`; production migration and deployment are pending separate safety gates.
 
 ## Production status
 
@@ -16,6 +16,8 @@ Organization Basic Auth gate: active
 Auto Deploy: locked
 ```
 
+No Phase 3.2B production migration or deployment has been performed from this checkpoint.
+
 ## Phase 3.1 delivered
 
 - Branch management.
@@ -28,36 +30,75 @@ Auto Deploy: locked
 - Canonical Vercel routes from project root `npp-core/web`.
 - Office-style shell polish, fixed/collapsible sidebar, nested navigation and Hưng Phát branding merged by PR #32.
 
-## Current Phase 3.2B work
+## Phase 3.2A delivered
 
-Phase 3.2A employee directory is complete on `main`. The next master-data slice is the role and permission foundation.
+- Employee directory migration `007_hr_employees`.
+- Installation-scoped employee CRUD and active/inactive lifecycle.
+- Optional branch assignment, idempotent create, optimistic concurrency and transactional audit.
+- Server-only Core web gateway and `/access/employees` administration UI.
+- PostgreSQL integration and Playwright regression coverage.
+- Merged by PR #33.
 
-Active branch:
+Production evidence for migration `007` must still be audited directly before it is reused as a dependency for any later production migration.
+
+## Phase 3.2B merged
+
+PR #34 was squash-merged to `main` at:
 
 ```text
-agent/core-role-permission-foundation
+f4cdb1e555dff2dc265ea95179a481b21bbba3d1
 ```
 
-Scope:
+Delivered scope:
 
-- canonical permission catalog and role records;
-- installation-scoped role membership and permission assignment;
-- list/get/create/update/activate/deactivate;
-- idempotent create, optimistic concurrency and transactional audit;
+- canonical permission catalog;
+- installation-scoped roles and role-permission assignments;
+- migration `008_access_roles_permissions`;
+- list/get/create/update/activate/deactivate APIs;
+- role code immutability and duplicate-race handling;
+- atomic permission replacement;
+- idempotent mutations and optimistic concurrency;
+- transactional audit with action derived from persisted before/after state;
 - server-only Core web gateway;
-- `/access/roles` administration UI;
-- API integration and Playwright browser tests.
+- `/access/roles` Vietnamese administration UI and permission matrix;
+- regression tests for validation, malformed IDs, read-only catalog access and permission concurrency.
 
-Explicitly excluded from this slice:
+GitHub CI on the reviewed head passed:
 
-- passwords and password hashes;
-- authentication-provider integration;
+```text
+Foundation F0.2         PASS
+Core Foundation         PASS
+Migration rehearsal     PASS
+Core UI/Browser E2E     PASS
+```
+
+Still excluded and deferred:
+
 - user identities and employee-user links;
-- role-user assignment and data scopes;
+- passwords, password hashes, sessions and MFA;
+- role-user assignment;
+- branch, warehouse and territory scope assignment;
 - replacing Vercel Basic Auth;
-- production migration or deployment before CI and migration safety gates.
+- customers, suppliers, products, inventory, sales, purchasing and MCP cutover.
 
-See `docs/operations/role-permission-slice.md`.
+See `docs/operations/role-permission-slice.md` and `docs/operations/role-permission-review-checklist.md`.
+
+## Next checkpoint
+
+Before migration `008` or a new Core release reaches production:
+
+1. audit the actual Heroku provider state;
+2. verify a fresh pre-migration backup;
+3. complete a restore rehearsal with evidence;
+4. record pre-migration reconciliation counts;
+5. run migration through the repository migration runner;
+6. verify migration and post-migration counts;
+7. deploy Core API manually from `main` and check `/health/live` plus `/health/ready`;
+8. deploy Core web separately through the exact Issue #5 command;
+9. smoke `/`, `/login`, `/dashboard`, `/access/employees`, `/access/roles` and the corresponding API routes;
+10. re-lock all deployment gates and record provider evidence.
+
+Do not select the next business-domain slice until the product owner decides whether to productionize Phase 3.2B first or continue with another non-production foundation slice.
 
 ## Backups and migration evidence
 
