@@ -8,24 +8,27 @@ test.describe('Danh mục khách hàng', () => {
     const customerName = `Khách hàng ${suffix}`;
 
     await page.goto('/customers');
-    await expect(page.getByTestId('customers-page')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Khách hàng', exact: true })).toBeVisible();
+    const workspace = page.getByTestId('customers-page');
+    await expect(workspace).toBeVisible();
+    await expect(workspace.getByRole('heading', { name: 'Khách hàng', exact: true })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Nhóm khách hàng', exact: true }).click();
+    await workspace.getByRole('button', { name: 'Nhóm khách hàng', exact: true }).click();
     await page.getByTestId('customer-groups-topbar-create-button').click();
     await page.getByTestId('customer-group-code-input').fill(groupCode.toLowerCase());
     await page.getByTestId('customer-group-name-input').fill(`Nhóm ${suffix}`);
-    await page.getByRole('button', { name: 'Lưu nhóm' }).click();
+    await workspace.getByRole('button', { name: 'Lưu nhóm' }).click();
     await expect(page.getByTestId(`customer-group-row-${groupCode}`)).toBeVisible();
 
-    await page.getByRole('button', { name: 'Khách hàng', exact: true }).click();
+    await workspace.getByRole('button', { name: 'Khách hàng', exact: true }).click();
     await page.getByTestId('customers-topbar-create-button').click();
+    const customerDialog = page.getByRole('dialog', { name: 'Biểu mẫu khách hàng' });
+    await expect(customerDialog).toBeVisible();
     await page.getByTestId('customer-code-input').fill(customerCode.toLowerCase());
     await page.getByTestId('customer-name-input').fill(customerName);
-    await page.getByLabel('Nhóm khách hàng').selectOption({ label: `${groupCode} · Nhóm ${suffix}` });
+    await customerDialog.getByLabel('Nhóm khách hàng').selectOption({ label: `${groupCode} · Nhóm ${suffix}` });
     await page.getByTestId('customer-phone-input').fill('0901234567');
     await page.getByTestId('customer-email-input').fill(`customer-${suffix.toLowerCase()}@example.com`);
-    await page.getByRole('button', { name: 'Lưu khách hàng' }).click();
+    await customerDialog.getByRole('button', { name: 'Lưu khách hàng' }).click();
 
     const customerRow = page.getByTestId(`customer-row-${customerCode}`);
     await expect(customerRow).toBeVisible();
@@ -38,18 +41,20 @@ test.describe('Danh mục khách hàng', () => {
     await expect(customerRow).toBeVisible();
 
     await page.getByTestId(`edit-customer-${customerCode}`).click();
+    const editDialog = page.getByRole('dialog', { name: 'Biểu mẫu khách hàng' });
     await page.getByTestId('customer-name-input').fill(`${customerName} đã sửa`);
-    await page.getByRole('button', { name: 'Lưu khách hàng' }).click();
+    await editDialog.getByRole('button', { name: 'Lưu khách hàng' }).click();
     await expect(customerRow).toContainText(`${customerName} đã sửa`);
 
     await page.getByTestId(`addresses-customer-${customerCode}`).click();
-    await page.getByRole('button', { name: 'Thêm địa chỉ' }).click();
+    const addressDialog = page.getByRole('dialog', { name: 'Quản lý địa chỉ khách hàng' });
+    await addressDialog.getByRole('button', { name: 'Thêm địa chỉ' }).click();
     await page.getByTestId('customer-address-label-input').fill('Kho chính');
     await page.getByTestId('customer-address-line1-input').fill(`1 Đường ${suffix}`);
-    await page.getByLabel('Đặt làm địa chỉ mặc định').check();
-    await page.getByRole('button', { name: 'Lưu địa chỉ' }).click();
-    await expect(page.getByText('Kho chính · Mặc định')).toBeVisible();
-    await page.getByRole('button', { name: 'Đóng' }).click();
+    await addressDialog.getByLabel('Đặt làm địa chỉ mặc định').check();
+    await addressDialog.getByRole('button', { name: 'Lưu địa chỉ' }).click();
+    await expect(addressDialog.getByText('Kho chính · Mặc định')).toBeVisible();
+    await addressDialog.getByRole('button', { name: 'Đóng' }).click();
 
     await customerRow.getByRole('button', { name: 'Ngừng' }).click();
     await expect(customerRow).toContainText('Không hoạt động');

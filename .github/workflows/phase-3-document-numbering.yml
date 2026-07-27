@@ -1,0 +1,151 @@
+name: Phase 3 Document Numbering
+
+on:
+  pull_request:
+    paths:
+      - "database/migrations/shared/015_document_numbering.sql"
+      - "database/migrations/shared/016_permission_catalog_alignment.sql"
+      - "npp-core/api/src/audit-outbox.js"
+      - "npp-core/api/src/db/repositories/document-numbering.js"
+      - "npp-core/api/src/services/document-numbering*.js"
+      - "npp-core/api/src/routes/document-numbering.js"
+      - "npp-core/api/test/document-numbering*.test.js"
+      - "npp-core/api/test/audit-outbox-replay.test.js"
+      - "npp-core/api/package.json"
+      - "npp-core/web/app/document-numbering/**"
+      - "npp-core/web/app/api/document-number-series/**"
+      - "npp-core/web/lib/document-numbering-*.ts"
+      - "npp-core/web/e2e/document-numbering.spec.ts"
+      - "npp-core/web/playwright.config.ts"
+      - "docs/operations/document-numbering-slice.md"
+      - ".github/workflows/phase-3-document-numbering.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "database/migrations/shared/015_document_numbering.sql"
+      - "database/migrations/shared/016_permission_catalog_alignment.sql"
+      - "npp-core/api/src/audit-outbox.js"
+      - "npp-core/api/src/db/repositories/document-numbering.js"
+      - "npp-core/api/src/services/document-numbering*.js"
+      - "npp-core/api/src/routes/document-numbering.js"
+      - "npp-core/api/test/document-numbering*.test.js"
+      - "npp-core/api/test/audit-outbox-replay.test.js"
+      - "npp-core/api/package.json"
+      - "npp-core/web/app/document-numbering/**"
+      - "npp-core/web/app/api/document-number-series/**"
+      - "npp-core/web/lib/document-numbering-*.ts"
+      - "npp-core/web/e2e/document-numbering.spec.ts"
+      - "npp-core/web/playwright.config.ts"
+      - "docs/operations/document-numbering-slice.md"
+      - ".github/workflows/phase-3-document-numbering.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  document-numbering:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_npp_core
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 10s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
+      E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
+      E2E_BACKEND_API_TOKEN: numbering-test-token-0123456789abcdef
+      DATABASE_SSL_MODE: disable
+      EVIDENCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      NODE_ENV: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install workspaces
+        run: npm ci
+
+      - name: Apply, rerun and verify migrations through numbering
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          {
+            npm --prefix npp-core/api run migration:migrate
+            npm --prefix npp-core/api run migration:migrate
+            npm --prefix npp-core/api run migration:verify
+          } 2>&1 | tee artifacts/document-numbering-migrations.log
+
+      - name: Run isolated numbering and replay-safety tests
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          npm --prefix npp-core/api run verify:numbering 2>&1 | tee artifacts/document-numbering-api.log
+
+      - name: Verify Core web build
+        run: |
+          npm --prefix npp-core/web run typecheck
+          npm --prefix npp-core/web run build
+        env:
+          CORE_API_INTERNAL_URL: http://127.0.0.1:3004
+          CORE_API_SERVER_TOKEN: numbering-test-token-0123456789abcdef
+          CORE_WEB_ADMIN_USERNAME: e2e-admin
+          CORE_WEB_ADMIN_PASSWORD: e2e-password
+          NEXT_PUBLIC_CORE_API_URL: http://127.0.0.1:3004
+          NEXT_PUBLIC_APP_NAME: NPP Core
+          FOUNDATION_R2_TEST_ENABLED: "false"
+
+      - name: Install Chromium
+        working-directory: npp-core/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run isolated numbering Chromium flow
+        run: npm --prefix npp-core/web run test:e2e -- --project=document-numbering
+
+      - name: Record acceptance metadata
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          cat > artifacts/document-numbering-acceptance.json <<JSON
+          {
+            "pack": "document-numbering",
+            "commitSha": "${EVIDENCE_SHA}",
+            "databaseTarget": "ephemeral-postgresql-16",
+            "migrationSet": "002-016",
+            "workflowRunId": "${GITHUB_RUN_ID}",
+            "productionAssumptionReused": false
+          }
+          JSON
+
+      - name: Upload numbering evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-3-document-numbering-${{ github.run_id }}
+          path: |
+            artifacts/document-numbering-migrations.log
+            artifacts/document-numbering-api.log
+            artifacts/document-numbering-acceptance.json
+            npp-core/web/playwright-report
+            npp-core/web/test-results/results.json
+          if-no-files-found: warn
+          retention-days: 30

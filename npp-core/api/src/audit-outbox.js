@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 const SECRET_KEY_PATTERN = /(?:secret|token|password|passphrase|db_?url|database_?url|connection_?string|api_?key|auth_?token|private_?key)/i;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MUTATING_SQL_PATTERN = /\b(?:insert\s+into|update\s+|delete\s+from|merge\s+into|truncate\s+|create\s+|alter\s+|drop\s+|grant\s+|revoke\s+)\b/i;
 
 function shouldRedactKey(key) {
   return typeof key === 'string' && SECRET_KEY_PATTERN.test(key);
@@ -203,25 +204,20 @@ function createTrackedClient(client, writeState) {
     query: async (sql, values = []) => {
       const result = await client.query(sql, values);
       const normalizedSql = String(sql).trim().replace(/\s+/g, ' ').toLowerCase();
-      if (normalizedSql.startsWith('insert into shared.core_audit_records')) {
-        writeState.auditCount += 1;
-      }
-      if (normalizedSql.startsWith('insert into shared.core_outbox_events')) {
-        writeState.outboxCount += 1;
-      }
+      if (MUTATING_SQL_PATTERN.test(normalizedSql)) writeState.writeCount += 1;
+      if (normalizedSql.startsWith('insert into shared.core_audit_records')) writeState.auditCount += 1;
+      if (normalizedSql.startsWith('insert into shared.core_outbox_events')) writeState.outboxCount += 1;
       return result;
     },
   });
 }
 
 export async function withAuditOutboxTransaction({ adapter, mutate }) {
-  if (!adapter || typeof adapter.connect !== 'function') {
-    throw new Error('invalid_audit_outbox_adapter');
-  }
+  if (!adapter || typeof adapter.connect !== 'function') throw new Error('invalid_audit_outbox_adapter');
   if (typeof mutate !== 'function') throw new Error('invalid_mutation_callback');
 
   const client = await adapter.connect();
-  const writeState = { auditCount: 0, outboxCount: 0 };
+  const writeState = { writeCount: 0, auditCount: 0, outboxCount: 0 };
   const trackedClient = createTrackedClient(client, writeState);
 
   try {
@@ -233,15 +229,26 @@ export async function withAuditOutboxTransaction({ adapter, mutate }) {
       insertOutboxEvent,
     });
 
-    if (result && (result.skipAudit === true || result.failed)) {
+    if (result?.failed || (result?.skipAudit === true && result?.replayed !== true)) {
       await client.query('ROLLBACK');
       return result;
     }
 
-    if (writeState.auditCount !== 1) throw new Error('audit_record_required');
-    const expectsOutbox = result?.eventId !== undefined && result?.eventId !== null;
-    if (expectsOutbox && writeState.outboxCount !== 1) throw new Error('outbox_event_required');
-    if (!expectsOutbox && writeState.outboxCount !== 0) throw new Error('unexpected_outbox_event');
+    if (result?.replayed === true && writeState.writeCount !== 0) {
+      throw new Error('replay_transaction_must_be_read_only');
+    }
+
+    const replayWithoutWrites = result?.replayed === true
+      && writeState.writeCount === 0
+      && writeState.auditCount === 0
+      && writeState.outboxCount === 0;
+
+    if (!replayWithoutWrites) {
+      if (writeState.auditCount !== 1) throw new Error('audit_record_required');
+      const expectsOutbox = result?.eventId !== undefined && result?.eventId !== null;
+      if (expectsOutbox && writeState.outboxCount !== 1) throw new Error('outbox_event_required');
+      if (!expectsOutbox && writeState.outboxCount !== 0) throw new Error('unexpected_outbox_event');
+    }
 
     await client.query('COMMIT');
     return result;
