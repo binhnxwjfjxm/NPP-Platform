@@ -55,6 +55,8 @@ export default defineConfig({
   projects: [
     { name: 'routes', testMatch: /routes\.spec\.ts/, use: authenticatedBrowser },
     { name: 'organization', testMatch: /organization\.spec\.ts/, use: authenticatedBrowser },
+    { name: 'customers', testMatch: /customers\.spec\.ts/, use: authenticatedBrowser },
+    { name: 'suppliers', testMatch: /suppliers\.spec\.ts/, use: authenticatedBrowser },
     { name: 'catalog', testMatch: /products\.spec\.ts/, use: authenticatedBrowser },
     { name: 'document-numbering', testMatch: /document-numbering\.spec\.ts/, use: authenticatedBrowser },
     { name: 'pricing-financial', testMatch: /pricing\.spec\.ts/, use: authenticatedBrowser },
