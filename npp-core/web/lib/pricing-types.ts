@@ -42,6 +42,7 @@ export type PriceListItem = {
   id: string;
   price_list_id: string;
   variant_id: string;
+  product_id: string;
   adjustment_type: PriceAdjustmentType;
   amount_minor: string | null;
   rate_bps: number | null;
