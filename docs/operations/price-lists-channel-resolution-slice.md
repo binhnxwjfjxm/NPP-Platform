@@ -1,6 +1,6 @@
 # Phase 3.3E — Price lists, channel resolution and promotions
 
-> Status: implementation in progress on `agent/pricing-lists-channel-resolution`  
+> Status: merged by PR #51 at `8eef9c978fea84eeab950864bd3a8fa46710e560`  
 > Production deployment: excluded and intentionally deferred
 
 ## Purpose
@@ -75,7 +75,7 @@ variantId
 quantity
 currencyCode (default VND)
 priceAt (default now)
-channelId? 
+channelId?
 customerGroupId?
 customerId?
 manualUnitPriceMinor?
@@ -173,9 +173,9 @@ Product creation and SKU/unit management remain on `/products`. Pricing administ
 - production migration/import/deployment;
 - `mcp/**` changes.
 
-## Verification gate
+## Verification result
 
-Before merge:
+The merged implementation passed:
 
 - migration apply/rerun/verify/rehearsal;
 - installation isolation and scope validation;
@@ -187,8 +187,10 @@ Before merge:
 - quantity tiers and effective dates;
 - source-key import replay and duplicate-race handling;
 - transactional audit and idempotency;
+- executable workbook source audit;
 - Core web typecheck/tests/build;
-- Chromium E2E against actual PostgreSQL and Core API;
-- `mcp/** = 0`.
+- Chromium E2E against actual PostgreSQL and Core API, including product and pricing flows;
+- `mcp/** = 0`;
+- no temporary diagnostic workflow in the merged diff.
 
 Merge is not production deployment. Migrations `010` through `014` remain pending for the grouped Phase 3 backend/database rollout.
