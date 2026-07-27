@@ -21,12 +21,14 @@ test.describe('Danh mục khách hàng', () => {
 
     await workspace.getByRole('button', { name: 'Khách hàng', exact: true }).click();
     await page.getByTestId('customers-topbar-create-button').click();
+    const customerDialog = page.getByRole('dialog', { name: 'Biểu mẫu khách hàng' });
+    await expect(customerDialog).toBeVisible();
     await page.getByTestId('customer-code-input').fill(customerCode.toLowerCase());
     await page.getByTestId('customer-name-input').fill(customerName);
-    await workspace.getByLabel('Nhóm khách hàng').selectOption({ label: `${groupCode} · Nhóm ${suffix}` });
+    await customerDialog.getByLabel('Nhóm khách hàng').selectOption({ label: `${groupCode} · Nhóm ${suffix}` });
     await page.getByTestId('customer-phone-input').fill('0901234567');
     await page.getByTestId('customer-email-input').fill(`customer-${suffix.toLowerCase()}@example.com`);
-    await workspace.getByRole('button', { name: 'Lưu khách hàng' }).click();
+    await customerDialog.getByRole('button', { name: 'Lưu khách hàng' }).click();
 
     const customerRow = page.getByTestId(`customer-row-${customerCode}`);
     await expect(customerRow).toBeVisible();
@@ -39,18 +41,20 @@ test.describe('Danh mục khách hàng', () => {
     await expect(customerRow).toBeVisible();
 
     await page.getByTestId(`edit-customer-${customerCode}`).click();
+    const editDialog = page.getByRole('dialog', { name: 'Biểu mẫu khách hàng' });
     await page.getByTestId('customer-name-input').fill(`${customerName} đã sửa`);
-    await workspace.getByRole('button', { name: 'Lưu khách hàng' }).click();
+    await editDialog.getByRole('button', { name: 'Lưu khách hàng' }).click();
     await expect(customerRow).toContainText(`${customerName} đã sửa`);
 
     await page.getByTestId(`addresses-customer-${customerCode}`).click();
-    await workspace.getByRole('button', { name: 'Thêm địa chỉ' }).click();
+    const addressDialog = page.getByRole('dialog', { name: 'Quản lý địa chỉ khách hàng' });
+    await addressDialog.getByRole('button', { name: 'Thêm địa chỉ' }).click();
     await page.getByTestId('customer-address-label-input').fill('Kho chính');
     await page.getByTestId('customer-address-line1-input').fill(`1 Đường ${suffix}`);
-    await workspace.getByLabel('Đặt làm địa chỉ mặc định').check();
-    await workspace.getByRole('button', { name: 'Lưu địa chỉ' }).click();
-    await expect(workspace.getByText('Kho chính · Mặc định')).toBeVisible();
-    await workspace.getByRole('button', { name: 'Đóng' }).click();
+    await addressDialog.getByLabel('Đặt làm địa chỉ mặc định').check();
+    await addressDialog.getByRole('button', { name: 'Lưu địa chỉ' }).click();
+    await expect(addressDialog.getByText('Kho chính · Mặc định')).toBeVisible();
+    await addressDialog.getByRole('button', { name: 'Đóng' }).click();
 
     await customerRow.getByRole('button', { name: 'Ngừng' }).click();
     await expect(customerRow).toContainText('Không hoạt động');
