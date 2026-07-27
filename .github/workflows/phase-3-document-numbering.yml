@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "database/migrations/shared/015_document_numbering.sql"
+      - "database/migrations/shared/016_permission_catalog_alignment.sql"
       - "npp-core/api/src/audit-outbox.js"
       - "npp-core/api/src/db/repositories/document-numbering.js"
       - "npp-core/api/src/services/document-numbering*.js"
@@ -23,6 +24,7 @@ on:
       - main
     paths:
       - "database/migrations/shared/015_document_numbering.sql"
+      - "database/migrations/shared/016_permission_catalog_alignment.sql"
       - "npp-core/api/src/audit-outbox.js"
       - "npp-core/api/src/db/repositories/document-numbering.js"
       - "npp-core/api/src/services/document-numbering*.js"
@@ -66,6 +68,7 @@ jobs:
       E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
       E2E_BACKEND_API_TOKEN: numbering-test-token-0123456789abcdef
       DATABASE_SSL_MODE: disable
+      EVIDENCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       NODE_ENV: test
     steps:
       - name: Checkout
@@ -125,9 +128,9 @@ jobs:
           cat > artifacts/document-numbering-acceptance.json <<JSON
           {
             "pack": "document-numbering",
-            "commitSha": "${GITHUB_SHA}",
+            "commitSha": "${EVIDENCE_SHA}",
             "databaseTarget": "ephemeral-postgresql-16",
-            "migrationSet": "002-015",
+            "migrationSet": "002-016",
             "workflowRunId": "${GITHUB_RUN_ID}",
             "productionAssumptionReused": false
           }
