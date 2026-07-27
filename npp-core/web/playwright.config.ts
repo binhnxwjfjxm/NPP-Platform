@@ -37,10 +37,7 @@ const commonWebEnvironment = {
 const authenticatedBrowser = {
   ...devices['Desktop Chrome'],
   baseURL: 'http://127.0.0.1:3003',
-  httpCredentials: {
-    username: webAdminUsername,
-    password: webAdminPassword,
-  },
+  httpCredentials: { username: webAdminUsername, password: webAdminPassword },
 };
 
 export default defineConfig({
@@ -54,37 +51,14 @@ export default defineConfig({
     ['html', { open: 'never' }],
     ['json', { outputFile: 'test-results/results.json' }],
   ],
-  use: {
-    trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
-  },
+  use: { trace: 'retain-on-failure', screenshot: 'only-on-failure', video: 'retain-on-failure' },
   projects: [
-    {
-      name: 'routes',
-      testMatch: /routes\.spec\.ts/,
-      use: authenticatedBrowser,
-    },
-    {
-      name: 'organization',
-      testMatch: /organization\.spec\.ts/,
-      use: authenticatedBrowser,
-    },
-    {
-      name: 'organization-auth',
-      testMatch: /organization-auth\.spec\.ts/,
-      use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3003' },
-    },
-    {
-      name: 'foundation-disabled',
-      testMatch: /foundation-disabled\.spec\.ts/,
-      use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3003' },
-    },
-    {
-      name: 'foundation-enabled',
-      testMatch: /foundation\.spec\.ts/,
-      use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3005' },
-    },
+    { name: 'routes', testMatch: /routes\.spec\.ts/, use: authenticatedBrowser },
+    { name: 'organization', testMatch: /organization\.spec\.ts/, use: authenticatedBrowser },
+    { name: 'catalog', testMatch: /(products|pricing)\.spec\.ts/, use: authenticatedBrowser },
+    { name: 'organization-auth', testMatch: /organization-auth\.spec\.ts/, use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3003' } },
+    { name: 'foundation-disabled', testMatch: /foundation-disabled\.spec\.ts/, use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3003' } },
+    { name: 'foundation-enabled', testMatch: /foundation\.spec\.ts/, use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3005' } },
   ],
   webServer: [
     {
@@ -98,22 +72,14 @@ export default defineConfig({
       command: 'npm run dev',
       url: 'http://127.0.0.1:3003',
       reuseExistingServer: false,
-      env: {
-        ...commonWebEnvironment,
-        PORT: '3003',
-        FOUNDATION_TEST_UI_ENABLED: 'false',
-      },
+      env: { ...commonWebEnvironment, PORT: '3003', FOUNDATION_TEST_UI_ENABLED: 'false' },
       timeout: 120_000,
     },
     {
       command: 'npx next dev -p 3005 -H 127.0.0.1',
       url: 'http://127.0.0.1:3005',
       reuseExistingServer: false,
-      env: {
-        ...commonWebEnvironment,
-        PORT: '3005',
-        FOUNDATION_TEST_UI_ENABLED: 'true',
-      },
+      env: { ...commonWebEnvironment, PORT: '3005', FOUNDATION_TEST_UI_ENABLED: 'true' },
       timeout: 120_000,
     },
   ],
