@@ -1,0 +1,88 @@
+.workspace {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.headerBar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.summary {
+  margin: 0;
+  color: #333;
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.refreshButton {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #111827;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.filters {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.searchInput,
+.select {
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  min-width: 220px;
+}
+
+.errorBanner {
+  border: 1px solid #f87171;
+  background: #fef2f2;
+  color: #991b1b;
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 780px;
+}
+
+.table th,
+.table td {
+  border: 1px solid #e2e8f0;
+  padding: 0.85rem 1rem;
+  text-align: left;
+}
+
+.table th {
+  background: #f8fafc;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.emptyRow {
+  color: #64748b;
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.legend {
+  color: #475569;
+  font-size: 0.95rem;
+}

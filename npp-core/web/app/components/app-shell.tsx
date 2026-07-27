@@ -30,6 +30,7 @@ const organizationItems = [
   { href: '/organization/locations', label: 'Vị trí kho', icon: 'locations' as const, testId: 'nav-locations' },
   { href: '/customers', label: 'Khách hàng', icon: 'user' as const, testId: 'nav-customers' },
   { href: '/suppliers', label: 'Nhà cung cấp', icon: 'user' as const, testId: 'nav-suppliers' },
+  { href: '/products', label: 'Danh mục sản phẩm', icon: 'panel' as const, testId: 'nav-products' },
 ];
 
 const accessItems = [
@@ -96,7 +97,7 @@ function isActive(pathname: string, href: string): boolean {
 }
 
 function isOrganizationPath(pathname: string): boolean {
-  return pathname.startsWith('/organization') || pathname.startsWith('/customers') || pathname.startsWith('/suppliers');
+  return pathname.startsWith('/organization') || pathname.startsWith('/customers') || pathname.startsWith('/suppliers') || pathname.startsWith('/products');
 }
 
 function persistCollapsed(value: boolean) {

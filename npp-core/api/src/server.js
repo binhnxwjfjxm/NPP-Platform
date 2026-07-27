@@ -34,6 +34,7 @@ import { handleAccessUserRoutes } from './routes/access-users.js';
 import { handleAccessRoutes } from './routes/access.js';
 import { handleCustomerRoutes } from './routes/customers.js';
 import { handleSupplierRoutes } from './routes/suppliers.js';
+import { handleProductRoutes } from './routes/products.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const CORS_ALLOWED_HEADERS = 'authorization, content-type, idempotency-key, x-request-id';
@@ -433,6 +434,7 @@ export function createCoreApiServer(options = {}) {
     if (await handleOrganizationRoutes(req, res, routeContext)) return;
     if (await handleCustomerRoutes(req, res, routeContext)) return;
     if (await handleSupplierRoutes(req, res, routeContext)) return;
+    if (await handleProductRoutes(req, res, routeContext)) return;
 
     sendError(res, createError('NOT_FOUND', 'Route not found', {}, false, 404), requestId, receivedAt);
   });
