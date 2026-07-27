@@ -11,7 +11,7 @@ test.describe('Danh mục nhà cung cấp', () => {
     await page.goto('/suppliers');
     const workspace = page.getByTestId('suppliers-page');
     await expect(workspace).toBeVisible();
-    await expect(workspace.getByRole('heading', { name: 'Nhà cung cấp', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Nhà cung cấp', exact: true, level: 1 })).toBeVisible();
 
     await workspace.getByRole('button', { name: 'Thêm nhà cung cấp' }).click();
     await page.getByTestId('supplier-code-input').fill(supplierCode.toLowerCase());
