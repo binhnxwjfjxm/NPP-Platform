@@ -49,73 +49,36 @@ const PRODUCT_UNITS_CONVERSIONS_BARCODES_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/013_product_units_conversions_barcodes.sql', import.meta.url),
   'utf8',
 );
+const PRICE_LISTS_CHANNEL_RESOLUTION_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/014_price_lists_channel_resolution.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
-  Object.freeze({
-    id: '002_core_idempotency',
-    sql: CORE_IDEMPOTENCY_SQL,
-  }),
-  Object.freeze({
-    id: '003_core_audit_outbox',
-    sql: CORE_AUDIT_OUTBOX_SQL,
-  }),
-  Object.freeze({
-    id: '004_org_branches',
-    sql: ORG_BRANCHES_SQL,
-  }),
-  Object.freeze({
-    id: '005_org_warehouses',
-    sql: ORG_WAREHOUSES_SQL,
-  }),
-  Object.freeze({
-    id: '006_org_locations',
-    sql: ORG_LOCATIONS_SQL,
-  }),
-  Object.freeze({
-    id: '007_hr_employees',
-    sql: HR_EMPLOYEES_SQL,
-  }),
-  Object.freeze({
-    id: '008_access_roles_permissions',
-    sql: ACCESS_ROLES_PERMISSIONS_SQL,
-  }),
-  Object.freeze({
-    id: '009_access_users_role_assignments',
-    sql: ACCESS_USERS_ROLE_ASSIGNMENTS_SQL,
-  }),
-  Object.freeze({
-    id: '010_customer_master_data',
-    sql: CUSTOMER_MASTER_DATA_SQL,
-  }),
-  Object.freeze({
-    id: '011_supplier_master_data',
-    sql: SUPPLIER_MASTER_DATA_SQL,
-  }),
-  Object.freeze({
-    id: '012_product_catalog_foundation',
-    sql: PRODUCT_CATALOG_FOUNDATION_SQL,
-  }),
-  Object.freeze({
-    id: '013_product_units_conversions_barcodes',
-    sql: PRODUCT_UNITS_CONVERSIONS_BARCODES_SQL,
-  }),
+  Object.freeze({ id: '002_core_idempotency', sql: CORE_IDEMPOTENCY_SQL }),
+  Object.freeze({ id: '003_core_audit_outbox', sql: CORE_AUDIT_OUTBOX_SQL }),
+  Object.freeze({ id: '004_org_branches', sql: ORG_BRANCHES_SQL }),
+  Object.freeze({ id: '005_org_warehouses', sql: ORG_WAREHOUSES_SQL }),
+  Object.freeze({ id: '006_org_locations', sql: ORG_LOCATIONS_SQL }),
+  Object.freeze({ id: '007_hr_employees', sql: HR_EMPLOYEES_SQL }),
+  Object.freeze({ id: '008_access_roles_permissions', sql: ACCESS_ROLES_PERMISSIONS_SQL }),
+  Object.freeze({ id: '009_access_users_role_assignments', sql: ACCESS_USERS_ROLE_ASSIGNMENTS_SQL }),
+  Object.freeze({ id: '010_customer_master_data', sql: CUSTOMER_MASTER_DATA_SQL }),
+  Object.freeze({ id: '011_supplier_master_data', sql: SUPPLIER_MASTER_DATA_SQL }),
+  Object.freeze({ id: '012_product_catalog_foundation', sql: PRODUCT_CATALOG_FOUNDATION_SQL }),
+  Object.freeze({ id: '013_product_units_conversions_barcodes', sql: PRODUCT_UNITS_CONVERSIONS_BARCODES_SQL }),
+  Object.freeze({ id: '014_price_lists_channel_resolution', sql: PRICE_LISTS_CHANNEL_RESOLUTION_SQL }),
 ]);
 
 function validateMigration(migration) {
-  if (!migration || !IDENTIFIER_PATTERN.test(String(migration.id ?? ''))) {
-    throw new Error('invalid_migration_id');
-  }
-  if (typeof migration.up !== 'function' && typeof migration.sql !== 'string') {
-    throw new Error('invalid_migration_body');
-  }
+  if (!migration || !IDENTIFIER_PATTERN.test(String(migration.id ?? ''))) throw new Error('invalid_migration_id');
+  if (typeof migration.up !== 'function' && typeof migration.sql !== 'string') throw new Error('invalid_migration_body');
 }
 
 export async function runMigrations(adapter, migrations = []) {
   if (!adapter || typeof adapter.query !== 'function') throw new Error('invalid_migration_adapter');
-
   const ordered = [...migrations].sort((left, right) => left.id.localeCompare(right.id));
   ordered.forEach(validateMigration);
-
   await adapter.query('BEGIN');
   try {
     await adapter.query('CREATE SCHEMA IF NOT EXISTS shared');
@@ -125,22 +88,16 @@ export async function runMigrations(adapter, migrations = []) {
         applied_at timestamptz NOT NULL DEFAULT now()
       )
     `);
-
     const existing = await adapter.query('SELECT id FROM shared.schema_migrations ORDER BY id');
     const appliedIds = new Set((existing.rows ?? []).map((row) => row.id));
     const applied = [];
-
     for (const migration of ordered) {
       if (appliedIds.has(migration.id)) continue;
-      if (typeof migration.up === 'function') {
-        await migration.up(adapter);
-      } else {
-        await adapter.query(migration.sql);
-      }
+      if (typeof migration.up === 'function') await migration.up(adapter);
+      else await adapter.query(migration.sql);
       await adapter.query('INSERT INTO shared.schema_migrations (id) VALUES ($1)', [migration.id]);
       applied.push(migration.id);
     }
-
     await adapter.query('COMMIT');
     return Object.freeze({ status: 'complete', applied: Object.freeze(applied) });
   } catch (error) {
