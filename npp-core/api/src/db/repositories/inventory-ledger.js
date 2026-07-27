@@ -1,3 +1,10 @@
+export async function lockIdempotencyKey(client, { installationId, idempotencyKey }) {
+  await client.query(
+    'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+    [`${installationId}:${idempotencyKey}`],
+  );
+}
+
 export async function getMovementByIdempotencyKey(client, { installationId, idempotencyKey }) {
   const result = await client.query(
     `SELECT *
