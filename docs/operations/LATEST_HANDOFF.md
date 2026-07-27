@@ -128,7 +128,7 @@ Key rules:
 
 ```text
 3.3A customers/customer groups/addresses       MERGED; frontend deployed; backend/DB deferred
-3.3B suppliers/supplier payment terms          NEXT
+3.3B suppliers/supplier payment terms          BRANCH: agent/supplier-master-data (raw code complete, pending merge)
 3.3C products/variants/SKUs/categories/brands  PLANNED
 3.3D units/conversions/barcodes                 PLANNED
 3.3E price lists/channel price resolution       PLANNED
@@ -137,39 +137,32 @@ Key rules:
 
 Do not start inventory ledger, purchasing transactions, sales transactions or MCP cutover before the Phase 3 master-data gate is closed.
 
-## Next task — Phase 3.3B suppliers
+## Phase 3.3B — Suppliers (in progress)
 
-Expected branch:
+Application code is on branch `agent/supplier-master-data`:
 
-```text
-agent/supplier-master-data
-```
+Application code implemented:
 
-Scope:
+- migration `011_supplier_master_data`;
+- suppliers with installation-scoped normalized code;
+- supplier contacts, addresses, payment terms;
+- optional purchase owner employee reference;
+- active/inactive lifecycle (no hard delete);
+- read/write permissions `core.supplier.read` and `core.supplier.write`;
+- idempotent create with `Idempotency-Key` header;
+- optimistic concurrency with `expectedUpdatedAt` on PATCH;
+- transactional audit/outbox behavior;
+- Core API routes (GET/POST/PATCH);
+- server-only web gateways;
+- Vietnamese `/organization/suppliers` admin UI;
+- Playwright E2E test suite;
+- full PostgreSQL/API/browser coverage.
 
-- supplier groups only if required by the locked contract;
-- suppliers;
-- supplier contacts and addresses;
-- supplier payment terms;
-- optional purchase owner employee;
-- tax/bank references as master data only;
-- active/inactive lifecycle without hard delete;
-- installation-scoped unique normalized supplier code;
-- idempotent POST;
-- `expectedUpdatedAt` optimistic concurrency on PATCH;
-- deny-by-default `core.supplier.read` and `core.supplier.write` permissions;
-- transactional audit/outbox;
-- same-origin Core web gateway;
-- Vietnamese `/suppliers` admin UI;
-- real local PostgreSQL/API tests and browser E2E.
+**Status**: Raw code branch ready; backend/database production rollout remains deferred until Phase 3 master-data group completes.
 
-Explicit exclusions:
+**Next task**: Merge `agent/supplier-master-data` to `main` after review, then proceed to Phase 3.3C.
 
-- products, SKUs, units, conversions, barcodes and prices;
-- purchase orders, goods receipts and payables;
-- production migration or Heroku deployment;
-- MCP changes;
-- login/session/MFA/scope expansion.
+## Next task — Phase 3.3C products
 
 ## Phase 3 grouped backend/database rollout
 
