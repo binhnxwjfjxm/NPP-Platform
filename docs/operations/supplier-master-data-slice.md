@@ -1,292 +1,158 @@
-# Phase 3.3B: Supplier Master Data Slice
+# Phase 3.3B — Supplier Master Data
 
-## Overview
+> Status: merge candidate on PR #46  
+> Branch: `agent/supplier-master-data`  
+> Production backend/database rollout: deferred with the larger Phase 3 master-data group
 
-Phase 3.3B implements the **Supplier Master Data** slice for NPP Core, enabling management of supplier information as normalized master data with installation-scoped codes and multi-tenant support.
+## Scope
 
-**Status**: Raw code implementation (local branch `agent/supplier-master-data`, not production-deployed)
+This slice establishes canonical, installation-scoped supplier master data for NPP Core:
 
-**Master Data **Scope**: 
-- Suppliers (basic info, tax ID, bank details, delivery time)
-- Supplier Contacts
-- Supplier Addresses  
-- Supplier Payment Terms
+- suppliers;
+- supplier contacts;
+- supplier addresses;
+- supplier payment terms;
+- optional purchase-owner employee;
+- active/inactive lifecycle without hard delete;
+- permissions, idempotency, optimistic concurrency and transactional audit;
+- same-origin Core web gateway and Vietnamese supplier administration page.
 
-**Excluded** (as per Phase 3 plan): Products, SKUs, units, pricing, PO/GR/AP
+It does not implement products, SKU, purchase orders, goods receipts, payables, supplier payments or production deployment.
 
----
+## Database
 
-## Database Schema (Migration 011)
+Migration:
 
-### shared.suppliers
-
-Core supplier table with installation-scoped normalized code:
-
-```sql
-CREATE TABLE shared.suppliers (
-  id UUID PRIMARY KEY,
-  installation_id UUID NOT NULL,
-  code VARCHAR(64) NOT NULL,  -- UNIQUE per installation
-  name VARCHAR(256) NOT NULL,
-  tax_id VARCHAR(64),
-  bank_account VARCHAR(64),
-  bank_name VARCHAR(256),
-  avg_delivery_days INTEGER,
-  purchase_owner_employee_id UUID,
-  is_active BOOLEAN NOT NULL DEFAULT true,
-  created_at TIMESTAMPTZ NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL,
-  created_by UUID,
-  updated_by UUID,
-  UNIQUE (installation_id, code),
-  FOREIGN KEY (installation_id) REFERENCES shared.installations(id),
-  FOREIGN KEY (purchase_owner_employee_id) REFERENCES shared.employees(id)
-);
+```text
+database/migrations/shared/011_supplier_master_data.sql
 ```
 
-**Key Properties**:
-- `code`: Uppercase alphanumeric, unique per installation (no hard delete means old codes are blocked)
-- `tax_id`, `bank_account`, `bank_name`: Master data fields for supplier identification and payment
-- `avg_delivery_days`: Average delivery time in days for logistics planning
-- `purchase_owner_employee_id`: Optional employee responsible for supplier (must be active on create/edit)
-- `is_active`: Lifecycle flag (soft delete only)
+Tables:
 
-### shared.supplier_contacts, shared.supplier_addresses, shared.supplier_payment_terms
-
-Related entity tables for multi-valued attributes:
-- **supplier_contacts**: Contact person name, title, phone, email; `is_primary` flag
-- **supplier_addresses**: Address type, full address fields; `is_primary` flag
-- **supplier_payment_terms**: Payment method, term days, description; `is_primary` and `is_active` flags
-
-All include audit fields (`created_at`, `updated_at`, `created_by`, `updated_by`) and indexed on `installation_id`, `supplier_id`.
-
----
-
-## API Endpoints
-
-All endpoints require `core.supplier.read` or `core.supplier.write` permission (deny-by-default).
-
-### List Suppliers
-```http
-GET /api/suppliers?search=ABC&active=true&limit=100&offset=0
-Authorization: Bearer <token>
+```text
+shared.suppliers
+shared.supplier_contacts
+shared.supplier_addresses
+shared.supplier_payment_terms
 ```
-**Response**: `{ data: Supplier[] }`
 
-### Get Supplier
-```http
-GET /api/suppliers/:id
-Authorization: Bearer <token>
+Rules:
+
+- UUID canonical IDs;
+- `installation_id` is server-owned text, consistent with the existing platform model;
+- supplier code is normalized uppercase and unique per installation;
+- child foreign keys include both `installation_id` and `supplier_id`;
+- optional purchase-owner employee must belong to the same installation;
+- no `ON DELETE CASCADE` and no hard-delete API;
+- contacts, addresses and payment terms support one active primary record per supplier;
+- all tables have timestamps, actor fields and active/inactive lifecycle fields;
+- permissions `core.supplier.read` and `core.supplier.write` are registered idempotently.
+
+The slice uses the existing shared audit/outbox foundation. It does not create a supplier-specific audit table.
+
+## Core API
+
+Supplier endpoints:
+
+```text
+GET   /api/suppliers
+POST  /api/suppliers
+GET   /api/suppliers/:supplierId
+PATCH /api/suppliers/:supplierId
 ```
-**Response**: `{ data: Supplier }`
 
-### Create Supplier
-```http
-POST /api/suppliers
-Authorization: Bearer <token>
-Idempotency-Key: <uuid>
-Content-Type: application/json
+Contact endpoints:
 
-{
-  "code": "SUP-001",
-  "name": "Công ty cung cấp ABC",
-  "taxId": "0123456789",
-  "bankAccount": "1234567890",
-  "bankName": "Ngân hàng XYZ",
-  "avgDeliveryDays": 7,
-  "purchaseOwnerEmployeeId": "<employee-id>"
-}
+```text
+GET   /api/suppliers/:supplierId/contacts
+POST  /api/suppliers/:supplierId/contacts
+PATCH /api/suppliers/:supplierId/contacts/:contactId
 ```
-**Response**: `{ data: Supplier }` (201 Created)  
-**Idempotency**: Same `Idempotency-Key` + payload returns cached response within request window
 
-### Update Supplier
-```http
-PATCH /api/suppliers/:id
-Authorization: Bearer <token>
-Content-Type: application/json
+Address endpoints:
 
-{
-  "name": "Công ty cung cấp ABC - cập nhật",
-  "taxId": "0123456789",
-  "bankAccount": "9876543210",
-  "avgDeliveryDays": 10,
-  "purchaseOwnerEmployeeId": "<employee-id>",
-  "expectedUpdatedAt": "2026-07-27T10:00:00.000Z"
-}
+```text
+GET   /api/suppliers/:supplierId/addresses
+POST  /api/suppliers/:supplierId/addresses
+PATCH /api/suppliers/:supplierId/addresses/:addressId
 ```
-or 
-```json
-{
-  "isActive": false,
-  "expectedUpdatedAt": "2026-07-27T10:00:00.000Z"
-}
+
+Payment-term endpoints:
+
+```text
+GET   /api/suppliers/:supplierId/payment-terms
+POST  /api/suppliers/:supplierId/payment-terms
+PATCH /api/suppliers/:supplierId/payment-terms/:paymentTermId
 ```
-**Response**: `{ data: Supplier }` (200 OK)  
-**Optimistic Concurrency**: `expectedUpdatedAt` must match current `updated_at` or request fails with 409 Conflict
 
----
+Contracts:
 
-## Web Gateway & Proxy
+- GET requires `core.supplier.read`;
+- POST and PATCH require `core.supplier.write`;
+- POST requires `Idempotency-Key`;
+- PATCH requires `expectedUpdatedAt`;
+- every query is installation-scoped;
+- invalid or cross-installation relationships fail closed;
+- child records cannot be added to an inactive supplier;
+- public errors are sanitized;
+- successful mutations write `shared.core_audit_records` in the same transaction;
+- audit resource types are `supplier`, `supplier_contact`, `supplier_address` and `supplier_payment_term`.
 
-### Client-Side Gateway (TypeScript)
-**File**: `npp-core/web/lib/supplier-gateway.ts`
+## Core web
 
-Provides same-origin Core API wrapper with error normalization:
-- `listAllSuppliers(requestId, searchParams): Promise<Supplier[]>`
-- `getSupplier(id, requestId): Promise<Supplier>`
-- `createSupplier(requestId, body, idempotencyKey): Promise<Supplier>`
-- `patchSupplier(id, requestId, body): Promise<Supplier>`
+Canonical administration route:
 
-**Error Handling**: Returns `SupplierGatewayError` with code, public message, status code, and retryable flag.
+```text
+/suppliers
+```
 
-### Next.js API Proxy Routes
-**Files**: 
-- `npp-core/web/app/api/suppliers/route.ts` (GET/POST)
-- `npp-core/web/app/api/suppliers/[id]/route.ts` (GET/PATCH)
+Legacy route:
 
-Proxies requests to Core API with authentication token and request ID forwarding.
+```text
+/organization/suppliers -> /suppliers
+```
 
----
+The Core web provides:
 
-## UI & Page
+- server-only gateway using `CORE_API_INTERNAL_URL` and `CORE_API_SERVER_TOKEN`;
+- browser-visible same-origin routes under `/api/suppliers/**`;
+- no privileged token or database connection exposed to the browser;
+- supplier list, search, active/inactive filter, create, edit and status toggle;
+- Vietnamese labels and conflict reload behavior;
+- Basic Auth middleware coverage for `/suppliers/**` and `/api/suppliers/**`.
 
-### Supplier Workspace Component
-**File**: `npp-core/web/app/organization/suppliers/supplier-workspace.tsx`
+Contacts, addresses and payment terms have complete Core API and same-origin gateway contracts in this slice. Their dedicated admin subforms are not exposed on the current supplier list screen and must not be described as already delivered.
 
-React client component with:
-- **Create/Edit Form**: Code (immutable on edit), name, tax ID, bank details, delivery days
-- **Search & Filter**: By code/name/tax ID; filter by status (all/active/inactive)
-- **Table View**: Code, name, tax ID, delivery days, status, edit/toggle actions
-- **Status Toggle**: Activate/deactivate with optimistic concurrency
+## Validation
 
-### Page Loader
-**File**: `npp-core/web/app/organization/suppliers/page.tsx`
+Automated coverage includes:
 
-Server-side data loader using supplier gateway; initializes UI with supplier list and error state.
+- clean PostgreSQL migration execution;
+- migration rehearsal and second-run no-op verification;
+- supplier code normalization and installation isolation;
+- optional employee assignment in the same installation;
+- contact/address/payment-term creation;
+- one active primary contact per supplier;
+- optimistic concurrency conflict;
+- inactive-parent rejection;
+- authenticated and idempotent supplier/child creation;
+- shared audit-record verification;
+- Core web typecheck, unit tests and production build;
+- Playwright supplier create/search/filter/edit/deactivate flow.
 
-### Navigation
-**File**: `npp-core/web/app/components/app-shell.tsx` (updated)
+## Deployment boundary
 
-Added "Nhà cung cấp" menu item at `/organization/suppliers` with icon 'user'.
+Migrations `010` and `011` and their Core API code are not productionized yet. Do not apply production migrations or deploy Heroku from this slice alone.
 
----
+After the agreed Phase 3 master-data group is complete on `main`, Codex must run one controlled backend/database rollout:
 
-## Permissions
-
-**Permissions Added**:
-- `core.supplier.read` (read access)
-- `core.supplier.write` (create/update/toggle access)
-
-**Bootstrap Principal**: Both permissions granted to bootstrap actor (installation setup user).
-
-**Database**: Permissions registered in `shared.permission_catalog` via Migration 008.
-
----
-
-## Middleware & Authentication
-
-**Protected Routes**:
-- `/api/suppliers/*` — Requires `core.supplier.read` or `core.supplier.write`
-
-**Matcher Updated** (`npp-core/web/middleware.ts`):
-- `/organization/suppliers/:path*` — Requires HTTP Basic auth
-- `/api/suppliers/:path*` — Requires Bearer token auth
-
----
-
-## Testing
-
-### E2E Test Suite
-**File**: `npp-core/web/e2e/suppliers.spec.ts`
-
-Playwright test covering:
-1. Create supplier with full details (code, name, tax ID, bank account, delivery days)
-2. Search by code
-3. Filter by status
-4. Edit supplier (update name and delivery days)
-5. Toggle supplier status (active → inactive)
-
-**Run**: `npm run test:e2e -- suppliers.spec.ts`
-
----
-
-## Implementation Notes
-
-### Idempotency
-- POST requires `Idempotency-Key` header (1-128 chars, alphanumeric + dot/dash/underscore)
-- Same key + payload returns 201 Created if new, repeated request returns cached response
-- Stored in `shared.idempotency_requests` table by Core API
-
-### Optimistic Concurrency
-- PATCH requires `expectedUpdatedAt` field matching current server `updated_at`
-- Conflict (mismatch) returns 409 Conflict; client must re-fetch and retry
-- Update timestamp incremented by Core API using PostgreSQL `clock_timestamp()` + 1ms guarantee
-
-### Audit & Outbox
-- All mutations (create/update/toggle) wrapped in transactional audit + outbox
-- Audit records stored in `shared.audit_log`
-- Outbox events stored in `shared.core_outbox_events` for eventual consistency
-
-### Installation Scoping
-- All queries scoped by `installation_id`
-- Code uniqueness enforced per installation (allows same code across installations)
-- Employee references must exist in same installation
-
-### No Hard Delete
-- Suppliers never deleted; only `is_active` flag toggled
-- Codes are recycled as inactive → can be reactivated with same code or marked for new supplier
-
----
-
-## Known Limitations & Future Enhancements
-
-**Current Phase (3.3B)**:
-- Basic supplier info only (master data fields as listed)
-- No contact/address/payment term CRUD UI yet (only POST/GET routes available)
-- No bulk operations or import/export
-
-**Future Phases**:
-- Phase 3.3C: Products, SKUs, categories, brands
-- Phase 3.3E: Price lists and supplier-product pricing
-- Supplier contact/address/payment term full CRUD UI
-- Supplier classification/segmentation
-- Supplier performance metrics
-- PO linkage (Phase 3.3G)
-
----
-
-## Commit History
-
-- **52c8629**: Phase 3.3A - Add customer master data slice for NPP Core
-- **<agent/supplier-master-data>**: Phase 3.3B - Add supplier master data slice for NPP Core (branch, not yet merged)
-
----
-
-## Files Changed (Phase 3.3B)
-
-### Database
-- `database/migrations/shared/011_supplier_master_data.sql` — Migration DDL
-
-### API Backend
-- `npp-core/api/src/migrations/index.js` — Register migration 011
-- `npp-core/api/src/db/repositories/supplier.js` — Repository CRUD
-- `npp-core/api/src/services/supplier.js` — Service validation & logic
-- `npp-core/api/src/routes/suppliers.js` — Route handlers (GET/POST/PATCH)
-- `npp-core/api/src/access/permissions.js` — Add `core.supplier.read/write`
-- `npp-core/api/src/request-context.js` — Bootstrap permissions
-- `npp-core/api/src/server.js` — Import & wire supplier routes
-
-### Web Frontend
-- `npp-core/web/lib/supplier-types.ts` — TypeScript types
-- `npp-core/web/lib/supplier-gateway.ts` — Core API gateway
-- `npp-core/web/app/api/suppliers/route.ts` — Proxy GET/POST
-- `npp-core/web/app/api/suppliers/[id]/route.ts` — Proxy GET/PATCH
-- `npp-core/web/app/organization/suppliers/page.tsx` — Page loader
-- `npp-core/web/app/organization/suppliers/supplier-workspace.tsx` — React UI
-- `npp-core/web/app/components/app-shell.tsx` — Navigation updated
-- `npp-core/web/middleware.ts` — Route matcher updated
-
-### Testing & Documentation
-- `npp-core/web/e2e/suppliers.spec.ts` — Playwright E2E tests
-- `docs/operations/supplier-master-data-slice.md` — This file
+1. audit actual Heroku/PostgreSQL state;
+2. create a new backup;
+3. restore rehearsal to temporary PostgreSQL 17;
+4. apply pending migrations in order;
+5. verify and reconcile before/after;
+6. exercise real APIs against rehearsal data;
+7. deploy Heroku manually from `main`;
+8. verify live/ready and all Phase 3 API smoke tests;
+9. create a post-migration backup;
+10. keep automatic deploy disabled.
