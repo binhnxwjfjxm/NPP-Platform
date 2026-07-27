@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   buildRehearsalEnv,
   isSafeEphemeralCiTarget,
+  postgresClientMajor,
+  shouldInstallPostgres17Client,
 } from '../scripts/run-migration-rehearsal.js';
 
 const safeEnv = {
@@ -26,6 +28,7 @@ test('provider-like or production targets never receive implicit confirmation', 
   ]) {
     assert.equal(isSafeEphemeralCiTarget(env), false);
     assert.equal(buildRehearsalEnv(env).MIGRATION_REHEARSAL_CONFIRM, undefined);
+    assert.equal(shouldInstallPostgres17Client(env, 'pg_dump (PostgreSQL) 16.9'), false);
   }
 });
 
@@ -36,4 +39,16 @@ test('explicit confirmation is preserved for documented local rehearsals', () =>
     MIGRATION_REHEARSAL_CONFIRM: 'temporary-database',
   };
   assert.equal(buildRehearsalEnv(env).MIGRATION_REHEARSAL_CONFIRM, 'temporary-database');
+});
+
+test('PostgreSQL client major detection is deterministic', () => {
+  assert.equal(postgresClientMajor('pg_dump (PostgreSQL) 17.5'), 17);
+  assert.equal(postgresClientMajor('pg_dump (PostgreSQL) 16.9 (Ubuntu 16.9-0ubuntu0.24.04.1)'), 16);
+  assert.equal(postgresClientMajor('not available'), null);
+});
+
+test('only the whitelisted CI rehearsal target may install PostgreSQL client 17', () => {
+  assert.equal(shouldInstallPostgres17Client(safeEnv, 'pg_dump (PostgreSQL) 16.9'), true);
+  assert.equal(shouldInstallPostgres17Client(safeEnv, 'pg_dump (PostgreSQL) 17.5'), false);
+  assert.equal(shouldInstallPostgres17Client({ ...safeEnv, CI: 'false' }, 'pg_dump (PostgreSQL) 16.9'), false);
 });
