@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "sourceDate": "2026-07-23",
+  "generatedAt": "2026-07-27",
+  "sourceWorkbooks": [
+    "BANG_GIA_CHUAN_HOA_CAP_NHAT_DS_SP_23.07.26.xlsx",
+    "BANG_GIA_KENH_QUAN_THEM_NHOM_CHI_TIET.xlsx"
+  ],
+  "rules": {
+    "inventoryStoredInSmallestUnit": true,
+    "conversionSource": "CAP_NHAT_DS_SP.SL quy đổi giữ nguyên, cross-checked with GIA_THUNG_GOC",
+    "explicitConvertedSkuWins": true,
+    "generatedTSuffixAllowed": false,
+    "priceFieldsExcluded": true,
+    "weightMetadataDoesNotDefineConversion": true
+  },
+  "summary": {
+    "rows": 606,
+    "blockingReviewRows": 2,
+    "warningCounts": {
+      "BASE_NET_CONTENT_MISSING_OR_ZERO": 159,
+      "BASE_UNIT_LABEL_IS_THUNG": 2,
+      "HU_ALIAS_NORMALIZED": 36,
+      "PACK_WEIGHT_DIFFERS_FROM_UNIT_WEIGHT_TIMES_CONVERSION": 349,
+      "SOURCE_UNIT_LABEL_EMBEDS_SIZE": 5
+    },
+    "importableRows": 604,
+    "excludedBlockingRows": 2
+  },
+  "rows": [
+    {
+      "sourceRow": 137,
+      "productCode": "TDUCDA",
+      "productName": "THẠCH DỪA CHANH DÂY",
+      "baseVariant": {
+        "sku": "TDUCDA",
+        "unit": {
+          "code": "THUNG",
+          "name": "Thùng",
+          "unitKind": "PACKAGE",
+          "allowsFractional": false,
+          "sourceLabel": "THÙNG"
+        },
+        "conversionToBase": "1",
+        "netContent": null,
+        "sourcePackageDescription": "0 g / THÙNG",
+        "isInventoryBase": true,
+        "isPurchasable": true
+      },
+      "convertedVariant": {
+        "sku": "TDUCDAT",
+        "unit": {
+          "code": "THUNG",
+          "name": "Thùng",
+          "unitKind": "PACKAGE",
+          "allowsFractional": false,
+          "sourceLabel": "THÙNG"
+        },
+        "conversionToBase": "6",
+        "netContent": {
+          "value": "16000",
+          "unitCode": "G"
+        },
+        "sourcePackageDescription": "6 THÙNG / THÙNG",
+        "isInventoryBase": false,
+        "isPurchasable": true,
+        "barcode": "TDUCDAT",
+        "barcodeType": "INTERNAL"
+      },
+      "source": {
+        "workbook": "BANG_GIA_CHUAN_HOA_CAP_NHAT_DS_SP_23.07.26.xlsx",
+        "sheet": "CAP_NHAT_DS_SP",
+        "masterRow": 137,
+        "retailDataRow": 302,
+        "convertedDataRow": 303,
+        "venueMappingStatuses": []
+      },
+      "warnings": [
+        "BASE_NET_CONTENT_MISSING_OR_ZERO"
+      ],
+      "blockingReview": [
+        "BASE_UNIT_LABEL_IS_THUNG"
+      ]
+    },
+    {
+      "sourceRow": 358,
+      "productCode": "NCVG95",
+      "productName": "NẮP CẦU VUÔNG 95",
+      "baseVariant": {
+        "sku": "NCVG95",
+        "unit": {
+          "code": "THUNG",
+          "name": "Thùng",
+          "unitKind": "PACKAGE",
+          "allowsFractional": false,
+          "sourceLabel": "THÙNG"
+        },
+        "conversionToBase": "1",
+        "netContent": null,
+        "sourcePackageDescription": "0 g / THÙNG",
+        "isInventoryBase": true,
+        "isPurchasable": true
+      },
+      "convertedVariant": {
+        "sku": "NCVG95T",
+        "unit": {
+          "code": "THUNG",
+          "name": "Thùng",
+          "unitKind": "PACKAGE",
+          "allowsFractional": false,
+          "sourceLabel": "THÙNG"
+        },
+        "conversionToBase": "40",
+        "netContent": {
+          "value": "10",
+          "unitCode": "KG"
+        },
+        "sourcePackageDescription": "40 THÙNG / THÙNG",
+        "isInventoryBase": false,
+        "isPurchasable": true,
+        "barcode": "NCVG95T",
+        "barcodeType": "INTERNAL"
+      },
+      "source": {
+        "workbook": "BANG_GIA_CHUAN_HOA_CAP_NHAT_DS_SP_23.07.26.xlsx",
+        "sheet": "CAP_NHAT_DS_SP",
+        "masterRow": 358,
+        "retailDataRow": 779,
+        "convertedDataRow": 780,
+        "venueMappingStatuses": [
+          "CẦN DUYỆT - NHIỀU SKU KHÁC QUY CÁCH/GIÁ"
+        ]
+      },
+      "warnings": [
+        "BASE_NET_CONTENT_MISSING_OR_ZERO"
+      ],
+      "blockingReview": [
+        "BASE_UNIT_LABEL_IS_THUNG"
+      ]
+    }
+  ]
+}
