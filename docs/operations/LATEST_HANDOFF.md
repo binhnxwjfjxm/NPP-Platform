@@ -35,7 +35,7 @@ Phase 3.2A/3.2B production closeout evidence:
 
 Phase 3.2C production closeout evidence:
 
-- Main SHA at closeout: `e7122dc634dac51281727e294218a59819fd8863`.
+- Phase 3.2C application source SHA: `e7122dc634dac51281727e294218a59819fd8863`.
 - Pre-migration backup: `b007`.
 - Restore rehearsal target: temporary PostgreSQL 17.
 - Restore rehearsal result: PASS.
@@ -43,6 +43,9 @@ Phase 3.2C production closeout evidence:
 - Production migration `009_access_users_role_assignments`: PASS.
 - `migration:verify`: `true`, `issues=[]`.
 - Current production backend release: `v19`, release ID `ad257db1-1c50-4b24-a48b-08386008b977`.
+- Current Vercel production deployment: `dpl_9q3fdg6A79XcGXngKoqxTMMXKHUw`, source one-shot gate commit `f72f4a42a4358be1b96db8dd59becfbad0c0956c`.
+- No Vercel redeploy occurred during the Phase 3.2C backend/database closeout task.
+- Vercel production gate was re-locked by commit `e5b218b5f057989f00be2ad4cf875188fd111982`.
 - Direct Heroku backend smoke for users, roles and employees: PASS.
 - Vercel production smoke for `/dashboard`, `/access/users`, `/api/access/users` and assets: PASS.
 - Browser HTML did not expose `CORE_API_SERVER_TOKEN`, `CORE_API_INTERNAL_URL`, `BACKEND_API_TOKEN` or `DATABASE_URL`.
@@ -136,6 +139,7 @@ Production closeout evidence:
 - Production migration `009_access_users_role_assignments`: PASS.
 - `migration:verify`: `true`, `issues=[]`.
 - Current production backend release: `v19`, release ID `ad257db1-1c50-4b24-a48b-08386008b977`, deployed from `main` at `e7122dc634dac51281727e294218a59819fd8863`.
+- Current Vercel production deployment: `dpl_9q3fdg6A79XcGXngKoqxTMMXKHUw`; no Vercel redeploy occurred during the backend/database closeout task.
 - Smoke for `/api/access/users`, `/api/access/roles`, `/api/access/employees`: PASS.
 - Smoke for Vercel protected routes and static assets: PASS.
 - Browser HTML did not expose `CORE_API_SERVER_TOKEN`, `CORE_API_INTERNAL_URL`, `BACKEND_API_TOKEN` or `DATABASE_URL`.
@@ -167,12 +171,16 @@ Phase 3.1 pre-migration backup: b1
 Phase 3.1 restore rehearsal: PASS
 Phase 3.1 production migration verify: PASS
 Phase 3.1 post-migration backup: b002
-Phase 3.2 pre-migration backup: b005
-Phase 3.2 restore rehearsal: PASS
-Phase 3.2 post-migration backup: b006
+Phase 3.2A/3.2B pre-migration backup: b005
+Phase 3.2A/3.2B restore rehearsal: PASS
+Phase 3.2A/3.2B post-migration backup: b006
+Phase 3.2C pre-migration backup: b007
+Phase 3.2C restore rehearsal: PASS
+Phase 3.2C production migration verify: PASS
+Phase 3.2C post-migration backup: b008
 ```
 
-These are historical artifacts only. Do not use them as evidence for migration `009`. Before any later production migration, audit the provider again and create a new verified backup plus restore rehearsal.
+These are historical artifacts only. Do not reuse them as evidence for any future migration. Before a later production migration, audit the provider again and create a new verified backup plus restore rehearsal.
 
 ## Rules that remain active
 
