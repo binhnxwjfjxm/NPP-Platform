@@ -1,7 +1,7 @@
 # Phase 3.3C — Product Catalog Foundation
 
-> Status: implementation in progress on `agent/product-catalog-foundation`  
-> Production deployment: excluded
+> Status: verified in PR #47; pending merge to `main`  
+> Production deployment: excluded and intentionally deferred
 
 ## Purpose
 
@@ -13,7 +13,7 @@ Business source material:
 - `BANG_GIA_KENH_QUAN_THEM_NHOM_CHI_TIET.xlsx`;
 - `docs/operations/product-catalog-pricing-decisions.md`.
 
-The workbooks are source material, not the database schema. Import must use a reviewed normalized JSON contract and must not parse Excel in the browser.
+The workbooks are source material, not the database schema. Import uses a reviewed normalized JSON contract and does not parse Excel in the browser.
 
 ## Scope
 
@@ -33,6 +33,10 @@ Canonical route:
 
 - `/products`.
 
+Legacy route:
+
+- `/organization/products` redirects to `/products`.
+
 ## Locked data rules
 
 - Canonical product IDs and variant IDs are immutable UUIDs.
@@ -40,7 +44,7 @@ Canonical route:
 - Codes and SKUs are normalized uppercase and unique per installation.
 - Category, brand, product and variant queries are installation scoped.
 - No hard-delete endpoint and no cascading delete.
-- Category hierarchy must reject self-parenting and cycles.
+- Category hierarchy rejects self-parenting and cycles.
 - An inactive category or brand cannot be newly assigned.
 - A category or brand cannot be deactivated while active products depend on it.
 - A product cannot be deactivated while it still has active variants.
@@ -49,6 +53,8 @@ Canonical route:
 - A catalog-visible variant must be sellable.
 - A product cannot be made orderable without an active sellable variant.
 - Catalog visibility and ordering availability are explicit; missing price or image does not imply either state.
+- Normalized import may resolve an existing product by immutable UUID or installation-scoped canonical code; it never silently changes identity.
+- An existing product import must include every currently active SKU so a partial snapshot cannot silently disable or orphan sellable identities.
 
 ## Explicit exclusions
 
@@ -101,7 +107,7 @@ POST   /api/products/import
 
 All POST routes require `Idempotency-Key`. All PATCH routes require `expectedUpdatedAt`.
 
-The import endpoint accepts normalized JSON only. It is atomic, installation scoped, idempotent and capped at 500 product rows per request. Existing codes/SKUs must match their immutable identity and parent relation; conflicts reject the transaction rather than silently remapping data.
+The import endpoint accepts normalized JSON only. It is atomic, installation scoped, idempotent and capped at 500 product rows per request. Existing codes/SKUs must match their immutable identity and parent relation; conflicts reject and roll back the transaction rather than silently remapping data.
 
 ## Authorization and audit
 
@@ -109,39 +115,49 @@ The import endpoint accepts normalized JSON only. It is atomic, installation sco
 - Read routes require `core.product.read`.
 - POST/PATCH/import routes require `core.product.write`.
 - The client cannot supply installation ID, actor or permissions.
-- Successful mutations write shared audit records in the same transaction.
-- Idempotency replay must not duplicate rows or audit records.
-- Public errors must not expose SQL, table/column names, stack traces, secrets or provider details.
+- Successful mutations write exactly one shared audit record in the same transaction.
+- Validation or concurrency failures roll back without writing audit records.
+- Idempotency replay does not duplicate rows or audit records.
+- Public errors do not expose SQL, table/column names, stack traces, secrets or provider details.
 
 ## Frontend
 
-The Vietnamese `/products` workspace must provide:
+The Vietnamese `/products` workspace provides:
 
 - product search and active/catalog/orderable filters;
 - product create/edit/status;
 - category and brand administration;
 - variant/SKU administration under a product;
-- clear disabled reasons and conflict reload;
+- orderable control disabled until an active sellable SKU exists;
 - same-origin server-only gateway;
+- Basic Auth protection for page and proxy routes;
 - no direct database or Core bearer-token access from the browser.
 
 ## Verification gate
 
-Required before merge:
+Completed before merge:
 
 - migration apply, verify, rerun no-op and rehearsal;
 - category hierarchy/cycle tests;
-- duplicate code and SKU race coverage;
+- duplicate product-code race and duplicate SKU coverage;
 - installation isolation;
 - immutable code/SKU behavior;
 - stale `expectedUpdatedAt` conflicts;
-- relation and deactivation guards;
-- idempotent create and import;
+- relation, orderable and deactivation guards;
+- idempotent create and normalized import replay;
 - transactional audit coverage;
-- deny-by-default 401/403 tests;
-- Core web typecheck/unit/build;
+- deny-by-default authentication/permission behavior;
+- Core web typecheck, unit tests and production build;
 - Chromium E2E against actual isolated PostgreSQL and Core API;
 - `mcp/** = 0`;
-- all PR review threads resolved.
+- no unresolved PR review threads.
+
+Validation passed on the final code head before this documentation-only closeout:
+
+- Foundation F0.2;
+- Core Foundation including PostgreSQL API tests;
+- migration rehearsal;
+- Core web verification;
+- Chromium browser E2E.
 
 Merge is not production deployment. Migrations `010`, `011` and `012` remain pending for the grouped Phase 3 backend/database rollout.
