@@ -14,6 +14,10 @@ const ITEM_COLUMNS = `pi.id, pi.installation_id, pi.price_list_id, pi.variant_id
   pi.note, pi.source_metadata, pi.is_active, pi.created_at, pi.updated_at, pi.created_by, pi.updated_by,
   pv.sku, pv.name AS variant_name, pv.product_id, p.code AS product_code, p.name AS product_name`;
 
+function nowMilliseconds() {
+  return new Date().toISOString();
+}
+
 export async function listSalesChannels(client, { installationId, search, active, limit = 200, offset = 0 }) {
   const params = [installationId];
   let query = `SELECT ${CHANNEL_COLUMNS} FROM shared.sales_channels WHERE installation_id = $1`;
@@ -49,13 +53,14 @@ export async function getSalesChannelByCode(client, { installationId, code }) {
 
 export async function insertSalesChannel(client, { installationId, code, name, description, isActive, createdBy }) {
   const id = randomUUID();
+  const now = nowMilliseconds();
   const result = await client.query(
     `INSERT INTO shared.sales_channels
-      (id, installation_id, code, name, description, is_active, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+      (id, installation_id, code, name, description, is_active, created_at, updated_at, created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8, $8)
      ON CONFLICT DO NOTHING
      RETURNING ${CHANNEL_COLUMNS}`,
-    [id, installationId, code, name, description, Boolean(isActive), createdBy],
+    [id, installationId, code, name, description, Boolean(isActive), now, createdBy],
   );
   return result.rows[0] ?? null;
 }
@@ -66,7 +71,8 @@ export async function updateSalesChannel(client, { installationId, id, name, des
      SET name = $1, description = $2, is_active = $3,
          updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
          updated_by = $4
-     WHERE installation_id = $5 AND id = $6 AND updated_at = $7
+     WHERE installation_id = $5 AND id = $6
+       AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $7::timestamptz)
      RETURNING ${CHANNEL_COLUMNS}`,
     [name, description, Boolean(isActive), updatedBy, installationId, id, expectedUpdatedAt],
   );
@@ -133,21 +139,20 @@ export async function getPriceListByCode(client, { installationId, code, forUpda
 
 export async function insertPriceList(client, data) {
   const id = randomUUID();
+  const now = nowMilliseconds();
   const result = await client.query(
     `INSERT INTO shared.price_lists
       (id, installation_id, code, name, list_type, currency_code, channel_id, customer_group_id,
        customer_id, priority, stacking_mode, stop_processing, effective_from, effective_to,
-       description, is_active, created_by, updated_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$17)
+       description, is_active, created_at, updated_at, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$17,$18,$18)
      ON CONFLICT DO NOTHING RETURNING id`,
     [id, data.installationId, data.code, data.name, data.listType, data.currencyCode,
       data.channelId, data.customerGroupId, data.customerId, data.priority, data.stackingMode,
       data.stopProcessing, data.effectiveFrom, data.effectiveTo, data.description,
-      data.isActive, data.createdBy],
+      data.isActive, now, data.createdBy],
   );
-  return result.rows[0]
-    ? getPriceListById(client, { installationId: data.installationId, id })
-    : null;
+  return result.rows[0] ? getPriceListById(client, { installationId: data.installationId, id }) : null;
 }
 
 export async function updatePriceList(client, data) {
@@ -158,16 +163,15 @@ export async function updatePriceList(client, data) {
          effective_from = $8, effective_to = $9, description = $10, is_active = $11,
          updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
          updated_by = $12
-     WHERE installation_id = $13 AND id = $14 AND updated_at = $15
+     WHERE installation_id = $13 AND id = $14
+       AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $15::timestamptz)
      RETURNING id`,
     [data.name, data.channelId, data.customerGroupId, data.customerId, data.priority,
       data.stackingMode, data.stopProcessing, data.effectiveFrom, data.effectiveTo,
       data.description, data.isActive, data.updatedBy, data.installationId, data.id,
       data.expectedUpdatedAt],
   );
-  return result.rows[0]
-    ? getPriceListById(client, { installationId: data.installationId, id: data.id })
-    : null;
+  return result.rows[0] ? getPriceListById(client, { installationId: data.installationId, id: data.id }) : null;
 }
 
 export async function listPriceListItems(client, { installationId, priceListId, variantId, active, limit = 500, offset = 0 }) {
@@ -216,17 +220,18 @@ export async function getPriceListItemBySourceKey(client, { installationId, sour
 
 export async function insertPriceListItem(client, data) {
   const id = randomUUID();
+  const now = nowMilliseconds();
   const result = await client.query(
     `INSERT INTO shared.price_list_items
       (id, installation_id, price_list_id, variant_id, adjustment_type, amount_minor, rate_bps,
        min_quantity, max_quantity, effective_from, effective_to, source_kind, source_key,
-       external_rule_code, note, source_metadata, is_active, created_by, updated_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$18)
+       external_rule_code, note, source_metadata, is_active, created_at, updated_at, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$18,$19,$19)
      ON CONFLICT DO NOTHING RETURNING id`,
     [id, data.installationId, data.priceListId, data.variantId, data.adjustmentType,
       data.amountMinor, data.rateBps, data.minQuantity, data.maxQuantity,
       data.effectiveFrom, data.effectiveTo, data.sourceKind, data.sourceKey,
-      data.externalRuleCode, data.note, data.sourceMetadata ?? {}, data.isActive, data.createdBy],
+      data.externalRuleCode, data.note, data.sourceMetadata ?? {}, data.isActive, now, data.createdBy],
   );
   return result.rows[0]
     ? getPriceListItemById(client, { installationId: data.installationId, priceListId: data.priceListId, id })
@@ -242,7 +247,8 @@ export async function updatePriceListItem(client, data) {
          is_active = $11,
          updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
          updated_by = $12
-     WHERE installation_id = $13 AND price_list_id = $14 AND id = $15 AND updated_at = $16
+     WHERE installation_id = $13 AND price_list_id = $14 AND id = $15
+       AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $16::timestamptz)
      RETURNING id`,
     [data.amountMinor, data.rateBps, data.minQuantity, data.maxQuantity,
       data.effectiveFrom, data.effectiveTo, data.sourceKind, data.externalRuleCode,
