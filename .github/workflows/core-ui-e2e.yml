@@ -84,19 +84,7 @@ jobs:
           NODE_ENV: test
 
       - name: Verify Core web
-        shell: bash
-        run: |
-          set -o pipefail
-          npm --workspace npp-core-web run verify 2>&1 | tee core-web-verify.log
-
-      - name: Upload Core web verification log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: core-web-verification-log-${{ github.run_id }}
-          path: core-web-verify.log
-          retention-days: 7
-          if-no-files-found: ignore
+        run: npm --workspace npp-core-web run verify
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
