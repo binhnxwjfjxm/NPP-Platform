@@ -51,7 +51,7 @@ function requireIdempotencyKey(req) {
 
 function serviceStatus(result) {
   if (['NOT_FOUND', 'EMPLOYEE_NOT_FOUND'].includes(result.code)) return 404;
-  if (['DUPLICATE_CODE', 'CONFLICT', 'EMPLOYEE_INACTIVE'].includes(result.code)) return 409;
+  if (['DUPLICATE_CODE', 'CONFLICT', 'EMPLOYEE_INACTIVE', 'SUPPLIER_INACTIVE'].includes(result.code)) return 409;
   return 400;
 }
 
@@ -283,10 +283,75 @@ async function handlePatchSupplier(req, res, context, id) {
   });
 }
 
+async function handleListChild(res, context, supplierId, kind) {
+  try {
+    const input = { installationId: context.requestContext.installationId, supplierId };
+    const result = kind === 'contacts'
+      ? await supplierService.listSupplierContacts(context.getPool(), input)
+      : kind === 'addresses'
+        ? await supplierService.listSupplierAddresses(context.getPool(), input)
+        : await supplierService.listSupplierPaymentTerms(context.getPool(), input);
+    if (!result.ok) return sendServiceError(res, result, context);
+    const data = kind === 'contacts' ? result.contacts : kind === 'addresses' ? result.addresses : result.paymentTerms;
+    sendSuccess(res, data, context.requestId, context.receivedAt);
+  } catch {
+    sendError(res, createError('INTERNAL_ERROR', `Failed to list supplier ${kind}`, {}, true, 500), context.requestId, context.receivedAt);
+  }
+}
+
+async function handleCreateChild(req, res, context, supplierId, kind) {
+  const payload = await readPayload(req, res, context);
+  if (payload === null) return;
+  await executeIdempotentCreate(req, res, context, {
+    route: `/api/suppliers/${supplierId}/${kind}`,
+    payload,
+    create: async (client) => {
+      const input = {
+        installationId: context.requestContext.installationId,
+        supplierId,
+        payload,
+        createdBy: context.requestContext.actorId,
+      };
+      const result = kind === 'contacts'
+        ? await supplierService.createSupplierContact(client, input)
+        : kind === 'addresses'
+          ? await supplierService.createSupplierAddress(client, input)
+          : await supplierService.createSupplierPaymentTerm(client, input);
+      if (!result.ok) return result;
+      const entity = kind === 'contacts' ? result.contact : kind === 'addresses' ? result.address : result.paymentTerm;
+      return { ok: true, entity };
+    },
+    resourceType: `supplier_${kind === 'payment-terms' ? 'payment_term' : kind.slice(0, -1)}`,
+    getResourceId: (entity) => entity.id,
+    metadata: (entity) => ({ supplierId: entity.supplier_id }),
+  });
+}
+
+async function handlePatchChild(req, res, context, supplierId, childId, kind) {
+  const payload = await readPayload(req, res, context);
+  if (payload === null) return;
+  await executePatch(res, context, {
+    update: (client) => {
+      const base = {
+        installationId: context.requestContext.installationId,
+        supplierId,
+        payload,
+        updatedBy: context.requestContext.actorId,
+      };
+      if (kind === 'contacts') return supplierService.updateSupplierContact(client, { ...base, contactId: childId });
+      if (kind === 'addresses') return supplierService.updateSupplierAddress(client, { ...base, addressId: childId });
+      return supplierService.updateSupplierPaymentTerm(client, { ...base, paymentTermId: childId });
+    },
+    resourceType: `supplier_${kind === 'payment-terms' ? 'payment_term' : kind.slice(0, -1)}`,
+    getEntity: (result) => (kind === 'contacts' ? result.contact : kind === 'addresses' ? result.address : result.paymentTerm),
+    getAction: () => 'update',
+    metadata: (entity) => ({ supplierId: entity.supplier_id }),
+  });
+}
+
 export async function handleSupplierRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
-  const isSupplierPath = pathname === '/api/suppliers'
-    || pathname.startsWith('/api/suppliers/');
+  const isSupplierPath = pathname === '/api/suppliers' || pathname.startsWith('/api/suppliers/');
   if (!isSupplierPath) return false;
 
   const authResult = options.authenticate(req, options.config);
@@ -320,6 +385,22 @@ export async function handleSupplierRoutes(req, res, options) {
   }
   if (pathname === '/api/suppliers' && method === 'POST') {
     await handleCreateSupplier(req, res, context);
+    return true;
+  }
+
+  const childCollectionMatch = pathname.match(/^\/api\/suppliers\/([^/]+)\/(contacts|addresses|payment-terms)$/);
+  if (childCollectionMatch && method === 'GET') {
+    await handleListChild(res, context, childCollectionMatch[1], childCollectionMatch[2]);
+    return true;
+  }
+  if (childCollectionMatch && method === 'POST') {
+    await handleCreateChild(req, res, context, childCollectionMatch[1], childCollectionMatch[2]);
+    return true;
+  }
+
+  const childMatch = pathname.match(/^\/api\/suppliers\/([^/]+)\/(contacts|addresses|payment-terms)\/([^/]+)$/);
+  if (childMatch && method === 'PATCH') {
+    await handlePatchChild(req, res, context, childMatch[1], childMatch[3], childMatch[2]);
     return true;
   }
 
