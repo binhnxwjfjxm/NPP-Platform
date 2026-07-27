@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if command -v pg_dump >/dev/null 2>&1 && pg_dump --version | grep -Eq ' 17([.]|$)'; then
-  pg_dump --version
-  pg_restore --version
+PG17_BIN=/usr/lib/postgresql/17/bin
+
+if [[ -x "${PG17_BIN}/pg_dump" && -x "${PG17_BIN}/pg_restore" ]]; then
+  "${PG17_BIN}/pg_dump" --version | grep -Eq ' 17([.]|$)'
+  "${PG17_BIN}/pg_restore" --version | grep -Eq ' 17([.]|$)'
+  "${PG17_BIN}/pg_dump" --version
+  "${PG17_BIN}/pg_restore" --version
   exit 0
 fi
 
@@ -24,7 +28,8 @@ echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] h
 sudo apt-get update -qq
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends postgresql-client-17
 
-pg_dump --version | grep -Eq ' 17([.]|$)'
-pg_restore --version | grep -Eq ' 17([.]|$)'
-pg_dump --version
-pg_restore --version
+[[ -x "${PG17_BIN}/pg_dump" && -x "${PG17_BIN}/pg_restore" ]]
+"${PG17_BIN}/pg_dump" --version | grep -Eq ' 17([.]|$)'
+"${PG17_BIN}/pg_restore" --version | grep -Eq ' 17([.]|$)'
+"${PG17_BIN}/pg_dump" --version
+"${PG17_BIN}/pg_restore" --version
