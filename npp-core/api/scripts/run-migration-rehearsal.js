@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -7,6 +8,7 @@ import {
 } from './rehearse-migrations.js';
 
 const __filename = fileURLToPath(import.meta.url);
+const CLIENT_INSTALLER = fileURLToPath(new URL('./install-postgresql-client-17.sh', import.meta.url));
 
 function isTruthy(value) {
   return ['1', 'true', 'yes'].includes(String(value ?? '').trim().toLowerCase());
@@ -28,6 +30,15 @@ export function isSafeEphemeralCiTarget(env = process.env) {
   return decodeURIComponent(url.pathname.slice(1)) === 'rehearsal_npp_core';
 }
 
+export function postgresClientMajor(versionText) {
+  const match = String(versionText ?? '').match(/\b(\d+)(?:\.\d+)?\b/);
+  return match ? Number(match[1]) : null;
+}
+
+export function shouldInstallPostgres17Client(env, versionText) {
+  return isSafeEphemeralCiTarget(env) && postgresClientMajor(versionText) !== 17;
+}
+
 export function buildRehearsalEnv(env = process.env) {
   const result = { ...env };
   if (!result[REHEARSAL_CONFIRM_ENV] && isSafeEphemeralCiTarget(result)) {
@@ -36,8 +47,39 @@ export function buildRehearsalEnv(env = process.env) {
   return result;
 }
 
+export function ensureCompatiblePostgresClient(env = process.env) {
+  if (!isSafeEphemeralCiTarget(env)) return Object.freeze({ installed: false, reason: 'target_not_whitelisted' });
+
+  const current = spawnSync('pg_dump', ['--version'], { env, encoding: 'utf8' });
+  const versionText = current.status === 0 ? current.stdout : '';
+  if (!shouldInstallPostgres17Client(env, versionText)) {
+    return Object.freeze({ installed: false, reason: 'client_17_available' });
+  }
+
+  const installation = spawnSync('bash', [CLIENT_INSTALLER], {
+    env,
+    encoding: 'utf8',
+    stdio: 'inherit',
+  });
+  if (installation.error || installation.status !== 0) {
+    const error = new Error('PostgreSQL 17 client installation failed for the whitelisted CI rehearsal target');
+    error.code = 'postgresql_client_17_install_failed';
+    throw error;
+  }
+
+  const verified = spawnSync('pg_dump', ['--version'], { env, encoding: 'utf8' });
+  if (verified.status !== 0 || postgresClientMajor(verified.stdout) !== 17) {
+    const error = new Error('PostgreSQL 17 client verification failed after installation');
+    error.code = 'postgresql_client_17_verification_failed';
+    throw error;
+  }
+  return Object.freeze({ installed: true, reason: 'client_17_installed' });
+}
+
 export async function runConfirmedMigrationRehearsal(env = process.env) {
-  return runMigrationRehearsal({ env: buildRehearsalEnv(env) });
+  const rehearsalEnv = buildRehearsalEnv(env);
+  ensureCompatiblePostgresClient(rehearsalEnv);
+  return runMigrationRehearsal({ env: rehearsalEnv });
 }
 
 const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === __filename;
