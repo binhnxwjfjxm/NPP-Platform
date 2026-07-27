@@ -54,6 +54,18 @@ export type ProductVariant = {
   is_sellable: boolean;
   is_catalog_visible: boolean;
   is_active: boolean;
+  unit_id: string | null;
+  conversion_to_base: string | null;
+  is_purchasable: boolean;
+  net_content_value: string | null;
+  net_content_uom_code: string | null;
+  source_unit_label: string | null;
+  source_package_description: string | null;
+  unit_code: string | null;
+  unit_name: string | null;
+  unit_symbol: string | null;
+  unit_kind: UnitKind | null;
+  allows_fractional: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -97,4 +109,61 @@ export type VariantForm = {
   isSellable: boolean;
   isCatalogVisible: boolean;
   isActive: boolean;
+};
+
+export type UnitKind = 'COUNT' | 'WEIGHT' | 'VOLUME' | 'PACKAGE' | 'OTHER';
+
+export type UnitOfMeasure = {
+  id: string;
+  code: string;
+  name: string;
+  symbol: string | null;
+  unit_kind: UnitKind;
+  allows_fractional: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProductBarcode = {
+  id: string;
+  variant_id: string;
+  barcode: string;
+  normalized_barcode: string;
+  barcode_type: 'EAN13' | 'EAN8' | 'UPC_A' | 'CODE128' | 'INTERNAL' | 'OTHER';
+  is_primary: boolean;
+  is_active: boolean;
+  source_reference: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UnitForm = {
+  code: string;
+  name: string;
+  symbol: string;
+  unitKind: UnitKind;
+  allowsFractional: boolean;
+  isActive: boolean;
+};
+
+export type VariantUnitForm = {
+  unitId: string;
+  conversionToBase: string;
+  isPurchasable: boolean;
+  netContentValue: string;
+  netContentUnitCode: 'G' | 'KG' | 'ML' | 'L' | 'EA' | 'OTHER';
+  sourceUnitLabel: string;
+  sourcePackageDescription: string;
+};
+
+export type QuantityNormalization = {
+  productId: string;
+  variantId: string;
+  sku: string;
+  unitCode: string;
+  enteredQuantity: string;
+  conversionToBase: string;
+  baseQuantity: string;
+  inventoryBase: boolean;
 };
