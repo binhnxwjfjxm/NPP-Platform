@@ -57,6 +57,10 @@ const DOCUMENT_NUMBERING_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/015_document_numbering.sql', import.meta.url),
   'utf8',
 );
+const PERMISSION_CATALOG_ALIGNMENT_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/016_permission_catalog_alignment.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '002_core_idempotency', sql: CORE_IDEMPOTENCY_SQL }),
@@ -73,6 +77,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '013_product_units_conversions_barcodes', sql: PRODUCT_UNITS_CONVERSIONS_BARCODES_SQL }),
   Object.freeze({ id: '014_price_lists_channel_resolution', sql: PRICE_LISTS_CHANNEL_RESOLUTION_SQL }),
   Object.freeze({ id: '015_document_numbering', sql: DOCUMENT_NUMBERING_SQL }),
+  Object.freeze({ id: '016_permission_catalog_alignment', sql: PERMISSION_CATALOG_ALIGNMENT_SQL }),
 ]);
 
 function validateMigration(migration) {
