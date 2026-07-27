@@ -1,6 +1,6 @@
 # Phase 3.3D — Product units, conversions and barcodes
 
-> Status: verified in PR #49; merge pending  
+> Status: merged by PR #49 at `623c9ccf9877191b6f9a49dc5df3bed3433e93c5`  
 > Production deployment: excluded and intentionally deferred
 
 ## Purpose
@@ -143,7 +143,7 @@ The browser uses same-origin server-only gateways. It never receives the Core be
 
 ## Verification result
 
-The verified code head passed:
+The merged code passed:
 
 - migration apply and rerun;
 - PostgreSQL API/service tests;
