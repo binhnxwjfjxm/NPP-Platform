@@ -236,7 +236,7 @@ test('Supplier API — idempotent supplier and child creates write one row and a
     const auditCount = await pool.query(
       `SELECT resource_type, count(*)::int AS count
        FROM shared.core_audit_records
-       WHERE installation_id = $1 AND resource_id = ANY($2::uuid[])
+       WHERE installation_id = $1 AND resource_id = ANY($2::text[])
        GROUP BY resource_type`,
       [config.installationId, [firstBody.data.id, contactBody.data.id]],
     );
