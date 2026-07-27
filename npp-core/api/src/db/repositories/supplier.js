@@ -6,10 +6,11 @@ const SUPPLIER_COLUMNS = `s.id, s.installation_id, s.code, s.name, s.tax_id,
   e.full_name AS purchase_owner_employee_name`;
 
 const CONTACT_COLUMNS = `id, installation_id, supplier_id, contact_name, contact_title,
-  phone, email, is_primary, created_at, updated_at, created_by, updated_by`;
+  phone, email, is_primary, is_active, created_at, updated_at, created_by, updated_by`;
 
 const ADDRESS_COLUMNS = `id, installation_id, supplier_id, address_type, street,
-  city, province, postal_code, country, is_primary, created_at, updated_at, created_by, updated_by`;
+  city, province, postal_code, country, is_primary, is_active, created_at, updated_at,
+  created_by, updated_by`;
 
 const PAYMENT_TERMS_COLUMNS = `id, installation_id, supplier_id, payment_method, term_days,
   description, is_primary, is_active, created_at, updated_at, created_by, updated_by`;
@@ -40,11 +41,11 @@ export async function insertSupplier(client, {
       installationId,
       code,
       name,
-      taxId || null,
-      bankAccount || null,
-      bankName || null,
-      avgDeliveryDays || null,
-      purchaseOwnerEmployeeId || null,
+      taxId ?? null,
+      bankAccount ?? null,
+      bankName ?? null,
+      avgDeliveryDays ?? null,
+      purchaseOwnerEmployeeId ?? null,
       now,
       now,
       createdBy,
@@ -155,11 +156,11 @@ export async function updateSupplier(client, {
      RETURNING id`,
     [
       name,
-      taxId || null,
-      bankAccount || null,
-      bankName || null,
-      avgDeliveryDays || null,
-      purchaseOwnerEmployeeId || null,
+      taxId ?? null,
+      bankAccount ?? null,
+      bankName ?? null,
+      avgDeliveryDays ?? null,
+      purchaseOwnerEmployeeId ?? null,
       updatedBy,
       id,
       installationId,
@@ -192,7 +193,51 @@ export async function updateSupplierActiveStatus(client, {
   return getSupplierByIdForInstallation(client, { id, installationId });
 }
 
-// Supplier Contacts
+async function clearPrimary(client, { table, installationId, supplierId, exceptId, updatedBy }) {
+  const allowed = new Set(['supplier_contacts', 'supplier_addresses', 'supplier_payment_terms']);
+  if (!allowed.has(table)) throw new Error('invalid_supplier_child_table');
+  const params = [updatedBy, installationId, supplierId];
+  let query = `UPDATE shared.${table}
+               SET is_primary = false,
+                   updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
+                   updated_by = $1
+               WHERE installation_id = $2
+                 AND supplier_id = $3
+                 AND is_primary = true
+                 AND is_active = true`;
+  if (exceptId) {
+    query += ' AND id <> $4';
+    params.push(exceptId);
+  }
+  await client.query(query, params);
+}
+
+export async function listSupplierContacts(client, { installationId, supplierId }) {
+  const result = await client.query(
+    `SELECT ${CONTACT_COLUMNS}
+     FROM shared.supplier_contacts
+     WHERE installation_id = $1 AND supplier_id = $2
+     ORDER BY is_primary DESC, is_active DESC, contact_name ASC, created_at ASC`,
+    [installationId, supplierId],
+  );
+  return result.rows;
+}
+
+export async function getSupplierContactForUpdate(client, { id, supplierId, installationId }) {
+  const result = await client.query(
+    `SELECT ${CONTACT_COLUMNS}
+     FROM shared.supplier_contacts
+     WHERE id = $1 AND supplier_id = $2 AND installation_id = $3
+     FOR UPDATE`,
+    [id, supplierId, installationId],
+  );
+  return result.rows[0] || null;
+}
+
+export function clearPrimarySupplierContacts(client, input) {
+  return clearPrimary(client, { table: 'supplier_contacts', ...input });
+}
+
 export async function insertSupplierContact(client, {
   installationId,
   supplierId,
@@ -201,6 +246,7 @@ export async function insertSupplierContact(client, {
   phone,
   email,
   isPrimary,
+  isActive,
   createdBy,
 }) {
   const id = randomUUID();
@@ -208,18 +254,19 @@ export async function insertSupplierContact(client, {
   const result = await client.query(
     `INSERT INTO shared.supplier_contacts
       (id, installation_id, supplier_id, contact_name, contact_title, phone,
-       email, is_primary, created_at, updated_at, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       email, is_primary, is_active, created_at, updated_at, created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      RETURNING ${CONTACT_COLUMNS}`,
     [
       id,
       installationId,
       supplierId,
       contactName,
-      contactTitle || null,
-      phone || null,
-      email || null,
+      contactTitle ?? null,
+      phone ?? null,
+      email ?? null,
       isPrimary,
+      isActive,
       now,
       now,
       createdBy,
@@ -229,18 +276,65 @@ export async function insertSupplierContact(client, {
   return result.rows[0] || null;
 }
 
-export async function listSupplierContacts(client, { installationId, supplierId }) {
+export async function updateSupplierContact(client, {
+  id,
+  supplierId,
+  installationId,
+  contactName,
+  contactTitle,
+  phone,
+  email,
+  isPrimary,
+  isActive,
+  updatedBy,
+  expectedUpdatedAt,
+}) {
   const result = await client.query(
-    `SELECT ${CONTACT_COLUMNS}
-     FROM shared.supplier_contacts
+    `UPDATE shared.supplier_contacts
+     SET contact_name = $1,
+         contact_title = $2,
+         phone = $3,
+         email = $4,
+         is_primary = $5,
+         is_active = $6,
+         updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
+         updated_by = $7
+     WHERE id = $8
+       AND supplier_id = $9
+       AND installation_id = $10
+       AND updated_at = $11
+     RETURNING ${CONTACT_COLUMNS}`,
+    [contactName, contactTitle ?? null, phone ?? null, email ?? null, isPrimary, isActive, updatedBy, id, supplierId, installationId, expectedUpdatedAt],
+  );
+  return result.rows[0] || null;
+}
+
+export async function listSupplierAddresses(client, { installationId, supplierId }) {
+  const result = await client.query(
+    `SELECT ${ADDRESS_COLUMNS}
+     FROM shared.supplier_addresses
      WHERE installation_id = $1 AND supplier_id = $2
-     ORDER BY is_primary DESC, contact_name ASC`,
+     ORDER BY is_primary DESC, is_active DESC, address_type ASC, created_at ASC`,
     [installationId, supplierId],
   );
   return result.rows;
 }
 
-// Supplier Addresses
+export async function getSupplierAddressForUpdate(client, { id, supplierId, installationId }) {
+  const result = await client.query(
+    `SELECT ${ADDRESS_COLUMNS}
+     FROM shared.supplier_addresses
+     WHERE id = $1 AND supplier_id = $2 AND installation_id = $3
+     FOR UPDATE`,
+    [id, supplierId, installationId],
+  );
+  return result.rows[0] || null;
+}
+
+export function clearPrimarySupplierAddresses(client, input) {
+  return clearPrimary(client, { table: 'supplier_addresses', ...input });
+}
+
 export async function insertSupplierAddress(client, {
   installationId,
   supplierId,
@@ -251,6 +345,7 @@ export async function insertSupplierAddress(client, {
   postalCode,
   country,
   isPrimary,
+  isActive,
   createdBy,
 }) {
   const id = randomUUID();
@@ -258,8 +353,9 @@ export async function insertSupplierAddress(client, {
   const result = await client.query(
     `INSERT INTO shared.supplier_addresses
       (id, installation_id, supplier_id, address_type, street, city,
-       province, postal_code, country, is_primary, created_at, updated_at, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       province, postal_code, country, is_primary, is_active,
+       created_at, updated_at, created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      RETURNING ${ADDRESS_COLUMNS}`,
     [
       id,
@@ -267,11 +363,12 @@ export async function insertSupplierAddress(client, {
       supplierId,
       addressType,
       street,
-      city || null,
-      province || null,
-      postalCode || null,
-      country || null,
+      city ?? null,
+      province ?? null,
+      postalCode ?? null,
+      country,
       isPrimary,
+      isActive,
       now,
       now,
       createdBy,
@@ -281,48 +378,39 @@ export async function insertSupplierAddress(client, {
   return result.rows[0] || null;
 }
 
-export async function listSupplierAddresses(client, { installationId, supplierId }) {
-  const result = await client.query(
-    `SELECT ${ADDRESS_COLUMNS}
-     FROM shared.supplier_addresses
-     WHERE installation_id = $1 AND supplier_id = $2
-     ORDER BY is_primary DESC, address_type ASC`,
-    [installationId, supplierId],
-  );
-  return result.rows;
-}
-
-// Supplier Payment Terms
-export async function insertSupplierPaymentTerms(client, {
-  installationId,
+export async function updateSupplierAddress(client, {
+  id,
   supplierId,
-  paymentMethod,
-  termDays,
-  description,
+  installationId,
+  addressType,
+  street,
+  city,
+  province,
+  postalCode,
+  country,
   isPrimary,
-  createdBy,
+  isActive,
+  updatedBy,
+  expectedUpdatedAt,
 }) {
-  const id = randomUUID();
-  const now = new Date().toISOString();
   const result = await client.query(
-    `INSERT INTO shared.supplier_payment_terms
-      (id, installation_id, supplier_id, payment_method, term_days,
-       description, is_primary, is_active, created_at, updated_at, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9, $10, $11)
-     RETURNING ${PAYMENT_TERMS_COLUMNS}`,
-    [
-      id,
-      installationId,
-      supplierId,
-      paymentMethod,
-      termDays || null,
-      description || null,
-      isPrimary,
-      now,
-      now,
-      createdBy,
-      createdBy,
-    ],
+    `UPDATE shared.supplier_addresses
+     SET address_type = $1,
+         street = $2,
+         city = $3,
+         province = $4,
+         postal_code = $5,
+         country = $6,
+         is_primary = $7,
+         is_active = $8,
+         updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
+         updated_by = $9
+     WHERE id = $10
+       AND supplier_id = $11
+       AND installation_id = $12
+       AND updated_at = $13
+     RETURNING ${ADDRESS_COLUMNS}`,
+    [addressType, street, city ?? null, province ?? null, postalCode ?? null, country, isPrimary, isActive, updatedBy, id, supplierId, installationId, expectedUpdatedAt],
   );
   return result.rows[0] || null;
 }
@@ -331,9 +419,78 @@ export async function listSupplierPaymentTerms(client, { installationId, supplie
   const result = await client.query(
     `SELECT ${PAYMENT_TERMS_COLUMNS}
      FROM shared.supplier_payment_terms
-     WHERE installation_id = $1 AND supplier_id = $2 AND is_active = true
-     ORDER BY is_primary DESC, payment_method ASC`,
+     WHERE installation_id = $1 AND supplier_id = $2
+     ORDER BY is_primary DESC, is_active DESC, payment_method ASC, created_at ASC`,
     [installationId, supplierId],
   );
   return result.rows;
+}
+
+export async function getSupplierPaymentTermForUpdate(client, { id, supplierId, installationId }) {
+  const result = await client.query(
+    `SELECT ${PAYMENT_TERMS_COLUMNS}
+     FROM shared.supplier_payment_terms
+     WHERE id = $1 AND supplier_id = $2 AND installation_id = $3
+     FOR UPDATE`,
+    [id, supplierId, installationId],
+  );
+  return result.rows[0] || null;
+}
+
+export function clearPrimarySupplierPaymentTerms(client, input) {
+  return clearPrimary(client, { table: 'supplier_payment_terms', ...input });
+}
+
+export async function insertSupplierPaymentTerm(client, {
+  installationId,
+  supplierId,
+  paymentMethod,
+  termDays,
+  description,
+  isPrimary,
+  isActive,
+  createdBy,
+}) {
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  const result = await client.query(
+    `INSERT INTO shared.supplier_payment_terms
+      (id, installation_id, supplier_id, payment_method, term_days,
+       description, is_primary, is_active, created_at, updated_at, created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     RETURNING ${PAYMENT_TERMS_COLUMNS}`,
+    [id, installationId, supplierId, paymentMethod, termDays ?? null, description ?? null, isPrimary, isActive, now, now, createdBy, createdBy],
+  );
+  return result.rows[0] || null;
+}
+
+export async function updateSupplierPaymentTerm(client, {
+  id,
+  supplierId,
+  installationId,
+  paymentMethod,
+  termDays,
+  description,
+  isPrimary,
+  isActive,
+  updatedBy,
+  expectedUpdatedAt,
+}) {
+  const result = await client.query(
+    `UPDATE shared.supplier_payment_terms
+     SET payment_method = $1,
+         term_days = $2,
+         description = $3,
+         is_primary = $4,
+         is_active = $5,
+         updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
+         updated_by = $6
+     WHERE id = $7
+       AND supplier_id = $8
+       AND installation_id = $9
+       AND updated_at = $10
+     RETURNING ${PAYMENT_TERMS_COLUMNS}`,
+    [paymentMethod, termDays ?? null, description ?? null, isPrimary, isActive, updatedBy, id, supplierId, installationId, expectedUpdatedAt],
+  );
+  return result.rows[0] || null;
 }
