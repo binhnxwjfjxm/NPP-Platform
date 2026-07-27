@@ -40,7 +40,13 @@ test.describe('Danh mục sản phẩm', () => {
     await expect(productRow).toBeVisible();
     await expect(productRow).toContainText(`Sản phẩm ${suffix}`);
 
+    const variantsLoaded = page.waitForResponse((response) =>
+      response.request().method() === 'GET'
+      && /\/api\/products\/[^/]+\/variants(?:\?|$)/.test(new URL(response.url()).pathname + new URL(response.url()).search)
+      && response.ok(),
+    );
     await page.getByTestId(`manage-variants-${productCode}`).click();
+    await variantsLoaded;
     await expect(page.getByTestId('variant-panel')).toBeVisible();
     await page.getByTestId('add-variant-button').click();
     await page.getByTestId('variant-sku-input').fill(sku.toLowerCase());
