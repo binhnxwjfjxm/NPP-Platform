@@ -20,7 +20,7 @@ permissions:
 jobs:
   verify-inventory-ledger:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:17
@@ -103,6 +103,12 @@ jobs:
         run: |
           set -euo pipefail
           npm --workspace npp-core-api run test:inventory 2>&1 | tee artifacts/phase-4-inventory-tests.log
+
+      - name: Verify Core web compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --workspace npp-core-web run verify 2>&1 | tee artifacts/phase-4-core-web.log
 
       - name: Upload Phase 4 evidence
         if: always()
