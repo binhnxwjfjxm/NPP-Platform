@@ -113,11 +113,13 @@
   overflow: auto;
 }
 
-.disabled:disabled {
+.disabled:disabled,
+.modalWide button:disabled {
   cursor: not-allowed !important;
 }
 
-.loading:disabled {
+.loading:disabled,
+.modalWide .loading:disabled {
   cursor: wait !important;
 }
 
