@@ -1,6 +1,6 @@
 # Phase 3.3D — Product units, conversions and barcodes
 
-> Status: implementation in progress on `agent/product-units-conversions-barcodes`  
+> Status: verified in PR #49; merge pending  
 > Production deployment: excluded and intentionally deferred
 
 ## Purpose
@@ -16,7 +16,7 @@ The product variant remains the canonical SKU/sell-unit identity. Phase 3.3D add
 - `data/imports/product-units-conversions-2026-07-23-review-required.json` — the two blocked rows preserved for manual review.
 - `docs/operations/product-units-data-audit-2026-07-27.md` — source audit, 604 importable rows and review flags.
 
-The full 604-row normalized payload is intentionally generated and reconciled during the controlled Phase 3 data-load rehearsal rather than committed as an opaque bulk snapshot.
+The 604 clean rows are regenerated and reconciled during the controlled Phase 3 data-load rehearsal rather than committed as an opaque bulk snapshot.
 
 ## Data model
 
@@ -110,15 +110,27 @@ All mutating POST routes require `Idempotency-Key`. All PATCH routes require `ex
 
 ## Frontend
 
-The canonical `/products` workspace gains:
+The canonical `/products` workspace includes:
 
 - unit catalog administration;
+- product-list refresh without page reload;
 - unit/conversion assignment per selected SKU;
 - exact base-quantity preview;
 - barcode list/create/status management;
-- clear warning when a product cannot be orderable because a sellable SKU lacks unit/conversion metadata.
+- backend orderability guard when a sellable SKU lacks unit/conversion metadata.
 
 The browser uses same-origin server-only gateways. It never receives the Core bearer token or database credentials.
+
+## Source audit result
+
+- 606 canonical conversion rows;
+- 606 unique base SKUs and 606 unique converted SKUs;
+- no duplicate or missing SKU pair;
+- all conversion factors are positive integers;
+- 604 rows are clean for controlled rehearsal import;
+- 2 `THÙNG → THÙNG` rows remain blocked for business review;
+- all 606 source barcode values equal the explicit converted SKU and are treated as `INTERNAL`, not inferred EAN/UPC values;
+- physical weight differences are warnings only and never define inventory conversion.
 
 ## Explicit exclusions
 
@@ -129,23 +141,21 @@ The browser uses same-origin server-only gateways. It never receives the Core be
 - production migration/import/deployment;
 - `mcp/**` changes.
 
-## Verification gate
+## Verification result
 
-Before merge:
+The verified code head passed:
 
-- migration apply, rerun no-op, verify and rehearsal;
+- migration apply and rerun;
+- PostgreSQL API/service tests;
 - installation isolation;
-- unit-code and barcode duplicate races;
-- immutable unit codes and barcode ownership;
-- one active primary barcode per variant;
-- base conversion exactly `1`;
-- exact decimal normalization without floating-point drift;
-- orderable guard requires unit/conversion;
-- atomic reviewed import and idempotent replay;
-- transactional audit coverage;
-- Core web typecheck/unit/build;
-- Chromium E2E against actual isolated PostgreSQL and Core API;
+- immutable unit/barcode identities;
+- exact quantity normalization;
+- orderable guard requiring unit/conversion;
+- idempotency and transactional audit;
+- migration rehearsal;
+- Core web typecheck, tests and production build;
+- Chromium E2E through category → brand → product → SKU → unit → conversion → barcode → orderable flow;
 - `mcp/** = 0`;
-- temporary workbook-export workflow removed from the final diff.
+- no temporary payload or workbook-export workflow in the final diff.
 
 Merge is not production deployment. Migrations `010` through `013` remain pending for the grouped Phase 3 backend/database rollout.
