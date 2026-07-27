@@ -32,25 +32,52 @@ test("automatic Vercel deployments stay locked by default", () => {
   assert.match(workflow, /^\s{2}workflow_dispatch:\s*$/m);
   assert.match(workflow, /^\s{2}issue_comment:\s*$/m);
   assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request):\s*$/m);
+  assert.match(workflow, /permissions:\s*\n\s+contents: read/);
+  assert.doesNotMatch(workflow, /contents: write/);
 });
 
-test("comment deployment requires the exact guarded command", () => {
+test("production command requires an explicit exact SHA", () => {
   assert.match(workflow, /github\.event\.issue\.number == 5/);
-  assert.match(workflow, /github\.event\.comment\.body == '\/deploy-vercel-production'/);
-  assert.match(workflow, /\["binhnxwjfjxm","khuongbinhinfo-a11y"\]/);
-  assert.match(workflow, /github\.actor/);
+  assert.match(workflow, /startsWith\(github\.event\.comment\.body, '\/deploy-vercel-production '\)/);
+  assert.match(workflow, /\[0-9a-f\]\{40\}/);
+  assert.match(workflow, /git rev-parse origin\/main/);
+  assert.match(workflow, /test "\$\(git rev-parse origin\/main\)" = "\$SOURCE_SHA"/);
 });
 
-test("special command opens and re-locks the nested Core web gate", () => {
-  assert.match(workflow, /permissions:\s*\n\s+contents: write/);
-  assert.match(workflow, /const path = "npp-core\/web\/vercel\.json"/);
-  assert.match(workflow, /git add npp-core\/web\/vercel\.json/);
-  assert.match(workflow, /git show origin\/main:npp-core\/web\/vercel\.json/);
-  assert.match(workflow, /deploymentEnabled: true/);
-  assert.match(workflow, /deploymentEnabled: false/);
-  assert.match(workflow, /open one-shot production gate \[skip ci\]/);
-  assert.match(workflow, /re-lock automatic deployments \[skip ci\]/);
-  assert.match(workflow, /Allow Vercel to accept the production event/);
-  assert.match(workflow, /if: always\(\)/);
-  assert.doesNotMatch(workflow, /VERCEL_TOKEN|vcp_[A-Za-z0-9_-]+/);
+test("workflow audits the Core project and Production environment", () => {
+  assert.match(workflow, /EXPECTED_PROJECT_NAME: npp-platform/);
+  assert.match(workflow, /EXPECTED_ROOT_DIRECTORY: npp-core\/web/);
+  assert.match(workflow, /EXPECTED_PRODUCTION_DOMAIN: npp-platform\.vercel\.app/);
+  assert.match(workflow, /\.rootDirectory == \$root/);
+  assert.match(workflow, /CORE_API_INTERNAL_URL CORE_API_SERVER_TOKEN/);
+  assert.match(workflow, /DATABASE_URL SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(workflow, /vercel pull --yes --environment=production/);
+});
+
+test("workflow deploys the exact SHA and verifies READY production ownership", () => {
+  assert.match(workflow, /vercel deploy/);
+  assert.match(workflow, /--prod/);
+  assert.match(workflow, /--archive=tgz/);
+  assert.match(workflow, /--meta githubCommitSha="\$SOURCE_SHA"/);
+  assert.match(workflow, /vercel inspect "\$DEPLOYMENT_URL" --wait --timeout=10m/);
+  assert.match(workflow, /\.target == "production"/);
+  assert.match(workflow, /\.readyState == "READY"/);
+  assert.match(workflow, /\.meta\.githubCommitSha == \$sha/);
+  assert.match(workflow, /deployments\/\$EXPECTED_PRODUCTION_DOMAIN/);
+  assert.match(workflow, /\.live == true/);
+});
+
+test("workflow smoke tests required production surfaces", () => {
+  assert.match(workflow, /check_route "\/"/);
+  assert.match(workflow, /check_route "\/dashboard"/);
+  assert.match(workflow, /check_route "\/login"/);
+  assert.match(workflow, /\/_next\/static\//);
+});
+
+test("workflow never toggles or pushes the deployment gate", () => {
+  assert.doesNotMatch(workflow, /deploymentEnabled: true/);
+  assert.doesNotMatch(workflow, /Open one-shot production gate/);
+  assert.doesNotMatch(workflow, /Re-lock automatic deployments/);
+  assert.doesNotMatch(workflow, /git push/);
+  assert.doesNotMatch(workflow, /vcp_[A-Za-z0-9_-]+/);
 });
