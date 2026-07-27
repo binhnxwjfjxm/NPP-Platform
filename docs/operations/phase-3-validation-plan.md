@@ -1,13 +1,11 @@
 # Phase 3 — Split validation and rollout acceptance plan
 
-> Status: required gate after Phase 3.3F merges  
-> Production action: prohibited until every pack below has explicit evidence
+> Status: required source/rehearsal gate for Phase 3 closeout  
+> Production action: prohibited until every gate below has explicit evidence and a separate rollout authorization
 
 ## Purpose
 
-Phase 3 contains financially and operationally sensitive master data. A single combined CI result is necessary but is not sufficient evidence for production rollout.
-
-Validation must be executed and reported as independent packs. A failure in one pack blocks the grouped rollout even when all other packs pass.
+Phase 3 contains operationally and financially sensitive master data. One combined CI result is necessary but not sufficient. Validation is split into independent packs; one failure blocks the grouped rollout even when every other pack passes.
 
 ## Required execution order
 
@@ -19,75 +17,76 @@ Pack 4  Units, conversions and barcodes
 Pack 5  Pricing — isolated financial pack
 Pack 6  Document numbering
 Pack 7  Cross-domain integration
-Pack 8  Grouped migration and production-readiness rehearsal
+Pack 8  Grouped migration rehearsal
 ```
 
-Each pack must record:
+Each pack records:
 
 - exact commit SHA;
 - database target and migration set;
-- test command/workflow run;
-- before/after row counts and exception counts where relevant;
+- workflow run and commands;
+- row counts and exceptions where relevant;
 - PASS/FAIL status;
-- unresolved review rows;
-- reviewer/owner decision;
-- evidence links or retained artifacts;
+- unresolved or blocked source rows;
+- reviewer or owner decision;
+- retained artifacts;
 - explicit statement that no production assumption was reused.
+
+The repository workflow uses ephemeral PostgreSQL for source/rehearsal evidence. It does not replace the later rehearsal restored from a fresh production backup.
 
 ## Pack 1 — Customers
 
 Validate independently:
 
 - customer-group and customer code uniqueness per installation;
-- active/inactive lifecycle and no hard delete;
+- lifecycle without hard delete;
 - address ownership and primary-address rules;
 - installation isolation;
-- idempotent create and optimistic-concurrency update;
+- idempotent create and optimistic concurrency;
 - audit records;
-- UI create/edit/filter flows.
+- `/customers` create, edit and filter flows.
 
 ## Pack 2 — Suppliers
 
 Validate independently:
 
-- supplier codes, contacts, addresses and terms;
+- supplier identity, contacts, addresses and payment terms;
 - primary-child constraints;
 - purchase-owner references;
-- lifecycle guards and installation isolation;
+- lifecycle and installation isolation;
 - idempotency, optimistic concurrency and audit;
-- UI create/edit/filter flows.
+- `/suppliers` create, edit and filter flows.
 
 ## Pack 3 — Product catalog
 
 Validate independently:
 
 - category hierarchy and cycle prevention;
-- brand/product/SKU identities;
+- brand, product and immutable SKU identity;
 - one active inventory-base SKU per product;
-- immutable code/SKU behavior;
-- catalog, sellable, active and orderable states;
+- active, visible, sellable and orderable states;
 - import replay and duplicate races;
 - installation isolation and audit;
-- `/products` CRUD flow.
+- `/products` catalog flow.
 
 ## Pack 4 — Units, conversions and barcodes
 
 Validate independently:
 
-- base SKU conversion equals exactly `1`;
+- base conversion equals exactly `1`;
 - converted SKU factors use fixed-scale exact arithmetic;
 - quantity normalization and fractional-unit rules;
 - barcode uniqueness and primary-barcode lifecycle;
-- orderable guard requires complete SKU/unit/conversion metadata;
-- 604 reviewed rows import cleanly;
+- orderable guard requires complete unit/conversion metadata;
+- 604 reviewed rows remain eligible for controlled rehearsal;
 - two `THÙNG → THÙNG` rows remain blocked pending business decision;
-- 159 missing/zero descriptive net-content rows remain warnings rather than guessed values;
+- missing/zero descriptive net-content values remain warnings, never guessed conversions;
 - import replay, installation isolation and audit;
-- `/products` unit/conversion/barcode flow.
+- `/products` unit, conversion and barcode flow.
 
-## Pack 5 — Pricing (mandatory isolated financial test pack)
+## Pack 5 — Pricing
 
-This pack is mandatory and must run independently from general master-data tests. It requires explicit owner review before Pack 8.
+This mandatory financial pack runs independently and requires explicit owner review before production readiness can be approved.
 
 ### Source reconciliation
 
@@ -99,129 +98,99 @@ Re-run the executable workbook audit and reconcile:
 - 563 normalized carton prices;
 - 168 original positive carton retail prices;
 - 343 venue-channel mappings;
-- 338 positive venue-channel prices;
+- 338 positive venue prices;
 - five missing/zero venue prices blocked;
 - 69 review-required rows blocked;
-- one repeated channel SKU resolved only by an approved deterministic source key or retained for manual review.
+- one repeated channel SKU retained for deterministic source-key or manual review.
 
-No missing or ambiguous amount may be guessed, copied from another SKU, multiplied from retail price or silently set to zero.
+Missing or ambiguous amounts must never be guessed, copied, multiplied from another SKU or silently set to zero.
 
-### Price-model behavior
+### Price behavior
 
-Test exact SKU-level independence:
+Validate:
 
-- retail/base SKU price is editable data;
-- carton SKU price is independent and never derived from retail price × conversion;
-- changing conversion never rewrites price;
-- changing price never rewrites conversion.
-
-Test all scopes separately and in combinations:
-
-- base;
-- channel;
-- customer group;
-- customer-specific;
-- promotion;
-- custom/admin/code-created policy.
-
-Test resolver behavior:
-
-- priority ordering;
-- exclusive rules;
-- stackable rules;
-- stop-processing;
-- quantity tiers and boundary values;
-- effective start/end timestamps;
-- inactive list/item exclusion;
-- customer/group/channel matching and mismatch;
-- missing base price failure;
-- manual override precedence and mandatory reason;
-- full explainable trace of applied and skipped rules.
-
-Test financial arithmetic independently:
-
-- VND integer minor units only;
-- basis-point percentages;
-- BigInt arithmetic;
-- deterministic half-up rounding;
-- discounts never produce negative unit price;
-- exact line totals for representative quantities;
-- large values remain within supported integer limits;
-- no JavaScript floating-point money calculation.
-
-Test lifecycle and safety:
-
-- installation isolation;
-- idempotent create/import replay;
-- source-key update without duplicate rows;
-- optimistic-concurrency conflicts;
-- audit records;
-- same-origin gateway and Basic Auth;
+- retail/base and carton SKU prices are independent editable data;
+- conversion changes never rewrite prices and price changes never rewrite conversion;
+- base, channel, customer-group, customer, promotion and custom scopes;
+- priority, exclusive, stackable and stop-processing rules;
+- quantity boundaries and effective timestamps;
+- inactive exclusions and scope mismatch;
+- missing-base-price failure;
+- manual override precedence with mandatory reason;
+- explainable applied/skipped trace;
+- VND integer storage, basis points, BigInt and deterministic half-up rounding;
+- non-negative unit prices and exact line totals;
+- installation isolation, idempotency, source-key replay, concurrency and audit;
+- same-origin Basic Auth boundary;
 - `/pricing` administration and simulator Chromium flow.
 
-### Pricing acceptance report
-
-The pricing pack must produce a standalone report containing:
+### Required pricing report
 
 ```text
 Source audit status
-Imported/rehearsed row counts
+Rehearsed row counts
 Blocked row counts and identifiers
 Retail/carton independence result
 Resolver matrix result
-Rounding test result
+Rounding result
 Manual override result
 UI simulator result
 Owner decision: APPROVED / REJECTED / NEEDS DATA FIX
 ```
 
-Pricing is not accepted merely because the repository CI is green.
+Pricing is not accepted merely because repository CI is green.
 
 ## Pack 6 — Document numbering
 
 Validate independently:
 
-- template token validation and rendering;
-- reset policies NONE/YEARLY/MONTHLY;
+- template syntax and deterministic rendering;
+- reset/template compatibility at service and database levels;
+- NONE, YEARLY and MONTHLY counters;
 - backdated period isolation;
-- parallel allocation uniqueness and gap-free successful counters;
-- domain and HTTP idempotency replay;
+- parallel uniqueness and gap-free successful counters;
+- HTTP and domain replay;
+- replay transactions are read-only;
 - inactive-series guard;
-- width overflow rollback;
+- width and absolute-counter overflow rollback;
 - format lock after first allocation;
-- immutable allocation history;
-- installation isolation, permission and audit;
+- append-only history;
+- installation isolation, permissions and audit;
 - `/document-numbering` Chromium flow.
 
 ## Pack 7 — Cross-domain integration
 
-Validate references and combined behavior without posting transactions:
+Validate combined behavior without posting transactions:
 
-- customers/groups are selectable by pricing scopes;
+- customer groups and customers are selectable pricing scopes;
 - product variants used by units and pricing are canonical and active;
-- pricing refuses incomplete/non-priceable SKU metadata;
+- pricing refuses incomplete or non-priceable SKU metadata;
 - document-number allocation remains independent from transaction creation;
 - all server-only gateways preserve Basic Auth and hide backend credentials;
-- `mcp/** = 0` for Core-only Phase 3 work.
+- `mcp/** = 0` for Core-only Phase 3 work;
+- the full Core API and combined master-data Chromium flows pass on one exact SHA.
 
-## Pack 8 — Grouped migration and production-readiness rehearsal
+## Pack 8 — Grouped migration rehearsal
 
-Only after Packs 1–7 pass:
+The repository gate runs migrations `002` through `016` on ephemeral PostgreSQL 17, reruns them, verifies canonical schema/permissions and runs the migration rehearsal contract.
+
+This source-level Pack 8 does **not** authorize production. After Packs 1–7 pass, production readiness additionally requires:
 
 1. Audit the actual Heroku PostgreSQL provider state.
-2. Create and verify a new production backup.
-3. Restore it to a temporary rehearsal PostgreSQL target.
-4. Apply migrations `010` through `015` in order.
-5. Re-run Packs 1–7 against the rehearsal target where applicable.
-6. Reconcile schema, permissions, row counts and blocked-source rows.
-7. Test actual Core API build against the rehearsal database.
-8. Prepare a rollback/cutover checklist.
-9. Obtain owner approval for the isolated pricing report.
-10. Only then perform the separately authorized production rollout.
+2. Create and verify a fresh production backup.
+3. Restore that backup to a temporary rehearsal target.
+4. Reconcile the restored baseline.
+5. Apply pending migrations `010` through `016` in order.
+6. Re-run applicable Packs 1–7 against the restored rehearsal target.
+7. Reconcile schema, permission metadata, row counts and blocked source rows.
+8. Test the exact Core API build against the rehearsal database.
+9. Prepare rollback and cutover checklists.
+10. Obtain explicit owner approval for the pricing report.
+11. Obtain separate production rollout authorization.
 
-Historical backup/restore evidence must not be reused. READY status alone is not deployment verification.
+Historical backup or restore evidence must not be reused. A provider `READY` state alone is not deployment verification.
 
-## Production verification after explicit rollout authorization
+## Production verification after explicit authorization
 
 Backend:
 
@@ -236,10 +205,12 @@ Frontend:
 /
 /dashboard
 /login
+/customers
+/suppliers
 /products
 /pricing
 /document-numbering
 /_next/static actual asset
 ```
 
-Run smoke tests pack-by-pack after deployment, with pricing repeated as a standalone financial smoke pack.
+Run API and UI smoke tests pack-by-pack after deployment. Repeat pricing as a standalone financial smoke pack. Create a post-migration backup and confirm automatic deployments remain disabled.
