@@ -21,6 +21,7 @@ export default function ProductUnitWorkspace({
   initialProducts: Product[];
   initialUnits: UnitOfMeasure[];
 }) {
+  const [products, setProducts] = useState(initialProducts);
   const [units, setUnits] = useState(initialUnits);
   const [productId, setProductId] = useState('');
   const [variants, setVariants] = useState<ProductVariant[]>([]);
@@ -29,6 +30,25 @@ export default function ProductUnitWorkspace({
   const [message, setMessage] = useState<string | null>(null);
 
   const selectedVariant = variants.find((item) => item.id === variantId) ?? null;
+
+  async function refreshProducts() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const next = await requestJson<Product[]>('/api/products?limit=1000');
+      setProducts(next);
+      if (productId && !next.some((item) => item.id === productId)) {
+        setProductId('');
+        setVariantId('');
+        setVariants([]);
+      }
+      setMessage('Đã làm mới danh sách sản phẩm');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Không thể làm mới sản phẩm');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function selectProduct(nextProductId: string) {
     setProductId(nextProductId);
@@ -56,10 +76,13 @@ export default function ProductUnitWorkspace({
     <UnitCatalogPanel units={units} onUnitsChanged={setUnits} />
 
     <section className={styles.variantPanel}>
-      <div className={styles.sectionHeader}><div><h2>Quy đổi theo SKU</h2><p>Chọn sản phẩm và SKU để gắn đơn vị, hệ số và barcode.</p></div></div>
+      <div className={styles.sectionHeader}>
+        <div><h2>Quy đổi theo SKU</h2><p>Chọn sản phẩm và SKU để gắn đơn vị, hệ số và barcode.</p></div>
+        <button type="button" className={styles.secondaryButton} disabled={busy} onClick={() => void refreshProducts()} data-testid="refresh-unit-products-button">Làm mới sản phẩm</button>
+      </div>
       {message ? <div className={styles.notice}>{message}</div> : null}
       <div className={styles.formGrid}>
-        <label>Sản phẩm<select value={productId} onChange={(event) => void selectProduct(event.target.value)} data-testid="unit-product-select"><option value="">Chọn sản phẩm</option>{initialProducts.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
+        <label>Sản phẩm<select value={productId} onChange={(event) => void selectProduct(event.target.value)} data-testid="unit-product-select"><option value="">Chọn sản phẩm</option>{products.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
         <label>SKU<select value={variantId} disabled={!productId || busy} onChange={(event) => setVariantId(event.target.value)} data-testid="unit-variant-select"><option value="">Chọn SKU</option>{variants.map((item) => <option key={item.id} value={item.id}>{item.sku} — {item.name}</option>)}</select></label>
       </div>
       {!productId ? <p className={styles.empty}>Chọn sản phẩm để quản lý quy đổi.</p> : null}
