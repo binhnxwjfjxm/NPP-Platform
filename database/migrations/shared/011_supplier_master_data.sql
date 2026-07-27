@@ -1,88 +1,140 @@
-CREATE SCHEMA IF NOT EXISTS shared;
+-- Phase 3.3B: Suppliers, contacts, addresses and supplier payment terms
+-- Canonical shared master data for one installation. No hard-delete path is provided.
 
--- Create suppliers table
+INSERT INTO shared.permission_catalog (
+  permission_key,
+  module,
+  label,
+  description,
+  is_system,
+  created_at
+) VALUES
+  ('core.supplier.read', 'Nhà cung cấp', 'Xem nhà cung cấp', 'Cho phép đọc nhà cung cấp, liên hệ, địa chỉ và điều khoản thanh toán.', true, now()),
+  ('core.supplier.write', 'Nhà cung cấp', 'Quản lý nhà cung cấp', 'Cho phép tạo, cập nhật và thay đổi trạng thái dữ liệu nhà cung cấp.', true, now())
+ON CONFLICT (permission_key) DO UPDATE
+SET module = EXCLUDED.module,
+    label = EXCLUDED.label,
+    description = EXCLUDED.description,
+    is_system = EXCLUDED.is_system;
+
 CREATE TABLE IF NOT EXISTS shared.suppliers (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  installation_id VARCHAR(128) NOT NULL,
-  code VARCHAR(50) NOT NULL,
-  name VARCHAR(255) NOT NULL,
-  tax_id VARCHAR(50),
-  bank_account VARCHAR(100),
-  bank_name VARCHAR(255),
-  avg_delivery_days INTEGER,
-  is_active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  created_by VARCHAR(128),
-  updated_by VARCHAR(128),
-  CONSTRAINT suppliers_installation_code_unique UNIQUE (installation_id, code)
+  id uuid NOT NULL PRIMARY KEY,
+  installation_id text NOT NULL CHECK (char_length(installation_id) BETWEEN 1 AND 128),
+  code text NOT NULL CHECK (
+    char_length(code) BETWEEN 1 AND 64
+    AND code = upper(btrim(code))
+    AND code ~ '^[A-Z0-9_-]{1,64}$'
+  ),
+  name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 256),
+  tax_id text NULL CHECK (tax_id IS NULL OR char_length(tax_id) <= 64),
+  bank_account text NULL CHECK (bank_account IS NULL OR char_length(bank_account) <= 64),
+  bank_name text NULL CHECK (bank_name IS NULL OR char_length(bank_name) <= 256),
+  avg_delivery_days integer NULL CHECK (avg_delivery_days IS NULL OR avg_delivery_days BETWEEN 0 AND 3650),
+  purchase_owner_employee_id uuid NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  created_by text NOT NULL CHECK (char_length(created_by) BETWEEN 1 AND 128),
+  updated_by text NOT NULL CHECK (char_length(updated_by) BETWEEN 1 AND 128),
+  CONSTRAINT suppliers_id_installation_unique UNIQUE (installation_id, id),
+  CONSTRAINT suppliers_code_installation_unique UNIQUE (installation_id, code),
+  CONSTRAINT suppliers_employee_installation_fk
+    FOREIGN KEY (installation_id, purchase_owner_employee_id)
+    REFERENCES shared.employees (installation_id, id)
+    ON UPDATE RESTRICT
+    ON DELETE RESTRICT
 );
 
-CREATE INDEX IF NOT EXISTS idx_suppliers_installation_id ON shared.suppliers(installation_id);
-CREATE INDEX IF NOT EXISTS idx_suppliers_installation_active ON shared.suppliers(installation_id, is_active);
-CREATE INDEX IF NOT EXISTS idx_suppliers_created_at ON shared.suppliers(created_at DESC);
+CREATE INDEX IF NOT EXISTS suppliers_installation_active_code_idx
+  ON shared.suppliers (installation_id, is_active, code);
+CREATE INDEX IF NOT EXISTS suppliers_search_name_idx
+  ON shared.suppliers (installation_id, lower(name));
+CREATE INDEX IF NOT EXISTS suppliers_installation_employee_idx
+  ON shared.suppliers (installation_id, purchase_owner_employee_id);
+CREATE INDEX IF NOT EXISTS suppliers_updated_at_idx
+  ON shared.suppliers (installation_id, updated_at DESC);
 
--- Create supplier contacts table
 CREATE TABLE IF NOT EXISTS shared.supplier_contacts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  supplier_id UUID NOT NULL REFERENCES shared.suppliers(id) ON DELETE CASCADE,
-  contact_name VARCHAR(255) NOT NULL,
-  contact_title VARCHAR(100),
-  phone VARCHAR(20),
-  email VARCHAR(100),
-  is_primary BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT supplier_contacts_unique_primary UNIQUE (supplier_id, is_primary) WHERE is_primary = TRUE
+  id uuid NOT NULL PRIMARY KEY,
+  installation_id text NOT NULL CHECK (char_length(installation_id) BETWEEN 1 AND 128),
+  supplier_id uuid NOT NULL,
+  contact_name text NOT NULL CHECK (char_length(btrim(contact_name)) BETWEEN 1 AND 256),
+  contact_title text NULL CHECK (contact_title IS NULL OR char_length(contact_title) <= 128),
+  phone text NULL CHECK (phone IS NULL OR char_length(phone) <= 20),
+  email text NULL CHECK (email IS NULL OR char_length(email) <= 256),
+  is_primary boolean NOT NULL DEFAULT false,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  created_by text NOT NULL CHECK (char_length(created_by) BETWEEN 1 AND 128),
+  updated_by text NOT NULL CHECK (char_length(updated_by) BETWEEN 1 AND 128),
+  CONSTRAINT supplier_contacts_id_installation_unique UNIQUE (installation_id, id),
+  CONSTRAINT supplier_contacts_supplier_installation_fk
+    FOREIGN KEY (installation_id, supplier_id)
+    REFERENCES shared.suppliers (installation_id, id)
+    ON UPDATE RESTRICT
+    ON DELETE RESTRICT
 );
 
-CREATE INDEX IF NOT EXISTS idx_supplier_contacts_supplier_id ON shared.supplier_contacts(supplier_id);
+CREATE INDEX IF NOT EXISTS supplier_contacts_supplier_idx
+  ON shared.supplier_contacts (installation_id, supplier_id, is_active, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS supplier_contacts_one_active_primary_idx
+  ON shared.supplier_contacts (installation_id, supplier_id)
+  WHERE is_primary = true AND is_active = true;
 
--- Create supplier addresses table
 CREATE TABLE IF NOT EXISTS shared.supplier_addresses (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  supplier_id UUID NOT NULL REFERENCES shared.suppliers(id) ON DELETE CASCADE,
-  address_type VARCHAR(50) NOT NULL DEFAULT 'billing',
-  street_address VARCHAR(255) NOT NULL,
-  city VARCHAR(100),
-  province VARCHAR(100),
-  postal_code VARCHAR(20),
-  country VARCHAR(100) DEFAULT 'Vietnam',
-  is_primary BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT supplier_addresses_unique_primary UNIQUE (supplier_id, address_type, is_primary) WHERE is_primary = TRUE
+  id uuid NOT NULL PRIMARY KEY,
+  installation_id text NOT NULL CHECK (char_length(installation_id) BETWEEN 1 AND 128),
+  supplier_id uuid NOT NULL,
+  address_type text NOT NULL DEFAULT 'business' CHECK (char_length(btrim(address_type)) BETWEEN 1 AND 50),
+  street text NOT NULL CHECK (char_length(btrim(street)) BETWEEN 1 AND 512),
+  city text NULL CHECK (city IS NULL OR char_length(city) <= 128),
+  province text NULL CHECK (province IS NULL OR char_length(province) <= 128),
+  postal_code text NULL CHECK (postal_code IS NULL OR char_length(postal_code) <= 32),
+  country text NOT NULL DEFAULT 'Việt Nam' CHECK (char_length(btrim(country)) BETWEEN 1 AND 128),
+  is_primary boolean NOT NULL DEFAULT false,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  created_by text NOT NULL CHECK (char_length(created_by) BETWEEN 1 AND 128),
+  updated_by text NOT NULL CHECK (char_length(updated_by) BETWEEN 1 AND 128),
+  CONSTRAINT supplier_addresses_id_installation_unique UNIQUE (installation_id, id),
+  CONSTRAINT supplier_addresses_supplier_installation_fk
+    FOREIGN KEY (installation_id, supplier_id)
+    REFERENCES shared.suppliers (installation_id, id)
+    ON UPDATE RESTRICT
+    ON DELETE RESTRICT
 );
 
-CREATE INDEX IF NOT EXISTS idx_supplier_addresses_supplier_id ON shared.supplier_addresses(supplier_id);
+CREATE INDEX IF NOT EXISTS supplier_addresses_supplier_idx
+  ON shared.supplier_addresses (installation_id, supplier_id, is_active, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS supplier_addresses_one_active_primary_idx
+  ON shared.supplier_addresses (installation_id, supplier_id)
+  WHERE is_primary = true AND is_active = true;
 
--- Create supplier payment terms table
 CREATE TABLE IF NOT EXISTS shared.supplier_payment_terms (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  supplier_id UUID NOT NULL REFERENCES shared.suppliers(id) ON DELETE CASCADE,
-  payment_method VARCHAR(50) NOT NULL,
-  term_days INTEGER,
-  description VARCHAR(500),
-  is_primary BOOLEAN NOT NULL DEFAULT FALSE,
-  is_active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT supplier_payment_terms_unique_primary UNIQUE (supplier_id, is_primary) WHERE is_primary = TRUE
+  id uuid NOT NULL PRIMARY KEY,
+  installation_id text NOT NULL CHECK (char_length(installation_id) BETWEEN 1 AND 128),
+  supplier_id uuid NOT NULL,
+  payment_method text NOT NULL CHECK (char_length(btrim(payment_method)) BETWEEN 1 AND 64),
+  term_days integer NULL CHECK (term_days IS NULL OR term_days BETWEEN 0 AND 3650),
+  description text NULL CHECK (description IS NULL OR char_length(description) <= 1000),
+  is_primary boolean NOT NULL DEFAULT false,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  created_by text NOT NULL CHECK (char_length(created_by) BETWEEN 1 AND 128),
+  updated_by text NOT NULL CHECK (char_length(updated_by) BETWEEN 1 AND 128),
+  CONSTRAINT supplier_payment_terms_id_installation_unique UNIQUE (installation_id, id),
+  CONSTRAINT supplier_payment_terms_supplier_installation_fk
+    FOREIGN KEY (installation_id, supplier_id)
+    REFERENCES shared.suppliers (installation_id, id)
+    ON UPDATE RESTRICT
+    ON DELETE RESTRICT
 );
 
-CREATE INDEX IF NOT EXISTS idx_supplier_payment_terms_supplier_id ON shared.supplier_payment_terms(supplier_id);
-
--- Create supplier audit table for audit trail
-CREATE TABLE IF NOT EXISTS shared.supplier_audit_log (
-  audit_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  installation_id VARCHAR(128) NOT NULL,
-  action VARCHAR(50) NOT NULL,
-  resource_type VARCHAR(50) NOT NULL DEFAULT 'supplier',
-  resource_id UUID,
-  actor_id VARCHAR(128),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  metadata JSONB
-);
-
-CREATE INDEX IF NOT EXISTS idx_supplier_audit_log_resource_id ON shared.supplier_audit_log(resource_id);
-CREATE INDEX IF NOT EXISTS idx_supplier_audit_log_created_at ON shared.supplier_audit_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS supplier_payment_terms_supplier_idx
+  ON shared.supplier_payment_terms (installation_id, supplier_id, is_active, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS supplier_payment_terms_one_active_primary_idx
+  ON shared.supplier_payment_terms (installation_id, supplier_id)
+  WHERE is_primary = true AND is_active = true;
