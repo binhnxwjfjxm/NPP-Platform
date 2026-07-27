@@ -1,0 +1,229 @@
+.workspace {
+  display: grid;
+  gap: 1rem;
+}
+
+.toolbar,
+.sectionHeader,
+.formHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.tab,
+.tabActive,
+.primaryButton,
+.secondaryButton,
+.rowActions button,
+.formHeader button,
+.variantPanel button {
+  border: 1px solid rgba(15, 23, 42, .16);
+  border-radius: .65rem;
+  background: #fff;
+  color: #172033;
+  cursor: pointer;
+  font: inherit;
+  padding: .58rem .8rem;
+}
+
+.tabActive,
+.primaryButton {
+  background: #172033;
+  color: #fff;
+  border-color: #172033;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.rowActions button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.sectionHeader h2,
+.sectionHeader h3,
+.formHeader h3 {
+  margin: 0;
+}
+
+.sectionHeader p,
+.variantPanel p {
+  color: #64748b;
+  margin: .3rem 0 0;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: minmax(16rem, 2fr) repeat(3, minmax(10rem, 1fr));
+  gap: .7rem;
+  margin: 1rem 0;
+}
+
+.filters input,
+.filters select,
+.formGrid input,
+.formGrid select,
+.formGrid textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: .62rem;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  padding: .68rem .72rem;
+}
+
+.formGrid textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.formPanel,
+.variantPanel {
+  border: 1px solid #dbe4ef;
+  border-radius: .9rem;
+  background: #f8fafc;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.variantPanel {
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, .06);
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .8rem;
+  margin: .85rem 0;
+}
+
+.formGrid label {
+  display: grid;
+  gap: .35rem;
+  color: #334155;
+  font-size: .9rem;
+  font-weight: 600;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .85rem 1.2rem;
+  margin: .75rem 0 1rem;
+}
+
+.checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  color: #334155;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: .8rem;
+  background: #fff;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 850px;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid #edf2f7;
+  padding: .72rem .8rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.table th {
+  background: #f8fafc;
+  color: #475569;
+  font-size: .78rem;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.table tbody tr:hover {
+  background: #fbfdff;
+}
+
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  min-width: 12rem;
+}
+
+.rowActions button {
+  padding: .38rem .55rem;
+  font-size: .84rem;
+}
+
+.errorBanner,
+.noticeBanner {
+  border-radius: .72rem;
+  padding: .75rem .9rem;
+}
+
+.errorBanner {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.noticeBanner {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
+.empty {
+  color: #64748b;
+  text-align: center !important;
+  padding: 2rem !important;
+}
+
+@media (max-width: 980px) {
+  .filters,
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .wide {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .toolbar,
+  .sectionHeader,
+  .formHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tabs {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}

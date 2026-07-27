@@ -16,6 +16,8 @@ export const PERMISSIONS = Object.freeze({
   coreCustomerWrite: 'core.customer.write',
   coreSupplierRead: 'core.supplier.read',
   coreSupplierWrite: 'core.supplier.write',
+  coreProductRead: 'core.product.read',
+  coreProductWrite: 'core.product.write',
   coreEmployeeRead: 'core.employee.read',
   coreEmployeeWrite: 'core.employee.write',
   coreUserRead: 'core.user.read',
@@ -147,6 +149,20 @@ export const PERMISSION_CATALOG = Object.freeze([
     isSystem: true,
   }),
   Object.freeze({
+    permissionKey: PERMISSIONS.coreProductRead,
+    module: 'Sản phẩm',
+    label: 'Xem danh mục sản phẩm',
+    description: 'Cho phép đọc danh mục, thương hiệu, sản phẩm và SKU.',
+    isSystem: true,
+  }),
+  Object.freeze({
+    permissionKey: PERMISSIONS.coreProductWrite,
+    module: 'Sản phẩm',
+    label: 'Quản lý danh mục sản phẩm',
+    description: 'Cho phép tạo, cập nhật, nhập và thay đổi trạng thái danh mục sản phẩm.',
+    isSystem: true,
+  }),
+  Object.freeze({
     permissionKey: PERMISSIONS.coreEmployeeRead,
     module: 'Nhân sự',
     label: 'Xem nhân sự',
@@ -220,4 +236,3 @@ export function createPermissionCatalogRows(occurredAt = new Date().toISOString(
     created_at: occurredAt,
   }));
 }
-

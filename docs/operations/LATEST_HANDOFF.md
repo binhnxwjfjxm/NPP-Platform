@@ -1,7 +1,7 @@
 # NPP Platform — Latest Handoff
 
 > Updated: 2026-07-27  
-> Current checkpoint: Phase 3 master data is in progress. Phase 3.3A customer and Phase 3.3B supplier application code are complete on `main`/PR verification paths; the grouped production Core backend/database rollout remains intentionally deferred.
+> Current checkpoint: Phase 3 master data is in progress. Phase 3.3A customer and Phase 3.3B supplier are complete on `main`; Phase 3.3C product catalog foundation is verified in PR #47 and pending merge. The grouped production Core backend/database rollout remains intentionally deferred.
 
 ## Production status
 
@@ -23,8 +23,10 @@ Important separation:
 - Phase 3.3A frontend is deployed to Vercel.
 - Migration `010_customer_master_data` is not applied to production.
 - Migration `011_supplier_master_data` is not applied to production.
-- Phase 3.3A/3.3B Core API code is not deployed to production Heroku.
-- Do not claim customer or supplier production APIs are live until the grouped Phase 3 backend/database rollout is completed and verified.
+- Migration `012_product_catalog_foundation` is not applied to production.
+- Phase 3.3A/3.3B/3.3C Core API code is not deployed to production Heroku.
+- The `/products` source route is not claimed as deployed to production Vercel.
+- Do not claim customer, supplier or product production APIs are live until the grouped Phase 3 backend/database rollout is completed and verified.
 
 ## Delivered and productionized foundations
 
@@ -82,7 +84,7 @@ Frontend production deployment is complete. Backend/database production rollout 
 
 ## Phase 3.3B — Suppliers
 
-Implementation is complete and verified in PR #46.
+Implementation is complete and merged by PR #46.
 
 Delivered in source:
 
@@ -105,11 +107,43 @@ Dedicated contact/address/payment-term admin subforms are not shown on the curre
 
 Production migration `011` and supplier Core API deployment remain deferred with the larger Phase 3 rollout.
 
-See:
+See `docs/operations/supplier-master-data-slice.md`.
 
-```text
-docs/operations/supplier-master-data-slice.md
-```
+## Phase 3.3C — Product catalog foundation
+
+Implementation is verified in PR #47 and pending merge.
+
+Delivered in source:
+
+- migration `012_product_catalog_foundation`;
+- installation-scoped product categories with guarded hierarchy;
+- product brands;
+- canonical products;
+- product variants with immutable installation-scoped SKUs;
+- explicit active, catalog-visible, sellable, inventory-base and orderable states;
+- one active inventory-base variant per product;
+- product orderability requires an active sellable SKU;
+- product/category/brand/variant lifecycle without hard delete or cascade delete;
+- permissions `core.product.read` and `core.product.write`;
+- idempotent POST, optimistic-concurrency PATCH and sanitized failures;
+- normalized JSON import capped at 500 products, atomic and idempotent;
+- import identity resolution by canonical UUID or installation-scoped product code/SKU without silent remapping;
+- transactional shared audit records;
+- complete Core API and same-origin web gateway contracts;
+- canonical Vietnamese `/products` administration workspace;
+- `/organization/products` redirects to `/products`;
+- Basic Auth protects product pages and proxy routes;
+- PostgreSQL service/API tests, duplicate race coverage, migration rehearsal, Core web verification and Chromium E2E.
+
+The following remain intentionally excluded:
+
+- units, conversions and barcodes;
+- price lists and channel price resolution;
+- product media/R2;
+- inventory, purchasing and sales transactions;
+- production migration or deployment.
+
+See `docs/operations/product-catalog-foundation-slice.md`.
 
 ## Product and pricing source files
 
@@ -123,11 +157,7 @@ Their roles are different:
 - the canonical workbook supplies detailed retail/carton SKU relationships, carton conversion and price columns where available;
 - the normalized venue-channel workbook supplies standardized naming, grouping and filtering for Core admin order entry and the future customer self-ordering catalog.
 
-Locked decisions are documented in:
-
-```text
-docs/operations/product-catalog-pricing-decisions.md
-```
+Locked decisions are documented in `docs/operations/product-catalog-pricing-decisions.md`.
 
 Key rules:
 
@@ -144,16 +174,16 @@ Key rules:
 
 ```text
 3.3A customers/customer groups/addresses       SOURCE COMPLETE; frontend deployed; backend/DB deferred
-3.3B suppliers/contacts/addresses/terms         VERIFIED IN PR #46; backend/DB deferred
-3.3C products/variants/SKUs/categories/brands  NEXT
-3.3D units/conversions/barcodes                 PLANNED
+3.3B suppliers/contacts/addresses/terms         MERGED PR #46; backend/DB deferred
+3.3C products/variants/SKUs/categories/brands  VERIFIED PR #47; merge pending; backend/DB deferred
+3.3D units/conversions/barcodes                 NEXT
 3.3E price lists/channel price resolution       PLANNED
 3.3F document numbering                         PLANNED
 ```
 
 Do not start inventory ledger, purchasing transactions, sales transactions or MCP cutover before the Phase 3 master-data gate is closed.
 
-## Next task — Phase 3.3C products
+## Next task — Phase 3.3D units, conversions and barcodes
 
 Before coding, read:
 
@@ -161,9 +191,24 @@ Before coding, read:
 NPP_PLATFORM_MASTER_PLAN.md
 docs/operations/LATEST_HANDOFF.md
 docs/operations/product-catalog-pricing-decisions.md
+docs/operations/product-catalog-foundation-slice.md
 ```
 
-Use the two committed workbooks as business source material. Preserve canonical product identity, smallest-unit inventory, product-specific carton conversion, separate retail/carton SKUs, channel price separation and future R2 media mapping.
+Phase 3.3D is numerically sensitive and must be implemented directly by ChatGPT/Codex rather than delegated as rough Copilot code.
+
+Required business rules:
+
+- the inventory source of truth is the smallest inventory unit;
+- each product has its own retail/carton conversion quantity;
+- explicit retail and carton SKUs from the source workbook are authoritative;
+- do not generate a `T` suffix when an explicit carton SKU exists;
+- each sell unit may have its own barcode;
+- SKU and barcode uniqueness are installation scoped;
+- conversion quantity must be positive and cannot be assumed globally by category or unit name;
+- transaction normalization and historical snapshot rules must be testable before inventory or pricing work begins;
+- the two committed workbooks must be reconciled, with ambiguous mappings reported rather than silently guessed.
+
+Phase 3.3D must not implement prices. Price lists and channel price resolution remain Phase 3.3E.
 
 ## Phase 3 grouped backend/database rollout
 
@@ -188,8 +233,9 @@ Never reuse historical backup/restore evidence for this rollout.
 - Read `NPP_PLATFORM_MASTER_PLAN.md` first and this handoff second.
 - Check actual `main`, open PRs/branches and latest CI before acting.
 - Branch from `main` as `agent/<task>`.
-- Copilot may write the rough slice and push the feature branch.
+- Copilot may write rough CRUD scaffolding only when the domain is not numerically sensitive.
 - ChatGPT/Codex reviews the actual diff, fixes defects and runs CI.
+- Numerically sensitive unit, conversion, pricing, inventory and accounting logic is implemented directly by ChatGPT/Codex.
 - CI must be green before merge.
 - Verify `mcp/**` changes equal zero for Core-only tasks.
 - Merge only after clean review and green checks, then verify `main` and delete the branch.
