@@ -174,7 +174,7 @@ test('Customer service — stale updates and inactive relation assignments are r
 });
 
 test('Customer API — idempotent create writes one customer and one audit record', async () => {
-  const config = loadConfig(testEnv({ PORT: '3022' }));
+  const config = loadConfig(testEnv({ PORT: '3031' }));
   const pool = getPool(config);
   let server;
   try {
@@ -182,7 +182,7 @@ test('Customer API — idempotent create writes one customer and one audit recor
     const suffix = randomUUID().slice(0, 8).toUpperCase();
     const key = `customer-${randomUUID()}`;
     const payload = { code: `KH-${suffix}`, name: 'Khách hàng qua API', paymentTermsDays: 15, creditLimit: '1000000' };
-    const request = () => fetch('http://127.0.0.1:3022/api/customers', {
+    const request = () => fetch('http://127.0.0.1:3031/api/customers', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${config.backendApiToken}`,
@@ -192,7 +192,7 @@ test('Customer API — idempotent create writes one customer and one audit recor
       body: JSON.stringify(payload),
     });
 
-    const unauthorized = await fetch('http://127.0.0.1:3022/api/customers');
+    const unauthorized = await fetch('http://127.0.0.1:3031/api/customers');
     assert.equal(unauthorized.status, 401);
 
     const firstResponse = await request();
@@ -217,7 +217,7 @@ test('Customer API — idempotent create writes one customer and one audit recor
     );
     assert.equal(auditCount.rows[0].count, 1);
 
-    const deleteResponse = await fetch(`http://127.0.0.1:3022/api/customers/${firstBody.data.id}`, {
+    const deleteResponse = await fetch(`http://127.0.0.1:3031/api/customers/${firstBody.data.id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${config.backendApiToken}` },
     });
