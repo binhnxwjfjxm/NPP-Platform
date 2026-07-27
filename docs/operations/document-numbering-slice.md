@@ -1,33 +1,41 @@
 # Phase 3.3F — Document numbering
 
-> Status: verified in PR #53 at `45c885725c8ca874786c141047ce55410c474884`  
+> Source status: implemented and under final closeout validation in PR #53  
+> Evidence rule: every acceptance artifact records the exact PR head SHA  
 > Production deployment: excluded and intentionally deferred
 
 ## Purpose
 
-Provide installation-scoped, concurrency-safe, idempotent number allocation without creating or posting any business document.
+Provide installation-scoped, concurrency-safe and idempotent number allocation without creating or posting any business document.
 
 The slice owns number-series configuration, period counters and immutable allocation history. Sales, purchasing, inventory and accounting domains will call this allocator later and snapshot the returned number on their own documents.
 
+## Delivered migrations
+
+- `015_document_numbering` creates permissions, number-series configuration, period counters and append-only allocation history.
+- `016_permission_catalog_alignment` is a forward-only closeout migration that reconciles canonical permission metadata found drifting during migration verification. Previously applied migrations are not rewritten.
+
+Production migrations `010` through `016` remain pending for the separately authorized grouped rollout.
+
 ## Locked business decisions
 
-- Number-series codes and document types are administrator-managed data, not hardcoded business prices or document numbers.
+- Number-series codes and document types are administrator-managed data.
 - A series is selected explicitly by ID; document type alone never silently chooses a series.
 - Supported reset policies are `NONE`, `YEARLY` and `MONTHLY`.
-- Counter state is stored separately per reset period:
-  - `NONE` uses period key `ALL`;
+- Counter state is separated by period:
+  - `NONE` uses `ALL`;
   - `YEARLY` uses `YYYY`;
   - `MONTHLY` uses `YYYY-MM`.
-- Backdated allocation uses the supplied document date and its own period counter. It cannot reset or corrupt another period.
-- Allocation is serialized with a PostgreSQL row lock on the exact series/period counter.
-- The same installation + series + idempotency key always returns the same immutable allocation and never consumes another counter.
-- Reusing an idempotency key with a different document date or metadata is rejected.
-- Document numbers are unique across one installation.
-- Allocation history is append-only at both API and PostgreSQL trigger levels.
-- Once a series has any allocation, its identity and formatting fields are immutable. To change prefix, template, reset policy, width or start counter, create a new series and deactivate the old one.
-- Name, description and active state may still be updated with optimistic concurrency.
+- Backdated allocation uses the supplied document date and cannot reset another period.
+- Allocation is serialized with PostgreSQL row locks on the exact series and period counter.
+- The same installation + series + idempotency key returns the same immutable allocation.
+- Reusing an idempotency key with a different date or metadata is rejected.
+- Replay transactions must be read-only and cannot hide business writes without audit.
+- Allocation history is append-only at API and PostgreSQL-trigger levels.
+- Once a series has an allocation, identity and formatting fields are immutable. A new format requires a new series.
+- Name, description and active state remain editable with optimistic concurrency.
 - Inactive series cannot allocate new numbers.
-- No transaction posting, inventory movement, receivable/payable entry or invoice generation is included.
+- No sales, purchasing, inventory, receivable, payable or accounting posting is included.
 
 ## Template contract
 
@@ -43,13 +51,15 @@ Supported tokens:
 
 Rules:
 
-- `{SEQ}` must appear exactly once;
-- unsupported braces/tokens are rejected;
+- `{SEQ}` appears exactly once;
+- unsupported braces and tokens are rejected;
 - literals are limited to uppercase ASCII letters, digits, `.`, `_`, `/` and `-`;
-- prefix is stored separately and inserted by `{PREFIX}`;
-- sequence is zero-padded to `sequence_width`;
-- rendered output must fit 160 characters;
-- the counter must fit the configured width; overflow is rejected without advancing the counter.
+- sequence values are zero-padded to `sequence_width`;
+- rendered output is limited to 160 characters;
+- `YEARLY` requires `{YYYY}` or `{YY}`;
+- `MONTHLY` requires `{MM}` and a year token;
+- reset/template compatibility is enforced by both service validation and a database constraint;
+- `start_counter` must leave room for the next counter value and is enforced by both service and database constraints.
 
 Example:
 
@@ -64,40 +74,23 @@ result: SO-202607-000001
 
 ### `shared.document_number_series`
 
-Stores installation-scoped configuration:
-
-- immutable `code` and `document_type`;
-- `name`, description and active state;
-- prefix and number template;
-- reset policy;
-- sequence width and start counter;
-- timezone metadata for future date-context expansion;
-- actor and timestamps.
+Stores installation-scoped identity, format, reset policy, lifecycle, concurrency timestamp and actor metadata.
 
 ### `shared.document_number_counters`
 
-Stores one mutable counter row per installation + series + period key. This is internal allocator state and is not a historical document.
+Stores one mutable counter per installation + series + period. This is allocator state, not a business document.
 
 ### `shared.document_number_allocations`
 
-Append-only allocation history:
-
-- series;
-- idempotency key;
-- document date and period;
-- counter value and rendered document number;
-- actor, request ID, source app and metadata;
-- immutable allocation timestamp.
+Stores append-only history containing series, idempotency key, document date, period, counter, rendered number, actor, request, source app, metadata and timestamp.
 
 Unique constraints protect:
 
 - one allocation per idempotency key in a series;
-- one counter value per series/period;
-- one rendered document number per installation.
+- one counter value per series and period;
+- one rendered number per installation.
 
 ## API contract
-
-Series:
 
 ```text
 GET    /api/document-number-series
@@ -117,85 +110,60 @@ documentDate: YYYY-MM-DD
 metadata?: JSON object
 ```
 
-Allocation response includes:
-
-```text
-allocationId
-seriesId
-seriesCode
-documentType
-documentDate
-periodKey
-counterValue
-documentNumber
-allocatedAt
-replayed
-```
-
-The HTTP idempotency store and the domain allocation table both protect retries. Domain idempotency remains effective even after an HTTP replay record is no longer available.
+The HTTP idempotency store and domain allocation table both protect retries. Domain replay remains effective after an HTTP replay record is unavailable.
 
 ## Authorization and audit
 
 - reads require `core.document-number.read`;
-- configuration mutations and allocation require `core.document-number.write`;
-- all queries are installation scoped;
-- successful series changes and first-time allocations write shared transactional audit records;
-- a replay returns the immutable allocation without consuming a counter or writing a duplicate audit record;
-- no hard delete or cascade delete;
+- configuration mutation and allocation require `core.document-number.write`;
+- every query is installation scoped;
+- first-time series changes and allocations write shared transactional audit records;
+- replay returns the original allocation without consuming a counter or creating duplicate audit;
+- replay is rejected if any hidden business write occurs in its transaction;
 - public errors are sanitized;
-- browser traffic uses same-origin server-only gateways.
+- browser traffic uses same-origin server-only gateways protected by Basic Auth.
 
 ## Administration UI
 
-Canonical page: `/document-numbering` with Vietnamese label `Số chứng từ`.
+Canonical route: `/document-numbering`, labelled `Số chứng từ` in the AppShell navigation.
 
-The page supports:
+The workspace supports:
 
 - list and filter series;
-- create a series with document type, prefix, template, reset policy, width and start counter;
-- edit allowed metadata and activate/deactivate a series;
-- display whether the format is locked by allocation history;
-- issue an explicitly labelled test allocation with a document date and idempotency key;
-- show immutable recent allocation history;
-- explain that business documents are not created by this screen.
+- create and edit allowed configuration;
+- activate or deactivate a series;
+- show format-lock state;
+- explicitly labelled test allocation;
+- immutable allocation history;
+- clear notice that this screen does not create business documents.
 
-## Verification result
+## Required verification
 
-Verified head `45c885725c8ca874786c141047ce55410c474884` passed:
+The exact final PR head must pass:
 
-- migration apply/rerun/verify and migration rehearsal;
-- installation isolation;
-- template validation and deterministic rendering;
-- no-reset, yearly and monthly period behavior;
-- backdated allocation isolation;
-- 24 parallel allocations with unique, gap-free successful counters;
-- same-key replay returns the same number without consuming another counter;
-- changed replay payload is rejected;
+- migration apply, rerun and verification for `002` through `016`;
+- direct database constraint tests;
+- template syntax and reset/template compatibility;
+- NONE, YEARLY and MONTHLY behavior;
+- backdated period isolation;
+- 24 parallel unique and gap-free successful allocations;
+- HTTP and domain replay;
+- replay payload mismatch;
+- read-only replay enforcement;
 - inactive-series guard;
-- sequence-width overflow rolls back without counter advancement;
-- format lock after first allocation;
-- immutable allocation history enforced by PostgreSQL trigger;
-- transactional audit and deny-by-default permissions;
-- Foundation F0.2;
-- Core API verification, Core web typecheck/tests/build and Heroku process contract;
-- Chromium E2E against PostgreSQL and Core API;
+- sequence-width overflow rollback;
+- format lock and immutable history;
+- installation isolation, permission and audit;
+- Core API verification and Core web build;
+- isolated Chromium flow;
+- Foundation F0.2 and general Core browser regression;
 - `mcp/** = 0`;
-- no temporary payload, marker or diagnostic file remains in the final diff.
+- no temporary wrapper or diagnostic file in the final diff.
 
-## Phase 3 closeout test requirement
+The dedicated `Phase 3 Document Numbering` workflow retains migration logs, API logs, acceptance metadata, Playwright reports and test results.
 
-After Phase 3.3F merges, Phase 3 must not be treated as rollout-ready from one combined green check alone. The rehearsal and acceptance plan must split validation into these independent packs:
+## Phase 3 closeout boundary
 
-1. customers;
-2. suppliers;
-3. product catalog;
-4. units, conversions and barcodes;
-5. **pricing — mandatory isolated financial test pack and owner review**;
-6. document numbering;
-7. cross-domain integration and grouped migration rollout.
+A green numbering pack is necessary but does not close Phase 3 alone. Packs 1–8 in `docs/operations/phase-3-validation-plan.md` must pass independently.
 
-The pricing pack runs independently from general master-data tests and covers workbook reconciliation, retail/carton independence, channel/group/customer/promotion precedence, quantity/effective-date rules, stacking, manual overrides, integer-money rounding and blocked ambiguous rows.
-
-The dedicated `Phase 3 Pricing Financial` workflow passed migration-through-pricing setup, isolated pricing API/workbook audit, pricing web build and isolated pricing Chromium flow on the verified head.
-
-Merge is not production deployment. Migrations `010` through `015`, source imports and backend/frontend production deployments remain pending for the controlled Phase 3 rollout.
+Merge is not deployment. Production still requires actual provider audit, a fresh verified backup, restore rehearsal, reconciliation, separately authorized migrations and manual backend/frontend deployment verification.
