@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REQUEST_TIMEOUT_MS = 8_000;
-const ALLOWED_QUERY_KEYS = new Set(['active', 'limit', 'offset']);
+const ALLOWED_QUERY_KEYS = new Set(['active', 'limit', 'offset', 'search', 'groupId']);
 
 interface CoreEnvelope<T> {
   data?: T;
@@ -74,30 +74,47 @@ function coreApiBaseUrl(): string {
 function safeQuery(searchParams: URLSearchParams): string {
   const next = new URLSearchParams();
   for (const [key, value] of searchParams.entries()) {
-    if (!ALLOWED_QUERY_KEYS.has(key) || value.length > 128) continue;
+    if (!ALLOWED_QUERY_KEYS.has(key) || value.length > 256) continue;
     next.append(key, value);
   }
   const serialized = next.toString();
   return serialized ? `?${serialized}` : '';
 }
 
-function customerPath(id?: string): string {
-  if (id !== undefined && !UUID_PATTERN.test(id)) {
-    throw new CustomerGatewayError('INVALID_CUSTOMER_ID', 'Mã khách hàng không hợp lệ', 400, false);
+function assertUuid(value: string, code: string, message: string): string {
+  const normalized = value.trim();
+  if (!UUID_PATTERN.test(normalized)) {
+    throw new CustomerGatewayError(code, message, 400, false);
   }
-  return `/api/customers${id ? `/${id}` : ''}`;
+  return normalized;
+}
+
+function customerPath(id?: string): string {
+  return `/api/customers${id ? `/${assertUuid(id, 'INVALID_CUSTOMER_ID', 'Mã khách hàng không hợp lệ')}` : ''}`;
+}
+
+function groupPath(id?: string): string {
+  return `/api/customer-groups${id ? `/${assertUuid(id, 'INVALID_CUSTOMER_GROUP_ID', 'Mã nhóm khách hàng không hợp lệ')}` : ''}`;
+}
+
+function addressPath(customerId: string, addressId?: string): string {
+  const customer = assertUuid(customerId, 'INVALID_CUSTOMER_ID', 'Mã khách hàng không hợp lệ');
+  const address = addressId
+    ? `/${assertUuid(addressId, 'INVALID_CUSTOMER_ADDRESS_ID', 'Mã địa chỉ không hợp lệ')}`
+    : '';
+  return `/api/customers/${customer}/addresses${address}`;
 }
 
 async function requestCore<T>({
   method,
-  id,
+  path,
   requestId,
   searchParams,
   body,
   idempotencyKey,
 }: {
   method: 'GET' | 'POST' | 'PATCH';
-  id?: string;
+  path: string;
   requestId: string;
   searchParams?: URLSearchParams;
   body?: unknown;
@@ -106,8 +123,8 @@ async function requestCore<T>({
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const path = `${customerPath(id)}${searchParams ? safeQuery(searchParams) : ''}`;
-    const response = await fetch(`${coreApiBaseUrl()}${path}`, {
+    const query = searchParams ? safeQuery(searchParams) : '';
+    const response = await fetch(`${coreApiBaseUrl()}${path}${query}`, {
       method,
       cache: 'no-store',
       signal: controller.signal,
@@ -152,17 +169,63 @@ async function requestCore<T>({
 }
 
 export function listAllCustomers<T>(requestId: string, searchParams = new URLSearchParams()): Promise<T[]> {
-  return requestCore<T[]>({ method: 'GET', requestId, searchParams });
+  return requestCore<T[]>({ method: 'GET', path: customerPath(), requestId, searchParams });
 }
 
 export function getCustomer<T>(id: string, requestId: string): Promise<T> {
-  return requestCore<T>({ method: 'GET', id, requestId });
+  return requestCore<T>({ method: 'GET', path: customerPath(id), requestId });
 }
 
 export function createCustomer<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
-  return requestCore<T>({ method: 'POST', requestId, body, idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}` });
+  return requestCore<T>({
+    method: 'POST',
+    path: customerPath(),
+    requestId,
+    body,
+    idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}`,
+  });
 }
 
 export function patchCustomer<T>(id: string, requestId: string, body: unknown): Promise<T> {
-  return requestCore<T>({ method: 'PATCH', id, requestId, body });
+  return requestCore<T>({ method: 'PATCH', path: customerPath(id), requestId, body });
+}
+
+export function listCustomerGroups<T>(requestId: string, searchParams = new URLSearchParams()): Promise<T[]> {
+  return requestCore<T[]>({ method: 'GET', path: groupPath(), requestId, searchParams });
+}
+
+export function getCustomerGroup<T>(id: string, requestId: string): Promise<T> {
+  return requestCore<T>({ method: 'GET', path: groupPath(id), requestId });
+}
+
+export function createCustomerGroup<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    method: 'POST',
+    path: groupPath(),
+    requestId,
+    body,
+    idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}`,
+  });
+}
+
+export function patchCustomerGroup<T>(id: string, requestId: string, body: unknown): Promise<T> {
+  return requestCore<T>({ method: 'PATCH', path: groupPath(id), requestId, body });
+}
+
+export function listCustomerAddresses<T>(customerId: string, requestId: string): Promise<T[]> {
+  return requestCore<T[]>({ method: 'GET', path: addressPath(customerId), requestId });
+}
+
+export function createCustomerAddress<T>(customerId: string, requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    method: 'POST',
+    path: addressPath(customerId),
+    requestId,
+    body,
+    idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}`,
+  });
+}
+
+export function patchCustomerAddress<T>(customerId: string, addressId: string, requestId: string, body: unknown): Promise<T> {
+  return requestCore<T>({ method: 'PATCH', path: addressPath(customerId, addressId), requestId, body });
 }
