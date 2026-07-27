@@ -9,6 +9,18 @@
   margin-top: 1.25rem;
 }
 
+.detachedUnitWorkspace {
+  width: calc(100% - 280px);
+  margin-left: 280px;
+  padding: 0 28px 32px;
+  transition: width 180ms ease, margin-left 180ms ease;
+}
+
+:global([data-collapsed='true']) + .detachedUnitWorkspace {
+  width: calc(100% - 84px);
+  margin-left: 84px;
+}
+
 .header {
   display: flex;
   align-items: flex-start;
@@ -262,6 +274,15 @@
   padding: 2rem !important;
 }
 
+@media (max-width: 1080px) {
+  .detachedUnitWorkspace,
+  :global([data-collapsed='true']) + .detachedUnitWorkspace {
+    width: 100%;
+    margin-left: 0;
+    padding: 0 18px 26px;
+  }
+}
+
 @media (max-width: 980px) {
   .filters,
   .formGrid {
@@ -274,6 +295,11 @@
 }
 
 @media (max-width: 640px) {
+  .detachedUnitWorkspace,
+  :global([data-collapsed='true']) + .detachedUnitWorkspace {
+    padding-inline: 12px;
+  }
+
   .header,
   .toolbar,
   .sectionHeader,

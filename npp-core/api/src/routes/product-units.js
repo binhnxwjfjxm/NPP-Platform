@@ -3,6 +3,7 @@ import { sendJson, sendSuccess, sendError } from '../http-utils.js';
 import { readJsonBody, normalizeIdempotencyKey } from '../idempotency.js';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
 import * as service from '../services/product-unit.js';
+import { handlePricingRoutes } from './pricing.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -307,6 +308,8 @@ async function handleImport(req, res, context, pathname, method) {
 }
 
 export async function handleProductUnitRoutes(req, res, options) {
+  if (await handlePricingRoutes(req, res, options)) return true;
+
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   const isRoute = pathname === '/api/units'
     || pathname.startsWith('/api/units/')

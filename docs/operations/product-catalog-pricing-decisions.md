@@ -99,12 +99,74 @@ Historical documents must snapshot the selected sell unit, conversion factor and
 
 ## 5. Pricing model
 
-- Retail/base-unit price and carton price are stored separately.
+### 5.1 Base prices
+
+- Price belongs to an exact product variant/SKU sell unit, never only to the parent product.
+- The ordinary retail price is the default/base price for the retail SKU. It is editable data, not a fixed constant in code.
+- The carton SKU has its own independent base price.
 - Carton price is not required to equal retail price multiplied by conversion quantity.
-- Prices are resolved by sell unit and channel/price list.
-- Venue-channel pricing from the normalized workbook must be represented as a dedicated channel or price list, not written directly onto the product row.
-- Future price lists may include retail, wholesale, venue, member or other channels.
-- Historical order lines must snapshot resolved unit price, sell unit and conversion factor.
+- Changing a retail or carton price creates/updates price-list data and does not require an application deploy.
+
+### 5.2 Pricing scopes
+
+The engine supports these data-driven price-list types:
+
+- base/default price;
+- channel price;
+- customer-group price;
+- customer-specific price;
+- promotion;
+- custom administrator- or code-created policy.
+
+Venue-channel pricing from the normalized workbook is represented as a dedicated channel/list, not written onto the product row.
+
+### 5.3 Priority and stacking
+
+Each list has:
+
+- editable numeric priority;
+- effective from/to;
+- active/inactive state;
+- `EXCLUSIVE` or `STACKABLE` processing;
+- optional stop-processing behavior;
+- optional channel, customer-group and customer scope.
+
+Resolution starts from the active base fixed price. Matching non-base rules are ordered by priority. At most one exclusive rule is applied; matching stackable rules may apply in order until a rule stops processing.
+
+Manual order-line override has the highest precedence, requires a reason and must be visible in the resolution trace. The future order domain will permission-check and snapshot it.
+
+### 5.4 Supported adjustments
+
+- fixed price;
+- percentage discount;
+- amount discount;
+- percentage markup;
+- amount markup.
+
+Company-specific prices and campaign amounts must never be hardcoded in application logic. Trusted code may create a `CUSTOM` rule or add a new generic rule type, but the actual amount, percentage, priority, date and scope remain stored data.
+
+### 5.5 Exact money arithmetic
+
+- Money is stored as integer minor units. For VND the minor-unit value is the đồng amount.
+- Percentage values are stored as integer basis points.
+- Quantity is fixed-scale decimal.
+- Money calculations use integer/BigInt arithmetic and deterministic rounding, never JavaScript floating point.
+- Discounts cannot produce a negative final unit price.
+
+### 5.6 Historical snapshots
+
+Historical order/document lines must snapshot:
+
+- SKU/variant;
+- selected sell unit;
+- conversion factor;
+- base unit price;
+- applied price-list and item IDs;
+- each adjustment step;
+- manual override and reason when present;
+- final unit price and line total.
+
+Later price-list edits must never rewrite historical documents.
 
 ## 6. Product classification and customer catalog
 
@@ -132,18 +194,18 @@ Rules:
 - one product may support a primary image plus additional gallery images later;
 - missing image must not block product creation or inventory operations.
 
-R2 upload and media management are planned capabilities. They are not part of the immediate raw product-master implementation unless explicitly approved in that slice.
+R2 upload and media management are planned capabilities. They are not part of the immediate pricing implementation.
 
 ## 8. Phase 3 sequencing and deployment strategy
 
 Current sequence:
 
-1. Phase 3.3A customer groups, customers and addresses — application code merged; frontend deployed; production backend and database migration intentionally deferred.
-2. Phase 3.3B suppliers and supplier payment terms.
-3. Product catalog foundation: products, variants/SKUs, categories and brands.
-4. Units, conversions and barcodes.
-5. Price lists and price resolution by channel and sell unit.
-6. Document numbering.
+1. Phase 3.3A customer groups, customers and addresses — merged; frontend deployed; production backend/database deferred.
+2. Phase 3.3B suppliers and supplier payment terms — merged; production backend/database deferred.
+3. Phase 3.3C product catalog foundation — merged; production backend/database deferred.
+4. Phase 3.3D units, conversions and barcodes — merged; production backend/database deferred.
+5. Phase 3.3E price lists and price resolution by channel and sell unit — current.
+6. Phase 3.3F document numbering.
 
 Production backend and database work for these Phase 3 master-data slices is intentionally grouped. Do not deploy each individual backend or migration slice to production.
 
@@ -165,22 +227,20 @@ Vercel frontend deployment remains separate and only through the exact Issue #5 
 
 ## 9. Implementation boundaries
 
-The next supplier slice must not prematurely implement products or pricing.
-
-The later product slice must include data contracts and tests for:
+Phase 3.3E must include data contracts and tests for:
 
 - installation isolation;
-- immutable canonical IDs;
+- immutable canonical codes and IDs;
 - no hard delete;
 - idempotent create and import;
 - optimistic concurrency;
 - deny-by-default permissions;
 - transactional audit and outbox;
-- duplicate SKU and barcode races;
-- unit-conversion validation;
-- base-quantity normalization;
-- price resolution by channel and sell unit;
+- exact money and percentage arithmetic;
+- independent retail/carton price resolution;
+- channel, customer-group, customer, promotion and manual override resolution;
+- priority, stacking, stop-processing, date and quantity-tier behavior;
 - safe server-only gateways;
 - browser E2E using actual local Core API and PostgreSQL.
 
-Do not modify `mcp/**` during Core master-data slices.
+Do not implement sales orders, purchasing transactions, inventory posting, R2 media or `mcp/**` changes in Phase 3.3E.

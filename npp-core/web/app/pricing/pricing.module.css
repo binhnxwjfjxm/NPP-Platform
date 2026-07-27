@@ -1,0 +1,40 @@
+.workspace { display: grid; gap: 1rem; }
+.tabs { display: flex; flex-wrap: wrap; gap: .5rem; }
+.tab, .tabActive, .primaryButton, .secondaryButton, .actions button {
+  border: 1px solid rgba(15, 23, 42, .16); border-radius: .65rem; background: #fff; color: #172033;
+  cursor: pointer; font: inherit; padding: .58rem .8rem;
+}
+.tabActive, .primaryButton { background: #172033; color: #fff; border-color: #172033; }
+.primaryButton:disabled, .secondaryButton:disabled, .actions button:disabled { cursor: not-allowed; opacity: .55; }
+.sectionHeader { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.sectionHeader h2, .result h3 { margin: 0; }
+.sectionHeader p, .hint { color: #64748b; margin: .3rem 0 0; }
+.formPanel { border: 1px solid #dbe4ef; border-radius: .9rem; background: #f8fafc; padding: 1rem; margin: 1rem 0; }
+.formGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; margin-bottom: .85rem; }
+.formGrid label, .listPicker { display: grid; gap: .35rem; color: #334155; font-size: .9rem; font-weight: 600; }
+.formGrid input, .formGrid select, .listPicker select {
+  width: 100%; border: 1px solid #cbd5e1; border-radius: .62rem; background: #fff; color: #0f172a; font: inherit; padding: .68rem .72rem;
+}
+.wide { grid-column: 1 / -1; }
+.check, .checks label { display: inline-flex; align-items: center; gap: .45rem; color: #334155; }
+.checks { display: flex; flex-wrap: wrap; gap: .85rem 1.2rem; margin: .75rem 0 1rem; }
+.listPicker { max-width: 42rem; margin: .8rem 0; }
+.tableWrapper { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: .8rem; background: #fff; }
+.table { width: 100%; border-collapse: collapse; min-width: 880px; }
+.table th, .table td { border-bottom: 1px solid #edf2f7; padding: .72rem .8rem; text-align: left; vertical-align: top; }
+.table th { background: #f8fafc; color: #475569; font-size: .78rem; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
+.table tbody tr:hover { background: #fbfdff; }
+.actions { display: flex; flex-wrap: wrap; gap: .4rem; min-width: 11rem; }
+.actions button { padding: .38rem .55rem; font-size: .84rem; }
+.notice { border: 1px solid #bfdbfe; border-radius: .72rem; background: #eff6ff; color: #1e3a8a; padding: .75rem .9rem; }
+.empty { color: #64748b; text-align: center !important; padding: 2rem !important; }
+.result { border: 1px solid #bbf7d0; border-radius: .9rem; background: #f0fdf4; padding: 1rem; }
+.resultGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; margin-bottom: 1rem; }
+.resultGrid div { display: grid; gap: .2rem; border: 1px solid #dcfce7; border-radius: .7rem; background: #fff; padding: .8rem; }
+.resultGrid span { color: #64748b; font-size: .85rem; }
+.resultGrid strong { font-size: 1.25rem; }
+.trace { display: grid; gap: .55rem; margin: .8rem 0 0; padding-left: 1.5rem; }
+.trace li { border-bottom: 1px solid #dcfce7; padding: .45rem 0; }
+.trace li span { display: block; color: #475569; margin-top: .2rem; }
+@media (max-width: 900px) { .formGrid, .resultGrid { grid-template-columns: 1fr; } .wide { grid-column: auto; } }
+@media (max-width: 640px) { .sectionHeader { align-items: stretch; flex-direction: column; } .tabs { display: grid; grid-template-columns: 1fr; } }

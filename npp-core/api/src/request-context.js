@@ -29,12 +29,7 @@ function normalizePrincipal(principal = {}) {
 }
 
 export function createAnonymousPrincipal() {
-  return normalizePrincipal({
-    actorId: 'system:anonymous',
-    roles: ['anonymous'],
-    permissions: [],
-    sourceApp: 'npp-core-api',
-  });
+  return normalizePrincipal({ actorId: 'system:anonymous', roles: ['anonymous'], permissions: [], sourceApp: 'npp-core-api' });
 }
 
 export function createBootstrapPrincipal(config) {
@@ -61,6 +56,8 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.coreSupplierWrite,
       PERMISSIONS.coreProductRead,
       PERMISSIONS.coreProductWrite,
+      PERMISSIONS.corePriceRead,
+      PERMISSIONS.corePriceWrite,
       PERMISSIONS.coreEmployeeRead,
       PERMISSIONS.coreEmployeeWrite,
       PERMISSIONS.coreUserRead,
@@ -102,17 +99,13 @@ export function createRequestContext({ config, principal = createAnonymousPrinci
 
 export function authenticateRequest(req, config) {
   const candidate = extractBearerToken(req.headers.authorization);
-  if (!candidate || !tokenMatches(candidate, config.backendApiToken)) {
-    return { ok: false, code: 'UNAUTHORIZED', statusCode: 401 };
-  }
+  if (!candidate || !tokenMatches(candidate, config.backendApiToken)) return { ok: false, code: 'UNAUTHORIZED', statusCode: 401 };
   return { ok: true, principal: createBootstrapPrincipal(config) };
 }
 
 export function requirePermission(requestContext, permission) {
   if (!PERMISSION_REGISTRY.has(permission)) return { ok: false, code: 'FORBIDDEN', statusCode: 403 };
-  if (!Array.isArray(requestContext?.permissions) || !requestContext.permissions.includes(permission)) {
-    return { ok: false, code: 'FORBIDDEN', statusCode: 403 };
-  }
+  if (!Array.isArray(requestContext?.permissions) || !requestContext.permissions.includes(permission)) return { ok: false, code: 'FORBIDDEN', statusCode: 403 };
   return { ok: true };
 }
 

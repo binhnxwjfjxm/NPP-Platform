@@ -32,6 +32,13 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* AppShell has a fixed sidebar. Constrain its final main child to the remaining
+   viewport width so long forms cannot create document-level horizontal scroll
+   and slide beneath the sidebar. Mobile sets --sidebar-width to 0px. */
+[data-collapsed] > div:last-child {
+  width: calc(100% - var(--sidebar-width));
+}
+
 a {
   color: inherit;
 }

@@ -117,7 +117,7 @@ export function VariantUnitPanel({ productId, variant, units, onVariantUpdated }
     });
     setNormalization(null); setMessage(null);
     void requestJson<ProductBarcode[]>(`/api/products/${productId}/variants/${variant.id}/barcodes`).then(setBarcodes).catch(() => setBarcodes([]));
-  }, [productId, variant]);
+  }, [productId, variant.id]);
 
   async function saveUnit() {
     setBusy(true); setMessage(null);

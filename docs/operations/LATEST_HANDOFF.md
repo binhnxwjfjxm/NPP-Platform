@@ -1,7 +1,7 @@
 # NPP Platform — Latest Handoff
 
 > Updated: 2026-07-27  
-> Current checkpoint: Phase 3 master data is in progress. Phase 3.3A through Phase 3.3D are merged on `main`. Phase 3.3E price lists/channel resolution is next. The grouped production Core backend/database rollout remains intentionally deferred.
+> Current checkpoint: Phase 3 master data is in progress. Phase 3.3A through Phase 3.3D are merged on `main`; Phase 3.3E pricing is verified in PR #51 and pending merge. The grouped production Core backend/database rollout remains intentionally deferred.
 
 ## Production status
 
@@ -21,10 +21,10 @@ Current production backend release: v19
 Important separation:
 
 - Phase 3.3A frontend is deployed to Vercel.
-- Migrations `010_customer_master_data`, `011_supplier_master_data`, `012_product_catalog_foundation` and `013_product_units_conversions_barcodes` are not applied to production.
-- Phase 3.3A–3.3D Core API code is not deployed to production Heroku.
-- `/products` and its Phase 3.3D UI are not claimed as deployed to production Vercel.
-- Do not claim customer, supplier, product, unit, conversion or barcode production APIs are live until the grouped Phase 3 rollout is completed and verified.
+- Migrations `010_customer_master_data` through `014_price_lists_channel_resolution` are not applied to production.
+- Phase 3.3A–3.3E Core API code is not deployed to production Heroku.
+- `/products`, its Phase 3.3D UI and `/pricing` are not claimed as deployed to production Vercel.
+- Do not claim customer, supplier, product, unit, conversion, barcode or pricing production APIs are live until the grouped Phase 3 rollout is completed and verified.
 
 ## Delivered and productionized foundations
 
@@ -145,19 +145,14 @@ Delivered in source:
 - atomic reviewed unit/conversion import with idempotency and shared transactional audit;
 - same-origin web proxies protected by Basic Auth;
 - `/products` includes unit catalog, SKU conversion, barcode management and quantity preview;
-- product list can refresh inside the unit workspace without page reload;
-- PostgreSQL API/service tests, migration rehearsal, Core web verification and Chromium E2E all passed;
-- `mcp/** = 0` and no temporary workflow/payload remains in the merged diff.
+- PostgreSQL API/service tests, migration rehearsal, Core web verification and Chromium E2E.
 
 Source-data audit:
 
 - 606 canonical base/converted SKU pairs;
-- 606 unique base SKUs and 606 unique converted SKUs;
-- no missing/duplicate SKU pair and all conversion factors are positive integers;
-- 604 rows are clean for controlled rehearsal import;
-- 2 `THÙNG → THÙNG` rows are blocked for business review and preserved separately;
-- all 606 source barcode values equal the explicit converted SKU and are classified as `INTERNAL` rather than inferred EAN/UPC values;
-- 159 rows have missing/zero descriptive net-content metadata;
+- 604 rows clean for controlled rehearsal import;
+- two `THÙNG → THÙNG` rows blocked for business review;
+- no generated carton-SKU assumptions;
 - physical weight differences never define stock conversion.
 
 See:
@@ -168,26 +163,79 @@ docs/operations/product-units-data-audit-2026-07-27.md
 data/imports/product-units-conversions-2026-07-23-review-required.json
 ```
 
-Production migration, data import and backend/frontend deployment remain deferred.
+## Phase 3.3E — Price lists and channel resolution
 
-## Product and pricing source files
+Implementation is verified in PR #51 and pending merge.
 
-Commit `e19b7f8d2b13d3b9f45fd871849980f6e2068fe1` added:
+Verified code head:
 
-- `BANG_GIA_CHUAN_HOA_CAP_NHAT_DS_SP_23.07.26.xlsx`;
-- `BANG_GIA_KENH_QUAN_THEM_NHOM_CHI_TIET.xlsx`.
+```text
+8ef61b69e9c97f42063fbb56ef4ed1f9926b69ad
+```
 
-Locked rules:
+Delivered in source:
 
-- inventory is stored and posted in the smallest inventory unit;
-- conversion is product/SKU-specific;
-- explicit retail and carton SKUs win over generated assumptions;
-- retail/carton prices are independent and belong to sell unit + price list/channel;
-- normalized venue groups support Core admin filtering and the future customer app;
-- future R2 images attach to canonical product/variant IDs;
-- historical transaction lines snapshot sell unit, conversion and resolved price.
+- migration `014_price_lists_channel_resolution`;
+- permissions `core.price.read` and `core.price.write`;
+- installation-scoped sales-channel catalog;
+- price lists for `BASE`, `CHANNEL`, `CUSTOMER_GROUP`, `CUSTOMER`, `PROMOTION` and `CUSTOM` policies;
+- exact price items targeting one canonical product variant/SKU;
+- retail/base SKU and carton SKU prices are independent editable data;
+- fixed-price, percentage/amount discount and percentage/amount markup rules;
+- integer VND minor-unit storage and basis-point percentages;
+- BigInt money arithmetic with deterministic half-up rounding;
+- quantity tiers, effective dates, numeric priority, exclusive/stackable processing and stop-processing;
+- explicit manual override requiring a reason;
+- explainable resolver returning base price, applied/skipped rules, final unit price and line total;
+- source-key idempotent reviewed import for administrator, workbook and trusted-code rules;
+- idempotent POST, optimistic-concurrency PATCH, deny-by-default permission checks and shared transactional audit;
+- server-only same-origin gateways protected by Basic Auth;
+- canonical Vietnamese `/pricing` administration workspace;
+- product/SKU/unit administration remains on `/products`;
+- `/pricing` supports channels, price lists/programs, SKU rules and a price simulator with trace;
+- Core navigation includes `Giá bán & khuyến mãi`;
+- Playwright project `catalog` now runs both `products.spec.ts` and `pricing.spec.ts`;
+- fixed the pre-existing product-unit UI race and detached-workspace sidebar overlap exposed by the newly active browser coverage;
+- Foundation F0.2, migration apply/rerun, PostgreSQL API/service tests, source workbook audit, Core web typecheck/tests/build, Heroku process contract, migration rehearsal and Chromium E2E all passed;
+- `mcp/** = 0` and no temporary diagnostic workflow remains in the final diff.
 
-See `docs/operations/product-catalog-pricing-decisions.md`.
+Locked pricing behavior:
+
+- ordinary retail price is the editable base price for the exact retail SKU, not a code constant;
+- carton price is independently maintained on the carton SKU and is never derived from retail price × conversion;
+- channel, customer-group, customer-specific, promotion and custom policies are stored as data;
+- trusted code may create a generic/custom rule through the same API, but company-specific amounts, rates, dates and priority are not hardcoded;
+- manual override has highest precedence and requires a reason;
+- future document lines must snapshot SKU, sell unit, conversion, base price, applied rules, override and final price.
+
+Pricing source audit:
+
+Canonical workbook:
+
+- 606 product rows, 606 unique retail SKUs and 606 unique carton SKUs;
+- 563 positive retail prices after update;
+- 43 missing/zero retail prices blocked from unattended import;
+- 563 positive normalized carton prices;
+- 168 positive original carton retail prices.
+
+Venue-channel workbook:
+
+- 343 mapped rows and 342 unique SKUs;
+- one repeated SKU requiring deterministic source-key/business review;
+- 338 positive channel prices;
+- five missing/zero prices blocked from import;
+- 69 rows marked `CẦN DUYỆT - NHIỀU SKU KHÁC QUY CÁCH/GIÁ` and blocked from unattended import.
+
+See:
+
+```text
+docs/operations/price-lists-channel-resolution-slice.md
+docs/operations/pricing-source-audit-2026-07-27.md
+docs/operations/product-catalog-pricing-decisions.md
+npp-core/api/scripts/audit-pricing-workbooks.py
+```
+
+Production migration `014`, price import and backend/frontend deployment remain deferred.
 
 ## Current Phase 3 sequence
 
@@ -196,25 +244,23 @@ See `docs/operations/product-catalog-pricing-decisions.md`.
 3.3B suppliers/contacts/addresses/terms         MERGED PR #46; backend/DB deferred
 3.3C products/variants/SKUs/categories/brands  MERGED PR #47; backend/DB deferred
 3.3D units/conversions/barcodes                 MERGED PR #49; backend/DB deferred
-3.3E price lists/channel price resolution       NEXT
-3.3F document numbering                         PLANNED
+3.3E price lists/channel price resolution       VERIFIED PR #51; merge pending; backend/DB deferred
+3.3F document numbering                         NEXT
 ```
 
 Do not start inventory ledger, purchasing transactions, sales transactions or MCP cutover before the Phase 3 master-data gate is closed.
 
-## Next task — Phase 3.3E price lists and channel resolution
-
-Phase 3.3E is numerically and financially sensitive and must be implemented directly by ChatGPT/Codex rather than delegated as rough Copilot code.
+## Next task — Phase 3.3F document numbering
 
 Required boundaries:
 
-- price belongs to an exact variant/SKU sell unit, not only a product;
-- retail and carton prices remain independent;
-- price lists/channels and effective-date lifecycle are explicit;
-- no floating-point money arithmetic;
-- source workbook rows are reconciled and ambiguous mappings are reported, never silently guessed;
-- historical documents snapshot the resolved price and unit/conversion;
-- do not implement sales orders, purchasing transactions or inventory posting in 3.3E.
+- installation-scoped number-series definitions;
+- explicit document type, prefix/template, period reset policy and next counter;
+- concurrency-safe allocation without duplicate numbers;
+- idempotent allocation contract;
+- no business transaction posting in the numbering slice;
+- historical numbers remain immutable;
+- no production migration or deployment until the grouped Phase 3 rollout.
 
 Before coding, read:
 
@@ -222,8 +268,8 @@ Before coding, read:
 NPP_PLATFORM_MASTER_PLAN.md
 docs/operations/LATEST_HANDOFF.md
 docs/operations/product-catalog-pricing-decisions.md
-docs/operations/product-units-conversions-barcodes-slice.md
-docs/operations/product-units-data-audit-2026-07-27.md
+docs/operations/price-lists-channel-resolution-slice.md
+docs/operations/pricing-source-audit-2026-07-27.md
 ```
 
 ## Phase 3 grouped backend/database rollout
