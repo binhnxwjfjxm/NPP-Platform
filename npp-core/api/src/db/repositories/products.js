@@ -154,6 +154,7 @@ export async function insertProduct(client, {
 export async function updateProduct(client, {
   id,
   installationId,
+  code,
   name,
   catalogName,
   categoryId,
@@ -177,8 +178,9 @@ export async function updateProduct(client, {
     Boolean(isOrderable),
     Boolean(isActive),
     updatedBy,
-    id,
+    id ?? null,
     installationId,
+    code,
   ];
   let query = `UPDATE shared.products
      SET name = $1,
@@ -192,15 +194,17 @@ export async function updateProduct(client, {
          is_active = $9,
          updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
          updated_by = $10
-     WHERE id = $11 AND installation_id = $12`;
+     WHERE installation_id = $12
+       AND (($11::uuid IS NOT NULL AND id = $11::uuid) OR ($11::uuid IS NULL AND code = $13))`;
   if (typeof expectedUpdatedAt === 'string') {
-    query += ' AND updated_at = $13';
+    query += ' AND updated_at = $14';
     params.push(expectedUpdatedAt);
   }
   query += ' RETURNING id';
   const result = await client.query(query, params);
-  if (!result.rows[0]) return null;
-  return getProductByIdForInstallation(client, { id, installationId });
+  const updatedId = result.rows[0]?.id;
+  if (!updatedId) return null;
+  return getProductByIdForInstallation(client, { id: updatedId, installationId });
 }
 
 export async function countActiveVariantsForProduct(client, { productId, installationId }) {
