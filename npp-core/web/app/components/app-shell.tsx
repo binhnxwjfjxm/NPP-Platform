@@ -28,7 +28,8 @@ const organizationItems = [
   { href: '/organization/branches', label: 'Chi nhánh', icon: 'branches' as const, testId: 'nav-branches' },
   { href: '/organization/warehouses', label: 'Kho hàng', icon: 'warehouses' as const, testId: 'nav-warehouses' },
   { href: '/organization/locations', label: 'Vị trí kho', icon: 'locations' as const, testId: 'nav-locations' },
-  { href: '/organization/customers', label: 'Khách hàng', icon: 'user' as const, testId: 'nav-customers' },
+  { href: '/customers', label: 'Khách hàng', icon: 'user' as const, testId: 'nav-customers' },
+  { href: '/suppliers', label: 'Nhà cung cấp', icon: 'user' as const, testId: 'nav-suppliers' },
 ];
 
 const accessItems = [
@@ -94,6 +95,10 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function isOrganizationPath(pathname: string): boolean {
+  return pathname.startsWith('/organization') || pathname.startsWith('/customers') || pathname.startsWith('/suppliers');
+}
+
 function persistCollapsed(value: boolean) {
   window.localStorage.setItem('npp-core-sidebar-collapsed', value ? '1' : '0');
 }
@@ -108,7 +113,7 @@ export function AppShell({
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [organizationOpen, setOrganizationOpen] = useState(pathname.startsWith('/organization'));
+  const [organizationOpen, setOrganizationOpen] = useState(isOrganizationPath(pathname));
   const [accessOpen, setAccessOpen] = useState(pathname.startsWith('/access'));
 
   useEffect(() => {
@@ -116,12 +121,12 @@ export function AppShell({
   }, []);
 
   useEffect(() => {
-    if (pathname.startsWith('/organization')) setOrganizationOpen(true);
+    if (isOrganizationPath(pathname)) setOrganizationOpen(true);
     if (pathname.startsWith('/access')) setAccessOpen(true);
     setMobileOpen(false);
   }, [pathname]);
 
-  const organizationActive = pathname.startsWith('/organization');
+  const organizationActive = isOrganizationPath(pathname);
   const accessActive = pathname.startsWith('/access');
   const logoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim() || '/logo-transparent.png';
 

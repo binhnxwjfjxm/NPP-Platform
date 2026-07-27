@@ -69,10 +69,12 @@ export const config = {
     '/dashboard/:path*',
     '/organization/:path*',
     '/customers/:path*',
+    '/suppliers/:path*',
     '/access/:path*',
     '/api/organization/:path*',
     '/api/access/:path*',
     '/api/customers/:path*',
     '/api/customer-groups/:path*',
+    '/api/suppliers/:path*',
   ],
 };
