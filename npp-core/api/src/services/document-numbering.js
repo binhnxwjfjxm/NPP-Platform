@@ -76,12 +76,18 @@ function validatePublicPayload(payload, existing = null) {
       ? normalizedPayload.resetPolicy
       : existing?.reset_policy ?? 'YEARLY',
   );
-  const numberTemplate = normalizeTemplate(
+  const rawTemplate = normalizeTemplate(
     Object.prototype.hasOwnProperty.call(normalizedPayload, 'numberTemplate')
       ? normalizedPayload.numberTemplate
       : existing?.number_template ?? '{PREFIX}{YYYY}{MM}-{SEQ}',
   );
-  return validateResetTemplate(resetPolicy, numberTemplate);
+  const syntacticallyValidTemplate = rawTemplate
+    ? core.documentNumberingInternals.normalizeTemplate(rawTemplate)
+    : null;
+
+  // Let the core validator own INVALID_TEMPLATE and INVALID_RESET_POLICY errors.
+  if (!resetPolicy || !syntacticallyValidTemplate) return null;
+  return validateResetTemplate(resetPolicy, syntacticallyValidTemplate);
 }
 
 export const listDocumentNumberSeries = core.listDocumentNumberSeries;
