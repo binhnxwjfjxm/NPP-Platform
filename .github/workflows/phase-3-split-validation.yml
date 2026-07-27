@@ -1,0 +1,385 @@
+name: Phase 3 Split Validation
+
+on:
+  pull_request:
+    paths:
+      - "database/migrations/shared/010_customer_master_data.sql"
+      - "database/migrations/shared/011_supplier_master_data.sql"
+      - "database/migrations/shared/012_product_catalog_foundation.sql"
+      - "database/migrations/shared/013_product_units_conversions_barcodes.sql"
+      - "database/migrations/shared/014_price_lists_channel_resolution.sql"
+      - "database/migrations/shared/015_document_numbering.sql"
+      - "npp-core/api/**"
+      - "npp-core/web/**"
+      - "docs/operations/phase-3-validation-plan.md"
+      - ".github/workflows/phase-3-split-validation.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "database/migrations/shared/010_customer_master_data.sql"
+      - "database/migrations/shared/011_supplier_master_data.sql"
+      - "database/migrations/shared/012_product_catalog_foundation.sql"
+      - "database/migrations/shared/013_product_units_conversions_barcodes.sql"
+      - "database/migrations/shared/014_price_lists_channel_resolution.sql"
+      - "database/migrations/shared/015_document_numbering.sql"
+      - "npp-core/api/**"
+      - "npp-core/web/**"
+      - "docs/operations/phase-3-validation-plan.md"
+      - ".github/workflows/phase-3-split-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  domain-pack:
+    name: Pack ${{ matrix.order }} — ${{ matrix.pack }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - order: 1
+            pack: customers
+            api_patterns: "customer*.test.js"
+            e2e_patterns: "customers*.spec.ts"
+            tables: "customer_groups,customers,customer_addresses"
+          - order: 2
+            pack: suppliers
+            api_patterns: "supplier*.test.js"
+            e2e_patterns: "suppliers*.spec.ts"
+            tables: "suppliers,supplier_contacts,supplier_addresses,supplier_payment_terms"
+          - order: 3
+            pack: product-catalog
+            api_patterns: "product-catalog*.test.js,product*.test.js"
+            e2e_patterns: "products*.spec.ts"
+            tables: "product_categories,product_brands,products,product_variants"
+          - order: 4
+            pack: units-conversions-barcodes
+            api_patterns: "product-unit*.test.js,product-units*.test.js"
+            e2e_patterns: "products*.spec.ts"
+            tables: "units_of_measure,product_variants,product_barcodes"
+          - order: 5
+            pack: pricing
+            api_patterns: "pricing*.test.js"
+            e2e_patterns: "pricing*.spec.ts"
+            tables: "sales_channels,price_lists,price_list_items"
+          - order: 6
+            pack: document-numbering
+            api_patterns: "document-numbering*.test.js,audit-outbox-replay.test.js"
+            e2e_patterns: "document-numbering*.spec.ts"
+            tables: "document_number_series,document_number_counters,document_number_allocations"
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_npp_core
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 10s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
+      E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
+      E2E_BACKEND_API_TOKEN: phase-3-pack-token-0123456789abcdef
+      NODE_ENV: test
+      PACK: ${{ matrix.pack }}
+      API_PATTERNS: ${{ matrix.api_patterns }}
+      E2E_PATTERNS: ${{ matrix.e2e_patterns }}
+      TABLES: ${{ matrix.tables }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install workspaces
+        run: npm ci
+
+      - name: Apply and verify migrations 002 through 015
+        run: |
+          npm --prefix npp-core/api run migration:migrate
+          npm --prefix npp-core/api run migration:migrate
+          npm --prefix npp-core/api run migration:verify
+
+      - name: Discover and run isolated API tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "artifacts/${PACK}"
+          IFS=',' read -ra patterns <<< "${API_PATTERNS}"
+          files=()
+          for pattern in "${patterns[@]}"; do
+            while IFS= read -r file; do files+=("${file}"); done < <(find npp-core/api/test -maxdepth 1 -type f -name "${pattern}" | sort)
+          done
+          mapfile -t files < <(printf '%s\n' "${files[@]}" | awk 'NF && !seen[$0]++')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No API tests found for ${PACK}: ${API_PATTERNS}" >&2
+            exit 1
+          fi
+          printf '%s\n' "${files[@]}" > "artifacts/${PACK}/api-tests.txt"
+          node --test "${files[@]}" 2>&1 | tee "artifacts/${PACK}/api.log"
+
+      - name: Run pricing workbook audit
+        if: matrix.pack == 'pricing'
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 npp-core/api/scripts/audit-pricing-workbooks.py 2>&1 | tee "artifacts/${PACK}/source-audit.log"
+
+      - name: Verify web typecheck and build
+        run: |
+          npm --prefix npp-core/web run typecheck
+          npm --prefix npp-core/web run build
+        env:
+          CORE_API_INTERNAL_URL: http://127.0.0.1:3004
+          CORE_API_SERVER_TOKEN: phase-3-pack-token-0123456789abcdef
+          CORE_WEB_ADMIN_USERNAME: e2e-admin
+          CORE_WEB_ADMIN_PASSWORD: e2e-password
+          NEXT_PUBLIC_CORE_API_URL: http://127.0.0.1:3004
+          NEXT_PUBLIC_APP_NAME: NPP Core
+          FOUNDATION_R2_TEST_ENABLED: "false"
+
+      - name: Install Chromium
+        working-directory: npp-core/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Discover and run isolated Chromium tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra patterns <<< "${E2E_PATTERNS}"
+          specs=()
+          for pattern in "${patterns[@]}"; do
+            while IFS= read -r file; do specs+=("e2e/$(basename "${file}")"); done < <(find npp-core/web/e2e -maxdepth 1 -type f -name "${pattern}" | sort)
+          done
+          mapfile -t specs < <(printf '%s\n' "${specs[@]}" | awk 'NF && !seen[$0]++')
+          if [ "${#specs[@]}" -eq 0 ]; then
+            echo "No Chromium tests found for ${PACK}: ${E2E_PATTERNS}" >&2
+            exit 1
+          fi
+          printf '%s\n' "${specs[@]}" > "artifacts/${PACK}/browser-tests.txt"
+          npm --prefix npp-core/web run test:e2e -- "${specs[@]}"
+
+      - name: Record row counts and acceptance metadata
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "artifacts/${PACK}"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import pg from 'pg';
+          const { Client } = pg;
+          const pack = process.env.PACK;
+          const tables = String(process.env.TABLES || '').split(',').filter(Boolean);
+          const client = new Client({ connectionString: process.env.DATABASE_URL });
+          const rowCounts = {};
+          let databaseReachable = false;
+          try {
+            await client.connect();
+            databaseReachable = true;
+            for (const table of tables) {
+              const qualified = `shared.${table}`;
+              const exists = await client.query('SELECT to_regclass($1) AS relation', [qualified]);
+              if (!exists.rows[0]?.relation) {
+                rowCounts[qualified] = null;
+                continue;
+              }
+              const result = await client.query(`SELECT count(*)::int AS count FROM ${qualified}`);
+              rowCounts[qualified] = result.rows[0].count;
+            }
+          } finally {
+            await client.end().catch(() => {});
+          }
+          const report = {
+            pack,
+            commitSha: process.env.GITHUB_SHA,
+            databaseTarget: 'ephemeral-postgresql-16',
+            migrationSet: '002-015',
+            workflowRunId: process.env.GITHUB_RUN_ID,
+            databaseReachable,
+            rowCounts,
+            productionAssumptionReused: false,
+            ownerDecision: 'PENDING_OWNER_REVIEW'
+          };
+          fs.writeFileSync(`artifacts/${pack}/acceptance.json`, `${JSON.stringify(report, null, 2)}\n`);
+          NODE
+
+      - name: Upload pack evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-3-${{ matrix.pack }}-${{ github.run_id }}
+          path: |
+            artifacts/${{ matrix.pack }}
+            npp-core/web/playwright-report
+            npp-core/web/test-results/results.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  cross-domain:
+    name: Pack 7 — cross-domain integration
+    needs: domain-pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_npp_core
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 10s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
+      E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
+      E2E_BACKEND_API_TOKEN: phase-3-cross-domain-token-0123456789abcdef
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - name: Apply migrations and run full Core API regression
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/cross-domain
+          npm --prefix npp-core/api run migration:migrate
+          npm --prefix npp-core/api run migration:verify
+          npm --prefix npp-core/api run verify 2>&1 | tee artifacts/cross-domain/api.log
+      - name: Verify MCP boundary
+        shell: bash
+        run: |
+          if git diff --name-only origin/main...HEAD | grep -q '^mcp/'; then
+            echo 'Core-only Phase 3 work changed mcp/**' >&2
+            exit 1
+          fi
+      - name: Verify Core web
+        run: |
+          npm --prefix npp-core/web run typecheck
+          npm --prefix npp-core/web run build
+        env:
+          CORE_API_INTERNAL_URL: http://127.0.0.1:3004
+          CORE_API_SERVER_TOKEN: phase-3-cross-domain-token-0123456789abcdef
+          CORE_WEB_ADMIN_USERNAME: e2e-admin
+          CORE_WEB_ADMIN_PASSWORD: e2e-password
+          NEXT_PUBLIC_CORE_API_URL: http://127.0.0.1:3004
+          NEXT_PUBLIC_APP_NAME: NPP Core
+          FOUNDATION_R2_TEST_ENABLED: "false"
+      - name: Install Chromium
+        working-directory: npp-core/web
+        run: npx playwright install --with-deps chromium
+      - name: Run combined master-data Chromium flows
+        run: npm --prefix npp-core/web run test:e2e -- e2e/customers.spec.ts e2e/suppliers.spec.ts e2e/products.spec.ts e2e/pricing.spec.ts e2e/document-numbering.spec.ts
+      - name: Record cross-domain acceptance metadata
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts/cross-domain
+          cat > artifacts/cross-domain/acceptance.json <<JSON
+          {
+            "pack": "cross-domain",
+            "commitSha": "${GITHUB_SHA}",
+            "databaseTarget": "ephemeral-postgresql-16",
+            "migrationSet": "002-015",
+            "workflowRunId": "${GITHUB_RUN_ID}",
+            "productionAssumptionReused": false,
+            "ownerDecision": "PENDING_OWNER_REVIEW"
+          }
+          JSON
+      - name: Upload cross-domain evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-3-cross-domain-${{ github.run_id }}
+          path: |
+            artifacts/cross-domain
+            npp-core/web/playwright-report
+            npp-core/web/test-results/results.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  grouped-rehearsal:
+    name: Pack 8 — grouped migration rehearsal
+    needs: cross-domain
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rehearsal_npp_core
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 10s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rehearsal_npp_core
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rehearsal_npp_core
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - name: Run grouped migration apply, rerun and verification
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/grouped-rehearsal
+          npm --prefix npp-core/api run migration:migrate 2>&1 | tee artifacts/grouped-rehearsal/migrate.log
+          npm --prefix npp-core/api run migration:migrate 2>&1 | tee -a artifacts/grouped-rehearsal/migrate.log
+          npm --prefix npp-core/api run migration:verify 2>&1 | tee artifacts/grouped-rehearsal/verify.log
+          npm --prefix npp-core/api run migration:rehearse 2>&1 | tee artifacts/grouped-rehearsal/rehearsal.log
+      - name: Record rehearsal boundary
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts/grouped-rehearsal
+          cat > artifacts/grouped-rehearsal/acceptance.json <<JSON
+          {
+            "pack": "grouped-migration-rehearsal",
+            "commitSha": "${GITHUB_SHA}",
+            "databaseTarget": "ephemeral-postgresql-17",
+            "migrationSet": "002-015",
+            "workflowRunId": "${GITHUB_RUN_ID}",
+            "productionProviderAudit": "NOT_PERFORMED",
+            "freshProductionBackup": "NOT_PERFORMED",
+            "productionAssumptionReused": false,
+            "productionRolloutAuthorized": false
+          }
+          JSON
+      - name: Upload grouped rehearsal evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-3-grouped-rehearsal-${{ github.run_id }}
+          path: artifacts/grouped-rehearsal
+          if-no-files-found: warn
+          retention-days: 30
