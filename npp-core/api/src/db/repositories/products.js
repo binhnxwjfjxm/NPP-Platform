@@ -193,7 +193,7 @@ export async function updateProduct(client, {
          updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
          updated_by = $10
      WHERE id = $11 AND installation_id = $12`;
-  if (expectedUpdatedAt) {
+  if (typeof expectedUpdatedAt === 'string') {
     query += ' AND updated_at = $13';
     params.push(expectedUpdatedAt);
   }
