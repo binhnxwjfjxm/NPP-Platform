@@ -3,7 +3,7 @@ import {
   normalizeProductGatewayError,
   patchProductVariant,
   resolveProductRequestId,
-} from '../../../../../lib/product-gateway';
+} from '../../../../../../lib/product-gateway';
 
 export const dynamic = 'force-dynamic';
 
