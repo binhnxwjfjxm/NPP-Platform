@@ -1,6 +1,6 @@
 # Phase 3.3F — Document numbering
 
-> Status: implementation in progress on `agent/document-numbering`  
+> Status: verified in PR #53 at `45c885725c8ca874786c141047ce55410c474884`  
 > Production deployment: excluded and intentionally deferred
 
 ## Purpose
@@ -21,8 +21,9 @@ The slice owns number-series configuration, period counters and immutable alloca
 - Backdated allocation uses the supplied document date and its own period counter. It cannot reset or corrupt another period.
 - Allocation is serialized with a PostgreSQL row lock on the exact series/period counter.
 - The same installation + series + idempotency key always returns the same immutable allocation and never consumes another counter.
+- Reusing an idempotency key with a different document date or metadata is rejected.
 - Document numbers are unique across one installation.
-- Allocation history is append-only. There is no update/delete API for an allocation.
+- Allocation history is append-only at both API and PostgreSQL trigger levels.
 - Once a series has any allocation, its identity and formatting fields are immutable. To change prefix, template, reset policy, width or start counter, create a new series and deactivate the old one.
 - Name, description and active state may still be updated with optimistic concurrency.
 - Inactive series cannot allocate new numbers.
@@ -138,7 +139,8 @@ The HTTP idempotency store and the domain allocation table both protect retries.
 - reads require `core.document-number.read`;
 - configuration mutations and allocation require `core.document-number.write`;
 - all queries are installation scoped;
-- successful series changes and allocations write shared transactional audit records;
+- successful series changes and first-time allocations write shared transactional audit records;
+- a replay returns the immutable allocation without consuming a counter or writing a duplicate audit record;
 - no hard delete or cascade delete;
 - public errors are sanitized;
 - browser traffic uses same-origin server-only gateways.
@@ -157,25 +159,28 @@ The page supports:
 - show immutable recent allocation history;
 - explain that business documents are not created by this screen.
 
-## Verification gate
+## Verification result
 
-Before merge:
+Verified head `45c885725c8ca874786c141047ce55410c474884` passed:
 
-- migration apply/rerun/verify/rehearsal;
+- migration apply/rerun/verify and migration rehearsal;
 - installation isolation;
 - template validation and deterministic rendering;
 - no-reset, yearly and monthly period behavior;
 - backdated allocation isolation;
-- concurrency test with parallel allocations and no duplicate/gap caused by successful requests;
+- 24 parallel allocations with unique, gap-free successful counters;
 - same-key replay returns the same number without consuming another counter;
+- changed replay payload is rejected;
 - inactive-series guard;
 - sequence-width overflow rolls back without counter advancement;
 - format lock after first allocation;
-- immutable allocation history;
+- immutable allocation history enforced by PostgreSQL trigger;
 - transactional audit and deny-by-default permissions;
-- Core web typecheck/tests/build;
+- Foundation F0.2;
+- Core API verification, Core web typecheck/tests/build and Heroku process contract;
 - Chromium E2E against PostgreSQL and Core API;
-- `mcp/** = 0`.
+- `mcp/** = 0`;
+- no temporary payload, marker or diagnostic file remains in the final diff.
 
 ## Phase 3 closeout test requirement
 
@@ -189,6 +194,8 @@ After Phase 3.3F merges, Phase 3 must not be treated as rollout-ready from one c
 6. document numbering;
 7. cross-domain integration and grouped migration rollout.
 
-The pricing pack must run independently from general master-data tests and cover workbook reconciliation, retail/carton independence, channel/group/customer/promotion precedence, quantity/effective-date rules, stacking, manual overrides, integer-money rounding and blocked ambiguous rows.
+The pricing pack runs independently from general master-data tests and covers workbook reconciliation, retail/carton independence, channel/group/customer/promotion precedence, quantity/effective-date rules, stacking, manual overrides, integer-money rounding and blocked ambiguous rows.
+
+The dedicated `Phase 3 Pricing Financial` workflow passed migration-through-pricing setup, isolated pricing API/workbook audit, pricing web build and isolated pricing Chromium flow on the verified head.
 
 Merge is not production deployment. Migrations `010` through `015`, source imports and backend/frontend production deployments remain pending for the controlled Phase 3 rollout.
