@@ -4,6 +4,33 @@ import { readJsonBody, normalizeIdempotencyKey } from '../idempotency.js';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
 import * as supplierService from '../services/supplier.js';
 
+const CHILDREN = Object.freeze({
+  contacts: Object.freeze({
+    resourceType: 'supplier_contact',
+    entityKey: 'contact',
+    childIdKey: 'contactId',
+    list: supplierService.listSupplierContacts,
+    create: supplierService.createSupplierContact,
+    update: supplierService.updateSupplierContact,
+  }),
+  addresses: Object.freeze({
+    resourceType: 'supplier_address',
+    entityKey: 'address',
+    childIdKey: 'addressId',
+    list: supplierService.listSupplierAddresses,
+    create: supplierService.createSupplierAddress,
+    update: supplierService.updateSupplierAddress,
+  }),
+  'payment-terms': Object.freeze({
+    resourceType: 'supplier_payment_term',
+    entityKey: 'paymentTerm',
+    childIdKey: 'paymentTermId',
+    list: supplierService.listSupplierPaymentTerms,
+    create: supplierService.createSupplierPaymentTerm,
+    update: supplierService.updateSupplierPaymentTerm,
+  }),
+});
+
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
 }
@@ -83,7 +110,7 @@ async function executeIdempotentCreate(req, res, context, {
   payload,
   create,
   resourceType,
-  getResourceId,
+  entityKey,
   metadata,
 }) {
   const keyResult = requireIdempotencyKey(req);
@@ -107,12 +134,12 @@ async function executeIdempotentCreate(req, res, context, {
           mutate: async (client) => {
             const serviceResult = await create(client);
             if (!serviceResult.ok) return { serviceResult, skipAudit: true };
-            const entity = serviceResult.entity;
+            const entity = serviceResult[entityKey];
             await insertAuditRecord(client, buildAuditRecord({
               requestContext: context.requestContext,
               action: 'create',
               resourceType,
-              resourceId: getResourceId(entity),
+              resourceId: entity.id,
               afterData: entity,
               metadata: metadata(entity),
             }));
@@ -121,15 +148,16 @@ async function executeIdempotentCreate(req, res, context, {
         });
 
         if (transactionResult.skipAudit) {
+          const failed = transactionResult.serviceResult;
           return {
-            statusCode: serviceStatus(transactionResult.serviceResult),
+            statusCode: serviceStatus(failed),
             contentType: 'application/json',
             requestId: context.requestId,
             body: {
               error: {
-                code: transactionResult.serviceResult.code,
-                message: transactionResult.serviceResult.message,
-                retryable: Boolean(transactionResult.serviceResult.retryable),
+                code: failed.code,
+                message: failed.message,
+                retryable: Boolean(failed.retryable),
                 details: {},
               },
               requestId: context.requestId,
@@ -168,8 +196,8 @@ async function executeIdempotentCreate(req, res, context, {
 async function executePatch(res, context, {
   update,
   resourceType,
-  getEntity,
-  getAction,
+  entityKey,
+  action = () => 'update',
   metadata,
 }) {
   try {
@@ -180,11 +208,11 @@ async function executePatch(res, context, {
         if (!serviceResult.ok) {
           throw Object.assign(new Error('SUPPLIER_MASTER_UPDATE_FAILED'), { serviceResult });
         }
-        const entity = getEntity(serviceResult);
+        const entity = serviceResult[entityKey];
         if (serviceResult.changed === false) return { entity };
         await insertAuditRecord(client, buildAuditRecord({
           requestContext: context.requestContext,
-          action: getAction(serviceResult),
+          action: action(serviceResult),
           resourceType,
           resourceId: entity.id,
           beforeData: serviceResult.beforeData ?? null,
@@ -252,16 +280,13 @@ async function handleCreateSupplier(req, res, context) {
   await executeIdempotentCreate(req, res, context, {
     route: '/api/suppliers',
     payload,
-    create: async (client) => {
-      const result = await supplierService.createSupplier(client, {
-        installationId: context.requestContext.installationId,
-        payload,
-        createdBy: context.requestContext.actorId,
-      });
-      return result.ok ? { ok: true, entity: result.supplier } : result;
-    },
+    create: (client) => supplierService.createSupplier(client, {
+      installationId: context.requestContext.installationId,
+      payload,
+      createdBy: context.requestContext.actorId,
+    }),
     resourceType: 'supplier',
-    getResourceId: (supplier) => supplier.id,
+    entityKey: 'supplier',
     metadata: (supplier) => ({ code: supplier.code }),
   });
 }
@@ -277,23 +302,22 @@ async function handlePatchSupplier(req, res, context, id) {
       updatedBy: context.requestContext.actorId,
     }),
     resourceType: 'supplier',
-    getEntity: (result) => result.supplier,
-    getAction: (result) => result.action ?? 'update',
+    entityKey: 'supplier',
+    action: (result) => result.action ?? 'update',
     metadata: (supplier) => ({ code: supplier.code }),
   });
 }
 
 async function handleListChild(res, context, supplierId, kind) {
+  const child = CHILDREN[kind];
   try {
-    const input = { installationId: context.requestContext.installationId, supplierId };
-    const result = kind === 'contacts'
-      ? await supplierService.listSupplierContacts(context.getPool(), input)
-      : kind === 'addresses'
-        ? await supplierService.listSupplierAddresses(context.getPool(), input)
-        : await supplierService.listSupplierPaymentTerms(context.getPool(), input);
+    const result = await child.list(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      supplierId,
+    });
     if (!result.ok) return sendServiceError(res, result, context);
-    const data = kind === 'contacts' ? result.contacts : kind === 'addresses' ? result.addresses : result.paymentTerms;
-    sendSuccess(res, data, context.requestId, context.receivedAt);
+    const collectionKey = kind === 'contacts' ? 'contacts' : kind === 'addresses' ? 'addresses' : 'paymentTerms';
+    sendSuccess(res, result[collectionKey], context.requestId, context.receivedAt);
   } catch {
     sendError(res, createError('INTERNAL_ERROR', `Failed to list supplier ${kind}`, {}, true, 500), context.requestId, context.receivedAt);
   }
@@ -302,27 +326,18 @@ async function handleListChild(res, context, supplierId, kind) {
 async function handleCreateChild(req, res, context, supplierId, kind) {
   const payload = await readPayload(req, res, context);
   if (payload === null) return;
+  const child = CHILDREN[kind];
   await executeIdempotentCreate(req, res, context, {
     route: `/api/suppliers/${supplierId}/${kind}`,
     payload,
-    create: async (client) => {
-      const input = {
-        installationId: context.requestContext.installationId,
-        supplierId,
-        payload,
-        createdBy: context.requestContext.actorId,
-      };
-      const result = kind === 'contacts'
-        ? await supplierService.createSupplierContact(client, input)
-        : kind === 'addresses'
-          ? await supplierService.createSupplierAddress(client, input)
-          : await supplierService.createSupplierPaymentTerm(client, input);
-      if (!result.ok) return result;
-      const entity = kind === 'contacts' ? result.contact : kind === 'addresses' ? result.address : result.paymentTerm;
-      return { ok: true, entity };
-    },
-    resourceType: `supplier_${kind === 'payment-terms' ? 'payment_term' : kind.slice(0, -1)}`,
-    getResourceId: (entity) => entity.id,
+    create: (client) => child.create(client, {
+      installationId: context.requestContext.installationId,
+      supplierId,
+      payload,
+      createdBy: context.requestContext.actorId,
+    }),
+    resourceType: child.resourceType,
+    entityKey: child.entityKey,
     metadata: (entity) => ({ supplierId: entity.supplier_id }),
   });
 }
@@ -330,21 +345,17 @@ async function handleCreateChild(req, res, context, supplierId, kind) {
 async function handlePatchChild(req, res, context, supplierId, childId, kind) {
   const payload = await readPayload(req, res, context);
   if (payload === null) return;
+  const child = CHILDREN[kind];
   await executePatch(res, context, {
-    update: (client) => {
-      const base = {
-        installationId: context.requestContext.installationId,
-        supplierId,
-        payload,
-        updatedBy: context.requestContext.actorId,
-      };
-      if (kind === 'contacts') return supplierService.updateSupplierContact(client, { ...base, contactId: childId });
-      if (kind === 'addresses') return supplierService.updateSupplierAddress(client, { ...base, addressId: childId });
-      return supplierService.updateSupplierPaymentTerm(client, { ...base, paymentTermId: childId });
-    },
-    resourceType: `supplier_${kind === 'payment-terms' ? 'payment_term' : kind.slice(0, -1)}`,
-    getEntity: (result) => (kind === 'contacts' ? result.contact : kind === 'addresses' ? result.address : result.paymentTerm),
-    getAction: () => 'update',
+    update: (client) => child.update(client, {
+      installationId: context.requestContext.installationId,
+      supplierId,
+      [child.childIdKey]: childId,
+      payload,
+      updatedBy: context.requestContext.actorId,
+    }),
+    resourceType: child.resourceType,
+    entityKey: child.entityKey,
     metadata: (entity) => ({ supplierId: entity.supplier_id }),
   });
 }
