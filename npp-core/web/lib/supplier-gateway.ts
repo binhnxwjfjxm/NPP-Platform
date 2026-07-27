@@ -7,6 +7,8 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const REQUEST_TIMEOUT_MS = 8_000;
 const ALLOWED_QUERY_KEYS = new Set(['active', 'limit', 'offset', 'search']);
 
+type SupplierChildKind = 'contacts' | 'addresses' | 'payment-terms';
+
 interface CoreEnvelope<T> {
   data?: T;
   error?: {
@@ -93,6 +95,22 @@ function supplierPath(id?: string): string {
   return `/api/suppliers${id ? `/${assertUuid(id, 'INVALID_SUPPLIER_ID', 'Mã nhà cung cấp không hợp lệ')}` : ''}`;
 }
 
+function supplierChildPath(supplierId: string, kind: SupplierChildKind, childId?: string): string {
+  const supplier = assertUuid(supplierId, 'INVALID_SUPPLIER_ID', 'Mã nhà cung cấp không hợp lệ');
+  const childCode = kind === 'contacts'
+    ? 'INVALID_SUPPLIER_CONTACT_ID'
+    : kind === 'addresses'
+      ? 'INVALID_SUPPLIER_ADDRESS_ID'
+      : 'INVALID_SUPPLIER_PAYMENT_TERM_ID';
+  const childMessage = kind === 'contacts'
+    ? 'Mã liên hệ nhà cung cấp không hợp lệ'
+    : kind === 'addresses'
+      ? 'Mã địa chỉ nhà cung cấp không hợp lệ'
+      : 'Mã điều khoản thanh toán không hợp lệ';
+  const suffix = childId ? `/${assertUuid(childId, childCode, childMessage)}` : '';
+  return `/api/suppliers/${supplier}/${kind}${suffix}`;
+}
+
 async function requestCore<T>({
   method,
   path,
@@ -176,4 +194,58 @@ export function createSupplier<T>(requestId: string, body: unknown, idempotencyK
 
 export function patchSupplier<T>(id: string, requestId: string, body: unknown): Promise<T> {
   return requestCore<T>({ method: 'PATCH', path: supplierPath(id), requestId, body });
+}
+
+function listSupplierChildren<T>(supplierId: string, kind: SupplierChildKind, requestId: string): Promise<T[]> {
+  return requestCore<T[]>({ method: 'GET', path: supplierChildPath(supplierId, kind), requestId });
+}
+
+function createSupplierChild<T>(supplierId: string, kind: SupplierChildKind, requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({
+    method: 'POST',
+    path: supplierChildPath(supplierId, kind),
+    requestId,
+    body,
+    idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}`,
+  });
+}
+
+function patchSupplierChild<T>(supplierId: string, kind: SupplierChildKind, childId: string, requestId: string, body: unknown): Promise<T> {
+  return requestCore<T>({ method: 'PATCH', path: supplierChildPath(supplierId, kind, childId), requestId, body });
+}
+
+export function listSupplierContacts<T>(supplierId: string, requestId: string): Promise<T[]> {
+  return listSupplierChildren<T>(supplierId, 'contacts', requestId);
+}
+
+export function createSupplierContact<T>(supplierId: string, requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return createSupplierChild<T>(supplierId, 'contacts', requestId, body, idempotencyKey);
+}
+
+export function patchSupplierContact<T>(supplierId: string, contactId: string, requestId: string, body: unknown): Promise<T> {
+  return patchSupplierChild<T>(supplierId, 'contacts', contactId, requestId, body);
+}
+
+export function listSupplierAddresses<T>(supplierId: string, requestId: string): Promise<T[]> {
+  return listSupplierChildren<T>(supplierId, 'addresses', requestId);
+}
+
+export function createSupplierAddress<T>(supplierId: string, requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return createSupplierChild<T>(supplierId, 'addresses', requestId, body, idempotencyKey);
+}
+
+export function patchSupplierAddress<T>(supplierId: string, addressId: string, requestId: string, body: unknown): Promise<T> {
+  return patchSupplierChild<T>(supplierId, 'addresses', addressId, requestId, body);
+}
+
+export function listSupplierPaymentTerms<T>(supplierId: string, requestId: string): Promise<T[]> {
+  return listSupplierChildren<T>(supplierId, 'payment-terms', requestId);
+}
+
+export function createSupplierPaymentTerm<T>(supplierId: string, requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return createSupplierChild<T>(supplierId, 'payment-terms', requestId, body, idempotencyKey);
+}
+
+export function patchSupplierPaymentTerm<T>(supplierId: string, paymentTermId: string, requestId: string, body: unknown): Promise<T> {
+  return patchSupplierChild<T>(supplierId, 'payment-terms', paymentTermId, requestId, body);
 }
