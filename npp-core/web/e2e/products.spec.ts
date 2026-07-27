@@ -49,9 +49,9 @@ test.describe('Danh mục sản phẩm', () => {
     await page.getByTestId('save-variant-button').click();
     await expect(page.getByTestId(`variant-row-${sku}`)).toBeVisible();
 
-    // Reload so the server-rendered 3.3D workspace receives the product and SKU just created.
-    await page.reload();
     await expect(page.getByTestId('product-unit-workspace')).toBeVisible();
+    await page.getByTestId('refresh-unit-products-button').click();
+    await expect(page.getByText('Đã làm mới danh sách sản phẩm')).toBeVisible();
 
     await page.getByTestId('add-unit-button').click();
     await page.getByTestId('unit-code-input').fill(unitCode.toLowerCase());
