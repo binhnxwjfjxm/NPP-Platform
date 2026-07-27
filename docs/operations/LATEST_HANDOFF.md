@@ -1,7 +1,7 @@
 # NPP Platform — Latest Handoff
 
 > Updated: 2026-07-27  
-> Current checkpoint: Phase 3 master data is in progress. Phase 3.3A, 3.3B and 3.3C are merged on `main`; Phase 3.3D units/conversions/barcodes is verified in PR #49 and pending merge. The grouped production Core backend/database rollout remains intentionally deferred.
+> Current checkpoint: Phase 3 master data is in progress. Phase 3.3A through Phase 3.3D are merged on `main`. Phase 3.3E price lists/channel resolution is next. The grouped production Core backend/database rollout remains intentionally deferred.
 
 ## Production status
 
@@ -125,7 +125,11 @@ See `docs/operations/product-catalog-foundation-slice.md`.
 
 ## Phase 3.3D — Units, conversions and barcodes
 
-Implementation is verified in PR #49 and pending merge.
+Merged by PR #49 at commit:
+
+```text
+623c9ccf9877191b6f9a49dc5df3bed3433e93c5
+```
 
 Delivered in source:
 
@@ -143,7 +147,7 @@ Delivered in source:
 - `/products` includes unit catalog, SKU conversion, barcode management and quantity preview;
 - product list can refresh inside the unit workspace without page reload;
 - PostgreSQL API/service tests, migration rehearsal, Core web verification and Chromium E2E all passed;
-- `mcp/** = 0` and no temporary workflow/payload remains in the diff.
+- `mcp/** = 0` and no temporary workflow/payload remains in the merged diff.
 
 Source-data audit:
 
@@ -191,7 +195,7 @@ See `docs/operations/product-catalog-pricing-decisions.md`.
 3.3A customers/customer groups/addresses       MERGED PR #44; frontend deployed; backend/DB deferred
 3.3B suppliers/contacts/addresses/terms         MERGED PR #46; backend/DB deferred
 3.3C products/variants/SKUs/categories/brands  MERGED PR #47; backend/DB deferred
-3.3D units/conversions/barcodes                 VERIFIED PR #49; merge pending; backend/DB deferred
+3.3D units/conversions/barcodes                 MERGED PR #49; backend/DB deferred
 3.3E price lists/channel price resolution       NEXT
 3.3F document numbering                         PLANNED
 ```
