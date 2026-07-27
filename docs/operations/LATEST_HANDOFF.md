@@ -1,7 +1,7 @@
 # NPP Platform — Latest Handoff
 
 > Updated: 2026-07-27  
-> Current checkpoint: Phase 3.2C user identity and role assignment is merged to `main`; production migration and deployment have not started.
+> Current checkpoint: Phase 3.2C production closeout is complete on `main`.
 
 ## Production status
 
@@ -14,7 +14,8 @@ Core API live/ready: 200/200
 Organization canonical API: active
 Organization Basic Auth gate: active
 Auto Deploy: locked
-Production migrations applied: 002 through 008
+Production migrations applied: 002 through 009
+Current backend release: v19
 ```
 
 Phase 3.2A/3.2B production closeout evidence:
@@ -29,6 +30,23 @@ Phase 3.2A/3.2B production closeout evidence:
 - Post-migration backup: `b006`.
 - Heroku release `v18`: release ID `c694af5f-aed3-4ccb-9fa7-ffcdfcf0cd78`.
 - Smoke tests for Employee, Role and Permission routes: PASS.
+- Vercel Auto Deploy: OFF.
+- Heroku Auto Deploy: OFF.
+
+Phase 3.2C production closeout evidence:
+
+- Main SHA at closeout: `e7122dc634dac51281727e294218a59819fd8863`.
+- Pre-migration backup: `b007`.
+- Restore rehearsal target: temporary PostgreSQL 17.
+- Restore rehearsal result: PASS.
+- Migration `009_access_users_role_assignments` applied on rehearsal: PASS.
+- Production migration `009_access_users_role_assignments`: PASS.
+- `migration:verify`: `true`, `issues=[]`.
+- Current production backend release: `v19`, release ID `ad257db1-1c50-4b24-a48b-08386008b977`.
+- Direct Heroku backend smoke for users, roles and employees: PASS.
+- Vercel production smoke for `/dashboard`, `/access/users`, `/api/access/users` and assets: PASS.
+- Browser HTML did not expose `CORE_API_SERVER_TOKEN`, `CORE_API_INTERNAL_URL`, `BACKEND_API_TOKEN` or `DATABASE_URL`.
+- Post-migration backup: `b008`.
 - Vercel Auto Deploy: OFF.
 - Heroku Auto Deploy: OFF.
 
@@ -77,7 +95,7 @@ Delivered scope:
 
 Production closeout evidence is recorded in `docs/operations/phase-3-2-production-closeout.md`.
 
-## Phase 3.2C merged, not productionized
+## Phase 3.2C delivered and productionized
 
 PR #41 was squash-merged to `main` at:
 
@@ -111,6 +129,20 @@ Core UI/Browser E2E     PASS
 Review threads          RESOLVED
 ```
 
+Production closeout evidence:
+
+- Pre-migration backup: `b007`.
+- Restore rehearsal on temporary PostgreSQL 17: PASS.
+- Production migration `009_access_users_role_assignments`: PASS.
+- `migration:verify`: `true`, `issues=[]`.
+- Current production backend release: `v19`, release ID `ad257db1-1c50-4b24-a48b-08386008b977`, deployed from `main` at `e7122dc634dac51281727e294218a59819fd8863`.
+- Smoke for `/api/access/users`, `/api/access/roles`, `/api/access/employees`: PASS.
+- Smoke for Vercel protected routes and static assets: PASS.
+- Browser HTML did not expose `CORE_API_SERVER_TOKEN`, `CORE_API_INTERNAL_URL`, `BACKEND_API_TOKEN` or `DATABASE_URL`.
+- Post-migration backup: `b008`.
+- Vercel Auto Deploy: OFF.
+- Heroku Auto Deploy: OFF.
+
 Security and product boundaries that remain unchanged:
 
 - no password or password hash exists;
@@ -119,14 +151,12 @@ Security and product boundaries that remain unchanged:
 - no external authentication provider has been selected;
 - branch, warehouse and territory scopes are not implemented;
 - Basic Auth and backend bootstrap token remain active;
-- migration `009` has not been applied to production;
-- no Heroku or Vercel production deployment occurred for Phase 3.2C.
 
 See `docs/operations/user-role-assignment-slice.md`.
 
 ## Next checkpoint
 
-Phase 3.2C code is merged. Production closeout is a separate explicitly approved task and must begin with a fresh provider audit, verified pre-migration backup, restore rehearsal and reconciliation. Do not deploy or apply migration `009` based only on merge CI evidence.
+Phase 3.2C production closeout is complete. Future slices must begin with a fresh provider audit and a newly verified backup plus restore rehearsal before any later production migration.
 
 Do not begin login/session management, MFA, authentication-provider integration or branch/warehouse/territory scope assignment until the next slice is explicitly approved and its contract is locked.
 
