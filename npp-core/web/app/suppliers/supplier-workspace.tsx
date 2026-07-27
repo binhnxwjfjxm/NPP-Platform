@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AppShell } from '../components/app-shell';
 import styles from './suppliers.module.css';
 import type { Supplier } from '../../lib/supplier-types';
@@ -28,6 +28,12 @@ type Props = {
   initialError?: string | null;
 };
 
+class UiRequestError extends Error {
+  constructor(public readonly code: string, message: string) {
+    super(message);
+  }
+}
+
 function emptySupplierDraft(): SupplierDraft {
   return {
     code: '',
@@ -40,255 +46,249 @@ function emptySupplierDraft(): SupplierDraft {
   };
 }
 
-export function SupplierWorkspace({ initialSuppliers, initialError }: Props) {
-  const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers);
-  const [filter, setFilter] = useState<FilterState>('all');
-  const [searchTerm, setSearchTerm] = useState('');
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    cache: 'no-store',
+    ...init,
+    headers: {
+      Accept: 'application/json',
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(init?.headers || {}),
+    },
+  });
+  const payload = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
+  if (!response.ok || payload.data === undefined) {
+    throw new UiRequestError(
+      payload.error?.code || 'REQUEST_FAILED',
+      payload.error?.message || 'Không thể kết nối dịch vụ nhà cung cấp',
+    );
+  }
+  return payload.data;
+}
+
+export default function SupplierWorkspace({ initialSuppliers, initialError = null }: Props) {
+  const [suppliers, setSuppliers] = useState(initialSuppliers);
+  const [statusFilter, setStatusFilter] = useState<FilterState>('all');
+  const [search, setSearch] = useState('');
   const [editor, setEditor] = useState<SupplierEditor>(null);
   const [draft, setDraft] = useState<SupplierDraft>(emptySupplierDraft());
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(initialError || null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const filtered = suppliers.filter((s) => {
-    if (filter === 'active' && !s.is_active) return false;
-    if (filter === 'inactive' && s.is_active) return false;
-    if (searchTerm) {
-      const search = searchTerm.toLowerCase();
-      return (
-        s.code.toLowerCase().includes(search) ||
-        s.name.toLowerCase().includes(search) ||
-        (s.tax_id?.toLowerCase().includes(search) ?? false)
-      );
-    }
-    return true;
-  });
+  const visibleSuppliers = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase('vi-VN');
+    return suppliers
+      .filter((supplier) => {
+        const statusMatches = statusFilter === 'all'
+          || (statusFilter === 'active' ? supplier.is_active : !supplier.is_active);
+        const text = [supplier.code, supplier.name, supplier.tax_id, supplier.bank_account]
+          .filter(Boolean)
+          .join(' ')
+          .toLocaleLowerCase('vi-VN');
+        return statusMatches && (!term || text.includes(term));
+      })
+      .sort((left, right) => left.code.localeCompare(right.code));
+  }, [search, statusFilter, suppliers]);
 
-  const handleCreateClick = () => {
-    setEditor({ mode: 'create', id: null });
-    setDraft(emptySupplierDraft());
+  async function loadAll(message?: string) {
+    setBusy('load');
     setError(null);
-  };
+    try {
+      setSuppliers(await requestJson<Supplier[]>('/api/suppliers?limit=1000'));
+      if (message) setNotice(message);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Không tải được dữ liệu nhà cung cấp');
+    } finally {
+      setBusy(null);
+    }
+  }
 
-  const handleEditClick = (supplier: Supplier) => {
-    setEditor({ mode: 'edit', id: supplier.id });
+  function openCreate() {
+    setDraft(emptySupplierDraft());
+    setEditor({ mode: 'create', id: null });
+    setError(null);
+    setNotice(null);
+  }
+
+  function openEdit(supplier: Supplier) {
     setDraft({
       code: supplier.code,
       name: supplier.name,
-      taxId: supplier.tax_id || '',
-      bankAccount: supplier.bank_account || '',
-      bankName: supplier.bank_name || '',
-      avgDeliveryDays: supplier.avg_delivery_days?.toString() || '',
-      purchaseOwnerEmployeeId: supplier.purchase_owner_employee_id || '',
+      taxId: supplier.tax_id ?? '',
+      bankAccount: supplier.bank_account ?? '',
+      bankName: supplier.bank_name ?? '',
+      avgDeliveryDays: supplier.avg_delivery_days === null ? '' : String(supplier.avg_delivery_days),
+      purchaseOwnerEmployeeId: supplier.purchase_owner_employee_id ?? '',
     });
+    setEditor({ mode: 'edit', id: supplier.id });
     setError(null);
-  };
+    setNotice(null);
+  }
 
-  const handleCancel = () => {
-    setEditor(null);
-    setDraft(emptySupplierDraft());
-  };
+  async function handleFailure(failure: unknown) {
+    const next = failure instanceof UiRequestError
+      ? failure
+      : new UiRequestError('REQUEST_FAILED', failure instanceof Error ? failure.message : 'Yêu cầu không thành công');
+    if (next.code === 'CONFLICT') {
+      await loadAll();
+      setError('Dữ liệu đã thay đổi ở nơi khác. Danh sách đã được tải lại, anh vui lòng kiểm tra rồi thao tác lại.');
+      return;
+    }
+    setError(next.message);
+  }
 
-  const handleToggleStatus = async (supplier: Supplier) => {
-    setLoading(true);
+  async function submitSupplier(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const current = editor?.mode === 'edit' ? suppliers.find((item) => item.id === editor.id) : null;
+    setBusy('save');
     setError(null);
+    setNotice(null);
     try {
-      const response = await fetch(`/api/suppliers/${supplier.id}`, {
+      await requestJson<Supplier>(current ? `/api/suppliers/${current.id}` : '/api/suppliers', {
+        method: current ? 'PATCH' : 'POST',
+        headers: current ? undefined : { 'Idempotency-Key': `web-${crypto.randomUUID()}` },
+        body: JSON.stringify({
+          ...(current ? {} : { code: draft.code.trim().toUpperCase() }),
+          name: draft.name.trim(),
+          taxId: draft.taxId.trim() || null,
+          bankAccount: draft.bankAccount.trim() || null,
+          bankName: draft.bankName.trim() || null,
+          avgDeliveryDays: draft.avgDeliveryDays.trim() === '' ? null : Number(draft.avgDeliveryDays),
+          purchaseOwnerEmployeeId: draft.purchaseOwnerEmployeeId.trim() || null,
+          ...(current ? { expectedUpdatedAt: current.updated_at } : {}),
+        }),
+      });
+      setEditor(null);
+      setDraft(emptySupplierDraft());
+      await loadAll(current ? 'Nhà cung cấp đã được cập nhật.' : 'Nhà cung cấp đã được tạo.');
+    } catch (failure) {
+      await handleFailure(failure);
+      setBusy(null);
+    }
+  }
+
+  async function toggleSupplier(supplier: Supplier) {
+    setBusy(`toggle-${supplier.id}`);
+    setError(null);
+    setNotice(null);
+    try {
+      await requestJson<Supplier>(`/api/suppliers/${supplier.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           isActive: !supplier.is_active,
           expectedUpdatedAt: supplier.updated_at,
         }),
       });
-
-      const envelope: ApiEnvelope<Supplier> = await response.json();
-      if (envelope.error) {
-        setError(envelope.error.message || 'Failed to update supplier');
-        return;
-      }
-
-      if (envelope.data) {
-        setSuppliers(suppliers.map((s) => (s.id === supplier.id ? envelope.data! : s)));
-      }
-    } catch (e) {
-      setError('Failed to update supplier');
-    } finally {
-      setLoading(false);
+      await loadAll(supplier.is_active ? 'Nhà cung cấp đã được ngừng hoạt động.' : 'Nhà cung cấp đã được kích hoạt.');
+    } catch (failure) {
+      await handleFailure(failure);
+      setBusy(null);
     }
-  };
-
-  const handleSave = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const method = editor?.mode === 'create' ? 'POST' : 'PATCH';
-      const endpoint = editor?.mode === 'create' ? '/api/suppliers' : `/api/suppliers/${editor?.id}`;
-      const body = editor?.mode === 'create'
-        ? draft
-        : {
-            ...draft,
-            expectedUpdatedAt: suppliers.find((s) => s.id === editor?.id)?.updated_at,
-          };
-
-      const response = await fetch(endpoint, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(editor?.mode === 'create' ? { 'Idempotency-Key': `web-supplier-${Date.now()}` } : {}),
-        },
-        body: JSON.stringify(body),
-      });
-
-      const envelope: ApiEnvelope<Supplier> = await response.json();
-      if (envelope.error) {
-        setError(envelope.error.message || 'Failed to save supplier');
-        return;
-      }
-
-      if (envelope.data) {
-        if (editor?.mode === 'create') {
-          setSuppliers([...suppliers, envelope.data]);
-        } else {
-          setSuppliers(suppliers.map((s) => (s.id === envelope.data!.id ? envelope.data! : s)));
-        }
-        setEditor(null);
-        setDraft(emptySupplierDraft());
-      }
-    } catch (e) {
-      setError('Failed to save supplier');
-    } finally {
-      setLoading(false);
-    }
-  };
+  }
 
   return (
-    <AppShell>
-      <div className={styles.container}>
-        <div className={styles.header}>
-          <h1>Nhà cung cấp</h1>
-          <button onClick={handleCreateClick} disabled={loading}>
-            Thêm nhà cung cấp
-          </button>
-        </div>
+    <AppShell
+      title="Nhà cung cấp"
+      subtitle="Quản lý hồ sơ, thông tin thuế, ngân hàng và thời gian giao hàng của nhà cung cấp."
+    >
+      <div className={styles.page} data-testid="suppliers-page">
+        <section className={styles.summary}>
+          <div><strong>{suppliers.length}</strong><span>Tổng nhà cung cấp</span></div>
+          <div><strong>{suppliers.filter((item) => item.is_active).length}</strong><span>Đang hoạt động</span></div>
+          <button type="button" onClick={openCreate} disabled={busy !== null}>Thêm nhà cung cấp</button>
+        </section>
 
-        {error && <div className={styles.error}>{error}</div>}
+        {error ? <p className={styles.error} role="alert">{error}</p> : null}
+        {notice ? <p className={styles.notice}>{notice}</p> : null}
 
-        <div className={styles.controls}>
+        <section className={styles.toolbar}>
           <input
-            type="text"
-            placeholder="Tìm kiếm..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            disabled={loading}
+            data-testid="suppliers-search-input"
+            type="search"
+            placeholder="Tìm theo mã, tên, mã số thuế hoặc tài khoản"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
           />
-          <div className={styles.filters}>
-            {(['all', 'active', 'inactive'] as const).map((f) => (
-              <label key={f}>
-                <input
-                  type="radio"
-                  name="filter"
-                  value={f}
-                  checked={filter === f}
-                  onChange={() => setFilter(f)}
-                  disabled={loading}
-                />
-                {f === 'all' ? 'Tất cả' : f === 'active' ? 'Hoạt động' : 'Không hoạt động'}
-              </label>
-            ))}
-          </div>
-        </div>
+          <select
+            data-testid="suppliers-status-filter"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as FilterState)}
+          >
+            <option value="all">Tất cả trạng thái</option>
+            <option value="active">Hoạt động</option>
+            <option value="inactive">Không hoạt động</option>
+          </select>
+          <button type="button" onClick={() => void loadAll()} disabled={busy !== null}>Tải lại</button>
+        </section>
 
-        {editor && (
-          <div className={styles.editor}>
-            <h2>{editor.mode === 'create' ? 'Thêm nhà cung cấp' : 'Chỉnh sửa nhà cung cấp'}</h2>
-            <div className={styles.form}>
-              <input
-                type="text"
-                placeholder="Mã"
-                value={draft.code}
-                onChange={(e) => setDraft({ ...draft, code: e.target.value })}
-                disabled={loading || editor.mode === 'edit'}
-              />
-              <input
-                type="text"
-                placeholder="Tên"
-                value={draft.name}
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                disabled={loading}
-              />
-              <input
-                type="text"
-                placeholder="Mã số thuế"
-                value={draft.taxId}
-                onChange={(e) => setDraft({ ...draft, taxId: e.target.value })}
-                disabled={loading}
-              />
-              <input
-                type="text"
-                placeholder="Số tài khoản ngân hàng"
-                value={draft.bankAccount}
-                onChange={(e) => setDraft({ ...draft, bankAccount: e.target.value })}
-                disabled={loading}
-              />
-              <input
-                type="text"
-                placeholder="Tên ngân hàng"
-                value={draft.bankName}
-                onChange={(e) => setDraft({ ...draft, bankName: e.target.value })}
-                disabled={loading}
-              />
-              <input
-                type="number"
-                placeholder="Thời gian giao hàng trung bình (ngày)"
-                value={draft.avgDeliveryDays}
-                onChange={(e) => setDraft({ ...draft, avgDeliveryDays: e.target.value })}
-                disabled={loading}
-              />
-            </div>
-            <div className={styles.actions}>
-              <button onClick={handleSave} disabled={loading}>
-                Lưu
-              </button>
-              <button onClick={handleCancel} disabled={loading}>
-                Hủy
-              </button>
-            </div>
-          </div>
-        )}
-
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>Mã</th>
-              <th>Tên</th>
-              <th>Mã số thuế</th>
-              <th>NgB</th>
-              <th>Trạng thái</th>
-              <th>Thao tác</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((supplier) => (
-              <tr key={supplier.id}>
-                <td>{supplier.code}</td>
-                <td>{supplier.name}</td>
-                <td>{supplier.tax_id || '-'}</td>
-                <td>{supplier.avg_delivery_days || '-'}</td>
-                <td>{supplier.is_active ? 'Hoạt động' : 'Không hoạt động'}</td>
-                <td>
-                  <button onClick={() => handleEditClick(supplier)} disabled={loading}>
-                    Sửa
-                  </button>
-                  <button onClick={() => handleToggleStatus(supplier)} disabled={loading}>
-                    {supplier.is_active ? 'Vô hiệu' : 'Kích hoạt'}
-                  </button>
-                </td>
+        <section className={styles.tableCard}>
+          <table>
+            <thead>
+              <tr>
+                <th>Mã</th>
+                <th>Tên nhà cung cấp</th>
+                <th>Mã số thuế</th>
+                <th>Ngân hàng</th>
+                <th>Giao hàng</th>
+                <th>Trạng thái</th>
+                <th>Thao tác</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {visibleSuppliers.map((supplier) => (
+                <tr key={supplier.id} data-testid={`supplier-row-${supplier.code}`}>
+                  <td className={styles.code}>{supplier.code}</td>
+                  <td>{supplier.name}</td>
+                  <td>{supplier.tax_id || '—'}</td>
+                  <td>{supplier.bank_name || supplier.bank_account || '—'}</td>
+                  <td>{supplier.avg_delivery_days === null ? '—' : `${supplier.avg_delivery_days} ngày`}</td>
+                  <td><span className={supplier.is_active ? styles.active : styles.inactive}>{supplier.is_active ? 'Hoạt động' : 'Không hoạt động'}</span></td>
+                  <td className={styles.actions}>
+                    <button
+                      data-testid={`edit-supplier-${supplier.code}`}
+                      type="button"
+                      onClick={() => openEdit(supplier)}
+                      disabled={busy !== null}
+                    >
+                      Sửa
+                    </button>
+                    <button type="button" onClick={() => void toggleSupplier(supplier)} disabled={busy !== null}>
+                      {supplier.is_active ? 'Vô hiệu' : 'Kích hoạt'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {visibleSuppliers.length === 0 ? <p className={styles.empty}>Không có nhà cung cấp phù hợp.</p> : null}
+        </section>
 
-        {filtered.length === 0 && <p className={styles.empty}>Không có nhà cung cấp</p>}
+        {editor ? (
+          <div className={styles.modalBackdrop} role="presentation">
+            <form className={styles.modal} onSubmit={submitSupplier}>
+              <header>
+                <div>
+                  <p>Danh mục nhà cung cấp</p>
+                  <h2>{editor.mode === 'create' ? 'Thêm nhà cung cấp' : 'Chỉnh sửa nhà cung cấp'}</h2>
+                </div>
+                <button type="button" onClick={() => setEditor(null)} disabled={busy !== null}>Đóng</button>
+              </header>
+              <div className={styles.formGrid}>
+                <label>Mã nhà cung cấp<input data-testid="supplier-code-input" value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value })} disabled={editor.mode === 'edit' || busy !== null} required /></label>
+                <label>Tên nhà cung cấp<input data-testid="supplier-name-input" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} disabled={busy !== null} required /></label>
+                <label>Mã số thuế<input data-testid="supplier-tax-id-input" value={draft.taxId} onChange={(event) => setDraft({ ...draft, taxId: event.target.value })} disabled={busy !== null} /></label>
+                <label>Số tài khoản<input data-testid="supplier-bank-account-input" value={draft.bankAccount} onChange={(event) => setDraft({ ...draft, bankAccount: event.target.value })} disabled={busy !== null} /></label>
+                <label>Tên ngân hàng<input data-testid="supplier-bank-name-input" value={draft.bankName} onChange={(event) => setDraft({ ...draft, bankName: event.target.value })} disabled={busy !== null} /></label>
+                <label>Thời gian giao hàng trung bình<input data-testid="supplier-avg-delivery-days-input" type="number" min="0" max="3650" value={draft.avgDeliveryDays} onChange={(event) => setDraft({ ...draft, avgDeliveryDays: event.target.value })} disabled={busy !== null} /></label>
+              </div>
+              <footer>
+                <button type="button" onClick={() => setEditor(null)} disabled={busy !== null}>Hủy</button>
+                <button type="submit" disabled={busy !== null}>{busy === 'save' ? 'Đang lưu…' : 'Lưu'}</button>
+              </footer>
+            </form>
+          </div>
+        ) : null}
       </div>
     </AppShell>
   );
