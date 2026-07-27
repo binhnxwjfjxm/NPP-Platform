@@ -3,7 +3,7 @@ import {
   normalizeCustomerGatewayError,
   patchCustomerAddress,
   resolveCustomerRequestId,
-} from '../../../../../../../lib/customer-gateway';
+} from '../../../../../../lib/customer-gateway';
 
 export const dynamic = 'force-dynamic';
 
