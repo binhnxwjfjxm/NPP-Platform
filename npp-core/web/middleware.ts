@@ -74,5 +74,6 @@ export const config = {
     '/api/access/:path*',
     '/api/customers/:path*',
     '/api/customer-groups/:path*',
+    '/api/suppliers/:path*',
   ],
 };

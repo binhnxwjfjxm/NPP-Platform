@@ -37,6 +37,10 @@ const CUSTOMER_MASTER_DATA_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/010_customer_master_data.sql', import.meta.url),
   'utf8',
 );
+const SUPPLIER_MASTER_DATA_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/011_supplier_master_data.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
@@ -74,6 +78,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '010_customer_master_data',
     sql: CUSTOMER_MASTER_DATA_SQL,
+  }),
+  Object.freeze({
+    id: '011_supplier_master_data',
+    sql: SUPPLIER_MASTER_DATA_SQL,
   }),
 ]);
 
