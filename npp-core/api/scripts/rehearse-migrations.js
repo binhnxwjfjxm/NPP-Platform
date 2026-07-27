@@ -1,10 +1,16 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 import { CORE_API_MIGRATIONS, runMigrations } from '../src/migrations/index.js';
+import {
+  buildMigrationManifest,
+  buildMigrationRegistryAudit,
+  buildRolloutPrepSummary,
+} from '../src/migrations/rollout-prep.js';
+import { migrationVerifyWithAdapter } from '../src/migrations/cli.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -157,6 +163,17 @@ async function objectExists(pool, sql, values) {
   return result.rows?.[0]?.exists === true;
 }
 
+async function listSharedTables(pool) {
+  const result = await pool.query(
+    `SELECT tablename
+     FROM pg_tables
+     WHERE schemaname = 'shared'
+       AND tablename <> 'schema_migrations'
+     ORDER BY tablename ASC`,
+  );
+  return (result.rows ?? []).map((row) => String(row.tablename));
+}
+
 async function validateFoundationSchema(pool) {
   const missing = [];
   for (const table of [
@@ -220,16 +237,17 @@ export function cryptoHash(value) {
 async function captureSnapshot(pool) {
   const migrationResult = await pool.query('SELECT id FROM shared.schema_migrations ORDER BY id');
   const migrations = (migrationResult.rows ?? []).map((row) => String(row.id));
-  const tables = ['shared.core_idempotency_records', 'shared.core_audit_records', 'shared.core_outbox_events'];
+  const tables = (await listSharedTables(pool)).map((table) => `shared.${table}`);
   const rowCounts = {};
   const checksums = {};
 
   for (const table of tables) {
-    const countResult = await pool.query(`SELECT COUNT(1) AS count FROM ${table}`);
+    const quotedTable = table.split('.').map((segment) => quoteIdentifier(segment)).join('.');
+    const countResult = await pool.query(`SELECT COUNT(1) AS count FROM ${quotedTable}`);
     rowCounts[table] = Number(countResult.rows[0].count);
 
     const rowsResult = await pool.query(
-      `SELECT to_jsonb(t)::text AS row_text FROM ${table} t ORDER BY to_jsonb(t)::text`,
+      `SELECT to_jsonb(t)::text AS row_text FROM ${quotedTable} t ORDER BY to_jsonb(t)::text`,
     );
     checksums[table] = cryptoHash((rowsResult.rows ?? []).map((row) => row.row_text).join('|'));
   }
@@ -255,11 +273,35 @@ async function captureSnapshot(pool) {
 
   return Object.freeze({
     migrations: Object.freeze(migrations),
+    tables: Object.freeze([...tables]),
     rowCounts: Object.freeze(rowCounts),
     checksums: Object.freeze(checksums),
     constraints: Object.freeze((constraints.rows ?? []).map((row) => row.conname)),
     indexes: Object.freeze((indexes.rows ?? []).map((row) => row.indexname)),
     triggers: Object.freeze((triggers.rows ?? []).map((row) => row.tgname)),
+  });
+}
+
+async function captureProviderFingerprint(pool) {
+  const result = await pool.query(
+    `SELECT
+       current_database() AS database_name,
+       current_user,
+       session_user,
+       inet_server_addr()::text AS server_address,
+       inet_server_port()::text AS server_port,
+       version() AS server_version,
+       pg_is_in_recovery() AS in_recovery`,
+  );
+  const row = result.rows?.[0] ?? {};
+  return Object.freeze({
+    databaseName: row.database_name ? String(row.database_name) : null,
+    currentUser: row.current_user ? String(row.current_user) : null,
+    sessionUser: row.session_user ? String(row.session_user) : null,
+    serverAddress: row.server_address ? String(row.server_address) : null,
+    serverPort: row.server_port ? String(row.server_port) : null,
+    serverVersion: row.server_version ? String(row.server_version) : null,
+    inRecovery: row.in_recovery === null || row.in_recovery === undefined ? null : Boolean(row.in_recovery),
   });
 }
 
@@ -336,6 +378,10 @@ async function restoreDatabase(restoreDatabaseUrl, backupPath, sourceEnv) {
   runCommand('pg_restore', ['--no-owner', '--exit-on-error', '--dbname', databaseName, backupPath], env);
 }
 
+function fileChecksum(filePath) {
+  return createHash('sha256').update(readFileSync(filePath)).digest('hex');
+}
+
 function arraysMatch(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -353,11 +399,11 @@ export function reconcileSnapshots(before, after) {
   return Object.freeze(reconciliation);
 }
 
-export async function cleanupResources({ sourceDatabaseName, restoreDatabaseName, adminUrl, backupPath, operations }) {
-  const cleanup = { source: 'not-created', restore: 'not-created', backup: 'not-created' };
+export async function cleanupResources({ sourceDatabaseName, restoreDatabaseName, regressionDatabaseName, adminUrl, backupPath, operations }) {
+  const cleanup = { source: 'not-created', restore: 'not-created', regression: 'not-created', backup: 'not-created' };
   const errors = [];
 
-  for (const [key, databaseName] of [['source', sourceDatabaseName], ['restore', restoreDatabaseName]]) {
+  for (const [key, databaseName] of [['source', sourceDatabaseName], ['restore', restoreDatabaseName], ['regression', regressionDatabaseName]]) {
     if (!databaseName) continue;
     try {
       await operations.dropDatabase(adminUrl, databaseName);
@@ -389,13 +435,22 @@ function createInitialReport(startedAt) {
     postgresVersion: null,
     sourceDatabaseIdentifier: null,
     restoredDatabaseIdentifier: null,
+    regressionDatabaseIdentifier: null,
+    providerFingerprint: null,
+    migrationManifest: [],
+    registryAudit: null,
+    migrationVerification: null,
+    restoredMigrationVerification: null,
     appliedMigrations: [],
     secondRunMigrations: [],
     preBackupSnapshot: null,
     postRestoreSnapshot: null,
     reconciliation: null,
-    cleanup: { source: 'not-created', restore: 'not-created', backup: 'not-created' },
+    backup: null,
+    regression: null,
+    cleanup: { source: 'not-created', restore: 'not-created', regression: 'not-created', backup: 'not-created' },
     errors: [],
+    summary: null,
   };
 }
 
@@ -415,6 +470,7 @@ export async function runMigrationRehearsal({ env = process.env, reportFile = RE
   let adminUrl = null;
   let sourceDatabaseName = null;
   let restoreDatabaseName = null;
+  let regressionDatabaseName = null;
   let backupPath = null;
   let primaryError = null;
 
@@ -431,21 +487,24 @@ export async function runMigrationRehearsal({ env = process.env, reportFile = RE
     adminUrl = buildAdminDatabaseUrl(baseUrl);
     sourceDatabaseName = `npp_rehearsal_src_${randomSuffix()}`;
     restoreDatabaseName = `npp_rehearsal_dst_${randomSuffix()}`;
+    regressionDatabaseName = `npp_rehearsal_reg_${randomSuffix()}`;
     report.sourceDatabaseIdentifier = buildSafeIdentifier(sourceDatabaseName);
     report.restoredDatabaseIdentifier = buildSafeIdentifier(restoreDatabaseName);
+    report.regressionDatabaseIdentifier = buildSafeIdentifier(regressionDatabaseName);
+    report.migrationManifest = buildMigrationManifest();
 
     const sourceDatabaseUrl = cloneDatabaseUrl(baseUrl, sourceDatabaseName);
     const restoreDatabaseUrl = cloneDatabaseUrl(baseUrl, restoreDatabaseName);
+    const regressionDatabaseUrl = cloneDatabaseUrl(baseUrl, regressionDatabaseName);
     mkdirSync(path.dirname(reportFile), { recursive: true });
     backupPath = path.join(path.dirname(reportFile), `migration-rehearsal-${randomSuffix()}.dump`);
 
     await createDatabase(adminUrl, sourceDatabaseName);
     await createDatabase(adminUrl, restoreDatabaseName);
+    await createDatabase(adminUrl, regressionDatabaseName);
 
-    report.postgresVersion = await withPool(sourceDatabaseUrl, async (pool) => {
-      const result = await pool.query('SHOW server_version');
-      return String(result.rows?.[0]?.server_version ?? 'unknown');
-    });
+    report.providerFingerprint = await withPool(sourceDatabaseUrl, captureProviderFingerprint);
+    report.postgresVersion = report.providerFingerprint.serverVersion ?? 'unknown';
 
     report.appliedMigrations = await withPool(sourceDatabaseUrl, async (pool) => {
       const result = await runMigrations(pool, CORE_API_MIGRATIONS);
@@ -460,25 +519,77 @@ export async function runMigrationRehearsal({ env = process.env, reportFile = RE
       fail('migration_idempotency_failed', 'Second migration run applied unexpected migrations');
     }
 
+    report.migrationVerification = await withPool(sourceDatabaseUrl, async (pool) => migrationVerifyWithAdapter(pool));
+    if (!report.migrationVerification.verified) {
+      fail('migration_verification_failed', `Source migration verification failed: ${report.migrationVerification.issues.join(', ')}`);
+    }
+
     const missing = await withPool(sourceDatabaseUrl, validateFoundationSchema);
     if (missing.length > 0) fail('schema_validation_failed', `Missing schema objects: ${missing.join(', ')}`);
 
     await withPool(sourceDatabaseUrl, insertSampleData);
     report.preBackupSnapshot = await withPool(sourceDatabaseUrl, captureSnapshot);
     await backupDatabase(sourceDatabaseUrl, backupPath, env);
+    const backupBuffer = readFileSync(backupPath);
+    report.backup = Object.freeze({
+      path: backupPath,
+      bytes: backupBuffer.length,
+      checksum: fileChecksum(backupPath),
+      sourceIdentifier: report.sourceDatabaseIdentifier,
+      capturedAt: new Date().toISOString(),
+    });
     await restoreDatabase(restoreDatabaseUrl, backupPath, env);
     report.postRestoreSnapshot = await withPool(restoreDatabaseUrl, captureSnapshot);
+    report.restoredMigrationVerification = await withPool(restoreDatabaseUrl, async (pool) => migrationVerifyWithAdapter(pool));
+    if (!report.restoredMigrationVerification.verified) {
+      fail('restored_migration_verification_failed', `Restored migration verification failed: ${report.restoredMigrationVerification.issues.join(', ')}`);
+    }
     report.reconciliation = reconcileSnapshots(report.preBackupSnapshot, report.postRestoreSnapshot);
     if (!report.reconciliation.overallMatch) {
       fail('reconciliation_failed', 'Post-restore snapshot does not match pre-backup snapshot');
+    }
+
+    await restoreDatabase(regressionDatabaseUrl, backupPath, env);
+    const regressionEnv = {
+      ...env,
+      DATABASE_URL: regressionDatabaseUrl,
+      TEST_DATABASE_URL: regressionDatabaseUrl,
+    };
+    const regressionStartedAt = new Date().toISOString();
+    try {
+      runCommand('npm', ['--workspace', 'npp-core-api', 'run', 'verify'], regressionEnv);
+      report.regression = Object.freeze({
+        command: 'npm --workspace npp-core-api run verify',
+        startedAt: regressionStartedAt,
+        finishedAt: new Date().toISOString(),
+        status: 'success',
+        exitCode: 0,
+        databaseIdentifier: buildSafeIdentifier(regressionDatabaseName),
+      });
+    } catch (error) {
+      report.regression = Object.freeze({
+        command: 'npm --workspace npp-core-api run verify',
+        startedAt: regressionStartedAt,
+        finishedAt: new Date().toISOString(),
+        status: 'failed',
+        exitCode: 1,
+        error: safeError(error, baseUrl),
+        databaseIdentifier: buildSafeIdentifier(regressionDatabaseName),
+      });
+      throw error;
     }
   } catch (error) {
     primaryError = error;
     report.errors.push(safeError(error, baseUrl));
   } finally {
+    report.registryAudit = buildMigrationRegistryAudit({
+      appliedIds: report.appliedMigrations,
+      migrations: CORE_API_MIGRATIONS,
+    });
     const cleanupResult = await cleanupResources({
       sourceDatabaseName,
       restoreDatabaseName,
+      regressionDatabaseName,
       adminUrl,
       backupPath,
       operations,
@@ -487,6 +598,9 @@ export async function runMigrationRehearsal({ env = process.env, reportFile = RE
     report.errors.push(...cleanupResult.errors.map((error) => safeError(error, baseUrl)));
     report.finishedAt = new Date().toISOString();
     report.status = primaryError === null && report.errors.length === 0 ? 'success' : 'failed';
+    if (report.registryAudit && report.migrationVerification && report.regression) {
+      report.summary = buildRolloutPrepSummary(report);
+    }
     mkdirSync(path.dirname(reportFile), { recursive: true });
     writeFileSync(reportFile, JSON.stringify(report, null, 2), 'utf8');
   }

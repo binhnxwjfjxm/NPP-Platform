@@ -100,18 +100,18 @@ jobs:
 
   verify-migration-rehearsal:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     needs: verify-core-foundation
     defaults:
       run:
         working-directory: npp-core
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
+          POSTGRES_DB: rehearsal_npp_core
         ports:
           - 5432:5432
         options: >-
@@ -136,7 +136,8 @@ jobs:
 
       - name: Run migration rehearsal
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rehearsal_npp_core
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rehearsal_npp_core
           NODE_ENV: test
           MIGRATION_REHEARSAL_CONFIRM: temporary-database
         run: npm --prefix ./api run migration:rehearse

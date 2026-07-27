@@ -71,6 +71,7 @@ test('cleanup attempts source, restore, and backup even when one cleanup operati
   const result = await cleanupResources({
     sourceDatabaseName: 'source-db',
     restoreDatabaseName: 'restore-db',
+    regressionDatabaseName: 'regression-db',
     adminUrl: 'postgresql://redacted',
     backupPath: '/tmp/rehearsal.dump',
     operations: {
@@ -87,10 +88,12 @@ test('cleanup attempts source, restore, and backup even when one cleanup operati
   assert.deepEqual(calls, [
     'drop:source-db',
     'drop:restore-db',
+    'drop:regression-db',
     'remove:/tmp/rehearsal.dump',
   ]);
   assert.equal(result.cleanup.source, 'failed');
   assert.equal(result.cleanup.restore, 'dropped');
+  assert.equal(result.cleanup.regression, 'dropped');
   assert.equal(result.cleanup.backup, 'removed');
   assert.equal(result.errors.length, 1);
 });
