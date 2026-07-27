@@ -231,9 +231,9 @@
   font-weight: 700;
 }
 
-button:disabled,
-input:disabled,
-select:disabled {
+.page button:disabled,
+.page input:disabled,
+.page select:disabled {
   cursor: not-allowed;
   opacity: 0.62;
 }
