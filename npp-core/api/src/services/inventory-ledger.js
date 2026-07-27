@@ -234,6 +234,10 @@ export async function postInventoryMovement(client, { requestContext, idempotenc
   const normalized = normalizePostingPayload(payload);
   if (!normalized.ok) return normalized;
   const hash = payloadHash(normalized.value);
+  await repository.lockIdempotencyKey(client, {
+    installationId: requestContext.installationId,
+    idempotencyKey,
+  });
   const replay = await replayOrMismatch(client, {
     installationId: requestContext.installationId,
     idempotencyKey,
@@ -302,6 +306,10 @@ export async function reverseInventoryMovement(client, {
   const normalized = normalizeReversalPayload(payload);
   if (!normalized.ok) return normalized;
   const hash = payloadHash({ movementId, ...normalized.value });
+  await repository.lockIdempotencyKey(client, {
+    installationId: requestContext.installationId,
+    idempotencyKey,
+  });
   const replay = await replayOrMismatch(client, {
     installationId: requestContext.installationId,
     idempotencyKey,
