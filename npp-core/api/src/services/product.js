@@ -9,998 +9,536 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const VARIANT_KINDS = new Set(['BASE', 'CARTON', 'OTHER']);
 const MAX_IMPORT_PRODUCTS = 500;
 
-function normalizeText(value) {
+function invalid(code, message, retryable = false) {
+  return { ok: false, code, message, retryable };
+}
+
+function conflict(message) {
+  return invalid('CONFLICT', message);
+}
+
+function text(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function normalizeCode(value) {
-  return normalizeText(value).toUpperCase();
+function code(value) {
+  return text(value).toUpperCase();
 }
 
-function normalizeOptionalUuid(value) {
+function optionalUuid(value) {
   if (value === undefined || value === null || value === '') return null;
-  return normalizeText(value);
+  return text(value);
 }
 
-function isValidUuid(value) {
+function validUuid(value) {
   return typeof value === 'string' && UUID_PATTERN.test(value.trim());
 }
 
-function normalizeDateTime(value) {
+function dateTime(value) {
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
   if (typeof value !== 'string' || !value.trim()) return null;
-  const parsed = new Date(value.trim());
+  const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
-function validateExpectedUpdatedAt(value) {
-  if (value === undefined || value === null || value === '') {
-    return { ok: false, code: 'MISSING_EXPECTED_UPDATED_AT', message: 'expectedUpdatedAt is required' };
-  }
-  const normalized = normalizeDateTime(value);
+function expectedUpdatedAt(value) {
+  const normalized = dateTime(value);
   if (!normalized) {
-    return { ok: false, code: 'INVALID_EXPECTED_UPDATED_AT', message: 'expectedUpdatedAt must be a valid date-time' };
+    return invalid(
+      value === undefined || value === null || value === '' ? 'MISSING_EXPECTED_UPDATED_AT' : 'INVALID_EXPECTED_UPDATED_AT',
+      'expectedUpdatedAt is required and must be a valid date-time',
+    );
   }
   return { ok: true, value: normalized };
 }
 
-function conflictResult(message) {
-  return { ok: false, code: 'CONFLICT', message, retryable: false };
+function booleanField(payload, key, fallback) {
+  if (!Object.prototype.hasOwnProperty.call(payload, key)) return { ok: true, value: fallback };
+  if (typeof payload[key] !== 'boolean') return invalid('INVALID_BOOLEAN', `${key} must be a boolean`);
+  return { ok: true, value: payload[key] };
 }
 
-function invalidResult(code, message) {
-  return { ok: false, code, message, retryable: false };
-}
-
-function validateSearch(value) {
-  if (value === undefined || value === null || value === '') return { ok: true, value: null };
-  const normalized = normalizeText(value);
-  if (normalized.length > 256) {
-    return { ok: false, code: 'INVALID_SEARCH', message: 'Search must not exceed 256 characters' };
-  }
+function optionalText(payload, key, maxLength) {
+  const normalized = text(payload[key]);
+  if (normalized.length > maxLength) return invalid('INVALID_TEXT', `${key} must not exceed ${maxLength} characters`);
   return { ok: true, value: normalized || null };
 }
 
-function normalizeBoolean(value, fallback = false) {
-  if (value === undefined || value === null) return fallback;
-  return Boolean(value);
+function searchValue(value) {
+  if (value === undefined || value === null || value === '') return { ok: true, value: null };
+  const normalized = text(value);
+  if (normalized.length > 256) return invalid('INVALID_SEARCH', 'Search must not exceed 256 characters');
+  return { ok: true, value: normalized || null };
 }
 
-export function validateProductCategoryInput(payload, { codeRequired = true } = {}) {
-  if (!payload || typeof payload !== 'object') {
-    return invalidResult('INVALID_INPUT', 'Product category data is required');
-  }
-
-  const code = normalizeCode(payload.code);
-  if (codeRequired && !CODE_PATTERN.test(code)) {
-    return invalidResult('INVALID_CODE', 'Code must contain only uppercase letters, digits, hyphens, or underscores');
-  }
-
-  const name = normalizeText(payload.name);
-  if (!name || name.length > 256) {
-    return invalidResult('INVALID_NAME', 'Name is required and must not exceed 256 characters');
-  }
-
-  const parentCategoryId = normalizeOptionalUuid(payload.parentCategoryId);
-  if (parentCategoryId && !isValidUuid(parentCategoryId)) {
-    return invalidResult('INVALID_PARENT_CATEGORY_ID', 'Parent category ID must be a valid UUID');
-  }
-
-  const description = normalizeText(payload.description);
-  if (description.length > 2000) {
-    return invalidResult('INVALID_DESCRIPTION', 'Description must not exceed 2000 characters');
-  }
-
-  const sortOrder = payload.sortOrder === undefined || payload.sortOrder === null || payload.sortOrder === '' ? 0 : Number(payload.sortOrder);
-  if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 1000000) {
-    return invalidResult('INVALID_SORT_ORDER', 'Sort order must be an integer between 0 and 1000000');
-  }
-
-  const isCatalogVisible = normalizeBoolean(payload.isCatalogVisible, true);
-  const isActive = normalizeBoolean(payload.isActive, true);
-
-  return {
-    ok: true,
-    normalized: {
-      code,
-      name,
-      parentCategoryId,
-      description: description || null,
-      sortOrder,
-      isCatalogVisible,
-      isActive,
-    },
-  };
+export function validateProductCategoryInput(payload, { codeRequired = true, defaults = {} } = {}) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return invalid('INVALID_INPUT', 'Product category data is required');
+  const normalizedCode = code(payload.code ?? defaults.code);
+  if (codeRequired && !CODE_PATTERN.test(normalizedCode)) return invalid('INVALID_CODE', 'Category code is invalid');
+  const name = text(payload.name ?? defaults.name);
+  if (!name || name.length > 256) return invalid('INVALID_NAME', 'Category name is required and must not exceed 256 characters');
+  const parentCategoryId = optionalUuid(Object.prototype.hasOwnProperty.call(payload, 'parentCategoryId') ? payload.parentCategoryId : defaults.parentCategoryId);
+  if (parentCategoryId && !validUuid(parentCategoryId)) return invalid('INVALID_PARENT_CATEGORY_ID', 'Parent category ID must be a valid UUID');
+  const description = optionalText({ description: Object.prototype.hasOwnProperty.call(payload, 'description') ? payload.description : defaults.description }, 'description', 2000);
+  if (!description.ok) return description;
+  const sortOrder = Number(Object.prototype.hasOwnProperty.call(payload, 'sortOrder') ? payload.sortOrder : (defaults.sortOrder ?? 0));
+  if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 1_000_000) return invalid('INVALID_SORT_ORDER', 'Sort order must be an integer between 0 and 1000000');
+  const visible = booleanField(payload, 'isCatalogVisible', defaults.isCatalogVisible ?? true);
+  if (!visible.ok) return visible;
+  const active = booleanField(payload, 'isActive', defaults.isActive ?? true);
+  if (!active.ok) return active;
+  return { ok: true, normalized: { code: normalizedCode, name, parentCategoryId, description: description.value, sortOrder, isCatalogVisible: visible.value, isActive: active.value } };
 }
 
-export function validateProductBrandInput(payload, { codeRequired = true } = {}) {
-  if (!payload || typeof payload !== 'object') {
-    return invalidResult('INVALID_INPUT', 'Product brand data is required');
-  }
-
-  const code = normalizeCode(payload.code);
-  if (codeRequired && !CODE_PATTERN.test(code)) {
-    return invalidResult('INVALID_CODE', 'Code must contain only uppercase letters, digits, hyphens, or underscores');
-  }
-
-  const name = normalizeText(payload.name);
-  if (!name || name.length > 256) {
-    return invalidResult('INVALID_NAME', 'Name is required and must not exceed 256 characters');
-  }
-
-  const description = normalizeText(payload.description);
-  if (description.length > 2000) {
-    return invalidResult('INVALID_DESCRIPTION', 'Description must not exceed 2000 characters');
-  }
-
-  const isCatalogVisible = normalizeBoolean(payload.isCatalogVisible, true);
-  const isActive = normalizeBoolean(payload.isActive, true);
-
-  return {
-    ok: true,
-    normalized: {
-      code,
-      name,
-      description: description || null,
-      isCatalogVisible,
-      isActive,
-    },
-  };
+export function validateProductBrandInput(payload, { codeRequired = true, defaults = {} } = {}) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return invalid('INVALID_INPUT', 'Product brand data is required');
+  const normalizedCode = code(payload.code ?? defaults.code);
+  if (codeRequired && !CODE_PATTERN.test(normalizedCode)) return invalid('INVALID_CODE', 'Brand code is invalid');
+  const name = text(payload.name ?? defaults.name);
+  if (!name || name.length > 256) return invalid('INVALID_NAME', 'Brand name is required and must not exceed 256 characters');
+  const description = optionalText({ description: Object.prototype.hasOwnProperty.call(payload, 'description') ? payload.description : defaults.description }, 'description', 2000);
+  if (!description.ok) return description;
+  const visible = booleanField(payload, 'isCatalogVisible', defaults.isCatalogVisible ?? true);
+  if (!visible.ok) return visible;
+  const active = booleanField(payload, 'isActive', defaults.isActive ?? true);
+  if (!active.ok) return active;
+  return { ok: true, normalized: { code: normalizedCode, name, description: description.value, isCatalogVisible: visible.value, isActive: active.value } };
 }
 
-export function validateProductInput(payload, { codeRequired = true } = {}) {
-  if (!payload || typeof payload !== 'object') {
-    return invalidResult('INVALID_INPUT', 'Product data is required');
-  }
-
-  const code = normalizeCode(payload.code);
-  if (codeRequired && !CODE_PATTERN.test(code)) {
-    return invalidResult('INVALID_CODE', 'Code must contain only uppercase letters, digits, hyphens, or underscores');
-  }
-
-  const name = normalizeText(payload.name);
-  if (!name || name.length > 256) {
-    return invalidResult('INVALID_NAME', 'Name is required and must not exceed 256 characters');
-  }
-
-  const catalogName = normalizeText(payload.catalogName);
-  if (catalogName.length > 256) {
-    return invalidResult('INVALID_CATALOG_NAME', 'Catalog name must not exceed 256 characters');
-  }
-
-  const categoryId = normalizeOptionalUuid(payload.categoryId);
-  if (categoryId && !isValidUuid(categoryId)) {
-    return invalidResult('INVALID_CATEGORY_ID', 'Category ID must be a valid UUID');
-  }
-
-  const brandId = normalizeOptionalUuid(payload.brandId);
-  if (brandId && !isValidUuid(brandId)) {
-    return invalidResult('INVALID_BRAND_ID', 'Brand ID must be a valid UUID');
-  }
-
-  const description = normalizeText(payload.description);
-  if (description.length > 4000) {
-    return invalidResult('INVALID_DESCRIPTION', 'Description must not exceed 4000 characters');
-  }
-
-  const notes = normalizeText(payload.notes);
-  if (notes.length > 4000) {
-    return invalidResult('INVALID_NOTES', 'Notes must not exceed 4000 characters');
-  }
-
-  const isCatalogVisible = normalizeBoolean(payload.isCatalogVisible, false);
-  const isOrderable = normalizeBoolean(payload.isOrderable, false);
-  const isActive = normalizeBoolean(payload.isActive, true);
-
-  return {
-    ok: true,
-    normalized: {
-      code,
-      name,
-      catalogName: catalogName || null,
-      categoryId,
-      brandId,
-      description: description || null,
-      notes: notes || null,
-      isCatalogVisible,
-      isOrderable,
-      isActive,
-    },
-  };
+export function validateProductInput(payload, { codeRequired = true, defaults = {} } = {}) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return invalid('INVALID_INPUT', 'Product data is required');
+  const normalizedCode = code(payload.code ?? defaults.code);
+  if (codeRequired && !CODE_PATTERN.test(normalizedCode)) return invalid('INVALID_CODE', 'Product code is invalid');
+  const name = text(payload.name ?? defaults.name);
+  if (!name || name.length > 256) return invalid('INVALID_NAME', 'Product name is required and must not exceed 256 characters');
+  const catalogName = optionalText({ catalogName: Object.prototype.hasOwnProperty.call(payload, 'catalogName') ? payload.catalogName : defaults.catalogName }, 'catalogName', 256);
+  if (!catalogName.ok) return catalogName;
+  const categoryId = optionalUuid(Object.prototype.hasOwnProperty.call(payload, 'categoryId') ? payload.categoryId : defaults.categoryId);
+  if (categoryId && !validUuid(categoryId)) return invalid('INVALID_CATEGORY_ID', 'Category ID must be a valid UUID');
+  const brandId = optionalUuid(Object.prototype.hasOwnProperty.call(payload, 'brandId') ? payload.brandId : defaults.brandId);
+  if (brandId && !validUuid(brandId)) return invalid('INVALID_BRAND_ID', 'Brand ID must be a valid UUID');
+  const description = optionalText({ description: Object.prototype.hasOwnProperty.call(payload, 'description') ? payload.description : defaults.description }, 'description', 4000);
+  if (!description.ok) return description;
+  const notes = optionalText({ notes: Object.prototype.hasOwnProperty.call(payload, 'notes') ? payload.notes : defaults.notes }, 'notes', 4000);
+  if (!notes.ok) return notes;
+  const visible = booleanField(payload, 'isCatalogVisible', defaults.isCatalogVisible ?? false);
+  if (!visible.ok) return visible;
+  const orderable = booleanField(payload, 'isOrderable', defaults.isOrderable ?? false);
+  if (!orderable.ok) return orderable;
+  const active = booleanField(payload, 'isActive', defaults.isActive ?? true);
+  if (!active.ok) return active;
+  return { ok: true, normalized: { code: normalizedCode, name, catalogName: catalogName.value, categoryId, brandId, description: description.value, notes: notes.value, isCatalogVisible: visible.value, isOrderable: orderable.value, isActive: active.value } };
 }
 
-export function validateProductVariantInput(payload, { skuRequired = true } = {}) {
-  if (!payload || typeof payload !== 'object') {
-    return invalidResult('INVALID_INPUT', 'Product variant data is required');
-  }
-
-  const sku = normalizeCode(payload.sku);
-  if (skuRequired && !SKU_PATTERN.test(sku)) {
-    return invalidResult('INVALID_SKU', 'SKU must contain only uppercase letters, digits, dots, underscores, hyphens or slashes');
-  }
-
-  const name = normalizeText(payload.name);
-  if (!name || name.length > 256) {
-    return invalidResult('INVALID_NAME', 'Variant name is required and must not exceed 256 characters');
-  }
-
-  const variantKind = normalizeText(payload.variantKind).toUpperCase() || 'BASE';
-  if (!VARIANT_KINDS.has(variantKind)) {
-    return invalidResult('INVALID_VARIANT_KIND', 'Variant kind must be BASE, CARTON or OTHER');
-  }
-
-  const isInventoryBase = normalizeBoolean(payload.isInventoryBase, false);
-  if (isInventoryBase && variantKind !== 'BASE') {
-    return invalidResult('INVALID_INVENTORY_BASE', 'Inventory-base variants must use variant_kind BASE');
-  }
-
-  const isSellable = normalizeBoolean(payload.isSellable, true);
-  const isCatalogVisible = normalizeBoolean(payload.isCatalogVisible, false);
-  if (isCatalogVisible && !isSellable) {
-    return invalidResult('INVALID_VARIANT_VISIBILITY', 'Catalog-visible variants must be sellable');
-  }
-
-  const isActive = normalizeBoolean(payload.isActive, true);
-
-  return {
-    ok: true,
-    normalized: {
-      sku,
-      name,
-      variantKind,
-      isInventoryBase,
-      isSellable,
-      isCatalogVisible,
-      isActive,
-    },
-  };
+export function validateProductVariantInput(payload, { skuRequired = true, defaults = {} } = {}) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return invalid('INVALID_INPUT', 'Product variant data is required');
+  const sku = code(payload.sku ?? defaults.sku);
+  if (skuRequired && !SKU_PATTERN.test(sku)) return invalid('INVALID_SKU', 'SKU is invalid');
+  const name = text(payload.name ?? defaults.name);
+  if (!name || name.length > 256) return invalid('INVALID_NAME', 'Variant name is required and must not exceed 256 characters');
+  const variantKind = text(payload.variantKind ?? defaults.variantKind ?? 'BASE').toUpperCase();
+  if (!VARIANT_KINDS.has(variantKind)) return invalid('INVALID_VARIANT_KIND', 'Variant kind must be BASE, CARTON or OTHER');
+  const inventoryBase = booleanField(payload, 'isInventoryBase', defaults.isInventoryBase ?? false);
+  if (!inventoryBase.ok) return inventoryBase;
+  const sellable = booleanField(payload, 'isSellable', defaults.isSellable ?? true);
+  if (!sellable.ok) return sellable;
+  const visible = booleanField(payload, 'isCatalogVisible', defaults.isCatalogVisible ?? false);
+  if (!visible.ok) return visible;
+  const active = booleanField(payload, 'isActive', defaults.isActive ?? true);
+  if (!active.ok) return active;
+  if (inventoryBase.value && variantKind !== 'BASE') return invalid('INVALID_INVENTORY_BASE', 'Inventory-base variants must use BASE kind');
+  if (visible.value && !sellable.value) return invalid('INVALID_VARIANT_VISIBILITY', 'Catalog-visible variants must be sellable');
+  return { ok: true, normalized: { sku, name, variantKind, isInventoryBase: inventoryBase.value, isSellable: sellable.value, isCatalogVisible: visible.value, isActive: active.value } };
 }
 
-async function resolveCategory(client, { installationId, categoryId, requireActive }) {
+async function resolveCategory(client, { installationId, categoryId, requireActive = true }) {
   if (!categoryId) return { ok: true, category: null };
   const category = await categoryRepo.getProductCategoryByIdForInstallationForShare(client, { id: categoryId, installationId });
-  if (!category) return invalidResult('CATEGORY_NOT_FOUND', 'Category not found');
-  if (requireActive && !category.is_active) return invalidResult('CATEGORY_INACTIVE', 'Assigned category is not active');
+  if (!category) return invalid('CATEGORY_NOT_FOUND', 'Category not found');
+  if (requireActive && !category.is_active) return invalid('CATEGORY_INACTIVE', 'Assigned category is inactive');
   return { ok: true, category };
 }
 
-async function resolveBrand(client, { installationId, brandId, requireActive }) {
+async function resolveBrand(client, { installationId, brandId, requireActive = true }) {
   if (!brandId) return { ok: true, brand: null };
   const brand = await brandRepo.getProductBrandByIdForInstallationForShare(client, { id: brandId, installationId });
-  if (!brand) return invalidResult('BRAND_NOT_FOUND', 'Brand not found');
-  if (requireActive && !brand.is_active) return invalidResult('BRAND_INACTIVE', 'Assigned brand is not active');
+  if (!brand) return invalid('BRAND_NOT_FOUND', 'Brand not found');
+  if (requireActive && !brand.is_active) return invalid('BRAND_INACTIVE', 'Assigned brand is inactive');
   return { ok: true, brand };
+}
+
+function aliases(key, entity, extras = {}) {
+  return { ok: true, [key]: entity, [`product_${key}`]: entity, ...extras };
 }
 
 export async function createProductCategory(client, { installationId, payload, createdBy }) {
   const validation = validateProductCategoryInput(payload);
   if (!validation.ok) return validation;
-
-  const { parentCategoryId } = validation.normalized;
-  if (parentCategoryId) {
-    const parent = await categoryRepo.getProductCategoryByIdForInstallationForShare(client, { id: parentCategoryId, installationId });
-    if (!parent) return invalidResult('PARENT_CATEGORY_NOT_FOUND', 'Parent category not found');
+  if (validation.normalized.parentCategoryId) {
+    const parent = await resolveCategory(client, { installationId, categoryId: validation.normalized.parentCategoryId });
+    if (!parent.ok) return parent.code === 'CATEGORY_NOT_FOUND' ? invalid('PARENT_CATEGORY_NOT_FOUND', 'Parent category not found') : invalid('PARENT_CATEGORY_INACTIVE', 'Parent category is inactive');
   }
-
-  const existing = await categoryRepo.getProductCategoryByCode(client, {
-    installationId,
-    code: validation.normalized.code,
-  });
-  if (existing) return invalidResult('DUPLICATE_CODE', 'A product category with this code already exists');
-
-  const category = await categoryRepo.insertProductCategory(client, {
-    installationId,
-    ...validation.normalized,
-    createdBy,
-  });
-  if (!category) return invalidResult('DUPLICATE_CODE', 'A product category with this code already exists');
-  return { ok: true, category };
+  if (await categoryRepo.getProductCategoryByCode(client, { installationId, code: validation.normalized.code })) return invalid('DUPLICATE_CODE', 'Category code already exists');
+  const category = await categoryRepo.insertProductCategory(client, { installationId, ...validation.normalized, createdBy });
+  if (!category) return invalid('DUPLICATE_CODE', 'Category code already exists');
+  return aliases('category', category);
 }
 
 export async function getProductCategory(client, { installationId, id }) {
-  if (!isValidUuid(id)) return invalidResult('NOT_FOUND', 'Product category not found');
+  if (!validUuid(id)) return invalid('NOT_FOUND', 'Product category not found');
   const category = await categoryRepo.getProductCategoryByIdForInstallation(client, { id: id.trim(), installationId });
-  return category ? { ok: true, category } : invalidResult('NOT_FOUND', 'Product category not found');
+  return category ? { ok: true, category } : invalid('NOT_FOUND', 'Product category not found');
 }
 
 export async function listProductCategories(client, { installationId, search, active, limit, offset }) {
-  const searchValidation = validateSearch(search);
-  if (!searchValidation.ok) return searchValidation;
-  const categories = await categoryRepo.listProductCategoriesForInstallation(client, {
-    installationId,
-    search: searchValidation.value,
-    active,
-    limit,
-    offset,
-  });
+  const validatedSearch = searchValue(search);
+  if (!validatedSearch.ok) return validatedSearch;
+  const categories = await categoryRepo.listProductCategoriesForInstallation(client, { installationId, search: validatedSearch.value, active, limit, offset });
   return { ok: true, categories };
 }
 
 export async function updateProductCategory(client, { id, installationId, payload, updatedBy }) {
-  if (!isValidUuid(id)) return invalidResult('INVALID_ID', 'Product category ID must be a valid UUID');
-
+  if (!validUuid(id)) return invalid('INVALID_ID', 'Category ID must be a valid UUID');
   const existing = await categoryRepo.getProductCategoryByIdForInstallationForUpdate(client, { id: id.trim(), installationId });
-  if (!existing) return invalidResult('NOT_FOUND', 'Product category not found');
-
-  const expected = validateExpectedUpdatedAt(payload?.expectedUpdatedAt);
+  if (!existing) return invalid('NOT_FOUND', 'Product category not found');
+  if (Object.prototype.hasOwnProperty.call(payload ?? {}, 'code') && code(payload.code) !== existing.code) return invalid('IMMUTABLE_CODE', 'Category code is immutable');
+  const expected = expectedUpdatedAt(payload?.expectedUpdatedAt);
   if (!expected.ok) return expected;
-  if (normalizeDateTime(existing.updated_at) !== expected.value) return conflictResult('Product category update conflict');
-
-  if (typeof payload?.isActive === 'boolean' && existing.is_active === payload.isActive) {
-    // continue validating other fields
-  }
-
-  const validation = validateProductCategoryInput({
-    code: existing.code,
-    name: payload?.name ?? existing.name,
-    parentCategoryId: Object.prototype.hasOwnProperty.call(payload ?? {}, 'parentCategoryId') ? payload.parentCategoryId : existing.parent_category_id,
-    description: Object.prototype.hasOwnProperty.call(payload ?? {}, 'description') ? payload.description : existing.description ?? '',
-    sortOrder: Object.prototype.hasOwnProperty.call(payload ?? {}, 'sortOrder') ? payload.sortOrder : existing.sort_order,
-    isCatalogVisible: Object.prototype.hasOwnProperty.call(payload ?? {}, 'isCatalogVisible') ? payload.isCatalogVisible : existing.is_catalog_visible,
-    isActive: Object.prototype.hasOwnProperty.call(payload ?? {}, 'isActive') ? payload.isActive : existing.is_active,
-  }, { codeRequired: false });
+  if (dateTime(existing.updated_at) !== expected.value) return conflict('Product category update conflict');
+  const validation = validateProductCategoryInput(payload ?? {}, { codeRequired: false, defaults: {
+    code: existing.code, name: existing.name, parentCategoryId: existing.parent_category_id, description: existing.description,
+    sortOrder: existing.sort_order, isCatalogVisible: existing.is_catalog_visible, isActive: existing.is_active,
+  } });
   if (!validation.ok) return validation;
-
-  if (validation.normalized.parentCategoryId === existing.id) {
-    return invalidResult('INVALID_PARENT_CATEGORY_ID', 'Category cannot be its own parent');
+  const next = validation.normalized;
+  if (next.parentCategoryId === existing.id) return invalid('INVALID_PARENT_CATEGORY_ID', 'Category cannot be its own parent');
+  if (next.parentCategoryId) {
+    const parent = await resolveCategory(client, { installationId, categoryId: next.parentCategoryId });
+    if (!parent.ok) return parent.code === 'CATEGORY_NOT_FOUND' ? invalid('PARENT_CATEGORY_NOT_FOUND', 'Parent category not found') : invalid('PARENT_CATEGORY_INACTIVE', 'Parent category is inactive');
+    const cycle = await categoryRepo.isProductCategoryDescendantOf(client, { installationId, categoryId: next.parentCategoryId, ancestorId: existing.id });
+    if (cycle) return invalid('INVALID_CATEGORY_HIERARCHY', 'Category parent assignment would create a cycle');
   }
-
-  if (validation.normalized.parentCategoryId) {
-    const parent = await categoryRepo.getProductCategoryByIdForInstallationForShare(client, { id: validation.normalized.parentCategoryId, installationId });
-    if (!parent) return invalidResult('PARENT_CATEGORY_NOT_FOUND', 'Parent category not found');
-    const createsCycle = await categoryRepo.isProductCategoryDescendantOf(client, {
-      installationId,
-      categoryId: validation.normalized.parentCategoryId,
-      ancestorId: existing.id,
-    });
-    if (createsCycle) {
-      return invalidResult('INVALID_CATEGORY_HIERARCHY', 'Category parent assignment would create a cycle');
-    }
+  if (!next.isActive && existing.is_active) {
+    if (await categoryRepo.hasActiveProductsForCategory(client, { categoryId: existing.id, installationId })) return conflict('Cannot deactivate category while active products depend on it');
+    if (await categoryRepo.hasActiveChildCategories(client, { categoryId: existing.id, installationId })) return conflict('Cannot deactivate category while active child categories depend on it');
   }
-
-  if (validation.normalized.isActive === false) {
-    const activeProducts = await categoryRepo.hasActiveProductsForCategory(client, {
-      categoryId: existing.id,
-      installationId,
-    });
-    if (activeProducts) {
-      return conflictResult('Cannot deactivate category while active products depend on it');
-    }
-  }
-
-  const category = await categoryRepo.updateProductCategory(client, {
-    id: existing.id,
-    installationId,
-    ...validation.normalized,
-    updatedBy,
-    expectedUpdatedAt: expected.value,
-  });
-
-  if (!category) return conflictResult('Product category update conflict');
-  return { ok: true, category, beforeData: existing, changed: true, action: 'update' };
+  const category = await categoryRepo.updateProductCategory(client, { id: existing.id, installationId, ...next, updatedBy, expectedUpdatedAt: expected.value });
+  if (!category) return conflict('Product category update conflict');
+  return aliases('category', category, { beforeData: existing, changed: true, action: next.isActive === existing.is_active ? 'update' : (next.isActive ? 'activate' : 'deactivate') });
 }
 
 export async function createProductBrand(client, { installationId, payload, createdBy }) {
   const validation = validateProductBrandInput(payload);
   if (!validation.ok) return validation;
-
-  const existing = await brandRepo.getProductBrandByCode(client, {
-    installationId,
-    code: validation.normalized.code,
-  });
-  if (existing) return invalidResult('DUPLICATE_CODE', 'A product brand with this code already exists');
-
-  const brand = await brandRepo.insertProductBrand(client, {
-    installationId,
-    ...validation.normalized,
-    createdBy,
-  });
-  if (!brand) return invalidResult('DUPLICATE_CODE', 'A product brand with this code already exists');
-  return { ok: true, brand };
+  if (await brandRepo.getProductBrandByCode(client, { installationId, code: validation.normalized.code })) return invalid('DUPLICATE_CODE', 'Brand code already exists');
+  const brand = await brandRepo.insertProductBrand(client, { installationId, ...validation.normalized, createdBy });
+  if (!brand) return invalid('DUPLICATE_CODE', 'Brand code already exists');
+  return aliases('brand', brand);
 }
 
 export async function getProductBrand(client, { installationId, id }) {
-  if (!isValidUuid(id)) return invalidResult('NOT_FOUND', 'Product brand not found');
+  if (!validUuid(id)) return invalid('NOT_FOUND', 'Product brand not found');
   const brand = await brandRepo.getProductBrandByIdForInstallation(client, { id: id.trim(), installationId });
-  return brand ? { ok: true, brand } : invalidResult('NOT_FOUND', 'Product brand not found');
+  return brand ? { ok: true, brand } : invalid('NOT_FOUND', 'Product brand not found');
 }
 
 export async function listProductBrands(client, { installationId, search, active, limit, offset }) {
-  const searchValidation = validateSearch(search);
-  if (!searchValidation.ok) return searchValidation;
-  const brands = await brandRepo.listProductBrandsForInstallation(client, {
-    installationId,
-    search: searchValidation.value,
-    active,
-    limit,
-    offset,
-  });
+  const validatedSearch = searchValue(search);
+  if (!validatedSearch.ok) return validatedSearch;
+  const brands = await brandRepo.listProductBrandsForInstallation(client, { installationId, search: validatedSearch.value, active, limit, offset });
   return { ok: true, brands };
 }
 
 export async function updateProductBrand(client, { id, installationId, payload, updatedBy }) {
-  if (!isValidUuid(id)) return invalidResult('INVALID_ID', 'Product brand ID must be a valid UUID');
-
+  if (!validUuid(id)) return invalid('INVALID_ID', 'Brand ID must be a valid UUID');
   const existing = await brandRepo.getProductBrandByIdForInstallationForUpdate(client, { id: id.trim(), installationId });
-  if (!existing) return invalidResult('NOT_FOUND', 'Product brand not found');
-
-  const expected = validateExpectedUpdatedAt(payload?.expectedUpdatedAt);
+  if (!existing) return invalid('NOT_FOUND', 'Product brand not found');
+  if (Object.prototype.hasOwnProperty.call(payload ?? {}, 'code') && code(payload.code) !== existing.code) return invalid('IMMUTABLE_CODE', 'Brand code is immutable');
+  const expected = expectedUpdatedAt(payload?.expectedUpdatedAt);
   if (!expected.ok) return expected;
-  if (normalizeDateTime(existing.updated_at) !== expected.value) return conflictResult('Product brand update conflict');
-
-  if (validationIsNoop(existing, payload, ['name', 'description', 'isCatalogVisible', 'isActive'])) {
-    return { ok: true, brand: existing, beforeData: existing, changed: false, action: 'update' };
-  }
-
-  const validation = validateProductBrandInput({
-    code: existing.code,
-    name: payload?.name ?? existing.name,
-    description: Object.prototype.hasOwnProperty.call(payload ?? {}, 'description') ? payload.description : existing.description ?? '',
-    isCatalogVisible: Object.prototype.hasOwnProperty.call(payload ?? {}, 'isCatalogVisible') ? payload.isCatalogVisible : existing.is_catalog_visible,
-    isActive: Object.prototype.hasOwnProperty.call(payload ?? {}, 'isActive') ? payload.isActive : existing.is_active,
-  }, { codeRequired: false });
+  if (dateTime(existing.updated_at) !== expected.value) return conflict('Product brand update conflict');
+  const validation = validateProductBrandInput(payload ?? {}, { codeRequired: false, defaults: {
+    code: existing.code, name: existing.name, description: existing.description,
+    isCatalogVisible: existing.is_catalog_visible, isActive: existing.is_active,
+  } });
   if (!validation.ok) return validation;
-
-  if (validation.normalized.isActive === false) {
-    const activeProducts = await brandRepo.hasActiveProductsForBrand(client, {
-      brandId: existing.id,
-      installationId,
-    });
-    if (activeProducts) {
-      return conflictResult('Cannot deactivate brand while active products depend on it');
-    }
-  }
-
-  const brand = await brandRepo.updateProductBrand(client, {
-    id: existing.id,
-    installationId,
-    ...validation.normalized,
-    updatedBy,
-    expectedUpdatedAt: expected.value,
-  });
-
-  if (!brand) return conflictResult('Product brand update conflict');
-  return { ok: true, brand, beforeData: existing, changed: true, action: 'update' };
-}
-
-function validationIsNoop(existing, payload, keys) {
-  return keys.every((key) => {
-    if (!Object.prototype.hasOwnProperty.call(payload ?? {}, key)) return true;
-    const requested = payload[key];
-    if (typeof requested === 'boolean') return requested === existing[key];
-    return normalizeText(requested) === normalizeText(existing[key] || '');
-  });
+  const next = validation.normalized;
+  if (!next.isActive && existing.is_active && await brandRepo.hasActiveProductsForBrand(client, { brandId: existing.id, installationId })) return conflict('Cannot deactivate brand while active products depend on it');
+  const brand = await brandRepo.updateProductBrand(client, { id: existing.id, installationId, ...next, updatedBy, expectedUpdatedAt: expected.value });
+  if (!brand) return conflict('Product brand update conflict');
+  return aliases('brand', brand, { beforeData: existing, changed: true, action: next.isActive === existing.is_active ? 'update' : (next.isActive ? 'activate' : 'deactivate') });
 }
 
 export async function createProduct(client, { installationId, payload, createdBy }) {
   const validation = validateProductInput(payload);
   if (!validation.ok) return validation;
-
-  const existing = await productRepo.getProductByCode(client, {
-    installationId,
-    code: validation.normalized.code,
-  });
-  if (existing) return invalidResult('DUPLICATE_CODE', 'A product with this code already exists');
-
-  if (validation.normalized.categoryId) {
-    const category = await resolveCategory(client, {
-      installationId,
-      categoryId: validation.normalized.categoryId,
-      requireActive: true,
-    });
-    if (!category.ok) return category;
-  }
-
-  if (validation.normalized.brandId) {
-    const brand = await resolveBrand(client, {
-      installationId,
-      brandId: validation.normalized.brandId,
-      requireActive: true,
-    });
-    if (!brand.ok) return brand;
-  }
-
-  if (validation.normalized.isOrderable && !validation.normalized.isActive) {
-    return invalidResult('INVALID_ORDERABLE_STATUS', 'A disabled product cannot be orderable');
-  }
-
-  const product = await productRepo.insertProduct(client, {
-    installationId,
-    ...validation.normalized,
-    createdBy,
-  });
-  if (!product) return invalidResult('DUPLICATE_CODE', 'A product with this code already exists');
+  const next = validation.normalized;
+  if (next.isOrderable) return invalid('INVALID_ORDERABLE_STATUS', 'Create the product and an active sellable SKU before enabling ordering');
+  const category = await resolveCategory(client, { installationId, categoryId: next.categoryId });
+  if (!category.ok) return category;
+  const brand = await resolveBrand(client, { installationId, brandId: next.brandId });
+  if (!brand.ok) return brand;
+  if (await productRepo.getProductByCode(client, { installationId, code: next.code })) return invalid('DUPLICATE_CODE', 'Product code already exists');
+  const product = await productRepo.insertProduct(client, { installationId, ...next, createdBy });
+  if (!product) return invalid('DUPLICATE_CODE', 'Product code already exists');
   return { ok: true, product };
 }
 
 export async function getProduct(client, { installationId, id }) {
-  if (!isValidUuid(id)) return invalidResult('NOT_FOUND', 'Product not found');
+  if (!validUuid(id)) return invalid('NOT_FOUND', 'Product not found');
   const product = await productRepo.getProductByIdForInstallation(client, { id: id.trim(), installationId });
-  return product ? { ok: true, product } : invalidResult('NOT_FOUND', 'Product not found');
+  return product ? { ok: true, product } : invalid('NOT_FOUND', 'Product not found');
 }
 
 export async function listProducts(client, { installationId, search, active, catalogVisible, orderable, categoryId, brandId, limit, offset }) {
-  const searchValidation = validateSearch(search);
-  if (!searchValidation.ok) return searchValidation;
-  const products = await productRepo.listProductsForInstallation(client, {
-    installationId,
-    search: searchValidation.value,
-    active,
-    catalogVisible,
-    orderable,
-    categoryId,
-    brandId,
-    limit,
-    offset,
-  });
+  const validatedSearch = searchValue(search);
+  if (!validatedSearch.ok) return validatedSearch;
+  if (categoryId && !validUuid(categoryId)) return invalid('INVALID_CATEGORY_ID', 'Category ID must be a valid UUID');
+  if (brandId && !validUuid(brandId)) return invalid('INVALID_BRAND_ID', 'Brand ID must be a valid UUID');
+  const products = await productRepo.listProductsForInstallation(client, { installationId, search: validatedSearch.value, active, catalogVisible, orderable, categoryId, brandId, limit, offset });
   return { ok: true, products };
 }
 
 export async function updateProduct(client, { id, installationId, payload, updatedBy }) {
-  if (!isValidUuid(id)) return invalidResult('INVALID_ID', 'Product ID must be a valid UUID');
-
+  if (!validUuid(id)) return invalid('INVALID_ID', 'Product ID must be a valid UUID');
   const existing = await productRepo.getProductByIdForInstallationForUpdate(client, { id: id.trim(), installationId });
-  if (!existing) return invalidResult('NOT_FOUND', 'Product not found');
-
-  const expected = validateExpectedUpdatedAt(payload?.expectedUpdatedAt);
+  if (!existing) return invalid('NOT_FOUND', 'Product not found');
+  if (Object.prototype.hasOwnProperty.call(payload ?? {}, 'code') && code(payload.code) !== existing.code) return invalid('IMMUTABLE_CODE', 'Product code is immutable');
+  const expected = expectedUpdatedAt(payload?.expectedUpdatedAt);
   if (!expected.ok) return expected;
-  if (normalizeDateTime(existing.updated_at) !== expected.value) return conflictResult('Product update conflict');
-
-  const validation = validateProductInput({
-    code: existing.code,
-    name: payload?.name ?? existing.name,
-    catalogName: Object.prototype.hasOwnProperty.call(payload ?? {}, 'catalogName') ? payload.catalogName : existing.catalog_name ?? '',
-    categoryId: Object.prototype.hasOwnProperty.call(payload ?? {}, 'categoryId') ? payload.categoryId : existing.category_id,
-    brandId: Object.prototype.hasOwnProperty.call(payload ?? {}, 'brandId') ? payload.brandId : existing.brand_id,
-    description: Object.prototype.hasOwnProperty.call(payload ?? {}, 'description') ? payload.description : existing.description ?? '',
-    notes: Object.prototype.hasOwnProperty.call(payload ?? {}, 'notes') ? payload.notes : existing.notes ?? '',
-    isCatalogVisible: Object.prototype.hasOwnProperty.call(payload ?? {}, 'isCatalogVisible') ? payload.isCatalogVisible : existing.is_catalog_visible,
-    isOrderable: Object.prototype.hasOwnProperty.call(payload ?? {}, 'isOrderable') ? payload.isOrderable : existing.is_orderable,
-    isActive: Object.prototype.hasOwnProperty.call(payload ?? {}, 'isActive') ? payload.isActive : existing.is_active,
-  }, { codeRequired: false });
+  if (dateTime(existing.updated_at) !== expected.value) return conflict('Product update conflict');
+  const validation = validateProductInput(payload ?? {}, { codeRequired: false, defaults: {
+    code: existing.code, name: existing.name, catalogName: existing.catalog_name, categoryId: existing.category_id,
+    brandId: existing.brand_id, description: existing.description, notes: existing.notes,
+    isCatalogVisible: existing.is_catalog_visible, isOrderable: existing.is_orderable, isActive: existing.is_active,
+  } });
   if (!validation.ok) return validation;
-
-  if (validation.normalized.categoryId) {
-    const category = await resolveCategory(client, {
-      installationId,
-      categoryId: validation.normalized.categoryId,
-      requireActive: true,
-    });
-    if (!category.ok) return category;
+  const next = validation.normalized;
+  const category = await resolveCategory(client, { installationId, categoryId: next.categoryId });
+  if (!category.ok) return category;
+  const brand = await resolveBrand(client, { installationId, brandId: next.brandId });
+  if (!brand.ok) return brand;
+  if (next.isOrderable) {
+    if (!next.isActive) return invalid('INVALID_ORDERABLE_STATUS', 'Inactive products cannot be orderable');
+    if (await productRepo.countActiveSellableVariantsForProduct(client, { productId: existing.id, installationId }) === 0) return invalid('INVALID_ORDERABLE_STATUS', 'Product cannot be orderable without an active sellable SKU');
   }
-
-  if (validation.normalized.brandId) {
-    const brand = await resolveBrand(client, {
-      installationId,
-      brandId: validation.normalized.brandId,
-      requireActive: true,
-    });
-    if (!brand.ok) return brand;
-  }
-
-  if (validation.normalized.isOrderable) {
-    const activeSellable = await productRepo.countActiveSellableVariantsForProduct(client, {
-      installationId,
-      productId: existing.id,
-    });
-    if (activeSellable === 0) {
-      return invalidResult('INVALID_ORDERABLE_STATUS', 'Product cannot be orderable without an active sellable variant');
-    }
-  }
-
-  if (!validation.normalized.isActive) {
-    const activeVariants = await productRepo.countActiveVariantsForProduct(client, {
-      installationId,
-      productId: existing.id,
-    });
-    if (activeVariants > 0) {
-      return conflictResult('Cannot deactivate product while active variants exist');
-    }
-  }
-
-  const product = await productRepo.updateProduct(client, {
-    id: existing.id,
-    installationId,
-    ...validation.normalized,
-    updatedBy,
-    expectedUpdatedAt: expected.value,
-  });
-
-  if (!product) return conflictResult('Product update conflict');
-  return { ok: true, product, beforeData: existing, changed: true, action: 'update' };
+  if (!next.isActive && existing.is_active && await productRepo.countActiveVariantsForProduct(client, { productId: existing.id, installationId }) > 0) return conflict('Cannot deactivate product while active variants exist');
+  const product = await productRepo.updateProduct(client, { id: existing.id, installationId, ...next, updatedBy, expectedUpdatedAt: expected.value });
+  if (!product) return conflict('Product update conflict');
+  return { ok: true, product, beforeData: existing, changed: true, action: next.isActive === existing.is_active ? 'update' : (next.isActive ? 'activate' : 'deactivate') };
 }
 
 export async function createProductVariant(client, { installationId, productId, payload, createdBy }) {
-  if (!isValidUuid(productId)) return invalidResult('INVALID_PRODUCT_ID', 'Product ID must be a valid UUID');
-
-  const product = await productRepo.getProductByIdForInstallation(client, { id: productId.trim(), installationId });
-  if (!product) return invalidResult('PRODUCT_NOT_FOUND', 'Product not found');
-
+  if (!validUuid(productId)) return invalid('INVALID_PRODUCT_ID', 'Product ID must be a valid UUID');
+  const product = await productRepo.getProductByIdForInstallationForUpdate(client, { id: productId.trim(), installationId });
+  if (!product) return invalid('PRODUCT_NOT_FOUND', 'Product not found');
   const validation = validateProductVariantInput(payload);
   if (!validation.ok) return validation;
-
-  const existingSku = await variantRepo.getProductVariantBySku(client, {
-    installationId,
-    sku: validation.normalized.sku,
-  });
-  if (existingSku) {
-    return invalidResult('DUPLICATE_SKU', 'A product variant with this SKU already exists');
-  }
-
-  if (validation.normalized.isInventoryBase) {
-    const existingBaseCount = await variantRepo.countActiveInventoryBaseVariantsForProduct(client, {
-      installationId,
-      productId: product.id,
-    });
-    if (existingBaseCount > 0) {
-      return conflictResult('Only one active inventory-base variant is allowed per product');
-    }
-  }
-
-  if (validation.normalized.isCatalogVisible && !validation.normalized.isSellable) {
-    return invalidResult('INVALID_VARIANT_VISIBILITY', 'Catalog-visible variants must be sellable');
-  }
-
-  if (product.is_orderable && !(validation.normalized.isActive && validation.normalized.isSellable)) {
-    const activeSellableCount = await variantRepo.countActiveSellableVariantsForProductExcludingVariant(client, {
-      installationId,
-      productId: product.id,
-      excludeVariantId: null,
-    });
-    if (activeSellableCount === 0) {
-      return invalidResult('INVALID_ORDERABLE_STATUS', 'Product cannot be orderable without an active sellable variant');
-    }
-  }
-
-  const variant = await variantRepo.insertProductVariant(client, {
-    installationId,
-    productId: product.id,
-    ...validation.normalized,
-    createdBy,
-  });
-  if (!variant) return invalidResult('DUPLICATE_SKU', 'A product variant with this SKU already exists');
-
-  return { ok: true, variant };
+  const next = validation.normalized;
+  if (next.isActive && !product.is_active) return invalid('PRODUCT_INACTIVE', 'Cannot create an active SKU under an inactive product');
+  if (await variantRepo.getProductVariantBySku(client, { installationId, sku: next.sku })) return invalid('DUPLICATE_SKU', 'SKU already exists');
+  if (next.isInventoryBase && next.isActive && await variantRepo.countActiveInventoryBaseVariantsForProduct(client, { installationId, productId: product.id }) > 0) return conflict('Only one active inventory-base SKU is allowed per product');
+  const variant = await variantRepo.insertProductVariant(client, { installationId, productId: product.id, ...next, createdBy });
+  if (!variant) return invalid(next.isInventoryBase ? 'CONFLICT' : 'DUPLICATE_SKU', next.isInventoryBase ? 'Only one active inventory-base SKU is allowed per product' : 'SKU already exists');
+  return aliases('variant', variant);
 }
 
 export async function listProductVariants(client, { installationId, productId }) {
-  if (!isValidUuid(productId)) return invalidResult('INVALID_PRODUCT_ID', 'Product ID must be a valid UUID');
+  if (!validUuid(productId)) return invalid('INVALID_PRODUCT_ID', 'Product ID must be a valid UUID');
   const product = await productRepo.getProductByIdForInstallation(client, { id: productId.trim(), installationId });
-  if (!product) return invalidResult('PRODUCT_NOT_FOUND', 'Product not found');
-  const variants = await variantRepo.listProductVariantsForProduct(client, { installationId, productId: product.id });
-  return { ok: true, variants };
+  if (!product) return invalid('PRODUCT_NOT_FOUND', 'Product not found');
+  return { ok: true, variants: await variantRepo.listProductVariantsForProduct(client, { installationId, productId: product.id }) };
 }
 
 export async function updateProductVariant(client, { productId, variantId, installationId, payload, updatedBy }) {
-  if (!isValidUuid(productId)) return invalidResult('INVALID_PRODUCT_ID', 'Product ID must be a valid UUID');
-  if (!isValidUuid(variantId)) return invalidResult('INVALID_VARIANT_ID', 'Variant ID must be a valid UUID');
-
-  const product = await productRepo.getProductByIdForInstallation(client, { id: productId.trim(), installationId });
-  if (!product) return invalidResult('PRODUCT_NOT_FOUND', 'Product not found');
-
+  if (!validUuid(productId) || !validUuid(variantId)) return invalid('INVALID_ID', 'Product and variant IDs must be valid UUIDs');
+  const product = await productRepo.getProductByIdForInstallationForUpdate(client, { id: productId.trim(), installationId });
+  if (!product) return invalid('PRODUCT_NOT_FOUND', 'Product not found');
   const existing = await variantRepo.getProductVariantByIdForInstallationForUpdate(client, { id: variantId.trim(), installationId });
-  if (!existing) return invalidResult('NOT_FOUND', 'Product variant not found');
-  if (existing.product_id !== product.id) return invalidResult('VARIANT_NOT_FOUND', 'Product variant not found');
-
-  const expected = validateExpectedUpdatedAt(payload?.expectedUpdatedAt);
+  if (!existing || existing.product_id !== product.id) return invalid('VARIANT_NOT_FOUND', 'Product variant not found');
+  if (Object.prototype.hasOwnProperty.call(payload ?? {}, 'sku') && code(payload.sku) !== existing.sku) return invalid('IMMUTABLE_SKU', 'SKU is immutable');
+  const expected = expectedUpdatedAt(payload?.expectedUpdatedAt);
   if (!expected.ok) return expected;
-  if (normalizeDateTime(existing.updated_at) !== expected.value) return conflictResult('Product variant update conflict');
-
-  if (Object.prototype.hasOwnProperty.call(payload ?? {}, 'sku')) {
-    const sku = normalizeCode(payload.sku);
-    if (sku !== existing.sku) {
-      return invalidResult('IMMUTABLE_SKU', 'SKU is immutable after creation');
-    }
-  }
-
-  const validation = validateProductVariantInput({
-    sku: existing.sku,
-    name: payload?.name ?? existing.name,
-    variantKind: Object.prototype.hasOwnProperty.call(payload ?? {}, 'variantKind') ? payload.variantKind : existing.variant_kind,
-    isInventoryBase: Object.prototype.hasOwnProperty.call(payload ?? {}, 'isInventoryBase') ? payload.isInventoryBase : existing.is_inventory_base,
-    isSellable: Object.prototype.hasOwnProperty.call(payload ?? {}, 'isSellable') ? payload.isSellable : existing.is_sellable,
-    isCatalogVisible: Object.prototype.hasOwnProperty.call(payload ?? {}, 'isCatalogVisible') ? payload.isCatalogVisible : existing.is_catalog_visible,
-    isActive: Object.prototype.hasOwnProperty.call(payload ?? {}, 'isActive') ? payload.isActive : existing.is_active,
-  }, { skuRequired: false });
+  if (dateTime(existing.updated_at) !== expected.value) return conflict('Product variant update conflict');
+  const validation = validateProductVariantInput(payload ?? {}, { skuRequired: false, defaults: {
+    sku: existing.sku, name: existing.name, variantKind: existing.variant_kind,
+    isInventoryBase: existing.is_inventory_base, isSellable: existing.is_sellable,
+    isCatalogVisible: existing.is_catalog_visible, isActive: existing.is_active,
+  } });
   if (!validation.ok) return validation;
-
-  if (validation.normalized.isInventoryBase) {
-    const baseCount = await variantRepo.countActiveInventoryBaseVariantsForProduct(client, {
-      installationId,
-      productId: product.id,
-      excludeVariantId: existing.id,
-    });
-    if (baseCount > 0) {
-      return conflictResult('Only one active inventory-base variant is allowed per product');
-    }
+  const next = validation.normalized;
+  if (next.isActive && !product.is_active) return invalid('PRODUCT_INACTIVE', 'Cannot activate an SKU under an inactive product');
+  if (next.isInventoryBase && next.isActive && await variantRepo.countActiveInventoryBaseVariantsForProduct(client, { installationId, productId: product.id, excludeVariantId: existing.id }) > 0) return conflict('Only one active inventory-base SKU is allowed per product');
+  if (product.is_orderable && !(next.isActive && next.isSellable)) {
+    const remaining = await variantRepo.countActiveSellableVariantsForProductExcludingVariant(client, { installationId, productId: product.id, excludeVariantId: existing.id });
+    if (remaining === 0) return invalid('INVALID_ORDERABLE_STATUS', 'Product cannot remain orderable without an active sellable SKU');
   }
-
-  if (product.is_orderable) {
-    const willBeActiveSellable = validation.normalized.isActive && validation.normalized.isSellable;
-    const remaining = await variantRepo.countActiveSellableVariantsForProductExcludingVariant(client, {
-      installationId,
-      productId: product.id,
-      excludeVariantId: existing.id,
-    });
-    if (!willBeActiveSellable && remaining === 0) {
-      return invalidResult('INVALID_ORDERABLE_STATUS', 'Product cannot remain orderable without an active sellable variant');
-    }
-  }
-
-  const variant = await variantRepo.updateProductVariant(client, {
-    id: existing.id,
-    installationId,
-    ...validation.normalized,
-    updatedBy,
-    expectedUpdatedAt: expected.value,
-  });
-  if (!variant) return conflictResult('Product variant update conflict');
-  return { ok: true, variant, beforeData: existing, changed: true, action: 'update' };
+  const variant = await variantRepo.updateProductVariant(client, { id: existing.id, installationId, ...next, updatedBy, expectedUpdatedAt: expected.value });
+  if (!variant) return conflict('Product variant update conflict');
+  return aliases('variant', variant, { beforeData: existing, changed: true, action: next.isActive === existing.is_active ? 'update' : (next.isActive ? 'activate' : 'deactivate') });
 }
 
-function normalizeImportProductRow(payload) {
-  const categoryId = normalizeOptionalUuid(payload.categoryId);
-  const brandId = normalizeOptionalUuid(payload.brandId);
-  const id = normalizeOptionalUuid(payload.id);
-
-  const variants = Array.isArray(payload.variants) ? payload.variants : [];
-
-  return {
-    id,
-    code: normalizeCode(payload.code),
-    name: normalizeText(payload.name),
-    catalogName: normalizeText(payload.catalogName) || null,
-    categoryId,
-    brandId,
-    description: normalizeText(payload.description) || null,
-    notes: normalizeText(payload.notes) || null,
-    isCatalogVisible: normalizeBoolean(payload.isCatalogVisible, false),
-    isOrderable: normalizeBoolean(payload.isOrderable, false),
-    isActive: normalizeBoolean(payload.isActive, true),
-    variants: variants.map((variant) => ({
-      id: normalizeOptionalUuid(variant.id),
-      sku: normalizeCode(variant.sku),
-      name: normalizeText(variant.name),
-      variantKind: normalizeText(variant.variantKind).toUpperCase() || 'BASE',
-      isInventoryBase: normalizeBoolean(variant.isInventoryBase, false),
-      isSellable: normalizeBoolean(variant.isSellable, true),
-      isCatalogVisible: normalizeBoolean(variant.isCatalogVisible, false),
-      isActive: normalizeBoolean(variant.isActive, true),
-    })),
-  };
+function requireExplicitImportBooleans(row, keys, label) {
+  for (const key of keys) {
+    if (typeof row[key] !== 'boolean') return invalid('INVALID_IMPORT_PAYLOAD', `${label}.${key} must be an explicit boolean`);
+  }
+  return { ok: true };
 }
 
 export async function importProducts(client, { installationId, payload, createdBy }) {
-  if (!payload || typeof payload !== 'object' || !Array.isArray(payload.products)) {
-    return invalidResult('INVALID_IMPORT_PAYLOAD', 'Import payload must contain a products array');
-  }
+  if (!payload || typeof payload !== 'object' || !Array.isArray(payload.products)) return invalid('INVALID_IMPORT_PAYLOAD', 'Import payload must contain a products array');
+  if (payload.products.length > MAX_IMPORT_PRODUCTS) return invalid('IMPORT_TOO_LARGE', `Import cannot exceed ${MAX_IMPORT_PRODUCTS} products`);
 
-  if (payload.products.length > MAX_IMPORT_PRODUCTS) {
-    return invalidResult('IMPORT_TOO_LARGE', `Import payload cannot contain more than ${MAX_IMPORT_PRODUCTS} products`);
-  }
-
-  const importRows = payload.products.map(normalizeImportProductRow);
+  const rows = [];
   const seenCodes = new Set();
-  const seenSku = new Set();
-
-  for (const row of importRows) {
-    if (!row.code || !CODE_PATTERN.test(row.code)) {
-      return invalidResult('INVALID_CODE', 'Each product must have a valid uppercase code');
-    }
-    if (!row.name) {
-      return invalidResult('INVALID_NAME', 'Each product must have a name');
-    }
-    if (row.id && !isValidUuid(row.id)) {
-      return invalidResult('INVALID_PRODUCT_ID', 'Product ID must be a valid UUID');
-    }
-    if (seenCodes.has(row.code)) {
-      return invalidResult('DUPLICATE_CODE', 'Duplicate product code in import payload');
-    }
+  const seenSkus = new Set();
+  for (const raw of payload.products) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !Array.isArray(raw.variants)) return invalid('INVALID_IMPORT_PAYLOAD', 'Every import product must include a variants array');
+    const productBooleans = requireExplicitImportBooleans(raw, ['isCatalogVisible', 'isOrderable', 'isActive'], 'product');
+    if (!productBooleans.ok) return productBooleans;
+    const productValidation = validateProductInput(raw);
+    if (!productValidation.ok) return productValidation;
+    const row = { id: optionalUuid(raw.id), ...productValidation.normalized, variants: [] };
+    if (row.id && !validUuid(row.id)) return invalid('INVALID_PRODUCT_ID', 'Import product ID must be a valid UUID');
+    if (seenCodes.has(row.code)) return invalid('DUPLICATE_CODE', 'Duplicate product code in import payload');
     seenCodes.add(row.code);
-    if (row.categoryId && !isValidUuid(row.categoryId)) {
-      return invalidResult('INVALID_CATEGORY_ID', 'Category ID must be a valid UUID');
+    for (const rawVariant of raw.variants) {
+      const variantBooleans = requireExplicitImportBooleans(rawVariant, ['isInventoryBase', 'isSellable', 'isCatalogVisible', 'isActive'], 'variant');
+      if (!variantBooleans.ok) return variantBooleans;
+      const variantValidation = validateProductVariantInput(rawVariant);
+      if (!variantValidation.ok) return variantValidation;
+      const variant = { id: optionalUuid(rawVariant.id), ...variantValidation.normalized };
+      if (variant.id && !validUuid(variant.id)) return invalid('INVALID_VARIANT_ID', 'Import variant ID must be a valid UUID');
+      if (seenSkus.has(variant.sku)) return invalid('DUPLICATE_SKU', 'Duplicate SKU in import payload');
+      seenSkus.add(variant.sku);
+      row.variants.push(variant);
     }
-    if (row.brandId && !isValidUuid(row.brandId)) {
-      return invalidResult('INVALID_BRAND_ID', 'Brand ID must be a valid UUID');
-    }
-    for (const variant of row.variants) {
-      if (!variant.sku || !SKU_PATTERN.test(variant.sku)) {
-        return invalidResult('INVALID_SKU', 'Each variant must have a valid uppercase SKU');
-      }
-      if (!variant.name) {
-        return invalidResult('INVALID_NAME', 'Each variant must have a name');
-      }
-      if (!VARIANT_KINDS.has(variant.variantKind)) {
-        return invalidResult('INVALID_VARIANT_KIND', 'Variant kind must be BASE, CARTON or OTHER');
-      }
-      if (variant.isInventoryBase && variant.variantKind !== 'BASE') {
-        return invalidResult('INVALID_INVENTORY_BASE', 'Inventory-base variants must use variant_kind BASE');
-      }
-      if (variant.isCatalogVisible && !variant.isSellable) {
-        return invalidResult('INVALID_VARIANT_VISIBILITY', 'Catalog-visible variants must be sellable');
-      }
-      if (variant.id && !isValidUuid(variant.id)) {
-        return invalidResult('INVALID_VARIANT_ID', 'Variant ID must be a valid UUID');
-      }
-      if (seenSku.has(variant.sku)) {
-        return invalidResult('DUPLICATE_SKU', 'Duplicate SKU in import payload');
-      }
-      seenSku.add(variant.sku);
-    }
+    if (row.variants.filter((variant) => variant.isActive && variant.isInventoryBase).length > 1) return conflict('Only one active inventory-base SKU is allowed per product');
+    if (row.isOrderable && (!row.isActive || !row.variants.some((variant) => variant.isActive && variant.isSellable))) return invalid('INVALID_ORDERABLE_STATUS', 'Orderable import products require an active sellable SKU');
+    if (!row.isActive && row.variants.some((variant) => variant.isActive)) return conflict('Inactive import products cannot contain active variants');
+    rows.push(row);
   }
 
-  const productIds = importRows.filter((row) => row.id).map((row) => row.id);
-  const productCodes = importRows.map((row) => row.code);
   const existingProducts = await productRepo.getProductsByIdsOrCodes(client, {
     installationId,
-    ids: productIds,
-    codes: productCodes,
+    ids: rows.filter((row) => row.id).map((row) => row.id),
+    codes: rows.map((row) => row.code),
   });
-  const productsById = new Map(existingProducts.filter((row) => row.id).map((row) => [row.id, row]));
-  const productsByCode = new Map(existingProducts.filter((row) => row.code).map((row) => [row.code, row]));
+  const productsById = new Map(existingProducts.map((item) => [item.id, item]));
+  const productsByCode = new Map(existingProducts.map((item) => [item.code, item]));
+  const existingProductIds = [];
+  for (const row of rows) {
+    const byId = row.id ? productsById.get(row.id) : null;
+    const byCode = productsByCode.get(row.code);
+    if (byId && byId.code !== row.code) return invalid('IMMUTABLE_CODE', 'Import product code does not match its immutable ID');
+    if (row.id && byCode && byCode.id !== row.id) return invalid('CONFLICTING_PRODUCT_ID', 'Product code is bound to a different ID');
+    row.existingProductId = byId?.id ?? byCode?.id ?? null;
+    if (row.existingProductId) existingProductIds.push(row.existingProductId);
+  }
 
-  const variantIds = [];
-  const variantSkus = [];
-  for (const row of importRows) {
+  const incomingVariantIds = rows.flatMap((row) => row.variants.filter((variant) => variant.id).map((variant) => variant.id));
+  const incomingSkus = rows.flatMap((row) => row.variants.map((variant) => variant.sku));
+  const existingVariants = await variantRepo.getProductVariantsByIdsOrSkus(client, { installationId, ids: incomingVariantIds, skus: incomingSkus });
+  const variantsById = new Map(existingVariants.map((item) => [item.id, item]));
+  const variantsBySku = new Map(existingVariants.map((item) => [item.sku, item]));
+  const productVariants = await variantRepo.listProductVariantsForProducts(client, { installationId, productIds: existingProductIds });
+  const activeExistingByProduct = new Map();
+  for (const variant of productVariants) {
+    if (!variant.is_active) continue;
+    const list = activeExistingByProduct.get(variant.product_id) ?? [];
+    list.push(variant);
+    activeExistingByProduct.set(variant.product_id, list);
+  }
+
+  for (const row of rows) {
+    const incomingSkuSet = new Set(row.variants.map((variant) => variant.sku));
+    for (const existing of activeExistingByProduct.get(row.existingProductId) ?? []) {
+      if (!incomingSkuSet.has(existing.sku)) return invalid('IMPORT_VARIANT_SNAPSHOT_INCOMPLETE', 'Import must include every active SKU for an existing product');
+    }
     for (const variant of row.variants) {
-      if (variant.id) variantIds.push(variant.id);
-      variantSkus.push(variant.sku);
+      const byId = variant.id ? variantsById.get(variant.id) : null;
+      const bySku = variantsBySku.get(variant.sku);
+      if (byId && byId.sku !== variant.sku) return invalid('IMMUTABLE_SKU', 'Import SKU does not match its immutable ID');
+      if (variant.id && bySku && bySku.id !== variant.id) return invalid('CONFLICTING_VARIANT_ID', 'SKU is bound to a different variant ID');
+      const existing = byId ?? bySku ?? null;
+      if (existing && row.existingProductId && existing.product_id !== row.existingProductId) return invalid('VARIANT_PRODUCT_MISMATCH', 'SKU belongs to a different product');
+      variant.existing = existing;
     }
   }
-  const existingVariants = await variantRepo.getProductVariantsByIdsOrSkus(client, {
-    installationId,
-    ids: variantIds,
-    skus: variantSkus,
-  });
-  const variantsById = new Map(existingVariants.filter((row) => row.id).map((row) => [row.id, row]));
-  const variantsBySku = new Map(existingVariants.filter((row) => row.sku).map((row) => [row.sku, row]));
 
-  const categoryIds = Array.from(new Set(importRows.filter((row) => row.categoryId).map((row) => row.categoryId)));
-  const brandIds = Array.from(new Set(importRows.filter((row) => row.brandId).map((row) => row.brandId)));
-  const categoryById = new Map();
-  for (const categoryId of categoryIds) {
-    const category = await categoryRepo.getProductCategoryByIdForInstallationForShare(client, { id: categoryId, installationId });
-    if (!category) return invalidResult('CATEGORY_NOT_FOUND', 'Assigned category not found');
-    categoryById.set(categoryId, category);
-  }
+  let imported = 0;
+  let created = 0;
+  let updated = 0;
+  for (const row of rows) {
+    let existing = row.existingProductId
+      ? await productRepo.getProductByIdForInstallationForUpdate(client, { id: row.existingProductId, installationId })
+      : null;
+    const category = await resolveCategory(client, { installationId, categoryId: row.categoryId });
+    if (!category.ok) return category;
+    const brand = await resolveBrand(client, { installationId, brandId: row.brandId });
+    if (!brand.ok) return brand;
 
-  const brandById = new Map();
-  for (const brandId of brandIds) {
-    const brand = await brandRepo.getProductBrandByIdForInstallationForShare(client, { id: brandId, installationId });
-    if (!brand) return invalidResult('BRAND_NOT_FOUND', 'Assigned brand not found');
-    brandById.set(brandId, brand);
-  }
-
-  const productsToWrite = [];
-  for (const row of importRows) {
-    const existingByCode = productsByCode.get(row.code);
-    const existingById = row.id ? productsById.get(row.id) : null;
-
-    if (existingById && existingByCode && existingById.id !== existingByCode.id) {
-      return invalidResult('CONFLICTING_PRODUCT_ID', 'Existing product ID and code do not match');
+    let product;
+    if (existing) {
+      product = await productRepo.updateProduct(client, {
+        id: existing.id,
+        installationId,
+        ...row,
+        isOrderable: existing.is_orderable,
+        isActive: existing.is_active,
+        updatedBy: createdBy,
+        expectedUpdatedAt: existing.updated_at,
+      });
+      if (!product) return conflict('Import product update conflict');
+      updated += 1;
+    } else {
+      product = await productRepo.insertProduct(client, {
+        id: row.id,
+        installationId,
+        ...row,
+        isOrderable: false,
+        isActive: true,
+        createdBy,
+      });
+      if (!product) return invalid('DUPLICATE_CODE', 'Product code or ID already exists');
+      created += 1;
     }
 
-    const productId = existingById?.id ?? existingByCode?.id ?? row.id;
-    if (row.id && existingByCode && existingByCode.id !== row.id) {
-      return invalidResult('CONFLICTING_PRODUCT_ID', 'Existing product code is bound to a different product ID');
-    }
-
-    if (row.categoryId) {
-      const category = categoryById.get(row.categoryId);
-      if (!category) return invalidResult('CATEGORY_NOT_FOUND', 'Assigned category not found');
-      if (!category.is_active) return invalidResult('CATEGORY_INACTIVE', 'Assigned category is not active');
-    }
-
-    if (row.brandId) {
-      const brand = brandById.get(row.brandId);
-      if (!brand) return invalidResult('BRAND_NOT_FOUND', 'Assigned brand not found');
-      if (!brand.is_active) return invalidResult('BRAND_INACTIVE', 'Assigned brand is not active');
-    }
-
-    const finalActiveSellableVariants = row.variants.filter((variant) => variant.isActive && variant.isSellable).length;
-    if (row.isOrderable && finalActiveSellableVariants === 0) {
-      return invalidResult('INVALID_ORDERABLE_STATUS', 'Product cannot be orderable without an active sellable variant');
-    }
-
-    if (!row.isActive && row.variants.some((variant) => variant.isActive)) {
-      return conflictResult('Cannot deactivate product while active variants exist');
-    }
-
-    productsToWrite.push({ ...row, productId });
-  }
-
-  const createdProducts = [];
-  for (const row of productsToWrite) {
-    const existingProduct = row.productId
-      ? await productRepo.getProductByIdForInstallation(client, { id: row.productId, installationId })
-      : await productRepo.getProductByCode(client, { installationId, code: row.code });
-
-    const product = existingProduct
-      ? await productRepo.updateProduct(client, {
-          id: existingProduct.id,
-          installationId,
-          name: row.name,
-          catalogName: row.catalogName,
-          categoryId: row.categoryId,
-          brandId: row.brandId,
-          description: row.description,
-          notes: row.notes,
-          isCatalogVisible: row.isCatalogVisible,
-          isOrderable: row.isOrderable,
-          isActive: row.isActive,
-          updatedBy: createdBy,
-        })
-      : await productRepo.insertProduct(client, {
-          id: row.id,
-          installationId,
-          code: row.code,
-          name: row.name,
-          catalogName: row.catalogName,
-          categoryId: row.categoryId,
-          brandId: row.brandId,
-          description: row.description,
-          notes: row.notes,
-          isCatalogVisible: row.isCatalogVisible,
-          isOrderable: row.isOrderable,
-          isActive: row.isActive,
-          createdBy,
-        });
-
-    if (!product) {
-      return invalidResult('IMPORT_PRODUCT_FAILED', 'Failed to import product');
-    }
-
-    createdProducts.push({ row, product });
-  }
-
-  for (const { row, product } of createdProducts) {
     for (const variantRow of row.variants) {
-      const existingVariantById = variantRow.id ? variantsById.get(variantRow.id) : null;
-      const existingVariantBySku = variantsBySku.get(variantRow.sku);
-
-      if (existingVariantById && existingVariantBySku && existingVariantById.id !== existingVariantBySku.id) {
-        return invalidResult('CONFLICTING_VARIANT_ID', 'Existing variant SKU and ID do not match');
-      }
-
-      if (existingVariantById && existingVariantById.product_id !== product.id) {
-        return invalidResult('VARIANT_PRODUCT_MISMATCH', 'Variant SKU is assigned to a different product');
-      }
-
-      if (existingVariantBySku && existingVariantBySku.product_id !== product.id) {
-        return invalidResult('VARIANT_PRODUCT_MISMATCH', 'Variant SKU is assigned to a different product');
-      }
-
-      if (existingVariantById) {
+      const current = variantRow.existing;
+      if (current) {
+        if (current.product_id !== product.id) return invalid('VARIANT_PRODUCT_MISMATCH', 'SKU belongs to a different product');
         const variant = await variantRepo.updateProductVariant(client, {
-          id: existingVariantById.id,
+          id: current.id,
           installationId,
-          name: variantRow.name,
-          variantKind: variantRow.variantKind,
-          isInventoryBase: variantRow.isInventoryBase,
-          isSellable: variantRow.isSellable,
-          isCatalogVisible: variantRow.isCatalogVisible,
-          isActive: variantRow.isActive,
+          ...variantRow,
           updatedBy: createdBy,
-          expectedUpdatedAt: existingVariantById.updated_at,
+          expectedUpdatedAt: current.updated_at,
         });
-        if (!variant) return invalidResult('IMPORT_VARIANT_FAILED', 'Failed to import product variant');
+        if (!variant) return conflict('Import variant update conflict');
       } else {
         const variant = await variantRepo.insertProductVariant(client, {
+          id: variantRow.id,
           installationId,
           productId: product.id,
-          sku: variantRow.sku,
-          name: variantRow.name,
-          variantKind: variantRow.variantKind,
-          isInventoryBase: variantRow.isInventoryBase,
-          isSellable: variantRow.isSellable,
-          isCatalogVisible: variantRow.isCatalogVisible,
-          isActive: variantRow.isActive,
+          ...variantRow,
           createdBy,
         });
-        if (!variant) return invalidResult('IMPORT_VARIANT_FAILED', 'Failed to import product variant');
+        if (!variant) return invalid('DUPLICATE_SKU', 'SKU or variant ID already exists');
       }
     }
+
+    existing = await productRepo.getProductByIdForInstallationForUpdate(client, { id: product.id, installationId });
+    const finalized = await productRepo.updateProduct(client, {
+      id: product.id,
+      installationId,
+      ...row,
+      updatedBy: createdBy,
+      expectedUpdatedAt: existing.updated_at,
+    });
+    if (!finalized) return conflict('Import product finalization conflict');
+    imported += 1;
   }
 
-  return { ok: true, imported: createdProducts.length };
+  return { ok: true, imported, created, updated };
 }
