@@ -3,35 +3,39 @@ import { randomUUID } from 'node:crypto';
 const PRODUCT_BRAND_COLUMNS = `id, installation_id, code, name, description, is_catalog_visible, is_active, created_at, updated_at, created_by, updated_by`;
 
 export async function insertProductBrand(client, {
+  id,
   installationId,
   code,
   name,
   description,
   isCatalogVisible,
+  isActive = true,
   createdBy,
 }) {
-  const id = randomUUID();
+  const brandId = id ?? randomUUID();
   const now = new Date().toISOString();
   const result = await client.query(
     `INSERT INTO shared.product_brands
       (id, installation_id, code, name, description, is_catalog_visible,
        is_active, created_at, updated_at, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9, $10)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     ON CONFLICT DO NOTHING
      RETURNING ${PRODUCT_BRAND_COLUMNS}`,
     [
-      id,
+      brandId,
       installationId,
       code,
       name,
-      description || null,
+      description ?? null,
       Boolean(isCatalogVisible),
+      Boolean(isActive),
       now,
       now,
       createdBy,
       createdBy,
     ],
   );
-  return result.rows[0] || null;
+  return result.rows[0] ?? null;
 }
 
 export async function getProductBrandByIdForInstallation(client, { id, installationId }) {
@@ -41,7 +45,7 @@ export async function getProductBrandByIdForInstallation(client, { id, installat
      WHERE id = $1 AND installation_id = $2`,
     [id, installationId],
   );
-  return result.rows[0] || null;
+  return result.rows[0] ?? null;
 }
 
 export async function getProductBrandByIdForInstallationForShare(client, { id, installationId }) {
@@ -52,7 +56,7 @@ export async function getProductBrandByIdForInstallationForShare(client, { id, i
      FOR SHARE`,
     [id, installationId],
   );
-  return result.rows[0] || null;
+  return result.rows[0] ?? null;
 }
 
 export async function getProductBrandByIdForInstallationForUpdate(client, { id, installationId }) {
@@ -63,7 +67,7 @@ export async function getProductBrandByIdForInstallationForUpdate(client, { id, 
      FOR UPDATE`,
     [id, installationId],
   );
-  return result.rows[0] || null;
+  return result.rows[0] ?? null;
 }
 
 export async function getProductBrandByCode(client, { installationId, code }) {
@@ -73,7 +77,7 @@ export async function getProductBrandByCode(client, { installationId, code }) {
      WHERE installation_id = $1 AND code = $2`,
     [installationId, code],
   );
-  return result.rows[0] || null;
+  return result.rows[0] ?? null;
 }
 
 export async function listProductBrandsForInstallation(client, {
@@ -87,20 +91,16 @@ export async function listProductBrandsForInstallation(client, {
                FROM shared.product_brands
                WHERE installation_id = $1`;
   const params = [installationId];
-
   if (active !== undefined) {
     query += ` AND is_active = $${params.length + 1}`;
     params.push(Boolean(active));
   }
-
   if (search) {
     query += ` AND (code ILIKE $${params.length + 1} OR name ILIKE $${params.length + 1})`;
     params.push(`%${search}%`);
   }
-
   query += ` ORDER BY code ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
   params.push(limit, offset);
-
   const result = await client.query(query, params);
   return result.rows;
 }
@@ -117,7 +117,7 @@ export async function updateProductBrand(client, {
 }) {
   const params = [
     name,
-    description || null,
+    description ?? null,
     Boolean(isCatalogVisible),
     Boolean(isActive),
     updatedBy,
@@ -132,23 +132,22 @@ export async function updateProductBrand(client, {
          updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
          updated_by = $5
      WHERE id = $6 AND installation_id = $7`;
-
   if (expectedUpdatedAt) {
-    query += ` AND updated_at = $8`;
+    query += ' AND updated_at = $8';
     params.push(expectedUpdatedAt);
   }
-
   query += ` RETURNING ${PRODUCT_BRAND_COLUMNS}`;
   const result = await client.query(query, params);
-  return result.rows[0] || null;
+  return result.rows[0] ?? null;
 }
 
 export async function hasActiveProductsForBrand(client, { brandId, installationId }) {
   const result = await client.query(
-    `SELECT COUNT(*) AS count
-     FROM shared.products
-     WHERE installation_id = $1 AND brand_id = $2 AND is_active = true`,
+    `SELECT EXISTS (
+       SELECT 1 FROM shared.products
+       WHERE installation_id = $1 AND brand_id = $2 AND is_active = true
+     ) AS exists`,
     [installationId, brandId],
   );
-  return Number(result.rows[0]?.count || 0) > 0;
+  return result.rows[0]?.exists === true;
 }
