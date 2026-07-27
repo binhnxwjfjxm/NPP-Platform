@@ -60,11 +60,11 @@ jobs:
           await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
           NODE
           git add npp-core/web/vercel.json
-          git commit -m "chore(vercel): open one-shot production gate [skip ci]"
+          git commit -m "chore(vercel): open one-shot production gate"
           git push origin HEAD:main
 
       - name: Allow Vercel to accept the production event
-        run: sleep 45
+        run: sleep 90
 
       - name: Re-lock automatic deployments
         if: always()
