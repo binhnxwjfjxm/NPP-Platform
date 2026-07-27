@@ -63,7 +63,7 @@ export const PERMISSION_CATALOG = Object.freeze([
   Object.freeze({ permissionKey: PERMISSIONS.coreInventoryPost, module: 'Kho', label: 'Ghi sổ kho', description: 'Cho phép domain nội bộ ghi movement kho theo hợp đồng idempotent và phạm vi kho.', isSystem: true }),
   Object.freeze({ permissionKey: PERMISSIONS.coreInventoryReverse, module: 'Kho', label: 'Đảo movement kho', description: 'Cho phép tạo movement đảo cho movement đã post trong phạm vi kho được cấp.', isSystem: true }),
   Object.freeze({ permissionKey: PERMISSIONS.coreEmployeeRead, module: 'Nhân sự', label: 'Xem nhân sự', description: 'Cho phép đọc hồ sơ nhân sự nghiệp vụ.', isSystem: true }),
-  Object.freeze({ permissionKey: PERMISSIONS.coreEmployeeWrite, module: 'Nhân sự', label: 'Quản lý nhân sự', description: 'Cho phép tạo, cập nhật và thay đổi trạng thái hồ sơ nhân sự nghiệp vụ.', isSystem: true }),
+  Object.freeze({ permissionKey: PERMISSIONS.coreEmployeeWrite, module: 'Nhân sự', label: 'Quản lý nhân sự', description: 'Cho phép tạo, cập nhật và thay đổi trạng thái hồ sơ nhân sự.', isSystem: true }),
   Object.freeze({ permissionKey: PERMISSIONS.coreUserRead, module: 'Nhân sự', label: 'Xem người dùng', description: 'Cho phép đọc thông tin định danh người dùng và liên kết vai trò/nhân viên.', isSystem: true }),
   Object.freeze({ permissionKey: PERMISSIONS.coreUserWrite, module: 'Nhân sự', label: 'Quản lý người dùng', description: 'Cho phép tạo, cập nhật và quản lý liên kết vai trò/nhân viên của người dùng.', isSystem: true }),
   Object.freeze({ permissionKey: PERMISSIONS.coreUserRoleWrite, module: 'Nhân sự', label: 'Quản lý liên kết vai trò người dùng', description: 'Cho phép thay thế toàn bộ tập vai trò của người dùng một cách nguyên tử.', isSystem: true }),
