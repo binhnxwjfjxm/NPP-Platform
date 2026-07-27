@@ -8,7 +8,7 @@ test.describe('Danh mục nhà cung cấp', () => {
     const taxId = `TAXID-${suffix}`;
     const bankAccount = `ACC-${suffix}`;
 
-    await page.goto('/organization/suppliers');
+    await page.goto('/suppliers');
     await expect(page.getByTestId('suppliers-page')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Nhà cung cấp', exact: true })).toBeVisible();
 
@@ -39,8 +39,7 @@ test.describe('Danh mục nhà cung cấp', () => {
     await expect(supplierRow).toContainText(`${supplierName} đã sửa`);
 
     await supplierRow.getByRole('button', { name: 'Vô hiệu' }).click();
-    await expect(supplierRow).toContainText('Không hoạt động');
     await page.getByTestId('suppliers-status-filter').selectOption('inactive');
-    await expect(supplierRow).toBeVisible();
+    await expect(supplierRow).toContainText('Không hoạt động');
   });
 });
