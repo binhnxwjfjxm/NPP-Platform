@@ -1,4 +1,5 @@
 import ProductWorkspace from './product-workspace';
+import ProductUnitWorkspace from './product-unit-workspace';
 import type { Product, ProductBrand, ProductCategory, UnitOfMeasure } from '../../lib/product-types';
 import {
   listProductCategories,
@@ -31,12 +32,14 @@ export default async function ProductsPage() {
   }
 
   return (
-    <ProductWorkspace
-      initialProducts={initialProducts}
-      initialCategories={initialCategories}
-      initialBrands={initialBrands}
-      initialUnits={initialUnits}
-      initialError={initialError}
-    />
+    <>
+      <ProductWorkspace
+        initialProducts={initialProducts}
+        initialCategories={initialCategories}
+        initialBrands={initialBrands}
+        initialError={initialError}
+      />
+      <ProductUnitWorkspace initialProducts={initialProducts} initialUnits={initialUnits} />
+    </>
   );
 }
