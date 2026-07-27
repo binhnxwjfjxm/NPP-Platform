@@ -1,7 +1,7 @@
 # NPP Platform — Latest Handoff
 
 > Updated: 2026-07-27  
-> Current checkpoint: Phase 3 master data is in progress. Phase 3.3A through Phase 3.3D are merged on `main`; Phase 3.3E pricing is verified in PR #51 and pending merge. The grouped production Core backend/database rollout remains intentionally deferred.
+> Current checkpoint: Phase 3 master data is in progress. Phase 3.3A through Phase 3.3E are merged on `main`. Phase 3.3F document numbering is next. The grouped production Core backend/database rollout remains intentionally deferred.
 
 ## Production status
 
@@ -165,12 +165,10 @@ data/imports/product-units-conversions-2026-07-23-review-required.json
 
 ## Phase 3.3E — Price lists and channel resolution
 
-Implementation is verified in PR #51 and pending merge.
-
-Verified code head:
+Merged by PR #51 at commit:
 
 ```text
-8ef61b69e9c97f42063fbb56ef4ed1f9926b69ad
+8eef9c978fea84eeab950864bd3a8fa46710e560
 ```
 
 Delivered in source:
@@ -194,10 +192,10 @@ Delivered in source:
 - product/SKU/unit administration remains on `/products`;
 - `/pricing` supports channels, price lists/programs, SKU rules and a price simulator with trace;
 - Core navigation includes `Giá bán & khuyến mãi`;
-- Playwright project `catalog` now runs both `products.spec.ts` and `pricing.spec.ts`;
-- fixed the pre-existing product-unit UI race and detached-workspace sidebar overlap exposed by the newly active browser coverage;
+- Playwright project `catalog` runs both `products.spec.ts` and `pricing.spec.ts`;
+- fixed the pre-existing product SKU-load race, product-unit success-state race and detached-workspace/sidebar overlap exposed by the active browser coverage;
 - Foundation F0.2, migration apply/rerun, PostgreSQL API/service tests, source workbook audit, Core web typecheck/tests/build, Heroku process contract, migration rehearsal and Chromium E2E all passed;
-- `mcp/** = 0` and no temporary diagnostic workflow remains in the final diff.
+- `mcp/** = 0` and no temporary diagnostic workflow remains in the merged diff.
 
 Locked pricing behavior:
 
@@ -244,7 +242,7 @@ Production migration `014`, price import and backend/frontend deployment remain 
 3.3B suppliers/contacts/addresses/terms         MERGED PR #46; backend/DB deferred
 3.3C products/variants/SKUs/categories/brands  MERGED PR #47; backend/DB deferred
 3.3D units/conversions/barcodes                 MERGED PR #49; backend/DB deferred
-3.3E price lists/channel price resolution       VERIFIED PR #51; merge pending; backend/DB deferred
+3.3E price lists/channel price resolution       MERGED PR #51; backend/DB deferred
 3.3F document numbering                         NEXT
 ```
 
