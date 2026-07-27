@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS shared.document_number_allocations (
   actor_id text NOT NULL CHECK (char_length(actor_id) BETWEEN 1 AND 128),
   request_id text NOT NULL CHECK (char_length(request_id) BETWEEN 1 AND 128),
   source_app text NOT NULL CHECK (char_length(source_app) BETWEEN 1 AND 128),
-  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(metadata) = 'object'),
   CONSTRAINT document_number_allocations_id_installation_unique UNIQUE (installation_id, id),
   CONSTRAINT document_number_allocations_series_installation_fk
     FOREIGN KEY (installation_id, series_id)
@@ -105,3 +105,17 @@ CREATE INDEX IF NOT EXISTS document_number_allocations_series_date_idx
   ON shared.document_number_allocations (installation_id, series_id, document_date DESC, allocated_at DESC);
 CREATE INDEX IF NOT EXISTS document_number_allocations_request_idx
   ON shared.document_number_allocations (installation_id, request_id);
+
+CREATE OR REPLACE FUNCTION shared.prevent_document_number_allocation_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RAISE EXCEPTION 'document_number_allocations_are_append_only';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS document_number_allocations_append_only ON shared.document_number_allocations;
+CREATE TRIGGER document_number_allocations_append_only
+BEFORE UPDATE OR DELETE ON shared.document_number_allocations
+FOR EACH ROW EXECUTE FUNCTION shared.prevent_document_number_allocation_mutation();
