@@ -50,6 +50,17 @@ export async function getEmployeeByIdForInstallation(client, { id, installationI
   return result.rows[0] || null;
 }
 
+export async function getEmployeeByIdForInstallationForShare(client, { id, installationId }) {
+  const result = await client.query(
+    `SELECT ${SELECT_COLUMNS}
+     FROM shared.employees
+     WHERE id = $1 AND installation_id = $2
+     FOR SHARE`,
+    [id, installationId],
+  );
+  return result.rows[0] || null;
+}
+
 export async function getEmployeeByIdForInstallationForUpdate(client, { id, installationId }) {
   const result = await client.query(
     `SELECT ${SELECT_COLUMNS}
