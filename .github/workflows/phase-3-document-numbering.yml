@@ -16,6 +16,7 @@ on:
       - "npp-core/web/lib/document-numbering-*.ts"
       - "npp-core/web/e2e/document-numbering.spec.ts"
       - "npp-core/web/playwright.config.ts"
+      - "docs/operations/document-numbering-slice.md"
       - ".github/workflows/phase-3-document-numbering.yml"
   push:
     branches:
@@ -34,6 +35,7 @@ on:
       - "npp-core/web/lib/document-numbering-*.ts"
       - "npp-core/web/e2e/document-numbering.spec.ts"
       - "npp-core/web/playwright.config.ts"
+      - "docs/operations/document-numbering-slice.md"
       - ".github/workflows/phase-3-document-numbering.yml"
   workflow_dispatch:
 
@@ -63,6 +65,7 @@ jobs:
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
       E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
       E2E_BACKEND_API_TOKEN: numbering-test-token-0123456789abcdef
+      DATABASE_SSL_MODE: disable
       NODE_ENV: test
     steps:
       - name: Checkout
@@ -77,10 +80,15 @@ jobs:
         run: npm ci
 
       - name: Apply, rerun and verify migrations through numbering
+        shell: bash
         run: |
-          npm --prefix npp-core/api run migration:migrate
-          npm --prefix npp-core/api run migration:migrate
-          npm --prefix npp-core/api run migration:verify
+          set -o pipefail
+          mkdir -p artifacts
+          {
+            npm --prefix npp-core/api run migration:migrate
+            npm --prefix npp-core/api run migration:migrate
+            npm --prefix npp-core/api run migration:verify
+          } 2>&1 | tee artifacts/document-numbering-migrations.log
 
       - name: Run isolated numbering and replay-safety tests
         shell: bash
@@ -131,6 +139,7 @@ jobs:
         with:
           name: phase-3-document-numbering-${{ github.run_id }}
           path: |
+            artifacts/document-numbering-migrations.log
             artifacts/document-numbering-api.log
             artifacts/document-numbering-acceptance.json
             npp-core/web/playwright-report
