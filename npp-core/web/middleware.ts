@@ -71,5 +71,7 @@ export const config = {
     '/api/products/:path*',
     '/api/product-categories/:path*',
     '/api/product-brands/:path*',
+    '/api/units/:path*',
+    '/api/product-units/:path*',
   ],
 };

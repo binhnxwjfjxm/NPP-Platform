@@ -221,7 +221,8 @@ export async function countActiveSellableVariantsForProduct(client, { productId,
   const result = await client.query(
     `SELECT COUNT(*)::int AS count
      FROM shared.product_variants
-     WHERE installation_id = $1 AND product_id = $2 AND is_active = true AND is_sellable = true`,
+     WHERE installation_id = $1 AND product_id = $2 AND is_active = true AND is_sellable = true
+       AND unit_id IS NOT NULL AND conversion_to_base IS NOT NULL`,
     [installationId, productId],
   );
   return result.rows[0]?.count ?? 0;

@@ -271,3 +271,56 @@ export function importProducts<T>(requestId: string, body: unknown, idempotencyK
     idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}`,
   });
 }
+
+function unitPath(id?: string): string {
+  return `/api/units${id ? `/${assertUuid(id, 'INVALID_UNIT_ID', 'Mã đơn vị tính không hợp lệ')}` : ''}`;
+}
+
+function variantUnitPath(productId: string, variantId: string): string {
+  return `${variantPath(productId, variantId)}/unit`;
+}
+
+function variantBarcodePath(productId: string, variantId: string, barcodeId?: string): string {
+  const base = `${variantPath(productId, variantId)}/barcodes`;
+  return barcodeId ? `${base}/${assertUuid(barcodeId, 'INVALID_PRODUCT_BARCODE_ID', 'Mã barcode không hợp lệ')}` : base;
+}
+
+export function listUnits<T>(requestId: string, searchParams = new URLSearchParams()): Promise<T[]> {
+  return requestCore<T[]>({ method: 'GET', path: unitPath(), requestId, searchParams });
+}
+
+export function createUnit<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({ method: 'POST', path: unitPath(), requestId, body, idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}` });
+}
+
+export function patchUnit<T>(id: string, requestId: string, body: unknown): Promise<T> {
+  return requestCore<T>({ method: 'PATCH', path: unitPath(id), requestId, body });
+}
+
+export function getVariantUnit<T>(productId: string, variantId: string, requestId: string): Promise<T> {
+  return requestCore<T>({ method: 'GET', path: variantUnitPath(productId, variantId), requestId });
+}
+
+export function patchVariantUnit<T>(productId: string, variantId: string, requestId: string, body: unknown): Promise<T> {
+  return requestCore<T>({ method: 'PATCH', path: variantUnitPath(productId, variantId), requestId, body });
+}
+
+export function listVariantBarcodes<T>(productId: string, variantId: string, requestId: string): Promise<T[]> {
+  return requestCore<T[]>({ method: 'GET', path: variantBarcodePath(productId, variantId), requestId });
+}
+
+export function createVariantBarcode<T>(productId: string, variantId: string, requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({ method: 'POST', path: variantBarcodePath(productId, variantId), requestId, body, idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}` });
+}
+
+export function patchVariantBarcode<T>(productId: string, variantId: string, barcodeId: string, requestId: string, body: unknown): Promise<T> {
+  return requestCore<T>({ method: 'PATCH', path: variantBarcodePath(productId, variantId, barcodeId), requestId, body });
+}
+
+export function normalizeVariantQuantity<T>(productId: string, variantId: string, requestId: string, body: unknown): Promise<T> {
+  return requestCore<T>({ method: 'POST', path: `${variantPath(productId, variantId)}/normalize-quantity`, requestId, body });
+}
+
+export function importProductUnits<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
+  return requestCore<T>({ method: 'POST', path: '/api/product-units/import', requestId, body, idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}` });
+}

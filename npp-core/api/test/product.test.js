@@ -5,6 +5,7 @@ import { loadConfig } from '../src/config.js';
 import { getPool, closePool } from '../src/db/pool.js';
 import { startServer } from '../src/server.js';
 import * as productService from '../src/services/product.js';
+import * as productUnitService from '../src/services/product-unit.js';
 
 function testEnv(overrides = {}) {
   return {
@@ -95,6 +96,21 @@ test('Product service — hierarchy, lifecycle and immutable identity are enforc
     });
     assert.ok(variantResult.ok, variantResult.message);
 
+    const unitResult = await productUnitService.createUnit(pool, {
+      installationId: config.installationId,
+      payload: { code: `EA-${suffix}`, name: 'Đơn vị', unitKind: 'COUNT', allowsFractional: false },
+      createdBy: 'test:user',
+    });
+    assert.ok(unitResult.ok, unitResult.message);
+    const assigned = await productUnitService.assignVariantUnit(pool, {
+      installationId: config.installationId,
+      productId: product.id,
+      variantId: variantResult.variant.id,
+      payload: { unitId: unitResult.unit.id, conversionToBase: '1', expectedUpdatedAt: variantResult.variant.updated_at },
+      updatedBy: 'test:user',
+    });
+    assert.ok(assigned.ok, assigned.message);
+
     const enabled = await productService.updateProduct(pool, {
       id: product.id,
       installationId: config.installationId,
@@ -126,7 +142,7 @@ test('Product service — hierarchy, lifecycle and immutable identity are enforc
       productId: product.id,
       variantId: variantResult.variant.id,
       installationId: config.installationId,
-      payload: { isSellable: false, expectedUpdatedAt: variantResult.variant.updated_at },
+      payload: { isSellable: false, expectedUpdatedAt: assigned.variant.updated_at },
       updatedBy: 'test:user',
     });
     assert.equal(removeLastSellable.ok, false);
@@ -158,7 +174,7 @@ test('Product import — normalized snapshot is atomic and re-import updates the
         categoryId: category.id,
         brandId: brand.id,
         isCatalogVisible: true,
-        isOrderable: true,
+        isOrderable: false,
         isActive: true,
         variants: [{
           sku: `IMP-SKU-${suffix}`,
@@ -257,7 +273,7 @@ test('Product API — idempotent creates, duplicate race, import replay and audi
       categoryId: categoryBody.data.id,
       brandId: brand.id,
       isCatalogVisible: true,
-      isOrderable: true,
+      isOrderable: false,
       isActive: true,
       variants: [{ id: variant.id, sku: variant.sku, name: variant.name, variantKind: 'BASE', isInventoryBase: true, isSellable: true, isCatalogVisible: true, isActive: true }],
     }] };

@@ -1,9 +1,11 @@
 import ProductWorkspace from './product-workspace';
-import type { Product, ProductBrand, ProductCategory } from '../../lib/product-types';
+import ProductUnitWorkspace from './product-unit-workspace';
+import type { Product, ProductBrand, ProductCategory, UnitOfMeasure } from '../../lib/product-types';
 import {
   listProductCategories,
   listProductBrands,
   listProducts,
+  listUnits,
   normalizeProductGatewayError,
   resolveProductRequestId,
 } from '../../lib/product-gateway';
@@ -15,24 +17,29 @@ export default async function ProductsPage() {
   let initialProducts: Product[] = [];
   let initialCategories: ProductCategory[] = [];
   let initialBrands: ProductBrand[] = [];
+  let initialUnits: UnitOfMeasure[] = [];
   let initialError: string | null = null;
 
   try {
-    [initialProducts, initialCategories, initialBrands] = await Promise.all([
+    [initialProducts, initialCategories, initialBrands, initialUnits] = await Promise.all([
       listProducts<Product>(requestId, new URLSearchParams({ limit: '1000' })),
       listProductCategories<ProductCategory>(requestId, new URLSearchParams({ limit: '1000' })),
       listProductBrands<ProductBrand>(requestId, new URLSearchParams({ limit: '1000' })),
+      listUnits<UnitOfMeasure>(requestId, new URLSearchParams({ limit: '1000' })),
     ]);
   } catch (error) {
     initialError = normalizeProductGatewayError(error).publicMessage;
   }
 
   return (
-    <ProductWorkspace
-      initialProducts={initialProducts}
-      initialCategories={initialCategories}
-      initialBrands={initialBrands}
-      initialError={initialError}
-    />
+    <>
+      <ProductWorkspace
+        initialProducts={initialProducts}
+        initialCategories={initialCategories}
+        initialBrands={initialBrands}
+        initialError={initialError}
+      />
+      <ProductUnitWorkspace initialProducts={initialProducts} initialUnits={initialUnits} />
+    </>
   );
 }

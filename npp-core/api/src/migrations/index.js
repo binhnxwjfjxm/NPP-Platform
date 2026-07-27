@@ -45,6 +45,10 @@ const PRODUCT_CATALOG_FOUNDATION_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/012_product_catalog_foundation.sql', import.meta.url),
   'utf8',
 );
+const PRODUCT_UNITS_CONVERSIONS_BARCODES_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/013_product_units_conversions_barcodes.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
@@ -90,6 +94,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '012_product_catalog_foundation',
     sql: PRODUCT_CATALOG_FOUNDATION_SQL,
+  }),
+  Object.freeze({
+    id: '013_product_units_conversions_barcodes',
+    sql: PRODUCT_UNITS_CONVERSIONS_BARCODES_SQL,
   }),
 ]);
 
