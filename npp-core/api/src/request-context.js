@@ -55,6 +55,8 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.coreWarehouseWrite,
       PERMISSIONS.coreWarehouseLocationRead,
       PERMISSIONS.coreWarehouseLocationWrite,
+      PERMISSIONS.coreCustomerRead,
+      PERMISSIONS.coreCustomerWrite,
       PERMISSIONS.coreEmployeeRead,
       PERMISSIONS.coreEmployeeWrite,
       PERMISSIONS.coreUserRead,
