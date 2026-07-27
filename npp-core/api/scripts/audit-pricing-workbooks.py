@@ -12,6 +12,10 @@ NS = {
     'pr': 'http://schemas.openxmlformats.org/package/2006/relationships',
 }
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_CANONICAL_WORKBOOK = REPOSITORY_ROOT / 'BANG_GIA_CHUAN_HOA_CAP_NHAT_DS_SP_23.07.26.xlsx'
+DEFAULT_VENUE_WORKBOOK = REPOSITORY_ROOT / 'BANG_GIA_KENH_QUAN_THEM_NHOM_CHI_TIET.xlsx'
+
 
 def col_index(ref):
     letters = ''.join(ch for ch in ref if ch.isalpha())
@@ -156,10 +160,20 @@ def audit(canonical_path, venue_path):
     }
 
 
+def resolve_paths(argv):
+    if len(argv) == 1:
+        return DEFAULT_CANONICAL_WORKBOOK, DEFAULT_VENUE_WORKBOOK
+    if len(argv) == 3:
+        return Path(argv[1]), Path(argv[2])
+    raise SystemExit('usage: audit-pricing-workbooks.py [canonical.xlsx venue.xlsx]')
+
+
 def main(argv):
-    if len(argv) != 3:
-        raise SystemExit('usage: audit-pricing-workbooks.py canonical.xlsx venue.xlsx')
-    print(json.dumps(audit(argv[1], argv[2]), ensure_ascii=False, indent=2))
+    canonical_path, venue_path = resolve_paths(argv)
+    missing = [str(path) for path in (canonical_path, venue_path) if not path.is_file()]
+    if missing:
+        raise SystemExit('missing pricing workbook: ' + ', '.join(missing))
+    print(json.dumps(audit(canonical_path, venue_path), ensure_ascii=False, indent=2))
 
 
 if __name__ == '__main__':
