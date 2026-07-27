@@ -3,6 +3,36 @@
   gap: 1rem;
 }
 
+.page {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.header h1 {
+  margin: .2rem 0;
+}
+
+.header p {
+  color: #64748b;
+  margin: 0;
+}
+
+.eyebrow {
+  color: #475569;
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
 .toolbar,
 .sectionHeader,
 .formHeader {
@@ -24,7 +54,8 @@
 .secondaryButton,
 .rowActions button,
 .formHeader button,
-.variantPanel button {
+.variantPanel button,
+.inlineTools button {
   border: 1px solid rgba(15, 23, 42, .16);
   border-radius: .65rem;
   background: #fff;
@@ -43,7 +74,8 @@
 
 .primaryButton:disabled,
 .secondaryButton:disabled,
-.rowActions button:disabled {
+.rowActions button:disabled,
+.inlineTools button:disabled {
   cursor: not-allowed;
   opacity: .55;
 }
@@ -133,6 +165,33 @@
   color: #334155;
 }
 
+.inlineTools {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.inlineTools input {
+  min-width: 180px;
+  border: 1px solid #cbd5e1;
+  border-radius: .5rem;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  padding: .7rem .8rem;
+}
+
+.notice {
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1e3a8a;
+  border-radius: .75rem;
+  padding: .8rem 1rem;
+  margin-bottom: 1rem;
+}
+
 .tableWrapper {
   overflow-x: auto;
   border: 1px solid #e2e8f0;
@@ -215,6 +274,7 @@
 }
 
 @media (max-width: 640px) {
+  .header,
   .toolbar,
   .sectionHeader,
   .formHeader {
