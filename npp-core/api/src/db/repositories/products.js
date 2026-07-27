@@ -13,7 +13,7 @@ export async function getProductByIdForInstallation(client, { id, installationId
      WHERE p.id = $1 AND p.installation_id = $2`,
     [id, installationId],
   );
-  return result.rows[0] || null;
+  return result.rows[0] ?? null;
 }
 
 export async function getProductByIdForInstallationForUpdate(client, { id, installationId }) {
@@ -25,10 +25,10 @@ export async function getProductByIdForInstallationForUpdate(client, { id, insta
      LEFT JOIN shared.product_brands b
        ON b.installation_id = p.installation_id AND b.id = p.brand_id
      WHERE p.id = $1 AND p.installation_id = $2
-     FOR UPDATE`,
+     FOR UPDATE OF p`,
     [id, installationId],
   );
-  return result.rows[0] || null;
+  return result.rows[0] ?? null;
 }
 
 export async function getProductByCode(client, { installationId, code }) {
@@ -42,7 +42,7 @@ export async function getProductByCode(client, { installationId, code }) {
      WHERE p.installation_id = $1 AND p.code = $2`,
     [installationId, code],
   );
-  return result.rows[0] || null;
+  return result.rows[0] ?? null;
 }
 
 export async function listProductsForInstallation(client, {
@@ -64,40 +64,42 @@ export async function listProductsForInstallation(client, {
                  ON b.installation_id = p.installation_id AND b.id = p.brand_id
                WHERE p.installation_id = $1`;
   const params = [installationId];
-
   if (active !== undefined) {
     query += ` AND p.is_active = $${params.length + 1}`;
     params.push(Boolean(active));
   }
-
   if (catalogVisible !== undefined) {
     query += ` AND p.is_catalog_visible = $${params.length + 1}`;
     params.push(Boolean(catalogVisible));
   }
-
   if (orderable !== undefined) {
     query += ` AND p.is_orderable = $${params.length + 1}`;
     params.push(Boolean(orderable));
   }
-
-  if (categoryId !== undefined && categoryId !== null && categoryId !== '') {
+  if (categoryId) {
     query += ` AND p.category_id = $${params.length + 1}`;
     params.push(categoryId);
   }
-
-  if (brandId !== undefined && brandId !== null && brandId !== '') {
+  if (brandId) {
     query += ` AND p.brand_id = $${params.length + 1}`;
     params.push(brandId);
   }
-
   if (search) {
-    query += ` AND (p.code ILIKE $${params.length + 1} OR p.name ILIKE $${params.length + 1} OR p.catalog_name ILIKE $${params.length + 1})`;
+    query += ` AND (
+      p.code ILIKE $${params.length + 1}
+      OR p.name ILIKE $${params.length + 1}
+      OR COALESCE(p.catalog_name, '') ILIKE $${params.length + 1}
+      OR EXISTS (
+        SELECT 1 FROM shared.product_variants pv
+        WHERE pv.installation_id = p.installation_id
+          AND pv.product_id = p.id
+          AND pv.sku ILIKE $${params.length + 1}
+      )
+    )`;
     params.push(`%${search}%`);
   }
-
   query += ` ORDER BY p.code ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
   params.push(limit, offset);
-
   const result = await client.query(query, params);
   return result.rows;
 }
@@ -117,24 +119,25 @@ export async function insertProduct(client, {
   isActive,
   createdBy,
 }) {
-  const productId = id || randomUUID();
+  const productId = id ?? randomUUID();
   const now = new Date().toISOString();
   const result = await client.query(
     `INSERT INTO shared.products
       (id, installation_id, code, name, catalog_name, category_id, brand_id, description, notes,
        is_catalog_visible, is_orderable, is_active, created_at, updated_at, created_by, updated_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+     ON CONFLICT DO NOTHING
      RETURNING id`,
     [
       productId,
       installationId,
       code,
       name,
-      catalogName || null,
-      categoryId || null,
-      brandId || null,
-      description || null,
-      notes || null,
+      catalogName ?? null,
+      categoryId ?? null,
+      brandId ?? null,
+      description ?? null,
+      notes ?? null,
       Boolean(isCatalogVisible),
       Boolean(isOrderable),
       Boolean(isActive),
@@ -144,7 +147,6 @@ export async function insertProduct(client, {
       createdBy,
     ],
   );
-
   if (!result.rows[0]) return null;
   return getProductByIdForInstallation(client, { id: productId, installationId });
 }
@@ -166,11 +168,11 @@ export async function updateProduct(client, {
 }) {
   const params = [
     name,
-    catalogName || null,
-    categoryId || null,
-    brandId || null,
-    description || null,
-    notes || null,
+    catalogName ?? null,
+    categoryId ?? null,
+    brandId ?? null,
+    description ?? null,
+    notes ?? null,
     Boolean(isCatalogVisible),
     Boolean(isOrderable),
     Boolean(isActive),
@@ -191,57 +193,43 @@ export async function updateProduct(client, {
          updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
          updated_by = $10
      WHERE id = $11 AND installation_id = $12`;
-
   if (expectedUpdatedAt) {
-    query += ` AND updated_at = $13`;
+    query += ' AND updated_at = $13';
     params.push(expectedUpdatedAt);
   }
-
-  query += ` RETURNING ${PRODUCT_COLUMNS}`;
+  query += ' RETURNING id';
   const result = await client.query(query, params);
-  return result.rows[0] || null;
+  if (!result.rows[0]) return null;
+  return getProductByIdForInstallation(client, { id, installationId });
 }
 
 export async function countActiveVariantsForProduct(client, { productId, installationId }) {
   const result = await client.query(
-    `SELECT COUNT(*) AS count
+    `SELECT COUNT(*)::int AS count
      FROM shared.product_variants
      WHERE installation_id = $1 AND product_id = $2 AND is_active = true`,
     [installationId, productId],
   );
-  return Number(result.rows[0]?.count || 0);
+  return result.rows[0]?.count ?? 0;
 }
 
 export async function countActiveSellableVariantsForProduct(client, { productId, installationId }) {
   const result = await client.query(
-    `SELECT COUNT(*) AS count
+    `SELECT COUNT(*)::int AS count
      FROM shared.product_variants
      WHERE installation_id = $1 AND product_id = $2 AND is_active = true AND is_sellable = true`,
     [installationId, productId],
   );
-  return Number(result.rows[0]?.count || 0);
+  return result.rows[0]?.count ?? 0;
 }
 
 export async function getProductsByIdsOrCodes(client, { installationId, ids, codes }) {
-  const query = `SELECT id, code FROM shared.products WHERE installation_id = $1 AND (id = ANY($2::uuid[]) OR code = ANY($3::text[]))`;
-  const result = await client.query(query, [installationId, ids, codes]);
-  return result.rows;
-}
-
-export async function getProductsByIds(client, { installationId, ids }) {
-  if (!ids.length) return [];
   const result = await client.query(
-    `SELECT id, code FROM shared.products WHERE installation_id = $1 AND id = ANY($2::uuid[])`,
-    [installationId, ids],
-  );
-  return result.rows;
-}
-
-export async function getProductsByCodes(client, { installationId, codes }) {
-  if (!codes.length) return [];
-  const result = await client.query(
-    `SELECT id, code FROM shared.products WHERE installation_id = $1 AND code = ANY($2::text[])`,
-    [installationId, codes],
+    `SELECT id, code
+     FROM shared.products
+     WHERE installation_id = $1
+       AND (id = ANY($2::uuid[]) OR code = ANY($3::text[]))`,
+    [installationId, ids, codes],
   );
   return result.rows;
 }
