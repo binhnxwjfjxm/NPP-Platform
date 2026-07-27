@@ -9,6 +9,7 @@ on:
       - "database/migrations/shared/013_product_units_conversions_barcodes.sql"
       - "database/migrations/shared/014_price_lists_channel_resolution.sql"
       - "database/migrations/shared/015_document_numbering.sql"
+      - "database/migrations/shared/016_permission_catalog_alignment.sql"
       - "npp-core/api/**"
       - "npp-core/web/**"
       - "docs/operations/phase-3-validation-plan.md"
@@ -23,6 +24,7 @@ on:
       - "database/migrations/shared/013_product_units_conversions_barcodes.sql"
       - "database/migrations/shared/014_price_lists_channel_resolution.sql"
       - "database/migrations/shared/015_document_numbering.sql"
+      - "database/migrations/shared/016_permission_catalog_alignment.sql"
       - "npp-core/api/**"
       - "npp-core/web/**"
       - "docs/operations/phase-3-validation-plan.md"
@@ -90,6 +92,8 @@ jobs:
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
       E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
       E2E_BACKEND_API_TOKEN: phase-3-pack-token-0123456789abcdef
+      DATABASE_SSL_MODE: disable
+      EVIDENCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       NODE_ENV: test
       PACK: ${{ matrix.pack }}
       API_PATTERNS: ${{ matrix.api_patterns }}
@@ -98,6 +102,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -107,11 +113,16 @@ jobs:
       - name: Install workspaces
         run: npm ci
 
-      - name: Apply and verify migrations 002 through 015
+      - name: Apply and verify migrations 002 through 016
+        shell: bash
         run: |
-          npm --prefix npp-core/api run migration:migrate
-          npm --prefix npp-core/api run migration:migrate
-          npm --prefix npp-core/api run migration:verify
+          set -o pipefail
+          mkdir -p "artifacts/${PACK}"
+          {
+            npm --prefix npp-core/api run migration:migrate
+            npm --prefix npp-core/api run migration:migrate
+            npm --prefix npp-core/api run migration:verify
+          } 2>&1 | tee "artifacts/${PACK}/migrations.log"
 
       - name: Discover and run isolated API tests
         shell: bash
@@ -204,9 +215,9 @@ jobs:
           }
           const report = {
             pack,
-            commitSha: process.env.GITHUB_SHA,
+            commitSha: process.env.EVIDENCE_SHA,
             databaseTarget: 'ephemeral-postgresql-16',
-            migrationSet: '002-015',
+            migrationSet: '002-016',
             workflowRunId: process.env.GITHUB_RUN_ID,
             databaseReachable,
             rowCounts,
@@ -252,9 +263,13 @@ jobs:
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
       E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
       E2E_BACKEND_API_TOKEN: phase-3-cross-domain-token-0123456789abcdef
+      DATABASE_SSL_MODE: disable
+      EVIDENCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -264,8 +279,10 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p artifacts/cross-domain
-          npm --prefix npp-core/api run migration:migrate
-          npm --prefix npp-core/api run migration:verify
+          {
+            npm --prefix npp-core/api run migration:migrate
+            npm --prefix npp-core/api run migration:verify
+          } 2>&1 | tee artifacts/cross-domain/migrations.log
           npm --prefix npp-core/api run verify 2>&1 | tee artifacts/cross-domain/api.log
       - name: Verify MCP boundary
         shell: bash
@@ -299,9 +316,9 @@ jobs:
           cat > artifacts/cross-domain/acceptance.json <<JSON
           {
             "pack": "cross-domain",
-            "commitSha": "${GITHUB_SHA}",
+            "commitSha": "${EVIDENCE_SHA}",
             "databaseTarget": "ephemeral-postgresql-16",
-            "migrationSet": "002-015",
+            "migrationSet": "002-016",
             "workflowRunId": "${GITHUB_RUN_ID}",
             "productionAssumptionReused": false,
             "ownerDecision": "PENDING_OWNER_REVIEW"
@@ -341,9 +358,13 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rehearsal_npp_core
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rehearsal_npp_core
+      DATABASE_SSL_MODE: disable
+      EVIDENCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -365,9 +386,9 @@ jobs:
           cat > artifacts/grouped-rehearsal/acceptance.json <<JSON
           {
             "pack": "grouped-migration-rehearsal",
-            "commitSha": "${GITHUB_SHA}",
+            "commitSha": "${EVIDENCE_SHA}",
             "databaseTarget": "ephemeral-postgresql-17",
-            "migrationSet": "002-015",
+            "migrationSet": "002-016",
             "workflowRunId": "${GITHUB_RUN_ID}",
             "productionProviderAudit": "NOT_PERFORMED",
             "freshProductionBackup": "NOT_PERFORMED",
