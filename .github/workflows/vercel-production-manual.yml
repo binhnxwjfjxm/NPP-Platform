@@ -7,7 +7,7 @@ on:
       - created
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: vercel-production-manual
@@ -24,79 +24,99 @@ jobs:
         contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
     steps:
-      - name: Checkout main
+      - name: Checkout exact main commit
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
+
+      - name: Record exact production SHA
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          git fetch origin main
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Deploying exact main SHA: $sha"
+
+      - name: Require automatic Git deployments to remain locked
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+
+          const config = JSON.parse(
+            await readFile("npp-core/web/vercel.json", "utf8")
+          );
+          if (config.git?.deploymentEnabled !== false) {
+            throw new Error("vercel_automatic_git_deployments_must_remain_locked");
+          }
+          NODE
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 24
 
-      - name: Configure deployment identity
+      - name: Pull production project configuration
+        working-directory: npp-core/web
+        run: >-
+          npx --yes vercel@latest pull
+          --yes
+          --environment=production
+          --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Build production artifact
+        working-directory: npp-core/web
+        run: >-
+          npx --yes vercel@latest build
+          --prod
+          --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Deploy production artifact
+        id: deploy
+        working-directory: npp-core/web
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          url="$(
+            npx --yes vercel@latest deploy \
+              --prebuilt \
+              --prod \
+              --archive=tgz \
+              --token="${{ secrets.VERCEL_TOKEN }}"
+          )"
+          test -n "$url"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Production deployment URL: $url"
 
-      - name: Open one-shot production gate
+      - name: Smoke test deployment URL
         shell: bash
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
         run: |
           set -euo pipefail
-          node --input-type=module <<'NODE'
-          import { readFile, writeFile } from "node:fs/promises";
+          for path in / /dashboard /login; do
+            curl --fail --silent --show-error \
+              --retry 5 --retry-delay 5 \
+              "$DEPLOYMENT_URL$path" >/dev/null
+          done
 
-          const path = "npp-core/web/vercel.json";
-          const config = JSON.parse(await readFile(path, "utf8"));
-          if (config.git?.deploymentEnabled !== false) {
-            throw new Error("vercel_deployment_gate_not_locked");
-          }
-          config.git = { ...(config.git || {}), deploymentEnabled: true };
-          await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
-          NODE
-          git add npp-core/web/vercel.json
-          git commit -m "chore(vercel): open one-shot production gate"
-          git push origin HEAD:main
+          html="$(curl --fail --silent --show-error "$DEPLOYMENT_URL/")"
+          asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+' | head -n 1)"
+          test -n "$asset"
+          curl --fail --silent --show-error "$DEPLOYMENT_URL$asset" >/dev/null
 
-      - name: Allow Vercel to accept the production event
-        run: sleep 90
-
-      - name: Re-lock automatic deployments
-        if: always()
+      - name: Record successful exact SHA
         shell: bash
         run: |
-          set -euo pipefail
-          git fetch origin main
-          git reset --hard origin/main
-          node --input-type=module <<'NODE'
-          import { readFile, writeFile } from "node:fs/promises";
-
-          const path = "npp-core/web/vercel.json";
-          const config = JSON.parse(await readFile(path, "utf8"));
-          config.git = { ...(config.git || {}), deploymentEnabled: false };
-          await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
-          NODE
-          git add npp-core/web/vercel.json
-          if ! git diff --cached --quiet; then
-            git commit -m "chore(vercel): re-lock automatic deployments [skip ci]"
-            git push origin HEAD:main
-          fi
-
-      - name: Verify repository is locked
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin main
-          git show origin/main:npp-core/web/vercel.json | node --input-type=module -e '
-            import { readFileSync } from "node:fs";
-            const config = JSON.parse(readFileSync(0, "utf8"));
-            if (config.git?.deploymentEnabled !== false) {
-              throw new Error("vercel_deployment_gate_left_open");
-            }
-          '
+          echo "DEPLOYED_SHA=${{ steps.target.outputs.sha }}"
+          echo "DEPLOYED_URL=${{ steps.deploy.outputs.url }}"
