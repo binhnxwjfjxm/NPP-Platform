@@ -8,24 +8,25 @@ test.describe('Danh mục khách hàng', () => {
     const customerName = `Khách hàng ${suffix}`;
 
     await page.goto('/customers');
-    await expect(page.getByTestId('customers-page')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Khách hàng', exact: true })).toBeVisible();
+    const workspace = page.getByTestId('customers-page');
+    await expect(workspace).toBeVisible();
+    await expect(workspace.getByRole('heading', { name: 'Khách hàng', exact: true })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Nhóm khách hàng', exact: true }).click();
+    await workspace.getByRole('button', { name: 'Nhóm khách hàng', exact: true }).click();
     await page.getByTestId('customer-groups-topbar-create-button').click();
     await page.getByTestId('customer-group-code-input').fill(groupCode.toLowerCase());
     await page.getByTestId('customer-group-name-input').fill(`Nhóm ${suffix}`);
-    await page.getByRole('button', { name: 'Lưu nhóm' }).click();
+    await workspace.getByRole('button', { name: 'Lưu nhóm' }).click();
     await expect(page.getByTestId(`customer-group-row-${groupCode}`)).toBeVisible();
 
-    await page.getByRole('button', { name: 'Khách hàng', exact: true }).click();
+    await workspace.getByRole('button', { name: 'Khách hàng', exact: true }).click();
     await page.getByTestId('customers-topbar-create-button').click();
     await page.getByTestId('customer-code-input').fill(customerCode.toLowerCase());
     await page.getByTestId('customer-name-input').fill(customerName);
-    await page.getByLabel('Nhóm khách hàng').selectOption({ label: `${groupCode} · Nhóm ${suffix}` });
+    await workspace.getByLabel('Nhóm khách hàng').selectOption({ label: `${groupCode} · Nhóm ${suffix}` });
     await page.getByTestId('customer-phone-input').fill('0901234567');
     await page.getByTestId('customer-email-input').fill(`customer-${suffix.toLowerCase()}@example.com`);
-    await page.getByRole('button', { name: 'Lưu khách hàng' }).click();
+    await workspace.getByRole('button', { name: 'Lưu khách hàng' }).click();
 
     const customerRow = page.getByTestId(`customer-row-${customerCode}`);
     await expect(customerRow).toBeVisible();
@@ -39,17 +40,17 @@ test.describe('Danh mục khách hàng', () => {
 
     await page.getByTestId(`edit-customer-${customerCode}`).click();
     await page.getByTestId('customer-name-input').fill(`${customerName} đã sửa`);
-    await page.getByRole('button', { name: 'Lưu khách hàng' }).click();
+    await workspace.getByRole('button', { name: 'Lưu khách hàng' }).click();
     await expect(customerRow).toContainText(`${customerName} đã sửa`);
 
     await page.getByTestId(`addresses-customer-${customerCode}`).click();
-    await page.getByRole('button', { name: 'Thêm địa chỉ' }).click();
+    await workspace.getByRole('button', { name: 'Thêm địa chỉ' }).click();
     await page.getByTestId('customer-address-label-input').fill('Kho chính');
     await page.getByTestId('customer-address-line1-input').fill(`1 Đường ${suffix}`);
-    await page.getByLabel('Đặt làm địa chỉ mặc định').check();
-    await page.getByRole('button', { name: 'Lưu địa chỉ' }).click();
-    await expect(page.getByText('Kho chính · Mặc định')).toBeVisible();
-    await page.getByRole('button', { name: 'Đóng' }).click();
+    await workspace.getByLabel('Đặt làm địa chỉ mặc định').check();
+    await workspace.getByRole('button', { name: 'Lưu địa chỉ' }).click();
+    await expect(workspace.getByText('Kho chính · Mặc định')).toBeVisible();
+    await workspace.getByRole('button', { name: 'Đóng' }).click();
 
     await customerRow.getByRole('button', { name: 'Ngừng' }).click();
     await expect(customerRow).toContainText('Không hoạt động');
