@@ -55,7 +55,7 @@ export default defineConfig({
   projects: [
     { name: 'routes', testMatch: /routes\.spec\.ts/, use: authenticatedBrowser },
     { name: 'organization', testMatch: /organization\.spec\.ts/, use: authenticatedBrowser },
-    { name: 'catalog', testMatch: /(products|pricing)\.spec\.ts/, use: authenticatedBrowser },
+    { name: 'catalog', testMatch: /(products|pricing|document-numbering)\.spec\.ts/, use: authenticatedBrowser },
     { name: 'organization-auth', testMatch: /organization-auth\.spec\.ts/, use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3003' } },
     { name: 'foundation-disabled', testMatch: /foundation-disabled\.spec\.ts/, use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3003' } },
     { name: 'foundation-enabled', testMatch: /foundation\.spec\.ts/, use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3005' } },
