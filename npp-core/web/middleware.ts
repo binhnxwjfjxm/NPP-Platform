@@ -68,9 +68,11 @@ export const config = {
   matcher: [
     '/dashboard/:path*',
     '/organization/:path*',
+    '/customers/:path*',
     '/access/:path*',
     '/api/organization/:path*',
     '/api/access/:path*',
     '/api/customers/:path*',
+    '/api/customer-groups/:path*',
   ],
 };
