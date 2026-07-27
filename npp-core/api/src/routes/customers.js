@@ -32,153 +32,117 @@ function parsePositiveIntParam(value, defaultValue, maxValue) {
   return parsed;
 }
 
-function requireIdempotencyKey(req, requestId, receivedAt) {
-  const rawKey = req.headers['idempotency-key'];
-  if (rawKey === undefined || rawKey === null) {
-    return {
-      statusCode: 400,
-      body: createErrorEnvelope(
-        { code: 'MISSING_IDEMPOTENCY_KEY', message: 'Idempotency-Key header is required', statusCode: 400 },
-        requestId,
-        receivedAt,
-      ),
-    };
+function requireIdempotencyKey(req) {
+  const raw = req.headers['idempotency-key'];
+  if (raw === undefined || raw === null) {
+    return { ok: false, code: 'MISSING_IDEMPOTENCY_KEY', message: 'Idempotency-Key header is required' };
   }
   try {
-    normalizeIdempotencyKey(rawKey);
-    return null;
+    normalizeIdempotencyKey(raw);
+    return { ok: true };
   } catch (error) {
     return {
-      statusCode: 400,
-      body: createErrorEnvelope(
-        { code: error.code, message: 'Idempotency-Key must be 1-128 characters and contain only letters, numbers, dots, underscores, or hyphens', statusCode: error.statusCode },
-        requestId,
-        receivedAt,
-      ),
+      ok: false,
+      code: error.code ?? 'INVALID_IDEMPOTENCY_KEY',
+      message: 'Idempotency-Key must be 1-128 characters and contain only letters, numbers, dots, underscores, or hyphens',
     };
   }
-}
-
-function createErrorEnvelope(error, requestId, receivedAt) {
-  return {
-    error,
-    requestId,
-    receivedAt,
-  };
 }
 
 function serviceStatus(result) {
-  if (result.code === 'NOT_FOUND') return 404;
-  if (result.code === 'DUPLICATE_CODE' || result.code === 'CONFLICT') return 409;
+  if (['NOT_FOUND', 'GROUP_NOT_FOUND', 'EMPLOYEE_NOT_FOUND'].includes(result.code)) return 404;
+  if (['DUPLICATE_CODE', 'CONFLICT', 'GROUP_INACTIVE', 'EMPLOYEE_INACTIVE', 'CUSTOMER_INACTIVE'].includes(result.code)) return 409;
   return 400;
 }
 
-async function handleGetCustomers(req, res, { requestContext, getPool, requestId, receivedAt }) {
-  const url = new URL(`http://localhost${req.url}`);
-  let active, limit, offset;
+function sendServiceError(res, result, context) {
+  sendError(
+    res,
+    createError(result.code, result.message, {}, Boolean(result.retryable), serviceStatus(result)),
+    context.requestId,
+    context.receivedAt,
+  );
+}
+
+async function readPayload(req, res, context) {
   try {
-    active = parseBooleanParam(url.searchParams.get('active'));
-    limit = parsePositiveIntParam(url.searchParams.get('limit'), 100, 1000);
-    offset = parsePositiveIntParam(url.searchParams.get('offset'), 0, 10000);
+    return await readJsonBody(req);
   } catch (error) {
-    if (error.statusCode) {
-      sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), requestId, receivedAt);
-      return;
-    }
-    sendError(res, createError('INTERNAL_ERROR', 'Failed to parse query parameters', {}, true, 500), requestId, receivedAt);
-    return;
-  }
-
-  const pool = getPool();
-  try {
-    const result = await customerService.listCustomers(pool, {
-      installationId: requestContext.installationId,
-      active,
-      limit,
-      offset,
-    });
-
-    sendSuccess(res, result.customers, requestId, receivedAt);
-  } catch {
-    sendError(res, createError('INTERNAL_ERROR', 'Failed to list customers', {}, true, 500), requestId, receivedAt);
+    sendError(
+      res,
+      createError(error.code, error.publicMessage, {}, false, error.statusCode),
+      context.requestId,
+      context.receivedAt,
+    );
+    return null;
   }
 }
 
-async function handlePostCustomers(req, res, { requestContext, idempotencyStore, getPool, executeRequestWithIdempotency, requestId, receivedAt }) {
-  const missingKey = requireIdempotencyKey(req, requestId, receivedAt);
-  if (missingKey) {
-    sendError(res, createError(missingKey.body.error?.code ?? 'MISSING_IDEMPOTENCY_KEY', missingKey.body.error?.message ?? 'Idempotency-Key header is required', {}, false, 400), requestId, receivedAt);
+async function executeIdempotentCreate(req, res, context, {
+  route,
+  payload,
+  create,
+  resourceType,
+  getResourceId,
+  metadata,
+}) {
+  const keyResult = requireIdempotencyKey(req);
+  if (!keyResult.ok) {
+    sendError(res, createError(keyResult.code, keyResult.message, {}, false, 400), context.requestId, context.receivedAt);
     return;
   }
 
-  let payload;
   try {
-    payload = await readJsonBody(req);
-  } catch (error) {
-    sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), requestId, receivedAt);
-    return;
-  }
-
-  const pool = getPool();
-
-  try {
-    const executionResult = await executeRequestWithIdempotency({
-      idempotencyStore,
+    const execution = await context.executeRequestWithIdempotency({
+      idempotencyStore: context.idempotencyStore,
       req,
-      requestContext,
-      requestId,
-      receivedAt,
-      route: '/api/customers',
+      requestContext: context.requestContext,
+      requestId: context.requestId,
+      receivedAt: context.receivedAt,
+      route,
       payload,
       onProcess: async () => {
         const transactionResult = await withAuditOutboxTransaction({
-          adapter: pool,
+          adapter: context.getPool(),
           mutate: async (client) => {
-            const serviceResult = await customerService.createCustomer(client, {
-              installationId: requestContext.installationId,
-              payload,
-              createdBy: requestContext.actorId,
-            });
-
-            if (!serviceResult.ok) {
-              return { skipAudit: true, serviceResult };
-            }
-
-            const customer = serviceResult.customer;
-            const auditRecord = buildAuditRecord({
-              requestContext,
+            const serviceResult = await create(client);
+            if (!serviceResult.ok) return { serviceResult, skipAudit: true };
+            const entity = serviceResult.entity;
+            await insertAuditRecord(client, buildAuditRecord({
+              requestContext: context.requestContext,
               action: 'create',
-              resourceType: 'customer',
-              resourceId: customer.id,
-              afterData: customer,
-              metadata: { code: customer.code },
-            });
-            await insertAuditRecord(client, auditRecord);
-            return { customer };
+              resourceType,
+              resourceId: getResourceId(entity),
+              afterData: entity,
+              metadata: metadata(entity),
+            }));
+            return { entity };
           },
         });
 
-        if (transactionResult?.skipAudit) {
-          const serviceResult = transactionResult.serviceResult;
+        if (transactionResult.skipAudit) {
           return {
-            statusCode: serviceStatus(serviceResult),
+            statusCode: serviceStatus(transactionResult.serviceResult),
             contentType: 'application/json',
-            requestId,
-            body: createErrorEnvelope({
-              code: serviceResult.code,
-              message: serviceResult.message,
-              details: {},
-              retryable: serviceResult.retryable ?? false,
-            }, requestId, receivedAt),
+            requestId: context.requestId,
+            body: {
+              error: {
+                code: transactionResult.serviceResult.code,
+                message: transactionResult.serviceResult.message,
+                retryable: Boolean(transactionResult.serviceResult.retryable),
+                details: {},
+              },
+              requestId: context.requestId,
+              receivedAt: context.receivedAt,
+            },
           };
         }
 
-        const customer = transactionResult.customer;
         return {
           statusCode: 201,
           contentType: 'application/json',
-          requestId,
-          body: createSuccessEnvelope(customer, requestId, receivedAt),
+          requestId: context.requestId,
+          body: createSuccessEnvelope(transactionResult.entity, context.requestId, context.receivedAt),
         };
       },
     });
@@ -186,155 +150,278 @@ async function handlePostCustomers(req, res, { requestContext, idempotencyStore,
     res.setHeader('Cache-Control', 'no-store');
     sendJson(
       res,
-      executionResult.response.statusCode,
-      executionResult.response.body,
-      executionResult.response.requestId ?? requestId,
-      executionResult.response.contentType,
+      execution.response.statusCode,
+      execution.response.body,
+      execution.response.requestId ?? context.requestId,
+      execution.response.contentType,
     );
   } catch {
-    sendError(res, createError('IDEMPOTENCY_STORAGE_ERROR', 'Idempotency storage unavailable', {}, true, 503), requestId, receivedAt);
+    sendError(
+      res,
+      createError('IDEMPOTENCY_STORAGE_ERROR', 'Idempotency storage unavailable', {}, true, 503),
+      context.requestId,
+      context.receivedAt,
+    );
   }
 }
 
-async function handleGetCustomerById(req, res, { requestContext, getPool, requestId, receivedAt }) {
-  const parsed = parseUrl(req.url.split('?')[0]);
-  if (!parsed || !parsed.id) {
-    sendError(res, createError('NOT_FOUND', 'Customer not found', {}, false, 404), requestId, receivedAt);
-    return;
-  }
-
-  const pool = getPool();
+async function executePatch(res, context, {
+  update,
+  resourceType,
+  getEntity,
+  getAction,
+  metadata,
+}) {
   try {
-    const result = await customerService.getCustomer(pool, { installationId: requestContext.installationId, id: parsed.id });
-    if (!result.ok) {
-      sendError(res, createError('NOT_FOUND', 'Customer not found', {}, false, 404), requestId, receivedAt);
-      return;
-    }
-
-    sendSuccess(res, result.customer, requestId, receivedAt);
-  } catch {
-    sendError(res, createError('INTERNAL_ERROR', 'Failed to fetch customer', {}, true, 500), requestId, receivedAt);
-  }
-}
-
-async function handlePatchCustomerById(req, res, { requestContext, getPool, requestId, receivedAt }) {
-  const parsed = parseUrl(req.url.split('?')[0]);
-  if (!parsed || !parsed.id) {
-    sendError(res, createError('NOT_FOUND', 'Customer not found', {}, false, 404), requestId, receivedAt);
-    return;
-  }
-
-  let payload;
-  try {
-    payload = await readJsonBody(req);
-  } catch (error) {
-    sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), requestId, receivedAt);
-    return;
-  }
-
-  const expectedUpdatedAtError = requireExpectedUpdatedAt(payload);
-  if (expectedUpdatedAtError) {
-    sendError(res, createError(expectedUpdatedAtError.error.code, expectedUpdatedAtError.error.message, {}, false, expectedUpdatedAtError.statusCode), requestId, receivedAt);
-    return;
-  }
-
-  const pool = getPool();
-
-  try {
-    const result = await withAuditOutboxTransaction({
-      adapter: pool,
+    const transactionResult = await withAuditOutboxTransaction({
+      adapter: context.getPool(),
       mutate: async (client) => {
-        if (typeof payload.isActive === 'boolean') {
-          const statusResult = await customerService.updateCustomerStatus(client, {
-            id: parsed.id,
-            installationId: requestContext.installationId,
-            isActive: payload.isActive,
-            updatedBy: requestContext.actorId,
-            expectedUpdatedAt: payload.expectedUpdatedAt,
-          });
-
-          if (!statusResult.ok) {
-            throw Object.assign(new Error('CUSTOMER_STATUS_UPDATE_FAILED'), { serviceResult: statusResult });
-          }
-
-          const auditRecord = buildAuditRecord({
-            requestContext,
-            action: payload.isActive ? 'activate' : 'deactivate',
-            resourceType: 'customer',
-            resourceId: statusResult.customer.id,
-            beforeData: statusResult.beforeData || null,
-            afterData: statusResult.customer,
-            metadata: { code: statusResult.customer.code },
-          });
-
-          await insertAuditRecord(client, auditRecord);
-          return { customer: statusResult.customer };
+        const serviceResult = await update(client);
+        if (!serviceResult.ok) {
+          throw Object.assign(new Error('CUSTOMER_MASTER_UPDATE_FAILED'), { serviceResult });
         }
-
-        const updateResult = await customerService.updateCustomer(client, {
-          id: parsed.id,
-          installationId: requestContext.installationId,
-          payload,
-          updatedBy: requestContext.actorId,
-        });
-
-        if (!updateResult.ok) {
-          throw Object.assign(new Error('CUSTOMER_UPDATE_FAILED'), { serviceResult: updateResult });
-        }
-
-        const auditRecord = buildAuditRecord({
-          requestContext,
-          action: 'update',
-          resourceType: 'customer',
-          resourceId: updateResult.customer.id,
-          beforeData: updateResult.beforeData || null,
-          afterData: updateResult.customer,
-          metadata: { code: updateResult.customer.code },
-        });
-
-        await insertAuditRecord(client, auditRecord);
-        return { customer: updateResult.customer };
+        const entity = getEntity(serviceResult);
+        if (serviceResult.changed === false) return { entity };
+        await insertAuditRecord(client, buildAuditRecord({
+          requestContext: context.requestContext,
+          action: getAction(serviceResult),
+          resourceType,
+          resourceId: entity.id,
+          beforeData: serviceResult.beforeData ?? null,
+          afterData: entity,
+          metadata: metadata(entity),
+        }));
+        return { entity };
       },
     });
-
-    sendSuccess(res, result.customer, requestId, receivedAt);
+    sendSuccess(res, transactionResult.entity, context.requestId, context.receivedAt);
   } catch (error) {
     if (error?.serviceResult) {
-      const result = error.serviceResult;
-      const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
-      sendError(res, createError(result.code, result.message, {}, result.retryable ?? false, statusCode), requestId, receivedAt);
+      sendServiceError(res, error.serviceResult, context);
       return;
     }
-
-    sendError(res, createError('INTERNAL_ERROR', 'Failed to update customer', {}, true, 500), requestId, receivedAt);
+    sendError(res, createError('INTERNAL_ERROR', 'Failed to update customer master data', {}, true, 500), context.requestId, context.receivedAt);
   }
 }
 
-function parseUrl(pathname) {
-  const match = pathname.match(/^\/api\/customers(?:\/([^/]+))?$/);
-  if (!match) return null;
-  return { id: match[1] };
+async function handleListGroups(req, res, context) {
+  const url = new URL(`http://localhost${req.url}`);
+  let active;
+  let limit;
+  let offset;
+  try {
+    active = parseBooleanParam(url.searchParams.get('active'));
+    limit = parsePositiveIntParam(url.searchParams.get('limit'), 100, 1000);
+    offset = parsePositiveIntParam(url.searchParams.get('offset'), 0, 10000);
+  } catch (error) {
+    sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), context.requestId, context.receivedAt);
+    return;
+  }
+
+  try {
+    const result = await customerService.listCustomerGroups(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      search: url.searchParams.get('search'),
+      active,
+      limit,
+      offset,
+    });
+    if (!result.ok) return sendServiceError(res, result, context);
+    sendSuccess(res, result.groups, context.requestId, context.receivedAt);
+  } catch {
+    sendError(res, createError('INTERNAL_ERROR', 'Failed to list customer groups', {}, true, 500), context.requestId, context.receivedAt);
+  }
 }
 
-function requireExpectedUpdatedAt(payload) {
-  if (!payload || typeof payload.expectedUpdatedAt !== 'string' || !payload.expectedUpdatedAt.trim()) {
-    return {
-      statusCode: 400,
-      error: {
-        code: 'MISSING_EXPECTED_UPDATED_AT',
-        message: 'expectedUpdatedAt is required for patch operations',
-        statusCode: 400,
-      },
-    };
+async function handleGetGroup(res, context, id) {
+  try {
+    const result = await customerService.getCustomerGroup(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      id,
+    });
+    if (!result.ok) return sendServiceError(res, result, context);
+    sendSuccess(res, result.group, context.requestId, context.receivedAt);
+  } catch {
+    sendError(res, createError('INTERNAL_ERROR', 'Failed to fetch customer group', {}, true, 500), context.requestId, context.receivedAt);
   }
-  return null;
+}
+
+async function handleCreateGroup(req, res, context) {
+  const payload = await readPayload(req, res, context);
+  if (payload === null) return;
+  await executeIdempotentCreate(req, res, context, {
+    route: '/api/customer-groups',
+    payload,
+    create: async (client) => {
+      const result = await customerService.createCustomerGroup(client, {
+        installationId: context.requestContext.installationId,
+        payload,
+        createdBy: context.requestContext.actorId,
+      });
+      return result.ok ? { ok: true, entity: result.group } : result;
+    },
+    resourceType: 'customer_group',
+    getResourceId: (group) => group.id,
+    metadata: (group) => ({ code: group.code }),
+  });
+}
+
+async function handlePatchGroup(req, res, context, id) {
+  const payload = await readPayload(req, res, context);
+  if (payload === null) return;
+  await executePatch(res, context, {
+    update: (client) => customerService.updateCustomerGroup(client, {
+      id,
+      installationId: context.requestContext.installationId,
+      payload,
+      updatedBy: context.requestContext.actorId,
+    }),
+    resourceType: 'customer_group',
+    getEntity: (result) => result.group,
+    getAction: (result) => result.action ?? 'update',
+    metadata: (group) => ({ code: group.code }),
+  });
+}
+
+async function handleListCustomers(req, res, context) {
+  const url = new URL(`http://localhost${req.url}`);
+  let active;
+  let limit;
+  let offset;
+  try {
+    active = parseBooleanParam(url.searchParams.get('active'));
+    limit = parsePositiveIntParam(url.searchParams.get('limit'), 100, 1000);
+    offset = parsePositiveIntParam(url.searchParams.get('offset'), 0, 10000);
+  } catch (error) {
+    sendError(res, createError(error.code, error.publicMessage, {}, false, error.statusCode), context.requestId, context.receivedAt);
+    return;
+  }
+
+  try {
+    const result = await customerService.listCustomers(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      search: url.searchParams.get('search'),
+      active,
+      groupId: url.searchParams.get('groupId'),
+      limit,
+      offset,
+    });
+    if (!result.ok) return sendServiceError(res, result, context);
+    sendSuccess(res, result.customers, context.requestId, context.receivedAt);
+  } catch {
+    sendError(res, createError('INTERNAL_ERROR', 'Failed to list customers', {}, true, 500), context.requestId, context.receivedAt);
+  }
+}
+
+async function handleGetCustomer(res, context, id) {
+  try {
+    const result = await customerService.getCustomer(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      id,
+    });
+    if (!result.ok) return sendServiceError(res, result, context);
+    sendSuccess(res, result.customer, context.requestId, context.receivedAt);
+  } catch {
+    sendError(res, createError('INTERNAL_ERROR', 'Failed to fetch customer', {}, true, 500), context.requestId, context.receivedAt);
+  }
+}
+
+async function handleCreateCustomer(req, res, context) {
+  const payload = await readPayload(req, res, context);
+  if (payload === null) return;
+  await executeIdempotentCreate(req, res, context, {
+    route: '/api/customers',
+    payload,
+    create: async (client) => {
+      const result = await customerService.createCustomer(client, {
+        installationId: context.requestContext.installationId,
+        payload,
+        createdBy: context.requestContext.actorId,
+      });
+      return result.ok ? { ok: true, entity: result.customer } : result;
+    },
+    resourceType: 'customer',
+    getResourceId: (customer) => customer.id,
+    metadata: (customer) => ({ code: customer.code }),
+  });
+}
+
+async function handlePatchCustomer(req, res, context, id) {
+  const payload = await readPayload(req, res, context);
+  if (payload === null) return;
+  await executePatch(res, context, {
+    update: (client) => customerService.updateCustomer(client, {
+      id,
+      installationId: context.requestContext.installationId,
+      payload,
+      updatedBy: context.requestContext.actorId,
+    }),
+    resourceType: 'customer',
+    getEntity: (result) => result.customer,
+    getAction: (result) => result.action ?? 'update',
+    metadata: (customer) => ({ code: customer.code }),
+  });
+}
+
+async function handleListAddresses(res, context, customerId) {
+  try {
+    const result = await customerService.listCustomerAddresses(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      customerId,
+    });
+    if (!result.ok) return sendServiceError(res, result, context);
+    sendSuccess(res, result.addresses, context.requestId, context.receivedAt);
+  } catch {
+    sendError(res, createError('INTERNAL_ERROR', 'Failed to list customer addresses', {}, true, 500), context.requestId, context.receivedAt);
+  }
+}
+
+async function handleCreateAddress(req, res, context, customerId) {
+  const payload = await readPayload(req, res, context);
+  if (payload === null) return;
+  await executeIdempotentCreate(req, res, context, {
+    route: `/api/customers/${customerId}/addresses`,
+    payload,
+    create: async (client) => {
+      const result = await customerService.createCustomerAddress(client, {
+        installationId: context.requestContext.installationId,
+        customerId,
+        payload,
+        createdBy: context.requestContext.actorId,
+      });
+      return result.ok ? { ok: true, entity: result.address } : result;
+    },
+    resourceType: 'customer_address',
+    getResourceId: (address) => address.id,
+    metadata: (address) => ({ customerId: address.customer_id, label: address.label }),
+  });
+}
+
+async function handlePatchAddress(req, res, context, customerId, addressId) {
+  const payload = await readPayload(req, res, context);
+  if (payload === null) return;
+  await executePatch(res, context, {
+    update: (client) => customerService.updateCustomerAddress(client, {
+      installationId: context.requestContext.installationId,
+      customerId,
+      addressId,
+      payload,
+      updatedBy: context.requestContext.actorId,
+    }),
+    resourceType: 'customer_address',
+    getEntity: (result) => result.address,
+    getAction: () => 'update',
+    metadata: (address) => ({ customerId: address.customer_id, label: address.label }),
+  });
 }
 
 export async function handleCustomerRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
-  if (!pathname.startsWith('/api/customers')) {
-    return false;
-  }
+  const isCustomerPath = pathname === '/api/customers'
+    || pathname.startsWith('/api/customers/')
+    || pathname === '/api/customer-groups'
+    || pathname.startsWith('/api/customer-groups/');
+  if (!isCustomerPath) return false;
 
   const authResult = options.authenticate(req, options.config);
   if (!authResult.ok) {
@@ -349,34 +436,68 @@ export async function handleCustomerRoutes(req, res, options) {
     requestId: options.requestId,
     receivedAt: options.receivedAt,
   });
-
   const method = String(req.method || 'GET').toUpperCase();
-  const requiredPermission = method === 'GET'
-    ? options.PERMISSIONS.coreCustomerRead
-    : options.PERMISSIONS.coreCustomerWrite;
-  const authCheck = options.authorize(requestContext, requiredPermission);
-  if (!authCheck.ok) {
+  const permission = options.authorize(
+    requestContext,
+    method === 'GET' ? options.PERMISSIONS.coreCustomerRead : options.PERMISSIONS.coreCustomerWrite,
+  );
+  if (!permission.ok) {
     sendError(res, createError('FORBIDDEN', 'Permission denied', {}, false, 403), options.requestId, options.receivedAt);
     return true;
   }
 
+  const context = { ...options, requestContext };
+
+  if (pathname === '/api/customer-groups' && method === 'GET') {
+    await handleListGroups(req, res, context);
+    return true;
+  }
+  if (pathname === '/api/customer-groups' && method === 'POST') {
+    await handleCreateGroup(req, res, context);
+    return true;
+  }
+  const groupMatch = pathname.match(/^\/api\/customer-groups\/([^/]+)$/);
+  if (groupMatch && method === 'GET') {
+    await handleGetGroup(res, context, groupMatch[1]);
+    return true;
+  }
+  if (groupMatch && method === 'PATCH') {
+    await handlePatchGroup(req, res, context, groupMatch[1]);
+    return true;
+  }
+
   if (pathname === '/api/customers' && method === 'GET') {
-    await handleGetCustomers(req, res, { ...options, requestContext });
+    await handleListCustomers(req, res, context);
     return true;
   }
-
   if (pathname === '/api/customers' && method === 'POST') {
-    await handlePostCustomers(req, res, { ...options, requestContext });
+    await handleCreateCustomer(req, res, context);
     return true;
   }
 
-  if (/^\/api\/customers\/[^/]+$/.test(pathname) && method === 'GET') {
-    await handleGetCustomerById(req, res, { ...options, requestContext });
+  const addressCollectionMatch = pathname.match(/^\/api\/customers\/([^/]+)\/addresses$/);
+  if (addressCollectionMatch && method === 'GET') {
+    await handleListAddresses(res, context, addressCollectionMatch[1]);
+    return true;
+  }
+  if (addressCollectionMatch && method === 'POST') {
+    await handleCreateAddress(req, res, context, addressCollectionMatch[1]);
     return true;
   }
 
-  if (/^\/api\/customers\/[^/]+$/.test(pathname) && method === 'PATCH') {
-    await handlePatchCustomerById(req, res, { ...options, requestContext });
+  const addressMatch = pathname.match(/^\/api\/customers\/([^/]+)\/addresses\/([^/]+)$/);
+  if (addressMatch && method === 'PATCH') {
+    await handlePatchAddress(req, res, context, addressMatch[1], addressMatch[2]);
+    return true;
+  }
+
+  const customerMatch = pathname.match(/^\/api\/customers\/([^/]+)$/);
+  if (customerMatch && method === 'GET') {
+    await handleGetCustomer(res, context, customerMatch[1]);
+    return true;
+  }
+  if (customerMatch && method === 'PATCH') {
+    await handlePatchCustomer(req, res, context, customerMatch[1]);
     return true;
   }
 
