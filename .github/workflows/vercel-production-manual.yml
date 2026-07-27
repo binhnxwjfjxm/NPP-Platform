@@ -1,16 +1,21 @@
-name: Manual Vercel production deploy
+name: Exact-SHA Vercel production deploy
 
 on:
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact 40-character main commit SHA to deploy
+        required: true
+        type: string
   issue_comment:
     types:
       - created
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: vercel-production-manual
+  group: vercel-production-exact-sha
   cancel-in-progress: false
 
 jobs:
@@ -20,83 +25,272 @@ jobs:
       (
         github.event_name == 'issue_comment' &&
         github.event.issue.number == 5 &&
-        github.event.comment.body == '/deploy-vercel-production' &&
+        startsWith(github.event.comment.body, '/deploy-vercel-production ') &&
         contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      EXPECTED_PROJECT_NAME: npp-platform
+      EXPECTED_ROOT_DIRECTORY: npp-core/web
+      EXPECTED_PRODUCTION_DOMAIN: npp-platform.vercel.app
     steps:
-      - name: Checkout main
+      - name: Resolve requested exact SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            source_sha="$(jq -r '.inputs.source_sha // empty' "$GITHUB_EVENT_PATH")"
+          else
+            command_body="$(jq -r '.comment.body // empty' "$GITHUB_EVENT_PATH")"
+            if [[ ! "$command_body" =~ ^/deploy-vercel-production[[:space:]]+([0-9a-f]{40})$ ]]; then
+              echo "Command must be: /deploy-vercel-production <40-character-sha>" >&2
+              exit 1
+            fi
+            source_sha="${BASH_REMATCH[1]}"
+          fi
+          if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_sha must be a lowercase 40-character Git SHA" >&2
+            exit 1
+          fi
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact source SHA
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ steps.source.outputs.sha }}
           fetch-depth: 0
+
+      - name: Verify SHA is current main
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse origin/main)" = "$SOURCE_SHA"
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 20
 
-      - name: Configure deployment identity
+      - name: Verify deployment credentials exist
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required GitHub secret: $name" >&2
+              exit 1
+            fi
+          done
 
-      - name: Open one-shot production gate
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Audit Vercel project and production domain
         shell: bash
         run: |
           set -euo pipefail
-          node --input-type=module <<'NODE'
-          import { readFile, writeFile } from "node:fs/promises";
-
-          const path = "npp-core/web/vercel.json";
-          const config = JSON.parse(await readFile(path, "utf8"));
-          if (config.git?.deploymentEnabled !== false) {
-            throw new Error("vercel_deployment_gate_not_locked");
+          api() {
+            curl --fail-with-body --silent --show-error \
+              --retry 4 --retry-delay 5 --retry-all-errors \
+              -H "Authorization: Bearer $VERCEL_TOKEN" "$1"
           }
-          config.git = { ...(config.git || {}), deploymentEnabled: true };
-          await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
-          NODE
-          git add npp-core/web/vercel.json
-          git commit -m "chore(vercel): open one-shot production gate [skip ci]"
-          git push origin HEAD:main
+          api "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID" \
+            > "$RUNNER_TEMP/vercel-project.json"
+          jq -e \
+            --arg id "$VERCEL_PROJECT_ID" \
+            --arg name "$EXPECTED_PROJECT_NAME" \
+            --arg root "$EXPECTED_ROOT_DIRECTORY" \
+            '.id == $id and .name == $name and .rootDirectory == $root' \
+            "$RUNNER_TEMP/vercel-project.json" >/dev/null
+          api "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID/domains?teamId=$VERCEL_ORG_ID" \
+            > "$RUNNER_TEMP/vercel-domains.json"
+          jq -e \
+            --arg domain "$EXPECTED_PRODUCTION_DOMAIN" \
+            'any(.domains[]?; .name == $domain and (.gitBranch == null or .gitBranch == "main"))' \
+            "$RUNNER_TEMP/vercel-domains.json" >/dev/null
 
-      - name: Allow Vercel to accept the production event
-        run: sleep 45
-
-      - name: Re-lock automatic deployments
-        if: always()
+      - name: Audit required Production environment variables
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin main
-          git reset --hard origin/main
+          curl --fail-with-body --silent --show-error \
+            --retry 4 --retry-delay 5 --retry-all-errors \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID/env?teamId=$VERCEL_ORG_ID" \
+            > "$RUNNER_TEMP/vercel-env.json"
+          for key in CORE_API_INTERNAL_URL CORE_API_SERVER_TOKEN; do
+            jq -e --arg key "$key" \
+              'any(.envs[]?; .key == $key and any(.target[]?; . == "production"))' \
+              "$RUNNER_TEMP/vercel-env.json" >/dev/null || {
+                echo "Missing required Production environment variable: $key" >&2
+                exit 1
+              }
+          done
+          for key in DATABASE_URL SUPABASE_SERVICE_ROLE_KEY; do
+            if jq -e --arg key "$key" \
+              'any(.envs[]?; .key == $key and any(.target[]?; . == "production"))' \
+              "$RUNNER_TEMP/vercel-env.json" >/dev/null; then
+              echo "Forbidden server secret is configured on Vercel Production: $key" >&2
+              exit 1
+            fi
+          done
+
+      - name: Pull and validate Production settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
           node --input-type=module <<'NODE'
-          import { readFile, writeFile } from "node:fs/promises";
+          import { readFileSync } from "node:fs";
 
-          const path = "npp-core/web/vercel.json";
-          const config = JSON.parse(await readFile(path, "utf8"));
-          config.git = { ...(config.git || {}), deploymentEnabled: false };
-          await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
+          const text = readFileSync(".vercel/.env.production.local", "utf8");
+          const env = {};
+          for (const line of text.split(/\r?\n/)) {
+            if (!line || line.startsWith("#")) continue;
+            const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+            if (!match) continue;
+            let value = match[2];
+            if (value.startsWith('"') && value.endsWith('"')) {
+              value = JSON.parse(value);
+            } else if (value.startsWith("'") && value.endsWith("'")) {
+              value = value.slice(1, -1);
+            }
+            env[match[1]] = value;
+          }
+
+          const apiUrl = new URL(env.CORE_API_INTERNAL_URL || "");
+          if (apiUrl.protocol !== "https:" || apiUrl.username || apiUrl.password) {
+            throw new Error("CORE_API_INTERNAL_URL must be a credential-free HTTPS URL");
+          }
+          if ((env.CORE_API_SERVER_TOKEN || "").length < 32) {
+            throw new Error("CORE_API_SERVER_TOKEN is missing or too short");
+          }
+          if (env.FOUNDATION_TEST_UI_ENABLED === "true" || env.FOUNDATION_R2_TEST_ENABLED === "true") {
+            throw new Error("Production-only verification surfaces must stay disabled");
+          }
+          if (env.DATABASE_URL || env.SUPABASE_SERVICE_ROLE_KEY) {
+            throw new Error("Database or service-role secrets must not be present in Vercel Production");
+          }
           NODE
-          git add npp-core/web/vercel.json
-          if ! git diff --cached --quiet; then
-            git commit -m "chore(vercel): re-lock automatic deployments [skip ci]"
-            git push origin HEAD:main
-          fi
 
-      - name: Verify repository is locked
-        if: always()
+      - name: Deploy exact SHA to Vercel Production
+        id: deploy
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          deployment_url="$(
+            vercel deploy \
+              --prod \
+              --force \
+              --archive=tgz \
+              --yes \
+              --token="$VERCEL_TOKEN" \
+              --meta githubDeployment=1 \
+              --meta githubCommitOrg=binhnxwjfjxm \
+              --meta githubCommitRepo=NPP-Platform \
+              --meta githubCommitRef=main \
+              --meta githubCommitSha="$SOURCE_SHA"
+          )"
+          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for READY and verify exact deployment
+        id: verify
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          set -euo pipefail
+          vercel inspect "$DEPLOYMENT_URL" --wait --timeout=10m --token="$VERCEL_TOKEN"
+          deployment_host="${DEPLOYMENT_URL#https://}"
+          curl --fail-with-body --silent --show-error \
+            --retry 4 --retry-delay 5 --retry-all-errors \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v13/deployments/$deployment_host?teamId=$VERCEL_ORG_ID" \
+            > "$RUNNER_TEMP/vercel-deployment.json"
+          jq -e \
+            --arg project "$VERCEL_PROJECT_ID" \
+            --arg sha "$SOURCE_SHA" \
+            '.projectId == $project and .target == "production" and .readyState == "READY" and .meta.githubCommitSha == $sha' \
+            "$RUNNER_TEMP/vercel-deployment.json" >/dev/null
+          deployment_id="$(jq -r '.id' "$RUNNER_TEMP/vercel-deployment.json")"
+          curl --fail-with-body --silent --show-error \
+            --retry 4 --retry-delay 5 --retry-all-errors \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v13/deployments/$EXPECTED_PRODUCTION_DOMAIN?teamId=$VERCEL_ORG_ID" \
+            > "$RUNNER_TEMP/vercel-production-alias.json"
+          jq -e \
+            --arg id "$deployment_id" \
+            --arg project "$VERCEL_PROJECT_ID" \
+            '.id == $id and .projectId == $project and .target == "production" and .readyState == "READY"' \
+            "$RUNNER_TEMP/vercel-production-alias.json" >/dev/null
+          echo "deployment_id=$deployment_id" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test production routes and static asset
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin main
-          git show origin/main:npp-core/web/vercel.json | node --input-type=module -e '
-            import { readFileSync } from "node:fs";
-            const config = JSON.parse(readFileSync(0, "utf8"));
-            if (config.git?.deploymentEnabled !== false) {
-              throw new Error("vercel_deployment_gate_left_open");
-            }
-          '
+          base="https://$EXPECTED_PRODUCTION_DOMAIN"
+          check_route() {
+            local path="$1"
+            local status
+            status="$(curl --silent --show-error --output /dev/null --max-time 30 \
+              --write-out '%{http_code}' "$base$path")"
+            case "$status" in
+              200|301|302|307|308) ;;
+              *)
+                echo "Smoke test failed for $path with HTTP $status" >&2
+                exit 1
+                ;;
+            esac
+          }
+          check_route "/"
+          check_route "/dashboard"
+          check_route "/login"
+          curl --fail --silent --show-error --location --max-time 30 \
+            "$base/login" > "$RUNNER_TEMP/login.html"
+          asset="$(grep -oE '/_next/static/[^"[:space:]]+' "$RUNNER_TEMP/login.html" | head -n 1)"
+          if [[ -z "$asset" ]]; then
+            echo "No /_next/static asset found on /login" >&2
+            exit 1
+          fi
+          curl --fail --silent --show-error --location --max-time 30 \
+            "$base$asset" > /dev/null
+
+      - name: Verify project is live
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error \
+            --retry 4 --retry-delay 5 --retry-all-errors \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID" \
+            | jq -e '.live == true' >/dev/null
+
+      - name: Record deployment summary
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+          DEPLOYMENT_ID: ${{ steps.verify.outputs.deployment_id }}
+        run: |
+          {
+            echo "## Vercel production deployment"
+            echo "- Status: DEPLOYED"
+            echo "- Source SHA: \`$SOURCE_SHA\`"
+            echo "- Deployment ID: \`$DEPLOYMENT_ID\`"
+            echo "- Deployment URL: $DEPLOYMENT_URL"
+            echo "- Production domain: https://$EXPECTED_PRODUCTION_DOMAIN"
+            echo "- Smoke: /, /dashboard, /login, /_next/static asset passed"
+          } >> "$GITHUB_STEP_SUMMARY"
