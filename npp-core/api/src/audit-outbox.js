@@ -233,7 +233,7 @@ export async function withAuditOutboxTransaction({ adapter, mutate }) {
       insertOutboxEvent,
     });
 
-    if (result && result.skipAudit === true) {
+    if (result && (result.skipAudit === true || result.failed)) {
       await client.query('ROLLBACK');
       return result;
     }
