@@ -9,6 +9,8 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const CLIENT_INSTALLER = fileURLToPath(new URL('./install-postgresql-client-17.sh', import.meta.url));
+const POSTGRESQL_17_BIN = '/usr/lib/postgresql/17/bin';
+const POSTGRESQL_17_DUMP = `${POSTGRESQL_17_BIN}/pg_dump`;
 
 function isTruthy(value) {
   return ['1', 'true', 'yes'].includes(String(value ?? '').trim().toLowerCase());
@@ -41,8 +43,12 @@ export function shouldInstallPostgres17Client(env, versionText) {
 
 export function buildRehearsalEnv(env = process.env) {
   const result = { ...env };
-  if (!result[REHEARSAL_CONFIRM_ENV] && isSafeEphemeralCiTarget(result)) {
-    result[REHEARSAL_CONFIRM_ENV] = REHEARSAL_CONFIRM_VALUE;
+  if (isSafeEphemeralCiTarget(result)) {
+    if (!result[REHEARSAL_CONFIRM_ENV]) result[REHEARSAL_CONFIRM_ENV] = REHEARSAL_CONFIRM_VALUE;
+    const currentPath = String(result.PATH ?? '');
+    result.PATH = currentPath.startsWith(`${POSTGRESQL_17_BIN}:`)
+      ? currentPath
+      : `${POSTGRESQL_17_BIN}:${currentPath}`;
   }
   return result;
 }
@@ -50,7 +56,7 @@ export function buildRehearsalEnv(env = process.env) {
 export function ensureCompatiblePostgresClient(env = process.env) {
   if (!isSafeEphemeralCiTarget(env)) return Object.freeze({ installed: false, reason: 'target_not_whitelisted' });
 
-  const current = spawnSync('pg_dump', ['--version'], { env, encoding: 'utf8' });
+  const current = spawnSync(POSTGRESQL_17_DUMP, ['--version'], { env, encoding: 'utf8' });
   const versionText = current.status === 0 ? current.stdout : '';
   if (!shouldInstallPostgres17Client(env, versionText)) {
     return Object.freeze({ installed: false, reason: 'client_17_available' });
@@ -58,7 +64,6 @@ export function ensureCompatiblePostgresClient(env = process.env) {
 
   const installation = spawnSync('bash', [CLIENT_INSTALLER], {
     env,
-    encoding: 'utf8',
     stdio: 'inherit',
   });
   if (installation.error || installation.status !== 0) {
@@ -67,7 +72,7 @@ export function ensureCompatiblePostgresClient(env = process.env) {
     throw error;
   }
 
-  const verified = spawnSync('pg_dump', ['--version'], { env, encoding: 'utf8' });
+  const verified = spawnSync(POSTGRESQL_17_DUMP, ['--version'], { env, encoding: 'utf8' });
   if (verified.status !== 0 || postgresClientMajor(verified.stdout) !== 17) {
     const error = new Error('PostgreSQL 17 client verification failed after installation');
     error.code = 'postgresql_client_17_verification_failed';
