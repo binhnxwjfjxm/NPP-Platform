@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS shared.document_number_series (
   ),
   reset_policy text NOT NULL DEFAULT 'YEARLY' CHECK (reset_policy IN ('NONE', 'YEARLY', 'MONTHLY')),
   sequence_width smallint NOT NULL DEFAULT 6 CHECK (sequence_width BETWEEN 1 AND 18),
-  start_counter bigint NOT NULL DEFAULT 1 CHECK (start_counter BETWEEN 1 AND 999999999999999999),
+  start_counter bigint NOT NULL DEFAULT 1 CHECK (start_counter BETWEEN 1 AND 999999999999999998),
   timezone_name text NOT NULL DEFAULT 'Asia/Ho_Chi_Minh' CHECK (char_length(btrim(timezone_name)) BETWEEN 1 AND 64),
   description text NULL CHECK (description IS NULL OR char_length(description) <= 2000),
   is_active boolean NOT NULL DEFAULT true,
@@ -51,6 +51,18 @@ CREATE TABLE IF NOT EXISTS shared.document_number_series (
   updated_at timestamptz NOT NULL DEFAULT now(),
   created_by text NOT NULL CHECK (char_length(created_by) BETWEEN 1 AND 128),
   updated_by text NOT NULL CHECK (char_length(updated_by) BETWEEN 1 AND 128),
+  CONSTRAINT document_number_series_reset_template_check CHECK (
+    reset_policy = 'NONE'
+    OR (
+      reset_policy = 'YEARLY'
+      AND (position('{YYYY}' in number_template) > 0 OR position('{YY}' in number_template) > 0)
+    )
+    OR (
+      reset_policy = 'MONTHLY'
+      AND position('{MM}' in number_template) > 0
+      AND (position('{YYYY}' in number_template) > 0 OR position('{YY}' in number_template) > 0)
+    )
+  ),
   CONSTRAINT document_number_series_id_installation_unique UNIQUE (installation_id, id),
   CONSTRAINT document_number_series_code_installation_unique UNIQUE (installation_id, code)
 );
