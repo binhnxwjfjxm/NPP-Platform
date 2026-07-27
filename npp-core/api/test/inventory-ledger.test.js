@@ -170,6 +170,30 @@ test('Inventory ledger post/replay/reversal is immutable, scoped and transaction
     assert.equal(denied.ok, false);
     assert.equal(denied.code, 'WAREHOUSE_SCOPE_DENIED');
 
+    const concurrentKey = `concurrent-${randomUUID()}`;
+    const concurrentPayload = {
+      ...payload,
+      sourceDocumentId: `concurrent-source-${randomUUID()}`,
+      lines: [{ ...payload.lines[0], sourceQuantity: '1.000000' }],
+    };
+    const concurrent = await Promise.all([
+      executeInventoryPost({
+        adapter: pool,
+        requestContext: requestContext(config.installationId, [master.warehouseId], `req-concurrent-a-${randomUUID()}`),
+        idempotencyKey: concurrentKey,
+        payload: concurrentPayload,
+      }),
+      executeInventoryPost({
+        adapter: pool,
+        requestContext: requestContext(config.installationId, [master.warehouseId], `req-concurrent-b-${randomUUID()}`),
+        idempotencyKey: concurrentKey,
+        payload: concurrentPayload,
+      }),
+    ]);
+    assert.equal(concurrent.every((result) => result.ok), true);
+    assert.equal(new Set(concurrent.map((result) => result.movement.id)).size, 1);
+    assert.equal(concurrent.filter((result) => result.replayed).length, 1);
+
     await assert.rejects(
       pool.query(
         `UPDATE inventory.inventory_movements SET metadata = '{"changed":true}'::jsonb WHERE installation_id = $1 AND id = $2`,
@@ -215,7 +239,7 @@ test('Inventory ledger post/replay/reversal is immutable, scoped and transaction
           AND line.base_variant_id = $3`,
       [config.installationId, master.warehouseId, master.baseVariantId],
     );
-    assert.equal(ledgerTotal.rows[0].quantity, '0.000000000000');
+    assert.equal(ledgerTotal.rows[0].quantity, '12.000000000000');
 
     const evidence = await pool.query(
       `SELECT
@@ -223,8 +247,8 @@ test('Inventory ledger post/replay/reversal is immutable, scoped and transaction
          (SELECT count(*)::int FROM shared.core_outbox_events WHERE installation_id = $1 AND aggregate_type = 'inventory_movement') AS events`,
       [config.installationId],
     );
-    assert.equal(evidence.rows[0].audits, 2);
-    assert.equal(evidence.rows[0].events, 2);
+    assert.equal(evidence.rows[0].audits, 3);
+    assert.equal(evidence.rows[0].events, 3);
   } finally {
     await closePool();
   }
