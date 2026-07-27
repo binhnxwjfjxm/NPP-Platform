@@ -1,5 +1,6 @@
 import ProductWorkspace from './product-workspace';
 import ProductUnitWorkspace from './product-unit-workspace';
+import styles from './products.module.css';
 import type { Product, ProductBrand, ProductCategory, UnitOfMeasure } from '../../lib/product-types';
 import {
   listProductCategories,
@@ -39,7 +40,9 @@ export default async function ProductsPage() {
         initialBrands={initialBrands}
         initialError={initialError}
       />
-      <ProductUnitWorkspace initialProducts={initialProducts} initialUnits={initialUnits} />
+      <div className={styles.detachedUnitWorkspace}>
+        <ProductUnitWorkspace initialProducts={initialProducts} initialUnits={initialUnits} />
+      </div>
     </>
   );
 }
