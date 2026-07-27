@@ -9,7 +9,7 @@ export async function getProductVariantByIdForInstallation(client, { id, install
      WHERE id = $1 AND installation_id = $2`,
     [id, installationId],
   );
-  return result.rows[0] || null;
+  return result.rows[0] ?? null;
 }
 
 export async function getProductVariantByIdForInstallationForUpdate(client, { id, installationId }) {
@@ -20,7 +20,7 @@ export async function getProductVariantByIdForInstallationForUpdate(client, { id
      FOR UPDATE`,
     [id, installationId],
   );
-  return result.rows[0] || null;
+  return result.rows[0] ?? null;
 }
 
 export async function getProductVariantBySku(client, { installationId, sku }) {
@@ -30,7 +30,7 @@ export async function getProductVariantBySku(client, { installationId, sku }) {
      WHERE installation_id = $1 AND sku = $2`,
     [installationId, sku],
   );
-  return result.rows[0] || null;
+  return result.rows[0] ?? null;
 }
 
 export async function listProductVariantsForProduct(client, { installationId, productId }) {
@@ -38,7 +38,7 @@ export async function listProductVariantsForProduct(client, { installationId, pr
     `SELECT ${PRODUCT_VARIANT_COLUMNS}
      FROM shared.product_variants
      WHERE installation_id = $1 AND product_id = $2
-     ORDER BY sku ASC`,
+     ORDER BY is_inventory_base DESC, sku ASC`,
     [installationId, productId],
   );
   return result.rows;
@@ -57,13 +57,14 @@ export async function insertProductVariant(client, {
   isActive,
   createdBy,
 }) {
-  const variantId = id || randomUUID();
+  const variantId = id ?? randomUUID();
   const now = new Date().toISOString();
   const result = await client.query(
     `INSERT INTO shared.product_variants
       (id, installation_id, product_id, sku, name, variant_kind, is_inventory_base,
        is_sellable, is_catalog_visible, is_active, created_at, updated_at, created_by, updated_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+     ON CONFLICT DO NOTHING
      RETURNING ${PRODUCT_VARIANT_COLUMNS}`,
     [
       variantId,
@@ -82,7 +83,7 @@ export async function insertProductVariant(client, {
       createdBy,
     ],
   );
-  return result.rows[0] || null;
+  return result.rows[0] ?? null;
 }
 
 export async function updateProductVariant(client, {
@@ -118,28 +119,29 @@ export async function updateProductVariant(client, {
          updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
          updated_by = $7
      WHERE id = $8 AND installation_id = $9`;
-
   if (expectedUpdatedAt) {
-    query += ` AND updated_at = $10`;
+    query += ' AND updated_at = $10';
     params.push(expectedUpdatedAt);
   }
-
   query += ` RETURNING ${PRODUCT_VARIANT_COLUMNS}`;
   const result = await client.query(query, params);
-  return result.rows[0] || null;
+  return result.rows[0] ?? null;
 }
 
 export async function countActiveInventoryBaseVariantsForProduct(client, { installationId, productId, excludeVariantId }) {
   const params = [installationId, productId];
-  let query = `SELECT COUNT(*) AS count
+  let query = `SELECT COUNT(*)::int AS count
      FROM shared.product_variants
-     WHERE installation_id = $1 AND product_id = $2 AND is_inventory_base = true AND is_active = true`;
+     WHERE installation_id = $1
+       AND product_id = $2
+       AND is_inventory_base = true
+       AND is_active = true`;
   if (excludeVariantId) {
-    query += ` AND id <> $3`;
+    query += ' AND id <> $3';
     params.push(excludeVariantId);
   }
   const result = await client.query(query, params);
-  return Number(result.rows[0]?.count || 0);
+  return result.rows[0]?.count ?? 0;
 }
 
 export async function countActiveSellableVariantsForProductExcludingVariant(client, {
@@ -148,15 +150,18 @@ export async function countActiveSellableVariantsForProductExcludingVariant(clie
   excludeVariantId,
 }) {
   const params = [installationId, productId];
-  let query = `SELECT COUNT(*) AS count
+  let query = `SELECT COUNT(*)::int AS count
      FROM shared.product_variants
-     WHERE installation_id = $1 AND product_id = $2 AND is_active = true AND is_sellable = true`;
+     WHERE installation_id = $1
+       AND product_id = $2
+       AND is_active = true
+       AND is_sellable = true`;
   if (excludeVariantId) {
-    query += ` AND id <> $3`;
+    query += ' AND id <> $3';
     params.push(excludeVariantId);
   }
   const result = await client.query(query, params);
-  return Number(result.rows[0]?.count || 0);
+  return result.rows[0]?.count ?? 0;
 }
 
 export async function getProductVariantsByIdsOrSkus(client, { installationId, ids, skus }) {
@@ -166,6 +171,18 @@ export async function getProductVariantsByIdsOrSkus(client, { installationId, id
      WHERE installation_id = $1
        AND (id = ANY($2::uuid[]) OR sku = ANY($3::text[]))`,
     [installationId, ids, skus],
+  );
+  return result.rows;
+}
+
+export async function listProductVariantsForProducts(client, { installationId, productIds }) {
+  if (!productIds.length) return [];
+  const result = await client.query(
+    `SELECT ${PRODUCT_VARIANT_COLUMNS}
+     FROM shared.product_variants
+     WHERE installation_id = $1 AND product_id = ANY($2::uuid[])
+     ORDER BY product_id, sku`,
+    [installationId, productIds],
   );
   return result.rows;
 }
