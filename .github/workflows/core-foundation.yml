@@ -90,20 +90,7 @@ jobs:
           retention-days: 7
 
       - name: Verify Core web
-        shell: bash
-        run: |
-          set -o pipefail
-          mkdir -p artifacts
-          npm --prefix .. run verify:core-web 2>&1 | tee artifacts/core-web-verify.log
-
-      - name: Upload Core web verification log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: core-web-verification-log-${{ github.run_id }}
-          path: npp-core/artifacts/core-web-verify.log
-          if-no-files-found: error
-          retention-days: 7
+        run: npm --prefix .. run verify:core-web
 
       - name: Verify Heroku Core process contract
         working-directory: .
