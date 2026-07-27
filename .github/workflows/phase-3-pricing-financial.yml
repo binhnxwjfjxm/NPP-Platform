@@ -1,0 +1,128 @@
+name: Phase 3 Pricing Financial
+
+on:
+  pull_request:
+    paths:
+      - "database/migrations/shared/010_customer_master_data.sql"
+      - "database/migrations/shared/012_product_catalog_foundation.sql"
+      - "database/migrations/shared/013_product_units_conversions_barcodes.sql"
+      - "database/migrations/shared/014_price_lists_channel_resolution.sql"
+      - "npp-core/api/src/db/repositories/pricing.js"
+      - "npp-core/api/src/services/pricing.js"
+      - "npp-core/api/src/routes/pricing.js"
+      - "npp-core/api/test/pricing*.test.js"
+      - "npp-core/api/scripts/audit-pricing-workbooks.py"
+      - "npp-core/api/package.json"
+      - "npp-core/web/app/pricing/**"
+      - "npp-core/web/app/api/price-lists/**"
+      - "npp-core/web/app/api/pricing/**"
+      - "npp-core/web/app/api/sales-channels/**"
+      - "npp-core/web/lib/pricing-*.ts"
+      - "npp-core/web/e2e/pricing.spec.ts"
+      - "npp-core/web/playwright.config.ts"
+      - "*.xlsx"
+      - ".github/workflows/phase-3-pricing-financial.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "database/migrations/shared/010_customer_master_data.sql"
+      - "database/migrations/shared/012_product_catalog_foundation.sql"
+      - "database/migrations/shared/013_product_units_conversions_barcodes.sql"
+      - "database/migrations/shared/014_price_lists_channel_resolution.sql"
+      - "npp-core/api/src/db/repositories/pricing.js"
+      - "npp-core/api/src/services/pricing.js"
+      - "npp-core/api/src/routes/pricing.js"
+      - "npp-core/api/test/pricing*.test.js"
+      - "npp-core/api/scripts/audit-pricing-workbooks.py"
+      - "npp-core/api/package.json"
+      - "npp-core/web/app/pricing/**"
+      - "npp-core/web/app/api/price-lists/**"
+      - "npp-core/web/app/api/pricing/**"
+      - "npp-core/web/app/api/sales-channels/**"
+      - "npp-core/web/lib/pricing-*.ts"
+      - "npp-core/web/e2e/pricing.spec.ts"
+      - "npp-core/web/playwright.config.ts"
+      - "*.xlsx"
+      - ".github/workflows/phase-3-pricing-financial.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pricing-financial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_npp_core
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 10s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
+      E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_npp_core
+      E2E_BACKEND_API_TOKEN: pricing-financial-test-token-0123456789abcdef
+      NODE_ENV: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install workspaces
+        run: npm ci
+
+      - name: Apply migrations through pricing
+        run: npm --prefix npp-core/api run migration:migrate
+
+      - name: Run isolated pricing API and workbook audit
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          npm --prefix npp-core/api run test:pricing 2>&1 | tee artifacts/pricing-financial-api.log
+
+      - name: Verify pricing web build
+        run: |
+          npm --prefix npp-core/web run typecheck
+          npm --prefix npp-core/web run build
+        env:
+          CORE_API_INTERNAL_URL: http://127.0.0.1:3004
+          CORE_API_SERVER_TOKEN: pricing-financial-test-token-0123456789abcdef
+          CORE_WEB_ADMIN_USERNAME: e2e-admin
+          CORE_WEB_ADMIN_PASSWORD: e2e-password
+          NEXT_PUBLIC_CORE_API_URL: http://127.0.0.1:3004
+          NEXT_PUBLIC_APP_NAME: NPP Core
+          FOUNDATION_R2_TEST_ENABLED: "false"
+
+      - name: Install Chromium
+        working-directory: npp-core/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run isolated pricing Chromium flow
+        run: npm --prefix npp-core/web run test:e2e -- --project=pricing-financial
+
+      - name: Upload isolated pricing evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-3-pricing-financial-${{ github.run_id }}
+          path: |
+            artifacts/pricing-financial-api.log
+            npp-core/web/playwright-report
+            npp-core/web/test-results/results.json
+          if-no-files-found: warn
+          retention-days: 14

@@ -95,6 +95,16 @@ function parseDocumentDate(value) {
   return Object.freeze({ value: normalized, year: match[1], month: match[2], day: match[3] });
 }
 
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map((entry) => canonicalize(entry));
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalize(value[key])]));
+}
+
+function stableJson(value) {
+  return JSON.stringify(canonicalize(value ?? {}));
+}
+
 function normalizeMetadata(value) {
   if (value === undefined || value === null) return {};
   if (typeof value !== 'object' || Array.isArray(value)) return null;
@@ -104,6 +114,16 @@ function normalizeMetadata(value) {
   } catch {
     return null;
   }
+}
+
+function replayOrMismatch(allocation, documentDate, metadata) {
+  const existingDate = allocation.document_date instanceof Date
+    ? allocation.document_date.toISOString().slice(0, 10)
+    : String(allocation.document_date).slice(0, 10);
+  if (existingDate !== documentDate.value || stableJson(allocation.metadata) !== stableJson(metadata)) {
+    return failure('IDEMPOTENCY_PAYLOAD_MISMATCH', 'Idempotency key was already used with a different document date or metadata');
+  }
+  return Object.freeze({ ok: true, allocation, replayed: true });
 }
 
 function periodKeyFor(resetPolicy, date) {
@@ -137,7 +157,8 @@ function validateSeriesPayload(payload, existing = null) {
   const sequenceWidth = normalizeInteger(payload.sequenceWidth ?? existing?.sequence_width ?? 6, 1, 18);
   const startCounter = normalizeCounter(payload.startCounter ?? existing?.start_counter ?? 1);
   const timezoneName = normalizeTimezone(payload.timezoneName ?? existing?.timezone_name ?? 'Asia/Ho_Chi_Minh');
-  const description = cleanText(payload.description ?? existing?.description, 2000);
+  const descriptionSource = Object.prototype.hasOwnProperty.call(payload, 'description') ? payload.description : existing?.description;
+  const description = cleanText(descriptionSource, 2000);
   const isActive = normalizeBoolean(payload.isActive, existing?.is_active ?? true);
   if (!code) return failure('INVALID_CODE', 'Series code is invalid');
   if (!documentType) return failure('INVALID_DOCUMENT_TYPE', 'Document type is invalid');
@@ -146,7 +167,7 @@ function validateSeriesPayload(payload, existing = null) {
   if (!numberTemplate) return failure('INVALID_TEMPLATE', 'Number template is invalid');
   if (!resetPolicy) return failure('INVALID_RESET_POLICY', 'Reset policy is invalid');
   if (sequenceWidth === null) return failure('INVALID_SEQUENCE_WIDTH', 'Sequence width must be between 1 and 18');
-  if (!startCounter) return failure('INVALID_START_COUNTER', 'Start counter is invalid');
+  if (!startCounter || startCounter.length > sequenceWidth) return failure('INVALID_START_COUNTER', 'Start counter must fit the configured sequence width');
   if (!timezoneName) return failure('INVALID_TIMEZONE', 'Timezone name is invalid');
   return Object.freeze({
     ok: true,
@@ -235,12 +256,12 @@ export async function allocateDocumentNumber(client, {
   if (metadata === null) return failure('INVALID_METADATA', 'metadata must be a JSON object no larger than 16 KB');
 
   const initialReplay = await repository.getAllocationByIdempotencyKey(client, { installationId, seriesId, idempotencyKey });
-  if (initialReplay) return Object.freeze({ ok: true, allocation: initialReplay, replayed: true });
+  if (initialReplay) return replayOrMismatch(initialReplay, documentDate, metadata);
 
   const series = await repository.getDocumentNumberSeriesById(client, { installationId, id: seriesId, forUpdate: true });
   if (!series) return failure('NOT_FOUND', 'Document number series not found');
   const replay = await repository.getAllocationByIdempotencyKey(client, { installationId, seriesId, idempotencyKey });
-  if (replay) return Object.freeze({ ok: true, allocation: replay, replayed: true });
+  if (replay) return replayOrMismatch(replay, documentDate, metadata);
   if (!series.is_active) return failure('SERIES_INACTIVE', 'Inactive series cannot allocate document numbers');
 
   const periodKey = periodKeyFor(series.reset_policy, documentDate);
@@ -275,7 +296,7 @@ export async function allocateDocumentNumber(client, {
   } catch (error) {
     if (error?.code === '23505') {
       const concurrentReplay = await repository.getAllocationByIdempotencyKey(client, { installationId, seriesId, idempotencyKey });
-      if (concurrentReplay) return Object.freeze({ ok: true, allocation: concurrentReplay, replayed: true });
+      if (concurrentReplay) return replayOrMismatch(concurrentReplay, documentDate, metadata);
       return failure('DOCUMENT_NUMBER_CONFLICT', 'Rendered document number conflicts with an existing allocation');
     }
     throw error;

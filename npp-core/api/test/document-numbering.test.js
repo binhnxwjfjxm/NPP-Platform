@@ -101,6 +101,18 @@ test('Document numbering service — period reset, backdate, replay, lock and is
     assert.equal(replay.replayed, true);
     assert.equal(replay.allocation.id, july1.allocation.id);
 
+    const mismatchedReplay = await allocate(pool, { ...baseInput, idempotencyKey: `july-1-${suffix}`, payload: { documentDate: '2026-07-29' } });
+    assert.equal(mismatchedReplay.ok, false);
+    assert.equal(mismatchedReplay.code, 'IDEMPOTENCY_PAYLOAD_MISMATCH');
+
+    await assert.rejects(
+      pool.query(
+        `UPDATE shared.document_number_allocations SET metadata = '{"changed":true}'::jsonb WHERE installation_id = $1 AND id = $2`,
+        [config.installationId, july1.allocation.id],
+      ),
+      /document_number_allocations_are_append_only/,
+    );
+
     const locked = await inTransaction(pool, (client) => service.updateDocumentNumberSeries(client, {
       installationId: config.installationId,
       id: series.id,
