@@ -5,7 +5,7 @@
 ```text
 Phase: 3.2A + 3.2B + 3.2C
 Status: CLOSED
-Main SHA: e7122dc634dac51281727e294218a59819fd8863
+Phase 3.2C application source SHA: e7122dc634dac51281727e294218a59819fd8863
 Vercel production: READY
 Heroku backend: READY
 Auto Deploy: OFF
@@ -13,10 +13,10 @@ Auto Deploy: OFF
 
 ## Production evidence
 
-- Production web deployment commit: `6661d82785ef17510093e66f77eb06f5976e374e`.
+- Phase 3.2A/3.2B production web deployment commit: `6661d82785ef17510093e66f77eb06f5976e374e`.
 - Production backend release before closeout: `v17`, source `b932ecb5`.
 - Production backend release before Phase 3.2C closeout: `v18`, release ID `c694af5f-aed3-4ccb-9fa7-ffcdfcf0cd78`, deployed from `main` at `12eb33551b9210fa9d1dd7d5e828bf4d611fef18`.
-- Vercel production deployment ID: `dpl_AmoRj8DMe5z6WYbrPqZTUzbPCTDy`.
+- Phase 3.2A/3.2B Vercel production deployment ID: `dpl_AmoRj8DMe5z6WYbrPqZTUzbPCTDy`.
 - Vercel Auto Deploy remained OFF after closeout.
 - Heroku Auto Deploy remained OFF after closeout.
 
@@ -64,6 +64,9 @@ Auto Deploy: OFF
 - Production migration `009_access_users_role_assignments`: applied once, second run no-op.
 - Production verify: `true`, `issues=[]`.
 - Current production backend release: `v19`, release ID `ad257db1-1c50-4b24-a48b-08386008b977`, deployed from `main` at `e7122dc634dac51281727e294218a59819fd8863`.
+- Current Vercel production deployment at closeout: `dpl_9q3fdg6A79XcGXngKoqxTMMXKHUw`, source one-shot gate commit `f72f4a42a4358be1b96db8dd59becfbad0c0956c`.
+- No Vercel redeploy occurred during the Phase 3.2C backend/database closeout task.
+- Vercel production gate was re-locked by commit `e5b218b5f057989f00be2ad4cf875188fd111982`.
 - Direct Heroku smoke:
   - `/health/live`: `200`
   - `/health/ready`: `200`
