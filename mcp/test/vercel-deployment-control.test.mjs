@@ -41,16 +41,29 @@ test("comment deployment requires the exact guarded command", () => {
   assert.match(workflow, /github\.actor/);
 });
 
-test("special command opens and re-locks the nested Core web gate", () => {
-  assert.match(workflow, /permissions:\s*\n\s+contents: write/);
-  assert.match(workflow, /const path = "npp-core\/web\/vercel\.json"/);
-  assert.match(workflow, /git add npp-core\/web\/vercel\.json/);
-  assert.match(workflow, /git show origin\/main:npp-core\/web\/vercel\.json/);
-  assert.match(workflow, /deploymentEnabled: true/);
-  assert.match(workflow, /deploymentEnabled: false/);
-  assert.match(workflow, /open one-shot production gate \[skip ci\]/);
-  assert.match(workflow, /re-lock automatic deployments \[skip ci\]/);
-  assert.match(workflow, /Allow Vercel to accept the production event/);
-  assert.match(workflow, /if: always\(\)/);
-  assert.doesNotMatch(workflow, /VERCEL_TOKEN|vcp_[A-Za-z0-9_-]+/);
+test("manual deployment uses Vercel CLI without mutating Git deployment gates", () => {
+  assert.match(workflow, /permissions:\s*\n\s+contents: read/);
+  assert.match(workflow, /VERCEL_ORG_ID: \$\{\{ secrets\.VERCEL_ORG_ID \}\}/);
+  assert.match(workflow, /VERCEL_PROJECT_ID: \$\{\{ secrets\.VERCEL_PROJECT_ID \}\}/);
+  assert.match(workflow, /vercel@latest pull/);
+  assert.match(workflow, /vercel@latest build/);
+  assert.match(workflow, /vercel@latest deploy/);
+  assert.match(workflow, /--prebuilt/);
+  assert.match(workflow, /--prod/);
+  assert.match(workflow, /secrets\.VERCEL_TOKEN/);
+  assert.match(workflow, /git\.rev-parse|git rev-parse/);
+  assert.match(workflow, /deploymentEnabled !== false/);
+
+  assert.doesNotMatch(workflow, /deploymentEnabled: true/);
+  assert.doesNotMatch(workflow, /git push origin HEAD:main/);
+  assert.doesNotMatch(workflow, /Open one-shot production gate/);
+  assert.doesNotMatch(workflow, /Re-lock automatic deployments/);
+  assert.doesNotMatch(workflow, /vcp_[A-Za-z0-9_-]+/);
+});
+
+test("production deployment performs required smoke checks", () => {
+  assert.match(workflow, /for path in \/ \/dashboard \/login/);
+  assert.match(workflow, /\/_next\/static\//);
+  assert.match(workflow, /DEPLOYED_SHA=/);
+  assert.match(workflow, /DEPLOYED_URL=/);
 });
