@@ -28,6 +28,7 @@ const organizationItems = [
   { href: '/organization/branches', label: 'Chi nhánh', icon: 'branches' as const, testId: 'nav-branches' },
   { href: '/organization/warehouses', label: 'Kho hàng', icon: 'warehouses' as const, testId: 'nav-warehouses' },
   { href: '/organization/locations', label: 'Vị trí kho', icon: 'locations' as const, testId: 'nav-locations' },
+  { href: '/organization/customers', label: 'Khách hàng', icon: 'user' as const, testId: 'nav-customers' },
 ];
 
 const accessItems = [

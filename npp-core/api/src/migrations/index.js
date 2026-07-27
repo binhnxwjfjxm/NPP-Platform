@@ -33,6 +33,10 @@ const ACCESS_USERS_ROLE_ASSIGNMENTS_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/009_access_users_role_assignments.sql', import.meta.url),
   'utf8',
 );
+const CUSTOMER_MASTER_DATA_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/010_customer_master_data.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
@@ -66,6 +70,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '009_access_users_role_assignments',
     sql: ACCESS_USERS_ROLE_ASSIGNMENTS_SQL,
+  }),
+  Object.freeze({
+    id: '010_customer_master_data',
+    sql: CUSTOMER_MASTER_DATA_SQL,
   }),
 ]);
 
