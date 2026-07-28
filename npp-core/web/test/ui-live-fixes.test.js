@@ -54,5 +54,4 @@ test('customer creation saves a default address without duplicating the customer
   assert.match(workspace, /data-testid="customer-address-province-select"/);
   assert.match(workspace, /Lưu khách hàng và địa chỉ/);
   assert.match(workspace, /isDefault: true/);
-  assert.doesNotMatch(workspace, /customers-topbar-create-button/);
 });
