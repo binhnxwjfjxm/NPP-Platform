@@ -2,11 +2,6 @@ name: Manual Vercel production deploy
 
 on:
   workflow_dispatch:
-    inputs:
-      ref:
-        description: "Git ref to deploy"
-        required: false
-        default: main
   issue_comment:
     types:
       - created
@@ -25,7 +20,6 @@ jobs:
       (
         github.event_name == 'issue_comment' &&
         github.event.issue.number == 5 &&
-        startsWith(github.event.comment.body, '/deploy-vercel-production') &&
         contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
       )
     runs-on: ubuntu-latest
@@ -33,7 +27,7 @@ jobs:
     env:
       VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
       VERCEL_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
-      DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || 'main' }}
+      DEPLOY_REF: main
     steps:
       - name: Checkout deploy ref
         uses: actions/checkout@v4
@@ -41,16 +35,29 @@ jobs:
           ref: ${{ env.DEPLOY_REF }}
           fetch-depth: 0
 
-      - name: Record deploy SHA
+      - name: Validate Issue #5 trigger comment
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          trimmed_comment="${COMMENT_BODY:-}"
+          trimmed_comment="${trimmed_comment#"${trimmed_comment%%[![:space:]]*}"}"
+          trimmed_comment="${trimmed_comment%"${trimmed_comment##*[![:space:]]}"}"
+          if [ "$trimmed_comment" != '/deploy-vercel-production' ]; then
+            echo "Issue #5 comment must be the exact deploy command." >&2
+            exit 1
+          fi
+
+      - name: Verify exact origin/main SHA
         id: target
         shell: bash
         run: |
           set -euo pipefail
+          git fetch origin main --depth=1
           sha="$(git rev-parse HEAD)"
-          if [ "${DEPLOY_REF}" = "main" ]; then
-            git fetch origin main
-            test "$sha" = "$(git rev-parse origin/main)"
-          fi
+          test "$sha" = "$(git rev-parse origin/main)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "Deploying ref ${DEPLOY_REF} at SHA: $sha"
 
@@ -81,13 +88,10 @@ jobs:
           if (linked.projectId !== process.env.VERCEL_PROJECT_ID) {
             throw new Error(`unexpected_vercel_project:${linked.projectId}`);
           }
+          if (linked.settings?.rootDirectory !== 'npp-core/web') {
+            throw new Error(`unexpected_root_directory:${linked.settings?.rootDirectory}`);
+          }
           NODE
-
-      - name: Build production artifact
-        run: >-
-          npx --yes vercel@latest build
-          --prod
-          --token="${{ secrets.VERCEL_TOKEN }}"
 
       - name: Deploy production artifact
         id: deploy
@@ -96,9 +100,7 @@ jobs:
           set -euo pipefail
           url="$(
             npx --yes vercel@latest deploy \
-              --prebuilt \
               --prod \
-              --archive=tgz \
               --token="${{ secrets.VERCEL_TOKEN }}"
           )"
           test -n "$url"
@@ -174,28 +176,54 @@ jobs:
           assert_status / 302 307
           assert_status /login 200
           assert_status /dashboard 401
+          assert_status /organization 401
+          assert_status /organization/branches 401
+          assert_status /organization/warehouses 401
+          assert_status /organization/locations 401
+          assert_status /api/customers 401
+          assert_status /api/customer-groups 401
+          assert_status /api/suppliers 401
+          assert_status /api/product-brands 401
+          assert_status /api/inventory/balances 401
+          assert_status /api/inventory/lots 401
+          assert_status /api/inventory/tracking-policies 401
+          assert_status /api/inventory/opening-balances 401
           assert_status /api/access/permissions 401
           assert_status /api/access/roles 401
 
-          if [ -n "${CORE_WEB_ADMIN_USERNAME:-}" ] && [ -n "${CORE_WEB_ADMIN_PASSWORD:-}" ]; then
-            auth="${CORE_WEB_ADMIN_USERNAME}:${CORE_WEB_ADMIN_PASSWORD}"
-            assert_status_auth /dashboard "$auth" 200
-            assert_status_auth /organization "$auth" 200
-            assert_status_auth /organization/branches "$auth" 200
-            assert_status_auth /organization/warehouses "$auth" 200
-            assert_status_auth /organization/locations "$auth" 200
-            assert_status_auth /api/access/permissions "$auth" 200
-            assert_status_auth /api/access/roles "$auth" 200
+          if [ -z "${CORE_WEB_ADMIN_USERNAME:-}" ] || [ -z "${CORE_WEB_ADMIN_PASSWORD:-}" ]; then
+            echo "Core web Basic Auth secrets are required for authenticated smoke." >&2
+            exit 1
           fi
+
+          auth="${CORE_WEB_ADMIN_USERNAME}:${CORE_WEB_ADMIN_PASSWORD}"
+          assert_status_auth /dashboard "$auth" 200
+          assert_status_auth /organization "$auth" 200
+          assert_status_auth /organization/branches "$auth" 200
+          assert_status_auth /organization/warehouses "$auth" 200
+          assert_status_auth /organization/locations "$auth" 200
+          assert_status_auth /api/customers "$auth" 200
+          assert_status_auth /api/customer-groups "$auth" 200
+          assert_status_auth /api/suppliers "$auth" 200
+          assert_status_auth /api/product-brands "$auth" 200
+          assert_status_auth /api/inventory/balances "$auth" 200
+          assert_status_auth /api/inventory/lots "$auth" 200
+          assert_status_auth /api/inventory/tracking-policies "$auth" 200
+          assert_status_auth /api/inventory/opening-balances "$auth" 200
+          assert_status_auth /api/access/permissions "$auth" 200
+          assert_status_auth /api/access/roles "$auth" 200
 
           html="$(
             curl --fail --silent --show-error \
               --retry 5 --retry-delay 5 \
               "$DEPLOYMENT_URL/login"
           )"
-          asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+' | head -n 1)"
-          test -n "$asset"
-          curl --fail --silent --show-error "$DEPLOYMENT_URL$asset" >/dev/null
+          css_asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.css' | head -n 1)"
+          js_asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.js' | head -n 1)"
+          test -n "$css_asset"
+          test -n "$js_asset"
+          curl --fail --silent --show-error "$DEPLOYMENT_URL$css_asset" >/dev/null
+          curl --fail --silent --show-error "$DEPLOYMENT_URL$js_asset" >/dev/null
 
       - name: Record successful exact SHA
         shell: bash

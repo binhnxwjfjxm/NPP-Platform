@@ -10,7 +10,9 @@ on:
       - 'npp-core/api/**'
       - 'packages/**'
       - 'database/migrations/**'
+      - '.github/workflows/vercel-production-manual.yml'
       - '.github/workflows/core-ui-e2e.yml'
+      - 'test/vercel-production-manual-contract.test.mjs'
       - 'package.json'
       - 'package-lock.json'
   pull_request:
@@ -21,7 +23,9 @@ on:
       - 'npp-core/api/**'
       - 'packages/**'
       - 'database/migrations/**'
+      - '.github/workflows/vercel-production-manual.yml'
       - '.github/workflows/core-ui-e2e.yml'
+      - 'test/vercel-production-manual-contract.test.mjs'
       - 'package.json'
       - 'package-lock.json'
 
@@ -69,6 +73,9 @@ jobs:
 
       - name: Install workspaces
         run: npm ci
+
+      - name: Verify Vercel production manual workflow contract
+        run: node --test test/vercel-production-manual-contract.test.mjs
 
       - name: Run Core API migrations
         run: npm --workspace npp-core-api run migration:migrate
