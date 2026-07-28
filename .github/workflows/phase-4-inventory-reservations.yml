@@ -105,14 +105,24 @@ jobs:
               SELECT conname
                 FROM pg_constraint
                WHERE conname IN (
-                 'inventory_balances_reserved_not_above_on_hand',
                  'inventory_reservations_source_key_unique',
                  'inventory_reservations_state_quantity_check',
                  'inventory_reservation_events_idempotency_unique'
                )
             `);
-            if (constraints.rowCount !== 4) {
+            if (constraints.rowCount !== 3) {
               throw new Error(`missing reservation constraint: ${JSON.stringify(constraints.rows)}`);
+            }
+
+            const forbiddenBalanceCheck = await pool.query(`
+              SELECT EXISTS (
+                SELECT 1
+                  FROM pg_constraint
+                 WHERE conname = 'inventory_balances_reserved_not_above_on_hand'
+              ) AS exists
+            `);
+            if (forbiddenBalanceCheck.rows[0].exists) {
+              throw new Error('reserved <= on-hand must be enforced transactionally, not by a row CHECK');
             }
 
             const triggers = await pool.query(`
