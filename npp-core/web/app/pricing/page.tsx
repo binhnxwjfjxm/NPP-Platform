@@ -1,7 +1,12 @@
+import PricingIdempotencyBoundary from './pricing-idempotency-boundary';
 import PricingWorkspace from './pricing-workspace';
 
 export const dynamic = 'force-dynamic';
 
 export default function PricingPage() {
-  return <PricingWorkspace />;
+  return (
+    <PricingIdempotencyBoundary>
+      <PricingWorkspace />
+    </PricingIdempotencyBoundary>
+  );
 }
