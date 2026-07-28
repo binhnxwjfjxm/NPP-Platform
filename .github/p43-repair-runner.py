@@ -10,4 +10,13 @@ source = source.replace(
        AND lot_id IS NOT DISTINCT FROM $5`,""",
 )
 
+source = source.replace(
+    """       is_active
+       FROM shared.product_variants
+      WHERE installation_id = $1 AND id = $2`,""",
+    """       is_active
+      FROM shared.product_variants
+     WHERE installation_id = $1 AND id = $2`,""",
+)
+
 exec(compile(source, str(script_path), 'exec'))
