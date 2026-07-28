@@ -110,7 +110,7 @@ jobs:
                  'inventory_reservation_events_idempotency_unique'
                )
             `);
-            if (constraints.rowCount !== 3) {
+            if (constraints.rows.length !== 3) {
               throw new Error(`missing reservation constraint: ${JSON.stringify(constraints.rows)}`);
             }
 
@@ -132,10 +132,11 @@ jobs:
                  AND tgname IN (
                    'inventory_reservations_writer_guard',
                    'inventory_reservation_events_append_only',
+                   'inventory_balances_available_nonnegative_deferred',
                    'inventory_movement_lines_balance_projector'
                  )
             `);
-            if (triggers.rowCount !== 3) {
+            if (triggers.rows.length !== 4) {
               throw new Error(`missing reservation trigger: ${JSON.stringify(triggers.rows)}`);
             }
           } finally {
