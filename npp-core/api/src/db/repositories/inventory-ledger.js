@@ -95,6 +95,39 @@ export async function resolveWarehouseLocation(client, { installationId, warehou
   return result.rows?.[0] ?? null;
 }
 
+export async function lockInventoryBalanceScope(client, {
+  installationId,
+  warehouseId,
+  locationId,
+  baseVariantId,
+  lotId = null,
+}) {
+  const scopeKey = [
+    'inventory-balance:scope',
+    installationId,
+    warehouseId,
+    locationId ?? '<null>',
+    baseVariantId,
+    lotId ?? '<null>',
+  ].join(':');
+  await client.query(
+    'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+    [scopeKey],
+  );
+  const result = await client.query(
+    `SELECT on_hand_quantity, reserved_quantity, available_quantity
+       FROM inventory.inventory_balances
+      WHERE installation_id = $1
+        AND warehouse_id = $2
+        AND location_id IS NOT DISTINCT FROM $3
+        AND base_variant_id = $4
+        AND lot_id IS NOT DISTINCT FROM $5
+      FOR UPDATE`,
+    [installationId, warehouseId, locationId, baseVariantId, lotId],
+  );
+  return result.rows?.[0] ?? null;
+}
+
 export async function insertMovement(client, movement) {
   const result = await client.query(
     `INSERT INTO inventory.inventory_movements (
