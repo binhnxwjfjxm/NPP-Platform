@@ -57,6 +57,8 @@ test('customer creation saves a default address without duplicating the customer
   assert.doesNotMatch(workspace, /const VIETNAM_PROVINCES = \[/);
   assert.match(addressFields, /provinceCode=/);
   assert.match(addressFields, /Xã\/phường\/đặc khu/);
+  assert.match(addressRoute, /request\.nextUrl\.searchParams\.get\('provinceCode'\)/);
+  assert.match(addressRoute, /listVietnamProvinces/);
   assert.match(addressRoute, /listVietnamWards/);
   assert.match(addressData, /vietnam-address-database/);
   assert.equal(JSON.parse(packageJson).dependencies['vietnam-address-database'], '1.0.0');
