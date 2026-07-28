@@ -49,7 +49,13 @@ function formatBytes(value: number | null): string {
 function formatTimestamp(value: string | null): string {
   if (!value) return 'Not checked yet';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Invalid timestamp' : date.toLocaleString('vi-VN');
+  return Number.isNaN(date.getTime())
+    ? 'Invalid timestamp'
+    : new Intl.DateTimeFormat('vi-VN', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'Asia/Ho_Chi_Minh',
+      }).format(date);
 }
 
 function valueOrFallback(value: string | null): string {
