@@ -1,4 +1,4 @@
-name: UI Source Export
+name: Apply UI Component Refactor
 
 on:
   pull_request:
@@ -6,34 +6,58 @@ on:
       - codex/vercel-production-source-deploy
     paths:
       - '.github/workflows/ui-source-export.yml'
+      - '.github/ui-refactor/**'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  export:
+  apply:
+    if: github.head_ref == 'agent/ui-live-fixes'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
-      - name: Checkout
+      - name: Checkout UI branch
         uses: actions/checkout@v4
+        with:
+          ref: agent/ui-live-fixes
+          fetch-depth: 0
 
-      - name: Collect UI source
+      - name: Apply direct component patches
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/ui-source/npp-core/web/app/customers
-          mkdir -p /tmp/ui-source/npp-core/web/app/products
-          mkdir -p /tmp/ui-source/npp-core/web/app/components
-          cp npp-core/web/app/customers/customer-workspace.tsx /tmp/ui-source/npp-core/web/app/customers/
-          cp npp-core/web/app/customers/customers.module.css /tmp/ui-source/npp-core/web/app/customers/
-          cp npp-core/web/app/products/product-workspace.tsx /tmp/ui-source/npp-core/web/app/products/
-          cp npp-core/web/app/products/products.module.css /tmp/ui-source/npp-core/web/app/products/
-          cp npp-core/web/app/components/app-shell.module.css /tmp/ui-source/npp-core/web/app/components/
+          cat .github/ui-refactor/product.*.patch > /tmp/product.patch
+          cat .github/ui-refactor/customer.*.patch > /tmp/customer.patch
+          git apply --check /tmp/product.patch
+          git apply --check /tmp/customer.patch
+          git apply /tmp/product.patch
+          git apply /tmp/customer.patch
 
-      - name: Upload UI source
-        uses: actions/upload-artifact@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          name: ui-source-export
-          path: /tmp/ui-source
-          retention-days: 1
+          node-version: 24
+          cache: npm
+
+      - name: Install workspaces
+        run: npm ci
+
+      - name: Verify focused Core web changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --workspace npp-core-web run typecheck
+          node --test npp-core/web/test/ui-live-fixes.test.js
+
+      - name: Commit direct component refactor
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .github/ui-refactor
+          rm -f .github/workflows/ui-source-export.yml
+          git config user.name 'khuongbinhinfo-a11y'
+          git config user.email '269412638+khuongbinhinfo-a11y@users.noreply.github.com'
+          git add -A
+          git commit -m 'refactor(ui): implement live fixes in components'
+          git push origin HEAD:agent/ui-live-fixes

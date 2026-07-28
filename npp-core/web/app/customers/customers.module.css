@@ -43,6 +43,25 @@
   grid-column: 1 / -1;
 }
 
+
+.formSection {
+  display: grid;
+  gap: 3px;
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid #e2ddd8;
+}
+
+.formSection strong {
+  color: #3d342f;
+  font-size: 0.84rem;
+}
+
+.formSection span {
+  color: #776e68;
+  font-size: 0.72rem;
+}
+
 .formGrid textarea {
   width: 100%;
   min-height: 82px;

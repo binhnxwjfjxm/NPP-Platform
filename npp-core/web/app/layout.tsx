@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { Be_Vietnam_Pro, IBM_Plex_Mono } from 'next/font/google';
 import './globals.css';
 import './ui-polish.css';
-import './ui-live-fixes.css';
 
 const beVietnamPro = Be_Vietnam_Pro({
   subsets: ['latin', 'vietnamese'],

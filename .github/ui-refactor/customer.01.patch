@@ -1,0 +1,45 @@
++                  <label>Nhân sự phụ trách<select value={customerDraft.responsibleEmployeeId} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, responsibleEmployeeId: next })); }} disabled={Boolean(pendingCreatedCustomer)}><option value="">Chưa giao phụ trách</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.code} · {employee.full_name}</option>)}</select></label>
++                  <label>Điện thoại<input data-testid="customer-phone-input" value={customerDraft.phone} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, phone: next })); }} disabled={Boolean(pendingCreatedCustomer)} /></label>
++                  <label>Email<input data-testid="customer-email-input" type="email" value={customerDraft.email} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, email: next })); }} disabled={Boolean(pendingCreatedCustomer)} /></label>
++                  <label>Mã số thuế<input value={customerDraft.taxCode} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, taxCode: next })); }} disabled={Boolean(pendingCreatedCustomer)} /></label>
++                  <label>Thời hạn thanh toán (ngày)<input type="number" min="0" max="3650" value={customerDraft.paymentTermsDays} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, paymentTermsDays: next })); }} disabled={Boolean(pendingCreatedCustomer)} /></label>
++                  <label>Hạn mức tín dụng<input type="number" min="0" step="0.01" value={customerDraft.creditLimit} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, creditLimit: next })); }} disabled={Boolean(pendingCreatedCustomer)} /></label>
++                  <label className={customerStyles.fullWidth}>Ghi chú<textarea value={customerDraft.notes} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, notes: next })); }} disabled={Boolean(pendingCreatedCustomer)} /></label>
++
++                  {customerEditor.mode === 'create' ? (
++                    <>
++                      <div className={joinClasses(customerStyles.fullWidth, customerStyles.formSection)}>
++                        <strong>Địa chỉ mặc định</strong>
++                        <span>Địa chỉ được lưu ngay sau khi tạo khách hàng.</span>
++                      </div>
++                      <label>Nhãn địa chỉ<input data-testid="customer-create-address-label-input" value={addressDraft.label} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, label: next })); }} required /></label>
++                      <label>Người nhận<input value={addressDraft.recipientName} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, recipientName: next })); }} /></label>
++                      <label>Điện thoại nhận hàng<input value={addressDraft.phone} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, phone: next })); }} /></label>
++                      <label>Tỉnh/thành phố<select data-testid="customer-province-select" value={addressDraft.province} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, province: next })); }} required><option value="">Chọn tỉnh/thành phố</option>{VIETNAM_PROVINCES.map((province) => <option key={province} value={province}>{province}</option>)}</select></label>
++                      <label>Quận/huyện<input value={addressDraft.district} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, district: next })); }} /></label>
++                      <label>Phường/xã<input value={addressDraft.ward} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, ward: next })); }} /></label>
++                      <label className={customerStyles.fullWidth}>Địa chỉ dòng 1<input data-testid="customer-create-address-line1-input" value={addressDraft.addressLine1} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine1: next })); }} required /></label>
++                      <label className={customerStyles.fullWidth}>Địa chỉ dòng 2<input value={addressDraft.addressLine2} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine2: next })); }} /></label>
++                      <label>Mã bưu chính<input value={addressDraft.postalCode} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, postalCode: next })); }} /></label>
++                    </>
++                  ) : null}
++                </div>
++                <div className={styles.formActions}>
++                  <button type="button" className={styles.secondaryButton} onClick={closeCustomerEditor} disabled={busy !== null}>Hủy</button>
++                  <button type="submit" className={joinClasses(styles.primaryButton, customerStyles.disabled, busy === 'save-customer' && customerStyles.loading)} disabled={busy !== null} data-testid="save-customer-button">
++                    {busy === 'save-customer' ? 'Đang lưu…' : pendingCreatedCustomer ? 'Lưu lại địa chỉ' : customerEditor.mode === 'create' ? 'Lưu khách hàng và địa chỉ' : 'Lưu khách hàng'}
++                  </button>
+                 </div>
+-                <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => setCustomerEditor(null)}>Hủy</button><button type="submit" className={joinClasses(styles.primaryButton, customerStyles.disabled, busy === 'save-customer' && customerStyles.loading)} disabled={busy !== null}>{busy === 'save-customer' ? 'Đang lưu…' : 'Lưu khách hàng'}</button></div>
+               </form>
+             </section>
+           </div>
+@@ -611,7 +753,7 @@
+                         <label className={customerStyles.fullWidth}>Địa chỉ dòng 2<input value={addressDraft.addressLine2} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine2: next })); }} /></label>
+                         <label>Phường/xã<input value={addressDraft.ward} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, ward: next })); }} /></label>
+                         <label>Quận/huyện<input value={addressDraft.district} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, district: next })); }} /></label>
+-                        <label>Tỉnh/thành<input value={addressDraft.province} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, province: next })); }} /></label>
++                        <label>Tỉnh/thành phố<select data-testid="customer-address-province-select" value={addressDraft.province} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, province: next })); }}><option value="">Chọn tỉnh/thành phố</option>{VIETNAM_PROVINCES.map((province) => <option key={province} value={province}>{province}</option>)}</select></label>
+                         <label>Mã bưu chính<input value={addressDraft.postalCode} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, postalCode: next })); }} /></label>
+                         <label className={joinClasses(customerStyles.inlineCheck, customerStyles.fullWidth)}><input type="checkbox" checked={addressDraft.isDefault} onChange={(event) => { const next = event.currentTarget.checked; setAddressDraft((value) => ({ ...value, isDefault: next })); }} />Đặt làm địa chỉ mặc định</label>
+                       </div>

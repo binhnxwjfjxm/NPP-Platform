@@ -4,23 +4,32 @@ import { test } from 'node:test';
 
 const readSource = (relativePath) => readFile(new URL(relativePath, import.meta.url), 'utf8');
 
-test('sidebar and product forms keep the live-test UI corrections', async () => {
-  const [layout, fixes] = await Promise.all([
-    readSource('../app/layout.tsx'),
-    readSource('../app/ui-live-fixes.css'),
-  ]);
-
-  assert.match(layout, /import '\.\/ui-live-fixes\.css';/);
-  assert.match(fixes, /data-collapsed='false'/);
-  assert.match(fixes, /button\[aria-expanded='true'\] \+ div/);
-  assert.match(fixes, /max-height: none !important/);
-  assert.match(fixes, /data-testid='product-form'/);
-  assert.match(fixes, /data-testid='category-form'/);
-  assert.match(fixes, /data-testid='brand-form'/);
-  assert.match(fixes, /variant-sku-input/);
+test('sidebar submenu expands by content instead of a fixed height cap', async () => {
+  const shell = await readSource('../app/components/app-shell.module.css');
+  assert.match(shell, /\.subnav\s*\{[\s\S]*display: none/);
+  assert.match(shell, /\.subnavOpen\s*\{[\s\S]*display: grid/);
+  assert.doesNotMatch(shell, /max-height:\s*260px/);
 });
 
-test('employee initial load preserves partial results and retries only once', async () => {
+test('product catalog editors are real accessible modals', async () => {
+  const [workspace, styles] = await Promise.all([
+    readSource('../app/products/product-workspace.tsx'),
+    readSource('../app/products/products.module.css'),
+  ]);
+
+  assert.match(workspace, /function CatalogModal/);
+  assert.match(workspace, /event\.key === 'Escape'/);
+  assert.match(workspace, /aria-modal="true"/);
+  assert.match(workspace, /testId="product-form"/);
+  assert.match(workspace, /testId="category-form"/);
+  assert.match(workspace, /testId="brand-form"/);
+  assert.match(workspace, /testId="variant-form"/);
+  assert.match(workspace, /Quản lý SKU, đơn vị, quy đổi và barcode của sản phẩm\./);
+  assert.match(styles, /\.modalBackdrop/);
+  assert.match(styles, /\.formActions/);
+});
+
+test('employee initial load preserves partial results and retries once', async () => {
   const [page, retry] = await Promise.all([
     readSource('../app/access/employees/page.tsx'),
     readSource('../app/access/employees/employee-initial-retry.tsx'),
@@ -33,17 +42,17 @@ test('employee initial load preserves partial results and retries only once', as
   assert.doesNotMatch(retry, /setInterval/);
 });
 
-test('customer creation includes a default address and a Vietnam province selector', async () => {
-  const [page, enhanced] = await Promise.all([
-    readSource('../app/customers/page.tsx'),
-    readSource('../app/customers/customer-workspace-enhanced.tsx'),
-  ]);
+test('customer creation saves a default address without duplicating the customer on retry', async () => {
+  const workspace = await readSource('../app/customers/customer-workspace.tsx');
 
-  assert.match(page, /CustomerWorkspaceEnhanced/);
-  assert.match(enhanced, /customers-topbar-create-button/);
-  assert.match(enhanced, /customer-province-select/);
-  assert.match(enhanced, /\/api\/customers\/\$\{customer\.id\}\/addresses/);
-  assert.match(enhanced, /isDefault: true/);
-  assert.match(enhanced, /Thành phố Hồ Chí Minh/);
-  assert.match(enhanced, /Lưu khách hàng và địa chỉ/);
+  assert.match(workspace, /const VIETNAM_PROVINCES = \[/);
+  assert.match(workspace, /customerCreateKey = useRef/);
+  assert.match(workspace, /customerAddressKey = useRef/);
+  assert.match(workspace, /pendingCreatedCustomer/);
+  assert.match(workspace, /`\/api\/customers\/\$\{createdCustomer\.id\}\/addresses`/);
+  assert.match(workspace, /data-testid="customer-province-select"/);
+  assert.match(workspace, /data-testid="customer-address-province-select"/);
+  assert.match(workspace, /Lưu khách hàng và địa chỉ/);
+  assert.match(workspace, /isDefault: true/);
+  assert.doesNotMatch(workspace, /customers-topbar-create-button/);
 });

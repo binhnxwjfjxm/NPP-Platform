@@ -1,0 +1,213 @@
+--- a/npp-core/web/app/products/product-workspace.tsx
++++ b/npp-core/web/app/products/product-workspace.tsx
+@@ -1,6 +1,7 @@
+ 'use client';
+ 
+-import { useMemo, useState } from 'react';
++import { useEffect, useMemo, useState } from 'react';
++import type { ReactNode } from 'react';
+ import { AppShell } from '../components/app-shell';
+ import type {
+   BrandForm,
+@@ -107,6 +108,47 @@
+   };
+ }
+ 
++
++type CatalogModalProps = {
++  title: string;
++  description?: string;
++  testId: string;
++  busy: boolean;
++  onClose: () => void;
++  children: ReactNode;
++};
++
++function CatalogModal({ title, description, testId, busy, onClose, children }: CatalogModalProps) {
++  useEffect(() => {
++    function handleKeyDown(event: KeyboardEvent) {
++      if (event.key === 'Escape' && !busy) onClose();
++    }
++    window.addEventListener('keydown', handleKeyDown);
++    return () => window.removeEventListener('keydown', handleKeyDown);
++  }, [busy, onClose]);
++
++  return (
++    <div
++      className={styles.modalBackdrop}
++      role="presentation"
++      onMouseDown={(event) => {
++        if (event.currentTarget === event.target && !busy) onClose();
++      }}
++    >
++      <section className={styles.modal} role="dialog" aria-modal="true" aria-label={title} data-testid={testId}>
++        <div className={styles.modalHeader}>
++          <div>
++            <h3>{title}</h3>
++            {description ? <p>{description}</p> : null}
++          </div>
++          <button type="button" className={styles.secondaryButton} onClick={onClose} disabled={busy}>Đóng</button>
++        </div>
++        <div className={styles.modalBody}>{children}</div>
++      </section>
++    </div>
++  );
++}
++
+ export default function ProductWorkspace({
+   initialProducts,
+   initialCategories,
+@@ -154,6 +196,19 @@
+ 
+   const activeSellableVariantExists = variants.some((variant) => variant.is_active && variant.is_sellable);
+ 
++
++  function closeEditors() {
++    setShowProductForm(false);
++    setShowCategoryForm(false);
++    setShowBrandForm(false);
++    setShowVariantForm(false);
++  }
++
++  function selectTab(nextTab: Tab) {
++    closeEditors();
++    setTab(nextTab);
++  }
++
+   function startWork() {
+     setBusy(true);
+     setError(null);
+@@ -200,12 +255,14 @@
+   }
+ 
+   function openProductCreate() {
++    closeEditors();
+     setEditingProduct(null);
+     setProductForm(EMPTY_PRODUCT);
+     setShowProductForm(true);
+   }
+ 
+   async function openProductEdit(product: Product) {
++    closeEditors();
+     await loadVariants(product);
+     setEditingProduct(product);
+     setProductForm(productToForm(product));
+@@ -260,12 +317,14 @@
+   }
+ 
+   function openCategoryCreate() {
++    closeEditors();
+     setEditingCategory(null);
+     setCategoryForm(EMPTY_CATEGORY);
+     setShowCategoryForm(true);
+   }
+ 
+   function openCategoryEdit(category: ProductCategory) {
++    closeEditors();
+     setEditingCategory(category);
+     setCategoryForm(categoryToForm(category));
+     setShowCategoryForm(true);
+@@ -316,12 +375,14 @@
+   }
+ 
+   function openBrandCreate() {
++    closeEditors();
+     setEditingBrand(null);
+     setBrandForm(EMPTY_BRAND);
+     setShowBrandForm(true);
+   }
+ 
+   function openBrandEdit(brand: ProductBrand) {
++    closeEditors();
+     setEditingBrand(brand);
+     setBrandForm(brandToForm(brand));
+     setShowBrandForm(true);
+@@ -367,12 +428,14 @@
+   }
+ 
+   function openVariantCreate() {
++    closeEditors();
+     setEditingVariant(null);
+     setVariantForm(EMPTY_VARIANT);
+     setShowVariantForm(true);
+   }
+ 
+   function openVariantEdit(variant: ProductVariant) {
++    closeEditors();
+     setEditingVariant(variant);
+     setVariantForm(variantToForm(variant));
+     setShowVariantForm(true);
+@@ -407,9 +470,9 @@
+       <main className={styles.workspace} data-testid="products-page">
+         <div className={styles.toolbar}>
+           <div className={styles.tabs} role="tablist" aria-label="Khu vực danh mục sản phẩm">
+-            <button type="button" className={tab === 'products' ? styles.tabActive : styles.tab} onClick={() => setTab('products')} data-testid="products-tab">Sản phẩm</button>
+-            <button type="button" className={tab === 'categories' ? styles.tabActive : styles.tab} onClick={() => setTab('categories')} data-testid="categories-tab">Loại sản phẩm</button>
+-            <button type="button" className={tab === 'brands' ? styles.tabActive : styles.tab} onClick={() => setTab('brands')} data-testid="brands-tab">Nhãn hàng</button>
++            <button type="button" className={tab === 'products' ? styles.tabActive : styles.tab} onClick={() => selectTab('products')} data-testid="products-tab">Sản phẩm</button>
++            <button type="button" className={tab === 'categories' ? styles.tabActive : styles.tab} onClick={() => selectTab('categories')} data-testid="categories-tab">Loại sản phẩm</button>
++            <button type="button" className={tab === 'brands' ? styles.tabActive : styles.tab} onClick={() => selectTab('brands')} data-testid="brands-tab">Nhãn hàng</button>
+           </div>
+           <button type="button" className={styles.secondaryButton} onClick={() => void reloadAll()} disabled={busy}>Làm mới</button>
+         </div>
+@@ -441,8 +504,13 @@
+             </div>
+ 
+             {showProductForm ? (
+-              <div className={styles.formPanel} data-testid="product-form">
+-                <div className={styles.formHeader}><h3>{editingProduct ? `Sửa ${editingProduct.code}` : 'Thêm sản phẩm'}</h3><button type="button" onClick={() => setShowProductForm(false)}>Đóng</button></div>
++              <CatalogModal
++                title={editingProduct ? `Sửa ${editingProduct.code}` : 'Thêm sản phẩm'}
++                description="Thông tin sản phẩm dùng chung cho catalog, bán hàng và tồn kho."
++                testId="product-form"
++                busy={busy}
++                onClose={() => setShowProductForm(false)}
++              >
+                 <div className={styles.formGrid}>
+                   <label>Mã sản phẩm<input value={productForm.code} disabled={Boolean(editingProduct)} onChange={(event) => setProductForm({ ...productForm, code: event.target.value })} data-testid="product-code-input" /></label>
+                   <label>Tên sản phẩm<input value={productForm.name} onChange={(event) => setProductForm({ ...productForm, name: event.target.value })} data-testid="product-name-input" /></label>
+@@ -457,8 +525,11 @@
+                   <label title={!activeSellableVariantExists && editingProduct ? 'Cần ít nhất một SKU hoạt động và được phép bán' : undefined}><input type="checkbox" checked={productForm.isOrderable} disabled={!editingProduct || !activeSellableVariantExists} onChange={(event) => setProductForm({ ...productForm, isOrderable: event.target.checked })} /> Cho phép đặt hàng</label>
+                   <label><input type="checkbox" checked={productForm.isActive} onChange={(event) => setProductForm({ ...productForm, isActive: event.target.checked })} /> Hoạt động</label>
+                 </div>
+-                <button type="button" className={styles.primaryButton} onClick={() => void saveProduct()} disabled={busy} data-testid="save-product-button">Lưu sản phẩm</button>
+-              </div>
++                <div className={styles.formActions}>
++                  <button type="button" className={styles.secondaryButton} onClick={() => setShowProductForm(false)} disabled={busy}>Hủy</button>
++                  <button type="button" className={styles.primaryButton} onClick={() => void saveProduct()} disabled={busy} data-testid="save-product-button">Lưu sản phẩm</button>
++                </div>
++              </CatalogModal>
+             ) : null}
+ 
+             <div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>Mã</th><th>Tên</th><th>Loại</th><th>Nhãn hàng</th><th>Catalog</th><th>Đặt hàng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
+@@ -470,24 +541,61 @@
+               {visibleProducts.length === 0 ? <tr><td colSpan={8} className={styles.empty}>Không có sản phẩm phù hợp</td></tr> : null}
+             </tbody></table></div>
+ 
+-            {selectedProduct ? <div className={styles.variantPanel} data-testid="variant-panel"><div className={styles.sectionHeader}><div><h3>SKU của {selectedProduct.code}</h3><p>Đơn vị, quy đổi và barcode sẽ làm ở Phase 3.3D.</p></div><button type="button" className={styles.primaryButton} onClick={openVariantCreate} data-testid="add-variant-button">Thêm SKU</button></div>
+-              {showVariantForm ? <div className={styles.formPanel}><div className={styles.formGrid}>
+-                <label>SKU<input value={variantForm.sku} disabled={Boolean(editingVariant)} onChange={(event) => setVariantForm({ ...variantForm, sku: event.target.value })} data-testid="variant-sku-input" /></label>
+-                <label>Tên SKU<input value={variantForm.name} onChange={(event) => setVariantForm({ ...variantForm, name: event.target.value })} data-testid="variant-name-input" /></label>
+-                <label>Loại<select value={variantForm.variantKind} onChange={(event) => setVariantForm({ ...variantForm, variantKind: event.target.value as VariantForm['variantKind'] })}><option value="BASE">Lẻ / nền</option><option value="CARTON">Thùng</option><option value="OTHER">Khác</option></select></label>
+-              </div><div className={styles.checks}><label><input type="checkbox" checked={variantForm.isInventoryBase} onChange={(event) => setVariantForm({ ...variantForm, isInventoryBase: event.target.checked, variantKind: event.target.checked ? 'BASE' : variantForm.variantKind })} /> Đơn vị tồn chuẩn</label><label><input type="checkbox" checked={variantForm.isSellable} onChange={(event) => setVariantForm({ ...variantForm, isSellable: event.target.checked, isCatalogVisible: event.target.checked ? variantForm.isCatalogVisible : false })} /> Được phép bán</label><label><input type="checkbox" checked={variantForm.isCatalogVisible} onChange={(event) => setVariantForm({ ...variantForm, isCatalogVisible: event.target.checked })} /> Hiện catalog</label><label><input type="checkbox" checked={variantForm.isActive} onChange={(event) => setVariantForm({ ...variantForm, isActive: event.target.checked })} /> Hoạt động</label></div><button type="button" className={styles.primaryButton} onClick={() => void saveVariant()} disabled={busy} data-testid="save-variant-button">Lưu SKU</button></div> : null}
++            {selectedProduct ? <div className={styles.variantPanel} data-testid="variant-panel"><div className={styles.sectionHeader}><div><h3>SKU của {selectedProduct.code}</h3><p>Quản lý SKU, đơn vị, quy đổi và barcode của sản phẩm.</p></div><button type="button" className={styles.primaryButton} onClick={openVariantCreate} data-testid="add-variant-button">Thêm SKU</button></div>
++              {showVariantForm ? (
++                <CatalogModal
++                  title={editingVariant ? `Sửa ${editingVariant.sku}` : `Thêm SKU cho ${selectedProduct.code}`}
++                  description="SKU xác định đơn vị bán, đơn vị tồn chuẩn và khả năng hiển thị trên catalog."
++                  testId="variant-form"
++                  busy={busy}
++                  onClose={() => setShowVariantForm(false)}
++                >
++                  <div className={styles.formGrid}>
++                    <label>SKU<input value={variantForm.sku} disabled={Boolean(editingVariant)} onChange={(event) => setVariantForm({ ...variantForm, sku: event.target.value })} data-testid="variant-sku-input" /></label>
++                    <label>Tên SKU<input value={variantForm.name} onChange={(event) => setVariantForm({ ...variantForm, name: event.target.value })} data-testid="variant-name-input" /></label>
++                    <label>Loại<select value={variantForm.variantKind} onChange={(event) => setVariantForm({ ...variantForm, variantKind: event.target.value as VariantForm['variantKind'] })}><option value="BASE">Lẻ / nền</option><option value="CARTON">Thùng</option><option value="OTHER">Khác</option></select></label>
++                  </div>
++                  <div className={styles.checks}><label><input type="checkbox" checked={variantForm.isInventoryBase} onChange={(event) => setVariantForm({ ...variantForm, isInventoryBase: event.target.checked, variantKind: event.target.checked ? 'BASE' : variantForm.variantKind })} /> Đơn vị tồn chuẩn</label><label><input type="checkbox" checked={variantForm.isSellable} onChange={(event) => setVariantForm({ ...variantForm, isSellable: event.target.checked, isCatalogVisible: event.target.checked ? variantForm.isCatalogVisible : false })} /> Được phép bán</label><label><input type="checkbox" checked={variantForm.isCatalogVisible} onChange={(event) => setVariantForm({ ...variantForm, isCatalogVisible: event.target.checked })} /> Hiện catalog</label><label><input type="checkbox" checked={variantForm.isActive} onChange={(event) => setVariantForm({ ...variantForm, isActive: event.target.checked })} /> Hoạt động</label></div>
++                  <div className={styles.formActions}>
++                    <button type="button" className={styles.secondaryButton} onClick={() => setShowVariantForm(false)} disabled={busy}>Hủy</button>
++                    <button type="button" className={styles.primaryButton} onClick={() => void saveVariant()} disabled={busy} data-testid="save-variant-button">Lưu SKU</button>
++                  </div>
++                </CatalogModal>
++              ) : null}
