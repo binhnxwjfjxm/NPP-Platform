@@ -1,3 +1,4 @@
+import InventoryLot3Boundary from '../inventory-lot3-boundary';
 import InventoryWorkspace from '../inventory-workspace';
 import { createEmptyInventorySnapshot } from '../../../lib/inventory-types';
 import { loadInventorySnapshot } from '../../../lib/inventory-snapshot';
@@ -15,12 +16,14 @@ export default async function InventoryTrackingPoliciesPage() {
   }
 
   return (
-    <InventoryWorkspace
-      scope="tracking-policies"
-      title="Chính sách lô"
-      subtitle="Quản trị lô, hạn dùng và yêu cầu vị trí cho từng SKU cơ sở."
-      initialSnapshot={initialData}
-      initialError={initialError}
-    />
+    <InventoryLot3Boundary scope="tracking-policies">
+      <InventoryWorkspace
+        scope="tracking-policies"
+        title="Chính sách quản lý lô"
+        subtitle="Chọn cách quản lý lô, hạn sử dụng và vị trí cho từng SKU theo đúng khả năng backend hiện có."
+        initialSnapshot={initialData}
+        initialError={initialError}
+      />
+    </InventoryLot3Boundary>
   );
 }
