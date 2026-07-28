@@ -9,6 +9,7 @@ const workflow = readFileSync(
 
 test('manual Vercel production workflow remains source deploy only', () => {
   assert.match(workflow, /DEPLOY_REF:\s+main/);
+  assert.match(workflow, /PRODUCTION_URL:\s+https:\/\/npp-platform\.vercel\.app/);
   assert.match(workflow, /github\.event\.issue\.number == 5/);
   assert.match(workflow, /Validate Issue #5 trigger comment/);
   assert.match(workflow, /trimmed_comment/);
@@ -19,4 +20,5 @@ test('manual Vercel production workflow remains source deploy only', () => {
   assert.doesNotMatch(workflow, /\bvercel build\b/);
   assert.doesNotMatch(workflow, /--prebuilt\b/);
   assert.doesNotMatch(workflow, /--archive=tgz\b/);
+  assert.doesNotMatch(workflow, /DEPLOYMENT_URL:\s+\$\{\{\s+steps\.deploy\.outputs\.url\s+\}\}/);
 });
