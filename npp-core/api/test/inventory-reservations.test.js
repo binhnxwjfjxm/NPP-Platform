@@ -78,7 +78,7 @@ async function seedMasterData(pool, installationId) {
   await pool.query(
     `INSERT INTO shared.units_of_measure (id, installation_id, code, name, unit_kind, allows_fractional, is_active, created_by, updated_by)
      VALUES ($1,$2,$3,$4,$5,false,true,$6,$6)`,
-    [baseUnitId, installationId, 'UNIT', 'Đơn vị kiểm thử', 'base', 'test:seed'],
+    [baseUnitId, installationId, 'UNIT', 'Đơn vị kiểm thử', 'COUNT', 'test:seed'],
   );
 
   await pool.query(
