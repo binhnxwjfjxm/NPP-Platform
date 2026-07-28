@@ -2,10 +2,30 @@
 // All operations are fail-closed and require exact permission context.
 
 export async function lockIdempotencyKey(client, { installationId, idempotencyKey }) {
-  // Advisory lock on idempotency key to prevent concurrent duplicate creates
-  const lockId = Buffer.from(`${installationId}:${idempotencyKey}`).toString('hex').slice(0, 16);
-  const lockValue = BigInt(`0x${lockId}`) % 4294967296n; // pg_advisory_lock accepts 32-bit integer
-  await client.query('SELECT pg_advisory_lock($1)', [lockValue]);
+  await client.query(
+    'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+    [`inventory-reservation:idempotency:${installationId}:${idempotencyKey}`],
+  );
+}
+
+export async function lockReservationScope(client, {
+  installationId,
+  warehouseId,
+  locationId,
+  baseVariantId,
+  lotId,
+}) {
+  await client.query(
+    'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+    [[
+      'inventory-reservation:scope',
+      installationId,
+      warehouseId,
+      locationId ?? '<null>',
+      baseVariantId,
+      lotId ?? '<null>',
+    ].join(':')],
+  );
 }
 
 export async function getReservationByIdempotencyKey(client, { installationId, idempotencyKey }) {
@@ -49,7 +69,8 @@ export async function resolveReservationBalance(client, {
        AND warehouse_id = $2
        AND location_id IS NOT DISTINCT FROM $3
        AND base_variant_id = $4
-       AND lot_id IS NOT DISTINCT FROM $5`,
+       AND lot_id IS NOT DISTINCT FROM $5
+     FOR UPDATE`,
     [installationId, warehouseId, locationId, baseVariantId, lotId],
   );
   return result.rows[0] ?? null;
@@ -75,19 +96,30 @@ export async function resolveWarehouseLocation(client, { installationId, warehou
          NULL as location_active
         FROM shared.warehouses w
        WHERE w.installation_id = $1 AND w.id = $2`;
-  const result = await client.query(query, [installationId, warehouseId, locationId].filter((v) => v !== undefined));
+  const values = locationId
+    ? [installationId, warehouseId, locationId]
+    : [installationId, warehouseId];
+  const result = await client.query(query, values);
   return result.rows[0] ?? null;
 }
 
 export async function resolveVariant(client, { installationId, baseVariantId }) {
   const result = await client.query(
     `SELECT
-       id,
-       installation_id,
-       sku,
-       is_active
-      FROM shared.product_variants
-     WHERE installation_id = $1 AND id = $2`,
+       variant.id,
+       variant.installation_id,
+       variant.sku,
+       variant.is_active,
+       variant.is_inventory_base,
+       variant.unit_id,
+       unit.allows_fractional,
+       unit.is_active AS unit_active
+      FROM shared.product_variants variant
+      JOIN shared.units_of_measure unit
+        ON unit.installation_id = variant.installation_id
+       AND unit.id = variant.unit_id
+     WHERE variant.installation_id = $1
+       AND variant.id = $2`,
     [installationId, baseVariantId],
   );
   return result.rows[0] ?? null;
@@ -183,7 +215,10 @@ export async function listReservationEvents(client, { installationId, reservatio
     `SELECT *
       FROM inventory.inventory_reservation_events
      WHERE installation_id = $1 AND reservation_id = $2
-     ORDER BY occurred_at ASC, id ASC`,
+     ORDER BY
+       CASE WHEN transition = 'CREATE_ACTIVE' THEN 0 ELSE 1 END,
+       occurred_at ASC,
+       id ASC`,
     [installationId, reservationId],
   );
   return result.rows;
@@ -197,7 +232,7 @@ export async function countActiveReservationsForBalance(client, {
   lotId,
 }) {
   const result = await client.query(
-    `SELECT SUM(quantity)::text as total_reserved
+    `SELECT COALESCE(SUM(quantity), 0)::numeric(30,12)::text AS total_reserved
       FROM inventory.inventory_reservations
      WHERE installation_id = $1
        AND warehouse_id = $2
@@ -207,6 +242,5 @@ export async function countActiveReservationsForBalance(client, {
        AND state = 'ACTIVE'`,
     [installationId, warehouseId, locationId, baseVariantId, lotId],
   );
-  const row = result.rows[0];
-  return row?.total_reserved ? BigInt(row.total_reserved) : 0n;
+  return result.rows[0]?.total_reserved ?? '0.000000000000';
 }
