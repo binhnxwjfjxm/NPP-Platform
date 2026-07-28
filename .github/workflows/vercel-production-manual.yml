@@ -64,7 +64,6 @@ jobs:
         run: npm ci
 
       - name: Pull production project configuration
-        working-directory: npp-core/web
         run: >-
           npx --yes vercel@latest pull
           --yes
@@ -72,7 +71,6 @@ jobs:
           --token="${{ secrets.VERCEL_TOKEN }}"
 
       - name: Verify Vercel project link
-        working-directory: npp-core/web
         shell: bash
         run: |
           set -euo pipefail
@@ -86,7 +84,6 @@ jobs:
           NODE
 
       - name: Build production artifact
-        working-directory: npp-core/web
         run: >-
           npx --yes vercel@latest build
           --prod
@@ -94,7 +91,6 @@ jobs:
 
       - name: Deploy production artifact
         id: deploy
-        working-directory: npp-core/web
         shell: bash
         run: |
           set -euo pipefail
