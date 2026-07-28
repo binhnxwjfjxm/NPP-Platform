@@ -1,0 +1,165 @@
+name: Phase 4 Inventory Reservation
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/phase-4-inventory-reservation.yml"
+      - "database/migrations/inventory/**"
+      - "npp-core/api/package.json"
+      - "npp-core/api/src/access/permissions.js"
+      - "npp-core/api/src/request-context.js"
+      - "npp-core/api/src/migrations/**"
+      - "npp-core/api/src/db/repositories/inventory-*.js"
+      - "npp-core/api/src/services/inventory-*.js"
+      - "npp-core/api/test/inventory-*.test.js"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-inventory-reservation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: phase4_inventory_reservation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 10s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/phase4_inventory_reservation
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/phase4_inventory_reservation
+      NODE_ENV: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install workspaces
+        run: npm ci
+
+      - name: Verify Core-only boundary
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -q '^mcp/'; then
+            echo "Phase 4 Core PR must keep mcp/** unchanged." >&2
+            exit 1
+          fi
+
+      - name: Verify reservation source syntax
+        run: npm --workspace npp-core-api run build
+
+      - name: Apply migrations on clean PostgreSQL 17
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          npm --workspace npp-core-api run migration:migrate 2>&1 | tee artifacts/phase-4-reservation-migrate-clean.log
+
+      - name: Verify migration registry and permission catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --workspace npp-core-api run migration:verify 2>&1 | tee artifacts/phase-4-reservation-migration-verify.log
+
+      - name: Verify reservation schema contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' 2>&1 | tee artifacts/phase-4-reservation-schema-verify.log
+          import pg from 'pg';
+          const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+          try {
+            const objects = await pool.query(`
+              SELECT
+                to_regclass('inventory.inventory_reservations') IS NOT NULL AS reservations,
+                to_regclass('inventory.inventory_reservation_events') IS NOT NULL AS events,
+                to_regclass('inventory.inventory_balances') IS NOT NULL AS balances
+            `);
+            const row = objects.rows[0];
+            if (!row.reservations || !row.events || !row.balances) throw new Error('missing reservation schema object');
+
+            const constraints = await pool.query(`
+              SELECT conname
+                FROM pg_constraint
+               WHERE conname IN (
+                 'inventory_balances_reserved_not_above_on_hand',
+                 'inventory_reservations_source_key_unique',
+                 'inventory_reservations_state_quantity_check',
+                 'inventory_reservation_events_idempotency_unique'
+               )
+            `);
+            if (constraints.rowCount !== 4) throw new Error(`missing reservation constraint: ${JSON.stringify(constraints.rows)}`);
+
+            const triggers = await pool.query(`
+              SELECT tgname
+                FROM pg_trigger
+               WHERE NOT tgisinternal
+                 AND tgname IN (
+                   'inventory_reservations_writer_guard',
+                   'inventory_reservation_events_append_only',
+                   'inventory_movement_lines_balance_projector'
+                 )
+            `);
+            if (triggers.rowCount !== 3) throw new Error(`missing reservation trigger: ${JSON.stringify(triggers.rows)}`);
+          } finally {
+            await pool.end();
+          }
+          NODE
+
+      - name: Verify migration rerun is a no-op
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --workspace npp-core-api run migration:migrate 2>&1 | tee artifacts/phase-4-reservation-migrate-rerun.log
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const lines = readFileSync('artifacts/phase-4-reservation-migrate-rerun.log', 'utf8')
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter((line) => line.startsWith('{'));
+          const result = JSON.parse(lines.at(-1));
+          if (result.status !== 'success' || !Array.isArray(result.result?.applied) || result.result.applied.length !== 0) {
+            throw new Error(`migration rerun was not a no-op: ${JSON.stringify(result)}`);
+          }
+          NODE
+
+      - name: Run inventory reservation tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --workspace npp-core-api run test:inventory-reservation 2>&1 | tee artifacts/phase-4-reservation-tests.log
+
+      - name: Run full Core API regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --workspace npp-core-api run verify 2>&1 | tee artifacts/phase-4-reservation-core-api-regression.log
+
+      - name: Upload Phase 4 reservation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-4-inventory-reservation-${{ github.run_id }}
+          path: artifacts/phase-4-reservation-*.log
+          if-no-files-found: warn
+          retention-days: 14
