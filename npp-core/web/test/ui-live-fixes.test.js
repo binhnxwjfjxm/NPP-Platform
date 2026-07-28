@@ -43,7 +43,7 @@ test('employee initial load preserves partial results and retries once', async (
 });
 
 test('customer creation saves a default address without duplicating the customer on retry', async () => {
-  const [workspace, page, layout, addressFields, addressRoute, addressData, packageJson] = await Promise.all([
+  const [workspace, page, layout, addressFields, addressRoute, addressData, packageJson, customerE2e] = await Promise.all([
     readSource('../app/customers/customer-workspace.tsx'),
     readSource('../app/customers/page.tsx'),
     readSource('../app/layout.tsx'),
@@ -51,6 +51,7 @@ test('customer creation saves a default address without duplicating the customer
     readSource('../app/api/reference/vietnam-administrative-units/route.ts'),
     readSource('../lib/vietnam-administrative-data.ts'),
     readSource('../package.json'),
+    readSource('../e2e/customers.spec.ts'),
   ]);
 
   assert.match(workspace, /VietnamAdministrativeFields/);
@@ -70,6 +71,8 @@ test('customer creation saves a default address without duplicating the customer
   assert.match(workspace, /testIdPrefix="customer-address"/);
   assert.match(addressFields, /`\$\{testIdPrefix}-province-select`/);
   assert.match(addressFields, /`\$\{testIdPrefix}-ward-select`/);
+  assert.match(customerE2e, /customer-ward-select/);
+  assert.match(customerE2e, /customer-address-ward-select/);
   assert.match(workspace, /event\.key !== 'Escape'/);
   assert.match(workspace, /event\.currentTarget === event\.target && busy === null/);
   assert.match(workspace, /Lưu khách hàng và địa chỉ/);
