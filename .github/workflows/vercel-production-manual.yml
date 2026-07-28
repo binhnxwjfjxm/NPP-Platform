@@ -28,6 +28,7 @@ jobs:
       VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
       VERCEL_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
       DEPLOY_REF: main
+      PRODUCTION_URL: https://npp-platform.vercel.app
     steps:
       - name: Checkout deploy ref
         uses: actions/checkout@v4
@@ -110,7 +111,7 @@ jobs:
       - name: Smoke test deployment URL
         shell: bash
         env:
-          DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+          DEPLOYMENT_URL: ${{ env.PRODUCTION_URL }}
           CORE_WEB_ADMIN_USERNAME: ${{ secrets.CORE_WEB_ADMIN_USERNAME }}
           CORE_WEB_ADMIN_PASSWORD: ${{ secrets.CORE_WEB_ADMIN_PASSWORD }}
         run: |

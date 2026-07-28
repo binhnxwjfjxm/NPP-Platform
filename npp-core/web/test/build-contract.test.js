@@ -38,6 +38,7 @@ test('legacy repository-root Vercel config remains locked without nested routing
 test('manual production workflow deploys source from main only', async () => {
   const workflow = await readText('../../.github/workflows/vercel-production-manual.yml');
   assert.match(workflow, /DEPLOY_REF:\s+main/);
+  assert.match(workflow, /PRODUCTION_URL:\s+https:\/\/npp-platform\.vercel\.app/);
   assert.match(workflow, /github\.event\.issue\.number == 5/);
   assert.match(workflow, /Validate Issue #5 trigger comment/);
   assert.match(workflow, /git fetch origin main --depth=1/);
@@ -46,4 +47,5 @@ test('manual production workflow deploys source from main only', async () => {
   assert.doesNotMatch(workflow, /--prebuilt\b/);
   assert.doesNotMatch(workflow, /--archive=tgz\b/);
   assert.doesNotMatch(workflow, /startsWith\(github\.event\.comment\.body/);
+  assert.doesNotMatch(workflow, /DEPLOYMENT_URL:\s+\$\{\{\s+steps\.deploy\.outputs\.url\s+\}\}/);
 });
