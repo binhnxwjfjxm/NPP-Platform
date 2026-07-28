@@ -35,10 +35,15 @@ test('legacy repository-root Vercel config remains locked without nested routing
   assert.equal(config.build, undefined);
 });
 
-test('manual production workflow toggles the Core web project gate', async () => {
+test('manual production workflow deploys source from main only', async () => {
   const workflow = await readText('../../.github/workflows/vercel-production-manual.yml');
-  assert.match(workflow, /const path = "npp-core\/web\/vercel\.json"/);
-  assert.match(workflow, /git add npp-core\/web\/vercel\.json/);
-  assert.match(workflow, /git show origin\/main:npp-core\/web\/vercel\.json/);
-  assert.doesNotMatch(workflow, /const path = "vercel\.json"/);
+  assert.match(workflow, /DEPLOY_REF:\s+main/);
+  assert.match(workflow, /github\.event\.issue\.number == 5/);
+  assert.match(workflow, /Validate Issue #5 trigger comment/);
+  assert.match(workflow, /git fetch origin main --depth=1/);
+  assert.match(workflow, /npx --yes vercel@latest deploy/);
+  assert.doesNotMatch(workflow, /\bvercel build\b/);
+  assert.doesNotMatch(workflow, /--prebuilt\b/);
+  assert.doesNotMatch(workflow, /--archive=tgz\b/);
+  assert.doesNotMatch(workflow, /startsWith\(github\.event\.comment\.body/);
 });

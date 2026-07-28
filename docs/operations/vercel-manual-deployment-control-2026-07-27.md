@@ -47,10 +47,9 @@ Production deployment uses Vercel CLI directly from GitHub Actions:
 3. check out the exact current `main` commit and record its SHA;
 4. verify `deploymentEnabled=false` remains locked;
 5. run `vercel pull --environment=production`;
-6. run `vercel build --prod`;
-7. run `vercel deploy --prebuilt --prod`;
-8. smoke-test `/`, `/dashboard`, `/login`, and one `/_next/static` asset;
-9. report the exact deployed SHA and deployment URL.
+6. deploy the checked-out source directly with `vercel deploy --prod` so the build runs on Vercel Linux;
+7. smoke-test `/`, `/dashboard`, `/login`, the protected organization routes, the organization APIs, and at least one `/_next/static` CSS and JS asset;
+8. report the exact deployed SHA and deployment URL.
 
 ## Required GitHub secrets
 
