@@ -92,14 +92,7 @@ jobs:
           }
           NODE
 
-      - name: Build production artifact
-        working-directory: npp-core/web
-        run: >-
-          npx --yes vercel@latest build
-          --prod
-          --token="${{ secrets.VERCEL_TOKEN }}"
-
-      - name: Deploy production artifact
+      - name: Deploy production from exact main checkout
         id: deploy
         working-directory: npp-core/web
         shell: bash
@@ -107,8 +100,8 @@ jobs:
           set -euo pipefail
           url="$(
             npx --yes vercel@latest deploy \
-              --prebuilt \
               --prod \
+              --yes \
               --token="${{ secrets.VERCEL_TOKEN }}"
           )"
           test -n "$url"
