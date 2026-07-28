@@ -109,15 +109,55 @@ jobs:
         shell: bash
         env:
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+          CORE_WEB_ADMIN_USERNAME: ${{ secrets.CORE_WEB_ADMIN_USERNAME }}
+          CORE_WEB_ADMIN_PASSWORD: ${{ secrets.CORE_WEB_ADMIN_PASSWORD }}
         run: |
           set -euo pipefail
-          for path in / /dashboard /login /inventory; do
+          assert_status() {
+            local path="$1"
+            local expected="$2"
+            local auth="${3:-}"
+            local -a auth_args=()
+            if [ -n "$auth" ]; then
+              auth_args=(-u "$auth")
+            fi
+            local response
+            response="$(
+              curl --silent --show-error \
+                --retry 5 --retry-delay 5 \
+                "${auth_args[@]}" \
+                --output /dev/null \
+                --write-out '%{http_code}' \
+                "$DEPLOYMENT_URL$path"
+            )"
+            if [ "$response" != "$expected" ]; then
+              echo "Unexpected status for $path: expected $expected, got $response" >&2
+              exit 1
+            fi
+          }
+
+          assert_status / 307
+          assert_status /login 200
+          assert_status /dashboard 401
+          assert_status /api/access/permissions 401
+          assert_status /api/access/roles 401
+
+          if [ -n "${CORE_WEB_ADMIN_USERNAME:-}" ] && [ -n "${CORE_WEB_ADMIN_PASSWORD:-}" ]; then
+            auth="${CORE_WEB_ADMIN_USERNAME}:${CORE_WEB_ADMIN_PASSWORD}"
+            assert_status /dashboard 200 "$auth"
+            assert_status /organization 200 "$auth"
+            assert_status /organization/branches 200 "$auth"
+            assert_status /organization/warehouses 200 "$auth"
+            assert_status /organization/locations 200 "$auth"
+            assert_status /api/access/permissions 200 "$auth"
+            assert_status /api/access/roles 200 "$auth"
+          fi
+
+          html="$(
             curl --fail --silent --show-error \
               --retry 5 --retry-delay 5 \
-              "$DEPLOYMENT_URL$path" >/dev/null
-          done
-
-          html="$(curl --fail --silent --show-error "$DEPLOYMENT_URL/")"
+              "$DEPLOYMENT_URL/login"
+          )"
           asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+' | head -n 1)"
           test -n "$asset"
           curl --fail --silent --show-error "$DEPLOYMENT_URL$asset" >/dev/null
