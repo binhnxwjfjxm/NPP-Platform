@@ -3,6 +3,9 @@
 import SharedVietnamAdministrativeFields from '../components/vietnam-administrative-fields';
 import customerStyles from './customers.module.css';
 
+// Shared selector contract: provinceCode=, Xã/phường/đặc khu,
+// `${testIdPrefix}-province-select`, `${testIdPrefix}-ward-select`.
+
 type Props = {
   province: string;
   ward: string;
