@@ -147,6 +147,11 @@ test = test.replace(
     "  assert.match(workspace, /VietnamAdministrativeFields/);\n  assert.doesNotMatch(workspace, /const VIETNAM_PROVINCES = \\[/);\n  assert.match(addressFields, /provinceCode=/);\n  assert.match(addressFields, /Xã\\/phường\\/đặc khu/);\n  assert.match(addressRoute, /listVietnamWards/);\n",
     1,
 )
+test = test.replace(
+    '  assert.match(workspace, /data-testid="customer-province-select"/);\n  assert.match(workspace, /data-testid="customer-address-province-select"/);\n',
+    '  assert.match(workspace, /testIdPrefix="customer"/);\n  assert.match(workspace, /testIdPrefix="customer-address"/);\n  assert.match(addressFields, /`\\${testIdPrefix}-province-select`/);\n  assert.match(addressFields, /`\\${testIdPrefix}-ward-select`/);\n',
+    1,
+)
 test_path.write_text(test, encoding='utf-8')
 
 e2e_path = Path('npp-core/web/e2e/customers.spec.ts')
