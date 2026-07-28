@@ -41,18 +41,24 @@ test.describe('Giá bán và khuyến mãi', () => {
     await expect(page.getByTestId('pricing-page')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Giá bán & khuyến mãi', exact: true })).toBeVisible();
 
+    await page.getByTestId('add-sales-channel-button').click();
+    await expect(page.getByTestId('pricing-channel-modal')).toBeVisible();
     await page.getByTestId('channel-code-input').fill(channelCode.toLowerCase());
     await page.getByTestId('channel-name-input').fill(`Kênh quán ${suffix}`);
     await page.getByTestId('save-channel-button').click();
     await expect(page.getByTestId(`channel-row-${channelCode}`)).toBeVisible();
 
     await page.getByTestId('pricing-lists-tab').click();
+    await page.getByTestId('add-price-list-button').click();
+    await expect(page.getByTestId('pricing-list-modal')).toBeVisible();
     await page.getByTestId('price-list-code-input').fill(baseCode.toLowerCase());
     await page.getByTestId('price-list-name-input').fill(`Giá nền ${suffix}`);
     await page.getByTestId('save-price-list-button').click();
     await expect(page.getByTestId(`price-list-row-${baseCode}`)).toBeVisible();
 
     await page.getByTestId('pricing-items-tab').click();
+    await page.getByTestId('add-price-item-button').click();
+    await expect(page.getByTestId('pricing-item-modal')).toBeVisible();
     await page.getByTestId('item-product-select').selectOption({ label: `${fixture.product.code} — ${fixture.product.name}` });
     await page.getByTestId('item-variant-select').selectOption({ label: `${fixture.variant.sku} — ${fixture.variant.name}` });
     await page.getByTestId('item-amount-input').fill('10000');
@@ -60,6 +66,7 @@ test.describe('Giá bán và khuyến mãi', () => {
     await expect(page.getByTestId(`price-item-row-${fixture.variant.sku}`)).toContainText('10.000');
 
     await page.getByTestId('pricing-lists-tab').click();
+    await page.getByTestId('add-price-list-button').click();
     await page.getByTestId('price-list-type-select').selectOption('CHANNEL');
     await page.getByTestId('price-list-code-input').fill(channelListCode.toLowerCase());
     await page.getByTestId('price-list-name-input').fill(`Giá kênh ${suffix}`);
@@ -69,6 +76,7 @@ test.describe('Giá bán và khuyến mãi', () => {
     await expect(page.getByTestId(`price-list-row-${channelListCode}`)).toBeVisible();
 
     await page.getByTestId('pricing-items-tab').click();
+    await page.getByTestId('add-price-item-button').click();
     await page.getByTestId('item-product-select').selectOption({ label: `${fixture.product.code} — ${fixture.product.name}` });
     await page.getByTestId('item-variant-select').selectOption({ label: `${fixture.variant.sku} — ${fixture.variant.name}` });
     await page.getByTestId('item-amount-input').fill('9000');
