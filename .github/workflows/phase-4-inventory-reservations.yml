@@ -67,7 +67,23 @@ jobs:
         run: npm --workspace npp-core-api run migration:migrate
 
       - name: Run P4.3 reservation tests
-        run: node --test npp-core/api/test/inventory-reservations.test.js
+        id: focused_tests
+        shell: bash
+        run: |
+          set +e
+          node --test npp-core/api/test/inventory-reservations.test.js 2>&1 | tee p43-focused-tests.log
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      - name: Upload focused P4.3 test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p43-focused-tests-${{ github.run_id }}
+          path: p43-focused-tests.log
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Run full inventory regression tests
         run: node --test npp-core/api/test/inventory-ledger.test.js npp-core/api/test/inventory-balance.test.js npp-core/api/test/inventory-reservations.test.js
