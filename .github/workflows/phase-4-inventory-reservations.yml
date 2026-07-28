@@ -82,6 +82,57 @@ jobs:
           set -euo pipefail
           npm --workspace npp-core-api run migration:verify 2>&1 | tee artifacts/phase-4-reservations-migration-verify.log
 
+      - name: Verify reservation schema contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE' 2>&1 | tee artifacts/phase-4-reservations-schema-verify.log
+          import pg from 'pg';
+          const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+          try {
+            const objects = await pool.query(`
+              SELECT
+                to_regclass('inventory.inventory_reservations') IS NOT NULL AS reservations,
+                to_regclass('inventory.inventory_reservation_events') IS NOT NULL AS events,
+                to_regclass('inventory.inventory_balances') IS NOT NULL AS balances
+            `);
+            const row = objects.rows[0];
+            if (!row.reservations || !row.events || !row.balances) {
+              throw new Error(`missing reservation schema object: ${JSON.stringify(row)}`);
+            }
+
+            const constraints = await pool.query(`
+              SELECT conname
+                FROM pg_constraint
+               WHERE conname IN (
+                 'inventory_balances_reserved_not_above_on_hand',
+                 'inventory_reservations_source_key_unique',
+                 'inventory_reservations_state_quantity_check',
+                 'inventory_reservation_events_idempotency_unique'
+               )
+            `);
+            if (constraints.rowCount !== 4) {
+              throw new Error(`missing reservation constraint: ${JSON.stringify(constraints.rows)}`);
+            }
+
+            const triggers = await pool.query(`
+              SELECT tgname
+                FROM pg_trigger
+               WHERE NOT tgisinternal
+                 AND tgname IN (
+                   'inventory_reservations_writer_guard',
+                   'inventory_reservation_events_append_only',
+                   'inventory_movement_lines_balance_projector'
+                 )
+            `);
+            if (triggers.rowCount !== 3) {
+              throw new Error(`missing reservation trigger: ${JSON.stringify(triggers.rows)}`);
+            }
+          } finally {
+            await pool.end();
+          }
+          NODE
+
       - name: Verify migration rerun is a no-op
         shell: bash
         run: |
