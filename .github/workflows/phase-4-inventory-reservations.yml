@@ -76,7 +76,7 @@ jobs:
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit "$status"
 
-      - name: Upload focused P4.3 test evidence
+      - name: Upload focused P4.3 test evidence on every run
         if: always()
         uses: actions/upload-artifact@v4
         with:
