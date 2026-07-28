@@ -1,0 +1,81 @@
+name: Phase 4.3 Inventory Reservations
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/phase-4-inventory-reservations.yml"
+      - "database/migrations/inventory/**"
+      - "npp-core/api/package.json"
+      - "npp-core/api/src/access/permissions.js"
+      - "npp-core/api/src/request-context.js"
+      - "npp-core/api/src/migrations/**"
+      - "npp-core/api/src/db/repositories/inventory-*.js"
+      - "npp-core/api/src/services/inventory-*.js"
+      - "npp-core/api/test/inventory-*.test.js"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-inventory-reservations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: phase4_reservations
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 10s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/phase4_reservations
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/phase4_reservations
+      NODE_ENV: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: npm
+
+      - name: Install workspace dependencies
+        run: npm ci --workspace npp-core-api
+
+      - name: Verify build
+        run: npm --workspace npp-core-api run build
+
+      - name: Run migrations
+        run: npm --workspace npp-core-api run migration:migrate
+
+      - name: Verify migrations (should be no-op on rerun)
+        run: npm --workspace npp-core-api run migration:migrate
+
+      - name: Verify migration state
+        run: npm --workspace npp-core-api run migration:verify
+
+      - name: Run P4.3 reservation tests
+        run: npm --workspace npp-core-api test -- inventory-reservations.test.js
+
+      - name: Run full inventory regression tests
+        run: npm --workspace npp-core-api test -- inventory-*.test.js
+
+      - name: Verify public API does not access mcp/**
+        run: |
+          if grep -r "from.*mcp/" npp-core/api/src --include="*.js"; then
+            echo "ERROR: npp-core API files must not import from mcp/"
+            exit 1
+          fi
+          echo "✓ No mcp/ imports found in API"
