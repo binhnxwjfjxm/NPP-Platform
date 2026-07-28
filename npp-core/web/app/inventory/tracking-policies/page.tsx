@@ -1,3 +1,4 @@
+import BusinessLanguageBoundary from '../../components/business-language-boundary';
 import InventoryWorkspace from '../inventory-workspace';
 import { createEmptyInventorySnapshot } from '../../../lib/inventory-types';
 import { loadInventorySnapshot } from '../../../lib/inventory-snapshot';
@@ -15,12 +16,14 @@ export default async function InventoryTrackingPoliciesPage() {
   }
 
   return (
-    <InventoryWorkspace
-      scope="tracking-policies"
-      title="Chính sách lô"
-      subtitle="Quản trị lô, hạn dùng và yêu cầu vị trí cho từng SKU cơ sở."
-      initialSnapshot={initialData}
-      initialError={initialError}
-    />
+    <BusinessLanguageBoundary scope="inventory">
+      <InventoryWorkspace
+        scope="tracking-policies"
+        title="Chính sách quản lý lô"
+        subtitle="Thiết lập cách theo dõi lô, hạn sử dụng và vị trí hàng cho từng SKU cơ sở."
+        initialSnapshot={initialData}
+        initialError={initialError}
+      />
+    </BusinessLanguageBoundary>
   );
 }
