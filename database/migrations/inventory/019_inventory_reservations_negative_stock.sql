@@ -1,9 +1,8 @@
 -- Phase 4.3: inventory reservations lifecycle and negative-stock enforcement.
 -- Reservations are installation-scoped aggregates with immutable event history.
--- State machine: ACTIVE -> RELEASED | CONSUMED | EXPIRED | CANCELLED
--- Negative stock is denied by default (fail-closed); no override API in P4.3.
+-- State machine: ACTIVE -> RELEASED | CONSUMED | EXPIRED | CANCELLED.
+-- Negative stock is denied by default; P4.3 exposes no override path.
 
--- Add core.inventory.reserve permission
 INSERT INTO shared.permission_catalog (
   permission_key,
   module,
@@ -12,14 +11,13 @@ INSERT INTO shared.permission_catalog (
   is_system,
   created_at
 ) VALUES
-  ('core.inventory.reserve', 'Kho', 'Cấp phát kho', 'Cho phép tạo, phát hành, tiêu thụ và hủy cấp phát kho theo đơn vị khối trong phạm vi kho được cấp.', true, now())
+  ('core.inventory.reserve', 'Kho', 'Cấp phát kho', 'Cho phép tạo và chuyển trạng thái cấp phát kho trong phạm vi kho được cấp.', true, now())
 ON CONFLICT (permission_key) DO UPDATE
 SET module = EXCLUDED.module,
     label = EXCLUDED.label,
     description = EXCLUDED.description,
     is_system = EXCLUDED.is_system;
 
--- Reservation aggregate: immutable state machine
 CREATE TABLE IF NOT EXISTS inventory.inventory_reservations (
   id uuid NOT NULL PRIMARY KEY,
   installation_id text NOT NULL CHECK (char_length(installation_id) BETWEEN 1 AND 128),
@@ -43,7 +41,10 @@ CREATE TABLE IF NOT EXISTS inventory.inventory_reservations (
       AND source_document_type ~ '^[A-Z0-9_.-]{1,64}$'
     )
   ),
-  source_document_id text NULL CHECK (source_document_id IS NULL OR char_length(btrim(source_document_id)) BETWEEN 1 AND 160),
+  source_document_id text NULL CHECK (
+    source_document_id IS NULL
+    OR char_length(btrim(source_document_id)) BETWEEN 1 AND 160
+  ),
   activated_at timestamptz NOT NULL DEFAULT now(),
   transitioned_at timestamptz NOT NULL DEFAULT now(),
   idempotency_key text NOT NULL CHECK (char_length(idempotency_key) BETWEEN 1 AND 128),
@@ -68,15 +69,23 @@ CREATE TABLE IF NOT EXISTS inventory.inventory_reservations (
     ON DELETE RESTRICT
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS inventory_reservations_scope_active_idx
-  ON inventory.inventory_reservations (installation_id, warehouse_id, location_id, base_variant_id, lot_id, state)
+-- Multiple source documents may reserve the same inventory scope concurrently.
+DROP INDEX IF EXISTS inventory.inventory_reservations_scope_active_idx;
+CREATE INDEX inventory_reservations_scope_active_idx
+  ON inventory.inventory_reservations (
+    installation_id,
+    warehouse_id,
+    location_id,
+    base_variant_id,
+    lot_id
+  )
   WHERE state = 'ACTIVE';
+
 CREATE INDEX IF NOT EXISTS inventory_reservations_warehouse_idx
   ON inventory.inventory_reservations (installation_id, warehouse_id, state);
 CREATE INDEX IF NOT EXISTS inventory_reservations_activation_idx
   ON inventory.inventory_reservations (installation_id, activated_at DESC, id DESC);
 
--- Immutable reservation event history (append-only)
 CREATE TABLE IF NOT EXISTS inventory.inventory_reservation_events (
   id uuid NOT NULL PRIMARY KEY,
   installation_id text NOT NULL CHECK (char_length(installation_id) BETWEEN 1 AND 128),
@@ -105,11 +114,15 @@ CREATE TABLE IF NOT EXISTS inventory.inventory_reservation_events (
 );
 
 CREATE INDEX IF NOT EXISTS inventory_reservation_events_reservation_idx
-  ON inventory.inventory_reservation_events (installation_id, reservation_id, occurred_at ASC, id ASC);
+  ON inventory.inventory_reservation_events (
+    installation_id,
+    reservation_id,
+    occurred_at ASC,
+    id ASC
+  );
 CREATE INDEX IF NOT EXISTS inventory_reservation_events_request_idx
   ON inventory.inventory_reservation_events (installation_id, request_id);
 
--- Append-only guard for reservation events
 CREATE OR REPLACE FUNCTION inventory.prevent_reservation_event_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -119,12 +132,32 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS inventory_reservation_events_append_only ON inventory.inventory_reservation_events;
+DROP TRIGGER IF EXISTS inventory_reservation_events_append_only
+  ON inventory.inventory_reservation_events;
 CREATE TRIGGER inventory_reservation_events_append_only
 BEFORE UPDATE OR DELETE ON inventory.inventory_reservation_events
 FOR EACH ROW EXECUTE FUNCTION inventory.prevent_reservation_event_mutation();
 
--- Prevent direct writes to reservation aggregate except via service transitions
+CREATE OR REPLACE FUNCTION inventory.guard_inventory_reservation_event_insert()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  write_context text := current_setting('npp.inventory_reservation_write_context', true);
+BEGIN
+  IF write_context IS DISTINCT FROM 'reservation_service' THEN
+    RAISE EXCEPTION 'inventory_reservation_event_insert_requires_service_context';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS inventory_reservation_events_insert_guard
+  ON inventory.inventory_reservation_events;
+CREATE TRIGGER inventory_reservation_events_insert_guard
+BEFORE INSERT ON inventory.inventory_reservation_events
+FOR EACH ROW EXECUTE FUNCTION inventory.guard_inventory_reservation_event_insert();
+
 CREATE OR REPLACE FUNCTION inventory.guard_inventory_reservation_write()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -132,19 +165,95 @@ AS $$
 DECLARE
   write_context text := current_setting('npp.inventory_reservation_write_context', true);
 BEGIN
-  IF write_context IS NULL OR write_context NOT IN ('reservation_service') THEN
+  IF write_context IS DISTINCT FROM 'reservation_service' THEN
     RAISE EXCEPTION 'inventory_reservation_write_requires_service_context';
   END IF;
-  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'inventory_reservations_cannot_be_deleted';
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.state <> 'ACTIVE' THEN
+      RAISE EXCEPTION 'inventory_reservation_must_start_active';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.installation_id IS DISTINCT FROM OLD.installation_id
+     OR NEW.warehouse_id IS DISTINCT FROM OLD.warehouse_id
+     OR NEW.location_id IS DISTINCT FROM OLD.location_id
+     OR NEW.base_variant_id IS DISTINCT FROM OLD.base_variant_id
+     OR NEW.lot_id IS DISTINCT FROM OLD.lot_id
+     OR NEW.quantity IS DISTINCT FROM OLD.quantity
+     OR NEW.source_domain IS DISTINCT FROM OLD.source_domain
+     OR NEW.source_document_type IS DISTINCT FROM OLD.source_document_type
+     OR NEW.source_document_id IS DISTINCT FROM OLD.source_document_id
+     OR NEW.activated_at IS DISTINCT FROM OLD.activated_at
+     OR NEW.idempotency_key IS DISTINCT FROM OLD.idempotency_key
+     OR NEW.payload_hash IS DISTINCT FROM OLD.payload_hash
+     OR NEW.metadata IS DISTINCT FROM OLD.metadata THEN
+    RAISE EXCEPTION 'inventory_reservation_immutable_fields_cannot_change';
+  END IF;
+
+  IF OLD.state <> 'ACTIVE'
+     OR NEW.state NOT IN ('RELEASED', 'CONSUMED', 'EXPIRED', 'CANCELLED') THEN
+    RAISE EXCEPTION 'inventory_reservation_invalid_state_transition';
+  END IF;
+
+  IF NEW.transitioned_at < OLD.transitioned_at THEN
+    RAISE EXCEPTION 'inventory_reservation_transition_time_cannot_move_backwards';
+  END IF;
+
+  RETURN NEW;
 END;
 $$;
 
-DROP TRIGGER IF EXISTS inventory_reservations_writer_guard ON inventory.inventory_reservations;
+DROP TRIGGER IF EXISTS inventory_reservations_writer_guard
+  ON inventory.inventory_reservations;
 CREATE TRIGGER inventory_reservations_writer_guard
 BEFORE INSERT OR UPDATE OR DELETE ON inventory.inventory_reservations
 FOR EACH ROW EXECUTE FUNCTION inventory.guard_inventory_reservation_write();
 
--- Update inventory.inventory_balances reserved_quantity via trigger when reservation events occur
+-- Database backstop for current and future negative inventory movement lines.
+-- A negative line may not leave on-hand below the quantity already reserved.
+CREATE OR REPLACE FUNCTION inventory.guard_inventory_negative_stock()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  current_on_hand numeric(30,12);
+  current_reserved numeric(30,12);
+BEGIN
+  IF NEW.base_quantity_delta >= 0 THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT balance.on_hand_quantity, balance.reserved_quantity
+    INTO current_on_hand, current_reserved
+    FROM inventory.inventory_balances balance
+   WHERE balance.installation_id = NEW.installation_id
+     AND balance.warehouse_id = NEW.warehouse_id
+     AND balance.location_id IS NOT DISTINCT FROM NEW.location_id
+     AND balance.base_variant_id = NEW.base_variant_id
+     AND balance.lot_id IS NULL
+   FOR UPDATE;
+
+  IF NOT FOUND OR current_on_hand + NEW.base_quantity_delta < current_reserved THEN
+    RAISE EXCEPTION 'inventory_negative_stock_denied';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS inventory_movement_lines_negative_stock_guard
+  ON inventory.inventory_movement_lines;
+CREATE TRIGGER inventory_movement_lines_negative_stock_guard
+BEFORE INSERT ON inventory.inventory_movement_lines
+FOR EACH ROW EXECUTE FUNCTION inventory.guard_inventory_negative_stock();
+
 CREATE OR REPLACE FUNCTION inventory.sync_reservation_to_balance()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -163,57 +272,75 @@ BEGIN
     RAISE EXCEPTION 'inventory_reservation_missing_for_sync';
   END IF;
 
-  -- Determine delta based on transition
   CASE NEW.transition
     WHEN 'CREATE_ACTIVE' THEN
+      IF reservation_record.state <> 'ACTIVE' THEN
+        RAISE EXCEPTION 'inventory_reservation_event_state_mismatch';
+      END IF;
       delta := reservation_record.quantity;
-    WHEN 'RELEASE_TO_RELEASED', 'CONSUME_TO_CONSUMED', 'EXPIRE_TO_EXPIRED', 'CANCEL_TO_CANCELLED' THEN
+    WHEN 'RELEASE_TO_RELEASED' THEN
+      IF reservation_record.state <> 'RELEASED' THEN
+        RAISE EXCEPTION 'inventory_reservation_event_state_mismatch';
+      END IF;
+      delta := -reservation_record.quantity;
+    WHEN 'CONSUME_TO_CONSUMED' THEN
+      IF reservation_record.state <> 'CONSUMED' THEN
+        RAISE EXCEPTION 'inventory_reservation_event_state_mismatch';
+      END IF;
+      delta := -reservation_record.quantity;
+    WHEN 'EXPIRE_TO_EXPIRED' THEN
+      IF reservation_record.state <> 'EXPIRED' THEN
+        RAISE EXCEPTION 'inventory_reservation_event_state_mismatch';
+      END IF;
+      delta := -reservation_record.quantity;
+    WHEN 'CANCEL_TO_CANCELLED' THEN
+      IF reservation_record.state <> 'CANCELLED' THEN
+        RAISE EXCEPTION 'inventory_reservation_event_state_mismatch';
+      END IF;
       delta := -reservation_record.quantity;
     ELSE
-      delta := 0;
+      RAISE EXCEPTION 'inventory_reservation_transition_not_supported';
   END CASE;
 
-  IF delta <> 0 THEN
-    PERFORM set_config('npp.inventory_balance_write_context', 'reservation', true);
+  PERFORM set_config('npp.inventory_balance_write_context', 'reservation', true);
 
-    INSERT INTO inventory.inventory_balances (
-      installation_id,
-      warehouse_id,
-      location_id,
-      base_variant_id,
-      lot_id,
-      on_hand_quantity,
-      reserved_quantity,
-      projected_through,
-      updated_at
-    ) VALUES (
-      NEW.installation_id,
-      reservation_record.warehouse_id,
-      reservation_record.location_id,
-      reservation_record.base_variant_id,
-      reservation_record.lot_id,
-      0,
-      delta,
-      now(),
-      now()
-    )
-    ON CONFLICT (
-      installation_id,
-      warehouse_id,
-      location_id,
-      base_variant_id,
-      lot_id
-    ) DO UPDATE
-    SET reserved_quantity = inventory.inventory_balances.reserved_quantity + EXCLUDED.reserved_quantity,
-        updated_at = now();
+  INSERT INTO inventory.inventory_balances (
+    installation_id,
+    warehouse_id,
+    location_id,
+    base_variant_id,
+    lot_id,
+    on_hand_quantity,
+    reserved_quantity,
+    projected_through,
+    updated_at
+  ) VALUES (
+    NEW.installation_id,
+    reservation_record.warehouse_id,
+    reservation_record.location_id,
+    reservation_record.base_variant_id,
+    reservation_record.lot_id,
+    0,
+    delta,
+    now(),
+    now()
+  )
+  ON CONFLICT (
+    installation_id,
+    warehouse_id,
+    location_id,
+    base_variant_id,
+    lot_id
+  ) DO UPDATE
+  SET reserved_quantity = inventory.inventory_balances.reserved_quantity
+                          + EXCLUDED.reserved_quantity,
+      updated_at = now();
 
-    PERFORM set_config(
-      'npp.inventory_balance_write_context',
-      COALESCE(previous_context, ''),
-      true
-    );
-  END IF;
-
+  PERFORM set_config(
+    'npp.inventory_balance_write_context',
+    COALESCE(previous_context, ''),
+    true
+  );
   RETURN NEW;
 EXCEPTION
   WHEN OTHERS THEN
@@ -226,7 +353,8 @@ EXCEPTION
 END;
 $$;
 
-DROP TRIGGER IF EXISTS inventory_reservation_events_sync_balance ON inventory.inventory_reservation_events;
+DROP TRIGGER IF EXISTS inventory_reservation_events_sync_balance
+  ON inventory.inventory_reservation_events;
 CREATE TRIGGER inventory_reservation_events_sync_balance
 AFTER INSERT ON inventory.inventory_reservation_events
 FOR EACH ROW EXECUTE FUNCTION inventory.sync_reservation_to_balance();
