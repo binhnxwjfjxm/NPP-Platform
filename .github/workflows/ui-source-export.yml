@@ -44,11 +44,35 @@ jobs:
         run: npm ci
 
       - name: Verify focused Core web changes
+        id: verify
         shell: bash
         run: |
-          set -euo pipefail
-          npm --workspace npp-core-web run typecheck
-          node --test npp-core/web/test/ui-live-fixes.test.js
+          set +e
+          : > /tmp/ui-refactor-verify.log
+          npm --workspace npp-core-web run typecheck >> /tmp/ui-refactor-verify.log 2>&1
+          typecheck_status=$?
+          node --test npp-core/web/test/ui-live-fixes.test.js >> /tmp/ui-refactor-verify.log 2>&1
+          test_status=$?
+          cat /tmp/ui-refactor-verify.log
+          if [ "$typecheck_status" -eq 0 ] && [ "$test_status" -eq 0 ]; then
+            echo 'failed=0' >> "$GITHUB_OUTPUT"
+          else
+            echo 'failed=1' >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
+
+      - name: Upload focused verification output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-refactor-verify
+          path: /tmp/ui-refactor-verify.log
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Fail when focused verification failed
+        if: steps.verify.outputs.failed != '0'
+        run: exit 1
 
       - name: Commit direct component refactor
         shell: bash
