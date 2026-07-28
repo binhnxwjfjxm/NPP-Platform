@@ -70,6 +70,8 @@ test('customer creation saves a default address without duplicating the customer
   assert.match(workspace, /testIdPrefix="customer-address"/);
   assert.match(addressFields, /`\$\{testIdPrefix}-province-select`/);
   assert.match(addressFields, /`\$\{testIdPrefix}-ward-select`/);
+  assert.match(workspace, /event\.key !== 'Escape'/);
+  assert.match(workspace, /event\.currentTarget === event\.target && busy === null/);
   assert.match(workspace, /Lưu khách hàng và địa chỉ/);
   assert.match(workspace, /isDefault: true/);
   assert.match(page, /import CustomerWorkspace from '\.\/customer-workspace';/);
