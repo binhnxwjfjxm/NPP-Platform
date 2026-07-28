@@ -1,7 +1,4 @@
-import BusinessLanguageBoundary from '../../components/business-language-boundary';
-import InventoryLot3Boundary from '../inventory-lot3-boundary';
-import InventoryWorkspace from '../inventory-workspace';
-import OpeningFileResetBoundary from './opening-file-reset-boundary';
+import OpeningBalanceCsvWorkspace from './opening-balance-csv-workspace';
 import { createEmptyInventorySnapshot } from '../../../lib/inventory-types';
 import { loadInventorySnapshot } from '../../../lib/inventory-snapshot';
 
@@ -14,22 +11,8 @@ export default async function InventoryOpeningBalancesPage() {
   try {
     initialData = await loadInventorySnapshot();
   } catch (error) {
-    initialError = error instanceof Error ? error.message : 'Không tải được dữ liệu tồn kho';
+    initialError = error instanceof Error ? error.message : 'Không tải được lịch sử nhập tồn đầu kỳ.';
   }
 
-  return (
-    <BusinessLanguageBoundary scope="inventory">
-      <OpeningFileResetBoundary>
-        <InventoryLot3Boundary scope="opening-balances">
-          <InventoryWorkspace
-            scope="opening-balances"
-            title="Thiết lập tồn đầu kỳ"
-            subtitle="Tải tệp mẫu, xem trước dữ liệu và xác nhận ghi nhận tồn đầu kỳ."
-            initialSnapshot={initialData}
-            initialError={initialError}
-          />
-        </InventoryLot3Boundary>
-      </OpeningFileResetBoundary>
-    </BusinessLanguageBoundary>
-  );
+  return <OpeningBalanceCsvWorkspace initialImports={initialData.openingBalances} initialError={initialError} />;
 }
