@@ -24,6 +24,22 @@ test('catalog modal dismissal clears form-scoped errors and respects busy saves'
   assert.match(workspace, /disabled=\{busy \|\| !variantForm\.sku\.trim\(\) \|\| !variantForm\.name\.trim\(\)\}/);
 });
 
+test('catalog editors cannot open while another operation is busy', async () => {
+  const workspace = await source('../app/products/product-workspace.tsx');
+  for (const name of [
+    'openProductCreate',
+    'openProductEdit',
+    'openCategoryCreate',
+    'openCategoryEdit',
+    'openBrandCreate',
+    'openBrandEdit',
+    'openVariantCreate',
+    'openVariantEdit',
+  ]) {
+    assert.match(workspace, new RegExp(`(?:async )?function ${name}\\([^)]*\\) \\{\\s*if \\(busy\\) return;`));
+  }
+});
+
 test('product editing fails closed when the SKU list cannot be loaded', async () => {
   const workspace = await source('../app/products/product-workspace.tsx');
   assert.match(workspace, /async function loadVariants\(product: Product\): Promise<boolean>/);
