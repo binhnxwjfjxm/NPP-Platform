@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   verify-inventory-reservations:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
       postgres:
@@ -31,13 +31,13 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "pg_isready -U postgres -d phase4_reservations"
           --health-interval 2s
           --health-timeout 10s
-          --health-retries 10
+          --health-retries 15
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/phase4_reservations
-      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/phase4_reservations
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/phase4_reservations
+      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/phase4_reservations
       NODE_ENV: test
     steps:
       - name: Checkout
@@ -52,30 +52,40 @@ jobs:
           cache: npm
 
       - name: Install workspace dependencies
-        run: npm ci --workspace npp-core-api
+        run: npm ci
 
       - name: Verify build
         run: npm --workspace npp-core-api run build
 
-      - name: Run migrations
+      - name: Apply migrations on clean PostgreSQL 17
         run: npm --workspace npp-core-api run migration:migrate
 
-      - name: Verify migrations (should be no-op on rerun)
-        run: npm --workspace npp-core-api run migration:migrate
-
-      - name: Verify migration state
+      - name: Verify migration registry and schema
         run: npm --workspace npp-core-api run migration:verify
 
+      - name: Verify migration rerun is a no-op
+        run: npm --workspace npp-core-api run migration:migrate
+
       - name: Run P4.3 reservation tests
-        run: npm --workspace npp-core-api test -- inventory-reservations.test.js
+        run: node --test npp-core/api/test/inventory-reservations.test.js
 
       - name: Run full inventory regression tests
-        run: npm --workspace npp-core-api test -- inventory-*.test.js
+        run: node --test npp-core/api/test/inventory-ledger.test.js npp-core/api/test/inventory-balance.test.js npp-core/api/test/inventory-reservations.test.js
 
-      - name: Verify public API does not access mcp/**
+      - name: Run full Core API verification
+        run: npm --workspace npp-core-api run verify
+
+      - name: Verify Core-only boundary
+        shell: bash
         run: |
+          changed="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          printf '%s\n' "$changed"
+          if printf '%s\n' "$changed" | grep -E '^mcp/'; then
+            echo "ERROR: P4.3 must not modify mcp/**"
+            exit 1
+          fi
           if grep -r "from.*mcp/" npp-core/api/src --include="*.js"; then
             echo "ERROR: npp-core API files must not import from mcp/"
             exit 1
           fi
-          echo "✓ No mcp/ imports found in API"
+          echo "Core-only boundary verified"
