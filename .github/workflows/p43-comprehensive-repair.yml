@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   apply-and-commit-repair:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -20,12 +21,33 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Apply comprehensive repair
-        run: python .github/p43-comprehensive-repair.py
-
-      - name: Verify repair scope
+      - name: Apply comprehensive repair with diagnostics
+        id: repair
         shell: bash
         run: |
+          set +e
+          python .github/p43-comprehensive-repair.py > .github/p43-repair-output.txt 2>&1
+          status=$?
+          cat .github/p43-repair-output.txt
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Commit repair diagnostic when patching fails
+        if: steps.repair.outputs.status != '0'
+        shell: bash
+        run: |
+          git add .github/p43-repair-output.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(inventory): capture P4.3 repair failure"
+          git push origin HEAD:agent/phase-4-inventory-reservations-negative-stock-v2
+          exit 1
+
+      - name: Verify repair scope
+        if: steps.repair.outputs.status == '0'
+        shell: bash
+        run: |
+          rm -f .github/p43-repair-output.txt
           git diff --check
           changed="$(git diff --name-only)"
           printf '%s\n' "$changed"
@@ -35,6 +57,7 @@ jobs:
           fi
 
       - name: Commit repair and remove temporary files
+        if: steps.repair.outputs.status == '0'
         shell: bash
         run: |
           git rm .github/p43-comprehensive-repair.py .github/workflows/p43-comprehensive-repair.yml
