@@ -38,17 +38,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          : > /tmp/ui-diagnostic.txt
           for test_file in npp-core/web/test/*.test.js; do
             if [ "$test_file" = "npp-core/web/test/ui-live-fixes.test.js" ]; then
               continue
             fi
-            echo "Checking $test_file"
             if ! node --test "$test_file" > /tmp/core-web-test.log 2>&1; then
-              echo "FAILED_TEST_FILE=$test_file"
-              tail -n 80 /tmp/core-web-test.log
+              {
+                echo "FAILED_TEST_FILE=$test_file"
+                tail -n 80 /tmp/core-web-test.log
+              } > /tmp/ui-diagnostic.txt
+              cat /tmp/ui-diagnostic.txt
               exit 1
             fi
           done
+          echo "ALL_LEGACY_TESTS_PASSED" > /tmp/ui-diagnostic.txt
+
+      - name: Upload diagnostic result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-live-fixes-diagnostic
+          path: /tmp/ui-diagnostic.txt
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Build Core web
         run: npm --workspace npp-core-web run build
