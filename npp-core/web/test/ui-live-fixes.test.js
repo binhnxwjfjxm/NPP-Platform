@@ -43,12 +43,14 @@ test('employee initial load preserves partial results and retries once', async (
 });
 
 test('customer creation saves a default address without duplicating the customer on retry', async () => {
-  const [workspace, page, layout, addressFields, addressRoute] = await Promise.all([
+  const [workspace, page, layout, addressFields, addressRoute, addressData, packageJson] = await Promise.all([
     readSource('../app/customers/customer-workspace.tsx'),
     readSource('../app/customers/page.tsx'),
     readSource('../app/layout.tsx'),
     readSource('../app/customers/vietnam-administrative-fields.tsx'),
     readSource('../app/api/reference/vietnam-administrative-units/route.ts'),
+    readSource('../lib/vietnam-administrative-data.ts'),
+    readSource('../package.json'),
   ]);
 
   assert.match(workspace, /VietnamAdministrativeFields/);
@@ -56,14 +58,16 @@ test('customer creation saves a default address without duplicating the customer
   assert.match(addressFields, /provinceCode=/);
   assert.match(addressFields, /Xã\/phường\/đặc khu/);
   assert.match(addressRoute, /listVietnamWards/);
+  assert.match(addressData, /vietnam-address-database/);
+  assert.equal(JSON.parse(packageJson).dependencies['vietnam-address-database'], '1.0.0');
   assert.match(workspace, /customerCreateKey = useRef/);
   assert.match(workspace, /customerAddressKey = useRef/);
   assert.match(workspace, /pendingCreatedCustomer/);
   assert.match(workspace, /`\/api\/customers\/\$\{createdCustomer\.id\}\/addresses`/);
   assert.match(workspace, /testIdPrefix="customer"/);
   assert.match(workspace, /testIdPrefix="customer-address"/);
-  assert.match(addressFields, /`\${testIdPrefix}-province-select`/);
-  assert.match(addressFields, /`\${testIdPrefix}-ward-select`/);
+  assert.match(addressFields, /`\$\{testIdPrefix}-province-select`/);
+  assert.match(addressFields, /`\$\{testIdPrefix}-ward-select`/);
   assert.match(workspace, /Lưu khách hàng và địa chỉ/);
   assert.match(workspace, /isDefault: true/);
   assert.match(page, /import CustomerWorkspace from '\.\/customer-workspace';/);
