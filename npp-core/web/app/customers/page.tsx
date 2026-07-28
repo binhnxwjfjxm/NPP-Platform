@@ -1,4 +1,4 @@
-import CustomerWorkspace from './customer-workspace';
+import CustomerWorkspaceEnhanced from './customer-workspace-enhanced';
 import type { Customer, CustomerGroup } from '../../lib/customer-types';
 import {
   listAllCustomers,
@@ -25,7 +25,7 @@ export default async function CustomersPage() {
   }
 
   return (
-    <CustomerWorkspace
+    <CustomerWorkspaceEnhanced
       initialCustomers={initialCustomers}
       initialGroups={initialGroups}
       initialError={initialError}
