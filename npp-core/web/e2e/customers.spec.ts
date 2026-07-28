@@ -30,6 +30,7 @@ test.describe('Danh mục khách hàng', () => {
     await page.getByTestId('customer-email-input').fill(`customer-${suffix.toLowerCase()}@example.com`);
     await page.getByTestId('customer-create-address-label-input').fill('Trụ sở chính');
     await page.getByTestId('customer-province-select').selectOption({ label: 'Hà Nội' });
+    await page.getByTestId('customer-ward-select').selectOption({ index: 1 });
     await page.getByTestId('customer-create-address-line1-input').fill(`1 Đường ${suffix}`);
     await customerDialog.getByRole('button', { name: 'Lưu khách hàng và địa chỉ' }).click();
 
@@ -56,6 +57,7 @@ test.describe('Danh mục khách hàng', () => {
     await page.getByTestId('customer-address-label-input').fill('Kho chính');
     await page.getByTestId('customer-address-line1-input').fill(`2 Đường ${suffix}`);
     await page.getByTestId('customer-address-province-select').selectOption({ label: 'Hà Nội' });
+    await page.getByTestId('customer-address-ward-select').selectOption({ index: 1 });
     await addressDialog.getByRole('button', { name: 'Lưu địa chỉ' }).click();
     await expect(addressDialog.getByText('Kho chính')).toBeVisible();
     await addressDialog.getByRole('button', { name: 'Đóng' }).click();

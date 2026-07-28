@@ -165,3 +165,14 @@
     grid-column: auto;
   }
 }
+
+
+.addressReferenceError {
+  grid-column: 1 / -1;
+  padding: 9px 11px;
+  border: 1px solid #efc9c2;
+  border-radius: 8px;
+  background: #fff6f4;
+  color: #8f2f22;
+  font-size: 0.74rem;
+}

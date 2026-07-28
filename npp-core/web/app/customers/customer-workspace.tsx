@@ -5,6 +5,7 @@ import { AppShell } from '../components/app-shell';
 import shellStyles from '../components/app-shell.module.css';
 import styles from '../organization/organization.module.css';
 import customerStyles from './customers.module.css';
+import VietnamAdministrativeFields from './vietnam-administrative-fields';
 import type { Customer, CustomerAddress, CustomerGroup } from '../../lib/customer-types';
 import { formatCompactNumber, matchTerm, normalizeSearch, toUpperCode } from '../../lib/organization-types';
 
@@ -54,42 +55,6 @@ type AddressDraft = {
   isDefault: boolean;
 };
 
-const VIETNAM_PROVINCES = [
-  'An Giang',
-  'Bắc Ninh',
-  'Cà Mau',
-  'Cao Bằng',
-  'Cần Thơ',
-  'Đà Nẵng',
-  'Đắk Lắk',
-  'Điện Biên',
-  'Đồng Nai',
-  'Đồng Tháp',
-  'Gia Lai',
-  'Hà Nội',
-  'Hà Tĩnh',
-  'Hải Phòng',
-  'Huế',
-  'Hưng Yên',
-  'Khánh Hòa',
-  'Lai Châu',
-  'Lâm Đồng',
-  'Lạng Sơn',
-  'Lào Cai',
-  'Nghệ An',
-  'Ninh Bình',
-  'Phú Thọ',
-  'Quảng Ngãi',
-  'Quảng Ninh',
-  'Quảng Trị',
-  'Sơn La',
-  'Tây Ninh',
-  'Thái Nguyên',
-  'Thanh Hóa',
-  'Thành phố Hồ Chí Minh',
-  'Tuyên Quang',
-  'Vĩnh Long',
-] as const;
 
 type Props = {
   initialCustomers: Customer[];
@@ -253,6 +218,31 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
       .then(setEmployees)
       .catch(() => setEmployees([]));
   }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape' || busy !== null) return;
+      if (addressEditor) {
+        setAddressEditor(null);
+        return;
+      }
+      if (addressCustomerId) {
+        setAddressCustomerId(null);
+        setAddressEditor(null);
+        return;
+      }
+      if (groupEditor) {
+        setGroupEditor(null);
+        return;
+      }
+      if (customerEditor) {
+        closeCustomerEditor();
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [addressCustomerId, addressEditor, busy, customerEditor, groupEditor, pendingCreatedCustomer]);
 
   async function handleFailure(failure: unknown, reload?: () => Promise<void>) {
     const nextError = failure instanceof UiRequestError ? failure : new UiRequestError('REQUEST_FAILED', failure instanceof Error ? failure.message : 'Yêu cầu không thành công');
@@ -656,7 +646,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
         )}
 
         {customerEditor ? (
-          <div className={styles.modalBackdrop} role="presentation">
+          <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target && busy === null) closeCustomerEditor(); }}>
             <section className={joinClasses(styles.modal, customerStyles.modalWide)} role="dialog" aria-modal="true" aria-label="Biểu mẫu khách hàng">
               <div className={styles.modalHeader}>
                 <div>
@@ -687,9 +677,14 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                       <label>Nhãn địa chỉ<input data-testid="customer-create-address-label-input" value={addressDraft.label} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, label: next })); }} required /></label>
                       <label>Người nhận<input value={addressDraft.recipientName} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, recipientName: next })); }} /></label>
                       <label>Điện thoại nhận hàng<input value={addressDraft.phone} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, phone: next })); }} /></label>
-                      <label>Tỉnh/thành phố<select data-testid="customer-province-select" value={addressDraft.province} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, province: next })); }} required><option value="">Chọn tỉnh/thành phố</option>{VIETNAM_PROVINCES.map((province) => <option key={province} value={province}>{province}</option>)}</select></label>
-                      <label>Quận/huyện<input value={addressDraft.district} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, district: next })); }} /></label>
-                      <label>Phường/xã<input value={addressDraft.ward} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, ward: next })); }} /></label>
+                      <VietnamAdministrativeFields
+                        province={addressDraft.province}
+                        ward={addressDraft.ward}
+                        district={addressDraft.district}
+                        onChange={(next) => setAddressDraft((value) => ({ ...value, ...next }))}
+                        required
+                        testIdPrefix="customer"
+                      />
                       <label className={customerStyles.fullWidth}>Địa chỉ dòng 1<input data-testid="customer-create-address-line1-input" value={addressDraft.addressLine1} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine1: next })); }} required /></label>
                       <label className={customerStyles.fullWidth}>Địa chỉ dòng 2<input value={addressDraft.addressLine2} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine2: next })); }} /></label>
                       <label>Mã bưu chính<input value={addressDraft.postalCode} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, postalCode: next })); }} /></label>
@@ -708,25 +703,25 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
         ) : null}
 
         {groupEditor ? (
-          <div className={styles.modalBackdrop} role="presentation">
+          <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target && busy === null) setGroupEditor(null); }}>
             <section className={styles.modal} role="dialog" aria-modal="true" aria-label="Biểu mẫu nhóm khách hàng">
-              <div className={styles.modalHeader}><h3>{groupEditor.mode === 'create' ? 'Thêm nhóm khách hàng' : 'Sửa nhóm khách hàng'}</h3><button type="button" className={styles.modalClose} onClick={() => setGroupEditor(null)}>Đóng</button></div>
+              <div className={styles.modalHeader}><h3>{groupEditor.mode === 'create' ? 'Thêm nhóm khách hàng' : 'Sửa nhóm khách hàng'}</h3><button type="button" className={styles.modalClose} onClick={() => setGroupEditor(null)} disabled={busy !== null}>Đóng</button></div>
               <form className={styles.form} onSubmit={submitGroup}>
                 <div className={customerStyles.formGrid}>
                   <label>Mã nhóm<input data-testid="customer-group-code-input" value={groupDraft.code} onChange={(event) => { const next = event.currentTarget.value; setGroupDraft((value) => ({ ...value, code: next })); }} disabled={groupEditor.mode === 'edit'} required /></label>
                   <label>Tên nhóm<input data-testid="customer-group-name-input" value={groupDraft.name} onChange={(event) => { const next = event.currentTarget.value; setGroupDraft((value) => ({ ...value, name: next })); }} required /></label>
                   <label className={customerStyles.fullWidth}>Mô tả<textarea value={groupDraft.description} onChange={(event) => { const next = event.currentTarget.value; setGroupDraft((value) => ({ ...value, description: next })); }} /></label>
                 </div>
-                <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => setGroupEditor(null)}>Hủy</button><button type="submit" className={joinClasses(styles.primaryButton, customerStyles.disabled, busy === 'save-group' && customerStyles.loading)} disabled={busy !== null}>{busy === 'save-group' ? 'Đang lưu…' : 'Lưu nhóm'}</button></div>
+                <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => setGroupEditor(null)} disabled={busy !== null}>Hủy</button><button type="submit" className={joinClasses(styles.primaryButton, customerStyles.disabled, busy === 'save-group' && customerStyles.loading)} disabled={busy !== null}>{busy === 'save-group' ? 'Đang lưu…' : 'Lưu nhóm'}</button></div>
               </form>
             </section>
           </div>
         ) : null}
 
         {addressCustomer ? (
-          <div className={styles.modalBackdrop} role="presentation">
+          <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target && busy === null) { setAddressCustomerId(null); setAddressEditor(null); } }}>
             <section className={joinClasses(styles.modal, customerStyles.modalWide)} role="dialog" aria-modal="true" aria-label="Quản lý địa chỉ khách hàng">
-              <div className={styles.modalHeader}><div><p className={styles.panelKicker}>{addressCustomer.code}</p><h3>Địa chỉ · {addressCustomer.name}</h3></div><button type="button" className={styles.modalClose} onClick={() => { setAddressCustomerId(null); setAddressEditor(null); }}>Đóng</button></div>
+              <div className={styles.modalHeader}><div><p className={styles.panelKicker}>{addressCustomer.code}</p><h3>Địa chỉ · {addressCustomer.name}</h3></div><button type="button" className={styles.modalClose} onClick={() => { setAddressCustomerId(null); setAddressEditor(null); }} disabled={busy !== null}>Đóng</button></div>
               <div className={customerStyles.splitGrid}>
                 <div>
                   <div className={styles.panelHeader}><h2>Địa chỉ đã lưu</h2><button type="button" className={styles.primaryButton} onClick={openAddressCreate} disabled={!addressCustomer.is_active} title={addressCustomer.is_active ? undefined : 'Không thể thêm địa chỉ cho khách hàng không hoạt động'}>Thêm địa chỉ</button></div>
@@ -751,9 +746,14 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                         <label>Quốc gia<input value={addressDraft.countryCode} maxLength={2} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, countryCode: next })); }} /></label>
                         <label className={customerStyles.fullWidth}>Địa chỉ dòng 1<input data-testid="customer-address-line1-input" value={addressDraft.addressLine1} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine1: next })); }} required /></label>
                         <label className={customerStyles.fullWidth}>Địa chỉ dòng 2<input value={addressDraft.addressLine2} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine2: next })); }} /></label>
-                        <label>Phường/xã<input value={addressDraft.ward} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, ward: next })); }} /></label>
-                        <label>Quận/huyện<input value={addressDraft.district} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, district: next })); }} /></label>
-                        <label>Tỉnh/thành phố<select data-testid="customer-address-province-select" value={addressDraft.province} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, province: next })); }}><option value="">Chọn tỉnh/thành phố</option>{VIETNAM_PROVINCES.map((province) => <option key={province} value={province}>{province}</option>)}</select></label>
+                        <VietnamAdministrativeFields
+                          province={addressDraft.province}
+                          ward={addressDraft.ward}
+                          district={addressDraft.district}
+                          onChange={(next) => setAddressDraft((value) => ({ ...value, ...next }))}
+                          required
+                          testIdPrefix="customer-address"
+                        />
                         <label>Mã bưu chính<input value={addressDraft.postalCode} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, postalCode: next })); }} /></label>
                         <label className={joinClasses(customerStyles.inlineCheck, customerStyles.fullWidth)}><input type="checkbox" checked={addressDraft.isDefault} onChange={(event) => { const next = event.currentTarget.checked; setAddressDraft((value) => ({ ...value, isDefault: next })); }} />Đặt làm địa chỉ mặc định</label>
                       </div>
