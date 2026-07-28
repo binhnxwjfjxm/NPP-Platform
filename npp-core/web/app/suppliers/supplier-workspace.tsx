@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../components/app-shell';
+import VietnamAdministrativeFields from '../components/vietnam-administrative-fields';
 import styles from './suppliers.module.css';
 import type { Supplier } from '../../lib/supplier-types';
 
@@ -21,6 +22,10 @@ type SupplierDraft = {
   bankName: string;
   avgDeliveryDays: string;
   purchaseOwnerEmployeeId: string;
+  street: string;
+  province: string;
+  ward: string;
+  district: string;
 };
 
 type Props = {
@@ -43,6 +48,10 @@ function emptySupplierDraft(): SupplierDraft {
     bankName: '',
     avgDeliveryDays: '',
     purchaseOwnerEmployeeId: '',
+    street: '',
+    province: '',
+    ward: '',
+    district: '',
   };
 }
 
@@ -75,6 +84,9 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialError);
   const [notice, setNotice] = useState<string | null>(null);
+  const [pendingCreatedSupplier, setPendingCreatedSupplier] = useState<Supplier | null>(null);
+  const supplierCreateKey = useRef<string | null>(null);
+  const supplierAddressKey = useRef<string | null>(null);
 
   const visibleSuppliers = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('vi-VN');
@@ -104,7 +116,14 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
     }
   }
 
+  function resetCreateState() {
+    supplierCreateKey.current = null;
+    supplierAddressKey.current = null;
+    setPendingCreatedSupplier(null);
+  }
+
   function openCreate() {
+    resetCreateState();
     setDraft(emptySupplierDraft());
     setEditor({ mode: 'create', id: null });
     setError(null);
@@ -112,7 +131,9 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
   }
 
   function openEdit(supplier: Supplier) {
+    resetCreateState();
     setDraft({
+      ...emptySupplierDraft(),
       code: supplier.code,
       name: supplier.name,
       taxId: supplier.tax_id ?? '',
@@ -145,23 +166,62 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
     setError(null);
     setNotice(null);
     try {
-      await requestJson<Supplier>(current ? `/api/suppliers/${current.id}` : '/api/suppliers', {
-        method: current ? 'PATCH' : 'POST',
-        headers: current ? undefined : { 'Idempotency-Key': `web-${crypto.randomUUID()}` },
-        body: JSON.stringify({
-          ...(current ? {} : { code: draft.code.trim().toUpperCase() }),
-          name: draft.name.trim(),
-          taxId: draft.taxId.trim() || null,
-          bankAccount: draft.bankAccount.trim() || null,
-          bankName: draft.bankName.trim() || null,
-          avgDeliveryDays: draft.avgDeliveryDays.trim() === '' ? null : Number(draft.avgDeliveryDays),
-          purchaseOwnerEmployeeId: draft.purchaseOwnerEmployeeId.trim() || null,
-          ...(current ? { expectedUpdatedAt: current.updated_at } : {}),
-        }),
-      });
+      let savedSupplier = current;
+      if (current) {
+        savedSupplier = await requestJson<Supplier>(`/api/suppliers/${current.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            name: draft.name.trim(),
+            taxId: draft.taxId.trim() || null,
+            bankAccount: draft.bankAccount.trim() || null,
+            bankName: draft.bankName.trim() || null,
+            avgDeliveryDays: draft.avgDeliveryDays.trim() === '' ? null : Number(draft.avgDeliveryDays),
+            purchaseOwnerEmployeeId: draft.purchaseOwnerEmployeeId.trim() || null,
+            expectedUpdatedAt: current.updated_at,
+          }),
+        });
+      } else if (pendingCreatedSupplier) {
+        savedSupplier = pendingCreatedSupplier;
+      } else {
+        supplierCreateKey.current ??= `web-${crypto.randomUUID()}`;
+        savedSupplier = await requestJson<Supplier>('/api/suppliers', {
+          method: 'POST',
+          headers: { 'Idempotency-Key': supplierCreateKey.current },
+          body: JSON.stringify({
+            code: draft.code.trim().toUpperCase(),
+            name: draft.name.trim(),
+            taxId: draft.taxId.trim() || null,
+            bankAccount: draft.bankAccount.trim() || null,
+            bankName: draft.bankName.trim() || null,
+            avgDeliveryDays: draft.avgDeliveryDays.trim() === '' ? null : Number(draft.avgDeliveryDays),
+            purchaseOwnerEmployeeId: draft.purchaseOwnerEmployeeId.trim() || null,
+          }),
+        });
+        setPendingCreatedSupplier(savedSupplier);
+      }
+
+      if (!current && savedSupplier && draft.street.trim() && draft.province && draft.ward) {
+        supplierAddressKey.current ??= `web-${crypto.randomUUID()}`;
+        await requestJson(`/api/suppliers/${savedSupplier.id}/addresses`, {
+          method: 'POST',
+          headers: { 'Idempotency-Key': supplierAddressKey.current },
+          body: JSON.stringify({
+            addressType: 'business',
+            street: draft.street.trim(),
+            city: draft.ward,
+            province: draft.province,
+            postalCode: null,
+            country: 'Việt Nam',
+            isPrimary: true,
+            isActive: true,
+          }),
+        });
+      }
+
       setEditor(null);
       setDraft(emptySupplierDraft());
-      await loadAll(current ? 'Nhà cung cấp đã được cập nhật.' : 'Nhà cung cấp đã được tạo.');
+      resetCreateState();
+      await loadAll(current ? 'Nhà cung cấp đã được cập nhật.' : 'Nhà cung cấp và địa chỉ mặc định đã được tạo.');
     } catch (failure) {
       await handleFailure(failure);
       setBusy(null);
@@ -190,7 +250,7 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
   return (
     <AppShell
       title="Nhà cung cấp"
-      subtitle="Quản lý hồ sơ, thông tin thuế, ngân hàng và thời gian giao hàng của nhà cung cấp."
+      subtitle="Quản lý hồ sơ, địa chỉ, thông tin thuế, ngân hàng và thời gian giao hàng của nhà cung cấp."
     >
       <div className={styles.page} data-testid="suppliers-page">
         <section className={styles.summary}>
@@ -203,18 +263,8 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
         {notice ? <p className={styles.notice}>{notice}</p> : null}
 
         <section className={styles.toolbar}>
-          <input
-            data-testid="suppliers-search-input"
-            type="search"
-            placeholder="Tìm theo mã, tên, mã số thuế hoặc tài khoản"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-          <select
-            data-testid="suppliers-status-filter"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as FilterState)}
-          >
+          <input data-testid="suppliers-search-input" type="search" placeholder="Tìm theo mã, tên, mã số thuế hoặc tài khoản" value={search} onChange={(event) => setSearch(event.target.value)} />
+          <select data-testid="suppliers-status-filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as FilterState)}>
             <option value="all">Tất cả trạng thái</option>
             <option value="active">Hoạt động</option>
             <option value="inactive">Không hoạt động</option>
@@ -223,43 +273,13 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
         </section>
 
         <section className={styles.tableCard}>
-          <table>
-            <thead>
-              <tr>
-                <th>Mã</th>
-                <th>Tên nhà cung cấp</th>
-                <th>Mã số thuế</th>
-                <th>Ngân hàng</th>
-                <th>Giao hàng</th>
-                <th>Trạng thái</th>
-                <th>Thao tác</th>
+          <table><thead><tr><th>Mã</th><th>Tên nhà cung cấp</th><th>Mã số thuế</th><th>Ngân hàng</th><th>Giao hàng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+            <tbody>{visibleSuppliers.map((supplier) => (
+              <tr key={supplier.id} data-testid={`supplier-row-${supplier.code}`}>
+                <td className={styles.code}>{supplier.code}</td><td>{supplier.name}</td><td>{supplier.tax_id || '—'}</td><td>{supplier.bank_name || supplier.bank_account || '—'}</td><td>{supplier.avg_delivery_days === null ? '—' : `${supplier.avg_delivery_days} ngày`}</td><td><span className={supplier.is_active ? styles.active : styles.inactive}>{supplier.is_active ? 'Hoạt động' : 'Không hoạt động'}</span></td>
+                <td className={styles.actions}><button data-testid={`edit-supplier-${supplier.code}`} type="button" onClick={() => openEdit(supplier)} disabled={busy !== null}>Sửa</button><button type="button" onClick={() => void toggleSupplier(supplier)} disabled={busy !== null}>{supplier.is_active ? 'Vô hiệu' : 'Kích hoạt'}</button></td>
               </tr>
-            </thead>
-            <tbody>
-              {visibleSuppliers.map((supplier) => (
-                <tr key={supplier.id} data-testid={`supplier-row-${supplier.code}`}>
-                  <td className={styles.code}>{supplier.code}</td>
-                  <td>{supplier.name}</td>
-                  <td>{supplier.tax_id || '—'}</td>
-                  <td>{supplier.bank_name || supplier.bank_account || '—'}</td>
-                  <td>{supplier.avg_delivery_days === null ? '—' : `${supplier.avg_delivery_days} ngày`}</td>
-                  <td><span className={supplier.is_active ? styles.active : styles.inactive}>{supplier.is_active ? 'Hoạt động' : 'Không hoạt động'}</span></td>
-                  <td className={styles.actions}>
-                    <button
-                      data-testid={`edit-supplier-${supplier.code}`}
-                      type="button"
-                      onClick={() => openEdit(supplier)}
-                      disabled={busy !== null}
-                    >
-                      Sửa
-                    </button>
-                    <button type="button" onClick={() => void toggleSupplier(supplier)} disabled={busy !== null}>
-                      {supplier.is_active ? 'Vô hiệu' : 'Kích hoạt'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+            ))}</tbody>
           </table>
           {visibleSuppliers.length === 0 ? <p className={styles.empty}>Không có nhà cung cấp phù hợp.</p> : null}
         </section>
@@ -267,13 +287,7 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
         {editor ? (
           <div className={styles.modalBackdrop} role="presentation">
             <form className={styles.modal} onSubmit={submitSupplier}>
-              <header>
-                <div>
-                  <p>Danh mục nhà cung cấp</p>
-                  <h2>{editor.mode === 'create' ? 'Thêm nhà cung cấp' : 'Chỉnh sửa nhà cung cấp'}</h2>
-                </div>
-                <button type="button" onClick={() => setEditor(null)} disabled={busy !== null}>Đóng</button>
-              </header>
+              <header><div><p>Danh mục nhà cung cấp</p><h2>{editor.mode === 'create' ? 'Thêm nhà cung cấp' : 'Chỉnh sửa nhà cung cấp'}</h2></div><button type="button" onClick={() => setEditor(null)} disabled={busy !== null}>Đóng</button></header>
               <div className={styles.formGrid}>
                 <label>Mã nhà cung cấp<input data-testid="supplier-code-input" value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value })} disabled={editor.mode === 'edit' || busy !== null} required /></label>
                 <label>Tên nhà cung cấp<input data-testid="supplier-name-input" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} disabled={busy !== null} required /></label>
@@ -281,11 +295,12 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
                 <label>Số tài khoản<input data-testid="supplier-bank-account-input" value={draft.bankAccount} onChange={(event) => setDraft({ ...draft, bankAccount: event.target.value })} disabled={busy !== null} /></label>
                 <label>Tên ngân hàng<input data-testid="supplier-bank-name-input" value={draft.bankName} onChange={(event) => setDraft({ ...draft, bankName: event.target.value })} disabled={busy !== null} /></label>
                 <label>Thời gian giao hàng trung bình<input data-testid="supplier-avg-delivery-days-input" type="number" min="0" max="3650" value={draft.avgDeliveryDays} onChange={(event) => setDraft({ ...draft, avgDeliveryDays: event.target.value })} disabled={busy !== null} /></label>
+                {editor.mode === 'create' ? <>
+                  <label>Địa chỉ chi tiết<input data-testid="supplier-street-input" value={draft.street} onChange={(event) => setDraft({ ...draft, street: event.target.value })} disabled={busy !== null} required /></label>
+                  <VietnamAdministrativeFields province={draft.province} ward={draft.ward} district={draft.district} onChange={(next) => setDraft((current) => ({ ...current, ...next }))} required testIdPrefix="supplier" />
+                </> : null}
               </div>
-              <footer>
-                <button type="button" onClick={() => setEditor(null)} disabled={busy !== null}>Hủy</button>
-                <button type="submit" disabled={busy !== null}>{busy === 'save' ? 'Đang lưu…' : 'Lưu'}</button>
-              </footer>
+              <footer><button type="button" onClick={() => setEditor(null)} disabled={busy !== null}>Hủy</button><button type="submit" disabled={busy !== null}>{busy === 'save' ? 'Đang lưu…' : 'Lưu'}</button></footer>
             </form>
           </div>
         ) : null}

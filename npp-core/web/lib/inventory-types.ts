@@ -126,10 +126,10 @@ export const INVENTORY_Lot_TRACKING_MODES = ['NONE', 'REQUIRED'] as const;
 export const INVENTORY_EXPIRY_TRACKING_MODES = ['NONE', 'OPTIONAL', 'REQUIRED'] as const;
 
 export const inventoryTabs = [
-  { href: '/inventory/balances', label: 'Tồn kho', hint: 'Số dư, lô và phần xem chi tiết' },
-  { href: '/inventory/tracking-policies', label: 'Chính sách lô', hint: 'Quy tắc lô, hạn dùng và vị trí' },
-  { href: '/inventory/lots', label: 'Lô hàng', hint: 'Danh sách lô và hạn dùng' },
-  { href: '/inventory/opening-balances', label: 'Nhập tồn đầu kỳ', hint: 'Kiểm tra và ghi sổ nhập tồn đầu kỳ' },
+  { href: '/inventory/balances', label: 'Tra cứu tồn kho', hint: 'Số lượng hiện tại, đang giữ, khả dụng và vị trí hàng' },
+  { href: '/inventory/tracking-policies', label: 'Chính sách quản lý lô', hint: 'Quy định lô, hạn sử dụng và vị trí hàng' },
+  { href: '/inventory/lots', label: 'Lô hàng', hint: 'Mã lô, ngày sản xuất và hạn sử dụng' },
+  { href: '/inventory/opening-balances', label: 'Thiết lập tồn đầu kỳ', hint: 'Dùng một lần khi bắt đầu hoặc chuyển dữ liệu cũ' },
 ] as const;
 
 export function createEmptyInventorySnapshot(checkedAt = new Date().toISOString()): InventorySnapshot {
