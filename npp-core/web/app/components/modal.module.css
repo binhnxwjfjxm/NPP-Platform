@@ -1,0 +1,100 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgba(15, 23, 42, .58);
+  backdrop-filter: blur(3px);
+}
+
+.dialog {
+  width: min(720px, calc(100vw - 3rem));
+  max-height: calc(100vh - 3rem);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border: 1px solid #dbe3ee;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, .28);
+}
+
+.large {
+  width: min(980px, calc(100vw - 3rem));
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 1.2rem 1.35rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #172033;
+}
+
+.header p {
+  margin: .35rem 0 0;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.closeButton {
+  flex: 0 0 auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  padding: .55rem .8rem;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.body {
+  min-height: 0;
+  overflow: auto;
+  padding: 1.25rem 1.35rem;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: .7rem;
+  padding: 1rem 1.35rem 1.2rem;
+  border-top: 1px solid #e5e7eb;
+  background: #f8fafc;
+}
+
+@media (max-width: 640px) {
+  .backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .dialog,
+  .large {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .header,
+  .body,
+  .footer {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .footer > * {
+    width: 100%;
+  }
+}
