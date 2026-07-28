@@ -1,1 +1,1 @@
-npp-core/api/src/db/repositories/inventory-reservations.js: expected one match, found 0: '       AND base_variant_id = $4\n        AND lot_id IS NOT DISTINCT FROM $5`,'
+npp-core/api/src/db/repositories/inventory-reservations.js: expected one match, found 0: 'export async function resolveVariant(client, { installationId, baseVariantId }) {\n  const result = a'
