@@ -56,6 +56,7 @@ function objectValue(value, maxBytes = 16000) {
 }
 
 function canonicalize(value) {
+  if (typeof value === 'bigint') return value.toString();
   if (Array.isArray(value)) return value.map(canonicalize);
   if (value === null || typeof value !== 'object') return value;
   return Object.fromEntries(
