@@ -16,10 +16,16 @@ function isWard(row: AdministrativeRow): row is Ward {
   return 'ward_code' in row && 'province_code' in row && !('short_name' in row);
 }
 
+function normalizeProvinceName(value: string | null | undefined): string {
+  return String(value ?? '')
+    .trim()
+    .replace(/^(?:Tỉnh|Thành phố|TP\.?)\s+/iu, '')
+    .trim();
+}
+
 function provinceDisplayName(province: Province): string {
-  const shortName = province.short_name?.trim();
-  if (shortName) return shortName;
-  return province.name.replace(/^(Tỉnh|Thành phố)\s+/u, '').trim();
+  return normalizeProvinceName(province.short_name)
+    || normalizeProvinceName(province.name);
 }
 
 const allRows = rows();
