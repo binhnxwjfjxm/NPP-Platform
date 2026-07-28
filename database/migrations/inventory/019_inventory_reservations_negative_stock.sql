@@ -18,12 +18,8 @@ SET module = EXCLUDED.module,
     description = EXCLUDED.description,
     is_system = EXCLUDED.is_system;
 
--- Negative stock is enforced transactionally by the balance projector and
--- reservation service. A row-level reserved <= on-hand CHECK is deliberately
--- not used: PostgreSQL validates the proposed EXCLUDED row before an UPSERT
--- conflict update, and a valid OUT delta is negative at that intermediate
--- point. The projection must also remain capable of rebuilding historical
--- ledger facts for reconciliation.
+-- Negative stock is enforced by locked service/projector writes and a deferred
+-- final-state invariant. A non-deferrable row CHECK is deliberately not used.
 ALTER TABLE inventory.inventory_balances
   DROP CONSTRAINT IF EXISTS inventory_balances_reserved_not_above_on_hand;
 
@@ -182,10 +178,38 @@ CREATE TRIGGER inventory_reservation_events_append_only
 BEFORE UPDATE OR DELETE ON inventory.inventory_reservation_events
 FOR EACH ROW EXECUTE FUNCTION inventory.prevent_inventory_reservation_event_mutation();
 
--- Replace the Phase 4.2 projector with a fail-closed variant. Any OUT delta must
--- fit inside current available stock. A reservation consume releases its own hold
--- before inserting the internal OUT movement, in the same transaction and while
--- holding the exact balance row lock.
+CREATE OR REPLACE FUNCTION inventory.enforce_inventory_available_nonnegative()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  final_available numeric(30,12);
+BEGIN
+  SELECT balance.available_quantity
+    INTO final_available
+    FROM inventory.inventory_balances balance
+   WHERE balance.installation_id = NEW.installation_id
+     AND balance.warehouse_id = NEW.warehouse_id
+     AND balance.location_id IS NOT DISTINCT FROM NEW.location_id
+     AND balance.base_variant_id = NEW.base_variant_id
+     AND balance.lot_id IS NOT DISTINCT FROM NEW.lot_id;
+
+  IF final_available IS NOT NULL AND final_available < 0 THEN
+    RAISE EXCEPTION 'inventory_negative_stock_denied';
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS inventory_balances_available_nonnegative_deferred
+  ON inventory.inventory_balances;
+CREATE CONSTRAINT TRIGGER inventory_balances_available_nonnegative_deferred
+AFTER INSERT OR UPDATE ON inventory.inventory_balances
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION inventory.enforce_inventory_available_nonnegative();
+
+-- Negative deltas update an existing locked row. This avoids a transient
+-- negative EXCLUDED row during UPSERT while keeping the final state fail-closed.
 CREATE OR REPLACE FUNCTION inventory.project_inventory_balance_from_line()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -193,6 +217,7 @@ AS $$
 DECLARE
   movement_posted_at timestamptz;
   current_available numeric(30,12);
+  affected_rows integer;
   previous_context text := current_setting('npp.inventory_balance_write_context', true);
 BEGIN
   SELECT movement.posted_at
@@ -204,6 +229,8 @@ BEGIN
   IF movement_posted_at IS NULL THEN
     RAISE EXCEPTION 'inventory_movement_missing_for_projection';
   END IF;
+
+  PERFORM set_config('npp.inventory_balance_write_context', 'projector', true);
 
   IF NEW.base_quantity_delta < 0 THEN
     SELECT balance.available_quantity
@@ -219,45 +246,61 @@ BEGIN
     IF current_available IS NULL OR current_available + NEW.base_quantity_delta < 0 THEN
       RAISE EXCEPTION 'inventory_negative_stock_denied';
     END IF;
+
+    UPDATE inventory.inventory_balances
+       SET on_hand_quantity = on_hand_quantity + NEW.base_quantity_delta,
+           projected_through = CASE
+             WHEN projected_through IS NULL THEN movement_posted_at
+             ELSE greatest(projected_through, movement_posted_at)
+           END,
+           updated_at = now()
+     WHERE installation_id = NEW.installation_id
+       AND warehouse_id = NEW.warehouse_id
+       AND location_id IS NOT DISTINCT FROM NEW.location_id
+       AND base_variant_id = NEW.base_variant_id
+       AND lot_id IS NULL;
+
+    GET DIAGNOSTICS affected_rows = ROW_COUNT;
+    IF affected_rows <> 1 THEN
+      RAISE EXCEPTION 'inventory_balance_missing_for_negative_projection';
+    END IF;
+  ELSE
+    INSERT INTO inventory.inventory_balances (
+      installation_id,
+      warehouse_id,
+      location_id,
+      base_variant_id,
+      lot_id,
+      on_hand_quantity,
+      reserved_quantity,
+      projected_through,
+      updated_at
+    ) VALUES (
+      NEW.installation_id,
+      NEW.warehouse_id,
+      NEW.location_id,
+      NEW.base_variant_id,
+      NULL,
+      NEW.base_quantity_delta,
+      0,
+      movement_posted_at,
+      now()
+    )
+    ON CONFLICT (
+      installation_id,
+      warehouse_id,
+      location_id,
+      base_variant_id,
+      lot_id
+    ) DO UPDATE
+    SET on_hand_quantity = inventory.inventory_balances.on_hand_quantity + EXCLUDED.on_hand_quantity,
+        projected_through = CASE
+          WHEN inventory.inventory_balances.projected_through IS NULL THEN EXCLUDED.projected_through
+          WHEN EXCLUDED.projected_through IS NULL THEN inventory.inventory_balances.projected_through
+          ELSE greatest(inventory.inventory_balances.projected_through, EXCLUDED.projected_through)
+        END,
+        updated_at = now();
   END IF;
-
-  PERFORM set_config('npp.inventory_balance_write_context', 'projector', true);
-
-  INSERT INTO inventory.inventory_balances (
-    installation_id,
-    warehouse_id,
-    location_id,
-    base_variant_id,
-    lot_id,
-    on_hand_quantity,
-    reserved_quantity,
-    projected_through,
-    updated_at
-  ) VALUES (
-    NEW.installation_id,
-    NEW.warehouse_id,
-    NEW.location_id,
-    NEW.base_variant_id,
-    NULL,
-    NEW.base_quantity_delta,
-    0,
-    movement_posted_at,
-    now()
-  )
-  ON CONFLICT (
-    installation_id,
-    warehouse_id,
-    location_id,
-    base_variant_id,
-    lot_id
-  ) DO UPDATE
-  SET on_hand_quantity = inventory.inventory_balances.on_hand_quantity + EXCLUDED.on_hand_quantity,
-      projected_through = CASE
-        WHEN inventory.inventory_balances.projected_through IS NULL THEN EXCLUDED.projected_through
-        WHEN EXCLUDED.projected_through IS NULL THEN inventory.inventory_balances.projected_through
-        ELSE greatest(inventory.inventory_balances.projected_through, EXCLUDED.projected_through)
-      END,
-      updated_at = now();
 
   PERFORM set_config('npp.inventory_balance_write_context', COALESCE(previous_context, ''), true);
   RETURN NEW;
