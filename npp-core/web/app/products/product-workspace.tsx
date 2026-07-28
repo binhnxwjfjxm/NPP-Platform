@@ -200,7 +200,7 @@ export default function ProductWorkspace({
     }
   }
 
-  async function loadVariants(product: Product) {
+  async function loadVariants(product: Product): Promise<boolean> {
     startWork();
     try {
       const next = await requestJson<ProductVariant[]>(`/api/products/${product.id}/variants`);
@@ -209,8 +209,14 @@ export default function ProductWorkspace({
       setEditingVariant(null);
       setVariantForm(EMPTY_VARIANT);
       setShowVariantForm(false);
+      return true;
     } catch (errorValue) {
+      setSelectedProduct(null);
+      setVariants([]);
+      setEditingVariant(null);
+      setVariantForm(EMPTY_VARIANT);
       fail(errorValue);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -219,6 +225,8 @@ export default function ProductWorkspace({
   function openProductCreate() {
     closeEditors();
     setEditingProduct(null);
+    setSelectedProduct(null);
+    setVariants([]);
     setProductForm(EMPTY_PRODUCT);
     setError(null);
     setNotice(null);
@@ -227,10 +235,10 @@ export default function ProductWorkspace({
 
   async function openProductEdit(product: Product) {
     closeEditors();
-    await loadVariants(product);
+    const loaded = await loadVariants(product);
+    if (!loaded) return;
     setEditingProduct(product);
     setProductForm(productToForm(product));
-    setError(null);
     setNotice(null);
     setShowProductForm(true);
   }
@@ -257,6 +265,7 @@ export default function ProductWorkspace({
       setEditingProduct(saved);
       setSelectedProduct(saved);
       setProductForm(productToForm(saved));
+      if (!editingProduct) setVariants([]);
       setShowProductForm(false);
       setNotice(editingProduct ? 'Đã cập nhật sản phẩm' : 'Đã tạo sản phẩm; hãy bổ sung SKU trước khi bật đặt hàng');
     } catch (errorValue) {
