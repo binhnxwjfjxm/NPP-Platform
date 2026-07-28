@@ -1,3 +1,4 @@
+import SupplierAddressIdempotencyBoundary from './supplier-address-idempotency-boundary';
 import SupplierWorkspace from './supplier-workspace';
 import type { Supplier } from '../../lib/supplier-types';
 import {
@@ -20,9 +21,11 @@ export default async function SuppliersPage() {
   }
 
   return (
-    <SupplierWorkspace
-      initialSuppliers={initialSuppliers}
-      initialError={initialError}
-    />
+    <SupplierAddressIdempotencyBoundary>
+      <SupplierWorkspace
+        initialSuppliers={initialSuppliers}
+        initialError={initialError}
+      />
+    </SupplierAddressIdempotencyBoundary>
   );
 }
