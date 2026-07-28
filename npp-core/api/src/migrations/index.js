@@ -1,24 +1,78 @@
 import { readFileSync } from 'node:fs';
 
 const IDENTIFIER_PATTERN = /^[a-z0-9][a-z0-9._-]{1,127}$/;
-const CORE_IDEMPOTENCY_SQL = readFileSync(new URL('../../../../database/migrations/shared/002_core_idempotency.sql', import.meta.url), 'utf8');
-const CORE_AUDIT_OUTBOX_SQL = readFileSync(new URL('../../../../database/migrations/shared/003_core_audit_outbox.sql', import.meta.url), 'utf8');
-const ORG_BRANCHES_SQL = readFileSync(new URL('../../../../database/migrations/shared/004_org_branches.sql', import.meta.url), 'utf8');
-const ORG_WAREHOUSES_SQL = readFileSync(new URL('../../../../database/migrations/shared/005_org_warehouses.sql', import.meta.url), 'utf8');
-const ORG_LOCATIONS_SQL = readFileSync(new URL('../../../../database/migrations/shared/006_org_locations.sql', import.meta.url), 'utf8');
-const HR_EMPLOYEES_SQL = readFileSync(new URL('../../../../database/migrations/shared/007_hr_employees.sql', import.meta.url), 'utf8');
-const ACCESS_ROLES_PERMISSIONS_SQL = readFileSync(new URL('../../../../database/migrations/shared/008_access_roles_permissions.sql', import.meta.url), 'utf8');
-const ACCESS_USERS_ROLE_ASSIGNMENTS_SQL = readFileSync(new URL('../../../../database/migrations/shared/009_access_users_role_assignments.sql', import.meta.url), 'utf8');
-const CUSTOMER_MASTER_DATA_SQL = readFileSync(new URL('../../../../database/migrations/shared/010_customer_master_data.sql', import.meta.url), 'utf8');
-const SUPPLIER_MASTER_DATA_SQL = readFileSync(new URL('../../../../database/migrations/shared/011_supplier_master_data.sql', import.meta.url), 'utf8');
-const PRODUCT_CATALOG_FOUNDATION_SQL = readFileSync(new URL('../../../../database/migrations/shared/012_product_catalog_foundation.sql', import.meta.url), 'utf8');
-const PRODUCT_UNITS_CONVERSIONS_BARCODES_SQL = readFileSync(new URL('../../../../database/migrations/shared/013_product_units_conversions_barcodes.sql', import.meta.url), 'utf8');
-const PRICE_LISTS_CHANNEL_RESOLUTION_SQL = readFileSync(new URL('../../../../database/migrations/shared/014_price_lists_channel_resolution.sql', import.meta.url), 'utf8');
-const DOCUMENT_NUMBERING_SQL = readFileSync(new URL('../../../../database/migrations/shared/015_document_numbering.sql', import.meta.url), 'utf8');
-const PERMISSION_CATALOG_ALIGNMENT_SQL = readFileSync(new URL('../../../../database/migrations/shared/016_permission_catalog_alignment.sql', import.meta.url), 'utf8');
-const INVENTORY_LEDGER_FOUNDATION_SQL = readFileSync(new URL('../../../../database/migrations/inventory/017_inventory_ledger_foundation.sql', import.meta.url), 'utf8');
-const INVENTORY_BALANCE_READ_MODEL_SQL = readFileSync(new URL('../../../../database/migrations/inventory/018_inventory_balance_read_model.sql', import.meta.url), 'utf8');
-const INVENTORY_RESERVATIONS_NEGATIVE_STOCK_SQL = readFileSync(new URL('../../../../database/migrations/inventory/019_inventory_reservations_negative_stock.sql', import.meta.url), 'utf8');
+const CORE_IDEMPOTENCY_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/002_core_idempotency.sql', import.meta.url),
+  'utf8',
+);
+const CORE_AUDIT_OUTBOX_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/003_core_audit_outbox.sql', import.meta.url),
+  'utf8',
+);
+const ORG_BRANCHES_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/004_org_branches.sql', import.meta.url),
+  'utf8',
+);
+const ORG_WAREHOUSES_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/005_org_warehouses.sql', import.meta.url),
+  'utf8',
+);
+const ORG_LOCATIONS_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/006_org_locations.sql', import.meta.url),
+  'utf8',
+);
+const HR_EMPLOYEES_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/007_hr_employees.sql', import.meta.url),
+  'utf8',
+);
+const ACCESS_ROLES_PERMISSIONS_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/008_access_roles_permissions.sql', import.meta.url),
+  'utf8',
+);
+const ACCESS_USERS_ROLE_ASSIGNMENTS_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/009_access_users_role_assignments.sql', import.meta.url),
+  'utf8',
+);
+const CUSTOMER_MASTER_DATA_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/010_customer_master_data.sql', import.meta.url),
+  'utf8',
+);
+const SUPPLIER_MASTER_DATA_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/011_supplier_master_data.sql', import.meta.url),
+  'utf8',
+);
+const PRODUCT_CATALOG_FOUNDATION_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/012_product_catalog_foundation.sql', import.meta.url),
+  'utf8',
+);
+const PRODUCT_UNITS_CONVERSIONS_BARCODES_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/013_product_units_conversions_barcodes.sql', import.meta.url),
+  'utf8',
+);
+const PRICE_LISTS_CHANNEL_RESOLUTION_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/014_price_lists_channel_resolution.sql', import.meta.url),
+  'utf8',
+);
+const DOCUMENT_NUMBERING_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/015_document_numbering.sql', import.meta.url),
+  'utf8',
+);
+const PERMISSION_CATALOG_ALIGNMENT_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/016_permission_catalog_alignment.sql', import.meta.url),
+  'utf8',
+);
+const INVENTORY_LEDGER_FOUNDATION_SQL = readFileSync(
+  new URL('../../../../database/migrations/inventory/017_inventory_ledger_foundation.sql', import.meta.url),
+  'utf8',
+);
+const INVENTORY_BALANCE_READ_MODEL_SQL = readFileSync(
+  new URL('../../../../database/migrations/inventory/018_inventory_balance_read_model.sql', import.meta.url),
+  'utf8',
+);
+const INVENTORY_RESERVATIONS_NEGATIVE_STOCK_SQL = readFileSync(
+  new URL('../../../../database/migrations/inventory/019_inventory_reservations_negative_stock.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '002_core_idempotency', sql: CORE_IDEMPOTENCY_SQL }),
