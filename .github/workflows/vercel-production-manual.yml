@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
       VERCEL_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
     steps:
       - name: Checkout exact main commit
