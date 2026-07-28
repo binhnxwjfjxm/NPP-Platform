@@ -11,7 +11,7 @@ INSERT INTO shared.permission_catalog (
   is_system,
   created_at
 ) VALUES
-  ('core.inventory.reserve', 'Kho', 'Cấp phát kho', 'Cho phép tạo và chuyển trạng thái cấp phát kho trong phạm vi kho được cấp.', true, now())
+  ('core.inventory.reserve', 'Kho', 'Cấp phát kho', 'Cho phép tạo, phát hành, tiêu thụ và hủy cấp phát kho theo đơn vị khối trong phạm vi kho được cấp.', true, now())
 ON CONFLICT (permission_key) DO UPDATE
 SET module = EXCLUDED.module,
     label = EXCLUDED.label,
