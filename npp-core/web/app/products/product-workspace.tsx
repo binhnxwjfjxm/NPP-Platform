@@ -223,6 +223,7 @@ export default function ProductWorkspace({
   }
 
   function openProductCreate() {
+    if (busy) return;
     closeEditors();
     setEditingProduct(null);
     setSelectedProduct(null);
@@ -234,6 +235,7 @@ export default function ProductWorkspace({
   }
 
   async function openProductEdit(product: Product) {
+    if (busy) return;
     closeEditors();
     const loaded = await loadVariants(product);
     if (!loaded) return;
@@ -292,6 +294,7 @@ export default function ProductWorkspace({
   }
 
   function openCategoryCreate() {
+    if (busy) return;
     closeEditors();
     setEditingCategory(null);
     setCategoryForm(EMPTY_CATEGORY);
@@ -301,6 +304,7 @@ export default function ProductWorkspace({
   }
 
   function openCategoryEdit(category: ProductCategory) {
+    if (busy) return;
     closeEditors();
     setEditingCategory(category);
     setCategoryForm(categoryToForm(category));
@@ -354,6 +358,7 @@ export default function ProductWorkspace({
   }
 
   function openBrandCreate() {
+    if (busy) return;
     closeEditors();
     setEditingBrand(null);
     setBrandForm(EMPTY_BRAND);
@@ -363,6 +368,7 @@ export default function ProductWorkspace({
   }
 
   function openBrandEdit(brand: ProductBrand) {
+    if (busy) return;
     closeEditors();
     setEditingBrand(brand);
     setBrandForm(brandToForm(brand));
@@ -411,6 +417,7 @@ export default function ProductWorkspace({
   }
 
   function openVariantCreate() {
+    if (busy) return;
     closeEditors();
     setEditingVariant(null);
     setVariantForm(EMPTY_VARIANT);
@@ -420,6 +427,7 @@ export default function ProductWorkspace({
   }
 
   function openVariantEdit(variant: ProductVariant) {
+    if (busy) return;
     closeEditors();
     setEditingVariant(variant);
     setVariantForm(variantToForm(variant));
