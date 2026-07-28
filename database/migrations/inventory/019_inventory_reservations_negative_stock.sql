@@ -261,7 +261,7 @@ AS $$
 DECLARE
   reservation_record inventory.inventory_reservations;
   previous_context text := current_setting('npp.inventory_balance_write_context', true);
-  delta numeric(30,12);
+  affected_rows integer;
 BEGIN
   SELECT * INTO reservation_record
     FROM inventory.inventory_reservations
@@ -272,69 +272,76 @@ BEGIN
     RAISE EXCEPTION 'inventory_reservation_missing_for_sync';
   END IF;
 
-  CASE NEW.transition
-    WHEN 'CREATE_ACTIVE' THEN
-      IF reservation_record.state <> 'ACTIVE' THEN
-        RAISE EXCEPTION 'inventory_reservation_event_state_mismatch';
-      END IF;
-      delta := reservation_record.quantity;
-    WHEN 'RELEASE_TO_RELEASED' THEN
-      IF reservation_record.state <> 'RELEASED' THEN
-        RAISE EXCEPTION 'inventory_reservation_event_state_mismatch';
-      END IF;
-      delta := -reservation_record.quantity;
-    WHEN 'CONSUME_TO_CONSUMED' THEN
-      IF reservation_record.state <> 'CONSUMED' THEN
-        RAISE EXCEPTION 'inventory_reservation_event_state_mismatch';
-      END IF;
-      delta := -reservation_record.quantity;
-    WHEN 'EXPIRE_TO_EXPIRED' THEN
-      IF reservation_record.state <> 'EXPIRED' THEN
-        RAISE EXCEPTION 'inventory_reservation_event_state_mismatch';
-      END IF;
-      delta := -reservation_record.quantity;
-    WHEN 'CANCEL_TO_CANCELLED' THEN
-      IF reservation_record.state <> 'CANCELLED' THEN
-        RAISE EXCEPTION 'inventory_reservation_event_state_mismatch';
-      END IF;
-      delta := -reservation_record.quantity;
-    ELSE
-      RAISE EXCEPTION 'inventory_reservation_transition_not_supported';
-  END CASE;
-
   PERFORM set_config('npp.inventory_balance_write_context', 'reservation', true);
 
-  INSERT INTO inventory.inventory_balances (
-    installation_id,
-    warehouse_id,
-    location_id,
-    base_variant_id,
-    lot_id,
-    on_hand_quantity,
-    reserved_quantity,
-    projected_through,
-    updated_at
-  ) VALUES (
-    NEW.installation_id,
-    reservation_record.warehouse_id,
-    reservation_record.location_id,
-    reservation_record.base_variant_id,
-    reservation_record.lot_id,
-    0,
-    delta,
-    now(),
-    now()
-  )
-  ON CONFLICT (
-    installation_id,
-    warehouse_id,
-    location_id,
-    base_variant_id,
-    lot_id
-  ) DO UPDATE
-  SET reserved_quantity = inventory.inventory_balances.reserved_quantity
-                          + EXCLUDED.reserved_quantity,
-      updated_at = now();
+  IF NEW.transition = 'CREATE_ACTIVE' THEN
+    IF reservation_record.state <> 'ACTIVE' THEN
+      RAISE EXCEPTION 'inventory_reservation_event_state_mismatch';
+    END IF;
+
+    INSERT INTO inventory.inventory_balances (
+      installation_id,
+      warehouse_id,
+      location_id,
+      base_variant_id,
+      lot_id,
+      on_hand_quantity,
+      reserved_quantity,
+      projected_through,
+      updated_at
+    ) VALUES (
+      NEW.installation_id,
+      reservation_record.warehouse_id,
+      reservation_record.location_id,
+      reservation_record.base_variant_id,
+      reservation_record.lot_id,
+      0,
+      reservation_record.quantity,
+      now(),
+      now()
+    )
+    ON CONFLICT (
+      installation_id,
+      warehouse_id,
+      location_id,
+      base_variant_id,
+      lot_id
+    ) DO UPDATE
+    SET reserved_quantity = inventory.inventory_balances.reserved_quantity
+                            + EXCLUDED.reserved_quantity,
+        updated_at = now();
+  ELSE
+    IF (NEW.transition = 'RELEASE_TO_RELEASED' AND reservation_record.state <> 'RELEASED')
+       OR (NEW.transition = 'CONSUME_TO_CONSUMED' AND reservation_record.state <> 'CONSUMED')
+       OR (NEW.transition = 'EXPIRE_TO_EXPIRED' AND reservation_record.state <> 'EXPIRED')
+       OR (NEW.transition = 'CANCEL_TO_CANCELLED' AND reservation_record.state <> 'CANCELLED') THEN
+      RAISE EXCEPTION 'inventory_reservation_event_state_mismatch';
+    END IF;
+
+    IF NEW.transition NOT IN (
+      'RELEASE_TO_RELEASED',
+      'CONSUME_TO_CONSUMED',
+      'EXPIRE_TO_EXPIRED',
+      'CANCEL_TO_CANCELLED'
+    ) THEN
+      RAISE EXCEPTION 'inventory_reservation_transition_not_supported';
+    END IF;
+
+    UPDATE inventory.inventory_balances
+       SET reserved_quantity = reserved_quantity - reservation_record.quantity,
+           updated_at = now()
+     WHERE installation_id = NEW.installation_id
+       AND warehouse_id = reservation_record.warehouse_id
+       AND location_id IS NOT DISTINCT FROM reservation_record.location_id
+       AND base_variant_id = reservation_record.base_variant_id
+       AND lot_id IS NOT DISTINCT FROM reservation_record.lot_id
+       AND reserved_quantity >= reservation_record.quantity;
+
+    GET DIAGNOSTICS affected_rows = ROW_COUNT;
+    IF affected_rows <> 1 THEN
+      RAISE EXCEPTION 'inventory_reservation_balance_mismatch';
+    END IF;
+  END IF;
 
   PERFORM set_config(
     'npp.inventory_balance_write_context',
