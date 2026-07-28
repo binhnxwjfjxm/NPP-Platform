@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../components/app-shell';
 import shellStyles from '../components/app-shell.module.css';
 import styles from '../organization/organization.module.css';
@@ -53,6 +53,43 @@ type AddressDraft = {
   countryCode: string;
   isDefault: boolean;
 };
+
+const VIETNAM_PROVINCES = [
+  'An Giang',
+  'Bắc Ninh',
+  'Cà Mau',
+  'Cao Bằng',
+  'Cần Thơ',
+  'Đà Nẵng',
+  'Đắk Lắk',
+  'Điện Biên',
+  'Đồng Nai',
+  'Đồng Tháp',
+  'Gia Lai',
+  'Hà Nội',
+  'Hà Tĩnh',
+  'Hải Phòng',
+  'Huế',
+  'Hưng Yên',
+  'Khánh Hòa',
+  'Lai Châu',
+  'Lâm Đồng',
+  'Lạng Sơn',
+  'Lào Cai',
+  'Nghệ An',
+  'Ninh Bình',
+  'Phú Thọ',
+  'Quảng Ngãi',
+  'Quảng Ninh',
+  'Quảng Trị',
+  'Sơn La',
+  'Tây Ninh',
+  'Thái Nguyên',
+  'Thanh Hóa',
+  'Thành phố Hồ Chí Minh',
+  'Tuyên Quang',
+  'Vĩnh Long',
+] as const;
 
 type Props = {
   initialCustomers: Customer[];
@@ -148,6 +185,10 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
   const [customerDraft, setCustomerDraft] = useState<CustomerDraft>(emptyCustomerDraft());
   const [groupDraft, setGroupDraft] = useState<GroupDraft>(emptyGroupDraft());
   const [addressDraft, setAddressDraft] = useState<AddressDraft>(emptyAddressDraft());
+  const [pendingCreatedCustomer, setPendingCreatedCustomer] = useState<Customer | null>(null);
+  const customerCreateKey = useRef('');
+  const customerAddressKey = useRef('');
+  const addressCreateKey = useRef('');
 
   const normalizedSearch = normalizeSearch(search);
   const visibleCustomers = useMemo(() => customers
@@ -225,10 +266,28 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
 
   function openCustomerCreate() {
     setCustomerDraft(emptyCustomerDraft());
+    setAddressDraft({
+      ...emptyAddressDraft(),
+      label: 'Địa chỉ giao dịch',
+      isDefault: true,
+    });
+    setPendingCreatedCustomer(null);
+    customerCreateKey.current = `web-customer-${crypto.randomUUID()}`;
+    customerAddressKey.current = `web-customer-address-${crypto.randomUUID()}`;
     setCustomerEditor({ mode: 'create', id: null });
   }
 
+  function closeCustomerEditor() {
+    const createdWithoutAddress = pendingCreatedCustomer;
+    setCustomerEditor(null);
+    setPendingCreatedCustomer(null);
+    if (createdWithoutAddress) {
+      void loadAll('Khách hàng đã được tạo; địa chỉ mặc định chưa được lưu.');
+    }
+  }
+
   function openCustomerEdit(customer: Customer) {
+    setPendingCreatedCustomer(null);
     setCustomerDraft({
       code: customer.code,
       name: customer.name,
@@ -247,30 +306,83 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
   async function submitCustomer(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const current = customerEditor?.mode === 'edit' ? customers.find((item) => item.id === customerEditor.id) : null;
+    let createdCustomer = pendingCreatedCustomer;
     setBusy('save-customer');
     setError(null);
+
     try {
-      await requestJson<Customer>(current ? `/api/customers/${current.id}` : '/api/customers', {
-        method: current ? 'PATCH' : 'POST',
-        headers: current ? undefined : { 'Idempotency-Key': `web-${crypto.randomUUID()}` },
+      if (current) {
+        await requestJson<Customer>(`/api/customers/${current.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            name: customerDraft.name.trim(),
+            groupId: customerDraft.groupId || null,
+            responsibleEmployeeId: customerDraft.responsibleEmployeeId || null,
+            phone: customerDraft.phone.trim() || null,
+            email: customerDraft.email.trim() || null,
+            taxCode: customerDraft.taxCode.trim() || null,
+            paymentTermsDays: Number(customerDraft.paymentTermsDays),
+            creditLimit: customerDraft.creditLimit.trim() || '0',
+            notes: customerDraft.notes.trim() || null,
+            expectedUpdatedAt: current.updated_at,
+          }),
+        });
+        setCustomerEditor(null);
+        await loadAll('Thông tin khách hàng đã được cập nhật.');
+        return;
+      }
+
+      if (!createdCustomer) {
+        if (!customerCreateKey.current) customerCreateKey.current = `web-customer-${crypto.randomUUID()}`;
+        createdCustomer = await requestJson<Customer>('/api/customers', {
+          method: 'POST',
+          headers: { 'Idempotency-Key': customerCreateKey.current },
+          body: JSON.stringify({
+            code: toUpperCode(customerDraft.code),
+            name: customerDraft.name.trim(),
+            groupId: customerDraft.groupId || null,
+            responsibleEmployeeId: customerDraft.responsibleEmployeeId || null,
+            phone: customerDraft.phone.trim() || null,
+            email: customerDraft.email.trim() || null,
+            taxCode: customerDraft.taxCode.trim() || null,
+            paymentTermsDays: Number(customerDraft.paymentTermsDays),
+            creditLimit: customerDraft.creditLimit.trim() || '0',
+            notes: customerDraft.notes.trim() || null,
+          }),
+        });
+        setPendingCreatedCustomer(createdCustomer);
+      }
+
+      if (!customerAddressKey.current) customerAddressKey.current = `web-customer-address-${crypto.randomUUID()}`;
+      await requestJson<CustomerAddress>(`/api/customers/${createdCustomer.id}/addresses`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': customerAddressKey.current },
         body: JSON.stringify({
-          ...(current ? {} : { code: toUpperCode(customerDraft.code) }),
-          name: customerDraft.name.trim(),
-          groupId: customerDraft.groupId || null,
-          responsibleEmployeeId: customerDraft.responsibleEmployeeId || null,
-          phone: customerDraft.phone.trim() || null,
-          email: customerDraft.email.trim() || null,
-          taxCode: customerDraft.taxCode.trim() || null,
-          paymentTermsDays: Number(customerDraft.paymentTermsDays),
-          creditLimit: customerDraft.creditLimit.trim() || '0',
-          notes: customerDraft.notes.trim() || null,
-          ...(current ? { expectedUpdatedAt: current.updated_at } : {}),
+          label: addressDraft.label.trim(),
+          recipientName: addressDraft.recipientName.trim() || customerDraft.name.trim(),
+          phone: addressDraft.phone.trim() || customerDraft.phone.trim() || null,
+          addressLine1: addressDraft.addressLine1.trim(),
+          addressLine2: addressDraft.addressLine2.trim() || null,
+          ward: addressDraft.ward.trim() || null,
+          district: addressDraft.district.trim() || null,
+          province: addressDraft.province || null,
+          postalCode: addressDraft.postalCode.trim() || null,
+          countryCode: 'VN',
+          isDefault: true,
         }),
       });
+
+      setPendingCreatedCustomer(null);
       setCustomerEditor(null);
-      await loadAll(current ? 'Thông tin khách hàng đã được cập nhật.' : 'Khách hàng đã được tạo.');
+      await loadAll('Khách hàng và địa chỉ mặc định đã được tạo.');
     } catch (failure) {
-      await handleFailure(failure, () => loadAll());
+      if (createdCustomer && !current) {
+        setPendingCreatedCustomer(createdCustomer);
+        const message = failure instanceof Error ? failure.message : 'Không lưu được địa chỉ mặc định';
+        setError(`Khách hàng ${createdCustomer.code} đã được tạo; địa chỉ chưa lưu. ${message}`);
+      } else {
+        await handleFailure(failure, () => loadAll());
+      }
       setBusy(null);
     }
   }
@@ -348,6 +460,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
 
   function openAddressCreate() {
     setAddressDraft(emptyAddressDraft());
+    addressCreateKey.current = `web-address-${crypto.randomUUID()}`;
     setAddressEditor({ mode: 'create', id: null });
   }
 
@@ -381,7 +494,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
           : `/api/customers/${addressCustomerId}/addresses`,
         {
           method: current ? 'PATCH' : 'POST',
-          headers: current ? undefined : { 'Idempotency-Key': `web-${crypto.randomUUID()}` },
+          headers: current ? undefined : { 'Idempotency-Key': addressCreateKey.current || `web-address-${crypto.randomUUID()}` },
           body: JSON.stringify({
             label: addressDraft.label.trim(),
             recipientName: addressDraft.recipientName.trim() || null,
@@ -545,21 +658,50 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
         {customerEditor ? (
           <div className={styles.modalBackdrop} role="presentation">
             <section className={joinClasses(styles.modal, customerStyles.modalWide)} role="dialog" aria-modal="true" aria-label="Biểu mẫu khách hàng">
-              <div className={styles.modalHeader}><h3>{customerEditor.mode === 'create' ? 'Thêm khách hàng' : 'Sửa khách hàng'}</h3><button type="button" className={styles.modalClose} onClick={() => setCustomerEditor(null)}>Đóng</button></div>
+              <div className={styles.modalHeader}>
+                <div>
+                  <h3>{customerEditor.mode === 'create' ? 'Thêm khách hàng và địa chỉ' : 'Sửa khách hàng'}</h3>
+                  {pendingCreatedCustomer ? <p className={customerStyles.muted}>Đã tạo {pendingCreatedCustomer.code}. Hãy lưu lại địa chỉ mặc định.</p> : null}
+                </div>
+                <button type="button" className={styles.modalClose} onClick={closeCustomerEditor} disabled={busy !== null}>Đóng</button>
+              </div>
               <form className={styles.form} onSubmit={submitCustomer}>
                 <div className={customerStyles.formGrid}>
-                  <label>Mã khách hàng<input data-testid="customer-code-input" value={customerDraft.code} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, code: next })); }} disabled={customerEditor.mode === 'edit'} required /></label>
-                  <label>Tên khách hàng<input data-testid="customer-name-input" value={customerDraft.name} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, name: next })); }} required /></label>
-                  <label>Nhóm khách hàng<select value={customerDraft.groupId} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, groupId: next })); }}><option value="">Không phân nhóm</option>{groups.filter((group) => group.is_active || group.id === customerDraft.groupId).map((group) => <option key={group.id} value={group.id}>{group.code} · {group.name}</option>)}</select></label>
-                  <label>Nhân sự phụ trách<select value={customerDraft.responsibleEmployeeId} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, responsibleEmployeeId: next })); }}><option value="">Chưa giao phụ trách</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.code} · {employee.full_name}</option>)}</select></label>
-                  <label>Điện thoại<input data-testid="customer-phone-input" value={customerDraft.phone} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, phone: next })); }} /></label>
-                  <label>Email<input data-testid="customer-email-input" type="email" value={customerDraft.email} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, email: next })); }} /></label>
-                  <label>Mã số thuế<input value={customerDraft.taxCode} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, taxCode: next })); }} /></label>
-                  <label>Thời hạn thanh toán (ngày)<input type="number" min="0" max="3650" value={customerDraft.paymentTermsDays} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, paymentTermsDays: next })); }} /></label>
-                  <label>Hạn mức tín dụng<input type="number" min="0" step="0.01" value={customerDraft.creditLimit} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, creditLimit: next })); }} /></label>
-                  <label className={customerStyles.fullWidth}>Ghi chú<textarea value={customerDraft.notes} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, notes: next })); }} /></label>
+                  <label>Mã khách hàng<input data-testid="customer-code-input" value={customerDraft.code} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, code: next })); }} disabled={customerEditor.mode === 'edit' || Boolean(pendingCreatedCustomer)} required /></label>
+                  <label>Tên khách hàng<input data-testid="customer-name-input" value={customerDraft.name} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, name: next })); }} disabled={Boolean(pendingCreatedCustomer)} required /></label>
+                  <label>Nhóm khách hàng<select value={customerDraft.groupId} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, groupId: next })); }} disabled={Boolean(pendingCreatedCustomer)}><option value="">Không phân nhóm</option>{groups.filter((group) => group.is_active || group.id === customerDraft.groupId).map((group) => <option key={group.id} value={group.id}>{group.code} · {group.name}</option>)}</select></label>
+                  <label>Nhân sự phụ trách<select value={customerDraft.responsibleEmployeeId} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, responsibleEmployeeId: next })); }} disabled={Boolean(pendingCreatedCustomer)}><option value="">Chưa giao phụ trách</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.code} · {employee.full_name}</option>)}</select></label>
+                  <label>Điện thoại<input data-testid="customer-phone-input" value={customerDraft.phone} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, phone: next })); }} disabled={Boolean(pendingCreatedCustomer)} /></label>
+                  <label>Email<input data-testid="customer-email-input" type="email" value={customerDraft.email} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, email: next })); }} disabled={Boolean(pendingCreatedCustomer)} /></label>
+                  <label>Mã số thuế<input value={customerDraft.taxCode} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, taxCode: next })); }} disabled={Boolean(pendingCreatedCustomer)} /></label>
+                  <label>Thời hạn thanh toán (ngày)<input type="number" min="0" max="3650" value={customerDraft.paymentTermsDays} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, paymentTermsDays: next })); }} disabled={Boolean(pendingCreatedCustomer)} /></label>
+                  <label>Hạn mức tín dụng<input type="number" min="0" step="0.01" value={customerDraft.creditLimit} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, creditLimit: next })); }} disabled={Boolean(pendingCreatedCustomer)} /></label>
+                  <label className={customerStyles.fullWidth}>Ghi chú<textarea value={customerDraft.notes} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, notes: next })); }} disabled={Boolean(pendingCreatedCustomer)} /></label>
+
+                  {customerEditor.mode === 'create' ? (
+                    <>
+                      <div className={joinClasses(customerStyles.fullWidth, customerStyles.formSection)}>
+                        <strong>Địa chỉ mặc định</strong>
+                        <span>Địa chỉ được lưu ngay sau khi tạo khách hàng.</span>
+                      </div>
+                      <label>Nhãn địa chỉ<input data-testid="customer-create-address-label-input" value={addressDraft.label} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, label: next })); }} required /></label>
+                      <label>Người nhận<input value={addressDraft.recipientName} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, recipientName: next })); }} /></label>
+                      <label>Điện thoại nhận hàng<input value={addressDraft.phone} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, phone: next })); }} /></label>
+                      <label>Tỉnh/thành phố<select data-testid="customer-province-select" value={addressDraft.province} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, province: next })); }} required><option value="">Chọn tỉnh/thành phố</option>{VIETNAM_PROVINCES.map((province) => <option key={province} value={province}>{province}</option>)}</select></label>
+                      <label>Quận/huyện<input value={addressDraft.district} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, district: next })); }} /></label>
+                      <label>Phường/xã<input value={addressDraft.ward} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, ward: next })); }} /></label>
+                      <label className={customerStyles.fullWidth}>Địa chỉ dòng 1<input data-testid="customer-create-address-line1-input" value={addressDraft.addressLine1} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine1: next })); }} required /></label>
+                      <label className={customerStyles.fullWidth}>Địa chỉ dòng 2<input value={addressDraft.addressLine2} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine2: next })); }} /></label>
+                      <label>Mã bưu chính<input value={addressDraft.postalCode} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, postalCode: next })); }} /></label>
+                    </>
+                  ) : null}
                 </div>
-                <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => setCustomerEditor(null)}>Hủy</button><button type="submit" className={joinClasses(styles.primaryButton, customerStyles.disabled, busy === 'save-customer' && customerStyles.loading)} disabled={busy !== null}>{busy === 'save-customer' ? 'Đang lưu…' : 'Lưu khách hàng'}</button></div>
+                <div className={styles.formActions}>
+                  <button type="button" className={styles.secondaryButton} onClick={closeCustomerEditor} disabled={busy !== null}>Hủy</button>
+                  <button type="submit" className={joinClasses(styles.primaryButton, customerStyles.disabled, busy === 'save-customer' && customerStyles.loading)} disabled={busy !== null} data-testid="save-customer-button">
+                    {busy === 'save-customer' ? 'Đang lưu…' : pendingCreatedCustomer ? 'Lưu lại địa chỉ' : customerEditor.mode === 'create' ? 'Lưu khách hàng và địa chỉ' : 'Lưu khách hàng'}
+                  </button>
+                </div>
               </form>
             </section>
           </div>
@@ -611,7 +753,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                         <label className={customerStyles.fullWidth}>Địa chỉ dòng 2<input value={addressDraft.addressLine2} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine2: next })); }} /></label>
                         <label>Phường/xã<input value={addressDraft.ward} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, ward: next })); }} /></label>
                         <label>Quận/huyện<input value={addressDraft.district} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, district: next })); }} /></label>
-                        <label>Tỉnh/thành<input value={addressDraft.province} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, province: next })); }} /></label>
+                        <label>Tỉnh/thành phố<select data-testid="customer-address-province-select" value={addressDraft.province} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, province: next })); }}><option value="">Chọn tỉnh/thành phố</option>{VIETNAM_PROVINCES.map((province) => <option key={province} value={province}>{province}</option>)}</select></label>
                         <label>Mã bưu chính<input value={addressDraft.postalCode} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, postalCode: next })); }} /></label>
                         <label className={joinClasses(customerStyles.inlineCheck, customerStyles.fullWidth)}><input type="checkbox" checked={addressDraft.isDefault} onChange={(event) => { const next = event.currentTarget.checked; setAddressDraft((value) => ({ ...value, isDefault: next })); }} />Đặt làm địa chỉ mặc định</label>
                       </div>
