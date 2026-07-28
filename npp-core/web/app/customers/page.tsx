@@ -1,5 +1,6 @@
 import CustomerWorkspace from './customer-workspace';
 import type { Customer, CustomerGroup } from '../../lib/customer-types';
+import { listVietnamProvinces } from '../../lib/vietnam-administrative-data';
 import {
   listAllCustomers,
   listCustomerGroups,
@@ -13,6 +14,7 @@ export default async function CustomersPage() {
   const requestId = resolveCustomerRequestId(null);
   let initialCustomers: Customer[] = [];
   let initialGroups: CustomerGroup[] = [];
+  let initialProvinces = listVietnamProvinces();
   let initialError: string | null = null;
 
   try {
@@ -28,6 +30,7 @@ export default async function CustomersPage() {
     <CustomerWorkspace
       initialCustomers={initialCustomers}
       initialGroups={initialGroups}
+      initialProvinces={initialProvinces}
       initialError={initialError}
     />
   );

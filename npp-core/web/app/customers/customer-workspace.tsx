@@ -16,6 +16,13 @@ type EmployeeOption = {
   is_active: boolean;
 };
 
+type ProvinceOption = {
+  code: string;
+  name: string;
+  shortName: string;
+  placeType: string;
+};
+
 type ApiEnvelope<T> = {
   data?: T;
   error?: { code?: string; message?: string; retryable?: boolean };
@@ -59,6 +66,7 @@ type AddressDraft = {
 type Props = {
   initialCustomers: Customer[];
   initialGroups: CustomerGroup[];
+  initialProvinces: ProvinceOption[];
   initialError?: string | null;
 };
 
@@ -131,7 +139,7 @@ function money(value: string) {
     : value;
 }
 
-export default function CustomerWorkspace({ initialCustomers, initialGroups, initialError = null }: Props) {
+export default function CustomerWorkspace({ initialCustomers, initialGroups, initialProvinces, initialError = null }: Props) {
   const [customers, setCustomers] = useState(initialCustomers);
   const [groups, setGroups] = useState(initialGroups);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
@@ -678,6 +686,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                       <label>Người nhận<input value={addressDraft.recipientName} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, recipientName: next })); }} /></label>
                       <label>Điện thoại nhận hàng<input value={addressDraft.phone} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, phone: next })); }} /></label>
                       <VietnamAdministrativeFields
+                        initialProvinces={initialProvinces}
                         province={addressDraft.province}
                         ward={addressDraft.ward}
                         district={addressDraft.district}
@@ -747,6 +756,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                         <label className={customerStyles.fullWidth}>Địa chỉ dòng 1<input data-testid="customer-address-line1-input" value={addressDraft.addressLine1} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine1: next })); }} required /></label>
                         <label className={customerStyles.fullWidth}>Địa chỉ dòng 2<input value={addressDraft.addressLine2} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine2: next })); }} /></label>
                         <VietnamAdministrativeFields
+                          initialProvinces={initialProvinces}
                           province={addressDraft.province}
                           ward={addressDraft.ward}
                           district={addressDraft.district}
