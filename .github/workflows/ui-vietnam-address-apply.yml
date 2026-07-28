@@ -42,7 +42,24 @@ jobs:
         run: python .github/ui-vietnam-address/apply.py
 
       - name: Verify Core web
-        run: npm --workspace npp-core-web run verify
+        id: verify
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm --workspace npp-core-web run verify 2>&1 | tee /tmp/ui-vietnam-address-verify.log
+
+      - name: Upload verification output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-vietnam-address-verify
+          path: /tmp/ui-vietnam-address-verify.log
+          retention-days: 1
+
+      - name: Stop on verification failure
+        if: steps.verify.outcome != 'success'
+        run: exit 1
 
       - name: Commit verified integration
         shell: bash
