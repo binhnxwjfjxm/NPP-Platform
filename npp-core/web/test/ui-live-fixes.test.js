@@ -4,11 +4,41 @@ import { test } from 'node:test';
 
 const readSource = (relativePath) => readFile(new URL(relativePath, import.meta.url), 'utf8');
 
-test('sidebar submenu expands by content instead of a fixed height cap', async () => {
-  const shell = await readSource('../app/components/app-shell.module.css');
-  assert.match(shell, /\.subnav\s*\{[\s\S]*display: none/);
-  assert.match(shell, /\.subnavOpen\s*\{[\s\S]*display: grid/);
-  assert.doesNotMatch(shell, /max-height:\s*260px/);
+test('sidebar submenu expands by content and exposes every P0-P4 destination', async () => {
+  const [styles, shell] = await Promise.all([
+    readSource('../app/components/app-shell.module.css'),
+    readSource('../app/components/app-shell.tsx'),
+  ]);
+
+  assert.match(styles, /\.subnav\s*\{[\s\S]*display: none/);
+  assert.match(styles, /\.subnavOpen\s*\{[\s\S]*display: grid/);
+  assert.doesNotMatch(styles, /max-height:\s*260px/);
+
+  const requiredNavigationIds = [
+    'nav-dashboard',
+    'nav-organization-overview',
+    'nav-branches',
+    'nav-warehouses',
+    'nav-locations',
+    'nav-customers',
+    'nav-suppliers',
+    'nav-products',
+    'nav-pricing',
+    'nav-document-numbering',
+    'nav-roles',
+    'nav-employees',
+    'nav-users',
+    'nav-inventory-balances',
+    'nav-inventory-policies',
+    'nav-inventory-lots',
+    'nav-inventory-opening',
+  ];
+  for (const testId of requiredNavigationIds) {
+    assert.match(shell, new RegExp(testId));
+  }
+  assert.match(shell, /organizationOpen && !collapsed/);
+  assert.match(shell, /accessOpen && !collapsed/);
+  assert.match(shell, /inventoryOpen && !collapsed/);
 });
 
 test('product catalog editors are real accessible modals', async () => {
@@ -25,20 +55,36 @@ test('product catalog editors are real accessible modals', async () => {
   assert.match(workspace, /testId="brand-form"/);
   assert.match(workspace, /testId="variant-form"/);
   assert.match(workspace, /Quản lý SKU, đơn vị, quy đổi và barcode của sản phẩm\./);
+  assert.doesNotMatch(workspace, /Phase 3\.3D/);
   assert.match(styles, /\.modalBackdrop/);
   assert.match(styles, /\.formActions/);
 });
 
-test('employee initial load preserves partial results and retries once', async () => {
-  const [page, retry] = await Promise.all([
+test('initial loads preserve partial data and retry only once', async () => {
+  const [employeePage, employeeRetry, rolePage, snapshot, retry, organizationPage] = await Promise.all([
     readSource('../app/access/employees/page.tsx'),
     readSource('../app/access/employees/employee-initial-retry.tsx'),
+    readSource('../app/access/roles/page.tsx'),
+    readSource('../lib/organization-snapshot.ts'),
+    readSource('../app/components/initial-load-retry.tsx'),
+    readSource('../app/organization/page.tsx'),
   ]);
 
-  assert.match(page, /Promise\.allSettled/);
-  assert.match(page, /EmployeeInitialRetry enabled=\{Boolean\(initialError\)\}/);
-  assert.match(retry, /sessionStorage\.getItem\(RETRY_KEY\)/);
-  assert.match(retry, /router\.refresh\(\)/);
+  assert.match(employeePage, /Promise\.allSettled/);
+  assert.match(employeePage, /EmployeeInitialRetry enabled=\{Boolean\(initialError\)\}/);
+  assert.match(employeeRetry, /sessionStorage\.getItem\(RETRY_KEY\)/);
+  assert.match(employeeRetry, /router\.refresh\(\)/);
+  assert.doesNotMatch(employeeRetry, /setInterval/);
+
+  assert.match(rolePage, /Promise\.allSettled/);
+  assert.match(rolePage, /InitialLoadRetry enabled=\{Boolean\(initialError\)\}/);
+  assert.match(snapshot, /Promise\.allSettled/);
+  assert.match(snapshot, /branchResult\.status === 'fulfilled'/);
+  assert.match(snapshot, /warehouseResult\.status === 'fulfilled'/);
+  assert.match(snapshot, /locationResult\.status === 'fulfilled'/);
+  assert.match(organizationPage, /retryKey="organization-overview"/);
+  assert.match(retry, /sessionStorage\.getItem\(storageKey\)/);
+  assert.match(retry, /window\.setTimeout/);
   assert.doesNotMatch(retry, /setInterval/);
 });
 
@@ -69,8 +115,8 @@ test('customer creation saves a default address without duplicating the customer
   assert.match(workspace, /`\/api\/customers\/\$\{createdCustomer\.id\}\/addresses`/);
   assert.match(workspace, /testIdPrefix="customer"/);
   assert.match(workspace, /testIdPrefix="customer-address"/);
-  assert.match(addressFields, /`\$\{testIdPrefix}-province-select`/);
-  assert.match(addressFields, /`\$\{testIdPrefix}-ward-select`/);
+  assert.match(addressFields, /`\$\{testIdPrefix\}-province-select`/);
+  assert.match(addressFields, /`\$\{testIdPrefix\}-ward-select`/);
   assert.match(customerE2e, /customer-ward-select/);
   assert.match(customerE2e, /customer-address-ward-select/);
   assert.match(workspace, /event\.key !== 'Escape'/);
@@ -80,4 +126,10 @@ test('customer creation saves a default address without duplicating the customer
   assert.match(page, /import CustomerWorkspace from '\.\/customer-workspace';/);
   assert.doesNotMatch(page, /CustomerWorkspaceEnhanced/);
   assert.doesNotMatch(layout, /ui-live-fixes\.css/);
+});
+
+test('users remain internal identities instead of partial password accounts', async () => {
+  const workspace = await readSource('../app/access/users/user-workspace.tsx');
+  assert.match(workspace, /Tài khoản chưa phải thông tin đăng nhập thật/);
+  assert.doesNotMatch(workspace, /type="password"/);
 });
