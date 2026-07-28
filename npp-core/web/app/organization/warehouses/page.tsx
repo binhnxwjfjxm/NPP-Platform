@@ -1,3 +1,4 @@
+import InitialLoadRetry from '../../components/initial-load-retry';
 import OrganizationWorkspace from '../organization-workspace';
 import { loadOrganizationSnapshot } from '../../../lib/organization-snapshot';
 import { createEmptyOrganizationSnapshot } from '../../../lib/organization-types';
@@ -15,12 +16,15 @@ export default async function WarehousesPage() {
   }
 
   return (
-    <OrganizationWorkspace
-      scope="warehouses"
-      title="Kho hàng"
-      subtitle="Quản lý danh mục kho theo chi nhánh, loại hình vận hành và trạng thái sử dụng."
-      initialData={initialData}
-      initialError={initialError}
-    />
+    <>
+      <InitialLoadRetry enabled={Boolean(initialError)} retryKey="organization-warehouses" />
+      <OrganizationWorkspace
+        scope="warehouses"
+        title="Kho hàng"
+        subtitle="Quản lý danh mục kho theo chi nhánh, loại hình vận hành và trạng thái sử dụng."
+        initialData={initialData}
+        initialError={initialError}
+      />
+    </>
   );
 }

@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { randomUUID } from 'node:crypto';
+import { logGatewayFailure } from './gateway-diagnostics';
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -161,8 +162,18 @@ async function requestCore<T>({
 
     return payload.data as T;
   } catch (error) {
-    if (error instanceof CustomerGatewayError) throw error;
-    throw new CustomerGatewayError('CUSTOMER_GATEWAY_UNAVAILABLE', 'Cổng khách hàng tạm thời không khả dụng', 503, true);
+    const normalized = error instanceof CustomerGatewayError
+      ? error
+      : new CustomerGatewayError('CUSTOMER_GATEWAY_UNAVAILABLE', 'Cổng khách hàng tạm thời không khả dụng', 503, true);
+    logGatewayFailure({
+      gateway: 'customer',
+      method,
+      upstreamPath: path,
+      status: normalized.statusCode,
+      requestId,
+      code: normalized.code,
+    });
+    throw normalized;
   } finally {
     clearTimeout(timeout);
   }

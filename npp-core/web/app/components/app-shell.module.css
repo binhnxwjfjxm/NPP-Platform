@@ -250,18 +250,13 @@
 
 .subnav {
   position: relative;
-  display: grid;
-  max-height: 0;
+  display: none;
   gap: 2px;
-  overflow: hidden;
-  opacity: 0;
-  transition: max-height 180ms ease, opacity 140ms ease, margin 180ms ease;
 }
 
 .subnavOpen {
-  max-height: 260px;
+  display: grid;
   margin: 4px 0 8px 17px;
-  opacity: 1;
 }
 
 .subnavItem {
