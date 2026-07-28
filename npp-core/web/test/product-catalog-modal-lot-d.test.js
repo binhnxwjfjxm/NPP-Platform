@@ -24,6 +24,14 @@ test('catalog modal dismissal clears form-scoped errors and respects busy saves'
   assert.match(workspace, /disabled=\{busy \|\| !variantForm\.sku\.trim\(\) \|\| !variantForm\.name\.trim\(\)\}/);
 });
 
+test('product editing fails closed when the SKU list cannot be loaded', async () => {
+  const workspace = await source('../app/products/product-workspace.tsx');
+  assert.match(workspace, /async function loadVariants\(product: Product\): Promise<boolean>/);
+  assert.match(workspace, /setSelectedProduct\(null\);[\s\S]*setVariants\(\[\]\);[\s\S]*return false;/);
+  assert.match(workspace, /const loaded = await loadVariants\(product\);[\s\S]*if \(!loaded\) return;/);
+  assert.doesNotMatch(workspace, /await loadVariants\(product\);[\s\S]*setError\(null\);[\s\S]*setShowProductForm\(true\)/);
+});
+
 test('shared modal keeps focus behavior stable while parent callbacks change', async () => {
   const modal = await source('../app/components/modal.tsx');
   assert.match(modal, /const onCloseRef = useRef\(onClose\)/);
