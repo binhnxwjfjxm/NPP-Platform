@@ -43,7 +43,11 @@ test('employee initial load preserves partial results and retries once', async (
 });
 
 test('customer creation saves a default address without duplicating the customer on retry', async () => {
-  const workspace = await readSource('../app/customers/customer-workspace.tsx');
+  const [workspace, page, layout] = await Promise.all([
+    readSource('../app/customers/customer-workspace.tsx'),
+    readSource('../app/customers/page.tsx'),
+    readSource('../app/layout.tsx'),
+  ]);
 
   assert.match(workspace, /const VIETNAM_PROVINCES = \[/);
   assert.match(workspace, /customerCreateKey = useRef/);
@@ -54,4 +58,7 @@ test('customer creation saves a default address without duplicating the customer
   assert.match(workspace, /data-testid="customer-address-province-select"/);
   assert.match(workspace, /Lưu khách hàng và địa chỉ/);
   assert.match(workspace, /isDefault: true/);
+  assert.match(page, /import CustomerWorkspace from '\.\/customer-workspace';/);
+  assert.doesNotMatch(page, /CustomerWorkspaceEnhanced/);
+  assert.doesNotMatch(layout, /ui-live-fixes\.css/);
 });
