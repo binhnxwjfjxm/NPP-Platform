@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          python .github/p43-comprehensive-repair.py > .github/p43-repair-output.txt 2>&1
+          python .github/p43-repair-runner.py > .github/p43-repair-output.txt 2>&1
           status=$?
           cat .github/p43-repair-output.txt
           echo "status=$status" >> "$GITHUB_OUTPUT"
@@ -47,7 +47,6 @@ jobs:
         if: steps.repair.outputs.status == '0'
         shell: bash
         run: |
-          rm -f .github/p43-repair-output.txt
           git diff --check
           changed="$(git diff --name-only)"
           printf '%s\n' "$changed"
@@ -60,7 +59,11 @@ jobs:
         if: steps.repair.outputs.status == '0'
         shell: bash
         run: |
-          git rm .github/p43-comprehensive-repair.py .github/workflows/p43-comprehensive-repair.yml
+          git rm -f \
+            .github/p43-comprehensive-repair.py \
+            .github/p43-repair-runner.py \
+            .github/p43-repair-output.txt \
+            .github/workflows/p43-comprehensive-repair.yml
           git add \
             .github/workflows/phase-4-inventory-reservations.yml \
             database/migrations/inventory/019_inventory_reservations_negative_stock.sql \
