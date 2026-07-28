@@ -71,7 +71,7 @@ jobs:
           retention-days: 1
 
       - name: Stop on UI verification failure
-        if: steps.verify-ui.outcome != 'success'
+        if: steps['verify-ui'].outcome != 'success'
         run: exit 1
 
       - name: Commit verified UI and restore workflow
