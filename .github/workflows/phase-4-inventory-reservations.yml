@@ -83,7 +83,7 @@ jobs:
           name: p43-focused-tests-${{ github.run_id }}
           path: p43-focused-tests.log
           if-no-files-found: error
-          retention-days: 10
+          retention-days: 14
 
       - name: Run full inventory regression tests
         run: node --test npp-core/api/test/inventory-ledger.test.js npp-core/api/test/inventory-balance.test.js npp-core/api/test/inventory-reservations.test.js
