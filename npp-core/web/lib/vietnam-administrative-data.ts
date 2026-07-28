@@ -3,7 +3,9 @@ import addressData, { type Province, type Ward } from 'vietnam-address-database'
 type AdministrativeRow = Province | Ward;
 
 function rows(): AdministrativeRow[] {
-  return addressData.flatMap((item) => (Array.isArray(item.data) ? item.data : [])) as AdministrativeRow[];
+  return addressData.flatMap<AdministrativeRow>((item) => (
+    Array.isArray(item.data) ? item.data as AdministrativeRow[] : []
+  ));
 }
 
 function isProvince(row: AdministrativeRow): row is Province {
