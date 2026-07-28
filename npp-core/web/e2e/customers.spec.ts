@@ -28,7 +28,10 @@ test.describe('Danh mục khách hàng', () => {
     await customerDialog.getByLabel('Nhóm khách hàng').selectOption({ label: `${groupCode} · Nhóm ${suffix}` });
     await page.getByTestId('customer-phone-input').fill('0901234567');
     await page.getByTestId('customer-email-input').fill(`customer-${suffix.toLowerCase()}@example.com`);
-    await customerDialog.getByRole('button', { name: 'Lưu khách hàng' }).click();
+    await page.getByTestId('customer-create-address-label-input').fill('Trụ sở chính');
+    await page.getByTestId('customer-province-select').selectOption({ label: 'Hà Nội' });
+    await page.getByTestId('customer-create-address-line1-input').fill(`1 Đường ${suffix}`);
+    await customerDialog.getByRole('button', { name: 'Lưu khách hàng và địa chỉ' }).click();
 
     const customerRow = page.getByTestId(`customer-row-${customerCode}`);
     await expect(customerRow).toBeVisible();
@@ -48,12 +51,13 @@ test.describe('Danh mục khách hàng', () => {
 
     await page.getByTestId(`addresses-customer-${customerCode}`).click();
     const addressDialog = page.getByRole('dialog', { name: 'Quản lý địa chỉ khách hàng' });
+    await expect(addressDialog.getByText('Trụ sở chính · Mặc định')).toBeVisible();
     await addressDialog.getByRole('button', { name: 'Thêm địa chỉ' }).click();
     await page.getByTestId('customer-address-label-input').fill('Kho chính');
-    await page.getByTestId('customer-address-line1-input').fill(`1 Đường ${suffix}`);
-    await addressDialog.getByLabel('Đặt làm địa chỉ mặc định').check();
+    await page.getByTestId('customer-address-line1-input').fill(`2 Đường ${suffix}`);
+    await page.getByTestId('customer-address-province-select').selectOption({ label: 'Hà Nội' });
     await addressDialog.getByRole('button', { name: 'Lưu địa chỉ' }).click();
-    await expect(addressDialog.getByText('Kho chính · Mặc định')).toBeVisible();
+    await expect(addressDialog.getByText('Kho chính')).toBeVisible();
     await addressDialog.getByRole('button', { name: 'Đóng' }).click();
 
     await customerRow.getByRole('button', { name: 'Ngừng' }).click();
