@@ -16,12 +16,18 @@ function isWard(row: AdministrativeRow): row is Ward {
   return 'ward_code' in row && 'province_code' in row && !('short_name' in row);
 }
 
+function provinceDisplayName(province: Province): string {
+  const shortName = province.short_name?.trim();
+  if (shortName) return shortName;
+  return province.name.replace(/^(Tỉnh|Thành phố)\s+/u, '').trim();
+}
+
 const allRows = rows();
 const provinces = allRows
   .filter(isProvince)
   .map((province) => ({
     code: province.province_code,
-    name: province.name,
+    name: provinceDisplayName(province),
     shortName: province.short_name,
     placeType: province.place_type,
   }))
