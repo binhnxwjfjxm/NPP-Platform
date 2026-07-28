@@ -20,6 +20,13 @@ test.describe('Danh mục nhà cung cấp', () => {
     await page.getByTestId('supplier-bank-account-input').fill(bankAccount);
     await page.getByTestId('supplier-bank-name-input').fill(`Ngân hàng ${suffix}`);
     await page.getByTestId('supplier-avg-delivery-days-input').fill('7');
+    await page.getByTestId('supplier-street-input').fill(`Địa chỉ ${suffix}`);
+    const provinceSelect = page.getByTestId('supplier-province-select');
+    await expect(provinceSelect).toBeEnabled();
+    await provinceSelect.selectOption({ index: 1 });
+    const wardSelect = page.getByTestId('supplier-ward-select');
+    await expect(wardSelect).toBeEnabled();
+    await wardSelect.selectOption({ index: 1 });
     await workspace.getByRole('button', { name: 'Lưu', exact: true }).click();
 
     const supplierRow = page.getByTestId(`supplier-row-${supplierCode}`);

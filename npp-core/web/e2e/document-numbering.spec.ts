@@ -25,7 +25,7 @@ test('document numbering admin creates, allocates, replays and locks a series', 
 
   const row = page.getByTestId(`number-series-row-${code}`);
   await expect(row).toBeVisible();
-  await expect(page.getByTestId('numbering-notice')).toContainText('Đã tạo series');
+  await expect(page.getByTestId('numbering-notice')).toContainText('Đã tạo quy tắc đánh số chứng từ');
 
   await row.getByTestId(`select-number-series-${code}`).click();
   await expect(page.getByTestId('number-series-detail')).toBeVisible();
@@ -44,5 +44,5 @@ test('document numbering admin creates, allocates, replays and locks a series', 
   await row.getByRole('button', { name: 'Sửa' }).click();
   await expect(page.getByTestId('number-prefix-input')).toBeDisabled();
   await expect(page.getByTestId('number-template-input')).toBeDisabled();
-  await expect(page.getByText('Định dạng đã khóa vì series có lịch sử cấp số.')).toBeVisible();
+  await expect(page.getByText('Định dạng đã khóa vì quy tắc này đã phát sinh số chứng từ.')).toBeVisible();
 });

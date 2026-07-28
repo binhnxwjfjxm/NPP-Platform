@@ -1,0 +1,70 @@
+[data-testid="organization-overview-page"] .quickLinks {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+[data-testid="organization-overview-page"] .quickLink {
+  min-height: 92px;
+  align-content: start;
+}
+
+[data-testid="organization-overview-page"] .panelHeader h2 {
+  max-width: 24ch;
+}
+
+.lot3ImportPanel {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 18px;
+  border: 1px solid #ddd7d1;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 7px 18px rgba(48, 34, 27, 0.055);
+}
+
+.lot3ImportPanel h2,
+.lot3ImportPanel p { margin: 0; }
+.lot3ImportPanel p { margin-top: 5px; color: #6d625b; line-height: 1.5; }
+
+.lot3ImportActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+}
+
+.lot3ImportActions button,
+.lot3ImportActions label {
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid #d8d1cb;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 650;
+}
+
+.lot3ImportActions label { display: grid; gap: 6px; }
+.lot3ImportActions input { max-width: 300px; }
+.lot3ImportError { color: #8a4432 !important; font-weight: 650; }
+.lot3Preview { display: grid; gap: 10px; }
+.lot3PreviewTable { overflow: auto; border: 1px solid #e1dcd7; border-radius: 9px; }
+.lot3PreviewTable table { width: 100%; border-collapse: collapse; min-width: 680px; }
+.lot3PreviewTable th,
+.lot3PreviewTable td { padding: 9px 10px; border-bottom: 1px solid #ece8e4; text-align: left; font-size: .76rem; }
+.lot3PreviewTable th { background: #f3f0ed; color: #635951; }
+
+[data-lot3-inventory-scope="tracking-policies"] small {
+  display: block;
+  margin-top: 5px;
+  color: #756c66;
+  font-size: .72rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  [data-testid="organization-overview-page"] .quickLinks { grid-template-columns: 1fr; }
+  .lot3ImportActions { display: grid; }
+}
