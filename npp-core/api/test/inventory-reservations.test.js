@@ -160,9 +160,9 @@ async function seedMasterData(pool, installationId) {
        is_inventory_base, is_sellable, is_catalog_visible, is_active,
        unit_id, conversion_to_base, is_purchasable, created_by, updated_by
      ) VALUES
-       ($1,$4,$5,$8,'SKU cân cơ sở','BASE',true,true,true,true,$11,1,true,$13,$13),
-       ($2,$4,$6,$9,'SKU đếm cơ sở','BASE',true,true,true,true,$12,1,true,$13,$13),
-       ($3,$4,$5,$10,'SKU cân không cơ sở','OTHER',false,true,true,true,$11,1,true,$13,$13)`,
+       ($1,$4,$5,$7,'SKU cân cơ sở','BASE',true,true,true,true,$10,1,true,$12,$12),
+       ($2,$4,$6,$8,'SKU đếm cơ sở','BASE',true,true,true,true,$11,1,true,$12,$12),
+       ($3,$4,$5,$9,'SKU cân không cơ sở','OTHER',false,true,true,true,$10,1,true,$12,$12)`,
     [
       fractionalVariantId,
       countVariantId,
@@ -170,7 +170,6 @@ async function seedMasterData(pool, installationId) {
       installationId,
       fractionalProductId,
       countProductId,
-      null,
       `VF-${suffix}`,
       `VC-${suffix}`,
       `VN-${suffix}`,
