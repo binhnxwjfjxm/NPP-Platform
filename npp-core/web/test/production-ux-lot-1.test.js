@@ -26,13 +26,21 @@ test('favicon route returns the official application logo with HTTP 200', async 
 });
 
 test('Vietnam administrative selector is shared outside the customer module', async () => {
-  const [shared, customerWrapper] = await Promise.all([
+  const [shared, customerWrapper, supplierWorkspace] = await Promise.all([
     readSource('../app/components/vietnam-administrative-fields.tsx'),
     readSource('../app/customers/vietnam-administrative-fields.tsx'),
+    readSource('../app/suppliers/supplier-workspace.tsx'),
   ]);
 
   assert.match(shared, /provinceCode=/);
   assert.match(shared, /Xã\/phường\/đặc khu/);
   assert.match(shared, /Quận\/huyện \(dữ liệu cũ\)/);
   assert.match(customerWrapper, /SharedVietnamAdministrativeFields/);
+  assert.match(supplierWorkspace, /VietnamAdministrativeFields/);
+  assert.match(supplierWorkspace, /testIdPrefix="supplier"/);
+  assert.match(supplierWorkspace, /pendingCreatedSupplier/);
+  assert.match(supplierWorkspace, /supplierAddressKey = useRef/);
+  assert.match(supplierWorkspace, /`\/api\/suppliers\/\$\{savedSupplier\.id\}\/addresses`/);
+  assert.match(supplierWorkspace, /city: draft\.ward/);
+  assert.match(supplierWorkspace, /province: draft\.province/);
 });
