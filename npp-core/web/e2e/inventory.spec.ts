@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { test, expect, type APIRequestContext } from '@playwright/test';
 
 function uniqueSuffix() {
@@ -63,27 +62,11 @@ function expectNoSensitiveData(value: string) {
   }
 }
 
-function sha256Hex(value: string) {
-  return createHash('sha256').update(value).digest('hex');
-}
-
 test.describe('Kho vận', () => {
   test('tra cứu tồn kho, chính sách lô và thiết lập đầu kỳ chạy qua API thật', async ({ page, request }) => {
     const suffix = uniqueSuffix();
     const fixture = await createFixture(request, suffix);
     const sourceKey = `opening-${suffix}`;
-    const rows = [{
-      warehouseId: fixture.warehouse.id,
-      locationId: fixture.location.id,
-      sourceVariantId: fixture.sourceVariant.id,
-      sourceQuantity: '12.000000',
-      lotCode: 'LOT-001',
-      manufacturedDate: '2026-01-01',
-      expiryDate: '2027-01-01',
-      supplierLotReference: 'SUP-001',
-      sourceLineReference: 'Sheet1!2',
-      metadata: { batch: 1 },
-    }];
 
     await page.goto('/inventory/balances');
     await expect(page.getByTestId('inventory-page')).toBeVisible();
@@ -102,35 +85,20 @@ test.describe('Kho vận', () => {
       'warehouseId,locationId,sourceVariantId,sourceQuantity,lotCode,manufacturedDate,expiryDate,supplierLotReference,sourceLineReference',
       `${fixture.warehouse.id},${fixture.location.id},${fixture.sourceVariant.id},12.000000,LOT-001,2026-01-01,2027-01-01,SUP-001,Sheet1!2`,
     ].join('\n');
-    await page.getByLabel('Chọn tệp Excel/CSV').setInputFiles({
+    await page.getByTestId('inventory-opening-file-input').setInputFiles({
       name: 'opening-balance.csv', mimeType: 'text/csv', buffer: Buffer.from(csv),
     });
-    await expect(page.getByLabel('Nhập tệp tồn đầu kỳ')).toContainText('Sẵn sàng kiểm tra');
-    await expect(page.getByLabel('Nhập tệp tồn đầu kỳ')).toContainText('LOT-001');
+    await expect(page.getByText('Sẵn sàng kiểm tra')).toBeVisible();
+    await expect(page.getByText('LOT-001', { exact: true })).toBeVisible();
 
-    const normalizedBody = {
-      sourceKey,
-      sourceFilename: 'opening-balance.csv',
-      documentDate: '2026-07-28',
-      metadata: { source: 'e2e' },
-      rows,
-    };
-    const contentChecksum = sha256Hex(JSON.stringify(normalizedBody));
-    let response = await request.post('/api/inventory/opening-balances/validate', {
-      data: { ...normalizedBody, contentChecksum },
-    });
-    expect(response.status()).toBe(200);
-    expect((await response.json()).data.rowErrors).toHaveLength(0);
+    await page.getByRole('button', { name: 'Kiểm tra tệp' }).click();
+    await expect(page.getByText('Dữ liệu hợp lệ. Có thể xác nhận nhập tồn.')).toBeVisible();
+    const postButton = page.getByRole('button', { name: 'Xác nhận nhập tồn' });
+    await expect(postButton).toBeEnabled();
+    await postButton.click();
+    await expect(page.getByText('Đã ghi nhận tồn đầu kỳ thành công.')).toBeVisible();
+    await expect(page.getByText(sourceKey.toUpperCase(), { exact: true })).toBeVisible();
 
-    response = await request.post('/api/inventory/opening-balances/post', {
-      headers: { 'Idempotency-Key': `opening-${sourceKey}-${suffix}` },
-      data: { ...normalizedBody, contentChecksum },
-    });
-    expect(response.status()).toBe(201);
-    expect((await response.json()).data.ok).toBe(true);
-
-    await page.goto('/inventory/opening-balances');
-    await expect(page.getByTestId(`inventory-opening-row-${sourceKey}`)).toBeVisible();
     await page.goto('/inventory/balances');
     await expect(page.getByTestId('inventory-balances-section')).toContainText('LOT-001');
     await expect(page.getByTestId('inventory-balances-section')).toContainText('144.000000000000');
