@@ -1,0 +1,39 @@
+name: UI Source Export
+
+on:
+  pull_request:
+    branches:
+      - codex/vercel-production-source-deploy
+    paths:
+      - '.github/workflows/ui-source-export.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Collect UI source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ui-source/npp-core/web/app/customers
+          mkdir -p /tmp/ui-source/npp-core/web/app/products
+          mkdir -p /tmp/ui-source/npp-core/web/app/components
+          cp npp-core/web/app/customers/customer-workspace.tsx /tmp/ui-source/npp-core/web/app/customers/
+          cp npp-core/web/app/customers/customers.module.css /tmp/ui-source/npp-core/web/app/customers/
+          cp npp-core/web/app/products/product-workspace.tsx /tmp/ui-source/npp-core/web/app/products/
+          cp npp-core/web/app/products/products.module.css /tmp/ui-source/npp-core/web/app/products/
+          cp npp-core/web/app/components/app-shell.module.css /tmp/ui-source/npp-core/web/app/components/
+
+      - name: Upload UI source
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-source-export
+          path: /tmp/ui-source
+          retention-days: 1
