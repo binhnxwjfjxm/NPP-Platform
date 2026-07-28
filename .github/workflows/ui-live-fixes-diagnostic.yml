@@ -31,7 +31,10 @@ jobs:
       - name: Typecheck Core web
         run: npm --workspace npp-core-web run typecheck
 
-      - name: Test Core web
+      - name: Test live UI contracts
+        run: node --test npp-core/web/test/ui-live-fixes.test.js
+
+      - name: Test full Core web suite
         run: npm --workspace npp-core-web run test
 
       - name: Build Core web
