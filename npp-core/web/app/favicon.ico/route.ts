@@ -1,12 +1,16 @@
 export async function GET(request: Request) {
-  const logoUrl = new URL('/logo-transparent.png', request.url).toString();
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><image href="${logoUrl}" width="64" height="64" preserveAspectRatio="xMidYMid meet" /></svg>`;
+  const logoUrl = new URL('/logo-transparent.png', request.url);
+  const logoResponse = await fetch(logoUrl, { cache: 'force-cache' });
 
-  return new Response(svg, {
+  if (!logoResponse.ok) {
+    return new Response(null, { status: 404 });
+  }
+
+  return new Response(await logoResponse.arrayBuffer(), {
     status: 200,
     headers: {
-      'Cache-Control': 'public, max-age=86400',
-      'Content-Type': 'image/svg+xml; charset=utf-8',
+      'Cache-Control': 'public, max-age=86400, immutable',
+      'Content-Type': logoResponse.headers.get('content-type') || 'image/png',
     },
   });
 }
