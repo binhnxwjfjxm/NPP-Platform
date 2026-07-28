@@ -37,9 +37,12 @@ test('supplier address idempotency is keyed by endpoint and payload', async () =
   assert.match(boundary, /web-supplier-address-/);
 });
 
-test('warehouse labels are applied after modal mount', async () => {
-  const source = await text('../app/organization/organization-lot3-boundary.tsx');
-  assert.match(source, /MutationObserver/);
-  assert.match(source, /warehouse-type-select/);
-  assert.match(source, /Kho tổng/);
+test('warehouse type labels are rendered directly by the React workspace', async () => {
+  const page = await text('../app/organization/warehouses/page.tsx');
+  const workspace = await text('../app/organization/organization-workspace.tsx');
+  assert.doesNotMatch(page, /OrganizationLot3Boundary/);
+  assert.match(workspace, /warehouseTypeLabels/);
+  assert.match(workspace, /data-testid="warehouse-type-select"/);
+  assert.match(workspace, /warehouseTypeLabels\[type\]/);
+  assert.doesNotMatch(workspace, /MutationObserver/);
 });
