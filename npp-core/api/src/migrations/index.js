@@ -61,6 +61,10 @@ const PERMISSION_CATALOG_ALIGNMENT_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/016_permission_catalog_alignment.sql', import.meta.url),
   'utf8',
 );
+const INVENTORY_LEDGER_FOUNDATION_SQL = readFileSync(
+  new URL('../../../../database/migrations/inventory/017_inventory_ledger_foundation.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '002_core_idempotency', sql: CORE_IDEMPOTENCY_SQL }),
@@ -78,6 +82,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '014_price_lists_channel_resolution', sql: PRICE_LISTS_CHANNEL_RESOLUTION_SQL }),
   Object.freeze({ id: '015_document_numbering', sql: DOCUMENT_NUMBERING_SQL }),
   Object.freeze({ id: '016_permission_catalog_alignment', sql: PERMISSION_CATALOG_ALIGNMENT_SQL }),
+  Object.freeze({ id: '017_inventory_ledger_foundation', sql: INVENTORY_LEDGER_FOUNDATION_SQL }),
 ]);
 
 function validateMigration(migration) {
