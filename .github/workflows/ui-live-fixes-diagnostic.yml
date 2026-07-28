@@ -1,0 +1,38 @@
+name: UI Live Fixes Diagnostic
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'npp-core/web/**'
+      - '.github/workflows/ui-live-fixes-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install workspaces
+        run: npm ci
+
+      - name: Typecheck Core web
+        run: npm --workspace npp-core-web run typecheck
+
+      - name: Test Core web
+        run: npm --workspace npp-core-web run test
+
+      - name: Build Core web
+        run: npm --workspace npp-core-web run build
