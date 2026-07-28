@@ -9,6 +9,9 @@ import {
   executeInventoryReversal,
 } from '../src/services/inventory-ledger.js';
 import {
+  upsertInventoryTrackingPolicy,
+} from '../src/services/inventory-lots.js';
+import {
   executeInventoryBalanceRebuild,
   getInventoryBalance,
   inventoryBalanceInternals,
@@ -118,7 +121,7 @@ async function seedMasterData(pool, installationId) {
   return { warehouseId, locationId, baseVariantId, cartonVariantId };
 }
 
-function openingPayload(master, sourceQuantity, sourceDocumentId) {
+function openingPayload(master, sourceQuantity, sourceDocumentId, lotCode = 'LOT-BAL') {
   return {
     movementType: 'OPENING_BALANCE',
     sourceDomain: 'INVENTORY',
@@ -131,6 +134,7 @@ function openingPayload(master, sourceQuantity, sourceDocumentId) {
       sourceVariantId: master.cartonVariantId,
       sourceQuantity,
       direction: 'IN',
+      lotCode,
     }],
   };
 }
@@ -151,6 +155,30 @@ test('Inventory projection, reconciliation, rebuild and drill-down match the imm
       [master.warehouseId],
       `${prefix}-${randomUUID()}`,
     );
+    const policyContext = requestContext(
+      config.installationId,
+      [master.warehouseId],
+      `req-balance-policy-${randomUUID()}`,
+      [
+        PERMISSIONS.coreInventoryRead,
+        PERMISSIONS.coreInventoryPost,
+        PERMISSIONS.coreInventoryReverse,
+        PERMISSIONS.coreInventoryTrackingPolicyRead,
+        PERMISSIONS.coreInventoryTrackingPolicyManage,
+        PERMISSIONS.coreInventoryLotRead,
+        PERMISSIONS.coreInventoryLotManage,
+      ],
+    );
+
+    await upsertInventoryTrackingPolicy(pool, {
+      requestContext: policyContext,
+      payload: {
+        baseVariantId: master.baseVariantId,
+        lotTrackingMode: 'REQUIRED',
+        expiryTrackingMode: 'OPTIONAL',
+        locationRequired: true,
+      },
+    });
 
     const first = await executeInventoryPost({
       adapter: pool,
@@ -159,6 +187,7 @@ test('Inventory projection, reconciliation, rebuild and drill-down match the imm
       payload: openingPayload(master, '2.000000', `first-${randomUUID()}`),
     });
     assert.equal(first.ok, true, first.message);
+    const lotId = first.lines[0].lot_id;
 
     const second = await executeInventoryPost({
       adapter: pool,
@@ -186,6 +215,7 @@ test('Inventory projection, reconciliation, rebuild and drill-down match the imm
       warehouseId: master.warehouseId,
       locationId: master.locationId,
       baseVariantId: master.baseVariantId,
+      lotId,
     });
     assert.equal(balanceResult.ok, true, balanceResult.message);
     assert.equal(String(balanceResult.balance.on_hand_quantity), '12.000000000000');
@@ -197,6 +227,7 @@ test('Inventory projection, reconciliation, rebuild and drill-down match the imm
       warehouseId: master.warehouseId,
       locationId: master.locationId,
       baseVariantId: master.baseVariantId,
+      lotId,
     });
     assert.equal(drillDown.ok, true, drillDown.message);
     assert.equal(drillDown.lines.length, 3);
@@ -310,6 +341,7 @@ test('Inventory projection, reconciliation, rebuild and drill-down match the imm
       warehouseId: master.warehouseId,
       locationId: master.locationId,
       baseVariantId: master.baseVariantId,
+      lotId,
     });
     assert.equal(finalBalance.ok, true);
     assert.equal(String(finalBalance.balance.on_hand_quantity), '12.000000000000');

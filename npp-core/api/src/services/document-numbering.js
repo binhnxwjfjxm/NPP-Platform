@@ -116,6 +116,17 @@ function stableJson(value) {
   return JSON.stringify(canonicalize(value ?? {}));
 }
 
+function canonicalDateOnly(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (value instanceof Date) {
+    const year = String(value.getFullYear()).padStart(4, '0');
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return String(value).trim().slice(0, 10);
+}
+
 function normalizeMetadata(value) {
   if (value === undefined || value === null) return {};
   if (typeof value !== 'object' || Array.isArray(value)) return null;
@@ -128,9 +139,7 @@ function normalizeMetadata(value) {
 }
 
 function replayOrMismatch(allocation, documentDate, metadata) {
-  const existingDate = allocation.document_date instanceof Date
-    ? allocation.document_date.toISOString().slice(0, 10)
-    : String(allocation.document_date).slice(0, 10);
+  const existingDate = canonicalDateOnly(allocation.document_date);
   if (existingDate !== documentDate.value || stableJson(allocation.metadata) !== stableJson(metadata)) {
     return failure('IDEMPOTENCY_PAYLOAD_MISMATCH', 'Idempotency key was already used with a different document date or metadata');
   }

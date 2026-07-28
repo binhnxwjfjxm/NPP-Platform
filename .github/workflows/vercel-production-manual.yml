@@ -46,6 +46,12 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "Deploying exact main SHA: $sha"
 
+      - name: Stage locked config
+        shell: bash
+        run: |
+          git add npp-core/web/vercel.json
+          git show origin/main:npp-core/web/vercel.json >/dev/null
+
       - name: Require automatic Git deployments to remain locked
         shell: bash
         run: |
@@ -53,8 +59,9 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
 
+          const path = "npp-core/web/vercel.json";
           const config = JSON.parse(
-            await readFile("npp-core/web/vercel.json", "utf8")
+            await readFile(path, "utf8")
           );
           if (config.git?.deploymentEnabled !== false) {
             throw new Error("vercel_automatic_git_deployments_must_remain_locked");
