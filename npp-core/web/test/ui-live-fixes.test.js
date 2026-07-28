@@ -101,6 +101,10 @@ test('customer creation saves a default address without duplicating the customer
   ]);
 
   assert.match(workspace, /VietnamAdministrativeFields/);
+  assert.match(page, /listVietnamProvinces/);
+  assert.match(page, /initialProvinces={initialProvinces}/);
+  assert.match(addressFields, /initialProvinces\?: ProvinceOption\[\]/);
+  assert.match(addressFields, /initialProvinces = \[\]/);
   assert.doesNotMatch(workspace, /const VIETNAM_PROVINCES = \[/);
   assert.match(addressFields, /provinceCode=/);
   assert.match(addressFields, /Xã\/phường\/đặc khu/);

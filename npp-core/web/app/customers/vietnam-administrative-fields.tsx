@@ -24,6 +24,7 @@ type Envelope = {
 };
 
 type Props = {
+  initialProvinces?: ProvinceOption[];
   province: string;
   ward: string;
   district: string;
@@ -42,6 +43,7 @@ async function loadReference(path: string) {
 }
 
 export default function VietnamAdministrativeFields({
+  initialProvinces = [],
   province,
   ward,
   district,
@@ -49,13 +51,19 @@ export default function VietnamAdministrativeFields({
   required = false,
   testIdPrefix,
 }: Props) {
-  const [provinces, setProvinces] = useState<ProvinceOption[]>([]);
+  const [provinces, setProvinces] = useState<ProvinceOption[]>(initialProvinces);
   const [wards, setWards] = useState<WardOption[]>([]);
-  const [loadingProvinces, setLoadingProvinces] = useState(true);
+  const [loadingProvinces, setLoadingProvinces] = useState(initialProvinces.length === 0);
   const [loadingWards, setLoadingWards] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (initialProvinces.length > 0) {
+      setLoadingProvinces(false);
+      setError(null);
+      return undefined;
+    }
+
     let active = true;
     setLoadingProvinces(true);
     loadReference('/api/reference/vietnam-administrative-units')
@@ -72,7 +80,7 @@ export default function VietnamAdministrativeFields({
         if (active) setLoadingProvinces(false);
       });
     return () => { active = false; };
-  }, []);
+  }, [initialProvinces.length]);
 
   const selectedProvince = useMemo(
     () => provinces.find((item) => item.name === province || item.shortName === province) ?? null,
