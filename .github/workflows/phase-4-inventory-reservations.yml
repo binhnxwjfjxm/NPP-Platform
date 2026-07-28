@@ -1,0 +1,107 @@
+name: Phase 4.3 Inventory Reservations
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/phase-4-inventory-reservations.yml"
+      - "database/migrations/inventory/**"
+      - "npp-core/api/package.json"
+      - "npp-core/api/src/access/permissions.js"
+      - "npp-core/api/src/request-context.js"
+      - "npp-core/api/src/migrations/**"
+      - "npp-core/api/src/db/repositories/inventory-*.js"
+      - "npp-core/api/src/services/inventory-*.js"
+      - "npp-core/api/test/inventory-*.test.js"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-inventory-reservations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: phase4_reservations
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d phase4_reservations"
+          --health-interval 2s
+          --health-timeout 10s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/phase4_reservations
+      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/phase4_reservations
+      NODE_ENV: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: npm
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      - name: Verify build
+        run: npm --workspace npp-core-api run build
+
+      - name: Apply migrations on clean PostgreSQL 17
+        run: npm --workspace npp-core-api run migration:migrate
+
+      - name: Verify migration registry and schema
+        run: npm --workspace npp-core-api run migration:verify
+
+      - name: Verify migration rerun is a no-op
+        run: npm --workspace npp-core-api run migration:migrate
+
+      - name: Run P4.3 reservation tests
+        id: focused_tests
+        shell: bash
+        run: |
+          set +e
+          node --test npp-core/api/test/inventory-reservations.test.js 2>&1 | tee p43-focused-tests.log
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      - name: Upload focused P4.3 test evidence on every run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p43-focused-tests-${{ github.run_id }}
+          path: p43-focused-tests.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Run full inventory regression tests
+        run: node --test npp-core/api/test/inventory-ledger.test.js npp-core/api/test/inventory-balance.test.js npp-core/api/test/inventory-reservations.test.js
+
+      - name: Run full Core API verification
+        run: npm --workspace npp-core-api run verify
+
+      - name: Verify Core-only boundary
+        shell: bash
+        run: |
+          changed="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
+          printf '%s\n' "$changed"
+          if printf '%s\n' "$changed" | grep -E '^mcp/'; then
+            echo "ERROR: P4.3 must not modify mcp/**"
+            exit 1
+          fi
+          if grep -r "from.*mcp/" npp-core/api/src --include="*.js"; then
+            echo "ERROR: npp-core API files must not import from mcp/"
+            exit 1
+          fi
+          echo "Core-only boundary verified"
