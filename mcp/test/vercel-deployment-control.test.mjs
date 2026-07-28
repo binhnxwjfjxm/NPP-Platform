@@ -13,6 +13,8 @@ const workflow = await readFile(
   "utf8"
 );
 
+const NPP_PLATFORM_PROJECT_ID = "prj_vFEAzoxesLqNJIfD8uF4q1kytpvk";
+
 test("Vercel uses the NPP Core web package as its project root", () => {
   assert.equal(coreConfig.builds, undefined);
   assert.equal(coreConfig.routes, undefined);
@@ -41,10 +43,21 @@ test("comment deployment requires the exact guarded command", () => {
   assert.match(workflow, /github\.actor/);
 });
 
-test("manual deployment uses Vercel CLI without mutating Git deployment gates", () => {
-  assert.match(workflow, /permissions:\s*\n\s+contents: read/);
+test("manual deployment is pinned to the npp-platform project", () => {
   assert.match(workflow, /VERCEL_ORG_ID: \$\{\{ secrets\.VERCEL_ORG_ID \}\}/);
-  assert.match(workflow, /VERCEL_PROJECT_ID: \$\{\{ secrets\.VERCEL_PROJECT_ID \}\}/);
+  assert.match(
+    workflow,
+    new RegExp(`VERCEL_PROJECT_ID: ${NPP_PLATFORM_PROJECT_ID}`)
+  );
+  assert.match(workflow, /Verify Vercel project link/);
+  assert.match(workflow, /linked\.projectId !== process\.env\.VERCEL_PROJECT_ID/);
+  assert.doesNotMatch(workflow, /VERCEL_PROJECT_ID: \$\{\{ secrets\.VERCEL_PROJECT_ID \}\}/);
+});
+
+test("manual deployment installs dependencies and uses prebuilt Vercel CLI deployment", () => {
+  assert.match(workflow, /permissions:\s*\n\s+contents: read/);
+  assert.match(workflow, /Install workspace dependencies/);
+  assert.match(workflow, /run: npm ci/);
   assert.match(workflow, /vercel@latest pull/);
   assert.match(workflow, /vercel@latest build/);
   assert.match(workflow, /vercel@latest deploy/);
