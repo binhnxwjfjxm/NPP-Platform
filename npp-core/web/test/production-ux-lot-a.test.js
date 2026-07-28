@@ -20,13 +20,18 @@ test('favicon returns real logo bytes instead of nested svg image', async () => 
   assert.doesNotMatch(source, /<svg/);
 });
 
-test('opening balance file selection clears stale hidden payload first', async () => {
+test('opening balance file selection invalidates every previously validated draft', async () => {
   const page = await text('../app/inventory/opening-balances/page.tsx');
-  const boundary = await text('../app/inventory/opening-balances/opening-file-reset-boundary.tsx');
-  assert.match(page, /OpeningFileResetBoundary/);
-  assert.match(boundary, /inventory-opening-rows-input/);
-  assert.match(boundary, /inventory-opening-metadata-input/);
-  assert.match(boundary, /inventory-opening-source-filename-input/);
+  const workspace = await text('../app/inventory/opening-balances/opening-balance-csv-workspace.tsx');
+  assert.match(page, /OpeningBalanceCsvWorkspace/);
+  assert.match(workspace, /async function chooseFile\(file: File\)/);
+  assert.match(workspace, /function invalidateDraft\(\)/);
+  assert.match(workspace, /draftRevision\.current \+= 1/);
+  assert.match(workspace, /setValidation\(null\)/);
+  assert.match(workspace, /setValidationChecksum\(null\)/);
+  assert.match(workspace, /invalidateDraft\(\);\s*setRows\(\[\]\)/);
+  assert.match(workspace, /if \(!file\.name\.toLowerCase\(\)\.endsWith\('\.csv'\)\)/);
+  assert.doesNotMatch(page, /OpeningFileResetBoundary/);
 });
 
 test('supplier address idempotency is keyed by endpoint and payload', async () => {
