@@ -162,7 +162,7 @@ async function seedMasterData(pool, installationId) {
      ) VALUES
        ($1,$4,$5,$7,'SKU cân cơ sở','BASE',true,true,true,true,$10,1,true,$12,$12),
        ($2,$4,$6,$8,'SKU đếm cơ sở','BASE',true,true,true,true,$11,1,true,$12,$12),
-       ($3,$4,$5,$9,'SKU cân không cơ sở','OTHER',false,true,true,true,$10,1,true,$12,$12)`,
+       ($3,$4,$5,$9,'SKU cân không cơ sở','OTHER',false,true,true,true,$11,1,true,$12,$12)`,
     [
       fractionalVariantId,
       countVariantId,
