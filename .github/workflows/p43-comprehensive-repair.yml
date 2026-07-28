@@ -8,10 +8,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: p43-comprehensive-repair
-  cancel-in-progress: false
-
 jobs:
   apply-and-commit-repair:
     runs-on: ubuntu-24.04
