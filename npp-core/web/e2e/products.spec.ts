@@ -16,25 +16,34 @@ test.describe('Danh mục sản phẩm', () => {
 
     await page.getByTestId('categories-tab').click();
     await page.getByTestId('add-category-button').click();
+    await expect(page.getByTestId('category-form')).toHaveAttribute('role', 'dialog');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('category-form')).toHaveCount(0);
+    await page.getByTestId('add-category-button').click();
     await page.getByTestId('category-code-input').fill(categoryCode.toLowerCase());
     await page.getByTestId('category-name-input').fill(`Loại ${suffix}`);
     await page.getByTestId('save-category-button').click();
+    await expect(page.getByTestId('category-form')).toHaveCount(0);
     await expect(page.getByTestId(`category-row-${categoryCode}`)).toBeVisible();
 
     await page.getByTestId('brands-tab').click();
     await page.getByTestId('add-brand-button').click();
+    await expect(page.getByTestId('brand-form')).toHaveAttribute('role', 'dialog');
     await page.getByTestId('brand-code-input').fill(brandCode.toLowerCase());
     await page.getByTestId('brand-name-input').fill(`Nhãn ${suffix}`);
     await page.getByTestId('save-brand-button').click();
+    await expect(page.getByTestId('brand-form')).toHaveCount(0);
     await expect(page.getByTestId(`brand-row-${brandCode}`)).toBeVisible();
 
     await page.getByTestId('products-tab').click();
     await page.getByTestId('add-product-button').click();
+    await expect(page.getByTestId('product-form')).toHaveAttribute('role', 'dialog');
     await page.getByTestId('product-code-input').fill(productCode.toLowerCase());
     await page.getByTestId('product-name-input').fill(`Sản phẩm ${suffix}`);
     await page.getByLabel('Loại').selectOption({ label: `${categoryCode} — Loại ${suffix}` });
     await page.getByLabel('Nhãn hàng').selectOption({ label: `${brandCode} — Nhãn ${suffix}` });
     await page.getByTestId('save-product-button').click();
+    await expect(page.getByTestId('product-form')).toHaveCount(0);
 
     let productRow = page.getByTestId(`product-row-${productCode}`);
     await expect(productRow).toBeVisible();
@@ -49,10 +58,12 @@ test.describe('Danh mục sản phẩm', () => {
     await variantsLoaded;
     await expect(page.getByTestId('variant-panel')).toBeVisible();
     await page.getByTestId('add-variant-button').click();
+    await expect(page.getByTestId('variant-form')).toHaveAttribute('role', 'dialog');
     await page.getByTestId('variant-sku-input').fill(sku.toLowerCase());
     await page.getByTestId('variant-name-input').fill(`SKU ${suffix}`);
     await page.getByLabel('Đơn vị tồn chuẩn').check();
     await page.getByTestId('save-variant-button').click();
+    await expect(page.getByTestId('variant-form')).toHaveCount(0);
     await expect(page.getByTestId(`variant-row-${sku}`)).toBeVisible();
 
     await expect(page.getByTestId('product-unit-workspace')).toBeVisible();
@@ -83,6 +94,7 @@ test.describe('Danh mục sản phẩm', () => {
     await page.getByTestId('products-tab').click();
     productRow = page.getByTestId(`product-row-${productCode}`);
     await page.getByTestId(`edit-product-${productCode}`).click();
+    await expect(page.getByTestId('product-form')).toBeVisible();
     await page.getByLabel('Cho phép đặt hàng').check();
     await page.getByTestId('save-product-button').click();
     await expect(productRow).toContainText('Có');
