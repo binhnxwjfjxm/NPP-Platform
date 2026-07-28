@@ -89,6 +89,28 @@ async function seedMasterData(pool, installationId) {
     [baseVariantId, cartonVariantId, installationId, productId, `BASE-${suffix}`, `CARTON-${suffix}`, eachUnitId, cartonUnitId, 'test:seed'],
   );
 
+  await pool.query(
+    `INSERT INTO inventory.product_tracking_policies (
+       installation_id,
+       base_variant_id,
+       lot_tracking_mode,
+       expiry_tracking_mode,
+       location_required,
+       version,
+       created_at,
+       created_by,
+       updated_at,
+       updated_by
+     ) VALUES ($1,$2,'NONE','NONE',false,1,now(),$3,now(),$3)
+     ON CONFLICT (installation_id, base_variant_id) DO UPDATE
+     SET lot_tracking_mode = EXCLUDED.lot_tracking_mode,
+         expiry_tracking_mode = EXCLUDED.expiry_tracking_mode,
+         location_required = EXCLUDED.location_required,
+         updated_at = EXCLUDED.updated_at,
+         updated_by = EXCLUDED.updated_by`,
+    [installationId, baseVariantId, 'test:seed'],
+  );
+
   return { warehouseId, locationId, baseVariantId, cartonVariantId };
 }
 

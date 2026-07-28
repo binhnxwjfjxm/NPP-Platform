@@ -170,9 +170,10 @@ export async function insertMovementLine(client, line) {
        id, installation_id, movement_id, line_number, warehouse_id, location_id,
        source_variant_id, source_sku, source_unit_id, source_unit_code,
        source_quantity, conversion_to_base, base_variant_id, base_sku,
-       direction, base_quantity_delta, source_line_reference, metadata
+       direction, base_quantity_delta, lot_id, lot_code, expiry_date,
+       source_line_reference, metadata
      ) VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21
      )
      RETURNING *`,
     [
@@ -192,6 +193,9 @@ export async function insertMovementLine(client, line) {
       line.baseSku,
       line.direction,
       line.baseQuantityDelta,
+      line.lotId ?? null,
+      line.lotCode ?? null,
+      line.expiryDate ?? null,
       line.sourceLineReference,
       line.metadata,
     ],

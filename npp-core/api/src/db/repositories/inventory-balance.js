@@ -1,3 +1,26 @@
+function toLocalDateOnly(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (value instanceof Date) {
+    const year = String(value.getFullYear()).padStart(4, '0');
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  const text = String(value).trim();
+  if (!text) return null;
+  return text.slice(0, 10);
+}
+
+function presentInventoryBalance(row) {
+  if (!row) return row;
+  return {
+    ...row,
+    expiry_date: toLocalDateOnly(row.expiry_date),
+    projected_through: row.projected_through instanceof Date ? row.projected_through.toISOString() : row.projected_through,
+    updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+  };
+}
+
 async function withBalanceWriteContext(client, context, operation) {
   const previousResult = await client.query(
     "SELECT current_setting('npp.inventory_balance_write_context', true) AS value",
@@ -50,54 +73,66 @@ export async function getInventoryBalance(client, {
   lotId = null,
 }) {
   const result = await client.query(
-    `SELECT installation_id,
-            warehouse_id,
-            location_id,
-            base_variant_id,
-            lot_id,
-            on_hand_quantity,
-            reserved_quantity,
-            available_quantity,
-            projected_through,
-            updated_at
-       FROM inventory.inventory_balances
-      WHERE installation_id = $1
-        AND warehouse_id = $2
-        AND location_id IS NOT DISTINCT FROM $3::uuid
-        AND base_variant_id = $4
-        AND lot_id IS NOT DISTINCT FROM $5::uuid`,
+    `SELECT balance.installation_id,
+            balance.warehouse_id,
+            balance.location_id,
+            balance.base_variant_id,
+            balance.lot_id,
+            lot.lot_code,
+            lot.expiry_date,
+            balance.on_hand_quantity,
+            balance.reserved_quantity,
+            balance.available_quantity,
+            balance.projected_through,
+            balance.updated_at
+       FROM inventory.inventory_balances balance
+       LEFT JOIN inventory.inventory_lots lot
+         ON lot.installation_id = balance.installation_id
+        AND lot.id = balance.lot_id
+      WHERE balance.installation_id = $1
+        AND balance.warehouse_id = $2
+        AND balance.location_id IS NOT DISTINCT FROM $3::uuid
+        AND balance.base_variant_id = $4
+        AND balance.lot_id IS NOT DISTINCT FROM $5::uuid`,
     [installationId, warehouseId, locationId, baseVariantId, lotId],
   );
-  return result.rows?.[0] ?? null;
+  return presentInventoryBalance(result.rows?.[0] ?? null);
 }
 
 export async function listInventoryBalances(client, {
   installationId,
   warehouseId = null,
   baseVariantId = null,
+  lotId = null,
   limit = 500,
   offset = 0,
 }) {
   const result = await client.query(
-    `SELECT installation_id,
-            warehouse_id,
-            location_id,
-            base_variant_id,
-            lot_id,
-            on_hand_quantity,
-            reserved_quantity,
-            available_quantity,
-            projected_through,
-            updated_at
-       FROM inventory.inventory_balances
-      WHERE installation_id = $1
-        AND ($2::uuid IS NULL OR warehouse_id = $2)
-        AND ($3::uuid IS NULL OR base_variant_id = $3)
-      ORDER BY warehouse_id, location_id NULLS FIRST, base_variant_id, lot_id NULLS FIRST
-      LIMIT $4 OFFSET $5`,
-    [installationId, warehouseId, baseVariantId, limit, offset],
+    `SELECT balance.installation_id,
+            balance.warehouse_id,
+            balance.location_id,
+            balance.base_variant_id,
+            balance.lot_id,
+            lot.lot_code,
+            lot.expiry_date,
+            balance.on_hand_quantity,
+            balance.reserved_quantity,
+            balance.available_quantity,
+            balance.projected_through,
+            balance.updated_at
+       FROM inventory.inventory_balances balance
+       LEFT JOIN inventory.inventory_lots lot
+         ON lot.installation_id = balance.installation_id
+        AND lot.id = balance.lot_id
+      WHERE balance.installation_id = $1
+        AND ($2::uuid IS NULL OR balance.warehouse_id = $2)
+        AND ($3::uuid IS NULL OR balance.base_variant_id = $3)
+        AND ($4::uuid IS NULL OR balance.lot_id IS NOT DISTINCT FROM $4)
+      ORDER BY balance.warehouse_id, balance.location_id NULLS FIRST, balance.base_variant_id, balance.lot_id NULLS FIRST
+      LIMIT $5 OFFSET $6`,
+    [installationId, warehouseId, baseVariantId, lotId, limit, offset],
   );
-  return result.rows ?? [];
+  return (result.rows ?? []).map(presentInventoryBalance);
 }
 
 export async function reconcileInventoryBalances(client, { installationId }) {
@@ -107,7 +142,7 @@ export async function reconcileInventoryBalances(client, { installationId }) {
               line.warehouse_id,
               line.location_id,
               line.base_variant_id,
-              NULL::uuid AS lot_id,
+              line.lot_id,
               sum(line.base_quantity_delta)::numeric(30,12) AS ledger_quantity,
               count(DISTINCT line.movement_id)::bigint AS movement_count,
               max(movement.posted_at) AS latest_movement_at
@@ -119,7 +154,8 @@ export async function reconcileInventoryBalances(client, { installationId }) {
         GROUP BY line.installation_id,
                  line.warehouse_id,
                  line.location_id,
-                 line.base_variant_id
+                 line.base_variant_id,
+                 line.lot_id
      ), projected AS (
        SELECT balance.installation_id,
               balance.warehouse_id,
@@ -180,7 +216,7 @@ export async function rebuildInventoryBalances(client, { installationId }) {
               line.warehouse_id,
               line.location_id,
               line.base_variant_id,
-              NULL::uuid,
+              line.lot_id,
               sum(line.base_quantity_delta)::numeric(30,12),
               0::numeric(30,12),
               max(movement.posted_at),
@@ -193,13 +229,14 @@ export async function rebuildInventoryBalances(client, { installationId }) {
         GROUP BY line.installation_id,
                  line.warehouse_id,
                  line.location_id,
-                 line.base_variant_id
+                 line.base_variant_id,
+                 line.lot_id
        RETURNING installation_id, warehouse_id, location_id, base_variant_id, lot_id,
                  on_hand_quantity, reserved_quantity, available_quantity,
                  projected_through, updated_at`,
       [installationId],
     );
-    return inserted.rows ?? [];
+  return (inserted.rows ?? []).map(presentInventoryBalance);
   });
 }
 
@@ -208,6 +245,7 @@ export async function listInventoryMovementDrillDown(client, {
   warehouseId,
   locationId = null,
   baseVariantId,
+  lotId = null,
   limit = 500,
   offset = 0,
 }) {
@@ -237,6 +275,9 @@ export async function listInventoryMovementDrillDown(client, {
             line.base_sku,
             line.direction,
             line.base_quantity_delta,
+            line.lot_id,
+            line.lot_code,
+            line.expiry_date,
             line.source_line_reference,
             line.metadata
        FROM inventory.inventory_movement_lines line
@@ -247,9 +288,15 @@ export async function listInventoryMovementDrillDown(client, {
         AND line.warehouse_id = $2
         AND line.location_id IS NOT DISTINCT FROM $3::uuid
         AND line.base_variant_id = $4
+        AND ($5::uuid IS NULL OR line.lot_id IS NOT DISTINCT FROM $5)
       ORDER BY movement.posted_at DESC, movement.id DESC, line.line_number
-      LIMIT $5 OFFSET $6`,
-    [installationId, warehouseId, locationId, baseVariantId, limit, offset],
+      LIMIT $6 OFFSET $7`,
+    [installationId, warehouseId, locationId, baseVariantId, lotId, limit, offset],
   );
-  return result.rows ?? [];
+  return (result.rows ?? []).map((row) => ({
+    ...row,
+    document_date: toLocalDateOnly(row.document_date),
+    posted_at: row.posted_at instanceof Date ? row.posted_at.toISOString() : row.posted_at,
+    expiry_date: toLocalDateOnly(row.expiry_date),
+  }));
 }

@@ -7,6 +7,11 @@ from collections import Counter
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
+
 NS = {
     'a': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main',
     'pr': 'http://schemas.openxmlformats.org/package/2006/relationships',

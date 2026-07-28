@@ -100,7 +100,6 @@ export async function listInventoryMovementDrillDown(client, {
     lotId,
   });
   if (!validation.ok) return validation;
-  if (lotId) return failure('LOT_SCOPE_NOT_AVAILABLE', 'Lot drill-down is introduced in Phase 4.4');
   if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
     return failure('INVALID_LIMIT', 'limit must be an integer between 1 and 1000');
   }
@@ -112,6 +111,7 @@ export async function listInventoryMovementDrillDown(client, {
     warehouseId,
     locationId: locationId || null,
     baseVariantId,
+    lotId: lotId || null,
     limit,
     offset,
   });

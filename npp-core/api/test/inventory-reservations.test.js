@@ -179,6 +179,30 @@ async function seedMasterData(pool, installationId) {
     ],
   );
 
+  await pool.query(
+    `INSERT INTO inventory.product_tracking_policies (
+       installation_id,
+       base_variant_id,
+       lot_tracking_mode,
+       expiry_tracking_mode,
+       location_required,
+       version,
+       created_at,
+       created_by,
+       updated_at,
+       updated_by
+     ) VALUES
+       ($1,$2,'NONE','NONE',false,1,now(),$4,now(),$4),
+       ($1,$3,'NONE','NONE',false,1,now(),$4,now(),$4)
+     ON CONFLICT (installation_id, base_variant_id) DO UPDATE
+     SET lot_tracking_mode = EXCLUDED.lot_tracking_mode,
+         expiry_tracking_mode = EXCLUDED.expiry_tracking_mode,
+         location_required = EXCLUDED.location_required,
+         updated_at = EXCLUDED.updated_at,
+         updated_by = EXCLUDED.updated_by`,
+    [installationId, fractionalVariantId, countVariantId, actor],
+  );
+
   return Object.freeze({
     branchId,
     warehouseId,

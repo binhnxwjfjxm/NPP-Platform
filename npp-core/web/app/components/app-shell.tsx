@@ -41,6 +41,13 @@ const accessItems = [
   { href: '/access/users', label: 'Người dùng', icon: 'user' as const, testId: 'nav-users' },
 ];
 
+const inventoryItems = [
+  { href: '/inventory/balances', label: 'Tồn kho', icon: 'panel' as const, testId: 'nav-inventory-balances' },
+  { href: '/inventory/tracking-policies', label: 'Chính sách lô', icon: 'panel' as const, testId: 'nav-inventory-policies' },
+  { href: '/inventory/lots', label: 'Lô hàng', icon: 'panel' as const, testId: 'nav-inventory-lots' },
+  { href: '/inventory/opening-balances', label: 'Nhập tồn đầu kỳ', icon: 'panel' as const, testId: 'nav-inventory-opening' },
+];
+
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, React.ReactNode> = {
     dashboard: (
@@ -107,6 +114,10 @@ function isOrganizationPath(pathname: string): boolean {
     || pathname.startsWith('/document-numbering');
 }
 
+function isInventoryPath(pathname: string): boolean {
+  return pathname.startsWith('/inventory');
+}
+
 function persistCollapsed(value: boolean) {
   window.localStorage.setItem('npp-core-sidebar-collapsed', value ? '1' : '0');
 }
@@ -123,6 +134,7 @@ export function AppShell({
   const [collapsed, setCollapsed] = useState(false);
   const [organizationOpen, setOrganizationOpen] = useState(isOrganizationPath(pathname));
   const [accessOpen, setAccessOpen] = useState(pathname.startsWith('/access'));
+  const [inventoryOpen, setInventoryOpen] = useState(isInventoryPath(pathname));
 
   useEffect(() => {
     setCollapsed(window.localStorage.getItem('npp-core-sidebar-collapsed') === '1');
@@ -131,11 +143,13 @@ export function AppShell({
   useEffect(() => {
     if (isOrganizationPath(pathname)) setOrganizationOpen(true);
     if (pathname.startsWith('/access')) setAccessOpen(true);
+    if (isInventoryPath(pathname)) setInventoryOpen(true);
     setMobileOpen(false);
   }, [pathname]);
 
   const organizationActive = isOrganizationPath(pathname);
   const accessActive = pathname.startsWith('/access');
+  const inventoryActive = isInventoryPath(pathname);
   const logoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim() || '/logo-transparent.png';
 
   const organizationChildren = useMemo(
@@ -144,6 +158,10 @@ export function AppShell({
   );
   const accessChildren = useMemo(
     () => accessItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })),
+    [pathname],
+  );
+  const inventoryChildren = useMemo(
+    () => inventoryItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })),
     [pathname],
   );
 
@@ -232,6 +250,43 @@ export function AppShell({
 
               <div className={`${styles.subnav} ${organizationOpen && !collapsed ? styles.subnavOpen : ''}`}>
                 {organizationChildren.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    prefetch
+                    className={`${styles.subnavItem} ${item.active ? styles.subnavItemActive : ''}`}
+                    data-testid={item.testId}
+                  >
+                    <span className={styles.subnavRail} aria-hidden="true" />
+                    <span className={styles.subnavIcon}><Icon name={item.icon} /></span>
+                    <span>{item.label}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            <p className={styles.navLabel}>Tồn kho &amp; lô hàng</p>
+            <div className={`${styles.navGroup} ${inventoryActive ? styles.navGroupActive : ''}`}>
+              <button
+                type="button"
+                className={`${styles.navItem} ${styles.navGroupButton}`}
+                onClick={() => openGroup(setInventoryOpen)}
+                aria-expanded={inventoryOpen}
+                data-testid="inventory-menu-toggle"
+                title={collapsed ? 'Tồn kho và lô hàng' : undefined}
+              >
+                <span className={styles.navIcon}><Icon name="panel" /></span>
+                <span className={styles.navCopy}>
+                  <span className={styles.navTitle}>Tồn kho &amp; lô hàng</span>
+                  <span className={styles.navHint}>Số dư, lô, chính sách lô và nhập tồn đầu kỳ</span>
+                </span>
+                <span className={`${styles.chevron} ${inventoryOpen ? styles.chevronOpen : ''}`}>
+                  <Icon name="chevron" />
+                </span>
+              </button>
+
+              <div className={`${styles.subnav} ${inventoryOpen && !collapsed ? styles.subnavOpen : ''}`}>
+                {inventoryChildren.map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}

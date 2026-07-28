@@ -6,6 +6,7 @@ import {
   insertOutboxEvent,
   withAuditOutboxTransaction,
 } from '../audit-outbox.js';
+import * as lotRepository from '../db/repositories/inventory-lots.js';
 import * as repository from '../db/repositories/inventory-ledger.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -105,6 +106,13 @@ function validateIdentity(value, code, message) {
   return typeof value === 'string' && UUID_PATTERN.test(value) ? null : failure(code, message);
 }
 
+function normalizeLotCode(value) {
+  const candidate = text(value, 100)?.toUpperCase() ?? null;
+  return candidate && /^[A-Z0-9_.-]{1,100}$/.test(candidate)
+    ? { ok: true, value: candidate }
+    : failure('INVALID_LOT_CODE', 'lotCode must be 1-100 safe uppercase characters');
+}
+
 function normalizePostingPayload(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return failure('INVALID_INPUT', 'Movement payload is required');
   const movementType = String(payload.movementType ?? '').trim().toUpperCase();
@@ -141,6 +149,12 @@ function normalizePostingPayload(payload) {
     if (!quantity.ok) return quantity;
     const lineMetadata = objectValue(line.metadata);
     if (lineMetadata === null) return failure('INVALID_LINE_METADATA', `Line ${index + 1} metadata is invalid`);
+    const lotId = text(line.lotId, 64);
+    if (lotId && !UUID_PATTERN.test(lotId)) return failure('INVALID_LOT_ID', `Line ${index + 1} lotId is invalid`);
+    const lotCode = text(line.lotCode, 100);
+    if (lotCode && !/^[A-Z0-9_.-]{1,100}$/i.test(lotCode)) return failure('INVALID_LOT_CODE', `Line ${index + 1} lotCode is invalid`);
+    const normalizedLotCode = lotCode ? normalizeLotCode(lotCode) : null;
+    if (lotCode && !normalizedLotCode.ok) return normalizedLotCode;
     lines.push(Object.freeze({
       lineNumber: index + 1,
       warehouseId: line.warehouseId,
@@ -149,6 +163,11 @@ function normalizePostingPayload(payload) {
       direction,
       sourceQuantity: quantity.value,
       sourceLineReference: text(line.sourceLineReference, 160),
+      lotId: lotId ?? null,
+      lotCode: normalizedLotCode?.value ?? null,
+      manufacturedDate: strictDate(line.manufacturedDate),
+      expiryDate: strictDate(line.expiryDate),
+      supplierLotReference: text(line.supplierLotReference, 160),
       metadata: lineMetadata,
     }));
   }
@@ -208,6 +227,91 @@ async function resolveLine(client, requestContext, line) {
   if (variant.conversion_to_base === null || variant.conversion_to_base === undefined) {
     return failure('CONVERSION_NOT_CONFIGURED', 'SKU conversion to inventory base is not configured');
   }
+  const policy = await lotRepository.getTrackingPolicyByBaseVariant(client, {
+    installationId: requestContext.installationId,
+    baseVariantId: variant.base_variant_id,
+  });
+  if (!policy) return failure('TRACKING_POLICY_NOT_FOUND', 'Tracking policy was not found');
+  if (!policy.is_inventory_base || !policy.base_variant_active) {
+    return failure('BASE_VARIANT_NOT_AVAILABLE', 'Inventory base SKU is missing, inactive or invalid');
+  }
+  if (policy.location_required && !line.locationId) {
+    return failure('LOCATION_REQUIRED', 'Location is required by the active tracking policy');
+  }
+  const hasLotInput = Boolean(line.lotId || line.lotCode || line.manufacturedDate || line.expiryDate || line.supplierLotReference);
+  if (policy.lot_tracking_mode === 'NONE' && hasLotInput) {
+    return failure('LOT_NOT_ALLOWED', 'Lot data is not allowed by the active tracking policy');
+  }
+  let lotRecord = null;
+  const normalizedLotCode = line.lotCode ? normalizeLotCode(line.lotCode) : null;
+  if (line.lotCode && !normalizedLotCode.ok) return normalizedLotCode;
+  const normalizedExpiryDate = strictDate(line.expiryDate);
+  if (line.expiryDate && !normalizedExpiryDate) return failure('INVALID_EXPIRY_DATE', 'expiryDate must be a valid YYYY-MM-DD date');
+  const normalizedManufacturedDate = strictDate(line.manufacturedDate);
+  if (line.manufacturedDate && !normalizedManufacturedDate) return failure('INVALID_MANUFACTURED_DATE', 'manufacturedDate must be a valid YYYY-MM-DD date');
+
+  if (policy.lot_tracking_mode === 'REQUIRED' && !line.lotId && !normalizedLotCode) {
+    return failure('LOT_REQUIRED', 'lotCode or lotId is required by the active tracking policy');
+  }
+
+  if (line.lotId) {
+    lotRecord = await lotRepository.getInventoryLotById(client, {
+      installationId: requestContext.installationId,
+      id: line.lotId,
+    });
+    if (!lotRecord) return failure('LOT_NOT_FOUND', 'Lot was not found');
+    if (lotRecord.base_variant_id !== variant.base_variant_id) {
+      return failure('LOT_SKU_MISMATCH', 'Lot belongs to another SKU');
+    }
+    if (normalizedLotCode && lotRecord.normalized_lot_code !== normalizedLotCode.value) {
+      return failure('LOT_SKU_MISMATCH', 'Lot code does not match the canonical lot');
+    }
+  } else if (normalizedLotCode) {
+    lotRecord = await lotRepository.getInventoryLotByIdentity(client, {
+      installationId: requestContext.installationId,
+      baseVariantId: variant.base_variant_id,
+      normalizedLotCode: normalizedLotCode.value,
+    });
+    if (!lotRecord) {
+      const inserted = await lotRepository.insertInventoryLot(client, {
+        id: randomUUID(),
+        installationId: requestContext.installationId,
+        baseVariantId: variant.base_variant_id,
+        lotCode: line.lotCode,
+        normalizedLotCode: normalizedLotCode.value,
+        manufacturedDate: normalizedManufacturedDate,
+        expiryDate: normalizedExpiryDate,
+        supplierLotReference: text(line.supplierLotReference, 160),
+        metadata: objectValue(line.metadata) ?? {},
+        createdAt: requestContext.receivedAt ?? new Date().toISOString(),
+        createdBy: requestContext.actorId,
+      });
+      lotRecord = inserted
+        ?? await lotRepository.getInventoryLotByIdentity(client, {
+          installationId: requestContext.installationId,
+          baseVariantId: variant.base_variant_id,
+          normalizedLotCode: normalizedLotCode.value,
+        });
+    }
+  }
+
+  const effectiveExpiryDate = lotRecord?.expiry_date ?? normalizedExpiryDate;
+  if (policy.expiry_tracking_mode === 'REQUIRED' && !effectiveExpiryDate) {
+    return failure('EXPIRY_REQUIRED', 'expiryDate is required by the active tracking policy');
+  }
+  if (policy.expiry_tracking_mode === 'NONE' && effectiveExpiryDate) {
+    return failure('EXPIRY_NOT_ALLOWED', 'expiryDate is not allowed by the active tracking policy');
+  }
+  if (line.lotId && line.lotCode && lotRecord && lotRecord.normalized_lot_code !== normalizedLotCode.value) {
+    return failure('LOT_SKU_MISMATCH', 'Lot code does not match the canonical lot');
+  }
+  if (line.lotId && line.expiryDate && lotRecord && lotRecord.expiry_date !== normalizedExpiryDate) {
+    return failure('LOT_EXPIRY_MISMATCH', 'Lot expiry does not match the canonical expiry');
+  }
+  if (!line.lotId && normalizedLotCode && lotRecord && normalizedExpiryDate && lotRecord.expiry_date !== normalizedExpiryDate) {
+    return failure('LOT_EXPIRY_MISMATCH', 'Lot expiry does not match the canonical expiry');
+  }
+
   const converted = multiplyToBase(line.sourceQuantity, String(variant.conversion_to_base), line.direction);
   if (!converted.ok) return converted;
   if (!variant.allows_fractional && converted.sourceScaled % SCALE_6 !== 0n) {
@@ -224,6 +328,11 @@ async function resolveLine(client, requestContext, line) {
       baseVariantId: variant.base_variant_id,
       baseSku: variant.base_sku,
       baseQuantityDelta: converted.baseQuantityDelta,
+      lotId: lotRecord?.id ?? line.lotId ?? null,
+      lotCode: lotRecord?.normalized_lot_code ?? normalizedLotCode?.value ?? null,
+      manufacturedDate: lotRecord?.manufactured_date ?? normalizedManufacturedDate ?? null,
+      expiryDate: lotRecord?.expiry_date ?? normalizedExpiryDate ?? null,
+      supplierLotReference: lotRecord?.supplier_lot_reference ?? text(line.supplierLotReference, 160),
     }),
   });
 }
@@ -380,6 +489,9 @@ export async function reverseInventoryMovement(client, {
       baseQuantityDelta: String(originalLine.base_quantity_delta).startsWith('-')
         ? String(originalLine.base_quantity_delta).slice(1)
         : `-${originalLine.base_quantity_delta}`,
+      lotId: originalLine.lot_id,
+      lotCode: originalLine.lot_code,
+      expiryDate: originalLine.expiry_date,
       sourceLineReference: originalLine.source_line_reference,
       metadata: { ...(originalLine.metadata ?? {}), reversedFromLineId: originalLine.id },
     }));
