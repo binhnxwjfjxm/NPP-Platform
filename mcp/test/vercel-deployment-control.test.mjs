@@ -50,6 +50,7 @@ test("manual deployment uses Vercel CLI without mutating Git deployment gates", 
   assert.match(workflow, /vercel@latest deploy/);
   assert.match(workflow, /--prebuilt/);
   assert.match(workflow, /--prod/);
+  assert.doesNotMatch(workflow, /--archive(?:=|\s)/);
   assert.match(workflow, /secrets\.VERCEL_TOKEN/);
   assert.match(workflow, /git\.rev-parse|git rev-parse/);
   assert.match(workflow, /deploymentEnabled !== false/);

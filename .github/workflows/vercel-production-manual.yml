@@ -91,7 +91,6 @@ jobs:
             npx --yes vercel@latest deploy \
               --prebuilt \
               --prod \
-              --archive=tgz \
               --token="${{ secrets.VERCEL_TOKEN }}"
           )"
           test -n "$url"
