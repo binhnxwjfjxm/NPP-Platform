@@ -1,9 +1,9 @@
 name: Apply Vietnam Address UI
 
 on:
-  pull_request:
+  push:
     branches:
-      - codex/vercel-production-source-deploy
+      - agent/ui-live-fixes
     paths:
       - '.github/workflows/ui-vietnam-address-apply.yml'
       - '.github/ui-vietnam-address/**'
@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.head_ref == 'agent/ui-live-fixes'
+    if: github.ref == 'refs/heads/agent/ui-live-fixes'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
