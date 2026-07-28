@@ -1,3 +1,4 @@
+import InventoryLot3Boundary from '../inventory-lot3-boundary';
 import InventoryWorkspace from '../inventory-workspace';
 import { createEmptyInventorySnapshot } from '../../../lib/inventory-types';
 import { loadInventorySnapshot } from '../../../lib/inventory-snapshot';
@@ -15,12 +16,14 @@ export default async function InventoryOpeningBalancesPage() {
   }
 
   return (
-    <InventoryWorkspace
-      scope="opening-balances"
-      title="Nhập tồn đầu kỳ"
-      subtitle="Kiểm tra dòng JSON và ghi sổ nhập tồn đầu kỳ nguyên tử qua Core API."
-      initialSnapshot={initialData}
-      initialError={initialError}
-    />
+    <InventoryLot3Boundary scope="opening-balances">
+      <InventoryWorkspace
+        scope="opening-balances"
+        title="Thiết lập tồn đầu kỳ"
+        subtitle="Tải tệp mẫu, xem trước dữ liệu và xác nhận ghi nhận tồn đầu kỳ."
+        initialSnapshot={initialData}
+        initialError={initialError}
+      />
+    </InventoryLot3Boundary>
   );
 }
