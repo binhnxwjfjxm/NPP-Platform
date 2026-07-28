@@ -6,6 +6,7 @@ import { closePool, getPool } from '../src/db/pool.js';
 import { PERMISSIONS } from '../src/access/permissions.js';
 import {
   executeInventoryPost,
+  executeInventoryReversal,
 } from '../src/services/inventory-ledger.js';
 import {
   executeReserveInventory,
@@ -22,7 +23,9 @@ function testEnv() {
     HOST: '127.0.0.1',
     PORT: '3041',
     INSTALLATION_ID: `reservation-test-${randomUUID()}`,
-    DATABASE_URL: process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || 'postgresql://user:password@127.0.0.1:5432/npp_platform',
+    DATABASE_URL: process.env.TEST_DATABASE_URL
+      || process.env.DATABASE_URL
+      || 'postgresql://user:password@127.0.0.1:5432/npp_platform',
     DATABASE_SSL_MODE: 'disable',
     BACKEND_API_TOKEN: 'test-token-0123456789abcdef',
     CORE_BOOTSTRAP_ACTOR_ID: 'test:bootstrap',
@@ -30,707 +33,964 @@ function testEnv() {
   };
 }
 
-function requestContext(installationId, warehouseIds, requestId, permissions = [
-  PERMISSIONS.coreInventoryRead,
-  PERMISSIONS.coreInventoryPost,
-  PERMISSIONS.coreInventoryReverse,
-  PERMISSIONS.coreInventoryReserve,
-]) {
+function requestContext(
+  installationId,
+  warehouseIds,
+  requestId,
+  permissions = [
+    PERMISSIONS.coreInventoryRead,
+    PERMISSIONS.coreInventoryPost,
+    PERMISSIONS.coreInventoryReverse,
+    PERMISSIONS.coreInventoryReserve,
+  ],
+) {
   return Object.freeze({
     installationId,
     actorId: 'test:reservation-operator',
     employeeId: null,
     sourceApp: 'npp-core-api',
     requestId,
-    receivedAt: '2026-07-28T00:00:00.000Z',
-    scopes: Object.freeze({ branchIds: Object.freeze([]), warehouseIds: Object.freeze(warehouseIds), territoryIds: Object.freeze([]) }),
-    grantedPermissions: permissions,
+    receivedAt: new Date().toISOString(),
+    scopes: Object.freeze({
+      branchIds: Object.freeze([]),
+      warehouseIds: Object.freeze(warehouseIds),
+      territoryIds: Object.freeze([]),
+    }),
+    grantedPermissions: Object.freeze(permissions),
   });
 }
 
 async function seedMasterData(pool, installationId) {
+  const actor = 'test:seed';
+  const suffix = randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase();
   const branchId = randomUUID();
   const warehouseId = randomUUID();
+  const otherWarehouseId = randomUUID();
   const locationId = randomUUID();
-  const baseUnitId = randomUUID();
-  const productId = randomUUID();
-  const baseVariantId = randomUUID();
-  const suffix = randomUUID().slice(0, 8).toUpperCase();
+  const otherLocationId = randomUUID();
+  const fractionalUnitId = randomUUID();
+  const countUnitId = randomUUID();
+  const fractionalProductId = randomUUID();
+  const countProductId = randomUUID();
+  const fractionalVariantId = randomUUID();
+  const countVariantId = randomUUID();
+  const nonBaseVariantId = randomUUID();
 
   await pool.query(
-    `INSERT INTO shared.branches (id, installation_id, code, name, is_active, created_by, updated_by)
-     VALUES ($1,$2,$3,$4,true,$5,$5)`,
-    [branchId, installationId, `B-${suffix}`, 'Chi nhánh P4.3 kiểm thử', 'test:seed'],
+    `INSERT INTO shared.branches (
+       id, installation_id, code, name, is_active, created_by, updated_by
+     ) VALUES ($1,$2,$3,$4,true,$5,$5)`,
+    [branchId, installationId, `B-${suffix}`, 'Chi nhánh P4.3', actor],
   );
 
   await pool.query(
-    `INSERT INTO shared.warehouses (id, installation_id, branch_id, code, name, warehouse_type, is_active, created_by, updated_by)
-     VALUES ($1,$2,$3,$4,$5,'main',true,$6,$6)`,
-    [warehouseId, installationId, branchId, `W-${suffix}`, 'Kho P4.3 kiểm thử', 'test:seed'],
+    `INSERT INTO shared.warehouses (
+       id, installation_id, branch_id, code, name, warehouse_type,
+       is_active, created_by, updated_by
+     ) VALUES
+       ($1,$3,$4,$5,'Kho P4.3 chính','main',true,$7,$7),
+       ($2,$3,$4,$6,'Kho P4.3 khác','main',true,$7,$7)`,
+    [
+      warehouseId,
+      otherWarehouseId,
+      installationId,
+      branchId,
+      `W1-${suffix}`,
+      `W2-${suffix}`,
+      actor,
+    ],
   );
 
   await pool.query(
-    `INSERT INTO shared.warehouse_locations (id, installation_id, warehouse_id, code, name, location_type, is_active, created_by, updated_by)
-     VALUES ($1,$2,$3,$4,$5,'storage',true,$6,$6)`,
-    [locationId, installationId, warehouseId, `L-${suffix}`, 'Khu P4.3 kiểm thử', 'test:seed'],
+    `INSERT INTO shared.warehouse_locations (
+       id, installation_id, warehouse_id, code, name, location_type,
+       is_active, created_by, updated_by
+     ) VALUES
+       ($1,$3,$4,$6,'Vị trí P4.3 chính','storage',true,$8,$8),
+       ($2,$3,$5,$7,'Vị trí P4.3 khác','storage',true,$8,$8)`,
+    [
+      locationId,
+      otherLocationId,
+      installationId,
+      warehouseId,
+      otherWarehouseId,
+      `L1-${suffix}`,
+      `L2-${suffix}`,
+      actor,
+    ],
   );
 
   await pool.query(
-    `INSERT INTO shared.units_of_measure (id, installation_id, code, name, unit_kind, allows_fractional, is_active, created_by, updated_by)
-     VALUES ($1,$2,$3,$4,$5,false,true,$6,$6)`,
-    [baseUnitId, installationId, 'UNIT', 'Đơn vị kiểm thử', 'COUNT', 'test:seed'],
+    `INSERT INTO shared.units_of_measure (
+       id, installation_id, code, name, unit_kind, allows_fractional,
+       is_active, created_by, updated_by
+     ) VALUES
+       ($1,$3,$4,'Kilogram P4.3','WEIGHT',true,true,$6,$6),
+       ($2,$3,$5,'Cái P4.3','COUNT',false,true,$6,$6)`,
+    [
+      fractionalUnitId,
+      countUnitId,
+      installationId,
+      `KG${suffix}`,
+      `EA${suffix}`,
+      actor,
+    ],
   );
 
   await pool.query(
-    `INSERT INTO shared.product_categories (id, installation_id, code, name, is_active, created_by, updated_by)
-     VALUES ($1,$2,$3,$4,true,$5,$5)`,
-    [randomUUID(), installationId, `CAT-${suffix}`, 'Danh mục P4.3', 'test:seed'],
-  );
-
-  await pool.query(
-    `INSERT INTO shared.products (id, installation_id, code, name, description, is_active, created_by, updated_by)
-     VALUES ($1,$2,$3,$4,$5,true,$6,$6)`,
-    [productId, installationId, `SKU-${suffix}`, 'Sản phẩm P4.3', 'Sản phẩm kiểm thử P4.3', 'test:seed'],
+    `INSERT INTO shared.products (
+       id, installation_id, code, name, is_catalog_visible,
+       is_orderable, is_active, created_by, updated_by
+     ) VALUES
+       ($1,$3,$4,'Sản phẩm cân P4.3',true,true,true,$6,$6),
+       ($2,$3,$5,'Sản phẩm đếm P4.3',true,true,true,$6,$6)`,
+    [
+      fractionalProductId,
+      countProductId,
+      installationId,
+      `PF-${suffix}`,
+      `PC-${suffix}`,
+      actor,
+    ],
   );
 
   await pool.query(
     `INSERT INTO shared.product_variants (
-       id, installation_id, product_id, unit_id, sku, is_base, is_active, created_by, updated_by
-     ) VALUES ($1,$2,$3,$4,$5,true,true,$6,$6)`,
-    [baseVariantId, installationId, productId, baseUnitId, `SKU-${suffix}`, 'test:seed'],
+       id, installation_id, product_id, sku, name, variant_kind,
+       is_inventory_base, is_sellable, is_catalog_visible, is_active,
+       unit_id, conversion_to_base, is_purchasable, created_by, updated_by
+     ) VALUES
+       ($1,$4,$5,$8,'SKU cân cơ sở','BASE',true,true,true,true,$11,1,true,$13,$13),
+       ($2,$4,$6,$9,'SKU đếm cơ sở','BASE',true,true,true,true,$12,1,true,$13,$13),
+       ($3,$4,$5,$10,'SKU cân không cơ sở','OTHER',false,true,true,true,$11,1,true,$13,$13)`,
+    [
+      fractionalVariantId,
+      countVariantId,
+      nonBaseVariantId,
+      installationId,
+      fractionalProductId,
+      countProductId,
+      null,
+      `VF-${suffix}`,
+      `VC-${suffix}`,
+      `VN-${suffix}`,
+      fractionalUnitId,
+      countUnitId,
+      actor,
+    ],
   );
 
   return Object.freeze({
     branchId,
     warehouseId,
+    otherWarehouseId,
     locationId,
-    baseUnitId,
-    productId,
-    baseVariantId,
-    suffix,
+    otherLocationId,
+    fractionalUnitId,
+    countUnitId,
+    fractionalVariantId,
+    countVariantId,
+    nonBaseVariantId,
   });
 }
 
-test('Phase 4.3: Inventory reservations create with permission and scope checks', async () => {
+async function postOpening(
+  pool,
+  config,
+  master,
+  quantity,
+  variantId = master.fractionalVariantId,
+  label = randomUUID(),
+) {
+  return executeInventoryPost({
+    adapter: pool,
+    requestContext: requestContext(
+      config.installationId,
+      [master.warehouseId],
+      `req-opening-${label}`,
+    ),
+    idempotencyKey: `opening-${label}`,
+    payload: {
+      movementType: 'OPENING_BALANCE',
+      sourceDomain: 'INVENTORY',
+      sourceDocumentType: 'OPENING_BALANCE_IMPORT',
+      sourceDocumentId: `opening-source-${label}`,
+      documentDate: '2026-07-28',
+      metadata: { test: true },
+      lines: [{
+        warehouseId: master.warehouseId,
+        locationId: master.locationId,
+        sourceVariantId: variantId,
+        sourceQuantity: quantity,
+        direction: 'IN',
+      }],
+    },
+  });
+}
+
+async function readBalance(pool, config, master, variantId = master.fractionalVariantId) {
+  const result = await pool.query(
+    `SELECT on_hand_quantity, reserved_quantity, available_quantity
+       FROM inventory.inventory_balances
+      WHERE installation_id = $1
+        AND warehouse_id = $2
+        AND location_id = $3
+        AND base_variant_id = $4
+        AND lot_id IS NULL`,
+    [config.installationId, master.warehouseId, master.locationId, variantId],
+  );
+  return result.rows[0] ?? null;
+}
+
+function reservationPayload(master, quantity, overrides = {}) {
+  return {
+    warehouseId: master.warehouseId,
+    locationId: master.locationId,
+    baseVariantId: master.fractionalVariantId,
+    quantity,
+    sourceDomain: 'TEST',
+    sourceDocumentType: 'TEST_DOCUMENT',
+    sourceDocumentId: `doc-${randomUUID()}`,
+    metadata: { test: true },
+    ...overrides,
+  };
+}
+
+test('P4.3 exact decimal parsing rejects JavaScript numbers', () => {
+  const exact = inventoryReservationInternals.parseDecimal('123.456789123456', 'quantity');
+  assert.equal(exact.ok, true);
+  assert.equal(exact.value, '123.456789123456');
+
+  const normalized = inventoryReservationInternals.parseDecimal('10.5', 'quantity');
+  assert.equal(normalized.ok, true);
+  assert.equal(normalized.value, '10.500000000000');
+
+  const numberInput = inventoryReservationInternals.parseDecimal(10.5, 'quantity');
+  assert.equal(numberInput.ok, false);
+  assert.equal(numberInput.code, 'INVALID_QUANTITY');
+
+  const partial = inventoryReservationInternals.normalizeTransitionPayload(
+    'RELEASE_TO_RELEASED',
+    { quantity: '5.000000000000' },
+  );
+  assert.equal(partial.ok, false);
+  assert.equal(partial.code, 'PARTIAL_RESERVATION_NOT_SUPPORTED');
+});
+
+test('P4.3 create, canonical replay, mismatch, permission and scope are fail-closed', async () => {
   const config = loadConfig(testEnv());
   const pool = getPool(config);
   try {
     const master = await seedMasterData(pool, config.installationId);
-
-    // Post opening balance first
-    const opening = await executeInventoryPost({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], 'req-opening'),
-      idempotencyKey: `opening-${randomUUID()}`,
-      payload: {
-        movementType: 'OPENING_BALANCE',
-        sourceDomain: 'INVENTORY',
-        sourceDocumentType: 'OPENING_BALANCE_IMPORT',
-        sourceDocumentId: `opening-source-${randomUUID()}`,
-        documentDate: '2026-07-28',
-        metadata: { source: 'test' },
-        lines: [{
-          warehouseId: master.warehouseId,
-          locationId: master.locationId,
-          sourceVariantId: master.baseVariantId,
-          sourceQuantity: '100.000000',
-          direction: 'IN',
-        }],
-      },
-    });
+    const opening = await postOpening(pool, config, master, '100.000000');
     assert.equal(opening.ok, true, opening.message);
 
-    // Create reservation successfully
-    const reserve = await executeReserveInventory({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-reserve-${randomUUID()}`),
-      idempotencyKey: `reserve-${randomUUID()}`,
-      payload: {
-        warehouseId: master.warehouseId,
-        locationId: master.locationId,
-        baseVariantId: master.baseVariantId,
-        quantity: '10.000000000000',
-        sourceDomain: 'TEST',
-        sourceDocumentType: 'TEST_DOCUMENT',
-        sourceDocumentId: 'test-doc-1',
-        metadata: { test: true },
-      },
+    const key = `reserve-${randomUUID()}`;
+    const payload = reservationPayload(master, '10.5', {
+      sourceDocumentId: 'replay-doc',
+      metadata: { second: 2, first: 1 },
     });
-    assert.equal(reserve.ok, true, reserve.message);
-    assert.equal(reserve.reservation.state, 'ACTIVE');
-    assert.equal(String(reserve.reservation.quantity), '10.000000000000');
-    assert.equal(reserve.events.length, 1);
-    assert.equal(reserve.events[0].transition, 'CREATE_ACTIVE');
-    assert.ok(reserve.auditId);
-    assert.ok(reserve.eventId);
-    
-    // Replay with same key and payload
-    const replay = await executeReserveInventory({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-replay-${randomUUID()}`),
-      idempotencyKey: `reserve-${randomUUID()}`,
-      payload: {
-        warehouseId: master.warehouseId,
-        locationId: master.locationId,
-        baseVariantId: master.baseVariantId,
-        quantity: '10.000000000000',
-        sourceDomain: 'TEST',
-        sourceDocumentType: 'TEST_DOCUMENT',
-        sourceDocumentId: 'test-doc-1',
-        metadata: { test: true },
-      },
-    });
-    assert.equal(replay.ok, true);
-    assert.equal(replay.replayed, true);
-    assert.equal(replay.reservation.id, reserve.reservation.id);
-
-    // Mismatch: same key, different payload
-    const mismatch = await executeReserveInventory({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-mismatch-${randomUUID()}`),
-      idempotencyKey: `reserve-${randomUUID()}`,
-      payload: {
-        warehouseId: master.warehouseId,
-        locationId: master.locationId,
-        baseVariantId: master.baseVariantId,
-        quantity: '20.000000000000',
-        sourceDomain: 'TEST',
-        sourceDocumentType: 'TEST_DOCUMENT',
-        sourceDocumentId: 'test-doc-2',
-        metadata: { test: true },
-      },
-    });
-    assert.equal(mismatch.ok, false);
-    assert.equal(mismatch.code, 'IDEMPOTENCY_PAYLOAD_MISMATCH');
-
-    // Permission denied
-    const noPerm = await executeReserveInventory({
+    const created = await executeReserveInventory({
       adapter: pool,
       requestContext: requestContext(
         config.installationId,
         [master.warehouseId],
-        `req-no-perm-${randomUUID()}`,
+        `req-create-${randomUUID()}`,
+      ),
+      idempotencyKey: key,
+      payload,
+    });
+    assert.equal(created.ok, true, created.message);
+    assert.equal(created.replayed, false);
+    assert.equal(created.reservation.state, 'ACTIVE');
+    assert.equal(String(created.reservation.quantity), '10.500000000000');
+
+    const replayed = await executeReserveInventory({
+      adapter: pool,
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-replay-${randomUUID()}`,
+      ),
+      idempotencyKey: key,
+      payload: {
+        ...payload,
+        quantity: '10.500000000000',
+        metadata: { first: 1, second: 2 },
+      },
+    });
+    assert.equal(replayed.ok, true, replayed.message);
+    assert.equal(replayed.replayed, true);
+    assert.equal(replayed.reservation.id, created.reservation.id);
+
+    const mismatch = await executeReserveInventory({
+      adapter: pool,
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-mismatch-${randomUUID()}`,
+      ),
+      idempotencyKey: key,
+      payload: { ...payload, quantity: '11.000000000000' },
+    });
+    assert.equal(mismatch.ok, false);
+    assert.equal(mismatch.code, 'IDEMPOTENCY_PAYLOAD_MISMATCH');
+
+    const reservationCount = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM inventory.inventory_reservations
+        WHERE installation_id = $1 AND idempotency_key = $2`,
+      [config.installationId, key],
+    );
+    assert.equal(reservationCount.rows[0].count, 1);
+
+    const createEventCount = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM inventory.inventory_reservation_events
+        WHERE installation_id = $1
+          AND reservation_id = $2
+          AND transition = 'CREATE_ACTIVE'`,
+      [config.installationId, created.reservation.id],
+    );
+    assert.equal(createEventCount.rows[0].count, 1);
+
+    const auditCount = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM shared.core_audit_records
+        WHERE installation_id = $1
+          AND resource_type = 'inventory_reservation'
+          AND resource_id = $2
+          AND action = 'inventory.reserve'`,
+      [config.installationId, created.reservation.id],
+    );
+    assert.equal(auditCount.rows[0].count, 1);
+
+    const outboxCount = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM shared.core_outbox_events
+        WHERE installation_id = $1
+          AND aggregate_type = 'inventory_reservation'
+          AND aggregate_id = $2
+          AND event_type = 'core.inventory.reservation.created'`,
+      [config.installationId, created.reservation.id],
+    );
+    assert.equal(outboxCount.rows[0].count, 1);
+
+    const deniedPermission = await executeReserveInventory({
+      adapter: pool,
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-permission-${randomUUID()}`,
         [PERMISSIONS.coreInventoryRead],
       ),
-      idempotencyKey: `reserve-no-perm-${randomUUID()}`,
-      payload: {
-        warehouseId: master.warehouseId,
-        locationId: master.locationId,
-        baseVariantId: master.baseVariantId,
-        quantity: '5.000000000000',
-        sourceDomain: 'TEST',
-      },
+      idempotencyKey: `permission-${randomUUID()}`,
+      payload: reservationPayload(master, '1.000000000000'),
     });
-    assert.equal(noPerm.ok, false);
-    assert.equal(noPerm.code, 'PERMISSION_DENIED');
+    assert.equal(deniedPermission.ok, false);
+    assert.equal(deniedPermission.code, 'PERMISSION_DENIED');
 
-    // Warehouse scope denied
-    const otherWarehouse = randomUUID();
-    const wrongScope = await executeReserveInventory({
+    const deniedScope = await executeReserveInventory({
       adapter: pool,
-      requestContext: requestContext(config.installationId, [otherWarehouse], `req-scope-${randomUUID()}`),
-      idempotencyKey: `reserve-scope-${randomUUID()}`,
-      payload: {
-        warehouseId: master.warehouseId,
-        locationId: master.locationId,
-        baseVariantId: master.baseVariantId,
-        quantity: '5.000000000000',
-        sourceDomain: 'TEST',
-      },
+      requestContext: requestContext(
+        config.installationId,
+        [master.otherWarehouseId],
+        `req-scope-${randomUUID()}`,
+      ),
+      idempotencyKey: `scope-${randomUUID()}`,
+      payload: reservationPayload(master, '1.000000000000'),
     });
-    assert.equal(wrongScope.ok, false);
-    assert.equal(wrongScope.code, 'WAREHOUSE_SCOPE_DENIED');
+    assert.equal(deniedScope.ok, false);
+    assert.equal(deniedScope.code, 'WAREHOUSE_SCOPE_DENIED');
 
-    console.log('✓ Phase 4.3 reservation create, replay, mismatch, permission and scope checks passed');
+    const deniedLocation = await executeReserveInventory({
+      adapter: pool,
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-location-${randomUUID()}`,
+      ),
+      idempotencyKey: `location-${randomUUID()}`,
+      payload: reservationPayload(master, '1.000000000000', {
+        locationId: master.otherLocationId,
+      }),
+    });
+    assert.equal(deniedLocation.ok, false);
+    assert.equal(deniedLocation.code, 'LOCATION_NOT_AVAILABLE');
   } finally {
     await closePool();
   }
 });
 
-test('Phase 4.3: Inventory reservations reject insufficient available quantity (negative stock denied)', async () => {
+test('P4.3 fractional policy follows the active inventory-base UOM', async () => {
   const config = loadConfig(testEnv());
   const pool = getPool(config);
   try {
     const master = await seedMasterData(pool, config.installationId);
+    assert.equal((await postOpening(pool, config, master, '50.000000')).ok, true);
+    assert.equal((await postOpening(
+      pool,
+      config,
+      master,
+      '50.000000',
+      master.countVariantId,
+    )).ok, true);
 
-    // Post 10 units
-    const opening = await executeInventoryPost({
+    const fractional = await executeReserveInventory({
       adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], 'req-opening'),
-      idempotencyKey: `opening-${randomUUID()}`,
-      payload: {
-        movementType: 'OPENING_BALANCE',
-        sourceDomain: 'INVENTORY',
-        sourceDocumentType: 'OPENING_BALANCE_IMPORT',
-        sourceDocumentId: `source-${randomUUID()}`,
-        documentDate: '2026-07-28',
-        lines: [{
-          warehouseId: master.warehouseId,
-          locationId: master.locationId,
-          sourceVariantId: master.baseVariantId,
-          sourceQuantity: '10.000000',
-          direction: 'IN',
-        }],
-      },
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-fractional-${randomUUID()}`,
+      ),
+      idempotencyKey: `fractional-${randomUUID()}`,
+      payload: reservationPayload(master, '10.125'),
     });
-    assert.equal(opening.ok, true);
+    assert.equal(fractional.ok, true, fractional.message);
+    assert.equal(String(fractional.reservation.quantity), '10.125000000000');
 
-    // Try to reserve more than available: 15 > 10
-    const tooMuch = await executeReserveInventory({
+    const nonFractional = await executeReserveInventory({
       adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-too-much-${randomUUID()}`),
-      idempotencyKey: `reserve-too-much-${randomUUID()}`,
-      payload: {
-        warehouseId: master.warehouseId,
-        locationId: master.locationId,
-        baseVariantId: master.baseVariantId,
-        quantity: '15.000000000000',
-        sourceDomain: 'TEST',
-      },
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-count-${randomUUID()}`,
+      ),
+      idempotencyKey: `count-${randomUUID()}`,
+      payload: reservationPayload(master, '10.5', {
+        baseVariantId: master.countVariantId,
+      }),
     });
-    assert.equal(tooMuch.ok, false);
-    assert.equal(tooMuch.code, 'INSUFFICIENT_AVAILABLE_QUANTITY');
+    assert.equal(nonFractional.ok, false);
+    assert.equal(nonFractional.code, 'FRACTIONAL_QUANTITY_NOT_ALLOWED');
 
-    // Reserve exactly available: 10 = 10
-    const exact = await executeReserveInventory({
+    const nonBase = await executeReserveInventory({
       adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-exact-${randomUUID()}`),
-      idempotencyKey: `reserve-exact-${randomUUID()}`,
-      payload: {
-        warehouseId: master.warehouseId,
-        locationId: master.locationId,
-        baseVariantId: master.baseVariantId,
-        quantity: '10.000000000000',
-        sourceDomain: 'TEST',
-      },
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-non-base-${randomUUID()}`,
+      ),
+      idempotencyKey: `non-base-${randomUUID()}`,
+      payload: reservationPayload(master, '1.000000000000', {
+        baseVariantId: master.nonBaseVariantId,
+      }),
     });
-    assert.equal(exact.ok, true);
-
-    console.log('✓ Phase 4.3 negative stock denial passed');
+    assert.equal(nonBase.ok, false);
+    assert.equal(nonBase.code, 'BASE_VARIANT_REQUIRED');
   } finally {
     await closePool();
   }
 });
 
-test('Phase 4.3: Inventory reservations state machine transitions', async () => {
+test('P4.3 concurrent requests are idempotent, allow multiple active rows and cannot oversell', async () => {
   const config = loadConfig(testEnv());
   const pool = getPool(config);
   try {
     const master = await seedMasterData(pool, config.installationId);
+    const opening = await postOpening(pool, config, master, '10.000000');
+    assert.equal(opening.ok, true, opening.message);
 
-    // Post opening balance
-    const opening = await executeInventoryPost({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], 'req-opening'),
-      idempotencyKey: `opening-${randomUUID()}`,
-      payload: {
-        movementType: 'OPENING_BALANCE',
-        sourceDomain: 'INVENTORY',
-        sourceDocumentType: 'OPENING_BALANCE_IMPORT',
-        sourceDocumentId: `source-${randomUUID()}`,
-        documentDate: '2026-07-28',
-        lines: [{
-          warehouseId: master.warehouseId,
-          locationId: master.locationId,
-          sourceVariantId: master.baseVariantId,
-          sourceQuantity: '50.000000',
-          direction: 'IN',
-        }],
-      },
+    const sameKey = `same-${randomUUID()}`;
+    const samePayload = reservationPayload(master, '4.000000000000', {
+      sourceDocumentId: 'same-key-doc',
     });
-    assert.equal(opening.ok, true);
+    const sameResults = await Promise.all([
+      executeReserveInventory({
+        adapter: pool,
+        requestContext: requestContext(
+          config.installationId,
+          [master.warehouseId],
+          `req-same-a-${randomUUID()}`,
+        ),
+        idempotencyKey: sameKey,
+        payload: samePayload,
+      }),
+      executeReserveInventory({
+        adapter: pool,
+        requestContext: requestContext(
+          config.installationId,
+          [master.warehouseId],
+          `req-same-b-${randomUUID()}`,
+        ),
+        idempotencyKey: sameKey,
+        payload: samePayload,
+      }),
+    ]);
+    assert.equal(sameResults.every((result) => result.ok), true);
+    assert.equal(sameResults.filter((result) => result.replayed).length, 1);
+    assert.equal(sameResults[0].reservation.id, sameResults[1].reservation.id);
 
-    // Create reservation in ACTIVE state
-    const reserve1 = await executeReserveInventory({
+    const reset = await executeReleaseReservation({
       adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-res1-${randomUUID()}`),
-      idempotencyKey: `res1-${randomUUID()}`,
-      payload: {
-        warehouseId: master.warehouseId,
-        locationId: master.locationId,
-        baseVariantId: master.baseVariantId,
-        quantity: '10.000000000000',
-        sourceDomain: 'TEST',
-      },
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-reset-${randomUUID()}`,
+      ),
+      reservationId: sameResults[0].reservation.id,
+      payload: { reason: 'reset same-key fixture' },
     });
-    assert.equal(reserve1.ok, true);
-    assert.equal(reserve1.reservation.state, 'ACTIVE');
-    const res1Id = reserve1.reservation.id;
+    assert.equal(reset.ok, true, reset.message);
 
-    // Release: ACTIVE -> RELEASED
-    const release = await executeReleaseReservation({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-release-${randomUUID()}`),
-      reservationId: res1Id,
-      payload: { reason: 'Phát hành để xử lý đơn hàng' },
-    });
-    assert.equal(release.ok, true);
-    assert.equal(release.reservation.state, 'RELEASED');
-    assert.equal(release.events.length, 2); // CREATE_ACTIVE + RELEASE_TO_RELEASED
-
-    // Try to transition from terminal state RELEASED: should fail
-    const releaseAgain = await executeReleaseReservation({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-release2-${randomUUID()}`),
-      reservationId: res1Id,
-      payload: { reason: 'Phát hành lần nữa' },
-    });
-    assert.equal(releaseAgain.ok, false);
-    assert.equal(releaseAgain.code, 'INVALID_STATE_TRANSITION');
-
-    // Create second reservation
-    const reserve2 = await executeReserveInventory({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-res2-${randomUUID()}`),
-      idempotencyKey: `res2-${randomUUID()}`,
-      payload: {
-        warehouseId: master.warehouseId,
-        locationId: master.locationId,
-        baseVariantId: master.baseVariantId,
-        quantity: '15.000000000000',
-        sourceDomain: 'TEST',
-      },
-    });
-    const res2Id = reserve2.reservation.id;
-
-    // Consume: ACTIVE -> CONSUMED
-    const consume = await executeConsumeReservation({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-consume-${randomUUID()}`),
-      reservationId: res2Id,
-      payload: { reason: 'Tiêu thụ cho giao hàng' },
-    });
-    assert.equal(consume.ok, true);
-    assert.equal(consume.reservation.state, 'CONSUMED');
-
-    // Create third reservation
-    const reserve3 = await executeReserveInventory({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-res3-${randomUUID()}`),
-      idempotencyKey: `res3-${randomUUID()}`,
-      payload: {
-        warehouseId: master.warehouseId,
-        locationId: master.locationId,
-        baseVariantId: master.baseVariantId,
-        quantity: '5.000000000000',
-        sourceDomain: 'TEST',
-      },
-    });
-    const res3Id = reserve3.reservation.id;
-
-    // Expire: ACTIVE -> EXPIRED
-    const expire = await executeExpireReservation({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-expire-${randomUUID()}`),
-      reservationId: res3Id,
-      payload: { reason: 'Hạn của cấp phát đã vượt quá' },
-    });
-    assert.equal(expire.ok, true);
-    assert.equal(expire.reservation.state, 'EXPIRED');
-
-    // Create fourth reservation
-    const reserve4 = await executeReserveInventory({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-res4-${randomUUID()}`),
-      idempotencyKey: `res4-${randomUUID()}`,
-      payload: {
-        warehouseId: master.warehouseId,
-        locationId: master.locationId,
-        baseVariantId: master.baseVariantId,
-        quantity: '8.000000000000',
-        sourceDomain: 'TEST',
-      },
-    });
-    const res4Id = reserve4.reservation.id;
-
-    // Cancel: ACTIVE -> CANCELLED
-    const cancel = await executeCancelReservation({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-cancel-${randomUUID()}`),
-      reservationId: res4Id,
-      payload: { reason: 'Hủy cấp phát' },
-    });
-    assert.equal(cancel.ok, true);
-    assert.equal(cancel.reservation.state, 'CANCELLED');
-
-    console.log('✓ Phase 4.3 state machine transitions passed');
-  } finally {
-    await closePool();
-  }
-});
-
-test('Phase 4.3: Inventory reservations and balance reserved_quantity synchronization', async () => {
-  const config = loadConfig(testEnv());
-  const pool = getPool(config);
-  try {
-    const master = await seedMasterData(pool, config.installationId);
-
-    // Post opening balance
-    await executeInventoryPost({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], 'req-opening'),
-      idempotencyKey: `opening-${randomUUID()}`,
-      payload: {
-        movementType: 'OPENING_BALANCE',
-        sourceDomain: 'INVENTORY',
-        sourceDocumentType: 'OPENING_BALANCE_IMPORT',
-        sourceDocumentId: `source-${randomUUID()}`,
-        documentDate: '2026-07-28',
-        lines: [{
-          warehouseId: master.warehouseId,
-          locationId: master.locationId,
-          sourceVariantId: master.baseVariantId,
-          sourceQuantity: '100.000000',
-          direction: 'IN',
-        }],
-      },
-    });
-
-    // Check balance before reservation
-    const balanceBefore = await pool.query(
-      `SELECT on_hand_quantity, reserved_quantity, available_quantity
-        FROM inventory.inventory_balances
-       WHERE installation_id = $1
-         AND warehouse_id = $2
-         AND location_id = $3
-         AND base_variant_id = $4`,
-      [config.installationId, master.warehouseId, master.locationId, master.baseVariantId],
+    const oversellPayload = reservationPayload(master, '7.000000000000');
+    const oversellResults = await Promise.all([
+      executeReserveInventory({
+        adapter: pool,
+        requestContext: requestContext(
+          config.installationId,
+          [master.warehouseId],
+          `req-over-a-${randomUUID()}`,
+        ),
+        idempotencyKey: `over-a-${randomUUID()}`,
+        payload: { ...oversellPayload, sourceDocumentId: 'over-a' },
+      }),
+      executeReserveInventory({
+        adapter: pool,
+        requestContext: requestContext(
+          config.installationId,
+          [master.warehouseId],
+          `req-over-b-${randomUUID()}`,
+        ),
+        idempotencyKey: `over-b-${randomUUID()}`,
+        payload: { ...oversellPayload, sourceDocumentId: 'over-b' },
+      }),
+    ]);
+    assert.equal(oversellResults.filter((result) => result.ok).length, 1);
+    assert.equal(
+      oversellResults.filter(
+        (result) => !result.ok && result.code === 'INSUFFICIENT_AVAILABLE_QUANTITY',
+      ).length,
+      1,
     );
-    assert.equal(balanceBefore.rows.length, 1);
-    assert.equal(String(balanceBefore.rows[0].on_hand_quantity), '100.000000000000');
-    assert.equal(String(balanceBefore.rows[0].reserved_quantity), '0.000000000000');
-    assert.equal(String(balanceBefore.rows[0].available_quantity), '100.000000000000');
 
-    // Create reservation: should increase reserved_quantity
+    const successfulOversell = oversellResults.find((result) => result.ok);
+    const releasedOversell = await executeReleaseReservation({
+      adapter: pool,
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-release-over-${randomUUID()}`,
+      ),
+      reservationId: successfulOversell.reservation.id,
+      payload: { reason: 'release oversell winner' },
+    });
+    assert.equal(releasedOversell.ok, true, releasedOversell.message);
+
+    const multipleResults = await Promise.all([
+      executeReserveInventory({
+        adapter: pool,
+        requestContext: requestContext(
+          config.installationId,
+          [master.warehouseId],
+          `req-multiple-a-${randomUUID()}`,
+        ),
+        idempotencyKey: `multiple-a-${randomUUID()}`,
+        payload: reservationPayload(master, '4.000000000000', {
+          sourceDocumentId: 'multiple-a',
+        }),
+      }),
+      executeReserveInventory({
+        adapter: pool,
+        requestContext: requestContext(
+          config.installationId,
+          [master.warehouseId],
+          `req-multiple-b-${randomUUID()}`,
+        ),
+        idempotencyKey: `multiple-b-${randomUUID()}`,
+        payload: reservationPayload(master, '4.000000000000', {
+          sourceDocumentId: 'multiple-b',
+        }),
+      }),
+    ]);
+    assert.equal(multipleResults.every((result) => result.ok), true);
+
+    const activeCount = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM inventory.inventory_reservations
+        WHERE installation_id = $1
+          AND warehouse_id = $2
+          AND location_id = $3
+          AND base_variant_id = $4
+          AND state = 'ACTIVE'`,
+      [
+        config.installationId,
+        master.warehouseId,
+        master.locationId,
+        master.fractionalVariantId,
+      ],
+    );
+    assert.equal(activeCount.rows[0].count, 2);
+
+    const balance = await readBalance(pool, config, master);
+    assert.equal(String(balance.on_hand_quantity), '10.000000000000');
+    assert.equal(String(balance.reserved_quantity), '8.000000000000');
+    assert.equal(String(balance.available_quantity), '2.000000000000');
+  } finally {
+    await closePool();
+  }
+});
+
+test('P4.3 lifecycle applies full quantity and terminal states are immutable', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+  try {
+    const master = await seedMasterData(pool, config.installationId);
+    assert.equal((await postOpening(pool, config, master, '100.000000')).ok, true);
+
+    const create = async (quantity, label) => executeReserveInventory({
+      adapter: pool,
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-${label}-${randomUUID()}`,
+      ),
+      idempotencyKey: `${label}-${randomUUID()}`,
+      payload: reservationPayload(master, quantity, { sourceDocumentId: label }),
+    });
+
+    const releasedReservation = await create('10.500000000000', 'release');
+    const consumedReservation = await create('15.000000000000', 'consume');
+    const expiredReservation = await create('5.000000000000', 'expire');
+    const cancelledReservation = await create('8.000000000000', 'cancel');
+    assert.equal([
+      releasedReservation,
+      consumedReservation,
+      expiredReservation,
+      cancelledReservation,
+    ].every((result) => result.ok), true);
+
+    const partialRelease = await executeReleaseReservation({
+      adapter: pool,
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-partial-${randomUUID()}`,
+      ),
+      reservationId: releasedReservation.reservation.id,
+      payload: { quantity: '5.250000000000', reason: 'not supported' },
+    });
+    assert.equal(partialRelease.ok, false);
+    assert.equal(partialRelease.code, 'PARTIAL_RESERVATION_NOT_SUPPORTED');
+
+    const released = await executeReleaseReservation({
+      adapter: pool,
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-release-${randomUUID()}`,
+      ),
+      reservationId: releasedReservation.reservation.id,
+      payload: { reason: 'release complete reservation' },
+    });
+    assert.equal(released.ok, true, released.message);
+    assert.equal(released.reservation.state, 'RELEASED');
+    assert.deepEqual(
+      released.events.map((event) => event.transition),
+      ['CREATE_ACTIVE', 'RELEASE_TO_RELEASED'],
+    );
+
+    const terminalRetry = await executeReleaseReservation({
+      adapter: pool,
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-terminal-${randomUUID()}`,
+      ),
+      reservationId: releasedReservation.reservation.id,
+      payload: { reason: 'retry terminal transition' },
+    });
+    assert.equal(terminalRetry.ok, false);
+    assert.equal(terminalRetry.code, 'TERMINAL_STATE_NO_TRANSITION');
+
+    const consumed = await executeConsumeReservation({
+      adapter: pool,
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-consume-${randomUUID()}`,
+      ),
+      reservationId: consumedReservation.reservation.id,
+      payload: { reason: 'consume complete reservation' },
+    });
+    assert.equal(consumed.ok, true, consumed.message);
+    assert.equal(consumed.reservation.state, 'CONSUMED');
+
+    const expired = await executeExpireReservation({
+      adapter: pool,
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-expire-${randomUUID()}`,
+      ),
+      reservationId: expiredReservation.reservation.id,
+      payload: { reason: 'reservation expired' },
+    });
+    assert.equal(expired.ok, true, expired.message);
+    assert.equal(expired.reservation.state, 'EXPIRED');
+
+    const cancelled = await executeCancelReservation({
+      adapter: pool,
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-cancel-${randomUUID()}`,
+      ),
+      reservationId: cancelledReservation.reservation.id,
+      payload: { reason: 'reservation cancelled' },
+    });
+    assert.equal(cancelled.ok, true, cancelled.message);
+    assert.equal(cancelled.reservation.state, 'CANCELLED');
+
+    const balance = await readBalance(pool, config, master);
+    assert.equal(String(balance.reserved_quantity), '0.000000000000');
+    assert.equal(String(balance.available_quantity), '100.000000000000');
+  } finally {
+    await closePool();
+  }
+});
+
+test('P4.3 direct writes and cross-installation access are denied', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+  try {
+    const master = await seedMasterData(pool, config.installationId);
+    assert.equal((await postOpening(pool, config, master, '20.000000')).ok, true);
+
     const reserve = await executeReserveInventory({
       adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-reserve-${randomUUID()}`),
-      idempotencyKey: `reserve-${randomUUID()}`,
-      payload: {
-        warehouseId: master.warehouseId,
-        locationId: master.locationId,
-        baseVariantId: master.baseVariantId,
-        quantity: '30.000000000000',
-        sourceDomain: 'TEST',
-      },
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-guard-${randomUUID()}`,
+      ),
+      idempotencyKey: `guard-${randomUUID()}`,
+      payload: reservationPayload(master, '5.000000000000'),
     });
-    assert.equal(reserve.ok, true);
+    assert.equal(reserve.ok, true, reserve.message);
 
-    // Check balance after reservation
-    const balanceAfterReserve = await pool.query(
-      `SELECT on_hand_quantity, reserved_quantity, available_quantity
-        FROM inventory.inventory_balances
-       WHERE installation_id = $1
-         AND warehouse_id = $2
-         AND location_id = $3
-         AND base_variant_id = $4`,
-      [config.installationId, master.warehouseId, master.locationId, master.baseVariantId],
-    );
-    assert.equal(String(balanceAfterReserve.rows[0].on_hand_quantity), '100.000000000000');
-    assert.equal(String(balanceAfterReserve.rows[0].reserved_quantity), '30.000000000000');
-    assert.equal(String(balanceAfterReserve.rows[0].available_quantity), '70.000000000000');
-
-    // Release reservation: should decrease reserved_quantity
-    await executeReleaseReservation({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-release-${randomUUID()}`),
-      reservationId: reserve.reservation.id,
-      payload: { reason: 'Phát hành' },
-    });
-
-    // Check balance after release
-    const balanceAfterRelease = await pool.query(
-      `SELECT on_hand_quantity, reserved_quantity, available_quantity
-        FROM inventory.inventory_balances
-       WHERE installation_id = $1
-         AND warehouse_id = $2
-         AND location_id = $3
-         AND base_variant_id = $4`,
-      [config.installationId, master.warehouseId, master.locationId, master.baseVariantId],
-    );
-    assert.equal(String(balanceAfterRelease.rows[0].on_hand_quantity), '100.000000000000');
-    assert.equal(String(balanceAfterRelease.rows[0].reserved_quantity), '0.000000000000');
-    assert.equal(String(balanceAfterRelease.rows[0].available_quantity), '100.000000000000');
-
-    console.log('✓ Phase 4.3 balance synchronization passed');
-  } finally {
-    await closePool();
-  }
-});
-
-test('Phase 4.3: Inventory reservations reject partial quantity (P4.3 constraint)', async () => {
-  const config = loadConfig(testEnv());
-  const pool = getPool(config);
-  try {
-    const master = await seedMasterData(pool, config.installationId);
-
-    // Post opening balance
-    await executeInventoryPost({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], 'req-opening'),
-      idempotencyKey: `opening-${randomUUID()}`,
-      payload: {
-        movementType: 'OPENING_BALANCE',
-        sourceDomain: 'INVENTORY',
-        sourceDocumentType: 'OPENING_BALANCE_IMPORT',
-        sourceDocumentId: `source-${randomUUID()}`,
-        documentDate: '2026-07-28',
-        lines: [{
-          warehouseId: master.warehouseId,
-          locationId: master.locationId,
-          sourceVariantId: master.baseVariantId,
-          sourceQuantity: '100.000000',
-          direction: 'IN',
-        }],
-      },
-    });
-
-    // Try to reserve partial quantity with fractional digits
-    const partial = await executeReserveInventory({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-partial-${randomUUID()}`),
-      idempotencyKey: `partial-${randomUUID()}`,
-      payload: {
-        warehouseId: master.warehouseId,
-        locationId: master.locationId,
-        baseVariantId: master.baseVariantId,
-        quantity: '10.5',  // Partial
-        sourceDomain: 'TEST',
-      },
-    });
-    assert.equal(partial.ok, false);
-    assert.equal(partial.code, 'PARTIAL_RESERVATION_NOT_SUPPORTED');
-
-    // Reserve whole number succeeds
-    const whole = await executeReserveInventory({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-whole-${randomUUID()}`),
-      idempotencyKey: `whole-${randomUUID()}`,
-      payload: {
-        warehouseId: master.warehouseId,
-        locationId: master.locationId,
-        baseVariantId: master.baseVariantId,
-        quantity: '10.000000000000',
-        sourceDomain: 'TEST',
-      },
-    });
-    assert.equal(whole.ok, true);
-
-    console.log('✓ Phase 4.3 partial quantity rejection passed');
-  } finally {
-    await closePool();
-  }
-});
-
-test('Phase 4.3: Inventory reservations immutable event history (append-only)', async () => {
-  const config = loadConfig(testEnv());
-  const pool = getPool(config);
-  try {
-    const master = await seedMasterData(pool, config.installationId);
-
-    // Post opening balance
-    await executeInventoryPost({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], 'req-opening'),
-      idempotencyKey: `opening-${randomUUID()}`,
-      payload: {
-        movementType: 'OPENING_BALANCE',
-        sourceDomain: 'INVENTORY',
-        sourceDocumentType: 'OPENING_BALANCE_IMPORT',
-        sourceDocumentId: `source-${randomUUID()}`,
-        documentDate: '2026-07-28',
-        lines: [{
-          warehouseId: master.warehouseId,
-          locationId: master.locationId,
-          sourceVariantId: master.baseVariantId,
-          sourceQuantity: '100.000000',
-          direction: 'IN',
-        }],
-      },
-    });
-
-    // Create, release, try to mutate
-    const reserve = await executeReserveInventory({
-      adapter: pool,
-      requestContext: requestContext(config.installationId, [master.warehouseId], `req-reserve-${randomUUID()}`),
-      idempotencyKey: `reserve-${randomUUID()}`,
-      payload: {
-        warehouseId: master.warehouseId,
-        locationId: master.locationId,
-        baseVariantId: master.baseVariantId,
-        quantity: '20.000000000000',
-        sourceDomain: 'TEST',
-      },
-    });
-
-    // Try to UPDATE event: should fail (append-only)
     await assert.rejects(
       pool.query(
-        `UPDATE inventory.inventory_reservation_events SET metadata = '{"changed":true}'::jsonb
+        `UPDATE inventory.inventory_reservations
+            SET state = 'RELEASED'
+          WHERE installation_id = $1 AND id = $2`,
+        [config.installationId, reserve.reservation.id],
+      ),
+      /inventory_reservation_write_requires_service_context/,
+    );
+
+    await assert.rejects(
+      pool.query(
+        `UPDATE inventory.inventory_reservation_events
+            SET metadata = '{"changed":true}'::jsonb
           WHERE installation_id = $1 AND reservation_id = $2`,
         [config.installationId, reserve.reservation.id],
       ),
       /inventory_reservation_events_are_append_only/,
     );
 
-    console.log('✓ Phase 4.3 event history immutability passed');
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO inventory.inventory_reservation_events (
+           id, installation_id, reservation_id, transition, actor_id,
+           request_id, source_app, payload_hash, metadata
+         ) VALUES ($1,$2,$3,'CANCEL_TO_CANCELLED','test:direct','req-direct',
+                   'test',repeat('a',64),'{}'::jsonb)`,
+        [randomUUID(), config.installationId, reserve.reservation.id],
+      ),
+      /inventory_reservation_event_insert_requires_service_context/,
+    );
+
+    await assert.rejects(
+      pool.query(
+        `UPDATE inventory.inventory_balances
+            SET reserved_quantity = 0
+          WHERE installation_id = $1 AND warehouse_id = $2`,
+        [config.installationId, master.warehouseId],
+      ),
+      /inventory_balance_write_requires_projector/,
+    );
+
+    const isolated = await executeReleaseReservation({
+      adapter: pool,
+      requestContext: requestContext(
+        `other-${randomUUID()}`,
+        [master.warehouseId],
+        `req-isolated-${randomUUID()}`,
+      ),
+      reservationId: reserve.reservation.id,
+      payload: { reason: 'cross-installation attempt' },
+    });
+    assert.equal(isolated.ok, false);
+    assert.equal(isolated.code, 'RESERVATION_NOT_FOUND');
   } finally {
     await closePool();
   }
 });
 
-test('Phase 4.3: Inventory reservations decimal precision (scale 12)', async () => {
-  const precise = inventoryReservationInternals.parseDecimal('123.456789123456', 'test');
-  assert.equal(precise.ok, true);
-  assert.equal(precise.value, '123.456789123456');
-
-  const formatted = inventoryReservationInternals.formatScale12(123456789123456n);
-  assert.equal(formatted, '123.456789123456');
-
-  const invalid = inventoryReservationInternals.parseDecimal('abc', 'test');
-  assert.equal(invalid.ok, false);
-  assert.equal(invalid.code, 'INVALID_QUANTITY');
-});
-
-test('Phase 4.3: Full ledger and balance regression still green', async () => {
+test('P4.3 audit failure rolls back reservation, event, balance and outbox atomically', async () => {
   const config = loadConfig(testEnv());
   const pool = getPool(config);
   try {
     const master = await seedMasterData(pool, config.installationId);
+    assert.equal((await postOpening(pool, config, master, '20.000000')).ok, true);
 
-    // Post multiple movements
-    for (let i = 0; i < 3; i += 1) {
-      const result = await executeInventoryPost({
-        adapter: pool,
-        requestContext: requestContext(config.installationId, [master.warehouseId], `req-${i}`),
-        idempotencyKey: `opening-${i}`,
-        payload: {
-          movementType: 'OPENING_BALANCE',
-          sourceDomain: 'INVENTORY',
-          sourceDocumentId: `doc-${i}`,
-          documentDate: '2026-07-28',
-          lines: [{
-            warehouseId: master.warehouseId,
-            locationId: master.locationId,
-            sourceVariantId: master.baseVariantId,
-            sourceQuantity: '50.000000',
-            direction: 'IN',
-          }],
-        },
-      });
-      assert.equal(result.ok, true, result.message);
-    }
+    const failedKey = `rollback-${randomUUID()}`;
+    const failedRequestId = `req-rollback-${randomUUID()}`;
+    const failingAdapter = {
+      connect: async () => {
+        const client = await pool.connect();
+        return {
+          query: async (sql, values = []) => {
+            if (/insert\s+into\s+shared\.core_audit_records/i.test(String(sql))) {
+              throw new Error('forced_audit_failure');
+            }
+            return client.query(sql, values);
+          },
+          release: () => client.release(),
+        };
+      },
+    };
 
-    // Verify balance aggregated correctly
-    const balance = await pool.query(
-      `SELECT on_hand_quantity FROM inventory.inventory_balances
-        WHERE installation_id = $1 AND base_variant_id = $2`,
-      [config.installationId, master.baseVariantId],
+    await assert.rejects(
+      executeReserveInventory({
+        adapter: failingAdapter,
+        requestContext: requestContext(
+          config.installationId,
+          [master.warehouseId],
+          failedRequestId,
+        ),
+        idempotencyKey: failedKey,
+        payload: reservationPayload(master, '6.000000000000'),
+      }),
+      /forced_audit_failure/,
     );
-    assert.equal(balance.rows.length, 1);
-    assert.equal(String(balance.rows[0].on_hand_quantity), '150.000000000000');
 
-    console.log('✓ Phase 4.3 full ledger and balance regression passed');
+    const reservationCount = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM inventory.inventory_reservations
+        WHERE installation_id = $1 AND idempotency_key = $2`,
+      [config.installationId, failedKey],
+    );
+    assert.equal(reservationCount.rows[0].count, 0);
+
+    const eventCount = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM inventory.inventory_reservation_events
+        WHERE installation_id = $1 AND request_id = $2`,
+      [config.installationId, failedRequestId],
+    );
+    assert.equal(eventCount.rows[0].count, 0);
+
+    const auditCount = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM shared.core_audit_records
+        WHERE installation_id = $1 AND request_id = $2`,
+      [config.installationId, failedRequestId],
+    );
+    assert.equal(auditCount.rows[0].count, 0);
+
+    const outboxCount = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM shared.core_outbox_events
+        WHERE installation_id = $1 AND request_id = $2`,
+      [config.installationId, failedRequestId],
+    );
+    assert.equal(outboxCount.rows[0].count, 0);
+
+    const balance = await readBalance(pool, config, master);
+    assert.equal(String(balance.reserved_quantity), '0.000000000000');
+    assert.equal(String(balance.available_quantity), '20.000000000000');
+  } finally {
+    await closePool();
+  }
+});
+
+test('P4.3 reversal cannot reduce on-hand below reserved quantity', async () => {
+  const config = loadConfig(testEnv());
+  const pool = getPool(config);
+  try {
+    const master = await seedMasterData(pool, config.installationId);
+    const opening = await postOpening(pool, config, master, '20.000000');
+    assert.equal(opening.ok, true, opening.message);
+
+    const reserve = await executeReserveInventory({
+      adapter: pool,
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-reversal-reserve-${randomUUID()}`,
+      ),
+      idempotencyKey: `reversal-reserve-${randomUUID()}`,
+      payload: reservationPayload(master, '15.000000000000'),
+    });
+    assert.equal(reserve.ok, true, reserve.message);
+
+    await assert.rejects(
+      executeInventoryReversal({
+        adapter: pool,
+        requestContext: requestContext(
+          config.installationId,
+          [master.warehouseId],
+          `req-reversal-denied-${randomUUID()}`,
+        ),
+        idempotencyKey: `reversal-denied-${randomUUID()}`,
+        movementId: opening.movement.id,
+        payload: {
+          documentDate: '2026-07-28',
+          reasonCode: 'TEST_CORRECTION',
+          reasonNote: 'Reserved stock cannot be reversed below zero availability',
+        },
+      }),
+      /inventory_negative_stock_denied/,
+    );
+
+    const reversalCount = await pool.query(
+      `SELECT count(*)::int AS count
+         FROM inventory.inventory_movements
+        WHERE installation_id = $1 AND reversal_of_movement_id = $2`,
+      [config.installationId, opening.movement.id],
+    );
+    assert.equal(reversalCount.rows[0].count, 0);
+
+    let balance = await readBalance(pool, config, master);
+    assert.equal(String(balance.on_hand_quantity), '20.000000000000');
+    assert.equal(String(balance.reserved_quantity), '15.000000000000');
+    assert.equal(String(balance.available_quantity), '5.000000000000');
+
+    const release = await executeReleaseReservation({
+      adapter: pool,
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-reversal-release-${randomUUID()}`,
+      ),
+      reservationId: reserve.reservation.id,
+      payload: { reason: 'release before valid reversal' },
+    });
+    assert.equal(release.ok, true, release.message);
+
+    const reversal = await executeInventoryReversal({
+      adapter: pool,
+      requestContext: requestContext(
+        config.installationId,
+        [master.warehouseId],
+        `req-reversal-valid-${randomUUID()}`,
+      ),
+      idempotencyKey: `reversal-valid-${randomUUID()}`,
+      movementId: opening.movement.id,
+      payload: {
+        documentDate: '2026-07-28',
+        reasonCode: 'TEST_CORRECTION',
+        reasonNote: 'Valid reversal after reservation release',
+      },
+    });
+    assert.equal(reversal.ok, true, reversal.message);
+
+    balance = await readBalance(pool, config, master);
+    assert.equal(String(balance.on_hand_quantity), '0.000000000000');
+    assert.equal(String(balance.reserved_quantity), '0.000000000000');
+    assert.equal(String(balance.available_quantity), '0.000000000000');
   } finally {
     await closePool();
   }
