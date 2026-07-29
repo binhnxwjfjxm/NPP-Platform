@@ -130,9 +130,9 @@ CREATE TABLE IF NOT EXISTS purchasing.purchase_order_lines (
     REFERENCES shared.units_of_measure (installation_id, id)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
   CONSTRAINT purchase_order_lines_base_quantity_check
-    CHECK (base_quantity = ordered_quantity * conversion_to_base),
+    CHECK (base_quantity = round(ordered_quantity * conversion_to_base, 6)),
   CONSTRAINT purchase_order_lines_total_check
-    CHECK (line_total = ordered_quantity * unit_price - discount_amount + tax_amount)
+    CHECK (line_total = round(ordered_quantity * unit_price - discount_amount + tax_amount, 6))
 );
 
 CREATE INDEX IF NOT EXISTS purchase_order_lines_order_idx
