@@ -140,6 +140,6 @@ test('customer creation saves a default address without duplicating the customer
 
 test('users remain internal identities instead of partial password accounts', async () => {
   const workspace = await readSource('../app/access/users/user-workspace.tsx');
-  assert.match(workspace, /Tài khoản chưa phải thông tin đăng nhập thật/);
+  assert.match(workspace, /Quản lý tài khoản sử dụng hệ thống/);
   assert.doesNotMatch(workspace, /type="password"/);
 });

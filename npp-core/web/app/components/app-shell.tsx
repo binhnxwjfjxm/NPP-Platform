@@ -42,10 +42,10 @@ const accessItems = [
 ];
 
 const inventoryItems = [
-  { href: '/inventory/balances', label: 'Tồn kho', icon: 'panel' as const, testId: 'nav-inventory-balances' },
+  { href: '/inventory/balances', label: 'Tra cứu tồn kho', icon: 'panel' as const, testId: 'nav-inventory-balances' },
   { href: '/inventory/tracking-policies', label: 'Chính sách lô', icon: 'panel' as const, testId: 'nav-inventory-policies' },
   { href: '/inventory/lots', label: 'Lô hàng', icon: 'panel' as const, testId: 'nav-inventory-lots' },
-  { href: '/inventory/opening-balances', label: 'Nhập tồn đầu kỳ', icon: 'panel' as const, testId: 'nav-inventory-opening' },
+  { href: '/inventory/opening-balances', label: 'Thiết lập tồn đầu kỳ', icon: 'panel' as const, testId: 'nav-inventory-opening' },
 ];
 
 function Icon({ name }: { name: IconName }) {
@@ -224,11 +224,11 @@ export function AppShell({
               <span className={styles.navIcon}><Icon name="dashboard" /></span>
               <span className={styles.navCopy}>
                 <span className={styles.navTitle}>Tổng quan điều hành</span>
-                <span className={styles.navHint}>Số liệu và tình trạng hệ thống</span>
+                <span className={styles.navHint}>Thông tin tổng hợp phục vụ điều hành</span>
               </span>
             </Link>
 
-            <p className={styles.navLabel}>Danh mục nền tảng</p>
+            <p className={styles.navLabel}>Danh mục quản lý</p>
             <div className={`${styles.navGroup} ${organizationActive ? styles.navGroupActive : ''}`}>
               <button
                 type="button"
@@ -236,12 +236,12 @@ export function AppShell({
                 onClick={() => openGroup(setOrganizationOpen)}
                 aria-expanded={organizationOpen}
                 data-testid="organization-menu-toggle"
-                title={collapsed ? 'Tổ chức và kho hàng' : undefined}
+                title={collapsed ? 'Danh mục nghiệp vụ' : undefined}
               >
                 <span className={styles.navIcon}><Icon name="organization" /></span>
                 <span className={styles.navCopy}>
-                  <span className={styles.navTitle}>Tổ chức &amp; kho hàng</span>
-                  <span className={styles.navHint}>Cơ cấu đơn vị và địa điểm lưu trữ</span>
+                  <span className={styles.navTitle}>Danh mục nghiệp vụ</span>
+                  <span className={styles.navHint}>Tổ chức, đối tác, hàng hóa, giá và chứng từ</span>
                 </span>
                 <span className={`${styles.chevron} ${organizationOpen ? styles.chevronOpen : ''}`}>
                   <Icon name="chevron" />
@@ -278,7 +278,7 @@ export function AppShell({
                 <span className={styles.navIcon}><Icon name="panel" /></span>
                 <span className={styles.navCopy}>
                   <span className={styles.navTitle}>Tồn kho &amp; lô hàng</span>
-                  <span className={styles.navHint}>Số dư, lô, chính sách lô và nhập tồn đầu kỳ</span>
+                  <span className={styles.navHint}>Số lượng tồn, lô hàng, hạn dùng và tồn đầu kỳ</span>
                 </span>
                 <span className={`${styles.chevron} ${inventoryOpen ? styles.chevronOpen : ''}`}>
                   <Icon name="chevron" />
@@ -346,7 +346,7 @@ export function AppShell({
             <span className={styles.userAvatar}><Icon name="user" /></span>
             <span className={styles.userCopy}>
               <strong>Tài khoản người dùng</strong>
-              <small>Đăng nhập sẽ được bổ sung</small>
+              <small>Quản lý tài khoản và quyền truy cập</small>
             </span>
           </div>
         </div>
@@ -380,10 +380,6 @@ export function AppShell({
 
           <div className={styles.topbarActions}>
             {actions}
-            <span className={styles.statusPill}>
-              <span className={styles.statusDot} aria-hidden="true" />
-              Hệ thống trực tuyến
-            </span>
           </div>
         </header>
 

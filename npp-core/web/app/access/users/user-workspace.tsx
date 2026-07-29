@@ -228,7 +228,7 @@ export default function UserWorkspace({
           headers: { 'Idempotency-Key': idempotencyKey('user-create') },
         });
         setUsers((current) => [...current, created]);
-        setNotice('Đã tạo người dùng với tập vai trò trống. Có thể gán vai trò bằng thao tác Sửa.');
+        setNotice('Đã tạo người dùng. Có thể phân quyền bằng thao tác Sửa.');
         closeEditor();
         return;
       }
@@ -294,7 +294,7 @@ export default function UserWorkspace({
         headers: { 'Idempotency-Key': idempotencyKey('user-toggle') },
       });
       setUsers((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      setNotice(toggleState.nextActive ? 'Đã kích hoạt người dùng.' : 'Đã vô hiệu hóa người dùng.');
+      setNotice(toggleState.nextActive ? 'Đã kích hoạt người dùng.' : 'Đã ngừng sử dụng người dùng.');
       setToggleState(null);
     } catch (caught) {
       handleFailure(caught);
@@ -311,7 +311,7 @@ export default function UserWorkspace({
             <p className={styles.kicker}>Nhân sự &amp; phân quyền</p>
             <h1 className={styles.title}>Người dùng</h1>
             <p className={styles.subtitle}>
-              Quản lý tài khoản nội bộ liên kết với nhân sự. Tài khoản chưa phải thông tin đăng nhập thật và có thể tồn tại với tập vai trò trống.
+              Quản lý tài khoản sử dụng hệ thống, liên kết nhân sự và phân quyền theo công việc.
             </p>
           </div>
           <div className={styles.headerActions}>
@@ -417,7 +417,7 @@ export default function UserWorkspace({
                             onClick={() => setToggleState({ userId: user.id, nextActive: !user.is_active })}
                             disabled={busy !== null}
                           >
-                            {user.is_active ? 'Vô hiệu hóa' : 'Kích hoạt'}
+                            {user.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}
                           </button>
                         </div>
                       </td>
@@ -438,7 +438,7 @@ export default function UserWorkspace({
               <header className={styles.modalHeader}>
                 <div>
                   <h2 id="user-editor-title">{editor.mode === 'create' ? 'Thêm người dùng' : 'Cập nhật người dùng'}</h2>
-                  <p>{editor.mode === 'create' ? 'Tạo tài khoản nội bộ với tập vai trò trống.' : 'Chỉ trạng thái và tập vai trò có thể thay đổi.'}</p>
+                  <p>{editor.mode === 'create' ? 'Tạo tài khoản và hoàn thiện phân quyền sau khi lưu.' : 'Cập nhật trạng thái và vai trò được giao.'}</p>
                 </div>
                 <button className={styles.closeButton} type="button" onClick={closeEditor} aria-label="Đóng" disabled={busy !== null}>×</button>
               </header>
@@ -544,8 +544,8 @@ export default function UserWorkspace({
               <div className={styles.modalBody}>
                 <p className={styles.confirmText}>
                   {toggleState.nextActive
-                    ? 'Kích hoạt lại người dùng này? Nhân sự liên kết phải đang hoạt động.'
-                    : 'Vô hiệu hóa người dùng này? Các vai trò được giữ nguyên để phục vụ audit và có thể dùng lại khi kích hoạt.'}
+                    ? 'Đưa người dùng này vào sử dụng? Nhân sự liên kết phải đang hoạt động.'
+                    : 'Ngừng sử dụng người dùng này? Các vai trò được giữ nguyên để có thể dùng lại khi cần.'}
                 </p>
               </div>
               <footer className={styles.modalFooter}>

@@ -73,6 +73,20 @@ const ADJUSTMENT_LABELS: Record<PriceAdjustmentType, string> = {
   FIXED_PRICE: 'Đặt giá trực tiếp', PERCENT_DISCOUNT: 'Giảm phần trăm', AMOUNT_DISCOUNT: 'Giảm số tiền',
   PERCENT_MARKUP: 'Tăng phần trăm', AMOUNT_MARKUP: 'Tăng số tiền',
 };
+const SOURCE_LABELS: Record<PriceListItem['source_kind'], string> = {
+  ADMIN: 'Nhập trực tiếp', IMPORT: 'Nhập từ tệp', CODE: 'Thiết lập tự động',
+};
+const RESOLUTION_STEP_LABELS: Record<PricingResolution['steps'][number]['kind'], string> = {
+  BASE: 'Giá cơ sở', RULE: 'Mức giá được áp dụng', SKIPPED: 'Mức giá không được áp dụng', MANUAL_OVERRIDE: 'Điều chỉnh trực tiếp',
+};
+const RESOLUTION_REASON_LABELS: Record<string, string> = {
+  LOWER_PRIORITY_EXCLUSIVE: 'Đã có mức ưu tiên cao hơn được áp dụng',
+};
+
+function resolutionReasonLabel(reason?: string) {
+  if (!reason) return '';
+  return RESOLUTION_REASON_LABELS[reason] || reason;
+}
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: 'no-store', ...init });
@@ -468,7 +482,7 @@ export default function PricingWorkspace() {
       });
       setResolution(result);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể phân giải giá');
+      setMessage(error instanceof Error ? error.message : 'Không thể xác định giá áp dụng');
     } finally {
       setBusy(false);
     }
@@ -483,10 +497,10 @@ export default function PricingWorkspace() {
   }, [listForm.listType]);
 
   return (
-    <AppShell title="Giá bán & khuyến mãi" subtitle="Giá nền theo SKU, giá kênh, nhóm khách, khách cụ thể và chương trình — hoàn toàn quản trị bằng dữ liệu.">
+    <AppShell title="Giá bán & khuyến mãi" subtitle="Quản lý giá bán theo hàng hóa, kênh bán, nhóm khách hàng, khách hàng và chương trình áp dụng.">
       <div className={styles.workspace} data-testid="pricing-page">
         <div className={styles.tabs} role="tablist">
-          {([['channels', 'Kênh bán'], ['lists', 'Bảng giá & chương trình'], ['items', 'Giá theo SKU'], ['resolver', 'Thử giá']] as const).map(([value, label]) => (
+          {([['channels', 'Kênh bán'], ['lists', 'Bảng giá & chương trình'], ['items', 'Giá theo SKU'], ['resolver', 'Kiểm tra giá áp dụng']] as const).map(([value, label]) => (
             <button key={value} type="button" className={tab === value ? styles.tabActive : styles.tab} onClick={() => changeTab(value)} data-testid={`pricing-${value}-tab`}>
               {label}
             </button>
@@ -498,7 +512,7 @@ export default function PricingWorkspace() {
         {tab === 'channels' ? (
           <section>
             <div className={styles.sectionHeader}>
-              <div><h2>Kênh bán</h2><p>Ví dụ: bán lẻ, quán/café, đại lý, online.</p></div>
+              <div><h2>Kênh bán</h2><p>Phân nhóm hình thức bán hàng để áp dụng bảng giá phù hợp.</p></div>
               <button className={styles.secondaryButton} type="button" onClick={openChannelCreate} data-testid="add-sales-channel-button">Tạo mới</button>
             </div>
             <div className={styles.tableWrapper}>
@@ -512,7 +526,7 @@ export default function PricingWorkspace() {
                       <td>{channel.is_active ? 'Hoạt động' : 'Ngừng'}</td>
                       <td className={styles.actions}>
                         <button type="button" onClick={() => editChannel(channel)}>Sửa</button>
-                        <button type="button" disabled={busy} onClick={() => void toggleChannel(channel)}>{channel.is_active ? 'Vô hiệu' : 'Kích hoạt'}</button>
+                        <button type="button" disabled={busy} onClick={() => void toggleChannel(channel)}>{channel.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button>
                       </td>
                     </tr>
                   ))}
@@ -526,12 +540,12 @@ export default function PricingWorkspace() {
         {tab === 'lists' ? (
           <section>
             <div className={styles.sectionHeader}>
-              <div><h2>Bảng giá & chương trình</h2><p>Priority càng lớn càng được xét trước; giá không nằm trong code.</p></div>
+              <div><h2>Bảng giá & chương trình</h2><p>Thứ tự ưu tiên lớn hơn được xét trước. Mọi mức giá được quản lý trực tiếp trên hệ thống.</p></div>
               <button className={styles.secondaryButton} type="button" onClick={() => openListCreate()} data-testid="add-price-list-button">Tạo mới</button>
             </div>
             <div className={styles.tableWrapper}>
               <table className={styles.table}>
-                <thead><tr><th>Mã</th><th>Loại</th><th>Phạm vi</th><th>Priority</th><th>Xử lý</th><th>Trạng thái</th><th></th></tr></thead>
+                <thead><tr><th>Mã</th><th>Loại</th><th>Phạm vi</th><th>Thứ tự ưu tiên</th><th>Cách áp dụng</th><th>Trạng thái</th><th></th></tr></thead>
                 <tbody>
                   {lists.map((list) => (
                     <tr key={list.id} data-testid={`price-list-row-${list.code}`}>
@@ -539,12 +553,12 @@ export default function PricingWorkspace() {
                       <td>{LIST_LABELS[list.list_type]}</td>
                       <td>{list.customer_name || list.customer_group_name || list.channel_name || 'Mặc định'}</td>
                       <td>{list.priority}</td>
-                      <td>{list.stacking_mode === 'STACKABLE' ? 'Cộng dồn' : 'Độc quyền'}{list.stop_processing ? ' · Dừng' : ''}</td>
+                      <td>{list.stacking_mode === 'STACKABLE' ? 'Có thể kết hợp' : 'Chỉ áp dụng một mức'}{list.stop_processing ? ' · Không xét tiếp' : ''}</td>
                       <td>{list.is_active ? 'Hoạt động' : 'Ngừng'}</td>
                       <td className={styles.actions}>
                         <button type="button" onClick={() => editList(list)}>Sửa</button>
                         <button type="button" onClick={() => { setSelectedListId(list.id); changeTab('items'); }}>Giá SKU</button>
-                        <button type="button" disabled={busy} onClick={() => void toggleList(list)}>{list.is_active ? 'Vô hiệu' : 'Kích hoạt'}</button>
+                        <button type="button" disabled={busy} onClick={() => void toggleList(list)}>{list.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button>
                       </td>
                     </tr>
                   ))}
@@ -558,7 +572,7 @@ export default function PricingWorkspace() {
         {tab === 'items' ? (
           <section>
             <div className={styles.sectionHeader}>
-              <div><h2>Giá/quy tắc theo SKU</h2><p>Giá lẻ và giá thùng được nhập riêng trên đúng SKU.</p></div>
+              <div><h2>Mức giá theo SKU</h2><p>Giá lẻ và giá thùng được nhập riêng cho từng SKU.</p></div>
               <button className={styles.secondaryButton} type="button" disabled={!selectedList} onClick={openItemCreate} data-testid="add-price-item-button">Tạo mới</button>
             </div>
             <label className={styles.listPicker}>
@@ -579,7 +593,7 @@ export default function PricingWorkspace() {
             {!selectedList ? <p className={styles.empty}>Chọn bảng giá để quản lý giá SKU.</p> : null}
             <div className={styles.tableWrapper}>
               <table className={styles.table}>
-                <thead><tr><th>SKU</th><th>Quy tắc</th><th>Giá trị</th><th>Bậc số lượng</th><th>Nguồn</th><th>Trạng thái</th><th></th></tr></thead>
+                <thead><tr><th>SKU</th><th>Cách áp dụng</th><th>Giá trị</th><th>Khoảng số lượng</th><th>Nguồn thiết lập</th><th>Trạng thái</th><th></th></tr></thead>
                 <tbody>
                   {items.map((item) => (
                     <tr key={item.id} data-testid={`price-item-row-${item.sku}`}>
@@ -587,11 +601,11 @@ export default function PricingWorkspace() {
                       <td>{ADJUSTMENT_LABELS[item.adjustment_type]}</td>
                       <td>{adjustmentValue(item)}</td>
                       <td>{item.min_quantity} → {item.max_quantity ?? '∞'}</td>
-                      <td>{item.source_kind}{item.external_rule_code ? ` · ${item.external_rule_code}` : ''}</td>
+                      <td>{SOURCE_LABELS[item.source_kind]}{item.external_rule_code ? ` · ${item.external_rule_code}` : ''}</td>
                       <td>{item.is_active ? 'Hoạt động' : 'Ngừng'}</td>
                       <td className={styles.actions}>
                         <button type="button" onClick={() => void editItem(item)}>Sửa</button>
-                        <button type="button" disabled={busy} onClick={() => void toggleItem(item)}>{item.is_active ? 'Vô hiệu' : 'Kích hoạt'}</button>
+                        <button type="button" disabled={busy} onClick={() => void toggleItem(item)}>{item.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button>
                       </td>
                     </tr>
                   ))}
@@ -605,7 +619,7 @@ export default function PricingWorkspace() {
         {tab === 'resolver' ? (
           <section>
             <div className={styles.sectionHeader}>
-              <div><h2>Thử giá & giải thích</h2><p>Chọn ngữ cảnh để xem giá nền, rule áp dụng, rule bị bỏ qua và giá cuối.</p></div>
+              <div><h2>Kiểm tra giá áp dụng</h2><p>Chọn hàng hóa, số lượng và đối tượng bán để xem mức giá cuối cùng cùng lý do áp dụng.</p></div>
             </div>
             <div className={styles.formPanel}>
               <div className={styles.formGrid}>
@@ -613,12 +627,12 @@ export default function PricingWorkspace() {
                 <label>SKU<select disabled={!resolver.productId} value={resolver.variantId} onChange={(event) => setResolver({ ...resolver, variantId: event.target.value })} data-testid="resolver-variant-select"><option value="">Chọn SKU</option>{resolverVariants.map((row) => <option key={row.id} value={row.id}>{row.sku} — {row.name}</option>)}</select></label>
                 <label>Số lượng<input value={resolver.quantity} onChange={(event) => setResolver({ ...resolver, quantity: event.target.value })} data-testid="resolver-quantity-input" /></label>
                 <label>Kênh<select value={resolver.channelId} onChange={(event) => setResolver({ ...resolver, channelId: event.target.value })} data-testid="resolver-channel-select"><option value="">Không chọn</option>{channels.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
-                <label>Nhóm khách<select value={resolver.customerGroupId} onChange={(event) => setResolver({ ...resolver, customerGroupId: event.target.value })}><option value="">Tự suy ra/không chọn</option>{groups.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
+                <label>Nhóm khách<select value={resolver.customerGroupId} onChange={(event) => setResolver({ ...resolver, customerGroupId: event.target.value })}><option value="">Theo khách hàng đã chọn / để trống</option>{groups.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
                 <label>Khách hàng<select value={resolver.customerId} onChange={(event) => setResolver({ ...resolver, customerId: event.target.value })}><option value="">Không chọn</option>{customers.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
-                <label>Giá chỉnh tay (₫)<input inputMode="numeric" value={resolver.manualPrice} onChange={(event) => setResolver({ ...resolver, manualPrice: event.target.value.replace(/\D/g, '') })} /></label>
-                <label>Lý do chỉnh tay<input value={resolver.manualReason} onChange={(event) => setResolver({ ...resolver, manualReason: event.target.value })} /></label>
+                <label>Giá điều chỉnh trực tiếp (₫)<input inputMode="numeric" value={resolver.manualPrice} onChange={(event) => setResolver({ ...resolver, manualPrice: event.target.value.replace(/\D/g, '') })} /></label>
+                <label>Lý do điều chỉnh<input value={resolver.manualReason} onChange={(event) => setResolver({ ...resolver, manualReason: event.target.value })} /></label>
               </div>
-              <button type="button" className={styles.primaryButton} disabled={busy || !resolver.variantId} onClick={() => void simulate()} data-testid="resolve-price-button">Phân giải giá</button>
+              <button type="button" className={styles.primaryButton} disabled={busy || !resolver.variantId} onClick={() => void simulate()} data-testid="resolve-price-button">Xem giá áp dụng</button>
             </div>
             {resolution ? (
               <div className={styles.result} data-testid="pricing-resolution">
@@ -627,11 +641,11 @@ export default function PricingWorkspace() {
                   <div><span>Giá cuối</span><strong data-testid="resolved-unit-price">{money(resolution.finalUnitPriceMinor)}</strong></div>
                   <div><span>Thành tiền</span><strong data-testid="resolved-line-total">{money(resolution.lineTotalMinor)}</strong></div>
                 </div>
-                <h3>Trace áp giá</h3>
+                <h3>Quá trình xác định giá</h3>
                 <ol className={styles.trace}>
                   {resolution.steps.map((step, index) => (
                     <li key={`${step.kind}-${step.itemId ?? index}`} data-testid={`pricing-step-${step.kind.toLowerCase()}`}>
-                      <strong>{step.kind}</strong> {step.priceListCode ? `· ${step.priceListCode}` : ''} {step.adjustmentType ? `· ${ADJUSTMENT_LABELS[step.adjustmentType]}` : ''} {step.reason ? `· ${step.reason}` : ''}
+                      <strong>{RESOLUTION_STEP_LABELS[step.kind]}</strong> {step.priceListCode ? `· ${step.priceListCode}` : ''} {step.adjustmentType ? `· ${ADJUSTMENT_LABELS[step.adjustmentType]}` : ''} {step.reason ? `· ${resolutionReasonLabel(step.reason)}` : ''}
                       <span>{step.beforeUnitPriceMinor ? money(step.beforeUnitPriceMinor) : ''}{step.afterUnitPriceMinor ? ` → ${money(step.afterUnitPriceMinor)}` : ''}</span>
                     </li>
                   ))}
@@ -686,8 +700,8 @@ export default function PricingWorkspace() {
             <label>Mã<input disabled={Boolean(editingList)} value={listForm.code} onChange={(event) => setListForm({ ...listForm, code: event.target.value })} data-testid="price-list-code-input" /></label>
             <label>Tên<input value={listForm.name} onChange={(event) => setListForm({ ...listForm, name: event.target.value })} data-testid="price-list-name-input" /></label>
             <label>Loại<select disabled={Boolean(editingList)} value={listForm.listType} onChange={(event) => changeListType(event.target.value as PriceListType)} data-testid="price-list-type-select">{Object.entries(LIST_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <label>Priority<input type="number" min="0" value={listForm.priority} onChange={(event) => setListForm({ ...listForm, priority: event.target.value })} data-testid="price-list-priority-input" /></label>
-            <label>Xử lý<select value={listForm.stackingMode} onChange={(event) => setListForm({ ...listForm, stackingMode: event.target.value as PriceStackingMode })}><option value="EXCLUSIVE">Độc quyền</option><option value="STACKABLE">Được cộng dồn</option></select></label>
+            <label>Thứ tự ưu tiên<input type="number" min="0" value={listForm.priority} onChange={(event) => setListForm({ ...listForm, priority: event.target.value })} data-testid="price-list-priority-input" /></label>
+            <label>Cách áp dụng<select value={listForm.stackingMode} onChange={(event) => setListForm({ ...listForm, stackingMode: event.target.value as PriceStackingMode })}><option value="EXCLUSIVE">Chỉ áp dụng một mức</option><option value="STACKABLE">Có thể kết hợp</option></select></label>
             <label>Kênh<select disabled={listForm.listType === 'BASE'} value={listForm.channelId} onChange={(event) => setListForm({ ...listForm, channelId: event.target.value })} data-testid="price-list-channel-select"><option value="">Tất cả/không áp dụng</option>{channels.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
             <label>Nhóm khách<select disabled={['BASE', 'CHANNEL'].includes(listForm.listType)} value={listForm.customerGroupId} onChange={(event) => setListForm({ ...listForm, customerGroupId: event.target.value })}><option value="">Tất cả/không áp dụng</option>{groups.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
             <label>Khách hàng<select disabled={!['CUSTOMER', 'PROMOTION', 'CUSTOM'].includes(listForm.listType)} value={listForm.customerId} onChange={(event) => setListForm({ ...listForm, customerId: event.target.value })}><option value="">Tất cả/không áp dụng</option>{customers.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
@@ -697,7 +711,7 @@ export default function PricingWorkspace() {
           </div>
           <p className={styles.hint}>{scopeDescription}</p>
           <div className={styles.checks}>
-            <label><input type="checkbox" checked={listForm.stopProcessing} onChange={(event) => setListForm({ ...listForm, stopProcessing: event.target.checked })} /> Dừng sau khi áp</label>
+            <label><input type="checkbox" checked={listForm.stopProcessing} onChange={(event) => setListForm({ ...listForm, stopProcessing: event.target.checked })} /> Không xét các mức sau khi áp dụng</label>
             <label><input type="checkbox" checked={listForm.isActive} onChange={(event) => setListForm({ ...listForm, isActive: event.target.checked })} /> Hoạt động</label>
           </div>
         </Modal>
@@ -728,7 +742,7 @@ export default function PricingWorkspace() {
             <label>Số lượng đến<input value={itemForm.maxQuantity} onChange={(event) => setItemForm({ ...itemForm, maxQuantity: event.target.value })} placeholder="Không giới hạn" /></label>
             <label>Hiệu lực từ<input type="datetime-local" value={itemForm.effectiveFrom} onChange={(event) => setItemForm({ ...itemForm, effectiveFrom: event.target.value })} /></label>
             <label>Hiệu lực đến<input type="datetime-local" value={itemForm.effectiveTo} onChange={(event) => setItemForm({ ...itemForm, effectiveTo: event.target.value })} /></label>
-            <label>Mã rule ngoài<input value={itemForm.externalRuleCode} onChange={(event) => setItemForm({ ...itemForm, externalRuleCode: event.target.value })} /></label>
+            <label>Mã tham chiếu<input value={itemForm.externalRuleCode} onChange={(event) => setItemForm({ ...itemForm, externalRuleCode: event.target.value })} /></label>
             <label>Ghi chú<input value={itemForm.note} onChange={(event) => setItemForm({ ...itemForm, note: event.target.value })} /></label>
           </div>
           <label className={styles.check}><input type="checkbox" checked={itemForm.isActive} onChange={(event) => setItemForm({ ...itemForm, isActive: event.target.checked })} /> Hoạt động</label>
