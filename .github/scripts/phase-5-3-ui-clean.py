@@ -31,7 +31,9 @@ def repair_span(value: str) -> str:
         current = best
     return current
 
+
 clean = span_pattern.sub(lambda match: repair_span(match.group(0)), text)
+clean = clean.replace('Há»§y', 'Hủy')
 leftovers = [(index, line) for index, line in enumerate(clean.splitlines(), 1) if any(marker in line for marker in markers)]
 if leftovers:
     for index, line in leftovers:
