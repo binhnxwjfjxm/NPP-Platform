@@ -219,8 +219,9 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
       body: JSON.stringify({ expectedRevision: firstDraft.revision }),
     });
     response = await postFirst();
-    assert.equal(response.status, 200);
-    const firstPosted = await data(response);
+    const firstPostPayload = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(firstPostPayload));
+    const firstPosted = firstPostPayload.data;
     assert.match(firstPosted.documentNumber, /^GR-202607-\d{6}$/);
     assert.ok(firstPosted.inventoryMovementId);
     response = await postFirst();
