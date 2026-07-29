@@ -1,10 +1,13 @@
 import 'server-only';
 
 import { randomUUID } from 'node:crypto';
-import type { PurchaseOrder, ListPurchaseOrdersParams } from './purchase-order-types';
+import type { ListPurchaseOrdersParams } from './purchase-order-types';
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{8,200}$/;
 const REQUEST_TIMEOUT_MS = 8_000;
+const ALLOWED_QUERY_KEYS = new Set(['limit', 'offset', 'status', 'supplierId', 'warehouseId', 'search']);
 
 interface CoreEnvelope<T> {
   data?: T;
@@ -37,13 +40,23 @@ export function resolvePurchaseOrderRequestId(value: string | null | undefined):
 
 export function normalizePurchaseOrderGatewayError(error: unknown): PurchaseOrderGatewayError {
   if (error instanceof PurchaseOrderGatewayError) return error;
-  return new PurchaseOrderGatewayError('PURCHASE_ORDER_GATEWAY_UNAVAILABLE', 'Chức năng mua hàng tạm thời chưa sẵn sàng', 503, true);
+  return new PurchaseOrderGatewayError(
+    'PURCHASE_ORDER_GATEWAY_UNAVAILABLE',
+    'Chức năng mua hàng tạm thời chưa sẵn sàng',
+    503,
+    true,
+  );
 }
 
 function requiredServerValue(name: 'CORE_API_INTERNAL_URL' | 'CORE_API_SERVER_TOKEN'): string {
   const value = process.env[name]?.trim();
   if (!value) {
-    throw new PurchaseOrderGatewayError('PURCHASE_ORDER_GATEWAY_NOT_CONFIGURED', 'Chức năng mua hàng chưa được cấu hình', 503, false);
+    throw new PurchaseOrderGatewayError(
+      'PURCHASE_ORDER_GATEWAY_NOT_CONFIGURED',
+      'Chức năng mua hàng chưa được cấu hình',
+      503,
+      false,
+    );
   }
   return value;
 }
@@ -54,14 +67,29 @@ function coreApiBaseUrl(): string {
   try {
     parsed = new URL(raw);
   } catch {
-    throw new PurchaseOrderGatewayError('PURCHASE_ORDER_GATEWAY_NOT_CONFIGURED', 'Chức năng mua hàng chưa được cấu hình', 503, false);
+    throw new PurchaseOrderGatewayError(
+      'PURCHASE_ORDER_GATEWAY_NOT_CONFIGURED',
+      'Chức năng mua hàng chưa được cấu hình',
+      503,
+      false,
+    );
   }
 
   if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
-    throw new PurchaseOrderGatewayError('PURCHASE_ORDER_GATEWAY_NOT_CONFIGURED', 'Chức năng mua hàng chưa được cấu hình', 503, false);
+    throw new PurchaseOrderGatewayError(
+      'PURCHASE_ORDER_GATEWAY_NOT_CONFIGURED',
+      'Chức năng mua hàng chưa được cấu hình',
+      503,
+      false,
+    );
   }
   if (process.env.NODE_ENV === 'production' && parsed.protocol !== 'https:') {
-    throw new PurchaseOrderGatewayError('PURCHASE_ORDER_GATEWAY_NOT_CONFIGURED', 'Chức năng mua hàng chưa được cấu hình', 503, false);
+    throw new PurchaseOrderGatewayError(
+      'PURCHASE_ORDER_GATEWAY_NOT_CONFIGURED',
+      'Chức năng mua hàng chưa được cấu hình',
+      503,
+      false,
+    );
   }
 
   parsed.pathname = parsed.pathname.replace(/\/$/, '');
@@ -70,8 +98,50 @@ function coreApiBaseUrl(): string {
   return parsed.toString().replace(/\/$/, '');
 }
 
-async function requestCore<T>({ method, path, requestId, searchParams, body, idempotencyKey, }: {
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+function assertUuid(value: string, code: string, message: string): string {
+  const normalized = value.trim();
+  if (!UUID_PATTERN.test(normalized)) {
+    throw new PurchaseOrderGatewayError(code, message, 400, false);
+  }
+  return normalized;
+}
+
+function assertIdempotencyKey(value: string | null | undefined): string {
+  const normalized = String(value ?? '').trim();
+  if (!IDEMPOTENCY_KEY_PATTERN.test(normalized)) {
+    throw new PurchaseOrderGatewayError(
+      'INVALID_IDEMPOTENCY_KEY',
+      'Khóa chống trùng yêu cầu không hợp lệ',
+      400,
+      false,
+    );
+  }
+  return normalized;
+}
+
+function purchaseOrderPath(id?: string): string {
+  return `/api/purchase-orders${id ? `/${assertUuid(id, 'INVALID_PURCHASE_ORDER_ID', 'Mã đơn đặt hàng không hợp lệ')}` : ''}`;
+}
+
+function safeQuery(searchParams: URLSearchParams): string {
+  const next = new URLSearchParams();
+  for (const [key, value] of searchParams.entries()) {
+    if (!ALLOWED_QUERY_KEYS.has(key) || value.length > 256) continue;
+    next.append(key, value);
+  }
+  const serialized = next.toString();
+  return serialized ? `?${serialized}` : '';
+}
+
+async function requestCore<T>({
+  method,
+  path,
+  requestId,
+  searchParams,
+  body,
+  idempotencyKey,
+}: {
+  method: 'GET' | 'POST' | 'PATCH';
   path: string;
   requestId: string;
   searchParams?: URLSearchParams;
@@ -81,7 +151,7 @@ async function requestCore<T>({ method, path, requestId, searchParams, body, ide
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const query = searchParams ? `?${searchParams.toString()}` : '';
+    const query = searchParams ? safeQuery(searchParams) : '';
     const response = await fetch(`${coreApiBaseUrl()}${path}${query}`, {
       method,
       cache: 'no-store',
@@ -100,7 +170,12 @@ async function requestCore<T>({ method, path, requestId, searchParams, body, ide
     try {
       payload = (await response.json()) as CoreEnvelope<T>;
     } catch {
-      throw new PurchaseOrderGatewayError('PURCHASE_ORDER_GATEWAY_RESPONSE_INVALID', 'Phản hồi mua hàng không hợp lệ', 502, false);
+      throw new PurchaseOrderGatewayError(
+        'PURCHASE_ORDER_GATEWAY_RESPONSE_INVALID',
+        'Phản hồi mua hàng không hợp lệ',
+        502,
+        false,
+      );
     }
 
     if (!response.ok) {
@@ -114,54 +189,111 @@ async function requestCore<T>({ method, path, requestId, searchParams, body, ide
     }
 
     if (!Object.prototype.hasOwnProperty.call(payload, 'data')) {
-      throw new PurchaseOrderGatewayError('PURCHASE_ORDER_GATEWAY_RESPONSE_INVALID', 'Phản hồi mua hàng không hợp lệ', 502, false);
+      throw new PurchaseOrderGatewayError(
+        'PURCHASE_ORDER_GATEWAY_RESPONSE_INVALID',
+        'Phản hồi mua hàng không hợp lệ',
+        502,
+        false,
+      );
     }
 
     return payload.data as T;
   } catch (error) {
     if (error instanceof PurchaseOrderGatewayError) throw error;
-    throw new PurchaseOrderGatewayError('PURCHASE_ORDER_GATEWAY_UNAVAILABLE', 'Chức năng mua hàng tạm thời chưa khả dụng', 503, true);
+    throw new PurchaseOrderGatewayError(
+      'PURCHASE_ORDER_GATEWAY_UNAVAILABLE',
+      'Chức năng mua hàng tạm thời chưa khả dụng',
+      503,
+      true,
+    );
   } finally {
     clearTimeout(timeout);
   }
 }
 
 export function listPurchaseOrders<T>(requestId: string, params?: ListPurchaseOrdersParams): Promise<T[]> {
-  const qs = new URLSearchParams();
-  if (params?.limit) qs.append('limit', String(params.limit));
-  if (params?.offset) qs.append('offset', String(params.offset));
-  if (params?.status) qs.append('status', String(params.status));
-  if (params?.supplierId) qs.append('supplierId', params.supplierId);
-  if (params?.warehouseId) qs.append('warehouseId', params.warehouseId);
-  if (params?.search) qs.append('search', params.search);
-  return requestCore<T[]>({ method: 'GET', path: '/api/purchase-orders', requestId, searchParams: qs });
+  const query = new URLSearchParams();
+  if (params?.limit !== undefined) query.set('limit', String(Math.max(1, Math.min(1000, Math.trunc(params.limit)))));
+  if (params?.offset !== undefined) query.set('offset', String(Math.max(0, Math.trunc(params.offset))));
+  if (params?.status && params.status !== 'all') query.set('status', params.status);
+  if (params?.supplierId) query.set('supplierId', assertUuid(params.supplierId, 'INVALID_SUPPLIER_ID', 'Mã nhà cung cấp không hợp lệ'));
+  if (params?.warehouseId) query.set('warehouseId', assertUuid(params.warehouseId, 'INVALID_WAREHOUSE_ID', 'Mã kho nhận không hợp lệ'));
+  if (params?.search?.trim()) query.set('search', params.search.trim().slice(0, 256));
+  return requestCore<T[]>({ method: 'GET', path: purchaseOrderPath(), requestId, searchParams: query });
 }
 
 export function getPurchaseOrder<T>(id: string, requestId: string): Promise<T> {
-  const sanitized = encodeURIComponent(id);
-  return requestCore<T>({ method: 'GET', path: `/api/purchase-orders/${sanitized}`, requestId });
+  return requestCore<T>({ method: 'GET', path: purchaseOrderPath(id), requestId });
 }
 
-export function createPurchaseOrderDraft<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
-  return requestCore<T>({ method: 'POST', path: '/api/purchase-orders', requestId, body, idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}` });
+export function createPurchaseOrderDraft<T>(
+  requestId: string,
+  body: unknown,
+  idempotencyKey: string,
+): Promise<T> {
+  return requestCore<T>({
+    method: 'POST',
+    path: purchaseOrderPath(),
+    requestId,
+    body,
+    idempotencyKey: assertIdempotencyKey(idempotencyKey),
+  });
 }
 
-export function patchPurchaseOrderDraft<T>(id: string, requestId: string, body: unknown): Promise<T> {
-  const sanitized = encodeURIComponent(id);
-  return requestCore<T>({ method: 'PATCH', path: `/api/purchase-orders/${sanitized}`, requestId, body });
+export function patchPurchaseOrderDraft<T>(
+  id: string,
+  requestId: string,
+  body: unknown,
+  idempotencyKey: string,
+): Promise<T> {
+  return requestCore<T>({
+    method: 'PATCH',
+    path: purchaseOrderPath(id),
+    requestId,
+    body,
+    idempotencyKey: assertIdempotencyKey(idempotencyKey),
+  });
 }
 
-export function submitPurchaseOrder<T>(id: string, requestId: string): Promise<T> {
-  const sanitized = encodeURIComponent(id);
-  return requestCore<T>({ method: 'POST', path: `/api/purchase-orders/${sanitized}/submit`, requestId });
+function postPurchaseOrderAction<T>(
+  id: string,
+  action: 'submit' | 'approve' | 'cancel',
+  requestId: string,
+  idempotencyKey: string,
+  body?: unknown,
+): Promise<T> {
+  return requestCore<T>({
+    method: 'POST',
+    path: `${purchaseOrderPath(id)}/${action}`,
+    requestId,
+    body: body ?? {},
+    idempotencyKey: assertIdempotencyKey(idempotencyKey),
+  });
 }
 
-export function approvePurchaseOrder<T>(id: string, requestId: string): Promise<T> {
-  const sanitized = encodeURIComponent(id);
-  return requestCore<T>({ method: 'POST', path: `/api/purchase-orders/${sanitized}/approve`, requestId });
+export function submitPurchaseOrder<T>(
+  id: string,
+  requestId: string,
+  idempotencyKey: string,
+  body?: unknown,
+): Promise<T> {
+  return postPurchaseOrderAction<T>(id, 'submit', requestId, idempotencyKey, body);
 }
 
-export function cancelPurchaseOrder<T>(id: string, requestId: string): Promise<T> {
-  const sanitized = encodeURIComponent(id);
-  return requestCore<T>({ method: 'POST', path: `/api/purchase-orders/${sanitized}/cancel`, requestId });
+export function approvePurchaseOrder<T>(
+  id: string,
+  requestId: string,
+  idempotencyKey: string,
+  body?: unknown,
+): Promise<T> {
+  return postPurchaseOrderAction<T>(id, 'approve', requestId, idempotencyKey, body);
+}
+
+export function cancelPurchaseOrder<T>(
+  id: string,
+  requestId: string,
+  idempotencyKey: string,
+  body?: unknown,
+): Promise<T> {
+  return postPurchaseOrderAction<T>(id, 'cancel', requestId, idempotencyKey, body);
 }
