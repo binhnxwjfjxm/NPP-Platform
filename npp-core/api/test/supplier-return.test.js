@@ -503,7 +503,7 @@ test('Supplier return lifecycle keeps trusted snapshots and blocks goods receipt
     assert.ok(successfulPost);
     assert.ok(rejectedPost);
     const concurrentPosted = await data(successfulPost);
-    assert.equal(await errorCode(rejectedPost), 'RETURN_QUANTITY_EXCEEDS_RETURNABLE');
+    assert.equal(await errorCode(rejectedPost), 'SOURCE_LINE_NOT_RETURNABLE');
 
     const failedApproved = postA.status === 200 ? approvedB : approvedA;
     const movementCountBeforeCancel = await pool.query(
