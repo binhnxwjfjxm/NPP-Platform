@@ -27,7 +27,19 @@ type ValidationResult = {
 type Envelope<T> = { data?: T; error?: { message?: string; code?: string } };
 type WorkspaceProps = { initialImports: OpeningBalanceImport[]; initialError?: string | null };
 
-const HEADERS = ['warehouseId', 'locationId', 'sourceVariantId', 'sourceQuantity', 'lotCode', 'manufacturedDate', 'expiryDate', 'supplierLotReference', 'sourceLineReference'];
+const CSV_COLUMNS = [
+  { key: 'warehouseId', label: 'Mã kho' },
+  { key: 'locationId', label: 'Mã vị trí' },
+  { key: 'sourceVariantId', label: 'Mã tham chiếu SKU' },
+  { key: 'sourceQuantity', label: 'Số lượng' },
+  { key: 'lotCode', label: 'Mã lô' },
+  { key: 'manufacturedDate', label: 'Ngày sản xuất' },
+  { key: 'expiryDate', label: 'Hạn sử dụng' },
+  { key: 'supplierLotReference', label: 'Mã lô nhà cung cấp' },
+  { key: 'sourceLineReference', label: 'Tham chiếu dòng' },
+] as const;
+const HEADERS = CSV_COLUMNS.map((column) => column.key);
+const HEADER_ALIASES = Object.fromEntries(CSV_COLUMNS.flatMap((column) => [[column.label, column.key], [column.key, column.key]]));
 
 function parseLine(line: string): string[] {
   const cells: string[] = [];
@@ -49,7 +61,7 @@ function parseLine(line: string): string[] {
 function parseCsv(text: string): CsvRow[] {
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) return [];
-  const headers = parseLine(lines[0]);
+  const headers = parseLine(lines[0]).map((header) => HEADER_ALIASES[header.trim()] ?? header.trim());
   return lines.slice(1).map((line) => {
     const cells = parseLine(line);
     const row = Object.fromEntries(headers.map((header, index) => [header.trim(), cells[index] ?? ''])) as Partial<CsvRow>;
@@ -99,10 +111,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function downloadTemplate() {
-  const content = [
-    HEADERS.join(','),
-    'WAREHOUSE_UUID,,VARIANT_UUID,10,LO-001,2026-01-01,2027-01-01,LO-NCC-01,Dong-2',
-  ].join('\n');
+  const content = CSV_COLUMNS.map((column) => column.label).join(',');
   const blob = new Blob([`\uFEFF${content}`], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -237,8 +246,8 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
       {message ? <div className={message.kind === 'success' ? styles.success : styles.error} role={message.kind === 'error' ? 'alert' : undefined}>{message.text}</div> : null}
 
       <section className={styles.steps} aria-label="Các bước nhập tồn đầu kỳ">
-        <article><strong>1</strong><span>Tải tệp mẫu</span><button type="button" onClick={downloadTemplate}>Tải mẫu CSV</button></article>
-        <article><strong>2</strong><span>Chọn tệp đã điền</span><label>Chọn CSV<input type="file" accept=".csv,text/csv" data-testid="inventory-opening-file-input" onChange={(event) => { const file = event.target.files?.[0]; if (file) void chooseFile(file); }} /></label></article>
+        <article><strong>1</strong><span>Tải tệp mẫu</span><button type="button" onClick={downloadTemplate}>Tải mẫu Excel/CSV</button></article>
+        <article><strong>2</strong><span>Chọn tệp đã điền</span><label>Chọn tệp<input type="file" accept=".csv,text/csv" data-testid="inventory-opening-file-input" onChange={(event) => { const file = event.target.files?.[0]; if (file) void chooseFile(file); }} /></label></article>
         <article><strong>3</strong><span>Kiểm tra dữ liệu</span><button type="button" onClick={() => void validate()} disabled={busy !== null}>{busy === 'validate' ? 'Đang kiểm tra…' : 'Kiểm tra tệp'}</button></article>
         <article><strong>4</strong><span>Xác nhận ghi nhận</span><button type="button" onClick={() => void post()} disabled={busy !== null || !validation || !validationChecksum || validation.rowErrors.length > 0}>{busy === 'post' ? 'Đang ghi nhận…' : 'Xác nhận nhập tồn'}</button></article>
       </section>
@@ -246,7 +255,7 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
       <section className={styles.card}>
         <h2>Thông tin đợt nhập</h2>
         <div className={styles.formGrid}>
-          <label><span>Mã đợt dữ liệu</span><input value={sourceKey} onChange={(event) => { setSourceKey(event.target.value); invalidateDraft(); }} placeholder="Ví dụ: TON_DAU_2026" data-testid="inventory-opening-source-key-input" /></label>
+          <label><span>Mã đợt dữ liệu</span><input value={sourceKey} onChange={(event) => { setSourceKey(event.target.value); invalidateDraft(); }} placeholder="Mã đợt nhập" data-testid="inventory-opening-source-key-input" /></label>
           <label><span>Ngày ghi nhận</span><input type="date" value={documentDate} onChange={(event) => { setDocumentDate(event.target.value); invalidateDraft(); }} data-testid="inventory-opening-document-date-input" /></label>
           <label><span>Tệp đã chọn</span><input value={filename || 'Chưa chọn tệp'} readOnly /></label>
         </div>
