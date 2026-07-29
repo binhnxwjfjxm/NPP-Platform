@@ -61,6 +61,12 @@ export default defineConfig({
     { name: 'document-numbering', testMatch: /document-numbering\.spec\.ts/, use: authenticatedBrowser },
     { name: 'pricing-financial', testMatch: /pricing\.spec\.ts/, use: authenticatedBrowser },
     { name: 'inventory', testMatch: /inventory\.spec\.ts/, use: authenticatedBrowser },
+    {
+      name: 'purchasing',
+      testMatch: /purchase-orders\.spec\.ts/,
+      dependencies: ['organization', 'suppliers', 'catalog'],
+      use: authenticatedBrowser,
+    },
     { name: 'organization-auth', testMatch: /organization-auth\.spec\.ts/, use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3003' } },
     { name: 'inventory-auth', testMatch: /inventory-auth\.spec\.ts/, use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3003' } },
     { name: 'foundation-disabled', testMatch: /foundation-disabled\.spec\.ts/, use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3003' } },
