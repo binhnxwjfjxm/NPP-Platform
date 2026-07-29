@@ -76,6 +76,12 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.coreInventoryLotRead,
       PERMISSIONS.coreInventoryLotManage,
       PERMISSIONS.coreInventoryOpeningBalanceImport,
+      PERMISSIONS.corePurchaseOrderRead,
+      PERMISSIONS.corePurchaseOrderCreate,
+      PERMISSIONS.corePurchaseOrderUpdate,
+      PERMISSIONS.corePurchaseOrderSubmit,
+      PERMISSIONS.corePurchaseOrderApprove,
+      PERMISSIONS.corePurchaseOrderCancel,
     ],
     sourceApp: 'npp-core-api',
   });
