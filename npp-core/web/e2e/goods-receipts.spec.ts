@@ -1,4 +1,4 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 
 function uniqueSuffix() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`.toUpperCase();
@@ -110,7 +110,7 @@ async function createFixture(request: APIRequestContext, suffix: string) {
   return { warehouse, location, supplier, variant, purchaseOrder };
 }
 
-async function openReceiptEditor(page, purchaseOrderId: string, sku: string) {
+async function openReceiptEditor(page: Page, purchaseOrderId: string, sku: string) {
   await page.getByTestId('goods-receipt-create-button').click();
   const editor = page.getByRole('dialog', { name: 'Phiếu nhận hàng nháp' });
   await expect(editor).toBeVisible();
