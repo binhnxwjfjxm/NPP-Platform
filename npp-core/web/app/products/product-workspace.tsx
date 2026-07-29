@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { AppShell } from '../components/app-shell';
 import Modal from '../components/modal';
+import ProductUnitWorkspace from './product-unit-workspace';
 import type {
   BrandForm,
   CategoryForm,
@@ -11,6 +12,7 @@ import type {
   ProductCategory,
   ProductForm,
   ProductVariant,
+  UnitOfMeasure,
   VariantForm,
 } from '../../lib/product-types';
 import styles from './products.module.css';
@@ -19,10 +21,11 @@ type Props = {
   initialProducts: Product[];
   initialCategories: ProductCategory[];
   initialBrands: ProductBrand[];
+  initialUnits: UnitOfMeasure[];
   initialError?: string | null;
 };
 
-type Tab = 'products' | 'categories' | 'brands';
+type Tab = 'products' | 'categories' | 'brands' | 'units';
 type StatusFilter = 'all' | 'active' | 'inactive';
 
 const EMPTY_PRODUCT: ProductForm = {
@@ -118,6 +121,7 @@ export default function ProductWorkspace({
   initialProducts,
   initialCategories,
   initialBrands,
+  initialUnits,
   initialError = null,
 }: Props) {
   const [tab, setTab] = useState<Tab>('products');
@@ -145,6 +149,7 @@ export default function ProductWorkspace({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(initialError);
   const [notice, setNotice] = useState<string | null>(null);
+  const [unitSelection, setUnitSelection] = useState<{ productId: string; variantId: string; requestKey: number } | null>(null);
 
   const normalizedSearch = normalizeSearch(search);
   const visibleProducts = useMemo(() => products.filter((product) => {
@@ -442,6 +447,17 @@ export default function ProductWorkspace({
     setShowVariantForm(true);
   }
 
+  function openUnitSetup(product: Product, variant: ProductVariant) {
+    if (busy) return;
+    closeEditors();
+    setUnitSelection((current) => ({
+      productId: product.id,
+      variantId: variant.id,
+      requestKey: (current?.requestKey ?? 0) + 1,
+    }));
+    setTab('units');
+  }
+
   async function saveVariant() {
     if (!selectedProduct) return;
     startWork();
@@ -492,15 +508,16 @@ export default function ProductWorkspace({
   );
 
   return (
-    <AppShell title="Danh mục sản phẩm" subtitle="Quản lý sản phẩm, loại sản phẩm, nhãn hàng, SKU và thông tin bán hàng" kicker="Quản lý hàng hóa">
+    <AppShell title="Danh mục sản phẩm" subtitle="Quản lý sản phẩm, loại sản phẩm, nhãn hàng, SKU, đơn vị tính và mã vạch" kicker="Quản lý hàng hóa">
       <main className={styles.workspace} data-testid="products-page">
         <div className={styles.toolbar}>
           <div className={styles.tabs} role="tablist" aria-label="Khu vực danh mục sản phẩm">
             <button type="button" className={tab === 'products' ? styles.tabActive : styles.tab} onClick={() => selectTab('products')} data-testid="products-tab">Sản phẩm</button>
             <button type="button" className={tab === 'categories' ? styles.tabActive : styles.tab} onClick={() => selectTab('categories')} data-testid="categories-tab">Loại sản phẩm</button>
             <button type="button" className={tab === 'brands' ? styles.tabActive : styles.tab} onClick={() => selectTab('brands')} data-testid="brands-tab">Nhãn hàng</button>
+            <button type="button" className={tab === 'units' ? styles.tabActive : styles.tab} onClick={() => { setUnitSelection(null); selectTab('units'); }} data-testid="units-tab">Đơn vị &amp; quy đổi</button>
           </div>
-          <button type="button" className={styles.secondaryButton} onClick={() => void reloadAll()} disabled={busy}>Làm mới</button>
+          {tab !== 'units' ? <button type="button" className={styles.secondaryButton} onClick={() => void reloadAll()} disabled={busy}>Làm mới</button> : null}
         </div>
 
         {error && !editorOpen ? <div className={styles.errorBanner} role="alert">{error}</div> : null}
@@ -531,7 +548,7 @@ export default function ProductWorkspace({
 
             {selectedProduct ? <div className={styles.variantPanel} data-testid="variant-panel">
               <div className={styles.sectionHeader}><div><h3>SKU của {selectedProduct.code}</h3><p>Quản lý SKU, đơn vị tính, quy đổi và mã vạch của sản phẩm.</p></div><button type="button" className={styles.primaryButton} onClick={openVariantCreate} data-testid="add-variant-button">Thêm SKU</button></div>
-              <div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>SKU</th><th>Tên</th><th>Loại</th><th>Tồn chuẩn</th><th>Bán</th><th>Hiển thị bán hàng</th><th>Trạng thái</th><th></th></tr></thead><tbody>{variants.map((variant) => <tr key={variant.id} data-testid={`variant-row-${variant.sku}`}><td><strong>{variant.sku}</strong></td><td>{variant.name}</td><td>{VARIANT_KIND_LABELS[variant.variant_kind]}</td><td>{variant.is_inventory_base ? 'Có' : 'Không'}</td><td>{variant.is_sellable ? 'Có' : 'Không'}</td><td>{variant.is_catalog_visible ? 'Có' : 'Không'}</td><td>{variant.is_active ? 'Hoạt động' : 'Ngừng'}</td><td><button type="button" onClick={() => openVariantEdit(variant)}>Sửa</button></td></tr>)}{variants.length === 0 ? <tr><td colSpan={8} className={styles.empty}>Sản phẩm chưa có SKU</td></tr> : null}</tbody></table></div>
+              <div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>SKU</th><th>Tên</th><th>Loại</th><th>Tồn chuẩn</th><th>Bán</th><th>Hiển thị bán hàng</th><th>Trạng thái</th><th></th></tr></thead><tbody>{variants.map((variant) => <tr key={variant.id} data-testid={`variant-row-${variant.sku}`}><td><strong>{variant.sku}</strong></td><td>{variant.name}</td><td>{VARIANT_KIND_LABELS[variant.variant_kind]}</td><td>{variant.is_inventory_base ? 'Có' : 'Không'}</td><td>{variant.is_sellable ? 'Có' : 'Không'}</td><td>{variant.is_catalog_visible ? 'Có' : 'Không'}</td><td>{variant.is_active ? 'Hoạt động' : 'Ngừng'}</td><td className={styles.rowActions}><button type="button" onClick={() => openVariantEdit(variant)}>Sửa</button><button type="button" onClick={() => openUnitSetup(selectedProduct, variant)} data-testid={`manage-units-${variant.sku}`}>Đơn vị &amp; mã vạch</button></td></tr>)}{variants.length === 0 ? <tr><td colSpan={8} className={styles.empty}>Sản phẩm chưa có SKU</td></tr> : null}</tbody></table></div>
             </div> : null}
           </section>
         ) : null}
@@ -545,6 +562,8 @@ export default function ProductWorkspace({
           <div className={styles.sectionHeader}><div><h2>Nhãn hàng</h2><p>Quản lý nhãn hàng được sử dụng thống nhất cho sản phẩm.</p></div><button type="button" className={styles.primaryButton} onClick={openBrandCreate} data-testid="add-brand-button">Thêm nhãn hàng</button></div>
           <div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>Mã</th><th>Tên</th><th>Hiển thị bán hàng</th><th>Trạng thái</th><th></th></tr></thead><tbody>{brands.map((brand) => <tr key={brand.id} data-testid={`brand-row-${brand.code}`}><td><strong>{brand.code}</strong></td><td>{brand.name}</td><td>{brand.is_catalog_visible ? 'Có' : 'Không'}</td><td>{brand.is_active ? 'Hoạt động' : 'Ngừng'}</td><td className={styles.rowActions}><button type="button" onClick={() => openBrandEdit(brand)}>Sửa</button><button type="button" disabled={busy} onClick={() => void patchBrandStatus(brand, !brand.is_active)}>{brand.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button></td></tr>)}</tbody></table></div>
         </section> : null}
+
+        {tab === 'units' ? <ProductUnitWorkspace initialProducts={products} initialUnits={initialUnits} selection={unitSelection} /> : null}
 
         <Modal open={showProductForm} title={editingProduct ? `Sửa ${editingProduct.code}` : 'Thêm sản phẩm'} description="Thông tin sản phẩm dùng chung cho bán hàng và quản lý tồn kho." onClose={closeEditors} testId="product-form" size="large" footer={productFooter}>
           {error ? <div className={styles.errorBanner} role="alert">{error}</div> : null}
