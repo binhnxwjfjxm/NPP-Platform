@@ -1,0 +1,33 @@
+name: Temporary PR 90 Test Query Fix
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - scripts/fix-pr90-test-query.py
+      - .github/workflows/fix-pr90-test-query.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.event.pull_request.number == 90 && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/phase-5-4-supplier-return
+          fetch-depth: 0
+      - run: python3 scripts/fix-pr90-test-query.py
+      - shell: bash
+        run: |
+          set -euo pipefail
+          rm scripts/fix-pr90-test-query.py .github/workflows/fix-pr90-test-query.yml
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "test(purchasing): assert supplier return movement line direction"
+          git push origin HEAD:agent/phase-5-4-supplier-return
