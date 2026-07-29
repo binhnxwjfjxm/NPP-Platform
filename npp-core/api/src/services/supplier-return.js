@@ -1,4 +1,5 @@
 import * as core from './supplier-return-core.js';
+import { postSupplierReturnPayable, reverseSourcePayable } from './payable.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -24,6 +25,18 @@ async function lockSourceGoodsReceipts(client, requestContext, supplierReturnId)
   );
 }
 
+function withPayableLink(result, payableResult) {
+  if (!result?.ok || !result.supplierReturn) return result;
+  return Object.freeze({
+    ...result,
+    supplierReturn: Object.freeze({
+      ...result.supplierReturn,
+      payableDocumentId: payableResult.payableDocument?.id ?? null,
+    }),
+    payableDocument: payableResult.payableDocument ?? null,
+  });
+}
+
 export async function submitSupplierReturn(client, args) {
   await lockSourceGoodsReceipts(client, args.requestContext, args.id);
   return core.submitSupplierReturn(client, args);
@@ -32,7 +45,14 @@ export async function submitSupplierReturn(client, args) {
 export async function postSupplierReturn(client, args) {
   await lockSourceGoodsReceipts(client, args.requestContext, args.id);
   try {
-    return await core.postSupplierReturn(client, args);
+    const result = await core.postSupplierReturn(client, args);
+    if (!result.ok) return result;
+    const payableResult = await postSupplierReturnPayable(client, {
+      requestContext: args.requestContext,
+      supplierReturnId: result.supplierReturn.id,
+    });
+    if (!payableResult.ok) return payableResult;
+    return withPayableLink(result, payableResult);
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
     if (message.includes('inventory_negative_stock_denied')) {
@@ -46,6 +66,21 @@ export async function postSupplierReturn(client, args) {
   }
 }
 
+export async function reverseSupplierReturn(client, args) {
+  const result = await core.reverseSupplierReturn(client, args);
+  if (!result.ok) return result;
+  const payableResult = await reverseSourcePayable(client, {
+    requestContext: args.requestContext,
+    sourceDocumentType: 'SUPPLIER_RETURN',
+    sourceDocumentId: result.supplierReturn.id,
+    sourceRevision: result.supplierReturn.revision,
+    reversedAt: result.supplierReturn.reversedAt,
+    reversalReason: result.supplierReturn.reversalReason,
+  });
+  if (!payableResult.ok) return payableResult;
+  return withPayableLink(result, payableResult);
+}
+
 export const listSupplierReturns = core.listSupplierReturns;
 export const listSupplierReturnSourceLines = core.listSupplierReturnSourceLines;
 export const getSupplierReturn = core.getSupplierReturn;
@@ -53,4 +88,3 @@ export const createSupplierReturn = core.createSupplierReturn;
 export const updateSupplierReturn = core.updateSupplierReturn;
 export const approveSupplierReturn = core.approveSupplierReturn;
 export const cancelSupplierReturn = core.cancelSupplierReturn;
-export const reverseSupplierReturn = core.reverseSupplierReturn;
