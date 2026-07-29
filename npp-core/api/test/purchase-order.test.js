@@ -86,16 +86,17 @@ function authHeaders(config, key) {
 }
 
 test('Purchase order decimal helpers retain exact six-place arithmetic', () => {
-  const { decimalToScaled, scaledToDecimal, multiplyScaled } = purchaseOrderInternals;
+  const { decimalToScaled, scaledToDecimal, multiplyScaled, dateOnly } = purchaseOrderInternals;
   assert.equal(scaledToDecimal(decimalToScaled('12.345678', { allowZero: false })), '12.345678');
   assert.equal(scaledToDecimal(multiplyScaled(
     decimalToScaled('2.5', { allowZero: false }),
     decimalToScaled('10000.25', { allowZero: true }),
   )), '25000.625');
   assert.equal(decimalToScaled('1.0000001', { allowZero: false }), null);
+  assert.equal(dateOnly(new Date('2026-07-29T00:00:00.000Z')), '2026-07-29');
 });
 
-test('Purchase order API completes draft, update, submit and approval exactly once', async () => {
+test('Purchase order API is idempotent, concurrency-safe and completes its lifecycle', async () => {
   const config = loadConfig(testEnv());
   const pool = getPool(config);
   let server;
@@ -131,6 +132,7 @@ test('Purchase order API completes draft, update, submit and approval exactly on
     const first = (await firstResponse.json()).data;
     assert.equal(first.status, 'draft');
     assert.equal(first.number, null);
+    assert.equal(first.placedAt, '2026-07-29');
     assert.equal(first.total, '24750.625000');
     assert.equal(first.lines[0].baseQuantity, '2.500000');
 
@@ -146,23 +148,32 @@ test('Purchase order API completes draft, update, submit and approval exactly on
     });
     assert.equal(mismatchResponse.status, 409);
 
-    const updateResponse = await fetch(`${baseUrl}/api/purchase-orders/${first.id}`, {
-      method: 'PATCH',
-      headers: authHeaders(config, `po-update-${randomUUID()}`),
-      body: JSON.stringify({
-        ...createPayload,
-        expectedRevision: first.revision,
-        lines: [{
-          variantId: fixture.variantId,
-          quantity: '3',
-          unitPrice: '10000.25',
-          discountAmount: '0',
-          taxAmount: '0',
-        }],
-      }),
+    const updatePayload = JSON.stringify({
+      ...createPayload,
+      expectedRevision: first.revision,
+      lines: [{
+        variantId: fixture.variantId,
+        quantity: '3',
+        unitPrice: '10000.25',
+        discountAmount: '0',
+        taxAmount: '0',
+      }],
     });
-    assert.equal(updateResponse.status, 200);
-    const updated = (await updateResponse.json()).data;
+    const concurrentUpdates = await Promise.all([
+      fetch(`${baseUrl}/api/purchase-orders/${first.id}`, {
+        method: 'PATCH',
+        headers: authHeaders(config, `po-update-a-${randomUUID()}`),
+        body: updatePayload,
+      }),
+      fetch(`${baseUrl}/api/purchase-orders/${first.id}`, {
+        method: 'PATCH',
+        headers: authHeaders(config, `po-update-b-${randomUUID()}`),
+        body: updatePayload,
+      }),
+    ]);
+    assert.deepEqual(concurrentUpdates.map((response) => response.status).sort(), [200, 409]);
+    const successfulUpdate = concurrentUpdates.find((response) => response.status === 200);
+    const updated = (await successfulUpdate.json()).data;
     assert.equal(updated.total, '30000.750000');
     assert.equal(updated.revision, '2');
 
@@ -217,6 +228,25 @@ test('Purchase order API completes draft, update, submit and approval exactly on
       /purchase_order_lines_locked/,
     );
 
+    const cancelKey = `po-cancel-${randomUUID()}`;
+    const cancel = () => fetch(`${baseUrl}/api/purchase-orders/${first.id}/cancel`, {
+      method: 'POST',
+      headers: authHeaders(config, cancelKey),
+      body: JSON.stringify({
+        expectedRevision: approved.revision,
+        reason: 'Hủy để kiểm thử lifecycle',
+      }),
+    });
+    const cancelResponse = await cancel();
+    assert.equal(cancelResponse.status, 200);
+    const cancelled = (await cancelResponse.json()).data;
+    assert.equal(cancelled.status, 'cancelled');
+    assert.equal(cancelled.cancellationReason, 'Hủy để kiểm thử lifecycle');
+    assert.equal(cancelled.revision, '5');
+    const cancelReplay = await cancel();
+    assert.equal(cancelReplay.status, 200);
+    assert.equal((await cancelReplay.json()).data.revision, '5');
+
     const counts = await pool.query(
       `SELECT
         (SELECT count(*)::int FROM purchasing.purchase_orders WHERE installation_id = $1 AND id = $2) AS orders,
@@ -225,7 +255,7 @@ test('Purchase order API completes draft, update, submit and approval exactly on
         (SELECT count(*)::int FROM shared.core_outbox_events WHERE installation_id = $1 AND aggregate_type = 'purchasing.purchase_order' AND aggregate_id = $2) AS events`,
       [config.installationId, first.id],
     );
-    assert.deepEqual(counts.rows[0], { orders: 1, lines: 1, audits: 4, events: 4 });
+    assert.deepEqual(counts.rows[0], { orders: 1, lines: 1, audits: 5, events: 5 });
   } finally {
     if (server) await closeServer(server);
     await closePool();
