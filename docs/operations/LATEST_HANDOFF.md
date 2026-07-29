@@ -53,4 +53,4 @@ Configured production endpoints remain:
 These endpoints, releases, backups and applied production migrations were not re-audited by this source task. Do not claim a deployment, migration, backup or restore state from this handoff alone. Vercel Auto Deploy and Heroku Automatic Deploy remain intended to stay off; production rollout is a separate explicit operation.
 
 > Updated: 2026-07-29  
-> Current checkpoint: Phase 5.4 Supplier Return final exact-head verification in PR #90 after focused failure-invariant coverage was added. Merge only after all required CI gates pass.
+> Current checkpoint: Phase 5.4 Supplier Return clean final exact-head verification in PR #90 after the concurrent return assertion was aligned with the exhausted-source contract. Merge only after all required CI gates pass.
