@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Apply office-language replacements
+      - name: Apply verified office-language replacements
         run: node scripts/office-language-codemod.mjs
       - name: Commit generated source changes
         run: |
