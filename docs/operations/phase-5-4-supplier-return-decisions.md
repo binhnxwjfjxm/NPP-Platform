@@ -56,7 +56,8 @@ Quy tắc tính:
 
 ## 4. Chặn reverse goods receipt
 
-- Goods receipt không được reverse nếu còn bất kỳ supplier return nào ở trạng thái `draft`, `pending_approval`, `approved` hoặc `posted` trỏ về các source goods receipt line của nó.
+- Goods receipt không được reverse nếu còn supplier return ở trạng thái `pending_approval`, `approved` hoặc `posted` trỏ về các source goods receipt line của nó.
+- `draft` không chặn reverse. Khi submit, backend khóa và đọc lại Goods Receipt; nếu nguồn không còn `posted` thì submit phải thất bại. `cancelled` và `reversed` không chặn.
 - Chặn này là business invariant bắt buộc để không đảo ngược hàng đã được trả về nhà cung cấp.
 
 ## 5. Đánh số chứng từ
