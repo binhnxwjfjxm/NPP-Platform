@@ -37,6 +37,16 @@ function normalizeDate(value, required = false) {
   return text;
 }
 
+function dateOnly(value) {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const leadingDate = value.slice(0, 10);
+    if (normalizeDate(leadingDate)) return leadingDate;
+  }
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+}
+
 function decimalToScaled(value, { allowZero }) {
   const text = typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
   const match = DECIMAL_PATTERN.exec(text);
@@ -103,8 +113,8 @@ function mapOrder(order) {
     warehouseId: order.warehouse_id,
     warehouseCode: order.warehouse_code,
     warehouseName: order.warehouse_name,
-    placedAt: String(order.order_date).slice(0, 10),
-    expectedAt: order.expected_date ? String(order.expected_date).slice(0, 10) : null,
+    placedAt: dateOnly(order.order_date),
+    expectedAt: dateOnly(order.expected_date),
     supplierReference: order.supplier_reference ?? null,
     currency: order.currency_code,
     note: order.note ?? null,
@@ -178,11 +188,18 @@ async function validateAndNormalizeDraft(client, { requestContext, payload }) {
     variantIds.push(variantId);
   }
 
-  const [supplier, warehouse, variants] = await Promise.all([
-    repository.getActiveSupplier(client, { installationId: requestContext.installationId, id: supplierId }),
-    repository.getActiveWarehouse(client, { installationId: requestContext.installationId, id: warehouseId }),
-    repository.getPurchasableVariants(client, { installationId: requestContext.installationId, ids: variantIds }),
-  ]);
+  const supplier = await repository.getActiveSupplier(client, {
+    installationId: requestContext.installationId,
+    id: supplierId,
+  });
+  const warehouse = await repository.getActiveWarehouse(client, {
+    installationId: requestContext.installationId,
+    id: warehouseId,
+  });
+  const variants = await repository.getPurchasableVariants(client, {
+    installationId: requestContext.installationId,
+    ids: variantIds,
+  });
   if (!supplier) return failure('SUPPLIER_NOT_FOUND', 'Active supplier was not found');
   if (!warehouse) return failure('WAREHOUSE_NOT_FOUND', 'Active warehouse was not found');
   if (variants.length !== variantIds.length) return failure('VARIANT_NOT_PURCHASABLE', 'One or more SKUs are inactive, missing a unit, or not purchasable');
@@ -376,12 +393,14 @@ export async function approvePurchaseOrder(client, {
     actorId: requestContext.actorId,
   });
   if (!series) return failure('DOCUMENT_NUMBER_SERIES_UNAVAILABLE', 'Purchase order number series is unavailable', true);
+  const documentDate = dateOnly(current.raw.order_date);
+  if (!documentDate) return failure('INVALID_DOCUMENT_DATE', 'Purchase order date is invalid');
   const allocation = await allocateDocumentNumber(client, {
     installationId: requestContext.installationId,
     seriesId: series.id,
     idempotencyKey,
     payload: {
-      documentDate: String(current.raw.order_date).slice(0, 10),
+      documentDate,
       metadata: { purchaseOrderId: current.raw.id },
     },
     actorId: requestContext.actorId,
@@ -428,5 +447,6 @@ export const purchaseOrderInternals = Object.freeze({
   decimalToScaled,
   scaledToDecimal,
   multiplyScaled,
+  dateOnly,
   mapOrder,
 });
