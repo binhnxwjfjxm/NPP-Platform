@@ -314,9 +314,14 @@ test('Supplier return lifecycle keeps trusted snapshots and blocks goods receipt
     assert.equal(postedReturn.status, 'posted');
     assert.match(postedReturn.documentNumber, /^SR-202607-\d{6}$/);
     const postedMovement = await pool.query(
-      `SELECT movement_type, direction
-         FROM inventory.inventory_movements
-        WHERE installation_id = $1 AND id = $2`,
+      `SELECT movement.movement_type, line.direction
+         FROM inventory.inventory_movements movement
+         JOIN inventory.inventory_movement_lines line
+           ON line.installation_id = movement.installation_id
+          AND line.movement_id = movement.id
+        WHERE movement.installation_id = $1 AND movement.id = $2
+        ORDER BY line.line_number
+        LIMIT 1`,
       [config.installationId, postedReturn.inventoryMovementId],
     );
     assert.equal(postedMovement.rows[0].movement_type, 'SUPPLIER_RETURN_ISSUE');
