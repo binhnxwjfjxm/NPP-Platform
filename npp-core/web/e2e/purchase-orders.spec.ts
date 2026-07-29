@@ -28,15 +28,15 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     const editor = page.getByRole('dialog', { name: 'Đơn đặt hàng mới' });
     await expect(editor).toBeVisible();
 
-    const supplierSelect = editor.getByLabel('Nhà cung cấp');
-    const warehouseSelect = editor.getByLabel('Kho nhận');
-    const productSelect = editor.getByLabel('Sản phẩm');
+    const supplierSelect = editor.getByRole('combobox', { name: 'Nhà cung cấp', exact: true });
+    const warehouseSelect = editor.getByRole('combobox', { name: 'Kho nhận', exact: true });
+    const productSelect = editor.getByRole('combobox', { name: 'Sản phẩm', exact: true });
     await expect(supplierSelect.locator('option')).not.toHaveCount(1);
     await expect(warehouseSelect.locator('option')).not.toHaveCount(1);
     await expect(productSelect.locator('option')).not.toHaveCount(1);
     await supplierSelect.selectOption({ label: `NCC-${supplierSuffix} — Nhà cung cấp PO ${supplierSuffix}` });
     await warehouseSelect.selectOption({ index: 1 });
-    await editor.getByLabel('Tham chiếu nhà cung cấp').fill(supplierReference);
+    await editor.getByRole('textbox', { name: 'Tham chiếu nhà cung cấp', exact: true }).fill(supplierReference);
 
     const variantsResponse = page.waitForResponse((response) => (
       response.request().method() === 'GET'
@@ -45,10 +45,10 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     ));
     await productSelect.selectOption({ index: 1 });
     await variantsResponse;
-    const variantSelect = editor.getByLabel('SKU mua hàng');
+    const variantSelect = editor.getByRole('combobox', { name: 'SKU mua hàng', exact: true });
     await expect(variantSelect.locator('option')).not.toHaveCount(1);
     await variantSelect.selectOption({ index: 1 });
-    await editor.getByRole('button', { name: 'Thêm dòng' }).click();
+    await editor.getByRole('button', { name: 'Thêm dòng', exact: true }).click();
 
     const line = page.getByTestId('purchase-order-lines').locator('tbody tr').first();
     const inputs = line.locator('input');
@@ -66,7 +66,7 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     await expect(row).toHaveCount(1);
     await expect(row).toContainText('Nháp');
 
-    await row.getByRole('button', { name: 'Sửa' }).click();
+    await row.getByRole('button', { name: 'Sửa', exact: true }).click();
     const editDialog = page.getByRole('dialog', { name: 'Đơn chưa cấp số' });
     await expect(editDialog).toBeVisible();
     const editLine = page.getByTestId('purchase-order-lines').locator('tbody tr').first();
@@ -75,26 +75,26 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     await expect(editDialog).toHaveCount(0);
     await expect(page.getByText('Đã cập nhật đơn đặt hàng nháp.')).toBeVisible();
 
-    await row.getByRole('button', { name: 'Gửi duyệt' }).click();
+    await row.getByRole('button', { name: 'Gửi duyệt', exact: true }).click();
     await page.getByTestId('purchase-order-submit-confirm').click();
     await expect(page.getByText('Đơn đặt hàng đã được gửi duyệt.')).toBeVisible();
     await expect(row).toContainText('Chờ duyệt');
 
-    await row.getByRole('button', { name: 'Duyệt' }).click();
+    await row.getByRole('button', { name: 'Duyệt', exact: true }).click();
     await page.getByTestId('purchase-order-approve-confirm').click();
     await expect(page.getByText(/Đơn đặt hàng đã được duyệt với số PO-/)).toBeVisible();
     await expect(row).toContainText('Đã duyệt');
     await expect(row).toContainText(/PO-\d{6}-\d{6}/);
 
-    await row.getByRole('button', { name: 'Xem' }).click();
+    await row.getByRole('button', { name: 'Xem', exact: true }).click();
     const detail = page.getByRole('dialog', { name: /PO-\d{6}-\d{6}/ });
     await expect(detail).toBeVisible();
     await expect(detail).toContainText('30.000,75 VND');
-    await detail.getByRole('button', { name: 'Đóng chi tiết' }).click();
+    await detail.getByRole('button', { name: 'Đóng chi tiết', exact: true }).click();
 
-    await row.getByRole('button', { name: 'Hủy' }).click();
+    await row.getByRole('button', { name: 'Hủy', exact: true }).click();
     const cancelDialog = page.getByRole('dialog', { name: 'Hủy đơn' });
-    await cancelDialog.getByLabel('Lý do hủy').fill('Hủy để kiểm thử lifecycle P5.1');
+    await cancelDialog.getByRole('textbox', { name: 'Lý do hủy', exact: true }).fill('Hủy để kiểm thử lifecycle P5.1');
     await page.getByTestId('purchase-order-cancel-confirm').click();
     await expect(page.getByText('Đơn đặt hàng đã được hủy.')).toBeVisible();
     await expect(row).toContainText('Đã hủy');
