@@ -17,7 +17,7 @@ replaceOnce(
 );
 replaceOnce(
   "                  <div><dt>Sản phẩm</dt><dd>{selectedProduct ? `${selectedProduct.code} — ${selectedProduct.name}` : '—'}</dd></div>",
-  "                  <div><dt>Sản phẩm</dt><dd>{selectedProduct ? \\`${selectedProduct.code} — ${selectedProduct.name}\\` : '—'}</dd></div>",
+  "                  <div><dt>Sản phẩm</dt><dd>{selectedProduct ? \\`\\${selectedProduct.code} — \\${selectedProduct.name}\\` : '—'}</dd></div>",
   'selected product summary template',
 );
 replaceOnce(
