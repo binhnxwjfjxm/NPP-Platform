@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
@@ -51,22 +51,22 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const payload = await response.json().catch(() => ({})) as ApiEnvelope<T>;
   if (!response.ok || payload.data === undefined) {
-    throw new Error(payload.error?.message || 'KhÃ´ng thá»±c hiá»‡n Ä‘Æ°á»£c yÃªu cáº§u Ä‘Æ¡n Ä‘áº·t hÃ ng');
+    throw new Error(payload.error?.message || 'Không thực hiện được yêu cầu đơn đặt hàng');
   }
   return payload.data;
 }
 
 function actionLabel(action: ActionName) {
-  if (action === 'submit') return 'Gá»­i duyá»‡t';
-  if (action === 'approve') return 'Duyá»‡t Ä‘Æ¡n';
-  return 'Há»§y Ä‘Æ¡n';
+  if (action === 'submit') return 'Gửi duyệt';
+  if (action === 'approve') return 'Duyệt đơn';
+  return 'Hủy đơn';
 }
 
 function actionMessage(action: ActionName, purchaseOrder: PurchaseOrder) {
-  const identifier = purchaseOrder.number || 'Ä‘Æ¡n chÆ°a cáº¥p sá»‘';
-  if (action === 'submit') return `Gá»­i ${identifier} sang tráº¡ng thÃ¡i chá» duyá»‡t? Sau Ä‘Ã³ ná»™i dung Ä‘Æ¡n sáº½ khÃ´ng cÃ²n Ä‘Æ°á»£c sá»­a trá»±c tiáº¿p.`;
-  if (action === 'approve') return `Duyá»‡t ${identifier} vÃ  cáº¥p sá»‘ chá»©ng tá»« chÃ­nh thá»©c?`;
-  return `Há»§y ${identifier}? Lá»‹ch sá»­ Ä‘Æ¡n váº«n Ä‘Æ°á»£c giá»¯ láº¡i Ä‘á»ƒ Ä‘á»‘i soÃ¡t.`;
+  const identifier = purchaseOrder.number || 'đơn chưa cấp số';
+  if (action === 'submit') return `Gửi ${identifier} sang trạng thái chờ duyệt? Sau đó nội dung đơn sẽ không còn được sửa trực tiếp.`;
+  if (action === 'approve') return `Duyệt ${identifier} và cấp số chứng từ chính thức?`;
+  return `Hủy ${identifier}? Lịch sử đơn vẫn được giữ lại để đối soát.`;
 }
 
 export default function PurchaseOrderWorkspace({
@@ -139,7 +139,7 @@ export default function PurchaseOrderWorkspace({
       setItems(orders);
       if (successMessage) setNotice(successMessage);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'KhÃ´ng táº£i Ä‘Æ°á»£c danh sÃ¡ch Ä‘Æ¡n Ä‘áº·t hÃ ng');
+      setError(loadError instanceof Error ? loadError.message : 'Không tải được danh sách đơn đặt hàng');
     } finally {
       setLoadingList(false);
     }
@@ -151,7 +151,7 @@ export default function PurchaseOrderWorkspace({
     try {
       return await requestJson<PurchaseOrder>(`/api/purchase-orders/${purchaseOrder.id}`);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'KhÃ´ng táº£i Ä‘Æ°á»£c chi tiáº¿t Ä‘Æ¡n Ä‘áº·t hÃ ng');
+      setError(loadError instanceof Error ? loadError.message : 'Không tải được chi tiết đơn đặt hàng');
       return null;
     } finally {
       setBusyId(null);
@@ -172,7 +172,7 @@ export default function PurchaseOrderWorkspace({
     setError(null);
     setNotice(null);
     if (!lookupReady) {
-      setError('ChÆ°a Ä‘á»§ dá»¯ liá»‡u nhÃ  cung cáº¥p, kho hoáº·c sáº£n pháº©m Ä‘á»ƒ táº¡o Ä‘Æ¡n.');
+      setError('Chưa đủ dữ liệu nhà cung cấp, kho hoặc sản phẩm để tạo đơn.');
       return;
     }
     setEditor({ mode: 'create', purchaseOrder: null });
@@ -197,7 +197,7 @@ export default function PurchaseOrderWorkspace({
   async function runAction() {
     if (!pendingAction) return;
     if (pendingAction.action === 'cancel' && !cancellationReason.trim()) {
-      setError('Vui lÃ²ng nháº­p lÃ½ do há»§y Ä‘Æ¡n.');
+      setError('Vui lòng nhập lý do hủy đơn.');
       return;
     }
     const { action, purchaseOrder } = pendingAction;
@@ -222,13 +222,13 @@ export default function PurchaseOrderWorkspace({
       setCancellationReason('');
       setNotice(
         action === 'submit'
-          ? 'ÄÆ¡n Ä‘áº·t hÃ ng Ä‘Ã£ Ä‘Æ°á»£c gá»­i duyá»‡t.'
+          ? 'Đơn đặt hàng đã được gửi duyệt.'
           : action === 'approve'
-            ? `ÄÆ¡n Ä‘áº·t hÃ ng Ä‘Ã£ Ä‘Æ°á»£c duyá»‡t vá»›i sá»‘ ${updated.number}.`
-            : 'ÄÆ¡n Ä‘áº·t hÃ ng Ä‘Ã£ Ä‘Æ°á»£c há»§y.',
+            ? `Đơn đặt hàng đã được duyệt với số ${updated.number}.`
+            : 'Đơn đặt hàng đã được hủy.',
       );
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : 'KhÃ´ng cáº­p nháº­t Ä‘Æ°á»£c tráº¡ng thÃ¡i Ä‘Æ¡n Ä‘áº·t hÃ ng');
+      setError(actionError instanceof Error ? actionError.message : 'Không cập nhật được trạng thái đơn đặt hàng');
     } finally {
       setBusyId(null);
     }
@@ -239,10 +239,10 @@ export default function PurchaseOrderWorkspace({
       <button
         type="button"
         className={shellStyles.actionButton}
-        onClick={() => void loadAll('Danh sÃ¡ch Ä‘Æ¡n Ä‘áº·t hÃ ng Ä‘Ã£ Ä‘Æ°á»£c cáº­p nháº­t.')}
+        onClick={() => void loadAll('Danh sách đơn đặt hàng đã được cập nhật.')}
         disabled={loadingList}
       >
-        {loadingList ? 'Äang cáº­p nháº­tâ€¦' : 'Cáº­p nháº­t dá»¯ liá»‡u'}
+        {loadingList ? 'Đang cập nhật…' : 'Cập nhật dữ liệu'}
       </button>
       {createPolicy.create ? (
         <button
@@ -251,7 +251,7 @@ export default function PurchaseOrderWorkspace({
           onClick={openCreate}
           data-testid="purchase-order-create-button"
         >
-          Táº¡o Ä‘Æ¡n Ä‘áº·t hÃ ng
+          Tạo đơn đặt hàng
         </button>
       ) : null}
     </>
@@ -259,9 +259,9 @@ export default function PurchaseOrderWorkspace({
 
   return (
     <AppShell
-      title="ÄÆ¡n Ä‘áº·t hÃ ng"
-      subtitle="Táº¡o, gá»­i duyá»‡t vÃ  phÃª duyá»‡t nhu cáº§u mua tá»« nhÃ  cung cáº¥p trÆ°á»›c khi nháº­n hÃ ng."
-      kicker="Mua hÃ ng"
+      title="Đơn đặt hàng"
+      subtitle="Tạo, gửi duyệt và phê duyệt nhu cầu mua từ nhà cung cấp trước khi nhận hàng."
+      kicker="Mua hàng"
       actions={shellActions}
     >
       <section className={styles.page} data-testid="purchase-orders-page">
@@ -269,31 +269,31 @@ export default function PurchaseOrderWorkspace({
         {notice ? <div className={`${styles.banner} ${styles.bannerSuccess}`} role="status">{notice}</div> : null}
         {initialPermissionKeys.length === 0 ? (
           <div className={`${styles.banner} ${styles.bannerError}`} role="status">
-            ChÆ°a nháº­n Ä‘Æ°á»£c quyá»n mua hÃ ng tá»« backend. Táº¥t cáº£ hÃ nh Ä‘á»™ng thay Ä‘á»•i dá»¯ liá»‡u Ä‘ang bá»‹ khÃ³a.
+            Chưa nhận được quyền mua hàng từ backend. Tất cả hành động thay đổi dữ liệu đang bị khóa.
           </div>
         ) : null}
 
-        <section className={styles.summaryGrid} aria-label="Sá»‘ liá»‡u Ä‘Æ¡n Ä‘áº·t hÃ ng">
+        <section className={styles.summaryGrid} aria-label="Số liệu đơn đặt hàng">
           <article className={styles.summaryCard}>
-            <span>Tá»•ng Ä‘Æ¡n</span><strong>{formatDecimalString(String(counts.total))}</strong><small>Trong pháº¡m vi kho Ä‘Æ°á»£c cáº¥p</small>
+            <span>Tổng đơn</span><strong>{formatDecimalString(String(counts.total))}</strong><small>Trong phạm vi kho được cấp</small>
           </article>
           <article className={styles.summaryCard}>
-            <span>ÄÆ¡n nhÃ¡p</span><strong>{formatDecimalString(String(counts.draft))}</strong><small>CÃ²n cÃ³ thá»ƒ chá»‰nh sá»­a</small>
+            <span>Đơn nháp</span><strong>{formatDecimalString(String(counts.draft))}</strong><small>Còn có thể chỉnh sửa</small>
           </article>
           <article className={styles.summaryCard}>
-            <span>Chá» duyá»‡t</span><strong>{formatDecimalString(String(counts.pending))}</strong><small>Cáº§n ngÆ°á»i cÃ³ quyá»n phÃª duyá»‡t</small>
+            <span>Chờ duyệt</span><strong>{formatDecimalString(String(counts.pending))}</strong><small>Cần người có quyền phê duyệt</small>
           </article>
         </section>
 
-        <section className={styles.toolbar} aria-label="Bá»™ lá»c Ä‘Æ¡n Ä‘áº·t hÃ ng">
+        <section className={styles.toolbar} aria-label="Bộ lọc đơn đặt hàng">
           <div className={styles.toolbarSearch}>
-            <label htmlFor="purchase-order-search">TÃ¬m kiáº¿m</label>
-            <input id="purchase-order-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Sá»‘ Ä‘Æ¡n, nhÃ  cung cáº¥p, kho nháº­n hoáº·c mÃ£ hÃ ngâ€¦" data-testid="purchase-order-search" />
+            <label htmlFor="purchase-order-search">Tìm kiếm</label>
+            <input id="purchase-order-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Số đơn, nhà cung cấp, kho nhận hoặc mã hàng…" data-testid="purchase-order-search" />
           </div>
           <div className={styles.toolbarFilter}>
-            <label htmlFor="purchase-order-status">Tráº¡ng thÃ¡i</label>
+            <label htmlFor="purchase-order-status">Trạng thái</label>
             <select id="purchase-order-status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)} data-testid="purchase-order-status-filter">
-              <option value="all">Táº¥t cáº£ tráº¡ng thÃ¡i</option>
+              <option value="all">Tất cả trạng thái</option>
               {Object.entries(PURCHASE_ORDER_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </div>
@@ -301,8 +301,8 @@ export default function PurchaseOrderWorkspace({
 
         <section className={styles.tableSection}>
           <div className={styles.sectionHeader}>
-            <div><p className={styles.panelKicker}>Danh sÃ¡ch mua hÃ ng</p><h2>ÄÆ¡n Ä‘áº·t hÃ ng nhÃ  cung cáº¥p</h2></div>
-            <span className={styles.panelChip}>{formatDecimalString(String(visibleItems.length))} Ä‘Æ¡n</span>
+            <div><p className={styles.panelKicker}>Danh sách mua hàng</p><h2>Đơn đặt hàng nhà cung cấp</h2></div>
+            <span className={styles.panelChip}>{formatDecimalString(String(visibleItems.length))} đơn</span>
           </div>
           <PurchaseOrderList
             purchaseOrders={visibleItems}
@@ -328,7 +328,7 @@ export default function PurchaseOrderWorkspace({
           onSaved={(purchaseOrder) => {
             upsertOrder(purchaseOrder);
             setEditor(null);
-            setNotice(editor.mode === 'create' ? 'ÄÃ£ táº¡o Ä‘Æ¡n Ä‘áº·t hÃ ng nhÃ¡p.' : 'ÄÃ£ cáº­p nháº­t Ä‘Æ¡n Ä‘áº·t hÃ ng nhÃ¡p.');
+            setNotice(editor.mode === 'create' ? 'Đã tạo đơn đặt hàng nháp.' : 'Đã cập nhật đơn đặt hàng nháp.');
           }}
         />
       ) : null}
@@ -337,10 +337,10 @@ export default function PurchaseOrderWorkspace({
         <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setSelectedPurchaseOrder(null); }} onKeyDown={(event) => { if (event.key === 'Escape') setSelectedPurchaseOrder(null); }}>
           <section className={`${styles.modal} ${localStyles.detailModal}`} role="dialog" aria-modal="true" aria-labelledby="purchase-order-detail-title">
             <div className={styles.modalHeader}>
-              <div><p className={styles.panelKicker}>Chi tiáº¿t Ä‘Æ¡n Ä‘áº·t hÃ ng</p><h3 id="purchase-order-detail-title">{selectedPurchaseOrder.number || 'ÄÆ¡n chÆ°a cáº¥p sá»‘'}</h3></div>
-              <button ref={closeButtonRef} type="button" className={styles.modalClose} onClick={() => setSelectedPurchaseOrder(null)}>ÄÃ³ng</button>
+              <div><p className={styles.panelKicker}>Chi tiết đơn đặt hàng</p><h3 id="purchase-order-detail-title">{selectedPurchaseOrder.number || 'Đơn chưa cấp số'}</h3></div>
+              <button ref={closeButtonRef} type="button" className={styles.modalClose} onClick={() => setSelectedPurchaseOrder(null)}>Đóng</button>
             </div>
-                        <div className={localStyles.detailGrid}>
+            <div className={localStyles.detailGrid}>
               <div className={localStyles.detailItem}><span>Trạng thái</span><strong>{PURCHASE_ORDER_STATUS_LABELS[selectedPurchaseOrder.status]}</strong></div>
               <div className={localStyles.detailItem}><span>Nhà cung cấp</span><strong>{selectedPurchaseOrder.supplierCode} — {selectedPurchaseOrder.supplierName}</strong></div>
               <div className={localStyles.detailItem}><span>Kho nhận</span><strong>{selectedPurchaseOrder.warehouseCode} — {selectedPurchaseOrder.warehouseName}</strong></div>
@@ -360,7 +360,7 @@ export default function PurchaseOrderWorkspace({
                       <td><div className={localStyles.lineIdentity}><strong>{line.skuCode}</strong><span>{line.itemName}</span></div></td>
                       <td>{formatDecimalString(line.quantity)}</td>
                       <td>{formatDecimalString(line.receivedQuantity ?? '0')}</td>
-                      <td>{formatDecimalString(line.remainingQuantity ?? '0')}</td>
+                      <td>{formatDecimalString(line.remainingQuantity ?? line.quantity)}</td>
                       <td>{line.unitCode}</td>
                       <td>{formatDecimalString(line.conversionToBase)}</td>
                       <td>{formatPurchaseOrderAmount(line.unitPrice, selectedPurchaseOrder.currency)}</td>
@@ -371,13 +371,14 @@ export default function PurchaseOrderWorkspace({
                   ))}
                 </tbody>
               </table>
-            </div><div className={localStyles.totals}>
-              <div className={localStyles.totalCard}><span>Tiá»n hÃ ng</span><strong>{formatPurchaseOrderAmount(selectedPurchaseOrder.subtotal, selectedPurchaseOrder.currency)}</strong></div>
-              <div className={localStyles.totalCard}><span>Chiáº¿t kháº¥u</span><strong>{formatPurchaseOrderAmount(selectedPurchaseOrder.discountTotal, selectedPurchaseOrder.currency)}</strong></div>
-              <div className={localStyles.totalCard}><span>Thuáº¿</span><strong>{formatPurchaseOrderAmount(selectedPurchaseOrder.taxTotal, selectedPurchaseOrder.currency)}</strong></div>
-              <div className={localStyles.totalCard}><span>Tá»•ng cá»™ng</span><strong>{formatPurchaseOrderAmount(selectedPurchaseOrder.total, selectedPurchaseOrder.currency)}</strong></div>
             </div>
-            <div className={localStyles.modalActions}><button type="button" className={styles.secondaryButton} onClick={() => setSelectedPurchaseOrder(null)}>ÄÃ³ng chi tiáº¿t</button></div>
+            <div className={localStyles.totals}>
+              <div className={localStyles.totalCard}><span>Tiền hàng</span><strong>{formatPurchaseOrderAmount(selectedPurchaseOrder.subtotal, selectedPurchaseOrder.currency)}</strong></div>
+              <div className={localStyles.totalCard}><span>Chiết khấu</span><strong>{formatPurchaseOrderAmount(selectedPurchaseOrder.discountTotal, selectedPurchaseOrder.currency)}</strong></div>
+              <div className={localStyles.totalCard}><span>Thuế</span><strong>{formatPurchaseOrderAmount(selectedPurchaseOrder.taxTotal, selectedPurchaseOrder.currency)}</strong></div>
+              <div className={localStyles.totalCard}><span>Tổng cộng</span><strong>{formatPurchaseOrderAmount(selectedPurchaseOrder.total, selectedPurchaseOrder.currency)}</strong></div>
+            </div>
+            <div className={localStyles.modalActions}><button type="button" className={styles.secondaryButton} onClick={() => setSelectedPurchaseOrder(null)}>Đóng chi tiết</button></div>
           </section>
         </div>
       ) : null}
@@ -386,17 +387,17 @@ export default function PurchaseOrderWorkspace({
         <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target && !busyId) setPendingAction(null); }} onKeyDown={(event) => { if (event.key === 'Escape' && !busyId) setPendingAction(null); }}>
           <section className={`${styles.modal} ${styles.confirmModal}`} role="dialog" aria-modal="true" aria-labelledby="purchase-order-action-title">
             <div className={styles.modalHeader}>
-              <div><p className={styles.panelKicker}>XÃ¡c nháº­n nghiá»‡p vá»¥</p><h3 id="purchase-order-action-title">{actionLabel(pendingAction.action)}</h3></div>
-              <button ref={closeButtonRef} type="button" className={styles.modalClose} onClick={() => setPendingAction(null)} disabled={Boolean(busyId)}>ÄÃ³ng</button>
+              <div><p className={styles.panelKicker}>Xác nhận nghiệp vụ</p><h3 id="purchase-order-action-title">{actionLabel(pendingAction.action)}</h3></div>
+              <button ref={closeButtonRef} type="button" className={styles.modalClose} onClick={() => setPendingAction(null)} disabled={Boolean(busyId)}>Đóng</button>
             </div>
             <p className={localStyles.actionCopy}>{actionMessage(pendingAction.action, pendingAction.purchaseOrder)}</p>
             {pendingAction.action === 'cancel' ? (
-              <div className={styles.form}><label>LÃ½ do há»§y<input value={cancellationReason} maxLength={1000} onChange={(event) => setCancellationReason(event.target.value)} autoFocus /></label></div>
+              <div className={styles.form}><label>Lý do hủy<input value={cancellationReason} maxLength={1000} onChange={(event) => setCancellationReason(event.target.value)} autoFocus /></label></div>
             ) : null}
             <div className={localStyles.modalActions}>
-              <button type="button" className={styles.secondaryButton} onClick={() => setPendingAction(null)} disabled={Boolean(busyId)}>Quay láº¡i</button>
+              <button type="button" className={styles.secondaryButton} onClick={() => setPendingAction(null)} disabled={Boolean(busyId)}>Quay lại</button>
               <button type="button" className={styles.primaryButton} onClick={() => void runAction()} disabled={Boolean(busyId)} data-testid={`purchase-order-${pendingAction.action}-confirm`}>
-                {busyId ? 'Äang xá»­ lÃ½â€¦' : actionLabel(pendingAction.action)}
+                {busyId ? 'Đang xử lý…' : actionLabel(pendingAction.action)}
               </button>
             </div>
           </section>
@@ -405,4 +406,3 @@ export default function PurchaseOrderWorkspace({
     </AppShell>
   );
 }
-
