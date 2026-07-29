@@ -678,6 +678,27 @@ test('Goods receipt shortage closure marks the purchase order closed', async () 
     assert.equal(restoredPo.rejectedQuantityTotal, '0.000000');
     assert.equal(restoredPo.shortageClosedQuantityTotal, '0.000000');
     assert.equal(restoredPo.remainingQuantityTotal, '10.000000');
+
+    const reverseResponse = await fetch(`${baseUrl}/api/goods-receipts/${posted.id}/reverse`, {
+      method: 'POST',
+      headers: mutationHeaders(config, `gr-close-reverse-${randomUUID()}`),
+      body: JSON.stringify({
+        expectedRevision: posted.revision,
+        documentDate: '2026-07-29',
+        reasonNote: 'Đảo phiếu chốt thiếu để kiểm tra phục hồi projection',
+      }),
+    });
+    assert.equal(reverseResponse.status, 200);
+    const reversed = await data(reverseResponse);
+    assert.equal(reversed.status, 'reversed');
+
+    const restoredResponse = await fetch(`${baseUrl}/api/purchase-orders/${approved.id}`, { headers: readHeaders(config) });
+    const restoredPo = await data(restoredResponse);
+    assert.equal(restoredPo.status, 'approved');
+    assert.equal(restoredPo.acceptedQuantityTotal, '0.000000');
+    assert.equal(restoredPo.rejectedQuantityTotal, '0.000000');
+    assert.equal(restoredPo.shortageClosedQuantityTotal, '0.000000');
+    assert.equal(restoredPo.remainingQuantityTotal, '10.000000');
   } finally {
     if (server) await closeServer(server);
     await closePool();
