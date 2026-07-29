@@ -1,19 +1,19 @@
 import { readFileSync } from 'node:fs';
 import {
-  CORE_API_MIGRATIONS as CORE_API_MIGRATIONS_THROUGH_028,
+  CORE_API_MIGRATIONS as CORE_API_MIGRATIONS_THROUGH_029,
   runMigrations,
-} from './index-core.js';
+} from './index-through-029.js';
 
-const SUPPLIER_RETURN_INVARIANTS_SQL = readFileSync(
-  new URL('../../../../database/migrations/inventory/029_supplier_return_invariants.sql', import.meta.url),
+const PAYABLE_POSTING_SQL = readFileSync(
+  new URL('../../../../database/migrations/accounting/030_payable_posting.sql', import.meta.url),
   'utf8',
 );
 
 export const CORE_API_MIGRATIONS = Object.freeze([
-  ...CORE_API_MIGRATIONS_THROUGH_028,
+  ...CORE_API_MIGRATIONS_THROUGH_029,
   Object.freeze({
-    id: '029_supplier_return_invariants',
-    sql: SUPPLIER_RETURN_INVARIANTS_SQL,
+    id: '030_payable_posting',
+    sql: PAYABLE_POSTING_SQL,
   }),
 ]);
 
