@@ -28,7 +28,8 @@ test('document numbering admin creates, allocates, replays and locks a series', 
   await expect(page.getByTestId('numbering-notice')).toContainText('Đã tạo quy tắc đánh số');
 
   await row.getByTestId(`select-number-series-${code}`).click();
-  await expect(page.getByTestId('number-series-detail')).toBeVisible();
+  const detail = page.getByTestId('number-series-detail');
+  await expect(detail).toBeVisible();
   await page.getByTestId('allocation-date-input').fill('2026-07-27');
   await page.getByTestId('allocation-key-input').fill(key);
   await page.getByTestId('allocate-test-number-button').click();
@@ -36,7 +37,7 @@ test('document numbering admin creates, allocates, replays and locks a series', 
   const expectedNumber = 'SO-202607-000001';
   await expect(page.getByTestId('allocation-result')).toContainText(expectedNumber);
   await expect(page.getByTestId(`allocation-row-${expectedNumber}`)).toBeVisible();
-  await expect(page.getByText('Số tiếp theo').locator('..')).toContainText('2');
+  await expect(detail.getByText('Số tiếp theo', { exact: true }).locator('..')).toContainText('2');
 
   await page.getByTestId('allocate-test-number-button').click();
   await expect(page.getByTestId(`allocation-row-${expectedNumber}`)).toHaveCount(1);
