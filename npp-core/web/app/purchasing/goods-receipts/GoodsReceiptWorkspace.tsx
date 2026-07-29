@@ -649,7 +649,7 @@ export default function GoodsReceiptWorkspace({
                       <div className={styles.toolbarActions}>
                         <button type="button" className={styles.secondaryButton} onClick={() => void openView(goodsReceipt)}>Xem</button>
                         {goodsReceipt.status === 'draft' && initialPermissionKeys.includes('core.goods-receipt.update') ? (
-                          <button type="button" className={styles.secondaryButton} onClick={() => void openEdit(goodsReceipt)}>Sá»­a</button>
+                          <button type="button" className={styles.secondaryButton} onClick={() => void openEdit(goodsReceipt)}>Sửa</button>
                         ) : null}
                         {goodsReceipt.status === 'draft' && initialPermissionKeys.includes('core.goods-receipt.post') ? (
                           <button type="button" className={styles.primaryButton} onClick={() => openAction('post', goodsReceipt)}>Ghi sổ</button>
@@ -883,7 +883,7 @@ export default function GoodsReceiptWorkspace({
             </div>
 
             <div className={localStyles.modalActions}>
-              <button type="button" className={styles.secondaryButton} onClick={() => setEditor(null)} disabled={editor.loading}>Há»§y</button>
+              <button type="button" className={styles.secondaryButton} onClick={() => setEditor(null)} disabled={editor.loading}>Hủy</button>
               <button type="button" className={styles.primaryButton} onClick={() => void saveEditor()} disabled={editor.loading} data-testid="goods-receipt-save-button">
                 {busyId ? 'Đang lưu…' : editor.mode === 'create' ? 'Tạo phiếu' : 'Lưu phiếu'}
               </button>
