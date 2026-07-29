@@ -201,7 +201,7 @@ test.describe('Phiếu nhận hàng mua vào', () => {
     editor = await openReceiptEditor(page, fixture.purchaseOrder.id, fixture.variant.sku);
     await editor.locator('input[inputmode="decimal"]').first().fill('7');
     await page.getByTestId('goods-receipt-save-button').click();
-    await expect(page.getByRole('alert')).toContainText(/remaining/i);
+    await expect(page.locator('[role="alert"]').filter({ hasText: /remaining/i })).toBeVisible();
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.getByTestId('goods-receipts-page')).toBeVisible();
