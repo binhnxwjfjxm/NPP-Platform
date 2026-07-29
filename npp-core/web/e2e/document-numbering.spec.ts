@@ -36,7 +36,7 @@ test('document numbering admin creates, allocates, replays and locks a series', 
   const expectedNumber = 'SO-202607-000001';
   await expect(page.getByTestId('allocation-result')).toContainText(expectedNumber);
   await expect(page.getByTestId(`allocation-row-${expectedNumber}`)).toBeVisible();
-  await expect(page.getByText('Số kế tiếp').locator('..')).toContainText('2');
+  await expect(page.getByText('Số tiếp theo').locator('..')).toContainText('2');
 
   await page.getByTestId('allocate-test-number-button').click();
   await expect(page.getByTestId(`allocation-row-${expectedNumber}`)).toHaveCount(1);
@@ -44,5 +44,5 @@ test('document numbering admin creates, allocates, replays and locks a series', 
   await row.getByRole('button', { name: 'Sửa' }).click();
   await expect(page.getByTestId('number-prefix-input')).toBeDisabled();
   await expect(page.getByTestId('number-template-input')).toBeDisabled();
-  await expect(page.getByText('Định dạng đã khóa vì quy tắc này đã phát sinh số chứng từ.')).toBeVisible();
+  await expect(page.getByText('Cấu trúc số đã được cố định vì quy tắc này đã có lịch sử cấp số.')).toBeVisible();
 });
