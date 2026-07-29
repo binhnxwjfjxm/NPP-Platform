@@ -94,8 +94,8 @@ test.describe('Giá bán và khuyến mãi', () => {
     await expect(page.getByTestId('pricing-step-base')).toBeVisible();
     await expect(page.getByTestId('pricing-step-rule')).toBeVisible();
 
-    await page.getByLabel('Giá chỉnh tay (₫)').fill('7777');
-    await page.getByLabel('Lý do chỉnh tay').fill('Giá được quản lý duyệt');
+    await page.getByLabel('Giá điều chỉnh trực tiếp (₫)').fill('7777');
+    await page.getByLabel('Lý do điều chỉnh').fill('Giá được quản lý duyệt');
     await page.getByTestId('resolve-price-button').click();
     await expect(page.getByTestId('resolved-unit-price')).toContainText('7.777');
     await expect(page.getByTestId('resolved-line-total')).toContainText('15.554');
