@@ -181,7 +181,7 @@ async function executeIdempotentMutation(req, res, options, {
               afterData: purchaseOrder,
               metadata,
             }));
-            await insertOutboxEvent(client, buildOutboxEvent({
+            const outboxEvent = buildOutboxEvent({
               requestContext,
               aggregateType: 'purchasing.purchase_order',
               aggregateId: purchaseOrder.id,
@@ -189,8 +189,9 @@ async function executeIdempotentMutation(req, res, options, {
               eventVersion: 1,
               payload: purchaseOrder,
               metadata,
-            }));
-            return { purchaseOrder };
+            });
+            await insertOutboxEvent(client, outboxEvent);
+            return { purchaseOrder, eventId: outboxEvent.eventId };
           },
         });
 
