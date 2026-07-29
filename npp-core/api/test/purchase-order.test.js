@@ -249,10 +249,10 @@ test('Purchase order API is idempotent, concurrency-safe and completes its lifec
 
     const counts = await pool.query(
       `SELECT
-        (SELECT count(*)::int FROM purchasing.purchase_orders WHERE installation_id = $1 AND id = $2) AS orders,
-        (SELECT count(*)::int FROM purchasing.purchase_order_lines WHERE installation_id = $1 AND purchase_order_id = $2) AS lines,
-        (SELECT count(*)::int FROM shared.core_audit_records WHERE installation_id = $1 AND resource_type = 'purchase_order' AND resource_id = $2) AS audits,
-        (SELECT count(*)::int FROM shared.core_outbox_events WHERE installation_id = $1 AND aggregate_type = 'purchasing.purchase_order' AND aggregate_id = $2) AS events`,
+        (SELECT count(*)::int FROM purchasing.purchase_orders WHERE installation_id = $1 AND id = $2::uuid) AS orders,
+        (SELECT count(*)::int FROM purchasing.purchase_order_lines WHERE installation_id = $1 AND purchase_order_id = $2::uuid) AS lines,
+        (SELECT count(*)::int FROM shared.core_audit_records WHERE installation_id = $1 AND resource_type = 'purchase_order' AND resource_id = $2::text) AS audits,
+        (SELECT count(*)::int FROM shared.core_outbox_events WHERE installation_id = $1 AND aggregate_type = 'purchasing.purchase_order' AND aggregate_id = $2::text) AS events`,
       [config.installationId, first.id],
     );
     assert.deepEqual(counts.rows[0], { orders: 1, lines: 1, audits: 5, events: 5 });
