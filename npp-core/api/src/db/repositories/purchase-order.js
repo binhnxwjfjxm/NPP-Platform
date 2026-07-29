@@ -14,6 +14,8 @@ const LINE_COLUMNS = `pol.id, pol.installation_id, pol.purchase_order_id,
   pol.line_number, pol.variant_id, pol.sku_snapshot,
   pol.item_name_snapshot, pol.unit_id, pol.unit_code_snapshot,
   pol.conversion_to_base, pol.ordered_quantity, pol.base_quantity,
+  COALESCE(receipt_summary.received_quantity, 0::numeric) AS received_quantity,
+  GREATEST(pol.ordered_quantity - COALESCE(receipt_summary.received_quantity, 0::numeric), 0::numeric) AS remaining_quantity,
   pol.unit_price, pol.discount_amount, pol.tax_amount, pol.line_total,
   pol.note, pol.created_at, pol.updated_at, pol.created_by, pol.updated_by`;
 
@@ -83,11 +85,56 @@ export async function getPurchaseOrderLines(client, { installationId, purchaseOr
   const result = await client.query(
     `SELECT ${LINE_COLUMNS}
      FROM purchasing.purchase_order_lines pol
+     LEFT JOIN (
+       SELECT grl.purchase_order_line_id, SUM(grl.received_quantity)::numeric(20,6) AS received_quantity
+       FROM purchasing.goods_receipts gr
+       JOIN purchasing.goods_receipt_lines grl
+         ON grl.installation_id = gr.installation_id AND grl.goods_receipt_id = gr.id
+       WHERE gr.installation_id = $1
+         AND gr.purchase_order_id = $2
+         AND gr.status = 'posted'
+       GROUP BY grl.purchase_order_line_id
+     ) receipt_summary
+       ON receipt_summary.purchase_order_line_id = pol.id
      WHERE pol.installation_id = $1 AND pol.purchase_order_id = $2
      ORDER BY pol.line_number ASC`,
     [installationId, purchaseOrderId],
   );
   return result.rows;
+}
+
+async function getPurchaseOrderReceiptSummary(client, { installationId, purchaseOrderId }) {
+  const result = await client.query(
+    `SELECT
+       COALESCE(SUM(pol.ordered_quantity), 0::numeric) AS ordered_quantity_total,
+       COALESCE(SUM(receipt_summary.received_quantity), 0::numeric) AS received_quantity_total,
+       GREATEST(
+         COALESCE(SUM(pol.ordered_quantity), 0::numeric) - COALESCE(SUM(receipt_summary.received_quantity), 0::numeric),
+         0::numeric
+       ) AS remaining_quantity_total,
+       (
+         SELECT count(*)::int
+         FROM purchasing.goods_receipts gr
+         WHERE gr.installation_id = $1
+           AND gr.purchase_order_id = $2
+           AND gr.status = 'posted'
+       ) AS receipt_count
+     FROM purchasing.purchase_order_lines pol
+     LEFT JOIN (
+       SELECT grl.purchase_order_line_id, SUM(grl.received_quantity)::numeric(20,6) AS received_quantity
+       FROM purchasing.goods_receipts gr
+       JOIN purchasing.goods_receipt_lines grl
+         ON grl.installation_id = gr.installation_id AND grl.goods_receipt_id = gr.id
+       WHERE gr.installation_id = $1
+         AND gr.purchase_order_id = $2
+         AND gr.status = 'posted'
+       GROUP BY grl.purchase_order_line_id
+     ) receipt_summary
+       ON receipt_summary.purchase_order_line_id = pol.id
+     WHERE pol.installation_id = $1 AND pol.purchase_order_id = $2`,
+    [installationId, purchaseOrderId],
+  );
+  return result.rows[0] ?? null;
 }
 
 export async function getPurchaseOrderById(client, {
@@ -108,7 +155,57 @@ export async function getPurchaseOrderById(client, {
   if (forUpdate) query += ' FOR UPDATE OF po';
   const order = (await client.query(query, params)).rows[0] ?? null;
   if (!order) return null;
-  return { ...order, lines: await getPurchaseOrderLines(client, { installationId, purchaseOrderId: id }) };
+  const summary = await getPurchaseOrderReceiptSummary(client, { installationId, purchaseOrderId: id });
+  return {
+    ...order,
+    receipt_count: summary?.receipt_count ?? 0,
+    received_quantity_total: summary?.received_quantity_total ?? '0',
+    remaining_quantity_total: summary?.remaining_quantity_total ?? '0',
+    lines: await getPurchaseOrderLines(client, { installationId, purchaseOrderId: id }),
+  };
+}
+
+export async function updatePurchaseOrderReceiptStatus(client, { installationId, purchaseOrderId, actorId }) {
+  const result = await client.query(
+    `WITH receipt_summary AS (
+       SELECT
+         COALESCE(SUM(pol.ordered_quantity), 0::numeric) AS ordered_quantity_total,
+         COALESCE(SUM(COALESCE(received.received_quantity, 0::numeric)), 0::numeric) AS received_quantity_total
+       FROM purchasing.purchase_order_lines pol
+       LEFT JOIN (
+         SELECT grl.purchase_order_line_id, SUM(grl.received_quantity)::numeric(20,6) AS received_quantity
+         FROM purchasing.goods_receipts gr
+         JOIN purchasing.goods_receipt_lines grl
+           ON grl.installation_id = gr.installation_id AND grl.goods_receipt_id = gr.id
+         WHERE gr.installation_id = $1
+           AND gr.purchase_order_id = $2
+           AND gr.status = 'posted'
+         GROUP BY grl.purchase_order_line_id
+       ) received ON received.purchase_order_line_id = pol.id
+       WHERE pol.installation_id = $1 AND pol.purchase_order_id = $2
+     ),
+     next_status AS (
+       SELECT
+         CASE
+           WHEN receipt_summary.received_quantity_total <= 0 THEN 'approved'
+           WHEN receipt_summary.received_quantity_total >= receipt_summary.ordered_quantity_total THEN 'fully_received'
+           ELSE 'partially_received'
+         END AS status
+       FROM receipt_summary
+     )
+     UPDATE purchasing.purchase_orders po
+     SET status = next_status.status,
+         revision = CASE WHEN po.status IS DISTINCT FROM next_status.status THEN po.revision + 1 ELSE po.revision END,
+         updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), po.updated_at + interval '1 millisecond'),
+         updated_by = $3
+     FROM next_status
+     WHERE po.installation_id = $1
+       AND po.id = $2
+       AND po.status IN ('approved', 'partially_received', 'fully_received')
+     RETURNING po.id`,
+    [installationId, purchaseOrderId, actorId],
+  );
+  return result.rows[0] ?? null;
 }
 
 export async function getActiveSupplier(client, { installationId, id }) {

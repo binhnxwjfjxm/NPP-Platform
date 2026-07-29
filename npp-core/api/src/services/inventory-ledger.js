@@ -16,6 +16,7 @@ const CODE_PATTERN = /^[A-Z0-9_.-]{1,64}$/;
 const SCALE_6 = 1_000_000n;
 const ENABLED_POSTING_TYPES = new Map([
   ['OPENING_BALANCE', 'IN'],
+  ['PURCHASE_RECEIPT', 'IN'],
 ]);
 
 function failure(code, message, retryable = false) {

@@ -82,6 +82,11 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.corePurchaseOrderSubmit,
       PERMISSIONS.corePurchaseOrderApprove,
       PERMISSIONS.corePurchaseOrderCancel,
+      PERMISSIONS.coreGoodsReceiptRead,
+      PERMISSIONS.coreGoodsReceiptCreate,
+      PERMISSIONS.coreGoodsReceiptUpdate,
+      PERMISSIONS.coreGoodsReceiptPost,
+      PERMISSIONS.coreGoodsReceiptReverse,
     ],
     sourceApp: 'npp-core-api',
   });
