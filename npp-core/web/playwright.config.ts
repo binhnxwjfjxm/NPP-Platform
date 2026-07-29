@@ -63,7 +63,7 @@ export default defineConfig({
     { name: 'inventory', testMatch: /inventory\.spec\.ts/, use: authenticatedBrowser },
     {
       name: 'purchasing',
-      testMatch: /purchase-orders\.spec\.ts/,
+      testMatch: /(purchase-orders|goods-receipts)\.spec\.ts/,
       dependencies: ['organization', 'suppliers', 'catalog'],
       use: authenticatedBrowser,
     },
