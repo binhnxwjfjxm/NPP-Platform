@@ -112,7 +112,7 @@ async function createFixture(request: APIRequestContext, suffix: string) {
 
 async function openReceiptEditor(page: Page, purchaseOrderId: string, sku: string) {
   await page.getByTestId('goods-receipt-create-button').click();
-  const editor = page.getByRole('dialog');
+  const editor = page.getByRole('dialog', { name: 'Phiếu nhận hàng nháp' });
   await expect(editor).toBeVisible();
   await editor.locator('select').first().selectOption(purchaseOrderId);
   await expect(editor.getByText(sku, { exact: true })).toBeVisible();
@@ -125,10 +125,11 @@ test.describe('Phiếu nhận hàng mua vào', () => {
     const fixture = await createFixture(request, suffix);
     const firstReference = `DELIVERY-1-${suffix}`;
     const secondReference = `DELIVERY-2-${suffix}`;
+    const shortageReference = `DELIVERY-SHORT-${suffix}`;
 
     await page.goto('/purchasing/goods-receipts');
     await expect(page.getByTestId('goods-receipts-page')).toBeVisible();
-    await expect(page.locator('h1').first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Phiếu nhận hàng', exact: true })).toBeVisible();
     await expect(page.getByTestId('nav-goods-receipts')).toBeVisible();
 
     let editor = await openReceiptEditor(page, fixture.purchaseOrder.id, fixture.variant.sku);
@@ -161,9 +162,9 @@ test.describe('Phiếu nhận hàng mua vào', () => {
 
     await page.getByTestId('goods-receipt-search').fill('');
     editor = await openReceiptEditor(page, fixture.purchaseOrder.id, fixture.variant.sku);
-    await expect(editor).toContainText('6');
+    await expect(editor).toContainText('7');
     await editor.locator('input').nth(1).fill(secondReference);
-    await editor.locator('input[inputmode="decimal"]').nth(0).fill('6');
+    await editor.locator('input[inputmode="decimal"]').nth(0).fill('7');
     await editor.locator('input[inputmode="decimal"]').nth(1).fill('0');
     await page.getByTestId('goods-receipt-save-button').click();
     await expect(page.getByRole('status')).toBeVisible();
@@ -183,7 +184,7 @@ test.describe('Phiếu nhận hàng mua vào', () => {
     await expect(purchaseOrderRow).toHaveCount(1);
     await purchaseOrderRow.getByRole('button').first().click();
     let detail = page.getByRole('dialog', { name: fixture.purchaseOrder.number });
-    await expect(detail).toContainText('9');
+    await expect(detail).toContainText('10');
     await expect(detail).toContainText('1');
     await expect(detail).toContainText('0');
     await expect(detail).toContainText('6');
@@ -213,16 +214,36 @@ test.describe('Phiếu nhận hàng mua vào', () => {
     await expect(detail).toContainText('3');
     await expect(detail).toContainText('1');
     await expect(detail).toContainText('0');
-    await expect(detail).toContainText('6');
+    await expect(detail).toContainText('7');
     await expect(detail.getByTestId('purchase-order-receipts-table')).toContainText(secondReference);
     await detail.getByRole('button').last().click();
 
     await page.goto('/purchasing/goods-receipts');
     editor = await openReceiptEditor(page, fixture.purchaseOrder.id, fixture.variant.sku);
-    await editor.locator('input[inputmode="decimal"]').first().fill('7');
+    await editor.locator('input[inputmode="decimal"]').first().fill('8');
     await page.getByTestId('goods-receipt-save-button').click();
     await expect(page.locator('[role="alert"]').filter({ hasText: /remaining/i })).toBeVisible();
 
+    await editor.locator('input[inputmode="decimal"]').nth(0).fill('2');
+    await editor.getByRole('checkbox').check();
+    await editor.locator('input').nth(1).fill(shortageReference);
+    const shortageLine = editor.getByRole('row').filter({ hasText: fixture.variant.sku }).first();
+    await shortageLine.getByRole('textbox').nth(2).fill('SHORTAGE');
+    await shortageLine.getByRole('textbox').nth(3).fill('Nhà cung cấp xác nhận giao thiếu');
+    await page.getByTestId('goods-receipt-save-button').click();
+    await expect(editor).toHaveCount(0);
+    await page.getByTestId('goods-receipt-search').fill(shortageReference);
+    receiptRow = page.getByTestId('goods-receipts-table').locator('tbody tr');
+    await expect(receiptRow).toHaveCount(1);
+    await receiptRow.getByRole('button', { name: 'Ghi sổ', exact: true }).click();
+    await page.getByTestId('goods-receipt-post-confirm').click();
+
+    await page.goto('/purchasing/purchase-orders');
+    await page.getByTestId('purchase-order-search').fill(fixture.purchaseOrder.number);
+    purchaseOrderRow = page.getByTestId('purchase-orders-table').locator('tbody tr');
+    await expect(purchaseOrderRow).toContainText('Đã đóng');
+
+    await page.goto('/purchasing/goods-receipts');
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.getByTestId('goods-receipts-page')).toBeVisible();
   });

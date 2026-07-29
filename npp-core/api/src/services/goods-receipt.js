@@ -50,11 +50,7 @@ function dateOnly(value) {
   if (typeof value === 'string') return value.slice(0, 10);
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  const year = parsed.getFullYear();
-  const month = String(parsed.getMonth() + 1).padStart(2, '0');
-  const day = String(parsed.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 }
 
 function decimalToScaled(value, { allowZero }) {
@@ -290,14 +286,15 @@ function normalizeInputLine(line, index) {
   const finalizeLine = parseBoolean(line.finalizeLine ?? line.finalize_line);
   const qualityReasonCodeInput = line.qualityReasonCode ?? line.quality_reason_code ?? null;
   const qualityNote = text(line.qualityNote ?? line.quality_note, 2000);
+  const varianceReasonRequired = normalizedRejectedQuantity > 0n || finalizeLine;
   let qualityReasonCode = null;
-  if (normalizedRejectedQuantity > 0n) {
+  if (varianceReasonRequired) {
     qualityReasonCode = normalizeQualityReasonCode(qualityReasonCodeInput);
     if (!qualityReasonCode) {
-      return failure('INVALID_QUALITY_REASON_CODE', `Line ${index + 1} qualityReasonCode is required when rejectedQuantity is greater than zero`);
+      return failure('INVALID_VARIANCE_REASON_CODE', `Line ${index + 1} variance reason code is required for rejected quantity or shortage closure`);
     }
     if (!qualityNote) {
-      return failure('INVALID_QUALITY_NOTE', `Line ${index + 1} qualityNote is required when rejectedQuantity is greater than zero`);
+      return failure('INVALID_VARIANCE_REASON_NOTE', `Line ${index + 1} variance reason note is required for rejected quantity or shortage closure`);
     }
   }
   return Object.freeze({
@@ -312,7 +309,7 @@ function normalizeInputLine(line, index) {
       rejectedQuantityScaled: normalizedRejectedQuantity,
       finalizeLine,
       qualityReasonCode,
-      qualityNote: normalizedRejectedQuantity > 0n ? qualityNote : null,
+      qualityNote: varianceReasonRequired ? qualityNote : null,
       locationId,
       lotId,
       lotCode: lotCodeSnapshot ? normalizeLotCode(lotCodeSnapshot) : null,
@@ -339,16 +336,16 @@ function buildReceiptLines(order, inputLines, requestContext) {
     const orderedQuantity = decimalToScaled(String(orderLine.ordered_quantity), { allowZero: false });
     const receivedBefore = decimalToScaled(String(orderLine.received_quantity ?? '0'), { allowZero: true }) ?? 0n;
     const remainingBefore = decimalToScaled(String(orderLine.remaining_quantity ?? orderLine.ordered_quantity), { allowZero: true }) ?? orderedQuantity;
-    if (input.value.receivedQuantityScaled > remainingBefore) {
-      return failure('RECEIPT_QUANTITY_EXCEEDS_REMAINING', `Line ${index + 1} quantity exceeds the remaining purchase order quantity`);
+    if (input.value.acceptedQuantityScaled > remainingBefore) {
+      return failure('RECEIPT_QUANTITY_EXCEEDS_REMAINING', `Line ${index + 1} accepted quantity exceeds the remaining purchase order quantity`);
     }
     const conversion = decimalToScaled(String(orderLine.conversion_to_base), { allowZero: false });
     if (conversion === null) return failure('INVALID_CONVERSION', `Line ${index + 1} conversion snapshot is invalid`);
-    const shortageClosedQuantityScaled = input.value.finalizeLine ? remainingBefore - input.value.receivedQuantityScaled : 0n;
+    const shortageClosedQuantityScaled = input.value.finalizeLine ? remainingBefore - input.value.acceptedQuantityScaled : 0n;
     if (shortageClosedQuantityScaled < 0n) {
       return failure('RECEIPT_QUANTITY_EXCEEDS_REMAINING', `Line ${index + 1} quantity exceeds the remaining purchase order quantity`);
     }
-    const remainingAfter = remainingBefore - input.value.receivedQuantityScaled - shortageClosedQuantityScaled;
+    const remainingAfter = remainingBefore - input.value.acceptedQuantityScaled - shortageClosedQuantityScaled;
     if (remainingAfter < 0n) {
       return failure('RECEIPT_QUANTITY_EXCEEDS_REMAINING', `Line ${index + 1} quantity exceeds the remaining purchase order quantity`);
     }
@@ -630,29 +627,28 @@ export async function postGoodsReceipt(client, { requestContext, id, payload, id
   if (!allocation.ok) return allocation;
 
   const movementLines = refreshed.lines
-    .filter((line) => (decimalToScaled(line.acceptedQuantity, { allowZero: true }) ?? 0n) > 0n)
-    .map((line) => ({
-      warehouseId: line.warehouseId,
-      locationId: line.locationId,
-      sourceVariantId: line.variantId,
-      direction: 'IN',
-      sourceQuantity: line.acceptedQuantity,
-      sourceLineReference: `PO-${line.purchaseOrderLineNumber}`,
-      lotId: line.lotId,
-      lotCode: line.lotCode,
-      manufacturedDate: line.manufacturedDate,
-      expiryDate: line.expiryDate,
-      supplierLotReference: line.supplierLotReference,
-      metadata: {
-        goodsReceiptId: current.raw.id,
-        goodsReceiptLineId: line.id,
-        purchaseOrderLineId: line.purchaseOrderLineId,
-      },
-    }));
-  if (movementLines.length === 0) {
-    return failure('NO_ACCEPTED_QUANTITY', 'At least one accepted quantity is required to post a goods receipt');
-  }
+  .filter((line) => (decimalToScaled(line.acceptedQuantity, { allowZero: true }) ?? 0n) > 0n)
+  .map((line) => ({
+    warehouseId: line.warehouseId,
+    locationId: line.locationId,
+    sourceVariantId: line.variantId,
+    direction: 'IN',
+    sourceQuantity: line.acceptedQuantity,
+    sourceLineReference: `PO-${line.purchaseOrderLineNumber}`,
+    lotId: line.lotId,
+    lotCode: line.lotCode,
+    manufacturedDate: line.manufacturedDate,
+    expiryDate: line.expiryDate,
+    supplierLotReference: line.supplierLotReference,
+    metadata: {
+      goodsReceiptId: current.raw.id,
+      goodsReceiptLineId: line.id,
+      purchaseOrderLineId: line.purchaseOrderLineId,
+    },
+  }));
 
+let inventoryMovementId = null;
+if (movementLines.length > 0) {
   const movementResult = await postInventoryMovement(client, {
     requestContext,
     idempotencyKey,
@@ -673,13 +669,15 @@ export async function postGoodsReceipt(client, { requestContext, id, payload, id
     },
   });
   if (!movementResult.ok) return movementResult;
+  inventoryMovementId = movementResult.movement.id;
+}
 
   const posted = await repository.postGoodsReceipt(client, {
     installationId: requestContext.installationId,
     id: current.raw.id,
     documentNumber: allocation.allocation.document_number,
     documentNumberAllocationId: allocation.allocation.id,
-    inventoryMovementId: movementResult.movement.id,
+    inventoryMovementId,
     actorId: requestContext.actorId,
     expectedRevision,
   });
@@ -713,6 +711,8 @@ export async function reverseGoodsReceipt(client, {
   if (!reasonNote) return failure('REVERSAL_REASON_REQUIRED', 'reversalReason or reasonNote is required');
   const reasonCode = text(payload?.reasonCode, 64)?.toUpperCase() ?? 'PURCHASE_RECEIPT_REVERSAL';
 
+  let inventoryReversalMovementId = null;
+if (current.raw.inventory_movement_id) {
   const reversalResult = await reverseInventoryMovement(client, {
     requestContext,
     idempotencyKey,
@@ -724,12 +724,14 @@ export async function reverseGoodsReceipt(client, {
     },
   });
   if (!reversalResult.ok) return reversalResult;
+  inventoryReversalMovementId = reversalResult.movement.id;
+}
 
   const reversed = await repository.reverseGoodsReceipt(client, {
     installationId: requestContext.installationId,
     id: current.raw.id,
     reversalReason: reasonNote,
-    inventoryReversalMovementId: reversalResult.movement.id,
+    inventoryReversalMovementId,
     actorId: requestContext.actorId,
     expectedRevision,
   });

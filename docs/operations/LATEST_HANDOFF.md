@@ -1,5 +1,14 @@
 # NPP Platform — Latest Handoff
 
+## Source checkpoint — Phase 5.3 Goods Receipt Variance
+
+- Phase 5.2 is merged on `main` at `bea7b846537781a5809106c3d7db08dc60dfc546`.
+- Phase 5.3 is implemented on Draft PR #88 and remains unmerged until final review/CI.
+- Accepted quantity alone consumes PO remaining and posts inventory.
+- Rejected quantity is recorded as variance and never reduces PO remaining or inventory.
+- Explicit shortage closure computes `remainingBefore - acceptedQuantity` and requires a normalized reason plus note.
+- No production migration or deployment is included in the source task.
+
 > Updated: 2026-07-27  
 > Current checkpoint: Phase 3 master data is in progress. Phase 3.3A through Phase 3.3E are merged on `main`. Phase 3.3F document numbering is next. The grouped production Core backend/database rollout remains intentionally deferred.
 

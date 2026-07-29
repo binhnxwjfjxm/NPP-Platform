@@ -12,7 +12,7 @@ INSERT INTO shared.permission_catalog (
   is_system,
   created_at
 ) VALUES
-  ('core.goods-receipt.variance', 'Mua hàng', 'Xử lý chênh lệch phiếu nhận', 'Cho phép nhập, ghi sổ và chốt chặn chênh lệch chất lượng/số lượng trên phiếu nhận hàng.', true, now())
+  ('core.goods-receipt.variance', 'Mua hàng', 'Xử lý chênh lệch phiếu nhận', 'Cho phép nhập, ghi sổ và chốt chênh lệch chất lượng/số lượng trên phiếu nhận hàng.', true, now())
 ON CONFLICT (permission_key) DO UPDATE
 SET module = EXCLUDED.module,
     label = EXCLUDED.label,
@@ -50,9 +50,16 @@ ALTER TABLE purchasing.goods_receipt_lines
     AND accepted_quantity >= 0
     AND rejected_quantity >= 0
     AND shortage_closed_quantity >= 0
-    AND (shortage_closed_quantity = 0 OR finalize_line = true)
+    AND accepted_quantity <= remaining_quantity_before
     AND (
-      rejected_quantity = 0
+      (finalize_line = false AND shortage_closed_quantity = 0)
+      OR (
+        finalize_line = true
+        AND shortage_closed_quantity = remaining_quantity_before - accepted_quantity
+      )
+    )
+    AND (
+      (rejected_quantity = 0 AND shortage_closed_quantity = 0)
       OR (
         quality_reason_code IS NOT NULL
         AND quality_note IS NOT NULL
@@ -61,7 +68,43 @@ ALTER TABLE purchasing.goods_receipt_lines
       )
     )
     AND base_quantity = round(accepted_quantity * conversion_to_base, 6)
-    AND remaining_quantity_after = GREATEST(remaining_quantity_before - received_quantity - shortage_closed_quantity, 0::numeric)
+    AND remaining_quantity_after = remaining_quantity_before - accepted_quantity - shortage_closed_quantity
+  );
+
+
+ALTER TABLE purchasing.goods_receipts
+  DROP CONSTRAINT IF EXISTS goods_receipts_posted_shape_check,
+  DROP CONSTRAINT IF EXISTS goods_receipts_reversed_shape_check;
+
+ALTER TABLE purchasing.goods_receipts
+  ADD CONSTRAINT goods_receipts_posted_shape_check CHECK (
+    status <> 'posted'
+    OR (
+      document_number IS NOT NULL
+      AND document_number_allocation_id IS NOT NULL
+      AND posted_at IS NOT NULL
+      AND posted_by IS NOT NULL
+      AND reversed_at IS NULL
+      AND reversed_by IS NULL
+      AND reversal_reason IS NULL
+      AND inventory_reversal_movement_id IS NULL
+    )
+  ),
+  ADD CONSTRAINT goods_receipts_reversed_shape_check CHECK (
+    status <> 'reversed'
+    OR (
+      document_number IS NOT NULL
+      AND document_number_allocation_id IS NOT NULL
+      AND posted_at IS NOT NULL
+      AND posted_by IS NOT NULL
+      AND reversed_at IS NOT NULL
+      AND reversed_by IS NOT NULL
+      AND reversal_reason IS NOT NULL
+      AND (
+        (inventory_movement_id IS NULL AND inventory_reversal_movement_id IS NULL)
+        OR (inventory_movement_id IS NOT NULL AND inventory_reversal_movement_id IS NOT NULL)
+      )
+    )
   );
 
 CREATE INDEX IF NOT EXISTS goods_receipt_lines_quality_reason_idx

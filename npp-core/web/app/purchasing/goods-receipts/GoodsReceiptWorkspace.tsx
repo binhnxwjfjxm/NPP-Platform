@@ -424,7 +424,7 @@ export default function GoodsReceiptWorkspace({
               acceptedQuantity,
               rejectedQuantity,
               finalizeLine: line.finalizeLine,
-              ...(decimalPositive(rejectedQuantity)
+              ...((decimalPositive(rejectedQuantity) || line.finalizeLine)
                 ? {
                   qualityReasonCode: line.qualityReasonCode.trim(),
                   qualityNote: line.qualityNote.trim(),
@@ -738,6 +738,7 @@ export default function GoodsReceiptWorkspace({
                       : normalizeDecimalInput(line.receivedQuantity);
                     const rejectedDisplay = varianceAllowed ? line.rejectedQuantity : '0';
                     const rejectedPositive = varianceAllowed && decimalPositive(line.rejectedQuantity);
+                    const varianceReasonRequired = varianceAllowed && (rejectedPositive || line.finalizeLine);
                     return (
                       <tr key={`${line.purchaseOrderLineId}-${line.lineNumber}`}>
                         <td>
@@ -808,7 +809,7 @@ export default function GoodsReceiptWorkspace({
                             <input
                               value={line.qualityReasonCode}
                               onChange={(event) => updateEditorLine(index, { qualityReasonCode: event.target.value })}
-                              disabled={editor.loading || !rejectedPositive}
+                              disabled={editor.loading || !varianceReasonRequired}
                               placeholder={rejectedPositive ? 'VD: DAMAGED' : 'Chá»‰ má»Ÿ khi cÃ³ loáº¡i'}
                               maxLength={64}
                             />
@@ -821,7 +822,7 @@ export default function GoodsReceiptWorkspace({
                             <input
                               value={line.qualityNote}
                               onChange={(event) => updateEditorLine(index, { qualityNote: event.target.value })}
-                              disabled={editor.loading || !rejectedPositive}
+                              disabled={editor.loading || !varianceReasonRequired}
                               placeholder={rejectedPositive ? 'Ghi chÃº cháº¥t lÆ°á»£ng' : 'Chá»‰ má»Ÿ khi cÃ³ loáº¡i'}
                               maxLength={2000}
                             />
@@ -916,8 +917,8 @@ export default function GoodsReceiptWorkspace({
                     <th>Chấp nhận</th>
                     <th>Loại</th>
                     <th>Chốt thiếu</th>
-                    <th>Lý do CL</th>
-                    <th>Ghi chú CL</th>
+                    <th>Lý do chênh lệch</th>
+                    <th>Ghi chú chênh lệch</th>
                     <th>Đơn vị</th>
                     <th>Vị trí</th>
                     <th>Lô</th>

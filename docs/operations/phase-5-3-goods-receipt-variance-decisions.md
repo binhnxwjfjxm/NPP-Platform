@@ -39,16 +39,18 @@ Nếu `rejectedQuantity > 0` thì phải có:
 - `qualityReasonCode`;
 - `qualityNote`.
 
+Cặp reason/note này là snapshot lý do variance của dòng và cũng bắt buộc khi `finalizeLine` chốt thiếu.
+
 Nếu người dùng chốt thiếu dòng, hệ thống tự tính:
 
-- `shortageClosedQuantity = remainingBefore - receivedQuantity`.
+- `shortageClosedQuantity = remainingBefore - acceptedQuantity`.
 
 Kết quả line projection cho PO:
 
 - `accepted`;
 - `rejected`;
 - `shortageClosed`;
-- `remaining`.
+- `remaining = ordered - accepted - shortageClosed`; rejected chỉ là số liệu variance và không hoàn thành PO.
 
 ## 4. Điều kiện nhận hàng
 
@@ -60,7 +62,7 @@ Kết quả line projection cho PO:
 - `receivedQuantity` là decimal string, scale 6, lớn hơn 0.
 - `acceptedQuantity` và `rejectedQuantity` là decimal string, scale 6, không âm.
 - `receivedQuantity = acceptedQuantity + rejectedQuantity`.
-- Không được vượt remaining của PO line.
+- Accepted quantity không được vượt remaining của PO line; rejected quantity không làm giảm remaining.
 - `finalizeLine` chỉ dùng để chốt phần thiếu còn lại, không được làm âm remaining.
 
 ## 5. Inventory posting boundary

@@ -231,6 +231,18 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
     assert.equal(response.status, 400);
     assert.equal(await errorCode(response), 'INVALID_QUALITY_REASON_CODE');
 
+
+
+    response = await fetch(`${baseUrl}/api/goods-receipts`, {
+      method: 'POST',
+      headers: mutationHeaders(config, `gr-missing-shortage-reason-${randomUUID()}`),
+      body: JSON.stringify(receiptPayload(approved, fixture, '2', 'DELIVERY-MISSING-SHORTAGE-REASON', {
+        finalizeLine: true,
+      })),
+    });
+    assert.equal(response.status, 400);
+    assert.equal(await errorCode(response), 'INVALID_VARIANCE_REASON_CODE');
+
     const firstKey = `gr-create-1-${randomUUID()}`;
     const firstPayload = receiptPayload(approved, fixture, '4', 'DELIVERY-1', {
       acceptedQuantity: '3',
@@ -313,17 +325,17 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
     assert.equal(partialPo.acceptedQuantityTotal, '3.000000');
     assert.equal(partialPo.rejectedQuantityTotal, '1.000000');
     assert.equal(partialPo.shortageClosedQuantityTotal, '0.000000');
-    assert.equal(partialPo.remainingQuantityTotal, '6.000000');
+    assert.equal(partialPo.remainingQuantityTotal, '7.000000');
     assert.equal(partialPo.lines[0].receivedQuantity, '4.000000');
     assert.equal(partialPo.lines[0].acceptedQuantity, '3.000000');
     assert.equal(partialPo.lines[0].rejectedQuantity, '1.000000');
     assert.equal(partialPo.lines[0].shortageClosedQuantity, '0.000000');
-    assert.equal(partialPo.lines[0].remainingQuantity, '6.000000');
+    assert.equal(partialPo.lines[0].remainingQuantity, '7.000000');
 
     response = await fetch(`${baseUrl}/api/goods-receipts`, {
       method: 'POST',
       headers: mutationHeaders(config, `gr-over-${randomUUID()}`),
-      body: JSON.stringify(receiptPayload(partialPo, fixture, '7', 'DELIVERY-OVER')),
+      body: JSON.stringify(receiptPayload(partialPo, fixture, '8', 'DELIVERY-OVER')),
     });
     assert.equal(response.status, 400);
     assert.equal(await errorCode(response), 'RECEIPT_QUANTITY_EXCEEDS_REMAINING');
@@ -348,7 +360,7 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
     response = await fetch(`${baseUrl}/api/goods-receipts`, {
       method: 'POST',
       headers: mutationHeaders(config, `gr-create-2-${randomUUID()}`),
-      body: JSON.stringify(receiptPayload(partialPo, fixture, '6', 'DELIVERY-2')),
+      body: JSON.stringify(receiptPayload(partialPo, fixture, '7', 'DELIVERY-2')),
     });
     assert.equal(response.status, 201);
     const secondDraft = await data(response);
@@ -375,13 +387,13 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
     response = await fetch(`${baseUrl}/api/purchase-orders/${approved.id}`, { headers: readHeaders(config) });
     const fullPo = await data(response);
     assert.equal(fullPo.status, 'fully_received');
-    assert.equal(fullPo.receivedQuantityTotal, '10.000000');
-    assert.equal(fullPo.acceptedQuantityTotal, '9.000000');
+    assert.equal(fullPo.receivedQuantityTotal, '11.000000');
+    assert.equal(fullPo.acceptedQuantityTotal, '10.000000');
     assert.equal(fullPo.rejectedQuantityTotal, '1.000000');
     assert.equal(fullPo.shortageClosedQuantityTotal, '0.000000');
     assert.equal(fullPo.remainingQuantityTotal, '0.000000');
-    assert.equal(fullPo.lines[0].receivedQuantity, '10.000000');
-    assert.equal(fullPo.lines[0].acceptedQuantity, '9.000000');
+    assert.equal(fullPo.lines[0].receivedQuantity, '11.000000');
+    assert.equal(fullPo.lines[0].acceptedQuantity, '10.000000');
     assert.equal(fullPo.lines[0].rejectedQuantity, '1.000000');
     assert.equal(fullPo.lines[0].shortageClosedQuantity, '0.000000');
     assert.equal(fullPo.lines[0].remainingQuantity, '0.000000');
@@ -423,12 +435,12 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
     assert.equal(restoredPo.acceptedQuantityTotal, '3.000000');
     assert.equal(restoredPo.rejectedQuantityTotal, '1.000000');
     assert.equal(restoredPo.shortageClosedQuantityTotal, '0.000000');
-    assert.equal(restoredPo.remainingQuantityTotal, '6.000000');
+    assert.equal(restoredPo.remainingQuantityTotal, '7.000000');
     assert.equal(restoredPo.lines[0].receivedQuantity, '4.000000');
     assert.equal(restoredPo.lines[0].acceptedQuantity, '3.000000');
     assert.equal(restoredPo.lines[0].rejectedQuantity, '1.000000');
     assert.equal(restoredPo.lines[0].shortageClosedQuantity, '0.000000');
-    assert.equal(restoredPo.lines[0].remainingQuantity, '6.000000');
+    assert.equal(restoredPo.lines[0].remainingQuantity, '7.000000');
 
     const ledger = await pool.query(
       `WITH originals AS (
@@ -545,6 +557,8 @@ test('Goods receipt shortage closure marks the purchase order closed', async () 
       headers: mutationHeaders(config, `gr-close-${randomUUID()}`),
       body: JSON.stringify(receiptPayload(approved, fixture, '2', 'DELIVERY-CLOSE', {
         finalizeLine: true,
+        qualityReasonCode: 'SHORTAGE',
+        qualityNote: 'Nhà cung cấp xác nhận giao thiếu phần còn lại',
       })),
     });
     assert.equal(response.status, 201);

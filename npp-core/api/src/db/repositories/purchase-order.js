@@ -21,7 +21,6 @@ const LINE_COLUMNS = `pol.id, pol.installation_id, pol.purchase_order_id,
   GREATEST(
     pol.ordered_quantity
     - COALESCE(receipt_summary.accepted_quantity, 0::numeric)
-    - COALESCE(receipt_summary.rejected_quantity, 0::numeric)
     - COALESCE(receipt_summary.shortage_closed_quantity, 0::numeric),
     0::numeric
   ) AS remaining_quantity,
@@ -223,11 +222,11 @@ export async function updatePurchaseOrderReceiptStatus(client, { installationId,
      next_status AS (
        SELECT
          CASE
-           WHEN receipt_summary.received_quantity_total <= 0 THEN 'approved'
+           WHEN receipt_summary.accepted_quantity_total <= 0
+             AND receipt_summary.shortage_closed_quantity_total <= 0 THEN 'approved'
            WHEN (
              receipt_summary.ordered_quantity_total
              - receipt_summary.accepted_quantity_total
-             - receipt_summary.rejected_quantity_total
              - receipt_summary.shortage_closed_quantity_total
            ) > 0 THEN 'partially_received'
            WHEN receipt_summary.shortage_closed_quantity_total > 0 THEN 'closed'
