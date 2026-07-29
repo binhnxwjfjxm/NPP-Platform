@@ -1,6 +1,7 @@
 -- Phase 5.3: goods receipt quantity/quality variance.
--- Accepted quantity posts to inventory; rejected quantity records quality variance;
--- shortage closure can close the remaining PO quantity without inventory posting.
+-- Accepted quantity posts to inventory and consumes PO remaining.
+-- Rejected quantity is variance-only and never consumes PO remaining or inventory.
+-- Shortage closure can close the remaining PO quantity without inventory posting.
 
 CREATE SCHEMA IF NOT EXISTS purchasing;
 
@@ -74,7 +75,6 @@ ALTER TABLE purchasing.goods_receipt_lines
     AND base_quantity = round(accepted_quantity * conversion_to_base, 6)
     AND remaining_quantity_after = remaining_quantity_before - accepted_quantity - shortage_closed_quantity
   );
-
 
 ALTER TABLE purchasing.goods_receipts
   DROP CONSTRAINT IF EXISTS goods_receipts_posted_shape_check,
