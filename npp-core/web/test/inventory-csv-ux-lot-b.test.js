@@ -16,7 +16,7 @@ test('opening balance page uses CSV workspace instead of the legacy JSON form', 
 });
 
 test('CSV flow has template, file selection, preview, validation and posting gates', () => {
-  assert.match(workspace, /Tải mẫu CSV/);
+  assert.match(workspace, /Tải mẫu Excel\/CSV/);
   assert.match(workspace, /inventory-opening-file-input/);
   assert.match(workspace, /Xem trước dữ liệu/);
   assert.match(workspace, /Kiểm tra tệp/);
