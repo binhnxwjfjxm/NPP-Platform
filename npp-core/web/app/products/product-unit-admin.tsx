@@ -20,6 +20,13 @@ const EMPTY_VARIANT_UNIT: VariantUnitForm = {
   netContentValue: '', netContentUnitCode: 'G', sourceUnitLabel: '', sourcePackageDescription: '',
 };
 
+const UNIT_KIND_LABELS: Record<UnitOfMeasure['unit_kind'], string> = {
+  COUNT: 'Đơn vị đếm', PACKAGE: 'Bao gói', WEIGHT: 'Khối lượng', VOLUME: 'Thể tích', OTHER: 'Loại khác',
+};
+const BARCODE_TYPE_LABELS: Record<ProductBarcode['barcode_type'], string> = {
+  EAN13: 'EAN-13', EAN8: 'EAN-8', UPC_A: 'UPC-A', CODE128: 'Code 128', INTERNAL: 'Mã nội bộ', OTHER: 'Loại khác',
+};
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: 'no-store', ...init });
   const payload = await response.json().catch(() => ({})) as { data?: T; error?: { message?: string; code?: string } };
@@ -87,7 +94,7 @@ export function UnitCatalogPanel({ units, onUnitsChanged }: {
     </div><div className={styles.checks}><label><input type="checkbox" checked={form.allowsFractional} onChange={(e) => setForm({ ...form, allowsFractional: e.target.checked })} /> Cho phép số lẻ</label><label><input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} /> Hoạt động</label></div>
       <button type="button" className={styles.primaryButton} disabled={busy} onClick={() => void save()} data-testid="save-unit-button">Lưu đơn vị</button></div> : null}
     <div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>Mã</th><th>Tên</th><th>Loại</th><th>Số lẻ</th><th>Trạng thái</th><th></th></tr></thead><tbody>
-      {units.map((unit) => <tr key={unit.id} data-testid={`unit-row-${unit.code}`}><td><strong>{unit.code}</strong></td><td>{unit.name}</td><td>{unit.unit_kind}</td><td>{unit.allows_fractional ? 'Có' : 'Không'}</td><td>{unit.is_active ? 'Hoạt động' : 'Ngừng'}</td><td className={styles.rowActions}><button type="button" onClick={() => { setEditing(unit); setForm(unitToForm(unit)); setShowForm(true); }}>Sửa</button><button type="button" disabled={busy} onClick={() => void toggle(unit)}>{unit.is_active ? 'Vô hiệu' : 'Kích hoạt'}</button></td></tr>)}
+      {units.map((unit) => <tr key={unit.id} data-testid={`unit-row-${unit.code}`}><td><strong>{unit.code}</strong></td><td>{unit.name}</td><td>{UNIT_KIND_LABELS[unit.unit_kind]}</td><td>{unit.allows_fractional ? 'Có' : 'Không'}</td><td>{unit.is_active ? 'Hoạt động' : 'Ngừng'}</td><td className={styles.rowActions}><button type="button" onClick={() => { setEditing(unit); setForm(unitToForm(unit)); setShowForm(true); }}>Sửa</button><button type="button" disabled={busy} onClick={() => void toggle(unit)}>{unit.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button></td></tr>)}
       {units.length === 0 ? <tr><td colSpan={6} className={styles.empty}>Chưa có đơn vị tính</td></tr> : null}
     </tbody></table></div>
   </section>;
@@ -144,8 +151,8 @@ export function VariantUnitPanel({ productId, variant, units, onVariantUpdated }
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ barcode, barcodeType: 'INTERNAL', isPrimary: barcodes.every((item) => !item.is_active) }),
       });
-      setBarcodes((current) => [...current, saved]); setBarcode(''); setMessage('Đã thêm barcode');
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Không thể thêm barcode'); }
+      setBarcodes((current) => [...current, saved]); setBarcode(''); setMessage('Đã thêm mã vạch');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Không thể thêm mã vạch'); }
     finally { setBusy(false); }
   }
 
@@ -157,7 +164,7 @@ export function VariantUnitPanel({ productId, variant, units, onVariantUpdated }
         body: JSON.stringify({ isActive: !item.is_active, isPrimary: item.is_primary && !item.is_active, expectedUpdatedAt: item.updated_at }),
       });
       setBarcodes((current) => current.map((row) => row.id === saved.id ? saved : row));
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Không thể đổi trạng thái barcode'); }
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Không thể đổi trạng thái mã vạch'); }
     finally { setBusy(false); }
   }
 
@@ -173,21 +180,21 @@ export function VariantUnitPanel({ productId, variant, units, onVariantUpdated }
   }
 
   return <div className={styles.formPanel} data-testid="variant-unit-panel">
-    <div className={styles.sectionHeader}><div><h3>Đơn vị &amp; barcode — {variant.sku}</h3><p>Tồn kho chuẩn hóa theo SKU gốc; hệ số không lấy từ khối lượng bao bì.</p></div></div>
+    <div className={styles.sectionHeader}><div><h3>Đơn vị tính &amp; mã vạch — {variant.sku}</h3><p>Số lượng tồn được quy đổi về đơn vị tồn chuẩn; khối lượng bao bì chỉ dùng để mô tả sản phẩm.</p></div></div>
     {message ? <div className={styles.notice}>{message}</div> : null}
     <div className={styles.formGrid}>
       <label>Đơn vị<select value={form.unitId} onChange={(e) => setForm({ ...form, unitId: e.target.value })} data-testid="variant-unit-select"><option value="">Chọn đơn vị</option>{units.filter((u) => u.is_active || u.id === variant.unit_id).map((u) => <option key={u.id} value={u.id}>{u.code} — {u.name}</option>)}</select></label>
       <label>Hệ số về tồn chuẩn<input value={variant.is_inventory_base ? '1' : form.conversionToBase} disabled={variant.is_inventory_base} onChange={(e) => setForm({ ...form, conversionToBase: e.target.value })} data-testid="conversion-input" /></label>
       <label>Khối lượng/dung tích mô tả<input value={form.netContentValue} onChange={(e) => setForm({ ...form, netContentValue: e.target.value })} /></label>
-      <label>ĐVT mô tả<select value={form.netContentUnitCode} onChange={(e) => setForm({ ...form, netContentUnitCode: e.target.value as VariantUnitForm['netContentUnitCode'] })}><option>G</option><option>KG</option><option>ML</option><option>L</option><option>EA</option><option>OTHER</option></select></label>
-      <label>Nhãn nguồn<input value={form.sourceUnitLabel} onChange={(e) => setForm({ ...form, sourceUnitLabel: e.target.value })} /></label>
-      <label className={styles.wide}>Quy cách nguồn<input value={form.sourcePackageDescription} onChange={(e) => setForm({ ...form, sourcePackageDescription: e.target.value })} /></label>
+      <label>Đơn vị khối lượng/dung tích<select value={form.netContentUnitCode} onChange={(e) => setForm({ ...form, netContentUnitCode: e.target.value as VariantUnitForm['netContentUnitCode'] })}><option value="G">Gam</option><option value="KG">Kilôgam</option><option value="ML">Mililít</option><option value="L">Lít</option><option value="EA">Cái</option><option value="OTHER">Đơn vị khác</option></select></label>
+      <label>Tên đơn vị trên chứng từ nguồn<input value={form.sourceUnitLabel} onChange={(e) => setForm({ ...form, sourceUnitLabel: e.target.value })} /></label>
+      <label className={styles.wide}>Quy cách đóng gói trên chứng từ nguồn<input value={form.sourcePackageDescription} onChange={(e) => setForm({ ...form, sourcePackageDescription: e.target.value })} /></label>
     </div><div className={styles.checks}><label><input type="checkbox" checked={form.isPurchasable} onChange={(e) => setForm({ ...form, isPurchasable: e.target.checked })} /> Được phép mua</label></div>
     <button type="button" className={styles.primaryButton} disabled={busy || !form.unitId || !form.conversionToBase} onClick={() => void saveUnit()} data-testid="save-variant-unit-button">Lưu quy đổi</button>
 
-    <div className={styles.inlineTools}><input value={quantity} onChange={(e) => setQuantity(e.target.value)} aria-label="Số lượng thử" data-testid="normalize-quantity-input" /><button type="button" disabled={busy || !variant.unit_id} onClick={() => void preview()} data-testid="normalize-quantity-button">Thử quy đổi</button>{normalization ? <strong data-testid="normalization-result">{normalization.enteredQuantity} {normalization.unitCode} = {normalization.baseQuantity} đơn vị tồn</strong> : null}</div>
+    <div className={styles.inlineTools}><input value={quantity} onChange={(e) => setQuantity(e.target.value)} aria-label="Số lượng cần quy đổi" data-testid="normalize-quantity-input" /><button type="button" disabled={busy || !variant.unit_id} onClick={() => void preview()} data-testid="normalize-quantity-button">Kiểm tra quy đổi</button>{normalization ? <strong data-testid="normalization-result">{normalization.enteredQuantity} {normalization.unitCode} = {normalization.baseQuantity} đơn vị tồn</strong> : null}</div>
 
-    <div className={styles.inlineTools}><input value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="Barcode / mã nội bộ" data-testid="barcode-input" /><button type="button" disabled={busy || !barcode.trim()} onClick={() => void addBarcode()} data-testid="add-barcode-button">Thêm barcode</button></div>
-    <div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>Barcode</th><th>Loại</th><th>Chính</th><th>Trạng thái</th><th></th></tr></thead><tbody>{barcodes.map((item) => <tr key={item.id} data-testid={`barcode-row-${item.normalized_barcode}`}><td>{item.barcode}</td><td>{item.barcode_type}</td><td>{item.is_primary ? 'Có' : 'Không'}</td><td>{item.is_active ? 'Hoạt động' : 'Ngừng'}</td><td><button type="button" onClick={() => void toggleBarcode(item)}>{item.is_active ? 'Vô hiệu' : 'Kích hoạt'}</button></td></tr>)}{barcodes.length === 0 ? <tr><td colSpan={5} className={styles.empty}>Chưa có barcode</td></tr> : null}</tbody></table></div>
+    <div className={styles.inlineTools}><input value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="Mã vạch hoặc mã nội bộ" data-testid="barcode-input" /><button type="button" disabled={busy || !barcode.trim()} onClick={() => void addBarcode()} data-testid="add-barcode-button">Thêm mã vạch</button></div>
+    <div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>Mã vạch</th><th>Loại</th><th>Chính</th><th>Trạng thái</th><th></th></tr></thead><tbody>{barcodes.map((item) => <tr key={item.id} data-testid={`barcode-row-${item.normalized_barcode}`}><td>{item.barcode}</td><td>{BARCODE_TYPE_LABELS[item.barcode_type]}</td><td>{item.is_primary ? 'Có' : 'Không'}</td><td>{item.is_active ? 'Hoạt động' : 'Ngừng'}</td><td><button type="button" onClick={() => void toggleBarcode(item)}>{item.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button></td></tr>)}{barcodes.length === 0 ? <tr><td colSpan={5} className={styles.empty}>Chưa có mã vạch</td></tr> : null}</tbody></table></div>
   </div>;
 }

@@ -197,7 +197,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
         }),
       });
       setToggleState(null);
-      await loadAll(toggleState.nextActive ? 'Nhân sự đã được kích hoạt.' : 'Nhân sự đã được ngừng hoạt động.');
+      await loadAll(toggleState.nextActive ? 'Nhân sự đã được đưa vào sử dụng.' : 'Nhân sự đã ngừng làm việc.');
     } catch (toggleError) {
       setError(toggleError instanceof Error ? toggleError.message : 'Không cập nhật được trạng thái nhân sự');
       setBusy(null);
@@ -223,8 +223,8 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
   return (
     <AppShell
       title="Danh mục nhân sự"
-      subtitle="Quản lý hồ sơ nhân sự nghiệp vụ và đơn vị công tác trước khi liên kết tài khoản, vai trò và phạm vi quyền."
-      kicker="Quản trị hệ thống · Nhân sự"
+      subtitle="Quản lý hồ sơ nhân sự, chức danh, thông tin liên hệ và đơn vị công tác."
+      kicker="Nhân sự"
       actions={shellActions}
     >
       <section className={styles.page} data-testid="employees-page">
@@ -238,7 +238,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
           <article className={styles.summaryCard}>
             <span>Tổng hồ sơ</span>
             <strong>{formatCompactNumber(counts.total)}</strong>
-            <small>Toàn bộ nhân sự trong installation hiện tại</small>
+            <small>Toàn bộ hồ sơ nhân sự đang được quản lý</small>
           </article>
           <article className={styles.summaryCard}>
             <span>Đang làm việc</span>

@@ -73,8 +73,14 @@ function groupPermissions(permissions: AccessPermission[]) {
   }));
 }
 
-function permissionLabel(permission: AccessPermission) {
-  return `${permission.label} · ${permission.permission_key}`;
+const MODULE_LABELS: Record<string, string> = {
+  organization: 'Tổ chức và kho hàng', access: 'Nhân sự và phân quyền', customers: 'Khách hàng', suppliers: 'Nhà cung cấp',
+  products: 'Sản phẩm', pricing: 'Giá bán và khuyến mãi', inventory: 'Tồn kho và lô hàng', document_numbering: 'Số chứng từ',
+  sales: 'Bán hàng', purchasing: 'Mua hàng', accounting: 'Kế toán', reporting: 'Báo cáo',
+};
+
+function moduleLabel(module: string) {
+  return MODULE_LABELS[module] || 'Nhóm chức năng khác';
 }
 
 export default function RoleWorkspace({ initialRoles, permissions: initialPermissions, initialError = null }: Props) {
@@ -259,8 +265,8 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
   return (
     <AppShell
       title="Vai trò & phân quyền"
-      subtitle="Quản lý vai trò quản trị, trạng thái hoạt động và tập quyền theo module cho NPP Core."
-      kicker="Quản trị hệ thống · Phân quyền"
+      subtitle="Quản lý vai trò, trạng thái sử dụng và phạm vi quyền theo công việc."
+      kicker="Phân quyền"
       actions={shellActions}
     >
       <section className={styles.page} data-testid="roles-page">
@@ -274,7 +280,7 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
           <article className={styles.summaryCard}>
             <span>Tổng vai trò</span>
             <strong>{formatCompactNumber(counts.total)}</strong>
-            <small>Toàn bộ vai trò trong installation hiện tại</small>
+            <small>Toàn bộ vai trò đang được quản lý</small>
           </article>
           <article className={styles.summaryCard}>
             <span>Đang hoạt động</span>
@@ -284,7 +290,7 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
           <article className={styles.summaryCard}>
             <span>Danh mục quyền</span>
             <strong>{formatCompactNumber(counts.permissions)}</strong>
-            <small>Quyền chuẩn hóa theo registry canonical</small>
+            <small>Danh mục quyền có thể phân công cho vai trò</small>
           </article>
         </section>
 
@@ -369,7 +375,7 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
                           data-testid={`toggle-role-${role.code}`}
                           onClick={() => setToggleState({ roleId: role.id, nextActive: !role.is_active })}
                         >
-                          {role.is_active ? 'Ngừng dùng' : 'Kích hoạt'}
+                          {role.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}
                         </button>
                       </div>
                     </td>
@@ -451,8 +457,8 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
                   <div className={matrixStyles.permissionColumn}>
                     <div className={styles.sectionHeader} style={{ marginBottom: 0 }}>
                       <div>
-                        <p className={styles.panelKicker}>Ma trận quyền</p>
-                        <h2>Chọn quyền theo module</h2>
+                        <p className={styles.panelKicker}>Phạm vi quyền</p>
+                        <h2>Chọn quyền theo nhóm chức năng</h2>
                       </div>
                       <span className={styles.panelChip}>{formatCompactNumber(selectedPermissionKeys.length)} quyền đã chọn</span>
                     </div>
@@ -461,7 +467,7 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
                       {permissionGroups.length ? permissionGroups.map((group) => (
                         <div className={matrixStyles.permissionGroup} key={group.module}>
                           <div className={matrixStyles.permissionGroupHeader}>
-                            <strong>{group.module}</strong>
+                            <strong>{moduleLabel(group.module)}</strong>
                             <span className={matrixStyles.permissionGroupCount}>{formatCompactNumber(group.items.length)} quyền</span>
                           </div>
                           {group.items.map((permission) => (
@@ -475,8 +481,6 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
                                 />
                                 <span>{permission.label}</span>
                               </label>
-                              <span className={matrixStyles.permissionKey}>{permission.permission_key}</span>
-                              <span className={matrixStyles.permissionMeta}>{permission.description}</span>
                             </div>
                           ))}
                         </div>
@@ -497,7 +501,7 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
               <div className={styles.modalHeader}>
                 <div>
                   <p className={styles.panelKicker}>Xác nhận trạng thái</p>
-                  <h3>{toggleState.nextActive ? 'Kích hoạt vai trò' : 'Ngừng hoạt động'}</h3>
+                  <h3>{toggleState.nextActive ? 'Đưa vai trò vào sử dụng' : 'Ngừng sử dụng vai trò'}</h3>
                 </div>
               </div>
               <p className={styles.confirmText}>
