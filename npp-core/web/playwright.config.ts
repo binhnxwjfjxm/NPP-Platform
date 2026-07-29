@@ -16,7 +16,7 @@ const apiEnvironment = {
   PORT: '3004',
   INSTALLATION_ID: 'e2e-installation',
   DATABASE_URL: databaseUrl,
-  DATABASE_SSL_MODE: 'disable',
+  DATABASE_SSL_MODE: process.env.E2E_DATABASE_SSL_MODE?.trim() || 'disable',
   BACKEND_API_TOKEN: backendToken,
   CORE_BOOTSTRAP_ACTOR_ID: 'bootstrap:e2e',
   CORS_ORIGINS: 'http://127.0.0.1:3003,http://127.0.0.1:3005',
@@ -63,7 +63,7 @@ export default defineConfig({
     { name: 'inventory', testMatch: /inventory\.spec\.ts/, use: authenticatedBrowser },
     {
       name: 'purchasing',
-      testMatch: /(purchase-orders|goods-receipts)\.spec\.ts/,
+      testMatch: /(purchase-orders|goods-receipts|supplier-returns)\.spec\.ts/,
       dependencies: ['organization', 'suppliers', 'catalog'],
       use: authenticatedBrowser,
     },
