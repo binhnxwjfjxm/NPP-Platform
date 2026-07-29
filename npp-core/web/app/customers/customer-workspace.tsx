@@ -256,7 +256,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
     const nextError = failure instanceof UiRequestError ? failure : new UiRequestError('REQUEST_FAILED', failure instanceof Error ? failure.message : 'Yêu cầu không thành công');
     if (nextError.code === 'CONFLICT' && reload) {
       await reload();
-      setError('Dữ liệu đã thay đổi ở nơi khác. Danh sách đã được tải lại, anh vui lòng kiểm tra rồi thao tác lại.');
+      setError('Dữ liệu đã thay đổi ở nơi khác. Danh sách đã được tải lại. Vui lòng kiểm tra và thao tác lại.');
     } else {
       setError(nextError.message);
     }
@@ -560,7 +560,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
     <AppShell
       title="Khách hàng"
       subtitle="Quản lý nhóm, hồ sơ khách hàng, điều khoản thanh toán, hạn mức và địa chỉ giao dịch."
-      kicker="NPP Core · Dữ liệu nền"
+      kicker="Quản lý khách hàng"
       actions={shellActions}
     >
       <section className={styles.page} data-testid="customers-page">
@@ -579,8 +579,8 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
           <>
             <section className={styles.summaryGrid} aria-label="Số liệu khách hàng">
               <article className={styles.summaryCard}><span>Tổng khách hàng</span><strong>{formatCompactNumber(counts.total)}</strong><small>Toàn bộ hồ sơ hiện có</small></article>
-              <article className={styles.summaryCard}><span>Đang hoạt động</span><strong>{formatCompactNumber(counts.active)}</strong><small>Sẵn sàng sử dụng nghiệp vụ</small></article>
-              <article className={styles.summaryCard}><span>Không hoạt động</span><strong>{formatCompactNumber(counts.inactive)}</strong><small>Được giữ lại, không xóa cứng</small></article>
+              <article className={styles.summaryCard}><span>Đang hoạt động</span><strong>{formatCompactNumber(counts.active)}</strong><small>Hồ sơ đang được sử dụng</small></article>
+              <article className={styles.summaryCard}><span>Không hoạt động</span><strong>{formatCompactNumber(counts.inactive)}</strong><small>Hồ sơ đã ngừng sử dụng</small></article>
             </section>
 
             <section className={joinClasses(styles.toolbar, customerStyles.toolbarGrid)}>
@@ -614,12 +614,12 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                         <td><div className={styles.entityStack}><strong className={customerStyles.code}>{customer.code}</strong><span>{customer.name}</span><span>{customer.tax_code || 'Chưa có mã số thuế'}</span></div></td>
                         <td><div className={styles.entityStack}><strong>{customer.group_name || 'Chưa phân nhóm'}</strong><span>{customer.responsible_employee_name || 'Chưa giao phụ trách'}</span></div></td>
                         <td><div className={styles.entityStack}><strong>{customer.phone || '—'}</strong><span>{customer.email || '—'}</span></div></td>
-                        <td><div className={styles.entityStack}><strong>{money(customer.credit_limit)}</strong><span>{customer.payment_terms_days} ngày · Hạn mức không phải công nợ</span></div></td>
+                        <td><div className={styles.entityStack}><strong>{money(customer.credit_limit)}</strong><span>Thời hạn thanh toán: {customer.payment_terms_days} ngày · Hạn mức tín dụng</span></div></td>
                         <td><span className={joinClasses(styles.statusPill, customer.is_active ? styles.toneSuccess : styles.toneDanger)}>{customer.is_active ? 'Đang hoạt động' : 'Không hoạt động'}</span></td>
                         <td className={styles.rowActions}>
                           <button type="button" data-testid={`edit-customer-${customer.code}`} onClick={() => openCustomerEdit(customer)}>Sửa</button>
                           <button type="button" data-testid={`addresses-customer-${customer.code}`} onClick={() => void openAddresses(customer)}>Địa chỉ</button>
-                          <button type="button" className={joinClasses(customerStyles.disabled, busy === `customer-${customer.id}` && customerStyles.loading)} disabled={busy !== null} onClick={() => void toggleCustomer(customer)}>{customer.is_active ? 'Ngừng' : 'Kích hoạt'}</button>
+                          <button type="button" className={joinClasses(customerStyles.disabled, busy === `customer-${customer.id}` && customerStyles.loading)} disabled={busy !== null} onClick={() => void toggleCustomer(customer)}>{customer.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button>
                         </td>
                       </tr>
                     ))}
@@ -642,7 +642,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                       <td><span className={joinClasses(styles.statusPill, group.is_active ? styles.toneSuccess : styles.toneDanger)}>{group.is_active ? 'Đang hoạt động' : 'Không hoạt động'}</span></td>
                       <td className={styles.rowActions}>
                         <button type="button" onClick={() => openGroupEdit(group)}>Sửa</button>
-                        <button type="button" className={joinClasses(customerStyles.disabled, busy === `group-${group.id}` && customerStyles.loading)} disabled={busy !== null} onClick={() => void toggleGroup(group)}>{group.is_active ? 'Ngừng' : 'Kích hoạt'}</button>
+                        <button type="button" className={joinClasses(customerStyles.disabled, busy === `group-${group.id}` && customerStyles.loading)} disabled={busy !== null} onClick={() => void toggleGroup(group)}>{group.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button>
                       </td>
                     </tr>
                   ))}
@@ -694,8 +694,8 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                         required
                         testIdPrefix="customer"
                       />
-                      <label className={customerStyles.fullWidth}>Địa chỉ dòng 1<input data-testid="customer-create-address-line1-input" value={addressDraft.addressLine1} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine1: next })); }} required /></label>
-                      <label className={customerStyles.fullWidth}>Địa chỉ dòng 2<input value={addressDraft.addressLine2} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine2: next })); }} /></label>
+                      <label className={customerStyles.fullWidth}>Số nhà, tên đường<input data-testid="customer-create-address-line1-input" value={addressDraft.addressLine1} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine1: next })); }} required /></label>
+                      <label className={customerStyles.fullWidth}>Tòa nhà, tầng, phòng (nếu có)<input value={addressDraft.addressLine2} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine2: next })); }} /></label>
                       <label>Mã bưu chính<input value={addressDraft.postalCode} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, postalCode: next })); }} /></label>
                     </>
                   ) : null}
@@ -739,7 +739,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                       <article key={address.id} className={customerStyles.addressCard}>
                         <div className={customerStyles.addressHeader}><strong>{address.label}{address.is_default ? ' · Mặc định' : ''}</strong><span className={joinClasses(styles.statusPill, address.is_active ? styles.toneSuccess : styles.toneDanger)}>{address.is_active ? 'Hoạt động' : 'Ngừng'}</span></div>
                         <div className={customerStyles.addressMeta}>{[address.address_line1, address.address_line2, address.ward, address.district, address.province].filter(Boolean).join(', ')}</div>
-                        <div className={styles.rowActions}><button type="button" onClick={() => openAddressEdit(address)}>Sửa</button>{!address.is_default && address.is_active ? <button type="button" onClick={() => void patchAddress(address, { isDefault: true }, 'Đã đặt địa chỉ mặc định.')}>Đặt mặc định</button> : null}<button type="button" onClick={() => void patchAddress(address, { isActive: !address.is_active }, address.is_active ? 'Địa chỉ đã ngừng hoạt động.' : 'Địa chỉ đã được kích hoạt.')}>{address.is_active ? 'Ngừng' : 'Kích hoạt'}</button></div>
+                        <div className={styles.rowActions}><button type="button" onClick={() => openAddressEdit(address)}>Sửa</button>{!address.is_default && address.is_active ? <button type="button" onClick={() => void patchAddress(address, { isDefault: true }, 'Đã đặt địa chỉ mặc định.')}>Đặt mặc định</button> : null}<button type="button" onClick={() => void patchAddress(address, { isActive: !address.is_active }, address.is_active ? 'Địa chỉ đã ngừng hoạt động.' : 'Địa chỉ đã được kích hoạt.')}>{address.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button></div>
                       </article>
                     ))}
                     {addresses.length === 0 ? <div className={customerStyles.empty}>Chưa có địa chỉ.</div> : null}
@@ -753,8 +753,8 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                         <label>Người nhận<input value={addressDraft.recipientName} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, recipientName: next })); }} /></label>
                         <label>Điện thoại<input value={addressDraft.phone} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, phone: next })); }} /></label>
                         <label>Quốc gia<input value={addressDraft.countryCode} maxLength={2} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, countryCode: next })); }} /></label>
-                        <label className={customerStyles.fullWidth}>Địa chỉ dòng 1<input data-testid="customer-address-line1-input" value={addressDraft.addressLine1} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine1: next })); }} required /></label>
-                        <label className={customerStyles.fullWidth}>Địa chỉ dòng 2<input value={addressDraft.addressLine2} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine2: next })); }} /></label>
+                        <label className={customerStyles.fullWidth}>Số nhà, tên đường<input data-testid="customer-address-line1-input" value={addressDraft.addressLine1} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine1: next })); }} required /></label>
+                        <label className={customerStyles.fullWidth}>Tòa nhà, tầng, phòng (nếu có)<input value={addressDraft.addressLine2} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine2: next })); }} /></label>
                         <VietnamAdministrativeFields
                           initialProvinces={initialProvinces}
                           province={addressDraft.province}

@@ -153,7 +153,7 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
       : new UiRequestError('REQUEST_FAILED', failure instanceof Error ? failure.message : 'Yêu cầu không thành công');
     if (next.code === 'CONFLICT') {
       await loadAll();
-      setError('Dữ liệu đã thay đổi ở nơi khác. Danh sách đã được tải lại, anh vui lòng kiểm tra rồi thao tác lại.');
+      setError('Dữ liệu đã thay đổi ở nơi khác. Danh sách đã được tải lại. Vui lòng kiểm tra và thao tác lại.');
       return;
     }
     setError(next.message);
@@ -240,7 +240,7 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
           expectedUpdatedAt: supplier.updated_at,
         }),
       });
-      await loadAll(supplier.is_active ? 'Nhà cung cấp đã được ngừng hoạt động.' : 'Nhà cung cấp đã được kích hoạt.');
+      await loadAll(supplier.is_active ? 'Nhà cung cấp đã ngừng sử dụng.' : 'Nhà cung cấp đã được đưa vào sử dụng.');
     } catch (failure) {
       await handleFailure(failure);
       setBusy(null);
@@ -269,7 +269,7 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
             <option value="active">Hoạt động</option>
             <option value="inactive">Không hoạt động</option>
           </select>
-          <button type="button" onClick={() => void loadAll()} disabled={busy !== null}>Tải lại</button>
+          <button type="button" onClick={() => void loadAll()} disabled={busy !== null}>Cập nhật dữ liệu</button>
         </section>
 
         <section className={styles.tableCard}>
@@ -277,7 +277,7 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
             <tbody>{visibleSuppliers.map((supplier) => (
               <tr key={supplier.id} data-testid={`supplier-row-${supplier.code}`}>
                 <td className={styles.code}>{supplier.code}</td><td>{supplier.name}</td><td>{supplier.tax_id || '—'}</td><td>{supplier.bank_name || supplier.bank_account || '—'}</td><td>{supplier.avg_delivery_days === null ? '—' : `${supplier.avg_delivery_days} ngày`}</td><td><span className={supplier.is_active ? styles.active : styles.inactive}>{supplier.is_active ? 'Hoạt động' : 'Không hoạt động'}</span></td>
-                <td className={styles.actions}><button data-testid={`edit-supplier-${supplier.code}`} type="button" onClick={() => openEdit(supplier)} disabled={busy !== null}>Sửa</button><button type="button" onClick={() => void toggleSupplier(supplier)} disabled={busy !== null}>{supplier.is_active ? 'Vô hiệu' : 'Kích hoạt'}</button></td>
+                <td className={styles.actions}><button data-testid={`edit-supplier-${supplier.code}`} type="button" onClick={() => openEdit(supplier)} disabled={busy !== null}>Sửa</button><button type="button" onClick={() => void toggleSupplier(supplier)} disabled={busy !== null}>{supplier.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button></td>
               </tr>
             ))}</tbody>
           </table>

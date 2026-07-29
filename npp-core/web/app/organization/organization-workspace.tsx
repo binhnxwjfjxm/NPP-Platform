@@ -602,15 +602,15 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
               <div className={styles.quickLinks}>
                 <Link className={styles.quickLink} href="/organization/branches">
                   <strong>Chi nhánh</strong>
-                  <span>{counts.branches.total} hồ sơ gốc</span>
+                  <span>{counts.branches.total} chi nhánh</span>
                 </Link>
                 <Link className={styles.quickLink} href="/organization/warehouses">
                   <strong>Kho hàng</strong>
-                  <span>{counts.warehouses.total} hồ sơ gốc</span>
+                  <span>{counts.warehouses.total} kho hàng</span>
                 </Link>
                 <Link className={styles.quickLink} href="/organization/locations">
                   <strong>Vị trí kho</strong>
-                  <span>{counts.locations.total} hồ sơ gốc</span>
+                  <span>{counts.locations.total} vị trí kho</span>
                 </Link>
               </div>
             </section>
@@ -659,7 +659,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                   <p className={styles.panelKicker}>Cập nhật gần đây</p>
                   <h2>Những hồ sơ vừa thay đổi</h2>
                 </div>
-                <span className={styles.panelChip}>Dữ liệu hệ thống</span>
+                <span className={styles.panelChip}>Cập nhật mới nhất</span>
               </div>
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
@@ -777,7 +777,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                             <div className={styles.rowActions}>
                               <button type="button" data-testid={`edit-branch-${branch.code}`} onClick={() => openEdit('branches', branch.id)}>Chỉnh sửa</button>
                               <button type="button" data-testid={`toggle-branch-${branch.code}`} onClick={() => openToggle('branches', branch.id, !branch.is_active)}>
-                                {branch.is_active ? 'Ngừng dùng' : 'Kích hoạt'}
+                                {branch.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}
                               </button>
                             </div>
                           </td>
@@ -835,7 +835,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                               <div className={styles.rowActions}>
                                 <button type="button" data-testid={`edit-warehouse-${warehouse.code}`} onClick={() => openEdit('warehouses', warehouse.id)}>Chỉnh sửa</button>
                                 <button type="button" data-testid={`toggle-warehouse-${warehouse.code}`} onClick={() => openToggle('warehouses', warehouse.id, !warehouse.is_active)}>
-                                  {warehouse.is_active ? 'Ngừng dùng' : 'Kích hoạt'}
+                                  {warehouse.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}
                                 </button>
                               </div>
                             </td>
@@ -869,7 +869,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                       <tr>
                         <th>Mã</th>
                         <th>Tên</th>
-                        <th>Cơ cấu trực thuộc</th>
+                        <th>Đơn vị quản lý</th>
                         <th>Loại vị trí</th>
                         <th>Trạng thái</th>
                         <th>Xử lý</th>
@@ -897,7 +897,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                               <div className={styles.rowActions}>
                                 <button type="button" data-testid={`edit-location-${location.code}`} onClick={() => openEdit('locations', location.id)}>Chỉnh sửa</button>
                                 <button type="button" data-testid={`toggle-location-${location.code}`} onClick={() => openToggle('locations', location.id, !location.is_active)}>
-                                  {location.is_active ? 'Ngừng dùng' : 'Kích hoạt'}
+                                  {location.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}
                                 </button>
                               </div>
                             </td>
@@ -965,7 +965,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
               {editor.resource === 'warehouses' ? (
                 <form className={styles.form} onSubmit={(event) => void submitWarehouse(event)}>
                   <label>
-                    Chi nhánh mẹ
+                    Chi nhánh quản lý
                     <select
                       data-testid="warehouse-branch-select"
                       value={warehouseDraft.branchId}
@@ -1010,7 +1010,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
               {editor.resource === 'locations' ? (
                 <form className={styles.form} onSubmit={(event) => void submitLocation(event)}>
                   <label>
-                    Kho mẹ
+                    Kho quản lý
                     <select
                       data-testid="location-warehouse-select"
                       value={locationDraft.warehouseId}
@@ -1062,17 +1062,17 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
                 <div>
                   <p className={styles.panelKicker}>Xác nhận trạng thái</p>
                   <h3>
-                    {toggleState.nextActive ? 'Bật trở lại' : 'Ngừng hoạt động'}
+                    {toggleState.nextActive ? 'Đưa vào sử dụng' : 'Ngừng sử dụng'}
                   </h3>
                 </div>
                 <button type="button" className={styles.modalClose} onClick={closeModals}>Đóng</button>
               </div>
               <p className={styles.confirmText}>
                 {toggleState.resource === 'branches'
-                  ? `Bạn muốn ${toggleState.nextActive ? 'bật' : 'tắt'} chi nhánh này?`
+                  ? `Bạn muốn ${toggleState.nextActive ? 'đưa vào sử dụng' : 'ngừng sử dụng'} chi nhánh này?`
                   : toggleState.resource === 'warehouses'
-                    ? `Bạn muốn ${toggleState.nextActive ? 'bật' : 'tắt'} kho hàng này?`
-                    : `Bạn muốn ${toggleState.nextActive ? 'bật' : 'tắt'} vị trí kho này?`}
+                    ? `Bạn muốn ${toggleState.nextActive ? 'đưa vào sử dụng' : 'ngừng sử dụng'} kho hàng này?`
+                    : `Bạn muốn ${toggleState.nextActive ? 'đưa vào sử dụng' : 'ngừng sử dụng'} vị trí kho này?`}
               </p>
               <div className={styles.formActions}>
                 <button type="button" className={styles.secondaryButton} onClick={closeModals}>Hủy</button>

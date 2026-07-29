@@ -70,14 +70,14 @@ export default function ProductUnitWorkspace({
 
   return <div className={styles.page} data-testid="product-unit-workspace">
     <div className={styles.header}>
-      <div><span className={styles.eyebrow}>Phase 3.3D</span><h1>Đơn vị, quy đổi &amp; barcode</h1><p>Tồn kho luôn quy về SKU gốc; hệ số được cấu hình riêng cho từng SKU.</p></div>
+      <div><span className={styles.eyebrow}>Quản lý hàng hóa</span><h1>Đơn vị tính, quy đổi &amp; mã vạch</h1><p>Số lượng tồn được quy đổi về đơn vị tồn chuẩn; hệ số được thiết lập riêng cho từng SKU.</p></div>
     </div>
 
     <UnitCatalogPanel units={units} onUnitsChanged={setUnits} />
 
     <section className={styles.variantPanel}>
       <div className={styles.sectionHeader}>
-        <div><h2>Quy đổi theo SKU</h2><p>Chọn sản phẩm và SKU để gắn đơn vị, hệ số và barcode.</p></div>
+        <div><h2>Quy đổi theo SKU</h2><p>Chọn sản phẩm và SKU để thiết lập đơn vị tính, hệ số quy đổi và mã vạch.</p></div>
         <button type="button" className={styles.secondaryButton} disabled={busy} onClick={() => void refreshProducts()} data-testid="refresh-unit-products-button">Làm mới sản phẩm</button>
       </div>
       {message ? <div className={styles.notice}>{message}</div> : null}

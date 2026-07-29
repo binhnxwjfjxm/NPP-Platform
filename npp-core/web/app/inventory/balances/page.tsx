@@ -1,4 +1,3 @@
-import BusinessLanguageBoundary from '../../components/business-language-boundary';
 import InventoryWorkspace from '../inventory-workspace';
 import { createEmptyInventorySnapshot } from '../../../lib/inventory-types';
 import { loadInventorySnapshot } from '../../../lib/inventory-snapshot';
@@ -16,14 +15,12 @@ export default async function InventoryBalancesPage() {
   }
 
   return (
-    <BusinessLanguageBoundary scope="inventory">
-      <InventoryWorkspace
-        scope="balances"
-        title="Tra cứu tồn kho"
-        subtitle="Xem số lượng hiện tại, khả dụng, đang giữ và vị trí hàng theo dữ liệu thực tế của hệ thống."
-        initialSnapshot={initialData}
-        initialError={initialError}
-      />
-    </BusinessLanguageBoundary>
+    <InventoryWorkspace
+      scope="balances"
+      title="Tra cứu tồn kho"
+      subtitle="Xem số lượng hiện tại, khả dụng, đang giữ và vị trí hàng theo dữ liệu thực tế của hệ thống."
+      initialSnapshot={initialData}
+      initialError={initialError}
+    />
   );
 }

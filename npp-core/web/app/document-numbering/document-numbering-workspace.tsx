@@ -11,17 +11,51 @@ import type {
 } from '../../lib/document-numbering-types';
 import styles from './document-numbering.module.css';
 
+const DOCUMENT_TYPES = [
+  { value: 'SALES_ORDER', label: 'Đơn bán hàng' },
+  { value: 'PURCHASE_ORDER', label: 'Đơn mua hàng' },
+  { value: 'GOODS_RECEIPT', label: 'Phiếu nhập kho' },
+  { value: 'GOODS_ISSUE', label: 'Phiếu xuất kho' },
+  { value: 'WAREHOUSE_TRANSFER', label: 'Phiếu chuyển kho' },
+  { value: 'INVENTORY_ADJUSTMENT', label: 'Phiếu điều chỉnh tồn kho' },
+  { value: 'CUSTOMER_RETURN', label: 'Phiếu nhận hàng trả lại' },
+  { value: 'SUPPLIER_RETURN', label: 'Phiếu trả hàng nhà cung cấp' },
+  { value: 'RECEIPT', label: 'Phiếu thu' },
+  { value: 'PAYMENT', label: 'Phiếu chi' },
+  { value: 'INVOICE', label: 'Hóa đơn' },
+] as const;
+
+const RESET_POLICY_LABELS: Record<DocumentNumberSeriesForm['resetPolicy'], string> = {
+  NONE: 'Không đánh lại số',
+  YEARLY: 'Đánh lại theo năm',
+  MONTHLY: 'Đánh lại theo tháng',
+};
+
 const EMPTY_FORM: DocumentNumberSeriesForm = {
-  code: '', documentType: 'SALES_ORDER', name: '', prefix: 'SO-',
-  numberTemplate: '{PREFIX}{YYYY}{MM}-{SEQ}', resetPolicy: 'MONTHLY',
-  sequenceWidth: '6', startCounter: '1', timezoneName: 'Asia/Ho_Chi_Minh',
-  description: '', isActive: true,
+  code: '',
+  documentType: 'SALES_ORDER',
+  name: '',
+  prefix: 'SO-',
+  numberTemplate: '{PREFIX}{YYYY}{MM}-{SEQ}',
+  resetPolicy: 'MONTHLY',
+  sequenceWidth: '6',
+  startCounter: '1',
+  timezoneName: 'Asia/Ho_Chi_Minh',
+  description: '',
+  isActive: true,
 };
 
 function todayInVietnam() {
   return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
   }).format(new Date());
+}
+
+function documentTypeLabel(value: string) {
+  return DOCUMENT_TYPES.find((item) => item.value === value)?.label || 'Loại chứng từ khác';
 }
 
 function seriesToForm(series: DocumentNumberSeries): DocumentNumberSeriesForm {
@@ -42,14 +76,17 @@ function seriesToForm(series: DocumentNumberSeries): DocumentNumberSeriesForm {
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: 'no-store', ...init });
-  const payload = await response.json().catch(() => ({})) as { data?: T; error?: { code?: string; message?: string } };
+  const payload = await response.json().catch(() => ({})) as {
+    data?: T;
+    error?: { code?: string; message?: string };
+  };
   if (!response.ok || !Object.prototype.hasOwnProperty.call(payload, 'data')) {
     throw new Error(payload.error?.message || payload.error?.code || 'Yêu cầu không thành công');
   }
   return payload.data as T;
 }
 
-function idempotencyKey(prefix: string) {
+function requestKey(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
@@ -63,7 +100,7 @@ export default function DocumentNumberingWorkspace() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<DocumentNumberSeries | null>(null);
   const [documentDate, setDocumentDate] = useState(todayInVietnam());
-  const [allocationKey, setAllocationKey] = useState(() => idempotencyKey('test-number'));
+  const [allocationKey, setAllocationKey] = useState(() => requestKey('reference-number'));
   const [lastAllocation, setLastAllocation] = useState<DocumentNumberAllocation | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +112,13 @@ export default function DocumentNumberingWorkspace() {
       if (activeFilter === 'active' && !item.is_active) return false;
       if (activeFilter === 'inactive' && item.is_active) return false;
       if (!query) return true;
-      return [item.code, item.document_type, item.name, item.prefix].some((value) => value.toLowerCase().includes(query));
+      return [
+        item.code,
+        item.document_type,
+        documentTypeLabel(item.document_type),
+        item.name,
+        item.prefix,
+      ].some((value) => value.toLowerCase().includes(query));
     });
   }, [series, search, activeFilter]);
 
@@ -98,7 +141,7 @@ export default function DocumentNumberingWorkspace() {
   useEffect(() => {
     setBusy(true);
     void loadSeries()
-      .catch((value) => setError(value instanceof Error ? value.message : 'Không thể tải series'))
+      .catch((value) => setError(value instanceof Error ? value.message : 'Không thể tải quy tắc đánh số'))
       .finally(() => setBusy(false));
   }, []);
 
@@ -153,19 +196,22 @@ export default function DocumentNumberingWorkspace() {
       };
       const saved = editing
         ? await requestJson<DocumentNumberSeries>(`/api/document-number-series/${editing.id}`, {
-            method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
           })
         : await requestJson<DocumentNumberSeries>('/api/document-number-series', {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey('series') },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestKey('number-rule') },
             body: JSON.stringify(body),
           });
       setShowForm(false);
       setEditing(saved);
       const refreshed = await loadSeries(saved.id);
       if (refreshed) await loadHistory(refreshed.id);
-      setNotice(editing ? 'Đã cập nhật series số chứng từ' : 'Đã tạo series số chứng từ');
+      setNotice(editing ? 'Đã cập nhật quy tắc đánh số' : 'Đã tạo quy tắc đánh số');
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Không thể lưu series');
+      setError(value instanceof Error ? value.message : 'Không thể lưu quy tắc đánh số');
     } finally {
       setBusy(false);
     }
@@ -183,15 +229,15 @@ export default function DocumentNumberingWorkspace() {
       });
       const refreshed = await loadSeries(saved.id);
       if (refreshed && selected?.id === refreshed.id) await loadHistory(refreshed.id);
-      setNotice(saved.is_active ? 'Đã kích hoạt series' : 'Đã ngừng series');
+      setNotice(saved.is_active ? 'Đã đưa quy tắc vào sử dụng' : 'Đã ngừng sử dụng quy tắc');
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Không thể đổi trạng thái series');
+      setError(value instanceof Error ? value.message : 'Không thể thay đổi trạng thái quy tắc');
     } finally {
       setBusy(false);
     }
   }
 
-  async function allocateTestNumber() {
+  async function allocateReferenceNumber() {
     if (!selected) return;
     setBusy(true);
     setError(null);
@@ -201,32 +247,40 @@ export default function DocumentNumberingWorkspace() {
       const saved = await requestJson<DocumentNumberAllocation>(`/api/document-number-series/${selected.id}/allocate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': allocationKey },
-        body: JSON.stringify({ documentDate, metadata: { purpose: 'admin_test_allocation' } }),
+        body: JSON.stringify({ documentDate, metadata: { purpose: 'manual_reference_allocation' } }),
       });
       setLastAllocation(saved);
       await loadHistory(selected.id);
       const refreshed = await loadSeries(selected.id);
       if (refreshed) setSelected(refreshed);
       setNotice(saved.replayed
-        ? 'Đã trả lại số cũ theo khóa idempotency; không cấp thêm số'
-        : 'Đã cấp một số kiểm thử và ghi lịch sử bất biến');
+        ? 'Yêu cầu này đã được xử lý trước đó; hệ thống trả lại đúng số đã cấp'
+        : 'Đã cấp số tham chiếu và lưu vào lịch sử');
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Không thể cấp số kiểm thử');
+      setError(value instanceof Error ? value.message : 'Không thể cấp số tham chiếu');
     } finally {
       setBusy(false);
     }
   }
 
+  const currentDocumentTypeKnown = DOCUMENT_TYPES.some((item) => item.value === form.documentType);
+
   return (
-    <AppShell title="Số chứng từ" subtitle="Quản lý series và cấp số an toàn; màn này không tạo chứng từ nghiệp vụ" kicker="NPP Document Numbering">
+    <AppShell
+      title="Số chứng từ"
+      subtitle="Thiết lập quy tắc đánh số tự động theo từng loại chứng từ"
+      kicker="Quản lý chứng từ"
+    >
       <main className={styles.workspace} data-testid="document-numbering-page">
         <section className={styles.hero}>
           <div>
-            <span className={styles.eyebrow}>Phase 3.3F</span>
-            <h2>Bộ máy cấp số dùng chung</h2>
-            <p>Cấu hình mẫu số theo từng loại chứng từ. Series đã phát sinh số sẽ khóa định dạng để bảo vệ lịch sử.</p>
+            <span className={styles.eyebrow}>Thiết lập quy tắc</span>
+            <h2>Quy tắc đánh số dùng chung</h2>
+            <p>Cấu hình cách tạo số theo từng loại chứng từ. Quy tắc đã phát sinh số sẽ giữ nguyên cấu trúc để bảo đảm lịch sử.</p>
           </div>
-          <button type="button" className={styles.primaryButton} onClick={openCreate} data-testid="add-number-series-button">Thêm series</button>
+          <button type="button" className={styles.primaryButton} onClick={openCreate} data-testid="add-number-series-button">
+            Thêm quy tắc
+          </button>
         </section>
 
         {error && !showForm ? <div className={styles.errorBanner} role="alert">{error}</div> : null}
@@ -234,35 +288,44 @@ export default function DocumentNumberingWorkspace() {
 
         <section className={styles.panel}>
           <div className={styles.filters}>
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm mã, loại chứng từ hoặc tên" data-testid="number-series-search" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Tìm mã, loại chứng từ hoặc tên quy tắc"
+              data-testid="number-series-search"
+            />
             <select value={activeFilter} onChange={(event) => setActiveFilter(event.target.value as typeof activeFilter)}>
               <option value="all">Tất cả trạng thái</option>
-              <option value="active">Đang hoạt động</option>
-              <option value="inactive">Đã ngừng</option>
+              <option value="active">Đang sử dụng</option>
+              <option value="inactive">Đã ngừng sử dụng</option>
             </select>
-            <button type="button" className={styles.secondaryButton} disabled={busy} onClick={() => void loadSeries(selected?.id)}>Làm mới</button>
+            <button type="button" className={styles.secondaryButton} disabled={busy} onClick={() => void loadSeries(selected?.id)}>
+              Cập nhật danh sách
+            </button>
           </div>
 
           <div className={styles.tableWrapper}>
             <table className={styles.table}>
-              <thead><tr><th>Mã</th><th>Loại chứng từ</th><th>Mẫu</th><th>Reset</th><th>Đã cấp</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+              <thead>
+                <tr><th>Mã</th><th>Loại chứng từ</th><th>Cấu trúc số</th><th>Chu kỳ</th><th>Số đã cấp</th><th>Trạng thái</th><th>Thao tác</th></tr>
+              </thead>
               <tbody>
                 {visibleSeries.map((item) => (
                   <tr key={item.id} data-testid={`number-series-row-${item.code}`} className={selected?.id === item.id ? styles.selectedRow : undefined}>
                     <td><strong>{item.code}</strong><small>{item.name}</small></td>
-                    <td>{item.document_type}</td>
-                    <td><code>{item.number_template}</code>{item.format_locked ? <span className={styles.locked}>Đã khóa</span> : null}</td>
-                    <td>{item.reset_policy}</td>
+                    <td>{documentTypeLabel(item.document_type)}</td>
+                    <td><code>{item.number_template}</code>{item.format_locked ? <span className={styles.locked}>Đã cố định</span> : null}</td>
+                    <td>{RESET_POLICY_LABELS[item.reset_policy]}</td>
                     <td>{item.allocation_count}</td>
-                    <td>{item.is_active ? 'Hoạt động' : 'Ngừng'}</td>
+                    <td>{item.is_active ? 'Đang sử dụng' : 'Đã ngừng'}</td>
                     <td className={styles.actions}>
                       <button type="button" onClick={() => void selectSeries(item)} data-testid={`select-number-series-${item.code}`}>Chi tiết</button>
                       <button type="button" onClick={() => openEdit(item)}>Sửa</button>
-                      <button type="button" disabled={busy} onClick={() => void toggleActive(item)}>{item.is_active ? 'Vô hiệu' : 'Kích hoạt'}</button>
+                      <button type="button" disabled={busy} onClick={() => void toggleActive(item)}>{item.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button>
                     </td>
                   </tr>
                 ))}
-                {visibleSeries.length === 0 ? <tr><td colSpan={7} className={styles.empty}>Chưa có series phù hợp</td></tr> : null}
+                {visibleSeries.length === 0 ? <tr><td colSpan={7} className={styles.empty}>Chưa có quy tắc phù hợp</td></tr> : null}
               </tbody>
             </table>
           </div>
@@ -272,47 +335,59 @@ export default function DocumentNumberingWorkspace() {
           <section className={styles.detailGrid} data-testid="number-series-detail">
             <div className={styles.panel}>
               <div className={styles.sectionHeader}>
-                <div><span className={styles.eyebrow}>Cấp số kiểm thử</span><h3>{selected.code} — {selected.name}</h3></div>
-                <span className={selected.is_active ? styles.activeBadge : styles.inactiveBadge}>{selected.is_active ? 'Hoạt động' : 'Ngừng'}</span>
+                <div><span className={styles.eyebrow}>Cấp số tham chiếu</span><h3>{selected.code} — {selected.name}</h3></div>
+                <span className={selected.is_active ? styles.activeBadge : styles.inactiveBadge}>{selected.is_active ? 'Đang sử dụng' : 'Đã ngừng'}</span>
               </div>
-              <p className={styles.warning}>Thao tác này tạo một allocation bất biến để kiểm thử bộ đếm. Nó không tạo đơn bán, phiếu kho, hóa đơn hay bút toán.</p>
+              <p className={styles.warning}>
+                Thao tác này cấp một số thật để kiểm tra quy tắc trước khi áp dụng. Số đã cấp được lưu trong lịch sử nhưng không tạo đơn hàng, phiếu kho, hóa đơn hoặc bút toán.
+              </p>
               <div className={styles.formGrid}>
                 <label>Ngày chứng từ<input type="date" value={documentDate} onChange={(event) => setDocumentDate(event.target.value)} data-testid="allocation-date-input" /></label>
-                <label>Khóa idempotency<input value={allocationKey} onChange={(event) => setAllocationKey(event.target.value)} data-testid="allocation-key-input" /></label>
+                <label>Mã yêu cầu<input value={allocationKey} onChange={(event) => setAllocationKey(event.target.value)} data-testid="allocation-key-input" /></label>
               </div>
               <div className={styles.actionsBar}>
-                <button type="button" className={styles.primaryButton} disabled={busy || !selected.is_active || !documentDate || !allocationKey.trim()} onClick={() => void allocateTestNumber()} data-testid="allocate-test-number-button">Cấp số kiểm thử</button>
-                <button type="button" className={styles.secondaryButton} onClick={() => setAllocationKey(idempotencyKey('test-number'))}>Tạo khóa mới</button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={busy || !selected.is_active || !documentDate || !allocationKey.trim()}
+                  onClick={() => void allocateReferenceNumber()}
+                  data-testid="allocate-test-number-button"
+                >
+                  Cấp số tham chiếu
+                </button>
+                <button type="button" className={styles.secondaryButton} onClick={() => setAllocationKey(requestKey('reference-number'))}>
+                  Tạo mã yêu cầu mới
+                </button>
               </div>
               {lastAllocation ? (
                 <div className={styles.result} data-testid="allocation-result">
-                  <span>{lastAllocation.replayed ? 'Replay' : 'Số mới'}</span>
+                  <span>{lastAllocation.replayed ? 'Số đã cấp trước đó' : 'Số vừa cấp'}</span>
                   <strong>{lastAllocation.document_number}</strong>
-                  <small>Kỳ {lastAllocation.period_key} · bộ đếm {lastAllocation.counter_value}</small>
+                  <small>Kỳ {lastAllocation.period_key} · số thứ tự {lastAllocation.counter_value}</small>
                 </div>
               ) : null}
             </div>
 
             <div className={styles.panel}>
-              <div className={styles.sectionHeader}><div><span className={styles.eyebrow}>Bộ đếm</span><h3>Trạng thái theo kỳ</h3></div></div>
+              <div className={styles.sectionHeader}><div><span className={styles.eyebrow}>Tiến độ đánh số</span><h3>Số tiếp theo theo từng kỳ</h3></div></div>
               <div className={styles.counterList}>
                 {history.counters.map((counter) => (
                   <div key={counter.period_key} className={styles.counterCard}>
-                    <strong>{counter.period_key}</strong><span>Số kế tiếp</span><b>{counter.next_counter}</b>
+                    <strong>{counter.period_key}</strong><span>Số tiếp theo</span><b>{counter.next_counter}</b>
                   </div>
                 ))}
-                {history.counters.length === 0 ? <p>Chưa phát sinh bộ đếm.</p> : null}
+                {history.counters.length === 0 ? <p>Chưa phát sinh số trong kỳ nào.</p> : null}
               </div>
             </div>
 
             <div className={`${styles.panel} ${styles.fullWidth}`}>
               <div className={styles.sectionHeader}>
-                <div><span className={styles.eyebrow}>Lịch sử bất biến</span><h3>Các số đã cấp</h3></div>
-                <button type="button" className={styles.secondaryButton} disabled={busy} onClick={() => void loadHistory(selected.id)}>Làm mới lịch sử</button>
+                <div><span className={styles.eyebrow}>Lịch sử cấp số</span><h3>Các số đã cấp</h3></div>
+                <button type="button" className={styles.secondaryButton} disabled={busy} onClick={() => void loadHistory(selected.id)}>Cập nhật lịch sử</button>
               </div>
               <div className={styles.tableWrapper}>
                 <table className={styles.table}>
-                  <thead><tr><th>Số chứng từ</th><th>Ngày chứng từ</th><th>Kỳ</th><th>Bộ đếm</th><th>Cấp lúc</th></tr></thead>
+                  <thead><tr><th>Số chứng từ</th><th>Ngày chứng từ</th><th>Kỳ</th><th>Số thứ tự</th><th>Thời điểm cấp</th></tr></thead>
                   <tbody>
                     {history.allocations.map((item) => (
                       <tr key={item.id} data-testid={`allocation-row-${item.document_number}`}>
@@ -333,33 +408,50 @@ export default function DocumentNumberingWorkspace() {
 
         <Modal
           open={showForm}
-          title={editing ? `Sửa ${editing.code}` : 'Tạo series số chứng từ'}
-          description="Thiết lập mẫu số, chu kỳ đánh lại và số thứ tự bắt đầu."
+          title={editing ? `Sửa ${editing.code}` : 'Tạo quy tắc đánh số'}
+          description="Thiết lập cấu trúc số, chu kỳ đánh lại và số thứ tự bắt đầu."
           onClose={closeForm}
           testId="number-series-modal"
           size="large"
           footer={(
             <>
               <button type="button" className={styles.secondaryButton} disabled={busy} onClick={closeForm}>Hủy</button>
-              <button type="button" className={styles.primaryButton} disabled={busy || !form.code.trim() || !form.name.trim()} onClick={() => void saveSeries()} data-testid="save-number-series-button">Lưu series</button>
+              <button type="button" className={styles.primaryButton} disabled={busy || !form.code.trim() || !form.name.trim()} onClick={() => void saveSeries()} data-testid="save-number-series-button">Lưu quy tắc</button>
             </>
           )}
         >
           {error ? <div className={styles.errorBanner} role="alert">{error}</div> : null}
-          {editing?.format_locked ? <p className={styles.warning}>Định dạng đã khóa vì series có lịch sử cấp số.</p> : null}
+          {editing?.format_locked ? <p className={styles.warning}>Cấu trúc số đã được cố định vì quy tắc này đã có lịch sử cấp số.</p> : null}
           <div className={styles.formGrid} data-testid="number-series-form">
-            <label>Mã series<input value={form.code} disabled={Boolean(editing)} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })} data-testid="number-series-code-input" /></label>
-            <label>Loại chứng từ<input value={form.documentType} disabled={Boolean(editing)} onChange={(event) => setForm({ ...form, documentType: event.target.value.toUpperCase() })} data-testid="document-type-input" /></label>
-            <label>Tên series<input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} data-testid="number-series-name-input" /></label>
-            <label>Tiền tố<input value={form.prefix} disabled={Boolean(editing?.format_locked)} onChange={(event) => setForm({ ...form, prefix: event.target.value.toUpperCase() })} data-testid="number-prefix-input" /></label>
-            <label className={styles.wide}>Mẫu số<input value={form.numberTemplate} disabled={Boolean(editing?.format_locked)} onChange={(event) => setForm({ ...form, numberTemplate: event.target.value.toUpperCase() })} data-testid="number-template-input" /><small>Token: {'{PREFIX}'} {'{YYYY}'} {'{YY}'} {'{MM}'} {'{SEQ}'}</small></label>
-            <label>Reset<select value={form.resetPolicy} disabled={Boolean(editing?.format_locked)} onChange={(event) => setForm({ ...form, resetPolicy: event.target.value as DocumentNumberSeriesForm['resetPolicy'] })} data-testid="reset-policy-select"><option value="NONE">Không reset</option><option value="YEARLY">Theo năm</option><option value="MONTHLY">Theo tháng</option></select></label>
-            <label>Độ rộng số<input type="number" min="1" max="18" value={form.sequenceWidth} disabled={Boolean(editing?.format_locked)} onChange={(event) => setForm({ ...form, sequenceWidth: event.target.value })} data-testid="sequence-width-input" /></label>
-            <label>Số bắt đầu<input value={form.startCounter} disabled={Boolean(editing?.format_locked)} onChange={(event) => setForm({ ...form, startCounter: event.target.value })} data-testid="start-counter-input" /></label>
+            <label>Mã quy tắc<input value={form.code} disabled={Boolean(editing)} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })} data-testid="number-series-code-input" /></label>
+            <label>
+              Loại chứng từ
+              <select value={form.documentType} disabled={Boolean(editing)} onChange={(event) => setForm({ ...form, documentType: event.target.value })} data-testid="document-type-input">
+                {!currentDocumentTypeKnown ? <option value={form.documentType}>{documentTypeLabel(form.documentType)}</option> : null}
+                {DOCUMENT_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
+            </label>
+            <label>Tên quy tắc<input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} data-testid="number-series-name-input" /></label>
+            <label>Ký hiệu đầu số<input value={form.prefix} disabled={Boolean(editing?.format_locked)} onChange={(event) => setForm({ ...form, prefix: event.target.value.toUpperCase() })} data-testid="number-prefix-input" /></label>
+            <label className={styles.wide}>
+              Cấu trúc số
+              <input value={form.numberTemplate} disabled={Boolean(editing?.format_locked)} onChange={(event) => setForm({ ...form, numberTemplate: event.target.value.toUpperCase() })} data-testid="number-template-input" />
+              <small>Thành phần có thể dùng: {'{PREFIX}'} {'{YYYY}'} {'{YY}'} {'{MM}'} {'{SEQ}'}</small>
+            </label>
+            <label>
+              Chu kỳ đánh lại số
+              <select value={form.resetPolicy} disabled={Boolean(editing?.format_locked)} onChange={(event) => setForm({ ...form, resetPolicy: event.target.value as DocumentNumberSeriesForm['resetPolicy'] })} data-testid="reset-policy-select">
+                <option value="NONE">Không đánh lại số</option>
+                <option value="YEARLY">Theo năm</option>
+                <option value="MONTHLY">Theo tháng</option>
+              </select>
+            </label>
+            <label>Số chữ số<input type="number" min="1" max="18" value={form.sequenceWidth} disabled={Boolean(editing?.format_locked)} onChange={(event) => setForm({ ...form, sequenceWidth: event.target.value })} data-testid="sequence-width-input" /></label>
+            <label>Số thứ tự bắt đầu<input value={form.startCounter} disabled={Boolean(editing?.format_locked)} onChange={(event) => setForm({ ...form, startCounter: event.target.value })} data-testid="start-counter-input" /></label>
             <label>Múi giờ<input value={form.timezoneName} disabled={Boolean(editing?.format_locked)} onChange={(event) => setForm({ ...form, timezoneName: event.target.value })} /></label>
             <label className={styles.wide}>Mô tả<textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
           </div>
-          <label className={styles.check}><input type="checkbox" checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} /> Hoạt động</label>
+          <label className={styles.check}><input type="checkbox" checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} /> Đang sử dụng</label>
         </Modal>
       </main>
     </AppShell>

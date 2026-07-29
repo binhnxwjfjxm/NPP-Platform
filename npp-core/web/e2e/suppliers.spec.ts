@@ -46,7 +46,7 @@ test.describe('Danh mục nhà cung cấp', () => {
     await workspace.getByRole('button', { name: 'Lưu', exact: true }).click();
     await expect(supplierRow).toContainText(`${supplierName} đã sửa`);
 
-    await supplierRow.getByRole('button', { name: 'Vô hiệu' }).click();
+    await supplierRow.getByRole('button', { name: 'Ngừng sử dụng', exact: true }).click();
     await page.getByTestId('suppliers-status-filter').selectOption('inactive');
     await expect(supplierRow).toContainText('Không hoạt động');
   });

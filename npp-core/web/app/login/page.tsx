@@ -16,21 +16,21 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <p className={styles.eyebrow}>NPP Core</p>
-        <h1 className={styles.title}>Đăng nhập để vào không gian quản trị</h1>
+        <p className={styles.eyebrow}>Cổng quản trị</p>
+        <h1 className={styles.title}>Đăng nhập hệ thống</h1>
         <p className={styles.lead}>
-          Khu vực làm việc dành cho công tác quản trị tổ chức, chi nhánh, kho hàng và vị trí lưu trữ.
+          Đăng nhập để sử dụng các chức năng quản lý tổ chức, hàng hóa, giá bán, tồn kho và phân quyền.
         </p>
 
         <div className={styles.panel}>
-          <p className={styles.hint}>Xác thực truy cập</p>
+          <p className={styles.hint}>Hướng dẫn truy cập</p>
           <p className={styles.note}>
-            Trình duyệt sẽ hiển thị hộp thoại xác thực trước khi mở bảng điều hành và các danh mục quản trị.
+            Sử dụng tài khoản được cấp để tiếp tục vào khu vực làm việc.
           </p>
         </div>
 
         <p className={styles.footer}>
-          Dữ liệu nghiệp vụ và thông tin kết nối hệ thống không được công khai trên giao diện.
+          Không truy cập được hệ thống? Vui lòng liên hệ bộ phận quản trị để được hỗ trợ.
         </p>
       </section>
     </main>

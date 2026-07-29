@@ -13,7 +13,6 @@ import {
   inventoryTabs,
   matchTerm,
   normalizeSearch,
-  upperCode,
   type InventoryBalance,
   type InventoryLot,
   type InventoryMovementLine,
@@ -41,20 +40,6 @@ type PolicyDraft = {
   locationRequired: boolean;
   expectedVersion: string;
 };
-
-type OpeningDraft = {
-  sourceKey: string;
-  sourceFilename: string;
-  documentDate: string;
-  metadataText: string;
-  rowsText: string;
-};
-
-type ValidationState = {
-  rowErrors: Array<{ lineNumber: number; code: string; message: string }>;
-  rows: Array<Record<string, unknown>>;
-  totals: { rowCount: number; sourceQuantityTotal: string; baseQuantityTotal: string };
-} | null;
 
 type RequestEnvelope<T> = {
   data?: T;
@@ -88,20 +73,6 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return payload.data;
 }
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.keys(value as Record<string, unknown>).sort().map((key) => [key, canonicalize((value as Record<string, unknown>)[key])]));
-  }
-  return value;
-}
-
-async function sha256Hex(value: string): Promise<string> {
-  const bytes = new TextEncoder().encode(value);
-  const hash = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
 function emptyPolicyDraft(): PolicyDraft {
   return {
     baseVariantId: '',
@@ -110,26 +81,6 @@ function emptyPolicyDraft(): PolicyDraft {
     locationRequired: false,
     expectedVersion: '',
   };
-}
-
-function emptyOpeningDraft(): OpeningDraft {
-  return {
-    sourceKey: '',
-    sourceFilename: '',
-    documentDate: new Date().toISOString().slice(0, 10),
-    metadataText: '{}',
-    rowsText: '[\n  {\n    "warehouseId": "",\n    "locationId": null,\n    "sourceVariantId": "",\n    "sourceQuantity": "1.000000",\n    "lotCode": "",\n    "manufacturedDate": null,\n    "expiryDate": null,\n    "supplierLotReference": null,\n    "sourceLineReference": "Sheet1!2",\n    "metadata": {}\n  }\n]',
-  };
-}
-
-function safeJsonObject(value: string): Record<string, unknown> {
-  const parsed = value.trim() ? JSON.parse(value) : {};
-  return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
-}
-
-function safeJsonArray(value: string): unknown[] {
-  const parsed = JSON.parse(value);
-  return Array.isArray(parsed) ? parsed : [];
 }
 
 function tableEmpty(message: string) {
@@ -142,6 +93,20 @@ function tableEmpty(message: string) {
 
 function policyLabel(policy: InventoryTrackingPolicy): string {
   return `${policy.base_sku}${policy.base_variant_name ? ` — ${policy.base_variant_name}` : ''}`;
+}
+
+function lotTrackingLabel(value: InventoryTrackingPolicy['lot_tracking_mode']) {
+  return value === 'REQUIRED' ? 'Bắt buộc quản lý theo lô' : 'Không quản lý theo lô';
+}
+
+function expiryTrackingLabel(value: InventoryTrackingPolicy['expiry_tracking_mode']) {
+  if (value === 'REQUIRED') return 'Bắt buộc nhập hạn sử dụng';
+  if (value === 'OPTIONAL') return 'Có thể nhập hạn sử dụng';
+  return 'Không quản lý hạn sử dụng';
+}
+
+function movementDirectionLabel(value: InventoryMovementLine['direction']) {
+  return value === 'IN' ? 'Nhập kho' : 'Xuất kho';
 }
 
 function balanceKey(balance: InventoryBalance): string {
@@ -165,9 +130,6 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
   const [selectedBalance, setSelectedBalance] = useState<InventoryBalance | null>(balances[0] ?? null);
   const [drillDown, setDrillDown] = useState<InventoryMovementLine[]>([]);
   const [policyDraft, setPolicyDraft] = useState<PolicyDraft>(emptyPolicyDraft());
-  const [openingDraft, setOpeningDraft] = useState<OpeningDraft>(emptyOpeningDraft());
-  const [validation, setValidation] = useState<ValidationState>(null);
-  const [openingResult, setOpeningResult] = useState<Record<string, unknown> | null>(null);
 
   const normalizedSearch = normalizeSearch(search);
 
@@ -292,70 +254,6 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
     }
   }
 
-  async function validateOpeningBalance() {
-    setBusy('opening-validate');
-    setError(null);
-    setNotice(null);
-    try {
-      const rows = safeJsonArray(openingDraft.rowsText);
-      const metadata = safeJsonObject(openingDraft.metadataText);
-      const normalizedBody = {
-        sourceKey: upperCode(openingDraft.sourceKey),
-        sourceFilename: openingDraft.sourceFilename.trim() || null,
-        documentDate: openingDraft.documentDate,
-        metadata,
-        rows,
-      };
-      const contentChecksum = await sha256Hex(JSON.stringify(canonicalize(normalizedBody)));
-      const result = await requestJson<{
-        rowErrors: Array<{ lineNumber: number; code: string; message: string }>;
-        rows: Record<string, unknown>[];
-        totals: { rowCount: number; sourceQuantityTotal: string; baseQuantityTotal: string };
-      }>('/api/inventory/opening-balances/validate', {
-        method: 'POST',
-        body: JSON.stringify({ ...normalizedBody, contentChecksum }),
-      });
-      setValidation(result);
-      setNotice(result.rowErrors.length === 0
-        ? { kind: 'success', message: 'Tệp nhập tồn đầu kỳ hợp lệ. Có thể ghi sổ.' }
-        : { kind: 'error', message: 'Tệp có dòng lỗi. Sửa trước khi ghi sổ.' });
-    } catch (validateError) {
-      setValidation(null);
-      setError(validateError instanceof Error ? validateError.message : 'Không kiểm tra được dữ liệu');
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function postOpeningBalance() {
-    setBusy('opening-post');
-    setError(null);
-    try {
-      const rows = safeJsonArray(openingDraft.rowsText);
-      const metadata = safeJsonObject(openingDraft.metadataText);
-      const normalizedBody = {
-        sourceKey: upperCode(openingDraft.sourceKey),
-        sourceFilename: openingDraft.sourceFilename.trim() || null,
-        documentDate: openingDraft.documentDate,
-        metadata,
-        rows,
-      };
-      const contentChecksum = await sha256Hex(JSON.stringify(canonicalize(normalizedBody)));
-      const result = await requestJson<Record<string, unknown>>('/api/inventory/opening-balances/post', {
-        method: 'POST',
-        headers: { 'Idempotency-Key': `opening-${upperCode(openingDraft.sourceKey)}-${contentChecksum.slice(0, 16)}` },
-        body: JSON.stringify({ ...normalizedBody, contentChecksum }),
-      });
-      setOpeningResult(result);
-      setNotice({ kind: 'success', message: 'Đã ghi sổ nhập tồn đầu kỳ.' });
-      await refreshAll();
-    } catch (postError) {
-      setError(postError instanceof Error ? postError.message : 'Không ghi sổ được nhập tồn đầu kỳ');
-    } finally {
-      setBusy(null);
-    }
-  }
-
   const sectionTitle = scope === 'overview'
     ? 'Tổng hợp tồn kho'
     : scope === 'balances'
@@ -367,14 +265,14 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
           : 'Nhập tồn đầu kỳ';
 
   const sectionDescription = scope === 'overview'
-    ? 'Bảng điều khiển này bám dữ liệu thật từ Core API: số dư, lô, chính sách và nhập tồn đầu kỳ.'
+    ? 'Tổng hợp số lượng tồn, lô hàng, chính sách quản lý và lịch sử nhập tồn đầu kỳ.'
     : scope === 'balances'
-      ? 'Xem số dư chính xác theo kho, vị trí, SKU cơ sở, lô và hạn dùng. Mở chi tiết lấy trực tiếp từ sổ cái tồn kho.'
+      ? 'Xem số lượng theo kho, vị trí, SKU, lô và hạn dùng. Chọn một dòng để xem lịch sử biến động.'
       : scope === 'tracking-policies'
-        ? 'Quy tắc lô, hạn dùng và vị trí được lưu với cập nhật lạc quan và ghi nhận nghiệp vụ thật.'
+        ? 'Thiết lập yêu cầu quản lý lô, hạn sử dụng và vị trí cho từng SKU.'
         : scope === 'lots'
-          ? 'Danh sách lô chuẩn được dùng lại khi ghi sổ mở tồn và truy vết tồn kho.'
-          : 'Nhập tồn đầu kỳ nhận JSON chuẩn hóa, kiểm tra trước, rồi ghi sổ nguyên tử vào sổ cái tồn kho.';
+          ? 'Danh sách lô hàng đã được ghi nhận để tra cứu và theo dõi hạn sử dụng.'
+          : 'Nhập dữ liệu tồn đầu kỳ từ tệp, kiểm tra trước rồi xác nhận ghi nhận.';
 
   return (
     <AppShell title={title} subtitle={subtitle} kicker="Tồn kho, lô và nhập đầu kỳ">
@@ -382,7 +280,7 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
         <section className={styles.hero}>
           <div className={styles.topRow}>
             <div className={styles.titleBlock}>
-              <p className={styles.kicker}>Giai đoạn 4.4</p>
+              <p className={styles.kicker}>Quản lý tồn kho</p>
               <h1 className={styles.title}>{sectionTitle}</h1>
               <p className={styles.subtitle}>{sectionDescription}</p>
             </div>
@@ -416,7 +314,7 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
           <article className={styles.card}>
             <p className={styles.cardLabel}>Lô hàng</p>
             <p className={styles.cardValue}>{formatCompactNumber(counts.lots)}</p>
-            <p className={styles.cardHint}>Lô canonical theo SKU cơ sở.</p>
+            <p className={styles.cardHint}>Các lô hàng đang được theo dõi theo SKU.</p>
           </article>
           <article className={styles.card}>
             <p className={styles.cardLabel}>Chính sách</p>
@@ -453,7 +351,7 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
                   <thead>
                     <tr>
                       <th>Kho / vị trí</th>
-                      <th>SKU cơ sở</th>
+                      <th>SKU</th>
                       <th>Lô</th>
                       <th>Hạn dùng</th>
                       <th>Tồn thực</th>
@@ -511,12 +409,12 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
                   {drillDown.map((line) => (
                     <div key={line.id ?? `${line.movement_id}-${line.base_quantity_delta}`} className={styles.banner}>
                       <div className={styles.rowActions}>
-                        <span className={styles.pill}>{line.direction}</span>
+                        <span className={styles.pill}>{movementDirectionLabel(line.direction)}</span>
                         <span className={styles.pill}>{formatQuantity(line.base_quantity_delta)}</span>
                       </div>
                       <div className={styles.subtle}>
                         <div className={styles.mono}>{joinValues(line.base_sku, line.lot_code, line.expiry_date)}</div>
-                        <div>{joinValues(line.warehouse_id, line.location_id ?? '—', line.source_line_reference)}</div>
+                        <div>{line.source_line_reference ? `Tham chiếu: ${line.source_line_reference}` : 'Biến động tồn kho'}</div>
                       </div>
                     </div>
                   ))}
@@ -530,7 +428,7 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
           <div className={styles.sectionHeader}>
             <div className={styles.sectionTitleBlock}>
               <h2 className={styles.sectionTitle}>Chính sách lô</h2>
-              <p className={styles.sectionCopy}>Chỉnh chính sách bằng form bên dưới. Mỗi SKU cơ sở chỉ có một chính sách hiện hành.</p>
+              <p className={styles.sectionCopy}>Chỉnh chính sách bằng form bên dưới. Mỗi SKU chỉ có một chính sách hiện hành.</p>
             </div>
           </div>
           <div className={styles.twoColumnForm}>
@@ -540,7 +438,7 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
                 <table className={styles.table}>
                   <thead>
                     <tr>
-                      <th>SKU cơ sở</th>
+                      <th>SKU</th>
                       <th>Lô</th>
                       <th>Hạn dùng</th>
                       <th>Vị trí</th>
@@ -555,8 +453,8 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
                           <div className={styles.mono}>{policy.base_sku}</div>
                           <div className={styles.subtle}>{policyLabel(policy)}</div>
                         </td>
-                        <td><span className={styles.pill}>{policy.lot_tracking_mode}</span></td>
-                        <td><span className={styles.pill}>{policy.expiry_tracking_mode}</span></td>
+                        <td><span className={styles.pill}>{lotTrackingLabel(policy.lot_tracking_mode)}</span></td>
+                        <td><span className={styles.pill}>{expiryTrackingLabel(policy.expiry_tracking_mode)}</span></td>
                         <td>{policy.location_required ? 'Bắt buộc' : 'Không bắt buộc'}</td>
                         <td className={styles.mono}>{String(policy.version)}</td>
                         <td>
@@ -586,12 +484,12 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
               <h3 className={styles.panelTitle}>Tạo hoặc sửa chính sách</h3>
               <div className={styles.formGrid}>
                 <label className={styles.field}>
-                  <span>Mã biến thể cơ sở</span>
+                  <span>Mã tham chiếu hàng hóa</span>
                   <input
                     className={styles.textInput}
                     value={policyDraft.baseVariantId}
                     onChange={(event) => setPolicyDraft((current) => ({ ...current, baseVariantId: event.target.value }))}
-                    placeholder="UUID biến thể cơ sở"
+                    placeholder="Nhập mã tham chiếu của SKU"
                     data-testid="inventory-policy-base-variant-input"
                   />
                 </label>
@@ -603,8 +501,8 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
                     onChange={(event) => setPolicyDraft((current) => ({ ...current, lotTrackingMode: event.target.value as PolicyDraft['lotTrackingMode'] }))}
                     data-testid="inventory-policy-lot-mode-select"
                   >
-                    <option value="NONE">NONE</option>
-                    <option value="REQUIRED">REQUIRED</option>
+                    <option value="NONE">Không quản lý theo lô</option>
+                    <option value="REQUIRED">Bắt buộc quản lý theo lô</option>
                   </select>
                 </label>
                 <label className={styles.field}>
@@ -615,18 +513,18 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
                     onChange={(event) => setPolicyDraft((current) => ({ ...current, expiryTrackingMode: event.target.value as PolicyDraft['expiryTrackingMode'] }))}
                     data-testid="inventory-policy-expiry-mode-select"
                   >
-                    <option value="NONE">NONE</option>
-                    <option value="OPTIONAL">OPTIONAL</option>
-                    <option value="REQUIRED">REQUIRED</option>
+                    <option value="NONE">Không quản lý hạn sử dụng</option>
+                    <option value="OPTIONAL">Có thể nhập hạn sử dụng</option>
+                    <option value="REQUIRED">Bắt buộc nhập hạn sử dụng</option>
                   </select>
                 </label>
                 <label className={styles.field}>
-                  <span>Phiên bản dự kiến</span>
+                  <span>Lần cập nhật</span>
                   <input
                     className={styles.textInput}
                     value={policyDraft.expectedVersion}
                     onChange={(event) => setPolicyDraft((current) => ({ ...current, expectedVersion: event.target.value }))}
-                    placeholder="Để trống khi tạo mới"
+                    placeholder="Tự điền khi chọn chính sách"
                     data-testid="inventory-policy-expected-version-input"
                   />
                 </label>
@@ -655,14 +553,14 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
           <div className={styles.sectionHeader}>
             <div className={styles.sectionTitleBlock}>
               <h2 className={styles.sectionTitle}>Lô hàng</h2>
-              <p className={styles.sectionCopy}>Danh sách lô chuẩn theo SKU cơ sở, có hạn dùng và metadata.</p>
+              <p className={styles.sectionCopy}>Danh sách lô hàng theo SKU, ngày sản xuất, hạn sử dụng và thông tin nguồn.</p>
             </div>
           </div>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
                 <tr>
-                      <th>SKU cơ sở</th>
+                      <th>SKU</th>
                   <th>Lô</th>
                   <th>Hạn dùng</th>
                   <th>Ngày SX</th>
@@ -695,105 +593,28 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
         <section className={styles.section} id="opening-balances" data-testid="inventory-opening-section">
           <div className={styles.sectionHeader}>
             <div className={styles.sectionTitleBlock}>
-              <h2 className={styles.sectionTitle}>Nhập tồn đầu kỳ</h2>
-              <p className={styles.sectionCopy}>Nhập JSON dòng chuẩn hóa, kiểm tra trước rồi ghi sổ nguyên tử vào sổ cái tồn kho.</p>
+              <h2 className={styles.sectionTitle}>Thiết lập tồn đầu kỳ</h2>
+              <p className={styles.sectionCopy}>Tải tệp mẫu, điền dữ liệu bằng Excel, kiểm tra và xác nhận trước khi ghi nhận.</p>
             </div>
+            <Link href="/inventory/opening-balances" className={styles.primaryAction}>Mở màn hình nhập tồn đầu kỳ</Link>
           </div>
-
-          <div className={styles.twoColumnForm}>
-            <form className={styles.panel} onSubmit={(event) => { event.preventDefault(); void validateOpeningBalance(); }} data-testid="inventory-opening-form">
-              <h3 className={styles.panelTitle}>Dữ liệu nhập</h3>
-              <div className={styles.formGrid}>
-                <label className={styles.field}>
-                  <span>Mã nguồn</span>
-                  <input className={styles.textInput} value={openingDraft.sourceKey} onChange={(event) => setOpeningDraft((current) => ({ ...current, sourceKey: event.target.value }))} data-testid="inventory-opening-source-key-input" />
-                </label>
-                <label className={styles.field}>
-                  <span>Tên tệp nguồn</span>
-                  <input className={styles.textInput} value={openingDraft.sourceFilename} onChange={(event) => setOpeningDraft((current) => ({ ...current, sourceFilename: event.target.value }))} data-testid="inventory-opening-source-filename-input" />
-                </label>
-                <label className={styles.field}>
-                  <span>Ngày chứng từ</span>
-                  <input type="date" className={styles.textInput} value={openingDraft.documentDate} onChange={(event) => setOpeningDraft((current) => ({ ...current, documentDate: event.target.value }))} data-testid="inventory-opening-document-date-input" />
-                </label>
-                <label className={styles.field}>
-                  <span>Metadata dạng JSON</span>
-                  <textarea className={styles.textarea} value={openingDraft.metadataText} onChange={(event) => setOpeningDraft((current) => ({ ...current, metadataText: event.target.value }))} data-testid="inventory-opening-metadata-input" />
-                </label>
-                <label className={`${styles.field} ${styles.fullWidth}`}>
-                  <span>Danh sách dòng dạng JSON</span>
-                  <textarea className={styles.textarea} value={openingDraft.rowsText} onChange={(event) => setOpeningDraft((current) => ({ ...current, rowsText: event.target.value }))} data-testid="inventory-opening-rows-input" />
-                  <span className={styles.fieldHint}>Mỗi dòng phải có warehouseId, sourceVariantId và sourceQuantity. lotCode / expiryDate dùng theo chính sách lô.</span>
-                </label>
-              </div>
-              <div className={styles.rowActions}>
-                <button type="submit" className={styles.secondaryAction} disabled={busy === 'opening-validate'} data-testid="inventory-opening-validate-button">
-                  {busy === 'opening-validate' ? 'Đang kiểm tra...' : 'Kiểm tra'}
-                </button>
-                <button type="button" className={styles.primaryAction} disabled={busy === 'opening-post' || (validation?.rowErrors?.length ?? 1) > 0} onClick={() => void postOpeningBalance()} data-testid="inventory-opening-post-button">
-                  {busy === 'opening-post' ? 'Đang ghi sổ...' : 'Ghi sổ nhập tồn'}
-                </button>
-              </div>
-            </form>
-
-            <aside className={styles.panel}>
-              <h3 className={styles.panelTitle}>Kết quả kiểm tra / ghi sổ</h3>
-              {validation ? (
-                <div className={styles.stack}>
-                  <div className={styles.banner}>
-                    <div className={styles.rowActions}>
-                      <span className={styles.pill}>{validation.totals.rowCount} dòng hợp lệ</span>
-                      <span className={styles.pill}>{validation.totals.sourceQuantityTotal}</span>
-                      <span className={styles.pill}>{validation.totals.baseQuantityTotal}</span>
-                    </div>
-                  </div>
-                  {validation.rowErrors.length > 0 ? (
-                    <ul className={styles.errorList}>
-                      {validation.rowErrors.map((rowError) => (
-                        <li key={`${rowError.lineNumber}-${rowError.code}`}>Dòng {rowError.lineNumber}: {rowError.message}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className={styles.subtle}>Không có lỗi dòng. Có thể ghi sổ ngay.</p>
-                )}
-              </div>
-              ) : (
-                <p className={styles.subtle}>Chưa kiểm tra dữ liệu.</p>
-              )}
-
-              {openingResult ? (
-                <div className={styles.banner} data-testid="inventory-opening-result">
-                  <p className={styles.panelTitle}>Kết quả ghi sổ</p>
-                  <div className={styles.subtle}>
-                    <div>{JSON.stringify(openingResult, null, 2)}</div>
-                  </div>
-                </div>
-              ) : null}
-
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Mã nguồn</th>
-                      <th>Trạng thái</th>
-                      <th>Ngày</th>
+          <div className={styles.panel}>
+            <h3 className={styles.panelTitle}>Lịch sử nhập tồn đầu kỳ</h3>
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead><tr><th>Mã đợt</th><th>Tệp nguồn</th><th>Số dòng</th><th>Thời gian</th></tr></thead>
+                <tbody>
+                  {filteredImports.length === 0 ? tableEmpty('Chưa có lần nhập nào.') : filteredImports.map((item) => (
+                    <tr key={item.id} data-testid={`inventory-opening-row-${item.source_key}`}>
+                      <td><strong>{item.source_key}</strong></td>
+                      <td>{item.source_filename ?? '—'}</td>
+                      <td>{item.row_count}</td>
+                      <td>{formatDateTime(item.created_at)}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {filteredImports.length === 0 ? tableEmpty('Chưa có import nào.') : filteredImports.map((item) => (
-                      <tr key={item.id} data-testid={`inventory-opening-row-${item.source_key}`}>
-                        <td>
-                          <div className={styles.mono}>{item.source_key}</div>
-                          <div className={styles.subtle}>{item.source_filename ?? '—'}</div>
-                        </td>
-                        <td>{item.status}</td>
-                        <td>{formatDateTime(item.created_at)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </aside>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
       </div>

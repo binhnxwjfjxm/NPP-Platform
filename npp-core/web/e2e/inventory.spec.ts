@@ -70,7 +70,7 @@ test.describe('Kho vận', () => {
 
     await page.goto('/inventory/balances');
     await expect(page.getByTestId('inventory-page')).toBeVisible();
-    await expect(page.getByTestId('inventory-balances-section').getByRole('heading', { name: 'Tra cứu tồn kho', exact: true })).toBeVisible();
+    await expect(page.getByTestId('inventory-balances-section').getByRole('heading', { name: 'Tồn kho', exact: true })).toBeVisible();
     await expect(page.getByTestId('inventory-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
 
     await page.goto('/inventory/tracking-policies');
