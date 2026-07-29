@@ -23,6 +23,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Align one-time codemod with current user workspace
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/office-language-codemod.mjs')
+          source = path.read_text()
+          source = source.replace(
+              "[\"user.is_active ? 'Vô hiệu' : 'Kích hoạt'\", \"user.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'\"],",
+              "[\"user.is_active ? 'Vô hiệu hóa' : 'Kích hoạt'\", \"user.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'\"],",
+          )
+          source = source.replace(
+              "[\"toggleState.nextActive ? 'Kích hoạt' : 'Vô hiệu'\", \"toggleState.nextActive ? 'Đưa vào sử dụng' : 'Ngừng sử dụng'\"],",
+              "['Tạo tài khoản nội bộ với tập vai trò trống.', 'Tạo tài khoản và hoàn thiện phân quyền sau khi lưu.'],\n  ['Chỉ trạng thái và tập vai trò có thể thay đổi.', 'Cập nhật trạng thái và vai trò được giao.'],\n  ['Kích hoạt lại người dùng này? Nhân sự liên kết phải đang hoạt động.', 'Đưa người dùng này vào sử dụng? Nhân sự liên kết phải đang hoạt động.'],\n  ['Vô hiệu hóa người dùng này? Các vai trò được giữ nguyên để phục vụ audit và có thể dùng lại khi kích hoạt.', 'Ngừng sử dụng người dùng này? Các vai trò được giữ nguyên để có thể dùng lại khi cần.'],",
+          )
+          path.write_text(source)
+          PY
       - name: Apply verified office-language replacements
         run: node scripts/office-language-codemod.mjs
       - name: Commit generated source changes
