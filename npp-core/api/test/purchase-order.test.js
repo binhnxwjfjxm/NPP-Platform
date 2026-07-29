@@ -131,8 +131,8 @@ test('Purchase order API completes draft, update, submit and approval exactly on
     const first = (await firstResponse.json()).data;
     assert.equal(first.status, 'draft');
     assert.equal(first.number, null);
-    assert.equal(first.total, '24750.625');
-    assert.equal(first.lines[0].baseQuantity, '2.5');
+    assert.equal(first.total, '24750.625000');
+    assert.equal(first.lines[0].baseQuantity, '2.500000');
 
     const replayResponse = await create();
     assert.equal(replayResponse.status, 201);
@@ -163,7 +163,7 @@ test('Purchase order API completes draft, update, submit and approval exactly on
     });
     assert.equal(updateResponse.status, 200);
     const updated = (await updateResponse.json()).data;
-    assert.equal(updated.total, '30000.75');
+    assert.equal(updated.total, '30000.750000');
     assert.equal(updated.revision, '2');
 
     const staleUpdate = await fetch(`${baseUrl}/api/purchase-orders/${first.id}`, {
