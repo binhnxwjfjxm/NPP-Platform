@@ -167,7 +167,8 @@ test.describe('Phiếu nhận hàng mua vào', () => {
     await editor.locator('input[inputmode="decimal"]').nth(0).fill('7');
     await editor.locator('input[inputmode="decimal"]').nth(1).fill('0');
     await page.getByTestId('goods-receipt-save-button').click();
-    await expect(page.getByRole('status')).toBeVisible();
+    await expect(editor).toHaveCount(0);
+    await expect(page.getByRole('status')).toContainText('Đã tạo phiếu nhận hàng nháp');
 
     await page.getByTestId('goods-receipt-search').fill(secondReference);
     receiptRow = page.getByTestId('goods-receipts-table').locator('tbody tr');
@@ -237,6 +238,8 @@ test.describe('Phiếu nhận hàng mua vào', () => {
     await expect(receiptRow).toHaveCount(1);
     await receiptRow.getByRole('button', { name: 'Ghi sổ', exact: true }).click();
     await page.getByTestId('goods-receipt-post-confirm').click();
+    await expect(receiptRow.getByRole('button')).toHaveCount(2);
+    await expect(page.getByRole('status')).toContainText('đã được ghi sổ');
 
     await page.goto('/purchasing/purchase-orders');
     await page.getByTestId('purchase-order-search').fill(fixture.purchaseOrder.number);
