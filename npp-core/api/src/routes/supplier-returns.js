@@ -242,7 +242,17 @@ async function executeIdempotentMutation(req, res, options, {
       execution.response.requestId ?? options.requestId,
       execution.response.contentType,
     );
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    if (message.includes('inventory_negative_stock_denied')) {
+      sendError(
+        res,
+        apiError('INSUFFICIENT_STOCK', 'Insufficient unreserved stock for the supplier return', {}, false, 409),
+        options.requestId,
+        options.receivedAt,
+      );
+      return;
+    }
     sendError(
       res,
       apiError('SUPPLIER_RETURN_TRANSACTION_FAILED', 'Supplier return transaction failed', {}, true, 503),

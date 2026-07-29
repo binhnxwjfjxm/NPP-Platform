@@ -192,7 +192,20 @@ function validateListInput(input) {
   if (input.warehouseId && !warehouseAllowed(input.requestContext, input.warehouseId)) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Warehouse is outside the authorized scope');
   }
-  return { ok: true, search };
+  const requestedLimit = Number(input.limit ?? 100);
+  const requestedOffset = Number(input.offset ?? 0);
+  if (!Number.isInteger(requestedLimit) || requestedLimit < 1) {
+    return failure('INVALID_PAGINATION', 'limit must be a positive integer');
+  }
+  if (!Number.isInteger(requestedOffset) || requestedOffset < 0) {
+    return failure('INVALID_PAGINATION', 'offset must be a non-negative integer');
+  }
+  return {
+    ok: true,
+    search,
+    limit: Math.min(requestedLimit, 200),
+    offset: Math.min(requestedOffset, 100000),
+  };
 }
 
 async function ensureSupplierReturnSeries(client, { installationId, actorId }) {
@@ -410,12 +423,12 @@ export async function listSupplierReturns(client, input) {
   if (!validation.ok) return validation;
   const supplierReturns = await repository.listSupplierReturns(client, {
     installationId: input.requestContext.installationId,
-    warehouseIds: warehouseScopeIds(input.requestContext),
+    warehouseIds: input.warehouseId ? [input.warehouseId.trim()] : warehouseScopeIds(input.requestContext),
     supplierId: input.supplierId || null,
     status: input.status || null,
     search: validation.search,
-    limit: input.limit,
-    offset: input.offset,
+    limit: validation.limit,
+    offset: validation.offset,
   });
   return Object.freeze({ ok: true, supplierReturns: Object.freeze(supplierReturns.map(mapReturn)) });
 }
@@ -555,6 +568,8 @@ export async function submitSupplierReturn(client, { requestContext, id, payload
   const expectedRevision = normalizeRevision(payload?.expectedRevision);
   if (!expectedRevision) return failure('EXPECTED_REVISION_REQUIRED', 'expectedRevision is required');
   if (String(current.raw.revision) !== expectedRevision) return failure('CONFLICT', 'Supplier return was changed by another request', true);
+  const lockResult = await lockSourceReceiptLines(client, requestContext, current.raw.lines ?? []);
+  if (!lockResult.ok) return lockResult;
   const validation = await validateLines(client, {
     requestContext,
     payload: {
@@ -728,14 +743,14 @@ export async function postSupplierReturn(client, { requestContext, id, payload, 
     requestContext,
     idempotencyKey,
     payload: {
-      movementType: 'SUPPLIER_RETURN',
+      movementType: 'SUPPLIER_RETURN_ISSUE',
       sourceDomain: 'PURCHASING',
       sourceDocumentType: 'SUPPLIER_RETURN',
       sourceDocumentId: current.raw.id,
       sourceDocumentNumber: allocation.allocation.document_number,
       documentDate: returnDate,
-      reasonCode: 'SUPPLIER_RETURN',
-      reasonNote: current.raw.note ?? 'Supplier return posted',
+      reasonCode: 'SUPPLIER_RETURN_ISSUE',
+      reasonNote: lineRows.map((line) => `${line.reason_code}: ${line.reason_note}`).join('; ').slice(0, 2000),
       metadata: {
         supplierReturnId: current.raw.id,
         supplierId: current.raw.supplier_id,

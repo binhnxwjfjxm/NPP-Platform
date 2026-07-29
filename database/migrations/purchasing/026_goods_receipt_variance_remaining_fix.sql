@@ -1,22 +1,32 @@
 -- Phase 5.3 follow-up: keep goods receipt remaining quantity projection based on accepted quantity.
+-- Only the draft-line immutability trigger is suspended for the deterministic backfill.
 
-ALTER TABLE purchasing.goods_receipt_lines DISABLE TRIGGER USER;
+ALTER TABLE purchasing.goods_receipt_lines DISABLE TRIGGER goods_receipt_lines_draft_only;
 
 ALTER TABLE purchasing.goods_receipt_lines
   DROP CONSTRAINT IF EXISTS goods_receipt_lines_variance_check;
 
 UPDATE purchasing.goods_receipt_lines
-SET remaining_quantity_after = GREATEST((remaining_quantity_before - accepted_quantity) - shortage_closed_quantity, 0),
-    quality_reason_code = CASE
-      WHEN finalize_line = true AND quality_reason_code IS NULL THEN 'SHORTAGE_CLOSED'
-      ELSE quality_reason_code
-    END,
-    quality_note = CASE
-      WHEN finalize_line = true AND quality_note IS NULL THEN 'Shortage closed during migration alignment'
-      ELSE quality_note
-    END
-WHERE remaining_quantity_after IS DISTINCT FROM GREATEST((remaining_quantity_before - accepted_quantity) - shortage_closed_quantity, 0)
-   OR (finalize_line = true AND (quality_reason_code IS NULL OR quality_note IS NULL));
+SET remaining_quantity_after = GREATEST((remaining_quantity_before - accepted_quantity) - shortage_closed_quantity, 0)
+WHERE remaining_quantity_after IS DISTINCT FROM GREATEST((remaining_quantity_before - accepted_quantity) - shortage_closed_quantity, 0);
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+      FROM purchasing.goods_receipt_lines
+     WHERE (rejected_quantity > 0 OR shortage_closed_quantity > 0)
+       AND (
+         quality_reason_code IS NULL
+         OR quality_note IS NULL
+         OR char_length(btrim(quality_reason_code)) NOT BETWEEN 1 AND 64
+         OR char_length(btrim(quality_note)) NOT BETWEEN 1 AND 2000
+       )
+  ) THEN
+    RAISE EXCEPTION 'goods_receipt_variance_reason_remediation_required';
+  END IF;
+END;
+$$;
 
 ALTER TABLE purchasing.goods_receipt_lines
   ADD CONSTRAINT goods_receipt_lines_variance_check CHECK (
@@ -44,4 +54,4 @@ ALTER TABLE purchasing.goods_receipt_lines
     AND remaining_quantity_after = GREATEST((remaining_quantity_before - accepted_quantity) - shortage_closed_quantity, 0)
   );
 
-ALTER TABLE purchasing.goods_receipt_lines ENABLE TRIGGER USER;
+ALTER TABLE purchasing.goods_receipt_lines ENABLE TRIGGER goods_receipt_lines_draft_only;

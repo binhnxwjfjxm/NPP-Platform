@@ -348,7 +348,8 @@ BEGIN
 
   SELECT status INTO current_status
   FROM purchasing.supplier_returns
-  WHERE installation_id = target_installation AND id = target_return;
+  WHERE installation_id = target_installation AND id = target_return
+  FOR NO KEY UPDATE;
 
   IF current_status IS DISTINCT FROM 'draft' THEN
     RAISE EXCEPTION 'supplier_returns_locked';

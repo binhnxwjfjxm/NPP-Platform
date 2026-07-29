@@ -109,7 +109,7 @@ function normalizeDecimalInput(value: string): string {
 function buildDraftLineFromSourceLine(line: SourceLine): DraftLine {
   return {
     sourceGoodsReceiptLineId: line.sourceGoodsReceiptLineId,
-    returnQuantity: line.returnableQuantity ?? line.sourceAcceptedQuantity,
+    returnQuantity: '',
     reasonCode: '',
     reasonNote: '',
     note: '',
@@ -312,9 +312,15 @@ export default function SupplierReturnWorkspace({
       setError('Chưa có phiếu nhận hàng đã ghi sổ để tạo phiếu trả.');
       return;
     }
-    const targetReceipt = receiptId
-      ? initialGoodsReceipts.find((receipt) => receipt.id === receiptId) ?? firstReceipt
-      : firstReceipt;
+    let targetReceipt = firstReceipt;
+    if (receiptId) {
+      const matchedReceipt = initialGoodsReceipts.find((receipt) => receipt.id === receiptId);
+      if (!matchedReceipt) {
+        setError('Không tìm thấy phiếu nhận hàng nguồn được yêu cầu trong phạm vi truy cập.');
+        return;
+      }
+      targetReceipt = matchedReceipt;
+    }
     setEditor({
       mode: 'create',
       supplierReturn: null,
@@ -383,18 +389,27 @@ export default function SupplierReturnWorkspace({
     }
     const supplierId = sourceLinesResult[0]?.sourceSupplierId ?? '';
     const warehouseId = sourceLinesResult[0]?.sourceWarehouseId ?? '';
-    for (const line of editor.lines) {
+    const selectedLines = editor.lines.filter((line) => {
+      const quantity = Number(normalizeDecimalInput(line.returnQuantity));
+      return Number.isFinite(quantity) && quantity > 0;
+    });
+    if (selectedLines.length === 0) {
+      setError('Vui lòng nhập số lượng trả hợp lệ cho ít nhất một dòng.');
+      return;
+    }
+    for (const line of selectedLines) {
       if (!line.sourceGoodsReceiptLineId) {
         setError('Vui lòng chọn đúng dòng phiếu nhận hàng cho từng mặt hàng.');
         return;
       }
       const quantity = Number(normalizeDecimalInput(line.returnQuantity));
-      if (!Number.isFinite(quantity) || quantity <= 0) {
-        setError('Vui lòng nhập số lượng trả hợp lệ cho ít nhất một dòng.');
+      const returnable = Number(line.returnableQuantity);
+      if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(returnable) || quantity > returnable) {
+        setError('Số lượng trả phải lớn hơn 0 và không vượt quá số lượng còn có thể trả.');
         return;
       }
       if (!line.reasonCode.trim() || !line.reasonNote.trim()) {
-        setError('Mỗi dòng trả phải có mã lý do và ghi chú lý do.');
+        setError('Mỗi dòng được chọn phải có mã lý do và ghi chú lý do.');
         return;
       }
     }
@@ -406,7 +421,7 @@ export default function SupplierReturnWorkspace({
         warehouseId,
         returnDate: editor.returnDate,
         note: editor.note,
-        lines: editor.lines.map((line) => ({
+        lines: selectedLines.map((line) => ({
           sourceGoodsReceiptLineId: line.sourceGoodsReceiptLineId,
           returnQuantity: normalizeDecimalInput(line.returnQuantity),
           reasonCode: line.reasonCode.trim(),
@@ -449,6 +464,10 @@ export default function SupplierReturnWorkspace({
       setError('Vui lòng nhập lý do hủy phiếu.');
       return;
     }
+    if (action === 'reverse' && !reverseReason.trim()) {
+      setError('Vui lòng nhập lý do đảo phiếu.');
+      return;
+    }
     setBusyId(supplierReturn.id);
     setError(null);
     try {
@@ -470,7 +489,7 @@ export default function SupplierReturnWorkspace({
             ...(action === 'cancel' ? { reason: cancellationReason.trim() } : {}),
             ...(action === 'post' ? { reasonNote: postReason.trim(), documentDate: postDate } : {}),
             ...(action === 'reverse' ? {
-              reasonNote: reverseReason.trim() || supplierReturn.note?.trim() || 'Đảo phiếu',
+              reasonNote: reverseReason.trim(),
               documentDate: reverseDate,
             } : {}),
           }),
@@ -863,7 +882,7 @@ export default function SupplierReturnWorkspace({
                 </div>
                 <div className={`${styles.form} ${localStyles.spanTwo}`}>
                   <label>Lý do đảo</label>
-                  <input value={reverseReason} onChange={(event) => setReverseReason(event.target.value)} />
+                  <input data-testid="supplier-return-reverse-reason" value={reverseReason} onChange={(event) => setReverseReason(event.target.value)} />
                 </div>
               </div>
             ) : null}

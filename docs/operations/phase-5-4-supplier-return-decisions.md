@@ -127,7 +127,7 @@ Backend tự lấy snapshot nguồn từ posted goods receipt line và snapshot 
 - Trang: `/purchasing/supplier-returns`
 - Danh sách hiển thị số phiếu, nhà cung cấp, kho, ngày trả, trạng thái, số dòng, tổng số lượng và hành động.
 - Tạo mới đi từ posted goods receipt qua source-lines.
-- Modal post/reverse phải cho phép đi tiếp với giá trị mặc định khi người dùng không nhập ghi chú lý do.
+- Ghi chú post là tùy chọn; modal reverse bắt buộc người dùng nhập lý do không rỗng và không tự tạo fallback.
 - Sau submit/approve/post/reverse, danh sách phải phản ánh trạng thái mới ngay trên cùng dòng đang xem.
 
 ## 9. Verifications đã chốt

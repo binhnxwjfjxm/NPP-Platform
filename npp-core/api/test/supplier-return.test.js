@@ -313,6 +313,14 @@ test('Supplier return lifecycle keeps trusted snapshots and blocks goods receipt
     const postedReturn = await data(response);
     assert.equal(postedReturn.status, 'posted');
     assert.match(postedReturn.documentNumber, /^SR-202607-\d{6}$/);
+    const postedMovement = await pool.query(
+      `SELECT movement_type, direction
+         FROM inventory.inventory_movements
+        WHERE installation_id = $1 AND id = $2`,
+      [config.installationId, postedReturn.inventoryMovementId],
+    );
+    assert.equal(postedMovement.rows[0].movement_type, 'SUPPLIER_RETURN_ISSUE');
+    assert.equal(postedMovement.rows[0].direction, 'OUT');
 
     const balanceAfterPost = await pool.query(
       `SELECT on_hand_quantity::text AS on_hand_quantity
@@ -394,6 +402,80 @@ test('Supplier return lifecycle keeps trusted snapshots and blocks goods receipt
     assert.equal(activeReturns.status, 200);
     const postedList = await data(activeReturns);
     assert.equal(postedList.length, 0);
+  } finally {
+    if (server) await closeServer(server);
+    await closePool();
+  }
+});
+
+
+test('draft supplier return does not block receipt reversal and cannot submit afterwards', async () => {
+  const config = loadConfig(testEnv({ PORT: '3080' }));
+  const pool = getPool(config);
+  let server;
+  try {
+    const fixture = await seedFixture(pool, config.installationId);
+    await pool.query(
+      `UPDATE shared.product_variants
+          SET unit_id = CASE WHEN id = $2 THEN $4::uuid ELSE $5::uuid END,
+              conversion_to_base = CASE WHEN id = $2 THEN 1 ELSE 12 END,
+              updated_at = now()
+        WHERE installation_id = $1 AND id IN ($2::uuid, $3::uuid)`,
+      [
+        config.installationId,
+        fixture.baseVariantId,
+        fixture.cartonVariantId,
+        fixture.unitId,
+        fixture.cartonUnitId,
+      ],
+    );
+    server = await startServer({ config });
+    const baseUrl = `http://${config.host}:${config.port}`;
+    const purchaseOrder = await createApprovedPurchaseOrder(baseUrl, config, fixture);
+    const goodsReceipt = await createPostedGoodsReceipt(baseUrl, config, fixture, purchaseOrder);
+    const sourceResponse = await fetch(
+      `${baseUrl}/api/supplier-returns/source-lines?goodsReceiptId=${goodsReceipt.id}`,
+      { headers: readHeaders(config) },
+    );
+    assert.equal(sourceResponse.status, 200);
+    const sourceLines = await data(sourceResponse);
+
+    const createResponse = await fetch(`${baseUrl}/api/supplier-returns`, {
+      method: 'POST',
+      headers: mutationHeaders(config, `sr-draft-create-${randomUUID()}`),
+      body: JSON.stringify({
+        supplierId: fixture.supplierId,
+        warehouseId: fixture.warehouseId,
+        returnDate: '2026-07-29',
+        lines: [{
+          sourceGoodsReceiptLineId: sourceLines[0].sourceGoodsReceiptLineId,
+          returnQuantity: '1',
+          reasonCode: 'OTHER',
+          reasonNote: 'Draft concurrency regression',
+        }],
+      }),
+    });
+    assert.equal(createResponse.status, 201);
+    const draftReturn = await data(createResponse);
+
+    const reverseResponse = await fetch(`${baseUrl}/api/goods-receipts/${goodsReceipt.id}/reverse`, {
+      method: 'POST',
+      headers: mutationHeaders(config, `sr-draft-gr-reverse-${randomUUID()}`),
+      body: JSON.stringify({
+        expectedRevision: goodsReceipt.revision,
+        documentDate: '2026-07-29',
+        reasonNote: 'Draft return must not block',
+      }),
+    });
+    assert.equal(reverseResponse.status, 200);
+
+    const submitResponse = await fetch(`${baseUrl}/api/supplier-returns/${draftReturn.id}/submit`, {
+      method: 'POST',
+      headers: mutationHeaders(config, `sr-draft-submit-${randomUUID()}`),
+      body: JSON.stringify({ expectedRevision: draftReturn.revision }),
+    });
+    assert.equal(submitResponse.status, 409);
+    assert.equal(await errorCode(submitResponse), 'SOURCE_RECEIPT_NOT_POSTED');
   } finally {
     if (server) await closeServer(server);
     await closePool();

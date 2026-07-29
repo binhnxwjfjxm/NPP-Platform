@@ -218,7 +218,36 @@ test.describe('Phiếu trả nhà cung cấp', () => {
     await expect(row).toContainText('Đã ghi sổ');
 
     await row.getByRole('button', { name: 'Đảo phiếu', exact: true }).click();
+    await page.getByTestId('supplier-return-reverse-reason').fill('Đảo phiếu trả do kiểm thử');
     await page.getByTestId('supplier-return-reverse-confirm').click();
     await expect(row).toContainText('Đã đảo');
   });
+
+  test('hủy phiếu nháp với lý do bắt buộc', async ({ page, request }) => {
+    const suffix = uniqueSuffix();
+    const fixture = await createFixture(request, suffix);
+    const editor = await openReturnEditor(page, fixture.goodsReceipt.documentNumber);
+    const line = editor.getByRole('row').filter({ hasText: fixture.goodsReceipt.documentNumber }).first();
+    await line.locator('input').nth(0).fill('1');
+    await line.locator('input').nth(1).fill('OTHER');
+    await line.locator('input').nth(2).fill('Hủy để kiểm thử');
+    await editor.getByTestId('supplier-return-save').click();
+
+    const row = page.getByTestId('supplier-returns-table').locator('tbody tr').first();
+    await row.getByRole('button', { name: 'Hủy', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Phiếu chưa cấp số' });
+    await dialog.locator('input').fill('Không tiếp tục trả hàng');
+    await page.getByTestId('supplier-return-cancel-confirm').click();
+    await expect(row).toContainText('Đã hủy');
+  });
+
+  test('mobile smoke mở được trình tạo phiếu trả', async ({ page, request }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const suffix = uniqueSuffix();
+    const fixture = await createFixture(request, suffix);
+    const editor = await openReturnEditor(page, fixture.goodsReceipt.documentNumber);
+    await expect(editor).toBeVisible();
+    await expect(editor.getByTestId('supplier-return-save')).toBeVisible();
+  });
+
 });
