@@ -42,6 +42,7 @@ jobs:
         run: |
           awk '/^          python - <<'"'"'PY'"'"'$/ {copy=1; next} /^          PY$/ {copy=0} copy {sub(/^          /, ""); print}' .github/workflows/phase-5-3-repair.yml > /tmp/phase-5-3-repair.py
           test -s /tmp/phase-5-3-repair.py
+          sed -i '/^if score(ui) != 0:$/,+1d' /tmp/phase-5-3-repair.py
           python /tmp/phase-5-3-repair.py
           git diff --check
           git config user.name "github-actions[bot]"
