@@ -9,6 +9,7 @@ import type { Supplier } from '../../../lib/supplier-types';
 import type { Product } from '../../../lib/product-types';
 import type { Warehouse } from '../../../lib/organization-types';
 import type { PurchaseOrder, PurchaseOrderStatus } from '../../../lib/purchase-order-types';
+import type { GoodsReceipt } from '../../../lib/goods-receipt-types';
 import {
   formatDecimalString,
   formatPurchaseOrderAmount,
@@ -16,6 +17,10 @@ import {
   purchaseOrderActionPolicy,
   PURCHASE_ORDER_STATUS_LABELS,
 } from '../../../lib/purchase-order-types';
+import {
+  formatGoodsReceiptDate,
+  GOODS_RECEIPT_STATUS_LABELS,
+} from '../../../lib/goods-receipt-types';
 import PurchaseOrderList from './components/PurchaseOrderList';
 import PurchaseOrderEditor from './components/PurchaseOrderEditor';
 
@@ -84,6 +89,9 @@ export default function PurchaseOrderWorkspace({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [selectedPurchaseOrder, setSelectedPurchaseOrder] = useState<PurchaseOrder | null>(null);
+  const [selectedReceipts, setSelectedReceipts] = useState<GoodsReceipt[]>([]);
+  const [receiptSummaryLoading, setReceiptSummaryLoading] = useState(false);
+  const [receiptSummaryError, setReceiptSummaryError] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditorState>(null);
   const [pendingAction, setPendingAction] = useState<ActionState>(null);
   const [cancellationReason, setCancellationReason] = useState('');
@@ -123,6 +131,13 @@ export default function PurchaseOrderWorkspace({
     if (selectedPurchaseOrder || pendingAction) closeButtonRef.current?.focus();
   }, [pendingAction, selectedPurchaseOrder]);
 
+  function closeDetail() {
+    setSelectedPurchaseOrder(null);
+    setSelectedReceipts([]);
+    setReceiptSummaryError(null);
+    setReceiptSummaryLoading(false);
+  }
+
   function upsertOrder(purchaseOrder: PurchaseOrder) {
     setItems((current) => {
       const index = current.findIndex((item) => item.id === purchaseOrder.id);
@@ -160,7 +175,19 @@ export default function PurchaseOrderWorkspace({
 
   async function openView(purchaseOrder: PurchaseOrder) {
     const detail = await loadDetail(purchaseOrder);
-    if (detail) setSelectedPurchaseOrder(detail);
+    if (!detail) return;
+    setSelectedPurchaseOrder(detail);
+    setSelectedReceipts([]);
+    setReceiptSummaryError(null);
+    setReceiptSummaryLoading(true);
+    try {
+      const receipts = await requestJson<GoodsReceipt[]>(`/api/goods-receipts?purchaseOrderId=${encodeURIComponent(detail.id)}&limit=1000`);
+      setSelectedReceipts(receipts);
+    } catch (loadError) {
+      setReceiptSummaryError(loadError instanceof Error ? loadError.message : 'Không tải được lịch sử nhận hàng');
+    } finally {
+      setReceiptSummaryLoading(false);
+    }
   }
 
   async function openEdit(purchaseOrder: PurchaseOrder) {
@@ -334,11 +361,11 @@ export default function PurchaseOrderWorkspace({
       ) : null}
 
       {selectedPurchaseOrder ? (
-        <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setSelectedPurchaseOrder(null); }} onKeyDown={(event) => { if (event.key === 'Escape') setSelectedPurchaseOrder(null); }}>
+        <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeDetail(); }} onKeyDown={(event) => { if (event.key === 'Escape') closeDetail(); }}>
           <section className={`${styles.modal} ${localStyles.detailModal}`} role="dialog" aria-modal="true" aria-labelledby="purchase-order-detail-title">
             <div className={styles.modalHeader}>
               <div><p className={styles.panelKicker}>Chi tiết đơn đặt hàng</p><h3 id="purchase-order-detail-title">{selectedPurchaseOrder.number || 'Đơn chưa cấp số'}</h3></div>
-              <button ref={closeButtonRef} type="button" className={styles.modalClose} onClick={() => setSelectedPurchaseOrder(null)}>Đóng</button>
+              <button ref={closeButtonRef} type="button" className={styles.modalClose} onClick={closeDetail}>Đóng</button>
             </div>
             <div className={localStyles.detailGrid}>
               <div className={localStyles.detailItem}><span>Trạng thái</span><strong>{PURCHASE_ORDER_STATUS_LABELS[selectedPurchaseOrder.status]}</strong></div>
@@ -350,6 +377,31 @@ export default function PurchaseOrderWorkspace({
               <div className={localStyles.detailItem}><span>Số phiếu nhận</span><strong>{formatDecimalString(String(selectedPurchaseOrder.receiptCount ?? 0))}</strong></div>
               <div className={localStyles.detailItem}><span>Đã nhận</span><strong>{formatDecimalString(selectedPurchaseOrder.receivedQuantityTotal ?? '0')}</strong></div>
               <div className={localStyles.detailItem}><span>Còn lại</span><strong>{formatDecimalString(selectedPurchaseOrder.remainingQuantityTotal ?? '0')}</strong></div>
+            </div>
+            <div className={localStyles.linesWrap}>
+              <div className={styles.sectionHeader}>
+                <div><p className={styles.panelKicker}>Lịch sử nhận hàng</p><h4>Phiếu nhận của đơn</h4></div>
+                <span className={styles.panelChip}>{formatDecimalString(String(selectedReceipts.length))} phiếu</span>
+              </div>
+              {receiptSummaryLoading ? <p role="status">Đang tải lịch sử nhận hàng…</p> : null}
+              {receiptSummaryError ? <div className={`${styles.banner} ${styles.bannerError}`} role="alert">{receiptSummaryError}</div> : null}
+              {!receiptSummaryLoading && !receiptSummaryError && selectedReceipts.length === 0 ? <p>Chưa có phiếu nhận hàng.</p> : null}
+              {selectedReceipts.length > 0 ? (
+                <table className={localStyles.linesTable} data-testid="purchase-order-receipts-table">
+                  <thead><tr><th>Số phiếu</th><th>Ngày nhận</th><th>Trạng thái</th><th>Tham chiếu NCC</th><th>Số lượng nhận</th></tr></thead>
+                  <tbody>
+                    {selectedReceipts.map((receipt) => (
+                      <tr key={receipt.id}>
+                        <td>{receipt.documentNumber || 'Chưa cấp số'}</td>
+                        <td>{formatGoodsReceiptDate(receipt.receiptDate)}</td>
+                        <td>{GOODS_RECEIPT_STATUS_LABELS[receipt.status]}</td>
+                        <td>{receipt.supplierDeliveryReference || 'Không có'}</td>
+                        <td>{formatDecimalString(receipt.receivedQuantityTotal)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : null}
             </div>
             <div className={localStyles.linesWrap}>
               <table className={localStyles.linesTable}>
@@ -378,7 +430,7 @@ export default function PurchaseOrderWorkspace({
               <div className={localStyles.totalCard}><span>Thuế</span><strong>{formatPurchaseOrderAmount(selectedPurchaseOrder.taxTotal, selectedPurchaseOrder.currency)}</strong></div>
               <div className={localStyles.totalCard}><span>Tổng cộng</span><strong>{formatPurchaseOrderAmount(selectedPurchaseOrder.total, selectedPurchaseOrder.currency)}</strong></div>
             </div>
-            <div className={localStyles.modalActions}><button type="button" className={styles.secondaryButton} onClick={() => setSelectedPurchaseOrder(null)}>Đóng chi tiết</button></div>
+            <div className={localStyles.modalActions}><button type="button" className={styles.secondaryButton} onClick={closeDetail}>Đóng chi tiết</button></div>
           </section>
         </div>
       ) : null}
