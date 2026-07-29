@@ -186,15 +186,17 @@ function normalizeInputLine(line, index) {
   if (receivedQuantity === null) {
     return failure('INVALID_RECEIVED_QUANTITY', `Line ${index + 1} receivedQuantity must be a positive decimal`);
   }
-  const locationId = line.locationId === undefined || line.locationId === null || line.locationId === ''
+  const rawLocationId = line.locationId ?? line.location_id;
+  const locationId = rawLocationId === undefined || rawLocationId === null || rawLocationId === ''
     ? null
-    : String(line.locationId).trim();
+    : String(rawLocationId).trim();
   if (locationId && !isUuid(locationId)) {
     return failure('INVALID_LOCATION_ID', `Line ${index + 1} locationId is invalid`);
   }
-  const lotId = line.lotId === undefined || line.lotId === null || line.lotId === ''
+  const rawLotId = line.lotId ?? line.lot_id;
+  const lotId = rawLotId === undefined || rawLotId === null || rawLotId === ''
     ? null
-    : String(line.lotId).trim();
+    : String(rawLotId).trim();
   if (lotId && !isUuid(lotId)) {
     return failure('INVALID_LOT_ID', `Line ${index + 1} lotId is invalid`);
   }
