@@ -40,6 +40,9 @@ export interface PurchaseOrderLine {
   quantity: string;
   baseQuantity: string;
   receivedQuantity?: string;
+  acceptedQuantity?: string;
+  rejectedQuantity?: string;
+  shortageClosedQuantity?: string;
   remainingQuantity?: string;
   unitPrice: string;
   discountAmount: string;
@@ -71,6 +74,9 @@ export interface PurchaseOrder {
   lineCount: number;
   receiptCount: number;
   receivedQuantityTotal: string | null;
+  acceptedQuantityTotal: string | null;
+  rejectedQuantityTotal: string | null;
+  shortageClosedQuantityTotal: string | null;
   remainingQuantityTotal: string | null;
   submittedAt: string | null;
   submittedBy: string | null;

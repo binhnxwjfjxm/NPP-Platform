@@ -18,7 +18,9 @@ const LINE_COLUMNS = `grl.id, grl.installation_id, grl.goods_receipt_id,
   grl.variant_id, grl.sku_snapshot, grl.item_name_snapshot,
   grl.unit_id, grl.unit_code_snapshot, grl.conversion_to_base,
   grl.ordered_quantity, grl.received_quantity_before, grl.remaining_quantity_before,
-  grl.received_quantity, grl.base_quantity, grl.remaining_quantity_after,
+  grl.received_quantity, grl.accepted_quantity, grl.rejected_quantity,
+  grl.shortage_closed_quantity, grl.finalize_line, grl.quality_reason_code,
+  grl.quality_note, grl.base_quantity, grl.remaining_quantity_after,
   grl.location_id, grl.lot_id, grl.lot_code_snapshot, grl.manufactured_date,
   grl.expiry_date, grl.supplier_lot_reference, grl.note,
   grl.created_at, grl.updated_at, grl.created_by, grl.updated_by,
@@ -42,6 +44,9 @@ async function getReceiptSummary(client, { installationId, receiptId }) {
     `SELECT
        COUNT(*)::int AS line_count,
        COALESCE(SUM(grl.received_quantity), 0::numeric) AS received_quantity_total,
+       COALESCE(SUM(grl.accepted_quantity), 0::numeric) AS accepted_quantity_total,
+       COALESCE(SUM(grl.rejected_quantity), 0::numeric) AS rejected_quantity_total,
+       COALESCE(SUM(grl.shortage_closed_quantity), 0::numeric) AS shortage_closed_quantity_total,
        COALESCE(SUM(grl.base_quantity), 0::numeric) AS base_quantity_total
      FROM purchasing.goods_receipt_lines grl
      WHERE grl.installation_id = $1 AND grl.goods_receipt_id = $2`,
@@ -63,6 +68,9 @@ export async function listGoodsReceipts(client, {
   let query = `SELECT ${HEADER_COLUMNS},
       COALESCE(summary.line_count, 0)::int AS line_count,
       COALESCE(summary.received_quantity_total, 0::numeric) AS received_quantity_total,
+      COALESCE(summary.accepted_quantity_total, 0::numeric) AS accepted_quantity_total,
+      COALESCE(summary.rejected_quantity_total, 0::numeric) AS rejected_quantity_total,
+      COALESCE(summary.shortage_closed_quantity_total, 0::numeric) AS shortage_closed_quantity_total,
       COALESCE(summary.base_quantity_total, 0::numeric) AS base_quantity_total
     FROM purchasing.goods_receipts gr
     JOIN purchasing.purchase_orders po
@@ -75,6 +83,9 @@ export async function listGoodsReceipts(client, {
       SELECT grl.goods_receipt_id,
              COUNT(*)::int AS line_count,
              COALESCE(SUM(grl.received_quantity), 0::numeric) AS received_quantity_total,
+             COALESCE(SUM(grl.accepted_quantity), 0::numeric) AS accepted_quantity_total,
+             COALESCE(SUM(grl.rejected_quantity), 0::numeric) AS rejected_quantity_total,
+             COALESCE(SUM(grl.shortage_closed_quantity), 0::numeric) AS shortage_closed_quantity_total,
              COALESCE(SUM(grl.base_quantity), 0::numeric) AS base_quantity_total
       FROM purchasing.goods_receipt_lines grl
       WHERE grl.installation_id = $1
@@ -147,6 +158,9 @@ export async function getGoodsReceiptById(client, {
     ...receipt,
     line_count: summary?.line_count ?? 0,
     received_quantity_total: summary?.received_quantity_total ?? '0',
+    accepted_quantity_total: summary?.accepted_quantity_total ?? '0',
+    rejected_quantity_total: summary?.rejected_quantity_total ?? '0',
+    shortage_closed_quantity_total: summary?.shortage_closed_quantity_total ?? '0',
     base_quantity_total: summary?.base_quantity_total ?? '0',
     lines: await getGoodsReceiptLines(client, { installationId, receiptId: id }),
   };
@@ -170,6 +184,12 @@ function lineParameters(line, actorId, now) {
     line.receivedQuantityBefore,
     line.remainingQuantityBefore,
     line.receivedQuantity,
+    line.acceptedQuantity,
+    line.rejectedQuantity,
+    line.shortageClosedQuantity,
+    line.finalizeLine,
+    line.qualityReasonCode,
+    line.qualityNote,
     line.baseQuantity,
     line.remainingQuantityAfter,
     line.locationId,
@@ -208,14 +228,15 @@ export async function insertGoodsReceiptDraft(client, data) {
   for (const line of data.lines) {
     await client.query(
       `INSERT INTO purchasing.goods_receipt_lines
-        (id, installation_id, goods_receipt_id, purchase_order_line_id, warehouse_id,
+       (id, installation_id, goods_receipt_id, purchase_order_line_id, warehouse_id,
          line_number, variant_id, sku_snapshot, item_name_snapshot, unit_id,
          unit_code_snapshot, conversion_to_base, ordered_quantity,
          received_quantity_before, remaining_quantity_before, received_quantity,
-         base_quantity, remaining_quantity_after, location_id, lot_id,
-         lot_code_snapshot, manufactured_date, expiry_date, supplier_lot_reference,
-         note, created_at, updated_at, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$26,$27,$27)`,
+         accepted_quantity, rejected_quantity, shortage_closed_quantity, finalize_line,
+         quality_reason_code, quality_note, base_quantity, remaining_quantity_after,
+         location_id, lot_id, lot_code_snapshot, manufactured_date, expiry_date,
+         supplier_lot_reference, note, created_at, updated_at, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$32,$33,$33)`,
       lineParameters({ ...line, goodsReceiptId: id }, data.actorId, now),
     );
   }
@@ -235,14 +256,15 @@ export async function replaceGoodsReceiptLines(client, data) {
   for (const line of data.lines) {
     await client.query(
       `INSERT INTO purchasing.goods_receipt_lines
-        (id, installation_id, goods_receipt_id, purchase_order_line_id, warehouse_id,
+       (id, installation_id, goods_receipt_id, purchase_order_line_id, warehouse_id,
          line_number, variant_id, sku_snapshot, item_name_snapshot, unit_id,
          unit_code_snapshot, conversion_to_base, ordered_quantity,
          received_quantity_before, remaining_quantity_before, received_quantity,
-         base_quantity, remaining_quantity_after, location_id, lot_id,
-         lot_code_snapshot, manufactured_date, expiry_date, supplier_lot_reference,
-         note, created_at, updated_at, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$26,$27,$27)`,
+         accepted_quantity, rejected_quantity, shortage_closed_quantity, finalize_line,
+         quality_reason_code, quality_note, base_quantity, remaining_quantity_after,
+         location_id, lot_id, lot_code_snapshot, manufactured_date, expiry_date,
+         supplier_lot_reference, note, created_at, updated_at, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$32,$33,$33)`,
       lineParameters({ ...line, goodsReceiptId: data.goodsReceiptId }, data.actorId, now),
     );
   }

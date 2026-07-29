@@ -87,6 +87,7 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.coreGoodsReceiptUpdate,
       PERMISSIONS.coreGoodsReceiptPost,
       PERMISSIONS.coreGoodsReceiptReverse,
+      PERMISSIONS.coreGoodsReceiptVariance,
     ],
     sourceApp: 'npp-core-api',
   });

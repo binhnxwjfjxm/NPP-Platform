@@ -13,7 +13,12 @@ import {
   goodsReceiptActionPolicy,
 } from '../../../lib/goods-receipt-types';
 import type { Warehouse, WarehouseLocation } from '../../../lib/organization-types';
-import { formatDecimalString, PURCHASE_ORDER_STATUS_LABELS } from '../../../lib/purchase-order-types';
+import {
+  decimalToScaled,
+  formatDecimalString,
+  PURCHASE_ORDER_STATUS_LABELS,
+  scaledToDecimal,
+} from '../../../lib/purchase-order-types';
 
 type Props = {
   initialGoodsReceipts: GoodsReceipt[];
@@ -36,6 +41,11 @@ type DraftLine = GoodsReceiptDraftLine & {
   orderedQuantity: string;
   receivedQuantityBefore: string;
   remainingQuantityBefore: string;
+  acceptedQuantity: string;
+  rejectedQuantity: string;
+  finalizeLine: boolean;
+  qualityReasonCode: string;
+  qualityNote: string;
 };
 
 type PurchaseOrderLine = NonNullable<PurchaseOrder['lines']>[number];
@@ -73,7 +83,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       ...(init?.headers || {}),
     },
-  });
+});
   const payload = await response.json().catch(() => ({})) as ApiEnvelope<T>;
   if (!response.ok || payload.data === undefined) {
     throw new Error(payload.error?.message || 'Không thực hiện được yêu cầu phiếu nhận hàng');
@@ -88,7 +98,7 @@ function actionLabel(action: ActionName) {
 function actionMessage(action: ActionName, goodsReceipt: GoodsReceipt) {
   const identifier = goodsReceipt.documentNumber || 'phiếu chưa cấp số';
   if (action === 'post') {
-    return `Ghi sổ ${identifier}? Hàng sẽ đi vào tồn kho ngay sau khi xác nhận.`;
+    return `Ghi sổ ${identifier}? Phần chấp nhận sẽ vào tồn kho; phần loại hoặc chốt thiếu chỉ được ghi nhận trên phiếu.`;
   }
   return `Đảo ${identifier}? Hệ thống sẽ tạo chứng từ bù và trừ tồn kho ngược lại.`;
 }
@@ -97,9 +107,20 @@ function normalizeDecimalInput(value: string): string {
   const trimmed = value.trim();
   return trimmed || '0';
 }
+function decimalSum(...values: Array<string | null | undefined>): string {
+  let total = 0n;
+  for (const value of values) {
+    total += decimalToScaled(normalizeDecimalInput(String(value ?? '0')), true) ?? 0n;
+  }
+  return scaledToDecimal(total);
+}
+function decimalPositive(value: string | null | undefined): boolean {
+  return (decimalToScaled(normalizeDecimalInput(String(value ?? '0')), false) ?? 0n) > 0n;
+}
 
 function buildDraftLineFromOrderLine(line: PurchaseOrderLine, warehouseLocations: WarehouseLocation[]): DraftLine {
   const defaultLocation = warehouseLocations[0]?.id ?? '';
+  const received = line.remainingQuantity ?? line.quantity;
   return {
     purchaseOrderLineId: line.id,
     lineNumber: line.lineNumber,
@@ -109,7 +130,12 @@ function buildDraftLineFromOrderLine(line: PurchaseOrderLine, warehouseLocations
     orderedQuantity: line.quantity,
     receivedQuantityBefore: line.receivedQuantity ?? '0',
     remainingQuantityBefore: line.remainingQuantity ?? line.quantity,
-    receivedQuantity: line.remainingQuantity ?? line.quantity,
+    receivedQuantity: received,
+    acceptedQuantity: received,
+    rejectedQuantity: '0',
+    finalizeLine: false,
+    qualityReasonCode: '',
+    qualityNote: '',
     locationId: defaultLocation,
     lotId: '',
     lotCode: '',
@@ -131,6 +157,11 @@ function buildDraftLineFromReceiptLine(line: NonNullable<GoodsReceipt['lines']>[
     receivedQuantityBefore: line.receivedQuantityBefore,
     remainingQuantityBefore: line.remainingQuantityBefore,
     receivedQuantity: line.receivedQuantity,
+    acceptedQuantity: line.acceptedQuantity,
+    rejectedQuantity: line.rejectedQuantity,
+    finalizeLine: line.finalizeLine,
+    qualityReasonCode: line.qualityReasonCode ?? '',
+    qualityNote: line.qualityNote ?? '',
     locationId: line.locationId ?? '',
     lotId: line.lotId ?? '',
     lotCode: line.lotCode ?? '',
@@ -197,7 +228,9 @@ export default function GoodsReceiptWorkspace({
     [initialPurchaseOrders],
   );
 
-  const createAllowed = goodsReceiptActionPolicy('draft', initialPermissionKeys).create;
+  const draftPolicy = goodsReceiptActionPolicy('draft', initialPermissionKeys);
+  const createAllowed = draftPolicy.create;
+  const varianceAllowed = draftPolicy.variance;
   const purchaseOrderReadable = initialPurchaseOrderPermissionKeys.includes('core.purchase-order.read');
   const activePurchaseOrder = editor?.purchaseOrder ?? null;
 
@@ -352,9 +385,26 @@ export default function GoodsReceiptWorkspace({
   async function saveEditor() {
     if (!editor || !editor.purchaseOrder) return;
     const purchaseOrder = editor.purchaseOrder;
-    if (editor.lines.some((line) => !line.purchaseOrderLineId || Number(line.receivedQuantity || '0') <= 0)) {
-      setError('Vui lòng nhập số lượng nhận hợp lệ cho ít nhất một dòng.');
-      return;
+    for (const line of editor.lines) {
+      if (!line.purchaseOrderLineId) {
+        setError('Vui lòng chọn đúng dòng đơn đặt hàng cho từng mặt hàng.');
+        return;
+      }
+      if (varianceAllowed) {
+        const accepted = decimalToScaled(normalizeDecimalInput(line.acceptedQuantity), true) ?? 0n;
+        const rejected = decimalToScaled(normalizeDecimalInput(line.rejectedQuantity), true) ?? 0n;
+        if (accepted + rejected <= 0n) {
+          setError('Vui lòng nhập số lượng chấp nhận hoặc loại hợp lệ cho ít nhất một dòng.');
+          return;
+        }
+        if ((rejected > 0n || line.finalizeLine) && (!line.qualityReasonCode.trim() || !line.qualityNote.trim())) {
+          setError('Dòng có hàng loại hoặc chốt thiếu phải có mã lý do và ghi chú chênh lệch.');
+          return;
+        }
+      } else if (!decimalPositive(line.receivedQuantity)) {
+        setError('Vui lòng nhập số lượng nhận hợp lệ cho ít nhất một dòng.');
+        return;
+      }
     }
     setBusyId(editor.mode === 'edit' && editor.receipt ? editor.receipt.id : purchaseOrder.id);
     setError(null);
@@ -364,16 +414,46 @@ export default function GoodsReceiptWorkspace({
         receiptDate: editor.receiptDate,
         supplierDeliveryReference: editor.supplierDeliveryReference,
         note: editor.note,
-        lines: editor.lines.map((line) => ({
-          purchaseOrderLineId: line.purchaseOrderLineId,
-          receivedQuantity: normalizeDecimalInput(line.receivedQuantity),
-          locationId: line.locationId,
-          lotCode: line.lotCode,
-          manufacturedDate: line.manufacturedDate,
-          expiryDate: line.expiryDate,
-          supplierLotReference: line.supplierLotReference,
-          note: line.note,
-        })),
+        lines: editor.lines.map((line) => {
+          if (varianceAllowed) {
+            const acceptedQuantity = normalizeDecimalInput(line.acceptedQuantity);
+            const rejectedQuantity = normalizeDecimalInput(line.rejectedQuantity);
+            return {
+              purchaseOrderLineId: line.purchaseOrderLineId,
+              receivedQuantity: decimalSum(acceptedQuantity, rejectedQuantity),
+              acceptedQuantity,
+              rejectedQuantity,
+              finalizeLine: line.finalizeLine,
+              ...((decimalPositive(rejectedQuantity) || line.finalizeLine)
+                ? {
+                  qualityReasonCode: line.qualityReasonCode.trim(),
+                  qualityNote: line.qualityNote.trim(),
+                }
+                : {}),
+              locationId: line.locationId,
+              lotId: line.lotId,
+              lotCode: line.lotCode,
+              manufacturedDate: line.manufacturedDate,
+              expiryDate: line.expiryDate,
+              supplierLotReference: line.supplierLotReference,
+              note: line.note,
+            };
+          }
+          return {
+            purchaseOrderLineId: line.purchaseOrderLineId,
+            receivedQuantity: normalizeDecimalInput(line.receivedQuantity),
+            acceptedQuantity: normalizeDecimalInput(line.receivedQuantity),
+            rejectedQuantity: '0',
+            finalizeLine: false,
+            locationId: line.locationId,
+            lotId: line.lotId,
+            lotCode: line.lotCode,
+            manufacturedDate: line.manufacturedDate,
+            expiryDate: line.expiryDate,
+            supplierLotReference: line.supplierLotReference,
+            note: line.note,
+          };
+        }),
         ...(editor.mode === 'edit' && editor.receipt ? { expectedRevision: editor.receipt.revision } : {}),
       };
       const saved = editor.mode === 'edit' && editor.receipt
@@ -494,7 +574,7 @@ export default function GoodsReceiptWorkspace({
             <span>Nháp</span><strong>{formatDecimalString(String(counts.draft))}</strong><small>Còn có thể chỉnh sửa</small>
           </article>
           <article className={styles.summaryCard}>
-            <span>Đã ghi sổ</span><strong>{formatDecimalString(String(counts.posted))}</strong><small>Đã vào tồn kho</small>
+            <span>Đã ghi sổ</span><strong>{formatDecimalString(String(counts.posted))}</strong><small>Đã ghi nhận nhập hàng và chênh lệch</small>
           </article>
           <article className={styles.summaryCard}>
             <span>Đã đảo</span><strong>{formatDecimalString(String(counts.reversed))}</strong><small>Chứng từ bù đã phát hành</small>
@@ -635,7 +715,12 @@ export default function GoodsReceiptWorkspace({
                     <th>Đặt</th>
                     <th>Đã nhận</th>
                     <th>Còn lại</th>
-                    <th>Số lượng nhận</th>
+                    <th>Thực nhận</th>
+                    <th>Chấp nhận</th>
+                    <th>Loại</th>
+                    <th>Chốt thiếu</th>
+                    <th>Lý do chênh lệch</th>
+                    <th>Ghi chú chênh lệch</th>
                     <th>Kho/Vị trí</th>
                     <th>Lô hàng</th>
                     <th>Ngày SX</th>
@@ -645,6 +730,15 @@ export default function GoodsReceiptWorkspace({
                 <tbody>
                   {editor.lines.map((line, index) => {
                     const availableLocations = initialLocations.filter((location) => location.warehouse_id === editor.purchaseOrder?.warehouseId);
+                    const receivedDisplay = varianceAllowed
+                      ? decimalSum(line.acceptedQuantity, line.rejectedQuantity)
+                      : normalizeDecimalInput(line.receivedQuantity);
+                    const acceptedDisplay = varianceAllowed
+                      ? line.acceptedQuantity
+                      : normalizeDecimalInput(line.receivedQuantity);
+                    const rejectedDisplay = varianceAllowed ? line.rejectedQuantity : '0';
+                    const rejectedPositive = varianceAllowed && decimalPositive(line.rejectedQuantity);
+                    const varianceReasonRequired = varianceAllowed && (rejectedPositive || line.finalizeLine);
                     return (
                       <tr key={`${line.purchaseOrderLineId}-${line.lineNumber}`}>
                         <td>
@@ -657,12 +751,84 @@ export default function GoodsReceiptWorkspace({
                         <td>{formatDecimalString(line.receivedQuantityBefore)}</td>
                         <td>{formatDecimalString(line.remainingQuantityBefore)}</td>
                         <td>
-                          <input
-                            value={line.receivedQuantity}
-                            onChange={(event) => updateEditorLine(index, { receivedQuantity: event.target.value })}
-                            inputMode="decimal"
-                            disabled={editor.loading}
-                          />
+                          {varianceAllowed ? (
+                            <div className={styles.form} style={{ gap: '0.5rem' }}>
+                              <strong>{formatDecimalString(receivedDisplay)}</strong>
+                              <small>Nhận = chấp nhận + loại</small>
+                            </div>
+                          ) : (
+                            <input
+                              value={line.receivedQuantity}
+                              onChange={(event) => updateEditorLine(index, { receivedQuantity: event.target.value })}
+                              inputMode="decimal"
+                              disabled={editor.loading}
+                            />
+                          )}
+                        </td>
+                        <td>
+                          {varianceAllowed ? (
+                            <input
+                              value={acceptedDisplay}
+                              onChange={(event) => updateEditorLine(index, { acceptedQuantity: event.target.value })}
+                              inputMode="decimal"
+                              disabled={editor.loading}
+                            />
+                          ) : (
+                            <strong>{formatDecimalString(acceptedDisplay)}</strong>
+                          )}
+                        </td>
+                        <td>
+                          {varianceAllowed ? (
+                            <input
+                              value={rejectedDisplay}
+                              onChange={(event) => updateEditorLine(index, { rejectedQuantity: event.target.value })}
+                              inputMode="decimal"
+                              disabled={editor.loading}
+                            />
+                          ) : (
+                            <strong>{formatDecimalString(rejectedDisplay)}</strong>
+                          )}
+                        </td>
+                        <td>
+                          {varianceAllowed ? (
+                            <label className={styles.inlineCheckbox}>
+                              <input
+                                type="checkbox"
+                                checked={line.finalizeLine}
+                                onChange={(event) => updateEditorLine(index, { finalizeLine: event.target.checked })}
+                                disabled={editor.loading}
+                              />
+                              Chốt
+                            </label>
+                          ) : (
+                            <span>Không</span>
+                          )}
+                        </td>
+                        <td>
+                          {varianceAllowed ? (
+                            <input
+                              value={line.qualityReasonCode}
+                              onChange={(event) => updateEditorLine(index, { qualityReasonCode: event.target.value })}
+                              disabled={editor.loading || !varianceReasonRequired}
+                              placeholder={varianceReasonRequired ? 'VD: DAMAGED hoặc SHORTAGE' : 'Chỉ mở khi có loại/chốt thiếu'}
+                              maxLength={64}
+                            />
+                          ) : (
+                            <span>—</span>
+                          )}
+                        </td>
+                        <td>
+                          {varianceAllowed ? (
+                            <input
+                              value={line.qualityNote}
+                              onChange={(event) => updateEditorLine(index, { qualityNote: event.target.value })}
+                              disabled={editor.loading || !varianceReasonRequired}
+                              placeholder={varianceReasonRequired ? 'Ghi chú chênh lệch' : 'Chỉ mở khi có loại/chốt thiếu'}
+                              maxLength={2000}
+                            />
+                          ) : (
+                            <span>—</span>
+                          )}
                         </td>
                         <td>
                           <select
@@ -711,6 +877,7 @@ export default function GoodsReceiptWorkspace({
               <div className={localStyles.totalCard}><span>Nhà cung cấp</span><strong>{activePurchaseOrder?.supplierName || '---'}</strong></div>
               <div className={localStyles.totalCard}><span>Kho nhận</span><strong>{activePurchaseOrder?.warehouseName || '---'}</strong></div>
               <div className={localStyles.totalCard}><span>Số dòng</span><strong>{formatDecimalString(String(editor.lines.length))}</strong></div>
+              <div className={localStyles.totalCard}><span>Chênh lệch</span><strong>{varianceAllowed ? 'Có' : 'Không'}</strong></div>
             </div>
 
             <div className={localStyles.modalActions}>
@@ -746,7 +913,12 @@ export default function GoodsReceiptWorkspace({
                 <thead>
                   <tr>
                     <th>SKU</th>
-                    <th>Nhận</th>
+                    <th>Thực nhận</th>
+                    <th>Chấp nhận</th>
+                    <th>Loại</th>
+                    <th>Chốt thiếu</th>
+                    <th>Lý do chênh lệch</th>
+                    <th>Ghi chú chênh lệch</th>
                     <th>Đơn vị</th>
                     <th>Vị trí</th>
                     <th>Lô</th>
@@ -763,6 +935,11 @@ export default function GoodsReceiptWorkspace({
                         </div>
                       </td>
                       <td>{formatDecimalString(line.receivedQuantity)}</td>
+                      <td>{formatDecimalString(line.acceptedQuantity)}</td>
+                      <td>{formatDecimalString(line.rejectedQuantity)}</td>
+                      <td>{formatDecimalString(line.shortageClosedQuantity)}</td>
+                      <td>{line.qualityReasonCode || 'Không có'}</td>
+                      <td>{line.qualityNote || 'Không có'}</td>
                       <td>{line.unitCode}</td>
                       <td>{line.locationId || 'Không có'}</td>
                       <td>{line.lotCode || 'Không có'}</td>
@@ -772,8 +949,12 @@ export default function GoodsReceiptWorkspace({
                 </tbody>
               </table>
             </div>
+
             <div className={localStyles.totals}>
-              <div className={localStyles.totalCard}><span>Tổng số lượng</span><strong>{formatDecimalString(selectedGoodsReceipt.receivedQuantityTotal)}</strong></div>
+              <div className={localStyles.totalCard}><span>Thực nhận</span><strong>{formatDecimalString(selectedGoodsReceipt.receivedQuantityTotal)}</strong></div>
+              <div className={localStyles.totalCard}><span>Chấp nhận</span><strong>{formatDecimalString(selectedGoodsReceipt.acceptedQuantityTotal)}</strong></div>
+              <div className={localStyles.totalCard}><span>Loại</span><strong>{formatDecimalString(selectedGoodsReceipt.rejectedQuantityTotal)}</strong></div>
+              <div className={localStyles.totalCard}><span>Chốt thiếu</span><strong>{formatDecimalString(selectedGoodsReceipt.shortageClosedQuantityTotal)}</strong></div>
               <div className={localStyles.totalCard}><span>Trạng thái</span><strong>{GOODS_RECEIPT_STATUS_LABELS[selectedGoodsReceipt.status]}</strong></div>
               <div className={localStyles.totalCard}><span>Ngày tạo</span><strong>{formatGoodsReceiptDate(selectedGoodsReceipt.createdAt)}</strong></div>
               <div className={localStyles.totalCard}><span>Cập nhật</span><strong>{formatGoodsReceiptDate(selectedGoodsReceipt.updatedAt)}</strong></div>
