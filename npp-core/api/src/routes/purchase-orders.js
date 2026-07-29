@@ -96,6 +96,9 @@ async function ensureWarehouseScopes(client, requestContext) {
   if (Array.isArray(requestContext.scopes?.warehouseIds) && requestContext.scopes.warehouseIds.length > 0) {
     return requestContext;
   }
+  if (!Array.isArray(requestContext.roles) || !requestContext.roles.includes('bootstrap')) {
+    return requestContext;
+  }
   const warehouses = await warehouseRepository.listWarehousesForInstallation(client, {
     installationId: requestContext.installationId,
     active: undefined,
