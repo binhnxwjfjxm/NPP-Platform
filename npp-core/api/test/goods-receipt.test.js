@@ -33,8 +33,16 @@ function mutationHeaders(config, key) {
   };
 }
 
+function readHeaders(config) {
+  return { Authorization: `Bearer ${config.backendApiToken}` };
+}
+
 async function data(response) {
   return (await response.json()).data;
+}
+
+async function errorCode(response) {
+  return (await response.json()).error.code;
 }
 
 async function seedFixture(pool, installationId) {
@@ -143,7 +151,7 @@ async function createApprovedPo(baseUrl, config, fixture) {
     }),
   });
   assert.equal(invalidReceipt.status, 400);
-  assert.equal((await invalidReceipt.json()).error.code, 'INVALID_PURCHASE_ORDER_STATUS');
+  assert.equal(await errorCode(invalidReceipt), 'INVALID_PURCHASE_ORDER_STATUS');
 
   const submitResponse = await fetch(`${baseUrl}/api/purchase-orders/${draft.id}/submit`, {
     method: 'POST',
@@ -162,16 +170,16 @@ async function createApprovedPo(baseUrl, config, fixture) {
   return data(approveResponse);
 }
 
-function receiptPayload(po, fixture, quantity, reference) {
+function receiptPayload(po, fixture, quantity, reference, options = {}) {
   return {
     purchaseOrderId: po.id,
     receiptDate: '2026-07-29',
     supplierDeliveryReference: reference,
-    note: 'Phiếu nhận hàng tích hợp',
+    note: options.note ?? 'Phiếu nhận hàng tích hợp',
     lines: [{
-      purchaseOrderLineId: po.lines[0].id,
+      purchaseOrderLineId: options.purchaseOrderLineId ?? po.lines[0].id,
       receivedQuantity: quantity,
-      locationId: fixture.locationId,
+      ...(options.includeLocation === false ? {} : { locationId: fixture.locationId }),
       note: 'Dòng nhận hàng',
     }],
   };
@@ -189,6 +197,24 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
     assert.equal(approved.status, 'approved');
     assert.equal(approved.lines[0].remainingQuantity, '10.000000');
 
+    let response = await fetch(`${baseUrl}/api/goods-receipts`, {
+      method: 'POST',
+      headers: mutationHeaders(config, `gr-zero-${randomUUID()}`),
+      body: JSON.stringify(receiptPayload(approved, fixture, '0', 'DELIVERY-ZERO')),
+    });
+    assert.equal(response.status, 400);
+    assert.equal(await errorCode(response), 'INVALID_RECEIVED_QUANTITY');
+
+    response = await fetch(`${baseUrl}/api/goods-receipts`, {
+      method: 'POST',
+      headers: mutationHeaders(config, `gr-wrong-line-${randomUUID()}`),
+      body: JSON.stringify(receiptPayload(approved, fixture, '1', 'DELIVERY-WRONG-LINE', {
+        purchaseOrderLineId: randomUUID(),
+      })),
+    });
+    assert.equal(response.status, 404);
+    assert.equal(await errorCode(response), 'PURCHASE_ORDER_LINE_NOT_FOUND');
+
     const firstKey = `gr-create-1-${randomUUID()}`;
     const firstPayload = receiptPayload(approved, fixture, '4', 'DELIVERY-1');
     const createFirst = () => fetch(`${baseUrl}/api/goods-receipts`, {
@@ -196,7 +222,7 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
       headers: mutationHeaders(config, firstKey),
       body: JSON.stringify(firstPayload),
     });
-    let response = await createFirst();
+    response = await createFirst();
     assert.equal(response.status, 201);
     const firstDraft = await data(response);
     assert.equal(firstDraft.status, 'draft');
@@ -212,11 +238,34 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
     });
     assert.equal(response.status, 409);
 
+    const updatePayload = {
+      ...firstPayload,
+      note: 'Phiếu nhận hàng đã cập nhật',
+      expectedRevision: firstDraft.revision,
+    };
+    response = await fetch(`${baseUrl}/api/goods-receipts/${firstDraft.id}`, {
+      method: 'PATCH',
+      headers: mutationHeaders(config, `gr-update-${randomUUID()}`),
+      body: JSON.stringify(updatePayload),
+    });
+    assert.equal(response.status, 200);
+    const updatedFirstDraft = await data(response);
+    assert.equal(updatedFirstDraft.note, 'Phiếu nhận hàng đã cập nhật');
+    assert.notEqual(updatedFirstDraft.revision, firstDraft.revision);
+
+    response = await fetch(`${baseUrl}/api/goods-receipts/${firstDraft.id}`, {
+      method: 'PATCH',
+      headers: mutationHeaders(config, `gr-stale-${randomUUID()}`),
+      body: JSON.stringify(updatePayload),
+    });
+    assert.equal(response.status, 409);
+    assert.equal(await errorCode(response), 'CONFLICT');
+
     const firstPostKey = `gr-post-1-${randomUUID()}`;
-    const postFirst = () => fetch(`${baseUrl}/api/goods-receipts/${firstDraft.id}/post`, {
+    const postFirst = () => fetch(`${baseUrl}/api/goods-receipts/${updatedFirstDraft.id}/post`, {
       method: 'POST',
       headers: mutationHeaders(config, firstPostKey),
-      body: JSON.stringify({ expectedRevision: firstDraft.revision }),
+      body: JSON.stringify({ expectedRevision: updatedFirstDraft.revision }),
     });
     response = await postFirst();
     const firstPostPayload = await response.json();
@@ -228,9 +277,7 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
     assert.equal(response.status, 200);
     assert.equal((await data(response)).inventoryMovementId, firstPosted.inventoryMovementId);
 
-    response = await fetch(`${baseUrl}/api/purchase-orders/${approved.id}`, {
-      headers: { Authorization: `Bearer ${config.backendApiToken}` },
-    });
+    response = await fetch(`${baseUrl}/api/purchase-orders/${approved.id}`, { headers: readHeaders(config) });
     const partialPo = await data(response);
     assert.equal(partialPo.status, 'partially_received');
     assert.equal(partialPo.lines[0].receivedQuantity, '4.000000');
@@ -242,7 +289,24 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
       body: JSON.stringify(receiptPayload(partialPo, fixture, '7', 'DELIVERY-OVER')),
     });
     assert.equal(response.status, 400);
-    assert.equal((await response.json()).error.code, 'RECEIPT_QUANTITY_EXCEEDS_REMAINING');
+    assert.equal(await errorCode(response), 'RECEIPT_QUANTITY_EXCEEDS_REMAINING');
+
+    response = await fetch(`${baseUrl}/api/goods-receipts`, {
+      method: 'POST',
+      headers: mutationHeaders(config, `gr-tracking-${randomUUID()}`),
+      body: JSON.stringify(receiptPayload(partialPo, fixture, '1', 'DELIVERY-NO-LOCATION', {
+        includeLocation: false,
+      })),
+    });
+    assert.equal(response.status, 201);
+    const missingLocationDraft = await data(response);
+    response = await fetch(`${baseUrl}/api/goods-receipts/${missingLocationDraft.id}/post`, {
+      method: 'POST',
+      headers: mutationHeaders(config, `gr-tracking-post-${randomUUID()}`),
+      body: JSON.stringify({ expectedRevision: missingLocationDraft.revision }),
+    });
+    assert.equal(response.status, 400);
+    assert.equal(await errorCode(response), 'LOCATION_REQUIRED');
 
     response = await fetch(`${baseUrl}/api/goods-receipts`, {
       method: 'POST',
@@ -268,10 +332,10 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
     assert.deepEqual(concurrent.map((item) => item.status).sort(), [200, 409]);
     const postedResponse = concurrent.find((item) => item.status === 200);
     const secondPosted = await data(postedResponse);
+    assert.match(secondPosted.documentNumber, /^GR-202607-\d{6}$/);
+    assert.notEqual(secondPosted.documentNumber, firstPosted.documentNumber);
 
-    response = await fetch(`${baseUrl}/api/purchase-orders/${approved.id}`, {
-      headers: { Authorization: `Bearer ${config.backendApiToken}` },
-    });
+    response = await fetch(`${baseUrl}/api/purchase-orders/${approved.id}`, { headers: readHeaders(config) });
     const fullPo = await data(response);
     assert.equal(fullPo.status, 'fully_received');
     assert.equal(fullPo.lines[0].receivedQuantity, '10.000000');
@@ -286,6 +350,7 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
       }),
     });
     assert.equal(response.status, 409);
+    assert.equal(await errorCode(response), 'GOODS_RECEIPT_LOCKED');
 
     const reverseKey = `gr-reverse-${randomUUID()}`;
     const reverse = () => fetch(`${baseUrl}/api/goods-receipts/${secondPosted.id}/reverse`, {
@@ -306,9 +371,7 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
     assert.equal(response.status, 200);
     assert.equal((await data(response)).inventoryReversalMovementId, reversed.inventoryReversalMovementId);
 
-    response = await fetch(`${baseUrl}/api/purchase-orders/${approved.id}`, {
-      headers: { Authorization: `Bearer ${config.backendApiToken}` },
-    });
+    response = await fetch(`${baseUrl}/api/purchase-orders/${approved.id}`, { headers: readHeaders(config) });
     const restoredPo = await data(response);
     assert.equal(restoredPo.status, 'partially_received');
     assert.equal(restoredPo.lines[0].receivedQuantity, '4.000000');
@@ -341,6 +404,19 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
       reversal_count: 1,
     });
 
+    const balance = await pool.query(
+      `SELECT on_hand_quantity::text AS on_hand_quantity
+       FROM inventory.inventory_balances
+       WHERE installation_id = $1
+         AND warehouse_id = $2
+         AND location_id = $3
+         AND base_variant_id = $4
+         AND lot_id IS NULL`,
+      [config.installationId, fixture.warehouseId, fixture.locationId, fixture.variantId],
+    );
+    assert.equal(balance.rows.length, 1);
+    assert.equal(balance.rows[0].on_hand_quantity, '4.000000000000');
+
     const evidence = await pool.query(
       `SELECT
          (SELECT count(*)::int FROM purchasing.goods_receipts WHERE installation_id = $1) AS receipts,
@@ -348,7 +424,7 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
          (SELECT count(*)::int FROM shared.core_outbox_events WHERE installation_id = $1 AND aggregate_type = 'purchasing.goods_receipt') AS events`,
       [config.installationId],
     );
-    assert.deepEqual(evidence.rows[0], { receipts: 2, audits: 5, events: 5 });
+    assert.deepEqual(evidence.rows[0], { receipts: 3, audits: 7, events: 7 });
   } finally {
     if (server) await closeServer(server);
     await closePool();
@@ -401,10 +477,63 @@ test('Goods receipt routes fail closed for missing permission and empty warehous
       }),
     });
     const response = await fetch(`http://${emptyConfig.host}:${emptyConfig.port}/api/goods-receipts`);
-    assert.equal(response.status, 200);
-    assert.deepEqual(await data(response), []);
+    assert.equal(response.status, 403);
+    assert.equal(await errorCode(response), 'WAREHOUSE_SCOPE_DENIED');
   } finally {
     if (emptyServer) await closeServer(emptyServer);
+    await closePool();
+  }
+});
+
+test('Goods receipt data is isolated by server-owned installation context', async () => {
+  const configA = loadConfig(testEnv({ PORT: '3074', INSTALLATION_ID: `goods-receipt-a-${randomUUID()}` }));
+  const configB = loadConfig(testEnv({ PORT: '3075', INSTALLATION_ID: `goods-receipt-b-${randomUUID()}` }));
+  const pool = getPool(configA);
+  let serverA;
+  let serverB;
+  try {
+    const fixtureA = await seedFixture(pool, configA.installationId);
+    const fixtureB = await seedFixture(pool, configB.installationId);
+    serverA = await startServer({ config: configA });
+    serverB = await startServer({ config: configB });
+    const baseA = `http://${configA.host}:${configA.port}`;
+    const baseB = `http://${configB.host}:${configB.port}`;
+    const poA = await createApprovedPo(baseA, configA, fixtureA);
+    const poB = await createApprovedPo(baseB, configB, fixtureB);
+
+    let response = await fetch(`${baseA}/api/goods-receipts`, {
+      method: 'POST',
+      headers: mutationHeaders(configA, `gr-a-${randomUUID()}`),
+      body: JSON.stringify(receiptPayload(poA, fixtureA, '1', 'INSTALLATION-A')),
+    });
+    assert.equal(response.status, 201);
+    const receiptA = await data(response);
+
+    response = await fetch(`${baseB}/api/goods-receipts`, {
+      method: 'POST',
+      headers: mutationHeaders(configB, `gr-b-${randomUUID()}`),
+      body: JSON.stringify(receiptPayload(poB, fixtureB, '1', 'INSTALLATION-B')),
+    });
+    assert.equal(response.status, 201);
+    const receiptB = await data(response);
+
+    response = await fetch(`${baseA}/api/goods-receipts?limit=1000`, { headers: readHeaders(configA) });
+    assert.equal(response.status, 200);
+    const listA = await data(response);
+    assert.deepEqual(listA.map((item) => item.id), [receiptA.id]);
+
+    response = await fetch(`${baseB}/api/goods-receipts?limit=1000`, { headers: readHeaders(configB) });
+    assert.equal(response.status, 200);
+    const listB = await data(response);
+    assert.deepEqual(listB.map((item) => item.id), [receiptB.id]);
+
+    response = await fetch(`${baseA}/api/goods-receipts/${receiptB.id}`, { headers: readHeaders(configA) });
+    assert.equal(response.status, 404);
+    response = await fetch(`${baseB}/api/goods-receipts/${receiptA.id}`, { headers: readHeaders(configB) });
+    assert.equal(response.status, 404);
+  } finally {
+    if (serverA) await closeServer(serverA);
+    if (serverB) await closeServer(serverB);
     await closePool();
   }
 });
