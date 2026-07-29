@@ -67,6 +67,13 @@ function scaledToDecimal(value) {
   return fraction ? `${integer}.${fraction}` : integer.toString();
 }
 
+function fixedScaleQuantity(value) {
+  const text = String(value ?? '').trim();
+  const match = DECIMAL_PATTERN.exec(text);
+  if (!match) return text;
+  return `${match[1]}.${(match[2] ?? '').padEnd(6, '0')}`;
+}
+
 function multiplyScaled(left, right) {
   return (left * right + SCALE / 2n) / SCALE;
 }
@@ -98,11 +105,11 @@ function mapLine(line) {
     conversionToBase: String(line.conversion_to_base),
     quantity: String(line.ordered_quantity),
     baseQuantity: String(line.base_quantity),
-    receivedQuantity: line.received_quantity === undefined || line.received_quantity === null ? undefined : String(line.received_quantity),
-    acceptedQuantity: line.accepted_quantity === undefined || line.accepted_quantity === null ? undefined : String(line.accepted_quantity),
-    rejectedQuantity: line.rejected_quantity === undefined || line.rejected_quantity === null ? undefined : String(line.rejected_quantity),
-    shortageClosedQuantity: line.shortage_closed_quantity === undefined || line.shortage_closed_quantity === null ? undefined : String(line.shortage_closed_quantity),
-    remainingQuantity: line.remaining_quantity === undefined || line.remaining_quantity === null ? undefined : String(line.remaining_quantity),
+    receivedQuantity: line.received_quantity === undefined || line.received_quantity === null ? undefined : fixedScaleQuantity(line.received_quantity),
+    acceptedQuantity: line.accepted_quantity === undefined || line.accepted_quantity === null ? undefined : fixedScaleQuantity(line.accepted_quantity),
+    rejectedQuantity: line.rejected_quantity === undefined || line.rejected_quantity === null ? undefined : fixedScaleQuantity(line.rejected_quantity),
+    shortageClosedQuantity: line.shortage_closed_quantity === undefined || line.shortage_closed_quantity === null ? undefined : fixedScaleQuantity(line.shortage_closed_quantity),
+    remainingQuantity: line.remaining_quantity === undefined || line.remaining_quantity === null ? undefined : fixedScaleQuantity(line.remaining_quantity),
     unitPrice: String(line.unit_price),
     discountAmount: String(line.discount_amount),
     taxAmount: String(line.tax_amount),
@@ -136,19 +143,19 @@ function mapOrder(order) {
     receiptCount: Number(order.receipt_count ?? 0),
     receivedQuantityTotal: order.received_quantity_total === undefined || order.received_quantity_total === null
       ? null
-      : String(order.received_quantity_total),
+      : fixedScaleQuantity(order.received_quantity_total),
     acceptedQuantityTotal: order.accepted_quantity_total === undefined || order.accepted_quantity_total === null
       ? null
-      : String(order.accepted_quantity_total),
+      : fixedScaleQuantity(order.accepted_quantity_total),
     rejectedQuantityTotal: order.rejected_quantity_total === undefined || order.rejected_quantity_total === null
       ? null
-      : String(order.rejected_quantity_total),
+      : fixedScaleQuantity(order.rejected_quantity_total),
     shortageClosedQuantityTotal: order.shortage_closed_quantity_total === undefined || order.shortage_closed_quantity_total === null
       ? null
-      : String(order.shortage_closed_quantity_total),
+      : fixedScaleQuantity(order.shortage_closed_quantity_total),
     remainingQuantityTotal: order.remaining_quantity_total === undefined || order.remaining_quantity_total === null
       ? null
-      : String(order.remaining_quantity_total),
+      : fixedScaleQuantity(order.remaining_quantity_total),
     submittedAt: order.submitted_at ?? null,
     submittedBy: order.submitted_by ?? null,
     approvedAt: order.approved_at ?? null,
