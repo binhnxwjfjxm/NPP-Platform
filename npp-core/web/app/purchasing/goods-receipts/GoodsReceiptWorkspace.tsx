@@ -739,8 +739,6 @@ export default function GoodsReceiptWorkspace({
                     const rejectedDisplay = varianceAllowed ? line.rejectedQuantity : '0';
                     const rejectedPositive = varianceAllowed && decimalPositive(line.rejectedQuantity);
                     const varianceReasonRequired = varianceAllowed && (rejectedPositive || line.finalizeLine);
-                    const varianceReasonRequired = varianceAllowed && (rejectedPositive || line.finalizeLine);
-                    const varianceReasonRequired = varianceAllowed && (rejectedPositive || line.finalizeLine);
                     return (
                       <tr key={`${line.purchaseOrderLineId}-${line.lineNumber}`}>
                         <td>
