@@ -57,7 +57,7 @@ test('product catalog editors use the shared accessible React modal', async () =
     workspace,
     /function\s+\w*Modal\b|const\s+\w*Modal\s*=|modalBackdrop|MutationObserver|document\.(?:querySelector(?:All)?|getElementById|getElementsByClassName|getElementsByTagName)/,
   );
-  assert.match(workspace, /Quản lý SKU, đơn vị, quy đổi và barcode của sản phẩm\./);
+  assert.match(workspace, /Quản lý SKU, đơn vị tính, quy đổi và mã vạch của sản phẩm\./);
   assert.doesNotMatch(workspace, /Phase 3\.3D/);
   assert.match(modal, /event\.key === 'Escape'/);
   assert.match(modal, /aria-modal="true"/);
