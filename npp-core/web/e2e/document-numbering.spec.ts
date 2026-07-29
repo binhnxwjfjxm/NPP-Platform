@@ -14,7 +14,7 @@ test('document numbering admin creates, allocates, replays and locks a series', 
 
   await page.getByTestId('add-number-series-button').click();
   await page.getByTestId('number-series-code-input').fill(code);
-  await page.getByTestId('document-type-input').fill('SALES_ORDER');
+  await page.getByTestId('document-type-input').selectOption('SALES_ORDER');
   await page.getByTestId('number-series-name-input').fill(`Đơn bán E2E ${id}`);
   await page.getByTestId('number-prefix-input').fill('SO-');
   await page.getByTestId('number-template-input').fill('{PREFIX}{YYYY}{MM}-{SEQ}');
