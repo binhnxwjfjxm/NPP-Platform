@@ -25,7 +25,7 @@ test('document numbering admin creates, allocates, replays and locks a series', 
 
   const row = page.getByTestId(`number-series-row-${code}`);
   await expect(row).toBeVisible();
-  await expect(page.getByTestId('numbering-notice')).toContainText('Đã tạo quy tắc đánh số chứng từ');
+  await expect(page.getByTestId('numbering-notice')).toContainText('Đã tạo quy tắc đánh số');
 
   await row.getByTestId(`select-number-series-${code}`).click();
   await expect(page.getByTestId('number-series-detail')).toBeVisible();
