@@ -17,6 +17,7 @@ const SCALE_6 = 1_000_000n;
 const ENABLED_POSTING_TYPES = new Map([
   ['OPENING_BALANCE', 'IN'],
   ['PURCHASE_RECEIPT', 'IN'],
+  ['SUPPLIER_RETURN', 'OUT'],
 ]);
 
 function failure(code, message, retryable = false) {
@@ -150,6 +151,25 @@ function normalizePostingPayload(payload) {
     if (!quantity.ok) return quantity;
     const lineMetadata = objectValue(line.metadata);
     if (lineMetadata === null) return failure('INVALID_LINE_METADATA', `Line ${index + 1} metadata is invalid`);
+    const sourceSku = text(line.sourceSku, 96)?.toUpperCase() ?? null;
+    const sourceUnitCode = text(line.sourceUnitCode, 32)?.toUpperCase() ?? null;
+    const baseSku = text(line.baseSku, 96)?.toUpperCase() ?? null;
+    const sourceUnitId = text(line.sourceUnitId, 64);
+    const baseVariantId = text(line.baseVariantId, 64);
+    const trustedConversion = line.conversionToBase !== undefined && line.conversionToBase !== null && line.conversionToBase !== ''
+      ? parsePositiveDecimal(line.conversionToBase, `lines[${index}].conversionToBase`)
+      : null;
+    if (trustedConversion && !trustedConversion.ok) return trustedConversion;
+    const trustedSnapshot = sourceSku || sourceUnitId || sourceUnitCode || baseVariantId || baseSku || trustedConversion
+      ? {
+        sourceSku,
+        sourceUnitId,
+        sourceUnitCode,
+        conversionToBase: trustedConversion?.value ?? null,
+        baseVariantId,
+        baseSku,
+      }
+      : null;
     const lotId = text(line.lotId, 64);
     if (lotId && !UUID_PATTERN.test(lotId)) return failure('INVALID_LOT_ID', `Line ${index + 1} lotId is invalid`);
     const lotCode = text(line.lotCode, 100);
@@ -164,6 +184,7 @@ function normalizePostingPayload(payload) {
       direction,
       sourceQuantity: quantity.value,
       sourceLineReference: text(line.sourceLineReference, 160),
+      sourceSnapshot: trustedSnapshot,
       lotId: lotId ?? null,
       lotCode: normalizedLotCode?.value ?? null,
       manufacturedDate: strictDate(line.manufacturedDate),
@@ -218,30 +239,72 @@ async function resolveLine(client, requestContext, line) {
   if (line.locationId && (!warehouse.location_id || !warehouse.location_active)) {
     return failure('LOCATION_NOT_AVAILABLE', 'Location is missing, inactive or belongs to another warehouse');
   }
-  const variant = await repository.resolvePostingVariant(client, {
-    installationId: requestContext.installationId,
-    sourceVariantId: line.sourceVariantId,
-  });
-  if (!variant || !variant.source_variant_active || !variant.base_variant_active || !variant.source_unit_active) {
-    return failure('SKU_UNIT_NOT_AVAILABLE', 'SKU, base SKU or unit is missing or inactive');
-  }
-  if (variant.conversion_to_base === null || variant.conversion_to_base === undefined) {
-    return failure('CONVERSION_NOT_CONFIGURED', 'SKU conversion to inventory base is not configured');
-  }
-  const policy = await lotRepository.getTrackingPolicyByBaseVariant(client, {
-    installationId: requestContext.installationId,
-    baseVariantId: variant.base_variant_id,
-  });
-  if (!policy) return failure('TRACKING_POLICY_NOT_FOUND', 'Tracking policy was not found');
-  if (!policy.is_inventory_base || !policy.base_variant_active) {
-    return failure('BASE_VARIANT_NOT_AVAILABLE', 'Inventory base SKU is missing, inactive or invalid');
-  }
-  if (policy.location_required && !line.locationId) {
-    return failure('LOCATION_REQUIRED', 'Location is required by the active tracking policy');
-  }
-  const hasLotInput = Boolean(line.lotId || line.lotCode || line.manufacturedDate || line.expiryDate || line.supplierLotReference);
-  if (policy.lot_tracking_mode === 'NONE' && hasLotInput) {
-    return failure('LOT_NOT_ALLOWED', 'Lot data is not allowed by the active tracking policy');
+  const trustedSnapshot = line.sourceSnapshot ?? null;
+  let variant = null;
+  let policy = null;
+  if (!trustedSnapshot) {
+    variant = await repository.resolvePostingVariant(client, {
+      installationId: requestContext.installationId,
+      sourceVariantId: line.sourceVariantId,
+    });
+    if (!variant || !variant.source_variant_active || !variant.base_variant_active || !variant.source_unit_active) {
+      return failure('SKU_UNIT_NOT_AVAILABLE', 'SKU, base SKU or unit is missing or inactive');
+    }
+    if (variant.conversion_to_base === null || variant.conversion_to_base === undefined) {
+      return failure('CONVERSION_NOT_CONFIGURED', 'SKU conversion to inventory base is not configured');
+    }
+    policy = await lotRepository.getTrackingPolicyByBaseVariant(client, {
+      installationId: requestContext.installationId,
+      baseVariantId: variant.base_variant_id,
+    });
+    if (!policy) return failure('TRACKING_POLICY_NOT_FOUND', 'Tracking policy was not found');
+    if (!policy.is_inventory_base || !policy.base_variant_active) {
+      return failure('BASE_VARIANT_NOT_AVAILABLE', 'Inventory base SKU is missing, inactive or invalid');
+    }
+    if (policy.location_required && !line.locationId) {
+      return failure('LOCATION_REQUIRED', 'Location is required by the active tracking policy');
+    }
+    const hasLotInput = Boolean(line.lotId || line.lotCode || line.manufacturedDate || line.expiryDate || line.supplierLotReference);
+    if (policy.lot_tracking_mode === 'NONE' && hasLotInput) {
+      return failure('LOT_NOT_ALLOWED', 'Lot data is not allowed by the active tracking policy');
+    }
+  } else {
+    if (!UUID_PATTERN.test(String(line.sourceVariantId ?? ''))) {
+      return failure('INVALID_SOURCE_VARIANT_ID', 'sourceVariantId is invalid');
+    }
+    if (!UUID_PATTERN.test(String(trustedSnapshot.sourceUnitId ?? ''))) {
+      return failure('INVALID_SOURCE_UNIT_ID', 'sourceUnitId is invalid');
+    }
+    if (!UUID_PATTERN.test(String(trustedSnapshot.baseVariantId ?? ''))) {
+      return failure('INVALID_BASE_VARIANT_ID', 'baseVariantId is invalid');
+    }
+    if (!trustedSnapshot.sourceSku || !trustedSnapshot.sourceUnitCode || !trustedSnapshot.baseSku || !trustedSnapshot.conversionToBase) {
+      return failure('INVALID_TRUSTED_SNAPSHOT', 'Trusted source snapshot is incomplete');
+    }
+    variant = {
+      source_sku: trustedSnapshot.sourceSku,
+      source_unit_id: trustedSnapshot.sourceUnitId,
+      source_unit_code: trustedSnapshot.sourceUnitCode,
+      conversion_to_base: trustedSnapshot.conversionToBase,
+      base_variant_id: trustedSnapshot.baseVariantId,
+      base_sku: trustedSnapshot.baseSku,
+      allows_fractional: true,
+    };
+    policy = await lotRepository.getTrackingPolicyByBaseVariant(client, {
+      installationId: requestContext.installationId,
+      baseVariantId: trustedSnapshot.baseVariantId,
+    });
+    if (!policy) return failure('TRACKING_POLICY_NOT_FOUND', 'Tracking policy was not found');
+    if (!policy.is_inventory_base || !policy.base_variant_active) {
+      return failure('BASE_VARIANT_NOT_AVAILABLE', 'Inventory base SKU is missing, inactive or invalid');
+    }
+    if (policy.location_required && !line.locationId) {
+      return failure('LOCATION_REQUIRED', 'Location is required by the active tracking policy');
+    }
+    const hasLotInput = Boolean(line.lotId || line.lotCode || line.manufacturedDate || line.expiryDate || line.supplierLotReference);
+    if (policy.lot_tracking_mode === 'NONE' && hasLotInput) {
+      return failure('LOT_NOT_ALLOWED', 'Lot data is not allowed by the active tracking policy');
+    }
   }
   let lotRecord = null;
   const normalizedLotCode = line.lotCode ? normalizeLotCode(line.lotCode) : null;
@@ -251,7 +314,7 @@ async function resolveLine(client, requestContext, line) {
   const normalizedManufacturedDate = strictDate(line.manufacturedDate);
   if (line.manufacturedDate && !normalizedManufacturedDate) return failure('INVALID_MANUFACTURED_DATE', 'manufacturedDate must be a valid YYYY-MM-DD date');
 
-  if (policy.lot_tracking_mode === 'REQUIRED' && !line.lotId && !normalizedLotCode) {
+  if (policy?.lot_tracking_mode === 'REQUIRED' && !line.lotId && !normalizedLotCode) {
     return failure('LOT_REQUIRED', 'lotCode or lotId is required by the active tracking policy');
   }
 
@@ -297,13 +360,13 @@ async function resolveLine(client, requestContext, line) {
   }
 
   const effectiveExpiryDate = lotRecord?.expiry_date ?? normalizedExpiryDate;
-  if (policy.expiry_tracking_mode === 'REQUIRED' && !effectiveExpiryDate) {
+  if (policy?.expiry_tracking_mode === 'REQUIRED' && !effectiveExpiryDate) {
     return failure('EXPIRY_REQUIRED', 'expiryDate is required by the active tracking policy');
   }
-  if (policy.expiry_tracking_mode === 'NONE' && effectiveExpiryDate) {
+  if (policy?.expiry_tracking_mode === 'NONE' && effectiveExpiryDate) {
     return failure('EXPIRY_NOT_ALLOWED', 'expiryDate is not allowed by the active tracking policy');
   }
-  if (line.lotId && line.lotCode && lotRecord && lotRecord.normalized_lot_code !== normalizedLotCode.value) {
+  if (line.lotId && line.lotCode && lotRecord && normalizedLotCode && lotRecord.normalized_lot_code !== normalizedLotCode.value) {
     return failure('LOT_SKU_MISMATCH', 'Lot code does not match the canonical lot');
   }
   if (line.lotId && line.expiryDate && lotRecord && lotRecord.expiry_date !== normalizedExpiryDate) {
@@ -313,21 +376,27 @@ async function resolveLine(client, requestContext, line) {
     return failure('LOT_EXPIRY_MISMATCH', 'Lot expiry does not match the canonical expiry');
   }
 
-  const converted = multiplyToBase(line.sourceQuantity, String(variant.conversion_to_base), line.direction);
+  const conversionToBase = trustedSnapshot?.conversionToBase ?? String(variant.conversion_to_base);
+  const sourceSku = trustedSnapshot?.sourceSku ?? variant.source_sku;
+  const sourceUnitId = trustedSnapshot?.sourceUnitId ?? variant.source_unit_id;
+  const sourceUnitCode = trustedSnapshot?.sourceUnitCode ?? variant.source_unit_code;
+  const baseVariantId = trustedSnapshot?.baseVariantId ?? variant.base_variant_id;
+  const baseSku = trustedSnapshot?.baseSku ?? variant.base_sku;
+  const converted = multiplyToBase(line.sourceQuantity, String(conversionToBase), line.direction);
   if (!converted.ok) return converted;
-  if (!variant.allows_fractional && converted.sourceScaled % SCALE_6 !== 0n) {
+  if (!trustedSnapshot && !variant.allows_fractional && converted.sourceScaled % SCALE_6 !== 0n) {
     return failure('FRACTIONAL_QUANTITY_NOT_ALLOWED', 'Source unit does not allow fractional quantity');
   }
   return Object.freeze({
     ok: true,
     value: Object.freeze({
       ...line,
-      sourceSku: variant.source_sku,
-      sourceUnitId: variant.source_unit_id,
-      sourceUnitCode: variant.source_unit_code,
+      sourceSku,
+      sourceUnitId,
+      sourceUnitCode,
       conversionToBase: converted.conversionToBase,
-      baseVariantId: variant.base_variant_id,
-      baseSku: variant.base_sku,
+      baseVariantId,
+      baseSku,
       baseQuantityDelta: converted.baseQuantityDelta,
       lotId: lotRecord?.id ?? line.lotId ?? null,
       lotCode: lotRecord?.normalized_lot_code ?? normalizedLotCode?.value ?? null,

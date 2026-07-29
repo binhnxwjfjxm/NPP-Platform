@@ -89,6 +89,26 @@ const GOODS_RECEIPT_VARIANCE_SQL = readFileSync(
   new URL('../../../../database/migrations/purchasing/023_goods_receipt_variance.sql', import.meta.url),
   'utf8',
 );
+const SUPPLIER_RETURN_SQL = readFileSync(
+  new URL('../../../../database/migrations/purchasing/024_supplier_return.sql', import.meta.url),
+  'utf8',
+);
+const GOODS_RECEIPT_VARIANCE_FIX_SQL = readFileSync(
+  new URL('../../../../database/migrations/purchasing/025_goods_receipt_variance_fix.sql', import.meta.url),
+  'utf8',
+);
+const GOODS_RECEIPT_VARIANCE_REMAINING_FIX_SQL = readFileSync(
+  new URL('../../../../database/migrations/purchasing/026_goods_receipt_variance_remaining_fix.sql', import.meta.url),
+  'utf8',
+);
+const GOODS_RECEIPT_BASE_QUANTITY_NONNEGATIVE_FIX_SQL = readFileSync(
+  new URL('../../../../database/migrations/purchasing/027_goods_receipt_base_quantity_nonnegative_fix.sql', import.meta.url),
+  'utf8',
+);
+const GOODS_RECEIPT_POSTED_SHAPE_FIX_SQL = readFileSync(
+  new URL('../../../../database/migrations/purchasing/028_goods_receipt_posted_shape_fix.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '002_core_idempotency', sql: CORE_IDEMPOTENCY_SQL }),
@@ -113,6 +133,11 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '021_purchase_order_foundation', sql: PURCHASE_ORDER_FOUNDATION_SQL }),
   Object.freeze({ id: '022_partial_goods_receipt', sql: PARTIAL_GOODS_RECEIPT_SQL }),
   Object.freeze({ id: '023_goods_receipt_variance', sql: GOODS_RECEIPT_VARIANCE_SQL }),
+  Object.freeze({ id: '024_supplier_return', sql: SUPPLIER_RETURN_SQL }),
+  Object.freeze({ id: '025_goods_receipt_variance_fix', sql: GOODS_RECEIPT_VARIANCE_FIX_SQL }),
+  Object.freeze({ id: '026_goods_receipt_variance_remaining_fix', sql: GOODS_RECEIPT_VARIANCE_REMAINING_FIX_SQL }),
+  Object.freeze({ id: '027_goods_receipt_base_quantity_nonnegative_fix', sql: GOODS_RECEIPT_BASE_QUANTITY_NONNEGATIVE_FIX_SQL }),
+  Object.freeze({ id: '028_goods_receipt_posted_shape_fix', sql: GOODS_RECEIPT_POSTED_SHAPE_FIX_SQL }),
 ]);
 
 function validateMigration(migration) {

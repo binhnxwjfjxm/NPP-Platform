@@ -9,7 +9,7 @@ import {
   withAuditOutboxTransaction,
 } from '../audit-outbox.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
-import * as goodsReceiptService from '../services/goods-receipt.js';
+import * as supplierReturnService from '../services/supplier-return.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -18,14 +18,14 @@ function apiError(code, message, details = {}, retryable = false, statusCode = 5
 function statusFor(code) {
   if (code === 'UNAUTHORIZED') return 401;
   if (code === 'FORBIDDEN' || code === 'WAREHOUSE_SCOPE_DENIED' || code.endsWith('PERMISSION_REQUIRED')) return 403;
-  if (code.endsWith('_NOT_FOUND') || code === 'PURCHASE_ORDER_NOT_FOUND') return 404;
+  if (code.endsWith('_NOT_FOUND') || code === 'SOURCE_GOODS_RECEIPT_LINE_NOT_FOUND') return 404;
   if (
     code.includes('CONFLICT')
     || code.includes('MISMATCH')
     || code.includes('DUPLICATE')
     || code.includes('IDEMPOTENCY')
     || code.endsWith('LOCKED')
-    || code === 'GOODS_RECEIPT_SUPPLIER_RETURN_BLOCKED'
+    || code === 'SOURCE_RECEIPT_NOT_POSTED'
     || code === 'INVALID_STATUS_TRANSITION'
   ) return 409;
   if (code === 'DOCUMENT_NUMBER_SERIES_UNAVAILABLE') return 503;
@@ -136,10 +136,13 @@ async function authenticateAndAuthorize(req, res, options, permission) {
 
 function eventTypeFor(action) {
   return {
-    create: 'purchasing.goods_receipt.created',
-    update: 'purchasing.goods_receipt.updated',
-    post: 'purchasing.goods_receipt.posted',
-    reverse: 'purchasing.goods_receipt.reversed',
+    create: 'purchasing.supplier_return.created',
+    update: 'purchasing.supplier_return.updated',
+    submit: 'purchasing.supplier_return.submitted',
+    approve: 'purchasing.supplier_return.approved',
+    cancel: 'purchasing.supplier_return.cancelled',
+    post: 'purchasing.supplier_return.posted',
+    reverse: 'purchasing.supplier_return.reversed',
   }[action];
 }
 
@@ -172,34 +175,34 @@ async function executeIdempotentMutation(req, res, options, {
           mutate: async (client) => {
             const result = await mutate(client, keyResult.key);
             if (!result.ok) return { result, failed: true };
-            const goodsReceipt = result.goodsReceipt;
+            const supplierReturn = result.supplierReturn;
             const metadata = {
-              status: goodsReceipt.status,
-              number: goodsReceipt.documentNumber,
-              purchaseOrderId: goodsReceipt.purchaseOrderId,
-              warehouseId: goodsReceipt.warehouseId,
-              revision: goodsReceipt.revision,
+              status: supplierReturn.status,
+              number: supplierReturn.documentNumber,
+              supplierId: supplierReturn.supplierId,
+              warehouseId: supplierReturn.warehouseId,
+              revision: supplierReturn.revision,
             };
             await insertAuditRecord(client, buildAuditRecord({
               requestContext,
               action,
-              resourceType: 'goods_receipt',
-              resourceId: goodsReceipt.id,
+              resourceType: 'supplier_return',
+              resourceId: supplierReturn.id,
               beforeData: result.beforeData ?? null,
-              afterData: goodsReceipt,
+              afterData: supplierReturn,
               metadata,
             }));
             const outboxEvent = buildOutboxEvent({
               requestContext,
-              aggregateType: 'purchasing.goods_receipt',
-              aggregateId: goodsReceipt.id,
+              aggregateType: 'purchasing.supplier_return',
+              aggregateId: supplierReturn.id,
               eventType: eventTypeFor(action),
               eventVersion: 1,
-              payload: goodsReceipt,
+              payload: supplierReturn,
               metadata,
             });
             await insertOutboxEvent(client, outboxEvent);
-            return { goodsReceipt, eventId: outboxEvent.eventId };
+            return { supplierReturn, eventId: outboxEvent.eventId };
           },
         });
 
@@ -226,10 +229,11 @@ async function executeIdempotentMutation(req, res, options, {
           statusCode,
           contentType: 'application/json',
           requestId: options.requestId,
-          body: createSuccessEnvelope(transactionResult.goodsReceipt, options.requestId, options.receivedAt),
+          body: createSuccessEnvelope(transactionResult.supplierReturn, options.requestId, options.receivedAt),
         };
       },
     });
+
     res.setHeader('Cache-Control', 'no-store');
     sendJson(
       res,
@@ -241,7 +245,7 @@ async function executeIdempotentMutation(req, res, options, {
   } catch {
     sendError(
       res,
-      apiError('GOODS_RECEIPT_TRANSACTION_FAILED', 'Goods receipt transaction failed', {}, true, 503),
+      apiError('SUPPLIER_RETURN_TRANSACTION_FAILED', 'Supplier return transaction failed', {}, true, 503),
       options.requestId,
       options.receivedAt,
     );
@@ -251,62 +255,82 @@ async function executeIdempotentMutation(req, res, options, {
 async function handleList(req, res, options, requestContext) {
   const url = new URL(`http://localhost${req.url}`);
   try {
-    const result = await goodsReceiptService.listGoodsReceipts(options.getPool(), {
+    const result = await supplierReturnService.listSupplierReturns(options.getPool(), {
       requestContext,
       search: url.searchParams.get('search'),
       status: url.searchParams.get('status'),
-      purchaseOrderId: url.searchParams.get('purchaseOrderId'),
+      supplierId: url.searchParams.get('supplierId'),
       warehouseId: url.searchParams.get('warehouseId'),
       limit: parseInteger(url.searchParams.get('limit'), 100, 1000),
       offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
     });
     if (!result.ok) return sendServiceError(res, result, options);
-    sendSuccess(res, result.goodsReceipts, options.requestId, options.receivedAt);
+    sendSuccess(res, result.supplierReturns, options.requestId, options.receivedAt);
   } catch (error) {
     sendError(res, apiError(error.code, error.publicMessage, {}, false, error.statusCode), options.requestId, options.receivedAt);
   }
 }
 
 async function handleGet(res, options, requestContext, id) {
-  const result = await goodsReceiptService.getGoodsReceipt(options.getPool(), { requestContext, id });
+  const result = await supplierReturnService.getSupplierReturn(options.getPool(), { requestContext, id });
   if (!result.ok) return sendServiceError(res, result, options);
-  sendSuccess(res, result.goodsReceipt, options.requestId, options.receivedAt);
+  sendSuccess(res, result.supplierReturn, options.requestId, options.receivedAt);
 }
 
-export async function handleGoodsReceiptRoutes(req, res, options) {
+export async function handleSupplierReturnRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
-  if (pathname !== '/api/goods-receipts' && !pathname.startsWith('/api/goods-receipts/')) return false;
+  if (pathname !== '/api/supplier-returns' && !pathname.startsWith('/api/supplier-returns/')) return false;
   const method = String(req.method || 'GET').toUpperCase();
 
-  if (pathname === '/api/goods-receipts' && method === 'GET') {
-    const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreGoodsReceiptRead);
+  if (pathname === '/api/supplier-returns/source-lines' && method === 'GET') {
+    const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSupplierReturnRead);
+    if (!requestContext) return true;
+    const url = new URL(`http://localhost${req.url}`);
+    try {
+      const result = await supplierReturnService.listSupplierReturnSourceLines(options.getPool(), {
+        requestContext,
+        goodsReceiptId: url.searchParams.get('goodsReceiptId'),
+      });
+      if (!result.ok) return sendServiceError(res, result, options);
+      sendSuccess(res, result.sourceLines, options.requestId, options.receivedAt);
+    } catch (error) {
+      sendError(res, apiError(error.code, error.publicMessage, {}, false, error.statusCode), options.requestId, options.receivedAt);
+    }
+    return true;
+  }
+
+  if (pathname === '/api/supplier-returns' && method === 'GET') {
+    const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSupplierReturnRead);
     if (!requestContext) return true;
     await handleList(req, res, options, requestContext);
     return true;
   }
 
-  if (pathname === '/api/goods-receipts' && method === 'POST') {
-    const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreGoodsReceiptCreate);
+  if (pathname === '/api/supplier-returns' && method === 'POST') {
+    const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSupplierReturnCreate);
     if (!requestContext) return true;
     const payload = await readPayload(req, res, options);
     if (payload === null) return true;
     await executeIdempotentMutation(req, res, options, {
       requestContext,
-      route: '/api/goods-receipts',
+      route: '/api/supplier-returns',
       payload,
       action: 'create',
       statusCode: 201,
-      mutate: (client) => goodsReceiptService.createGoodsReceipt(client, { requestContext, payload }),
+      mutate: (client) => supplierReturnService.createSupplierReturn(client, { requestContext, payload }),
     });
     return true;
   }
 
-  const actionMatch = pathname.match(/^\/api\/goods-receipts\/([^/]+)\/(post|reverse)$/);
+  const actionMatch = pathname.match(/^\/api\/supplier-returns\/([^/]+)\/(submit|approve|cancel|post|reverse)$/);
   if (actionMatch && method === 'POST') {
     const [, id, action] = actionMatch;
     const permission = {
-      post: options.PERMISSIONS.coreGoodsReceiptPost,
-      reverse: options.PERMISSIONS.coreGoodsReceiptReverse,
+      submit: options.PERMISSIONS.coreSupplierReturnSubmit,
+      approve: options.PERMISSIONS.coreSupplierReturnApprove,
+      cancel: options.PERMISSIONS.coreSupplierReturnCancel,
+      post: options.PERMISSIONS.coreSupplierReturnPost,
+      reverse: options.PERMISSIONS.coreSupplierReturnReverse,
     }[action];
     const requestContext = await authenticateAndAuthorize(req, res, options, permission);
     if (!requestContext) return true;
@@ -314,45 +338,38 @@ export async function handleGoodsReceiptRoutes(req, res, options) {
     if (payload === null) return true;
     await executeIdempotentMutation(req, res, options, {
       requestContext,
-      route: `/api/goods-receipts/${id}/${action}`,
+      route: `/api/supplier-returns/${id}/${action}`,
       payload,
       action,
       mutate: (client, idempotencyKey) => {
-        if (action === 'post') return goodsReceiptService.postGoodsReceipt(client, {
-          requestContext,
-          id,
-          payload,
-          idempotencyKey,
-        });
-        return goodsReceiptService.reverseGoodsReceipt(client, {
-          requestContext,
-          id,
-          payload,
-          idempotencyKey,
-        });
+        if (action === 'submit') return supplierReturnService.submitSupplierReturn(client, { requestContext, id, payload });
+        if (action === 'approve') return supplierReturnService.approveSupplierReturn(client, { requestContext, id, payload });
+        if (action === 'cancel') return supplierReturnService.cancelSupplierReturn(client, { requestContext, id, payload });
+        if (action === 'post') return supplierReturnService.postSupplierReturn(client, { requestContext, id, payload, idempotencyKey });
+        return supplierReturnService.reverseSupplierReturn(client, { requestContext, id, payload, idempotencyKey });
       },
     });
     return true;
   }
 
-  const detailMatch = pathname.match(/^\/api\/goods-receipts\/([^/]+)$/);
+  const detailMatch = pathname.match(/^\/api\/supplier-returns\/([^/]+)$/);
   if (detailMatch && method === 'GET') {
-    const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreGoodsReceiptRead);
+    const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSupplierReturnRead);
     if (!requestContext) return true;
     await handleGet(res, options, requestContext, detailMatch[1]);
     return true;
   }
   if (detailMatch && method === 'PATCH') {
-    const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreGoodsReceiptUpdate);
+    const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSupplierReturnUpdate);
     if (!requestContext) return true;
     const payload = await readPayload(req, res, options);
     if (payload === null) return true;
     await executeIdempotentMutation(req, res, options, {
       requestContext,
-      route: `/api/goods-receipts/${detailMatch[1]}`,
+      route: `/api/supplier-returns/${detailMatch[1]}`,
       payload,
       action: 'update',
-      mutate: (client) => goodsReceiptService.updateGoodsReceipt(client, {
+      mutate: (client) => supplierReturnService.updateSupplierReturn(client, {
         requestContext,
         id: detailMatch[1],
         payload,

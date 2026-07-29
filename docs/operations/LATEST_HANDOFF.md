@@ -1,17 +1,16 @@
-# NPP Platform — Latest Handoff
+﻿# NPP Platform — Latest Handoff
 
-## Source checkpoint — Phase 5.3 Goods Receipt Variance
+## Source checkpoint — Phase 5.4 Supplier Return
 
-- Phase 5.2 is merged on `main` at `bea7b846537781a5809106c3d7db08dc60dfc546`.
-- Phase 5.3 is implemented on Draft PR #88 and remains unmerged until final review/CI.
-- Accepted quantity alone consumes PO remaining and posts inventory.
-- Rejected quantity is recorded as variance and never reduces PO remaining or inventory.
-- Explicit shortage closure computes `remainingBefore - acceptedQuantity` and requires a normalized reason plus note.
+- Phase 5.4 is implemented on branch `agent/phase-5-4-supplier-return`.
+- Supplier return supports draft, submit, approve, post, cancel and reverse.
+- Posted supplier return uses `SR-` monthly numbering and blocks goods receipt reversal while active returns remain.
+- UI post/reverse actions now follow the browser flow in the issue: post works without forcing a note, and reverse falls back to a default reason when the modal field is empty.
+- Local verification passed: migration verify, API build, web build, web typecheck, goods-receipt API tests, supplier-return API tests, and supplier-return Playwright E2E.
 - No production migration or deployment is included in the source task.
 
-> Updated: 2026-07-27  
-> Current checkpoint: Phase 3 master data is in progress. Phase 3.3A through Phase 3.3E are merged on `main`. Phase 3.3F document numbering is next. The grouped production Core backend/database rollout remains intentionally deferred.
-
+> Updated: 2026-07-29  
+> Current checkpoint: Phase 5.4 supplier return is complete in source. Phase 3 master data history remains below for reference. The grouped production Core backend/database rollout is still intentionally deferred.
 ## Production status
 
 ```text
@@ -31,27 +30,27 @@ Important separation:
 
 - Phase 3.3A frontend is deployed to Vercel.
 - Migrations `010_customer_master_data` through `014_price_lists_channel_resolution` are not applied to production.
-- Phase 3.3A–3.3E Core API code is not deployed to production Heroku.
+- Phase 3.3Aâ€“3.3E Core API code is not deployed to production Heroku.
 - `/products`, its Phase 3.3D UI and `/pricing` are not claimed as deployed to production Vercel.
 - Do not claim customer, supplier, product, unit, conversion, barcode or pricing production APIs are live until the grouped Phase 3 rollout is completed and verified.
 
 ## Delivered and productionized foundations
 
-### Phase 3.1 — Organization and warehouse structure
+### Phase 3.1 â€” Organization and warehouse structure
 
 - branches, warehouses and warehouse locations;
 - migrations `002` through `006`;
 - idempotency, optimistic concurrency and transactional audit;
 - Vietnamese Core UI and server-only gateways.
 
-### Phase 3.2A — Employees
+### Phase 3.2A â€” Employees
 
 - migration `007_hr_employees`;
 - employee directory and active/inactive lifecycle;
 - optional branch assignment;
 - API, Core web gateway, UI and PostgreSQL/browser coverage.
 
-### Phase 3.2B — Roles and permissions
+### Phase 3.2B â€” Roles and permissions
 
 - migration `008_access_roles_permissions`;
 - canonical permission catalog;
@@ -59,7 +58,7 @@ Important separation:
 - deny-by-default authorization foundation;
 - permission matrix UI and regression coverage.
 
-### Phase 3.2C — Users and role assignment
+### Phase 3.2C â€” Users and role assignment
 
 - migration `009_access_users_role_assignments`;
 - installation-scoped users linked one-to-one with employees;
@@ -69,7 +68,7 @@ Important separation:
 
 Historical backups `b007` and `b008` must not be reused as evidence for a future migration.
 
-## Phase 3.3A — Customers
+## Phase 3.3A â€” Customers
 
 Merged by PR #44 at commit:
 
@@ -87,7 +86,7 @@ Delivered in source:
 
 Frontend production deployment is complete. Backend/database rollout remains deferred.
 
-## Phase 3.3B — Suppliers
+## Phase 3.3B â€” Suppliers
 
 Merged by PR #46 at commit:
 
@@ -109,7 +108,7 @@ Production migration/backend deployment remains deferred.
 
 See `docs/operations/supplier-master-data-slice.md`.
 
-## Phase 3.3C — Product catalog foundation
+## Phase 3.3C â€” Product catalog foundation
 
 Merged by PR #47 at commit:
 
@@ -132,7 +131,7 @@ Delivered in source:
 
 See `docs/operations/product-catalog-foundation-slice.md`.
 
-## Phase 3.3D — Units, conversions and barcodes
+## Phase 3.3D â€” Units, conversions and barcodes
 
 Merged by PR #49 at commit:
 
@@ -160,7 +159,7 @@ Source-data audit:
 
 - 606 canonical base/converted SKU pairs;
 - 604 rows clean for controlled rehearsal import;
-- two `THÙNG → THÙNG` rows blocked for business review;
+- two `THÃ™NG â†’ THÃ™NG` rows blocked for business review;
 - no generated carton-SKU assumptions;
 - physical weight differences never define stock conversion.
 
@@ -172,7 +171,7 @@ docs/operations/product-units-data-audit-2026-07-27.md
 data/imports/product-units-conversions-2026-07-23-review-required.json
 ```
 
-## Phase 3.3E — Price lists and channel resolution
+## Phase 3.3E â€” Price lists and channel resolution
 
 Merged by PR #51 at commit:
 
@@ -200,7 +199,7 @@ Delivered in source:
 - canonical Vietnamese `/pricing` administration workspace;
 - product/SKU/unit administration remains on `/products`;
 - `/pricing` supports channels, price lists/programs, SKU rules and a price simulator with trace;
-- Core navigation includes `Giá bán & khuyến mãi`;
+- Core navigation includes `GiÃ¡ bÃ¡n & khuyáº¿n mÃ£i`;
 - Playwright project `catalog` runs both `products.spec.ts` and `pricing.spec.ts`;
 - fixed the pre-existing product SKU-load race, product-unit success-state race and detached-workspace/sidebar overlap exposed by the active browser coverage;
 - Foundation F0.2, migration apply/rerun, PostgreSQL API/service tests, source workbook audit, Core web typecheck/tests/build, Heroku process contract, migration rehearsal and Chromium E2E all passed;
@@ -209,7 +208,7 @@ Delivered in source:
 Locked pricing behavior:
 
 - ordinary retail price is the editable base price for the exact retail SKU, not a code constant;
-- carton price is independently maintained on the carton SKU and is never derived from retail price × conversion;
+- carton price is independently maintained on the carton SKU and is never derived from retail price Ã— conversion;
 - channel, customer-group, customer-specific, promotion and custom policies are stored as data;
 - trusted code may create a generic/custom rule through the same API, but company-specific amounts, rates, dates and priority are not hardcoded;
 - manual override has highest precedence and requires a reason;
@@ -231,7 +230,7 @@ Venue-channel workbook:
 - one repeated SKU requiring deterministic source-key/business review;
 - 338 positive channel prices;
 - five missing/zero prices blocked from import;
-- 69 rows marked `CẦN DUYỆT - NHIỀU SKU KHÁC QUY CÁCH/GIÁ` and blocked from unattended import.
+- 69 rows marked `Cáº¦N DUYá»†T - NHIá»€U SKU KHÃC QUY CÃCH/GIÃ` and blocked from unattended import.
 
 See:
 
@@ -257,7 +256,7 @@ Production migration `014`, price import and backend/frontend deployment remain 
 
 Do not start inventory ledger, purchasing transactions, sales transactions or MCP cutover before the Phase 3 master-data gate is closed.
 
-## Next task — Phase 3.3F document numbering
+## Next task â€” Phase 3.3F document numbering
 
 Required boundaries:
 
@@ -312,3 +311,4 @@ Never reuse historical backup/restore evidence for this rollout.
 - No manual production DB edits.
 - No migration without a newly verified backup, restore rehearsal and reconciliation.
 - Never expose secrets, tokens, provider credentials or `DATABASE_URL` in frontend, GitHub, chat, logs or screenshots.
+

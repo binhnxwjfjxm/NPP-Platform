@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import * as repository from '../db/repositories/goods-receipt.js';
 import * as purchaseOrderRepository from '../db/repositories/purchase-order.js';
+import * as supplierReturnRepository from '../db/repositories/supplier-return.js';
 import * as documentNumberRepository from '../db/repositories/document-numbering.js';
 import { allocateDocumentNumber } from './document-numbering.js';
 import { postInventoryMovement, reverseInventoryMovement } from './inventory-ledger.js';
@@ -710,6 +711,13 @@ export async function reverseGoodsReceipt(client, {
   const reasonNote = text(payload?.reasonNote ?? payload?.reversalReason, 2000);
   if (!reasonNote) return failure('REVERSAL_REASON_REQUIRED', 'reversalReason or reasonNote is required');
   const reasonCode = text(payload?.reasonCode, 64)?.toUpperCase() ?? 'PURCHASE_RECEIPT_REVERSAL';
+
+  if (await supplierReturnRepository.hasBlockingSupplierReturnsForGoodsReceipt(client, {
+    installationId: requestContext.installationId,
+    goodsReceiptId: current.raw.id,
+  })) {
+    return failure('GOODS_RECEIPT_SUPPLIER_RETURN_BLOCKED', 'Goods receipt has an active supplier return and cannot be reversed');
+  }
 
   let inventoryReversalMovementId = null;
 if (current.raw.inventory_movement_id) {

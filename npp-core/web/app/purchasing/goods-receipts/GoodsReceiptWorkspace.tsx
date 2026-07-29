@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import shellStyles from '../../components/app-shell.module.css';
@@ -960,6 +961,14 @@ export default function GoodsReceiptWorkspace({
               <div className={localStyles.totalCard}><span>Cập nhật</span><strong>{formatGoodsReceiptDate(selectedGoodsReceipt.updatedAt)}</strong></div>
             </div>
             <div className={localStyles.modalActions}>
+              {selectedGoodsReceipt.status === 'posted' && initialPermissionKeys.includes('core.goods-receipt.read') ? (
+                <Link
+                  href={`/purchasing/supplier-returns?goodsReceiptId=${selectedGoodsReceipt.id}`}
+                  className={styles.secondaryButton}
+                >
+                  Tạo phiếu trả NCC
+                </Link>
+              ) : null}
               {selectedGoodsReceipt.status === 'draft' && initialPermissionKeys.includes('core.goods-receipt.update') ? (
                 <button type="button" className={styles.secondaryButton} onClick={() => void openEdit(selectedGoodsReceipt)} disabled={Boolean(busyId)}>Sửa nháp</button>
               ) : null}
