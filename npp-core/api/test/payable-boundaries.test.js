@@ -31,6 +31,10 @@ function context(config, warehouseIds) {
   };
 }
 
+function codeSuffix() {
+  return randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase();
+}
+
 test('payable reads enforce permission, warehouse scope, installation isolation and append-only history', async () => {
   const config = testConfig();
   const pool = getPool(config);
@@ -41,6 +45,7 @@ test('payable reads enforce permission, warehouse scope, installation isolation 
   const documentId = randomUUID();
   const ledgerId = randomUUID();
   const actor = 'test:fixture';
+  const suffix = codeSuffix();
   try {
     const bootstrap = createBootstrapPrincipal(config);
     assert.equal(requirePermission({ permissions: [] }, PERMISSIONS.corePayableRead).ok, false);
@@ -49,17 +54,17 @@ test('payable reads enforce permission, warehouse scope, installation isolation 
     await pool.query(
       `INSERT INTO shared.branches (id,installation_id,code,name,is_active,created_by,updated_by)
        VALUES ($1,$2,$3,$4,true,$5,$5)`,
-      [branchId, config.installationId, `PB-${randomUUID().slice(0, 8)}`, 'Chi nhánh công nợ', actor],
+      [branchId, config.installationId, `PB-${suffix}`, 'Chi nhánh công nợ', actor],
     );
     await pool.query(
       `INSERT INTO shared.warehouses (id,installation_id,branch_id,code,name,warehouse_type,is_active,created_by,updated_by)
        VALUES ($1,$2,$3,$4,$5,'main',true,$6,$6),($7,$2,$3,$8,$9,'main',true,$6,$6)`,
-      [warehouseA, config.installationId, branchId, `PA-${randomUUID().slice(0, 8)}`, 'Kho A', actor, warehouseB, `PB-${randomUUID().slice(0, 8)}`, 'Kho B'],
+      [warehouseA, config.installationId, branchId, `PA-${suffix}`, 'Kho A', actor, warehouseB, `PC-${suffix}`, 'Kho B'],
     );
     await pool.query(
       `INSERT INTO shared.suppliers (id,installation_id,code,name,is_active,created_by,updated_by)
        VALUES ($1,$2,$3,$4,true,$5,$5)`,
-      [supplierId, config.installationId, `PS-${randomUUID().slice(0, 8)}`, 'Nhà cung cấp phạm vi', actor],
+      [supplierId, config.installationId, `PS-${suffix}`, 'Nhà cung cấp phạm vi', actor],
     );
     await pool.query(
       `INSERT INTO accounting.payable_documents (
