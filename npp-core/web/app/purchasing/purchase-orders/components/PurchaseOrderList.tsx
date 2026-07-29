@@ -13,8 +13,12 @@ import styles from '../../../organization/organization.module.css';
 type Props = {
   purchaseOrders: PurchaseOrder[];
   permissionKeys: readonly string[];
+  busyId: string | null;
   onView: (purchaseOrder: PurchaseOrder) => void;
   onEdit: (purchaseOrder: PurchaseOrder) => void;
+  onSubmit: (purchaseOrder: PurchaseOrder) => void;
+  onApprove: (purchaseOrder: PurchaseOrder) => void;
+  onCancel: (purchaseOrder: PurchaseOrder) => void;
 };
 
 function statusTone(status: PurchaseOrder['status']): string {
@@ -23,7 +27,16 @@ function statusTone(status: PurchaseOrder['status']): string {
   return '';
 }
 
-export default function PurchaseOrderList({ purchaseOrders, permissionKeys, onView, onEdit }: Props) {
+export default function PurchaseOrderList({
+  purchaseOrders,
+  permissionKeys,
+  busyId,
+  onView,
+  onEdit,
+  onSubmit,
+  onApprove,
+  onCancel,
+}: Props) {
   if (purchaseOrders.length === 0) {
     return (
       <div className={styles.emptyState} data-testid="purchase-orders-empty-state">
@@ -44,13 +57,14 @@ export default function PurchaseOrderList({ purchaseOrders, permissionKeys, onVi
             <th>Số dòng</th>
             <th>Tổng giá trị</th>
             <th>Trạng thái</th>
-            <th>Người tạo</th>
+            <th>Cập nhật</th>
             <th>Thao tác</th>
           </tr>
         </thead>
         <tbody>
           {purchaseOrders.map((purchaseOrder) => {
             const policy = purchaseOrderActionPolicy(purchaseOrder.status, permissionKeys);
+            const disabled = busyId === purchaseOrder.id;
             return (
               <tr key={purchaseOrder.id} data-testid={`purchase-order-row-${purchaseOrder.id}`}>
                 <td>
@@ -62,27 +76,41 @@ export default function PurchaseOrderList({ purchaseOrders, permissionKeys, onVi
                 <td>{formatPurchaseOrderDate(purchaseOrder.placedAt)}</td>
                 <td>{purchaseOrder.supplierName || 'Chưa có tên nhà cung cấp'}</td>
                 <td>{purchaseOrder.warehouseName || 'Chưa có tên kho nhận'}</td>
-                <td>{formatDecimalString(String(purchaseOrder.lines.length))}</td>
-                <td>{formatPurchaseOrderAmount(purchaseOrder.total, purchaseOrder.currency || 'VND')}</td>
+                <td>{formatDecimalString(String(purchaseOrder.lineCount))}</td>
+                <td>{formatPurchaseOrderAmount(purchaseOrder.total, purchaseOrder.currency)}</td>
                 <td>
                   <span className={`${styles.statusPill} ${statusTone(purchaseOrder.status)}`}>
                     {PURCHASE_ORDER_STATUS_LABELS[purchaseOrder.status]}
                   </span>
                 </td>
-                <td>{purchaseOrder.createdByName || 'Chưa xác định'}</td>
+                <td>{formatPurchaseOrderDate(purchaseOrder.updatedAt)}</td>
                 <td>
                   <div className={styles.rowActions}>
                     {policy.view ? (
-                      <button type="button" onClick={() => onView(purchaseOrder)}>
-                        Xem chi tiết
+                      <button type="button" onClick={() => onView(purchaseOrder)} disabled={disabled}>
+                        Xem
                       </button>
                     ) : null}
                     {policy.edit ? (
-                      <button type="button" onClick={() => onEdit(purchaseOrder)}>
-                        Chỉnh sửa
+                      <button type="button" onClick={() => onEdit(purchaseOrder)} disabled={disabled}>
+                        Sửa
                       </button>
                     ) : null}
-                    {!policy.view && !policy.edit ? <span>Không có quyền thao tác</span> : null}
+                    {policy.submit ? (
+                      <button type="button" onClick={() => onSubmit(purchaseOrder)} disabled={disabled}>
+                        Gửi duyệt
+                      </button>
+                    ) : null}
+                    {policy.approve ? (
+                      <button type="button" onClick={() => onApprove(purchaseOrder)} disabled={disabled}>
+                        Duyệt
+                      </button>
+                    ) : null}
+                    {policy.cancel ? (
+                      <button type="button" onClick={() => onCancel(purchaseOrder)} disabled={disabled}>
+                        Hủy
+                      </button>
+                    ) : null}
                   </div>
                 </td>
               </tr>
