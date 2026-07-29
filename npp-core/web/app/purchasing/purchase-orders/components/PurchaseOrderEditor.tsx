@@ -35,6 +35,12 @@ type EditorLine = PurchaseOrderDraftLine & {
   conversionToBase: string;
 };
 
+type PurchasableVariant = ProductVariant & {
+  unit_id: string;
+  unit_code: string;
+  conversion_to_base: string;
+};
+
 type ApiEnvelope<T> = {
   data?: T;
   error?: { code?: string; message?: string; retryable?: boolean };
@@ -142,12 +148,12 @@ export default function PurchaseOrderEditor({
     [products],
   );
   const purchasableVariants = useMemo(
-    () => availableVariants.filter((variant) => (
+    () => availableVariants.filter((variant): variant is PurchasableVariant => (
       variant.is_active
       && variant.is_purchasable
-      && Boolean(variant.unit_id)
-      && Boolean(variant.unit_code)
-      && Boolean(variant.conversion_to_base)
+      && typeof variant.unit_id === 'string'
+      && typeof variant.unit_code === 'string'
+      && typeof variant.conversion_to_base === 'string'
     )),
     [availableVariants],
   );
@@ -182,7 +188,7 @@ export default function PurchaseOrderEditor({
 
   function addVariant() {
     const variant = purchasableVariants.find((item) => item.id === selectedVariantId);
-    if (!variant || !variant.unit_id || !variant.unit_code || !variant.conversion_to_base) {
+    if (!variant) {
       setError('Vui lòng chọn một SKU mua hàng hợp lệ.');
       return;
     }
@@ -191,7 +197,7 @@ export default function PurchaseOrderEditor({
       return;
     }
     changed();
-    setLines((current) => [...current, {
+    const nextLine: EditorLine = {
       key: crypto.randomUUID(),
       variantId: variant.id,
       sku: variant.sku,
@@ -203,7 +209,8 @@ export default function PurchaseOrderEditor({
       discountAmount: '0',
       taxAmount: '0',
       note: '',
-    }]);
+    };
+    setLines((current) => [...current, nextLine]);
     setSelectedVariantId('');
   }
 
