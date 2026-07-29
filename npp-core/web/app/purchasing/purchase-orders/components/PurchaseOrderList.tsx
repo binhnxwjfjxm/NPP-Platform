@@ -2,6 +2,7 @@
 
 import type { PurchaseOrder } from '../../../../lib/purchase-order-types';
 import {
+  formatDecimalString,
   formatPurchaseOrderAmount,
   formatPurchaseOrderDate,
   purchaseOrderActionPolicy,
@@ -19,16 +20,14 @@ type Props = {
 function statusTone(status: PurchaseOrder['status']): string {
   if (status === 'approved' || status === 'fully_received' || status === 'closed') return styles.toneSuccess;
   if (status === 'cancelled') return styles.toneDanger;
-  if (status === 'pending_approval' || status === 'partially_received') return styles.toneWarning;
-  return styles.toneNeutral;
+  return '';
 }
 
 export default function PurchaseOrderList({ purchaseOrders, permissionKeys, onView, onEdit }: Props) {
   if (purchaseOrders.length === 0) {
     return (
       <div className={styles.emptyState} data-testid="purchase-orders-empty-state">
-        <strong>Chưa có đơn đặt hàng</strong>
-        <span>Danh sách sẽ hiển thị khi có dữ liệu mua hàng hợp lệ.</span>
+        Chưa có đơn đặt hàng phù hợp với bộ lọc hiện tại.
       </div>
     );
   }
@@ -63,7 +62,7 @@ export default function PurchaseOrderList({ purchaseOrders, permissionKeys, onVi
                 <td>{formatPurchaseOrderDate(purchaseOrder.placedAt)}</td>
                 <td>{purchaseOrder.supplierName || 'Chưa có tên nhà cung cấp'}</td>
                 <td>{purchaseOrder.warehouseName || 'Chưa có tên kho nhận'}</td>
-                <td>{formatPurchaseOrderAmount(String(purchaseOrder.lines.length), 'dòng')}</td>
+                <td>{formatDecimalString(String(purchaseOrder.lines.length))}</td>
                 <td>{formatPurchaseOrderAmount(purchaseOrder.total, purchaseOrder.currency || 'VND')}</td>
                 <td>
                   <span className={`${styles.statusPill} ${statusTone(purchaseOrder.status)}`}>
