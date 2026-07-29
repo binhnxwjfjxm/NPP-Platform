@@ -13,7 +13,6 @@ import {
   inventoryTabs,
   matchTerm,
   normalizeSearch,
-  upperCode,
   type InventoryBalance,
   type InventoryLot,
   type InventoryMovementLine,
@@ -41,20 +40,6 @@ type PolicyDraft = {
   locationRequired: boolean;
   expectedVersion: string;
 };
-
-type OpeningDraft = {
-  sourceKey: string;
-  sourceFilename: string;
-  documentDate: string;
-  metadataText: string;
-  rowsText: string;
-};
-
-type ValidationState = {
-  rowErrors: Array<{ lineNumber: number; code: string; message: string }>;
-  rows: Array<Record<string, unknown>>;
-  totals: { rowCount: number; sourceQuantityTotal: string; baseQuantityTotal: string };
-} | null;
 
 type RequestEnvelope<T> = {
   data?: T;
@@ -88,20 +73,6 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return payload.data;
 }
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.keys(value as Record<string, unknown>).sort().map((key) => [key, canonicalize((value as Record<string, unknown>)[key])]));
-  }
-  return value;
-}
-
-async function sha256Hex(value: string): Promise<string> {
-  const bytes = new TextEncoder().encode(value);
-  const hash = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
 function emptyPolicyDraft(): PolicyDraft {
   return {
     baseVariantId: '',
@@ -110,26 +81,6 @@ function emptyPolicyDraft(): PolicyDraft {
     locationRequired: false,
     expectedVersion: '',
   };
-}
-
-function emptyOpeningDraft(): OpeningDraft {
-  return {
-    sourceKey: '',
-    sourceFilename: '',
-    documentDate: new Date().toISOString().slice(0, 10),
-    metadataText: '{}',
-    rowsText: '[\n  {\n    "warehouseId": "",\n    "locationId": null,\n    "sourceVariantId": "",\n    "sourceQuantity": "1.000000",\n    "lotCode": "",\n    "manufacturedDate": null,\n    "expiryDate": null,\n    "supplierLotReference": null,\n    "sourceLineReference": "Sheet1!2",\n    "metadata": {}\n  }\n]',
-  };
-}
-
-function safeJsonObject(value: string): Record<string, unknown> {
-  const parsed = value.trim() ? JSON.parse(value) : {};
-  return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
-}
-
-function safeJsonArray(value: string): unknown[] {
-  const parsed = JSON.parse(value);
-  return Array.isArray(parsed) ? parsed : [];
 }
 
 function tableEmpty(message: string) {
@@ -179,9 +130,6 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
   const [selectedBalance, setSelectedBalance] = useState<InventoryBalance | null>(balances[0] ?? null);
   const [drillDown, setDrillDown] = useState<InventoryMovementLine[]>([]);
   const [policyDraft, setPolicyDraft] = useState<PolicyDraft>(emptyPolicyDraft());
-  const [openingDraft, setOpeningDraft] = useState<OpeningDraft>(emptyOpeningDraft());
-  const [validation, setValidation] = useState<ValidationState>(null);
-  const [openingResult, setOpeningResult] = useState<Record<string, unknown> | null>(null);
 
   const normalizedSearch = normalizeSearch(search);
 
@@ -301,70 +249,6 @@ export default function InventoryWorkspace({ scope, title, subtitle, initialSnap
       setNotice({ kind: 'success', message: 'Chính sách lô đã được lưu.' });
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Không lưu được chính sách lô');
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function validateOpeningBalance() {
-    setBusy('opening-validate');
-    setError(null);
-    setNotice(null);
-    try {
-      const rows = safeJsonArray(openingDraft.rowsText);
-      const metadata = safeJsonObject(openingDraft.metadataText);
-      const normalizedBody = {
-        sourceKey: upperCode(openingDraft.sourceKey),
-        sourceFilename: openingDraft.sourceFilename.trim() || null,
-        documentDate: openingDraft.documentDate,
-        metadata,
-        rows,
-      };
-      const contentChecksum = await sha256Hex(JSON.stringify(canonicalize(normalizedBody)));
-      const result = await requestJson<{
-        rowErrors: Array<{ lineNumber: number; code: string; message: string }>;
-        rows: Record<string, unknown>[];
-        totals: { rowCount: number; sourceQuantityTotal: string; baseQuantityTotal: string };
-      }>('/api/inventory/opening-balances/validate', {
-        method: 'POST',
-        body: JSON.stringify({ ...normalizedBody, contentChecksum }),
-      });
-      setValidation(result);
-      setNotice(result.rowErrors.length === 0
-        ? { kind: 'success', message: 'Tệp nhập tồn đầu kỳ hợp lệ. Có thể ghi sổ.' }
-        : { kind: 'error', message: 'Tệp có dòng lỗi. Sửa trước khi ghi sổ.' });
-    } catch (validateError) {
-      setValidation(null);
-      setError(validateError instanceof Error ? validateError.message : 'Không kiểm tra được dữ liệu');
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function postOpeningBalance() {
-    setBusy('opening-post');
-    setError(null);
-    try {
-      const rows = safeJsonArray(openingDraft.rowsText);
-      const metadata = safeJsonObject(openingDraft.metadataText);
-      const normalizedBody = {
-        sourceKey: upperCode(openingDraft.sourceKey),
-        sourceFilename: openingDraft.sourceFilename.trim() || null,
-        documentDate: openingDraft.documentDate,
-        metadata,
-        rows,
-      };
-      const contentChecksum = await sha256Hex(JSON.stringify(canonicalize(normalizedBody)));
-      const result = await requestJson<Record<string, unknown>>('/api/inventory/opening-balances/post', {
-        method: 'POST',
-        headers: { 'Idempotency-Key': `opening-${upperCode(openingDraft.sourceKey)}-${contentChecksum.slice(0, 16)}` },
-        body: JSON.stringify({ ...normalizedBody, contentChecksum }),
-      });
-      setOpeningResult(result);
-      setNotice({ kind: 'success', message: 'Đã ghi sổ nhập tồn đầu kỳ.' });
-      await refreshAll();
-    } catch (postError) {
-      setError(postError instanceof Error ? postError.message : 'Không ghi sổ được nhập tồn đầu kỳ');
     } finally {
       setBusy(null);
     }
