@@ -32,7 +32,7 @@ jobs:
         run: npm ci
 
       - name: Apply fail-closed layout refactor
-        run: node scripts/apply-product-catalog-layout.mjs
+        run: node scripts/run-product-layout-codemod.mjs
 
       - name: Verify Core web source
         run: npm --prefix npp-core/web run test && npm --prefix npp-core/web run typecheck
