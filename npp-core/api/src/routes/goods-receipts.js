@@ -120,7 +120,17 @@ async function authenticateAndAuthorize(req, res, options, permission) {
     sendError(res, apiError('FORBIDDEN', 'Permission denied', {}, false, 403), options.requestId, options.receivedAt);
     return null;
   }
-  return ensureWarehouseScopes(options.getPool(), requestContext);
+  const scopedContext = await ensureWarehouseScopes(options.getPool(), requestContext);
+  if (!Array.isArray(scopedContext.scopes?.warehouseIds) || scopedContext.scopes.warehouseIds.length === 0) {
+    sendError(
+      res,
+      apiError('WAREHOUSE_SCOPE_DENIED', 'At least one authorized warehouse is required', {}, false, 403),
+      options.requestId,
+      options.receivedAt,
+    );
+    return null;
+  }
+  return scopedContext;
 }
 
 function eventTypeFor(action) {
@@ -219,7 +229,6 @@ async function executeIdempotentMutation(req, res, options, {
         };
       },
     });
-
     res.setHeader('Cache-Control', 'no-store');
     sendJson(
       res,
@@ -354,4 +363,3 @@ export async function handleGoodsReceiptRoutes(req, res, options) {
   sendError(res, apiError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405), options.requestId, options.receivedAt);
   return true;
 }
-
