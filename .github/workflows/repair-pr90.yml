@@ -1,0 +1,354 @@
+name: Temporary PR 90 Repair
+
+on:
+  push:
+    branches:
+      - agent/phase-5-4-supplier-return
+    paths:
+      - .github/workflows/repair-pr90.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/phase-5-4-supplier-return
+          fetch-depth: 0
+
+      - name: Apply verified PR fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          git show origin/main:docs/operations/LATEST_HANDOFF.md > docs/operations/LATEST_HANDOFF.md
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected one match, found {text.count(old)} for {old[:80]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8', newline='\n')
+
+          # Canonical movement type and explicit internal-only snapshot capability.
+          replace_once(
+              'npp-core/api/src/services/inventory-ledger.js',
+              "  ['SUPPLIER_RETURN', 'OUT'],",
+              "  ['SUPPLIER_RETURN_ISSUE', 'OUT'],",
+          )
+          replace_once(
+              'npp-core/api/src/services/inventory-ledger.js',
+              'function normalizePostingPayload(payload) {',
+              'function normalizePostingPayload(payload, { allowTrustedSourceSnapshots = false } = {}) {',
+          )
+          replace_once(
+              'npp-core/api/src/services/inventory-ledger.js',
+              """    const sourceSku = text(line.sourceSku, 96)?.toUpperCase() ?? null;
+    const sourceUnitCode = text(line.sourceUnitCode, 32)?.toUpperCase() ?? null;
+    const baseSku = text(line.baseSku, 96)?.toUpperCase() ?? null;
+    const sourceUnitId = text(line.sourceUnitId, 64);
+    const baseVariantId = text(line.baseVariantId, 64);
+    const trustedConversion = line.conversionToBase !== undefined && line.conversionToBase !== null && line.conversionToBase !== ''
+      ? parsePositiveDecimal(line.conversionToBase, `lines[${index}].conversionToBase`)
+      : null;
+    if (trustedConversion && !trustedConversion.ok) return trustedConversion;
+    const trustedSnapshot = sourceSku || sourceUnitId || sourceUnitCode || baseVariantId || baseSku || trustedConversion
+      ? {
+        sourceSku,
+        sourceUnitId,
+        sourceUnitCode,
+        conversionToBase: trustedConversion?.value ?? null,
+        baseVariantId,
+        baseSku,
+      }
+      : null;
+""",
+              """    const snapshotFieldNames = ['sourceSku', 'sourceUnitId', 'sourceUnitCode', 'conversionToBase', 'baseVariantId', 'baseSku'];
+    const hasSnapshotInput = snapshotFieldNames.some((field) => line[field] !== undefined && line[field] !== null && line[field] !== '');
+    if (hasSnapshotInput && !allowTrustedSourceSnapshots) {
+      return failure('TRUSTED_SNAPSHOT_NOT_ALLOWED', 'Historical source snapshots are accepted only from explicit server-owned document posting paths');
+    }
+    let trustedSnapshot = null;
+    if (hasSnapshotInput) {
+      const sourceSku = text(line.sourceSku, 96)?.toUpperCase() ?? null;
+      const sourceUnitCode = text(line.sourceUnitCode, 32)?.toUpperCase() ?? null;
+      const baseSku = text(line.baseSku, 96)?.toUpperCase() ?? null;
+      const sourceUnitId = text(line.sourceUnitId, 64);
+      const baseVariantId = text(line.baseVariantId, 64);
+      const trustedConversion = line.conversionToBase !== undefined && line.conversionToBase !== null && line.conversionToBase !== ''
+        ? parsePositiveDecimal(line.conversionToBase, `lines[${index}].conversionToBase`)
+        : null;
+      if (trustedConversion && !trustedConversion.ok) return trustedConversion;
+      trustedSnapshot = {
+        sourceSku,
+        sourceUnitId,
+        sourceUnitCode,
+        conversionToBase: trustedConversion?.value ?? null,
+        baseVariantId,
+        baseSku,
+      };
+    }
+""",
+          )
+          replace_once(
+              'npp-core/api/src/services/inventory-ledger.js',
+              'export async function postInventoryMovement(client, { requestContext, idempotencyKey, payload }) {\n',
+              'export async function postInventoryMovement(client, { requestContext, idempotencyKey, payload, trustedSourceSnapshots = false }) {\n',
+          )
+          replace_once(
+              'npp-core/api/src/services/inventory-ledger.js',
+              '  const normalized = normalizePostingPayload(payload);\n',
+              '  const normalized = normalizePostingPayload(payload, { allowTrustedSourceSnapshots: trustedSourceSnapshots });\n',
+          )
+
+          # Supplier Return: serialize submit against source receipt reversal and use canonical movement contract.
+          replace_once(
+              'npp-core/api/src/services/supplier-return.js',
+              """  const validation = await validateLines(client, {
+    requestContext,
+    payload: {
+      supplierId: current.raw.supplier_id,
+      warehouseId: current.raw.warehouse_id,
+      returnDate: dateOnly(current.raw.return_date),
+      note: current.raw.note,
+      lines: current.raw.lines ?? [],
+    },
+    strictReceiptStatus: true,
+  });
+""",
+              """  const lockResult = await lockSourceReceiptLines(client, requestContext, current.raw.lines ?? []);
+  if (!lockResult.ok) return lockResult;
+  const validation = await validateLines(client, {
+    requestContext,
+    payload: {
+      supplierId: current.raw.supplier_id,
+      warehouseId: current.raw.warehouse_id,
+      returnDate: dateOnly(current.raw.return_date),
+      note: current.raw.note,
+      lines: current.raw.lines ?? [],
+    },
+    strictReceiptStatus: true,
+  });
+""",
+          )
+          replace_once(
+              'npp-core/api/src/services/supplier-return.js',
+              "      movementType: 'SUPPLIER_RETURN',",
+              "      movementType: 'SUPPLIER_RETURN_ISSUE',",
+          )
+          replace_once(
+              'npp-core/api/src/services/supplier-return.js',
+              "      reasonCode: 'SUPPLIER_RETURN',",
+              "      reasonCode: 'SUPPLIER_RETURN_ISSUE',",
+          )
+          replace_once(
+              'npp-core/api/src/services/supplier-return.js',
+              """      lines: movementLines,
+    },
+  });
+""",
+              """      lines: movementLines,
+    },
+    trustedSourceSnapshots: true,
+  });
+""",
+          )
+
+          # Goods Receipt must post its stored SKU/unit/conversion snapshot, not current conversion.
+          replace_once(
+              'npp-core/api/src/services/goods-receipt.js',
+              """  const movementLines = refreshed.lines
+  .filter((line) => (decimalToScaled(line.acceptedQuantity, { allowZero: true }) ?? 0n) > 0n)
+  .map((line) => ({
+    warehouseId: line.warehouseId,
+    locationId: line.locationId,
+    sourceVariantId: line.variantId,
+    direction: 'IN',
+    sourceQuantity: line.acceptedQuantity,
+""",
+              """  const sourceVariantIds = refreshed.lines.map((line) => line.variantId);
+  const baseVariantRows = sourceVariantIds.length > 0
+    ? (await client.query(
+      `SELECT source.id AS source_variant_id, base.id AS base_variant_id, base.sku AS base_sku
+         FROM shared.product_variants source
+         JOIN shared.product_variants base
+           ON base.installation_id = source.installation_id
+          AND base.product_id = source.product_id
+          AND base.is_inventory_base = true
+        WHERE source.installation_id = $1
+          AND source.id = ANY($2::uuid[])`,
+      [requestContext.installationId, sourceVariantIds],
+    )).rows
+    : [];
+  const baseVariantBySource = new Map(baseVariantRows.map((row) => [row.source_variant_id, row]));
+  if (baseVariantBySource.size !== new Set(sourceVariantIds).size) {
+    return failure('BASE_VARIANT_NOT_AVAILABLE', 'Inventory base SKU is missing for one or more Goods Receipt lines');
+  }
+
+  const movementLines = refreshed.lines
+  .filter((line) => (decimalToScaled(line.acceptedQuantity, { allowZero: true }) ?? 0n) > 0n)
+  .map((line) => {
+    const baseVariant = baseVariantBySource.get(line.variantId);
+    return ({
+    warehouseId: line.warehouseId,
+    locationId: line.locationId,
+    sourceVariantId: line.variantId,
+    sourceSku: line.skuCode,
+    sourceUnitId: line.unitId,
+    sourceUnitCode: line.unitCode,
+    conversionToBase: line.conversionToBase,
+    baseVariantId: baseVariant.base_variant_id,
+    baseSku: baseVariant.base_sku,
+    direction: 'IN',
+    sourceQuantity: line.acceptedQuantity,
+""",
+          )
+          replace_once(
+              'npp-core/api/src/services/goods-receipt.js',
+              """      purchaseOrderLineId: line.purchaseOrderLineId,
+    },
+  }));
+""",
+              """      purchaseOrderLineId: line.purchaseOrderLineId,
+    },
+  });
+  });
+""",
+          )
+          replace_once(
+              'npp-core/api/src/services/goods-receipt.js',
+              """      lines: movementLines,
+    },
+  });
+""",
+              """      lines: movementLines,
+    },
+    trustedSourceSnapshots: true,
+  });
+""",
+          )
+
+          # UI: mandatory reversal reason, no fabricated fallback.
+          replace_once(
+              'npp-core/web/app/purchasing/supplier-returns/SupplierReturnWorkspace.tsx',
+              """    if (action === 'cancel' && !cancellationReason.trim()) {
+      setError('Vui lòng nhập lý do hủy phiếu.');
+      return;
+    }
+""",
+              """    if (action === 'cancel' && !cancellationReason.trim()) {
+      setError('Vui lòng nhập lý do hủy phiếu.');
+      return;
+    }
+    if (action === 'reverse' && !reverseReason.trim()) {
+      setError('Vui lòng nhập lý do đảo phiếu.');
+      return;
+    }
+""",
+          )
+          replace_once(
+              'npp-core/web/app/purchasing/supplier-returns/SupplierReturnWorkspace.tsx',
+              "reasonNote: reverseReason.trim() || supplierReturn.note?.trim() || 'Đảo phiếu',",
+              'reasonNote: reverseReason.trim(),',
+          )
+          replace_once(
+              'npp-core/web/app/purchasing/supplier-returns/SupplierReturnWorkspace.tsx',
+              '<input value={reverseReason} onChange={(event) => setReverseReason(event.target.value)} />',
+              '<input data-testid="supplier-return-reverse-reason" value={reverseReason} onChange={(event) => setReverseReason(event.target.value)} />',
+          )
+          replace_once(
+              'npp-core/web/e2e/supplier-returns.spec.ts',
+              """    await row.getByRole('button', { name: 'Đảo phiếu', exact: true }).click();
+    await page.getByTestId('supplier-return-reverse-confirm').click();
+""",
+              """    await row.getByRole('button', { name: 'Đảo phiếu', exact: true }).click();
+    await page.getByTestId('supplier-return-reverse-reason').fill('Đảo phiếu trả do kiểm thử');
+    await page.getByTestId('supplier-return-reverse-confirm').click();
+""",
+          )
+
+          # Decision record corrections.
+          replace_once(
+              'docs/operations/phase-5-4-supplier-return-decisions.md',
+              "- Goods receipt không được reverse nếu còn bất kỳ supplier return nào ở trạng thái `draft`, `pending_approval`, `approved` hoặc `posted` trỏ về các source goods receipt line của nó.",
+              "- Goods receipt không được reverse nếu còn bất kỳ supplier return nào ở trạng thái `pending_approval`, `approved` hoặc `posted` trỏ về các source goods receipt line của nó. `draft` không chặn; draft phải fail khi submit/post nếu source receipt không còn posted.",
+          )
+          replace_once(
+              'docs/operations/phase-5-4-supplier-return-decisions.md',
+              '- Modal post/reverse phải cho phép đi tiếp với giá trị mặc định khi người dùng không nhập ghi chú lý do.',
+              '- Modal reverse bắt buộc người dùng nhập lý do không rỗng; không tự tạo fallback. Backend vẫn là nguồn kiểm tra authoritative.',
+          )
+
+          # Truthful, UTF-8 handoff based on main (no BOM/mojibake).
+          handoff = Path('docs/operations/LATEST_HANDOFF.md')
+          text = handoff.read_text(encoding='utf-8')
+          old = """## Source checkpoint — Phase 5.3 Goods Receipt Variance
+
+- Phase 5.2 is merged on `main` at `bea7b846537781a5809106c3d7db08dc60dfc546`.
+- Phase 5.3 is implemented on Draft PR #88 and remains unmerged until final review/CI.
+- Accepted quantity alone consumes PO remaining and posts inventory.
+- Rejected quantity is recorded as variance and never reduces PO remaining or inventory.
+- Explicit shortage closure computes `remainingBefore - acceptedQuantity` and requires a normalized reason plus note.
+- No production migration or deployment is included in the source task.
+
+> Updated: 2026-07-27  
+> Current checkpoint: Phase 3 master data is in progress. Phase 3.3A through Phase 3.3E are merged on `main`. Phase 3.3F document numbering is next. The grouped production Core backend/database rollout remains intentionally deferred.
+"""
+          new = """## Source checkpoint — Phase 5.4 Supplier Return
+
+- Phase 5.3 is merged on `main` at `a547404ef55d2adc7276289115992250a5205fab`.
+- Phase 5.4 is implemented and reviewed in PR #90; actual merge state must be verified from Git before any follow-on work.
+- Supplier Return uses `SUPPLIER_RETURN_ISSUE` OUT movements, historical Goods Receipt snapshots, deny-by-default permissions, warehouse scope, idempotency, audit/outbox and compensating reversal.
+- Draft returns do not block Goods Receipt reversal; pending approval, approved and posted returns do. Submit/post revalidate and lock source receipt state.
+- Supplier Return does not alter Goods Receipt accepted/rejected/shortage facts or reopen Purchase Order remaining quantity/status.
+- No production migration or deployment is included in this source task.
+
+> Updated: 2026-07-29  
+> Current checkpoint: Phase 5.4 Supplier Return source review. Production rollout remains intentionally separate and unverified by this source PR.
+"""
+          if old not in text:
+              raise SystemExit('LATEST_HANDOFF main header block did not match')
+          handoff.write_text(text.replace(old, new, 1), encoding='utf-8', newline='\n')
+
+          # Strengthen focused API assertions: exact movement type and historical base delta.
+          replace_once(
+              'npp-core/api/test/supplier-return.test.js',
+              """    assert.equal(postedReturn.status, 'posted');
+    assert.match(postedReturn.documentNumber, /^SR-202607-\\d{6}$/);
+
+    const balanceAfterPost = await pool.query(
+""",
+              """    assert.equal(postedReturn.status, 'posted');
+    assert.match(postedReturn.documentNumber, /^SR-202607-\\d{6}$/);
+    const postedMovement = await pool.query(
+      `SELECT movement_type, direction
+         FROM inventory.inventory_movements
+        WHERE installation_id = $1 AND id = $2`,
+      [config.installationId, postedReturn.inventoryMovementId],
+    );
+    assert.equal(postedMovement.rows[0].movement_type, 'SUPPLIER_RETURN_ISSUE');
+    assert.equal(postedMovement.rows[0].direction, 'OUT');
+
+    const balanceAfterPost = await pool.query(
+""",
+          )
+          PY
+
+          git diff --check
+          git status --short
+
+      - name: Commit repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add npp-core docs
+          git commit -m "fix(purchasing): harden supplier return invariants"
+          git push origin HEAD:agent/phase-5-4-supplier-return
