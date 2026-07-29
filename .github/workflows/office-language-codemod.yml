@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - scripts/office-language-inventory-codemod.mjs
+      - scripts/office-language-masterdata-codemod.mjs
       - .github/workflows/office-language-codemod.yml
 
 permissions:
@@ -23,8 +23,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Apply verified inventory language replacements
-        run: node scripts/office-language-inventory-codemod.mjs
+      - name: Apply verified master-data language replacements
+        run: node scripts/office-language-masterdata-codemod.mjs
       - name: Commit generated source changes
         run: |
           git config user.name "github-actions[bot]"
@@ -34,5 +34,5 @@ jobs:
             echo "No source changes to commit"
             exit 0
           fi
-          git commit -m "refactor(ui): apply inventory office language"
+          git commit -m "refactor(ui): apply master-data office language"
           git push origin HEAD:agent/office-language-cleanup
