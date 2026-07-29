@@ -54,12 +54,12 @@ test.describe('Core web route smoke', () => {
   test('root route redirects into the dashboard shell', async ({ page }) => {
     await expectHealthyRoute(page, '/');
     await expect(page).toHaveURL(/\/dashboard$/);
-    await expect(page.getByRole('heading', { name: 'Tổng quan' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Tổng quan cơ cấu', exact: true })).toBeVisible();
   });
 
   test('login page loads cleanly in Vietnamese', async ({ page }) => {
     await expectHealthyRoute(page, '/login');
-    await expect(page.getByRole('heading', { name: 'Đăng nhập để vào không gian quản trị' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Đăng nhập hệ thống', exact: true })).toBeVisible();
     await expect(page.getByText('Hưng Phát Company')).toBeVisible();
     expectNoSensitiveData(await page.content());
   });
@@ -67,7 +67,7 @@ test.describe('Core web route smoke', () => {
   test('dashboard page follows the office shell contract', async ({ page }) => {
     await expectHealthyRoute(page, '/dashboard');
     await expect(page.getByTestId('organization-overview-page')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Tổng quan', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Tổng quan cơ cấu', exact: true })).toBeVisible();
     await expect(page.getByText('Hưng Phát Company')).toBeVisible();
     await expect(page.getByTestId('app-sidebar')).toHaveCSS('position', 'fixed');
     expectNoSensitiveData(await page.content());
@@ -175,8 +175,8 @@ test.describe('Core web route smoke', () => {
     await page.getByTestId('roles-topbar-create-button').click();
     const editorDialog = page.getByRole('dialog');
     await expect(editorDialog.getByRole('heading', { name: 'Thêm vai trò quản trị', exact: true })).toBeVisible();
-    await expect(editorDialog.getByText('Ma trận quyền', { exact: true })).toBeVisible();
-    await expect(editorDialog.getByRole('heading', { name: 'Chọn quyền theo module', exact: true })).toBeVisible();
+    await expect(editorDialog.getByText('Phạm vi quyền', { exact: true })).toBeVisible();
+    await expect(editorDialog.getByRole('heading', { name: 'Chọn quyền theo nhóm chức năng', exact: true })).toBeVisible();
     await expect(editorDialog.getByText('Mã vai trò', { exact: true })).toBeVisible();
 
     await page.getByTestId('role-code-input').fill(roleCode.toLowerCase());
