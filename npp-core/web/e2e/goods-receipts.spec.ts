@@ -187,7 +187,7 @@ test.describe('Phiếu nhận hàng mua vào', () => {
     await expect(detail).toContainText('10');
     await expect(detail).toContainText('1');
     await expect(detail).toContainText('0');
-    await expect(detail).toContainText('6');
+    await expect(detail).toContainText('11');
     const receiptSummaryTable = detail.getByTestId('purchase-order-receipts-table');
     await expect(receiptSummaryTable).toContainText(firstReference);
     await expect(receiptSummaryTable).toContainText(secondReference);

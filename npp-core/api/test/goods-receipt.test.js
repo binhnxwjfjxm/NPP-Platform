@@ -229,7 +229,7 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
       })),
     });
     assert.equal(response.status, 400);
-    assert.equal(await errorCode(response), 'INVALID_QUALITY_REASON_CODE');
+    assert.equal(await errorCode(response), 'INVALID_VARIANCE_REASON_CODE');
 
 
 
@@ -496,6 +496,79 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
   }
 });
 
+
+
+test('Goods receipt can post and reverse a fully rejected delivery without inventory movement', async () => {
+  const config = loadConfig(testEnv({ PORT: '3078', INSTALLATION_ID: `goods-receipt-rejected-${randomUUID()}` }));
+  const pool = getPool(config);
+  let server;
+  try {
+    const fixture = await seedFixture(pool, config.installationId);
+    server = await startServer({ config });
+    const baseUrl = `http://${config.host}:${config.port}`;
+    const approved = await createApprovedPo(baseUrl, config, fixture);
+
+    let response = await fetch(`${baseUrl}/api/goods-receipts`, {
+      method: 'POST',
+      headers: mutationHeaders(config, `gr-rejected-${randomUUID()}`),
+      body: JSON.stringify(receiptPayload(approved, fixture, '2', 'DELIVERY-REJECTED', {
+        acceptedQuantity: '0',
+        rejectedQuantity: '2',
+        qualityReasonCode: 'DAMAGED',
+        qualityNote: 'Toàn bộ hàng giao bị loại tại cửa nhận',
+      })),
+    });
+    assert.equal(response.status, 201);
+    const draft = await data(response);
+    assert.equal(draft.lines[0].baseQuantity, '0.000000');
+
+    response = await fetch(`${baseUrl}/api/goods-receipts/${draft.id}/post`, {
+      method: 'POST',
+      headers: mutationHeaders(config, `gr-rejected-post-${randomUUID()}`),
+      body: JSON.stringify({ expectedRevision: draft.revision }),
+    });
+    assert.equal(response.status, 200);
+    const posted = await data(response);
+    assert.equal(posted.inventoryMovementId, null);
+
+    response = await fetch(`${baseUrl}/api/purchase-orders/${approved.id}`, { headers: readHeaders(config) });
+    const unchangedPo = await data(response);
+    assert.equal(unchangedPo.status, 'approved');
+    assert.equal(unchangedPo.acceptedQuantityTotal, '0.000000');
+    assert.equal(unchangedPo.rejectedQuantityTotal, '2.000000');
+    assert.equal(unchangedPo.remainingQuantityTotal, '10.000000');
+
+    const movementCount = await pool.query(
+      `SELECT count(*)::int AS count FROM inventory.inventory_movements
+       WHERE installation_id = $1 AND source_document_id = $2`,
+      [config.installationId, posted.id],
+    );
+    assert.equal(movementCount.rows[0].count, 0);
+
+    response = await fetch(`${baseUrl}/api/goods-receipts/${posted.id}/reverse`, {
+      method: 'POST',
+      headers: mutationHeaders(config, `gr-rejected-reverse-${randomUUID()}`),
+      body: JSON.stringify({
+        expectedRevision: posted.revision,
+        documentDate: '2026-07-29',
+        reasonNote: 'Đảo phiếu toàn bộ bị loại',
+      }),
+    });
+    assert.equal(response.status, 200);
+    const reversed = await data(response);
+    assert.equal(reversed.inventoryReversalMovementId, null);
+
+    response = await fetch(`${baseUrl}/api/purchase-orders/${approved.id}`, { headers: readHeaders(config) });
+    const restoredPo = await data(response);
+    assert.equal(restoredPo.status, 'approved');
+    assert.equal(restoredPo.rejectedQuantityTotal, '0.000000');
+    assert.equal(restoredPo.remainingQuantityTotal, '10.000000');
+  } finally {
+    if (server) await closeServer(server);
+    await closePool();
+  }
+});
+
 test('Goods receipt variance requires explicit permission even when create is allowed', async () => {
   const config = loadConfig(testEnv({ PORT: '3076' }));
   const pool = getPool(config);
@@ -584,6 +657,27 @@ test('Goods receipt shortage closure marks the purchase order closed', async () 
     assert.equal(closedPo.rejectedQuantityTotal, '0.000000');
     assert.equal(closedPo.shortageClosedQuantityTotal, '8.000000');
     assert.equal(closedPo.remainingQuantityTotal, '0.000000');
+
+    const reverseResponse = await fetch(`${baseUrl}/api/goods-receipts/${posted.id}/reverse`, {
+      method: 'POST',
+      headers: mutationHeaders(config, `gr-close-reverse-${randomUUID()}`),
+      body: JSON.stringify({
+        expectedRevision: posted.revision,
+        documentDate: '2026-07-29',
+        reasonNote: 'Đảo phiếu chốt thiếu để kiểm tra phục hồi projection',
+      }),
+    });
+    assert.equal(reverseResponse.status, 200);
+    const reversed = await data(reverseResponse);
+    assert.equal(reversed.status, 'reversed');
+
+    const restoredResponse = await fetch(`${baseUrl}/api/purchase-orders/${approved.id}`, { headers: readHeaders(config) });
+    const restoredPo = await data(restoredResponse);
+    assert.equal(restoredPo.status, 'approved');
+    assert.equal(restoredPo.acceptedQuantityTotal, '0.000000');
+    assert.equal(restoredPo.rejectedQuantityTotal, '0.000000');
+    assert.equal(restoredPo.shortageClosedQuantityTotal, '0.000000');
+    assert.equal(restoredPo.remainingQuantityTotal, '10.000000');
   } finally {
     if (server) await closeServer(server);
     await closePool();

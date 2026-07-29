@@ -42,7 +42,11 @@ WHERE accepted_quantity = 0::numeric
   AND quality_note IS NULL;
 
 ALTER TABLE purchasing.goods_receipt_lines
-  DROP CONSTRAINT IF EXISTS goods_receipt_lines_conversion_check;
+  DROP CONSTRAINT IF EXISTS goods_receipt_lines_conversion_check,
+  DROP CONSTRAINT IF EXISTS goods_receipt_lines_base_quantity_check;
+
+ALTER TABLE purchasing.goods_receipt_lines
+  ADD CONSTRAINT goods_receipt_lines_base_quantity_nonnegative_check CHECK (base_quantity >= 0);
 
 ALTER TABLE purchasing.goods_receipt_lines
   ADD CONSTRAINT goods_receipt_lines_variance_check CHECK (

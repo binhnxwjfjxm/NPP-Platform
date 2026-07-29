@@ -127,7 +127,6 @@ async function getPurchaseOrderReceiptSummary(client, { installationId, purchase
        GREATEST(
          COALESCE(SUM(pol.ordered_quantity), 0::numeric)
          - COALESCE(SUM(receipt_summary.accepted_quantity), 0::numeric)
-         - COALESCE(SUM(receipt_summary.rejected_quantity), 0::numeric)
          - COALESCE(SUM(receipt_summary.shortage_closed_quantity), 0::numeric),
          0::numeric
        ) AS remaining_quantity_total,
@@ -242,7 +241,7 @@ export async function updatePurchaseOrderReceiptStatus(client, { installationId,
      FROM next_status
      WHERE po.installation_id = $1
        AND po.id = $2
-       AND po.status IN ('approved', 'partially_received', 'fully_received')
+       AND po.status IN ('approved', 'partially_received', 'fully_received', 'closed')
      RETURNING po.id`,
     [installationId, purchaseOrderId, actorId],
   );
