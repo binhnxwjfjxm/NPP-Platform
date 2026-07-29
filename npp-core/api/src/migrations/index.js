@@ -77,6 +77,10 @@ const INVENTORY_LOTS_OPENING_BALANCE_SQL = readFileSync(
   new URL('../../../../database/migrations/inventory/020_inventory_lots_opening_balance.sql', import.meta.url),
   'utf8',
 );
+const PURCHASE_ORDER_FOUNDATION_SQL = readFileSync(
+  new URL('../../../../database/migrations/purchasing/021_purchase_order_foundation.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '002_core_idempotency', sql: CORE_IDEMPOTENCY_SQL }),
@@ -98,6 +102,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '018_inventory_balance_read_model', sql: INVENTORY_BALANCE_READ_MODEL_SQL }),
   Object.freeze({ id: '019_inventory_reservations_negative_stock', sql: INVENTORY_RESERVATIONS_NEGATIVE_STOCK_SQL }),
   Object.freeze({ id: '020_inventory_lots_opening_balance', sql: INVENTORY_LOTS_OPENING_BALANCE_SQL }),
+  Object.freeze({ id: '021_purchase_order_foundation', sql: PURCHASE_ORDER_FOUNDATION_SQL }),
 ]);
 
 function validateMigration(migration) {
