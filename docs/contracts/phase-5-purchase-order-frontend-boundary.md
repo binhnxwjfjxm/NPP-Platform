@@ -1,90 +1,73 @@
-# Provisional frontend boundary — Phase 5 Purchase Order (P5.1)
+# Phase 5.1 Purchase Order contract
 
-> Provisional frontend boundary for the NPP Platform implementation. This is not the final database contract and does not assign database/backend coding to Codex by default.
+Trạng thái: **IMPLEMENTED IN SOURCE — PENDING FINAL CI/MERGE**  
+Route người dùng: `/purchasing/purchase-orders`
 
-## Ownership and workflow
+Tài liệu quyết định nghiệp vụ chi tiết: `docs/operations/phase-5-1-purchase-order-decisions.md`.
 
-- Agent creates the first local rough implementation and runs fast local checks.
-- The primary reviewer audits the real diff, corrects defects, writes missing frontend/backend/database code in the repository, and verifies CI before merge.
-- Codex is only used for work that is blocked by the current environment, requires provider access, production migration rehearsal, backup/restore evidence, or an unusually long external operation.
-- Production deployment, provider mutation and production database changes are separate operator-approved steps.
+## Ownership và quy trình
 
-## Route
+- Agent tạo bản thô local và chạy kiểm tra nhanh.
+- Reviewer chính kiểm diff thật, sửa lỗi và hoàn thiện frontend/backend/database code trong repo.
+- Codex chỉ dùng cho tác vụ ngoài repo hoặc bị môi trường chặn như provider audit, migration rehearsal hay backup/restore evidence.
+- Merge source không đồng nghĩa deploy hoặc chạy migration production.
 
-- Frontend route: `/purchasing/purchase-orders`
+## Phạm vi P5.1
 
-## P5.1 boundary
+P5.1 sở hữu:
 
-P5.1 owns purchase-order draft and approval foundations only.
-
-Included:
-
-- purchase order header and lines;
-- draft lifecycle;
+- PO header và lines;
+- draft create/update;
 - submit for approval;
-- approval;
-- cancellation policy before receiving;
-- document numbering boundary;
+- approval và cấp số chứng từ;
+- cancellation;
 - permissions;
+- warehouse scope;
+- decimal string và snapshot;
 - idempotency;
 - optimistic concurrency;
-- audit/outbox requirements;
-- Core API and Core web UI.
+- audit/outbox;
+- Core API, same-origin web routes và Core web UI.
 
-Excluded from P5.1:
+P5.1 không sở hữu:
 
 - goods receipt;
 - inventory posting;
-- quantity or quality variance;
+- quantity/quality variance;
 - supplier return;
-- payable posting;
+- payable;
 - supplier payment/allocation.
 
-## UI states
+## State machine
 
-- List: loading, empty, error and data.
-- Detail: read-only summary and future receipt placeholders.
-- Form: validation, saving, conflict and permission states once mutation APIs are implemented.
-- When permission context is missing, all mutation actions are hidden or disabled by default.
+```text
+draft -> pending_approval -> approved
 
-## PO state machine
+draft | pending_approval | approved -> cancelled
+```
 
-Supported states:
+- Chỉ `draft` được sửa nội dung.
+- `pending_approval` và `approved` không sửa trực tiếp.
+- Số PO chỉ cấp lúc approval.
+- `partially_received`, `fully_received`, `closed` chỉ được hiển thị read-only để tương thích P5.2.
+- Enum kỹ thuật không hiển thị trực tiếp cho người dùng.
 
-- `draft` — Nháp;
-- `pending_approval` — Chờ duyệt;
-- `approved` — Đã duyệt;
-- `partially_received` — Đã nhận một phần, read-only until P5.2;
-- `fully_received` — Đã nhận đủ, read-only until P5.2;
-- `closed` — Đã đóng;
-- `cancelled` — Đã hủy.
+## Permission catalog
 
-Action summary:
+Canonical keys:
 
-- `draft`: view, edit, submit and cancel when authorized;
-- `pending_approval`: view, approve and cancel when authorized and allowed by backend policy;
-- `approved`: view only in P5.1; no direct edit;
-- receipt states: display only in P5.1;
-- `cancelled` and `closed`: view only.
+- `core.purchase-order.read`
+- `core.purchase-order.create`
+- `core.purchase-order.update`
+- `core.purchase-order.submit`
+- `core.purchase-order.approve`
+- `core.purchase-order.cancel`
 
-Technical enum values must never be displayed directly in the default UI.
+Frontend fail-closed nếu không đọc được permission context. Backend kiểm permission riêng cho từng endpoint và là security boundary thực sự.
 
-## Permission requirements
+## Core API và same-origin routes
 
-Provisional keys, pending confirmation against the canonical permission registry:
-
-- `purchasing.purchase_order.read`
-- `purchasing.purchase_order.create`
-- `purchasing.purchase_order.update`
-- `purchasing.purchase_order.submit`
-- `purchasing.purchase_order.approve`
-- `purchasing.purchase_order.cancel`
-
-The frontend is not the security boundary. Backend authorization must deny by default and validate installation and warehouse scope from server-owned request context.
-
-## API endpoints
-
-Expected same-origin Core web API routes proxying the Core API:
+Các route dưới đây tồn tại ở cả Core API và Next.js same-origin proxy:
 
 - GET `/api/purchase-orders?limit&offset&status&supplierId&warehouseId&search`
 - GET `/api/purchase-orders/:id`
@@ -94,89 +77,130 @@ Expected same-origin Core web API routes proxying the Core API:
 - POST `/api/purchase-orders/:id/approve`
 - POST `/api/purchase-orders/:id/cancel`
 
-Expected envelope:
+Response envelope:
 
 ```text
 { data?: T, error?: { code?, message?, retryable?, details? }, requestId? }
 ```
 
-Non-2xx responses must contain a safe public error. Raw PostgreSQL or provider errors must not reach the browser.
+Raw PostgreSQL/provider errors không được trả về browser.
 
-## Request and response rules
+## Request/response contract
 
-- IDs are UUID strings and are validated before path or query construction.
-- Quantity and money are decimal strings at every domain boundary.
-- JavaScript float is not a source of truth for quantity or money.
-- Dates use the repository ISO-date convention.
-- Lines snapshot SKU, purchase unit, conversion-to-base and base quantity.
-- Responses include a revision/version value once optimistic concurrency is implemented.
-- Supplier, warehouse, user and SKU display names are supplied separately from IDs; raw IDs are not the normal UI fallback.
+- IDs là UUID.
+- Quantity và money là decimal string.
+- PostgreSQL trả numeric theo fixed scale; UI formatter bỏ zero dư chỉ để hiển thị.
+- Dates trả ISO `YYYY-MM-DD` cho business dates.
+- `revision` trả string để tránh giới hạn JavaScript integer.
+- List trả `lineCount`; detail trả `lines` đầy đủ.
+- Display names/code được trả riêng; UI không dùng raw ID làm fallback mặc định.
 
-## Idempotency and concurrency
+Header draft payload:
 
-- Every mutation accepts `Idempotency-Key`, not only create.
-- The caller owns the key and must keep it stable when retrying the same logical mutation.
-- The gateway must not generate a different replacement key on every retry.
-- Same key plus same payload returns the original result.
-- Same key plus a different payload returns conflict.
-- Draft update, submit, approve and cancel include expected revision/version once the backend contract is implemented.
+```text
+supplierId
+warehouseId
+orderDate
+expectedDate?
+supplierReference?
+currencyCode
+note?
+expectedRevision?   # bắt buộc khi PATCH
+lines[]
+```
 
-## Error states the UI distinguishes
+Line draft payload:
 
-- configuration/not configured — feature unavailable without fake success;
-- validation — field-level feedback;
-- conflict — stale revision or idempotency payload mismatch;
-- permission — mutation actions remain unavailable;
-- not found — document no longer exists or is outside scope;
-- unavailable — retryable service failure with a safe message.
+```text
+variantId
+quantity
+unitPrice
+discountAmount
+taxAmount
+note?
+```
 
-## Lookups
+Backend tự tra master data và snapshot SKU/name/unit/conversion. Browser không được gửi snapshot để áp đặt lịch sử.
 
-- active supplier lookup using the existing supplier contract;
-- warehouse lookup restricted by server-owned warehouse scope;
-- SKU search;
-- purchase-unit and conversion snapshot lookup;
-- document-numbering configuration for PO documents.
+## Decimal rules
 
-Production components must not import test fixtures or silently fall back to mock data.
+- Scale nghiệp vụ: 6 chữ số thập phân.
+- Backend dùng BigInt scaled arithmetic.
+- UI preview cũng dùng BigInt; backend vẫn là nguồn tổng cuối cùng.
+- Không dùng JavaScript float làm nguồn quantity/money.
+- Công thức:
 
-## Decisions still required before backend/database mutation
+```text
+base quantity = round(quantity × conversion, 6)
+line total = round(quantity × unit price - discount + tax, 6)
+PO total = subtotal - discount total + tax total
+```
 
-- exact canonical permission keys;
-- PO number allocation timing: draft creation or approval;
-- approved-order amendment/version policy;
-- rejection/return-to-draft behavior;
-- cancellation policy after approval but before receipt;
-- approval actor/timestamp response fields;
-- revision format and conflict payload;
-- document-numbering document type;
-- discount and tax snapshot semantics;
-- purchase currency policy.
+## Idempotency và concurrency
 
-## Current frontend rough status
+- Mọi mutation bắt buộc `Idempotency-Key`.
+- Same key + same payload trả response cũ.
+- Same key + different payload trả 409.
+- Browser giữ key ổn định khi retry cùng attempt và đổi key khi payload thay đổi.
+- PATCH/submit/approve/cancel bắt buộc `expectedRevision`.
+- Hai update cùng revision chỉ một request được commit; request còn lại trả conflict.
 
-Implemented on the draft branch:
+## Approval và document numbering
 
-- server-only typed gateway boundary;
-- UUID and query validation;
-- caller-owned idempotency requirement;
-- decimal-string-safe display formatting;
-- centralized status labels and action policy;
-- AppShell list workspace, controlled search/status filters and read-only detail modal;
-- fail-closed mutation actions when permission context is absent;
-- source-contract tests preventing regression to float conversion, technical enum display and unstable idempotency.
+- Series: `PURCHASE_ORDER`.
+- Prefix: `PO-`.
+- Template: `{PREFIX}{YYYY}{MM}-{SEQ}`.
+- Reset monthly, timezone `Asia/Ho_Chi_Minh`.
+- Allocation và approval nằm trong cùng transaction.
+- Cùng approval idempotency key không cấp số lần hai.
 
-Still required before P5.1 is mergeable:
+## Audit và outbox
 
-- canonical backend/database contract and decision document;
-- migration and repository/service implementation;
-- same-origin web API routes;
-- permission catalog alignment;
-- real create/edit form with supplier, warehouse, SKU and unit lookups;
-- submit/approve/cancel flows;
-- unit, API, PostgreSQL, concurrency and browser E2E tests;
-- CI green on the final head SHA.
+Mỗi mutation thành công ghi một audit record và một outbox event trong cùng transaction:
 
----
+- `purchasing.purchase_order.created`
+- `purchasing.purchase_order.updated`
+- `purchasing.purchase_order.submitted`
+- `purchasing.purchase_order.approved`
+- `purchasing.purchase_order.cancelled`
 
-Any backend/database implementation that changes this provisional boundary must update the document and frontend types in the same slice. No production deployment or migration is implied by merging source code.
+Audit/outbox thất bại thì mutation rollback.
+
+## Frontend implementation
+
+Đã có:
+
+- AppShell navigation “Mua hàng → Đơn đặt hàng”;
+- list, search, status filter, summary và responsive table;
+- permission-aware actions;
+- controlled create/edit modal;
+- supplier/warehouse/product/SKU lookups từ API thật;
+- line editor và exact decimal preview;
+- detail modal;
+- submit/approve/cancel confirmation;
+- stable idempotency key per logical attempt;
+- refresh/upsert sau mutation;
+- safe error/loading/empty states;
+- desktop flow và mobile smoke E2E.
+
+Production components không import fixture và không fallback sang mock success.
+
+## Verification contract
+
+P5.1 test coverage gồm:
+
+- migration apply/rerun;
+- exact decimal helpers;
+- create/replay/mismatch;
+- concurrent update revision guard;
+- update/stale conflict;
+- submit;
+- approve/document number/replay;
+- DB-level line lock after approval;
+- cancel/replay;
+- permission denial;
+- audit/outbox counts;
+- web source contracts;
+- browser create/edit/submit/approve/view/cancel/mobile flow.
+
+P5.1 chỉ merge khi tất cả workflow trên final head SHA xanh. Deploy, production migration, backup và restore rehearsal là bước riêng có operator approval.
