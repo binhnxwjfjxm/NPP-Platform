@@ -38,6 +38,7 @@ Before merge, verify on the exact final head:
 - full Core UI/Browser E2E is successful;
 - Phase 3 split/grouped migration rehearsal is successful;
 - Inventory Ledger, Balance and Reservations regressions are successful;
+- Supplier Return focused coverage includes over-return, idempotent replay/mismatch, stale revision, concurrent post serialization, cancellation without movement, second reversal, draft non-blocking receipt reversal and historical conversion snapshots;
 - no changed path exists under `mcp/**`;
 - no unresolved actionable review thread remains.
 
@@ -52,4 +53,4 @@ Configured production endpoints remain:
 These endpoints, releases, backups and applied production migrations were not re-audited by this source task. Do not claim a deployment, migration, backup or restore state from this handoff alone. Vercel Auto Deploy and Heroku Automatic Deploy remain intended to stay off; production rollout is a separate explicit operation.
 
 > Updated: 2026-07-29  
-> Current checkpoint: Phase 5.4 Supplier Return final source verification rerun in PR #90 after focused API assertion correction. Merge only after exact-head logic review and all required CI gates pass.
+> Current checkpoint: Phase 5.4 Supplier Return final exact-head verification in PR #90 after focused failure-invariant coverage was added. Merge only after all required CI gates pass.
