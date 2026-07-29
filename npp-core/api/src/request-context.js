@@ -96,6 +96,7 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.coreSupplierReturnCancel,
       PERMISSIONS.coreSupplierReturnPost,
       PERMISSIONS.coreSupplierReturnReverse,
+      PERMISSIONS.corePayableRead,
     ],
     sourceApp: 'npp-core-api',
   });
