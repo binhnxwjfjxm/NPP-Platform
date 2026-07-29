@@ -7,6 +7,17 @@ function uniqueReference() {
 test.describe('Đơn đặt hàng nhà cung cấp', () => {
   test('tạo, sửa, gửi duyệt, duyệt, xem chi tiết và hủy đơn', async ({ page }) => {
     const supplierReference = uniqueReference();
+    const supplierSuffix = supplierReference.replace(/[^A-Z0-9]/g, '').slice(-12);
+    const supplierResponse = await page.request.post('/api/suppliers', {
+      headers: { 'Idempotency-Key': `po-supplier-${supplierSuffix}` },
+      data: {
+        code: `NCC-${supplierSuffix}`,
+        name: `Nhà cung cấp PO ${supplierSuffix}`,
+        taxId: `TAX-${supplierSuffix}`,
+        avgDeliveryDays: 7,
+      },
+    });
+    expect(supplierResponse.status()).toBe(201);
 
     await page.goto('/purchasing/purchase-orders');
     await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
@@ -23,7 +34,7 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     await expect(supplierSelect.locator('option')).not.toHaveCount(1);
     await expect(warehouseSelect.locator('option')).not.toHaveCount(1);
     await expect(productSelect.locator('option')).not.toHaveCount(1);
-    await supplierSelect.selectOption({ index: 1 });
+    await supplierSelect.selectOption({ label: `NCC-${supplierSuffix} — Nhà cung cấp PO ${supplierSuffix}` });
     await warehouseSelect.selectOption({ index: 1 });
     await editor.getByLabel('Tham chiếu nhà cung cấp').fill(supplierReference);
 
