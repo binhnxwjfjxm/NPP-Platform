@@ -6,15 +6,14 @@ on:
       - main
     paths:
       - '.github/workflows/core-ui-e2e.yml'
-      - '.github/scripts/phase-5-3-final-repair.py'
-      - 'npp-core/**'
-      - 'database/migrations/**'
+      - '.github/scripts/phase-5-3-ui-clean.py'
+      - 'npp-core/web/**'
 
 permissions:
   contents: write
 
 jobs:
-  repair-phase-5-3:
+  finalize-phase-5-3:
     if: github.head_ref == 'agent/phase-5-3-goods-receipt-variance'
     runs-on: ubuntu-24.04
     steps:
@@ -22,17 +21,18 @@ jobs:
         with:
           ref: agent/phase-5-3-goods-receipt-variance
           fetch-depth: 0
-      - name: Apply final reviewed fixes
+      - name: Clean UTF-8 and remove repair tooling
         shell: bash
         run: |
-          python -m pip install --disable-pip-version-check --quiet ftfy
-          sed -i '/raise SystemExit(f"missing target: {label}")/c\        print(f"optional target missing: {label}")\n        return value' .github/scripts/phase-5-3-final-repair.py
-          sed -i 's/ui = fix_text(read(ui_path))/ui = fix_text(fix_text(fix_text(read(ui_path))))/' .github/scripts/phase-5-3-final-repair.py
-          sed -i '/^if leftovers:$/,+1d' .github/scripts/phase-5-3-final-repair.py
-          python .github/scripts/phase-5-3-final-repair.py
+          python .github/scripts/phase-5-3-ui-clean.py
+          git show origin/main:.github/workflows/core-foundation.yml > .github/workflows/core-foundation.yml
+          git show origin/main:.github/workflows/core-ui-e2e.yml > .github/workflows/core-ui-e2e.yml
+          rm -f .github/workflows/phase-5-3-repair.yml
+          rm -f .github/scripts/phase-5-3-final-repair.py
+          rm -f .github/scripts/phase-5-3-ui-clean.py
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add database npp-core
-          git commit -m "fix(purchasing): close phase 5.3 review gaps"
+          git add .github npp-core/web/app/purchasing/goods-receipts/GoodsReceiptWorkspace.tsx
+          git commit -m "chore(purchasing): finalize phase 5.3 review cleanup"
           git push origin HEAD:agent/phase-5-3-goods-receipt-variance
