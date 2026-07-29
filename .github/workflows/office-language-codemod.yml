@@ -23,6 +23,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Remove duplicate checked replacement
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/office-language-masterdata-codemod.mjs')
+          source = path.read_text()
+          needle = "  ['<th>Catalog</th>', '<th>Hiển thị bán hàng</th>'],\n"
+          first = source.find(needle)
+          second = source.find(needle, first + len(needle))
+          if first < 0 or second < 0:
+              raise SystemExit('Expected two catalog header replacements')
+          source = source[:second] + source[second + len(needle):]
+          path.write_text(source)
+          PY
       - name: Apply verified master-data language replacements
         run: node scripts/office-language-masterdata-codemod.mjs
       - name: Commit generated source changes
