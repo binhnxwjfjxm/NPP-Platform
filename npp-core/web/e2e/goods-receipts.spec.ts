@@ -171,6 +171,9 @@ test.describe('Phiếu nhận hàng mua vào', () => {
     await expect(detail).toContainText('Đã nhận');
     await expect(detail).toContainText('10');
     await expect(detail).toContainText('Còn lại');
+    const receiptSummaryTable = detail.getByTestId('purchase-order-receipts-table');
+    await expect(receiptSummaryTable).toContainText(firstReference);
+    await expect(receiptSummaryTable).toContainText(secondReference);
     await detail.getByRole('button', { name: 'Đóng chi tiết', exact: true }).click();
 
     await page.goto('/purchasing/goods-receipts');
@@ -195,6 +198,7 @@ test.describe('Phiếu nhận hàng mua vào', () => {
     await expect(detail).toContainText('4');
     await expect(detail).toContainText('Còn lại');
     await expect(detail).toContainText('6');
+    await expect(detail.getByTestId('purchase-order-receipts-table')).toContainText('Đã đảo');
     await detail.getByRole('button', { name: 'Đóng chi tiết', exact: true }).click();
 
     await page.goto('/purchasing/goods-receipts');
