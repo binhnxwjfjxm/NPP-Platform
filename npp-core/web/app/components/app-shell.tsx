@@ -48,6 +48,11 @@ const inventoryItems = [
   { href: '/inventory/opening-balances', label: 'Thiết lập tồn đầu kỳ', icon: 'panel' as const, testId: 'nav-inventory-opening' },
 ];
 
+const purchasingItems = [
+  { href: '/purchasing/purchase-orders', label: 'Đơn đặt hàng', icon: 'panel' as const, testId: 'nav-purchase-orders' },
+  { href: '/purchasing/goods-receipts', label: 'Phiếu nhận hàng', icon: 'panel' as const, testId: 'nav-goods-receipts' },
+];
+
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, React.ReactNode> = {
     dashboard: (
@@ -118,6 +123,10 @@ function isInventoryPath(pathname: string): boolean {
   return pathname.startsWith('/inventory');
 }
 
+function isPurchasingPath(pathname: string): boolean {
+  return pathname.startsWith('/purchasing');
+}
+
 function persistCollapsed(value: boolean) {
   window.localStorage.setItem('npp-core-sidebar-collapsed', value ? '1' : '0');
 }
@@ -135,6 +144,7 @@ export function AppShell({
   const [organizationOpen, setOrganizationOpen] = useState(isOrganizationPath(pathname));
   const [accessOpen, setAccessOpen] = useState(pathname.startsWith('/access'));
   const [inventoryOpen, setInventoryOpen] = useState(isInventoryPath(pathname));
+  const [purchasingOpen, setPurchasingOpen] = useState(isPurchasingPath(pathname));
 
   useEffect(() => {
     setCollapsed(window.localStorage.getItem('npp-core-sidebar-collapsed') === '1');
@@ -144,6 +154,7 @@ export function AppShell({
     if (isOrganizationPath(pathname)) setOrganizationOpen(true);
     if (pathname.startsWith('/access')) setAccessOpen(true);
     if (isInventoryPath(pathname)) setInventoryOpen(true);
+    if (isPurchasingPath(pathname)) setPurchasingOpen(true);
     setMobileOpen(false);
   }, [pathname]);
 
@@ -163,6 +174,10 @@ export function AppShell({
   );
   const inventoryChildren = useMemo(
     () => inventoryItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })),
+    [pathname],
+  );
+  const purchasingChildren = useMemo(
+    () => purchasingItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })),
     [pathname],
   );
 
@@ -304,18 +319,41 @@ export function AppShell({
             </div>
 
             <p className={styles.navLabel}>Mua hàng</p>
-            <Link
-              href="/purchasing/purchase-orders"
-              className={`${styles.navItem} ${purchasingActive ? styles.navItemActive : ''}`}
-              data-testid="nav-purchase-orders"
-              title={collapsed ? 'Đơn đặt hàng' : undefined}
-            >
-              <span className={styles.navIcon}><Icon name="panel" /></span>
-              <span className={styles.navCopy}>
-                <span className={styles.navTitle}>Đơn đặt hàng</span>
-                <span className={styles.navHint}>Tạo, gửi duyệt và phê duyệt nhu cầu mua</span>
-              </span>
-            </Link>
+            <div className={`${styles.navGroup} ${purchasingActive ? styles.navGroupActive : ''}`}>
+              <button
+                type="button"
+                className={`${styles.navItem} ${styles.navGroupButton}`}
+                onClick={() => openGroup(setPurchasingOpen)}
+                aria-expanded={purchasingOpen}
+                data-testid="purchasing-menu-toggle"
+                title={collapsed ? 'Mua hàng' : undefined}
+              >
+                <span className={styles.navIcon}><Icon name="panel" /></span>
+                <span className={styles.navCopy}>
+                  <span className={styles.navTitle}>Mua hàng</span>
+                  <span className={styles.navHint}>Đơn đặt hàng và phiếu nhận hàng</span>
+                </span>
+                <span className={`${styles.chevron} ${purchasingOpen ? styles.chevronOpen : ''}`}>
+                  <Icon name="chevron" />
+                </span>
+              </button>
+
+              <div className={`${styles.subnav} ${purchasingOpen && !collapsed ? styles.subnavOpen : ''}`}>
+                {purchasingChildren.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    prefetch
+                    className={`${styles.subnavItem} ${item.active ? styles.subnavItemActive : ''}`}
+                    data-testid={item.testId}
+                  >
+                    <span className={styles.subnavRail} aria-hidden="true" />
+                    <span className={styles.subnavIcon}><Icon name="panel" /></span>
+                    <span>{item.label}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
 
             <p className={styles.navLabel}>Quản trị hệ thống</p>
             <div className={`${styles.navGroup} ${accessActive ? styles.navGroupActive : ''}`}>

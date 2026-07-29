@@ -94,6 +94,8 @@ function mapLine(line) {
     conversionToBase: String(line.conversion_to_base),
     quantity: String(line.ordered_quantity),
     baseQuantity: String(line.base_quantity),
+    receivedQuantity: line.received_quantity === undefined || line.received_quantity === null ? undefined : String(line.received_quantity),
+    remainingQuantity: line.remaining_quantity === undefined || line.remaining_quantity === null ? undefined : String(line.remaining_quantity),
     unitPrice: String(line.unit_price),
     discountAmount: String(line.discount_amount),
     taxAmount: String(line.tax_amount),
@@ -124,6 +126,13 @@ function mapOrder(order) {
     total: String(order.total),
     revision: String(order.revision),
     lineCount: Number(order.line_count ?? order.lines?.length ?? 0),
+    receiptCount: Number(order.receipt_count ?? 0),
+    receivedQuantityTotal: order.received_quantity_total === undefined || order.received_quantity_total === null
+      ? null
+      : String(order.received_quantity_total),
+    remainingQuantityTotal: order.remaining_quantity_total === undefined || order.remaining_quantity_total === null
+      ? null
+      : String(order.remaining_quantity_total),
     submittedAt: order.submitted_at ?? null,
     submittedBy: order.submitted_by ?? null,
     approvedAt: order.approved_at ?? null,

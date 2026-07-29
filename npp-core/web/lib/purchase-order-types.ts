@@ -69,6 +69,9 @@ export interface PurchaseOrder {
   total: string;
   revision: string;
   lineCount: number;
+  receiptCount: number;
+  receivedQuantityTotal: string | null;
+  remainingQuantityTotal: string | null;
   submittedAt: string | null;
   submittedBy: string | null;
   approvedAt: string | null;
