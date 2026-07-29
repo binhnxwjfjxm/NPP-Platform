@@ -41,23 +41,29 @@ test('sidebar submenu expands by content and exposes every P0-P4 destination', a
   assert.match(shell, /inventoryOpen && !collapsed/);
 });
 
-test('product catalog editors are real accessible modals', async () => {
-  const [workspace, styles] = await Promise.all([
+test('product catalog editors use the shared accessible React modal', async () => {
+  const [workspace, modal, modalStyles] = await Promise.all([
     readSource('../app/products/product-workspace.tsx'),
-    readSource('../app/products/products.module.css'),
+    readSource('../app/components/modal.tsx'),
+    readSource('../app/components/modal.module.css'),
   ]);
 
-  assert.match(workspace, /function CatalogModal/);
-  assert.match(workspace, /event\.key === 'Escape'/);
-  assert.match(workspace, /aria-modal="true"/);
-  assert.match(workspace, /testId="product-form"/);
-  assert.match(workspace, /testId="category-form"/);
-  assert.match(workspace, /testId="brand-form"/);
-  assert.match(workspace, /testId="variant-form"/);
+  assert.match(workspace, /import Modal from '\.\.\/components\/modal'/);
+  assert.match(workspace, /open=\{showProductForm\}[\s\S]*?testId="product-form"/);
+  assert.match(workspace, /open=\{showVariantForm\}[\s\S]*?testId="variant-form"/);
+  assert.match(workspace, /open=\{showCategoryForm\}[\s\S]*?testId="category-form"/);
+  assert.match(workspace, /open=\{showBrandForm\}[\s\S]*?testId="brand-form"/);
+  assert.doesNotMatch(
+    workspace,
+    /function\s+\w*Modal\b|const\s+\w*Modal\s*=|modalBackdrop|MutationObserver|document\.(?:querySelector(?:All)?|getElementById|getElementsByClassName|getElementsByTagName)/,
+  );
   assert.match(workspace, /Quản lý SKU, đơn vị, quy đổi và barcode của sản phẩm\./);
   assert.doesNotMatch(workspace, /Phase 3\.3D/);
-  assert.match(styles, /\.modalBackdrop/);
-  assert.match(styles, /\.formActions/);
+  assert.match(modal, /event\.key === 'Escape'/);
+  assert.match(modal, /aria-modal="true"/);
+  assert.match(modal, /querySelectorAll<HTMLElement>\(FOCUSABLE\)/);
+  assert.match(modalStyles, /\.backdrop/);
+  assert.match(modalStyles, /\.footer/);
 });
 
 test('initial loads preserve partial data and retry only once', async () => {
@@ -102,7 +108,7 @@ test('customer creation saves a default address without duplicating the customer
 
   assert.match(workspace, /VietnamAdministrativeFields/);
   assert.match(page, /listVietnamProvinces/);
-  assert.match(page, /initialProvinces={initialProvinces}/);
+  assert.match(page, /initialProvinces=\{initialProvinces\}/);
   assert.match(addressFields, /initialProvinces\?: ProvinceOption\[\]/);
   assert.match(addressFields, /initialProvinces = \[\]/);
   assert.doesNotMatch(workspace, /const VIETNAM_PROVINCES = \[/);
