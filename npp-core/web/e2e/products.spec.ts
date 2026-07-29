@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Danh mục sản phẩm', () => {
-  test('quản lý loại, nhãn hàng, sản phẩm, SKU, đơn vị, quy đổi và barcode', async ({ page }) => {
+  test('quản lý loại, nhãn hàng, sản phẩm, SKU, đơn vị, quy đổi và mã vạch trong một module', async ({ page }) => {
     const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
     const categoryCode = `CAT-${suffix}`;
     const brandCode = `BR-${suffix}`;
@@ -13,6 +13,7 @@ test.describe('Danh mục sản phẩm', () => {
     await page.goto('/products');
     await expect(page.getByTestId('products-page')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Danh mục sản phẩm', exact: true })).toBeVisible();
+    await expect(page.getByTestId('units-tab')).toBeVisible();
 
     await page.getByTestId('categories-tab').click();
     await page.getByTestId('add-category-button').click();
@@ -66,19 +67,26 @@ test.describe('Danh mục sản phẩm', () => {
     await expect(page.getByTestId('variant-form')).toHaveCount(0);
     await expect(page.getByTestId(`variant-row-${sku}`)).toBeVisible();
 
+    await page.getByTestId(`manage-units-${sku}`).click();
     await expect(page.getByTestId('product-unit-workspace')).toBeVisible();
-    await page.getByTestId('refresh-unit-products-button').click();
-    await expect(page.getByText('Đã làm mới danh sách sản phẩm')).toBeVisible();
+    await expect(page.getByTestId('sku-conversion-view')).toBeVisible();
+    await expect(page.getByTestId('variant-unit-panel')).toBeVisible();
+    await expect(page.getByTestId('selected-sku-summary')).toContainText(sku);
+    await expect(page.getByTestId('unit-product-select').locator('option:checked')).toHaveText(`${productCode} — Sản phẩm ${suffix}`);
+    await expect(page.getByTestId('unit-variant-select').locator('option:checked')).toHaveText(`${sku} — SKU ${suffix}`);
 
+    await page.getByTestId('unit-catalog-tab').click();
+    await expect(page.getByTestId('unit-catalog-view')).toBeVisible();
     await page.getByTestId('add-unit-button').click();
     await page.getByTestId('unit-code-input').fill(unitCode.toLowerCase());
     await page.getByTestId('unit-name-input').fill(`Đơn vị ${suffix}`);
     await page.getByTestId('save-unit-button').click();
     await expect(page.getByTestId(`unit-row-${unitCode}`)).toBeVisible();
 
-    await page.getByTestId('unit-product-select').selectOption({ label: `${productCode} — Sản phẩm ${suffix}` });
-    await page.getByTestId('unit-variant-select').selectOption({ label: `${sku} — SKU ${suffix}` });
+    await page.getByTestId('sku-conversion-tab').click();
     await expect(page.getByTestId('variant-unit-panel')).toBeVisible();
+    await expect(page.getByTestId('unit-product-select').locator('option:checked')).toHaveText(`${productCode} — Sản phẩm ${suffix}`);
+    await expect(page.getByTestId('unit-variant-select').locator('option:checked')).toHaveText(`${sku} — SKU ${suffix}`);
     await page.getByTestId('variant-unit-select').selectOption({ label: `${unitCode} — Đơn vị ${suffix}` });
     await page.getByTestId('save-variant-unit-button').click();
     await expect(page.getByText('Đã lưu đơn vị và hệ số quy đổi')).toBeVisible();
