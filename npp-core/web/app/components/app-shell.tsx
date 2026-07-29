@@ -150,6 +150,7 @@ export function AppShell({
   const organizationActive = isOrganizationPath(pathname);
   const accessActive = pathname.startsWith('/access');
   const inventoryActive = isInventoryPath(pathname);
+  const purchasingActive = pathname.startsWith('/purchasing');
   const logoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim() || '/logo-transparent.png';
 
   const organizationChildren = useMemo(
@@ -301,6 +302,20 @@ export function AppShell({
                 ))}
               </div>
             </div>
+
+            <p className={styles.navLabel}>Mua hàng</p>
+            <Link
+              href="/purchasing/purchase-orders"
+              className={`${styles.navItem} ${purchasingActive ? styles.navItemActive : ''}`}
+              data-testid="nav-purchase-orders"
+              title={collapsed ? 'Đơn đặt hàng' : undefined}
+            >
+              <span className={styles.navIcon}><Icon name="panel" /></span>
+              <span className={styles.navCopy}>
+                <span className={styles.navTitle}>Đơn đặt hàng</span>
+                <span className={styles.navHint}>Tạo, gửi duyệt và phê duyệt nhu cầu mua</span>
+              </span>
+            </Link>
 
             <p className={styles.navLabel}>Quản trị hệ thống</p>
             <div className={`${styles.navGroup} ${accessActive ? styles.navGroupActive : ''}`}>
