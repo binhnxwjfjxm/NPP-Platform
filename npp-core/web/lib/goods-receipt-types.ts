@@ -6,6 +6,7 @@ export const GOODS_RECEIPT_PERMISSION_KEYS = {
   update: 'core.goods-receipt.update',
   post: 'core.goods-receipt.post',
   reverse: 'core.goods-receipt.reverse',
+  variance: 'core.goods-receipt.variance',
 } as const;
 
 export type GoodsReceiptPermissionKey = typeof GOODS_RECEIPT_PERMISSION_KEYS[keyof typeof GOODS_RECEIPT_PERMISSION_KEYS];
@@ -32,6 +33,12 @@ export interface GoodsReceiptLine {
   receivedQuantityBefore: string;
   remainingQuantityBefore: string;
   receivedQuantity: string;
+  acceptedQuantity: string;
+  rejectedQuantity: string;
+  shortageClosedQuantity: string;
+  finalizeLine: boolean;
+  qualityReasonCode: string | null;
+  qualityNote: string | null;
   baseQuantity: string;
   remainingQuantityAfter: string;
   locationId: string | null;
@@ -68,6 +75,9 @@ export interface GoodsReceipt {
   inventoryReversalMovementId: string | null;
   lineCount: number;
   receivedQuantityTotal: string;
+  acceptedQuantityTotal: string;
+  rejectedQuantityTotal: string;
+  shortageClosedQuantityTotal: string;
   baseQuantityTotal: string;
   createdAt: string;
   updatedAt: string;
@@ -79,6 +89,11 @@ export interface GoodsReceipt {
 export interface GoodsReceiptDraftLine {
   purchaseOrderLineId: string;
   receivedQuantity: string;
+  acceptedQuantity?: string;
+  rejectedQuantity?: string;
+  finalizeLine?: boolean;
+  qualityReasonCode?: string;
+  qualityNote?: string;
   locationId: string;
   lotId: string;
   lotCode: string;
@@ -103,6 +118,7 @@ export type GoodsReceiptActionPolicy = {
   edit: boolean;
   post: boolean;
   reverse: boolean;
+  variance: boolean;
 };
 
 export function goodsReceiptActionPolicy(
@@ -117,6 +133,7 @@ export function goodsReceiptActionPolicy(
     edit: status === 'draft' && has(GOODS_RECEIPT_PERMISSION_KEYS.update),
     post: status === 'draft' && has(GOODS_RECEIPT_PERMISSION_KEYS.post),
     reverse: status === 'posted' && has(GOODS_RECEIPT_PERMISSION_KEYS.reverse),
+    variance: has(GOODS_RECEIPT_PERMISSION_KEYS.variance),
   };
 }
 

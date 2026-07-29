@@ -15,7 +15,16 @@ const LINE_COLUMNS = `pol.id, pol.installation_id, pol.purchase_order_id,
   pol.item_name_snapshot, pol.unit_id, pol.unit_code_snapshot,
   pol.conversion_to_base, pol.ordered_quantity, pol.base_quantity,
   COALESCE(receipt_summary.received_quantity, 0::numeric) AS received_quantity,
-  GREATEST(pol.ordered_quantity - COALESCE(receipt_summary.received_quantity, 0::numeric), 0::numeric) AS remaining_quantity,
+  COALESCE(receipt_summary.accepted_quantity, 0::numeric) AS accepted_quantity,
+  COALESCE(receipt_summary.rejected_quantity, 0::numeric) AS rejected_quantity,
+  COALESCE(receipt_summary.shortage_closed_quantity, 0::numeric) AS shortage_closed_quantity,
+  GREATEST(
+    pol.ordered_quantity
+    - COALESCE(receipt_summary.accepted_quantity, 0::numeric)
+    - COALESCE(receipt_summary.rejected_quantity, 0::numeric)
+    - COALESCE(receipt_summary.shortage_closed_quantity, 0::numeric),
+    0::numeric
+  ) AS remaining_quantity,
   pol.unit_price, pol.discount_amount, pol.tax_amount, pol.line_total,
   pol.note, pol.created_at, pol.updated_at, pol.created_by, pol.updated_by`;
 
@@ -86,7 +95,12 @@ export async function getPurchaseOrderLines(client, { installationId, purchaseOr
     `SELECT ${LINE_COLUMNS}
      FROM purchasing.purchase_order_lines pol
      LEFT JOIN (
-       SELECT grl.purchase_order_line_id, SUM(grl.received_quantity)::numeric(20,6) AS received_quantity
+       SELECT
+         grl.purchase_order_line_id,
+         SUM(grl.received_quantity)::numeric(20,6) AS received_quantity,
+         SUM(grl.accepted_quantity)::numeric(20,6) AS accepted_quantity,
+         SUM(grl.rejected_quantity)::numeric(20,6) AS rejected_quantity,
+         SUM(grl.shortage_closed_quantity)::numeric(20,6) AS shortage_closed_quantity
        FROM purchasing.goods_receipts gr
        JOIN purchasing.goods_receipt_lines grl
          ON grl.installation_id = gr.installation_id AND grl.goods_receipt_id = gr.id
@@ -108,8 +122,14 @@ async function getPurchaseOrderReceiptSummary(client, { installationId, purchase
     `SELECT
        COALESCE(SUM(pol.ordered_quantity), 0::numeric) AS ordered_quantity_total,
        COALESCE(SUM(receipt_summary.received_quantity), 0::numeric) AS received_quantity_total,
+       COALESCE(SUM(receipt_summary.accepted_quantity), 0::numeric) AS accepted_quantity_total,
+       COALESCE(SUM(receipt_summary.rejected_quantity), 0::numeric) AS rejected_quantity_total,
+       COALESCE(SUM(receipt_summary.shortage_closed_quantity), 0::numeric) AS shortage_closed_quantity_total,
        GREATEST(
-         COALESCE(SUM(pol.ordered_quantity), 0::numeric) - COALESCE(SUM(receipt_summary.received_quantity), 0::numeric),
+         COALESCE(SUM(pol.ordered_quantity), 0::numeric)
+         - COALESCE(SUM(receipt_summary.accepted_quantity), 0::numeric)
+         - COALESCE(SUM(receipt_summary.rejected_quantity), 0::numeric)
+         - COALESCE(SUM(receipt_summary.shortage_closed_quantity), 0::numeric),
          0::numeric
        ) AS remaining_quantity_total,
        (
@@ -121,7 +141,12 @@ async function getPurchaseOrderReceiptSummary(client, { installationId, purchase
        ) AS receipt_count
      FROM purchasing.purchase_order_lines pol
      LEFT JOIN (
-       SELECT grl.purchase_order_line_id, SUM(grl.received_quantity)::numeric(20,6) AS received_quantity
+       SELECT
+         grl.purchase_order_line_id,
+         SUM(grl.received_quantity)::numeric(20,6) AS received_quantity,
+         SUM(grl.accepted_quantity)::numeric(20,6) AS accepted_quantity,
+         SUM(grl.rejected_quantity)::numeric(20,6) AS rejected_quantity,
+         SUM(grl.shortage_closed_quantity)::numeric(20,6) AS shortage_closed_quantity
        FROM purchasing.goods_receipts gr
        JOIN purchasing.goods_receipt_lines grl
          ON grl.installation_id = gr.installation_id AND grl.goods_receipt_id = gr.id
@@ -160,6 +185,9 @@ export async function getPurchaseOrderById(client, {
     ...order,
     receipt_count: summary?.receipt_count ?? 0,
     received_quantity_total: summary?.received_quantity_total ?? '0',
+    accepted_quantity_total: summary?.accepted_quantity_total ?? '0',
+    rejected_quantity_total: summary?.rejected_quantity_total ?? '0',
+    shortage_closed_quantity_total: summary?.shortage_closed_quantity_total ?? '0',
     remaining_quantity_total: summary?.remaining_quantity_total ?? '0',
     lines: await getPurchaseOrderLines(client, { installationId, purchaseOrderId: id }),
   };
@@ -170,10 +198,18 @@ export async function updatePurchaseOrderReceiptStatus(client, { installationId,
     `WITH receipt_summary AS (
        SELECT
          COALESCE(SUM(pol.ordered_quantity), 0::numeric) AS ordered_quantity_total,
-         COALESCE(SUM(COALESCE(received.received_quantity, 0::numeric)), 0::numeric) AS received_quantity_total
+         COALESCE(SUM(COALESCE(received.received_quantity, 0::numeric)), 0::numeric) AS received_quantity_total,
+         COALESCE(SUM(COALESCE(received.accepted_quantity, 0::numeric)), 0::numeric) AS accepted_quantity_total,
+         COALESCE(SUM(COALESCE(received.rejected_quantity, 0::numeric)), 0::numeric) AS rejected_quantity_total,
+         COALESCE(SUM(COALESCE(received.shortage_closed_quantity, 0::numeric)), 0::numeric) AS shortage_closed_quantity_total
        FROM purchasing.purchase_order_lines pol
        LEFT JOIN (
-         SELECT grl.purchase_order_line_id, SUM(grl.received_quantity)::numeric(20,6) AS received_quantity
+         SELECT
+           grl.purchase_order_line_id,
+           SUM(grl.received_quantity)::numeric(20,6) AS received_quantity,
+           SUM(grl.accepted_quantity)::numeric(20,6) AS accepted_quantity,
+           SUM(grl.rejected_quantity)::numeric(20,6) AS rejected_quantity,
+           SUM(grl.shortage_closed_quantity)::numeric(20,6) AS shortage_closed_quantity
          FROM purchasing.goods_receipts gr
          JOIN purchasing.goods_receipt_lines grl
            ON grl.installation_id = gr.installation_id AND grl.goods_receipt_id = gr.id
@@ -188,8 +224,14 @@ export async function updatePurchaseOrderReceiptStatus(client, { installationId,
        SELECT
          CASE
            WHEN receipt_summary.received_quantity_total <= 0 THEN 'approved'
-           WHEN receipt_summary.received_quantity_total >= receipt_summary.ordered_quantity_total THEN 'fully_received'
-           ELSE 'partially_received'
+           WHEN (
+             receipt_summary.ordered_quantity_total
+             - receipt_summary.accepted_quantity_total
+             - receipt_summary.rejected_quantity_total
+             - receipt_summary.shortage_closed_quantity_total
+           ) > 0 THEN 'partially_received'
+           WHEN receipt_summary.shortage_closed_quantity_total > 0 THEN 'closed'
+           ELSE 'fully_received'
          END AS status
        FROM receipt_summary
      )

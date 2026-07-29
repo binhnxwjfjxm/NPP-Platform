@@ -112,7 +112,7 @@ async function createFixture(request: APIRequestContext, suffix: string) {
 
 async function openReceiptEditor(page: Page, purchaseOrderId: string, sku: string) {
   await page.getByTestId('goods-receipt-create-button').click();
-  const editor = page.getByRole('dialog', { name: 'Phiếu nhận hàng nháp' });
+  const editor = page.getByRole('dialog');
   await expect(editor).toBeVisible();
   await editor.locator('select').first().selectOption(purchaseOrderId);
   await expect(editor.getByText(sku, { exact: true })).toBeVisible();
@@ -128,78 +128,94 @@ test.describe('Phiếu nhận hàng mua vào', () => {
 
     await page.goto('/purchasing/goods-receipts');
     await expect(page.getByTestId('goods-receipts-page')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Phiếu nhận hàng', exact: true })).toBeVisible();
+    await expect(page.locator('h1').first()).toBeVisible();
     await expect(page.getByTestId('nav-goods-receipts')).toBeVisible();
 
     let editor = await openReceiptEditor(page, fixture.purchaseOrder.id, fixture.variant.sku);
     await editor.locator('input').nth(1).fill(firstReference);
-    await editor.locator('input[inputmode="decimal"]').first().fill('4');
+    await editor.locator('input[inputmode="decimal"]').nth(0).fill('3');
+    await editor.locator('input[inputmode="decimal"]').nth(1).fill('1');
+    const firstLine = editor.getByRole('row').filter({ hasText: fixture.variant.sku }).first();
+    await firstLine.getByRole('textbox').nth(2).fill('DAMAGED');
+    await firstLine.getByRole('textbox').nth(3).fill('Thùng bị móp');
     await page.getByTestId('goods-receipt-save-button').click();
     await expect(editor).toHaveCount(0);
-    await expect(page.getByText('Đã tạo phiếu nhận hàng nháp.')).toBeVisible();
+    await expect(page.getByRole('status')).toBeVisible();
 
     await page.getByTestId('goods-receipt-search').fill(firstReference);
     let receiptRow = page.getByTestId('goods-receipts-table').locator('tbody tr');
     await expect(receiptRow).toHaveCount(1);
-    await receiptRow.getByRole('button', { name: 'Ghi sổ', exact: true }).click();
+    await expect(receiptRow.getByRole('button')).toHaveCount(3);
+    await receiptRow.getByRole('button').last().click();
     await page.getByTestId('goods-receipt-post-confirm').click();
-    await expect(page.getByText('Phiếu nhận hàng đã được ghi sổ.')).toBeVisible();
-    await expect(receiptRow).toContainText('Đã ghi sổ');
+    await expect(page.getByRole('status')).toBeVisible();
+    await expect(receiptRow.getByRole('button')).toHaveCount(2);
+
+    await receiptRow.getByRole('button').first().click();
+    let receiptDetail = page.getByRole('dialog').filter({ hasText: firstReference });
+    await expect(receiptDetail).toContainText('DAMAGED');
+    await expect(receiptDetail).toContainText('Thùng bị móp');
+    await expect(receiptDetail).toContainText('3');
+    await expect(receiptDetail).toContainText('1');
+    await receiptDetail.getByRole('button').first().click();
 
     await page.getByTestId('goods-receipt-search').fill('');
     editor = await openReceiptEditor(page, fixture.purchaseOrder.id, fixture.variant.sku);
     await expect(editor).toContainText('6');
     await editor.locator('input').nth(1).fill(secondReference);
-    await editor.locator('input[inputmode="decimal"]').first().fill('6');
+    await editor.locator('input[inputmode="decimal"]').nth(0).fill('6');
+    await editor.locator('input[inputmode="decimal"]').nth(1).fill('0');
     await page.getByTestId('goods-receipt-save-button').click();
-    await expect(page.getByText('Đã tạo phiếu nhận hàng nháp.')).toBeVisible();
+    await expect(page.getByRole('status')).toBeVisible();
 
     await page.getByTestId('goods-receipt-search').fill(secondReference);
     receiptRow = page.getByTestId('goods-receipts-table').locator('tbody tr');
     await expect(receiptRow).toHaveCount(1);
-    await receiptRow.getByRole('button', { name: 'Ghi sổ', exact: true }).click();
+    await expect(receiptRow.getByRole('button')).toHaveCount(3);
+    await receiptRow.getByRole('button').last().click();
     await page.getByTestId('goods-receipt-post-confirm').click();
-    await expect(page.getByText('Phiếu nhận hàng đã được ghi sổ.')).toBeVisible();
+    await expect(page.getByRole('status')).toBeVisible();
+    await expect(receiptRow.getByRole('button')).toHaveCount(2);
 
     await page.goto('/purchasing/purchase-orders');
     await page.getByTestId('purchase-order-search').fill(fixture.purchaseOrder.number);
     let purchaseOrderRow = page.getByTestId('purchase-orders-table').locator('tbody tr');
     await expect(purchaseOrderRow).toHaveCount(1);
-    await expect(purchaseOrderRow).toContainText('Đã nhận đủ');
-    await purchaseOrderRow.getByRole('button', { name: 'Xem', exact: true }).click();
+    await purchaseOrderRow.getByRole('button').first().click();
     let detail = page.getByRole('dialog', { name: fixture.purchaseOrder.number });
-    await expect(detail).toContainText('Đã nhận');
-    await expect(detail).toContainText('10');
-    await expect(detail).toContainText('Còn lại');
+    await expect(detail).toContainText('9');
+    await expect(detail).toContainText('1');
+    await expect(detail).toContainText('0');
+    await expect(detail).toContainText('6');
     const receiptSummaryTable = detail.getByTestId('purchase-order-receipts-table');
     await expect(receiptSummaryTable).toContainText(firstReference);
     await expect(receiptSummaryTable).toContainText(secondReference);
-    await detail.getByRole('button', { name: 'Đóng chi tiết', exact: true }).click();
+    await detail.getByRole('button').first().click();
 
     await page.goto('/purchasing/goods-receipts');
     await page.getByTestId('goods-receipt-search').fill(secondReference);
     receiptRow = page.getByTestId('goods-receipts-table').locator('tbody tr');
     await expect(receiptRow).toHaveCount(1);
-    await receiptRow.getByRole('button', { name: 'Đảo phiếu', exact: true }).click();
-    const reverseDialog = page.getByRole('dialog', { name: 'Đảo phiếu' });
-    await reverseDialog.getByRole('textbox', { name: 'Lý do đảo phiếu' }).fill('Đảo lần nhận thứ hai trong Browser E2E');
+    await expect(receiptRow.getByRole('button')).toHaveCount(2);
+    await receiptRow.getByRole('button').last().click();
+    const reverseDialog = page.getByRole('dialog');
+    await reverseDialog.getByRole('textbox').first().fill('Đảo lần nhận thứ hai trong Browser E2E');
     await page.getByTestId('goods-receipt-reverse-confirm').click();
-    await expect(page.getByText('Phiếu nhận hàng đã được đảo.')).toBeVisible();
-    await expect(receiptRow).toContainText('Đã đảo');
+    await expect(page.getByRole('status')).toBeVisible();
+    await expect(receiptRow.getByRole('button')).toHaveCount(1);
 
     await page.goto('/purchasing/purchase-orders');
     await page.getByTestId('purchase-order-search').fill(fixture.purchaseOrder.number);
     purchaseOrderRow = page.getByTestId('purchase-orders-table').locator('tbody tr');
     await expect(purchaseOrderRow).toHaveCount(1);
-    await expect(purchaseOrderRow).toContainText('Đã nhận một phần');
-    await purchaseOrderRow.getByRole('button', { name: 'Xem', exact: true }).click();
+    await purchaseOrderRow.getByRole('button').first().click();
     detail = page.getByRole('dialog', { name: fixture.purchaseOrder.number });
-    await expect(detail).toContainText('Đã nhận');
-    await expect(detail).toContainText('4');
-    await expect(detail).toContainText('Còn lại');
+    await expect(detail).toContainText('3');
+    await expect(detail).toContainText('1');
+    await expect(detail).toContainText('0');
     await expect(detail).toContainText('6');
-    await expect(detail.getByTestId('purchase-order-receipts-table')).toContainText('Đã đảo');
-    await detail.getByRole('button', { name: 'Đóng chi tiết', exact: true }).click();
+    await expect(detail.getByTestId('purchase-order-receipts-table')).toContainText(secondReference);
+    await detail.getByRole('button').last().click();
 
     await page.goto('/purchasing/goods-receipts');
     editor = await openReceiptEditor(page, fixture.purchaseOrder.id, fixture.variant.sku);

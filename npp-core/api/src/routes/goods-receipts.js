@@ -17,7 +17,7 @@ function apiError(code, message, details = {}, retryable = false, statusCode = 5
 
 function statusFor(code) {
   if (code === 'UNAUTHORIZED') return 401;
-  if (code === 'FORBIDDEN' || code === 'WAREHOUSE_SCOPE_DENIED') return 403;
+  if (code === 'FORBIDDEN' || code === 'WAREHOUSE_SCOPE_DENIED' || code.endsWith('PERMISSION_REQUIRED')) return 403;
   if (code.endsWith('_NOT_FOUND') || code === 'PURCHASE_ORDER_NOT_FOUND') return 404;
   if (
     code.includes('CONFLICT')

@@ -44,7 +44,11 @@ function dateOnly(value) {
     if (normalizeDate(leadingDate)) return leadingDate;
   }
   const parsed = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function decimalToScaled(value, { allowZero }) {
@@ -95,6 +99,9 @@ function mapLine(line) {
     quantity: String(line.ordered_quantity),
     baseQuantity: String(line.base_quantity),
     receivedQuantity: line.received_quantity === undefined || line.received_quantity === null ? undefined : String(line.received_quantity),
+    acceptedQuantity: line.accepted_quantity === undefined || line.accepted_quantity === null ? undefined : String(line.accepted_quantity),
+    rejectedQuantity: line.rejected_quantity === undefined || line.rejected_quantity === null ? undefined : String(line.rejected_quantity),
+    shortageClosedQuantity: line.shortage_closed_quantity === undefined || line.shortage_closed_quantity === null ? undefined : String(line.shortage_closed_quantity),
     remainingQuantity: line.remaining_quantity === undefined || line.remaining_quantity === null ? undefined : String(line.remaining_quantity),
     unitPrice: String(line.unit_price),
     discountAmount: String(line.discount_amount),
@@ -130,6 +137,15 @@ function mapOrder(order) {
     receivedQuantityTotal: order.received_quantity_total === undefined || order.received_quantity_total === null
       ? null
       : String(order.received_quantity_total),
+    acceptedQuantityTotal: order.accepted_quantity_total === undefined || order.accepted_quantity_total === null
+      ? null
+      : String(order.accepted_quantity_total),
+    rejectedQuantityTotal: order.rejected_quantity_total === undefined || order.rejected_quantity_total === null
+      ? null
+      : String(order.rejected_quantity_total),
+    shortageClosedQuantityTotal: order.shortage_closed_quantity_total === undefined || order.shortage_closed_quantity_total === null
+      ? null
+      : String(order.shortage_closed_quantity_total),
     remainingQuantityTotal: order.remaining_quantity_total === undefined || order.remaining_quantity_total === null
       ? null
       : String(order.remaining_quantity_total),

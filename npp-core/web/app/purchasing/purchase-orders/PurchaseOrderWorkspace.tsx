@@ -375,7 +375,10 @@ export default function PurchaseOrderWorkspace({
               <div className={localStyles.detailItem}><span>Dự kiến nhận</span><strong>{formatPurchaseOrderDate(selectedPurchaseOrder.expectedAt)}</strong></div>
               <div className={localStyles.detailItem}><span>Tham chiếu NCC</span><strong>{selectedPurchaseOrder.supplierReference || 'Không có'}</strong></div>
               <div className={localStyles.detailItem}><span>Số phiếu nhận</span><strong>{formatDecimalString(String(selectedPurchaseOrder.receiptCount ?? 0))}</strong></div>
-              <div className={localStyles.detailItem}><span>Đã nhận</span><strong>{formatDecimalString(selectedPurchaseOrder.receivedQuantityTotal ?? '0')}</strong></div>
+              <div className={localStyles.detailItem}><span>Thực nhận</span><strong>{formatDecimalString(selectedPurchaseOrder.receivedQuantityTotal ?? '0')}</strong></div>
+              <div className={localStyles.detailItem}><span>Chấp nhận</span><strong>{formatDecimalString(selectedPurchaseOrder.acceptedQuantityTotal ?? '0')}</strong></div>
+              <div className={localStyles.detailItem}><span>Loại</span><strong>{formatDecimalString(selectedPurchaseOrder.rejectedQuantityTotal ?? '0')}</strong></div>
+              <div className={localStyles.detailItem}><span>Chốt thiếu</span><strong>{formatDecimalString(selectedPurchaseOrder.shortageClosedQuantityTotal ?? '0')}</strong></div>
               <div className={localStyles.detailItem}><span>Còn lại</span><strong>{formatDecimalString(selectedPurchaseOrder.remainingQuantityTotal ?? '0')}</strong></div>
             </div>
             <div className={localStyles.linesWrap}>
@@ -405,13 +408,16 @@ export default function PurchaseOrderWorkspace({
             </div>
             <div className={localStyles.linesWrap}>
               <table className={localStyles.linesTable}>
-                <thead><tr><th>SKU</th><th>Số lượng</th><th>Đã nhận</th><th>Còn lại</th><th>Đơn vị</th><th>Quy đổi</th><th>Đơn giá</th><th>Chiết khấu</th><th>Thuế</th><th>Thành tiền</th></tr></thead>
+                <thead><tr><th>SKU</th><th>Số lượng</th><th>Thực nhận</th><th>Chấp nhận</th><th>Loại</th><th>Chốt thiếu</th><th>Còn lại</th><th>Đơn vị</th><th>Quy đổi</th><th>Đơn giá</th><th>Chiết khấu</th><th>Thuế</th><th>Thành tiền</th></tr></thead>
                 <tbody>
                   {(selectedPurchaseOrder.lines ?? []).map((line) => (
                     <tr key={line.id}>
                       <td><div className={localStyles.lineIdentity}><strong>{line.skuCode}</strong><span>{line.itemName}</span></div></td>
                       <td>{formatDecimalString(line.quantity)}</td>
                       <td>{formatDecimalString(line.receivedQuantity ?? '0')}</td>
+                      <td>{formatDecimalString(line.acceptedQuantity ?? '0')}</td>
+                      <td>{formatDecimalString(line.rejectedQuantity ?? '0')}</td>
+                      <td>{formatDecimalString(line.shortageClosedQuantity ?? '0')}</td>
                       <td>{formatDecimalString(line.remainingQuantity ?? line.quantity)}</td>
                       <td>{line.unitCode}</td>
                       <td>{formatDecimalString(line.conversionToBase)}</td>
