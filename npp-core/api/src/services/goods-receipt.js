@@ -490,6 +490,9 @@ export async function postGoodsReceipt(client, { requestContext, id, payload, id
   });
   if (!refreshed.ok) return refreshed;
 
+  const receiptDocumentDate = dateOnly(current.raw.receipt_date);
+  if (!receiptDocumentDate) return failure('INVALID_RECEIPT_DATE', 'Stored receipt date is invalid');
+
   const series = await ensureGoodsReceiptSeries(client, {
     installationId: requestContext.installationId,
     actorId: requestContext.actorId,
@@ -501,7 +504,7 @@ export async function postGoodsReceipt(client, { requestContext, id, payload, id
     seriesId: series.id,
     idempotencyKey,
     payload: {
-      documentDate: current.raw.receipt_date,
+      documentDate: receiptDocumentDate,
       metadata: {
         goodsReceiptId: current.raw.id,
         purchaseOrderId: current.raw.purchase_order_id,
@@ -522,7 +525,7 @@ export async function postGoodsReceipt(client, { requestContext, id, payload, id
       sourceDocumentType: 'PURCHASE_RECEIPT',
       sourceDocumentId: current.raw.id,
       sourceDocumentNumber: allocation.allocation.document_number,
-      documentDate: current.raw.receipt_date,
+      documentDate: receiptDocumentDate,
       reasonCode: 'PURCHASE_RECEIPT',
       reasonNote: current.raw.supplier_delivery_reference ?? 'Purchase receipt posted',
       metadata: {
