@@ -49,11 +49,14 @@ test('product catalog editors use the shared accessible React modal', async () =
   ]);
 
   assert.match(workspace, /import Modal from '\.\.\/components\/modal'/);
-  assert.doesNotMatch(workspace, /function CatalogModal|modalBackdrop|MutationObserver|document\.querySelector/);
-  assert.match(workspace, /testId="product-form"/);
-  assert.match(workspace, /testId="category-form"/);
-  assert.match(workspace, /testId="brand-form"/);
-  assert.match(workspace, /testId="variant-form"/);
+  assert.match(workspace, /open=\{showProductForm\}[\s\S]*?testId="product-form"/);
+  assert.match(workspace, /open=\{showVariantForm\}[\s\S]*?testId="variant-form"/);
+  assert.match(workspace, /open=\{showCategoryForm\}[\s\S]*?testId="category-form"/);
+  assert.match(workspace, /open=\{showBrandForm\}[\s\S]*?testId="brand-form"/);
+  assert.doesNotMatch(
+    workspace,
+    /function\s+\w*Modal\b|const\s+\w*Modal\s*=|modalBackdrop|MutationObserver|document\.(?:querySelector(?:All)?|getElementById|getElementsByClassName|getElementsByTagName)/,
+  );
   assert.match(workspace, /Quản lý SKU, đơn vị, quy đổi và barcode của sản phẩm\./);
   assert.doesNotMatch(workspace, /Phase 3\.3D/);
   assert.match(modal, /event\.key === 'Escape'/);
