@@ -129,9 +129,9 @@ CREATE TABLE IF NOT EXISTS purchasing.purchase_order_lines (
     FOREIGN KEY (installation_id, unit_id)
     REFERENCES shared.units_of_measure (installation_id, id)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
-  CONSTRAINT purchase_order_lines_base_quantity_check
+  CONSTRAINT purchase_order_lines_conversion_product_check
     CHECK (base_quantity = round(ordered_quantity * conversion_to_base, 6)),
-  CONSTRAINT purchase_order_lines_total_check
+  CONSTRAINT purchase_order_lines_amounts_total_check
     CHECK (line_total = round(ordered_quantity * unit_price - discount_amount + tax_amount, 6))
 );
 
@@ -149,8 +149,14 @@ DECLARE
   target_installation text;
   target_order uuid;
 BEGIN
-  target_installation := COALESCE(NEW.installation_id, OLD.installation_id);
-  target_order := COALESCE(NEW.purchase_order_id, OLD.purchase_order_id);
+  IF TG_OP = 'DELETE' THEN
+    target_installation := OLD.installation_id;
+    target_order := OLD.purchase_order_id;
+  ELSE
+    target_installation := NEW.installation_id;
+    target_order := NEW.purchase_order_id;
+  END IF;
+
   SELECT status INTO current_status
   FROM purchasing.purchase_orders
   WHERE installation_id = target_installation AND id = target_order;
@@ -158,7 +164,11 @@ BEGIN
   IF current_status IS DISTINCT FROM 'draft' THEN
     RAISE EXCEPTION 'purchase_order_lines_locked';
   END IF;
-  RETURN COALESCE(NEW, OLD);
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
 END;
 $$;
 
