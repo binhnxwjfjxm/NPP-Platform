@@ -2,6 +2,7 @@
 -- Accepted quantity posts to inventory and consumes PO remaining.
 -- Rejected quantity is variance-only and never consumes PO remaining or inventory.
 -- Shortage closure can close the remaining PO quantity without inventory posting.
+-- Reversal restores the accepted, rejected, shortage and PO status projections.
 
 CREATE SCHEMA IF NOT EXISTS purchasing;
 
