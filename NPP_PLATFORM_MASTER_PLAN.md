@@ -1,90 +1,113 @@
 # NPP Platform — Master Implementation Plan
 
 > Trạng thái: **ACTIVE MASTER PLAN**  
-> Phạm vi: **Toàn bộ nền tảng MCP + NPP Core**  
+> Phạm vi: **Toàn bộ nền tảng MCP Field + NPP Core**  
 > Repo: `binhnxwjfjxm/NPP-Platform`  
-> Áp dụng từ: `2026-07-23`  
+> Cập nhật: `2026-07-30`  
 > Nguyên tắc: **Không chắp vá khi lỗi; phải tái hiện, tìm nguyên nhân gốc, sửa đúng tầng và thêm test hồi quy.**
 
 ---
 
-## 0. Quyền ưu tiên của tài liệu
+## 0. Quyền ưu tiên và tài liệu liên quan
 
-Tài liệu này là master plan mới của repo `NPP-Platform`.
+Tài liệu này là kế hoạch điều phối cấp cao và nguồn ưu tiên của repo.
 
-Nó thay thế vai trò master của:
+Khi có mâu thuẫn về kiến trúc, hạ tầng, domain ownership hoặc thứ tự triển khai, tài liệu này ưu tiên hơn các plan MCP/module cũ.
 
-- `mcp/ke-hoach-app-van-hanh-npp.md`;
-- `mcp/ke-hoach-app-npp-moi-giu-logic-cu-lam-moi-frontend.md`;
-- các plan module cũ trong `mcp/docs/npp-plan/` khi có điểm mâu thuẫn về kiến trúc, hạ tầng hoặc thứ tự triển khai.
+Các tài liệu cũ vẫn được giữ trong Git để làm lịch sử quyết định và nguồn nghiệp vụ. Không xóa một quyết định đúng chỉ vì tài liệu cũ không còn là master.
 
-Các tài liệu cũ vẫn được giữ làm tài liệu nghiệp vụ và lịch sử quyết định. Những nguyên tắc đúng về domain, transaction, idempotency, audit, trạng thái độc lập và ledger tiếp tục được kế thừa.
+Tài liệu quyết định đang hoạt động:
+
+```text
+docs/operations/pre-phase-6-closure-audit.md
+docs/operations/phase-6-sales-mcp-customer-boundary.md
+docs/operations/phase-6-transportation-dispatch-decisions.md
+```
+
+Tài liệu implementation của từng vertical slice phải dẫn ngược về Master Plan và decision document tương ứng.
 
 ---
 
 ## 1. Mục tiêu sản phẩm
 
-Xây dựng một nền tảng quản lý Nhà phân phối hoàn chỉnh gồm hai ứng dụng người dùng độc lập nhưng dùng chung chuẩn định danh, xác thực, hợp đồng API và dữ liệu nền.
+NPP Platform gồm hai ứng dụng người dùng độc lập, cùng một installation và dùng chung chuẩn định danh, xác thực, hợp đồng API, audit/outbox và PostgreSQL:
 
 ```text
 NPP Platform
 ├── MCP Field
-│   ├── Tuyến bán hàng
+│   ├── Field routes và field outlets
 │   ├── Phiên làm việc ngoài thị trường
 │   ├── Check-in/GPS/hình ảnh
-│   ├── Test sản phẩm
-│   ├── Báo cáo thị trường
-│   ├── Follow-up
-│   └── Đề nghị/tạo đơn từ thị trường
+│   ├── Test/khảo sát/báo cáo thị trường
+│   ├── Follow-up và action
+│   ├── Đề nghị mở mã khách hàng
+│   └── Tạo yêu cầu/đơn qua Core khi outlet đã liên kết
 │
 └── NPP Core
-    ├── Khách hàng và nhà cung cấp
+    ├── Tổ chức, người dùng và phân quyền
+    ├── Khách hàng, nhà cung cấp và địa chỉ
     ├── Sản phẩm/SKU/đơn vị/bảng giá
-    ├── Mua hàng và nhập hàng
-    ├── Bán hàng và giao hàng
-    ├── Kho đa kho
-    ├── Kiểm kho/chuyển kho/điều chỉnh
-    ├── Trả hàng hai chiều
-    ├── Phải thu/phải trả/thu chi
-    ├── Giá vốn
-    ├── Báo cáo điều hành
-    └── Người dùng/phân quyền/audit
+    ├── Mua hàng, nhập hàng và phải trả
+    ├── Bán hàng, fulfillment và phải thu
+    ├── Kho, ledger, reservations và returns
+    ├── Delivery Order và Transportation/Dispatch
+    ├── Thanh toán, giá vốn và báo cáo
+    └── Audit, outbox và vận hành hệ thống
 ```
 
-MCP là ứng dụng tác nghiệp ngoài thị trường. NPP Core là hệ thống sở hữu nghiệp vụ kho, bán hàng, mua hàng và công nợ chính thức.
+### 1.1 MCP là app hiện hữu, không phải greenfield
+
+MCP Field là ứng dụng tác nghiệp thị trường đã có code, UI và dữ liệu nguồn.
+
+Chiến lược MCP:
+
+```text
+giữ luồng/UI đã đúng
+-> audit legacy data và identity
+-> hoàn thiện backend-owned write model
+-> thay adapter Supabase/VPS cũ
+-> chuẩn hóa customer/order boundary
+-> gọi canonical Core API
+-> migrate/cut over sau reconciliation
+```
+
+Không xây lại MCP chỉ để giống AppShell của Core. Không đồng thời đổi toàn bộ UI, domain model và data provider trong một commit lớn.
+
+### 1.2 Core là nguồn sự thật nghiệp vụ chính thức
+
+NPP Core sở hữu customer chính thức, document lifecycle, inventory ledger, purchasing, sales, logistics, receivable/payable và accounting operations.
+
+MCP không tự post kho, công nợ, giao hàng hoặc thanh toán.
 
 ---
 
-## 2. Các quyết định đã khóa
+## 2. Kiến trúc đã khóa
 
-### 2.1 Một repo tổng, một Git
+### 2.1 Một repo tổng
 
 ```text
 NPP-Platform/
-├── .git/
 ├── .github/
 ├── mcp/
 ├── npp-core/
 ├── packages/
 ├── database/
+├── docs/
 └── NPP_PLATFORM_MASTER_PLAN.md
 ```
 
-- Chỉ có một `.git` tại root `NPP-Platform`.
-- `mcp` và `npp-core` không có Git riêng.
-- Không chuyển ngược toàn bộ MCP về root.
-- Không tiếp tục đổi cấu trúc thư mục khi chưa có lý do kỹ thuật và migration path rõ ràng.
+- Một `.git` tại root.
+- MCP và Core không có Git riêng.
+- Không di chuyển path lớn nếu không có migration path và lý do kỹ thuật rõ ràng.
 
-### 2.2 Hai ứng dụng frontend
+### 2.2 Hai frontend
 
 ```text
-mcp/web hoặc code MCP hiện tại
-npp-core/web
+MCP frontend       mobile/PWA, GPS, camera, offline có kiểm soát
+NPP Core frontend  desktop/web, bảng dữ liệu, đối soát, Excel/PDF/in
 ```
 
-- MCP ưu tiên mobile/PWA, GPS, camera, thao tác nhanh, offline có kiểm soát.
-- NPP Core ưu tiên desktop/web, bảng dữ liệu dày, lọc, đối soát, Excel, PDF và in chứng từ.
-- Không ép hai UX khác nhau vào một AppShell duy nhất.
+Không ép hai UX vào một AppShell duy nhất.
 
 ### 2.3 Hai backend service
 
@@ -93,14 +116,14 @@ MCP API
 NPP Core API
 ```
 
-- Hai backend có quyền sở hữu domain khác nhau.
-- Không backend nào được ghi trực tiếp vào bảng thuộc domain của backend còn lại.
+- Mỗi backend chỉ ghi domain mình sở hữu.
+- Không ghi trực tiếp bảng của backend còn lại.
 - Giao tiếp qua canonical API và event/outbox có idempotency.
-- Hai backend vẫn nằm trong cùng monorepo để chia sẻ contracts, types, test helpers và CI.
+- Chia sẻ contracts/types/test helpers trong monorepo.
 
-### 2.4 Một PostgreSQL cho installation hiện tại
+### 2.4 Một PostgreSQL cluster cho installation hiện tại
 
-Một PostgreSQL cluster, tách schema theo domain:
+Schema mục tiêu:
 
 ```text
 shared
@@ -108,14 +131,14 @@ mcp
 sales
 purchasing
 inventory
+logistics
 accounting
 reporting
 ```
 
 - Một database không có nghĩa là mọi service được ghi mọi bảng.
 - Quyền DB phải giới hạn theo service role/schema.
-- Không dùng `tenant_id` chắp vá trên mọi bảng trong phase hiện tại.
-- Mỗi installation NPP vẫn có runtime, secret, database và storage riêng khi triển khai cho đơn vị khác.
+- Một khách hàng triển khai là một installation độc lập với runtime, secret, database và storage riêng.
 
 ### 2.5 Hạ tầng mục tiêu
 
@@ -127,654 +150,347 @@ Vercel
 Heroku
 ├── MCP backend
 ├── NPP Core backend
-└── Heroku PostgreSQL Essential-1 10GB
+└── PostgreSQL
 
 Cloudflare R2
-├── Ảnh điểm bán
-├── Ảnh giao nhận
-├── PDF
-├── Excel
-├── File import/export
-└── File backup ngoài DB
+├── field media
+├── POD/giao nhận
+├── PDF/Excel
+├── import/export
+└── backup ngoài DB
 ```
 
-Supabase và VPS hiện tại là hạ tầng nguồn của MCP cũ, không phải kiến trúc đích của NPP Platform.
+Supabase/VPS là hạ tầng nguồn MCP cũ, không phải kiến trúc đích.
 
-### 2.6 Local ports
+### 2.6 Production separation
+
+Source merge không đồng nghĩa production đã deploy hoặc migration đã chạy.
+
+Mọi production rollout là operation riêng và phải audit lại:
 
 ```text
-MCP web       : 3002
-NPP Core web  : 3003
-NPP Core API  : 3004
-MCP API       : 3102 hoặc port cấu hình riêng
+provider state
+backup
+restore rehearsal
+migration manifest
+pre/post reconciliation
+deploy
+smoke
+rollback/forward-fix
 ```
 
-Không chiếm port `3000` trong quy ước local của dự án này.
+Không tự suy đoán trạng thái provider từ trạng thái GitHub.
 
 ---
 
-## 3. Đối chiếu với master plan cũ
+## 3. Nguyên tắc kỹ thuật bắt buộc
 
-### 3.1 Nội dung được giữ nguyên
-
-1. Backend sở hữu logic nghiệp vụ quan trọng.
-2. Frontend không mutation trực tiếp database.
-3. Mỗi thay đổi schema phải có migration trong repo.
+1. Backend sở hữu business logic quan trọng.
+2. Frontend không mutation database trực tiếp.
+3. Schema change phải có migration trong repo.
 4. Mutation có nguy cơ retry phải idempotent.
-5. Chứng từ đã post không sửa/xóa; sai dùng reversal hoặc adjustment.
+5. Chứng từ đã post không sửa/xóa; sai dùng reversal/adjustment.
 6. Inventory ledger là nguồn sự thật tồn kho.
-7. Receivable ledger là nguồn sự thật phải thu.
-8. Tách `order_status`, `fulfillment_status`, `payment_status`.
-9. Audit phải có actor, thời gian, request ID, source và before/after phù hợp.
-10. Triển khai theo vertical slice: migration → backend → UI → test → deploy → smoke.
-11. Không hardcode tên NPP, URL, IP, project ID hoặc secret trong business logic.
-12. DB sạch phải dựng được từ migration + bootstrap/seed.
-
-### 3.2 Nội dung được thay đổi
-
-| Master cũ | Master mới |
-|---|---|
-| MCP-Plan là một app NPP duy nhất | NPP Platform có hai app: MCP Field và NPP Core |
-| MCP nằm chung AppShell với các module Core | MCP và Core có frontend riêng |
-| Một backend hiện hữu mở rộng dần | Hai backend có domain ownership rõ ràng |
-| Supabase/VPS là runtime chính | Mục tiêu Vercel + Heroku + PostgreSQL + R2 |
-| Module mua hàng để “tương lai” | Mua hàng, nhà cung cấp và phải trả là domain bắt buộc |
-| Tập trung đơn hàng trước toàn bộ kho | Khóa master data và inventory ledger trước khi post nghiệp vụ thật |
-| Chỉ nhấn mạnh phải thu | Bổ sung phải trả, thanh toán nhà cung cấp và đối soát hai chiều |
-| Chưa khóa mô hình đa kho đầy đủ | Đa kho, in-transit, partial receipt và variance là first-class |
-| Không có ranh giới MCP → Core đủ chặt | MCP chỉ đề nghị/tạo yêu cầu; Core xác nhận và post kho/công nợ |
-
-### 3.3 Nội dung được bổ sung
-
-- Nhà cung cấp, đơn mua, nhập hàng và trả nhà cung cấp.
-- Phải trả và thanh toán nhà cung cấp.
-- Giá vốn và phương pháp tính giá vốn.
-- Kho đa kho, vị trí kho và hàng đi đường.
-- Chênh lệch chuyển kho, hư hỏng và thiếu nhận.
-- Kiểm kho theo scope và approval.
-- Import/export job history.
-- Backup, restore rehearsal và retention.
-- Hai backend với service-specific DB roles.
-- Outbox/event contract giữa MCP và Core.
-- Kế hoạch chuyển Supabase REST/RPC sang direct PostgreSQL.
-
----
-## 4. Cấu trúc repo mục tiêu
-
-### 4.1 Giai đoạn hiện tại
-
-Không di chuyển MCP thêm lần nữa ngay lập tức.
-
-```text
-NPP-Platform/
-├── .github/
-├── mcp/
-│   ├── src/
-│   ├── apps/backend/
-│   ├── test/
-│   ├── scripts/
-│   ├── supabase/
-│   └── package.json
-│
-├── npp-core/
-│   ├── web/
-│   ├── api/
-│   ├── docs/
-│   └── README.md
-│
-├── packages/
-│   ├── contracts/
-│   ├── domain-types/
-│   ├── shared-utils/
-│   ├── auth-context/
-│   └── test-helpers/
-│
-└── database/
-    ├── migrations/
-    │   ├── shared/
-    │   ├── mcp/
-    │   ├── sales/
-    │   ├── purchasing/
-    │   ├── inventory/
-    │   ├── accounting/
-    │   └── reporting/
-    ├── seeds/
-    └── rehearsals/
-```
-
-### 4.2 Giai đoạn chuẩn hóa sau
-
-Chỉ làm khi MCP build/test/deploy đã ổn định ở vị trí mới:
-
-```text
-apps/
-├── mcp-web/
-├── mcp-api/
-├── core-web/
-└── core-api/
-```
-
-Không thực hiện đồng thời ba việc sau trong một commit:
-
-- di chuyển path lớn;
-- đổi Supabase sang PostgreSQL trực tiếp;
-- xây domain tồn kho.
+7. Receivable/payable ledgers là nguồn sự thật công nợ.
+8. Balance và dashboard là rebuildable read models.
+9. Tách `order_status`, `fulfillment_status`, `delivery_status`, `payment_status`.
+10. Audit phải có actor, request ID, source và before/after phù hợp.
+11. Vertical slice: migration → backend → UI → tests → CI → merge → deploy riêng.
+12. Không hardcode installation, URL, IP, project ID hoặc secret trong business logic.
+13. DB sạch phải dựng được từ migrations + bootstrap/seed.
+14. Quantity/money dùng decimal chính xác, không dùng JavaScript float làm nguồn nghiệp vụ.
+15. Public API không trả raw provider/DB error, SQL, stack trace hoặc secret.
+16. Không code UI trước khi khóa source of truth, lifecycle và permission.
 
 ---
 
-## 5. Ranh giới domain và quyền sở hữu
+## 4. Domain ownership
 
-### Shared domain
+### 4.1 Shared domain
 
 ```text
 installations/config
-users
-roles
-permissions
+users, roles, permissions
 employees
-warehouses
-customers
-suppliers
-products
-variants/SKU
-units/conversions
-price lists
-number sequences
+branches, warehouses, locations
+customers and customer addresses
+suppliers and supplier addresses
+products, variants/SKU
+units, conversions, barcodes
+price lists and pricing foundation
+document numbering
 audit metadata
 ```
 
-### MCP domain
+`shared.customers.id` là canonical Core customer ID.
+
+### 4.2 MCP domain
 
 ```text
-routes
-route customers
-route sessions
-session customers
+field routes
+field outlets
+field route-outlet assignments
+field route sessions
+session outlet snapshots
 visits/check-in
 field tests
 market reports
 follow-ups
 field media
+local/offline onboarding drafts
+Core request/order references and read models
 MCP action logs
 ```
 
 MCP không sở hữu:
 
 ```text
-inventory balances
-inventory movements
-official receivables
-official payables
-posted goods receipts
-posted deliveries
+Core customers chính thức
+inventory balances/movements
+official Sales Orders
+Delivery Orders
+vehicles/drivers/trips/dispatch
+official receivables/payables
+posted goods receipts/deliveries
 costing entries
+COD accounting allocation
 ```
 
-### Sales domain
+### 4.3 Sales domain
 
 ```text
-sales orders
-order items
+Sales Orders and lines
 order versions/amendments
 allocations/fulfillments
-deliveries
-customer returns
-exchanges
+Delivery Orders and lines
+customer returns/exchanges
 sales credit/debit adjustments
+customer onboarding review requests
 ```
 
-### Purchasing domain
+### 4.4 Purchasing domain
 
 ```text
-purchase orders
-purchase order items
-goods receipts
-receipt items
+Purchase Orders and lines
+Goods Receipts and lines
+quantity/quality variance
 supplier returns
 purchase adjustments
-supplier invoices/reference documents
+supplier invoice/reference documents
 ```
 
-### Inventory domain
+### 4.5 Inventory domain
 
 ```text
-inventory ledger
-inventory movements
-movement lines
+immutable inventory ledger
+movement lines and reversal
 reservations
 balances/read models
 lots/expiry
-stocktakes
-adjustments
+opening balances
+stocktakes and adjustments
 warehouse transfers
 in-transit stock
 quarantine/scrap
 ```
 
-### Accounting operations domain
-
-Phase đầu không xây kế toán tổng hợp đầy đủ. Core phải sở hữu tối thiểu:
+### 4.6 Logistics domain
 
 ```text
-receivables
-payments received
-payment allocations
-payables
-supplier payments
-supplier payment allocations
-credit/debit notes
-refunds
-overpayments
-write-offs
+delivery routes
+vehicles
+driver profiles
+trip crew members
+delivery trips
+trip stops
+delivery-order assignments
+delivery attempts
+proof-of-delivery references
+dispatch audit/events
+```
+
+`field_route` và `delivery_route` là hai domain khác nhau. `delivery_trip` là một chuyến cụ thể, không phải route master.
+
+### 4.7 Accounting operations domain
+
+Phase đầu không xây general ledger đầy đủ. Core tối thiểu sở hữu:
+
+```text
+receivables and ledger
+payments received and allocations
+payables and ledger
+supplier payments and allocations
+credits/debits
+refunds, overpayments, write-offs
+COD receipt/allocation references
 cash/bank references
 costing entries
 ```
 
 ---
 
-## 6. Nguồn sự thật bắt buộc
+## 5. Nguồn sự thật
 
 ```text
-Khách đặt gì                    -> sales order
-Nhà phân phối đặt mua gì        -> purchase order
-Thực tế nhận từ nhà cung cấp    -> goods receipt
-Thực tế giao khách              -> delivery
-Tồn kho                         -> inventory ledger
-Tồn tổng hợp                    -> rebuildable balance/read model
-Khách còn nợ                    -> receivable ledger
-NPP còn nợ nhà cung cấp         -> payable ledger
-Đã thu/đã chi                   -> payment + allocation
-Giá vốn                         -> costing entries dựa trên movement
-Ai làm gì                       -> audit/event log
+Khách chính thức                   -> shared.customers
+Điểm ghé/khách tuyến MCP           -> mcp field outlet
+Khách đặt gì                       -> Sales Order
+Nhu cầu giao hàng                  -> Delivery Order
+Kế hoạch/chuyến giao               -> delivery trip + assignment
+Kết quả từng lần giao              -> delivery attempt
+Số lượng thực giao/xuất            -> posted inventory movement
+NPP đặt mua gì                     -> Purchase Order
+Thực tế nhận nhà cung cấp          -> Goods Receipt
+Tồn kho                            -> inventory ledger
+Tồn tổng hợp                       -> rebuildable balance
+Khách còn nợ                       -> receivable ledger
+NPP còn nợ nhà cung cấp            -> payable ledger
+Đã thu/đã chi                      -> payment + allocation
+Giá vốn                            -> costing entries
+Ai làm gì                          -> audit/outbox
 ```
 
 Cấm:
 
-- sửa trực tiếp `stock_quantity`;
-- cộng trừ trực tiếp `customer.debt` hoặc `supplier.debt`;
-- ghi `paid=true` thay cho payment allocation;
+- sửa trực tiếp stock/debt;
+- dùng `paid=true` thay payment allocation;
 - xóa chứng từ đã post;
-- dùng một status đại diện đồng thời cho đặt hàng, kho, giao và tiền.
+- dùng một status cho order, kho, giao và tiền;
+- gắn vehicle/driver/trip trực tiếp lên Sales Order làm nguồn sự thật;
+- coi mọi MCP outlet là Core customer.
 
 ---
 
-## 7. Master data bắt buộc
+## 6. Customer và MCP boundary
 
-### Tổ chức và cấu hình
-
-```text
-installation
-company/distributor profile
-branches
-warehouses
-warehouse locations
-currency/timezone
-business calendar
-number sequences
-approval policies
-negative-stock policy
-costing policy
-lot/expiry policy
-```
-
-### Khách hàng
+### 6.1 Core customer và field outlet
 
 ```text
-customer code
-name
-contacts
-addresses
-channel/group
-sales owner
-route assignment
-credit profile
-payment terms
-status
-notes/tags
+Core customer     = customer chính thức trong shared.customers
+MCP field outlet  = điểm ghé/prospect/điểm bán có identity riêng
 ```
 
-Khách MCP và khách Core phải dùng cùng canonical customer ID.
-
-### Nhà cung cấp
+Field outlet có thể lưu:
 
 ```text
-supplier code
-name
-contacts
-addresses
-payment terms
-bank/tax references
-lead time
-purchase owner
-status
+core_customer_id nullable
+core_customer_address_id nullable
 ```
 
-### Sản phẩm, SKU và đơn vị
+Chỉ outlet đã link với Core customer đang hoạt động mới được tạo official Sales Order.
 
-```text
-product
-variant/SKU
-category
-brand
-base inventory unit
-sales units
-purchase units
-unit conversions
-barcode theo SKU/đơn vị
-lot/expiry flags
-price lists
-purchase price references
-status
-```
+Outlet chưa link vẫn được check-in, test, survey, report, follow-up, ghi nhu cầu và gửi onboarding request.
 
-Quy tắc:
+### 6.2 Onboarding ownership
 
-- Base inventory unit bất biến sau movement đầu tiên, trừ migration có kiểm soát.
-- Dùng decimal chính xác, không dùng float cho quantity/money.
-- Chứng từ lưu snapshot tên, SKU, unit, conversion, giá và thuế tại thời điểm xác nhận/post.
-- Không hard-delete SKU đã phát sinh nghiệp vụ.
+- MCP giữ local/offline draft trước submit.
+- Sau submit, Core sở hữu canonical review lifecycle.
+- MCP lưu Core request reference và synchronized status.
+- Core approve tạo customer mới, link existing hoặc reject.
+- Không để hai app cùng mutate một canonical request lifecycle.
+
+Chi tiết: `docs/operations/phase-6-sales-mcp-customer-boundary.md`.
 
 ---
 
-## 8. Kho đa kho
+## 7. Inventory and fulfillment rules
 
-### Các bucket tồn
-
-Theo warehouse + location + SKU + lot khi có:
+Inventory scope tối thiểu:
 
 ```text
-on_hand
-reserved
-available
-blocked
-quarantine
-in_transit
+installation + warehouse + location + base SKU + lot khi có
 ```
 
 ```text
 available = on_hand - reserved - blocked - quarantine
 ```
 
-Công thức thực tế phải khóa bằng policy và test.
+- Không cho âm kho mặc định.
+- Reservation không được oversell khi concurrent.
+- Posted movements bất biến; reversal append-only.
+- Delivery issue và customer return phải gọi internal inventory posting contract.
+- Không mở generic public inventory posting endpoint cho Sales/Purchasing bypass lifecycle.
 
-### Movement tối thiểu
-
-```text
-opening
-purchase_receipt
-purchase_return
-sales_reservation
-reservation_release
-sales_issue
-customer_return_sellable
-customer_return_quarantine
-transfer_out
-transfer_in
-stocktake_variance_in
-stocktake_variance_out
-adjustment_in
-adjustment_out
-scrap
-reversal
-```
-
-### Chuyển kho
+Trước pick/pack của Phase 6 phải khóa:
 
 ```text
-draft
--> approved
--> picked
--> shipped/transfer_out
--> in_transit
--> partially_received hoặc received/transfer_in
--> variance resolved
--> completed
+reservation -> allocation transition
+manual lot selection hoặc policy selection
+FEFO/FIFO eligibility
+partial allocation/backorder
+inventory issue transition
 ```
 
-Bắt buộc hỗ trợ nhận một phần, thiếu/dư, hư hỏng, sai SKU/lô, từ chối nhận và chứng từ xử lý chênh lệch.
-
-### Kiểm kho
-
-```text
-create scope
--> count
--> recount khi cần
--> review variance
--> approve
--> post movement
--> close
-```
-
-Không sửa balance trực tiếp sau kiểm đếm.
-
-### Âm kho
-
-Mặc định: **không cho âm kho**.
-
-Ngoại lệ phải có policy, quyền, reason code, approval, audit và báo cáo riêng.
+Vehicle/trip không phải warehouse/location trong Transportation foundation. Virtual vehicle location chỉ xem xét ở Phase 7 hoặc sau khi có nhu cầu thực tế.
 
 ---
 
-## 9. Mua hàng và phải trả
+## 8. Purchasing and payable baseline
 
-### Vòng đời mua hàng
-
-```text
-Purchase request nếu dùng
--> Purchase order draft
--> approved/confirmed
--> supplier shipment reference
--> goods receipt một hoặc nhiều lần
--> quality/quantity variance
--> inventory receipt post
--> payable post
--> supplier payment/allocation
--> completed/cancelled
-```
-
-### Nhận hàng
-
-Mỗi dòng nhận phải ghi:
+Phase 5 source capabilities đã có trên `main`:
 
 ```text
-ordered quantity
-previously received
-received now
-accepted quantity
-rejected quantity
-shortage/excess
-warehouse/location
-lot
-manufacturing date
-expiry date
-unit/conversion snapshot
-purchase cost components
+Purchase Order lifecycle
+scalable SKU search/bulk line entry
+partial Goods Receipt
+quantity/quality variance
+inventory receipt posting/reversal
+supplier return
+payable posting and immutable ledger
+supplier payment/allocation/reversal
 ```
 
-### Trả hàng nhà cung cấp
+Deferred không chặn Phase 6 source design:
 
 ```text
-return request
--> approve
--> pick from sellable/quarantine
--> issue supplier return
--> supplier credit/debit adjustment
--> payable offset hoặc refund
+bank reconciliation
+cashbook/general ledger
+payment approval
+FX/cross-currency allocation
 ```
 
-Không giảm phải trả hoặc tăng tồn chỉ vì tạo yêu cầu trả.
-
-### Phải trả
-
-```text
-payable documents
-payable transactions
-supplier payments
-supplier payment allocations
-supplier credits/debits
-reversals
-```
-
-Một payment có thể phân bổ nhiều chứng từ và một chứng từ có thể được nhiều payment.
-
----
-## 10. Bán hàng, giao hàng và phải thu
-
-### Nguồn đơn
-
-```text
-manual core
-MCP field
-import
-API
-sales rep
-```
-
-Đơn từ MCP phải có:
-
-```text
-source_type
-source_id
-idempotency_key
-actor/request_id
-canonical customer ID
-canonical SKU/unit ID
-```
-
-Retry cùng key trả lại cùng kết quả, không tạo duplicate.
-
-### Các trục trạng thái
-
-```text
-order_status:
-  draft | confirmed | cancelled | completed
-
-fulfillment_status:
-  unfulfilled | allocated | picking | packed
-  | partially_delivered | delivered | returned
-
-payment_status:
-  unposted | unpaid | partially_paid | paid
-  | overpaid | refunded | written_off
-
-delivery_status:
-  planned | dispatched | partially_received
-  | accepted | rejected | failed | returned
-```
-
-Các status tổng hợp phải được tính từ chứng từ con.
-
-### Giao một phần và backorder
-
-- Một order có nhiều fulfillment và delivery.
-- Chỉ issue đúng số thực xuất.
-- Phần còn lại phải chọn rõ: backorder, dời lịch, amendment hoặc hủy phần còn lại.
-- Không tự coi giao thiếu là completed.
-
-### Trả hàng khách
-
-```text
-request
--> receive/inspect
--> classify sellable/quarantine/scrap
--> post inventory movement
--> credit receivable/refund/offset
--> close
-```
-
-Return phải tham chiếu delivery/order item gốc khi có thể.
-
-### Phải thu
-
-```text
-receivable documents
-receivable transactions
-payments received
-payment allocations
-credits/debits
-refunds
-write-offs
-reversals
-```
-
-Aging dựa trên due date và remaining amount.
+Production rollout của migrations mới vẫn là operation riêng.
 
 ---
 
-## 11. Giá vốn
+## 9. Sales, Delivery Order and Dispatch model
 
-Phải chốt một phương pháp trước khi post movement production:
+Tách bốn lớp:
 
 ```text
-moving weighted average
-hoặc FIFO theo lot/movement
+Sales Order
+-> Fulfillment/Allocation
+-> Delivery Order
+-> Delivery Trip/Attempt
 ```
 
-Phase đầu chỉ dùng một phương pháp.
+Quan hệ bắt buộc:
 
-Giá vốn phải xử lý:
+```text
+1 Sales Order      -> nhiều Delivery Orders
+1 Delivery Order   -> nhiều attempts/trips khi cần
+1 Delivery Trip    -> nhiều Delivery Orders
+1 trip stop        -> có thể chứa nhiều Delivery Orders theo policy
+```
 
-- chi phí mua;
-- chi phí phân bổ nếu áp dụng;
-- nhập trả khách;
-- trả nhà cung cấp;
-- chuyển kho;
-- điều chỉnh tăng/giảm;
-- tồn âm nếu policy đặc biệt;
-- reversal và backdated posting.
+Partial delivery không tự completed. Phần còn lại phải chọn:
 
-Không tính lợi nhuận bằng giá bán trừ “giá nhập hiện tại”.
+```text
+backorder
+reschedule
+cancel remaining
+approved amendment
+```
+
+Failed delivery không tự completed order và không được làm mất dấu stock đã issue.
+
+Chi tiết: `docs/operations/phase-6-transportation-dispatch-decisions.md`.
 
 ---
 
-## 12. MCP tích hợp NPP Core
+## 10. API, auth, audit and events
 
-### Luồng tạo đơn
-
-```text
-MCP Field
--> thu thập khách/SKU/số lượng/ghi chú
--> gọi Core API tạo order request/draft
--> Core kiểm tra customer, price, unit, credit và stock policy
--> Core trả order ID + trạng thái
--> MCP lưu reference và hiển thị kết quả
-```
-
-MCP không tự reserve tồn, issue kho, ghi phải thu, gán paid/delivered hoặc tạo SKU bằng text tự do.
-
-### Luồng master data
-
-MCP đọc catalog rút gọn từ Core API/read model:
-
-```text
-customers assigned to employee/route
-active products/SKU
-sales units
-resolved prices
-available stock theo quyền hiển thị
-credit warning theo policy
-```
-
-### Event/outbox
-
-```text
-core.order.created
-core.order.confirmed
-core.order.cancelled
-core.delivery.posted
-core.payment.received
-core.customer.updated
-core.product.updated
-mcp.visit.completed
-mcp.test.recorded
-mcp.market_report.created
-```
-
-Event phải có event ID, aggregate ID, version, occurredAt và idempotency handling.
-
----
-
-## 13. API contract
+### 10.1 API envelope
 
 Success:
 
@@ -782,7 +498,7 @@ Success:
 {
   "data": {},
   "requestId": "req_...",
-  "receivedAt": "2026-07-23T00:00:00.000Z"
+  "receivedAt": "..."
 }
 ```
 
@@ -791,474 +507,410 @@ Error:
 ```json
 {
   "error": {
-    "code": "INSUFFICIENT_AVAILABLE_STOCK",
-    "message": "Tồn khả dụng không đủ.",
+    "code": "STABLE_CODE",
+    "message": "Thông báo công khai có thể hành động.",
     "details": {},
     "retryable": false
   },
   "requestId": "req_...",
-  "receivedAt": "2026-07-23T00:00:00.000Z"
+  "receivedAt": "..."
 }
 ```
 
-Cấm trả public raw DB/provider error, tên bảng/cột/RPC, stack trace, secret hoặc row chưa qua mapper.
-
----
-
-## 14. Authentication, authorization và audit
-
-### Request context
+### 10.2 Request context
 
 ```text
-installationId từ server config
+installationId server-owned
 actorId
 employeeId nếu có
-roles
-permissions
-warehouse/branch/territory scope
+roles/permissions
+branch/warehouse/territory scope
 requestId
-idempotencyKey khi có mutation
+idempotencyKey khi cần
 ```
 
-Không tin installation, role hoặc warehouse scope gửi tự do trong body client.
+Không tin installation, role hoặc warehouse scope gửi tự do trong body.
 
-### Quyền tối thiểu
+### 10.3 Role foundation
+
+Existing roles plus Phase 6 additions:
 
 ```text
 owner/admin
 sales manager
 sales rep
-warehouse manager
-warehouse operator
+warehouse manager/operator
 purchasing
-accounting/receivable
-accounting/payable
+accounting receivable/payable
 viewer/auditor
+dispatcher
+driver
+logistics manager
 ```
 
-Quyền riêng cho sửa giá, âm kho, adjustment, stocktake posting, transfer approval, credit override, payment reversal, refund/write-off và export nhạy cảm.
+Role không tự cấp mọi permission cùng tên. Authorization vẫn deny-by-default.
 
-### Audit
+### 10.4 Event groups
 
 ```text
-actor
-request ID
-source app/service
-operation
-entity/document
-before/after hoặc diff
-reason code/note
-occurredAt
-IP/device metadata khi cần
+core.customer_onboarding.*
+core.sales_order.*
+core.delivery_order.*
+core.delivery_trip.*
+core.delivery_attempt.*
+core.payment.*
+core.customer.updated
+core.product.updated
+mcp.visit.completed
+mcp.test.recorded
+mcp.market_report.created
 ```
+
+Event phải có event ID, aggregate ID/type, version, occurred time, source, actor và request correlation.
 
 ---
 
-## 15. Kế hoạch dữ liệu và migration
+## 11. Trạng thái Phases 0–5
 
-### Nguyên tắc
+### Phase 0/1 — Repo and monorepo baseline
 
-- Không sửa production DB thủ công mà không có migration.
-- Migration phải chạy được trên DB sạch.
-- Data migration phải idempotent hoặc có checkpoint.
-- Backfill có đối soát trước/sau.
-- Không xóa nguồn Supabase cũ trước cutover và backup/restore.
+**Status:** absorbed into current repository baseline.
 
-### Chuyển MCP sang PostgreSQL mới
+Repo, workspaces, app boundaries, migration structure và CI đang tồn tại trên `main`. Không mở lại như một phase xây mới nếu không có regression cụ thể.
 
-Dữ liệu MCP hiện nhỏ nên volume migration không phải vấn đề chính. Công việc chính là đổi tầng truy cập dữ liệu.
+### Phase 2 — Core foundation
 
-```text
-Supabase REST/RPC adapter hiện tại
--> repository ports
--> PostgreSQL adapter trực tiếp
--> repository contract tests
--> data export/import
--> dual verification
--> cutover
--> smoke
-```
+**Source gate:** closed.
 
-Không thay mọi call bằng SQL rải trong controller.
+Có request context, auth/permission, idempotency, audit/outbox, migration runner, same-origin web gateway, sanitized errors và browser/migration CI.
 
-### Thứ tự schema
+### Phase 3 — Shared master data and access
 
-```text
-1. shared
-2. mcp
-3. inventory foundation
-4. sales
-5. purchasing
-6. accounting
-7. reporting/read models
-```
+**Source gate:** closed for current foundation.
 
----
-## 16. Lộ trình triển khai
+Có organization, access/users/roles, customer, supplier, product/SKU/unit, pricing và document numbering.
 
-### Phase 0 — Khóa baseline repo
-
-```text
-[ ] MCP dev chạy tại port 3002
-[ ] MCP build pass
-[ ] MCP verify:foundation pass
-[ ] Test Windows path dùng fileURLToPath
-[ ] Root .gitignore bảo vệ cả mcp và npp-core
-[ ] npp-core có README/file giữ thư mục
-[ ] GitHub Actions cập nhật working-directory/root path
-[ ] Vercel Root Directory của MCP trỏ vào mcp
-[ ] Deploy scripts/VPS paths được audit trước khi dùng lại
-```
-
-Gate: không code Core khi baseline MCP chưa xanh, trừ skeleton không ảnh hưởng MCP.
-
-### Phase 1 — Monorepo foundation
-
-```text
-[ ] Root workspace/package manager strategy
-[ ] packages/contracts
-[ ] packages/domain-types
-[ ] packages/shared-utils
-[ ] packages/auth-context
-[ ] database/migrations structure
-[ ] CI matrix cho mcp và npp-core
-[ ] env templates tách từng app/service
-[ ] local port convention
-```
-
-Gate: mỗi app build/test độc lập từ root command hoặc documented working directory.
-
-### Phase 2 — Core API/Web skeleton
-
-```text
-[ ] npp-core/api health/config/error envelope
-[ ] npp-core/web AppShell/login/layout
-[ ] PostgreSQL connection pool
-[ ] migration runner
-[ ] request context
-[ ] auth/permission middleware
-[ ] idempotency store
-[ ] audit/outbox foundation
-[ ] object storage adapter R2
-```
-
-Gate: authenticated health + migration rehearsal + deny-by-default permission pass.
-
-### Phase 2b — Core UI foundation + browser verification
-
-```text
-[x] /foundation internal UI route, disabled by default
-[x] Foundation UI displays actual Core API live/ready status, authenticated server-owned context, sanitized config, R2 state and checked timestamp
-[x] Server-side gateway allowlists only required Core API endpoints, validates success envelopes, applies timeout and fails closed
-[x] Browser receives no backend token, database URL, R2 credentials, provider endpoint, bucket name, signed URL or raw upstream error
-[x] /foundation, /api/foundation/status and /api/foundation/r2-test return true 404 responses when disabled
-[x] R2 contract action is hidden by default, uses a server-generated idempotency key and is not executed in CI
-[x] Chromium browser tests cover /, /login, /dashboard, enabled/disabled foundation states, spoofing, redaction, refresh, safe failures and same-origin assets
-[x] Browser verification uses actual local Core API plus ephemeral PostgreSQL 16; no production service or provider is called
-[x] Core API regression, Core web typecheck/build, Foundation F0.2 and migration rehearsal remain green
-[x] Operations runbook documents local execution, CI, security boundaries and production-readiness exclusions
-```
-
-Gate: **CLOSED**. PR #24 passed Core Foundation, Foundation F0.2, migration rehearsal and Chromium browser E2E, then was squash-merged to `main` at commit `5a2ef5d5a8571645a563fc3123140733b6d04551`.
-
-**Status:** Completed on `2026-07-25`. This status does not claim a production deployment, production backup/restore verification, R2 production configuration or provider smoke test.
-
-Sau gate này mới chọn vertical business slice đầu tiên. Chưa tự chọn inventory, sales, purchasing hoặc MCP cutover. Mỗi business feature tiếp theo phải đi theo lát dọc:
-
-```text
-migration
--> backend API
--> frontend UI
--> unit test
--> integration test
--> browser/E2E test
--> CI
--> merge
-```
-
-### Phase 3 Slice 1 — Organization and Warehouse Structure
-
-**Scope:**
-- installation/company config (read-only for now)
-- branches (list, get, create, update, activate/deactivate)
-- warehouses (list, get, create, update, activate/deactivate)
-- warehouse locations (list, get, create, update, activate/deactivate)
-
-**Features NOT in this slice:**
-- users/employees/roles/scopes
-- customers/customer groups
-- suppliers/supplier terms
-- products/SKU
-- inventory ledger
-- sales
-- purchasing
-- MCP cutover
-
-**Status:** **CLOSED on `2026-07-26`.** Phase 3.1 code, database migration, Core API runtime, Core web UI, canonical organization routing, authentication gate and production smoke have all completed.
-
-**Completed:**
-- [x] Migrations: branches, warehouses, warehouse_locations tables with proper constraints
-- [x] Repository layer for all three entities
-- [x] Service layer with validation (code normalization, parent existence, parent active checks)
-- [x] API endpoints (GET, POST, PATCH) with idempotency and audit
-- [x] Permission model (read/write splits)
-- [x] Optimistic concurrency control via expectedUpdatedAt on PATCH
-- [x] Transaction semantics enforced: POST creates entity + audit within transaction; rollback on error preserves clean DB
-- [x] Audit records: before/after data, action type, metadata
-- [x] Regression tests: expectedUpdatedAt validation, stale conflict, install-scoped isolation, before/after audit data
-- [x] GitHub Actions workflow: PostgreSQL service + migration step for CI
-- [x] Tests read environment variables (TEST_DATABASE_URL) not hardcoded local URL
-- [x] Next.js server-only frontend gateway for organization resources
-- [x] `/organization` UI for branches, warehouses, and warehouse locations
-- [x] Playwright vertical-slice E2E with actual Core API + PostgreSQL
-- [x] Full PR CI verification: Foundation F0.2, Core Foundation, and Core UI/Browser E2E
-- [x] Vietnamese AppShell, dashboard and dedicated branch/warehouse/location administration routes merged by PR #28
-- [x] Production migrations `002_core_idempotency` through `006_org_locations` applied and verified after backup + restore rehearsal
-- [x] Vercel canonical `/api/organization/*` routing and Basic Auth middleware verified in production
-- [x] Vercel project root set to `npp-core/web`; nested `/npp-core/web/*` paths return `404`
-- [x] Production deployment `dpl_BugXwqsXxFGma3obV3QSAPP2YFu7` is `READY` on `https://npp-platform.vercel.app`
-- [x] Root and Core web Auto Deploy gates are re-locked with `deploymentEnabled=false`
-
-**Gate status:** **CLOSED.** PRs #26, #28, #29 and #30 passed their required CI gates. Production PostgreSQL migrations were verified, Core API live/ready returned `200`, the Core web production deployment reached `READY`, canonical organization API routing stopped returning Vercel `404`, nested build paths were removed, and browser authentication remained active.
-
-**Closeout record:** See `docs/operations/phase-3-org-warehouse-closeout.md` and `docs/operations/LATEST_HANDOFF.md`. Backups `b1` and `b002` remain the recorded pre/post migration snapshots; provider state must still be audited before any later migration or deploy.
-
-**Product checkpoint:** Phase 3.2A employee directory is complete on `main`. Phase 3.2B role and permission foundation is the next master-data slice; keep later customer/supplier/product/inventory work paused until this slice is closed.
-
-### Phase 3 — Master data
-
-```text
-[ ] installation/company config
-[x] branches/warehouses/locations (Phase 3.1)
-[x] employees (Phase 3.2A)
-[ ] roles/permissions/scopes (Phase 3.2B)
-[ ] customers/customer groups/addresses
-[ ] suppliers/supplier terms
-[ ] products/SKU/categories/brands
-[ ] units/conversions/barcodes
-[ ] price lists and pricing resolve
-[ ] document numbering
-```
-
-Gate: canonical IDs dùng được từ cả MCP và Core; unit conversion/pricing tests pass.
+Customer route assignment và MCP outlet linking được chuyển sang Phase 6 boundary, không phải backfill chắp vá vào customer master.
 
 ### Phase 4 — Inventory foundation
 
+**Source gate:** closed for ledger/balance/reservation/lot-opening foundation.
+
+Advanced transfer, stocktake, costing và vehicle virtual location vẫn thuộc Phase 7 hoặc decision riêng.
+
+### Phase 5 — Purchasing and payable
+
+**Source gate:** closed through supplier payment/allocation, gồm PO line-entry standardization.
+
+Không suy ra production deploy/migration từ source gate.
+
+Audit chi tiết: `docs/operations/pre-phase-6-closure-audit.md`.
+
+---
+
+## 12. Phase 6 roadmap
+
+### Phase 6A — Sales and MCP boundary contract
+
+Documentation/decision-only trước mutation:
+
 ```text
-[ ] inventory ledger
-[ ] movement posting/reversal
-[ ] balances/read model rebuild
-[ ] reservations
-[ ] negative-stock policy
-[ ] lot/expiry foundation
-[ ] opening balance import
-[ ] movement drill-down UI
+[ ] Core customer vs field outlet
+[ ] customer/address link
+[ ] source_type/source_id/idempotency
+[ ] order/fulfillment/delivery/payment status axes
+[ ] inventory issue transition
+[ ] receivable posting transition
+[ ] tax-inclusive/exclusive and rounding
+[ ] credit override/approval
+[ ] lot allocation/FEFO policy
+[ ] cancellation/amendment boundaries
+[ ] dispatch and COD boundaries
 ```
 
-Gate: rebuild balances khớp ledger; concurrent reserve không oversell; retry không duplicate.
+Gate: không tạo Sales mutation/schema trước khi owner khóa các quyết định này.
 
-### Phase 5 — Purchasing
+### Phase 6B — Sales Order Foundation
 
 ```text
-[ ] purchase order
-[ ] approval
-[ ] partial goods receipt
-[ ] receipt inventory posting
-[ ] quantity/quality variance
-[ ] supplier return
-[ ] payable posting
-[ ] supplier payment/allocation
+[ ] draft/confirm/amend/cancel
+[ ] Sales Order lines and snapshots
+[ ] pricing/discount/tax
+[ ] manual/import/API/MCP source references
+[ ] linked active Core customer required
+[ ] document numbering
+[ ] idempotent source retry
+[ ] permissions/audit/outbox
 ```
 
-Gate: PO → partial receipts → inventory → payable → payment chạy end-to-end.
-
-### Phase 6 — Sales
+### Phase 6C — Customer Onboarding Bridge
 
 ```text
-[ ] sales order draft/confirm/amend/cancel
-[ ] price/discount/tax calculation
-[ ] stock reservation/allocation
-[ ] pick/pack/delivery
-[ ] partial delivery/backorder
+[ ] field outlet link contract
+[ ] submit onboarding request
+[ ] duplicate review
+[ ] approve new customer/address
+[ ] link existing customer/address
+[ ] need-more-info/reject
+[ ] status sync back to MCP
+```
+
+### Phase 6D — Fulfillment and Delivery Order
+
+```text
+[ ] reservation/allocation
+[ ] pick/pack
+[ ] lot/expiry selection
+[ ] Delivery Orders and lines
+[ ] partial fulfillment/backorder
+[ ] inventory issue/reversal integration
+[ ] return origin references
+```
+
+### Phase 6E — Transportation/Dispatch
+
+```text
+[ ] logistics schema
+[ ] delivery routes
+[ ] vehicles
+[ ] drivers/trip crew
+[ ] delivery trips/stops
+[ ] Delivery Order assignments
+[ ] dispatch/reassignment transitions
+[ ] delivery attempts
+[ ] POD foundation
+[ ] failed/partial/rescheduled delivery
+```
+
+### Phase 6F — Receivable, Returns, Payment and COD
+
+```text
+[ ] receivable posting/reversal
+[ ] payment/allocation/refund/write-off
 [ ] customer return/exchange
-[ ] receivable posting
-[ ] payment/allocation/refund
-[ ] MCP create-order integration
+[ ] COD collection fact
+[ ] COD accounting allocation
+[ ] order/fulfillment/delivery/payment projections
 ```
 
-Gate: MCP retry không duplicate; giao một phần chỉ trừ số thực xuất; return đảo kho/công nợ đúng.
+---
 
-### Phase 7 — Kho nâng cao và giá vốn
+## 13. MCP adaptation track
+
+MCP work runs as an adaptation/integration track, not a rebuild phase:
+
+```text
+M1 legacy route/outlet/session/visit/order audit
+M2 backend-owned MCP writes and session snapshots
+M3 customer onboarding bridge
+M4 idempotent Sales Order adapter
+M5 read-only Core order/fulfillment/delivery status
+M6 Supabase/VPS adapter replacement and cutover
+```
+
+MCP frontend keeps working flows unless user testing proves a defect.
+
+MCP migration/cutover remains in the infrastructure phase and requires backup/reconciliation.
+
+---
+
+## 14. Phase 7 — Advanced Inventory and Costing
 
 ```text
 [ ] warehouse transfer with in-transit
 [ ] partial receive/variance/damage
 [ ] stocktake/recount/approval/posting
-[ ] adjustments
+[ ] manual adjustments
 [ ] quarantine/scrap
-[ ] costing method
+[ ] selected costing method
 [ ] backdated/reversal costing rules
+[ ] optional vehicle virtual location only if justified
 ```
 
-Gate: mọi tồn và giá vốn drill-down được đến movement/source document.
+Gate: every balance/costing value drills down to immutable movement/source documents.
 
-### Phase 8 — Báo cáo và điều hành
+---
+
+## 15. Phase 8 — Reporting and Operations
 
 ```text
-[ ] sales dashboard
-[ ] purchase dashboard
-[ ] inventory aging
-[ ] nhập-xuất-tồn
+[ ] sales/purchase dashboards
+[ ] inventory aging and nhập-xuất-tồn
 [ ] stock availability
-[ ] customer receivable aging
-[ ] supplier payable aging
-[ ] gross margin
-[ ] employee/route performance
+[ ] customer/supplier aging
+[ ] gross margin after costing
+[ ] employee/field-route performance
+[ ] trip performance/on-time delivery
+[ ] failed delivery reasons
+[ ] vehicle/driver utilization
+[ ] COD reconciliation when enabled
 [ ] import/export history
-[ ] activity/audit logs
+[ ] audit/activity logs
 ```
 
-Gate: báo cáo tái tạo được từ ledger/chứng từ và đối soát được với dữ liệu nguồn.
+Reports must be reproducible from source documents/ledgers/read models.
 
-### Phase 9 — Migration và cutover hạ tầng
+---
+
+## 16. Phase 9 — MCP migration and infrastructure cutover
 
 ```text
-[ ] Heroku apps
-[ ] Heroku PostgreSQL schemas/roles
+[ ] Heroku apps and DB roles
 [ ] Vercel projects/root directories
 [ ] R2 buckets/lifecycle
-[ ] migrate MCP data
+[ ] MCP legacy data audit/export
+[ ] canonical ID mapping
 [ ] replace Supabase adapter
-[ ] production rehearsal
-[ ] backup before cutover
+[ ] import and dual verification
+[ ] backup and restore rehearsal
 [ ] DNS/env switch
 [ ] smoke and reconciliation
 [ ] rollback/forward-fix runbook
 ```
 
-Gate: cả MCP và Core chạy trên hạ tầng đích; Supabase/VPS không còn là dependency production bắt buộc.
+Gate: MCP và Core chạy trên hạ tầng đích; Supabase/VPS không còn dependency production bắt buộc.
 
 ---
 
 ## 17. Test strategy
 
-Mỗi vertical slice phải có:
+Mỗi vertical slice có tối thiểu:
 
 ```text
 unit tests
-repository contract tests
-API contract tests
-transaction tests
-idempotency tests
+repository/API contract tests
+transaction and rollback tests
+idempotency mismatch/replay tests
 concurrency tests
-permission tests
-migration tests
-read-model rebuild/reconciliation tests
+permission/scope tests
+migration apply/rerun tests
+read-model reconciliation
 frontend interaction tests
-production smoke
+browser E2E
+exact-head CI
+production smoke riêng khi deploy
 ```
 
-Case bắt buộc:
+Case Phase 6 bắt buộc:
 
-- retry tạo đơn/nhập/xuất/thanh toán không duplicate;
-- concurrent reserve không vượt available;
-- chuyển kho giữ đúng in-transit;
-- nhận chuyển kho một phần không tăng thừa;
-- kiểm kho post bằng movement;
-- return request chưa nhận không tăng tồn;
-- payment chưa allocation vẫn còn nhìn thấy;
-- reversal khôi phục ledger đúng;
-- đổi unit/price/tên không làm đổi chứng từ lịch sử;
-- quyền kho A không thao tác kho B;
+- unlinked outlet không tạo official Sales Order;
+- link-existing không duplicate customer;
+- MCP retry không duplicate Core order;
+- invalid customer/address/SKU/unit bị chặn;
+- concurrent reserve không oversell;
+- one trip có nhiều Delivery Orders;
+- one Delivery Order có nhiều attempts;
+- partial delivery chỉ post số thực tế theo policy;
+- failed delivery không completed order;
+- reassignment có audit;
+- return tham chiếu origin;
+- COD không bypass accounting allocation;
 - MCP không ghi trực tiếp Core tables.
 
 ---
 
 ## 18. Definition of Ready
 
-Một slice chỉ code mutation khi đã khóa source of truth, ngoại lệ, status/transition, money/quantity/unit/rounding, permission, canonical API, migration/forward-fix, idempotency/concurrency và acceptance test.
+Một slice chỉ code mutation khi đã khóa:
+
+```text
+source of truth
+entity ownership
+status/transitions
+quantity/money/unit/rounding
+posting points
+permission and scope
+canonical API
+idempotency/concurrency
+migration/forward-fix
+acceptance tests
+production boundary
+```
 
 ---
 
 ## 19. Definition of Done
 
-Một slice chỉ hoàn thành khi migration DB sạch, transaction đúng, frontend không bypass, deny-by-default, audit/outbox đủ, test pass, read model khớp, build/deploy/smoke pass và tài liệu được cập nhật.
-
----
-
-## 20. Backup, restore và retention
-
-### Ba lớp backup
+Một source slice hoàn thành khi:
 
 ```text
-1. Heroku PostgreSQL backup/snapshot
-2. Bản sao ngoài hệ thống trên R2
-3. Bản tải local định kỳ
+clean migration apply/rerun
+transaction and rollback correct
+frontend does not bypass backend
+deny-by-default
+audit/outbox complete
+regression and E2E pass
+exact-head CI green
+documentation updated
+merged to main
 ```
 
-Backup chỉ được coi là dùng được sau restore rehearsal trên DB test và chạy đối soát/smoke.
-
-Không xóa ledger/chứng từ để giảm dung lượng. Chỉ prune temp upload, export hết hạn, log kỹ thuật, payload tạm, cache/read model rebuild được và smoke fixtures.
+Production Done là gate riêng, chỉ khi deploy/migration/smoke/reconciliation/backup evidence đã được xác nhận.
 
 ---
 
-## 21. Các quyết định phải khóa trước khi post nghiệp vụ thật
+## 20. Business decisions still open
+
+Owner phải khóa trước transition liên quan:
 
 ```text
-[ ] Phương pháp giá vốn: moving average hay FIFO
-[ ] Chính sách âm kho
-[ ] Nhóm sản phẩm quản lý lot/expiry
-[ ] Thời điểm post receivable
-[ ] Thời điểm post payable
-[ ] Giá có VAT hay chưa VAT
-[ ] Quy tắc rounding quantity/money
-[ ] Approval thresholds
-[ ] Warehouse/location model thực tế
-[ ] Hàng trên xe có là kho riêng không
-[ ] Chuyển kho nội bộ tức thời có được phép không
-[ ] Chính sách chứng từ backdated
-[ ] Retention cho file/log
+costing method
+negative-stock exceptions if any
+lot/expiry and FEFO policy
+inventory issue point for Sales
+receivable posting point
+payable/receivable invoice policy
+price includes VAT or excludes VAT
+quantity/money/tax rounding
+approval thresholds
+credit override
+backdated documents
+failed-delivery stock treatment
+COD handover/allocation
+POD requirement
+vehicle capacity enforcement
+retention for files/logs
 ```
 
-Đây là business decision, không được lập trình viên tự đoán.
+Lập trình viên không tự đoán.
 
 ---
 
-## 22. Việc tiếp theo theo đúng thứ tự
-
-**Execution checkpoint `2026-07-26`:** Phase 3.1 is closed in production. Phase 3.2A employee directory is complete on main. Proceed with Phase 3.2B role and permission foundation before any users, customers, suppliers, products, inventory, sales, purchasing or MCP cutover work.
+## 21. Current execution checkpoint
 
 ```text
-1. Hoàn tất Phase 0: MCP chạy/build/test sau khi chuyển vào /mcp.
-2. Sửa root .gitignore, GitHub Actions, Vercel Root Directory và deploy path.
-3. Tạo skeleton npp-core/web và npp-core/api.
-4. Tạo packages/contracts + database/migrations.
-5. Khóa money/quantity/unit và document numbering.
-6. Làm shared master data.
-7. Làm inventory ledger foundation.
-8. Làm purchasing end-to-end.
-9. Làm sales end-to-end và nối MCP.
-10. Làm receivable/payable/costing/reporting.
-11. Rehearsal migration MCP sang PostgreSQL mới.
-12. Cutover hạ tầng sau khi reconciliation pass.
+Source baseline: main@6983844b9f6b4a63ad0fe04863f1492e360050cb
+Phases 1–5: source foundations available/closed as described above
+Next phase: Phase 6A documentation and owner decision gate
+MCP strategy: adapt and integrate existing app, do not rebuild
+Production status: must be audited separately before any rollout claim
 ```
 
-Không bắt đầu bằng việc dựng hàng loạt màn hình giống Sapo. UI chỉ triển khai sau khi source of truth, document lifecycle, ledger và API contract của slice đã được khóa.
+Thứ tự tiếp theo:
+
+1. Merge Master Plan và Phase 6 decision documents.
+2. Owner khóa các business decisions Phase 6A.
+3. Audit fresh `main`, PRs, CI, migration registry và handoff.
+4. Mở Sales Order Foundation branch.
+5. Không bắt đầu Dispatch trước Delivery Order/Fulfillment foundation.
+6. Không bắt đầu MCP official order write trước customer linking và idempotency contract.
 
 ---
 
-## 23. Kết luận kiến trúc
+## 22. Kết luận kiến trúc
 
 ```text
 Một repo tổng.
 Hai frontend.
 Hai backend.
 Một PostgreSQL installation, tách schema và quyền.
-R2 giữ file lớn.
-MCP sở hữu vận hành thị trường.
-NPP Core sở hữu mua-bán-kho-công nợ-giá vốn.
-Ledger và chứng từ là nguồn sự thật.
+MCP là app field hiện hữu được thích nghi và tích hợp.
+Core sở hữu customer chính thức, chứng từ, ledger và logistics.
+Field outlet không mặc định là Core customer.
+Sales Order, Delivery Order và Delivery Trip là các nguồn sự thật tách biệt.
+Vehicle/trip không mặc định là warehouse.
 Không sửa tồn/công nợ trực tiếp.
 Không chắp vá lỗi.
-Không code UI trước domain contract.
+Không code mutation trước domain contract.
+Source merge và production rollout luôn báo cáo tách biệt.
 ```
