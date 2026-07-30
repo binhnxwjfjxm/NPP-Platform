@@ -279,12 +279,27 @@ export function calculatePurchaseOrderLineFinancials(input, { quantity, unitPric
   const mode = input.discountMode ?? 'TOTAL_AMOUNT';
   if (!DISCOUNT_MODES.has(mode)) return failure('INVALID_DISCOUNT_MODE', 'Discount mode is invalid');
   const discountValue = decimalToScaled(input.discountValue ?? input.discountAmount ?? '0', { allowZero: true });
-  const taxRate = decimalToScaled(input.taxRate ?? '0', { allowZero: true });
   if (discountValue === null) return failure('INVALID_DISCOUNT', 'Discount value is invalid');
-  if (taxRate === null || taxRate > ONE_HUNDRED_PERCENT) return failure('INVALID_TAX', 'Tax rate must be between 0 and 100 percent');
   if (mode === 'PERCENT' && discountValue > ONE_HUNDRED_PERCENT) {
     return failure('INVALID_DISCOUNT', 'Discount percent must be between 0 and 100');
   }
+
+  const hasTaxRate = input.taxRate !== undefined
+    && input.taxRate !== null
+    && String(input.taxRate).trim() !== '';
+  const taxRate = hasTaxRate
+    ? decimalToScaled(input.taxRate, { allowZero: true })
+    : null;
+  const legacyTaxAmount = hasTaxRate
+    ? null
+    : decimalToScaled(input.taxAmount ?? '0', { allowZero: true });
+  if (hasTaxRate && (taxRate === null || taxRate > ONE_HUNDRED_PERCENT)) {
+    return failure('INVALID_TAX', 'Tax rate must be between 0 and 100 percent');
+  }
+  if (!hasTaxRate && legacyTaxAmount === null) {
+    return failure('INVALID_TAX', 'Tax amount is invalid');
+  }
+
   const gross = multiplyScaled(quantity, unitPrice);
   const discountAmount = mode === 'PERCENT'
     ? percentOfScaled(gross, discountValue)
@@ -293,7 +308,9 @@ export function calculatePurchaseOrderLineFinancials(input, { quantity, unitPric
       : discountValue;
   const discountedBase = gross - discountAmount;
   if (discountedBase < 0n) return failure('INVALID_DISCOUNT', 'Discount cannot exceed line gross amount');
-  const taxAmount = percentOfScaled(discountedBase, taxRate);
+  const taxAmount = hasTaxRate
+    ? percentOfScaled(discountedBase, taxRate)
+    : legacyTaxAmount;
   return Object.freeze({
     ok: true,
     gross,
@@ -403,7 +420,7 @@ async function validateAndNormalizeDraft(client, { requestContext, payload }) {
       discountMode: financials.discountMode,
       discountValue: scaledToDecimal(financials.discountValue),
       discountAmount: scaledToDecimal(financials.discountAmount),
-      taxRate: scaledToDecimal(financials.taxRate),
+      taxRate: financials.taxRate === null ? null : scaledToDecimal(financials.taxRate),
       taxAmount: scaledToDecimal(financials.taxAmount),
       lineTotal: scaledToDecimal(financials.lineTotal),
       note: lineNote,
