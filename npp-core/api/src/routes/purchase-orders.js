@@ -275,6 +275,13 @@ export async function handlePurchaseOrderRoutes(req, res, options) {
   if (pathname !== '/api/purchase-orders' && !pathname.startsWith('/api/purchase-orders/')) return false;
   const method = String(req.method || 'GET').toUpperCase();
 
+  if (pathname === '/api/purchase-orders/sku-search' && method === 'GET') {
+    const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.corePurchaseOrderRead);
+    if (!requestContext) return true;
+    await handleSkuSearch(req, res, options, requestContext);
+    return true;
+  }
+
   if (pathname === '/api/purchase-orders' && method === 'GET') {
     const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.corePurchaseOrderRead);
     if (!requestContext) return true;

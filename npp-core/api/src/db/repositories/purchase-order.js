@@ -24,7 +24,8 @@ const LINE_COLUMNS = `pol.id, pol.installation_id, pol.purchase_order_id,
     - COALESCE(receipt_summary.shortage_closed_quantity, 0::numeric),
     0::numeric
   ) AS remaining_quantity,
-  pol.unit_price, pol.discount_amount, pol.tax_amount, pol.line_total,
+  pol.unit_price, pol.discount_mode, pol.discount_value,
+  pol.discount_amount, pol.tax_rate, pol.tax_amount, pol.line_total,
   pol.note, pol.created_at, pol.updated_at, pol.created_by, pol.updated_by`;
 
 function normalizedWarehouseIds(warehouseIds) {
@@ -303,15 +304,16 @@ async function insertLines(client, {
         (id, installation_id, purchase_order_id, line_number, variant_id,
          sku_snapshot, item_name_snapshot, unit_id, unit_code_snapshot,
          conversion_to_base, ordered_quantity, base_quantity, unit_price,
-         discount_amount, tax_amount, line_total, note,
+         discount_mode, discount_value, discount_amount, tax_rate, tax_amount, line_total, note,
          created_at, updated_at, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$18,$19,$19)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$21,$22,$22)`,
       [
         randomUUID(), installationId, purchaseOrderId, line.lineNumber,
         line.variantId, line.skuSnapshot, line.itemNameSnapshot, line.unitId,
         line.unitCodeSnapshot, line.conversionToBase, line.orderedQuantity,
-        line.baseQuantity, line.unitPrice, line.discountAmount, line.taxAmount,
-        line.lineTotal, line.note ?? null, now, actorId,
+        line.baseQuantity, line.unitPrice, line.discountMode, line.discountValue,
+        line.discountAmount, line.taxRate, line.taxAmount, line.lineTotal,
+        line.note ?? null, now, actorId,
       ],
     );
   }

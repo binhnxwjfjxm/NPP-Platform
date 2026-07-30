@@ -297,3 +297,14 @@ export function cancelPurchaseOrder<T>(
 ): Promise<T> {
   return postPurchaseOrderAction<T>(id, 'cancel', requestId, idempotencyKey, body);
 }
+
+export function searchPurchaseOrderSkuOptions<T>(
+  requestId: string,
+  params: { search?: string; limit?: number; offset?: number } = {},
+): Promise<T[]> {
+  const query = new URLSearchParams();
+  if (params.search?.trim()) query.set('search', params.search.trim().slice(0, 256));
+  if (params.limit !== undefined) query.set('limit', String(Math.max(1, Math.min(50, Math.trunc(params.limit)))));
+  if (params.offset !== undefined) query.set('offset', String(Math.max(0, Math.trunc(params.offset))));
+  return requestCore<T[]>({ method: 'GET', path: '/api/purchase-orders/sku-search', requestId, searchParams: query });
+}

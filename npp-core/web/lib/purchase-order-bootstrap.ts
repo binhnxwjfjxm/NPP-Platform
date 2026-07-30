@@ -10,7 +10,6 @@ import {
   resolvePurchaseOrderRequestId,
 } from './purchase-order-gateway';
 import { listAllSuppliers, normalizeSupplierGatewayError } from './supplier-gateway';
-import { listProducts, normalizeProductGatewayError } from './product-gateway';
 import { loadOrganizationSnapshot } from './organization-snapshot';
 import { loadPurchaseOrderPermissionKeys } from './purchase-order-context';
 
@@ -36,13 +35,13 @@ export type PurchaseOrderBootstrap = {
 function joinLabels(labels: string[]) {
   if (labels.length === 0) return '';
   if (labels.length === 1) return labels[0];
-  if (labels.length === 2) return `${labels[0]} và ${labels[1]}`;
-  return `${labels.slice(0, -1).join(', ')} và ${labels[labels.length - 1]}`;
+  if (labels.length === 2) return `${labels[0]} vÃ  ${labels[1]}`;
+  return `${labels.slice(0, -1).join(', ')} vÃ  ${labels[labels.length - 1]}`;
 }
 
 function lookupErrorMessage(labels: string[]) {
   return labels.length
-    ? `Không tải được dữ liệu ${joinLabels(labels)}. Hãy cập nhật dữ liệu trước khi thao tác.`
+    ? `KhÃ´ng táº£i Ä‘Æ°á»£c dá»¯ liá»‡u ${joinLabels(labels)}. HÃ£y cáº­p nháº­t dá»¯ liá»‡u trÆ°á»›c khi thao tÃ¡c.`
     : null;
 }
 
@@ -52,21 +51,18 @@ export async function loadPurchaseOrderBootstrap(requestId?: string | null): Pro
     ordersResult,
     suppliersResult,
     organizationResult,
-    productsResult,
     permissionsResult,
   ] = await Promise.allSettled([
     listPurchaseOrders<PurchaseOrder>(normalizedRequestId, { limit: 1000 }),
     listAllSuppliers<Supplier>(normalizedRequestId, new URLSearchParams({ active: 'true', limit: '1000' })),
     loadOrganizationSnapshot(),
-    listProducts<Product>(normalizedRequestId, new URLSearchParams({ active: 'true', orderable: 'true', limit: '1000' })),
     loadPurchaseOrderPermissionKeys(normalizedRequestId),
   ]);
 
   const lookupLabels = [
-    suppliersResult.status === 'rejected' ? 'nhà cung cấp' : null,
-    organizationResult.status === 'rejected' ? 'kho nhận' : null,
-    productsResult.status === 'rejected' ? 'sản phẩm mua hàng' : null,
-    permissionsResult.status === 'rejected' ? 'quyền mua hàng' : null,
+    suppliersResult.status === 'rejected' ? 'nhÃ  cung cáº¥p' : null,
+    organizationResult.status === 'rejected' ? 'kho nháº­n' : null,
+    permissionsResult.status === 'rejected' ? 'quyá»n mua hÃ ng' : null,
   ].filter((value): value is string => Boolean(value));
 
   return {
@@ -75,7 +71,7 @@ export async function loadPurchaseOrderBootstrap(requestId?: string | null): Pro
     warehouses: organizationResult.status === 'fulfilled'
       ? organizationResult.value.warehouses.filter((warehouse) => warehouse.is_active)
       : [],
-    products: productsResult.status === 'fulfilled' ? productsResult.value : [],
+    products: [],
     permissionKeys: permissionsResult.status === 'fulfilled' ? permissionsResult.value : [],
     errors: {
       orders: ordersResult.status === 'rejected'
@@ -85,13 +81,11 @@ export async function loadPurchaseOrderBootstrap(requestId?: string | null): Pro
         ? normalizeSupplierGatewayError(suppliersResult.reason).publicMessage
         : null,
       warehouses: organizationResult.status === 'rejected'
-        ? 'Không tải được dữ liệu kho nhận'
+        ? 'KhÃ´ng táº£i Ä‘Æ°á»£c dá»¯ liá»‡u kho nháº­n'
         : null,
-      products: productsResult.status === 'rejected'
-        ? normalizeProductGatewayError(productsResult.reason).publicMessage
-        : null,
+      products: null,
       permissions: permissionsResult.status === 'rejected'
-        ? 'Không tải được dữ liệu quyền mua hàng'
+        ? 'KhÃ´ng táº£i Ä‘Æ°á»£c dá»¯ liá»‡u quyá»n mua hÃ ng'
         : null,
     },
     checkedAt: new Date().toISOString(),

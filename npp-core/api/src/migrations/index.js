@@ -9,11 +9,20 @@ const DOCUMENT_NUMBER_IDEMPOTENCY_NAMESPACE_SQL = readFileSync(
   'utf8',
 );
 
+const PURCHASE_ORDER_LINE_ENTRY_CONTRACT_SQL = readFileSync(
+  new URL('../../../../database/migrations/purchasing/035_purchase_order_line_entry_contract.sql', import.meta.url),
+  'utf8',
+);
+
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_033,
   Object.freeze({
     id: '034_document_number_idempotency_namespace',
     sql: DOCUMENT_NUMBER_IDEMPOTENCY_NAMESPACE_SQL,
+  }),
+  Object.freeze({
+    id: '035_purchase_order_line_entry_contract',
+    sql: PURCHASE_ORDER_LINE_ENTRY_CONTRACT_SQL,
   }),
 ]);
 

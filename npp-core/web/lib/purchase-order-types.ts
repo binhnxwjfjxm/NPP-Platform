@@ -1,3 +1,11 @@
+﻿import {
+  calculatePurchaseOrderDraftTotals as calculateLineEntryTotals,
+  decimalToScaled as lineEntryDecimalToScaled,
+  formatDecimalForDisplay,
+  multiplyScaled as lineEntryMultiplyScaled,
+  scaledToDecimal as lineEntryScaledToDecimal,
+} from './purchase-order-line-entry';
+
 export type PurchaseOrderStatus =
   | 'draft'
   | 'pending_approval'
@@ -28,6 +36,30 @@ export const PURCHASE_ORDER_STATUS_LABELS: Record<PurchaseOrderStatus, string> =
   cancelled: 'Đã hủy',
 };
 
+export type PurchaseOrderDiscountMode = 'TOTAL_AMOUNT' | 'PERCENT';
+
+export type PurchaseOrderSkuEligibility = {
+  selectable: boolean;
+  code: string;
+  message: string;
+};
+
+export interface PurchaseOrderSkuSearchOption {
+  id: string;
+  productId: string;
+  productCode: string;
+  productName: string;
+  sku: string;
+  variantName: string;
+  barcode: string | null;
+  unitId: string | null;
+  unitCode: string | null;
+  unitName: string | null;
+  conversionToBase: string | null;
+  allowsFractional: boolean | null;
+  eligibility: PurchaseOrderSkuEligibility;
+}
+
 export interface PurchaseOrderLine {
   id: string;
   lineNumber: number;
@@ -45,7 +77,10 @@ export interface PurchaseOrderLine {
   shortageClosedQuantity?: string;
   remainingQuantity?: string;
   unitPrice: string;
+  discountMode?: PurchaseOrderDiscountMode;
+  discountValue?: string;
   discountAmount: string;
+  taxRate?: string | null;
   taxAmount: string;
   lineTotal: string;
   note?: string | null;
@@ -96,8 +131,11 @@ export interface PurchaseOrderDraftLine {
   variantId: string;
   quantity: string;
   unitPrice: string;
-  discountAmount: string;
-  taxAmount: string;
+  discountMode?: PurchaseOrderDiscountMode;
+  discountValue?: string;
+  discountAmount?: string;
+  taxRate?: string;
+  taxAmount?: string;
   note: string;
 }
 
@@ -113,32 +151,11 @@ export interface PurchaseOrderDraft {
   expectedRevision?: string;
 }
 
-export interface PurchaseOrderSupplierOption {
-  id: string;
-  code: string;
-  name: string;
-  isActive: boolean;
-}
-
-export interface PurchaseOrderWarehouseOption {
-  id: string;
-  code: string;
-  name: string;
-  isActive: boolean;
-}
-
+export interface PurchaseOrderSupplierOption { id: string; code: string; name: string; isActive: boolean; }
+export interface PurchaseOrderWarehouseOption { id: string; code: string; name: string; isActive: boolean; }
 export interface PurchaseOrderVariantOption {
-  id: string;
-  productId: string;
-  sku: string;
-  name: string;
-  unitId: string;
-  unitCode: string;
-  unitName: string;
-  conversionToBase: string;
-  allowsFractional: boolean;
-  isActive: boolean;
-  isPurchasable: boolean;
+  id: string; productId: string; sku: string; name: string; unitId: string; unitCode: string; unitName: string;
+  conversionToBase: string; allowsFractional: boolean; isActive: boolean; isPurchasable: boolean;
 }
 
 export interface ListPurchaseOrdersParams {
@@ -159,13 +176,9 @@ export type PurchaseOrderActionPolicy = {
   cancel: boolean;
 };
 
-export function purchaseOrderActionPolicy(
-  status: PurchaseOrderStatus,
-  permissionKeys: readonly string[],
-): PurchaseOrderActionPolicy {
+export function purchaseOrderActionPolicy(status: PurchaseOrderStatus, permissionKeys: readonly string[]): PurchaseOrderActionPolicy {
   const permissions = new Set(permissionKeys);
   const has = (key: PurchaseOrderPermissionKey) => permissions.has(key);
-
   return {
     view: has(PURCHASE_ORDER_PERMISSION_KEYS.read),
     create: has(PURCHASE_ORDER_PERMISSION_KEYS.create),
@@ -180,22 +193,11 @@ export function formatPurchaseOrderDate(value: string | null | undefined): strin
   if (!value) return 'Chưa xác định';
   const timestamp = Date.parse(value);
   if (Number.isNaN(timestamp)) return 'Chưa xác định';
-  return new Intl.DateTimeFormat('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(new Date(timestamp));
+  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(timestamp));
 }
 
 export function formatDecimalString(value: string | null | undefined): string {
-  const normalized = String(value ?? '').trim();
-  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(normalized);
-  if (!match) return '—';
-
-  const sign = match[1];
-  const integer = match[2].replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  const fraction = match[3]?.replace(/0+$/, '') ?? '';
-  return `${sign}${integer}${fraction ? `,${fraction}` : ''}`;
+  return formatDecimalForDisplay(value);
 }
 
 export function formatPurchaseOrderAmount(value: string | null | undefined, currency = 'VND'): string {
@@ -203,52 +205,18 @@ export function formatPurchaseOrderAmount(value: string | null | undefined, curr
   return amount === '—' ? amount : `${amount} ${currency.trim() || 'VND'}`;
 }
 
-const SCALE = 1_000_000n;
-const DECIMAL_PATTERN = /^(0|[1-9]\d{0,13})(?:\.(\d{1,6}))?$/;
-
 export function decimalToScaled(value: string, allowZero = true): bigint | null {
-  const match = DECIMAL_PATTERN.exec(value.trim());
-  if (!match) return null;
-  const scaled = BigInt(match[1]) * SCALE + BigInt((match[2] ?? '').padEnd(6, '0') || '0');
-  return !allowZero && scaled === 0n ? null : scaled;
+  return lineEntryDecimalToScaled(value, allowZero);
 }
 
 export function scaledToDecimal(value: bigint): string {
-  const integer = value / SCALE;
-  const fraction = (value % SCALE).toString().padStart(6, '0').replace(/0+$/, '');
-  return fraction ? `${integer}.${fraction}` : integer.toString();
+  return lineEntryScaledToDecimal(value);
 }
 
 export function multiplyScaled(left: bigint, right: bigint): bigint {
-  return (left * right + SCALE / 2n) / SCALE;
+  return lineEntryMultiplyScaled(left, right);
 }
 
 export function calculatePurchaseOrderDraftTotals(lines: readonly PurchaseOrderDraftLine[]) {
-  let subtotal = 0n;
-  let discountTotal = 0n;
-  let taxTotal = 0n;
-  const lineTotals: string[] = [];
-  for (const line of lines) {
-    const quantity = decimalToScaled(line.quantity, false);
-    const unitPrice = decimalToScaled(line.unitPrice || '0');
-    const discount = decimalToScaled(line.discountAmount || '0');
-    const tax = decimalToScaled(line.taxAmount || '0');
-    if (quantity === null || unitPrice === null || discount === null || tax === null) {
-      lineTotals.push('0');
-      continue;
-    }
-    const gross = multiplyScaled(quantity, unitPrice);
-    const total = gross - discount + tax;
-    subtotal += gross;
-    discountTotal += discount;
-    taxTotal += tax;
-    lineTotals.push(scaledToDecimal(total < 0n ? 0n : total));
-  }
-  return Object.freeze({
-    subtotal: scaledToDecimal(subtotal),
-    discountTotal: scaledToDecimal(discountTotal),
-    taxTotal: scaledToDecimal(taxTotal),
-    total: scaledToDecimal(subtotal - discountTotal + taxTotal),
-    lineTotals: Object.freeze(lineTotals),
-  });
+  return calculateLineEntryTotals(lines);
 }

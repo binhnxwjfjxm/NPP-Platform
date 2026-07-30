@@ -1,21 +1,28 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Supplier } from '../../../../lib/supplier-types';
-import type { Product, ProductVariant } from '../../../../lib/product-types';
+import type { Product } from '../../../../lib/product-types';
 import type { Warehouse } from '../../../../lib/organization-types';
 import type {
   PurchaseOrder,
+  PurchaseOrderDiscountMode,
   PurchaseOrderDraft,
   PurchaseOrderDraftLine,
+  PurchaseOrderSkuSearchOption,
 } from '../../../../lib/purchase-order-types';
 import {
   calculatePurchaseOrderDraftTotals,
   decimalToScaled,
   formatPurchaseOrderAmount,
 } from '../../../../lib/purchase-order-types';
-import { describePurchaseOrderSkuIssue } from '../purchase-order-lookup-state';
+import {
+  calculatePurchaseOrderLineFinancials,
+  formatDecimalForInput,
+  normalizeDecimalForApi,
+  parsePurchaseOrderPasteGrid,
+} from '../../../../lib/purchase-order-line-entry';
 import { shouldShowPurchaseOrderSkuCatalogLink } from '../../../../lib/purchase-order-products-link';
 import styles from '../../../organization/organization.module.css';
 import localStyles from '../purchase-orders.module.css';
@@ -38,12 +45,6 @@ type EditorLine = PurchaseOrderDraftLine & {
   conversionToBase: string;
 };
 
-type PurchasableVariant = ProductVariant & {
-  unit_id: string;
-  unit_code: string;
-  conversion_to_base: string;
-};
-
 type ApiEnvelope<T> = {
   data?: T;
   error?: { code?: string; message?: string; retryable?: boolean };
@@ -53,6 +54,10 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function cleanDecimal(value: string | null | undefined, fallback = '0') {
+  return formatDecimalForInput(value ?? fallback) || fallback;
+}
+
 function initialLines(purchaseOrder: PurchaseOrder | null): EditorLine[] {
   return (purchaseOrder?.lines ?? []).map((line) => ({
     key: line.id || crypto.randomUUID(),
@@ -60,11 +65,14 @@ function initialLines(purchaseOrder: PurchaseOrder | null): EditorLine[] {
     sku: line.skuCode,
     name: line.itemName,
     unitCode: line.unitCode,
-    conversionToBase: line.conversionToBase,
-    quantity: line.quantity,
-    unitPrice: line.unitPrice,
-    discountAmount: line.discountAmount,
-    taxAmount: line.taxAmount,
+    conversionToBase: cleanDecimal(line.conversionToBase, '1'),
+    quantity: cleanDecimal(line.quantity, '1'),
+    unitPrice: cleanDecimal(line.unitPrice, '0'),
+    discountMode: line.discountMode ?? 'TOTAL_AMOUNT',
+    discountValue: cleanDecimal(line.discountValue ?? line.discountAmount, '0'),
+    discountAmount: cleanDecimal(line.discountAmount, '0'),
+    taxRate: cleanDecimal(line.taxRate ?? '0', '0'),
+    taxAmount: cleanDecimal(line.taxAmount, '0'),
     note: line.note ?? '',
   }));
 }
@@ -86,6 +94,10 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return payload.data;
 }
 
+function toApiDecimal(value: string, fallback = '0') {
+  return normalizeDecimalForApi(value) ?? fallback;
+}
+
 function validateDraft(draft: PurchaseOrderDraft): string | null {
   if (!draft.supplierId) return 'Vui lòng chọn nhà cung cấp.';
   if (!draft.warehouseId) return 'Vui lòng chọn kho nhận.';
@@ -99,12 +111,8 @@ function validateDraft(draft: PurchaseOrderDraft): string | null {
     if (seen.has(line.variantId)) return 'Một SKU chỉ được xuất hiện một lần trong đơn.';
     seen.add(line.variantId);
     if (decimalToScaled(line.quantity, false) === null) return `Số lượng dòng ${index + 1} phải lớn hơn 0 và tối đa 6 chữ số thập phân.`;
-    const unitPrice = decimalToScaled(line.unitPrice || '0');
-    const discount = decimalToScaled(line.discountAmount || '0');
-    const tax = decimalToScaled(line.taxAmount || '0');
-    if (unitPrice === null) return `Đơn giá dòng ${index + 1} không hợp lệ.`;
-    if (discount === null) return `Chiết khấu dòng ${index + 1} không hợp lệ.`;
-    if (tax === null) return `Thuế dòng ${index + 1} không hợp lệ.`;
+    if (decimalToScaled(line.unitPrice || '0') === null) return `Đơn giá dòng ${index + 1} không hợp lệ.`;
+    if (!calculatePurchaseOrderLineFinancials(line)) return `Chiết khấu hoặc thuế dòng ${index + 1} không hợp lệ.`;
   }
   return null;
 }
@@ -114,7 +122,7 @@ export default function PurchaseOrderEditor({
   purchaseOrder,
   suppliers,
   warehouses,
-  products,
+  products: _products,
   onClose,
   onSaved,
 }: Props) {
@@ -125,11 +133,13 @@ export default function PurchaseOrderEditor({
   const [supplierReference, setSupplierReference] = useState(purchaseOrder?.supplierReference ?? '');
   const [note, setNote] = useState(purchaseOrder?.note ?? '');
   const [lines, setLines] = useState<EditorLine[]>(() => initialLines(purchaseOrder));
-  const [selectedProductId, setSelectedProductId] = useState('');
-  const [availableVariants, setAvailableVariants] = useState<ProductVariant[]>([]);
-  const [selectedVariantId, setSelectedVariantId] = useState('');
-  const [loadingVariants, setLoadingVariants] = useState(false);
-  const [variantLookupFailed, setVariantLookupFailed] = useState(false);
+  const [skuSearch, setSkuSearch] = useState('');
+  const [skuResults, setSkuResults] = useState<PurchaseOrderSkuSearchOption[]>([]);
+  const [selectedSku, setSelectedSku] = useState<PurchaseOrderSkuSearchOption | null>(null);
+  const [loadingSkuSearch, setLoadingSkuSearch] = useState(false);
+  const [skuSearchFailed, setSkuSearchFailed] = useState(false);
+  const [bulkText, setBulkText] = useState('');
+  const [bulkPreview, setBulkPreview] = useState<ReturnType<typeof parsePurchaseOrderPasteGrid>>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attemptKey, setAttemptKey] = useState(() => `po-${crypto.randomUUID()}`);
@@ -139,6 +149,36 @@ export default function PurchaseOrderEditor({
     closeButtonRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    const term = skuSearch.trim();
+    setSelectedSku(null);
+    if (!term) {
+      setSkuResults([]);
+      setSkuSearchFailed(false);
+      return undefined;
+    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setLoadingSkuSearch(true);
+      setSkuSearchFailed(false);
+      try {
+        const query = new URLSearchParams({ search: term, limit: '20', offset: '0' });
+        const results = await requestJson<PurchaseOrderSkuSearchOption[]>(`/api/purchase-orders/sku-search?${query.toString()}`, { signal: controller.signal });
+        setSkuResults(results);
+      } catch (searchError) {
+        if (controller.signal.aborted) return;
+        setSkuSearchFailed(true);
+        setError(searchError instanceof Error ? searchError.message : 'Không tải được danh sách SKU');
+      } finally {
+        if (!controller.signal.aborted) setLoadingSkuSearch(false);
+      }
+    }, 250);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [skuSearch]);
+
   const activeSuppliers = useMemo(
     () => suppliers.filter((supplier) => supplier.is_active).sort((a, b) => a.code.localeCompare(b.code)),
     [suppliers],
@@ -147,32 +187,10 @@ export default function PurchaseOrderEditor({
     () => warehouses.filter((warehouse) => warehouse.is_active).sort((a, b) => a.code.localeCompare(b.code)),
     [warehouses],
   );
-  const activeProducts = useMemo(
-    () => products.filter((product) => product.is_active && product.is_orderable).sort((a, b) => a.code.localeCompare(b.code)),
-    [products],
-  );
-  const purchasableVariants = useMemo(
-    () => availableVariants.filter((variant): variant is PurchasableVariant => (
-      variant.is_active
-      && variant.is_purchasable
-      && typeof variant.unit_id === 'string'
-      && typeof variant.unit_code === 'string'
-      && typeof variant.conversion_to_base === 'string'
-    )),
-    [availableVariants],
-  );
-  const selectedProduct = useMemo(
-    () => products.find((product) => product.id === selectedProductId) ?? null,
-    [products, selectedProductId],
-  );
-  const skuIssue = useMemo(
-    () => describePurchaseOrderSkuIssue(selectedProduct, availableVariants, purchasableVariants),
-    [availableVariants, purchasableVariants, selectedProduct],
-  );
   const showProductsCatalogLink = shouldShowPurchaseOrderSkuCatalogLink({
-    loadingVariants,
-    variantLookupFailed,
-    skuIssue,
+    loadingVariants: loadingSkuSearch,
+    variantLookupFailed: skuSearchFailed,
+    skuIssue: selectedSku?.eligibility.selectable === false ? selectedSku.eligibility.message : null,
     currentError: error,
   });
   const totals = useMemo(() => calculatePurchaseOrderDraftTotals(lines), [lines]);
@@ -187,75 +205,87 @@ export default function PurchaseOrderEditor({
     setLines((current) => current.map((line) => (line.key === key ? { ...line, [field]: value } : line)));
   }
 
-  async function selectProduct(productId: string) {
-    changed();
-    setVariantLookupFailed(false);
-    setSelectedProductId(productId);
-    setSelectedVariantId('');
-    setAvailableVariants([]);
-    if (!productId) return;
-    setLoadingVariants(true);
-    try {
-      const variants = await requestJson<ProductVariant[]>(`/api/products/${productId}/variants`);
-      setAvailableVariants(variants);
-      const selectedProduct = products.find((product) => product.id === productId) ?? null;
-      const purchasable = variants.filter((variant): variant is PurchasableVariant => (
-        variant.is_active
-        && variant.is_purchasable
-        && typeof variant.unit_id === 'string'
-        && typeof variant.unit_code === 'string'
-        && typeof variant.conversion_to_base === 'string'
-      ));
-      const skuIssue = describePurchaseOrderSkuIssue(selectedProduct, variants, purchasable);
-      if (skuIssue) {
-        setError(skuIssue);
-      }
-    } catch (loadError) {
-      setVariantLookupFailed(true);
-      const message = loadError instanceof Error ? loadError.message : 'Không tải được danh sách SKU';
-      setError(`${message} Hãy cập nhật dữ liệu trước khi thao tác.`);
-    } finally {
-      setLoadingVariants(false);
-    }
+  function formatLineDecimal(key: string, field: keyof PurchaseOrderDraftLine, fallback = '0') {
+    setLines((current) => current.map((line) => (
+      line.key === key ? { ...line, [field]: cleanDecimal(String(line[field] ?? ''), fallback) } : line
+    )));
   }
 
-  function addVariant() {
-    const selectedProduct = products.find((product) => product.id === selectedProductId) ?? null;
-    const skuIssue = describePurchaseOrderSkuIssue(selectedProduct, availableVariants, purchasableVariants);
-    if (skuIssue) {
-      setError(skuIssue);
+  function addSku(option = selectedSku) {
+    if (!option) {
+      setError('Vui lòng tìm và chọn một SKU mua hàng.');
       return;
     }
-    const variant = purchasableVariants.find((item) => item.id === selectedVariantId);
-    if (!variant) {
-      setError('Vui lòng chọn một SKU mua hàng hợp lệ.');
+    if (!option.eligibility.selectable) {
+      setError(option.eligibility.message);
       return;
     }
-    if (lines.some((line) => line.variantId === variant.id)) {
+    if (lines.some((line) => line.variantId === option.id)) {
       setError('SKU này đã có trong đơn đặt hàng.');
       return;
     }
     changed();
-    const nextLine: EditorLine = {
+    setLines((current) => [...current, {
       key: crypto.randomUUID(),
-      variantId: variant.id,
-      sku: variant.sku,
-      name: variant.name,
-      unitCode: variant.unit_code,
-      conversionToBase: variant.conversion_to_base,
+      variantId: option.id,
+      sku: option.sku,
+      name: option.variantName,
+      unitCode: option.unitCode ?? '',
+      conversionToBase: cleanDecimal(option.conversionToBase, '1'),
       quantity: '1',
       unitPrice: '0',
+      discountMode: 'TOTAL_AMOUNT',
+      discountValue: '0',
       discountAmount: '0',
+      taxRate: '0',
       taxAmount: '0',
       note: '',
-    };
-    setLines((current) => [...current, nextLine]);
-    setSelectedVariantId('');
+    }]);
+    setSelectedSku(null);
+    setSkuSearch('');
+    setSkuResults([]);
   }
 
   function removeLine(key: string) {
     changed();
     setLines((current) => current.filter((line) => line.key !== key));
+  }
+
+  function previewBulk() {
+    const preview = parsePurchaseOrderPasteGrid(bulkText);
+    setBulkPreview(preview);
+    if (preview.length === 0) setError('Chưa có dữ liệu dán để xem trước.');
+  }
+
+  function addPreviewRows() {
+    let added = 0;
+    for (const row of bulkPreview) {
+      if (row.errors.length > 0) continue;
+      const match = skuResults.find((option) => (
+        option.eligibility.selectable
+        && (option.sku.localeCompare(row.sku, undefined, { sensitivity: 'accent' }) === 0 || option.barcode === row.sku)
+      ));
+      if (!match || lines.some((line) => line.variantId === match.id)) continue;
+      setLines((current) => [...current, {
+        key: crypto.randomUUID(),
+        variantId: match.id,
+        sku: match.sku,
+        name: match.variantName,
+        unitCode: match.unitCode ?? '',
+        conversionToBase: cleanDecimal(match.conversionToBase, '1'),
+        quantity: toApiDecimal(row.quantity, '1'),
+        unitPrice: toApiDecimal(row.unitPrice, '0'),
+        discountMode: row.discountMode,
+        discountValue: toApiDecimal(row.discountValue, '0'),
+        discountAmount: '0',
+        taxRate: toApiDecimal(row.taxRate, '0'),
+        taxAmount: '0',
+        note: row.note,
+      }]);
+      added += 1;
+    }
+    if (added === 0) setError('Không có dòng hợp lệ khớp SKU đang tìm kiếm để thêm. Hãy tìm SKU trước rồi thêm từ preview.');
+    else { changed(); setBulkText(''); setBulkPreview([]); }
   }
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
@@ -268,12 +298,13 @@ export default function PurchaseOrderEditor({
       supplierReference,
       currencyCode: purchaseOrder?.currency || 'VND',
       note,
-      lines: lines.map(({ variantId, quantity, unitPrice, discountAmount, taxAmount, note: lineNote }) => ({
+      lines: lines.map(({ variantId, quantity, unitPrice, discountMode, discountValue, taxRate, note: lineNote }) => ({
         variantId,
-        quantity,
-        unitPrice: unitPrice || '0',
-        discountAmount: discountAmount || '0',
-        taxAmount: taxAmount || '0',
+        quantity: toApiDecimal(quantity, quantity),
+        unitPrice: toApiDecimal(unitPrice, '0'),
+        discountMode: discountMode ?? 'TOTAL_AMOUNT',
+        discountValue: toApiDecimal(discountValue ?? '0', '0'),
+        taxRate: toApiDecimal(taxRate ?? '0', '0'),
         note: lineNote,
       })),
       ...(mode === 'edit' && purchaseOrder ? { expectedRevision: purchaseOrder.revision } : {}),
@@ -304,161 +335,89 @@ export default function PurchaseOrderEditor({
   }
 
   return (
-    <div
-      className={styles.modalBackdrop}
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.currentTarget === event.target && !busy) onClose();
-      }}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape' && !busy) onClose();
-      }}
-    >
-      <section
-        className={`${styles.modal} ${localStyles.wideModal}`}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="purchase-order-editor-title"
-      >
+    <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target && !busy) onClose(); }} onKeyDown={(event) => { if (event.key === 'Escape' && !busy) onClose(); }}>
+      <section className={`${styles.modal} ${localStyles.wideModal}`} role="dialog" aria-modal="true" aria-labelledby="purchase-order-editor-title">
         <div className={styles.modalHeader}>
           <div>
             <p className={styles.panelKicker}>{mode === 'create' ? 'Tạo mới' : 'Chỉnh sửa bản nháp'}</p>
-            <h3 id="purchase-order-editor-title">
-              {mode === 'create' ? 'Đơn đặt hàng mới' : purchaseOrder?.number || 'Đơn chưa cấp số'}
-            </h3>
+            <h3 id="purchase-order-editor-title">{mode === 'create' ? 'Đơn đặt hàng mới' : purchaseOrder?.number || 'Đơn chưa cấp số'}</h3>
           </div>
-          <button
-            ref={closeButtonRef}
-            type="button"
-            className={styles.modalClose}
-            onClick={onClose}
-            disabled={busy}
-          >
-            Đóng
-          </button>
+          <button ref={closeButtonRef} type="button" className={styles.modalClose} onClick={onClose} disabled={busy}>Đóng</button>
         </div>
 
         {error ? <div className={`${styles.banner} ${styles.bannerError}`} role="alert">{error}</div> : null}
         {showProductsCatalogLink ? (
           <p className={localStyles.contextualHelp}>
-            Mở{' '}
-            <Link href="/products" className={localStyles.contextualLink} data-testid="purchase-order-products-link">
-              Danh mục sản phẩm
-            </Link>{' '}
-            để bổ sung SKU mua hàng hợp lệ.
+            Mở <Link href="/products" className={localStyles.contextualLink} data-testid="purchase-order-products-link">Danh mục sản phẩm</Link> để bổ sung SKU mua hàng hợp lệ.
           </p>
         ) : null}
 
         <form className={styles.form} onSubmit={save}>
           <div className={localStyles.headerGrid}>
-            <label>
-              Nhà cung cấp
-              <select value={supplierId} onChange={(event) => { changed(); setSupplierId(event.target.value); }} required>
-                <option value="">Chọn nhà cung cấp</option>
-                {activeSuppliers.map((supplier) => (
-                  <option key={supplier.id} value={supplier.id}>{supplier.code} — {supplier.name}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Kho nhận
-              <select value={warehouseId} onChange={(event) => { changed(); setWarehouseId(event.target.value); }} required>
-                <option value="">Chọn kho nhận</option>
-                {activeWarehouses.map((warehouse) => (
-                  <option key={warehouse.id} value={warehouse.id}>{warehouse.code} — {warehouse.name}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Tiền tệ
-              <input value={purchaseOrder?.currency || 'VND'} readOnly />
-            </label>
-            <label>
-              Ngày đặt hàng
-              <input type="date" value={orderDate} onChange={(event) => { changed(); setOrderDate(event.target.value); }} required />
-            </label>
-            <label>
-              Ngày dự kiến nhận
-              <input type="date" value={expectedDate} min={orderDate} onChange={(event) => { changed(); setExpectedDate(event.target.value); }} />
-            </label>
-            <label>
-              Tham chiếu nhà cung cấp
-              <input value={supplierReference} maxLength={256} onChange={(event) => { changed(); setSupplierReference(event.target.value); }} />
-            </label>
-            <label className={localStyles.spanThree}>
-              Ghi chú
-              <input value={note} maxLength={4000} onChange={(event) => { changed(); setNote(event.target.value); }} />
-            </label>
+            <label>Nhà cung cấp<select value={supplierId} onChange={(event) => { changed(); setSupplierId(event.target.value); }} required><option value="">Chọn nhà cung cấp</option>{activeSuppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.code} - {supplier.name}</option>)}</select></label>
+            <label>Kho nhận<select value={warehouseId} onChange={(event) => { changed(); setWarehouseId(event.target.value); }} required><option value="">Chọn kho nhận</option>{activeWarehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} - {warehouse.name}</option>)}</select></label>
+            <label>Tiền tệ<input value={purchaseOrder?.currency || 'VND'} readOnly /></label>
+            <label>Ngày đặt hàng<input type="date" value={orderDate} onChange={(event) => { changed(); setOrderDate(event.target.value); }} required /></label>
+            <label>Ngày dự kiến nhận<input type="date" value={expectedDate} min={orderDate} onChange={(event) => { changed(); setExpectedDate(event.target.value); }} /></label>
+            <label>Tham chiếu nhà cung cấp<input value={supplierReference} maxLength={256} onChange={(event) => { changed(); setSupplierReference(event.target.value); }} /></label>
+            <label className={localStyles.spanThree}>Ghi chú<input value={note} maxLength={4000} onChange={(event) => { changed(); setNote(event.target.value); }} /></label>
           </div>
 
           <div className={localStyles.lookupRow}>
-            <label>
-              Sản phẩm
-              <select value={selectedProductId} onChange={(event) => void selectProduct(event.target.value)}>
-                <option value="">Chọn sản phẩm</option>
-                {activeProducts.map((product) => (
-                  <option key={product.id} value={product.id}>{product.code} — {product.name}</option>
-                ))}
-              </select>
+            <label className={localStyles.spanThree}>Tìm SKU mua hàng
+              <input
+                role="combobox"
+                aria-expanded={skuResults.length > 0}
+                aria-controls="purchase-order-sku-results"
+                placeholder="Nhập mã sản phẩm, tên, SKU hoặc barcode"
+                value={skuSearch}
+                onChange={(event) => { changed(); setSkuSearch(event.target.value); }}
+              />
             </label>
-            <label>
-              SKU mua hàng
-              <select
-                value={selectedVariantId}
-                onChange={(event) => setSelectedVariantId(event.target.value)}
-                disabled={!selectedProductId || loadingVariants}
-              >
-                <option value="">{loadingVariants ? 'Đang tải SKU…' : 'Chọn SKU'}</option>
-                {purchasableVariants.map((variant) => (
-                  <option key={variant.id} value={variant.id}>
-                    {variant.sku} — {variant.name} ({variant.unit_code})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="button" className={styles.primaryButton} onClick={addVariant} disabled={!selectedVariantId}>
-              Thêm dòng
-            </button>
+            <button type="button" className={styles.primaryButton} onClick={() => addSku()} disabled={!selectedSku || !selectedSku.eligibility.selectable}>Thêm dòng</button>
           </div>
+          <ul id="purchase-order-sku-results" role="listbox" className={localStyles.lookupResults} data-testid="purchase-order-sku-results">
+            {loadingSkuSearch ? <li>Đang tìm SKU...</li> : null}
+            {skuResults.map((option) => (
+              <li key={option.id} role="option" aria-selected={selectedSku?.id === option.id}>
+                <button type="button" className={styles.secondaryButton} onClick={() => setSelectedSku(option)} disabled={!option.eligibility.selectable}>
+                  {option.productCode} / {option.sku} - {option.variantName} {option.unitCode ? `(${option.unitCode})` : ''}
+                </button>
+                <span>{option.eligibility.message}</span>
+              </li>
+            ))}
+          </ul>
+
+          <details className={localStyles.contextualHelp}>
+            <summary>Nhập nhanh bằng paste-grid</summary>
+            <p>Định dạng: SKU, số lượng, đơn giá, chế độ chiết khấu TOTAL_AMOUNT/PERCENT, giá trị chiết khấu, thuế suất %, ghi chú.</p>
+            <textarea value={bulkText} onChange={(event) => setBulkText(event.target.value)} rows={4} />
+            <div className={localStyles.modalActions}>
+              <button type="button" className={styles.secondaryButton} onClick={previewBulk}>Xem trước</button>
+              <button type="button" className={styles.secondaryButton} onClick={addPreviewRows} disabled={bulkPreview.length === 0}>Thêm dòng hợp lệ</button>
+            </div>
+            {bulkPreview.length ? <ul>{bulkPreview.map((row) => <li key={row.rowNumber}>Dòng {row.rowNumber}: {row.sku || 'thiếu SKU'} - {row.errors.length ? row.errors.join(' ') : 'Hợp lệ để khớp SKU đang tìm kiếm'}</li>)}</ul> : null}
+          </details>
 
           <div className={localStyles.linesWrap}>
             <table className={localStyles.linesTable} data-testid="purchase-order-lines">
-              <thead>
-                <tr>
-                  <th>SKU</th>
-                  <th>Số lượng</th>
-                  <th>Đơn vị</th>
-                  <th>Quy đổi</th>
-                  <th>Đơn giá</th>
-                  <th>Chiết khấu</th>
-                  <th>Thuế</th>
-                  <th>Thành tiền</th>
-                  <th>Ghi chú</th>
-                  <th />
-                </tr>
-              </thead>
+              <thead><tr><th>SKU</th><th>Số lượng</th><th>Đơn vị</th><th>Quy đổi</th><th>Đơn giá</th><th>CK kiểu</th><th>CK giá trị</th><th>Thuế %</th><th>Thành tiền</th><th>Ghi chú</th><th /></tr></thead>
               <tbody>
                 {lines.length ? lines.map((line, index) => (
                   <tr key={line.key}>
-                    <td>
-                      <div className={localStyles.lineIdentity}>
-                        <strong>{line.sku}</strong>
-                        <span>{line.name}</span>
-                      </div>
-                    </td>
-                    <td><input value={line.quantity} inputMode="decimal" onChange={(event) => updateLine(line.key, 'quantity', event.target.value)} /></td>
+                    <td><div className={localStyles.lineIdentity}><strong>{line.sku}</strong><span>{line.name}</span></div></td>
+                    <td><input value={line.quantity} inputMode="decimal" onBlur={() => formatLineDecimal(line.key, 'quantity', '1')} onChange={(event) => updateLine(line.key, 'quantity', event.target.value)} /></td>
                     <td>{line.unitCode}</td>
                     <td>{line.conversionToBase}</td>
-                    <td><input value={line.unitPrice} inputMode="decimal" onChange={(event) => updateLine(line.key, 'unitPrice', event.target.value)} /></td>
-                    <td><input value={line.discountAmount} inputMode="decimal" onChange={(event) => updateLine(line.key, 'discountAmount', event.target.value)} /></td>
-                    <td><input value={line.taxAmount} inputMode="decimal" onChange={(event) => updateLine(line.key, 'taxAmount', event.target.value)} /></td>
+                    <td><input value={line.unitPrice} inputMode="decimal" onBlur={() => formatLineDecimal(line.key, 'unitPrice', '0')} onChange={(event) => updateLine(line.key, 'unitPrice', event.target.value)} /></td>
+                    <td><select value={line.discountMode ?? 'TOTAL_AMOUNT'} onChange={(event) => updateLine(line.key, 'discountMode', event.target.value as PurchaseOrderDiscountMode)}><option value="TOTAL_AMOUNT">Số tiền dòng</option><option value="PERCENT">%</option></select></td>
+                    <td><input value={line.discountValue ?? '0'} inputMode="decimal" onBlur={() => formatLineDecimal(line.key, 'discountValue', '0')} onChange={(event) => updateLine(line.key, 'discountValue', event.target.value)} /></td>
+                    <td><input value={line.taxRate ?? '0'} inputMode="decimal" onBlur={() => formatLineDecimal(line.key, 'taxRate', '0')} onChange={(event) => updateLine(line.key, 'taxRate', event.target.value)} /></td>
                     <td>{formatPurchaseOrderAmount(totals.lineTotals[index], purchaseOrder?.currency || 'VND')}</td>
                     <td><input value={line.note} maxLength={2000} onChange={(event) => updateLine(line.key, 'note', event.target.value)} /></td>
                     <td><button type="button" className={styles.secondaryButton} onClick={() => removeLine(line.key)}>Xóa</button></td>
                   </tr>
-                )) : (
-                  <tr><td colSpan={10} className={styles.emptyState}>Chưa có SKU trong đơn đặt hàng.</td></tr>
-                )}
+                )) : <tr><td colSpan={11} className={styles.emptyState}>Chưa có SKU trong đơn đặt hàng.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -472,9 +431,7 @@ export default function PurchaseOrderEditor({
 
           <div className={localStyles.modalActions}>
             <button type="button" className={styles.secondaryButton} onClick={onClose} disabled={busy}>Hủy thao tác</button>
-            <button type="submit" className={styles.primaryButton} disabled={busy} data-testid="purchase-order-save">
-              {busy ? 'Đang lưu…' : mode === 'create' ? 'Lưu đơn nháp' : 'Lưu thay đổi'}
-            </button>
+            <button type="submit" className={styles.primaryButton} disabled={busy} data-testid="purchase-order-save">{busy ? 'Đang lưu...' : mode === 'create' ? 'Lưu đơn nháp' : 'Lưu thay đổi'}</button>
           </div>
         </form>
       </section>

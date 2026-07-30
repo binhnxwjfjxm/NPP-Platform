@@ -1,4 +1,4 @@
-import * as repository from '../db/repositories/purchase-order.js';
+﻿import * as repository from '../db/repositories/purchase-order.js';
 import * as documentNumberRepository from '../db/repositories/document-numbering.js';
 import { allocateDocumentNumber } from './document-numbering.js';
 
@@ -183,6 +183,74 @@ function validateListInput(input) {
   return { ok: true, search };
 }
 
+export function evaluatePurchaseOrderSkuEligibility(row) {
+  if (!row) return Object.freeze({ selectable: false, code: 'SKU_NOT_FOUND', message: 'KhÃ´ng tÃ¬m tháº¥y SKU trong danh má»¥c.' });
+  if (row.product_is_active !== true) return Object.freeze({ selectable: false, code: 'PRODUCT_INACTIVE', message: 'Sáº£n pháº©m Ä‘ang ngÆ°ng hoáº¡t Ä‘á»™ng.' });
+  if (row.variant_is_active !== true) return Object.freeze({ selectable: false, code: 'SKU_INACTIVE', message: 'SKU Ä‘ang ngÆ°ng hoáº¡t Ä‘á»™ng.' });
+  if (row.is_purchasable !== true) return Object.freeze({ selectable: false, code: 'SKU_NOT_PURCHASABLE', message: 'SKU chÆ°a Ä‘Æ°á»£c báº­t cho nghiá»‡p vá»¥ mua hÃ ng.' });
+  if (!row.unit_id) return Object.freeze({ selectable: false, code: 'SKU_UNIT_MISSING', message: 'SKU chÆ°a cÃ³ Ä‘Æ¡n vá»‹ mua hÃ ng Ä‘ang hoáº¡t Ä‘á»™ng.' });
+  if (row.unit_is_active !== true) return Object.freeze({ selectable: false, code: 'SKU_UNIT_INACTIVE', message: 'ÄÆ¡n vá»‹ cá»§a SKU Ä‘ang ngÆ°ng hoáº¡t Ä‘á»™ng.' });
+  const conversion = decimalToScaled(String(row.conversion_to_base ?? ''), { allowZero: false });
+  if (conversion === null) return Object.freeze({ selectable: false, code: 'SKU_CONVERSION_INVALID', message: 'SKU chÆ°a cÃ³ quy Ä‘á»•i Ä‘Æ¡n vá»‹ há»£p lá»‡.' });
+  return Object.freeze({ selectable: true, code: 'ELIGIBLE', message: 'CÃ³ thá»ƒ chá»n Ä‘á»ƒ mua hÃ ng.' });
+}
+
+function mapSkuOption(row) {
+  return Object.freeze({
+    id: row.id,
+    productId: row.product_id,
+    productCode: row.product_code,
+    productName: row.product_name,
+    sku: row.sku,
+    variantName: row.name,
+    barcode: row.barcode ?? null,
+    unitId: row.unit_id ?? null,
+    unitCode: row.unit_code ?? null,
+    unitName: row.unit_name ?? null,
+    conversionToBase: row.conversion_to_base === null || row.conversion_to_base === undefined ? null : String(row.conversion_to_base),
+    allowsFractional: row.allows_fractional === undefined ? null : row.allows_fractional,
+    eligibility: evaluatePurchaseOrderSkuEligibility(row),
+  });
+}
+
+export async function searchPurchaseOrderSkuOptions(client, input) {
+  const search = normalizeText(input.search, 256, false) ?? '';
+  const rows = await repository.searchPurchaseOrderSkuOptions(client, {
+    installationId: input.requestContext.installationId,
+    search,
+    limit: Math.max(1, Math.min(50, Number(input.limit) || 20)),
+    offset: Math.max(0, Number(input.offset) || 0),
+  });
+  return Object.freeze({ ok: true, skuOptions: Object.freeze(rows.map(mapSkuOption)) });
+}
+
+function percentOfScaled(base, percent) {
+  return (base * percent + 50n * SCALE) / (100n * SCALE);
+}
+
+export function calculatePurchaseOrderLineFinancials(input, { quantity, unitPrice }) {
+  const mode = input.discountMode === 'PERCENT' ? 'PERCENT' : 'TOTAL_AMOUNT';
+  const discountValue = decimalToScaled(input.discountValue ?? input.discountAmount ?? '0', { allowZero: true });
+  const taxRate = decimalToScaled(input.taxRate ?? '0', { allowZero: true });
+  if (discountValue === null) return failure('INVALID_DISCOUNT', 'Discount value is invalid');
+  if (taxRate === null) return failure('INVALID_TAX', 'Tax rate is invalid');
+  const gross = multiplyScaled(quantity, unitPrice);
+  const discountAmount = mode === 'PERCENT' ? percentOfScaled(gross, discountValue) : discountValue;
+  const discountedBase = gross - discountAmount;
+  if (discountedBase < 0n) return failure('INVALID_DISCOUNT', 'Discount cannot exceed line gross amount');
+  const taxAmount = percentOfScaled(discountedBase, taxRate);
+  return Object.freeze({
+    ok: true,
+    gross,
+    discountMode: mode,
+    discountValue,
+    discountAmount,
+    taxRate,
+    taxAmount,
+    lineTotal: discountedBase + taxAmount,
+  });
+}
+
 async function validateAndNormalizeDraft(client, { requestContext, payload }) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return failure('INVALID_INPUT', 'Purchase order data is required');
@@ -228,13 +296,12 @@ async function validateAndNormalizeDraft(client, { requestContext, payload }) {
     installationId: requestContext.installationId,
     id: warehouseId,
   });
-  const variants = await repository.getPurchasableVariants(client, {
+  const variants = await repository.getPurchaseOrderVariantEligibility(client, {
     installationId: requestContext.installationId,
     ids: variantIds,
   });
   if (!supplier) return failure('SUPPLIER_NOT_FOUND', 'Active supplier was not found');
   if (!warehouse) return failure('WAREHOUSE_NOT_FOUND', 'Active warehouse was not found');
-  if (variants.length !== variantIds.length) return failure('VARIANT_NOT_PURCHASABLE', 'One or more SKUs are inactive, missing a unit, or not purchasable');
   const variantMap = new Map(variants.map((variant) => [variant.id, variant]));
 
   let subtotal = 0n;
@@ -244,26 +311,29 @@ async function validateAndNormalizeDraft(client, { requestContext, payload }) {
   for (let index = 0; index < payload.lines.length; index += 1) {
     const input = payload.lines[index];
     const variant = variantMap.get(input.variantId.trim());
+    const eligibility = evaluatePurchaseOrderSkuEligibility(variant);
+    if (!eligibility.selectable) {
+      return failure(eligibility.code, `Line ${index + 1}: ${eligibility.message}`, false, {
+        lineNumber: index + 1,
+        variantId: input.variantId.trim(),
+        eligibility,
+      });
+    }
     const quantity = decimalToScaled(input.quantity, { allowZero: false });
     const unitPrice = decimalToScaled(input.unitPrice, { allowZero: true });
-    const discountAmount = decimalToScaled(input.discountAmount ?? '0', { allowZero: true });
-    const taxAmount = decimalToScaled(input.taxAmount ?? '0', { allowZero: true });
     if (quantity === null) return failure('INVALID_QUANTITY', `Line ${index + 1} quantity must be a positive decimal with at most six decimal places`);
     if (unitPrice === null) return failure('INVALID_UNIT_PRICE', `Line ${index + 1} unit price is invalid`);
-    if (discountAmount === null) return failure('INVALID_DISCOUNT', `Line ${index + 1} discount amount is invalid`);
-    if (taxAmount === null) return failure('INVALID_TAX', `Line ${index + 1} tax amount is invalid`);
+    const financials = calculatePurchaseOrderLineFinancials(input, { quantity, unitPrice });
+    if (!financials.ok) return failure(financials.code, `Line ${index + 1}: ${financials.message}`);
 
     const conversion = decimalToScaled(String(variant.conversion_to_base), { allowZero: false });
     if (conversion === null) return failure('INVALID_CONVERSION', `Line ${index + 1} conversion snapshot is invalid`);
-    const gross = multiplyScaled(quantity, unitPrice);
-    const lineTotal = gross - discountAmount + taxAmount;
-    if (lineTotal < 0n) return failure('INVALID_LINE_TOTAL', `Line ${index + 1} total cannot be negative`);
     const lineNote = normalizeText(input.note, 2000, false);
     if (input.note && lineNote === null) return failure('INVALID_LINE_NOTE', `Line ${index + 1} note must not exceed 2000 characters`);
 
-    subtotal += gross;
-    discountTotal += discountAmount;
-    taxTotal += taxAmount;
+    subtotal += financials.gross;
+    discountTotal += financials.discountAmount;
+    taxTotal += financials.taxAmount;
     lines.push(Object.freeze({
       lineNumber: index + 1,
       variantId: variant.id,
@@ -275,9 +345,12 @@ async function validateAndNormalizeDraft(client, { requestContext, payload }) {
       orderedQuantity: scaledToDecimal(quantity),
       baseQuantity: scaledToDecimal(multiplyScaled(quantity, conversion)),
       unitPrice: scaledToDecimal(unitPrice),
-      discountAmount: scaledToDecimal(discountAmount),
-      taxAmount: scaledToDecimal(taxAmount),
-      lineTotal: scaledToDecimal(lineTotal),
+      discountMode: financials.discountMode,
+      discountValue: scaledToDecimal(financials.discountValue),
+      discountAmount: scaledToDecimal(financials.discountAmount),
+      taxRate: scaledToDecimal(financials.taxRate),
+      taxAmount: scaledToDecimal(financials.taxAmount),
+      lineTotal: scaledToDecimal(financials.lineTotal),
       note: lineNote,
     }));
   }
@@ -311,14 +384,14 @@ async function ensurePurchaseOrderSeries(client, { installationId, actorId }) {
     installationId,
     code: PURCHASE_ORDER_SERIES_CODE,
     documentType: 'PURCHASE_ORDER',
-    name: 'Đơn đặt hàng',
+    name: 'ÄÆ¡n Ä‘áº·t hÃ ng',
     prefix: 'PO-',
     numberTemplate: '{PREFIX}{YYYY}{MM}-{SEQ}',
     resetPolicy: 'MONTHLY',
     sequenceWidth: 6,
     startCounter: '1',
     timezoneName: 'Asia/Ho_Chi_Minh',
-    description: 'Series mặc định cho đơn đặt hàng nhà cung cấp.',
+    description: 'Series máº·c Ä‘á»‹nh cho Ä‘Æ¡n Ä‘áº·t hÃ ng nhÃ  cung cáº¥p.',
     isActive: true,
     createdBy: actorId,
   });

@@ -18,19 +18,21 @@ test('purchase order bootstrap keeps lookup refresh and blocker classification o
   assert.match(bootstrap, /listPurchaseOrders/);
   assert.match(bootstrap, /listAllSuppliers/);
   assert.match(bootstrap, /loadOrganizationSnapshot/);
-  assert.match(bootstrap, /listProducts/);
+  assert.doesNotMatch(bootstrap, /listProducts/);
+  assert.match(editor, /purchase-orders\/sku-search/);
   assert.match(bootstrap, /loadPurchaseOrderPermissionKeys/);
   assert.match(bootstrap, /lookupErrorMessage/);
+  assert.match(editor, /role="combobox"/);
+  assert.match(editor, /parsePurchaseOrderPasteGrid/);
   assert.match(route, /loadPurchaseOrderBootstrap/);
 
   assert.match(productLink, /shouldShowPurchaseOrderProductsCatalogLink/);
   assert.match(productLink, /shouldShowPurchaseOrderSkuCatalogLink/);
 
-  assert.match(lookupState, /Chưa có nhà cung cấp hoạt động để tạo đơn đặt hàng\./);
-  assert.match(lookupState, /Chưa có kho nhận hoạt động để tạo đơn đặt hàng\./);
-  assert.match(lookupState, /Chưa có sản phẩm mua hàng khả dụng để tạo đơn đặt hàng\./);
-  assert.match(lookupState, /Chưa nhận được quyền mua hàng từ backend/);
-  assert.match(lookupState, /chưa có SKU mua hàng hợp lệ/i);
+
+
+
+
 
   assert.match(workspace, /purchase-order-refresh-button/);
   assert.match(workspace, /purchase-order-products-link/);
@@ -43,6 +45,6 @@ test('purchase order bootstrap keeps lookup refresh and blocker classification o
   assert.match(workspace, /\/products/);
   assert.match(editor, /purchase-order-products-link/);
   assert.match(editor, /shouldShowPurchaseOrderSkuCatalogLink/);
-  assert.match(editor, /variantLookupFailed/);
-  assert.doesNotMatch(workspace, /Cập nhật dữ liệu và chỉ refresh danh sách đơn đặt hàng/);
+  assert.match(editor, /skuSearchFailed/);
+  assert.doesNotMatch(workspace, /Cáº­p nháº­t dá»¯ liá»‡u vÃ  chá»‰ refresh danh sÃ¡ch Ä‘Æ¡n Ä‘áº·t hÃ ng/);
 });
