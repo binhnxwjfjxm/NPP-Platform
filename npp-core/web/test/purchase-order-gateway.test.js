@@ -38,19 +38,22 @@ describe('purchase-order web contract', () => {
 
   it('implements controlled editor and live lifecycle actions', () => {
     const workspace = read('../app/purchasing/purchase-orders/PurchaseOrderWorkspace.tsx');
-    const editor = read('../app/purchasing/purchase-orders/components/PurchaseOrderEditorV2.tsx');
+    const editor = read('../app/purchasing/purchase-orders/components/PurchaseOrderEditorV3.tsx');
     assert.match(workspace, /<AppShell/);
     assert.match(workspace, /actionKeys = useRef\(new Map/);
     assert.match(workspace, /\/api\/purchase-orders\/\$\{purchaseOrder\.id\}\/\$\{action\}/);
     assert.match(workspace, /expectedRevision: purchaseOrder\.revision/);
     assert.match(editor, /<form className=\{localStyles\.form\} onSubmit=\{save\}>/);
-    assert.match(editor, new RegExp('purchase-orders/sku-search'));
+    assert.match(editor, /purchase-orders\/sku-search/);
     assert.match(editor, /role="combobox"/);
+    assert.match(editor, /aria-activedescendant/);
     assert.match(editor, /Idempotency-Key': attemptKey/);
     assert.match(editor, /decimalToScaled/);
     assert.match(editor, /Chọn từ danh mục/);
     assert.match(editor, /Nhập nhiều dòng/);
-    assert.doesNotMatch(editor, /MutationObserver|querySelector|parseFloat/);
+    assert.match(editor, /browseControllerRef/);
+    assert.match(editor, /resolutionByIdentifier/);
+    assert.doesNotMatch(editor, /MutationObserver|parseFloat/);
   });
 
   it('keeps server tokens behind same-origin route handlers', () => {
