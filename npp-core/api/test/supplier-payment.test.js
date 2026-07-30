@@ -46,7 +46,7 @@ async function seed(pool,installationId) {
      VALUES($1,$2,$3,$4,true,$5,$5)`,
     [ids.supplierId,installationId,`SUP-${code}`,`Nhà cung cấp ${code}`,actor],
   );
-  const series = await pool.query(
+  const series=await pool.query(
     `SELECT code,document_type FROM shared.document_number_series
       WHERE installation_id=$1 AND code='SUPPLIER_PAYMENT'`,
     [installationId],
@@ -77,17 +77,17 @@ async function seed(pool,installationId) {
   return ids;
 }
 
-function paymentPayload(fixture,amount='60000') {
+function paymentPayload(fixture,amount='60000',currencyCode='VND') {
   return {
     supplierId:fixture.supplierId,warehouseId:fixture.warehouseId,paymentDate:'2026-07-30',
-    currencyCode:'VND',paymentMethod:'BANK_TRANSFER',amount,
+    currencyCode,paymentMethod:'BANK_TRANSFER',amount,
     externalReference:`BANK-${randomUUID()}`,note:'Thanh toán kiểm thử Phase 5.6',
   };
 }
 
-async function createPayment(baseUrl,config,fixture,key,amount='60000') {
+async function createPayment(baseUrl,config,fixture,key,amount='60000',currencyCode='VND') {
   return fetch(`${baseUrl}/api/supplier-payments`,{
-    method:'POST',headers:headers(config,key),body:JSON.stringify(paymentPayload(fixture,amount)),
+    method:'POST',headers:headers(config,key),body:JSON.stringify(paymentPayload(fixture,amount,currencyCode)),
   });
 }
 
@@ -96,6 +96,25 @@ async function allocate(baseUrl,config,sourceId,targetId,amount,key) {
     method:'POST',headers:headers(config,key),
     body:JSON.stringify({ sourcePayableDocumentId:sourceId,targetPayableDocumentId:targetId,amount,allocationDate:'2026-07-30' }),
   });
+}
+
+async function documentProjection(pool,installationId,ids) {
+  const result=await pool.query(
+    `SELECT id,status,allocated_amount::text,remaining_amount::text
+       FROM accounting.payable_documents
+      WHERE installation_id=$1 AND id=ANY($2::uuid[])`,
+    [installationId,ids],
+  );
+  return new Map(result.rows.map((row)=>[row.id,row]));
+}
+
+async function supplierBalance(pool,installationId,supplierId,currencyCode='VND') {
+  const result=await pool.query(
+    `SELECT balance::text FROM accounting.supplier_payable_balances
+      WHERE installation_id=$1 AND supplier_id=$2 AND currency_code=$3`,
+    [installationId,supplierId,currencyCode],
+  );
+  return result.rows[0]?.balance ?? null;
 }
 
 test('Phase 5.6 posts, allocates and reverses immutable supplier payment facts',async()=>{
@@ -118,6 +137,7 @@ test('Phase 5.6 posts, allocates and reverses immutable supplier payment facts',
     assert.equal(payment.originalAmount,'60000.000000');
     assert.equal(payment.remainingAmount,'60000.000000');
     assert.match(payment.documentNumber,/^SP-202607-\d{6}$/);
+    assert.equal(await supplierBalance(pool,config.installationId,fixture.supplierId),'40000.000000');
 
     response=await fetch(`${baseUrl}/api/supplier-payments`,{
       method:'POST',headers:headers(config,paymentKey),body:JSON.stringify(payload),
@@ -135,14 +155,9 @@ test('Phase 5.6 posts, allocates and reverses immutable supplier payment facts',
     const allocation=await responseData(response);
     assert.equal(allocation.amount,'50000.000000');
     assert.equal(allocation.reversed,false);
+    assert.equal(await supplierBalance(pool,config.installationId,fixture.supplierId),'40000.000000');
 
-    let projection=await pool.query(
-      `SELECT id,status,allocated_amount::text,remaining_amount::text
-         FROM accounting.payable_documents
-        WHERE installation_id=$1 AND id=ANY($2::uuid[])`,
-      [config.installationId,[payment.id,fixture.debitId]],
-    );
-    let byId=new Map(projection.rows.map((row)=>[row.id,row]));
+    let byId=await documentProjection(pool,config.installationId,[payment.id,fixture.debitId]);
     assert.equal(byId.get(payment.id).allocated_amount,'50000.000000');
     assert.equal(byId.get(payment.id).remaining_amount,'10000.000000');
     assert.equal(byId.get(fixture.debitId).remaining_amount,'50000.000000');
@@ -150,6 +165,14 @@ test('Phase 5.6 posts, allocates and reverses immutable supplier payment facts',
     response=await allocate(baseUrl,config,payment.id,fixture.debitId,'11000',`over-${randomUUID()}`);
     assert.equal(response.status,409);
     assert.equal(await errorCode(response),'ALLOCATION_EXCEEDS_SOURCE');
+    const afterFailedAllocation=await documentProjection(pool,config.installationId,[payment.id,fixture.debitId]);
+    assert.deepEqual(afterFailedAllocation,byId);
+    const allocationCount=await pool.query(
+      `SELECT count(*)::int AS count FROM accounting.payable_allocations
+        WHERE installation_id=$1 AND source_payable_document_id=$2`,
+      [config.installationId,payment.id],
+    );
+    assert.equal(allocationCount.rows[0].count,1);
 
     response=await fetch(`${baseUrl}/api/supplier-payments/${payment.id}/reverse`,{
       method:'POST',headers:headers(config,`reverse-blocked-${randomUUID()}`),
@@ -159,18 +182,65 @@ test('Phase 5.6 posts, allocates and reverses immutable supplier payment facts',
     assert.equal(await errorCode(response),'PAYMENT_ALLOCATION_EXISTS');
 
     response=await fetch(`${baseUrl}/api/payable-allocations/${allocation.id}/reverse`,{
-      method:'POST',headers:headers(config,`allocation-reverse-${randomUUID()}`),
-      body:JSON.stringify({ reason:'Đảo phân bổ kiểm thử' }),
+      method:'POST',headers:headers(config,`allocation-no-reason-${randomUUID()}`),body:JSON.stringify({}),
+    });
+    assert.equal(response.status,400);
+    assert.equal(await errorCode(response),'ALLOCATION_REVERSAL_REASON_REQUIRED');
+
+    const allocationReverseKey=`allocation-reverse-${randomUUID()}`;
+    const allocationReversePayload={ reason:'Đảo phân bổ kiểm thử' };
+    response=await fetch(`${baseUrl}/api/payable-allocations/${allocation.id}/reverse`,{
+      method:'POST',headers:headers(config,allocationReverseKey),body:JSON.stringify(allocationReversePayload),
     });
     assert.equal(response.status,200);
-    assert.equal((await responseData(response)).reversed,true);
+    const reversedAllocation=await responseData(response);
+    assert.equal(reversedAllocation.reversed,true);
+    assert.equal(await supplierBalance(pool,config.installationId,fixture.supplierId),'40000.000000');
+
+    response=await fetch(`${baseUrl}/api/payable-allocations/${allocation.id}/reverse`,{
+      method:'POST',headers:headers(config,allocationReverseKey),body:JSON.stringify(allocationReversePayload),
+    });
+    assert.equal(response.status,200);
+    assert.equal((await responseData(response)).reversalId,reversedAllocation.reversalId);
+    response=await fetch(`${baseUrl}/api/payable-allocations/${allocation.id}/reverse`,{
+      method:'POST',headers:headers(config,allocationReverseKey),body:JSON.stringify({ reason:'Lý do khác' }),
+    });
+    assert.equal(response.status,409);
+
+    await assert.rejects(
+      pool.query(
+        `UPDATE accounting.payable_allocation_reversals SET reason='changed'
+          WHERE installation_id=$1 AND allocation_id=$2`,
+        [config.installationId,allocation.id],
+      ),
+      /payable_allocation_history_is_append_only/,
+    );
 
     response=await fetch(`${baseUrl}/api/supplier-payments/${payment.id}/reverse`,{
-      method:'POST',headers:headers(config,`payment-reverse-${randomUUID()}`),
-      body:JSON.stringify({ reason:'Đảo thanh toán kiểm thử' }),
+      method:'POST',headers:headers(config,`payment-no-reason-${randomUUID()}`),body:JSON.stringify({}),
+    });
+    assert.equal(response.status,400);
+    assert.equal(await errorCode(response),'PAYMENT_REVERSAL_REASON_REQUIRED');
+
+    const paymentReverseKey=`payment-reverse-${randomUUID()}`;
+    const paymentReversePayload={ reason:'Đảo thanh toán kiểm thử' };
+    response=await fetch(`${baseUrl}/api/supplier-payments/${payment.id}/reverse`,{
+      method:'POST',headers:headers(config,paymentReverseKey),body:JSON.stringify(paymentReversePayload),
     });
     assert.equal(response.status,200);
-    assert.equal((await responseData(response)).status,'reversed');
+    const reversedPayment=await responseData(response);
+    assert.equal(reversedPayment.status,'reversed');
+    assert.equal(await supplierBalance(pool,config.installationId,fixture.supplierId),'100000.000000');
+
+    response=await fetch(`${baseUrl}/api/supplier-payments/${payment.id}/reverse`,{
+      method:'POST',headers:headers(config,paymentReverseKey),body:JSON.stringify(paymentReversePayload),
+    });
+    assert.equal(response.status,200);
+    assert.equal((await responseData(response)).reversedAt,reversedPayment.reversedAt);
+    response=await fetch(`${baseUrl}/api/supplier-payments/${payment.id}/reverse`,{
+      method:'POST',headers:headers(config,paymentReverseKey),body:JSON.stringify({ reason:'Lý do đảo khác' }),
+    });
+    assert.equal(response.status,409);
 
     const creditId=randomUUID();
     const creditSourceId=randomUUID();
@@ -212,6 +282,13 @@ test('Phase 5.6 posts, allocates and reverses immutable supplier payment facts',
       /payable_allocation_history_is_append_only/,
     );
 
+    const usdResponse=await createPayment(baseUrl,config,fixture,`currency-${randomUUID()}`,'1000','USD');
+    assert.equal(usdResponse.status,201);
+    const usdPayment=await responseData(usdResponse);
+    response=await allocate(baseUrl,config,usdPayment.id,fixture.debitId,'1000',`currency-allocation-${randomUUID()}`);
+    assert.equal(response.status,409);
+    assert.equal(await errorCode(response),'ALLOCATION_CURRENCY_MISMATCH');
+
     const paymentAResponse=await createPayment(baseUrl,config,fixture,`concurrent-a-${randomUUID()}`,'50000');
     const paymentBResponse=await createPayment(baseUrl,config,fixture,`concurrent-b-${randomUUID()}`,'50000');
     assert.equal(paymentAResponse.status,201);
@@ -224,18 +301,10 @@ test('Phase 5.6 posts, allocates and reverses immutable supplier payment facts',
     ]);
     assert.deepEqual(concurrent.map((item)=>item.status).sort(),[201,409]);
 
-    const beforeRebuild=await pool.query(
-      `SELECT balance::text FROM accounting.supplier_payable_balances
-        WHERE installation_id=$1 AND supplier_id=$2 AND currency_code='VND'`,
-      [config.installationId,fixture.supplierId],
-    );
+    const beforeRebuild=await supplierBalance(pool,config.installationId,fixture.supplierId);
     await pool.query('SELECT accounting.rebuild_supplier_payable_balances()');
-    const afterRebuild=await pool.query(
-      `SELECT balance::text FROM accounting.supplier_payable_balances
-        WHERE installation_id=$1 AND supplier_id=$2 AND currency_code='VND'`,
-      [config.installationId,fixture.supplierId],
-    );
-    assert.equal(afterRebuild.rows[0].balance,beforeRebuild.rows[0].balance);
+    const afterRebuild=await supplierBalance(pool,config.installationId,fixture.supplierId);
+    assert.equal(afterRebuild,beforeRebuild);
 
     response=await fetch(`${baseUrl}/api/supplier-payments/${paymentA.id}`,{ headers:readHeaders(config) });
     assert.equal(response.status,200);
