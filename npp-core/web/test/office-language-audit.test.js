@@ -76,7 +76,7 @@ test('product catalog preserves product, SKU, unit and barcode features with tra
   const [products, unitWorkspace, unitAdmin] = await Promise.all([
     source('../app/products/product-workspace.tsx'),
     source('../app/products/product-unit-workspace.tsx'),
-    source('../app/products/product-unit-admin.tsx'),
+    source('../app/products/product-unit-admin-v2.tsx'),
   ]);
 
   assert.match(products, /data-testid="add-product-button"/);
