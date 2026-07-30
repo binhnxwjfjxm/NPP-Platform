@@ -9,7 +9,7 @@ test('purchase order bootstrap keeps lookup refresh and blocker classification o
     readSource('../lib/purchase-order-bootstrap.ts'),
     readSource('../lib/purchase-order-products-link.js'),
     readSource('../app/purchasing/purchase-orders/PurchaseOrderWorkspace.tsx'),
-    readSource('../app/purchasing/purchase-orders/components/PurchaseOrderEditor.tsx'),
+    readSource('../app/purchasing/purchase-orders/components/PurchaseOrderEditorV2.tsx'),
     readSource('../app/api/purchase-orders/bootstrap/route.ts'),
   ]);
 
@@ -32,8 +32,9 @@ test('purchase order bootstrap keeps lookup refresh and blocker classification o
   assert.match(workspace, /lookupMessage/);
   assert.match(workspace, /describePurchaseOrderLookupIssues/);
   assert.match(workspace, /purchase-order-create-button/);
-  assert.match(editor, /purchase-order-products-link/);
-  assert.match(editor, /shouldShowPurchaseOrderSkuCatalogLink/);
-  assert.match(editor, /skuSearchFailed/);
+  assert.match(editor, /href="\/products"/);
+  assert.match(editor, /Tìm nhanh/);
+  assert.match(editor, /Chọn từ danh mục/);
+  assert.match(editor, /Nhập nhiều dòng/);
   assert.doesNotMatch(workspace, /Cập nhật dữ liệu và chỉ refresh danh sách đơn đặt hàng/);
 });
