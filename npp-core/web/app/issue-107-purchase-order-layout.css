@@ -1,0 +1,142 @@
+/* Issue #107 — purchase-order editor acceptance layout.
+ * Scope is deliberately anchored to stable ARIA identifiers so the override
+ * cannot leak into unrelated modals or depend on CSS-module hash names.
+ */
+
+[aria-labelledby="purchase-order-editor-title"] {
+  width: min(1520px, 97vw) !important;
+  height: min(96vh, 1020px) !important;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"],
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-entry-title"],
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-lines-title"] {
+  padding: 12px 14px !important;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] > div:first-child,
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-entry-title"] > div:first-child,
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-lines-title"] > div:first-child {
+  margin-bottom: 8px !important;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] > div:last-child {
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  gap: 9px 10px !important;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] > div:last-child > label:nth-child(1),
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] > div:last-child > label:nth-child(2) {
+  grid-column: span 2;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] > div:last-child > label:nth-child(3),
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] > div:last-child > label:nth-child(4),
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] > div:last-child > label:nth-child(5) {
+  grid-column: span 1;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] > div:last-child > label:nth-child(6) {
+  grid-column: span 2;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] > div:last-child > label:nth-child(7) {
+  grid-column: span 3 !important;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] input,
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] select {
+  min-height: 36px !important;
+  padding-block: 7px !important;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-entry-title"] [role="tablist"] {
+  margin-bottom: 8px !important;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-entry-title"] [role="tab"] {
+  min-height: 36px !important;
+  padding: 7px 14px !important;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-entry-title"] [role="combobox"] {
+  min-height: 46px !important;
+  padding-inline: 13px !important;
+  font-size: 0.95rem !important;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-entry-title"] [role="listbox"] {
+  min-height: 270px;
+  max-height: 390px;
+  overflow-y: auto;
+  align-content: start;
+  padding-right: 3px;
+  scrollbar-gutter: stable;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-entry-title"] details {
+  scroll-margin-block: 8px;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-entry-title"] details:first-of-type {
+  margin-top: 2px;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-lines-title"] {
+  min-height: 190px;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-lines-title"] article {
+  padding: 11px 12px !important;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [aria-label="Tổng tiền đơn đặt hàng"] {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  margin-top: 12px;
+  border-top: 1px solid #ded4cc;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 -10px 24px rgba(62, 45, 35, 0.08);
+  backdrop-filter: blur(8px);
+}
+
+@media (max-width: 1180px) {
+  [aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] > div:last-child {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  [aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] > div:last-child > label {
+    grid-column: span 1 !important;
+  }
+
+  [aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] > div:last-child > label:nth-child(7) {
+    grid-column: 1 / -1 !important;
+  }
+
+  [aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-entry-title"] [role="listbox"] {
+    max-height: 330px;
+  }
+}
+
+@media (max-width: 720px) {
+  [aria-labelledby="purchase-order-editor-title"] {
+    width: 100vw !important;
+    height: 100dvh !important;
+    border-radius: 0 !important;
+  }
+
+  [aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] > div:last-child {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  [aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] > div:last-child > label,
+  [aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"] > div:last-child > label:nth-child(7) {
+    grid-column: 1 !important;
+  }
+
+  [aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-entry-title"] [role="listbox"] {
+    min-height: 220px;
+    max-height: 45vh;
+  }
+}
