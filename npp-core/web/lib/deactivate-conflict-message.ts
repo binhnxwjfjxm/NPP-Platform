@@ -6,6 +6,7 @@ type ConflictDetails = {
   managementPath?: string | null;
   dependency?: {
     type?: string;
+    entityType?: string;
     label?: string;
     count?: number;
     path?: string | null;
@@ -18,6 +19,14 @@ const MANAGEMENT_LABELS: Record<string, string> = {
   '/organization/branches': 'Chi nhánh',
   '/organization/warehouses': 'Kho',
   '/organization/locations': 'Vị trí kho',
+};
+
+const ACTION_GUIDANCE: Record<string, string> = {
+  deactivate_skus_first: 'Hãy ngừng các SKU liên quan trước rồi thử lại.',
+  reassign_or_deactivate_skus_first: 'Hãy chuyển đơn vị hoặc ngừng các SKU liên quan trước rồi thử lại.',
+  deactivate_or_reassign_warehouses_first: 'Hãy ngừng các kho liên quan hoặc chuyển chúng sang chi nhánh khác trước rồi thử lại.',
+  deactivate_or_reassign_locations_first: 'Hãy ngừng các vị trí kho liên quan hoặc chuyển chúng sang kho khác trước rồi thử lại.',
+  refresh_and_retry: 'Bấm Làm mới rồi thực hiện lại thao tác.',
 };
 
 function managementLabel(path: string | null | undefined): string | null {
@@ -42,6 +51,12 @@ function dependencySummary(dependency: ConflictDetails['dependency']): string {
     : `${label}.`;
 }
 
+function actionGuidance(action: string | null | undefined, destination: string | null, fallback: string): string {
+  const normalized = String(action ?? '').trim();
+  if (ACTION_GUIDANCE[normalized]) return ACTION_GUIDANCE[normalized];
+  return destination ? `Hãy mở ${destination} để xử lý dữ liệu liên quan trước.` : fallback;
+}
+
 export function formatDeactivateConflictMessage(message: string, details: unknown): string {
   const base = message.trim() || 'Không thể hoàn tất thao tác';
   if (!details || typeof details !== 'object' || Array.isArray(details)) return base;
@@ -56,9 +71,11 @@ export function formatDeactivateConflictMessage(message: string, details: unknow
         || conflict.path
         || conflict.managementPath,
     );
-    const action = conflict.action?.trim();
-    const guidance = action
-      || (destination ? `Hãy mở ${destination} để xử lý dữ liệu liên quan trước.` : 'Hãy xử lý dữ liệu liên quan trước.');
+    const guidance = actionGuidance(
+      conflict.action,
+      destination,
+      'Hãy xử lý dữ liệu liên quan trước.',
+    );
     return `Không thể ngừng sử dụng vì vẫn còn dữ liệu đang hoạt động. ${dependencySummary(conflict.dependency)} ${guidance}`;
   }
 
@@ -68,8 +85,11 @@ export function formatDeactivateConflictMessage(message: string, details: unknow
 
   if (conflictCode === 'DOMAIN_CONFLICT') {
     const destination = managementLabel(conflict.path || conflict.managementPath);
-    const guidance = conflict.action?.trim()
-      || (destination ? `Hãy mở ${destination} để xử lý trước.` : 'Hãy xử lý dữ liệu liên quan trước.');
+    const guidance = actionGuidance(
+      conflict.action,
+      destination,
+      'Hãy xử lý dữ liệu liên quan trước.',
+    );
     return `${base} ${guidance}`;
   }
 
