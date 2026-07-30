@@ -21,7 +21,18 @@ test('remaps legacy missing-order response from dedicated SKU search', () => {
   });
   assert.equal(result.code, 'PURCHASE_ORDER_SKU_SEARCH_UNAVAILABLE');
   assert.equal(result.statusCode, 503);
+  assert.equal(result.retryable, true);
   assert.match(result.message, /chưa được cập nhật đồng bộ/i);
+});
+
+test('does not infer version skew from a message without the stable code', () => {
+  const result = normalizePurchaseOrderSkuSearchFailure({
+    code: 'OTHER_NOT_FOUND',
+    message: 'Purchase order was not found',
+    statusCode: 404,
+  });
+  assert.equal(result.code, 'OTHER_NOT_FOUND');
+  assert.equal(result.statusCode, 404);
 });
 
 test('filters eligible and setup-required SKU rows', () => {
