@@ -82,7 +82,7 @@ function initialLines(purchaseOrder: PurchaseOrder | null): EditorLine[] {
     discountMode: line.discountMode ?? 'TOTAL_AMOUNT',
     discountValue: cleanDecimal(line.discountValue ?? line.discountAmount, '0'),
     discountAmount: cleanDecimal(line.discountAmount, '0'),
-    taxRate: cleanDecimal(line.taxRate ?? '0', '0'),
+    taxRate: line.taxRate === null || line.taxRate === undefined ? '' : cleanDecimal(line.taxRate, '0'),
     taxAmount: cleanDecimal(line.taxAmount, '0'),
     note: line.note ?? '',
   }));
@@ -449,15 +449,20 @@ export default function PurchaseOrderEditor({
       supplierReference,
       currencyCode: purchaseOrder?.currency || 'VND',
       note,
-      lines: lines.map(({ variantId, quantity, unitPrice, discountMode, discountValue, taxRate, note: lineNote }) => ({
-        variantId,
-        quantity: toApiDecimal(quantity, quantity),
-        unitPrice: toApiDecimal(unitPrice, '0'),
-        discountMode: discountMode ?? 'TOTAL_AMOUNT',
-        discountValue: toApiDecimal(discountValue ?? '0', '0'),
-        taxRate: toApiDecimal(taxRate ?? '0', '0'),
-        note: lineNote,
-      })),
+      lines: lines.map(({ variantId, quantity, unitPrice, discountMode, discountValue, taxRate, taxAmount, note: lineNote }) => {
+        const normalizedTaxRate = normalizeDecimalForApi(taxRate ?? '');
+        return {
+          variantId,
+          quantity: toApiDecimal(quantity, quantity),
+          unitPrice: toApiDecimal(unitPrice, '0'),
+          discountMode: discountMode ?? 'TOTAL_AMOUNT',
+          discountValue: toApiDecimal(discountValue ?? '0', '0'),
+          ...(normalizedTaxRate === null
+            ? { taxAmount: toApiDecimal(taxAmount ?? '0', '0') }
+            : { taxRate: normalizedTaxRate }),
+          note: lineNote,
+        };
+      }),
       ...(mode === 'edit' && purchaseOrder ? { expectedRevision: purchaseOrder.revision } : {}),
     };
     const validationError = validateDraft(draft);
@@ -584,7 +589,7 @@ export default function PurchaseOrderEditor({
                     <td><input value={line.unitPrice} inputMode="decimal" onBlur={() => formatLineDecimal(line.key, 'unitPrice', '0')} onChange={(event) => updateDecimalLine(line.key, 'unitPrice', event.target.value)} /></td>
                     <td><select value={line.discountMode ?? 'TOTAL_AMOUNT'} onChange={(event) => updateLine(line.key, 'discountMode', event.target.value as PurchaseOrderDiscountMode)}><option value="PERCENT">% tiền hàng</option><option value="PER_UNIT">Giảm mỗi đơn vị</option><option value="TOTAL_AMOUNT">Tổng giảm dòng</option></select></td>
                     <td><input value={line.discountValue ?? '0'} inputMode="decimal" onBlur={() => formatLineDecimal(line.key, 'discountValue', '0')} onChange={(event) => updateDecimalLine(line.key, 'discountValue', event.target.value)} /></td>
-                    <td><input value={line.taxRate ?? '0'} inputMode="decimal" onBlur={() => formatLineDecimal(line.key, 'taxRate', '0')} onChange={(event) => updateDecimalLine(line.key, 'taxRate', event.target.value)} /></td>
+                    <td><input value={line.taxRate ?? ''} inputMode="decimal" placeholder={line.taxRate ? '0' : `Thuế cũ: ${line.taxAmount ?? '0'}`} onBlur={() => formatLineDecimal(line.key, 'taxRate', '')} onChange={(event) => updateDecimalLine(line.key, 'taxRate', event.target.value)} /></td>
                     <td>{formatPurchaseOrderAmount(totals.lineTotals[index], purchaseOrder?.currency || 'VND')}</td>
                     <td><input value={line.note} maxLength={2000} onChange={(event) => updateLine(line.key, 'note', event.target.value)} /></td>
                     <td><button type="button" className={styles.secondaryButton} onClick={() => removeLine(line.key)}>Xóa</button></td>
