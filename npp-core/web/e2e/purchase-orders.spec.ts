@@ -1,38 +1,69 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type APIRequestContext } from '@playwright/test';
 
 function uniqueReference() {
   return `E2E-PO-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`.toUpperCase();
 }
 
-type SkuSearchOption = {
-  id: string;
-  sku: string;
-  variantName: string;
-  unitCode: string | null;
-  eligibility: { selectable: boolean; code: string; message: string };
-};
+async function createPurchaseOrderFixture(request: APIRequestContext, suffix: string) {
+  const create = async (path: string, key: string, data: Record<string, unknown>) => {
+    const response = await request.post(path, { headers: { 'Idempotency-Key': key }, data });
+    expect(response.status()).toBe(201);
+    return (await response.json()).data;
+  };
+
+  const branch = await create('/api/organization/branches', `po-branch-${suffix}`, {
+    code: `POB-${suffix}`,
+    name: `Chi nhánh PO ${suffix}`,
+  });
+  const warehouse = await create('/api/organization/warehouses', `po-warehouse-${suffix}`, {
+    branchId: branch.id,
+    code: `POW-${suffix}`,
+    name: `Kho PO ${suffix}`,
+    warehouseType: 'main',
+  });
+  const supplier = await create('/api/suppliers', `po-supplier-${suffix}`, {
+    code: `NCC-${suffix}`,
+    name: `Nhà cung cấp PO ${suffix}`,
+    taxId: `TAX-${suffix}`,
+    avgDeliveryDays: 7,
+  });
+  const unit = await create('/api/units', `po-unit-${suffix}`, {
+    code: `POU-${suffix}`,
+    name: `Túi PO ${suffix}`,
+    unitKind: 'PACKAGE',
+    allowsFractional: false,
+  });
+  const product = await create('/api/products', `po-product-${suffix}`, {
+    code: `POP-${suffix}`,
+    name: `Sản phẩm PO ${suffix}`,
+  });
+  const variant = await create(`/api/products/${product.id}/variants`, `po-variant-${suffix}`, {
+    sku: `POSKU-${suffix}`,
+    name: `SKU PO ${suffix}`,
+    variantKind: 'BASE',
+    isInventoryBase: true,
+    isSellable: true,
+    isCatalogVisible: true,
+  });
+
+  let response = await request.patch(`/api/products/${product.id}/variants/${variant.id}/unit`, {
+    data: { unitId: unit.id, conversionToBase: '1', expectedUpdatedAt: variant.updated_at },
+  });
+  expect(response.status()).toBe(200);
+
+  response = await request.patch(`/api/products/${product.id}`, {
+    data: { isOrderable: true, expectedUpdatedAt: product.updated_at },
+  });
+  expect(response.status()).toBe(200);
+
+  return { warehouse, supplier, variant };
+}
 
 test.describe('Đơn đặt hàng nhà cung cấp', () => {
-  test('tạo, sửa, gửi duyệt, duyệt, xem chi tiết và hủy đơn', async ({ page }) => {
+  test('tạo, sửa, gửi duyệt, duyệt, xem chi tiết và hủy đơn', async ({ page, request }) => {
     const supplierReference = uniqueReference();
-    const supplierSuffix = supplierReference.replace(/[^A-Z0-9]/g, '').slice(-12);
-    const supplierResponse = await page.request.post('/api/suppliers', {
-      headers: { 'Idempotency-Key': `po-supplier-${supplierSuffix}` },
-      data: {
-        code: `NCC-${supplierSuffix}`,
-        name: `Nhà cung cấp PO ${supplierSuffix}`,
-        taxId: `TAX-${supplierSuffix}`,
-        avgDeliveryDays: 7,
-      },
-    });
-    expect(supplierResponse.status()).toBe(201);
-    const supplier = (await supplierResponse.json()).data;
-
-    const skuResponse = await page.request.get('/api/purchase-orders/sku-search?limit=50&offset=0');
-    expect(skuResponse.status()).toBe(200);
-    const skuOptions = (await skuResponse.json()).data as SkuSearchOption[];
-    const eligibleSku = skuOptions.find((option) => option.eligibility.selectable);
-    expect(eligibleSku).toBeTruthy();
+    const suffix = supplierReference.replace(/[^A-Z0-9]/g, '').slice(-12);
+    const fixture = await createPurchaseOrderFixture(request, suffix);
 
     await page.goto('/purchasing/purchase-orders');
     await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
@@ -45,16 +76,15 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
 
     const supplierSelect = editor.getByRole('combobox', { name: 'Nhà cung cấp', exact: true });
     const warehouseSelect = editor.getByRole('combobox', { name: 'Kho nhận', exact: true });
-    await expect(supplierSelect.locator('option')).not.toHaveCount(1);
-    await expect(warehouseSelect.locator('option')).not.toHaveCount(1);
-    await supplierSelect.selectOption(supplier.id);
-    await warehouseSelect.selectOption({ index: 1 });
+    await supplierSelect.selectOption(fixture.supplier.id);
+    await warehouseSelect.selectOption(fixture.warehouse.id);
     await editor.getByRole('textbox', { name: 'Tham chiếu nhà cung cấp', exact: true }).fill(supplierReference);
 
     const skuSearch = editor.getByRole('combobox', { name: 'Tìm SKU mua hàng', exact: true });
-    await skuSearch.fill(eligibleSku!.sku);
-    const skuResult = editor.getByRole('option').filter({ hasText: eligibleSku!.sku }).first();
+    await skuSearch.fill(fixture.variant.sku);
+    const skuResult = editor.getByRole('option').filter({ hasText: fixture.variant.sku }).first();
     await expect(skuResult).toBeVisible();
+    await expect(skuResult).toContainText('Có thể chọn để mua hàng');
     await skuResult.getByRole('button').click();
     await editor.getByRole('button', { name: 'Thêm dòng', exact: true }).click();
 
