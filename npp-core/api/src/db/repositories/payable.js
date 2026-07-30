@@ -28,7 +28,7 @@ export async function getPayableDocumentById(client, {
   const header = headerResult.rows?.[0];
   if (!header) return null;
 
-  const [lineResult, ledgerResult] = await Promise.all([
+  const [lineResult, ledgerResult, allocationResult] = await Promise.all([
     client.query(
       `SELECT *
          FROM accounting.payable_document_lines
@@ -45,11 +45,36 @@ export async function getPayableDocumentById(client, {
         ORDER BY occurred_at, id`,
       [installationId, id],
     ),
+    client.query(
+      `SELECT allocation.*,
+              reversal.id AS reversal_id,
+              reversal.reason AS reversal_reason,
+              reversal.reversed_at,
+              source.source_document_number AS source_document_number,
+              source.document_type AS source_document_type,
+              target.source_document_number AS target_document_number,
+              target.document_type AS target_document_type
+         FROM accounting.payable_allocations allocation
+         JOIN accounting.payable_documents source
+           ON source.installation_id=allocation.installation_id
+          AND source.id=allocation.source_payable_document_id
+         JOIN accounting.payable_documents target
+           ON target.installation_id=allocation.installation_id
+          AND target.id=allocation.target_payable_document_id
+         LEFT JOIN accounting.payable_allocation_reversals reversal
+           ON reversal.installation_id=allocation.installation_id
+          AND reversal.allocation_id=allocation.id
+        WHERE allocation.installation_id=$1
+          AND (allocation.source_payable_document_id=$2::uuid OR allocation.target_payable_document_id=$2::uuid)
+        ORDER BY allocation.allocation_date,allocation.created_at,allocation.id`,
+      [installationId, id],
+    ),
   ]);
 
   return {
     ...header,
     lines: lineResult.rows ?? [],
     ledger_entries: ledgerResult.rows ?? [],
+    allocations: allocationResult.rows ?? [],
   };
 }
