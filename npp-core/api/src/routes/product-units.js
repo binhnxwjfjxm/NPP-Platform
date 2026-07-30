@@ -1,4 +1,4 @@
-import { handleProductUnitRoutes as handleLegacyProductUnitRoutes } from './product-units-legacy.js';
+import { handleProductUnitRoutes as handleCoreProductUnitRoutes } from './product-units-core.js';
 
 const ACTIVE_DEPENDENCY_PATTERN = /đang có\s+(\d+)\s+SKU hoạt động sử dụng đơn vị này/i;
 const STALE_VERSION_PATTERN = /Đơn vị tính đã được cập nhật bởi phiên khác/i;
@@ -74,5 +74,5 @@ function responseProxy(res) {
 }
 
 export async function handleProductUnitRoutes(req, res, options) {
-  return handleLegacyProductUnitRoutes(req, responseProxy(res), options);
+  return handleCoreProductUnitRoutes(req, responseProxy(res), options);
 }
