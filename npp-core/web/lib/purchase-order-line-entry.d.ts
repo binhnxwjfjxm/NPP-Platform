@@ -25,7 +25,7 @@ export declare function calculatePurchaseOrderLineFinancials(line: {
   discountMode: PurchaseOrderDiscountMode;
   discountValue: string;
   discountAmount: string;
-  taxRate: string;
+  taxRate: string | null;
   taxAmount: string;
   lineTotal: string;
 }>;
