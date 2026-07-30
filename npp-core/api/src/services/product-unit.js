@@ -1,8 +1,8 @@
-import * as legacy from './product-unit-legacy.js';
+import * as core from './product-unit-core.js';
 import * as unitRepo from '../db/repositories/units.js';
 import { activeDependentsConflict, staleVersionConflict } from './deactivate-conflict-contract.js';
 
-export * from './product-unit-legacy.js';
+export * from './product-unit-core.js';
 
 const ACTIVE_UNIT_DEPENDENCY_MESSAGE = 'Cannot deactivate a unit used by active product variants';
 const UNIT_UPDATE_CONFLICT_MESSAGE = 'Unit update conflict';
@@ -38,7 +38,7 @@ export function normalizeUnitConflictResult(result, activeAssignmentCount = 0) {
 }
 
 export async function updateUnit(client, input) {
-  const result = await legacy.updateUnit(client, input);
+  const result = await core.updateUnit(client, input);
   if (result?.ok || result?.code !== 'CONFLICT') return result;
 
   if (result.message === ACTIVE_UNIT_DEPENDENCY_MESSAGE) {
