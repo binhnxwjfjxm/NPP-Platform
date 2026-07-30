@@ -6,6 +6,8 @@ export const PURCHASE_ORDER_SKU_FILTERS: Readonly<{
   setup: 'setup';
   all: 'all';
 }>;
+export const PURCHASE_ORDER_BULK_TEMPLATE_FILENAME: string;
+export const PURCHASE_ORDER_BULK_TEMPLATE_MIME: string;
 
 export type PurchaseOrderSkuFilter = typeof PURCHASE_ORDER_SKU_FILTERS[keyof typeof PURCHASE_ORDER_SKU_FILTERS];
 

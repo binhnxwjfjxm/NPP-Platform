@@ -205,7 +205,8 @@ function parseBulkRow(row, rowNumber) {
 }
 
 export function parsePurchaseOrderPasteGrid(text) {
-  const rawRows = String(text ?? '').split(/\r?\n/).map((row) => row.trim()).filter(Boolean);
+  const normalizedText = String(text ?? '').replace(/^\uFEFF/, '');
+  const rawRows = normalizedText.split(/\r?\n/).map((row) => row.trim()).filter(Boolean);
   const hasHeader = rawRows.length > 0 && looksLikeHeader(splitPasteRow(rawRows[0]));
   const rows = hasHeader ? rawRows.slice(1) : rawRows;
   const parsed = rows.slice(0, MAX_BULK_ROWS).map((row, index) => parseBulkRow(row, index + (hasHeader ? 2 : 1)));
