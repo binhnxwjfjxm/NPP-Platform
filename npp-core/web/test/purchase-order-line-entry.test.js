@@ -77,6 +77,14 @@ test('purchase order paste grid accepts Excel tabs and semicolon rows with decim
   assert.equal(normalizeDecimalForApi(wholeAmount[0].unitPrice), '80000');
 });
 
+test('purchase order paste grid strips a UTF-8 BOM before detecting the CSV header', () => {
+  const preview = parsePurchaseOrderPasteGrid('\uFEFFSKU;Số lượng;Đơn giá;Kiểu chiết khấu;Giá trị chiết khấu;Thuế %;Ghi chú\r\nSKU-MAU;10;25000;Giảm tổng dòng;0;8;');
+  assert.equal(preview.length, 1);
+  assert.equal(preview[0].rowNumber, 2);
+  assert.equal(preview[0].sku, 'SKU-MAU');
+  assert.deepEqual(preview[0].errors, []);
+});
+
 test('purchase order paste grid parses quoted comma-delimited CSV', () => {
   const preview = parsePurchaseOrderPasteGrid('SKU,Số lượng,Đơn giá,Kiểu chiết khấu,Giá trị chiết khấu,Thuế %,Ghi chú\nSKU-CSV,2.5,100,PERCENT,5,8,"Gấp, giao sáng"');
   assert.equal(preview.length, 1);
