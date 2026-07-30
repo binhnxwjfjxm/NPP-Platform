@@ -1,19 +1,19 @@
 import { readFileSync } from 'node:fs';
 import {
-  CORE_API_MIGRATIONS as CORE_API_MIGRATIONS_THROUGH_029,
+  CORE_API_MIGRATIONS as CORE_API_MIGRATIONS_THROUGH_033,
   runMigrations,
-} from './index-through-029.js';
+} from './index-through-033.js';
 
-const PAYABLE_POSTING_SQL = readFileSync(
-  new URL('../../../../database/migrations/accounting/030_payable_posting.sql', import.meta.url),
+const DOCUMENT_NUMBER_IDEMPOTENCY_NAMESPACE_SQL = readFileSync(
+  new URL('../../../../database/migrations/accounting/034_document_number_idempotency_namespace.sql', import.meta.url),
   'utf8',
 );
 
 export const CORE_API_MIGRATIONS = Object.freeze([
-  ...CORE_API_MIGRATIONS_THROUGH_029,
+  ...CORE_API_MIGRATIONS_THROUGH_033,
   Object.freeze({
-    id: '030_payable_posting',
-    sql: PAYABLE_POSTING_SQL,
+    id: '034_document_number_idempotency_namespace',
+    sql: DOCUMENT_NUMBER_IDEMPOTENCY_NAMESPACE_SQL,
   }),
 ]);
 
