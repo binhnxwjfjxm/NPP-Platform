@@ -155,7 +155,13 @@ test('supplier payment workspace allocates, guards reversal and restores history
   const detail = page.getByTestId('supplier-payment-detail');
   await expect(detail).toContainText(fixture.supplier.code);
   const allocationForm = page.getByTestId('supplier-payment-allocation-form');
-  await allocationForm.getByLabel('Chứng từ phải trả').selectOption({ label: new RegExp(fixture.goodsReceipt.documentNumber) });
+  const targetSelect = allocationForm.getByLabel('Chứng từ phải trả');
+  const targetValue = await targetSelect.locator('option')
+    .filter({ hasText: fixture.goodsReceipt.documentNumber })
+    .first()
+    .getAttribute('value');
+  expect(targetValue).toBeTruthy();
+  await targetSelect.selectOption(targetValue!);
   await allocationForm.getByLabel('Số tiền phân bổ').fill('50000');
   await allocationForm.getByRole('button', { name: 'Phân bổ' }).click();
 
