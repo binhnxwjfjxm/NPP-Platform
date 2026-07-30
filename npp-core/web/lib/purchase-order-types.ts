@@ -1,4 +1,4 @@
-﻿import {
+import {
   calculatePurchaseOrderDraftTotals as calculateLineEntryTotals,
   decimalToScaled as lineEntryDecimalToScaled,
   formatDecimalForDisplay,
@@ -36,7 +36,7 @@ export const PURCHASE_ORDER_STATUS_LABELS: Record<PurchaseOrderStatus, string> =
   cancelled: 'Đã hủy',
 };
 
-export type PurchaseOrderDiscountMode = 'TOTAL_AMOUNT' | 'PERCENT';
+export type PurchaseOrderDiscountMode = 'TOTAL_AMOUNT' | 'PER_UNIT' | 'PERCENT';
 
 export type PurchaseOrderSkuEligibility = {
   selectable: boolean;
@@ -58,6 +58,12 @@ export interface PurchaseOrderSkuSearchOption {
   conversionToBase: string | null;
   allowsFractional: boolean | null;
   eligibility: PurchaseOrderSkuEligibility;
+}
+
+export interface PurchaseOrderSkuResolution {
+  identifier: string;
+  option: PurchaseOrderSkuSearchOption | null;
+  error: { code: string; message: string } | null;
 }
 
 export interface PurchaseOrderLine {
