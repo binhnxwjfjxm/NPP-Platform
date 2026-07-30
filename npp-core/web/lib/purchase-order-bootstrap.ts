@@ -35,13 +35,13 @@ export type PurchaseOrderBootstrap = {
 function joinLabels(labels: string[]) {
   if (labels.length === 0) return '';
   if (labels.length === 1) return labels[0];
-  if (labels.length === 2) return `${labels[0]} vÃ  ${labels[1]}`;
-  return `${labels.slice(0, -1).join(', ')} vÃ  ${labels[labels.length - 1]}`;
+  if (labels.length === 2) return `${labels[0]} và ${labels[1]}`;
+  return `${labels.slice(0, -1).join(', ')} và ${labels[labels.length - 1]}`;
 }
 
 function lookupErrorMessage(labels: string[]) {
   return labels.length
-    ? `KhÃ´ng táº£i Ä‘Æ°á»£c dá»¯ liá»‡u ${joinLabels(labels)}. HÃ£y cáº­p nháº­t dá»¯ liá»‡u trÆ°á»›c khi thao tÃ¡c.`
+    ? `Không tải được dữ liệu ${joinLabels(labels)}. Hãy cập nhật dữ liệu trước khi thao tác.`
     : null;
 }
 
@@ -60,9 +60,9 @@ export async function loadPurchaseOrderBootstrap(requestId?: string | null): Pro
   ]);
 
   const lookupLabels = [
-    suppliersResult.status === 'rejected' ? 'nhÃ  cung cáº¥p' : null,
-    organizationResult.status === 'rejected' ? 'kho nháº­n' : null,
-    permissionsResult.status === 'rejected' ? 'quyá»n mua hÃ ng' : null,
+    suppliersResult.status === 'rejected' ? 'nhà cung cấp' : null,
+    organizationResult.status === 'rejected' ? 'kho nhận' : null,
+    permissionsResult.status === 'rejected' ? 'quyền mua hàng' : null,
   ].filter((value): value is string => Boolean(value));
 
   return {
@@ -81,11 +81,11 @@ export async function loadPurchaseOrderBootstrap(requestId?: string | null): Pro
         ? normalizeSupplierGatewayError(suppliersResult.reason).publicMessage
         : null,
       warehouses: organizationResult.status === 'rejected'
-        ? 'KhÃ´ng táº£i Ä‘Æ°á»£c dá»¯ liá»‡u kho nháº­n'
+        ? 'Không tải được dữ liệu kho nhận'
         : null,
       products: null,
       permissions: permissionsResult.status === 'rejected'
-        ? 'KhÃ´ng táº£i Ä‘Æ°á»£c dá»¯ liá»‡u quyá»n mua hÃ ng'
+        ? 'Không tải được dữ liệu quyền mua hàng'
         : null,
     },
     checkedAt: new Date().toISOString(),
