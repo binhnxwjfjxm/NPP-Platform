@@ -35,12 +35,12 @@ function apiError(code, message, details = {}, retryable = false, statusCode = 5
 
 function statusFor(result) {
   if (['NOT_FOUND', 'CATEGORY_NOT_FOUND', 'BRAND_NOT_FOUND', 'PRODUCT_NOT_FOUND', 'VARIANT_NOT_FOUND', 'PARENT_CATEGORY_NOT_FOUND'].includes(result.code)) return 404;
-  if (['DUPLICATE_CODE', 'DUPLICATE_SKU', 'CONFLICT', 'CATEGORY_INACTIVE', 'BRAND_INACTIVE', 'PARENT_CATEGORY_INACTIVE', 'PRODUCT_INACTIVE', 'INVALID_ORDERABLE_STATUS', 'VARIANT_PRODUCT_MISMATCH', 'CONFLICTING_PRODUCT_ID', 'CONFLICTING_VARIANT_ID', 'IMPORT_VARIANT_SNAPSHOT_INCOMPLETE'].includes(result.code)) return 409;
+  if (['DUPLICATE_CODE', 'DUPLICATE_SKU', 'CONFLICT', 'ACTIVE_DEPENDENTS', 'STALE_VERSION', 'DOMAIN_CONFLICT', 'CATEGORY_INACTIVE', 'BRAND_INACTIVE', 'PARENT_CATEGORY_INACTIVE', 'PRODUCT_INACTIVE', 'INVALID_ORDERABLE_STATUS', 'VARIANT_PRODUCT_MISMATCH', 'CONFLICTING_PRODUCT_ID', 'CONFLICTING_VARIANT_ID', 'IMPORT_VARIANT_SNAPSHOT_INCOMPLETE'].includes(result.code)) return 409;
   return 400;
 }
 
 function sendServiceError(res, result, context) {
-  sendError(res, apiError(result.code, result.message, {}, Boolean(result.retryable), statusFor(result)), context.requestId, context.receivedAt);
+  sendError(res, apiError(result.code, result.message, result.details ?? {}, Boolean(result.retryable), statusFor(result)), context.requestId, context.receivedAt);
 }
 
 function parseBoolean(value) {
@@ -131,7 +131,7 @@ async function idempotentMutation(req, res, context, {
             statusCode: statusFor(failed),
             contentType: 'application/json',
             requestId: context.requestId,
-            body: { error: { code: failed.code, message: failed.message, retryable: Boolean(failed.retryable), details: {} }, requestId: context.requestId, receivedAt: context.receivedAt },
+            body: { error: { code: failed.code, message: failed.message, retryable: Boolean(failed.retryable), details: failed.details ?? {} }, requestId: context.requestId, receivedAt: context.receivedAt },
           };
         }
         return {

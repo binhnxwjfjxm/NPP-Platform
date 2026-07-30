@@ -156,11 +156,15 @@ export async function updateWarehouseActiveStatus(client, { id, installationId, 
  * Check if a warehouse has active locations
  * Used to prevent deactivation of warehouses with active children
  */
-export async function hasActiveLocations(client, { warehouseId, installationId }) {
+export async function countActiveLocations(client, { warehouseId, installationId }) {
   const result = await client.query(
-    `SELECT COUNT(*) as count FROM shared.warehouse_locations WHERE warehouse_id = $1 AND installation_id = $2 AND is_active = true`,
+    `SELECT COUNT(*)::int as count FROM shared.warehouse_locations WHERE warehouse_id = $1 AND installation_id = $2 AND is_active = true`,
     [warehouseId, installationId],
   );
 
-  return (result.rows[0]?.count || 0) > 0;
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+export async function hasActiveLocations(client, { warehouseId, installationId }) {
+  return await countActiveLocations(client, { warehouseId, installationId }) > 0;
 }

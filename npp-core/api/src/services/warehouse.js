@@ -1,5 +1,6 @@
 import * as warehouseRepo from '../db/repositories/warehouse.js';
 import * as branchRepo from '../db/repositories/branch.js';
+import { activeDependentsConflict, domainConflict, staleVersionConflict } from './deactivate-conflict-contract.js';
 
 const WAREHOUSE_TYPES = Object.freeze(['main', 'distribution', 'vehicle', 'quarantine', 'returns', 'transit', 'other']);
 const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
@@ -175,7 +176,7 @@ export async function updateWarehouse(client, { id, installationId, payload, upd
   });
 
   if (!updated) {
-    return { ok: false, code: 'CONFLICT', message: 'Warehouse update conflict: expectedUpdatedAt does not match current record', retryable: false };
+    return staleVersionConflict({ entityLabel: 'Kho', managementPath: '/organization/warehouses' });
   }
 
   return { ok: true, warehouse: updated, beforeData: existing };
@@ -209,12 +210,20 @@ export async function updateWarehouseStatus(client, { id, installationId, isActi
       installationId,
     });
     if (!branch?.is_active) {
-      return { ok: false, code: 'BRANCH_INACTIVE', message: 'Cannot activate warehouse under inactive branch', retryable: false };
+      return domainConflict({ message: 'Không thể kích hoạt kho khi chi nhánh cha đang ngưng hoạt động. Hãy kích hoạt chi nhánh trước rồi thử lại.', reason: 'PARENT_BRANCH_INACTIVE', managementPath: '/organization/branches' });
     }
   } else {
-    const hasActive = await warehouseRepo.hasActiveLocations(client, { warehouseId: normalizedId, installationId });
-    if (hasActive) {
-      return { ok: false, code: 'CANNOT_DEACTIVATE', message: 'Cannot deactivate a warehouse that has active locations', retryable: false };
+    const activeLocationCount = await warehouseRepo.countActiveLocations(client, { warehouseId: normalizedId, installationId });
+    if (activeLocationCount > 0) {
+      return activeDependentsConflict({
+        message: 'Không thể ngưng hoạt động kho vì còn vị trí kho đang hoạt động. Hãy ngưng hoạt động hoặc chuyển các vị trí kho trước rồi thử lại.',
+        reason: 'WAREHOUSE_HAS_ACTIVE_LOCATIONS',
+        dependentType: 'warehouse_location',
+        dependentLabel: 'Vị trí kho đang hoạt động',
+        count: activeLocationCount,
+        managementPath: '/organization/locations',
+        action: 'deactivate_or_reassign_locations_first',
+      });
     }
   }
 
@@ -227,7 +236,7 @@ export async function updateWarehouseStatus(client, { id, installationId, isActi
   });
 
   if (!updated) {
-    return { ok: false, code: 'CONFLICT', message: 'Warehouse status update conflict: expectedUpdatedAt does not match current record', retryable: false };
+    return staleVersionConflict({ entityLabel: 'Kho', managementPath: '/organization/warehouses' });
   }
 
   return { ok: true, warehouse: updated, beforeData: existing };

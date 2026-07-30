@@ -65,6 +65,7 @@ type ApiEnvelope<T> = {
     code?: string;
     message?: string;
     retryable?: boolean;
+    details?: unknown;
   };
   requestId?: string;
 };
@@ -148,6 +149,19 @@ function entitySearchText(
   return matchTerm(branch.code, branch.name, relationText);
 }
 
+function dependencyAwareErrorMessage(error: { message?: string; code?: string; details?: unknown } | undefined, fallback: string): string {
+  const details = error?.details as { conflictType?: string; dependency?: { label?: string; count?: number; managementPath?: string }; managementPath?: string; action?: string } | undefined;
+  const base = error?.message || error?.code || fallback;
+  if (!details || typeof details !== 'object') return base;
+  if (details.conflictType === 'active_dependents' && details.dependency) {
+    const count = Number.isFinite(Number(details.dependency.count)) ? Number(details.dependency.count) : 0;
+    const summary = count > 0 ? `${details.dependency.label ?? 'Phụ thuộc đang hoạt động'}: ${count}.` : `${details.dependency.label ?? 'Phụ thuộc đang hoạt động'}.`;
+    return `${base} ${summary} Mở màn hình xử lý: ${details.dependency.managementPath ?? details.managementPath ?? '/products'}`;
+  }
+  if (details.conflictType === 'stale_version') return `${base} Bấm Làm mới rồi thực hiện lại thao tác.`;
+  if (details.managementPath) return `${base} Mở màn hình xử lý: ${details.managementPath}`;
+  return base;
+}
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     cache: 'no-store',
@@ -161,7 +175,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 
   const payload = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
   if (!response.ok || payload.data === undefined) {
-    throw new Error(payload.error?.message || 'Không thể kết nối dịch vụ dữ liệu. Vui lòng thử lại.');
+    throw new Error(dependencyAwareErrorMessage(payload.error, 'Không thể kết nối dịch vụ dữ liệu. Vui lòng thử lại.'));
   }
 
   return payload.data;
