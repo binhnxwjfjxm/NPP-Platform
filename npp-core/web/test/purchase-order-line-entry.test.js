@@ -52,10 +52,12 @@ test('purchase order paste grid accepts Excel tabs and semicolon rows with decim
 
   const semicolonPreview = parsePurchaseOrderPasteGrid('SKU-2;1,25;80.000;PER_UNIT;2,5;8;Ghi chú');
   assert.equal(semicolonPreview.length, 1);
-  assert.ok(semicolonPreview[0].errors.some((error) => error.includes('Đơn giá')));
+  assert.deepEqual(semicolonPreview[0].errors, []);
+  assert.equal(normalizeDecimalForApi(semicolonPreview[0].unitPrice), '80');
 
-  const validSemicolon = parsePurchaseOrderPasteGrid('SKU-2;1,25;80000;PER_UNIT;2,5;8;Ghi chú');
-  assert.deepEqual(validSemicolon[0].errors, []);
+  const wholeAmount = parsePurchaseOrderPasteGrid('SKU-2;1,25;80000;PER_UNIT;2,5;8;Ghi chú');
+  assert.deepEqual(wholeAmount[0].errors, []);
+  assert.equal(normalizeDecimalForApi(wholeAmount[0].unitPrice), '80000');
 });
 
 test('purchase order paste grid reports malformed rows without mutating a draft', () => {
