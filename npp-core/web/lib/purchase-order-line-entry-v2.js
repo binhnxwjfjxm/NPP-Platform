@@ -2,6 +2,7 @@ const SCALE = 1_000_000n;
 const ONE_HUNDRED_PERCENT = 100n * SCALE;
 const DECIMAL_PATTERN = /^\d{1,14}(?:\.(\d{1,6}))?$/;
 const SAFE_INTERMEDIATE_PATTERN = /^\d{0,14}(?:[,.]\d{0,6})?$/;
+const MAX_BULK_ROWS = 500;
 
 export const PURCHASE_ORDER_DISCOUNT_MODES = Object.freeze({
   totalAmount: 'TOTAL_AMOUNT',
@@ -137,9 +138,34 @@ export function calculatePurchaseOrderDraftTotals(lines) {
   });
 }
 
+function splitCsvRow(row) {
+  const cells = [];
+  let current = '';
+  let quoted = false;
+  for (let index = 0; index < row.length; index += 1) {
+    const character = row[index];
+    if (character === '"') {
+      if (quoted && row[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (character === ',' && !quoted) {
+      cells.push(current);
+      current = '';
+    } else {
+      current += character;
+    }
+  }
+  cells.push(current);
+  return cells;
+}
+
 function splitPasteRow(row) {
   if (row.includes('\t')) return row.split('\t');
-  return row.split(';');
+  if (row.includes(';')) return row.split(';');
+  return splitCsvRow(row);
 }
 
 function looksLikeHeader(cells) {
@@ -149,35 +175,53 @@ function looksLikeHeader(cells) {
     && ['số lượng', 'so luong', 'quantity', 'qty'].includes(second);
 }
 
+function parseBulkRow(row, rowNumber) {
+  const cells = splitPasteRow(row).map((cell) => cell.trim());
+  const [sku = '', quantity = '', unitPrice = '', discountMode = 'TOTAL_AMOUNT', discountValue = '0', taxRate = '0', ...noteCells] = cells;
+  const normalizedMode = normalizeDiscountMode(discountMode);
+  const errors = [];
+  if (!sku) errors.push('Thiếu SKU hoặc mã vạch.');
+  if (decimalToScaled(quantity, false) === null) errors.push('Số lượng không hợp lệ.');
+  if (decimalToScaled(unitPrice || '0') === null) errors.push('Đơn giá không hợp lệ.');
+  if (!normalizedMode) errors.push('Kiểu chiết khấu không hợp lệ.');
+  if (decimalToScaled(discountValue || '0') === null) errors.push('Chiết khấu không hợp lệ.');
+  const parsedTaxRate = decimalToScaled(taxRate || '0');
+  if (parsedTaxRate === null || parsedTaxRate > ONE_HUNDRED_PERCENT) errors.push('Thuế suất phải từ 0 đến 100%.');
+  if (normalizedMode === PURCHASE_ORDER_DISCOUNT_MODES.percent) {
+    const parsedDiscount = decimalToScaled(discountValue || '0');
+    if (parsedDiscount !== null && parsedDiscount > ONE_HUNDRED_PERCENT) errors.push('Chiết khấu phần trăm phải từ 0 đến 100%.');
+  }
+  return Object.freeze({
+    rowNumber,
+    sku,
+    quantity,
+    unitPrice: unitPrice || '0',
+    discountMode: normalizedMode ?? PURCHASE_ORDER_DISCOUNT_MODES.totalAmount,
+    discountValue: discountValue || '0',
+    taxRate: taxRate || '0',
+    note: noteCells.join(' ').slice(0, 2000),
+    errors: Object.freeze(errors),
+  });
+}
+
 export function parsePurchaseOrderPasteGrid(text) {
   const rawRows = String(text ?? '').split(/\r?\n/).map((row) => row.trim()).filter(Boolean);
-  const rows = rawRows.length > 0 && looksLikeHeader(splitPasteRow(rawRows[0])) ? rawRows.slice(1) : rawRows;
-  return rows.slice(0, 500).map((row, index) => {
-    const cells = splitPasteRow(row).map((cell) => cell.trim());
-    const [sku = '', quantity = '', unitPrice = '', discountMode = 'TOTAL_AMOUNT', discountValue = '0', taxRate = '0', ...noteCells] = cells;
-    const normalizedMode = normalizeDiscountMode(discountMode);
-    const errors = [];
-    if (!sku) errors.push('Thiếu SKU hoặc mã vạch.');
-    if (decimalToScaled(quantity, false) === null) errors.push('Số lượng không hợp lệ.');
-    if (decimalToScaled(unitPrice || '0') === null) errors.push('Đơn giá không hợp lệ.');
-    if (!normalizedMode) errors.push('Kiểu chiết khấu không hợp lệ.');
-    if (decimalToScaled(discountValue || '0') === null) errors.push('Chiết khấu không hợp lệ.');
-    const parsedTaxRate = decimalToScaled(taxRate || '0');
-    if (parsedTaxRate === null || parsedTaxRate > ONE_HUNDRED_PERCENT) errors.push('Thuế suất phải từ 0 đến 100%.');
-    if (normalizedMode === PURCHASE_ORDER_DISCOUNT_MODES.percent) {
-      const parsedDiscount = decimalToScaled(discountValue || '0');
-      if (parsedDiscount !== null && parsedDiscount > ONE_HUNDRED_PERCENT) errors.push('Chiết khấu phần trăm phải từ 0 đến 100%.');
-    }
-    return Object.freeze({
-      rowNumber: index + 1,
-      sku,
-      quantity,
-      unitPrice: unitPrice || '0',
-      discountMode: normalizedMode ?? PURCHASE_ORDER_DISCOUNT_MODES.totalAmount,
-      discountValue: discountValue || '0',
-      taxRate: taxRate || '0',
-      note: noteCells.join(' ').slice(0, 2000),
-      errors: Object.freeze(errors),
-    });
-  });
+  const hasHeader = rawRows.length > 0 && looksLikeHeader(splitPasteRow(rawRows[0]));
+  const rows = hasHeader ? rawRows.slice(1) : rawRows;
+  const parsed = rows.slice(0, MAX_BULK_ROWS).map((row, index) => parseBulkRow(row, index + (hasHeader ? 2 : 1)));
+  const omitted = Math.max(0, rows.length - MAX_BULK_ROWS);
+  if (omitted > 0) {
+    parsed.push(Object.freeze({
+      rowNumber: MAX_BULK_ROWS + (hasHeader ? 2 : 1),
+      sku: '',
+      quantity: '',
+      unitPrice: '0',
+      discountMode: PURCHASE_ORDER_DISCOUNT_MODES.totalAmount,
+      discountValue: '0',
+      taxRate: '0',
+      note: '',
+      errors: Object.freeze([`Đã bỏ qua ${omitted} dòng vượt giới hạn ${MAX_BULK_ROWS} dòng.`]),
+    }));
+  }
+  return parsed;
 }
