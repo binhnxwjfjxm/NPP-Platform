@@ -20,12 +20,14 @@
 - Payment reversal requires a reason, requires no active allocation, and appends a compensating positive ledger entry.
 - Goods Receipt and Supplier Return payable reversal remains blocked until every active allocation is reversed.
 - Supplier balance continues to derive only from immutable payable-ledger entries; allocation never changes the total balance.
+- Browser allocation validation uses exact scale-6 integer arithmetic and stable retry keys; PostgreSQL remains authoritative.
 
 ## Source migrations
 
 - `031_supplier_payment_allocation.sql` creates payment document extensions, allocation/reversal history, DB allocation functions and permissions.
 - `032_supplier_payment_allocation_hardening.sql` preserves legitimate payable reversal while enforcing allocation guards.
 - `033_supplier_payment_series_lifecycle.sql` creates the default payment-number series for both existing and newly initialized installations.
+- `034_document_number_idempotency_namespace.sql` allows namespaced internal document-number idempotency keys without weakening the public request-key limit.
 - Clean apply, rerun and grouped migration rehearsal must pass on the exact final PR head.
 
 ## API and web surface
@@ -39,12 +41,14 @@
   - `/api/payable-allocations/:id/reverse`
 - Core web workspace: `/accounting/supplier-payments`.
 - Browser mutations use same-origin routes and never receive the backend API token.
+- Browser E2E covers Purchase Order → Goods Receipt → payable → payment → partial allocation → allocation reversal → payment reversal.
 
 ## Verification gate
 
 Before merge, verify:
 
 - payment lifecycle, allocation, credit allocation, reversal, concurrency and rebuild tests pass;
+- idempotency replay/mismatch, failure rollback and exact projection restoration pass;
 - deny-by-default permission and warehouse/installation isolation tests pass;
 - Core API verification and migration rehearsal pass;
 - web typecheck/build and Browser E2E pass;
@@ -55,7 +59,7 @@ Before merge, verify:
 
 ## Explicit boundary after Phase 5.6
 
-Bank reconciliation, cashbook/general-ledger integration, payment approval workflow, FX handling and cross-warehouse allocation are not implemented in Phase 5.6. The next phase must be derived from the Master Plan and a fresh audit rather than inferred from this handoff.
+Bank reconciliation, cashbook/general-ledger integration, payment approval workflow, FX handling and cross-warehouse allocation are not implemented in Phase 5.6. After the Phase 5.6 source gate closes, the next planned work is Phase 6 Sales contract locking and Sales Order Foundation, subject to a fresh `main`, PR, CI and handoff audit.
 
 ## Production separation
 
