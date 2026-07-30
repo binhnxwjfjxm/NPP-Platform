@@ -167,7 +167,7 @@ export function VariantUnitPanel({ productId, variant, units, onVariantUpdated }
     setNormalization(null);
     setMessage(null);
     void requestJson<ProductBarcode[]>(`/api/products/${productId}/variants/${variant.id}/barcodes`).then(setBarcodes).catch(() => setBarcodes([]));
-  }, [productId, variant.id, variant.updated_at]);
+  }, [productId, variant.id]);
 
   async function saveUnit() {
     setBusy(true);
@@ -183,6 +183,15 @@ export function VariantUnitPanel({ productId, variant, units, onVariantUpdated }
           sourcePackageDescription: form.sourcePackageDescription || null,
           expectedUpdatedAt: variant.updated_at,
         }),
+      });
+      setForm({
+        unitId: saved.unit_id ?? '',
+        conversionToBase: cleanDecimal(saved.conversion_to_base, saved.is_inventory_base ? '1' : ''),
+        isPurchasable: saved.is_purchasable,
+        netContentValue: cleanDecimal(saved.net_content_value),
+        netContentUnitCode: (saved.net_content_uom_code as VariantUnitForm['netContentUnitCode']) ?? 'G',
+        sourceUnitLabel: saved.source_unit_label ?? '',
+        sourcePackageDescription: saved.source_package_description ?? '',
       });
       onVariantUpdated(saved);
       setMessage('Đã lưu đơn vị và hệ số quy đổi.');
