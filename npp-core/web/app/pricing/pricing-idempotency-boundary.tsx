@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect } from 'react';
+import { normalizePricingResolutionResponse } from '../../lib/pricing-resolution-error';
 
 const CREATE_PRICING_ENDPOINTS = [
   /^\/api\/sales-channels\/?(?:\?.*)?$/,
   /^\/api\/price-lists\/?(?:\?.*)?$/,
   /^\/api\/price-lists\/[^/]+\/items\/?(?:\?.*)?$/,
   /^\/api\/price-lists\/import\/?(?:\?.*)?$/,
+  /^\/api\/pricing\/import\/?(?:\?.*)?$/,
 ];
 
 function requestUrl(input: RequestInfo | URL): URL {
@@ -33,6 +35,10 @@ function shouldAttachIdempotencyKey(url: URL, method: string): boolean {
   return method === 'POST' && CREATE_PRICING_ENDPOINTS.some((pattern) => pattern.test(path));
 }
 
+function isPricingResolution(url: URL, method: string): boolean {
+  return method === 'POST' && url.pathname === '/api/pricing/resolve';
+}
+
 export default function PricingIdempotencyBoundary({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const originalFetch = window.fetch.bind(window);
@@ -41,22 +47,29 @@ export default function PricingIdempotencyBoundary({ children }: { children: Rea
     window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const method = requestMethod(input, init);
       const url = requestUrl(input);
-      if (!shouldAttachIdempotencyKey(url, method)) return originalFetch(input, init);
+      let response: Response;
 
-      const body = await requestBody(input, init);
-      if (body === null) return originalFetch(input, init);
+      if (shouldAttachIdempotencyKey(url, method)) {
+        const body = await requestBody(input, init);
+        if (body === null) return originalFetch(input, init);
 
-      const fingerprint = `${method}\n${url.pathname}${url.search}\n${body}`;
-      const key = pendingKeys.get(fingerprint) ?? `web-pricing-${crypto.randomUUID()}`;
-      pendingKeys.set(fingerprint, key);
+        const fingerprint = `${method}\n${url.pathname}${url.search}\n${body}`;
+        const key = pendingKeys.get(fingerprint) ?? `web-pricing-${crypto.randomUUID()}`;
+        pendingKeys.set(fingerprint, key);
 
-      const headers = new Headers(input instanceof Request ? input.headers : undefined);
-      new Headers(init?.headers).forEach((value, name) => headers.set(name, value));
-      headers.set('Idempotency-Key', key);
+        const headers = new Headers(input instanceof Request ? input.headers : undefined);
+        new Headers(init?.headers).forEach((value, name) => headers.set(name, value));
+        headers.set('Idempotency-Key', key);
 
-      const response = await originalFetch(input, { ...init, method, headers });
-      if (response.ok) pendingKeys.delete(fingerprint);
-      return response;
+        response = await originalFetch(input, { ...init, method, headers });
+        if (response.ok) pendingKeys.delete(fingerprint);
+      } else {
+        response = await originalFetch(input, init);
+      }
+
+      return isPricingResolution(url, method)
+        ? normalizePricingResolutionResponse(response)
+        : response;
     };
 
     return () => {
