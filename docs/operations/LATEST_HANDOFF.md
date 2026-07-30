@@ -1,69 +1,120 @@
 # NPP Platform — Latest Handoff
 
-## Source checkpoint — Phase 5.6 Supplier Payment and Allocation
+## Current source checkpoint
 
 - Repository: `binhnxwjfjxm/NPP-Platform`.
 - Production branch: `main`.
-- Phase 5.5 Payable Posting was merged as commit `40e5aabc83fcb40d88dc5e1d47e8d01d01e860af`.
-- Phase 5.6 source implementation is prepared on branch `agent/phase-5-6-supplier-payment-allocation` and tracked by Issue #93 / PR #94.
-- The actual PR head, CI state and merge state must be read from GitHub before follow-on work.
-- This remains a source-only task. It does not include production deployment, production migration or provider changes.
+- Audited source baseline before this planning branch: `6983844b9f6b4a63ad0fe04863f1492e360050cb`.
+- PR #101 standardized Purchase Order line entry and merged as `dc5dc2dfff5c93d3ccd5bf11c784ce0f2df0255c`.
+- PR #102 standardized dependency-aware deactivate conflicts and merged as `6983844b9f6b4a63ad0fe04863f1492e360050cb`.
+- Phase 5 Purchasing/Payable source work is closed through supplier payment/allocation, with later PO UX/contract hardening on `main`.
+- The next source gate is Phase 6A Sales, MCP customer boundary and Transportation/Dispatch contract locking.
 
-## Locked Phase 5.6 behavior
+## Active planning branch
 
-- Recording a supplier payment is one atomic posted mutation with an official `SUPPLIER_PAYMENT` document number.
-- The payment is a payable credit document and appends a negative immutable payable-ledger entry.
-- Supplier payments and supplier-return credits can allocate only to open Goods Receipt payable debits.
-- Allocation requires the same installation, supplier, warehouse and currency on source and target.
-- Source and target rows are locked in deterministic UUID order before remaining amounts are validated.
-- Allocation history is append-only. Reversal creates a separate immutable fact and restores both projections.
-- Payment reversal requires a reason, requires no active allocation, and appends a compensating positive ledger entry.
-- Goods Receipt and Supplier Return payable reversal remains blocked until every active allocation is reversed.
-- Supplier balance continues to derive only from immutable payable-ledger entries; allocation never changes the total balance.
-- Browser allocation validation uses exact scale-6 integer arithmetic and stable retry keys; PostgreSQL remains authoritative.
+```text
+agent/phase-6-master-plan-integration
+```
 
-## Source migrations
+The branch updates:
 
-- `031_supplier_payment_allocation.sql` creates payment document extensions, allocation/reversal history, DB allocation functions and permissions.
-- `032_supplier_payment_allocation_hardening.sql` preserves legitimate payable reversal while enforcing allocation guards.
-- `033_supplier_payment_series_lifecycle.sql` creates the default payment-number series for both existing and newly initialized installations.
-- `034_document_number_idempotency_namespace.sql` allows namespaced internal document-number idempotency keys without weakening the public request-key limit.
-- Clean apply, rerun and grouped migration rehearsal must pass on the exact final PR head.
+```text
+NPP_PLATFORM_MASTER_PLAN.md
+docs/operations/pre-phase-6-closure-audit.md
+docs/operations/phase-6-sales-mcp-customer-boundary.md
+docs/operations/phase-6-transportation-dispatch-decisions.md
+docs/operations/LATEST_HANDOFF.md
+```
 
-## API and web surface
+This is a documentation-only planning change. It does not include schema, API, UI, provider or production mutations.
 
-- Core API:
-  - `/api/supplier-payments`
-  - `/api/supplier-payments/:id`
-  - `/api/supplier-payments/:id/reverse`
-  - `/api/supplier-payments/allocation-targets`
-  - `/api/payable-allocations`
-  - `/api/payable-allocations/:id/reverse`
-- Core web workspace: `/accounting/supplier-payments`.
-- Browser mutations use same-origin routes and never receive the backend API token.
-- Browser E2E covers Purchase Order → Goods Receipt → payable → payment → partial allocation → allocation reversal → payment reversal.
+## Locked planning conclusions
 
-## Verification gate
+### MCP strategy
 
-Before merge, verify:
+MCP Field is an existing field-sales application to adapt and integrate, not rebuild from zero.
 
-- payment lifecycle, allocation, credit allocation, reversal, concurrency and rebuild tests pass;
-- idempotency replay/mismatch, failure rollback and exact projection restoration pass;
-- deny-by-default permission and warehouse/installation isolation tests pass;
-- Core API verification and migration rehearsal pass;
-- web typecheck/build and Browser E2E pass;
-- Phase 3 grouped validation and Inventory/Purchasing regressions remain green;
-- no changed path exists under `mcp/**`;
-- no unresolved actionable review thread remains;
-- exact final head is verified immediately before merge.
+Preserve working route/session/visit/test/report/order-display flows. Remaining work focuses on:
 
-## Explicit boundary after Phase 5.6
+- legacy data and identity audit;
+- backend-owned MCP writes;
+- session outlet snapshots;
+- customer onboarding and Core customer/address linking;
+- idempotent Core Sales Order adapter;
+- read-only order/fulfillment/delivery sync;
+- Supabase/VPS adapter replacement and cutover after reconciliation.
 
-Bank reconciliation, cashbook/general-ledger integration, payment approval workflow, FX handling and cross-warehouse allocation are not implemented in Phase 5.6. After the Phase 5.6 source gate closes, the next planned work is Phase 6 Sales contract locking and Sales Order Foundation, subject to a fresh `main`, PR, CI and handoff audit.
+### Customer boundary
+
+- `shared.customers.id` is the canonical Core customer ID.
+- MCP field outlet has a separate identity.
+- A field outlet may have nullable Core customer/address links.
+- Only a linked active Core customer may create an official Sales Order.
+- Core owns the onboarding review lifecycle after submission.
+
+### Transportation boundary
+
+- Transportation/Dispatch belongs to NPP Core, not MCP.
+- Add target schema `logistics`.
+- Sales Order, Delivery Order and Delivery Trip are separate sources of truth.
+- Vehicle/driver/trip do not belong directly on Sales Order as transportation truth.
+- Vehicle/trip is not a warehouse/location in the initial foundation.
+
+## Phases 1–5 closure audit
+
+Source foundations already available on `main`:
+
+```text
+Phase 1  monorepo/shared foundation absorbed into current baseline
+Phase 2  Core API/web, auth, idempotency, audit/outbox, migration and browser foundation
+Phase 3  organization/access/customer/supplier/product/unit/pricing/numbering
+Phase 4  inventory ledger/balance/reservation/negative-stock/lot-opening foundation
+Phase 5  PO/receipt/variance/return/payable/payment-allocation
+```
+
+No new implementation pass is required before Phase 6.
+
+Required pre-Phase-6 work is decision locking, not rebuilding:
+
+- customer/outlet/address identity;
+- MCP legacy mapping and order classification;
+- inventory issue point;
+- receivable posting point;
+- VAT/rounding/discount rules;
+- lot allocation/FEFO policy;
+- costing dependency;
+- Delivery Order and Dispatch transitions;
+- failed-delivery stock treatment;
+- COD/POD policy.
+
+## Phase 6 roadmap
+
+```text
+6A  Sales and MCP boundary contract — decision-only
+6B  Sales Order Foundation
+6C  Customer Onboarding Bridge
+6D  Fulfillment and Delivery Order
+6E  Transportation/Dispatch
+6F  Receivable, Returns, Payment and COD
+```
+
+MCP adaptation runs in parallel but cannot create official orders before customer linking and idempotency contracts exist.
+
+## Entry gate before Phase 6 mutation
+
+Before opening the Sales Order implementation branch:
+
+1. merge the planning documents;
+2. owner approves the unresolved Phase 6A business decisions;
+3. re-audit fresh `main`, PRs, CI, migration registry and this handoff;
+4. create a new `agent/<task>` branch from exact `main`;
+5. keep source work and production rollout reporting separate.
 
 ## Production separation
 
-Configured production endpoints remain unchanged. Their releases, backups and applied migrations are not audited by this source task. Vercel Auto Deploy and Heroku Automatic Deploy remain intended to stay off. Production rollout requires a separate explicit operation with fresh provider, backup and restore-rehearsal evidence.
+No production deployment, production migration, backup, restore, R2 configuration or provider smoke is claimed by this planning branch.
 
-> Updated: 2026-07-30  
-> Current checkpoint: Phase 5.6 source implementation and exact-head verification.
+Vercel Auto Deploy and Heroku Automatic Deploy remain intended to stay off. Production rollout requires a separate explicit operation with fresh provider, backup, restore-rehearsal, migration and smoke evidence.
+
+> Updated: `2026-07-30`  
+> Current checkpoint: Phase 6A planning and owner decision gate.
