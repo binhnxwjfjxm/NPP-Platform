@@ -19,6 +19,8 @@ There is no draft or approval workflow in this slice. Bank reconciliation, cashb
 
 Migration 031 backfills a deterministic default `SUPPLIER_PAYMENT` series for installations that already have suppliers. Migration 033 installs an `AFTER INSERT` supplier trigger so a fresh installation also receives the series when its first supplier is created.
 
+Migration 034 widens only the internal document-number allocation idempotency-key constraint from 128 to 160 characters. Public Core idempotency keys remain capped by the existing request contract; the extra space is for collision-free internal namespaces such as `supplier-payment:`.
+
 The series remains editable through the existing document-numbering administration contract. Historical allocations remain append-only.
 
 ## Allocation model
@@ -51,6 +53,12 @@ Migration 032 evaluates a legitimate payable reversal before allocation-projecti
 
 Supplier balance remains derived only from `accounting.payable_ledger_entries`. Allocation creation and reversal must leave the balance unchanged, and `accounting.rebuild_supplier_payable_balances()` must reproduce the stored projection.
 
+## Idempotency and exact money
+
+Core API mutations use the shared idempotency store. A replay with the same route, key and payload returns the stored response; reusing the key with a different payload returns `IDEMPOTENCY_PAYLOAD_MISMATCH`.
+
+The Core web keeps a stable idempotency key for the same failed payment, allocation or reversal payload and clears it only after success. Client-side allocation limits use integer scale-6 arithmetic rather than JavaScript floating-point comparison. Database numeric constraints and stored functions remain the authoritative financial boundary.
+
 ## Permissions and scope
 
 The slice adds:
@@ -75,6 +83,8 @@ The Core web workspace is `/accounting/supplier-payments`. Browser code calls sa
 - `/api/payable-allocations/:id/reverse`
 
 The server-only gateway owns the Core API token. Browser responses contain public business errors, never backend credentials or raw provider failures.
+
+Browser verification follows a real business chain: Purchase Order approval, posted Goods Receipt and payable debit, supplier payment, partial allocation, reversal guard, allocation reversal and payment reversal.
 
 ## Explicit exclusions
 
