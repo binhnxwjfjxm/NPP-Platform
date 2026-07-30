@@ -102,4 +102,22 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
   });
+
+  test('cập nhật dữ liệu làm mới cả master data lookup và khóa nút tạo khi thiếu sản phẩm mua hàng', async ({ page }) => {
+    await page.goto('/purchasing/purchase-orders');
+    await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Đơn đặt hàng', exact: true })).toBeVisible();
+
+    await page.route('**/api/purchase-orders/bootstrap', async (route) => {
+      const response = await route.fetch();
+      const payload = await response.json();
+      payload.data.products = [];
+      payload.data.errors.products = null;
+      await route.fulfill({ response, json: payload });
+    });
+
+    await page.getByTestId('purchase-order-refresh-button').click();
+    await expect(page.getByText('Chưa có sản phẩm mua hàng khả dụng để tạo đơn đặt hàng.')).toBeVisible();
+    await expect(page.getByTestId('purchase-order-create-button')).toBeDisabled();
+  });
 });

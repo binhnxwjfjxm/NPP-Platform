@@ -5,8 +5,9 @@ import { test } from 'node:test';
 const readSource = (relativePath) => readFile(new URL(relativePath, import.meta.url), 'utf8');
 
 test('sidebar submenu expands by content and exposes every P0-P4 destination', async () => {
-  const [styles, shell] = await Promise.all([
+  const [styles, shell, wrapper] = await Promise.all([
     readSource('../app/components/app-shell.module.css'),
+    readSource('../app/components/app-shell-core.tsx'),
     readSource('../app/components/app-shell.tsx'),
   ]);
 
@@ -32,6 +33,11 @@ test('sidebar submenu expands by content and exposes every P0-P4 destination', a
     'nav-inventory-policies',
     'nav-inventory-lots',
     'nav-inventory-opening',
+    'nav-purchase-orders',
+    'nav-goods-receipts',
+    'nav-supplier-returns',
+    'nav-payables',
+    'nav-supplier-payments',
   ];
   for (const testId of requiredNavigationIds) {
     assert.match(shell, new RegExp(testId));
@@ -39,6 +45,17 @@ test('sidebar submenu expands by content and exposes every P0-P4 destination', a
   assert.match(shell, /organizationOpen && !collapsed/);
   assert.match(shell, /accessOpen && !collapsed/);
   assert.match(shell, /inventoryOpen && !collapsed/);
+  assert.match(shell, /purchasingOpen && !collapsed/);
+  assert.match(shell, /accountingOpen && !collapsed/);
+  assert.doesNotMatch(wrapper, /nav-payables/);
+  assert.doesNotMatch(wrapper, /nav-supplier-payments/);
+});
+
+test('app shell wrapper no longer injects accounting shortcuts into the topbar', async () => {
+  const wrapper = await readSource('../app/components/app-shell.tsx');
+  assert.doesNotMatch(wrapper, /showAccountingShortcuts/);
+  assert.doesNotMatch(wrapper, /nav-payables/);
+  assert.doesNotMatch(wrapper, /nav-supplier-payments/);
 });
 
 test('product catalog editors use the shared accessible React modal', async () => {

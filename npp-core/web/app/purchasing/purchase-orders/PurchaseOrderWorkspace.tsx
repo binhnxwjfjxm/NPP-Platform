@@ -5,9 +5,7 @@ import { AppShell } from '../../components/app-shell';
 import shellStyles from '../../components/app-shell.module.css';
 import styles from '../../organization/organization.module.css';
 import localStyles from './purchase-orders.module.css';
-import type { Supplier } from '../../../lib/supplier-types';
-import type { Product } from '../../../lib/product-types';
-import type { Warehouse } from '../../../lib/organization-types';
+import type { PurchaseOrderBootstrap } from '../../../lib/purchase-order-bootstrap';
 import type { PurchaseOrder, PurchaseOrderStatus } from '../../../lib/purchase-order-types';
 import type { GoodsReceipt } from '../../../lib/goods-receipt-types';
 import {
@@ -23,15 +21,10 @@ import {
 } from '../../../lib/goods-receipt-types';
 import PurchaseOrderList from './components/PurchaseOrderList';
 import PurchaseOrderEditor from './components/PurchaseOrderEditor';
+import { describePurchaseOrderLookupIssues } from './purchase-order-lookup-state';
 
 type Props = {
-  initialPurchaseOrders: PurchaseOrder[];
-  initialSuppliers: Supplier[];
-  initialWarehouses: Warehouse[];
-  initialProducts: Product[];
-  initialError: string | null;
-  initialLookupError: string | null;
-  initialPermissionKeys: string[];
+  initialBootstrap: PurchaseOrderBootstrap;
 };
 
 type StatusFilter = PurchaseOrderStatus | 'all';
@@ -75,16 +68,10 @@ function actionMessage(action: ActionName, purchaseOrder: PurchaseOrder) {
 }
 
 export default function PurchaseOrderWorkspace({
-  initialPurchaseOrders,
-  initialSuppliers,
-  initialWarehouses,
-  initialProducts,
-  initialError,
-  initialLookupError,
-  initialPermissionKeys,
+  initialBootstrap,
 }: Props) {
-  const [items, setItems] = useState<PurchaseOrder[]>(initialPurchaseOrders);
-  const [error, setError] = useState<string | null>(initialError || initialLookupError);
+  const [bootstrap, setBootstrap] = useState<PurchaseOrderBootstrap>(initialBootstrap);
+  const [error, setError] = useState<string | null>(initialBootstrap.errors.orders);
   const [notice, setNotice] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -101,7 +88,7 @@ export default function PurchaseOrderWorkspace({
   const actionKeys = useRef(new Map<string, string>());
 
   const normalizedSearch = search.trim().toLocaleLowerCase('vi-VN');
-  const visibleItems = useMemo(() => items.filter((purchaseOrder) => {
+  const visibleItems = useMemo(() => bootstrap.purchaseOrders.filter((purchaseOrder) => {
     const matchesStatus = statusFilter === 'all' || purchaseOrder.status === statusFilter;
     const searchable = [
       purchaseOrder.number,
@@ -116,16 +103,18 @@ export default function PurchaseOrderWorkspace({
       .join(' ')
       .toLocaleLowerCase('vi-VN');
     return matchesStatus && (!normalizedSearch || searchable.includes(normalizedSearch));
-  }), [items, normalizedSearch, statusFilter]);
+  }), [bootstrap.purchaseOrders, normalizedSearch, statusFilter]);
 
   const counts = useMemo(() => ({
-    total: items.length,
-    draft: items.filter((item) => item.status === 'draft').length,
-    pending: items.filter((item) => item.status === 'pending_approval').length,
-  }), [items]);
+    total: bootstrap.purchaseOrders.length,
+    draft: bootstrap.purchaseOrders.filter((item) => item.status === 'draft').length,
+    pending: bootstrap.purchaseOrders.filter((item) => item.status === 'pending_approval').length,
+  }), [bootstrap.purchaseOrders]);
 
-  const createPolicy = purchaseOrderActionPolicy('draft', initialPermissionKeys);
-  const lookupReady = initialSuppliers.length > 0 && initialWarehouses.length > 0 && initialProducts.length > 0;
+  const createPolicy = purchaseOrderActionPolicy('draft', bootstrap.permissionKeys);
+  const lookupIssues = useMemo(() => describePurchaseOrderLookupIssues(bootstrap), [bootstrap]);
+  const lookupReady = lookupIssues.length === 0;
+  const lookupMessage = lookupIssues.length > 0 ? lookupIssues.join(' · ') : null;
 
   useEffect(() => {
     if (selectedPurchaseOrder || pendingAction) closeButtonRef.current?.focus();
@@ -139,20 +128,36 @@ export default function PurchaseOrderWorkspace({
   }
 
   function upsertOrder(purchaseOrder: PurchaseOrder) {
-    setItems((current) => {
-      const index = current.findIndex((item) => item.id === purchaseOrder.id);
-      if (index < 0) return [purchaseOrder, ...current];
-      return current.map((item) => (item.id === purchaseOrder.id ? purchaseOrder : item));
+    setBootstrap((current) => {
+      const index = current.purchaseOrders.findIndex((item) => item.id === purchaseOrder.id);
+      const purchaseOrders = index < 0
+        ? [purchaseOrder, ...current.purchaseOrders]
+        : current.purchaseOrders.map((item) => (item.id === purchaseOrder.id ? purchaseOrder : item));
+      return { ...current, purchaseOrders };
     });
   }
 
   async function loadAll(successMessage?: string) {
     setLoadingList(true);
     setError(null);
+    setNotice(null);
     try {
-      const orders = await requestJson<PurchaseOrder[]>('/api/purchase-orders?limit=1000');
-      setItems(orders);
-      if (successMessage) setNotice(successMessage);
+      const next = await requestJson<PurchaseOrderBootstrap>('/api/purchase-orders/bootstrap');
+      setBootstrap((current) => ({
+        ...current,
+        purchaseOrders: next.errors.orders ? current.purchaseOrders : next.purchaseOrders,
+        suppliers: next.errors.suppliers ? current.suppliers : next.suppliers,
+        warehouses: next.errors.warehouses ? current.warehouses : next.warehouses,
+        products: next.errors.products ? current.products : next.products,
+        permissionKeys: next.errors.permissions ? [] : next.permissionKeys,
+        errors: next.errors,
+        checkedAt: next.checkedAt,
+        lookupError: next.lookupError,
+      }));
+      setError(next.errors.orders);
+      if (successMessage && !next.errors.orders && !next.errors.suppliers && !next.errors.warehouses && !next.errors.products && !next.errors.permissions) {
+        setNotice(successMessage);
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Không tải được danh sách đơn đặt hàng');
     } finally {
@@ -199,7 +204,7 @@ export default function PurchaseOrderWorkspace({
     setError(null);
     setNotice(null);
     if (!lookupReady) {
-      setError('Chưa đủ dữ liệu nhà cung cấp, kho hoặc sản phẩm để tạo đơn.');
+      setError(lookupMessage || 'Chưa đủ dữ liệu nhà cung cấp, kho hoặc sản phẩm để tạo đơn.');
       return;
     }
     setEditor({ mode: 'create', purchaseOrder: null });
@@ -266,8 +271,9 @@ export default function PurchaseOrderWorkspace({
       <button
         type="button"
         className={shellStyles.actionButton}
-        onClick={() => void loadAll('Danh sách đơn đặt hàng đã được cập nhật.')}
+        onClick={() => void loadAll('Danh sách đơn đặt hàng và dữ liệu tạo đơn đã được cập nhật.')}
         disabled={loadingList}
+        data-testid="purchase-order-refresh-button"
       >
         {loadingList ? 'Đang cập nhật…' : 'Cập nhật dữ liệu'}
       </button>
@@ -276,6 +282,7 @@ export default function PurchaseOrderWorkspace({
           type="button"
           className={`${shellStyles.actionButton} ${shellStyles.actionButtonPrimary}`}
           onClick={openCreate}
+          disabled={!lookupReady}
           data-testid="purchase-order-create-button"
         >
           Tạo đơn đặt hàng
@@ -293,12 +300,8 @@ export default function PurchaseOrderWorkspace({
     >
       <section className={styles.page} data-testid="purchase-orders-page">
         {error ? <div className={`${styles.banner} ${styles.bannerError}`} role="alert">{error}</div> : null}
+        {lookupMessage ? <div className={`${styles.banner} ${styles.bannerError}`} role="alert">{lookupMessage}</div> : null}
         {notice ? <div className={`${styles.banner} ${styles.bannerSuccess}`} role="status">{notice}</div> : null}
-        {initialPermissionKeys.length === 0 ? (
-          <div className={`${styles.banner} ${styles.bannerError}`} role="status">
-            Chưa nhận được quyền mua hàng từ backend. Tất cả hành động thay đổi dữ liệu đang bị khóa.
-          </div>
-        ) : null}
 
         <section className={styles.summaryGrid} aria-label="Số liệu đơn đặt hàng">
           <article className={styles.summaryCard}>
@@ -333,7 +336,7 @@ export default function PurchaseOrderWorkspace({
           </div>
           <PurchaseOrderList
             purchaseOrders={visibleItems}
-            permissionKeys={initialPermissionKeys}
+            permissionKeys={bootstrap.permissionKeys}
             busyId={busyId}
             onView={(purchaseOrder) => void openView(purchaseOrder)}
             onEdit={(purchaseOrder) => void openEdit(purchaseOrder)}
@@ -348,9 +351,9 @@ export default function PurchaseOrderWorkspace({
         <PurchaseOrderEditor
           mode={editor.mode}
           purchaseOrder={editor.purchaseOrder}
-          suppliers={initialSuppliers}
-          warehouses={initialWarehouses}
-          products={initialProducts}
+          suppliers={bootstrap.suppliers}
+          warehouses={bootstrap.warehouses}
+          products={bootstrap.products}
           onClose={() => setEditor(null)}
           onSaved={(purchaseOrder) => {
             upsertOrder(purchaseOrder);

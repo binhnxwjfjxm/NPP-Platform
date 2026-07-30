@@ -14,6 +14,7 @@ import {
   decimalToScaled,
   formatPurchaseOrderAmount,
 } from '../../../../lib/purchase-order-types';
+import { describePurchaseOrderSkuIssue } from '../purchase-order-lookup-state';
 import styles from '../../../organization/organization.module.css';
 import localStyles from '../purchase-orders.module.css';
 
@@ -179,14 +180,33 @@ export default function PurchaseOrderEditor({
     try {
       const variants = await requestJson<ProductVariant[]>(`/api/products/${productId}/variants`);
       setAvailableVariants(variants);
+      const selectedProduct = products.find((product) => product.id === productId) ?? null;
+      const purchasable = variants.filter((variant): variant is PurchasableVariant => (
+        variant.is_active
+        && variant.is_purchasable
+        && typeof variant.unit_id === 'string'
+        && typeof variant.unit_code === 'string'
+        && typeof variant.conversion_to_base === 'string'
+      ));
+      const skuIssue = describePurchaseOrderSkuIssue(selectedProduct, variants, purchasable);
+      if (skuIssue) {
+        setError(skuIssue);
+      }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Không tải được danh sách SKU');
+      const message = loadError instanceof Error ? loadError.message : 'Không tải được danh sách SKU';
+      setError(`${message} Hãy cập nhật dữ liệu trước khi thao tác.`);
     } finally {
       setLoadingVariants(false);
     }
   }
 
   function addVariant() {
+    const selectedProduct = products.find((product) => product.id === selectedProductId) ?? null;
+    const skuIssue = describePurchaseOrderSkuIssue(selectedProduct, availableVariants, purchasableVariants);
+    if (skuIssue) {
+      setError(skuIssue);
+      return;
+    }
     const variant = purchasableVariants.find((item) => item.id === selectedVariantId);
     if (!variant) {
       setError('Vui lòng chọn một SKU mua hàng hợp lệ.');
