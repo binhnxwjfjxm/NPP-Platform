@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import shellStyles from '../../components/app-shell.module.css';
@@ -22,6 +23,7 @@ import {
 import PurchaseOrderList from './components/PurchaseOrderList';
 import PurchaseOrderEditor from './components/PurchaseOrderEditor';
 import { describePurchaseOrderLookupIssues } from './purchase-order-lookup-state';
+import { shouldShowPurchaseOrderProductsCatalogLink } from '../../../lib/purchase-order-products-link';
 
 type Props = {
   initialBootstrap: PurchaseOrderBootstrap;
@@ -115,6 +117,7 @@ export default function PurchaseOrderWorkspace({
   const lookupIssues = useMemo(() => describePurchaseOrderLookupIssues(bootstrap), [bootstrap]);
   const lookupReady = lookupIssues.length === 0;
   const lookupMessage = lookupIssues.length > 0 ? lookupIssues.join(' · ') : null;
+  const showProductsCatalogLink = shouldShowPurchaseOrderProductsCatalogLink(bootstrap);
 
   useEffect(() => {
     if (selectedPurchaseOrder || pendingAction) closeButtonRef.current?.focus();
@@ -301,6 +304,15 @@ export default function PurchaseOrderWorkspace({
       <section className={styles.page} data-testid="purchase-orders-page">
         {error ? <div className={`${styles.banner} ${styles.bannerError}`} role="alert">{error}</div> : null}
         {lookupMessage ? <div className={`${styles.banner} ${styles.bannerError}`} role="alert">{lookupMessage}</div> : null}
+        {showProductsCatalogLink ? (
+          <p className={localStyles.contextualHelp}>
+            Mở{' '}
+            <Link href="/products" className={localStyles.contextualLink} data-testid="purchase-order-products-link">
+              Danh mục sản phẩm
+            </Link>{' '}
+            để bổ sung SKU mua hàng hợp lệ.
+          </p>
+        ) : null}
         {notice ? <div className={`${styles.banner} ${styles.bannerSuccess}`} role="status">{notice}</div> : null}
 
         <section className={styles.summaryGrid} aria-label="Số liệu đơn đặt hàng">

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Supplier } from '../../../../lib/supplier-types';
 import type { Product, ProductVariant } from '../../../../lib/product-types';
@@ -15,6 +16,7 @@ import {
   formatPurchaseOrderAmount,
 } from '../../../../lib/purchase-order-types';
 import { describePurchaseOrderSkuIssue } from '../purchase-order-lookup-state';
+import { shouldShowPurchaseOrderSkuCatalogLink } from '../../../../lib/purchase-order-products-link';
 import styles from '../../../organization/organization.module.css';
 import localStyles from '../purchase-orders.module.css';
 
@@ -127,6 +129,7 @@ export default function PurchaseOrderEditor({
   const [availableVariants, setAvailableVariants] = useState<ProductVariant[]>([]);
   const [selectedVariantId, setSelectedVariantId] = useState('');
   const [loadingVariants, setLoadingVariants] = useState(false);
+  const [variantLookupFailed, setVariantLookupFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attemptKey, setAttemptKey] = useState(() => `po-${crypto.randomUUID()}`);
@@ -158,6 +161,20 @@ export default function PurchaseOrderEditor({
     )),
     [availableVariants],
   );
+  const selectedProduct = useMemo(
+    () => products.find((product) => product.id === selectedProductId) ?? null,
+    [products, selectedProductId],
+  );
+  const skuIssue = useMemo(
+    () => describePurchaseOrderSkuIssue(selectedProduct, availableVariants, purchasableVariants),
+    [availableVariants, purchasableVariants, selectedProduct],
+  );
+  const showProductsCatalogLink = shouldShowPurchaseOrderSkuCatalogLink({
+    loadingVariants,
+    variantLookupFailed,
+    skuIssue,
+    currentError: error,
+  });
   const totals = useMemo(() => calculatePurchaseOrderDraftTotals(lines), [lines]);
 
   function changed() {
@@ -172,6 +189,7 @@ export default function PurchaseOrderEditor({
 
   async function selectProduct(productId: string) {
     changed();
+    setVariantLookupFailed(false);
     setSelectedProductId(productId);
     setSelectedVariantId('');
     setAvailableVariants([]);
@@ -193,6 +211,7 @@ export default function PurchaseOrderEditor({
         setError(skuIssue);
       }
     } catch (loadError) {
+      setVariantLookupFailed(true);
       const message = loadError instanceof Error ? loadError.message : 'Không tải được danh sách SKU';
       setError(`${message} Hãy cập nhật dữ liệu trước khi thao tác.`);
     } finally {
@@ -320,6 +339,15 @@ export default function PurchaseOrderEditor({
         </div>
 
         {error ? <div className={`${styles.banner} ${styles.bannerError}`} role="alert">{error}</div> : null}
+        {showProductsCatalogLink ? (
+          <p className={localStyles.contextualHelp}>
+            Mở{' '}
+            <Link href="/products" className={localStyles.contextualLink} data-testid="purchase-order-products-link">
+              Danh mục sản phẩm
+            </Link>{' '}
+            để bổ sung SKU mua hàng hợp lệ.
+          </p>
+        ) : null}
 
         <form className={styles.form} onSubmit={save}>
           <div className={localStyles.headerGrid}>

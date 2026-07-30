@@ -119,5 +119,74 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     await page.getByTestId('purchase-order-refresh-button').click();
     await expect(page.getByText('Chưa có sản phẩm mua hàng khả dụng để tạo đơn đặt hàng.')).toBeVisible();
     await expect(page.getByTestId('purchase-order-create-button')).toBeDisabled();
+    const productsLink = page.getByTestId('purchase-order-products-link');
+    await expect(productsLink).toBeVisible();
+    await productsLink.click();
+    await expect(page).toHaveURL(/\/products$/);
+    await expect(page.getByTestId('products-page')).toBeVisible();
+  });
+
+  test('hiển thị link Danh mục sản phẩm khi SKU mua hàng của sản phẩm được chọn chưa hợp lệ', async ({ page }) => {
+    await page.goto('/purchasing/purchase-orders');
+    await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
+    await page.getByTestId('purchase-order-create-button').click();
+
+    const editor = page.getByRole('dialog', { name: 'Đơn đặt hàng mới' });
+    await expect(editor).toBeVisible();
+
+    const supplierSelect = editor.getByRole('combobox', { name: 'Nhà cung cấp', exact: true });
+    const warehouseSelect = editor.getByRole('combobox', { name: 'Kho nhận', exact: true });
+    const productSelect = editor.getByRole('combobox', { name: 'Sản phẩm', exact: true });
+
+    await supplierSelect.selectOption({ index: 1 });
+    await warehouseSelect.selectOption({ index: 1 });
+
+    await page.route('**/api/products/*/variants', async (route) => {
+      await route.fulfill({
+        status: 200,
+        json: { data: [] },
+      });
+    });
+
+    await productSelect.selectOption({ index: 1 });
+    await expect(editor.getByRole('alert')).toContainText('chưa có SKU nào để chọn');
+    const productsLink = page.getByTestId('purchase-order-products-link');
+    await expect(productsLink).toBeVisible();
+    await productsLink.click();
+    await expect(page).toHaveURL(/\/products$/);
+    await expect(page.getByTestId('products-page')).toBeVisible();
+  });
+
+  test('không hiện link Danh mục sản phẩm khi API SKU báo lỗi kỹ thuật', async ({ page }) => {
+    await page.goto('/purchasing/purchase-orders');
+    await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
+    await page.getByTestId('purchase-order-create-button').click();
+
+    const editor = page.getByRole('dialog', { name: 'Đơn đặt hàng mới' });
+    await expect(editor).toBeVisible();
+
+    const supplierSelect = editor.getByRole('combobox', { name: 'Nhà cung cấp', exact: true });
+    const warehouseSelect = editor.getByRole('combobox', { name: 'Kho nhận', exact: true });
+    const productSelect = editor.getByRole('combobox', { name: 'Sản phẩm', exact: true });
+
+    await supplierSelect.selectOption({ index: 1 });
+    await warehouseSelect.selectOption({ index: 1 });
+
+    await page.route('**/api/products/*/variants', async (route) => {
+      await route.fulfill({
+        status: 503,
+        json: {
+          error: {
+            code: 'PRODUCT_VARIANTS_UNAVAILABLE',
+            message: 'Không tải được danh sách SKU',
+            retryable: true,
+          },
+        },
+      });
+    });
+
+    await productSelect.selectOption({ index: 1 });
+    await expect(editor.getByRole('alert')).toContainText('Hãy cập nhật dữ liệu trước khi thao tác.');
+    await expect(page.getByTestId('purchase-order-products-link')).toHaveCount(0);
   });
 });
