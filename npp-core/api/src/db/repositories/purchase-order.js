@@ -24,8 +24,18 @@ const LINE_COLUMNS = `pol.id, pol.installation_id, pol.purchase_order_id,
     - COALESCE(receipt_summary.shortage_closed_quantity, 0::numeric),
     0::numeric
   ) AS remaining_quantity,
-  pol.unit_price, pol.discount_amount, pol.tax_amount, pol.line_total,
+  pol.unit_price, pol.discount_mode, pol.discount_value,
+  pol.discount_amount, pol.tax_rate, pol.tax_amount, pol.line_total,
   pol.note, pol.created_at, pol.updated_at, pol.created_by, pol.updated_by`;
+
+const SKU_OPTION_COLUMNS = `pv.id, pv.product_id, pv.sku, pv.name,
+  pv.is_active AS variant_is_active, pv.is_purchasable,
+  pv.unit_id, pv.conversion_to_base,
+  p.code AS product_code, p.name AS product_name,
+  p.is_active AS product_is_active, p.is_orderable AS product_is_orderable,
+  u.code AS unit_code, u.name AS unit_name,
+  u.allows_fractional, u.is_active AS unit_is_active,
+  primary_barcode.barcode`;
 
 function normalizedWarehouseIds(warehouseIds) {
   return Array.isArray(warehouseIds)
@@ -268,24 +278,139 @@ export async function getActiveWarehouse(client, { installationId, id }) {
   return result.rows[0] ?? null;
 }
 
-export async function getPurchasableVariants(client, { installationId, ids }) {
+export async function getPurchaseOrderVariantEligibility(client, { installationId, ids }) {
   if (!Array.isArray(ids) || ids.length === 0) return [];
   const result = await client.query(
-    `SELECT pv.id, pv.sku, pv.name, pv.product_id, pv.unit_id,
-            u.code AS unit_code, u.name AS unit_name,
-            COALESCE(pv.conversion_to_base, 1::numeric) AS conversion_to_base
+    `SELECT ${SKU_OPTION_COLUMNS}
      FROM shared.product_variants pv
      JOIN shared.products p
        ON p.installation_id = pv.installation_id AND p.id = pv.product_id
-     JOIN shared.units_of_measure u
+     LEFT JOIN shared.units_of_measure u
        ON u.installation_id = pv.installation_id AND u.id = pv.unit_id
+     LEFT JOIN LATERAL (
+       SELECT pb.barcode
+       FROM shared.product_barcodes pb
+       WHERE pb.installation_id = pv.installation_id
+         AND pb.variant_id = pv.id
+         AND pb.is_active = true
+       ORDER BY pb.is_primary DESC, pb.created_at ASC, pb.id ASC
+       LIMIT 1
+     ) primary_barcode ON true
      WHERE pv.installation_id = $1
-       AND pv.id = ANY($2::uuid[])
-       AND pv.is_active = true
-       AND pv.is_purchasable = true
-       AND p.is_active = true
-       AND u.is_active = true`,
+       AND pv.id = ANY($2::uuid[])`,
     [installationId, ids],
+  );
+  return result.rows;
+}
+
+export async function searchPurchaseOrderSkuOptions(client, {
+  installationId,
+  search,
+  limit = 20,
+  offset = 0,
+}) {
+  const term = String(search ?? '').trim();
+  const pattern = `%${term}%`;
+  const normalized = term.toUpperCase();
+  const result = await client.query(
+    `SELECT ${SKU_OPTION_COLUMNS}
+     FROM shared.product_variants pv
+     JOIN shared.products p
+       ON p.installation_id = pv.installation_id AND p.id = pv.product_id
+     LEFT JOIN shared.units_of_measure u
+       ON u.installation_id = pv.installation_id AND u.id = pv.unit_id
+     LEFT JOIN LATERAL (
+       SELECT pb.barcode
+       FROM shared.product_barcodes pb
+       WHERE pb.installation_id = pv.installation_id
+         AND pb.variant_id = pv.id
+         AND pb.is_active = true
+       ORDER BY pb.is_primary DESC, pb.created_at ASC, pb.id ASC
+       LIMIT 1
+     ) primary_barcode ON true
+     WHERE pv.installation_id = $1
+       AND (
+         $2 = ''
+         OR pv.sku ILIKE $3
+         OR pv.name ILIKE $3
+         OR p.code ILIKE $3
+         OR p.name ILIKE $3
+         OR EXISTS (
+           SELECT 1
+           FROM shared.product_barcodes matching_barcode
+           WHERE matching_barcode.installation_id = pv.installation_id
+             AND matching_barcode.variant_id = pv.id
+             AND matching_barcode.is_active = true
+             AND matching_barcode.normalized_barcode ILIKE upper($3)
+         )
+       )
+     ORDER BY
+       CASE
+         WHEN upper(pv.sku) = $2 THEN 0
+         WHEN upper(p.code) = $2 THEN 1
+         WHEN EXISTS (
+           SELECT 1
+           FROM shared.product_barcodes exact_barcode
+           WHERE exact_barcode.installation_id = pv.installation_id
+             AND exact_barcode.variant_id = pv.id
+             AND exact_barcode.is_active = true
+             AND exact_barcode.normalized_barcode = $2
+         ) THEN 2
+         ELSE 3
+       END,
+       p.code ASC,
+       pv.sku ASC,
+       pv.id ASC
+     LIMIT $4 OFFSET $5`,
+    [installationId, normalized, pattern, limit, offset],
+  );
+  return result.rows;
+}
+
+export async function resolvePurchaseOrderSkuOptions(client, { installationId, identifiers }) {
+  if (!Array.isArray(identifiers) || identifiers.length === 0) return [];
+  const result = await client.query(
+    `WITH requested AS (
+       SELECT upper(btrim(identifier)) AS identifier, ordinal::int AS ordinal
+       FROM unnest($2::text[]) WITH ORDINALITY AS input(identifier, ordinal)
+     )
+     SELECT requested.identifier AS matched_identifier,
+            requested.ordinal AS matched_ordinal,
+            candidate.*
+     FROM requested
+     JOIN LATERAL (
+       SELECT ${SKU_OPTION_COLUMNS}
+       FROM shared.product_variants pv
+       JOIN shared.products p
+         ON p.installation_id = pv.installation_id AND p.id = pv.product_id
+       LEFT JOIN shared.units_of_measure u
+         ON u.installation_id = pv.installation_id AND u.id = pv.unit_id
+       LEFT JOIN LATERAL (
+         SELECT pb.barcode
+         FROM shared.product_barcodes pb
+         WHERE pb.installation_id = pv.installation_id
+           AND pb.variant_id = pv.id
+           AND pb.is_active = true
+         ORDER BY pb.is_primary DESC, pb.created_at ASC, pb.id ASC
+         LIMIT 1
+       ) primary_barcode ON true
+       WHERE pv.installation_id = $1
+         AND (
+           upper(pv.sku) = requested.identifier
+           OR EXISTS (
+             SELECT 1
+             FROM shared.product_barcodes matching_barcode
+             WHERE matching_barcode.installation_id = pv.installation_id
+               AND matching_barcode.variant_id = pv.id
+               AND matching_barcode.is_active = true
+               AND matching_barcode.normalized_barcode = requested.identifier
+           )
+         )
+       ORDER BY CASE WHEN upper(pv.sku) = requested.identifier THEN 0 ELSE 1 END, pv.id ASC
+       LIMIT 2
+     ) candidate ON true
+     ORDER BY requested.ordinal ASC, candidate.id ASC`,
+    [installationId, identifiers],
   );
   return result.rows;
 }
@@ -303,15 +428,16 @@ async function insertLines(client, {
         (id, installation_id, purchase_order_id, line_number, variant_id,
          sku_snapshot, item_name_snapshot, unit_id, unit_code_snapshot,
          conversion_to_base, ordered_quantity, base_quantity, unit_price,
-         discount_amount, tax_amount, line_total, note,
+         discount_mode, discount_value, discount_amount, tax_rate, tax_amount, line_total, note,
          created_at, updated_at, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$18,$19,$19)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$21,$22,$22)`,
       [
         randomUUID(), installationId, purchaseOrderId, line.lineNumber,
         line.variantId, line.skuSnapshot, line.itemNameSnapshot, line.unitId,
         line.unitCodeSnapshot, line.conversionToBase, line.orderedQuantity,
-        line.baseQuantity, line.unitPrice, line.discountAmount, line.taxAmount,
-        line.lineTotal, line.note ?? null, now, actorId,
+        line.baseQuantity, line.unitPrice, line.discountMode, line.discountValue,
+        line.discountAmount, line.taxRate, line.taxAmount, line.lineTotal,
+        line.note ?? null, now, actorId,
       ],
     );
   }

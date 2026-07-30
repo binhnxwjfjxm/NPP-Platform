@@ -25,6 +25,8 @@ async function createFixture(request: APIRequestContext, suffix: string) {
   expect(response.status()).toBe(200);
   response = await request.patch(`/api/products/${product.id}/variants/${cartonVariant.id}/unit`, { data: { unitId: cartonUnit.id, conversionToBase: '12', expectedUpdatedAt: cartonVariant.updated_at } });
   expect(response.status()).toBe(200);
+  response = await request.patch(`/api/products/${product.id}`, { data: { isOrderable: true, expectedUpdatedAt: product.updated_at } });
+  expect(response.status()).toBe(200);
   response = await request.put(`/api/inventory/tracking-policies/${baseVariant.id}`, { headers: { 'Idempotency-Key': `pay-policy-${suffix}` }, data: { baseVariantId: baseVariant.id, lotTrackingMode: 'NONE', expiryTrackingMode: 'NONE', locationRequired: true } });
   expect(response.status()).toBe(200);
 

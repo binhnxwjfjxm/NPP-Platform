@@ -60,6 +60,11 @@ async function createFixture(request: APIRequestContext, suffix: string) {
   });
   expect(response.status()).toBe(200);
 
+  response = await request.patch(`/api/products/${product.id}`, {
+    data: { isOrderable: true, expectedUpdatedAt: product.updated_at },
+  });
+  expect(response.status()).toBe(200);
+
   response = await request.put(`/api/inventory/tracking-policies/${variant.id}`, {
     headers: { 'Idempotency-Key': `gr-policy-${suffix}` },
     data: {

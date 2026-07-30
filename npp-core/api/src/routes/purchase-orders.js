@@ -264,6 +264,33 @@ async function handleList(req, res, options, requestContext) {
   }
 }
 
+async function handleSkuSearch(req, res, options, requestContext) {
+  const url = new URL(`http://localhost${req.url}`);
+  try {
+    const result = await purchaseOrderService.searchPurchaseOrderSkuOptions(options.getPool(), {
+      requestContext,
+      search: url.searchParams.get('search') ?? '',
+      limit: parseInteger(url.searchParams.get('limit'), 20, 50),
+      offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
+    });
+    if (!result.ok) return sendServiceError(res, result, options);
+    sendSuccess(res, result.skuOptions, options.requestId, options.receivedAt);
+  } catch (error) {
+    sendError(res, apiError(error.code, error.publicMessage, {}, false, error.statusCode), options.requestId, options.receivedAt);
+  }
+}
+
+async function handleSkuResolve(req, res, options, requestContext) {
+  const payload = await readPayload(req, res, options);
+  if (payload === null) return;
+  const result = await purchaseOrderService.resolvePurchaseOrderSkuIdentifiers(options.getPool(), {
+    requestContext,
+    identifiers: payload?.identifiers,
+  });
+  if (!result.ok) return sendServiceError(res, result, options);
+  sendSuccess(res, result.resolutions, options.requestId, options.receivedAt);
+}
+
 async function handleGet(res, options, requestContext, id) {
   const result = await purchaseOrderService.getPurchaseOrder(options.getPool(), { requestContext, id });
   if (!result.ok) return sendServiceError(res, result, options);
@@ -274,6 +301,20 @@ export async function handlePurchaseOrderRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (pathname !== '/api/purchase-orders' && !pathname.startsWith('/api/purchase-orders/')) return false;
   const method = String(req.method || 'GET').toUpperCase();
+
+  if (pathname === '/api/purchase-orders/sku-search' && method === 'GET') {
+    const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.corePurchaseOrderRead);
+    if (!requestContext) return true;
+    await handleSkuSearch(req, res, options, requestContext);
+    return true;
+  }
+
+  if (pathname === '/api/purchase-orders/sku-resolve' && method === 'POST') {
+    const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.corePurchaseOrderRead);
+    if (!requestContext) return true;
+    await handleSkuResolve(req, res, options, requestContext);
+    return true;
+  }
 
   if (pathname === '/api/purchase-orders' && method === 'GET') {
     const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.corePurchaseOrderRead);

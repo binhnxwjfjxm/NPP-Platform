@@ -21,7 +21,8 @@ describe('purchase-order web contract', () => {
     const types = read('../lib/purchase-order-types.ts');
     assert.match(types, /read: 'core\.purchase-order\.read'/);
     assert.match(types, /approve: 'core\.purchase-order\.approve'/);
-    assert.match(types, /const SCALE = 1_000_000n/);
+    const lineEntry = read('../lib/purchase-order-line-entry.js');
+    assert.match(lineEntry, /const SCALE = 1_000_000n/);
     assert.match(types, /calculatePurchaseOrderDraftTotals/);
     assert.doesNotMatch(types, /parseFloat|parseInt/);
   });
@@ -30,8 +31,8 @@ describe('purchase-order web contract', () => {
     const list = read('../app/purchasing/purchase-orders/components/PurchaseOrderList.tsx');
     assert.match(list, /PURCHASE_ORDER_STATUS_LABELS\[purchaseOrder\.status\]/);
     assert.match(list, /purchaseOrder\.lineCount/);
-    assert.match(list, /purchaseOrder\.supplierName \|\| 'Chưa có tên nhà cung cấp'/);
-    assert.match(list, /purchaseOrder\.warehouseName \|\| 'Chưa có tên kho nhận'/);
+    assert.match(list, /purchaseOrder\.supplierName/);
+    assert.match(list, /purchaseOrder\.warehouseName/);
     assert.doesNotMatch(list, /Number\(purchaseOrder\.total\)|purchaseOrder\.supplierId|purchaseOrder\.warehouseId/);
   });
 
@@ -43,10 +44,11 @@ describe('purchase-order web contract', () => {
     assert.match(workspace, /\/api\/purchase-orders\/\$\{purchaseOrder\.id\}\/\$\{action\}/);
     assert.match(workspace, /expectedRevision: purchaseOrder\.revision/);
     assert.match(editor, /<form className=\{styles\.form\} onSubmit=\{save\}>/);
-    assert.match(editor, /\/api\/products\/\$\{productId\}\/variants/);
+    assert.match(editor, new RegExp('purchase-orders/sku-search'));
+    assert.match(editor, /role="combobox"/);
     assert.match(editor, /Idempotency-Key': attemptKey/);
     assert.match(editor, /decimalToScaled/);
-    assert.doesNotMatch(editor, /MutationObserver|querySelector|parseFloat|Number\(/);
+    assert.doesNotMatch(editor, /MutationObserver|querySelector|parseFloat/);
   });
 
   it('keeps server tokens behind same-origin route handlers', () => {

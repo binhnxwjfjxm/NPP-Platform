@@ -10,7 +10,6 @@ import {
   resolvePurchaseOrderRequestId,
 } from './purchase-order-gateway';
 import { listAllSuppliers, normalizeSupplierGatewayError } from './supplier-gateway';
-import { listProducts, normalizeProductGatewayError } from './product-gateway';
 import { loadOrganizationSnapshot } from './organization-snapshot';
 import { loadPurchaseOrderPermissionKeys } from './purchase-order-context';
 
@@ -52,20 +51,17 @@ export async function loadPurchaseOrderBootstrap(requestId?: string | null): Pro
     ordersResult,
     suppliersResult,
     organizationResult,
-    productsResult,
     permissionsResult,
   ] = await Promise.allSettled([
     listPurchaseOrders<PurchaseOrder>(normalizedRequestId, { limit: 1000 }),
     listAllSuppliers<Supplier>(normalizedRequestId, new URLSearchParams({ active: 'true', limit: '1000' })),
     loadOrganizationSnapshot(),
-    listProducts<Product>(normalizedRequestId, new URLSearchParams({ active: 'true', orderable: 'true', limit: '1000' })),
     loadPurchaseOrderPermissionKeys(normalizedRequestId),
   ]);
 
   const lookupLabels = [
     suppliersResult.status === 'rejected' ? 'nhà cung cấp' : null,
     organizationResult.status === 'rejected' ? 'kho nhận' : null,
-    productsResult.status === 'rejected' ? 'sản phẩm mua hàng' : null,
     permissionsResult.status === 'rejected' ? 'quyền mua hàng' : null,
   ].filter((value): value is string => Boolean(value));
 
@@ -75,7 +71,7 @@ export async function loadPurchaseOrderBootstrap(requestId?: string | null): Pro
     warehouses: organizationResult.status === 'fulfilled'
       ? organizationResult.value.warehouses.filter((warehouse) => warehouse.is_active)
       : [],
-    products: productsResult.status === 'fulfilled' ? productsResult.value : [],
+    products: [],
     permissionKeys: permissionsResult.status === 'fulfilled' ? permissionsResult.value : [],
     errors: {
       orders: ordersResult.status === 'rejected'
@@ -87,9 +83,7 @@ export async function loadPurchaseOrderBootstrap(requestId?: string | null): Pro
       warehouses: organizationResult.status === 'rejected'
         ? 'Không tải được dữ liệu kho nhận'
         : null,
-      products: productsResult.status === 'rejected'
-        ? normalizeProductGatewayError(productsResult.reason).publicMessage
-        : null,
+      products: null,
       permissions: permissionsResult.status === 'rejected'
         ? 'Không tải được dữ liệu quyền mua hàng'
         : null,

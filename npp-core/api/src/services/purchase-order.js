@@ -8,7 +8,9 @@ const DECIMAL_PATTERN = /^(0|[1-9]\d{0,13})(?:\.(\d{1,6}))?$/;
 const INTEGER_PATTERN = /^[1-9]\d{0,18}$/;
 const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 const STATUSES = new Set(['draft', 'pending_approval', 'approved', 'partially_received', 'fully_received', 'closed', 'cancelled']);
+const DISCOUNT_MODES = new Set(['TOTAL_AMOUNT', 'PER_UNIT', 'PERCENT']);
 const SCALE = 1_000_000n;
+const ONE_HUNDRED_PERCENT = 100n * SCALE;
 const PURCHASE_ORDER_SERIES_CODE = 'PURCHASE_ORDER';
 
 function failure(code, message, retryable = false, details = {}) {
@@ -78,6 +80,10 @@ function multiplyScaled(left, right) {
   return (left * right + SCALE / 2n) / SCALE;
 }
 
+function percentOfScaled(base, percent) {
+  return (base * percent + 50n * SCALE) / (100n * SCALE);
+}
+
 function normalizeRevision(value) {
   const text = String(value ?? '').trim();
   return INTEGER_PATTERN.test(text) ? text : null;
@@ -111,7 +117,10 @@ function mapLine(line) {
     shortageClosedQuantity: line.shortage_closed_quantity === undefined || line.shortage_closed_quantity === null ? undefined : fixedScaleQuantity(line.shortage_closed_quantity),
     remainingQuantity: line.remaining_quantity === undefined || line.remaining_quantity === null ? undefined : fixedScaleQuantity(line.remaining_quantity),
     unitPrice: String(line.unit_price),
+    discountMode: line.discount_mode ?? 'TOTAL_AMOUNT',
+    discountValue: String(line.discount_value ?? line.discount_amount ?? 0),
     discountAmount: String(line.discount_amount),
+    taxRate: line.tax_rate === undefined || line.tax_rate === null ? null : String(line.tax_rate),
     taxAmount: String(line.tax_amount),
     lineTotal: String(line.line_total),
     note: line.note ?? null,
@@ -183,6 +192,137 @@ function validateListInput(input) {
   return { ok: true, search };
 }
 
+export function evaluatePurchaseOrderSkuEligibility(row) {
+  if (!row) return Object.freeze({ selectable: false, code: 'SKU_NOT_FOUND', message: 'Không tìm thấy SKU trong danh mục.' });
+  if (row.product_is_active !== true) return Object.freeze({ selectable: false, code: 'PRODUCT_INACTIVE', message: 'Sản phẩm đang ngưng hoạt động.' });
+  if (row.product_is_orderable !== true) return Object.freeze({ selectable: false, code: 'PRODUCT_NOT_ORDERABLE', message: 'Sản phẩm chưa được bật cho phép đặt hàng.' });
+  if (row.variant_is_active !== true) return Object.freeze({ selectable: false, code: 'SKU_INACTIVE', message: 'SKU đang ngưng hoạt động.' });
+  if (row.is_purchasable !== true) return Object.freeze({ selectable: false, code: 'SKU_NOT_PURCHASABLE', message: 'SKU chưa được bật cho nghiệp vụ mua hàng.' });
+  if (!row.unit_id) return Object.freeze({ selectable: false, code: 'SKU_UNIT_MISSING', message: 'SKU chưa được gắn đơn vị mua hàng và hệ số quy đổi.' });
+  if (row.unit_is_active !== true) return Object.freeze({ selectable: false, code: 'SKU_UNIT_INACTIVE', message: 'Đơn vị của SKU đang ngưng hoạt động.' });
+  const conversion = decimalToScaled(String(row.conversion_to_base ?? ''), { allowZero: false });
+  if (conversion === null) return Object.freeze({ selectable: false, code: 'SKU_CONVERSION_INVALID', message: 'SKU chưa có hệ số quy đổi đơn vị hợp lệ.' });
+  return Object.freeze({ selectable: true, code: 'ELIGIBLE', message: 'Có thể chọn để mua hàng.' });
+}
+
+function mapSkuOption(row) {
+  return Object.freeze({
+    id: row.id,
+    productId: row.product_id,
+    productCode: row.product_code,
+    productName: row.product_name,
+    sku: row.sku,
+    variantName: row.name,
+    barcode: row.barcode ?? null,
+    unitId: row.unit_id ?? null,
+    unitCode: row.unit_code ?? null,
+    unitName: row.unit_name ?? null,
+    conversionToBase: row.conversion_to_base === null || row.conversion_to_base === undefined ? null : String(row.conversion_to_base),
+    allowsFractional: row.allows_fractional === undefined ? null : row.allows_fractional,
+    eligibility: evaluatePurchaseOrderSkuEligibility(row),
+  });
+}
+
+export async function searchPurchaseOrderSkuOptions(client, input) {
+  const search = normalizeText(input.search, 256, false) ?? '';
+  const rows = await repository.searchPurchaseOrderSkuOptions(client, {
+    installationId: input.requestContext.installationId,
+    search,
+    limit: Math.max(1, Math.min(50, Number(input.limit) || 20)),
+    offset: Math.max(0, Number(input.offset) || 0),
+  });
+  return Object.freeze({ ok: true, skuOptions: Object.freeze(rows.map(mapSkuOption)) });
+}
+
+export async function resolvePurchaseOrderSkuIdentifiers(client, input) {
+  if (!Array.isArray(input.identifiers) || input.identifiers.length < 1 || input.identifiers.length > 500) {
+    return failure('INVALID_SKU_IDENTIFIERS', 'identifiers must contain between 1 and 500 SKU or barcode values');
+  }
+  const identifiers = input.identifiers.map((value) => String(value ?? '').trim().toUpperCase());
+  if (identifiers.some((value) => !value || value.length > 128)) {
+    return failure('INVALID_SKU_IDENTIFIER', 'Every SKU or barcode must contain between 1 and 128 characters');
+  }
+  const rows = await repository.resolvePurchaseOrderSkuOptions(client, {
+    installationId: input.requestContext.installationId,
+    identifiers,
+  });
+  const grouped = new Map();
+  for (const row of rows) {
+    const key = row.matched_identifier;
+    const current = grouped.get(key) ?? [];
+    current.push(row);
+    grouped.set(key, current);
+  }
+  const resolutions = identifiers.map((identifier) => {
+    const matches = grouped.get(identifier) ?? [];
+    const unique = [...new Map(matches.map((row) => [row.id, row])).values()];
+    if (unique.length === 0) {
+      return Object.freeze({
+        identifier,
+        option: null,
+        error: Object.freeze({ code: 'SKU_NOT_FOUND', message: 'Không tìm thấy SKU hoặc mã vạch.' }),
+      });
+    }
+    if (unique.length > 1) {
+      return Object.freeze({
+        identifier,
+        option: null,
+        error: Object.freeze({ code: 'SKU_IDENTIFIER_AMBIGUOUS', message: 'Mã khớp nhiều SKU; hãy dùng mã SKU chính xác.' }),
+      });
+    }
+    return Object.freeze({ identifier, option: mapSkuOption(unique[0]), error: null });
+  });
+  return Object.freeze({ ok: true, resolutions: Object.freeze(resolutions) });
+}
+
+export function calculatePurchaseOrderLineFinancials(input, { quantity, unitPrice }) {
+  const mode = input.discountMode ?? 'TOTAL_AMOUNT';
+  if (!DISCOUNT_MODES.has(mode)) return failure('INVALID_DISCOUNT_MODE', 'Discount mode is invalid');
+  const discountValue = decimalToScaled(input.discountValue ?? input.discountAmount ?? '0', { allowZero: true });
+  if (discountValue === null) return failure('INVALID_DISCOUNT', 'Discount value is invalid');
+  if (mode === 'PERCENT' && discountValue > ONE_HUNDRED_PERCENT) {
+    return failure('INVALID_DISCOUNT', 'Discount percent must be between 0 and 100');
+  }
+
+  const hasTaxRate = input.taxRate !== undefined
+    && input.taxRate !== null
+    && String(input.taxRate).trim() !== '';
+  const taxRate = hasTaxRate
+    ? decimalToScaled(input.taxRate, { allowZero: true })
+    : null;
+  const legacyTaxAmount = hasTaxRate
+    ? null
+    : decimalToScaled(input.taxAmount ?? '0', { allowZero: true });
+  if (hasTaxRate && (taxRate === null || taxRate > ONE_HUNDRED_PERCENT)) {
+    return failure('INVALID_TAX', 'Tax rate must be between 0 and 100 percent');
+  }
+  if (!hasTaxRate && legacyTaxAmount === null) {
+    return failure('INVALID_TAX', 'Tax amount is invalid');
+  }
+
+  const gross = multiplyScaled(quantity, unitPrice);
+  const discountAmount = mode === 'PERCENT'
+    ? percentOfScaled(gross, discountValue)
+    : mode === 'PER_UNIT'
+      ? multiplyScaled(quantity, discountValue)
+      : discountValue;
+  const discountedBase = gross - discountAmount;
+  if (discountedBase < 0n) return failure('INVALID_DISCOUNT', 'Discount cannot exceed line gross amount');
+  const taxAmount = hasTaxRate
+    ? percentOfScaled(discountedBase, taxRate)
+    : legacyTaxAmount;
+  return Object.freeze({
+    ok: true,
+    gross,
+    discountMode: mode,
+    discountValue,
+    discountAmount,
+    taxRate,
+    taxAmount,
+    lineTotal: discountedBase + taxAmount,
+  });
+}
+
 async function validateAndNormalizeDraft(client, { requestContext, payload }) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return failure('INVALID_INPUT', 'Purchase order data is required');
@@ -228,13 +368,12 @@ async function validateAndNormalizeDraft(client, { requestContext, payload }) {
     installationId: requestContext.installationId,
     id: warehouseId,
   });
-  const variants = await repository.getPurchasableVariants(client, {
+  const variants = await repository.getPurchaseOrderVariantEligibility(client, {
     installationId: requestContext.installationId,
     ids: variantIds,
   });
   if (!supplier) return failure('SUPPLIER_NOT_FOUND', 'Active supplier was not found');
   if (!warehouse) return failure('WAREHOUSE_NOT_FOUND', 'Active warehouse was not found');
-  if (variants.length !== variantIds.length) return failure('VARIANT_NOT_PURCHASABLE', 'One or more SKUs are inactive, missing a unit, or not purchasable');
   const variantMap = new Map(variants.map((variant) => [variant.id, variant]));
 
   let subtotal = 0n;
@@ -244,26 +383,29 @@ async function validateAndNormalizeDraft(client, { requestContext, payload }) {
   for (let index = 0; index < payload.lines.length; index += 1) {
     const input = payload.lines[index];
     const variant = variantMap.get(input.variantId.trim());
+    const eligibility = evaluatePurchaseOrderSkuEligibility(variant);
+    if (!eligibility.selectable) {
+      return failure(eligibility.code, `Line ${index + 1}: ${eligibility.message}`, false, {
+        lineNumber: index + 1,
+        variantId: input.variantId.trim(),
+        eligibility,
+      });
+    }
     const quantity = decimalToScaled(input.quantity, { allowZero: false });
     const unitPrice = decimalToScaled(input.unitPrice, { allowZero: true });
-    const discountAmount = decimalToScaled(input.discountAmount ?? '0', { allowZero: true });
-    const taxAmount = decimalToScaled(input.taxAmount ?? '0', { allowZero: true });
     if (quantity === null) return failure('INVALID_QUANTITY', `Line ${index + 1} quantity must be a positive decimal with at most six decimal places`);
     if (unitPrice === null) return failure('INVALID_UNIT_PRICE', `Line ${index + 1} unit price is invalid`);
-    if (discountAmount === null) return failure('INVALID_DISCOUNT', `Line ${index + 1} discount amount is invalid`);
-    if (taxAmount === null) return failure('INVALID_TAX', `Line ${index + 1} tax amount is invalid`);
+    const financials = calculatePurchaseOrderLineFinancials(input, { quantity, unitPrice });
+    if (!financials.ok) return failure(financials.code, `Line ${index + 1}: ${financials.message}`);
 
     const conversion = decimalToScaled(String(variant.conversion_to_base), { allowZero: false });
     if (conversion === null) return failure('INVALID_CONVERSION', `Line ${index + 1} conversion snapshot is invalid`);
-    const gross = multiplyScaled(quantity, unitPrice);
-    const lineTotal = gross - discountAmount + taxAmount;
-    if (lineTotal < 0n) return failure('INVALID_LINE_TOTAL', `Line ${index + 1} total cannot be negative`);
     const lineNote = normalizeText(input.note, 2000, false);
     if (input.note && lineNote === null) return failure('INVALID_LINE_NOTE', `Line ${index + 1} note must not exceed 2000 characters`);
 
-    subtotal += gross;
-    discountTotal += discountAmount;
-    taxTotal += taxAmount;
+    subtotal += financials.gross;
+    discountTotal += financials.discountAmount;
+    taxTotal += financials.taxAmount;
     lines.push(Object.freeze({
       lineNumber: index + 1,
       variantId: variant.id,
@@ -275,9 +417,12 @@ async function validateAndNormalizeDraft(client, { requestContext, payload }) {
       orderedQuantity: scaledToDecimal(quantity),
       baseQuantity: scaledToDecimal(multiplyScaled(quantity, conversion)),
       unitPrice: scaledToDecimal(unitPrice),
-      discountAmount: scaledToDecimal(discountAmount),
-      taxAmount: scaledToDecimal(taxAmount),
-      lineTotal: scaledToDecimal(lineTotal),
+      discountMode: financials.discountMode,
+      discountValue: scaledToDecimal(financials.discountValue),
+      discountAmount: scaledToDecimal(financials.discountAmount),
+      taxRate: financials.taxRate === null ? null : scaledToDecimal(financials.taxRate),
+      taxAmount: scaledToDecimal(financials.taxAmount),
+      lineTotal: scaledToDecimal(financials.lineTotal),
       note: lineNote,
     }));
   }

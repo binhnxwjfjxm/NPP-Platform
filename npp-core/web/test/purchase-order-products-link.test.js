@@ -5,13 +5,13 @@ import {
   shouldShowPurchaseOrderSkuCatalogLink,
 } from '../lib/purchase-order-products-link.js';
 
-test('purchase order products link is only shown for empty product catalog or a successful SKU gap', () => {
+test('purchase order catalog link follows live SKU-search context', () => {
   assert.equal(
     shouldShowPurchaseOrderProductsCatalogLink({
       products: [],
       errors: { products: null },
     }),
-    true,
+    false,
   );
   assert.equal(
     shouldShowPurchaseOrderProductsCatalogLink({
@@ -32,8 +32,8 @@ test('purchase order products link is only shown for empty product catalog or a 
     shouldShowPurchaseOrderSkuCatalogLink({
       loadingVariants: false,
       variantLookupFailed: false,
-      skuIssue: 'Sản phẩm SP-01 — Sản phẩm 01 chưa có SKU mua hàng hợp lệ (đơn vị/quy đổi).',
-      currentError: 'Sản phẩm SP-01 — Sản phẩm 01 chưa có SKU mua hàng hợp lệ (đơn vị/quy đổi).',
+      skuIssue: 'SKU chưa được gắn đơn vị mua hàng và hệ số quy đổi.',
+      currentError: 'SKU chưa được gắn đơn vị mua hàng và hệ số quy đổi.',
     }),
     true,
   );
@@ -41,8 +41,8 @@ test('purchase order products link is only shown for empty product catalog or a 
     shouldShowPurchaseOrderSkuCatalogLink({
       loadingVariants: false,
       variantLookupFailed: true,
-      skuIssue: 'Sản phẩm SP-01 — Sản phẩm 01 chưa có SKU nào để chọn.',
-      currentError: 'Sản phẩm SP-01 — Sản phẩm 01 chưa có SKU nào để chọn.',
+      skuIssue: 'SKU chưa được gắn đơn vị mua hàng và hệ số quy đổi.',
+      currentError: 'SKU chưa được gắn đơn vị mua hàng và hệ số quy đổi.',
     }),
     false,
   );

@@ -1,13 +1,12 @@
 import type { Product, ProductVariant } from '../../../lib/product-types';
 import type { PurchaseOrderBootstrap } from '../../../lib/purchase-order-bootstrap';
 
-type PurchaseOrderLookupState = Pick<PurchaseOrderBootstrap, 'suppliers' | 'warehouses' | 'products' | 'permissionKeys' | 'errors'>;
+type PurchaseOrderLookupState = Pick<PurchaseOrderBootstrap, 'suppliers' | 'warehouses' | 'permissionKeys' | 'errors'>;
 
 export function describePurchaseOrderLookupIssues(state: PurchaseOrderLookupState): string[] {
   const technicalIssues = [
     state.errors.suppliers,
     state.errors.warehouses,
-    state.errors.products,
     state.errors.permissions,
   ].filter((value): value is string => Boolean(value));
 
@@ -21,9 +20,6 @@ export function describePurchaseOrderLookupIssues(state: PurchaseOrderLookupStat
   }
   if (state.warehouses.length === 0) {
     issues.push('Chưa có kho nhận hoạt động để tạo đơn đặt hàng.');
-  }
-  if (state.products.length === 0) {
-    issues.push('Chưa có sản phẩm mua hàng khả dụng để tạo đơn đặt hàng.');
   }
   if (state.permissionKeys.length === 0) {
     issues.push('Chưa nhận được quyền mua hàng từ backend. Tất cả hành động thay đổi dữ liệu đang bị khóa.');
