@@ -79,9 +79,17 @@ export function calculatePurchaseOrderLineFinancials(line) {
   const mode = normalizeDiscountMode(line.discountMode ?? PURCHASE_ORDER_DISCOUNT_MODES.totalAmount);
   if (!mode) return null;
   const discountValue = decimalToScaled(line.discountValue ?? line.discountAmount ?? '0');
-  const taxRate = decimalToScaled(line.taxRate ?? '0');
-  if (discountValue === null || taxRate === null || taxRate > ONE_HUNDRED_PERCENT) return null;
+  if (discountValue === null) return null;
   if (mode === PURCHASE_ORDER_DISCOUNT_MODES.percent && discountValue > ONE_HUNDRED_PERCENT) return null;
+
+  const hasTaxRate = line.taxRate !== undefined
+    && line.taxRate !== null
+    && String(line.taxRate).trim() !== '';
+  const taxRate = hasTaxRate ? decimalToScaled(line.taxRate) : null;
+  const legacyTaxAmount = hasTaxRate ? null : decimalToScaled(line.taxAmount ?? '0');
+  if (hasTaxRate && (taxRate === null || taxRate > ONE_HUNDRED_PERCENT)) return null;
+  if (!hasTaxRate && legacyTaxAmount === null) return null;
+
   const gross = multiplyScaled(quantity, unitPrice);
   const discountAmount = mode === PURCHASE_ORDER_DISCOUNT_MODES.percent
     ? percentOfScaled(gross, discountValue)
@@ -90,14 +98,14 @@ export function calculatePurchaseOrderLineFinancials(line) {
       : discountValue;
   const discountedBase = gross - discountAmount;
   if (discountedBase < 0n) return null;
-  const taxAmount = percentOfScaled(discountedBase, taxRate);
+  const taxAmount = hasTaxRate ? percentOfScaled(discountedBase, taxRate) : legacyTaxAmount;
   const lineTotal = discountedBase + taxAmount;
   return Object.freeze({
     gross: scaledToDecimal(gross),
     discountMode: mode,
     discountValue: scaledToDecimal(discountValue),
     discountAmount: scaledToDecimal(discountAmount),
-    taxRate: scaledToDecimal(taxRate),
+    taxRate: taxRate === null ? null : scaledToDecimal(taxRate),
     taxAmount: scaledToDecimal(taxAmount),
     lineTotal: scaledToDecimal(lineTotal),
   });
