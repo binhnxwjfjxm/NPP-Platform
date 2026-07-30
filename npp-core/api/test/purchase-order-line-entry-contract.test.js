@@ -57,6 +57,19 @@ test('purchase order backend financials support per-unit and total-line discount
   assert.equal(total.lineTotal.toString(), '313500000');
 });
 
+test('purchase order backend keeps legacy absolute tax payloads compatible', () => {
+  const legacy = calculatePurchaseOrderLineFinancials(
+    { discountAmount: '10', taxAmount: '7.5' },
+    { quantity: 2_000_000n, unitPrice: 100_000_000n },
+  );
+  assert.equal(legacy.ok, true);
+  assert.equal(legacy.discountMode, 'TOTAL_AMOUNT');
+  assert.equal(legacy.discountAmount.toString(), '10000000');
+  assert.equal(legacy.taxRate, null);
+  assert.equal(legacy.taxAmount.toString(), '7500000');
+  assert.equal(legacy.lineTotal.toString(), '197500000');
+});
+
 test('purchase order backend rejects invalid percentage ranges and over-discounting', () => {
   assert.equal(calculatePurchaseOrderLineFinancials(
     { discountMode: 'PERCENT', discountValue: '100.000001', taxRate: '0' },
