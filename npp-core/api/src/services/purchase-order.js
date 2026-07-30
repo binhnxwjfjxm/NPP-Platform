@@ -1,4 +1,4 @@
-﻿import * as repository from '../db/repositories/purchase-order.js';
+import * as repository from '../db/repositories/purchase-order.js';
 import * as documentNumberRepository from '../db/repositories/document-numbering.js';
 import { allocateDocumentNumber } from './document-numbering.js';
 
@@ -8,7 +8,9 @@ const DECIMAL_PATTERN = /^(0|[1-9]\d{0,13})(?:\.(\d{1,6}))?$/;
 const INTEGER_PATTERN = /^[1-9]\d{0,18}$/;
 const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 const STATUSES = new Set(['draft', 'pending_approval', 'approved', 'partially_received', 'fully_received', 'closed', 'cancelled']);
+const DISCOUNT_MODES = new Set(['TOTAL_AMOUNT', 'PER_UNIT', 'PERCENT']);
 const SCALE = 1_000_000n;
+const ONE_HUNDRED_PERCENT = 100n * SCALE;
 const PURCHASE_ORDER_SERIES_CODE = 'PURCHASE_ORDER';
 
 function failure(code, message, retryable = false, details = {}) {
@@ -78,6 +80,10 @@ function multiplyScaled(left, right) {
   return (left * right + SCALE / 2n) / SCALE;
 }
 
+function percentOfScaled(base, percent) {
+  return (base * percent + 50n * SCALE) / (100n * SCALE);
+}
+
 function normalizeRevision(value) {
   const text = String(value ?? '').trim();
   return INTEGER_PATTERN.test(text) ? text : null;
@@ -111,7 +117,10 @@ function mapLine(line) {
     shortageClosedQuantity: line.shortage_closed_quantity === undefined || line.shortage_closed_quantity === null ? undefined : fixedScaleQuantity(line.shortage_closed_quantity),
     remainingQuantity: line.remaining_quantity === undefined || line.remaining_quantity === null ? undefined : fixedScaleQuantity(line.remaining_quantity),
     unitPrice: String(line.unit_price),
+    discountMode: line.discount_mode ?? 'TOTAL_AMOUNT',
+    discountValue: String(line.discount_value ?? line.discount_amount ?? 0),
     discountAmount: String(line.discount_amount),
+    taxRate: line.tax_rate === undefined || line.tax_rate === null ? null : String(line.tax_rate),
     taxAmount: String(line.tax_amount),
     lineTotal: String(line.line_total),
     note: line.note ?? null,
@@ -184,15 +193,16 @@ function validateListInput(input) {
 }
 
 export function evaluatePurchaseOrderSkuEligibility(row) {
-  if (!row) return Object.freeze({ selectable: false, code: 'SKU_NOT_FOUND', message: 'KhÃ´ng tÃ¬m tháº¥y SKU trong danh má»¥c.' });
-  if (row.product_is_active !== true) return Object.freeze({ selectable: false, code: 'PRODUCT_INACTIVE', message: 'Sáº£n pháº©m Ä‘ang ngÆ°ng hoáº¡t Ä‘á»™ng.' });
-  if (row.variant_is_active !== true) return Object.freeze({ selectable: false, code: 'SKU_INACTIVE', message: 'SKU Ä‘ang ngÆ°ng hoáº¡t Ä‘á»™ng.' });
-  if (row.is_purchasable !== true) return Object.freeze({ selectable: false, code: 'SKU_NOT_PURCHASABLE', message: 'SKU chÆ°a Ä‘Æ°á»£c báº­t cho nghiá»‡p vá»¥ mua hÃ ng.' });
-  if (!row.unit_id) return Object.freeze({ selectable: false, code: 'SKU_UNIT_MISSING', message: 'SKU chÆ°a cÃ³ Ä‘Æ¡n vá»‹ mua hÃ ng Ä‘ang hoáº¡t Ä‘á»™ng.' });
-  if (row.unit_is_active !== true) return Object.freeze({ selectable: false, code: 'SKU_UNIT_INACTIVE', message: 'ÄÆ¡n vá»‹ cá»§a SKU Ä‘ang ngÆ°ng hoáº¡t Ä‘á»™ng.' });
+  if (!row) return Object.freeze({ selectable: false, code: 'SKU_NOT_FOUND', message: 'Không tìm thấy SKU trong danh mục.' });
+  if (row.product_is_active !== true) return Object.freeze({ selectable: false, code: 'PRODUCT_INACTIVE', message: 'Sản phẩm đang ngưng hoạt động.' });
+  if (row.product_is_orderable !== true) return Object.freeze({ selectable: false, code: 'PRODUCT_NOT_ORDERABLE', message: 'Sản phẩm chưa được bật cho phép đặt hàng.' });
+  if (row.variant_is_active !== true) return Object.freeze({ selectable: false, code: 'SKU_INACTIVE', message: 'SKU đang ngưng hoạt động.' });
+  if (row.is_purchasable !== true) return Object.freeze({ selectable: false, code: 'SKU_NOT_PURCHASABLE', message: 'SKU chưa được bật cho nghiệp vụ mua hàng.' });
+  if (!row.unit_id) return Object.freeze({ selectable: false, code: 'SKU_UNIT_MISSING', message: 'SKU chưa được gắn đơn vị mua hàng và hệ số quy đổi.' });
+  if (row.unit_is_active !== true) return Object.freeze({ selectable: false, code: 'SKU_UNIT_INACTIVE', message: 'Đơn vị của SKU đang ngưng hoạt động.' });
   const conversion = decimalToScaled(String(row.conversion_to_base ?? ''), { allowZero: false });
-  if (conversion === null) return Object.freeze({ selectable: false, code: 'SKU_CONVERSION_INVALID', message: 'SKU chÆ°a cÃ³ quy Ä‘á»•i Ä‘Æ¡n vá»‹ há»£p lá»‡.' });
-  return Object.freeze({ selectable: true, code: 'ELIGIBLE', message: 'CÃ³ thá»ƒ chá»n Ä‘á»ƒ mua hÃ ng.' });
+  if (conversion === null) return Object.freeze({ selectable: false, code: 'SKU_CONVERSION_INVALID', message: 'SKU chưa có hệ số quy đổi đơn vị hợp lệ.' });
+  return Object.freeze({ selectable: true, code: 'ELIGIBLE', message: 'Có thể chọn để mua hàng.' });
 }
 
 function mapSkuOption(row) {
@@ -224,18 +234,63 @@ export async function searchPurchaseOrderSkuOptions(client, input) {
   return Object.freeze({ ok: true, skuOptions: Object.freeze(rows.map(mapSkuOption)) });
 }
 
-function percentOfScaled(base, percent) {
-  return (base * percent + 50n * SCALE) / (100n * SCALE);
+export async function resolvePurchaseOrderSkuIdentifiers(client, input) {
+  if (!Array.isArray(input.identifiers) || input.identifiers.length < 1 || input.identifiers.length > 500) {
+    return failure('INVALID_SKU_IDENTIFIERS', 'identifiers must contain between 1 and 500 SKU or barcode values');
+  }
+  const identifiers = input.identifiers.map((value) => String(value ?? '').trim().toUpperCase());
+  if (identifiers.some((value) => !value || value.length > 128)) {
+    return failure('INVALID_SKU_IDENTIFIER', 'Every SKU or barcode must contain between 1 and 128 characters');
+  }
+  const rows = await repository.resolvePurchaseOrderSkuOptions(client, {
+    installationId: input.requestContext.installationId,
+    identifiers,
+  });
+  const grouped = new Map();
+  for (const row of rows) {
+    const key = row.matched_identifier;
+    const current = grouped.get(key) ?? [];
+    current.push(row);
+    grouped.set(key, current);
+  }
+  const resolutions = identifiers.map((identifier) => {
+    const matches = grouped.get(identifier) ?? [];
+    const unique = [...new Map(matches.map((row) => [row.id, row])).values()];
+    if (unique.length === 0) {
+      return Object.freeze({
+        identifier,
+        option: null,
+        error: Object.freeze({ code: 'SKU_NOT_FOUND', message: 'Không tìm thấy SKU hoặc mã vạch.' }),
+      });
+    }
+    if (unique.length > 1) {
+      return Object.freeze({
+        identifier,
+        option: null,
+        error: Object.freeze({ code: 'SKU_IDENTIFIER_AMBIGUOUS', message: 'Mã khớp nhiều SKU; hãy dùng mã SKU chính xác.' }),
+      });
+    }
+    return Object.freeze({ identifier, option: mapSkuOption(unique[0]), error: null });
+  });
+  return Object.freeze({ ok: true, resolutions: Object.freeze(resolutions) });
 }
 
 export function calculatePurchaseOrderLineFinancials(input, { quantity, unitPrice }) {
-  const mode = input.discountMode === 'PERCENT' ? 'PERCENT' : 'TOTAL_AMOUNT';
+  const mode = input.discountMode ?? 'TOTAL_AMOUNT';
+  if (!DISCOUNT_MODES.has(mode)) return failure('INVALID_DISCOUNT_MODE', 'Discount mode is invalid');
   const discountValue = decimalToScaled(input.discountValue ?? input.discountAmount ?? '0', { allowZero: true });
   const taxRate = decimalToScaled(input.taxRate ?? '0', { allowZero: true });
   if (discountValue === null) return failure('INVALID_DISCOUNT', 'Discount value is invalid');
-  if (taxRate === null) return failure('INVALID_TAX', 'Tax rate is invalid');
+  if (taxRate === null || taxRate > ONE_HUNDRED_PERCENT) return failure('INVALID_TAX', 'Tax rate must be between 0 and 100 percent');
+  if (mode === 'PERCENT' && discountValue > ONE_HUNDRED_PERCENT) {
+    return failure('INVALID_DISCOUNT', 'Discount percent must be between 0 and 100');
+  }
   const gross = multiplyScaled(quantity, unitPrice);
-  const discountAmount = mode === 'PERCENT' ? percentOfScaled(gross, discountValue) : discountValue;
+  const discountAmount = mode === 'PERCENT'
+    ? percentOfScaled(gross, discountValue)
+    : mode === 'PER_UNIT'
+      ? multiplyScaled(quantity, discountValue)
+      : discountValue;
   const discountedBase = gross - discountAmount;
   if (discountedBase < 0n) return failure('INVALID_DISCOUNT', 'Discount cannot exceed line gross amount');
   const taxAmount = percentOfScaled(discountedBase, taxRate);
@@ -384,14 +439,14 @@ async function ensurePurchaseOrderSeries(client, { installationId, actorId }) {
     installationId,
     code: PURCHASE_ORDER_SERIES_CODE,
     documentType: 'PURCHASE_ORDER',
-    name: 'ÄÆ¡n Ä‘áº·t hÃ ng',
+    name: 'Đơn đặt hàng',
     prefix: 'PO-',
     numberTemplate: '{PREFIX}{YYYY}{MM}-{SEQ}',
     resetPolicy: 'MONTHLY',
     sequenceWidth: 6,
     startCounter: '1',
     timezoneName: 'Asia/Ho_Chi_Minh',
-    description: 'Series máº·c Ä‘á»‹nh cho Ä‘Æ¡n Ä‘áº·t hÃ ng nhÃ  cung cáº¥p.',
+    description: 'Series mặc định cho đơn đặt hàng nhà cung cấp.',
     isActive: true,
     createdBy: actorId,
   });
