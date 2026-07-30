@@ -39,6 +39,32 @@ test('purchase order line entry computes percentage, per-unit and total discount
   assert.equal(totals.total, '507.9');
 });
 
+test('purchase order line entry preserves legacy absolute tax snapshots until a rate is supplied', () => {
+  const legacy = calculatePurchaseOrderLineFinancials({
+    quantity: '2',
+    unitPrice: '100',
+    discountMode: 'TOTAL_AMOUNT',
+    discountValue: '10',
+    taxRate: '',
+    taxAmount: '7.5',
+  });
+  assert.equal(legacy?.taxRate, null);
+  assert.equal(legacy?.taxAmount, '7.5');
+  assert.equal(legacy?.lineTotal, '197.5');
+
+  const converted = calculatePurchaseOrderLineFinancials({
+    quantity: '2',
+    unitPrice: '100',
+    discountMode: 'TOTAL_AMOUNT',
+    discountValue: '10',
+    taxRate: '8',
+    taxAmount: '7.5',
+  });
+  assert.equal(converted?.taxRate, '8');
+  assert.equal(converted?.taxAmount, '15.2');
+  assert.equal(converted?.lineTotal, '205.2');
+});
+
 test('purchase order line entry rejects percentage values above 100', () => {
   assert.equal(calculatePurchaseOrderLineFinancials({ quantity: '1', unitPrice: '100', discountMode: 'PERCENT', discountValue: '100,000001', taxRate: '0' }), null);
   assert.equal(calculatePurchaseOrderLineFinancials({ quantity: '1', unitPrice: '100', discountMode: 'TOTAL_AMOUNT', discountValue: '0', taxRate: '100.000001' }), null);
