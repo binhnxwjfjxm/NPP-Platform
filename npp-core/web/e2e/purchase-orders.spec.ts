@@ -73,6 +73,9 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     await page.getByTestId('purchase-order-create-button').click();
     const editor = page.getByRole('dialog', { name: 'Đơn đặt hàng mới' });
     await expect(editor).toBeVisible();
+    await expect(editor.getByRole('tab', { name: 'Tìm nhanh' })).toBeVisible();
+    await expect(editor.getByRole('tab', { name: 'Chọn từ danh mục' })).toBeVisible();
+    await expect(editor.getByRole('tab', { name: 'Nhập nhiều dòng' })).toBeVisible();
 
     const supplierSelect = editor.getByRole('combobox', { name: 'Nhà cung cấp', exact: true });
     const warehouseSelect = editor.getByRole('combobox', { name: 'Kho nhận', exact: true });
@@ -80,15 +83,15 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     await warehouseSelect.selectOption(fixture.warehouse.id);
     await editor.getByRole('textbox', { name: 'Tham chiếu nhà cung cấp', exact: true }).fill(supplierReference);
 
-    const skuSearch = editor.getByRole('combobox', { name: 'Tìm SKU mua hàng', exact: true });
+    const skuSearch = editor.getByRole('combobox', { name: /^Từ khóa sản phẩm hoặc SKU/ });
     await skuSearch.fill(fixture.variant.sku);
     const skuResult = editor.getByRole('option').filter({ hasText: fixture.variant.sku }).first();
     await expect(skuResult).toBeVisible();
     await expect(skuResult).toContainText('Có thể chọn để mua hàng');
-    await skuResult.getByRole('button').click();
-    await editor.getByRole('button', { name: 'Thêm dòng', exact: true }).click();
+    await skuResult.click();
 
-    const line = page.getByTestId('purchase-order-lines').locator('tbody tr').first();
+    const line = editor.locator('article').filter({ hasText: fixture.variant.sku }).first();
+    await expect(line).toBeVisible();
     const decimalInputs = line.locator('input[inputmode="decimal"]');
     await decimalInputs.nth(0).fill('2');
     await decimalInputs.nth(1).fill('10000');
@@ -108,7 +111,7 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     await row.getByRole('button', { name: 'Sửa', exact: true }).click();
     const editDialog = page.getByRole('dialog', { name: 'Đơn chưa cấp số' });
     await expect(editDialog).toBeVisible();
-    const editLine = page.getByTestId('purchase-order-lines').locator('tbody tr').first();
+    const editLine = editDialog.locator('article').filter({ hasText: fixture.variant.sku }).first();
     await editLine.locator('input[inputmode="decimal"]').nth(0).fill('3');
     await page.getByTestId('purchase-order-save').click();
     await expect(editDialog).toHaveCount(0);
@@ -142,6 +145,27 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
   });
 
+  test('không gửi yêu cầu live search khi từ khóa chưa đủ hai ký tự', async ({ page }) => {
+    let requestCount = 0;
+    await page.route('**/api/purchase-orders/sku-search**', async (route) => {
+      requestCount += 1;
+      await route.fulfill({ status: 200, json: { data: [], requestId: 'e2e-min-search' } });
+    });
+
+    await page.goto('/purchasing/purchase-orders');
+    await page.getByTestId('purchase-order-create-button').click();
+    const editor = page.getByRole('dialog', { name: 'Đơn đặt hàng mới' });
+    const skuSearch = editor.getByRole('combobox', { name: /^Từ khóa sản phẩm hoặc SKU/ });
+    await skuSearch.fill('A');
+    await page.waitForTimeout(500);
+    expect(requestCount).toBe(0);
+    await expect(editor.getByText('Nhập ít nhất 2 ký tự để tìm.')).toBeVisible();
+
+    await skuSearch.fill('AB');
+    await expect.poll(() => requestCount).toBe(1);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
   test('cập nhật dữ liệu không hiểu products rỗng là danh mục rỗng khi dùng live SKU search', async ({ page }) => {
     await page.goto('/purchasing/purchase-orders');
     await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
@@ -159,9 +183,10 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     await expect(page.getByText('Chưa có sản phẩm mua hàng khả dụng để tạo đơn đặt hàng.')).toHaveCount(0);
     await expect(page.getByTestId('purchase-order-create-button')).toBeEnabled();
     await expect(page.getByTestId('purchase-order-products-link')).toHaveCount(0);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
-  test('hiển thị link Danh mục sản phẩm khi live search trả SKU chưa đủ điều kiện mua', async ({ page }) => {
+  test('giải thích SKU chưa đủ điều kiện và cho mở thiết lập sản phẩm', async ({ page }) => {
     await page.route('**/api/purchase-orders/sku-search**', async (route) => {
       await route.fulfill({
         status: 200,
@@ -196,26 +221,28 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
 
     const editor = page.getByRole('dialog', { name: 'Đơn đặt hàng mới' });
     await expect(editor).toBeVisible();
-    await editor.getByRole('combobox', { name: 'Tìm SKU mua hàng', exact: true }).fill('SKU-THIEU-DV');
+    await editor.getByRole('combobox', { name: 'Trạng thái SKU', exact: true }).selectOption('setup');
+    await editor.getByRole('combobox', { name: /^Từ khóa sản phẩm hoặc SKU/ }).fill('SKU-THIEU-DV');
     const result = editor.getByRole('option').filter({ hasText: 'SKU-THIEU-DV' });
     await expect(result).toBeVisible();
-    await result.getByRole('button').click();
+    await result.click();
     await expect(editor.getByRole('alert')).toContainText('chưa được gắn đơn vị mua hàng');
-    const productsLink = page.getByTestId('purchase-order-products-link');
+    const productsLink = editor.getByRole('link', { name: 'Mở thiết lập sản phẩm', exact: true });
     await expect(productsLink).toBeVisible();
     await productsLink.click();
     await expect(page).toHaveURL(/\/products$/);
     await expect(page.getByTestId('products-page')).toBeVisible();
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
-  test('không hiện link Danh mục sản phẩm khi live SKU search báo lỗi kỹ thuật', async ({ page }) => {
+  test('hiển thị lỗi kỹ thuật đúng nghĩa thay vì báo nhầm không tìm thấy đơn hàng', async ({ page }) => {
     await page.route('**/api/purchase-orders/sku-search**', async (route) => {
       await route.fulfill({
         status: 503,
         json: {
           error: {
             code: 'PURCHASE_ORDER_SKU_SEARCH_UNAVAILABLE',
-            message: 'Không tải được danh sách SKU',
+            message: 'Chức năng tìm SKU chưa được cập nhật đồng bộ với máy chủ.',
             retryable: true,
           },
           requestId: 'e2e-sku-search-failure',
@@ -229,8 +256,10 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
 
     const editor = page.getByRole('dialog', { name: 'Đơn đặt hàng mới' });
     await expect(editor).toBeVisible();
-    await editor.getByRole('combobox', { name: 'Tìm SKU mua hàng', exact: true }).fill('SKU-LOI-KY-THUAT');
-    await expect(editor.getByRole('alert')).toContainText('Không tải được danh sách SKU');
-    await expect(page.getByTestId('purchase-order-products-link')).toHaveCount(0);
+    await editor.getByRole('combobox', { name: /^Từ khóa sản phẩm hoặc SKU/ }).fill('SKU-LOI-KY-THUAT');
+    await expect(editor.getByRole('alert')).toContainText('chưa được cập nhật đồng bộ');
+    await expect(editor.getByRole('alert')).not.toContainText('Purchase order was not found');
+    await expect(editor.getByRole('link', { name: 'Mở thiết lập sản phẩm', exact: true })).toBeVisible();
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 });

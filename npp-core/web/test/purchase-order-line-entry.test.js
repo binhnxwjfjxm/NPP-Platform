@@ -41,24 +41,14 @@ test('purchase order line entry computes percentage, per-unit and total discount
 
 test('purchase order line entry preserves legacy absolute tax snapshots until a rate is supplied', () => {
   const legacy = calculatePurchaseOrderLineFinancials({
-    quantity: '2',
-    unitPrice: '100',
-    discountMode: 'TOTAL_AMOUNT',
-    discountValue: '10',
-    taxRate: '',
-    taxAmount: '7.5',
+    quantity: '2', unitPrice: '100', discountMode: 'TOTAL_AMOUNT', discountValue: '10', taxRate: '', taxAmount: '7.5',
   });
   assert.equal(legacy?.taxRate, null);
   assert.equal(legacy?.taxAmount, '7.5');
   assert.equal(legacy?.lineTotal, '197.5');
 
   const converted = calculatePurchaseOrderLineFinancials({
-    quantity: '2',
-    unitPrice: '100',
-    discountMode: 'TOTAL_AMOUNT',
-    discountValue: '10',
-    taxRate: '8',
-    taxAmount: '7.5',
+    quantity: '2', unitPrice: '100', discountMode: 'TOTAL_AMOUNT', discountValue: '10', taxRate: '8', taxAmount: '7.5',
   });
   assert.equal(converted?.taxRate, '8');
   assert.equal(converted?.taxAmount, '15.2');
@@ -75,6 +65,7 @@ test('purchase order paste grid accepts Excel tabs and semicolon rows with decim
   assert.equal(tabPreview.length, 1);
   assert.deepEqual(tabPreview[0].errors, []);
   assert.equal(tabPreview[0].quantity, '2,5');
+  assert.equal(tabPreview[0].rowNumber, 2);
 
   const semicolonPreview = parsePurchaseOrderPasteGrid('SKU-2;1,25;80.000;PER_UNIT;2,5;8;Ghi chú');
   assert.equal(semicolonPreview.length, 1);
@@ -84,6 +75,22 @@ test('purchase order paste grid accepts Excel tabs and semicolon rows with decim
   const wholeAmount = parsePurchaseOrderPasteGrid('SKU-2;1,25;80000;PER_UNIT;2,5;8;Ghi chú');
   assert.deepEqual(wholeAmount[0].errors, []);
   assert.equal(normalizeDecimalForApi(wholeAmount[0].unitPrice), '80000');
+});
+
+test('purchase order paste grid parses quoted comma-delimited CSV', () => {
+  const preview = parsePurchaseOrderPasteGrid('SKU,Số lượng,Đơn giá,Kiểu chiết khấu,Giá trị chiết khấu,Thuế %,Ghi chú\nSKU-CSV,2.5,100,PERCENT,5,8,"Gấp, giao sáng"');
+  assert.equal(preview.length, 1);
+  assert.deepEqual(preview[0].errors, []);
+  assert.equal(preview[0].quantity, '2.5');
+  assert.equal(preview[0].note, 'Gấp, giao sáng');
+});
+
+test('purchase order paste grid reports rows omitted beyond the 500-row limit', () => {
+  const rows = Array.from({ length: 502 }, (_, index) => `SKU-${index + 1};1;100;TOTAL_AMOUNT;0;0`).join('\n');
+  const preview = parsePurchaseOrderPasteGrid(rows);
+  assert.equal(preview.length, 501);
+  assert.equal(preview[499].rowNumber, 500);
+  assert.match(preview[500].errors[0], /Đã bỏ qua 2 dòng/);
 });
 
 test('purchase order paste grid reports malformed rows without mutating a draft', () => {

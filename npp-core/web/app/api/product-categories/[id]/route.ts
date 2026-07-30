@@ -5,6 +5,7 @@ import {
   normalizeProductGatewayError,
   resolveProductRequestId,
 } from '../../../../lib/product-gateway';
+import { normalizeProductStatusError } from '../../../../lib/product-status-error';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,11 @@ function errorResponse(error: unknown, requestId: string) {
     {
       error: {
         code: normalized.code,
-        message: normalized.publicMessage,
+        message: normalizeProductStatusError({
+          code: normalized.code,
+          message: normalized.publicMessage,
+          details: normalized.details,
+        }),
         retryable: normalized.retryable,
         details: normalized.details,
       },
@@ -45,7 +50,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     body = await request.json();
   } catch {
     return NextResponse.json(
-      { error: { code: 'INVALID_JSON_BODY', message: 'Request body must be valid JSON', retryable: false }, requestId },
+      { error: { code: 'INVALID_JSON_BODY', message: 'Nội dung yêu cầu không phải JSON hợp lệ.', retryable: false }, requestId },
       { status: 400, headers: responseHeaders(requestId) },
     );
   }

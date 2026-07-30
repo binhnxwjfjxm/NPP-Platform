@@ -21,7 +21,7 @@ describe('purchase-order web contract', () => {
     const types = read('../lib/purchase-order-types.ts');
     assert.match(types, /read: 'core\.purchase-order\.read'/);
     assert.match(types, /approve: 'core\.purchase-order\.approve'/);
-    const lineEntry = read('../lib/purchase-order-line-entry.js');
+    const lineEntry = read('../lib/purchase-order-line-entry-v2.js');
     assert.match(lineEntry, /const SCALE = 1_000_000n/);
     assert.match(types, /calculatePurchaseOrderDraftTotals/);
     assert.doesNotMatch(types, /parseFloat|parseInt/);
@@ -38,17 +38,22 @@ describe('purchase-order web contract', () => {
 
   it('implements controlled editor and live lifecycle actions', () => {
     const workspace = read('../app/purchasing/purchase-orders/PurchaseOrderWorkspace.tsx');
-    const editor = read('../app/purchasing/purchase-orders/components/PurchaseOrderEditor.tsx');
+    const editor = read('../app/purchasing/purchase-orders/components/PurchaseOrderEditorV3.tsx');
     assert.match(workspace, /<AppShell/);
     assert.match(workspace, /actionKeys = useRef\(new Map/);
     assert.match(workspace, /\/api\/purchase-orders\/\$\{purchaseOrder\.id\}\/\$\{action\}/);
     assert.match(workspace, /expectedRevision: purchaseOrder\.revision/);
-    assert.match(editor, /<form className=\{styles\.form\} onSubmit=\{save\}>/);
-    assert.match(editor, new RegExp('purchase-orders/sku-search'));
+    assert.match(editor, /<form className=\{localStyles\.form\} onSubmit=\{save\}>/);
+    assert.match(editor, /purchase-orders\/sku-search/);
     assert.match(editor, /role="combobox"/);
+    assert.match(editor, /aria-activedescendant/);
     assert.match(editor, /Idempotency-Key': attemptKey/);
     assert.match(editor, /decimalToScaled/);
-    assert.doesNotMatch(editor, /MutationObserver|querySelector|parseFloat/);
+    assert.match(editor, /Chọn từ danh mục/);
+    assert.match(editor, /Nhập nhiều dòng/);
+    assert.match(editor, /browseControllerRef/);
+    assert.match(editor, /resolutionByIdentifier/);
+    assert.doesNotMatch(editor, /MutationObserver|parseFloat/);
   });
 
   it('keeps server tokens behind same-origin route handlers', () => {
