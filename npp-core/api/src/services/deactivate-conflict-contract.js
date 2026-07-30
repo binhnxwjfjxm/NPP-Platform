@@ -13,13 +13,29 @@ function safeDetails(details) {
   return details && typeof details === 'object' && !Array.isArray(details) ? details : {};
 }
 
-export function activeDependentsConflict({ message, reason, dependentType, dependentLabel, count, managementPath, action }) {
+function legacyDomainCode(reason) {
+  if (reason === 'PARENT_BRANCH_INACTIVE') return 'BRANCH_INACTIVE';
+  if (reason === 'PARENT_WAREHOUSE_INACTIVE') return 'WAREHOUSE_INACTIVE';
+  return 'CONFLICT';
+}
+
+export function activeDependentsConflict({
+  code = 'CANNOT_DEACTIVATE',
+  message,
+  reason,
+  dependentType,
+  dependentLabel,
+  count,
+  managementPath,
+  action,
+}) {
   return Object.freeze({
     ok: false,
-    code: DEACTIVATE_CONFLICT_CODES.activeDependents,
+    code,
     message,
     retryable: false,
     details: Object.freeze({
+      conflictCode: DEACTIVATE_CONFLICT_CODES.activeDependents,
       conflictType: 'active_dependents',
       reason,
       action,
@@ -33,14 +49,19 @@ export function activeDependentsConflict({ message, reason, dependentType, depen
   });
 }
 
-export function staleVersionConflict({ entityLabel, managementPath } = {}) {
+export function staleVersionConflict({
+  code = 'CONFLICT',
+  entityLabel,
+  managementPath,
+} = {}) {
   const label = entityLabel || 'Bản ghi';
   return Object.freeze({
     ok: false,
-    code: DEACTIVATE_CONFLICT_CODES.staleVersion,
+    code,
     message: `${label} đã được cập nhật bởi phiên khác. Vui lòng tải lại dữ liệu rồi thử lại.`,
     retryable: false,
     details: Object.freeze({
+      conflictCode: DEACTIVATE_CONFLICT_CODES.staleVersion,
       conflictType: 'stale_version',
       reason: 'EXPECTED_UPDATED_AT_MISMATCH',
       action: 'refresh_and_retry',
@@ -49,13 +70,20 @@ export function staleVersionConflict({ entityLabel, managementPath } = {}) {
   });
 }
 
-export function domainConflict({ message, reason, managementPath = null, details = {} }) {
+export function domainConflict({
+  code,
+  message,
+  reason,
+  managementPath = null,
+  details = {},
+}) {
   return Object.freeze({
     ok: false,
-    code: DEACTIVATE_CONFLICT_CODES.domainConflict,
+    code: code || legacyDomainCode(reason),
     message,
     retryable: false,
     details: Object.freeze({
+      conflictCode: DEACTIVATE_CONFLICT_CODES.domainConflict,
       conflictType: 'domain_conflict',
       reason,
       action: 'resolve_domain_conflict',
