@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { PurchaseOrderSkuResolution } from '../../../../lib/purchase-order-types';
+import { normalizePurchaseOrderSkuSearchFailure } from '../../../../lib/purchase-order-sku-entry';
 import {
   normalizePurchaseOrderGatewayError,
   resolvePurchaseOrderRequestId,
@@ -23,9 +24,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ data, requestId }, { status: 200, headers: responseHeaders(requestId) });
   } catch (error) {
     const normalized = normalizePurchaseOrderGatewayError(error);
+    const mapped = normalizePurchaseOrderSkuSearchFailure({
+      code: normalized.code,
+      message: normalized.publicMessage,
+      statusCode: normalized.statusCode,
+      retryable: normalized.retryable,
+    });
     return NextResponse.json(
-      { error: { code: normalized.code, message: normalized.publicMessage, retryable: normalized.retryable }, requestId },
-      { status: normalized.statusCode, headers: responseHeaders(requestId) },
+      { error: { code: mapped.code, message: mapped.message, retryable: mapped.retryable }, requestId },
+      { status: mapped.statusCode, headers: responseHeaders(requestId) },
     );
   }
 }
