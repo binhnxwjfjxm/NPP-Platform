@@ -308,3 +308,15 @@ export function searchPurchaseOrderSkuOptions<T>(
   if (params.offset !== undefined) query.set('offset', String(Math.max(0, Math.trunc(params.offset))));
   return requestCore<T[]>({ method: 'GET', path: '/api/purchase-orders/sku-search', requestId, searchParams: query });
 }
+
+export function resolvePurchaseOrderSkuOptions<T>(
+  requestId: string,
+  identifiers: readonly string[],
+): Promise<T[]> {
+  return requestCore<T[]>({
+    method: 'POST',
+    path: '/api/purchase-orders/sku-resolve',
+    requestId,
+    body: { identifiers: identifiers.slice(0, 500) },
+  });
+}
