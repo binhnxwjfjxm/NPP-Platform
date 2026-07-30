@@ -81,11 +81,17 @@ export function UnitCatalogPanel({ units, onUnitsChanged }: {
   const [editing, setEditing] = useState<UnitOfMeasure | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function clearFeedback() {
+    setNotice(null);
+    setError(null);
+  }
 
   async function save() {
     setBusy(true);
-    setMessage(null);
+    clearFeedback();
     try {
       const body = { ...form, ...(editing ? { expectedUpdatedAt: editing.updated_at } : {}) };
       const saved = editing
@@ -96,9 +102,9 @@ export function UnitCatalogPanel({ units, onUnitsChanged }: {
       setEditing(saved);
       setForm(unitToForm(saved));
       setShowForm(false);
-      setMessage(editing ? 'Đã cập nhật đơn vị tính.' : 'Đã tạo đơn vị tính.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể lưu đơn vị tính.');
+      setNotice(editing ? 'Đã cập nhật đơn vị tính.' : 'Đã tạo đơn vị tính.');
+    } catch (errorValue) {
+      setError(errorValue instanceof Error ? errorValue.message : 'Không thể lưu đơn vị tính.');
     } finally {
       setBusy(false);
     }
@@ -107,16 +113,16 @@ export function UnitCatalogPanel({ units, onUnitsChanged }: {
   async function toggle(unit: UnitOfMeasure) {
     if (unit.is_active && !window.confirm(`Ngừng sử dụng đơn vị ${unit.code} — ${unit.name}? Hệ thống sẽ kiểm tra các SKU đang phụ thuộc.`)) return;
     setBusy(true);
-    setMessage(null);
+    clearFeedback();
     try {
       const saved = await requestJson<UnitOfMeasure>(`/api/units/${unit.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isActive: !unit.is_active, expectedUpdatedAt: unit.updated_at }),
       });
       onUnitsChanged(units.map((item) => item.id === saved.id ? saved : item));
-      setMessage(saved.is_active ? 'Đã đưa đơn vị tính vào sử dụng.' : 'Đã ngừng sử dụng đơn vị tính.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể đổi trạng thái đơn vị tính.');
+      setNotice(saved.is_active ? 'Đã đưa đơn vị tính vào sử dụng.' : 'Đã ngừng sử dụng đơn vị tính.');
+    } catch (errorValue) {
+      setError(errorValue instanceof Error ? errorValue.message : 'Không thể đổi trạng thái đơn vị tính.');
     } finally {
       setBusy(false);
     }
@@ -124,8 +130,9 @@ export function UnitCatalogPanel({ units, onUnitsChanged }: {
 
   return <section data-testid="unit-catalog-panel">
     <div className={styles.sectionHeader}><div><h2>Đơn vị tính</h2><p>Chuẩn hóa tên đơn vị; hệ số quy đổi vẫn gắn riêng từng SKU.</p></div>
-      <button type="button" className={styles.primaryButton} onClick={() => { setEditing(null); setForm(EMPTY_UNIT); setShowForm(true); setMessage(null); }} data-testid="add-unit-button">Thêm đơn vị</button></div>
-    {message ? <div className={styles.notice} role="status">{message}</div> : null}
+      <button type="button" className={styles.primaryButton} onClick={() => { setEditing(null); setForm(EMPTY_UNIT); setShowForm(true); clearFeedback(); }} data-testid="add-unit-button">Thêm đơn vị</button></div>
+    {error ? <div className={styles.notice} role="alert">{error}</div> : null}
+    {notice ? <div className={styles.notice} role="status">{notice}</div> : null}
     {showForm ? <div className={styles.formPanel} data-testid="unit-form"><div className={styles.formGrid}>
       <label>Mã<input value={form.code} disabled={Boolean(editing)} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })} data-testid="unit-code-input" /></label>
       <label>Tên<input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} data-testid="unit-name-input" /></label>
@@ -134,7 +141,7 @@ export function UnitCatalogPanel({ units, onUnitsChanged }: {
     </div><div className={styles.checks}><label><input type="checkbox" checked={form.allowsFractional} onChange={(event) => setForm({ ...form, allowsFractional: event.target.checked })} /> Cho phép số lẻ</label><label><input type="checkbox" checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} /> Hoạt động</label></div>
       <div className={styles.inlineTools}><button type="button" onClick={() => setShowForm(false)} disabled={busy}>Hủy</button><button type="button" className={styles.primaryButton} disabled={busy || !form.code.trim() || !form.name.trim()} onClick={() => void save()} data-testid="save-unit-button">{busy ? 'Đang lưu…' : 'Lưu đơn vị'}</button></div></div> : null}
     <div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>Mã</th><th>Tên</th><th>Loại</th><th>Số lẻ</th><th>Trạng thái</th><th></th></tr></thead><tbody>
-      {units.map((unit) => <tr key={unit.id} data-testid={`unit-row-${unit.code}`}><td><strong>{unit.code}</strong></td><td>{unit.name}</td><td>{UNIT_KIND_LABELS[unit.unit_kind]}</td><td>{unit.allows_fractional ? 'Có' : 'Không'}</td><td>{unit.is_active ? 'Hoạt động' : 'Ngừng'}</td><td className={styles.rowActions}><button type="button" onClick={() => { setEditing(unit); setForm(unitToForm(unit)); setShowForm(true); setMessage(null); }}>Sửa</button><button type="button" disabled={busy} onClick={() => void toggle(unit)}>{unit.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button></td></tr>)}
+      {units.map((unit) => <tr key={unit.id} data-testid={`unit-row-${unit.code}`}><td><strong>{unit.code}</strong></td><td>{unit.name}</td><td>{UNIT_KIND_LABELS[unit.unit_kind]}</td><td>{unit.allows_fractional ? 'Có' : 'Không'}</td><td>{unit.is_active ? 'Hoạt động' : 'Ngừng'}</td><td className={styles.rowActions}><button type="button" onClick={() => { setEditing(unit); setForm(unitToForm(unit)); setShowForm(true); clearFeedback(); }}>Sửa</button><button type="button" disabled={busy} onClick={() => void toggle(unit)}>{unit.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button></td></tr>)}
       {units.length === 0 ? <tr><td colSpan={6} className={styles.empty}>Chưa có đơn vị tính</td></tr> : null}
     </tbody></table></div>
   </section>;
@@ -152,9 +159,16 @@ export function VariantUnitPanel({ productId, variant, units, onVariantUpdated }
   const [quantity, setQuantity] = useState('1');
   const [normalization, setNormalization] = useState<QuantityNormalization | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function clearFeedback() {
+    setNotice(null);
+    setError(null);
+  }
 
   useEffect(() => {
+    let cancelled = false;
     setForm({
       unitId: variant.unit_id ?? '',
       conversionToBase: cleanDecimal(variant.conversion_to_base, variant.is_inventory_base ? '1' : ''),
@@ -165,13 +179,19 @@ export function VariantUnitPanel({ productId, variant, units, onVariantUpdated }
       sourcePackageDescription: variant.source_package_description ?? '',
     });
     setNormalization(null);
-    setMessage(null);
-    void requestJson<ProductBarcode[]>(`/api/products/${productId}/variants/${variant.id}/barcodes`).then(setBarcodes).catch(() => setBarcodes([]));
+    clearFeedback();
+    setBarcodes([]);
+    void requestJson<ProductBarcode[]>(`/api/products/${productId}/variants/${variant.id}/barcodes`)
+      .then((rows) => { if (!cancelled) setBarcodes(rows); })
+      .catch((errorValue) => {
+        if (!cancelled) setError(errorValue instanceof Error ? errorValue.message : 'Không thể tải danh sách mã vạch.');
+      });
+    return () => { cancelled = true; };
   }, [productId, variant.id]);
 
   async function saveUnit() {
     setBusy(true);
-    setMessage(null);
+    clearFeedback();
     try {
       const saved = await requestJson<ProductVariant>(`/api/products/${productId}/variants/${variant.id}/unit`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
@@ -194,9 +214,9 @@ export function VariantUnitPanel({ productId, variant, units, onVariantUpdated }
         sourcePackageDescription: saved.source_package_description ?? '',
       });
       onVariantUpdated(saved);
-      setMessage('Đã lưu đơn vị và hệ số quy đổi.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể lưu quy đổi.');
+      setNotice('Đã lưu đơn vị và hệ số quy đổi.');
+    } catch (errorValue) {
+      setError(errorValue instanceof Error ? errorValue.message : 'Không thể lưu quy đổi.');
     } finally {
       setBusy(false);
     }
@@ -204,7 +224,7 @@ export function VariantUnitPanel({ productId, variant, units, onVariantUpdated }
 
   async function addBarcode() {
     setBusy(true);
-    setMessage(null);
+    clearFeedback();
     try {
       const saved = await requestJson<ProductBarcode>(`/api/products/${productId}/variants/${variant.id}/barcodes`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -212,9 +232,9 @@ export function VariantUnitPanel({ productId, variant, units, onVariantUpdated }
       });
       setBarcodes((current) => [...current, saved]);
       setBarcode('');
-      setMessage('Đã thêm mã vạch.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể thêm mã vạch.');
+      setNotice('Đã thêm mã vạch.');
+    } catch (errorValue) {
+      setError(errorValue instanceof Error ? errorValue.message : 'Không thể thêm mã vạch.');
     } finally {
       setBusy(false);
     }
@@ -223,16 +243,16 @@ export function VariantUnitPanel({ productId, variant, units, onVariantUpdated }
   async function toggleBarcode(item: ProductBarcode) {
     if (item.is_active && !window.confirm(`Ngừng sử dụng mã ${item.barcode}?`)) return;
     setBusy(true);
-    setMessage(null);
+    clearFeedback();
     try {
       const saved = await requestJson<ProductBarcode>(`/api/products/${productId}/variants/${variant.id}/barcodes/${item.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isActive: !item.is_active, isPrimary: item.is_primary && !item.is_active, expectedUpdatedAt: item.updated_at }),
       });
       setBarcodes((current) => current.map((row) => row.id === saved.id ? saved : row));
-      setMessage(saved.is_active ? 'Đã đưa mã vạch vào sử dụng.' : 'Đã ngừng sử dụng mã vạch.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể đổi trạng thái mã vạch.');
+      setNotice(saved.is_active ? 'Đã đưa mã vạch vào sử dụng.' : 'Đã ngừng sử dụng mã vạch.');
+    } catch (errorValue) {
+      setError(errorValue instanceof Error ? errorValue.message : 'Không thể đổi trạng thái mã vạch.');
     } finally {
       setBusy(false);
     }
@@ -240,14 +260,14 @@ export function VariantUnitPanel({ productId, variant, units, onVariantUpdated }
 
   async function preview() {
     setBusy(true);
-    setMessage(null);
+    clearFeedback();
     try {
       const result = await requestJson<QuantityNormalization>(`/api/products/${productId}/variants/${variant.id}/normalize-quantity`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quantity }),
       });
       setNormalization(result);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không thể quy đổi.');
+    } catch (errorValue) {
+      setError(errorValue instanceof Error ? errorValue.message : 'Không thể quy đổi.');
     } finally {
       setBusy(false);
     }
@@ -255,7 +275,8 @@ export function VariantUnitPanel({ productId, variant, units, onVariantUpdated }
 
   return <div className={styles.formPanel} data-testid="variant-unit-panel">
     <div className={styles.sectionHeader}><div><h3>Đơn vị tính &amp; mã vạch — {variant.sku}</h3><p>Số lượng tồn được quy đổi về đơn vị tồn chuẩn; khối lượng bao bì chỉ dùng để mô tả sản phẩm.</p></div></div>
-    {message ? <div className={styles.notice} role="status">{message}</div> : null}
+    {error ? <div className={styles.notice} role="alert">{error}</div> : null}
+    {notice ? <div className={styles.notice} role="status">{notice}</div> : null}
     <div className={styles.formGrid}>
       <label>Đơn vị<select value={form.unitId} onChange={(event) => setForm({ ...form, unitId: event.target.value })} data-testid="variant-unit-select"><option value="">Chọn đơn vị</option>{units.filter((unit) => unit.is_active || unit.id === variant.unit_id).map((unit) => <option key={unit.id} value={unit.id}>{unit.code} — {unit.name}</option>)}</select></label>
       <label>Hệ số về tồn chuẩn<input value={variant.is_inventory_base ? '1' : form.conversionToBase} disabled={variant.is_inventory_base} inputMode="decimal" onChange={(event) => { if (isSafeDecimalIntermediate(event.target.value)) setForm({ ...form, conversionToBase: event.target.value }); }} data-testid="conversion-input" /></label>
