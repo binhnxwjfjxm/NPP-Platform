@@ -27,6 +27,8 @@ import {
 } from '../../../../lib/purchase-order-line-entry';
 import {
   MIN_PURCHASE_ORDER_SKU_SEARCH_LENGTH,
+  PURCHASE_ORDER_BULK_TEMPLATE_FILENAME,
+  PURCHASE_ORDER_BULK_TEMPLATE_MIME,
   PURCHASE_ORDER_SKU_FILTERS,
   filterPurchaseOrderSkuOptions,
   groupPurchaseOrderSkuOptions,
@@ -459,11 +461,11 @@ export default function PurchaseOrderEditorV3({
   }
 
   function downloadTemplate() {
-    const blob = new Blob([`\uFEFF${purchaseOrderBulkTemplate()}`], { type: 'text/tab-separated-values;charset=utf-8' });
+    const blob = new Blob([`\uFEFF${purchaseOrderBulkTemplate()}`], { type: PURCHASE_ORDER_BULK_TEMPLATE_MIME });
     const href = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = href;
-    link.download = 'mau-nhap-don-dat-hang.tsv';
+    link.download = PURCHASE_ORDER_BULK_TEMPLATE_FILENAME;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -637,7 +639,7 @@ export default function PurchaseOrderEditorV3({
               </div> : null}
 
               {entryMode === 'bulk' ? <div className={localStyles.modePanel}>
-                <div className={localStyles.bulkIntro}><div><strong>Nhập nhiều dòng theo 3 bước</strong><span>Chọn tệp hoặc dán dữ liệu → Kiểm tra → Thêm dòng hợp lệ</span></div><button type="button" className={styles.secondaryButton} onClick={downloadTemplate}>Tải tệp mẫu</button></div>
+                <div className={localStyles.bulkIntro}><div><strong>Nhập nhiều dòng theo 3 bước</strong><span>Chọn tệp hoặc dán dữ liệu → Kiểm tra → Thêm dòng hợp lệ</span></div><button type="button" className={styles.secondaryButton} onClick={downloadTemplate} data-testid="purchase-order-template-download">Tải mẫu CSV cho Excel</button></div>
                 <div className={localStyles.bulkTabs} role="tablist"><button type="button" className={bulkSourceMode === 'file' ? localStyles.modeTabActive : localStyles.modeTab} onClick={() => setBulkSourceMode('file')}>Chọn tệp</button><button type="button" className={bulkSourceMode === 'paste' ? localStyles.modeTabActive : localStyles.modeTab} onClick={() => setBulkSourceMode('paste')}>Dán từ Excel</button></div>
                 {bulkSourceMode === 'file' ? <label className={localStyles.fileDrop}>Chọn tệp CSV, TSV hoặc TXT<input type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" onChange={(event) => void handleBulkFile(event.target.files?.[0] ?? null)} /><span>Tối đa 2 MB. Dùng tệp mẫu để đúng tên cột.</span></label> : <label>Dán bảng từ Excel<textarea value={bulkText} onChange={(event) => { setBulkText(event.target.value); setBulkPreview([]); }} rows={7} placeholder={'SKU\tSố lượng\tĐơn giá\tKiểu chiết khấu\tGiá trị chiết khấu\tThuế %\tGhi chú'} /></label>}
                 {bulkSourceMode === 'file' && bulkText ? <p className={localStyles.fileReady}>Đã đọc tệp: {initialBulkPreview(bulkText).length} dòng dữ liệu.</p> : null}
