@@ -80,6 +80,11 @@ async function createFixture(request: APIRequestContext, suffix: string) {
   expect(response.status()).toBe(200);
   const cartonAssigned = (await response.json()).data;
 
+  response = await request.patch(`/api/products/${product.id}`, {
+    data: { isOrderable: true, expectedUpdatedAt: product.updated_at },
+  });
+  expect(response.status()).toBe(200);
+
   response = await request.put(`/api/inventory/tracking-policies/${baseVariant.id}`, {
     headers: { 'Idempotency-Key': `sr-policy-${suffix}` },
     data: {
@@ -249,5 +254,4 @@ test.describe('Phiếu trả nhà cung cấp', () => {
     await expect(editor).toBeVisible();
     await expect(editor.getByTestId('supplier-return-save')).toBeVisible();
   });
-
 });
