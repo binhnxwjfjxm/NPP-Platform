@@ -4,6 +4,14 @@ function uniqueReference() {
   return `E2E-PO-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`.toUpperCase();
 }
 
+type SkuSearchOption = {
+  id: string;
+  sku: string;
+  variantName: string;
+  unitCode: string | null;
+  eligibility: { selectable: boolean; code: string; message: string };
+};
+
 test.describe('Đơn đặt hàng nhà cung cấp', () => {
   test('tạo, sửa, gửi duyệt, duyệt, xem chi tiết và hủy đơn', async ({ page }) => {
     const supplierReference = uniqueReference();
@@ -18,6 +26,13 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
       },
     });
     expect(supplierResponse.status()).toBe(201);
+    const supplier = (await supplierResponse.json()).data;
+
+    const skuResponse = await page.request.get('/api/purchase-orders/sku-search?limit=50&offset=0');
+    expect(skuResponse.status()).toBe(200);
+    const skuOptions = (await skuResponse.json()).data as SkuSearchOption[];
+    const eligibleSku = skuOptions.find((option) => option.eligibility.selectable);
+    expect(eligibleSku).toBeTruthy();
 
     await page.goto('/purchasing/purchase-orders');
     await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
@@ -30,33 +45,27 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
 
     const supplierSelect = editor.getByRole('combobox', { name: 'Nhà cung cấp', exact: true });
     const warehouseSelect = editor.getByRole('combobox', { name: 'Kho nhận', exact: true });
-    const productSelect = editor.getByRole('combobox', { name: 'Sản phẩm', exact: true });
     await expect(supplierSelect.locator('option')).not.toHaveCount(1);
     await expect(warehouseSelect.locator('option')).not.toHaveCount(1);
-    await expect(productSelect.locator('option')).not.toHaveCount(1);
-    await supplierSelect.selectOption({ label: `NCC-${supplierSuffix} — Nhà cung cấp PO ${supplierSuffix}` });
+    await supplierSelect.selectOption(supplier.id);
     await warehouseSelect.selectOption({ index: 1 });
     await editor.getByRole('textbox', { name: 'Tham chiếu nhà cung cấp', exact: true }).fill(supplierReference);
 
-    const variantsResponse = page.waitForResponse((response) => (
-      response.request().method() === 'GET'
-      && /\/api\/products\/[^/]+\/variants(?:\?|$)/.test(response.url())
-      && response.ok()
-    ));
-    await productSelect.selectOption({ index: 1 });
-    await variantsResponse;
-    const variantSelect = editor.getByRole('combobox', { name: 'SKU mua hàng', exact: true });
-    await expect(variantSelect.locator('option')).not.toHaveCount(1);
-    await variantSelect.selectOption({ index: 1 });
+    const skuSearch = editor.getByRole('combobox', { name: 'Tìm SKU mua hàng', exact: true });
+    await skuSearch.fill(eligibleSku!.sku);
+    const skuResult = editor.getByRole('option').filter({ hasText: eligibleSku!.sku }).first();
+    await expect(skuResult).toBeVisible();
+    await skuResult.getByRole('button').click();
     await editor.getByRole('button', { name: 'Thêm dòng', exact: true }).click();
 
     const line = page.getByTestId('purchase-order-lines').locator('tbody tr').first();
-    const inputs = line.locator('input');
-    await inputs.nth(0).fill('2.5');
-    await inputs.nth(1).fill('10000.25');
-    await inputs.nth(2).fill('500');
-    await inputs.nth(3).fill('250');
-    await expect(line).toContainText('24.750,625 VND');
+    const decimalInputs = line.locator('input[inputmode="decimal"]');
+    await decimalInputs.nth(0).fill('2');
+    await decimalInputs.nth(1).fill('10000');
+    await line.locator('select').selectOption('PERCENT');
+    await decimalInputs.nth(2).fill('10');
+    await decimalInputs.nth(3).fill('8');
+    await expect(line).toContainText('19.440 VND');
     await page.getByTestId('purchase-order-save').click();
     await expect(editor).toHaveCount(0);
     await expect(page.getByText('Đã tạo đơn đặt hàng nháp.')).toBeVisible();
@@ -70,7 +79,7 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     const editDialog = page.getByRole('dialog', { name: 'Đơn chưa cấp số' });
     await expect(editDialog).toBeVisible();
     const editLine = page.getByTestId('purchase-order-lines').locator('tbody tr').first();
-    await editLine.locator('input').nth(0).fill('3');
+    await editLine.locator('input[inputmode="decimal"]').nth(0).fill('3');
     await page.getByTestId('purchase-order-save').click();
     await expect(editDialog).toHaveCount(0);
     await expect(page.getByText('Đã cập nhật đơn đặt hàng nháp.')).toBeVisible();
@@ -89,7 +98,7 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     await row.getByRole('button', { name: 'Xem', exact: true }).click();
     const detail = page.getByRole('dialog', { name: /PO-\d{6}-\d{6}/ });
     await expect(detail).toBeVisible();
-    await expect(detail).toContainText('30.000,75 VND');
+    await expect(detail).toContainText('29.160 VND');
     await detail.getByRole('button', { name: 'Đóng chi tiết', exact: true }).click();
 
     await row.getByRole('button', { name: 'Hủy', exact: true }).click();
@@ -103,7 +112,7 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
   });
 
-  test('cập nhật dữ liệu làm mới cả master data lookup và khóa nút tạo khi thiếu sản phẩm mua hàng', async ({ page }) => {
+  test('cập nhật dữ liệu không hiểu products rỗng là danh mục rỗng khi dùng live SKU search', async ({ page }) => {
     await page.goto('/purchasing/purchase-orders');
     await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Đơn đặt hàng', exact: true })).toBeVisible();
@@ -117,76 +126,81 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     });
 
     await page.getByTestId('purchase-order-refresh-button').click();
-    await expect(page.getByText('Chưa có sản phẩm mua hàng khả dụng để tạo đơn đặt hàng.')).toBeVisible();
-    await expect(page.getByTestId('purchase-order-create-button')).toBeDisabled();
-    const productsLink = page.getByTestId('purchase-order-products-link');
-    await expect(productsLink).toBeVisible();
-    await productsLink.click();
-    await expect(page).toHaveURL(/\/products$/);
-    await expect(page.getByTestId('products-page')).toBeVisible();
+    await expect(page.getByText('Chưa có sản phẩm mua hàng khả dụng để tạo đơn đặt hàng.')).toHaveCount(0);
+    await expect(page.getByTestId('purchase-order-create-button')).toBeEnabled();
+    await expect(page.getByTestId('purchase-order-products-link')).toHaveCount(0);
   });
 
-  test('hiển thị link Danh mục sản phẩm khi SKU mua hàng của sản phẩm được chọn chưa hợp lệ', async ({ page }) => {
-    await page.goto('/purchasing/purchase-orders');
-    await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
-    await page.getByTestId('purchase-order-create-button').click();
-
-    const editor = page.getByRole('dialog', { name: 'Đơn đặt hàng mới' });
-    await expect(editor).toBeVisible();
-
-    const supplierSelect = editor.getByRole('combobox', { name: 'Nhà cung cấp', exact: true });
-    const warehouseSelect = editor.getByRole('combobox', { name: 'Kho nhận', exact: true });
-    const productSelect = editor.getByRole('combobox', { name: 'Sản phẩm', exact: true });
-
-    await supplierSelect.selectOption({ index: 1 });
-    await warehouseSelect.selectOption({ index: 1 });
-
-    await page.route('**/api/products/*/variants', async (route) => {
+  test('hiển thị link Danh mục sản phẩm khi live search trả SKU chưa đủ điều kiện mua', async ({ page }) => {
+    await page.route('**/api/purchase-orders/sku-search**', async (route) => {
       await route.fulfill({
         status: 200,
-        json: { data: [] },
-      });
-    });
-
-    await productSelect.selectOption({ index: 1 });
-    await expect(editor.getByRole('alert')).toContainText('chưa có SKU nào để chọn');
-    const productsLink = page.getByTestId('purchase-order-products-link');
-    await expect(productsLink).toBeVisible();
-    await productsLink.click();
-    await expect(page).toHaveURL(/\/products$/);
-    await expect(page.getByTestId('products-page')).toBeVisible();
-  });
-
-  test('không hiện link Danh mục sản phẩm khi API SKU báo lỗi kỹ thuật', async ({ page }) => {
-    await page.goto('/purchasing/purchase-orders');
-    await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
-    await page.getByTestId('purchase-order-create-button').click();
-
-    const editor = page.getByRole('dialog', { name: 'Đơn đặt hàng mới' });
-    await expect(editor).toBeVisible();
-
-    const supplierSelect = editor.getByRole('combobox', { name: 'Nhà cung cấp', exact: true });
-    const warehouseSelect = editor.getByRole('combobox', { name: 'Kho nhận', exact: true });
-    const productSelect = editor.getByRole('combobox', { name: 'Sản phẩm', exact: true });
-
-    await supplierSelect.selectOption({ index: 1 });
-    await warehouseSelect.selectOption({ index: 1 });
-
-    await page.route('**/api/products/*/variants', async (route) => {
-      await route.fulfill({
-        status: 503,
         json: {
-          error: {
-            code: 'PRODUCT_VARIANTS_UNAVAILABLE',
-            message: 'Không tải được danh sách SKU',
-            retryable: true,
-          },
+          data: [{
+            id: '11111111-1111-4111-8111-111111111111',
+            productId: '22222222-2222-4222-8222-222222222222',
+            productCode: 'SP-THIEU-DV',
+            productName: 'Sản phẩm thiếu đơn vị',
+            sku: 'SKU-THIEU-DV',
+            variantName: 'SKU thiếu đơn vị',
+            barcode: null,
+            unitId: null,
+            unitCode: null,
+            unitName: null,
+            conversionToBase: null,
+            allowsFractional: null,
+            eligibility: {
+              selectable: false,
+              code: 'SKU_UNIT_MISSING',
+              message: 'SKU chưa được gắn đơn vị mua hàng và hệ số quy đổi.',
+            },
+          }],
+          requestId: 'e2e-sku-missing-unit',
         },
       });
     });
 
-    await productSelect.selectOption({ index: 1 });
-    await expect(editor.getByRole('alert')).toContainText('Hãy cập nhật dữ liệu trước khi thao tác.');
+    await page.goto('/purchasing/purchase-orders');
+    await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
+    await page.getByTestId('purchase-order-create-button').click();
+
+    const editor = page.getByRole('dialog', { name: 'Đơn đặt hàng mới' });
+    await expect(editor).toBeVisible();
+    await editor.getByRole('combobox', { name: 'Tìm SKU mua hàng', exact: true }).fill('SKU-THIEU-DV');
+    const result = editor.getByRole('option').filter({ hasText: 'SKU-THIEU-DV' });
+    await expect(result).toBeVisible();
+    await result.getByRole('button').click();
+    await expect(editor.getByRole('alert')).toContainText('chưa được gắn đơn vị mua hàng');
+    const productsLink = page.getByTestId('purchase-order-products-link');
+    await expect(productsLink).toBeVisible();
+    await productsLink.click();
+    await expect(page).toHaveURL(/\/products$/);
+    await expect(page.getByTestId('products-page')).toBeVisible();
+  });
+
+  test('không hiện link Danh mục sản phẩm khi live SKU search báo lỗi kỹ thuật', async ({ page }) => {
+    await page.route('**/api/purchase-orders/sku-search**', async (route) => {
+      await route.fulfill({
+        status: 503,
+        json: {
+          error: {
+            code: 'PURCHASE_ORDER_SKU_SEARCH_UNAVAILABLE',
+            message: 'Không tải được danh sách SKU',
+            retryable: true,
+          },
+          requestId: 'e2e-sku-search-failure',
+        },
+      });
+    });
+
+    await page.goto('/purchasing/purchase-orders');
+    await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
+    await page.getByTestId('purchase-order-create-button').click();
+
+    const editor = page.getByRole('dialog', { name: 'Đơn đặt hàng mới' });
+    await expect(editor).toBeVisible();
+    await editor.getByRole('combobox', { name: 'Tìm SKU mua hàng', exact: true }).fill('SKU-LOI-KY-THUAT');
+    await expect(editor.getByRole('alert')).toContainText('Không tải được danh sách SKU');
     await expect(page.getByTestId('purchase-order-products-link')).toHaveCount(0);
   });
 });
