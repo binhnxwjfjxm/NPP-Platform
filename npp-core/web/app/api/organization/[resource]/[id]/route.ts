@@ -6,6 +6,7 @@ import {
   patchOrganizationResource,
   resolveOrganizationRequestId,
 } from '../../../../../lib/organization-gateway';
+import { formatDeactivateConflictMessage } from '../../../../../lib/deactivate-conflict-message';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,7 @@ function errorResponse(error: unknown, requestId: string) {
     {
       error: {
         code: normalized.code,
-        message: normalized.publicMessage,
+        message: formatDeactivateConflictMessage(normalized.publicMessage, normalized.details),
         retryable: normalized.retryable,
         details: normalized.details,
       },
