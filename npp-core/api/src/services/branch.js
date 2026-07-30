@@ -1,4 +1,5 @@
 import * as branchRepo from '../db/repositories/branch.js';
+import { activeDependentsConflict, staleVersionConflict } from './deactivate-conflict-contract.js';
 
 const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -165,12 +166,7 @@ export async function updateBranch(client, { id, installationId, payload, update
   });
 
   if (!updated) {
-    return {
-      ok: false,
-      code: 'CONFLICT',
-      message: 'Branch update conflict: expectedUpdatedAt does not match current record',
-      retryable: false,
-    };
+    return staleVersionConflict({ entityLabel: 'Chi nhánh', managementPath: '/organization/branches' });
   }
 
   return { ok: true, branch: updated, beforeData: existing };
@@ -201,14 +197,17 @@ export async function updateBranchStatus(client, { id, installationId, isActive,
   }
 
   if (!isActive) {
-    const hasActive = await branchRepo.hasActiveWarehouses(client, { branchId: normalizedId, installationId });
-    if (hasActive) {
-      return {
-        ok: false,
-        code: 'CANNOT_DEACTIVATE',
-        message: 'Cannot deactivate a branch that has active warehouses',
-        retryable: false,
-      };
+    const activeWarehouseCount = await branchRepo.countActiveWarehouses(client, { branchId: normalizedId, installationId });
+    if (activeWarehouseCount > 0) {
+      return activeDependentsConflict({
+        message: 'Không thể ngưng hoạt động chi nhánh vì còn kho đang hoạt động. Hãy ngưng hoạt động hoặc chuyển các kho sang chi nhánh khác trước rồi thử lại.',
+        reason: 'BRANCH_HAS_ACTIVE_WAREHOUSES',
+        dependentType: 'warehouse',
+        dependentLabel: 'Kho đang hoạt động',
+        count: activeWarehouseCount,
+        managementPath: '/organization/warehouses',
+        action: 'deactivate_or_reassign_warehouses_first',
+      });
     }
   }
 
@@ -221,12 +220,7 @@ export async function updateBranchStatus(client, { id, installationId, isActive,
   });
 
   if (!updated) {
-    return {
-      ok: false,
-      code: 'CONFLICT',
-      message: 'Branch status update conflict: expectedUpdatedAt does not match current record',
-      retryable: false,
-    };
+    return staleVersionConflict({ entityLabel: 'Chi nhánh', managementPath: '/organization/branches' });
   }
 
   return { ok: true, branch: updated, beforeData: existing };

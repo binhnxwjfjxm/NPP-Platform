@@ -2,6 +2,7 @@ import * as categoryRepo from '../db/repositories/product-categories.js';
 import * as brandRepo from '../db/repositories/product-brands.js';
 import * as productRepo from '../db/repositories/products.js';
 import * as variantRepo from '../db/repositories/product-variants.js';
+import { activeDependentsConflict, domainConflict, staleVersionConflict } from './deactivate-conflict-contract.js';
 
 const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
 const SKU_PATTERN = /^[A-Z0-9._/-]{1,96}$/;
@@ -13,8 +14,8 @@ function invalid(code, message, retryable = false) {
   return { ok: false, code, message, retryable };
 }
 
-function conflict(message) {
-  return invalid('CONFLICT', message);
+function conflict(message, reason = 'DOMAIN_CONFLICT') {
+  return domainConflict({ message, reason });
 }
 
 function text(value) {
@@ -204,7 +205,7 @@ export async function updateProductCategory(client, { id, installationId, payloa
   if (Object.prototype.hasOwnProperty.call(payload ?? {}, 'code') && code(payload.code) !== existing.code) return invalid('IMMUTABLE_CODE', 'Category code is immutable');
   const expected = expectedUpdatedAt(payload?.expectedUpdatedAt);
   if (!expected.ok) return expected;
-  if (dateTime(existing.updated_at) !== expected.value) return conflict('Product category update conflict');
+  if (dateTime(existing.updated_at) !== expected.value) return staleVersionConflict({ entityLabel: 'Nhóm sản phẩm', managementPath: '/products' });
   const validation = validateProductCategoryInput(payload ?? {}, { codeRequired: false, defaults: {
     code: existing.code, name: existing.name, parentCategoryId: existing.parent_category_id, description: existing.description,
     sortOrder: existing.sort_order, isCatalogVisible: existing.is_catalog_visible, isActive: existing.is_active,
@@ -219,11 +220,11 @@ export async function updateProductCategory(client, { id, installationId, payloa
     if (cycle) return invalid('INVALID_CATEGORY_HIERARCHY', 'Category parent assignment would create a cycle');
   }
   if (!next.isActive && existing.is_active) {
-    if (await categoryRepo.hasActiveProductsForCategory(client, { categoryId: existing.id, installationId })) return conflict('Cannot deactivate category while active products depend on it');
-    if (await categoryRepo.hasActiveChildCategories(client, { categoryId: existing.id, installationId })) return conflict('Cannot deactivate category while active child categories depend on it');
+    if (await categoryRepo.hasActiveProductsForCategory(client, { categoryId: existing.id, installationId })) return domainConflict({ message: 'Không thể ngưng hoạt động nhóm sản phẩm vì còn sản phẩm đang hoạt động phụ thuộc. Hãy chuyển hoặc ngưng các sản phẩm trước rồi thử lại.', reason: 'CATEGORY_HAS_ACTIVE_PRODUCTS', managementPath: '/products' });
+    if (await categoryRepo.hasActiveChildCategories(client, { categoryId: existing.id, installationId })) return domainConflict({ message: 'Không thể ngưng hoạt động nhóm sản phẩm vì còn nhóm con đang hoạt động. Hãy ngưng hoặc chuyển nhóm con trước rồi thử lại.', reason: 'CATEGORY_HAS_ACTIVE_CHILDREN', managementPath: '/products' });
   }
   const category = await categoryRepo.updateProductCategory(client, { id: existing.id, installationId, ...next, updatedBy, expectedUpdatedAt: expected.value });
-  if (!category) return conflict('Product category update conflict');
+  if (!category) return staleVersionConflict({ entityLabel: 'Nhóm sản phẩm', managementPath: '/products' });
   return aliases('category', category, { beforeData: existing, changed: true, action: next.isActive === existing.is_active ? 'update' : (next.isActive ? 'activate' : 'deactivate') });
 }
 
@@ -256,16 +257,16 @@ export async function updateProductBrand(client, { id, installationId, payload, 
   if (Object.prototype.hasOwnProperty.call(payload ?? {}, 'code') && code(payload.code) !== existing.code) return invalid('IMMUTABLE_CODE', 'Brand code is immutable');
   const expected = expectedUpdatedAt(payload?.expectedUpdatedAt);
   if (!expected.ok) return expected;
-  if (dateTime(existing.updated_at) !== expected.value) return conflict('Product brand update conflict');
+  if (dateTime(existing.updated_at) !== expected.value) return staleVersionConflict({ entityLabel: 'Nhãn hàng', managementPath: '/products' });
   const validation = validateProductBrandInput(payload ?? {}, { codeRequired: false, defaults: {
     code: existing.code, name: existing.name, description: existing.description,
     isCatalogVisible: existing.is_catalog_visible, isActive: existing.is_active,
   } });
   if (!validation.ok) return validation;
   const next = validation.normalized;
-  if (!next.isActive && existing.is_active && await brandRepo.hasActiveProductsForBrand(client, { brandId: existing.id, installationId })) return conflict('Cannot deactivate brand while active products depend on it');
+  if (!next.isActive && existing.is_active && await brandRepo.hasActiveProductsForBrand(client, { brandId: existing.id, installationId })) return domainConflict({ message: 'Không thể ngưng hoạt động nhãn hàng vì còn sản phẩm đang hoạt động phụ thuộc. Hãy chuyển hoặc ngưng các sản phẩm trước rồi thử lại.', reason: 'BRAND_HAS_ACTIVE_PRODUCTS', managementPath: '/products' });
   const brand = await brandRepo.updateProductBrand(client, { id: existing.id, installationId, ...next, updatedBy, expectedUpdatedAt: expected.value });
-  if (!brand) return conflict('Product brand update conflict');
+  if (!brand) return staleVersionConflict({ entityLabel: 'Nhãn hàng', managementPath: '/products' });
   return aliases('brand', brand, { beforeData: existing, changed: true, action: next.isActive === existing.is_active ? 'update' : (next.isActive ? 'activate' : 'deactivate') });
 }
 
@@ -306,7 +307,7 @@ export async function updateProduct(client, { id, installationId, payload, updat
   if (Object.prototype.hasOwnProperty.call(payload ?? {}, 'code') && code(payload.code) !== existing.code) return invalid('IMMUTABLE_CODE', 'Product code is immutable');
   const expected = expectedUpdatedAt(payload?.expectedUpdatedAt);
   if (!expected.ok) return expected;
-  if (dateTime(existing.updated_at) !== expected.value) return conflict('Product update conflict');
+  if (dateTime(existing.updated_at) !== expected.value) return staleVersionConflict({ entityLabel: 'Sản phẩm', managementPath: '/products' });
   const validation = validateProductInput(payload ?? {}, { codeRequired: false, defaults: {
     code: existing.code, name: existing.name, catalogName: existing.catalog_name, categoryId: existing.category_id,
     brandId: existing.brand_id, description: existing.description, notes: existing.notes,
@@ -322,9 +323,22 @@ export async function updateProduct(client, { id, installationId, payload, updat
     if (!next.isActive) return invalid('INVALID_ORDERABLE_STATUS', 'Inactive products cannot be orderable');
     if (await productRepo.countActiveSellableVariantsForProduct(client, { productId: existing.id, installationId }) === 0) return invalid('INVALID_ORDERABLE_STATUS', 'Product cannot be orderable without an active sellable SKU');
   }
-  if (!next.isActive && existing.is_active && await productRepo.countActiveVariantsForProduct(client, { productId: existing.id, installationId }) > 0) return conflict('Cannot deactivate product while active variants exist');
+  if (!next.isActive && existing.is_active) {
+    const activeSkuCount = await productRepo.countActiveVariantsForProduct(client, { productId: existing.id, installationId });
+    if (activeSkuCount > 0) {
+      return activeDependentsConflict({
+        message: 'Không thể ngưng hoạt động sản phẩm vì còn SKU đang hoạt động. Hãy ngưng hoạt động các SKU của sản phẩm trước rồi thử lại.',
+        reason: 'PRODUCT_HAS_ACTIVE_SKUS',
+        dependentType: 'product_variant',
+        dependentLabel: 'SKU đang hoạt động',
+        count: activeSkuCount,
+        managementPath: '/products',
+        action: 'deactivate_skus_first',
+      });
+    }
+  }
   const product = await productRepo.updateProduct(client, { id: existing.id, installationId, ...next, updatedBy, expectedUpdatedAt: expected.value });
-  if (!product) return conflict('Product update conflict');
+  if (!product) return staleVersionConflict({ entityLabel: 'Sản phẩm', managementPath: '/products' });
   return { ok: true, product, beforeData: existing, changed: true, action: next.isActive === existing.is_active ? 'update' : (next.isActive ? 'activate' : 'deactivate') };
 }
 
@@ -337,9 +351,9 @@ export async function createProductVariant(client, { installationId, productId, 
   const next = validation.normalized;
   if (next.isActive && !product.is_active) return invalid('PRODUCT_INACTIVE', 'Cannot create an active SKU under an inactive product');
   if (await variantRepo.getProductVariantBySku(client, { installationId, sku: next.sku })) return invalid('DUPLICATE_SKU', 'SKU already exists');
-  if (next.isInventoryBase && next.isActive && await variantRepo.countActiveInventoryBaseVariantsForProduct(client, { installationId, productId: product.id }) > 0) return conflict('Only one active inventory-base SKU is allowed per product');
+  if (next.isInventoryBase && next.isActive && await variantRepo.countActiveInventoryBaseVariantsForProduct(client, { installationId, productId: product.id }) > 0) return domainConflict({ message: 'Mỗi sản phẩm chỉ được có một SKU gốc tồn kho đang hoạt động.', reason: 'ACTIVE_INVENTORY_BASE_SKU_EXISTS', managementPath: '/products' });
   const variant = await variantRepo.insertProductVariant(client, { installationId, productId: product.id, ...next, createdBy });
-  if (!variant) return invalid(next.isInventoryBase ? 'CONFLICT' : 'DUPLICATE_SKU', next.isInventoryBase ? 'Only one active inventory-base SKU is allowed per product' : 'SKU already exists');
+  if (!variant) return next.isInventoryBase ? domainConflict({ message: 'Mỗi sản phẩm chỉ được có một SKU gốc tồn kho đang hoạt động.', reason: 'ACTIVE_INVENTORY_BASE_SKU_EXISTS', managementPath: '/products' }) : invalid('DUPLICATE_SKU', 'SKU already exists');
   return aliases('variant', variant);
 }
 
@@ -359,7 +373,7 @@ export async function updateProductVariant(client, { productId, variantId, insta
   if (Object.prototype.hasOwnProperty.call(payload ?? {}, 'sku') && code(payload.sku) !== existing.sku) return invalid('IMMUTABLE_SKU', 'SKU is immutable');
   const expected = expectedUpdatedAt(payload?.expectedUpdatedAt);
   if (!expected.ok) return expected;
-  if (dateTime(existing.updated_at) !== expected.value) return conflict('Product variant update conflict');
+  if (dateTime(existing.updated_at) !== expected.value) return staleVersionConflict({ entityLabel: 'SKU', managementPath: '/products' });
   const validation = validateProductVariantInput(payload ?? {}, { skuRequired: false, defaults: {
     sku: existing.sku, name: existing.name, variantKind: existing.variant_kind,
     isInventoryBase: existing.is_inventory_base, isSellable: existing.is_sellable,
@@ -368,13 +382,13 @@ export async function updateProductVariant(client, { productId, variantId, insta
   if (!validation.ok) return validation;
   const next = validation.normalized;
   if (next.isActive && !product.is_active) return invalid('PRODUCT_INACTIVE', 'Cannot activate an SKU under an inactive product');
-  if (next.isInventoryBase && next.isActive && await variantRepo.countActiveInventoryBaseVariantsForProduct(client, { installationId, productId: product.id, excludeVariantId: existing.id }) > 0) return conflict('Only one active inventory-base SKU is allowed per product');
+  if (next.isInventoryBase && next.isActive && await variantRepo.countActiveInventoryBaseVariantsForProduct(client, { installationId, productId: product.id, excludeVariantId: existing.id }) > 0) return domainConflict({ message: 'Mỗi sản phẩm chỉ được có một SKU gốc tồn kho đang hoạt động.', reason: 'ACTIVE_INVENTORY_BASE_SKU_EXISTS', managementPath: '/products' });
   if (product.is_orderable && !(next.isActive && next.isSellable)) {
     const remaining = await variantRepo.countActiveSellableVariantsForProductExcludingVariant(client, { installationId, productId: product.id, excludeVariantId: existing.id });
     if (remaining === 0) return invalid('INVALID_ORDERABLE_STATUS', 'Product cannot remain orderable without an active sellable SKU');
   }
   const variant = await variantRepo.updateProductVariant(client, { id: existing.id, installationId, ...next, updatedBy, expectedUpdatedAt: expected.value });
-  if (!variant) return conflict('Product variant update conflict');
+  if (!variant) return staleVersionConflict({ entityLabel: 'SKU', managementPath: '/products' });
   return aliases('variant', variant, { beforeData: existing, changed: true, action: next.isActive === existing.is_active ? 'update' : (next.isActive ? 'activate' : 'deactivate') });
 }
 
@@ -413,9 +427,9 @@ export async function importProducts(client, { installationId, payload, createdB
       seenSkus.add(variant.sku);
       row.variants.push(variant);
     }
-    if (row.variants.filter((variant) => variant.isActive && variant.isInventoryBase).length > 1) return conflict('Only one active inventory-base SKU is allowed per product');
+    if (row.variants.filter((variant) => variant.isActive && variant.isInventoryBase).length > 1) return domainConflict({ message: 'Mỗi sản phẩm chỉ được có một SKU gốc tồn kho đang hoạt động.', reason: 'ACTIVE_INVENTORY_BASE_SKU_EXISTS', managementPath: '/products' });
     if (row.isOrderable && (!row.isActive || !row.variants.some((variant) => variant.isActive && variant.isSellable))) return invalid('INVALID_ORDERABLE_STATUS', 'Orderable import products require an active sellable SKU');
-    if (!row.isActive && row.variants.some((variant) => variant.isActive)) return conflict('Inactive import products cannot contain active variants');
+    if (!row.isActive && row.variants.some((variant) => variant.isActive)) return activeDependentsConflict({ message: 'Không thể import sản phẩm ngưng hoạt động khi còn SKU đang hoạt động trong cùng payload.', reason: 'IMPORT_PRODUCT_HAS_ACTIVE_SKUS', dependentType: 'product_variant', dependentLabel: 'SKU đang hoạt động', count: 1, managementPath: '/products', action: 'deactivate_skus_first' });
     rows.push(row);
   }
 
@@ -489,7 +503,7 @@ export async function importProducts(client, { installationId, payload, createdB
         updatedBy: createdBy,
         expectedUpdatedAt: existing.updated_at,
       });
-      if (!product) return conflict('Import product update conflict');
+      if (!product) return staleVersionConflict({ entityLabel: 'Sản phẩm import', managementPath: '/products' });
       updated += 1;
     } else {
       product = await productRepo.insertProduct(client, {
@@ -515,7 +529,7 @@ export async function importProducts(client, { installationId, payload, createdB
           updatedBy: createdBy,
           expectedUpdatedAt: current.updated_at,
         });
-        if (!variant) return conflict('Import variant update conflict');
+        if (!variant) return staleVersionConflict({ entityLabel: 'SKU import', managementPath: '/products' });
       } else {
         const variant = await variantRepo.insertProductVariant(client, {
           id: variantRow.id,
@@ -536,7 +550,7 @@ export async function importProducts(client, { installationId, payload, createdB
       updatedBy: createdBy,
       expectedUpdatedAt: existing.updated_at,
     });
-    if (!finalized) return conflict('Import product finalization conflict');
+    if (!finalized) return staleVersionConflict({ entityLabel: 'Sản phẩm import', managementPath: '/products' });
     imported += 1;
   }
 

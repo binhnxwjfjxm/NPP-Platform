@@ -1,5 +1,6 @@
 import * as locationRepo from '../db/repositories/location.js';
 import * as warehouseRepo from '../db/repositories/warehouse.js';
+import { domainConflict, staleVersionConflict } from './deactivate-conflict-contract.js';
 
 const LOCATION_TYPES = Object.freeze(['storage', 'receiving', 'shipping', 'quarantine', 'returns', 'damaged', 'other']);
 const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
@@ -178,7 +179,7 @@ export async function updateWarehouseLocation(client, { id, installationId, payl
   });
 
   if (!updated) {
-    return { ok: false, code: 'CONFLICT', message: 'Location update conflict: expectedUpdatedAt does not match current record', retryable: false };
+    return staleVersionConflict({ entityLabel: 'Vị trí kho', managementPath: '/organization/locations' });
   }
 
   return { ok: true, location: updated, beforeData: existing };
@@ -212,7 +213,7 @@ export async function updateWarehouseLocationStatus(client, { id, installationId
       installationId,
     });
     if (!warehouse?.is_active) {
-      return { ok: false, code: 'WAREHOUSE_INACTIVE', message: 'Cannot activate location under inactive warehouse', retryable: false };
+      return domainConflict({ message: 'Không thể kích hoạt vị trí kho khi kho cha đang ngưng hoạt động. Hãy kích hoạt kho trước rồi thử lại.', reason: 'PARENT_WAREHOUSE_INACTIVE', managementPath: '/organization/warehouses' });
     }
   }
 
@@ -225,7 +226,7 @@ export async function updateWarehouseLocationStatus(client, { id, installationId
   });
 
   if (!updated) {
-    return { ok: false, code: 'CONFLICT', message: 'Location status update conflict: expectedUpdatedAt does not match current record', retryable: false };
+    return staleVersionConflict({ entityLabel: 'Vị trí kho', managementPath: '/organization/locations' });
   }
 
   return { ok: true, location: updated, beforeData: existing };

@@ -140,11 +140,15 @@ export async function updateBranchActiveStatus(client, { id, installationId, isA
  * Check if a branch has active warehouses
  * Used to prevent deactivation of branches with active children
  */
-export async function hasActiveWarehouses(client, { branchId, installationId }) {
+export async function countActiveWarehouses(client, { branchId, installationId }) {
   const result = await client.query(
-    `SELECT COUNT(*) as count FROM shared.warehouses WHERE branch_id = $1 AND installation_id = $2 AND is_active = true`,
+    `SELECT COUNT(*)::int as count FROM shared.warehouses WHERE branch_id = $1 AND installation_id = $2 AND is_active = true`,
     [branchId, installationId],
   );
 
-  return (result.rows[0]?.count || 0) > 0;
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+export async function hasActiveWarehouses(client, { branchId, installationId }) {
+  return await countActiveWarehouses(client, { branchId, installationId }) > 0;
 }

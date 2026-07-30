@@ -187,13 +187,13 @@ async function handlePostBranches(req, res, { requestContext, idempotencyStore, 
         if (transactionResult?.skipAudit) {
           const serviceResult = transactionResult.serviceResult;
           return {
-            statusCode: serviceResult.code === 'DUPLICATE_CODE' ? 409 : 400,
+            statusCode: statusForServiceResult(serviceResult),
             contentType: 'application/json',
             requestId,
             body: createErrorEnvelope({
               code: serviceResult.code,
               message: serviceResult.message,
-              details: {},
+              details: serviceResult.details ?? {},
               retryable: serviceResult.retryable ?? false,
             }, requestId, receivedAt),
           };
@@ -340,8 +340,8 @@ async function handlePatchBranchById(req, res, { requestContext, getPool, reques
   } catch (error) {
     if (error?.serviceResult) {
       const result = error.serviceResult;
-      const statusCode = result.code === 'NOT_FOUND' ? 404 : result.code === 'CANNOT_DEACTIVATE' ? 409 : 400;
-      sendError(res, createError(result.code, result.message, {}, result.retryable ?? false, statusCode), requestId, receivedAt);
+      const statusCode = statusForServiceResult(result);
+      sendError(res, serviceResultError(result, statusCode), requestId, receivedAt);
       return;
     }
 
@@ -505,7 +505,7 @@ async function handleGetWarehouses(req, res, { requestContext, getPool, requestI
 
     if (!result.ok) {
       const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
-      sendError(res, createError(result.code, result.message, {}, result.retryable ?? false, statusCode), requestId, receivedAt);
+      sendError(res, serviceResultError(result, statusCode), requestId, receivedAt);
       return;
     }
 
@@ -572,13 +572,13 @@ async function handlePostWarehouses(req, res, { requestContext, idempotencyStore
         if (transactionResult?.skipAudit) {
           const serviceResult = transactionResult.serviceResult;
           return {
-            statusCode: (serviceResult.code === 'DUPLICATE_CODE' || serviceResult.code === 'BRANCH_INACTIVE') ? 409 : 400,
+            statusCode: statusForServiceResult(serviceResult),
             contentType: 'application/json',
             requestId,
             body: createErrorEnvelope({
               code: serviceResult.code,
               message: serviceResult.message,
-              details: {},
+              details: serviceResult.details ?? {},
               retryable: serviceResult.retryable ?? false,
             }, requestId, receivedAt),
           };
@@ -717,8 +717,8 @@ async function handlePatchWarehouseById(req, res, { requestContext, getPool, req
   } catch (error) {
     if (error?.serviceResult) {
       const result = error.serviceResult;
-      const statusCode = result.code === 'NOT_FOUND' ? 404 : result.code === 'CANNOT_DEACTIVATE' ? 409 : 400;
-      sendError(res, createError(result.code, result.message, {}, result.retryable ?? false, statusCode), requestId, receivedAt);
+      const statusCode = statusForServiceResult(result);
+      sendError(res, serviceResultError(result, statusCode), requestId, receivedAt);
       return;
     }
 
@@ -760,7 +760,7 @@ async function handleGetLocations(req, res, { requestContext, getPool, requestId
 
     if (!result.ok) {
       const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
-      sendError(res, createError(result.code, result.message, {}, result.retryable ?? false, statusCode), requestId, receivedAt);
+      sendError(res, serviceResultError(result, statusCode), requestId, receivedAt);
       return;
     }
 
@@ -827,13 +827,13 @@ async function handlePostLocations(req, res, { requestContext, idempotencyStore,
         if (transactionResult?.skipAudit) {
           const serviceResult = transactionResult.serviceResult;
           return {
-            statusCode: (serviceResult.code === 'DUPLICATE_CODE' || serviceResult.code === 'WAREHOUSE_INACTIVE') ? 409 : 400,
+            statusCode: statusForServiceResult(serviceResult),
             contentType: 'application/json',
             requestId,
             body: createErrorEnvelope({
               code: serviceResult.code,
               message: serviceResult.message,
-              details: {},
+              details: serviceResult.details ?? {},
               retryable: serviceResult.retryable ?? false,
             }, requestId, receivedAt),
           };
@@ -973,7 +973,7 @@ async function handlePatchLocationById(req, res, { requestContext, getPool, requ
     if (error?.serviceResult) {
       const result = error.serviceResult;
       const statusCode = result.code === 'NOT_FOUND' ? 404 : 400;
-      sendError(res, createError(result.code, result.message, {}, result.retryable ?? false, statusCode), requestId, receivedAt);
+      sendError(res, serviceResultError(result, statusCode), requestId, receivedAt);
       return;
     }
 

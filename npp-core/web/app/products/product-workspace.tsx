@@ -54,9 +54,22 @@ function normalizeSearch(value: string) {
   return value.trim().toLowerCase();
 }
 
+function dependencyAwareErrorMessage(error: { message?: string; code?: string; details?: unknown } | undefined, fallback: string): string {
+  const details = error?.details as { conflictType?: string; dependency?: { label?: string; count?: number; managementPath?: string }; managementPath?: string; action?: string } | undefined;
+  const base = error?.message || error?.code || fallback;
+  if (!details || typeof details !== 'object') return base;
+  if (details.conflictType === 'active_dependents' && details.dependency) {
+    const count = Number.isFinite(Number(details.dependency.count)) ? Number(details.dependency.count) : 0;
+    const summary = count > 0 ? `${details.dependency.label ?? 'Phụ thuộc đang hoạt động'}: ${count}.` : `${details.dependency.label ?? 'Phụ thuộc đang hoạt động'}.`;
+    return `${base} ${summary} Mở màn hình xử lý: ${details.dependency.managementPath ?? details.managementPath ?? '/products'}`;
+  }
+  if (details.conflictType === 'stale_version') return `${base} Bấm Làm mới rồi thực hiện lại thao tác.`;
+  if (details.managementPath) return `${base} Mở màn hình xử lý: ${details.managementPath}`;
+  return base;
+}
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: 'no-store', ...init });
-  let payload: { data?: T; error?: { message?: string; code?: string } } = {};
+  let payload: { data?: T; error?: { message?: string; code?: string; details?: unknown } } = {};
   try {
     payload = await response.json();
   } catch {
