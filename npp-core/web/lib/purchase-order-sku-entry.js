@@ -9,7 +9,7 @@ export const PURCHASE_ORDER_SKU_FILTERS = Object.freeze({
 export function normalizePurchaseOrderSkuSearchFailure(error) {
   const code = String(error?.code ?? '').trim();
   const message = String(error?.message ?? '').trim();
-  if (code === 'PURCHASE_ORDER_NOT_FOUND' || /purchase order was not found/i.test(message)) {
+  if (code === 'PURCHASE_ORDER_NOT_FOUND') {
     return Object.freeze({
       code: 'PURCHASE_ORDER_SKU_SEARCH_UNAVAILABLE',
       message: 'Chức năng tìm SKU chưa được cập nhật đồng bộ với máy chủ. Vui lòng thử lại sau khi hệ thống hoàn tất cập nhật.',
