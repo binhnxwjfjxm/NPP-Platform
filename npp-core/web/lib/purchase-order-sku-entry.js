@@ -6,6 +6,9 @@ export const PURCHASE_ORDER_SKU_FILTERS = Object.freeze({
   all: 'all',
 });
 
+export const PURCHASE_ORDER_BULK_TEMPLATE_FILENAME = 'mau-nhap-don-dat-hang.csv';
+export const PURCHASE_ORDER_BULK_TEMPLATE_MIME = 'text/csv;charset=utf-8';
+
 export function normalizePurchaseOrderSkuSearchFailure(error) {
   const code = String(error?.code ?? '').trim();
   const message = String(error?.message ?? '').trim();
@@ -50,7 +53,7 @@ export function groupPurchaseOrderSkuOptions(options) {
 
 export function purchaseOrderBulkTemplate() {
   return [
-    'SKU\tSố lượng\tĐơn giá\tKiểu chiết khấu\tGiá trị chiết khấu\tThuế %\tGhi chú',
-    'SKU-MAU\t10\t25000\tGiảm tổng dòng\t0\t8\t',
-  ].join('\n');
+    'SKU;Số lượng;Đơn giá;Kiểu chiết khấu;Giá trị chiết khấu;Thuế %;Ghi chú',
+    'SKU-MAU;10;25000;Giảm tổng dòng;0;8;',
+  ].join('\r\n');
 }
