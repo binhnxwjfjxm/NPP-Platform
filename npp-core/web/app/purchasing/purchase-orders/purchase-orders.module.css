@@ -169,6 +169,24 @@
   line-height: 1.5;
 }
 
+.contextualHelp {
+  margin: 10px 0 0;
+  color: #6d625b;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.contextualLink {
+  color: #7a432d;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.contextualLink:hover {
+  color: #5b3425;
+}
+
 @media (max-width: 860px) {
   .headerGrid,
   .detailGrid,

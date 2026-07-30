@@ -97,6 +97,30 @@ test.describe('Core web route smoke', () => {
     await expect(page.locator('[data-collapsed="false"]')).toBeVisible();
   });
 
+  test('accounting menu opens on accounting routes and survives sidebar collapse', async ({ page }) => {
+    await expectHealthyRoute(page, '/accounting/payables');
+    await expect(page.getByRole('heading', { name: 'Công nợ phải trả', exact: true })).toBeVisible();
+    await expect(page.getByTestId('accounting-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('nav-payables')).toBeVisible();
+    await expect(page.getByTestId('nav-supplier-payments')).toBeVisible();
+
+    await page.getByTestId('sidebar-collapse-button').click();
+    await expect(page.locator('[data-collapsed="true"]')).toBeVisible();
+
+    await page.getByTestId('accounting-menu-toggle').click();
+    await expect(page.locator('[data-collapsed="false"]')).toBeVisible();
+    await expect(page.getByTestId('nav-payables')).toBeVisible();
+  });
+
+  test('accounting menu remains reachable from the mobile hamburger', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectHealthyRoute(page, '/accounting/payables');
+    await page.getByRole('button', { name: 'Mở thanh điều hướng' }).click();
+    await expect(page.getByTestId('accounting-menu-toggle')).toBeVisible();
+    await expect(page.getByTestId('accounting-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('nav-payables')).toBeVisible();
+  });
+
   test('organization route navigation does not repeat browser-side list loading', async ({ page }) => {
     const browserGatewayGets: string[] = [];
     page.on('request', (request) => {

@@ -21,6 +21,7 @@ type IconName =
   | 'locations'
   | 'chevron'
   | 'panel'
+  | 'accounting'
   | 'user';
 
 const organizationItems = [
@@ -52,6 +53,11 @@ const purchasingItems = [
   { href: '/purchasing/purchase-orders', label: 'Đơn đặt hàng', icon: 'panel' as const, testId: 'nav-purchase-orders' },
   { href: '/purchasing/goods-receipts', label: 'Phiếu nhận hàng', icon: 'panel' as const, testId: 'nav-goods-receipts' },
   { href: '/purchasing/supplier-returns', label: 'Phiếu trả NCC', icon: 'panel' as const, testId: 'nav-supplier-returns' },
+];
+
+const accountingItems = [
+  { href: '/accounting/payables', label: 'Công nợ phải trả', icon: 'accounting' as const, testId: 'nav-payables' },
+  { href: '/accounting/supplier-payments', label: 'Thanh toán nhà cung cấp', icon: 'accounting' as const, testId: 'nav-supplier-payments' },
 ];
 
 function Icon({ name }: { name: IconName }) {
@@ -91,6 +97,13 @@ function Icon({ name }: { name: IconName }) {
     ),
     chevron: <path d="m9 6 6 6-6 6" />,
     panel: <path d="M4 5h16M4 12h16M4 19h16" />,
+    accounting: (
+      <>
+        <rect x="5" y="4" width="14" height="16" rx="2" />
+        <path d="M8 8h8M8 12h6M8 16h4" />
+        <circle cx="16" cy="12" r="1.25" />
+      </>
+    ),
     user: (
       <>
         <circle cx="12" cy="8" r="4" />
@@ -128,6 +141,10 @@ function isPurchasingPath(pathname: string): boolean {
   return pathname.startsWith('/purchasing');
 }
 
+function isAccountingPath(pathname: string): boolean {
+  return pathname.startsWith('/accounting');
+}
+
 function persistCollapsed(value: boolean) {
   window.localStorage.setItem('npp-core-sidebar-collapsed', value ? '1' : '0');
 }
@@ -146,6 +163,7 @@ export function AppShell({
   const [accessOpen, setAccessOpen] = useState(pathname.startsWith('/access'));
   const [inventoryOpen, setInventoryOpen] = useState(isInventoryPath(pathname));
   const [purchasingOpen, setPurchasingOpen] = useState(isPurchasingPath(pathname));
+  const [accountingOpen, setAccountingOpen] = useState(isAccountingPath(pathname));
 
   useEffect(() => {
     setCollapsed(window.localStorage.getItem('npp-core-sidebar-collapsed') === '1');
@@ -156,6 +174,7 @@ export function AppShell({
     if (pathname.startsWith('/access')) setAccessOpen(true);
     if (isInventoryPath(pathname)) setInventoryOpen(true);
     if (isPurchasingPath(pathname)) setPurchasingOpen(true);
+    if (isAccountingPath(pathname)) setAccountingOpen(true);
     setMobileOpen(false);
   }, [pathname]);
 
@@ -163,6 +182,7 @@ export function AppShell({
   const accessActive = pathname.startsWith('/access');
   const inventoryActive = isInventoryPath(pathname);
   const purchasingActive = pathname.startsWith('/purchasing');
+  const accountingActive = isAccountingPath(pathname);
   const logoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim() || '/logo-transparent.png';
 
   const organizationChildren = useMemo(
@@ -179,6 +199,10 @@ export function AppShell({
   );
   const purchasingChildren = useMemo(
     () => purchasingItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })),
+    [pathname],
+  );
+  const accountingChildren = useMemo(
+    () => accountingItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })),
     [pathname],
   );
 
@@ -350,6 +374,43 @@ export function AppShell({
                   >
                     <span className={styles.subnavRail} aria-hidden="true" />
                     <span className={styles.subnavIcon}><Icon name="panel" /></span>
+                    <span>{item.label}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            <p className={styles.navLabel}>Kế toán &amp; công nợ</p>
+            <div className={`${styles.navGroup} ${accountingActive ? styles.navGroupActive : ''}`}>
+              <button
+                type="button"
+                className={`${styles.navItem} ${styles.navGroupButton}`}
+                onClick={() => openGroup(setAccountingOpen)}
+                aria-expanded={accountingOpen}
+                data-testid="accounting-menu-toggle"
+                title={collapsed ? 'Kế toán và công nợ' : undefined}
+              >
+                <span className={styles.navIcon}><Icon name="accounting" /></span>
+                <span className={styles.navCopy}>
+                  <span className={styles.navTitle}>Kế toán &amp; công nợ</span>
+                  <span className={styles.navHint}>Công nợ phải trả và thanh toán nhà cung cấp</span>
+                </span>
+                <span className={`${styles.chevron} ${accountingOpen ? styles.chevronOpen : ''}`}>
+                  <Icon name="chevron" />
+                </span>
+              </button>
+
+              <div className={`${styles.subnav} ${accountingOpen && !collapsed ? styles.subnavOpen : ''}`}>
+                {accountingChildren.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    prefetch
+                    className={`${styles.subnavItem} ${item.active ? styles.subnavItemActive : ''}`}
+                    data-testid={item.testId}
+                  >
+                    <span className={styles.subnavRail} aria-hidden="true" />
+                    <span className={styles.subnavIcon}><Icon name={item.icon} /></span>
                     <span>{item.label}</span>
                   </Link>
                 ))}
