@@ -27,17 +27,12 @@ function text(value, max = 0) {
 }
 
 function dateOnly(value) {
-  if (!value) return null;
-  if (typeof value === 'string') {
-    const normalized = value.slice(0, 10);
-    return DATE_PATTERN.test(normalized) ? normalized : null;
-  }
-  const parsed = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  const year = parsed.getFullYear();
-  const month = String(parsed.getMonth() + 1).padStart(2, '0');
-  const day = String(parsed.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const normalized = text(value, 10);
+  if (!normalized || !DATE_PATTERN.test(normalized)) return null;
+  const parsed = new Date(`${normalized}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== normalized
+    ? null
+    : normalized;
 }
 
 function timestamp(value, fallback = new Date().toISOString()) {
@@ -94,7 +89,9 @@ function mapAllocation(row) {
     targetDocumentNumber: row.target_document_number ?? null,
     targetDocumentType: row.target_document_type ?? null,
     amount: String(row.amount),
-    allocationDate: dateOnly(row.allocation_date),
+    allocationDate: typeof row.allocation_date === 'string'
+      ? row.allocation_date.slice(0, 10)
+      : row.allocation_date?.toISOString?.().slice(0, 10),
     sourceRevisionBefore: String(row.source_revision_before),
     targetRevisionBefore: String(row.target_revision_before),
     actorId: row.actor_id,
@@ -121,7 +118,9 @@ function mapDocument(row) {
     direction: row.direction,
     documentType: row.document_type,
     documentNumber: row.source_document_number,
-    paymentDate: dateOnly(row.source_document_date),
+    paymentDate: typeof row.source_document_date === 'string'
+      ? row.source_document_date.slice(0, 10)
+      : row.source_document_date?.toISOString?.().slice(0, 10),
     currencyCode: row.currency_code,
     paymentMethod: row.payment_method_snapshot,
     externalReference: row.external_reference ?? null,
@@ -446,7 +445,9 @@ export async function listOpenAllocationTargets(client, input) {
       warehouseId: row.warehouse_id,
       warehouseCode: row.warehouse_code,
       currencyCode: row.currency_code,
-      dueDate: dateOnly(row.due_date),
+      dueDate: typeof row.due_date === 'string'
+        ? row.due_date.slice(0, 10)
+        : row.due_date?.toISOString?.().slice(0, 10),
       originalAmount: String(row.original_amount),
       allocatedAmount: String(row.allocated_amount),
       remainingAmount: String(row.remaining_amount),
