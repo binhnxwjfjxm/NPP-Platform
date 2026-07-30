@@ -130,7 +130,7 @@ test('Purchase order API is idempotent, concurrency-safe and completes its lifec
     const firstResponse = await create();
     assert.equal(firstResponse.status, 201);
     const first = (await firstResponse.json()).data;
-    const expectedPlacedAt = new Date().toISOString().slice(0, 10);
+    const expectedPlacedAt = createPayload.orderDate;
     assert.equal(first.status, 'draft');
     assert.equal(first.number, null);
     assert.equal(first.placedAt, expectedPlacedAt);
