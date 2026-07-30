@@ -8,6 +8,28 @@
   height: min(96vh, 1020px) !important;
 }
 
+[aria-labelledby="purchase-order-editor-title"] > header h3 {
+  color: #6a4332 !important;
+}
+
+[aria-labelledby="purchase-order-editor-title"] > header p {
+  color: #8a6e5e !important;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [data-testid="purchase-order-template-download"] {
+  border-color: #d2c2b7 !important;
+  background: linear-gradient(180deg, #fff, #f6f1ed) !important;
+  color: #6b4b3c !important;
+}
+
+[aria-labelledby="purchase-order-editor-title"] [data-testid="purchase-order-save"] {
+  border-color: #654333 !important;
+  background: linear-gradient(180deg, #85583f, #6a4332) !important;
+  box-shadow:
+    0 2px 0 #4f3125,
+    0 5px 12px rgba(82, 50, 34, 0.15) !important;
+}
+
 [aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-header-title"],
 [aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-entry-title"],
 [aria-labelledby="purchase-order-editor-title"] [aria-labelledby="po-lines-title"] {
