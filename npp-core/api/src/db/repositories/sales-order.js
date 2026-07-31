@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+export const WALK_IN_CUSTOMER_CODE = 'SYS_WALK_IN';
+
 const ORDER_COLUMNS = `so.id, so.installation_id, so.order_number, so.order_number_allocation_id,
   so.status, so.current_version_number, so.source_type, so.source_id, so.source_outlet_id,
   so.customer_id, c.code AS customer_code, c.name AS customer_name,
@@ -28,6 +30,15 @@ const LINE_COLUMNS = `sovl.id, sovl.installation_id, sovl.sales_order_version_id
   sovl.discount_amount, sovl.tax_mode, sovl.tax_rate, sovl.tax_amount,
   sovl.line_subtotal, sovl.line_total, sovl.note,
   sovl.created_at, sovl.created_by, sovl.updated_at, sovl.updated_by`;
+
+const SKU_OPTION_COLUMNS = `pv.id, pv.product_id, pv.sku, pv.name,
+  pv.is_active AS variant_is_active, pv.is_sellable,
+  pv.unit_id, pv.conversion_to_base,
+  p.code AS product_code, p.name AS product_name,
+  p.is_active AS product_is_active, p.is_orderable AS product_is_orderable,
+  u.code AS unit_code, u.name AS unit_name,
+  u.allows_fractional, u.is_active AS unit_is_active,
+  primary_barcode.barcode`;
 
 function scopeIds(warehouseIds) {
   return Array.isArray(warehouseIds)
@@ -147,6 +158,28 @@ export async function getActiveCustomer(client, { installationId, id }) {
   )).rows[0] ?? null;
 }
 
+export async function ensureWalkInCustomer(client, { installationId, actorId }) {
+  const id = randomUUID();
+  const now = nowIso();
+  const result = await client.query(
+    `INSERT INTO shared.customers (
+       id, installation_id, code, name, group_id, responsible_employee_id,
+       phone, email, tax_code, payment_terms_days, credit_limit, notes,
+       is_active, created_at, updated_at, created_by, updated_by
+     ) VALUES (
+       $1,$2,$3,'Khách vãng lai',NULL,NULL,NULL,NULL,NULL,0,0,
+       'Khách hệ thống dành cho đơn bán trực tiếp nhận tại kho.',true,$4,$4,$5,$5
+     )
+     ON CONFLICT (installation_id, code) DO UPDATE
+     SET name='Khách vãng lai', group_id=NULL, responsible_employee_id=NULL,
+         payment_terms_days=0, credit_limit=0, is_active=true,
+         updated_at=$4, updated_by=$5
+     RETURNING id, code, name, group_id, payment_terms_days, credit_limit, is_active`,
+    [id, installationId, WALK_IN_CUSTOMER_CODE, now, actorId],
+  );
+  return result.rows[0] ?? null;
+}
+
 export async function getCustomerAddress(client, { installationId, id }) {
   return (await client.query(
     `SELECT id, customer_id, label, recipient_name, phone, address_line1, address_line2,
@@ -178,6 +211,67 @@ export async function getSalesVariant(client, { installationId, id }) {
      WHERE pv.installation_id = $1 AND pv.id = $2`,
     [installationId, id],
   )).rows[0] ?? null;
+}
+
+export async function searchSalesOrderSkuOptions(client, {
+  installationId, search, limit = 20, offset = 0,
+}) {
+  const term = String(search ?? '').trim();
+  const pattern = `%${term}%`;
+  const normalized = term.toUpperCase();
+  const result = await client.query(
+    `SELECT ${SKU_OPTION_COLUMNS}
+     FROM shared.product_variants pv
+     JOIN shared.products p
+       ON p.installation_id = pv.installation_id AND p.id = pv.product_id
+     LEFT JOIN shared.units_of_measure u
+       ON u.installation_id = pv.installation_id AND u.id = pv.unit_id
+     LEFT JOIN LATERAL (
+       SELECT pb.barcode
+       FROM shared.product_barcodes pb
+       WHERE pb.installation_id = pv.installation_id
+         AND pb.variant_id = pv.id
+         AND pb.is_active = true
+       ORDER BY pb.is_primary DESC, pb.created_at ASC, pb.id ASC
+       LIMIT 1
+     ) primary_barcode ON true
+     WHERE pv.installation_id = $1
+       AND (
+         $2 = ''
+         OR pv.sku ILIKE $3
+         OR pv.name ILIKE $3
+         OR p.code ILIKE $3
+         OR p.name ILIKE $3
+         OR EXISTS (
+           SELECT 1
+           FROM shared.product_barcodes matching_barcode
+           WHERE matching_barcode.installation_id = pv.installation_id
+             AND matching_barcode.variant_id = pv.id
+             AND matching_barcode.is_active = true
+             AND matching_barcode.normalized_barcode ILIKE upper($3)
+         )
+       )
+     ORDER BY
+       CASE
+         WHEN upper(pv.sku) = $2 THEN 0
+         WHEN upper(p.code) = $2 THEN 1
+         WHEN EXISTS (
+           SELECT 1
+           FROM shared.product_barcodes exact_barcode
+           WHERE exact_barcode.installation_id = pv.installation_id
+             AND exact_barcode.variant_id = pv.id
+             AND exact_barcode.is_active = true
+             AND exact_barcode.normalized_barcode = $2
+         ) THEN 2
+         ELSE 3
+       END,
+       p.code ASC,
+       pv.sku ASC,
+       pv.id ASC
+     LIMIT $4 OFFSET $5`,
+    [installationId, normalized, pattern, limit, offset],
+  );
+  return result.rows;
 }
 
 export async function insertSalesOrder(client, data) {
