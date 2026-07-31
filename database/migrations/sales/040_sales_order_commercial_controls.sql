@@ -173,13 +173,9 @@ BEGIN
         base_unit_price >= 0
         AND system_unit_price >= 0
         AND unit_price >= 0
-        AND (
-          (price_source = 'MANUAL_OVERRIDE'
-            AND manual_override_reason IS NOT NULL
-            AND char_length(btrim(manual_override_reason)) BETWEEN 1 AND 500)
-          OR
-          (price_source <> 'MANUAL_OVERRIDE' AND manual_override_reason IS NULL)
-        )
+        AND (manual_override_reason IS NULL
+          OR char_length(btrim(manual_override_reason)) BETWEEN 1 AND 500)
+        AND (price_source = 'MANUAL_OVERRIDE' OR manual_override_reason IS NULL)
       );
   END IF;
 
