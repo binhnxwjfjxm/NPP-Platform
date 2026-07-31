@@ -20,15 +20,67 @@ CREATE TABLE IF NOT EXISTS shared.sales_order_settings (
 );
 
 ALTER TABLE sales.sales_orders
+  ADD COLUMN IF NOT EXISTS customer_mode text NOT NULL DEFAULT 'EXISTING',
   ADD COLUMN IF NOT EXISTS walk_in_display_name text NULL,
   ADD COLUMN IF NOT EXISTS walk_in_phone text NULL;
 
 ALTER TABLE sales.sales_order_versions
+  ADD COLUMN IF NOT EXISTS customer_mode_snapshot text NOT NULL DEFAULT 'EXISTING',
   ADD COLUMN IF NOT EXISTS walk_in_display_name_snapshot text NULL,
   ADD COLUMN IF NOT EXISTS walk_in_phone_snapshot text NULL;
 
 DO $$
 BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'sales_orders_customer_mode_check'
+      AND conrelid = 'sales.sales_orders'::regclass
+  ) THEN
+    ALTER TABLE sales.sales_orders
+      ADD CONSTRAINT sales_orders_customer_mode_check
+      CHECK (customer_mode IN ('EXISTING', 'WALK_IN'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'sales_order_versions_customer_mode_check'
+      AND conrelid = 'sales.sales_order_versions'::regclass
+  ) THEN
+    ALTER TABLE sales.sales_order_versions
+      ADD CONSTRAINT sales_order_versions_customer_mode_check
+      CHECK (customer_mode_snapshot IN ('EXISTING', 'WALK_IN'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'sales_orders_walk_in_shape_check'
+      AND conrelid = 'sales.sales_orders'::regclass
+  ) THEN
+    ALTER TABLE sales.sales_orders
+      ADD CONSTRAINT sales_orders_walk_in_shape_check
+      CHECK (
+        customer_mode <> 'WALK_IN'
+        OR (delivery_mode = 'PICKUP'
+            AND customer_address_id IS NULL
+            AND collection_policy IN ('PREPAID', 'COLLECT_ON_DELIVERY'))
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'sales_order_versions_walk_in_shape_check'
+      AND conrelid = 'sales.sales_order_versions'::regclass
+  ) THEN
+    ALTER TABLE sales.sales_order_versions
+      ADD CONSTRAINT sales_order_versions_walk_in_shape_check
+      CHECK (
+        customer_mode_snapshot <> 'WALK_IN'
+        OR (delivery_mode = 'PICKUP'
+            AND customer_address_id IS NULL
+            AND collection_policy IN ('PREPAID', 'COLLECT_ON_DELIVERY'))
+      );
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conname = 'sales_orders_walk_in_name_length_check'
@@ -72,4 +124,4 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS sales_orders_walk_in_phone_idx
   ON sales.sales_orders (installation_id, walk_in_phone)
-  WHERE walk_in_phone IS NOT NULL;
+  WHERE customer_mode = 'WALK_IN' AND walk_in_phone IS NOT NULL;
