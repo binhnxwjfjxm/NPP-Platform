@@ -56,7 +56,7 @@ async function assignUnits(baseUrl, config, fixture, pool) {
 async function createApprovedPurchaseOrder(baseUrl, config, fixture) {
   let response = await fetch(`${baseUrl}/api/purchase-orders`, {
     method: 'POST', headers: mutationHeaders(config, `pay-po-create-${randomUUID()}`),
-    body: JSON.stringify({ supplierId: fixture.supplierId, warehouseId: fixture.warehouseId, orderDate: '2026-07-30', expectedDate: '2026-08-05', currencyCode: 'VND', lines: [{ variantId: fixture.cartonVariantId, quantity: '10', unitPrice: '10000', discountAmount: '10000', taxAmount: '20000' }] }),
+    body: JSON.stringify({ supplierId: fixture.supplierId, warehouseId: fixture.warehouseId, orderDate: '2026-07-30', expectedDate: '2026-08-05', currencyCode: 'VND', lines: [{ variantId: fixture.cartonVariantId, quantity: '10', unitPrice: '10000', discountAmount: '10000', taxAmount: '20000', priceOverrideReason: 'Giá nhập tay cho fixture công nợ phải trả' }] }),
   });
   assert.equal(response.status, 201);
   const draft = await data(response);
