@@ -26,7 +26,7 @@ export async function listActiveSalesChannels(client, { installationId }) {
 
 export async function getDefaultSalesChannelId(client, { installationId }) {
   const result = await client.query(
-    `SELECT settings.default_sales_channel_id
+    `SELECT channel.id AS default_sales_channel_id
        FROM shared.sales_order_settings AS settings
        LEFT JOIN shared.sales_channels AS channel
          ON channel.installation_id = settings.installation_id
@@ -56,14 +56,19 @@ export async function applyCommercialSnapshot(client, {
   documentDiscount,
   lines,
 }) {
-  await client.query(
+  const orderResult = await client.query(
     `UPDATE sales.sales_orders
         SET sales_channel_id = $3,
             updated_at = now()
       WHERE installation_id = $1 AND id = $2`,
     [installationId, salesOrderId, channel.id],
   );
+  if (orderResult.rowCount !== 1) return false;
 
+  const manualReasons = lines
+    .filter((line) => line.manualReason)
+    .map((line) => `Dòng ${line.lineNumber}: ${line.manualReason}`)
+    .join('; ') || null;
   const versionResult = await client.query(
     `UPDATE sales.sales_order_versions
         SET sales_channel_id = $4,
@@ -72,6 +77,7 @@ export async function applyCommercialSnapshot(client, {
             document_discount_mode = $7,
             document_discount_value = $8,
             document_discount_reason = $9,
+            price_override_reason = $10,
             updated_at = now()
       WHERE installation_id = $1
         AND sales_order_id = $2
@@ -88,6 +94,7 @@ export async function applyCommercialSnapshot(client, {
       documentDiscount.mode,
       documentDiscount.value,
       documentDiscount.reason,
+      manualReasons,
     ],
   );
   const versionId = rows(versionResult)[0]?.id;
@@ -95,14 +102,22 @@ export async function applyCommercialSnapshot(client, {
 
   for (const line of lines) {
     const source = line.manualReason ? 'MANUAL_OVERRIDE' : 'PRICE_ENGINE';
-    const trace = line.manualReason
-      ? [...line.systemTrace, {
-          kind: 'MANUAL_OVERRIDE',
-          reason: line.manualReason,
-          beforeUnitPriceMinor: line.systemUnitPriceMinor,
-          afterUnitPriceMinor: line.finalUnitPriceMinor,
-        }]
-      : line.systemTrace;
+    const trace = [
+      {
+        kind: 'RESOLUTION',
+        resolutionFingerprint: line.fingerprint,
+        channelId: channel.id,
+      },
+      ...line.systemTrace,
+      ...(line.manualReason
+        ? [{
+            kind: 'MANUAL_OVERRIDE',
+            reason: line.manualReason,
+            beforeUnitPriceMinor: line.systemUnitPriceMinor,
+            afterUnitPriceMinor: line.finalUnitPriceMinor,
+          }]
+        : []),
+    ];
     const ids = provenance(line.systemTrace);
     const result = await client.query(
       `UPDATE sales.sales_order_version_lines
@@ -195,6 +210,7 @@ export async function copyCommercialSnapshotToDraft(client, {
             document_discount_mode = source.document_discount_mode,
             document_discount_value = source.document_discount_value,
             document_discount_reason = source.document_discount_reason,
+            price_override_reason = source.price_override_reason,
             updated_at = now()
        FROM sales.sales_order_versions AS source
       WHERE target.installation_id = $1
