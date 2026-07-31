@@ -28,8 +28,131 @@ function variantId(index: number) {
   return `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
 }
 
+function orderEnvelope(payload: Record<string, unknown>, status: 'draft' | 'confirmed') {
+  const now = '2026-07-31T00:00:00.000Z';
+  const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const warehouseId = String(payload.warehouseId ?? '');
+  const salesChannelId = String(payload.salesChannelId ?? '');
+  const lines = Array.isArray(payload.lines) ? payload.lines as Array<Record<string, unknown>> : [];
+  return {
+    data: {
+      id,
+      number: status === 'confirmed' ? 'SO-260731-000001' : null,
+      status,
+      currentVersionNumber: '1',
+      sourceType: 'MANUAL',
+      sourceId: null,
+      sourceOutletId: null,
+      customerMode: 'WALK_IN',
+      customerId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      customerCode: 'WALK-IN',
+      customerName: 'Khách vãng lai',
+      walkInDisplayName: null,
+      walkInPhone: null,
+      customerAddressId: null,
+      warehouseId,
+      warehouseCode: 'SOW-E2E',
+      warehouseName: 'Kho SO E2E',
+      salesChannelId,
+      salesChannelCode: 'FIELD',
+      salesChannelName: 'Bán hàng thị trường',
+      deliveryMode: 'PICKUP',
+      collectionPolicy: 'COLLECT_ON_DELIVERY',
+      fulfillmentStatus: 'unallocated',
+      deliveryStatus: 'not_required',
+      settlementStatus: 'not_due',
+      currency: 'VND',
+      requestedDeliveryDate: null,
+      note: null,
+      revision: status === 'confirmed' ? '2' : '1',
+      confirmedAt: status === 'confirmed' ? now : null,
+      confirmedBy: status === 'confirmed' ? 'bootstrap:e2e' : null,
+      cancelledAt: null,
+      cancelledBy: null,
+      cancellationReason: null,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'bootstrap:e2e',
+      updatedBy: 'bootstrap:e2e',
+      versions: [{
+        id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        versionNumber: '1',
+        status,
+        customerMode: 'WALK_IN',
+        customerId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        customerCode: 'WALK-IN',
+        customerName: 'Khách vãng lai',
+        walkInDisplayName: null,
+        walkInPhone: null,
+        customerAddressId: null,
+        customerAddress: null,
+        warehouseId,
+        warehouseCode: 'SOW-E2E',
+        warehouseName: 'Kho SO E2E',
+        salesChannelId,
+        salesChannelCode: 'FIELD',
+        salesChannelName: 'Bán hàng thị trường',
+        deliveryMode: 'PICKUP',
+        sourceType: 'MANUAL',
+        sourceId: null,
+        sourceOutletId: null,
+        collectionPolicy: 'COLLECT_ON_DELIVERY',
+        currency: 'VND',
+        requestedDeliveryDate: null,
+        note: null,
+        subtotal: '162171',
+        discountTotal: '8109',
+        taxTotal: '12325',
+        total: '166387',
+        documentDiscountMode: String(payload.documentDiscountMode ?? 'NONE'),
+        documentDiscountValue: String(payload.documentDiscountValue ?? '0'),
+        documentDiscountReason: String(payload.documentDiscountReason ?? '') || null,
+        amendmentReason: null,
+        basedOnVersionNumber: null,
+        priceOverrideReason: null,
+        revision: status === 'confirmed' ? '2' : '1',
+        createdAt: now,
+        createdBy: 'bootstrap:e2e',
+        confirmedAt: status === 'confirmed' ? now : null,
+        confirmedBy: status === 'confirmed' ? 'bootstrap:e2e' : null,
+        lines: lines.map((line, index) => ({
+          id: variantId(index + 101),
+          lineNumber: index + 1,
+          variantId: String(line.variantId),
+          sku: `SKU-${index + 1}`,
+          itemName: `Quy cách ${index + 1}`,
+          unitId: variantId(index + 201),
+          unitCode: 'THUNG',
+          conversionToBase: '1',
+          quantity: String(line.quantity),
+          baseQuantity: String(line.quantity),
+          priceListId: null,
+          priceRuleId: null,
+          priceSource: line.manualUnitPriceMinor ? 'MANUAL_OVERRIDE' : 'PRICE_ENGINE',
+          baseUnitPrice: '10000',
+          systemUnitPrice: String(line.expectedSystemUnitPriceMinor ?? '9000'),
+          unitPrice: String(line.manualUnitPriceMinor ?? line.expectedSystemUnitPriceMinor ?? '9000'),
+          manualOverrideReason: String(line.manualReason ?? '') || null,
+          pricingTrace: [],
+          discountMode: 'TOTAL_AMOUNT',
+          discountValue: '0',
+          discountAmount: '0',
+          taxMode: String(line.taxMode ?? 'EXCLUSIVE'),
+          taxRate: String(line.taxRate ?? '8'),
+          taxAmount: '0',
+          lineSubtotal: '9000',
+          lineTotal: '9000',
+          note: null,
+        })),
+      }],
+    },
+    requestId: `e2e-so-${status}`,
+  };
+}
+
 async function mockCommercialApis(page: Page) {
   const channelId = '11111111-1111-4111-8111-111111111111';
+  let savedPayload: Record<string, unknown> = {};
   await page.route('**/api/sales-orders/entry-settings', async (route) => {
     await route.fulfill({
       status: 200,
@@ -114,10 +237,18 @@ async function mockCommercialApis(page: Page) {
       },
     });
   });
+
+  await page.route(/\/api\/sales-orders$/, async (route) => {
+    savedPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({ status: 201, json: orderEnvelope(savedPayload, 'draft') });
+  });
+  await page.route(/\/api\/sales-orders\/[^/]+\/confirm$/, async (route) => {
+    await route.fulfill({ status: 200, json: orderEnvelope(savedPayload, 'confirmed') });
+  });
 }
 
 test.describe('Sales Order commercial controls', () => {
-  test('scrolls the real modal body at 1366x768 while header and footer stay available', async ({ page, request }) => {
+  test('scrolls the real modal body and completes permissioned save/confirm at 1366x768', async ({ page, request }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
     const warehouse = await createWarehouse(request, suffix());
     await mockCommercialApis(page);
@@ -133,7 +264,7 @@ test.describe('Sales Order commercial controls', () => {
     const search = dialog.getByPlaceholder('Tên sản phẩm, mã hàng, SKU hoặc barcode');
     for (let index = 1; index <= 18; index += 1) {
       await search.fill(`SKU-${index}`);
-      const option = dialog.getByRole('option').filter({ hasText: `SKU-${index}` }).first();
+      const option = dialog.getByRole('listbox').locator('button').filter({ hasText: `SKU-${index}` }).first();
       await expect(option).toBeVisible();
       await option.click();
       await expect(dialog.getByTestId(`sales-order-line-${index}`)).toBeVisible();
@@ -180,5 +311,9 @@ test.describe('Sales Order commercial controls', () => {
       scrollWidth: element.scrollWidth,
     }));
     expect(modalOverflow.scrollWidth).toBeLessThanOrEqual(modalOverflow.clientWidth);
+
+    await dialog.getByRole('button', { name: 'Lưu và xác nhận', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByText('Đã lưu, xác nhận và cấp số đơn bán hàng', { exact: true })).toBeVisible();
   });
 });
