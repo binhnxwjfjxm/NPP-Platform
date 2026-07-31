@@ -1,6 +1,22 @@
 -- Phase 6B.2: Sales Order channel, price provenance and document discount intent.
 -- Forward-only, rerun-safe. Existing commercial history is not fabricated or rewritten.
 
+INSERT INTO shared.permission_catalog (
+  permission_key, module, label, description, is_system, created_at
+) VALUES (
+  'core.sales-order.discount.override',
+  'Bán hàng',
+  'Chiết khấu bổ sung toàn đơn',
+  'Cho phép áp dụng chiết khấu bổ sung toàn đơn có lý do và phân bổ chính xác xuống từng dòng.',
+  true,
+  now()
+)
+ON CONFLICT (permission_key) DO UPDATE
+SET module = EXCLUDED.module,
+    label = EXCLUDED.label,
+    description = EXCLUDED.description,
+    is_system = EXCLUDED.is_system;
+
 ALTER TABLE shared.sales_order_settings
   ADD COLUMN IF NOT EXISTS default_sales_channel_id uuid NULL;
 
@@ -129,8 +145,8 @@ CREATE INDEX IF NOT EXISTS sales_order_versions_channel_idx
   WHERE sales_channel_id IS NOT NULL;
 
 ALTER TABLE sales.sales_order_version_lines
-  ADD COLUMN IF NOT EXISTS base_unit_price numeric(24,0) NULL,
-  ADD COLUMN IF NOT EXISTS system_unit_price numeric(24,0) NULL,
+  ADD COLUMN IF NOT EXISTS base_unit_price numeric(20,6) NULL,
+  ADD COLUMN IF NOT EXISTS system_unit_price numeric(20,6) NULL,
   ADD COLUMN IF NOT EXISTS manual_override_reason text NULL,
   ADD COLUMN IF NOT EXISTS pricing_trace_snapshot jsonb NOT NULL DEFAULT '[]'::jsonb;
 
@@ -178,10 +194,60 @@ BEGIN
   END IF;
 END $$;
 
-INSERT INTO shared.permissions (permission_key, description)
-VALUES (
-  'core.sales-order.discount.override',
-  'Apply a reasoned supplemental document discount to a Sales Order'
-)
-ON CONFLICT (permission_key) DO UPDATE
-SET description = EXCLUDED.description;
+-- Extend the immutable-version guard so new commercial snapshots cannot be changed
+-- while a confirmed version is being superseded.
+CREATE OR REPLACE FUNCTION sales.guard_sales_order_version_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' AND OLD.version_status <> 'draft' THEN
+    RAISE EXCEPTION 'sales_order_version_locked';
+  END IF;
+  IF TG_OP = 'UPDATE' AND OLD.version_status <> 'draft' THEN
+    IF NOT (
+      OLD.version_status = 'confirmed'
+      AND NEW.version_status = 'superseded'
+      AND NEW.id = OLD.id
+      AND NEW.installation_id = OLD.installation_id
+      AND NEW.sales_order_id = OLD.sales_order_id
+      AND NEW.version_number = OLD.version_number
+      AND NEW.customer_id = OLD.customer_id
+      AND NEW.customer_code_snapshot = OLD.customer_code_snapshot
+      AND NEW.customer_name_snapshot = OLD.customer_name_snapshot
+      AND NEW.customer_address_id IS NOT DISTINCT FROM OLD.customer_address_id
+      AND NEW.customer_address_snapshot IS NOT DISTINCT FROM OLD.customer_address_snapshot
+      AND NEW.warehouse_id = OLD.warehouse_id
+      AND NEW.warehouse_code_snapshot = OLD.warehouse_code_snapshot
+      AND NEW.warehouse_name_snapshot = OLD.warehouse_name_snapshot
+      AND NEW.delivery_mode = OLD.delivery_mode
+      AND NEW.source_type = OLD.source_type
+      AND NEW.source_id IS NOT DISTINCT FROM OLD.source_id
+      AND NEW.source_outlet_id IS NOT DISTINCT FROM OLD.source_outlet_id
+      AND NEW.collection_policy = OLD.collection_policy
+      AND NEW.currency_code = OLD.currency_code
+      AND NEW.requested_delivery_date IS NOT DISTINCT FROM OLD.requested_delivery_date
+      AND NEW.note IS NOT DISTINCT FROM OLD.note
+      AND NEW.subtotal = OLD.subtotal
+      AND NEW.discount_total = OLD.discount_total
+      AND NEW.tax_total = OLD.tax_total
+      AND NEW.total = OLD.total
+      AND NEW.amendment_reason IS NOT DISTINCT FROM OLD.amendment_reason
+      AND NEW.based_on_version_number IS NOT DISTINCT FROM OLD.based_on_version_number
+      AND NEW.price_override_reason IS NOT DISTINCT FROM OLD.price_override_reason
+      AND NEW.sales_channel_id IS NOT DISTINCT FROM OLD.sales_channel_id
+      AND NEW.sales_channel_code_snapshot IS NOT DISTINCT FROM OLD.sales_channel_code_snapshot
+      AND NEW.sales_channel_name_snapshot IS NOT DISTINCT FROM OLD.sales_channel_name_snapshot
+      AND NEW.document_discount_mode = OLD.document_discount_mode
+      AND NEW.document_discount_value = OLD.document_discount_value
+      AND NEW.document_discount_reason IS NOT DISTINCT FROM OLD.document_discount_reason
+      AND NEW.created_at = OLD.created_at
+      AND NEW.created_by = OLD.created_by
+      AND NEW.confirmed_at = OLD.confirmed_at
+      AND NEW.confirmed_by = OLD.confirmed_by
+    ) THEN
+      RAISE EXCEPTION 'sales_order_version_locked';
+    END IF;
+  END IF;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
+END;
+$$;
