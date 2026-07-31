@@ -286,17 +286,19 @@ export async function replaceDraftVersion(client, data) {
     lines: data.lines,
     actorId: data.actorId,
   });
-  await client.query(
-    `UPDATE sales.sales_orders SET customer_id=$1, customer_address_id=$2,
-       warehouse_id=$3, delivery_mode=$4, collection_policy=$5, currency_code=$6,
-       requested_delivery_date=$7, note=$8, delivery_status=$9,
-       revision=revision+1, updated_at=$10, updated_by=$11
-     WHERE installation_id=$12 AND id=$13`,
-    [data.customerId, data.customerAddressId, data.warehouseId, data.deliveryMode,
-      data.collectionPolicy, data.currencyCode, data.requestedDeliveryDate, data.note,
-      data.deliveryMode === 'PICKUP' ? 'not_required' : 'pending', now, data.actorId,
-      data.installationId, data.salesOrderId],
-  );
+  if (Number(data.versionNumber) === 1) {
+    await client.query(
+      `UPDATE sales.sales_orders SET customer_id=$1, customer_address_id=$2,
+         warehouse_id=$3, delivery_mode=$4, collection_policy=$5, currency_code=$6,
+         requested_delivery_date=$7, note=$8, delivery_status=$9,
+         revision=revision+1, updated_at=$10, updated_by=$11
+       WHERE installation_id=$12 AND id=$13 AND status='draft'`,
+      [data.customerId, data.customerAddressId, data.warehouseId, data.deliveryMode,
+        data.collectionPolicy, data.currencyCode, data.requestedDeliveryDate, data.note,
+        data.deliveryMode === 'PICKUP' ? 'not_required' : 'pending', now, data.actorId,
+        data.installationId, data.salesOrderId],
+    );
+  }
   return result.rows[0].id;
 }
 
@@ -319,14 +321,32 @@ export async function confirmSalesOrderVersion(client, data) {
   );
   if (!version.rows[0]) return null;
   const order = await client.query(
-    `UPDATE sales.sales_orders
-     SET order_number=COALESCE(order_number,$1),
-         order_number_allocation_id=COALESCE(order_number_allocation_id,$2),
+    `UPDATE sales.sales_orders so
+     SET order_number=COALESCE(so.order_number,$1),
+         order_number_allocation_id=COALESCE(so.order_number_allocation_id,$2),
          status='confirmed', current_version_number=$3,
-         confirmed_at=COALESCE(confirmed_at,$4), confirmed_by=COALESCE(confirmed_by,$5),
-         revision=revision+1, updated_at=$4, updated_by=$5
-     WHERE installation_id=$6 AND id=$7 AND status IN ('draft','confirmed')
-     RETURNING id`,
+         customer_id=confirmed_version.customer_id,
+         customer_address_id=confirmed_version.customer_address_id,
+         warehouse_id=confirmed_version.warehouse_id,
+         delivery_mode=confirmed_version.delivery_mode,
+         collection_policy=confirmed_version.collection_policy,
+         currency_code=confirmed_version.currency_code,
+         requested_delivery_date=confirmed_version.requested_delivery_date,
+         note=confirmed_version.note,
+         delivery_status=CASE
+           WHEN so.delivery_status IN ('pending','not_required')
+             THEN CASE WHEN confirmed_version.delivery_mode='PICKUP' THEN 'not_required' ELSE 'pending' END
+           ELSE so.delivery_status
+         END,
+         confirmed_at=COALESCE(so.confirmed_at,$4), confirmed_by=COALESCE(so.confirmed_by,$5),
+         revision=so.revision+1, updated_at=$4, updated_by=$5
+     FROM sales.sales_order_versions confirmed_version
+     WHERE so.installation_id=$6 AND so.id=$7 AND so.status IN ('draft','confirmed')
+       AND confirmed_version.installation_id=so.installation_id
+       AND confirmed_version.sales_order_id=so.id
+       AND confirmed_version.version_number=$3
+       AND confirmed_version.version_status='confirmed'
+     RETURNING so.id`,
     [data.orderNumber, data.allocationId, data.versionNumber, now, data.actorId,
       data.installationId, data.salesOrderId],
   );
