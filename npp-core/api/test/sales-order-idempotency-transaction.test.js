@@ -219,7 +219,7 @@ test('Sales Order idempotency stores and replays the committed audit/outbox resp
         (SELECT count(*)::int FROM sales.sales_orders WHERE installation_id=$1) AS orders,
         (SELECT count(*)::int FROM shared.core_audit_records WHERE installation_id=$1 AND request_id=$2) AS audits,
         (SELECT count(*)::int FROM shared.core_outbox_events WHERE installation_id=$1 AND request_id=$2) AS events,
-        (SELECT count(*)::int FROM shared.idempotency_records WHERE installation_id=$1 AND idempotency_key=$3) AS idempotency_rows`,
+        (SELECT count(*)::int FROM shared.core_idempotency_records WHERE installation_id=$1 AND idempotency_key=$3) AS idempotency_rows`,
       [config.installationId, requestContext.requestId, key],
     );
     assert.deepEqual(counts.rows[0], { orders: 1, audits: 1, events: 1, idempotency_rows: 1 });
