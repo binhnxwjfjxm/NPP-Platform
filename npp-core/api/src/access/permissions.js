@@ -33,7 +33,7 @@ const SALES_ORDER_PERMISSION_CATALOG = Object.freeze([
   ['coreSalesOrderConfirm', 'Xác nhận đơn bán hàng', 'Cho phép xác nhận đơn bán hàng và cấp số chứng từ.'],
   ['coreSalesOrderAmend', 'Điều chỉnh đơn bán hàng', 'Cho phép tạo và xác nhận phiên bản điều chỉnh bất biến.'],
   ['coreSalesOrderCancel', 'Hủy đơn bán hàng', 'Cho phép hủy đơn bán hàng theo chính sách trạng thái.'],
-  ['coreSalesOrderPriceOverride', 'Ghi đè giá bán', 'Cho phép ghi đè giá bán do hệ thống phân giải khi có lý do riêng trên từng dòng.'],
+  ['coreSalesOrderPriceOverride', 'Ghi đè giá bán', 'Cho phép ghi đè giá bán do hệ thống phân giải khi có lý do.'],
   ['coreSalesOrderDiscountOverride', 'Chiết khấu bổ sung toàn đơn', 'Cho phép áp dụng chiết khấu bổ sung toàn đơn có lý do và phân bổ chính xác xuống từng dòng.'],
   ['coreSalesOrderCreditOverride', 'Duyệt ngoại lệ bán chịu', 'Cho phép duyệt ngoại lệ chính sách tín dụng có lý do và audit.'],
 ].map(([key, label, description]) => Object.freeze({
