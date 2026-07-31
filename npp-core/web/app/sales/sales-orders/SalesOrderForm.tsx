@@ -127,7 +127,7 @@ function lineAmounts(line: LineDraft, taxMode: SalesOrderTaxMode, taxRateText: s
   const discountInput = parseScaled(line.discountValue || '0', true) ?? 0n;
   let discount = 0n;
   if (line.discountMode === 'PERCENT') discount = halfUp(gross * discountInput, HUNDRED);
-  else if (line.discountMode === 'PER_UNIT') discount = halfUp(quantity * (discountInput / SCALE), SCALE);
+  else if (line.discountMode === 'PER_UNIT') discount = halfUp(quantity * discountInput, SCALE * SCALE);
   else discount = discountInput / SCALE;
   if (discount > gross) discount = gross;
   const discounted = gross - discount;
@@ -172,12 +172,14 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export default function SalesOrderForm(props: Props) {
-  const { version } = props;
+  const { version, onClose, onError } = props;
   const initialWalkIn = version?.customerMode === 'WALK_IN';
   const initialTaxMode = version?.lines?.[0]?.taxMode ?? 'EXCLUSIVE';
   const initialTaxRate = version?.lines?.[0]?.taxRate ?? '0';
   const [saveKey] = useState(() => mutationKey(`sales-${props.mode}-save`));
   const [confirmKey] = useState(() => mutationKey(`sales-${props.mode}-confirm`));
+  const [quickCustomerKey, setQuickCustomerKey] = useState(() => mutationKey('sales-quick-customer'));
+  const [quickAddressKey, setQuickAddressKey] = useState(() => mutationKey('sales-quick-address'));
   const [customerMode, setCustomerMode] = useState<SalesOrderCustomerMode>(initialWalkIn ? 'WALK_IN' : 'EXISTING');
   const [customerRows, setCustomerRows] = useState(props.customers);
   const [customerId, setCustomerId] = useState(initialWalkIn ? '' : (version?.customerId ?? ''));
@@ -231,14 +233,14 @@ export default function SalesOrderForm(props: Props) {
 
   const markDirty = useCallback(() => {
     setDirty(true);
-    props.onError('');
-  }, [props]);
+    onError('');
+  }, [onError]);
 
   const requestClose = useCallback(() => {
     if (busy) return;
     if (dirty && !window.confirm('Đơn bán hàng có thay đổi chưa lưu. Đóng và bỏ thay đổi?')) return;
-    props.onClose();
-  }, [busy, dirty, props]);
+    onClose();
+  }, [busy, dirty, onClose]);
 
   useEffect(() => {
     requestJson<EntrySettings>('/api/sales-orders/entry-settings')
@@ -247,8 +249,8 @@ export default function SalesOrderForm(props: Props) {
         setTaxRate(settings.defaultTaxRate);
         setTaxReady(true);
       })
-      .catch((error) => props.onError(error instanceof Error ? error.message : 'Không tải được cấu hình lập đơn'));
-  }, [props]);
+      .catch((error) => onError(error instanceof Error ? error.message : 'Không tải được cấu hình lập đơn'));
+  }, [onError]);
 
   useEffect(() => {
     searchRef.current?.focus();
@@ -288,8 +290,8 @@ export default function SalesOrderForm(props: Props) {
           ? current
           : active.find((item) => item.is_default)?.id ?? active[0]?.id ?? '');
       })
-      .catch((error) => props.onError(error instanceof Error ? error.message : 'Không tải được địa chỉ khách hàng'));
-  }, [collectionPolicy, customerId, customerMode, props]);
+      .catch((error) => onError(error instanceof Error ? error.message : 'Không tải được địa chỉ khách hàng'));
+  }, [collectionPolicy, customerId, customerMode, onError]);
 
   useEffect(() => {
     const term = skuTerm.trim();
@@ -306,7 +308,7 @@ export default function SalesOrderForm(props: Props) {
         const rows = await requestJson<SalesOrderSkuSearchOption[]>(`/api/sales-orders/sku-search?${query}`, { signal: controller.signal });
         if (!controller.signal.aborted) setSkuResults(rows);
       } catch (error) {
-        if (!controller.signal.aborted) props.onError(error instanceof Error ? error.message : 'Không tìm được hàng hóa');
+        if (!controller.signal.aborted) onError(error instanceof Error ? error.message : 'Không tìm được hàng hóa');
       } finally {
         if (!controller.signal.aborted) setSkuLoading(false);
       }
@@ -315,7 +317,7 @@ export default function SalesOrderForm(props: Props) {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [props, skuTerm]);
+  }, [onError, skuTerm]);
 
   async function priceFor(variantId: string, quantity: string, mode = customerMode, selectedCustomerId = customerId): Promise<SalesPriceResolution> {
     return apiRequest<SalesPriceResolution>('/api/pricing/resolve', {
@@ -366,8 +368,8 @@ export default function SalesOrderForm(props: Props) {
   }, [customerId, customerMode]);
 
   async function addSku(option: SalesOrderSkuSearchOption) {
-    if (!option.eligibility.selectable) return props.onError(option.eligibility.message);
-    if (lines.some((line) => line.variantId === option.id)) return props.onError('SKU này đã có trong đơn');
+    if (!option.eligibility.selectable) return onError(option.eligibility.message);
+    if (lines.some((line) => line.variantId === option.id)) return onError('SKU này đã có trong đơn');
     if (lines.length === 0) {
       setTaxMode(option.defaultTaxMode);
       setTaxRate(option.defaultTaxRate);
@@ -451,9 +453,9 @@ export default function SalesOrderForm(props: Props) {
   }
 
   async function createQuickCustomer() {
-    if (!quickCustomer.name.trim()) return props.onError('Hãy nhập tên khách hàng');
+    if (!quickCustomer.name.trim()) return onError('Hãy nhập tên khách hàng');
     if (deliveryMode === 'DELIVERY' && !quickCustomer.addressLine1.trim()) {
-      return props.onError('Khách giao hàng cần địa chỉ');
+      return onError('Khách giao hàng cần địa chỉ');
     }
     setBusy(true);
     try {
@@ -473,7 +475,7 @@ export default function SalesOrderForm(props: Props) {
       }
       const created = await requestJson<Customer>('/api/customers', {
         method: 'POST',
-        headers: { 'Idempotency-Key': mutationKey('sales-quick-customer') },
+        headers: { 'Idempotency-Key': quickCustomerKey },
         body: JSON.stringify({
           code: quickCustomer.code,
           name: quickCustomer.name.trim(),
@@ -491,7 +493,7 @@ export default function SalesOrderForm(props: Props) {
       if (deliveryMode === 'DELIVERY') {
         createdAddress = await requestJson<CustomerAddress>(`/api/customers/${created.id}/addresses`, {
           method: 'POST',
-          headers: { 'Idempotency-Key': mutationKey('sales-quick-address') },
+          headers: { 'Idempotency-Key': quickAddressKey },
           body: JSON.stringify({
             label: 'Địa chỉ giao hàng',
             recipientName: created.name,
@@ -516,9 +518,11 @@ export default function SalesOrderForm(props: Props) {
       }
       setQuickOpen(false);
       setQuickCustomer({ code: autoCustomerCode(), name: '', phone: '', addressLine1: '' });
+      setQuickCustomerKey(mutationKey('sales-quick-customer'));
+      setQuickAddressKey(mutationKey('sales-quick-address'));
       markDirty();
     } catch (error) {
-      props.onError(error instanceof Error ? error.message : 'Không tạo nhanh được khách hàng');
+      onError(error instanceof Error ? error.message : 'Không tạo nhanh được khách hàng');
     } finally {
       setBusy(false);
     }
@@ -567,7 +571,7 @@ export default function SalesOrderForm(props: Props) {
 
   async function save(confirmAfter: boolean) {
     const issue = validate();
-    if (issue) return props.onError(issue);
+    if (issue) return onError(issue);
     setBusy(true);
     try {
       let path = '/api/sales-orders';
@@ -598,13 +602,15 @@ export default function SalesOrderForm(props: Props) {
       setDirty(false);
       props.onSaved(order);
     } catch (error) {
-      props.onError(error instanceof Error ? error.message : 'Không lưu được đơn bán hàng');
+      onError(error instanceof Error ? error.message : 'Không lưu được đơn bán hàng');
     } finally {
       setBusy(false);
     }
   }
 
   function openQuickCustomerForDelivery() {
+    setQuickCustomerKey(mutationKey('sales-quick-customer'));
+    setQuickAddressKey(mutationKey('sales-quick-address'));
     setCustomerMode('EXISTING');
     setDeliveryMode('DELIVERY');
     setQuickOpen(true);
