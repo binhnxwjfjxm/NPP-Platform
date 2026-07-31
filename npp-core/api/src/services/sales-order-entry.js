@@ -41,6 +41,7 @@ function taxSettings(settings) {
 
 function applyDefaultTax(lines, settings) {
   if (!Array.isArray(lines)) return lines;
+  if (!settings) return lines;
   const defaults = taxSettings(settings);
   return lines.map((line) => Object.freeze({
     ...line,
@@ -64,11 +65,17 @@ function enforceWalkInShape(payload, sourceType) {
   if (payload?.customerAddressId) {
     return failure('WALK_IN_ADDRESS_FORBIDDEN', 'Đơn khách vãng lai không sử dụng địa chỉ giao hàng');
   }
-  const displayName = optionalText(payload?.walkInDisplayName, 256);
-  if (displayName === undefined) return failure('INVALID_WALK_IN_NAME', 'Tên khách vãng lai không được vượt quá 256 ký tự');
+  const requestedDisplayName = optionalText(payload?.walkInDisplayName, 256);
+  if (requestedDisplayName === undefined) return failure('INVALID_WALK_IN_NAME', 'Tên khách vãng lai không được vượt quá 256 ký tự');
   const phone = optionalText(payload?.walkInPhone, 64);
   if (phone === undefined) return failure('INVALID_WALK_IN_PHONE', 'Số điện thoại khách vãng lai không được vượt quá 64 ký tự');
-  return { ok: true, deliveryMode, collectionPolicy, displayName, phone };
+  return {
+    ok: true,
+    deliveryMode,
+    collectionPolicy,
+    displayName: requestedDisplayName ?? 'Khách vãng lai',
+    phone,
+  };
 }
 
 export async function getSalesOrderEntrySettings(client, { requestContext }) {
@@ -242,5 +249,6 @@ export async function searchSalesOrderSkuOptions(client, {
     repository.getSalesOrderSettings(client, { installationId: requestContext.installationId }),
   ]);
   const defaults = taxSettings(settings);
-  return Object.freeze({ ok: true, skuOptions: Object.freeze(rows.map((row) => mapSkuOption(row, defaults))) });
+  const eligible = rows.filter((row) => evaluateSalesOrderSkuEligibility(row).selectable);
+  return Object.freeze({ ok: true, skuOptions: Object.freeze(eligible.map((row) => mapSkuOption(row, defaults))) });
 }
