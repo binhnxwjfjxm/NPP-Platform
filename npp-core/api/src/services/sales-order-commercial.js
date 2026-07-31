@@ -21,6 +21,12 @@ export function formatScaledDecimal(value) {
   return fraction ? `${whole}.${fraction}` : whole.toString();
 }
 
+function canonicalDecimal(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = parseScaledDecimal(value, { allowZero: true });
+  return parsed === null ? String(value).trim() : formatScaledDecimal(parsed);
+}
+
 export function halfUp(numerator, denominator) {
   return (numerator + denominator / 2n) / denominator;
 }
@@ -136,12 +142,14 @@ export function canonicalPricingFingerprint(resolution) {
   const normalized = JSON.stringify({
     variantId: resolution?.variant?.id ?? resolution?.variantId ?? null,
     currencyCode: resolution?.currencyCode ?? null,
-    quantity: resolution?.quantity ?? null,
+    quantity: canonicalDecimal(resolution?.quantity),
     channelId: resolution?.channelId ?? null,
     customerGroupId: resolution?.customerGroupId ?? null,
     customerId: resolution?.customerId ?? null,
-    baseUnitPriceMinor: resolution?.baseUnitPriceMinor ?? null,
-    systemUnitPriceMinor: resolution?.systemUnitPriceMinor ?? resolution?.finalUnitPriceMinor ?? null,
+    baseUnitPriceMinor: canonicalDecimal(resolution?.baseUnitPriceMinor),
+    systemUnitPriceMinor: canonicalDecimal(
+      resolution?.systemUnitPriceMinor ?? resolution?.finalUnitPriceMinor,
+    ),
     steps: steps
       .filter((step) => step?.kind !== 'MANUAL_OVERRIDE' && step?.kind !== 'RESOLUTION')
       .map((step) => ({
@@ -149,8 +157,8 @@ export function canonicalPricingFingerprint(resolution) {
         reason: step.reason ?? null,
         priceListId: step.priceListId ?? null,
         itemId: step.itemId ?? null,
-        beforeUnitPriceMinor: step.beforeUnitPriceMinor ?? null,
-        afterUnitPriceMinor: step.afterUnitPriceMinor ?? null,
+        beforeUnitPriceMinor: canonicalDecimal(step.beforeUnitPriceMinor),
+        afterUnitPriceMinor: canonicalDecimal(step.afterUnitPriceMinor),
         priority: step.priority ?? null,
         stackingMode: step.stackingMode ?? null,
       })),
