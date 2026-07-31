@@ -52,6 +52,7 @@ function versionLines(version?: SalesOrderVersion | null): LineDraft[] {
 
 export default function SalesOrderForm(props: Props) {
   const { version } = props;
+  const [saveKey] = useState(() => mutationKey(`sales-${props.mode}-save`));
   const [customerId, setCustomerId] = useState(version?.customerId ?? '');
   const [addressId, setAddressId] = useState(version?.customerAddressId ?? '');
   const [warehouseId, setWarehouseId] = useState(version?.warehouseId ?? '');
@@ -163,8 +164,6 @@ export default function SalesOrderForm(props: Props) {
     try {
       let path = '/api/sales-orders';
       let method = 'POST';
-      const headers: Record<string, string> = {};
-      if (props.mode === 'create') headers['Idempotency-Key'] = mutationKey('sales-create');
       if (props.mode === 'draft') {
         path = `/api/sales-orders/${props.orderId}/draft`;
         method = 'PUT';
@@ -175,7 +174,7 @@ export default function SalesOrderForm(props: Props) {
       }
       const order = await apiRequest<SalesOrder>(path, {
         method,
-        headers,
+        headers: { 'Idempotency-Key': saveKey },
         body: JSON.stringify(payload()),
       });
       props.onSaved(order);
