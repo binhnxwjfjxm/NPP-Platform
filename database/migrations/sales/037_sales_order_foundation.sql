@@ -228,7 +228,7 @@ CREATE TABLE IF NOT EXISTS sales.sales_order_version_lines (
     FOREIGN KEY (installation_id, unit_id)
     REFERENCES shared.units_of_measure (installation_id, id)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
-  CONSTRAINT sales_order_version_lines_base_quantity_check
+  CONSTRAINT sales_order_version_lines_conversion_reconciliation_check
     CHECK (base_quantity = round(ordered_quantity * conversion_to_base, 6)),
   CONSTRAINT sales_order_version_lines_amount_reconciliation_check
     CHECK (line_total = line_subtotal - discount_amount + tax_amount)
