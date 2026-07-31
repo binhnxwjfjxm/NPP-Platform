@@ -158,6 +158,8 @@ test('Sales Order API is idempotent and preserves immutable commercial versions'
     assert.equal(first.fulfillmentStatus, 'unallocated');
     assert.equal(first.deliveryStatus, 'pending');
     assert.equal(first.settlementStatus, 'not_due');
+    assert.equal(first.requestedDeliveryDate, '2026-08-02');
+    assert.equal(first.versions[0].requestedDeliveryDate, '2026-08-02');
     assert.equal(first.versions[0].total, '21450.000000');
     assert.equal(first.versions[0].lines[0].unitPrice, '10000.000000');
     assert.equal(first.versions[0].lines[0].taxAmount, '1950.000000');
@@ -189,10 +191,10 @@ test('Sales Order API is idempotent and preserves immutable commercial versions'
       headers: authHeaders(config, `so-update-${randomUUID()}`),
       body: JSON.stringify(updatePayload),
     });
-    if (update.status !== 200) {
-      throw new Error(`Sales Order draft update failed (${update.status}): ${await update.text()}`);
-    }
+    assert.equal(update.status, 200);
     const updated = (await update.json()).data;
+    assert.equal(updated.requestedDeliveryDate, '2026-08-02');
+    assert.equal(updated.versions[0].requestedDeliveryDate, '2026-08-02');
     assert.equal(updated.versions[0].total, '32450.000000');
     assert.equal(updated.versions[0].revision, '2');
 
@@ -234,6 +236,7 @@ test('Sales Order API is idempotent and preserves immutable commercial versions'
     const draftVersion = amendment.versions.find((entry) => entry.status === 'draft');
     assert.equal(draftVersion.versionNumber, '2');
     assert.equal(draftVersion.amendmentReason, 'Khách tăng số lượng');
+    assert.equal(draftVersion.requestedDeliveryDate, '2026-08-02');
 
     const amendmentUpdate = await fetch(`${baseUrl}/api/sales-orders/${first.id}/amendments/2/draft`, {
       method: 'PUT',
