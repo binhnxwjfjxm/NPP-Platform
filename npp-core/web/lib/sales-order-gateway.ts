@@ -190,8 +190,14 @@ export function createSalesOrder<T>(requestId: string, body: unknown, idempotenc
   return requestCore<T>({ method: 'POST', path: orderPath(), requestId, body, idempotencyKey: assertIdempotencyKey(idempotencyKey) });
 }
 
-export function updateSalesOrderDraft<T>(id: string, requestId: string, body: unknown): Promise<T> {
-  return requestCore<T>({ method: 'PUT', path: `${orderPath(id)}/draft`, requestId, body });
+export function updateSalesOrderDraft<T>(id: string, requestId: string, body: unknown, idempotencyKey: string): Promise<T> {
+  return requestCore<T>({
+    method: 'PUT',
+    path: `${orderPath(id)}/draft`,
+    requestId,
+    body,
+    idempotencyKey: assertIdempotencyKey(idempotencyKey),
+  });
 }
 
 export function confirmSalesOrder<T>(id: string, requestId: string, idempotencyKey: string): Promise<T> {
@@ -202,8 +208,14 @@ export function createSalesOrderAmendment<T>(id: string, requestId: string, body
   return requestCore<T>({ method: 'POST', path: `${orderPath(id)}/amendments`, requestId, body, idempotencyKey: assertIdempotencyKey(idempotencyKey) });
 }
 
-export function updateSalesOrderAmendment<T>(id: string, version: string | number, requestId: string, body: unknown): Promise<T> {
-  return requestCore<T>({ method: 'PUT', path: `${orderPath(id)}/amendments/${assertVersion(version)}/draft`, requestId, body });
+export function updateSalesOrderAmendment<T>(id: string, version: string | number, requestId: string, body: unknown, idempotencyKey: string): Promise<T> {
+  return requestCore<T>({
+    method: 'PUT',
+    path: `${orderPath(id)}/amendments/${assertVersion(version)}/draft`,
+    requestId,
+    body,
+    idempotencyKey: assertIdempotencyKey(idempotencyKey),
+  });
 }
 
 export function confirmSalesOrderAmendment<T>(id: string, version: string | number, requestId: string, idempotencyKey: string): Promise<T> {
