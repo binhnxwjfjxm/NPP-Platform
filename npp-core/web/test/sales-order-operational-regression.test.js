@@ -16,7 +16,8 @@ test('Sales Order per-unit discount preview keeps six-place exact arithmetic', (
 });
 
 test('Sales Order effects depend on stable callbacks instead of the whole props object', () => {
-  assert.match(formSource, /const\s*\{[^}]*onError[^}]*onClose[^}]*\}\s*=\s*props/s);
+  assert.match(formSource, /const\s*\{[^}]*onError[^}]*\}\s*=\s*props/s);
+  assert.match(formSource, /const\s*\{[^}]*onClose[^}]*\}\s*=\s*props/s);
   assert.doesNotMatch(formSource, /\[[^\]]*\bprops\b[^\]]*\]/);
   assert.match(formSource, /\[onError,\s*skuTerm\]/);
 });
