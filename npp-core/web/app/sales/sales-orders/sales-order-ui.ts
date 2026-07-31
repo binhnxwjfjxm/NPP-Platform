@@ -48,6 +48,18 @@ export type ApiEnvelope<T> = {
   error?: { code?: string; message?: string; retryable?: boolean; details?: unknown };
 };
 
+export class SalesOrderUiError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly retryable = false,
+    public readonly details: unknown = {},
+  ) {
+    super(message);
+    this.name = 'SalesOrderUiError';
+  }
+}
+
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -59,10 +71,15 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     },
   });
   const payload = await response.json().catch(() => null) as ApiEnvelope<T> | null;
-  if (!response.ok || !payload?.data) {
-    throw new Error(payload?.error?.message || 'Yêu cầu bán hàng không thành công');
+  if (!response.ok || !payload || !Object.prototype.hasOwnProperty.call(payload, 'data')) {
+    throw new SalesOrderUiError(
+      payload?.error?.code ?? 'SALES_ORDER_REQUEST_FAILED',
+      payload?.error?.message ?? 'Yêu cầu bán hàng không thành công',
+      payload?.error?.retryable === true,
+      payload?.error?.details ?? {},
+    );
   }
-  return payload.data;
+  return payload.data as T;
 }
 
 export function mutationKey(prefix: string): string {
