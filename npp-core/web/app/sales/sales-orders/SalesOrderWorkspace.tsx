@@ -86,7 +86,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
     try {
       let order: SalesOrder;
       if (kind === 'confirm') {
-        order = await apiRequest(`/api/sales-orders/${selected.id}/confirm`, {
+        order = await apiRequest<SalesOrder>(`/api/sales-orders/${selected.id}/confirm`, {
           method: 'POST',
           headers: { 'Idempotency-Key': mutationKey('sales-confirm') },
           body: JSON.stringify({}),
@@ -94,7 +94,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         setNotice('Đã xác nhận và cấp số đơn bán hàng');
       } else if (kind === 'amend') {
         if (!amendmentReason.trim()) throw new Error('Hãy nhập lý do điều chỉnh');
-        order = await apiRequest(`/api/sales-orders/${selected.id}/amendments`, {
+        order = await apiRequest<SalesOrder>(`/api/sales-orders/${selected.id}/amendments`, {
           method: 'POST',
           headers: { 'Idempotency-Key': mutationKey('sales-amend') },
           body: JSON.stringify({ reason: amendmentReason.trim() }),
@@ -104,7 +104,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
       } else if (kind === 'confirm-amendment') {
         const draft = pendingVersion(selected);
         if (!draft) throw new Error('Không có bản điều chỉnh nháp để xác nhận');
-        order = await apiRequest(`/api/sales-orders/${selected.id}/amendments/${draft.versionNumber}/confirm`, {
+        order = await apiRequest<SalesOrder>(`/api/sales-orders/${selected.id}/amendments/${draft.versionNumber}/confirm`, {
           method: 'POST',
           headers: { 'Idempotency-Key': mutationKey('sales-amend-confirm') },
           body: JSON.stringify({}),
@@ -112,7 +112,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         setNotice('Đã xác nhận bản điều chỉnh; lịch sử cũ được giữ nguyên');
       } else {
         if (!cancellationReason.trim()) throw new Error('Hãy nhập lý do hủy');
-        order = await apiRequest(`/api/sales-orders/${selected.id}/cancel`, {
+        order = await apiRequest<SalesOrder>(`/api/sales-orders/${selected.id}/cancel`, {
           method: 'POST',
           headers: { 'Idempotency-Key': mutationKey('sales-cancel') },
           body: JSON.stringify({ reason: cancellationReason.trim() }),
