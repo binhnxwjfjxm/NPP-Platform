@@ -37,6 +37,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const canConfirm = permissions.has(SALES_ORDER_PERMISSION_KEYS.confirm);
   const canAmend = permissions.has(SALES_ORDER_PERMISSION_KEYS.amend);
   const canCancel = permissions.has(SALES_ORDER_PERMISSION_KEYS.cancel);
+  const canQuickCreateCustomer = permissions.has(SALES_ORDER_PERMISSION_KEYS.customerWrite);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('vi');
@@ -206,12 +207,16 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
           customers={initialBootstrap.customers}
           warehouses={initialBootstrap.warehouses}
           products={initialBootstrap.products}
+          canConfirm={formMode === 'amendment' ? canAmend : canConfirm}
+          canQuickCreateCustomer={canQuickCreateCustomer}
           onClose={() => setFormMode(null)}
-          onError={setError}
+          onError={(message) => setError(message || null)}
           onSaved={(order) => {
             mergeOrder(order);
             setFormMode(null);
-            setNotice(formMode === 'create' ? 'Đã tạo đơn bán hàng nháp' : 'Đã lưu phiên bản nháp');
+            setNotice(order.status === 'confirmed'
+              ? 'Đã lưu, xác nhận và cấp số đơn bán hàng'
+              : formMode === 'create' ? 'Đã tạo đơn bán hàng nháp' : 'Đã lưu phiên bản nháp');
           }}
         />
       )}

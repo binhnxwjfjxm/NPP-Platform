@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 const ORDER_COLUMNS = `so.id, so.installation_id, so.order_number, so.order_number_allocation_id,
   so.status, so.current_version_number, so.source_type, so.source_id, so.source_outlet_id,
   so.customer_id, c.code AS customer_code, c.name AS customer_name,
+  so.customer_mode, so.walk_in_display_name, so.walk_in_phone,
   so.customer_address_id, so.warehouse_id, w.code AS warehouse_code, w.name AS warehouse_name,
   so.delivery_mode, so.collection_policy, so.fulfillment_status, so.delivery_status,
   so.settlement_status, so.currency_code, so.requested_delivery_date, so.note, so.revision,
@@ -11,6 +12,7 @@ const ORDER_COLUMNS = `so.id, so.installation_id, so.order_number, so.order_numb
 
 const VERSION_COLUMNS = `sov.id, sov.installation_id, sov.sales_order_id, sov.version_number,
   sov.version_status, sov.customer_id, sov.customer_code_snapshot, sov.customer_name_snapshot,
+  sov.customer_mode_snapshot, sov.walk_in_display_name_snapshot, sov.walk_in_phone_snapshot,
   sov.customer_address_id, sov.customer_address_snapshot, sov.warehouse_id,
   sov.warehouse_code_snapshot, sov.warehouse_name_snapshot, sov.delivery_mode,
   sov.source_type, sov.source_id, sov.source_outlet_id, sov.collection_policy,
@@ -28,6 +30,15 @@ const LINE_COLUMNS = `sovl.id, sovl.installation_id, sovl.sales_order_version_id
   sovl.discount_amount, sovl.tax_mode, sovl.tax_rate, sovl.tax_amount,
   sovl.line_subtotal, sovl.line_total, sovl.note,
   sovl.created_at, sovl.created_by, sovl.updated_at, sovl.updated_by`;
+
+const SKU_OPTION_COLUMNS = `pv.id, pv.product_id, pv.sku, pv.name,
+  pv.is_active AS variant_is_active, pv.is_sellable,
+  pv.unit_id, pv.conversion_to_base,
+  p.code AS product_code, p.name AS product_name,
+  p.is_active AS product_is_active, p.is_orderable AS product_is_orderable,
+  u.code AS unit_code, u.name AS unit_name,
+  u.allows_fractional, u.is_active AS unit_is_active,
+  primary_barcode.barcode`;
 
 function scopeIds(warehouseIds) {
   return Array.isArray(warehouseIds)
@@ -72,6 +83,8 @@ export async function listSalesOrders(client, {
     params.push(`%${search}%`);
     query += ` AND (COALESCE(so.order_number, '') ILIKE $${params.length}
       OR c.code ILIKE $${params.length} OR c.name ILIKE $${params.length}
+      OR COALESCE(so.walk_in_display_name, '') ILIKE $${params.length}
+      OR COALESCE(so.walk_in_phone, '') ILIKE $${params.length}
       OR COALESCE(so.source_id, '') ILIKE $${params.length})`;
   }
   params.push(limit, offset);
@@ -147,6 +160,97 @@ export async function getActiveCustomer(client, { installationId, id }) {
   )).rows[0] ?? null;
 }
 
+export async function getSalesOrderSettings(client, { installationId }) {
+  return (await client.query(
+    `SELECT settings.installation_id, settings.walk_in_customer_id,
+            settings.default_tax_mode, settings.default_tax_rate,
+            customer.id AS customer_id, customer.code AS customer_code,
+            customer.name AS customer_name, customer.group_id AS customer_group_id,
+            customer.payment_terms_days, customer.credit_limit,
+            customer.is_active AS customer_is_active
+     FROM shared.sales_order_settings settings
+     LEFT JOIN shared.customers customer
+       ON customer.installation_id = settings.installation_id
+      AND customer.id = settings.walk_in_customer_id
+     WHERE settings.installation_id = $1`,
+    [installationId],
+  )).rows[0] ?? null;
+}
+
+export async function ensureWalkInCustomer(client, { installationId, actorId }) {
+  await client.query(
+    `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+    [`sales-order-settings:${installationId}`],
+  );
+
+  let settings = await getSalesOrderSettings(client, { installationId });
+  if (!settings) {
+    const now = nowIso();
+    await client.query(
+      `INSERT INTO shared.sales_order_settings (
+         installation_id, walk_in_customer_id, default_tax_mode, default_tax_rate,
+         created_at, updated_at, created_by, updated_by
+       ) VALUES ($1,NULL,'EXCLUSIVE',0,$2,$2,$3,$3)
+       ON CONFLICT (installation_id) DO NOTHING`,
+      [installationId, now, actorId],
+    );
+    settings = await getSalesOrderSettings(client, { installationId });
+  }
+
+  if (settings?.walk_in_customer_id) {
+    if (!settings.customer_id || settings.customer_is_active !== true) return null;
+    return {
+      id: settings.customer_id,
+      code: settings.customer_code,
+      name: settings.customer_name,
+      group_id: settings.customer_group_id,
+      payment_terms_days: settings.payment_terms_days,
+      credit_limit: settings.credit_limit,
+      is_active: settings.customer_is_active,
+    };
+  }
+
+  const customerId = randomUUID();
+  const customerCode = `WALKIN_${randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase()}`;
+  const now = nowIso();
+  const customer = (await client.query(
+    `INSERT INTO shared.customers (
+       id, installation_id, code, name, group_id, responsible_employee_id,
+       phone, email, tax_code, payment_terms_days, credit_limit, notes,
+       is_active, created_at, updated_at, created_by, updated_by
+     ) VALUES (
+       $1,$2,$3,'Khách vãng lai',NULL,NULL,NULL,NULL,NULL,0,0,
+       'Khách hệ thống được cấu hình cho đơn bán trực tiếp nhận tại kho.',true,$4,$4,$5,$5
+     ) RETURNING id, code, name, group_id, payment_terms_days, credit_limit, is_active`,
+    [customerId, installationId, customerCode, now, actorId],
+  )).rows[0] ?? null;
+  if (!customer) return null;
+
+  const configured = await client.query(
+    `UPDATE shared.sales_order_settings
+     SET walk_in_customer_id=$1, updated_at=$2, updated_by=$3
+     WHERE installation_id=$4 AND walk_in_customer_id IS NULL
+     RETURNING walk_in_customer_id`,
+    [customer.id, now, actorId, installationId],
+  );
+  if (!configured.rows[0]) return null;
+  return customer;
+}
+
+export async function isConfiguredWalkInCustomer(client, { installationId, customerId }) {
+  const row = (await client.query(
+    `SELECT settings.walk_in_customer_id,
+            customer.is_active AS customer_is_active
+     FROM shared.sales_order_settings settings
+     LEFT JOIN shared.customers customer
+       ON customer.installation_id = settings.installation_id
+      AND customer.id = settings.walk_in_customer_id
+     WHERE settings.installation_id=$1`,
+    [installationId],
+  )).rows[0] ?? null;
+  return Boolean(row?.walk_in_customer_id === customerId && row?.customer_is_active === true);
+}
+
 export async function getCustomerAddress(client, { installationId, id }) {
   return (await client.query(
     `SELECT id, customer_id, label, recipient_name, phone, address_line1, address_line2,
@@ -180,20 +284,83 @@ export async function getSalesVariant(client, { installationId, id }) {
   )).rows[0] ?? null;
 }
 
+export async function searchSalesOrderSkuOptions(client, {
+  installationId, search, limit = 20, offset = 0,
+}) {
+  const term = String(search ?? '').trim();
+  const pattern = `%${term}%`;
+  const normalized = term.toUpperCase();
+  const result = await client.query(
+    `SELECT ${SKU_OPTION_COLUMNS}
+     FROM shared.product_variants pv
+     JOIN shared.products p
+       ON p.installation_id = pv.installation_id AND p.id = pv.product_id
+     LEFT JOIN shared.units_of_measure u
+       ON u.installation_id = pv.installation_id AND u.id = pv.unit_id
+     LEFT JOIN LATERAL (
+       SELECT pb.barcode
+       FROM shared.product_barcodes pb
+       WHERE pb.installation_id = pv.installation_id
+         AND pb.variant_id = pv.id
+         AND pb.is_active = true
+       ORDER BY pb.is_primary DESC, pb.created_at ASC, pb.id ASC
+       LIMIT 1
+     ) primary_barcode ON true
+     WHERE pv.installation_id = $1
+       AND (
+         $2 = ''
+         OR pv.sku ILIKE $3
+         OR pv.name ILIKE $3
+         OR p.code ILIKE $3
+         OR p.name ILIKE $3
+         OR EXISTS (
+           SELECT 1
+           FROM shared.product_barcodes matching_barcode
+           WHERE matching_barcode.installation_id = pv.installation_id
+             AND matching_barcode.variant_id = pv.id
+             AND matching_barcode.is_active = true
+             AND matching_barcode.normalized_barcode ILIKE upper($3)
+         )
+       )
+     ORDER BY
+       CASE
+         WHEN upper(pv.sku) = $2 THEN 0
+         WHEN upper(p.code) = $2 THEN 1
+         WHEN EXISTS (
+           SELECT 1
+           FROM shared.product_barcodes exact_barcode
+           WHERE exact_barcode.installation_id = pv.installation_id
+             AND exact_barcode.variant_id = pv.id
+             AND exact_barcode.is_active = true
+             AND exact_barcode.normalized_barcode = $2
+         ) THEN 2
+         ELSE 3
+       END,
+       p.code ASC,
+       pv.sku ASC,
+       pv.id ASC
+     LIMIT $4 OFFSET $5`,
+    [installationId, normalized, pattern, limit, offset],
+  );
+  return result.rows;
+}
+
 export async function insertSalesOrder(client, data) {
   const id = randomUUID();
   const now = nowIso();
   const result = await client.query(
     `INSERT INTO sales.sales_orders (
        id, installation_id, status, current_version_number, source_type, source_id,
-       source_outlet_id, customer_id, customer_address_id, warehouse_id, delivery_mode,
+       source_outlet_id, customer_id, customer_mode, walk_in_display_name, walk_in_phone,
+       customer_address_id, warehouse_id, delivery_mode,
        collection_policy, fulfillment_status, delivery_status, settlement_status,
        currency_code, requested_delivery_date, note, created_at, updated_at, created_by, updated_by
      ) VALUES (
-       $1,$2,'draft',1,$3,$4,$5,$6,$7,$8,$9,$10,'unallocated',$11,'not_due',$12,$13,$14,$15,$15,$16,$16
+       $1,$2,'draft',1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'unallocated',$14,'not_due',$15,$16,$17,$18,$18,$19,$19
      ) ON CONFLICT DO NOTHING RETURNING id`,
     [id, data.installationId, data.sourceType, data.sourceId, data.sourceOutletId,
-      data.customerId, data.customerAddressId, data.warehouseId, data.deliveryMode,
+      data.customerId, data.customerMode, data.walkInDisplayName, data.walkInPhone,
+      data.customerAddressId, data.warehouseId, data.deliveryMode,
       data.collectionPolicy, data.deliveryMode === 'PICKUP' ? 'not_required' : 'pending',
       data.currencyCode, data.requestedDeliveryDate, data.note, now, data.actorId],
   );
@@ -207,6 +374,7 @@ export async function insertSalesOrderVersion(client, data) {
     `INSERT INTO sales.sales_order_versions (
        id, installation_id, sales_order_id, version_number, version_status,
        customer_id, customer_code_snapshot, customer_name_snapshot,
+       customer_mode_snapshot, walk_in_display_name_snapshot, walk_in_phone_snapshot,
        customer_address_id, customer_address_snapshot, warehouse_id,
        warehouse_code_snapshot, warehouse_name_snapshot, delivery_mode,
        source_type, source_id, source_outlet_id, collection_policy, currency_code,
@@ -214,14 +382,15 @@ export async function insertSalesOrderVersion(client, data) {
        amendment_reason, based_on_version_number, price_override_reason,
        created_at, created_by, updated_at, updated_by
      ) VALUES (
-       $1,$2,$3,$4,'draft',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-       $21,$22,$23,$24,$25,$26,$27,$28,$29,$28,$29
+       $1,$2,$3,$4,'draft',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,
+       $24,$25,$26,$27,$28,$29,$30,$31,$32,$31,$32
      ) RETURNING id`,
     [id, data.installationId, data.salesOrderId, data.versionNumber,
-      data.customerId, data.customerCode, data.customerName, data.customerAddressId,
-      data.customerAddressSnapshot, data.warehouseId, data.warehouseCode,
-      data.warehouseName, data.deliveryMode, data.sourceType, data.sourceId,
-      data.sourceOutletId, data.collectionPolicy, data.currencyCode,
+      data.customerId, data.customerCode, data.customerName, data.customerMode,
+      data.walkInDisplayName, data.walkInPhone,
+      data.customerAddressId, data.customerAddressSnapshot, data.warehouseId,
+      data.warehouseCode, data.warehouseName, data.deliveryMode, data.sourceType,
+      data.sourceId, data.sourceOutletId, data.collectionPolicy, data.currencyCode,
       data.requestedDeliveryDate, data.note, data.subtotal, data.discountTotal,
       data.taxTotal, data.total, data.amendmentReason, data.basedOnVersionNumber,
       data.priceOverrideReason, now, data.actorId],
@@ -259,19 +428,22 @@ export async function replaceDraftVersion(client, data) {
   const result = await client.query(
     `UPDATE sales.sales_order_versions
      SET customer_id=$1, customer_code_snapshot=$2, customer_name_snapshot=$3,
-         customer_address_id=$4, customer_address_snapshot=$5, warehouse_id=$6,
-         warehouse_code_snapshot=$7, warehouse_name_snapshot=$8, delivery_mode=$9,
-         collection_policy=$10, currency_code=$11, requested_delivery_date=$12,
-         note=$13, subtotal=$14, discount_total=$15, tax_total=$16, total=$17,
-         price_override_reason=$18, revision=revision+1, updated_at=$19, updated_by=$20
-     WHERE installation_id=$21 AND sales_order_id=$22 AND version_number=$23
-       AND version_status='draft' AND revision=$24
+         customer_mode_snapshot=$4, walk_in_display_name_snapshot=$5, walk_in_phone_snapshot=$6,
+         customer_address_id=$7, customer_address_snapshot=$8, warehouse_id=$9,
+         warehouse_code_snapshot=$10, warehouse_name_snapshot=$11, delivery_mode=$12,
+         collection_policy=$13, currency_code=$14, requested_delivery_date=$15,
+         note=$16, subtotal=$17, discount_total=$18, tax_total=$19, total=$20,
+         price_override_reason=$21, revision=revision+1, updated_at=$22, updated_by=$23
+     WHERE installation_id=$24 AND sales_order_id=$25 AND version_number=$26
+       AND version_status='draft' AND revision=$27
      RETURNING id`,
-    [data.customerId, data.customerCode, data.customerName, data.customerAddressId,
-      data.customerAddressSnapshot, data.warehouseId, data.warehouseCode,
-      data.warehouseName, data.deliveryMode, data.collectionPolicy, data.currencyCode,
-      data.requestedDeliveryDate, data.note, data.subtotal, data.discountTotal,
-      data.taxTotal, data.total, data.priceOverrideReason, now, data.actorId,
+    [data.customerId, data.customerCode, data.customerName, data.customerMode,
+      data.walkInDisplayName, data.walkInPhone,
+      data.customerAddressId, data.customerAddressSnapshot, data.warehouseId,
+      data.warehouseCode, data.warehouseName, data.deliveryMode,
+      data.collectionPolicy, data.currencyCode, data.requestedDeliveryDate,
+      data.note, data.subtotal, data.discountTotal, data.taxTotal, data.total,
+      data.priceOverrideReason, now, data.actorId,
       data.installationId, data.salesOrderId, data.versionNumber, data.expectedRevision],
   );
   if (!result.rows[0]) return null;
@@ -288,12 +460,14 @@ export async function replaceDraftVersion(client, data) {
   });
   if (Number(data.versionNumber) === 1) {
     await client.query(
-      `UPDATE sales.sales_orders SET customer_id=$1, customer_address_id=$2,
-         warehouse_id=$3, delivery_mode=$4, collection_policy=$5, currency_code=$6,
-         requested_delivery_date=$7, note=$8, delivery_status=$9,
-         revision=revision+1, updated_at=$10, updated_by=$11
-       WHERE installation_id=$12 AND id=$13 AND status='draft'`,
-      [data.customerId, data.customerAddressId, data.warehouseId, data.deliveryMode,
+      `UPDATE sales.sales_orders SET customer_id=$1, customer_mode=$2,
+         walk_in_display_name=$3, walk_in_phone=$4, customer_address_id=$5,
+         warehouse_id=$6, delivery_mode=$7, collection_policy=$8, currency_code=$9,
+         requested_delivery_date=$10, note=$11, delivery_status=$12,
+         revision=revision+1, updated_at=$13, updated_by=$14
+       WHERE installation_id=$15 AND id=$16 AND status='draft'`,
+      [data.customerId, data.customerMode, data.walkInDisplayName, data.walkInPhone,
+        data.customerAddressId, data.warehouseId, data.deliveryMode,
         data.collectionPolicy, data.currencyCode, data.requestedDeliveryDate, data.note,
         data.deliveryMode === 'PICKUP' ? 'not_required' : 'pending', now, data.actorId,
         data.installationId, data.salesOrderId],
@@ -326,6 +500,9 @@ export async function confirmSalesOrderVersion(client, data) {
          order_number_allocation_id=COALESCE(so.order_number_allocation_id,$2),
          status='confirmed', current_version_number=$3,
          customer_id=confirmed_version.customer_id,
+         customer_mode=confirmed_version.customer_mode_snapshot,
+         walk_in_display_name=confirmed_version.walk_in_display_name_snapshot,
+         walk_in_phone=confirmed_version.walk_in_phone_snapshot,
          customer_address_id=confirmed_version.customer_address_id,
          warehouse_id=confirmed_version.warehouse_id,
          delivery_mode=confirmed_version.delivery_mode,

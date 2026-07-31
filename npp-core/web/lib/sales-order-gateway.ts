@@ -182,6 +182,21 @@ export function listSalesOrders<T>(requestId: string, params: ListSalesOrdersPar
   return requestCore<T[]>({ method: 'GET', path: orderPath(), requestId, searchParams: query });
 }
 
+export function getSalesOrderEntrySettings<T>(requestId: string): Promise<T> {
+  return requestCore<T>({ method: 'GET', path: `${orderPath()}/entry-settings`, requestId });
+}
+
+export function searchSalesOrderSkus<T>(requestId: string, searchParams: URLSearchParams): Promise<T[]> {
+  const query = new URLSearchParams();
+  const search = searchParams.get('search')?.trim() ?? '';
+  const limit = Number(searchParams.get('limit') ?? 20);
+  const offset = Number(searchParams.get('offset') ?? 0);
+  if (search) query.set('search', search.slice(0, 256));
+  query.set('limit', String(Number.isFinite(limit) ? Math.max(1, Math.min(50, Math.trunc(limit))) : 20));
+  query.set('offset', String(Number.isFinite(offset) ? Math.max(0, Math.trunc(offset)) : 0));
+  return requestCore<T[]>({ method: 'GET', path: `${orderPath()}/sku-search`, requestId, searchParams: query });
+}
+
 export function getSalesOrder<T>(id: string, requestId: string): Promise<T> {
   return requestCore<T>({ method: 'GET', path: orderPath(id), requestId });
 }
