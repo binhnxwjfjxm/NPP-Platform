@@ -335,9 +335,9 @@ Overrides require permission, reason, actor, request ID and audit/outbox records
 ## 11. Lot policy — PROPOSED
 
 ```text
-expiry-tracked SKU       -> FEFO
+expiry-tracked SKU         -> FEFO
 lot-tracked without expiry -> FIFO by received sequence
-non-lot SKU              -> normal scope allocation
+non-lot SKU                -> normal scope allocation
 ```
 
 Expired, blocked, quarantine, scrap and insufficient lots are ineligible. Manual deviation requires permission and reason. Concurrent allocation must not oversell.
