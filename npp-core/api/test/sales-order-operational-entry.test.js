@@ -227,7 +227,7 @@ test('operational Sales Order entry supports configured walk-in, barcode search 
       deliveryMode: 'DELIVERY',
       customerAddressId: fixture.addressId,
     }));
-    assert.equal(deliveryDenied.status, 403);
+    assert.equal(deliveryDenied.status, 400);
     assert.equal((await deliveryDenied.json()).error.code, 'WALK_IN_PICKUP_REQUIRED');
   } finally {
     if (server) await closeServer(server);
