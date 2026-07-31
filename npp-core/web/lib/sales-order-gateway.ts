@@ -182,6 +182,10 @@ export function listSalesOrders<T>(requestId: string, params: ListSalesOrdersPar
   return requestCore<T[]>({ method: 'GET', path: orderPath(), requestId, searchParams: query });
 }
 
+export function getSalesOrderEntrySettings<T>(requestId: string): Promise<T> {
+  return requestCore<T>({ method: 'GET', path: `${orderPath()}/entry-settings`, requestId });
+}
+
 export function searchSalesOrderSkus<T>(requestId: string, searchParams: URLSearchParams): Promise<T[]> {
   const query = new URLSearchParams();
   const search = searchParams.get('search')?.trim() ?? '';
