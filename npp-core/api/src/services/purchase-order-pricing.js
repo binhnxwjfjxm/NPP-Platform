@@ -3,15 +3,7 @@ import * as priceRepository from '../db/repositories/supplier-purchase-price.js'
 import * as priceService from './supplier-purchase-price.js';
 
 const DECIMAL_PATTERN = /^(0|[1-9]\d{0,13})(?:\.(\d{1,6}))?$/;
-const POSITIVE_DECIMAL_PATTERN = /^(?:0*\.[0-9]*[1-9][0-9]*|[1-9]\d*)(?:\.\d{1,6})?$/;
-const MONETARY_KEYS = Object.freeze([
-  'unitPrice',
-  'discountMode',
-  'discountValue',
-  'discountAmount',
-  'taxRate',
-  'taxAmount',
-]);
+const SCALE = 1_000_000n;
 
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
@@ -23,27 +15,46 @@ export function canReadPurchaseOrderPrice(requestContext) {
 }
 
 export function canOverridePurchaseOrderPrice(requestContext) {
-  return Array.isArray(requestContext?.permissions)
+  return canReadPurchaseOrderPrice(requestContext)
+    && Array.isArray(requestContext?.permissions)
     && requestContext.permissions.includes('core.purchase-order.price.override');
+}
+
+function decimalScaled(value) {
+  const normalized = String(value ?? '').trim();
+  const match = DECIMAL_PATTERN.exec(normalized);
+  if (!match) return null;
+  return BigInt(match[1]) * SCALE + BigInt((match[2] ?? '').padEnd(6, '0'));
 }
 
 function positiveDecimal(value) {
   const normalized = String(value ?? '').trim();
-  return POSITIVE_DECIMAL_PATTERN.test(normalized) ? normalized : null;
+  const scaled = decimalScaled(normalized);
+  return scaled !== null && scaled > 0n ? normalized : null;
 }
 
 function nonNegativeDecimal(value, fallback = '0') {
   const normalized = String(value ?? fallback).trim();
-  return DECIMAL_PATTERN.test(normalized) ? normalized : null;
+  return decimalScaled(normalized) === null ? null : normalized;
 }
 
-function hasExplicitMonetaryInput(line) {
-  return MONETARY_KEYS.some((key) => Object.prototype.hasOwnProperty.call(line ?? {}, key));
+function nonZero(value) {
+  const scaled = decimalScaled(value);
+  return scaled !== null && scaled > 0n;
 }
 
 function normalizedReason(value) {
   const reason = typeof value === 'string' ? value.trim() : '';
   return reason && reason.length <= 1000 ? reason : null;
+}
+
+function hasMeaningfulMonetaryInput(line) {
+  if (!line || typeof line !== 'object') return false;
+  return nonZero(line.unitPrice)
+    || nonZero(line.discountValue ?? line.discountAmount)
+    || nonZero(line.taxRate)
+    || nonZero(line.taxAmount)
+    || Boolean(normalizedReason(line.priceOverrideReason));
 }
 
 function headerMatchesCurrent(payload, currentOrder) {
@@ -57,21 +68,140 @@ function currentLineFor(currentOrder, variantId) {
   return currentOrder?.lines?.find((line) => line.variantId === variantId) ?? null;
 }
 
+function sameDecimal(left, right) {
+  const a = decimalScaled(left);
+  const b = decimalScaled(right);
+  return a !== null && b !== null && a === b;
+}
+
 function sameQuantity(left, right) {
-  const a = String(left ?? '').replace(/(?:\.0+|(?<=\.[0-9]*?)0+)$/, '').replace(/\.$/, '');
-  const b = String(right ?? '').replace(/(?:\.0+|(?<=\.[0-9]*?)0+)$/, '').replace(/\.$/, '');
-  return a === b;
+  return sameDecimal(left, right);
+}
+
+function currentDiscountValue(line) {
+  return line.discountValue ?? line.discountAmount ?? '0';
+}
+
+function inputTaxShape(line) {
+  if (Object.prototype.hasOwnProperty.call(line ?? {}, 'taxRate')) {
+    return { kind: 'RATE', value: line.taxRate ?? '0' };
+  }
+  return { kind: 'AMOUNT', value: line?.taxAmount ?? '0' };
+}
+
+function currentTaxShape(line) {
+  if (line?.taxRate !== undefined && line.taxRate !== null) {
+    return { kind: 'RATE', value: line.taxRate };
+  }
+  return { kind: 'AMOUNT', value: line?.taxAmount ?? '0' };
+}
+
+function matchesCurrentFinancials(input, currentLine) {
+  if (!currentLine || !positiveDecimal(input.unitPrice)) return false;
+  if (!sameDecimal(input.unitPrice, currentLine.unitPrice)) return false;
+  if ((input.discountMode ?? 'TOTAL_AMOUNT') !== (currentLine.discountMode ?? 'TOTAL_AMOUNT')) return false;
+  if (!sameDecimal(input.discountValue ?? input.discountAmount ?? '0', currentDiscountValue(currentLine))) return false;
+  const inputTax = inputTaxShape(input);
+  const currentTax = currentTaxShape(currentLine);
+  return inputTax.kind === currentTax.kind && sameDecimal(inputTax.value, currentTax.value);
 }
 
 function preservedFinancials(line) {
   return {
     unitPrice: String(line.unitPrice),
     discountMode: line.discountMode ?? 'TOTAL_AMOUNT',
-    discountValue: String(line.discountValue ?? line.discountAmount ?? '0'),
-    discountAmount: String(line.discountAmount ?? '0'),
+    discountValue: String(currentDiscountValue(line)),
     ...(line.taxRate === undefined || line.taxRate === null
       ? { taxAmount: String(line.taxAmount ?? '0') }
       : { taxRate: String(line.taxRate) }),
+  };
+}
+
+function preservedProvenance(currentLine, variantId) {
+  const source = currentLine.purchasePriceSource === 'SUPPLIER_PRICE'
+    ? 'SUPPLIER_PRICE'
+    : 'MANUAL_OVERRIDE';
+  return {
+    variantId,
+    purchasePriceId: source === 'SUPPLIER_PRICE' ? (currentLine.purchasePriceId ?? null) : null,
+    source,
+    supplierSkuSnapshot: currentLine.supplierSkuSnapshot ?? null,
+    overrideReason: source === 'SUPPLIER_PRICE'
+      ? null
+      : (currentLine.priceOverrideReason || 'Giá đã lưu trước Phase 5.7'),
+  };
+}
+
+async function resolveLinePrice(client, {
+  requestContext,
+  supplierId,
+  variantId,
+  unitId,
+  currencyCode,
+  quantity,
+  orderDate,
+  lineNumber,
+}) {
+  const resolved = await priceService.resolveSupplierPurchasePrice(client, {
+    installationId: requestContext.installationId,
+    supplierId,
+    variantId,
+    unitId,
+    currencyCode,
+    quantity,
+    orderDate,
+  });
+  if (!resolved.ok) {
+    return failure(resolved.code, `Dòng ${lineNumber}: ${resolved.message}`, resolved.retryable, resolved.details);
+  }
+  return { ok: true, resolved };
+}
+
+function supplierResolvedLine(input, resolvedPrice) {
+  return {
+    ...input,
+    unitPrice: resolvedPrice.unitPrice,
+    discountMode: 'TOTAL_AMOUNT',
+    discountValue: '0',
+    taxRate: '0',
+  };
+}
+
+function supplierResolvedProvenance(variantId, resolvedPrice) {
+  return {
+    variantId,
+    purchasePriceId: resolvedPrice.id,
+    source: 'SUPPLIER_PRICE',
+    supplierSkuSnapshot: resolvedPrice.supplierSku,
+    overrideReason: null,
+  };
+}
+
+function normalizeManualFinancials(input, lineNumber) {
+  const unitPrice = positiveDecimal(input.unitPrice);
+  if (!unitPrice) return failure('INVALID_UNIT_PRICE', `Dòng ${lineNumber}: giá nhập tay phải lớn hơn 0.`);
+  const overrideReason = normalizedReason(input.priceOverrideReason);
+  if (!overrideReason) {
+    return failure('PURCHASE_ORDER_PRICE_OVERRIDE_REASON_REQUIRED', `Dòng ${lineNumber}: phải nhập lý do thay giá mua.`);
+  }
+  const discountValue = nonNegativeDecimal(input.discountValue ?? input.discountAmount ?? '0');
+  if (discountValue === null) return failure('INVALID_DISCOUNT', `Dòng ${lineNumber}: chiết khấu không hợp lệ.`);
+  const hasTaxRate = Object.prototype.hasOwnProperty.call(input, 'taxRate');
+  const taxRate = hasTaxRate ? nonNegativeDecimal(input.taxRate ?? '0') : null;
+  const taxAmount = hasTaxRate ? null : nonNegativeDecimal(input.taxAmount ?? '0');
+  if ((hasTaxRate && taxRate === null) || (!hasTaxRate && taxAmount === null)) {
+    return failure('INVALID_TAX', `Dòng ${lineNumber}: thuế không hợp lệ.`);
+  }
+  return {
+    ok: true,
+    line: {
+      ...input,
+      unitPrice,
+      discountMode: input.discountMode ?? 'TOTAL_AMOUNT',
+      discountValue,
+      ...(hasTaxRate ? { taxRate } : { taxAmount }),
+    },
+    overrideReason,
   };
 }
 
@@ -98,91 +228,77 @@ export async function preparePurchaseOrderPricing(client, {
   const lines = [];
 
   for (let index = 0; index < payload.lines.length; index += 1) {
+    const lineNumber = index + 1;
     const input = payload.lines[index] ?? {};
     const variantId = String(input.variantId ?? '').trim();
     const variant = variantMap.get(variantId);
-    if (!variant?.unit_id) return failure('SKU_UNIT_MISSING', `Dòng ${index + 1}: SKU chưa có đơn vị mua hàng hợp lệ.`);
+    if (!variant?.unit_id) return failure('SKU_UNIT_MISSING', `Dòng ${lineNumber}: SKU chưa có đơn vị mua hàng hợp lệ.`);
     const quantity = positiveDecimal(input.quantity);
-    if (!quantity) return failure('INVALID_QUANTITY', `Dòng ${index + 1}: số lượng phải lớn hơn 0.`);
-
-    if (hasExplicitMonetaryInput(input)) {
-      if (!mayOverride) {
-        return failure('PURCHASE_ORDER_PRICE_OVERRIDE_FORBIDDEN', `Dòng ${index + 1}: không có quyền nhập tay hoặc thay đổi giá mua.`);
-      }
-      const unitPrice = positiveDecimal(input.unitPrice);
-      if (!unitPrice) return failure('INVALID_UNIT_PRICE', `Dòng ${index + 1}: giá nhập tay phải lớn hơn 0.`);
-      const overrideReason = normalizedReason(input.priceOverrideReason);
-      if (!overrideReason) return failure('PURCHASE_ORDER_PRICE_OVERRIDE_REASON_REQUIRED', `Dòng ${index + 1}: phải nhập lý do thay giá mua.`);
-      const discountValue = nonNegativeDecimal(input.discountValue ?? input.discountAmount ?? '0');
-      if (discountValue === null) return failure('INVALID_DISCOUNT', `Dòng ${index + 1}: chiết khấu không hợp lệ.`);
-      const taxRate = Object.prototype.hasOwnProperty.call(input, 'taxRate')
-        ? nonNegativeDecimal(input.taxRate)
-        : null;
-      const taxAmount = taxRate === null ? nonNegativeDecimal(input.taxAmount ?? '0') : null;
-      if (taxRate === null && taxAmount === null) return failure('INVALID_TAX', `Dòng ${index + 1}: thuế không hợp lệ.`);
-      lines.push({
-        ...input,
-        unitPrice,
-        discountMode: input.discountMode ?? 'TOTAL_AMOUNT',
-        discountValue,
-        ...(taxRate === null ? { taxAmount } : { taxRate }),
-      });
-      provenance.push({
-        variantId,
-        purchasePriceId: null,
-        source: 'MANUAL_OVERRIDE',
-        supplierSkuSnapshot: null,
-        overrideReason,
-      });
-      continue;
-    }
+    if (!quantity) return failure('INVALID_QUANTITY', `Dòng ${lineNumber}: số lượng phải lớn hơn 0.`);
 
     const currentLine = preserveHeader ? currentLineFor(currentOrder, variantId) : null;
-    if (currentLine && sameQuantity(currentLine.quantity, quantity) && positiveDecimal(currentLine.unitPrice)) {
+    const preserveCurrent = currentLine
+      && sameQuantity(currentLine.quantity, quantity)
+      && positiveDecimal(currentLine.unitPrice)
+      && (!hasMeaningfulMonetaryInput(input) || matchesCurrentFinancials(input, currentLine))
+      && !normalizedReason(input.priceOverrideReason);
+    if (preserveCurrent) {
       lines.push({ ...input, ...preservedFinancials(currentLine) });
-      provenance.push({
-        variantId,
-        purchasePriceId: currentLine.purchasePriceId ?? null,
-        source: currentLine.purchasePriceSource === 'SUPPLIER_PRICE' ? 'SUPPLIER_PRICE' : 'MANUAL_OVERRIDE',
-        supplierSkuSnapshot: currentLine.supplierSkuSnapshot ?? null,
-        overrideReason: currentLine.purchasePriceSource === 'SUPPLIER_PRICE'
-          ? null
-          : (currentLine.priceOverrideReason || 'Giữ nguyên giá đã lưu trước Phase 5.7'),
-      });
+      provenance.push(preservedProvenance(currentLine, variantId));
       continue;
     }
 
-    const resolved = await priceService.resolveSupplierPurchasePrice(client, {
-      installationId: requestContext.installationId,
+    const resolvedResult = await resolveLinePrice(client, {
+      requestContext,
       supplierId,
       variantId,
       unitId: variant.unit_id,
       currencyCode,
       quantity,
       orderDate,
+      lineNumber,
     });
-    if (!resolved.ok) return failure(resolved.code, `Dòng ${index + 1}: ${resolved.message}`, resolved.retryable, resolved.details);
-    if (resolved.status !== 'RESOLVED' || !resolved.price) {
-      return failure(
-        'SUPPLIER_PURCHASE_PRICE_NOT_FOUND',
-        `Dòng ${index + 1}: chưa có giá mua hợp lệ cho nhà cung cấp, SKU, đơn vị, số lượng và ngày đặt hàng.`,
-        false,
-        { lineNumber: index + 1, variantId },
-      );
+    if (!resolvedResult.ok) return resolvedResult;
+    const resolvedPrice = resolvedResult.resolved.status === 'RESOLVED'
+      ? resolvedResult.resolved.price
+      : null;
+
+    const explicitPositivePrice = positiveDecimal(input.unitPrice);
+    const defaultFinancialShape = !hasMeaningfulMonetaryInput(input);
+    const matchesResolvedDefault = resolvedPrice
+      && explicitPositivePrice
+      && sameDecimal(explicitPositivePrice, resolvedPrice.unitPrice)
+      && !nonZero(input.discountValue ?? input.discountAmount)
+      && !nonZero(input.taxRate)
+      && !nonZero(input.taxAmount)
+      && !normalizedReason(input.priceOverrideReason);
+
+    if (defaultFinancialShape || matchesResolvedDefault) {
+      if (!resolvedPrice) {
+        return failure(
+          'SUPPLIER_PURCHASE_PRICE_NOT_FOUND',
+          `Dòng ${lineNumber}: chưa có giá mua hợp lệ cho nhà cung cấp, SKU, đơn vị, số lượng và ngày đặt hàng.`,
+          false,
+          { lineNumber, variantId },
+        );
+      }
+      lines.push(supplierResolvedLine(input, resolvedPrice));
+      provenance.push(supplierResolvedProvenance(variantId, resolvedPrice));
+      continue;
     }
-    lines.push({
-      ...input,
-      unitPrice: resolved.price.unitPrice,
-      discountMode: 'TOTAL_AMOUNT',
-      discountValue: '0',
-      taxRate: '0',
-    });
+
+    if (!mayOverride) {
+      return failure('PURCHASE_ORDER_PRICE_OVERRIDE_FORBIDDEN', `Dòng ${lineNumber}: không có quyền nhập tay hoặc thay đổi giá mua.`);
+    }
+    const manual = normalizeManualFinancials(input, lineNumber);
+    if (!manual.ok) return manual;
+    lines.push(manual.line);
     provenance.push({
       variantId,
-      purchasePriceId: resolved.price.id,
-      source: 'SUPPLIER_PRICE',
-      supplierSkuSnapshot: resolved.price.supplierSku,
-      overrideReason: null,
+      purchasePriceId: null,
+      source: 'MANUAL_OVERRIDE',
+      supplierSkuSnapshot: null,
+      overrideReason: manual.overrideReason,
     });
   }
 
@@ -293,7 +409,10 @@ export function validatePurchaseOrderPriceReady(purchaseOrder) {
 }
 
 export const purchaseOrderPricingInternals = Object.freeze({
-  hasExplicitMonetaryInput,
+  decimalScaled,
+  hasMeaningfulMonetaryInput,
+  matchesCurrentFinancials,
   positiveDecimal,
   projectLineWithoutPrice,
+  sameDecimal,
 });
