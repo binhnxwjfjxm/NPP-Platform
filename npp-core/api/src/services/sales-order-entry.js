@@ -202,7 +202,7 @@ export function evaluateSalesOrderSkuEligibility(row) {
   return Object.freeze({ selectable: true, code: 'ELIGIBLE', message: 'Có thể chọn để bán.' });
 }
 
-function mapSkuOption(row) {
+function mapSkuOption(row, defaults) {
   return Object.freeze({
     id: row.id,
     productId: row.product_id,
@@ -218,6 +218,8 @@ function mapSkuOption(row) {
       ? null
       : String(row.conversion_to_base),
     allowsFractional: row.allows_fractional === undefined ? null : row.allows_fractional,
+    defaultTaxMode: defaults.taxMode,
+    defaultTaxRate: defaults.taxRate,
     eligibility: evaluateSalesOrderSkuEligibility(row),
   });
 }
@@ -230,11 +232,15 @@ export async function searchSalesOrderSkuOptions(client, {
 }) {
   const term = String(search ?? '').trim();
   if (term.length > 256) return failure('INVALID_SEARCH', 'Từ khóa tìm hàng không được vượt quá 256 ký tự');
-  const rows = await repository.searchSalesOrderSkuOptions(client, {
-    installationId: requestContext.installationId,
-    search: term,
-    limit: Math.max(1, Math.min(50, Number(limit) || 20)),
-    offset: Math.max(0, Number(offset) || 0),
-  });
-  return Object.freeze({ ok: true, skuOptions: Object.freeze(rows.map(mapSkuOption)) });
+  const [rows, settings] = await Promise.all([
+    repository.searchSalesOrderSkuOptions(client, {
+      installationId: requestContext.installationId,
+      search: term,
+      limit: Math.max(1, Math.min(50, Number(limit) || 20)),
+      offset: Math.max(0, Number(offset) || 0),
+    }),
+    repository.getSalesOrderSettings(client, { installationId: requestContext.installationId }),
+  ]);
+  const defaults = taxSettings(settings);
+  return Object.freeze({ ok: true, skuOptions: Object.freeze(rows.map((row) => mapSkuOption(row, defaults))) });
 }
