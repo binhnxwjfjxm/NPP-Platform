@@ -22,7 +22,7 @@ test('Sales Order confirmation revalidates active customer, address, warehouse, 
 
 test('Every Sales Order mutation is idempotent and returns its outbox event to the transaction guard', () => {
   assert.match(routes, /return \{ salesOrder: result\.salesOrder, eventId \}/);
-  assert.match(routes, /action: 'update_draft'[\s\S]*executeIdempotentMutation/);
-  assert.match(routes, /action: 'update_amendment'[\s\S]*executeIdempotentMutation/);
+  assert.match(routes, /executeIdempotentMutation\(req, res, options, \{[\s\S]*action: 'update_draft'/);
+  assert.match(routes, /executeIdempotentMutation\(req, res, options, \{[\s\S]*action: 'update_amendment'/);
   assert.match(routes, /MISSING_IDEMPOTENCY_KEY/);
 });
