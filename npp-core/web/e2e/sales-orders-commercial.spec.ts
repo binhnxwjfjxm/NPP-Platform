@@ -1,0 +1,184 @@
+import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
+
+function suffix() {
+  return Date.now().toString(36).toUpperCase().slice(-10);
+}
+
+async function createWarehouse(request: APIRequestContext, token: string) {
+  const branchResponse = await request.post('/api/organization/branches', {
+    headers: { 'Idempotency-Key': `so-branch-${token}` },
+    data: { code: `SOB-${token}`, name: `Chi nhánh SO ${token}` },
+  });
+  expect(branchResponse.status()).toBe(201);
+  const branch = (await branchResponse.json()).data;
+  const warehouseResponse = await request.post('/api/organization/warehouses', {
+    headers: { 'Idempotency-Key': `so-warehouse-${token}` },
+    data: {
+      branchId: branch.id,
+      code: `SOW-${token}`,
+      name: `Kho SO ${token}`,
+      warehouseType: 'main',
+    },
+  });
+  expect(warehouseResponse.status()).toBe(201);
+  return (await warehouseResponse.json()).data as { id: string; code: string; name: string };
+}
+
+function variantId(index: number) {
+  return `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
+}
+
+async function mockCommercialApis(page: Page) {
+  const channelId = '11111111-1111-4111-8111-111111111111';
+  await page.route('**/api/sales-orders/entry-settings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: {
+        data: {
+          walkInConfigured: true,
+          walkInBootstrapSupported: true,
+          defaultTaxMode: 'EXCLUSIVE',
+          defaultTaxRate: '8',
+          salesChannels: [{ id: channelId, code: 'FIELD', name: 'Bán hàng thị trường' }],
+          defaultSalesChannelId: channelId,
+          permissions: {
+            canPriceOverride: true,
+            canDiscountOverride: true,
+            canConfirm: true,
+          },
+        },
+        requestId: 'e2e-so-entry',
+      },
+    });
+  });
+
+  await page.route('**/api/sales-orders/sku-search**', async (route) => {
+    const url = new URL(route.request().url());
+    const search = url.searchParams.get('search') ?? 'SKU-1';
+    const digits = Number(search.replace(/\D/g, '')) || 1;
+    await route.fulfill({
+      status: 200,
+      json: {
+        data: [{
+          id: variantId(digits),
+          productId: `22222222-2222-4222-8222-${String(digits).padStart(12, '0')}`,
+          productCode: `SP-${digits}`,
+          productName: `Sản phẩm ${digits}`,
+          sku: `SKU-${digits}`,
+          variantName: `Quy cách ${digits}`,
+          barcode: `893000${String(digits).padStart(6, '0')}`,
+          unitId: `33333333-3333-4333-8333-${String(digits).padStart(12, '0')}`,
+          unitCode: 'THUNG',
+          unitName: 'Thùng',
+          conversionToBase: '1',
+          allowsFractional: false,
+          defaultTaxMode: 'EXCLUSIVE',
+          defaultTaxRate: '8',
+          eligibility: { selectable: true, code: 'ELIGIBLE', message: 'Có thể chọn để bán.' },
+        }],
+        requestId: `e2e-so-sku-${digits}`,
+      },
+    });
+  });
+
+  await page.route('**/api/pricing/resolve', async (route) => {
+    const body = route.request().postDataJSON() as {
+      variantId: string;
+      quantity: string;
+      channelId: string;
+    };
+    const systemPrice = String(9_000 + Number(body.variantId.slice(-2)));
+    await route.fulfill({
+      status: 200,
+      json: {
+        data: {
+          variant: { id: body.variantId, sku: body.variantId },
+          currencyCode: 'VND',
+          quantity: body.quantity,
+          priceAt: '2026-07-31T00:00:00.000Z',
+          channelId: body.channelId,
+          customerId: null,
+          customerGroupId: null,
+          baseUnitPriceMinor: '10000',
+          systemUnitPriceMinor: systemPrice,
+          finalUnitPriceMinor: systemPrice,
+          lineTotalMinor: systemPrice,
+          resolutionFingerprint: `pricing-${body.variantId}-${body.quantity}-${body.channelId}`,
+          steps: [
+            { kind: 'BASE', priceListCode: 'BASE-VND', priceListType: 'BASE', afterUnitPriceMinor: '10000' },
+            { kind: 'RULE', priceListCode: 'FIELD', priceListType: 'CHANNEL', beforeUnitPriceMinor: '10000', afterUnitPriceMinor: systemPrice, priority: 200, stackingMode: 'EXCLUSIVE' },
+            { kind: 'SKIPPED', priceListCode: 'LOWER', reason: 'lower_priority' },
+          ],
+        },
+        requestId: 'e2e-so-pricing',
+      },
+    });
+  });
+}
+
+test.describe('Sales Order commercial controls', () => {
+  test('scrolls the real modal body at 1366x768 while header and footer stay available', async ({ page, request }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    const warehouse = await createWarehouse(request, suffix());
+    await mockCommercialApis(page);
+
+    await page.goto('/sales/sales-orders');
+    await page.getByRole('button', { name: 'Tạo đơn bán hàng', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Biểu mẫu đơn bán hàng' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Khách vãng lai', exact: true }).click();
+    await dialog.getByTestId('sales-channel-select').selectOption('11111111-1111-4111-8111-111111111111');
+    await dialog.getByLabel('Kho xuất *').selectOption(warehouse.id);
+
+    const search = dialog.getByPlaceholder('Tên sản phẩm, mã hàng, SKU hoặc barcode');
+    for (let index = 1; index <= 18; index += 1) {
+      await search.fill(`SKU-${index}`);
+      const option = dialog.getByRole('option').filter({ hasText: `SKU-${index}` }).first();
+      await expect(option).toBeVisible();
+      await option.click();
+      await expect(dialog.getByTestId(`sales-order-line-${index}`)).toBeVisible();
+    }
+
+    const firstLine = dialog.getByTestId('sales-order-line-1');
+    await firstLine.getByRole('button', { name: 'Dùng giá ngoại lệ', exact: true }).click();
+    await firstLine.getByLabel('Giá bán cuối *').fill('8500');
+    await firstLine.getByLabel('Lý do giá ngoại lệ *').fill('Giá đã được quản lý duyệt cho E2E');
+    await expect(firstLine.getByText('Giá ngoại lệ', { exact: true })).toBeVisible();
+    await firstLine.getByRole('button', { name: 'Dùng lại giá hệ thống', exact: true }).click();
+    await expect(firstLine.getByRole('button', { name: 'Dùng giá ngoại lệ', exact: true })).toBeVisible();
+
+    await dialog.getByTestId('document-discount-mode').selectOption('PERCENT');
+    await dialog.getByLabel('Tỷ lệ %').fill('5');
+    await dialog.getByLabel('Lý do *').fill('Chiết khấu toàn đơn đã duyệt');
+
+    const body = dialog.getByTestId('sales-order-scroll-body');
+    const header = dialog.locator('header').first();
+    const footer = dialog.locator('footer').last();
+    const before = await Promise.all([header.boundingBox(), footer.boundingBox()]);
+    const dimensions = await body.evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      scrollTop: element.scrollTop,
+    }));
+    expect(dimensions.scrollHeight).toBeGreaterThan(dimensions.clientHeight);
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+
+    await body.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    await expect(dialog.getByTestId('sales-order-scroll-sentinel')).toBeVisible();
+    const after = await Promise.all([header.boundingBox(), footer.boundingBox()]);
+    expect(after[0]?.y).toBe(before[0]?.y);
+    expect(after[1]?.y).toBe(before[1]?.y);
+    await expect(dialog.getByRole('button', { name: 'Lưu nháp', exact: true })).toBeVisible();
+
+    await body.evaluate((element) => { element.scrollTop = 0; });
+    await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBe(0);
+    const modalOverflow = await dialog.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+    expect(modalOverflow.scrollWidth).toBeLessThanOrEqual(modalOverflow.clientWidth);
+  });
+});
