@@ -10,8 +10,12 @@ const contract = readFileSync(
   new URL('../../../docs/operations/phase-6b2-sales-order-commercial-controls.md', import.meta.url),
   'utf8',
 );
-const form = readFileSync(
+const formEntry = readFileSync(
   new URL('../app/sales/sales-orders/SalesOrderForm.tsx', import.meta.url),
+  'utf8',
+);
+const form = readFileSync(
+  new URL('../app/sales/sales-orders/SalesOrderCommercialForm.tsx', import.meta.url),
   'utf8',
 );
 const workspace = readFileSync(
@@ -42,6 +46,11 @@ test('Phase 6B.2 contract forbids MCP and production rollout changes', () => {
   assert.match(contract, /No production deployment, production migration/);
   assert.match(contract, /largest remainder/i);
   assert.match(contract, /SALES_PRICE_CHANGED/);
+});
+
+test('canonical Sales Order form activates the commercial implementation', () => {
+  assert.match(formEntry, /SalesOrderCommercialForm/);
+  assert.match(formEntry, /export \{ default \}/);
 });
 
 test('manual order UI is wired for channel and commercial permissions', () => {
