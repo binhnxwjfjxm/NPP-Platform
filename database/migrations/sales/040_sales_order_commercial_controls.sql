@@ -156,10 +156,6 @@ SET
   system_unit_price = COALESCE(system_unit_price, unit_price)
 WHERE base_unit_price IS NULL OR system_unit_price IS NULL;
 
-ALTER TABLE sales.sales_order_version_lines
-  ALTER COLUMN base_unit_price SET NOT NULL,
-  ALTER COLUMN system_unit_price SET NOT NULL;
-
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -170,8 +166,8 @@ BEGIN
     ALTER TABLE sales.sales_order_version_lines
       ADD CONSTRAINT sales_order_version_lines_price_provenance_check
       CHECK (
-        base_unit_price >= 0
-        AND system_unit_price >= 0
+        (base_unit_price IS NULL OR base_unit_price >= 0)
+        AND (system_unit_price IS NULL OR system_unit_price >= 0)
         AND unit_price >= 0
         AND (manual_override_reason IS NULL
           OR char_length(btrim(manual_override_reason)) BETWEEN 1 AND 500)
@@ -189,6 +185,42 @@ BEGIN
       CHECK (jsonb_typeof(pricing_trace_snapshot) = 'array');
   END IF;
 END $$;
+
+-- The Phase 6B legacy aggregate inserts the line and the Phase 6B.2 facade enriches
+-- its price provenance later in the same transaction. Enforce the committed-state
+-- invariant at transaction end so no committed line can bypass the facade.
+CREATE OR REPLACE FUNCTION sales.enforce_sales_order_line_price_provenance()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  committed_line record;
+BEGIN
+  SELECT base_unit_price, system_unit_price
+    INTO committed_line
+    FROM sales.sales_order_version_lines
+   WHERE installation_id = NEW.installation_id
+     AND id = NEW.id;
+
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
+
+  IF committed_line.base_unit_price IS NULL
+     OR committed_line.system_unit_price IS NULL THEN
+    RAISE EXCEPTION 'sales_order_line_price_provenance_required';
+  END IF;
+
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sales_order_line_price_provenance_deferred
+  ON sales.sales_order_version_lines;
+CREATE CONSTRAINT TRIGGER sales_order_line_price_provenance_deferred
+AFTER INSERT OR UPDATE OF base_unit_price, system_unit_price
+ON sales.sales_order_version_lines
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+EXECUTE FUNCTION sales.enforce_sales_order_line_price_provenance();
 
 -- Extend the immutable-version guard so both the Phase 6B.1 walk-in snapshots and
 -- the Phase 6B.2 commercial snapshots remain immutable when a confirmed version
