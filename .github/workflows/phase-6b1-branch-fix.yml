@@ -1,0 +1,87 @@
+name: Phase 6B.1 Branch Fix
+
+on:
+  push:
+    branches:
+      - agent/phase-6b1-sales-order-operational-ux
+    paths:
+      - .github/workflows/phase-6b1-branch-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-reviewed-fixes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/phase-6b1-sales-order-operational-ux
+          fetch-depth: 0
+
+      - name: Apply exact reviewed replacements
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('npp-core/web/app/sales/sales-orders/SalesOrderForm.tsx')
+          source = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  "else if (line.discountMode === 'PER_UNIT') discount = halfUp(quantity * (discountInput / SCALE), SCALE);",
+                  "else if (line.discountMode === 'PER_UNIT') discount = halfUp(quantity * discountInput, SCALE * SCALE);",
+              ),
+              (
+                  "const { version } = props;",
+                  "const { version, onClose, onError } = props;",
+              ),
+              (
+                  "  const [confirmKey] = useState(() => mutationKey(`sales-${props.mode}-confirm`));\n",
+                  "  const [confirmKey] = useState(() => mutationKey(`sales-${props.mode}-confirm`));\n"
+                  "  const [quickCustomerKey, setQuickCustomerKey] = useState(() => mutationKey('sales-quick-customer'));\n"
+                  "  const [quickAddressKey, setQuickAddressKey] = useState(() => mutationKey('sales-quick-address'));\n",
+              ),
+              ("props.onError", "onError"),
+              ("props.onClose()", "onClose()"),
+              ("}, [props]);", "}, [onError]);"),
+              ("}, [busy, dirty, props]);", "}, [busy, dirty, onClose]);"),
+              ("}, [collectionPolicy, customerId, customerMode, props]);", "}, [collectionPolicy, customerId, customerMode, onError]);"),
+              ("}, [props, skuTerm]);", "}, [onError, skuTerm]);"),
+              ("headers: { 'Idempotency-Key': mutationKey('sales-quick-customer') },", "headers: { 'Idempotency-Key': quickCustomerKey },"),
+              ("headers: { 'Idempotency-Key': mutationKey('sales-quick-address') },", "headers: { 'Idempotency-Key': quickAddressKey },"),
+              (
+                  "      setQuickOpen(false);\n      setQuickCustomer({ code: autoCustomerCode(), name: '', phone: '', addressLine1: '' });\n      markDirty();",
+                  "      setQuickOpen(false);\n"
+                  "      setQuickCustomer({ code: autoCustomerCode(), name: '', phone: '', addressLine1: '' });\n"
+                  "      setQuickCustomerKey(mutationKey('sales-quick-customer'));\n"
+                  "      setQuickAddressKey(mutationKey('sales-quick-address'));\n"
+                  "      markDirty();",
+              ),
+              (
+                  "  function openQuickCustomerForDelivery() {\n    setCustomerMode('EXISTING');",
+                  "  function openQuickCustomerForDelivery() {\n"
+                  "    setQuickCustomerKey(mutationKey('sales-quick-customer'));\n"
+                  "    setQuickAddressKey(mutationKey('sales-quick-address'));\n"
+                  "    setCustomerMode('EXISTING');",
+              ),
+          ]
+
+          for old, new in replacements:
+              if old not in source:
+                  raise SystemExit(f'Expected source fragment not found: {old!r}')
+              source = source.replace(old, new)
+
+          if '[props' in source or ', props]' in source:
+              raise SystemExit('Whole props object remains in a dependency array')
+
+          path.write_text(source, encoding='utf-8')
+
+      - name: Remove temporary workflow and commit
+        run: |
+          git config user.name "npp-ci-fix"
+          git config user.email "npp-ci-fix@users.noreply.github.com"
+          git rm .github/workflows/phase-6b1-branch-fix.yml
+          git add npp-core/web/app/sales/sales-orders/SalesOrderForm.tsx
+          git commit -m "fix(sales-ui): harden operational entry retries and arithmetic"
+          git push origin HEAD:agent/phase-6b1-sales-order-operational-ux
