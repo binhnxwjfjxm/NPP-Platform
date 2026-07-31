@@ -10,6 +10,8 @@ import {
 } from '../audit-outbox.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
 import * as purchaseOrderService from '../services/purchase-order.js';
+import * as pricing from '../services/purchase-order-pricing.js';
+import { handleSupplierPurchasePriceRoutes } from './supplier-purchase-prices.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -17,7 +19,7 @@ function apiError(code, message, details = {}, retryable = false, statusCode = 5
 
 function statusFor(code) {
   if (code === 'UNAUTHORIZED') return 401;
-  if (code === 'FORBIDDEN' || code === 'WAREHOUSE_SCOPE_DENIED') return 403;
+  if (code === 'FORBIDDEN' || code === 'WAREHOUSE_SCOPE_DENIED' || code.endsWith('_FORBIDDEN')) return 403;
   if (code.endsWith('_NOT_FOUND') || code === 'PURCHASE_ORDER_NOT_FOUND') return 404;
   if (
     code.includes('CONFLICT')
@@ -138,6 +140,14 @@ function eventTypeFor(action) {
   }[action];
 }
 
+async function enrichAndProject(client, requestContext, purchaseOrder) {
+  const enriched = await pricing.enrichPurchaseOrderPricing(client, { requestContext, purchaseOrder });
+  return {
+    internalPurchaseOrder: enriched,
+    purchaseOrder: pricing.projectPurchaseOrderPricing(requestContext, enriched),
+  };
+}
+
 async function executeIdempotentMutation(req, res, options, {
   requestContext,
   route,
@@ -168,29 +178,30 @@ async function executeIdempotentMutation(req, res, options, {
             const result = await mutate(client, keyResult.key);
             if (!result.ok) return { result, failed: true };
             const purchaseOrder = result.purchaseOrder;
+            const internalPurchaseOrder = result.internalPurchaseOrder ?? purchaseOrder;
             const metadata = {
-              status: purchaseOrder.status,
-              number: purchaseOrder.number,
-              supplierId: purchaseOrder.supplierId,
-              warehouseId: purchaseOrder.warehouseId,
-              revision: purchaseOrder.revision,
+              status: internalPurchaseOrder.status,
+              number: internalPurchaseOrder.number,
+              supplierId: internalPurchaseOrder.supplierId,
+              warehouseId: internalPurchaseOrder.warehouseId,
+              revision: internalPurchaseOrder.revision,
             };
             await insertAuditRecord(client, buildAuditRecord({
               requestContext,
               action,
               resourceType: 'purchase_order',
-              resourceId: purchaseOrder.id,
+              resourceId: internalPurchaseOrder.id,
               beforeData: result.beforeData ?? null,
-              afterData: purchaseOrder,
+              afterData: internalPurchaseOrder,
               metadata,
             }));
             const outboxEvent = buildOutboxEvent({
               requestContext,
               aggregateType: 'purchasing.purchase_order',
-              aggregateId: purchaseOrder.id,
+              aggregateId: internalPurchaseOrder.id,
               eventType: eventTypeFor(action),
               eventVersion: 1,
-              payload: purchaseOrder,
+              payload: internalPurchaseOrder,
               metadata,
             });
             await insertOutboxEvent(client, outboxEvent);
@@ -258,7 +269,12 @@ async function handleList(req, res, options, requestContext) {
       offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
     });
     if (!result.ok) return sendServiceError(res, result, options);
-    sendSuccess(res, result.purchaseOrders, options.requestId, options.receivedAt);
+    sendSuccess(
+      res,
+      result.purchaseOrders.map((order) => pricing.projectPurchaseOrderPricing(requestContext, order)),
+      options.requestId,
+      options.receivedAt,
+    );
   } catch (error) {
     sendError(res, apiError(error.code, error.publicMessage, {}, false, error.statusCode), options.requestId, options.receivedAt);
   }
@@ -294,11 +310,98 @@ async function handleSkuResolve(req, res, options, requestContext) {
 async function handleGet(res, options, requestContext, id) {
   const result = await purchaseOrderService.getPurchaseOrder(options.getPool(), { requestContext, id });
   if (!result.ok) return sendServiceError(res, result, options);
-  sendSuccess(res, result.purchaseOrder, options.requestId, options.receivedAt);
+  const projected = await enrichAndProject(options.getPool(), requestContext, result.purchaseOrder);
+  sendSuccess(res, projected.purchaseOrder, options.requestId, options.receivedAt);
+}
+
+async function createPricedPurchaseOrder(client, { requestContext, payload }) {
+  const prepared = await pricing.preparePurchaseOrderPricing(client, { requestContext, payload });
+  if (!prepared.ok) return prepared;
+  const created = await purchaseOrderService.createPurchaseOrder(client, {
+    requestContext,
+    payload: prepared.payload,
+  });
+  if (!created.ok) return created;
+  await pricing.applyPurchaseOrderPricingProvenance(client, {
+    requestContext,
+    purchaseOrder: created.purchaseOrder,
+    provenance: prepared.provenance,
+  });
+  const refreshed = await purchaseOrderService.getPurchaseOrder(client, {
+    requestContext,
+    id: created.purchaseOrder.id,
+  });
+  if (!refreshed.ok) return refreshed;
+  const projected = await enrichAndProject(client, requestContext, refreshed.purchaseOrder);
+  return { ok: true, ...projected };
+}
+
+async function updatePricedPurchaseOrder(client, { requestContext, id, payload }) {
+  const current = await purchaseOrderService.getPurchaseOrder(client, { requestContext, id, forUpdate: true });
+  if (!current.ok) return current;
+  const enrichedCurrent = await pricing.enrichPurchaseOrderPricing(client, {
+    requestContext,
+    purchaseOrder: current.purchaseOrder,
+  });
+  const prepared = await pricing.preparePurchaseOrderPricing(client, {
+    requestContext,
+    payload,
+    currentOrder: enrichedCurrent,
+  });
+  if (!prepared.ok) return prepared;
+  const updated = await purchaseOrderService.updatePurchaseOrder(client, {
+    requestContext,
+    id,
+    payload: prepared.payload,
+  });
+  if (!updated.ok) return updated;
+  await pricing.applyPurchaseOrderPricingProvenance(client, {
+    requestContext,
+    purchaseOrder: updated.purchaseOrder,
+    provenance: prepared.provenance,
+  });
+  const refreshed = await purchaseOrderService.getPurchaseOrder(client, {
+    requestContext,
+    id: updated.purchaseOrder.id,
+  });
+  if (!refreshed.ok) return refreshed;
+  const projected = await enrichAndProject(client, requestContext, refreshed.purchaseOrder);
+  return {
+    ok: true,
+    ...projected,
+    beforeData: enrichedCurrent,
+  };
+}
+
+async function transitionPurchaseOrder(client, {
+  requestContext,
+  id,
+  payload,
+  action,
+  idempotencyKey,
+}) {
+  const current = await purchaseOrderService.getPurchaseOrder(client, { requestContext, id, forUpdate: true });
+  if (!current.ok) return current;
+  const ready = pricing.validatePurchaseOrderPriceReady(current.purchaseOrder);
+  if (!ready.ok && (action === 'submit' || action === 'approve')) return ready;
+  let result;
+  if (action === 'submit') result = await purchaseOrderService.submitPurchaseOrder(client, { requestContext, id, payload });
+  else if (action === 'approve') result = await purchaseOrderService.approvePurchaseOrder(client, { requestContext, id, payload, idempotencyKey });
+  else result = await purchaseOrderService.cancelPurchaseOrder(client, { requestContext, id, payload });
+  if (!result.ok) return result;
+  const projected = await enrichAndProject(client, requestContext, result.purchaseOrder);
+  return {
+    ok: true,
+    ...projected,
+    beforeData: current.purchaseOrder,
+  };
 }
 
 export async function handlePurchaseOrderRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
+  if (pathname === '/api/supplier-purchase-prices' || pathname.startsWith('/api/supplier-purchase-prices/')) {
+    return handleSupplierPurchasePriceRoutes(req, res, options);
+  }
   if (pathname !== '/api/purchase-orders' && !pathname.startsWith('/api/purchase-orders/')) return false;
   const method = String(req.method || 'GET').toUpperCase();
 
@@ -334,7 +437,7 @@ export async function handlePurchaseOrderRoutes(req, res, options) {
       payload,
       action: 'create',
       statusCode: 201,
-      mutate: (client) => purchaseOrderService.createPurchaseOrder(client, { requestContext, payload }),
+      mutate: (client) => createPricedPurchaseOrder(client, { requestContext, payload }),
     });
     return true;
   }
@@ -349,6 +452,10 @@ export async function handlePurchaseOrderRoutes(req, res, options) {
     }[action];
     const requestContext = await authenticateAndAuthorize(req, res, options, permission);
     if (!requestContext) return true;
+    if (action === 'approve' && !options.authorize(requestContext, options.PERMISSIONS.corePurchaseOrderPriceRead).ok) {
+      sendError(res, apiError('PURCHASE_ORDER_PRICE_READ_REQUIRED', 'Phải có quyền xem giá để duyệt đơn đặt hàng.', {}, false, 403), options.requestId, options.receivedAt);
+      return true;
+    }
     const payload = await readPayload(req, res, options);
     if (payload === null) return true;
     await executeIdempotentMutation(req, res, options, {
@@ -356,11 +463,13 @@ export async function handlePurchaseOrderRoutes(req, res, options) {
       route: `/api/purchase-orders/${id}/${action}`,
       payload,
       action,
-      mutate: (client, idempotencyKey) => {
-        if (action === 'submit') return purchaseOrderService.submitPurchaseOrder(client, { requestContext, id, payload });
-        if (action === 'approve') return purchaseOrderService.approvePurchaseOrder(client, { requestContext, id, payload, idempotencyKey });
-        return purchaseOrderService.cancelPurchaseOrder(client, { requestContext, id, payload });
-      },
+      mutate: (client, idempotencyKey) => transitionPurchaseOrder(client, {
+        requestContext,
+        id,
+        payload,
+        action,
+        idempotencyKey,
+      }),
     });
     return true;
   }
@@ -382,7 +491,7 @@ export async function handlePurchaseOrderRoutes(req, res, options) {
       route: `/api/purchase-orders/${detailMatch[1]}`,
       payload,
       action: 'update',
-      mutate: (client) => purchaseOrderService.updatePurchaseOrder(client, {
+      mutate: (client) => updatePricedPurchaseOrder(client, {
         requestContext,
         id: detailMatch[1],
         payload,
