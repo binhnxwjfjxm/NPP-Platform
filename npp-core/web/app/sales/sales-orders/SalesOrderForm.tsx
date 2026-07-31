@@ -20,7 +20,6 @@ import styles from './sales-orders.module.css';
 
 export type SalesOrderFormMode = 'create' | 'draft' | 'amendment';
 
-const WALK_IN_CUSTOMER_CODE = 'SYS_WALK_IN';
 const SEARCH_DELAY_MS = 260;
 const SEARCH_PAGE_SIZE = 30;
 const SCALE = 1_000_000n;
@@ -48,6 +47,13 @@ type QuickCustomerDraft = {
   name: string;
   phone: string;
   addressLine1: string;
+};
+
+type EntrySettings = {
+  walkInConfigured: boolean;
+  walkInBootstrapSupported: boolean;
+  defaultTaxMode: SalesOrderTaxMode;
+  defaultTaxRate: string;
 };
 
 type Props = {
@@ -89,10 +95,8 @@ function vnd(value: string | bigint): string {
   }
 }
 
-function localTodayIso(): string {
-  const now = new Date();
-  const offset = now.getTimezoneOffset() * 60_000;
-  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+function normalizedPhone(value: string | null | undefined): string {
+  return String(value ?? '').replace(/[^0-9+]/g, '').trim();
 }
 
 function autoCustomerCode(): string {
@@ -133,7 +137,7 @@ function lineAmounts(line: LineDraft, taxMode: SalesOrderTaxMode, taxRateText: s
     : halfUp(discounted * taxRate, HUNDRED);
   const subtotal = taxMode === 'INCLUSIVE' ? gross - tax : gross;
   const total = taxMode === 'INCLUSIVE' ? discounted : discounted + tax;
-  return { gross, discount, tax, subtotal, total };
+  return { discount, tax, subtotal, total };
 }
 
 function pricingLabel(step: SalesPriceStep): string {
@@ -168,8 +172,8 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export default function SalesOrderForm(props: Props) {
-  const { version, products: _products } = props;
-  const initialWalkIn = version?.customerCode === WALK_IN_CUSTOMER_CODE;
+  const { version } = props;
+  const initialWalkIn = version?.customerMode === 'WALK_IN';
   const initialTaxMode = version?.lines?.[0]?.taxMode ?? 'EXCLUSIVE';
   const initialTaxRate = version?.lines?.[0]?.taxRate ?? '0';
   const [saveKey] = useState(() => mutationKey(`sales-${props.mode}-save`));
@@ -178,6 +182,8 @@ export default function SalesOrderForm(props: Props) {
   const [customerRows, setCustomerRows] = useState(props.customers);
   const [customerId, setCustomerId] = useState(initialWalkIn ? '' : (version?.customerId ?? ''));
   const [customerSearch, setCustomerSearch] = useState('');
+  const [walkInDisplayName, setWalkInDisplayName] = useState(version?.walkInDisplayName ?? '');
+  const [walkInPhone, setWalkInPhone] = useState(version?.walkInPhone ?? '');
   const [addressId, setAddressId] = useState(version?.customerAddressId ?? '');
   const [warehouseId, setWarehouseId] = useState(version?.warehouseId ?? '');
   const [deliveryMode, setDeliveryMode] = useState(version?.deliveryMode ?? 'DELIVERY');
@@ -189,6 +195,7 @@ export default function SalesOrderForm(props: Props) {
   const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
   const [taxMode, setTaxMode] = useState<SalesOrderTaxMode>(initialTaxMode);
   const [taxRate, setTaxRate] = useState(initialTaxRate);
+  const [taxReady, setTaxReady] = useState(Boolean(version?.lines?.length));
   const [skuTerm, setSkuTerm] = useState('');
   const [skuResults, setSkuResults] = useState<SalesOrderSkuSearchOption[]>([]);
   const [skuLoading, setSkuLoading] = useState(false);
@@ -200,9 +207,10 @@ export default function SalesOrderForm(props: Props) {
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const pricingContextRef = useRef(`${customerMode}:${customerId}`);
 
   const activeCustomers = useMemo(() => customerRows
-    .filter((item) => item.is_active && item.code !== WALK_IN_CUSTOMER_CODE)
+    .filter((item) => item.is_active)
     .filter((item) => {
       const term = customerSearch.trim().toLocaleLowerCase('vi');
       return !term || [item.code, item.name, item.phone]
@@ -210,10 +218,6 @@ export default function SalesOrderForm(props: Props) {
         .some((value) => String(value).toLocaleLowerCase('vi').includes(term));
     })
     .sort((left, right) => left.code.localeCompare(right.code)), [customerRows, customerSearch]);
-
-  const mixedTax = useMemo(() => (version?.lines ?? []).some(
-    (line) => line.taxMode !== initialTaxMode || line.taxRate !== initialTaxRate,
-  ), [initialTaxMode, initialTaxRate, version]);
 
   const totals = useMemo(() => lines.reduce((current, line) => {
     const amount = lineAmounts(line, taxMode, taxRate);
@@ -225,8 +229,6 @@ export default function SalesOrderForm(props: Props) {
     };
   }, { subtotal: 0n, discount: 0n, tax: 0n, total: 0n }), [lines, taxMode, taxRate]);
 
-  const selectedCustomer = customerRows.find((item) => item.id === customerId) ?? null;
-
   const markDirty = useCallback(() => {
     setDirty(true);
     props.onError('');
@@ -237,6 +239,16 @@ export default function SalesOrderForm(props: Props) {
     if (dirty && !window.confirm('Đơn bán hàng có thay đổi chưa lưu. Đóng và bỏ thay đổi?')) return;
     props.onClose();
   }, [busy, dirty, props]);
+
+  useEffect(() => {
+    requestJson<EntrySettings>('/api/sales-orders/entry-settings')
+      .then((settings) => {
+        setTaxMode(settings.defaultTaxMode);
+        setTaxRate(settings.defaultTaxRate);
+        setTaxReady(true);
+      })
+      .catch((error) => props.onError(error instanceof Error ? error.message : 'Không tải được cấu hình lập đơn'));
+  }, [props]);
 
   useEffect(() => {
     searchRef.current?.focus();
@@ -277,7 +289,7 @@ export default function SalesOrderForm(props: Props) {
           : active.find((item) => item.is_default)?.id ?? active[0]?.id ?? '');
       })
       .catch((error) => props.onError(error instanceof Error ? error.message : 'Không tải được địa chỉ khách hàng'));
-  }, [collectionPolicy, customerId, customerMode]);
+  }, [collectionPolicy, customerId, customerMode, props]);
 
   useEffect(() => {
     const term = skuTerm.trim();
@@ -305,22 +317,62 @@ export default function SalesOrderForm(props: Props) {
     };
   }, [props, skuTerm]);
 
-  async function priceFor(option: SalesOrderSkuSearchOption, quantity: string): Promise<SalesPriceResolution> {
+  async function priceFor(variantId: string, quantity: string, mode = customerMode, selectedCustomerId = customerId): Promise<SalesPriceResolution> {
     return apiRequest<SalesPriceResolution>('/api/pricing/resolve', {
       method: 'POST',
       body: JSON.stringify({
-        variantId: option.id,
+        variantId,
         quantity,
         currencyCode: 'VND',
         priceAt: new Date().toISOString(),
-        ...(customerMode === 'EXISTING' && customerId ? { customerId } : {}),
+        ...(mode === 'EXISTING' && selectedCustomerId ? { customerId: selectedCustomerId } : {}),
       }),
     });
   }
 
+  useEffect(() => {
+    const nextContext = `${customerMode}:${customerId}`;
+    if (pricingContextRef.current === nextContext) return;
+    pricingContextRef.current = nextContext;
+    if (lines.length === 0) return;
+    const snapshot = [...lines];
+    setLines((current) => current.map((line) => ({ ...line, resolvingPrice: true, priceError: null })));
+    void Promise.all(snapshot.map(async (line) => {
+      try {
+        const resolution = await priceFor(line.variantId, line.quantity, customerMode, customerId);
+        return {
+          variantId: line.variantId,
+          baseUnitPriceMinor: resolution.baseUnitPriceMinor,
+          finalUnitPriceMinor: resolution.finalUnitPriceMinor,
+          priceSteps: resolution.steps,
+          priceError: null,
+        };
+      } catch (error) {
+        return {
+          variantId: line.variantId,
+          baseUnitPriceMinor: line.baseUnitPriceMinor,
+          finalUnitPriceMinor: line.finalUnitPriceMinor,
+          priceSteps: line.priceSteps,
+          priceError: error instanceof Error ? error.message : 'Không phân giải được giá',
+        };
+      }
+    })).then((results) => {
+      const byVariant = new Map(results.map((result) => [result.variantId, result]));
+      setLines((current) => current.map((line) => {
+        const result = byVariant.get(line.variantId);
+        return result ? { ...line, ...result, resolvingPrice: false } : line;
+      }));
+    });
+  }, [customerId, customerMode]);
+
   async function addSku(option: SalesOrderSkuSearchOption) {
     if (!option.eligibility.selectable) return props.onError(option.eligibility.message);
     if (lines.some((line) => line.variantId === option.id)) return props.onError('SKU này đã có trong đơn');
+    if (lines.length === 0) {
+      setTaxMode(option.defaultTaxMode);
+      setTaxRate(option.defaultTaxRate);
+      setTaxReady(true);
+    }
     const pending: LineDraft = {
       variantId: option.id,
       sku: option.sku,
@@ -340,7 +392,7 @@ export default function SalesOrderForm(props: Props) {
     setSkuResults([]);
     markDirty();
     try {
-      const resolution = await priceFor(option, '1');
+      const resolution = await priceFor(option.id, '1');
       setLines((current) => current.map((line) => line.variantId === option.id ? {
         ...line,
         baseUnitPriceMinor: resolution.baseUnitPriceMinor,
@@ -363,18 +415,11 @@ export default function SalesOrderForm(props: Props) {
   async function refreshLinePrice(index: number) {
     const line = lines[index];
     if (!line || !parseScaled(line.quantity, false)) return;
-    const option: SalesOrderSkuSearchOption = {
-      id: line.variantId,
-      productId: '', productCode: '', productName: '', sku: line.sku,
-      variantName: line.name, barcode: null, unitId: '', unitCode: line.unitCode,
-      unitName: null, conversionToBase: null, allowsFractional: null,
-      eligibility: { selectable: true, code: 'ELIGIBLE', message: '' },
-    };
     setLines((current) => current.map((item, itemIndex) => itemIndex === index
       ? { ...item, resolvingPrice: true, priceError: null }
       : item));
     try {
-      const resolution = await priceFor(option, line.quantity);
+      const resolution = await priceFor(line.variantId, line.quantity);
       setLines((current) => current.map((item, itemIndex) => itemIndex === index ? {
         ...item,
         baseUnitPriceMinor: resolution.baseUnitPriceMinor,
@@ -390,10 +435,6 @@ export default function SalesOrderForm(props: Props) {
         priceError: error instanceof Error ? error.message : 'Không phân giải được giá',
       } : item));
     }
-  }
-
-  async function refreshAllPrices() {
-    await Promise.all(lines.map((_, index) => refreshLinePrice(index)));
   }
 
   function handleSkuKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -416,6 +457,20 @@ export default function SalesOrderForm(props: Props) {
     }
     setBusy(true);
     try {
+      const phone = normalizedPhone(quickCustomer.phone);
+      if (phone) {
+        const query = new URLSearchParams({ search: phone, active: 'true', limit: '30', offset: '0' });
+        const matches = await requestJson<Customer[]>(`/api/customers?${query}`);
+        const duplicate = matches.find((item) => normalizedPhone(item.phone) === phone);
+        if (duplicate) {
+          setCustomerRows((current) => [duplicate, ...current.filter((item) => item.id !== duplicate.id)]);
+          setCustomerMode('EXISTING');
+          setCustomerId(duplicate.id);
+          setQuickOpen(false);
+          markDirty();
+          throw new Error(`Số điện thoại đã thuộc khách ${duplicate.code} — ${duplicate.name}; hệ thống đã chọn khách này thay vì tạo trùng.`);
+        }
+      }
       const created = await requestJson<Customer>('/api/customers', {
         method: 'POST',
         headers: { 'Idempotency-Key': mutationKey('sales-quick-customer') },
@@ -480,9 +535,8 @@ export default function SalesOrderForm(props: Props) {
     if (lines.length === 0) return 'Đơn bán hàng phải có ít nhất một SKU';
     if (lines.some((line) => !parseScaled(line.quantity, false))) return 'Số lượng hàng hóa chưa hợp lệ';
     if (lines.some((line) => line.resolvingPrice)) return 'Hệ thống đang tính giá, hãy đợi hoàn tất';
-    if (lines.some((line) => line.priceError || line.finalUnitPriceMinor === '0')) return 'Có dòng hàng chưa phân giải được giá bán';
-    const rate = parseScaled(taxRate || '0', true);
-    if (rate === null || rate > HUNDRED) return 'Thuế suất phải từ 0 đến 100';
+    if (lines.some((line) => line.priceError)) return 'Có dòng hàng chưa phân giải được giá bán';
+    if (!taxReady) return 'Chưa tải được chính sách thuế mặc định từ Core';
     return null;
   }
 
@@ -490,7 +544,10 @@ export default function SalesOrderForm(props: Props) {
     return {
       sourceType: 'MANUAL',
       customerMode,
-      ...(customerMode === 'EXISTING' ? { customerId } : {}),
+      ...(customerMode === 'EXISTING' ? { customerId } : {
+        walkInDisplayName: walkInDisplayName.trim() || undefined,
+        walkInPhone: walkInPhone.trim() || undefined,
+      }),
       ...(deliveryMode === 'DELIVERY' ? { customerAddressId: addressId } : {}),
       warehouseId,
       deliveryMode,
@@ -504,8 +561,6 @@ export default function SalesOrderForm(props: Props) {
         quantity: line.quantity,
         discountMode: line.discountMode,
         discountValue: line.discountValue || '0',
-        taxMode,
-        taxRate: taxRate || '0',
       })),
     };
   }
@@ -549,6 +604,13 @@ export default function SalesOrderForm(props: Props) {
     }
   }
 
+  function openQuickCustomerForDelivery() {
+    setCustomerMode('EXISTING');
+    setDeliveryMode('DELIVERY');
+    setQuickOpen(true);
+    markDirty();
+  }
+
   return (
     <div className={styles.modalBackdrop} role="presentation">
       <section className={styles.orderEditorModal} role="dialog" aria-modal="true" aria-label="Biểu mẫu đơn bán hàng">
@@ -566,9 +628,14 @@ export default function SalesOrderForm(props: Props) {
             </div>
 
             {customerMode === 'EXISTING' ? (
-              <label className={styles.customerField}><span>Khách hàng *</span><input value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder="Tìm mã, tên hoặc số điện thoại" /><select value={customerId} onChange={(event) => { setCustomerId(event.target.value); markDirty(); void refreshAllPrices(); }}><option value="">Chọn khách hàng</option>{activeCustomers.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}{item.phone ? ` · ${item.phone}` : ''}</option>)}</select></label>
+              <label className={styles.customerField}><span>Khách hàng *</span><input value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder="Tìm mã, tên hoặc số điện thoại" /><select value={customerId} onChange={(event) => { setCustomerId(event.target.value); markDirty(); }}><option value="">Chọn khách hàng</option>{activeCustomers.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}{item.phone ? ` · ${item.phone}` : ''}</option>)}</select></label>
             ) : (
-              <div className={styles.walkInNotice}><strong>Khách vãng lai</strong><span>Nhận tại kho, không bán chịu; hệ thống dùng khách chuẩn theo installation.</span></div>
+              <div className={styles.walkInFields}>
+                <label><span>Tên khách (tùy chọn)</span><input value={walkInDisplayName} onChange={(event) => { setWalkInDisplayName(event.target.value); markDirty(); }} placeholder="Ví dụ: Anh Nam" /></label>
+                <label><span>Số điện thoại (tùy chọn)</span><input value={walkInPhone} onChange={(event) => { setWalkInPhone(event.target.value); markDirty(); }} placeholder="Dùng tra cứu lại đơn" /></label>
+                <span>Nhận tại kho, không bán chịu và không áp giá riêng theo khách.</span>
+                {props.canQuickCreateCustomer && <button type="button" className={styles.linkButton} onClick={openQuickCustomerForDelivery}>Cần giao hàng? Tạo khách chính thức</button>}
+              </div>
             )}
 
             <label><span>Kho xuất *</span><select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); markDirty(); }}><option value="">Chọn kho</option>{props.warehouses.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
@@ -582,7 +649,7 @@ export default function SalesOrderForm(props: Props) {
 
           {quickOpen && props.canQuickCreateCustomer && (
             <section className={styles.quickCustomerPanel} aria-label="Tạo nhanh khách hàng">
-              <header><div><strong>Tạo nhanh khách chính thức</strong><span>Khách được tạo và chọn ngay, không phải rời đơn hàng.</span></div><button type="button" onClick={() => setQuickOpen(false)}>Đóng</button></header>
+              <header><div><strong>Tạo nhanh khách chính thức</strong><span>Kiểm tra trùng điện thoại, tạo và chọn ngay trong đơn.</span></div><button type="button" onClick={() => setQuickOpen(false)}>Đóng</button></header>
               <label><span>Mã khách</span><input value={quickCustomer.code} onChange={(event) => setQuickCustomer((current) => ({ ...current, code: event.target.value.toUpperCase() }))} /></label>
               <label><span>Tên khách *</span><input value={quickCustomer.name} onChange={(event) => setQuickCustomer((current) => ({ ...current, name: event.target.value }))} /></label>
               <label><span>Số điện thoại</span><input value={quickCustomer.phone} onChange={(event) => setQuickCustomer((current) => ({ ...current, phone: event.target.value }))} /></label>
@@ -606,7 +673,7 @@ export default function SalesOrderForm(props: Props) {
                 </div>
               )}
             </div>
-            <p className={styles.keyboardHint}>Gõ để tìm, ↑↓ để chọn, Enter để thêm. Giá được Core phân giải ngay khi chọn.</p>
+            <p className={styles.keyboardHint}>Gõ để tìm, ↑↓ để chọn, Enter để thêm. Giá và chính sách thuế do Core phân giải.</p>
           </section>
 
           <section className={styles.orderLines} aria-label="Hàng hóa trong đơn">
@@ -620,13 +687,14 @@ export default function SalesOrderForm(props: Props) {
                   <label><span>SL</span><input inputMode="decimal" value={line.quantity} onChange={(event) => { const value = event.target.value; setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: value } : item)); markDirty(); }} onBlur={() => void refreshLinePrice(index)} /></label>
                   <div className={styles.priceCell}><span>Giá nền</span><strong>{line.resolvingPrice ? 'Đang tính…' : vnd(line.baseUnitPriceMinor)}</strong></div>
                   <div className={styles.priceCell}><span>Giá bán cuối</span><strong>{line.resolvingPrice ? 'Đang tính…' : vnd(line.finalUnitPriceMinor)}</strong>{applied.length > 0 && <small>{applied.length} chương trình/quy tắc</small>}</div>
-                  <div className={styles.priceCell}><span>Thành tiền</span><strong>{vnd(amount.total)}</strong></div>
+                  <div className={styles.priceCell}><span>Thành tiền dự kiến</span><strong>{vnd(amount.total)}</strong></div>
                   <button type="button" className={styles.removeLineButton} onClick={() => { setLines((current) => current.filter((_, itemIndex) => itemIndex !== index)); markDirty(); }}>Xóa</button>
                   <details className={styles.lineDetails}>
-                    <summary>Xem cách tính giá và chiết khấu thêm</summary>
+                    <summary>Xem cách tính giá, chiết khấu và thuế dòng</summary>
                     <div className={styles.priceTrace}>
-                      {line.priceSteps.length === 0 && <span>Giá snapshot hiện tại; lưu lại để Core tái phân giải.</span>}
+                      {line.priceSteps.length === 0 && <span>Giá snapshot hiện tại; Core sẽ tái phân giải khi lưu.</span>}
                       {line.priceSteps.map((step, stepIndex) => <div key={`${step.kind}-${stepIndex}`}><span>{pricingLabel(step)}</span><b>{step.afterUnitPriceMinor ? vnd(step.afterUnitPriceMinor) : '—'}</b></div>)}
+                      <div><span>Thuế Core · {taxMode === 'INCLUSIVE' ? 'Giá đã gồm thuế' : 'Giá chưa gồm thuế'} · {taxRate}%</span><b>{vnd(amount.tax)}</b></div>
                     </div>
                     <div className={styles.discountEditor}>
                       <label><span>Kiểu CK thêm</span><select value={line.discountMode} onChange={(event) => { const value = event.target.value as DiscountMode; setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, discountMode: value } : item)); markDirty(); }}><option value="TOTAL_AMOUNT">Giảm tổng dòng</option><option value="PER_UNIT">Giảm mỗi đơn vị</option><option value="PERCENT">Giảm phần trăm</option></select></label>
@@ -642,13 +710,11 @@ export default function SalesOrderForm(props: Props) {
 
         <footer className={styles.orderEditorFooter}>
           <section className={styles.taxSummary} aria-label="Tổng kết thuế và thanh toán">
-            <label><span>Chính sách thuế</span><select value={taxMode} onChange={(event) => { setTaxMode(event.target.value as SalesOrderTaxMode); markDirty(); }}><option value="EXCLUSIVE">Giá chưa gồm thuế</option><option value="INCLUSIVE">Giá đã gồm thuế</option></select></label>
-            <label><span>Thuế suất chung</span><div className={styles.percentInput}><input inputMode="decimal" value={taxRate} onChange={(event) => { setTaxRate(event.target.value); markDirty(); }} /><b>%</b></div></label>
-            {mixedTax && <span className={styles.taxWarning}>Đơn cũ có nhiều mức thuế; lưu sẽ chuẩn hóa theo mức đang chọn.</span>}
+            <div className={styles.coreTaxPolicy}><span>Chính sách thuế Core</span><strong>{taxReady ? `${taxMode === 'INCLUSIVE' ? 'Giá đã gồm thuế' : 'Giá chưa gồm thuế'} · ${taxRate}%` : 'Đang tải…'}</strong></div>
             <div><span>Tiền hàng</span><strong>{vnd(totals.subtotal)}</strong></div>
             <div><span>Chiết khấu</span><strong>- {vnd(totals.discount)}</strong></div>
-            <div><span>Tiền thuế</span><strong>{vnd(totals.tax)}</strong></div>
-            <div className={styles.grandTotal}><span>Tổng thanh toán</span><strong>{vnd(totals.total)}</strong></div>
+            <div><span>Tiền thuế dự kiến</span><strong>{vnd(totals.tax)}</strong></div>
+            <div className={styles.grandTotal}><span>Tổng thanh toán dự kiến</span><strong>{vnd(totals.total)}</strong></div>
           </section>
           <div className={styles.footerActions}>
             <button type="button" onClick={requestClose}>Đóng</button>
