@@ -147,7 +147,7 @@ function walkInPayload(fixture, overrides = {}) {
   };
 }
 
-test('operational Sales Order entry supports configured walk-in, barcode search and Core tax defaults', async () => {
+test('operational Sales Order entry supports walk-in, barcode search, explicit tax and Core fallback', async () => {
   const config = loadConfig(testEnv());
   const pool = getPool(config);
   let server;
@@ -189,10 +189,29 @@ test('operational Sales Order entry supports configured walk-in, barcode search 
     assert.equal(first.walkInPhone, '0901234567');
     assert.equal(first.deliveryMode, 'PICKUP');
     assert.equal(first.versions[0].customerMode, 'WALK_IN');
-    assert.equal(first.versions[0].lines[0].taxMode, 'EXCLUSIVE');
-    assert.equal(first.versions[0].lines[0].taxRate, '10.000000');
-    assert.equal(first.versions[0].lines[0].taxAmount, '2000.000000');
-    assert.equal(first.versions[0].total, '22000.000000');
+    assert.equal(first.versions[0].lines[0].taxMode, 'INCLUSIVE');
+    assert.equal(first.versions[0].lines[0].taxRate, '1.000000');
+    assert.equal(first.versions[0].lines[0].taxAmount, '198.000000');
+    assert.equal(first.versions[0].total, '20000.000000');
+
+    const fallbackResponse = await createWalkIn(`walk-in-${randomUUID()}`, {
+      ...walkInPayload(fixture, {
+        walkInDisplayName: 'Khách dùng thuế mặc định',
+        walkInPhone: '0923456789',
+      }),
+      lines: [{
+        variantId: fixture.variantId,
+        quantity: '2',
+        discountMode: 'TOTAL_AMOUNT',
+        discountValue: '0',
+      }],
+    });
+    assert.equal(fallbackResponse.status, 201);
+    const fallback = (await fallbackResponse.json()).data;
+    assert.equal(fallback.versions[0].lines[0].taxMode, 'EXCLUSIVE');
+    assert.equal(fallback.versions[0].lines[0].taxRate, '10.000000');
+    assert.equal(fallback.versions[0].lines[0].taxAmount, '2000.000000');
+    assert.equal(fallback.versions[0].total, '22000.000000');
 
     const configured = (await pool.query(
       `SELECT walk_in_customer_id FROM shared.sales_order_settings WHERE installation_id=$1`,
@@ -231,7 +250,6 @@ test('operational Sales Order entry supports configured walk-in, barcode search 
     assert.equal((await deliveryDenied.json()).error.code, 'WALK_IN_PICKUP_REQUIRED');
   } finally {
     if (server) await closeServer(server);
-    await pool.query('DELETE FROM shared.customers WHERE installation_id=$1', [config.installationId]).catch(() => {});
     await closePool();
   }
 });

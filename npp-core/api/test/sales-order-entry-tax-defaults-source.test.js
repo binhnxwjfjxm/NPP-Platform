@@ -7,11 +7,15 @@ const source = readFileSync(
   'utf8',
 );
 
-test('Sales Order tax stays Core-owned when entry settings are configured', () => {
-  assert.match(source, /if\s*\(!settings\)\s*return\s*lines/);
+test('Sales Order tax preserves valid explicit values and defaults only missing fields', () => {
+  assert.doesNotMatch(source, /if\s*\(!settings\)\s*return\s*lines/);
   assert.match(source, /const\s+defaults\s*=\s*taxSettings\(settings\)/);
-  assert.match(source, /taxMode:\s*defaults\.taxMode/);
-  assert.match(source, /taxRate:\s*defaults\.taxRate/);
-  assert.doesNotMatch(source, /taxMode:\s*TAX_MODES\.has\(String\(line\?\.taxMode/);
-  assert.doesNotMatch(source, /taxRate:\s*line\?\.taxRate/);
+  assert.match(
+    source,
+    /taxMode:\s*TAX_MODES\.has\(String\(line\?\.taxMode[\s\S]*?\?\s*String\(line\.taxMode\)[\s\S]*?:\s*defaults\.taxMode/,
+  );
+  assert.match(
+    source,
+    /taxRate:\s*line\?\.taxRate\s*===\s*null[\s\S]*?\?\s*defaults\.taxRate[\s\S]*?:\s*String\(line\.taxRate\)/,
+  );
 });

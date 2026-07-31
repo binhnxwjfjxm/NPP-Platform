@@ -117,7 +117,7 @@ Tax is not a normal per-line data-entry burden.
 
 - remove tax mode and tax rate from the fast-add row;
 - Core resolves the default tax treatment from canonical configuration;
-- the same safe Core default applies whether or not an installation settings row has already been created; row existence must never switch tax ownership silently;
+- valid explicit tax values from an existing trusted API contract remain compatible; missing/null/blank values use the same Core default regardless of whether an installation settings row already exists;
 - backend continues to calculate and snapshot exact per-line tax;
 - UI exposes per-line tax detail only in an expandable advanced view;
 - order summary shows subtotal, discount, tax and total;
