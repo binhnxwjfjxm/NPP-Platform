@@ -194,8 +194,9 @@ BEGIN
   END IF;
 END $$;
 
--- Extend the immutable-version guard so new commercial snapshots cannot be changed
--- while a confirmed version is being superseded.
+-- Extend the immutable-version guard so both the Phase 6B.1 walk-in snapshots and
+-- the Phase 6B.2 commercial snapshots remain immutable when a confirmed version
+-- is superseded.
 CREATE OR REPLACE FUNCTION sales.guard_sales_order_version_mutation()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -210,6 +211,9 @@ BEGIN
       AND NEW.installation_id = OLD.installation_id
       AND NEW.sales_order_id = OLD.sales_order_id
       AND NEW.version_number = OLD.version_number
+      AND NEW.customer_mode_snapshot = OLD.customer_mode_snapshot
+      AND NEW.walk_in_display_name_snapshot IS NOT DISTINCT FROM OLD.walk_in_display_name_snapshot
+      AND NEW.walk_in_phone_snapshot IS NOT DISTINCT FROM OLD.walk_in_phone_snapshot
       AND NEW.customer_id = OLD.customer_id
       AND NEW.customer_code_snapshot = OLD.customer_code_snapshot
       AND NEW.customer_name_snapshot = OLD.customer_name_snapshot
