@@ -82,10 +82,11 @@ Keep independent status axes. One status must not stand in for another.
 ```text
 draft
 confirmed
-amended
 cancelled
 closed
 ```
+
+An amendment creates a new immutable order version and audit history; it does not replace `confirmed` with a generic `amended` lifecycle status.
 
 `closed` is a terminal commercial state after all remaining fulfillment, delivery and accounting obligations are resolved. It must not be set merely because one delivery attempt succeeded.
 
@@ -135,7 +136,9 @@ Receivable and payment allocation ledgers remain authoritative.
 
 ### 4.1 Reservation and allocation
 
-- Sales Order confirmation may create or refresh reservation demand according to policy.
+- Sales Order confirmation creates reservation demand for the confirmed quantity.
+- When backorder is disabled, confirmation fails unless the required quantity can be reserved.
+- When an explicit backorder policy is enabled, confirmation may reserve zero, part or all of the quantity and must project `unallocated`, `partially_allocated` or `allocated` accurately.
 - Reservation is SKU/scope based and must not oversell under concurrency.
 - Lot allocation happens at pick/pack, not at initial commercial draft.
 - Only allocated, picked and packed quantities may become deliverable quantities.
