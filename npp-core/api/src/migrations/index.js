@@ -24,6 +24,11 @@ const SALES_ORDER_FOUNDATION_SQL = readFileSync(
   'utf8',
 );
 
+const SALES_ORDER_CONFIRMATION_GUARD_SQL = readFileSync(
+  new URL('../../../../database/migrations/sales/038_sales_order_confirmation_guard.sql', import.meta.url),
+  'utf8',
+);
+
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_033,
   Object.freeze({
@@ -41,6 +46,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '037_sales_order_foundation',
     sql: SALES_ORDER_FOUNDATION_SQL,
+  }),
+  Object.freeze({
+    id: '038_sales_order_confirmation_guard',
+    sql: SALES_ORDER_CONFIRMATION_GUARD_SQL,
   }),
 ]);
 
