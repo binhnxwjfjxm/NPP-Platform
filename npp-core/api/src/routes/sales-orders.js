@@ -89,10 +89,10 @@ function requireIdempotency(req) {
   }
 }
 
-function withWarehouseScopes(requestContext, warehouseIds) {
+function withWarehouseScopes(requestContext, scopedWarehouseIds) {
   const scopes = Object.freeze({
     branchIds: Object.freeze([...(requestContext.scopes?.branchIds ?? [])]),
-    warehouseIds: Object.freeze(warehouseIds),
+    warehouseIds: Object.freeze(scopedWarehouseIds),
     territoryIds: Object.freeze([...(requestContext.scopes?.territoryIds ?? [])]),
   });
   return Object.freeze({
@@ -292,6 +292,31 @@ export async function handleSalesOrderRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (pathname !== '/api/sales-orders' && !pathname.startsWith('/api/sales-orders/')) return false;
   const method = String(req.method || 'GET').toUpperCase();
+
+  if (pathname === '/api/sales-orders/entry-settings' && method === 'GET') {
+    const context = await authenticateAndAuthorize(
+      req,
+      res,
+      options,
+      options.PERMISSIONS.coreSalesOrderRead,
+    );
+    if (!context) return true;
+    try {
+      const result = await entryService.getSalesOrderEntrySettings(options.getPool(), {
+        requestContext: context,
+      });
+      if (!result.ok) sendServiceError(res, result, options);
+      else sendSuccess(res, result.settings, options.requestId, options.receivedAt);
+    } catch {
+      sendError(
+        res,
+        apiError('SALES_ORDER_ENTRY_SETTINGS_UNAVAILABLE', 'Không tải được cấu hình lập đơn', {}, true, 503),
+        options.requestId,
+        options.receivedAt,
+      );
+    }
+    return true;
+  }
 
   if (pathname === '/api/sales-orders/sku-search' && method === 'GET') {
     const context = await authenticateAndAuthorize(
