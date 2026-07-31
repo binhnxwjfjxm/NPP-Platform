@@ -42,6 +42,7 @@ async function fixtures(pool, installationId) {
   const unitId = randomUUID();
   const productId = randomUUID();
   const variantId = randomUUID();
+  const channelId = randomUUID();
   const priceListId = randomUUID();
   const priceItemId = randomUUID();
   const barcodeId = randomUUID();
@@ -102,6 +103,12 @@ async function fixtures(pool, installationId) {
     [barcodeId, installationId, variantId, barcode, actor],
   );
   await pool.query(
+    `INSERT INTO shared.sales_channels
+      (id, installation_id, code, name, is_active, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,true,$5,$5)`,
+    [channelId, installationId, `FIELD-${suffix}`, `Kênh thị trường ${suffix}`, actor],
+  );
+  await pool.query(
     `INSERT INTO shared.price_lists
       (id, installation_id, code, name, list_type, currency_code, priority,
        stacking_mode, stop_processing, is_active, created_by, updated_by)
@@ -117,12 +124,12 @@ async function fixtures(pool, installationId) {
   );
   await pool.query(
     `INSERT INTO shared.sales_order_settings
-      (installation_id, default_tax_mode, default_tax_rate, created_by, updated_by)
-     VALUES ($1,'EXCLUSIVE',10,$2,$2)`,
-    [installationId, actor],
+      (installation_id, default_sales_channel_id, default_tax_mode, default_tax_rate, created_by, updated_by)
+     VALUES ($1,$2,'EXCLUSIVE',10,$3,$3)`,
+    [installationId, channelId, actor],
   );
 
-  return { warehouseId, customerId, addressId, variantId, barcode };
+  return { warehouseId, customerId, addressId, variantId, channelId, barcode };
 }
 
 function walkInPayload(fixture, overrides = {}) {
@@ -147,7 +154,7 @@ function walkInPayload(fixture, overrides = {}) {
   };
 }
 
-test('operational Sales Order entry supports configured walk-in, barcode search and Core tax defaults', async () => {
+test('operational Sales Order entry supports configured walk-in, default channel, barcode search and Core tax defaults', async () => {
   const config = loadConfig(testEnv());
   const pool = getPool(config);
   let server;
@@ -163,6 +170,10 @@ test('operational Sales Order entry supports configured walk-in, barcode search 
     const settings = (await settingsResponse.json()).data;
     assert.equal(settings.defaultTaxMode, 'EXCLUSIVE');
     assert.equal(settings.defaultTaxRate, '10.000000');
+    assert.equal(settings.defaultSalesChannelId, fixture.channelId);
+    assert.deepEqual(settings.salesChannels.map((channel) => channel.id), [fixture.channelId]);
+    assert.equal(settings.permissions.canPriceOverride, true);
+    assert.equal(settings.permissions.canDiscountOverride, true);
 
     const skuSearch = await fetch(`${baseUrl}/api/sales-orders/sku-search?search=${fixture.barcode}`, {
       headers: { Authorization: `Bearer ${config.backendApiToken}` },
@@ -188,6 +199,8 @@ test('operational Sales Order entry supports configured walk-in, barcode search 
     assert.equal(first.customerName, 'Anh khách vãng lai');
     assert.equal(first.walkInPhone, '0901234567');
     assert.equal(first.deliveryMode, 'PICKUP');
+    assert.equal(first.salesChannelId, fixture.channelId);
+    assert.equal(first.versions[0].salesChannelId, fixture.channelId);
     assert.equal(first.versions[0].customerMode, 'WALK_IN');
     assert.equal(first.versions[0].lines[0].taxMode, 'EXCLUSIVE');
     assert.equal(first.versions[0].lines[0].taxRate, '10.000000');
