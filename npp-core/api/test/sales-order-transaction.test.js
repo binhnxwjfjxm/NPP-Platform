@@ -182,14 +182,16 @@ test('Sales Order create, audit and outbox commit atomically', async () => {
     });
 
     assert.equal(transaction.salesOrder.status, 'draft');
+    assert.match(transaction.eventId, /^[0-9a-f-]{36}$/i);
     const counts = await pool.query(
       `SELECT
         (SELECT count(*)::int FROM sales.sales_orders WHERE installation_id=$1) AS orders,
         (SELECT count(*)::int FROM shared.core_audit_records WHERE installation_id=$1 AND request_id=$2) AS audits,
-        (SELECT count(*)::int FROM shared.core_outbox_events WHERE installation_id=$1 AND request_id=$2) AS events`,
-      [config.installationId, requestContext.requestId],
+        (SELECT count(*)::int FROM shared.core_outbox_events WHERE installation_id=$1 AND request_id=$2) AS events,
+        (SELECT count(*)::int FROM shared.core_outbox_events WHERE installation_id=$1 AND event_id=$3) AS matching_event`,
+      [config.installationId, requestContext.requestId, transaction.eventId],
     );
-    assert.deepEqual(counts.rows[0], { orders: 1, audits: 1, events: 1 });
+    assert.deepEqual(counts.rows[0], { orders: 1, audits: 1, events: 1, matching_event: 1 });
   } finally {
     await closePool();
   }
