@@ -127,6 +127,7 @@ async function createApprovedPo(baseUrl, config, fixture) {
       unitPrice: '10000',
       discountAmount: '0',
       taxAmount: '0',
+      priceOverrideReason: 'Giá nhập tay cho fixture nhận hàng',
     }],
   };
   const createResponse = await fetch(`${baseUrl}/api/purchase-orders`, {
@@ -230,8 +231,6 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
     });
     assert.equal(response.status, 400);
     assert.equal(await errorCode(response), 'INVALID_VARIANCE_REASON_CODE');
-
-
 
     response = await fetch(`${baseUrl}/api/goods-receipts`, {
       method: 'POST',
@@ -496,8 +495,6 @@ test('Goods receipt posts partial/full inventory exactly once and reverses with 
   }
 });
 
-
-
 test('Goods receipt can post and reverse a fully rejected delivery without inventory movement', async () => {
   const config = loadConfig(testEnv({ PORT: '3078', INSTALLATION_ID: `goods-receipt-rejected-${randomUUID()}` }));
   const pool = getPool(config);
@@ -586,6 +583,8 @@ test('Goods receipt variance requires explicit permission even when create is al
             PERMISSIONS.corePurchaseOrderCreate,
             PERMISSIONS.corePurchaseOrderSubmit,
             PERMISSIONS.corePurchaseOrderApprove,
+            PERMISSIONS.corePurchaseOrderPriceRead,
+            PERMISSIONS.corePurchaseOrderPriceOverride,
             PERMISSIONS.coreGoodsReceiptRead,
             PERMISSIONS.coreGoodsReceiptCreate,
           ],

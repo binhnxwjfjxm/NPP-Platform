@@ -92,12 +92,14 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
 
     const line = editor.locator('article').filter({ hasText: fixture.variant.sku }).first();
     await expect(line).toBeVisible();
+    await line.getByRole('button', { name: 'Nhập tay', exact: true }).click();
     const decimalInputs = line.locator('input[inputmode="decimal"]');
     await decimalInputs.nth(0).fill('2');
     await decimalInputs.nth(1).fill('10000');
     await line.locator('select').selectOption('PERCENT');
     await decimalInputs.nth(2).fill('10');
     await decimalInputs.nth(3).fill('8');
+    await line.getByRole('textbox', { name: 'Lý do nhập tay giá', exact: true }).fill('Giá thỏa thuận dùng cho Browser E2E Phase 5.7');
     await expect(line).toContainText('19.440 VND');
     await page.getByTestId('purchase-order-save').click();
     await expect(editor).toHaveCount(0);

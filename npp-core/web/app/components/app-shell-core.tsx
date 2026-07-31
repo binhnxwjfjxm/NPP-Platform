@@ -51,6 +51,7 @@ const inventoryItems = [
 
 const purchasingItems = [
   { href: '/purchasing/purchase-orders', label: 'Đơn đặt hàng', icon: 'panel' as const, testId: 'nav-purchase-orders' },
+  { href: '/purchasing/purchase-prices', label: 'Bảng giá mua', icon: 'panel' as const, testId: 'nav-purchase-prices' },
   { href: '/purchasing/goods-receipts', label: 'Phiếu nhận hàng', icon: 'panel' as const, testId: 'nav-goods-receipts' },
   { href: '/purchasing/supplier-returns', label: 'Phiếu trả NCC', icon: 'panel' as const, testId: 'nav-supplier-returns' },
 ];

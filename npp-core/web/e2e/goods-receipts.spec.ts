@@ -92,6 +92,7 @@ async function createFixture(request: APIRequestContext, suffix: string) {
         unitPrice: '10000',
         discountAmount: '0',
         taxAmount: '0',
+        priceOverrideReason: 'Giá fixture phục vụ Browser E2E phiếu nhận hàng',
       }],
     },
   });

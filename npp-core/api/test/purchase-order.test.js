@@ -119,6 +119,7 @@ test('Purchase order API is idempotent, concurrency-safe and completes its lifec
         unitPrice: '10000.25',
         discountAmount: '500',
         taxAmount: '250',
+        priceOverrideReason: 'Giá nhập tay cho fixture vòng đời PO',
       }],
     };
 
@@ -158,6 +159,7 @@ test('Purchase order API is idempotent, concurrency-safe and completes its lifec
         unitPrice: '10000.25',
         discountAmount: '0',
         taxAmount: '0',
+        priceOverrideReason: 'Giá nhập tay cho fixture cập nhật PO',
       }],
     });
     const concurrentUpdates = await Promise.all([

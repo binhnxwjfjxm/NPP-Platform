@@ -1,0 +1,287 @@
+.page {
+  display: grid;
+  gap: 1rem;
+}
+
+.banner {
+  border-radius: 0.8rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border, #ded8d2);
+  background: #fff;
+}
+
+.error {
+  border-color: #dba7a7;
+  background: #fff4f4;
+  color: #8f2525;
+}
+
+.success {
+  border-color: #a9ceb8;
+  background: #f2fbf5;
+  color: #245d39;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.summary article {
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem;
+  border: 1px solid var(--border, #ded8d2);
+  border-radius: 0.9rem;
+  background: #fff;
+}
+
+.summary span,
+.meta,
+.help {
+  color: #736960;
+  font-size: 0.86rem;
+}
+
+.summary strong {
+  font-size: 1.45rem;
+}
+
+.toolbar,
+.editor,
+.listSection {
+  border: 1px solid var(--border, #ded8d2);
+  border-radius: 0.95rem;
+  background: #fff;
+  padding: 1rem;
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(15rem, 1fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.toolbar label,
+.formGrid label,
+.searchPanel label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.toolbar select,
+.formGrid input,
+.formGrid select,
+.formGrid textarea,
+.searchPanel input {
+  width: 100%;
+  min-height: 2.55rem;
+  border: 1px solid #cfc5bd;
+  border-radius: 0.7rem;
+  background: #fff;
+  padding: 0.6rem 0.72rem;
+  color: inherit;
+}
+
+.editorHeader,
+.listHeader,
+.priceIdentity,
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.editorHeader h2,
+.listHeader h2 {
+  margin: 0;
+  font-size: 1.08rem;
+}
+
+.editorBody {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: minmax(16rem, 0.9fr) minmax(0, 1.5fr);
+  gap: 1rem;
+}
+
+.searchPanel {
+  display: grid;
+  align-content: start;
+  gap: 0.65rem;
+  border-right: 1px solid #eee7e1;
+  padding-right: 1rem;
+}
+
+.searchResults {
+  display: grid;
+  gap: 0.45rem;
+  max-height: 22rem;
+  overflow: auto;
+}
+
+.searchResult {
+  display: grid;
+  gap: 0.2rem;
+  width: 100%;
+  text-align: left;
+  border: 1px solid #ddd4cd;
+  border-radius: 0.7rem;
+  background: #fff;
+  padding: 0.65rem;
+  cursor: pointer;
+}
+
+.searchResult:hover,
+.searchResultActive {
+  border-color: #8c6452;
+  background: #faf6f3;
+}
+
+.searchResult span {
+  color: #736960;
+  font-size: 0.82rem;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.formWide {
+  grid-column: 1 / -1;
+}
+
+.selectedSku {
+  grid-column: 1 / -1;
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  background: #f7f3f0;
+  border: 1px solid #e3d9d2;
+}
+
+.actions {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  padding-top: 0.25rem;
+}
+
+.primary,
+.secondary {
+  border-radius: 0.7rem;
+  min-height: 2.45rem;
+  padding: 0.55rem 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary {
+  border: 1px solid #6f4938;
+  background: #6f4938;
+  color: #fff;
+}
+
+.secondary {
+  border: 1px solid #cfc5bd;
+  background: #fff;
+  color: #403831;
+}
+
+.primary:disabled,
+.secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.tableWrap {
+  overflow: auto;
+  margin-top: 0.75rem;
+}
+
+.table {
+  width: 100%;
+  min-width: 72rem;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: 0.7rem;
+  border-bottom: 1px solid #eee7e1;
+  text-align: left;
+  vertical-align: top;
+}
+
+.table th {
+  color: #625950;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.priceIdentity {
+  align-items: flex-start;
+}
+
+.priceIdentity div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.priceIdentity span {
+  color: #736960;
+  font-size: 0.82rem;
+}
+
+.statusActive,
+.statusInactive {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.statusActive {
+  background: #edf8f1;
+  color: #27603b;
+}
+
+.statusInactive {
+  background: #f2eeee;
+  color: #746a63;
+}
+
+.empty {
+  padding: 1.5rem 0;
+  text-align: center;
+  color: #736960;
+}
+
+@media (max-width: 900px) {
+  .summary,
+  .toolbar,
+  .editorBody,
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .searchPanel {
+    border-right: 0;
+    border-bottom: 1px solid #eee7e1;
+    padding-right: 0;
+    padding-bottom: 1rem;
+  }
+
+  .formWide,
+  .selectedSku,
+  .actions {
+    grid-column: auto;
+  }
+}

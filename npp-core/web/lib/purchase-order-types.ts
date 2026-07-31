@@ -22,6 +22,10 @@ export const PURCHASE_ORDER_PERMISSION_KEYS = {
   submit: 'core.purchase-order.submit',
   approve: 'core.purchase-order.approve',
   cancel: 'core.purchase-order.cancel',
+  priceRead: 'core.purchase-order.price.read',
+  priceOverride: 'core.purchase-order.price.override',
+  purchasePriceRead: 'core.supplier-purchase-price.read',
+  purchasePriceManage: 'core.supplier-purchase-price.manage',
 } as const;
 
 export type PurchaseOrderPermissionKey = typeof PURCHASE_ORDER_PERMISSION_KEYS[keyof typeof PURCHASE_ORDER_PERMISSION_KEYS];
@@ -37,6 +41,8 @@ export const PURCHASE_ORDER_STATUS_LABELS: Record<PurchaseOrderStatus, string> =
 };
 
 export type PurchaseOrderDiscountMode = 'TOTAL_AMOUNT' | 'PER_UNIT' | 'PERCENT';
+export type PurchaseOrderPriceStatus = 'RESOLVED' | 'NOT_FOUND';
+export type PurchaseOrderPriceSource = 'SUPPLIER_PRICE' | 'MANUAL_OVERRIDE' | null;
 
 export type PurchaseOrderSkuEligibility = {
   selectable: boolean;
@@ -82,13 +88,19 @@ export interface PurchaseOrderLine {
   rejectedQuantity?: string;
   shortageClosedQuantity?: string;
   remainingQuantity?: string;
-  unitPrice: string;
+  unitPrice?: string;
   discountMode?: PurchaseOrderDiscountMode;
   discountValue?: string;
-  discountAmount: string;
+  discountAmount?: string;
   taxRate?: string | null;
-  taxAmount: string;
-  lineTotal: string;
+  taxAmount?: string;
+  lineTotal?: string;
+  priceStatus?: PurchaseOrderPriceStatus;
+  purchasePriceId?: string | null;
+  purchasePriceSource?: PurchaseOrderPriceSource;
+  purchasePriceResolvedAt?: string | null;
+  supplierSkuSnapshot?: string | null;
+  priceOverrideReason?: string | null;
   note?: string | null;
 }
 
@@ -107,10 +119,11 @@ export interface PurchaseOrder {
   supplierReference: string | null;
   currency: string;
   note: string | null;
-  subtotal: string;
-  discountTotal: string;
-  taxTotal: string;
-  total: string;
+  subtotal?: string;
+  discountTotal?: string;
+  taxTotal?: string;
+  total?: string;
+  priceStatus?: PurchaseOrderPriceStatus;
   revision: string;
   lineCount: number;
   receiptCount: number;
@@ -136,12 +149,13 @@ export interface PurchaseOrder {
 export interface PurchaseOrderDraftLine {
   variantId: string;
   quantity: string;
-  unitPrice: string;
+  unitPrice?: string;
   discountMode?: PurchaseOrderDiscountMode;
   discountValue?: string;
   discountAmount?: string;
   taxRate?: string;
   taxAmount?: string;
+  priceOverrideReason?: string;
   note: string;
 }
 
@@ -164,6 +178,38 @@ export interface PurchaseOrderVariantOption {
   conversionToBase: string; allowsFractional: boolean; isActive: boolean; isPurchasable: boolean;
 }
 
+export interface SupplierPurchasePrice {
+  id: string;
+  supplierId: string;
+  supplierCode: string;
+  supplierName: string;
+  variantId: string;
+  sku: string;
+  variantName: string;
+  productCode: string;
+  productName: string;
+  unitId: string;
+  unitCode: string;
+  unitName: string;
+  currencyCode: string;
+  unitPrice: string;
+  minQuantity: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  supplierSku: string | null;
+  sourceReference: string | null;
+  note: string | null;
+  isActive: boolean;
+  revision: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SupplierPurchasePriceResolution {
+  status: PurchaseOrderPriceStatus;
+  price?: SupplierPurchasePrice;
+}
+
 export interface ListPurchaseOrdersParams {
   limit?: number;
   offset?: number;
@@ -180,6 +226,8 @@ export type PurchaseOrderActionPolicy = {
   submit: boolean;
   approve: boolean;
   cancel: boolean;
+  priceRead: boolean;
+  priceOverride: boolean;
 };
 
 export function purchaseOrderActionPolicy(status: PurchaseOrderStatus, permissionKeys: readonly string[]): PurchaseOrderActionPolicy {
@@ -190,8 +238,12 @@ export function purchaseOrderActionPolicy(status: PurchaseOrderStatus, permissio
     create: has(PURCHASE_ORDER_PERMISSION_KEYS.create),
     edit: status === 'draft' && has(PURCHASE_ORDER_PERMISSION_KEYS.update),
     submit: status === 'draft' && has(PURCHASE_ORDER_PERMISSION_KEYS.submit),
-    approve: status === 'pending_approval' && has(PURCHASE_ORDER_PERMISSION_KEYS.approve),
+    approve: status === 'pending_approval'
+      && has(PURCHASE_ORDER_PERMISSION_KEYS.approve)
+      && has(PURCHASE_ORDER_PERMISSION_KEYS.priceRead),
     cancel: ['draft', 'pending_approval', 'approved'].includes(status) && has(PURCHASE_ORDER_PERMISSION_KEYS.cancel),
+    priceRead: has(PURCHASE_ORDER_PERMISSION_KEYS.priceRead),
+    priceOverride: has(PURCHASE_ORDER_PERMISSION_KEYS.priceOverride),
   };
 }
 
@@ -224,5 +276,8 @@ export function multiplyScaled(left: bigint, right: bigint): bigint {
 }
 
 export function calculatePurchaseOrderDraftTotals(lines: readonly PurchaseOrderDraftLine[]) {
-  return calculateLineEntryTotals(lines);
+  return calculateLineEntryTotals(lines.map((line) => ({
+    ...line,
+    unitPrice: line.unitPrice ?? '0',
+  })));
 }
