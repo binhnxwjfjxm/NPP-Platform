@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+// Operational regressions are source-level gates for the final Phase 6B.1 entry contract.
 const formSource = readFileSync(
   new URL('../app/sales/sales-orders/SalesOrderForm.tsx', import.meta.url),
   'utf8',
