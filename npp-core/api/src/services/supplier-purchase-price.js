@@ -35,6 +35,20 @@ function date(value, required = false) {
   return normalized;
 }
 
+function dateOnly(value) {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const leadingDate = value.slice(0, 10);
+    if (date(leadingDate, true)) return leadingDate;
+  }
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function decimal(value, { positive = false, field = 'value' } = {}) {
   const normalized = String(value ?? '').trim();
   const pattern = positive ? POSITIVE_DECIMAL_PATTERN : DECIMAL_PATTERN;
@@ -59,10 +73,8 @@ function mapPrice(row) {
     currencyCode: row.currency_code,
     unitPrice: String(row.unit_price),
     minQuantity: String(row.min_quantity),
-    effectiveFrom: typeof row.effective_from === 'string' ? row.effective_from.slice(0, 10) : row.effective_from?.toISOString?.().slice(0, 10),
-    effectiveTo: row.effective_to
-      ? (typeof row.effective_to === 'string' ? row.effective_to.slice(0, 10) : row.effective_to.toISOString().slice(0, 10))
-      : null,
+    effectiveFrom: dateOnly(row.effective_from),
+    effectiveTo: dateOnly(row.effective_to),
     supplierSku: row.supplier_sku ?? null,
     sourceReference: row.source_reference ?? null,
     note: row.note ?? null,
@@ -204,10 +216,8 @@ export async function updateSupplierPurchasePrice(client, { requestContext, id, 
     currencyCode: current.currency_code,
     unitPrice: String(current.unit_price),
     minQuantity: String(current.min_quantity),
-    effectiveFrom: typeof current.effective_from === 'string' ? current.effective_from.slice(0, 10) : current.effective_from.toISOString().slice(0, 10),
-    effectiveTo: current.effective_to
-      ? (typeof current.effective_to === 'string' ? current.effective_to.slice(0, 10) : current.effective_to.toISOString().slice(0, 10))
-      : null,
+    effectiveFrom: dateOnly(current.effective_from),
+    effectiveTo: dateOnly(current.effective_to),
     supplierSku: current.supplier_sku,
     sourceReference: current.source_reference,
     note: current.note,

@@ -268,17 +268,18 @@ test('supplier purchase prices resolve by supplier, tier and effective range wit
 });
 
 test('quantity-only PO resolves server-side, rejects explicit price input and redacts every amount', async () => {
-  const config = loadConfig(testEnv({ PORT: '3092' }));
-  const pool = getPool(config);
+  const bootstrapConfig = loadConfig(testEnv({ PORT: '3092' }));
+  const quantityConfig = loadConfig(testEnv({ PORT: '3093', INSTALLATION_ID: bootstrapConfig.installationId }));
+  const pool = getPool(bootstrapConfig);
   let bootstrapServer;
   let quantityServer;
-  let finalServer;
   try {
-    const fixture = await seedFixture(pool, config.installationId);
-    bootstrapServer = await startServer({ config });
-    const baseUrl = `http://${config.host}:${config.port}`;
+    const fixture = await seedFixture(pool, bootstrapConfig.installationId);
+    bootstrapServer = await startServer({ config: bootstrapConfig });
+    const bootstrapBaseUrl = `http://${bootstrapConfig.host}:${bootstrapConfig.port}`;
+    const quantityBaseUrl = `http://${quantityConfig.host}:${quantityConfig.port}`;
 
-    let result = await createPrice(baseUrl, config, pricePayload(fixture, {
+    let result = await createPrice(bootstrapBaseUrl, bootstrapConfig, pricePayload(fixture, {
       unitPrice: '75000',
       supplierSku: 'SUP-A-ITEM',
       sourceReference: 'QUOTE-01',
@@ -286,9 +287,9 @@ test('quantity-only PO resolves server-side, rejects explicit price input and re
     assert.equal(result.response.status, 201, JSON.stringify(result.body));
     const configuredPrice = result.body.data;
 
-    result = await requestJson(`${baseUrl}/api/purchase-orders`, {
+    result = await requestJson(`${bootstrapBaseUrl}/api/purchase-orders`, {
       method: 'POST',
-      headers: mutationHeaders(config, `manual-without-reason-${randomUUID()}`),
+      headers: mutationHeaders(bootstrapConfig, `manual-without-reason-${randomUUID()}`),
       body: JSON.stringify(poPayload(fixture, fixture.supplierAId, [{
         variantId: fixture.variantId,
         quantity: '2',
@@ -301,9 +302,9 @@ test('quantity-only PO resolves server-side, rejects explicit price input and re
     assert.equal(result.response.status, 400);
     assert.equal(result.body.error.code, 'PURCHASE_ORDER_PRICE_OVERRIDE_REASON_REQUIRED');
 
-    result = await requestJson(`${baseUrl}/api/purchase-orders`, {
+    result = await requestJson(`${bootstrapBaseUrl}/api/purchase-orders`, {
       method: 'POST',
-      headers: mutationHeaders(config, `zero-price-${randomUUID()}`),
+      headers: mutationHeaders(bootstrapConfig, `zero-price-${randomUUID()}`),
       body: JSON.stringify(poPayload(fixture, fixture.supplierAId, [{
         variantId: fixture.variantId,
         quantity: '2',
@@ -314,10 +315,8 @@ test('quantity-only PO resolves server-side, rejects explicit price input and re
     assert.equal(result.response.status, 400);
     assert.equal(result.body.error.code, 'INVALID_UNIT_PRICE');
 
-    await closeServer(bootstrapServer);
-    bootstrapServer = null;
     quantityServer = await startServer({
-      config,
+      config: quantityConfig,
       authenticateRequest: () => ({
         ok: true,
         principal: {
@@ -334,7 +333,7 @@ test('quantity-only PO resolves server-side, rejects explicit price input and re
       }),
     });
 
-    result = await requestJson(`${baseUrl}/api/purchase-orders`, {
+    result = await requestJson(`${quantityBaseUrl}/api/purchase-orders`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -352,20 +351,20 @@ test('quantity-only PO resolves server-side, rejects explicit price input and re
     assertNoMoney(result.body.data);
     const purchaseOrderId = result.body.data.id;
 
-    result = await requestJson(`${baseUrl}/api/purchase-orders/${purchaseOrderId}`);
+    result = await requestJson(`${quantityBaseUrl}/api/purchase-orders/${purchaseOrderId}`);
     assert.equal(result.response.status, 200, JSON.stringify(result.body));
     assertNoMoney(result.body.data);
 
     const countBeforeDenied = Number((await pool.query(
       'SELECT count(*) FROM purchasing.purchase_orders WHERE installation_id = $1',
-      [config.installationId],
+      [bootstrapConfig.installationId],
     )).rows[0].count);
 
     for (const [key, line] of [
       ['override', { variantId: fixture.variantId, quantity: '2', unitPrice: '72000', priceOverrideReason: 'Không được phép', note: '' }],
       ['zero', { variantId: fixture.variantId, quantity: '2', unitPrice: '0', note: '' }],
     ]) {
-      result = await requestJson(`${baseUrl}/api/purchase-orders`, {
+      result = await requestJson(`${quantityBaseUrl}/api/purchase-orders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -377,7 +376,7 @@ test('quantity-only PO resolves server-side, rejects explicit price input and re
       assert.equal(result.body.error.code, 'PURCHASE_ORDER_PRICE_OVERRIDE_FORBIDDEN');
     }
 
-    result = await requestJson(`${baseUrl}/api/purchase-orders`, {
+    result = await requestJson(`${quantityBaseUrl}/api/purchase-orders`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -393,22 +392,21 @@ test('quantity-only PO resolves server-side, rejects explicit price input and re
     assert.equal(result.body.error.code, 'SUPPLIER_PURCHASE_PRICE_NOT_FOUND');
     const countAfterDenied = Number((await pool.query(
       'SELECT count(*) FROM purchasing.purchase_orders WHERE installation_id = $1',
-      [config.installationId],
+      [bootstrapConfig.installationId],
     )).rows[0].count);
     assert.equal(countAfterDenied, countBeforeDenied);
 
     await closeServer(quantityServer);
     quantityServer = null;
-    finalServer = await startServer({ config });
 
-    result = await requestJson(`${baseUrl}/api/supplier-purchase-prices/${configuredPrice.id}`, {
+    result = await requestJson(`${bootstrapBaseUrl}/api/supplier-purchase-prices/${configuredPrice.id}`, {
       method: 'PATCH',
-      headers: { ...readHeaders(config), 'Content-Type': 'application/json' },
+      headers: { ...readHeaders(bootstrapConfig), 'Content-Type': 'application/json' },
       body: JSON.stringify({ unitPrice: '80000', expectedRevision: configuredPrice.revision }),
     });
     assert.equal(result.response.status, 200, JSON.stringify(result.body));
 
-    result = await requestJson(`${baseUrl}/api/purchase-orders/${purchaseOrderId}`, { headers: readHeaders(config) });
+    result = await requestJson(`${bootstrapBaseUrl}/api/purchase-orders/${purchaseOrderId}`, { headers: readHeaders(bootstrapConfig) });
     assert.equal(result.response.status, 200, JSON.stringify(result.body));
     assert.equal(result.body.data.lines[0].unitPrice, '75000.000000');
     assert.equal(result.body.data.lines[0].purchasePriceSource, 'SUPPLIER_PRICE');
@@ -416,7 +414,6 @@ test('quantity-only PO resolves server-side, rejects explicit price input and re
   } finally {
     if (bootstrapServer) await closeServer(bootstrapServer);
     if (quantityServer) await closeServer(quantityServer);
-    if (finalServer) await closeServer(finalServer);
     await closePool();
   }
 });

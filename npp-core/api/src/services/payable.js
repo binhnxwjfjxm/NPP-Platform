@@ -26,9 +26,17 @@ function normalizeDate(value) {
 }
 
 function dateOnly(value) {
-  if (typeof value === 'string') return value.slice(0, 10);
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
-  return null;
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const leadingDate = value.slice(0, 10);
+    if (normalizeDate(leadingDate)) return leadingDate;
+  }
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function timestamp(value, fallback = new Date().toISOString()) {
