@@ -88,7 +88,7 @@ closed
 
 An amendment creates a new immutable order version and audit history; it does not replace `confirmed` with a generic `amended` lifecycle status.
 
-`closed` is a terminal commercial state after all remaining fulfillment, delivery and accounting obligations are resolved. It must not be set merely because one delivery attempt succeeded.
+`closed` is a terminal commercial state after all remaining fulfillment, delivery and customer-settlement obligations are resolved. A full successful COD delivery may close the order when the customer has received the goods and the full authoritative amount has been collected and allocated. Internal driver cash handover remains a separate operational/accounting process and does not reopen customer debt.
 
 ### 3.2 Fulfillment status
 
@@ -119,7 +119,19 @@ cancelled
 
 Delivery Order and delivery attempts remain authoritative; the Sales Order stores only a projection/read model.
 
-### 3.4 Payment status projection
+### 3.4 Payment mode and settlement projections — OWNER DIRECTION INCORPORATED
+
+Every confirmed order snapshots one payment mode:
+
+```text
+PREPAID
+COD
+CREDIT
+```
+
+`COD` is the normal/default commercial flow unless customer or order policy explicitly selects another permitted mode.
+
+Customer settlement status:
 
 ```text
 unpaid
@@ -130,7 +142,24 @@ refunded
 written_off
 ```
 
-Receivable and payment allocation ledgers remain authoritative.
+COD handover/reconciliation status is a separate internal axis:
+
+```text
+not_applicable
+pending_collection
+collected
+handed_over
+reconciled
+discrepancy
+```
+
+Rules:
+
+- only `CREDIT` creates an intentionally outstanding customer debt after successful delivery;
+- `COD` with full collection settles the customer at delivery and must not appear as customer debt;
+- `PREPAID` uses an existing payment/credit allocation against the delivered amount;
+- money held by a driver but not yet handed to the company is an internal cash-in-transit/reconciliation fact, not customer receivable;
+- receivable, payment allocation and COD reconciliation ledgers remain authoritative for their own axes.
 
 ## 4. Inventory reservation, allocation and issue — PROPOSED
 
@@ -168,22 +197,57 @@ Rules:
 - failed/partial delivery keeps the undelivered quantity explicitly in transit until it is reassigned, returned, damaged/lost through an approved exception, or otherwise reconciled;
 - return to warehouse requires an explicit inventory IN/reversal contract.
 
-## 5. Receivable posting — PROPOSED
+## 5. Sale settlement and receivable posting — OWNER DIRECTION INCORPORATED
 
-Default transition:
+Default delivery transition:
 
 ```text
 confirmed actual delivery or confirmed customer pickup
--> post receivable for the accepted quantity/value
+-> post the accepted delivered value
+-> settle according to PREPAID, COD or CREDIT
 ```
 
-Rules:
+### 5.1 COD — default operational flow
 
-- order confirmation and trip dispatch do not by themselves create receivable;
-- partial delivery posts only the accepted partial value;
-- failed delivery posts no receivable for undelivered quantity;
-- customer return does not reduce receivable until the approved return/credit transition posts;
-- reversal/credit is append-only and references the original receivable source;
+```text
+driver carries approved goods
+-> customer accepts the delivered quantity
+-> driver collects the full authoritative amount
+-> record POD + COD collection
+-> post and allocate payment idempotently
+-> customer outstanding balance = 0
+-> delivery/customer settlement complete
+```
+
+The accounting implementation may create a receivable fact and settle it immediately in the same idempotent workflow so the ledger remains complete. It must never expose that zero-duration accounting step as an outstanding customer debt.
+
+If the driver has collected the money but has not yet handed it to the company:
+
+- the customer remains `paid`;
+- the order may remain commercially complete;
+- the driver/trip has a separate pending cash-handover/reconciliation obligation;
+- a handover discrepancy is handled internally and must not automatically recreate customer debt.
+
+### 5.2 PREPAID
+
+- an existing authorized payment or customer credit is allocated to the accepted delivered value;
+- any excess remains an overpayment/customer credit according to Accounting policy;
+- successful delivery with sufficient allocation leaves no customer debt.
+
+### 5.3 CREDIT
+
+- only an explicitly approved credit order posts an outstanding receivable after delivery;
+- payment terms, due date and credit approval are snapshotted;
+- this is the flow that contributes to customer aging and open debt.
+
+### 5.4 Shared rules
+
+- order confirmation and trip dispatch do not by themselves create customer debt;
+- partial delivery posts and settles only the accepted partial value;
+- failed delivery posts no sale/receivable/payment for undelivered quantity;
+- COD short collection cannot be treated as fully paid unless an authorized discrepancy/credit exception is approved;
+- customer return does not reduce the settled value or receivable until the approved return/credit transition posts;
+- reversal/credit is append-only and references the original source;
 - invoice-first or legally required invoicing flows are a later explicit policy slice and must not be inferred into the Phase 6 foundation.
 
 ## 6. Tax mode and rounding — PROPOSED
@@ -220,20 +284,29 @@ line total = round(taxable base + line tax, currency scale, HALF_UP)
 
 For tax-inclusive lines, the tax component is derived from the inclusive taxable amount and rounded per line. Document totals are sums of rounded line values; the system must not recalculate a different total from unrounded document-level aggregates.
 
-## 7. Credit check and override — PROPOSED
+## 7. Credit check and override — OWNER DIRECTION INCORPORATED + PROPOSED DETAIL
 
-At confirmation and any amendment that increases exposure, Core checks:
+Credit exposure checks apply when:
+
+- payment mode is `CREDIT`;
+- an amendment increases an existing credit exposure;
+- an order changes from `PREPAID` or `COD` to `CREDIT`;
+- a COD shortage is intentionally converted into an approved customer credit balance.
+
+Core checks:
 
 ```text
 current open receivable exposure
-+ approved but not yet posted order exposure
-+ proposed order exposure
++ approved but not yet posted credit-order exposure
++ proposed credit exposure
 against the active customer credit policy
 ```
 
 Default behavior:
 
-- inactive customer, blocked customer, overdue hard-block or credit-limit breach is denied;
+- inactive or blocked customer is denied for every payment mode;
+- normal `COD` and fully covered `PREPAID` orders do not consume customer credit limit;
+- overdue hard-block or credit-limit breach denies `CREDIT` confirmation;
 - warning-only rules may allow confirmation but must be returned as structured warnings;
 - override requires `core.sales-order.credit.override`;
 - override requires a non-empty reason and records actor, limit, exposure, order amount, timestamp and request ID;
@@ -269,13 +342,13 @@ A draft may be edited or deleted only while it has no posted child facts. Draft 
 
 A confirmed order is not edited in place.
 
-Changes use a versioned amendment with before/after snapshots, actor, reason and idempotency. An amendment that changes customer, address, SKU, unit, quantity, price, discount, tax or requested delivery must rerun the applicable validation, pricing, tax, credit and reservation rules.
+Changes use a versioned amendment with before/after snapshots, actor, reason and idempotency. An amendment that changes customer, address, SKU, unit, quantity, price, discount, tax, payment mode or requested delivery must rerun the applicable validation, pricing, tax, credit, settlement and reservation rules.
 
 ### 9.3 Cancellation
 
-- full cancellation is allowed only before fulfillment/issue/receivable facts make the order partially executed;
+- full cancellation is allowed only before fulfillment/issue/settlement/receivable facts make the order partially executed;
 - after partial execution, only the remaining quantity may be cancelled;
-- issued or delivered quantities are corrected through return/reversal/credit flows, not by rewriting or deleting the order;
+- issued, delivered or settled quantities are corrected through return/reversal/refund/credit flows, not by rewriting or deleting the order;
 - cancellation always requires a reason and emits audit/outbox events.
 
 ## 10. Dispatch boundary — PROPOSED
@@ -288,9 +361,10 @@ Changes use a versioned amendment with before/after snapshots, actor, reason and
 - weight/volume capacity is advisory in the initial Phase 6E foundation; hard enforcement requires complete product/vehicle measurement data and a later owner decision;
 - one trip may carry many Delivery Orders;
 - one Delivery Order may have multiple historical assignments/attempts;
-- partial and failed delivery never complete the Sales Order automatically.
+- partial and failed delivery never complete the Sales Order automatically;
+- full successful delivery with full COD collection may complete the customer order even while the trip still has an internal cash-handover obligation.
 
-## 11. POD and COD — PROPOSED
+## 11. POD and COD — OWNER DIRECTION INCORPORATED + PROPOSED DETAIL
 
 ### 11.1 POD
 
@@ -303,18 +377,21 @@ Changes use a versioned amendment with before/after snapshots, actor, reason and
 ### 11.2 COD
 
 ```text
-logistics records COD collection fact
-accounting posts/allocates the payment
+logistics records delivery, POD and COD collection fact
+accounting posts and allocates the payment in the same idempotent completion workflow
+internal cash handover/reconciliation continues on a separate axis
 ```
 
 Rules:
 
-- expected COD amount comes from the authoritative receivable/order policy, not unrestricted driver input;
+- expected COD amount comes from the authoritative delivered value, not unrestricted driver input;
 - driver records collected amount, method, timestamp and discrepancy reason when applicable;
-- COD collection alone does not mark a receivable paid;
-- paid status changes only after Accounting payment allocation;
-- trip closure requires COD handover/reconciliation or an approved manager exception;
-- refunds, shortages, overpayments and write-offs use Accounting transitions.
+- full authoritative collection plus successful payment allocation changes customer settlement to `paid` immediately;
+- full COD delivery may close the customer order without waiting for driver cash handover;
+- trip/cash closure still requires handover and reconciliation or an approved manager exception;
+- a pending handover is cash-in-transit/internal accountability, not customer debt;
+- shortages, overpayments, refunds and write-offs use explicit Accounting transitions;
+- a shortage is not silently marked paid and does not become customer credit without authorized approval.
 
 ## 12. MCP mobile implications
 
@@ -325,9 +402,10 @@ Once the relevant Core contracts exist, MCP mobile must support:
 - local/offline onboarding draft;
 - submit and synchronize onboarding status;
 - official order creation only for a linked active customer;
+- default COD order entry, with PREPAID/CREDIT only when policy permits;
 - canonical SKU/unit references and server-resolved price/tax/credit warnings;
 - idempotent retry on weak networks;
-- read-only order, fulfillment and delivery status;
+- read-only order, fulfillment, delivery and customer-settlement status;
 - no Dispatch, inventory posting, receivable posting or COD allocation mutation.
 
 MCP keeps its existing mobile-first UX, GPS/camera and correct field workflows. It is not rebuilt to resemble the Core desktop AppShell.
@@ -344,15 +422,19 @@ At minimum, later implementation must prove:
 - concurrent reservation/allocation cannot oversell;
 - FEFO/FIFO and manual override permission work as locked;
 - partial dispatch issues only approved quantity;
-- failed delivery does not create receivable or complete the order;
-- confirmed delivery posts the correct partial/full receivable;
+- failed delivery creates no sale settlement for undelivered quantity and does not complete the order;
+- full COD delivery plus full collection leaves customer debt at zero and completes customer settlement;
+- pending driver cash handover does not reopen customer debt;
+- COD shortage cannot be marked paid without an authorized exception;
+- PREPAID delivery allocates existing payment/credit correctly;
+- only approved CREDIT delivery creates an outstanding receivable and aging balance;
 - tax-inclusive/exclusive rounding is deterministic and reconciles by line;
 - credit breach is denied without an authorized reasoned override;
 - confirmed order changes use amendment rather than in-place mutation;
 - one trip contains multiple Delivery Orders;
 - one Delivery Order may have multiple attempts;
 - POD links to exactly one attempt;
-- COD fact does not bypass Accounting allocation;
+- COD fact and customer settlement do not bypass Accounting allocation;
 - MCP cannot write Core tables directly.
 
 ## 14. Approval gate
