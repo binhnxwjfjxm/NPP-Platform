@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { AppShell } from '../../components/app-shell-core';
 import type { SalesOrderBootstrap } from '../../../lib/sales-order-bootstrap';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
-import { SALES_ORDER_PERMISSION_KEYS } from '../../../lib/sales-order-context';
+import { SALES_ORDER_PERMISSION_KEYS } from '../../../lib/sales-order-permissions';
 import SalesOrderDetail from './SalesOrderDetail';
 import SalesOrderForm, { type SalesOrderFormMode } from './SalesOrderForm';
 import {
