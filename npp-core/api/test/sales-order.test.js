@@ -189,7 +189,9 @@ test('Sales Order API is idempotent and preserves immutable commercial versions'
       headers: authHeaders(config, `so-update-${randomUUID()}`),
       body: JSON.stringify(updatePayload),
     });
-    assert.equal(update.status, 200, await update.clone().text());
+    if (update.status !== 200) {
+      throw new Error(`Sales Order draft update failed (${update.status}): ${await update.text()}`);
+    }
     const updated = (await update.json()).data;
     assert.equal(updated.versions[0].total, '32450.000000');
     assert.equal(updated.versions[0].revision, '2');
