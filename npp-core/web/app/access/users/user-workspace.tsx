@@ -304,7 +304,10 @@ export default function UserWorkspace({
   }
 
   return (
-    <AppShell title="Người dùng">
+    <AppShell
+      title="Người dùng"
+      subtitle="Quản lý tài khoản sử dụng hệ thống, liên kết nhân sự và phân quyền theo công việc."
+    >
       <main className={styles.page}>
         <header className={styles.header}>
           <div className={styles.headerText}>

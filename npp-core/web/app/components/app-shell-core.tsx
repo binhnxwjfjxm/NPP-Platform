@@ -49,6 +49,10 @@ const inventoryItems = [
   { href: '/inventory/opening-balances', label: 'Thiết lập tồn đầu kỳ', icon: 'panel' as const, testId: 'nav-inventory-opening' },
 ];
 
+const salesItems = [
+  { href: '/sales/sales-orders', label: 'Đơn bán hàng', icon: 'panel' as const, testId: 'nav-sales-orders' },
+];
+
 const purchasingItems = [
   { href: '/purchasing/purchase-orders', label: 'Đơn đặt hàng', icon: 'panel' as const, testId: 'nav-purchase-orders' },
   { href: '/purchasing/purchase-prices', label: 'Bảng giá mua', icon: 'panel' as const, testId: 'nav-purchase-prices' },
@@ -138,6 +142,10 @@ function isInventoryPath(pathname: string): boolean {
   return pathname.startsWith('/inventory');
 }
 
+function isSalesPath(pathname: string): boolean {
+  return pathname.startsWith('/sales');
+}
+
 function isPurchasingPath(pathname: string): boolean {
   return pathname.startsWith('/purchasing');
 }
@@ -163,6 +171,7 @@ export function AppShell({
   const [organizationOpen, setOrganizationOpen] = useState(isOrganizationPath(pathname));
   const [accessOpen, setAccessOpen] = useState(pathname.startsWith('/access'));
   const [inventoryOpen, setInventoryOpen] = useState(isInventoryPath(pathname));
+  const [salesOpen, setSalesOpen] = useState(isSalesPath(pathname));
   const [purchasingOpen, setPurchasingOpen] = useState(isPurchasingPath(pathname));
   const [accountingOpen, setAccountingOpen] = useState(isAccountingPath(pathname));
 
@@ -174,6 +183,7 @@ export function AppShell({
     if (isOrganizationPath(pathname)) setOrganizationOpen(true);
     if (pathname.startsWith('/access')) setAccessOpen(true);
     if (isInventoryPath(pathname)) setInventoryOpen(true);
+    if (isSalesPath(pathname)) setSalesOpen(true);
     if (isPurchasingPath(pathname)) setPurchasingOpen(true);
     if (isAccountingPath(pathname)) setAccountingOpen(true);
     setMobileOpen(false);
@@ -182,6 +192,7 @@ export function AppShell({
   const organizationActive = isOrganizationPath(pathname);
   const accessActive = pathname.startsWith('/access');
   const inventoryActive = isInventoryPath(pathname);
+  const salesActive = isSalesPath(pathname);
   const purchasingActive = pathname.startsWith('/purchasing');
   const accountingActive = isAccountingPath(pathname);
   const logoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim() || '/logo-transparent.png';
@@ -196,6 +207,10 @@ export function AppShell({
   );
   const inventoryChildren = useMemo(
     () => inventoryItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })),
+    [pathname],
+  );
+  const salesChildren = useMemo(
+    () => salesItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })),
     [pathname],
   );
   const purchasingChildren = useMemo(
@@ -329,6 +344,43 @@ export function AppShell({
 
               <div className={`${styles.subnav} ${inventoryOpen && !collapsed ? styles.subnavOpen : ''}`}>
                 {inventoryChildren.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    prefetch
+                    className={`${styles.subnavItem} ${item.active ? styles.subnavItemActive : ''}`}
+                    data-testid={item.testId}
+                  >
+                    <span className={styles.subnavRail} aria-hidden="true" />
+                    <span className={styles.subnavIcon}><Icon name={item.icon} /></span>
+                    <span>{item.label}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            <p className={styles.navLabel}>Bán hàng</p>
+            <div className={`${styles.navGroup} ${salesActive ? styles.navGroupActive : ''}`}>
+              <button
+                type="button"
+                className={`${styles.navItem} ${styles.navGroupButton}`}
+                onClick={() => openGroup(setSalesOpen)}
+                aria-expanded={salesOpen}
+                data-testid="sales-menu-toggle"
+                title={collapsed ? 'Bán hàng' : undefined}
+              >
+                <span className={styles.navIcon}><Icon name="panel" /></span>
+                <span className={styles.navCopy}>
+                  <span className={styles.navTitle}>Bán hàng</span>
+                  <span className={styles.navHint}>Đơn bán hàng và vòng đời thương mại</span>
+                </span>
+                <span className={`${styles.chevron} ${salesOpen ? styles.chevronOpen : ''}`}>
+                  <Icon name="chevron" />
+                </span>
+              </button>
+
+              <div className={`${styles.subnav} ${salesOpen && !collapsed ? styles.subnavOpen : ''}`}>
+                {salesChildren.map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}
