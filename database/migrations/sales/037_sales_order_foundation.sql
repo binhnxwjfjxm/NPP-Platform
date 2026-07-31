@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS sales.sales_orders (
   ),
   CONSTRAINT sales_orders_delivery_shape_check CHECK (
     (delivery_mode = 'DELIVERY' AND customer_address_id IS NOT NULL AND delivery_status <> 'not_required')
-    OR (delivery_mode = 'PICKUP' AND delivery_status = 'not_required')
+    OR (delivery_mode = 'PICKUP' AND delivery_status IN ('not_required', 'cancelled'))
   ),
   CONSTRAINT sales_orders_confirmed_shape_check CHECK (
     status NOT IN ('confirmed', 'closed')
@@ -166,7 +166,7 @@ CREATE TABLE IF NOT EXISTS sales.sales_order_versions (
     FOREIGN KEY (installation_id, warehouse_id)
     REFERENCES shared.warehouses (installation_id, id)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
-  CONSTRAINT sales_order_versions_total_check CHECK (total = subtotal - discount_total + tax_total),
+  CONSTRAINT sales_order_versions_amount_reconciliation_check CHECK (total = subtotal - discount_total + tax_total),
   CONSTRAINT sales_order_versions_amendment_shape_check CHECK (
     (version_number = 1 AND amendment_reason IS NULL AND based_on_version_number IS NULL)
     OR (version_number > 1 AND amendment_reason IS NOT NULL AND based_on_version_number IS NOT NULL AND based_on_version_number < version_number)
@@ -230,7 +230,7 @@ CREATE TABLE IF NOT EXISTS sales.sales_order_version_lines (
     ON UPDATE RESTRICT ON DELETE RESTRICT,
   CONSTRAINT sales_order_version_lines_base_quantity_check
     CHECK (base_quantity = round(ordered_quantity * conversion_to_base, 6)),
-  CONSTRAINT sales_order_version_lines_total_check
+  CONSTRAINT sales_order_version_lines_amount_reconciliation_check
     CHECK (line_total = line_subtotal - discount_amount + tax_amount)
 );
 
