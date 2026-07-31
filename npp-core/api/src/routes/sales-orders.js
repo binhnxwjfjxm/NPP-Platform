@@ -20,9 +20,15 @@ function statusFor(code) {
   if (code === 'FORBIDDEN' || code.endsWith('_FORBIDDEN') || code === 'WAREHOUSE_SCOPE_DENIED') return 403;
   if (code.endsWith('_NOT_FOUND') || code === 'SALES_ORDER_NOT_FOUND') return 404;
   if (code === 'DOCUMENT_NUMBER_SERIES_UNAVAILABLE') return 503;
-  if (code.includes('CONFLICT') || code.includes('DUPLICATE') || code.includes('LOCKED')
-    || code.includes('IDEMPOTENCY') || code === 'INVALID_STATUS_TRANSITION'
-    || code === 'AMENDMENT_DRAFT_EXISTS' || code === 'SALES_ORDER_HAS_EXECUTION_FACTS') return 409;
+  if (
+    code.includes('CONFLICT')
+    || code.includes('DUPLICATE')
+    || code.includes('LOCKED')
+    || code.includes('IDEMPOTENCY')
+    || code === 'INVALID_STATUS_TRANSITION'
+    || code === 'AMENDMENT_DRAFT_EXISTS'
+    || code === 'SALES_ORDER_HAS_EXECUTION_FACTS'
+  ) return 409;
   return 400;
 }
 
@@ -65,10 +71,20 @@ async function readPayload(req, res, options) {
 function requireIdempotency(req) {
   try {
     const key = normalizeIdempotencyKey(req.headers['idempotency-key']);
-    if (!key) return { ok: false, code: 'MISSING_IDEMPOTENCY_KEY', message: 'Idempotency-Key header is required' };
+    if (!key) {
+      return {
+        ok: false,
+        code: 'MISSING_IDEMPOTENCY_KEY',
+        message: 'Idempotency-Key header is required',
+      };
+    }
     return { ok: true, key };
   } catch (error) {
-    return { ok: false, code: error.code ?? 'INVALID_IDEMPOTENCY_KEY', message: 'Idempotency-Key must use 1-128 safe characters' };
+    return {
+      ok: false,
+      code: error.code ?? 'INVALID_IDEMPOTENCY_KEY',
+      message: 'Idempotency-Key must use 1-128 safe characters',
+    };
   }
 }
 
@@ -88,8 +104,12 @@ function withWarehouseScopes(requestContext, warehouseIds) {
 }
 
 async function ensureWarehouseScopes(client, requestContext) {
-  if (Array.isArray(requestContext.scopes?.warehouseIds) && requestContext.scopes.warehouseIds.length > 0) return requestContext;
-  if (!Array.isArray(requestContext.roles) || !requestContext.roles.includes('bootstrap')) return requestContext;
+  if (Array.isArray(requestContext.scopes?.warehouseIds) && requestContext.scopes.warehouseIds.length > 0) {
+    return requestContext;
+  }
+  if (!Array.isArray(requestContext.roles) || !requestContext.roles.includes('bootstrap')) {
+    return requestContext;
+  }
   const warehouses = await warehouseRepository.listWarehousesForInstallation(client, {
     installationId: requestContext.installationId,
     active: undefined,
@@ -103,7 +123,12 @@ async function authenticateAndAuthorize(req, res, options, permission) {
   const auth = options.authenticate(req, options.config);
   if (!auth.ok) {
     res.setHeader('WWW-Authenticate', 'Bearer');
-    sendError(res, apiError('UNAUTHORIZED', 'Authorization required', {}, false, 401), options.requestId, options.receivedAt);
+    sendError(
+      res,
+      apiError('UNAUTHORIZED', 'Authorization required', {}, false, 401),
+      options.requestId,
+      options.receivedAt,
+    );
     return null;
   }
   const context = options.createContext({
@@ -113,7 +138,12 @@ async function authenticateAndAuthorize(req, res, options, permission) {
     receivedAt: options.receivedAt,
   });
   if (!options.authorize(context, permission).ok) {
-    sendError(res, apiError('FORBIDDEN', 'Permission denied', {}, false, 403), options.requestId, options.receivedAt);
+    sendError(
+      res,
+      apiError('FORBIDDEN', 'Permission denied', {}, false, 403),
+      options.requestId,
+      options.receivedAt,
+    );
     return null;
   }
   return ensureWarehouseScopes(options.getPool(), context);
@@ -131,7 +161,7 @@ function eventTypeFor(action) {
   }[action];
 }
 
-async function auditMutation(client, { requestContext, action, result, beforeData }) {
+async function writeAuditOutbox(client, { requestContext, action, result, beforeData }) {
   const order = result.salesOrder;
   const metadata = {
     number: order.number,
@@ -164,13 +194,25 @@ async function auditMutation(client, { requestContext, action, result, beforeDat
 }
 
 async function executeIdempotentMutation(req, res, options, {
-  requestContext, route, payload, action, statusCode = 200, mutate,
+  requestContext,
+  route,
+  payload,
+  action,
+  resourceId = null,
+  statusCode = 200,
+  mutate,
 }) {
-  const key = requireIdempotency(req);
-  if (!key.ok) {
-    sendError(res, apiError(key.code, key.message, {}, false, 400), options.requestId, options.receivedAt);
+  const keyResult = requireIdempotency(req);
+  if (!keyResult.ok) {
+    sendError(
+      res,
+      apiError(keyResult.code, keyResult.message, {}, false, 400),
+      options.requestId,
+      options.receivedAt,
+    );
     return;
   }
+
   try {
     const execution = await options.executeRequestWithIdempotency({
       idempotencyStore: options.idempotencyStore,
@@ -184,20 +226,21 @@ async function executeIdempotentMutation(req, res, options, {
         const transaction = await withAuditOutboxTransaction({
           adapter: options.getPool(),
           mutate: async (client) => {
-            const before = payload?.id
-              ? await service.getSalesOrder(client, { requestContext, id: payload.id })
+            const before = resourceId
+              ? await service.getSalesOrder(client, { requestContext, id: resourceId })
               : null;
-            const result = await mutate(client, key.key);
+            const result = await mutate(client, keyResult.key);
             if (!result.ok) return { failed: true, result };
-            await auditMutation(client, {
+            const eventId = await writeAuditOutbox(client, {
               requestContext,
               action,
               result,
               beforeData: before?.ok ? before.salesOrder : null,
             });
-            return { salesOrder: result.salesOrder };
+            return { salesOrder: result.salesOrder, eventId };
           },
         });
+
         if (transaction.failed) {
           const result = transaction.result;
           return {
@@ -216,6 +259,7 @@ async function executeIdempotentMutation(req, res, options, {
             },
           };
         }
+
         return {
           statusCode,
           contentType: 'application/json',
@@ -224,35 +268,22 @@ async function executeIdempotentMutation(req, res, options, {
         };
       },
     });
-    res.setHeader('Cache-Control', 'no-store');
-    sendJson(res, execution.response.statusCode, execution.response.body,
-      execution.response.requestId ?? options.requestId, execution.response.contentType);
-  } catch {
-    sendError(res, apiError('SALES_ORDER_TRANSACTION_FAILED', 'Sales Order transaction failed', {}, true, 503), options.requestId, options.receivedAt);
-  }
-}
 
-async function executeDraftUpdate(res, options, { requestContext, action, mutate }) {
-  try {
-    const transaction = await withAuditOutboxTransaction({
-      adapter: options.getPool(),
-      mutate: async (client) => {
-        const before = await service.getSalesOrder(client, { requestContext, id: mutate.id });
-        const result = await mutate.run(client);
-        if (!result.ok) return { failed: true, result };
-        await auditMutation(client, {
-          requestContext,
-          action,
-          result,
-          beforeData: before.ok ? before.salesOrder : null,
-        });
-        return { salesOrder: result.salesOrder };
-      },
-    });
-    if (transaction.failed) return sendServiceError(res, transaction.result, options);
-    sendSuccess(res, transaction.salesOrder, options.requestId, options.receivedAt);
+    res.setHeader('Cache-Control', 'no-store');
+    sendJson(
+      res,
+      execution.response.statusCode,
+      execution.response.body,
+      execution.response.requestId ?? options.requestId,
+      execution.response.contentType,
+    );
   } catch {
-    sendError(res, apiError('SALES_ORDER_TRANSACTION_FAILED', 'Sales Order transaction failed', {}, true, 503), options.requestId, options.receivedAt);
+    sendError(
+      res,
+      apiError('SALES_ORDER_TRANSACTION_FAILED', 'Sales Order transaction failed', {}, true, 503),
+      options.requestId,
+      options.receivedAt,
+    );
   }
 }
 
@@ -262,7 +293,12 @@ export async function handleSalesOrderRoutes(req, res, options) {
   const method = String(req.method || 'GET').toUpperCase();
 
   if (pathname === '/api/sales-orders' && method === 'GET') {
-    const context = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSalesOrderRead);
+    const context = await authenticateAndAuthorize(
+      req,
+      res,
+      options,
+      options.PERMISSIONS.coreSalesOrderRead,
+    );
     if (!context) return true;
     const url = new URL(`http://localhost${req.url}`);
     try {
@@ -279,13 +315,23 @@ export async function handleSalesOrderRoutes(req, res, options) {
       if (!result.ok) sendServiceError(res, result, options);
       else sendSuccess(res, result.salesOrders, options.requestId, options.receivedAt);
     } catch (error) {
-      sendError(res, apiError(error.code, error.publicMessage, {}, false, error.statusCode), options.requestId, options.receivedAt);
+      sendError(
+        res,
+        apiError(error.code, error.publicMessage, {}, false, error.statusCode),
+        options.requestId,
+        options.receivedAt,
+      );
     }
     return true;
   }
 
   if (pathname === '/api/sales-orders' && method === 'POST') {
-    const context = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSalesOrderCreate);
+    const context = await authenticateAndAuthorize(
+      req,
+      res,
+      options,
+      options.PERMISSIONS.coreSalesOrderCreate,
+    );
     if (!context) return true;
     const payload = await readPayload(req, res, options);
     if (payload === null) return true;
@@ -295,32 +341,54 @@ export async function handleSalesOrderRoutes(req, res, options) {
       payload,
       action: 'create',
       statusCode: 201,
-      mutate: (client) => service.createSalesOrder(client, { requestContext: context, payload }),
+      mutate: (client) => service.createSalesOrder(client, {
+        requestContext: context,
+        payload,
+      }),
     });
     return true;
   }
 
-  const amendmentDraftMatch = pathname.match(/^\/api\/sales-orders\/([^/]+)\/amendments\/(\d+)\/draft$/);
+  const amendmentDraftMatch = pathname.match(
+    /^\/api\/sales-orders\/([^/]+)\/amendments\/(\d+)\/draft$/,
+  );
   if (amendmentDraftMatch && method === 'PUT') {
-    const context = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSalesOrderAmend);
+    const context = await authenticateAndAuthorize(
+      req,
+      res,
+      options,
+      options.PERMISSIONS.coreSalesOrderAmend,
+    );
     if (!context) return true;
     const payload = await readPayload(req, res, options);
     if (payload === null) return true;
     const [, id, version] = amendmentDraftMatch;
-    await executeDraftUpdate(res, options, {
+    await executeIdempotentMutation(req, res, options, {
       requestContext: context,
+      route: `/api/sales-orders/${id}/amendments/${version}/draft`,
+      payload: { ...payload, id, version },
       action: 'update_amendment',
-      mutate: {
+      resourceId: id,
+      mutate: (client) => service.updateSalesOrderDraft(client, {
+        requestContext: context,
         id,
-        run: (client) => service.updateSalesOrderDraft(client, { requestContext: context, id, versionNumber: Number(version), payload }),
-      },
+        versionNumber: Number(version),
+        payload,
+      }),
     });
     return true;
   }
 
-  const amendmentConfirmMatch = pathname.match(/^\/api\/sales-orders\/([^/]+)\/amendments\/(\d+)\/confirm$/);
+  const amendmentConfirmMatch = pathname.match(
+    /^\/api\/sales-orders\/([^/]+)\/amendments\/(\d+)\/confirm$/,
+  );
   if (amendmentConfirmMatch && method === 'POST') {
-    const context = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSalesOrderAmend);
+    const context = await authenticateAndAuthorize(
+      req,
+      res,
+      options,
+      options.PERMISSIONS.coreSalesOrderAmend,
+    );
     if (!context) return true;
     const payload = await readPayload(req, res, options);
     if (payload === null) return true;
@@ -330,45 +398,82 @@ export async function handleSalesOrderRoutes(req, res, options) {
       route: `/api/sales-orders/${id}/amendments/${version}/confirm`,
       payload: { ...payload, id, version },
       action: 'confirm_amendment',
-      mutate: (client, key) => service.confirmSalesOrder(client, { requestContext: context, id, versionNumber: Number(version), idempotencyKey: key }),
+      resourceId: id,
+      mutate: (client, key) => service.confirmSalesOrder(client, {
+        requestContext: context,
+        id,
+        versionNumber: Number(version),
+        idempotencyKey: key,
+      }),
     });
     return true;
   }
 
-  const itemMatch = pathname.match(/^\/api\/sales-orders\/([^/]+)(?:\/(draft|confirm|amendments|cancel))?$/);
+  const itemMatch = pathname.match(
+    /^\/api\/sales-orders\/([^/]+)(?:\/(draft|confirm|amendments|cancel))?$/,
+  );
   if (!itemMatch) {
-    sendError(res, apiError('NOT_FOUND', 'Route not found', {}, false, 404), options.requestId, options.receivedAt);
+    sendError(
+      res,
+      apiError('NOT_FOUND', 'Route not found', {}, false, 404),
+      options.requestId,
+      options.receivedAt,
+    );
     return true;
   }
+
   const [, id, action] = itemMatch;
 
   if (!action && method === 'GET') {
-    const context = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSalesOrderRead);
+    const context = await authenticateAndAuthorize(
+      req,
+      res,
+      options,
+      options.PERMISSIONS.coreSalesOrderRead,
+    );
     if (!context) return true;
-    const result = await service.getSalesOrder(options.getPool(), { requestContext: context, id });
+    const result = await service.getSalesOrder(options.getPool(), {
+      requestContext: context,
+      id,
+    });
     if (!result.ok) sendServiceError(res, result, options);
     else sendSuccess(res, result.salesOrder, options.requestId, options.receivedAt);
     return true;
   }
 
   if (action === 'draft' && method === 'PUT') {
-    const context = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSalesOrderUpdateDraft);
+    const context = await authenticateAndAuthorize(
+      req,
+      res,
+      options,
+      options.PERMISSIONS.coreSalesOrderUpdateDraft,
+    );
     if (!context) return true;
     const payload = await readPayload(req, res, options);
     if (payload === null) return true;
-    await executeDraftUpdate(res, options, {
+    await executeIdempotentMutation(req, res, options, {
       requestContext: context,
+      route: `/api/sales-orders/${id}/draft`,
+      payload: { ...payload, id },
       action: 'update_draft',
-      mutate: {
+      resourceId: id,
+      mutate: (client) => service.updateSalesOrderDraft(client, {
+        requestContext: context,
         id,
-        run: (client) => service.updateSalesOrderDraft(client, { requestContext: context, id, versionNumber: 1, payload }),
-      },
+        versionNumber: 1,
+        payload,
+      }),
     });
     return true;
   }
 
   if (action === 'confirm' && method === 'POST') {
-    const context = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSalesOrderConfirm);
+    const context = await authenticateAndAuthorize(
+      req,
+      res,
+      options,
+      options.PERMISSIONS.coreSalesOrderConfirm,
+    );
     if (!context) return true;
     const payload = await readPayload(req, res, options);
     if (payload === null) return true;
@@ -377,13 +482,24 @@ export async function handleSalesOrderRoutes(req, res, options) {
       route: `/api/sales-orders/${id}/confirm`,
       payload: { ...payload, id },
       action: 'confirm',
-      mutate: (client, key) => service.confirmSalesOrder(client, { requestContext: context, id, versionNumber: 1, idempotencyKey: key }),
+      resourceId: id,
+      mutate: (client, key) => service.confirmSalesOrder(client, {
+        requestContext: context,
+        id,
+        versionNumber: 1,
+        idempotencyKey: key,
+      }),
     });
     return true;
   }
 
   if (action === 'amendments' && method === 'POST') {
-    const context = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSalesOrderAmend);
+    const context = await authenticateAndAuthorize(
+      req,
+      res,
+      options,
+      options.PERMISSIONS.coreSalesOrderAmend,
+    );
     if (!context) return true;
     const payload = await readPayload(req, res, options);
     if (payload === null) return true;
@@ -392,14 +508,24 @@ export async function handleSalesOrderRoutes(req, res, options) {
       route: `/api/sales-orders/${id}/amendments`,
       payload: { ...payload, id },
       action: 'create_amendment',
+      resourceId: id,
       statusCode: 201,
-      mutate: (client) => service.createSalesOrderAmendment(client, { requestContext: context, id, payload }),
+      mutate: (client) => service.createSalesOrderAmendment(client, {
+        requestContext: context,
+        id,
+        payload,
+      }),
     });
     return true;
   }
 
   if (action === 'cancel' && method === 'POST') {
-    const context = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSalesOrderCancel);
+    const context = await authenticateAndAuthorize(
+      req,
+      res,
+      options,
+      options.PERMISSIONS.coreSalesOrderCancel,
+    );
     if (!context) return true;
     const payload = await readPayload(req, res, options);
     if (payload === null) return true;
@@ -408,11 +534,21 @@ export async function handleSalesOrderRoutes(req, res, options) {
       route: `/api/sales-orders/${id}/cancel`,
       payload: { ...payload, id },
       action: 'cancel',
-      mutate: (client) => service.cancelSalesOrder(client, { requestContext: context, id, payload }),
+      resourceId: id,
+      mutate: (client) => service.cancelSalesOrder(client, {
+        requestContext: context,
+        id,
+        payload,
+      }),
     });
     return true;
   }
 
-  sendError(res, apiError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405), options.requestId, options.receivedAt);
+  sendError(
+    res,
+    apiError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405),
+    options.requestId,
+    options.receivedAt,
+  );
   return true;
 }
