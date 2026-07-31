@@ -10,6 +10,7 @@ const INTEGER_PATTERN = /^[1-9]\d{0,18}$/;
 const SOURCE_TYPES = new Set(['MANUAL', 'IMPORT', 'API', 'MCP']);
 const COLLECTION_POLICIES = new Set(['PREPAID', 'COLLECT_ON_DELIVERY', 'COLLECT_AFTER_DELIVERY', 'CREDIT_TERMS']);
 const DELIVERY_MODES = new Set(['DELIVERY', 'PICKUP']);
+const CUSTOMER_MODES = new Set(['EXISTING', 'WALK_IN']);
 const TAX_MODES = new Set(['EXCLUSIVE', 'INCLUSIVE']);
 const DISCOUNT_MODES = new Set(['TOTAL_AMOUNT', 'PER_UNIT', 'PERCENT']);
 const STATUSES = new Set(['draft', 'confirmed', 'cancelled', 'closed']);
@@ -151,13 +152,18 @@ function mapLine(line) {
 }
 
 function mapVersion(version, lines = undefined) {
+  const walkInDisplayName = version.walk_in_display_name_snapshot ?? null;
+  const walkInPhone = version.walk_in_phone_snapshot ?? null;
   return Object.freeze({
     id: version.id,
     versionNumber: String(version.version_number),
     status: version.version_status,
+    customerMode: walkInDisplayName || walkInPhone ? 'WALK_IN' : 'EXISTING',
     customerId: version.customer_id,
     customerCode: version.customer_code_snapshot,
-    customerName: version.customer_name_snapshot,
+    customerName: walkInDisplayName ?? version.customer_name_snapshot,
+    walkInDisplayName,
+    walkInPhone,
     customerAddressId: version.customer_address_id ?? null,
     customerAddress: version.customer_address_snapshot ?? null,
     warehouseId: version.warehouse_id,
@@ -188,6 +194,8 @@ function mapVersion(version, lines = undefined) {
 }
 
 function mapOrder(order, versions = undefined) {
+  const walkInDisplayName = order.walk_in_display_name ?? null;
+  const walkInPhone = order.walk_in_phone ?? null;
   return Object.freeze({
     id: order.id,
     number: order.order_number ?? null,
@@ -196,9 +204,12 @@ function mapOrder(order, versions = undefined) {
     sourceType: order.source_type,
     sourceId: order.source_id ?? null,
     sourceOutletId: order.source_outlet_id ?? null,
+    customerMode: walkInDisplayName || walkInPhone ? 'WALK_IN' : 'EXISTING',
     customerId: order.customer_id,
     customerCode: order.customer_code,
-    customerName: order.customer_name,
+    customerName: walkInDisplayName ?? order.customer_name,
+    walkInDisplayName,
+    walkInPhone,
     customerAddressId: order.customer_address_id ?? null,
     warehouseId: order.warehouse_id,
     warehouseCode: order.warehouse_code,
@@ -304,6 +315,8 @@ async function validateHeader(client, { requestContext, payload, fixedSource = n
   if (!isUuid(payload?.customerId)) return failure('INVALID_CUSTOMER_ID', 'Customer ID is invalid');
   if (!isUuid(payload?.warehouseId)) return failure('INVALID_WAREHOUSE_ID', 'Warehouse ID is invalid');
   if (!warehouseAllowed(requestContext, payload.warehouseId)) return failure('WAREHOUSE_SCOPE_DENIED', 'Warehouse is outside the authorized scope');
+  const customerMode = String(payload?.customerMode ?? 'EXISTING').trim().toUpperCase();
+  if (!CUSTOMER_MODES.has(customerMode)) return failure('INVALID_CUSTOMER_MODE', 'Customer mode is invalid');
   const deliveryMode = String(payload?.deliveryMode ?? 'DELIVERY').trim().toUpperCase();
   if (!DELIVERY_MODES.has(deliveryMode)) return failure('INVALID_DELIVERY_MODE', 'Delivery mode is invalid');
   const collectionPolicy = String(payload?.collectionPolicy ?? 'COLLECT_ON_DELIVERY').trim().toUpperCase();
@@ -314,10 +327,28 @@ async function validateHeader(client, { requestContext, payload, fixedSource = n
   if (payload?.requestedDeliveryDate && !requestedDeliveryDate) return failure('INVALID_REQUESTED_DELIVERY_DATE', 'Requested delivery date is invalid');
   const note = text(payload?.note, 4000, false);
   if (payload?.note && note === null) return failure('INVALID_NOTE', 'Note must not exceed 4000 characters');
+  const walkInDisplayName = customerMode === 'WALK_IN' ? text(payload?.walkInDisplayName, 256, false) : null;
+  if (customerMode === 'WALK_IN' && payload?.walkInDisplayName && walkInDisplayName === null) {
+    return failure('INVALID_WALK_IN_NAME', 'Walk-in customer name must not exceed 256 characters');
+  }
+  const walkInPhone = customerMode === 'WALK_IN' ? text(payload?.walkInPhone, 64, false) : null;
+  if (customerMode === 'WALK_IN' && payload?.walkInPhone && walkInPhone === null) {
+    return failure('INVALID_WALK_IN_PHONE', 'Walk-in phone must not exceed 64 characters');
+  }
 
   const customer = await repository.getActiveCustomer(client, { installationId: requestContext.installationId, id: payload.customerId });
   if (!customer) return failure('CUSTOMER_NOT_FOUND', 'Customer not found');
   if (!customer.is_active) return failure('CUSTOMER_INACTIVE', 'Customer is inactive');
+  if (customerMode === 'WALK_IN' && !await repository.isConfiguredWalkInCustomer(client, {
+    installationId: requestContext.installationId,
+    customerId: customer.id,
+  })) {
+    return failure('WALK_IN_CUSTOMER_UNAVAILABLE', 'Configured walk-in customer is missing or inactive');
+  }
+  if (customerMode === 'WALK_IN' && (deliveryMode !== 'PICKUP' || collectionPolicy === 'CREDIT_TERMS' || collectionPolicy === 'COLLECT_AFTER_DELIVERY')) {
+    return failure('WALK_IN_POLICY_FORBIDDEN', 'Walk-in customer requires pickup and immediate collection');
+  }
+
   const warehouse = await repository.getActiveWarehouse(client, { installationId: requestContext.installationId, id: payload.warehouseId });
   if (!warehouse) return failure('WAREHOUSE_NOT_FOUND', 'Warehouse not found');
   if (!warehouse.is_active) return failure('WAREHOUSE_INACTIVE', 'Warehouse is inactive');
@@ -349,6 +380,9 @@ async function validateHeader(client, { requestContext, payload, fixedSource = n
   return {
     ok: true,
     customer,
+    customerMode,
+    walkInDisplayName,
+    walkInPhone,
     address,
     warehouse,
     deliveryMode,
@@ -422,8 +456,8 @@ async function prepareLines(client, { requestContext, header, payload }) {
         variantId: input.variantId,
         quantity: formatScaled(quantity),
         currencyCode: header.currencyCode,
-        customerId: header.customer.id,
-        customerGroupId: header.customer.group_id ?? null,
+        customerId: header.customerMode === 'WALK_IN' ? null : header.customer.id,
+        customerGroupId: header.customerMode === 'WALK_IN' ? null : (header.customer.group_id ?? null),
         priceAt: new Date().toISOString(),
         manualUnitPriceMinor: manualPrice,
         manualReason,
@@ -526,6 +560,8 @@ function versionData({ requestContext, salesOrderId, versionNumber, prepared, am
     customerId: prepared.header.customer.id,
     customerCode: prepared.header.customer.code,
     customerName: prepared.header.customer.name,
+    walkInDisplayName: prepared.header.walkInDisplayName,
+    walkInPhone: prepared.header.walkInPhone,
     customerAddressId: prepared.header.address?.id ?? null,
     customerAddressSnapshot: addressSnapshot(prepared.header.address),
     warehouseId: prepared.header.warehouse.id,
@@ -567,6 +603,8 @@ export async function createSalesOrder(client, { requestContext, payload }) {
     sourceId: prepared.header.source.sourceId,
     sourceOutletId: prepared.header.source.sourceOutletId,
     customerId: prepared.header.customer.id,
+    walkInDisplayName: prepared.header.walkInDisplayName,
+    walkInPhone: prepared.header.walkInPhone,
     customerAddressId: prepared.header.address?.id ?? null,
     warehouseId: prepared.header.warehouse.id,
     deliveryMode: prepared.header.deliveryMode,
@@ -718,6 +756,8 @@ export async function createSalesOrderAmendment(client, { requestContext, id, pa
     customerId: current.customer_id,
     customerCode: current.customer_code_snapshot,
     customerName: current.customer_name_snapshot,
+    walkInDisplayName: current.walk_in_display_name_snapshot,
+    walkInPhone: current.walk_in_phone_snapshot,
     customerAddressId: current.customer_address_id,
     customerAddressSnapshot: current.customer_address_snapshot,
     warehouseId: current.warehouse_id,
