@@ -41,7 +41,6 @@ function taxSettings(settings) {
 
 function applyDefaultTax(lines, settings) {
   if (!Array.isArray(lines)) return lines;
-  if (!settings) return lines;
   const defaults = taxSettings(settings);
   return lines.map((line) => Object.freeze({
     ...line,
