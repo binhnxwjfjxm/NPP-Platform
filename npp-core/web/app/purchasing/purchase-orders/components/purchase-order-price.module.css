@@ -1,29 +1,38 @@
 .priceRow {
   display: grid;
-  grid-template-columns: minmax(120px, 0.8fr) minmax(170px, 1fr) minmax(180px, 1.2fr) auto;
-  gap: 10px;
+  grid-template-columns: minmax(92px, 0.75fr) minmax(108px, 0.9fr) auto;
+  gap: 6px;
   align-items: end;
-  grid-column: 1 / -1;
-  padding: 10px;
-  border: 1px solid #e4ddd7;
-  border-radius: 10px;
-  background: #fff;
+  grid-column: auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.priceRow > label {
+  min-width: 0;
 }
 
 .priceStatus {
   display: grid;
-  gap: 4px;
+  gap: 2px;
+  min-width: 0;
   align-content: center;
 }
 
 .priceStatus strong {
+  overflow: hidden;
   color: #44352d;
-  font-size: 0.85rem;
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .priceStatus span {
   color: #746861;
-  font-size: 0.76rem;
+  font-size: 0.66rem;
 }
 
 .resolved,
@@ -31,10 +40,14 @@
 .manual {
   display: inline-flex;
   width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
   border-radius: 999px;
-  padding: 4px 8px;
-  font-size: 0.72rem;
+  padding: 3px 6px;
+  font-size: 0.64rem;
   font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .resolved {
@@ -54,36 +67,54 @@
 
 .priceActions {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 4px;
+  flex-wrap: nowrap;
   justify-content: flex-end;
 }
 
+.priceActions button {
+  min-height: 28px;
+  padding: 4px 7px;
+  font-size: 0.66rem;
+  white-space: nowrap;
+}
+
 .quantityOnly {
-  grid-column: 1 / -1;
+  grid-column: auto;
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
-  padding: 10px 12px;
-  border-radius: 10px;
+  min-height: 30px;
+  min-width: 0;
+  padding: 5px 7px;
+  border-radius: 6px;
   background: #f6f3f0;
   border: 1px solid #e4ddd7;
 }
 
 .quantityOnly span {
+  overflow: hidden;
   color: #6f635c;
-  font-size: 0.8rem;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .overrideReason {
-  grid-column: 1 / -1;
+  grid-column: span 3;
 }
 
 .priceHelp {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow: hidden;
   margin: 0;
   color: #716761;
-  font-size: 0.8rem;
+  font-size: 0.64rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bulkReason {
@@ -102,6 +133,17 @@
   padding: 8px 10px;
 }
 
+@media (max-width: 1280px) {
+  .priceRow {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(110px, 0.8fr) minmax(150px, 1fr) auto;
+  }
+
+  .overrideReason {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 900px) {
   .priceRow {
     grid-template-columns: 1fr;
@@ -114,5 +156,12 @@
   .quantityOnly {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .quantityOnly span,
+  .priceHelp {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
   }
 }
