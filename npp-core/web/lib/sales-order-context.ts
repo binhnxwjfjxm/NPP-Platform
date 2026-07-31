@@ -1,17 +1,7 @@
 import 'server-only';
 
 import { randomUUID } from 'node:crypto';
-
-export const SALES_ORDER_PERMISSION_KEYS = Object.freeze({
-  read: 'core.sales-order.read',
-  create: 'core.sales-order.create',
-  updateDraft: 'core.sales-order.update-draft',
-  confirm: 'core.sales-order.confirm',
-  amend: 'core.sales-order.amend',
-  cancel: 'core.sales-order.cancel',
-  priceOverride: 'core.sales-order.price.override',
-  creditOverride: 'core.sales-order.credit.override',
-});
+import { SALES_ORDER_PERMISSION_KEYS } from './sales-order-permissions';
 
 const REQUEST_TIMEOUT_MS = 8_000;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
