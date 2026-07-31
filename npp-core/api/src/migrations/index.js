@@ -19,6 +19,11 @@ const SUPPLIER_PURCHASE_PRICING_SQL = readFileSync(
   'utf8',
 );
 
+const SALES_ORDER_FOUNDATION_SQL = readFileSync(
+  new URL('../../../../database/migrations/sales/037_sales_order_foundation.sql', import.meta.url),
+  'utf8',
+);
+
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_033,
   Object.freeze({
@@ -32,6 +37,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '036_supplier_purchase_pricing',
     sql: SUPPLIER_PURCHASE_PRICING_SQL,
+  }),
+  Object.freeze({
+    id: '037_sales_order_foundation',
+    sql: SALES_ORDER_FOUNDATION_SQL,
   }),
 ]);
 
