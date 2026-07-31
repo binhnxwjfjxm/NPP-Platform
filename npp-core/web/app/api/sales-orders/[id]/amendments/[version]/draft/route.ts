@@ -4,6 +4,7 @@ import type { SalesOrder } from '../../../../../../../lib/sales-order-types';
 import {
   readSalesOrderBody,
   salesOrderErrorResponse,
+  salesOrderIdempotencyKey,
   salesOrderRequestId,
   salesOrderResponse,
 } from '../../../../_route-helpers';
@@ -22,6 +23,7 @@ export async function PUT(
         params.version,
         requestId,
         parsed.body,
+        salesOrderIdempotencyKey(request),
       ),
       requestId,
     );
