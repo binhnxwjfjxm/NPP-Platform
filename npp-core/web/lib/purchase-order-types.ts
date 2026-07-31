@@ -276,5 +276,8 @@ export function multiplyScaled(left: bigint, right: bigint): bigint {
 }
 
 export function calculatePurchaseOrderDraftTotals(lines: readonly PurchaseOrderDraftLine[]) {
-  return calculateLineEntryTotals(lines);
+  return calculateLineEntryTotals(lines.map((line) => ({
+    ...line,
+    unitPrice: line.unitPrice ?? '0',
+  })));
 }
