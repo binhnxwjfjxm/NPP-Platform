@@ -43,6 +43,37 @@ function dateOnly(value) {
   return normalized;
 }
 
+function storedDateOnly(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    const year = String(value.getFullYear()).padStart(4, '0');
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return dateOnly(`${year}-${month}-${day}`);
+  }
+  return dateOnly(String(value).slice(0, 10));
+}
+
+function timestampDateOnly(value, timeZone) {
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(parsed);
+    const year = parts.find((part) => part.type === 'year')?.value;
+    const month = parts.find((part) => part.type === 'month')?.value;
+    const day = parts.find((part) => part.type === 'day')?.value;
+    return year && month && day ? dateOnly(`${year}-${month}-${day}`) : null;
+  } catch {
+    return null;
+  }
+}
+
 function decimalScaled(value, { allowZero = true } = {}) {
   const normalized = String(value ?? '').trim();
   const match = DECIMAL_PATTERN.exec(normalized);
@@ -138,7 +169,7 @@ function mapVersion(version, lines = undefined) {
     sourceOutletId: version.source_outlet_id ?? null,
     collectionPolicy: version.collection_policy,
     currency: version.currency_code,
-    requestedDeliveryDate: version.requested_delivery_date ? String(version.requested_delivery_date).slice(0, 10) : null,
+    requestedDeliveryDate: storedDateOnly(version.requested_delivery_date),
     note: version.note ?? null,
     subtotal: String(version.subtotal),
     discountTotal: String(version.discount_total),
@@ -178,7 +209,7 @@ function mapOrder(order, versions = undefined) {
     deliveryStatus: order.delivery_status,
     settlementStatus: order.settlement_status,
     currency: order.currency_code,
-    requestedDeliveryDate: order.requested_delivery_date ? String(order.requested_delivery_date).slice(0, 10) : null,
+    requestedDeliveryDate: storedDateOnly(order.requested_delivery_date),
     note: order.note ?? null,
     revision: String(order.revision),
     confirmedAt: order.confirmed_at ?? null,
@@ -636,14 +667,14 @@ export async function confirmSalesOrder(client, { requestContext, id, versionNum
   if (!orderNumber) {
     const series = await ensureSalesOrderSeries(client, { installationId: requestContext.installationId, actorId: requestContext.actorId });
     if (!series) return failure('DOCUMENT_NUMBER_SERIES_UNAVAILABLE', 'Sales Order number series is unavailable', true);
+    const documentDate = timestampDateOnly(loaded.order.created_at, series.timezone_name);
+    if (!documentDate) return failure('INVALID_ORDER_DATE', 'Sales Order creation date is invalid');
     const allocation = await allocateDocumentNumber(client, {
       installationId: requestContext.installationId,
       seriesId: series.id,
       idempotencyKey: `sales-order:${id}:confirm:${idempotencyKey}`,
       payload: {
-        documentDate: loaded.order.created_at instanceof Date
-          ? loaded.order.created_at.toISOString().slice(0, 10)
-          : String(loaded.order.created_at).slice(0, 10),
+        documentDate,
         metadata: { salesOrderId: id, versionNumber: number },
       },
       actorId: requestContext.actorId,
@@ -698,7 +729,7 @@ export async function createSalesOrderAmendment(client, { requestContext, id, pa
     sourceOutletId: current.source_outlet_id,
     collectionPolicy: current.collection_policy,
     currencyCode: current.currency_code,
-    requestedDeliveryDate: current.requested_delivery_date ? String(current.requested_delivery_date).slice(0, 10) : null,
+    requestedDeliveryDate: storedDateOnly(current.requested_delivery_date),
     note: current.note,
     subtotal: String(current.subtotal),
     discountTotal: String(current.discount_total),
