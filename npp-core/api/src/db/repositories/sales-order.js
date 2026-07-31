@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 const ORDER_COLUMNS = `so.id, so.installation_id, so.order_number, so.order_number_allocation_id,
   so.status, so.current_version_number, so.source_type, so.source_id, so.source_outlet_id,
   so.customer_id, c.code AS customer_code, c.name AS customer_name,
-  so.walk_in_display_name, so.walk_in_phone,
+  so.customer_mode, so.walk_in_display_name, so.walk_in_phone,
   so.customer_address_id, so.warehouse_id, w.code AS warehouse_code, w.name AS warehouse_name,
   so.delivery_mode, so.collection_policy, so.fulfillment_status, so.delivery_status,
   so.settlement_status, so.currency_code, so.requested_delivery_date, so.note, so.revision,
@@ -12,7 +12,7 @@ const ORDER_COLUMNS = `so.id, so.installation_id, so.order_number, so.order_numb
 
 const VERSION_COLUMNS = `sov.id, sov.installation_id, sov.sales_order_id, sov.version_number,
   sov.version_status, sov.customer_id, sov.customer_code_snapshot, sov.customer_name_snapshot,
-  sov.walk_in_display_name_snapshot, sov.walk_in_phone_snapshot,
+  sov.customer_mode_snapshot, sov.walk_in_display_name_snapshot, sov.walk_in_phone_snapshot,
   sov.customer_address_id, sov.customer_address_snapshot, sov.warehouse_id,
   sov.warehouse_code_snapshot, sov.warehouse_name_snapshot, sov.delivery_mode,
   sov.source_type, sov.source_id, sov.source_outlet_id, sov.collection_policy,
@@ -351,15 +351,15 @@ export async function insertSalesOrder(client, data) {
   const result = await client.query(
     `INSERT INTO sales.sales_orders (
        id, installation_id, status, current_version_number, source_type, source_id,
-       source_outlet_id, customer_id, walk_in_display_name, walk_in_phone,
+       source_outlet_id, customer_id, customer_mode, walk_in_display_name, walk_in_phone,
        customer_address_id, warehouse_id, delivery_mode,
        collection_policy, fulfillment_status, delivery_status, settlement_status,
        currency_code, requested_delivery_date, note, created_at, updated_at, created_by, updated_by
      ) VALUES (
-       $1,$2,'draft',1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'unallocated',$13,'not_due',$14,$15,$16,$17,$17,$18,$18
+       $1,$2,'draft',1,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'unallocated',$14,'not_due',$15,$16,$17,$18,$18,$19,$19
      ) ON CONFLICT DO NOTHING RETURNING id`,
     [id, data.installationId, data.sourceType, data.sourceId, data.sourceOutletId,
-      data.customerId, data.walkInDisplayName, data.walkInPhone,
+      data.customerId, data.customerMode, data.walkInDisplayName, data.walkInPhone,
       data.customerAddressId, data.warehouseId, data.deliveryMode,
       data.collectionPolicy, data.deliveryMode === 'PICKUP' ? 'not_required' : 'pending',
       data.currencyCode, data.requestedDeliveryDate, data.note, now, data.actorId],
@@ -374,7 +374,7 @@ export async function insertSalesOrderVersion(client, data) {
     `INSERT INTO sales.sales_order_versions (
        id, installation_id, sales_order_id, version_number, version_status,
        customer_id, customer_code_snapshot, customer_name_snapshot,
-       walk_in_display_name_snapshot, walk_in_phone_snapshot,
+       customer_mode_snapshot, walk_in_display_name_snapshot, walk_in_phone_snapshot,
        customer_address_id, customer_address_snapshot, warehouse_id,
        warehouse_code_snapshot, warehouse_name_snapshot, delivery_mode,
        source_type, source_id, source_outlet_id, collection_policy, currency_code,
@@ -382,11 +382,11 @@ export async function insertSalesOrderVersion(client, data) {
        amendment_reason, based_on_version_number, price_override_reason,
        created_at, created_by, updated_at, updated_by
      ) VALUES (
-       $1,$2,$3,$4,'draft',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
-       $23,$24,$25,$26,$27,$28,$29,$30,$31,$30,$31
+       $1,$2,$3,$4,'draft',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,
+       $24,$25,$26,$27,$28,$29,$30,$31,$32,$31,$32
      ) RETURNING id`,
     [id, data.installationId, data.salesOrderId, data.versionNumber,
-      data.customerId, data.customerCode, data.customerName,
+      data.customerId, data.customerCode, data.customerName, data.customerMode,
       data.walkInDisplayName, data.walkInPhone,
       data.customerAddressId, data.customerAddressSnapshot, data.warehouseId,
       data.warehouseCode, data.warehouseName, data.deliveryMode, data.sourceType,
@@ -428,16 +428,16 @@ export async function replaceDraftVersion(client, data) {
   const result = await client.query(
     `UPDATE sales.sales_order_versions
      SET customer_id=$1, customer_code_snapshot=$2, customer_name_snapshot=$3,
-         walk_in_display_name_snapshot=$4, walk_in_phone_snapshot=$5,
-         customer_address_id=$6, customer_address_snapshot=$7, warehouse_id=$8,
-         warehouse_code_snapshot=$9, warehouse_name_snapshot=$10, delivery_mode=$11,
-         collection_policy=$12, currency_code=$13, requested_delivery_date=$14,
-         note=$15, subtotal=$16, discount_total=$17, tax_total=$18, total=$19,
-         price_override_reason=$20, revision=revision+1, updated_at=$21, updated_by=$22
-     WHERE installation_id=$23 AND sales_order_id=$24 AND version_number=$25
-       AND version_status='draft' AND revision=$26
+         customer_mode_snapshot=$4, walk_in_display_name_snapshot=$5, walk_in_phone_snapshot=$6,
+         customer_address_id=$7, customer_address_snapshot=$8, warehouse_id=$9,
+         warehouse_code_snapshot=$10, warehouse_name_snapshot=$11, delivery_mode=$12,
+         collection_policy=$13, currency_code=$14, requested_delivery_date=$15,
+         note=$16, subtotal=$17, discount_total=$18, tax_total=$19, total=$20,
+         price_override_reason=$21, revision=revision+1, updated_at=$22, updated_by=$23
+     WHERE installation_id=$24 AND sales_order_id=$25 AND version_number=$26
+       AND version_status='draft' AND revision=$27
      RETURNING id`,
-    [data.customerId, data.customerCode, data.customerName,
+    [data.customerId, data.customerCode, data.customerName, data.customerMode,
       data.walkInDisplayName, data.walkInPhone,
       data.customerAddressId, data.customerAddressSnapshot, data.warehouseId,
       data.warehouseCode, data.warehouseName, data.deliveryMode,
@@ -460,13 +460,13 @@ export async function replaceDraftVersion(client, data) {
   });
   if (Number(data.versionNumber) === 1) {
     await client.query(
-      `UPDATE sales.sales_orders SET customer_id=$1,
-         walk_in_display_name=$2, walk_in_phone=$3, customer_address_id=$4,
-         warehouse_id=$5, delivery_mode=$6, collection_policy=$7, currency_code=$8,
-         requested_delivery_date=$9, note=$10, delivery_status=$11,
-         revision=revision+1, updated_at=$12, updated_by=$13
-       WHERE installation_id=$14 AND id=$15 AND status='draft'`,
-      [data.customerId, data.walkInDisplayName, data.walkInPhone,
+      `UPDATE sales.sales_orders SET customer_id=$1, customer_mode=$2,
+         walk_in_display_name=$3, walk_in_phone=$4, customer_address_id=$5,
+         warehouse_id=$6, delivery_mode=$7, collection_policy=$8, currency_code=$9,
+         requested_delivery_date=$10, note=$11, delivery_status=$12,
+         revision=revision+1, updated_at=$13, updated_by=$14
+       WHERE installation_id=$15 AND id=$16 AND status='draft'`,
+      [data.customerId, data.customerMode, data.walkInDisplayName, data.walkInPhone,
         data.customerAddressId, data.warehouseId, data.deliveryMode,
         data.collectionPolicy, data.currencyCode, data.requestedDeliveryDate, data.note,
         data.deliveryMode === 'PICKUP' ? 'not_required' : 'pending', now, data.actorId,
@@ -500,6 +500,7 @@ export async function confirmSalesOrderVersion(client, data) {
          order_number_allocation_id=COALESCE(so.order_number_allocation_id,$2),
          status='confirmed', current_version_number=$3,
          customer_id=confirmed_version.customer_id,
+         customer_mode=confirmed_version.customer_mode_snapshot,
          walk_in_display_name=confirmed_version.walk_in_display_name_snapshot,
          walk_in_phone=confirmed_version.walk_in_phone_snapshot,
          customer_address_id=confirmed_version.customer_address_id,
