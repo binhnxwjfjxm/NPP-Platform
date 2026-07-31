@@ -133,9 +133,10 @@ export function listSupplierPurchasePrices<T>(requestId: string, searchParams: U
   if (active === 'true' || active === 'false') query.set('active', active);
   if (limit) query.set('limit', String(Math.max(1, Math.min(1000, Number(limit) || 100))));
   if (offset) query.set('offset', String(Math.max(0, Number(offset) || 0)));
+  const serialized = query.toString();
   return requestCore<T[]>({
     method: 'GET',
-    path: `/api/supplier-purchase-prices${query.size ? `?${query.toString()}` : ''}`,
+    path: `/api/supplier-purchase-prices${serialized ? `?${serialized}` : ''}`,
     requestId,
   });
 }
