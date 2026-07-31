@@ -16,8 +16,8 @@ const skuRouteSource = readFileSync(new URL('../app/api/sales-orders/sku-search/
 const settingsRouteSource = readFileSync(new URL('../app/api/sales-orders/entry-settings/route.ts', import.meta.url), 'utf8');
 
 test('Sales Order page stays on the authenticated NPP server boundary', () => {
-  assert.match(pageSource, /resolveSalesOrderAccess/);
-  assert.match(pageSource, /buildSalesOrderBootstrap/);
+  assert.match(pageSource, /resolveSalesOrderRequestId/);
+  assert.match(pageSource, /loadSalesOrderBootstrap/);
   assert.match(pageSource, /SalesOrderWorkspace/);
   assert.doesNotMatch(pageSource, /NEXT_PUBLIC_SUPABASE/);
   assert.doesNotMatch(pageSource, /DATABASE_URL/);
@@ -97,9 +97,10 @@ test('same-origin Sales gateways proxy entry settings, SKU search and lifecycle 
   assert.doesNotMatch(gatewaySource, /NEXT_PUBLIC_/);
 });
 
-test('Sales Order bootstrap reuses Core customers, warehouses and permission filtering', () => {
-  assert.match(bootstrapSource, /listCustomers/);
-  assert.match(bootstrapSource, /listWarehouses/);
+test('Sales Order bootstrap reuses Core customer, organization, product and permission gateways', () => {
+  assert.match(bootstrapSource, /listAllCustomers/);
+  assert.match(bootstrapSource, /loadOrganizationSnapshot/);
+  assert.match(bootstrapSource, /listProducts/);
   assert.match(contextSource, /SALES_ORDER_PERMISSION_KEYS/);
   assert.match(contextSource, /Object\.values\(SALES_ORDER_PERMISSION_KEYS\)/);
 });
