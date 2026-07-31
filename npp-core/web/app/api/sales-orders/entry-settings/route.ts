@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import type { SalesOrderEntrySettings } from '../../../../lib/sales-order-types';
 import { getSalesOrderEntrySettings } from '../../../../lib/sales-order-gateway';
 import {
   salesOrderErrorResponse,
@@ -8,17 +9,10 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-type EntrySettings = {
-  walkInConfigured: boolean;
-  walkInBootstrapSupported: boolean;
-  defaultTaxMode: 'EXCLUSIVE' | 'INCLUSIVE';
-  defaultTaxRate: string;
-};
-
 export async function GET(request: NextRequest) {
   const requestId = salesOrderRequestId(request);
   try {
-    const data = await getSalesOrderEntrySettings<EntrySettings>(requestId);
+    const data = await getSalesOrderEntrySettings<SalesOrderEntrySettings>(requestId);
     return salesOrderResponse(data, requestId);
   } catch (error) {
     return salesOrderErrorResponse(error, requestId);
