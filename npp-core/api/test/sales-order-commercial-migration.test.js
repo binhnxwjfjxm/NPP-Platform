@@ -30,10 +30,20 @@ test('migration 040 owns channel, document discount and line price provenance', 
   ]) assert.match(sql, new RegExp(token));
 });
 
+test('migration 040 defers the line provenance invariant to transaction commit', () => {
+  assert.match(sql, /CREATE OR REPLACE FUNCTION sales\.enforce_sales_order_line_price_provenance/);
+  assert.match(sql, /CREATE CONSTRAINT TRIGGER sales_order_line_price_provenance_deferred/);
+  assert.match(sql, /DEFERRABLE INITIALLY DEFERRED/);
+  assert.match(sql, /sales_order_line_price_provenance_required/);
+  assert.doesNotMatch(sql, /ALTER COLUMN base_unit_price SET NOT NULL/);
+  assert.doesNotMatch(sql, /ALTER COLUMN system_unit_price SET NOT NULL/);
+});
+
 test('migration 040 is rerun-safe and keeps confirmed commercial facts immutable', () => {
   assert.match(sql, /ADD COLUMN IF NOT EXISTS default_sales_channel_id/);
   assert.match(sql, /ON CONFLICT \(permission_key\) DO UPDATE/);
   assert.match(sql, /CREATE INDEX IF NOT EXISTS sales_orders_channel_idx/);
+  assert.match(sql, /DROP TRIGGER IF EXISTS sales_order_line_price_provenance_deferred/);
   assert.match(sql, /CREATE OR REPLACE FUNCTION sales\.guard_sales_order_version_mutation/);
   assert.match(sql, /NEW\.sales_channel_id IS NOT DISTINCT FROM OLD\.sales_channel_id/);
   assert.match(sql, /NEW\.document_discount_reason IS NOT DISTINCT FROM OLD\.document_discount_reason/);
