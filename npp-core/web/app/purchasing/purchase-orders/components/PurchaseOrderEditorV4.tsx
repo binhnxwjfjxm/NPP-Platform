@@ -408,13 +408,13 @@ export default function PurchaseOrderEditorV4({
         manualOverride: false,
         resolvingPrice: false,
       };
-    } catch (failure) {
+    } catch {
       return { priceStatus: 'NOT_FOUND', priceSource: null, unitPrice: canReadPrice ? '' : line.unitPrice, resolvingPrice: false };
     }
   }
 
-  async function refreshLinePrice(key: string) {
-    const line = lines.find((item) => item.key === key);
+  async function refreshLinePrice(key: string, sourceLine?: EditorLine) {
+    const line = sourceLine ?? lines.find((item) => item.key === key);
     if (!line || line.manualOverride) return;
     setLines((current) => current.map((item) => item.key === key ? { ...item, resolvingPrice: true } : item));
     const next = await resolveLineData(line);
@@ -461,6 +461,12 @@ export default function PurchaseOrderEditorV4({
       : line));
   }
 
+  function handleQuantityBlur(line: EditorLine) {
+    const quantity = cleanDecimal(line.quantity, '1');
+    setLines((current) => current.map((item) => item.key === line.key ? { ...item, quantity } : item));
+    if (!line.manualOverride) void refreshLinePrice(line.key, { ...line, quantity });
+  }
+
   function enableManualOverride(line: EditorLine) {
     if (!canOverridePrice) return;
     updateLine(line.key, {
@@ -472,6 +478,15 @@ export default function PurchaseOrderEditorV4({
   }
 
   async function useSupplierPrice(line: EditorLine) {
+    const automaticLine: EditorLine = {
+      ...line,
+      manualOverride: false,
+      priceSource: null,
+      priceOverrideReason: '',
+      discountMode: 'TOTAL_AMOUNT',
+      discountValue: '0',
+      taxRate: '0',
+    };
     updateLine(line.key, {
       manualOverride: false,
       priceSource: null,
@@ -480,7 +495,7 @@ export default function PurchaseOrderEditorV4({
       discountValue: '0',
       taxRate: '0',
     });
-    await refreshLinePrice(line.key);
+    await refreshLinePrice(line.key, automaticLine);
   }
 
   function downloadTemplate() {
@@ -717,7 +732,7 @@ export default function PurchaseOrderEditorV4({
               <div className={localStyles.lineList}>{lines.length === 0 ? <p className={localStyles.empty}>Chưa có SKU trong đơn đặt hàng.</p> : lines.map((line, index) => <article key={line.key} className={localStyles.lineCard}>
                 <div className={localStyles.lineHeading}><div><strong>{line.sku}</strong><span>{line.name}</span></div><button type="button" className={styles.secondaryButton} onClick={() => { markChanged(); setLines((current) => current.filter((item) => item.key !== line.key)); }}>Xóa dòng</button></div>
                 <div className={localStyles.lineFields}>
-                  <label>Số lượng<input value={line.quantity} inputMode="decimal" onChange={(event) => updateDecimalLine(line.key, 'quantity', event.target.value)} onBlur={() => { formatLineDecimal(line.key, 'quantity', '1'); if (!line.manualOverride) void refreshLinePrice(line.key); }} /></label>
+                  <label>Số lượng<input value={line.quantity} inputMode="decimal" onChange={(event) => updateDecimalLine(line.key, 'quantity', event.target.value)} onBlur={() => handleQuantityBlur(line)} /></label>
                   <label>Đơn vị<input value={line.unitCode} readOnly /></label>
                   <label>Quy đổi<input value={line.conversionToBase} readOnly /></label>
                   {canReadPrice ? <div className={priceStyles.priceRow}>
