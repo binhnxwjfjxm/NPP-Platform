@@ -42,6 +42,7 @@ async function createFixtures(pool, installationId) {
   const unitId = randomUUID();
   const productId = randomUUID();
   const variantId = randomUUID();
+  const channelId = randomUUID();
   const priceListId = randomUUID();
   const priceItemId = randomUUID();
   const suffix = randomUUID().slice(0, 8).toUpperCase();
@@ -94,6 +95,12 @@ async function createFixtures(pool, installationId) {
     [variantId, installationId, productId, `SKU-${suffix}`, `SKU ${suffix}`, unitId, actor],
   );
   await pool.query(
+    `INSERT INTO shared.sales_channels
+      (id, installation_id, code, name, is_active, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,true,$5,$5)`,
+    [channelId, installationId, `CH-${suffix}`, `Kênh ${suffix}`, actor],
+  );
+  await pool.query(
     `INSERT INTO shared.price_lists
       (id, installation_id, code, name, list_type, currency_code, priority,
        stacking_mode, stop_processing, is_active, created_by, updated_by)
@@ -108,7 +115,7 @@ async function createFixtures(pool, installationId) {
     [priceItemId, installationId, priceListId, variantId, actor],
   );
 
-  return { warehouseId, customerId, addressId, variantId };
+  return { warehouseId, customerId, addressId, variantId, channelId };
 }
 
 function payload(fixture, overrides = {}) {
@@ -117,6 +124,7 @@ function payload(fixture, overrides = {}) {
     customerId: fixture.customerId,
     customerAddressId: fixture.addressId,
     warehouseId: fixture.warehouseId,
+    salesChannelId: fixture.channelId,
     deliveryMode: 'DELIVERY',
     collectionPolicy: 'COLLECT_ON_DELIVERY',
     currency: 'VND',
@@ -155,6 +163,8 @@ test('Sales Order API is idempotent and preserves immutable commercial versions'
     const first = (await firstResponse.json()).data;
     assert.equal(first.status, 'draft');
     assert.equal(first.number, null);
+    assert.equal(first.salesChannelId, fixture.channelId);
+    assert.equal(first.versions[0].salesChannelId, fixture.channelId);
     assert.equal(first.fulfillmentStatus, 'unallocated');
     assert.equal(first.deliveryStatus, 'pending');
     assert.equal(first.settlementStatus, 'not_due');
