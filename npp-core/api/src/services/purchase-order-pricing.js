@@ -50,7 +50,7 @@ function normalizedReason(value) {
 
 function hasMeaningfulMonetaryInput(line) {
   if (!line || typeof line !== 'object') return false;
-  return nonZero(line.unitPrice)
+  return Object.prototype.hasOwnProperty.call(line, 'unitPrice')
     || nonZero(line.discountValue ?? line.discountAmount)
     || nonZero(line.taxRate)
     || nonZero(line.taxAmount)
