@@ -66,8 +66,7 @@ export function normalizeDocumentDiscount(payload, requestContext) {
 export function documentDiscountTarget({ mode, valueScaled, grossTotalMinor }) {
   if (mode === 'NONE' || valueScaled === 0n) return 0n;
   if (mode === 'PERCENT') return halfUp(grossTotalMinor * valueScaled, HUNDRED);
-  const amount = valueScaled / SCALE;
-  return amount;
+  return valueScaled / SCALE;
 }
 
 export function allocateLargestRemainder(grossByLine, targetMinor) {
@@ -138,22 +137,23 @@ export function canonicalPricingFingerprint(resolution) {
     variantId: resolution?.variant?.id ?? resolution?.variantId ?? null,
     currencyCode: resolution?.currencyCode ?? null,
     quantity: resolution?.quantity ?? null,
-    priceAt: resolution?.priceAt ?? null,
     channelId: resolution?.channelId ?? null,
     customerGroupId: resolution?.customerGroupId ?? null,
     customerId: resolution?.customerId ?? null,
     baseUnitPriceMinor: resolution?.baseUnitPriceMinor ?? null,
     systemUnitPriceMinor: resolution?.systemUnitPriceMinor ?? resolution?.finalUnitPriceMinor ?? null,
-    steps: steps.map((step) => ({
-      kind: step.kind,
-      reason: step.reason ?? null,
-      priceListId: step.priceListId ?? null,
-      itemId: step.itemId ?? null,
-      beforeUnitPriceMinor: step.beforeUnitPriceMinor ?? null,
-      afterUnitPriceMinor: step.afterUnitPriceMinor ?? null,
-      priority: step.priority ?? null,
-      stackingMode: step.stackingMode ?? null,
-    })),
+    steps: steps
+      .filter((step) => step?.kind !== 'MANUAL_OVERRIDE' && step?.kind !== 'RESOLUTION')
+      .map((step) => ({
+        kind: step.kind,
+        reason: step.reason ?? null,
+        priceListId: step.priceListId ?? null,
+        itemId: step.itemId ?? null,
+        beforeUnitPriceMinor: step.beforeUnitPriceMinor ?? null,
+        afterUnitPriceMinor: step.afterUnitPriceMinor ?? null,
+        priority: step.priority ?? null,
+        stackingMode: step.stackingMode ?? null,
+      })),
   });
   let hash = 2166136261;
   for (let index = 0; index < normalized.length; index += 1) {
