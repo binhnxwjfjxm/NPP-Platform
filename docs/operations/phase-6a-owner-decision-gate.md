@@ -88,7 +88,7 @@ closed
 
 An amendment creates a new immutable order version and audit history; it does not replace `confirmed` with a generic `amended` lifecycle status.
 
-`closed` is a terminal commercial state after all remaining fulfillment, delivery and customer-settlement obligations are resolved. A full successful COD delivery may close the order when the customer has received the goods and the full authoritative amount has been collected and allocated. Internal driver cash handover remains a separate operational/accounting process and does not reopen customer debt.
+`closed` is a terminal commercial state after all remaining fulfillment, delivery and customer-settlement obligations are resolved. A full successful COD delivery closes the customer order when the customer has received the goods and the full authoritative amount has been collected and allocated. Internal driver cash handover remains a separate operational/accounting process and does not reopen customer debt or block commercial completion.
 
 ### 3.2 Fulfillment status
 
@@ -216,7 +216,7 @@ driver carries approved goods
 -> record POD + COD collection
 -> post and allocate payment idempotently
 -> customer outstanding balance = 0
--> delivery/customer settlement complete
+-> delivery and customer order complete
 ```
 
 The accounting implementation may create a receivable fact and settle it immediately in the same idempotent workflow so the ledger remains complete. It must never expose that zero-duration accounting step as an outstanding customer debt.
@@ -224,7 +224,7 @@ The accounting implementation may create a receivable fact and settle it immedia
 If the driver has collected the money but has not yet handed it to the company:
 
 - the customer remains `paid`;
-- the order may remain commercially complete;
+- the order remains commercially complete;
 - the driver/trip has a separate pending cash-handover/reconciliation obligation;
 - a handover discrepancy is handled internally and must not automatically recreate customer debt.
 
@@ -362,7 +362,7 @@ Changes use a versioned amendment with before/after snapshots, actor, reason and
 - one trip may carry many Delivery Orders;
 - one Delivery Order may have multiple historical assignments/attempts;
 - partial and failed delivery never complete the Sales Order automatically;
-- full successful delivery with full COD collection may complete the customer order even while the trip still has an internal cash-handover obligation.
+- full successful delivery with full COD collection completes the customer order even while the trip still has an internal cash-handover obligation.
 
 ## 11. POD and COD — OWNER DIRECTION INCORPORATED + PROPOSED DETAIL
 
@@ -387,7 +387,7 @@ Rules:
 - expected COD amount comes from the authoritative delivered value, not unrestricted driver input;
 - driver records collected amount, method, timestamp and discrepancy reason when applicable;
 - full authoritative collection plus successful payment allocation changes customer settlement to `paid` immediately;
-- full COD delivery may close the customer order without waiting for driver cash handover;
+- full COD delivery closes the customer order without waiting for driver cash handover;
 - trip/cash closure still requires handover and reconciliation or an approved manager exception;
 - a pending handover is cash-in-transit/internal accountability, not customer debt;
 - shortages, overpayments, refunds and write-offs use explicit Accounting transitions;
@@ -423,8 +423,8 @@ At minimum, later implementation must prove:
 - FEFO/FIFO and manual override permission work as locked;
 - partial dispatch issues only approved quantity;
 - failed delivery creates no sale settlement for undelivered quantity and does not complete the order;
-- full COD delivery plus full collection leaves customer debt at zero and completes customer settlement;
-- pending driver cash handover does not reopen customer debt;
+- full COD delivery plus full collection leaves customer debt at zero and completes the customer order;
+- pending driver cash handover does not reopen customer debt or block order completion;
 - COD shortage cannot be marked paid without an authorized exception;
 - PREPAID delivery allocates existing payment/credit correctly;
 - only approved CREDIT delivery creates an outstanding receivable and aging balance;
