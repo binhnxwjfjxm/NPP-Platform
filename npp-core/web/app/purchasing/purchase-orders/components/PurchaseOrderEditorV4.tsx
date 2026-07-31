@@ -32,7 +32,11 @@ import {
   MIN_PURCHASE_ORDER_SKU_SEARCH_LENGTH,
   PURCHASE_ORDER_BULK_TEMPLATE_FILENAME,
   PURCHASE_ORDER_BULK_TEMPLATE_MIME,
+  PURCHASE_ORDER_SKU_FILTERS,
+  filterPurchaseOrderSkuOptions,
+  normalizePurchaseOrderSkuSearchFailure,
   purchaseOrderBulkTemplate,
+  type PurchaseOrderSkuFilter,
 } from '../../../../lib/purchase-order-sku-entry';
 import styles from '../../../organization/organization.module.css';
 import localStyles from './purchase-order-editor-v2.module.css';
@@ -184,12 +188,21 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const payload = await response.json().catch(() => ({})) as ApiEnvelope<T>;
   if (!response.ok || payload.data === undefined) {
-    throw new UiRequestError(
-      payload.error?.message || 'Không thực hiện được yêu cầu đơn đặt hàng.',
-      payload.error?.code || 'PURCHASE_ORDER_REQUEST_FAILED',
-      response.status,
-      payload.error?.retryable === true,
-    );
+    const base = {
+      code: payload.error?.code,
+      message: payload.error?.message,
+      statusCode: response.status,
+      retryable: payload.error?.retryable,
+    };
+    const normalized = path.includes('/sku-search') || path.includes('/sku-resolve')
+      ? normalizePurchaseOrderSkuSearchFailure(base)
+      : {
+          code: base.code || 'PURCHASE_ORDER_REQUEST_FAILED',
+          message: base.message || 'Không thực hiện được yêu cầu đơn đặt hàng.',
+          statusCode: base.statusCode || 500,
+          retryable: base.retryable === true,
+        };
+    throw new UiRequestError(normalized.message, normalized.code, normalized.statusCode, normalized.retryable);
   }
   return payload.data;
 }
@@ -241,10 +254,12 @@ export default function PurchaseOrderEditorV4({
   const [note, setNote] = useState(purchaseOrder?.note ?? '');
   const [lines, setLines] = useState<EditorLine[]>(() => initialLines(purchaseOrder));
   const [entryMode, setEntryMode] = useState<EntryMode>('quick');
+  const [eligibilityFilter, setEligibilityFilter] = useState<PurchaseOrderSkuFilter>(PURCHASE_ORDER_SKU_FILTERS.eligible);
   const [quickTerm, setQuickTerm] = useState('');
   const [quickResults, setQuickResults] = useState<PurchaseOrderSkuSearchOption[]>([]);
   const [quickLoading, setQuickLoading] = useState(false);
   const [quickHasMore, setQuickHasMore] = useState(false);
+  const [activeQuickIndex, setActiveQuickIndex] = useState(0);
   const [browseTerm, setBrowseTerm] = useState('');
   const [browseResults, setBrowseResults] = useState<PurchaseOrderSkuSearchOption[]>([]);
   const [browseLoading, setBrowseLoading] = useState(false);
@@ -270,6 +285,17 @@ export default function PurchaseOrderEditorV4({
     () => warehouses.filter((warehouse) => warehouse.is_active).sort((left, right) => left.code.localeCompare(right.code)),
     [warehouses],
   );
+  const filteredQuickResults = useMemo(
+    () => filterPurchaseOrderSkuOptions(quickResults, eligibilityFilter),
+    [quickResults, eligibilityFilter],
+  );
+  const filteredBrowseResults = useMemo(
+    () => filterPurchaseOrderSkuOptions(browseResults, eligibilityFilter),
+    [browseResults, eligibilityFilter],
+  );
+  const activeOptionId = filteredQuickResults[activeQuickIndex]
+    ? `po-sku-option-${filteredQuickResults[activeQuickIndex].id}`
+    : undefined;
   const totals = useMemo(() => calculatePurchaseOrderDraftTotals(lines.map((line) => ({
     variantId: line.variantId,
     quantity: toApiDecimal(line.quantity, '0'),
@@ -317,6 +343,11 @@ export default function PurchaseOrderEditorV4({
     return () => document.removeEventListener('keydown', handleDialogKeyboard);
   }, [requestClose]);
 
+  useEffect(() => {
+    if (!activeOptionId) return;
+    document.getElementById(activeOptionId)?.scrollIntoView({ block: 'nearest' });
+  }, [activeOptionId]);
+
   function markChanged() {
     setDirty(true);
     setAttemptKey(`po-${crypto.randomUUID()}`);
@@ -331,9 +362,11 @@ export default function PurchaseOrderEditorV4({
   useEffect(() => {
     if (entryMode !== 'quick') return undefined;
     const term = quickTerm.trim();
+    setActiveQuickIndex(0);
     if (term.length < MIN_PURCHASE_ORDER_SKU_SEARCH_LENGTH) {
       setQuickResults([]);
       setQuickHasMore(false);
+      setError(null);
       return undefined;
     }
     const controller = new AbortController();
@@ -344,9 +377,14 @@ export default function PurchaseOrderEditorV4({
         if (!controller.signal.aborted) {
           setQuickResults(result);
           setQuickHasMore(result.length === SEARCH_PAGE_SIZE);
+          setError(null);
         }
       } catch (failure) {
-        if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : 'Không tải được danh sách SKU.');
+        if (!controller.signal.aborted) {
+          setQuickResults([]);
+          setQuickHasMore(false);
+          setError(failure instanceof Error ? failure.message : 'Không tải được danh sách SKU.');
+        }
       } finally {
         if (!controller.signal.aborted) setQuickLoading(false);
       }
@@ -367,6 +405,7 @@ export default function PurchaseOrderEditorV4({
         : result);
       setBrowseHasMore(result.length === SEARCH_PAGE_SIZE);
       if (!append) setSelectedBrowseIds(new Set());
+      setError(null);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Không tải được danh mục SKU.');
     } finally {
@@ -377,6 +416,28 @@ export default function PurchaseOrderEditorV4({
   useEffect(() => {
     if (entryMode === 'browse' && browseResults.length === 0 && !browseLoading) void searchBrowse(false);
   }, [entryMode]);
+
+  function handleQuickKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (filteredQuickResults.length === 0) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActiveQuickIndex((current) => Math.min(current + 1, filteredQuickResults.length - 1));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActiveQuickIndex((current) => Math.max(current - 1, 0));
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      const option = filteredQuickResults[activeQuickIndex];
+      if (!option) return;
+      if (option.eligibility.selectable) void addOptions([option]);
+      else setError(option.eligibility.message);
+    } else if (event.key === 'Escape') {
+      event.stopPropagation();
+      setQuickTerm('');
+      setQuickResults([]);
+      setError(null);
+    }
+  }
 
   async function resolveLineData(line: EditorLine): Promise<Partial<EditorLine>> {
     if (!supplierId || !orderDate || !line.unitId || !positiveDecimal(line.quantity)) {
@@ -676,32 +737,29 @@ export default function PurchaseOrderEditorV4({
                 <label>Kho nhận<select value={warehouseId} onChange={(event) => { markChanged(); setWarehouseId(event.target.value); }}><option value="">Chọn kho nhận</option>{activeWarehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} — {warehouse.name}</option>)}</select></label>
                 <label>Ngày đặt<input type="date" value={orderDate} onChange={(event) => { markChanged(); setOrderDate(event.target.value); }} /></label>
                 <label>Dự kiến nhận<input type="date" value={expectedDate} onChange={(event) => { markChanged(); setExpectedDate(event.target.value); }} /></label>
-                <label>Tham chiếu NCC<input value={supplierReference} maxLength={256} onChange={(event) => { markChanged(); setSupplierReference(event.target.value); }} /></label>
+                <label>Tham chiếu nhà cung cấp<input value={supplierReference} maxLength={256} onChange={(event) => { markChanged(); setSupplierReference(event.target.value); }} /></label>
                 <label className={localStyles.fullWidth}>Ghi chú đơn<input value={note} maxLength={4000} onChange={(event) => { markChanged(); setNote(event.target.value); }} /></label>
               </div>
             </section>
 
             <section className={localStyles.section}>
               <div className={localStyles.sectionTitle}><h4>Thêm SKU</h4><span>Giá bán nền không được dùng trong luồng này.</span></div>
-              <div className={localStyles.modeTabs} role="tablist">
-                <button type="button" className={entryMode === 'quick' ? localStyles.modeTabActive : localStyles.modeTab} onClick={() => setEntryMode('quick')}>Tìm nhanh</button>
-                <button type="button" className={entryMode === 'browse' ? localStyles.modeTabActive : localStyles.modeTab} onClick={() => setEntryMode('browse')}>Chọn từ danh mục</button>
-                <button type="button" className={entryMode === 'bulk' ? localStyles.modeTabActive : localStyles.modeTab} onClick={() => setEntryMode('bulk')}>Nhập nhiều dòng</button>
+              <div className={localStyles.modeTabs} role="tablist" aria-label="Cách thêm dòng đặt hàng">
+                <button type="button" role="tab" aria-selected={entryMode === 'quick'} className={entryMode === 'quick' ? localStyles.modeTabActive : localStyles.modeTab} onClick={() => { setEntryMode('quick'); setError(null); }}>Tìm nhanh</button>
+                <button type="button" role="tab" aria-selected={entryMode === 'browse'} className={entryMode === 'browse' ? localStyles.modeTabActive : localStyles.modeTab} onClick={() => { setEntryMode('browse'); setError(null); }}>Chọn từ danh mục</button>
+                <button type="button" role="tab" aria-selected={entryMode === 'bulk'} className={entryMode === 'bulk' ? localStyles.modeTabActive : localStyles.modeTab} onClick={() => { setEntryMode('bulk'); setError(null); }}>Nhập nhiều dòng</button>
               </div>
 
+              {entryMode !== 'bulk' ? <div className={localStyles.filterBar}><label>Trạng thái SKU<select value={eligibilityFilter} onChange={(event) => setEligibilityFilter(event.target.value as PurchaseOrderSkuFilter)}><option value="eligible">Có thể mua</option><option value="setup">Cần thiết lập</option><option value="all">Tất cả</option></select></label><Link href="/products" className={localStyles.catalogLink}>Mở thiết lập sản phẩm</Link></div> : null}
+
               {entryMode === 'quick' ? <div className={localStyles.modePanel}>
-                <div className={localStyles.quickRow}>
-                  <label>Tìm SKU, mã hàng, tên hoặc mã vạch<input value={quickTerm} onChange={(event) => setQuickTerm(event.target.value)} placeholder="Nhập ít nhất 2 ký tự…" /></label>
-                  <Link href="/products" className={localStyles.catalogLink}>Mở danh mục sản phẩm</Link>
-                </div>
-                <div className={localStyles.resultList}>
-                  {quickLoading ? <p className={localStyles.hint}>Đang tìm SKU…</p> : null}
-                  {quickResults.map((option) => <button key={option.id} type="button" className={localStyles.resultCard} onClick={() => void addOptions([option])} disabled={!option.eligibility.selectable || !option.unitId}>
-                    <span className={localStyles.resultIdentity}><strong>{option.sku} — {option.variantName}</strong><span>{option.productCode} · {option.productName}</span></span>
-                    <span className={localStyles.resultMeta}>{option.unitCode || 'Chưa có đơn vị'} · {option.conversionToBase || '—'}</span>
-                    <span className={option.eligibility.selectable ? localStyles.eligible : localStyles.needsSetup}>{option.eligibility.message}</span>
-                  </button>)}
-                  {quickHasMore ? <button type="button" className={localStyles.loadMore} onClick={async () => { const result = await fetchSkuPage(quickTerm, quickResults.length); setQuickResults((current) => [...current, ...result]); setQuickHasMore(result.length === SEARCH_PAGE_SIZE); }}>Tải thêm</button> : null}
+                <div className={localStyles.quickRow}><label htmlFor="po-quick-search">Từ khóa sản phẩm hoặc SKU</label><p className={localStyles.hint}>{quickTerm.trim().length < MIN_PURCHASE_ORDER_SKU_SEARCH_LENGTH ? 'Nhập ít nhất 2 ký tự để tìm.' : `${filteredQuickResults.length} kết quả đang hiển thị.`}</p></div>
+                <div className={localStyles.searchInputWrap}><input id="po-quick-search" aria-label="Từ khóa sản phẩm hoặc SKU" role="combobox" aria-expanded={filteredQuickResults.length > 0} aria-controls="po-quick-results" aria-activedescendant={activeOptionId} placeholder="Mã sản phẩm, tên, SKU hoặc mã vạch" value={quickTerm} onKeyDown={handleQuickKeyDown} onChange={(event) => setQuickTerm(event.target.value)} />{quickTerm ? <button type="button" aria-label="Xóa từ khóa tìm SKU" onClick={() => { setQuickTerm(''); setQuickResults([]); setError(null); }}>Xóa</button> : null}</div>
+                <div id="po-quick-results" role="listbox" className={localStyles.resultList}>
+                  {quickLoading ? <p className={localStyles.empty}>Đang tìm SKU…</p> : null}
+                  {!quickLoading && quickTerm.trim().length >= MIN_PURCHASE_ORDER_SKU_SEARCH_LENGTH && filteredQuickResults.length === 0 ? <p className={localStyles.empty}>Không tìm thấy SKU phù hợp với bộ lọc.</p> : null}
+                  {filteredQuickResults.map((option, index) => <div id={`po-sku-option-${option.id}`} key={option.id} role="option" tabIndex={-1} aria-selected={activeQuickIndex === index} className={`${localStyles.resultCard} ${activeQuickIndex === index ? localStyles.resultCardActive : ''}`} onMouseEnter={() => setActiveQuickIndex(index)} onMouseDown={(event) => event.preventDefault()} onClick={() => { if (option.eligibility.selectable) void addOptions([option]); else setError(option.eligibility.message); }}><span className={localStyles.resultIdentity}><strong>{option.sku} — {option.variantName}</strong><span>{option.productCode} · {option.productName}</span></span><span className={localStyles.resultMeta}>{option.unitCode || 'Chưa có đơn vị'} · {option.conversionToBase || '—'}</span><span className={option.eligibility.selectable ? localStyles.eligible : localStyles.needsSetup}>{option.eligibility.message}</span></div>)}
+                  {quickHasMore ? <button type="button" className={localStyles.loadMore} onClick={async () => { const result = await fetchSkuPage(quickTerm, quickResults.length); setQuickResults((current) => [...new Map([...current, ...result].map((option) => [option.id, option])).values()]); setQuickHasMore(result.length === SEARCH_PAGE_SIZE); }}>Tải thêm</button> : null}
                 </div>
               </div> : null}
 
@@ -709,10 +767,10 @@ export default function PurchaseOrderEditorV4({
                 <div className={localStyles.browseFilters}>
                   <label>Tìm trong danh mục<input value={browseTerm} onChange={(event) => setBrowseTerm(event.target.value)} placeholder="Có thể để trống để tải theo trang" /></label>
                   <button type="button" className={styles.secondaryButton} onClick={() => void searchBrowse(false)} disabled={browseLoading}>{browseLoading ? 'Đang tải…' : 'Tải danh mục'}</button>
-                  <button type="button" className={styles.primaryButton} onClick={() => void addOptions(browseResults.filter((option) => selectedBrowseIds.has(option.id)))} disabled={selectedBrowseIds.size === 0}>Thêm {selectedBrowseIds.size} SKU</button>
+                  <button type="button" className={styles.primaryButton} onClick={() => void addOptions(filteredBrowseResults.filter((option) => selectedBrowseIds.has(option.id)))} disabled={selectedBrowseIds.size === 0}>Thêm {selectedBrowseIds.size} SKU</button>
                 </div>
                 <div className={localStyles.productSkuList}>
-                  {browseResults.map((option) => <label key={option.id} className={localStyles.browseSku}><input type="checkbox" checked={selectedBrowseIds.has(option.id)} disabled={!option.eligibility.selectable || !option.unitId} onChange={(event) => setSelectedBrowseIds((current) => { const next = new Set(current); if (event.target.checked) next.add(option.id); else next.delete(option.id); return next; })} /><span className={localStyles.resultIdentity}><strong>{option.sku} — {option.variantName}</strong><span>{option.productCode} · {option.productName}</span></span><span className={option.eligibility.selectable ? localStyles.eligible : localStyles.needsSetup}>{option.unitCode || 'Chưa có đơn vị'} · {option.eligibility.message}</span></label>)}
+                  {filteredBrowseResults.map((option) => <label key={option.id} className={localStyles.browseSku}><input type="checkbox" checked={selectedBrowseIds.has(option.id)} disabled={!option.eligibility.selectable || !option.unitId} onChange={(event) => setSelectedBrowseIds((current) => { const next = new Set(current); if (event.target.checked) next.add(option.id); else next.delete(option.id); return next; })} /><span className={localStyles.resultIdentity}><strong>{option.sku} — {option.variantName}</strong><span>{option.productCode} · {option.productName}</span></span><span className={option.eligibility.selectable ? localStyles.eligible : localStyles.needsSetup}>{option.unitCode || 'Chưa có đơn vị'} · {option.eligibility.message}</span></label>)}
                 </div>
                 {browseHasMore ? <button type="button" className={localStyles.loadMore} onClick={() => void searchBrowse(true)}>Tải thêm</button> : null}
               </div> : null}
@@ -756,7 +814,7 @@ export default function PurchaseOrderEditorV4({
             {canReadPrice ? <section className={localStyles.totals} aria-label="Tổng tiền đơn đặt hàng"><div><span>Tiền hàng</span><strong>{formatPurchaseOrderAmount(totals.subtotal, purchaseOrder?.currency || 'VND')}</strong></div><div><span>Chiết khấu</span><strong>{formatPurchaseOrderAmount(totals.discountTotal, purchaseOrder?.currency || 'VND')}</strong></div><div><span>Thuế</span><strong>{formatPurchaseOrderAmount(totals.taxTotal, purchaseOrder?.currency || 'VND')}</strong></div><div><span>Tổng cộng</span><strong>{formatPurchaseOrderAmount(totals.total, purchaseOrder?.currency || 'VND')}</strong></div></section> : null}
           </div>
 
-          <footer className={localStyles.dialogFooter}><button type="button" className={styles.secondaryButton} onClick={requestClose} disabled={busy}>Hủy thao tác</button><button type="submit" className={styles.primaryButton} disabled={busy}>{busy ? 'Đang lưu…' : mode === 'create' ? 'Lưu đơn nháp' : 'Lưu thay đổi'}</button></footer>
+          <footer className={localStyles.dialogFooter}><button type="button" className={styles.secondaryButton} onClick={requestClose} disabled={busy}>Hủy thao tác</button><button type="submit" data-testid="purchase-order-save" className={styles.primaryButton} disabled={busy}>{busy ? 'Đang lưu…' : mode === 'create' ? 'Lưu đơn nháp' : 'Lưu thay đổi'}</button></footer>
         </form>
       </section>
     </div>
