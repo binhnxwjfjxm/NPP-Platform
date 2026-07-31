@@ -7,6 +7,7 @@ const detail = readFileSync(new URL('../app/sales/sales-orders/SalesOrderDetail.
 const form = readFileSync(new URL('../app/sales/sales-orders/SalesOrderForm.tsx', import.meta.url), 'utf8');
 const gateway = readFileSync(new URL('../lib/sales-order-gateway.ts', import.meta.url), 'utf8');
 const page = readFileSync(new URL('../app/sales/sales-orders/page.tsx', import.meta.url), 'utf8');
+const appShell = readFileSync(new URL('../app/components/app-shell-core.tsx', import.meta.url), 'utf8');
 
 function absent(source, pattern, label) {
   assert.equal(pattern.test(source), false, label);
@@ -42,4 +43,13 @@ test('Sales Order browser routes stay same-origin and secrets remain server-only
   absent(workspace, /CORE_API_INTERNAL_URL/, 'workspace must not contain backend URL');
   absent(workspace, /CORE_API_SERVER_TOKEN/, 'workspace must not contain backend token');
   absent(gateway, /NEXT_PUBLIC_CORE_API_URL/, 'gateway must not depend on a public backend URL');
+});
+
+test('Sales Order draft saves keep one idempotency key for replay and the AppShell exposes Sales', () => {
+  assert.match(form, /const \[saveKey\] = useState\(\(\) => mutationKey/);
+  assert.match(form, /'Idempotency-Key': saveKey/);
+  assert.match(gateway, /updateSalesOrderDraft<[\s\S]*idempotencyKey/);
+  assert.match(gateway, /updateSalesOrderAmendment<[\s\S]*idempotencyKey/);
+  assert.match(appShell, /title="Bán hàng"/);
+  assert.match(appShell, /href: '\/sales\/sales-orders'/);
 });
