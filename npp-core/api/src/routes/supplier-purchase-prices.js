@@ -121,7 +121,7 @@ async function executeCreate(req, res, options, requestContext, payload) {
               metadata,
             });
             await insertOutboxEvent(client, event);
-            return { price: created.price };
+            return { price: created.price, eventId: event.eventId };
           },
         });
         if (result.failed) {
@@ -188,7 +188,7 @@ async function executeUpdate(res, options, requestContext, id, payload) {
           metadata,
         });
         await insertOutboxEvent(client, event);
-        return { price: updated.price };
+        return { price: updated.price, eventId: event.eventId };
       },
     });
     if (result.failed) return sendServiceError(res, result.result, options);
@@ -213,7 +213,7 @@ export async function handleSupplierPurchasePriceRoutes(req, res, options) {
       ...payload,
     });
     if (!result.ok) return sendServiceError(res, result, options) ?? true;
-    const data = canReadPurchaseOrderPrice(requestContext) && result.price
+    const data = canReadPurchaseOrderPrice(requestContext)
       ? { status: result.status, price: result.price }
       : { status: result.status };
     sendSuccess(res, data, options.requestId, options.receivedAt);
