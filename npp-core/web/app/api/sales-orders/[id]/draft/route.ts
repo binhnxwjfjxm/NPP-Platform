@@ -4,6 +4,7 @@ import type { SalesOrder } from '../../../../../lib/sales-order-types';
 import {
   readSalesOrderBody,
   salesOrderErrorResponse,
+  salesOrderIdempotencyKey,
   salesOrderRequestId,
   salesOrderResponse,
 } from '../../_route-helpers';
@@ -14,7 +15,12 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   if (!parsed.ok) return parsed.response;
   try {
     return salesOrderResponse(
-      await updateSalesOrderDraft<SalesOrder>(params.id, requestId, parsed.body),
+      await updateSalesOrderDraft<SalesOrder>(
+        params.id,
+        requestId,
+        parsed.body,
+        salesOrderIdempotencyKey(request),
+      ),
       requestId,
     );
   } catch (error) {
