@@ -36,9 +36,12 @@ export type SalesOrderVersion = {
   id: string;
   versionNumber: string;
   status: SalesOrderVersionStatus;
+  customerMode: SalesOrderCustomerMode;
   customerId: string;
   customerCode: string;
   customerName: string;
+  walkInDisplayName: string | null;
+  walkInPhone: string | null;
   customerAddressId: string | null;
   customerAddress: Record<string, unknown> | null;
   warehouseId: string;
@@ -75,9 +78,12 @@ export type SalesOrder = {
   sourceType: SalesOrderSourceType;
   sourceId: string | null;
   sourceOutletId: string | null;
+  customerMode: SalesOrderCustomerMode;
   customerId: string;
   customerCode: string;
   customerName: string;
+  walkInDisplayName: string | null;
+  walkInPhone: string | null;
   customerAddressId: string | null;
   warehouseId: string;
   warehouseCode: string;
@@ -131,6 +137,8 @@ export type SalesOrderSkuSearchOption = {
   unitName: string | null;
   conversionToBase: string | null;
   allowsFractional: boolean | null;
+  defaultTaxMode: SalesOrderTaxMode;
+  defaultTaxRate: string;
   eligibility: SalesOrderSkuEligibility;
 };
 
@@ -184,6 +192,8 @@ export type SalesOrderDraftPayload = {
   sourceOutletId?: string;
   customerMode?: SalesOrderCustomerMode;
   customerId?: string;
+  walkInDisplayName?: string;
+  walkInPhone?: string;
   customerAddressId?: string;
   warehouseId: string;
   deliveryMode: SalesOrderDeliveryMode;
