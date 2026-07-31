@@ -55,6 +55,7 @@ Khách đã có | Khách vãng lai
 - delivery requires quick creation of a real customer and address inside the order flow;
 - quick creation performs duplicate-phone lookup before create;
 - customer/address create is idempotent, permissioned and audited through Core API;
+- one quick-create attempt keeps stable customer/address idempotency keys across retry and rotates them only after complete success or a clearly new attempt;
 - do not create anonymous customer records for every cash sale.
 
 If no installation-level walk-in customer configuration exists, add a forward-only migration/config contract and bootstrap/admin validation. Fail closed when the configured customer is missing or inactive.
@@ -116,6 +117,7 @@ Tax is not a normal per-line data-entry burden.
 
 - remove tax mode and tax rate from the fast-add row;
 - Core resolves the default tax treatment from canonical configuration;
+- the same safe Core default applies whether or not an installation settings row has already been created; row existence must never switch tax ownership silently;
 - backend continues to calculate and snapshot exact per-line tax;
 - UI exposes per-line tax detail only in an expandable advanced view;
 - order summary shows subtotal, discount, tax and total;
@@ -171,11 +173,14 @@ Required:
 - walk-in pickup with configured system customer;
 - walk-in credit denial;
 - delivery quick-customer creation and duplicate-phone handling;
+- stable quick-customer/address retry idempotency;
 - unified search by name, product code, SKU and barcode;
 - keyboard add-line flow;
 - pricing preview with base price, applied rules and final price;
 - no-price/blocked pricing fail-closed;
+- exact scaled arithmetic for per-unit discount preview;
 - tax hidden from fast entry and visible in totals/details;
+- Core-owned tax defaults remain consistent before and after settings-row creation;
 - exact totals from server response;
 - save draft and save-and-confirm permission/idempotency flows;
 - API regression, web unit tests and browser E2E;
