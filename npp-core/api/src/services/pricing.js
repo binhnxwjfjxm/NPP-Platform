@@ -46,6 +46,9 @@ export async function resolvePrice(client, { installationId, payload }) {
 
   const systemResolution = {
     ...automatic.resolution,
+    channelId: automatic.resolution.channelId ?? automaticPayload.channelId ?? null,
+    customerId: automatic.resolution.customerId ?? automaticPayload.customerId ?? null,
+    customerGroupId: automatic.resolution.customerGroupId ?? null,
     systemUnitPriceMinor: automatic.resolution.finalUnitPriceMinor,
   };
   const resolutionFingerprint = canonicalPricingFingerprint(systemResolution);
