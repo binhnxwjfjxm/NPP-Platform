@@ -641,7 +641,9 @@ export async function confirmSalesOrder(client, { requestContext, id, versionNum
       seriesId: series.id,
       idempotencyKey: `sales-order:${id}:confirm:${idempotencyKey}`,
       payload: {
-        documentDate: String(loaded.order.created_at).slice(0, 10),
+        documentDate: loaded.order.created_at instanceof Date
+          ? loaded.order.created_at.toISOString().slice(0, 10)
+          : String(loaded.order.created_at).slice(0, 10),
         metadata: { salesOrderId: id, versionNumber: number },
       },
       actorId: requestContext.actorId,
