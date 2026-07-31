@@ -50,6 +50,7 @@ test('Sales Order draft saves keep one idempotency key for replay and the AppShe
   assert.match(form, /'Idempotency-Key': saveKey/);
   assert.match(gateway, /updateSalesOrderDraft<[\s\S]*idempotencyKey/);
   assert.match(gateway, /updateSalesOrderAmendment<[\s\S]*idempotencyKey/);
-  assert.match(appShell, /title="Bán hàng"/);
+  assert.match(appShell, /data-testid="sales-menu-toggle"/);
+  assert.match(appShell, /testId: 'nav-sales-orders'/);
   assert.match(appShell, /href: '\/sales\/sales-orders'/);
 });
