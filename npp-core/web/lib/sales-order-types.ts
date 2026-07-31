@@ -3,6 +3,8 @@ export type SalesOrderVersionStatus = 'draft' | 'confirmed' | 'superseded' | 'ca
 export type SalesOrderCollectionPolicy = 'PREPAID' | 'COLLECT_ON_DELIVERY' | 'COLLECT_AFTER_DELIVERY' | 'CREDIT_TERMS';
 export type SalesOrderDeliveryMode = 'DELIVERY' | 'PICKUP';
 export type SalesOrderSourceType = 'MANUAL' | 'IMPORT' | 'API' | 'MCP';
+export type SalesOrderCustomerMode = 'EXISTING' | 'WALK_IN';
+export type SalesOrderTaxMode = 'EXCLUSIVE' | 'INCLUSIVE';
 
 export type SalesOrderLine = {
   id: string;
@@ -22,7 +24,7 @@ export type SalesOrderLine = {
   discountMode: 'TOTAL_AMOUNT' | 'PER_UNIT' | 'PERCENT';
   discountValue: string;
   discountAmount: string;
-  taxMode: 'EXCLUSIVE' | 'INCLUSIVE';
+  taxMode: SalesOrderTaxMode;
   taxRate: string;
   taxAmount: string;
   lineSubtotal: string;
@@ -110,12 +112,66 @@ export type ListSalesOrdersParams = {
   search?: string;
 };
 
+export type SalesOrderSkuEligibility = {
+  selectable: boolean;
+  code: string;
+  message: string;
+};
+
+export type SalesOrderSkuSearchOption = {
+  id: string;
+  productId: string;
+  productCode: string;
+  productName: string;
+  sku: string;
+  variantName: string;
+  barcode: string | null;
+  unitId: string | null;
+  unitCode: string | null;
+  unitName: string | null;
+  conversionToBase: string | null;
+  allowsFractional: boolean | null;
+  eligibility: SalesOrderSkuEligibility;
+};
+
+export type SalesPriceStep = {
+  kind: 'BASE' | 'RULE' | 'SKIPPED' | 'MANUAL_OVERRIDE';
+  reason?: string;
+  priceListId?: string;
+  priceListCode?: string;
+  priceListType?: string;
+  itemId?: string;
+  adjustmentType?: string;
+  amountMinor?: string | null;
+  rateBps?: number | null;
+  beforeUnitPriceMinor?: string | null;
+  afterUnitPriceMinor?: string;
+  priority?: number;
+  stackingMode?: string;
+  sourceKind?: string;
+  sourceKey?: string | null;
+  externalRuleCode?: string | null;
+};
+
+export type SalesPriceResolution = {
+  variant: Record<string, unknown>;
+  currencyCode: string;
+  quantity: string;
+  priceAt: string;
+  customerId: string | null;
+  customerGroupId: string | null;
+  baseUnitPriceMinor: string;
+  finalUnitPriceMinor: string;
+  lineTotalMinor: string;
+  steps: SalesPriceStep[];
+};
+
 export type SalesOrderLineDraft = {
   variantId: string;
   quantity: string;
   discountMode?: 'TOTAL_AMOUNT' | 'PER_UNIT' | 'PERCENT';
   discountValue?: string;
-  taxMode?: 'EXCLUSIVE' | 'INCLUSIVE';
+  taxMode?: SalesOrderTaxMode;
   taxRate?: string;
   manualUnitPriceMinor?: string;
   manualReason?: string;
@@ -126,7 +182,8 @@ export type SalesOrderDraftPayload = {
   sourceType?: SalesOrderSourceType;
   sourceId?: string;
   sourceOutletId?: string;
-  customerId: string;
+  customerMode?: SalesOrderCustomerMode;
+  customerId?: string;
   customerAddressId?: string;
   warehouseId: string;
   deliveryMode: SalesOrderDeliveryMode;
