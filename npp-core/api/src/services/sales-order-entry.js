@@ -4,6 +4,7 @@ const WALK_IN_MODE = 'WALK_IN';
 const EXISTING_MODE = 'EXISTING';
 const CUSTOMER_MODES = new Set([WALK_IN_MODE, EXISTING_MODE]);
 const WALK_IN_COLLECTION_POLICIES = new Set(['PREPAID', 'COLLECT_ON_DELIVERY']);
+const TAX_MODES = new Set(['EXCLUSIVE', 'INCLUSIVE']);
 
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
@@ -24,6 +25,30 @@ function normalizedSourceType(payload, order) {
   return String(order?.source_type ?? payload?.sourceType ?? 'MANUAL').trim().toUpperCase();
 }
 
+function optionalText(value, maxLength) {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!normalized) return null;
+  return normalized.length <= maxLength ? normalized : undefined;
+}
+
+function taxSettings(settings) {
+  const mode = TAX_MODES.has(String(settings?.default_tax_mode ?? '').toUpperCase())
+    ? String(settings.default_tax_mode).toUpperCase()
+    : 'EXCLUSIVE';
+  const rate = String(settings?.default_tax_rate ?? '0');
+  return Object.freeze({ taxMode: mode, taxRate: rate });
+}
+
+function applyDefaultTax(lines, settings) {
+  if (!Array.isArray(lines)) return lines;
+  const defaults = taxSettings(settings);
+  return lines.map((line) => Object.freeze({
+    ...line,
+    taxMode: defaults.taxMode,
+    taxRate: defaults.taxRate,
+  }));
+}
+
 function enforceWalkInShape(payload, sourceType) {
   const deliveryMode = String(payload?.deliveryMode ?? 'DELIVERY').trim().toUpperCase();
   const collectionPolicy = String(payload?.collectionPolicy ?? 'COLLECT_ON_DELIVERY').trim().toUpperCase();
@@ -39,7 +64,31 @@ function enforceWalkInShape(payload, sourceType) {
   if (payload?.customerAddressId) {
     return failure('WALK_IN_ADDRESS_FORBIDDEN', 'Đơn khách vãng lai không sử dụng địa chỉ giao hàng');
   }
-  return { ok: true, deliveryMode, collectionPolicy };
+  const displayName = optionalText(payload?.walkInDisplayName, 256);
+  if (displayName === undefined) return failure('INVALID_WALK_IN_NAME', 'Tên khách vãng lai không được vượt quá 256 ký tự');
+  const phone = optionalText(payload?.walkInPhone, 64);
+  if (phone === undefined) return failure('INVALID_WALK_IN_PHONE', 'Số điện thoại khách vãng lai không được vượt quá 64 ký tự');
+  return { ok: true, deliveryMode, collectionPolicy, displayName, phone };
+}
+
+export async function getSalesOrderEntrySettings(client, { requestContext }) {
+  const settings = await repository.getSalesOrderSettings(client, {
+    installationId: requestContext.installationId,
+  });
+  const defaults = taxSettings(settings);
+  return Object.freeze({
+    ok: true,
+    settings: Object.freeze({
+      walkInConfigured: Boolean(
+        settings?.walk_in_customer_id
+        && settings?.customer_id
+        && settings?.customer_is_active === true
+      ),
+      walkInBootstrapSupported: true,
+      defaultTaxMode: defaults.taxMode,
+      defaultTaxRate: defaults.taxRate,
+    }),
+  });
 }
 
 export async function normalizeSalesOrderEntryPayload(client, {
@@ -60,7 +109,11 @@ export async function normalizeSalesOrderEntryPayload(client, {
         warehouseIds: warehouseIds(requestContext),
       })
     : null;
+  if (salesOrderId && !order) return failure('SALES_ORDER_NOT_FOUND', 'Sales order not found');
   const sourceType = normalizedSourceType(payload, order);
+  let settings = await repository.getSalesOrderSettings(client, {
+    installationId: requestContext.installationId,
+  });
 
   let customer = null;
   if (mode === WALK_IN_MODE) {
@@ -70,7 +123,16 @@ export async function normalizeSalesOrderEntryPayload(client, {
       installationId: requestContext.installationId,
       actorId: requestContext.actorId,
     });
-    if (!customer) return failure('WALK_IN_CUSTOMER_UNAVAILABLE', 'Không thể chuẩn bị khách vãng lai', true);
+    if (!customer) {
+      return failure(
+        'WALK_IN_CUSTOMER_UNAVAILABLE',
+        'Khách vãng lai của installation chưa được cấu hình hợp lệ',
+        false,
+      );
+    }
+    settings = await repository.getSalesOrderSettings(client, {
+      installationId: requestContext.installationId,
+    });
     return Object.freeze({
       ok: true,
       payload: Object.freeze({
@@ -78,8 +140,11 @@ export async function normalizeSalesOrderEntryPayload(client, {
         customerMode: WALK_IN_MODE,
         customerId: customer.id,
         customerAddressId: undefined,
+        walkInDisplayName: shape.displayName,
+        walkInPhone: shape.phone,
         deliveryMode: shape.deliveryMode,
         collectionPolicy: shape.collectionPolicy,
+        lines: applyDefaultTax(payload.lines, settings),
       }),
     });
   }
@@ -90,7 +155,10 @@ export async function normalizeSalesOrderEntryPayload(client, {
       id: payload.customerId.trim(),
     });
   }
-  if (customer?.code === repository.WALK_IN_CUSTOMER_CODE) {
+  if (customer && await repository.isConfiguredWalkInCustomer(client, {
+    installationId: requestContext.installationId,
+    customerId: customer.id,
+  })) {
     const shape = enforceWalkInShape(payload, sourceType);
     if (!shape.ok) return shape;
     return Object.freeze({
@@ -100,13 +168,25 @@ export async function normalizeSalesOrderEntryPayload(client, {
         customerMode: WALK_IN_MODE,
         customerId: customer.id,
         customerAddressId: undefined,
+        walkInDisplayName: shape.displayName,
+        walkInPhone: shape.phone,
         deliveryMode: shape.deliveryMode,
         collectionPolicy: shape.collectionPolicy,
+        lines: applyDefaultTax(payload.lines, settings),
       }),
     });
   }
 
-  return Object.freeze({ ok: true, payload: Object.freeze({ ...payload, customerMode: EXISTING_MODE }) });
+  return Object.freeze({
+    ok: true,
+    payload: Object.freeze({
+      ...payload,
+      customerMode: EXISTING_MODE,
+      walkInDisplayName: undefined,
+      walkInPhone: undefined,
+      lines: applyDefaultTax(payload.lines, settings),
+    }),
+  });
 }
 
 export function evaluateSalesOrderSkuEligibility(row) {
