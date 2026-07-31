@@ -11,8 +11,13 @@ type ApiEnvelope<T> = {
   data?: T;
 };
 
+type PermissionState = {
+  loaded: boolean;
+  keys: string[];
+};
+
 export default function PurchaseOrderEditorV5(props: Props) {
-  const [permissionKeys, setPermissionKeys] = useState<string[]>([]);
+  const [permissionState, setPermissionState] = useState<PermissionState>({ loaded: false, keys: [] });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -27,13 +32,19 @@ export default function PurchaseOrderEditorV5(props: Props) {
         return payload.data.permissionKeys;
       })
       .then((keys) => {
-        if (!controller.signal.aborted) setPermissionKeys(Array.isArray(keys) ? keys : []);
+        if (!controller.signal.aborted) {
+          setPermissionState({ loaded: true, keys: Array.isArray(keys) ? keys : [] });
+        }
       })
       .catch(() => {
-        if (!controller.signal.aborted) setPermissionKeys([]);
+        if (!controller.signal.aborted) setPermissionState({ loaded: true, keys: [] });
       });
     return () => controller.abort();
   }, []);
 
-  return <PurchaseOrderEditorV4 {...props} permissionKeys={permissionKeys} />;
+  if (!permissionState.loaded) {
+    return <div role="status" aria-live="polite">Đang kiểm tra quyền truy cập đơn đặt hàng…</div>;
+  }
+
+  return <PurchaseOrderEditorV4 {...props} permissionKeys={permissionState.keys} />;
 }
