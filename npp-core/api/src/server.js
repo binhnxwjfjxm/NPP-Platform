@@ -41,6 +41,7 @@ import { handleInventoryRoutes } from './routes/inventory.js';
 import { handleGoodsReceiptRoutes } from './routes/goods-receipts.js';
 import { handleSupplierReturnRoutes } from './routes/supplier-returns.js';
 import { handlePurchaseOrderRoutes } from './routes/purchase-orders.js';
+import { handleSalesOrderRoutes } from './routes/sales-orders.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const CORS_ALLOWED_HEADERS = 'authorization, content-type, idempotency-key, x-request-id';
@@ -441,6 +442,7 @@ export function createCoreApiServer(options = {}) {
     if (await handleCustomerRoutes(req, res, routeContext)) return;
     if (await handleSupplierRoutes(req, res, routeContext)) return;
     if (await handlePurchaseOrderRoutes(req, res, routeContext)) return;
+    if (await handleSalesOrderRoutes(req, res, routeContext)) return;
     if (await handleGoodsReceiptRoutes(req, res, routeContext)) return;
     if (await handleSupplierReturnRoutes(req, res, routeContext)) return;
     if (await handleDocumentNumberingRoutes(req, res, routeContext)) return;
