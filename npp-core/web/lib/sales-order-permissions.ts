@@ -7,4 +7,5 @@ export const SALES_ORDER_PERMISSION_KEYS = Object.freeze({
   cancel: 'core.sales-order.cancel',
   priceOverride: 'core.sales-order.price.override',
   creditOverride: 'core.sales-order.credit.override',
+  customerWrite: 'core.customer.write',
 });
