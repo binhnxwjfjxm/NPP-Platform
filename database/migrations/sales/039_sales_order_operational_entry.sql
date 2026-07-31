@@ -29,6 +29,52 @@ ALTER TABLE sales.sales_order_versions
   ADD COLUMN IF NOT EXISTS walk_in_display_name_snapshot text NULL,
   ADD COLUMN IF NOT EXISTS walk_in_phone_snapshot text NULL;
 
+CREATE OR REPLACE FUNCTION sales.sales_order_normalize_customer_mode()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.customer_mode IS NULL THEN
+    NEW.customer_mode := CASE
+      WHEN NEW.walk_in_display_name IS NOT NULL OR NEW.walk_in_phone IS NOT NULL THEN 'WALK_IN'
+      ELSE 'EXISTING'
+    END;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sales_orders_normalize_customer_mode_trigger
+  ON sales.sales_orders;
+CREATE TRIGGER sales_orders_normalize_customer_mode_trigger
+BEFORE INSERT OR UPDATE OF customer_mode, walk_in_display_name, walk_in_phone
+ON sales.sales_orders
+FOR EACH ROW
+EXECUTE FUNCTION sales.sales_order_normalize_customer_mode();
+
+CREATE OR REPLACE FUNCTION sales.sales_order_version_normalize_customer_mode()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.customer_mode_snapshot IS NULL THEN
+    NEW.customer_mode_snapshot := CASE
+      WHEN NEW.walk_in_display_name_snapshot IS NOT NULL OR NEW.walk_in_phone_snapshot IS NOT NULL THEN 'WALK_IN'
+      ELSE 'EXISTING'
+    END;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sales_order_versions_normalize_customer_mode_trigger
+  ON sales.sales_order_versions;
+CREATE TRIGGER sales_order_versions_normalize_customer_mode_trigger
+BEFORE INSERT OR UPDATE OF customer_mode_snapshot, walk_in_display_name_snapshot, walk_in_phone_snapshot
+ON sales.sales_order_versions
+FOR EACH ROW
+EXECUTE FUNCTION sales.sales_order_version_normalize_customer_mode();
+
 DO $$
 BEGIN
   IF NOT EXISTS (
