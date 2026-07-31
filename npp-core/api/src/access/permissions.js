@@ -5,6 +5,10 @@ import {
 
 export const PERMISSIONS = Object.freeze({
   ...CORE_PERMISSIONS,
+  coreSupplierPurchasePriceRead: 'core.supplier-purchase-price.read',
+  coreSupplierPurchasePriceManage: 'core.supplier-purchase-price.manage',
+  corePurchaseOrderPriceRead: 'core.purchase-order.price.read',
+  corePurchaseOrderPriceOverride: 'core.purchase-order.price.override',
   corePayableRead: 'core.payable.read',
   coreSupplierPaymentRead: 'core.supplier-payment.read',
   coreSupplierPaymentCreate: 'core.supplier-payment.create',
@@ -15,6 +19,34 @@ export const PERMISSIONS = Object.freeze({
 
 export const PERMISSION_CATALOG = Object.freeze([
   ...CORE_PERMISSION_CATALOG,
+  Object.freeze({
+    permissionKey: PERMISSIONS.coreSupplierPurchasePriceRead,
+    module: 'Mua hàng',
+    label: 'Xem bảng giá mua',
+    description: 'Cho phép đọc và phân giải giá mua theo nhà cung cấp, SKU, đơn vị, tiền tệ và hiệu lực.',
+    isSystem: true,
+  }),
+  Object.freeze({
+    permissionKey: PERMISSIONS.coreSupplierPurchasePriceManage,
+    module: 'Mua hàng',
+    label: 'Quản lý bảng giá mua',
+    description: 'Cho phép tạo, cập nhật và thay đổi trạng thái giá mua theo nhà cung cấp.',
+    isSystem: true,
+  }),
+  Object.freeze({
+    permissionKey: PERMISSIONS.corePurchaseOrderPriceRead,
+    module: 'Mua hàng',
+    label: 'Xem giá đơn đặt hàng',
+    description: 'Cho phép đọc đơn giá, chiết khấu, thuế và tổng tiền của đơn đặt hàng.',
+    isSystem: true,
+  }),
+  Object.freeze({
+    permissionKey: PERMISSIONS.corePurchaseOrderPriceOverride,
+    module: 'Mua hàng',
+    label: 'Nhập tay giá đơn đặt hàng',
+    description: 'Cho phép thay giá mua đã phân giải bằng giá nhập tay có lý do trên từng đơn đặt hàng.',
+    isSystem: true,
+  }),
   Object.freeze({
     permissionKey: PERMISSIONS.corePayableRead,
     module: 'Công nợ phải trả',
