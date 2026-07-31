@@ -145,6 +145,7 @@ async function createApprovedPurchaseOrder(baseUrl, config, fixture) {
         unitPrice: '10000',
         discountAmount: '0',
         taxAmount: '0',
+        priceOverrideReason: 'Giá nhập tay cho fixture trả hàng nhà cung cấp',
       }],
     }),
   });
