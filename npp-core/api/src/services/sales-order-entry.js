@@ -3,6 +3,8 @@ import * as commercialRepository from '../db/repositories/sales-order-commercial
 
 export * from './sales-order-entry-legacy.js';
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
 }
@@ -62,6 +64,12 @@ export async function normalizeSalesOrderEntryPayload(client, args) {
   }
   if (!salesChannelId) {
     return failure('SALES_CHANNEL_REQUIRED', 'Hãy chọn kênh bán hàng');
+  }
+  if (!UUID_PATTERN.test(salesChannelId)) {
+    return failure(
+      'SALES_CHANNEL_NOT_FOUND',
+      'Kênh bán hàng không tồn tại, đã ngưng hoạt động hoặc không thuộc installation',
+    );
   }
   const channel = await commercialRepository.getActiveSalesChannel(client, {
     installationId,
