@@ -210,6 +210,9 @@ jobs:
       - name: Verify Phase 6C.0A audit contracts
         run: npm run test:phase-6c0a-audit
 
+      - name: Verify MCP Heroku backend deployment contract
+        run: npm run test:heroku-mcp-backend-contract
+
       - name: Verify backend foundation
         run: npm --prefix apps/backend run verify
 

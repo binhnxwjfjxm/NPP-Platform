@@ -12,6 +12,7 @@ const SERVICE = "mcp-plan-backend";
 const SUPABASE_URL = process.env.SUPABASE_URL?.trim();
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 const MCP_SESSION_CUSTOMER_STATUSES = new Set(["pending", "visited", "skipped", "cancelled"]);
+const PUBLIC_HEALTH_PATHS = new Set(["/", "/health", "/api/health", "/health/live", "/health/ready"]);
 
 function json(res, statusCode, payload) {
   const body = JSON.stringify(payload);
@@ -1467,7 +1468,7 @@ async function handlePost(req, url) {
 }
 
 async function handleGet(url) {
-  if (url.pathname === "/" || url.pathname === "/health" || url.pathname === "/api/health") return healthPayload();
+  if (PUBLIC_HEALTH_PATHS.has(url.pathname)) return healthPayload();
   if (url.pathname === "/api/mcp-report-settings") return wrap(await loadMcpReportSettingsV1(url));
   if (url.pathname === "/api/mcp-report-context") return wrap(await loadMcpReportContextV1(url));
   if (url.pathname === "/api/dashboard/summary") return wrap(await getDashboardSummary());
