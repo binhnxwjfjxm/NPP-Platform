@@ -60,26 +60,121 @@ export class SalesOrderUiError extends Error {
   }
 }
 
+type DraftRecovery = Readonly<{ order: SalesOrder }>;
+
+let lastSavedDraft: DraftRecovery | null = null;
+let draftRecovery: DraftRecovery | null = null;
+
+function methodOf(init: RequestInit): string {
+  return String(init.method ?? 'GET').toUpperCase();
+}
+
+function isEntrySettings(path: string, method: string): boolean {
+  return method === 'GET' && path === '/api/sales-orders/entry-settings';
+}
+
+function isDraftSave(path: string, method: string): boolean {
+  if (method === 'POST' && path === '/api/sales-orders') return true;
+  if (method !== 'PUT') return false;
+  return /^\/api\/sales-orders\/[^/]+\/draft$/.test(path)
+    || /^\/api\/sales-orders\/[^/]+\/amendments\/[^/]+\/draft$/.test(path);
+}
+
+function isConfirm(path: string, method: string): boolean {
+  if (method !== 'POST') return false;
+  return /^\/api\/sales-orders\/[^/]+\/confirm$/.test(path)
+    || /^\/api\/sales-orders\/[^/]+\/amendments\/[^/]+\/confirm$/.test(path);
+}
+
+function orderIdFromPath(path: string): string | null {
+  return /^\/api\/sales-orders\/([^/]+)/.exec(path)?.[1] ?? null;
+}
+
+function isSalesOrder(value: unknown): value is SalesOrder {
+  return Boolean(value)
+    && typeof value === 'object'
+    && typeof (value as SalesOrder).id === 'string'
+    && Array.isArray((value as SalesOrder).versions);
+}
+
+function resetDraftRecovery(): void {
+  lastSavedDraft = null;
+  draftRecovery = null;
+}
+
+function recoverCommittedDraft(path: string, init: RequestInit): {
+  path: string;
+  init: RequestInit;
+  recovered: boolean;
+} {
+  if (!draftRecovery || !isDraftSave(path, methodOf(init))) {
+    return { path, init, recovered: false };
+  }
+  const draft = pendingVersion(draftRecovery.order);
+  if (!draft || typeof init.body !== 'string') {
+    return { path, init, recovered: false };
+  }
+  const currentOrderId = orderIdFromPath(path);
+  if (currentOrderId && currentOrderId !== draftRecovery.order.id) {
+    return { path, init, recovered: false };
+  }
+  let body: Record<string, unknown>;
+  try {
+    body = JSON.parse(init.body) as Record<string, unknown>;
+  } catch {
+    return { path, init, recovered: false };
+  }
+  const recoveredPath = path === '/api/sales-orders'
+    ? `/api/sales-orders/${draftRecovery.order.id}/draft`
+    : path;
+  return {
+    path: recoveredPath,
+    init: {
+      ...init,
+      method: 'PUT',
+      body: JSON.stringify({ ...body, expectedRevision: draft.revision }),
+    },
+    recovered: true,
+  };
+}
+
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
+  const initialMethod = methodOf(init);
+  if (isEntrySettings(path, initialMethod)) resetDraftRecovery();
+
+  const request = recoverCommittedDraft(path, init);
+  const requestMethod = methodOf(request.init);
+  const response = await fetch(request.path, {
+    ...request.init,
     cache: 'no-store',
     headers: {
       Accept: 'application/json',
-      ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      ...(init.headers ?? {}),
+      ...(request.init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...(request.init.headers ?? {}),
     },
   });
   const payload = await response.json().catch(() => null) as ApiEnvelope<T> | null;
   if (!response.ok || !payload || !Object.prototype.hasOwnProperty.call(payload, 'data')) {
+    const code = payload?.error?.code ?? 'SALES_ORDER_REQUEST_FAILED';
+    if (code === 'SALES_PRICE_CHANGED' && isConfirm(request.path, requestMethod) && lastSavedDraft) {
+      const confirmedOrderId = orderIdFromPath(request.path);
+      if (confirmedOrderId === lastSavedDraft.order.id) draftRecovery = lastSavedDraft;
+    }
     throw new SalesOrderUiError(
-      payload?.error?.code ?? 'SALES_ORDER_REQUEST_FAILED',
+      code,
       payload?.error?.message ?? 'Yêu cầu bán hàng không thành công',
       payload?.error?.retryable === true,
       payload?.error?.details ?? {},
     );
   }
-  return payload.data as T;
+
+  const data = payload.data as T;
+  if (isDraftSave(request.path, requestMethod) && isSalesOrder(data)) {
+    lastSavedDraft = { order: data };
+    if (request.recovered) draftRecovery = lastSavedDraft;
+  }
+  if (isConfirm(request.path, requestMethod)) resetDraftRecovery();
+  return data;
 }
 
 export function mutationKey(prefix: string): string {
