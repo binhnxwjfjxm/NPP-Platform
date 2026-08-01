@@ -4,117 +4,126 @@
 
 - Repository: `binhnxwjfjxm/NPP-Platform`.
 - Production branch: `main`.
-- Audited source baseline before this planning branch: `6983844b9f6b4a63ad0fe04863f1492e360050cb`.
-- PR #101 standardized Purchase Order line entry and merged as `dc5dc2dfff5c93d3ccd5bf11c784ce0f2df0255c`.
-- PR #102 standardized dependency-aware deactivate conflicts and merged as `6983844b9f6b4a63ad0fe04863f1492e360050cb`.
-- Phase 5 Purchasing/Payable source work is closed through supplier payment/allocation, with later PO UX/contract hardening on `main`.
-- The next source gate is Phase 6A Sales, MCP customer boundary and Transportation/Dispatch contract locking.
+- Exact source baseline for Phase 6C.0A: `46f43b473e35ac1103aa2b49412de3f64fe1646b`.
+- PR #128 merged the Core employee-directory refresh fix at the same commit.
+- The source delta after the earlier MCP audit did not modify `mcp/**`.
+- Phase 6B.2 commercial controls are on `main`; production migration `040_sales_order_commercial_controls.sql` remains a separate operation and is not assumed to have run.
 
-## Active planning branch
+## Active Phase 6C.0A work
 
-```text
-agent/phase-6-master-plan-integration
-```
-
-The branch updates:
+Issue:
 
 ```text
-NPP_PLATFORM_MASTER_PLAN.md
-docs/operations/pre-phase-6-closure-audit.md
-docs/operations/phase-6-sales-mcp-customer-boundary.md
-docs/operations/phase-6-transportation-dispatch-decisions.md
-docs/operations/LATEST_HANDOFF.md
+#129 — Phase 6C.0A — Audit MCP legacy dependencies, identity mapping and cutover contracts
 ```
 
-This is a documentation-only planning change. It does not include schema, API, UI, provider or production mutations.
-
-## Locked planning conclusions
-
-### MCP strategy
-
-MCP Field is an existing field-sales application to adapt and integrate, not rebuild from zero.
-
-Preserve working route/session/visit/test/report/order-display flows. Remaining work focuses on:
-
-- legacy data and identity audit;
-- backend-owned MCP writes;
-- session outlet snapshots;
-- customer onboarding and Core customer/address linking;
-- idempotent Core Sales Order adapter;
-- read-only order/fulfillment/delivery sync;
-- Supabase/VPS adapter replacement and cutover after reconciliation.
-
-### Customer boundary
-
-- `shared.customers.id` is the canonical Core customer ID.
-- MCP field outlet has a separate identity.
-- A field outlet may have nullable Core customer/address links.
-- Only a linked active Core customer may create an official Sales Order.
-- Core owns the onboarding review lifecycle after submission.
-
-### Transportation boundary
-
-- Transportation/Dispatch belongs to NPP Core, not MCP.
-- Add target schema `logistics`.
-- Sales Order, Delivery Order and Delivery Trip are separate sources of truth.
-- Vehicle/driver/trip do not belong directly on Sales Order as transportation truth.
-- Vehicle/trip is not a warehouse/location in the initial foundation.
-
-## Phases 1–5 closure audit
-
-Source foundations already available on `main`:
+Branch:
 
 ```text
-Phase 1  monorepo/shared foundation absorbed into current baseline
-Phase 2  Core API/web, auth, idempotency, audit/outbox, migration and browser foundation
-Phase 3  organization/access/customer/supplier/product/unit/pricing/numbering
-Phase 4  inventory ledger/balance/reservation/negative-stock/lot-opening foundation
-Phase 5  PO/receipt/variance/return/payable/payment-allocation
+agent/phase-6c0-mcp-legacy-audit
 ```
 
-No new implementation pass is required before Phase 6.
-
-Required pre-Phase-6 work is decision locking, not rebuilding:
-
-- customer/outlet/address identity;
-- MCP legacy mapping and order classification;
-- inventory issue point;
-- receivable posting point;
-- VAT/rounding/discount rules;
-- lot allocation/FEFO policy;
-- costing dependency;
-- Delivery Order and Dispatch transitions;
-- failed-delivery stock treatment;
-- COD/POD policy.
-
-## Phase 6 roadmap
+Scope is docs/tests/read-only only:
 
 ```text
-6A  Sales and MCP boundary contract — decision-only
-6B  Sales Order Foundation
-6C  Customer Onboarding Bridge
-6D  Fulfillment and Delivery Order
-6E  Transportation/Dispatch
-6F  Receivable, Returns, Payment and COD
+machine-readable dependency inventory
+live-call graph contract
+environment contract inventory
+identity mapping contract
+legacy-order classification contract
+read-only data-audit SQL
+fixture and reconciliation report schema
+risk register
+documentation hygiene
 ```
 
-MCP adaptation runs in parallel but cannot create official orders before customer linking and idempotency contracts exist.
+No runtime behavior, provider configuration, production database access, migration, deploy or cutover is authorized by this branch.
 
-## Entry gate before Phase 6 mutation
+## Locked MCP conclusions
 
-Before opening the Sales Order implementation branch:
+MCP is not a browser-direct Supabase mutation application in the active flow. The current runtime is:
 
-1. merge the planning documents;
-2. owner approves the unresolved Phase 6A business decisions;
-3. re-audit fresh `main`, PRs, CI, migration registry and this handoff;
-4. create a new `agent/<task>` branch from exact `main`;
-5. keep source work and production rollout reporting separate.
+```text
+MCP UI
+→ Next server/API proxy
+→ Foundation Gateway
+→ typed/transitional handler or legacy internal fallback
+→ Supabase REST/RPC
+```
 
-## Production separation
+The gateway boundary, request context and several idempotent mutation patterns are valid foundations to preserve.
 
-No production deployment, production migration, backup, restore, R2 configuration or provider smoke is claimed by this planning branch.
+MCP is not yet provider-neutral because:
 
-Vercel Auto Deploy and Heroku Automatic Deploy remain intended to stay off. Production rollout requires a separate explicit operation with fresh provider, backup, restore-rehearsal, migration and smoke evidence.
+- frontend production build still requires Supabase URL and anon/publishable key;
+- backend still requires Supabase URL and service-role key;
+- legacy internal server remains a startup dependency;
+- application handlers still know provider RPC/table contracts;
+- current actor is a fixed proxy service actor;
+- user/employee authentication and deny-by-default MCP authorization are not complete.
 
-> Updated: `2026-07-30`  
-> Current checkpoint: Phase 6A planning and owner decision gate.
+## Customer and order boundary
+
+- `shared.customers.id` remains the canonical Core customer identity.
+- MCP field outlet remains a separate identity.
+- Field outlet may have nullable Core customer/address links.
+- Unlinked outlet may be visited, tested, surveyed and followed up.
+- Only a linked active Core customer may create an official Core Sales Order.
+- Legacy MCP `orders`/`order_items` are not automatically Core Sales Orders.
+
+Every legacy order must be classified into exactly one of:
+
+```text
+OFFICIAL_ORDER_MIGRATION_CANDIDATE
+FIELD_ORDER_INTENT
+SAMPLE_TEST_DEMAND
+HISTORICAL_DISPLAY_ONLY
+INVALID_ORPHAN_RECONCILIATION_REQUIRED
+```
+
+Bulk import of the legacy order table into `sales.sales_orders` is forbidden.
+
+## Current production evidence boundary
+
+Verified earlier in this chat:
+
+- Vercel production has a deployment sourced from `46f43b473e35ac1103aa2b49412de3f64fe1646b`.
+- Public `/login` and a Next static asset responded successfully.
+- Protected Core routes required authentication.
+- Authenticated employee-directory workflow was manually tested by the owner and considered temporarily acceptable.
+
+Still not assumed or claimed:
+
+- exact Heroku Core release after the latest frontend deployment;
+- migration 040 registry state;
+- Sales Order `entry-settings` recovery;
+- production backup and restore rehearsal;
+- MCP Heroku/VPS/Supabase/R2 runtime state;
+- production data reconciliation;
+- Phase 6C cutover readiness.
+
+## Phase 6C sequence
+
+```text
+6C.0A repository/data contract audit
+→ 6C.0B provider-neutral boundary
+→ 6C.0C backend-owned write hardening
+→ 6C.0D PostgreSQL mcp schema
+→ 6C.0E migration rehearsal
+→ 6C.0F provider/cutover preparation
+→ 6C.1 customer onboarding bridge
+```
+
+Do not start Phase 6C.1 before the identity, SKU/unit, order classification, auth/permission and provider/runtime gates are closed.
+
+## Required workflow
+
+1. Recheck exact `main` before PR.
+2. Keep changes under docs/tests/read-only audit scope.
+3. Run exact PR-head CI.
+4. Review findings honestly; do not manufacture defects when source is correct.
+5. Merge only after CI/review gate.
+6. Production deploy, migration and provider operations remain separate explicit commands.
+
+> Updated: `2026-08-01`  
+> Current checkpoint: Phase 6C.0A audit implementation on Issue #129.
