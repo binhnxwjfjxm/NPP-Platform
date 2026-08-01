@@ -26,25 +26,25 @@ jobs:
     timeout-minutes: 25
     env:
       VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
-      VERCEL_PROJECT_ID: ${{ vars.VERCEL_MCP_PROJECT_ID }}
+      VERCEL_PROJECT_ID: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
       DEPLOY_REF: main
       MCP_ROOT_DIRECTORY: mcp
-      MCP_PRODUCTION_URL: ${{ vars.VERCEL_MCP_PRODUCTION_URL }}
+      MCP_PRODUCTION_URL: https://mcp-field-binhnxwjfjxms-projects.vercel.app
     steps:
-      - name: Validate MCP deployment target configuration
+      - name: Validate exact MCP deployment target
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${VERCEL_PROJECT_ID:-}" ]; then
-            echo "Repository variable VERCEL_MCP_PROJECT_ID is required." >&2
+          if [ "$VERCEL_PROJECT_ID" != "prj_854SWdJeDEOPezAvvTZzTaRvZUSq" ]; then
+            echo "Unexpected MCP Vercel project target." >&2
             exit 1
           fi
           if [ "$VERCEL_PROJECT_ID" = "prj_vFEAzoxesLqNJIfD8uF4q1kytpvk" ]; then
             echo "MCP deployment must never target the Core Vercel project." >&2
             exit 1
           fi
-          if [ -z "${MCP_PRODUCTION_URL:-}" ]; then
-            echo "Repository variable VERCEL_MCP_PRODUCTION_URL is required." >&2
+          if [ "$MCP_PRODUCTION_URL" != "https://mcp-field-binhnxwjfjxms-projects.vercel.app" ]; then
+            echo "Unexpected MCP production alias." >&2
             exit 1
           fi
 
