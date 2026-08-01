@@ -5,11 +5,13 @@ This checklist is for the one-time creation of the MCP Field frontend project. I
 ## Create project
 
 - Team: `binhnxwjfjxms-projects`
-- Project name: choose the dedicated MCP Field project name
+- Project name: `mcp-field`
+- Project ID: `prj_854SWdJeDEOPezAvvTZzTaRvZUSq`
 - Repository: `binhnxwjfjxm/NPP-Platform`
 - Root directory: `mcp`
 - Framework: Next.js
 - Automatic Git deployments: OFF
+- Production alias: `https://mcp-field-binhnxwjfjxms-projects.vercel.app`
 
 Do not reuse the Core project `npp-platform`.
 
@@ -25,14 +27,9 @@ Do not add:
 - service-role database credentials;
 - backend-only R2 credentials.
 
-## GitHub deployment variables
+## GitHub deployment configuration
 
-After the project exists, add repository variables:
-
-```text
-VERCEL_MCP_PROJECT_ID=<project id from Vercel>
-VERCEL_MCP_PRODUCTION_URL=https://<production domain>
-```
+The manual workflow pins the non-secret MCP project ID and production alias in source. Repository variables `VERCEL_MCP_PROJECT_ID` and `VERCEL_MCP_PRODUCTION_URL` are not required.
 
 Keep `VERCEL_TOKEN` only in GitHub Actions secrets and verify it is valid before the first manual deployment.
 
@@ -47,14 +44,21 @@ For the first two or three releases, an operator may run the Vercel deployment m
 - `/visits` response;
 - one `/_next/static/` asset response.
 
-After the project and smoke contract are confirmed, use the Issue #5 command:
+Use the GitHub Actions workflow:
+
+```text
+Manual Vercel MCP production deploy
+```
+
+The Issue #5 command remains available:
 
 ```text
 /deploy-vercel-mcp-production
 ```
 
-Core remains on its separate command:
+Core remains on its separate workflow and command:
 
 ```text
+Manual Vercel NPP production deploy
 /deploy-vercel-production
 ```
