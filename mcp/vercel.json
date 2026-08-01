@@ -3,5 +3,8 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
+  "git": {
+    "deploymentEnabled": false
+  },
   "ignoreCommand": "case \"$VERCEL_GIT_COMMIT_REF:$VERCEL_GIT_COMMIT_MESSAGE\" in main:deploy:*) exit 1 ;; *) exit 0 ;; esac"
 }

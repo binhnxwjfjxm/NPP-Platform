@@ -1,0 +1,226 @@
+name: Manual MCP Field Vercel production deploy
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vercel-mcp-production-manual
+  cancel-in-progress: false
+
+jobs:
+  deploy-mcp-production:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 5 &&
+        contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_MCP_PROJECT_ID }}
+      DEPLOY_REF: main
+      MCP_ROOT_DIRECTORY: mcp
+      MCP_PRODUCTION_URL: ${{ vars.VERCEL_MCP_PRODUCTION_URL }}
+    steps:
+      - name: Validate MCP deployment target configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${VERCEL_PROJECT_ID:-}" ]; then
+            echo "Repository variable VERCEL_MCP_PROJECT_ID is required." >&2
+            exit 1
+          fi
+          if [ "$VERCEL_PROJECT_ID" = "prj_vFEAzoxesLqNJIfD8uF4q1kytpvk" ]; then
+            echo "MCP deployment must never target the Core Vercel project." >&2
+            exit 1
+          fi
+          if [ -z "${MCP_PRODUCTION_URL:-}" ]; then
+            echo "Repository variable VERCEL_MCP_PRODUCTION_URL is required." >&2
+            exit 1
+          fi
+
+      - name: Validate Issue #5 trigger comment
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          trimmed_comment="${COMMENT_BODY:-}"
+          trimmed_comment="${trimmed_comment#"${trimmed_comment%%[![:space:]]*}"}"
+          trimmed_comment="${trimmed_comment%"${trimmed_comment##*[![:space:]]}"}"
+          if [ "$trimmed_comment" != '/deploy-vercel-mcp-production' ]; then
+            echo "Issue #5 comment must be the exact MCP deploy command." >&2
+            exit 1
+          fi
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+
+      - name: Verify exact origin/main SHA
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Deploying MCP ref ${DEPLOY_REF} at SHA: $sha"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+
+      - name: Install MCP dependencies
+        working-directory: mcp
+        run: npm ci
+
+      - name: Pull MCP production project configuration
+        working-directory: mcp
+        run: >-
+          npx --yes vercel@latest pull
+          --yes
+          --environment=production
+          --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Verify MCP Vercel project link
+        working-directory: mcp
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+
+          const linked = JSON.parse(await readFile(".vercel/project.json", "utf8"));
+          if (linked.projectId !== process.env.VERCEL_PROJECT_ID) {
+            throw new Error(`unexpected_mcp_vercel_project:${linked.projectId}`);
+          }
+          if (linked.projectId === "prj_vFEAzoxesLqNJIfD8uF4q1kytpvk") {
+            throw new Error("mcp_project_must_not_equal_core_project");
+          }
+          if (linked.settings?.rootDirectory !== process.env.MCP_ROOT_DIRECTORY) {
+            throw new Error(`unexpected_mcp_root_directory:${linked.settings?.rootDirectory}`);
+          }
+          NODE
+
+      - name: Verify automatic deployment lock
+        working-directory: mcp
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+
+          const config = JSON.parse(await readFile("vercel.json", "utf8"));
+          if (config.git?.deploymentEnabled !== false) {
+            throw new Error("mcp_vercel_auto_deploy_not_locked");
+          }
+          NODE
+
+      - name: Build MCP production artifact
+        working-directory: mcp
+        run: >-
+          npx --yes vercel@latest build
+          --prod
+          --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Deploy MCP production artifact
+        id: deploy
+        working-directory: mcp
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="$(
+            npx --yes vercel@latest deploy \
+              --prebuilt \
+              --prod \
+              --token="${{ secrets.VERCEL_TOKEN }}"
+          )"
+          test -n "$url"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "MCP production deployment URL: $url"
+
+      - name: Smoke exact MCP production deployment
+        shell: bash
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          set -euo pipefail
+
+          assert_status() {
+            local path="$1"
+            shift
+            local -a expected_codes=("$@")
+            local response
+            response="$(
+              curl --silent --show-error \
+                --retry 5 --retry-delay 5 --retry-all-errors \
+                --output /dev/null \
+                --write-out '%{http_code}' \
+                "$DEPLOYMENT_URL$path"
+            )"
+            for code in "${expected_codes[@]}"; do
+              if [ "$response" = "$code" ]; then
+                return 0
+              fi
+            done
+            echo "Unexpected MCP status for $path: expected one of ${expected_codes[*]}, got $response" >&2
+            exit 1
+          }
+
+          assert_status / 200 302 307
+          assert_status /login 200 302 307 404
+          assert_status /visits 200 302 307 401 403
+
+          html="$(curl --fail --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors "$DEPLOYMENT_URL/")"
+          asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.(css|js)' | head -n 1)"
+          test -n "$asset"
+          curl --fail --silent --show-error "$DEPLOYMENT_URL$asset" >/dev/null
+
+      - name: Smoke configured MCP production alias
+        shell: bash
+        env:
+          DEPLOYMENT_URL: ${{ env.MCP_PRODUCTION_URL }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 12); do
+            response="$(
+              curl --silent --show-error \
+                --output /dev/null \
+                --write-out '%{http_code}' \
+                "$DEPLOYMENT_URL/" || true
+            )"
+            case "$response" in
+              200|302|307)
+                echo "MCP production alias is serving: $DEPLOYMENT_URL"
+                exit 0
+                ;;
+            esac
+            if [ "$attempt" -eq 12 ]; then
+              echo "MCP production alias did not become ready; last status: ${response:-000}" >&2
+              exit 1
+            fi
+            sleep 5
+          done
+
+      - name: Record successful exact SHA
+        shell: bash
+        run: |
+          echo "MCP_DEPLOYED_SHA=${{ steps.target.outputs.sha }}"
+          echo "MCP_DEPLOYED_URL=${{ steps.deploy.outputs.url }}"
