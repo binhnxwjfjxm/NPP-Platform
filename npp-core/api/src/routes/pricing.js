@@ -248,6 +248,24 @@ async function handlePriceLists(req, res, context, pathname, method) {
 async function handleResolution(req, res, context, pathname, method) {
   if (pathname !== '/api/pricing/resolve' || method !== 'POST') return false;
   const body = await readPayload(req, res, context); if (body === null) return true;
+  const manualSupplied = body?.manualUnitPriceMinor !== undefined
+    && body?.manualUnitPriceMinor !== null
+    && body?.manualUnitPriceMinor !== '';
+  if (manualSupplied) {
+    const overridePermission = context.authorize(
+      context.requestContext,
+      context.PERMISSIONS.coreSalesOrderPriceOverride,
+    );
+    if (!overridePermission.ok) {
+      sendError(
+        res,
+        apiError('PRICE_OVERRIDE_FORBIDDEN', 'Price override permission is required', {}, false, 403),
+        context.requestId,
+        context.receivedAt,
+      );
+      return true;
+    }
+  }
   try {
     const result = await service.resolvePrice(context.getPool(), { installationId: context.requestContext.installationId, payload: body });
     if (!result.ok) return sendServiceError(res, result, context), true;
