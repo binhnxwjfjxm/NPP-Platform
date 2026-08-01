@@ -15,6 +15,7 @@ const contextSource = readFileSync(new URL('../lib/sales-order-context.ts', impo
 const appShellSource = readFileSync(new URL('../app/components/app-shell-core.tsx', import.meta.url), 'utf8');
 const skuRouteSource = readFileSync(new URL('../app/api/sales-orders/sku-search/route.ts', import.meta.url), 'utf8');
 const settingsRouteSource = readFileSync(new URL('../app/api/sales-orders/entry-settings/route.ts', import.meta.url), 'utf8');
+const recoveryE2eSource = readFileSync(new URL('../e2e/sales-orders-price-recovery.spec.ts', import.meta.url), 'utf8');
 
 test('Sales Order page stays on the authenticated NPP server boundary', () => {
   assert.match(pageSource, /resolveSalesOrderRequestId/);
@@ -63,6 +64,18 @@ test('canonical form activates product-first commercial entry with walk-in and q
   assert.match(formSource, /Lưu và xác nhận/);
   assert.match(formSource, /Đơn bán hàng có thay đổi chưa lưu/);
   assert.doesNotMatch(formSource, /Kiểu CK thêm/);
+});
+
+test('confirm price mismatch recovers the committed draft instead of creating another order', () => {
+  assert.match(uiSource, /lastSavedDraft/);
+  assert.match(uiSource, /draftRecovery/);
+  assert.match(uiSource, /code === 'SALES_PRICE_CHANGED'/);
+  assert.match(uiSource, /expectedRevision: draft\.revision/);
+  assert.match(uiSource, /`\/api\/sales-orders\/\$\{draftRecovery\.order\.id\}\/draft`/);
+  assert.match(recoveryE2eSource, /createCount: 1/);
+  assert.match(recoveryE2eSource, /updateCount: 1/);
+  assert.match(recoveryE2eSource, /confirmCount: 2/);
+  assert.match(recoveryE2eSource, /updateExpectedRevision: '1'/);
 });
 
 test('tax remains Core-owned and is summarized after document discount allocation', () => {
