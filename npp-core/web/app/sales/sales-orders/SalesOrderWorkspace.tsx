@@ -226,6 +226,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
           onSaved={(order) => {
             mergeOrder(order);
             setFormMode(null);
+            setError(null);
             setNotice(order.status === 'confirmed'
               ? 'Đã lưu, xác nhận và cấp số đơn bán hàng'
               : formMode === 'create' ? 'Đã tạo đơn bán hàng nháp' : 'Đã lưu phiên bản nháp');
