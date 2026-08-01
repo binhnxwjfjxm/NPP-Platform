@@ -13,6 +13,13 @@ function safeReadiness(provider, configured, ready, code = null) {
   return Object.freeze({ provider, configured, ready, ...(code ? { code } : {}) });
 }
 
+function activeSearchPath(value) {
+  return String(value ?? "")
+    .split(",")
+    .map((part) => part.trim().replace(/^"|"$/g, ""))
+    .filter(Boolean);
+}
+
 export function createPostgresqlPersistence(config, { PoolImpl = Pool } = {}) {
   const settings = config.persistence || config;
   let pool = null;
@@ -43,6 +50,7 @@ export function createPostgresqlPersistence(config, { PoolImpl = Pool } = {}) {
       );
       const row = result.rows?.[0] || {};
       if (row.schema_available !== true) return safeReadiness("postgresql", true, false, "persistence_schema_unavailable");
+      if (activeSearchPath(row.search_path)[0] !== settings.schema) return safeReadiness("postgresql", true, false, "persistence_search_path_mismatch");
       if (settings.expectedRole && row.role !== settings.expectedRole) return safeReadiness("postgresql", true, false, "persistence_role_mismatch");
       return safeReadiness("postgresql", true, true);
     } catch {
