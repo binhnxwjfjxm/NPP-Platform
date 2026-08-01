@@ -85,6 +85,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: mcp/package-lock.json
 
       - name: Install workspace dependencies
         run: npm ci
