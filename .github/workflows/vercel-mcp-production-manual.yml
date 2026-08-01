@@ -92,7 +92,6 @@ jobs:
         run: npm ci
 
       - name: Pull MCP production project configuration
-        working-directory: mcp
         run: >-
           npx --yes vercel@latest pull
           --yes
@@ -100,7 +99,6 @@ jobs:
           --token="${{ secrets.VERCEL_TOKEN }}"
 
       - name: Verify MCP Vercel project link
-        working-directory: mcp
         shell: bash
         run: |
           set -euo pipefail
@@ -134,7 +132,6 @@ jobs:
           NODE
 
       - name: Build MCP production artifact
-        working-directory: mcp
         run: >-
           npx --yes vercel@latest build
           --prod
@@ -142,7 +139,6 @@ jobs:
 
       - name: Deploy MCP production artifact
         id: deploy
-        working-directory: mcp
         shell: bash
         run: |
           set -euo pipefail
