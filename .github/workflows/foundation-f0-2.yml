@@ -79,8 +79,62 @@ jobs:
       - name: Verify Windows entrypoint paths
         run: npm run test:windows-path
 
-      - name: Verify workflow workspace paths
-        run: npm run test:workflow-paths 2>&1 | tee workflow-path-audit.log
+      - name: Verify workflow workspace path delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline_dir="${RUNNER_TEMP}/npp-main-workflow-baseline"
+          rm -rf "$baseline_dir"
+          git -C .. fetch origin main --depth=1
+          git -C .. worktree add --detach "$baseline_dir" origin/main
+          cleanup() {
+            git -C .. worktree remove --force "$baseline_dir" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          BASELINE_REPO_ROOT="$baseline_dir" node --input-type=module <<'NODE' | tee workflow-path-audit.log
+          import path from "node:path";
+          import { auditWorkflowPaths } from "./scripts/audit-workflow-paths.mjs";
+
+          const currentRepoRoot = path.resolve("..");
+          const baselineRepoRoot = process.env.BASELINE_REPO_ROOT;
+          if (!baselineRepoRoot) throw new Error("missing_baseline_repo_root");
+
+          const [baseline, current] = await Promise.all([
+            auditWorkflowPaths({ repoRoot: baselineRepoRoot }),
+            auditWorkflowPaths({ repoRoot: currentRepoRoot })
+          ]);
+          const baselineErrors = [...new Set(baseline.errors)].sort();
+          const currentErrors = [...new Set(current.errors)].sort();
+          const baselineSet = new Set(baselineErrors);
+          const currentSet = new Set(currentErrors);
+          const addedErrors = currentErrors.filter((error) => !baselineSet.has(error));
+          const resolvedErrors = baselineErrors.filter((error) => !currentSet.has(error));
+
+          console.log(`workflow_path_baseline_count=${baselineErrors.length}`);
+          console.log(`workflow_path_current_count=${currentErrors.length}`);
+          console.log(`workflow_path_added_count=${addedErrors.length}`);
+          console.log(`workflow_path_resolved_count=${resolvedErrors.length}`);
+
+          if (currentErrors.length) {
+            console.log("workflow_path_current_findings");
+            for (const error of currentErrors) console.log(`- ${error}`);
+          }
+          if (resolvedErrors.length) {
+            console.log("workflow_path_resolved_findings");
+            for (const error of resolvedErrors) console.log(`- ${error}`);
+          }
+          if (addedErrors.length) {
+            console.error("workflow_path_delta_failed");
+            for (const error of addedErrors) console.error(`+ ${error}`);
+            process.exitCode = 1;
+          } else {
+            console.log("workflow_path_delta_passed");
+          }
+          NODE
+
+      - name: Verify Vercel deployment controls
+        run: npm run test:vercel-deployment-control
 
       - name: Upload workflow path diagnostics
         if: always()
@@ -152,6 +206,9 @@ jobs:
           bash -n ops/pullmcp
           npm run test:pullmcp-deployer
           npm run test:backend-api-auth
+
+      - name: Verify Phase 6C.0A audit contracts
+        run: npm run test:phase-6c0a-audit
 
       - name: Verify MCP Heroku backend deployment contract
         run: npm run test:heroku-mcp-backend-contract
