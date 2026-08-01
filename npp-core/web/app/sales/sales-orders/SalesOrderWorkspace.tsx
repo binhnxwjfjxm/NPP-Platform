@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { AppShell } from '../../components/app-shell-core';
 import type { SalesOrderBootstrap } from '../../../lib/sales-order-bootstrap';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
@@ -58,6 +58,10 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         .some((value) => String(value).toLocaleLowerCase('vi').includes(term));
     });
   }, [orders, search, status]);
+
+  const handleFormError = useCallback((message: string) => {
+    setError(message || null);
+  }, []);
 
   function mergeOrder(order: SalesOrder) {
     setOrders((current) => {
@@ -222,7 +226,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
           canPriceOverride={canPriceOverride}
           canDiscountOverride={canDiscountOverride}
           onClose={() => setFormMode(null)}
-          onError={(message) => setError(message || null)}
+          onError={handleFormError}
           onSaved={(order) => {
             mergeOrder(order);
             setFormMode(null);
