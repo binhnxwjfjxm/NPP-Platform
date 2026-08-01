@@ -1,4 +1,4 @@
-name: Manual MCP Field Vercel production deploy
+name: Manual Vercel MCP production deploy
 
 on:
   workflow_dispatch:
