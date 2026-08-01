@@ -63,7 +63,7 @@ test("PostgreSQL adapter enforces schema search_path, timeouts, role and gracefu
   assert.equal(calls.at(-1).type, "end");
 });
 
-test("unreachable database and missing schema are sanitized into readiness states", async () => {
+test("unreachable database and schema, search_path, or role mismatches fail closed", async () => {
   class DownPool {
     async query() { throw new Error("password and host details"); }
     async end() {}
@@ -74,11 +74,29 @@ test("unreachable database and missing schema are sanitized into readiness state
   );
 
   class MissingSchemaPool {
-    async query() { return { rows: [{ role: "mcp_runtime", schema_available: false }] }; }
+    async query() { return { rows: [{ role: "mcp_runtime", search_path: "mcp, public", schema_available: false }] }; }
     async end() {}
   }
   assert.deepEqual(
     await createPostgresqlPersistence(config(), { PoolImpl: MissingSchemaPool }).readiness(),
     { provider: "postgresql", configured: true, ready: false, code: "persistence_schema_unavailable" }
+  );
+
+  class WrongSearchPathPool {
+    async query() { return { rows: [{ role: "mcp_runtime", search_path: "public, mcp", schema_available: true }] }; }
+    async end() {}
+  }
+  assert.deepEqual(
+    await createPostgresqlPersistence(config(), { PoolImpl: WrongSearchPathPool }).readiness(),
+    { provider: "postgresql", configured: true, ready: false, code: "persistence_search_path_mismatch" }
+  );
+
+  class WrongRolePool {
+    async query() { return { rows: [{ role: "postgres", search_path: "mcp, public", schema_available: true }] }; }
+    async end() {}
+  }
+  assert.deepEqual(
+    await createPostgresqlPersistence(config({ expectedRole: "mcp_runtime" }), { PoolImpl: WrongRolePool }).readiness(),
+    { provider: "postgresql", configured: true, ready: false, code: "persistence_role_mismatch" }
   );
 });
