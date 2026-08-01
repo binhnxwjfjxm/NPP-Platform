@@ -44,10 +44,6 @@ jobs:
         working-directory: mcp
         run: npm ci
 
-      - name: Install MCP backend dependencies
-        working-directory: mcp/apps/backend
-        run: npm ci
-
       - name: Verify MCP backend
         run: npm --workspace mcp/apps/backend run verify
 

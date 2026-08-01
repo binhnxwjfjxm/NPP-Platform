@@ -5,7 +5,7 @@ import test from "node:test";
 const root = new URL("../../", import.meta.url);
 
 async function read(relativePath) {
-  return readFile(new URL(relativePath, root), "utf8");
+  return (await readFile(new URL(relativePath, root), "utf8")).replace(/\r\n/g, "\n");
 }
 
 const manualWorkflow = await read(".github/workflows/heroku-mcp-backend-manual.yml");
@@ -110,7 +110,6 @@ test("Heroku MCP CI builds, verifies and smokes backend without Supabase env", (
   assert.match(ciWorkflow, /pull_request:/);
   assert.match(ciWorkflow, /push:/);
   assert.match(ciWorkflow, /workflow_dispatch/);
-  assert.match(ciWorkflow, /working-directory: mcp\/apps\/backend\n\s+run: npm ci/);
   assert.match(ciWorkflow, /npm --workspace mcp\/apps\/backend run verify/);
   assert.match(ciWorkflow, /npm --workspace mcp run test:heroku-mcp-backend-contract/);
   assert.match(ciWorkflow, /npm --workspace mcp run test:heroku-mcp-backend-runtime/);
