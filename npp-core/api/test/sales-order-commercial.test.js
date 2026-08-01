@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   allocateLargestRemainder,
@@ -13,6 +14,10 @@ import {
 const discountPermission = Object.freeze({
   permissions: Object.freeze(['core.sales-order.discount.override']),
 });
+const commercialRepositorySource = readFileSync(
+  new URL('../src/db/repositories/sales-order-commercial.js', import.meta.url),
+  'utf8',
+);
 
 test('document percent discount uses exact HALF_UP target', () => {
   const value = parseScaledDecimal('10');
@@ -80,4 +85,11 @@ test('pricing fingerprint is stable for canonical ordered trace', () => {
   };
   assert.equal(canonicalPricingFingerprint(resolution), canonicalPricingFingerprint(structuredClone(resolution)));
   assert.notEqual(canonicalPricingFingerprint(resolution), canonicalPricingFingerprint({ ...resolution, systemUnitPriceMinor: '89' }));
+});
+
+test('draft pricing snapshot removes PostgreSQL numeric scale before confirm comparison', () => {
+  assert.match(
+    commercialRepositorySource,
+    /trim_scale\(line\.system_unit_price\)::text AS system_unit_price/,
+  );
 });
