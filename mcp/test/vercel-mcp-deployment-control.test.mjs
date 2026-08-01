@@ -18,7 +18,7 @@ const foundationWorkflow = await readFile(
   "utf8"
 );
 
-const LEGACY_RUNTIME_SOURCE_PROJECT_ID = "prj_vFEAzoxesLqNJIfD8uF4q1kytpvk";
+const CORE_PROJECT_ID = "prj_vFEAzoxesLqNJIfD8uF4q1kytpvk";
 const MCP_PROJECT_ID = "prj_854SWdJeDEOPezAvvTZzTaRvZUSq";
 const MCP_PRODUCTION_URL = "https://mcp-field-binhnxwjfjxms-projects.vercel.app";
 
@@ -38,23 +38,18 @@ test("MCP deploy has an exact Issue #5 command separate from Core", () => {
   assert.doesNotMatch(coreWorkflow, /\/deploy-vercel-mcp-production/);
 });
 
-test("MCP deploy target is pinned and isolated from the legacy runtime source", () => {
+test("MCP deploy target is pinned and isolated from the Core Vercel project", () => {
   assert.match(mcpWorkflow, new RegExp(`VERCEL_PROJECT_ID:\\s*${MCP_PROJECT_ID}`));
-  assert.match(
-    mcpWorkflow,
-    new RegExp(`LEGACY_RUNTIME_SOURCE_PROJECT_ID:\\s*${LEGACY_RUNTIME_SOURCE_PROJECT_ID}`)
-  );
+  assert.match(mcpWorkflow, new RegExp(`CORE_VERCEL_PROJECT_ID:\\s*${CORE_PROJECT_ID}`));
   assert.match(
     mcpWorkflow,
     new RegExp(`MCP_PRODUCTION_URL:\\s*${MCP_PRODUCTION_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`)
   );
-  assert.doesNotMatch(mcpWorkflow, /vars\.VERCEL_MCP_PROJECT_ID/);
-  assert.doesNotMatch(mcpWorkflow, /vars\.VERCEL_MCP_PRODUCTION_URL/);
   assert.doesNotMatch(
     mcpWorkflow,
-    new RegExp(`^\\s*VERCEL_PROJECT_ID:\\s*${LEGACY_RUNTIME_SOURCE_PROJECT_ID}\\s*$`, "m")
+    new RegExp(`^\\s*VERCEL_PROJECT_ID:\\s*${CORE_PROJECT_ID}\\s*$`, "m")
   );
-  assert.match(mcpWorkflow, /mcp_project_must_not_equal_legacy_runtime_source/);
+  assert.match(mcpWorkflow, /mcp_project_must_not_equal_core_project/);
   assert.match(mcpWorkflow, /unexpected_mcp_vercel_project/);
   assert.match(mcpWorkflow, /unexpected_mcp_root_directory/);
 });
@@ -94,14 +89,18 @@ test("MCP deploy checks out main, installs in mcp and runs Vercel CLI from monor
   assert.doesNotMatch(mcpWorkflow, /heroku container:push|heroku container:release|git push heroku/);
 });
 
-test("MCP deploy copies only the five required legacy runtime values", () => {
+test("MCP deploy reads only dedicated GitHub runtime sources and reports exact missing names", () => {
   assert.match(mcpWorkflow, /^\s{2}issues: write$/m);
-  assert.match(mcpWorkflow, /vercel@latest env pull/);
-  assert.match(
-    mcpWorkflow,
-    /VERCEL_PROJECT_ID="\$LEGACY_RUNTIME_SOURCE_PROJECT_ID"[\s\S]*vercel@latest env pull/
-  );
-  assert.match(mcpWorkflow, /missing_legacy_runtime_values/);
+  assert.match(mcpWorkflow, /secrets\.MCP_BACKEND_API_BASE_URL/);
+  assert.match(mcpWorkflow, /secrets\.MCP_BACKEND_API_TOKEN/);
+  assert.match(mcpWorkflow, /secrets\.MCP_SUPABASE_URL/);
+  assert.match(mcpWorkflow, /secrets\.MCP_SUPABASE_ANON_KEY/);
+  assert.match(mcpWorkflow, /MCP_LEGACY_ACTOR_ID: service:mcp-plan:mcp-v1/);
+  assert.match(mcpWorkflow, /missing_github_runtime_sources/);
+  assert.match(mcpWorkflow, /MCP_BACKEND_API_BASE_URL/);
+  assert.match(mcpWorkflow, /MCP_BACKEND_API_TOKEN/);
+  assert.match(mcpWorkflow, /MCP_SUPABASE_URL/);
+  assert.match(mcpWorkflow, /MCP_SUPABASE_ANON_KEY/);
   assert.match(
     mcpWorkflow,
     /api\.vercel\.com\/v10\/projects\/\$\{process\.env\.VERCEL_PROJECT_ID\}\/env/
@@ -111,17 +110,12 @@ test("MCP deploy copies only the five required legacy runtime values", () => {
   assert.match(mcpWorkflow, /target: \["production"\]/);
   assert.match(mcpWorkflow, /::add-mask::/);
   assert.match(mcpWorkflow, /process\.env\.GITHUB_ENV/);
-  assert.match(mcpWorkflow, /BACKEND_API_BASE_URL/);
-  assert.match(mcpWorkflow, /BACKEND_API_TOKEN/);
-  assert.match(mcpWorkflow, /MCP_LEGACY_ACTOR_ID/);
-  assert.match(mcpWorkflow, /SUPABASE_URL/);
-  assert.match(mcpWorkflow, /SUPABASE_ANON_KEY/);
-  assert.match(mcpWorkflow, /legacy_vercel_env_pull_failed/);
   assert.match(mcpWorkflow, /MCP Vercel production preflight failed/);
   assert.match(mcpWorkflow, /MCP Vercel production deploy succeeded/);
 
+  assert.doesNotMatch(mcpWorkflow, /LEGACY_RUNTIME_SOURCE_PROJECT_ID/);
+  assert.doesNotMatch(mcpWorkflow, /vercel@latest env pull/);
   assert.doesNotMatch(mcpWorkflow, /HEROKU_API_KEY/);
-  assert.doesNotMatch(mcpWorkflow, /MCP_BACKEND_APP_NAME/);
   assert.doesNotMatch(mcpWorkflow, /heroku apps:info|heroku config/);
   assert.doesNotMatch(mcpWorkflow, /SUPABASE_SERVICE_ROLE_KEY/);
   assert.doesNotMatch(mcpWorkflow, /DATABASE_URL/);
