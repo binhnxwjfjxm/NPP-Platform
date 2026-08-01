@@ -35,6 +35,8 @@ type Props = {
   initialError?: string | null;
 };
 
+const EMPLOYEE_DIRECTORY_DIRTY_KEY = 'npp-core-employee-directory-dirty';
+
 function joinClasses(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(' ');
 }
@@ -122,7 +124,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
   const loadAll = useCallback(async (
     successMessage: string | null = 'Danh mục nhân sự đã được cập nhật.',
     options: LoadOptions = {},
-  ) => {
+  ): Promise<boolean> => {
     const sequence = ++loadSequence.current;
     if (!options.silent) setBusy('load');
     setError(null);
@@ -132,20 +134,24 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
         requestJson<Employee[]>('/api/access/employees?limit=1000'),
         requestJson<Branch[]>('/api/organization/branches?limit=1000'),
       ]);
-      if (sequence !== loadSequence.current) return;
+      if (sequence !== loadSequence.current) return false;
       setEmployees(nextEmployees);
       setBranches(nextBranches);
+      window.sessionStorage.removeItem(EMPLOYEE_DIRECTORY_DIRTY_KEY);
       if (successMessage) setNotice(successMessage);
       if (options.refreshRouter !== false) router.refresh();
+      return true;
     } catch (loadError) {
-      if (sequence !== loadSequence.current) return;
+      if (sequence !== loadSequence.current) return false;
       setError(loadError instanceof Error ? loadError.message : 'Không tải được danh mục nhân sự');
+      return false;
     } finally {
       if (sequence === loadSequence.current && !options.silent) setBusy(null);
     }
   }, [router]);
 
   useEffect(() => {
+    if (window.sessionStorage.getItem(EMPLOYEE_DIRECTORY_DIRTY_KEY) !== '1') return;
     void loadAll(null, { silent: true, refreshRouter: false });
   }, [loadAll]);
 
@@ -208,6 +214,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
       }
       setNotice(current ? 'Thông tin nhân sự đã được cập nhật.' : 'Hồ sơ nhân sự đã được tạo.');
       setBusy(null);
+      window.sessionStorage.setItem(EMPLOYEE_DIRECTORY_DIRTY_KEY, '1');
       router.refresh();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Không lưu được hồ sơ nhân sự');
@@ -236,6 +243,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
       setToggleState(null);
       setNotice(toggleState.nextActive ? 'Nhân sự đã được đưa vào sử dụng.' : 'Nhân sự đã ngừng làm việc.');
       setBusy(null);
+      window.sessionStorage.setItem(EMPLOYEE_DIRECTORY_DIRTY_KEY, '1');
       router.refresh();
     } catch (toggleError) {
       setError(toggleError instanceof Error ? toggleError.message : 'Không cập nhật được trạng thái nhân sự');
