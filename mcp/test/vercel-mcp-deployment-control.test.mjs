@@ -46,7 +46,7 @@ test("MCP deploy target is pinned and isolated from the Core Vercel project", ()
   assert.doesNotMatch(mcpWorkflow, /vars\.VERCEL_MCP_PRODUCTION_URL/);
   assert.doesNotMatch(
     mcpWorkflow,
-    new RegExp(`VERCEL_PROJECT_ID:\\s*${CORE_PROJECT_ID}`)
+    new RegExp(`^\\s*VERCEL_PROJECT_ID:\\s*${CORE_PROJECT_ID}\\s*$`, "m")
   );
   assert.match(mcpWorkflow, /mcp_project_must_not_equal_core_project/);
   assert.match(mcpWorkflow, /unexpected_mcp_vercel_project/);
