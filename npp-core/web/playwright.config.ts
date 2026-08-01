@@ -69,7 +69,7 @@ export default defineConfig({
     },
     {
       name: 'sales-order-commercial',
-      testMatch: /sales-orders-commercial\.spec\.ts/,
+      testMatch: /sales-orders-(commercial|price-recovery)\.spec\.ts/,
       dependencies: ['organization'],
       use: authenticatedBrowser,
     },
