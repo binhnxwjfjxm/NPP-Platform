@@ -6,6 +6,7 @@ const master = await readFile(new URL("../src/features/mcp/McpMasterView.tsx", i
 const createProxy = await readFile(new URL("../src/app/api/routes/route.ts", import.meta.url), "utf8");
 const updateProxy = await readFile(new URL("../src/app/api/routes/[id]/route.ts", import.meta.url), "utf8");
 const gateway = await readFile(new URL("../apps/backend/foundation/gateway.js", import.meta.url), "utf8");
+const legacyRuntime = await readFile(new URL("../apps/backend/foundation/legacy-runtime.js", import.meta.url), "utf8");
 const routeApi = await readFile(new URL("../apps/backend/foundation/route-api.js", import.meta.url), "utf8");
 
 test("route create and update use exact stable idempotency operations", () => {
@@ -41,12 +42,16 @@ test("same-origin proxies forward create and update to canonical backend routes"
   );
 });
 
-test("Gateway gives route API ownership before transitional and legacy fallback", () => {
-  const routeOwner = gateway.indexOf("const routeApi = await handleRouteApi");
-  const transitional = gateway.indexOf("const transitional = await handleTransitionalApi");
-  const legacy = gateway.indexOf("await proxyToLegacy");
+test("Gateway gives injected route API ownership before transitional and legacy fallback", () => {
+  const routeOwner = gateway.indexOf("const routeApi = await legacyHandlers.handleRouteApi");
+  const transitional = gateway.indexOf("const transitional = await legacyHandlers.handleTransitionalApi");
+  const legacy = gateway.indexOf("if (legacyHandlers.proxyToLegacy)");
   assert.notEqual(routeOwner, -1);
+  assert.notEqual(transitional, -1);
+  assert.notEqual(legacy, -1);
   assert.equal(routeOwner < transitional, true);
   assert.equal(routeOwner < legacy, true);
-  assert.match(gateway, /import \{ handleRouteApi \} from "\.\/route-api\.js"/);
+  assert.doesNotMatch(gateway, /import \{ handleRouteApi \} from "\.\/route-api\.js"/);
+  assert.match(legacyRuntime, /import \{ handleRouteApi \} from "\.\/route-api\.js"/);
+  assert.match(legacyRuntime, /handleRouteApi/);
 });

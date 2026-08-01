@@ -42,7 +42,7 @@ jobs:
       HEROKU_APP_NAME: hung-phat-mcp
       HEROKU_FORBIDDEN_APP_NAME: hung-phat
       HEROKU_REQUIRED_STACK: container
-      HEROKU_REQUIRED_CONFIG_NAMES: BACKEND_API_TOKEN,CORS_ORIGINS,INSTALLATION_ID,MCP_LEGACY_ACTOR_ID,NPP_CODE,SUPABASE_SERVICE_ROLE_KEY,SUPABASE_URL
+      HEROKU_REQUIRED_CONFIG_NAMES: BACKEND_API_TOKEN,CORS_ORIGINS,DATABASE_URL,INSTALLATION_ID,MCP_DB_ROLE,MCP_DB_SCHEMA,MCP_LEGACY_ACTOR_ID,MCP_LEGACY_RUNTIME_ENABLED,NPP_CODE,PERSISTENCE_PROVIDER
     steps:
       - name: Checkout exact main
         uses: actions/checkout@v4
@@ -74,17 +74,21 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Validate MCP backend packaging contract
+        working-directory: mcp
         shell: bash
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
 
-          const pkg = JSON.parse(await readFile("mcp/apps/backend/package.json", "utf8"));
-          const dockerfile = await readFile("mcp/apps/backend/Dockerfile", "utf8");
+          const pkg = JSON.parse(await readFile("apps/backend/package.json", "utf8"));
+          const dockerfile = await readFile("apps/backend/Dockerfile", "utf8");
 
           if (pkg.scripts?.start !== "node bootstrap.js") {
             throw new Error("unexpected_mcp_backend_start_script");
+          }
+          if (pkg.dependencies?.pg !== "^8.12.0") {
+            throw new Error("missing_mcp_backend_postgresql_dependency");
           }
           if (!dockerfile.includes('FROM node:20-alpine')) {
             throw new Error("missing_mcp_backend_base_image");
@@ -95,11 +99,20 @@ jobs:
           if (!dockerfile.includes('CMD ["node", "bootstrap.js"]')) {
             throw new Error("missing_mcp_backend_bootstrap_cmd");
           }
-          if (!dockerfile.includes('COPY package.json bootstrap.js server.js ./')) {
+          if (!dockerfile.includes('COPY package.json package-lock.json ./')) {
+            throw new Error("missing_mcp_backend_lock_copy");
+          }
+          if (!dockerfile.includes('RUN npm ci --omit=dev --ignore-scripts')) {
+            throw new Error("missing_mcp_backend_locked_install");
+          }
+          if (!dockerfile.includes('COPY bootstrap.js server.js ./')) {
             throw new Error("missing_mcp_backend_runtime_copy");
           }
           if (!dockerfile.includes('COPY foundation ./foundation')) {
             throw new Error("missing_mcp_backend_foundation_copy");
+          }
+          if (/SUPABASE_/i.test(dockerfile)) {
+            throw new Error("supabase_runtime_env_leak");
           }
           if (dockerfile.includes("npp-core") || dockerfile.includes("start:core-api") || dockerfile.includes("Next.js")) {
             throw new Error("core_or_frontend_runtime_leak");
@@ -134,12 +147,22 @@ jobs:
           config_json="$(heroku config -a "$HEROKU_APP_NAME" --json)"
           required_vars=(${HEROKU_REQUIRED_CONFIG_NAMES//,/ })
           for name in "${required_vars[@]}"; do
-            jq -e --arg name "$name" 'has($name)' <<<"$config_json" >/dev/null
+            if ! jq -e --arg name "$name" 'has($name) and (.[$name] | type == "string" and length > 0)' <<<"$config_json" >/dev/null; then
+              echo "Required MCP backend config is absent or empty: $name" >&2
+              exit 1
+            fi
           done
-          if jq -e 'has("DATABASE_URL")' <<<"$config_json" >/dev/null; then
-            echo "DATABASE_URL must stay absent for this transitional workflow." >&2
-            exit 1
-          fi
+
+          persistence_provider="$(jq -r '.PERSISTENCE_PROVIDER // empty' <<<"$config_json")"
+          test "$persistence_provider" = "postgresql"
+          legacy_runtime_enabled="$(jq -r '.MCP_LEGACY_RUNTIME_ENABLED // empty' <<<"$config_json" | tr '[:upper:]' '[:lower:]')"
+          case "$legacy_runtime_enabled" in
+            false|0|no|off) ;;
+            *)
+              echo "MCP_LEGACY_RUNTIME_ENABLED must be false for production." >&2
+              exit 1
+              ;;
+          esac
 
           previous_active_release_version="$(heroku releases --json -a "$HEROKU_APP_NAME" | jq -r '.[0].version // empty')"
           test -n "$previous_active_release_version"

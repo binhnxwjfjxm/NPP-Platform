@@ -5,29 +5,36 @@ import test from "node:test";
 const root = new URL("../../", import.meta.url);
 
 async function read(relativePath) {
-  return readFile(new URL(relativePath, root), "utf8");
+  return (await readFile(new URL(relativePath, root), "utf8")).replace(/\r\n/g, "\n");
 }
 
 const manualWorkflow = await read(".github/workflows/heroku-mcp-backend-manual.yml");
 const ciWorkflow = await read(".github/workflows/heroku-mcp-backend-contract-ci.yml");
 const dockerfile = await read("mcp/apps/backend/Dockerfile");
 const packageJson = JSON.parse(await read("mcp/apps/backend/package.json"));
+const backendLock = JSON.parse(await read("mcp/apps/backend/package-lock.json"));
 const rootProcfile = (await read("Procfile")).trim();
 
-test("MCP backend runtime stays on bootstrap.js and binds externally in the container", () => {
+test("MCP backend runtime stays on bootstrap.js with locked PostgreSQL dependencies", () => {
   assert.equal(packageJson.scripts.start, "node bootstrap.js");
+  assert.equal(packageJson.dependencies.pg, "^8.12.0");
+  assert.equal(backendLock.packages[""].dependencies.pg, "^8.12.0");
+  assert.ok(backendLock.packages["node_modules/pg"]);
   assert.match(dockerfile, /FROM node:20-alpine/);
   assert.match(dockerfile, /ENV HOST=0\.0\.0\.0/);
   assert.match(dockerfile, /USER node/);
   assert.match(dockerfile, /CMD \["node", "bootstrap\.js"\]/);
-  assert.ok(dockerfile.includes("COPY package.json bootstrap.js server.js ./"));
+  assert.ok(dockerfile.includes("COPY package.json package-lock.json ./"));
+  assert.ok(dockerfile.includes("RUN npm ci --omit=dev --ignore-scripts"));
+  assert.ok(dockerfile.includes("COPY bootstrap.js server.js ./"));
   assert.match(dockerfile, /COPY foundation \.\/foundation/);
+  assert.doesNotMatch(dockerfile, /SUPABASE_/i);
   assert.doesNotMatch(dockerfile, /npp-core/i);
   assert.doesNotMatch(dockerfile, /Procfile/i);
   assert.doesNotMatch(dockerfile, /vercel/i);
 });
 
-test("manual Heroku MCP workflow performs provider preflight and isolated rollback", () => {
+test("manual Heroku MCP workflow performs PostgreSQL preflight and isolated rollback", () => {
   assert.match(manualWorkflow, /workflow_dispatch/);
   assert.match(manualWorkflow, /issue_comment/);
   assert.match(manualWorkflow, /\/deploy-heroku-mcp-production/);
@@ -37,11 +44,18 @@ test("manual Heroku MCP workflow performs provider preflight and isolated rollba
   assert.match(manualWorkflow, /heroku stack -a "\$HEROKU_APP_NAME"/);
   assert.match(manualWorkflow, /heroku config -a "\$HEROKU_APP_NAME" --json/);
   assert.match(manualWorkflow, /HEROKU_REQUIRED_CONFIG_NAMES/);
+  assert.match(manualWorkflow, /DATABASE_URL/);
+  assert.match(manualWorkflow, /MCP_DB_SCHEMA/);
+  assert.match(manualWorkflow, /MCP_DB_ROLE/);
+  assert.match(manualWorkflow, /PERSISTENCE_PROVIDER/);
+  assert.match(manualWorkflow, /test "\$persistence_provider" = "postgresql"/);
+  assert.match(manualWorkflow, /MCP_LEGACY_RUNTIME_ENABLED must be false/);
+  assert.doesNotMatch(manualWorkflow, /DATABASE_URL must stay absent/);
+  assert.doesNotMatch(manualWorkflow.match(/HEROKU_REQUIRED_CONFIG_NAMES:.*$/m)?.[0] || "", /SUPABASE_/);
   assert.match(manualWorkflow, /heroku releases --json -a "\$HEROKU_APP_NAME"/);
   assert.match(manualWorkflow, /previous_active_release_version/);
   assert.match(manualWorkflow, /failed_release_version/);
   assert.match(manualWorkflow, /rollback_target_version/);
-  assert.match(manualWorkflow, /DATABASE_URL must stay absent/);
   assert.match(manualWorkflow, /heroku container:login/);
   assert.match(manualWorkflow, /heroku container:push web -a "\$HEROKU_APP_NAME"/);
   assert.match(manualWorkflow, /heroku container:release web -a "\$HEROKU_APP_NAME"/);
@@ -92,18 +106,30 @@ test("deploy failure remains a failed workflow after rollback evidence is record
   assert.match(manualWorkflow, /The requested deployment failed health checks and was rolled back/);
 });
 
-test("Heroku MCP CI builds and smokes the backend container with fixture env", () => {
+test("Heroku MCP CI builds, verifies and smokes backend with frontend build fixtures", () => {
   assert.match(ciWorkflow, /pull_request:/);
   assert.match(ciWorkflow, /push:/);
   assert.match(ciWorkflow, /workflow_dispatch/);
-  assert.match(ciWorkflow, /docker build -f mcp\/apps\/backend\/Dockerfile mcp\/apps\/backend/);
-  assert.match(ciWorkflow, /docker run -d --rm/);
-  assert.match(ciWorkflow, /\/health\/live/);
-  assert.match(ciWorkflow, /\/health\/ready/);
+  assert.match(ciWorkflow, /npm ci --prefix mcp\/apps\/backend/);
+  assert.match(ciWorkflow, /npm --workspace mcp\/apps\/backend run verify/);
   assert.match(ciWorkflow, /npm --workspace mcp run test:heroku-mcp-backend-contract/);
   assert.match(ciWorkflow, /npm --workspace mcp run test:heroku-mcp-backend-runtime/);
+  assert.match(ciWorkflow, /phase-6c0b-persistence-boundary\.test\.mjs/);
+  assert.match(ciWorkflow, /npm --workspace mcp run test:vercel-deployment-control/);
+  assert.match(ciWorkflow, /npm --workspace mcp run typecheck/);
+  assert.match(
+    ciWorkflow,
+    /- name: Build MCP frontend\n\s+env:\n\s+BACKEND_API_BASE_URL: http:\/\/127\.0\.0\.1:3001\n\s+BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef\n\s+MCP_LEGACY_ACTOR_ID: service:ci:mcp-v1\n\s+SUPABASE_URL: https:\/\/project\.example\.com\n\s+SUPABASE_ANON_KEY: ci-publishable-key\n\s+run: npm --workspace mcp run build/
+  );
+  assert.match(ciWorkflow, /npm --workspace mcp run build/);
+  assert.match(ciWorkflow, /docker build -f mcp\/apps\/backend\/Dockerfile mcp\/apps\/backend/);
+  assert.match(ciWorkflow, /docker run -d --rm/);
+  assert.match(ciWorkflow, /PERSISTENCE_PROVIDER=postgresql/);
+  assert.match(ciWorkflow, /smoke \/health\/live 200/);
+  assert.match(ciWorkflow, /smoke \/health\/ready 503/);
   assert.match(ciWorkflow, /docker stop "\$container_id"/);
-  assert.doesNotMatch(ciWorkflow, /vercel/i);
+  assert.doesNotMatch(ciWorkflow, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.doesNotMatch(ciWorkflow, /VERCEL_TOKEN|vercel\s+(?:deploy\b|--prod)|mcp-field/i);
   assert.doesNotMatch(ciWorkflow, /stack:set/);
   assert.doesNotMatch(ciWorkflow, /hung-phat\b/);
 });

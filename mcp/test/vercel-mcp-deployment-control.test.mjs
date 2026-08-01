@@ -94,6 +94,7 @@ test("Foundation CI gates workflow path deltas and runs the Vercel contract", ()
   assert.match(foundationWorkflow, /Verify workflow workspace path delta/);
   assert.match(foundationWorkflow, /BASELINE_REPO_ROOT/);
   assert.match(foundationWorkflow, /workflow_path_delta_failed/);
+  assert.match(foundationWorkflow, /npm ci --prefix apps\/backend/);
   assert.match(foundationWorkflow, /npm run test:vercel-deployment-control/);
   assert.doesNotMatch(
     foundationWorkflow,

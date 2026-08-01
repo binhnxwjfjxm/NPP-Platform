@@ -1,0 +1,93 @@
+{
+  "phase": "6C.0B",
+  "issue": 135,
+  "base_sha": "4708ca861433e283660f338f33fe34885cde8561",
+  "target_runtime": "mcp/apps/backend",
+  "production_provider": "postgresql",
+  "production_mutations": [],
+  "references": [
+    {
+      "classification": "active_runtime",
+      "paths": [
+        "mcp/apps/backend/bootstrap.js",
+        "mcp/apps/backend/foundation/config.js",
+        "mcp/apps/backend/foundation/gateway.js",
+        "mcp/apps/backend/foundation/persistence.js",
+        "mcp/apps/backend/foundation/postgresql-adapter.js"
+      ],
+      "supabase_required": false,
+      "direct_rest_or_rpc": false,
+      "notes": "Production import graph is PostgreSQL-only and fail-closed."
+    },
+    {
+      "classification": "transitional_adapter",
+      "paths": [
+        "mcp/apps/backend/foundation/legacy-runtime.js",
+        "mcp/apps/backend/foundation/supabase-adapter.js",
+        "mcp/apps/backend/foundation/legacy-supabase-adapter.js",
+        "mcp/apps/backend/foundation/*-api.js",
+        "mcp/apps/backend/foundation/*-mutations.js",
+        "mcp/apps/backend/server.js"
+      ],
+      "supabase_required": true,
+      "direct_rest_or_rpc": true,
+      "notes": "Loaded only by explicit non-production legacy runtime; retained for audit and reconciliation."
+    },
+    {
+      "classification": "frontend_server_legacy",
+      "paths": [
+        "mcp/src/server/env.ts",
+        "mcp/src/server/**",
+        "mcp/src/features/**"
+      ],
+      "supabase_required": "audited_existing_references",
+      "direct_rest_or_rpc": "audited_existing_references",
+      "notes": "Outside the backend-only refactor scope; no frontend provider selection is introduced."
+    },
+    {
+      "classification": "migration_audit_history",
+      "paths": [
+        "mcp/supabase/**",
+        "mcp/ops/apply-supabase-migrations.mjs",
+        "mcp/docs/**",
+        "mcp/audit/phase-6c0a/**"
+      ],
+      "supabase_required": "historical",
+      "direct_rest_or_rpc": "historical",
+      "notes": "Preserved for mapping, reconciliation and historical evidence."
+    },
+    {
+      "classification": "test_fixture",
+      "paths": [
+        "mcp/apps/backend/foundation/*.test.js",
+        "mcp/test/heroku-mcp-backend-*.mjs",
+        "mcp/test/phase-6c0b-persistence-boundary.test.mjs"
+      ],
+      "supabase_required": false,
+      "direct_rest_or_rpc": "legacy_fixture_only",
+      "notes": "Production config and Docker smoke do not receive Supabase env."
+    },
+    {
+      "classification": "obsolete_transitional_contract",
+      "paths": [
+        ".github/workflows/heroku-mcp-backend-manual.yml",
+        ".github/workflows/heroku-mcp-backend-contract-ci.yml"
+      ],
+      "supabase_required": false,
+      "direct_rest_or_rpc": false,
+      "notes": "PR #133 Supabase requirements are superseded by PostgreSQL DATABASE_URL/schema/role preflight."
+    }
+  ],
+  "health_contract": {
+    "live": "process_only",
+    "ready": "persistence_required",
+    "missing_database_url": "503_sanitized",
+    "unreachable_database": "503_sanitized"
+  },
+  "remaining_gates": [
+    "6C.0C backend-owned write hardening",
+    "6C.0D mcp schema and privilege migrations",
+    "6C.0E backup restore and migration rehearsal",
+    "owner-approved provider configuration and exact-main deploy"
+  ]
+}

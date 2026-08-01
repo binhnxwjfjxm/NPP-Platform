@@ -11,6 +11,7 @@ const bottomSheet = await readFile(new URL("../src/ui/overlay/BottomSheet.tsx", 
 const proxy = await readFile(new URL("../src/app/api/backend/orders/route.ts", import.meta.url), "utf8");
 const serverPage = await readFile(new URL("../src/features/orders/OrdersPage.tsx", import.meta.url), "utf8");
 const gateway = await readFile(new URL("../apps/backend/foundation/gateway.js", import.meta.url), "utf8");
+const legacyRuntime = await readFile(new URL("../apps/backend/foundation/legacy-runtime.js", import.meta.url), "utf8");
 
 test("orders tab exposes the real create-order entry point with proxied sessions", () => {
   assert.match(page, /createLoading \? "Đang tải phiên\.\.\." : "\+ Tạo đơn"/);
@@ -175,11 +176,12 @@ test("create-order caller uses persisted idempotency through the backend proxy",
   assert.match(proxy, /proxyBackendRequest\(request, "\/api\/orders", "POST"\)/);
 });
 
-test("Foundation Gateway owns standalone order creation before legacy fallback", () => {
-  assert.match(gateway, /import \{ handleOrderApi \} from "\.\/order-api\.js"/);
-  const ownerIndex = gateway.indexOf("await handleOrderApi(req, url, context, config)");
-  const transitionalIndex = gateway.indexOf("await handleTransitionalApi(req, url, context, config)");
-  const legacyIndex = gateway.indexOf("await proxyToLegacy(req, res, url, context, origin, config)");
+test("Foundation Gateway gives injected standalone order ownership before legacy fallback", () => {
+  assert.doesNotMatch(gateway, /import \{ handleOrderApi \} from "\.\/order-api\.js"/);
+  assert.match(legacyRuntime, /import \{ handleOrderApi \} from "\.\/order-api\.js"/);
+  const ownerIndex = gateway.indexOf("await legacyHandlers.handleOrderApi(req, url, context, config)");
+  const transitionalIndex = gateway.indexOf("await legacyHandlers.handleTransitionalApi(req, url, context, config)");
+  const legacyIndex = gateway.indexOf("if (legacyHandlers.proxyToLegacy)");
   assert.ok(ownerIndex > 0);
   assert.ok(transitionalIndex > ownerIndex);
   assert.ok(legacyIndex > transitionalIndex);

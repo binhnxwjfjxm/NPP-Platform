@@ -7,15 +7,18 @@ on:
       - .github/workflows/heroku-mcp-backend-contract-ci.yml
       - mcp/apps/backend/**
       - mcp/test/heroku-mcp-backend-*.mjs
+      - mcp/test/phase-6c0b-persistence-boundary.test.mjs
       - mcp/package.json
   push:
     branches:
       - agent/heroku-mcp-backend-contract
+      - agent/phase-6c0b-provider-neutral-mcp
     paths:
       - .github/workflows/heroku-mcp-backend-manual.yml
       - .github/workflows/heroku-mcp-backend-contract-ci.yml
       - mcp/apps/backend/**
       - mcp/test/heroku-mcp-backend-*.mjs
+      - mcp/test/phase-6c0b-persistence-boundary.test.mjs
       - mcp/package.json
   workflow_dispatch:
 
@@ -33,7 +36,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 20
           cache: npm
           cache-dependency-path: mcp/package-lock.json
 
@@ -41,11 +44,35 @@ jobs:
         working-directory: mcp
         run: npm ci
 
+      - name: Install backend workspace dependencies
+        run: npm ci --prefix mcp/apps/backend
+
+      - name: Verify MCP backend
+        run: npm --workspace mcp/apps/backend run verify
+
       - name: Run Heroku MCP contract tests
         run: npm --workspace mcp run test:heroku-mcp-backend-contract
 
       - name: Run Heroku MCP runtime tests
         run: npm --workspace mcp run test:heroku-mcp-backend-runtime
+
+      - name: Run Phase 6C.0B persistence boundary tests
+        run: node --test mcp/test/phase-6c0b-persistence-boundary.test.mjs
+
+      - name: Verify Vercel deployment control remains unchanged
+        run: npm --workspace mcp run test:vercel-deployment-control
+
+      - name: Typecheck MCP frontend
+        run: npm --workspace mcp run typecheck
+
+      - name: Build MCP frontend
+        env:
+          BACKEND_API_BASE_URL: http://127.0.0.1:3001
+          BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
+          MCP_LEGACY_ACTOR_ID: service:ci:mcp-v1
+          SUPABASE_URL: https://project.example.com
+          SUPABASE_ANON_KEY: ci-publishable-key
+        run: npm --workspace mcp run build
 
       - name: Build MCP backend container
         run: docker build -f mcp/apps/backend/Dockerfile mcp/apps/backend -t heroku-mcp-backend:${{ github.sha }}
@@ -65,8 +92,8 @@ jobs:
               -e NPP_CODE=fixture-code \
               -e MCP_LEGACY_ACTOR_ID=service:fixture-code:mcp-v1 \
               -e BACKEND_API_TOKEN=fixture-backend-token-0123456789abcdef \
-              -e SUPABASE_URL=https://project.example.com \
-              -e SUPABASE_SERVICE_ROLE_KEY=fixture-service-role-key-0123456789abcdef \
+              -e PERSISTENCE_PROVIDER=postgresql \
+              -e MCP_DB_SCHEMA=mcp \
               -e CORS_ORIGINS=http://127.0.0.1 \
               -e AUTH_MODE=proxy-service \
               heroku-mcp-backend:${{ github.sha }}
@@ -79,6 +106,7 @@ jobs:
 
           smoke() {
             local path="$1"
+            local expected="$2"
             local deadline=$((SECONDS + 180))
             local last_status=""
             while [ "$SECONDS" -lt "$deadline" ]; do
@@ -90,16 +118,17 @@ jobs:
                   --write-out '%{http_code}' \
                   "http://127.0.0.1:3001${path}" || true
               )"
-              if [ "$last_status" = "200" ]; then
+              if [ "$last_status" = "$expected" ]; then
                 return 0
               fi
               sleep 3
             done
-            echo "Container smoke failed for ${path} (last_status=${last_status:-none})" >&2
+            docker logs "$container_id" >&2 || true
+            echo "Container smoke failed for ${path} (expected=${expected}, last_status=${last_status:-none})" >&2
             exit 1
           }
 
-          smoke /health/live
-          smoke /health/ready
-          smoke /health
-          smoke /api/health
+          smoke /health/live 200
+          smoke /health/ready 503
+          smoke /health 503
+          smoke /api/health 503

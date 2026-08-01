@@ -90,29 +90,44 @@ test("the active Next proxy and gateway retain the current strangler boundary", 
   const proxy = await readFile(mcpUrl("src/lib/api/backend-proxy.ts"), "utf8");
   const bootstrap = await readFile(mcpUrl("apps/backend/bootstrap.js"), "utf8");
   const gateway = await readFile(mcpUrl("apps/backend/foundation/gateway.js"), "utf8");
+  const persistence = await readFile(mcpUrl("apps/backend/foundation/persistence.js"), "utf8");
+  const legacyRuntime = await readFile(mcpUrl("apps/backend/foundation/legacy-runtime.js"), "utf8");
 
   assert.match(route, /proxyBackendRequest/);
   assert.match(proxy, /X-Backend-Token/);
   assert.match(proxy, /MCP_LEGACY_ACTOR_ID/);
   assert.match(proxy, /Idempotency-Key/);
-  assert.match(bootstrap, /await import\("\.\/server\.js"\)/);
-  assert.match(bootstrap, /waitForLegacyHealth/);
-  assert.match(gateway, /handleOrderApi/);
-  assert.match(gateway, /handleRouteApi/);
-  assert.match(gateway, /handleTransitionalApi/);
-  assert.match(gateway, /proxyToLegacy/);
+  assert.match(bootstrap, /await createPersistence\(config\)/);
+  assert.match(bootstrap, /if \(config\.legacyRuntime\.enabled\)/);
+  assert.match(bootstrap, /await import\("\.\/foundation\/legacy-runtime\.js"\)/);
+  assert.doesNotMatch(bootstrap, /await import\("\.\/server\.js"\)/);
+  assert.match(gateway, /legacyHandlers\.handleOrderApi/);
+  assert.match(gateway, /legacyHandlers\.handleRouteApi/);
+  assert.match(gateway, /legacyHandlers\.handleTransitionalApi/);
+  assert.match(gateway, /legacyHandlers\.proxyToLegacy/);
+  assert.match(gateway, /if \(!legacyHandlers\)/);
+  assert.match(persistence, /await import\("\.\/legacy-supabase-adapter\.js"\)/);
+  assert.match(legacyRuntime, /await import\("\.\.\/server\.js"\)/);
 });
 
-test("provider-specific frontend and backend dependencies stay explicitly inventoried", async () => {
+test("provider-specific frontend and compatibility dependencies stay explicitly inventoried", async () => {
   const nextConfig = await readFile(mcpUrl("next.config.mjs"), "utf8");
   const backendConfig = await readFile(mcpUrl("apps/backend/foundation/config.js"), "utf8");
+  const persistence = await readFile(mcpUrl("apps/backend/foundation/persistence.js"), "utf8");
+  const postgresql = await readFile(mcpUrl("apps/backend/foundation/postgresql-adapter.js"), "utf8");
+  const legacyRuntime = await readFile(mcpUrl("apps/backend/foundation/legacy-runtime.js"), "utf8");
   const exportReader = await readFile(mcpUrl("src/lib/export/supabase-rest.ts"), "utf8");
   const legacyServer = await readFile(mcpUrl("apps/backend/server.js"), "utf8");
 
   assert.match(nextConfig, /SUPABASE_URL/);
   assert.match(nextConfig, /SUPABASE_ANON_KEY/);
-  assert.match(backendConfig, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(backendConfig, /PERSISTENCE_PROVIDER/);
+  assert.match(backendConfig, /DATABASE_URL/);
+  assert.match(backendConfig, /production_persistence_provider_forbidden/);
   assert.match(backendConfig, /AUTH_MODE=proxy-service/);
+  assert.match(persistence, /createPostgresqlPersistence/);
+  assert.match(postgresql, /new PoolImpl/);
+  assert.match(legacyRuntime, /SUPABASE_SERVICE_ROLE_KEY/);
   assert.match(exportReader, /\/rest\/v1\//);
   assert.match(legacyServer, /SUPABASE_SERVICE_ROLE_KEY/);
 });

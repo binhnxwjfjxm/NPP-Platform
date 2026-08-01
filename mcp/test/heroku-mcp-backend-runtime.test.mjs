@@ -15,11 +15,7 @@ function request(port, path) {
         res.on("data", (chunk) => chunks.push(chunk));
         res.on("end", () => {
           const text = Buffer.concat(chunks).toString("utf8");
-          resolve({
-            status: res.statusCode,
-            headers: res.headers,
-            body: text ? JSON.parse(text) : null
-          });
+          resolve({ status: res.statusCode, headers: res.headers, body: text ? JSON.parse(text) : null });
         });
       }
     );
@@ -48,13 +44,13 @@ function getFreePort() {
   });
 }
 
-async function waitForHealth(port, path, timeoutMs = 20000) {
+async function waitForStatus(port, path, expectedStatus, timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
   while (Date.now() < deadline) {
     try {
       const result = await request(port, path);
-      if (result.status === 200) return result;
+      if (result.status === expectedStatus) return result;
       lastError = new Error(`unexpected_status_${result.status}`);
     } catch (error) {
       lastError = error;
@@ -64,12 +60,10 @@ async function waitForHealth(port, path, timeoutMs = 20000) {
   throw lastError || new Error("health_timeout");
 }
 
-test("bootstrap runtime exposes public health routes without backend token", async (t) => {
+test("bootstrap starts without Supabase and keeps live separate from DB readiness", async (t) => {
   const publicPort = await getFreePort();
   let legacyPort = await getFreePort();
-  while (legacyPort === publicPort) {
-    legacyPort = await getFreePort();
-  }
+  while (legacyPort === publicPort) legacyPort = await getFreePort();
   const backendDir = fileURLToPath(new URL("../apps/backend/", import.meta.url));
 
   const child = spawn(process.execPath, ["bootstrap.js"], {
@@ -84,10 +78,13 @@ test("bootstrap runtime exposes public health routes without backend token", asy
       NPP_CODE: "MCP-TEST",
       MCP_LEGACY_ACTOR_ID: "service:mcp-test:mcp-v1",
       BACKEND_API_TOKEN: "0123456789abcdef0123456789abcdef",
-      SUPABASE_URL: "https://project.example.com",
-      SUPABASE_SERVICE_ROLE_KEY: "server-only-service-role-key",
+      PERSISTENCE_PROVIDER: "postgresql",
+      MCP_DB_SCHEMA: "mcp",
       CORS_ORIGINS: "http://127.0.0.1",
-      AUTH_MODE: "proxy-service"
+      AUTH_MODE: "proxy-service",
+      DATABASE_URL: "",
+      SUPABASE_URL: "",
+      SUPABASE_SERVICE_ROLE_KEY: ""
     },
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -103,23 +100,20 @@ test("bootstrap runtime exposes public health routes without backend token", asy
     await exitPromise.catch(() => {});
   });
 
-  const live = await waitForHealth(publicPort, "/health/live");
-  const ready = await waitForHealth(publicPort, "/health/ready");
-  const legacy = await request(publicPort, "/health");
-  const apiHealth = await request(publicPort, "/api/health");
+  const live = await waitForStatus(publicPort, "/health/live", 200);
+  assert.equal(live.body.data.service, "mcp-plan-backend");
+  assert.equal(live.body.data.installationConfigured, true);
+  assert.equal(live.body.data.status, "live");
+  assert.equal(live.body.data.persistenceProvider, "postgresql");
 
-  for (const response of [live, ready, legacy, apiHealth]) {
-    assert.equal(response.status, 200);
-    assert.equal(response.body.data.service, "mcp-plan-backend");
-    assert.equal(response.body.data.installationConfigured, true);
-    assert.equal(response.body.data.providerConfigured, true);
+  for (const path of ["/health/ready", "/health", "/api/health"]) {
+    const ready = await waitForStatus(publicPort, path, 503);
+    assert.equal(ready.body.error.code, "PROVIDER_UNAVAILABLE");
+    assert.deepEqual(ready.body.error.details, {});
+    assert.equal(JSON.stringify(ready.body).includes("DATABASE_URL"), false);
   }
 
-  assert.equal(legacy.body.data.authBoundary, "proxy-service");
-  assert.equal(apiHealth.body.data.authBoundary, "proxy-service");
-  assert.equal(live.body.data.authBoundary, "proxy-service");
-  assert.equal(ready.body.data.authBoundary, "proxy-service");
-
   const combined = stdout.join("\n") + "\n" + stderr.join("\n");
-  assert.match(combined, /foundation_gateway_ready|mcp-plan-backend listening/);
+  assert.match(combined, /foundation_gateway_ready/);
+  assert.doesNotMatch(combined, /missing_supabase_service_role_key/i);
 });
