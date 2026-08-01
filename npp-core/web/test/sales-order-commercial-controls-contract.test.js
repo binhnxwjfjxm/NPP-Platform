@@ -50,7 +50,7 @@ test('Phase 6B.2 contract forbids MCP and production rollout changes', () => {
 
 test('canonical Sales Order form activates the commercial implementation', () => {
   assert.match(formEntry, /SalesOrderCommercialForm/);
-  assert.match(formEntry, /export \{ default \}/);
+  assert.match(formEntry, /export default function SalesOrderForm/);
 });
 
 test('manual order UI is wired for channel and commercial permissions', () => {
@@ -69,4 +69,5 @@ test('manual order UI is wired for channel and commercial permissions', () => {
 test('desktop modal has one real stable vertical scroll owner', () => {
   assert.match(styles, /\.orderEditorBody\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?overflow-y:\s*scroll;[\s\S]*?scrollbar-gutter:\s*stable;/);
   assert.match(styles, /\.orderEditorModal\s*\{[\s\S]*?overflow:\s*hidden;/);
+  assert.match(formEntry, /grid-auto-rows:max-content/);
 });
