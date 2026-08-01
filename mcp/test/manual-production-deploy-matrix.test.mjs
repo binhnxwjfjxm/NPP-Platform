@@ -42,7 +42,7 @@ test("Vercel workflows are locked to distinct NPP and MCP projects", async () =>
   assert.doesNotMatch(mcp, /vars\.VERCEL_MCP_PROJECT_ID/);
   assert.doesNotMatch(mcp, /vars\.VERCEL_MCP_PRODUCTION_URL/);
   assert.match(mcp, /MCP_ROOT_DIRECTORY: mcp/);
-  assert.match(mcp, /mcp_project_must_not_equal_core_project/);
+  assert.match(mcp, /mcp_project_must_not_equal_legacy_runtime_source/);
   assert.doesNotMatch(mcp, /rootDirectory !== 'npp-core\/web'/);
 });
 
