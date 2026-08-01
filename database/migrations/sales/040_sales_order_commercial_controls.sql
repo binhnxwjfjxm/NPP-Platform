@@ -161,7 +161,10 @@ ALTER TABLE sales.sales_order_version_lines
 UPDATE sales.sales_order_version_lines
 SET
   base_unit_price = COALESCE(base_unit_price, unit_price),
-  system_unit_price = COALESCE(system_unit_price, unit_price)
+  system_unit_price = CASE
+    WHEN price_source = 'MANUAL_OVERRIDE' THEN system_unit_price
+    ELSE COALESCE(system_unit_price, unit_price)
+  END
 WHERE base_unit_price IS NULL OR system_unit_price IS NULL;
 
 ALTER TABLE sales.sales_order_version_lines
