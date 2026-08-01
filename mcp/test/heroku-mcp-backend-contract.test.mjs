@@ -110,6 +110,7 @@ test("Heroku MCP CI builds, verifies and smokes backend without Supabase env", (
   assert.match(ciWorkflow, /pull_request:/);
   assert.match(ciWorkflow, /push:/);
   assert.match(ciWorkflow, /workflow_dispatch/);
+  assert.match(ciWorkflow, /npm ci --prefix mcp\/apps\/backend/);
   assert.match(ciWorkflow, /npm --workspace mcp\/apps\/backend run verify/);
   assert.match(ciWorkflow, /npm --workspace mcp run test:heroku-mcp-backend-contract/);
   assert.match(ciWorkflow, /npm --workspace mcp run test:heroku-mcp-backend-runtime/);
