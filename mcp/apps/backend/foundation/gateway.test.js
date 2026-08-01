@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { once } from "node:events";
 import { createFoundationGateway } from "./gateway.js";
+import { handleOrderApi } from "./order-api.js";
+import { handleRouteApi } from "./route-api.js";
+import { handleTransitionalApi } from "./transitional-api.js";
 
 function listen(server, host = "127.0.0.1") {
   server.listen(0, host);
@@ -25,6 +28,19 @@ function request(port, path, { method = "GET", headers = {}, body } = {}) {
   });
 }
 
+const readyPersistence = Object.freeze({
+  async readiness() { return { provider: "postgresql", configured: true, ready: true }; },
+  async assertReady() { return { provider: "postgresql", configured: true, ready: true }; },
+  async close() {}
+});
+
+const legacyHandlers = Object.freeze({
+  handleOrderApi,
+  handleRouteApi,
+  handleTransitionalApi,
+  proxyToLegacy: true
+});
+
 async function setup(legacyHandler, configOverrides = {}) {
   const legacy = http.createServer(legacyHandler || ((req, res) => {
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -39,6 +55,7 @@ async function setup(legacyHandler, configOverrides = {}) {
     }));
   }));
   const internalPort = await listen(legacy);
+  const persistence = configOverrides.persistenceAdapter || readyPersistence;
 
   const config = {
     service: "mcp-plan-backend",
@@ -53,12 +70,14 @@ async function setup(legacyHandler, configOverrides = {}) {
     authMode: "proxy-service",
     corsOrigins: ["https://app.example.com"],
     upstreamTimeoutMs: 1000,
+    persistence: { provider: "postgresql", configured: true, schema: "mcp" },
+    legacyRuntime: { enabled: true },
     ...configOverrides
   };
 
-  const gateway = createFoundationGateway(config);
+  const gateway = createFoundationGateway(config, { persistence, legacyHandlers });
   const publicPort = await listen(gateway);
-  return { legacy, gateway, config, publicPort };
+  return { legacy, gateway, config, publicPort, persistence };
 }
 
 function close(server) {
@@ -83,6 +102,28 @@ test("health and auth failures use the canonical envelope", async (t) => {
   assert.equal(unauthorized.body.error.code, "BACKEND_AUTH_REQUIRED");
   assert.deepEqual(unauthorized.body.error.details, {});
   assert.equal(unauthorized.body.error.retryable, false);
+});
+
+test("liveness remains available while readiness fails closed", async (t) => {
+  const unavailable = Object.freeze({
+    async readiness() { return { provider: "postgresql", configured: false, ready: false, code: "missing_database_url" }; },
+    async assertReady() { const error = new Error("missing_database_url"); error.code = "missing_database_url"; error.statusCode = 503; throw error; },
+    async close() {}
+  });
+  const state = await setup(undefined, { persistenceAdapter: unavailable });
+  t.after(async () => { await close(state.gateway); await close(state.legacy); });
+
+  const live = await request(state.publicPort, "/health/live");
+  assert.equal(live.status, 200);
+  assert.equal(live.body.data.status, "live");
+
+  for (const path of ["/health", "/api/health", "/health/ready"]) {
+    const ready = await request(state.publicPort, path);
+    assert.equal(ready.status, 503);
+    assert.equal(ready.body.error.code, "PROVIDER_UNAVAILABLE");
+    assert.deepEqual(ready.body.error.details, {});
+    assert.equal(JSON.stringify(ready.body).includes("database"), false);
+  }
 });
 
 test("gateway injects context and wraps legacy success as canonical data", async (t) => {
