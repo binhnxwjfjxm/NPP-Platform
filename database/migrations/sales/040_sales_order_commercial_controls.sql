@@ -150,11 +150,22 @@ ALTER TABLE sales.sales_order_version_lines
   ADD COLUMN IF NOT EXISTS manual_override_reason text NULL,
   ADD COLUMN IF NOT EXISTS pricing_trace_snapshot jsonb NOT NULL DEFAULT '[]'::jsonb;
 
+-- Migration 037 deliberately blocks line mutations once a version leaves draft.
+-- This one-time provenance backfill must also cover confirmed/superseded/cancelled
+-- history. ALTER TABLE takes an ACCESS EXCLUSIVE lock and the migration runner wraps
+-- the file in one transaction, so temporarily disabling this single guard cannot be
+-- observed by concurrent business traffic; a failure rolls the trigger state back.
+ALTER TABLE sales.sales_order_version_lines
+  DISABLE TRIGGER sales_order_version_lines_draft_only;
+
 UPDATE sales.sales_order_version_lines
 SET
   base_unit_price = COALESCE(base_unit_price, unit_price),
   system_unit_price = COALESCE(system_unit_price, unit_price)
 WHERE base_unit_price IS NULL OR system_unit_price IS NULL;
+
+ALTER TABLE sales.sales_order_version_lines
+  ENABLE TRIGGER sales_order_version_lines_draft_only;
 
 DO $$
 BEGIN
