@@ -181,7 +181,7 @@ export async function getDraftCommercialSnapshot(client, {
     `SELECT line.line_number,
             line.variant_id,
             line.ordered_quantity,
-            line.base_unit_price,
+            trim_scale(line.base_unit_price)::text AS base_unit_price,
             trim_scale(line.system_unit_price)::text AS system_unit_price,
             line.unit_price,
             line.price_source,
@@ -270,8 +270,8 @@ export async function loadCommercialFacts(client, { installationId, salesOrderId
   const lineResult = await client.query(
     `SELECT version.version_number,
             line.line_number,
-            line.base_unit_price,
-            line.system_unit_price,
+            trim_scale(line.base_unit_price)::text AS base_unit_price,
+            trim_scale(line.system_unit_price)::text AS system_unit_price,
             line.manual_override_reason,
             line.pricing_trace_snapshot
        FROM sales.sales_order_versions AS version
