@@ -4,126 +4,96 @@
 
 - Repository: `binhnxwjfjxm/NPP-Platform`.
 - Production branch: `main`.
-- Exact source baseline for Phase 6C.0A: `46f43b473e35ac1103aa2b49412de3f64fe1646b`.
-- PR #128 merged the Core employee-directory refresh fix at the same commit.
-- The source delta after the earlier MCP audit did not modify `mcp/**`.
-- Phase 6B.2 commercial controls are on `main`; production migration `040_sales_order_commercial_controls.sql` remains a separate operation and is not assumed to have run.
+- Exact audited baseline before Phase 6C.0C: `87a3151f8c0897e3418f65fcc76d38abdabbcbf7`.
+- PR #130 merged Phase 6C.0A repository/data-contract audit.
+- PR #136 merged Phase 6C.0B provider-neutral PostgreSQL persistence boundary.
+- PR #142 merged the guarded MCP Vercel runtime-source contract.
+- Exact latest `main` must be re-audited before PR review or any later task.
 
-## Active Phase 6C.0A work
+Source merge does not prove production deployment, provider configuration, database migration, backup or cutover.
+
+## Active work
 
 Issue:
 
 ```text
-#129 — Phase 6C.0A — Audit MCP legacy dependencies, identity mapping and cutover contracts
+#143 — Phase 6C.0C — harden MCP backend-owned writes, auth and audit
 ```
 
 Branch:
 
 ```text
-agent/phase-6c0-mcp-legacy-audit
+agent/phase-6c0c-mcp-write-hardening
 ```
 
-Scope is docs/tests/read-only only:
+Scope is source-only:
 
 ```text
-machine-readable dependency inventory
-live-call graph contract
-environment contract inventory
-identity mapping contract
-legacy-order classification contract
-read-only data-audit SQL
-fixture and reconciliation report schema
-risk register
-documentation hygiene
+server-owned principal/request context
+deny-by-default authorization
+backend-owned write command contract
+idempotency fingerprint and replay semantics
+transactional audit/outbox envelope
+fixture-based rollback and sanitization tests
 ```
 
-No runtime behavior, provider configuration, production database access, migration, deploy or cutover is authorized by this branch.
+No production provider or database mutation is authorized.
 
-## Locked MCP conclusions
+## Locked runtime conclusions
 
-MCP is not a browser-direct Supabase mutation application in the active flow. The current runtime is:
+The active production MCP backend path remains:
 
 ```text
-MCP UI
-→ Next server/API proxy
-→ Foundation Gateway
-→ typed/transitional handler or legacy internal fallback
-→ Supabase REST/RPC
+bootstrap.js
+-> config.js
+-> persistence.js
+-> postgresql-adapter.js
+-> gateway.js
 ```
 
-The gateway boundary, request context and several idempotent mutation patterns are valid foundations to preserve.
+Production does not fall back to Supabase. Protected business routes remain fail-closed until PostgreSQL-owned repositories and schema mappings are implemented.
 
-MCP is not yet provider-neutral because:
-
-- frontend production build still requires Supabase URL and anon/publishable key;
-- backend still requires Supabase URL and service-role key;
-- legacy internal server remains a startup dependency;
-- application handlers still know provider RPC/table contracts;
-- current actor is a fixed proxy service actor;
-- user/employee authentication and deny-by-default MCP authorization are not complete.
-
-## Customer and order boundary
-
-- `shared.customers.id` remains the canonical Core customer identity.
-- MCP field outlet remains a separate identity.
-- Field outlet may have nullable Core customer/address links.
-- Unlinked outlet may be visited, tested, surveyed and followed up.
-- Only a linked active Core customer may create an official Core Sales Order.
-- Legacy MCP `orders`/`order_items` are not automatically Core Sales Orders.
-
-Every legacy order must be classified into exactly one of:
-
-```text
-OFFICIAL_ORDER_MIGRATION_CANDIDATE
-FIELD_ORDER_INTENT
-SAMPLE_TEST_DEMAND
-HISTORICAL_DISPLAY_ONLY
-INVALID_ORPHAN_RECONCILIATION_REQUIRED
-```
-
-Bulk import of the legacy order table into `sales.sales_orders` is forbidden.
-
-## Current production evidence boundary
-
-Verified earlier in this chat:
-
-- Vercel production has a deployment sourced from `46f43b473e35ac1103aa2b49412de3f64fe1646b`.
-- Public `/login` and a Next static asset responded successfully.
-- Protected Core routes required authentication.
-- Authenticated employee-directory workflow was manually tested by the owner and considered temporarily acceptable.
-
-Still not assumed or claimed:
-
-- exact Heroku Core release after the latest frontend deployment;
-- migration 040 registry state;
-- Sales Order `entry-settings` recovery;
-- production backup and restore rehearsal;
-- MCP Heroku/VPS/Supabase/R2 runtime state;
-- production data reconciliation;
-- Phase 6C cutover readiness.
+The default service authorization policy is intentionally empty. Future permissions/scopes must be backend-owned configuration or a trusted identity resolver result; browser headers cannot grant identity or access.
 
 ## Phase 6C sequence
 
 ```text
-6C.0A repository/data contract audit
-→ 6C.0B provider-neutral boundary
-→ 6C.0C backend-owned write hardening
-→ 6C.0D PostgreSQL mcp schema
-→ 6C.0E migration rehearsal
-→ 6C.0F provider/cutover preparation
-→ 6C.1 customer onboarding bridge
+6C.0A repository/data contract audit                       MERGED
+6C.0B provider-neutral persistence boundary                MERGED
+6C.0C backend-owned writes/auth/idempotency/audit-outbox   ACTIVE
+6C.0D PostgreSQL mcp schema and repositories               NOT STARTED
+6C.0E backup/restore/migration rehearsal and reconciliation NOT STARTED
+6C.0F provider/cutover preparation                          NOT STARTED
+6C.1 customer onboarding bridge                             NOT STARTED
 ```
 
-Do not start Phase 6C.1 before the identity, SKU/unit, order classification, auth/permission and provider/runtime gates are closed.
+Do not start 6C.0D before the 6C.0C exact-head tests and review gate are complete. Do not attach the shared PostgreSQL database, create production roles, migrate data or deploy `hung-phat-mcp` before the later gates and owner approval.
 
-## Required workflow
+## MCP Vercel blocker
 
-1. Recheck exact `main` before PR.
-2. Keep changes under docs/tests/read-only audit scope.
-3. Run exact PR-head CI.
-4. Review findings honestly; do not manufacture defects when source is correct.
-5. Merge only after CI/review gate.
-6. Production deploy, migration and provider operations remain separate explicit commands.
+The guarded MCP Vercel production workflow still lacks these GitHub Actions secret sources:
 
-> Updated: `2026-08-01`  
-> Current checkpoint: Phase 6C.0A audit implementation on Issue #129.
+```text
+MCP_BACKEND_API_BASE_URL
+MCP_BACKEND_API_TOKEN
+MCP_SUPABASE_URL
+MCP_SUPABASE_ANON_KEY
+```
+
+Do not rerun `/deploy-vercel-mcp-production` until their safe sources are recovered and configured. This blocker is separate from Phase 6C.0C.
+
+## Production evidence boundary
+
+Not claimed or assumed:
+
+- MCP Vercel production deployment from `87a3151...`;
+- MCP Heroku production deployment;
+- shared PostgreSQL attachment to MCP;
+- `mcp` production schema/role/grants;
+- backup or restore rehearsal;
+- migration or legacy-data reconciliation;
+- Core migration `040` production registry state;
+- any provider cutover.
+
+> Updated: `2026-08-02`  
+> Current checkpoint: Phase 6C.0C source implementation on Issue #143.
