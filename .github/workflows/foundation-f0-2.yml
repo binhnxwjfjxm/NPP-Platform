@@ -153,6 +153,9 @@ jobs:
           npm run test:pullmcp-deployer
           npm run test:backend-api-auth
 
+      - name: Verify Phase 6C.0A audit contracts
+        run: npm run test:phase-6c0a-audit
+
       - name: Verify backend foundation
         run: npm --prefix apps/backend run verify
 

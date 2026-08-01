@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "phase": "6C.0A",
+  "baseline": "46f43b473e35ac1103aa2b49412de3f64fe1646b",
+  "risks": [
+    {"id":"R1","risk":"dual write between legacy provider and target PostgreSQL","likelihood":"medium","impact":"critical","owner":"MCP cutover owner","mitigation":"single-writer cutover plan, outbox/idempotency, pre/post reconciliation","gate":"no dual write without approved consistency contract"},
+    {"id":"R2","risk":"legacy fallback hides unmigrated routes","likelihood":"high","impact":"high","owner":"MCP backend owner","mitigation":"endpoint-to-handler inventory and per-route retirement tests","gate":"fallback count and callers known"},
+    {"id":"R3","risk":"Supabase/provider outage blocks hybrid runtime","likelihood":"medium","impact":"high","owner":"runtime owner","mitigation":"provider audit, timeout/error contract, rollback path","gate":"provider dependency explicitly accepted until cutover"},
+    {"id":"R4","risk":"identity collision links wrong outlet/customer/employee","likelihood":"medium","impact":"critical","owner":"identity owner","mitigation":"no name-only matching, conflict queue, audit actor","gate":"mapping reconciliation pass"},
+    {"id":"R5","risk":"ambiguous legacy order becomes official Core order","likelihood":"high","impact":"critical","owner":"Sales/MCP boundary owner","mitigation":"five-way classification and bulk-import prohibition","gate":"100 percent classified"},
+    {"id":"R6","risk":"manual retry or refresh creates duplicate mutation","likelihood":"medium","impact":"high","owner":"idempotency owner","mitigation":"stable business operation key across ambiguous retries and contract tests","gate":"manual retry/reload tests pass"},
+    {"id":"R7","risk":"stale frontend Supabase env survives adapter retirement","likelihood":"high","impact":"medium","owner":"frontend runtime owner","mitigation":"env inventory, build contract tests, removal gate","gate":"production build succeeds without Supabase frontend env"},
+    {"id":"R8","risk":"service actor prevents user-level accountability","likelihood":"high","impact":"high","owner":"auth owner","mitigation":"employee authentication, deny-by-default permissions, audit attribution","gate":"no 6C.1 business mutation without actor policy"},
+    {"id":"R9","risk":"R2 object exists without metadata or cleanup","likelihood":"medium","impact":"medium","owner":"storage owner","mitigation":"upload state machine, orphan query, scheduled cleanup audit","gate":"orphan lifecycle and scheduler verified"},
+    {"id":"R10","risk":"cutover rollback cannot restore provider/data consistency","likelihood":"medium","impact":"critical","owner":"operations owner","mitigation":"verified backup, restore rehearsal, immutable export, rollback runbook","gate":"restore evidence and rollback rehearsal complete"}
+  ]
+}
