@@ -5,7 +5,7 @@ export async function createPersistence(config, options = {}) {
     return createPostgresqlPersistence(config, options.postgresql);
   }
   if (config.persistence.provider === "legacy-supabase" && config.legacyRuntime.enabled) {
-    const { createLegacySupabasePersistence } = await import("./legacy-supabase-adapter.js");
+    const { createLegacySupabasePersistence } = await import("./supabase-adapter.js");
     return createLegacySupabasePersistence(config);
   }
   const error = new Error("persistence_provider_forbidden");
