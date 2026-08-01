@@ -1,9 +1,13 @@
 name: Provision MCP Field Vercel project
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/phase-6c0-mcp-legacy-audit
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
     paths:
       - .github/workflows/vercel-mcp-project-provision.yml
   workflow_dispatch:
@@ -17,6 +21,7 @@ concurrency:
 
 jobs:
   provision:
+    if: github.head_ref == 'agent/phase-6c0-mcp-legacy-audit'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
