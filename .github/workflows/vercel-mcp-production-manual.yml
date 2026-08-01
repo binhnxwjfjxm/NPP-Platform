@@ -28,18 +28,20 @@ jobs:
     env:
       VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
       VERCEL_PROJECT_ID: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
-      LEGACY_RUNTIME_SOURCE_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
+      CORE_VERCEL_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
       DEPLOY_REF: main
       MCP_ROOT_DIRECTORY: mcp
       MCP_PRODUCTION_URL: https://mcp-field-binhnxwjfjxms-projects.vercel.app
+      MCP_LEGACY_ACTOR_ID: service:mcp-plan:mcp-v1
     steps:
       - name: Validate exact MCP deployment target
         shell: bash
         run: |
           set -euo pipefail
           test "$VERCEL_PROJECT_ID" = "prj_854SWdJeDEOPezAvvTZzTaRvZUSq"
-          test "$VERCEL_PROJECT_ID" != "$LEGACY_RUNTIME_SOURCE_PROJECT_ID"
+          test "$VERCEL_PROJECT_ID" != "$CORE_VERCEL_PROJECT_ID"
           test "$MCP_PRODUCTION_URL" = "https://mcp-field-binhnxwjfjxms-projects.vercel.app"
+          test "$MCP_LEGACY_ACTOR_ID" = "service:mcp-plan:mcp-v1"
 
       - name: Validate Issue #5 trigger comment
         if: github.event_name == 'issue_comment'
@@ -81,72 +83,44 @@ jobs:
         working-directory: mcp
         run: npm ci
 
-      - name: Copy legacy MCP runtime configuration to dedicated project
+      - name: Synchronize guarded MCP runtime configuration
         id: runtime-config
         shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          BACKEND_API_BASE_URL: ${{ secrets.MCP_BACKEND_API_BASE_URL }}
+          BACKEND_API_TOKEN: ${{ secrets.MCP_BACKEND_API_TOKEN }}
+          SUPABASE_URL: ${{ secrets.MCP_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.MCP_SUPABASE_ANON_KEY }}
         run: |
           set -euo pipefail
           status_file="${RUNNER_TEMP}/mcp-runtime-config-status.md"
-          legacy_dir="$(mktemp -d)"
-          legacy_env_file="${legacy_dir}/legacy-production.env"
-
-          cleanup() {
-            rm -rf "$legacy_dir"
-          }
-          trap cleanup EXIT
-
-          fail_preflight() {
-            local code="$1"
-            printf 'MCP runtime configuration synchronization failed: %s.\n' "$code" > "$status_file"
-            exit 1
-          }
-
           printf 'MCP runtime configuration synchronization failed: unknown_preflight_error.\n' > "$status_file"
-          test -n "${VERCEL_TOKEN:-}" || fail_preflight missing_vercel_token
 
-          mkdir -p "${legacy_dir}/.vercel"
-          printf '{"orgId":"%s","projectId":"%s"}\n' \
-            "$VERCEL_ORG_ID" "$LEGACY_RUNTIME_SOURCE_PROJECT_ID" \
-            > "${legacy_dir}/.vercel/project.json"
-
-          if ! (
-            cd "$legacy_dir"
-            VERCEL_ORG_ID="$VERCEL_ORG_ID" \
-            VERCEL_PROJECT_ID="$LEGACY_RUNTIME_SOURCE_PROJECT_ID" \
-              npx --yes vercel@latest env pull "$legacy_env_file" \
-                --environment=production \
-                --yes \
-                --token="$VERCEL_TOKEN"
-          ); then
-            fail_preflight legacy_vercel_env_pull_failed
-          fi
-
-          LEGACY_ENV_FILE="$legacy_env_file" \
-          STATUS_FILE="$status_file" \
-          node --input-type=module <<'NODE'
+          STATUS_FILE="$status_file" node --input-type=module <<'NODE'
           import { appendFile, writeFile } from "node:fs/promises";
-          import { loadEnvFile } from "node:process";
 
-          const requiredNames = [
-            "BACKEND_API_BASE_URL",
-            "BACKEND_API_TOKEN",
-            "MCP_LEGACY_ACTOR_ID",
-            "SUPABASE_URL",
-            "SUPABASE_ANON_KEY"
+          const sources = [
+            ["BACKEND_API_BASE_URL", "MCP_BACKEND_API_BASE_URL"],
+            ["BACKEND_API_TOKEN", "MCP_BACKEND_API_TOKEN"],
+            ["MCP_LEGACY_ACTOR_ID", "workflow:MCP_LEGACY_ACTOR_ID"],
+            ["SUPABASE_URL", "MCP_SUPABASE_URL"],
+            ["SUPABASE_ANON_KEY", "MCP_SUPABASE_ANON_KEY"]
           ];
 
           try {
-            loadEnvFile(process.env.LEGACY_ENV_FILE);
-
             const values = Object.fromEntries(
-              requiredNames.map((name) => [name, String(process.env[name] || "").trim()])
+              sources.map(([runtimeName]) => [runtimeName, String(process.env[runtimeName] || "").trim()])
             );
-            const missing = requiredNames.filter((name) => !values[name]);
+            const missingSources = sources
+              .filter(([runtimeName]) => !values[runtimeName])
+              .map(([, sourceName]) => sourceName);
 
-            if (missing.length) {
-              throw new Error(`missing_legacy_runtime_values:${missing.join(",")}`);
+            if (!String(process.env.VERCEL_TOKEN || "").trim()) {
+              missingSources.unshift("VERCEL_TOKEN");
+            }
+            if (missingSources.length) {
+              throw new Error(`missing_github_runtime_sources:${missingSources.join(",")}`);
             }
             if (!values.BACKEND_API_BASE_URL.startsWith("https://")) {
               throw new Error("backend_api_base_url_must_be_https");
@@ -176,7 +150,7 @@ jobs:
                     value,
                     type: "encrypted",
                     target: ["production"],
-                    comment: "Copied from the legacy MCP production runtime during guarded separation"
+                    comment: "Synchronized by guarded MCP production deployment workflow"
                   }))
                 )
               }
@@ -200,7 +174,7 @@ jobs:
 
             await writeFile(
               process.env.STATUS_FILE,
-              `MCP runtime configuration copied for: ${requiredNames.join(", ")}.\n`,
+              `MCP runtime configuration synchronized for: ${sources.map(([name]) => name).join(", ")}.\n`,
               "utf8"
             );
           } catch (error) {
@@ -250,8 +224,8 @@ jobs:
           if (linked.projectId !== process.env.VERCEL_PROJECT_ID) {
             throw new Error(`unexpected_mcp_vercel_project:${linked.projectId}`);
           }
-          if (linked.projectId === process.env.LEGACY_RUNTIME_SOURCE_PROJECT_ID) {
-            throw new Error("mcp_project_must_not_equal_legacy_runtime_source");
+          if (linked.projectId === process.env.CORE_VERCEL_PROJECT_ID) {
+            throw new Error("mcp_project_must_not_equal_core_project");
           }
           if (linked.settings?.rootDirectory !== process.env.MCP_ROOT_DIRECTORY) {
             throw new Error(`unexpected_mcp_root_directory:${linked.settings?.rootDirectory}`);

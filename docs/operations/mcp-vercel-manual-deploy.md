@@ -8,28 +8,39 @@ MCP Field frontend and NPP Core frontend are independent deployment targets.
 - MCP Field command on Issue #5: `/deploy-vercel-mcp-production`
 - Both commands deploy the exact current `main` SHA.
 - Neither command deploys a Heroku backend.
-- MCP backend `hung-phat-mcp` remains a separate manual release, smoke and rollback boundary.
+- MCP remains on its legacy pass-through runtime until a separate audited cutover is approved.
 - Automatic Vercel deployments remain disabled.
 
-## Required repository configuration
+## Pinned deployment identity
 
-The MCP workflow pins its non-secret deployment identity directly in source so the manual Actions button does not depend on optional repository variables:
+The MCP workflow pins its non-secret deployment identity directly in source:
 
 ```text
 Vercel team: team_hBA8rX68UHC8ogvREkOyQlJ2
 MCP project: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
 Production alias: https://mcp-field-binhnxwjfjxms-projects.vercel.app
+Root directory: mcp
 ```
 
-The workflow still rejects the NPP Core project ID and verifies the linked Vercel project and root directory before building.
+The workflow rejects the NPP Core project ID and verifies the linked Vercel project and root directory before building.
 
-The existing secret remains:
+## Required GitHub Actions secrets
+
+Store the current MCP legacy runtime values under these repository secret names:
 
 ```text
-VERCEL_TOKEN=<valid Vercel token stored only in GitHub Actions secrets>
+VERCEL_TOKEN
+MCP_BACKEND_API_BASE_URL
+MCP_BACKEND_API_TOKEN
+MCP_SUPABASE_URL
+MCP_SUPABASE_ANON_KEY
 ```
 
-Do not commit or paste the token.
+`MCP_LEGACY_ACTOR_ID` is pinned in the workflow as the non-secret value `service:mcp-plan:mcp-v1`.
+
+The workflow validates the five runtime values, masks them, upserts them as encrypted Production variables on the dedicated `mcp-field` project, and exports them only to the guarded build process. When a source is missing, the Issue #5 report identifies the missing GitHub secret name without printing any value.
+
+Do not commit or paste secret values. Do not add `DATABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` to Vercel.
 
 ## Vercel project contract
 
@@ -39,18 +50,19 @@ Root directory: mcp
 Framework: Next.js
 Git automatic deployments: OFF
 Production branch source: main through the guarded GitHub workflow only
-Backend API owner: Heroku app hung-phat-mcp
+Backend owner during this transition: existing MCP legacy VPS runtime
+Database/read owner during this transition: existing MCP Supabase project
 ```
 
-The frontend project must not receive a database URL or backend-only credentials.
+The dedicated frontend project receives only the runtime values required by the existing pass-through application. It must not receive PostgreSQL credentials, Supabase service-role credentials, Heroku credentials, or unrelated provider secrets.
 
 ## Manual rollout sequence
 
 1. Merge an MCP frontend change to `main` after CI is green.
-2. Confirm the workflow still pins the dedicated MCP project and production alias.
-3. Run `Manual Vercel MCP production deploy` in GitHub Actions or comment the exact command `/deploy-vercel-mcp-production` on Issue #5.
-4. Verify the workflow checks out exact `origin/main`.
-5. Verify `/`, `/visits` and a `/_next/static/` asset.
+2. Confirm the five required GitHub Actions secrets are present and current.
+3. Run `Manual Vercel MCP production deploy` in GitHub Actions or comment `/deploy-vercel-mcp-production` on Issue #5.
+4. Verify exact `origin/main`, the dedicated project link, root `mcp`, and Auto Deploy OFF.
+5. Verify `/`, `/login`, `/visits`, and one `/_next/static/` asset.
 6. Record the deployed SHA and deployment URL.
 
-A Core-only change uses `/deploy-vercel-production` and does not trigger this workflow. A backend-only MCP change is released separately to `hung-phat-mcp` and does not trigger a Vercel deployment.
+A Core-only change uses `/deploy-vercel-production` and does not trigger this workflow. Heroku MCP deployment and future VPS/PostgreSQL cutover remain separate operations.
