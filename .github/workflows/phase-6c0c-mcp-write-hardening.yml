@@ -30,6 +30,9 @@ jobs:
     name: Auth, idempotency and audit contract
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: mcp
     steps:
       - name: Checkout exact head
         uses: actions/checkout@v4
@@ -41,12 +44,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git diff --name-only origin/main...HEAD | tee phase-6c0c-changed-files.log
-          if git diff --name-only origin/main...HEAD | grep -E '^(npp-core/|database/)' >/dev/null; then
+          git -C .. diff --name-only origin/main...HEAD | tee phase-6c0c-changed-files.log
+          if git -C .. diff --name-only origin/main...HEAD | grep -E '^(npp-core/|database/)' >/dev/null; then
             echo '::error::Phase 6C.0C must not change Core or database migrations.'
             exit 1
           fi
-          if git diff --name-only origin/main...HEAD | grep -E '^\.github/workflows/(heroku|vercel)' >/dev/null; then
+          if git -C .. diff --name-only origin/main...HEAD | grep -E '^\.github/workflows/(heroku|vercel)' >/dev/null; then
             echo '::error::Phase 6C.0C must not modify production deployment workflows.'
             exit 1
           fi
@@ -59,10 +62,10 @@ jobs:
           cache-dependency-path: mcp/apps/backend/package-lock.json
 
       - name: Install MCP backend dependencies
-        run: npm ci --prefix mcp/apps/backend
+        run: npm ci --prefix apps/backend
 
       - name: Verify MCP backend contracts
-        run: npm --prefix mcp/apps/backend run verify 2>&1 | tee phase-6c0c-backend.log
+        run: npm --prefix apps/backend run verify 2>&1 | tee phase-6c0c-backend.log
 
       - name: Upload diagnostics
         if: always()
@@ -70,7 +73,7 @@ jobs:
         with:
           name: phase-6c0c-diagnostics-${{ github.run_id }}
           path: |
-            phase-6c0c-changed-files.log
-            phase-6c0c-backend.log
+            mcp/phase-6c0c-changed-files.log
+            mcp/phase-6c0c-backend.log
           retention-days: 7
           if-no-files-found: ignore
