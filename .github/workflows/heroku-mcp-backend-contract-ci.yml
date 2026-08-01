@@ -35,8 +35,10 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: mcp/package-lock.json
 
-      - name: Install workspace dependencies
+      - name: Install MCP workspace dependencies
+        working-directory: mcp
         run: npm ci
 
       - name: Run Heroku MCP contract tests
