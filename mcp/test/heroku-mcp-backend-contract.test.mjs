@@ -106,19 +106,23 @@ test("deploy failure remains a failed workflow after rollback evidence is record
   assert.match(manualWorkflow, /The requested deployment failed health checks and was rolled back/);
 });
 
-test("Heroku MCP CI builds and smokes backend without Supabase env", () => {
+test("Heroku MCP CI builds, verifies and smokes backend without Supabase env", () => {
   assert.match(ciWorkflow, /pull_request:/);
   assert.match(ciWorkflow, /push:/);
   assert.match(ciWorkflow, /workflow_dispatch/);
   assert.match(ciWorkflow, /working-directory: mcp\/apps\/backend\n\s+run: npm ci/);
-  assert.match(ciWorkflow, /npm --prefix mcp\/apps\/backend run verify/);
+  assert.match(ciWorkflow, /npm --workspace mcp\/apps\/backend run verify/);
+  assert.match(ciWorkflow, /npm --workspace mcp run test:heroku-mcp-backend-contract/);
+  assert.match(ciWorkflow, /npm --workspace mcp run test:heroku-mcp-backend-runtime/);
+  assert.match(ciWorkflow, /phase-6c0b-persistence-boundary\.test\.mjs/);
+  assert.match(ciWorkflow, /npm --workspace mcp run test:vercel-deployment-control/);
+  assert.match(ciWorkflow, /npm --workspace mcp run typecheck/);
+  assert.match(ciWorkflow, /npm --workspace mcp run build/);
   assert.match(ciWorkflow, /docker build -f mcp\/apps\/backend\/Dockerfile mcp\/apps\/backend/);
   assert.match(ciWorkflow, /docker run -d --rm/);
   assert.match(ciWorkflow, /PERSISTENCE_PROVIDER=postgresql/);
   assert.match(ciWorkflow, /smoke \/health\/live 200/);
   assert.match(ciWorkflow, /smoke \/health\/ready 503/);
-  assert.match(ciWorkflow, /npm --workspace mcp run test:heroku-mcp-backend-contract/);
-  assert.match(ciWorkflow, /npm --workspace mcp run test:heroku-mcp-backend-runtime/);
   assert.match(ciWorkflow, /docker stop "\$container_id"/);
   assert.doesNotMatch(ciWorkflow, /SUPABASE_URL/);
   assert.doesNotMatch(ciWorkflow, /SUPABASE_SERVICE_ROLE_KEY/);
