@@ -1,34 +1,41 @@
 import { loadEnvFile } from "node:process";
 import { loadFoundationConfig, publicFoundationConfig } from "./foundation/config.js";
-import { createFoundationGateway, waitForLegacyHealth } from "./foundation/gateway.js";
+import { createFoundationGateway } from "./foundation/gateway.js";
+import { createPersistence } from "./foundation/persistence.js";
 
-try {
-  loadEnvFile(".env");
-} catch {}
+try { loadEnvFile(".env"); } catch {}
 
 const config = loadFoundationConfig(process.env);
-
-// MCP v1 remains unchanged and is reachable only through the public foundation gateway.
-process.env.HOST = config.internalHost;
-process.env.PORT = String(config.internalPort);
-process.env.CORS_ORIGINS = "http://127.0.0.1";
-
-await import("./server.js");
-await waitForLegacyHealth(config);
-
-const gateway = createFoundationGateway(config);
-gateway.listen(config.publicPort, config.publicHost, () => {
-  console.log(JSON.stringify({
-    event: "foundation_gateway_ready",
-    ...publicFoundationConfig(config)
-  }));
-});
-
-function shutdown(signal) {
-  console.log(JSON.stringify({ event: "foundation_gateway_shutdown", signal }));
-  gateway.close(() => process.exit(0));
-  setTimeout(() => process.exit(1), 5000).unref();
+const persistence = createPersistence(config);
+let legacyHandlers = null;
+if (config.legacyRuntime.enabled) {
+  const { startLegacyRuntime } = await import("./foundation/legacy-runtime.js");
+  legacyHandlers = await startLegacyRuntime(config);
 }
 
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
+const gateway = createFoundationGateway(config, { persistence, legacyHandlers });
+gateway.listen(config.publicPort, config.publicHost, () => {
+  console.log(JSON.stringify({ event: "foundation_gateway_ready", ...publicFoundationConfig(config) }));
+});
+
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(JSON.stringify({ event: "foundation_gateway_shutdown", signal }));
+  const forceExit = setTimeout(() => process.exit(1), 5000);
+  forceExit.unref();
+  gateway.close(async () => {
+    try {
+      await persistence.close();
+      clearTimeout(forceExit);
+      process.exit(0);
+    } catch {
+      clearTimeout(forceExit);
+      process.exit(1);
+    }
+  });
+}
+
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
