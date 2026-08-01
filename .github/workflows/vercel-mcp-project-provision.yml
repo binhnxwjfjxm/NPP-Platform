@@ -33,19 +33,21 @@ jobs:
       - name: Provision project without Git auto-deploy
         shell: bash
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TOKEN_RAW: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
 
-          if [ -z "${VERCEL_TOKEN:-}" ]; then
+          vercel_token="$(printf '%s' "${VERCEL_TOKEN_RAW:-}" | tr -d '\r\n')"
+          if [ -z "$vercel_token" ]; then
             echo "VERCEL_TOKEN secret is required." >&2
             exit 1
           fi
 
-          auth_header="Authorization: Bearer ${VERCEL_TOKEN}"
+          auth_header="Authorization: Bearer ${vercel_token}"
           project_url="https://api.vercel.com/v9/projects/${MCP_PROJECT_NAME}?teamId=${VERCEL_TEAM_ID}"
+          curl_common=(--silent --show-error --http1.1 --retry 3 --retry-delay 2)
 
-          status="$(curl --silent --show-error \
+          status="$(curl "${curl_common[@]}" \
             --output /tmp/mcp-project.json \
             --write-out '%{http_code}' \
             --header "$auth_header" \
@@ -65,7 +67,7 @@ jobs:
                 skipGitConnectDuringLink: true
               }' >/tmp/create-mcp-project.json
 
-            curl --silent --show-error --fail-with-body \
+            curl "${curl_common[@]}" --fail-with-body \
               --request POST \
               --header "$auth_header" \
               --header 'Content-Type: application/json' \
@@ -91,7 +93,7 @@ jobs:
               comment: "MCP Field frontend server target; backend owner is Heroku app hung-phat-mcp"
             }' >/tmp/mcp-backend-env.json
 
-          curl --silent --show-error --fail-with-body \
+          curl "${curl_common[@]}" --fail-with-body \
             --request POST \
             --header "$auth_header" \
             --header 'Content-Type: application/json' \
@@ -99,7 +101,7 @@ jobs:
             "https://api.vercel.com/v10/projects/${project_id}/env?teamId=${VERCEL_TEAM_ID}&upsert=true" \
             >/tmp/mcp-env-result.json
 
-          curl --silent --show-error --fail-with-body \
+          curl "${curl_common[@]}" --fail-with-body \
             --header "$auth_header" \
             "$project_url" \
             >/tmp/mcp-project-verified.json
