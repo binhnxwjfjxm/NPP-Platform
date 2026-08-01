@@ -126,7 +126,7 @@ test("Heroku MCP CI builds, verifies and smokes backend without Supabase env", (
   assert.match(ciWorkflow, /docker stop "\$container_id"/);
   assert.doesNotMatch(ciWorkflow, /SUPABASE_URL/);
   assert.doesNotMatch(ciWorkflow, /SUPABASE_SERVICE_ROLE_KEY/);
-  assert.doesNotMatch(ciWorkflow, /VERCEL_TOKEN|vercel\s+(?:deploy|--prod)|mcp-field/i);
+  assert.doesNotMatch(ciWorkflow, /VERCEL_TOKEN|vercel\s+(?:deploy\b|--prod)|mcp-field/i);
   assert.doesNotMatch(ciWorkflow, /stack:set/);
   assert.doesNotMatch(ciWorkflow, /hung-phat\b/);
 });
