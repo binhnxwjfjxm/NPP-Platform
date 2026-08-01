@@ -11,12 +11,13 @@
   ],
   "expectedSummary": {
     "total": 5,
-    "byClassification": {
+    "byClass": {
       "OFFICIAL_ORDER_MIGRATION_CANDIDATE": 1,
       "FIELD_ORDER_INTENT": 1,
       "SAMPLE_TEST_DEMAND": 1,
       "HISTORICAL_DISPLAY_ONLY": 1,
       "INVALID_ORPHAN_RECONCILIATION_REQUIRED": 1
-    }
+    },
+    "unclassified": 0
   }
 }
