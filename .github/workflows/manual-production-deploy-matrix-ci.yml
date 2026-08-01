@@ -8,7 +8,7 @@ on:
       - .github/workflows/heroku-npp-backend-manual.yml
       - .github/workflows/heroku-mcp-backend-manual.yml
       - .github/workflows/manual-production-deploy-matrix-ci.yml
-      - test/manual-production-deploy-matrix.test.mjs
+      - mcp/test/manual-production-deploy-matrix.test.mjs
   push:
     branches:
       - agent/manual-production-deploy-matrix
@@ -18,7 +18,7 @@ on:
       - .github/workflows/heroku-npp-backend-manual.yml
       - .github/workflows/heroku-mcp-backend-manual.yml
       - .github/workflows/manual-production-deploy-matrix-ci.yml
-      - test/manual-production-deploy-matrix.test.mjs
+      - mcp/test/manual-production-deploy-matrix.test.mjs
   workflow_dispatch:
 
 permissions:
@@ -38,4 +38,4 @@ jobs:
           node-version: 20
 
       - name: Verify four-way manual deployment boundary
-        run: node --test test/manual-production-deploy-matrix.test.mjs
+        run: node --test mcp/test/manual-production-deploy-matrix.test.mjs
