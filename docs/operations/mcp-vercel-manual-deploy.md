@@ -13,14 +13,15 @@ MCP Field frontend and NPP Core frontend are independent deployment targets.
 
 ## Required repository configuration
 
-Set these GitHub repository variables after the MCP Vercel project exists:
+The MCP workflow pins its non-secret deployment identity directly in source so the manual Actions button does not depend on optional repository variables:
 
 ```text
-VERCEL_MCP_PROJECT_ID=<MCP Field Vercel project ID>
-VERCEL_MCP_PRODUCTION_URL=https://<MCP Field production domain>
+Vercel team: team_hBA8rX68UHC8ogvREkOyQlJ2
+MCP project: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
+Production alias: https://mcp-field-binhnxwjfjxms-projects.vercel.app
 ```
 
-The MCP workflow rejects the NPP Core project ID and refuses to run when either MCP variable is missing.
+The workflow still rejects the NPP Core project ID and verifies the linked Vercel project and root directory before building.
 
 The existing secret remains:
 
@@ -33,7 +34,7 @@ Do not commit or paste the token.
 ## Vercel project contract
 
 ```text
-Project: separate MCP Field project
+Project: mcp-field
 Root directory: mcp
 Framework: Next.js
 Git automatic deployments: OFF
@@ -46,8 +47,8 @@ The frontend project must not receive a database URL or backend-only credentials
 ## Manual rollout sequence
 
 1. Merge an MCP frontend change to `main` after CI is green.
-2. Confirm the MCP Vercel project variables still point to the separate MCP project.
-3. Comment the exact command `/deploy-vercel-mcp-production` on Issue #5.
+2. Confirm the workflow still pins the dedicated MCP project and production alias.
+3. Run `Manual Vercel MCP production deploy` in GitHub Actions or comment the exact command `/deploy-vercel-mcp-production` on Issue #5.
 4. Verify the workflow checks out exact `origin/main`.
 5. Verify `/`, `/visits` and a `/_next/static/` asset.
 6. Record the deployed SHA and deployment URL.
