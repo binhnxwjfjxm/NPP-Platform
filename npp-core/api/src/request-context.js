@@ -113,6 +113,7 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.coreSalesOrderAmend,
       PERMISSIONS.coreSalesOrderCancel,
       PERMISSIONS.coreSalesOrderPriceOverride,
+      PERMISSIONS.coreSalesOrderDiscountOverride,
       PERMISSIONS.coreSalesOrderCreditOverride,
     ],
     sourceApp: 'npp-core-api',

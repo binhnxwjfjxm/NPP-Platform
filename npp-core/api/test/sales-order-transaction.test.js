@@ -36,6 +36,7 @@ async function fixtures(pool, installationId) {
   const unitId = randomUUID();
   const productId = randomUUID();
   const variantId = randomUUID();
+  const channelId = randomUUID();
   const priceListId = randomUUID();
 
   await pool.query(
@@ -86,6 +87,12 @@ async function fixtures(pool, installationId) {
     [variantId, installationId, productId, `SKU-${suffix}`, `SKU ${suffix}`, unitId, actor],
   );
   await pool.query(
+    `INSERT INTO shared.sales_channels
+      (id, installation_id, code, name, is_active, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,true,$5,$5)`,
+    [channelId, installationId, `CH-${suffix}`, `Kênh ${suffix}`, actor],
+  );
+  await pool.query(
     `INSERT INTO shared.price_lists
       (id, installation_id, code, name, list_type, currency_code, priority,
        stacking_mode, stop_processing, is_active, created_by, updated_by)
@@ -100,7 +107,7 @@ async function fixtures(pool, installationId) {
     [randomUUID(), installationId, priceListId, variantId, actor],
   );
 
-  return { warehouseId, customerId, addressId, variantId };
+  return { warehouseId, customerId, addressId, variantId, channelId };
 }
 
 test('Sales Order create, audit and outbox commit atomically', async () => {
@@ -134,6 +141,7 @@ test('Sales Order create, audit and outbox commit atomically', async () => {
             customerId: fixture.customerId,
             customerAddressId: fixture.addressId,
             warehouseId: fixture.warehouseId,
+            salesChannelId: fixture.channelId,
             deliveryMode: 'DELIVERY',
             collectionPolicy: 'COLLECT_ON_DELIVERY',
             currency: 'VND',

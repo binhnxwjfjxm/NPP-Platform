@@ -34,6 +34,11 @@ const SALES_ORDER_OPERATIONAL_ENTRY_SQL = readFileSync(
   'utf8',
 );
 
+const SALES_ORDER_COMMERCIAL_CONTROLS_SQL = readFileSync(
+  new URL('../../../../database/migrations/sales/040_sales_order_commercial_controls.sql', import.meta.url),
+  'utf8',
+);
+
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_033,
   Object.freeze({
@@ -59,6 +64,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '039_sales_order_operational_entry',
     sql: SALES_ORDER_OPERATIONAL_ENTRY_SQL,
+  }),
+  Object.freeze({
+    id: '040_sales_order_commercial_controls',
+    sql: SALES_ORDER_COMMERCIAL_CONTROLS_SQL,
   }),
 ]);
 

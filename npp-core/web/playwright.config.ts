@@ -67,6 +67,12 @@ export default defineConfig({
       dependencies: ['organization', 'suppliers', 'catalog'],
       use: authenticatedBrowser,
     },
+    {
+      name: 'sales-order-commercial',
+      testMatch: /sales-orders-(commercial|price-recovery)\.spec\.ts/,
+      dependencies: ['organization'],
+      use: authenticatedBrowser,
+    },
     { name: 'organization-auth', testMatch: /organization-auth\.spec\.ts/, use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3003' } },
     { name: 'inventory-auth', testMatch: /inventory-auth\.spec\.ts/, use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3003' } },
     { name: 'foundation-disabled', testMatch: /foundation-disabled\.spec\.ts/, use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3003' } },

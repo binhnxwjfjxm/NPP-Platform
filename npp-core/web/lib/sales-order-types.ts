@@ -5,6 +5,34 @@ export type SalesOrderDeliveryMode = 'DELIVERY' | 'PICKUP';
 export type SalesOrderSourceType = 'MANUAL' | 'IMPORT' | 'API' | 'MCP';
 export type SalesOrderCustomerMode = 'EXISTING' | 'WALK_IN';
 export type SalesOrderTaxMode = 'EXCLUSIVE' | 'INCLUSIVE';
+export type SalesOrderDocumentDiscountMode = 'NONE' | 'PERCENT' | 'TOTAL_AMOUNT';
+
+export type SalesOrderChannel = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+export type SalesPriceStep = {
+  kind: 'RESOLUTION' | 'BASE' | 'RULE' | 'SKIPPED' | 'MANUAL_OVERRIDE';
+  reason?: string;
+  resolutionFingerprint?: string;
+  channelId?: string | null;
+  priceListId?: string;
+  priceListCode?: string;
+  priceListType?: string;
+  itemId?: string;
+  adjustmentType?: string;
+  amountMinor?: string | null;
+  rateBps?: number | null;
+  beforeUnitPriceMinor?: string | null;
+  afterUnitPriceMinor?: string;
+  priority?: number;
+  stackingMode?: string;
+  sourceKind?: string;
+  sourceKey?: string | null;
+  externalRuleCode?: string | null;
+};
 
 export type SalesOrderLine = {
   id: string;
@@ -20,7 +48,11 @@ export type SalesOrderLine = {
   priceListId: string | null;
   priceRuleId: string | null;
   priceSource: 'PRICE_ENGINE' | 'MANUAL_OVERRIDE';
+  baseUnitPrice: string;
+  systemUnitPrice: string;
   unitPrice: string;
+  manualOverrideReason: string | null;
+  pricingTrace: SalesPriceStep[];
   discountMode: 'TOTAL_AMOUNT' | 'PER_UNIT' | 'PERCENT';
   discountValue: string;
   discountAmount: string;
@@ -47,6 +79,9 @@ export type SalesOrderVersion = {
   warehouseId: string;
   warehouseCode: string;
   warehouseName: string;
+  salesChannelId: string | null;
+  salesChannelCode: string | null;
+  salesChannelName: string | null;
   deliveryMode: SalesOrderDeliveryMode;
   sourceType: SalesOrderSourceType;
   sourceId: string | null;
@@ -59,6 +94,9 @@ export type SalesOrderVersion = {
   discountTotal: string;
   taxTotal: string;
   total: string;
+  documentDiscountMode: SalesOrderDocumentDiscountMode;
+  documentDiscountValue: string;
+  documentDiscountReason: string | null;
   amendmentReason: string | null;
   basedOnVersionNumber: string | null;
   priceOverrideReason: string | null;
@@ -88,6 +126,9 @@ export type SalesOrder = {
   warehouseId: string;
   warehouseCode: string;
   warehouseName: string;
+  salesChannelId: string | null;
+  salesChannelCode: string | null;
+  salesChannelName: string | null;
   deliveryMode: SalesOrderDeliveryMode;
   collectionPolicy: SalesOrderCollectionPolicy;
   fulfillmentStatus: string;
@@ -142,47 +183,31 @@ export type SalesOrderSkuSearchOption = {
   eligibility: SalesOrderSkuEligibility;
 };
 
-export type SalesPriceStep = {
-  kind: 'BASE' | 'RULE' | 'SKIPPED' | 'MANUAL_OVERRIDE';
-  reason?: string;
-  priceListId?: string;
-  priceListCode?: string;
-  priceListType?: string;
-  itemId?: string;
-  adjustmentType?: string;
-  amountMinor?: string | null;
-  rateBps?: number | null;
-  beforeUnitPriceMinor?: string | null;
-  afterUnitPriceMinor?: string;
-  priority?: number;
-  stackingMode?: string;
-  sourceKind?: string;
-  sourceKey?: string | null;
-  externalRuleCode?: string | null;
-};
-
 export type SalesPriceResolution = {
   variant: Record<string, unknown>;
   currencyCode: string;
   quantity: string;
   priceAt: string;
+  channelId: string | null;
   customerId: string | null;
   customerGroupId: string | null;
   baseUnitPriceMinor: string;
+  systemUnitPriceMinor: string;
   finalUnitPriceMinor: string;
   lineTotalMinor: string;
+  resolutionFingerprint: string;
   steps: SalesPriceStep[];
 };
 
 export type SalesOrderLineDraft = {
   variantId: string;
   quantity: string;
-  discountMode?: 'TOTAL_AMOUNT' | 'PER_UNIT' | 'PERCENT';
-  discountValue?: string;
   taxMode?: SalesOrderTaxMode;
   taxRate?: string;
   manualUnitPriceMinor?: string;
   manualReason?: string;
+  expectedSystemUnitPriceMinor?: string;
+  expectedPricingFingerprint?: string;
   note?: string;
 };
 
@@ -196,6 +221,8 @@ export type SalesOrderDraftPayload = {
   walkInPhone?: string;
   customerAddressId?: string;
   warehouseId: string;
+  salesChannelId: string;
+  pricingAt?: string;
   deliveryMode: SalesOrderDeliveryMode;
   collectionPolicy: SalesOrderCollectionPolicy;
   currency: 'VND';
@@ -203,5 +230,22 @@ export type SalesOrderDraftPayload = {
   note?: string;
   expectedRevision?: string;
   creditOverrideReason?: string;
+  documentDiscountMode?: SalesOrderDocumentDiscountMode;
+  documentDiscountValue?: string;
+  documentDiscountReason?: string;
   lines: SalesOrderLineDraft[];
+};
+
+export type SalesOrderEntrySettings = {
+  walkInConfigured: boolean;
+  walkInBootstrapSupported: boolean;
+  defaultTaxMode: SalesOrderTaxMode;
+  defaultTaxRate: string;
+  salesChannels: SalesOrderChannel[];
+  defaultSalesChannelId: string | null;
+  permissions: {
+    canPriceOverride: boolean;
+    canDiscountOverride: boolean;
+    canConfirm: boolean;
+  };
 };

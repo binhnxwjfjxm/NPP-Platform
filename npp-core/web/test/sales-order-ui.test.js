@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 
 const pageSource = readFileSync(new URL('../app/sales/sales-orders/page.tsx', import.meta.url), 'utf8');
 const workspaceSource = readFileSync(new URL('../app/sales/sales-orders/SalesOrderWorkspace.tsx', import.meta.url), 'utf8');
-const formSource = readFileSync(new URL('../app/sales/sales-orders/SalesOrderForm.tsx', import.meta.url), 'utf8');
+const formEntrySource = readFileSync(new URL('../app/sales/sales-orders/SalesOrderForm.tsx', import.meta.url), 'utf8');
+const formSource = readFileSync(new URL('../app/sales/sales-orders/SalesOrderCommercialForm.tsx', import.meta.url), 'utf8');
 const detailSource = readFileSync(new URL('../app/sales/sales-orders/SalesOrderDetail.tsx', import.meta.url), 'utf8');
 const uiSource = readFileSync(new URL('../app/sales/sales-orders/sales-order-ui.ts', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../app/sales/sales-orders/sales-orders.module.css', import.meta.url), 'utf8');
@@ -14,6 +15,7 @@ const contextSource = readFileSync(new URL('../lib/sales-order-context.ts', impo
 const appShellSource = readFileSync(new URL('../app/components/app-shell-core.tsx', import.meta.url), 'utf8');
 const skuRouteSource = readFileSync(new URL('../app/api/sales-orders/sku-search/route.ts', import.meta.url), 'utf8');
 const settingsRouteSource = readFileSync(new URL('../app/api/sales-orders/entry-settings/route.ts', import.meta.url), 'utf8');
+const recoveryE2eSource = readFileSync(new URL('../e2e/sales-orders-price-recovery.spec.ts', import.meta.url), 'utf8');
 
 test('Sales Order page stays on the authenticated NPP server boundary', () => {
   assert.match(pageSource, /resolveSalesOrderRequestId/);
@@ -23,9 +25,11 @@ test('Sales Order page stays on the authenticated NPP server boundary', () => {
   assert.doesNotMatch(pageSource, /DATABASE_URL/);
 });
 
-test('Sales Order workspace exposes lifecycle actions and operational editor permissions', () => {
+test('Sales Order workspace exposes lifecycle actions and commercial permissions', () => {
   assert.match(workspaceSource, /Tạo đơn bán hàng/);
   assert.match(workspaceSource, /canQuickCreateCustomer/);
+  assert.match(workspaceSource, /canPriceOverride/);
+  assert.match(workspaceSource, /canDiscountOverride/);
   assert.match(workspaceSource, /canConfirm=\{formMode === 'amendment' \? canAmend : canConfirm\}/);
   assert.match(workspaceSource, /\/confirm/);
   assert.match(workspaceSource, /\/amendments/);
@@ -33,7 +37,8 @@ test('Sales Order workspace exposes lifecycle actions and operational editor per
   assert.match(workspaceSource, /Lưu, xác nhận và cấp số|Đã lưu, xác nhận và cấp số/);
 });
 
-test('Sales Order editor is product-first and supports walk-in plus quick customer creation', () => {
+test('canonical form activates product-first commercial entry with walk-in and quick customer creation', () => {
+  assert.match(formEntrySource, /SalesOrderCommercialForm/);
   assert.match(formSource, /Khách vãng lai/);
   assert.match(formSource, /walkInDisplayName/);
   assert.match(formSource, /walkInPhone/);
@@ -48,17 +53,35 @@ test('Sales Order editor is product-first and supports walk-in plus quick custom
   assert.match(formSource, /event\.key === 'Enter'/);
   assert.match(formSource, /\/api\/sales-orders\/sku-search/);
   assert.match(formSource, /\/api\/pricing\/resolve/);
+  assert.match(formSource, /Kênh bán \*/);
   assert.match(formSource, /Giá nền/);
+  assert.match(formSource, /Giá hệ thống/);
   assert.match(formSource, /Giá bán cuối/);
-  assert.match(formSource, /Xem cách tính giá, chiết khấu và thuế dòng/);
+  assert.match(formSource, /Xem đầy đủ cách hình thành giá và thuế/);
+  assert.match(formSource, /Dùng giá ngoại lệ/);
+  assert.match(formSource, /Dùng lại giá hệ thống/);
+  assert.match(formSource, /Chiết khấu bổ sung toàn đơn/);
   assert.match(formSource, /Lưu và xác nhận/);
   assert.match(formSource, /Đơn bán hàng có thay đổi chưa lưu/);
+  assert.doesNotMatch(formSource, /Kiểu CK thêm/);
 });
 
-test('tax is resolved by Core and summarized at document footer instead of entered per line', () => {
+test('confirm price mismatch recovers the committed draft instead of creating another order', () => {
+  assert.match(uiSource, /lastSavedDraft/);
+  assert.match(uiSource, /draftRecovery/);
+  assert.match(uiSource, /code === 'SALES_PRICE_CHANGED'/);
+  assert.match(uiSource, /expectedRevision: draft\.revision/);
+  assert.match(uiSource, /`\/api\/sales-orders\/\$\{draftRecovery\.order\.id\}\/draft`/);
+  assert.match(recoveryE2eSource, /createCount: 1/);
+  assert.match(recoveryE2eSource, /updateCount: 1/);
+  assert.match(recoveryE2eSource, /confirmCount: 2/);
+  assert.match(recoveryE2eSource, /updateExpectedRevision: '1'/);
+});
+
+test('tax remains Core-owned and is summarized after document discount allocation', () => {
   assert.match(formSource, /\/api\/sales-orders\/entry-settings/);
-  assert.match(formSource, /Chính sách thuế Core/);
-  assert.match(formSource, /Tiền thuế dự kiến/);
+  assert.match(formSource, /Thuế Core/);
+  assert.match(formSource, /Thuế sau phân bổ/);
   assert.match(formSource, /Tổng thanh toán dự kiến/);
   assert.doesNotMatch(formSource, />Cách tính thuế</);
   assert.doesNotMatch(formSource, />Thuế %</);
@@ -66,10 +89,12 @@ test('tax is resolved by Core and summarized at document footer instead of enter
   assert.doesNotMatch(formSource, /onChange=\{\(event\) => \{ setTaxRate/);
 });
 
-test('Sales Order modal has a no-horizontal-overflow desktop and responsive card contract', () => {
+test('Sales Order modal has one real vertical scroll owner and no desktop horizontal overflow', () => {
   assert.match(cssSource, /width:min\(1440px,calc\(100vw - 2rem\)\)/);
   assert.match(cssSource, /height:min\(94vh,980px\)/);
   assert.match(cssSource, /overflow-x:hidden/);
+  assert.match(cssSource, /overflow-y:scroll/);
+  assert.match(cssSource, /scrollbar-gutter:stable/);
   assert.match(cssSource, /grid-template-rows:auto minmax\(0,1fr\) auto/);
   assert.match(cssSource, /@media\(max-width:780px\)/);
   assert.match(cssSource, /orderLineCard\{grid-template-columns:1fr 1fr/);

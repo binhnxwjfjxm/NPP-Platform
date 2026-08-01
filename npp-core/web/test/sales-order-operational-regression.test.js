@@ -2,23 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-// Operational regressions are source-level gates for the final Phase 6B.1 entry contract.
+// Operational regressions follow the active Phase 6B.2 commercial entry owner.
 const formSource = readFileSync(
-  new URL('../app/sales/sales-orders/SalesOrderForm.tsx', import.meta.url),
+  new URL('../app/sales/sales-orders/SalesOrderCommercialForm.tsx', import.meta.url),
   'utf8',
 );
 
-test('Sales Order per-unit discount preview keeps six-place exact arithmetic', () => {
-  assert.match(
-    formSource,
-    /discount\s*=\s*halfUp\(quantity\s*\*\s*discountInput,\s*SCALE\s*\*\s*SCALE\)/,
-  );
-  assert.doesNotMatch(formSource, /quantity\s*\*\s*\(discountInput\s*\/\s*SCALE\)/);
+test('Sales Order document discount preview keeps exact BigInt largest-remainder arithmetic', () => {
+  assert.match(formSource, /const SCALE = 1_000_000n/);
+  assert.match(formSource, /function documentDiscountTarget/);
+  assert.match(formSource, /function largestRemainder/);
+  assert.match(formSource, /const floor = numerator \/ total/);
+  assert.match(formSource, /left\.remainder > right\.remainder \? -1 : 1/);
+  assert.match(formSource, /left\.index - right\.index/);
+  assert.doesNotMatch(formSource, /parseFloat|Number\(documentDiscountValue\)/);
+  assert.doesNotMatch(formSource, /Kiểu CK thêm/);
 });
 
 test('Sales Order effects depend on stable callbacks instead of the whole props object', () => {
-  assert.match(formSource, /const\s*\{[^}]*onError[^}]*\}\s*=\s*props/s);
-  assert.match(formSource, /const\s*\{[^}]*onClose[^}]*\}\s*=\s*props/s);
+  assert.match(formSource, /const\s*\{\s*version,\s*onClose,\s*onError\s*\}\s*=\s*props/);
   assert.doesNotMatch(formSource, /\[[^\]]*\bprops\b[^\]]*\]/);
   assert.match(formSource, /\[onError,\s*skuTerm\]/);
 });

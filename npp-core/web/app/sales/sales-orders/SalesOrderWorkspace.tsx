@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { AppShell } from '../../components/app-shell-core';
 import type { SalesOrderBootstrap } from '../../../lib/sales-order-bootstrap';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
@@ -37,6 +37,8 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const canConfirm = permissions.has(SALES_ORDER_PERMISSION_KEYS.confirm);
   const canAmend = permissions.has(SALES_ORDER_PERMISSION_KEYS.amend);
   const canCancel = permissions.has(SALES_ORDER_PERMISSION_KEYS.cancel);
+  const canPriceOverride = permissions.has(SALES_ORDER_PERMISSION_KEYS.priceOverride);
+  const canDiscountOverride = permissions.has(SALES_ORDER_PERMISSION_KEYS.discountOverride);
   const canQuickCreateCustomer = permissions.has(SALES_ORDER_PERMISSION_KEYS.customerWrite);
 
   const filtered = useMemo(() => {
@@ -44,11 +46,22 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
     return orders.filter((order) => {
       if (status !== 'all' && order.status !== status) return false;
       if (!term) return true;
-      return [order.number, order.customerCode, order.customerName, order.warehouseCode]
+      return [
+        order.number,
+        order.customerCode,
+        order.customerName,
+        order.warehouseCode,
+        order.salesChannelCode,
+        order.salesChannelName,
+      ]
         .filter(Boolean)
         .some((value) => String(value).toLocaleLowerCase('vi').includes(term));
     });
   }, [orders, search, status]);
+
+  const handleFormError = useCallback((message: string) => {
+    setError(message || null);
+  }, []);
 
   function mergeOrder(order: SalesOrder) {
     setOrders((current) => {
@@ -152,7 +165,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         </section>
 
         <div className={styles.toolbar}>
-          <label><span>Tìm đơn</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Số đơn, mã hoặc tên khách" /></label>
+          <label><span>Tìm đơn</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Số đơn, khách hoặc kênh bán" /></label>
           <label><span>Trạng thái</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Tất cả</option><option value="draft">Nháp</option><option value="confirmed">Đã xác nhận</option><option value="cancelled">Đã hủy</option><option value="closed">Đã hoàn tất</option></select></label>
         </div>
 
@@ -171,6 +184,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                   <div className={styles.orderCardTop}><strong>{order.number ?? 'Đơn nháp chưa cấp số'}</strong><span>{orderLabels[order.status] ?? order.status}</span></div>
                   <b>{order.customerCode} — {order.customerName}</b>
                   <small>Kho {order.warehouseCode} · {collectionLabels[order.collectionPolicy]}</small>
+                  <small>Kênh {order.salesChannelCode ?? 'chưa snapshot'}{order.salesChannelName ? ` — ${order.salesChannelName}` : ''}</small>
                   <small>Cập nhật {new Date(order.updatedAt).toLocaleString('vi-VN')}</small>
                 </button>
               ))}
@@ -209,11 +223,14 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
           products={initialBootstrap.products}
           canConfirm={formMode === 'amendment' ? canAmend : canConfirm}
           canQuickCreateCustomer={canQuickCreateCustomer}
+          canPriceOverride={canPriceOverride}
+          canDiscountOverride={canDiscountOverride}
           onClose={() => setFormMode(null)}
-          onError={(message) => setError(message || null)}
+          onError={handleFormError}
           onSaved={(order) => {
             mergeOrder(order);
             setFormMode(null);
+            setError(null);
             setNotice(order.status === 'confirmed'
               ? 'Đã lưu, xác nhận và cấp số đơn bán hàng'
               : formMode === 'create' ? 'Đã tạo đơn bán hàng nháp' : 'Đã lưu phiên bản nháp');
