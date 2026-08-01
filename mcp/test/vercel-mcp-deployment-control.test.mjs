@@ -35,7 +35,7 @@ test("MCP deploy has an exact Issue #5 command separate from Core", () => {
 test("MCP deploy target is isolated from the Core Vercel project", () => {
   assert.match(mcpWorkflow, /vars\.VERCEL_MCP_PROJECT_ID/);
   assert.match(mcpWorkflow, /vars\.VERCEL_MCP_PRODUCTION_URL/);
-  assert.match(mcpWorkflow, /VERCEL_PROJECT_ID.*CORE Vercel project/s);
+  assert.match(mcpWorkflow, /VERCEL_PROJECT_ID.*Core Vercel project/s);
   assert.match(mcpWorkflow, new RegExp(CORE_PROJECT_ID));
   assert.doesNotMatch(
     mcpWorkflow,
