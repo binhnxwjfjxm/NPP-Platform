@@ -50,7 +50,14 @@
             "HISTORICAL_DISPLAY_ONLY",
             "INVALID_ORPHAN_RECONCILIATION_REQUIRED"
           ],
-          "additionalProperties": {"type": "integer", "minimum": 0}
+          "properties": {
+            "OFFICIAL_ORDER_MIGRATION_CANDIDATE": {"type": "integer", "minimum": 0},
+            "FIELD_ORDER_INTENT": {"type": "integer", "minimum": 0},
+            "SAMPLE_TEST_DEMAND": {"type": "integer", "minimum": 0},
+            "HISTORICAL_DISPLAY_ONLY": {"type": "integer", "minimum": 0},
+            "INVALID_ORPHAN_RECONCILIATION_REQUIRED": {"type": "integer", "minimum": 0}
+          },
+          "additionalProperties": false
         },
         "unclassified": {"type": "integer", "minimum": 0}
       },
