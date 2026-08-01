@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "phase": "6C.0A",
+  "baseline": "46f43b473e35ac1103aa2b49412de3f64fe1646b",
+  "sourceIdentityRule": {
+    "scope": "installation",
+    "key": ["installation", "legacy id"]
+  },
+  "principles": [
+    "Core customer and MCP field outlet are different identities.",
+    "Historical field activity remains attached to field outlet identity after linking.",
+    "No legacy identifier becomes canonical without evidence and reconciliation.",
+    "Mappings are installation-scoped, auditable and conflict-checked.",
+    "Every source identity is the composite key (installation, legacy id)."
+  ],
+  "mappings": [
+    {
+      "source": "legacy_user",
+      "target": "shared.employee_or_user",
+      "sourceIdentityKey": ["installation", "legacy id"],
+      "cardinality": "0..1",
+      "requiredEvidence": [
+        "installation",
+        "stable legacy id",
+        "employee code or verified contact",
+        "manual collision decision"
+      ],
+      "nullable": true,
+      "conflictPolicy": "no automatic merge on name-only match",
+      "unmappedAction": "retain service attribution and queue manual identity reconciliation"
+    },
+    {
+      "source": "legacy_route_customer",
+      "target": "mcp.field_outlet",
+      "sourceIdentityKey": ["installation", "legacy id"],
+      "cardinality": "1..1 after migration",
+      "requiredEvidence": [
+        "installation",
+        "legacy row id",
+        "route/session references",
+        "name/contact/location snapshot"
+      ],
+      "nullable": false,
+      "conflictPolicy": "deduplicate only with deterministic rule and evidence",
+      "unmappedAction": "block cutover for affected field lifecycle"
+    },
+    {
+      "source": "mcp.field_outlet",
+      "target": "shared.customers",
+      "sourceIdentityKey": ["installation", "legacy id"],
+      "cardinality": "0..1",
+      "requiredEvidence": [
+        "installation",
+        "approved onboarding or explicit link-existing decision",
+        "active Core customer",
+        "audit actor"
+      ],
+      "nullable": true,
+      "conflictPolicy": "multiple outlets may link to one Core customer; one outlet cannot link to multiple active customers",
+      "unmappedAction": "allow visits/tests/reports; forbid official Sales Order"
+    },
+    {
+      "source": "mcp.field_outlet",
+      "target": "shared.customer_addresses",
+      "sourceIdentityKey": ["installation", "legacy id"],
+      "cardinality": "0..1",
+      "requiredEvidence": [
+        "installation",
+        "linked Core customer",
+        "address match or approved address creation",
+        "audit actor"
+      ],
+      "nullable": true,
+      "conflictPolicy": "address must belong to linked Core customer",
+      "unmappedAction": "forbid delivery-address use on official order"
+    },
+    {
+      "source": "legacy_product_or_item",
+      "target": "shared.canonical_sku_and_unit",
+      "sourceIdentityKey": ["installation", "legacy id"],
+      "cardinality": "0..1 per source item",
+      "requiredEvidence": [
+        "installation",
+        "legacy product/item id",
+        "SKU or deterministic catalog match",
+        "unit/conversion",
+        "active status"
+      ],
+      "nullable": true,
+      "conflictPolicy": "name-only match is insufficient for official order migration",
+      "unmappedAction": "classify demand as intent/history or reconciliation required"
+    },
+    {
+      "source": "legacy_order",
+      "target": "classification",
+      "sourceIdentityKey": ["installation", "legacy id"],
+      "cardinality": "exactly 1 classification",
+      "requiredEvidence": [
+        "installation",
+        "customer/outlet identity",
+        "item/SKU/unit evidence",
+        "status and timestamps",
+        "money/quantity evidence",
+        "source and retry evidence"
+      ],
+      "nullable": false,
+      "conflictPolicy": "ambiguous records are invalid/orphan until manually resolved",
+      "unmappedAction": "block bulk import"
+    }
+  ],
+  "forbiddenShortcuts": [
+    "bulk insert legacy orders into sales.sales_orders",
+    "treat nullable legacy customer_id as canonical customer proof",
+    "link by name only",
+    "rewrite historical visit identity after customer linking",
+    "store provider identifiers in browser business logic"
+  ]
+}

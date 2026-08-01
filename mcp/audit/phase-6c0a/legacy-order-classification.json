@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "phase": "6C.0A",
+  "baseline": "46f43b473e35ac1103aa2b49412de3f64fe1646b",
+  "classes": [
+    {
+      "code": "OFFICIAL_ORDER_MIGRATION_CANDIDATE",
+      "criteria": [
+        "linked active Core customer and valid address when delivery is required",
+        "every item maps to canonical SKU and unit",
+        "quantity and money are reconcilable",
+        "status and source timestamps are consistent",
+        "no retry duplicate or conflicting source reference"
+      ],
+      "requiredEvidence": [
+        "customer mapping",
+        "SKU/unit mapping",
+        "totals reconciliation",
+        "status mapping",
+        "duplicate check"
+      ],
+      "action": "eligible for separately rehearsed migration; not automatically migrated"
+    },
+    {
+      "code": "FIELD_ORDER_INTENT",
+      "criteria": [
+        "records field demand or request but lacks one or more official-order requirements",
+        "still has usable outlet/session/source context"
+      ],
+      "requiredEvidence": [
+        "outlet/session reference",
+        "item description or partial mapping",
+        "capture timestamp"
+      ],
+      "action": "retain in MCP as intent/request and optionally recreate through canonical Core API after approval"
+    },
+    {
+      "code": "SAMPLE_TEST_DEMAND",
+      "criteria": [
+        "purpose is sample, trial, product test or evaluation rather than commercial order"
+      ],
+      "requiredEvidence": [
+        "test/sample indicators",
+        "session context",
+        "item description"
+      ],
+      "action": "retain in MCP test/sample lifecycle; never migrate as official Sales Order"
+    },
+    {
+      "code": "HISTORICAL_DISPLAY_ONLY",
+      "criteria": [
+        "record is meaningful for history but cannot or should not create current operational obligations"
+      ],
+      "requiredEvidence": [
+        "historical timestamp",
+        "read-only display value",
+        "no outstanding operational dependency"
+      ],
+      "action": "preserve as immutable history/read model"
+    },
+    {
+      "code": "INVALID_ORPHAN_RECONCILIATION_REQUIRED",
+      "criteria": [
+        "missing or contradictory customer/session/item/status evidence",
+        "or duplicate/conflicting retry identity",
+        "or totals cannot be reconciled"
+      ],
+      "requiredEvidence": [
+        "finding code",
+        "source row ids",
+        "reason and owner"
+      ],
+      "action": "quarantine from migration and require manual reconciliation"
+    }
+  ],
+  "classificationRules": {
+    "exactlyOneClassRequired": true,
+    "defaultOnAmbiguity": "INVALID_ORPHAN_RECONCILIATION_REQUIRED",
+    "bulkImportForbidden": true
+  }
+}
