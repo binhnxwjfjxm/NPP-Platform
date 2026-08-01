@@ -19,6 +19,8 @@ const foundationWorkflow = await readFile(
 );
 
 const CORE_PROJECT_ID = "prj_vFEAzoxesLqNJIfD8uF4q1kytpvk";
+const MCP_PROJECT_ID = "prj_854SWdJeDEOPezAvvTZzTaRvZUSq";
+const MCP_PRODUCTION_URL = "https://mcp-field-binhnxwjfjxms-projects.vercel.app";
 
 test("MCP Vercel automatic deployments stay disabled", () => {
   assert.equal(mcpConfig.git?.deploymentEnabled, false);
@@ -36,9 +38,11 @@ test("MCP deploy has an exact Issue #5 command separate from Core", () => {
   assert.doesNotMatch(coreWorkflow, /\/deploy-vercel-mcp-production/);
 });
 
-test("MCP deploy target is isolated from the Core Vercel project", () => {
-  assert.match(mcpWorkflow, /vars\.VERCEL_MCP_PROJECT_ID/);
-  assert.match(mcpWorkflow, /vars\.VERCEL_MCP_PRODUCTION_URL/);
+test("MCP deploy target is pinned and isolated from the Core Vercel project", () => {
+  assert.match(mcpWorkflow, new RegExp(`VERCEL_PROJECT_ID:\\s*${MCP_PROJECT_ID}`));
+  assert.match(mcpWorkflow, new RegExp(`MCP_PRODUCTION_URL:\\s*${MCP_PRODUCTION_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.doesNotMatch(mcpWorkflow, /vars\.VERCEL_MCP_PROJECT_ID/);
+  assert.doesNotMatch(mcpWorkflow, /vars\.VERCEL_MCP_PRODUCTION_URL/);
   assert.match(mcpWorkflow, /VERCEL_PROJECT_ID.*Core Vercel project/s);
   assert.match(mcpWorkflow, new RegExp(CORE_PROJECT_ID));
   assert.doesNotMatch(
