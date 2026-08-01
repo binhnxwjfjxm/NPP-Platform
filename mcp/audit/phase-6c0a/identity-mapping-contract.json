@@ -2,20 +2,26 @@
   "schemaVersion": 1,
   "phase": "6C.0A",
   "baseline": "46f43b473e35ac1103aa2b49412de3f64fe1646b",
+  "sourceIdentityRule": {
+    "scope": "installation",
+    "key": ["installation", "legacy id"]
+  },
   "principles": [
     "Core customer and MCP field outlet are different identities.",
     "Historical field activity remains attached to field outlet identity after linking.",
     "No legacy identifier becomes canonical without evidence and reconciliation.",
-    "Mappings are installation-scoped, auditable and conflict-checked."
+    "Mappings are installation-scoped, auditable and conflict-checked.",
+    "Every source identity is the composite key (installation, legacy id)."
   ],
   "mappings": [
     {
       "source": "legacy_user",
       "target": "shared.employee_or_user",
+      "sourceIdentityKey": ["installation", "legacy id"],
       "cardinality": "0..1",
       "requiredEvidence": [
-        "stable legacy id",
         "installation",
+        "stable legacy id",
         "employee code or verified contact",
         "manual collision decision"
       ],
@@ -26,8 +32,10 @@
     {
       "source": "legacy_route_customer",
       "target": "mcp.field_outlet",
+      "sourceIdentityKey": ["installation", "legacy id"],
       "cardinality": "1..1 after migration",
       "requiredEvidence": [
+        "installation",
         "legacy row id",
         "route/session references",
         "name/contact/location snapshot"
@@ -39,8 +47,10 @@
     {
       "source": "mcp.field_outlet",
       "target": "shared.customers",
+      "sourceIdentityKey": ["installation", "legacy id"],
       "cardinality": "0..1",
       "requiredEvidence": [
+        "installation",
         "approved onboarding or explicit link-existing decision",
         "active Core customer",
         "audit actor"
@@ -52,8 +62,10 @@
     {
       "source": "mcp.field_outlet",
       "target": "shared.customer_addresses",
+      "sourceIdentityKey": ["installation", "legacy id"],
       "cardinality": "0..1",
       "requiredEvidence": [
+        "installation",
         "linked Core customer",
         "address match or approved address creation",
         "audit actor"
@@ -65,8 +77,10 @@
     {
       "source": "legacy_product_or_item",
       "target": "shared.canonical_sku_and_unit",
+      "sourceIdentityKey": ["installation", "legacy id"],
       "cardinality": "0..1 per source item",
       "requiredEvidence": [
+        "installation",
         "legacy product/item id",
         "SKU or deterministic catalog match",
         "unit/conversion",
@@ -79,8 +93,10 @@
     {
       "source": "legacy_order",
       "target": "classification",
+      "sourceIdentityKey": ["installation", "legacy id"],
       "cardinality": "exactly 1 classification",
       "requiredEvidence": [
+        "installation",
         "customer/outlet identity",
         "item/SKU/unit evidence",
         "status and timestamps",
