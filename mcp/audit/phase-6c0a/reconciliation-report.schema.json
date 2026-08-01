@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npp-platform.local/schemas/phase-6c0a-reconciliation-report.schema.json",
+  "title": "Phase 6C.0A MCP legacy reconciliation report",
+  "type": "object",
+  "required": ["phase", "baseline", "generatedAt", "source", "checks", "legacyOrderClassification"],
+  "properties": {
+    "phase": {"const": "6C.0A"},
+    "baseline": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "source": {
+      "type": "object",
+      "required": ["provider", "database", "readOnly"],
+      "properties": {
+        "provider": {"type": "string"},
+        "database": {"type": "string"},
+        "readOnly": {"const": true},
+        "snapshotReference": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "count", "owner", "queryFile"],
+        "properties": {
+          "id": {"type": "string"},
+          "status": {"enum": ["PASS", "FINDINGS", "NOT_RUN", "BLOCKED"]},
+          "count": {"type": ["integer", "null"], "minimum": 0},
+          "owner": {"type": "string", "minLength": 1},
+          "queryFile": {"type": "string"},
+          "sampleIds": {"type": "array", "items": {"type": "string"}},
+          "notes": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "legacyOrderClassification": {
+      "type": "object",
+      "required": ["total", "byClass", "unclassified"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "byClass": {
+          "type": "object",
+          "required": [
+            "OFFICIAL_ORDER_MIGRATION_CANDIDATE",
+            "FIELD_ORDER_INTENT",
+            "SAMPLE_TEST_DEMAND",
+            "HISTORICAL_DISPLAY_ONLY",
+            "INVALID_ORPHAN_RECONCILIATION_REQUIRED"
+          ],
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        },
+        "unclassified": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
