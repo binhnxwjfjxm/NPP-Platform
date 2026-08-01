@@ -3,29 +3,37 @@ import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 
 const baseline = "46f43b473e35ac1103aa2b49412de3f64fe1646b";
-const auditRoot = "audit/phase-6c0a";
+const mcpRoot = new URL("../", import.meta.url);
+const repoRoot = new URL("../../", import.meta.url);
 
-async function readJson(path) {
-  return JSON.parse(await readFile(path, "utf8"));
+function mcpUrl(path) {
+  return new URL(path, mcpRoot);
 }
 
-async function exists(path) {
-  await access(path);
+function repoUrl(path) {
+  return new URL(path, repoRoot);
+}
+
+async function readJson(url) {
+  return JSON.parse(await readFile(url, "utf8"));
+}
+
+async function exists(url) {
+  await access(url);
   return true;
 }
 
-const inventory = await readJson(`${auditRoot}/dependency-inventory.json`);
-const environment = await readJson(`${auditRoot}/environment-contract.json`);
-const identity = await readJson(`${auditRoot}/identity-mapping-contract.json`);
-const orderClasses = await readJson(`${auditRoot}/legacy-order-classification.json`);
-const risks = await readJson(`${auditRoot}/risk-register.json`);
-const fixture = await readJson(`${auditRoot}/fixtures/reconciliation-input.json`);
-const reportSchema = await readJson(`${auditRoot}/reconciliation-report.schema.json`);
-const auditDoc = await readFile("../docs/operations/phase-6c0a-mcp-legacy-audit.md", "utf8");
-const auditSql = await readFile(`${auditRoot}/read-only-data-audit.sql`, "utf8");
+test("all Phase 6C.0A contracts use the exact audited baseline", async () => {
+  const contracts = await Promise.all([
+    "dependency-inventory.json",
+    "environment-contract.json",
+    "identity-mapping-contract.json",
+    "legacy-order-classification.json",
+    "risk-register.json"
+  ].map((name) => readJson(mcpUrl(`audit/phase-6c0a/${name}`))));
+  const auditDoc = await readFile(repoUrl("docs/operations/phase-6c0a-mcp-legacy-audit.md"), "utf8");
 
-test("all Phase 6C.0A contracts use the exact audited baseline", () => {
-  for (const contract of [inventory, environment, identity, orderClasses, risks]) {
+  for (const contract of contracts) {
     assert.equal(contract.phase, "6C.0A");
     assert.equal(contract.baseline, baseline);
   }
@@ -33,6 +41,7 @@ test("all Phase 6C.0A contracts use the exact audited baseline", () => {
 });
 
 test("dependency inventory is complete enough to drive the next audit", async () => {
+  const inventory = await readJson(mcpUrl("audit/phase-6c0a/dependency-inventory.json"));
   const required = [
     "flow", "uiEntry", "clientHook", "nextRoute", "backendRoute", "backendHandler",
     "dataAccess", "provider", "operation", "authBoundary", "idempotencyBehavior",
@@ -53,17 +62,17 @@ test("dependency inventory is complete enough to drive the next audit", async ()
 
     if (entry.evidenceLevel === "repository_verified") {
       assert.ok(entry.evidenceFiles.length > 0, `${entry.flow} has no repository evidence`);
-      for (const path of entry.evidenceFiles) await exists(path);
+      for (const path of entry.evidenceFiles) await exists(mcpUrl(path));
     }
   }
 });
 
 test("the active UI chain remains distinct from legacy and dead-code findings", async () => {
-  const visits = await readFile("src/app/visits/page.tsx", "utf8");
-  const pageExport = await readFile("src/features/mcp/MCPPage.tsx", "utf8");
-  const entry = await readFile("src/features/mcp/MCPPageEntryReportReady.tsx", "utf8");
-  const compact = await readFile("src/features/mcp/McpSessionCompactView.tsx", "utf8");
-  const finalView = await readFile("src/features/mcp/McpSessionCompactViewFinal2.tsx", "utf8");
+  const visits = await readFile(mcpUrl("src/app/visits/page.tsx"), "utf8");
+  const pageExport = await readFile(mcpUrl("src/features/mcp/MCPPage.tsx"), "utf8");
+  const entry = await readFile(mcpUrl("src/features/mcp/MCPPageEntryReportReady.tsx"), "utf8");
+  const compact = await readFile(mcpUrl("src/features/mcp/McpSessionCompactView.tsx"), "utf8");
+  const finalView = await readFile(mcpUrl("src/features/mcp/McpSessionCompactViewFinal2.tsx"), "utf8");
 
   assert.match(visits, /from "@\/features\/mcp\/MCPPage"/);
   assert.match(pageExport, /MCPPageEntryReportReady/);
@@ -77,10 +86,10 @@ test("the active UI chain remains distinct from legacy and dead-code findings", 
 });
 
 test("the active Next proxy and gateway retain the current strangler boundary", async () => {
-  const route = await readFile("src/app/api/backend/[...path]/route.ts", "utf8");
-  const proxy = await readFile("src/lib/api/backend-proxy.ts", "utf8");
-  const bootstrap = await readFile("apps/backend/bootstrap.js", "utf8");
-  const gateway = await readFile("apps/backend/foundation/gateway.js", "utf8");
+  const route = await readFile(mcpUrl("src/app/api/backend/[...path]/route.ts"), "utf8");
+  const proxy = await readFile(mcpUrl("src/lib/api/backend-proxy.ts"), "utf8");
+  const bootstrap = await readFile(mcpUrl("apps/backend/bootstrap.js"), "utf8");
+  const gateway = await readFile(mcpUrl("apps/backend/foundation/gateway.js"), "utf8");
 
   assert.match(route, /proxyBackendRequest/);
   assert.match(proxy, /X-Backend-Token/);
@@ -95,10 +104,10 @@ test("the active Next proxy and gateway retain the current strangler boundary", 
 });
 
 test("provider-specific frontend and backend dependencies stay explicitly inventoried", async () => {
-  const nextConfig = await readFile("next.config.mjs", "utf8");
-  const backendConfig = await readFile("apps/backend/foundation/config.js", "utf8");
-  const exportReader = await readFile("src/lib/export/supabase-rest.ts", "utf8");
-  const legacyServer = await readFile("apps/backend/server.js", "utf8");
+  const nextConfig = await readFile(mcpUrl("next.config.mjs"), "utf8");
+  const backendConfig = await readFile(mcpUrl("apps/backend/foundation/config.js"), "utf8");
+  const exportReader = await readFile(mcpUrl("src/lib/export/supabase-rest.ts"), "utf8");
+  const legacyServer = await readFile(mcpUrl("apps/backend/server.js"), "utf8");
 
   assert.match(nextConfig, /SUPABASE_URL/);
   assert.match(nextConfig, /SUPABASE_ANON_KEY/);
@@ -108,7 +117,8 @@ test("provider-specific frontend and backend dependencies stay explicitly invent
   assert.match(legacyServer, /SUPABASE_SERVICE_ROLE_KEY/);
 });
 
-test("environment inventory contains names and classifications but no values", () => {
+test("environment inventory contains names and classifications but no values", async () => {
+  const environment = await readJson(mcpUrl("audit/phase-6c0a/environment-contract.json"));
   const names = new Set(environment.variables.map((entry) => entry.name));
   for (const name of [
     "BACKEND_API_BASE_URL", "BACKEND_API_TOKEN", "MCP_LEGACY_ACTOR_ID",
@@ -125,8 +135,16 @@ test("environment inventory contains names and classifications but no values", (
   }
 });
 
-test("identity contract preserves outlet/customer separation", () => {
+test("identity contract preserves outlet/customer separation and installation scope", async () => {
+  const identity = await readJson(mcpUrl("audit/phase-6c0a/identity-mapping-contract.json"));
   const mappings = new Map(identity.mappings.map((entry) => [`${entry.source}->${entry.target}`, entry]));
+
+  assert.deepEqual(identity.sourceIdentityRule.key, ["installation", "legacy id"]);
+  for (const mapping of identity.mappings) {
+    assert.deepEqual(mapping.sourceIdentityKey, ["installation", "legacy id"]);
+    assert.ok(mapping.requiredEvidence.includes("installation"), `${mapping.source}->${mapping.target} lacks installation evidence`);
+  }
+
   assert.ok(mappings.has("legacy_route_customer->mcp.field_outlet"));
   assert.equal(mappings.get("mcp.field_outlet->shared.customers").nullable, true);
   assert.equal(mappings.get("mcp.field_outlet->shared.customer_addresses").nullable, true);
@@ -134,7 +152,9 @@ test("identity contract preserves outlet/customer separation", () => {
   assert.match(identity.forbiddenShortcuts.join("\n"), /name only/i);
 });
 
-test("legacy orders have exactly the locked five classifications", () => {
+test("legacy orders and fixture have exactly the locked five classifications", async () => {
+  const orderClasses = await readJson(mcpUrl("audit/phase-6c0a/legacy-order-classification.json"));
+  const fixture = await readJson(mcpUrl("audit/phase-6c0a/fixtures/reconciliation-input.json"));
   const expected = [
     "OFFICIAL_ORDER_MIGRATION_CANDIDATE",
     "FIELD_ORDER_INTENT",
@@ -142,37 +162,73 @@ test("legacy orders have exactly the locked five classifications", () => {
     "HISTORICAL_DISPLAY_ONLY",
     "INVALID_ORPHAN_RECONCILIATION_REQUIRED"
   ];
+
   assert.deepEqual(orderClasses.classes.map((entry) => entry.code), expected);
   assert.equal(orderClasses.classificationRules.exactlyOneClassRequired, true);
   assert.equal(orderClasses.classificationRules.bulkImportForbidden, true);
 
   const fixtureClasses = fixture.records.map((entry) => entry.classification).sort();
   assert.deepEqual(fixtureClasses, [...expected].sort());
+  assert.deepEqual(Object.keys(fixture.expectedSummary.byClass).sort(), [...expected].sort());
+  assert.equal(fixture.expectedSummary.total, fixture.records.length);
+  assert.equal(fixture.expectedSummary.unclassified, 0);
+  assert.equal(
+    Object.values(fixture.expectedSummary.byClass).reduce((sum, count) => sum + count, 0),
+    fixture.expectedSummary.total
+  );
 });
 
-test("read-only data audit cannot contain mutation statements", () => {
+test("read-only data audit binds to deployed tables and persisted retry identity", async () => {
+  const auditSql = await readFile(mcpUrl("audit/phase-6c0a/read-only-data-audit.sql"), "utf8");
   const withoutComments = auditSql.replace(/--.*$/gm, "");
+
   assert.match(withoutComments, /BEGIN TRANSACTION READ ONLY/i);
   assert.match(withoutComments, /ROLLBACK/i);
   assert.doesNotMatch(withoutComments, /\b(INSERT|UPDATE|DELETE|MERGE|ALTER|DROP|CREATE|TRUNCATE|GRANT|REVOKE|CALL|DO)\b/i);
 
-  for (const table of ["mcp_routes", "mcp_route_customers", "mcp_route_sessions", "mcp_route_session_customers", "orders", "order_items"]) {
+  for (const table of [
+    "mcp_routes", "mcp_route_customers", "mcp_route_sessions",
+    "mcp_session_customers", "mcp_idempotency_records", "orders", "order_items"
+  ]) {
     assert.match(auditSql, new RegExp(table));
   }
+
+  assert.doesNotMatch(auditSql, /mcp_route_session_customers/);
+  assert.match(auditSql, /visit_status/);
+  assert.match(auditSql, /source_type/);
+  assert.match(auditSql, /source_id/);
+  assert.match(auditSql, /raw_payload/);
+  assert.match(auditSql, /aggregate_id/);
+  assert.match(auditSql, /idempotency_key/);
+  assert.match(auditSql, /lower\(btrim\(regexp_replace/i);
 });
 
-test("reconciliation report schema and risk register cover the cutover gates", () => {
+test("reconciliation report schema rejects classifications outside the locked set", async () => {
+  const reportSchema = await readJson(mcpUrl("audit/phase-6c0a/reconciliation-report.schema.json"));
+  const orderClasses = await readJson(mcpUrl("audit/phase-6c0a/legacy-order-classification.json"));
+  const fixture = await readJson(mcpUrl("audit/phase-6c0a/fixtures/reconciliation-input.json"));
+  const byClass = reportSchema.properties.legacyOrderClassification.properties.byClass;
+  const expected = orderClasses.classes.map((entry) => entry.code);
+
   assert.equal(reportSchema.properties.phase.const, "6C.0A");
   assert.ok(reportSchema.required.includes("checks"));
   assert.ok(reportSchema.required.includes("legacyOrderClassification"));
+  assert.equal(byClass.additionalProperties, false);
+  assert.deepEqual(Object.keys(byClass.properties).sort(), [...expected].sort());
+  assert.deepEqual(byClass.required.slice().sort(), [...expected].sort());
+  assert.deepEqual(Object.keys(fixture.expectedSummary.byClass).sort(), [...expected].sort());
+});
 
+test("risk register covers the cutover gates", async () => {
+  const risks = await readJson(mcpUrl("audit/phase-6c0a/risk-register.json"));
   const riskText = risks.risks.map((entry) => entry.risk).join("\n");
   for (const fragment of ["dual write", "legacy fallback", "provider outage", "identity collision", "ambiguous legacy order", "manual retry", "stale frontend", "service actor", "R2 object", "rollback"]) {
     assert.match(riskText, new RegExp(fragment, "i"));
   }
 });
 
-test("the audit document keeps production and runtime changes out of scope", () => {
+test("the audit document keeps production and runtime changes out of scope", async () => {
+  const auditDoc = await readFile(repoUrl("docs/operations/phase-6c0a-mcp-legacy-audit.md"), "utf8");
   assert.match(auditDoc, /DOCS\/TESTS\/READ-ONLY ONLY/);
   assert.match(auditDoc, /does not authorize/i);
   assert.match(auditDoc, /Production rollout remains a separate explicitly authorized operation/);
