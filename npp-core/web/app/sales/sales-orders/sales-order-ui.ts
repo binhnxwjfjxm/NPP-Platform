@@ -102,6 +102,27 @@ function resetDraftRecovery(): void {
   draftRecovery = null;
 }
 
+function validateDraftDiscountIntent(path: string, init: RequestInit): void {
+  if (!isDraftSave(path, methodOf(init)) || typeof init.body !== 'string') return;
+  let body: Record<string, unknown>;
+  try {
+    body = JSON.parse(init.body) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+  const mode = String(body.documentDiscountMode ?? 'NONE').trim().toUpperCase();
+  const value = String(body.documentDiscountValue ?? '0').trim();
+  const positive = mode !== 'NONE'
+    && /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/.test(value)
+    && /[1-9]/.test(value);
+  if (positive && !String(body.documentDiscountReason ?? '').trim()) {
+    throw new SalesOrderUiError(
+      'DOCUMENT_DISCOUNT_REASON_REQUIRED',
+      'Chiết khấu bổ sung toàn đơn cần lý do',
+    );
+  }
+}
+
 function recoverCommittedDraft(path: string, init: RequestInit): {
   path: string;
   init: RequestInit;
@@ -144,6 +165,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
 
   const request = recoverCommittedDraft(path, init);
   const requestMethod = methodOf(request.init);
+  validateDraftDiscountIntent(request.path, request.init);
   const response = await fetch(request.path, {
     ...request.init,
     cache: 'no-store',
