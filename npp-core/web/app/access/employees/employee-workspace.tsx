@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { AppShell } from '../../components/app-shell';
 import shellStyles from '../../components/app-shell.module.css';
 import styles from '../../organization/organization.module.css';
@@ -23,6 +24,10 @@ type ApiEnvelope<T> = {
   data?: T;
   error?: { code?: string; message?: string; retryable?: boolean };
 };
+type LoadOptions = {
+  silent?: boolean;
+  refreshRouter?: boolean;
+};
 
 type Props = {
   initialEmployees: Employee[];
@@ -36,6 +41,14 @@ function joinClasses(...values: Array<string | false | null | undefined>) {
 
 function emptyDraft(branchId = ''): EmployeeDraft {
   return { code: '', fullName: '', jobTitle: '', phone: '', email: '', branchId };
+}
+
+function upsertEmployee(current: Employee[], next: Employee): Employee[] {
+  const index = current.findIndex((employee) => employee.id === next.id);
+  if (index === -1) return [...current, next];
+  const updated = [...current];
+  updated[index] = next;
+  return updated;
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -56,6 +69,8 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export default function EmployeeWorkspace({ initialEmployees, branches: initialBranches, initialError = null }: Props) {
+  const router = useRouter();
+  const loadSequence = useRef(0);
   const [employees, setEmployees] = useState(initialEmployees);
   const [branches, setBranches] = useState(initialBranches);
   const [busy, setBusy] = useState<string | null>(null);
@@ -104,24 +119,35 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
     };
   }, [employees]);
 
-  async function loadAll(successMessage = 'Danh mục nhân sự đã được cập nhật.') {
-    setBusy('load');
+  const loadAll = useCallback(async (
+    successMessage: string | null = 'Danh mục nhân sự đã được cập nhật.',
+    options: LoadOptions = {},
+  ) => {
+    const sequence = ++loadSequence.current;
+    if (!options.silent) setBusy('load');
     setError(null);
-    setNotice(null);
+    if (successMessage) setNotice(null);
     try {
       const [nextEmployees, nextBranches] = await Promise.all([
         requestJson<Employee[]>('/api/access/employees?limit=1000'),
         requestJson<Branch[]>('/api/organization/branches?limit=1000'),
       ]);
+      if (sequence !== loadSequence.current) return;
       setEmployees(nextEmployees);
       setBranches(nextBranches);
-      setNotice(successMessage);
+      if (successMessage) setNotice(successMessage);
+      if (options.refreshRouter !== false) router.refresh();
     } catch (loadError) {
+      if (sequence !== loadSequence.current) return;
       setError(loadError instanceof Error ? loadError.message : 'Không tải được danh mục nhân sự');
     } finally {
-      setBusy(null);
+      if (sequence === loadSequence.current && !options.silent) setBusy(null);
     }
-  }
+  }, [router]);
+
+  useEffect(() => {
+    void loadAll(null, { silent: true, refreshRouter: false });
+  }, [loadAll]);
 
   function openCreate() {
     setError(null);
@@ -167,13 +193,22 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
 
     try {
       const path = current ? `/api/access/employees/${current.id}` : '/api/access/employees';
-      await requestJson<Employee>(path, {
+      const saved = await requestJson<Employee>(path, {
         method: current ? 'PATCH' : 'POST',
         headers: current ? undefined : { 'Idempotency-Key': `web-${crypto.randomUUID()}` },
         body: JSON.stringify(payload),
       });
+      loadSequence.current += 1;
+      setEmployees((items) => upsertEmployee(items, saved));
       setEditor(null);
-      await loadAll(current ? 'Thông tin nhân sự đã được cập nhật.' : 'Hồ sơ nhân sự đã được tạo.');
+      if (!current) {
+        setSearch('');
+        setStatusFilter('all');
+        setBranchFilter('all');
+      }
+      setNotice(current ? 'Thông tin nhân sự đã được cập nhật.' : 'Hồ sơ nhân sự đã được tạo.');
+      setBusy(null);
+      router.refresh();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Không lưu được hồ sơ nhân sự');
       setBusy(null);
@@ -189,15 +224,19 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
     setError(null);
     setNotice(null);
     try {
-      await requestJson<Employee>(`/api/access/employees/${employee.id}`, {
+      const saved = await requestJson<Employee>(`/api/access/employees/${employee.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
           isActive: toggleState.nextActive,
           expectedUpdatedAt: employee.updated_at,
         }),
       });
+      loadSequence.current += 1;
+      setEmployees((items) => upsertEmployee(items, saved));
       setToggleState(null);
-      await loadAll(toggleState.nextActive ? 'Nhân sự đã được đưa vào sử dụng.' : 'Nhân sự đã ngừng làm việc.');
+      setNotice(toggleState.nextActive ? 'Nhân sự đã được đưa vào sử dụng.' : 'Nhân sự đã ngừng làm việc.');
+      setBusy(null);
+      router.refresh();
     } catch (toggleError) {
       setError(toggleError instanceof Error ? toggleError.message : 'Không cập nhật được trạng thái nhân sự');
       setBusy(null);
