@@ -1,4 +1,4 @@
-name: Manual Heroku MCP backend deploy
+name: Manual Heroku MCP production deploy
 
 on:
   workflow_dispatch:
