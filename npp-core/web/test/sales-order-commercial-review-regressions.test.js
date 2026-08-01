@@ -20,3 +20,9 @@ test('positive document discount intent is rejected client-side without a reason
 test('successful recovery clears a stale pricing error before showing success', () => {
   assert.match(workspace, /onSaved=\{\(order\) => \{[\s\S]*setError\(null\);[\s\S]*setNotice/);
 });
+
+test('price recovery keeps a stable form error callback so entry settings do not reload on banners', () => {
+  assert.match(workspace, /const handleFormError = useCallback/);
+  assert.match(workspace, /onError=\{handleFormError\}/);
+  assert.doesNotMatch(workspace, /onError=\{\(message\) => setError/);
+});
