@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "phase": "6C.0A",
+  "baseline": "46f43b473e35ac1103aa2b49412de3f64fe1646b",
+  "rules": {
+    "valuesForbidden": true,
+    "frontendSecretsForbidden": true,
+    "providerSpecificVariablesRequireRetirementGate": true
+  },
+  "variables": [
+    {"name":"BACKEND_API_BASE_URL","scope":["mcp_frontend_server"],"required":"production","secret":false,"exposure":"server","providerSpecific":false,"replacementTarget":"MCP API service discovery/runtime config","retirementGate":"MCP backend remains public and separately deployable"},
+    {"name":"BACKEND_API_TOKEN","scope":["mcp_frontend_server","mcp_backend"],"required":"production","secret":true,"exposure":"server_only","providerSpecific":false,"replacementTarget":"short-lived service-to-service credential or platform identity","retirementGate":"employee auth does not remove service authentication"},
+    {"name":"MCP_LEGACY_ACTOR_ID","scope":["mcp_frontend_server","mcp_backend"],"required":"current_runtime","secret":false,"exposure":"server","providerSpecific":false,"replacementTarget":"authenticated employee/user actor","retirementGate":"user/session auth and deny-by-default authorization proven"},
+    {"name":"SUPABASE_URL","scope":["mcp_frontend_server","mcp_backend"],"required":"current_runtime","secret":false,"exposure":"server","providerSpecific":true,"replacementTarget":"MCP repository/database configuration","retirementGate":"all direct export reads and backend provider calls retired"},
+    {"name":"SUPABASE_ANON_KEY","scope":["mcp_frontend_server"],"required":"current_runtime","secret":false,"exposure":"server_transitional","providerSpecific":true,"replacementTarget":"none","retirementGate":"server-side export/report reads moved behind MCP backend"},
+    {"name":"SUPABASE_SERVICE_ROLE_KEY","scope":["mcp_backend"],"required":"current_runtime","secret":true,"exposure":"backend_only","providerSpecific":true,"replacementTarget":"schema-restricted PostgreSQL MCP service role","retirementGate":"provider-neutral repositories and migration/cutover complete"},
+    {"name":"INSTALLATION_ID","scope":["mcp_backend"],"required":"current_runtime","secret":false,"exposure":"backend","providerSpecific":false,"replacementTarget":"shared installation context","retirementGate":"retain"},
+    {"name":"NPP_CODE","scope":["mcp_backend"],"required":"current_runtime","secret":false,"exposure":"backend","providerSpecific":false,"replacementTarget":"shared installation context","retirementGate":"retain or normalize"},
+    {"name":"AUTH_MODE","scope":["mcp_backend"],"required":"optional_default_proxy-service","secret":false,"exposure":"backend","providerSpecific":false,"replacementTarget":"versioned auth modes","retirementGate":"employee authentication slice"},
+    {"name":"CORS_ORIGINS","scope":["mcp_backend"],"required":"production","secret":false,"exposure":"backend","providerSpecific":false,"replacementTarget":"explicit frontend origin allowlist","retirementGate":"retain"},
+    {"name":"HOST","scope":["mcp_backend"],"required":"optional","secret":false,"exposure":"backend","providerSpecific":false,"replacementTarget":"runtime binding","retirementGate":"retain"},
+    {"name":"PORT","scope":["mcp_backend"],"required":"runtime","secret":false,"exposure":"backend","providerSpecific":false,"replacementTarget":"runtime binding","retirementGate":"retain"},
+    {"name":"LEGACY_INTERNAL_PORT","scope":["mcp_backend"],"required":"while_legacy_fallback_exists","secret":false,"exposure":"backend_internal","providerSpecific":false,"replacementTarget":"none","retirementGate":"legacy monolith fully retired"},
+    {"name":"R2_BUCKET_NAME","scope":["mcp_backend"],"required":"when_media_enabled","secret":false,"exposure":"backend","providerSpecific":true,"replacementTarget":"storage adapter config","retirementGate":"retain behind adapter"},
+    {"name":"R2_ENDPOINT","scope":["mcp_backend"],"required":"when_media_enabled","secret":false,"exposure":"backend","providerSpecific":true,"replacementTarget":"storage adapter config","retirementGate":"retain behind adapter"},
+    {"name":"R2_ACCESS_KEY_ID","scope":["mcp_backend"],"required":"when_media_enabled","secret":true,"exposure":"backend_only","providerSpecific":true,"replacementTarget":"storage credential provider","retirementGate":"retain backend-only"},
+    {"name":"R2_SECRET_ACCESS_KEY","scope":["mcp_backend"],"required":"when_media_enabled","secret":true,"exposure":"backend_only","providerSpecific":true,"replacementTarget":"storage credential provider","retirementGate":"retain backend-only"},
+    {"name":"MCP_REPORT_AGENT_URL","scope":["mcp_frontend_server"],"required":"optional","secret":false,"exposure":"server","providerSpecific":false,"replacementTarget":"versioned integration endpoint","retirementGate":"feature-specific"},
+    {"name":"MCP_REPORT_AGENT_TOKEN","scope":["mcp_frontend_server"],"required":"optional","secret":true,"exposure":"server_only","providerSpecific":false,"replacementTarget":"scoped integration credential","retirementGate":"feature-specific"}
+  ]
+}
