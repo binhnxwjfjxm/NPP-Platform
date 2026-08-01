@@ -16,7 +16,7 @@ import { handleOrderApi } from "./order-api.js";
 import { handleRouteApi } from "./route-api.js";
 import { handleTransitionalApi } from "./transitional-api.js";
 
-const PUBLIC_HEALTH_PATHS = new Set(["/", "/health", "/api/health"]);
+const PUBLIC_HEALTH_PATHS = new Set(["/", "/health", "/api/health", "/health/live", "/health/ready"]);
 const MAX_UPSTREAM_RESPONSE_BYTES = 16 * 1024 * 1024;
 const REQUEST_HEADER_BLOCKLIST = new Set([
   "connection",

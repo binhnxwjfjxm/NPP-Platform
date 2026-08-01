@@ -15,6 +15,7 @@
     "test:vercel-deployment-control": "node --test test/vercel-deployment-control.test.mjs test/heroku-root-contract.test.mjs",
     "test:heroku-root": "node --test test/heroku-root-contract.test.mjs",
     "test:heroku-mcp-backend-contract": "node --test test/heroku-mcp-backend-contract.test.mjs",
+    "test:heroku-mcp-backend-runtime": "node --test test/heroku-mcp-backend-runtime.test.mjs",
     "test:direct-db-mutation": "node --test test/audit-direct-db-mutations.test.mjs test/direct-db-retirement-subphase.test.mjs",
     "test:edge-retirement": "node --test test/a5-3-edge-retirement.test.mjs test/a5-3-no-legacy-edge-caller.test.mjs",
     "test:direct-rest-retirement": "node --test test/a5-4-1-dead-session-mutations.test.mjs test/a5-4-2-session-report-caller-audit.test.mjs test/a5-4-3-report-settings-caller-audit.test.mjs test/a5-4-4-field-check-market-report-caller-audit.test.mjs",
@@ -34,7 +35,7 @@
     "test:f05-production-smoke": "node --test test/f05-production-owners-runtime-smoke-contract.test.mjs test/f05-production-smoke-fixture-routing.test.mjs test/f05-production-smoke-actor-context.test.mjs",
     "test:foundation": "npm --prefix apps/backend test",
     "verify:copy": "npm run audit:copy && npm run typecheck",
-    "verify:foundation": "npm run audit:runtime-config && npm run test:windows-path && npm run test:workflow-paths && npm run test:vercel-deployment-control && npm run test:heroku-root && npm run test:heroku-mcp-backend-contract && npm run test:direct-db-mutation && npm run test:edge-retirement && npm run test:direct-rest-retirement && npm run test:session-lifecycle-caller && npm run test:route-master-caller && npm run test:idempotency && npm run test:f05-production-smoke && npm run test:route-customer-photo && npm run test:production-hygiene && npm run audit:direct-db-mutation && npm run test:pullmcp-deployer && npm run test:backend-api-auth && npm run test:export-copy && npm run test:foundation && npm run typecheck && npm run test:theme-contract",
+    "verify:foundation": "npm run audit:runtime-config && npm run test:windows-path && npm run test:workflow-paths && npm run test:vercel-deployment-control && npm run test:heroku-root && npm run test:heroku-mcp-backend-contract && npm run test:heroku-mcp-backend-runtime && npm run test:direct-db-mutation && npm run test:edge-retirement && npm run test:direct-rest-retirement && npm run test:session-lifecycle-caller && npm run test:route-master-caller && npm run test:idempotency && npm run test:f05-production-smoke && npm run test:route-customer-photo && npm run test:production-hygiene && npm run audit:direct-db-mutation && npm run test:pullmcp-deployer && npm run test:backend-api-auth && npm run test:export-copy && npm run test:foundation && npm run typecheck && npm run test:theme-contract",
     "test:theme-contract": "node --test test/mcp-warm-theme-contract.test.mjs test/a5-5-2-session-action-live-caller-contract.test.mjs test/app-shell-expanded-menu-theme-contract.test.mjs test/interaction-feedback-contract.test.mjs test/app-shell-browser-acceptance-contract.test.mjs test/mcp-ui-root-cause-regression.test.mjs test/mcp-customer-profile-media-ui-contract.test.mjs test/route-customer-photo-gallery-contract.test.mjs test/route-customer-photo-management-contract.test.mjs"
   },
   "dependencies": {

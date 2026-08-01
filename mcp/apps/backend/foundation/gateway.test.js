@@ -69,12 +69,14 @@ test("health and auth failures use the canonical envelope", async (t) => {
   const state = await setup();
   t.after(async () => { await close(state.gateway); await close(state.legacy); });
 
-  const health = await request(state.publicPort, "/api/health");
-  assert.equal(health.status, 200);
-  assert.equal(health.body.data.installationConfigured, true);
-  assert.equal(health.body.data.installationId, undefined);
-  assert.match(health.body.requestId, /^req_/);
-  assert.equal(health.body.receivedAt.length > 0, true);
+  for (const path of ["/", "/health", "/api/health", "/health/live", "/health/ready"]) {
+    const health = await request(state.publicPort, path);
+    assert.equal(health.status, 200);
+    assert.equal(health.body.data.installationConfigured, true);
+    assert.equal(health.body.data.installationId, undefined);
+    assert.match(health.body.requestId, /^req_/);
+    assert.equal(health.body.receivedAt.length > 0, true);
+  }
 
   const unauthorized = await request(state.publicPort, "/api/routes");
   assert.equal(unauthorized.status, 401);
