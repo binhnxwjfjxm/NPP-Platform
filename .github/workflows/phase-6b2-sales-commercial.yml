@@ -32,6 +32,9 @@ jobs:
     name: Exact commercial vertical slice
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     env:
       E2E_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/npp_phase_6b2
       E2E_BACKEND_API_TOKEN: ci-phase-6b2-token-not-a-production-secret
@@ -56,9 +59,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify Core-only scope
-        shell: bash
         run: |
           set -euo pipefail
           git diff --name-only origin/main...HEAD | tee phase-6b2-changed-files.log
