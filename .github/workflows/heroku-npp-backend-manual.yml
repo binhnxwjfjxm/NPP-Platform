@@ -49,13 +49,14 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Validate NPP Core packaging boundary
+        working-directory: npp-core/api
         shell: bash
         run: |
           set -euo pipefail
-          test "$(cat Procfile)" = "web: npm run start:core-api"
+          test "$(cat ../../Procfile)" = "web: npm run start:core-api"
           node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
-          const pkg = JSON.parse(await readFile("package.json", "utf8"));
+          const pkg = JSON.parse(await readFile("../../package.json", "utf8"));
           if (pkg.scripts?.["start:core-api"] !== "npm --workspace npp-core-api start") {
             throw new Error("unexpected_core_api_start_contract");
           }
