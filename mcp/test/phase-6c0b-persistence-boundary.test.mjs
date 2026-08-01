@@ -84,14 +84,14 @@ test("runtime boundary audit behaves identically for Linux LF and Windows CRLF",
   assertActiveRuntimeBoundary(source.replace(/\r?\n/g, "\r\n"));
 });
 
-test("Docker and CI smoke contracts do not inject Supabase credentials", async () => {
+test("Docker and CI smoke contracts do not inject Supabase service-role credentials", async () => {
   const dockerfile = await read("mcp/apps/backend/Dockerfile");
   const ciWorkflow = await read(".github/workflows/heroku-mcp-backend-contract-ci.yml");
   const manualWorkflow = await read(".github/workflows/heroku-mcp-backend-manual.yml");
   const requiredLine = manualWorkflow.match(/HEROKU_REQUIRED_CONFIG_NAMES:.*$/m)?.[0] || "";
 
   assert.doesNotMatch(dockerfile, /SUPABASE_/);
-  assert.doesNotMatch(ciWorkflow, /SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY/);
+  assert.doesNotMatch(ciWorkflow, /SUPABASE_SERVICE_ROLE_KEY/);
   assert.doesNotMatch(requiredLine, /SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY/);
   assert.match(requiredLine, /DATABASE_URL/);
   assert.match(ciWorkflow, /smoke \/health\/live 200/);

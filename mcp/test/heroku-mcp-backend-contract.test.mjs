@@ -106,7 +106,7 @@ test("deploy failure remains a failed workflow after rollback evidence is record
   assert.match(manualWorkflow, /The requested deployment failed health checks and was rolled back/);
 });
 
-test("Heroku MCP CI builds, verifies and smokes backend without Supabase env", () => {
+test("Heroku MCP CI builds, verifies and smokes backend with frontend build fixtures", () => {
   assert.match(ciWorkflow, /pull_request:/);
   assert.match(ciWorkflow, /push:/);
   assert.match(ciWorkflow, /workflow_dispatch/);
@@ -117,6 +117,10 @@ test("Heroku MCP CI builds, verifies and smokes backend without Supabase env", (
   assert.match(ciWorkflow, /phase-6c0b-persistence-boundary\.test\.mjs/);
   assert.match(ciWorkflow, /npm --workspace mcp run test:vercel-deployment-control/);
   assert.match(ciWorkflow, /npm --workspace mcp run typecheck/);
+  assert.match(
+    ciWorkflow,
+    /- name: Build MCP frontend\n\s+env:\n\s+BACKEND_API_BASE_URL: http:\/\/127\.0\.0\.1:3001\n\s+BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef\n\s+MCP_LEGACY_ACTOR_ID: service:ci:mcp-v1\n\s+SUPABASE_URL: https:\/\/project\.example\.com\n\s+SUPABASE_ANON_KEY: ci-publishable-key\n\s+run: npm --workspace mcp run build/
+  );
   assert.match(ciWorkflow, /npm --workspace mcp run build/);
   assert.match(ciWorkflow, /docker build -f mcp\/apps\/backend\/Dockerfile mcp\/apps\/backend/);
   assert.match(ciWorkflow, /docker run -d --rm/);
@@ -124,7 +128,6 @@ test("Heroku MCP CI builds, verifies and smokes backend without Supabase env", (
   assert.match(ciWorkflow, /smoke \/health\/live 200/);
   assert.match(ciWorkflow, /smoke \/health\/ready 503/);
   assert.match(ciWorkflow, /docker stop "\$container_id"/);
-  assert.doesNotMatch(ciWorkflow, /SUPABASE_URL/);
   assert.doesNotMatch(ciWorkflow, /SUPABASE_SERVICE_ROLE_KEY/);
   assert.doesNotMatch(ciWorkflow, /VERCEL_TOKEN|vercel\s+(?:deploy\b|--prod)|mcp-field/i);
   assert.doesNotMatch(ciWorkflow, /stack:set/);
