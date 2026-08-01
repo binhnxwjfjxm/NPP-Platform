@@ -8,6 +8,7 @@ function identifier(env, name) { const value = required(env, name); if (!IDENTIF
 function optionalBoolean(value, fallback = false, name = "value") { const raw = text(value).toLowerCase(); if (!raw) return fallback; if (["1","true","yes","on"].includes(raw)) return true; if (["0","false","no","off"].includes(raw)) return false; fail(`invalid_${name.toLowerCase()}`, `${name} must be boolean`); }
 function port(value, fallback, name) { const raw = text(value); const parsed = raw ? Number(raw) : fallback; if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) fail(`invalid_${name.toLowerCase()}`, `${name} must be an integer from 1 to 65535`); return parsed; }
 function positiveInteger(value, fallback, name) { const raw = text(value); const parsed = raw ? Number(raw) : fallback; if (!Number.isInteger(parsed) || parsed < 1) fail(`invalid_${name.toLowerCase()}`, `${name} must be a positive integer`); return parsed; }
+function csvList(value) { return Object.freeze(Array.from(new Set(text(value).split(",").map((item) => item.trim().toLowerCase()).filter(Boolean))).sort()); }
 function httpUrlValue(value, name, { httpsInProduction = false, nodeEnv = "development" } = {}) { let parsed; try { parsed = new URL(value); } catch { fail(`invalid_${name.toLowerCase()}`, `${name} must be a valid URL`); } if (!/^https?:$/.test(parsed.protocol)) fail(`invalid_${name.toLowerCase()}`, `${name} must use http or https`); if (httpsInProduction && nodeEnv === "production" && parsed.protocol !== "https:") fail(`${name.toLowerCase()}_https_required`, `${name} must use https in production`); return parsed.toString().replace(/\/+$/, ""); }
 function databaseUrlValue(value) { const raw = text(value); if (!raw) return null; let parsed; try { parsed = new URL(raw); } catch { fail("invalid_database_url", "DATABASE_URL must be a valid URL"); } if (!["postgres:", "postgresql:"].includes(parsed.protocol)) fail("invalid_database_url", "DATABASE_URL must use postgres or postgresql"); return raw; }
 
@@ -74,9 +75,18 @@ export function loadFoundationConfig(env = process.env) {
     supabaseUrl = httpUrlValue(required(env, "SUPABASE_URL"), "SUPABASE_URL", { httpsInProduction: true, nodeEnv });
     supabaseServiceRoleKey = required(env, "SUPABASE_SERVICE_ROLE_KEY");
   }
+  const servicePrincipal = Object.freeze({
+    id: legacyActorId,
+    type: "service",
+    authentication: "backend-token",
+    employeeId: null,
+    roles: csvList(env.MCP_SERVICE_ROLES),
+    permissions: csvList(env.MCP_SERVICE_PERMISSIONS),
+    scopes: csvList(env.MCP_SERVICE_SCOPES)
+  });
   return Object.freeze({
     nodeEnv, service: text(env.SERVICE_NAME) || "mcp-plan-backend", publicHost, publicPort, internalHost, internalPort,
-    installationId, nppCode, legacyActorId, backendApiToken, authMode,
+    installationId, nppCode, legacyActorId, backendApiToken, authMode, servicePrincipal,
     persistence,
     legacyRuntime: Object.freeze({ enabled: legacyRuntimeEnabled }),
     supabaseUrl, supabaseServiceRoleKey,
@@ -87,5 +97,5 @@ export function loadFoundationConfig(env = process.env) {
 }
 
 export function publicFoundationConfig(config) {
-  return Object.freeze({ service: config.service, nodeEnv: config.nodeEnv, installationId: config.installationId, nppCode: config.nppCode, authMode: config.authMode, publicHost: config.publicHost, publicPort: config.publicPort, persistenceProvider: config.persistence.provider, persistenceConfigured: config.persistence.configured, persistenceSchema: config.persistence.schema, legacyRuntimeEnabled: config.legacyRuntime.enabled, r2Configured: config.r2?.configured === true, corsOrigins: [...config.corsOrigins] });
+  return Object.freeze({ service: config.service, nodeEnv: config.nodeEnv, installationId: config.installationId, nppCode: config.nppCode, authMode: config.authMode, publicHost: config.publicHost, publicPort: config.publicPort, persistenceProvider: config.persistence.provider, persistenceConfigured: config.persistence.configured, persistenceSchema: config.persistence.schema, legacyRuntimeEnabled: config.legacyRuntime.enabled, serviceRoleCount: config.servicePrincipal?.roles?.length || 0, servicePermissionCount: config.servicePrincipal?.permissions?.length || 0, serviceScopeCount: config.servicePrincipal?.scopes?.length || 0, r2Configured: config.r2?.configured === true, corsOrigins: [...config.corsOrigins] });
 }
