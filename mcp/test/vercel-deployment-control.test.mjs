@@ -31,54 +31,56 @@ test("legacy repository-root config is inert and locked", () => {
   assert.equal(rootConfig.build, undefined);
 });
 
-test("automatic Vercel deployments stay locked by default", () => {
+test("automatic Core Vercel deployments stay locked by default", () => {
   assert.equal(coreConfig.git?.deploymentEnabled, false);
   assert.match(workflow, /^\s{2}workflow_dispatch:\s*$/m);
   assert.match(workflow, /^\s{2}issue_comment:\s*$/m);
   assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request):\s*$/m);
 });
 
-test("comment deployment requires the exact guarded command", () => {
+test("Core comment deployment requires its exact Issue #5 command", () => {
   assert.match(workflow, /github\.event\.issue\.number == 5/);
-  assert.match(workflow, /github\.event\.comment\.body == '\/deploy-vercel-production'/);
+  assert.match(workflow, /trimmed_comment/);
+  assert.match(workflow, /'\/deploy-vercel-production'/);
+  assert.doesNotMatch(workflow, /\/deploy-vercel-mcp-production/);
   assert.match(workflow, /\["binhnxwjfjxm","khuongbinhinfo-a11y"\]/);
   assert.match(workflow, /github\.actor/);
 });
 
-test("manual deployment is pinned to the npp-platform project", () => {
-  assert.match(workflow, /VERCEL_ORG_ID: \$\{\{ secrets\.VERCEL_ORG_ID \}\}/);
+test("Core deployment is pinned to the npp-platform project", () => {
+  assert.match(workflow, /VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2/);
   assert.match(
     workflow,
     new RegExp(`VERCEL_PROJECT_ID: ${NPP_PLATFORM_PROJECT_ID}`)
   );
   assert.match(workflow, /Verify Vercel project link/);
   assert.match(workflow, /linked\.projectId !== process\.env\.VERCEL_PROJECT_ID/);
-  assert.doesNotMatch(workflow, /VERCEL_PROJECT_ID: \$\{\{ secrets\.VERCEL_PROJECT_ID \}\}/);
+  assert.match(workflow, /linked\.settings\?\.rootDirectory !== 'npp-core\/web'/);
+  assert.doesNotMatch(workflow, /vars\.VERCEL_MCP_PROJECT_ID/);
 });
 
-test("manual deployment installs dependencies and uses prebuilt Vercel CLI deployment", () => {
+test("Core deployment installs dependencies and deploys only the Core Vercel target", () => {
   assert.match(workflow, /permissions:\s*\n\s+contents: read/);
   assert.match(workflow, /Install workspace dependencies/);
   assert.match(workflow, /run: npm ci/);
   assert.match(workflow, /vercel@latest pull/);
-  assert.match(workflow, /vercel@latest build/);
   assert.match(workflow, /vercel@latest deploy/);
-  assert.match(workflow, /--prebuilt/);
   assert.match(workflow, /--prod/);
-  assert.doesNotMatch(workflow, /--archive(?:=|\s)/);
   assert.match(workflow, /secrets\.VERCEL_TOKEN/);
-  assert.match(workflow, /git\.rev-parse|git rev-parse/);
-  assert.match(workflow, /deploymentEnabled !== false/);
+  assert.match(workflow, /git fetch origin main --depth=1/);
+  assert.match(workflow, /git rev-parse origin\/main/);
 
+  assert.doesNotMatch(workflow, /working-directory: mcp/);
+  assert.doesNotMatch(workflow, /heroku container:push|heroku container:release|git push heroku/);
   assert.doesNotMatch(workflow, /deploymentEnabled: true/);
   assert.doesNotMatch(workflow, /git push origin HEAD:main/);
-  assert.doesNotMatch(workflow, /Open one-shot production gate/);
-  assert.doesNotMatch(workflow, /Re-lock automatic deployments/);
   assert.doesNotMatch(workflow, /vcp_[A-Za-z0-9_-]+/);
 });
 
-test("production deployment performs required smoke checks", () => {
-  assert.match(workflow, /for path in \/ \/dashboard \/login/);
+test("Core production deployment performs its required smoke checks", () => {
+  assert.match(workflow, /assert_status \/ 302 307/);
+  assert.match(workflow, /assert_status \/login 200/);
+  assert.match(workflow, /assert_status \/dashboard 401/);
   assert.match(workflow, /\/_next\/static\//);
   assert.match(workflow, /DEPLOYED_SHA=/);
   assert.match(workflow, /DEPLOYED_URL=/);
