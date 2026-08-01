@@ -1,0 +1,223 @@
+name: Manual Heroku NPP production deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Deploy current main or roll back an existing Heroku release.
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - rollback
+      release_version:
+        description: Heroku release version used only for rollback, for example v21.
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heroku-npp-production-manual
+  cancel-in-progress: false
+
+jobs:
+  deploy-or-rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEPLOY_REF: main
+      HEROKU_APP_NAME: hung-phat
+      HEROKU_FORBIDDEN_APP_NAME: hung-phat-mcp
+    steps:
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Validate NPP Core packaging boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat Procfile)" = "web: npm run start:core-api"
+          node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const pkg = JSON.parse(await readFile("package.json", "utf8"));
+          if (pkg.scripts?.["start:core-api"] !== "npm --workspace npp-core-api start") {
+            throw new Error("unexpected_core_api_start_contract");
+          }
+          NODE
+
+      - name: Install Heroku CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Preflight exact Heroku target
+        id: preflight
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -euo pipefail
+          test "$HEROKU_APP_NAME" = "hung-phat"
+          test "$HEROKU_APP_NAME" != "$HEROKU_FORBIDDEN_APP_NAME"
+
+          app_json="$(heroku apps:info -a "$HEROKU_APP_NAME" --json)"
+          app_name="$(jq -r '.name // empty' <<<"$app_json")"
+          app_url="$(jq -r '.web_url // empty' <<<"$app_json")"
+          test "$app_name" = "$HEROKU_APP_NAME"
+          test -n "$app_url"
+
+          config_json="$(heroku config -a "$HEROKU_APP_NAME" --json)"
+          if ! jq -e 'has("DATABASE_URL") and (.DATABASE_URL | type == "string" and length > 0)' <<<"$config_json" >/dev/null; then
+            echo "Core backend DATABASE_URL is absent or empty." >&2
+            exit 1
+          fi
+
+          previous_release="$(heroku releases --json -a "$HEROKU_APP_NAME" | jq -r '.[0].version // empty')"
+          test -n "$previous_release"
+          stack="$(heroku stack -a "$HEROKU_APP_NAME" | awk '/^\*/ {print $2; exit}')"
+          config_names="$(jq -r 'keys[]' <<<"$config_json" | sort -u | paste -sd, -)"
+
+          {
+            echo "app_url=$app_url"
+            echo "previous_release=$previous_release"
+            echo "stack=$stack"
+            echo "config_names=$config_names"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Deploy or roll back Core backend
+        id: release
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          REQUESTED_ACTION: ${{ inputs.action }}
+          REQUESTED_RELEASE_VERSION: ${{ inputs.release_version }}
+          APP_URL: ${{ steps.preflight.outputs.app_url }}
+          PREVIOUS_RELEASE: ${{ steps.preflight.outputs.previous_release }}
+        run: |
+          set -euo pipefail
+
+          app_url="$APP_URL"
+          active_release=""
+          rollback_target=""
+          failed_release=""
+          deployment_failed="false"
+          rollback_failed="false"
+          rollback_health_failed="false"
+
+          current_release() {
+            heroku releases --json -a "$HEROKU_APP_NAME" | jq -r '.[0].version // empty'
+          }
+
+          smoke_health() {
+            local path="$1"
+            local deadline=$((SECONDS + 180))
+            local status=""
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 --output /dev/null --write-out '%{http_code}' "$app_url$path" || true)"
+              if [ "$status" = "200" ]; then
+                return 0
+              fi
+              sleep 3
+            done
+            echo "Core health smoke failed for $path; last status=${status:-none}." >&2
+            return 1
+          }
+
+          case "$REQUESTED_ACTION" in
+            deploy)
+              git remote add heroku "https://heroku:${HEROKU_API_KEY}@git.heroku.com/${HEROKU_APP_NAME}.git"
+              git push --force heroku HEAD:main
+              active_release="$(current_release)"
+
+              if ! smoke_health /health/live || ! smoke_health /health/ready; then
+                deployment_failed="true"
+                failed_release="$active_release"
+                rollback_target="$PREVIOUS_RELEASE"
+                if heroku releases:rollback "$PREVIOUS_RELEASE" -a "$HEROKU_APP_NAME"; then
+                  active_release="$(current_release)"
+                  if ! smoke_health /health/live || ! smoke_health /health/ready; then
+                    rollback_health_failed="true"
+                  fi
+                else
+                  rollback_failed="true"
+                fi
+              fi
+              ;;
+            rollback)
+              if [ -z "$REQUESTED_RELEASE_VERSION" ]; then
+                echo "rollback requires release_version" >&2
+                exit 1
+              fi
+              rollback_target="$REQUESTED_RELEASE_VERSION"
+              if heroku releases:rollback "$REQUESTED_RELEASE_VERSION" -a "$HEROKU_APP_NAME"; then
+                active_release="$(current_release)"
+                if ! smoke_health /health/live || ! smoke_health /health/ready; then
+                  rollback_health_failed="true"
+                fi
+              else
+                rollback_failed="true"
+              fi
+              ;;
+            *)
+              echo "Unknown action: $REQUESTED_ACTION" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ -z "$active_release" ]; then
+            active_release="$(current_release || true)"
+          fi
+
+          {
+            echo "active_release=$active_release"
+            echo "rollback_target=$rollback_target"
+            echo "failed_release=$failed_release"
+            echo "deployment_failed=$deployment_failed"
+            echo "rollback_failed=$rollback_failed"
+            echo "rollback_health_failed=$rollback_health_failed"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Summarize Core release evidence
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "HEROKU_APP_NAME=${HEROKU_APP_NAME}"
+            echo "HEROKU_APP_URL=${{ steps.preflight.outputs.app_url }}"
+            echo "HEROKU_STACK=${{ steps.preflight.outputs.stack }}"
+            echo "CONFIG_NAMES=${{ steps.preflight.outputs.config_names }}"
+            echo "SOURCE_SHA=${{ steps.source.outputs.sha }}"
+            echo "ACTIVE_RELEASE=${{ steps.release.outputs.active_release }}"
+            echo "ROLLBACK_TARGET=${{ steps.release.outputs.rollback_target }}"
+            echo "FAILED_RELEASE=${{ steps.release.outputs.failed_release }}"
+            echo "DEPLOYMENT_FAILED=${{ steps.release.outputs.deployment_failed }}"
+            echo "ROLLBACK_FAILED=${{ steps.release.outputs.rollback_failed }}"
+            echo "ROLLBACK_HEALTH_FAILED=${{ steps.release.outputs.rollback_health_failed }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce Core release outcome
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.release.outcome }}" = "success"
+          test "${{ steps.release.outputs.deployment_failed }}" != "true"
+          test "${{ steps.release.outputs.rollback_failed }}" != "true"
+          test "${{ steps.release.outputs.rollback_health_failed }}" != "true"
