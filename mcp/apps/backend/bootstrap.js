@@ -6,7 +6,7 @@ import { createPersistence } from "./foundation/persistence.js";
 try { loadEnvFile(".env"); } catch {}
 
 const config = loadFoundationConfig(process.env);
-const persistence = createPersistence(config);
+const persistence = await createPersistence(config);
 let legacyHandlers = null;
 if (config.legacyRuntime.enabled) {
   const { startLegacyRuntime } = await import("./foundation/legacy-runtime.js");
