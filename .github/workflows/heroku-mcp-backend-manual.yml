@@ -137,7 +137,7 @@ jobs:
             jq -e --arg name "$name" 'has($name)' <<<"$config_json" >/dev/null
           done
           if jq -e 'has("DATABASE_URL")' <<<"$config_json" >/dev/null; then
-            echo "DATABASE_URL must stay absent for this workflow." >&2
+            echo "DATABASE_URL must stay absent for this transitional workflow." >&2
             exit 1
           fi
 
@@ -174,6 +174,9 @@ jobs:
           previous_active_release_version="$PREVIOUS_ACTIVE_RELEASE_VERSION"
           failed_release_version=""
           rollback_target_version=""
+          deployment_failed="false"
+          rollback_failed="false"
+          rollback_health_failed="false"
 
           refresh_release_version() {
             heroku releases --json -a "$HEROKU_APP_NAME" | jq -r '.[0].version // empty'
@@ -201,8 +204,22 @@ jobs:
               fi
               sleep 3
             done
-            echo "health smoke failed for $path after deploy state ${HEROKU_RELEASE_VERSION:-unknown} (last_status=${last_status:-none})" >&2
+            echo "health smoke failed for $path after release ${HEROKU_RELEASE_VERSION:-unknown} (last_status=${last_status:-none})" >&2
             return 1
+          }
+
+          write_outputs() {
+            {
+              echo "release_version=${HEROKU_RELEASE_VERSION:-}"
+              echo "app_url=$app_url"
+              echo "sha=${{ steps.sha.outputs.sha }}"
+              echo "rollback_target_version=$rollback_target_version"
+              echo "failed_release_version=$failed_release_version"
+              echo "previous_active_release_version=$previous_active_release_version"
+              echo "deployment_failed=$deployment_failed"
+              echo "rollback_failed=$rollback_failed"
+              echo "rollback_health_failed=$rollback_health_failed"
+            } >> "$GITHUB_OUTPUT"
           }
 
           test "$HEROKU_APP_NAME" = "hung-phat-mcp"
@@ -211,10 +228,9 @@ jobs:
             exit 1
           fi
 
-          heroku container:login
-
           case "$action" in
             deploy)
+              heroku container:login
               (
                 cd mcp/apps/backend
                 heroku container:push web -a "$HEROKU_APP_NAME"
@@ -224,13 +240,21 @@ jobs:
               app_url="$(refresh_app_url)"
 
               if ! smoke_health /health/live || ! smoke_health /health/ready; then
+                deployment_failed="true"
                 failed_release_version="$HEROKU_RELEASE_VERSION"
                 rollback_target_version="$previous_active_release_version"
-                heroku releases:rollback "$previous_active_release_version" -a "$HEROKU_APP_NAME"
-                HEROKU_RELEASE_VERSION="$(refresh_release_version)"
-                app_url="$(refresh_app_url)"
-                smoke_health /health/live
-                smoke_health /health/ready
+
+                if heroku releases:rollback "$previous_active_release_version" -a "$HEROKU_APP_NAME"; then
+                  HEROKU_RELEASE_VERSION="$(refresh_release_version)"
+                  app_url="$(refresh_app_url)"
+                  if ! smoke_health /health/live || ! smoke_health /health/ready; then
+                    rollback_health_failed="true"
+                  fi
+                else
+                  rollback_failed="true"
+                  HEROKU_RELEASE_VERSION="$(refresh_release_version || true)"
+                  app_url="$(refresh_app_url || printf '%s' "$app_url")"
+                fi
               fi
               ;;
             rollback)
@@ -239,11 +263,18 @@ jobs:
                 exit 1
               fi
               rollback_target_version="$REQUESTED_RELEASE_VERSION"
-              heroku releases:rollback "$REQUESTED_RELEASE_VERSION" -a "$HEROKU_APP_NAME"
-              HEROKU_RELEASE_VERSION="$(refresh_release_version)"
-              app_url="$(refresh_app_url)"
-              smoke_health /health/live
-              smoke_health /health/ready
+
+              if heroku releases:rollback "$REQUESTED_RELEASE_VERSION" -a "$HEROKU_APP_NAME"; then
+                HEROKU_RELEASE_VERSION="$(refresh_release_version)"
+                app_url="$(refresh_app_url)"
+                if ! smoke_health /health/live || ! smoke_health /health/ready; then
+                  rollback_health_failed="true"
+                fi
+              else
+                rollback_failed="true"
+                HEROKU_RELEASE_VERSION="$(refresh_release_version || true)"
+                app_url="$(refresh_app_url || printf '%s' "$app_url")"
+              fi
               ;;
             *)
               echo "Unknown action: $action" >&2
@@ -255,16 +286,10 @@ jobs:
             HEROKU_RELEASE_VERSION="$(refresh_release_version)"
           fi
 
-          {
-            echo "release_version=$HEROKU_RELEASE_VERSION"
-            echo "app_url=$app_url"
-            echo "sha=${{ steps.sha.outputs.sha }}"
-            echo "rollback_target_version=$rollback_target_version"
-            echo "failed_release_version=$failed_release_version"
-            echo "previous_active_release_version=$previous_active_release_version"
-          } >> "$GITHUB_OUTPUT"
+          write_outputs
 
       - name: Summarize release evidence
+        if: always()
         shell: bash
         run: |
           {
@@ -274,7 +299,36 @@ jobs:
             echo "ROLLBACK_TARGET_VERSION=${{ steps.release.outputs.rollback_target_version }}"
             echo "FAILED_RELEASE_VERSION=${{ steps.release.outputs.failed_release_version }}"
             echo "PREVIOUS_ACTIVE_RELEASE_VERSION=${{ steps.release.outputs.previous_active_release_version }}"
+            echo "DEPLOYMENT_FAILED=${{ steps.release.outputs.deployment_failed }}"
+            echo "ROLLBACK_FAILED=${{ steps.release.outputs.rollback_failed }}"
+            echo "ROLLBACK_HEALTH_FAILED=${{ steps.release.outputs.rollback_health_failed }}"
             echo "HEROKU_STACK=${{ steps.preflight.outputs.stack }}"
             echo "CONFIG_NAMES=${{ steps.preflight.outputs.config_names }}"
             echo "DEPLOYED_SHA=${{ steps.release.outputs.sha }}"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce release outcome
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ steps.release.outcome }}" != "success" ]; then
+            echo "Release step did not complete successfully." >&2
+            exit 1
+          fi
+
+          if [ "${{ steps.release.outputs.deployment_failed }}" = "true" ]; then
+            echo "The requested deployment failed health checks and was rolled back." >&2
+            exit 1
+          fi
+
+          if [ "${{ steps.release.outputs.rollback_failed }}" = "true" ]; then
+            echo "The requested rollback operation failed." >&2
+            exit 1
+          fi
+
+          if [ "${{ steps.release.outputs.rollback_health_failed }}" = "true" ]; then
+            echo "The active release failed health checks after rollback." >&2
+            exit 1
+          fi
