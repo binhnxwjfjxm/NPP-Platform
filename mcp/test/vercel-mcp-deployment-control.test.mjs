@@ -54,9 +54,8 @@ test("MCP deploy target is pinned and isolated from the Core Vercel project", ()
   assert.match(mcpWorkflow, /unexpected_mcp_root_directory/);
 });
 
-test("MCP deploy checks out main and operates only from the mcp root", () => {
+test("MCP deploy checks out main, installs in mcp and runs Vercel CLI from monorepo root", () => {
   assert.match(mcpWorkflow, /DEPLOY_REF: main/);
-  assert.match(mcpWorkflow, /working-directory: mcp/);
   assert.match(mcpWorkflow, /MCP_ROOT_DIRECTORY: mcp/);
   assert.match(mcpWorkflow, /git fetch origin main --depth=1/);
   assert.match(mcpWorkflow, /git rev-parse origin\/main/);
@@ -64,6 +63,26 @@ test("MCP deploy checks out main and operates only from the mcp root", () => {
   assert.match(
     mcpWorkflow,
     /- name: Install MCP dependencies\s+working-directory: mcp\s+run: npm ci/
+  );
+  assert.match(
+    mcpWorkflow,
+    /- name: Pull MCP production project configuration\s+run:/
+  );
+  assert.match(
+    mcpWorkflow,
+    /- name: Verify MCP Vercel project link\s+shell: bash/
+  );
+  assert.match(
+    mcpWorkflow,
+    /- name: Build MCP production artifact\s+run:/
+  );
+  assert.match(
+    mcpWorkflow,
+    /- name: Deploy MCP production artifact\s+id: deploy\s+shell: bash/
+  );
+  assert.doesNotMatch(
+    mcpWorkflow,
+    /- name: (?:Pull MCP production project configuration|Verify MCP Vercel project link|Build MCP production artifact|Deploy MCP production artifact)\s+working-directory: mcp/
   );
 
   assert.doesNotMatch(mcpWorkflow, /working-directory: npp-core\/web/);
