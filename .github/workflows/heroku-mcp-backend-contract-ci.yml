@@ -51,13 +51,25 @@ jobs:
         run: npm ci
 
       - name: Verify MCP backend
-        run: npm --prefix mcp/apps/backend run verify
+        run: npm --workspace mcp/apps/backend run verify
 
       - name: Run Heroku MCP contract tests
         run: npm --workspace mcp run test:heroku-mcp-backend-contract
 
       - name: Run Heroku MCP runtime tests
         run: npm --workspace mcp run test:heroku-mcp-backend-runtime
+
+      - name: Run Phase 6C.0B persistence boundary tests
+        run: node --test mcp/test/phase-6c0b-persistence-boundary.test.mjs
+
+      - name: Verify Vercel deployment control remains unchanged
+        run: npm --workspace mcp run test:vercel-deployment-control
+
+      - name: Typecheck MCP frontend
+        run: npm --workspace mcp run typecheck
+
+      - name: Build MCP frontend
+        run: npm --workspace mcp run build
 
       - name: Build MCP backend container
         run: docker build -f mcp/apps/backend/Dockerfile mcp/apps/backend -t heroku-mcp-backend:${{ github.sha }}
