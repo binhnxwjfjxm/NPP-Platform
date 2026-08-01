@@ -6,6 +6,7 @@
     "dev": "next dev -p 3002",
     "build": "next build",
     "start": "next start",
+    "pretypecheck": "node scripts/verify-source-immutability.mjs",
     "typecheck": "tsc --noEmit",
     "audit:copy": "node scripts/audit-user-facing-copy.mjs",
     "audit:runtime-config": "node scripts/audit-runtime-hardcodes.mjs",
