@@ -58,6 +58,40 @@ test("manual Heroku MCP workflow performs provider preflight and isolated rollba
   assert.equal(rootProcfile, "web: npm run start:core-api");
 });
 
+test("deploy failure remains a failed workflow after rollback evidence is recorded", () => {
+  const caseIndex = manualWorkflow.indexOf('case "$action" in');
+  const deployIndex = manualWorkflow.indexOf("deploy)", caseIndex);
+  const rollbackIndex = manualWorkflow.indexOf("rollback)", deployIndex);
+  const defaultIndex = manualWorkflow.indexOf("*)", rollbackIndex);
+  const loginIndex = manualWorkflow.indexOf("heroku container:login");
+  const summaryIndex = manualWorkflow.indexOf("- name: Summarize release evidence");
+  const outcomeGateIndex = manualWorkflow.indexOf("- name: Enforce release outcome");
+
+  assert.ok(caseIndex >= 0);
+  assert.ok(deployIndex > caseIndex);
+  assert.ok(rollbackIndex > deployIndex);
+  assert.ok(defaultIndex > rollbackIndex);
+  assert.ok(loginIndex > deployIndex && loginIndex < rollbackIndex);
+  assert.doesNotMatch(manualWorkflow.slice(rollbackIndex, defaultIndex), /container:login/);
+
+  assert.match(manualWorkflow, /deployment_failed="true"/);
+  assert.match(manualWorkflow, /rollback_failed="true"/);
+  assert.match(manualWorkflow, /rollback_health_failed="true"/);
+  assert.match(manualWorkflow, /echo "deployment_failed=\$deployment_failed"/);
+  assert.match(manualWorkflow, /echo "rollback_failed=\$rollback_failed"/);
+  assert.match(manualWorkflow, /echo "rollback_health_failed=\$rollback_health_failed"/);
+
+  assert.ok(summaryIndex >= 0);
+  assert.ok(outcomeGateIndex > summaryIndex);
+  assert.match(manualWorkflow, /- name: Summarize release evidence\n\s+if: always\(\)/);
+  assert.match(manualWorkflow, /- name: Enforce release outcome\n\s+if: always\(\)/);
+  assert.match(manualWorkflow, /steps\.release\.outcome/);
+  assert.match(manualWorkflow, /steps\.release\.outputs\.deployment_failed/);
+  assert.match(manualWorkflow, /steps\.release\.outputs\.rollback_failed/);
+  assert.match(manualWorkflow, /steps\.release\.outputs\.rollback_health_failed/);
+  assert.match(manualWorkflow, /The requested deployment failed health checks and was rolled back/);
+});
+
 test("Heroku MCP CI builds and smokes the backend container with fixture env", () => {
   assert.match(ciWorkflow, /pull_request:/);
   assert.match(ciWorkflow, /push:/);
