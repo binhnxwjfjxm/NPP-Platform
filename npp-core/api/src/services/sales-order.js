@@ -52,7 +52,7 @@ function priceContext(payload, line) {
     variantId: line.variantId,
     quantity: line.quantity,
     currencyCode: payload.currency ?? 'VND',
-    priceAt: payload.pricingAt ?? new Date().toISOString(),
+    priceAt: new Date().toISOString(),
     channelId: payload.salesChannelId,
     ...(String(payload.customerMode ?? 'EXISTING').toUpperCase() === 'WALK_IN'
       ? {}
@@ -264,8 +264,8 @@ function mergeCommercialFacts(salesOrder, facts) {
           const fact = lineFacts.get(`${version.versionNumber}:${line.lineNumber}`);
           return fact ? Object.freeze({
             ...line,
-            baseUnitPrice: String(fact.base_unit_price),
-            systemUnitPrice: String(fact.system_unit_price),
+            baseUnitPrice: fact.base_unit_price === null ? null : String(fact.base_unit_price),
+            systemUnitPrice: fact.system_unit_price === null ? null : String(fact.system_unit_price),
             manualOverrideReason: fact.manual_override_reason ?? null,
             pricingTrace: Array.isArray(fact.pricing_trace_snapshot)
               ? fact.pricing_trace_snapshot
@@ -513,7 +513,7 @@ export async function confirmSalesOrder(client, {
   const result = await legacy.confirmSalesOrder(client, {
     requestContext,
     id,
-    versionNumber,
+    versionNumber: resolvedVersion,
     idempotencyKey,
   });
   return enrichResult(client, requestContext, result);
