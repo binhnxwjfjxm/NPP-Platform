@@ -1,0 +1,148 @@
+name: Manual Heroku MCP backend deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Deploy or roll back the MCP backend release.
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - rollback
+      release_version:
+        description: Heroku release version to roll back to.
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heroku-mcp-backend-manual
+  cancel-in-progress: false
+
+jobs:
+  deploy-or-rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DEPLOY_REF: main
+      HEROKU_APP_NAME: hung-phat-mcp
+      HEROKU_FORBIDDEN_APP_NAME: hung-phat
+    steps:
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+
+      - name: Verify exact origin/main SHA
+        id: sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Validate MCP backend packaging contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+
+          const pkg = JSON.parse(await readFile("mcp/apps/backend/package.json", "utf8"));
+          const dockerfile = await readFile("mcp/apps/backend/Dockerfile", "utf8");
+
+          if (pkg.scripts?.start !== "node bootstrap.js") {
+            throw new Error("unexpected_mcp_backend_start_script");
+          }
+          if (!dockerfile.includes('ENV HOST=0.0.0.0')) {
+            throw new Error("missing_mcp_backend_host_binding");
+          }
+          if (!dockerfile.includes('CMD ["node", "bootstrap.js"]')) {
+            throw new Error("missing_mcp_backend_bootstrap_cmd");
+          }
+          if (!dockerfile.includes('COPY bootstrap.js server.js ./')) {
+            throw new Error("missing_mcp_backend_runtime_copy");
+          }
+          if (!dockerfile.includes('COPY foundation ./foundation')) {
+            throw new Error("missing_mcp_backend_foundation_copy");
+          }
+          if (dockerfile.includes("npp-core") || dockerfile.includes("start:core-api") || dockerfile.includes("Next.js")) {
+            throw new Error("core_or_frontend_runtime_leak");
+          }
+          NODE
+
+      - name: Install Heroku CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Deploy or roll back backend release
+        id: release
+        shell: bash
+        env:
+          ACTION: ${{ inputs.action }}
+          REQUESTED_RELEASE_VERSION: ${{ inputs.release_version }}
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -euo pipefail
+          test "$HEROKU_APP_NAME" = "hung-phat-mcp"
+          if [ "$HEROKU_APP_NAME" = "$HEROKU_FORBIDDEN_APP_NAME" ]; then
+            echo "hung-phat is forbidden for this workflow." >&2
+            exit 1
+          fi
+
+          heroku container:login
+
+          case "$ACTION" in
+            deploy)
+              (
+                cd mcp/apps/backend
+                heroku container:push web -a "$HEROKU_APP_NAME"
+              )
+              heroku container:release web -a "$HEROKU_APP_NAME"
+              release_version="$(
+                heroku releases --json -a "$HEROKU_APP_NAME" | jq -r '.[0].version'
+              )"
+              ;;
+            rollback)
+              if [ -z "${REQUESTED_RELEASE_VERSION:-}" ]; then
+                echo "rollback requires release_version" >&2
+                exit 1
+              fi
+              heroku releases:rollback "$REQUESTED_RELEASE_VERSION" -a "$HEROKU_APP_NAME"
+              release_version="$REQUESTED_RELEASE_VERSION"
+              ;;
+            *)
+              echo "Unknown action: $ACTION" >&2
+              exit 1
+              ;;
+          esac
+
+          app_url="$(
+            heroku apps:info -a "$HEROKU_APP_NAME" --json | jq -r '.web_url'
+          )"
+
+          curl --fail --silent --show-error "$app_url/health/live" >/dev/null
+          curl --fail --silent --show-error "$app_url/health/ready" >/dev/null
+
+          echo "release_version=$release_version" >> "$GITHUB_OUTPUT"
+          echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
+          echo "sha=${{ steps.sha.outputs.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Summarize release evidence
+        shell: bash
+        run: |
+          {
+            echo "HEROKU_APP_NAME=${HEROKU_APP_NAME}"
+            echo "HEROKU_APP_URL=${{ steps.release.outputs.app_url }}"
+            echo "HEROKU_RELEASE_VERSION=${{ steps.release.outputs.release_version }}"
+            echo "DEPLOYED_SHA=${{ steps.release.outputs.sha }}"
+          } >> "$GITHUB_STEP_SUMMARY"

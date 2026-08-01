@@ -153,6 +153,9 @@ jobs:
           npm run test:pullmcp-deployer
           npm run test:backend-api-auth
 
+      - name: Verify MCP Heroku backend deployment contract
+        run: npm run test:heroku-mcp-backend-contract
+
       - name: Verify backend foundation
         run: npm --prefix apps/backend run verify
 
