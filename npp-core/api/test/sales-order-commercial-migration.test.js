@@ -30,6 +30,16 @@ test('migration 040 owns channel, document discount and line price provenance', 
   ]) assert.match(sql, new RegExp(token));
 });
 
+test('migration 040 backfills immutable history under one locked trigger window', () => {
+  const disable = sql.indexOf('DISABLE TRIGGER sales_order_version_lines_draft_only');
+  const backfill = sql.indexOf('UPDATE sales.sales_order_version_lines');
+  const enable = sql.indexOf('ENABLE TRIGGER sales_order_version_lines_draft_only');
+  assert.ok(disable >= 0, 'draft-only guard must be disabled for historical backfill');
+  assert.ok(backfill > disable, 'backfill must run after the guard is disabled');
+  assert.ok(enable > backfill, 'draft-only guard must be re-enabled after the backfill');
+  assert.match(sql, /ACCESS EXCLUSIVE lock/);
+});
+
 test('migration 040 defers the line provenance invariant to transaction commit', () => {
   assert.match(sql, /CREATE OR REPLACE FUNCTION sales\.enforce_sales_order_line_price_provenance/);
   assert.match(sql, /CREATE CONSTRAINT TRIGGER sales_order_line_price_provenance_deferred/);
