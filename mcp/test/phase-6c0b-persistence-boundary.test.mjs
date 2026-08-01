@@ -67,8 +67,10 @@ test("legacy provider implementation is isolated and explicitly classified", asy
 
   assert.match(legacyRuntime, /SUPABASE_URL/);
   assert.match(legacyRuntime, /SUPABASE_SERVICE_ROLE_KEY/);
-  assert.match(compatibilityAdapter, /Compatibility boundary for legacy-only MCP handlers/);
-  assert.match(legacyAdapter, /\/rest\/v1/);
+  assert.match(compatibilityAdapter, /export async function supabaseRequest/);
+  assert.match(compatibilityAdapter, /\/rest\/v1/);
+  assert.match(legacyAdapter, /from "\.\/supabase-adapter\.js"/);
+  assert.doesNotMatch(legacyAdapter, /\/rest\/v1/);
   assert.match(legacyServer, /\/rest\/v1/);
 });
 
