@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "phase": "6C.0A",
+  "fixtureOnly": true,
+  "records": [
+    {"legacyOrderId":"fixture-order-eligible","classification":"OFFICIAL_ORDER_MIGRATION_CANDIDATE","customerMapped":true,"allItemsMapped":true,"totalsReconciled":true,"duplicateFinding":false},
+    {"legacyOrderId":"fixture-order-intent","classification":"FIELD_ORDER_INTENT","customerMapped":false,"allItemsMapped":false,"totalsReconciled":true,"duplicateFinding":false},
+    {"legacyOrderId":"fixture-sample","classification":"SAMPLE_TEST_DEMAND","purpose":"sample","duplicateFinding":false},
+    {"legacyOrderId":"fixture-history","classification":"HISTORICAL_DISPLAY_ONLY","historical":true,"operationalObligation":false},
+    {"legacyOrderId":"fixture-orphan","classification":"INVALID_ORPHAN_RECONCILIATION_REQUIRED","customerMapped":false,"orphanSession":true,"duplicateFinding":true}
+  ],
+  "expectedSummary": {
+    "total": 5,
+    "byClassification": {
+      "OFFICIAL_ORDER_MIGRATION_CANDIDATE": 1,
+      "FIELD_ORDER_INTENT": 1,
+      "SAMPLE_TEST_DEMAND": 1,
+      "HISTORICAL_DISPLAY_ONLY": 1,
+      "INVALID_ORPHAN_RECONCILIATION_REQUIRED": 1
+    }
+  }
+}
