@@ -42,7 +42,7 @@ test("active production import graph does not load legacy Supabase runtime", asy
   assert.doesNotMatch(bootstrap, /server\.js/);
   assert.doesNotMatch(gateway, /from\s+["']\.\/(?:order-api|route-api|transitional-api)\.js["']/);
   assert.doesNotMatch(persistence, /import\s+\{[^}]*createLegacySupabasePersistence/);
-  assert.match(persistence, /await import\("\.\/supabase-adapter\.js"\)/);
+  assert.match(persistence, /await import\("\.\/legacy-supabase-adapter\.js"\)/);
   assert.match(bootstrap, /if \(config\.legacyRuntime\.enabled\)/);
   assert.match(bootstrap, /await import\("\.\/foundation\/legacy-runtime\.js"\)/);
 });
