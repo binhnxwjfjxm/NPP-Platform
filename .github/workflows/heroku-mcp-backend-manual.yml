@@ -74,14 +74,15 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Validate MCP backend packaging contract
+        working-directory: mcp
         shell: bash
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
 
-          const pkg = JSON.parse(await readFile("mcp/apps/backend/package.json", "utf8"));
-          const dockerfile = await readFile("mcp/apps/backend/Dockerfile", "utf8");
+          const pkg = JSON.parse(await readFile("apps/backend/package.json", "utf8"));
+          const dockerfile = await readFile("apps/backend/Dockerfile", "utf8");
 
           if (pkg.scripts?.start !== "node bootstrap.js") {
             throw new Error("unexpected_mcp_backend_start_script");
