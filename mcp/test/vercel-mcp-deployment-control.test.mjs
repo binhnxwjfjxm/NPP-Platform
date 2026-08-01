@@ -40,11 +40,10 @@ test("MCP deploy has an exact Issue #5 command separate from Core", () => {
 
 test("MCP deploy target is pinned and isolated from the Core Vercel project", () => {
   assert.match(mcpWorkflow, new RegExp(`VERCEL_PROJECT_ID:\\s*${MCP_PROJECT_ID}`));
+  assert.match(mcpWorkflow, new RegExp(`LEGACY_VERCEL_PROJECT_ID:\\s*${CORE_PROJECT_ID}`));
   assert.match(mcpWorkflow, new RegExp(`MCP_PRODUCTION_URL:\\s*${MCP_PRODUCTION_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
   assert.doesNotMatch(mcpWorkflow, /vars\.VERCEL_MCP_PROJECT_ID/);
   assert.doesNotMatch(mcpWorkflow, /vars\.VERCEL_MCP_PRODUCTION_URL/);
-  assert.match(mcpWorkflow, /VERCEL_PROJECT_ID.*Core Vercel project/s);
-  assert.match(mcpWorkflow, new RegExp(CORE_PROJECT_ID));
   assert.doesNotMatch(
     mcpWorkflow,
     new RegExp(`VERCEL_PROJECT_ID:\\s*${CORE_PROJECT_ID}`)
@@ -87,8 +86,34 @@ test("MCP deploy checks out main, installs in mcp and runs Vercel CLI from monor
 
   assert.doesNotMatch(mcpWorkflow, /working-directory: npp-core\/web/);
   assert.doesNotMatch(mcpWorkflow, /hung-phat-945da1547594/);
-  assert.doesNotMatch(mcpWorkflow, /hung-phat-mcp/);
   assert.doesNotMatch(mcpWorkflow, /heroku container:push|heroku container:release|git push heroku/);
+});
+
+test("MCP deploy synchronizes only its required runtime configuration without printing values", () => {
+  assert.match(mcpWorkflow, /^\s{2}issues: write$/m);
+  assert.match(mcpWorkflow, /MCP_BACKEND_APP_NAME: hung-phat-mcp/);
+  assert.match(mcpWorkflow, /heroku apps:info -a "\$MCP_BACKEND_APP_NAME" --json/);
+  assert.match(mcpWorkflow, /heroku config -a "\$MCP_BACKEND_APP_NAME" --json/);
+  assert.match(mcpWorkflow, /\.BACKEND_API_TOKEN \/\/ empty/);
+  assert.match(mcpWorkflow, /\.MCP_LEGACY_ACTOR_ID \/\/ empty/);
+  assert.match(mcpWorkflow, /vercel@latest env pull/);
+  assert.match(mcpWorkflow, /api\.vercel\.com\/v10\/projects\/\$\{process\.env\.VERCEL_PROJECT_ID\}\/env/);
+  assert.match(mcpWorkflow, /upsert=true/);
+  assert.match(mcpWorkflow, /type: "encrypted"/);
+  assert.match(mcpWorkflow, /target: \["production"\]/);
+  assert.match(mcpWorkflow, /::add-mask::/);
+  assert.match(mcpWorkflow, /process\.env\.GITHUB_ENV/);
+  assert.match(mcpWorkflow, /BACKEND_API_BASE_URL/);
+  assert.match(mcpWorkflow, /BACKEND_API_TOKEN/);
+  assert.match(mcpWorkflow, /MCP_LEGACY_ACTOR_ID/);
+  assert.match(mcpWorkflow, /SUPABASE_URL/);
+  assert.match(mcpWorkflow, /SUPABASE_ANON_KEY/);
+  assert.match(mcpWorkflow, /MCP Vercel production preflight failed/);
+  assert.match(mcpWorkflow, /MCP Vercel production deploy succeeded/);
+
+  assert.doesNotMatch(mcpWorkflow, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.doesNotMatch(mcpWorkflow, /DATABASE_URL/);
+  assert.doesNotMatch(mcpWorkflow, /postgres(?:ql)?:\/\//i);
 });
 
 test("MCP deploy builds, deploys and smokes its own Vercel artifact", () => {
