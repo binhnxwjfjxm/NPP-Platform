@@ -87,7 +87,8 @@ jobs:
           cache: npm
           cache-dependency-path: mcp/package-lock.json
 
-      - name: Install workspace dependencies
+      - name: Install MCP dependencies
+        working-directory: mcp
         run: npm ci
 
       - name: Pull MCP production project configuration
@@ -155,10 +156,10 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "MCP production deployment URL: $url"
 
-      - name: Smoke MCP production URL
+      - name: Smoke exact MCP production deployment
         shell: bash
         env:
-          DEPLOYMENT_URL: ${{ env.MCP_PRODUCTION_URL }}
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
         run: |
           set -euo pipefail
 
@@ -169,7 +170,7 @@ jobs:
             local response
             response="$(
               curl --silent --show-error \
-                --retry 5 --retry-delay 5 \
+                --retry 5 --retry-delay 5 --retry-all-errors \
                 --output /dev/null \
                 --write-out '%{http_code}' \
                 "$DEPLOYMENT_URL$path"
@@ -187,10 +188,36 @@ jobs:
           assert_status /login 200 302 307 404
           assert_status /visits 200 302 307 401 403
 
-          html="$(curl --fail --silent --show-error --retry 5 --retry-delay 5 "$DEPLOYMENT_URL/")"
+          html="$(curl --fail --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors "$DEPLOYMENT_URL/")"
           asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.(css|js)' | head -n 1)"
           test -n "$asset"
           curl --fail --silent --show-error "$DEPLOYMENT_URL$asset" >/dev/null
+
+      - name: Smoke configured MCP production alias
+        shell: bash
+        env:
+          DEPLOYMENT_URL: ${{ env.MCP_PRODUCTION_URL }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 12); do
+            response="$(
+              curl --silent --show-error \
+                --output /dev/null \
+                --write-out '%{http_code}' \
+                "$DEPLOYMENT_URL/" || true
+            )"
+            case "$response" in
+              200|302|307)
+                echo "MCP production alias is serving: $DEPLOYMENT_URL"
+                exit 0
+                ;;
+            esac
+            if [ "$attempt" -eq 12 ]; then
+              echo "MCP production alias did not become ready; last status: ${response:-000}" >&2
+              exit 1
+            fi
+            sleep 5
+          done
 
       - name: Record successful exact SHA
         shell: bash
