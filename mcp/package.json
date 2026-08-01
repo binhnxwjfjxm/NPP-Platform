@@ -28,6 +28,7 @@
     "test:backend-api-auth": "node --test test/api-client-backend-auth.test.mjs test/production-tab-data-contract.test.mjs",
     "test:export-copy": "node --test test/export-reader-copy-contract.test.mjs test/order-xlsx-export-contract.test.mjs test/orders-export-menu-contract.test.mjs",
     "test:phase-6c0a-audit": "node --test test/phase-6c0a-audit-contract.test.mjs",
+    "test:phase-6c0b-persistence": "node --test test/phase-6c0b-persistence-boundary.test.mjs",
     "validate:runtime-config": "node scripts/validate-runtime-config.mjs",
     "smoke:f0-2-boundary": "node scripts/smoke-f0-2-boundary.mjs",
     "smoke:f05-runtime": "node test/runtime/smoke-f05-runtime-closure.mjs",
@@ -36,7 +37,7 @@
     "test:f05-production-smoke": "node --test test/f05-production-owners-runtime-smoke-contract.test.mjs test/f05-production-smoke-fixture-routing.test.mjs test/f05-production-smoke-actor-context.test.mjs",
     "test:foundation": "npm --prefix apps/backend test",
     "verify:copy": "npm run audit:copy && npm run typecheck",
-    "verify:foundation": "npm run audit:runtime-config && npm run test:windows-path && npm run test:workflow-paths && npm run test:vercel-deployment-control && npm run test:heroku-root && npm run test:heroku-mcp-backend-contract && npm run test:heroku-mcp-backend-runtime && npm run test:direct-db-mutation && npm run test:edge-retirement && npm run test:direct-rest-retirement && npm run test:session-lifecycle-caller && npm run test:route-master-caller && npm run test:idempotency && npm run test:f05-production-smoke && npm run test:route-customer-photo && npm run test:production-hygiene && npm run audit:direct-db-mutation && npm run test:pullmcp-deployer && npm run test:backend-api-auth && npm run test:export-copy && npm run test:phase-6c0a-audit && npm run test:foundation && npm run typecheck && npm run test:theme-contract",
+    "verify:foundation": "npm run audit:runtime-config && npm run test:windows-path && npm run test:workflow-paths && npm run test:vercel-deployment-control && npm run test:heroku-root && npm run test:heroku-mcp-backend-contract && npm run test:heroku-mcp-backend-runtime && npm run test:direct-db-mutation && npm run test:edge-retirement && npm run test:direct-rest-retirement && npm run test:session-lifecycle-caller && npm run test:route-master-caller && npm run test:idempotency && npm run test:f05-production-smoke && npm run test:route-customer-photo && npm run test:production-hygiene && npm run audit:direct-db-mutation && npm run test:pullmcp-deployer && npm run test:backend-api-auth && npm run test:export-copy && npm run test:phase-6c0a-audit && npm run test:phase-6c0b-persistence && npm run test:foundation && npm run typecheck && npm run test:theme-contract",
     "test:theme-contract": "node --test test/mcp-warm-theme-contract.test.mjs test/a5-5-2-session-action-live-caller-contract.test.mjs test/app-shell-expanded-menu-theme-contract.test.mjs test/interaction-feedback-contract.test.mjs test/app-shell-browser-acceptance-contract.test.mjs test/mcp-ui-root-cause-regression.test.mjs test/mcp-customer-profile-media-ui-contract.test.mjs test/route-customer-photo-gallery-contract.test.mjs test/route-customer-photo-management-contract.test.mjs"
   },
   "dependencies": {
