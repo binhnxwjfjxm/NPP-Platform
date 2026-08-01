@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import "./vercel-mcp-deployment-control.test.mjs";
+
 const coreConfig = JSON.parse(
   await readFile(new URL("../../npp-core/web/vercel.json", import.meta.url), "utf8")
 );
