@@ -42,8 +42,8 @@ ORDER BY row_count DESC, normalized_phone;
 WITH outlets AS (
   SELECT
     to_jsonb(rc) AS row_data,
-    lower(regexp_replace(coalesce(to_jsonb(rc)->>'customer_name', to_jsonb(rc)->>'name', ''), '\s+', ' ', 'g')) AS normalized_name,
-    lower(regexp_replace(coalesce(to_jsonb(rc)->>'address', ''), '\s+', ' ', 'g')) AS normalized_address
+    lower(btrim(regexp_replace(coalesce(to_jsonb(rc)->>'customer_name', to_jsonb(rc)->>'name', ''), '\s+', ' ', 'g'))) AS normalized_name,
+    lower(btrim(regexp_replace(coalesce(to_jsonb(rc)->>'address', ''), '\s+', ' ', 'g'))) AS normalized_address
   FROM public.mcp_route_customers AS rc
 )
 SELECT
@@ -76,7 +76,9 @@ WHERE coalesce(route_customers.row_data->>'route_id', '') = ''
    OR routes.id IS NULL
 ORDER BY route_customer_id;
 
--- Q04 — session-customer rows referencing a missing session or outlet.
+-- Q04 — session-customer snapshots referencing a missing session or master outlet.
+-- Added-during-day snapshots may legitimately have no route_customer_id; those
+-- rows are checked for their persisted customer_name snapshot instead.
 WITH sessions AS (
   SELECT to_jsonb(s)->>'id' AS id
   FROM public.mcp_route_sessions AS s
@@ -87,60 +89,78 @@ outlets AS (
 ),
 session_customers AS (
   SELECT to_jsonb(sc) AS row_data
-  FROM public.mcp_route_session_customers AS sc
+  FROM public.mcp_session_customers AS sc
 )
 SELECT
   row_data->>'id' AS session_customer_id,
   row_data->>'session_id' AS session_id,
-  coalesce(row_data->>'route_customer_id', row_data->>'customer_id') AS outlet_id,
+  row_data->>'route_customer_id' AS outlet_id,
   CASE
     WHEN coalesce(row_data->>'session_id', '') = '' THEN 'MISSING_SESSION_ID'
     WHEN sessions.id IS NULL THEN 'ORPHAN_SESSION'
-    WHEN coalesce(row_data->>'route_customer_id', row_data->>'customer_id', '') = '' THEN 'MISSING_OUTLET_ID'
-    WHEN outlets.id IS NULL THEN 'ORPHAN_OUTLET'
+    WHEN row_data->>'source' = 'master'
+         AND coalesce(row_data->>'route_customer_id', '') = '' THEN 'MISSING_OUTLET_ID'
+    WHEN row_data->>'source' = 'master'
+         AND outlets.id IS NULL THEN 'ORPHAN_OUTLET'
+    WHEN row_data->>'source' = 'added'
+         AND coalesce(btrim(row_data->>'customer_name'), '') = '' THEN 'MISSING_ADDED_OUTLET_SNAPSHOT'
   END AS finding_code,
   row_data
 FROM session_customers
 LEFT JOIN sessions ON sessions.id = session_customers.row_data->>'session_id'
-LEFT JOIN outlets ON outlets.id = coalesce(
-  session_customers.row_data->>'route_customer_id',
-  session_customers.row_data->>'customer_id'
-)
+LEFT JOIN outlets ON outlets.id = session_customers.row_data->>'route_customer_id'
 WHERE coalesce(session_customers.row_data->>'session_id', '') = ''
    OR sessions.id IS NULL
-   OR coalesce(
-        session_customers.row_data->>'route_customer_id',
-        session_customers.row_data->>'customer_id',
-        ''
-      ) = ''
-   OR outlets.id IS NULL
+   OR (
+     session_customers.row_data->>'source' = 'master'
+     AND (
+       coalesce(session_customers.row_data->>'route_customer_id', '') = ''
+       OR outlets.id IS NULL
+     )
+   )
+   OR (
+     session_customers.row_data->>'source' = 'added'
+     AND coalesce(btrim(session_customers.row_data->>'customer_name'), '') = ''
+   )
 ORDER BY session_customer_id;
 
 -- Q05 — invalid or unexpected lifecycle statuses.
+-- The locked unknown-status list applies to mcp_session_customers.visit_status.
+-- Route sessions and orders are checked for empty status only until their
+-- canonical status lists are separately locked.
 WITH candidate_rows AS (
-  SELECT 'mcp_route_sessions' AS source_table, to_jsonb(s) AS row_data
+  SELECT
+    'mcp_route_sessions' AS source_table,
+    to_jsonb(s) AS row_data,
+    to_jsonb(s)->>'status' AS lifecycle_status
   FROM public.mcp_route_sessions AS s
   UNION ALL
-  SELECT 'mcp_route_session_customers', to_jsonb(sc)
-  FROM public.mcp_route_session_customers AS sc
+  SELECT
+    'mcp_session_customers',
+    to_jsonb(sc),
+    to_jsonb(sc)->>'visit_status'
+  FROM public.mcp_session_customers AS sc
   UNION ALL
-  SELECT 'orders', to_jsonb(o)
+  SELECT
+    'orders',
+    to_jsonb(o),
+    to_jsonb(o)->>'status'
   FROM public.orders AS o
 )
 SELECT
   source_table,
   row_data->>'id' AS row_id,
-  row_data->>'status' AS status,
+  lifecycle_status AS status,
   row_data
 FROM candidate_rows
-WHERE coalesce(row_data->>'status', '') = ''
+WHERE coalesce(lifecycle_status, '') = ''
    OR (
-     source_table = 'mcp_route_session_customers'
-     AND row_data->>'status' NOT IN ('pending', 'visited', 'skipped', 'cancelled')
+     source_table = 'mcp_session_customers'
+     AND lifecycle_status NOT IN ('pending', 'visited', 'skipped', 'cancelled')
    )
 ORDER BY source_table, row_id;
 
--- Q06 — orders without customer/outlet/session identity.
+-- Q06 — orders without customer, outlet or persisted source identity.
 WITH orders_json AS (
   SELECT to_jsonb(o) AS row_data
   FROM public.orders AS o
@@ -153,6 +173,15 @@ WHERE coalesce(
   row_data->>'session_customer_id',
   row_data->>'route_customer_id',
   row_data->>'customer_id',
+  CASE
+    WHEN coalesce(row_data->>'source_type', '') <> ''
+     AND coalesce(row_data->>'source_id', '') <> ''
+      THEN row_data->>'source_id'
+  END,
+  row_data#>>'{raw_payload,sessionCustomerId}',
+  row_data#>>'{raw_payload,session_customer_id}',
+  row_data#>>'{raw_payload,routeCustomerId}',
+  row_data#>>'{raw_payload,route_customer_id}',
   ''
 ) = ''
 ORDER BY order_id;
@@ -175,31 +204,90 @@ LEFT JOIN items_json
 WHERE items_json.row_data IS NULL
 ORDER BY order_id;
 
--- Q08 — potential retry duplicates by idempotency/source references.
+-- Q08 — potential manual-retry duplicates by persisted source identity.
+-- Idempotency evidence comes from mcp_idempotency_records, where Foundation
+-- stores (installation_id, operation, idempotency_key) and the completed order
+-- aggregate_id. Orders do not persist those keys as top-level columns.
 WITH orders_json AS (
   SELECT to_jsonb(o) AS row_data
   FROM public.orders AS o
 ),
-keys AS (
+idempotency AS (
+  SELECT
+    aggregate_id AS order_id,
+    installation_id,
+    operation,
+    idempotency_key,
+    status,
+    request_hash
+  FROM public.mcp_idempotency_records
+  WHERE aggregate_type = 'order'
+    AND coalesce(aggregate_id, '') <> ''
+),
+order_sources AS (
   SELECT
     row_data,
     coalesce(
-      row_data->>'idempotency_key',
-      row_data->>'source_request_id',
-      row_data->>'client_request_id',
+      CASE
+        WHEN coalesce(row_data->>'source_type', '') <> ''
+         AND coalesce(row_data->>'source_id', '') <> ''
+          THEN (row_data->>'source_type') || ':' || (row_data->>'source_id')
+      END,
+      CASE
+        WHEN coalesce(
+          row_data#>>'{raw_payload,sessionCustomerId}',
+          row_data#>>'{raw_payload,session_customer_id}',
+          ''
+        ) <> ''
+          THEN 'mcp_session_customer:' || coalesce(
+            row_data#>>'{raw_payload,sessionCustomerId}',
+            row_data#>>'{raw_payload,session_customer_id}'
+          )
+      END,
+      CASE
+        WHEN coalesce(
+          row_data#>>'{raw_payload,routeCustomerId}',
+          row_data#>>'{raw_payload,route_customer_id}',
+          ''
+        ) <> ''
+          THEN 'route_customer:' || coalesce(
+            row_data#>>'{raw_payload,routeCustomerId}',
+            row_data#>>'{raw_payload,route_customer_id}'
+          )
+      END,
       ''
-    ) AS retry_key
+    ) AS source_identity
   FROM orders_json
+),
+evidence AS (
+  SELECT
+    order_sources.source_identity,
+    order_sources.row_data,
+    idempotency.installation_id,
+    idempotency.operation,
+    idempotency.idempotency_key,
+    idempotency.status AS idempotency_status,
+    idempotency.request_hash
+  FROM order_sources
+  LEFT JOIN idempotency
+    ON idempotency.order_id = order_sources.row_data->>'id'
 )
 SELECT
-  retry_key,
-  count(*) AS row_count,
-  array_agg(coalesce(row_data->>'id', '<missing-id>') ORDER BY row_data->>'id') AS order_ids
-FROM keys
-WHERE retry_key <> ''
-GROUP BY retry_key
-HAVING count(*) > 1
-ORDER BY row_count DESC, retry_key;
+  source_identity,
+  count(DISTINCT row_data->>'id') AS row_count,
+  array_agg(DISTINCT coalesce(row_data->>'id', '<missing-id>')) AS order_ids,
+  array_remove(
+    array_agg(DISTINCT CASE
+      WHEN idempotency_key IS NOT NULL
+        THEN concat_ws(':', installation_id, operation, idempotency_key)
+    END),
+    NULL
+  ) AS idempotency_evidence
+FROM evidence
+WHERE source_identity <> ''
+GROUP BY source_identity
+HAVING count(DISTINCT row_data->>'id') > 1
+ORDER BY row_count DESC, source_identity;
 
 -- Q09 — order items missing canonical SKU/unit evidence.
 WITH items_json AS (
@@ -282,7 +370,9 @@ SELECT 'mcp_route_customers', count(*) FROM public.mcp_route_customers
 UNION ALL
 SELECT 'mcp_route_sessions', count(*) FROM public.mcp_route_sessions
 UNION ALL
-SELECT 'mcp_route_session_customers', count(*) FROM public.mcp_route_session_customers
+SELECT 'mcp_session_customers', count(*) FROM public.mcp_session_customers
+UNION ALL
+SELECT 'mcp_idempotency_records', count(*) FROM public.mcp_idempotency_records
 UNION ALL
 SELECT 'orders', count(*) FROM public.orders
 UNION ALL
