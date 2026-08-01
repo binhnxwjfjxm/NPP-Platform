@@ -182,7 +182,7 @@ export async function getDraftCommercialSnapshot(client, {
             line.variant_id,
             line.ordered_quantity,
             line.base_unit_price,
-            line.system_unit_price,
+            trim_scale(line.system_unit_price)::text AS system_unit_price,
             line.unit_price,
             line.price_source,
             line.manual_override_reason,
