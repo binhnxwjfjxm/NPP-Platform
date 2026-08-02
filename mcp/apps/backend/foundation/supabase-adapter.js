@@ -61,6 +61,10 @@ export async function supabaseRest(config, resource, options = {}) {
 
 export async function supabaseRpc(config, name, args, options = {}) {
   if (usesPostgresql(config)) {
+    const { POSTGRESQL_SPECIAL_RPC_NAMES, postgresqlSpecialRpc } = await import("./postgresql-media-adapter.js");
+    if (POSTGRESQL_SPECIAL_RPC_NAMES.has(name)) {
+      return postgresqlSpecialRpc(config, name, args, options);
+    }
     const { postgresqlRpc } = await import("./postgresql-compat-adapter.js");
     return postgresqlRpc(config, name, args, options);
   }
