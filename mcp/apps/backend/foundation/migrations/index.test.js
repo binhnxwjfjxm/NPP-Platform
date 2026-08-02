@@ -11,7 +11,9 @@ function statefulAdapter({ failSql = null } = {}) {
     async query(text, values = []) {
       calls.push({ text: String(text), values });
       if (failSql && String(text).includes(failSql)) throw new Error("forced_migration_failure");
-      if (String(text).includes("to_regclass")) return { rows: [{ exists: true }] };
+      if (String(text).includes("to_regclass") || String(text).includes("to_regprocedure")) {
+        return { rows: [{ exists: true }] };
+      }
       if (String(text).startsWith("SELECT id FROM shared.schema_migrations WHERE")) {
         return { rows: [...applied].filter((id) => id.startsWith("mcp_")).sort().map((id) => ({ id })) };
       }
@@ -28,23 +30,27 @@ function statefulAdapter({ failSql = null } = {}) {
 }
 
 test("MCP migrations use a unique registry namespace and apply once in one locked transaction", async () => {
-  assert.deepEqual(MCP_MIGRATIONS.map((item) => item.id), ["mcp_001_write_foundation"]);
+  assert.deepEqual(MCP_MIGRATIONS.map((item) => item.id), [
+    "mcp_001_write_foundation",
+    "mcp_002_domain_read_models"
+  ]);
   const adapter = statefulAdapter();
   const first = await runMcpMigrations(adapter);
   const second = await runMcpMigrations(adapter);
-  assert.deepEqual(first.applied, ["mcp_001_write_foundation"]);
+  assert.deepEqual(first.applied, ["mcp_001_write_foundation", "mcp_002_domain_read_models"]);
   assert.deepEqual(second.applied, []);
   assert.equal(adapter.calls.filter((call) => call.text === "BEGIN").length, 2);
   assert.equal(adapter.calls.filter((call) => call.text === "COMMIT").length, 2);
   assert.equal(adapter.calls.some((call) => call.text.includes("pg_advisory_xact_lock")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.idempotency_records")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.mcp_routes")), true);
 
   const status = await migrationStatusWithAdapter(adapter);
   assert.deepEqual(status.pending, []);
-  assert.deepEqual(status.applied, ["mcp_001_write_foundation"]);
+  assert.deepEqual(status.applied, ["mcp_001_write_foundation", "mcp_002_domain_read_models"]);
 });
 
-test("MCP migration owns only the MCP write foundation and leaves runtime role provisioning external", () => {
+test("MCP foundation migration is canonical and leaves runtime role creation external", () => {
   const sql = MCP_MIGRATIONS[0].sql;
   const canonicalSql = readFileSync(new URL("../../../../../database/migrations/mcp/001_mcp_write_foundation.sql", import.meta.url), "utf8");
   assert.equal(sql, canonicalSql);
@@ -54,6 +60,47 @@ test("MCP migration owns only the MCP write foundation and leaves runtime role p
   assert.doesNotMatch(sql, /CREATE\s+ROLE|ALTER\s+ROLE/i);
   assert.doesNotMatch(sql, /CREATE\s+TABLE\s+(shared|sales|purchasing|inventory|logistics|accounting|reporting)\./i);
   assert.doesNotMatch(sql, /GRANT[\s\S]+ON\s+(SCHEMA|TABLE)[\s\S]+(shared|sales|purchasing|inventory|logistics|accounting|reporting)/i);
+});
+
+test("MCP domain migration owns MCP tables and exposes Core data only through compatibility views", () => {
+  const sql = MCP_MIGRATIONS[1].sql;
+  const canonicalSql = readFileSync(new URL("../../../../../database/migrations/mcp/002_mcp_domain_read_models.sql", import.meta.url), "utf8");
+  assert.equal(sql, canonicalSql);
+
+  for (const table of [
+    "mcp_routes",
+    "mcp_route_customers",
+    "mcp_route_sessions",
+    "mcp_session_customers",
+    "mcp_visits",
+    "mcp_followups",
+    "mcp_session_reports",
+    "market_reports",
+    "mcp_report_setting_groups",
+    "mcp_report_settings",
+    "test_files",
+    "test_file_products",
+    "test_customers",
+    "test_customer_results"
+  ]) {
+    assert.match(sql, new RegExp(`CREATE TABLE IF NOT EXISTS mcp\\.${table}`));
+  }
+
+  for (const view of ["accounts", "products", "product_variants", "orders", "order_items", "route_customers"]) {
+    assert.match(sql, new RegExp(`CREATE OR REPLACE VIEW mcp\\.${view}`));
+  }
+
+  assert.match(sql, /FROM shared\.customers/);
+  assert.match(sql, /FROM shared\.products/);
+  assert.match(sql, /FROM shared\.product_variants/);
+  assert.match(sql, /FROM sales\.orders/);
+  assert.match(sql, /FROM sales\.order_lines/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION shared\.grant_mcp_runtime_access/);
+  assert.match(sql, /ALTER ROLE %I IN DATABASE %I SET search_path = mcp, public/);
+  assert.doesNotMatch(sql, /CREATE\s+ROLE|ALTER\s+ROLE\s+mcp_runtime/i);
+  assert.doesNotMatch(sql, /CREATE\s+TABLE\s+(shared|sales|purchasing|inventory|logistics|accounting|reporting)\./i);
+  assert.doesNotMatch(sql, /public\.mcp_/i);
+  assert.doesNotMatch(sql, /SUPABASE_/i);
 });
 
 test("migration failure rolls back and preserves the original error", async () => {
