@@ -61,14 +61,14 @@ jobs:
 
       - name: Build Next production app
         env:
-          BACKEND_API_BASE_URL: http://127.0.0.1:3109
+          BACKEND_API_BASE_URL: http://127.0.0.1:3110
           BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
           MCP_LEGACY_ACTOR_ID: service:ci:mcp-v1
         run: npm run build
 
       - name: Run browser smoke
         env:
-          BACKEND_API_BASE_URL: http://127.0.0.1:3109
+          BACKEND_API_BASE_URL: http://127.0.0.1:3110
           BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
           MCP_LEGACY_ACTOR_ID: service:ci:mcp-v1
           F05_UI_RESULTS_DIR: test-results/f05-ui-smoke
@@ -77,10 +77,12 @@ jobs:
           mkdir -p test-results/f05-ui-smoke
           node test/ui/f05-ui-mock-backend.mjs >test-results/f05-ui-smoke/mock-backend.log 2>&1 &
           MOCK_PID=$!
+          node test/ui/f05-ui-read-proxy.mjs >test-results/f05-ui-smoke/read-proxy.log 2>&1 &
+          PROXY_PID=$!
           npm start -- -p 3000 >test-results/f05-ui-smoke/next.log 2>&1 &
           APP_PID=$!
           cleanup() {
-            kill "$APP_PID" "$MOCK_PID" 2>/dev/null || true
+            kill "$APP_PID" "$PROXY_PID" "$MOCK_PID" 2>/dev/null || true
           }
           trap cleanup EXIT
           node test/ui/f05-ui-browser-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/browser-smoke.log
