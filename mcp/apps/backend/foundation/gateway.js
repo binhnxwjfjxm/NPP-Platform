@@ -3,6 +3,9 @@ import { corsHeaders, resolveCorsOrigin } from "./cors.js";
 import { canonicalErrorPayload, canonicalSuccessPayload, normalizeApiPayload, parseJsonPayload } from "./api-contract.js";
 import { authenticateProxy, buildRequestContext, forwardedContextHeaders, normalizeRequestId } from "./request-context.js";
 import { handleReadApi } from "./read-api.js";
+import { handleOrderApi as handleDirectOrderApi } from "./order-api.js";
+import { handleRouteApi as handleDirectRouteApi } from "./route-api.js";
+import { handleTransitionalApi as handleDirectTransitionalApi } from "./transitional-api.js";
 
 const LIVE_PATHS = new Set(["/", "/health/live"]);
 const READY_PATHS = new Set(["/health", "/api/health", "/health/ready"]);
@@ -93,7 +96,15 @@ function proxyToLegacy(req, res, url, context, origin, config) {
   });
 }
 
-export function createFoundationGateway(config, { persistence, legacyHandlers = null } = {}) {
+async function handleApiSet(req, url, context, config, handlers) {
+  const orderApi = await handlers.handleOrderApi(req, url, context, config);
+  if (orderApi) return orderApi;
+  const routeApi = await handlers.handleRouteApi(req, url, context, config);
+  if (routeApi) return routeApi;
+  return handlers.handleTransitionalApi(req, url, context, config);
+}
+
+export function createFoundationGateway(config, { persistence, providerPort = null, legacyHandlers = null } = {}) {
   if (!persistence || typeof persistence.readiness !== "function") throw new TypeError("persistence adapter is required");
   return http.createServer(async (req, res) => {
     const requestId = normalizeRequestId(req.headers["x-request-id"]);
@@ -117,21 +128,29 @@ export function createFoundationGateway(config, { persistence, legacyHandlers = 
         return;
       }
 
-      if (!legacyHandlers) {
+      if (providerPort) {
         await persistence.assertReady();
-        const error = new Error("provider_unavailable");
-        error.code = "PROVIDER_UNAVAILABLE";
-        error.statusCode = 503;
-        throw error;
+        const directConfig = providerPort.bindRequest(context);
+        const direct = await handleApiSet(req, url, context, directConfig, {
+          handleOrderApi: handleDirectOrderApi,
+          handleRouteApi: handleDirectRouteApi,
+          handleTransitionalApi: handleDirectTransitionalApi
+        });
+        if (direct) {
+          writeNormalized(res, normalizeApiPayload(direct.payload, { status: direct.statusCode, requestId: context.requestId, receivedAt: context.receivedAt }), context.requestId, origin);
+          return;
+        }
       }
 
-      const orderApi = await legacyHandlers.handleOrderApi(req, url, context, config);
-      if (orderApi) { writeNormalized(res, normalizeApiPayload(orderApi.payload, { status: orderApi.statusCode, requestId: context.requestId, receivedAt: context.receivedAt }), context.requestId, origin); return; }
-      const routeApi = await legacyHandlers.handleRouteApi(req, url, context, config);
-      if (routeApi) { writeNormalized(res, normalizeApiPayload(routeApi.payload, { status: routeApi.statusCode, requestId: context.requestId, receivedAt: context.receivedAt }), context.requestId, origin); return; }
-      const transitional = await legacyHandlers.handleTransitionalApi(req, url, context, config);
-      if (transitional) { writeNormalized(res, normalizeApiPayload(transitional.payload, { status: transitional.statusCode, requestId: context.requestId, receivedAt: context.receivedAt }), context.requestId, origin); return; }
-      if (legacyHandlers.proxyToLegacy) { await proxyToLegacy(req, res, url, context, origin, config); return; }
+      if (legacyHandlers) {
+        const legacy = await handleApiSet(req, url, context, config, legacyHandlers);
+        if (legacy) {
+          writeNormalized(res, normalizeApiPayload(legacy.payload, { status: legacy.statusCode, requestId: context.requestId, receivedAt: context.receivedAt }), context.requestId, origin);
+          return;
+        }
+        if (legacyHandlers.proxyToLegacy) { await proxyToLegacy(req, res, url, context, origin, config); return; }
+      }
+
       const error = new Error("not_found");
       error.code = "NOT_FOUND";
       error.statusCode = 404;
