@@ -10,6 +10,7 @@ import {
 } from "./index.js";
 
 const { Pool } = pg;
+export const MIGRATION_DATABASE_URL_ENV = "MCP_MIGRATION_DATABASE_URL";
 export const PRODUCTION_ALLOW_ENV = "MCP_MIGRATION_ALLOW_PRODUCTION";
 export const PRODUCTION_CONFIRM_ENV = "MCP_MIGRATION_PRODUCTION_CONFIRM";
 export const PRODUCTION_CONFIRM_VALUE = "I_UNDERSTAND_THIS_TARGETS_PRODUCTION";
@@ -21,17 +22,41 @@ function fail(code, message = code) {
 }
 
 export function parseDatabaseUrl(value) {
-  if (!value) fail("missing_database_url", "DATABASE_URL is required for MCP migration commands");
+  if (!value) fail("missing_database_url", "A PostgreSQL database URL is required for MCP migration commands");
   let parsed;
   try {
     parsed = new URL(value);
   } catch {
-    fail("invalid_database_url", "DATABASE_URL must be a valid PostgreSQL connection string");
+    fail("invalid_database_url", "Database URL must be a valid PostgreSQL connection string");
   }
   if (!new Set(["postgres:", "postgresql:"]).has(parsed.protocol)) {
-    fail("invalid_database_url", "DATABASE_URL must use postgres or postgresql");
+    fail("invalid_database_url", "Database URL must use postgres or postgresql");
   }
   return parsed.toString();
+}
+
+export function databaseCredentialIdentity(connectionString) {
+  const parsed = new URL(parseDatabaseUrl(connectionString));
+  const user = decodeURIComponent(parsed.username || "").toLowerCase();
+  const host = parsed.hostname.toLowerCase();
+  const port = parsed.port || "5432";
+  const database = decodeURIComponent(parsed.pathname.replace(/^\//, ""));
+  return `${user}@${host}:${port}/${database}`;
+}
+
+export function resolveMigrationConnectionString(env = process.env) {
+  const nodeEnv = String(env.NODE_ENV ?? "").trim().toLowerCase();
+  const runtimeRaw = env.DATABASE_URL;
+  const migrationRaw = env[MIGRATION_DATABASE_URL_ENV];
+  if (nodeEnv !== "production") return parseDatabaseUrl(migrationRaw || runtimeRaw);
+  if (!runtimeRaw) fail("missing_runtime_database_url", "DATABASE_URL is required to prove runtime and migrator separation");
+  if (!migrationRaw) fail("missing_migration_database_url", `${MIGRATION_DATABASE_URL_ENV} is required for production MCP migration commands`);
+  const runtimeUrl = parseDatabaseUrl(runtimeRaw);
+  const migrationUrl = parseDatabaseUrl(migrationRaw);
+  if (databaseCredentialIdentity(runtimeUrl) === databaseCredentialIdentity(migrationUrl)) {
+    fail("migration_runtime_credential_not_separated", "Production MCP migrations require a distinct migrator credential identity");
+  }
+  return migrationUrl;
 }
 
 export function assertMigrationSafety({
@@ -62,19 +87,20 @@ export function sanitizeDatabaseIdentifier(connectionString) {
   }
 }
 
-export function redactSensitiveText(value, connectionString = null) {
+export function redactSensitiveText(value, connectionStrings = []) {
   let output = String(value ?? "");
-  if (connectionString) output = output.split(String(connectionString)).join("[REDACTED_DATABASE_URL]");
+  const sources = (Array.isArray(connectionStrings) ? connectionStrings : [connectionStrings]).filter(Boolean);
+  for (const connectionString of sources) output = output.split(String(connectionString)).join("[REDACTED_DATABASE_URL]");
   output = output.replace(/postgres(?:ql)?:\/\/[^\s'"`]+/gi, "[REDACTED_DATABASE_URL]");
-  try {
-    const parsed = new URL(connectionString);
-    for (const raw of [parsed.username, parsed.password, parsed.hostname].filter(Boolean)) {
-      for (const part of new Set([raw, decodeURIComponent(raw)])) {
-        output = output.split(part).join("[REDACTED]");
+  for (const connectionString of sources) {
+    try {
+      const parsed = new URL(connectionString);
+      for (const raw of [parsed.username, parsed.password, parsed.hostname].filter(Boolean)) {
+        for (const part of new Set([raw, decodeURIComponent(raw)])) output = output.split(part).join("[REDACTED]");
       }
+    } catch {
+      // Generic URL redaction above still applies.
     }
-  } catch {
-    // Generic URL redaction above still applies.
   }
   return output;
 }
@@ -87,9 +113,10 @@ export async function runMigrationCommand(command, env = process.env, { PoolImpl
   let connectionString = null;
   let databaseIdentifier = "database:unknown";
   let pool = null;
+  const sensitiveUrls = [env.DATABASE_URL, env[MIGRATION_DATABASE_URL_ENV]].filter(Boolean);
   try {
     if (!new Set(["status", "migrate", "verify"]).has(command)) return 2;
-    connectionString = parseDatabaseUrl(env.DATABASE_URL);
+    connectionString = resolveMigrationConnectionString(env);
     assertMigrationSafety({
       nodeEnv: env.NODE_ENV,
       allowProduction: env[PRODUCTION_ALLOW_ENV],
@@ -114,7 +141,7 @@ export async function runMigrationCommand(command, env = process.env, { PoolImpl
       status: "error",
       error: {
         code: error.code || "UNKNOWN_ERROR",
-        message: redactSensitiveText(error.message, connectionString)
+        message: redactSensitiveText(error.message, sensitiveUrls)
       }
     });
     return 1;
