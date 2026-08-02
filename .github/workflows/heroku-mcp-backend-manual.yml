@@ -37,13 +37,31 @@ jobs:
         contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-mcp-production-rollout
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
       DEPLOY_REF: main
       HEROKU_APP_NAME: hung-phat-mcp
       HEROKU_FORBIDDEN_APP_NAME: hung-phat
+      HEROKU_DB_OWNER_APP_NAME: hung-phat
       HEROKU_REQUIRED_STACK: container
       HEROKU_REQUIRED_CONFIG_NAMES: BACKEND_API_TOKEN,CORS_ORIGINS,DATABASE_URL,INSTALLATION_ID,MCP_DB_ROLE,MCP_DB_SCHEMA,MCP_LEGACY_ACTOR_ID,MCP_LEGACY_RUNTIME_ENABLED,NPP_CODE,PERSISTENCE_PROVIDER
+      MCP_RUNTIME_DATABASE_URL_FILE: ${{ runner.temp }}/mcp-runtime-database-url
+      MCP_MIGRATION_DATABASE_URL_FILE: ${{ runner.temp }}/mcp-migration-database-url
+      MCP_DB_ROLE_FILE: ${{ runner.temp }}/mcp-db-role
     steps:
       - name: Checkout exact main
         uses: actions/checkout@v4
@@ -100,13 +118,14 @@ jobs:
           }
           NODE
 
-      - name: Install Heroku CLI
+      - name: Install Heroku CLI and migration dependencies
         shell: bash
         run: |
           set -euo pipefail
           curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+          npm ci --prefix mcp/apps/backend --ignore-scripts
 
-      - name: Preflight Heroku provider contract
+      - name: Preflight Heroku provider and database contract
         id: preflight
         shell: bash
         env:
@@ -128,14 +147,24 @@ jobs:
           test "$app_name" = "$HEROKU_APP_NAME"
           test -n "$app_url"
           if [ "$app_name" = "$HEROKU_FORBIDDEN_APP_NAME" ]; then
-            echo "hung-phat is forbidden for this workflow." >&2
+            echo "hung-phat is forbidden as the deploy target for this workflow." >&2
             exit 1
           fi
+
+          owner_app_json="$(
+            curl --fail --silent --show-error \
+              -H 'Accept: application/vnd.heroku+json; version=3' \
+              -H "Authorization: Bearer $HEROKU_API_KEY" \
+              "https://api.heroku.com/apps/$HEROKU_DB_OWNER_APP_NAME"
+          )"
+          test "$(jq -r '.name // empty' <<<"$owner_app_json")" = "$HEROKU_DB_OWNER_APP_NAME"
+          test "$HEROKU_DB_OWNER_APP_NAME" != "$HEROKU_APP_NAME"
 
           stack="$(heroku stack -a "$HEROKU_APP_NAME" | awk '/^\*/ {print $2; exit}')"
           test "$stack" = "$HEROKU_REQUIRED_STACK"
 
           config_json="$(heroku config -a "$HEROKU_APP_NAME" --json)"
+          owner_config_json="$(heroku config -a "$HEROKU_DB_OWNER_APP_NAME" --json)"
           required_vars=(${HEROKU_REQUIRED_CONFIG_NAMES//,/ })
           for name in "${required_vars[@]}"; do
             if ! jq -e --arg name "$name" 'has($name) and (.[$name] | type == "string" and length > 0)' <<<"$config_json" >/dev/null; then
@@ -143,6 +172,10 @@ jobs:
               exit 1
             fi
           done
+          if ! jq -e 'has("DATABASE_URL") and (.DATABASE_URL | type == "string" and length > 0)' <<<"$owner_config_json" >/dev/null; then
+            echo "Shared database owner app is missing DATABASE_URL." >&2
+            exit 1
+          fi
 
           persistence_provider="$(jq -r '.PERSISTENCE_PROVIDER // empty' <<<"$config_json")"
           test "$persistence_provider" = "postgresql"
@@ -154,6 +187,30 @@ jobs:
               exit 1
               ;;
           esac
+
+          runtime_database_url="$(jq -r '.DATABASE_URL' <<<"$config_json")"
+          migration_database_url="$(jq -r '.DATABASE_URL' <<<"$owner_config_json")"
+          mcp_db_role="$(jq -r '.MCP_DB_ROLE' <<<"$config_json")"
+          for sensitive in "$runtime_database_url" "$migration_database_url" "$mcp_db_role"; do
+            test -n "$sensitive"
+            echo "::add-mask::$sensitive"
+          done
+          printf '%s' "$runtime_database_url" > "$MCP_RUNTIME_DATABASE_URL_FILE"
+          printf '%s' "$migration_database_url" > "$MCP_MIGRATION_DATABASE_URL_FILE"
+          printf '%s' "$mcp_db_role" > "$MCP_DB_ROLE_FILE"
+          chmod 600 "$MCP_RUNTIME_DATABASE_URL_FILE" "$MCP_MIGRATION_DATABASE_URL_FILE" "$MCP_DB_ROLE_FILE"
+
+          node --input-type=module - "$runtime_database_url" "$migration_database_url" <<'NODE'
+          const runtime = new URL(process.argv[2]);
+          const migrator = new URL(process.argv[3]);
+          const port = (url) => url.port || "5432";
+          if (runtime.hostname !== migrator.hostname || port(runtime) !== port(migrator) || runtime.pathname !== migrator.pathname) {
+            throw new Error("runtime_and_migrator_target_different_databases");
+          }
+          if (decodeURIComponent(runtime.username) === decodeURIComponent(migrator.username)) {
+            throw new Error("runtime_and_migrator_credentials_not_separated");
+          }
+          NODE
 
           previous_active_release_version="$(heroku releases --json -a "$HEROKU_APP_NAME" | jq -r '.[0].version // empty')"
           test -n "$previous_active_release_version"
@@ -194,6 +251,7 @@ jobs:
           PREVIOUS_ACTIVE_RELEASE_VERSION: ${{ steps.preflight.outputs.previous_active_release_version }}
           PREVIOUS_RELEASE_HEALTHY: ${{ steps.preflight.outputs.previous_release_healthy }}
           APP_URL: ${{ steps.preflight.outputs.app_url }}
+          POSTGRES_SERVICE_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           set -euo pipefail
           test -n "${HEROKU_API_KEY:-}"
@@ -209,10 +267,12 @@ jobs:
           previous_release_healthy="${PREVIOUS_RELEASE_HEALTHY:-false}"
           failed_release_version=""
           rollback_target_version=""
+          production_backup_id=""
           deployment_failed="false"
           rollback_failed="false"
           rollback_health_failed="false"
           rollback_skipped_unhealthy_previous="false"
+          maintenance_enabled="false"
 
           refresh_release_version() {
             heroku releases --json -a "$HEROKU_APP_NAME" | jq -r '.[0].version // empty'
@@ -250,6 +310,14 @@ jobs:
             return 1
           }
 
+          disable_maintenance() {
+            if [ "$maintenance_enabled" = "true" ]; then
+              heroku maintenance:off -a "$HEROKU_APP_NAME" >/dev/null || true
+              maintenance_enabled="false"
+            fi
+          }
+          trap disable_maintenance EXIT
+
           write_outputs() {
             {
               echo "release_version=${HEROKU_RELEASE_VERSION:-}"
@@ -259,6 +327,7 @@ jobs:
               echo "failed_release_version=$failed_release_version"
               echo "previous_active_release_version=$previous_active_release_version"
               echo "previous_release_healthy=$previous_release_healthy"
+              echo "production_backup_id=$production_backup_id"
               echo "deployment_failed=$deployment_failed"
               echo "rollback_failed=$rollback_failed"
               echo "rollback_health_failed=$rollback_health_failed"
@@ -267,13 +336,24 @@ jobs:
           }
 
           test "$HEROKU_APP_NAME" = "hung-phat-mcp"
+          test "$HEROKU_DB_OWNER_APP_NAME" = "hung-phat"
+          test "$HEROKU_APP_NAME" != "$HEROKU_DB_OWNER_APP_NAME"
           if [ "$HEROKU_APP_NAME" = "$HEROKU_FORBIDDEN_APP_NAME" ]; then
-            echo "hung-phat is forbidden for this workflow." >&2
+            echo "hung-phat is forbidden as the deploy target for this workflow." >&2
             exit 1
           fi
 
           case "$action" in
             deploy)
+              heroku pg:backups:capture DATABASE_URL -a "$HEROKU_DB_OWNER_APP_NAME"
+              production_backup_id="$(heroku pg:backups -a "$HEROKU_DB_OWNER_APP_NAME" | awk '/^b[0-9]+/ {print $1; exit}')"
+              test -n "$production_backup_id"
+              heroku pg:backups:info "$production_backup_id" -a "$HEROKU_DB_OWNER_APP_NAME" >/dev/null
+
+              heroku maintenance:on -a "$HEROKU_APP_NAME" >/dev/null
+              maintenance_enabled="true"
+              bash mcp/apps/backend/scripts/production-rollout-gate.sh
+
               heroku container:login
               (
                 cd mcp/apps/backend
@@ -282,6 +362,7 @@ jobs:
               heroku container:release web -a "$HEROKU_APP_NAME"
               HEROKU_RELEASE_VERSION="$(refresh_release_version)"
               app_url="$(refresh_app_url)"
+              disable_maintenance
 
               if ! smoke_health /health/live || ! smoke_health /health/ready; then
                 deployment_failed="true"
@@ -335,6 +416,14 @@ jobs:
             HEROKU_RELEASE_VERSION="$(refresh_release_version)"
           fi
           write_outputs
+          trap - EXIT
+          disable_maintenance
+
+      - name: Cleanup migration credential files
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$MCP_RUNTIME_DATABASE_URL_FILE" "$MCP_MIGRATION_DATABASE_URL_FILE" "$MCP_DB_ROLE_FILE"
 
       - name: Summarize release evidence
         if: always()
@@ -344,6 +433,7 @@ jobs:
             echo "HEROKU_APP_NAME=${HEROKU_APP_NAME}"
             echo "HEROKU_APP_URL=${{ steps.release.outputs.app_url }}"
             echo "HEROKU_RELEASE_VERSION=${{ steps.release.outputs.release_version }}"
+            echo "PRODUCTION_BACKUP_ID=${{ steps.release.outputs.production_backup_id }}"
             echo "ROLLBACK_TARGET_VERSION=${{ steps.release.outputs.rollback_target_version }}"
             echo "FAILED_RELEASE_VERSION=${{ steps.release.outputs.failed_release_version }}"
             echo "PREVIOUS_ACTIVE_RELEASE_VERSION=${{ steps.release.outputs.previous_active_release_version }}"
