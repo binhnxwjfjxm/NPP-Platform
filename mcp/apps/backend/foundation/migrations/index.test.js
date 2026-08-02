@@ -33,7 +33,8 @@ const EXPECTED_MIGRATIONS = [
   "mcp_001_write_foundation",
   "mcp_002_domain_read_models",
   "mcp_003_legacy_write_contract",
-  "mcp_004_profile_media_contract"
+  "mcp_004_profile_media_contract",
+  "mcp_005_session_runtime_contract"
 ];
 
 test("MCP migrations use a unique registry namespace and apply once in one locked transaction", async () => {
@@ -52,6 +53,8 @@ test("MCP migrations use a unique registry namespace and apply once in one locke
   assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.mcp_outlet_media")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.mcp_archive_intents")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("ALTER COLUMN session_id DROP NOT NULL")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("mcp_session_customers_visited_counter")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("ON DELETE CASCADE")), true);
 
   const status = await migrationStatusWithAdapter(adapter);
   assert.deepEqual(status.pending, []);
@@ -155,6 +158,18 @@ test("MCP profile media migration preserves optional session and three-photo lim
   assert.match(sql, /v_active_media_count >= 3/i);
   assert.match(sql, /outlet_media_limit_reached/i);
   assert.match(sql, /CREATE TRIGGER mcp_outlet_media_limit/i);
+  assert.doesNotMatch(sql, /public\.mcp_/i);
+});
+
+test("MCP session runtime migration is canonical and preserves deletion and KPI contracts", () => {
+  const sql = MCP_MIGRATIONS[4].sql;
+  const canonicalSql = readFileSync(new URL("../../../../../database/migrations/mcp/005_mcp_session_runtime_contract.sql", import.meta.url), "utf8");
+  assert.equal(sql, canonicalSql);
+  assert.match(sql, /mcp_route_sessions_route_id_fkey/);
+  assert.match(sql, /mcp_session_customers_route_id_fkey/);
+  assert.match(sql, /ON DELETE CASCADE/);
+  assert.match(sql, /CREATE TRIGGER mcp_session_customers_visited_counter/);
+  assert.match(sql, /sync_route_session_visited_customers/);
   assert.doesNotMatch(sql, /public\.mcp_/i);
 });
 
