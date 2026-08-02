@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
-import { runMcpMigrations } from "./migrations/index.js";
+import { MCP_MIGRATIONS, runMcpMigrations } from "./migrations/index.js";
 import {
   captureInstallationAudit,
   captureRuntimeIdentity,
@@ -14,6 +14,7 @@ const runtimeRole = "mcp_runtime_6c0f";
 const overprivRole = "mcp_overpriv_6c0f";
 const runtimePassword = "runtime-fixture-6c0f";
 const overprivPassword = "overpriv-fixture-6c0f";
+const expectedMigrations = MCP_MIGRATIONS.map((migration) => migration.id);
 
 function roleUrl(connectionString, role, password) {
   const parsed = new URL(connectionString);
@@ -87,7 +88,7 @@ test(
     const installationAudit = await captureInstallationAudit(admin, { runtimeRole });
     const accepted = evaluateProviderPreflight(
       { runtimeIdentity, installationAudit },
-      { expectedRole: runtimeRole }
+      { expectedRole: runtimeRole, expectedMigrations }
     );
     assert.deepEqual(accepted, { ready: true, issues: [] });
 
@@ -99,7 +100,7 @@ test(
     const overprivAudit = await captureInstallationAudit(admin, { runtimeRole: overprivRole });
     const rejected = evaluateProviderPreflight(
       { runtimeIdentity: overprivIdentity, installationAudit: overprivAudit },
-      { expectedRole: overprivRole }
+      { expectedRole: overprivRole, expectedMigrations }
     );
     assert.equal(rejected.ready, false);
     assert.match(rejected.issues.join(" "), /runtime_has_mcp_schema_create/);
