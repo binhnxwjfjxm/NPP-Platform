@@ -1,4 +1,4 @@
-name: One-shot fix manual deploy command gates
+name: One-shot export patched Heroku workflow
 
 on:
   pull_request:
@@ -8,10 +8,10 @@ on:
       - .github/workflows/one-shot-fix-manual-deploy-command-gates.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch:
+  export:
     if: github.event.pull_request.head.ref == 'agent/fix-manual-deploy-command-gates'
     runs-on: ubuntu-latest
     steps:
@@ -20,48 +20,25 @@ jobs:
           ref: agent/fix-manual-deploy-command-gates
           fetch-depth: 0
 
-      - name: Patch exact command gates
+      - name: Export patched Heroku blob and base tree
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          replacements = {
-              ".github/workflows/vercel-production-manual.yml": (
-                  "github.event.issue.number == 5 &&\n        contains(fromJSON('[\"binhnxwjfjxm\",\"khuongbinhinfo-a11y\"]'), github.actor)",
-                  "github.event.issue.number == 5 &&\n        github.event.comment.body == '/deploy-vercel-production' &&\n        contains(fromJSON('[\"binhnxwjfjxm\",\"khuongbinhinfo-a11y\"]'), github.actor)",
-              ),
-              ".github/workflows/vercel-mcp-production-manual.yml": (
-                  "github.event.issue.number == 5 &&\n        contains(fromJSON('[\"binhnxwjfjxm\",\"khuongbinhinfo-a11y\"]'), github.actor)",
-                  "github.event.issue.number == 5 &&\n        github.event.comment.body == '/deploy-vercel-mcp-production' &&\n        contains(fromJSON('[\"binhnxwjfjxm\",\"khuongbinhinfo-a11y\"]'), github.actor)",
-              ),
-              ".github/workflows/heroku-mcp-backend-manual.yml": (
-                  "github.event.issue.number == 5 &&\n        contains(fromJSON('[\"binhnxwjfjxm\",\"khuongbinhinfo-a11y\"]'), github.actor)",
-                  "github.event.issue.number == 5 &&\n        github.event.comment.body == '/deploy-heroku-mcp-production' &&\n        contains(fromJSON('[\"binhnxwjfjxm\",\"khuongbinhinfo-a11y\"]'), github.actor)",
-              ),
-          }
-
-          for path_text, (old, new) in replacements.items():
-              path = Path(path_text)
-              text = path.read_text(encoding="utf-8")
-              if text.count(old) != 1:
-                  raise SystemExit(f"unexpected gate count in {path}: {text.count(old)}")
-              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          path = Path('.github/workflows/heroku-mcp-backend-manual.yml')
+          text = path.read_text(encoding='utf-8')
+          old = "github.event.issue.number == 5 &&\n        contains(fromJSON('[\"binhnxwjfjxm\",\"khuongbinhinfo-a11y\"]'), github.actor)"
+          new = "github.event.issue.number == 5 &&\n        github.event.comment.body == '/deploy-heroku-mcp-production' &&\n        contains(fromJSON('[\"binhnxwjfjxm\",\"khuongbinhinfo-a11y\"]'), github.actor)"
+          if text.count(old) != 1:
+              raise SystemExit(f'unexpected Heroku gate count: {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
 
-          rm .github/workflows/one-shot-fix-manual-deploy-command-gates.yml
           git diff --check
-
-      - name: Commit patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/vercel-production-manual.yml \
-                  .github/workflows/vercel-mcp-production-manual.yml \
-                  .github/workflows/heroku-mcp-backend-manual.yml \
-                  .github/workflows/one-shot-fix-manual-deploy-command-gates.yml
-          git commit -m "fix(ci): gate manual deploy workflows by exact command"
-          git push origin HEAD:agent/fix-manual-deploy-command-gates
+          echo "BASE_TREE_SHA=$(git rev-parse HEAD^{tree})"
+          echo "PATCHED_HEROKU_BASE64_BEGIN"
+          base64 -w0 .github/workflows/heroku-mcp-backend-manual.yml
+          echo
+          echo "PATCHED_HEROKU_BASE64_END"
