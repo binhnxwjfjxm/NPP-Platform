@@ -1,4 +1,4 @@
-name: Audit MCP PostgreSQL readiness facts
+name: Audit production backup and MCP migration gate
 
 on:
   pull_request:
@@ -11,11 +11,12 @@ permissions:
   contents: read
 
 jobs:
-  audit-readiness:
+  audit-migration-gate:
     if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-run-158'
     runs-on: ubuntu-latest
     env:
-      HEROKU_APP_NAME: hung-phat-mcp
+      CORE_APP_NAME: hung-phat
+      MCP_APP_NAME: hung-phat-mcp
       HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
     steps:
       - name: Install Heroku CLI
@@ -26,31 +27,45 @@ jobs:
           echo "::add-mask::$HEROKU_API_KEY"
           curl -fsSL https://cli-assets.heroku.com/install.sh | sh
 
-      - name: Read sanitized PostgreSQL readiness facts
+      - name: Audit Heroku PostgreSQL and backups
         shell: bash
         run: |
           set -euo pipefail
-          database_url="$(heroku config:get DATABASE_URL -a "$HEROKU_APP_NAME")"
+          echo "PG_INFO_BEGIN"
+          heroku pg:info -a "$CORE_APP_NAME" 2>&1 \
+            | sed -E 's#postgres(ql)?://[^[:space:]]+#[redacted-database-url]#g; s/[A-Za-z0-9_=-]{48,}/[redacted]/g'
+          echo "PG_INFO_END"
+          echo "PG_BACKUPS_BEGIN"
+          heroku pg:backups -a "$CORE_APP_NAME" 2>&1 \
+            | sed -E 's#https?://[^[:space:]]+#[redacted-url]#g; s/[A-Za-z0-9_=-]{48,}/[redacted]/g'
+          echo "PG_BACKUPS_END"
+
+      - name: Audit current role, schemas and MCP tables
+        shell: bash
+        run: |
+          set -euo pipefail
+          database_url="$(heroku config:get DATABASE_URL -a "$MCP_APP_NAME")"
           test -n "$database_url"
           echo "::add-mask::$database_url"
 
-          expected_role="$(heroku config:get MCP_DB_ROLE -a "$HEROKU_APP_NAME")"
-          expected_schema="$(heroku config:get MCP_DB_SCHEMA -a "$HEROKU_APP_NAME")"
-          test -n "$expected_role"
-          test -n "$expected_schema"
-
-          echo "EXPECTED_ROLE=$expected_role"
-          echo "EXPECTED_SCHEMA=$expected_schema"
-          psql --version
-
-          psql "$database_url" -X -A -t -v ON_ERROR_STOP=1 \
-            -v expected_role="$expected_role" \
-            -v expected_schema="$expected_schema" <<'SQL'
+          psql "$database_url" -X -A -t -v ON_ERROR_STOP=1 <<'SQL'
           select 'CURRENT_USER=' || current_user;
-          select 'DEFAULT_SEARCH_PATH=' || current_setting('search_path');
-          select 'SCHEMA_AVAILABLE=' || (to_regnamespace(:'expected_schema') is not null)::text;
-          select 'SCHEMA_USAGE=' || has_schema_privilege(current_user, :'expected_schema', 'USAGE')::text;
-          select 'EXPECTED_ROLE_EXISTS=' || exists(select 1 from pg_roles where rolname = :'expected_role')::text;
-          select 'EXPECTED_ROLE_CAN_LOGIN=' || coalesce((select rolcanlogin::text from pg_roles where rolname = :'expected_role'), 'false');
-          select 'CURRENT_ROLE_MATCHES_EXPECTED=' || (current_user = :'expected_role')::text;
+          select 'CURRENT_ROLE_SUPER=' || rolsuper::text from pg_roles where rolname = current_user;
+          select 'CURRENT_ROLE_CREATE_ROLE=' || rolcreaterole::text from pg_roles where rolname = current_user;
+          select 'CURRENT_ROLE_CREATE_DB=' || rolcreatedb::text from pg_roles where rolname = current_user;
+          select 'MCP_SCHEMA_EXISTS=' || (to_regnamespace('mcp') is not null)::text;
+          select 'SHARED_SCHEMA_EXISTS=' || (to_regnamespace('shared') is not null)::text;
+          select 'MCP_RUNTIME_ROLE_EXISTS=' || exists(select 1 from pg_roles where rolname = 'mcp_runtime')::text;
+          select 'MCP_RUNTIME_ROLE_LOGIN=' || coalesce((select rolcanlogin::text from pg_roles where rolname = 'mcp_runtime'), 'false');
+          select 'PUBLIC_MCP_ROUTES=' || (to_regclass('public.mcp_routes') is not null)::text;
+          select 'PUBLIC_MCP_ROUTE_CUSTOMERS=' || (to_regclass('public.mcp_route_customers') is not null)::text;
+          select 'PUBLIC_MCP_ROUTE_SESSIONS=' || (to_regclass('public.mcp_route_sessions') is not null)::text;
+          select 'MCP_MCP_ROUTES=' || (to_regclass('mcp.mcp_routes') is not null)::text;
+          select 'MCP_MCP_ROUTE_CUSTOMERS=' || (to_regclass('mcp.mcp_route_customers') is not null)::text;
+          select 'MCP_MCP_ROUTE_SESSIONS=' || (to_regclass('mcp.mcp_route_sessions') is not null)::text;
+          select 'MIGRATION_REGISTRY=' || (to_regclass('shared.schema_migrations') is not null)::text;
+          select 'MCP_MIGRATION_APPLIED=' || exists(
+            select 1 from information_schema.tables
+            where table_schema = 'shared' and table_name = 'schema_migrations'
+          )::text;
           SQL
