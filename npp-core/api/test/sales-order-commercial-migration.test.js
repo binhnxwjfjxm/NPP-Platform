@@ -9,9 +9,12 @@ const sql = readFileSync(
   'utf8',
 );
 
-test('migration 040 is the registered tail migration', () => {
-  assert.equal(CORE_API_MIGRATIONS.at(-1)?.id, '040_sales_order_commercial_controls');
-  assert.equal(CORE_API_MIGRATIONS.filter((entry) => entry.id === '040_sales_order_commercial_controls').length, 1);
+test('migration 040 remains registered once and precedes migration 041', () => {
+  const migrationIds = CORE_API_MIGRATIONS.map((entry) => entry.id);
+  const migration040Index = migrationIds.indexOf('040_sales_order_commercial_controls');
+  assert.notEqual(migration040Index, -1);
+  assert.equal(migrationIds.filter((id) => id === '040_sales_order_commercial_controls').length, 1);
+  assert.equal(migrationIds[migration040Index + 1], '041_customer_onboarding_requests');
 });
 
 test('migration 040 owns channel, document discount and line price provenance', () => {
