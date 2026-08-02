@@ -65,6 +65,23 @@ test("installation values and PostgreSQL boundary are fixed server config", () =
   assert.equal(config.internalPort, 3002);
 });
 
+test("service roles, permissions and scopes are backend-owned and deny by default", () => {
+  const denied = loadFoundationConfig(validEnv());
+  assert.deepEqual(denied.servicePrincipal.roles, []);
+  assert.deepEqual(denied.servicePrincipal.permissions, []);
+  assert.deepEqual(denied.servicePrincipal.scopes, []);
+
+  const configured = loadFoundationConfig(validEnv({
+    MCP_SERVICE_ROLES: "mcp.gateway,mcp.gateway",
+    MCP_SERVICE_PERMISSIONS: "mcp.visit.write,mcp.visit.read",
+    MCP_SERVICE_SCOPES: "mcp:route:route-a,mcp:route:route-a"
+  }));
+  assert.equal(configured.servicePrincipal.id, "service:npp-demo:mcp-v1");
+  assert.deepEqual(configured.servicePrincipal.roles, ["mcp.gateway"]);
+  assert.deepEqual(configured.servicePrincipal.permissions, ["mcp.visit.read", "mcp.visit.write"]);
+  assert.deepEqual(configured.servicePrincipal.scopes, ["mcp:route:route-a"]);
+});
+
 test("development CORS defaults are explicit localhost origins", () => {
   assert.deepEqual(parseCorsOrigins("", { nodeEnv: "development" }), [
     "http://localhost:3000",
