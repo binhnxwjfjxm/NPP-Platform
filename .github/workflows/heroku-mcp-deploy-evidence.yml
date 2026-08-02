@@ -1,0 +1,119 @@
+name: MCP production deploy evidence
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: heroku-mcp-deploy-evidence
+  cancel-in-progress: true
+
+jobs:
+  report:
+    if: >-
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/status-heroku-mcp-production' &&
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Find and report the latest MCP production deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const workflowId = 'heroku-mcp-backend-manual.yml';
+            const issueNumber = 5;
+
+            const listed = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id: workflowId,
+              event: 'issue_comment',
+              per_page: 20
+            });
+            const target = listed.data.workflow_runs.find((run) =>
+              run.name === 'Manual Heroku MCP production deploy' &&
+              run.event === 'issue_comment'
+            );
+            if (!target) {
+              core.setFailed('mcp_production_deploy_run_not_found');
+              return;
+            }
+
+            const format = (run, jobs) => {
+              const lines = [
+                '## MCP production deployment evidence',
+                '',
+                `- Run ID: \`${run.id}\``,
+                `- Status: \`${run.status}\``,
+                `- Conclusion: \`${run.conclusion || 'pending'}\``,
+                `- Head SHA: \`${run.head_sha}\``,
+                `- Event: \`${run.event}\``,
+                `- Started: \`${run.created_at}\``
+              ];
+              for (const job of jobs) {
+                lines.push(
+                  `- Job ID: \`${job.id}\` — \`${job.name}\` — ` +
+                  `status \`${job.status}\`, conclusion \`${job.conclusion || 'pending'}\``
+                );
+              }
+              lines.push('', `[Open workflow run](${run.html_url})`);
+              return lines.join('\n');
+            };
+
+            let run = (await github.rest.actions.getWorkflowRun({
+              owner,
+              repo,
+              run_id: target.id
+            })).data;
+            let jobs = (await github.rest.actions.listJobsForWorkflowRun({
+              owner,
+              repo,
+              run_id: target.id,
+              per_page: 100
+            })).data.jobs;
+
+            const evidenceComment = await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: issueNumber,
+              body: format(run, jobs)
+            });
+
+            const deadline = Date.now() + 55 * 60 * 1000;
+            while (run.status !== 'completed' && Date.now() < deadline) {
+              await new Promise((resolve) => setTimeout(resolve, 15000));
+              run = (await github.rest.actions.getWorkflowRun({
+                owner,
+                repo,
+                run_id: target.id
+              })).data;
+              jobs = (await github.rest.actions.listJobsForWorkflowRun({
+                owner,
+                repo,
+                run_id: target.id,
+                per_page: 100
+              })).data.jobs;
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: evidenceComment.data.id,
+                body: format(run, jobs)
+              });
+            }
+
+            if (run.status !== 'completed') {
+              core.setFailed('mcp_production_deploy_status_timeout');
+              return;
+            }
+            if (run.conclusion !== 'success') {
+              core.setFailed(`mcp_production_deploy_${run.conclusion || 'failed'}`);
+            }
