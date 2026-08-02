@@ -172,6 +172,27 @@ test('Customer onboarding API — demand retries deduplicate and payload mismatc
       [config.installationId, payload.sourceDemandReference],
     );
     assert.equal(count.rows[0].count, 1);
+
+    const concurrentPayload = validSubmission('concurrent');
+    const [concurrentFirst, concurrentSecond] = await Promise.all([
+      postJson(baseUrl, '/api/customer-onboarding-requests', config, concurrentPayload, `submit-${randomUUID()}`),
+      postJson(baseUrl, '/api/customer-onboarding-requests', config, concurrentPayload, `submit-${randomUUID()}`),
+    ]);
+    assert.equal(concurrentFirst.status, 201);
+    assert.equal(concurrentSecond.status, 201);
+    const concurrentFirstBody = await concurrentFirst.json();
+    const concurrentSecondBody = await concurrentSecond.json();
+    assert.equal(
+      concurrentFirstBody.data.customerOnboardingRequest.id,
+      concurrentSecondBody.data.customerOnboardingRequest.id,
+    );
+    const concurrentCount = await pool.query(
+      `SELECT count(*)::int AS count
+       FROM sales.customer_onboarding_requests
+       WHERE installation_id = $1 AND source_demand_reference = $2`,
+      [config.installationId, concurrentPayload.sourceDemandReference],
+    );
+    assert.equal(concurrentCount.rows[0].count, 1);
   } finally {
     if (server) await closeServer(server);
     await closePool();
