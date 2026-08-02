@@ -64,3 +64,62 @@ jobs:
             -H 'Accept: application/vnd.github+json' \
             "/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" \
             --jq '.jobs[] | "JOB id=\(.id) name=\(.name) status=\(.status) conclusion=\(.conclusion // "")\n" + ([.steps[] | "  STEP \(.number) \(.name): \(.status)/\(.conclusion // "")"] | join("\n"))'
+
+  provider-health:
+    if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-final-158'
+    runs-on: ubuntu-latest
+    env:
+      HEROKU_APP_NAME: hung-phat-mcp
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+    steps:
+      - name: Audit current Heroku release and health
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HEROKU_API_KEY:-}"
+          echo "::add-mask::$HEROKU_API_KEY"
+
+          app_json="$(
+            curl --fail --silent --show-error \
+              -H 'Accept: application/vnd.heroku+json; version=3' \
+              -H "Authorization: Bearer $HEROKU_API_KEY" \
+              "https://api.heroku.com/apps/$HEROKU_APP_NAME"
+          )"
+          app_name="$(jq -r '.name // empty' <<<"$app_json")"
+          app_url="$(jq -r '.web_url // empty' <<<"$app_json")"
+          test "$app_name" = "$HEROKU_APP_NAME"
+          test -n "$app_url"
+
+          releases_json="$(
+            curl --fail --silent --show-error \
+              -H 'Accept: application/vnd.heroku+json; version=3' \
+              -H "Authorization: Bearer $HEROKU_API_KEY" \
+              "https://api.heroku.com/apps/$HEROKU_APP_NAME/releases"
+          )"
+          release_version="$(jq -r 'sort_by(.version) | reverse | .[0].version // empty' <<<"$releases_json")"
+          release_status="$(jq -r 'sort_by(.version) | reverse | .[0].status // empty' <<<"$releases_json")"
+
+          config_json="$(
+            curl --fail --silent --show-error \
+              -H 'Accept: application/vnd.heroku+json; version=3' \
+              -H "Authorization: Bearer $HEROKU_API_KEY" \
+              "https://api.heroku.com/apps/$HEROKU_APP_NAME/config-vars"
+          )"
+          echo "CONFIG_NAMES=$(jq -r 'keys | sort | join(",")' <<<"$config_json")"
+          echo "PERSISTENCE_PROVIDER=$(jq -r '.PERSISTENCE_PROVIDER // "missing"' <<<"$config_json")"
+          echo "MCP_DB_SCHEMA=$(jq -r '.MCP_DB_SCHEMA // "missing"' <<<"$config_json")"
+          echo "MCP_DB_ROLE=$(jq -r '.MCP_DB_ROLE // "missing"' <<<"$config_json")"
+          echo "MCP_LEGACY_RUNTIME_ENABLED=$(jq -r '.MCP_LEGACY_RUNTIME_ENABLED // "missing"' <<<"$config_json")"
+
+          live_status="$(curl --silent --show-error --connect-timeout 5 --max-time 15 --output live.json --write-out '%{http_code}' "$app_url/health/live" || true)"
+          ready_status="$(curl --silent --show-error --connect-timeout 5 --max-time 15 --output ready.json --write-out '%{http_code}' "$app_url/health/ready" || true)"
+          live_code="$(jq -r '.code // .status // empty' live.json 2>/dev/null || true)"
+          ready_code="$(jq -r '.code // .persistence.code // .status // empty' ready.json 2>/dev/null || true)"
+
+          echo "APP_NAME=$app_name"
+          echo "LATEST_RELEASE_VERSION=${release_version:-missing}"
+          echo "LATEST_RELEASE_STATUS=${release_status:-missing}"
+          echo "HEALTH_LIVE_HTTP=${live_status:-none}"
+          echo "HEALTH_LIVE_CODE=${live_code:-none}"
+          echo "HEALTH_READY_HTTP=${ready_status:-none}"
+          echo "HEALTH_READY_CODE=${ready_code:-none}"
