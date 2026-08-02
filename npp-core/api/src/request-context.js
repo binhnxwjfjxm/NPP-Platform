@@ -115,6 +115,12 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.coreSalesOrderPriceOverride,
       PERMISSIONS.coreSalesOrderDiscountOverride,
       PERMISSIONS.coreSalesOrderCreditOverride,
+      PERMISSIONS.coreCustomerOnboardingRead,
+      PERMISSIONS.coreCustomerOnboardingSubmit,
+      PERMISSIONS.coreCustomerOnboardingReview,
+      PERMISSIONS.coreCustomerOnboardingApprove,
+      PERMISSIONS.coreCustomerOnboardingLinkExisting,
+      PERMISSIONS.coreCustomerOnboardingReject,
     ],
     sourceApp: 'npp-core-api',
   });
