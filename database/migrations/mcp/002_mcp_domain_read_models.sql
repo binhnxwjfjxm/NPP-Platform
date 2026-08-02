@@ -454,21 +454,65 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog
 AS $function$
+DECLARE
+  v_super boolean;
+  v_create_role boolean;
+  v_create_db boolean;
+  v_replication boolean;
+  v_bypass_rls boolean;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = p_role::text) THEN
+  SELECT rolsuper, rolcreaterole, rolcreatedb, rolreplication, rolbypassrls
+    INTO v_super, v_create_role, v_create_db, v_replication, v_bypass_rls
+  FROM pg_roles
+  WHERE rolname = p_role::text;
+
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'mcp_runtime_role_not_found:%', p_role;
   END IF;
 
+  IF v_super OR v_create_role OR v_create_db OR v_replication OR v_bypass_rls THEN
+    RAISE EXCEPTION 'mcp_runtime_role_is_privileged:%', p_role;
+  END IF;
+
+  EXECUTE format('REVOKE ALL ON SCHEMA mcp FROM %I', p_role);
+  EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA mcp FROM %I', p_role);
+  EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA mcp FROM %I', p_role);
+  EXECUTE format('REVOKE ALL ON ALL FUNCTIONS IN SCHEMA mcp FROM %I', p_role);
+
   EXECUTE format('GRANT USAGE ON SCHEMA mcp TO %I', p_role);
-  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA mcp TO %I', p_role);
-  EXECUTE format('GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA mcp TO %I', p_role);
-  EXECUTE format('GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA mcp TO %I', p_role);
-  EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA mcp GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I', p_role);
-  EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA mcp GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO %I', p_role);
+
+  EXECUTE format(
+    'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE '
+    'mcp.mcp_routes, mcp.mcp_route_customers, mcp.mcp_route_sessions, '
+    'mcp.mcp_session_customers, mcp.mcp_visits, mcp.mcp_followups, '
+    'mcp.mcp_session_reports, mcp.market_reports, '
+    'mcp.mcp_report_setting_groups, mcp.mcp_report_settings, '
+    'mcp.orders, mcp.order_items, mcp.test_files, '
+    'mcp.test_file_products, mcp.test_customers, mcp.test_customer_results TO %I',
+    p_role
+  );
+
+  EXECUTE format(
+    'GRANT SELECT ON TABLE mcp.accounts, mcp.products, '
+    'mcp.product_variants, mcp.route_customers TO %I',
+    p_role
+  );
+
+  EXECUTE format(
+    'GRANT SELECT, INSERT, UPDATE ON TABLE mcp.idempotency_records TO %I',
+    p_role
+  );
+  EXECUTE format('GRANT INSERT ON TABLE mcp.audit_events TO %I', p_role);
+  EXECUTE format('GRANT INSERT ON TABLE mcp.outbox_events TO %I', p_role);
+
+  EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA mcp REVOKE ALL ON TABLES FROM %I', p_role);
+  EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA mcp REVOKE ALL ON SEQUENCES FROM %I', p_role);
+  EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA mcp REVOKE ALL ON FUNCTIONS FROM %I', p_role);
   EXECUTE format('ALTER ROLE %I IN DATABASE %I SET search_path = mcp, public', p_role, current_database());
 END;
 $function$;
 
+REVOKE ALL ON FUNCTION shared.grant_mcp_runtime_access(name) FROM PUBLIC;
 REVOKE ALL ON ALL TABLES IN SCHEMA mcp FROM PUBLIC;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA mcp FROM PUBLIC;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA mcp FROM PUBLIC;
