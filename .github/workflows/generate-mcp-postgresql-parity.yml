@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - mcp/ops/generate-postgresql-supabase-parity.mjs
+      - mcp/ops/patch-postgresql-supabase-parity-generator.mjs
       - mcp/supabase/migrations/**
       - .github/workflows/generate-mcp-postgresql-parity.yml
 
@@ -26,19 +27,27 @@ jobs:
         with:
           node-version: 20
 
+      - name: Complete generator fallbacks
+        run: node mcp/ops/patch-postgresql-supabase-parity-generator.mjs
+
       - name: Generate canonical and packaged migration
         run: node mcp/ops/generate-postgresql-supabase-parity.mjs
 
-      - name: Commit generated migration
+      - name: Commit generator and migration
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- database/migrations/mcp/003_mcp_supabase_contract_parity.sql mcp/apps/backend/foundation/migrations/sql/003_mcp_supabase_contract_parity.sql; then
-            echo 'Generated migration is current.'
+          tracked=(
+            mcp/ops/generate-postgresql-supabase-parity.mjs
+            database/migrations/mcp/003_mcp_supabase_contract_parity.sql
+            mcp/apps/backend/foundation/migrations/sql/003_mcp_supabase_contract_parity.sql
+          )
+          if git diff --quiet -- "${tracked[@]}"; then
+            echo 'Generator and migration are current.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add database/migrations/mcp/003_mcp_supabase_contract_parity.sql mcp/apps/backend/foundation/migrations/sql/003_mcp_supabase_contract_parity.sql
+          git add "${tracked[@]}"
           git commit -m 'feat(mcp): generate Supabase PostgreSQL parity migration'
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
