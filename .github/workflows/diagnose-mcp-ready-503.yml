@@ -42,8 +42,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          owner_url="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
-          test -n "$owner_url"
+          owner_url_raw="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
+          test -n "$owner_url_raw"
+          echo "::add-mask::$owner_url_raw"
+          owner_url="$(node --input-type=module - "$owner_url_raw" <<'NODE'
+          const [, , raw] = process.argv;
+          const url = new URL(raw);
+          url.searchParams.set('sslmode', 'require');
+          console.log(url.toString());
+          NODE
+          )"
           echo "::add-mask::$owner_url"
           export MCP_MIGRATION_DATABASE_URL="$owner_url"
           npm --prefix mcp/apps/backend run migration:status
@@ -55,17 +63,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          owner_url="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
-          test -n "$owner_url"
+          owner_url_raw="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
+          test -n "$owner_url_raw"
+          echo "::add-mask::$owner_url_raw"
+          owner_url="$(node --input-type=module - "$owner_url_raw" <<'NODE'
+          const [, , raw] = process.argv;
+          const url = new URL(raw);
+          url.searchParams.set('sslmode', 'require');
+          console.log(url.toString());
+          NODE
+          )"
           echo "::add-mask::$owner_url"
           runtime_password="$(openssl rand -hex 32)"
           echo "::add-mask::$runtime_password"
 
           role_exists="$(psql "$owner_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command "select exists(select 1 from pg_roles where rolname='mcp_runtime')")"
           if [ "$role_exists" = "t" ]; then
-            psql "$owner_url" --no-psqlrc --set ON_ERROR_STOP=1 --set role_password="$runtime_password" --command "alter role mcp_runtime login password :'role_password'"
+            psql "$owner_url" --no-psqlrc --set ON_ERROR_STOP=1 --set role_password="$runtime_password" <<'SQL'
+          alter role mcp_runtime login password :'role_password';
+          SQL
           else
-            psql "$owner_url" --no-psqlrc --set ON_ERROR_STOP=1 --set role_password="$runtime_password" --command "create role mcp_runtime login password :'role_password'"
+            psql "$owner_url" --no-psqlrc --set ON_ERROR_STOP=1 --set role_password="$runtime_password" <<'SQL'
+          create role mcp_runtime login password :'role_password';
+          SQL
           fi
           psql "$owner_url" --no-psqlrc --set ON_ERROR_STOP=1 --command "select shared.grant_mcp_runtime_access('mcp_runtime')"
 
@@ -74,6 +94,7 @@ jobs:
           const url = new URL(raw);
           url.username = 'mcp_runtime';
           url.password = password;
+          url.searchParams.set('sslmode', 'require');
           console.log(url.toString());
           NODE
           )"
