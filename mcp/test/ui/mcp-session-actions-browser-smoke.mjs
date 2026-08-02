@@ -74,7 +74,7 @@ try {
   await order.getByRole("button", { name: "Gửi đề nghị xác minh / mở mã", exact: true }).waitFor({ state: "visible" });
   await order.getByText("Đã lưu nhu cầu mua trong MCP. Chưa gửi đề nghị sang Core.", { exact: true }).waitFor({ state: "visible" });
   result.orderIntentSavedWithoutCoreSideEffect = "PASS";
-  await order.getByRole("button", { name: "Đóng", exact: true }).click();
+  await order.getByRole("button", { name: "Đóng", exact: true }).filter({ hasText: "Đóng" }).click();
   await order.waitFor({ state: "hidden" });
 
   await card(page).getByRole("button", { name: "Test", exact: true }).click();
