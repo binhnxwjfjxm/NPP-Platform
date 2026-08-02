@@ -17,7 +17,7 @@ function providerError(response, payload) {
 }
 
 function usesPostgresql(config) {
-  return config?.persistence?.provider === "postgresql";
+  return config?.persistence?.provider === "postgresql" && config?.legacyRuntime?.enabled !== true;
 }
 
 export async function supabaseRequest(
