@@ -37,6 +37,9 @@ function comparable(value) {
   if (typeof value === "boolean") return value ? 1 : 0;
   const textValue = text(value);
   if (!textValue) return "";
+  const booleanValue = textValue.toLowerCase();
+  if (booleanValue === "true") return 1;
+  if (booleanValue === "false") return 0;
   const numeric = Number(textValue);
   return Number.isFinite(numeric) && String(numeric) === textValue ? numeric : textValue;
 }
