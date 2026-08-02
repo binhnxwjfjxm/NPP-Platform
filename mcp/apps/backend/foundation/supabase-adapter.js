@@ -61,6 +61,10 @@ export async function supabaseRest(config, resource, options = {}) {
 
 export async function supabaseRpc(config, name, args, options = {}) {
   if (usesPostgresql(config)) {
+    const { POSTGRESQL_MEDIA_UPLOAD_RPC_NAMES, postgresqlMediaUploadRpc } = await import("./postgresql-media-upload-adapter.js");
+    if (POSTGRESQL_MEDIA_UPLOAD_RPC_NAMES.has(name)) {
+      return postgresqlMediaUploadRpc(config, name, args, options);
+    }
     const { POSTGRESQL_SPECIAL_RPC_NAMES, postgresqlSpecialRpc } = await import("./postgresql-media-adapter.js");
     if (POSTGRESQL_SPECIAL_RPC_NAMES.has(name)) {
       return postgresqlSpecialRpc(config, name, args, options);
