@@ -21,6 +21,7 @@ function usedRpcNames() {
     "postgresql-media-adapter.js",
     "postgresql-media-upload-adapter.js",
     "postgresql-archive-adapter.js",
+    "postgresql-checkin-adapter.js",
     "postgresql-report-adapter.js",
     "supabase-adapter.js",
     "legacy-supabase-adapter.js"
@@ -42,6 +43,7 @@ test("every active Supabase RPC contract has a PostgreSQL implementation", () =>
     ...rpcNames(source("postgresql-media-adapter.js")),
     ...rpcNames(source("postgresql-media-upload-adapter.js")),
     ...rpcNames(source("postgresql-archive-adapter.js")),
+    ...rpcNames(source("postgresql-checkin-adapter.js")),
     ...rpcNames(source("postgresql-report-adapter.js"))
   ]);
   const missing = [...usedRpcNames()].filter((name) => !supported.has(name)).sort();
@@ -80,6 +82,7 @@ test("cutover modules are part of backend source verification", () => {
     "foundation/postgresql-media-adapter.js",
     "foundation/postgresql-media-upload-adapter.js",
     "foundation/postgresql-archive-adapter.js",
+    "foundation/postgresql-checkin-adapter.js",
     "foundation/postgresql-report-adapter.js",
     "foundation/provider-runtime.js",
     "foundation/typed-runtime.js"
