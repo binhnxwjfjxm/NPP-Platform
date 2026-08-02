@@ -1,0 +1,221 @@
+name: Issue 158 guarded MCP PostgreSQL cutover
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/issue-158-production-db-cutover.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-158-mcp-production-db-cutover
+  cancel-in-progress: false
+
+jobs:
+  cutover:
+    if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-run-158'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CORE_APP_NAME: hung-phat
+      MCP_APP_NAME: hung-phat-mcp
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      DEPLOYED_MAIN_SHA: d5600864bb1456e47a43679ba9f9fc20d81c4100
+      CREDENTIAL_NAME: mcp_runtime
+    steps:
+      - name: Checkout exact merged main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Verify exact main and install tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$DEPLOYED_MAIN_SHA"
+          npm ci --prefix mcp/apps/backend
+          test -n "${HEROKU_API_KEY:-}"
+          echo "::add-mask::$HEROKU_API_KEY"
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+          heroku version
+          psql --version
+
+      - name: Verify shared database and capture fresh backup
+        id: backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner_url="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
+          mcp_url="$(heroku config:get DATABASE_URL -a "$MCP_APP_NAME")"
+          test -n "$owner_url"
+          test -n "$mcp_url"
+          echo "::add-mask::$owner_url"
+          echo "::add-mask::$mcp_url"
+          test "$(printf '%s' "$owner_url" | sha256sum | awk '{print $1}')" = "$(printf '%s' "$mcp_url" | sha256sum | awk '{print $1}')"
+
+          before="$(psql "$owner_url" -XAt -v ON_ERROR_STOP=1 -c "select jsonb_build_object('customers',(select count(*) from shared.customers),'products',(select count(*) from shared.products),'variants',(select count(*) from shared.product_variants),'migrations',(select count(*) from shared.schema_migrations))::text")"
+          test -n "$before"
+          echo "before=$before" >> "$GITHUB_OUTPUT"
+          echo "PRE_MIGRATION_COUNTS=$before"
+
+          heroku pg:backups:capture DATABASE_URL -a "$CORE_APP_NAME"
+          backups="$(heroku pg:backups -a "$CORE_APP_NAME")"
+          backup_id="$(awk '$1 ~ /^b[0-9]+$/ && $2 == "Completed" {print $1; exit}' <<<"$backups")"
+          test -n "$backup_id"
+          echo "backup_id=$backup_id" >> "$GITHUB_OUTPUT"
+          echo "FRESH_BACKUP_ID=$backup_id"
+
+      - name: Create or reuse dedicated Heroku PostgreSQL credential
+        id: credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          credentials_output="$(heroku pg:credentials DATABASE_URL -a "$CORE_APP_NAME" 2>&1 || true)"
+          if ! grep -Eq "(^|[[:space:]])${CREDENTIAL_NAME}([[:space:]]|$)" <<<"$credentials_output"; then
+            heroku pg:credentials:create DATABASE_URL --name "$CREDENTIAL_NAME" -a "$CORE_APP_NAME"
+          fi
+
+          runtime_url="$(heroku pg:credentials:url DATABASE_URL --name "$CREDENTIAL_NAME" -a "$CORE_APP_NAME")"
+          test -n "$runtime_url"
+          echo "::add-mask::$runtime_url"
+          runtime_role="$(node --input-type=module -e 'const u=new URL(process.argv[1]); process.stdout.write(decodeURIComponent(u.username));' "$runtime_url")"
+          test -n "$runtime_role"
+          echo "::add-mask::$runtime_role"
+          echo "runtime_role=$runtime_role" >> "$GITHUB_OUTPUT"
+          echo "runtime_url=$runtime_url" >> "$GITHUB_OUTPUT"
+          echo "DEDICATED_CREDENTIAL_READY=true"
+
+      - name: Apply MCP migrations twice and grant least privilege
+        shell: bash
+        env:
+          NODE_ENV: test
+          MCP_MIGRATION_DATABASE_URL: ${{ steps.credential.outputs.runtime_url }}
+          OWNER_DATABASE_URL: ${{ secrets.ISSUE_158_UNUSED }}
+          RUNTIME_ROLE: ${{ steps.credential.outputs.runtime_role }}
+        run: |
+          set -euo pipefail
+          owner_url="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
+          test -n "$owner_url"
+          echo "::add-mask::$owner_url"
+
+          NODE_ENV=test MCP_MIGRATION_DATABASE_URL="$owner_url" npm --prefix mcp/apps/backend run migration:migrate
+          NODE_ENV=test MCP_MIGRATION_DATABASE_URL="$owner_url" npm --prefix mcp/apps/backend run migration:migrate
+          NODE_ENV=test MCP_MIGRATION_DATABASE_URL="$owner_url" npm --prefix mcp/apps/backend run migration:verify
+
+          psql "$owner_url" -X -v ON_ERROR_STOP=1 \
+            --set runtime_role="$RUNTIME_ROLE" <<'SQL'
+          SELECT shared.grant_mcp_runtime_access(:'runtime_role'::name);
+          SQL
+
+      - name: Attach dedicated credential to MCP app
+        shell: bash
+        env:
+          RUNTIME_URL: ${{ steps.credential.outputs.runtime_url }}
+          RUNTIME_ROLE: ${{ steps.credential.outputs.runtime_role }}
+        run: |
+          set -euo pipefail
+          test -n "$RUNTIME_URL"
+          test -n "$RUNTIME_ROLE"
+          echo "::add-mask::$RUNTIME_URL"
+          echo "::add-mask::$RUNTIME_ROLE"
+          heroku config:set -a "$MCP_APP_NAME" \
+            DATABASE_URL="$RUNTIME_URL" \
+            MCP_DB_ROLE="$RUNTIME_ROLE" \
+            MCP_DB_SCHEMA=mcp \
+            MCP_LEGACY_RUNTIME_ENABLED=false \
+            PERSISTENCE_PROVIDER=postgresql \
+            >/dev/null
+
+      - name: Verify dedicated runtime role, permissions and 20 reads
+        shell: bash
+        env:
+          RUNTIME_URL: ${{ steps.credential.outputs.runtime_url }}
+          RUNTIME_ROLE: ${{ steps.credential.outputs.runtime_role }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$RUNTIME_URL"
+          echo "::add-mask::$RUNTIME_ROLE"
+
+          helper_execute="$(
+            owner_url="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
+            echo "::add-mask::$owner_url"
+            psql "$owner_url" -XAt -v ON_ERROR_STOP=1 \
+              -v runtime_role="$RUNTIME_ROLE" \
+              -c "select has_function_privilege(:'runtime_role', 'shared.grant_mcp_runtime_access(name)', 'EXECUTE')::text"
+          )"
+          test "$helper_execute" = "false"
+
+          psql "$RUNTIME_URL" -XAt -v ON_ERROR_STOP=1 <<'SQL' | tee /tmp/runtime-check.log
+          select 'CURRENT_USER=' || current_user;
+          select 'SEARCH_PATH=' || current_setting('search_path');
+          select 'SCHEMA_USAGE=' || has_schema_privilege(current_user, 'mcp', 'USAGE')::text;
+          select 'IDEMPOTENCY_DELETE=' || has_table_privilege(current_user, 'mcp.idempotency_records', 'DELETE')::text;
+          select 'AUDIT_SELECT=' || has_table_privilege(current_user, 'mcp.audit_events', 'SELECT')::text;
+          select 'OUTBOX_SELECT=' || has_table_privilege(current_user, 'mcp.outbox_events', 'SELECT')::text;
+          select 'READ=' || name || ':' || count_value from (
+            select 'accounts' name,(select count(*) from mcp.accounts)::bigint count_value union all
+            select 'market_reports',(select count(*) from mcp.market_reports)::bigint union all
+            select 'mcp_followups',(select count(*) from mcp.mcp_followups)::bigint union all
+            select 'mcp_report_setting_groups',(select count(*) from mcp.mcp_report_setting_groups)::bigint union all
+            select 'mcp_report_settings',(select count(*) from mcp.mcp_report_settings)::bigint union all
+            select 'mcp_route_customers',(select count(*) from mcp.mcp_route_customers)::bigint union all
+            select 'mcp_route_sessions',(select count(*) from mcp.mcp_route_sessions)::bigint union all
+            select 'mcp_routes',(select count(*) from mcp.mcp_routes)::bigint union all
+            select 'mcp_session_customers',(select count(*) from mcp.mcp_session_customers)::bigint union all
+            select 'mcp_session_reports',(select count(*) from mcp.mcp_session_reports)::bigint union all
+            select 'mcp_visits',(select count(*) from mcp.mcp_visits)::bigint union all
+            select 'order_items',(select count(*) from mcp.order_items)::bigint union all
+            select 'orders',(select count(*) from mcp.orders)::bigint union all
+            select 'product_variants',(select count(*) from mcp.product_variants)::bigint union all
+            select 'products',(select count(*) from mcp.products)::bigint union all
+            select 'route_customers',(select count(*) from mcp.route_customers)::bigint union all
+            select 'test_customer_results',(select count(*) from mcp.test_customer_results)::bigint union all
+            select 'test_customers',(select count(*) from mcp.test_customers)::bigint union all
+            select 'test_file_products',(select count(*) from mcp.test_file_products)::bigint union all
+            select 'test_files',(select count(*) from mcp.test_files)::bigint
+          ) reads order by name;
+          SQL
+
+          grep -Fxq "CURRENT_USER=$RUNTIME_ROLE" /tmp/runtime-check.log
+          grep -Fxq 'SEARCH_PATH=mcp, public' /tmp/runtime-check.log
+          grep -Fxq 'SCHEMA_USAGE=true' /tmp/runtime-check.log
+          grep -Fxq 'IDEMPOTENCY_DELETE=false' /tmp/runtime-check.log
+          grep -Fxq 'AUDIT_SELECT=false' /tmp/runtime-check.log
+          grep -Fxq 'OUTBOX_SELECT=false' /tmp/runtime-check.log
+          test "$(grep -c '^READ=' /tmp/runtime-check.log)" -eq 20
+
+      - name: Reconcile shared Core data and verify live health
+        shell: bash
+        env:
+          BEFORE: ${{ steps.backup.outputs.before }}
+        run: |
+          set -euo pipefail
+          owner_url="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
+          test -n "$owner_url"
+          echo "::add-mask::$owner_url"
+          after="$(psql "$owner_url" -XAt -v ON_ERROR_STOP=1 -c "select jsonb_build_object('customers',(select count(*) from shared.customers),'products',(select count(*) from shared.products),'variants',(select count(*) from shared.product_variants),'migrations',(select count(*) from shared.schema_migrations))::text")"
+          echo "POST_MIGRATION_COUNTS=$after"
+          test "$(jq -c 'del(.migrations)' <<<"$BEFORE")" = "$(jq -c 'del(.migrations)' <<<"$after")"
+          test "$(jq -r '.migrations' <<<"$after")" -eq $(( $(jq -r '.migrations' <<<"$BEFORE") + 2 ))
+
+          app_url="$(curl --fail --silent --show-error \
+            -H 'Accept: application/vnd.heroku+json; version=3' \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            "https://api.heroku.com/apps/$MCP_APP_NAME" | jq -r '.web_url // empty')"
+          app_url="${app_url%/}"
+          test -n "$app_url"
+          for path in /health/live /health/ready; do
+            status=''
+            for attempt in $(seq 1 60); do
+              status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 --output /tmp/health --write-out '%{http_code}' "$app_url$path" || true)"
+              [ "$status" = 200 ] && break
+              sleep 3
+            done
+            echo "HEALTH path=$path status=$status"
+            test "$status" = 200
+          done
+          echo "CORE_RECONCILIATION=matched"
+          echo "MCP_PRODUCTION_DB_CUTOVER=passed"
