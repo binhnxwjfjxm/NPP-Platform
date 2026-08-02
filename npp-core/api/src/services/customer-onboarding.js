@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createRequestFingerprint } from '../idempotency.js';
 import * as repository from '../db/repositories/customer-onboarding.js';
 import * as customerService from './customer.js';
 
@@ -67,7 +67,7 @@ function stableSubmissionShape(normalized) {
 }
 
 export function hashSubmission(normalized) {
-  return createHash('sha256').update(JSON.stringify(stableSubmissionShape(normalized))).digest('hex');
+  return createRequestFingerprint(stableSubmissionShape(normalized));
 }
 
 export function validateSubmission(payload) {
