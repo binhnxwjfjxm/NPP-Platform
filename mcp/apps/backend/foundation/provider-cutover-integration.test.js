@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import pg from "pg";
 import { MCP_MIGRATIONS, runMcpMigrations } from "./migrations/index.js";
 import {
@@ -15,6 +16,10 @@ const overprivRole = "mcp_overpriv_6c0f";
 const runtimePassword = "runtime-fixture-6c0f";
 const overprivPassword = "overpriv-fixture-6c0f";
 const expectedMigrations = MCP_MIGRATIONS.map((migration) => migration.id);
+const coreReadModelFixture = readFileSync(
+  new URL("./migrations/fixtures/core-read-model-source.sql", import.meta.url),
+  "utf8"
+);
 
 function roleUrl(connectionString, role, password) {
   const parsed = new URL(connectionString);
@@ -61,7 +66,7 @@ test(
 
     await resetRole(admin, overprivRole);
     await resetRole(admin, runtimeRole);
-    await admin.query("CREATE SCHEMA IF NOT EXISTS shared");
+    await admin.query(coreReadModelFixture);
     await admin.query(`CREATE TABLE IF NOT EXISTS shared.schema_migrations (
       id text PRIMARY KEY,
       applied_at timestamptz NOT NULL DEFAULT now()
