@@ -85,36 +85,16 @@ jobs:
           const pkg = JSON.parse(await readFile("apps/backend/package.json", "utf8"));
           const dockerfile = await readFile("apps/backend/Dockerfile", "utf8");
 
-          if (pkg.scripts?.start !== "node bootstrap.js") {
-            throw new Error("unexpected_mcp_backend_start_script");
-          }
-          if (pkg.dependencies?.pg !== "^8.12.0") {
-            throw new Error("missing_mcp_backend_postgresql_dependency");
-          }
-          if (!dockerfile.includes('FROM node:20-alpine')) {
-            throw new Error("missing_mcp_backend_base_image");
-          }
-          if (!dockerfile.includes('ENV HOST=0.0.0.0')) {
-            throw new Error("missing_mcp_backend_host_binding");
-          }
-          if (!dockerfile.includes('CMD ["node", "bootstrap.js"]')) {
-            throw new Error("missing_mcp_backend_bootstrap_cmd");
-          }
-          if (!dockerfile.includes('COPY package.json package-lock.json ./')) {
-            throw new Error("missing_mcp_backend_lock_copy");
-          }
-          if (!dockerfile.includes('RUN npm ci --omit=dev --ignore-scripts')) {
-            throw new Error("missing_mcp_backend_locked_install");
-          }
-          if (!dockerfile.includes('COPY bootstrap.js server.js ./')) {
-            throw new Error("missing_mcp_backend_runtime_copy");
-          }
-          if (!dockerfile.includes('COPY foundation ./foundation')) {
-            throw new Error("missing_mcp_backend_foundation_copy");
-          }
-          if (/SUPABASE_/i.test(dockerfile)) {
-            throw new Error("supabase_runtime_env_leak");
-          }
+          if (pkg.scripts?.start !== "node bootstrap.js") throw new Error("unexpected_mcp_backend_start_script");
+          if (pkg.dependencies?.pg !== "^8.12.0") throw new Error("missing_mcp_backend_postgresql_dependency");
+          if (!dockerfile.includes('FROM node:20-alpine')) throw new Error("missing_mcp_backend_base_image");
+          if (!dockerfile.includes('ENV HOST=0.0.0.0')) throw new Error("missing_mcp_backend_host_binding");
+          if (!dockerfile.includes('CMD ["node", "bootstrap.js"]')) throw new Error("missing_mcp_backend_bootstrap_cmd");
+          if (!dockerfile.includes('COPY package.json package-lock.json ./')) throw new Error("missing_mcp_backend_lock_copy");
+          if (!dockerfile.includes('RUN npm ci --omit=dev --ignore-scripts')) throw new Error("missing_mcp_backend_locked_install");
+          if (!dockerfile.includes('COPY bootstrap.js server.js ./')) throw new Error("missing_mcp_backend_runtime_copy");
+          if (!dockerfile.includes('COPY foundation ./foundation')) throw new Error("missing_mcp_backend_foundation_copy");
+          if (/SUPABASE_/i.test(dockerfile)) throw new Error("supabase_runtime_env_leak");
           if (dockerfile.includes("npp-core") || dockerfile.includes("start:core-api") || dockerfile.includes("Next.js")) {
             throw new Error("core_or_frontend_runtime_leak");
           }
@@ -133,10 +113,19 @@ jobs:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
           set -euo pipefail
-          app_json="$(heroku apps:info -a "$HEROKU_APP_NAME" --json)"
+          test -n "${HEROKU_API_KEY:-}"
+          echo "::add-mask::$HEROKU_API_KEY"
+
+          app_json="$(
+            curl --fail --silent --show-error \
+              -H 'Accept: application/vnd.heroku+json; version=3' \
+              -H "Authorization: Bearer $HEROKU_API_KEY" \
+              "https://api.heroku.com/apps/$HEROKU_APP_NAME"
+          )"
           app_name="$(jq -r '.name // empty' <<<"$app_json")"
           app_url="$(jq -r '.web_url // empty' <<<"$app_json")"
           test "$app_name" = "$HEROKU_APP_NAME"
+          test -n "$app_url"
           if [ "$app_name" = "$HEROKU_FORBIDDEN_APP_NAME" ]; then
             echo "hung-phat is forbidden for this workflow." >&2
             exit 1
@@ -167,7 +156,6 @@ jobs:
 
           previous_active_release_version="$(heroku releases --json -a "$HEROKU_APP_NAME" | jq -r '.[0].version // empty')"
           test -n "$previous_active_release_version"
-
           config_names="$(jq -r 'keys[]' <<<"$config_json" | sort -u | paste -sd, -)"
 
           {
@@ -189,6 +177,9 @@ jobs:
           APP_URL: ${{ steps.preflight.outputs.app_url }}
         run: |
           set -euo pipefail
+          test -n "${HEROKU_API_KEY:-}"
+          echo "::add-mask::$HEROKU_API_KEY"
+
           action="$REQUESTED_ACTION"
           if [ "$GITHUB_EVENT_NAME" = "issue_comment" ]; then
             action="deploy"
@@ -207,7 +198,11 @@ jobs:
           }
 
           refresh_app_url() {
-            heroku apps:info -a "$HEROKU_APP_NAME" --json | jq -r '.web_url // empty'
+            curl --fail --silent --show-error \
+              -H 'Accept: application/vnd.heroku+json; version=3' \
+              -H "Authorization: Bearer $HEROKU_API_KEY" \
+              "https://api.heroku.com/apps/$HEROKU_APP_NAME" \
+              | jq -r '.web_url // empty'
           }
 
           smoke_health() {
@@ -309,7 +304,6 @@ jobs:
           if [ -z "${HEROKU_RELEASE_VERSION:-}" ]; then
             HEROKU_RELEASE_VERSION="$(refresh_release_version)"
           fi
-
           write_outputs
 
       - name: Summarize release evidence
@@ -336,22 +330,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           if [ "${{ steps.release.outcome }}" != "success" ]; then
             echo "Release step did not complete successfully." >&2
             exit 1
           fi
-
           if [ "${{ steps.release.outputs.deployment_failed }}" = "true" ]; then
             echo "The requested deployment failed health checks and was rolled back." >&2
             exit 1
           fi
-
           if [ "${{ steps.release.outputs.rollback_failed }}" = "true" ]; then
             echo "The requested rollback operation failed." >&2
             exit 1
           fi
-
           if [ "${{ steps.release.outputs.rollback_health_failed }}" = "true" ]; then
             echo "The active release failed health checks after rollback." >&2
             exit 1
