@@ -1,0 +1,237 @@
+name: One-shot repair MCP runtime DB credential (PR)
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  repair:
+    if: github.head_ref == 'agent/ops-repair-mcp-runtime-db-credential'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CORE_APP: hung-phat
+      MCP_APP: hung-phat-mcp
+      BASE_MAIN_SHA: 188165fe9c8de84291015a1fa4564c15180399ee
+    steps:
+      - name: Checkout exact operation head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          test "$(git rev-parse origin/main)" = "$BASE_MAIN_SHA"
+
+      - name: Install Heroku CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+          heroku version
+
+      - name: Replace MCP DATABASE_URL with managed runtime credential
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          stage=provider-audit
+          old_url=''
+          addon_name=''
+          role_name=''
+          old_was_attachment=false
+          cutover_started=false
+
+          status_file=/tmp/mcp-runtime-db-repair-status
+          printf 'failure:%s\n' "$stage" > "$status_file"
+
+          restore_old() {
+            set +e
+            if [ "$cutover_started" = true ]; then
+              heroku addons:detach DATABASE -a "$MCP_APP" --confirm "$MCP_APP" >/dev/null 2>&1 || true
+              if [ "$old_was_attachment" = true ]; then
+                heroku addons:attach "$addon_name" --as DATABASE -a "$MCP_APP" >/dev/null 2>&1 || true
+              elif [ -n "$old_url" ]; then
+                heroku config:set "DATABASE_URL=$old_url" -a "$MCP_APP" >/dev/null 2>&1 || true
+              fi
+            fi
+            heroku addons:detach MCP_RUNTIME_DB -a "$MCP_APP" --confirm "$MCP_APP" >/dev/null 2>&1 || true
+          }
+
+          on_error() {
+            rc=$?
+            printf 'failure:%s\n' "$stage" > "$status_file"
+            restore_old
+            exit "$rc"
+          }
+          trap on_error ERR
+
+          test -n "${HEROKU_API_KEY:-}"
+          echo "::add-mask::$HEROKU_API_KEY"
+
+          node --input-type=module <<'NODE'
+          import { writeFile } from 'node:fs/promises';
+          const token = process.env.HEROKU_API_KEY;
+          const headers = {
+            Accept: 'application/vnd.heroku+json; version=3',
+            Authorization: `Bearer ${token}`,
+          };
+          async function get(path) {
+            const response = await fetch(`https://api.heroku.com${path}`, { headers });
+            if (!response.ok) throw new Error(`heroku_api_${response.status}`);
+            return response.json();
+          }
+          const [coreConfig, mcpConfig, addons, attachments] = await Promise.all([
+            get(`/apps/${process.env.CORE_APP}/config-vars`),
+            get(`/apps/${process.env.MCP_APP}/config-vars`),
+            get(`/apps/${process.env.CORE_APP}/addons`),
+            get(`/apps/${process.env.MCP_APP}/addon-attachments`),
+          ]);
+          const ownerUrl = coreConfig.DATABASE_URL;
+          const oldUrl = mcpConfig.DATABASE_URL;
+          const role = mcpConfig.MCP_DB_ROLE;
+          if (!ownerUrl || !oldUrl || !role) throw new Error('missing_required_config');
+          if (!/^[A-Za-z0-9_-]{1,50}$/.test(role)) throw new Error('invalid_role_name');
+          const pg = addons.filter((addon) => addon?.addon_service?.name === 'heroku-postgresql');
+          if (pg.length !== 1) throw new Error('expected_one_postgres_addon');
+          const databaseAttachment = attachments.find((item) => item?.name === 'DATABASE');
+          if (databaseAttachment && databaseAttachment?.addon?.id !== pg[0].id) {
+            throw new Error('mcp_database_attachment_mismatch');
+          }
+          const a = new URL(ownerUrl);
+          const b = new URL(oldUrl);
+          const port = (url) => url.port || '5432';
+          if (a.hostname !== b.hostname || port(a) !== port(b) || a.pathname !== b.pathname) {
+            throw new Error('database_target_mismatch');
+          }
+          await writeFile('/tmp/role', role, { mode: 0o600 });
+          await writeFile('/tmp/addon', pg[0].name, { mode: 0o600 });
+          await writeFile('/tmp/old-url', oldUrl, { mode: 0o600 });
+          await writeFile('/tmp/old-attachment', databaseAttachment ? 'true' : 'false', { mode: 0o600 });
+NODE
+
+          role_name=$(cat /tmp/role)
+          addon_name=$(cat /tmp/addon)
+          old_url=$(cat /tmp/old-url)
+          old_was_attachment=$(cat /tmp/old-attachment)
+          echo "::add-mask::$old_url"
+
+          stage=credential-provision
+          printf 'failure:%s\n' "$stage" > "$status_file"
+          credentials=$(heroku pg:credentials DATABASE_URL -a "$CORE_APP" 2>/dev/null)
+          if ! printf '%s\n' "$credentials" | grep -Eq "^[[:space:]]*${role_name}[[:space:]]"; then
+            heroku pg:credentials:create DATABASE_URL --name "$role_name" -a "$CORE_APP"
+          fi
+
+          stage=temporary-attachment
+          printf 'failure:%s\n' "$stage" > "$status_file"
+          heroku addons:detach MCP_RUNTIME_DB -a "$MCP_APP" --confirm "$MCP_APP" >/dev/null 2>&1 || true
+          heroku addons:attach "$addon_name" --credential "$role_name" --as MCP_RUNTIME_DB -a "$MCP_APP"
+          runtime_url=$(heroku config:get MCP_RUNTIME_DB_URL -a "$MCP_APP" 2>/dev/null)
+          test -n "$runtime_url"
+          echo "::add-mask::$runtime_url"
+
+          OWNER_URL=$(heroku config:get DATABASE_URL -a "$CORE_APP" 2>/dev/null) \
+          RUNTIME_URL="$runtime_url" ROLE_NAME="$role_name" node --input-type=module <<'NODE'
+          const owner = new URL(process.env.OWNER_URL);
+          const runtime = new URL(process.env.RUNTIME_URL);
+          const port = (url) => url.port || '5432';
+          if (decodeURIComponent(runtime.username) !== process.env.ROLE_NAME) throw new Error('wrong_runtime_role');
+          if (decodeURIComponent(owner.username) === decodeURIComponent(runtime.username)) throw new Error('credentials_not_separated');
+          if (owner.hostname !== runtime.hostname || port(owner) !== port(runtime) || owner.pathname !== runtime.pathname) {
+            throw new Error('runtime_database_target_mismatch');
+          }
+NODE
+
+          stage=database-url-cutover
+          printf 'failure:%s\n' "$stage" > "$status_file"
+          cutover_started=true
+          if [ "$old_was_attachment" = true ]; then
+            heroku addons:detach DATABASE -a "$MCP_APP" --confirm "$MCP_APP"
+          else
+            heroku config:unset DATABASE_URL -a "$MCP_APP"
+          fi
+          heroku addons:attach "$addon_name" --credential "$role_name" --as DATABASE -a "$MCP_APP"
+
+          stage=final-verification
+          printf 'failure:%s\n' "$stage" > "$status_file"
+          final_url=$(heroku config:get DATABASE_URL -a "$MCP_APP" 2>/dev/null)
+          owner_url=$(heroku config:get DATABASE_URL -a "$CORE_APP" 2>/dev/null)
+          echo "::add-mask::$final_url"
+          echo "::add-mask::$owner_url"
+          FINAL_URL="$final_url" OWNER_URL="$owner_url" ROLE_NAME="$role_name" node --input-type=module <<'NODE'
+          const owner = new URL(process.env.OWNER_URL);
+          const runtime = new URL(process.env.FINAL_URL);
+          const port = (url) => url.port || '5432';
+          if (decodeURIComponent(runtime.username) !== process.env.ROLE_NAME) throw new Error('final_role_mismatch');
+          if (decodeURIComponent(owner.username) === decodeURIComponent(runtime.username)) throw new Error('final_credentials_not_separated');
+          if (owner.hostname !== runtime.hostname || port(owner) !== port(runtime) || owner.pathname !== runtime.pathname) {
+            throw new Error('final_database_target_mismatch');
+          }
+NODE
+
+          heroku addons:detach MCP_RUNTIME_DB -a "$MCP_APP" --confirm "$MCP_APP" >/dev/null 2>&1 || true
+          cutover_started=false
+          trap - ERR
+          printf 'success:%s\n' "$role_name" > "$status_file"
+
+      - name: Publish sanitized result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status=failure:workflow-interrupted
+          test ! -f /tmp/mcp-runtime-db-repair-status || status=$(cat /tmp/mcp-runtime-db-repair-status)
+          if [[ "$status" == success:* ]]; then
+            role=${status#success:}
+            body="## MCP runtime database credential repaired
+
+- Main: \`$BASE_MAIN_SHA\`
+- Runtime credential: \`$role\`
+- Shared database preserved: yes
+- Runtime and migrator credentials separated: yes
+- \`hung-phat-mcp DATABASE_URL\` now uses the managed runtime credential
+- Source, frontend and migrations changed: no
+
+Ready for one exact \`/deploy-heroku-mcp-production\` command."
+          else
+            body="## MCP runtime database credential repair failed
+
+- Main: \`$BASE_MAIN_SHA\`
+- Failed stage: \`${status#failure:}\`
+- Rollback was attempted where required
+- Deploy was not triggered"
+          fi
+          jq -n --arg body "$body" '{body:$body}' >/tmp/comment.json
+          curl --fail --silent --show-error -X POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            --data-binary @/tmp/comment.json \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/5/comments" >/dev/null
+
+      - name: Delete one-shot branch
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          curl --silent --show-error -X DELETE \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/refs/heads/agent/ops-repair-mcp-runtime-db-credential" >/dev/null
