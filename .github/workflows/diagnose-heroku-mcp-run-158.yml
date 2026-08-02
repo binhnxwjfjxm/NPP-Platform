@@ -1,4 +1,4 @@
-name: Inventory MCP migration source
+name: Audit MCP table and credential topology
 
 on:
   pull_request:
@@ -11,9 +11,13 @@ permissions:
   contents: read
 
 jobs:
-  inventory-migrations:
+  audit-topology:
     if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-run-158'
     runs-on: ubuntu-latest
+    env:
+      CORE_APP_NAME: hung-phat
+      MCP_APP_NAME: hung-phat-mcp
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
     steps:
       - name: Checkout exact main
         uses: actions/checkout@v4
@@ -21,29 +25,70 @@ jobs:
           ref: main
           fetch-depth: 1
 
-      - name: List MCP migration files and table definitions
+      - name: Install Heroku CLI
         shell: bash
         run: |
           set -euo pipefail
-          echo "MAIN_SHA=$(git rev-parse HEAD)"
-          echo "FOUNDATION_MIGRATIONS_BEGIN"
-          find mcp/apps/backend/foundation/migrations -type f -maxdepth 4 -print | sort
-          echo "FOUNDATION_MIGRATIONS_END"
+          test -n "${HEROKU_API_KEY:-}"
+          echo "::add-mask::$HEROKU_API_KEY"
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
 
-          echo "MCP_ROUTE_TABLE_DEFINITIONS_BEGIN"
-          grep -RniE --include='*.sql' --include='*.js' --include='*.mjs' \
-            'create[[:space:]]+table([^;]|$)*(mcp_routes|mcp_route_customers|mcp_route_sessions)|mcp_routes[[:space:]]*\(' \
-            mcp database 2>/dev/null || true
-          echo "MCP_ROUTE_TABLE_DEFINITIONS_END"
+      - name: Inventory source read requirements
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "BACKEND_READ_CALLS_BEGIN"
+          grep -RniE --include='*.ts' --include='*.tsx' --include='*.js' --include='*.mjs' \
+            'backendReadRows|backendReadCount|\.from\("(accounts|market_reports|mcp_|orders|order_items|products|product_variants|route_customers|test_)' \
+            mcp/src mcp/apps/backend 2>/dev/null | head -n 700 || true
+          echo "BACKEND_READ_CALLS_END"
 
-          echo "MCP_DOMAIN_SQL_FILES_BEGIN"
-          grep -RliE --include='*.sql' \
-            'mcp_routes|mcp_route_customers|mcp_route_sessions' \
-            mcp database 2>/dev/null | sort
-          echo "MCP_DOMAIN_SQL_FILES_END"
+          echo "READ_TABLE_ALLOWLIST_BEGIN"
+          sed -n '/const ALLOWED_READ_TABLES/,/]);/p' mcp/apps/backend/foundation/read-api.js
+          echo "READ_TABLE_ALLOWLIST_END"
 
-          echo "MCP_MIGRATION_RUNNERS_BEGIN"
-          grep -RniE --include='*.js' --include='*.mjs' --include='package.json' \
-            'runMcpMigrations|migration:run|migrate:mcp|provider-cutover' \
-            mcp 2>/dev/null | head -n 300 || true
-          echo "MCP_MIGRATION_RUNNERS_END"
+      - name: Audit existing target tables and migration IDs
+        shell: bash
+        run: |
+          set -euo pipefail
+          database_url="$(heroku config:get DATABASE_URL -a "$MCP_APP_NAME")"
+          test -n "$database_url"
+          echo "::add-mask::$database_url"
+
+          psql "$database_url" -X -A -t -v ON_ERROR_STOP=1 <<'SQL'
+          with allowed(name) as (
+            values
+              ('accounts'),('market_reports'),('mcp_followups'),('mcp_report_setting_groups'),
+              ('mcp_report_settings'),('mcp_route_customers'),('mcp_route_sessions'),('mcp_routes'),
+              ('mcp_session_customers'),('mcp_session_reports'),('mcp_visits'),('order_items'),
+              ('orders'),('product_variants'),('products'),('route_customers'),
+              ('test_customer_results'),('test_customers'),('test_file_products'),('test_files')
+          )
+          select 'TABLE=' || a.name || '|SCHEMAS=' || coalesce(string_agg(t.table_schema, ',' order by t.table_schema), 'missing')
+          from allowed a
+          left join information_schema.tables t
+            on t.table_name = a.name and t.table_schema not in ('pg_catalog','information_schema')
+          group by a.name
+          order by a.name;
+
+          select 'MIGRATION=' || id
+          from shared.schema_migrations
+          where split_part(id, '_', 1) = 'mcp'
+          order by id;
+
+          select 'DATABASE_CREATE=' || has_database_privilege(current_user, current_database(), 'CREATE')::text;
+          select 'CURRENT_USER=' || current_user;
+          SQL
+
+      - name: Audit Heroku credential capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PG_CREDENTIALS_HELP_BEGIN"
+          heroku help pg:credentials 2>&1 | head -n 220 || true
+          echo "PG_CREDENTIALS_HELP_END"
+
+          echo "PG_CREDENTIALS_LIST_BEGIN"
+          heroku pg:credentials DATABASE_URL -a "$CORE_APP_NAME" 2>&1 \
+            | sed -E 's#postgres(ql)?://[^[:space:]]+#[redacted-database-url]#g; s/[A-Za-z0-9_=-]{48,}/[redacted]/g' || true
+          echo "PG_CREDENTIALS_LIST_END"
