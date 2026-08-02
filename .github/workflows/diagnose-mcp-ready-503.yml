@@ -1,4 +1,4 @@
-name: Repair MCP PostgreSQL production readiness
+name: Monitor MCP Vercel production rollout
 
 on:
   pull_request:
@@ -9,113 +9,79 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  repair:
+  monitor:
     if: github.event.pull_request.head.ref == 'agent/issue-158-ready-503-diagnose'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    env:
-      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-      CORE_APP_NAME: hung-phat
-      MCP_APP_NAME: hung-phat-mcp
-      MIGRATION_SOURCE: agent/issue-158-mcp-domain-schema
+    timeout-minutes: 30
     steps:
-      - name: Checkout reviewed migration source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.MIGRATION_SOURCE }}
-          fetch-depth: 1
-
-      - name: Install clients and backend dependencies
+      - name: Find exact MCP Vercel issue-comment run
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOT_BEFORE: 2026-08-02T11:31:00Z
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${HEROKU_API_KEY:-}"
-          echo "::add-mask::$HEROKU_API_KEY"
-          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client
-          npm ci --prefix mcp/apps/backend
-
-      - name: Verify repository migrations remain complete
-        shell: bash
-        run: |
-          set -euo pipefail
-          owner_url_raw="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
-          test -n "$owner_url_raw"
-          echo "::add-mask::$owner_url_raw"
-          owner_node_url="$(node --input-type=module - "$owner_url_raw" <<'NODE'
-          const [, , raw] = process.argv;
-          const url = new URL(raw);
-          url.searchParams.set('uselibpqcompat', 'true');
-          url.searchParams.set('sslmode', 'require');
-          console.log(url.toString());
-          NODE
-          )"
-          echo "::add-mask::$owner_node_url"
-          export MCP_MIGRATION_DATABASE_URL="$owner_node_url"
-          npm --prefix mcp/apps/backend run migration:status
-          npm --prefix mcp/apps/backend run migration:migrate
-          npm --prefix mcp/apps/backend run migration:verify
-
-      - name: Grant MCP access to Heroku-managed credential and attach it
-        shell: bash
-        run: |
-          set -euo pipefail
-          owner_url_raw="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
-          test -n "$owner_url_raw"
-          echo "::add-mask::$owner_url_raw"
-          owner_psql_url="$(node --input-type=module - "$owner_url_raw" <<'NODE'
-          const [, , raw] = process.argv;
-          const url = new URL(raw);
-          url.searchParams.set('sslmode', 'require');
-          console.log(url.toString());
-          NODE
-          )"
-          owner_node_url="$(node --input-type=module - "$owner_url_raw" <<'NODE'
-          const [, , raw] = process.argv;
-          const url = new URL(raw);
-          url.searchParams.set('uselibpqcompat', 'true');
-          url.searchParams.set('sslmode', 'require');
-          console.log(url.toString());
-          NODE
-          )"
-          echo "::add-mask::$owner_psql_url"
-          echo "::add-mask::$owner_node_url"
-
-          managed_role="$(psql "$owner_psql_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command 'select current_user')"
-          test -n "$managed_role"
-          echo "::add-mask::$managed_role"
-          psql "$owner_psql_url" --no-psqlrc --set ON_ERROR_STOP=1 --set managed_role="$managed_role" <<'SQL'
-          select shared.grant_mcp_runtime_access(:'managed_role'::name);
-          SQL
-
-          heroku config:set -a "$MCP_APP_NAME" \
-            DATABASE_URL="$owner_node_url" \
-            MCP_DB_ROLE="$managed_role" \
-            MCP_DB_SCHEMA=mcp \
-            MCP_LEGACY_RUNTIME_ENABLED=false \
-            PERSISTENCE_PROVIDER=postgresql \
-            >/dev/null
-
-          psql "$owner_psql_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command "select count(*) from mcp.mcp_routes" >/dev/null
-          echo "MCP_MANAGED_CREDENTIAL_READY=true"
-
-      - name: Verify production health and read boundary
-        shell: bash
-        run: |
-          set -euo pipefail
-          app_url="$(curl --fail --silent --show-error -H 'Accept: application/vnd.heroku+json; version=3' -H "Authorization: Bearer $HEROKU_API_KEY" "https://api.heroku.com/apps/$MCP_APP_NAME" | jq -r '.web_url' | sed 's:/*$::')"
-          test -n "$app_url"
-          for path in /health/live /health/ready; do
-            status=""
-            for attempt in $(seq 1 80); do
-              status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 --output /tmp/health.json --write-out '%{http_code}' "$app_url$path" || true)"
-              [ "$status" = "200" ] && break
-              sleep 3
-            done
-            echo "HEALTH path=$path status=$status"
-            test "$status" = "200"
+          for attempt in $(seq 1 120); do
+            runs_json="$(gh api --method GET -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/actions/runs" -f event=issue_comment -f per_page=50)"
+            if (( attempt == 1 || attempt % 12 == 0 )); then
+              jq -r --arg after "$NOT_BEFORE" '.workflow_runs | map(select(.created_at >= $after)) | sort_by(.created_at) | reverse | .[] | "RUN id=\(.id) path=\(.path // "") status=\(.status) conclusion=\(.conclusion // "") created=\(.created_at) actor=\(.actor.login // "") head=\(.head_sha // "")"' <<<"$runs_json"
+            fi
+            run_id="$(jq -r --arg after "$NOT_BEFORE" '
+              .workflow_runs
+              | map(select(
+                  .created_at >= $after
+                  and (.actor.login // "") == "khuongbinhinfo-a11y"
+                  and ((.path // "") | ascii_downcase | contains("vercel"))
+                  and ((.path // "") | ascii_downcase | contains("mcp"))
+                ))
+              | sort_by(.created_at)
+              | reverse
+              | .[0].id // empty
+            ' <<<"$runs_json")"
+            if [[ -n "$run_id" ]]; then
+              echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+              break
+            fi
+            sleep 5
           done
-          echo "MCP_PRODUCTION_READY=true"
+          test -n "${run_id:-}"
+
+      - name: Wait for MCP Vercel rollout completion
+        id: completed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.target.outputs.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          conclusion=""
+          for attempt in $(seq 1 240); do
+            run_json="$(gh api --method GET -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}")"
+            status="$(jq -r '.status' <<<"$run_json")"
+            conclusion="$(jq -r '.conclusion // ""' <<<"$run_json")"
+            echo "MCP_VERCEL_RUN_ID=$RUN_ID STATUS=$status CONCLUSION=$conclusion"
+            if [[ "$status" == "completed" ]]; then break; fi
+            sleep 5
+          done
+          echo "conclusion=$conclusion" >> "$GITHUB_OUTPUT"
+          test -n "$conclusion"
+
+      - name: Print MCP Vercel rollout steps
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.target.outputs.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --method GET -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" \
+            --jq '.jobs[] | "JOB id=\(.id) name=\(.name) status=\(.status) conclusion=\(.conclusion // "")\n" + ([.steps[] | "  STEP \(.number) \(.name): \(.status)/\(.conclusion // "")"] | join("\n"))'
+
+      - name: Enforce successful MCP Vercel rollout
+        env:
+          CONCLUSION: ${{ steps.completed.outputs.conclusion }}
+        shell: bash
+        run: test "$CONCLUSION" = "success"
