@@ -40,7 +40,9 @@ test("manual Heroku MCP workflow performs PostgreSQL preflight and isolated roll
   assert.match(manualWorkflow, /\/deploy-heroku-mcp-production/);
   assert.match(manualWorkflow, /hung-phat-mcp/);
   assert.match(manualWorkflow, /hung-phat/);
-  assert.match(manualWorkflow, /heroku apps:info -a "\$HEROKU_APP_NAME" --json/);
+  assert.match(manualWorkflow, /https:\/\/api\.heroku\.com\/apps\/\$HEROKU_APP_NAME/);
+  assert.match(manualWorkflow, /Authorization: Bearer \$HEROKU_API_KEY/);
+  assert.doesNotMatch(manualWorkflow, /heroku apps:info -a "\$HEROKU_APP_NAME" --json/);
   assert.match(manualWorkflow, /heroku stack -a "\$HEROKU_APP_NAME"/);
   assert.match(manualWorkflow, /heroku config -a "\$HEROKU_APP_NAME" --json/);
   assert.match(manualWorkflow, /HEROKU_REQUIRED_CONFIG_NAMES/);
