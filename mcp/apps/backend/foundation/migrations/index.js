@@ -15,6 +15,29 @@ export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_002_domain_read_models", sql: MCP_DOMAIN_READ_MODELS_SQL })
 ]);
 
+const MCP_READ_MODELS = Object.freeze([
+  "accounts",
+  "market_reports",
+  "mcp_followups",
+  "mcp_report_setting_groups",
+  "mcp_report_settings",
+  "mcp_route_customers",
+  "mcp_route_sessions",
+  "mcp_routes",
+  "mcp_session_customers",
+  "mcp_session_reports",
+  "mcp_visits",
+  "order_items",
+  "orders",
+  "product_variants",
+  "products",
+  "route_customers",
+  "test_customer_results",
+  "test_customers",
+  "test_file_products",
+  "test_files"
+]);
+
 function migrationError(code) {
   const error = new Error(code);
   error.code = code;
@@ -143,18 +166,14 @@ async function triggerExists(adapter, table, trigger) {
 
 export async function migrationVerifyWithAdapter(adapter, migrations = MCP_MIGRATIONS) {
   const status = await migrationStatusWithAdapter(adapter, migrations);
+  const readModelChecks = Object.fromEntries(
+    await Promise.all(MCP_READ_MODELS.map(async (name) => [`readModel:${name}`, await tableExists(adapter, name)]))
+  );
   const checks = Object.freeze({
     schema: await exists(adapter, "SELECT to_regnamespace('mcp') IS NOT NULL AS exists"),
     idempotencyTable: await tableExists(adapter, "idempotency_records"),
     auditTable: await tableExists(adapter, "audit_events"),
     outboxTable: await tableExists(adapter, "outbox_events"),
-    routeTable: await tableExists(adapter, "mcp_routes"),
-    routeCustomerTable: await tableExists(adapter, "mcp_route_customers"),
-    routeSessionTable: await tableExists(adapter, "mcp_route_sessions"),
-    sessionCustomerTable: await tableExists(adapter, "mcp_session_customers"),
-    accountView: await tableExists(adapter, "accounts"),
-    productView: await tableExists(adapter, "products"),
-    orderView: await tableExists(adapter, "orders"),
     runtimeGrantFunction: await functionExists(adapter, "shared.grant_mcp_runtime_access(name)"),
     idempotencyScopeConstraint: await constraintExists(
       adapter,
@@ -177,7 +196,9 @@ export async function migrationVerifyWithAdapter(adapter, migrations = MCP_MIGRA
       "mcp_audit_events_append_only"
     ),
     outboxPendingIndex: await indexExists(adapter, "mcp_outbox_events_pending_available_idx"),
-    routeCustomerOrderIndex: await indexExists(adapter, "mcp_route_customers_route_sort_idx")
+    routeCustomerOrderIndex: await indexExists(adapter, "mcp_route_customers_route_sort_idx"),
+    orderItemsIndex: await indexExists(adapter, "order_items_order_idx"),
+    ...readModelChecks
   });
   const issues = [];
   if (status.pending.length) issues.push(`pending migrations: ${status.pending.join(", ")}`);
