@@ -146,7 +146,9 @@ jobs:
           fi
 
       - name: Upload Phase 6C.0F evidence
-        if: always()
+        if: >-
+          always() &&
+          (github.event_name == 'push' || github.event.pull_request.head.ref == 'agent/phase-6c0f-mcp-provider-cutover-prep')
         uses: actions/upload-artifact@v4
         with:
           name: phase-6c0f-provider-cutover-${{ github.run_id }}
