@@ -87,12 +87,39 @@ jobs:
           SELECT shared.grant_mcp_runtime_access('mcp_runtime');
           SQL
 
+          if psql "$OWNER_URL" -X -v ON_ERROR_STOP=1 \
+              -c "select shared.grant_mcp_runtime_access('postgres')" \
+              > /tmp/privileged-role.log 2>&1; then
+            echo 'privileged role was accepted by grant helper' >&2
+            exit 1
+          fi
+          grep -Fq 'mcp_runtime_role_is_privileged:postgres' /tmp/privileged-role.log
+
           PGPASSWORD=mcp_runtime_rehearsal psql \
             --host=127.0.0.1 --port=5432 --username=mcp_runtime --dbname=rehearsal \
             -XAt -v ON_ERROR_STOP=1 <<'SQL' | tee /tmp/runtime-reads.log
           select 'CURRENT_USER=' || current_user;
           select 'SEARCH_PATH=' || current_setting('search_path');
           select 'SCHEMA_USAGE=' || has_schema_privilege(current_user, 'mcp', 'USAGE')::text;
+          select 'HELPER_EXECUTE=' || has_function_privilege(current_user, 'shared.grant_mcp_runtime_access(name)', 'EXECUTE')::text;
+          select 'IDEMPOTENCY_SELECT=' || has_table_privilege(current_user, 'mcp.idempotency_records', 'SELECT')::text;
+          select 'IDEMPOTENCY_INSERT=' || has_table_privilege(current_user, 'mcp.idempotency_records', 'INSERT')::text;
+          select 'IDEMPOTENCY_UPDATE=' || has_table_privilege(current_user, 'mcp.idempotency_records', 'UPDATE')::text;
+          select 'IDEMPOTENCY_DELETE=' || has_table_privilege(current_user, 'mcp.idempotency_records', 'DELETE')::text;
+          select 'AUDIT_INSERT=' || has_table_privilege(current_user, 'mcp.audit_events', 'INSERT')::text;
+          select 'AUDIT_SELECT=' || has_table_privilege(current_user, 'mcp.audit_events', 'SELECT')::text;
+          select 'AUDIT_UPDATE=' || has_table_privilege(current_user, 'mcp.audit_events', 'UPDATE')::text;
+          select 'AUDIT_DELETE=' || has_table_privilege(current_user, 'mcp.audit_events', 'DELETE')::text;
+          select 'OUTBOX_INSERT=' || has_table_privilege(current_user, 'mcp.outbox_events', 'INSERT')::text;
+          select 'OUTBOX_SELECT=' || has_table_privilege(current_user, 'mcp.outbox_events', 'SELECT')::text;
+          select 'OUTBOX_UPDATE=' || has_table_privilege(current_user, 'mcp.outbox_events', 'UPDATE')::text;
+          select 'OUTBOX_DELETE=' || has_table_privilege(current_user, 'mcp.outbox_events', 'DELETE')::text;
+          select 'ACCOUNTS_SELECT=' || has_table_privilege(current_user, 'mcp.accounts', 'SELECT')::text;
+          select 'ACCOUNTS_INSERT=' || has_table_privilege(current_user, 'mcp.accounts', 'INSERT')::text;
+          select 'ROUTES_SELECT=' || has_table_privilege(current_user, 'mcp.mcp_routes', 'SELECT')::text;
+          select 'ROUTES_INSERT=' || has_table_privilege(current_user, 'mcp.mcp_routes', 'INSERT')::text;
+          select 'ROUTES_UPDATE=' || has_table_privilege(current_user, 'mcp.mcp_routes', 'UPDATE')::text;
+          select 'ROUTES_DELETE=' || has_table_privilege(current_user, 'mcp.mcp_routes', 'DELETE')::text;
           select 'READ=' || name || ':' || count_value from (
             select 'accounts' name,(select count(*) from mcp.accounts)::bigint count_value union all
             select 'market_reports',(select count(*) from mcp.market_reports)::bigint union all
@@ -117,9 +144,18 @@ jobs:
           ) reads order by name;
           SQL
           test "$(grep -c '^READ=' /tmp/runtime-reads.log)" -eq 20
-          grep -Fxq 'CURRENT_USER=mcp_runtime' /tmp/runtime-reads.log
-          grep -Fxq 'SEARCH_PATH=mcp, public' /tmp/runtime-reads.log
-          grep -Fxq 'SCHEMA_USAGE=true' /tmp/runtime-reads.log
+          for expected in \
+            CURRENT_USER=mcp_runtime \
+            'SEARCH_PATH=mcp, public' \
+            SCHEMA_USAGE=true \
+            HELPER_EXECUTE=false \
+            IDEMPOTENCY_SELECT=true IDEMPOTENCY_INSERT=true IDEMPOTENCY_UPDATE=true IDEMPOTENCY_DELETE=false \
+            AUDIT_INSERT=true AUDIT_SELECT=false AUDIT_UPDATE=false AUDIT_DELETE=false \
+            OUTBOX_INSERT=true OUTBOX_SELECT=false OUTBOX_UPDATE=false OUTBOX_DELETE=false \
+            ACCOUNTS_SELECT=true ACCOUNTS_INSERT=false \
+            ROUTES_SELECT=true ROUTES_INSERT=true ROUTES_UPDATE=true ROUTES_DELETE=true; do
+            grep -Fxq "$expected" /tmp/runtime-reads.log
+          done
 
       - name: Reconcile Core counts
         shell: bash
