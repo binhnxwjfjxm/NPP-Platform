@@ -99,6 +99,15 @@ jobs:
       - name: Install MCP backend dependencies
         run: npm ci --prefix apps/backend
 
+      - name: Seed shared Core read-model sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql "$TEST_DATABASE_URL" \
+            --no-psqlrc \
+            --set ON_ERROR_STOP=1 \
+            --file apps/backend/foundation/migrations/fixtures/core-read-model-source.sql
+
       - name: Verify full MCP backend
         run: npm --prefix apps/backend run verify 2>&1 | tee phase-6c0d-backend.log
 
