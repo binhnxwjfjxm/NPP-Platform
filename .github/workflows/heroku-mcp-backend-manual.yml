@@ -166,7 +166,7 @@ jobs:
                 --max-time 10 \
                 --output /dev/null \
                 --write-out '%{http_code}' \
-                "$app_url$path" || true
+                "${app_url%/}$path" || true
             )"
             if [ "$status" != "200" ]; then
               previous_release_healthy="false"
