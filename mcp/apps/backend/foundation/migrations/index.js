@@ -5,9 +5,14 @@ const MCP_WRITE_FOUNDATION_SQL = readFileSync(
   new URL("./sql/001_mcp_write_foundation.sql", import.meta.url),
   "utf8"
 );
+const MCP_DOMAIN_READ_MODELS_SQL = readFileSync(
+  new URL("./sql/002_mcp_domain_read_models.sql", import.meta.url),
+  "utf8"
+);
 
 export const MCP_MIGRATIONS = Object.freeze([
-  Object.freeze({ id: "mcp_001_write_foundation", sql: MCP_WRITE_FOUNDATION_SQL })
+  Object.freeze({ id: "mcp_001_write_foundation", sql: MCP_WRITE_FOUNDATION_SQL }),
+  Object.freeze({ id: "mcp_002_domain_read_models", sql: MCP_DOMAIN_READ_MODELS_SQL })
 ]);
 
 function migrationError(code) {
@@ -96,6 +101,10 @@ async function tableExists(adapter, table) {
   return exists(adapter, "SELECT to_regclass($1) IS NOT NULL AS exists", [`mcp.${table}`]);
 }
 
+async function functionExists(adapter, signature) {
+  return exists(adapter, "SELECT to_regprocedure($1) IS NOT NULL AS exists", [signature]);
+}
+
 async function constraintExists(adapter, table, constraint) {
   return exists(
     adapter,
@@ -139,6 +148,14 @@ export async function migrationVerifyWithAdapter(adapter, migrations = MCP_MIGRA
     idempotencyTable: await tableExists(adapter, "idempotency_records"),
     auditTable: await tableExists(adapter, "audit_events"),
     outboxTable: await tableExists(adapter, "outbox_events"),
+    routeTable: await tableExists(adapter, "mcp_routes"),
+    routeCustomerTable: await tableExists(adapter, "mcp_route_customers"),
+    routeSessionTable: await tableExists(adapter, "mcp_route_sessions"),
+    sessionCustomerTable: await tableExists(adapter, "mcp_session_customers"),
+    accountView: await tableExists(adapter, "accounts"),
+    productView: await tableExists(adapter, "products"),
+    orderView: await tableExists(adapter, "orders"),
+    runtimeGrantFunction: await functionExists(adapter, "shared.grant_mcp_runtime_access(name)"),
     idempotencyScopeConstraint: await constraintExists(
       adapter,
       "idempotency_records",
@@ -159,7 +176,8 @@ export async function migrationVerifyWithAdapter(adapter, migrations = MCP_MIGRA
       "audit_events",
       "mcp_audit_events_append_only"
     ),
-    outboxPendingIndex: await indexExists(adapter, "mcp_outbox_events_pending_available_idx")
+    outboxPendingIndex: await indexExists(adapter, "mcp_outbox_events_pending_available_idx"),
+    routeCustomerOrderIndex: await indexExists(adapter, "mcp_route_customers_route_sort_idx")
   });
   const issues = [];
   if (status.pending.length) issues.push(`pending migrations: ${status.pending.join(", ")}`);
