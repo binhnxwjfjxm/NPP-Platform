@@ -60,9 +60,21 @@ test("PostgreSQL write foundation migrates cleanly and preserves atomic command 
 
   const first = await runMcpMigrations(admin);
   const second = await runMcpMigrations(admin);
-  assert.deepEqual(first.applied, ["mcp_001_write_foundation"]);
+  assert.deepEqual(first.applied, ["mcp_001_write_foundation", "mcp_002_legacy_read_store"]);
   assert.deepEqual(second.applied, []);
   assert.equal((await migrationVerifyWithAdapter(admin)).verified, true);
+
+  await admin.query(
+    `INSERT INTO mcp.legacy_read_rows (
+       installation_id, table_name, row_key, row_data, source_system
+     ) VALUES ($1, $2, $3, $4::jsonb, $5)`,
+    ["installation-test", "mcp_routes", "route-a", JSON.stringify({ id: "route-a", route_name: "Route A" }), "integration-test"]
+  );
+  const storedRoute = await admin.query(
+    "SELECT row_data FROM mcp.legacy_read_rows WHERE installation_id = $1 AND table_name = $2 AND row_key = $3",
+    ["installation-test", "mcp_routes", "route-a"]
+  );
+  assert.deepEqual(storedRoute.rows[0].row_data, { id: "route-a", route_name: "Route A" });
 
   persistence = createPostgresqlPersistence(persistenceConfig(), { PoolImpl: Pool });
   assert.equal((await persistence.assertReady()).ready, true);
