@@ -76,6 +76,19 @@ function mapRequest(row) {
   });
 }
 
+export async function lockCustomerOnboardingSourceDemand(client, {
+  installationId,
+  sourceSystem,
+  sourceOutletId,
+  sourceDemandReference,
+}) {
+  const lockKey = [installationId, sourceSystem, sourceOutletId, sourceDemandReference].join('\u001f');
+  await client.query(
+    'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+    [lockKey],
+  );
+}
+
 export async function insertCustomerOnboardingRequest(client, input) {
   const id = randomUUID();
   const result = await client.query(
