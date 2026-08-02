@@ -46,7 +46,7 @@ BEGIN
     SET visited_customers = (
           SELECT COUNT(*)::integer
           FROM mcp.mcp_session_customers customer
-          WHERE customer.installation_id = session.installation.id
+          WHERE customer.installation_id = session.installation_id
             AND customer.session_id = session.id
             AND customer.visit_status = 'visited'
         ),
