@@ -53,6 +53,9 @@ function loadPersistenceConfig(env, nodeEnv) {
 
 export function loadFoundationConfig(env = process.env) {
   const nodeEnv = text(env.NODE_ENV) || "development";
+  if (nodeEnv === "production" && text(env.MCP_MIGRATION_DATABASE_URL)) {
+    fail("migration_credential_forbidden_in_runtime", "MCP_MIGRATION_DATABASE_URL must not be stored in the production runtime environment");
+  }
   const publicHost = text(env.HOST) || "127.0.0.1";
   const publicPort = port(env.PORT, 3001, "PORT");
   const internalHost = "127.0.0.1";
