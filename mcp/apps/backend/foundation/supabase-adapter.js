@@ -65,6 +65,10 @@ export async function supabaseRpc(config, name, args, options = {}) {
     if (POSTGRESQL_MEDIA_UPLOAD_RPC_NAMES.has(name)) {
       return postgresqlMediaUploadRpc(config, name, args, options);
     }
+    const { POSTGRESQL_ARCHIVE_RPC_NAMES, postgresqlArchiveRpc } = await import("./postgresql-archive-adapter.js");
+    if (POSTGRESQL_ARCHIVE_RPC_NAMES.has(name)) {
+      return postgresqlArchiveRpc(config, name, args, options);
+    }
     const { POSTGRESQL_SPECIAL_RPC_NAMES, postgresqlSpecialRpc } = await import("./postgresql-media-adapter.js");
     if (POSTGRESQL_SPECIAL_RPC_NAMES.has(name)) {
       return postgresqlSpecialRpc(config, name, args, options);
