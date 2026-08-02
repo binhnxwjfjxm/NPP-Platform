@@ -3,8 +3,8 @@ CREATE SCHEMA IF NOT EXISTS mcp;
 REVOKE ALL ON SCHEMA mcp FROM PUBLIC;
 
 CREATE TABLE IF NOT EXISTS mcp.mcp_routes (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  installation_id uuid,
+  id text PRIMARY KEY DEFAULT ('route_' || replace(gen_random_uuid()::text, '-', '')),
+  installation_id text,
   distributor_id text,
   route_code text,
   route_name text NOT NULL,
@@ -20,10 +20,10 @@ CREATE TABLE IF NOT EXISTS mcp.mcp_routes (
 );
 
 CREATE TABLE IF NOT EXISTS mcp.mcp_route_customers (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  installation_id uuid,
-  route_id uuid NOT NULL REFERENCES mcp.mcp_routes(id) ON DELETE CASCADE,
-  customer_id uuid,
+  id text PRIMARY KEY DEFAULT ('route_customer_' || replace(gen_random_uuid()::text, '-', '')),
+  installation_id text,
+  route_id text NOT NULL REFERENCES mcp.mcp_routes(id) ON DELETE CASCADE,
+  customer_id text,
   customer_name text NOT NULL,
   phone text,
   area text,
@@ -44,11 +44,11 @@ CREATE TABLE IF NOT EXISTS mcp.mcp_route_customers (
 );
 
 CREATE TABLE IF NOT EXISTS mcp.mcp_route_sessions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  installation_id uuid,
-  route_id uuid NOT NULL REFERENCES mcp.mcp_routes(id) ON DELETE RESTRICT,
+  id text PRIMARY KEY DEFAULT ('session_' || replace(gen_random_uuid()::text, '-', '')),
+  installation_id text,
+  route_id text NOT NULL REFERENCES mcp.mcp_routes(id) ON DELETE RESTRICT,
   route_name text NOT NULL,
-  session_date date NOT NULL,
+  session_date date NOT NULL DEFAULT current_date,
   sales text,
   area text,
   status text NOT NULL DEFAULT 'active',
@@ -67,22 +67,25 @@ CREATE TABLE IF NOT EXISTS mcp.mcp_route_sessions (
 );
 
 CREATE TABLE IF NOT EXISTS mcp.mcp_session_customers (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  installation_id uuid,
-  session_id uuid NOT NULL REFERENCES mcp.mcp_route_sessions(id) ON DELETE CASCADE,
-  route_id uuid NOT NULL REFERENCES mcp.mcp_routes(id) ON DELETE RESTRICT,
-  route_customer_id uuid REFERENCES mcp.mcp_route_customers(id) ON DELETE SET NULL,
-  customer_id uuid,
+  id text PRIMARY KEY DEFAULT ('session_customer_' || replace(gen_random_uuid()::text, '-', '')),
+  installation_id text,
+  session_id text NOT NULL REFERENCES mcp.mcp_route_sessions(id) ON DELETE CASCADE,
+  route_id text NOT NULL REFERENCES mcp.mcp_routes(id) ON DELETE RESTRICT,
+  route_customer_id text REFERENCES mcp.mcp_route_customers(id) ON DELETE SET NULL,
+  customer_id text,
   customer_name text NOT NULL,
+  account_name text,
   phone text,
   area text,
   address text,
   sort_order integer NOT NULL DEFAULT 0,
+  source text NOT NULL DEFAULT 'planned',
+  status text NOT NULL DEFAULT 'pending',
   visit_status text NOT NULL DEFAULT 'pending',
   status_reason text,
-  order_id uuid,
-  test_id uuid,
-  report_id uuid,
+  order_id text,
+  test_id text,
+  report_id text,
   followup_count integer NOT NULL DEFAULT 0,
   checked_in boolean NOT NULL DEFAULT false,
   checkin_at timestamptz,
@@ -97,13 +100,13 @@ CREATE TABLE IF NOT EXISTS mcp.mcp_session_customers (
 );
 
 CREATE TABLE IF NOT EXISTS mcp.mcp_visits (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  installation_id uuid,
-  session_id uuid REFERENCES mcp.mcp_route_sessions(id) ON DELETE SET NULL,
-  session_customer_id uuid REFERENCES mcp.mcp_session_customers(id) ON DELETE SET NULL,
-  route_id uuid REFERENCES mcp.mcp_routes(id) ON DELETE SET NULL,
-  route_customer_id uuid REFERENCES mcp.mcp_route_customers(id) ON DELETE SET NULL,
-  customer_id uuid,
+  id text PRIMARY KEY DEFAULT ('visit_' || replace(gen_random_uuid()::text, '-', '')),
+  installation_id text,
+  session_id text REFERENCES mcp.mcp_route_sessions(id) ON DELETE SET NULL,
+  session_customer_id text REFERENCES mcp.mcp_session_customers(id) ON DELETE SET NULL,
+  route_id text REFERENCES mcp.mcp_routes(id) ON DELETE SET NULL,
+  route_customer_id text REFERENCES mcp.mcp_route_customers(id) ON DELETE SET NULL,
+  customer_id text,
   customer_name text,
   visit_date date,
   status text NOT NULL DEFAULT 'pending',
@@ -120,14 +123,14 @@ CREATE TABLE IF NOT EXISTS mcp.mcp_visits (
 );
 
 CREATE TABLE IF NOT EXISTS mcp.mcp_followups (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  installation_id uuid,
-  session_id uuid REFERENCES mcp.mcp_route_sessions(id) ON DELETE SET NULL,
-  session_customer_id uuid REFERENCES mcp.mcp_session_customers(id) ON DELETE SET NULL,
-  visit_id uuid REFERENCES mcp.mcp_visits(id) ON DELETE SET NULL,
-  route_id uuid REFERENCES mcp.mcp_routes(id) ON DELETE SET NULL,
-  route_customer_id uuid REFERENCES mcp.mcp_route_customers(id) ON DELETE SET NULL,
-  customer_id uuid,
+  id text PRIMARY KEY DEFAULT ('followup_' || replace(gen_random_uuid()::text, '-', '')),
+  installation_id text,
+  session_id text REFERENCES mcp.mcp_route_sessions(id) ON DELETE SET NULL,
+  session_customer_id text REFERENCES mcp.mcp_session_customers(id) ON DELETE SET NULL,
+  visit_id text REFERENCES mcp.mcp_visits(id) ON DELETE SET NULL,
+  route_id text REFERENCES mcp.mcp_routes(id) ON DELETE SET NULL,
+  route_customer_id text REFERENCES mcp.mcp_route_customers(id) ON DELETE SET NULL,
+  customer_id text,
   customer_name text,
   followup_type text,
   title text,
@@ -142,10 +145,10 @@ CREATE TABLE IF NOT EXISTS mcp.mcp_followups (
 );
 
 CREATE TABLE IF NOT EXISTS mcp.mcp_session_reports (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  installation_id uuid,
-  session_id uuid NOT NULL REFERENCES mcp.mcp_route_sessions(id) ON DELETE CASCADE,
-  route_id uuid REFERENCES mcp.mcp_routes(id) ON DELETE SET NULL,
+  id text PRIMARY KEY DEFAULT ('session_report_' || replace(gen_random_uuid()::text, '-', '')),
+  installation_id text,
+  session_id text NOT NULL REFERENCES mcp.mcp_route_sessions(id) ON DELETE CASCADE,
+  route_id text REFERENCES mcp.mcp_routes(id) ON DELETE SET NULL,
   route_name text,
   session_date date,
   sales text,
@@ -172,8 +175,8 @@ CREATE TABLE IF NOT EXISTS mcp.mcp_session_reports (
 );
 
 CREATE TABLE IF NOT EXISTS mcp.market_reports (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  installation_id uuid,
+  id text PRIMARY KEY DEFAULT ('market_report_' || replace(gen_random_uuid()::text, '-', '')),
+  installation_id text,
   report_date date NOT NULL DEFAULT current_date,
   sales text,
   market_area text,
@@ -196,8 +199,8 @@ CREATE TABLE IF NOT EXISTS mcp.market_reports (
 );
 
 CREATE TABLE IF NOT EXISTS mcp.mcp_report_setting_groups (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  installation_id uuid,
+  id text PRIMARY KEY DEFAULT ('report_group_' || replace(gen_random_uuid()::text, '-', '')),
+  installation_id text,
   group_key text NOT NULL,
   group_name text NOT NULL,
   description text,
@@ -210,9 +213,9 @@ CREATE TABLE IF NOT EXISTS mcp.mcp_report_setting_groups (
 );
 
 CREATE TABLE IF NOT EXISTS mcp.mcp_report_settings (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  installation_id uuid,
-  group_id uuid REFERENCES mcp.mcp_report_setting_groups(id) ON DELETE SET NULL,
+  id text PRIMARY KEY DEFAULT ('report_setting_' || replace(gen_random_uuid()::text, '-', '')),
+  installation_id text,
+  group_id text REFERENCES mcp.mcp_report_setting_groups(id) ON DELETE SET NULL,
   setting_key text NOT NULL,
   setting_name text NOT NULL,
   value jsonb NOT NULL DEFAULT 'null'::jsonb,
@@ -228,8 +231,8 @@ CREATE TABLE IF NOT EXISTS mcp.mcp_report_settings (
 );
 
 CREATE TABLE IF NOT EXISTS mcp.test_files (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  installation_id uuid,
+  id text PRIMARY KEY DEFAULT ('test_file_' || replace(gen_random_uuid()::text, '-', '')),
+  installation_id text,
   title text NOT NULL,
   test_date date NOT NULL DEFAULT current_date,
   sales text,
@@ -242,10 +245,10 @@ CREATE TABLE IF NOT EXISTS mcp.test_files (
 );
 
 CREATE TABLE IF NOT EXISTS mcp.test_file_products (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  installation_id uuid,
-  file_id uuid NOT NULL REFERENCES mcp.test_files(id) ON DELETE CASCADE,
-  product_id uuid,
+  id text PRIMARY KEY DEFAULT ('test_file_product_' || replace(gen_random_uuid()::text, '-', '')),
+  installation_id text,
+  file_id text NOT NULL REFERENCES mcp.test_files(id) ON DELETE CASCADE,
+  product_id text,
   product_name text,
   sort_order integer NOT NULL DEFAULT 0,
   note text,
@@ -255,10 +258,10 @@ CREATE TABLE IF NOT EXISTS mcp.test_file_products (
 );
 
 CREATE TABLE IF NOT EXISTS mcp.test_customers (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  installation_id uuid,
-  file_id uuid NOT NULL REFERENCES mcp.test_files(id) ON DELETE CASCADE,
-  customer_id uuid,
+  id text PRIMARY KEY DEFAULT ('test_customer_' || replace(gen_random_uuid()::text, '-', '')),
+  installation_id text,
+  file_id text NOT NULL REFERENCES mcp.test_files(id) ON DELETE CASCADE,
+  customer_id text,
   customer_name text NOT NULL,
   phone text,
   area text,
@@ -270,11 +273,11 @@ CREATE TABLE IF NOT EXISTS mcp.test_customers (
 );
 
 CREATE TABLE IF NOT EXISTS mcp.test_customer_results (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  installation_id uuid,
-  file_id uuid NOT NULL REFERENCES mcp.test_files(id) ON DELETE CASCADE,
-  customer_id uuid NOT NULL REFERENCES mcp.test_customers(id) ON DELETE CASCADE,
-  product_id uuid,
+  id text PRIMARY KEY DEFAULT ('test_result_' || replace(gen_random_uuid()::text, '-', '')),
+  installation_id text,
+  file_id text NOT NULL REFERENCES mcp.test_files(id) ON DELETE CASCADE,
+  customer_id text NOT NULL REFERENCES mcp.test_customers(id) ON DELETE CASCADE,
+  product_id text,
   product_name text,
   status text NOT NULL DEFAULT 'pending',
   note text,
@@ -283,31 +286,63 @@ CREATE TABLE IF NOT EXISTS mcp.test_customer_results (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS mcp_routes_active_name_idx
-  ON mcp.mcp_routes (active, route_name);
-CREATE INDEX IF NOT EXISTS mcp_route_customers_route_sort_idx
-  ON mcp.mcp_route_customers (route_id, sort_order, id);
-CREATE INDEX IF NOT EXISTS mcp_route_customers_customer_idx
-  ON mcp.mcp_route_customers (customer_id);
-CREATE INDEX IF NOT EXISTS mcp_route_sessions_route_date_idx
-  ON mcp.mcp_route_sessions (route_id, session_date DESC, updated_at DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS mcp_route_sessions_one_active_idx
-  ON mcp.mcp_route_sessions (route_id)
-  WHERE status = 'active';
-CREATE INDEX IF NOT EXISTS mcp_session_customers_session_sort_idx
-  ON mcp.mcp_session_customers (session_id, sort_order, id);
-CREATE INDEX IF NOT EXISTS mcp_visits_session_customer_idx
-  ON mcp.mcp_visits (session_customer_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS mcp_followups_due_status_idx
-  ON mcp.mcp_followups (status, due_date, created_at DESC);
-CREATE INDEX IF NOT EXISTS mcp_session_reports_session_idx
-  ON mcp.mcp_session_reports (session_id, updated_at DESC);
-CREATE INDEX IF NOT EXISTS market_reports_date_idx
-  ON mcp.market_reports (report_date DESC, updated_at DESC);
-CREATE INDEX IF NOT EXISTS test_customers_file_idx
-  ON mcp.test_customers (file_id, created_at, id);
-CREATE INDEX IF NOT EXISTS test_customer_results_file_customer_idx
-  ON mcp.test_customer_results (file_id, customer_id, created_at, id);
+CREATE TABLE IF NOT EXISTS mcp.orders (
+  id text PRIMARY KEY DEFAULT ('order_' || replace(gen_random_uuid()::text, '-', '')),
+  installation_id text,
+  order_code text,
+  order_date date NOT NULL DEFAULT current_date,
+  sales text,
+  customer_id text,
+  customer_name text NOT NULL,
+  customer_phone text,
+  area text,
+  delivery_address text,
+  source_type text,
+  source_id text,
+  status text NOT NULL DEFAULT 'draft',
+  subtotal numeric NOT NULL DEFAULT 0,
+  discount_total numeric NOT NULL DEFAULT 0,
+  grand_total numeric NOT NULL DEFAULT 0,
+  note text,
+  sync_status text NOT NULL DEFAULT 'pending',
+  raw_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS mcp.order_items (
+  id text PRIMARY KEY DEFAULT ('order_item_' || replace(gen_random_uuid()::text, '-', '')),
+  installation_id text,
+  order_id text NOT NULL REFERENCES mcp.orders(id) ON DELETE CASCADE,
+  product_id text,
+  variant_id text,
+  product_name text NOT NULL,
+  sku text,
+  unit text,
+  quantity numeric NOT NULL DEFAULT 0,
+  unit_price numeric NOT NULL DEFAULT 0,
+  discount numeric NOT NULL DEFAULT 0,
+  line_total numeric NOT NULL DEFAULT 0,
+  note text,
+  raw_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS mcp_routes_active_name_idx ON mcp.mcp_routes (active, route_name);
+CREATE INDEX IF NOT EXISTS mcp_route_customers_route_sort_idx ON mcp.mcp_route_customers (route_id, sort_order, id);
+CREATE INDEX IF NOT EXISTS mcp_route_customers_customer_idx ON mcp.mcp_route_customers (customer_id);
+CREATE INDEX IF NOT EXISTS mcp_route_sessions_route_date_idx ON mcp.mcp_route_sessions (route_id, session_date DESC, updated_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS mcp_route_sessions_one_active_idx ON mcp.mcp_route_sessions (route_id) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS mcp_session_customers_session_sort_idx ON mcp.mcp_session_customers (session_id, sort_order, id);
+CREATE INDEX IF NOT EXISTS mcp_visits_session_customer_idx ON mcp.mcp_visits (session_customer_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS mcp_followups_due_status_idx ON mcp.mcp_followups (status, due_date, created_at DESC);
+CREATE INDEX IF NOT EXISTS mcp_session_reports_session_idx ON mcp.mcp_session_reports (session_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS market_reports_date_idx ON mcp.market_reports (report_date DESC, updated_at DESC);
+CREATE INDEX IF NOT EXISTS test_customers_file_idx ON mcp.test_customers (file_id, created_at, id);
+CREATE INDEX IF NOT EXISTS test_customer_results_file_customer_idx ON mcp.test_customer_results (file_id, customer_id, created_at, id);
+CREATE INDEX IF NOT EXISTS orders_date_status_idx ON mcp.orders (order_date DESC, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS order_items_order_idx ON mcp.order_items (order_id, created_at, id);
 
 CREATE OR REPLACE VIEW mcp.accounts AS
 SELECT
@@ -379,66 +414,6 @@ SELECT
   v.created_at,
   v.updated_at
 FROM shared.product_variants v;
-
-CREATE OR REPLACE VIEW mcp.orders AS
-SELECT
-  o.id,
-  o.installation_id,
-  o.document_number AS order_code,
-  o.order_date,
-  COALESCE(NULLIF(c.sales_owner, ''), o.created_by::text) AS sales,
-  o.customer_id,
-  COALESCE(NULLIF(c.trading_name, ''), c.legal_name, 'Khách hàng chưa xác định') AS customer_name,
-  c.phone AS customer_phone,
-  c.sales_region AS area,
-  c.address AS delivery_address,
-  'core_sales_order'::text AS source_type,
-  o.id AS source_id,
-  o.status,
-  o.subtotal,
-  o.discount_total,
-  o.total_amount AS grand_total,
-  o.notes AS note,
-  'synced'::text AS sync_status,
-  jsonb_build_object(
-    'currency', o.currency,
-    'tax_total', o.tax_total,
-    'version', o.version,
-    'approved_at', o.approved_at,
-    'confirmed_at', o.confirmed_at,
-    'cancelled_at', o.cancelled_at,
-    'cancelled_reason', o.cancelled_reason
-  ) AS raw_payload,
-  o.created_at,
-  o.updated_at
-FROM sales.orders o
-LEFT JOIN shared.customers c ON c.id = o.customer_id;
-
-CREATE OR REPLACE VIEW mcp.order_items AS
-SELECT
-  l.id,
-  l.sales_order_id AS order_id,
-  l.product_id,
-  NULL::uuid AS variant_id,
-  COALESCE(NULLIF(p.name, ''), NULLIF(l.description, ''), l.product_code) AS product_name,
-  l.product_code AS sku,
-  p.sales_uom AS unit,
-  l.ordered_qty AS quantity,
-  l.unit_price,
-  l.discount_amount AS discount,
-  l.line_total,
-  NULL::text AS note,
-  jsonb_build_object(
-    'line_number', l.line_number,
-    'discount_rate', l.discount_rate,
-    'tax_rate', l.tax_rate,
-    'tax_amount', l.tax_amount,
-    'line_subtotal', l.line_subtotal
-  ) AS raw_payload,
-  l.created_at,
-  l.updated_at
-FROM sales.order_lines l
-LEFT JOIN shared.products p ON p.id = l.product_id;
 
 CREATE OR REPLACE VIEW mcp.route_customers AS
 SELECT
