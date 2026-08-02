@@ -29,7 +29,9 @@ function testEnv(port, overrides = {}) {
 }
 
 function closeServer(server) {
-  return new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()));
+  return new Promise((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
 }
 
 function validSubmission(suffix = randomUUID().slice(0, 8)) {
