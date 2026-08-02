@@ -264,6 +264,12 @@ function aggregateId(result, args, context) {
   return found || `request:${context.requestId}`;
 }
 
+function stableCommandArgs(args) {
+  const payload = { ...object(args) };
+  delete payload.p_context;
+  return payload;
+}
+
 function writeContext(context, rpcName) {
   if (context.idempotencyKey || rpcName.startsWith("mcp_idempotent_")) return context;
   return Object.freeze({ ...context, idempotencyKey: `compat:${context.requestId}`.slice(0, 191) });
@@ -359,7 +365,7 @@ export function createPostgresqlLegacyProvider(config, persistence) {
         commandName: `mcp.${operationName(target)}`,
         permission: `mcp.${domain}.write`,
         scope: `mcp:${domain}`,
-        payload: { rpcName, args },
+        payload: { rpcName, args: stableCommandArgs(args) },
         aggregate: (result) => ({ type: domain, id: aggregateId(result, args, activeContext), version: 1 }),
         eventType: `mcp.${domain}.${operationName(target)}`,
         source: "mcp-postgresql-compatibility",

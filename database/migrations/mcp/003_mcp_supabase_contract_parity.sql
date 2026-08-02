@@ -739,10 +739,11 @@ BEGIN
   END IF;
 
   INSERT INTO mcp.mcp_routes (
-    id, distributor_id, route_name, area, weekday, active, note,
+    id, installation_id, distributor_id, route_name, area, weekday, active, note,
     sync_status, raw_payload, created_at, updated_at
   ) VALUES (
     'route_' || replace(gen_random_uuid()::text, '-', ''),
+    NULLIF(current_setting('app.installation_id', true), ''),
     NULLIF(btrim(COALESCE(p_distributor_id, '')), ''),
     v_route_name,
     NULLIF(btrim(COALESCE(p_area, '')), ''),
@@ -812,6 +813,7 @@ BEGIN
       raw_payload = COALESCE(raw_payload, '{}'::jsonb) || jsonb_build_object('last_source', 'mcp_update_route'),
       updated_at = now()
   WHERE id = p_route_id
+    AND (installation_id = NULLIF(current_setting('app.installation_id', true), '') OR installation_id IS NULL)
   RETURNING * INTO v_route;
 
   IF NOT FOUND THEN
@@ -896,6 +898,7 @@ BEGIN
       raw_payload = COALESCE(raw_payload, '{}'::jsonb) || jsonb_build_object('last_source', 'mcp_update_route_customer'),
       updated_at = now()
   WHERE id = p_route_customer_id
+    AND (installation_id = NULLIF(current_setting('app.installation_id', true), '') OR installation_id IS NULL)
   RETURNING * INTO v_row;
 
   IF NOT FOUND THEN
@@ -4970,6 +4973,601 @@ begin
   ), '[]'::jsonb);
 end;
 $$;
+
+-- Source: manual-fallback
+CREATE OR REPLACE FUNCTION mcp.mcp_add_route_customer(
+  p_route_id text,
+  p_customer_name text,
+  p_phone text,
+  p_area text,
+  p_address text,
+  p_sort_order integer,
+  p_note text,
+  p_customer_id text,
+  p_geo_lat double precision,
+  p_geo_lng double precision,
+  p_geo_accuracy double precision,
+  p_geo_source text,
+  p_google_maps_url text,
+  p_include_active_session boolean,
+  p_active_session_id text,
+  p_context jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_catalog
+AS $function$
+DECLARE
+  v_data jsonb;
+  v_route mcp.mcp_routes%rowtype;
+  v_session mcp.mcp_route_sessions%rowtype;
+  v_route_customer mcp.mcp_route_customers%rowtype;
+  v_session_customer mcp.mcp_session_customers%rowtype;
+  v_installation_id text := NULLIF(current_setting('app.installation_id', true), '');
+  v_route_id text := NULLIF(btrim(COALESCE(p_route_id, '')), '');
+  v_customer_name text := NULLIF(btrim(COALESCE(p_customer_name, '')), '');
+  v_customer_id text := NULLIF(btrim(COALESCE(p_customer_id, '')), '');
+  v_phone text := NULLIF(btrim(COALESCE(p_phone, '')), '');
+  v_phone_digits text := NULLIF(regexp_replace(COALESCE(p_phone, ''), '[^0-9]+', '', 'g'), '');
+  v_area text := NULLIF(btrim(COALESCE(p_area, '')), '');
+  v_address text := NULLIF(btrim(COALESCE(p_address, '')), '');
+  v_note text := NULLIF(btrim(COALESCE(p_note, '')), '');
+  v_active_session_id text := NULLIF(btrim(COALESCE(p_active_session_id, '')), '');
+  v_include_active_session boolean := COALESCE(p_include_active_session, false);
+  v_route_sort_order integer;
+  v_session_sort_order integer;
+  v_route_customer_created boolean := false;
+  v_session_customer_created boolean := false;
+  v_now timestamptz := now();
+BEGIN
+  IF v_installation_id IS NULL THEN
+    RAISE EXCEPTION 'installation_id_required' USING ERRCODE = '23514';
+  END IF;
+  IF v_route_id IS NULL THEN
+    RAISE EXCEPTION 'route_id_required' USING ERRCODE = '23514';
+  END IF;
+  IF v_customer_name IS NULL THEN
+    RAISE EXCEPTION 'customer_name_required' USING ERRCODE = '23514';
+  END IF;
+  IF v_include_active_session AND v_active_session_id IS NULL THEN
+    RAISE EXCEPTION 'active_session_id_required' USING ERRCODE = '23514';
+  END IF;
+  IF p_sort_order IS NOT NULL AND p_sort_order < 0 THEN
+    RAISE EXCEPTION 'invalid_sort_order' USING ERRCODE = '23514';
+  END IF;
+  IF (p_geo_lat IS NULL) <> (p_geo_lng IS NULL) THEN
+    RAISE EXCEPTION 'geo_coordinates_incomplete' USING ERRCODE = '23514';
+  END IF;
+  IF p_geo_lat IS NOT NULL AND (p_geo_lat < -90 OR p_geo_lat > 90) THEN
+    RAISE EXCEPTION 'invalid_geo_lat' USING ERRCODE = '23514';
+  END IF;
+  IF p_geo_lng IS NOT NULL AND (p_geo_lng < -180 OR p_geo_lng > 180) THEN
+    RAISE EXCEPTION 'invalid_geo_lng' USING ERRCODE = '23514';
+  END IF;
+  IF p_geo_accuracy IS NOT NULL AND p_geo_accuracy < 0 THEN
+    RAISE EXCEPTION 'invalid_geo_accuracy' USING ERRCODE = '23514';
+  END IF;
+
+  -- Keep the original deadlock-safe lock order: active session first, route second.
+  IF v_include_active_session THEN
+    SELECT * INTO v_session
+      FROM mcp.mcp_route_sessions
+     WHERE id = v_active_session_id
+       AND (installation_id = v_installation_id OR installation_id IS NULL)
+     FOR UPDATE;
+
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'active_session_not_found' USING ERRCODE = '23503';
+    END IF;
+    IF v_session.route_id IS DISTINCT FROM v_route_id THEN
+      RAISE EXCEPTION 'active_session_route_mismatch' USING ERRCODE = '23514';
+    END IF;
+    IF lower(COALESCE(v_session.status, 'active')) IN ('done', 'completed', 'cancelled', 'closed') THEN
+      RAISE EXCEPTION 'session_closed_read_only' USING ERRCODE = '23514';
+    END IF;
+    PERFORM mcp.mcp_assert_session_mutable(v_session.id);
+  END IF;
+
+  SELECT * INTO v_route
+    FROM mcp.mcp_routes
+   WHERE id = v_route_id
+     AND (installation_id = v_installation_id OR installation_id IS NULL)
+   FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'route_not_found' USING ERRCODE = '23503';
+  END IF;
+
+  IF v_customer_id IS NOT NULL THEN
+    SELECT * INTO v_route_customer
+      FROM mcp.mcp_route_customers
+     WHERE route_id = v_route.id
+       AND (installation_id = v_installation_id OR installation_id IS NULL)
+       AND customer_id = v_customer_id
+     ORDER BY COALESCE(active, true) DESC, updated_at DESC NULLS LAST
+     FOR UPDATE
+     LIMIT 1;
+  END IF;
+
+  IF v_route_customer.id IS NULL AND v_phone_digits IS NOT NULL THEN
+    SELECT * INTO v_route_customer
+      FROM mcp.mcp_route_customers
+     WHERE route_id = v_route.id
+       AND (installation_id = v_installation_id OR installation_id IS NULL)
+       AND NULLIF(regexp_replace(COALESCE(phone, ''), '[^0-9]+', '', 'g'), '') = v_phone_digits
+     ORDER BY COALESCE(active, true) DESC, updated_at DESC NULLS LAST
+     FOR UPDATE
+     LIMIT 1;
+  END IF;
+
+  IF v_route_customer.id IS NULL THEN
+    SELECT * INTO v_route_customer
+      FROM mcp.mcp_route_customers
+     WHERE route_id = v_route.id
+       AND (installation_id = v_installation_id OR installation_id IS NULL)
+       AND lower(btrim(customer_name)) = lower(v_customer_name)
+       AND (
+         (v_address IS NOT NULL AND lower(btrim(COALESCE(address, ''))) = lower(v_address))
+         OR
+         (v_address IS NULL AND lower(btrim(COALESCE(area, ''))) = lower(btrim(COALESCE(v_area, v_route.area, ''))))
+       )
+     ORDER BY COALESCE(active, true) DESC, updated_at DESC NULLS LAST
+     FOR UPDATE
+     LIMIT 1;
+  END IF;
+
+  IF v_route_customer.id IS NULL THEN
+    IF COALESCE(p_sort_order, 0) > 0 THEN
+      v_route_sort_order := p_sort_order;
+    ELSE
+      SELECT COALESCE(max(sort_order), 0) + 1
+        INTO v_route_sort_order
+        FROM mcp.mcp_route_customers
+       WHERE route_id = v_route.id
+         AND (installation_id = v_installation_id OR installation_id IS NULL);
+    END IF;
+
+    INSERT INTO mcp.mcp_route_customers (
+      id, installation_id, route_id, customer_id, customer_name, phone, area,
+      address, sort_order, active, note, geo_lat, geo_lng, geo_accuracy,
+      geo_source, geo_captured_at, google_maps_url, sync_status, raw_payload,
+      created_at, updated_at
+    ) VALUES (
+      'mrc_' || replace(gen_random_uuid()::text, '-', ''),
+      v_installation_id,
+      v_route.id,
+      v_customer_id,
+      v_customer_name,
+      v_phone,
+      COALESCE(v_area, v_route.area),
+      v_address,
+      v_route_sort_order,
+      true,
+      v_note,
+      p_geo_lat,
+      p_geo_lng,
+      p_geo_accuracy,
+      NULLIF(btrim(COALESCE(p_geo_source, '')), ''),
+      CASE WHEN p_geo_lat IS NOT NULL AND p_geo_lng IS NOT NULL THEN v_now ELSE NULL END,
+      NULLIF(btrim(COALESCE(p_google_maps_url, '')), ''),
+      'synced',
+      jsonb_build_object(
+        'source', 'route_customer_explicit_sync',
+        'foundation_context', COALESCE(p_context, '{}'::jsonb)
+      ),
+      v_now,
+      v_now
+    ) RETURNING * INTO v_route_customer;
+
+    v_route_customer_created := true;
+  ELSE
+    UPDATE mcp.mcp_route_customers
+       SET installation_id = COALESCE(installation_id, v_installation_id),
+           active = true,
+           updated_at = v_now
+     WHERE id = v_route_customer.id
+     RETURNING * INTO v_route_customer;
+  END IF;
+
+  IF v_include_active_session THEN
+    SELECT * INTO v_session_customer
+      FROM mcp.mcp_session_customers
+     WHERE session_id = v_session.id
+       AND route_customer_id = v_route_customer.id
+       AND (installation_id = v_installation_id OR installation_id IS NULL)
+     FOR UPDATE;
+
+    IF v_session_customer.id IS NULL THEN
+      SELECT COALESCE(max(sort_order), 0) + 1
+        INTO v_session_sort_order
+        FROM mcp.mcp_session_customers
+       WHERE session_id = v_session.id
+         AND (installation_id = v_installation_id OR installation_id IS NULL);
+
+      INSERT INTO mcp.mcp_session_customers (
+        id, installation_id, session_id, route_id, route_customer_id,
+        customer_id, customer_name, phone, area, address, sort_order,
+        source, planned_status, visit_status, note, raw_payload,
+        created_at, updated_at
+      ) VALUES (
+        'msc_' || replace(gen_random_uuid()::text, '-', ''),
+        v_installation_id,
+        v_session.id,
+        v_route.id,
+        v_route_customer.id,
+        v_route_customer.customer_id,
+        v_route_customer.customer_name,
+        v_route_customer.phone,
+        COALESCE(v_route_customer.area, v_session.area, v_route.area),
+        v_route_customer.address,
+        v_session_sort_order,
+        'added',
+        'added',
+        'pending',
+        COALESCE(v_note, 'Thêm từ tuyến cố định vào phiên đang chạy'),
+        jsonb_build_object(
+          'source', 'route_customer_explicit_sync',
+          'session_id', v_session.id,
+          'route_customer_id', v_route_customer.id,
+          'foundation_context', COALESCE(p_context, '{}'::jsonb)
+        ),
+        v_now,
+        v_now
+      ) RETURNING * INTO v_session_customer;
+
+      v_session_customer_created := true;
+      PERFORM mcp.mcp_recalc_route_session_counters(v_session.id);
+    ELSE
+      UPDATE mcp.mcp_session_customers
+         SET installation_id = COALESCE(installation_id, v_installation_id),
+             updated_at = v_now
+       WHERE id = v_session_customer.id
+       RETURNING * INTO v_session_customer;
+    END IF;
+  END IF;
+
+  v_data := jsonb_build_object(
+    'routeCustomerId', v_route_customer.id,
+    'sessionCustomerId', CASE WHEN v_include_active_session THEN v_session_customer.id ELSE NULL END,
+    'activeSessionId', CASE WHEN v_include_active_session THEN v_session.id ELSE NULL END,
+    'includedActiveSession', v_include_active_session,
+    'createdRouteCustomer', v_route_customer_created,
+    'createdSessionCustomer', v_session_customer_created,
+    'reusedRouteCustomer', NOT v_route_customer_created,
+    'reusedSessionCustomer', v_include_active_session AND NOT v_session_customer_created
+  );
+
+  RETURN v_data;
+END;
+$function$;
+
+-- Source: 20260720224500_lock_archive_intent_claims.sql
+create or replace function mcp.mcp_claim_archive_intent(
+  p_installation_id text,
+  p_operation text,
+  p_idempotency_key text,
+  p_target_type text,
+  p_target_id text,
+  p_request_payload jsonb default '{}'::jsonb,
+  p_context jsonb default '{}'::jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $function$
+begin
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(
+      'mcp_archive_intent:key:' || coalesce(p_installation_id, '') || ':' ||
+      coalesce(p_operation, '') || ':' || coalesce(p_idempotency_key, ''),
+      0
+    )
+  );
+
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(
+      'mcp_archive_intent:target:' || coalesce(p_installation_id, '') || ':' ||
+      coalesce(p_target_type, '') || ':' || coalesce(p_target_id, ''),
+      0
+    )
+  );
+
+  return mcp.mcp_claim_archive_intent_unlocked(
+    p_installation_id,
+    p_operation,
+    p_idempotency_key,
+    p_target_type,
+    p_target_id,
+    p_request_payload,
+    p_context
+  );
+end;
+$function$;
+
+-- Source: 20260720224600_preserve_archive_terminal_failure.sql
+create or replace function mcp.mcp_finish_archive_intent(
+  p_installation_id text,
+  p_intent_id text,
+  p_succeeded boolean,
+  p_response_status integer default null,
+  p_response_payload jsonb default null,
+  p_error text default null,
+  p_context jsonb default '{}'::jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+  v_intent mcp.mcp_archive_intents%rowtype;
+begin
+  select * into v_intent
+    from mcp.mcp_archive_intents
+   where installation_id = p_installation_id
+     and id = p_intent_id
+   for update;
+
+  if not found then
+    raise exception 'archive_intent_not_found' using errcode = '23503';
+  end if;
+
+  if v_intent.status = 'failed' and coalesce(p_succeeded, false) is not true then
+    return to_jsonb(v_intent);
+  end if;
+
+  return mcp.mcp_finish_archive_intent_mutable(
+    p_installation_id,
+    p_intent_id,
+    p_succeeded,
+    p_response_status,
+    p_response_payload,
+    p_error,
+    p_context
+  );
+end;
+$function$;
+
+-- Source: 20260712025937_freeze_mcp_v1_contract_20260711.sql
+create or replace function mcp.mcp_delete_route_customer_hard(p_route_customer_id text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+  v_row mcp.mcp_route_customers%rowtype;
+  v_followups integer := 0;
+  v_session_customers integer := 0;
+  v_visits integer := 0;
+  v_route_customers integer := 0;
+begin
+  if nullif(btrim(coalesce(p_route_customer_id, '')), '') is null then
+    raise exception 'route_customer_id_required' using errcode = '23514';
+  end if;
+
+  select * into v_row
+    from mcp.mcp_route_customers
+   where id = p_route_customer_id
+   for update;
+  if not found then
+    raise exception 'route_customer_not_found' using errcode = '23503';
+  end if;
+
+  perform set_config('mcp.internal_hard_delete', 'on', true);
+
+  delete from mcp.mcp_followups where route_customer_id = v_row.id;
+  get diagnostics v_followups = row_count;
+  delete from mcp.mcp_session_customers where route_customer_id = v_row.id;
+  get diagnostics v_session_customers = row_count;
+  delete from mcp.mcp_visits where route_customer_id = v_row.id;
+  get diagnostics v_visits = row_count;
+  delete from mcp.mcp_route_customers where id = v_row.id;
+  get diagnostics v_route_customers = row_count;
+
+  if v_route_customers <> 1 then
+    raise exception 'route_customer_delete_not_applied' using errcode = 'P0001';
+  end if;
+
+  return jsonb_build_object(
+    'deleted', true,
+    'mode', 'hard_delete',
+    'routeCustomerId', v_row.id,
+    'routeId', v_row.route_id,
+    'customerName', v_row.customer_name,
+    'deletedCounts', jsonb_build_object(
+      'followups', v_followups,
+      'sessionCustomers', v_session_customers,
+      'visits', v_visits,
+      'routeCustomers', v_route_customers
+    )
+  );
+end;
+$function$;
+
+-- Source: 20260723133000_harden_npp_f05_route_cleanup.sql
+create or replace function mcp.mcp_delete_route_hard(p_route_id text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+  r mcp.mcp_routes%rowtype;
+  v_is_legacy_smoke boolean := false;
+  v_is_npp_f05_smoke boolean := false;
+  v_is_smoke boolean := false;
+  v_route_customer_ids text[] := array[]::text[];
+  v_session_ids text[] := array[]::text[];
+  v_session_customer_ids text[] := array[]::text[];
+  v_order_ids text[] := array[]::text[];
+  v_test_file_ids text[] := array[]::text[];
+  v_route_customers integer := 0;
+  v_sessions integer := 0;
+  v_session_customers integer := 0;
+  v_visits integer := 0;
+  v_followups integer := 0;
+  v_session_reports integer := 0;
+  v_orders integer := 0;
+  v_order_items integer := 0;
+  v_market_reports integer := 0;
+  v_test_files integer := 0;
+  v_test_file_products integer := 0;
+  v_test_customers integer := 0;
+  v_test_results integer := 0;
+begin
+  if nullif(btrim(coalesce(p_route_id, '')), '') is null then
+    raise exception 'route_id_required' using errcode = '23514';
+  end if;
+
+  select * into r
+    from mcp.mcp_routes
+   where id = p_route_id
+   for update;
+  if not found then
+    raise exception 'route_not_found' using errcode = '23503';
+  end if;
+
+  v_is_legacy_smoke := coalesce(r.area, '') = 'API Smoke'
+    and coalesce(r.note, '') = 'temporary MCP v1 API smoke'
+    and coalesce(r.route_name, '') ~ '^__MCP_V1_API_(FULL|SNAPSHOT_ONCE)__[0-9]{13}-[a-z0-9]{6}$';
+
+  v_is_npp_f05_smoke := coalesce(r.area, '') = 'API Smoke'
+    and left(coalesce(r.route_name, ''), length('__NPP_F05_RUNTIME_SMOKE__')) = '__NPP_F05_RUNTIME_SMOKE__'
+    and left(coalesce(r.note, ''), length('__NPP_F05_RUNTIME_SMOKE__')) = '__NPP_F05_RUNTIME_SMOKE__';
+
+  v_is_smoke := v_is_legacy_smoke or v_is_npp_f05_smoke;
+
+  perform set_config('mcp.internal_hard_delete', 'on', true);
+
+  select coalesce(array_agg(id), array[]::text[])
+    into v_route_customer_ids
+    from mcp.mcp_route_customers
+   where route_id = p_route_id;
+
+  select coalesce(array_agg(id), array[]::text[])
+    into v_session_ids
+    from mcp.mcp_route_sessions
+   where route_id = p_route_id;
+
+  select coalesce(array_agg(id), array[]::text[])
+    into v_session_customer_ids
+    from mcp.mcp_session_customers
+   where route_id = p_route_id;
+
+  if v_is_smoke then
+    select coalesce(array_agg(id), array[]::text[])
+      into v_order_ids
+      from mcp.orders
+     where order_date >= date '2099-01-01'
+       and (
+         sales = 'API Smoke'
+         or (
+           v_is_npp_f05_smoke
+           and left(coalesce(note, ''), length('__NPP_F05_RUNTIME_SMOKE__')) = '__NPP_F05_RUNTIME_SMOKE__'
+         )
+       )
+       and (
+         raw_payload ->> 'route_id' = p_route_id
+         or raw_payload ->> 'route_customer_id' = any(v_route_customer_ids)
+         or raw_payload ->> 'routeCustomerId' = any(v_route_customer_ids)
+         or raw_payload ->> 'session_id' = any(v_session_ids)
+         or raw_payload ->> 'session_customer_id' = any(v_session_customer_ids)
+       );
+
+    delete from mcp.order_items where order_id = any(v_order_ids);
+    get diagnostics v_order_items = row_count;
+    delete from mcp.orders where id = any(v_order_ids);
+    get diagnostics v_orders = row_count;
+
+    select coalesce(array_agg(id), array[]::text[])
+      into v_test_file_ids
+      from mcp.test_files
+     where test_date >= date '2099-01-01'
+       and sales = 'API Smoke'
+       and (
+         raw_payload ->> 'route_id' = p_route_id
+         or raw_payload ->> 'route_customer_id' = any(v_route_customer_ids)
+         or raw_payload ->> 'routeCustomerId' = any(v_route_customer_ids)
+         or raw_payload ->> 'session_id' = any(v_session_ids)
+         or raw_payload ->> 'session_customer_id' = any(v_session_customer_ids)
+       );
+
+    delete from mcp.test_customer_results where file_id = any(v_test_file_ids);
+    get diagnostics v_test_results = row_count;
+    delete from mcp.test_customers where file_id = any(v_test_file_ids);
+    get diagnostics v_test_customers = row_count;
+    delete from mcp.test_file_products where file_id = any(v_test_file_ids);
+    get diagnostics v_test_file_products = row_count;
+    delete from mcp.test_files where id = any(v_test_file_ids);
+    get diagnostics v_test_files = row_count;
+
+    delete from mcp.market_reports
+     where report_date >= date '2099-01-01'
+       and sales = 'API Smoke'
+       and (
+         raw_payload ->> 'route_id' = p_route_id
+         or raw_payload ->> 'route_customer_id' = any(v_route_customer_ids)
+         or raw_payload ->> 'routeCustomerId' = any(v_route_customer_ids)
+         or raw_payload ->> 'session_id' = any(v_session_ids)
+         or raw_payload ->> 'session_customer_id' = any(v_session_customer_ids)
+       );
+    get diagnostics v_market_reports = row_count;
+
+    delete from mcp.mcp_session_reports where route_id = p_route_id;
+    get diagnostics v_session_reports = row_count;
+  end if;
+
+  select count(*) into v_followups from mcp.mcp_followups where route_id = p_route_id;
+  select count(*) into v_session_customers from mcp.mcp_session_customers where route_id = p_route_id;
+  select count(*) into v_visits from mcp.mcp_visits where route_id = p_route_id;
+  select count(*) into v_sessions from mcp.mcp_route_sessions where route_id = p_route_id;
+  select count(*) into v_route_customers from mcp.mcp_route_customers where route_id = p_route_id;
+
+  delete from mcp.mcp_followups where route_id = p_route_id;
+  delete from mcp.mcp_session_customers where route_id = p_route_id;
+  delete from mcp.mcp_visits where route_id = p_route_id;
+  delete from mcp.mcp_route_sessions where route_id = p_route_id;
+
+  delete from mcp.mcp_route_order_template_items where template_id in (select id from mcp.mcp_route_order_templates where route_id = p_route_id);
+  delete from mcp.mcp_route_test_template_items where template_id in (select id from mcp.mcp_route_test_templates where route_id = p_route_id);
+  delete from mcp.mcp_route_skip_reason_template_items where template_id in (select id from mcp.mcp_route_skip_reason_templates where route_id = p_route_id);
+  delete from mcp.mcp_route_order_templates where route_id = p_route_id;
+  delete from mcp.mcp_route_test_templates where route_id = p_route_id;
+  delete from mcp.mcp_route_report_templates where route_id = p_route_id;
+  delete from mcp.mcp_route_followup_templates where route_id = p_route_id;
+  delete from mcp.mcp_route_skip_reason_templates where route_id = p_route_id;
+  delete from mcp.mcp_route_customer_add_rules where route_id = p_route_id;
+  delete from mcp.mcp_route_customers where route_id = p_route_id;
+  delete from mcp.mcp_routes where id = p_route_id;
+
+  return jsonb_build_object(
+    'deleted', true,
+    'routeId', p_route_id,
+    'routeName', r.route_name,
+    'mode', 'hard_delete',
+    'smokeCleanup', v_is_smoke,
+    'smokeKind', case when v_is_npp_f05_smoke then 'npp_f05' when v_is_legacy_smoke then 'legacy_mcp_api' else null end,
+    'deletedCounts', jsonb_build_object(
+      'routeCustomers', v_route_customers,
+      'sessions', v_sessions,
+      'sessionCustomers', v_session_customers,
+      'visits', v_visits,
+      'followups', v_followups,
+      'sessionReports', v_session_reports,
+      'orders', v_orders,
+      'orderItems', v_order_items,
+      'marketReports', v_market_reports,
+      'testFiles', v_test_files,
+      'testFileProducts', v_test_file_products,
+      'testCustomers', v_test_customers,
+      'testResults', v_test_results
+    )
+  );
+end;
+$function$;
 
 DROP TRIGGER IF EXISTS trg_mcp_session_customers_recalc_counters ON mcp.mcp_session_customers;
 CREATE TRIGGER trg_mcp_session_customers_recalc_counters
