@@ -27,6 +27,17 @@ jobs:
         with:
           node-version: 20
 
+      - name: Normalize patch template
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('mcp/ops/patch-postgresql-supabase-parity-generator.mjs')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('const manualFunctions = String.raw`', 'const manualFunctions = `')
+          path.write_text(text, encoding='utf-8')
+          PY
+
       - name: Complete generator fallbacks
         run: node mcp/ops/patch-postgresql-supabase-parity-generator.mjs
 
@@ -39,6 +50,7 @@ jobs:
           set -euo pipefail
           tracked=(
             mcp/ops/generate-postgresql-supabase-parity.mjs
+            mcp/ops/patch-postgresql-supabase-parity-generator.mjs
             database/migrations/mcp/003_mcp_supabase_contract_parity.sql
             mcp/apps/backend/foundation/migrations/sql/003_mcp_supabase_contract_parity.sql
           )
