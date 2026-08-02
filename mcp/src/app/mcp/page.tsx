@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { createApiClient } from "@/lib/api/api-client";
 import { withoutInternalSmokeRows } from "@/lib/data/internal-smoke";
+import { loadRoutesData } from "@/lib/api/routes-data";
 import { CompactKpiStrip } from "@/ui/cards/CompactKpiStrip";
 import { TodaySummaryCard } from "@/ui/cards/TodaySummaryCard";
 import { FilterBar } from "@/ui/layout/FilterBar";
@@ -21,9 +21,8 @@ function renderModuleCard(item: (typeof MCP_MODULES)[number]) {
 }
 
 export default async function McpPage() {
-  const api = createApiClient();
-  const routesResult = await api.getRoutesData();
-  const routes = withoutInternalSmokeRows(routesResult.data.routes);
+  const routesData = await loadRoutesData();
+  const routes = withoutInternalSmokeRows(routesData.routes);
   const activeRoutes = routes.filter((route) => route.status === "active" || route.status === "watch").length;
   const pausedRoutes = routes.filter((route) => route.status === "paused").length;
   const plannedCustomers = routes.reduce((sum, route) => sum + Number(route.plannedCustomers || 0), 0);

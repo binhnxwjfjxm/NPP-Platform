@@ -31,10 +31,10 @@ test("internal F05 smoke names are recognized only by the exact reserved prefix"
 });
 
 test("route management and MCP home remove smoke routes before rendering totals or cards", () => {
-  assert.match(routesPage, /withoutInternalSmokeRows\(routesResult\.data\.routes\)/);
+  assert.match(routesPage, /withoutInternalSmokeRows\([A-Za-z][A-Za-z0-9]*\.routes\)/);
   assert.match(routesPage, /routeIds\.has\(customer\.routeId\)/);
   assert.match(routesPage, /!isInternalSmokeRecord\(customer\)/);
-  assert.match(mcpHome, /withoutInternalSmokeRows\(routesResult\.data\.routes\)/);
+  assert.match(mcpHome, /withoutInternalSmokeRows\([A-Za-z][A-Za-z0-9]*\.routes\)/);
 });
 
 test("dashboard removes smoke facts before latest-session and report selection", () => {
