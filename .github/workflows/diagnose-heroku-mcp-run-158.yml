@@ -1,0 +1,56 @@
+name: Diagnose MCP Heroku production run
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/diagnose-heroku-mcp-run-158.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose:
+    if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-run-158'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find latest MCP Heroku issue-comment run
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            run_json="$(gh api --method GET \
+              -H 'Accept: application/vnd.github+json' \
+              "/repos/${GITHUB_REPOSITORY}/actions/workflows/heroku-mcp-backend-manual.yml/runs" \
+              -f event=issue_comment \
+              -f per_page=10 \
+              --jq '.workflow_runs | sort_by(.created_at) | reverse | .[0]')"
+            run_id="$(jq -r '.id // empty' <<<"$run_json")"
+            status="$(jq -r '.status // empty' <<<"$run_json")"
+            if [[ -n "$run_id" ]]; then
+              echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+              echo "Latest MCP Heroku run: id=$run_id status=$status conclusion=$(jq -r '.conclusion // ""' <<<"$run_json") head=$(jq -r '.head_sha // ""' <<<"$run_json") created=$(jq -r '.created_at // ""' <<<"$run_json")"
+              if [[ "$status" == "completed" ]]; then
+                break
+              fi
+            fi
+            sleep 5
+          done
+          [[ -n "${run_id:-}" ]] || { echo 'No MCP Heroku issue-comment run found.' >&2; exit 1; }
+
+      - name: Print latest run jobs and steps
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.latest.outputs.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --method GET \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" \
+            --jq '.jobs[] | "JOB id=\(.id) name=\(.name) status=\(.status) conclusion=\(.conclusion // "")\n" + ([.steps[] | "  STEP \(.number) \(.name): \(.status)/\(.conclusion // "")"] | join("\n"))'
