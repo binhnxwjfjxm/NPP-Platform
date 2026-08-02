@@ -15,7 +15,7 @@ jobs:
     if: github.event.pull_request.head.ref == 'agent/mcp-supabase-write-parity'
     runs-on: ubuntu-latest
     steps:
-      - name: Extract exact failure lines
+      - name: Extract exact failing TAP blocks
         env:
           GH_TOKEN: ${{ github.token }}
           FAILED_JOB_ID: '91499372200'
@@ -28,26 +28,32 @@ jobs:
           from pathlib import Path
           import re
 
-          lines = Path('/tmp/job.log').read_text(encoding='utf-8', errors='replace').splitlines()
-          patterns = re.compile(
-              r'(not ok|fail|error|exception|syntax|typeerror|referenceerror|ERR_|postgresql_function|legacy_provider|postgresql-legacy-provider|AssertionError|expected|actual|Process completed|exit code)',
-              re.I,
-          )
-          selected = []
+          raw = Path('/tmp/job.log').read_text(encoding='utf-8', errors='replace').splitlines()
+          lines = [re.sub(r'^\d{4}-\d{2}-\d{2}T[^ ]+Z\s+', '', line) for line in raw]
+          failures = []
           for index, line in enumerate(lines):
-              if patterns.search(line):
-                  selected.extend(lines[max(0, index - 4):min(len(lines), index + 10)])
-          selected.extend(lines[-140:])
+              if 'not ok ' not in line:
+                  continue
+              start = index
+              while start > 0 and '# Subtest:' not in lines[start]:
+                  start -= 1
+              end = index + 1
+              while end < len(lines) and '# Subtest:' not in lines[end] and not re.search(r'^\s*ok\s+\d+\s+-', lines[end]):
+                  end += 1
+              failures.append(lines[start:min(end, index + 90)])
 
           output = []
           seen = set()
-          for line in selected:
-              clean = re.sub(r'postgres(?:ql)?://\S+', '[redacted-database-url]', line, flags=re.I)
-              clean = re.sub(r'https?://\S+', '[redacted-url]', clean, flags=re.I)
-              clean = re.sub(r'(?i)(password|token|secret|authorization|api[_-]?key)[=:]\S+', r'\1=[redacted]', clean)
-              clean = re.sub(r'[A-Za-z0-9_=-]{72,}', '[redacted]', clean)
-              if clean not in seen:
-                  seen.add(clean)
-                  output.append(clean)
-          print('\n'.join(output[-360:]))
+          for block in failures:
+              for line in block:
+                  clean = re.sub(r'postgres(?:ql)?://\S+', '[redacted-database-url]', line, flags=re.I)
+                  clean = re.sub(r'https?://\S+', '[redacted-url]', clean, flags=re.I)
+                  clean = re.sub(r'(?i)(password|token|secret|authorization|api[_-]?key)[=:]\S+', r'\1=[redacted]', clean)
+                  if len(clean) > 800:
+                      clean = clean[:800] + '…[truncated]'
+                  if clean not in seen:
+                      seen.add(clean)
+                      output.append(clean)
+          print('\n'.join(output))
+          print(f'FAILURE_COUNT={len(failures)}')
           PY
