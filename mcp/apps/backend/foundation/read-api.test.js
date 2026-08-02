@@ -1,3 +1,4 @@
+// Issue #158 regression coverage for the production PostgreSQL read boundary.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Readable } from "node:stream";
