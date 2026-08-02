@@ -116,7 +116,12 @@ test("backend read API is served through the proxy token boundary", async (t) =>
           if (String(sql).startsWith("SELECT COUNT")) {
             return { rows: [{ count: 2 }] };
           }
-          return { rows: [{ id: "route-1", route_name: "Tuyến Trà Sữa" }] };
+          return {
+            rows: [{
+              row_key: "route-1",
+              row_data: { id: "route-1", route_name: "Tuyến Trà Sữa", active: true }
+            }]
+          };
         }
       });
     },
@@ -143,10 +148,12 @@ test("backend read API is served through the proxy token boundary", async (t) =>
 
   assert.equal(rows.status, 200);
   assert.deepEqual(rows.body.data, [{ id: "route-1", route_name: "Tuyến Trà Sữa" }]);
-  assert.match(queries[0].sql, /SELECT "id", "route_name" FROM "mcp_routes"/);
-  assert.match(queries[0].sql, /WHERE "active" = \$1/);
-  assert.match(queries[0].sql, /ORDER BY "route_name" ASC/);
-  assert.match(queries[0].sql, /LIMIT \$2/);
+  assert.match(queries[0].sql, /FROM mcp\.legacy_read_rows/);
+  assert.match(queries[0].sql, /installation_id = \$1/);
+  assert.match(queries[0].sql, /table_name = \$2/);
+  assert.match(queries[0].sql, /row_data #>> '\{active\}' = \$3/);
+  assert.match(queries[0].sql, /ORDER BY row_data #>> '\{route_name\}' ASC NULLS LAST/);
+  assert.match(queries[0].sql, /LIMIT \$4/);
 
   const count = await request(state.publicPort, "/api/read", {
     method: "POST",
@@ -164,8 +171,8 @@ test("backend read API is served through the proxy token boundary", async (t) =>
 
   assert.equal(count.status, 200);
   assert.equal(count.body.data, 2);
-  assert.match(queries[1].sql, /SELECT COUNT\(\*\)::integer AS count FROM "mcp_session_reports"/);
-  assert.match(queries[1].sql, /"raw_payload"->>'session_id' = \$1/);
+  assert.match(queries[1].sql, /SELECT COUNT\(\*\)::integer AS count FROM mcp\.legacy_read_rows/);
+  assert.match(queries[1].sql, /row_data #>> '\{raw_payload,session_id\}' = \$3/);
 });
 
 test("liveness remains available while readiness fails closed", async (t) => {
