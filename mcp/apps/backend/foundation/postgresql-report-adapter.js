@@ -126,11 +126,11 @@ async function createReport(client, args, context) {
   const report = inserted.rows[0];
   await client.query(
     `UPDATE mcp.mcp_session_customers
-     SET report_id = $3,
+     SET report_id = $3::text,
          visit_status = 'visited',
          status = 'done',
          raw_payload = COALESCE(raw_payload, '{}'::jsonb) ||
-           jsonb_build_object('latest_report_id', $3),
+           jsonb_build_object('latest_report_id', $3::text),
          updated_at = now()
      WHERE installation_id = $1 AND id = $2`,
     [context.installation.id, customer.id, report.id]
