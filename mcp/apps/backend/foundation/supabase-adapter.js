@@ -16,6 +16,11 @@ function providerError(response, payload) {
   return error;
 }
 
+function activeProviderPort(config) {
+  const port = config?.foundationProviderPort;
+  return port && typeof port === "object" ? port : null;
+}
+
 export async function supabaseRequest(
   config,
   path,
@@ -41,10 +46,18 @@ export async function supabaseRequest(
 }
 
 export function supabaseRest(config, resource, options = {}) {
+  const port = activeProviderPort(config);
+  if (port && typeof port.rest === "function") {
+    return port.rest(resource, options, config.foundationRequestContext || null);
+  }
   return supabaseRequest(config, `/rest/v1/${resource}`, options);
 }
 
 export function supabaseRpc(config, name, args, options = {}) {
+  const port = activeProviderPort(config);
+  if (port && typeof port.rpc === "function") {
+    return port.rpc(name, args, config.foundationRequestContext || null);
+  }
   return supabaseRequest(config, `/rest/v1/rpc/${name}`, {
     method: "POST",
     body: args,
