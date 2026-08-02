@@ -63,6 +63,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify Phase 6C.0E source boundary
+        if: github.event_name == 'push' || github.head_ref == 'agent/phase-6c0e-mcp-migration-rehearsal'
         working-directory: .
         shell: bash
         run: |
