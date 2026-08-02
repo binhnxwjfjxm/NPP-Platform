@@ -124,6 +124,7 @@ jobs:
           )"
           app_name="$(jq -r '.name // empty' <<<"$app_json")"
           app_url="$(jq -r '.web_url // empty' <<<"$app_json")"
+          app_url="${app_url%/}"
           test "$app_name" = "$HEROKU_APP_NAME"
           test -n "$app_url"
           if [ "$app_name" = "$HEROKU_FORBIDDEN_APP_NAME" ]; then
@@ -185,7 +186,7 @@ jobs:
             action="deploy"
           fi
 
-          app_url="$APP_URL"
+          app_url="${APP_URL%/}"
           previous_active_release_version="$PREVIOUS_ACTIVE_RELEASE_VERSION"
           failed_release_version=""
           rollback_target_version=""
@@ -202,11 +203,13 @@ jobs:
               -H 'Accept: application/vnd.heroku+json; version=3' \
               -H "Authorization: Bearer $HEROKU_API_KEY" \
               "https://api.heroku.com/apps/$HEROKU_APP_NAME" \
-              | jq -r '.web_url // empty'
+              | jq -r '.web_url // empty' \
+              | sed 's:/*$::'
           }
 
           smoke_health() {
             local path="$1"
+            local base_url="${app_url%/}"
             local deadline=$((SECONDS + 180))
             local last_status=""
             while [ "$SECONDS" -lt "$deadline" ]; do
@@ -216,7 +219,7 @@ jobs:
                   --max-time 10 \
                   --output /dev/null \
                   --write-out '%{http_code}' \
-                  "$app_url$path" || true
+                  "$base_url$path" || true
               )"
               if [ "$last_status" = "200" ]; then
                 return 0
