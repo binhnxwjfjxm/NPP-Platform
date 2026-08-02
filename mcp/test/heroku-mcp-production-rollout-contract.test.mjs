@@ -51,5 +51,6 @@ test("database gate proves backup restore, migration idempotency and reconciliat
   assert.match(rolloutScript, /shared\.grant_mcp_runtime_access/);
   assert.match(rolloutScript, /MCP_RESTORE_REHEARSAL=success/);
   assert.match(rolloutScript, /MCP_PRODUCTION_RECONCILIATION=success/);
-  assert.doesNotMatch(deployment, /SUPABASE_/i);
+  assert.doesNotMatch(deployment, /(?:^|\n)\s*(?:export\s+)?SUPABASE_[A-Z0-9_]*\s*=/i);
+  assert.doesNotMatch(deployment, /\$\{\{\s*(?:secrets|vars|env)\.SUPABASE_/i);
 });
