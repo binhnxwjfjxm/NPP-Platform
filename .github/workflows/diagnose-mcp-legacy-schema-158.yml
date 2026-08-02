@@ -1,0 +1,77 @@
+name: Diagnose MCP legacy schema 158
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/diagnose-mcp-legacy-schema-158.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: github.event.pull_request.head.ref == 'agent/diagnose-mcp-db-readiness-158'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MCP_APP_NAME: hung-phat-mcp
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      TABLES: accounts,market_reports,mcp_followups,mcp_report_setting_groups,mcp_report_settings,mcp_route_customers,mcp_route_sessions,mcp_routes,mcp_session_customers,mcp_session_reports,mcp_visits,order_items,orders,product_variants,products,route_customers,test_customer_results,test_customers,test_file_products,test_files
+    steps:
+      - name: Audit legacy OpenAPI schema and row counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HEROKU_API_KEY:-}"
+          echo "::add-mask::$HEROKU_API_KEY"
+          config_json="$(curl --fail --silent --show-error \
+            -H 'Accept: application/vnd.heroku+json; version=3' \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            "https://api.heroku.com/apps/$MCP_APP_NAME/config-vars")"
+          supabase_url="$(jq -r '.SUPABASE_URL // empty' <<<"$config_json" | sed 's:/*$::')"
+          service_key="$(jq -r '.SUPABASE_SERVICE_ROLE_KEY // empty' <<<"$config_json")"
+          test -n "$supabase_url"
+          test -n "$service_key"
+          echo "::add-mask::$supabase_url"
+          echo "::add-mask::$service_key"
+
+          curl --fail --silent --show-error \
+            -H "apikey: $service_key" \
+            -H "Authorization: Bearer $service_key" \
+            -H 'Accept: application/openapi+json' \
+            "$supabase_url/rest/v1/" \
+            --output /tmp/openapi.json
+
+          IFS=',' read -ra tables <<<"$TABLES"
+          for table in "${tables[@]}"; do
+            definition="$(jq -c --arg table "$table" '.definitions[$table] // empty' /tmp/openapi.json)"
+            if [[ -z "$definition" ]]; then
+              echo "LEGACY_TABLE table=$table exists=false"
+              continue
+            fi
+            columns="$(jq -r '
+              .properties
+              | to_entries
+              | map(.key + ":" + (.value.type // "unknown") + (if .value.format then "/" + .value.format else "" end))
+              | sort
+              | join(",")
+            ' <<<"$definition")"
+            required="$(jq -r '(.required // []) | sort | join(",")' <<<"$definition")"
+            headers="$(mktemp)"
+            curl --fail --silent --show-error \
+              --head \
+              -H "apikey: $service_key" \
+              -H "Authorization: Bearer $service_key" \
+              -H 'Prefer: count=exact' \
+              -H 'Range: 0-0' \
+              "$supabase_url/rest/v1/$table?select=*" \
+              --dump-header "$headers" \
+              --output /dev/null
+            count="$(awk -F'[/\r]' 'tolower($1) ~ /^content-range:/ {print $2}' "$headers" | tail -n1)"
+            rm -f "$headers"
+            echo "LEGACY_TABLE table=$table exists=true count=${count:-unknown} required=${required:-none} columns=$columns"
+          done
+
+          rm -f /tmp/openapi.json
