@@ -1,0 +1,59 @@
+name: Diagnose MCP ready 503
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/diagnose-mcp-ready-503.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.event.pull_request.head.ref == 'agent/issue-158-ready-503-diagnose'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      CORE_APP_NAME: hung-phat
+      MCP_APP_NAME: hung-phat-mcp
+    steps:
+      - name: Install clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HEROKU_API_KEY:-}"
+          echo "::add-mask::$HEROKU_API_KEY"
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      - name: Read sanitized MCP runtime logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          heroku logs -a "$MCP_APP_NAME" --num 250 --source app 2>&1 \
+            | sed -E 's#postgres(ql)?://[^ ]+#postgresql://[redacted]#g; s/[A-Za-z0-9_\-]{40,}/[redacted]/g' \
+            | tail -n 250
+
+      - name: Audit database readiness without writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          database_url="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
+          test -n "$database_url"
+          echo "::add-mask::$database_url"
+          psql "$database_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 <<'SQL'
+          select 'MCP_SCHEMA=' || coalesce(to_regnamespace('mcp')::text, 'missing');
+          select 'MCP_ROLE=' || case when exists(select 1 from pg_roles where rolname='mcp_runtime') then 'present' else 'missing' end;
+          select 'MIGRATION=' || id from shared.schema_migrations where id like 'mcp_%' order by id;
+          select 'TABLE=' || name || ':' || case when to_regclass('mcp.' || name) is null then 'missing' else 'present' end
+          from (values
+            ('mcp_routes'),('mcp_route_customers'),('mcp_route_sessions'),('mcp_session_customers'),
+            ('accounts'),('products'),('product_variants'),('orders'),('order_items')
+          ) t(name)
+          order by name;
+          select 'ROLE_SCHEMA_USAGE=' || case when exists(select 1 from pg_roles where rolname='mcp_runtime') and has_schema_privilege('mcp_runtime','mcp','USAGE') then 'true' else 'false' end;
+          SQL
