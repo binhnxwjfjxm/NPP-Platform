@@ -122,6 +122,15 @@ test("MCP deploy reads only dedicated GitHub runtime sources and reports exact m
   assert.doesNotMatch(mcpWorkflow, /postgres(?:ql)?:\/\//i);
 });
 
+test("MCP deploy never reports raw Vercel token failures", () => {
+  assert.match(mcpWorkflow, /invalid_vercel_token_format/);
+  assert.match(mcpWorkflow, /const safePatterns = \[/);
+  assert.match(mcpWorkflow, /runtime_config_sync_failed/);
+  assert.match(mcpWorkflow, /throw new Error\(code\)/);
+  assert.match(mcpWorkflow, /::add-mask::\$\{vercelToken\}/);
+  assert.doesNotMatch(mcpWorkflow, /throw error;/);
+});
+
 test("MCP deploy builds, deploys and smokes its own Vercel artifact", () => {
   assert.match(mcpWorkflow, /vercel@latest pull/);
   assert.match(mcpWorkflow, /vercel@latest build/);
