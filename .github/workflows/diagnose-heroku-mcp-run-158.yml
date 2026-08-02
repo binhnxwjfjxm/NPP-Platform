@@ -16,37 +16,52 @@ jobs:
     if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-run-158'
     runs-on: ubuntu-latest
     steps:
-      - name: Find latest MCP Heroku issue-comment run
-        id: latest
+      - name: List recent MCP Heroku issue-comment runs
+        id: target
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: 10ad25d8317064cb8c89c5092359f1ae14be1054
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in $(seq 1 60); do
-            run_json="$(gh api --method GET \
-              -H 'Accept: application/vnd.github+json' \
-              "/repos/${GITHUB_REPOSITORY}/actions/workflows/heroku-mcp-backend-manual.yml/runs" \
-              -f event=issue_comment \
-              -f per_page=10 \
-              --jq '.workflow_runs | sort_by(.created_at) | reverse | .[0]')"
-            run_id="$(jq -r '.id // empty' <<<"$run_json")"
-            status="$(jq -r '.status // empty' <<<"$run_json")"
-            if [[ -n "$run_id" ]]; then
-              echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
-              echo "Latest MCP Heroku run: id=$run_id status=$status conclusion=$(jq -r '.conclusion // ""' <<<"$run_json") head=$(jq -r '.head_sha // ""' <<<"$run_json") created=$(jq -r '.created_at // ""' <<<"$run_json")"
-              if [[ "$status" == "completed" ]]; then
-                break
-              fi
-            fi
-            sleep 5
-          done
-          [[ -n "${run_id:-}" ]] || { echo 'No MCP Heroku issue-comment run found.' >&2; exit 1; }
+          runs_json="$(gh api --method GET \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/heroku-mcp-backend-manual.yml/runs" \
+            -f event=issue_comment \
+            -f per_page=30)"
 
-      - name: Print latest run jobs and steps
+          jq -r '.workflow_runs | sort_by(.created_at) | reverse | .[] | "RUN id=\(.id) status=\(.status) conclusion=\(.conclusion // "") head=\(.head_sha // "") created=\(.created_at) title=\(.display_title // "") actor=\(.actor.login // "")"' <<<"$runs_json"
+
+          run_id="$(jq -r --arg head "$EXPECTED_HEAD" '
+            .workflow_runs
+            | sort_by(.created_at)
+            | reverse
+            | map(select(.head_sha == $head and (.conclusion // "") != "skipped"))
+            | .[0].id // empty
+          ' <<<"$runs_json")"
+
+          [[ -n "$run_id" ]] || { echo "No non-skipped MCP Heroku run found for $EXPECTED_HEAD" >&2; exit 1; }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for target run completion
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ steps.latest.outputs.run_id }}
+          RUN_ID: ${{ steps.target.outputs.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 120); do
+            run_json="$(gh api --method GET -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}")"
+            status="$(jq -r '.status' <<<"$run_json")"
+            echo "Target MCP Heroku run: id=$RUN_ID status=$status conclusion=$(jq -r '.conclusion // ""' <<<"$run_json") head=$(jq -r '.head_sha // ""' <<<"$run_json") created=$(jq -r '.created_at // ""' <<<"$run_json")"
+            [[ "$status" == "completed" ]] && break
+            sleep 5
+          done
+
+      - name: Print target run jobs and steps
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.target.outputs.run_id }}
         shell: bash
         run: |
           set -euo pipefail
