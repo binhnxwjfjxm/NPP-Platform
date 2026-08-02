@@ -32,6 +32,8 @@ jobs:
     env:
       CORE_APP_NAME: hung-phat
       HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      BACKUP_ID: b014
+      EXPECTED_BACKUP_SHA256: 951510393f18e789599bad4dd4740d77ea8e9a2606f711542723be80a3b93e43
       PGHOST: 127.0.0.1
       PGPORT: 5432
       PGUSER: postgres
@@ -49,31 +51,22 @@ jobs:
           echo "::add-mask::$HEROKU_API_KEY"
           curl -fsSL https://cli-assets.heroku.com/install.sh | sh
           heroku version
-          pg_restore --version
+          psql --version
+          postgres_container="$(docker ps --filter ancestor=postgres:17 --format '{{.ID}}' | head -n1)"
+          test -n "$postgres_container"
+          docker exec "$postgres_container" pg_restore --version
 
-      - name: Capture fresh production backup
-        id: backup
+      - name: Verify existing fresh production backup
         shell: bash
         run: |
           set -euo pipefail
-          before_id="$(heroku pg:backups -a "$CORE_APP_NAME" | awk '$1 ~ /^b[0-9]+$/ {print $1; exit}')"
-          heroku pg:backups:capture DATABASE_URL -a "$CORE_APP_NAME"
-          latest_id="$(heroku pg:backups -a "$CORE_APP_NAME" | awk '$1 ~ /^b[0-9]+$/ {print $1; exit}')"
-          test -n "$latest_id"
-          if [[ "$latest_id" == "$before_id" ]]; then
-            echo "Fresh backup ID did not advance." >&2
-            exit 1
-          fi
-          info="$(heroku pg:backups:info "$latest_id" -a "$CORE_APP_NAME")"
+          info="$(heroku pg:backups:info "$BACKUP_ID" -a "$CORE_APP_NAME")"
           grep -q 'Completed' <<<"$info"
-          echo "BACKUP_ID=$latest_id"
+          echo "BACKUP_ID=$BACKUP_ID"
           printf '%s\n' "$info" | grep -E '^(Backup|Status|Started|Finished|Database|Size):' || true
-          echo "backup_id=$latest_id" >> "$GITHUB_OUTPUT"
 
       - name: Download backup without exposing URL
         shell: bash
-        env:
-          BACKUP_ID: ${{ steps.backup.outputs.backup_id }}
         run: |
           set -euo pipefail
           backup_url="$(heroku pg:backups:url "$BACKUP_ID" -a "$CORE_APP_NAME")"
@@ -81,22 +74,35 @@ jobs:
           echo "::add-mask::$backup_url"
           curl --fail --silent --show-error --location "$backup_url" --output /tmp/npp-production.dump
           test -s /tmp/npp-production.dump
-          echo "BACKUP_BYTES=$(stat -c%s /tmp/npp-production.dump)"
-          echo "BACKUP_SHA256=$(sha256sum /tmp/npp-production.dump | awk '{print $1}')"
-          pg_restore --list /tmp/npp-production.dump >/tmp/restore.list
+          backup_bytes="$(stat -c%s /tmp/npp-production.dump)"
+          backup_sha256="$(sha256sum /tmp/npp-production.dump | awk '{print $1}')"
+          echo "BACKUP_BYTES=$backup_bytes"
+          echo "BACKUP_SHA256=$backup_sha256"
+          test "$backup_sha256" = "$EXPECTED_BACKUP_SHA256"
+
+          postgres_container="$(docker ps --filter ancestor=postgres:17 --format '{{.ID}}' | head -n1)"
+          test -n "$postgres_container"
+          docker cp /tmp/npp-production.dump "$postgres_container":/tmp/npp-production.dump
+          docker exec "$postgres_container" pg_restore --list /tmp/npp-production.dump >/tmp/restore.list
           test -s /tmp/restore.list
 
       - name: Restore into disposable PostgreSQL 17
         shell: bash
         run: |
           set -euo pipefail
-          createdb "$RESTORE_DB"
-          pg_restore \
-            --exit-on-error \
-            --no-owner \
-            --no-acl \
-            --dbname "$RESTORE_DB" \
-            /tmp/npp-production.dump
+          postgres_container="$(docker ps --filter ancestor=postgres:17 --format '{{.ID}}' | head -n1)"
+          test -n "$postgres_container"
+          docker exec -e PGPASSWORD=postgres "$postgres_container" \
+            createdb --username postgres "$RESTORE_DB"
+          docker exec -e PGPASSWORD=postgres "$postgres_container" \
+            pg_restore \
+              --username postgres \
+              --exit-on-error \
+              --no-owner \
+              --no-acl \
+              --dbname "$RESTORE_DB" \
+              /tmp/npp-production.dump
+
           psql --dbname "$RESTORE_DB" --set=ON_ERROR_STOP=1 --tuples-only --no-align <<'SQL'
           SELECT 'RESTORED_SERVER_VERSION=' || current_setting('server_version');
           SELECT 'RESTORED_TABLE_COUNT=' || count(*) FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema NOT IN ('pg_catalog', 'information_schema');
