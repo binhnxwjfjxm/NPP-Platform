@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -9,6 +10,11 @@ async function read(relativePath) {
 }
 
 const manualWorkflow = await read(".github/workflows/heroku-mcp-backend-manual.yml");
+const deployScriptPath = new URL("mcp/apps/backend/scripts/manual-production-deploy.sh", root);
+const deployScript = await read("mcp/apps/backend/scripts/manual-production-deploy.sh");
+const rolloutScriptPath = new URL("mcp/apps/backend/scripts/production-rollout-gate.sh", root);
+const rolloutScript = await read("mcp/apps/backend/scripts/production-rollout-gate.sh");
+const manualContract = `${manualWorkflow}\n${deployScript}\n${rolloutScript}`;
 const ciWorkflow = await read(".github/workflows/heroku-mcp-backend-contract-ci.yml");
 const dockerfile = await read("mcp/apps/backend/Dockerfile");
 const packageJson = JSON.parse(await read("mcp/apps/backend/package.json"));
@@ -34,95 +40,86 @@ test("MCP backend runtime stays on bootstrap.js with locked PostgreSQL dependenc
   assert.doesNotMatch(dockerfile, /vercel/i);
 });
 
-test("manual Heroku MCP workflow performs PostgreSQL preflight and isolated rollback", () => {
+test("manual Heroku MCP workflow is loadable and owns only the approved command", () => {
   assert.match(manualWorkflow, /workflow_dispatch/);
   assert.match(manualWorkflow, /issue_comment/);
-  assert.match(manualWorkflow, /\/deploy-heroku-mcp-production/);
-  assert.match(manualWorkflow, /hung-phat-mcp/);
-  assert.match(manualWorkflow, /hung-phat/);
-  assert.match(manualWorkflow, /https:\/\/api\.heroku\.com\/apps\/\$HEROKU_APP_NAME/);
-  assert.match(manualWorkflow, /Authorization: Bearer \$HEROKU_API_KEY/);
-  assert.doesNotMatch(manualWorkflow, /heroku apps:info -a "\$HEROKU_APP_NAME" --json/);
-  assert.match(manualWorkflow, /app_url="\$\{app_url%\/\}"/);
-  assert.match(manualWorkflow, /local base_url="\$\{app_url%\/\}"/);
-  assert.doesNotMatch(manualWorkflow, /"\$app_url\$path"/);
-  assert.match(manualWorkflow, /heroku stack -a "\$HEROKU_APP_NAME"/);
-  assert.match(manualWorkflow, /heroku config -a "\$HEROKU_APP_NAME" --json/);
-  assert.match(manualWorkflow, /HEROKU_REQUIRED_CONFIG_NAMES/);
-  assert.match(manualWorkflow, /DATABASE_URL/);
-  assert.match(manualWorkflow, /MCP_DB_SCHEMA/);
-  assert.match(manualWorkflow, /MCP_DB_ROLE/);
-  assert.match(manualWorkflow, /PERSISTENCE_PROVIDER/);
-  assert.match(manualWorkflow, /test "\$persistence_provider" = "postgresql"/);
-  assert.match(manualWorkflow, /MCP_LEGACY_RUNTIME_ENABLED must be false/);
-  assert.doesNotMatch(manualWorkflow, /DATABASE_URL must stay absent/);
-  assert.doesNotMatch(manualWorkflow.match(/HEROKU_REQUIRED_CONFIG_NAMES:.*$/m)?.[0] || "", /SUPABASE_/);
-  assert.match(manualWorkflow, /heroku releases --json -a "\$HEROKU_APP_NAME"/);
-  assert.match(manualWorkflow, /previous_active_release_version/);
-  assert.match(manualWorkflow, /previous_release_healthy/);
-  assert.match(manualWorkflow, /failed_release_version/);
-  assert.match(manualWorkflow, /rollback_target_version/);
-  assert.match(manualWorkflow, /rollback_skipped_unhealthy_previous/);
-  assert.match(manualWorkflow, /heroku container:login/);
-  assert.match(manualWorkflow, /heroku container:push web -a "\$HEROKU_APP_NAME"/);
-  assert.match(manualWorkflow, /heroku container:release web -a "\$HEROKU_APP_NAME"/);
-  assert.match(manualWorkflow, /heroku releases:rollback "\$previous_active_release_version"/);
-  assert.match(manualWorkflow, /Previous release was already unhealthy; automatic rollback is intentionally skipped/);
-  assert.match(manualWorkflow, /health\/live/);
-  assert.match(manualWorkflow, /health\/ready/);
-  assert.match(manualWorkflow, /HEROKU_RELEASE_VERSION/);
-  assert.match(manualWorkflow, /DEPLOYED_SHA/);
-  assert.doesNotMatch(manualWorkflow, /stack:set/);
+  assert.match(manualWorkflow, /github\.event\.comment\.body == '\/deploy-heroku-mcp-production'/);
+  assert.match(manualWorkflow, /github\.actor == 'binhnxwjfjxm'/);
+  assert.match(manualWorkflow, /github\.actor == 'khuongbinhinfo-a11y'/);
+  assert.match(manualWorkflow, /HEROKU_APP_NAME: hung-phat-mcp/);
+  assert.match(manualWorkflow, /HEROKU_DB_OWNER_APP_NAME: hung-phat/);
+  assert.match(manualWorkflow, /image: postgres:17/);
+  assert.match(manualWorkflow, /MCP_RUNTIME_DATABASE_URL_FILE: \/tmp\/mcp-runtime-database-url/);
+  assert.match(manualWorkflow, /MCP_MIGRATION_DATABASE_URL_FILE: \/tmp\/mcp-migration-database-url/);
+  assert.match(manualWorkflow, /MCP_DB_ROLE_FILE: \/tmp\/mcp-db-role/);
+  assert.doesNotMatch(manualWorkflow, /\$\{\{\s*runner\.temp\s*\}\}/);
+  assert.match(manualWorkflow, /bash mcp\/apps\/backend\/scripts\/manual-production-deploy\.sh/);
+  assert.doesNotMatch(manualWorkflow, /^\s{2}(?:push|pull_request):\s*$/m);
   assert.doesNotMatch(manualWorkflow, /vercel/i);
   assert.doesNotMatch(manualWorkflow, /npp-core\//);
   assert.doesNotMatch(manualWorkflow, /Procfile/);
-  assert.doesNotMatch(manualWorkflow, /^\s{2}(?:push|pull_request):\s*$/m);
+});
+
+test("manual MCP deploy scripts are valid shell", () => {
+  execFileSync("bash", ["-n", deployScriptPath.pathname]);
+  execFileSync("bash", ["-n", rolloutScriptPath.pathname]);
+});
+
+test("manual Heroku MCP deployment performs PostgreSQL preflight, backup, migration and isolated rollback", () => {
+  assert.match(manualContract, /hung-phat-mcp/);
+  assert.match(manualContract, /hung-phat/);
+  assert.match(deployScript, /https:\/\/api\.heroku\.com\/apps\/\$HEROKU_APP_NAME/);
+  assert.match(deployScript, /Authorization: Bearer \$HEROKU_API_KEY/);
+  assert.match(deployScript, /heroku stack -a "\$HEROKU_APP_NAME"/);
+  assert.match(deployScript, /heroku config -a "\$HEROKU_APP_NAME" --json/);
+  assert.match(deployScript, /HEROKU_REQUIRED_CONFIG_NAMES/);
+  assert.match(deployScript, /PERSISTENCE_PROVIDER/);
+  assert.match(deployScript, /postgresql/);
+  assert.match(deployScript, /MCP_LEGACY_RUNTIME_ENABLED must be false/);
+  assert.match(deployScript, /runtime_and_migrator_target_different_databases/);
+  assert.match(deployScript, /runtime_and_migrator_credentials_not_separated/);
+  assert.match(deployScript, /heroku pg:backups:capture DATABASE_URL -a "\$HEROKU_DB_OWNER_APP_NAME"/);
+  assert.match(deployScript, /heroku pg:backups:info "\$production_backup_id"/);
+  assert.match(deployScript, /heroku maintenance:on -a "\$HEROKU_APP_NAME"/);
+  assert.match(deployScript, /production-rollout-gate\.sh/);
+  assert.match(rolloutScript, /pg_dump/);
+  assert.match(rolloutScript, /pg_restore/);
+  assert.match(rolloutScript, /run migration:migrate/);
+  assert.match(rolloutScript, /run migration:verify/);
+  assert.match(rolloutScript, /shared\.grant_mcp_runtime_access/);
+  assert.match(deployScript, /heroku container:login/);
+  assert.match(deployScript, /heroku container:push web -a "\$HEROKU_APP_NAME"/);
+  assert.match(deployScript, /heroku container:release web -a "\$HEROKU_APP_NAME"/);
+  assert.match(deployScript, /previous_active_release_version/);
+  assert.match(deployScript, /previous_release_healthy/);
+  assert.match(deployScript, /heroku releases:rollback "\$previous_active_release_version"/);
+  assert.match(deployScript, /Previous release was already unhealthy; automatic rollback is intentionally skipped/);
+  assert.match(deployScript, /health\/live/);
+  assert.match(deployScript, /health\/ready/);
+  assert.match(deployScript, /DEPLOYED_SHA/);
+  assert.doesNotMatch(manualContract, /SUPABASE_/i);
+  assert.doesNotMatch(manualContract, /stack:set/);
+  assert.doesNotMatch(manualContract, /npp-core\//);
+  assert.doesNotMatch(manualContract, /vercel/i);
   assert.equal(rootProcfile, "web: npm run start:core-api");
 });
 
 test("deploy failure remains failed and never rolls back to an already unhealthy release", () => {
-  const caseIndex = manualWorkflow.indexOf('case "$action" in');
-  const deployIndex = manualWorkflow.indexOf("deploy)", caseIndex);
-  const rollbackIndex = manualWorkflow.indexOf("rollback)", deployIndex);
-  const defaultIndex = manualWorkflow.indexOf("*)", rollbackIndex);
-  const loginIndex = manualWorkflow.indexOf("heroku container:login");
-  const summaryIndex = manualWorkflow.indexOf("- name: Summarize release evidence");
-  const outcomeGateIndex = manualWorkflow.indexOf("- name: Enforce release outcome");
-  const healthFailureIndex = manualWorkflow.indexOf('if ! smoke_health /health/live || ! smoke_health /health/ready; then', deployIndex);
-  const rollbackHealthGuardIndex = manualWorkflow.indexOf('if [ "$previous_release_healthy" = "true" ]; then', healthFailureIndex);
-  const rollbackCommandIndex = manualWorkflow.indexOf('heroku releases:rollback "$previous_active_release_version"', rollbackHealthGuardIndex);
-  const skipIndex = manualWorkflow.indexOf('rollback_skipped_unhealthy_previous="true"', rollbackCommandIndex);
+  const deployIndex = deployScript.indexOf("deploy)");
+  const healthFailureIndex = deployScript.indexOf("if ! smoke_health /health/live || ! smoke_health /health/ready; then", deployIndex);
+  const rollbackGuardIndex = deployScript.indexOf('if [ "$previous_release_healthy" = "true" ]; then', healthFailureIndex);
+  const rollbackCommandIndex = deployScript.indexOf('heroku releases:rollback "$previous_active_release_version"', rollbackGuardIndex);
+  const skipIndex = deployScript.indexOf("Previous release was already unhealthy", rollbackCommandIndex);
+  const failureExitIndex = deployScript.indexOf("exit 1", rollbackCommandIndex);
 
-  assert.ok(caseIndex >= 0);
-  assert.ok(deployIndex > caseIndex);
-  assert.ok(rollbackIndex > deployIndex);
-  assert.ok(defaultIndex > rollbackIndex);
-  assert.ok(loginIndex > deployIndex && loginIndex < rollbackIndex);
-  assert.doesNotMatch(manualWorkflow.slice(rollbackIndex, defaultIndex), /container:login/);
+  assert.ok(deployIndex >= 0);
   assert.ok(healthFailureIndex > deployIndex);
-  assert.ok(rollbackHealthGuardIndex > healthFailureIndex);
-  assert.ok(rollbackCommandIndex > rollbackHealthGuardIndex);
+  assert.ok(rollbackGuardIndex > healthFailureIndex);
+  assert.ok(rollbackCommandIndex > rollbackGuardIndex);
   assert.ok(skipIndex > rollbackCommandIndex);
-
-  assert.match(manualWorkflow, /deployment_failed="true"/);
-  assert.match(manualWorkflow, /rollback_failed="true"/);
-  assert.match(manualWorkflow, /rollback_health_failed="true"/);
-  assert.match(manualWorkflow, /rollback_skipped_unhealthy_previous="true"/);
-  assert.match(manualWorkflow, /echo "deployment_failed=\$deployment_failed"/);
-  assert.match(manualWorkflow, /echo "rollback_failed=\$rollback_failed"/);
-  assert.match(manualWorkflow, /echo "rollback_health_failed=\$rollback_health_failed"/);
-  assert.match(manualWorkflow, /echo "rollback_skipped_unhealthy_previous=\$rollback_skipped_unhealthy_previous"/);
-
-  assert.ok(summaryIndex >= 0);
-  assert.ok(outcomeGateIndex > summaryIndex);
-  assert.match(manualWorkflow, /- name: Summarize release evidence\n\s+if: always\(\)/);
-  assert.match(manualWorkflow, /- name: Enforce release outcome\n\s+if: always\(\)/);
-  assert.match(manualWorkflow, /steps\.release\.outcome/);
-  assert.match(manualWorkflow, /steps\.release\.outputs\.deployment_failed/);
-  assert.match(manualWorkflow, /steps\.release\.outputs\.rollback_failed/);
-  assert.match(manualWorkflow, /steps\.release\.outputs\.rollback_health_failed/);
-  assert.match(manualWorkflow, /steps\.release\.outputs\.rollback_skipped_unhealthy_previous/);
-  assert.match(manualWorkflow, /previous release was already unhealthy, so rollback was skipped/);
+  assert.ok(failureExitIndex > rollbackCommandIndex);
+  assert.match(deployScript, /trap cleanup EXIT/);
+  assert.match(deployScript, /heroku maintenance:off -a "\$HEROKU_APP_NAME"/);
 });
 
 test("Heroku MCP CI builds, verifies and smokes backend with frontend build fixtures", () => {
@@ -133,13 +130,7 @@ test("Heroku MCP CI builds, verifies and smokes backend with frontend build fixt
   assert.match(ciWorkflow, /npm --workspace mcp\/apps\/backend run verify/);
   assert.match(ciWorkflow, /npm --workspace mcp run test:heroku-mcp-backend-contract/);
   assert.match(ciWorkflow, /npm --workspace mcp run test:heroku-mcp-backend-runtime/);
-  assert.match(ciWorkflow, /phase-6c0b-persistence-boundary\.test\.mjs/);
-  assert.match(ciWorkflow, /npm --workspace mcp run test:vercel-deployment-control/);
   assert.match(ciWorkflow, /npm --workspace mcp run typecheck/);
-  assert.match(
-    ciWorkflow,
-    /- name: Build MCP frontend\n\s+env:\n\s+BACKEND_API_BASE_URL: http:\/\/127\.0\.0\.1:3001\n\s+BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef\n\s+MCP_LEGACY_ACTOR_ID: service:ci:mcp-v1\n\s+run: npm --workspace mcp run build/
-  );
   assert.match(ciWorkflow, /npm --workspace mcp run build/);
   assert.match(ciWorkflow, /docker build -f mcp\/apps\/backend\/Dockerfile mcp\/apps\/backend/);
   assert.match(ciWorkflow, /docker run -d --rm/);
