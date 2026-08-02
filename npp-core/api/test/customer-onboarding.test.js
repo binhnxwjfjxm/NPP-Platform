@@ -91,6 +91,9 @@ test('Phase 6C.1A validation — Core request requires a stable demand trigger a
   assert.equal(valid.ok, true);
   assert.equal(hashSubmission(valid.normalized).length, 64);
   assert.equal(hashSubmission(valid.normalized), hashSubmission(validateSubmission(structuredClone(payload)).normalized));
+  const reorderedMetadata = structuredClone(payload);
+  reorderedMetadata.sourceMetadata = { orderIntentId: 'intent-validation', routeId: 'route-validation' };
+  assert.equal(hashSubmission(valid.normalized), hashSubmission(validateSubmission(reorderedMetadata).normalized));
 
   assert.equal(validateSubmission({ ...payload, sourceOutletId: '' }).code, 'MISSING_SOURCE_OUTLET');
   assert.equal(validateSubmission({ ...payload, sourceDemandReference: '' }).code, 'MISSING_DEMAND_REFERENCE');
