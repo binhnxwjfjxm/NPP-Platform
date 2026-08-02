@@ -8,6 +8,7 @@ on:
       - mcp/ops/patch-postgresql-supabase-parity-generator.mjs
       - mcp/ops/patch-postgresql-supabase-parity-columns.mjs
       - mcp/ops/patch-postgresql-supabase-parity-functions.mjs
+      - mcp/ops/patch-postgresql-supabase-add-route-customer.mjs
       - mcp/ops/patch-postgresql-supabase-parity-tenancy.mjs
       - mcp/ops/patch-postgresql-legacy-provider-idempotency.mjs
       - mcp/ops/audit-postgresql-supabase-parity-columns.mjs
@@ -54,6 +55,9 @@ jobs:
       - name: Include every legacy RPC function
         run: node mcp/ops/patch-postgresql-supabase-parity-functions.mjs
 
+      - name: Port add-route-customer behavior
+        run: node mcp/ops/patch-postgresql-supabase-add-route-customer.mjs
+
       - name: Enforce installation scope
         run: node mcp/ops/patch-postgresql-supabase-parity-tenancy.mjs
 
@@ -93,6 +97,7 @@ jobs:
             mcp/ops/patch-postgresql-supabase-parity-generator.mjs
             mcp/ops/patch-postgresql-supabase-parity-columns.mjs
             mcp/ops/patch-postgresql-supabase-parity-functions.mjs
+            mcp/ops/patch-postgresql-supabase-add-route-customer.mjs
             mcp/ops/patch-postgresql-supabase-parity-tenancy.mjs
             mcp/ops/patch-postgresql-legacy-provider-idempotency.mjs
             mcp/ops/audit-postgresql-supabase-parity-columns.mjs
