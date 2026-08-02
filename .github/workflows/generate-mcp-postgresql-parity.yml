@@ -9,6 +9,7 @@ on:
       - mcp/ops/patch-postgresql-supabase-parity-columns.mjs
       - mcp/ops/audit-postgresql-supabase-parity-columns.mjs
       - mcp/ops/audit-legacy-provider-calls.mjs
+      - mcp/ops/audit-postgresql-provider-function-coverage.mjs
       - mcp/supabase/migrations/**
       - .github/workflows/generate-mcp-postgresql-parity.yml
 
@@ -68,6 +69,9 @@ jobs:
       - name: Inventory legacy provider calls
         run: node mcp/ops/audit-legacy-provider-calls.mjs
 
+      - name: Require a PostgreSQL function for every legacy RPC
+        run: node mcp/ops/audit-postgresql-provider-function-coverage.mjs
+
       - name: Commit generator and migration
         shell: bash
         run: |
@@ -78,6 +82,7 @@ jobs:
             mcp/ops/patch-postgresql-supabase-parity-columns.mjs
             mcp/ops/audit-postgresql-supabase-parity-columns.mjs
             mcp/ops/audit-legacy-provider-calls.mjs
+            mcp/ops/audit-postgresql-provider-function-coverage.mjs
             database/migrations/mcp/003_mcp_supabase_contract_parity.sql
             mcp/apps/backend/foundation/migrations/sql/003_mcp_supabase_contract_parity.sql
           )
