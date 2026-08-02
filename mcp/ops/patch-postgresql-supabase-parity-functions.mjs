@@ -13,10 +13,10 @@ const required = [
   "mcp_delete_route_hard"
 ];
 
-const anchor = '  "mcp_search_products"\n]);';
-if (!source.includes(anchor)) throw new Error("required_function_anchor_missing");
 const additions = required.filter((name) => !source.includes(`  "${name}"`));
 if (additions.length) {
+  const anchor = '  "mcp_search_products"\n]);';
+  if (!source.includes(anchor)) throw new Error("required_function_anchor_missing");
   source = source.replace(
     anchor,
     `  "mcp_search_products",\n${additions.map((name) => `  "${name}"`).join(",\n")}\n]);`
