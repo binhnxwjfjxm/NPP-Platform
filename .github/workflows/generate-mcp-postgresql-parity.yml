@@ -8,6 +8,7 @@ on:
       - mcp/ops/patch-postgresql-supabase-parity-generator.mjs
       - mcp/ops/patch-postgresql-supabase-parity-columns.mjs
       - mcp/ops/patch-postgresql-supabase-parity-functions.mjs
+      - mcp/ops/patch-postgresql-supabase-parity-tenancy.mjs
       - mcp/ops/audit-postgresql-supabase-parity-columns.mjs
       - mcp/ops/audit-legacy-provider-calls.mjs
       - mcp/ops/audit-postgresql-provider-function-coverage.mjs
@@ -52,6 +53,9 @@ jobs:
       - name: Include every legacy RPC function
         run: node mcp/ops/patch-postgresql-supabase-parity-functions.mjs
 
+      - name: Enforce installation scope
+        run: node mcp/ops/patch-postgresql-supabase-parity-tenancy.mjs
+
       - name: Generate canonical and packaged migration
         run: node mcp/ops/generate-postgresql-supabase-parity.mjs
 
@@ -85,6 +89,7 @@ jobs:
             mcp/ops/patch-postgresql-supabase-parity-generator.mjs
             mcp/ops/patch-postgresql-supabase-parity-columns.mjs
             mcp/ops/patch-postgresql-supabase-parity-functions.mjs
+            mcp/ops/patch-postgresql-supabase-parity-tenancy.mjs
             mcp/ops/audit-postgresql-supabase-parity-columns.mjs
             mcp/ops/audit-legacy-provider-calls.mjs
             mcp/ops/audit-postgresql-provider-function-coverage.mjs
