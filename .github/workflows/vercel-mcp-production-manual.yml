@@ -105,6 +105,7 @@ jobs:
           ];
 
           try {
+            const vercelToken = String(process.env.VERCEL_TOKEN || "").trim();
             const values = Object.fromEntries(
               sources.map(([runtimeName]) => [runtimeName, String(process.env[runtimeName] || "").trim()])
             );
@@ -112,11 +113,14 @@ jobs:
               .filter(([runtimeName]) => !values[runtimeName])
               .map(([, sourceName]) => sourceName);
 
-            if (!String(process.env.VERCEL_TOKEN || "").trim()) {
+            if (!vercelToken) {
               missingSources.unshift("VERCEL_TOKEN");
             }
             if (missingSources.length) {
               throw new Error(`missing_github_runtime_sources:${missingSources.join(",")}`);
+            }
+            if (!/^vcp_[A-Za-z0-9_-]+$/.test(vercelToken)) {
+              throw new Error("invalid_vercel_token_format");
             }
             if (!values.BACKEND_API_BASE_URL.startsWith("https://")) {
               throw new Error("backend_api_base_url_must_be_https");
@@ -125,6 +129,7 @@ jobs:
               throw new Error("backend_api_token_too_short");
             }
 
+            process.stdout.write(`::add-mask::${vercelToken}\n`);
             for (const value of Object.values(values)) {
               process.stdout.write(`::add-mask::${value}\n`);
             }
@@ -134,7 +139,7 @@ jobs:
               {
                 method: "POST",
                 headers: {
-                  Authorization: `Bearer ${process.env.VERCEL_TOKEN}`,
+                  Authorization: `Bearer ${vercelToken}`,
                   "Content-Type": "application/json"
                 },
                 body: JSON.stringify(
@@ -171,15 +176,23 @@ jobs:
               "utf8"
             );
           } catch (error) {
-            const code = String(error?.message || "runtime_config_sync_failed")
-              .replace(/[^A-Za-z0-9_:,.-]/g, "_")
-              .slice(0, 500);
+            const rawCode = String(error?.message || "runtime_config_sync_failed");
+            const safePatterns = [
+              /^missing_github_runtime_sources:[A-Z0-9_,]+$/,
+              /^invalid_vercel_token_format$/,
+              /^backend_api_base_url_must_be_https$/,
+              /^backend_api_token_too_short$/,
+              /^vercel_env_upsert_failed:\d{3}:[A-Za-z0-9_.-]+$/
+            ];
+            const code = safePatterns.some((pattern) => pattern.test(rawCode))
+              ? rawCode
+              : "runtime_config_sync_failed";
             await writeFile(
               process.env.STATUS_FILE,
               `MCP runtime configuration synchronization failed: ${code}.\n`,
               "utf8"
             );
-            throw error;
+            throw new Error(code);
           }
           NODE
 
