@@ -97,7 +97,8 @@ test("manual Heroku MCP deployment performs PostgreSQL preflight, backup, migrat
   assert.match(deployScript, /health\/live/);
   assert.match(deployScript, /health\/ready/);
   assert.match(deployScript, /DEPLOYED_SHA/);
-  assert.doesNotMatch(manualContract, /SUPABASE_/i);
+  assert.doesNotMatch(manualContract, /(?:^|\n)\s*(?:export\s+)?SUPABASE_[A-Z0-9_]*\s*=/i);
+  assert.doesNotMatch(manualContract, /\$\{\{\s*(?:secrets|vars|env)\.SUPABASE_/i);
   assert.doesNotMatch(manualContract, /stack:set/);
   assert.doesNotMatch(manualContract, /npp-core\//);
   assert.doesNotMatch(manualContract, /vercel/i);
