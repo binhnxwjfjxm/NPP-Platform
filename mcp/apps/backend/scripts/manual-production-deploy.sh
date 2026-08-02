@@ -136,6 +136,7 @@ for sensitive in "$runtime_database_url" "$migration_database_url" "$mcp_db_role
   test -n "$sensitive"
   echo "::add-mask::$sensitive"
 done
+umask 077
 printf '%s' "$runtime_database_url" > "$MCP_RUNTIME_DATABASE_URL_FILE"
 printf '%s' "$migration_database_url" > "$MCP_MIGRATION_DATABASE_URL_FILE"
 printf '%s' "$mcp_db_role" > "$MCP_DB_ROLE_FILE"
