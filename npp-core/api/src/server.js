@@ -33,6 +33,7 @@ import { handleEmployeeRoutes } from './routes/employees.js';
 import { handleAccessUserRoutes } from './routes/access-users.js';
 import { handleAccessRoutes } from './routes/access.js';
 import { handleCustomerRoutes } from './routes/customers.js';
+import { handleCustomerOnboardingRoutes } from './routes/customer-onboarding.js';
 import { handleSupplierRoutes } from './routes/suppliers.js';
 import { handleProductRoutes } from './routes/products.js';
 import { handleProductUnitRoutes } from './routes/product-units.js';
@@ -440,6 +441,7 @@ export function createCoreApiServer(options = {}) {
     if (await handleAccessRoutes(req, res, routeContext)) return;
     if (await handleOrganizationRoutes(req, res, routeContext)) return;
     if (await handleCustomerRoutes(req, res, routeContext)) return;
+    if (await handleCustomerOnboardingRoutes(req, res, routeContext)) return;
     if (await handleSupplierRoutes(req, res, routeContext)) return;
     if (await handlePurchaseOrderRoutes(req, res, routeContext)) return;
     if (await handleSalesOrderRoutes(req, res, routeContext)) return;
