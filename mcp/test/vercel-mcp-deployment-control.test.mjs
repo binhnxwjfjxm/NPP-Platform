@@ -93,14 +93,12 @@ test("MCP deploy reads only dedicated GitHub runtime sources and reports exact m
   assert.match(mcpWorkflow, /^\s{2}issues: write$/m);
   assert.match(mcpWorkflow, /secrets\.MCP_BACKEND_API_BASE_URL/);
   assert.match(mcpWorkflow, /secrets\.MCP_BACKEND_API_TOKEN/);
-  assert.match(mcpWorkflow, /secrets\.MCP_SUPABASE_URL/);
-  assert.match(mcpWorkflow, /secrets\.MCP_SUPABASE_ANON_KEY/);
   assert.match(mcpWorkflow, /MCP_LEGACY_ACTOR_ID: service:mcp-plan:mcp-v1/);
   assert.match(mcpWorkflow, /missing_github_runtime_sources/);
   assert.match(mcpWorkflow, /MCP_BACKEND_API_BASE_URL/);
   assert.match(mcpWorkflow, /MCP_BACKEND_API_TOKEN/);
-  assert.match(mcpWorkflow, /MCP_SUPABASE_URL/);
-  assert.match(mcpWorkflow, /MCP_SUPABASE_ANON_KEY/);
+  assert.match(mcpWorkflow, /BACKEND_API_BASE_URL/);
+  assert.match(mcpWorkflow, /BACKEND_API_TOKEN/);
   assert.match(
     mcpWorkflow,
     /api\.vercel\.com\/v10\/projects\/\$\{process\.env\.VERCEL_PROJECT_ID\}\/env/
@@ -117,6 +115,8 @@ test("MCP deploy reads only dedicated GitHub runtime sources and reports exact m
   assert.doesNotMatch(mcpWorkflow, /vercel@latest env pull/);
   assert.doesNotMatch(mcpWorkflow, /HEROKU_API_KEY/);
   assert.doesNotMatch(mcpWorkflow, /heroku apps:info|heroku config/);
+  assert.doesNotMatch(mcpWorkflow, /MCP_SUPABASE_URL/);
+  assert.doesNotMatch(mcpWorkflow, /MCP_SUPABASE_ANON_KEY/);
   assert.doesNotMatch(mcpWorkflow, /SUPABASE_SERVICE_ROLE_KEY/);
   assert.doesNotMatch(mcpWorkflow, /DATABASE_URL/);
   assert.doesNotMatch(mcpWorkflow, /postgres(?:ql)?:\/\//i);

@@ -1,4 +1,5 @@
 import http from "node:http";
+import { handleMockReadRequest } from "./mock-read-server.mjs";
 
 const port = Number(process.env.EXPORT_MOCK_PORT || 3112);
 
@@ -104,9 +105,11 @@ function tableFromPath(pathname) {
   return match ? decodeURIComponent(match[1]) : "";
 }
 
-const server = http.createServer((request, response) => {
+const server = http.createServer(async (request, response) => {
   const url = new URL(request.url || "/", `http://${request.headers.host || `127.0.0.1:${port}`}`);
   if (url.pathname === "/health") return json(response, 200, { ok: true });
+  const readResult = await handleMockReadRequest(request, url, rowsByTable);
+  if (readResult) return json(response, readResult.status, readResult.body);
   const table = tableFromPath(url.pathname);
   if (!table || !(table in rowsByTable)) return json(response, 404, { message: `unknown_table:${table}` });
   return json(response, 200, rowsByTable[table]);

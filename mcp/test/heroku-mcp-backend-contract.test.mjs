@@ -119,7 +119,7 @@ test("Heroku MCP CI builds, verifies and smokes backend with frontend build fixt
   assert.match(ciWorkflow, /npm --workspace mcp run typecheck/);
   assert.match(
     ciWorkflow,
-    /- name: Build MCP frontend\n\s+env:\n\s+BACKEND_API_BASE_URL: http:\/\/127\.0\.0\.1:3001\n\s+BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef\n\s+MCP_LEGACY_ACTOR_ID: service:ci:mcp-v1\n\s+SUPABASE_URL: https:\/\/project\.example\.com\n\s+SUPABASE_ANON_KEY: ci-publishable-key\n\s+run: npm --workspace mcp run build/
+    /- name: Build MCP frontend\n\s+env:\n\s+BACKEND_API_BASE_URL: http:\/\/127\.0\.0\.1:3001\n\s+BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef\n\s+MCP_LEGACY_ACTOR_ID: service:ci:mcp-v1\n\s+run: npm --workspace mcp run build/
   );
   assert.match(ciWorkflow, /npm --workspace mcp run build/);
   assert.match(ciWorkflow, /docker build -f mcp\/apps\/backend\/Dockerfile mcp\/apps\/backend/);

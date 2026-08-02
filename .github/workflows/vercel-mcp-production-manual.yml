@@ -90,8 +90,6 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           BACKEND_API_BASE_URL: ${{ secrets.MCP_BACKEND_API_BASE_URL }}
           BACKEND_API_TOKEN: ${{ secrets.MCP_BACKEND_API_TOKEN }}
-          SUPABASE_URL: ${{ secrets.MCP_SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.MCP_SUPABASE_ANON_KEY }}
         run: |
           set -euo pipefail
           status_file="${RUNNER_TEMP}/mcp-runtime-config-status.md"
@@ -103,13 +101,7 @@ jobs:
           const sources = [
             ["BACKEND_API_BASE_URL", "MCP_BACKEND_API_BASE_URL"],
             ["BACKEND_API_TOKEN", "MCP_BACKEND_API_TOKEN"],
-            ["MCP_LEGACY_ACTOR_ID", "workflow:MCP_LEGACY_ACTOR_ID"],
-            ["SUPABASE_URL", "MCP_SUPABASE_URL"],
-            ["SUPABASE_ANON_KEY", "MCP_SUPABASE_ANON_KEY"],
-            ["MCP_BACKEND_API_BASE_URL", "MCP_BACKEND_API_BASE_URL"],
-            ["MCP_BACKEND_API_TOKEN", "MCP_BACKEND_API_TOKEN"],
-            ["MCP_SUPABASE_URL", "MCP_SUPABASE_URL"],
-            ["MCP_SUPABASE_ANON_KEY", "MCP_SUPABASE_ANON_KEY"]
+            ["MCP_LEGACY_ACTOR_ID", "workflow:MCP_LEGACY_ACTOR_ID"]
           ];
 
           try {
@@ -131,9 +123,6 @@ jobs:
             }
             if (values.BACKEND_API_TOKEN.length < 32) {
               throw new Error("backend_api_token_too_short");
-            }
-            if (!values.SUPABASE_URL.startsWith("https://")) {
-              throw new Error("supabase_url_must_be_https");
             }
 
             for (const value of Object.values(values)) {

@@ -64,8 +64,6 @@ jobs:
           BACKEND_API_BASE_URL: http://127.0.0.1:3109
           BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
           MCP_LEGACY_ACTOR_ID: service:ci:mcp-v1
-          SUPABASE_URL: https://project.example.com
-          SUPABASE_ANON_KEY: ci-publishable-key
         run: npm run build
 
       - name: Run browser smoke
@@ -73,8 +71,6 @@ jobs:
           BACKEND_API_BASE_URL: http://127.0.0.1:3109
           BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
           MCP_LEGACY_ACTOR_ID: service:ci:mcp-v1
-          SUPABASE_URL: https://project.example.com
-          SUPABASE_ANON_KEY: ci-publishable-key
           F05_UI_RESULTS_DIR: test-results/f05-ui-smoke
         run: |
           set -euo pipefail

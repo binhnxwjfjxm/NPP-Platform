@@ -41,20 +41,16 @@ jobs:
 
       - name: Build application
         env:
-          BACKEND_API_BASE_URL: http://127.0.0.1:3111
+          BACKEND_API_BASE_URL: http://127.0.0.1:3112
           BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
           MCP_LEGACY_ACTOR_ID: service:ci:export-reader
-          SUPABASE_URL: http://127.0.0.1:3112
-          SUPABASE_ANON_KEY: ci-publishable-key
         run: npm run build
 
       - name: Exercise report and CSV exports
         env:
-          BACKEND_API_BASE_URL: http://127.0.0.1:3111
+          BACKEND_API_BASE_URL: http://127.0.0.1:3112
           BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
           MCP_LEGACY_ACTOR_ID: service:ci:export-reader
-          SUPABASE_URL: http://127.0.0.1:3112
-          SUPABASE_ANON_KEY: ci-publishable-key
           EXPORT_MOCK_PORT: 3112
           EXPORT_MOCK_BASE: http://127.0.0.1:3112
           EXPORT_APP_BASE: http://127.0.0.1:3004
