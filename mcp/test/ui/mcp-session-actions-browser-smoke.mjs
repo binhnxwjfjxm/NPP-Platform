@@ -32,7 +32,7 @@ try {
 
   await behavior({ productDelayMs: 650 });
   await card(page).getByRole("button", { name: "Đơn", exact: true }).click();
-  const order = page.getByRole("dialog", { name: "Tạo đơn hàng", exact: true });
+  const order = page.getByRole("dialog", { name: "Ghi nhận nhu cầu mua", exact: true });
   await order.getByRole("button", { name: "+ Chọn sản phẩm", exact: true }).click();
   const picker = page.getByRole("dialog", { name: "Chọn sản phẩm", exact: true });
   const loadingButton = picker.getByRole("button", { name: "Tải...", exact: true });
@@ -70,7 +70,12 @@ try {
   await picker.getByRole("button", { name: /Trà UI Smoke/ }).first().waitFor({ state: "visible" });
   await picker.getByRole("button", { name: /Trà UI Smoke/ }).first().click();
   await picker.getByRole("button", { name: "Thêm 1 mã vào đơn", exact: true }).click();
-  await saveAndWait(page, "Tạo đơn hàng", "Lưu đơn hàng");
+  await order.getByRole("button", { name: "Lưu nhu cầu mua", exact: true }).click();
+  await order.getByRole("button", { name: "Gửi đề nghị xác minh / mở mã", exact: true }).waitFor({ state: "visible" });
+  await order.getByText("Đã lưu nhu cầu mua trong MCP. Chưa gửi đề nghị sang Core.", { exact: true }).waitFor({ state: "visible" });
+  result.orderIntentSavedWithoutCoreSideEffect = "PASS";
+  await order.getByRole("button", { name: "Đóng", exact: true }).click();
+  await order.waitFor({ state: "hidden" });
 
   await card(page).getByRole("button", { name: "Test", exact: true }).click();
   const testDialog = page.getByRole("dialog", { name: "Ghi kết quả thử sản phẩm", exact: true });
@@ -98,6 +103,7 @@ try {
     assert.ok(request.idempotencyKey, `${route} request must carry Idempotency-Key`);
     assert.equal(request.payload.sessionCustomerId, "sc-existing");
   }
+  assert.equal(mock.requests.some((item) => item.path.includes("customer-onboarding")), false, "saving an order intent must not submit customer onboarding automatically");
   assert.equal(mock.aggregates.orders.length, 1);
   assert.equal(mock.aggregates.tests.length, 1);
   assert.equal(mock.aggregates.reports.length, 1);
