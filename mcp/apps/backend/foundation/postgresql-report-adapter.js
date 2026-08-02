@@ -33,9 +33,11 @@ function fail(code, statusCode = 400) {
 
 function requestContext(config, args) {
   const source = object(args.p_context);
-  const installationId = text(source.installationId) || text(config.installationId);
+  const sourceInstallationId = text(source.installationId);
+  const configuredInstallationId = text(config.installationId);
+  const installationId = sourceInstallationId || configuredInstallationId;
   if (!installationId) fail("installation_id_required");
-  if (text(source.installationId) && text(config.installationId) && source.installationId !== config.installationId) {
+  if (sourceInstallationId && configuredInstallationId && sourceInstallationId !== configuredInstallationId) {
     fail("installation_scope_mismatch", 403);
   }
   return Object.freeze({
