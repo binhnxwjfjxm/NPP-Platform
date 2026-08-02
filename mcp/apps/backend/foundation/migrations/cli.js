@@ -116,12 +116,12 @@ export async function runMigrationCommand(command, env = process.env, { PoolImpl
   const sensitiveUrls = [env.DATABASE_URL, env[MIGRATION_DATABASE_URL_ENV]].filter(Boolean);
   try {
     if (!new Set(["status", "migrate", "verify"]).has(command)) return 2;
-    connectionString = resolveMigrationConnectionString(env);
     assertMigrationSafety({
       nodeEnv: env.NODE_ENV,
       allowProduction: env[PRODUCTION_ALLOW_ENV],
       productionConfirm: env[PRODUCTION_CONFIRM_ENV]
     });
+    connectionString = resolveMigrationConnectionString(env);
     databaseIdentifier = sanitizeDatabaseIdentifier(connectionString);
     pool = new PoolImpl({ connectionString, application_name: "mcp-migration-cli" });
     log({ timestamp: new Date().toISOString(), command, databaseIdentifier, status: "started" });
