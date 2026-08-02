@@ -8,6 +8,7 @@ on:
       - mcp/ops/patch-postgresql-supabase-parity-generator.mjs
       - mcp/ops/patch-postgresql-supabase-parity-columns.mjs
       - mcp/ops/audit-postgresql-supabase-parity-columns.mjs
+      - mcp/ops/audit-legacy-provider-calls.mjs
       - mcp/supabase/migrations/**
       - .github/workflows/generate-mcp-postgresql-parity.yml
 
@@ -64,6 +65,9 @@ jobs:
           NODE
           exit "$status"
 
+      - name: Inventory legacy provider calls
+        run: node mcp/ops/audit-legacy-provider-calls.mjs
+
       - name: Commit generator and migration
         shell: bash
         run: |
@@ -73,6 +77,7 @@ jobs:
             mcp/ops/patch-postgresql-supabase-parity-generator.mjs
             mcp/ops/patch-postgresql-supabase-parity-columns.mjs
             mcp/ops/audit-postgresql-supabase-parity-columns.mjs
+            mcp/ops/audit-legacy-provider-calls.mjs
             database/migrations/mcp/003_mcp_supabase_contract_parity.sql
             mcp/apps/backend/foundation/migrations/sql/003_mcp_supabase_contract_parity.sql
           )
