@@ -62,15 +62,20 @@ const server = http.createServer(async (req, res) => {
       const entry = record(req, url, payload);
       if (!entry.idempotencyKey) return json(res, 400, { error: { code: "idempotency_key_required", message: "idempotency_key_required" } });
       const kind = action[1];
-      const id = `${kind}-ui-${state.aggregates[kind === "followup" ? "followups" : `${kind}s`].length + 1}`;
       const bucket = kind === "followup" ? "followups" : `${kind}s`;
+      const id = `${kind}-ui-${state.aggregates[bucket].length + 1}`;
       state.aggregates[bucket].push({ id, ...payload });
-      if (kind === "order") state.line.hasOrder = true;
+      if (kind === "order") {
+        state.line.hasOrder = true;
+        state.line.orderId = id;
+      }
       if (kind === "test") state.line.hasTest = true;
       if (kind === "report") state.line.hasReport = true;
       if (kind === "followup") state.line.followupCount += 1;
       await persist();
-      return json(res, 200, canonical(req, { id, sessionCustomerId: payload.sessionCustomerId }));
+      return json(res, 200, canonical(req, kind === "order"
+        ? { id, orderId: id, orderCode: "MCP-UI-001", sessionCustomerId: payload.sessionCustomerId }
+        : { id, sessionCustomerId: payload.sessionCustomerId }));
     }
 
     return json(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
