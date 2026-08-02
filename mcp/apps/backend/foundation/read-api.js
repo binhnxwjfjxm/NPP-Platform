@@ -3,6 +3,29 @@ const RAW_FILTER_PREFIXES = ["eq.", "neq.", "gte.", "lte.", "lt.", "gt.", "ilike
 const MAX_READ_LIMIT = 50000;
 const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
 
+const ALLOWED_READ_TABLES = new Set([
+  "accounts",
+  "market_reports",
+  "mcp_followups",
+  "mcp_report_setting_groups",
+  "mcp_report_settings",
+  "mcp_route_customers",
+  "mcp_route_sessions",
+  "mcp_routes",
+  "mcp_session_customers",
+  "mcp_session_reports",
+  "mcp_visits",
+  "order_items",
+  "orders",
+  "product_variants",
+  "products",
+  "route_customers",
+  "test_customer_results",
+  "test_customers",
+  "test_file_products",
+  "test_files"
+]);
+
 function text(value) {
   return String(value ?? "").trim();
 }
@@ -21,7 +44,7 @@ function badRequest(code) {
 function requiredTable(value) {
   const table = text(value);
   if (!table) badRequest("missing_read_table");
-  if (!SAFE_NAME_PATTERN.test(table)) badRequest("invalid_read_table");
+  if (!SAFE_NAME_PATTERN.test(table) || !ALLOWED_READ_TABLES.has(table)) badRequest("invalid_read_table");
   return table;
 }
 
