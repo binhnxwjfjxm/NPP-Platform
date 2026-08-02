@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import pg from "pg";
 import { createPostgresqlPersistence } from "./postgresql-adapter.js";
 import { bindProviderPersistence } from "./provider-runtime.js";
-import { supabaseRpc } from "./supabase-adapter.js";
+import { postgresqlRpc } from "./postgresql-compat-adapter.js";
+import { postgresqlSessionRpc } from "./postgresql-session-adapter.js";
+import { postgresqlSpecialRpc } from "./postgresql-media-adapter.js";
 import { migrationVerifyWithAdapter, runMcpMigrations } from "./migrations/index.js";
 
 const { Pool } = pg;
@@ -96,18 +98,18 @@ test(
     await persistence.assertReady();
     bindProviderPersistence(persistence);
 
-    const route = data(await supabaseRpc(config, "mcp_idempotent_create_route", {
+    const route = data(await postgresqlRpc(config, "mcp_idempotent_create_route", {
       p_route_name: "Tuyến rollover",
       p_area: "Quận 5",
       p_context: context("route")
     }));
-    const routeCustomer = data(await supabaseRpc(config, "mcp_idempotent_add_route_customer", {
+    const routeCustomer = data(await postgresqlRpc(config, "mcp_idempotent_add_route_customer", {
       p_route_id: route.routeId,
       p_customer_name: "Điểm bán rollover",
       p_include_active_session: false,
       p_context: context("route-customer")
     }));
-    const firstSession = data(await supabaseRpc(config, "mcp_idempotent_open_route_session", {
+    const firstSession = data(await postgresqlSessionRpc(config, "mcp_idempotent_open_route_session", {
       p_route_id: route.routeId,
       p_session_date: "2026-08-01",
       p_owner: "NV thị trường",
@@ -121,7 +123,7 @@ test(
     )).rows[0];
     assert.ok(sessionCustomer?.id);
 
-    await supabaseRpc(config, "mcp_idempotent_create_order_from_session_customer", {
+    await postgresqlRpc(config, "mcp_idempotent_create_order_from_session_customer", {
       p_session_customer_id: sessionCustomer.id,
       p_items: [{ productName: "Sản phẩm thử", quantity: 1, unitPrice: 10000, discount: 0 }],
       p_status: "confirmed",
@@ -135,7 +137,7 @@ test(
     assert.equal(Number(afterOrder.visited_customers), 1);
     assert.equal(Number(afterOrder.order_count), 1);
 
-    const secondSession = data(await supabaseRpc(config, "mcp_idempotent_open_route_session", {
+    const secondSession = data(await postgresqlSessionRpc(config, "mcp_idempotent_open_route_session", {
       p_route_id: route.routeId,
       p_session_date: "2026-08-02",
       p_owner: "NV thị trường",
@@ -159,7 +161,7 @@ test(
       { id: secondSession.sessionId, status: "active", visited: 0, orders: 0 }
     ]);
 
-    const deleted = await supabaseRpc(config, "mcp_delete_route_hard", {
+    const deleted = await postgresqlSpecialRpc(config, "mcp_delete_route_hard", {
       p_route_id: route.routeId
     });
     assert.equal(deleted.deleted, true);
