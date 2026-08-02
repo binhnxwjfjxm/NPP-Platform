@@ -51,12 +51,12 @@ jobs:
               echo '::error::The original Phase 6C.0C branch must not change Core or database migrations.'
               exit 1
             fi
+            if git -C .. diff --name-only origin/main...HEAD | grep -E '^\.github/workflows/(heroku|vercel)' >/dev/null; then
+              echo '::error::MCP write-hardening changes must not modify production deployment workflows.'
+              exit 1
+            fi
           else
             echo "Historical Phase 6C.0C source-only boundary is not applicable to ${head_branch}."
-          fi
-          if git -C .. diff --name-only origin/main...HEAD | grep -E '^\.github/workflows/(heroku|vercel)' >/dev/null; then
-            echo '::error::MCP write-hardening changes must not modify production deployment workflows.'
-            exit 1
           fi
 
       - name: Setup Node
