@@ -1,0 +1,164 @@
+name: Patch MCP views to current Core columns
+
+on:
+  push:
+    branches:
+      - agent/issue-158-mcp-domain-schema
+    paths:
+      - .github/workflows/issue-158-patch-mcp-views.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/issue-158-mcp-domain-schema
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Replace three Core compatibility views
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          paths = [
+              Path('database/migrations/mcp/002_mcp_domain_read_models.sql'),
+              Path('mcp/apps/backend/foundation/migrations/sql/002_mcp_domain_read_models.sql'),
+          ]
+
+          replacement = r'''CREATE OR REPLACE VIEW mcp.accounts AS
+          SELECT
+            c.id,
+            c.installation_id,
+            c.code AS customer_code,
+            c.name AS legal_name,
+            c.name AS trading_name,
+            c.name,
+            c.name AS account_name,
+            c.phone,
+            c.email,
+            NULL::text AS area,
+            NULL::text AS address,
+            CASE WHEN c.is_active THEN 'active' ELSE 'inactive' END AS status,
+            c.is_active AS active,
+            c.responsible_employee_id::text AS sales_owner,
+            c.notes AS note,
+            jsonb_build_object(
+              'code', c.code,
+              'group_id', c.group_id,
+              'tax_code', c.tax_code,
+              'credit_limit', c.credit_limit,
+              'payment_terms_days', c.payment_terms_days,
+              'responsible_employee_id', c.responsible_employee_id
+            ) AS raw_payload,
+            c.created_at,
+            c.updated_at
+          FROM shared.customers c;
+
+          CREATE OR REPLACE VIEW mcp.products AS
+          SELECT
+            p.id,
+            p.installation_id,
+            p.name,
+            p.code AS product_code,
+            p.brand_id::text AS brand_code,
+            p.brand_id::text AS brand_name,
+            p.category_id::text AS category,
+            p.is_active AS active,
+            jsonb_build_object(
+              'catalog_name', p.catalog_name,
+              'description', p.description,
+              'notes', p.notes,
+              'category_id', p.category_id,
+              'brand_id', p.brand_id,
+              'is_catalog_visible', p.is_catalog_visible,
+              'is_orderable', p.is_orderable
+            ) AS raw_payload,
+            p.created_at,
+            p.updated_at
+          FROM shared.products p;
+
+          CREATE OR REPLACE VIEW mcp.product_variants AS
+          SELECT
+            v.id,
+            v.installation_id,
+            v.product_id,
+            v.sku,
+            v.name AS variant_name,
+            COALESCE(v.source_package_description, v.source_unit_label, v.net_content_value::text) AS size_label,
+            v.source_unit_label AS sell_unit,
+            v.source_package_description AS pack_unit,
+            v.conversion_to_base AS pack_quantity,
+            v.is_active AS active,
+            v.unit_source_metadata AS raw_options,
+            jsonb_build_object(
+              'variant_kind', v.variant_kind,
+              'unit_id', v.unit_id,
+              'is_inventory_base', v.is_inventory_base,
+              'is_sellable', v.is_sellable,
+              'is_catalog_visible', v.is_catalog_visible,
+              'is_purchasable', v.is_purchasable,
+              'net_content_value', v.net_content_value,
+              'net_content_uom_code', v.net_content_uom_code
+            ) AS raw_payload,
+            v.created_at,
+            v.updated_at
+          FROM shared.product_variants v;
+
+          '''
+
+          start_marker = 'CREATE OR REPLACE VIEW mcp.accounts AS\n'
+          end_marker = 'CREATE OR REPLACE VIEW mcp.route_customers AS\n'
+
+          updated = []
+          for path in paths:
+              text = path.read_text(encoding='utf-8')
+              start = text.find(start_marker)
+              end = text.find(end_marker)
+              if start < 0 or end < 0 or end <= start:
+                  raise SystemExit(f'view_markers_not_found:{path}')
+              patched = text[:start] + replacement + text[end:]
+              if patched.count('CREATE OR REPLACE VIEW mcp.accounts AS') != 1:
+                  raise SystemExit(f'accounts_view_count_invalid:{path}')
+              for forbidden in ('c.customer_code', 'c.legal_name', 'c.trading_name', 'p.product_code', 'p.brand AS', 'v.variant_name'):
+                  if forbidden in patched:
+                      raise SystemExit(f'legacy_core_column_remains:{path}:{forbidden}')
+              path.write_text(patched, encoding='utf-8')
+              updated.append(patched)
+
+          if updated[0] != updated[1]:
+              raise SystemExit('canonical_and_runtime_migrations_diverged')
+          PY
+
+      - name: Verify corrected view contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp \
+            database/migrations/mcp/002_mcp_domain_read_models.sql \
+            mcp/apps/backend/foundation/migrations/sql/002_mcp_domain_read_models.sql
+          grep -Fq 'c.code AS customer_code' database/migrations/mcp/002_mcp_domain_read_models.sql
+          grep -Fq 'p.code AS product_code' database/migrations/mcp/002_mcp_domain_read_models.sql
+          grep -Fq 'v.name AS variant_name' database/migrations/mcp/002_mcp_domain_read_models.sql
+          rm .github/workflows/issue-158-patch-mcp-views.yml
+
+      - name: Commit corrected migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            database/migrations/mcp/002_mcp_domain_read_models.sql \
+            mcp/apps/backend/foundation/migrations/sql/002_mcp_domain_read_models.sql \
+            .github/workflows/issue-158-patch-mcp-views.yml
+          git diff --cached --check
+          git commit -m 'fix(mcp): align Core compatibility views with production schema'
+          git push origin HEAD:agent/issue-158-mcp-domain-schema
