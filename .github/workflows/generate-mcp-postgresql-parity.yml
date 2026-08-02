@@ -9,6 +9,7 @@ on:
       - mcp/ops/patch-postgresql-supabase-parity-columns.mjs
       - mcp/ops/patch-postgresql-supabase-parity-functions.mjs
       - mcp/ops/patch-postgresql-supabase-parity-tenancy.mjs
+      - mcp/ops/patch-postgresql-legacy-provider-idempotency.mjs
       - mcp/ops/audit-postgresql-supabase-parity-columns.mjs
       - mcp/ops/audit-legacy-provider-calls.mjs
       - mcp/ops/audit-postgresql-provider-function-coverage.mjs
@@ -56,6 +57,9 @@ jobs:
       - name: Enforce installation scope
         run: node mcp/ops/patch-postgresql-supabase-parity-tenancy.mjs
 
+      - name: Stabilize command fingerprints
+        run: node mcp/ops/patch-postgresql-legacy-provider-idempotency.mjs
+
       - name: Generate canonical and packaged migration
         run: node mcp/ops/generate-postgresql-supabase-parity.mjs
 
@@ -80,7 +84,7 @@ jobs:
       - name: Require a PostgreSQL function for every legacy RPC
         run: node mcp/ops/audit-postgresql-provider-function-coverage.mjs
 
-      - name: Commit generator and migration
+      - name: Commit generator, provider and migration
         shell: bash
         run: |
           set -euo pipefail
@@ -90,14 +94,16 @@ jobs:
             mcp/ops/patch-postgresql-supabase-parity-columns.mjs
             mcp/ops/patch-postgresql-supabase-parity-functions.mjs
             mcp/ops/patch-postgresql-supabase-parity-tenancy.mjs
+            mcp/ops/patch-postgresql-legacy-provider-idempotency.mjs
             mcp/ops/audit-postgresql-supabase-parity-columns.mjs
             mcp/ops/audit-legacy-provider-calls.mjs
             mcp/ops/audit-postgresql-provider-function-coverage.mjs
+            mcp/apps/backend/foundation/postgresql-legacy-provider.js
             database/migrations/mcp/003_mcp_supabase_contract_parity.sql
             mcp/apps/backend/foundation/migrations/sql/003_mcp_supabase_contract_parity.sql
           )
           if git diff --quiet -- "${tracked[@]}"; then
-            echo 'Generator and migration are current.'
+            echo 'Generator, provider and migration are current.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
