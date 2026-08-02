@@ -28,32 +28,45 @@ function statefulAdapter({ failSql = null } = {}) {
 }
 
 test("MCP migrations use a unique registry namespace and apply once in one locked transaction", async () => {
-  assert.deepEqual(MCP_MIGRATIONS.map((item) => item.id), ["mcp_001_write_foundation"]);
+  assert.deepEqual(MCP_MIGRATIONS.map((item) => item.id), [
+    "mcp_001_write_foundation",
+    "mcp_002_legacy_read_store"
+  ]);
   const adapter = statefulAdapter();
   const first = await runMcpMigrations(adapter);
   const second = await runMcpMigrations(adapter);
-  assert.deepEqual(first.applied, ["mcp_001_write_foundation"]);
+  assert.deepEqual(first.applied, ["mcp_001_write_foundation", "mcp_002_legacy_read_store"]);
   assert.deepEqual(second.applied, []);
   assert.equal(adapter.calls.filter((call) => call.text === "BEGIN").length, 2);
   assert.equal(adapter.calls.filter((call) => call.text === "COMMIT").length, 2);
   assert.equal(adapter.calls.some((call) => call.text.includes("pg_advisory_xact_lock")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.idempotency_records")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.legacy_read_rows")), true);
 
   const status = await migrationStatusWithAdapter(adapter);
   assert.deepEqual(status.pending, []);
-  assert.deepEqual(status.applied, ["mcp_001_write_foundation"]);
+  assert.deepEqual(status.applied, ["mcp_001_write_foundation", "mcp_002_legacy_read_store"]);
 });
 
-test("MCP migration owns only the MCP write foundation and leaves runtime role provisioning external", () => {
-  const sql = MCP_MIGRATIONS[0].sql;
-  const canonicalSql = readFileSync(new URL("../../../../../database/migrations/mcp/001_mcp_write_foundation.sql", import.meta.url), "utf8");
-  assert.equal(sql, canonicalSql);
-  assert.match(sql, /CREATE SCHEMA IF NOT EXISTS mcp/);
-  assert.match(sql, /REVOKE ALL ON SCHEMA mcp FROM PUBLIC/);
-  assert.match(sql, /REVOKE ALL ON ALL TABLES IN SCHEMA mcp FROM PUBLIC/);
-  assert.doesNotMatch(sql, /CREATE\s+ROLE|ALTER\s+ROLE/i);
-  assert.doesNotMatch(sql, /CREATE\s+TABLE\s+(shared|sales|purchasing|inventory|logistics|accounting|reporting)\./i);
-  assert.doesNotMatch(sql, /GRANT[\s\S]+ON\s+(SCHEMA|TABLE)[\s\S]+(shared|sales|purchasing|inventory|logistics|accounting|reporting)/i);
+test("MCP migrations own only MCP tables and leave runtime role provisioning external", () => {
+  const canonicalPaths = [
+    "../../../../../database/migrations/mcp/001_mcp_write_foundation.sql",
+    "../../../../../database/migrations/mcp/002_mcp_legacy_read_store.sql"
+  ];
+
+  MCP_MIGRATIONS.forEach((migration, index) => {
+    const canonicalSql = readFileSync(new URL(canonicalPaths[index], import.meta.url), "utf8");
+    assert.equal(migration.sql, canonicalSql);
+    assert.doesNotMatch(migration.sql, /CREATE\s+ROLE|ALTER\s+ROLE/i);
+    assert.doesNotMatch(migration.sql, /CREATE\s+TABLE\s+(shared|sales|purchasing|inventory|logistics|accounting|reporting)\./i);
+    assert.doesNotMatch(migration.sql, /GRANT[\s\S]+ON\s+(SCHEMA|TABLE)[\s\S]+(shared|sales|purchasing|inventory|logistics|accounting|reporting)/i);
+  });
+
+  assert.match(MCP_MIGRATIONS[0].sql, /CREATE SCHEMA IF NOT EXISTS mcp/);
+  assert.match(MCP_MIGRATIONS[0].sql, /REVOKE ALL ON SCHEMA mcp FROM PUBLIC/);
+  assert.match(MCP_MIGRATIONS[0].sql, /REVOKE ALL ON ALL TABLES IN SCHEMA mcp FROM PUBLIC/);
+  assert.match(MCP_MIGRATIONS[1].sql, /CREATE TABLE IF NOT EXISTS mcp\.legacy_read_rows/);
+  assert.match(MCP_MIGRATIONS[1].sql, /CHECK \(jsonb_typeof\(row_data\) = 'object'\)/);
 });
 
 test("migration failure rolls back and preserves the original error", async () => {
