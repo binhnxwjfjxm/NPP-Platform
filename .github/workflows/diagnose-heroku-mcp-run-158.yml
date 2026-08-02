@@ -1,4 +1,4 @@
-name: Map shared database schema for MCP
+name: Extract MCP read table contracts
 
 on:
   pull_request:
@@ -11,53 +11,58 @@ permissions:
   contents: read
 
 jobs:
-  map-schema:
+  extract-contracts:
     if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-run-158'
     runs-on: ubuntu-latest
-    env:
-      CORE_APP_NAME: hung-phat
-      MCP_APP_NAME: hung-phat-mcp
-      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
     steps:
-      - name: Install Heroku CLI
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Extract literal table reads with nearby options
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${HEROKU_API_KEY:-}"
-          echo "::add-mask::$HEROKU_API_KEY"
-          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
 
-      - name: Print non-sensitive schema map
+          roots = [Path('mcp/src'), Path('mcp/apps/backend')]
+          patterns = [
+              re.compile(r'(?:restRows|backendReadRows|backendReadCount|restCount)(?:<[^>]+>)?\s*\(\s*["\']([^"\']+)["\']', re.M),
+              re.compile(r'\.from\(\s*["\']([^"\']+)["\']\s*\)', re.M),
+          ]
+          found = []
+          for root in roots:
+              for path in root.rglob('*'):
+                  if path.suffix not in {'.ts','.tsx','.js','.mjs'}:
+                      continue
+                  text = path.read_text(encoding='utf-8', errors='ignore')
+                  for pattern in patterns:
+                      for match in pattern.finditer(text):
+                          start = max(0, match.start() - 250)
+                          end = min(len(text), match.start() + 900)
+                          snippet = text[start:end].replace('\r','')
+                          found.append((match.group(1), str(path), text.count('\n', 0, match.start()) + 1, snippet))
+          for table, path, line, snippet in sorted(found):
+              print(f'READ_CONTRACT table={table} file={path} line={line}')
+              print(snippet)
+              print('END_READ_CONTRACT')
+          PY
+
+      - name: Extract DTO and row field contracts
         shell: bash
         run: |
           set -euo pipefail
-          database_url="$(heroku config:get DATABASE_URL -a "$MCP_APP_NAME")"
-          test -n "$database_url"
-          echo "::add-mask::$database_url"
-
-          psql "$database_url" -X -A -t -v ON_ERROR_STOP=1 <<'SQL'
-          select 'TABLE=' || table_schema || '.' || table_name
-          from information_schema.tables
-          where table_schema not in ('pg_catalog','information_schema')
-            and table_type in ('BASE TABLE','VIEW')
-          order by table_schema, table_name;
-
-          select 'COLUMN=' || table_schema || '.' || table_name || '.' || column_name ||
-                 '|TYPE=' || data_type ||
-                 '|NULLABLE=' || is_nullable ||
-                 '|DEFAULT=' || coalesce(column_default, '')
-          from information_schema.columns
-          where table_schema not in ('pg_catalog','information_schema')
-          order by table_schema, table_name, ordinal_position;
-          SQL
-
-      - name: Print exact credential creation help
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "CREDENTIAL_CREATE_HELP_BEGIN"
-          heroku pg:credentials:create --help 2>&1 | head -n 260
-          echo "CREDENTIAL_CREATE_HELP_END"
-          echo "CREDENTIAL_URL_HELP_BEGIN"
-          heroku pg:credentials:url --help 2>&1 | head -n 260
-          echo "CREDENTIAL_URL_HELP_END"
+          for file in \
+            mcp/src/lib/api/routes-data.ts \
+            mcp/src/features/dashboard/persisted-overview.ts \
+            mcp/src/lib/mcp-sessions/load-mcp-sessions.ts \
+            mcp/src/features/mcp/route-customers.types.ts \
+            mcp/src/features/routes/routes.types.ts; do
+            echo "FILE_BEGIN=$file"
+            sed -n '1,360p' "$file"
+            echo "FILE_END=$file"
+          done
