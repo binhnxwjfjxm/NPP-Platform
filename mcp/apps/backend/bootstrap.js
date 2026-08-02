@@ -2,18 +2,22 @@ import { loadEnvFile } from "node:process";
 import { loadFoundationConfig, publicFoundationConfig } from "./foundation/config.js";
 import { createFoundationGateway } from "./foundation/gateway.js";
 import { createPersistence } from "./foundation/persistence.js";
+import { createPostgresqlLegacyProvider } from "./foundation/postgresql-legacy-provider.js";
 
 try { loadEnvFile(".env"); } catch {}
 
 const config = loadFoundationConfig(process.env);
 const persistence = await createPersistence(config);
+const providerPort = config.persistence.provider === "postgresql"
+  ? createPostgresqlLegacyProvider(config, persistence)
+  : null;
 let legacyHandlers = null;
 if (config.legacyRuntime.enabled) {
   const { startLegacyRuntime } = await import("./foundation/legacy-runtime.js");
   legacyHandlers = await startLegacyRuntime(config);
 }
 
-const gateway = createFoundationGateway(config, { persistence, legacyHandlers });
+const gateway = createFoundationGateway(config, { persistence, providerPort, legacyHandlers });
 gateway.listen(config.publicPort, config.publicHost, () => {
   console.log(JSON.stringify({ event: "foundation_gateway_ready", ...publicFoundationConfig(config) }));
 });
