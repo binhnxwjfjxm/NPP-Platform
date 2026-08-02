@@ -64,22 +64,10 @@ test("MCP deploy checks out main, installs in mcp and runs Vercel CLI from monor
     mcpWorkflow,
     /- name: Install MCP dependencies\s+working-directory: mcp\s+run: npm ci/
   );
-  assert.match(
-    mcpWorkflow,
-    /- name: Pull MCP production project configuration\s+run:/
-  );
-  assert.match(
-    mcpWorkflow,
-    /- name: Verify MCP Vercel project link\s+shell: bash/
-  );
-  assert.match(
-    mcpWorkflow,
-    /- name: Build MCP production artifact\s+run:/
-  );
-  assert.match(
-    mcpWorkflow,
-    /- name: Deploy MCP production artifact\s+id: deploy\s+shell: bash/
-  );
+  assert.match(mcpWorkflow, /- name: Pull MCP production project configuration\s+run:/);
+  assert.match(mcpWorkflow, /- name: Verify MCP Vercel project link\s+shell: bash/);
+  assert.match(mcpWorkflow, /- name: Build MCP production artifact\s+run:/);
+  assert.match(mcpWorkflow, /- name: Deploy MCP production artifact\s+id: deploy\s+shell: bash/);
   assert.doesNotMatch(
     mcpWorkflow,
     /- name: (?:Pull MCP production project configuration|Verify MCP Vercel project link|Build MCP production artifact|Deploy MCP production artifact)\s+working-directory: mcp/
@@ -147,8 +135,12 @@ test("MCP deploy builds, deploys and smokes its own Vercel artifact", () => {
     /- name: Smoke configured MCP production alias[\s\S]*DEPLOYMENT_URL: \$\{\{ env\.MCP_PRODUCTION_URL \}\}/
   );
   assert.match(mcpWorkflow, /assert_status \/ /);
+  assert.match(mcpWorkflow, /assert_status \/mcp/);
+  assert.match(mcpWorkflow, /assert_status \/routes/);
   assert.match(mcpWorkflow, /assert_status \/visits/);
-  assert.match(mcpWorkflow, /\/_next\/static\//);
+  assert.match(mcpWorkflow, /html\.match\(/);
+  assert.ok(mcpWorkflow.includes("\\/_next\\/static\\/"));
+  assert.match(mcpWorkflow, /MCP smoke asset=/);
   assert.match(mcpWorkflow, /MCP_DEPLOYED_SHA=/);
   assert.match(mcpWorkflow, /MCP_DEPLOYED_URL=/);
 });
