@@ -17,6 +17,7 @@ jobs:
     timeout-minutes: 15
     env:
       CORE_APP_NAME: hung-phat
+      MCP_APP_NAME: hung-phat-mcp
       HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
     steps:
       - name: Confirm tools and credential
@@ -68,7 +69,7 @@ jobs:
 
           registry_exists="$(psql "$database_url" --no-psqlrc --tuples-only --no-align --command "SELECT to_regclass('shared.schema_migrations') IS NOT NULL")"
           if [[ "$registry_exists" == "t" ]]; then
-            psql "$database_url" --no-psqlrc --set=ON_ERROR_STOP=1 --tuples-only --no-align --command "SELECT 'MIGRATION_REGISTRY_SAMPLE=' || COALESCE(json_agg(t)::text, '[]') FROM (SELECT * FROM shared.schema_migrations ORDER BY 1 DESC LIMIT 100) t"
+            psql "$database_url" --no-psqlrc --set=ON_ERROR_STOP=1 --tuples-only --no-align --command "SELECT 'MCP_MIGRATIONS=' || COALESCE(string_agg(id, ',' ORDER BY id), 'none') FROM shared.schema_migrations WHERE id LIKE 'mcp_%'"
           fi
 
           for table in mcp_routes mcp_route_customers mcp_route_sessions idempotency_records audit_events outbox_events; do
@@ -79,14 +80,36 @@ jobs:
             fi
           done
 
+      - name: Audit MCP dyno and sanitized startup logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          dynos_json="$(curl --fail --silent --show-error \
+            -H 'Accept: application/vnd.heroku+json; version=3' \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            "https://api.heroku.com/apps/$MCP_APP_NAME/dynos")"
+          jq -r '.[] | "DYNO name=\(.name) type=\(.type) state=\(.state) release=\(.release.version // "unknown") updated=\(.updated_at // "unknown")"' <<<"$dynos_json"
+
+          log_session="$(curl --fail --silent --show-error \
+            -X POST \
+            -H 'Accept: application/vnd.heroku+json; version=3' \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            -d '{"lines":200,"source":"app","tail":false}' \
+            "https://api.heroku.com/apps/$MCP_APP_NAME/log-sessions")"
+          log_url="$(jq -r '.logplex_url // empty' <<<"$log_session")"
+          test -n "$log_url"
+          curl --fail --silent --show-error "$log_url" \
+            | tail -n 200 \
+            | sed -E 's#(postgres(?:ql)?://)[^ @]+@#\1[redacted]@#gi; s/[A-Za-z0-9_\-]{40,}/[redacted]/g' \
+            | grep -E 'foundation|error|Error|fatal|Fatal|crash|Crash|missing_|invalid_|persistence|State changed|Starting process|Process exited|at file:' \
+            || true
+
       - name: Audit current backup evidence
         shell: bash
         run: |
           set -euo pipefail
-          backups_json="$(heroku pg:backups -a "$CORE_APP_NAME" --json)"
-          jq -r '
-            if type == "array" and length > 0 then
-              (sort_by(.created_at // .started_at // "") | reverse | .[0]) as $b
-              | "LATEST_BACKUP_ID=\($b.name // $b.id // "unknown")\nLATEST_BACKUP_STATUS=\($b.status // "unknown")\nLATEST_BACKUP_CREATED=\($b.created_at // $b.started_at // "unknown")\nLATEST_BACKUP_FINISHED=\($b.finished_at // "unknown")\nLATEST_BACKUP_BYTES=\($b.num_bytes // $b.size // "unknown")"
-            else "LATEST_BACKUP=none" end
-          ' <<<"$backups_json"
+          echo "BACKUP_LIST_BEGIN"
+          heroku pg:backups -a "$CORE_APP_NAME" \
+            | sed -E 's#(postgres(?:ql)?://)[^ @]+@#\1[redacted]@#gi; s/[A-Za-z0-9_\-]{40,}/[redacted]/g'
+          echo "BACKUP_LIST_END"
