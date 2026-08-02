@@ -95,13 +95,17 @@ jobs:
           fi
           grep -Fq 'mcp_runtime_role_is_privileged:postgres' /tmp/privileged-role.log
 
+          helper_execute="$(psql "$OWNER_URL" -XAt -v ON_ERROR_STOP=1 \
+            -c "select has_function_privilege('mcp_runtime', 'shared.grant_mcp_runtime_access(name)', 'EXECUTE')::text")"
+          test "$helper_execute" = "false"
+          echo 'HELPER_EXECUTE=false' > /tmp/runtime-reads.log
+
           PGPASSWORD=mcp_runtime_rehearsal psql \
             --host=127.0.0.1 --port=5432 --username=mcp_runtime --dbname=rehearsal \
-            -XAt -v ON_ERROR_STOP=1 <<'SQL' | tee /tmp/runtime-reads.log
+            -XAt -v ON_ERROR_STOP=1 <<'SQL' | tee -a /tmp/runtime-reads.log
           select 'CURRENT_USER=' || current_user;
           select 'SEARCH_PATH=' || current_setting('search_path');
           select 'SCHEMA_USAGE=' || has_schema_privilege(current_user, 'mcp', 'USAGE')::text;
-          select 'HELPER_EXECUTE=' || has_function_privilege(current_user, 'shared.grant_mcp_runtime_access(name)', 'EXECUTE')::text;
           select 'IDEMPOTENCY_SELECT=' || has_table_privilege(current_user, 'mcp.idempotency_records', 'SELECT')::text;
           select 'IDEMPOTENCY_INSERT=' || has_table_privilege(current_user, 'mcp.idempotency_records', 'INSERT')::text;
           select 'IDEMPOTENCY_UPDATE=' || has_table_privilege(current_user, 'mcp.idempotency_records', 'UPDATE')::text;
