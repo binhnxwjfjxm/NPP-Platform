@@ -16,11 +16,22 @@ function providerError(response, payload) {
   return error;
 }
 
+function usesPostgresql(config) {
+  return config?.persistence?.provider === "postgresql";
+}
+
 export async function supabaseRequest(
   config,
   path,
   { method = "GET", body, prefer, fetchImpl = fetch } = {}
 ) {
+  if (usesPostgresql(config)) {
+    const error = new Error("legacy_provider_request_forbidden");
+    error.code = "legacy_provider_request_forbidden";
+    error.statusCode = 503;
+    throw error;
+  }
+
   const headers = {
     apikey: config.supabaseServiceRoleKey,
     Authorization: `Bearer ${config.supabaseServiceRoleKey}`,
@@ -40,11 +51,19 @@ export async function supabaseRequest(
   return payload;
 }
 
-export function supabaseRest(config, resource, options = {}) {
+export async function supabaseRest(config, resource, options = {}) {
+  if (usesPostgresql(config)) {
+    const { postgresqlRest } = await import("./postgresql-compat-adapter.js");
+    return postgresqlRest(resource, options);
+  }
   return supabaseRequest(config, `/rest/v1/${resource}`, options);
 }
 
-export function supabaseRpc(config, name, args, options = {}) {
+export async function supabaseRpc(config, name, args, options = {}) {
+  if (usesPostgresql(config)) {
+    const { postgresqlRpc } = await import("./postgresql-compat-adapter.js");
+    return postgresqlRpc(config, name, args, options);
+  }
   return supabaseRequest(config, `/rest/v1/rpc/${name}`, {
     method: "POST",
     body: args,
