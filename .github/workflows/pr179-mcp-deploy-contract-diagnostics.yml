@@ -1,0 +1,47 @@
+name: PR179 MCP deploy contract diagnostics
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/heroku-mcp-backend-manual.yml'
+      - 'mcp/apps/backend/scripts/manual-production-deploy.sh'
+      - 'mcp/apps/backend/scripts/production-rollout-gate.sh'
+      - 'mcp/test/heroku-mcp-backend-contract.test.mjs'
+      - 'mcp/test/heroku-mcp-production-rollout-contract.test.mjs'
+      - '.github/workflows/pr179-mcp-deploy-contract-diagnostics.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run focused deploy contracts
+        id: focused
+        shell: bash
+        run: |
+          set +e
+          node --test --test-reporter=spec \
+            mcp/test/heroku-mcp-backend-contract.test.mjs \
+            mcp/test/heroku-mcp-production-rollout-contract.test.mjs \
+            2>&1 | tee "$RUNNER_TEMP/mcp-deploy-contract.log"
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+      - name: Upload focused test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr179-mcp-deploy-contract-log
+          path: ${{ runner.temp }}/mcp-deploy-contract.log
+          if-no-files-found: error
+          retention-days: 3
