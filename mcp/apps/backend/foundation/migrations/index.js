@@ -5,9 +5,14 @@ const MCP_WRITE_FOUNDATION_SQL = readFileSync(
   new URL("./sql/001_mcp_write_foundation.sql", import.meta.url),
   "utf8"
 );
+const MCP_LEGACY_READ_STORE_SQL = readFileSync(
+  new URL("./sql/002_mcp_legacy_read_store.sql", import.meta.url),
+  "utf8"
+);
 
 export const MCP_MIGRATIONS = Object.freeze([
-  Object.freeze({ id: "mcp_001_write_foundation", sql: MCP_WRITE_FOUNDATION_SQL })
+  Object.freeze({ id: "mcp_001_write_foundation", sql: MCP_WRITE_FOUNDATION_SQL }),
+  Object.freeze({ id: "mcp_002_legacy_read_store", sql: MCP_LEGACY_READ_STORE_SQL })
 ]);
 
 function migrationError(code) {
@@ -139,6 +144,7 @@ export async function migrationVerifyWithAdapter(adapter, migrations = MCP_MIGRA
     idempotencyTable: await tableExists(adapter, "idempotency_records"),
     auditTable: await tableExists(adapter, "audit_events"),
     outboxTable: await tableExists(adapter, "outbox_events"),
+    legacyReadStoreTable: await tableExists(adapter, "legacy_read_rows"),
     idempotencyScopeConstraint: await constraintExists(
       adapter,
       "idempotency_records",
@@ -154,12 +160,24 @@ export async function migrationVerifyWithAdapter(adapter, migrations = MCP_MIGRA
       "outbox_events",
       "mcp_outbox_events_published_shape"
     ),
+    legacyReadStoreTableConstraint: await constraintExists(
+      adapter,
+      "legacy_read_rows",
+      "mcp_legacy_read_rows_table_name"
+    ),
+    legacyReadStorePayloadConstraint: await constraintExists(
+      adapter,
+      "legacy_read_rows",
+      "mcp_legacy_read_rows_object_payload"
+    ),
     auditAppendOnlyTrigger: await triggerExists(
       adapter,
       "audit_events",
       "mcp_audit_events_append_only"
     ),
-    outboxPendingIndex: await indexExists(adapter, "mcp_outbox_events_pending_available_idx")
+    outboxPendingIndex: await indexExists(adapter, "mcp_outbox_events_pending_available_idx"),
+    legacyReadStoreImportedIndex: await indexExists(adapter, "mcp_legacy_read_rows_table_imported_idx"),
+    legacyReadStorePayloadIndex: await indexExists(adapter, "mcp_legacy_read_rows_payload_gin_idx")
   });
   const issues = [];
   if (status.pending.length) issues.push(`pending migrations: ${status.pending.join(", ")}`);
