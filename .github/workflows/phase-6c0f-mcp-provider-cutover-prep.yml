@@ -83,6 +83,9 @@ jobs:
           persist-credentials: false
 
       - name: Verify Phase 6C.0F source boundary
+        if: >-
+          github.event_name == 'push' ||
+          github.event.pull_request.head.ref == 'agent/phase-6c0f-mcp-provider-cutover-prep'
         working-directory: .
         shell: bash
         run: |
