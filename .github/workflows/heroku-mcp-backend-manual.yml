@@ -157,6 +157,22 @@ jobs:
 
           previous_active_release_version="$(heroku releases --json -a "$HEROKU_APP_NAME" | jq -r '.[0].version // empty')"
           test -n "$previous_active_release_version"
+
+          previous_release_healthy="true"
+          for path in /health/live /health/ready; do
+            status="$(
+              curl --silent --show-error \
+                --connect-timeout 5 \
+                --max-time 10 \
+                --output /dev/null \
+                --write-out '%{http_code}' \
+                "$app_url$path" || true
+            )"
+            if [ "$status" != "200" ]; then
+              previous_release_healthy="false"
+            fi
+          done
+
           config_names="$(jq -r 'keys[]' <<<"$config_json" | sort -u | paste -sd, -)"
 
           {
@@ -164,6 +180,7 @@ jobs:
             echo "app_url=$app_url"
             echo "stack=$stack"
             echo "previous_active_release_version=$previous_active_release_version"
+            echo "previous_release_healthy=$previous_release_healthy"
             echo "config_names=$config_names"
           } >> "$GITHUB_OUTPUT"
 
@@ -175,6 +192,7 @@ jobs:
           REQUESTED_RELEASE_VERSION: ${{ inputs.release_version }}
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           PREVIOUS_ACTIVE_RELEASE_VERSION: ${{ steps.preflight.outputs.previous_active_release_version }}
+          PREVIOUS_RELEASE_HEALTHY: ${{ steps.preflight.outputs.previous_release_healthy }}
           APP_URL: ${{ steps.preflight.outputs.app_url }}
         run: |
           set -euo pipefail
@@ -188,11 +206,13 @@ jobs:
 
           app_url="${APP_URL%/}"
           previous_active_release_version="$PREVIOUS_ACTIVE_RELEASE_VERSION"
+          previous_release_healthy="${PREVIOUS_RELEASE_HEALTHY:-false}"
           failed_release_version=""
           rollback_target_version=""
           deployment_failed="false"
           rollback_failed="false"
           rollback_health_failed="false"
+          rollback_skipped_unhealthy_previous="false"
 
           refresh_release_version() {
             heroku releases --json -a "$HEROKU_APP_NAME" | jq -r '.[0].version // empty'
@@ -238,9 +258,11 @@ jobs:
               echo "rollback_target_version=$rollback_target_version"
               echo "failed_release_version=$failed_release_version"
               echo "previous_active_release_version=$previous_active_release_version"
+              echo "previous_release_healthy=$previous_release_healthy"
               echo "deployment_failed=$deployment_failed"
               echo "rollback_failed=$rollback_failed"
               echo "rollback_health_failed=$rollback_health_failed"
+              echo "rollback_skipped_unhealthy_previous=$rollback_skipped_unhealthy_previous"
             } >> "$GITHUB_OUTPUT"
           }
 
@@ -264,18 +286,23 @@ jobs:
               if ! smoke_health /health/live || ! smoke_health /health/ready; then
                 deployment_failed="true"
                 failed_release_version="$HEROKU_RELEASE_VERSION"
-                rollback_target_version="$previous_active_release_version"
 
-                if heroku releases:rollback "$previous_active_release_version" -a "$HEROKU_APP_NAME"; then
-                  HEROKU_RELEASE_VERSION="$(refresh_release_version)"
-                  app_url="$(refresh_app_url)"
-                  if ! smoke_health /health/live || ! smoke_health /health/ready; then
-                    rollback_health_failed="true"
+                if [ "$previous_release_healthy" = "true" ]; then
+                  rollback_target_version="$previous_active_release_version"
+                  if heroku releases:rollback "$previous_active_release_version" -a "$HEROKU_APP_NAME"; then
+                    HEROKU_RELEASE_VERSION="$(refresh_release_version)"
+                    app_url="$(refresh_app_url)"
+                    if ! smoke_health /health/live || ! smoke_health /health/ready; then
+                      rollback_health_failed="true"
+                    fi
+                  else
+                    rollback_failed="true"
+                    HEROKU_RELEASE_VERSION="$(refresh_release_version || true)"
+                    app_url="$(refresh_app_url || printf '%s' "$app_url")"
                   fi
                 else
-                  rollback_failed="true"
-                  HEROKU_RELEASE_VERSION="$(refresh_release_version || true)"
-                  app_url="$(refresh_app_url || printf '%s' "$app_url")"
+                  rollback_skipped_unhealthy_previous="true"
+                  echo "Previous release was already unhealthy; automatic rollback is intentionally skipped." >&2
                 fi
               fi
               ;;
@@ -320,9 +347,11 @@ jobs:
             echo "ROLLBACK_TARGET_VERSION=${{ steps.release.outputs.rollback_target_version }}"
             echo "FAILED_RELEASE_VERSION=${{ steps.release.outputs.failed_release_version }}"
             echo "PREVIOUS_ACTIVE_RELEASE_VERSION=${{ steps.release.outputs.previous_active_release_version }}"
+            echo "PREVIOUS_RELEASE_HEALTHY=${{ steps.release.outputs.previous_release_healthy }}"
             echo "DEPLOYMENT_FAILED=${{ steps.release.outputs.deployment_failed }}"
             echo "ROLLBACK_FAILED=${{ steps.release.outputs.rollback_failed }}"
             echo "ROLLBACK_HEALTH_FAILED=${{ steps.release.outputs.rollback_health_failed }}"
+            echo "ROLLBACK_SKIPPED_UNHEALTHY_PREVIOUS=${{ steps.release.outputs.rollback_skipped_unhealthy_previous }}"
             echo "HEROKU_STACK=${{ steps.preflight.outputs.stack }}"
             echo "CONFIG_NAMES=${{ steps.preflight.outputs.config_names }}"
             echo "DEPLOYED_SHA=${{ steps.release.outputs.sha }}"
@@ -338,7 +367,11 @@ jobs:
             exit 1
           fi
           if [ "${{ steps.release.outputs.deployment_failed }}" = "true" ]; then
-            echo "The requested deployment failed health checks and was rolled back." >&2
+            if [ "${{ steps.release.outputs.rollback_skipped_unhealthy_previous }}" = "true" ]; then
+              echo "The requested deployment failed health checks; the previous release was already unhealthy, so rollback was skipped." >&2
+            else
+              echo "The requested deployment failed health checks and was rolled back." >&2
+            fi
             exit 1
           fi
           if [ "${{ steps.release.outputs.rollback_failed }}" = "true" ]; then
