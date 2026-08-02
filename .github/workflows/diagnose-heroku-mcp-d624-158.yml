@@ -1,0 +1,115 @@
+name: Diagnose MCP Heroku d624 rollout 158
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/diagnose-heroku-mcp-d624-158.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  rollout:
+    if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-d624-158'
+    runs-on: ubuntu-latest
+    outputs:
+      run_id: ${{ steps.target.outputs.run_id }}
+    steps:
+      - name: Wait for completed non-skipped rollout
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: d624c0fb4ce7d17cd7b157dde4e1af6b5b82fc7d
+          CREATED_AFTER: 2026-08-02T10:28:01Z
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id=""
+          for attempt in $(seq 1 120); do
+            runs_json="$(gh api --method GET \
+              -H 'Accept: application/vnd.github+json' \
+              "/repos/${GITHUB_REPOSITORY}/actions/workflows/heroku-mcp-backend-manual.yml/runs" \
+              -f event=issue_comment \
+              -f per_page=50)"
+            if (( attempt == 1 || attempt % 12 == 0 )); then
+              jq -r --arg head "$EXPECTED_HEAD" --arg after "$CREATED_AFTER" '
+                .workflow_runs
+                | map(select(.head_sha == $head and .created_at >= $after))
+                | sort_by(.created_at)
+                | reverse
+                | .[]
+                | "RUN id=\(.id) status=\(.status) conclusion=\(.conclusion // "") created=\(.created_at) title=\(.display_title // "")"
+              ' <<<"$runs_json"
+            fi
+            run_id="$(jq -r --arg head "$EXPECTED_HEAD" --arg after "$CREATED_AFTER" '
+              .workflow_runs
+              | map(select(
+                  .head_sha == $head
+                  and .created_at >= $after
+                  and .status == "completed"
+                  and (.conclusion // "") != "skipped"
+                ))
+              | sort_by(.created_at)
+              | reverse
+              | .[0].id // empty
+            ' <<<"$runs_json")"
+            if [[ -n "$run_id" ]]; then break; fi
+            sleep 5
+          done
+          test -n "$run_id"
+          run_json="$(gh api --method GET -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}")"
+          echo "TARGET_RUN_ID=$run_id"
+          echo "TARGET_STATUS=$(jq -r '.status' <<<"$run_json")"
+          echo "TARGET_CONCLUSION=$(jq -r '.conclusion // ""' <<<"$run_json")"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Print rollout jobs and steps
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.target.outputs.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --method GET \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" \
+            --jq '.jobs[] | "JOB id=\(.id) name=\(.name) status=\(.status) conclusion=\(.conclusion // "")\n" + ([.steps[] | "  STEP \(.number) \(.name): \(.status)/\(.conclusion // "")"] | join("\n"))'
+
+  provider-health:
+    if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-d624-158'
+    needs: rollout
+    runs-on: ubuntu-latest
+    env:
+      HEROKU_APP_NAME: hung-phat-mcp
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+    steps:
+      - name: Audit active release and health
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HEROKU_API_KEY:-}"
+          echo "::add-mask::$HEROKU_API_KEY"
+          app_json="$(curl --fail --silent --show-error \
+            -H 'Accept: application/vnd.heroku+json; version=3' \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            "https://api.heroku.com/apps/$HEROKU_APP_NAME")"
+          app_url="$(jq -r '.web_url // empty' <<<"$app_json" | sed 's:/*$::')"
+          releases_json="$(curl --fail --silent --show-error \
+            -H 'Accept: application/vnd.heroku+json; version=3' \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            "https://api.heroku.com/apps/$HEROKU_APP_NAME/releases")"
+          release_version="$(jq -r 'sort_by(.version) | reverse | .[0].version // empty' <<<"$releases_json")"
+          release_status="$(jq -r 'sort_by(.version) | reverse | .[0].status // empty' <<<"$releases_json")"
+          live_status="$(curl --silent --show-error --connect-timeout 5 --max-time 20 --output live.json --write-out '%{http_code}' "$app_url/health/live" || true)"
+          ready_status="$(curl --silent --show-error --connect-timeout 5 --max-time 20 --output ready.json --write-out '%{http_code}' "$app_url/health/ready" || true)"
+          live_value="$(jq -r '.data.status // .status // .code // empty' live.json 2>/dev/null || true)"
+          ready_value="$(jq -r '.data.status // .status // .code // .error.code // empty' ready.json 2>/dev/null || true)"
+          echo "LATEST_RELEASE_VERSION=${release_version:-missing}"
+          echo "LATEST_RELEASE_STATUS=${release_status:-missing}"
+          echo "HEALTH_LIVE_HTTP=${live_status:-none}"
+          echo "HEALTH_LIVE_VALUE=${live_value:-none}"
+          echo "HEALTH_READY_HTTP=${ready_status:-none}"
+          echo "HEALTH_READY_VALUE=${ready_value:-none}"
