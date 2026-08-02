@@ -80,6 +80,7 @@ jobs:
         with:
           ref: ${{ env.DEPLOY_REF }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify exact origin/main SHA
         id: sha
