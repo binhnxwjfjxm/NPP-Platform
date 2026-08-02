@@ -1,0 +1,48 @@
+name: Diagnose MCP Vercel run
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/diagnose-mcp-vercel-run.yml
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  diagnose:
+    if: github.event.pull_request.head.ref == 'agent/diagnose-mcp-vercel-run'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report latest MCP Vercel issue-comment run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_json="$(
+            gh api --method GET \
+              "repos/${GITHUB_REPOSITORY}/actions/runs?event=issue_comment&per_page=100" \
+              --jq '[.workflow_runs[] | select(.name == "Manual Vercel MCP production deploy")] | sort_by(.created_at) | reverse | .[0]'
+          )"
+          test "$run_json" != "null"
+          run_id="$(jq -r '.id' <<<"$run_json")"
+          status="$(jq -r '.status' <<<"$run_json")"
+          conclusion="$(jq -r '.conclusion // "pending"' <<<"$run_json")"
+          head_sha="$(jq -r '.head_sha' <<<"$run_json")"
+          created_at="$(jq -r '.created_at' <<<"$run_json")"
+          html_url="$(jq -r '.html_url' <<<"$run_json")"
+          {
+            echo "### MCP Vercel workflow diagnosis"
+            echo
+            echo "- Run ID: \`$run_id\`"
+            echo "- Status: \`$status\`"
+            echo "- Conclusion: \`$conclusion\`"
+            echo "- Head SHA: \`$head_sha\`"
+            echo "- Created: \`$created_at\`"
+            echo "- Run: $html_url"
+          } > "${RUNNER_TEMP}/mcp-vercel-run-diagnosis.md"
+          gh issue comment 5 --body-file "${RUNNER_TEMP}/mcp-vercel-run-diagnosis.md"
