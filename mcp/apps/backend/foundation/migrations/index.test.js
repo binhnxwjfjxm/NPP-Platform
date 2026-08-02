@@ -29,15 +29,18 @@ function statefulAdapter({ failSql = null } = {}) {
   };
 }
 
+const EXPECTED_MIGRATIONS = [
+  "mcp_001_write_foundation",
+  "mcp_002_domain_read_models",
+  "mcp_003_legacy_write_contract"
+];
+
 test("MCP migrations use a unique registry namespace and apply once in one locked transaction", async () => {
-  assert.deepEqual(MCP_MIGRATIONS.map((item) => item.id), [
-    "mcp_001_write_foundation",
-    "mcp_002_domain_read_models"
-  ]);
+  assert.deepEqual(MCP_MIGRATIONS.map((item) => item.id), EXPECTED_MIGRATIONS);
   const adapter = statefulAdapter();
   const first = await runMcpMigrations(adapter);
   const second = await runMcpMigrations(adapter);
-  assert.deepEqual(first.applied, ["mcp_001_write_foundation", "mcp_002_domain_read_models"]);
+  assert.deepEqual(first.applied, EXPECTED_MIGRATIONS);
   assert.deepEqual(second.applied, []);
   assert.equal(adapter.calls.filter((call) => call.text === "BEGIN").length, 2);
   assert.equal(adapter.calls.filter((call) => call.text === "COMMIT").length, 2);
@@ -45,10 +48,12 @@ test("MCP migrations use a unique registry namespace and apply once in one locke
   assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.idempotency_records")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.mcp_routes")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.orders")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.mcp_outlet_media")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.mcp_archive_intents")), true);
 
   const status = await migrationStatusWithAdapter(adapter);
   assert.deepEqual(status.pending, []);
-  assert.deepEqual(status.applied, ["mcp_001_write_foundation", "mcp_002_domain_read_models"]);
+  assert.deepEqual(status.applied, EXPECTED_MIGRATIONS);
 });
 
 test("MCP foundation migration is canonical and leaves runtime role creation external", () => {
@@ -105,6 +110,36 @@ test("MCP domain migration owns writable MCP data and exposes only shared Core m
   assert.match(sql, /ALTER ROLE %I IN DATABASE %I SET search_path = mcp, public/);
   assert.doesNotMatch(sql, /CREATE\s+ROLE|ALTER\s+ROLE\s+mcp_runtime/i);
   assert.doesNotMatch(sql, /CREATE\s+TABLE\s+(shared|sales|purchasing|inventory|logistics|accounting|reporting)\./i);
+  assert.doesNotMatch(sql, /public\.mcp_/i);
+  assert.doesNotMatch(sql, /SUPABASE_/i);
+});
+
+test("MCP legacy write migration is canonical and ports final Supabase fields", () => {
+  const sql = MCP_MIGRATIONS[2].sql;
+  const canonicalSql = readFileSync(new URL("../../../../../database/migrations/mcp/003_mcp_legacy_write_contract.sql", import.meta.url), "utf8");
+  assert.equal(sql, canonicalSql);
+  for (const table of [
+    "mcp_report_templates",
+    "mcp_outlet_media",
+    "mcp_storage_delete_jobs",
+    "mcp_archive_intents"
+  ]) {
+    assert.match(sql, new RegExp(`CREATE TABLE IF NOT EXISTS mcp\\.${table}`));
+  }
+  for (const column of [
+    "delete_requested_at",
+    "deleted_at",
+    "delete_attempt_count",
+    "last_delete_error",
+    "selected_competitor_ids",
+    "selected_used_product_ids",
+    "selected_setting_item_ids"
+  ]) {
+    assert.match(sql, new RegExp(`\\b${column}\\b`));
+  }
+  assert.match(sql, /pg_has_role\(p_role::text, privileged\.oid, 'member'\)/);
+  assert.match(sql, /pg_read_all_data/);
+  assert.match(sql, /pg_write_all_data/);
   assert.doesNotMatch(sql, /public\.mcp_/i);
   assert.doesNotMatch(sql, /SUPABASE_/i);
 });
