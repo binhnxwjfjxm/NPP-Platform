@@ -1,0 +1,163 @@
+name: Phase 6C.0E MCP Migration Rehearsal
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'mcp/apps/backend/foundation/rehearsal.js'
+      - 'mcp/apps/backend/scripts/rehearse-mcp-migrations.js'
+      - 'mcp/audit/phase-6c0e/**'
+      - 'mcp/test/phase-6c0e-migration-rehearsal-contract.test.mjs'
+      - 'docs/operations/phase-6c0e-mcp-migration-rehearsal.md'
+      - 'docs/operations/LATEST_HANDOFF.md'
+      - '.github/workflows/phase-6c0e-mcp-migration-rehearsal.yml'
+  push:
+    branches:
+      - agent/phase-6c0e-mcp-migration-rehearsal
+    paths:
+      - 'mcp/apps/backend/foundation/rehearsal.js'
+      - 'mcp/apps/backend/scripts/rehearse-mcp-migrations.js'
+      - 'mcp/audit/phase-6c0e/**'
+      - 'mcp/test/phase-6c0e-migration-rehearsal-contract.test.mjs'
+      - 'docs/operations/phase-6c0e-mcp-migration-rehearsal.md'
+      - 'docs/operations/LATEST_HANDOFF.md'
+      - '.github/workflows/phase-6c0e-mcp-migration-rehearsal.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-6c0e-mcp-rehearsal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rehearse:
+    name: Backup, restore and reconciliation evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-secret-6c0e
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify Phase 6C.0E source boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          git diff --name-only origin/main...HEAD | tee mcp/phase-6c0e-changed-files.log
+
+          if git diff --name-only origin/main...HEAD | grep -E '^npp-core/' >/dev/null; then
+            echo '::error::Phase 6C.0E must not change Core source.'
+            exit 1
+          fi
+          if git diff --name-only origin/main...HEAD | grep -E '^database/migrations/' >/dev/null; then
+            echo '::error::Phase 6C.0E must not add or alter installation migrations.'
+            exit 1
+          fi
+          if git diff --name-only origin/main...HEAD | grep -E '^\.github/workflows/(heroku|vercel)' >/dev/null; then
+            echo '::error::Phase 6C.0E must not change production release workflows.'
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install repository dependencies
+        run: npm ci
+
+      - name: Install PostgreSQL 17 client tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor --yes -o /usr/share/keyrings/postgresql-pgdg.gpg
+          echo "deb [signed-by=/usr/share/keyrings/postgresql-pgdg.gpg] https://apt.postgresql.org/pub/repos/apt noble-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          echo '/usr/lib/postgresql/17/bin' >> "$GITHUB_PATH"
+          /usr/lib/postgresql/17/bin/pg_dump --version
+          /usr/lib/postgresql/17/bin/pg_restore --version
+
+      - name: Verify rehearsal source contracts
+        run: |
+          node --check mcp/apps/backend/foundation/rehearsal.js
+          node --check mcp/apps/backend/scripts/rehearse-mcp-migrations.js
+          node --test mcp/test/phase-6c0e-migration-rehearsal-contract.test.mjs
+
+      - name: Verify MCP backend regression
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:ci-secret-6c0e@127.0.0.1:5432/postgres
+        run: npm --workspace mcp/apps/backend run verify
+
+      - name: Run source to restore rehearsal
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:ci-secret-6c0e@127.0.0.1:5432/postgres
+          TEST_DATABASE_URL: postgresql://postgres:ci-secret-6c0e@127.0.0.1:5432/postgres
+          MCP_MIGRATION_REHEARSAL_CONFIRM: temporary-database
+          MCP_REHEARSAL_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          MCP_PG_DUMP_BIN: /usr/lib/postgresql/17/bin/pg_dump
+          MCP_PG_RESTORE_BIN: /usr/lib/postgresql/17/bin/pg_restore
+        run: node mcp/apps/backend/scripts/rehearse-mcp-migrations.js
+
+      - name: Verify machine-readable evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { validateRehearsalReport } from './mcp/apps/backend/foundation/rehearsal.js';
+
+          const reportPath = './mcp/artifacts/migration-rehearsal-phase-6c0e-report.json';
+          const text = readFileSync(reportPath, 'utf8');
+          const report = JSON.parse(text);
+          const validation = validateRehearsalReport(report);
+          if (!validation.valid) throw new Error(`invalid report: ${validation.issues.join(', ')}`);
+          if (report.status !== 'success') throw new Error(`rehearsal failed: ${JSON.stringify(report.errors)}`);
+          for (const forbidden of ['postgresql://', 'ci-secret-6c0e', '127.0.0.1']) {
+            if (text.includes(forbidden)) throw new Error(`sensitive rehearsal detail leaked: ${forbidden}`);
+          }
+          console.log(JSON.stringify({
+            phase: report.phase,
+            status: report.status,
+            reconciliation: report.reconciliation,
+            cleanup: report.cleanup
+          }));
+          NODE
+
+      - name: Upload rehearsal evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-6c0e-rehearsal-${{ github.run_id }}
+          path: |
+            mcp/artifacts/migration-rehearsal-phase-6c0e-report.json
+            mcp/phase-6c0e-changed-files.log
+          retention-days: 14
+          if-no-files-found: error
