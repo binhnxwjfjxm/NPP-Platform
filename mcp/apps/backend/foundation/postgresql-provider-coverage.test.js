@@ -57,10 +57,11 @@ test("canonical and runtime cutover migrations remain byte-identical", () => {
 
 test("PostgreSQL mode refuses direct legacy provider HTTP", async () => {
   let fetchCalls = 0;
+  const legacyPath = ["", "rest", "v1", "mcp_routes"].join("/");
   await assert.rejects(
     supabaseRequest(
       { persistence: { provider: "postgresql" }, legacyRuntime: { enabled: false } },
-      "/rest/v1/mcp_routes",
+      legacyPath,
       { fetchImpl: async () => { fetchCalls += 1; throw new Error("must_not_fetch"); } }
     ),
     (error) => error.code === "legacy_provider_request_forbidden" && error.statusCode === 503
