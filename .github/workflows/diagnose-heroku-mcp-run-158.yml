@@ -1,4 +1,4 @@
-name: Monitor repaired MCP Heroku deploy
+name: Monitor exact repaired MCP Heroku deploy
 
 on:
   pull_request:
@@ -17,11 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Find repaired MCP Heroku deploy run
+      - name: Find deploy after repaired config
         id: target
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_HEAD: 10ad25d8317064cb8c89c5092359f1ae14be1054
+          NOT_BEFORE: 2026-08-02T11:17:00Z
         shell: bash
         run: |
           set -euo pipefail
@@ -31,11 +32,12 @@ jobs:
               "/repos/${GITHUB_REPOSITORY}/actions/workflows/heroku-mcp-backend-manual.yml/runs" \
               -f event=issue_comment \
               -f per_page=30)"
-            run_id="$(jq -r --arg head "$EXPECTED_HEAD" '
+            jq -r '.workflow_runs | sort_by(.created_at) | reverse | .[:8][] | "RUN id=\(.id) status=\(.status) conclusion=\(.conclusion // "") created=\(.created_at) actor=\(.actor.login // "") head=\(.head_sha // "")"' <<<"$runs_json"
+            run_id="$(jq -r --arg head "$EXPECTED_HEAD" --arg not_before "$NOT_BEFORE" '
               .workflow_runs
               | sort_by(.created_at)
               | reverse
-              | map(select(.head_sha == $head and (.actor.login // "") == "khuongbinhinfo-a11y" and (.conclusion // "") != "skipped"))
+              | map(select(.head_sha == $head and .created_at >= $not_before and (.actor.login // "") == "khuongbinhinfo-a11y" and (.conclusion // "") != "skipped"))
               | .[0].id // empty
             ' <<<"$runs_json")"
             if [[ -n "$run_id" ]]; then
