@@ -29,15 +29,18 @@ function statefulAdapter({ failSql = null } = {}) {
   };
 }
 
+const migrationIds = [
+  "mcp_001_write_foundation",
+  "mcp_002_domain_read_models",
+  "mcp_003_supabase_contract_parity"
+];
+
 test("MCP migrations use a unique registry namespace and apply once in one locked transaction", async () => {
-  assert.deepEqual(MCP_MIGRATIONS.map((item) => item.id), [
-    "mcp_001_write_foundation",
-    "mcp_002_domain_read_models"
-  ]);
+  assert.deepEqual(MCP_MIGRATIONS.map((item) => item.id), migrationIds);
   const adapter = statefulAdapter();
   const first = await runMcpMigrations(adapter);
   const second = await runMcpMigrations(adapter);
-  assert.deepEqual(first.applied, ["mcp_001_write_foundation", "mcp_002_domain_read_models"]);
+  assert.deepEqual(first.applied, migrationIds);
   assert.deepEqual(second.applied, []);
   assert.equal(adapter.calls.filter((call) => call.text === "BEGIN").length, 2);
   assert.equal(adapter.calls.filter((call) => call.text === "COMMIT").length, 2);
@@ -45,10 +48,11 @@ test("MCP migrations use a unique registry namespace and apply once in one locke
   assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.idempotency_records")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.mcp_routes")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.orders")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.mcp_outlet_media")), true);
 
   const status = await migrationStatusWithAdapter(adapter);
   assert.deepEqual(status.pending, []);
-  assert.deepEqual(status.applied, ["mcp_001_write_foundation", "mcp_002_domain_read_models"]);
+  assert.deepEqual(status.applied, migrationIds);
 });
 
 test("MCP foundation migration is canonical and leaves runtime role creation external", () => {
@@ -107,6 +111,42 @@ test("MCP domain migration owns writable MCP data and exposes only shared Core m
   assert.doesNotMatch(sql, /CREATE\s+TABLE\s+(shared|sales|purchasing|inventory|logistics|accounting|reporting)\./i);
   assert.doesNotMatch(sql, /public\.mcp_/i);
   assert.doesNotMatch(sql, /SUPABASE_/i);
+});
+
+test("Supabase parity migration preserves old fields, tables and business functions on PostgreSQL", () => {
+  const sql = MCP_MIGRATIONS[2].sql;
+  const canonicalSql = readFileSync(
+    new URL("../../../../../database/migrations/mcp/003_mcp_supabase_contract_parity.sql", import.meta.url),
+    "utf8"
+  );
+  assert.equal(sql, canonicalSql);
+
+  for (const fragment of [
+    "ADD COLUMN IF NOT EXISTS visited_at timestamptz",
+    "ADD COLUMN IF NOT EXISTS delete_requested_at timestamptz",
+    "ADD COLUMN IF NOT EXISTS deleted_at timestamptz",
+    "ADD COLUMN IF NOT EXISTS delete_attempt_count integer NOT NULL DEFAULT 0",
+    "ADD COLUMN IF NOT EXISTS last_delete_error text",
+    "ADD COLUMN IF NOT EXISTS sync_status text NOT NULL DEFAULT 'synced'",
+    "CREATE TABLE IF NOT EXISTS mcp.mcp_setting_groups",
+    "CREATE TABLE IF NOT EXISTS mcp.mcp_setting_items",
+    "CREATE TABLE IF NOT EXISTS mcp.mcp_route_order_templates",
+    "CREATE TABLE IF NOT EXISTS mcp.mcp_outlet_media",
+    "CREATE TABLE IF NOT EXISTS mcp.mcp_archive_intents",
+    "CREATE OR REPLACE FUNCTION mcp.mcp_create_route",
+    "CREATE OR REPLACE FUNCTION mcp.mcp_update_route",
+    "CREATE OR REPLACE FUNCTION mcp.mcp_update_route_customer",
+    "CREATE OR REPLACE FUNCTION mcp.mcp_open_route_session",
+    "CREATE OR REPLACE FUNCTION mcp.mcp_create_order",
+    "CREATE OR REPLACE FUNCTION mcp.mcp_prepare_outlet_media_upload"
+  ]) {
+    assert.match(sql, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+  }
+
+  assert.match(sql, /CHECK \(status IN \('pending', 'ready', 'failed', 'deleting', 'delete_failed', 'deleted'\)\)/i);
+  assert.match(sql, /UNIQUE \(group_id, item_key\)/i);
+  assert.doesNotMatch(sql, /https?:\/\/|SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY/i);
+  assert.doesNotMatch(sql, /CREATE\s+TABLE\s+(shared|sales|purchasing|inventory|logistics|accounting|reporting)\./i);
 });
 
 test("migration failure rolls back and preserves the original error", async () => {
