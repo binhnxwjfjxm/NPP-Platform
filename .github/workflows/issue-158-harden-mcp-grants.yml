@@ -1,0 +1,152 @@
+name: Harden MCP runtime grants
+
+on:
+  push:
+    branches:
+      - agent/issue-158-mcp-domain-schema
+    paths:
+      - .github/workflows/issue-158-harden-mcp-grants.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/issue-158-mcp-domain-schema
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Replace runtime grant helper with least privilege
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          paths = [
+              Path('database/migrations/mcp/002_mcp_domain_read_models.sql'),
+              Path('mcp/apps/backend/foundation/migrations/sql/002_mcp_domain_read_models.sql'),
+          ]
+
+          replacement = r'''CREATE OR REPLACE FUNCTION shared.grant_mcp_runtime_access(p_role name)
+          RETURNS void
+          LANGUAGE plpgsql
+          SECURITY DEFINER
+          SET search_path = pg_catalog
+          AS $function$
+          DECLARE
+            v_super boolean;
+            v_create_role boolean;
+            v_create_db boolean;
+            v_replication boolean;
+            v_bypass_rls boolean;
+          BEGIN
+            SELECT rolsuper, rolcreaterole, rolcreatedb, rolreplication, rolbypassrls
+              INTO v_super, v_create_role, v_create_db, v_replication, v_bypass_rls
+            FROM pg_roles
+            WHERE rolname = p_role::text;
+
+            IF NOT FOUND THEN
+              RAISE EXCEPTION 'mcp_runtime_role_not_found:%', p_role;
+            END IF;
+
+            IF v_super OR v_create_role OR v_create_db OR v_replication OR v_bypass_rls THEN
+              RAISE EXCEPTION 'mcp_runtime_role_is_privileged:%', p_role;
+            END IF;
+
+            EXECUTE format('REVOKE ALL ON SCHEMA mcp FROM %I', p_role);
+            EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA mcp FROM %I', p_role);
+            EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA mcp FROM %I', p_role);
+            EXECUTE format('REVOKE ALL ON ALL FUNCTIONS IN SCHEMA mcp FROM %I', p_role);
+
+            EXECUTE format('GRANT USAGE ON SCHEMA mcp TO %I', p_role);
+
+            EXECUTE format(
+              'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE '
+              'mcp.mcp_routes, mcp.mcp_route_customers, mcp.mcp_route_sessions, '
+              'mcp.mcp_session_customers, mcp.mcp_visits, mcp.mcp_followups, '
+              'mcp.mcp_session_reports, mcp.market_reports, '
+              'mcp.mcp_report_setting_groups, mcp.mcp_report_settings, '
+              'mcp.orders, mcp.order_items, mcp.test_files, '
+              'mcp.test_file_products, mcp.test_customers, mcp.test_customer_results TO %I',
+              p_role
+            );
+
+            EXECUTE format(
+              'GRANT SELECT ON TABLE mcp.accounts, mcp.products, '
+              'mcp.product_variants, mcp.route_customers TO %I',
+              p_role
+            );
+
+            EXECUTE format(
+              'GRANT SELECT, INSERT, UPDATE ON TABLE mcp.idempotency_records TO %I',
+              p_role
+            );
+            EXECUTE format('GRANT INSERT ON TABLE mcp.audit_events TO %I', p_role);
+            EXECUTE format('GRANT INSERT ON TABLE mcp.outbox_events TO %I', p_role);
+
+            EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA mcp REVOKE ALL ON TABLES FROM %I', p_role);
+            EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA mcp REVOKE ALL ON SEQUENCES FROM %I', p_role);
+            EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA mcp REVOKE ALL ON FUNCTIONS FROM %I', p_role);
+            EXECUTE format('ALTER ROLE %I IN DATABASE %I SET search_path = mcp, public', p_role, current_database());
+          END;
+          $function$;
+
+          REVOKE ALL ON FUNCTION shared.grant_mcp_runtime_access(name) FROM PUBLIC;
+          REVOKE ALL ON ALL TABLES IN SCHEMA mcp FROM PUBLIC;
+          REVOKE ALL ON ALL SEQUENCES IN SCHEMA mcp FROM PUBLIC;
+          REVOKE ALL ON ALL FUNCTIONS IN SCHEMA mcp FROM PUBLIC;
+          '''
+
+          marker = 'CREATE OR REPLACE FUNCTION shared.grant_mcp_runtime_access(p_role name)\n'
+          updated = []
+          for path in paths:
+              text = path.read_text(encoding='utf-8')
+              start = text.find(marker)
+              if start < 0:
+                  raise SystemExit(f'grant_helper_not_found:{path}')
+              patched = text[:start] + replacement
+              if 'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES' in patched:
+                  raise SystemExit(f'broad_dml_grant_remains:{path}')
+              if 'GRANT EXECUTE ON ALL FUNCTIONS' in patched:
+                  raise SystemExit(f'broad_function_grant_remains:{path}')
+              if 'REVOKE ALL ON FUNCTION shared.grant_mcp_runtime_access(name) FROM PUBLIC;' not in patched:
+                  raise SystemExit(f'public_execute_revoke_missing:{path}')
+              path.write_text(patched, encoding='utf-8')
+              updated.append(patched)
+
+          if updated[0] != updated[1]:
+              raise SystemExit('canonical_and_runtime_migrations_diverged')
+          PY
+
+      - name: Verify and remove patch workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp database/migrations/mcp/002_mcp_domain_read_models.sql \
+              mcp/apps/backend/foundation/migrations/sql/002_mcp_domain_read_models.sql
+          grep -Fq 'mcp_runtime_role_is_privileged' database/migrations/mcp/002_mcp_domain_read_models.sql
+          grep -Fq 'GRANT INSERT ON TABLE mcp.audit_events' database/migrations/mcp/002_mcp_domain_read_models.sql
+          grep -Fq 'GRANT INSERT ON TABLE mcp.outbox_events' database/migrations/mcp/002_mcp_domain_read_models.sql
+          grep -Fq 'REVOKE ALL ON FUNCTION shared.grant_mcp_runtime_access(name) FROM PUBLIC' database/migrations/mcp/002_mcp_domain_read_models.sql
+          ! grep -Fq 'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES' database/migrations/mcp/002_mcp_domain_read_models.sql
+          ! grep -Fq 'GRANT EXECUTE ON ALL FUNCTIONS' database/migrations/mcp/002_mcp_domain_read_models.sql
+          rm .github/workflows/issue-158-harden-mcp-grants.yml
+
+      - name: Commit hardened grants
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add database/migrations/mcp/002_mcp_domain_read_models.sql \
+                  mcp/apps/backend/foundation/migrations/sql/002_mcp_domain_read_models.sql \
+                  .github/workflows/issue-158-harden-mcp-grants.yml
+          git diff --cached --check
+          git commit -m 'fix(mcp): restrict runtime grants to least privilege'
+          git push origin HEAD:agent/issue-158-mcp-domain-schema
