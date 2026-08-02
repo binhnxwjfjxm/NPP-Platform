@@ -43,6 +43,9 @@ test("manual Heroku MCP workflow performs PostgreSQL preflight and isolated roll
   assert.match(manualWorkflow, /https:\/\/api\.heroku\.com\/apps\/\$HEROKU_APP_NAME/);
   assert.match(manualWorkflow, /Authorization: Bearer \$HEROKU_API_KEY/);
   assert.doesNotMatch(manualWorkflow, /heroku apps:info -a "\$HEROKU_APP_NAME" --json/);
+  assert.match(manualWorkflow, /app_url="\$\{app_url%\/\}"/);
+  assert.match(manualWorkflow, /local base_url="\$\{app_url%\/\}"/);
+  assert.doesNotMatch(manualWorkflow, /"\$app_url\$path"/);
   assert.match(manualWorkflow, /heroku stack -a "\$HEROKU_APP_NAME"/);
   assert.match(manualWorkflow, /heroku config -a "\$HEROKU_APP_NAME" --json/);
   assert.match(manualWorkflow, /HEROKU_REQUIRED_CONFIG_NAMES/);
@@ -56,12 +59,15 @@ test("manual Heroku MCP workflow performs PostgreSQL preflight and isolated roll
   assert.doesNotMatch(manualWorkflow.match(/HEROKU_REQUIRED_CONFIG_NAMES:.*$/m)?.[0] || "", /SUPABASE_/);
   assert.match(manualWorkflow, /heroku releases --json -a "\$HEROKU_APP_NAME"/);
   assert.match(manualWorkflow, /previous_active_release_version/);
+  assert.match(manualWorkflow, /previous_release_healthy/);
   assert.match(manualWorkflow, /failed_release_version/);
   assert.match(manualWorkflow, /rollback_target_version/);
+  assert.match(manualWorkflow, /rollback_skipped_unhealthy_previous/);
   assert.match(manualWorkflow, /heroku container:login/);
   assert.match(manualWorkflow, /heroku container:push web -a "\$HEROKU_APP_NAME"/);
   assert.match(manualWorkflow, /heroku container:release web -a "\$HEROKU_APP_NAME"/);
   assert.match(manualWorkflow, /heroku releases:rollback "\$previous_active_release_version"/);
+  assert.match(manualWorkflow, /Previous release was already unhealthy; automatic rollback is intentionally skipped/);
   assert.match(manualWorkflow, /health\/live/);
   assert.match(manualWorkflow, /health\/ready/);
   assert.match(manualWorkflow, /HEROKU_RELEASE_VERSION/);
@@ -74,7 +80,7 @@ test("manual Heroku MCP workflow performs PostgreSQL preflight and isolated roll
   assert.equal(rootProcfile, "web: npm run start:core-api");
 });
 
-test("deploy failure remains a failed workflow after rollback evidence is recorded", () => {
+test("deploy failure remains failed and never rolls back to an already unhealthy release", () => {
   const caseIndex = manualWorkflow.indexOf('case "$action" in');
   const deployIndex = manualWorkflow.indexOf("deploy)", caseIndex);
   const rollbackIndex = manualWorkflow.indexOf("rollback)", deployIndex);
@@ -82,6 +88,10 @@ test("deploy failure remains a failed workflow after rollback evidence is record
   const loginIndex = manualWorkflow.indexOf("heroku container:login");
   const summaryIndex = manualWorkflow.indexOf("- name: Summarize release evidence");
   const outcomeGateIndex = manualWorkflow.indexOf("- name: Enforce release outcome");
+  const healthFailureIndex = manualWorkflow.indexOf('if ! smoke_health /health/live || ! smoke_health /health/ready; then', deployIndex);
+  const rollbackHealthGuardIndex = manualWorkflow.indexOf('if [ "$previous_release_healthy" = "true" ]; then', healthFailureIndex);
+  const rollbackCommandIndex = manualWorkflow.indexOf('heroku releases:rollback "$previous_active_release_version"', rollbackHealthGuardIndex);
+  const skipIndex = manualWorkflow.indexOf('rollback_skipped_unhealthy_previous="true"', rollbackCommandIndex);
 
   assert.ok(caseIndex >= 0);
   assert.ok(deployIndex > caseIndex);
@@ -89,13 +99,19 @@ test("deploy failure remains a failed workflow after rollback evidence is record
   assert.ok(defaultIndex > rollbackIndex);
   assert.ok(loginIndex > deployIndex && loginIndex < rollbackIndex);
   assert.doesNotMatch(manualWorkflow.slice(rollbackIndex, defaultIndex), /container:login/);
+  assert.ok(healthFailureIndex > deployIndex);
+  assert.ok(rollbackHealthGuardIndex > healthFailureIndex);
+  assert.ok(rollbackCommandIndex > rollbackHealthGuardIndex);
+  assert.ok(skipIndex > rollbackCommandIndex);
 
   assert.match(manualWorkflow, /deployment_failed="true"/);
   assert.match(manualWorkflow, /rollback_failed="true"/);
   assert.match(manualWorkflow, /rollback_health_failed="true"/);
+  assert.match(manualWorkflow, /rollback_skipped_unhealthy_previous="true"/);
   assert.match(manualWorkflow, /echo "deployment_failed=\$deployment_failed"/);
   assert.match(manualWorkflow, /echo "rollback_failed=\$rollback_failed"/);
   assert.match(manualWorkflow, /echo "rollback_health_failed=\$rollback_health_failed"/);
+  assert.match(manualWorkflow, /echo "rollback_skipped_unhealthy_previous=\$rollback_skipped_unhealthy_previous"/);
 
   assert.ok(summaryIndex >= 0);
   assert.ok(outcomeGateIndex > summaryIndex);
@@ -105,7 +121,8 @@ test("deploy failure remains a failed workflow after rollback evidence is record
   assert.match(manualWorkflow, /steps\.release\.outputs\.deployment_failed/);
   assert.match(manualWorkflow, /steps\.release\.outputs\.rollback_failed/);
   assert.match(manualWorkflow, /steps\.release\.outputs\.rollback_health_failed/);
-  assert.match(manualWorkflow, /The requested deployment failed health checks and was rolled back/);
+  assert.match(manualWorkflow, /steps\.release\.outputs\.rollback_skipped_unhealthy_previous/);
+  assert.match(manualWorkflow, /previous release was already unhealthy, so rollback was skipped/);
 });
 
 test("Heroku MCP CI builds, verifies and smokes backend with frontend build fixtures", () => {
