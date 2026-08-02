@@ -2,18 +2,24 @@ import { loadEnvFile } from "node:process";
 import { loadFoundationConfig, publicFoundationConfig } from "./foundation/config.js";
 import { createFoundationGateway } from "./foundation/gateway.js";
 import { createPersistence } from "./foundation/persistence.js";
+import { bindProviderPersistence } from "./foundation/provider-runtime.js";
 
 try { loadEnvFile(".env"); } catch {}
 
 const config = loadFoundationConfig(process.env);
 const persistence = await createPersistence(config);
-let legacyHandlers = null;
+bindProviderPersistence(persistence);
+
+let handlers = null;
 if (config.legacyRuntime.enabled) {
   const { startLegacyRuntime } = await import("./foundation/legacy-runtime.js");
-  legacyHandlers = await startLegacyRuntime(config);
+  handlers = await startLegacyRuntime(config);
+} else {
+  const { createTypedRuntime } = await import("./foundation/typed-runtime.js");
+  handlers = createTypedRuntime();
 }
 
-const gateway = createFoundationGateway(config, { persistence, legacyHandlers });
+const gateway = createFoundationGateway(config, { persistence, legacyHandlers: handlers });
 gateway.listen(config.publicPort, config.publicHost, () => {
   console.log(JSON.stringify({ event: "foundation_gateway_ready", ...publicFoundationConfig(config) }));
 });

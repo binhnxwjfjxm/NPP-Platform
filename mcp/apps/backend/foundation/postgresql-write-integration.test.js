@@ -4,7 +4,7 @@ import pg from "pg";
 import { createPostgresqlPersistence } from "./postgresql-adapter.js";
 import { createPostgresqlWriteTransaction } from "./postgresql-write-repository.js";
 import { commandFingerprint, executeWriteCommand } from "./write-command.js";
-import { migrationVerifyWithAdapter, runMcpMigrations } from "./migrations/index.js";
+import { MCP_MIGRATIONS, migrationVerifyWithAdapter, runMcpMigrations } from "./migrations/index.js";
 
 const { Pool } = pg;
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -60,7 +60,7 @@ test("PostgreSQL write foundation migrates cleanly and preserves atomic command 
 
   const first = await runMcpMigrations(admin);
   const second = await runMcpMigrations(admin);
-  assert.deepEqual(first.applied, ["mcp_001_write_foundation"]);
+  assert.deepEqual(first.applied, MCP_MIGRATIONS.map((migration) => migration.id));
   assert.deepEqual(second.applied, []);
   assert.equal((await migrationVerifyWithAdapter(admin)).verified, true);
 

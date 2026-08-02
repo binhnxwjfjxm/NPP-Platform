@@ -11,6 +11,7 @@ import {
   redactSensitiveText,
   validateCutoverPlan
 } from "../foundation/provider-cutover.js";
+import { MCP_MIGRATIONS } from "../foundation/migrations/index.js";
 import {
   MIGRATION_DATABASE_URL_ENV,
   databaseCredentialIdentity,
@@ -20,6 +21,7 @@ import {
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const EXPECTED_MCP_MIGRATIONS = Object.freeze(MCP_MIGRATIONS.map((migration) => migration.id));
 export const PREFLIGHT_CONFIRM_ENV = "MCP_CUTOVER_PREFLIGHT_CONFIRM";
 export const PREFLIGHT_CONFIRM_VALUE = "read-only-target";
 export const PREFLIGHT_ALLOW_PRODUCTION_ENV = "MCP_CUTOVER_PREFLIGHT_ALLOW_PRODUCTION";
@@ -137,7 +139,7 @@ export async function runProviderCutoverCommand(
     });
     const target = evaluateProviderPreflight(
       { runtimeIdentity, installationAudit },
-      { expectedRole }
+      { expectedRole, expectedMigrations: EXPECTED_MCP_MIGRATIONS }
     );
     const report = Object.freeze({
       schemaVersion: 1,

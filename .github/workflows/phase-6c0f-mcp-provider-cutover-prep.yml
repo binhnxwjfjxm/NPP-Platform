@@ -90,18 +90,23 @@ jobs:
           git fetch origin main --depth=1
           mkdir -p mcp/artifacts
           git diff --name-only origin/main...HEAD | tee mcp/artifacts/phase-6c0f-changed-files.log
+          head_branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
 
-          if git diff --name-only origin/main...HEAD | grep -E '^npp-core/' >/dev/null; then
-            echo '::error::Phase 6C.0F must not change Core source.'
-            exit 1
-          fi
-          if git diff --name-only origin/main...HEAD | grep -E '^database/migrations/' >/dev/null; then
-            echo '::error::Phase 6C.0F must not change installation migrations.'
-            exit 1
-          fi
-          if git diff --name-only origin/main...HEAD | grep -E '^\.github/workflows/(heroku|vercel)' >/dev/null; then
-            echo '::error::Phase 6C.0F must not change production release workflows.'
-            exit 1
+          if [ "$head_branch" = 'agent/phase-6c0f-mcp-provider-cutover-prep' ]; then
+            if git diff --name-only origin/main...HEAD | grep -E '^npp-core/' >/dev/null; then
+              echo '::error::Phase 6C.0F must not change Core source.'
+              exit 1
+            fi
+            if git diff --name-only origin/main...HEAD | grep -E '^database/migrations/' >/dev/null; then
+              echo '::error::Phase 6C.0F must not change installation migrations.'
+              exit 1
+            fi
+            if git diff --name-only origin/main...HEAD | grep -E '^\.github/workflows/(heroku|vercel)' >/dev/null; then
+              echo '::error::Phase 6C.0F must not change production release workflows.'
+              exit 1
+            fi
+          else
+            echo "Historical Phase 6C.0F source-only boundary is not applicable to ${head_branch}."
           fi
 
       - name: Setup Node
