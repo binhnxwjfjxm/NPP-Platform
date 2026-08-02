@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npp-platform.local/schemas/phase-6c0f-cutover-plan.schema.json",
+  "title": "Phase 6C.0F MCP provider attachment and cutover plan",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "phase",
+    "approvalState",
+    "source",
+    "providerAudit",
+    "backup",
+    "roles",
+    "configVariableNames",
+    "sequence",
+    "accountableOperator",
+    "maintenanceWindow",
+    "abortCriteria",
+    "rollback",
+    "productionMutations"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "phase": { "const": "6C.0F" },
+    "approvalState": {
+      "enum": ["DRAFT_NOT_AUTHORIZED", "READY_FOR_OWNER_APPROVAL", "APPROVED_FOR_OPERATION"]
+    },
+    "source": {
+      "type": "object",
+      "required": ["repository", "branch", "commit"],
+      "properties": {
+        "repository": { "const": "binhnxwjfjxm/NPP-Platform" },
+        "branch": { "const": "main" },
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      },
+      "additionalProperties": false
+    },
+    "providerAudit": {
+      "type": "object",
+      "required": ["evidenceRef", "auditedAt", "auditedBy", "heroku", "vercel"],
+      "properties": {
+        "evidenceRef": { "$ref": "#/$defs/evidenceRef" },
+        "auditedAt": { "type": "string", "format": "date-time" },
+        "auditedBy": { "type": "string", "minLength": 1 },
+        "heroku": {
+          "type": "object",
+          "required": ["coreApp", "mcpApp", "autoDeployOff", "currentMcpReleaseRef"],
+          "properties": {
+            "coreApp": { "const": "hung-phat" },
+            "mcpApp": { "const": "hung-phat-mcp" },
+            "autoDeployOff": { "const": true },
+            "currentMcpReleaseRef": { "$ref": "#/$defs/evidenceRef" }
+          },
+          "additionalProperties": false
+        },
+        "vercel": {
+          "type": "object",
+          "required": ["mcpProject", "autoDeployOff", "currentMcpDeploymentRef"],
+          "properties": {
+            "mcpProject": { "type": "string", "minLength": 1 },
+            "autoDeployOff": { "const": true },
+            "currentMcpDeploymentRef": { "$ref": "#/$defs/evidenceRef" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "backup": {
+      "type": "object",
+      "required": ["status", "evidenceRef", "restoreRehearsalStatus", "restoreRehearsalRef"],
+      "properties": {
+        "status": { "enum": ["NOT_VERIFIED", "VERIFIED"] },
+        "evidenceRef": { "$ref": "#/$defs/evidenceRef" },
+        "restoreRehearsalStatus": { "enum": ["NOT_VERIFIED", "VERIFIED"] },
+        "restoreRehearsalRef": { "$ref": "#/$defs/evidenceRef" }
+      },
+      "additionalProperties": false
+    },
+    "roles": {
+      "type": "object",
+      "required": ["runtime", "migrator", "distinct"],
+      "properties": {
+        "runtime": { "$ref": "#/$defs/roleName" },
+        "migrator": { "$ref": "#/$defs/roleName" },
+        "distinct": { "const": true }
+      },
+      "additionalProperties": false
+    },
+    "configVariableNames": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,127}$" }
+    },
+    "sequence": {
+      "const": [
+        "audit-provider-state",
+        "verify-current-backup",
+        "verify-restore-rehearsal",
+        "provision-separate-migrator-role",
+        "provision-restricted-runtime-role",
+        "attach-runtime-database",
+        "run-mcp-migrations",
+        "run-read-only-preflight",
+        "deploy-mcp-backend",
+        "smoke-health-live",
+        "smoke-health-ready",
+        "hold-field-traffic-cutover"
+      ]
+    },
+    "accountableOperator": { "type": "string", "minLength": 1 },
+    "maintenanceWindow": {
+      "type": "object",
+      "required": ["startsAt", "endsAt", "timezone"],
+      "properties": {
+        "startsAt": { "type": "string", "format": "date-time" },
+        "endsAt": { "type": "string", "format": "date-time" },
+        "timezone": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "abortCriteria": {
+      "type": "array",
+      "minItems": 3,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "rollback": {
+      "type": "object",
+      "required": ["owner", "decisionCriteria", "previousReleaseRef", "previousConfigEvidenceRef", "databaseStrategy"],
+      "properties": {
+        "owner": { "type": "string", "minLength": 1 },
+        "decisionCriteria": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "previousReleaseRef": { "$ref": "#/$defs/evidenceRef" },
+        "previousConfigEvidenceRef": { "$ref": "#/$defs/evidenceRef" },
+        "databaseStrategy": { "const": "LEAVE_ADDITIVE_MCP_SCHEMA_INERT" }
+      },
+      "additionalProperties": false
+    },
+    "productionMutations": {
+      "type": "object",
+      "required": [
+        "databaseAttached",
+        "rolesOrGrantsChanged",
+        "backupRequested",
+        "migrationRun",
+        "backendDeployed",
+        "trafficCutover"
+      ],
+      "properties": {
+        "databaseAttached": { "const": false },
+        "rolesOrGrantsChanged": { "const": false },
+        "backupRequested": { "const": false },
+        "migrationRun": { "const": false },
+        "backendDeployed": { "const": false },
+        "trafficCutover": { "const": false }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "evidenceRef": {
+      "type": "string",
+      "pattern": "^(NOT_VERIFIED|[a-z][a-z0-9_-]{1,31}:[A-Za-z0-9._:-]{2,255})$"
+    },
+    "roleName": {
+      "type": "string",
+      "pattern": "^[a-z_][a-z0-9_]{1,62}$"
+    }
+  },
+  "additionalProperties": false
+}

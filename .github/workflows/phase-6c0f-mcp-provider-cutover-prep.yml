@@ -1,0 +1,154 @@
+name: Phase 6C.0F MCP Provider Cutover Preparation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'mcp/apps/backend/.env.example'
+      - 'mcp/apps/backend/.env.migration.example'
+      - 'mcp/apps/backend/foundation/config.js'
+      - 'mcp/apps/backend/foundation/config.test.js'
+      - 'mcp/apps/backend/foundation/migrations/cli.js'
+      - 'mcp/apps/backend/foundation/migrations/cli.test.js'
+      - 'mcp/apps/backend/foundation/provider-cutover.js'
+      - 'mcp/apps/backend/foundation/provider-cutover.test.js'
+      - 'mcp/apps/backend/foundation/provider-cutover-integration.test.js'
+      - 'mcp/apps/backend/scripts/provider-cutover-preflight.js'
+      - 'mcp/apps/backend/package.json'
+      - 'mcp/audit/phase-6c0f/**'
+      - 'mcp/test/phase-6c0f-provider-cutover-contract.test.mjs'
+      - 'mcp/package.json'
+      - 'docs/operations/phase-6c0f-mcp-provider-cutover-preparation.md'
+      - 'docs/operations/LATEST_HANDOFF.md'
+      - '.github/workflows/phase-6c0f-mcp-provider-cutover-prep.yml'
+  push:
+    branches:
+      - agent/phase-6c0f-mcp-provider-cutover-prep
+    paths:
+      - 'mcp/apps/backend/.env.example'
+      - 'mcp/apps/backend/.env.migration.example'
+      - 'mcp/apps/backend/foundation/config.js'
+      - 'mcp/apps/backend/foundation/config.test.js'
+      - 'mcp/apps/backend/foundation/migrations/cli.js'
+      - 'mcp/apps/backend/foundation/migrations/cli.test.js'
+      - 'mcp/apps/backend/foundation/provider-cutover.js'
+      - 'mcp/apps/backend/foundation/provider-cutover.test.js'
+      - 'mcp/apps/backend/foundation/provider-cutover-integration.test.js'
+      - 'mcp/apps/backend/scripts/provider-cutover-preflight.js'
+      - 'mcp/apps/backend/package.json'
+      - 'mcp/audit/phase-6c0f/**'
+      - 'mcp/test/phase-6c0f-provider-cutover-contract.test.mjs'
+      - 'mcp/package.json'
+      - 'docs/operations/phase-6c0f-mcp-provider-cutover-preparation.md'
+      - 'docs/operations/LATEST_HANDOFF.md'
+      - '.github/workflows/phase-6c0f-mcp-provider-cutover-prep.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-6c0f-mcp-provider-cutover-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Read-only provider and cutover contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: mcp
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-fixture-6c0f
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify Phase 6C.0F source boundary
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          mkdir -p mcp/artifacts
+          git diff --name-only origin/main...HEAD | tee mcp/artifacts/phase-6c0f-changed-files.log
+
+          if git diff --name-only origin/main...HEAD | grep -E '^npp-core/' >/dev/null; then
+            echo '::error::Phase 6C.0F must not change Core source.'
+            exit 1
+          fi
+          if git diff --name-only origin/main...HEAD | grep -E '^database/migrations/' >/dev/null; then
+            echo '::error::Phase 6C.0F must not change installation migrations.'
+            exit 1
+          fi
+          if git diff --name-only origin/main...HEAD | grep -E '^\.github/workflows/(heroku|vercel)' >/dev/null; then
+            echo '::error::Phase 6C.0F must not change production release workflows.'
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+
+      - name: Install repository workspace dependencies
+        working-directory: .
+        run: npm ci
+
+      - name: Verify source and plan contracts
+        run: npm run test:phase-6c0f-cutover
+
+      - name: Verify focused backend contracts with PostgreSQL 17
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:ci-fixture-6c0f@127.0.0.1:5432/postgres
+        run: |
+          npm --prefix apps/backend run build
+          npm --prefix apps/backend run test:provider-cutover
+
+      - name: Validate draft cutover evidence
+        env:
+          MCP_CUTOVER_EXPECTED_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          npm --prefix apps/backend run cutover:validate | tee artifacts/phase-6c0f-plan-validation.jsonl
+
+      - name: Verify diagnostics contain no connection material
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -Eqi 'postgres(ql)?://|ci-fixture-6c0f|127\.0\.0\.1' artifacts/phase-6c0f-plan-validation.jsonl; then
+            echo '::error::Phase 6C.0F diagnostics leaked connection material.'
+            exit 1
+          fi
+
+      - name: Upload Phase 6C.0F evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-6c0f-provider-cutover-${{ github.run_id }}
+          path: |
+            mcp/artifacts/phase-6c0f-changed-files.log
+            mcp/artifacts/phase-6c0f-plan-validation.jsonl
+          retention-days: 14
+          if-no-files-found: error

@@ -34,6 +34,17 @@ test("missing DATABASE_URL is represented fail-closed without crashing startup",
   assert.equal(config.persistence.databaseUrl, null);
 });
 
+test("production runtime rejects a persisted migration credential", () => {
+  assert.throws(
+    () => loadFoundationConfig(validEnv({ MCP_MIGRATION_DATABASE_URL: "postgresql://migrator.invalid/mcp" })),
+    (error) => error.code === "migration_credential_forbidden_in_runtime"
+  );
+  assert.doesNotThrow(() => loadFoundationConfig({
+    ...validEnv({ NODE_ENV: "test", BACKEND_API_TOKEN: "0123456789abcdef" }),
+    MCP_MIGRATION_DATABASE_URL: "postgresql://migrator.invalid/mcp"
+  }));
+});
+
 test("production rejects legacy Supabase runtime", () => {
   assert.throws(
     () => loadFoundationConfig(validEnv({

@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "phase": "6C.0F",
+  "approvalState": "DRAFT_NOT_AUTHORIZED",
+  "source": {
+    "repository": "binhnxwjfjxm/NPP-Platform",
+    "branch": "main",
+    "commit": "7b93572453e31c7f099b2e0420b5258590c151b9"
+  },
+  "providerAudit": {
+    "evidenceRef": "NOT_VERIFIED",
+    "auditedAt": "2026-08-02T02:24:08.000Z",
+    "auditedBy": "owner-required",
+    "heroku": {
+      "coreApp": "hung-phat",
+      "mcpApp": "hung-phat-mcp",
+      "autoDeployOff": true,
+      "currentMcpReleaseRef": "NOT_VERIFIED"
+    },
+    "vercel": {
+      "mcpProject": "mcp-field",
+      "autoDeployOff": true,
+      "currentMcpDeploymentRef": "NOT_VERIFIED"
+    }
+  },
+  "backup": {
+    "status": "NOT_VERIFIED",
+    "evidenceRef": "NOT_VERIFIED",
+    "restoreRehearsalStatus": "VERIFIED",
+    "restoreRehearsalRef": "actions-run:30728610827"
+  },
+  "roles": {
+    "runtime": "mcp_runtime",
+    "migrator": "mcp_migrator",
+    "distinct": true
+  },
+  "configVariableNames": [
+    "AUTH_MODE",
+    "BACKEND_API_TOKEN",
+    "CORS_ORIGINS",
+    "DATABASE_URL",
+    "INSTALLATION_ID",
+    "MCP_DB_ROLE",
+    "MCP_DB_SCHEMA",
+    "MCP_LEGACY_ACTOR_ID",
+    "MCP_LEGACY_RUNTIME_ENABLED",
+    "MCP_SERVICE_PERMISSIONS",
+    "MCP_SERVICE_ROLES",
+    "MCP_SERVICE_SCOPES",
+    "NODE_ENV",
+    "NPP_CODE",
+    "PERSISTENCE_PROVIDER"
+  ],
+  "sequence": [
+    "audit-provider-state",
+    "verify-current-backup",
+    "verify-restore-rehearsal",
+    "provision-separate-migrator-role",
+    "provision-restricted-runtime-role",
+    "attach-runtime-database",
+    "run-mcp-migrations",
+    "run-read-only-preflight",
+    "deploy-mcp-backend",
+    "smoke-health-live",
+    "smoke-health-ready",
+    "hold-field-traffic-cutover"
+  ],
+  "accountableOperator": "owner-required",
+  "maintenanceWindow": {
+    "startsAt": "2026-08-03T02:00:00.000Z",
+    "endsAt": "2026-08-03T03:00:00.000Z",
+    "timezone": "Asia/Ho_Chi_Minh"
+  },
+  "abortCriteria": [
+    "backup evidence is missing or stale",
+    "read-only preflight is not fully ready",
+    "health live or ready smoke fails"
+  ],
+  "rollback": {
+    "owner": "owner-required",
+    "decisionCriteria": [
+      "health readiness does not recover inside the approved window",
+      "runtime role or search path differs from the approved plan"
+    ],
+    "previousReleaseRef": "NOT_VERIFIED",
+    "previousConfigEvidenceRef": "NOT_VERIFIED",
+    "databaseStrategy": "LEAVE_ADDITIVE_MCP_SCHEMA_INERT"
+  },
+  "productionMutations": {
+    "databaseAttached": false,
+    "rolesOrGrantsChanged": false,
+    "backupRequested": false,
+    "migrationRun": false,
+    "backendDeployed": false,
+    "trafficCutover": false
+  }
+}
