@@ -1,4 +1,4 @@
-name: Rehearse MCP migration from backup b014
+name: Capture current backup and rehearse MCP migration
 
 on:
   pull_request:
@@ -11,10 +11,10 @@ permissions:
   contents: read
 
 jobs:
-  restore-and-rehearse:
+  backup-restore-rehearsal:
     if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-run-158'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:17
@@ -32,11 +32,11 @@ jobs:
     env:
       HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
       CORE_APP_NAME: hung-phat
+      MCP_APP_NAME: hung-phat-mcp
       SOURCE_BRANCH: agent/issue-158-mcp-domain-schema
       LOCAL_OWNER_URL: postgresql://postgres:postgres@127.0.0.1:5432/rehearsal
-      LOCAL_RUNTIME_URL: postgresql://mcp_runtime:mcp_runtime_rehearsal@127.0.0.1:5432/rehearsal
     steps:
-      - name: Checkout migration source
+      - name: Checkout current migration source
         uses: actions/checkout@v4
         with:
           ref: ${{ env.SOURCE_BRANCH }}
@@ -60,26 +60,96 @@ jobs:
           echo "::add-mask::$HEROKU_API_KEY"
           curl -fsSL https://cli-assets.heroku.com/install.sh | sh
 
-      - name: Download backup b014 without exposing its URL
+      - name: Prove Core and MCP use the same current database
         shell: bash
         run: |
           set -euo pipefail
-          backup_url="$(heroku pg:backups:url b014 -a "$CORE_APP_NAME")"
+          core_database_url="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
+          mcp_database_url="$(heroku config:get DATABASE_URL -a "$MCP_APP_NAME")"
+          test -n "$core_database_url"
+          test -n "$mcp_database_url"
+          echo "::add-mask::$core_database_url"
+          echo "::add-mask::$mcp_database_url"
+
+          core_hash="$(printf '%s' "$core_database_url" | sha256sum | awk '{print $1}')"
+          mcp_hash="$(printf '%s' "$mcp_database_url" | sha256sum | awk '{print $1}')"
+          test "$core_hash" = "$mcp_hash"
+          echo "SHARED_DATABASE_MATCH=true"
+
+          psql "$core_database_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 <<'SQL'
+          select 'CURRENT_TABLE=' || relation
+          from (values
+            ('shared.customers'),
+            ('shared.products'),
+            ('shared.product_variants'),
+            ('sales.orders'),
+            ('sales.order_lines'),
+            ('shared.schema_migrations')
+          ) required(relation)
+          where to_regclass(relation) is not null
+          order by relation;
+
+          do $block$
+          declare
+            missing text;
+          begin
+            select string_agg(relation, ', ' order by relation)
+              into missing
+            from (values
+              ('shared.customers'),
+              ('shared.products'),
+              ('shared.product_variants'),
+              ('sales.orders'),
+              ('sales.order_lines'),
+              ('shared.schema_migrations')
+            ) required(relation)
+            where to_regclass(relation) is null;
+            if missing is not null then
+              raise exception 'current_database_missing_required_sources:%', missing;
+            end if;
+          end
+          $block$;
+          SQL
+
+      - name: Capture a new current Heroku backup
+        id: backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          heroku pg:backups:capture DATABASE_URL -a "$CORE_APP_NAME"
+
+          backups_output="$(heroku pg:backups -a "$CORE_APP_NAME")"
+          backup_id="$(awk '$1 ~ /^b[0-9]+$/ {print $1; exit}' <<<"$backups_output")"
+          test -n "$backup_id"
+          echo "backup_id=$backup_id" >> "$GITHUB_OUTPUT"
+          echo "CURRENT_BACKUP_ID=$backup_id"
+
+          latest_line="$(awk -v id="$backup_id" '$1 == id {print; exit}' <<<"$backups_output")"
+          test -n "$latest_line"
+          echo "CURRENT_BACKUP_STATUS=$(awk '{print $2}' <<<"$latest_line")"
+
+      - name: Download current backup without exposing its URL
+        shell: bash
+        env:
+          BACKUP_ID: ${{ steps.backup.outputs.backup_id }}
+        run: |
+          set -euo pipefail
+          backup_url="$(heroku pg:backups:url "$BACKUP_ID" -a "$CORE_APP_NAME")"
           test -n "$backup_url"
           echo "::add-mask::$backup_url"
-          curl --fail --silent --show-error --location "$backup_url" --output /tmp/b014.dump
-          test -s /tmp/b014.dump
-          echo "BACKUP_ID=b014"
-          echo "BACKUP_BYTES=$(stat -c '%s' /tmp/b014.dump)"
-          sha256sum /tmp/b014.dump | awk '{print "BACKUP_SHA256=" $1}'
+          curl --fail --silent --show-error --location "$backup_url" --output /tmp/current.dump
+          test -s /tmp/current.dump
+          echo "BACKUP_ID=$BACKUP_ID"
+          echo "BACKUP_BYTES=$(stat -c '%s' /tmp/current.dump)"
+          sha256sum /tmp/current.dump | awk '{print "BACKUP_SHA256=" $1}'
 
-      - name: Restore backup into isolated PostgreSQL 17
+      - name: Restore current backup into isolated PostgreSQL 17
         shell: bash
         run: |
           set -euo pipefail
           docker run --rm --network host \
             -e PGPASSWORD=postgres \
-            -v /tmp/b014.dump:/backup.dump:ro \
+            -v /tmp/current.dump:/backup.dump:ro \
             postgres:17 \
             pg_restore \
               --host=127.0.0.1 \
@@ -90,7 +160,37 @@ jobs:
               --no-privileges \
               --clean \
               --if-exists \
+              --exit-on-error \
               /backup.dump
+
+      - name: Verify restored backup contains current Core sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host -e PGPASSWORD=postgres postgres:17 psql \
+            --host=127.0.0.1 --port=5432 --username=postgres --dbname=rehearsal \
+            --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 <<'SQL'
+          do $block$
+          declare
+            missing text;
+          begin
+            select string_agg(relation, ', ' order by relation)
+              into missing
+            from (values
+              ('shared.customers'),
+              ('shared.products'),
+              ('shared.product_variants'),
+              ('sales.orders'),
+              ('sales.order_lines'),
+              ('shared.schema_migrations')
+            ) required(relation)
+            where to_regclass(relation) is null;
+            if missing is not null then
+              raise exception 'restored_backup_missing_required_sources:%', missing;
+            end if;
+          end
+          $block$;
+          SQL
 
       - name: Capture pre-migration reconciliation
         id: before
