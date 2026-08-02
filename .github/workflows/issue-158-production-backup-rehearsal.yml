@@ -1,0 +1,144 @@
+name: Issue 158 production backup restore rehearsal
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/issue-158-production-backup-rehearsal.yml
+
+permissions:
+  contents: read
+
+jobs:
+  backup-restore-rehearsal:
+    if: github.event.pull_request.head.ref == 'agent/issue-158-production-backup-rehearsal'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      CORE_APP_NAME: hung-phat
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      RESTORE_DB: npp_issue_158_restore
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Confirm tools and credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HEROKU_API_KEY:-}"
+          echo "::add-mask::$HEROKU_API_KEY"
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+          heroku version
+          pg_restore --version
+
+      - name: Capture fresh production backup
+        id: backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          before_id="$(heroku pg:backups -a "$CORE_APP_NAME" | awk '$1 ~ /^b[0-9]+$/ {print $1; exit}')"
+          heroku pg:backups:capture DATABASE_URL -a "$CORE_APP_NAME"
+          latest_id="$(heroku pg:backups -a "$CORE_APP_NAME" | awk '$1 ~ /^b[0-9]+$/ {print $1; exit}')"
+          test -n "$latest_id"
+          if [[ "$latest_id" == "$before_id" ]]; then
+            echo "Fresh backup ID did not advance." >&2
+            exit 1
+          fi
+          info="$(heroku pg:backups:info "$latest_id" -a "$CORE_APP_NAME")"
+          grep -q 'Completed' <<<"$info"
+          echo "BACKUP_ID=$latest_id"
+          printf '%s\n' "$info" | grep -E '^(Backup|Status|Started|Finished|Database|Size):' || true
+          echo "backup_id=$latest_id" >> "$GITHUB_OUTPUT"
+
+      - name: Download backup without exposing URL
+        shell: bash
+        env:
+          BACKUP_ID: ${{ steps.backup.outputs.backup_id }}
+        run: |
+          set -euo pipefail
+          backup_url="$(heroku pg:backups:url "$BACKUP_ID" -a "$CORE_APP_NAME")"
+          test -n "$backup_url"
+          echo "::add-mask::$backup_url"
+          curl --fail --silent --show-error --location "$backup_url" --output /tmp/npp-production.dump
+          test -s /tmp/npp-production.dump
+          echo "BACKUP_BYTES=$(stat -c%s /tmp/npp-production.dump)"
+          echo "BACKUP_SHA256=$(sha256sum /tmp/npp-production.dump | awk '{print $1}')"
+          pg_restore --list /tmp/npp-production.dump >/tmp/restore.list
+          test -s /tmp/restore.list
+
+      - name: Restore into disposable PostgreSQL 17
+        shell: bash
+        run: |
+          set -euo pipefail
+          createdb "$RESTORE_DB"
+          pg_restore \
+            --exit-on-error \
+            --no-owner \
+            --no-acl \
+            --dbname "$RESTORE_DB" \
+            /tmp/npp-production.dump
+          psql --dbname "$RESTORE_DB" --set=ON_ERROR_STOP=1 --tuples-only --no-align <<'SQL'
+          SELECT 'RESTORED_SERVER_VERSION=' || current_setting('server_version');
+          SELECT 'RESTORED_TABLE_COUNT=' || count(*) FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema NOT IN ('pg_catalog', 'information_schema');
+          SELECT 'RESTORED_MIGRATION_REGISTRY=' || (to_regclass('shared.schema_migrations') IS NOT NULL)::text;
+          SELECT 'RESTORED_MIGRATION_COUNT=' || CASE WHEN to_regclass('shared.schema_migrations') IS NULL THEN '0' ELSE (SELECT count(*)::text FROM shared.schema_migrations) END;
+          SQL
+
+      - name: Reconcile source and restored database
+        shell: bash
+        run: |
+          set -euo pipefail
+          config_json="$(curl --fail --silent --show-error \
+            -H 'Accept: application/vnd.heroku+json; version=3' \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            "https://api.heroku.com/apps/$CORE_APP_NAME/config-vars")"
+          source_url="$(jq -r '.DATABASE_URL // empty' <<<"$config_json")"
+          test -n "$source_url"
+          echo "::add-mask::$source_url"
+
+          source_tables="$(psql "$source_url" --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 --command "SELECT table_schema || '.' || table_name FROM information_schema.tables WHERE table_type='BASE TABLE' AND table_schema IN ('shared','sales','purchasing','inventory','logistics','accounting','reporting') ORDER BY 1")"
+          restored_tables="$(psql --dbname "$RESTORE_DB" --tuples-only --no-align --set=ON_ERROR_STOP=1 --command "SELECT table_schema || '.' || table_name FROM information_schema.tables WHERE table_type='BASE TABLE' AND table_schema IN ('shared','sales','purchasing','inventory','logistics','accounting','reporting') ORDER BY 1")"
+          diff -u <(printf '%s\n' "$source_tables") <(printf '%s\n' "$restored_tables")
+
+          source_migrations="$(psql "$source_url" --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 --command "SELECT id FROM shared.schema_migrations ORDER BY id")"
+          restored_migrations="$(psql --dbname "$RESTORE_DB" --tuples-only --no-align --set=ON_ERROR_STOP=1 --command "SELECT id FROM shared.schema_migrations ORDER BY id")"
+          diff -u <(printf '%s\n' "$source_migrations") <(printf '%s\n' "$restored_migrations")
+
+          while IFS= read -r qualified; do
+            [[ -n "$qualified" ]] || continue
+            source_count="$(psql "$source_url" --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 --command "SELECT count(*) FROM $qualified")"
+            restored_count="$(psql --dbname "$RESTORE_DB" --tuples-only --no-align --set=ON_ERROR_STOP=1 --command "SELECT count(*) FROM $qualified")"
+            if [[ "$source_count" != "$restored_count" ]]; then
+              echo "ROW_COUNT_MISMATCH table=$qualified source=$source_count restored=$restored_count" >&2
+              exit 1
+            fi
+            echo "ROW_COUNT_OK table=$qualified count=$source_count"
+          done <<<"$source_tables"
+
+          echo "RESTORE_REHEARSAL=success"
+
+      - name: Remove local backup material
+        if: always()
+        shell: bash
+        run: |
+          rm -f /tmp/npp-production.dump /tmp/restore.list
