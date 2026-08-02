@@ -1,4 +1,4 @@
-name: Inspect live MCP Heroku health
+name: Read MCP Heroku crash logs
 
 on:
   pull_request:
@@ -11,14 +11,14 @@ permissions:
   contents: read
 
 jobs:
-  inspect-live-runtime:
+  read-crash-logs:
     if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-run-158'
     runs-on: ubuntu-latest
     env:
       HEROKU_APP_NAME: hung-phat-mcp
       HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
     steps:
-      - name: Confirm credential and install Heroku CLI
+      - name: Install Heroku CLI
         shell: bash
         run: |
           set -euo pipefail
@@ -26,38 +26,16 @@ jobs:
           echo "::add-mask::$HEROKU_API_KEY"
           curl -fsSL https://cli-assets.heroku.com/install.sh | sh
 
-      - name: Inspect release, dyno and health without mutation
+      - name: Print sanitized crash logs
         shell: bash
         run: |
           set -euo pipefail
-          app_json="$(
-            curl --fail --silent --show-error \
-              -H 'Accept: application/vnd.heroku+json; version=3' \
-              -H "Authorization: Bearer $HEROKU_API_KEY" \
-              "https://api.heroku.com/apps/$HEROKU_APP_NAME"
-          )"
-          app_url="$(jq -r '.web_url // empty' <<<"$app_json")"
-          test -n "$app_url"
-
-          echo "APP_NAME=$(jq -r '.name // empty' <<<"$app_json")"
-          echo "APP_URL=$app_url"
-          heroku releases --json -a "$HEROKU_APP_NAME" \
-            | jq -r '.[0:5][] | "RELEASE version=\(.version) status=\(.status // "") current=\(.current // false) created=\(.created_at // "") description=\(.description // "")"'
-          heroku ps --json -a "$HEROKU_APP_NAME" \
-            | jq -r '.[] | "DYNO name=\(.name // "") state=\(.state // "") type=\(.type // "") updated=\(.updated_at // "")"'
-
-          for path in /health/live /health/ready; do
-            status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 --output /tmp/body --write-out '%{http_code}' "$app_url$path" || true)"
-            echo "HEALTH path=$path status=${status:-none}"
-            head -c 500 /tmp/body 2>/dev/null | sed -E 's#postgres(ql)?://[^[:space:]" ]+#[redacted-database-url]#g; s/[A-Za-z0-9_=-]{32,}/[redacted]/g' || true
-            echo
-          done
-
-      - name: Print sanitized recent app logs
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          heroku logs --num 150 --source app --dyno web -a "$HEROKU_APP_NAME" 2>&1 \
-            | sed -E 's#postgres(ql)?://[^[:space:]" ]+#[redacted-database-url]#g; s/(token|password|secret|authorization)[=:][^[:space:]]+/#\1=[redacted]#Ig; s/[A-Za-z0-9_=-]{48,}/[redacted]/g' \
-            | tail -n 150
+          heroku logs --num 250 --source app --dyno web -a "$HEROKU_APP_NAME" 2>&1 \
+            | python3 -c '
+          import re, sys
+          text = sys.stdin.read()
+          text = re.sub(r"postgres(?:ql)?://\S+", "[redacted-database-url]", text, flags=re.I)
+          text = re.sub(r"(?i)(token|password|secret|authorization)[=:]\S+", r"\1=[redacted]", text)
+          text = re.sub(r"[A-Za-z0-9_=-]{48,}", "[redacted]", text)
+          print("\n".join(text.splitlines()[-250:]))
+          '
