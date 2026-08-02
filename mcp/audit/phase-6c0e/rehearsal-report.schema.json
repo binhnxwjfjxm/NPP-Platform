@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npp-platform.local/schemas/phase-6c0e-mcp-migration-rehearsal-report.schema.json",
+  "title": "Phase 6C.0E MCP migration rehearsal report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "phase",
+    "sourceCommit",
+    "startedAt",
+    "generatedAt",
+    "status",
+    "databases",
+    "appendOnly",
+    "cleanup",
+    "errors"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "phase": { "const": "6C.0E" },
+    "sourceCommit": {
+      "oneOf": [
+        { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        { "const": "local" }
+      ]
+    },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["success", "failure"] },
+    "databases": {
+      "type": "object",
+      "properties": {
+        "source": { "type": "string", "pattern": "^database:[0-9a-f]{12}$" },
+        "restore": { "type": "string", "pattern": "^database:[0-9a-f]{12}$" },
+        "regression": { "type": "string", "pattern": "^database:[0-9a-f]{12}$" }
+      },
+      "additionalProperties": false
+    },
+    "postgresql": {
+      "type": ["object", "null"],
+      "properties": {
+        "serverVersion": { "type": "string", "minLength": 1 }
+      },
+      "required": ["serverVersion"],
+      "additionalProperties": false
+    },
+    "migrations": {
+      "type": ["object", "null"],
+      "properties": {
+        "source": { "$ref": "#/$defs/migrationRun" },
+        "restore": { "$ref": "#/$defs/migrationRun" }
+      },
+      "required": ["source", "restore"],
+      "additionalProperties": false
+    },
+    "backup": {
+      "type": ["object", "null"],
+      "properties": {
+        "format": { "const": "postgresql-custom" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "sizeBytes": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["format", "sha256", "sizeBytes"],
+      "additionalProperties": false
+    },
+    "reconciliation": {
+      "type": ["object", "null"],
+      "properties": {
+        "migrationsMatch": { "type": "boolean" },
+        "tablesMatch": { "type": "boolean" },
+        "rowCountsMatch": { "type": "boolean" },
+        "checksumsMatch": { "type": "boolean" },
+        "constraintsMatch": { "type": "boolean" },
+        "indexesMatch": { "type": "boolean" },
+        "triggersMatch": { "type": "boolean" },
+        "overallMatch": { "type": "boolean" }
+      },
+      "required": [
+        "migrationsMatch",
+        "tablesMatch",
+        "rowCountsMatch",
+        "checksumsMatch",
+        "constraintsMatch",
+        "indexesMatch",
+        "triggersMatch",
+        "overallMatch"
+      ],
+      "additionalProperties": false
+    },
+    "appendOnly": {
+      "type": "object",
+      "properties": {
+        "source": { "type": "boolean" },
+        "restore": { "type": "boolean" }
+      },
+      "required": ["source", "restore"],
+      "additionalProperties": false
+    },
+    "legacyOrderClassification": {
+      "type": ["object", "null"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "byClass": {
+          "type": "object",
+          "properties": {
+            "OFFICIAL_ORDER_MIGRATION_CANDIDATE": { "type": "integer", "minimum": 0 },
+            "FIELD_ORDER_INTENT": { "type": "integer", "minimum": 0 },
+            "SAMPLE_TEST_DEMAND": { "type": "integer", "minimum": 0 },
+            "HISTORICAL_DISPLAY_ONLY": { "type": "integer", "minimum": 0 },
+            "INVALID_ORPHAN_RECONCILIATION_REQUIRED": { "type": "integer", "minimum": 0 }
+          },
+          "required": [
+            "OFFICIAL_ORDER_MIGRATION_CANDIDATE",
+            "FIELD_ORDER_INTENT",
+            "SAMPLE_TEST_DEMAND",
+            "HISTORICAL_DISPLAY_ONLY",
+            "INVALID_ORPHAN_RECONCILIATION_REQUIRED"
+          ],
+          "additionalProperties": false
+        },
+        "unclassified": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["total", "byClass", "unclassified"],
+      "additionalProperties": false
+    },
+    "regression": {
+      "type": ["object", "null"],
+      "properties": {
+        "migrations": { "$ref": "#/$defs/migrationRun" },
+        "verified": { "const": true }
+      },
+      "required": ["migrations", "verified"],
+      "additionalProperties": false
+    },
+    "cleanup": {
+      "type": "object",
+      "properties": {
+        "source": { "$ref": "#/$defs/cleanupState" },
+        "restore": { "$ref": "#/$defs/cleanupState" },
+        "regression": { "$ref": "#/$defs/cleanupState" },
+        "backup": { "$ref": "#/$defs/cleanupState" }
+      },
+      "required": ["source", "restore", "regression", "backup"],
+      "additionalProperties": false
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "message": { "type": "string" }
+        },
+        "required": ["code", "message"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "$defs": {
+    "migrationRun": {
+      "type": "object",
+      "properties": {
+        "coreFirstApplied": { "type": "array", "items": { "type": "string" } },
+        "mcpFirstApplied": { "type": "array", "items": { "type": "string" } },
+        "coreSecondApplied": { "type": "array", "items": { "type": "string" }, "maxItems": 0 },
+        "mcpSecondApplied": { "type": "array", "items": { "type": "string" }, "maxItems": 0 },
+        "coreVerified": { "const": true },
+        "mcpVerified": { "const": true }
+      },
+      "required": [
+        "coreFirstApplied",
+        "mcpFirstApplied",
+        "coreSecondApplied",
+        "mcpSecondApplied",
+        "coreVerified",
+        "mcpVerified"
+      ],
+      "additionalProperties": false
+    },
+    "cleanupState": {
+      "enum": ["not-created", "pending", "dropped", "removed", "failed"]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "success" } } },
+      "then": {
+        "required": [
+          "postgresql",
+          "migrations",
+          "backup",
+          "reconciliation",
+          "legacyOrderClassification",
+          "regression"
+        ],
+        "properties": {
+          "reconciliation": { "properties": { "overallMatch": { "const": true } } },
+          "appendOnly": {
+            "properties": {
+              "source": { "const": true },
+              "restore": { "const": true }
+            }
+          },
+          "legacyOrderClassification": { "properties": { "unclassified": { "const": 0 } } },
+          "cleanup": {
+            "properties": {
+              "source": { "const": "dropped" },
+              "restore": { "const": "dropped" },
+              "regression": { "const": "dropped" },
+              "backup": { "const": "removed" }
+            }
+          },
+          "errors": { "maxItems": 0 }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}
