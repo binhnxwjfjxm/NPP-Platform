@@ -17,33 +17,24 @@ jobs:
     if: github.event.pull_request.head.ref == 'agent/diagnose-mcp-vercel-run'
     runs-on: ubuntu-latest
     steps:
-      - name: Report latest MCP Vercel issue-comment run
+      - name: Report recent MCP Vercel issue-comment runs
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          run_json="$(
+          runs_json="$(
             gh api --method GET \
               "repos/${GITHUB_REPOSITORY}/actions/runs?event=issue_comment&per_page=100" \
-              --jq '[.workflow_runs[] | select(.name == "Manual Vercel MCP production deploy")] | sort_by(.created_at) | reverse | .[0]'
+              --jq '[.workflow_runs[] | select(.name == "Manual Vercel MCP production deploy")] | sort_by(.created_at) | reverse | .[:10]'
           )"
-          test "$run_json" != "null"
-          run_id="$(jq -r '.id' <<<"$run_json")"
-          status="$(jq -r '.status' <<<"$run_json")"
-          conclusion="$(jq -r '.conclusion // "pending"' <<<"$run_json")"
-          head_sha="$(jq -r '.head_sha' <<<"$run_json")"
-          created_at="$(jq -r '.created_at' <<<"$run_json")"
-          html_url="$(jq -r '.html_url' <<<"$run_json")"
+          test "$(jq 'length' <<<"$runs_json")" -gt 0
           {
-            echo "### MCP Vercel workflow diagnosis"
+            echo "### Recent MCP Vercel workflow runs"
             echo
-            echo "- Run ID: \`$run_id\`"
-            echo "- Status: \`$status\`"
-            echo "- Conclusion: \`$conclusion\`"
-            echo "- Head SHA: \`$head_sha\`"
-            echo "- Created: \`$created_at\`"
-            echo "- Run: $html_url"
+            echo '| Run ID | Title | Status | Conclusion | Created | Head SHA |'
+            echo '|---:|---|---|---|---|---|'
+            jq -r '.[] | "| `\(.id)` | `\(.display_title)` | `\(.status)` | `\(.conclusion // "pending")` | `\(.created_at)` | `\(.head_sha)` |"' <<<"$runs_json"
           } > "${RUNNER_TEMP}/mcp-vercel-run-diagnosis.md"
           cat "${RUNNER_TEMP}/mcp-vercel-run-diagnosis.md"
           gh issue comment 5 --repo "$GITHUB_REPOSITORY" --body-file "${RUNNER_TEMP}/mcp-vercel-run-diagnosis.md"
