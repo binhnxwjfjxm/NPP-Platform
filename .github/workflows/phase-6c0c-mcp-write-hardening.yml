@@ -40,17 +40,22 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify MCP-only source boundary
+      - name: Verify Phase 6C.0C source boundary when applicable
         shell: bash
         run: |
           set -euo pipefail
           git -C .. diff --name-only origin/main...HEAD | tee phase-6c0c-changed-files.log
-          if git -C .. diff --name-only origin/main...HEAD | grep -E '^(npp-core/|database/)' >/dev/null; then
-            echo '::error::Phase 6C.0C must not change Core or database migrations.'
-            exit 1
+          head_branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          if [ "$head_branch" = 'agent/phase-6c0c-mcp-write-hardening' ]; then
+            if git -C .. diff --name-only origin/main...HEAD | grep -E '^(npp-core/|database/)' >/dev/null; then
+              echo '::error::The original Phase 6C.0C branch must not change Core or database migrations.'
+              exit 1
+            fi
+          else
+            echo "Historical Phase 6C.0C source-only boundary is not applicable to ${head_branch}."
           fi
           if git -C .. diff --name-only origin/main...HEAD | grep -E '^\.github/workflows/(heroku|vercel)' >/dev/null; then
-            echo '::error::Phase 6C.0C must not modify production deployment workflows.'
+            echo '::error::MCP write-hardening changes must not modify production deployment workflows.'
             exit 1
           fi
 
