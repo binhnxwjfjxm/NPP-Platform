@@ -25,6 +25,7 @@ SET source = CASE WHEN source = 'planned' THEN 'master' ELSE source END,
 WHERE source = 'planned' OR planned_status IS NULL OR btrim(planned_status) = '';
 
 ALTER TABLE mcp.mcp_visits
+  ADD COLUMN IF NOT EXISTS visited_at timestamptz,
   ADD COLUMN IF NOT EXISTS has_order boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS has_test boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS has_report boolean NOT NULL DEFAULT false,
@@ -34,7 +35,55 @@ ALTER TABLE mcp.mcp_visits
   ADD COLUMN IF NOT EXISTS status_reason text;
 
 ALTER TABLE mcp.test_customer_results
-  ADD COLUMN IF NOT EXISTS session_customer_id text;
+  ADD COLUMN IF NOT EXISTS session_customer_id text,
+  ADD COLUMN IF NOT EXISTS sync_status text NOT NULL DEFAULT 'synced';
+
+ALTER TABLE mcp.test_customers
+  ADD COLUMN IF NOT EXISTS sync_status text NOT NULL DEFAULT 'synced';
+
+ALTER TABLE mcp.test_file_products
+  ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active',
+  ADD COLUMN IF NOT EXISTS sync_status text NOT NULL DEFAULT 'synced';
+
+CREATE TABLE IF NOT EXISTS mcp.mcp_setting_groups (
+  id text PRIMARY KEY DEFAULT ('msg_' || replace(gen_random_uuid()::text, '-', '')),
+  group_key text NOT NULL,
+  title text NOT NULL,
+  group_type text NOT NULL DEFAULT 'market_report',
+  description text,
+  sort_order integer NOT NULL DEFAULT 0,
+  status text NOT NULL DEFAULT 'active',
+  raw_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT mcp_setting_groups_group_key_unique UNIQUE (group_key),
+  CONSTRAINT mcp_setting_groups_status_check CHECK (status IN ('active', 'inactive')),
+  CONSTRAINT mcp_setting_groups_sort_order_check CHECK (sort_order BETWEEN 0 AND 100000)
+);
+
+CREATE TABLE IF NOT EXISTS mcp.mcp_setting_items (
+  id text PRIMARY KEY DEFAULT ('msi_' || replace(gen_random_uuid()::text, '-', '')),
+  group_id text NOT NULL REFERENCES mcp.mcp_setting_groups(id) ON DELETE CASCADE,
+  item_key text NOT NULL,
+  label text NOT NULL,
+  value text,
+  category text,
+  brand_name text,
+  product_id text,
+  sort_order integer NOT NULL DEFAULT 0,
+  status text NOT NULL DEFAULT 'active',
+  raw_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT mcp_setting_items_group_key_unique UNIQUE (group_id, item_key),
+  CONSTRAINT mcp_setting_items_status_check CHECK (status IN ('active', 'inactive')),
+  CONSTRAINT mcp_setting_items_sort_order_check CHECK (sort_order BETWEEN 0 AND 100000)
+);
+
+CREATE INDEX IF NOT EXISTS mcp_setting_groups_type_status_sort_idx
+  ON mcp.mcp_setting_groups(group_type, status, sort_order, id);
+CREATE INDEX IF NOT EXISTS mcp_setting_items_group_status_sort_idx
+  ON mcp.mcp_setting_items(group_id, status, sort_order, id);
 
 ALTER TABLE mcp.mcp_report_setting_groups
   ADD COLUMN IF NOT EXISTS title text,
@@ -364,6 +413,22 @@ create table if not exists mcp.mcp_archive_intents (
   unique (installation_id, operation, idempotency_key),
   unique (installation_id, target_type, target_id)
 );
+
+ALTER TABLE mcp.mcp_outlet_media
+  ADD COLUMN IF NOT EXISTS delete_requested_at timestamptz,
+  ADD COLUMN IF NOT EXISTS deleted_at timestamptz,
+  ADD COLUMN IF NOT EXISTS delete_attempt_count integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS last_delete_error text;
+
+ALTER TABLE mcp.mcp_outlet_media
+  DROP CONSTRAINT IF EXISTS mcp_outlet_media_status_check;
+ALTER TABLE mcp.mcp_outlet_media
+  ADD CONSTRAINT mcp_outlet_media_status_check
+  CHECK (status IN ('pending', 'ready', 'failed', 'deleting', 'delete_failed', 'deleted'));
+
+CREATE INDEX IF NOT EXISTS mcp_outlet_media_delete_retry_idx
+  ON mcp.mcp_outlet_media(status, updated_at)
+  WHERE status IN ('deleting', 'delete_failed');
 
 -- Source: 20260712025937_freeze_mcp_v1_contract_20260711.sql
 create or replace function mcp.mcp_assert_session_mutable(p_session_id text)
