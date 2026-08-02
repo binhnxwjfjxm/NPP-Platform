@@ -105,7 +105,11 @@ jobs:
             ["BACKEND_API_TOKEN", "MCP_BACKEND_API_TOKEN"],
             ["MCP_LEGACY_ACTOR_ID", "workflow:MCP_LEGACY_ACTOR_ID"],
             ["SUPABASE_URL", "MCP_SUPABASE_URL"],
-            ["SUPABASE_ANON_KEY", "MCP_SUPABASE_ANON_KEY"]
+            ["SUPABASE_ANON_KEY", "MCP_SUPABASE_ANON_KEY"],
+            ["MCP_BACKEND_API_BASE_URL", "MCP_BACKEND_API_BASE_URL"],
+            ["MCP_BACKEND_API_TOKEN", "MCP_BACKEND_API_TOKEN"],
+            ["MCP_SUPABASE_URL", "MCP_SUPABASE_URL"],
+            ["MCP_SUPABASE_ANON_KEY", "MCP_SUPABASE_ANON_KEY"]
           ];
 
           try {
