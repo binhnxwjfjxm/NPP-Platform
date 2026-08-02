@@ -1,9 +1,9 @@
 name: One-shot fix manual deploy command gates
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/fix-manual-deploy-command-gates
+      - main
     paths:
       - .github/workflows/one-shot-fix-manual-deploy-command-gates.yml
 
@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   patch:
+    if: github.event.pull_request.head.ref == 'agent/fix-manual-deploy-command-gates'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
