@@ -69,6 +69,10 @@ export async function supabaseRpc(config, name, args, options = {}) {
     if (POSTGRESQL_ARCHIVE_RPC_NAMES.has(name)) {
       return postgresqlArchiveRpc(config, name, args, options);
     }
+    const { POSTGRESQL_CHECKIN_RPC_NAMES, postgresqlCheckinRpc } = await import("./postgresql-checkin-adapter.js");
+    if (POSTGRESQL_CHECKIN_RPC_NAMES.has(name)) {
+      return postgresqlCheckinRpc(config, name, args, options);
+    }
     const { POSTGRESQL_REPORT_RPC_NAMES, postgresqlReportRpc } = await import("./postgresql-report-adapter.js");
     if (POSTGRESQL_REPORT_RPC_NAMES.has(name)) {
       return postgresqlReportRpc(config, name, args, options);
