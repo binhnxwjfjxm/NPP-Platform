@@ -109,7 +109,10 @@ jobs:
             --file apps/backend/foundation/migrations/fixtures/core-read-model-source.sql
 
       - name: Verify full MCP backend
-        run: npm --prefix apps/backend run verify 2>&1 | tee phase-6c0d-backend.log
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix apps/backend run verify 2>&1 | tee phase-6c0d-backend.log
 
       - name: Apply and verify MCP migrations through the guarded CLI
         env:
