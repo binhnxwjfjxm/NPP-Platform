@@ -141,7 +141,7 @@ async function claimArchiveIntent(client, config, args) {
            raw_payload = COALESCE(raw_payload, '{}'::jsonb) ||
              jsonb_build_object(
                'latest_request_context', $2::jsonb,
-               'latest_idempotency_key', $3
+               'latest_idempotency_key', $3::text
              ),
            updated_at = now()
        WHERE id = $1
@@ -321,7 +321,7 @@ async function claimRouteCustomerDelete(client, config, args) {
      SET active = false,
          raw_payload = COALESCE(raw_payload, '{}'::jsonb) ||
            jsonb_build_object(
-             'hard_delete_job_id', $3,
+             'hard_delete_job_id', $3::text,
              'hard_delete_requested_context', $4::jsonb
            ),
          updated_at = now()
@@ -356,7 +356,7 @@ async function claimRouteDelete(client, config, args) {
      SET active = false,
          raw_payload = COALESCE(raw_payload, '{}'::jsonb) ||
            jsonb_build_object(
-             'hard_delete_job_id', $3,
+             'hard_delete_job_id', $3::text,
              'hard_delete_requested_context', $4::jsonb
            ),
          updated_at = now()
