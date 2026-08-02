@@ -11,7 +11,7 @@ source = source.replace(
   "const pattern = /create\\s+(?:or\\s+replace\\s+)?function\\s+public\\.([a-z0-9_]+)\\s*\\(/gi;"
 );
 
-const manualFunctions = String.raw`
+const manualFunctions = `
 
 const MANUAL_FUNCTIONS = new Map([
   ["mcp_assert_session_customer_mutable", String.raw\`CREATE OR REPLACE FUNCTION public.mcp_assert_session_customer_mutable(p_session_customer_id text)
