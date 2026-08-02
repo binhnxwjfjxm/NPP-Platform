@@ -10,6 +10,7 @@ export type BackendReadOptions = {
   limit?: number;
   offset?: number;
   filters?: Record<string, QueryValue>;
+  count?: boolean;
   request?: Request;
 };
 
@@ -82,4 +83,3 @@ export async function backendReadCount(table: string, options: Omit<BackendReadO
   const numeric = Number(data);
   return Number.isFinite(numeric) ? numeric : 0;
 }
-
