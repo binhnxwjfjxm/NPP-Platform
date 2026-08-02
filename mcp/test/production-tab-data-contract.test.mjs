@@ -29,3 +29,20 @@ test("MCP sessions page never self-fetches its Vercel deployment", () => {
   assert.match(loader, /import "server-only";/);
   assert.match(loader, /restRows<SessionTableRow>/);
 });
+
+test("MCP overview and routes use the PostgreSQL backend read boundary", () => {
+  const overview = read("src/app/mcp/page.tsx");
+  const routes = read("src/app/routes/page.tsx");
+  const loader = read("src/lib/api/routes-data.ts");
+
+  assert.match(overview, /loadRoutesData\(\)/);
+  assert.doesNotMatch(overview, /createApiClient/);
+  assert.match(routes, /loadRoutesData\(\)/);
+  assert.match(routes, /loadRouteCustomersData\(\)/);
+  assert.doesNotMatch(routes, /createApiClient/);
+  assert.match(loader, /backendReadRows<RouteRow>\("mcp_routes"/);
+  assert.match(loader, /backendReadRows<RouteCustomerRow>\("mcp_route_customers"/);
+  assert.match(loader, /backendReadRows<RouteSessionRow>\("mcp_route_sessions"/);
+  assert.doesNotMatch(loader, /\/api\/routes\/data/);
+  assert.doesNotMatch(loader, /\/api\/routes\/customers\/data/);
+});
