@@ -22,7 +22,7 @@ jobs:
           fetch-depth: 0
           token: ${{ github.token }}
 
-      - name: Patch provider contract and remove one-shot workflow
+      - name: Patch provider contract
         shell: bash
         run: |
           set -euo pipefail
@@ -31,7 +31,6 @@ jobs:
 
           provider = Path('mcp/apps/backend/foundation/provider-cutover.js')
           text = provider.read_text()
-
           replacements = [
             (
               'export const REQUIRED_MCP_MIGRATIONS = Object.freeze(["mcp_001_write_foundation"]);',
@@ -58,7 +57,6 @@ jobs:
               "  const outbox = privileges.outbox ?? {};\n  if (outbox.insert !== true || outbox.select || outbox.update || outbox.delete) issue(issues, \"runtime_outbox_privileges_invalid\");\n  const legacyReadStore = privileges.legacyReadStore ?? {};\n  if (legacyReadStore.select !== true || legacyReadStore.insert || legacyReadStore.update || legacyReadStore.delete) issue(issues, \"runtime_legacy_read_store_privileges_invalid\");\n"
             )
           ]
-
           for old, new in replacements:
             if text.count(old) != 1:
               raise SystemExit(f'provider replacement mismatch: {old[:80]!r} count={text.count(old)}')
@@ -72,23 +70,11 @@ jobs:
           if text.count(old) != 1:
             raise SystemExit('integration grant replacement mismatch')
           integration.write_text(text.replace(old, new))
-
-          workflow = Path('.github/workflows/phase-6c0f-mcp-provider-cutover-prep.yml')
-          text = workflow.read_text()
-          old = "      - name: Upload Phase 6C.0F evidence\n        if: always()\n"
-          new = "      - name: Upload Phase 6C.0F evidence\n        if: >-\n          always() &&\n          (github.event_name == 'push' || github.event.pull_request.head.ref == 'agent/phase-6c0f-mcp-provider-cutover-prep')\n"
-          if text.count(old) != 1:
-            raise SystemExit('artifact condition replacement mismatch')
-          workflow.write_text(text.replace(old, new))
-
-          Path('.github/workflows/patch-pr168-provider-contract.yml').unlink()
           PY
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add mcp/apps/backend/foundation/provider-cutover.js \
-                  mcp/apps/backend/foundation/provider-cutover-integration.test.js \
-                  .github/workflows/phase-6c0f-mcp-provider-cutover-prep.yml \
-                  .github/workflows/patch-pr168-provider-contract.yml
+                  mcp/apps/backend/foundation/provider-cutover-integration.test.js
           git commit -m 'fix(mcp): extend provider preflight for read store'
           git push origin HEAD:agent/issue-158-mcp-production-read-store
