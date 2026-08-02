@@ -21,13 +21,18 @@ const MCP_SESSION_RUNTIME_CONTRACT_SQL = readFileSync(
   new URL("./sql/005_mcp_session_runtime_contract.sql", import.meta.url),
   "utf8"
 );
+const MCP_CUSTOMER_ONBOARDING_SYNC_SQL = readFileSync(
+  new URL("./sql/006_mcp_customer_onboarding_sync.sql", import.meta.url),
+  "utf8"
+);
 
 export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_001_write_foundation", sql: MCP_WRITE_FOUNDATION_SQL }),
   Object.freeze({ id: "mcp_002_domain_read_models", sql: MCP_DOMAIN_READ_MODELS_SQL }),
   Object.freeze({ id: "mcp_003_legacy_write_contract", sql: MCP_LEGACY_WRITE_CONTRACT_SQL }),
   Object.freeze({ id: "mcp_004_profile_media_contract", sql: MCP_PROFILE_MEDIA_CONTRACT_SQL }),
-  Object.freeze({ id: "mcp_005_session_runtime_contract", sql: MCP_SESSION_RUNTIME_CONTRACT_SQL })
+  Object.freeze({ id: "mcp_005_session_runtime_contract", sql: MCP_SESSION_RUNTIME_CONTRACT_SQL }),
+  Object.freeze({ id: "mcp_006_customer_onboarding_sync", sql: MCP_CUSTOMER_ONBOARDING_SYNC_SQL })
 ]);
 
 const MCP_READ_MODELS = Object.freeze([
@@ -147,6 +152,18 @@ async function functionExists(adapter, signature) {
   return exists(adapter, "SELECT to_regprocedure($1) IS NOT NULL AS exists", [signature]);
 }
 
+async function columnExists(adapter, table, column) {
+  return exists(
+    adapter,
+    `SELECT EXISTS (
+       SELECT 1
+       FROM information_schema.columns
+       WHERE table_schema = 'mcp' AND table_name = $1 AND column_name = $2
+     ) AS exists`,
+    [table, column]
+  );
+}
+
 async function constraintExists(adapter, table, constraint) {
   return exists(
     adapter,
@@ -225,6 +242,15 @@ export async function migrationVerifyWithAdapter(adapter, migrations = MCP_MIGRA
       "mcp_session_customers",
       "mcp_session_customers_visited_counter"
     ),
+    customerOnboardingRequestColumn: await columnExists(adapter, "orders", "customer_onboarding_request_id"),
+    customerOnboardingStatusColumn: await columnExists(adapter, "orders", "customer_onboarding_status"),
+    customerOnboardingFingerprintColumn: await columnExists(adapter, "orders", "customer_onboarding_fingerprint"),
+    customerOnboardingShapeConstraint: await constraintExists(
+      adapter,
+      "orders",
+      "mcp_orders_customer_onboarding_shape"
+    ),
+    customerOnboardingRequestIndex: await indexExists(adapter, "mcp_orders_customer_onboarding_request_unique"),
     outboxPendingIndex: await indexExists(adapter, "mcp_outbox_events_pending_available_idx"),
     routeCustomerOrderIndex: await indexExists(adapter, "mcp_route_customers_route_sort_idx"),
     orderItemsIndex: await indexExists(adapter, "order_items_order_idx"),

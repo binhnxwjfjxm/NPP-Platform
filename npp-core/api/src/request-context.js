@@ -126,6 +126,19 @@ export function createBootstrapPrincipal(config) {
   });
 }
 
+export function createMcpOnboardingPrincipal(config) {
+  if (!config.mcpOnboardingApiToken) return null;
+  return normalizePrincipal({
+    actorId: config.mcpOnboardingActorId,
+    roles: ['mcp-onboarding-service'],
+    permissions: [
+      PERMISSIONS.coreCustomerOnboardingRead,
+      PERMISSIONS.coreCustomerOnboardingSubmit,
+    ],
+    sourceApp: 'mcp-plan-backend',
+  });
+}
+
 export function createRequestContext({ config, principal = createAnonymousPrincipal(), requestId = createRequestId('req'), receivedAt = new Date().toISOString() }) {
   const normalizedPrincipal = normalizePrincipal(principal);
   return Object.freeze({
@@ -154,8 +167,14 @@ export function createRequestContext({ config, principal = createAnonymousPrinci
 
 export function authenticateRequest(req, config) {
   const candidate = extractBearerToken(req.headers.authorization);
-  if (!candidate || !tokenMatches(candidate, config.backendApiToken)) return { ok: false, code: 'UNAUTHORIZED', statusCode: 401 };
-  return { ok: true, principal: createBootstrapPrincipal(config) };
+  if (!candidate) return { ok: false, code: 'UNAUTHORIZED', statusCode: 401 };
+  if (config.mcpOnboardingApiToken && tokenMatches(candidate, config.mcpOnboardingApiToken)) {
+    return { ok: true, principal: createMcpOnboardingPrincipal(config) };
+  }
+  if (tokenMatches(candidate, config.backendApiToken)) {
+    return { ok: true, principal: createBootstrapPrincipal(config) };
+  }
+  return { ok: false, code: 'UNAUTHORIZED', statusCode: 401 };
 }
 
 export function requirePermission(requestContext, permission) {

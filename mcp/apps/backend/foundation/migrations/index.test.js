@@ -34,7 +34,8 @@ const EXPECTED_MIGRATIONS = [
   "mcp_002_domain_read_models",
   "mcp_003_legacy_write_contract",
   "mcp_004_profile_media_contract",
-  "mcp_005_session_runtime_contract"
+  "mcp_005_session_runtime_contract",
+  "mcp_006_customer_onboarding_sync"
 ];
 
 test("MCP migrations use a unique registry namespace and apply once in one locked transaction", async () => {
@@ -54,6 +55,7 @@ test("MCP migrations use a unique registry namespace and apply once in one locke
   assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.mcp_archive_intents")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("ALTER COLUMN session_id DROP NOT NULL")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("mcp_session_customers_visited_counter")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("customer_onboarding_request_id")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("ON DELETE CASCADE")), true);
 
   const status = await migrationStatusWithAdapter(adapter);
@@ -171,6 +173,31 @@ test("MCP session runtime migration is canonical and preserves deletion and KPI 
   assert.match(sql, /CREATE TRIGGER mcp_session_customers_visited_counter/);
   assert.match(sql, /sync_route_session_visited_customers/);
   assert.doesNotMatch(sql, /public\.mcp_/i);
+});
+
+
+
+test("MCP customer onboarding sync migration is canonical and stores structured order-flow state", () => {
+  const sql = MCP_MIGRATIONS[5].sql;
+  const canonicalSql = readFileSync(new URL("../../../../../database/migrations/mcp/006_mcp_customer_onboarding_sync.sql", import.meta.url), "utf8");
+  assert.equal(sql, canonicalSql);
+  for (const column of [
+    "customer_onboarding_request_id",
+    "customer_onboarding_status",
+    "customer_onboarding_version",
+    "customer_onboarding_fingerprint",
+    "core_customer_id",
+    "core_customer_address_id",
+    "customer_onboarding_review_reason",
+    "customer_onboarding_submitted_at",
+    "customer_onboarding_last_synced_at"
+  ]) {
+    assert.match(sql, new RegExp(`\\b${column}\\b`));
+  }
+  assert.match(sql, /mcp_orders_customer_onboarding_shape/);
+  assert.match(sql, /mcp_orders_customer_onboarding_request_unique/);
+  assert.match(sql, /'approved', 'linked_existing'/);
+  assert.doesNotMatch(sql, /CREATE\s+TABLE\s+(shared|sales|purchasing|inventory|logistics|accounting|reporting)\./i);
 });
 
 test("migration failure rolls back and preserves the original error", async () => {

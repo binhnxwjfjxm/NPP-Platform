@@ -99,3 +99,30 @@ test("development CORS defaults are explicit localhost origins", () => {
     "http://127.0.0.1:3000"
   ]);
 });
+
+
+test("Core onboarding boundary is optional but fail-closed and uses a distinct server token", () => {
+  const disabled = loadFoundationConfig(validEnv());
+  assert.equal(disabled.coreOnboarding.configured, false);
+  assert.equal(disabled.coreOnboarding.apiToken, null);
+
+  const enabled = loadFoundationConfig(validEnv({
+    CORE_ONBOARDING_API_BASE_URL: "https://core.example.com",
+    CORE_ONBOARDING_API_TOKEN: "abcdef0123456789abcdef0123456789"
+  }));
+  assert.equal(enabled.coreOnboarding.configured, true);
+  assert.equal(enabled.coreOnboarding.baseUrl, "https://core.example.com");
+  assert.equal(enabled.coreOnboarding.timeoutMs, 15000);
+
+  assert.throws(
+    () => loadFoundationConfig(validEnv({ CORE_ONBOARDING_API_BASE_URL: "https://core.example.com" })),
+    (error) => error.code === "incomplete_core_onboarding_config"
+  );
+  assert.throws(
+    () => loadFoundationConfig(validEnv({
+      CORE_ONBOARDING_API_BASE_URL: "https://core.example.com",
+      CORE_ONBOARDING_API_TOKEN: "0123456789abcdef0123456789abcdef"
+    })),
+    (error) => error.code === "core_onboarding_token_reuse_forbidden"
+  );
+});

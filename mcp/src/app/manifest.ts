@@ -12,8 +12,8 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#F7F3ED",
     orientation: "portrait",
     icons: [
-      { src: "/pwa-icon.svg", sizes: "512x512", type: "image/svg+xml", purpose: "any" },
-      { src: "/pwa-maskable.svg", sizes: "512x512", type: "image/svg+xml", purpose: "maskable" }
+      { src: "/npp-app-icon.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/npp-app-icon.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
     ]
   };
 }

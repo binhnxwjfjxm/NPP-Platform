@@ -31,9 +31,9 @@ export const metadata: Metadata = {
   description: "Quản lý nhà phân phối, tuyến bán hàng, điểm bán, đơn hàng và công việc.",
   applicationName: "MCP-Plan",
   icons: {
-    icon: "/pwa-icon.svg",
-    shortcut: "/pwa-icon.svg",
-    apple: "/pwa-icon.svg"
+    icon: "/npp-app-icon.png",
+    shortcut: "/npp-app-icon.png",
+    apple: "/npp-app-icon.png"
   },
   appleWebApp: {
     capable: true,

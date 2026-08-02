@@ -29,7 +29,7 @@ export function AppShell({ children, activeHref = "/" }: AppShellProps) {
   const section = shellSectionForHref(activeHref);
   return <MobileAppMenuProvider><div className="app-shell" data-shell-section={section} data-active-href={activeHref}>
     <aside className="sidebar">
-      <div className="sidebar-brand"><div className="sidebar-title">MCP-Plan</div><div className="sidebar-subtitle">Quản lý tuyến bán hàng, điểm bán, đơn hàng và công việc.</div></div>
+      <div className="sidebar-brand"><img className="sidebar-brand-logo" src="/npp-app-icon.png" alt="NPP" /><div><div className="sidebar-title">MCP-Plan</div><div className="sidebar-subtitle">Quản lý tuyến bán hàng, điểm bán, đơn hàng và công việc.</div></div></div>
       <NavLinks activeHref={activeHref} items={SIDEBAR_NAV_ITEMS} mode="sidebar" />
       <Link className={activeHref === "/settings" ? "sidebar-link active utility-link" : "sidebar-link utility-link"} href="/settings" prefetch><span className="nav-icon" aria-hidden="true">⚙</span><span>Cài đặt ứng dụng</span></Link>
       <div className="sidebar-footer">MCP-Plan · Quản lý phân phối</div>

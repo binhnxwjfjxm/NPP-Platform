@@ -1242,6 +1242,8 @@ async function loadMcpDayData(url = new URL("http://local/api/mcp-day/data")) {
       routeCustomerId: snapshot.route_customer_id,
       sortOrder: numberValue(snapshot.sort_order),
       accountName: snapshot.customer_name || "Khách chưa tên",
+      phone: snapshot.phone || undefined,
+      address: snapshot.address || undefined,
       area: snapshot.area || "-",
       source: snapshot.source === "added" ? "added" : "planned",
       status,
