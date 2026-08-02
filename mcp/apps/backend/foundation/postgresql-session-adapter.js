@@ -3,7 +3,8 @@ import { createPostgresqlWriteTransaction } from "./postgresql-write-repository.
 import { providerPersistence } from "./provider-runtime.js";
 
 export const POSTGRESQL_SESSION_RPC_NAMES = Object.freeze(new Set([
-  "mcp_idempotent_open_route_session"
+  "mcp_idempotent_open_route_session",
+  "mcp_idempotent_set_session_customer_status"
 ]));
 
 function text(value) {
@@ -29,9 +30,11 @@ function fail(code, statusCode = 400) {
 
 function requestContext(config, args) {
   const source = object(args.p_context);
-  const installationId = text(source.installationId) || text(config.installationId);
+  const sourceInstallationId = text(source.installationId);
+  const configuredInstallationId = text(config.installationId);
+  const installationId = sourceInstallationId || configuredInstallationId;
   if (!installationId) fail("installation_id_required");
-  if (text(source.installationId) && text(config.installationId) && installationId !== config.installationId) {
+  if (sourceInstallationId && configuredInstallationId && sourceInstallationId !== configuredInstallationId) {
     fail("installation_scope_mismatch", 403);
   }
   return Object.freeze({
@@ -71,6 +74,38 @@ function sessionResult(row) {
     note: row.note,
     openedAt: row.opened_at,
     closedAt: row.closed_at
+  };
+}
+
+function sessionCustomerResult(row) {
+  return {
+    id: row.id,
+    sessionCustomerId: row.id,
+    sessionId: row.session_id,
+    routeId: row.route_id,
+    routeCustomerId: row.route_customer_id,
+    customerId: row.customer_id,
+    customerName: row.customer_name,
+    accountName: row.account_name,
+    phone: row.phone,
+    area: row.area,
+    address: row.address,
+    sortOrder: row.sort_order,
+    source: row.source,
+    status: row.status,
+    visitStatus: row.visit_status,
+    statusReason: row.status_reason,
+    orderId: row.order_id,
+    testId: row.test_id,
+    reportId: row.report_id,
+    followupCount: row.followup_count,
+    checkedIn: row.checked_in,
+    checkinAt: row.checkin_at,
+    checkinLat: row.checkin_lat,
+    checkinLng: row.checkin_lng,
+    checkinAccuracy: row.checkin_accuracy,
+    checkinSource: row.checkin_source,
+    note: row.note
   };
 }
 
@@ -177,18 +212,90 @@ async function openRouteSession(client, args, context) {
   return sessionResult(session);
 }
 
+async function setSessionCustomerStatus(client, args, context) {
+  const sessionCustomerId = text(args.p_session_customer_id);
+  const visitStatus = text(args.p_visit_status);
+  if (!sessionCustomerId) fail("session_customer_id_required");
+  if (!visitStatus) fail("visit_status_required");
+
+  const selected = await client.query(
+    `SELECT customer.*, session.status AS session_status
+     FROM mcp.mcp_session_customers customer
+     JOIN mcp.mcp_route_sessions session
+       ON session.installation_id = customer.installation_id
+      AND session.id = customer.session_id
+     WHERE customer.installation_id = $1 AND customer.id = $2
+     FOR UPDATE OF customer, session`,
+    [context.installation.id, sessionCustomerId]
+  );
+  const customer = selected.rows?.[0];
+  if (!customer) fail("session_customer_not_found", 404);
+  if (customer.session_status !== "active") fail("session_read_only", 409);
+
+  const updated = await client.query(
+    `UPDATE mcp.mcp_session_customers
+     SET visit_status = $3,
+         status = CASE WHEN $3 = 'visited' THEN 'done' ELSE $3 END,
+         status_reason = $4,
+         note = COALESCE($5, note),
+         raw_payload = jsonb_set(
+           COALESCE(raw_payload, '{}'::jsonb),
+           '{foundation_context}',
+           $6::jsonb,
+           true
+         ),
+         updated_at = now()
+     WHERE installation_id = $1 AND id = $2
+     RETURNING *`,
+    [
+      context.installation.id,
+      sessionCustomerId,
+      visitStatus,
+      text(args.p_status_reason),
+      text(args.p_note),
+      json(args.p_context || {})
+    ]
+  );
+  return sessionCustomerResult(updated.rows[0]);
+}
+
 function repositoryFactory(client) {
   return Object.freeze({
     session: Object.freeze({
       open(args, context) {
         return openRouteSession(client, args, context);
       }
+    }),
+    sessionCustomer: Object.freeze({
+      setStatus(args, context) {
+        return setSessionCustomerStatus(client, args, context);
+      }
     })
   });
 }
 
+const CONTRACTS = Object.freeze({
+  mcp_idempotent_open_route_session: Object.freeze({
+    commandName: "mcp.session.open",
+    permission: "mcp.session.write",
+    eventType: "mcp.session.opened",
+    aggregateType: "route_session",
+    aggregateId: "sessionId",
+    mutate: (repositories, args, context) => repositories.session.open(args, context)
+  }),
+  mcp_idempotent_set_session_customer_status: Object.freeze({
+    commandName: "mcp.session-customer.status",
+    permission: "mcp.session-customer.write",
+    eventType: "mcp.session-customer.status-updated",
+    aggregateType: "session_customer",
+    aggregateId: "sessionCustomerId",
+    mutate: (repositories, args, context) => repositories.sessionCustomer.setStatus(args, context)
+  })
+});
+
 export async function postgresqlSessionRpc(config, name, args = {}) {
-  if (!POSTGRESQL_SESSION_RPC_NAMES.has(name)) fail("postgresql_rpc_not_implemented", 503);
+  const contract = CONTRACTS[name];
+  if (!contract || !POSTGRESQL_SESSION_RPC_NAMES.has(name)) fail("postgresql_rpc_not_implemented", 503);
   try {
     const context = requestContext(config, args);
     const persistence = providerPersistence();
@@ -197,16 +304,22 @@ export async function postgresqlSessionRpc(config, name, args = {}) {
     });
     return await executeWriteCommand({
       context,
-      commandName: "mcp.session.open",
-      permission: "mcp.session.write",
+      commandName: contract.commandName,
+      permission: contract.permission,
       payload: Object.fromEntries(Object.entries(args).filter(([key]) => key !== "p_context")),
-      aggregate: (result) => ({ type: "route_session", id: result.sessionId, version: 1 }),
-      eventType: "mcp.session.opened",
+      aggregate: (result) => ({
+        type: contract.aggregateType,
+        id: result[contract.aggregateId],
+        version: 1
+      }),
+      eventType: contract.eventType,
       transaction,
-      mutate: (tx) => tx.repositories.session.open(args, context)
+      mutate: (tx) => contract.mutate(tx.repositories, args, context)
     });
   } catch (error) {
-    if (!error.providerMessage) error.providerMessage = text(error.code) || text(error.message) || "provider_request_failed";
+    if (!error.providerMessage) {
+      error.providerMessage = text(error.code) || text(error.message) || "provider_request_failed";
+    }
     throw error;
   }
 }
