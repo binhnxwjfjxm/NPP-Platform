@@ -53,6 +53,14 @@ function compareValues(left, right) {
   return text(normalizedLeft).localeCompare(text(normalizedRight));
 }
 
+function valuesEqual(left, right) {
+  const normalizedLeft = comparable(left);
+  const normalizedRight = comparable(right);
+  if (normalizedLeft == null || normalizedRight == null) return normalizedLeft == null && normalizedRight == null;
+  if (typeof normalizedLeft === "number" && typeof normalizedRight === "number") return normalizedLeft === normalizedRight;
+  return text(normalizedLeft) === text(normalizedRight);
+}
+
 function matchesLike(value, pattern, caseInsensitive) {
   const raw = text(pattern);
   if (!raw) return text(value) === "";
@@ -68,11 +76,11 @@ function matchesFilter(row, key, rawValue) {
   if (rawValue == null || rawValue === "") return true;
   const value = String(rawValue).trim();
   if (!value) return true;
+  const actual = readPathValue(row, key);
   const prefix = RAW_FILTER_PREFIXES.find((item) => value.startsWith(item));
-  if (!prefix) return false;
+  if (!prefix) return valuesEqual(actual, rawValue);
 
   const operand = value.slice(prefix.length);
-  const actual = readPathValue(row, key);
   if (prefix === "is.") {
     const next = text(operand).toLowerCase();
     if (next === "null") return actual == null || actual === "";
@@ -89,13 +97,13 @@ function matchesFilter(row, key, rawValue) {
       : rawItems;
     const choices = splitComma(items);
     if (!choices.length) return true;
-    return choices.some((item) => text(actual) === item);
+    return choices.some((item) => valuesEqual(actual, item));
   }
 
   if (prefix === "like.") return matchesLike(actual, operand, false);
   if (prefix === "ilike.") return matchesLike(actual, operand, true);
-  if (prefix === "eq.") return text(actual) === text(operand);
-  if (prefix === "neq.") return text(actual) !== text(operand);
+  if (prefix === "eq.") return valuesEqual(actual, operand);
+  if (prefix === "neq.") return !valuesEqual(actual, operand);
 
   const left = comparable(actual);
   const right = comparable(operand);
