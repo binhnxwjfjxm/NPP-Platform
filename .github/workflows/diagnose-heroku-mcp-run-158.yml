@@ -1,4 +1,4 @@
-name: List recent MCP Heroku deploy runs
+name: Extract MCP migration rehearsal failure
 
 on:
   pull_request:
@@ -12,19 +12,44 @@ permissions:
   actions: read
 
 jobs:
-  list-runs:
+  extract-failure:
     if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-run-158'
     runs-on: ubuntu-latest
     steps:
-      - name: Print recent MCP Heroku runs
+      - name: Read sanitized failed migration step
         env:
           GH_TOKEN: ${{ github.token }}
+          FAILED_JOB_ID: '91490461737'
         shell: bash
         run: |
           set -euo pipefail
           gh api --method GET \
             -H 'Accept: application/vnd.github+json' \
-            "/repos/${GITHUB_REPOSITORY}/actions/workflows/heroku-mcp-backend-manual.yml/runs" \
-            -f event=issue_comment \
-            -f per_page=20 \
-            --jq '.workflow_runs | sort_by(.created_at) | reverse | .[] | "RUN id=\(.id) status=\(.status) conclusion=\(.conclusion // "") created=\(.created_at) actor=\(.actor.login // "") head=\(.head_sha // "") title=\(.display_title // "")"'
+            "/repos/${GITHUB_REPOSITORY}/actions/jobs/${FAILED_JOB_ID}/logs" \
+            > /tmp/job.log
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          lines = Path('/tmp/job.log').read_text(encoding='utf-8', errors='replace').splitlines()
+          selected = []
+          patterns = re.compile(r'(error|failed|does not exist|invalid|migration|constraint|syntax|permission|denied|relation)', re.I)
+          for index, line in enumerate(lines):
+              if patterns.search(line):
+                  start = max(0, index - 2)
+                  end = min(len(lines), index + 4)
+                  selected.extend(lines[start:end])
+          if not selected:
+              selected = lines[-120:]
+          deduped = []
+          seen = set()
+          for line in selected:
+              clean = re.sub(r'postgres(?:ql)?://\S+', '[redacted-database-url]', line, flags=re.I)
+              clean = re.sub(r'(?i)(token|password|secret|authorization)[=:]\S+', r'\1=[redacted]', clean)
+              clean = re.sub(r'[A-Za-z0-9_=-]{64,}', '[redacted]', clean)
+              if clean not in seen:
+                  seen.add(clean)
+                  deduped.append(clean)
+          print('\n'.join(deduped[-180:]))
+          PY
