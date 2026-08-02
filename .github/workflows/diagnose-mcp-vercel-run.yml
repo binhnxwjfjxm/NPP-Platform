@@ -45,4 +45,5 @@ jobs:
             echo "- Created: \`$created_at\`"
             echo "- Run: $html_url"
           } > "${RUNNER_TEMP}/mcp-vercel-run-diagnosis.md"
-          gh issue comment 5 --body-file "${RUNNER_TEMP}/mcp-vercel-run-diagnosis.md"
+          cat "${RUNNER_TEMP}/mcp-vercel-run-diagnosis.md"
+          gh issue comment 5 --repo "$GITHUB_REPOSITORY" --body-file "${RUNNER_TEMP}/mcp-vercel-run-diagnosis.md"
