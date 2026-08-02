@@ -282,7 +282,7 @@ test(
     const readyJobs = await supabaseRpc(runtimeConfig, "mcp_claim_ready_storage_delete_jobs", {
       p_installation_id: installationId,
       p_limit: 10,
-      p_retry_before: "2026-08-03T00:00:00.000Z",
+      p_retry_before: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       p_context: context("delete-job-ready")
     });
     assert.equal(readyJobs.some((job) => job.id === deleteJobId), true);
