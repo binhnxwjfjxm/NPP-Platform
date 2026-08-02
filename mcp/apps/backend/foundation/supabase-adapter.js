@@ -1,3 +1,13 @@
+const POSTGRESQL_SPECIAL_ROUTED_RPC_NAMES = Object.freeze(new Set([
+  "mcp_search_products",
+  "mcp_get_product_variants",
+  "mcp_claim_outlet_media_delete",
+  "mcp_finish_outlet_media_delete",
+  "mcp_claim_stale_outlet_media_delete",
+  "mcp_finish_storage_delete_job",
+  "mcp_claim_ready_storage_delete_jobs"
+]));
+
 function parsePayload(text) {
   if (!text) return null;
   try {
@@ -85,8 +95,8 @@ export async function supabaseRpc(config, name, args, options = {}) {
     if (POSTGRESQL_DELETE_RPC_NAMES.has(name)) {
       return postgresqlDeleteRpc(config, name, args, options);
     }
-    const { POSTGRESQL_SPECIAL_RPC_NAMES, postgresqlSpecialRpc } = await import("./postgresql-media-adapter.js");
-    if (POSTGRESQL_SPECIAL_RPC_NAMES.has(name)) {
+    if (POSTGRESQL_SPECIAL_ROUTED_RPC_NAMES.has(name)) {
+      const { postgresqlSpecialRpc } = await import("./postgresql-media-adapter.js");
       return postgresqlSpecialRpc(config, name, args, options);
     }
     const { postgresqlRpc } = await import("./postgresql-compat-adapter.js");
