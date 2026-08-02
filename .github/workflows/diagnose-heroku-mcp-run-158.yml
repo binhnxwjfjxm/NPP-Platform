@@ -1,4 +1,4 @@
-name: Extract MCP migration rehearsal failure
+name: Inspect actual shared Core columns
 
 on:
   pull_request:
@@ -9,47 +9,36 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
-  extract-failure:
+  inspect-columns:
     if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-run-158'
     runs-on: ubuntu-latest
+    env:
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      MCP_APP_NAME: hung-phat-mcp
     steps:
-      - name: Read sanitized failed migration step
-        env:
-          GH_TOKEN: ${{ github.token }}
-          FAILED_JOB_ID: '91490461737'
+      - name: Install Heroku CLI
         shell: bash
         run: |
           set -euo pipefail
-          gh api --method GET \
-            -H 'Accept: application/vnd.github+json' \
-            "/repos/${GITHUB_REPOSITORY}/actions/jobs/${FAILED_JOB_ID}/logs" \
-            > /tmp/job.log
+          test -n "${HEROKU_API_KEY:-}"
+          echo "::add-mask::$HEROKU_API_KEY"
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
 
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          lines = Path('/tmp/job.log').read_text(encoding='utf-8', errors='replace').splitlines()
-          selected = []
-          patterns = re.compile(r'(error|failed|does not exist|invalid|migration|constraint|syntax|permission|denied|relation)', re.I)
-          for index, line in enumerate(lines):
-              if patterns.search(line):
-                  start = max(0, index - 2)
-                  end = min(len(lines), index + 4)
-                  selected.extend(lines[start:end])
-          if not selected:
-              selected = lines[-120:]
-          deduped = []
-          seen = set()
-          for line in selected:
-              clean = re.sub(r'postgres(?:ql)?://\S+', '[redacted-database-url]', line, flags=re.I)
-              clean = re.sub(r'(?i)(token|password|secret|authorization)[=:]\S+', r'\1=[redacted]', clean)
-              clean = re.sub(r'[A-Za-z0-9_=-]{64,}', '[redacted]', clean)
-              if clean not in seen:
-                  seen.add(clean)
-                  deduped.append(clean)
-          print('\n'.join(deduped[-180:]))
-          PY
+      - name: Print exact shared table columns
+        shell: bash
+        run: |
+          set -euo pipefail
+          database_url="$(heroku config:get DATABASE_URL -a "$MCP_APP_NAME")"
+          test -n "$database_url"
+          echo "::add-mask::$database_url"
+          psql "$database_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 <<'SQL'
+          select 'COLUMN=' || table_schema || '.' || table_name || '.' || column_name ||
+                 '|TYPE=' || data_type ||
+                 '|NULLABLE=' || is_nullable
+          from information_schema.columns
+          where table_schema = 'shared'
+            and table_name in ('customers', 'products', 'product_variants')
+          order by table_name, ordinal_position;
+          SQL
