@@ -9,7 +9,10 @@ export const CORE_OWNED_SCHEMAS = Object.freeze([
   "accounting",
   "reporting"
 ]);
-export const REQUIRED_MCP_MIGRATIONS = Object.freeze(["mcp_001_write_foundation"]);
+export const REQUIRED_MCP_MIGRATIONS = Object.freeze([
+  "mcp_001_write_foundation",
+  "mcp_002_legacy_read_store"
+]);
 export const REQUIRED_RUNTIME_CONFIG_NAMES = Object.freeze([
   "AUTH_MODE",
   "BACKEND_API_TOKEN",
@@ -278,6 +281,7 @@ export async function captureInstallationAudit(adapter, { runtimeRole, coreSchem
         to_regclass('mcp.idempotency_records') IS NOT NULL AS idempotency_table,
         to_regclass('mcp.audit_events') IS NOT NULL AS audit_table,
         to_regclass('mcp.outbox_events') IS NOT NULL AS outbox_table,
+        to_regclass('mcp.legacy_read_rows') IS NOT NULL AS legacy_read_store_table,
         EXISTS (
           SELECT 1 FROM pg_trigger g
           JOIN pg_class t ON t.oid = g.tgrelid
@@ -309,7 +313,11 @@ export async function captureInstallationAudit(adapter, { runtimeRole, coreSchem
           CASE WHEN to_regclass('mcp.outbox_events') IS NULL THEN false ELSE has_table_privilege($1, to_regclass('mcp.outbox_events'), 'SELECT') END AS outbox_select,
           CASE WHEN to_regclass('mcp.outbox_events') IS NULL THEN false ELSE has_table_privilege($1, to_regclass('mcp.outbox_events'), 'INSERT') END AS outbox_insert,
           CASE WHEN to_regclass('mcp.outbox_events') IS NULL THEN false ELSE has_table_privilege($1, to_regclass('mcp.outbox_events'), 'UPDATE') END AS outbox_update,
-          CASE WHEN to_regclass('mcp.outbox_events') IS NULL THEN false ELSE has_table_privilege($1, to_regclass('mcp.outbox_events'), 'DELETE') END AS outbox_delete
+          CASE WHEN to_regclass('mcp.outbox_events') IS NULL THEN false ELSE has_table_privilege($1, to_regclass('mcp.outbox_events'), 'DELETE') END AS outbox_delete,
+          CASE WHEN to_regclass('mcp.legacy_read_rows') IS NULL THEN false ELSE has_table_privilege($1, to_regclass('mcp.legacy_read_rows'), 'SELECT') END AS legacy_read_store_select,
+          CASE WHEN to_regclass('mcp.legacy_read_rows') IS NULL THEN false ELSE has_table_privilege($1, to_regclass('mcp.legacy_read_rows'), 'INSERT') END AS legacy_read_store_insert,
+          CASE WHEN to_regclass('mcp.legacy_read_rows') IS NULL THEN false ELSE has_table_privilege($1, to_regclass('mcp.legacy_read_rows'), 'UPDATE') END AS legacy_read_store_update,
+          CASE WHEN to_regclass('mcp.legacy_read_rows') IS NULL THEN false ELSE has_table_privilege($1, to_regclass('mcp.legacy_read_rows'), 'DELETE') END AS legacy_read_store_delete
       `, [runtimeRole]))[0] ?? {};
       schemaWrites = rows(await adapter.query(`
         SELECT nspname AS schema_name
@@ -348,6 +356,7 @@ export async function captureInstallationAudit(adapter, { runtimeRole, coreSchem
         idempotencyTable: objects.idempotency_table === true,
         auditTable: objects.audit_table === true,
         outboxTable: objects.outbox_table === true,
+        legacyReadStoreTable: objects.legacy_read_store_table === true,
         auditAppendOnlyTrigger: objects.audit_append_only_trigger === true,
         outboxPendingIndex: objects.outbox_pending_index === true
       },
@@ -371,6 +380,12 @@ export async function captureInstallationAudit(adapter, { runtimeRole, coreSchem
           insert: privileges.outbox_insert === true,
           update: privileges.outbox_update === true,
           delete: privileges.outbox_delete === true
+        },
+        legacyReadStore: {
+          select: privileges.legacy_read_store_select === true,
+          insert: privileges.legacy_read_store_insert === true,
+          update: privileges.legacy_read_store_update === true,
+          delete: privileges.legacy_read_store_delete === true
         },
         coreSchemaCreate: schemaWrites,
         coreTableWrites: tableWrites
@@ -407,6 +422,8 @@ export function evaluateProviderPreflight({ runtimeIdentity, installationAudit }
   if (audit.insert !== true || audit.select || audit.update || audit.delete) issue(issues, "runtime_audit_privileges_invalid");
   const outbox = privileges.outbox ?? {};
   if (outbox.insert !== true || outbox.select || outbox.update || outbox.delete) issue(issues, "runtime_outbox_privileges_invalid");
+  const legacyReadStore = privileges.legacyReadStore ?? {};
+  if (legacyReadStore.select !== true || legacyReadStore.insert || legacyReadStore.update || legacyReadStore.delete) issue(issues, "runtime_legacy_read_store_privileges_invalid");
   if ((privileges.coreSchemaCreate ?? []).length) issue(issues, "runtime_has_core_schema_create");
   if ((privileges.coreTableWrites ?? []).length) issue(issues, "runtime_has_core_table_write");
   return Object.freeze({ ready: issues.length === 0, issues: Object.freeze(issues.sort()) });

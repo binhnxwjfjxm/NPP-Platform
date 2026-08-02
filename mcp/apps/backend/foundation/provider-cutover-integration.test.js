@@ -36,6 +36,7 @@ async function grantRuntimeContract(admin, role) {
   await admin.query(`GRANT SELECT, INSERT, UPDATE ON mcp.idempotency_records TO ${role}`);
   await admin.query(`GRANT INSERT ON mcp.audit_events TO ${role}`);
   await admin.query(`GRANT INSERT ON mcp.outbox_events TO ${role}`);
+  await admin.query(`GRANT SELECT ON mcp.legacy_read_rows TO ${role}`);
 }
 
 test(
