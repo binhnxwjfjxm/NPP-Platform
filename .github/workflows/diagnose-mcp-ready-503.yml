@@ -1,4 +1,4 @@
-name: Diagnose MCP ready 503
+name: Repair MCP PostgreSQL production readiness
 
 on:
   pull_request:
@@ -11,16 +11,23 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  repair:
     if: github.event.pull_request.head.ref == 'agent/issue-158-ready-503-diagnose'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
       CORE_APP_NAME: hung-phat
       MCP_APP_NAME: hung-phat-mcp
+      MIGRATION_SOURCE: agent/issue-158-mcp-domain-schema
     steps:
-      - name: Install clients
+      - name: Checkout reviewed migration source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.MIGRATION_SOURCE }}
+          fetch-depth: 1
+
+      - name: Install clients and backend dependencies
         shell: bash
         run: |
           set -euo pipefail
@@ -29,31 +36,77 @@ jobs:
           curl -fsSL https://cli-assets.heroku.com/install.sh | sh
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client
+          npm ci --prefix mcp/apps/backend
 
-      - name: Read sanitized MCP runtime logs
+      - name: Apply repository migrations twice and verify
         shell: bash
         run: |
           set -euo pipefail
-          heroku logs -a "$MCP_APP_NAME" --num 250 --source app 2>&1 \
-            | sed -E 's#postgres(ql)?://[^ ]+#postgresql://[redacted]#g; s/[A-Za-z0-9_\-]{40,}/[redacted]/g' \
-            | tail -n 250
+          owner_url="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
+          test -n "$owner_url"
+          echo "::add-mask::$owner_url"
+          export MCP_MIGRATION_DATABASE_URL="$owner_url"
+          npm --prefix mcp/apps/backend run migration:status
+          npm --prefix mcp/apps/backend run migration:migrate
+          npm --prefix mcp/apps/backend run migration:migrate
+          npm --prefix mcp/apps/backend run migration:verify
 
-      - name: Audit database readiness without writes
+      - name: Provision dedicated MCP runtime role and attach it
         shell: bash
         run: |
           set -euo pipefail
-          database_url="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
-          test -n "$database_url"
-          echo "::add-mask::$database_url"
-          psql "$database_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 <<'SQL'
-          select 'MCP_SCHEMA=' || coalesce(to_regnamespace('mcp')::text, 'missing');
-          select 'MCP_ROLE=' || case when exists(select 1 from pg_roles where rolname='mcp_runtime') then 'present' else 'missing' end;
-          select 'MIGRATION=' || id from shared.schema_migrations where id like 'mcp_%' order by id;
-          select 'TABLE=' || name || ':' || case when to_regclass('mcp.' || name) is null then 'missing' else 'present' end
-          from (values
-            ('mcp_routes'),('mcp_route_customers'),('mcp_route_sessions'),('mcp_session_customers'),
-            ('accounts'),('products'),('product_variants'),('orders'),('order_items')
-          ) t(name)
-          order by name;
-          select 'ROLE_SCHEMA_USAGE=' || case when exists(select 1 from pg_roles where rolname='mcp_runtime') and has_schema_privilege('mcp_runtime','mcp','USAGE') then 'true' else 'false' end;
-          SQL
+          owner_url="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
+          test -n "$owner_url"
+          echo "::add-mask::$owner_url"
+          runtime_password="$(openssl rand -hex 32)"
+          echo "::add-mask::$runtime_password"
+
+          role_exists="$(psql "$owner_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command "select exists(select 1 from pg_roles where rolname='mcp_runtime')")"
+          if [ "$role_exists" = "t" ]; then
+            psql "$owner_url" --no-psqlrc --set ON_ERROR_STOP=1 --set role_password="$runtime_password" --command "alter role mcp_runtime login password :'role_password'"
+          else
+            psql "$owner_url" --no-psqlrc --set ON_ERROR_STOP=1 --set role_password="$runtime_password" --command "create role mcp_runtime login password :'role_password'"
+          fi
+          psql "$owner_url" --no-psqlrc --set ON_ERROR_STOP=1 --command "select shared.grant_mcp_runtime_access('mcp_runtime')"
+
+          runtime_url="$(node --input-type=module - "$owner_url" "$runtime_password" <<'NODE'
+          const [, , raw, password] = process.argv;
+          const url = new URL(raw);
+          url.username = 'mcp_runtime';
+          url.password = password;
+          console.log(url.toString());
+          NODE
+          )"
+          test -n "$runtime_url"
+          echo "::add-mask::$runtime_url"
+
+          heroku config:set -a "$MCP_APP_NAME" \
+            DATABASE_URL="$runtime_url" \
+            MCP_DB_ROLE=mcp_runtime \
+            MCP_DB_SCHEMA=mcp \
+            MCP_LEGACY_RUNTIME_ENABLED=false \
+            PERSISTENCE_PROVIDER=postgresql \
+            >/dev/null
+
+          current_role="$(psql "$runtime_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command 'select current_user')"
+          test "$current_role" = "mcp_runtime"
+          psql "$runtime_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command "select count(*) from mcp.mcp_routes" >/dev/null
+          echo "MCP_RUNTIME_ROLE_READY=true"
+
+      - name: Verify production health and read boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_url="$(curl --fail --silent --show-error -H 'Accept: application/vnd.heroku+json; version=3' -H "Authorization: Bearer $HEROKU_API_KEY" "https://api.heroku.com/apps/$MCP_APP_NAME" | jq -r '.web_url' | sed 's:/*$::')"
+          test -n "$app_url"
+          for path in /health/live /health/ready; do
+            status=""
+            for attempt in $(seq 1 80); do
+              status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 --output /tmp/health.json --write-out '%{http_code}' "$app_url$path" || true)"
+              [ "$status" = "200" ] && break
+              sleep 3
+            done
+            echo "HEALTH path=$path status=$status"
+            test "$status" = "200"
+          done
+          echo "MCP_PRODUCTION_READY=true"
