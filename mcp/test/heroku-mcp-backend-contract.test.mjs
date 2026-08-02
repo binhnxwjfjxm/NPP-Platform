@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const root = new URL("../../", import.meta.url);
@@ -49,6 +50,7 @@ test("manual Heroku MCP workflow is loadable and owns only the approved command"
   assert.match(manualWorkflow, /HEROKU_APP_NAME: hung-phat-mcp/);
   assert.match(manualWorkflow, /HEROKU_DB_OWNER_APP_NAME: hung-phat/);
   assert.match(manualWorkflow, /image: postgres:17/);
+  assert.match(manualWorkflow, /persist-credentials: false/);
   assert.match(manualWorkflow, /MCP_RUNTIME_DATABASE_URL_FILE: \/tmp\/mcp-runtime-database-url/);
   assert.match(manualWorkflow, /MCP_MIGRATION_DATABASE_URL_FILE: \/tmp\/mcp-migration-database-url/);
   assert.match(manualWorkflow, /MCP_DB_ROLE_FILE: \/tmp\/mcp-db-role/);
@@ -61,8 +63,8 @@ test("manual Heroku MCP workflow is loadable and owns only the approved command"
 });
 
 test("manual MCP deploy scripts are valid shell", () => {
-  execFileSync("bash", ["-n", deployScriptPath.pathname]);
-  execFileSync("bash", ["-n", rolloutScriptPath.pathname]);
+  execFileSync("bash", ["-n", fileURLToPath(deployScriptPath)]);
+  execFileSync("bash", ["-n", fileURLToPath(rolloutScriptPath)]);
 });
 
 test("manual Heroku MCP deployment performs PostgreSQL preflight, backup, migration and isolated rollback", () => {
@@ -78,6 +80,7 @@ test("manual Heroku MCP deployment performs PostgreSQL preflight, backup, migrat
   assert.match(deployScript, /MCP_LEGACY_RUNTIME_ENABLED must be false/);
   assert.match(deployScript, /runtime_and_migrator_target_different_databases/);
   assert.match(deployScript, /runtime_and_migrator_credentials_not_separated/);
+  assert.match(deployScript, /umask 077/);
   assert.match(deployScript, /heroku pg:backups:capture DATABASE_URL -a "\$HEROKU_DB_OWNER_APP_NAME"/);
   assert.match(deployScript, /heroku pg:backups:info "\$production_backup_id"/);
   assert.match(deployScript, /heroku maintenance:on -a "\$HEROKU_APP_NAME"/);
