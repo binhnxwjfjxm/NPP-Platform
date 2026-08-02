@@ -53,8 +53,8 @@ export async function supabaseRequest(
 
 export async function supabaseRest(config, resource, options = {}) {
   if (usesPostgresql(config)) {
-    const { postgresqlRest } = await import("./postgresql-compat-adapter.js");
-    return postgresqlRest(resource, options);
+    const { postgresqlRead } = await import("./postgresql-read-adapter.js");
+    return postgresqlRead(config, resource, options);
   }
   return supabaseRequest(config, `/rest/v1/${resource}`, options);
 }
@@ -80,6 +80,10 @@ export async function supabaseRpc(config, name, args, options = {}) {
     const { POSTGRESQL_SESSION_RPC_NAMES, postgresqlSessionRpc } = await import("./postgresql-session-adapter.js");
     if (POSTGRESQL_SESSION_RPC_NAMES.has(name)) {
       return postgresqlSessionRpc(config, name, args, options);
+    }
+    const { POSTGRESQL_DELETE_RPC_NAMES, postgresqlDeleteRpc } = await import("./postgresql-delete-adapter.js");
+    if (POSTGRESQL_DELETE_RPC_NAMES.has(name)) {
+      return postgresqlDeleteRpc(config, name, args, options);
     }
     const { POSTGRESQL_SPECIAL_RPC_NAMES, postgresqlSpecialRpc } = await import("./postgresql-media-adapter.js");
     if (POSTGRESQL_SPECIAL_RPC_NAMES.has(name)) {
