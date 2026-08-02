@@ -1,0 +1,66 @@
+name: One-shot fix manual deploy command gates
+
+on:
+  push:
+    branches:
+      - agent/fix-manual-deploy-command-gates
+    paths:
+      - .github/workflows/one-shot-fix-manual-deploy-command-gates.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-manual-deploy-command-gates
+          fetch-depth: 0
+
+      - name: Patch exact command gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              ".github/workflows/vercel-production-manual.yml": (
+                  "github.event.issue.number == 5 &&\n        contains(fromJSON('[\"binhnxwjfjxm\",\"khuongbinhinfo-a11y\"]'), github.actor)",
+                  "github.event.issue.number == 5 &&\n        github.event.comment.body == '/deploy-vercel-production' &&\n        contains(fromJSON('[\"binhnxwjfjxm\",\"khuongbinhinfo-a11y\"]'), github.actor)",
+              ),
+              ".github/workflows/vercel-mcp-production-manual.yml": (
+                  "github.event.issue.number == 5 &&\n        contains(fromJSON('[\"binhnxwjfjxm\",\"khuongbinhinfo-a11y\"]'), github.actor)",
+                  "github.event.issue.number == 5 &&\n        github.event.comment.body == '/deploy-vercel-mcp-production' &&\n        contains(fromJSON('[\"binhnxwjfjxm\",\"khuongbinhinfo-a11y\"]'), github.actor)",
+              ),
+              ".github/workflows/heroku-mcp-backend-manual.yml": (
+                  "github.event.issue.number == 5 &&\n        contains(fromJSON('[\"binhnxwjfjxm\",\"khuongbinhinfo-a11y\"]'), github.actor)",
+                  "github.event.issue.number == 5 &&\n        github.event.comment.body == '/deploy-heroku-mcp-production' &&\n        contains(fromJSON('[\"binhnxwjfjxm\",\"khuongbinhinfo-a11y\"]'), github.actor)",
+              ),
+          }
+
+          for path_text, (old, new) in replacements.items():
+              path = Path(path_text)
+              text = path.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise SystemExit(f"unexpected gate count in {path}: {text.count(old)}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
+          rm .github/workflows/one-shot-fix-manual-deploy-command-gates.yml
+          git diff --check
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/vercel-production-manual.yml \
+                  .github/workflows/vercel-mcp-production-manual.yml \
+                  .github/workflows/heroku-mcp-backend-manual.yml \
+                  .github/workflows/one-shot-fix-manual-deploy-command-gates.yml
+          git commit -m "fix(ci): gate manual deploy workflows by exact command"
+          git push origin HEAD:agent/fix-manual-deploy-command-gates
