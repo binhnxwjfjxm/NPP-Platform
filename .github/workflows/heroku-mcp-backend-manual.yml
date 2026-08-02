@@ -1,0 +1,135 @@
+name: Manual Heroku MCP production deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Deploy or roll back the MCP backend release.
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - rollback
+      release_version:
+        description: Heroku release version to roll back to.
+        required: false
+        default: ""
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heroku-mcp-backend-manual
+  cancel-in-progress: false
+
+jobs:
+  deploy-or-rollback:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 5 &&
+        github.event.comment.body == '/deploy-heroku-mcp-production' &&
+        (
+          github.actor == 'binhnxwjfjxm' ||
+          github.actor == 'khuongbinhinfo-a11y'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-mcp-production-rollout
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DEPLOY_REF: main
+      HEROKU_APP_NAME: hung-phat-mcp
+      HEROKU_FORBIDDEN_APP_NAME: hung-phat
+      HEROKU_DB_OWNER_APP_NAME: hung-phat
+      HEROKU_REQUIRED_STACK: container
+      HEROKU_REQUIRED_CONFIG_NAMES: BACKEND_API_TOKEN,CORS_ORIGINS,DATABASE_URL,INSTALLATION_ID,MCP_DB_ROLE,MCP_DB_SCHEMA,MCP_LEGACY_ACTOR_ID,MCP_LEGACY_RUNTIME_ENABLED,NPP_CODE,PERSISTENCE_PROVIDER
+      MCP_RUNTIME_DATABASE_URL_FILE: /tmp/mcp-runtime-database-url
+      MCP_MIGRATION_DATABASE_URL_FILE: /tmp/mcp-migration-database-url
+      MCP_DB_ROLE_FILE: /tmp/mcp-db-role
+    steps:
+      - name: Validate exact issue command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/deploy-heroku-mcp-production'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+
+      - name: Verify exact origin/main SHA
+        id: sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Validate MCP backend packaging contract
+        working-directory: mcp
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+
+          const pkg = JSON.parse(await readFile("apps/backend/package.json", "utf8"));
+          const dockerfile = await readFile("apps/backend/Dockerfile", "utf8");
+          if (pkg.scripts?.start !== "node bootstrap.js") throw new Error("unexpected_mcp_backend_start_script");
+          if (pkg.dependencies?.pg !== "^8.12.0") throw new Error("missing_mcp_backend_postgresql_dependency");
+          if (!dockerfile.includes('FROM node:20-alpine')) throw new Error("missing_mcp_backend_base_image");
+          if (!dockerfile.includes('ENV HOST=0.0.0.0')) throw new Error("missing_mcp_backend_host_binding");
+          if (!dockerfile.includes('CMD ["node", "bootstrap.js"]')) throw new Error("missing_mcp_backend_bootstrap_cmd");
+          if (!dockerfile.includes('RUN npm ci --omit=dev --ignore-scripts')) throw new Error("missing_mcp_backend_locked_install");
+          if (/SUPABASE_/i.test(dockerfile)) throw new Error("supabase_runtime_env_leak");
+          if (/npp-core|start:core-api|Next\.js/i.test(dockerfile)) throw new Error("core_or_frontend_runtime_leak");
+          NODE
+
+      - name: Install Heroku CLI and migration dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+          npm ci --prefix mcp/apps/backend --ignore-scripts
+
+      - name: Run guarded MCP production release
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          REQUESTED_ACTION: ${{ inputs.action }}
+          REQUESTED_RELEASE_VERSION: ${{ inputs.release_version }}
+          POSTGRES_SERVICE_CONTAINER: ${{ job.services.postgres.id }}
+          DEPLOYED_SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          action="${REQUESTED_ACTION:-deploy}"
+          if [ "$GITHUB_EVENT_NAME" = "issue_comment" ]; then
+            action="deploy"
+          fi
+          REQUESTED_ACTION="$action" bash mcp/apps/backend/scripts/manual-production-deploy.sh
