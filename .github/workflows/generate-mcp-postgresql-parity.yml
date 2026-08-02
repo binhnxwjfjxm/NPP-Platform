@@ -6,6 +6,7 @@ on:
     paths:
       - mcp/ops/generate-postgresql-supabase-parity.mjs
       - mcp/ops/patch-postgresql-supabase-parity-generator.mjs
+      - mcp/ops/audit-postgresql-supabase-parity-columns.mjs
       - mcp/supabase/migrations/**
       - .github/workflows/generate-mcp-postgresql-parity.yml
 
@@ -44,6 +45,9 @@ jobs:
       - name: Generate canonical and packaged migration
         run: node mcp/ops/generate-postgresql-supabase-parity.mjs
 
+      - name: Audit all referenced columns
+        run: node mcp/ops/audit-postgresql-supabase-parity-columns.mjs
+
       - name: Commit generator and migration
         shell: bash
         run: |
@@ -51,6 +55,7 @@ jobs:
           tracked=(
             mcp/ops/generate-postgresql-supabase-parity.mjs
             mcp/ops/patch-postgresql-supabase-parity-generator.mjs
+            mcp/ops/audit-postgresql-supabase-parity-columns.mjs
             database/migrations/mcp/003_mcp_supabase_contract_parity.sql
             mcp/apps/backend/foundation/migrations/sql/003_mcp_supabase_contract_parity.sql
           )
