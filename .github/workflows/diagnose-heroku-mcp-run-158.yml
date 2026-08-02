@@ -12,7 +12,7 @@ permissions:
   actions: read
 
 jobs:
-  diagnose:
+  diagnose-run:
     if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-run-158'
     runs-on: ubuntu-latest
     steps:
@@ -69,3 +69,80 @@ jobs:
             -H 'Accept: application/vnd.github+json' \
             "/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" \
             --jq '.jobs[] | "JOB id=\(.id) name=\(.name) status=\(.status) conclusion=\(.conclusion // "")\n" + ([.steps[] | "  STEP \(.number) \(.name): \(.status)/\(.conclusion // "")"] | join("\n"))'
+
+  provider-audit:
+    if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-run-158'
+    runs-on: ubuntu-latest
+    env:
+      HEROKU_APP_NAME: hung-phat-mcp
+      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      REQUIRED_CONFIG_NAMES: BACKEND_API_TOKEN,CORS_ORIGINS,DATABASE_URL,INSTALLATION_ID,MCP_DB_ROLE,MCP_DB_SCHEMA,MCP_LEGACY_ACTOR_ID,MCP_LEGACY_RUNTIME_ENABLED,NPP_CODE,PERSISTENCE_PROVIDER
+    steps:
+      - name: Confirm Heroku credential presence
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${HEROKU_API_KEY:-}" ]]; then
+            echo "HEROKU_API_KEY_PRESENT=false"
+            exit 1
+          fi
+          echo "HEROKU_API_KEY_PRESENT=true"
+          echo "::add-mask::$HEROKU_API_KEY"
+
+      - name: Install Heroku CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+          heroku version
+
+      - name: Audit sanitized provider contract
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if ! app_json="$(heroku apps:info -a "$HEROKU_APP_NAME" --json 2>provider-error.log)"; then
+            echo "HEROKU_APPS_INFO=failed"
+            sed -E 's/[A-Za-z0-9_\-]{24,}/[redacted]/g' provider-error.log
+            exit 1
+          fi
+          echo "HEROKU_APPS_INFO=success"
+          echo "APP_NAME=$(jq -r '.name // ""' <<<"$app_json")"
+          echo "APP_STACK_FROM_INFO=$(jq -r '.build_stack.name // .stack // ""' <<<"$app_json")"
+
+          if ! stack_output="$(heroku stack -a "$HEROKU_APP_NAME" 2>stack-error.log)"; then
+            echo "HEROKU_STACK_QUERY=failed"
+            sed -E 's/[A-Za-z0-9_\-]{24,}/[redacted]/g' stack-error.log
+            exit 1
+          fi
+          stack="$(awk '/^\*/ {print $2; exit}' <<<"$stack_output")"
+          echo "ACTIVE_STACK=${stack:-missing}"
+
+          if ! config_json="$(heroku config -a "$HEROKU_APP_NAME" --json 2>config-error.log)"; then
+            echo "HEROKU_CONFIG_QUERY=failed"
+            sed -E 's/[A-Za-z0-9_\-]{24,}/[redacted]/g' config-error.log
+            exit 1
+          fi
+          echo "CONFIG_NAMES=$(jq -r 'keys | sort | join(",")' <<<"$config_json")"
+
+          missing=()
+          IFS=',' read -ra required <<<"$REQUIRED_CONFIG_NAMES"
+          for name in "${required[@]}"; do
+            if ! jq -e --arg name "$name" 'has($name) and (.[$name] | type == "string" and length > 0)' <<<"$config_json" >/dev/null; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} )); then
+            echo "MISSING_OR_EMPTY_CONFIG=$(IFS=,; echo "${missing[*]}")"
+          else
+            echo "MISSING_OR_EMPTY_CONFIG=none"
+          fi
+          echo "PERSISTENCE_PROVIDER=$(jq -r '.PERSISTENCE_PROVIDER // "missing"' <<<"$config_json")"
+          echo "MCP_LEGACY_RUNTIME_ENABLED=$(jq -r '.MCP_LEGACY_RUNTIME_ENABLED // "missing"' <<<"$config_json")"
+
+          if ! releases_json="$(heroku releases --json -a "$HEROKU_APP_NAME" 2>release-error.log)"; then
+            echo "HEROKU_RELEASE_QUERY=failed"
+            sed -E 's/[A-Za-z0-9_\-]{24,}/[redacted]/g' release-error.log
+            exit 1
+          fi
+          echo "LATEST_RELEASE_VERSION=$(jq -r '.[0].version // "missing"' <<<"$releases_json")"
