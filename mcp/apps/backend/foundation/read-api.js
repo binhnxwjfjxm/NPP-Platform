@@ -48,10 +48,6 @@ function requiredTable(value) {
   return table;
 }
 
-function quoteIdentifier(value) {
-  return `"${String(value).replace(/"/g, '""')}"`;
-}
-
 function splitComma(value) {
   return String(value || "")
     .split(",")
@@ -61,20 +57,50 @@ function splitComma(value) {
 
 function parseSelect(select) {
   const raw = text(select);
-  if (!raw || raw === "*") return "*";
+  if (!raw || raw === "*") return null;
   const columns = splitComma(raw);
-  if (!columns.length || columns.includes("*")) return "*";
+  if (!columns.length || columns.includes("*")) return null;
   for (const column of columns) {
     if (!SAFE_NAME_PATTERN.test(column)) badRequest("invalid_read_select");
   }
-  return columns.map(quoteIdentifier).join(", ");
+  return columns;
+}
+
+function parsePath(key) {
+  const raw = text(key);
+  if (SAFE_NAME_PATTERN.test(raw)) return [raw];
+
+  const tokens = raw.split(/(->>|->)/).filter(Boolean);
+  if (tokens.length < 3 || tokens.length % 2 === 0) badRequest("invalid_read_filter_key");
+
+  const parts = [];
+  for (let index = 0; index < tokens.length; index += 2) {
+    const segment = tokens[index];
+    if (!SAFE_NAME_PATTERN.test(segment)) badRequest("invalid_read_filter_key");
+    parts.push(segment);
+    if (index + 1 < tokens.length && !new Set(["->", "->>"]).has(tokens[index + 1])) {
+      badRequest("invalid_read_filter_key");
+    }
+  }
+  return parts;
+}
+
+function jsonPathLiteral(parts) {
+  return `'{${parts.join(",")}}'`;
+}
+
+function jsonTextExpression(parts) {
+  return `row_data #>> ${jsonPathLiteral(parts)}`;
+}
+
+function jsonValueExpression(parts) {
+  return `row_data #> ${jsonPathLiteral(parts)}`;
 }
 
 function parseOrder(order) {
   const raw = text(order);
-  if (!raw) return "";
+  if (!raw) return [];
   const terms = splitComma(raw);
-  if (!terms.length) return "";
   return terms.map((term) => {
     const [columnRaw, directionRaw = "asc"] = term.split(".");
     const column = text(columnRaw);
@@ -82,30 +108,8 @@ function parseOrder(order) {
     if (!SAFE_NAME_PATTERN.test(column) || !new Set(["asc", "desc"]).has(direction)) {
       badRequest("invalid_read_order");
     }
-    return `${quoteIdentifier(column)} ${direction.toUpperCase()}`;
-  }).join(", ");
-}
-
-function parseFilterExpression(key) {
-  const raw = text(key);
-  if (SAFE_NAME_PATTERN.test(raw)) return quoteIdentifier(raw);
-
-  const tokens = raw.split(/(->>|->)/).filter(Boolean);
-  if (tokens.length < 3 || tokens.length % 2 === 0) badRequest("invalid_read_filter_key");
-
-  const root = tokens[0];
-  if (!SAFE_NAME_PATTERN.test(root)) badRequest("invalid_read_filter_key");
-
-  let expression = quoteIdentifier(root);
-  for (let index = 1; index < tokens.length; index += 2) {
-    const operator = tokens[index];
-    const segment = tokens[index + 1];
-    if (!segment || !new Set(["->", "->>"]).has(operator) || !SAFE_NAME_PATTERN.test(segment)) {
-      badRequest("invalid_read_filter_key");
-    }
-    expression = `${expression}${operator}'${segment}'`;
-  }
-  return expression;
+    return { column, direction };
+  });
 }
 
 function normalizeFilterValue(value) {
@@ -118,20 +122,22 @@ function parseFilterClause(key, value, params) {
   const normalized = normalizeFilterValue(value);
   if (!normalized) return null;
 
-  const expression = parseFilterExpression(key);
+  const parts = parsePath(key);
+  const textExpression = jsonTextExpression(parts);
+  const valueExpression = jsonValueExpression(parts);
   const prefix = RAW_FILTER_PREFIXES.find((item) => normalized.startsWith(item));
   if (!prefix) {
     params.push(normalized);
-    return `${expression} = $${params.length}`;
+    return `${textExpression} = $${params.length}`;
   }
 
   const operand = normalized.slice(prefix.length);
   if (prefix === "is.") {
     const next = text(operand).toLowerCase();
-    if (next === "null") return `${expression} IS NULL`;
-    if (next === "not.null") return `${expression} IS NOT NULL`;
-    if (next === "true") return `${expression} IS TRUE`;
-    if (next === "false") return `${expression} IS FALSE`;
+    if (next === "null") return `(${valueExpression} IS NULL OR ${valueExpression} = 'null'::jsonb)`;
+    if (next === "not.null") return `(${valueExpression} IS NOT NULL AND ${valueExpression} <> 'null'::jsonb)`;
+    if (next === "true") return `${textExpression} = 'true'`;
+    if (next === "false") return `${textExpression} = 'false'`;
     badRequest("invalid_read_filter_value");
   }
 
@@ -145,20 +151,20 @@ function parseFilterClause(key, value, params) {
     const firstIndex = params.length + 1;
     params.push(...values);
     const placeholders = values.map((_value, index) => `$${firstIndex + index}`);
-    return `${expression} IN (${placeholders.join(", ")})`;
+    return `${textExpression} IN (${placeholders.join(", ")})`;
   }
 
   if (!text(operand)) badRequest("invalid_read_filter_value");
   params.push(operand);
   const placeholder = `$${params.length}`;
-  if (prefix === "eq.") return `${expression} = ${placeholder}`;
-  if (prefix === "neq.") return `${expression} <> ${placeholder}`;
-  if (prefix === "gte.") return `${expression} >= ${placeholder}`;
-  if (prefix === "lte.") return `${expression} <= ${placeholder}`;
-  if (prefix === "lt.") return `${expression} < ${placeholder}`;
-  if (prefix === "gt.") return `${expression} > ${placeholder}`;
-  if (prefix === "like.") return `${expression} LIKE ${placeholder}`;
-  if (prefix === "ilike.") return `${expression} ILIKE ${placeholder}`;
+  if (prefix === "eq.") return `${textExpression} = ${placeholder}`;
+  if (prefix === "neq.") return `${textExpression} <> ${placeholder}`;
+  if (prefix === "gte.") return `${textExpression} >= ${placeholder}`;
+  if (prefix === "lte.") return `${textExpression} <= ${placeholder}`;
+  if (prefix === "lt.") return `${textExpression} < ${placeholder}`;
+  if (prefix === "gt.") return `${textExpression} > ${placeholder}`;
+  if (prefix === "like.") return `${textExpression} LIKE ${placeholder}`;
+  if (prefix === "ilike.") return `${textExpression} ILIKE ${placeholder}`;
   badRequest("invalid_read_filter_value");
 }
 
@@ -196,29 +202,39 @@ async function readJsonBody(req) {
   }
 }
 
-function buildReadQuery(table, request) {
-  const sqlParts = [`FROM ${quoteIdentifier(table)}`];
-  const params = [];
+function buildReadQuery(table, request, installationId) {
+  const params = [installationId, table];
+  const where = ["installation_id = $1", "table_name = $2"];
   const filters = Object.entries(request.filters || {})
     .map(([key, value]) => parseFilterClause(key, value, params))
     .filter(Boolean);
-
-  if (filters.length) sqlParts.push(`WHERE ${filters.join(" AND ")}`);
+  where.push(...filters);
 
   if (request.count === true) {
     return {
-      sql: `SELECT COUNT(*)::integer AS count ${sqlParts.join(" ")}`,
-      params
+      sql: `SELECT COUNT(*)::integer AS count FROM mcp.legacy_read_rows WHERE ${where.join(" AND ")}`,
+      params,
+      columns: null
     };
   }
 
-  const select = parseSelect(request.select);
+  const columns = parseSelect(request.select);
   const order = parseOrder(request.order);
   const limit = normalizeLimit(request.limit);
   const offset = normalizeOffset(request.offset);
-  const queryParts = [`SELECT ${select}`, ...sqlParts];
+  const queryParts = [
+    "SELECT row_key, row_data",
+    "FROM mcp.legacy_read_rows",
+    `WHERE ${where.join(" AND ")}`
+  ];
 
-  if (order) queryParts.push(`ORDER BY ${order}`);
+  if (order.length) {
+    queryParts.push(`ORDER BY ${order.map(({ column, direction }) => (
+      `${jsonTextExpression([column])} ${direction.toUpperCase()} NULLS LAST`
+    )).join(", ")}`);
+  } else {
+    queryParts.push("ORDER BY row_key ASC");
+  }
   if (limit != null) {
     params.push(limit);
     queryParts.push(`LIMIT $${params.length}`);
@@ -230,8 +246,15 @@ function buildReadQuery(table, request) {
 
   return {
     sql: queryParts.join(" "),
-    params
+    params,
+    columns
   };
+}
+
+function projectRow(value, columns) {
+  const row = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  if (!columns) return row;
+  return Object.fromEntries(columns.map((column) => [column, row[column] ?? null]));
 }
 
 export async function handleReadApi(req, url, context, config, { persistence } = {}) {
@@ -241,9 +264,12 @@ export async function handleReadApi(req, url, context, config, { persistence } =
     throw readError("provider_unavailable", 503);
   }
 
+  const installationId = text(context?.installation?.id);
+  if (!installationId) throw readError("missing_installation_context", 500);
+
   const body = await readJsonBody(req);
   const table = requiredTable(body.table);
-  const query = buildReadQuery(table, body);
+  const query = buildReadQuery(table, body, installationId);
 
   await persistence.assertReady();
   const result = await persistence.withTransaction(async (client) => {
@@ -265,7 +291,9 @@ export async function handleReadApi(req, url, context, config, { persistence } =
   return {
     statusCode: 200,
     payload: {
-      data: Array.isArray(result) ? result : [],
+      data: Array.isArray(result)
+        ? result.map((row) => projectRow(row?.row_data, query.columns))
+        : [],
       receivedAt: new Date().toISOString()
     }
   };
