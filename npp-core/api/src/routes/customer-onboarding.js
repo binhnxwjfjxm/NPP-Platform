@@ -300,7 +300,7 @@ export async function handleCustomerOnboardingRoutes(req, res, options) {
     }[action];
     await executeMutation(req, res, options, {
       requestContext,
-      route: `${collectionPath}/:id/${action}`,
+      route: `${collectionPath}/${id}/${action}`,
       payload,
       idempotencyKey: key.key,
       action: action.replaceAll('-', '_'),
