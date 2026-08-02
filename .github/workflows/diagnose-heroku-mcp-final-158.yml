@@ -1,0 +1,66 @@
+name: Diagnose final MCP Heroku rollout 158
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/diagnose-heroku-mcp-final-158.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose:
+    if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-final-158'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find final MCP Heroku deploy run
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: b7d39d75531330ec9c35deb5e732eadae7145485
+          CREATED_AFTER: 2026-08-02T10:14:54Z
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id=""
+          for attempt in $(seq 1 120); do
+            runs_json="$(gh api --method GET \
+              -H 'Accept: application/vnd.github+json' \
+              "/repos/${GITHUB_REPOSITORY}/actions/workflows/heroku-mcp-backend-manual.yml/runs" \
+              -f event=issue_comment \
+              -f per_page=30)"
+            run_id="$(jq -r --arg head "$EXPECTED_HEAD" --arg after "$CREATED_AFTER" '
+              .workflow_runs
+              | sort_by(.created_at)
+              | reverse
+              | map(select(.head_sha == $head and .created_at >= $after and (.conclusion // "") != "skipped"))
+              | .[0].id // empty
+            ' <<<"$runs_json")"
+            if [[ -n "$run_id" ]]; then
+              run_json="$(gh api --method GET -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}")"
+              status="$(jq -r '.status' <<<"$run_json")"
+              conclusion="$(jq -r '.conclusion // ""' <<<"$run_json")"
+              echo "TARGET_RUN_ID=$run_id"
+              echo "TARGET_STATUS=$status"
+              echo "TARGET_CONCLUSION=$conclusion"
+              if [[ "$status" == "completed" ]]; then break; fi
+            fi
+            sleep 5
+          done
+          test -n "$run_id"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Print final rollout jobs and steps
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.target.outputs.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --method GET \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" \
+            --jq '.jobs[] | "JOB id=\(.id) name=\(.name) status=\(.status) conclusion=\(.conclusion // "")\n" + ([.steps[] | "  STEP \(.number) \(.name): \(.status)/\(.conclusion // "")"] | join("\n"))'
