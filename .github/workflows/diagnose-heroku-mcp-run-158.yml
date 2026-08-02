@@ -1,4 +1,4 @@
-name: Extract MCP runtime rehearsal failure
+name: Extract hardened MCP runtime privilege failure
 
 on:
   pull_request:
@@ -15,10 +15,10 @@ jobs:
     if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-run-158'
     runs-on: ubuntu-latest
     steps:
-      - name: Extract failed runtime verification lines
+      - name: Extract exact privilege mismatch
         env:
           GH_TOKEN: ${{ github.token }}
-          FAILED_JOB_ID: '91491531964'
+          FAILED_JOB_ID: '91492230497'
         shell: bash
         run: |
           set -euo pipefail
@@ -27,24 +27,27 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
+
           lines = Path('/tmp/job.log').read_text(encoding='utf-8', errors='replace').splitlines()
-          marker = 'Create isolated runtime role and verify all reads'
-          start = next((i for i, line in enumerate(lines) if marker in line), max(0, len(lines)-250))
-          chosen = lines[start:]
-          patterns = re.compile(r'(ERROR|FATAL|permission denied|does not exist|failed|SQLSTATE|CURRENT_USER|SEARCH_PATH|SCHEMA_USAGE|READ=)', re.I)
+          pattern = re.compile(
+              r'(privileged role|HELPER_EXECUTE|IDEMPOTENCY_|AUDIT_|OUTBOX_|ACCOUNTS_|ROUTES_|CURRENT_USER|SEARCH_PATH|SCHEMA_USAGE|READ=|ERROR|FATAL|permission denied|does not exist|grep|Process completed|exit code)',
+              re.I,
+          )
           selected = []
-          for i, line in enumerate(chosen):
-              if patterns.search(line):
-                  selected.extend(chosen[max(0, i-2):min(len(chosen), i+4)])
+          for index, line in enumerate(lines):
+              if pattern.search(line):
+                  selected.extend(lines[max(0, index - 3):min(len(lines), index + 5)])
           if not selected:
-              selected = chosen[-180:]
-          seen = set()
+              selected = lines[-240:]
+
           output = []
+          seen = set()
           for line in selected:
-              line = re.sub(r'postgres(?:ql)?://\S+', '[redacted-database-url]', line, flags=re.I)
-              line = re.sub(r'(?i)(password|token|secret|authorization)[=:]\S+', r'\1=[redacted]', line)
-              if line not in seen:
-                  seen.add(line)
-                  output.append(line)
-          print('\n'.join(output[-220:]))
+              clean = re.sub(r'postgres(?:ql)?://\S+', '[redacted-database-url]', line, flags=re.I)
+              clean = re.sub(r'(?i)(password|token|secret|authorization)[=:]\S+', r'\1=[redacted]', clean)
+              clean = re.sub(r'[A-Za-z0-9_=-]{72,}', '[redacted]', clean)
+              if clean not in seen:
+                  seen.add(clean)
+                  output.append(clean)
+          print('\n'.join(output[-260:]))
           PY
