@@ -30,21 +30,24 @@ function assertActiveRuntimeBoundary(source) {
   assert.doesNotMatch(normalized, /service[-_ ]role/i);
 }
 
-test("active production import graph does not load legacy Supabase runtime", async () => {
+test("active production import graph does not load legacy Supabase HTTP runtime", async () => {
   const bootstrap = await read("mcp/apps/backend/bootstrap.js");
   const gateway = await read("mcp/apps/backend/foundation/gateway.js");
   const persistence = await read("mcp/apps/backend/foundation/persistence.js");
   const postgresql = await read("mcp/apps/backend/foundation/postgresql-adapter.js");
+  const compatibilityAdapter = await read("mcp/apps/backend/foundation/supabase-adapter.js");
 
-  assertActiveRuntimeBoundary(bootstrap);
-  assertActiveRuntimeBoundary(gateway);
-  assertActiveRuntimeBoundary(postgresql);
+  for (const source of [bootstrap, gateway, postgresql, compatibilityAdapter]) {
+    assertActiveRuntimeBoundary(source);
+  }
   assert.doesNotMatch(bootstrap, /server\.js/);
-  assert.doesNotMatch(gateway, /from\s+["']\.\/(?:order-api|route-api|transitional-api)\.js["']/);
+  assert.match(gateway, /from\s+["']\.\/(?:order-api|route-api|transitional-api)\.js["']/);
   assert.doesNotMatch(persistence, /import\s+\{[^}]*createLegacySupabasePersistence/);
   assert.match(persistence, /await import\("\.\/legacy-supabase-adapter\.js"\)/);
   assert.match(bootstrap, /if \(config\.legacyRuntime\.enabled\)/);
   assert.match(bootstrap, /await import\("\.\/foundation\/legacy-runtime\.js"\)/);
+  assert.match(compatibilityAdapter, /import\("\.\/legacy-supabase-http\.js"\)/);
+  assert.doesNotMatch(compatibilityAdapter, /from\s+["']\.\/legacy-supabase-http\.js["']/);
 });
 
 test("business handler sources contain no direct Supabase REST, RPC or service-role handling", async () => {
@@ -63,14 +66,17 @@ test("legacy provider implementation is isolated and explicitly classified", asy
   const legacyRuntime = await read("mcp/apps/backend/foundation/legacy-runtime.js");
   const compatibilityAdapter = await read("mcp/apps/backend/foundation/supabase-adapter.js");
   const legacyAdapter = await read("mcp/apps/backend/foundation/legacy-supabase-adapter.js");
+  const legacyHttp = await read("mcp/apps/backend/foundation/legacy-supabase-http.js");
   const legacyServer = await read("mcp/apps/backend/server.js");
 
   assert.match(legacyRuntime, /SUPABASE_URL/);
   assert.match(legacyRuntime, /SUPABASE_SERVICE_ROLE_KEY/);
   assert.match(compatibilityAdapter, /export async function supabaseRequest/);
-  assert.match(compatibilityAdapter, /\/rest\/v1/);
-  assert.match(legacyAdapter, /from "\.\/supabase-adapter\.js"/);
+  assert.doesNotMatch(compatibilityAdapter, /\/rest\/v1/);
+  assert.match(legacyAdapter, /from "\.\/legacy-supabase-http\.js"/);
   assert.doesNotMatch(legacyAdapter, /\/rest\/v1/);
+  assert.match(legacyHttp, /\/rest\/v1/);
+  assert.match(legacyHttp, /export async function legacySupabaseRequest/);
   assert.match(legacyServer, /\/rest\/v1/);
 });
 
@@ -78,7 +84,8 @@ test("runtime boundary audit behaves identically for Linux LF and Windows CRLF",
   const source = [
     await read("mcp/apps/backend/bootstrap.js"),
     await read("mcp/apps/backend/foundation/gateway.js"),
-    await read("mcp/apps/backend/foundation/postgresql-adapter.js")
+    await read("mcp/apps/backend/foundation/postgresql-adapter.js"),
+    await read("mcp/apps/backend/foundation/supabase-adapter.js")
   ].join("\n");
   assertActiveRuntimeBoundary(source.replace(/\r?\n/g, "\n"));
   assertActiveRuntimeBoundary(source.replace(/\r?\n/g, "\r\n"));
