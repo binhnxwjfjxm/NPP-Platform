@@ -32,7 +32,8 @@ function statefulAdapter({ failSql = null } = {}) {
 const EXPECTED_MIGRATIONS = [
   "mcp_001_write_foundation",
   "mcp_002_domain_read_models",
-  "mcp_003_legacy_write_contract"
+  "mcp_003_legacy_write_contract",
+  "mcp_004_profile_media_contract"
 ];
 
 test("MCP migrations use a unique registry namespace and apply once in one locked transaction", async () => {
@@ -50,6 +51,7 @@ test("MCP migrations use a unique registry namespace and apply once in one locke
   assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.orders")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.mcp_outlet_media")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.mcp_archive_intents")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("ALTER COLUMN session_id DROP NOT NULL")), true);
 
   const status = await migrationStatusWithAdapter(adapter);
   assert.deepEqual(status.pending, []);
@@ -142,6 +144,18 @@ test("MCP legacy write migration is canonical and ports final Supabase fields", 
   assert.match(sql, /pg_write_all_data/);
   assert.doesNotMatch(sql, /public\.mcp_/i);
   assert.doesNotMatch(sql, /SUPABASE_/i);
+});
+
+test("MCP profile media migration preserves optional session and three-photo limit", () => {
+  const sql = MCP_MIGRATIONS[3].sql;
+  const canonicalSql = readFileSync(new URL("../../../../../database/migrations/mcp/004_mcp_profile_media_contract.sql", import.meta.url), "utf8");
+  assert.equal(sql, canonicalSql);
+  assert.match(sql, /ALTER COLUMN session_id DROP NOT NULL/i);
+  assert.match(sql, /status IN \('pending', 'ready', 'deleting', 'delete_failed'\)/i);
+  assert.match(sql, /v_active_media_count >= 3/i);
+  assert.match(sql, /outlet_media_limit_reached/i);
+  assert.match(sql, /CREATE TRIGGER mcp_outlet_media_limit/i);
+  assert.doesNotMatch(sql, /public\.mcp_/i);
 });
 
 test("migration failure rolls back and preserves the original error", async () => {
