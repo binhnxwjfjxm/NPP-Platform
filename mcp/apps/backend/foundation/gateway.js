@@ -2,6 +2,7 @@ import http from "node:http";
 import { corsHeaders, resolveCorsOrigin } from "./cors.js";
 import { canonicalErrorPayload, canonicalSuccessPayload, normalizeApiPayload, parseJsonPayload } from "./api-contract.js";
 import { authenticateProxy, buildRequestContext, forwardedContextHeaders, normalizeRequestId } from "./request-context.js";
+import { handleReadApi } from "./read-api.js";
 
 const LIVE_PATHS = new Set(["/", "/health/live"]);
 const READY_PATHS = new Set(["/health", "/api/health", "/health/ready"]);
@@ -109,6 +110,12 @@ export function createFoundationGateway(config, { persistence, legacyHandlers = 
       authenticateProxy(req, config);
       const context = buildRequestContext(req, config);
       req.foundationContext = context;
+
+      const readApi = await handleReadApi(req, url, context, config, { persistence });
+      if (readApi) {
+        writeNormalized(res, normalizeApiPayload(readApi.payload, { status: readApi.statusCode, requestId: context.requestId, receivedAt: context.receivedAt }), context.requestId, origin);
+        return;
+      }
 
       if (!legacyHandlers) {
         await persistence.assertReady();

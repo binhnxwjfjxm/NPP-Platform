@@ -49,8 +49,6 @@ jobs:
           BACKEND_API_BASE_URL: http://127.0.0.1:3110
           BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
           MCP_LEGACY_ACTOR_ID: service:ci:order-create
-          SUPABASE_URL: https://project.example.com
-          SUPABASE_ANON_KEY: ci-publishable-key
         run: npm run build
 
       - name: Run normalized order browser smoke
@@ -58,8 +56,6 @@ jobs:
           BACKEND_API_BASE_URL: http://127.0.0.1:3110
           BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
           MCP_LEGACY_ACTOR_ID: service:ci:order-create
-          SUPABASE_URL: https://project.example.com
-          SUPABASE_ANON_KEY: ci-publishable-key
           ORDER_CREATE_MOCK_PORT: 3110
           ORDER_CREATE_APP_BASE: http://127.0.0.1:3001
           ORDER_CREATE_MOCK_BASE: http://127.0.0.1:3110

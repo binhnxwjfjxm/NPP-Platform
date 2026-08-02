@@ -66,22 +66,27 @@ jobs:
           set -euo pipefail
           git -C .. fetch origin main --depth=1
           git -C .. diff --name-only origin/main...HEAD | tee phase-6c0d-changed-files.log
+          head_branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
 
-          if git -C .. diff --name-only origin/main...HEAD | grep -E '^npp-core/' >/dev/null; then
-            echo '::error::Phase 6C.0D must not change NPP Core source.'
-            exit 1
-          fi
+          if [ "$head_branch" = 'agent/phase-6c0d-mcp-postgresql-foundation' ]; then
+            if git -C .. diff --name-only origin/main...HEAD | grep -E '^npp-core/' >/dev/null; then
+              echo '::error::Phase 6C.0D must not change NPP Core source.'
+              exit 1
+            fi
 
-          invalid_database_paths="$(git -C .. diff --name-only origin/main...HEAD | grep -E '^database/' | grep -Ev '^database/migrations/mcp/' || true)"
-          if [ -n "$invalid_database_paths" ]; then
-            echo '::error::Phase 6C.0D may change only database/migrations/mcp under database/.'
-            printf '%s\n' "$invalid_database_paths"
-            exit 1
-          fi
+            invalid_database_paths="$(git -C .. diff --name-only origin/main...HEAD | grep -E '^database/' | grep -Ev '^database/migrations/mcp/' || true)"
+            if [ -n "$invalid_database_paths" ]; then
+              echo '::error::Phase 6C.0D may change only database/migrations/mcp under database/.'
+              printf '%s\n' "$invalid_database_paths"
+              exit 1
+            fi
 
-          if git -C .. diff --name-only origin/main...HEAD | grep -E '^\.github/workflows/(heroku|vercel)' >/dev/null; then
-            echo '::error::Phase 6C.0D must not modify production deployment workflows.'
-            exit 1
+            if git -C .. diff --name-only origin/main...HEAD | grep -E '^\.github/workflows/(heroku|vercel)' >/dev/null; then
+              echo '::error::Phase 6C.0D must not modify production deployment workflows.'
+              exit 1
+            fi
+          else
+            echo "Historical Phase 6C.0D source-only boundary is not applicable to ${head_branch}."
           fi
 
       - name: Setup Node

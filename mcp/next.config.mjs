@@ -30,8 +30,6 @@ function validateBuildConfig() {
   }
 
   requiredBuildEnv("MCP_LEGACY_ACTOR_ID");
-  requiredBuildEnv("SUPABASE_URL");
-  requiredBuildEnv("SUPABASE_ANON_KEY");
 
   const agentUrl = String(process.env.MCP_REPORT_AGENT_URL || "").trim();
   if (agentUrl) {

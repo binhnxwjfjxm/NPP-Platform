@@ -1,4 +1,5 @@
 import http from "node:http";
+import { handleMockReadRequest } from "./mock-read-server.mjs";
 
 const port = Number(process.env.DASHBOARD_MOCK_PORT || 3112);
 let failReads = false;
@@ -21,7 +22,7 @@ const data = {
   ]
 };
 
-http.createServer((request, response) => {
+http.createServer(async (request, response) => {
   const url = new URL(request.url || "/", `http://127.0.0.1:${port}`);
   if (url.pathname === "/__fail" && request.method === "POST") {
     failReads = true;
@@ -30,6 +31,12 @@ http.createServer((request, response) => {
   }
   if (url.pathname === "/__ready") {
     response.writeHead(200).end("ok");
+    return;
+  }
+  const readResult = await handleMockReadRequest(request, url, data, { failReads });
+  if (readResult) {
+    response.writeHead(readResult.status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    response.end(JSON.stringify(readResult.body));
     return;
   }
   const table = url.pathname.match(/^\/rest\/v1\/([^/]+)$/)?.[1];

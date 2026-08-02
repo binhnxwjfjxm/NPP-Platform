@@ -104,6 +104,70 @@ test("health and auth failures use the canonical envelope", async (t) => {
   assert.equal(unauthorized.body.error.retryable, false);
 });
 
+test("backend read API is served through the proxy token boundary", async (t) => {
+  const queries = [];
+  const persistence = Object.freeze({
+    async readiness() { return { provider: "postgresql", configured: true, ready: true }; },
+    async assertReady() { return { provider: "postgresql", configured: true, ready: true }; },
+    async withTransaction(work) {
+      return work({
+        async query(sql, values) {
+          queries.push({ sql, values });
+          if (String(sql).startsWith("SELECT COUNT")) {
+            return { rows: [{ count: 2 }] };
+          }
+          return { rows: [{ id: "route-1", route_name: "Tuyến Trà Sữa" }] };
+        }
+      });
+    },
+    async close() {}
+  });
+  const state = await setup(undefined, { persistenceAdapter: persistence });
+  t.after(async () => { await close(state.gateway); await close(state.legacy); });
+
+  const rows = await request(state.publicPort, "/api/read", {
+    method: "POST",
+    headers: {
+      "x-backend-token": state.config.backendApiToken,
+      "content-type": "application/json",
+      origin: "https://app.example.com"
+    },
+    body: JSON.stringify({
+      table: "mcp_routes",
+      select: "id,route_name",
+      order: "route_name.asc",
+      limit: 1,
+      filters: { active: true }
+    })
+  });
+
+  assert.equal(rows.status, 200);
+  assert.deepEqual(rows.body.data, [{ id: "route-1", route_name: "Tuyến Trà Sữa" }]);
+  assert.match(queries[0].sql, /SELECT "id", "route_name" FROM "mcp_routes"/);
+  assert.match(queries[0].sql, /WHERE "active" = \$1/);
+  assert.match(queries[0].sql, /ORDER BY "route_name" ASC/);
+  assert.match(queries[0].sql, /LIMIT \$2/);
+
+  const count = await request(state.publicPort, "/api/read", {
+    method: "POST",
+    headers: {
+      "x-backend-token": state.config.backendApiToken,
+      "content-type": "application/json",
+      origin: "https://app.example.com"
+    },
+    body: JSON.stringify({
+      table: "mcp_session_reports",
+      filters: { "raw_payload->>session_id": "session-1" },
+      count: true
+    })
+  });
+
+  assert.equal(count.status, 200);
+  assert.equal(count.body.data, 2);
+  assert.match(queries[1].sql, /SELECT COUNT\(\*\)::integer AS count FROM "mcp_session_reports"/);
+  assert.match(queries[1].sql, /"raw_payload"->>'session_id' = \$1/);
+});
+
 test("liveness remains available while readiness fails closed", async (t) => {
   const unavailable = Object.freeze({
     async readiness() { return { provider: "postgresql", configured: false, ready: false, code: "missing_database_url" }; },

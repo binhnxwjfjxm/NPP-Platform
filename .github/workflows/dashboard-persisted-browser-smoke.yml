@@ -31,16 +31,12 @@ jobs:
           BACKEND_API_BASE_URL: http://127.0.0.1:3112
           BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
           MCP_LEGACY_ACTOR_ID: 00000000-0000-0000-0000-000000000001
-          SUPABASE_URL: http://127.0.0.1:3112
-          SUPABASE_ANON_KEY: dashboard-browser-smoke
         run: npm run build
       - name: Run browser smoke
         env:
           BACKEND_API_BASE_URL: http://127.0.0.1:3112
           BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
           MCP_LEGACY_ACTOR_ID: 00000000-0000-0000-0000-000000000001
-          SUPABASE_URL: http://127.0.0.1:3112
-          SUPABASE_ANON_KEY: dashboard-browser-smoke
         run: |
           node test/ui/dashboard-persisted-mock.mjs > /tmp/dashboard-mock.log 2>&1 &
           npm start -- -p 3000 > /tmp/dashboard-next.log 2>&1 &

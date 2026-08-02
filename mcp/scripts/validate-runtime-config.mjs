@@ -39,8 +39,6 @@ if (token.length < 32 || /replace|change[-_ ]?me|example|dev[-_ ]?only/i.test(to
   throw new Error("invalid_backend_api_token");
 }
 required("MCP_LEGACY_ACTOR_ID");
-required("SUPABASE_URL");
-required("SUPABASE_ANON_KEY");
 httpUrl("MCP_REPORT_AGENT_URL", { optional: true, httpsInProduction: true });
 
 console.log("runtime_config_valid");

@@ -117,10 +117,13 @@ test("provider-specific frontend and compatibility dependencies stay explicitly 
   const postgresql = await readFile(mcpUrl("apps/backend/foundation/postgresql-adapter.js"), "utf8");
   const legacyRuntime = await readFile(mcpUrl("apps/backend/foundation/legacy-runtime.js"), "utf8");
   const exportReader = await readFile(mcpUrl("src/lib/export/supabase-rest.ts"), "utf8");
+  const backendRead = await readFile(mcpUrl("src/lib/api/backend-read.ts"), "utf8");
   const legacyServer = await readFile(mcpUrl("apps/backend/server.js"), "utf8");
 
-  assert.match(nextConfig, /SUPABASE_URL/);
-  assert.match(nextConfig, /SUPABASE_ANON_KEY/);
+  assert.match(nextConfig, /BACKEND_API_BASE_URL/);
+  assert.match(nextConfig, /BACKEND_API_TOKEN/);
+  assert.match(nextConfig, /MCP_LEGACY_ACTOR_ID/);
+  assert.doesNotMatch(nextConfig, /SUPABASE_URL|SUPABASE_ANON_KEY/);
   assert.match(backendConfig, /PERSISTENCE_PROVIDER/);
   assert.match(backendConfig, /DATABASE_URL/);
   assert.match(backendConfig, /production_persistence_provider_forbidden/);
@@ -128,7 +131,9 @@ test("provider-specific frontend and compatibility dependencies stay explicitly 
   assert.match(persistence, /createPostgresqlPersistence/);
   assert.match(postgresql, /new PoolImpl/);
   assert.match(legacyRuntime, /SUPABASE_SERVICE_ROLE_KEY/);
-  assert.match(exportReader, /\/rest\/v1\//);
+  assert.match(exportReader, /backendReadRows/);
+  assert.doesNotMatch(exportReader, /\/rest\/v1\//);
+  assert.match(backendRead, /\/api\/read/);
   assert.match(legacyServer, /SUPABASE_SERVICE_ROLE_KEY/);
 });
 
