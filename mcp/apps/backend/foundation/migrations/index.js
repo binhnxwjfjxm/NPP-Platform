@@ -9,23 +9,32 @@ const MCP_DOMAIN_READ_MODELS_SQL = readFileSync(
   new URL("./sql/002_mcp_domain_read_models.sql", import.meta.url),
   "utf8"
 );
+const MCP_LEGACY_WRITE_CONTRACT_SQL = readFileSync(
+  new URL("./sql/003_mcp_legacy_write_contract.sql", import.meta.url),
+  "utf8"
+);
 
 export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_001_write_foundation", sql: MCP_WRITE_FOUNDATION_SQL }),
-  Object.freeze({ id: "mcp_002_domain_read_models", sql: MCP_DOMAIN_READ_MODELS_SQL })
+  Object.freeze({ id: "mcp_002_domain_read_models", sql: MCP_DOMAIN_READ_MODELS_SQL }),
+  Object.freeze({ id: "mcp_003_legacy_write_contract", sql: MCP_LEGACY_WRITE_CONTRACT_SQL })
 ]);
 
 const MCP_READ_MODELS = Object.freeze([
   "accounts",
   "market_reports",
+  "mcp_archive_intents",
   "mcp_followups",
+  "mcp_outlet_media",
   "mcp_report_setting_groups",
   "mcp_report_settings",
+  "mcp_report_templates",
   "mcp_route_customers",
   "mcp_route_sessions",
   "mcp_routes",
   "mcp_session_customers",
   "mcp_session_reports",
+  "mcp_storage_delete_jobs",
   "mcp_visits",
   "order_items",
   "orders",
@@ -198,6 +207,9 @@ export async function migrationVerifyWithAdapter(adapter, migrations = MCP_MIGRA
     outboxPendingIndex: await indexExists(adapter, "mcp_outbox_events_pending_available_idx"),
     routeCustomerOrderIndex: await indexExists(adapter, "mcp_route_customers_route_sort_idx"),
     orderItemsIndex: await indexExists(adapter, "order_items_order_idx"),
+    outletMediaRouteCustomerIndex: await indexExists(adapter, "mcp_outlet_media_route_customer_idx"),
+    outletMediaDeleteRetryIndex: await indexExists(adapter, "mcp_outlet_media_delete_retry_idx"),
+    archiveIntentStatusIndex: await indexExists(adapter, "mcp_archive_intents_status_idx"),
     ...readModelChecks
   });
   const issues = [];
