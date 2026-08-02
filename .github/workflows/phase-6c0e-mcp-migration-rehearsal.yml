@@ -90,11 +90,9 @@ jobs:
           cache: npm
           cache-dependency-path: mcp/package-lock.json
 
-      - name: Install MCP, backend and Core API dependencies
-        run: |
-          npm ci
-          npm ci --prefix apps/backend
-          npm ci --prefix ../npp-core/api
+      - name: Install repository workspace dependencies
+        working-directory: .
+        run: npm ci
 
       - name: Install PostgreSQL 17 client tools
         shell: bash
