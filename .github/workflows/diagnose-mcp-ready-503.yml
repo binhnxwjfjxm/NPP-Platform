@@ -45,15 +45,16 @@ jobs:
           owner_url_raw="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
           test -n "$owner_url_raw"
           echo "::add-mask::$owner_url_raw"
-          owner_url="$(node --input-type=module - "$owner_url_raw" <<'NODE'
+          owner_node_url="$(node --input-type=module - "$owner_url_raw" <<'NODE'
           const [, , raw] = process.argv;
           const url = new URL(raw);
+          url.searchParams.set('uselibpqcompat', 'true');
           url.searchParams.set('sslmode', 'require');
           console.log(url.toString());
           NODE
           )"
-          echo "::add-mask::$owner_url"
-          export MCP_MIGRATION_DATABASE_URL="$owner_url"
+          echo "::add-mask::$owner_node_url"
+          export MCP_MIGRATION_DATABASE_URL="$owner_node_url"
           npm --prefix mcp/apps/backend run migration:status
           npm --prefix mcp/apps/backend run migration:migrate
           npm --prefix mcp/apps/backend run migration:migrate
@@ -66,30 +67,40 @@ jobs:
           owner_url_raw="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
           test -n "$owner_url_raw"
           echo "::add-mask::$owner_url_raw"
-          owner_url="$(node --input-type=module - "$owner_url_raw" <<'NODE'
+          owner_psql_url="$(node --input-type=module - "$owner_url_raw" <<'NODE'
           const [, , raw] = process.argv;
           const url = new URL(raw);
           url.searchParams.set('sslmode', 'require');
           console.log(url.toString());
           NODE
           )"
-          echo "::add-mask::$owner_url"
+          echo "::add-mask::$owner_psql_url"
           runtime_password="$(openssl rand -hex 32)"
           echo "::add-mask::$runtime_password"
 
-          role_exists="$(psql "$owner_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command "select exists(select 1 from pg_roles where rolname='mcp_runtime')")"
+          role_exists="$(psql "$owner_psql_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command "select exists(select 1 from pg_roles where rolname='mcp_runtime')")"
           if [ "$role_exists" = "t" ]; then
-            psql "$owner_url" --no-psqlrc --set ON_ERROR_STOP=1 --set role_password="$runtime_password" <<'SQL'
+            psql "$owner_psql_url" --no-psqlrc --set ON_ERROR_STOP=1 --set role_password="$runtime_password" <<'SQL'
           alter role mcp_runtime login password :'role_password';
           SQL
           else
-            psql "$owner_url" --no-psqlrc --set ON_ERROR_STOP=1 --set role_password="$runtime_password" <<'SQL'
+            psql "$owner_psql_url" --no-psqlrc --set ON_ERROR_STOP=1 --set role_password="$runtime_password" <<'SQL'
           create role mcp_runtime login password :'role_password';
           SQL
           fi
-          psql "$owner_url" --no-psqlrc --set ON_ERROR_STOP=1 --command "select shared.grant_mcp_runtime_access('mcp_runtime')"
+          psql "$owner_psql_url" --no-psqlrc --set ON_ERROR_STOP=1 --command "select shared.grant_mcp_runtime_access('mcp_runtime')"
 
-          runtime_url="$(node --input-type=module - "$owner_url" "$runtime_password" <<'NODE'
+          runtime_node_url="$(node --input-type=module - "$owner_url_raw" "$runtime_password" <<'NODE'
+          const [, , raw, password] = process.argv;
+          const url = new URL(raw);
+          url.username = 'mcp_runtime';
+          url.password = password;
+          url.searchParams.set('uselibpqcompat', 'true');
+          url.searchParams.set('sslmode', 'require');
+          console.log(url.toString());
+          NODE
+          )"
+          runtime_psql_url="$(node --input-type=module - "$owner_url_raw" "$runtime_password" <<'NODE'
           const [, , raw, password] = process.argv;
           const url = new URL(raw);
           url.username = 'mcp_runtime';
@@ -98,20 +109,22 @@ jobs:
           console.log(url.toString());
           NODE
           )"
-          test -n "$runtime_url"
-          echo "::add-mask::$runtime_url"
+          test -n "$runtime_node_url"
+          test -n "$runtime_psql_url"
+          echo "::add-mask::$runtime_node_url"
+          echo "::add-mask::$runtime_psql_url"
 
           heroku config:set -a "$MCP_APP_NAME" \
-            DATABASE_URL="$runtime_url" \
+            DATABASE_URL="$runtime_node_url" \
             MCP_DB_ROLE=mcp_runtime \
             MCP_DB_SCHEMA=mcp \
             MCP_LEGACY_RUNTIME_ENABLED=false \
             PERSISTENCE_PROVIDER=postgresql \
             >/dev/null
 
-          current_role="$(psql "$runtime_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command 'select current_user')"
+          current_role="$(psql "$runtime_psql_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command 'select current_user')"
           test "$current_role" = "mcp_runtime"
-          psql "$runtime_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command "select count(*) from mcp.mcp_routes" >/dev/null
+          psql "$runtime_psql_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command "select count(*) from mcp.mcp_routes" >/dev/null
           echo "MCP_RUNTIME_ROLE_READY=true"
 
       - name: Verify production health and read boundary
