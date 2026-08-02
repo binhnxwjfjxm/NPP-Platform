@@ -1,4 +1,4 @@
-name: Rehearse corrected MCP schema from backup b014
+name: List recent MCP Heroku deploy runs
 
 on:
   pull_request:
@@ -9,234 +9,22 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  restore-and-rehearse:
+  list-runs:
     if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-run-158'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: rehearsal
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d rehearsal"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-    env:
-      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-      CORE_APP_NAME: hung-phat
-      MCP_APP_NAME: hung-phat-mcp
-      SOURCE_BRANCH: agent/issue-158-mcp-domain-schema
-      LOCAL_OWNER_URL: postgresql://postgres:postgres@127.0.0.1:5432/rehearsal
     steps:
-      - name: Checkout corrected migration source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.SOURCE_BRANCH }}
-          fetch-depth: 1
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: mcp/apps/backend/package-lock.json
-
-      - name: Install backend dependencies
-        run: npm ci --prefix mcp/apps/backend
-
-      - name: Install Heroku CLI
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "${HEROKU_API_KEY:-}"
-          echo "::add-mask::$HEROKU_API_KEY"
-          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
-
-      - name: Verify current shared database and source contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          core_database_url="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
-          mcp_database_url="$(heroku config:get DATABASE_URL -a "$MCP_APP_NAME")"
-          test -n "$core_database_url"
-          test -n "$mcp_database_url"
-          echo "::add-mask::$core_database_url"
-          echo "::add-mask::$mcp_database_url"
-          test "$(printf '%s' "$core_database_url" | sha256sum | awk '{print $1}')" = "$(printf '%s' "$mcp_database_url" | sha256sum | awk '{print $1}')"
-          echo "SHARED_DATABASE_MATCH=true"
-
-          psql "$core_database_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 <<'SQL'
-          do $block$
-          declare missing text;
-          begin
-            select string_agg(relation, ', ' order by relation) into missing
-            from (values
-              ('shared.customers'),
-              ('shared.products'),
-              ('shared.product_variants'),
-              ('shared.schema_migrations')
-            ) required(relation)
-            where to_regclass(relation) is null;
-            if missing is not null then
-              raise exception 'current_database_missing_required_sources:%', missing;
-            end if;
-          end
-          $block$;
-          SQL
-
-      - name: Download backup b014 without exposing its URL
-        shell: bash
-        run: |
-          set -euo pipefail
-          backup_url="$(heroku pg:backups:url b014 -a "$CORE_APP_NAME")"
-          test -n "$backup_url"
-          echo "::add-mask::$backup_url"
-          curl --fail --silent --show-error --location "$backup_url" --output /tmp/b014.dump
-          test -s /tmp/b014.dump
-          echo "BACKUP_ID=b014"
-          echo "BACKUP_BYTES=$(stat -c '%s' /tmp/b014.dump)"
-          sha256sum /tmp/b014.dump | awk '{print "BACKUP_SHA256=" $1}'
-
-      - name: Restore backup into isolated PostgreSQL 17
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker run --rm --network host \
-            -e PGPASSWORD=postgres \
-            -v /tmp/b014.dump:/backup.dump:ro \
-            postgres:17 \
-            pg_restore --host=127.0.0.1 --port=5432 --username=postgres --dbname=rehearsal \
-              --no-owner --no-privileges --clean --if-exists --exit-on-error /backup.dump
-
-      - name: Verify restored shared Core sources
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker run --rm --network host -e PGPASSWORD=postgres postgres:17 psql \
-            --host=127.0.0.1 --port=5432 --username=postgres --dbname=rehearsal \
-            --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 <<'SQL'
-          do $block$
-          declare missing text;
-          begin
-            select string_agg(relation, ', ' order by relation) into missing
-            from (values
-              ('shared.customers'),
-              ('shared.products'),
-              ('shared.product_variants'),
-              ('shared.schema_migrations')
-            ) required(relation)
-            where to_regclass(relation) is null;
-            if missing is not null then
-              raise exception 'restored_backup_missing_required_sources:%', missing;
-            end if;
-          end
-          $block$;
-          SQL
-
-      - name: Capture pre-migration reconciliation
-        id: before
-        shell: bash
-        run: |
-          set -euo pipefail
-          query="select jsonb_build_object(
-            'customers', (select count(*) from shared.customers),
-            'products', (select count(*) from shared.products),
-            'variants', (select count(*) from shared.product_variants),
-            'schema_migrations', (select count(*) from shared.schema_migrations)
-          )::text"
-          snapshot="$(docker run --rm --network host -e PGPASSWORD=postgres postgres:17 psql \
-            --host=127.0.0.1 --port=5432 --username=postgres --dbname=rehearsal \
-            --no-psqlrc --tuples-only --no-align --command "$query")"
-          test -n "$snapshot"
-          echo "snapshot=$snapshot" >> "$GITHUB_OUTPUT"
-          echo "PRE_MIGRATION_COUNTS=$snapshot"
-
-      - name: Run migration twice and verify registry
-        shell: bash
+      - name: Print recent MCP Heroku runs
         env:
-          NODE_ENV: test
-          MCP_MIGRATION_DATABASE_URL: ${{ env.LOCAL_OWNER_URL }}
-        run: |
-          set -euo pipefail
-          npm --prefix mcp/apps/backend run migration:migrate
-          npm --prefix mcp/apps/backend run migration:migrate
-          npm --prefix mcp/apps/backend run migration:verify
-
-      - name: Provision isolated runtime role and grants
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm --network host -e PGPASSWORD=postgres postgres:17 psql \
-            --host=127.0.0.1 --port=5432 --username=postgres --dbname=rehearsal \
-            --no-psqlrc --set ON_ERROR_STOP=1 <<'SQL'
-          CREATE ROLE mcp_runtime LOGIN PASSWORD 'mcp_runtime_rehearsal';
-          SELECT shared.grant_mcp_runtime_access('mcp_runtime');
-          SQL
-
-      - name: Verify runtime role and all 20 read models
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker run --rm --network host -e PGPASSWORD=mcp_runtime_rehearsal postgres:17 psql \
-            --host=127.0.0.1 --port=5432 --username=mcp_runtime --dbname=rehearsal \
-            --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 <<'SQL'
-          select 'CURRENT_USER=' || current_user;
-          select 'SEARCH_PATH=' || current_setting('search_path');
-          select 'SCHEMA_AVAILABLE=' || (to_regnamespace('mcp') is not null)::text;
-          select 'SCHEMA_USAGE=' || has_schema_privilege(current_user, 'mcp', 'USAGE')::text;
-          select 'TABLE=' || name || '|COUNT=' || count_value
-          from (
-            select 'accounts' name, (select count(*) from mcp.accounts)::bigint count_value union all
-            select 'market_reports', (select count(*) from mcp.market_reports)::bigint union all
-            select 'mcp_followups', (select count(*) from mcp.mcp_followups)::bigint union all
-            select 'mcp_report_setting_groups', (select count(*) from mcp.mcp_report_setting_groups)::bigint union all
-            select 'mcp_report_settings', (select count(*) from mcp.mcp_report_settings)::bigint union all
-            select 'mcp_route_customers', (select count(*) from mcp.mcp_route_customers)::bigint union all
-            select 'mcp_route_sessions', (select count(*) from mcp.mcp_route_sessions)::bigint union all
-            select 'mcp_routes', (select count(*) from mcp.mcp_routes)::bigint union all
-            select 'mcp_session_customers', (select count(*) from mcp.mcp_session_customers)::bigint union all
-            select 'mcp_session_reports', (select count(*) from mcp.mcp_session_reports)::bigint union all
-            select 'mcp_visits', (select count(*) from mcp.mcp_visits)::bigint union all
-            select 'order_items', (select count(*) from mcp.order_items)::bigint union all
-            select 'orders', (select count(*) from mcp.orders)::bigint union all
-            select 'product_variants', (select count(*) from mcp.product_variants)::bigint union all
-            select 'products', (select count(*) from mcp.products)::bigint union all
-            select 'route_customers', (select count(*) from mcp.route_customers)::bigint union all
-            select 'test_customer_results', (select count(*) from mcp.test_customer_results)::bigint union all
-            select 'test_customers', (select count(*) from mcp.test_customers)::bigint union all
-            select 'test_file_products', (select count(*) from mcp.test_file_products)::bigint union all
-            select 'test_files', (select count(*) from mcp.test_files)::bigint
-          ) checks order by name;
-          SQL
-
-      - name: Reconcile shared Core data after migration
-        shell: bash
-        env:
-          BEFORE: ${{ steps.before.outputs.snapshot }}
-        run: |
-          set -euo pipefail
-          query="select jsonb_build_object(
-            'customers', (select count(*) from shared.customers),
-            'products', (select count(*) from shared.products),
-            'variants', (select count(*) from shared.product_variants),
-            'schema_migrations', (select count(*) from shared.schema_migrations)
-          )::text"
-          after="$(docker run --rm --network host -e PGPASSWORD=postgres postgres:17 psql \
-            --host=127.0.0.1 --port=5432 --username=postgres --dbname=rehearsal \
-            --no-psqlrc --tuples-only --no-align --command "$query")"
-          test -n "$after"
-          echo "POST_MIGRATION_COUNTS=$after"
-          test "$(jq -c 'del(.schema_migrations)' <<<"$BEFORE")" = "$(jq -c 'del(.schema_migrations)' <<<"$after")"
-          applied="$(jq -r '.schema_migrations' <<<"$after")"
-          previous="$(jq -r '.schema_migrations' <<<"$BEFORE")"
-          test "$applied" -eq $((previous + 2))
-          echo "CORE_RECONCILIATION=matched"
-          echo "MCP_MIGRATION_REHEARSAL=passed"
+          gh api --method GET \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/heroku-mcp-backend-manual.yml/runs" \
+            -f event=issue_comment \
+            -f per_page=20 \
+            --jq '.workflow_runs | sort_by(.created_at) | reverse | .[] | "RUN id=\(.id) status=\(.status) conclusion=\(.conclusion // "") created=\(.created_at) actor=\(.actor.login // "") head=\(.head_sha // "") title=\(.display_title // "")"'
