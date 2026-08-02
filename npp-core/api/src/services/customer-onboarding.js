@@ -178,6 +178,7 @@ export async function submitRequest(client, {
     sourceOutletId: normalized.sourceOutletId,
     sourceDemandReference: normalized.sourceDemandReference,
   };
+  await repository.lockCustomerOnboardingSourceDemand(client, lookup);
   const existing = await repository.getCustomerOnboardingRequestBySourceDemand(client, {
     ...lookup,
     forUpdate: true,
