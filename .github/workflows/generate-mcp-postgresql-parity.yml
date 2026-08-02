@@ -46,7 +46,19 @@ jobs:
         run: node mcp/ops/generate-postgresql-supabase-parity.mjs
 
       - name: Audit all referenced columns
-        run: node mcp/ops/audit-postgresql-supabase-parity-columns.mjs
+        shell: bash
+        run: |
+          set +e
+          node mcp/ops/audit-postgresql-supabase-parity-columns.mjs > /tmp/parity-audit.json
+          status=$?
+          set -e
+          cat /tmp/parity-audit.json
+          node - <<'NODE'
+          const { readFileSync } = require('node:fs');
+          const audit = JSON.parse(readFileSync('/tmp/parity-audit.json', 'utf8'));
+          console.log(`MISSING_COLUMNS=${audit.missing.map(({ table, column }) => `${table}.${column}`).join(',')}`);
+          NODE
+          exit "$status"
 
       - name: Commit generator and migration
         shell: bash
