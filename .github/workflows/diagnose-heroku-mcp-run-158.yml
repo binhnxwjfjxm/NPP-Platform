@@ -1,4 +1,4 @@
-name: Repair MCP Heroku production runtime
+name: Verify repaired MCP Heroku rollout
 
 on:
   pull_request:
@@ -12,87 +12,60 @@ permissions:
   actions: read
 
 jobs:
-  repair-provider-config:
+  verify-rollout:
     if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-run-158'
     runs-on: ubuntu-latest
-    env:
-      CORE_APP_NAME: hung-phat
-      MCP_APP_NAME: hung-phat-mcp
-      HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-      REQUIRED_CONFIG_NAMES: BACKEND_API_TOKEN,CORS_ORIGINS,DATABASE_URL,INSTALLATION_ID,MCP_DB_ROLE,MCP_DB_SCHEMA,MCP_LEGACY_ACTOR_ID,MCP_LEGACY_RUNTIME_ENABLED,NPP_CODE,PERSISTENCE_PROVIDER
     steps:
-      - name: Confirm Heroku credential presence
+      - name: Find repaired MCP Heroku deploy run
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: 10ad25d8317064cb8c89c5092359f1ae14be1054
+          CREATED_AFTER: 2026-08-02T10:08:00Z
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${HEROKU_API_KEY:-}"
-          echo "::add-mask::$HEROKU_API_KEY"
-          echo "HEROKU_API_KEY_PRESENT=true"
+          run_id=""
+          for attempt in $(seq 1 120); do
+            runs_json="$(gh api --method GET \
+              -H 'Accept: application/vnd.github+json' \
+              "/repos/${GITHUB_REPOSITORY}/actions/workflows/heroku-mcp-backend-manual.yml/runs" \
+              -f event=issue_comment \
+              -f per_page=30)"
 
-      - name: Install Heroku CLI
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
-          heroku version
+            run_id="$(jq -r --arg head "$EXPECTED_HEAD" --arg after "$CREATED_AFTER" '
+              .workflow_runs
+              | sort_by(.created_at)
+              | reverse
+              | map(select(.head_sha == $head and .created_at >= $after and (.conclusion // "") != "skipped"))
+              | .[0].id // empty
+            ' <<<"$runs_json")"
 
-      - name: Attach shared PostgreSQL and MCP runtime settings
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          core_database_url="$(heroku config:get DATABASE_URL -a "$CORE_APP_NAME")"
-          test -n "$core_database_url"
-          echo "::add-mask::$core_database_url"
-
-          heroku config:set -a "$MCP_APP_NAME" \
-            DATABASE_URL="$core_database_url" \
-            MCP_DB_ROLE="mcp_runtime" \
-            MCP_DB_SCHEMA="mcp" \
-            MCP_LEGACY_RUNTIME_ENABLED="false" \
-            PERSISTENCE_PROVIDER="postgresql" \
-            >/dev/null
-
-          target_database_url="$(heroku config:get DATABASE_URL -a "$MCP_APP_NAME")"
-          test -n "$target_database_url"
-          echo "::add-mask::$target_database_url"
-
-          core_hash="$(printf '%s' "$core_database_url" | sha256sum | awk '{print $1}')"
-          target_hash="$(printf '%s' "$target_database_url" | sha256sum | awk '{print $1}')"
-          test "$core_hash" = "$target_hash"
-
-          config_json="$(heroku config -a "$MCP_APP_NAME" --json)"
-          missing=()
-          IFS=',' read -ra required <<<"$REQUIRED_CONFIG_NAMES"
-          for name in "${required[@]}"; do
-            if ! jq -e --arg name "$name" 'has($name) and (.[$name] | type == "string" and length > 0)' <<<"$config_json" >/dev/null; then
-              missing+=("$name")
+            if [[ -n "$run_id" ]]; then
+              run_json="$(gh api --method GET -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}")"
+              status="$(jq -r '.status' <<<"$run_json")"
+              conclusion="$(jq -r '.conclusion // ""' <<<"$run_json")"
+              echo "TARGET_RUN_ID=$run_id"
+              echo "TARGET_STATUS=$status"
+              echo "TARGET_CONCLUSION=$conclusion"
+              if [[ "$status" == "completed" ]]; then
+                break
+              fi
             fi
+            sleep 5
           done
-          if (( ${#missing[@]} )); then
-            echo "Missing required MCP config names: $(IFS=,; echo "${missing[*]}")" >&2
-            exit 1
-          fi
 
-          test "$(jq -r '.MCP_DB_ROLE' <<<"$config_json")" = "mcp_runtime"
-          test "$(jq -r '.MCP_DB_SCHEMA' <<<"$config_json")" = "mcp"
-          test "$(jq -r '.MCP_LEGACY_RUNTIME_ENABLED' <<<"$config_json")" = "false"
-          test "$(jq -r '.PERSISTENCE_PROVIDER' <<<"$config_json")" = "postgresql"
+          test -n "$run_id"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
 
-          echo "SHARED_DATABASE_ATTACHED=true"
-          echo "MCP_DB_ROLE=mcp_runtime"
-          echo "MCP_DB_SCHEMA=mcp"
-          echo "MCP_LEGACY_RUNTIME_ENABLED=false"
-          echo "PERSISTENCE_PROVIDER=postgresql"
-          echo "CONFIG_NAMES=$(jq -r 'keys | sort | join(",")' <<<"$config_json")"
-
-      - name: Verify sanitized provider contract
+      - name: Print rollout jobs and steps
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.target.outputs.run_id }}
         shell: bash
         run: |
           set -euo pipefail
-          stack="$(heroku stack -a "$MCP_APP_NAME" | awk '/^\*/ {print $2; exit}')"
-          test "$stack" = "container"
-          latest_release="$(heroku releases --json -a "$MCP_APP_NAME" | jq -r '.[0].version // empty')"
-          test -n "$latest_release"
-          echo "ACTIVE_STACK=$stack"
-          echo "LATEST_RELEASE_VERSION=$latest_release"
+          gh api --method GET \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" \
+            --jq '.jobs[] | "JOB id=\(.id) name=\(.name) status=\(.status) conclusion=\(.conclusion // "")\n" + ([.steps[] | "  STEP \(.number) \(.name): \(.status)/\(.conclusion // "")"] | join("\n"))'
