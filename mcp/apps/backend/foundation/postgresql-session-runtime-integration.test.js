@@ -5,7 +5,7 @@ import { createPostgresqlPersistence } from "./postgresql-adapter.js";
 import { bindProviderPersistence } from "./provider-runtime.js";
 import { postgresqlRpc } from "./postgresql-compat-adapter.js";
 import { postgresqlSessionRpc } from "./postgresql-session-adapter.js";
-import { postgresqlSpecialRpc } from "./postgresql-media-adapter.js";
+import { postgresqlDeleteRpc } from "./postgresql-delete-adapter.js";
 import { migrationVerifyWithAdapter, runMcpMigrations } from "./migrations/index.js";
 
 const { Pool } = pg;
@@ -123,6 +123,15 @@ test(
     )).rows[0];
     assert.ok(sessionCustomer?.id);
 
+    await assert.rejects(
+      () => postgresqlSessionRpc(config, "mcp_idempotent_set_session_customer_status", {
+        p_session_customer_id: sessionCustomer.id,
+        p_visit_status: "   ",
+        p_context: context("status-empty")
+      }),
+      (error) => error.code === "visit_status_required"
+    );
+
     await postgresqlRpc(config, "mcp_idempotent_create_order_from_session_customer", {
       p_session_customer_id: sessionCustomer.id,
       p_items: [{ productName: "Sản phẩm thử", quantity: 1, unitPrice: 10000, discount: 0 }],
@@ -161,7 +170,16 @@ test(
       { id: secondSession.sessionId, status: "active", visited: 0, orders: 0 }
     ]);
 
-    const deleted = await postgresqlSpecialRpc(config, "mcp_delete_route_hard", {
+    await assert.rejects(
+      () => postgresqlDeleteRpc(config, "mcp_delete_route_hard", {
+        p_installation_id: "installation-other",
+        p_route_id: route.routeId
+      }),
+      (error) => error.code === "installation_scope_mismatch"
+    );
+
+    const deleted = await postgresqlDeleteRpc(config, "mcp_delete_route_hard", {
+      p_installation_id: installationId,
       p_route_id: route.routeId
     });
     assert.equal(deleted.deleted, true);
