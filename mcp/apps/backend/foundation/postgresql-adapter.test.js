@@ -63,6 +63,33 @@ test("PostgreSQL adapter enforces schema search_path, timeouts, role and gracefu
   assert.equal(calls.at(-1).type, "end");
 });
 
+test("transaction boundary commits, rolls back and always releases its client", async () => {
+  const calls = [];
+  const client = {
+    async query(text) { calls.push(text); return { rows: [] }; },
+    release() { calls.push("RELEASE"); }
+  };
+  class TransactionPool {
+    async connect() { calls.push("CONNECT"); return client; }
+    async end() {}
+  }
+  const adapter = createPostgresqlPersistence(config(), { PoolImpl: TransactionPool });
+  const result = await adapter.withTransaction(async (activeClient) => {
+    assert.equal(activeClient, client);
+    await activeClient.query("SELECT 1");
+    return "committed";
+  });
+  assert.equal(result, "committed");
+  assert.deepEqual(calls, ["CONNECT", "BEGIN", 'SET LOCAL search_path TO "mcp", public', "SELECT 1", "COMMIT", "RELEASE"]);
+
+  calls.length = 0;
+  await assert.rejects(
+    () => adapter.withTransaction(async () => { throw new Error("forced_failure"); }),
+    /forced_failure/
+  );
+  assert.deepEqual(calls, ["CONNECT", "BEGIN", 'SET LOCAL search_path TO "mcp", public', "ROLLBACK", "RELEASE"]);
+});
+
 test("unreachable database and schema, search_path, or role mismatches fail closed", async () => {
   class DownPool {
     async query() { throw new Error("password and host details"); }

@@ -1,0 +1,137 @@
+name: Phase 6C.0D MCP PostgreSQL Foundation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'database/migrations/mcp/**'
+      - 'mcp/apps/backend/**'
+      - 'docs/operations/phase-6c0d-mcp-postgresql-foundation.md'
+      - 'docs/operations/LATEST_HANDOFF.md'
+      - '.github/workflows/phase-6c0d-mcp-postgresql-foundation.yml'
+  push:
+    branches:
+      - agent/phase-6c0d-mcp-postgresql-foundation
+    paths:
+      - 'database/migrations/mcp/**'
+      - 'mcp/apps/backend/**'
+      - 'docs/operations/phase-6c0d-mcp-postgresql-foundation.md'
+      - 'docs/operations/LATEST_HANDOFF.md'
+      - '.github/workflows/phase-6c0d-mcp-postgresql-foundation.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-6c0d-mcp-postgresql-foundation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: MCP migration and transaction repositories
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: mcp
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mcp_phase6c0d
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d mcp_phase6c0d"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/mcp_phase6c0d
+
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify Phase 6C.0D source boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C .. fetch origin main --depth=1
+          git -C .. diff --name-only origin/main...HEAD | tee phase-6c0d-changed-files.log
+
+          if git -C .. diff --name-only origin/main...HEAD | grep -E '^npp-core/' >/dev/null; then
+            echo '::error::Phase 6C.0D must not change NPP Core source.'
+            exit 1
+          fi
+
+          invalid_database_paths="$(git -C .. diff --name-only origin/main...HEAD | grep -E '^database/' | grep -Ev '^database/migrations/mcp/' || true)"
+          if [ -n "$invalid_database_paths" ]; then
+            echo '::error::Phase 6C.0D may change only database/migrations/mcp under database/.'
+            printf '%s\n' "$invalid_database_paths"
+            exit 1
+          fi
+
+          if git -C .. diff --name-only origin/main...HEAD | grep -E '^\.github/workflows/(heroku|vercel)' >/dev/null; then
+            echo '::error::Phase 6C.0D must not modify production deployment workflows.'
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: mcp/apps/backend/package-lock.json
+
+      - name: Install MCP backend dependencies
+        run: npm ci --prefix apps/backend
+
+      - name: Verify full MCP backend
+        run: npm --prefix apps/backend run verify 2>&1 | tee phase-6c0d-backend.log
+
+      - name: Apply and verify MCP migrations through the guarded CLI
+        env:
+          NODE_ENV: test
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          npm --prefix apps/backend run migration:status 2>&1 | tee phase-6c0d-migration-status-before.log
+          npm --prefix apps/backend run migration:migrate 2>&1 | tee phase-6c0d-migration-apply.log
+          npm --prefix apps/backend run migration:verify 2>&1 | tee phase-6c0d-migration-verify.log
+          npm --prefix apps/backend run migration:migrate 2>&1 | tee phase-6c0d-migration-rerun.log
+
+      - name: Verify production migration guard stays closed
+        env:
+          NODE_ENV: production
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          if npm --prefix apps/backend run migration:status > phase-6c0d-production-guard.log 2>&1; then
+            echo '::error::Production migration guard unexpectedly allowed execution.'
+            exit 1
+          fi
+          grep -Fq 'production_migration_forbidden' phase-6c0d-production-guard.log
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-6c0d-diagnostics-${{ github.run_id }}
+          path: |
+            mcp/phase-6c0d-changed-files.log
+            mcp/phase-6c0d-backend.log
+            mcp/phase-6c0d-migration-status-before.log
+            mcp/phase-6c0d-migration-apply.log
+            mcp/phase-6c0d-migration-verify.log
+            mcp/phase-6c0d-migration-rerun.log
+            mcp/phase-6c0d-production-guard.log
+          retention-days: 7
+          if-no-files-found: ignore
