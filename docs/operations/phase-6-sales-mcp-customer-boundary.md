@@ -1,27 +1,46 @@
 # Phase 6 — Sales and MCP Customer Boundary Decisions
 
 > Status: **ACTIVE PHASE 6 DECISION DOCUMENT**  
-> Source baseline: `main@7c082641d46bfbe22b9e68924641933864ee184b`  
+> Audited source baseline: `main@7c082641d46bfbe22b9e68924641933864ee184b`  
+> Active implementation: Issue #151 / Draft PR #153  
 > Date: `2026-08-02`  
-> Scope: customer identity, MCP adaptation, customer onboarding and MCP-to-Core Sales Order contract.  
-> This document does not authorize production migration, deployment or MCP cutover.
+> Scope: field-outlet identity, demand-triggered customer verification and the later MCP-to-Core Sales Order gate.  
+> This document does not authorize production migration, deployment, provider changes, merge or MCP cutover.
 
-## 1. Context
+## 1. Non-negotiable product decision
 
-MCP Field is an existing field-sales application with working route, session, customer-entry, GPS, photo, visit, test, report and order-related flows. It is not a greenfield application to rebuild.
+MCP Field is an existing field-sales application. Its route, session, customer-entry, GPS, outlet-photo, visit, test, report, follow-up and order-intent workflows must be preserved.
 
-The integration strategy is:
+The existing MCP `Thêm khách` action is a field-operation action only:
 
 ```text
-keep the current MCP workflows and UI
--> adapt the existing backend boundary
--> send the existing field-outlet snapshot to Core
--> let Core verify and create/link the official customer
--> synchronize the official customer reference back to MCP
--> call canonical Core order APIs only after the outlet is linked
+employee opens an active route/session
+-> taps “Thêm khách”
+-> MCP creates or keeps a field outlet in the route and active session
+-> MCP stores its field data, GPS, photos and notes
+-> no Core verification request is created
+-> no official Core customer/address is created or linked
+-> no company customer code is assigned
 ```
 
-Do not redesign MCP merely to make it resemble NPP Core. Do not create a second “new customer” form when MCP already has one.
+A field outlet may be a prospect, visit point, historical outlet, shop with no purchase yet, or another market record. Adding it to a route/session does not prove that it is a company customer.
+
+Core verification/open-code is allowed only after a real buying event needs an official order:
+
+```text
+MCP records purchase demand or an order intent
+-> the outlet has no active Core customer/address link
+-> the employee explicitly requests verification/open-code from the order flow
+-> the request carries a stable demand/order-intent reference
+-> Core reviews duplicates and master-data completeness
+-> Core links an existing active customer/address or approves one new customer/address
+-> MCP stores the returned Core request and official references
+-> only then may an official Sales Order be submitted to Core
+```
+
+**No purchase-demand trigger means no Core request.**
+
+This rule prevents route prospects and low-quality field records from polluting the canonical customer master.
 
 ## 2. Locked ownership
 
@@ -30,17 +49,17 @@ Do not redesign MCP merely to make it resemble NPP Core. Do not create a second 
 ```text
 field routes
 field outlets
-field route-outlet assignments
+route-outlet assignments
 field route sessions
 session outlet snapshots
-visits/check-in
+visits and check-in
 field tests
 market reports
 follow-ups
-field media
-existing “Thêm khách” field workflow
-local/offline onboarding data before Core submission
-Core request/order references and read models
+GPS and field media
+existing “Thêm khách” workflow
+purchase demand and pre-official order intent
+Core request/order references and synchronized read models
 MCP action logs
 ```
 
@@ -48,8 +67,9 @@ MCP action logs
 
 ```text
 canonical customers and customer addresses
-customer verification/review lifecycle after submission
-products/SKU/units/prices
+verification/review lifecycle after explicit submission
+customer codes
+products, SKU, units and prices
 Sales Orders and amendments
 credit policy
 inventory reservation and fulfillment
@@ -57,16 +77,20 @@ Delivery Orders and dispatch
 receivables, payments and refunds
 ```
 
-MCP never writes directly to Core customer, sales, inventory, logistics or accounting tables.
+MCP must not write directly to Core customer, sales, inventory, logistics or accounting tables.
 
-## 3. Existing MCP “Thêm khách” behavior must be preserved
+## 3. Existing MCP `Thêm khách` boundary
 
-The current field workflow already exists in `mcp/src/features/mcp/McpSessionAddCustomerButton.tsx`.
-
-It already collects:
+The current UI lives at:
 
 ```text
-customer/outlet name
+mcp/src/features/mcp/McpSessionAddCustomerButton.tsx
+```
+
+It already captures:
+
+```text
+outlet name
 phone
 area
 address
@@ -77,59 +101,52 @@ active session identity
 route context
 ```
 
-It already calls the frontend backend-proxy route:
+Its existing frontend route is:
 
 ```text
 POST /api/backend/mcp-day/session-customer/add
 ```
 
-The route proxies to the MCP backend:
+That route proxies only to the MCP backend:
 
 ```text
 POST /api/mcp-day/session-customer/add
 ```
 
-The intended integrated behavior is:
+Phase 6C.1A must prove that neither boundary calls:
 
 ```text
-Employee taps “Thêm khách” in the active route/session
--> MCP creates/keeps the field outlet in the route and active session
--> MCP keeps GPS, photos and field notes under MCP ownership
--> MCP backend creates one canonical onboarding request in Core using the same outlet snapshot
--> Core verifies duplicates and completeness
--> Core creates a new official customer or links an existing one
--> MCP stores the Core request reference and synchronized status
--> when approved/linked, MCP stores the official customer ID, address ID and customer code
+/api/customer-onboarding-requests
 ```
 
-This is an adapter/integration task, not a replacement UI task.
+The add-customer flow may continue to create route/session records and upload MCP-owned media. It must not gain hidden Core side effects.
 
-## 4. Customer identity contract
+## 4. Identity and linkage contract
 
 ### 4.1 Core customer
 
-`shared.customers.id` is the immutable canonical Core customer identifier.
+`shared.customers.id` is the immutable canonical customer identifier. `shared.customer_addresses.id` is the immutable canonical address identifier.
 
-Only an active Core customer may participate in an official Sales Order.
+Only an active Core customer and active address in the same installation may be used for an official order.
 
 ### 4.2 MCP field outlet
 
-A field outlet remains a separate identity because it may be a prospect or a real visit point before Core approval.
+A field outlet remains a separate identity before and after linking because Core customers may have multiple physical locations and MCP may retain market-history records.
 
-Minimum linkage fields:
+Minimum future linkage/read-model fields are:
 
 ```text
 core_customer_id nullable
 core_customer_address_id nullable
-core_customer_code nullable/read model
+core_customer_code nullable
 core_onboarding_request_id nullable
-core_onboarding_status nullable/read model
+core_onboarding_status nullable
 last_core_sync_at nullable
 ```
 
-A field outlet may still be visited, tested, surveyed, photographed and followed up while Core verification is pending.
+These fields are references/read models. They do not transfer Core ownership to MCP.
 
-### 4.3 Link cardinality
+### 4.3 Cardinality
 
 ```text
 field_outlet 0..1 -> core_customer
@@ -137,11 +154,36 @@ field_outlet 0..1 -> core_customer_address
 core_customer 0..n <- field_outlets
 ```
 
-Multiple outlets may link to the same Core customer when they represent multiple physical locations approved by the business.
+The linked address must belong to the linked customer, both must be active, and both must belong to the same installation.
 
-## 5. Core customer verification lifecycle
+## 5. Demand-triggered Core request contract
 
-MCP submits the field-outlet snapshot. Core owns the canonical lifecycle after submission:
+The Core foundation endpoint is:
+
+```text
+POST /api/customer-onboarding-requests
+```
+
+A valid submission requires:
+
+```text
+source_system = MCP
+source_outlet_id
+source_demand_reference
+order_required = true
+trigger_reason = OFFICIAL_ORDER_REQUIRED
+immutable proposed customer/address snapshot
+Idempotency-Key
+installation and actor context from trusted authentication
+```
+
+The request must not accept client-supplied review status, reviewer identity, approved customer ID or approved address ID.
+
+GPS/photo data stays under MCP ownership. Core receives safe references/metadata where required; Phase 6C.1A does not blindly copy MCP media into Core.
+
+## 6. Core lifecycle and authority
+
+Core owns the lifecycle:
 
 ```text
 submitted
@@ -153,61 +195,110 @@ rejected
 cancelled
 ```
 
-Core reviewers may:
+Allowed transitions in Phase 6C.1A:
 
 ```text
-request more information
-create a new official customer/address
-link an existing active customer/address
-reject the request
+submitted -> under_review
+need_more_info -> under_review
+under_review -> need_more_info
+under_review -> approved
+under_review -> linked_existing
+under_review -> rejected
+submitted | under_review | need_more_info -> cancelled
 ```
 
-MCP receives status and result references; it does not independently mutate the Core review lifecycle.
+Mutations require optimistic `expectedVersion` checks.
 
-## 6. Required user-facing behavior
-
-### Field employee
-
-- keeps using the current “Thêm khách” button;
-- does not enter the same information into a new screen;
-- sees that the outlet was added to the route/session;
-- sees a safe Core verification state such as “Đang xác minh”, “Cần bổ sung”, “Đã có mã khách”, or “Từ chối”;
-- can continue field work while verification is pending;
-- cannot create an official Core order until the outlet is linked to an active Core customer.
-
-### Core reviewer
-
-- sees the submitted outlet snapshot, GPS/photo references and source employee/route context as permitted;
-- checks for duplicate customers;
-- creates one customer/address or links an existing customer/address;
-- records the review decision and reason;
-- returns official customer references to MCP.
-
-## 7. Idempotency and retry
-
-Retrying the same MCP submission must not create a duplicate Core onboarding request.
-
-Required source identity:
+Review authority is split by explicit deny-by-default permissions:
 
 ```text
-source_system = MCP
-source_outlet_id
-source_request_id / idempotency key
+core.customer-onboarding.read
+core.customer-onboarding.submit
+core.customer-onboarding.review
+core.customer-onboarding.approve
+core.customer-onboarding.link-existing
+core.customer-onboarding.reject
+```
+
+An MCP service principal may receive only `read` and `submit`. Those permissions must not imply review, approve, link or reject authority.
+
+## 7. Approval and link-existing invariants
+
+### Approve new customer
+
+Approval must perform one transaction that:
+
+```text
+locks the onboarding request
+checks installation, status and expected version
+creates exactly one shared.customers row
+creates exactly one default shared.customer_addresses row from the immutable snapshot
+stores the resulting IDs on the onboarding request
+moves the request to approved
+writes one audit record and one outbox event
+```
+
+Any failure rolls back customer, address, request transition, audit and outbox together.
+
+### Link existing
+
+Linking must:
+
+```text
+lock the onboarding request
+check installation, status and expected version
+verify the selected customer is active
+verify the selected address is active
+verify the address belongs to that customer
+store the two existing IDs
+move the request to linked_existing
+create no duplicate customer/address
+write one audit record and one outbox event
+```
+
+## 8. Idempotency and source deduplication
+
+Two protections are required:
+
+1. Generic API idempotency scope:
+
+```text
 installation_id
+actor_id
+HTTP method
+exact route including request ID for item actions
+Idempotency-Key
+canonical payload fingerprint
 ```
 
-The same source request with the same payload replays the existing result. The same key with a different payload returns a conflict.
+The same key and same payload replays the stored response. The same key with a different payload returns `IDEMPOTENCY_PAYLOAD_MISMATCH`.
 
-## 8. Official Sales Order gate
+2. Business demand identity:
 
-An unlinked field outlet may:
+```text
+installation_id
+source_system
+source_outlet_id
+source_demand_reference
+```
 
-- be assigned to field routes;
-- be added during an active session;
-- be visited and checked in;
-- participate in tests, reports and follow-ups;
-- record demand/order intent;
-- submit customer verification to Core.
+The same demand and same immutable snapshot returns the existing request. The same demand reference with a different snapshot returns a conflict. Retrying must never create duplicate requests, customers or addresses.
+
+## 9. Read isolation
+
+All reads and writes are installation-scoped.
+
+A principal with review authority may read the installation review queue. A submit/read-only MCP principal may read only requests created by that actor. Cross-installation IDs return not found and are never linked.
+
+## 10. Official Sales Order gate
+
+An unlinked MCP field outlet may:
+
+- remain on routes and sessions;
+- receive visits, check-ins, tests, reports and follow-ups;
+- keep GPS/photos under MCP ownership;
+- record purchase demand or a non-official order intent;
+- explicitly request Core verification when an official order is needed.
 
 It may not:
 
@@ -217,29 +308,55 @@ It may not:
 - enter Core delivery/dispatch;
 - receive official credit decisions as an approved customer.
 
-After Core approval/linking, MCP may submit an official order only through a canonical Core API using the returned Core customer/address IDs.
+After approval/linking, MCP may submit an official order only through a canonical Core API using the returned Core customer and address IDs.
 
-## 9. Delivery sequence
+## 11. Delivery sequence
 
 ```text
-6C.1A preserve existing MCP Add Customer flow and add Core verification bridge
-6C.1B complete Core reviewer operations and MCP status/reference synchronization
-6C.2  adapt existing MCP order flow to canonical Core Sales Order API
+6C.1A Core demand-triggered customer verification foundation
+       - migration and permissions
+       - submit/read/review lifecycle APIs
+       - approve-new and link-existing transactions
+       - idempotency, installation scope, audit/outbox
+       - source proof that MCP “Thêm khách” stays field-only
+
+6C.1B MCP order-flow request/status synchronization
+       - explicit trigger from purchase demand/order intent
+       - request/status/result references on MCP
+       - no automatic trigger from route/session add-customer
+
+6C.2  MCP official Sales Order adapter
+       - only after active Core customer/address linkage
 ```
 
-Each slice must preserve the existing MCP user workflow and avoid broad UI rewrites.
+Each slice must preserve the existing MCP workflow and avoid broad UI rewrites.
 
-## 10. Acceptance gate
+## 12. Acceptance gate
 
-The boundary is accepted when tests prove:
+Phase 6C.1A is accepted only when source and CI prove:
 
-- the existing MCP “Thêm khách” flow still adds the outlet to the active route/session;
-- the same captured data is submitted once to Core;
-- retry does not duplicate the Core request;
-- Core can create one customer/address or link an existing one;
-- link-existing creates no duplicate customer;
-- MCP receives customer ID, address ID and customer code after approval/linking;
-- pending or rejected outlets remain available for field work but cannot create official Core orders;
-- GPS/photos stay under MCP ownership and are referenced safely rather than copied blindly;
-- MCP cannot directly mutate Core customer, inventory, logistics or receivable tables;
-- source and production status are reported separately.
+- exact `main`, branch history and documentation diff were audited before code changes;
+- existing MCP `Thêm khách` still targets only the MCP route/session endpoint;
+- no Core request is created without `source_demand_reference` and `order_required=true`;
+- submit/read callers cannot perform review/admin actions;
+- installation isolation is fail-closed;
+- same idempotency key/same payload replays and different payload conflicts;
+- same source demand does not duplicate the request;
+- reviewer payload cannot overwrite the captured customer/address snapshot;
+- approve creates one customer and one address atomically;
+- link-existing validates active ownership and creates no customer/address;
+- every successful mutation writes exactly one audit record and one outbox event in the same transaction;
+- source completion is reported separately from deployment, production migration and cutover.
+
+## 13. Production boundary
+
+Phase 6C.1A is source-only until separately authorized. It does not prove or authorize:
+
+```text
+production backup readiness
+production migration 041
+Heroku or Vercel deployment
+provider/environment changes
+MCP traffic cutover
+merge to main
+```
