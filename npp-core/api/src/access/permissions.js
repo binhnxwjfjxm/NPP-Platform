@@ -24,6 +24,12 @@ export const PERMISSIONS = Object.freeze({
   coreSalesOrderPriceOverride: 'core.sales-order.price.override',
   coreSalesOrderDiscountOverride: 'core.sales-order.discount.override',
   coreSalesOrderCreditOverride: 'core.sales-order.credit.override',
+  coreCustomerOnboardingRead: 'core.customer-onboarding.read',
+  coreCustomerOnboardingSubmit: 'core.customer-onboarding.submit',
+  coreCustomerOnboardingReview: 'core.customer-onboarding.review',
+  coreCustomerOnboardingApprove: 'core.customer-onboarding.approve',
+  coreCustomerOnboardingLinkExisting: 'core.customer-onboarding.link-existing',
+  coreCustomerOnboardingReject: 'core.customer-onboarding.reject',
 });
 
 const SALES_ORDER_PERMISSION_CATALOG = Object.freeze([
@@ -44,6 +50,21 @@ const SALES_ORDER_PERMISSION_CATALOG = Object.freeze([
   isSystem: true,
 })));
 
+const CUSTOMER_ONBOARDING_PERMISSION_CATALOG = Object.freeze([
+  ['coreCustomerOnboardingRead', 'Xem đề nghị xác minh khách hàng', 'Cho phép đọc đề nghị xác minh/mở mã khách hàng trong phạm vi được cấp.'],
+  ['coreCustomerOnboardingSubmit', 'Gửi đề nghị xác minh khách hàng', 'Cho phép gửi đề nghị từ một nhu cầu mua hoặc order intent cần lập đơn chính thức.'],
+  ['coreCustomerOnboardingReview', 'Rà soát đề nghị xác minh khách hàng', 'Cho phép nhận xử lý, yêu cầu bổ sung và hủy đề nghị xác minh khách hàng.'],
+  ['coreCustomerOnboardingApprove', 'Duyệt mở mã khách hàng', 'Cho phép duyệt và tạo đúng một khách hàng cùng địa chỉ chính thức.'],
+  ['coreCustomerOnboardingLinkExisting', 'Liên kết khách hàng hiện hữu', 'Cho phép liên kết đề nghị với khách hàng và địa chỉ đang hoạt động.'],
+  ['coreCustomerOnboardingReject', 'Từ chối đề nghị xác minh khách hàng', 'Cho phép từ chối đề nghị với lý do bắt buộc.'],
+].map(([key, label, description]) => Object.freeze({
+  permissionKey: PERMISSIONS[key],
+  module: 'Xác minh khách hàng',
+  label,
+  description,
+  isSystem: true,
+})));
+
 export const PERMISSION_CATALOG = Object.freeze([
   ...CORE_PERMISSION_CATALOG,
   Object.freeze({ permissionKey: PERMISSIONS.coreSupplierPurchasePriceRead, module: 'Mua hàng', label: 'Xem bảng giá mua', description: 'Cho phép đọc và phân giải giá mua theo nhà cung cấp, SKU, đơn vị, tiền tệ và hiệu lực.', isSystem: true }),
@@ -57,6 +78,7 @@ export const PERMISSION_CATALOG = Object.freeze([
   Object.freeze({ permissionKey: PERMISSIONS.corePayableAllocationCreate, module: 'Công nợ phải trả', label: 'Phân bổ công nợ phải trả', description: 'Cho phép phân bổ thanh toán hoặc phiếu trả nhà cung cấp vào chứng từ phải trả.', isSystem: true }),
   Object.freeze({ permissionKey: PERMISSIONS.corePayableAllocationReverse, module: 'Công nợ phải trả', label: 'Đảo phân bổ công nợ phải trả', description: 'Cho phép đảo một phân bổ công nợ bằng chứng từ đảo bất biến.', isSystem: true }),
   ...SALES_ORDER_PERMISSION_CATALOG,
+  ...CUSTOMER_ONBOARDING_PERMISSION_CATALOG,
 ]);
 
 export const PERMISSION_REGISTRY = new Set(PERMISSION_CATALOG.map((entry) => entry.permissionKey));
