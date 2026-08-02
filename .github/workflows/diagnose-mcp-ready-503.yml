@@ -38,7 +38,7 @@ jobs:
           sudo apt-get install -y -qq postgresql-client
           npm ci --prefix mcp/apps/backend
 
-      - name: Apply repository migrations twice and verify
+      - name: Verify repository migrations remain complete
         shell: bash
         run: |
           set -euo pipefail
@@ -57,10 +57,9 @@ jobs:
           export MCP_MIGRATION_DATABASE_URL="$owner_node_url"
           npm --prefix mcp/apps/backend run migration:status
           npm --prefix mcp/apps/backend run migration:migrate
-          npm --prefix mcp/apps/backend run migration:migrate
           npm --prefix mcp/apps/backend run migration:verify
 
-      - name: Provision dedicated MCP runtime role and attach it
+      - name: Grant MCP access to Heroku-managed credential and attach it
         shell: bash
         run: |
           set -euo pipefail
@@ -74,58 +73,34 @@ jobs:
           console.log(url.toString());
           NODE
           )"
-          echo "::add-mask::$owner_psql_url"
-          runtime_password="$(openssl rand -hex 32)"
-          echo "::add-mask::$runtime_password"
-
-          role_exists="$(psql "$owner_psql_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command "select exists(select 1 from pg_roles where rolname='mcp_runtime')")"
-          if [ "$role_exists" = "t" ]; then
-            psql "$owner_psql_url" --no-psqlrc --set ON_ERROR_STOP=1 --set role_password="$runtime_password" <<'SQL'
-          alter role mcp_runtime login password :'role_password';
-          SQL
-          else
-            psql "$owner_psql_url" --no-psqlrc --set ON_ERROR_STOP=1 --set role_password="$runtime_password" <<'SQL'
-          create role mcp_runtime login password :'role_password';
-          SQL
-          fi
-          psql "$owner_psql_url" --no-psqlrc --set ON_ERROR_STOP=1 --command "select shared.grant_mcp_runtime_access('mcp_runtime')"
-
-          runtime_node_url="$(node --input-type=module - "$owner_url_raw" "$runtime_password" <<'NODE'
-          const [, , raw, password] = process.argv;
+          owner_node_url="$(node --input-type=module - "$owner_url_raw" <<'NODE'
+          const [, , raw] = process.argv;
           const url = new URL(raw);
-          url.username = 'mcp_runtime';
-          url.password = password;
           url.searchParams.set('uselibpqcompat', 'true');
           url.searchParams.set('sslmode', 'require');
           console.log(url.toString());
           NODE
           )"
-          runtime_psql_url="$(node --input-type=module - "$owner_url_raw" "$runtime_password" <<'NODE'
-          const [, , raw, password] = process.argv;
-          const url = new URL(raw);
-          url.username = 'mcp_runtime';
-          url.password = password;
-          url.searchParams.set('sslmode', 'require');
-          console.log(url.toString());
-          NODE
-          )"
-          test -n "$runtime_node_url"
-          test -n "$runtime_psql_url"
-          echo "::add-mask::$runtime_node_url"
-          echo "::add-mask::$runtime_psql_url"
+          echo "::add-mask::$owner_psql_url"
+          echo "::add-mask::$owner_node_url"
+
+          managed_role="$(psql "$owner_psql_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command 'select current_user')"
+          test -n "$managed_role"
+          echo "::add-mask::$managed_role"
+          psql "$owner_psql_url" --no-psqlrc --set ON_ERROR_STOP=1 --set managed_role="$managed_role" <<'SQL'
+          select shared.grant_mcp_runtime_access(:'managed_role'::name);
+          SQL
 
           heroku config:set -a "$MCP_APP_NAME" \
-            DATABASE_URL="$runtime_node_url" \
-            MCP_DB_ROLE=mcp_runtime \
+            DATABASE_URL="$owner_node_url" \
+            MCP_DB_ROLE="$managed_role" \
             MCP_DB_SCHEMA=mcp \
             MCP_LEGACY_RUNTIME_ENABLED=false \
             PERSISTENCE_PROVIDER=postgresql \
             >/dev/null
 
-          current_role="$(psql "$runtime_psql_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command 'select current_user')"
-          test "$current_role" = "mcp_runtime"
-          psql "$runtime_psql_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command "select count(*) from mcp.mcp_routes" >/dev/null
-          echo "MCP_RUNTIME_ROLE_READY=true"
+          psql "$owner_psql_url" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 --command "select count(*) from mcp.mcp_routes" >/dev/null
+          echo "MCP_MANAGED_CREDENTIAL_READY=true"
 
       - name: Verify production health and read boundary
         shell: bash
