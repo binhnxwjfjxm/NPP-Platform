@@ -101,7 +101,7 @@ jobs:
           test -n "$log_url"
           curl --fail --silent --show-error "$log_url" \
             | tail -n 200 \
-            | sed -E 's#(postgres(?:ql)?://)[^ @]+@#\1[redacted]@#gi; s/[A-Za-z0-9_\-]{40,}/[redacted]/g' \
+            | sed -E 's#(postgres(ql)?://)[^ @]+@#\1[redacted]@#gI; s/[A-Za-z0-9_\-]{40,}/[redacted]/g' \
             | grep -E 'foundation|error|Error|fatal|Fatal|crash|Crash|missing_|invalid_|persistence|State changed|Starting process|Process exited|at file:' \
             || true
 
@@ -111,5 +111,5 @@ jobs:
           set -euo pipefail
           echo "BACKUP_LIST_BEGIN"
           heroku pg:backups -a "$CORE_APP_NAME" \
-            | sed -E 's#(postgres(?:ql)?://)[^ @]+@#\1[redacted]@#gi; s/[A-Za-z0-9_\-]{40,}/[redacted]/g'
+            | sed -E 's#(postgres(ql)?://)[^ @]+@#\1[redacted]@#gI; s/[A-Za-z0-9_\-]{40,}/[redacted]/g'
           echo "BACKUP_LIST_END"
