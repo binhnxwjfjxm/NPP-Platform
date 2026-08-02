@@ -30,19 +30,28 @@ jobs:
             -H 'Accept: application/vnd.heroku+json; version=3' \
             -H "Authorization: Bearer $HEROKU_API_KEY" \
             "https://api.heroku.com/apps/$MCP_APP_NAME/config-vars")"
-          supabase_url="$(jq -r '.SUPABASE_URL // empty' <<<"$config_json" | sed 's:/*$::')"
+          configured_url="$(jq -r '.SUPABASE_URL // empty' <<<"$config_json")"
           service_key="$(jq -r '.SUPABASE_SERVICE_ROLE_KEY // empty' <<<"$config_json")"
-          test -n "$supabase_url"
+          test -n "$configured_url"
           test -n "$service_key"
-          echo "::add-mask::$supabase_url"
+          echo "::add-mask::$configured_url"
           echo "::add-mask::$service_key"
 
-          curl --fail --silent --show-error \
+          supabase_origin="$(node --input-type=module -e 'const value=process.argv[1]; console.log(new URL(value).origin)' "$configured_url")"
+          test -n "$supabase_origin"
+          echo "::add-mask::$supabase_origin"
+          rest_base="$supabase_origin/rest/v1"
+
+          openapi_status="$(curl --silent --show-error \
             -H "apikey: $service_key" \
             -H "Authorization: Bearer $service_key" \
             -H 'Accept: application/openapi+json' \
-            "$supabase_url/rest/v1/" \
-            --output /tmp/openapi.json
+            "$rest_base/" \
+            --output /tmp/openapi.json \
+            --write-out '%{http_code}')"
+          echo "LEGACY_OPENAPI_HTTP=$openapi_status"
+          test "$openapi_status" = "200"
+          jq -e '.definitions | type == "object"' /tmp/openapi.json >/dev/null
 
           IFS=',' read -ra tables <<<"$TABLES"
           for table in "${tables[@]}"; do
@@ -60,15 +69,16 @@ jobs:
             ' <<<"$definition")"
             required="$(jq -r '(.required // []) | sort | join(",")' <<<"$definition")"
             headers="$(mktemp)"
-            curl --fail --silent --show-error \
-              --head \
+            status="$(curl --silent --show-error \
               -H "apikey: $service_key" \
               -H "Authorization: Bearer $service_key" \
               -H 'Prefer: count=exact' \
               -H 'Range: 0-0' \
-              "$supabase_url/rest/v1/$table?select=*" \
+              "$rest_base/$table?select=*" \
               --dump-header "$headers" \
-              --output /dev/null
+              --output /dev/null \
+              --write-out '%{http_code}')"
+            test "$status" = "200" || test "$status" = "206"
             count="$(awk -F'[/\r]' 'tolower($1) ~ /^content-range:/ {print $2}' "$headers" | tail -n1)"
             rm -f "$headers"
             echo "LEGACY_TABLE table=$table exists=true count=${count:-unknown} required=${required:-none} columns=$columns"
