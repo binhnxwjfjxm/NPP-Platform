@@ -19,6 +19,7 @@ function usedRpcNames() {
   const ignored = new Set([
     "postgresql-compat-adapter.js",
     "postgresql-media-adapter.js",
+    "postgresql-media-upload-adapter.js",
     "supabase-adapter.js",
     "legacy-supabase-adapter.js"
   ]);
@@ -36,26 +37,29 @@ function usedRpcNames() {
 test("every active Supabase RPC contract has a PostgreSQL implementation", () => {
   const supported = new Set([
     ...rpcNames(source("postgresql-compat-adapter.js")),
-    ...rpcNames(source("postgresql-media-adapter.js"))
+    ...rpcNames(source("postgresql-media-adapter.js")),
+    ...rpcNames(source("postgresql-media-upload-adapter.js"))
   ]);
   const missing = [...usedRpcNames()].filter((name) => !supported.has(name)).sort();
   assert.deepEqual(missing, []);
 });
 
-test("canonical and runtime legacy-write migrations remain byte-identical", () => {
-  const canonical = readFileSync(
-    join(here, "../../../../database/migrations/mcp/003_mcp_legacy_write_contract.sql"),
-    "utf8"
-  );
-  const runtime = source("migrations/sql/003_mcp_legacy_write_contract.sql");
-  assert.equal(runtime, canonical);
+test("canonical and runtime cutover migrations remain byte-identical", () => {
+  for (const name of [
+    "003_mcp_legacy_write_contract.sql",
+    "004_mcp_profile_media_contract.sql"
+  ]) {
+    const canonical = readFileSync(join(here, `../../../../database/migrations/mcp/${name}`), "utf8");
+    const runtime = source(`migrations/sql/${name}`);
+    assert.equal(runtime, canonical, name);
+  }
 });
 
 test("PostgreSQL mode refuses direct legacy provider HTTP", async () => {
   let fetchCalls = 0;
   await assert.rejects(
     supabaseRequest(
-      { persistence: { provider: "postgresql" } },
+      { persistence: { provider: "postgresql" }, legacyRuntime: { enabled: false } },
       "/rest/v1/mcp_routes",
       { fetchImpl: async () => { fetchCalls += 1; throw new Error("must_not_fetch"); } }
     ),
@@ -69,6 +73,7 @@ test("cutover modules are part of backend source verification", () => {
   for (const file of [
     "foundation/postgresql-compat-adapter.js",
     "foundation/postgresql-media-adapter.js",
+    "foundation/postgresql-media-upload-adapter.js",
     "foundation/provider-runtime.js",
     "foundation/typed-runtime.js"
   ]) {
