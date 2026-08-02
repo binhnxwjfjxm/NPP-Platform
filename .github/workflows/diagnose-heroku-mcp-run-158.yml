@@ -1,4 +1,4 @@
-name: Verify repaired MCP Heroku rollout
+name: Verify final MCP Heroku rollout
 
 on:
   pull_request:
@@ -16,12 +16,12 @@ jobs:
     if: github.event.pull_request.head.ref == 'agent/diagnose-heroku-mcp-run-158'
     runs-on: ubuntu-latest
     steps:
-      - name: Find repaired MCP Heroku deploy run
+      - name: Find final MCP Heroku deploy run
         id: target
         env:
           GH_TOKEN: ${{ github.token }}
-          EXPECTED_HEAD: 10ad25d8317064cb8c89c5092359f1ae14be1054
-          CREATED_AFTER: 2026-08-02T10:08:00Z
+          EXPECTED_HEAD: b7d39d75531330ec9c35deb5e732eadae7145485
+          CREATED_AFTER: 2026-08-02T10:14:00Z
         shell: bash
         run: |
           set -euo pipefail
