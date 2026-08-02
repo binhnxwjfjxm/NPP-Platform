@@ -21,9 +21,9 @@ jobs:
       github.event.comment.body == '/status-heroku-mcp-production' &&
       contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 10
     steps:
-      - name: Find and report the matching MCP production deployment
+      - name: Publish MCP production deployment correlation
         uses: actions/github-script@v7
         with:
           script: |
@@ -32,7 +32,8 @@ jobs:
             const workflowId = 'heroku-mcp-backend-manual.yml';
             const issueNumber = 5;
             const allowedActors = new Set(['binhnxwjfjxm', 'khuongbinhinfo-a11y']);
-            const statusCreatedAt = Date.parse(context.payload.comment.created_at);
+            const statusComment = context.payload.comment;
+            const statusCreatedAt = Date.parse(statusComment.created_at);
 
             const issueComments = await github.paginate(
               github.rest.issues.listComments,
@@ -46,12 +47,6 @@ jobs:
               )
               .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))[0];
 
-            if (!deployComment) {
-              core.setFailed('mcp_production_deploy_comment_not_found');
-              return;
-            }
-
-            const deployCreatedAt = Date.parse(deployComment.created_at);
             const listed = await github.rest.actions.listWorkflowRuns({
               owner,
               repo,
@@ -59,93 +54,65 @@ jobs:
               event: 'issue_comment',
               per_page: 100
             });
-            const candidates = listed.data.workflow_runs
-              .filter((run) => {
-                const runCreatedAt = Date.parse(run.created_at);
-                return run.name === 'Manual Heroku MCP production deploy' &&
-                  run.event === 'issue_comment' &&
-                  runCreatedAt >= deployCreatedAt - 5000 &&
-                  runCreatedAt < statusCreatedAt;
+            const deployCreatedAt = deployComment ? Date.parse(deployComment.created_at) : null;
+            const nearby = listed.data.workflow_runs
+              .filter((run) =>
+                run.name === 'Manual Heroku MCP production deploy' &&
+                run.event === 'issue_comment' &&
+                Date.parse(run.created_at) < statusCreatedAt
+              )
+              .map((run) => ({
+                run,
+                deltaSeconds: deployCreatedAt === null
+                  ? null
+                  : Math.round((Date.parse(run.created_at) - deployCreatedAt) / 1000)
+              }))
+              .sort((left, right) => {
+                if (deployCreatedAt === null) {
+                  return Date.parse(right.run.created_at) - Date.parse(left.run.created_at);
+                }
+                return Math.abs(left.deltaSeconds) - Math.abs(right.deltaSeconds);
               })
-              .sort((left, right) =>
-                Math.abs(Date.parse(left.created_at) - deployCreatedAt) -
-                Math.abs(Date.parse(right.created_at) - deployCreatedAt)
+              .slice(0, 12);
+
+            const lines = [
+              '## MCP production deployment correlation',
+              '',
+              `- Status comment ID: \`${statusComment.id}\``,
+              `- Status comment time: \`${statusComment.created_at}\``
+            ];
+            if (deployComment) {
+              lines.push(
+                `- Deploy comment ID: \`${deployComment.id}\``,
+                `- Deploy comment time: \`${deployComment.created_at}\``
               );
-            const target = candidates[0];
-
-            if (!target || Math.abs(Date.parse(target.created_at) - deployCreatedAt) > 120000) {
-              core.setFailed('matching_mcp_production_deploy_run_not_found');
-              return;
+            } else {
+              lines.push('- Deploy comment: `not found`');
             }
-
-            const format = (run, jobs) => {
-              const lines = [
-                '## MCP production deployment evidence',
-                '',
-                `- Trigger comment ID: \`${deployComment.id}\``,
-                `- Triggered: \`${deployComment.created_at}\``,
-                `- Run ID: \`${run.id}\``,
-                `- Status: \`${run.status}\``,
-                `- Conclusion: \`${run.conclusion || 'pending'}\``,
-                `- Head SHA: \`${run.head_sha}\``,
-                `- Event: \`${run.event}\``,
-                `- Started: \`${run.created_at}\``
-              ];
-              for (const job of jobs) {
+            lines.push('', '### Nearby workflow runs');
+            if (!nearby.length) {
+              lines.push('- No issue-comment runs found for the MCP production workflow.');
+            } else {
+              for (const item of nearby) {
+                const run = item.run;
+                const delta = item.deltaSeconds === null
+                  ? 'n/a'
+                  : `${item.deltaSeconds >= 0 ? '+' : ''}${item.deltaSeconds}s`;
                 lines.push(
-                  `- Job ID: \`${job.id}\` — \`${job.name}\` — ` +
-                  `status \`${job.status}\`, conclusion \`${job.conclusion || 'pending'}\``
+                  `- Run \`${run.id}\` — delta \`${delta}\` — ` +
+                  `status \`${run.status}\` — conclusion \`${run.conclusion || 'pending'}\` — ` +
+                  `head \`${run.head_sha}\` — started \`${run.created_at}\``
                 );
               }
-              lines.push('', `[Open workflow run](${run.html_url})`);
-              return lines.join('\n');
-            };
+            }
 
-            let run = (await github.rest.actions.getWorkflowRun({
-              owner,
-              repo,
-              run_id: target.id
-            })).data;
-            let jobs = (await github.rest.actions.listJobsForWorkflowRun({
-              owner,
-              repo,
-              run_id: target.id,
-              per_page: 100
-            })).data.jobs;
-
-            const evidenceComment = await github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               owner,
               repo,
               issue_number: issueNumber,
-              body: format(run, jobs)
+              body: lines.join('\n')
             });
 
-            const deadline = Date.now() + 55 * 60 * 1000;
-            while (run.status !== 'completed' && Date.now() < deadline) {
-              await new Promise((resolve) => setTimeout(resolve, 15000));
-              run = (await github.rest.actions.getWorkflowRun({
-                owner,
-                repo,
-                run_id: target.id
-              })).data;
-              jobs = (await github.rest.actions.listJobsForWorkflowRun({
-                owner,
-                repo,
-                run_id: target.id,
-                per_page: 100
-              })).data.jobs;
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: evidenceComment.data.id,
-                body: format(run, jobs)
-              });
-            }
-
-            if (run.status !== 'completed') {
-              core.setFailed('mcp_production_deploy_status_timeout');
-              return;
-            }
-            if (run.conclusion !== 'success') {
-              core.setFailed(`mcp_production_deploy_${run.conclusion || 'failed'}`);
+            if (!deployComment) {
+              core.setFailed('mcp_production_deploy_comment_not_found');
             }
