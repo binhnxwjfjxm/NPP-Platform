@@ -68,6 +68,17 @@ test("Heroku workflows fail closed across the Core and MCP app boundary", async 
   }
 });
 
+test("MCP Heroku health smoke never creates a double-slash path", async () => {
+  const mcp = await source(files.herokuMcp);
+
+  assert.match(mcp, /app_url="\$\{app_url%\/\}"/);
+  assert.match(mcp, /app_url="\$\{APP_URL%\/\}"/);
+  assert.match(mcp, /local base_url="\$\{app_url%\/\}"/);
+  assert.match(mcp, /"\$base_url\$path"/);
+  assert.match(mcp, /sed 's:\/\*\$::'/);
+  assert.doesNotMatch(mcp, /"\$app_url\$path"/);
+});
+
 test("manual deploy workflows never embed database credentials", async () => {
   const entries = await Promise.all(Object.values(files).map(source));
   for (const text of entries) {
