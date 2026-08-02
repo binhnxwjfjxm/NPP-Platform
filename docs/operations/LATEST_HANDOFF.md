@@ -21,7 +21,7 @@ Source merge does not prove production deployment, provider configuration, datab
 Issue:
 
 ```text
-#151 — Phase 6C.1A — connect the existing MCP “Add customer” flow to Core customer verification
+#151 — Phase 6C.1A — add demand-triggered Core customer verification foundation
 ```
 
 Branch:
@@ -32,23 +32,40 @@ agent/phase-6c1a-core-customer-onboarding
 
 ## Product behavior locked for Phase 6C.1
 
-MCP Field is already a substantially complete field-sales application. Do not rebuild its routes, sessions, customer-entry form, GPS capture, outlet-photo capture or field workflow.
+MCP Field is already a substantially complete field-sales application. Do not rebuild its routes, sessions, customer-entry form, GPS capture, outlet-photo capture, tests, reports, follow-up or order-entry workflow.
 
-The existing MCP action remains the user entry point:
+The existing `Thêm khách` action creates an MCP field outlet for field operations only:
 
 ```text
 Employee opens a route/session
 -> taps “Thêm khách”
 -> enters the outlet data already supported by MCP
 -> MCP keeps the outlet in the route and active session
--> MCP backend sends the same outlet snapshot to Core for verification
--> Core reviewer creates a new official customer or links an existing customer
--> MCP receives the Core request status and, when approved, the official customer/address IDs and customer code
+-> the outlet remains an MCP field outlet
+-> no Core onboarding request is created
+-> no Core customer is created or linked
 ```
 
-The existing component `mcp/src/features/mcp/McpSessionAddCustomerButton.tsx` already collects customer name, phone, area, address, note, GPS and photos. The existing frontend route proxies `/api/backend/mcp-day/session-customer/add` to the MCP backend. Phase 6C.1 must adapt these existing boundaries rather than introducing a replacement screen or parallel customer workflow.
+A route/session outlet can be a prospect, visit point, shop that has not bought yet, historical outlet or other field-operational record. It is not automatically a company customer.
 
-Until Core approval/linking is complete, the outlet remains usable for field visits, tests, reports and follow-up, but cannot create an official Core Sales Order.
+Core verification is triggered only when a buying event requires an official order:
+
+```text
+Employee records purchase demand / starts an order for an MCP outlet
+-> MCP sees that the outlet has no Core customer link
+-> employee explicitly sends a customer verification/open-code request from the order flow
+-> request includes a stable demand/order-intent reference
+-> Core checks duplicates and existing customers
+-> Core links an existing active customer or approves creation of a new customer/address
+-> MCP receives the Core request status and official customer/address IDs
+-> only after linking may the official Sales Order be submitted to Core
+```
+
+No purchase-demand trigger means no Core request. This prevents route prospects and low-quality field records from polluting the official Core customer master.
+
+The existing component `mcp/src/features/mcp/McpSessionAddCustomerButton.tsx` already collects customer name, phone, area, address, note, GPS and photos. The existing route proxies `/api/backend/mcp-day/session-customer/add` to the MCP backend. Phase 6C.1 must preserve these boundaries and must prove that this route does not call Core onboarding automatically.
+
+Until Core approval/linking is complete, the outlet remains usable for field visits, tests, reports and follow-up. A purchase demand may remain a non-official MCP intent, but it cannot create an official Core Sales Order, reserve stock or create receivables.
 
 ## Phase 6C sequence
 
@@ -59,8 +76,8 @@ Until Core approval/linking is complete, the outlet remains usable for field vis
 6C.0D PostgreSQL mcp schema and write repositories          MERGED
 6C.0E backup/restore/migration rehearsal and reconciliation MERGED
 6C.0F provider attachment and cutover preparation           MERGED
-6C.1A existing MCP add-customer -> Core verification bridge ACTIVE
-6C.1B Core review/status synchronization completion          NOT STARTED
+6C.1A demand-triggered Core customer verification foundation ACTIVE
+6C.1B MCP request/status sync from the existing order flow   NOT STARTED
 6C.2  MCP official Sales Order adapter                       NOT STARTED
 ```
 
@@ -117,4 +134,4 @@ Not claimed or assumed:
 - any backend deployment, field-handler switch or traffic cutover.
 
 > Updated: `2026-08-02`  
-> Current checkpoint: Phase 6C.1A product alignment on Issue #151.
+> Current checkpoint: Phase 6C.1A demand-trigger correction on Issue #151.
