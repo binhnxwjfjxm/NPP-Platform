@@ -77,6 +77,10 @@ export async function supabaseRpc(config, name, args, options = {}) {
     if (POSTGRESQL_REPORT_RPC_NAMES.has(name)) {
       return postgresqlReportRpc(config, name, args, options);
     }
+    const { POSTGRESQL_SESSION_RPC_NAMES, postgresqlSessionRpc } = await import("./postgresql-session-adapter.js");
+    if (POSTGRESQL_SESSION_RPC_NAMES.has(name)) {
+      return postgresqlSessionRpc(config, name, args, options);
+    }
     const { POSTGRESQL_SPECIAL_RPC_NAMES, postgresqlSpecialRpc } = await import("./postgresql-media-adapter.js");
     if (POSTGRESQL_SPECIAL_RPC_NAMES.has(name)) {
       return postgresqlSpecialRpc(config, name, args, options);
