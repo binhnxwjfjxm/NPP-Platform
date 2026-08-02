@@ -9,10 +9,15 @@ const MCP_DOMAIN_READ_MODELS_SQL = readFileSync(
   new URL("./sql/002_mcp_domain_read_models.sql", import.meta.url),
   "utf8"
 );
+const MCP_SUPABASE_CONTRACT_PARITY_SQL = readFileSync(
+  new URL("./sql/003_mcp_supabase_contract_parity.sql", import.meta.url),
+  "utf8"
+);
 
 export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_001_write_foundation", sql: MCP_WRITE_FOUNDATION_SQL }),
-  Object.freeze({ id: "mcp_002_domain_read_models", sql: MCP_DOMAIN_READ_MODELS_SQL })
+  Object.freeze({ id: "mcp_002_domain_read_models", sql: MCP_DOMAIN_READ_MODELS_SQL }),
+  Object.freeze({ id: "mcp_003_supabase_contract_parity", sql: MCP_SUPABASE_CONTRACT_PARITY_SQL })
 ]);
 
 const MCP_READ_MODELS = Object.freeze([
@@ -198,6 +203,17 @@ export async function migrationVerifyWithAdapter(adapter, migrations = MCP_MIGRA
     outboxPendingIndex: await indexExists(adapter, "mcp_outbox_events_pending_available_idx"),
     routeCustomerOrderIndex: await indexExists(adapter, "mcp_route_customers_route_sort_idx"),
     orderItemsIndex: await indexExists(adapter, "order_items_order_idx"),
+    routeTemplateTable: await tableExists(adapter, "mcp_route_order_templates"),
+    outletMediaTable: await tableExists(adapter, "mcp_outlet_media"),
+    archiveIntentTable: await tableExists(adapter, "mcp_archive_intents"),
+    createRouteFunction: await functionExists(adapter, "mcp.mcp_create_route(text,text,integer,text,text)"),
+    updateRouteFunction: await functionExists(adapter, "mcp.mcp_update_route(text,text,text,integer,text,boolean,text)"),
+    updateRouteCustomerFunction: await functionExists(
+      adapter,
+      "mcp.mcp_update_route_customer(text,text,text,text,text,integer,text,boolean,double precision,double precision,double precision,text,text)"
+    ),
+    openRouteSessionFunction: await functionExists(adapter, "mcp.mcp_open_route_session(text,date,text)"),
+    sessionCounterFunction: await functionExists(adapter, "mcp.mcp_recalc_route_session_counters(text)"),
     ...readModelChecks
   });
   const issues = [];
