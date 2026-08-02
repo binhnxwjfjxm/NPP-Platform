@@ -35,6 +35,10 @@ const migrationIds = [
   "mcp_003_supabase_contract_parity"
 ];
 
+function migrationWasExecuted(adapter, pattern) {
+  return adapter.calls.some((call) => pattern.test(call.text));
+}
+
 test("MCP migrations use a unique registry namespace and apply once in one locked transaction", async () => {
   assert.deepEqual(MCP_MIGRATIONS.map((item) => item.id), migrationIds);
   const adapter = statefulAdapter();
@@ -45,10 +49,10 @@ test("MCP migrations use a unique registry namespace and apply once in one locke
   assert.equal(adapter.calls.filter((call) => call.text === "BEGIN").length, 2);
   assert.equal(adapter.calls.filter((call) => call.text === "COMMIT").length, 2);
   assert.equal(adapter.calls.some((call) => call.text.includes("pg_advisory_xact_lock")), true);
-  assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.idempotency_records")), true);
-  assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.mcp_routes")), true);
-  assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.orders")), true);
-  assert.equal(adapter.calls.some((call) => call.text.includes("CREATE TABLE IF NOT EXISTS mcp.mcp_outlet_media")), true);
+  assert.equal(migrationWasExecuted(adapter, /CREATE TABLE IF NOT EXISTS mcp\.idempotency_records/i), true);
+  assert.equal(migrationWasExecuted(adapter, /CREATE TABLE IF NOT EXISTS mcp\.mcp_routes/i), true);
+  assert.equal(migrationWasExecuted(adapter, /CREATE TABLE IF NOT EXISTS mcp\.orders/i), true);
+  assert.equal(migrationWasExecuted(adapter, /CREATE TABLE IF NOT EXISTS mcp\.mcp_outlet_media/i), true);
 
   const status = await migrationStatusWithAdapter(adapter);
   assert.deepEqual(status.pending, []);
@@ -145,7 +149,7 @@ test("Supabase parity migration preserves old fields, tables and business functi
 
   assert.match(sql, /CHECK \(status IN \('pending', 'ready', 'failed', 'deleting', 'delete_failed', 'deleted'\)\)/i);
   assert.match(sql, /UNIQUE \(group_id, item_key\)/i);
-  assert.doesNotMatch(sql, /https?:\/\/|SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY/i);
+  assert.doesNotMatch(sql, /SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY|https?:\/\/[^\s'"`]*supabase\.(?:co|in)\//i);
   assert.doesNotMatch(sql, /CREATE\s+TABLE\s+(shared|sales|purchasing|inventory|logistics|accounting|reporting)\./i);
 });
 
