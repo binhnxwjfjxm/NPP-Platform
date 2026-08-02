@@ -7,6 +7,7 @@ const files = {
   vercelMcp: ".github/workflows/vercel-mcp-production-manual.yml",
   herokuNpp: ".github/workflows/heroku-npp-backend-manual.yml",
   herokuMcp: ".github/workflows/heroku-mcp-backend-manual.yml",
+  herokuMcpScript: "mcp/apps/backend/scripts/manual-production-deploy.sh",
 };
 
 async function source(path) {
@@ -14,7 +15,8 @@ async function source(path) {
 }
 
 test("manual production deploy workflows expose four explicit Actions names", async () => {
-  const entries = await Promise.all(Object.values(files).map(source));
+  const workflowPaths = [files.vercelNpp, files.vercelMcp, files.herokuNpp, files.herokuMcp];
+  const entries = await Promise.all(workflowPaths.map(source));
   const expected = [
     "name: Manual Vercel NPP production deploy",
     "name: Manual Vercel MCP production deploy",
@@ -49,17 +51,19 @@ test("Vercel workflows are locked to distinct NPP and MCP projects", async () =>
 
 test("Heroku workflows fail closed across the Core and MCP app boundary", async () => {
   const npp = await source(files.herokuNpp);
-  const mcp = await source(files.herokuMcp);
+  const mcpWorkflow = await source(files.herokuMcp);
+  const mcpScript = await source(files.herokuMcpScript);
+  const mcp = `${mcpWorkflow}\n${mcpScript}`;
 
   assert.match(npp, /HEROKU_APP_NAME: hung-phat\n/);
   assert.match(npp, /HEROKU_FORBIDDEN_APP_NAME: hung-phat-mcp/);
   assert.match(npp, /web: npm run start:core-api/);
   assert.doesNotMatch(npp, /container:push web/);
 
-  assert.match(mcp, /HEROKU_APP_NAME: hung-phat-mcp/);
-  assert.match(mcp, /HEROKU_FORBIDDEN_APP_NAME: hung-phat\n/);
-  assert.match(mcp, /cd mcp\/apps\/backend/);
-  assert.match(mcp, /container:push web/);
+  assert.match(mcpWorkflow, /HEROKU_APP_NAME: hung-phat-mcp/);
+  assert.match(mcpWorkflow, /HEROKU_FORBIDDEN_APP_NAME: hung-phat\n/);
+  assert.match(mcpScript, /cd mcp\/apps\/backend/);
+  assert.match(mcpScript, /container:push web/);
 
   for (const text of [npp, mcp]) {
     assert.match(text, /smoke_health \/health\/live/);
@@ -69,17 +73,15 @@ test("Heroku workflows fail closed across the Core and MCP app boundary", async 
 });
 
 test("MCP Heroku health smoke never creates a double-slash path", async () => {
-  const mcp = await source(files.herokuMcp);
+  const mcp = await source(files.herokuMcpScript);
 
   assert.match(mcp, /app_url="\$\{app_url%\/\}"/);
-  assert.match(mcp, /app_url="\$\{APP_URL%\/\}"/);
-  assert.match(mcp, /local base_url="\$\{app_url%\/\}"/);
-  assert.match(mcp, /"\$base_url\$path"/);
+  assert.match(mcp, /"\$\{app_url%\/\}\$path"/);
   assert.match(mcp, /sed 's:\/\*\$::'/);
   assert.doesNotMatch(mcp, /"\$app_url\$path"/);
 });
 
-test("manual deploy workflows never embed database credentials", async () => {
+test("manual deploy workflows and scripts never embed database credentials", async () => {
   const entries = await Promise.all(Object.values(files).map(source));
   for (const text of entries) {
     assert.doesNotMatch(text, /postgres(?:ql)?:\/\/[^\s"']+@/i);
