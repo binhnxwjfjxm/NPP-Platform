@@ -52,7 +52,7 @@ const SALES_ORDER_PERMISSION_CATALOG = Object.freeze([
 
 const CUSTOMER_ONBOARDING_PERMISSION_CATALOG = Object.freeze([
   ['coreCustomerOnboardingRead', 'Xem đề nghị xác minh khách hàng', 'Cho phép đọc đề nghị xác minh/mở mã khách hàng trong phạm vi được cấp.'],
-  ['coreCustomerOnboardingSubmit', 'Gửi đề nghị xác minh khách hàng', 'Cho phép gửi đề nghị từ một nhu cầu mua hoặc order intent cần lập đơn chính thức.'],
+  ['coreCustomerOnboardingSubmit', 'Gửi đề nghị xác minh khách hàng', 'Cho phép gửi đề nghị xác minh từ một nhu cầu mua hoặc order intent cần lập đơn chính thức.'],
   ['coreCustomerOnboardingReview', 'Rà soát đề nghị xác minh khách hàng', 'Cho phép nhận xử lý, yêu cầu bổ sung và hủy đề nghị xác minh khách hàng.'],
   ['coreCustomerOnboardingApprove', 'Duyệt mở mã khách hàng', 'Cho phép duyệt và tạo đúng một khách hàng cùng địa chỉ chính thức.'],
   ['coreCustomerOnboardingLinkExisting', 'Liên kết khách hàng hiện hữu', 'Cho phép liên kết đề nghị với khách hàng và địa chỉ đang hoạt động.'],
