@@ -73,6 +73,11 @@ jobs:
           test "$sha" = "$(git rev-parse origin/main)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Validate NPP Core packaging boundary
         working-directory: npp-core/api
         shell: bash
@@ -82,7 +87,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
           const pkg = JSON.parse(await readFile("../../package.json", "utf8"));
-          if (pkg.scripts?.["start:core-api"] !== "npm --workspace npp-core-api start") {
+          if (pkg.scripts?.["start:core-api"] !== "npm --workspace npp-core-api run start") {
             throw new Error("unexpected_core_api_start_contract");
           }
           NODE
