@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
 import {
@@ -104,7 +104,7 @@ export function McpOfficialOrderPanel({
   const [salesOrder, setSalesOrder] = useState<CoreSalesOrderProjection | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
-  const [busy, startTransition] = useTransition();
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -128,10 +128,12 @@ export function McpOfficialOrderPanel({
   }, [sessionCustomerId, orderId]);
 
   function run(action: () => Promise<void>) {
-    startTransition(() => {
-      setMessage(null);
-      void action().catch((error) => setMessage(error instanceof Error ? error.message : "Không xử lý được đơn NPP"));
-    });
+    if (busy) return;
+    setBusy(true);
+    setMessage(null);
+    void action()
+      .catch((error) => setMessage(error instanceof Error ? error.message : "Không xử lý được đơn NPP"))
+      .finally(() => setBusy(false));
   }
 
   const officialCustomerReady = onboarding?.officialOrderAllowed === true;
