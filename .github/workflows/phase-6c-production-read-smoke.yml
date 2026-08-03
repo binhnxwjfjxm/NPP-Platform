@@ -72,6 +72,26 @@ jobs:
           workdir="$(mktemp -d)"
           trap 'rm -rf "$workdir"' EXIT
 
+          fail_smoke() {
+            local code="$1"
+            echo "Phase 6C read smoke failed: $code" >&2
+            echo "SMOKE_FAILURE=$code" >> "$GITHUB_STEP_SUMMARY"
+            return 1
+          }
+
+          require_nonempty() {
+            local label="$1"
+            local value="$2"
+            [ -n "$value" ] || fail_smoke "${label}_missing"
+          }
+
+          require_equal() {
+            local label="$1"
+            local actual="$2"
+            local expected="$3"
+            [ "$actual" = "$expected" ] || fail_smoke "${label}_mismatch"
+          }
+
           app_url() {
             local app="$1"
             curl --fail --silent --show-error \
@@ -87,20 +107,43 @@ jobs:
             local expected="$2"
             shift 2
             local body="$workdir/$label.json"
-            local status
+            local status error_code
             status="$(curl --silent --show-error --connect-timeout 10 --max-time 45 --output "$body" --write-out '%{http_code}' "$@" || true)"
+            echo "SMOKE_STEP=$label HTTP=${status:-none}" >&2
+            echo "SMOKE_HTTP_${label^^}=${status:-none}" >> "$GITHUB_STEP_SUMMARY"
             if [ "$status" != "$expected" ]; then
-              echo "$label failed with HTTP ${status:-none}; expected $expected" >&2
-              exit 1
+              error_code="$(jq -r '.error.code // empty' "$body" 2>/dev/null || true)"
+              if [ -n "$error_code" ]; then
+                echo "SMOKE_ERROR_CODE_${label^^}=$error_code" >> "$GITHUB_STEP_SUMMARY"
+                echo "$label returned error code $error_code" >&2
+              fi
+              fail_smoke "${label}_http_${status:-none}_expected_$expected"
+              return 1
             fi
-            jq -e . "$body" >/dev/null
-            echo "$status"
+            if ! jq -e . "$body" >/dev/null 2>&1; then
+              fail_smoke "${label}_invalid_json"
+              return 1
+            fi
+            printf '%s' "$status"
+          }
+
+          assert_error_code() {
+            local label="$1"
+            local expected="$2"
+            local body="$workdir/$label.json"
+            local actual
+            actual="$(jq -r '.error.code // empty' "$body")"
+            if [ "$actual" != "$expected" ]; then
+              echo "SMOKE_ERROR_CODE_${label^^}=${actual:-missing}" >> "$GITHUB_STEP_SUMMARY"
+              fail_smoke "${label}_error_code_mismatch"
+              return 1
+            fi
           }
 
           core_url="$(app_url "$CORE_APP_NAME")"
           mcp_url="$(app_url "$MCP_APP_NAME")"
-          test -n "$core_url"
-          test -n "$mcp_url"
+          require_nonempty core_url "$core_url"
+          require_nonempty mcp_url "$mcp_url"
 
           mcp_config="$(heroku config -a "$MCP_APP_NAME" --json)"
           mcp_backend_token="$(jq -r '.BACKEND_API_TOKEN // empty' <<<"$mcp_config")"
@@ -108,12 +151,16 @@ jobs:
           onboarding_token="$(jq -r '.CORE_ONBOARDING_API_TOKEN // empty' <<<"$mcp_config")"
           sales_base="$(jq -r '.CORE_SALES_API_BASE_URL // empty' <<<"$mcp_config" | sed 's:/*$::')"
           sales_token="$(jq -r '.CORE_SALES_API_TOKEN // empty' <<<"$mcp_config")"
+          require_nonempty mcp_backend_token "$mcp_backend_token"
+          require_nonempty onboarding_base "$onboarding_base"
+          require_nonempty onboarding_token "$onboarding_token"
+          require_nonempty sales_base "$sales_base"
+          require_nonempty sales_token "$sales_token"
           for value in "$mcp_backend_token" "$onboarding_token" "$sales_token"; do
-            test -n "$value"
             echo "::add-mask::$value"
           done
-          test "$onboarding_base" = "$core_url"
-          test "$sales_base" = "$core_url"
+          require_equal onboarding_base "$onboarding_base" "$core_url"
+          require_equal sales_base "$sales_base" "$core_url"
 
           core_live="$(request_json core_live 200 "$core_url/health/live")"
           core_ready="$(request_json core_ready 200 "$core_url/health/ready")"
@@ -148,13 +195,13 @@ jobs:
             -H "X-Backend-Token: $mcp_backend_token" \
             -H 'Accept: application/json' \
             "$mcp_url/api/mcp-day/session-customer/customer-onboarding")"
-          test "$(jq -r '.error.code // empty' "$workdir/onboarding_validation.json")" = "session_customer_id_required"
+          assert_error_code onboarding_validation session_customer_id_required
 
           sales_validation="$(request_json sales_validation 400 \
             -H "X-Backend-Token: $mcp_backend_token" \
             -H 'Accept: application/json' \
             "$mcp_url/api/mcp-day/session-customer/sales-order")"
-          test "$(jq -r '.error.code // empty' "$workdir/sales_validation.json")" = "session_customer_id_required"
+          assert_error_code sales_validation session_customer_id_required
 
           existing_projection() {
             local integration_column="$1"
