@@ -11,6 +11,7 @@ import {
   PRODUCTION_CONFIRM_ENV,
   PRODUCTION_CONFIRM_VALUE,
   assertMigrationSafety,
+  createMigrationPoolOptions,
   databaseCredentialIdentity,
   parseDatabaseUrl,
   redactSensitiveText,
@@ -125,6 +126,24 @@ test("development migration may use the runtime URL or an explicit migration URL
     DATABASE_URL: "postgresql://runtime/test",
     [MIGRATION_DATABASE_URL_ENV]: "postgresql://migrator/test"
   }), /postgresql:\/\/migrator\/test/);
+});
+
+test("production migration pool requires TLS while rehearsal stays local", () => {
+  assert.deepEqual(
+    createMigrationPoolOptions("postgresql://example.invalid/installation", { NODE_ENV: "production" }).ssl,
+    { rejectUnauthorized: false }
+  );
+  assert.equal(
+    createMigrationPoolOptions("postgresql://localhost/installation", { NODE_ENV: "test" }).ssl,
+    false
+  );
+  assert.throws(
+    () => createMigrationPoolOptions("postgresql://example.invalid/installation", {
+      NODE_ENV: "production",
+      MCP_DB_SSL_MODE: "disable"
+    }),
+    (error) => error.code === "production_mcp_database_ssl_required"
+  );
 });
 
 test("database URL parsing and diagnostics never expose either credential", () => {
