@@ -38,19 +38,19 @@ jobs:
           set -euo pipefail
           test "$COMMENT_BODY" = '/export-mcp-legacy-report-settings'
 
-      - name: Checkout exact main
+      - name: Checkout exact main and complete history
         uses: actions/checkout@v4
         with:
           ref: ${{ env.DEPLOY_REF }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify exact origin main SHA
+      - name: Verify exact origin main SHA and fetch all refs
         id: source
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --prune --no-tags origin refs/heads/main:refs/remotes/origin/main
+          git fetch --prune --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
           sha="$(git rev-parse HEAD)"
           test "$sha" = "$(git rev-parse origin/main)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -65,7 +65,7 @@ jobs:
           --environment=production
           --token="$VERCEL_TOKEN"
 
-      - name: Export exact legacy report settings from protected deployment history
+      - name: Export exact legacy report settings from protected deployments or Git history
         id: export
         shell: bash
         env:
@@ -98,7 +98,8 @@ jobs:
             echo "- Groups: ${{ steps.export.outputs.groups }}"
             echo "- Items: ${{ steps.export.outputs.items }}"
             echo "- SHA-256: ${{ steps.export.outputs.sha256 }}"
-            echo "- Source deployment: ${{ steps.export.outputs.source_deployment }}"
+            echo "- Source kind: ${{ steps.export.outputs.source_kind }}"
+            echo "- Source locator: ${{ steps.export.outputs.source_locator }}"
             echo "- Artifact: mcp-legacy-report-settings-export"
             echo "- Run: $GITHUB_RUN_ID"
             echo "- Production mutation: none"
@@ -120,7 +121,7 @@ jobs:
             echo "- Source SHA: ${{ steps.source.outputs.sha || 'unresolved' }}"
             echo "- Run: $GITHUB_RUN_ID"
             echo "- Production mutation: none"
-            echo "- Inspect workflow logs for the exact failed step; no provider value is written here."
+            echo "- No exact 7-group/52-item snapshot was accepted."
           } > "$summary_file"
           cat "$summary_file" >> "$GITHUB_STEP_SUMMARY"
           gh api --method POST "repos/$GITHUB_REPOSITORY/issues/189/comments" -f body="$(cat "$summary_file")" >/dev/null
