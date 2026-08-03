@@ -24,6 +24,10 @@ test("Core production deploy remains manual and gains one exact Issue 5 command"
   assert.match(coreWorkflow, /DEPLOY_REF: main/);
   assert.match(coreWorkflow, /persist-credentials: false/);
   assert.match(coreWorkflow, /git rev-parse origin\/main/);
+  assert.match(coreWorkflow, /name: Setup Node 20/);
+  assert.match(coreWorkflow, /node-version: 20/);
+  assert.match(coreWorkflow, /npm --workspace npp-core-api run start/);
+  assert.doesNotMatch(coreWorkflow, /npm --workspace npp-core-api start"/);
   assert.match(coreWorkflow, /requested_action="\$\{REQUESTED_ACTION:-deploy\}"/);
   assert.match(coreWorkflow, /GITHUB_EVENT_NAME" = "issue_comment/);
   assert.doesNotMatch(coreWorkflow, /^\s{2}(?:push|pull_request|schedule):\s*$/m);
