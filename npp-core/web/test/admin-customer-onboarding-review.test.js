@@ -27,6 +27,11 @@ test('customer onboarding review uses the existing protected workflow', async ()
 
   assert.match(route, /mutateCustomerOnboardingRequest/);
   assert.match(route, /request\.headers\.get\('idempotency-key'\)/);
+  assert.match(route, /isSameOriginRequest/);
+  assert.match(route, /sec-fetch-site/);
+  assert.match(route, /contentType !== 'application\/json'/);
+  assert.match(route, /safeConflictDetails/);
+  assert.match(route, /'expectedVersion', 'currentVersion'/);
   assert.match(route, /Cache-Control': 'no-store'/);
   assert.match(middleware, /'\/api\/customer-onboarding-requests\/:path\*'/);
 
@@ -41,6 +46,8 @@ test('customer onboarding review uses the existing protected workflow', async ()
 
   assert.match(workspace, /expectedVersion: request\.version/);
   assert.match(workspace, /stableActionKey/);
+  assert.match(workspace, /busyRequests\.current\.has\(request\.id\)/);
+  assert.match(workspace, /busyByRequest\[request\.id\] === true/);
   assert.match(workspace, /delete actionKeys\.current\[idempotency\.cacheKey\]/);
   assert.match(workspace, /addressRequestVersions/);
   assert.match(workspace, /addressRequestVersions\.current\[requestId\] !== requestVersion/);
