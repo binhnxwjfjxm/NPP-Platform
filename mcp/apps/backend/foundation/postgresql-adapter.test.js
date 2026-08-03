@@ -2,8 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createPostgresqlPersistence } from "./postgresql-adapter.js";
 
-function config(overrides = {}) {
+function config(overrides = {}, { nodeEnv = "test" } = {}) {
   return {
+    nodeEnv,
     persistence: {
       provider: "postgresql",
       databaseUrl: "postgresql://test.invalid/mcp",
@@ -49,6 +50,7 @@ test("PostgreSQL adapter enforces schema search_path, timeouts, role and gracefu
   assert.deepEqual(await adapter.readiness(), { provider: "postgresql", configured: true, ready: true });
 
   const created = calls.find((entry) => entry.type === "construct").options;
+  assert.equal(created.ssl, false);
   assert.equal(created.max, 4);
   assert.equal(created.connectionTimeoutMillis, 1234);
   assert.equal(created.idleTimeoutMillis, 2345);
@@ -61,6 +63,28 @@ test("PostgreSQL adapter enforces schema search_path, timeouts, role and gracefu
 
   await adapter.close();
   assert.equal(calls.at(-1).type, "end");
+});
+
+test("production PostgreSQL runtime requires TLS", async () => {
+  let options;
+  class ProductionPool {
+    constructor(value) { options = value; }
+    async query() { return { rows: [{ role: "mcp_runtime", search_path: "mcp, public", schema_available: true }] }; }
+    async end() {}
+  }
+  const adapter = createPostgresqlPersistence(
+    config({ expectedRole: "mcp_runtime" }, { nodeEnv: "production" }),
+    { PoolImpl: ProductionPool }
+  );
+  assert.deepEqual(await adapter.readiness(), { provider: "postgresql", configured: true, ready: true });
+  assert.deepEqual(options.ssl, { rejectUnauthorized: false });
+  assert.throws(
+    () => createPostgresqlPersistence(
+      config({ sslMode: "disable" }, { nodeEnv: "production" }),
+      { PoolImpl: ProductionPool }
+    ),
+    (error) => error.code === "production_mcp_database_ssl_required"
+  );
 });
 
 test("transaction boundary commits, rolls back and always releases its client", async () => {
