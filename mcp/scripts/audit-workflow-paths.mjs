@@ -6,7 +6,7 @@ import { isMainModule } from "./esm-entrypoint.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO_ROOT = path.resolve(SCRIPT_DIR, "../..");
-const WORKSPACE_ROOTS = ["mcp/", "npp-core/", "packages/", "database/"];
+const WORKSPACE_ROOTS = ["mcp/", "npp-core/", "admin/", "packages/", "database/"];
 const LEGACY_FILTER_ROOTS = ["src/", "test/", "apps/", "supabase/", "scripts/", "ops/", "agent-backend/"];
 const LEGACY_ROOT_FILES = new Set([
   "next.config.js",
@@ -136,7 +136,7 @@ export function auditWorkflowText(filename, text) {
     const block = job.lines.join("\n");
     const commands = runCommands(job.lines);
     const runsNpm = commands.some((command) => /(^|\s)npm(?:\s|$)/.test(command));
-    if (runsNpm && !/working-directory:\s*(?:mcp|npp-core)(?:\/[^\s]+)?\s*$/m.test(block)) {
+    if (runsNpm && !/working-directory:\s*(?:mcp|npp-core|admin)(?:\/[^\s]+)?\s*$/m.test(block)) {
       errors.push(`${filename}:${job.name}:npm_without_workspace_working_directory`);
     }
 
