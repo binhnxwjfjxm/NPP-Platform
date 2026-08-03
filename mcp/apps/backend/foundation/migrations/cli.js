@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { buildPostgresqlSslConfig, resolvePostgresqlSslMode } from "../postgresql-ssl.js";
 import {
   ESSENTIAL_OWNER_CONFIRM_ENV,
   ESSENTIAL_OWNER_CONFIRM_VALUE,
@@ -49,6 +50,18 @@ function fail(code, message = code) {
 
 export function resolveMigrationConnectionString(env = process.env) {
   return resolveMigrationCredentialContext(env).connectionString;
+}
+
+export function createMigrationPoolOptions(connectionString, env = process.env) {
+  const sslMode = resolvePostgresqlSslMode({
+    nodeEnv: env.NODE_ENV,
+    mode: env.MCP_DB_SSL_MODE
+  });
+  return {
+    connectionString,
+    ssl: buildPostgresqlSslConfig(sslMode),
+    application_name: "mcp-migration-cli"
+  };
 }
 
 export function assertMigrationSafety({
@@ -120,7 +133,7 @@ export async function runMigrationCommand(command, env = process.env, { PoolImpl
     credentialMode = credentialContext.credentialMode;
     leastPrivilege = credentialContext.leastPrivilege;
     databaseIdentifier = sanitizeDatabaseIdentifier(connectionString);
-    pool = new PoolImpl({ connectionString, application_name: "mcp-migration-cli" });
+    pool = new PoolImpl(createMigrationPoolOptions(connectionString, env));
     log({
       timestamp: new Date().toISOString(),
       command,
