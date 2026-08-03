@@ -24,13 +24,17 @@ export type CustomerOnboardingRequestSummary = {
   status: string;
   sourceOutletId: string;
   sourceDemandReference: string;
-  proposedName: string;
-  proposedPhone: string | null;
-  proposedAddressLine1: string;
-  proposedWard: string | null;
-  proposedDistrict: string | null;
-  proposedProvince: string | null;
-  requestedAt: string;
+  proposedCustomer: {
+    name: string;
+    phone: string | null;
+    address: {
+      addressLine1: string;
+      ward: string | null;
+      district: string | null;
+      province: string | null;
+    };
+  };
+  submittedAt: string;
   updatedAt: string;
 };
 
