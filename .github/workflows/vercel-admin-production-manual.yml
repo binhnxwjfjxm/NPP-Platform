@@ -83,46 +83,42 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
-          api="https://api.vercel.com"
           project_json="${RUNNER_TEMP}/admin-project.json"
           status="$(curl --silent --show-error --output "$project_json" --write-out '%{http_code}' \
             -H "Authorization: Bearer $VERCEL_TOKEN" \
-            "$api/v9/projects/$ADMIN_PROJECT_NAME?teamId=$VERCEL_ORG_ID")"
+            "https://api.vercel.com/v9/projects/$ADMIN_PROJECT_NAME?teamId=$VERCEL_ORG_ID")"
           if [ "$status" = 404 ]; then
+            payload="$(node -e 'process.stdout.write(JSON.stringify({name:process.env.ADMIN_PROJECT_NAME,framework:"nextjs",rootDirectory:process.env.ADMIN_ROOT_DIRECTORY,nodeVersion:"20.x"}))')"
             status="$(curl --silent --show-error --output "$project_json" --write-out '%{http_code}' \
               -X POST \
               -H "Authorization: Bearer $VERCEL_TOKEN" \
               -H 'Content-Type: application/json' \
-              "$api/v10/projects?teamId=$VERCEL_ORG_ID" \
-              --data "$(node -e 'process.stdout.write(JSON.stringify({name:process.env.ADMIN_PROJECT_NAME,framework:"nextjs",rootDirectory:process.env.ADMIN_ROOT_DIRECTORY,nodeVersion:"20.x"}))')")"
+              "https://api.vercel.com/v10/projects?teamId=$VERCEL_ORG_ID" \
+              --data "$payload")"
           fi
-          test "$status" = 200 || test "$status" = 201
-          project_id="$(node -e 'const p=require(process.argv[1]); if(!p.id) process.exit(1); process.stdout.write(p.id)' "$project_json")"
+          case "$status" in 200|201) ;; *) cat "$project_json" >&2; exit 1 ;; esac
+          project_id="$(PROJECT_FILE="$project_json" node --input-type=module -e 'import {readFileSync} from "node:fs"; const p=JSON.parse(readFileSync(process.env.PROJECT_FILE,"utf8")); if(!p.id) process.exit(1); process.stdout.write(p.id)')"
           test "$project_id" != "$CORE_PROJECT_ID"
           test "$project_id" != "$MCP_PROJECT_ID"
           echo "project_id=$project_id" >> "$GITHUB_OUTPUT"
 
       - name: Pull protected Core runtime values
-        id: runtime
         shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          ENV_FILE: ${{ runner.temp }}/core-runtime/.vercel/.env.production.local
         run: |
           set -euo pipefail
           runtime_dir="${RUNNER_TEMP}/core-runtime"
           mkdir -p "$runtime_dir/.vercel"
           printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$CORE_PROJECT_ID" > "$runtime_dir/.vercel/project.json"
-          (
-            cd "$runtime_dir"
-            npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN" >/dev/null
-          )
-          env_file="$runtime_dir/.vercel/.env.production.local"
-          test -f "$env_file"
+          (cd "$runtime_dir" && npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN" >/dev/null)
+          test -f "$ENV_FILE"
           node --input-type=module <<'NODE'
           import { appendFile, readFile } from 'node:fs/promises';
           const source = await readFile(process.env.ENV_FILE, 'utf8');
           const names = ['CORE_API_INTERNAL_URL','CORE_API_SERVER_TOKEN','CORE_WEB_ADMIN_USERNAME','CORE_WEB_ADMIN_PASSWORD'];
-          const parsed = {};
+          const values = {};
           for (const line of source.split(/\r?\n/)) {
             if (!line || line.startsWith('#')) continue;
             const index = line.indexOf('=');
@@ -130,20 +126,17 @@ jobs:
             const key = line.slice(0, index);
             let value = line.slice(index + 1);
             if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
-            parsed[key] = value.replace(/\\n/g, '\n');
+            values[key] = value.replace(/\\n/g, '\n');
           }
-          const missing = names.filter((name) => !String(parsed[name] || '').trim());
+          const missing = names.filter((name) => !String(values[name] || '').trim());
           if (missing.length) throw new Error(`missing_admin_runtime_sources:${missing.join(',')}`);
           for (const name of names) {
-            const value = String(parsed[name]);
+            const value = String(values[name]);
             process.stdout.write(`::add-mask::${value}\n`);
             const marker = `ADMIN_${name}_${Date.now()}`;
             await appendFile(process.env.GITHUB_ENV, `${name}<<${marker}\n${value}\n${marker}\n`, 'utf8');
           }
           NODE
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          ENV_FILE: ${{ runner.temp }}/core-runtime/.vercel/.env.production.local
 
       - name: Synchronize Admin production environment
         shell: bash
@@ -168,8 +161,7 @@ jobs:
           if (!response.ok) throw new Error(`admin_env_upsert_failed:${response.status}`);
           NODE
 
-      - name: Attach frontend domains to their Vercel projects
-        id: domains
+      - name: Attach frontend domains to their projects
         shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -177,21 +169,19 @@ jobs:
         run: |
           set -euo pipefail
           attach_domain() {
-            local project_id="$1"
-            local domain="$2"
-            local body status
+            local project_id="$1" domain="$2" lookup status body
             body="${RUNNER_TEMP}/domain-${domain//./-}.json"
+            lookup="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              "https://api.vercel.com/v9/projects/$project_id/domains/$domain?teamId=$VERCEL_ORG_ID")"
+            [ "$lookup" = 200 ] && return 0
             status="$(curl --silent --show-error --output "$body" --write-out '%{http_code}' \
               -X POST \
               -H "Authorization: Bearer $VERCEL_TOKEN" \
               -H 'Content-Type: application/json' \
               "https://api.vercel.com/v10/projects/$project_id/domains?teamId=$VERCEL_ORG_ID" \
               --data "{\"name\":\"$domain\"}")"
-            if [ "$status" != 200 ] && [ "$status" != 201 ] && [ "$status" != 409 ]; then
-              echo "Cannot attach domain $domain (HTTP $status)." >&2
-              cat "$body" >&2
-              exit 1
-            fi
+            case "$status" in 200|201) ;; *) cat "$body" >&2; exit 1 ;; esac
           }
           attach_domain "$WEBSITE_PROJECT_ID" "$WEBSITE_DOMAIN"
           attach_domain "$CORE_PROJECT_ID" "$NPP_DOMAIN"
@@ -213,9 +203,6 @@ jobs:
           const linked = JSON.parse(await readFile('.vercel/project.json', 'utf8'));
           if (linked.projectId !== process.env.ADMIN_PROJECT_ID) throw new Error('unexpected_admin_project');
           if (linked.settings?.rootDirectory !== process.env.ADMIN_ROOT_DIRECTORY) throw new Error(`unexpected_admin_root:${linked.settings?.rootDirectory}`);
-          NODE
-          node --input-type=module <<'NODE'
-          import { readFile } from 'node:fs/promises';
           const config = JSON.parse(await readFile('admin/web/vercel.json', 'utf8'));
           if (config.git?.deploymentEnabled !== false) throw new Error('admin_auto_deploy_not_locked');
           NODE
@@ -233,9 +220,9 @@ jobs:
 
       - name: Deploy Admin production artifact
         id: deploy
+        shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        shell: bash
         run: |
           set -euo pipefail
           url="$(npx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
@@ -260,7 +247,7 @@ jobs:
           test -n "$asset"
           curl --fail --silent --show-error "$DEPLOYMENT_URL$asset" >/dev/null
 
-      - name: Record domain verification state
+      - name: Read Admin domain state
         id: domain-state
         shell: bash
         env:
@@ -269,20 +256,19 @@ jobs:
         run: |
           set -euo pipefail
           body="${RUNNER_TEMP}/admin-domain.json"
-          status="$(curl --silent --show-error --output "$body" --write-out '%{http_code}' \
+          curl --fail --silent --show-error \
             -H "Authorization: Bearer $VERCEL_TOKEN" \
-            "https://api.vercel.com/v9/projects/$ADMIN_PROJECT_ID/domains/$ADMIN_DOMAIN?teamId=$VERCEL_ORG_ID")"
-          test "$status" = 200
-          verified="$(node -e 'const p=require(process.argv[1]); process.stdout.write(String(p.verified===true))' "$body")"
+            "https://api.vercel.com/v9/projects/$ADMIN_PROJECT_ID/domains/$ADMIN_DOMAIN?teamId=$VERCEL_ORG_ID" > "$body"
+          verified="$(DOMAIN_FILE="$body" node --input-type=module -e 'import {readFileSync} from "node:fs"; const p=JSON.parse(readFileSync(process.env.DOMAIN_FILE,"utf8")); process.stdout.write(String(p.verified===true))')"
           echo "verified=$verified" >> "$GITHUB_OUTPUT"
 
       - name: Report successful Admin rollout
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           PROJECT_ID: ${{ steps.project.outputs.project_id }}
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
           DOMAIN_VERIFIED: ${{ steps.domain-state.outputs.verified }}
-        shell: bash
         run: |
           set -euo pipefail
-          gh issue comment 5 --body "Admin Vercel production deploy succeeded for SHA ${{ steps.target.outputs.sha }}. Project: \`$PROJECT_ID\`. Deployment: $DEPLOYMENT_URL. Domain \`$ADMIN_DOMAIN\` verified: \`$DOMAIN_VERIFIED\`. Domain \`$NPP_DOMAIN\`, \`$MCP_DOMAIN\` and \`$WEBSITE_DOMAIN\` were attached to their existing projects. \`log.nguyenlieuhungphat.com\` remains reserved until the Delivery frontend exists."
+          gh issue comment 5 --body "Admin Vercel production deploy succeeded for SHA ${{ steps.target.outputs.sha }}. Project: \`$PROJECT_ID\`. Deployment: $DEPLOYMENT_URL. Domain \`$ADMIN_DOMAIN\` verified: \`$DOMAIN_VERIFIED\`. Website, NPP and MCP domains were attached to their existing projects. \`log.nguyenlieuhungphat.com\` remains reserved until the Delivery frontend exists."
