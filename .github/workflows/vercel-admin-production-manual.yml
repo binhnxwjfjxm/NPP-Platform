@@ -160,12 +160,21 @@ jobs:
             CORE_WEB_ADMIN_PASSWORD: process.env.CORE_WEB_ADMIN_PASSWORD,
             NPP_OPERATIONS_URL: process.env.NPP_OPERATIONS_URL,
           };
+          const missing = Object.entries(values)
+            .filter(([, value]) => !String(value || '').trim())
+            .map(([key]) => key);
+          if (missing.length) throw new Error(`missing_admin_environment_values:${missing.join(',')}`);
           const response = await fetch(`https://api.vercel.com/v10/projects/${process.env.ADMIN_PROJECT_ID}/env?teamId=${process.env.VERCEL_ORG_ID}&upsert=true`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${process.env.VERCEL_TOKEN}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(Object.entries(values).map(([key, value]) => ({ key, value, type: 'encrypted', target: ['production'] }))),
+            body: JSON.stringify(Object.entries(values).map(([key, value]) => ({ key, value, type: 'sensitive', target: ['production'] }))),
           });
-          if (!response.ok) throw new Error(`admin_env_upsert_failed:${response.status}`);
+          const payload = await response.json().catch(() => null);
+          if (!response.ok) {
+            const code = payload?.error?.code || 'unknown';
+            const message = payload?.error?.message || 'Vercel rejected the environment update';
+            throw new Error(`admin_env_upsert_failed:${response.status}:${code}:${message}`);
+          }
           NODE
 
       - name: Attach frontend domains to their projects
