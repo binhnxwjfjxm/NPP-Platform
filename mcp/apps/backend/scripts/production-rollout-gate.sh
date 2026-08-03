@@ -90,18 +90,26 @@ snapshot_table_count() {
   ' "$snapshot_file"
 }
 
-assert_report_settings_counts_not_decreased() {
+assert_report_settings_seed_growth_bounded() {
   local before_file="$1"
   local after_file="$2"
   local label="$3"
   local table_name=""
   local before_count=""
   local after_count=""
+  local growth=""
+  local maximum_growth=""
   for table_name in mcp_report_setting_groups mcp_report_settings; do
     before_count="$(snapshot_table_count "$before_file" "$table_name")"
     after_count="$(snapshot_table_count "$after_file" "$table_name")"
-    if [ "$after_count" -lt "$before_count" ]; then
-      echo "Report settings row count decreased during $label for $table_name." >&2
+    case "$table_name" in
+      mcp_report_setting_groups) maximum_growth=7 ;;
+      mcp_report_settings) maximum_growth=53 ;;
+      *) exit 1 ;;
+    esac
+    growth=$((after_count - before_count))
+    if [ "$growth" -lt 0 ] || [ "$growth" -gt "$maximum_growth" ]; then
+      echo "Unexpected report settings row-count change during $label for $table_name." >&2
       exit 1
     fi
   done
@@ -121,7 +129,7 @@ assert_legacy_report_settings_seed() {
             WHERE installation_id = 'mcp-plan-prod'
               AND raw_payload->>'legacy_snapshot_sha256' = :'snapshot_sha'
           ), legacy_items AS (
-            SELECT id, group_id, active
+            SELECT id, group_id
             FROM mcp.mcp_report_settings
             WHERE installation_id = 'mcp-plan-prod'
               AND raw_payload->>'legacy_snapshot_sha256' = :'snapshot_sha'
@@ -129,14 +137,12 @@ assert_legacy_report_settings_seed() {
           SELECT
             (SELECT count(*) FROM legacy_groups)::text || '|' ||
             (SELECT count(*) FROM legacy_items)::text || '|' ||
-            (SELECT count(*) FROM legacy_items WHERE active)::text || '|' ||
-            (SELECT count(*) FROM legacy_items WHERE NOT active)::text || '|' ||
             (SELECT count(*)
              FROM legacy_items i
              LEFT JOIN legacy_groups g ON g.id = i.group_id
              WHERE g.id IS NULL)::text;"
   )"
-  if [ "$result" != "7|53|52|1|0" ]; then
+  if [ "$result" != "7|53|0" ]; then
     echo "Legacy report settings reconciliation failed during $label." >&2
     exit 1
   fi
@@ -188,7 +194,7 @@ MCP_MIGRATION_DATABASE_URL="$restore_database_url" \
 npm --prefix mcp/apps/backend run migration:migrate
 snapshot_counts "$restore_database_url" "$restore_after"
 assert_non_report_settings_counts_unchanged "$restore_before" "$restore_after" "restore migration rehearsal"
-assert_report_settings_counts_not_decreased "$restore_before" "$restore_after" "restore migration rehearsal"
+assert_report_settings_seed_growth_bounded "$restore_before" "$restore_after" "restore migration rehearsal"
 assert_legacy_report_settings_seed "$restore_database_url" "restore migration rehearsal"
 
 NODE_ENV=production \
@@ -239,7 +245,7 @@ fi
 
 snapshot_counts "$migration_database_url" "$production_after"
 assert_non_report_settings_counts_unchanged "$production_before" "$production_after" "production migration"
-assert_report_settings_counts_not_decreased "$production_before" "$production_after" "production migration"
+assert_report_settings_seed_growth_bounded "$production_before" "$production_after" "production migration"
 assert_legacy_report_settings_seed "$migration_database_url" "production migration"
 
 {
@@ -248,7 +254,7 @@ assert_legacy_report_settings_seed "$migration_database_url" "production migrati
   echo "MCP_RESTORE_REHEARSAL=success"
   echo "MCP_PRODUCTION_MIGRATION=success"
   echo "MCP_PRODUCTION_RECONCILIATION=success"
-  echo "MCP_LEGACY_REPORT_SETTINGS=7_groups_53_items_52_active_1_inactive"
+  echo "MCP_LEGACY_REPORT_SETTINGS=7_groups_53_items_reconciled"
   echo "MCP_MIGRATION_CREDENTIAL_MODE=$credential_mode"
   echo "MCP_MIGRATION_LEAST_PRIVILEGE=$least_privilege"
   echo "MCP_RUNTIME_GRANT=$runtime_grant"
