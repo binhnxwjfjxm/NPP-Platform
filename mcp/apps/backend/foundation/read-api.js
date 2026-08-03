@@ -26,6 +26,18 @@ const ALLOWED_READ_TABLES = new Set([
   "test_files"
 ]);
 
+const INSTALLATION_SCOPED_READ_TABLES = new Set([
+  "mcp_followups",
+  "mcp_report_setting_groups",
+  "mcp_report_settings",
+  "mcp_route_customers",
+  "mcp_route_sessions",
+  "mcp_routes",
+  "mcp_session_customers",
+  "mcp_session_reports",
+  "mcp_visits"
+]);
+
 function text(value) {
   return String(value ?? "").trim();
 }
@@ -196,10 +208,20 @@ async function readJsonBody(req) {
   }
 }
 
-function buildReadQuery(table, request) {
+function installationScopedFilters(table, filters, context) {
+  const next = { ...(filters || {}) };
+  if (!INSTALLATION_SCOPED_READ_TABLES.has(table)) return next;
+
+  const currentInstallationId = text(context?.installation?.id);
+  if (!currentInstallationId) throw readError("installation_context_required", 500);
+  next.installation_id = `eq.${currentInstallationId}`;
+  return next;
+}
+
+function buildReadQuery(table, request, context) {
   const sqlParts = [`FROM ${quoteIdentifier(table)}`];
   const params = [];
-  const filters = Object.entries(request.filters || {})
+  const filters = Object.entries(installationScopedFilters(table, request.filters, context))
     .map(([key, value]) => parseFilterClause(key, value, params))
     .filter(Boolean);
 
@@ -243,7 +265,7 @@ export async function handleReadApi(req, url, context, config, { persistence } =
 
   const body = await readJsonBody(req);
   const table = requiredTable(body.table);
-  const query = buildReadQuery(table, body);
+  const query = buildReadQuery(table, body, context);
 
   await persistence.assertReady();
   const result = await persistence.withTransaction(async (client) => {
