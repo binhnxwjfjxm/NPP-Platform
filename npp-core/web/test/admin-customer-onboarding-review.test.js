@@ -19,6 +19,7 @@ test('customer onboarding review uses the existing protected workflow', async ()
   assert.match(gateway, /'need-more-info'/);
   assert.match(gateway, /'link-existing'/);
   assert.match(gateway, /isPositiveInteger\(value\.version\)/);
+  assert.match(gateway, /query\.set\('offset'/);
   assert.match(gateway, /Idempotency-Key/);
   assert.match(gateway, /CORE_API_SERVER_TOKEN/);
   assert.match(gateway, /cache: 'no-store'/);
@@ -29,12 +30,20 @@ test('customer onboarding review uses the existing protected workflow', async ()
   assert.match(route, /Cache-Control': 'no-store'/);
   assert.match(middleware, /'\/api\/customer-onboarding-requests\/:path\*'/);
 
+  assert.match(page, /loadAllRequestsForStatus/);
+  assert.match(page, /offset \+= ONBOARDING_PAGE_SIZE/);
+  assert.match(page, /offset \+= CUSTOMER_PAGE_SIZE/);
+  assert.match(page, /added === 0/);
   assert.match(page, /'submitted', 'under_review', 'need_more_info'/);
   assert.match(page, /active: 'true'/);
   assert.match(page, /CustomerOnboardingReview/);
   assert.match(overview, /href="\/management\/customer-onboarding"/);
 
   assert.match(workspace, /expectedVersion: request\.version/);
+  assert.match(workspace, /stableActionKey/);
+  assert.match(workspace, /delete actionKeys\.current\[idempotency\.cacheKey\]/);
+  assert.match(workspace, /addressRequestVersions/);
+  assert.match(workspace, /addressRequestVersions\.current\[requestId\] !== requestVersion/);
   assert.match(workspace, /Bắt đầu xem xét/);
   assert.match(workspace, /Yêu cầu bổ sung/);
   assert.match(workspace, /Duyệt tạo khách mới/);
