@@ -2,11 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Readable } from "node:stream";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { handleReadApi } from "../apps/backend/foundation/read-api.js";
 
-const root = resolve(import.meta.dirname, "..");
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
 
 function jsonRequest(body) {
@@ -71,6 +72,8 @@ test("visits page reads the current MCP day from PostgreSQL instead of the old A
 
   assert.match(route, /loadMcpDayData/);
   assert.match(route, /ROUTE_ID_REQUIRED/);
+  assert.match(route, /MCP_DAY_READ_FAILED/);
+  assert.doesNotMatch(route, /error\.message/);
   assert.match(loader, /backendReadRows<Row>\("mcp_route_sessions"/);
   assert.match(loader, /backendReadRows<Row>\("mcp_session_customers"/);
   assert.match(loader, /backendReadRows<Row>\("mcp_visits"/);
