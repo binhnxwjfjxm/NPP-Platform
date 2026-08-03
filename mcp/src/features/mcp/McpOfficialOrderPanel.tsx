@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
 import {
+  apiErrorMessage,
   coreSalesOrderStatusLabel,
   getCoreSalesOrderProjection,
   submitCoreSalesOrder,
@@ -30,14 +31,6 @@ type CustomerOnboardingProjection = {
   reviewReason?: string | null;
   officialOrderAllowed: boolean;
 };
-
-function apiErrorMessage(payload: unknown, fallback: string) {
-  if (!payload || typeof payload !== "object") return fallback;
-  const value = payload as { error?: string | { message?: string }; detail?: string; message?: string };
-  if (typeof value.error === "string" && value.error.trim()) return value.error;
-  if (value.error && typeof value.error === "object" && value.error.message?.trim()) return value.error.message;
-  return value.detail || value.message || fallback;
-}
 
 function onboardingFromPayload(payload: unknown): CustomerOnboardingProjection {
   const data = payload && typeof payload === "object" ? (payload as { data?: unknown }).data : null;
@@ -90,6 +83,12 @@ function money(value?: string | null) {
   return Number.isFinite(amount) ? `${Math.round(amount).toLocaleString("vi-VN")}đ` : "—";
 }
 
+function settledError(results: PromiseSettledResult<unknown>[]) {
+  const rejected = results.find((result) => result.status === "rejected");
+  if (!rejected || rejected.status !== "rejected") return null;
+  return rejected.reason instanceof Error ? rejected.reason.message : "Không tải được một phần dữ liệu đơn NPP";
+}
+
 export function McpOfficialOrderPanel({
   sessionCustomerId,
   orderId,
@@ -109,17 +108,15 @@ export function McpOfficialOrderPanel({
   useEffect(() => {
     let active = true;
     setLoading(true);
-    Promise.all([
+    Promise.allSettled([
       getCustomerOnboarding(sessionCustomerId, orderId),
       getCoreSalesOrderProjection(sessionCustomerId, orderId)
     ])
-      .then(([customerProjection, orderProjection]) => {
+      .then(([onboardingResult, orderResult]) => {
         if (!active) return;
-        setOnboarding(customerProjection);
-        setSalesOrder(orderProjection);
-      })
-      .catch((error) => {
-        if (active) setMessage(error instanceof Error ? error.message : "Không tải được dữ liệu đơn NPP");
+        if (onboardingResult.status === "fulfilled") setOnboarding(onboardingResult.value);
+        if (orderResult.status === "fulfilled") setSalesOrder(orderResult.value);
+        setMessage(settledError([onboardingResult, orderResult]));
       })
       .finally(() => {
         if (active) setLoading(false);
