@@ -50,6 +50,33 @@ export class CustomerOnboardingGatewayError extends Error {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isNullableString(value: unknown): boolean {
+  return value === null || typeof value === 'string';
+}
+
+function isCustomerOnboardingRequestSummary(value: unknown): value is CustomerOnboardingRequestSummary {
+  if (!isRecord(value) || !ALLOWED_STATUSES.has(String(value.status ?? ''))) return false;
+  const proposedCustomer = value.proposedCustomer;
+  if (!isRecord(proposedCustomer)) return false;
+  const address = proposedCustomer.address;
+  if (!isRecord(address)) return false;
+  return typeof value.id === 'string'
+    && typeof value.sourceOutletId === 'string'
+    && typeof value.sourceDemandReference === 'string'
+    && typeof value.submittedAt === 'string'
+    && typeof value.updatedAt === 'string'
+    && typeof proposedCustomer.name === 'string'
+    && isNullableString(proposedCustomer.phone)
+    && typeof address.addressLine1 === 'string'
+    && isNullableString(address.ward)
+    && isNullableString(address.district)
+    && isNullableString(address.province);
+}
+
 function requiredServerValue(name: 'CORE_API_INTERNAL_URL' | 'CORE_API_SERVER_TOKEN'): string {
   const value = process.env[name]?.trim();
   if (!value) {
@@ -114,7 +141,17 @@ export async function listCustomerOnboardingRequests({
 }): Promise<CustomerOnboardingRequestSummary[]> {
   const query = new URLSearchParams();
   query.set('limit', String(Math.max(1, Math.min(100, Math.trunc(limit)))));
-  if (status && ALLOWED_STATUSES.has(status)) query.set('status', status);
+  if (status) {
+    if (!ALLOWED_STATUSES.has(status)) {
+      throw new CustomerOnboardingGatewayError(
+        'CUSTOMER_ONBOARDING_INVALID_STATUS',
+        'Trạng thái xác minh khách hàng không hợp lệ',
+        400,
+        false,
+      );
+    }
+    query.set('status', status);
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -130,7 +167,7 @@ export async function listCustomerOnboardingRequests({
       },
     });
     const payload = await response.json().catch(() => null) as CoreEnvelope<{
-      customerOnboardingRequests: CustomerOnboardingRequestSummary[];
+      customerOnboardingRequests: unknown;
     }> | null;
     if (!payload) {
       throw new CustomerOnboardingGatewayError(
@@ -149,7 +186,7 @@ export async function listCustomerOnboardingRequests({
       );
     }
     const requests = payload.data?.customerOnboardingRequests;
-    if (!Array.isArray(requests)) {
+    if (!Array.isArray(requests) || !requests.every(isCustomerOnboardingRequestSummary)) {
       throw new CustomerOnboardingGatewayError(
         'CUSTOMER_ONBOARDING_GATEWAY_RESPONSE_INVALID',
         'Phản hồi xác minh khách hàng không hợp lệ',
