@@ -4,22 +4,24 @@ import { readFileSync } from "node:fs";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("MCP product picker uses canonical NPP Core Sales SKU search", () => {
+test("existing MCP product routes are overridden by canonical NPP Core Sales SKU search", () => {
   const api = read("apps/backend/foundation/core-sales-api.js");
   const runtime = read("apps/backend/foundation/typed-runtime.js");
-  const ui = read("src/features/mcp/McpSessionCompactViewFinal2.tsx");
+  const demandUi = read("src/features/mcp/McpSessionCompactViewFinal2.tsx");
   assert.match(api, /searchCoreSalesSkus/);
   assert.match(api, /catalogSource: "NPP_CORE"/);
+  assert.match(api, /pathname === "\/api\/products\/search"/);
   assert.match(runtime, /handleCoreSalesApi/);
-  assert.doesNotMatch(ui, /async function getVariants/);
-  assert.match(ui, /Nguồn NPP Core/);
-  assert.match(ui, /NPP tính giá khi tạo đơn/);
+  assert.match(demandUi, /fetch\(`\/api\/products\/search/);
+  assert.match(demandUi, /fetch\(`\/api\/products\/\$\{encodeURIComponent\(productId\)\}\/variants/);
 });
 
-test("official order creation remains explicit, draft-only and MCP backend owned", () => {
+test("official order creation is a separate explicit action from the saved MCP demand", () => {
   const service = read("apps/backend/foundation/sales-order-sync.js");
   const client = read("apps/backend/foundation/core-sales-client.js");
-  const ui = read("src/features/mcp/McpSessionCompactViewFinal2.tsx");
+  const card = read("src/features/mcp/McpLineCard.tsx");
+  const panel = read("src/features/mcp/McpOfficialOrderPanel.tsx");
+  const page = read("src/app/visits/order-intent/page.tsx");
   assert.match(service, /sourceType: "MCP"/);
   assert.match(service, /sourceId: row\.order_id/);
   assert.match(service, /sourceOutletId: sourceOutletId\(row\)/);
@@ -27,9 +29,12 @@ test("official order creation remains explicit, draft-only and MCP backend owned
   assert.match(service, /mcp-sales-order-\$\{row\.order_id\}/);
   assert.match(client, /\/api\/sales-orders/);
   assert.doesNotMatch(client, /\/confirm|amendments|\/cancel/);
-  assert.match(ui, /Tạo đơn nháp NPP/);
-  assert.match(ui, /submitCoreSalesOrder/);
-  assert.doesNotMatch(ui, /confirmCoreSalesOrder/);
+  assert.match(card, /line\.orderId \?/);
+  assert.match(card, /Đơn NPP/);
+  assert.match(panel, /Tạo đơn nháp NPP/);
+  assert.match(panel, /submitCoreSalesOrder/);
+  assert.match(page, /McpOfficialOrderPanel/);
+  assert.doesNotMatch(panel, /confirmCoreSalesOrder/);
 });
 
 test("MCP Core Sales principal is least privilege and warehouse scoped", () => {
