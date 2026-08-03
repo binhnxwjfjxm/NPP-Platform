@@ -21,11 +21,20 @@ core_subset_file="$workdir/core-subset.json"
 mcp_subset_file="$workdir/mcp-subset.json"
 core_changed="false"
 mcp_changed="false"
+mutation_started="false"
 rollback_attempted="false"
 rollback_healthy="not_needed"
 
 cleanup() {
+  local status=$?
+  trap - EXIT
+  if [ "$status" -ne 0 ] \
+    && [ "$mutation_started" = "true" ] \
+    && [ "$rollback_attempted" != "true" ]; then
+    restore_original_config || true
+  fi
   rm -rf "$workdir"
+  exit "$status"
 }
 trap cleanup EXIT
 
@@ -34,6 +43,34 @@ mask() {
   if [ -n "$value" ]; then
     echo "::add-mask::$value"
   fi
+}
+
+mask_database_parts() {
+  local value="$1"
+  local parts=""
+  parts="$(DATABASE_URL="$value" node --input-type=module <<'NODE'
+const parsed = new URL(process.env.DATABASE_URL);
+const values = new Set([
+  parsed.username,
+  parsed.password,
+  parsed.hostname,
+  parsed.pathname.replace(/^\//, "")
+]);
+for (const raw of [...values]) {
+  if (!raw) continue;
+  console.log(raw);
+  try {
+    const decoded = decodeURIComponent(raw);
+    if (decoded && decoded !== raw) console.log(decoded);
+  } catch {
+    // Raw value is still masked.
+  }
+}
+NODE
+)"
+  while IFS= read -r part; do
+    mask "$part"
+  done <<< "$parts"
 }
 
 mask "$HEROKU_API_KEY"
@@ -172,6 +209,8 @@ mcp_installation_id="$(jq -r '.INSTALLATION_ID' "$mcp_config_file")"
 for sensitive in "$core_database_url" "$mcp_database_url" "$core_backend_token" "$mcp_backend_token" "$installation_id"; do
   mask "$sensitive"
 done
+mask_database_parts "$core_database_url"
+mask_database_parts "$mcp_database_url"
 test "$installation_id" = "$mcp_installation_id"
 
 DATABASE_URL="$core_database_url" MCP_DATABASE_URL="$mcp_database_url" node --input-type=module <<'NODE'
@@ -327,6 +366,7 @@ mcp_release_before="$(current_release "$MCP_APP_NAME")"
 test -n "$core_release_before"
 test -n "$mcp_release_before"
 
+mutation_started="true"
 if ! diff -q <(jq -S . "$core_subset_file") <(jq -S . "$core_desired_payload") >/dev/null; then
   heroku_patch_file "$CORE_API_BASE_URL" "$core_desired_payload"
   core_changed="true"
