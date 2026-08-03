@@ -72,6 +72,10 @@ refresh_app_url() {
     | sed 's:/*$::'
 }
 
+extract_completed_backup_id() {
+  sed -nE 's/.*Backing up .* to (b[0-9]+)\.\.\. done.*/\1/p' | tail -n 1
+}
+
 write_summary() {
   {
     echo "HEROKU_APP_NAME=$HEROKU_APP_NAME"
@@ -88,9 +92,14 @@ write_summary() {
 }
 
 run_production_migration_gate() {
-  heroku pg:backups:capture DATABASE_URL -a "$HEROKU_DB_OWNER_APP_NAME"
-  production_backup_id="$(heroku pg:backups -a "$HEROKU_DB_OWNER_APP_NAME" | awk '/^b[0-9]+/ {print $1; exit}')"
-  test -n "$production_backup_id"
+  local capture_output=""
+  capture_output="$(heroku pg:backups:capture DATABASE_URL -a "$HEROKU_DB_OWNER_APP_NAME" 2>&1)"
+  printf '%s\n' "$capture_output"
+  production_backup_id="$(printf '%s\n' "$capture_output" | tr -d '\r' | extract_completed_backup_id)"
+  if [ -z "$production_backup_id" ]; then
+    echo "Could not extract the completed Heroku backup ID from capture output." >&2
+    exit 1
+  fi
   heroku pg:backups:info "$production_backup_id" -a "$HEROKU_DB_OWNER_APP_NAME" >/dev/null
 
   heroku maintenance:on -a "$HEROKU_APP_NAME" >/dev/null
