@@ -63,13 +63,26 @@ test("official order creation is explicit, pending-safe and reachable after sess
 test("MCP and Core Sales principals are least privilege and warehouse scoped", () => {
   const mcpApi = read("apps/backend/foundation/core-sales-api.js");
   const mcpEnv = read("apps/backend/.env.example");
+  const permissionManifest = JSON.parse(read("apps/backend/config/mcp-service-permissions.json"));
   const coreContext = read("../npp-core/api/src/request-context.js");
   const coreConfig = read("../npp-core/api/src/config.js");
   assert.match(mcpApi, /mcp\.sales-order\.read/);
   assert.match(mcpApi, /mcp\.sales-order\.create/);
   assert.match(mcpApi, /mcp:warehouse:/);
   assert.match(mcpApi, /authorizeCommand/);
-  assert.match(mcpEnv, /MCP_SERVICE_PERMISSIONS=mcp\.sales-order\.read,mcp\.sales-order\.create/);
+
+  const permissionLine = mcpEnv.match(/^MCP_SERVICE_PERMISSIONS=(.+)$/m)?.[1];
+  assert.ok(permissionLine, "MCP_SERVICE_PERMISSIONS must be documented");
+  const documentedPermissions = new Set(permissionLine.split(",").map((value) => value.trim()).filter(Boolean));
+  const manifestPermissions = new Set([
+    ...permissionManifest.userFacingWritePermissions,
+    ...permissionManifest.integrationPermissions
+  ]);
+  assert.deepEqual(documentedPermissions, manifestPermissions);
+  assert.ok(documentedPermissions.has("mcp.sales-order.read"));
+  assert.ok(documentedPermissions.has("mcp.sales-order.create"));
+  for (const permission of documentedPermissions) assert.doesNotMatch(permission, /\*/);
+
   assert.match(mcpEnv, /MCP_SERVICE_SCOPES=mcp:warehouse:/);
   assert.match(coreContext, /mcp-sales-order-service/);
   assert.match(coreContext, /coreProductRead/);

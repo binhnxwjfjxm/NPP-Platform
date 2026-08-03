@@ -87,7 +87,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin main --depth=1
+          git fetch --force --no-tags origin main:refs/remotes/origin/main
+          git merge-base origin/main HEAD >/dev/null
           mkdir -p mcp/artifacts
           git diff --name-only origin/main...HEAD | tee mcp/artifacts/phase-6c0f-changed-files.log
           head_branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
