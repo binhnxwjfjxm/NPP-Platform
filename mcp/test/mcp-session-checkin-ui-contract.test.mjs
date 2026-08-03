@@ -6,15 +6,17 @@ async function source(path) {
   return readFile(new URL(`../${path}`, import.meta.url), "utf8");
 }
 
-test("session card keeps seven compact actions in two rows beside an independent check-in", async () => {
+test("session card keeps the existing compact actions and adds an explicit NPP order link", async () => {
   const card = await source("src/features/mcp/McpLineCard.tsx");
   const css = await source("src/features/mcp/McpLineCard.module.css");
 
   assert.match(card, /↗ Đường/);
   assert.match(card, /📷 Ảnh/);
-  for (const label of ["Đơn", "Test", "Quan sát", "Theo dõi", "Bỏ qua"]) {
+  for (const label of ["Nhu cầu", "Test", "Quan sát", "Theo dõi", "Bỏ qua"]) {
     assert.match(card, new RegExp(`label: "${label}"`));
   }
+  assert.match(card, /line\.orderId \?/);
+  assert.match(card, /Đơn NPP/);
   assert.match(card, /data-customer-action-rows="2"/);
   assert.match(css, /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
   assert.match(css, /grid-template-rows:\s*repeat\(2,\s*minmax\(28px,\s*auto\)\)/);
