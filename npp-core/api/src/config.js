@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const SAFE_DEFAULTS = Object.freeze({
   NODE_ENV: 'development',
@@ -95,6 +96,15 @@ function parseHttpUrl(value, name, { optional = false } = {}) {
   return parsed.toString();
 }
 
+function parseUuidList(value, name) {
+  const values = [...new Set(text(value).split(',').map((item) => item.trim()).filter(Boolean))];
+  if (!values.length) fail(`missing_${name.toLowerCase()}`, `${name} must contain at least one warehouse UUID`);
+  if (values.some((item) => !UUID_PATTERN.test(item))) {
+    fail(`invalid_${name.toLowerCase()}`, `${name} must contain comma-separated warehouse UUIDs`);
+  }
+  return Object.freeze(values);
+}
+
 export function parseCorsOrigins(value, { nodeEnv = 'development' } = {}) {
   const raw = text(value);
   if (!raw) {
@@ -144,6 +154,17 @@ function validateCoreBootstrapActorId(value, nodeEnv) {
   return actorId;
 }
 
+function validateServiceActorId(value, name, nodeEnv, fallback) {
+  const actorId = text(value) || fallback;
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{1,127}$/.test(actorId)) {
+    fail(`invalid_${name.toLowerCase()}`, `${name} is invalid`);
+  }
+  if (nodeEnv === 'production' && /replace|change[-_ ]?me|example/i.test(actorId)) {
+    fail(`${name.toLowerCase()}_placeholder`, `${name} contains a placeholder value`);
+  }
+  return actorId;
+}
+
 function loadEnvFile() {
   const envPath = path.resolve(__dirname, '..', '.env');
   try {
@@ -172,6 +193,7 @@ export function loadConfig(envInput) {
   const backendApiToken = required(env, 'BACKEND_API_TOKEN');
   validateBackendToken(backendApiToken, nodeEnv);
   const coreBootstrapActorId = validateCoreBootstrapActorId(env.CORE_BOOTSTRAP_ACTOR_ID, nodeEnv);
+
   const mcpOnboardingApiToken = text(env.MCP_ONBOARDING_API_TOKEN);
   const configuredMcpOnboardingActorId = text(env.MCP_ONBOARDING_ACTOR_ID);
   if (!mcpOnboardingApiToken && configuredMcpOnboardingActorId) {
@@ -182,14 +204,28 @@ export function loadConfig(envInput) {
     if (mcpOnboardingApiToken === backendApiToken) fail('mcp_onboarding_token_reuse_forbidden', 'MCP_ONBOARDING_API_TOKEN must differ from BACKEND_API_TOKEN');
   }
   const mcpOnboardingActorId = mcpOnboardingApiToken
-    ? (configuredMcpOnboardingActorId || 'service:mcp-customer-onboarding')
+    ? validateServiceActorId(configuredMcpOnboardingActorId, 'MCP_ONBOARDING_ACTOR_ID', nodeEnv, 'service:mcp-customer-onboarding')
     : '';
-  if (mcpOnboardingActorId && !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{1,127}$/.test(mcpOnboardingActorId)) {
-    fail('invalid_mcp_onboarding_actor_id', 'MCP_ONBOARDING_ACTOR_ID is invalid');
+
+  const mcpSalesApiToken = text(env.MCP_SALES_API_TOKEN);
+  const configuredMcpSalesActorId = text(env.MCP_SALES_ACTOR_ID);
+  const configuredMcpSalesWarehouseIds = text(env.MCP_SALES_WAREHOUSE_IDS);
+  const mcpSalesParts = [mcpSalesApiToken, configuredMcpSalesActorId, configuredMcpSalesWarehouseIds].filter(Boolean).length;
+  if (mcpSalesParts > 0 && (!mcpSalesApiToken || !configuredMcpSalesWarehouseIds)) {
+    fail('incomplete_mcp_sales_config', 'MCP_SALES_API_TOKEN and MCP_SALES_WAREHOUSE_IDS must be configured together');
   }
-  if (mcpOnboardingApiToken && nodeEnv === 'production' && /replace|change[-_ ]?me|example/i.test(mcpOnboardingActorId)) {
-    fail('mcp_onboarding_actor_id_placeholder', 'MCP_ONBOARDING_ACTOR_ID contains a placeholder value');
+  if (mcpSalesApiToken) {
+    validateNamedToken(mcpSalesApiToken, 'MCP_SALES_API_TOKEN', nodeEnv);
+    if (mcpSalesApiToken === backendApiToken || mcpSalesApiToken === mcpOnboardingApiToken) {
+      fail('mcp_sales_token_reuse_forbidden', 'MCP_SALES_API_TOKEN must differ from other backend tokens');
+    }
   }
+  const mcpSalesActorId = mcpSalesApiToken
+    ? validateServiceActorId(configuredMcpSalesActorId, 'MCP_SALES_ACTOR_ID', nodeEnv, 'service:mcp-sales-order')
+    : '';
+  const mcpSalesWarehouseIds = mcpSalesApiToken
+    ? parseUuidList(configuredMcpSalesWarehouseIds, 'MCP_SALES_WAREHOUSE_IDS')
+    : Object.freeze([]);
 
   const r2Enabled = parseBoolean(env.R2_ENABLED, { defaultValue: false });
   const r2ContractRouteEnabled = parseBoolean(env.R2_CONTRACT_ROUTE_ENABLED, { defaultValue: false });
@@ -230,6 +266,9 @@ export function loadConfig(envInput) {
     coreBootstrapActorId,
     mcpOnboardingApiToken,
     mcpOnboardingActorId,
+    mcpSalesApiToken,
+    mcpSalesActorId,
+    mcpSalesWarehouseIds,
     corsOrigins: parseCorsOrigins(env.CORS_ORIGINS, { nodeEnv }),
     r2Enabled,
     r2Endpoint,
@@ -251,6 +290,8 @@ export function getSanitizedConfig(config) {
     port: config.port,
     installationId: config.installationId,
     mcpOnboardingConfigured: Boolean(config.mcpOnboardingApiToken),
+    mcpSalesConfigured: Boolean(config.mcpSalesApiToken),
+    mcpSalesWarehouseScopeCount: config.mcpSalesWarehouseIds.length,
     databaseSslMode: config.databaseSslMode,
     corsOrigins: [...config.corsOrigins],
     storage: Object.freeze({
