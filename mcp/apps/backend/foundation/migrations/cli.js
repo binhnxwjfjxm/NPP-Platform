@@ -3,6 +3,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import {
+  ESSENTIAL_OWNER_CONFIRM_ENV,
+  ESSENTIAL_OWNER_CONFIRM_VALUE,
+  MIGRATION_CREDENTIAL_MODE_ENV,
+  MIGRATION_CREDENTIAL_MODE_ESSENTIAL_OWNER,
+  MIGRATION_CREDENTIAL_MODE_SEPARATED,
+  MIGRATION_DATABASE_URL_ENV,
+  databaseCredentialIdentity,
+  databaseTargetIdentity,
+  parseDatabaseUrl,
+  resolveMigrationCredentialContext,
+  resolveMigrationCredentialMode
+} from "./credential-safety.js";
+import {
   MCP_MIGRATIONS,
   migrationStatusWithAdapter,
   migrationVerifyWithAdapter,
@@ -10,10 +23,23 @@ import {
 } from "./index.js";
 
 const { Pool } = pg;
-export const MIGRATION_DATABASE_URL_ENV = "MCP_MIGRATION_DATABASE_URL";
 export const PRODUCTION_ALLOW_ENV = "MCP_MIGRATION_ALLOW_PRODUCTION";
 export const PRODUCTION_CONFIRM_ENV = "MCP_MIGRATION_PRODUCTION_CONFIRM";
 export const PRODUCTION_CONFIRM_VALUE = "I_UNDERSTAND_THIS_TARGETS_PRODUCTION";
+
+export {
+  ESSENTIAL_OWNER_CONFIRM_ENV,
+  ESSENTIAL_OWNER_CONFIRM_VALUE,
+  MIGRATION_CREDENTIAL_MODE_ENV,
+  MIGRATION_CREDENTIAL_MODE_ESSENTIAL_OWNER,
+  MIGRATION_CREDENTIAL_MODE_SEPARATED,
+  MIGRATION_DATABASE_URL_ENV,
+  databaseCredentialIdentity,
+  databaseTargetIdentity,
+  parseDatabaseUrl,
+  resolveMigrationCredentialContext,
+  resolveMigrationCredentialMode
+};
 
 function fail(code, message = code) {
   const error = new Error(message);
@@ -21,42 +47,8 @@ function fail(code, message = code) {
   throw error;
 }
 
-export function parseDatabaseUrl(value) {
-  if (!value) fail("missing_database_url", "A PostgreSQL database URL is required for MCP migration commands");
-  let parsed;
-  try {
-    parsed = new URL(value);
-  } catch {
-    fail("invalid_database_url", "Database URL must be a valid PostgreSQL connection string");
-  }
-  if (!new Set(["postgres:", "postgresql:"]).has(parsed.protocol)) {
-    fail("invalid_database_url", "Database URL must use postgres or postgresql");
-  }
-  return parsed.toString();
-}
-
-export function databaseCredentialIdentity(connectionString) {
-  const parsed = new URL(parseDatabaseUrl(connectionString));
-  const user = decodeURIComponent(parsed.username || "").toLowerCase();
-  const host = parsed.hostname.toLowerCase();
-  const port = parsed.port || "5432";
-  const database = decodeURIComponent(parsed.pathname.replace(/^\//, ""));
-  return `${user}@${host}:${port}/${database}`;
-}
-
 export function resolveMigrationConnectionString(env = process.env) {
-  const nodeEnv = String(env.NODE_ENV ?? "").trim().toLowerCase();
-  const runtimeRaw = env.DATABASE_URL;
-  const migrationRaw = env[MIGRATION_DATABASE_URL_ENV];
-  if (nodeEnv !== "production") return parseDatabaseUrl(migrationRaw || runtimeRaw);
-  if (!runtimeRaw) fail("missing_runtime_database_url", "DATABASE_URL is required to prove runtime and migrator separation");
-  if (!migrationRaw) fail("missing_migration_database_url", `${MIGRATION_DATABASE_URL_ENV} is required for production MCP migration commands`);
-  const runtimeUrl = parseDatabaseUrl(runtimeRaw);
-  const migrationUrl = parseDatabaseUrl(migrationRaw);
-  if (databaseCredentialIdentity(runtimeUrl) === databaseCredentialIdentity(migrationUrl)) {
-    fail("migration_runtime_credential_not_separated", "Production MCP migrations require a distinct migrator credential identity");
-  }
-  return migrationUrl;
+  return resolveMigrationCredentialContext(env).connectionString;
 }
 
 export function assertMigrationSafety({
@@ -112,6 +104,8 @@ function log(payload) {
 export async function runMigrationCommand(command, env = process.env, { PoolImpl = Pool } = {}) {
   let connectionString = null;
   let databaseIdentifier = "database:unknown";
+  let credentialMode = null;
+  let leastPrivilege = null;
   let pool = null;
   const sensitiveUrls = [env.DATABASE_URL, env[MIGRATION_DATABASE_URL_ENV]].filter(Boolean);
   try {
@@ -121,23 +115,43 @@ export async function runMigrationCommand(command, env = process.env, { PoolImpl
       allowProduction: env[PRODUCTION_ALLOW_ENV],
       productionConfirm: env[PRODUCTION_CONFIRM_ENV]
     });
-    connectionString = resolveMigrationConnectionString(env);
+    const credentialContext = resolveMigrationCredentialContext(env);
+    connectionString = credentialContext.connectionString;
+    credentialMode = credentialContext.credentialMode;
+    leastPrivilege = credentialContext.leastPrivilege;
     databaseIdentifier = sanitizeDatabaseIdentifier(connectionString);
     pool = new PoolImpl({ connectionString, application_name: "mcp-migration-cli" });
-    log({ timestamp: new Date().toISOString(), command, databaseIdentifier, status: "started" });
+    log({
+      timestamp: new Date().toISOString(),
+      command,
+      databaseIdentifier,
+      credentialMode,
+      leastPrivilege,
+      status: "started"
+    });
 
     let result;
     if (command === "status") result = await migrationStatusWithAdapter(pool, MCP_MIGRATIONS);
     else if (command === "migrate") result = await runMcpMigrations(pool, MCP_MIGRATIONS);
     else result = await migrationVerifyWithAdapter(pool, MCP_MIGRATIONS);
 
-    log({ timestamp: new Date().toISOString(), command, databaseIdentifier, status: "success", result });
+    log({
+      timestamp: new Date().toISOString(),
+      command,
+      databaseIdentifier,
+      credentialMode,
+      leastPrivilege,
+      status: "success",
+      result
+    });
     return command === "verify" && result.verified === false ? 1 : 0;
   } catch (error) {
     log({
       timestamp: new Date().toISOString(),
       command,
       databaseIdentifier,
+      credentialMode,
+      leastPrivilege,
       status: "error",
       error: {
         code: error.code || "UNKNOWN_ERROR",
