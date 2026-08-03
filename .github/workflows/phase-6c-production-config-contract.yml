@@ -3,18 +3,24 @@ name: Phase 6C production config contract
 on:
   pull_request:
     paths:
+      - .github/workflows/heroku-mcp-backend-manual.yml
+      - .github/workflows/heroku-npp-backend-manual.yml
       - .github/workflows/phase-6c-production-config.yml
       - .github/workflows/phase-6c-production-config-contract.yml
       - mcp/apps/backend/scripts/phase-6c-production-config.sh
       - mcp/test/phase-6c-production-config-contract.test.mjs
+      - mcp/test/phase-6c-production-rollout-command-contract.test.mjs
   push:
     branches:
       - main
     paths:
+      - .github/workflows/heroku-mcp-backend-manual.yml
+      - .github/workflows/heroku-npp-backend-manual.yml
       - .github/workflows/phase-6c-production-config.yml
       - .github/workflows/phase-6c-production-config-contract.yml
       - mcp/apps/backend/scripts/phase-6c-production-config.sh
       - mcp/test/phase-6c-production-config-contract.test.mjs
+      - mcp/test/phase-6c-production-rollout-command-contract.test.mjs
   workflow_dispatch:
 
 permissions:
@@ -39,9 +45,11 @@ jobs:
         with:
           node-version: 20
 
-      - name: Verify shell and contract
+      - name: Verify shell and contracts
         shell: bash
         run: |
           set -euo pipefail
           bash -n mcp/apps/backend/scripts/phase-6c-production-config.sh
-          node --test mcp/test/phase-6c-production-config-contract.test.mjs
+          node --test \
+            mcp/test/phase-6c-production-config-contract.test.mjs \
+            mcp/test/phase-6c-production-rollout-command-contract.test.mjs
