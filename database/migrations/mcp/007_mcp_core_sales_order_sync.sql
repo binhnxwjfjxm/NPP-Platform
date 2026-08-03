@@ -8,6 +8,7 @@ ALTER TABLE mcp.orders
   ADD COLUMN IF NOT EXISTS core_sales_order_total numeric(20, 6),
   ADD COLUMN IF NOT EXISTS core_sales_order_currency text,
   ADD COLUMN IF NOT EXISTS core_sales_order_fingerprint char(64),
+  ADD COLUMN IF NOT EXISTS core_sales_order_fingerprint_version integer,
   ADD COLUMN IF NOT EXISTS core_sales_order_submitted_at timestamptz,
   ADD COLUMN IF NOT EXISTS core_sales_order_last_synced_at timestamptz;
 
@@ -33,12 +34,14 @@ ALTER TABLE mcp.orders
       AND core_sales_order_total IS NULL
       AND core_sales_order_currency IS NULL
       AND core_sales_order_fingerprint IS NULL
+      AND core_sales_order_fingerprint_version IS NULL
       AND core_sales_order_submitted_at IS NULL
       AND core_sales_order_last_synced_at IS NULL
     )
     OR
     (
       core_sales_order_id IS NOT NULL
+      AND (core_sales_order_number IS NULL OR btrim(core_sales_order_number) <> '')
       AND core_sales_order_status IS NOT NULL
       AND core_sales_order_version IS NOT NULL
       AND core_sales_order_version > 0
@@ -46,6 +49,7 @@ ALTER TABLE mcp.orders
       AND core_sales_order_total >= 0
       AND core_sales_order_currency = 'VND'
       AND core_sales_order_fingerprint ~ '^[0-9a-f]{64}$'
+      AND core_sales_order_fingerprint_version = 1
       AND core_sales_order_submitted_at IS NOT NULL
       AND core_sales_order_last_synced_at IS NOT NULL
     )
