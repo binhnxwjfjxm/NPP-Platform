@@ -15,7 +15,7 @@
     "test:workflow-paths": "node --test test/workflow-paths-contract.test.mjs",
     "test:vercel-deployment-control": "node --test test/vercel-deployment-control.test.mjs test/heroku-root-contract.test.mjs",
     "test:heroku-root": "node --test test/heroku-root-contract.test.mjs",
-    "test:heroku-mcp-backend-contract": "node --test test/heroku-mcp-backend-contract.test.mjs test/heroku-mcp-production-rollout-contract.test.mjs",
+    "test:heroku-mcp-backend-contract": "node --test test/heroku-mcp-backend-contract.test.mjs test/heroku-mcp-production-rollout-contract.test.mjs test/heroku-mcp-report-settings-rollout-contract.test.mjs",
     "test:heroku-mcp-backend-runtime": "node --test test/heroku-mcp-backend-runtime.test.mjs",
     "test:direct-db-mutation": "node --test test/audit-direct-db-mutations.test.mjs test/direct-db-retirement-subphase.test.mjs",
     "test:edge-retirement": "node --test test/a5-3-edge-retirement.test.mjs test/a5-3-no-legacy-edge-caller.test.mjs",
