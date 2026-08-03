@@ -42,11 +42,15 @@ test("config operation uses provider data and fails closed on warehouse ambiguit
   assert.doesNotMatch(script, /00000000-0000-4000-8000-000000000001/);
 });
 
-test("tokens remain server-only, distinct and absent from summaries", () => {
+test("tokens and database identifiers remain absent from logs and summaries", () => {
   assert.match(script, /openssl rand -hex 32/);
   assert.match(script, /choose_shared_token/);
   assert.match(script, /test "\$onboarding_token" != "\$sales_token"/);
   assert.match(script, /::add-mask::/);
+  assert.match(script, /mask_database_parts/);
+  assert.match(script, /parsed\.username/);
+  assert.match(script, /parsed\.password/);
+  assert.match(script, /parsed\.hostname/);
   assert.match(script, /MCP_ONBOARDING_API_TOKEN/);
   assert.match(script, /MCP_SALES_API_TOKEN/);
   assert.match(script, /CORE_ONBOARDING_API_TOKEN/);
@@ -61,6 +65,10 @@ test("provider mutation is scoped, reversible and health-gated", () => {
   assert.match(script, /restore_original_config/);
   assert.match(script, /core_original_payload/);
   assert.match(script, /mcp_original_payload/);
+  assert.match(script, /mutation_started="true"/);
+  assert.match(script, /\[ "\$mutation_started" = "true" \]/);
+  assert.match(script, /\[ "\$rollback_attempted" != "true" \]/);
+  assert.match(script, /restore_original_config \|\| true/);
   assert.match(script, /smoke_health "\$core_url" \/health\/live/);
   assert.match(script, /smoke_health "\$core_url" \/health\/ready/);
   assert.match(script, /smoke_health "\$mcp_url" \/health\/live/);
