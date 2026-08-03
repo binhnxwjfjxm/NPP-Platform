@@ -116,6 +116,14 @@ jobs:
           node --check apps/backend/scripts/rehearse-mcp-migrations.js
           node --test test/phase-6c0e-migration-rehearsal-contract.test.mjs
 
+      - name: Bootstrap shared installation schema
+        working-directory: .
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:ci-secret-6c0e@127.0.0.1:5432/postgres
+          DATABASE_SSL_MODE: disable
+        run: npm --prefix npp-core/api run migration:migrate
+
       - name: Verify MCP backend regression
         env:
           TEST_DATABASE_URL: postgresql://postgres:ci-secret-6c0e@127.0.0.1:5432/postgres
