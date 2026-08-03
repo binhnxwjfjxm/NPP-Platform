@@ -115,6 +115,20 @@ export async function searchCoreSalesSkus(search, requestContext, config, option
   return data;
 }
 
+export async function listCoreProductVariants(productId, requestContext, config, options = {}) {
+  const normalized = String(productId || "").trim();
+  if (!normalized) throw integrationError("core_sales_product_id_required", 400);
+  const data = await coreRequest(
+    config,
+    requestContext,
+    `/api/products/${encodeURIComponent(normalized)}/variants`,
+    { method: "GET" },
+    options
+  );
+  if (!Array.isArray(data)) throw integrationError("core_sales_variant_response_invalid", 502, null, true);
+  return data;
+}
+
 export async function createCoreSalesOrder(payload, requestContext, config, options = {}) {
   const idempotencyKey = String(options.idempotencyKey || "").trim();
   if (!idempotencyKey) throw integrationError("core_sales_idempotency_key_required", 400);
