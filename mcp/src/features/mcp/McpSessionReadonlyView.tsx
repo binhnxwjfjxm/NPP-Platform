@@ -32,6 +32,15 @@ function resultSummary(line: McpDayLine) {
   return values.length > 0 ? values.join(" · ") : line.result || line.note || "Chưa ghi kết quả";
 }
 
+function officialOrderHref(line: McpDayLine) {
+  const params = new URLSearchParams({
+    sessionCustomerId: line.sessionCustomerId || line.id,
+    orderId: line.orderId || "",
+    customerName: line.accountName
+  });
+  return `/visits/order-intent?${params.toString()}`;
+}
+
 export function McpSessionReadonlyView({ activeHref = "/visits", mcpDayData }: { activeHref?: string; mcpDayData: McpDayData }) {
   const run = mcpDayData.run;
   const lockedLabel = sessionStatusLabel(run.status);
@@ -67,6 +76,7 @@ export function McpSessionReadonlyView({ activeHref = "/visits", mcpDayData }: {
               <h3>{line.accountName}</h3>
               <p>{line.area} · {sourceLabel(line.source)} · {resultSummary(line)}</p>
             </div>
+            {line.orderId ? <a className="button" href={officialOrderHref(line)}>Đơn NPP</a> : null}
           </article>
         ))}
       </div>
