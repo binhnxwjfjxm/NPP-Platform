@@ -1,4 +1,4 @@
-import { searchCoreSalesSkus } from "./core-sales-client.js";
+import { listCoreProductVariants, searchCoreSalesSkus } from "./core-sales-client.js";
 import {
   getSalesOrderProjection,
   submitSalesOrder,
@@ -65,6 +65,22 @@ function mapSkuOption(item) {
   });
 }
 
+function variantCanBeChecked(variant) {
+  return variant?.is_active === true
+    && variant?.is_sellable === true
+    && Boolean(variant?.unit_id)
+    && Number.isFinite(Number(variant?.conversion_to_base))
+    && Number(variant.conversion_to_base) > 0
+    && Boolean(String(variant?.sku || "").trim());
+}
+
+function variantMatchesSearch(variant, search) {
+  const term = String(search || "").trim().toLocaleLowerCase("vi");
+  if (!term) return true;
+  return [variant?.sku, variant?.name, variant?.unit_code, variant?.unit_name]
+    .some((value) => String(value || "").toLocaleLowerCase("vi").includes(term));
+}
+
 async function searchProducts(url, context, config, fetchImpl) {
   const options = await searchCoreSalesSkus(
     url.searchParams.get("q") || url.searchParams.get("search") || "",
@@ -81,8 +97,18 @@ async function searchProducts(url, context, config, fetchImpl) {
 
 async function loadProductVariants(productId, url, context, config, fetchImpl) {
   const search = url.searchParams.get("q") || "";
-  const options = await searchCoreSalesSkus(search, context, config, { fetchImpl, limit: 50, offset: 0 });
-  return response(options.filter((item) => item.productId === productId).map(mapSkuOption));
+  const candidates = (await listCoreProductVariants(productId, context, config, { fetchImpl }))
+    .filter(variantCanBeChecked)
+    .filter((variant) => variantMatchesSearch(variant, search));
+  const verified = await Promise.all(candidates.map(async (variant) => {
+    const options = await searchCoreSalesSkus(variant.sku, context, config, {
+      fetchImpl,
+      limit: 10,
+      offset: 0
+    });
+    return options.find((item) => item.id === variant.id && item.productId === productId) || null;
+  }));
+  return response(verified.filter(Boolean).map(mapSkuOption));
 }
 
 async function loadSalesOrder(url, context, config, fetchImpl) {
