@@ -6,11 +6,15 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 
 test("existing MCP product routes are overridden by canonical NPP Core Sales SKU search", () => {
   const api = read("apps/backend/foundation/core-sales-api.js");
+  const client = read("apps/backend/foundation/core-sales-client.js");
   const runtime = read("apps/backend/foundation/typed-runtime.js");
   const demandUi = read("src/features/mcp/McpSessionCompactViewFinal2.tsx");
   assert.match(api, /searchCoreSalesSkus/);
+  assert.match(api, /listCoreProductVariants/);
+  assert.match(api, /item\.id === variant\.id && item\.productId === productId/);
   assert.match(api, /catalogSource: "NPP_CORE"/);
   assert.match(api, /pathname === "\/api\/products\/search"/);
+  assert.match(client, /\/api\/products\/\$\{encodeURIComponent\(normalized\)\}\/variants/);
   assert.match(runtime, /handleCoreSalesApi/);
   assert.match(demandUi, /fetch\(`\/api\/products\/search/);
   assert.match(demandUi, /fetch\(`\/api\/products\/\$\{encodeURIComponent\(productId\)\}\/variants/);
@@ -41,9 +45,11 @@ test("MCP Core Sales principal is least privilege and warehouse scoped", () => {
   const context = read("../npp-core/api/src/request-context.js");
   const config = read("../npp-core/api/src/config.js");
   assert.match(context, /mcp-sales-order-service/);
+  assert.match(context, /coreProductRead/);
   assert.match(context, /coreSalesOrderRead/);
   assert.match(context, /coreSalesOrderCreate/);
   assert.match(context, /warehouseIds: config\.mcpSalesWarehouseIds/);
+  assert.doesNotMatch(context, /roles: \['mcp-sales-order-service'\],[\s\S]*?coreProductWrite/);
   assert.match(config, /MCP_SALES_WAREHOUSE_IDS/);
   assert.match(config, /mcp_sales_token_reuse_forbidden/);
 });
