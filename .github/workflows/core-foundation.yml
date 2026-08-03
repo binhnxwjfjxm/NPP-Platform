@@ -9,7 +9,6 @@ on:
       - "npp-core/**"
       - "packages/**"
       - "database/**"
-      - "docs/operations/migration-rehearsal.md"
       - ".github/workflows/core-foundation.yml"
   push:
     branches:
@@ -21,7 +20,6 @@ on:
       - "npp-core/**"
       - "packages/**"
       - "database/**"
-      - "docs/operations/migration-rehearsal.md"
       - ".github/workflows/core-foundation.yml"
 
 permissions:
