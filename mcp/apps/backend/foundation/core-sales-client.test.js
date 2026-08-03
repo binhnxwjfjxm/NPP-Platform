@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   coreSalesOrderProjection,
   createCoreSalesOrder,
+  listCoreProductVariants,
   readCoreSalesOrder,
   searchCoreSalesSkus
 } from "./core-sales-client.js";
@@ -58,6 +59,25 @@ test("Core Sales SKU search uses dedicated server token", async () => {
   assert.match(seen.url, /search=tra\+xanh/);
   assert.equal(seen.init.headers.Authorization, `Bearer ${config.coreSales.apiToken}`);
   assert.equal(seen.init.headers["X-Request-Id"], context.requestId);
+});
+
+test("Core product variants use the exact canonical NPP product route", async () => {
+  let seen;
+  const productId = "55555555-5555-4555-8555-555555555555";
+  const variants = await listCoreProductVariants(productId, context, config, {
+    fetchImpl: async (url, init) => {
+      seen = { url, init };
+      return jsonResponse(200, { data: [{ id: "sku-1", product_id: productId, sku: "TEA-01" }] });
+    }
+  });
+  assert.equal(variants.length, 1);
+  assert.equal(seen.url, `https://core.example.test/api/products/${productId}/variants`);
+  assert.equal(seen.init.method, "GET");
+  assert.equal(seen.init.headers.Authorization, `Bearer ${config.coreSales.apiToken}`);
+  await assert.rejects(
+    () => listCoreProductVariants("", context, config),
+    (error) => error.code === "core_sales_product_id_required" && error.statusCode === 400
+  );
 });
 
 test("Core Sales create sends deterministic idempotency header and maps draft", async () => {
