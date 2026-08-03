@@ -28,7 +28,8 @@ test('management overview reads existing Core data without adding mutation paths
   assert.match(gateway, /AbortController/);
   assert.doesNotMatch(gateway, /console\.(?:log|error)|DATABASE_URL/);
 
-  assert.match(dashboard, /from '\.\.\/management\/page'/);
+  assert.match(dashboard, /title="Tổng quan cơ cấu"/);
+  assert.doesNotMatch(dashboard, /management\/page/);
 });
 
 test('management overview remains usable on desktop and mobile', async () => {
