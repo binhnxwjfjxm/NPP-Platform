@@ -4,11 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: Deploy or roll back the MCP backend release.
+        description: Migrate, deploy or roll back the MCP backend release.
         required: true
         default: deploy
         type: choice
         options:
+          - migrate
           - deploy
           - rollback
       release_version:
@@ -34,7 +35,10 @@ jobs:
       (
         github.event_name == 'issue_comment' &&
         github.event.issue.number == 5 &&
-        github.event.comment.body == '/deploy-heroku-mcp-production' &&
+        (
+          github.event.comment.body == '/deploy-heroku-mcp-production' ||
+          github.event.comment.body == '/migrate-heroku-mcp-production'
+        ) &&
         (
           github.actor == 'binhnxwjfjxm' ||
           github.actor == 'khuongbinhinfo-a11y'
@@ -76,7 +80,10 @@ jobs:
           COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           set -euo pipefail
-          test "$COMMENT_BODY" = '/deploy-heroku-mcp-production'
+          case "$COMMENT_BODY" in
+            /deploy-heroku-mcp-production|/migrate-heroku-mcp-production) ;;
+            *) exit 1 ;;
+          esac
 
       - name: Checkout exact main
         uses: actions/checkout@v4
@@ -130,11 +137,16 @@ jobs:
           REQUESTED_RELEASE_VERSION: ${{ inputs.release_version }}
           POSTGRES_SERVICE_CONTAINER: ${{ job.services.postgres.id }}
           DEPLOYED_SHA: ${{ steps.sha.outputs.sha }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           set -euo pipefail
           action="${REQUESTED_ACTION:-deploy}"
           if [ "$GITHUB_EVENT_NAME" = "issue_comment" ]; then
-            action="deploy"
+            case "$COMMENT_BODY" in
+              /deploy-heroku-mcp-production) action="deploy" ;;
+              /migrate-heroku-mcp-production) action="migrate" ;;
+              *) exit 1 ;;
+            esac
           fi
           REQUESTED_ACTION="$action" bash mcp/apps/backend/scripts/manual-production-deploy.sh
 

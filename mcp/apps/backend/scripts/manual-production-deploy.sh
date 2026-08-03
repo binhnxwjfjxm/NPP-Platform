@@ -81,9 +81,23 @@ write_summary() {
     echo "PREVIOUS_ACTIVE_RELEASE_VERSION=$previous_active_release_version"
     echo "PREVIOUS_RELEASE_HEALTHY=$previous_release_healthy"
     echo "DEPLOYED_SHA=$DEPLOYED_SHA"
+    echo "MCP_OPERATION=$requested_action"
     echo "MCP_MIGRATION_CREDENTIAL_MODE=$credential_mode"
     echo "MCP_MIGRATION_LEAST_PRIVILEGE=$least_privilege"
   } >> "$GITHUB_STEP_SUMMARY"
+}
+
+run_production_migration_gate() {
+  heroku pg:backups:capture DATABASE_URL -a "$HEROKU_DB_OWNER_APP_NAME"
+  production_backup_id="$(heroku pg:backups -a "$HEROKU_DB_OWNER_APP_NAME" | awk '/^b[0-9]+/ {print $1; exit}')"
+  test -n "$production_backup_id"
+  heroku pg:backups:info "$production_backup_id" -a "$HEROKU_DB_OWNER_APP_NAME" >/dev/null
+
+  heroku maintenance:on -a "$HEROKU_APP_NAME" >/dev/null
+  maintenance_enabled="true"
+  bash mcp/apps/backend/scripts/production-rollout-gate.sh
+  heroku maintenance:off -a "$HEROKU_APP_NAME" >/dev/null
+  maintenance_enabled="false"
 }
 
 test "$HEROKU_APP_NAME" = "hung-phat-mcp"
@@ -190,15 +204,16 @@ case "$requested_action" in
     smoke_health /health/ready
     write_summary
     ;;
+  migrate)
+    run_production_migration_gate
+    active_release_version="$(refresh_release_version)"
+    app_url="$(refresh_app_url)"
+    smoke_health /health/live
+    smoke_health /health/ready
+    write_summary
+    ;;
   deploy)
-    heroku pg:backups:capture DATABASE_URL -a "$HEROKU_DB_OWNER_APP_NAME"
-    production_backup_id="$(heroku pg:backups -a "$HEROKU_DB_OWNER_APP_NAME" | awk '/^b[0-9]+/ {print $1; exit}')"
-    test -n "$production_backup_id"
-    heroku pg:backups:info "$production_backup_id" -a "$HEROKU_DB_OWNER_APP_NAME" >/dev/null
-
-    heroku maintenance:on -a "$HEROKU_APP_NAME" >/dev/null
-    maintenance_enabled="true"
-    bash mcp/apps/backend/scripts/production-rollout-gate.sh
+    run_production_migration_gate
 
     heroku container:login
     (
@@ -208,8 +223,6 @@ case "$requested_action" in
     heroku container:release web -a "$HEROKU_APP_NAME"
     active_release_version="$(refresh_release_version)"
     app_url="$(refresh_app_url)"
-    heroku maintenance:off -a "$HEROKU_APP_NAME" >/dev/null
-    maintenance_enabled="false"
 
     if ! smoke_health /health/live || ! smoke_health /health/ready; then
       failed_release_version="$active_release_version"
