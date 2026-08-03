@@ -108,7 +108,12 @@ jobs:
           test "$HEROKU_APP_NAME" = "hung-phat"
           test "$HEROKU_APP_NAME" != "$HEROKU_FORBIDDEN_APP_NAME"
 
-          app_json="$(heroku apps:info -a "$HEROKU_APP_NAME" --json)"
+          app_json="$(
+            curl --fail --silent --show-error \
+              -H 'Accept: application/vnd.heroku+json; version=3' \
+              -H "Authorization: Bearer $HEROKU_API_KEY" \
+              "https://api.heroku.com/apps/$HEROKU_APP_NAME"
+          )"
           app_name="$(jq -r '.name // empty' <<<"$app_json")"
           app_url="$(jq -r '.web_url // empty' <<<"$app_json")"
           test "$app_name" = "$HEROKU_APP_NAME"
