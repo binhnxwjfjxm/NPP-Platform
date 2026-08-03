@@ -118,6 +118,7 @@ jobs:
           )"
           app_name="$(jq -r '.name // empty' <<<"$app_json")"
           app_url="$(jq -r '.web_url // empty' <<<"$app_json")"
+          app_url="${app_url%/}"
           test "$app_name" = "$HEROKU_APP_NAME"
           test -n "$app_url"
 
@@ -155,7 +156,7 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = "issue_comment" ]; then
             requested_action="deploy"
           fi
-          app_url="$APP_URL"
+          app_url="${APP_URL%/}"
           active_release=""
           rollback_target=""
           failed_release=""
