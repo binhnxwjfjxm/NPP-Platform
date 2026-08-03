@@ -37,6 +37,12 @@ test("report settings rollout reconciliation permits only bounded seed growth", 
   assert.match(rollout, /MCP_LEGACY_REPORT_SETTINGS=7_groups_53_items_reconciled/);
 });
 
+test("report settings reconciliation keeps the database URL out of docker process arguments", () => {
+  assert.match(rollout, /docker exec -i[\s\S]*?-e DATABASE_URL=\"\$database_url\"/);
+  assert.match(rollout, /psql \"\$DATABASE_URL\" -XAt/);
+  assert.doesNotMatch(rollout, /docker exec \"\$service_id\"[\s\\\n]+psql \"\$database_url\"/);
+});
+
 test("report settings rollout contract is executed by the Heroku MCP CI script", () => {
   assert.match(
     packageJson.scripts["test:heroku-mcp-backend-contract"],
