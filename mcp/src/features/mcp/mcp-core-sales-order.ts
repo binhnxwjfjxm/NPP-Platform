@@ -12,11 +12,14 @@ export type CoreSalesOrderProjection = {
   currentVersionNumber?: number | null;
   total?: string | null;
   currency?: string | null;
+  submissionFingerprint?: string | null;
+  submissionFingerprintVersion?: number | null;
   submittedAt?: string | null;
   lastSyncedAt?: string | null;
+  updatedAt?: string | null;
 };
 
-function apiErrorMessage(payload: unknown, fallback: string) {
+export function apiErrorMessage(payload: unknown, fallback: string) {
   if (!payload || typeof payload !== "object") return fallback;
   const value = payload as { error?: string | { message?: string }; detail?: string; message?: string };
   if (typeof value.error === "string" && value.error.trim()) return value.error;
