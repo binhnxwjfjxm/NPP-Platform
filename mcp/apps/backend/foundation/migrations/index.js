@@ -29,6 +29,10 @@ const MCP_CORE_SALES_ORDER_SYNC_SQL = readFileSync(
   new URL("./sql/007_mcp_core_sales_order_sync.sql", import.meta.url),
   "utf8"
 );
+const MCP_LEGACY_REPORT_SETTINGS_SEED_SQL = readFileSync(
+  new URL("./sql/008_mcp_legacy_report_settings_seed.sql", import.meta.url),
+  "utf8"
+);
 
 export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_001_write_foundation", sql: MCP_WRITE_FOUNDATION_SQL }),
@@ -37,7 +41,8 @@ export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_004_profile_media_contract", sql: MCP_PROFILE_MEDIA_CONTRACT_SQL }),
   Object.freeze({ id: "mcp_005_session_runtime_contract", sql: MCP_SESSION_RUNTIME_CONTRACT_SQL }),
   Object.freeze({ id: "mcp_006_customer_onboarding_sync", sql: MCP_CUSTOMER_ONBOARDING_SYNC_SQL }),
-  Object.freeze({ id: "mcp_007_core_sales_order_sync", sql: MCP_CORE_SALES_ORDER_SYNC_SQL })
+  Object.freeze({ id: "mcp_007_core_sales_order_sync", sql: MCP_CORE_SALES_ORDER_SYNC_SQL }),
+  Object.freeze({ id: "mcp_008_legacy_report_settings_seed", sql: MCP_LEGACY_REPORT_SETTINGS_SEED_SQL })
 ]);
 
 const MCP_READ_MODELS = Object.freeze([
@@ -265,6 +270,7 @@ export async function migrationVerifyWithAdapter(adapter, migrations = MCP_MIGRA
       "mcp_orders_core_sales_order_shape"
     ),
     coreSalesOrderUniqueIndex: await indexExists(adapter, "mcp_orders_core_sales_order_unique"),
+    reportSettingGroupKeyIndex: await indexExists(adapter, "mcp_report_settings_group_key_unique"),
     outboxPendingIndex: await indexExists(adapter, "mcp_outbox_events_pending_available_idx"),
     routeCustomerOrderIndex: await indexExists(adapter, "mcp_route_customers_route_sort_idx"),
     orderItemsIndex: await indexExists(adapter, "order_items_order_idx"),
