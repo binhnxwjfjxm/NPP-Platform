@@ -2,13 +2,42 @@ name: Foundation F0.2
 
 on:
   pull_request:
+    branches:
+      - main
+    paths:
+      - ".gitignore"
+      - "package.json"
+      - "package-lock.json"
+      - "Procfile"
+      - ".github/workflows/**"
+      - "mcp/scripts/audit-workflow-paths.mjs"
+      - "mcp/test/ci-workflow-scope-matrix.test.mjs"
+      - "mcp/test/vercel-deployment-control.test.mjs"
+      - "mcp/test/vercel-mcp-deployment-control.test.mjs"
+      - "mcp/test/manual-production-deploy-matrix.test.mjs"
+      - "mcp/test/heroku-root-contract.test.mjs"
   push:
     branches:
       - main
-      - f0-2-installation-context-config
-
+    paths:
+      - ".gitignore"
+      - "package.json"
+      - "package-lock.json"
+      - "Procfile"
+      - ".github/workflows/**"
+      - "mcp/scripts/audit-workflow-paths.mjs"
+      - "mcp/test/ci-workflow-scope-matrix.test.mjs"
+      - "mcp/test/vercel-deployment-control.test.mjs"
+      - "mcp/test/vercel-mcp-deployment-control.test.mjs"
+      - "mcp/test/manual-production-deploy-matrix.test.mjs"
+      - "mcp/test/heroku-root-contract.test.mjs"
+  workflow_dispatch:
 permissions:
   contents: read
+
+concurrency:
+  group: foundation-f0-2-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify-foundation:
@@ -135,6 +164,9 @@ jobs:
             console.log("workflow_path_delta_passed");
           }
           NODE
+
+      - name: Verify CI workflow scope matrix
+        run: node --test test/ci-workflow-scope-matrix.test.mjs
 
       - name: Verify Vercel deployment controls
         run: npm run test:vercel-deployment-control

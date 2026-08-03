@@ -1,25 +1,7 @@
 name: Phase 6C.0D MCP PostgreSQL Foundation
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'database/migrations/mcp/**'
-      - 'mcp/apps/backend/**'
-      - 'docs/operations/phase-6c0d-mcp-postgresql-foundation.md'
-      - 'docs/operations/LATEST_HANDOFF.md'
-      - '.github/workflows/phase-6c0d-mcp-postgresql-foundation.yml'
-  push:
-    branches:
-      - agent/phase-6c0d-mcp-postgresql-foundation
-    paths:
-      - 'database/migrations/mcp/**'
-      - 'mcp/apps/backend/**'
-      - 'docs/operations/phase-6c0d-mcp-postgresql-foundation.md'
-      - 'docs/operations/LATEST_HANDOFF.md'
-      - '.github/workflows/phase-6c0d-mcp-postgresql-foundation.yml'
-
+  workflow_dispatch:
 permissions:
   contents: read
 

@@ -9,6 +9,10 @@ on:
       - ".github/workflows/dashboard-persisted-browser-smoke.yml"
   workflow_dispatch:
 
+concurrency:
+  group: dashboard-persisted-browser-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   browser-smoke:
     runs-on: ubuntu-latest

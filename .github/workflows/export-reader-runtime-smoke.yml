@@ -18,6 +18,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: export-reader-runtime-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   export-reader-smoke:
     runs-on: ubuntu-latest

@@ -1,19 +1,13 @@
 name: Phase 4 Inventory Balance
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/phase-4-inventory-balance.yml"
-      - "database/migrations/inventory/018_inventory_balance_read_model.sql"
-      - "npp-core/api/package.json"
-      - "npp-core/api/src/migrations/**"
-      - "npp-core/api/src/db/repositories/inventory-balance.js"
-      - "npp-core/api/src/services/inventory-balance.js"
-      - "npp-core/api/test/inventory-balance.test.js"
   workflow_dispatch:
-
 permissions:
   contents: read
+
+concurrency:
+  group: phase-4-inventory-balance-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify-inventory-balance:

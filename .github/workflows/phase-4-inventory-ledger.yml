@@ -1,21 +1,13 @@
 name: Phase 4 Inventory Ledger
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/phase-4-inventory-ledger.yml"
-      - "database/migrations/inventory/**"
-      - "npp-core/api/package.json"
-      - "npp-core/api/src/access/permissions.js"
-      - "npp-core/api/src/request-context.js"
-      - "npp-core/api/src/migrations/**"
-      - "npp-core/api/src/db/repositories/inventory-ledger.js"
-      - "npp-core/api/src/services/inventory-ledger.js"
-      - "npp-core/api/test/inventory-ledger*.test.js"
   workflow_dispatch:
-
 permissions:
   contents: read
+
+concurrency:
+  group: phase-4-inventory-ledger-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify-inventory-ledger:

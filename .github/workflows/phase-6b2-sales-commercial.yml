@@ -1,25 +1,7 @@
 name: Phase 6B.2 Sales Commercial Controls
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'npp-core/api/**'
-      - 'npp-core/web/**'
-      - 'database/migrations/sales/**'
-      - 'docs/operations/phase-6b2-sales-order-commercial-controls.md'
-      - '.github/workflows/phase-6b2-sales-commercial.yml'
-  push:
-    branches:
-      - agent/phase-6b2-sales-commercial-controls
-    paths:
-      - 'npp-core/api/**'
-      - 'npp-core/web/**'
-      - 'database/migrations/sales/**'
-      - 'docs/operations/phase-6b2-sales-order-commercial-controls.md'
-      - '.github/workflows/phase-6b2-sales-commercial.yml'
-
+  workflow_dispatch:
 permissions:
   contents: read
 

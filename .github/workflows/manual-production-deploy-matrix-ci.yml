@@ -24,6 +24,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: manual-production-deploy-matrix-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deploy-matrix-contract:
     runs-on: ubuntu-latest

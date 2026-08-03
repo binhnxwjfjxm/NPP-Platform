@@ -1,48 +1,13 @@
 name: Phase 3 Document Numbering
 
 on:
-  pull_request:
-    paths:
-      - "database/migrations/shared/015_document_numbering.sql"
-      - "database/migrations/shared/016_permission_catalog_alignment.sql"
-      - "npp-core/api/src/audit-outbox.js"
-      - "npp-core/api/src/db/repositories/document-numbering.js"
-      - "npp-core/api/src/services/document-numbering*.js"
-      - "npp-core/api/src/routes/document-numbering.js"
-      - "npp-core/api/test/document-numbering*.test.js"
-      - "npp-core/api/test/audit-outbox-replay.test.js"
-      - "npp-core/api/package.json"
-      - "npp-core/web/app/document-numbering/**"
-      - "npp-core/web/app/api/document-number-series/**"
-      - "npp-core/web/lib/document-numbering-*.ts"
-      - "npp-core/web/e2e/document-numbering.spec.ts"
-      - "npp-core/web/playwright.config.ts"
-      - "docs/operations/document-numbering-slice.md"
-      - ".github/workflows/phase-3-document-numbering.yml"
-  push:
-    branches:
-      - main
-    paths:
-      - "database/migrations/shared/015_document_numbering.sql"
-      - "database/migrations/shared/016_permission_catalog_alignment.sql"
-      - "npp-core/api/src/audit-outbox.js"
-      - "npp-core/api/src/db/repositories/document-numbering.js"
-      - "npp-core/api/src/services/document-numbering*.js"
-      - "npp-core/api/src/routes/document-numbering.js"
-      - "npp-core/api/test/document-numbering*.test.js"
-      - "npp-core/api/test/audit-outbox-replay.test.js"
-      - "npp-core/api/package.json"
-      - "npp-core/web/app/document-numbering/**"
-      - "npp-core/web/app/api/document-number-series/**"
-      - "npp-core/web/lib/document-numbering-*.ts"
-      - "npp-core/web/e2e/document-numbering.spec.ts"
-      - "npp-core/web/playwright.config.ts"
-      - "docs/operations/document-numbering-slice.md"
-      - ".github/workflows/phase-3-document-numbering.yml"
   workflow_dispatch:
-
 permissions:
   contents: read
+
+concurrency:
+  group: phase-3-document-numbering-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   document-numbering:

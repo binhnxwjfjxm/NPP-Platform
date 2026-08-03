@@ -27,6 +27,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: core-foundation-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify-core-foundation:
     runs-on: ubuntu-latest

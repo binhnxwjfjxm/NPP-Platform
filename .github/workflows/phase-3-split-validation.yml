@@ -1,38 +1,13 @@
 name: Phase 3 Split Validation
 
 on:
-  pull_request:
-    paths:
-      - "database/migrations/shared/010_customer_master_data.sql"
-      - "database/migrations/shared/011_supplier_master_data.sql"
-      - "database/migrations/shared/012_product_catalog_foundation.sql"
-      - "database/migrations/shared/013_product_units_conversions_barcodes.sql"
-      - "database/migrations/shared/014_price_lists_channel_resolution.sql"
-      - "database/migrations/shared/015_document_numbering.sql"
-      - "database/migrations/shared/016_permission_catalog_alignment.sql"
-      - "npp-core/api/**"
-      - "npp-core/web/**"
-      - "docs/operations/phase-3-validation-plan.md"
-      - ".github/workflows/phase-3-split-validation.yml"
-  push:
-    branches:
-      - main
-    paths:
-      - "database/migrations/shared/010_customer_master_data.sql"
-      - "database/migrations/shared/011_supplier_master_data.sql"
-      - "database/migrations/shared/012_product_catalog_foundation.sql"
-      - "database/migrations/shared/013_product_units_conversions_barcodes.sql"
-      - "database/migrations/shared/014_price_lists_channel_resolution.sql"
-      - "database/migrations/shared/015_document_numbering.sql"
-      - "database/migrations/shared/016_permission_catalog_alignment.sql"
-      - "npp-core/api/**"
-      - "npp-core/web/**"
-      - "docs/operations/phase-3-validation-plan.md"
-      - ".github/workflows/phase-3-split-validation.yml"
   workflow_dispatch:
-
 permissions:
   contents: read
+
+concurrency:
+  group: phase-3-split-validation-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   domain-pack:

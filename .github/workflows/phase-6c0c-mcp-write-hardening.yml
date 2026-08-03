@@ -1,23 +1,7 @@
 name: Phase 6C.0C MCP Write Hardening
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'mcp/apps/backend/**'
-      - 'docs/operations/phase-6c0c-mcp-write-hardening.md'
-      - 'docs/operations/LATEST_HANDOFF.md'
-      - '.github/workflows/phase-6c0c-mcp-write-hardening.yml'
-  push:
-    branches:
-      - agent/phase-6c0c-mcp-write-hardening
-    paths:
-      - 'mcp/apps/backend/**'
-      - 'docs/operations/phase-6c0c-mcp-write-hardening.md'
-      - 'docs/operations/LATEST_HANDOFF.md'
-      - '.github/workflows/phase-6c0c-mcp-write-hardening.yml'
-
+  workflow_dispatch:
 permissions:
   contents: read
 

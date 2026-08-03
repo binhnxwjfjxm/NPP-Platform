@@ -1,34 +1,12 @@
 name: Phase 6C.0E MCP Migration Rehearsal
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'mcp/apps/backend/foundation/rehearsal.js'
-      - 'mcp/apps/backend/scripts/rehearse-mcp-migrations.js'
-      - 'mcp/audit/phase-6c0e/**'
-      - 'mcp/test/phase-6c0e-migration-rehearsal-contract.test.mjs'
-      - 'docs/operations/phase-6c0e-mcp-migration-rehearsal.md'
-      - 'docs/operations/LATEST_HANDOFF.md'
-      - '.github/workflows/phase-6c0e-mcp-migration-rehearsal.yml'
-  push:
-    branches:
-      - agent/phase-6c0e-mcp-migration-rehearsal
-    paths:
-      - 'mcp/apps/backend/foundation/rehearsal.js'
-      - 'mcp/apps/backend/scripts/rehearse-mcp-migrations.js'
-      - 'mcp/audit/phase-6c0e/**'
-      - 'mcp/test/phase-6c0e-migration-rehearsal-contract.test.mjs'
-      - 'docs/operations/phase-6c0e-mcp-migration-rehearsal.md'
-      - 'docs/operations/LATEST_HANDOFF.md'
-      - '.github/workflows/phase-6c0e-mcp-migration-rehearsal.yml'
-
+  workflow_dispatch:
 permissions:
   contents: read
 
 concurrency:
-  group: phase-6c0e-mcp-rehearsal-${{ github.ref }}
+  group: phase-6c0e-mcp-migration-rehearsal-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

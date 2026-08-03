@@ -25,6 +25,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: heroku-mcp-backend-contract-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-contract-ci:
     runs-on: ubuntu-latest

@@ -1,53 +1,13 @@
 name: Phase 3 Pricing Financial
 
 on:
-  pull_request:
-    paths:
-      - "database/migrations/shared/010_customer_master_data.sql"
-      - "database/migrations/shared/012_product_catalog_foundation.sql"
-      - "database/migrations/shared/013_product_units_conversions_barcodes.sql"
-      - "database/migrations/shared/014_price_lists_channel_resolution.sql"
-      - "npp-core/api/src/db/repositories/pricing.js"
-      - "npp-core/api/src/services/pricing.js"
-      - "npp-core/api/src/routes/pricing.js"
-      - "npp-core/api/test/pricing*.test.js"
-      - "npp-core/api/scripts/audit-pricing-workbooks.py"
-      - "npp-core/api/package.json"
-      - "npp-core/web/app/pricing/**"
-      - "npp-core/web/app/api/price-lists/**"
-      - "npp-core/web/app/api/pricing/**"
-      - "npp-core/web/app/api/sales-channels/**"
-      - "npp-core/web/lib/pricing-*.ts"
-      - "npp-core/web/e2e/pricing.spec.ts"
-      - "npp-core/web/playwright.config.ts"
-      - "*.xlsx"
-      - ".github/workflows/phase-3-pricing-financial.yml"
-  push:
-    branches:
-      - main
-    paths:
-      - "database/migrations/shared/010_customer_master_data.sql"
-      - "database/migrations/shared/012_product_catalog_foundation.sql"
-      - "database/migrations/shared/013_product_units_conversions_barcodes.sql"
-      - "database/migrations/shared/014_price_lists_channel_resolution.sql"
-      - "npp-core/api/src/db/repositories/pricing.js"
-      - "npp-core/api/src/services/pricing.js"
-      - "npp-core/api/src/routes/pricing.js"
-      - "npp-core/api/test/pricing*.test.js"
-      - "npp-core/api/scripts/audit-pricing-workbooks.py"
-      - "npp-core/api/package.json"
-      - "npp-core/web/app/pricing/**"
-      - "npp-core/web/app/api/price-lists/**"
-      - "npp-core/web/app/api/pricing/**"
-      - "npp-core/web/app/api/sales-channels/**"
-      - "npp-core/web/lib/pricing-*.ts"
-      - "npp-core/web/e2e/pricing.spec.ts"
-      - "npp-core/web/playwright.config.ts"
-      - "*.xlsx"
-      - ".github/workflows/phase-3-pricing-financial.yml"
-
+  workflow_dispatch:
 permissions:
   contents: read
+
+concurrency:
+  group: phase-3-pricing-financial-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   pricing-financial:

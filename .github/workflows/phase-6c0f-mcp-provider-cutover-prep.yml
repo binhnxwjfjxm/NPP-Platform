@@ -1,54 +1,12 @@
 name: Phase 6C.0F MCP Provider Cutover Preparation
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'mcp/apps/backend/.env.example'
-      - 'mcp/apps/backend/.env.migration.example'
-      - 'mcp/apps/backend/foundation/config.js'
-      - 'mcp/apps/backend/foundation/config.test.js'
-      - 'mcp/apps/backend/foundation/migrations/cli.js'
-      - 'mcp/apps/backend/foundation/migrations/cli.test.js'
-      - 'mcp/apps/backend/foundation/provider-cutover.js'
-      - 'mcp/apps/backend/foundation/provider-cutover.test.js'
-      - 'mcp/apps/backend/foundation/provider-cutover-integration.test.js'
-      - 'mcp/apps/backend/scripts/provider-cutover-preflight.js'
-      - 'mcp/apps/backend/package.json'
-      - 'mcp/audit/phase-6c0f/**'
-      - 'mcp/test/phase-6c0f-provider-cutover-contract.test.mjs'
-      - 'mcp/package.json'
-      - 'docs/operations/phase-6c0f-mcp-provider-cutover-preparation.md'
-      - 'docs/operations/LATEST_HANDOFF.md'
-      - '.github/workflows/phase-6c0f-mcp-provider-cutover-prep.yml'
-  push:
-    branches:
-      - agent/phase-6c0f-mcp-provider-cutover-prep
-    paths:
-      - 'mcp/apps/backend/.env.example'
-      - 'mcp/apps/backend/.env.migration.example'
-      - 'mcp/apps/backend/foundation/config.js'
-      - 'mcp/apps/backend/foundation/config.test.js'
-      - 'mcp/apps/backend/foundation/migrations/cli.js'
-      - 'mcp/apps/backend/foundation/migrations/cli.test.js'
-      - 'mcp/apps/backend/foundation/provider-cutover.js'
-      - 'mcp/apps/backend/foundation/provider-cutover.test.js'
-      - 'mcp/apps/backend/foundation/provider-cutover-integration.test.js'
-      - 'mcp/apps/backend/scripts/provider-cutover-preflight.js'
-      - 'mcp/apps/backend/package.json'
-      - 'mcp/audit/phase-6c0f/**'
-      - 'mcp/test/phase-6c0f-provider-cutover-contract.test.mjs'
-      - 'mcp/package.json'
-      - 'docs/operations/phase-6c0f-mcp-provider-cutover-preparation.md'
-      - 'docs/operations/LATEST_HANDOFF.md'
-      - '.github/workflows/phase-6c0f-mcp-provider-cutover-prep.yml'
-
+  workflow_dispatch:
 permissions:
   contents: read
 
 concurrency:
-  group: phase-6c0f-mcp-provider-cutover-${{ github.ref }}
+  group: phase-6c0f-mcp-provider-cutover-prep-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
