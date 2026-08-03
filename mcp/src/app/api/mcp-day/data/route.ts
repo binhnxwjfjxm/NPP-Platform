@@ -25,10 +25,9 @@ export async function GET(request: Request) {
       { data, receivedAt: new Date().toISOString() },
       { headers: { "Cache-Control": "no-store" } }
     );
-  } catch (error) {
-    const code = error instanceof Error ? error.message : "mcp_day_read_failed";
+  } catch {
     return Response.json(
-      { error: { code, message: "Không tải được dữ liệu lượt ghé" } },
+      { error: { code: "MCP_DAY_READ_FAILED", message: "Không tải được dữ liệu lượt ghé" } },
       { status: 502, headers: { "Cache-Control": "no-store" } }
     );
   }
