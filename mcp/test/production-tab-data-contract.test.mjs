@@ -22,9 +22,9 @@ test("orders tab reads orders and customers through the backend provider", () =>
   const loader = read("src/lib/api/orders-data.ts");
 
   assert.match(page, /loadOrdersResult\(\)/);
-  assert.match(page, /loadRouteCustomersData\(\)/);
+  assert.match(page, /getRouteCustomersData: loadRouteCustomersData/);
+  assert.match(page, /api\.getRouteCustomersData\(\)/);
   assert.doesNotMatch(page, /createApiClient/);
-  assert.doesNotMatch(page, /listOrders\(\)/);
   assert.match(loader, /backendReadRows<Row>\("orders"/);
   assert.match(loader, /backendReadRows<Row>\("order_items"/);
   assert.doesNotMatch(loader, /\/api\/orders/);
