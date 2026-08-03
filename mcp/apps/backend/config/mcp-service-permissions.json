@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "userFacingWritePermissions": [
+    "mcp.route.write",
+    "mcp.route-customer.write",
+    "mcp.session.write",
+    "mcp.session-customer.write",
+    "mcp.order.write",
+    "mcp.test.write",
+    "mcp.report.write",
+    "mcp.followup.write",
+    "mcp.report-setting.write"
+  ],
+  "integrationPermissions": [
+    "mcp.sales-order.read",
+    "mcp.sales-order.create"
+  ]
+}
