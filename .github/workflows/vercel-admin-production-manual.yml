@@ -88,15 +88,22 @@ jobs:
             -H "Authorization: Bearer $VERCEL_TOKEN" \
             "https://api.vercel.com/v9/projects/$ADMIN_PROJECT_NAME?teamId=$VERCEL_ORG_ID")"
           if [ "$status" = 404 ]; then
-            payload="$(node -e 'process.stdout.write(JSON.stringify({name:process.env.ADMIN_PROJECT_NAME,framework:"nextjs",rootDirectory:process.env.ADMIN_ROOT_DIRECTORY,nodeVersion:"20.x"}))')"
+            payload="$(node -e 'process.stdout.write(JSON.stringify({name:process.env.ADMIN_PROJECT_NAME,framework:"nextjs",rootDirectory:process.env.ADMIN_ROOT_DIRECTORY}))')"
             status="$(curl --silent --show-error --output "$project_json" --write-out '%{http_code}' \
               -X POST \
               -H "Authorization: Bearer $VERCEL_TOKEN" \
               -H 'Content-Type: application/json' \
-              "https://api.vercel.com/v10/projects?teamId=$VERCEL_ORG_ID" \
+              "https://api.vercel.com/v11/projects?teamId=$VERCEL_ORG_ID" \
               --data "$payload")"
           fi
-          case "$status" in 200|201) ;; *) cat "$project_json" >&2; exit 1 ;; esac
+          case "$status" in
+            200|201) ;;
+            *)
+              echo "::error::Vercel project resolution failed with HTTP $status" >&2
+              cat "$project_json" >&2
+              exit 1
+              ;;
+          esac
           project_id="$(PROJECT_FILE="$project_json" node --input-type=module -e 'import {readFileSync} from "node:fs"; const p=JSON.parse(readFileSync(process.env.PROJECT_FILE,"utf8")); if(!p.id) process.exit(1); process.stdout.write(p.id)')"
           test "$project_id" != "$CORE_PROJECT_ID"
           test "$project_id" != "$MCP_PROJECT_ID"
