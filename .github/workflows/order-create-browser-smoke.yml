@@ -56,7 +56,9 @@ jobs:
           BACKEND_API_BASE_URL: http://127.0.0.1:3110
           BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
           MCP_LEGACY_ACTOR_ID: service:ci:order-create
-          ORDER_CREATE_MOCK_PORT: 3110
+          ORDER_CREATE_MOCK_PORT: 3111
+          ORDER_CREATE_PROXY_PORT: 3110
+          ORDER_CREATE_UPSTREAM_BASE: http://127.0.0.1:3111
           ORDER_CREATE_APP_BASE: http://127.0.0.1:3001
           ORDER_CREATE_MOCK_BASE: http://127.0.0.1:3110
           ORDER_CREATE_RESULTS_DIR: test-results/order-create-smoke
@@ -65,10 +67,12 @@ jobs:
           mkdir -p test-results/order-create-smoke
           node test/ui/order-create-mock-backend.mjs >test-results/order-create-smoke/mock-backend.log 2>&1 &
           MOCK_PID=$!
+          node test/ui/order-create-backend-read-proxy.mjs >test-results/order-create-smoke/read-proxy.log 2>&1 &
+          PROXY_PID=$!
           npm start -- -p 3001 >test-results/order-create-smoke/next.log 2>&1 &
           APP_PID=$!
           cleanup() {
-            kill "$APP_PID" "$MOCK_PID" 2>/dev/null || true
+            kill "$APP_PID" "$PROXY_PID" "$MOCK_PID" 2>/dev/null || true
           }
           trap cleanup EXIT
           node test/ui/order-create-normalized-browser-smoke.mjs 2>&1 | tee test-results/order-create-smoke/browser-smoke.log
