@@ -31,3 +31,18 @@ test("Phase 6C production smoke is exact-command, read-only and secret-safe", ()
   assert.doesNotMatch(workflow, /vercel\s+(?:deploy|--prod)/i);
   assert.doesNotMatch(workflow, /echo\s+.*\$(?:mcp_backend_token|onboarding_token|sales_token)/i);
 });
+
+test("production smoke reports the exact failing read step without response bodies", () => {
+  assert.match(workflow, /SMOKE_STEP=\$label HTTP=\$\{status:-none\}/);
+  assert.match(workflow, /SMOKE_HTTP_\$\{label\^\^\}/);
+  assert.match(workflow, /SMOKE_FAILURE=\$code/);
+  assert.match(workflow, /SMOKE_ERROR_CODE_\$\{label\^\^\}/);
+  assert.match(workflow, /require_nonempty mcp_backend_token/);
+  assert.match(workflow, /require_equal onboarding_base/);
+  assert.match(workflow, /assert_error_code onboarding_validation session_customer_id_required/);
+  assert.match(workflow, /assert_error_code sales_validation session_customer_id_required/);
+  assert.doesNotMatch(workflow, /cat "\$body"/);
+  assert.doesNotMatch(workflow, /echo .*mcp_config/);
+  assert.doesNotMatch(workflow, /echo .*onboarding_token/);
+  assert.doesNotMatch(workflow, /echo .*sales_token/);
+});
