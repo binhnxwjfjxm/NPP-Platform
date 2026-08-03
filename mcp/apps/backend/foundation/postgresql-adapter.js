@@ -1,4 +1,5 @@
 import pg from "pg";
+import { buildPostgresqlSslConfig, resolvePostgresqlSslMode } from "./postgresql-ssl.js";
 const { Pool } = pg;
 
 const SCHEMA_PATTERN = /^[a-z_][a-z0-9_]{0,62}$/;
@@ -32,6 +33,10 @@ export function createPostgresqlPersistence(config, { PoolImpl = Pool } = {}) {
   const settings = config.persistence || config;
   const schema = String(settings.schema ?? "").trim();
   if (!SCHEMA_PATTERN.test(schema)) throw unavailable("invalid_persistence_schema");
+  const sslMode = resolvePostgresqlSslMode({
+    nodeEnv: config.nodeEnv ?? settings.nodeEnv,
+    mode: settings.sslMode
+  });
   let pool = null;
   let closed = false;
 
@@ -41,6 +46,7 @@ export function createPostgresqlPersistence(config, { PoolImpl = Pool } = {}) {
     if (!pool) {
       pool = new PoolImpl({
         connectionString: settings.databaseUrl,
+        ssl: buildPostgresqlSslConfig(sslMode),
         max: settings.poolMax,
         connectionTimeoutMillis: settings.connectionTimeoutMs,
         idleTimeoutMillis: settings.idleTimeoutMs,
