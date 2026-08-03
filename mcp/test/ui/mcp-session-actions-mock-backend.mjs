@@ -30,6 +30,70 @@ const routes = [{ id: "route-active", name: "UI Smoke Active", area: "API Smoke"
 const routeCustomers = [{ id: "rc-existing", routeId: "route-active", routeName: "UI Smoke Active", accountId: "customer-existing", accountName: "UI Existing Customer", contactName: "0900000000", area: "API Smoke", sortOrder: 1, status: "active", note: "Browser smoke seed" }];
 function dayData() { return { sessionOpened: true, run: { id: "session-active", routeId: "route-active", routeName: "UI Smoke Active", date: "2099-12-30", owner: "Sales UI", status: "active", openedAt: "08:00" }, kpis: [], lines: [state.line], results: [] }; }
 
+function readRows(table) {
+  if (table === "mcp_routes") {
+    return [{ id: "route-active", route_name: "UI Smoke Active", area: "API Smoke", active: true }];
+  }
+  if (table === "mcp_route_customers") {
+    return [{
+      id: "rc-existing",
+      route_id: "route-active",
+      customer_id: "customer-existing",
+      customer_name: "UI Existing Customer",
+      phone: "0900000000",
+      area: "API Smoke",
+      address: "Browser smoke seed",
+      sort_order: 1,
+      active: true,
+      note: "Browser smoke seed",
+      geo_lat: 10.776,
+      geo_lng: 106.7,
+      geo_accuracy: 8,
+      geo_captured_at: "2099-12-30T00:30:00.000Z",
+      updated_at: "2099-12-30T00:30:00.000Z"
+    }];
+  }
+  if (table === "mcp_route_sessions") {
+    return [{
+      id: "session-active",
+      route_id: "route-active",
+      route_name: "UI Smoke Active",
+      session_date: "2099-12-30",
+      sales: "Sales UI",
+      planned_customers: 1,
+      visited_customers: 0,
+      order_count: state.aggregates.orders.length,
+      status: "active",
+      opened_at: "2099-12-30T01:00:00.000Z",
+      created_at: "2099-12-30T01:00:00.000Z",
+      updated_at: "2099-12-30T01:00:00.000Z"
+    }];
+  }
+  if (table === "mcp_session_customers") {
+    return [{
+      id: "sc-existing",
+      session_id: "session-active",
+      route_customer_id: "rc-existing",
+      sort_order: 1,
+      customer_name: "UI Existing Customer",
+      phone: "0900000000",
+      area: "API Smoke",
+      address: "Browser smoke seed",
+      source: "planned",
+      visit_status: state.line.status,
+      note: state.line.note,
+      order_id: state.line.orderId || null,
+      test_id: state.line.testId || null,
+      report_id: state.line.reportId || null,
+      followup_count: state.line.followupCount,
+      checkin_at: null,
+      created_at: "2099-12-30T01:00:00.000Z"
+    }];
+  }
+  if (table === "mcp_visits") return [];
+  return [];
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || `127.0.0.1:${port}`}`);
   try {
@@ -42,6 +106,10 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, behavior: state.behavior });
     }
     if (req.method === "GET" && url.pathname === "/__state") return json(res, 200, state);
+    if (req.method === "POST" && url.pathname === "/api/read") {
+      const payload = await body(req);
+      return json(res, 200, canonical(req, readRows(String(payload.table || ""))));
+    }
     if (req.method === "GET" && url.pathname === "/api/routes/data") return json(res, 200, canonical(req, { kpis: [], routes }));
     if (req.method === "GET" && url.pathname === "/api/routes/customers/data") return json(res, 200, canonical(req, { kpis: [], customers: routeCustomers }));
     if (req.method === "GET" && url.pathname === "/api/mcp-day/data") return json(res, 200, canonical(req, dayData()));
@@ -69,8 +137,14 @@ const server = http.createServer(async (req, res) => {
         state.line.hasOrder = true;
         state.line.orderId = id;
       }
-      if (kind === "test") state.line.hasTest = true;
-      if (kind === "report") state.line.hasReport = true;
+      if (kind === "test") {
+        state.line.hasTest = true;
+        state.line.testId = id;
+      }
+      if (kind === "report") {
+        state.line.hasReport = true;
+        state.line.reportId = id;
+      }
       if (kind === "followup") state.line.followupCount += 1;
       await persist();
       return json(res, 200, canonical(req, kind === "order"

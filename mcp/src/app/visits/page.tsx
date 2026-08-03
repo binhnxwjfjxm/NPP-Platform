@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { MCPPage } from "@/features/mcp/MCPPage";
-import { createApiClient } from "@/lib/api/api-client";
+import { loadMcpDayData } from "@/lib/api/mcp-day-data";
+import { loadRouteCustomersData, loadRoutesData } from "@/lib/api/routes-data";
 
 type VisitsPageProps = {
   searchParams?: {
@@ -10,29 +11,25 @@ type VisitsPageProps = {
 };
 
 export default async function Page({ searchParams }: VisitsPageProps) {
-  const routeId = searchParams?.routeId;
-  const date = searchParams?.date;
+  const routeId = String(searchParams?.routeId || "").trim();
+  const date = String(searchParams?.date || "").slice(0, 10);
 
   if (!routeId) {
     redirect("/mcp");
   }
 
-  const api = createApiClient();
-  const dayQuery = { routeId, date };
-  const routeCustomersQuery = { routeId };
-
-  const [routesResult, dayResult, routeCustomersResult] = await Promise.all([
-    api.getRoutesData(),
-    api.getMcpDayData(dayQuery),
-    api.getRouteCustomersData(routeCustomersQuery)
+  const [routesData, mcpDayData, routeCustomersData] = await Promise.all([
+    loadRoutesData(),
+    loadMcpDayData({ routeId, date }),
+    loadRouteCustomersData()
   ]);
 
   return (
     <MCPPage
       activeHref="/visits"
-      routesData={routesResult.data}
-      mcpDayData={dayResult.data}
-      routeCustomersData={routeCustomersResult.data}
+      routesData={routesData}
+      mcpDayData={mcpDayData}
+      routeCustomersData={routeCustomersData}
     />
   );
 }

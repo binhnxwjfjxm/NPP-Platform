@@ -145,8 +145,10 @@ test("backend read API is served through the proxy token boundary", async (t) =>
   assert.deepEqual(rows.body.data, [{ id: "route-1", route_name: "Tuyến Trà Sữa" }]);
   assert.match(queries[0].sql, /SELECT "id", "route_name" FROM "mcp_routes"/);
   assert.match(queries[0].sql, /WHERE "active" = \$1/);
+  assert.match(queries[0].sql, /"installation_id" = \$2/);
   assert.match(queries[0].sql, /ORDER BY "route_name" ASC/);
-  assert.match(queries[0].sql, /LIMIT \$2/);
+  assert.match(queries[0].sql, /LIMIT \$3/);
+  assert.deepEqual(queries[0].values, ["true", "installation-a", 1]);
 
   const count = await request(state.publicPort, "/api/read", {
     method: "POST",
@@ -166,6 +168,8 @@ test("backend read API is served through the proxy token boundary", async (t) =>
   assert.equal(count.body.data, 2);
   assert.match(queries[1].sql, /SELECT COUNT\(\*\)::integer AS count FROM "mcp_session_reports"/);
   assert.match(queries[1].sql, /"raw_payload"->>'session_id' = \$1/);
+  assert.match(queries[1].sql, /"installation_id" = \$2/);
+  assert.deepEqual(queries[1].values, ["session-1", "installation-a"]);
 });
 
 test("liveness remains available while readiness fails closed", async (t) => {
