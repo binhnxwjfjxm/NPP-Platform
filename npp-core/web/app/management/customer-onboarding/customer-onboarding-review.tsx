@@ -18,7 +18,7 @@ type Feedback = { kind: 'success' | 'error'; text: string } | null;
 
 type ActionResponse = {
   data?: CustomerOnboardingRequestSummary;
-  error?: { message?: string };
+  error?: { message?: string; retryable?: boolean };
 };
 
 function statusLabel(status: string): string {
@@ -100,7 +100,9 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
       });
       const payload = await response.json().catch(() => null) as ActionResponse | null;
       if (!response.ok) {
-        delete actionKeys.current[idempotency.cacheKey];
+        if (response.status < 500 && payload?.error?.retryable !== true) {
+          delete actionKeys.current[idempotency.cacheKey];
+        }
         throw new Error(payload?.error?.message || 'Không thực hiện được thao tác.');
       }
       if (!payload?.data) {
