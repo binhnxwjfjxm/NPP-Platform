@@ -36,6 +36,8 @@ test('loadConfig returns validated server-owned values', () => {
   assert.equal(config.databaseSslMode, 'require');
   assert.deepEqual(config.corsOrigins, ['https://npp.example.com']);
   assert.equal(config.coreBootstrapActorId, 'bootstrap:core-api');
+  assert.equal(config.mcpOnboardingApiToken, '');
+  assert.equal(config.mcpOnboardingActorId, '');
 });
 
 test('getSanitizedConfig omits secrets', () => {
@@ -43,6 +45,8 @@ test('getSanitizedConfig omits secrets', () => {
   assert.equal(sanitized.installationId, 'npp-hung-phat');
   assert.ok(!('databaseUrl' in sanitized));
   assert.ok(!('backendApiToken' in sanitized));
+  assert.ok(!('mcpOnboardingApiToken' in sanitized));
+  assert.equal(sanitized.mcpOnboardingConfigured, false);
 });
 
 test('development CORS default is the Core web origin', () => {

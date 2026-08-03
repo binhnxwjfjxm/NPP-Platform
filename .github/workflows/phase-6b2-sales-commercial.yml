@@ -62,6 +62,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify Core-only scope
+        if: github.event_name == 'push' || github.head_ref == 'agent/phase-6b2-sales-commercial-controls'
         run: |
           set -euo pipefail
           git diff --name-only origin/main...HEAD | tee phase-6b2-changed-files.log

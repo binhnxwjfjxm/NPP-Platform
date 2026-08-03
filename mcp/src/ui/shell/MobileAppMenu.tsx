@@ -64,7 +64,7 @@ export function AppTopBar({ activeHref }: { activeHref: string }) {
   return (
     <header className={styles.topBar} data-app-top-bar>
       <div className={styles.topBarIdentity}>
-        <span className={styles.topBarMark} aria-hidden="true">HP</span>
+        <span className={styles.topBarMark} aria-hidden="true"><img src="/npp-app-icon.png" alt="" /></span>
         <span className={styles.topBarCopy}>
           <small>MCP-Plan</small>
           <strong>{current.label}</strong>

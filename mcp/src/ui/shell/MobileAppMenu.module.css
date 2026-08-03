@@ -34,6 +34,13 @@
   font-size: 14px;
   font-weight: 900;
   letter-spacing: 0.06em;
+  overflow: hidden;
+}
+
+.topBarMark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .topBarCopy {

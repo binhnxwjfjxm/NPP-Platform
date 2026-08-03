@@ -11,6 +11,7 @@ function positiveInteger(value, fallback, name) { const raw = text(value); const
 function csvList(value) { return Object.freeze(Array.from(new Set(text(value).split(",").map((item) => item.trim().toLowerCase()).filter(Boolean))).sort()); }
 function httpUrlValue(value, name, { httpsInProduction = false, nodeEnv = "development" } = {}) { let parsed; try { parsed = new URL(value); } catch { fail(`invalid_${name.toLowerCase()}`, `${name} must be a valid URL`); } if (!/^https?:$/.test(parsed.protocol)) fail(`invalid_${name.toLowerCase()}`, `${name} must use http or https`); if (httpsInProduction && nodeEnv === "production" && parsed.protocol !== "https:") fail(`${name.toLowerCase()}_https_required`, `${name} must use https in production`); return parsed.toString().replace(/\/+$/, ""); }
 function databaseUrlValue(value) { const raw = text(value); if (!raw) return null; let parsed; try { parsed = new URL(raw); } catch { fail("invalid_database_url", "DATABASE_URL must be a valid URL"); } if (!["postgres:", "postgresql:"].includes(parsed.protocol)) fail("invalid_database_url", "DATABASE_URL must use postgres or postgresql"); return raw; }
+function optionalSecret(value, name, nodeEnv) { const secret = text(value); if (!secret) return null; const minimumLength = nodeEnv === "production" ? 32 : 16; if (secret.length < minimumLength) fail(`invalid_${name.toLowerCase()}`, `${name} must contain at least ${minimumLength} characters`); if (nodeEnv === "production" && /replace|change[-_ ]?me|example|dev[-_ ]?only/i.test(secret)) fail(`invalid_${name.toLowerCase()}`, `${name} contains a placeholder value`); return secret; }
 
 function loadR2Config(env, nodeEnv) {
   const names = ["R2_BUCKET_NAME", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"];
@@ -31,6 +32,20 @@ export function parseCorsOrigins(value, { nodeEnv = "development" } = {}) {
 }
 
 function validateBackendToken(token, nodeEnv) { const minimumLength = nodeEnv === "production" ? 32 : 16; if (token.length < minimumLength) fail("backend_api_token_too_short", `BACKEND_API_TOKEN must contain at least ${minimumLength} characters`); if (nodeEnv === "production" && /replace|change[-_ ]?me|example|dev[-_ ]?only/i.test(token)) fail("backend_api_token_placeholder", "BACKEND_API_TOKEN still contains a placeholder value"); }
+
+function loadCoreOnboardingConfig(env, nodeEnv, backendApiToken) {
+  const baseUrlRaw = text(env.CORE_ONBOARDING_API_BASE_URL);
+  const apiToken = optionalSecret(env.CORE_ONBOARDING_API_TOKEN, "CORE_ONBOARDING_API_TOKEN", nodeEnv);
+  if (!baseUrlRaw && !apiToken) return Object.freeze({ configured: false, baseUrl: null, apiToken: null, timeoutMs: positiveInteger(env.CORE_ONBOARDING_TIMEOUT_MS, 15000, "CORE_ONBOARDING_TIMEOUT_MS") });
+  if (!baseUrlRaw || !apiToken) fail("incomplete_core_onboarding_config", "CORE_ONBOARDING_API_BASE_URL and CORE_ONBOARDING_API_TOKEN must be configured together");
+  if (apiToken === backendApiToken) fail("core_onboarding_token_reuse_forbidden", "CORE_ONBOARDING_API_TOKEN must differ from BACKEND_API_TOKEN");
+  return Object.freeze({
+    configured: true,
+    baseUrl: httpUrlValue(baseUrlRaw, "CORE_ONBOARDING_API_BASE_URL", { httpsInProduction: true, nodeEnv }),
+    apiToken,
+    timeoutMs: positiveInteger(env.CORE_ONBOARDING_TIMEOUT_MS, 15000, "CORE_ONBOARDING_TIMEOUT_MS")
+  });
+}
 
 function loadPersistenceConfig(env, nodeEnv) {
   const provider = text(env.PERSISTENCE_PROVIDER) || "postgresql";
@@ -78,6 +93,7 @@ export function loadFoundationConfig(env = process.env) {
     supabaseUrl = httpUrlValue(required(env, "SUPABASE_URL"), "SUPABASE_URL", { httpsInProduction: true, nodeEnv });
     supabaseServiceRoleKey = required(env, "SUPABASE_SERVICE_ROLE_KEY");
   }
+  const coreOnboarding = loadCoreOnboardingConfig(env, nodeEnv, backendApiToken);
   const servicePrincipal = Object.freeze({
     id: legacyActorId,
     type: "service",
@@ -94,11 +110,12 @@ export function loadFoundationConfig(env = process.env) {
     legacyRuntime: Object.freeze({ enabled: legacyRuntimeEnabled }),
     supabaseUrl, supabaseServiceRoleKey,
     corsOrigins: parseCorsOrigins(env.CORS_ORIGINS, { nodeEnv }),
+    coreOnboarding,
     upstreamTimeoutMs: positiveInteger(env.UPSTREAM_TIMEOUT_MS, 65000, "UPSTREAM_TIMEOUT_MS"),
     r2: loadR2Config(env, nodeEnv)
   });
 }
 
 export function publicFoundationConfig(config) {
-  return Object.freeze({ service: config.service, nodeEnv: config.nodeEnv, installationId: config.installationId, nppCode: config.nppCode, authMode: config.authMode, publicHost: config.publicHost, publicPort: config.publicPort, persistenceProvider: config.persistence.provider, persistenceConfigured: config.persistence.configured, persistenceSchema: config.persistence.schema, legacyRuntimeEnabled: config.legacyRuntime.enabled, serviceRoleCount: config.servicePrincipal?.roles?.length || 0, servicePermissionCount: config.servicePrincipal?.permissions?.length || 0, serviceScopeCount: config.servicePrincipal?.scopes?.length || 0, r2Configured: config.r2?.configured === true, corsOrigins: [...config.corsOrigins] });
+  return Object.freeze({ service: config.service, nodeEnv: config.nodeEnv, installationId: config.installationId, nppCode: config.nppCode, authMode: config.authMode, publicHost: config.publicHost, publicPort: config.publicPort, persistenceProvider: config.persistence.provider, persistenceConfigured: config.persistence.configured, persistenceSchema: config.persistence.schema, legacyRuntimeEnabled: config.legacyRuntime.enabled, serviceRoleCount: config.servicePrincipal?.roles?.length || 0, servicePermissionCount: config.servicePrincipal?.permissions?.length || 0, serviceScopeCount: config.servicePrincipal?.scopes?.length || 0, r2Configured: config.r2?.configured === true, coreOnboardingConfigured: config.coreOnboarding?.configured === true, corsOrigins: [...config.corsOrigins] });
 }

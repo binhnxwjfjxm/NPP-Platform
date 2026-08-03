@@ -26,7 +26,7 @@
     "test:route-customer-photo": "node --test test/route-customer-photo-gallery-contract.test.mjs test/route-customer-photo-management-contract.test.mjs",
     "test:production-hygiene": "node --test test/production-hygiene.test.mjs test/production-hygiene-no-fixture-leak.test.mjs test/mcp-smoke-hygiene-contract.test.mjs",
     "test:pullmcp-deployer": "node --test test/pullmcp-deployer.test.mjs test/deploy-runtime-paths.test.mjs",
-    "test:backend-api-auth": "node --test test/api-client-backend-auth.test.mjs test/production-tab-data-contract.test.mjs",
+    "test:backend-api-auth": "node --test test/api-client-backend-auth.test.mjs test/production-tab-data-contract.test.mjs test/phase-6c1b-customer-onboarding-contract.test.mjs",
     "test:export-copy": "node --test test/export-reader-copy-contract.test.mjs test/order-xlsx-export-contract.test.mjs test/orders-export-menu-contract.test.mjs",
     "test:phase-6c0a-audit": "node --test test/phase-6c0a-audit-contract.test.mjs",
     "test:phase-6c0b-persistence": "node --test test/phase-6c0b-persistence-boundary.test.mjs",

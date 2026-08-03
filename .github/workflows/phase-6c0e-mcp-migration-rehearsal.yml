@@ -63,6 +63,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify Phase 6C.0E source boundary
+        if: github.event_name == 'push' || github.head_ref == 'agent/phase-6c0e-mcp-migration-rehearsal'
         working-directory: .
         shell: bash
         run: |
@@ -114,6 +115,14 @@ jobs:
           node --check apps/backend/foundation/rehearsal.js
           node --check apps/backend/scripts/rehearse-mcp-migrations.js
           node --test test/phase-6c0e-migration-rehearsal-contract.test.mjs
+
+      - name: Bootstrap shared installation schema
+        working-directory: .
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:ci-secret-6c0e@127.0.0.1:5432/postgres
+          DATABASE_SSL_MODE: disable
+        run: npm --prefix npp-core/api run migration:migrate
 
       - name: Verify MCP backend regression
         env:

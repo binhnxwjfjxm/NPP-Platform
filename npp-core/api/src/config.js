@@ -120,14 +120,19 @@ export function parseCorsOrigins(value, { nodeEnv = 'development' } = {}) {
   return Object.freeze(origins);
 }
 
-function validateBackendToken(token, nodeEnv) {
+function validateNamedToken(token, name, nodeEnv) {
   const minimumLength = nodeEnv === 'production' ? 32 : 16;
+  const codeName = name.toLowerCase();
   if (token.length < minimumLength) {
-    fail('backend_api_token_too_short', `BACKEND_API_TOKEN must contain at least ${minimumLength} characters`);
+    fail(`${codeName}_too_short`, `${name} must contain at least ${minimumLength} characters`);
   }
   if (nodeEnv === 'production' && /replace|change[-_ ]?me|example|local[-_ ]?token/i.test(token)) {
-    fail('backend_api_token_placeholder', 'BACKEND_API_TOKEN contains a placeholder value');
+    fail(`${codeName}_placeholder`, `${name} contains a placeholder value`);
   }
+}
+
+function validateBackendToken(token, nodeEnv) {
+  validateNamedToken(token, 'BACKEND_API_TOKEN', nodeEnv);
 }
 
 function validateCoreBootstrapActorId(value, nodeEnv) {
@@ -167,6 +172,24 @@ export function loadConfig(envInput) {
   const backendApiToken = required(env, 'BACKEND_API_TOKEN');
   validateBackendToken(backendApiToken, nodeEnv);
   const coreBootstrapActorId = validateCoreBootstrapActorId(env.CORE_BOOTSTRAP_ACTOR_ID, nodeEnv);
+  const mcpOnboardingApiToken = text(env.MCP_ONBOARDING_API_TOKEN);
+  const configuredMcpOnboardingActorId = text(env.MCP_ONBOARDING_ACTOR_ID);
+  if (!mcpOnboardingApiToken && configuredMcpOnboardingActorId) {
+    fail('incomplete_mcp_onboarding_config', 'MCP_ONBOARDING_API_TOKEN is required when MCP_ONBOARDING_ACTOR_ID is configured');
+  }
+  if (mcpOnboardingApiToken) {
+    validateNamedToken(mcpOnboardingApiToken, 'MCP_ONBOARDING_API_TOKEN', nodeEnv);
+    if (mcpOnboardingApiToken === backendApiToken) fail('mcp_onboarding_token_reuse_forbidden', 'MCP_ONBOARDING_API_TOKEN must differ from BACKEND_API_TOKEN');
+  }
+  const mcpOnboardingActorId = mcpOnboardingApiToken
+    ? (configuredMcpOnboardingActorId || 'service:mcp-customer-onboarding')
+    : '';
+  if (mcpOnboardingActorId && !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{1,127}$/.test(mcpOnboardingActorId)) {
+    fail('invalid_mcp_onboarding_actor_id', 'MCP_ONBOARDING_ACTOR_ID is invalid');
+  }
+  if (mcpOnboardingApiToken && nodeEnv === 'production' && /replace|change[-_ ]?me|example/i.test(mcpOnboardingActorId)) {
+    fail('mcp_onboarding_actor_id_placeholder', 'MCP_ONBOARDING_ACTOR_ID contains a placeholder value');
+  }
 
   const r2Enabled = parseBoolean(env.R2_ENABLED, { defaultValue: false });
   const r2ContractRouteEnabled = parseBoolean(env.R2_CONTRACT_ROUTE_ENABLED, { defaultValue: false });
@@ -205,6 +228,8 @@ export function loadConfig(envInput) {
     databaseSslMode: parseSslMode(env.DATABASE_SSL_MODE),
     backendApiToken,
     coreBootstrapActorId,
+    mcpOnboardingApiToken,
+    mcpOnboardingActorId,
     corsOrigins: parseCorsOrigins(env.CORS_ORIGINS, { nodeEnv }),
     r2Enabled,
     r2Endpoint,
@@ -225,6 +250,7 @@ export function getSanitizedConfig(config) {
     host: config.host,
     port: config.port,
     installationId: config.installationId,
+    mcpOnboardingConfigured: Boolean(config.mcpOnboardingApiToken),
     databaseSslMode: config.databaseSslMode,
     corsOrigins: [...config.corsOrigins],
     storage: Object.freeze({

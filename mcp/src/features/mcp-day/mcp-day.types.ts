@@ -20,6 +20,8 @@ export type McpDayLine = {
   routeCustomerId?: string | null;
   sortOrder: number;
   accountName: string;
+  phone?: string;
+  address?: string;
   area: string;
   source: DayLineSource;
   status: DayLineStatus;
