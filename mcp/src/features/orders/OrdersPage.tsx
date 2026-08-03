@@ -1,17 +1,21 @@
-import { createApiClient } from "@/lib/api/api-client";
+import { loadOrdersResult } from "@/lib/api/orders-data";
+import { loadRouteCustomersData } from "@/lib/api/routes-data";
 import { OrdersClientPage } from "./OrdersClientPage";
 
+const api = {
+  getRouteCustomersData: loadRouteCustomersData
+};
+
 export async function OrdersPage() {
-  const api = createApiClient();
-  const [ordersResult, routeCustomersResult] = await Promise.all([
-    api.listOrders(),
+  const [ordersResult, routeCustomersData] = await Promise.all([
+    loadOrdersResult(),
     api.getRouteCustomersData()
   ]);
 
   return (
     <OrdersClientPage
       ordersResult={ordersResult}
-      customers={routeCustomersResult.data.customers}
+      customers={routeCustomersData.customers}
     />
   );
 }

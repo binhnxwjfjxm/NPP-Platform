@@ -1,9 +1,8 @@
-import { createApiClient } from "@/lib/api/api-client";
+import { loadActionsData } from "@/lib/api/actions-data";
 import { ActionsClientPage } from "./ActionsClientPage";
 
 export async function ActionsPage() {
-  const api = createApiClient();
-  const actionsResult = await api.getActionsData();
+  const actionsData = await loadActionsData();
 
-  return <ActionsClientPage kpis={actionsResult.data.kpis} items={actionsResult.data.items} />;
+  return <ActionsClientPage kpis={actionsData.kpis} items={actionsData.items} />;
 }
