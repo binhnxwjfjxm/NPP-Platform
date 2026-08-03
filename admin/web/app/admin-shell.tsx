@@ -14,17 +14,19 @@ export function AdminShell({
   action?: ReactNode;
   children: ReactNode;
 }) {
+  const nppOperationsUrl = process.env.NPP_OPERATIONS_URL?.trim() || 'https://npp-platform.vercel.app';
+
   return (
     <div className="shell">
       <header className="topbar">
         <Link className="brand" href="/">
           <strong>Admin MCP/NPP</strong>
-          <span>Trung tâm điều hành Hưng Phát</span>
+          <span>Tổng hợp và ngoại lệ cấp quản lý</span>
         </Link>
         <nav className="nav" aria-label="Điều hướng quản lý">
           <Link href="/">Tổng hợp</Link>
-          <Link href="/customer-onboarding">Duyệt khách hàng</Link>
-          <a href={process.env.NPP_OPERATIONS_URL || 'https://office.nguyenlieuhungphat.com'}>NPP Operations</a>
+          <Link href="/customer-onboarding">Ngoại lệ cấp quản lý</Link>
+          <a href={`${nppOperationsUrl.replace(/\/$/, '')}/management`}>NPP Operations</a>
         </nav>
       </header>
       <main className="main">
