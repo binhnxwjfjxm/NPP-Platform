@@ -8,10 +8,12 @@ const root = new URL("../../", import.meta.url);
 const workflowPath = new URL(".github/workflows/heroku-mcp-backend-manual.yml", root);
 const deployScriptPath = new URL("mcp/apps/backend/scripts/manual-production-deploy.sh", root);
 const rolloutScriptPath = new URL("mcp/apps/backend/scripts/production-rollout-gate.sh", root);
+const credentialSafetyPath = new URL("mcp/apps/backend/foundation/migrations/credential-safety.js", root);
 const workflow = (await readFile(workflowPath, "utf8")).replace(/\r\n/g, "\n");
 const deployScript = (await readFile(deployScriptPath, "utf8")).replace(/\r\n/g, "\n");
 const rolloutScript = (await readFile(rolloutScriptPath, "utf8")).replace(/\r\n/g, "\n");
-const deployment = `${workflow}\n${deployScript}\n${rolloutScript}`;
+const credentialSafety = (await readFile(credentialSafetyPath, "utf8")).replace(/\r\n/g, "\n");
+const deployment = `${workflow}\n${deployScript}\n${rolloutScript}\n${credentialSafety}`;
 
 test("production rollout scripts are valid shell", () => {
   execFileSync("bash", ["-n", fileURLToPath(deployScriptPath)]);
@@ -27,6 +29,16 @@ test("the existing MCP deploy command owns the complete database gate", () => {
   assert.match(workflow, /MCP_RUNTIME_DATABASE_URL_FILE: \/tmp\/mcp-runtime-database-url/);
   assert.match(workflow, /MCP_MIGRATION_DATABASE_URL_FILE: \/tmp\/mcp-migration-database-url/);
   assert.match(workflow, /MCP_DB_ROLE_FILE: \/tmp\/mcp-db-role/);
+  assert.match(workflow, /MCP_MIGRATION_CREDENTIAL_MODE: essential_owner/);
+  assert.match(workflow, /MCP_MIGRATION_ESSENTIAL_OWNER_CONFIRM: I_ACKNOWLEDGE_OWNER_CREDENTIAL_IS_NOT_LEAST_PRIVILEGE/);
+  for (const requiredName of [
+    "CORE_ONBOARDING_TIMEOUT_MS",
+    "CORE_SALES_TIMEOUT_MS",
+    "MCP_SERVICE_PERMISSIONS",
+    "MCP_SERVICE_SCOPES"
+  ]) {
+    assert.match(workflow, new RegExp(requiredName));
+  }
   assert.doesNotMatch(workflow, /\$\{\{\s*runner\.temp\s*\}\}/);
   assert.match(workflow, /bash mcp\/apps\/backend\/scripts\/manual-production-deploy\.sh/);
   assert.match(deployScript, /test "\$HEROKU_APP_NAME" != "\$HEROKU_DB_OWNER_APP_NAME"/);
@@ -40,20 +52,26 @@ test("the existing MCP deploy command owns the complete database gate", () => {
   assert.doesNotMatch(deployment, /container:(?:push|release)[^\n]+HEROKU_DB_OWNER_APP_NAME/);
 });
 
-test("database gate proves backup restore, migration idempotency and reconciliation", () => {
+test("database gate proves backup restore, idempotency, verification and reconciliation", () => {
   assert.match(rolloutScript, /pg_dump/);
   assert.match(rolloutScript, /pg_restore/);
   assert.match(rolloutScript, /snapshot_counts/);
   assert.match(rolloutScript, /assert_existing_counts_unchanged/);
-  assert.match(rolloutScript, /runtime_and_migrator_target_different_databases/);
-  assert.match(rolloutScript, /runtime_and_migrator_credentials_not_separated/);
+  assert.match(credentialSafety, /runtime_and_migrator_target_different_databases/);
+  assert.match(credentialSafety, /migration_runtime_credential_not_separated/);
+  assert.match(credentialSafety, /essential_owner_migration_not_authorized/);
+  assert.match(credentialSafety, /leastPrivilege: false/);
   assert.match(rolloutScript, /MCP_MIGRATION_ALLOW_PRODUCTION=true/);
   assert.match(rolloutScript, /MCP_MIGRATION_PRODUCTION_CONFIRM=I_UNDERSTAND_THIS_TARGETS_PRODUCTION/);
   assert.equal((rolloutScript.match(/run migration:migrate/g) || []).length, 4);
   assert.equal((rolloutScript.match(/run migration:verify/g) || []).length, 2);
+  assert.match(rolloutScript, /if \[ "\$credential_mode" = "separated" \]/);
   assert.match(rolloutScript, /shared\.grant_mcp_runtime_access/);
+  assert.match(rolloutScript, /runtime_grant="skipped_essential_owner"/);
   assert.match(rolloutScript, /MCP_RESTORE_REHEARSAL=success/);
   assert.match(rolloutScript, /MCP_PRODUCTION_RECONCILIATION=success/);
+  assert.match(deployment, /MCP_MIGRATION_CREDENTIAL_MODE/);
+  assert.match(deployment, /MCP_MIGRATION_LEAST_PRIVILEGE/);
   assert.doesNotMatch(deployment, /(?:^|\n)\s*(?:export\s+)?SUPABASE_[A-Z0-9_]*\s*=/i);
   assert.doesNotMatch(deployment, /\$\{\{\s*(?:secrets|vars|env)\.SUPABASE_/i);
 });
