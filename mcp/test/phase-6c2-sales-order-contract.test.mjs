@@ -52,7 +52,7 @@ test("structured MCP projection and square NPP PWA icons are registered", () => 
   const migration = read("../database/migrations/mcp/007_mcp_core_sales_order_sync.sql");
   const registry = read("apps/backend/foundation/migrations/index.js");
   const manifest = read("src/app/manifest.ts");
-  const iconRoute = read("src/app/api/pwa-icon/route.tsx");
+  const iconRoute = read("src/app/api/pwa-icon/route.ts");
   assert.match(migration, /core_sales_order_id uuid/);
   assert.match(migration, /core_sales_order_fingerprint char\(64\)/);
   assert.match(registry, /mcp_007_core_sales_order_sync/);
