@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { AppShell } from '../components/app-shell';
-import { loadOrganizationSnapshot } from '../../lib/organization-snapshot';
+import { loadOrganizationSnapshotWithStatus } from '../../lib/organization-snapshot';
 import { createEmptyOrganizationSnapshot, formatDateTime } from '../../lib/organization-types';
+import type { OrganizationResourceKey } from '../../lib/organization-types';
 import {
   listCustomerOnboardingRequests,
   resolveCustomerOnboardingRequestId,
@@ -48,12 +49,16 @@ async function loadOnboardingQueue(): Promise<LoadResult<CustomerOnboardingReque
     limit: 20,
   })));
   const requests = results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
-  const failed = results.some((result) => result.status === 'rejected');
+  const failedCount = results.filter((result) => result.status === 'rejected').length;
   return {
     data: requests
       .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
       .slice(0, 20),
-    error: failed ? 'Một phần danh sách xác minh khách hàng chưa tải được' : null,
+    error: failedCount === results.length
+      ? 'Không tải được danh sách xác minh khách hàng'
+      : failedCount > 0
+        ? 'Một phần danh sách xác minh khách hàng chưa tải được'
+        : null,
   };
 }
 
@@ -64,11 +69,37 @@ function onboardingStatus(status: string): string {
   return status;
 }
 
+function organizationMetric(
+  unavailable: OrganizationResourceKey[],
+  resource: OrganizationResourceKey,
+  value: number,
+): number | string {
+  return unavailable.includes(resource) ? '—' : value;
+}
+
+function organizationLoadMessage(unavailable: OrganizationResourceKey[]): string | null {
+  if (unavailable.length === 0) return null;
+  const labels: Record<OrganizationResourceKey, string> = {
+    branches: 'chi nhánh',
+    warehouses: 'kho',
+    locations: 'vị trí kho',
+  };
+  return `Chưa tải được số liệu ${unavailable.map((resource) => labels[resource]).join(', ')}.`;
+}
+
 export default async function ManagementPage() {
   const [organizationResult, orders, onboarding] = await Promise.all([
-    loadOrganizationSnapshot()
-      .then((data) => ({ data, error: null as string | null }))
-      .catch(() => ({ data: createEmptyOrganizationSnapshot(), error: 'Không tải được cơ cấu chi nhánh và kho' })),
+    loadOrganizationSnapshotWithStatus()
+      .then(({ snapshot, unavailable }) => ({
+        data: snapshot,
+        unavailable,
+        error: organizationLoadMessage(unavailable),
+      }))
+      .catch(() => ({
+        data: createEmptyOrganizationSnapshot(),
+        unavailable: ['branches', 'warehouses', 'locations'] as OrganizationResourceKey[],
+        error: 'Không tải được cơ cấu chi nhánh và kho',
+      })),
     loadDraftOrders(),
     loadOnboardingQueue(),
   ]);
@@ -81,19 +112,31 @@ export default async function ManagementPage() {
     <AppShell
       kicker="Điều hành dành cho chủ và quản lý"
       title="Tổng hợp việc cần xử lý"
-      subtitle="Xem nhanh dữ liệu đang có và đi thẳng tới đúng màn hình nghiệp vụ."
-      actions={<Link className={styles.link} href="/dashboard">Xem cơ cấu hệ thống</Link>}
+      subtitle="Nắm nhanh dữ liệu đang có và các việc cần chú ý."
+      actions={<Link className={styles.link} href="/organization">Xem cơ cấu hệ thống</Link>}
     >
       <div className={styles.page} data-testid="management-overview-page">
         <p className={styles.notice}>
-          Màn hình này chỉ đọc dữ liệu. Việc tạo, sửa hoặc duyệt vẫn thực hiện tại màn hình nghiệp vụ tương ứng.
+          Màn hình này chỉ đọc dữ liệu và không thay đổi thông tin trong hệ thống.
         </p>
 
         <section className={styles.summaryGrid} aria-label="Tóm tắt vận hành">
-          <article className={styles.summaryCard}><strong>{activeBranches}</strong><span>Chi nhánh đang hoạt động</span></article>
-          <article className={styles.summaryCard}><strong>{activeWarehouses}</strong><span>Kho đang hoạt động</span></article>
-          <article className={styles.summaryCard}><strong>{activeLocations}</strong><span>Vị trí kho đang hoạt động</span></article>
-          <article className={styles.summaryCard}><strong>{orders.data.length + onboarding.data.length}</strong><span>Việc đang chờ trong danh sách gần nhất</span></article>
+          <article className={styles.summaryCard}>
+            <strong>{organizationMetric(organizationResult.unavailable, 'branches', activeBranches)}</strong>
+            <span>Chi nhánh đang hoạt động</span>
+          </article>
+          <article className={styles.summaryCard}>
+            <strong>{organizationMetric(organizationResult.unavailable, 'warehouses', activeWarehouses)}</strong>
+            <span>Kho đang hoạt động</span>
+          </article>
+          <article className={styles.summaryCard}>
+            <strong>{organizationMetric(organizationResult.unavailable, 'locations', activeLocations)}</strong>
+            <span>Vị trí kho đang hoạt động</span>
+          </article>
+          <article className={styles.summaryCard}>
+            <strong>{orders.data.length + onboarding.data.length}</strong>
+            <span>Việc đang chờ trong danh sách gần nhất</span>
+          </article>
         </section>
 
         {organizationResult.error ? <p className={styles.error} role="alert">{organizationResult.error}</p> : null}
@@ -129,7 +172,7 @@ export default async function ManagementPage() {
                 <h2>Đề nghị xác minh khách hàng</h2>
                 <p>Các điểm bán đã phát sinh nhu cầu mua và cần xử lý mở hoặc liên kết mã.</p>
               </div>
-              <Link className={styles.link} href="/customers">Mở danh mục khách hàng</Link>
+              <span className={styles.meta}>Chỉ theo dõi tại màn hình này</span>
             </header>
             {onboarding.error ? <p className={styles.error} role="alert">{onboarding.error}</p> : null}
             {onboarding.data.length === 0 && !onboarding.error ? <p className={styles.empty}>Không có đề nghị đang chờ trong danh sách gần nhất.</p> : null}
