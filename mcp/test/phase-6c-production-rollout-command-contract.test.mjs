@@ -42,11 +42,14 @@ test("Core production deploy remains manual and gains one exact Issue 5 command"
   assert.doesNotMatch(coreWorkflow, /^\s{2}(?:push|pull_request|schedule):\s*$/m);
 });
 
-test("MCP production deploy keeps the Essential migration gate and exact command", () => {
+test("MCP production keeps separate exact migration and deploy commands", () => {
   assert.match(mcpWorkflow, /workflow_dispatch:/);
   assert.match(mcpWorkflow, /issue_comment:/);
   assert.match(mcpWorkflow, /github\.event\.issue\.number == 5/);
   assert.match(mcpWorkflow, /github\.event\.comment\.body == '\/deploy-heroku-mcp-production'/);
+  assert.match(mcpWorkflow, /github\.event\.comment\.body == '\/migrate-heroku-mcp-production'/);
+  assert.match(mcpWorkflow, /\/deploy-heroku-mcp-production\) action="deploy"/);
+  assert.match(mcpWorkflow, /\/migrate-heroku-mcp-production\) action="migrate"/);
   assert.match(mcpWorkflow, /HEROKU_APP_NAME: hung-phat-mcp/);
   assert.match(mcpWorkflow, /HEROKU_DB_OWNER_APP_NAME: hung-phat/);
   assert.match(mcpWorkflow, /MCP_MIGRATION_CREDENTIAL_MODE: essential_owner/);
