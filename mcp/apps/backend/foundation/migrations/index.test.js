@@ -241,7 +241,8 @@ test("MCP legacy report settings seed is canonical, exact and non-destructive", 
   assert.match(sql, /v_item_count <> 53/);
   assert.match(sql, /v_active_item_count <> 52 OR v_inactive_item_count <> 1/);
   assert.match(sql, /v_orphan_count <> 0/);
-  assert.doesNotMatch(sql, /\b(?:DELETE|TRUNCATE)\b/i);
+  const executableSql = sql.replace(/^\s*--.*$/gm, "");
+  assert.doesNotMatch(executableSql, /\b(?:DELETE|TRUNCATE)\b/i);
   assert.doesNotMatch(sql, /postgresql:\/\/|SUPABASE_(?:ANON|SERVICE|SECRET|PUBLISHABLE)_KEY/i);
 });
 
