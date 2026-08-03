@@ -25,6 +25,7 @@ test('admin is a standalone manually deployed Vercel frontend', async () => {
   assert.match(workflow, /\/deploy-vercel-admin-production/);
   assert.match(workflow, /ADMIN_PROJECT_NAME: admin-mcp-npp/);
   assert.match(workflow, /ADMIN_ROOT_DIRECTORY: admin\/web/);
+  assert.match(workflow, /CORE_HEROKU_APP_NAME: hung-phat/);
   assert.match(workflow, /ADMIN_DOMAIN: admin\.nguyenlieuhungphat\.com/);
   assert.match(workflow, /NPP_DOMAIN: office\.nguyenlieuhungphat\.com/);
   assert.match(workflow, /MCP_DOMAIN: mcp\.nguyenlieuhungphat\.com/);
@@ -32,9 +33,16 @@ test('admin is a standalone manually deployed Vercel frontend', async () => {
   assert.match(workflow, /Create or resolve Admin Vercel project/);
   assert.match(workflow, /https:\/\/api\.vercel\.com\/v11\/projects\?teamId=/);
   assert.doesNotMatch(workflow, /https:\/\/api\.vercel\.com\/v10\/projects\?teamId=/);
+  assert.match(workflow, /secrets\.HEROKU_API_KEY/);
+  assert.match(workflow, /BACKEND_API_TOKEN/);
+  assert.match(workflow, /secrets\.CORE_WEB_ADMIN_USERNAME/);
+  assert.match(workflow, /secrets\.CORE_WEB_ADMIN_PASSWORD/);
+  assert.doesNotMatch(workflow, /core-runtime\/\.vercel\/\.env\.production\.local/);
   assert.match(workflow, /type: 'sensitive'/);
   assert.doesNotMatch(workflow, /type: 'encrypted'/);
-  assert.match(workflow, /admin_env_upsert_failed/);
+  assert.match(workflow, /Report failed Admin rollout/);
+  assert.match(workflow, /missing runtime names/);
+  assert.match(workflow, /No secret values are included/);
   assert.match(workflow, /Smoke exact Admin deployment/);
   assert.doesNotMatch(workflow, /DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY/);
 });
