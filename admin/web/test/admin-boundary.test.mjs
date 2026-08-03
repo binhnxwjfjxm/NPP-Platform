@@ -40,6 +40,11 @@ test('admin is a standalone manually deployed Vercel frontend', async () => {
   assert.doesNotMatch(workflow, /core-runtime\/\.vercel\/\.env\.production\.local/);
   assert.match(workflow, /type: 'sensitive'/);
   assert.doesNotMatch(workflow, /type: 'encrypted'/);
+  assert.match(workflow, /Enforce and link exact Admin project/);
+  assert.match(workflow, /-X PATCH/);
+  assert.match(workflow, /rootDirectory:process\.env\.ADMIN_ROOT_DIRECTORY/);
+  assert.match(workflow, /project\.rootDirectory !== process\.env\.ADMIN_ROOT_DIRECTORY/);
+  assert.doesNotMatch(workflow, /linked\.settings\?\.rootDirectory/);
   assert.match(workflow, /Report failed Admin rollout/);
   assert.match(workflow, /missing runtime names/);
   assert.match(workflow, /No secret values are included/);
