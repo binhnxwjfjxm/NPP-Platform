@@ -57,8 +57,9 @@ function fullAddress(address: CustomerAddress): string {
 export default function CustomerOnboardingReview({ requests, customers }: Props) {
   const router = useRouter();
   const actionKeys = useRef<Record<string, string>>({});
+  const busyRequests = useRef<Set<string>>(new Set());
   const addressRequestVersions = useRef<Record<string, number>>({});
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busyByRequest, setBusyByRequest] = useState<Record<string, boolean>>({});
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [reasonByRequest, setReasonByRequest] = useState<Record<string, string>>({});
   const [codeByRequest, setCodeByRequest] = useState<Record<string, string>>({});
@@ -82,9 +83,10 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
     action: CustomerOnboardingAction,
     extra: Record<string, unknown> = {},
   ) {
-    const actionKey = `${request.id}:${action}`;
+    if (busyRequests.current.has(request.id)) return;
+    busyRequests.current.add(request.id);
+    setBusyByRequest((current) => ({ ...current, [request.id]: true }));
     const idempotency = stableActionKey(request, action);
-    setBusy(actionKey);
     setFeedback(null);
     try {
       const response = await fetch(`/api/customer-onboarding-requests/${request.id}/${action}`, {
@@ -113,7 +115,8 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
         text: error instanceof Error ? error.message : 'Không thực hiện được thao tác.',
       });
     } finally {
-      setBusy(null);
+      busyRequests.current.delete(request.id);
+      setBusyByRequest((current) => ({ ...current, [request.id]: false }));
     }
   }
 
@@ -207,7 +210,7 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
           const selectedAddress = addressByRequest[request.id] || '';
           const addresses = addressesByRequest[request.id] || [];
           const address = request.proposedCustomer.address;
-          const isBusy = busy?.startsWith(`${request.id}:`) === true;
+          const isBusy = busyByRequest[request.id] === true;
           const addressLoading = addressLoadingByRequest[request.id] === true;
           return (
             <article className={styles.card} key={request.id}>
@@ -287,7 +290,7 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
                         ))}
                       </select>
                     </label>
-                    <button type="button" disabled={isBusy} onClick={() => linkExistingCustomer(request)}>
+                    <button type="button" disabled={isBusy || addressLoading} onClick={() => linkExistingCustomer(request)}>
                       Liên kết khách đã có
                     </button>
                   </section>
