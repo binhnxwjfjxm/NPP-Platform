@@ -9,6 +9,7 @@ import {
 const ALLOWED_ONBOARDING_STATUSES = new Set(["approved", "linked_existing"]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const POSITIVE_DECIMAL_PATTERN = /^(?:0*[1-9]\d{0,13})(?:\.\d{1,6})?$|^0+\.0*[1-9]\d{0,5}$/;
+const FINGERPRINT_SCHEMA_VERSION = 1;
 
 const BUSINESS_MESSAGES = Object.freeze({
   session_customer_id_required: "Thiếu điểm bán trong phiên.",
@@ -19,6 +20,7 @@ const BUSINESS_MESSAGES = Object.freeze({
   source_outlet_id_required: "Điểm bán chưa có mã tham chiếu ổn định.",
   core_sales_order_not_submitted: "Nhu cầu mua này chưa tạo đơn chính thức trong Core.",
   core_sales_order_payload_mismatch: "Nhu cầu mua đã thay đổi sau khi tạo đơn Core. Không thể dùng lại cùng mã nhu cầu.",
+  core_sales_order_fingerprint_missing: "Đơn Core đã tồn tại nhưng thiếu dấu vết payload. Cần đối soát trước khi tiếp tục.",
   core_sales_order_source_mismatch: "Đơn Core trả về không khớp nguồn nhu cầu MCP.",
   core_sales_order_customer_mismatch: "Đơn Core trả về không khớp khách hàng đã được duyệt.",
   core_product_reference_required: "Nhu cầu mua có sản phẩm không thuộc nguồn NPP Core.",
@@ -38,6 +40,16 @@ function text(value) {
   return normalized || null;
 }
 
+function normalizedUuid(value, code) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!UUID_PATTERN.test(normalized)) throw businessError(code, 409);
+  return normalized;
+}
+
+function sameIdentity(left, right) {
+  return String(left ?? "").trim().toLowerCase() === String(right ?? "").trim().toLowerCase();
+}
+
 function installationId(context) {
   const value = text(context?.installation?.id);
   if (!value) throw businessError("installation_id_required");
@@ -50,12 +62,18 @@ function canonicalQuantity(value) {
   return normalized.replace(/^0+(?=\d)/, "");
 }
 
+function sourceOutletId(row) {
+  const value = text(row.route_customer_id) || text(row.session_customer_id);
+  if (!value) throw businessError("source_outlet_id_required");
+  return value;
+}
+
 function localProjection(row) {
   if (!row?.core_sales_order_id) return null;
   return Object.freeze({
     orderId: row.order_id,
     orderCode: row.order_code || null,
-    sourceOutletId: text(row.route_customer_id) || row.session_customer_id,
+    sourceOutletId: sourceOutletId(row),
     coreSalesOrderId: row.core_sales_order_id,
     number: row.core_sales_order_number || null,
     status: row.core_sales_order_status,
@@ -63,6 +81,10 @@ function localProjection(row) {
     total: String(row.core_sales_order_total ?? "0"),
     currency: row.core_sales_order_currency || "VND",
     submissionFingerprint: row.core_sales_order_fingerprint || null,
+    submissionFingerprintVersion: row.core_sales_order_fingerprint_version === null
+      || row.core_sales_order_fingerprint_version === undefined
+      ? null
+      : Number(row.core_sales_order_fingerprint_version),
     submittedAt: row.core_sales_order_submitted_at || null,
     lastSyncedAt: row.core_sales_order_last_synced_at || null,
     updatedAt: row.order_updated_at || null
@@ -88,6 +110,7 @@ async function loadOrderIntent(persistence, context, sessionCustomerId, orderId 
          o.core_sales_order_total,
          o.core_sales_order_currency,
          o.core_sales_order_fingerprint,
+         o.core_sales_order_fingerprint_version,
          o.core_sales_order_submitted_at,
          o.core_sales_order_last_synced_at,
          o.updated_at AS order_updated_at
@@ -112,23 +135,15 @@ async function loadOrderIntent(persistence, context, sessionCustomerId, orderId 
   });
 }
 
-function sourceOutletId(row) {
-  const value = text(row.route_customer_id) || text(row.session_customer_id);
-  if (!value) throw businessError("source_outlet_id_required");
-  return value;
-}
-
 function submissionFromOrder(row, config) {
   if (!ALLOWED_ONBOARDING_STATUSES.has(text(row.customer_onboarding_status))) {
     throw businessError("core_customer_not_ready", 409);
   }
-  if (!UUID_PATTERN.test(text(row.core_customer_id) || "") || !UUID_PATTERN.test(text(row.core_customer_address_id) || "")) {
-    throw businessError("core_customer_reference_missing", 409);
-  }
+  const customerId = normalizedUuid(row.core_customer_id, "core_customer_reference_missing");
+  const customerAddressId = normalizedUuid(row.core_customer_address_id, "core_customer_reference_missing");
   if (!Array.isArray(row.items) || row.items.length === 0) throw businessError("core_product_reference_required", 409);
   const lines = row.items.map((item) => {
-    const variantId = text(item.variant_id);
-    if (!variantId || !UUID_PATTERN.test(variantId)) throw businessError("core_product_reference_required", 409);
+    const variantId = normalizedUuid(item.variant_id, "core_product_reference_required");
     return {
       variantId,
       quantity: canonicalQuantity(item.quantity),
@@ -137,11 +152,11 @@ function submissionFromOrder(row, config) {
   });
   return Object.freeze({
     customerMode: "EXISTING",
-    customerId: row.core_customer_id,
-    customerAddressId: row.core_customer_address_id,
+    customerId,
+    customerAddressId,
     warehouseId: config.coreSales.defaultWarehouseId,
     deliveryMode: "DELIVERY",
-    collectionPolicy: "COLLECT_ON_DELIVERY",
+    collectionPolicy: "PREPAID",
     currency: "VND",
     sourceType: "MCP",
     sourceId: row.order_id,
@@ -152,7 +167,10 @@ function submissionFromOrder(row, config) {
 }
 
 function submissionFingerprint(payload) {
-  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  return Object.freeze({
+    version: FINGERPRINT_SCHEMA_VERSION,
+    digest: createHash("sha256").update(JSON.stringify(payload)).digest("hex")
+  });
 }
 
 function verifyCoreProjection(projection, row) {
@@ -164,17 +182,34 @@ function verifyCoreProjection(projection, row) {
     throw businessError("core_sales_order_source_mismatch", 502);
   }
   if (
-    projection.customerId !== row.core_customer_id
-    || projection.customerAddressId !== row.core_customer_address_id
+    !sameIdentity(projection.customerId, row.core_customer_id)
+    || !sameIdentity(projection.customerAddressId, row.core_customer_address_id)
   ) {
     throw businessError("core_sales_order_customer_mismatch", 502);
   }
   return projection;
 }
 
-async function saveProjection(persistence, context, row, coreOrder, { submittedAt = null, fingerprint = null } = {}) {
+async function saveProjection(
+  persistence,
+  context,
+  row,
+  coreOrder,
+  { submittedAt = null, fingerprint = null, fingerprintVersion = null } = {}
+) {
   const now = new Date().toISOString();
-  const coreProjection = verifyCoreProjection(coreSalesOrderProjection(coreOrder), row);
+  let coreProjection;
+  try {
+    coreProjection = verifyCoreProjection(coreSalesOrderProjection(coreOrder), row);
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "mcp_core_sales_projection_verification_failed",
+      coreSalesOrderId: coreOrder?.id || null,
+      orderId: row.order_id,
+      errorCode: error?.code || "core_sales_projection_verification_failed"
+    }));
+    throw error;
+  }
   const previous = localProjection(row);
   const projection = Object.freeze({
     orderId: row.order_id,
@@ -187,8 +222,12 @@ async function saveProjection(persistence, context, row, coreOrder, { submittedA
     total: coreProjection.total,
     currency: coreProjection.currency,
     submissionFingerprint: fingerprint || previous?.submissionFingerprint || null,
+    submissionFingerprintVersion: fingerprintVersion
+      || previous?.submissionFingerprintVersion
+      || null,
     submittedAt: submittedAt || previous?.submittedAt || now,
-    lastSyncedAt: now
+    lastSyncedAt: now,
+    updatedAt: now
   });
   await persistence.withTransaction(async (client) => {
     const result = await client.query(
@@ -200,8 +239,9 @@ async function saveProjection(persistence, context, row, coreOrder, { submittedA
            core_sales_order_total = $7,
            core_sales_order_currency = $8,
            core_sales_order_fingerprint = $9,
-           core_sales_order_submitted_at = $10,
-           core_sales_order_last_synced_at = $11,
+           core_sales_order_fingerprint_version = $10,
+           core_sales_order_submitted_at = $11,
+           core_sales_order_last_synced_at = $12,
            updated_at = now()
        WHERE installation_id = $1 AND id = $2
        RETURNING id`,
@@ -215,6 +255,7 @@ async function saveProjection(persistence, context, row, coreOrder, { submittedA
         projection.total,
         projection.currency,
         projection.submissionFingerprint,
+        projection.submissionFingerprintVersion,
         projection.submittedAt,
         projection.lastSyncedAt
       ]
@@ -245,7 +286,12 @@ export async function getSalesOrderProjection(body, context, config, options = {
     status: null,
     currentVersionNumber: null,
     total: null,
-    currency: "VND"
+    currency: "VND",
+    submissionFingerprint: null,
+    submissionFingerprintVersion: null,
+    submittedAt: null,
+    lastSyncedAt: null,
+    updatedAt: row.order_updated_at || null
   });
 }
 
@@ -258,8 +304,22 @@ export async function submitSalesOrder(body, context, config, options = {}) {
   const fingerprint = submissionFingerprint(submission);
   const existing = localProjection(row);
   if (existing?.coreSalesOrderId) {
-    if (existing.submissionFingerprint && existing.submissionFingerprint !== fingerprint) {
+    if (!existing.submissionFingerprint || !existing.submissionFingerprintVersion) {
+      throw businessError("core_sales_order_fingerprint_missing", 409);
+    }
+    if (
+      existing.submissionFingerprintVersion === fingerprint.version
+      && existing.submissionFingerprint !== fingerprint.digest
+    ) {
       throw businessError("core_sales_order_payload_mismatch", 409);
+    }
+    if (existing.submissionFingerprintVersion !== fingerprint.version) {
+      console.warn(JSON.stringify({
+        event: "mcp_core_sales_fingerprint_version_changed",
+        orderId: row.order_id,
+        storedVersion: existing.submissionFingerprintVersion,
+        currentVersion: fingerprint.version
+      }));
     }
     return syncSalesOrder({ sessionCustomerId, orderId: row.order_id }, context, config, options);
   }
@@ -270,7 +330,8 @@ export async function submitSalesOrder(body, context, config, options = {}) {
   });
   return saveProjection(persistence, context, row, coreOrder, {
     submittedAt: new Date().toISOString(),
-    fingerprint
+    fingerprint: fingerprint.digest,
+    fingerprintVersion: fingerprint.version
   });
 }
 
