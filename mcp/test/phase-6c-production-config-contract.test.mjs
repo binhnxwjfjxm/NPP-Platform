@@ -21,6 +21,8 @@ test("config workflow is exact-command, exact-main and never automatic", () => {
   assert.match(workflow, /github\.event\.comment\.body == '\/configure-phase-6c-production'/);
   assert.match(workflow, /github\.actor == 'binhnxwjfjxm'/);
   assert.match(workflow, /github\.actor == 'khuongbinhinfo-a11y'/);
+  assert.match(workflow, /contents: read/);
+  assert.match(workflow, /issues: write/);
   assert.match(workflow, /DEPLOY_REF: main/);
   assert.match(workflow, /persist-credentials: false/);
   assert.match(workflow, /git rev-parse origin\/main/);
@@ -79,6 +81,15 @@ test("provider mutation is scoped, reversible and health-gated", () => {
   assert.doesNotMatch(script, /git push/);
   assert.doesNotMatch(script, /migration:(?:migrate|verify|status)/);
   assert.doesNotMatch(script, /pg_dump|pg_restore/);
+});
+
+test("sanitized provider evidence is published to Issue 189", () => {
+  assert.match(workflow, /Publish sanitized evidence to Issue 189/);
+  assert.match(workflow, /OPERATION_STATUS: \$\{\{ job\.status \}\}/);
+  assert.match(workflow, /cat "\$GITHUB_STEP_SUMMARY"/);
+  assert.match(workflow, /issues\/189\/comments/);
+  assert.match(workflow, /GITHUB_RUN_ID/);
+  assert.doesNotMatch(workflow, /cat .*config/i);
 });
 
 test("minimum Phase 6C service permissions and warehouse scope are additive", () => {
