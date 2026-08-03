@@ -43,12 +43,16 @@ test("MCP projects all Core statuses and never treats blocked statuses as order-
   assert.match(client, /status === "approved" \|\| status === "linked_existing"/);
 });
 
-test("MCP app and PWA use the NPP logo asset", () => {
+test("MCP shell and generated PWA icons use the existing NPP logo asset", () => {
   const manifest = source("src/app/manifest.ts");
+  const iconRoute = source("src/app/api/pwa-icon/route.ts");
   const layout = source("src/app/layout.tsx");
   const shell = source("src/ui/shell/AppShell.tsx");
-  assert.match(manifest, /\/npp-app-icon\.png/);
-  assert.match(layout, /\/npp-app-icon\.png/);
+  assert.match(manifest, /\/api\/pwa-icon\?size=192/);
+  assert.match(manifest, /\/api\/pwa-icon\?size=512/);
+  assert.match(manifest, /maskable=1/);
+  assert.match(iconRoute, /\/npp-app-icon\.png/);
+  assert.match(layout, /\/api\/pwa-icon\?size=192/);
   assert.match(shell, /\/npp-app-icon\.png/);
 });
 
