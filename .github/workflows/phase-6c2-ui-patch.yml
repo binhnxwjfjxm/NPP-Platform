@@ -1,0 +1,223 @@
+name: Phase 6C.2 UI Patch
+
+on:
+  push:
+    branches:
+      - agent/phase-6c2-mcp-sales-order-adapter
+
+permissions:
+  contents: write
+
+jobs:
+  patch-ui:
+    if: github.event.head_commit.message != 'chore: apply Phase 6C.2 UI patch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/phase-6c2-mcp-sales-order-adapter
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Patch existing MCP order flow narrowly
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('mcp/src/features/mcp/McpSessionCompactViewFinal2.tsx')
+          text = path.read_text()
+
+          def replace(old, new):
+              global text
+              if old not in text:
+                  raise SystemExit(f'missing replacement anchor: {old[:100]}')
+              text = text.replace(old, new, 1)
+
+          replace(
+              'import { McpMarketReportFields, buildMarketReportContent, emptyMarketReportDraft, marketReportHasInput, type MarketReportDraft } from "./McpMarketReportFields";\n',
+              'import { McpMarketReportFields, buildMarketReportContent, emptyMarketReportDraft, marketReportHasInput, type MarketReportDraft } from "./McpMarketReportFields";\nimport { coreSalesOrderStatusLabel, getCoreSalesOrderProjection, submitCoreSalesOrder, syncCoreSalesOrder, type CoreSalesOrderProjection } from "./mcp-core-sales-order";\n'
+          )
+          replace(
+              'type ProductCatalogItem = { productId: string; variantId: string; name: string; brand?: string | null; category?: string | null; rawCategory?: string | null; sku?: string | null; variantName?: string | null; sizeLabel?: string | null; sellUnit?: string | null; packUnit?: string | null; packQuantity?: number | null; price?: number | null };',
+              'type ProductCatalogItem = { productId: string; variantId: string; name: string; brand?: string | null; category?: string | null; rawCategory?: string | null; sku?: string | null; variantName?: string | null; sizeLabel?: string | null; sellUnit?: string | null; packUnit?: string | null; packQuantity?: number | null; price?: number | null; coreUnitId?: string | null; conversionToBase?: string | null; allowsFractional?: boolean | null; taxMode?: string | null; taxRate?: string | null; catalogSource?: string | null };'
+          )
+          replace(
+              'const DEFAULT_FILTERS = ["Trà", "Sữa", "Siro", "Bột", "Topping", "Đường & ngọt", "Sinh tố", "Trái cây / mứt", "Kem / Milk foam", "Phụ gia", "Bao bì", "Mì cay", "Đông lạnh", "Bánh tráng"];',
+              'const DEFAULT_FILTERS: string[] = [];'
+          )
+          replace(
+              '          packQuantity: item.packQuantity ?? null,\n          price: Number(item.price || 0)',
+              '          packQuantity: item.packQuantity ?? null,\n          price: item.price == null ? null : Number(item.price),\n          coreUnitId: item.coreUnitId ?? null,\n          conversionToBase: item.conversionToBase ?? null,\n          allowsFractional: item.allowsFractional ?? null,\n          taxMode: item.taxMode ?? null,\n          taxRate: item.taxRate ?? null,\n          catalogSource: item.catalogSource ?? null'
+          )
+          text, count = re.subn(
+              r'\nasync function getVariants\(productId: string\) \{.*?\n\}\n',
+              '\n',
+              text,
+              count=1,
+              flags=re.S
+          )
+          if count != 1:
+              raise SystemExit('getVariants block was not removed')
+
+          replace(
+              '{variant.sellUnit || "đv"} · {formatMoney(Number(variant.price || 0))}',
+              '{variant.sellUnit || "đv"} · {variant.price == null ? "NPP tính giá khi tạo đơn" : formatMoney(Number(variant.price))}'
+          )
+          replace('Loại sản phẩm / hãng', 'Sản phẩm NPP')
+          replace('{item.brand || "Chưa brand"} · {item.category || "Chưa nhóm"}', 'Nguồn NPP Core')
+          replace(
+              '<span>{item.unit || item.sellUnit || "đv"} × {formatMoney(item.unitPrice)}</span><b>{formatMoney(item.lineTotal)}</b>',
+              '<span>{item.unit || item.sellUnit || "đv"} × <em>NPP tính giá</em></span><b>Chờ NPP</b>'
+          )
+          replace(
+              '<div className="order-total-row"><span>Tổng</span><strong>{formatMoney(orderTotal)}</strong></div>',
+              '<div className="order-total-row"><span>Giá chính thức</span><strong>NPP tính khi tạo đơn</strong></div>'
+          )
+          replace(
+              'Đã có khách và địa chỉ Core; sẵn sàng cho bước lập đơn chính thức ở giai đoạn sau.',
+              'Đã có khách và địa chỉ Core; có thể chủ động tạo đơn nháp chính thức trong NPP.'
+          )
+
+          sheet_pattern = re.compile(r'function CustomerActionSheet\(.*?\n\}\n\n\nexport function', re.S)
+          sheet_replacement = r'''function CoreSalesOrderStatusCard({ projection, loading }: { projection: CoreSalesOrderProjection | null; loading: boolean }) {
+            if (loading) return <div className="visit-focus-card"><span>Đơn bán hàng NPP</span><strong>Đang tải trạng thái...</strong></div>;
+            if (!projection) return null;
+            return <div className="visit-focus-card core-sales-order-card" data-core-sales-order-status={projection.status || "not_created"}>
+              <span>Đơn bán hàng chính thức trong NPP</span>
+              <strong>{coreSalesOrderStatusLabel(projection.status)}</strong>
+              <small>{projection.coreSalesOrderId ? `${projection.number || projection.coreSalesOrderId} · ${Number(projection.total || 0).toLocaleString("vi-VN")}đ` : "Chưa tạo đơn. MCP vẫn giữ nguyên nhu cầu mua."}</small>
+            </div>;
+          }
+
+          function CustomerActionSheet({ selection, draft, marketReport, productSearch, orderItems, orderTotal, orderIntentId, customerOnboarding, onboardingLoading, coreSalesOrder, salesOrderLoading, saving, message, onChange, onMarketReportChange, onSearchChange, onCategoryChange, onRunSearch, onPickProduct, onCommitPickerItems, onRemoveOrderItem, onChangeItemQuantity, onClose, onSubmit, onSubmitOnboarding, onSyncOnboarding, onSubmitSalesOrder, onSyncSalesOrder }: { selection: { line: McpDayLine; action: McpCustomerAction } | null; draft: ActionDraft; marketReport: MarketReportDraft; productSearch: ProductSearchState; orderItems: OrderDraftItem[]; orderTotal: number; orderIntentId: string | null; customerOnboarding: CustomerOnboardingProjection | null; onboardingLoading: boolean; coreSalesOrder: CoreSalesOrderProjection | null; salesOrderLoading: boolean; saving: boolean; message: string | null; onChange: (field: keyof ActionDraft, value: string) => void; onMarketReportChange: (value: MarketReportDraft) => void; onSearchChange: (value: string) => void; onCategoryChange: (category: string) => void; onRunSearch: () => void; onPickProduct: (productId: string) => void; onCommitPickerItems: (entries: PickerEntry[]) => void; onRemoveOrderItem: (variantId: string) => void; onChangeItemQuantity: (variantId: string, quantity: number) => void; onClose: () => void; onSubmit: () => void; onSubmitOnboarding: () => void; onSyncOnboarding: () => void; onSubmitSalesOrder: () => void; onSyncSalesOrder: () => void }) {
+            const isOrder = selection?.action === "order";
+            const hasCoreRequest = Boolean(customerOnboarding?.coreRequestId);
+            const officialCustomerReady = customerOnboarding?.officialOrderAllowed === true;
+            const hasCoreSalesOrder = Boolean(coreSalesOrder?.coreSalesOrderId);
+            const primaryOrderAction = !orderIntentId
+              ? <button className="button primary" type="button" onClick={onSubmit} disabled={saving}>{saving ? "Đang lưu..." : "Lưu nhu cầu mua"}</button>
+              : !hasCoreRequest
+                ? <button className="button primary" type="button" onClick={onSubmitOnboarding} disabled={saving || onboardingLoading}>{saving ? "Đang gửi..." : "Gửi đề nghị xác minh / mở mã"}</button>
+                : !officialCustomerReady
+                  ? <button className="button primary" type="button" onClick={onSyncOnboarding} disabled={saving || onboardingLoading}>{onboardingLoading ? "Đang đồng bộ..." : "Đồng bộ trạng thái khách"}</button>
+                  : !hasCoreSalesOrder
+                    ? <button className="button primary" type="button" onClick={onSubmitSalesOrder} disabled={saving || salesOrderLoading}>{saving ? "Đang tạo..." : "Tạo đơn nháp NPP"}</button>
+                    : <button className="button primary" type="button" onClick={onSyncSalesOrder} disabled={saving || salesOrderLoading}>{salesOrderLoading ? "Đang đồng bộ..." : "Đồng bộ đơn NPP"}</button>;
+            const orderHint = hasCoreSalesOrder
+              ? "Đơn chính thức đã nằm trong NPP; MCP chỉ hiển thị trạng thái đọc."
+              : officialCustomerReady
+                ? "Khách đã được duyệt. Nhân viên có thể chủ động tạo đơn nháp NPP."
+                : "Nhu cầu mua đã lưu trong MCP. Chưa tạo đơn chính thức trong NPP.";
+            return <BottomSheet variant={isOrder ? "default" : "compact"} open={Boolean(selection)} onClose={onClose} title={selection ? actionTitle(selection.action) : "Thao tác tại điểm bán"} description={selection ? selection.line.accountName : undefined} footer={<div className={isOrder ? "sheet-action-grid order-sheet-footer" : popupStyles.footer}>{isOrder ? <div className="order-footer-total">{orderIntentId ? <><span>Nhu cầu mua</span><strong>{customerOnboarding?.orderCode || orderIntentId}</strong></> : <><span>Sản phẩm NPP</span><strong>{orderItems.length} mã</strong></>}</div> : null}{isOrder ? primaryOrderAction : <button className="button primary" type="button" onClick={onSubmit} disabled={saving}>{saving ? "Đang lưu..." : actionSaveLabel(selection?.action)}</button>}<button className="button" type="button" onClick={onClose} disabled={saving}>Đóng</button></div>}>{selection ? <div className={isOrder ? "visit-sheet-content order-action-content" : `visit-sheet-content ${popupStyles.content}`}><div className="visit-focus-card"><span>Khách</span><strong>{selection.line.accountName}</strong><small>{mcpCustomerActionDescription(selection.action)}</small></div>{isOrder ? <CustomerOnboardingStatusCard projection={customerOnboarding} loading={onboardingLoading} /> : null}{isOrder ? <CoreSalesOrderStatusCard projection={coreSalesOrder} loading={salesOrderLoading} /> : null}{isOrder && orderIntentId ? <p className="page-subtitle order-message">{orderHint}</p> : <ActionFields action={selection.action} draft={draft} marketReport={marketReport} productSearch={productSearch} orderItems={orderItems} orderTotal={orderTotal} saving={saving} onChange={onChange} onMarketReportChange={onMarketReportChange} onSearchChange={onSearchChange} onCategoryChange={onCategoryChange} onRunSearch={onRunSearch} onPickProduct={onPickProduct} onCommitPickerItems={onCommitPickerItems} onRemoveOrderItem={onRemoveOrderItem} onChangeItemQuantity={onChangeItemQuantity} />}{message ? <p className="page-subtitle order-message">{message}</p> : null}</div> : null}</BottomSheet>;
+          }
+
+          export function'''
+          text, count = sheet_pattern.subn(sheet_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit('CustomerActionSheet block was not replaced')
+
+          replace(
+              '  const [customerOnboarding, setCustomerOnboarding] = useState<CustomerOnboardingProjection | null>(null);\n  const [onboardingLoading, setOnboardingLoading] = useState(false);',
+              '  const [customerOnboarding, setCustomerOnboarding] = useState<CustomerOnboardingProjection | null>(null);\n  const [onboardingLoading, setOnboardingLoading] = useState(false);\n  const [coreSalesOrder, setCoreSalesOrder] = useState<CoreSalesOrderProjection | null>(null);\n  const [salesOrderLoading, setSalesOrderLoading] = useState(false);'
+          )
+          text, count = re.subn(
+              r'  async function pickProduct\(productId: string\) \{.*?\n  function commitPickerItems',
+              '  function pickProduct(productId: string) { const variants = productSearch.results.filter((item) => item.productId === productId); setMessage(null); setProductSearch((current) => ({ ...current, selectedProductId: productId, variants, variantsLoading: false, error: null })); }\n  function commitPickerItems',
+              text,
+              count=1,
+              flags=re.S
+          )
+          if count != 1:
+              raise SystemExit('pickProduct was not replaced')
+
+          replace(
+              '    setCustomerOnboarding(null);\n    const existingOrderId',
+              '    setCustomerOnboarding(null);\n    setCoreSalesOrder(null);\n    const existingOrderId'
+          )
+          old_load = '''    if (action === "order" && existingOrderId) {
+              setOnboardingLoading(true);
+              void getCustomerOnboarding(line.sessionCustomerId || line.id, existingOrderId)
+                .then(setCustomerOnboarding)
+                .catch((error) => setMessage(error instanceof Error ? error.message : "Không tải được trạng thái xác minh khách"))
+                .finally(() => setOnboardingLoading(false));
+            } else if (action === "order") {'''
+          new_load = '''    if (action === "order" && existingOrderId) {
+              const sessionCustomerId = line.sessionCustomerId || line.id;
+              setOnboardingLoading(true);
+              void getCustomerOnboarding(sessionCustomerId, existingOrderId)
+                .then(setCustomerOnboarding)
+                .catch((error) => setMessage(error instanceof Error ? error.message : "Không tải được trạng thái xác minh khách"))
+                .finally(() => setOnboardingLoading(false));
+              setSalesOrderLoading(true);
+              void getCoreSalesOrderProjection(sessionCustomerId, existingOrderId)
+                .then(setCoreSalesOrder)
+                .catch((error) => setMessage(error instanceof Error ? error.message : "Không tải được trạng thái đơn NPP"))
+                .finally(() => setSalesOrderLoading(false));
+            } else if (action === "order") {'''
+          replace(old_load, new_load)
+
+          replace(
+              'items: orderItems.map((item) => ({ productId: item.productId, variantId: item.variantId, productName: item.name, sku: item.sku, unit: item.unit, quantity: item.quantity, unitPrice: item.unitPrice, note: variantLabel(item) }))',
+              'items: orderItems.map((item) => ({ productId: item.productId, variantId: item.variantId, productName: item.name, sku: item.sku, unit: item.unit, quantity: item.quantity, unitPrice: 0, catalogSource: item.catalogSource || "NPP_CORE", coreUnitId: item.coreUnitId, conversionToBase: item.conversionToBase, note: variantLabel(item) }))'
+          )
+          replace(
+              '            setCustomerOnboarding({ orderId: data.orderId, orderCode: data.orderCode || null, coreRequestId: null, status: null, officialOrderAllowed: false });\n            setMessage("Đã lưu nhu cầu mua trong MCP. Chưa gửi đề nghị sang Core.");',
+              '            setCustomerOnboarding({ orderId: data.orderId, orderCode: data.orderCode || null, coreRequestId: null, status: null, officialOrderAllowed: false });\n            setCoreSalesOrder({ orderId: data.orderId, orderCode: data.orderCode || null, coreSalesOrderId: null, status: null, currency: "VND" });\n            setMessage("Đã lưu nhu cầu mua từ sản phẩm NPP. Chưa gửi đề nghị sang Core.");'
+          )
+
+          marker = '''  return <AppShell activeHref={activeHref}>'''
+          functions = '''  function submitOfficialSalesOrder() {
+            if (!selectedAction || selectedAction.action !== "order" || !orderIntentId || !customerOnboarding?.officialOrderAllowed) return;
+            const sessionCustomerId = selectedAction.line.sessionCustomerId || selectedAction.line.id;
+            startSaving(() => {
+              void submitCoreSalesOrder(sessionCustomerId, orderIntentId)
+                .then((projection) => {
+                  setCoreSalesOrder(projection);
+                  setMessage(coreSalesOrderStatusLabel(projection.status));
+                  router.refresh();
+                })
+                .catch((error) => setMessage(error instanceof Error ? error.message : "Không tạo được đơn nháp NPP"));
+            });
+          }
+
+          function syncOfficialSalesOrder() {
+            if (!selectedAction || selectedAction.action !== "order" || !orderIntentId) return;
+            const sessionCustomerId = selectedAction.line.sessionCustomerId || selectedAction.line.id;
+            setSalesOrderLoading(true);
+            void syncCoreSalesOrder(sessionCustomerId, orderIntentId)
+              .then((projection) => {
+                setCoreSalesOrder(projection);
+                setMessage(coreSalesOrderStatusLabel(projection.status));
+                router.refresh();
+              })
+              .catch((error) => setMessage(error instanceof Error ? error.message : "Không đồng bộ được đơn NPP"))
+              .finally(() => setSalesOrderLoading(false));
+          }
+
+          return <AppShell activeHref={activeHref}>'''
+          replace(marker, functions)
+
+          replace(
+              'customerOnboarding={customerOnboarding} onboardingLoading={onboardingLoading} saving={saving}',
+              'customerOnboarding={customerOnboarding} onboardingLoading={onboardingLoading} coreSalesOrder={coreSalesOrder} salesOrderLoading={salesOrderLoading} saving={saving}'
+          )
+          replace(
+              'onSubmit={submitAction} onSubmitOnboarding={submitCustomerOnboardingRequest} onSyncOnboarding={syncCustomerOnboardingRequest}',
+              'onSubmit={submitAction} onSubmitOnboarding={submitCustomerOnboardingRequest} onSyncOnboarding={syncCustomerOnboardingRequest} onSubmitSalesOrder={submitOfficialSalesOrder} onSyncSalesOrder={syncOfficialSalesOrder}'
+          )
+
+          path.write_text(text)
+          PY
+          git diff --check
+          git diff -- mcp/src/features/mcp/McpSessionCompactViewFinal2.tsx
+      - name: Commit patched UI
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add mcp/src/features/mcp/McpSessionCompactViewFinal2.tsx
+          git commit -m 'chore: apply Phase 6C.2 UI patch'
+          git push origin HEAD:agent/phase-6c2-mcp-sales-order-adapter
