@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { McpDayLine } from "@/features/mcp-day/mcp-day.types";
 import { type McpCustomerAction } from "./mcp-customer-actions";
 import { requestMcpCustomerProfile } from "./mcp-customer-profile-events";
@@ -28,7 +29,7 @@ function statusClass(status: McpDayLine["status"]) {
 
 function resultSummary(line: McpDayLine) {
   const done = [
-    line.hasOrder ? "Có đơn" : null,
+    line.hasOrder ? "Có nhu cầu mua" : null,
     line.hasTest ? "Có test" : null,
     line.hasReport ? "Có quan sát" : null,
     Number(line.followupCount || 0) > 0 ? `${line.followupCount} theo dõi` : null
@@ -46,12 +47,22 @@ function checkinTime(value?: string) {
 
 function actionItems(): Array<{ label: string; action: McpCustomerAction; tone?: "primary" }> {
   return [
-    { label: "Đơn", action: "order", tone: "primary" },
+    { label: "Nhu cầu", action: "order", tone: "primary" },
     { label: "Test", action: "test" },
     { label: "Quan sát", action: "market_report" },
     { label: "Theo dõi", action: "follow_up" },
     { label: "Bỏ qua", action: "skip" }
   ];
+}
+
+function officialOrderHref(line: McpDayLine) {
+  const sessionCustomerId = line.sessionCustomerId || line.id;
+  const params = new URLSearchParams({
+    sessionCustomerId,
+    orderId: String(line.orderId || ""),
+    customerName: line.accountName
+  });
+  return `/visits/order-intent?${params.toString()}`;
 }
 
 export function McpLineCard({
@@ -108,6 +119,15 @@ export function McpLineCard({
         >
           📷 Ảnh
         </button>
+        {line.orderId ? (
+          <Link
+            className={`${styles.action} button primary`}
+            href={officialOrderHref(line)}
+            aria-label={`Mở đơn NPP cho ${line.accountName}`}
+          >
+            Đơn NPP
+          </Link>
+        ) : null}
         {actionItems().map((item) => (
           <button
             className={item.tone === "primary" ? `${styles.action} button primary` : styles.action}
