@@ -6,14 +6,41 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
 
-test("customer tab projects the canonical route customer endpoint", () => {
+test("customer tab projects route customers from the backend read boundary", () => {
   const page = read("src/features/accounts/AccountsPage.tsx");
   const projection = read("src/features/accounts/accounts-from-route-customers.ts");
 
-  assert.match(page, /getRouteCustomersData\(\)/);
-  assert.doesNotMatch(page, /getAccountsData\(\)/);
+  assert.match(page, /loadRouteCustomersData\(\)/);
+  assert.doesNotMatch(page, /createApiClient/);
+  assert.doesNotMatch(page, /getRouteCustomersData\(\)/);
   assert.match(projection, /accountsFromRouteCustomers/);
   assert.match(projection, /tier: "-"/);
+});
+
+test("orders tab reads orders and customers through the backend provider", () => {
+  const page = read("src/features/orders/OrdersPage.tsx");
+  const loader = read("src/lib/api/orders-data.ts");
+
+  assert.match(page, /loadOrdersResult\(\)/);
+  assert.match(page, /loadRouteCustomersData\(\)/);
+  assert.doesNotMatch(page, /createApiClient/);
+  assert.doesNotMatch(page, /listOrders\(\)/);
+  assert.match(loader, /backendReadRows<Row>\("orders"/);
+  assert.match(loader, /backendReadRows<Row>\("order_items"/);
+  assert.doesNotMatch(loader, /\/api\/orders/);
+});
+
+test("action plan reads followups through the backend provider", () => {
+  const page = read("src/features/actions/ActionsPage.tsx");
+  const loader = read("src/lib/api/actions-data.ts");
+
+  assert.match(page, /loadActionsData\(\)/);
+  assert.doesNotMatch(page, /createApiClient/);
+  assert.doesNotMatch(page, /getActionsData\(\)/);
+  assert.match(loader, /backendReadRows<Row>\("mcp_followups"/);
+  assert.match(loader, /backendReadRows<Row>\("mcp_session_customers"/);
+  assert.match(loader, /backendReadRows<Row>\("mcp_routes"/);
+  assert.doesNotMatch(loader, /\/api\/actions\/data/);
 });
 
 test("MCP sessions page never self-fetches its Vercel deployment", () => {
