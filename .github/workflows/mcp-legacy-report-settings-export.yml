@@ -276,3 +276,22 @@ jobs:
           } > "$summary_file"
           cat "$summary_file" >> "$GITHUB_STEP_SUMMARY"
           gh api --method POST "repos/$GITHUB_REPOSITORY/issues/189/comments" -f body="$(cat "$summary_file")" >/dev/null
+
+      - name: Record sanitized export failure
+        if: ${{ failure() }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          summary_file="${RUNNER_TEMP}/legacy-settings-export-failure.md"
+          {
+            echo "## MCP legacy report settings export — failure"
+            echo
+            echo "- Source SHA: ${{ steps.source.outputs.sha || 'unresolved' }}"
+            echo "- Run: $GITHUB_RUN_ID"
+            echo "- Production mutation: none"
+            echo "- Inspect workflow logs for the exact failed step; no provider value is written here."
+          } > "$summary_file"
+          cat "$summary_file" >> "$GITHUB_STEP_SUMMARY"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/189/comments" -f body="$(cat "$summary_file")" >/dev/null
