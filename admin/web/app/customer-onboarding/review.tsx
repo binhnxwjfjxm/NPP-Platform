@@ -36,6 +36,7 @@ export default function CustomerOnboardingReview({ requests, customers }: { requ
   const router = useRouter();
   const keys = useRef<Record<string, string>>({});
   const busy = useRef<Set<string>>(new Set());
+  const addressRequestVersions = useRef<Record<string, number>>({});
   const [busyByRequest, setBusyByRequest] = useState<Record<string, boolean>>({});
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [reasonByRequest, setReasonByRequest] = useState<Record<string, string>>({});
@@ -78,20 +79,29 @@ export default function CustomerOnboardingReview({ requests, customers }: { requ
   }
 
   async function chooseCustomer(requestId: string, customerId: string) {
+    const requestVersion = (addressRequestVersions.current[requestId] || 0) + 1;
+    addressRequestVersions.current[requestId] = requestVersion;
     setCustomerByRequest((current) => ({ ...current, [requestId]: customerId }));
     setAddressByRequest((current) => ({ ...current, [requestId]: '' }));
     setAddressesByRequest((current) => ({ ...current, [requestId]: [] }));
-    if (!customerId) return;
+    if (!customerId) {
+      setAddressLoading((current) => ({ ...current, [requestId]: false }));
+      return;
+    }
     setAddressLoading((current) => ({ ...current, [requestId]: true }));
     try {
       const response = await fetch(`/api/customers/${customerId}/addresses`, { cache: 'no-store' });
       const payload = await response.json().catch(() => null) as { data?: CustomerAddress[]; error?: { message?: string } } | null;
       if (!response.ok || !Array.isArray(payload?.data)) throw new Error(payload?.error?.message || 'Không tải được địa chỉ khách hàng.');
+      if (addressRequestVersions.current[requestId] !== requestVersion) return;
       setAddressesByRequest((current) => ({ ...current, [requestId]: payload.data!.filter((address) => address.is_active) }));
     } catch (error) {
+      if (addressRequestVersions.current[requestId] !== requestVersion) return;
       setFeedback({ kind: 'error', text: error instanceof Error ? error.message : 'Không tải được địa chỉ khách hàng.' });
     } finally {
-      setAddressLoading((current) => ({ ...current, [requestId]: false }));
+      if (addressRequestVersions.current[requestId] === requestVersion) {
+        setAddressLoading((current) => ({ ...current, [requestId]: false }));
+      }
     }
   }
 
