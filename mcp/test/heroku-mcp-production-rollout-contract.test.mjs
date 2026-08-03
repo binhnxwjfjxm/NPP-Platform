@@ -20,6 +20,24 @@ test("production rollout scripts are valid shell", () => {
   execFileSync("bash", ["-n", fileURLToPath(rolloutScriptPath)]);
 });
 
+test("completed backup ID is read from the capture result, not a human list table", () => {
+  const match = deployScript.match(/extract_completed_backup_id\(\) \{([\s\S]*?)\n\}/);
+  assert.ok(match, "missing completed backup ID extractor");
+  const output = execFileSync(
+    "bash",
+    [
+      "-c",
+      `extract_completed_backup_id() {${match[1]}\n}\nprintf '%s\\n' 'Backing up DATABASE to b015... done' | extract_completed_backup_id`
+    ],
+    { encoding: "utf8" }
+  ).trim();
+  assert.equal(output, "b015");
+  assert.match(deployScript, /capture_output="\$\(heroku pg:backups:capture DATABASE_URL/);
+  assert.match(deployScript, /printf '%s\\n' "\$capture_output"/);
+  assert.match(deployScript, /production_backup_id="\$\(printf '%s\\n' "\$capture_output"/);
+  assert.doesNotMatch(deployScript, /heroku pg:backups -a .*awk/);
+});
+
 test("MCP migration and deploy commands share the complete database gate", () => {
   assert.match(workflow, /\/deploy-heroku-mcp-production/);
   assert.match(workflow, /\/migrate-heroku-mcp-production/);
