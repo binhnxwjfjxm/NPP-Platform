@@ -20,10 +20,11 @@ test("existing MCP product routes are overridden by canonical NPP Core Sales SKU
   assert.match(demandUi, /fetch\(`\/api\/products\/\$\{encodeURIComponent\(productId\)\}\/variants/);
 });
 
-test("official order creation is a separate explicit action from the saved MCP demand", () => {
+test("official order creation is explicit, pending-safe and reachable after session lock", () => {
   const service = read("apps/backend/foundation/sales-order-sync.js");
   const client = read("apps/backend/foundation/core-sales-client.js");
   const card = read("src/features/mcp/McpLineCard.tsx");
+  const readonly = read("src/features/mcp/McpSessionReadonlyView.tsx");
   const panel = read("src/features/mcp/McpOfficialOrderPanel.tsx");
   const page = read("src/app/visits/order-intent/page.tsx");
   assert.match(service, /sourceType: "MCP"/);
@@ -35,8 +36,16 @@ test("official order creation is a separate explicit action from the saved MCP d
   assert.doesNotMatch(client, /\/confirm|amendments|\/cancel/);
   assert.match(card, /line\.orderId \?/);
   assert.match(card, /Đơn NPP/);
+  assert.match(readonly, /line\.orderId \?/);
+  assert.match(readonly, /\/visits\/order-intent/);
+  assert.match(readonly, /Đơn NPP/);
   assert.match(panel, /Tạo đơn nháp NPP/);
   assert.match(panel, /submitCoreSalesOrder/);
+  assert.match(panel, /const \[busy, setBusy\] = useState\(false\)/);
+  assert.match(panel, /if \(busy\) return/);
+  assert.match(panel, /setBusy\(true\)/);
+  assert.match(panel, /\.finally\(\(\) => setBusy\(false\)\)/);
+  assert.doesNotMatch(panel, /useTransition/);
   assert.match(page, /McpOfficialOrderPanel/);
   assert.doesNotMatch(panel, /confirmCoreSalesOrder/);
 });
