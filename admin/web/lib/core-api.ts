@@ -121,6 +121,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
 function isOnboarding(value: unknown): value is CustomerOnboardingRequestSummary {
   if (!isRecord(value) || !ONBOARDING_STATUSES.has(String(value.status ?? ''))) return false;
   const customer = value.proposedCustomer;
@@ -130,15 +134,33 @@ function isOnboarding(value: unknown): value is CustomerOnboardingRequestSummary
     && typeof value.id === 'string'
     && typeof value.sourceOutletId === 'string'
     && typeof value.sourceDemandReference === 'string'
+    && typeof value.version === 'number'
     && Number.isInteger(value.version)
+    && value.version >= 1
+    && typeof value.submittedAt === 'string'
     && typeof value.updatedAt === 'string'
+    && isNullableString(value.reviewReason)
+    && isNullableString(value.approvedCustomerId)
+    && isNullableString(value.approvedCustomerAddressId)
     && typeof customer.name === 'string'
-    && typeof address.addressLine1 === 'string';
+    && isNullableString(customer.phone)
+    && typeof address.addressLine1 === 'string'
+    && isNullableString(address.addressLine2)
+    && isNullableString(address.ward)
+    && isNullableString(address.district)
+    && isNullableString(address.province)
+    && isNullableString(address.postalCode)
+    && typeof address.countryCode === 'string'
+    && typeof address.label === 'string';
 }
 
 export async function listOnboarding(status: string, limit = 100, offset = 0): Promise<CustomerOnboardingRequestSummary[]> {
   if (!ONBOARDING_STATUSES.has(status)) return [];
-  const query = new URLSearchParams({ status, limit: String(limit), offset: String(offset) });
+  const query = new URLSearchParams({
+    status,
+    limit: String(Math.max(1, Math.min(100, Math.trunc(limit)))),
+    offset: String(Math.max(0, Math.trunc(offset))),
+  });
   const data = await requestCore<{ customerOnboardingRequests?: unknown }>(`/api/customer-onboarding-requests?${query}`);
   const rows = data.customerOnboardingRequests;
   if (!Array.isArray(rows) || !rows.every(isOnboarding)) {
@@ -158,22 +180,39 @@ export async function loadPendingOnboarding(): Promise<CustomerOnboardingRequest
 export async function listCustomers(): Promise<Customer[]> {
   const data = await requestCore<unknown[]>('/api/customers?active=true&limit=1000&offset=0');
   if (!Array.isArray(data)) return [];
-  return data.filter((row): row is Customer => isRecord(row)
-    && typeof row.id === 'string'
-    && typeof row.code === 'string'
-    && typeof row.name === 'string'
-    && row.is_active === true);
+  return data.flatMap((row) => {
+    if (!isRecord(row)
+      || typeof row.id !== 'string'
+      || typeof row.code !== 'string'
+      || typeof row.name !== 'string'
+      || row.is_active !== true) return [];
+    return [{ id: row.id, code: row.code, name: row.name, is_active: true } satisfies Customer];
+  });
 }
 
 export async function listCustomerAddresses(customerId: string): Promise<CustomerAddress[]> {
   if (!UUID_PATTERN.test(customerId)) throw new CoreApiError('INVALID_CUSTOMER_ID', 'Mã khách hàng không hợp lệ', 400, false);
   const data = await requestCore<unknown[]>(`/api/customers/${customerId}/addresses`);
   if (!Array.isArray(data)) return [];
-  return data.filter((row): row is CustomerAddress => isRecord(row)
-    && typeof row.id === 'string'
-    && typeof row.label === 'string'
-    && typeof row.address_line1 === 'string'
-    && typeof row.is_active === 'boolean');
+  return data.flatMap((row) => {
+    if (!isRecord(row)
+      || typeof row.id !== 'string'
+      || typeof row.label !== 'string'
+      || typeof row.address_line1 !== 'string'
+      || typeof row.is_active !== 'boolean'
+      || !isNullableString(row.ward)
+      || !isNullableString(row.district)
+      || !isNullableString(row.province)) return [];
+    return [{
+      id: row.id,
+      label: row.label,
+      address_line1: row.address_line1,
+      ward: row.ward,
+      district: row.district,
+      province: row.province,
+      is_active: row.is_active,
+    } satisfies CustomerAddress];
+  });
 }
 
 async function countActive(path: string): Promise<number> {
@@ -192,10 +231,11 @@ export async function loadOverview(): Promise<OverviewData> {
     requestCore<unknown[]>('/api/sales-orders?status=draft&limit=20&offset=0'),
     loadPendingOnboarding(),
   ]);
+  const labels = ['chi nhánh', 'kho', 'vị trí kho', 'đơn bán hàng nháp', 'đề nghị khách hàng'];
   const value = <T,>(index: number, fallback: T): T => {
     const result = settled[index];
     if (result.status === 'fulfilled') return result.value as T;
-    warnings.push(['chi nhánh', 'kho', 'vị trí kho', 'đơn bán hàng nháp', 'đề nghị khách hàng'][index]);
+    warnings.push(labels[index] || 'dữ liệu');
     return fallback;
   };
   return {
