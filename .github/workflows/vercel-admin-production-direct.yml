@@ -1,0 +1,146 @@
+name: Manual Vercel Admin direct production deploy
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vercel-admin-production-direct
+  cancel-in-progress: false
+
+jobs:
+  deploy-admin-production-direct:
+    if: >-
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/deploy-vercel-admin-production-direct' &&
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEPLOY_REF: main
+      VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      VERCEL_PROJECT_ID: prj_0hp2A8WyUW4zgglShPTzL70hesVC
+      ADMIN_DOMAIN: admin.nguyenlieuhungphat.com
+
+    steps:
+      - name: Validate exact command
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: test "$COMMENT_BODY" = '/deploy-vercel-admin-production-direct'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+
+      - name: Verify exact origin main
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Validate Vercel target
+        id: target
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$VERCEL_TOKEN"
+          echo "::add-mask::$VERCEL_TOKEN"
+          body="${RUNNER_TEMP}/admin-project.json"
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID" > "$body"
+          PROJECT_FILE="$body" node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const project = JSON.parse(readFileSync(process.env.PROJECT_FILE, 'utf8'));
+          if (project.id !== process.env.VERCEL_PROJECT_ID) throw new Error('unexpected_admin_project');
+          if (project.name !== 'admin-mcp-npp') throw new Error(`unexpected_admin_name:${project.name}`);
+          if (project.rootDirectory !== 'admin/web') throw new Error(`unexpected_admin_root:${project.rootDirectory}`);
+          NODE
+
+      - name: Verify Admin source
+        working-directory: admin/web
+        run: |
+          npm install --no-audit --no-fund
+          npm run verify
+
+      - name: Deploy exact main directly
+        id: deploy
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          url="$(npx --yes vercel@latest deploy --prod --yes --token="$VERCEL_TOKEN")"
+          test -n "$url"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke Admin deployment
+        id: smoke
+        shell: bash
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+          CORE_WEB_ADMIN_USERNAME: ${{ secrets.CORE_WEB_ADMIN_USERNAME }}
+          CORE_WEB_ADMIN_PASSWORD: ${{ secrets.CORE_WEB_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$CORE_WEB_ADMIN_USERNAME"
+          test -n "$CORE_WEB_ADMIN_PASSWORD"
+          unauth="$(curl --silent --show-error --retry 5 --retry-delay 4 --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/")"
+          test "$unauth" = 401
+          auth="$CORE_WEB_ADMIN_USERNAME:$CORE_WEB_ADMIN_PASSWORD"
+          for path in / /customer-onboarding; do
+            code="$(curl --silent --show-error --retry 5 --retry-delay 4 -u "$auth" --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL$path")"
+            test "$code" = 200
+          done
+          html="$(curl --fail --silent --show-error -u "$auth" "$DEPLOYMENT_URL/")"
+          asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.(css|js)' | head -n 1)"
+          test -n "$asset"
+          curl --fail --silent --show-error "$DEPLOYMENT_URL$asset" >/dev/null
+
+      - name: Smoke Admin domain
+        shell: bash
+        env:
+          CORE_WEB_ADMIN_USERNAME: ${{ secrets.CORE_WEB_ADMIN_USERNAME }}
+          CORE_WEB_ADMIN_PASSWORD: ${{ secrets.CORE_WEB_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          auth="$CORE_WEB_ADMIN_USERNAME:$CORE_WEB_ADMIN_PASSWORD"
+          for path in / /customer-onboarding; do
+            code="$(curl --silent --show-error --retry 8 --retry-delay 5 -u "$auth" --output /dev/null --write-out '%{http_code}' "https://$ADMIN_DOMAIN$path")"
+            test "$code" = 200
+          done
+
+      - name: Report successful direct rollout
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          gh issue comment 5 --body "Admin direct production deploy succeeded for SHA \`${{ steps.source.outputs.sha }}\`. Deployment: $DEPLOYMENT_URL. Domain: \`https://$ADMIN_DOMAIN\`."
+
+      - name: Report failed direct rollout
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_OUTCOME: ${{ steps.target.outcome }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+        run: |
+          gh issue comment 5 --body "Admin direct production deploy failed for SHA \`${{ steps.source.outputs.sha }}\`. target=\`${TARGET_OUTCOME:-not-run}\`, deploy=\`${DEPLOY_OUTCOME:-not-run}\`, smoke=\`${SMOKE_OUTCOME:-not-run}\`. No secret values are included."
