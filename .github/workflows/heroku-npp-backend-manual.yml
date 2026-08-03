@@ -15,9 +15,13 @@ on:
         description: Heroku release version used only for rollback, for example v21.
         required: false
         default: ""
+  issue_comment:
+    types:
+      - created
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: heroku-npp-production-manual
@@ -25,6 +29,17 @@ concurrency:
 
 jobs:
   deploy-or-rollback:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 5 &&
+        github.event.comment.body == '/deploy-heroku-core-production' &&
+        (
+          github.actor == 'binhnxwjfjxm' ||
+          github.actor == 'khuongbinhinfo-a11y'
+        )
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -32,11 +47,21 @@ jobs:
       HEROKU_APP_NAME: hung-phat
       HEROKU_FORBIDDEN_APP_NAME: hung-phat-mcp
     steps:
+      - name: Validate exact issue command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/deploy-heroku-core-production'
+
       - name: Checkout exact main
         uses: actions/checkout@v4
         with:
           ref: ${{ env.DEPLOY_REF }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify exact origin/main SHA
         id: source
@@ -114,6 +139,10 @@ jobs:
         run: |
           set -euo pipefail
 
+          requested_action="${REQUESTED_ACTION:-deploy}"
+          if [ "$GITHUB_EVENT_NAME" = "issue_comment" ]; then
+            requested_action="deploy"
+          fi
           app_url="$APP_URL"
           active_release=""
           rollback_target=""
@@ -141,7 +170,7 @@ jobs:
             return 1
           }
 
-          case "$REQUESTED_ACTION" in
+          case "$requested_action" in
             deploy)
               git remote add heroku "https://heroku:${HEROKU_API_KEY}@git.heroku.com/${HEROKU_APP_NAME}.git"
               git push --force heroku HEAD:main
@@ -177,7 +206,7 @@ jobs:
               fi
               ;;
             *)
-              echo "Unknown action: $REQUESTED_ACTION" >&2
+              echo "Unknown action: $requested_action" >&2
               exit 1
               ;;
           esac
@@ -222,3 +251,25 @@ jobs:
           test "${{ steps.release.outputs.deployment_failed }}" != "true"
           test "${{ steps.release.outputs.rollback_failed }}" != "true"
           test "${{ steps.release.outputs.rollback_health_failed }}" != "true"
+
+      - name: Publish sanitized Core rollout evidence to Issue 189
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          evidence_file="$(mktemp)"
+          {
+            echo "## Core production rollout — ${OPERATION_STATUS}"
+            echo
+            cat "$GITHUB_STEP_SUMMARY"
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence_file"
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/189/comments" \
+            -f body="$(cat "$evidence_file")" \
+            >/dev/null
+          rm -f "$evidence_file"
