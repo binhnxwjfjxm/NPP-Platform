@@ -1,68 +1,52 @@
-name: Run verified user-facing copy cleanup
+name: Apply CI scope matrix
 
 on:
-  issue_comment:
-    types:
-      - created
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/run-user-facing-copy-cleanup.yml"
+      - "mcp/scripts/apply-ci-scope-matrix.mjs"
 
 permissions:
   contents: write
-  pull-requests: write
+
+concurrency:
+  group: apply-ci-scope-matrix-${{ github.head_ref }}
+  cancel-in-progress: false
 
 jobs:
-  cleanup:
-    if: github.actor != 'github-actions[bot]' && github.event.issue.pull_request && github.event.issue.number == 3 && github.event.comment.body == '/run-copy-cleanup'
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: mcp
+  rewrite:
+    if: github.head_ref == 'agent/ci-scope-matrix' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - name: Checkout cleanup branch
+      - name: Checkout CI scope branch
         uses: actions/checkout@v4
         with:
-          ref: chore/user-facing-language-audit-20260713
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: mcp/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Apply workflow scope matrix
+        run: node mcp/scripts/apply-ci-scope-matrix.mjs
 
-      - name: Apply copy cleanup
-        run: node scripts/apply-user-facing-copy-cleanup.mjs
+      - name: Verify workflow scope contract
+        run: node --test mcp/test/ci-workflow-scope-matrix.test.mjs
 
-      - name: Audit user-facing copy
-        run: npm run audit:copy
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Build
+      - name: Commit verified workflow scopes
+        shell: bash
         env:
-          BACKEND_API_BASE_URL: http://165.22.109.61
-          NEXT_PUBLIC_API_BASE_URL: http://165.22.109.61
-        run: npm run build
-
-      - name: Commit verified cleanup to branch
+          HEAD_BRANCH: ${{ github.head_ref }}
         run: |
-          rm -f scripts/apply-user-facing-copy-cleanup.mjs
-          rm -f .github/workflows/one-time-user-facing-copy-cleanup.yml
+          set -euo pipefail
+          rm -f mcp/scripts/apply-ci-scope-matrix.mjs
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Replace demo and developer copy with business language"
-          git push origin HEAD:chore/user-facing-language-audit-20260713
-
-      - name: Remove one-time runner from main
-        run: |
-          git fetch origin main
-          git checkout main
-          git pull --ff-only origin main
-          git rm .github/workflows/run-user-facing-copy-cleanup.yml
-          git commit -m "Remove one-time copy cleanup workflow"
-          git push origin main
+          git commit -m "chore(ci): scope workflows by runtime domain"
+          git push origin "HEAD:${HEAD_BRANCH}"
