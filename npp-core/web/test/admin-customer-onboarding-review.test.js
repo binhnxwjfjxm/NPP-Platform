@@ -48,6 +48,8 @@ test('customer onboarding review uses the existing protected workflow', async ()
   assert.match(workspace, /stableActionKey/);
   assert.match(workspace, /busyRequests\.current\.has\(request\.id\)/);
   assert.match(workspace, /busyByRequest\[request\.id\] === true/);
+  assert.match(workspace, /response\.status < 500/);
+  assert.match(workspace, /payload\?\.error\?\.retryable !== true/);
   assert.match(workspace, /delete actionKeys\.current\[idempotency\.cacheKey\]/);
   assert.match(workspace, /addressRequestVersions/);
   assert.match(workspace, /addressRequestVersions\.current\[requestId\] !== requestVersion/);
