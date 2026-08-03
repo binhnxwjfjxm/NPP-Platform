@@ -1,0 +1,47 @@
+name: Phase 6C production config contract
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/phase-6c-production-config.yml
+      - .github/workflows/phase-6c-production-config-contract.yml
+      - mcp/apps/backend/scripts/phase-6c-production-config.sh
+      - mcp/test/phase-6c-production-config-contract.test.mjs
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/phase-6c-production-config.yml
+      - .github/workflows/phase-6c-production-config-contract.yml
+      - mcp/apps/backend/scripts/phase-6c-production-config.sh
+      - mcp/test/phase-6c-production-config-contract.test.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-6c-production-config-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify shell and contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n mcp/apps/backend/scripts/phase-6c-production-config.sh
+          node --test mcp/test/phase-6c-production-config-contract.test.mjs
