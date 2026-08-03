@@ -118,29 +118,38 @@ assert_report_settings_seed_growth_bounded() {
 assert_legacy_report_settings_seed() {
   local database_url="$1"
   local label="$2"
+  local query=""
   local result=""
+  query="$(cat <<'SQL'
+WITH legacy_groups AS (
+  SELECT id
+  FROM mcp.mcp_report_setting_groups
+  WHERE installation_id = 'mcp-plan-prod'
+    AND raw_payload->>'legacy_snapshot_sha256' = :'snapshot_sha'
+), legacy_items AS (
+  SELECT id, group_id
+  FROM mcp.mcp_report_settings
+  WHERE installation_id = 'mcp-plan-prod'
+    AND raw_payload->>'legacy_snapshot_sha256' = :'snapshot_sha'
+)
+SELECT
+  (SELECT count(*) FROM legacy_groups)::text || '|' ||
+  (SELECT count(*) FROM legacy_items)::text || '|' ||
+  (SELECT count(*)
+   FROM legacy_items i
+   LEFT JOIN legacy_groups g ON g.id = i.group_id
+   WHERE g.id IS NULL)::text;
+SQL
+)"
   result="$(
-    docker exec "$service_id" \
-      psql "$database_url" -XAt -v ON_ERROR_STOP=1 \
-      -v snapshot_sha="$legacy_report_settings_sha256" \
-      -c "WITH legacy_groups AS (
-            SELECT id
-            FROM mcp.mcp_report_setting_groups
-            WHERE installation_id = 'mcp-plan-prod'
-              AND raw_payload->>'legacy_snapshot_sha256' = :'snapshot_sha'
-          ), legacy_items AS (
-            SELECT id, group_id
-            FROM mcp.mcp_report_settings
-            WHERE installation_id = 'mcp-plan-prod'
-              AND raw_payload->>'legacy_snapshot_sha256' = :'snapshot_sha'
-          )
-          SELECT
-            (SELECT count(*) FROM legacy_groups)::text || '|' ||
-            (SELECT count(*) FROM legacy_items)::text || '|' ||
-            (SELECT count(*)
-             FROM legacy_items i
-             LEFT JOIN legacy_groups g ON g.id = i.group_id
-             WHERE g.id IS NULL)::text;"
+    printf '%s\n' "$query" |
+      docker exec -i \
+        -e DATABASE_URL="$database_url" \
+        -e LEGACY_REPORT_SETTINGS_SHA256="$legacy_report_settings_sha256" \
+        "$service_id" sh -lc '
+          psql "$DATABASE_URL" -XAt -v ON_ERROR_STOP=1 \
+            -v snapshot_sha="$LEGACY_REPORT_SETTINGS_SHA256"
+        '
   )"
   if [ "$result" != "7|53|0" ]; then
     echo "Legacy report settings reconciliation failed during $label." >&2
