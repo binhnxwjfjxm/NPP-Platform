@@ -54,6 +54,7 @@ export default defineConfig({
   use: { trace: 'retain-on-failure', screenshot: 'only-on-failure', video: 'retain-on-failure' },
   projects: [
     { name: 'routes', testMatch: /routes\.spec\.ts/, use: authenticatedBrowser },
+    { name: 'management', testMatch: /management\.spec\.ts/, use: authenticatedBrowser },
     { name: 'organization', testMatch: /organization\.spec\.ts/, use: authenticatedBrowser },
     { name: 'customers', testMatch: /customers\.spec\.ts/, use: authenticatedBrowser },
     { name: 'suppliers', testMatch: /suppliers\.spec\.ts/, use: authenticatedBrowser },

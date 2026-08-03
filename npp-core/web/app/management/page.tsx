@@ -172,7 +172,7 @@ export default async function ManagementPage() {
                 <h2>Đề nghị xác minh khách hàng</h2>
                 <p>Các điểm bán đã phát sinh nhu cầu mua và cần xử lý mở hoặc liên kết mã.</p>
               </div>
-              <span className={styles.meta}>Chỉ theo dõi tại màn hình này</span>
+              <Link className={styles.link} href="/management/customer-onboarding">Mở màn xử lý</Link>
             </header>
             {onboarding.error ? <p className={styles.error} role="alert">{onboarding.error}</p> : null}
             {onboarding.data.length === 0 && !onboarding.error ? <p className={styles.empty}>Không có đề nghị đang chờ trong danh sách gần nhất.</p> : null}
