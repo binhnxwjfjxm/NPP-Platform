@@ -1,0 +1,240 @@
+name: Phase 6C production read smoke
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: phase-6c-production-read-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    if: >-
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/smoke-phase-6c-production-read' &&
+      (
+        github.actor == 'binhnxwjfjxm' ||
+        github.actor == 'khuongbinhinfo-a11y'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DEPLOY_REF: main
+      CORE_APP_NAME: hung-phat
+      MCP_APP_NAME: hung-phat-mcp
+    steps:
+      - name: Validate exact issue command
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/smoke-phase-6c-production-read'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin \
+            '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Install Heroku CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Run read-only production acceptance
+        id: smoke
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -euo pipefail
+          workdir="$(mktemp -d)"
+          trap 'rm -rf "$workdir"' EXIT
+
+          app_url() {
+            local app="$1"
+            curl --fail --silent --show-error \
+              -H 'Accept: application/vnd.heroku+json; version=3' \
+              -H "Authorization: Bearer $HEROKU_API_KEY" \
+              "https://api.heroku.com/apps/$app" \
+              | jq -r '.web_url // empty' \
+              | sed 's:/*$::'
+          }
+
+          request_json() {
+            local label="$1"
+            local expected="$2"
+            shift 2
+            local body="$workdir/$label.json"
+            local status
+            status="$(curl --silent --show-error --connect-timeout 10 --max-time 45 --output "$body" --write-out '%{http_code}' "$@" || true)"
+            if [ "$status" != "$expected" ]; then
+              echo "$label failed with HTTP ${status:-none}; expected $expected" >&2
+              exit 1
+            fi
+            jq -e . "$body" >/dev/null
+            echo "$status"
+          }
+
+          core_url="$(app_url "$CORE_APP_NAME")"
+          mcp_url="$(app_url "$MCP_APP_NAME")"
+          test -n "$core_url"
+          test -n "$mcp_url"
+
+          mcp_config="$(heroku config -a "$MCP_APP_NAME" --json)"
+          mcp_backend_token="$(jq -r '.BACKEND_API_TOKEN // empty' <<<"$mcp_config")"
+          onboarding_base="$(jq -r '.CORE_ONBOARDING_API_BASE_URL // empty' <<<"$mcp_config" | sed 's:/*$::')"
+          onboarding_token="$(jq -r '.CORE_ONBOARDING_API_TOKEN // empty' <<<"$mcp_config")"
+          sales_base="$(jq -r '.CORE_SALES_API_BASE_URL // empty' <<<"$mcp_config" | sed 's:/*$::')"
+          sales_token="$(jq -r '.CORE_SALES_API_TOKEN // empty' <<<"$mcp_config")"
+          for value in "$mcp_backend_token" "$onboarding_token" "$sales_token"; do
+            test -n "$value"
+            echo "::add-mask::$value"
+          done
+          test "$onboarding_base" = "$core_url"
+          test "$sales_base" = "$core_url"
+
+          core_live="$(request_json core_live 200 "$core_url/health/live")"
+          core_ready="$(request_json core_ready 200 "$core_url/health/ready")"
+          core_onboarding="$(request_json core_onboarding 200 \
+            -H "Authorization: Bearer $onboarding_token" \
+            -H 'Accept: application/json' \
+            "$onboarding_base/api/customer-onboarding-requests?limit=1&offset=0")"
+          core_sku="$(request_json core_sku 200 \
+            -H "Authorization: Bearer $sales_token" \
+            -H 'Accept: application/json' \
+            "$sales_base/api/sales-orders/sku-search?search=&limit=1&offset=0")"
+          core_orders="$(request_json core_orders 200 \
+            -H "Authorization: Bearer $sales_token" \
+            -H 'Accept: application/json' \
+            "$sales_base/api/sales-orders?limit=1&offset=0")"
+
+          mcp_live="$(request_json mcp_live 200 "$mcp_url/health/live")"
+          mcp_ready="$(request_json mcp_ready 200 "$mcp_url/health/ready")"
+          mcp_db_read="$(request_json mcp_db_read 200 \
+            -X POST \
+            -H "X-Backend-Token: $mcp_backend_token" \
+            -H 'Accept: application/json' \
+            -H 'Content-Type: application/json' \
+            --data '{"table":"orders","select":"id","limit":1}' \
+            "$mcp_url/api/read")"
+          mcp_product_proxy="$(request_json mcp_product_proxy 200 \
+            -H "X-Backend-Token: $mcp_backend_token" \
+            -H 'Accept: application/json' \
+            "$mcp_url/api/core-sales/products/search?q=&limit=1")"
+
+          onboarding_validation="$(request_json onboarding_validation 400 \
+            -H "X-Backend-Token: $mcp_backend_token" \
+            -H 'Accept: application/json' \
+            "$mcp_url/api/mcp-day/session-customer/customer-onboarding")"
+          test "$(jq -r '.error.code // empty' "$workdir/onboarding_validation.json")" = "session_customer_id_required"
+
+          sales_validation="$(request_json sales_validation 400 \
+            -H "X-Backend-Token: $mcp_backend_token" \
+            -H 'Accept: application/json' \
+            "$mcp_url/api/mcp-day/session-customer/sales-order")"
+          test "$(jq -r '.error.code // empty' "$workdir/sales_validation.json")" = "session_customer_id_required"
+
+          existing_projection() {
+            local integration_column="$1"
+            local endpoint="$2"
+            local prefix="$3"
+            request_json "${prefix}_candidate" 200 \
+              -X POST \
+              -H "X-Backend-Token: $mcp_backend_token" \
+              -H 'Accept: application/json' \
+              -H 'Content-Type: application/json' \
+              --data "{\"table\":\"orders\",\"select\":\"id\",\"filters\":{\"$integration_column\":\"is.not.null\"},\"limit\":1}" \
+              "$mcp_url/api/read" >/dev/null
+            local order_id
+            order_id="$(jq -r '.data[0].id // empty' "$workdir/${prefix}_candidate.json")"
+            if [ -z "$order_id" ]; then
+              echo "not_exercised_no_existing_fixture"
+              return 0
+            fi
+            request_json "${prefix}_session" 200 \
+              -X POST \
+              -H "X-Backend-Token: $mcp_backend_token" \
+              -H 'Accept: application/json' \
+              -H 'Content-Type: application/json' \
+              --data "$(jq -nc --arg orderId "$order_id" '{table:"mcp_session_customers",select:"id,order_id",filters:{order_id:("eq." + $orderId)},limit:1}')" \
+              "$mcp_url/api/read" >/dev/null
+            local session_customer_id
+            session_customer_id="$(jq -r '.data[0].id // empty' "$workdir/${prefix}_session.json")"
+            if [ -z "$session_customer_id" ]; then
+              echo "not_exercised_no_existing_fixture"
+              return 0
+            fi
+            local encoded_session encoded_order
+            encoded_session="$(jq -rn --arg value "$session_customer_id" '$value|@uri')"
+            encoded_order="$(jq -rn --arg value "$order_id" '$value|@uri')"
+            request_json "${prefix}_projection" 200 \
+              -H "X-Backend-Token: $mcp_backend_token" \
+              -H 'Accept: application/json' \
+              "$mcp_url$endpoint?sessionCustomerId=$encoded_session&orderId=$encoded_order" >/dev/null
+            echo "pass"
+          }
+
+          onboarding_projection="$(existing_projection customer_onboarding_request_id /api/mcp-day/session-customer/customer-onboarding onboarding)"
+          sales_projection="$(existing_projection core_sales_order_id /api/mcp-day/session-customer/sales-order sales)"
+
+          {
+            echo "SOURCE_SHA=${{ steps.source.outputs.sha }}"
+            echo "CORE_HEALTH_LIVE=$core_live"
+            echo "CORE_HEALTH_READY=$core_ready"
+            echo "CORE_ONBOARDING_LIST=$core_onboarding"
+            echo "CORE_SKU_SEARCH=$core_sku"
+            echo "CORE_SALES_ORDER_LIST=$core_orders"
+            echo "MCP_HEALTH_LIVE=$mcp_live"
+            echo "MCP_HEALTH_READY=$mcp_ready"
+            echo "MCP_DATABASE_READ=$mcp_db_read"
+            echo "MCP_CORE_PRODUCT_PROXY=$mcp_product_proxy"
+            echo "MCP_ONBOARDING_ROUTE_VALIDATION=$onboarding_validation"
+            echo "MCP_SALES_ORDER_ROUTE_VALIDATION=$sales_validation"
+            echo "MCP_ONBOARDING_EXISTING_PROJECTION=$onboarding_projection"
+            echo "MCP_SALES_ORDER_EXISTING_PROJECTION=$sales_projection"
+            echo "PRODUCTION_WRITE_SMOKE=not_exercised_no_owner_approved_fixture"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish sanitized read-smoke evidence to Issue 189
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          evidence_file="$(mktemp)"
+          {
+            echo "## Phase 6C production read smoke — ${OPERATION_STATUS}"
+            echo
+            cat "$GITHUB_STEP_SUMMARY"
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence_file"
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/189/comments" \
+            -f body="$(cat "$evidence_file")" \
+            >/dev/null
+          rm -f "$evidence_file"
