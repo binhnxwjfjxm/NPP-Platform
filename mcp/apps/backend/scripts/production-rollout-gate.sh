@@ -21,6 +21,7 @@ service_id="$POSTGRES_SERVICE_CONTAINER"
 credential_mode=""
 least_privilege=""
 runtime_grant="not_run"
+legacy_report_settings_sha256="90776e5fa02844fd59ac5519fa8d49697470d22e2c16d2a8f4966041b4ff889b"
 
 for sensitive in "$runtime_database_url" "$migration_database_url" "$mcp_db_role"; do
   echo "::add-mask::$sensitive"
@@ -62,6 +63,83 @@ assert_existing_counts_unchanged() {
       exit 1
     fi
   done < "$before_file"
+}
+
+assert_non_report_settings_counts_unchanged() {
+  local before_file="$1"
+  local after_file="$2"
+  local label="$3"
+  while IFS= read -r expected; do
+    table_name="${expected%%=*}"
+    case "$table_name" in
+      mcp_report_setting_groups|mcp_report_settings) continue ;;
+    esac
+    if ! grep -Fqx "$expected" "$after_file"; then
+      echo "Existing non-report-settings MCP row count changed during $label." >&2
+      exit 1
+    fi
+  done < "$before_file"
+}
+
+snapshot_table_count() {
+  local snapshot_file="$1"
+  local table_name="$2"
+  awk -F= -v table_name="$table_name" '
+    $1 == table_name { print $2; found = 1 }
+    END { if (!found) exit 1 }
+  ' "$snapshot_file"
+}
+
+assert_report_settings_counts_not_decreased() {
+  local before_file="$1"
+  local after_file="$2"
+  local label="$3"
+  local table_name=""
+  local before_count=""
+  local after_count=""
+  for table_name in mcp_report_setting_groups mcp_report_settings; do
+    before_count="$(snapshot_table_count "$before_file" "$table_name")"
+    after_count="$(snapshot_table_count "$after_file" "$table_name")"
+    if [ "$after_count" -lt "$before_count" ]; then
+      echo "Report settings row count decreased during $label for $table_name." >&2
+      exit 1
+    fi
+  done
+}
+
+assert_legacy_report_settings_seed() {
+  local database_url="$1"
+  local label="$2"
+  local result=""
+  result="$(
+    docker exec "$service_id" \
+      psql "$database_url" -XAt -v ON_ERROR_STOP=1 \
+      -v snapshot_sha="$legacy_report_settings_sha256" \
+      -c "WITH legacy_groups AS (
+            SELECT id
+            FROM mcp.mcp_report_setting_groups
+            WHERE installation_id = 'mcp-plan-prod'
+              AND raw_payload->>'legacy_snapshot_sha256' = :'snapshot_sha'
+          ), legacy_items AS (
+            SELECT id, group_id, active
+            FROM mcp.mcp_report_settings
+            WHERE installation_id = 'mcp-plan-prod'
+              AND raw_payload->>'legacy_snapshot_sha256' = :'snapshot_sha'
+          )
+          SELECT
+            (SELECT count(*) FROM legacy_groups)::text || '|' ||
+            (SELECT count(*) FROM legacy_items)::text || '|' ||
+            (SELECT count(*) FROM legacy_items WHERE active)::text || '|' ||
+            (SELECT count(*) FROM legacy_items WHERE NOT active)::text || '|' ||
+            (SELECT count(*)
+             FROM legacy_items i
+             LEFT JOIN legacy_groups g ON g.id = i.group_id
+             WHERE g.id IS NULL)::text;"
+  )"
+  if [ "$result" != "7|53|52|1|0" ]; then
+    echo "Legacy report settings reconciliation failed during $label." >&2
+    exit 1
+  fi
 }
 
 credential_context_json="$(
@@ -109,7 +187,9 @@ NODE_ENV=test \
 MCP_MIGRATION_DATABASE_URL="$restore_database_url" \
 npm --prefix mcp/apps/backend run migration:migrate
 snapshot_counts "$restore_database_url" "$restore_after"
-assert_existing_counts_unchanged "$restore_before" "$restore_after" "restore migration rehearsal"
+assert_non_report_settings_counts_unchanged "$restore_before" "$restore_after" "restore migration rehearsal"
+assert_report_settings_counts_not_decreased "$restore_before" "$restore_after" "restore migration rehearsal"
+assert_legacy_report_settings_seed "$restore_database_url" "restore migration rehearsal"
 
 NODE_ENV=production \
 DATABASE_URL="$runtime_database_url" \
@@ -158,7 +238,9 @@ else
 fi
 
 snapshot_counts "$migration_database_url" "$production_after"
-assert_existing_counts_unchanged "$production_before" "$production_after" "production migration"
+assert_non_report_settings_counts_unchanged "$production_before" "$production_after" "production migration"
+assert_report_settings_counts_not_decreased "$production_before" "$production_after" "production migration"
+assert_legacy_report_settings_seed "$migration_database_url" "production migration"
 
 {
   echo "MCP_LOGICAL_BACKUP_SHA256=$backup_sha256"
@@ -166,6 +248,7 @@ assert_existing_counts_unchanged "$production_before" "$production_after" "produ
   echo "MCP_RESTORE_REHEARSAL=success"
   echo "MCP_PRODUCTION_MIGRATION=success"
   echo "MCP_PRODUCTION_RECONCILIATION=success"
+  echo "MCP_LEGACY_REPORT_SETTINGS=7_groups_53_items_52_active_1_inactive"
   echo "MCP_MIGRATION_CREDENTIAL_MODE=$credential_mode"
   echo "MCP_MIGRATION_LEAST_PRIVILEGE=$least_privilege"
   echo "MCP_RUNTIME_GRANT=$runtime_grant"
