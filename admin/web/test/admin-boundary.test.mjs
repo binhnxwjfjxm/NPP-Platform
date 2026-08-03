@@ -30,6 +30,8 @@ test('admin is a standalone manually deployed Vercel frontend', async () => {
   assert.match(workflow, /MCP_DOMAIN: mcp\.nguyenlieuhungphat\.com/);
   assert.match(workflow, /WEBSITE_DOMAIN: nguyenlieuhungphat\.com/);
   assert.match(workflow, /Create or resolve Admin Vercel project/);
+  assert.match(workflow, /https:\/\/api\.vercel\.com\/v11\/projects\?teamId=/);
+  assert.doesNotMatch(workflow, /https:\/\/api\.vercel\.com\/v10\/projects\?teamId=/);
   assert.match(workflow, /Smoke exact Admin deployment/);
   assert.doesNotMatch(workflow, /DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY/);
 });
