@@ -18,7 +18,7 @@ test("purchase-demand picker routes only to canonical NPP Core Sales products", 
   assert.match(api, /VARIANT_CHECK_CONCURRENCY = 5/);
   assert.match(api, /catalogSource: "NPP_CORE"/);
   assert.match(api, /pathname === "\/api\/core-sales\/products\/search"/);
-  assert.match(api, /\/api\/core-sales\/products\/\(\[\^\/\]\+\)\/variants/);
+  assert.ok(api.includes("pathname.match(/^\\/api\\/core-sales\\/products\\/([^/]+)\\/variants$/)"));
   assert.match(client, /\/api\/products\/\$\{encodeURIComponent\(normalized\)\}\/variants/);
   assert.match(runtime, /handleCoreSalesApi/);
   assert.match(searchProxy, /\/api\/core-sales\/products\/search/);
