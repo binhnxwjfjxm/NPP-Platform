@@ -18,6 +18,9 @@ production_after="$RUNNER_TEMP/mcp-production-after.counts"
 restore_before="$RUNNER_TEMP/mcp-restore-before.counts"
 restore_after="$RUNNER_TEMP/mcp-restore-after.counts"
 service_id="$POSTGRES_SERVICE_CONTAINER"
+credential_mode=""
+least_privilege=""
+runtime_grant="not_run"
 
 for sensitive in "$runtime_database_url" "$migration_database_url" "$mcp_db_role"; do
   echo "::add-mask::$sensitive"
@@ -61,17 +64,22 @@ assert_existing_counts_unchanged() {
   done < "$before_file"
 }
 
-node --input-type=module - "$runtime_database_url" "$migration_database_url" <<'NODE'
-const runtime = new URL(process.argv[2]);
-const migrator = new URL(process.argv[3]);
-const normalizePort = (url) => url.port || "5432";
-if (runtime.hostname !== migrator.hostname || normalizePort(runtime) !== normalizePort(migrator) || runtime.pathname !== migrator.pathname) {
-  throw new Error("runtime_and_migrator_target_different_databases");
-}
-if (decodeURIComponent(runtime.username) === decodeURIComponent(migrator.username)) {
-  throw new Error("runtime_and_migrator_credentials_not_separated");
-}
+credential_context_json="$(
+  DATABASE_URL="$runtime_database_url" \
+  MCP_MIGRATION_DATABASE_URL="$migration_database_url" \
+  node --input-type=module <<'NODE'
+import { resolveMigrationCredentialContext } from "./mcp/apps/backend/foundation/migrations/credential-safety.js";
+const context = resolveMigrationCredentialContext({ ...process.env, NODE_ENV: "production" });
+process.stdout.write(JSON.stringify({
+  credentialMode: context.credentialMode,
+  leastPrivilege: context.leastPrivilege
+}));
 NODE
+)"
+credential_mode="$(jq -r '.credentialMode' <<<"$credential_context_json")"
+least_privilege="$(jq -r '.leastPrivilege | tostring' <<<"$credential_context_json")"
+test -n "$credential_mode"
+test "$least_privilege" = "true" -o "$least_privilege" = "false"
 
 docker exec -e DATABASE_URL="$migration_database_url" "$service_id" \
   pg_dump --dbname="$migration_database_url" --format=custom --no-owner --no-privileges --file=/tmp/mcp-production.dump
@@ -106,33 +114,48 @@ assert_existing_counts_unchanged "$restore_before" "$restore_after" "restore mig
 NODE_ENV=production \
 DATABASE_URL="$runtime_database_url" \
 MCP_MIGRATION_DATABASE_URL="$migration_database_url" \
+MCP_MIGRATION_CREDENTIAL_MODE="${MCP_MIGRATION_CREDENTIAL_MODE:-separated}" \
+MCP_MIGRATION_ESSENTIAL_OWNER_CONFIRM="${MCP_MIGRATION_ESSENTIAL_OWNER_CONFIRM:-}" \
 MCP_MIGRATION_ALLOW_PRODUCTION=true \
 MCP_MIGRATION_PRODUCTION_CONFIRM=I_UNDERSTAND_THIS_TARGETS_PRODUCTION \
 npm --prefix mcp/apps/backend run migration:status
 NODE_ENV=production \
 DATABASE_URL="$runtime_database_url" \
 MCP_MIGRATION_DATABASE_URL="$migration_database_url" \
+MCP_MIGRATION_CREDENTIAL_MODE="${MCP_MIGRATION_CREDENTIAL_MODE:-separated}" \
+MCP_MIGRATION_ESSENTIAL_OWNER_CONFIRM="${MCP_MIGRATION_ESSENTIAL_OWNER_CONFIRM:-}" \
 MCP_MIGRATION_ALLOW_PRODUCTION=true \
 MCP_MIGRATION_PRODUCTION_CONFIRM=I_UNDERSTAND_THIS_TARGETS_PRODUCTION \
 npm --prefix mcp/apps/backend run migration:migrate
 NODE_ENV=production \
 DATABASE_URL="$runtime_database_url" \
 MCP_MIGRATION_DATABASE_URL="$migration_database_url" \
+MCP_MIGRATION_CREDENTIAL_MODE="${MCP_MIGRATION_CREDENTIAL_MODE:-separated}" \
+MCP_MIGRATION_ESSENTIAL_OWNER_CONFIRM="${MCP_MIGRATION_ESSENTIAL_OWNER_CONFIRM:-}" \
 MCP_MIGRATION_ALLOW_PRODUCTION=true \
 MCP_MIGRATION_PRODUCTION_CONFIRM=I_UNDERSTAND_THIS_TARGETS_PRODUCTION \
 npm --prefix mcp/apps/backend run migration:verify
 NODE_ENV=production \
 DATABASE_URL="$runtime_database_url" \
 MCP_MIGRATION_DATABASE_URL="$migration_database_url" \
+MCP_MIGRATION_CREDENTIAL_MODE="${MCP_MIGRATION_CREDENTIAL_MODE:-separated}" \
+MCP_MIGRATION_ESSENTIAL_OWNER_CONFIRM="${MCP_MIGRATION_ESSENTIAL_OWNER_CONFIRM:-}" \
 MCP_MIGRATION_ALLOW_PRODUCTION=true \
 MCP_MIGRATION_PRODUCTION_CONFIRM=I_UNDERSTAND_THIS_TARGETS_PRODUCTION \
 npm --prefix mcp/apps/backend run migration:migrate
 
-docker exec \
-  -e DATABASE_URL="$migration_database_url" \
-  -e MCP_DB_ROLE="$mcp_db_role" \
-  "$service_id" sh -lc \
-  'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -v mcp_role="$MCP_DB_ROLE" -c "SELECT shared.grant_mcp_runtime_access(:'"'"'mcp_role'"'"'::name);" >/dev/null'
+if [ "$credential_mode" = "separated" ]; then
+  docker exec \
+    -e DATABASE_URL="$migration_database_url" \
+    -e MCP_DB_ROLE="$mcp_db_role" \
+    "$service_id" sh -lc \
+    'psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -v mcp_role="$MCP_DB_ROLE" -c "SELECT shared.grant_mcp_runtime_access(:'"'"'mcp_role'"'"'::name);" >/dev/null'
+  runtime_grant="applied"
+else
+  test "$credential_mode" = "essential_owner"
+  test "$least_privilege" = "false"
+  runtime_grant="skipped_essential_owner"
+fi
 
 snapshot_counts "$migration_database_url" "$production_after"
 assert_existing_counts_unchanged "$production_before" "$production_after" "production migration"
@@ -143,4 +166,7 @@ assert_existing_counts_unchanged "$production_before" "$production_after" "produ
   echo "MCP_RESTORE_REHEARSAL=success"
   echo "MCP_PRODUCTION_MIGRATION=success"
   echo "MCP_PRODUCTION_RECONCILIATION=success"
+  echo "MCP_MIGRATION_CREDENTIAL_MODE=$credential_mode"
+  echo "MCP_MIGRATION_LEAST_PRIVILEGE=$least_privilege"
+  echo "MCP_RUNTIME_GRANT=$runtime_grant"
 } >> "$GITHUB_STEP_SUMMARY"

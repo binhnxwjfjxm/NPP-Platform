@@ -42,14 +42,21 @@ test("runtime environment cannot retain the migrator credential", () => {
   const migrationExample = read("mcp/apps/backend/.env.migration.example");
   const config = read("mcp/apps/backend/foundation/config.js");
   const migrationCli = read("mcp/apps/backend/foundation/migrations/cli.js");
+  const credentialSafety = read("mcp/apps/backend/foundation/migrations/credential-safety.js");
   assert.equal(runtimeExample.includes("MCP_MIGRATION_DATABASE_URL="), false);
   assert.match(runtimeExample, /must not be stored in runtime app config/i);
   assert.match(
     migrationExample,
     /^MCP_MIGRATION_DATABASE_URL=<operator-only-migrator-url>$/m
   );
+  assert.match(migrationExample, /^MCP_MIGRATION_CREDENTIAL_MODE=separated$/m);
+  assert.match(migrationExample, /MCP_MIGRATION_CREDENTIAL_MODE=essential_owner/);
   assert.match(config, /migration_credential_forbidden_in_runtime/);
-  assert.match(migrationCli, /migration_runtime_credential_not_separated/);
+  assert.match(migrationCli, /resolveMigrationCredentialContext/);
+  assert.match(credentialSafety, /migration_runtime_credential_not_separated/);
+  assert.match(credentialSafety, /essential_owner_migration_not_authorized/);
+  assert.match(credentialSafety, /runtime_and_migrator_target_different_databases/);
+  assert.match(credentialSafety, /leastPrivilege: false/);
 });
 
 test("dedicated workflow is exact-head, disposable and provider-mutation free", () => {
