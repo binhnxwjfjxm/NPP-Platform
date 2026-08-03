@@ -27,7 +27,9 @@ jobs:
       VERCEL_PROJECT_ID: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
       HEROKU_APP_NAME: hung-phat-mcp
       LEGACY_SUPABASE_PROJECT_REF: noiadkpkvdohljgopgfb
-      EXPORT_FILE: mcp-legacy-report-settings.json
+      EXPORT_DIR: mcp/artifacts/legacy-report-settings
+      EXPORT_FILE: mcp/artifacts/legacy-report-settings/mcp-legacy-report-settings.json
+      EXPORT_SHA_FILE: mcp/artifacts/legacy-report-settings/mcp-legacy-report-settings.sha256
 
     steps:
       - name: Validate exact export command
@@ -72,6 +74,7 @@ jobs:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
           set -euo pipefail
+          mkdir -p "$EXPORT_DIR"
           node --input-type=module <<'NODE'
           import { createHash } from "node:crypto";
           import { readFile, writeFile } from "node:fs/promises";
@@ -235,7 +238,7 @@ jobs:
           };
 
           await writeFile(process.env.EXPORT_FILE, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
-          await writeFile("mcp-legacy-report-settings.sha256", `${sha256}  ${process.env.EXPORT_FILE}\n`, { mode: 0o600 });
+          await writeFile(process.env.EXPORT_SHA_FILE, `${sha256}  ${process.env.EXPORT_FILE}\n`, { mode: 0o600 });
           await writeFile(
             process.env.GITHUB_OUTPUT,
             `groups=${groups.length}\nitems=${items.length}\nsha256=${sha256}\n`,
@@ -248,8 +251,8 @@ jobs:
         with:
           name: mcp-legacy-report-settings-export
           path: |
-            mcp-legacy-report-settings.json
-            mcp-legacy-report-settings.sha256
+            mcp/artifacts/legacy-report-settings/mcp-legacy-report-settings.json
+            mcp/artifacts/legacy-report-settings/mcp-legacy-report-settings.sha256
           if-no-files-found: error
           retention-days: 1
 
