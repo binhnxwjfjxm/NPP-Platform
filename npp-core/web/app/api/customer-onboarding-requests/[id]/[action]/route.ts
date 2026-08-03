@@ -45,9 +45,22 @@ function isSameOriginRequest(request: NextRequest): boolean {
   }
 }
 
+function safeConflictDetails(value: unknown): Record<string, number> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const source = value as Record<string, unknown>;
+  const safe: Record<string, number> = {};
+  for (const key of ['expectedVersion', 'currentVersion']) {
+    const candidate = source[key];
+    if (typeof candidate === 'number' && Number.isInteger(candidate) && candidate >= 0) {
+      safe[key] = candidate;
+    }
+  }
+  return safe;
+}
+
 function errorResponse(error: unknown, requestId: string) {
   const normalized = normalizeCustomerOnboardingGatewayError(error);
-  const details = normalized.details;
+  const details = safeConflictDetails(normalized.details);
   return NextResponse.json(
     {
       error: {
