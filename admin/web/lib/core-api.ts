@@ -9,15 +9,11 @@ import type {
 } from './types';
 
 const REQUEST_TIMEOUT_MS = 8_000;
+const ONBOARDING_PAGE_SIZE = 100;
+const CUSTOMER_PAGE_SIZE = 200;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ONBOARDING_STATUSES = new Set([
-  'submitted',
-  'under_review',
-  'need_more_info',
-  'approved',
-  'linked_existing',
-  'rejected',
-  'cancelled',
+  'submitted', 'under_review', 'need_more_info', 'approved', 'linked_existing', 'rejected', 'cancelled',
 ]);
 
 export class CoreApiError extends Error {
@@ -154,11 +150,11 @@ function isOnboarding(value: unknown): value is CustomerOnboardingRequestSummary
     && typeof address.label === 'string';
 }
 
-export async function listOnboarding(status: string, limit = 100, offset = 0): Promise<CustomerOnboardingRequestSummary[]> {
+export async function listOnboarding(status: string, limit = ONBOARDING_PAGE_SIZE, offset = 0): Promise<CustomerOnboardingRequestSummary[]> {
   if (!ONBOARDING_STATUSES.has(status)) return [];
   const query = new URLSearchParams({
     status,
-    limit: String(Math.max(1, Math.min(100, Math.trunc(limit)))),
+    limit: String(Math.max(1, Math.min(ONBOARDING_PAGE_SIZE, Math.trunc(limit)))),
     offset: String(Math.max(0, Math.trunc(offset))),
   });
   const data = await requestCore<{ customerOnboardingRequests?: unknown }>(`/api/customer-onboarding-requests?${query}`);
@@ -169,25 +165,61 @@ export async function listOnboarding(status: string, limit = 100, offset = 0): P
   return rows;
 }
 
+async function loadAllOnboardingForStatus(status: string): Promise<CustomerOnboardingRequestSummary[]> {
+  const rows: CustomerOnboardingRequestSummary[] = [];
+  const seen = new Set<string>();
+  let offset = 0;
+  while (true) {
+    const batch = await listOnboarding(status, ONBOARDING_PAGE_SIZE, offset);
+    let added = 0;
+    for (const item of batch) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      rows.push(item);
+      added += 1;
+    }
+    if (batch.length < ONBOARDING_PAGE_SIZE || added === 0) break;
+    offset += ONBOARDING_PAGE_SIZE;
+  }
+  return rows;
+}
+
 export async function loadPendingOnboarding(): Promise<CustomerOnboardingRequestSummary[]> {
   const statuses = ['submitted', 'under_review', 'need_more_info'];
-  const results = await Promise.all(statuses.map((status) => listOnboarding(status)));
+  const results = await Promise.all(statuses.map(loadAllOnboardingForStatus));
   const byId = new Map<string, CustomerOnboardingRequestSummary>();
   for (const rows of results) for (const row of rows) byId.set(row.id, row);
   return [...byId.values()].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 }
 
+function normalizeCustomer(row: unknown): Customer | null {
+  if (!isRecord(row)
+    || typeof row.id !== 'string'
+    || typeof row.code !== 'string'
+    || typeof row.name !== 'string'
+    || row.is_active !== true) return null;
+  return { id: row.id, code: row.code, name: row.name, is_active: true };
+}
+
 export async function listCustomers(): Promise<Customer[]> {
-  const data = await requestCore<unknown[]>('/api/customers?active=true&limit=1000&offset=0');
-  if (!Array.isArray(data)) return [];
-  return data.flatMap((row) => {
-    if (!isRecord(row)
-      || typeof row.id !== 'string'
-      || typeof row.code !== 'string'
-      || typeof row.name !== 'string'
-      || row.is_active !== true) return [];
-    return [{ id: row.id, code: row.code, name: row.name, is_active: true } satisfies Customer];
-  });
+  const customers: Customer[] = [];
+  const seen = new Set<string>();
+  let offset = 0;
+  while (true) {
+    const batch = await requestCore<unknown[]>(`/api/customers?active=true&limit=${CUSTOMER_PAGE_SIZE}&offset=${offset}`);
+    if (!Array.isArray(batch)) throw new CoreApiError('ADMIN_CUSTOMER_RESPONSE_INVALID', 'Danh sách khách hàng không hợp lệ', 502, false);
+    let added = 0;
+    for (const row of batch) {
+      const customer = normalizeCustomer(row);
+      if (!customer || seen.has(customer.id)) continue;
+      seen.add(customer.id);
+      customers.push(customer);
+      added += 1;
+    }
+    if (batch.length < CUSTOMER_PAGE_SIZE || added === 0) break;
+    offset += CUSTOMER_PAGE_SIZE;
+  }
+  return customers;
 }
 
 export async function listCustomerAddresses(customerId: string): Promise<CustomerAddress[]> {
