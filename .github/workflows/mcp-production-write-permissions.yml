@@ -1,0 +1,103 @@
+name: MCP Production Write Permissions
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/mcp-production-write-permissions.yml"
+      - "mcp/apps/backend/config/mcp-service-permissions.json"
+      - "mcp/apps/backend/scripts/repair-mcp-production-write-permissions.sh"
+      - "mcp/test/mcp-production-write-permissions-contract.test.mjs"
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-production-write-permissions-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request head
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate permission repair contract
+        run: |
+          bash -n mcp/apps/backend/scripts/repair-mcp-production-write-permissions.sh
+          node --test mcp/test/mcp-production-write-permissions-contract.test.mjs
+
+  repair-production:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/repair-mcp-production-write-permissions' &&
+      (github.actor == 'binhnxwjfjxm' || github.actor == 'khuongbinhinfo-a11y')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    env:
+      DEPLOY_REF: main
+      MCP_APP_NAME: hung-phat-mcp
+      MCP_FRONTEND_URL: https://mcp-field.vercel.app
+    steps:
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin main
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate repair contract
+        run: |
+          bash -n mcp/apps/backend/scripts/repair-mcp-production-write-permissions.sh
+          node --test mcp/test/mcp-production-write-permissions-contract.test.mjs
+
+      - name: Repair MCP production write permissions
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: bash mcp/apps/backend/scripts/repair-mcp-production-write-permissions.sh
+
+      - name: Publish sanitized evidence to Issue 211
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          evidence_file="$(mktemp)"
+          {
+            echo "## MCP production write permission repair — ${OPERATION_STATUS}"
+            echo
+            cat "$GITHUB_STEP_SUMMARY"
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence_file"
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/211/comments" \
+            -f body="$(cat "$evidence_file")" \
+            >/dev/null
+          rm -f "$evidence_file"
