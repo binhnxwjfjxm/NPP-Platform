@@ -15,7 +15,8 @@ const deployScriptPath = new URL("mcp/apps/backend/scripts/manual-production-dep
 const deployScript = await read("mcp/apps/backend/scripts/manual-production-deploy.sh");
 const rolloutScriptPath = new URL("mcp/apps/backend/scripts/production-rollout-gate.sh", root);
 const rolloutScript = await read("mcp/apps/backend/scripts/production-rollout-gate.sh");
-const manualContract = `${manualWorkflow}\n${deployScript}\n${rolloutScript}`;
+const credentialSafety = await read("mcp/apps/backend/foundation/migrations/credential-safety.js");
+const manualContract = `${manualWorkflow}\n${deployScript}\n${rolloutScript}\n${credentialSafety}`;
 const ciWorkflow = await read(".github/workflows/heroku-mcp-backend-contract-ci.yml");
 const dockerfile = await read("mcp/apps/backend/Dockerfile");
 const packageJson = JSON.parse(await read("mcp/apps/backend/package.json"));
@@ -51,6 +52,8 @@ test("manual Heroku MCP workflow is loadable and owns only the approved command"
   assert.match(manualWorkflow, /HEROKU_DB_OWNER_APP_NAME: hung-phat/);
   assert.match(manualWorkflow, /image: postgres:17/);
   assert.match(manualWorkflow, /persist-credentials: false/);
+  assert.match(manualWorkflow, /MCP_MIGRATION_CREDENTIAL_MODE: essential_owner/);
+  assert.match(manualWorkflow, /MCP_MIGRATION_ESSENTIAL_OWNER_CONFIRM: I_ACKNOWLEDGE_OWNER_CREDENTIAL_IS_NOT_LEAST_PRIVILEGE/);
   assert.match(manualWorkflow, /MCP_RUNTIME_DATABASE_URL_FILE: \/tmp\/mcp-runtime-database-url/);
   assert.match(manualWorkflow, /MCP_MIGRATION_DATABASE_URL_FILE: \/tmp\/mcp-migration-database-url/);
   assert.match(manualWorkflow, /MCP_DB_ROLE_FILE: \/tmp\/mcp-db-role/);
@@ -78,8 +81,12 @@ test("manual Heroku MCP deployment performs PostgreSQL preflight, backup, migrat
   assert.match(deployScript, /PERSISTENCE_PROVIDER/);
   assert.match(deployScript, /postgresql/);
   assert.match(deployScript, /MCP_LEGACY_RUNTIME_ENABLED must be false/);
-  assert.match(deployScript, /runtime_and_migrator_target_different_databases/);
-  assert.match(deployScript, /runtime_and_migrator_credentials_not_separated/);
+  assert.match(credentialSafety, /runtime_and_migrator_target_different_databases/);
+  assert.match(credentialSafety, /migration_runtime_credential_not_separated/);
+  assert.match(credentialSafety, /essential_owner_migration_not_authorized/);
+  assert.match(credentialSafety, /leastPrivilege: false/);
+  assert.match(deployScript, /MCP_MIGRATION_CREDENTIAL_MODE/);
+  assert.match(deployScript, /MCP_MIGRATION_LEAST_PRIVILEGE/);
   assert.match(deployScript, /umask 077/);
   assert.match(deployScript, /heroku pg:backups:capture DATABASE_URL -a "\$HEROKU_DB_OWNER_APP_NAME"/);
   assert.match(deployScript, /heroku pg:backups:info "\$production_backup_id"/);
@@ -89,7 +96,9 @@ test("manual Heroku MCP deployment performs PostgreSQL preflight, backup, migrat
   assert.match(rolloutScript, /pg_restore/);
   assert.match(rolloutScript, /run migration:migrate/);
   assert.match(rolloutScript, /run migration:verify/);
+  assert.match(rolloutScript, /if \[ "\$credential_mode" = "separated" \]/);
   assert.match(rolloutScript, /shared\.grant_mcp_runtime_access/);
+  assert.match(rolloutScript, /runtime_grant="skipped_essential_owner"/);
   assert.match(deployScript, /heroku container:login/);
   assert.match(deployScript, /heroku container:push web -a "\$HEROKU_APP_NAME"/);
   assert.match(deployScript, /heroku container:release web -a "\$HEROKU_APP_NAME"/);
