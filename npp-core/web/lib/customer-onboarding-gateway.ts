@@ -270,13 +270,16 @@ export async function listCustomerOnboardingRequests({
   requestId,
   status,
   limit = 20,
+  offset = 0,
 }: {
   requestId: string;
   status?: string;
   limit?: number;
+  offset?: number;
 }): Promise<CustomerOnboardingRequestSummary[]> {
   const query = new URLSearchParams();
   query.set('limit', String(Math.max(1, Math.min(100, Math.trunc(limit)))));
+  query.set('offset', String(Math.max(0, Math.trunc(offset))));
   if (status) {
     if (!ALLOWED_STATUSES.has(status)) {
       throw new CustomerOnboardingGatewayError(
