@@ -1,5 +1,6 @@
 const IDENTIFIER_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{1,127}$/;
 const SCHEMA_PATTERN = /^[a-z_][a-z0-9_]{0,62}$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function text(value) { return String(value ?? "").trim(); }
 function fail(code, detail) { const error = new Error(code); error.code = code; error.detail = detail; throw error; }
@@ -12,6 +13,7 @@ function csvList(value) { return Object.freeze(Array.from(new Set(text(value).sp
 function httpUrlValue(value, name, { httpsInProduction = false, nodeEnv = "development" } = {}) { let parsed; try { parsed = new URL(value); } catch { fail(`invalid_${name.toLowerCase()}`, `${name} must be a valid URL`); } if (!/^https?:$/.test(parsed.protocol)) fail(`invalid_${name.toLowerCase()}`, `${name} must use http or https`); if (httpsInProduction && nodeEnv === "production" && parsed.protocol !== "https:") fail(`${name.toLowerCase()}_https_required`, `${name} must use https in production`); return parsed.toString().replace(/\/+$/, ""); }
 function databaseUrlValue(value) { const raw = text(value); if (!raw) return null; let parsed; try { parsed = new URL(raw); } catch { fail("invalid_database_url", "DATABASE_URL must be a valid URL"); } if (!["postgres:", "postgresql:"].includes(parsed.protocol)) fail("invalid_database_url", "DATABASE_URL must use postgres or postgresql"); return raw; }
 function optionalSecret(value, name, nodeEnv) { const secret = text(value); if (!secret) return null; const minimumLength = nodeEnv === "production" ? 32 : 16; if (secret.length < minimumLength) fail(`invalid_${name.toLowerCase()}`, `${name} must contain at least ${minimumLength} characters`); if (nodeEnv === "production" && /replace|change[-_ ]?me|example|dev[-_ ]?only/i.test(secret)) fail(`invalid_${name.toLowerCase()}`, `${name} contains a placeholder value`); return secret; }
+function uuidValue(value, name) { const normalized = text(value); if (!UUID_PATTERN.test(normalized)) fail(`invalid_${name.toLowerCase()}`, `${name} must be a UUID`); return normalized; }
 
 function loadR2Config(env, nodeEnv) {
   const names = ["R2_BUCKET_NAME", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"];
@@ -44,6 +46,35 @@ function loadCoreOnboardingConfig(env, nodeEnv, backendApiToken) {
     baseUrl: httpUrlValue(baseUrlRaw, "CORE_ONBOARDING_API_BASE_URL", { httpsInProduction: true, nodeEnv }),
     apiToken,
     timeoutMs: positiveInteger(env.CORE_ONBOARDING_TIMEOUT_MS, 15000, "CORE_ONBOARDING_TIMEOUT_MS")
+  });
+}
+
+function loadCoreSalesConfig(env, nodeEnv, backendApiToken, onboardingToken) {
+  const baseUrlRaw = text(env.CORE_SALES_API_BASE_URL);
+  const apiToken = optionalSecret(env.CORE_SALES_API_TOKEN, "CORE_SALES_API_TOKEN", nodeEnv);
+  const warehouseRaw = text(env.CORE_SALES_DEFAULT_WAREHOUSE_ID);
+  const present = [baseUrlRaw, apiToken, warehouseRaw].filter(Boolean).length;
+  if (present === 0) {
+    return Object.freeze({
+      configured: false,
+      baseUrl: null,
+      apiToken: null,
+      defaultWarehouseId: null,
+      timeoutMs: positiveInteger(env.CORE_SALES_TIMEOUT_MS, 15000, "CORE_SALES_TIMEOUT_MS")
+    });
+  }
+  if (present !== 3) {
+    fail("incomplete_core_sales_config", "CORE_SALES_API_BASE_URL, CORE_SALES_API_TOKEN and CORE_SALES_DEFAULT_WAREHOUSE_ID must be configured together");
+  }
+  if (apiToken === backendApiToken || (onboardingToken && apiToken === onboardingToken)) {
+    fail("core_sales_token_reuse_forbidden", "CORE_SALES_API_TOKEN must differ from other backend tokens");
+  }
+  return Object.freeze({
+    configured: true,
+    baseUrl: httpUrlValue(baseUrlRaw, "CORE_SALES_API_BASE_URL", { httpsInProduction: true, nodeEnv }),
+    apiToken,
+    defaultWarehouseId: uuidValue(warehouseRaw, "CORE_SALES_DEFAULT_WAREHOUSE_ID"),
+    timeoutMs: positiveInteger(env.CORE_SALES_TIMEOUT_MS, 15000, "CORE_SALES_TIMEOUT_MS")
   });
 }
 
@@ -94,6 +125,7 @@ export function loadFoundationConfig(env = process.env) {
     supabaseServiceRoleKey = required(env, "SUPABASE_SERVICE_ROLE_KEY");
   }
   const coreOnboarding = loadCoreOnboardingConfig(env, nodeEnv, backendApiToken);
+  const coreSales = loadCoreSalesConfig(env, nodeEnv, backendApiToken, coreOnboarding.apiToken);
   const servicePrincipal = Object.freeze({
     id: legacyActorId,
     type: "service",
@@ -111,11 +143,12 @@ export function loadFoundationConfig(env = process.env) {
     supabaseUrl, supabaseServiceRoleKey,
     corsOrigins: parseCorsOrigins(env.CORS_ORIGINS, { nodeEnv }),
     coreOnboarding,
+    coreSales,
     upstreamTimeoutMs: positiveInteger(env.UPSTREAM_TIMEOUT_MS, 65000, "UPSTREAM_TIMEOUT_MS"),
     r2: loadR2Config(env, nodeEnv)
   });
 }
 
 export function publicFoundationConfig(config) {
-  return Object.freeze({ service: config.service, nodeEnv: config.nodeEnv, installationId: config.installationId, nppCode: config.nppCode, authMode: config.authMode, publicHost: config.publicHost, publicPort: config.publicPort, persistenceProvider: config.persistence.provider, persistenceConfigured: config.persistence.configured, persistenceSchema: config.persistence.schema, legacyRuntimeEnabled: config.legacyRuntime.enabled, serviceRoleCount: config.servicePrincipal?.roles?.length || 0, servicePermissionCount: config.servicePrincipal?.permissions?.length || 0, serviceScopeCount: config.servicePrincipal?.scopes?.length || 0, r2Configured: config.r2?.configured === true, coreOnboardingConfigured: config.coreOnboarding?.configured === true, corsOrigins: [...config.corsOrigins] });
+  return Object.freeze({ service: config.service, nodeEnv: config.nodeEnv, installationId: config.installationId, nppCode: config.nppCode, authMode: config.authMode, publicHost: config.publicHost, publicPort: config.publicPort, persistenceProvider: config.persistence.provider, persistenceConfigured: config.persistence.configured, persistenceSchema: config.persistence.schema, legacyRuntimeEnabled: config.legacyRuntime.enabled, serviceRoleCount: config.servicePrincipal?.roles?.length || 0, servicePermissionCount: config.servicePrincipal?.permissions?.length || 0, serviceScopeCount: config.servicePrincipal?.scopes?.length || 0, r2Configured: config.r2?.configured === true, coreOnboardingConfigured: config.coreOnboarding?.configured === true, coreSalesConfigured: config.coreSales?.configured === true, corsOrigins: [...config.corsOrigins] });
 }

@@ -27,18 +27,18 @@ import "./npp-theme.css";
 import "./app-shell-contract.css";
 
 export const metadata: Metadata = {
-  title: "MCP-Plan",
-  description: "Quản lý nhà phân phối, tuyến bán hàng, điểm bán, đơn hàng và công việc.",
-  applicationName: "MCP-Plan",
+  title: "NPP MCP Field",
+  description: "Ứng dụng tác nghiệp thị trường của NPP Hùng Phát.",
+  applicationName: "NPP MCP Field",
   icons: {
-    icon: "/npp-app-icon.png",
-    shortcut: "/npp-app-icon.png",
-    apple: "/npp-app-icon.png"
+    icon: "/api/pwa-icon?size=192",
+    shortcut: "/api/pwa-icon?size=192",
+    apple: "/api/pwa-icon?size=512"
   },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "MCP-Plan"
+    title: "NPP MCP"
   },
   other: {
     "mobile-web-app-capable": "yes"
@@ -51,7 +51,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "auto",
-  themeColor: "#F7F3ED"
+  themeColor: "#9a3412"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -139,6 +139,23 @@ export function createMcpOnboardingPrincipal(config) {
   });
 }
 
+export function createMcpSalesPrincipal(config) {
+  if (!config.mcpSalesApiToken) return null;
+  return normalizePrincipal({
+    actorId: config.mcpSalesActorId,
+    roles: ['mcp-sales-order-service'],
+    permissions: [
+      PERMISSIONS.coreProductRead,
+      PERMISSIONS.coreSalesOrderRead,
+      PERMISSIONS.coreSalesOrderCreate,
+    ],
+    scopes: {
+      warehouseIds: config.mcpSalesWarehouseIds,
+    },
+    sourceApp: 'mcp-plan-backend',
+  });
+}
+
 export function createRequestContext({ config, principal = createAnonymousPrincipal(), requestId = createRequestId('req'), receivedAt = new Date().toISOString() }) {
   const normalizedPrincipal = normalizePrincipal(principal);
   return Object.freeze({
@@ -168,6 +185,9 @@ export function createRequestContext({ config, principal = createAnonymousPrinci
 export function authenticateRequest(req, config) {
   const candidate = extractBearerToken(req.headers.authorization);
   if (!candidate) return { ok: false, code: 'UNAUTHORIZED', statusCode: 401 };
+  if (config.mcpSalesApiToken && tokenMatches(candidate, config.mcpSalesApiToken)) {
+    return { ok: true, principal: createMcpSalesPrincipal(config) };
+  }
   if (config.mcpOnboardingApiToken && tokenMatches(candidate, config.mcpOnboardingApiToken)) {
     return { ok: true, principal: createMcpOnboardingPrincipal(config) };
   }

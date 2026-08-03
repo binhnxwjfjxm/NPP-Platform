@@ -56,7 +56,8 @@ const products = [
     sellUnit: "chai",
     packUnit: "thùng",
     packQuantity: 12,
-    price: 89000
+    price: 89000,
+    catalogSource: "NPP_CORE"
   },
   {
     productId: "product-syrup",
@@ -70,7 +71,8 @@ const products = [
     sellUnit: "chai",
     packUnit: "thùng",
     packQuantity: 12,
-    price: 92000
+    price: 92000,
+    catalogSource: "NPP_CORE"
   },
   {
     productId: "product-tea",
@@ -84,7 +86,8 @@ const products = [
     sellUnit: "gói",
     packUnit: "thùng",
     packQuantity: 20,
-    price: 118000
+    price: 118000,
+    catalogSource: "NPP_CORE"
   }
 ];
 
@@ -272,6 +275,10 @@ function filteredProducts(url) {
   });
 }
 
+function variantsFor(productId) {
+  return products.filter((product) => product.productId === productId);
+}
+
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url || "/", `http://${request.headers.host || `127.0.0.1:${port}`}`);
   try {
@@ -300,8 +307,12 @@ const server = http.createServer(async (request, response) => {
         sessions: sessionStatus(routeId)
       }));
     }
-    if (request.method === "GET" && url.pathname === "/api/products/search") {
+    if (request.method === "GET" && (url.pathname === "/api/products/search" || url.pathname === "/api/core-sales/products/search")) {
       return json(response, 200, canonical(request, filteredProducts(url)));
+    }
+    const variantMatch = request.method === "GET" && url.pathname.match(/^\/api\/(?:core-sales\/)?products\/([^/]+)\/variants$/);
+    if (variantMatch) {
+      return json(response, 200, canonical(request, variantsFor(decodeURIComponent(variantMatch[1]))));
     }
     if (request.method === "POST" && url.pathname === "/api/orders") {
       const payload = await body(request);

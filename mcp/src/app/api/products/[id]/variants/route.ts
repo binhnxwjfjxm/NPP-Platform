@@ -15,7 +15,7 @@ export function GET(
   }
   return proxyBackendRequest(
     request,
-    `/api/products/${encodeURIComponent(productId)}/variants`,
+    `/api/core-sales/products/${encodeURIComponent(productId)}/variants`,
     "GET"
   );
 }
