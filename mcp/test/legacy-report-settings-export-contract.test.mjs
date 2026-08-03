@@ -7,6 +7,10 @@ const workflow = (await readFile(
   new URL(".github/workflows/mcp-legacy-report-settings-export.yml", root),
   "utf8"
 )).replace(/\r\n/g, "\n");
+const exporter = (await readFile(
+  new URL("mcp/scripts/export-legacy-report-settings-from-vercel.mjs", root),
+  "utf8"
+)).replace(/\r\n/g, "\n");
 
 test("legacy report settings export is exact-command and read-only", () => {
   assert.match(workflow, /issue_comment:/);
@@ -15,32 +19,39 @@ test("legacy report settings export is exact-command and read-only", () => {
   assert.match(workflow, /contains\(fromJSON\('\["binhnxwjfjxm","khuongbinhinfo-a11y"\]'\), github\.actor\)/);
   assert.match(workflow, /contents: read/);
   assert.match(workflow, /issues: write/);
+  assert.match(workflow, /vercel@latest pull/);
+  assert.match(exporter, /vercel@latest/);
+  assert.match(exporter, /"curl"/);
+  assert.match(exporter, /"--deployment"/);
   assert.doesNotMatch(workflow, /^\s{2}(?:push|pull_request|schedule):\s*$/m);
   assert.doesNotMatch(workflow, /deploy --prebuilt|vercel@latest deploy|git push|heroku container:release/i);
-  assert.doesNotMatch(workflow, /(?:POST|PATCH|PUT|DELETE)\s+\/rest\/v1/i);
+  assert.doesNotMatch(exporter, /-X|--request|POST|PATCH|PUT|DELETE/);
 });
 
-test("export resolves the exact old project and fails closed on 7 groups and 52 items", () => {
-  assert.match(workflow, /LEGACY_SUPABASE_PROJECT_REF: noiadkpkvdohljgopgfb/);
-  assert.match(workflow, /EXPECTED_GROUPS = 7/);
-  assert.match(workflow, /EXPECTED_ITEMS = 52/);
-  assert.match(workflow, /mcp_setting_groups\?select=\*&group_type=eq\.market_report/);
-  assert.match(workflow, /mcp_setting_items\?select=\*/);
-  assert.match(workflow, /legacy_item_orphan_detected/);
-  assert.match(workflow, /legacy_item_duplicate_key/);
-  assert.match(workflow, /legacy_group_status_mismatch/);
-  assert.match(workflow, /legacy_item_status_mismatch/);
+test("export accepts only an exact historical 7-group and 52-item snapshot", () => {
+  assert.match(exporter, /EXPECTED_GROUPS = 7/);
+  assert.match(exporter, /EXPECTED_ITEMS = 52/);
+  assert.match(exporter, /mcp-field-4m339eob5-binhnxwjfjxms-projects\.vercel\.app/);
+  assert.match(exporter, /mcp-field-bhdi5l7vy-binhnxwjfjxms-projects\.vercel\.app/);
+  assert.match(exporter, /groupIds\.has\(groupId\)/);
+  assert.match(exporter, /groupKeys\.has\(groupKey\)/);
+  assert.match(exporter, /itemIds\.has\(itemId\)/);
+  assert.match(exporter, /itemKeys\.has\(identity\)/);
+  assert.match(exporter, /status !== "active"/);
+  assert.match(exporter, /items\.length !== EXPECTED_ITEMS/);
+  assert.match(exporter, /legacy_report_settings_snapshot_not_found/);
 });
 
-test("provider secrets remain masked and only the data artifact is published", () => {
-  assert.match(workflow, /::add-mask::/);
+test("only the exact data artifact and sanitized evidence are published", () => {
   assert.match(workflow, /actions\/upload-artifact@v4/);
   assert.match(workflow, /name: mcp-legacy-report-settings-export/);
   assert.match(workflow, /retention-days: 1/);
   assert.match(workflow, /SHA-256/);
+  assert.match(workflow, /Source deployment/);
   assert.match(workflow, /Production mutation: none/);
+  assert.match(exporter, /createHash\("sha256"\)/);
   assert.doesNotMatch(workflow, /cat\s+.*\.env/i);
   assert.doesNotMatch(workflow, /env\s*\|/i);
-  assert.doesNotMatch(workflow, /echo\s+.*SUPABASE_(?:ANON|SECRET|SERVICE|PUBLISHABLE)/i);
-  assert.doesNotMatch(workflow, /echo\s+.*HEROKU_API_KEY/i);
+  assert.doesNotMatch(exporter, /console\.log\([^)]*token/i);
+  assert.doesNotMatch(workflow, /echo\s+.*VERCEL_TOKEN/i);
 });
