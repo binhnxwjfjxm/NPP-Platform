@@ -39,8 +39,9 @@ test("production smoke reports the exact failing read step without response bodi
   assert.match(workflow, /SMOKE_ERROR_CODE_\$\{label\^\^\}/);
   assert.match(workflow, /require_nonempty mcp_backend_token/);
   assert.match(workflow, /require_equal onboarding_base/);
-  assert.match(workflow, /assert_error_code onboarding_validation session_customer_id_required/);
-  assert.match(workflow, /assert_error_code sales_validation session_customer_id_required/);
+  assert.match(workflow, /assert_error_code onboarding_validation SESSION_CUSTOMER_ID_REQUIRED/);
+  assert.match(workflow, /assert_error_code sales_validation SESSION_CUSTOMER_ID_REQUIRED/);
+  assert.doesNotMatch(workflow, /assert_error_code .* session_customer_id_required/);
   assert.doesNotMatch(workflow, /cat "\$body"/);
   assert.doesNotMatch(workflow, /echo .*mcp_config/);
   assert.doesNotMatch(workflow, /echo .*onboarding_token/);
