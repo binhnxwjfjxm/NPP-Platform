@@ -45,8 +45,8 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/dashboard/:path*', '/management/:path*', '/organization/:path*', '/customers/:path*', '/suppliers/:path*', '/products/:path*', '/pricing/:path*', '/document-numbering/:path*', '/access/:path*', '/inventory/:path*',
-    '/api/organization/:path*', '/api/access/:path*', '/api/customers/:path*', '/api/customer-groups/:path*', '/api/customer-onboarding-requests/:path*', '/api/suppliers/:path*',
+    '/dashboard/:path*', '/organization/:path*', '/customers/:path*', '/suppliers/:path*', '/products/:path*', '/pricing/:path*', '/document-numbering/:path*', '/access/:path*', '/inventory/:path*',
+    '/api/organization/:path*', '/api/access/:path*', '/api/customers/:path*', '/api/customer-groups/:path*', '/api/suppliers/:path*',
     '/api/products/:path*', '/api/product-categories/:path*', '/api/product-brands/:path*', '/api/units/:path*', '/api/product-units/:path*',
     '/api/sales-channels/:path*', '/api/price-lists/:path*', '/api/pricing/:path*', '/api/document-number-series/:path*', '/api/inventory/:path*',
   ],

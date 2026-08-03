@@ -1,0 +1,46 @@
+name: Admin frontend CI
+
+on:
+  pull_request:
+    paths:
+      - 'admin/web/**'
+      - 'npp-core/web/app/management/**'
+      - 'npp-core/web/middleware.ts'
+      - '.github/workflows/admin-web-ci.yml'
+      - '.github/workflows/vercel-admin-production-manual.yml'
+      - 'docs/operations/frontend-domain-map.md'
+  push:
+    branches: [main]
+    paths:
+      - 'admin/web/**'
+      - 'npp-core/web/app/management/**'
+      - 'npp-core/web/middleware.ts'
+      - '.github/workflows/admin-web-ci.yml'
+      - '.github/workflows/vercel-admin-production-manual.yml'
+      - 'docs/operations/frontend-domain-map.md'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: admin/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify Admin frontend
+        env:
+          CORE_API_INTERNAL_URL: https://core.example.invalid
+          CORE_API_SERVER_TOKEN: test-server-token-not-for-production
+          CORE_WEB_ADMIN_USERNAME: test-admin
+          CORE_WEB_ADMIN_PASSWORD: test-password
+          NPP_OPERATIONS_URL: https://office.nguyenlieuhungphat.com
+        run: npm run verify
