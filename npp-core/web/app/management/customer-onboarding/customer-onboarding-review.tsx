@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type {
   CustomerOnboardingAction,
   CustomerOnboardingRequestSummary,
@@ -41,7 +41,7 @@ function actionSuccess(action: CustomerOnboardingAction): string {
   return 'Đã hủy đề nghị.';
 }
 
-function idempotencyKey(): string {
+function createIdempotencyKey(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return `web-${crypto.randomUUID()}`;
   }
@@ -56,6 +56,8 @@ function fullAddress(address: CustomerAddress): string {
 
 export default function CustomerOnboardingReview({ requests, customers }: Props) {
   const router = useRouter();
+  const actionKeys = useRef<Record<string, string>>({});
+  const addressRequestVersions = useRef<Record<string, number>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [reasonByRequest, setReasonByRequest] = useState<Record<string, string>>({});
@@ -63,7 +65,17 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
   const [customerByRequest, setCustomerByRequest] = useState<Record<string, string>>({});
   const [addressByRequest, setAddressByRequest] = useState<Record<string, string>>({});
   const [addressesByRequest, setAddressesByRequest] = useState<Record<string, CustomerAddress[]>>({});
-  const [addressLoading, setAddressLoading] = useState<string | null>(null);
+  const [addressLoadingByRequest, setAddressLoadingByRequest] = useState<Record<string, boolean>>({});
+
+  function stableActionKey(request: CustomerOnboardingRequestSummary, action: CustomerOnboardingAction): {
+    cacheKey: string;
+    value: string;
+  } {
+    const cacheKey = `${request.id}:${action}:${request.version}`;
+    const value = actionKeys.current[cacheKey] || createIdempotencyKey();
+    actionKeys.current[cacheKey] = value;
+    return { cacheKey, value };
+  }
 
   async function performAction(
     request: CustomerOnboardingRequestSummary,
@@ -71,6 +83,7 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
     extra: Record<string, unknown> = {},
   ) {
     const actionKey = `${request.id}:${action}`;
+    const idempotency = stableActionKey(request, action);
     setBusy(actionKey);
     setFeedback(null);
     try {
@@ -79,14 +92,19 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
         cache: 'no-store',
         headers: {
           'Content-Type': 'application/json',
-          'Idempotency-Key': idempotencyKey(),
+          'Idempotency-Key': idempotency.value,
         },
         body: JSON.stringify({ expectedVersion: request.version, ...extra }),
       });
       const payload = await response.json().catch(() => null) as ActionResponse | null;
       if (!response.ok) {
+        delete actionKeys.current[idempotency.cacheKey];
         throw new Error(payload?.error?.message || 'Không thực hiện được thao tác.');
       }
+      if (!payload?.data) {
+        throw new Error('Phản hồi xử lý chưa đầy đủ. Có thể bấm lại để kiểm tra kết quả.');
+      }
+      delete actionKeys.current[idempotency.cacheKey];
       setFeedback({ kind: 'success', text: actionSuccess(action) });
       router.refresh();
     } catch (error) {
@@ -100,34 +118,42 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
   }
 
   async function chooseCustomer(requestId: string, customerId: string) {
+    const requestVersion = (addressRequestVersions.current[requestId] || 0) + 1;
+    addressRequestVersions.current[requestId] = requestVersion;
     setCustomerByRequest((current) => ({ ...current, [requestId]: customerId }));
     setAddressByRequest((current) => ({ ...current, [requestId]: '' }));
+    setAddressesByRequest((current) => ({ ...current, [requestId]: [] }));
     if (!customerId) {
-      setAddressesByRequest((current) => ({ ...current, [requestId]: [] }));
+      setAddressLoadingByRequest((current) => ({ ...current, [requestId]: false }));
       return;
     }
-    setAddressLoading(requestId);
+    setAddressLoadingByRequest((current) => ({ ...current, [requestId]: true }));
     try {
       const response = await fetch(`/api/customers/${customerId}/addresses`, { cache: 'no-store' });
       const payload = await response.json().catch(() => null) as {
         data?: CustomerAddress[];
         error?: { message?: string };
       } | null;
-      if (!response.ok || !Array.isArray(payload?.data)) {
+      const addresses = payload?.data;
+      if (!response.ok || !Array.isArray(addresses)) {
         throw new Error(payload?.error?.message || 'Không tải được địa chỉ khách hàng.');
       }
+      if (addressRequestVersions.current[requestId] !== requestVersion) return;
       setAddressesByRequest((current) => ({
         ...current,
-        [requestId]: payload.data.filter((address) => address.is_active),
+        [requestId]: addresses.filter((address) => address.is_active),
       }));
     } catch (error) {
+      if (addressRequestVersions.current[requestId] !== requestVersion) return;
       setAddressesByRequest((current) => ({ ...current, [requestId]: [] }));
       setFeedback({
         kind: 'error',
         text: error instanceof Error ? error.message : 'Không tải được địa chỉ khách hàng.',
       });
     } finally {
-      setAddressLoading(null);
+      if (addressRequestVersions.current[requestId] === requestVersion) {
+        setAddressLoadingByRequest((current) => ({ ...current, [requestId]: false }));
+      }
     }
   }
 
@@ -182,6 +208,7 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
           const addresses = addressesByRequest[request.id] || [];
           const address = request.proposedCustomer.address;
           const isBusy = busy?.startsWith(`${request.id}:`) === true;
+          const addressLoading = addressLoadingByRequest[request.id] === true;
           return (
             <article className={styles.card} key={request.id}>
               <header className={styles.cardHeader}>
@@ -248,13 +275,13 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
                       Địa chỉ
                       <select
                         value={selectedAddress}
-                        disabled={!selectedCustomer || addressLoading === request.id}
+                        disabled={!selectedCustomer || addressLoading}
                         onChange={(event) => setAddressByRequest((current) => ({
                           ...current,
                           [request.id]: event.target.value,
                         }))}
                       >
-                        <option value="">{addressLoading === request.id ? 'Đang tải địa chỉ...' : 'Chọn địa chỉ'}</option>
+                        <option value="">{addressLoading ? 'Đang tải địa chỉ...' : 'Chọn địa chỉ'}</option>
                         {addresses.map((item) => (
                           <option value={item.id} key={item.id}>{item.label} — {fullAddress(item)}</option>
                         ))}
