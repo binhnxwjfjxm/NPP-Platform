@@ -54,6 +54,47 @@ function routeCustomerRows(customers) {
   }));
 }
 
+function sessionCustomerRows(lines) {
+  return lines.map((line) => ({
+    id: line.sessionCustomerId || line.id,
+    session_id: "session-active",
+    route_customer_id: line.routeCustomerId,
+    sort_order: line.sortOrder,
+    customer_name: line.accountName,
+    phone: line.phone || "",
+    area: line.area,
+    address: line.address || "",
+    source: line.source,
+    visit_status: line.status,
+    note: line.note,
+    order_id: line.orderId || null,
+    test_id: line.testId || null,
+    report_id: line.reportId || null,
+    followup_count: line.followupCount || 0,
+    checkin_at: line.checkinAt || null,
+    checkin_lat: line.checkinLat ?? null,
+    checkin_lng: line.checkinLng ?? null,
+    checkin_accuracy: line.checkinAccuracy ?? null,
+    checkin_source: line.checkinSource || null,
+    created_at: "2099-12-30T08:00:00.000Z"
+  }));
+}
+
+function visitRows(results) {
+  return results.map((result) => ({
+    id: result.id,
+    session_id: "session-active",
+    route_customer_id: result.routeCustomerId || null,
+    order_id: result.orderId || null,
+    test_id: result.testId || null,
+    report_id: result.reportId || null,
+    status: "visited",
+    note: result.result || "Đã ghé",
+    checkin_at: "2099-12-30T08:00:00.000Z",
+    created_at: "2099-12-30T08:00:00.000Z"
+  }));
+}
+
 async function readTable(table) {
   if (table === "mcp_routes") {
     const data = await upstreamJson("/api/routes/data");
@@ -65,15 +106,27 @@ async function readTable(table) {
   }
   if (table === "mcp_route_sessions") {
     return [{
+      id: "session-active",
       route_id: "route-active",
+      route_name: "UI Smoke Active",
       session_date: "2099-12-30",
       sales: "Sales UI",
       planned_customers: 1,
       visited_customers: 0,
       order_count: 0,
       status: "active",
+      opened_at: "2099-12-30T08:00:00.000Z",
+      created_at: "2099-12-30T08:00:00.000Z",
       updated_at: "2099-12-30T08:00:00.000Z"
     }];
+  }
+  if (table === "mcp_session_customers") {
+    const data = await upstreamJson("/api/mcp-day/data");
+    return sessionCustomerRows(data.lines || []);
+  }
+  if (table === "mcp_visits") {
+    const data = await upstreamJson("/api/mcp-day/data");
+    return visitRows(data.results || []);
   }
   throw new Error(`unsupported_read_table_${table}`);
 }
