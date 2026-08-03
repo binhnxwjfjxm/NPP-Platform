@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: heroku-mcp-backend-manual
@@ -136,3 +137,30 @@ jobs:
             action="deploy"
           fi
           REQUESTED_ACTION="$action" bash mcp/apps/backend/scripts/manual-production-deploy.sh
+
+      - name: Record exact MCP source
+        if: always()
+        shell: bash
+        run: echo "MCP_SOURCE_SHA=${{ steps.sha.outputs.sha }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish sanitized MCP rollout evidence to Issue 189
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          evidence_file="$(mktemp)"
+          {
+            echo "## MCP production rollout — ${OPERATION_STATUS}"
+            echo
+            cat "$GITHUB_STEP_SUMMARY"
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence_file"
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/189/comments" \
+            -f body="$(cat "$evidence_file")" \
+            >/dev/null
+          rm -f "$evidence_file"
