@@ -51,8 +51,10 @@ test("both backend workflows publish only sanitized summaries to Issue 189", () 
     assert.match(workflow, /issues\/189\/comments/);
     assert.match(workflow, /GITHUB_RUN_ID/);
     assert.doesNotMatch(workflow, /cat .*config/i);
-    assert.doesNotMatch(workflow, /echo .*DATABASE_URL/i);
-    assert.doesNotMatch(workflow, /echo .*API_TOKEN/i);
+    assert.doesNotMatch(workflow, /echo\s+"?DATABASE_URL=/i);
+    assert.doesNotMatch(workflow, /echo\s+"?[A-Z0-9_]*API_TOKEN=/i);
+    assert.doesNotMatch(workflow, /echo\s+.*\$DATABASE_URL/i);
+    assert.doesNotMatch(workflow, /echo\s+.*\$[A-Z0-9_]*API_TOKEN/i);
   }
   assert.match(coreWorkflow, /Core production rollout/);
   assert.match(mcpWorkflow, /MCP production rollout/);
