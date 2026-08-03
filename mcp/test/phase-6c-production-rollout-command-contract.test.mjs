@@ -22,7 +22,12 @@ test("Core production deploy remains manual and gains one exact Issue 5 command"
   assert.match(coreWorkflow, /HEROKU_APP_NAME: hung-phat/);
   assert.match(coreWorkflow, /HEROKU_FORBIDDEN_APP_NAME: hung-phat-mcp/);
   assert.match(coreWorkflow, /DEPLOY_REF: main/);
+  assert.match(coreWorkflow, /fetch-depth: 0/);
   assert.match(coreWorkflow, /persist-credentials: false/);
+  assert.match(coreWorkflow, /git fetch --prune --no-tags origin/);
+  assert.match(coreWorkflow, /refs\/heads\/main:refs\/remotes\/origin\/main/);
+  assert.match(coreWorkflow, /git rev-parse --is-shallow-repository/);
+  assert.doesNotMatch(coreWorkflow, /git fetch origin main --depth=1/);
   assert.match(coreWorkflow, /git rev-parse origin\/main/);
   assert.match(coreWorkflow, /name: Setup Node 20/);
   assert.match(coreWorkflow, /node-version: 20/);
