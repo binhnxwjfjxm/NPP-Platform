@@ -28,6 +28,10 @@ test("Core production deploy remains manual and gains one exact Issue 5 command"
   assert.match(coreWorkflow, /node-version: 20/);
   assert.match(coreWorkflow, /npm --workspace npp-core-api run start/);
   assert.doesNotMatch(coreWorkflow, /npm --workspace npp-core-api start"/);
+  assert.match(coreWorkflow, /https:\/\/api\.heroku\.com\/apps\/\$HEROKU_APP_NAME/);
+  assert.match(coreWorkflow, /Accept: application\/vnd\.heroku\+json; version=3/);
+  assert.match(coreWorkflow, /Authorization: Bearer \$HEROKU_API_KEY/);
+  assert.doesNotMatch(coreWorkflow, /heroku apps:info[^\n]*--json/);
   assert.match(coreWorkflow, /requested_action="\$\{REQUESTED_ACTION:-deploy\}"/);
   assert.match(coreWorkflow, /GITHUB_EVENT_NAME" = "issue_comment/);
   assert.doesNotMatch(coreWorkflow, /^\s{2}(?:push|pull_request|schedule):\s*$/m);
