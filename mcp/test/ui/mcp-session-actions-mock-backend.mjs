@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 
 const port = Number(process.env.MCP_ACTION_UI_MOCK_PORT || 3110);
 const resultsDir = process.env.MCP_ACTION_UI_RESULTS_DIR || "test-results/mcp-session-actions";
-const product = { productId: "product-ui", variantId: "variant-ui", name: "Trà UI Smoke", brand: "NPP", category: "Trà", sku: "UI-001", variantName: "Chai", sizeLabel: "350ml", sellUnit: "chai", packUnit: "thùng", packQuantity: 24, price: 12000 };
+const product = { productId: "product-ui", variantId: "variant-ui", name: "Trà UI Smoke", brand: "NPP", category: "Trà", sku: "UI-001", variantName: "Chai", sizeLabel: "350ml", sellUnit: "chai", packUnit: "thùng", packQuantity: 24, price: 12000, catalogSource: "NPP_CORE" };
 
 function defaultBehavior() {
   return { productDelayMs: 0, productError: null };
@@ -46,14 +46,14 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/routes/customers/data") return json(res, 200, canonical(req, { kpis: [], customers: routeCustomers }));
     if (req.method === "GET" && url.pathname === "/api/mcp-day/data") return json(res, 200, canonical(req, dayData()));
     if (req.method === "GET" && url.pathname === "/api/mcp-settings/session-status") return json(res, 200, canonical(req, { sessions: [{ id: "session-active", routeId: "route-active", routeName: "UI Smoke Active", sessionDate: "2099-12-30", status: "active" }] }));
-    if (req.method === "GET" && url.pathname === "/api/products/search") {
+    if (req.method === "GET" && (url.pathname === "/api/products/search" || url.pathname === "/api/core-sales/products/search")) {
       const behavior = state.behavior;
       state.behavior = defaultBehavior();
       await sleep(Number(behavior.productDelayMs || 0));
       if (behavior.productError) return json(res, 503, { error: String(behavior.productError) });
-      return json(res, 200, { data: [product] });
+      return json(res, 200, canonical(req, [product]));
     }
-    if (req.method === "GET" && url.pathname === "/api/products/product-ui/variants") return json(res, 200, { data: [product] });
+    if (req.method === "GET" && (url.pathname === "/api/products/product-ui/variants" || url.pathname === "/api/core-sales/products/product-ui/variants")) return json(res, 200, canonical(req, [product]));
     if (req.method === "GET" && url.pathname === "/api/mcp-report-settings") return json(res, 200, { data: { groups: [] } });
 
     const action = req.method === "POST" && url.pathname.match(/^\/api\/mcp-day\/session-customer\/(order|test|report|followup)$/);
