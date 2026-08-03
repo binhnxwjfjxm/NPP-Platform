@@ -73,3 +73,17 @@ test("MCP overview and routes use the PostgreSQL backend read boundary", () => {
   assert.doesNotMatch(loader, /\/api\/routes\/data/);
   assert.doesNotMatch(loader, /\/api\/routes\/customers\/data/);
 });
+
+test("legacy report settings GET reads PostgreSQL while writes keep the guarded backend mutation route", () => {
+  const aliasRoute = read("src/app/api/mcp-report-settings/route.ts");
+  const backendRoute = read("src/app/api/backend/mcp-report-settings/route.ts");
+
+  assert.match(aliasRoute, /@\/app\/api\/backend\/mcp-report-settings\/route/);
+  assert.match(backendRoute, /backendReadRows<Row>\("mcp_report_setting_groups"/);
+  assert.match(backendRoute, /backendReadRows<Row>\("mcp_report_settings"/);
+  assert.match(backendRoute, /includeInactive/);
+  assert.doesNotMatch(backendRoute, /proxyBackendRequest\(request, "\/api\/mcp-report-settings", "GET"\)/);
+  assert.match(backendRoute, /proxyBackendRequest\(request, "\/api\/mcp-report-settings", "POST"\)/);
+  assert.match(backendRoute, /proxyBackendRequest\(request, "\/api\/mcp-report-settings", "PATCH"\)/);
+  assert.doesNotMatch(backendRoute, /SUPABASE|supabase/);
+});
