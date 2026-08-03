@@ -29,6 +29,7 @@ test('management overview reads existing Core data without adding mutation paths
   assert.match(gateway, /CORE_API_INTERNAL_URL/);
   assert.match(gateway, /CORE_API_SERVER_TOKEN/);
   assert.match(gateway, /CUSTOMER_ONBOARDING_INVALID_STATUS/);
+  assert.match(gateway, /query\.set\('offset'/);
   assert.match(gateway, /requests\.every\(isCustomerOnboardingRequestSummary\)/);
   assert.match(gateway, /Authorization: `Bearer \$\{requiredServerValue\('CORE_API_SERVER_TOKEN'\)\}`/);
   assert.match(gateway, /cache: 'no-store'/);
@@ -54,7 +55,7 @@ test('management overview remains usable and honest on desktop and mobile', asyn
   assert.match(page, /data-testid="management-overview-page"/);
   assert.match(page, /href="\/sales\/sales-orders"/);
   assert.match(page, /href="\/organization"/);
-  assert.match(page, /Chỉ theo dõi tại màn hình này/);
+  assert.match(page, /href="\/management\/customer-onboarding"/);
   assert.doesNotMatch(page, /href="\/customers"/);
   assert.match(styles, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(styles, /@media \(max-width: 520px\)/);
