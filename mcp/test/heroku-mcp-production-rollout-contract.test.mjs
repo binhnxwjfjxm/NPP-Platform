@@ -20,8 +20,10 @@ test("production rollout scripts are valid shell", () => {
   execFileSync("bash", ["-n", fileURLToPath(rolloutScriptPath)]);
 });
 
-test("the existing MCP deploy command owns the complete database gate", () => {
+test("MCP migration and deploy commands share the complete database gate", () => {
   assert.match(workflow, /\/deploy-heroku-mcp-production/);
+  assert.match(workflow, /\/migrate-heroku-mcp-production/);
+  assert.match(workflow, /action="migrate"/);
   assert.match(workflow, /HEROKU_APP_NAME: hung-phat-mcp/);
   assert.match(workflow, /HEROKU_DB_OWNER_APP_NAME: hung-phat/);
   assert.match(workflow, /image: postgres:17/);
@@ -43,12 +45,26 @@ test("the existing MCP deploy command owns the complete database gate", () => {
   assert.match(workflow, /bash mcp\/apps\/backend\/scripts\/manual-production-deploy\.sh/);
   assert.match(deployScript, /test "\$HEROKU_APP_NAME" != "\$HEROKU_DB_OWNER_APP_NAME"/);
   assert.match(deployScript, /umask 077/);
+  assert.match(deployScript, /run_production_migration_gate\(\)/);
   assert.match(deployScript, /heroku pg:backups:capture DATABASE_URL -a "\$HEROKU_DB_OWNER_APP_NAME"/);
   assert.match(deployScript, /heroku pg:backups:info "\$production_backup_id"/);
   assert.match(deployScript, /heroku maintenance:on -a "\$HEROKU_APP_NAME"/);
   assert.match(deployScript, /bash mcp\/apps\/backend\/scripts\/production-rollout-gate\.sh/);
   assert.match(deployScript, /heroku container:push web -a "\$HEROKU_APP_NAME"/);
   assert.match(deployScript, /heroku maintenance:off -a "\$HEROKU_APP_NAME"/);
+
+  const migrateCase = deployScript.match(/migrate\)\n([\s\S]*?)\n\s*;;/);
+  assert.ok(migrateCase, "missing migrate action");
+  assert.match(migrateCase[1], /run_production_migration_gate/);
+  assert.match(migrateCase[1], /smoke_health \/health\/live/);
+  assert.match(migrateCase[1], /smoke_health \/health\/ready/);
+  assert.doesNotMatch(migrateCase[1], /container:(?:push|release)/);
+
+  const deployCase = deployScript.match(/deploy\)\n([\s\S]*?)\n\s*;;/);
+  assert.ok(deployCase, "missing deploy action");
+  assert.match(deployCase[1], /run_production_migration_gate/);
+  assert.match(deployCase[1], /container:push web/);
+  assert.match(deployCase[1], /container:release web/);
   assert.doesNotMatch(deployment, /container:(?:push|release)[^\n]+HEROKU_DB_OWNER_APP_NAME/);
 });
 
