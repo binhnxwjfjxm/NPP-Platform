@@ -21,6 +21,8 @@ production_backup_id=""
 previous_active_release_version=""
 previous_release_healthy="false"
 active_release_version=""
+credential_mode=""
+least_privilege=""
 
 for sensitive in "$HEROKU_API_KEY"; do
   echo "::add-mask::$sensitive"
@@ -79,6 +81,8 @@ write_summary() {
     echo "PREVIOUS_ACTIVE_RELEASE_VERSION=$previous_active_release_version"
     echo "PREVIOUS_RELEASE_HEALTHY=$previous_release_healthy"
     echo "DEPLOYED_SHA=$DEPLOYED_SHA"
+    echo "MCP_MIGRATION_CREDENTIAL_MODE=$credential_mode"
+    echo "MCP_MIGRATION_LEAST_PRIVILEGE=$least_privilege"
   } >> "$GITHUB_STEP_SUMMARY"
 }
 
@@ -142,17 +146,22 @@ printf '%s' "$migration_database_url" > "$MCP_MIGRATION_DATABASE_URL_FILE"
 printf '%s' "$mcp_db_role" > "$MCP_DB_ROLE_FILE"
 chmod 600 "$MCP_RUNTIME_DATABASE_URL_FILE" "$MCP_MIGRATION_DATABASE_URL_FILE" "$MCP_DB_ROLE_FILE"
 
-node --input-type=module - "$runtime_database_url" "$migration_database_url" <<'NODE'
-const runtime = new URL(process.argv[2]);
-const migrator = new URL(process.argv[3]);
-const port = (url) => url.port || "5432";
-if (runtime.hostname !== migrator.hostname || port(runtime) !== port(migrator) || runtime.pathname !== migrator.pathname) {
-  throw new Error("runtime_and_migrator_target_different_databases");
-}
-if (decodeURIComponent(runtime.username) === decodeURIComponent(migrator.username)) {
-  throw new Error("runtime_and_migrator_credentials_not_separated");
-}
+credential_context_json="$(
+  DATABASE_URL="$runtime_database_url" \
+  MCP_MIGRATION_DATABASE_URL="$migration_database_url" \
+  node --input-type=module <<'NODE'
+import { resolveMigrationCredentialContext } from "./mcp/apps/backend/foundation/migrations/credential-safety.js";
+const context = resolveMigrationCredentialContext({ ...process.env, NODE_ENV: "production" });
+process.stdout.write(JSON.stringify({
+  credentialMode: context.credentialMode,
+  leastPrivilege: context.leastPrivilege
+}));
 NODE
+)"
+credential_mode="$(jq -r '.credentialMode' <<<"$credential_context_json")"
+least_privilege="$(jq -r '.leastPrivilege | tostring' <<<"$credential_context_json")"
+test -n "$credential_mode"
+test "$least_privilege" = "true" -o "$least_privilege" = "false"
 
 previous_active_release_version="$(refresh_release_version)"
 test -n "$previous_active_release_version"
