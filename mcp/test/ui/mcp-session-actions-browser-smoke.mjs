@@ -31,7 +31,7 @@ try {
   await shot(page, "01-warm-theme-session");
 
   await behavior({ productDelayMs: 650 });
-  await card(page).getByRole("button", { name: "Đơn", exact: true }).click();
+  await card(page).getByRole("button", { name: "Nhu cầu", exact: true }).click();
   const order = page.getByRole("dialog", { name: "Ghi nhận nhu cầu mua", exact: true });
   await order.getByRole("button", { name: "+ Chọn sản phẩm", exact: true }).click();
   const picker = page.getByRole("dialog", { name: "Chọn sản phẩm", exact: true });
