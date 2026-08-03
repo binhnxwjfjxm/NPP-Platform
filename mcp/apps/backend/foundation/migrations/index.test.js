@@ -36,7 +36,8 @@ const EXPECTED_MIGRATIONS = [
   "mcp_004_profile_media_contract",
   "mcp_005_session_runtime_contract",
   "mcp_006_customer_onboarding_sync",
-  "mcp_007_core_sales_order_sync"
+  "mcp_007_core_sales_order_sync",
+  "mcp_008_legacy_report_settings_seed"
 ];
 
 test("MCP migrations use a unique registry namespace and apply once in one locked transaction", async () => {
@@ -58,6 +59,7 @@ test("MCP migrations use a unique registry namespace and apply once in one locke
   assert.equal(adapter.calls.some((call) => call.text.includes("mcp_session_customers_visited_counter")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("customer_onboarding_request_id")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("core_sales_order_id")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("Exact source counts: 7 groups, 53 items")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("ON DELETE CASCADE")), true);
 
   const status = await migrationStatusWithAdapter(adapter);
@@ -221,6 +223,26 @@ test("MCP Core Sales Order sync migration is canonical and stores a structured p
   assert.match(sql, /mcp_orders_core_sales_order_unique/);
   assert.match(sql, /'draft', 'confirmed', 'cancelled', 'closed'/);
   assert.doesNotMatch(sql, /CREATE\s+TABLE\s+(shared|sales|purchasing|inventory|logistics|accounting|reporting)\./i);
+});
+
+test("MCP legacy report settings seed is canonical, exact and non-destructive", () => {
+  const sql = MCP_MIGRATIONS[7].sql;
+  const canonicalSql = readFileSync(
+    new URL("../../../../../database/migrations/mcp/008_mcp_legacy_report_settings_seed.sql", import.meta.url),
+    "utf8"
+  );
+  assert.equal(sql, canonicalSql);
+  assert.match(sql, /Snapshot SHA-256: 90776e5fa02844fd59ac5519fa8d49697470d22e2c16d2a8f4966041b4ff889b/);
+  assert.match(sql, /Exact source counts: 7 groups, 53 items \(52 active, 1 inactive\)/);
+  assert.match(sql, /mcp_report_settings_group_key_unique/);
+  assert.match(sql, /ON mcp\.mcp_report_settings \(installation_id, group_id, setting_key\)/);
+  assert.match(sql, /'used_siro_golden_farm'[\s\S]*?'Golden Farm'[\s\S]*?FALSE/);
+  assert.match(sql, /v_group_count <> 7/);
+  assert.match(sql, /v_item_count <> 53/);
+  assert.match(sql, /v_active_item_count <> 52 OR v_inactive_item_count <> 1/);
+  assert.match(sql, /v_orphan_count <> 0/);
+  assert.doesNotMatch(sql, /\b(?:DELETE|TRUNCATE)\b/i);
+  assert.doesNotMatch(sql, /postgresql:\/\/|SUPABASE_(?:ANON|SERVICE|SECRET|PUBLISHABLE)_KEY/i);
 });
 
 test("migration failure rolls back and preserves the original error", async () => {
