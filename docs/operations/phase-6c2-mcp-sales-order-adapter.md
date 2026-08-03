@@ -21,12 +21,17 @@ Opening the screen, recording a demand or synchronizing customer status does not
 
 ## Product source
 
-The existing MCP product endpoints are retained for UI compatibility, but the MCP backend now serves them from Core:
+The public MCP UI paths remain stable, but only the purchase-demand picker is routed to the dedicated Core Sales catalog boundary:
 
 ```text
-GET /api/products/search
-GET /api/products/:productId/variants
-              -> Core GET /api/sales-orders/sku-search
+MCP UI GET /api/products/search
+       -> MCP backend GET /api/core-sales/products/search
+       -> Core GET /api/sales-orders/sku-search
+
+MCP UI GET /api/products/:productId/variants
+       -> MCP backend GET /api/core-sales/products/:productId/variants
+       -> Core GET /api/products/:productId/variants
+       -> Core Sales eligibility recheck for each bounded candidate SKU
 ```
 
 Legacy MCP product/SKU/price rows are not authoritative for official orders. Core revalidates each variant and determines unit, price, discount and tax when creating the draft.
@@ -36,11 +41,20 @@ Legacy MCP product/SKU/price rows are not authoritative for official orders. Cor
 MCP calls Core with a dedicated server principal that has only:
 
 ```text
+core.product.read
 core.sales-order.read
 core.sales-order.create
 ```
 
-It also has an explicit warehouse scope. It cannot confirm, amend, cancel or override commercial values.
+The MCP backend route also requires its own reviewed permissions and warehouse scope:
+
+```text
+mcp.sales-order.read
+mcp.sales-order.create
+mcp:warehouse:<CORE_SALES_DEFAULT_WAREHOUSE_ID>
+```
+
+It cannot confirm, amend, cancel or override commercial values.
 
 Canonical source identity:
 
@@ -62,13 +76,25 @@ Same demand and payload reuses/synchronizes the existing order. A changed payloa
 
 Migration `mcp_007_core_sales_order_sync` adds structured fields to `mcp.orders` for:
 
-- Core Sales Order ID and number;
+- Core Sales Order ID and number when Core has assigned one;
 - order status and current version;
 - Core total/currency read projection;
-- submission fingerprint;
+- versioned submission fingerprint;
 - submitted and last-synchronized timestamps.
 
 MCP does not own the Core Sales Order lifecycle.
+
+## Commercial default
+
+Phase 6C.2 creates a draft with:
+
+```text
+deliveryMode     = DELIVERY
+collectionPolicy = PREPAID
+currency         = VND
+```
+
+It does not enable collect-on-delivery, receivable, payment or settlement behavior.
 
 ## PWA icon
 
