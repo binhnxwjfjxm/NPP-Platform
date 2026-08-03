@@ -195,13 +195,13 @@ jobs:
             -H "X-Backend-Token: $mcp_backend_token" \
             -H 'Accept: application/json' \
             "$mcp_url/api/mcp-day/session-customer/customer-onboarding")"
-          assert_error_code onboarding_validation session_customer_id_required
+          assert_error_code onboarding_validation SESSION_CUSTOMER_ID_REQUIRED
 
           sales_validation="$(request_json sales_validation 400 \
             -H "X-Backend-Token: $mcp_backend_token" \
             -H 'Accept: application/json' \
             "$mcp_url/api/mcp-day/session-customer/sales-order")"
-          assert_error_code sales_validation session_customer_id_required
+          assert_error_code sales_validation SESSION_CUSTOMER_ID_REQUIRED
 
           existing_projection() {
             local integration_column="$1"
