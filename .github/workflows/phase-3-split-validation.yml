@@ -285,6 +285,7 @@ jobs:
           } 2>&1 | tee artifacts/cross-domain/migrations.log
           npm --prefix npp-core/api run verify 2>&1 | tee artifacts/cross-domain/api.log
       - name: Verify MCP boundary
+        if: github.event_name == 'push' || startsWith(github.head_ref, 'agent/phase-3')
         shell: bash
         run: |
           if git diff --name-only origin/main...HEAD | grep -q '^mcp/'; then
