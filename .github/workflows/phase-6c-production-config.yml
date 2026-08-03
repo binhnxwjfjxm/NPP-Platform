@@ -1,0 +1,82 @@
+name: Phase 6C production config
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-6c-production-config
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    if: >-
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/configure-phase-6c-production' &&
+      (
+        github.actor == 'binhnxwjfjxm' ||
+        github.actor == 'khuongbinhinfo-a11y'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DEPLOY_REF: main
+      CORE_APP_NAME: hung-phat
+      MCP_APP_NAME: hung-phat-mcp
+    steps:
+      - name: Validate exact operator command
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/configure-phase-6c-production'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install operator clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      - name: Validate config script syntax
+        shell: bash
+        run: bash -n mcp/apps/backend/scripts/phase-6c-production-config.sh
+
+      - name: Configure Phase 6C service boundary
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: bash mcp/apps/backend/scripts/phase-6c-production-config.sh
+
+      - name: Record exact source
+        if: always()
+        shell: bash
+        run: echo "SOURCE_SHA=${{ steps.source.outputs.sha }}" >> "$GITHUB_STEP_SUMMARY"
