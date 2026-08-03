@@ -1,0 +1,137 @@
+name: Manual Heroku Core migrations
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: heroku-core-migrations-manual
+  cancel-in-progress: false
+
+jobs:
+  audit-or-migrate:
+    if: >-
+      github.event.issue.number == 5 &&
+      (
+        github.event.comment.body == '/audit-heroku-core-migrations' ||
+        github.event.comment.body == '/migrate-heroku-core-041-production'
+      ) &&
+      (
+        github.actor == 'binhnxwjfjxm' ||
+        github.actor == 'khuongbinhinfo-a11y'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-core-041-rollout
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DEPLOY_REF: main
+      HEROKU_APP_NAME: hung-phat
+    steps:
+      - name: Validate exact issue command
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          case "$COMMENT_BODY" in
+            /audit-heroku-core-migrations|/migrate-heroku-core-041-production) ;;
+            *) exit 1 ;;
+          esac
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin \
+            '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install locked dependencies
+        shell: bash
+        run: npm ci --ignore-scripts
+
+      - name: Validate Core migration gate shell
+        shell: bash
+        run: bash -n npp-core/api/scripts/core-041-production-gate.sh
+
+      - name: Install Heroku CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Audit or migrate Core 041
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          POSTGRES_SERVICE_CONTAINER: ${{ job.services.postgres.id }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          case "$COMMENT_BODY" in
+            /audit-heroku-core-migrations) action="audit" ;;
+            /migrate-heroku-core-041-production) action="migrate" ;;
+            *) exit 1 ;;
+          esac
+          REQUESTED_ACTION="$action" bash npp-core/api/scripts/core-041-production-gate.sh
+
+      - name: Record exact Core source
+        if: always()
+        shell: bash
+        run: echo "SOURCE_SHA=${{ steps.source.outputs.sha }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish sanitized Core migration evidence to Issue 189
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          evidence_file="$(mktemp)"
+          {
+            echo "## Core migration gate — ${OPERATION_STATUS}"
+            echo
+            cat "$GITHUB_STEP_SUMMARY"
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence_file"
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/189/comments" \
+            -f body="$(cat "$evidence_file")" \
+            >/dev/null
+          rm -f "$evidence_file"
