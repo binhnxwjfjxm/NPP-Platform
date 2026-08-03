@@ -68,7 +68,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin main --depth=1
+          git fetch --prune --no-tags origin \
+            '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
           sha="$(git rev-parse HEAD)"
           test "$sha" = "$(git rev-parse origin/main)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -182,6 +184,7 @@ jobs:
 
           case "$requested_action" in
             deploy)
+              test "$(git rev-parse --is-shallow-repository)" = "false"
               git remote add heroku "https://heroku:${HEROKU_API_KEY}@git.heroku.com/${HEROKU_APP_NAME}.git"
               git push --force heroku HEAD:main
               active_release="$(current_release)"
