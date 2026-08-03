@@ -1,4 +1,6 @@
 const CORE_ORDER_STATUSES = new Set(["draft", "confirmed", "cancelled", "closed"]);
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const BUSINESS_STATUS_CODES = new Set([400, 404, 409, 422]);
 
 function integrationError(code, statusCode = 502, details = null, retryable = false) {
   const error = new Error(code);
@@ -36,6 +38,7 @@ async function coreRequest(config, requestContext, path, init, { fetchImpl = fet
   const timeout = setTimeout(() => controller.abort(), boundary.timeoutMs);
   timeout.unref?.();
   let response;
+  let payload;
   try {
     const { idempotencyKey, body, ...requestInit } = init;
     const headers = requestHeaders(boundary, requestContext, { idempotencyKey });
@@ -46,20 +49,31 @@ async function coreRequest(config, requestContext, path, init, { fetchImpl = fet
       body,
       signal: controller.signal
     });
+    try {
+      payload = await response.json();
+    } catch (error) {
+      if (error?.name === "AbortError" || controller.signal.aborted) {
+        throw integrationError("core_sales_timeout", 504, null, true);
+      }
+      throw integrationError("core_sales_response_invalid", 502, null, true);
+    }
   } catch (error) {
-    if (error?.name === "AbortError") throw integrationError("core_sales_timeout", 504, null, true);
+    if (error?.code && error?.statusCode) throw error;
+    if (error?.name === "AbortError" || controller.signal.aborted) {
+      throw integrationError("core_sales_timeout", 504, null, true);
+    }
     throw integrationError("core_sales_unavailable", 502, null, true);
   } finally {
     clearTimeout(timeout);
   }
 
-  const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const coreCode = String(payload?.error?.code || "").trim() || null;
     const publicMessage = String(payload?.error?.message || "").trim() || null;
+    const statusCode = BUSINESS_STATUS_CODES.has(response.status) ? response.status : 502;
     throw integrationError(
       coreCode || "core_sales_request_failed",
-      response.status,
+      statusCode,
       publicMessage ? { message: publicMessage } : null,
       response.status >= 500
     );
@@ -74,10 +88,17 @@ function currentVersion(order) {
 }
 
 function assertCoreOrder(order) {
-  if (!order || typeof order !== "object" || !order.id || !CORE_ORDER_STATUSES.has(String(order.status || ""))) {
+  if (!order || typeof order !== "object" || !UUID_PATTERN.test(String(order.id || "")) || !CORE_ORDER_STATUSES.has(String(order.status || ""))) {
     throw integrationError("core_sales_response_invalid", 502, null, true);
   }
   return order;
+}
+
+function requiredUuid(value, missingCode, invalidCode) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) throw integrationError(missingCode, 400);
+  if (!UUID_PATTERN.test(normalized)) throw integrationError(invalidCode, 400);
+  return normalized;
 }
 
 export function coreSalesOrderProjection(order) {
@@ -116,8 +137,7 @@ export async function searchCoreSalesSkus(search, requestContext, config, option
 }
 
 export async function listCoreProductVariants(productId, requestContext, config, options = {}) {
-  const normalized = String(productId || "").trim();
-  if (!normalized) throw integrationError("core_sales_product_id_required", 400);
+  const normalized = requiredUuid(productId, "core_sales_product_id_required", "core_sales_product_id_invalid");
   const data = await coreRequest(
     config,
     requestContext,
@@ -141,8 +161,7 @@ export async function createCoreSalesOrder(payload, requestContext, config, opti
 }
 
 export async function readCoreSalesOrder(orderId, requestContext, config, options = {}) {
-  const normalized = String(orderId || "").trim();
-  if (!normalized) throw integrationError("core_sales_order_id_required", 400);
+  const normalized = requiredUuid(orderId, "core_sales_order_id_required", "core_sales_order_id_invalid");
   const data = await coreRequest(
     config,
     requestContext,
