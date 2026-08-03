@@ -44,7 +44,7 @@ test('admin keeps overview and onboarding approval routes', async () => {
   ]);
   assert.match(overview, /Tổng hợp việc cần xử lý/);
   assert.match(onboarding, /Xử lý đề nghị mở mã khách hàng/);
-  assert.match(actionRoute, /Idempotency-Key/);
+  assert.match(actionRoute, /idempotency-key/);
   assert.match(actionRoute, /CROSS_SITE_REQUEST_REJECTED/);
   assert.match(addressRoute, /listCustomerAddresses/);
   assert.match(middleware, /CORE_WEB_ADMIN_USERNAME/);
