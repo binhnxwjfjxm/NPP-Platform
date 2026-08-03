@@ -1,3 +1,4 @@
+import { authorizeCommand } from "./authorization.js";
 import { listCoreProductVariants, searchCoreSalesSkus } from "./core-sales-client.js";
 import {
   getSalesOrderProjection,
@@ -6,6 +7,10 @@ import {
 } from "./sales-order-sync.js";
 
 const MAX_JSON_BODY_BYTES = 256 * 1024;
+const MAX_VERIFIED_VARIANTS = 50;
+const VARIANT_CHECK_CONCURRENCY = 5;
+const CORE_SALES_READ_PERMISSION = "mcp.sales-order.read";
+const CORE_SALES_CREATE_PERMISSION = "mcp.sales-order.create";
 
 function response(data, statusCode = 200) {
   return { statusCode, payload: { data, receivedAt: new Date().toISOString() } };
@@ -15,6 +20,14 @@ function boundedLimit(value) {
   const parsed = Number(value || 50);
   if (!Number.isFinite(parsed)) return 50;
   return Math.max(1, Math.min(Math.trunc(parsed), 50));
+}
+
+function warehouseScope(config) {
+  return `mcp:warehouse:${config.coreSales.defaultWarehouseId}`;
+}
+
+function authorizeCoreSales(context, config, permission) {
+  return authorizeCommand(context, { permission, scope: warehouseScope(config) });
 }
 
 async function readJsonBody(req) {
@@ -81,7 +94,22 @@ function variantMatchesSearch(variant, search) {
     .some((value) => String(value || "").toLocaleLowerCase("vi").includes(term));
 }
 
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
+
 async function searchProducts(url, context, config, fetchImpl) {
+  authorizeCoreSales(context, config, CORE_SALES_READ_PERMISSION);
   const options = await searchCoreSalesSkus(
     url.searchParams.get("q") || url.searchParams.get("search") || "",
     context,
@@ -96,22 +124,25 @@ async function searchProducts(url, context, config, fetchImpl) {
 }
 
 async function loadProductVariants(productId, url, context, config, fetchImpl) {
+  authorizeCoreSales(context, config, CORE_SALES_READ_PERMISSION);
   const search = url.searchParams.get("q") || "";
   const candidates = (await listCoreProductVariants(productId, context, config, { fetchImpl }))
     .filter(variantCanBeChecked)
-    .filter((variant) => variantMatchesSearch(variant, search));
-  const verified = await Promise.all(candidates.map(async (variant) => {
+    .filter((variant) => variantMatchesSearch(variant, search))
+    .slice(0, MAX_VERIFIED_VARIANTS);
+  const verified = await mapWithConcurrency(candidates, VARIANT_CHECK_CONCURRENCY, async (variant) => {
     const options = await searchCoreSalesSkus(variant.sku, context, config, {
       fetchImpl,
       limit: 10,
       offset: 0
     });
     return options.find((item) => item.id === variant.id && item.productId === productId) || null;
-  }));
+  });
   return response(verified.filter(Boolean).map(mapSkuOption));
 }
 
 async function loadSalesOrder(url, context, config, fetchImpl) {
+  authorizeCoreSales(context, config, CORE_SALES_READ_PERMISSION);
   return response(await getSalesOrderProjection({
     sessionCustomerId: url.searchParams.get("sessionCustomerId") || url.searchParams.get("session_customer_id"),
     orderId: url.searchParams.get("orderId") || url.searchParams.get("order_id")
@@ -119,11 +150,13 @@ async function loadSalesOrder(url, context, config, fetchImpl) {
 }
 
 async function saveSalesOrderSubmission(req, context, config, fetchImpl) {
+  authorizeCoreSales(context, config, CORE_SALES_CREATE_PERMISSION);
   const body = await readJsonBody(req);
   return response(await submitSalesOrder(body, context, config, { fetchImpl }));
 }
 
 async function saveSalesOrderSync(req, context, config, fetchImpl) {
+  authorizeCoreSales(context, config, CORE_SALES_READ_PERMISSION);
   const body = await readJsonBody(req);
   return response(await syncSalesOrder(body, context, config, { fetchImpl }));
 }
@@ -132,11 +165,11 @@ export async function handleCoreSalesApi(req, url, context, config, { fetchImpl 
   const method = String(req.method || "GET").toUpperCase();
   const pathname = url.pathname;
 
-  if (method === "GET" && pathname === "/api/products/search") {
+  if (method === "GET" && pathname === "/api/core-sales/products/search") {
     return searchProducts(url, context, config, fetchImpl);
   }
 
-  const variantsMatch = pathname.match(/^\/api\/products\/([^/]+)\/variants$/);
+  const variantsMatch = pathname.match(/^\/api\/core-sales\/products\/([^/]+)\/variants$/);
   if (method === "GET" && variantsMatch) {
     return loadProductVariants(decodeURIComponent(variantsMatch[1]), url, context, config, fetchImpl);
   }
