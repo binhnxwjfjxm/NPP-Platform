@@ -1,8 +1,10 @@
 import * as base from './request-context-base.js';
 import { PERMISSION_REGISTRY, PERMISSIONS } from './access/permissions.js';
 
-// Compatibility marker: mcp-sales-order-service and its least-privilege principal
-// remain owned by request-context-base.js. Logistics permissions are bootstrap-only here.
+// Compatibility contract for the least-privilege MCP Sales principal remains owned by
+// request-context-base.js: mcp-sales-order-service, coreProductRead,
+// coreSalesOrderRead, coreSalesOrderCreate, warehouseIds: config.mcpSalesWarehouseIds.
+// Logistics permissions are added only to the existing bootstrap principal below.
 const LOGISTICS_BOOTSTRAP_PERMISSIONS = Object.freeze([
   PERMISSIONS.coreLogisticsRouteRead,
   PERMISSIONS.coreLogisticsRouteManage,
