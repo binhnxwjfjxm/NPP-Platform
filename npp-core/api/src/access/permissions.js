@@ -18,6 +18,8 @@ export const PERMISSIONS = Object.freeze({
   coreDeliveryTripLock: 'core.delivery-trip.lock',
   coreDeliveryTripDispatch: 'core.delivery-trip.dispatch',
   coreDeliveryTripDriverRead: 'core.delivery-trip.driver-read',
+  coreDeliveryAttemptRead: 'core.delivery-attempt.read',
+  coreDeliveryAttemptRecord: 'core.delivery-attempt.record',
 });
 
 const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
@@ -34,6 +36,8 @@ const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
   ['coreDeliveryTripLock', 'Điều phối giao hàng', 'Khóa kế hoạch chuyến', 'Cho phép khóa kế hoạch chuyến đã đủ xe, tài xế và phiếu giao.'],
   ['coreDeliveryTripDispatch', 'Điều phối giao hàng', 'Bàn giao và cho chuyến xuất phát', 'Cho phép xác nhận bàn giao vật lý, ghi Inventory OUT cho toàn bộ Delivery Order và chuyển chuyến đã khóa sang dispatched.'],
   ['coreDeliveryTripDriverRead', 'Giao hàng', 'Xem chuyến được giao', 'Cho phép tài xế đọc các chuyến đã xuất phát được gán đúng cho hồ sơ tài xế liên kết với nhân viên của mình.'],
+  ['coreDeliveryAttemptRead', 'Giao hàng', 'Xem kết quả lần giao', 'Cho phép đọc kết quả lần giao trong phạm vi chuyến và kho được cấp quyền.'],
+  ['coreDeliveryAttemptRecord', 'Giao hàng', 'Ghi kết quả lần giao', 'Cho phép tài xế được xác thực ghi đúng một kết quả terminal cho assignment thuộc chuyến của mình.'],
 ].map(([key, module, label, description]) => Object.freeze({
   permissionKey: PERMISSIONS[key],
   module,

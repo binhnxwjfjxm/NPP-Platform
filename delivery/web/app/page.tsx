@@ -76,8 +76,8 @@ export default async function DeliveryHomePage() {
                     <dd>{trip.stopCount ?? 0}</dd>
                   </div>
                   <div>
-                    <dt>Phiếu giao</dt>
-                    <dd>{trip.assignmentCount ?? 0}</dd>
+                    <dt>Đã ghi kết quả</dt>
+                    <dd>{trip.attemptCount ?? 0}/{trip.assignmentCount ?? 0}</dd>
                   </div>
                 </dl>
                 <span className="openHint">Mở chi tiết chuyến →</span>
@@ -105,8 +105,8 @@ export default async function DeliveryHomePage() {
         </div>
       </header>
       <section className="noticeCard">
-        <strong>Chế độ chỉ xem</strong>
-        <p>Phần này hiển thị chuyến và điểm giao đã được điều phối. Ghi kết quả giao và bằng chứng giao hàng thuộc phần tiếp theo.</p>
+        <strong>Ghi kết quả tại từng phiếu giao</strong>
+        <p>Mở chuyến để ghi giao đủ, giao một phần, không giao được hoặc hẹn giao lại. Ảnh, chữ ký, GPS và thu tiền chưa thuộc phần này.</p>
       </section>
       {content}
     </main>

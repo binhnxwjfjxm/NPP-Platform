@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { authenticateDeliveryUser, deliverySetupPending } from '../../../lib/delivery-auth';
 import { getMyTrip } from '../../../lib/core-api';
 import { formatAddress, formatDateTime, safeErrorMessage } from '../../../lib/presentation';
+import DeliveryAttemptPanel from './delivery-attempt-panel';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,15 +37,24 @@ export default async function TripDetailPage({ params }: PageProps) {
   try {
     const result = await getMyTrip(user, params.tripId);
     const { trip } = result;
+    const attemptCount = trip.stops?.reduce(
+      (total, stop) => total + stop.assignments.filter((assignment) => assignment.attempt).length,
+      0,
+    ) ?? 0;
+    const assignmentCount = trip.stops?.reduce(
+      (total, stop) => total + stop.assignments.length,
+      0,
+    ) ?? 0;
+
     return (
       <main className="pageShell">
         <Link className="backLink" href="/">← Chuyến của tôi</Link>
         <header className="detailHeader">
           <div>
-            <p className="eyebrow">Chuyến đã xuất phát</p>
+            <p className="eyebrow">Chuyến đang giao</p>
             <h1>{trip.number}</h1>
           </div>
-          <span className="statusPill">Chỉ xem</span>
+          <span className="statusPill">{attemptCount}/{assignmentCount} phiếu</span>
         </header>
 
         <section className="tripOverview">
@@ -106,6 +116,7 @@ export default async function TripDetailPage({ params }: PageProps) {
                               <dd>{assignment.collectionPolicy || 'Theo phiếu'}</dd>
                             </div>
                           </dl>
+                          <DeliveryAttemptPanel tripId={trip.id} assignment={assignment} />
                         </article>
                       ))}
                     </div>
@@ -117,8 +128,8 @@ export default async function TripDetailPage({ params }: PageProps) {
         </section>
 
         <section className="noticeCard">
-          <strong>Không ghi kết quả tại màn này</strong>
-          <p>Giao đủ, giao thiếu, thất bại, dời lịch, POD/GPS và thu tiền chưa thuộc slice hiện tại.</p>
+          <strong>Hàng chưa giao vẫn ở trên xe</strong>
+          <p>Màn này chỉ ghi kết quả lần giao. Không tự nhập kho, không POD/GPS và không thu tiền.</p>
         </section>
       </main>
     );
