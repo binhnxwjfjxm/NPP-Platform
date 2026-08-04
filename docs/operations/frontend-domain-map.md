@@ -13,7 +13,7 @@ Khóa địa chỉ truy cập, project triển khai và ranh giới nghiệp v�
 | NPP Operations | `npp-platform` | `npp-core/web` | `office.nguyenlieuhungphat.com` |
 | MCP Field | `mcp-field` | `mcp` | `mcp.nguyenlieuhungphat.com` |
 | Admin MCP/NPP | `admin-mcp-npp` | `admin/web` | `admin.nguyenlieuhungphat.com` |
-| Giao hàng | tạo khi có source Delivery | Delivery frontend theo Master Plan | `log.nguyenlieuhungphat.com` |
+| Giao hàng | chưa audit/tạo project | `delivery/web` | `log.nguyenlieuhungphat.com` |
 
 ## URL Vercel và domain tùy chỉnh
 
@@ -21,6 +21,7 @@ Khóa địa chỉ truy cập, project triển khai và ranh giới nghiệp v�
 - `office.nguyenlieuhungphat.com` được gắn thêm làm tên miền chính khi DNS/domain sẵn sàng; không được xóa URL Vercel hoặc coi domain là điều kiện để phát triển và kiểm tra source.
 - Admin dùng `NPP_OPERATIONS_URL` khi đã cấu hình; nếu chưa có thì chuyển về `https://npp-platform.vercel.app`.
 - Các alias `vercel.app` do Vercel tạo vẫn thuộc project tương ứng và không bị thay bằng subdomain tùy chỉnh.
+- Delivery đã có source tại `delivery/web`; trạng thái project, domain, DNS và production deploy phải audit riêng, không được suy ra từ source merge.
 
 ## Ranh giới triển khai
 
@@ -29,7 +30,14 @@ Khóa địa chỉ truy cập, project triển khai và ranh giới nghiệp v�
 - Merge source không tự deploy production.
 - Admin và Delivery không có backend riêng; dùng các API NPP Core được kiểm soát.
 - Không frontend nào kết nối trực tiếp PostgreSQL.
-- Chưa tạo project Delivery rỗng trước khi có source ứng dụng Delivery.
+- Chỉ tạo/cấu hình project Delivery sau khi source merge, CI xanh và có lệnh rollout rõ; không tự tạo trong Phase 6E.3.
+
+## Ranh giới Delivery frontend
+
+- Delivery chỉ đọc các chuyến `dispatched` được gán đúng cho tài xế đã xác thực trong Phase 6E.3.
+- Core token và ánh xạ tài khoản app sang `employeeId` chỉ tồn tại phía server của Delivery.
+- Delivery không dùng permission điều phối rộng và không được gọi planning/dispatch mutation.
+- Ghi kết quả giao, actual quantity, POD/GPS, dời lịch, hàng quay về kho và COD thuộc các slice tiếp theo.
 
 ## Ranh giới Admin MCP/NPP và NPP Operations
 
