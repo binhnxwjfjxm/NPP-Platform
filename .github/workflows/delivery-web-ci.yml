@@ -1,0 +1,63 @@
+name: Delivery frontend CI
+
+on:
+  pull_request:
+    paths:
+      - 'delivery/web/**'
+      - 'database/migrations/logistics/048_logistics_driver_delivery_read.sql'
+      - 'npp-core/api/src/access/permissions.js'
+      - 'npp-core/api/src/config.js'
+      - 'npp-core/api/src/request-context*.js'
+      - 'npp-core/api/src/db/repositories/logistics-driver-delivery.js'
+      - 'npp-core/api/src/services/logistics-driver-delivery.js'
+      - 'npp-core/api/src/routes/logistics-driver.js'
+      - 'npp-core/api/src/routes/inventory.js'
+      - 'npp-core/api/src/migrations/index.js'
+      - 'npp-core/api/test/logistics-driver-delivery.test.js'
+      - 'docs/operations/phase-6e3-delivery-frontend-foundation-decisions.md'
+      - 'docs/operations/frontend-domain-map.md'
+      - '.github/workflows/delivery-web-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'delivery/web/**'
+      - 'database/migrations/logistics/048_logistics_driver_delivery_read.sql'
+      - 'npp-core/api/**/logistics-driver-delivery.js'
+      - 'docs/operations/phase-6e3-delivery-frontend-foundation-decisions.md'
+      - '.github/workflows/delivery-web-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-delivery-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: delivery/web
+    env:
+      CORE_API_INTERNAL_URL: http://127.0.0.1:4010
+      DELIVERY_CORE_API_TOKEN: delivery-core-test-token-000000
+      DELIVERY_WEB_USERS_JSON: '[{"username":"driver-a","password":"delivery-test-password","employeeId":"10000000-0000-4000-8000-000000000001","displayName":"Nguyễn Văn Tài"}]'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Delivery frontend dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify Delivery frontend
+        run: npm run verify
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run Delivery mobile Browser E2E
+        run: npm run test:e2e
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: delivery-playwright-${{ github.run_id }}
+          path: delivery/web/playwright-report
+          if-no-files-found: ignore
+          retention-days: 14
