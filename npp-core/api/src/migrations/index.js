@@ -28,10 +28,16 @@ const LOGISTICS_TRIP_DISPATCH_SQL = readFileSync(
   'utf8',
 );
 
+const LOGISTICS_DRIVER_DELIVERY_READ_SQL = readFileSync(
+  new URL('../../../../database/migrations/logistics/048_logistics_driver_delivery_read.sql', import.meta.url),
+  'utf8',
+);
+
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
   Object.freeze({ id: '046_logistics_trip_planning', sql: LOGISTICS_TRIP_PLANNING_SQL }),
   Object.freeze({ id: '047_logistics_trip_dispatch', sql: LOGISTICS_TRIP_DISPATCH_SQL }),
+  Object.freeze({ id: '048_logistics_driver_delivery_read', sql: LOGISTICS_DRIVER_DELIVERY_READ_SQL }),
 ]);
 
 export { runMigrations };

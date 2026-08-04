@@ -4,6 +4,8 @@ import { PERMISSION_REGISTRY, PERMISSIONS } from './access/permissions.js';
 
 export { PERMISSIONS } from './access/permissions.js';
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function frozenStrings(value) {
   if (!Array.isArray(value)) return Object.freeze([]);
   return Object.freeze([...new Set(value.filter((item) => typeof item === 'string').map((item) => item.trim()).filter(Boolean))]);
@@ -173,6 +175,20 @@ export function createMcpSalesPrincipal(config) {
   });
 }
 
+export function createDeliveryFrontendPrincipal(config, employeeId) {
+  if (!config.deliveryFrontendApiToken || !UUID_PATTERN.test(String(employeeId ?? ''))) return null;
+  return normalizePrincipal({
+    actorId: `${config.deliveryFrontendActorId}:${employeeId}`,
+    employeeId,
+    roles: ['driver'],
+    permissions: [PERMISSIONS.coreDeliveryTripDriverRead],
+    scopes: {
+      warehouseIds: config.deliveryFrontendWarehouseIds,
+    },
+    sourceApp: 'delivery-web',
+  });
+}
+
 export function createRequestContext({ config, principal = createAnonymousPrincipal(), requestId = createRequestId('req'), receivedAt = new Date().toISOString() }) {
   const normalizedPrincipal = normalizePrincipal(principal);
   return Object.freeze({
@@ -202,6 +218,13 @@ export function createRequestContext({ config, principal = createAnonymousPrinci
 export function authenticateRequest(req, config) {
   const candidate = extractBearerToken(req.headers.authorization);
   if (!candidate) return { ok: false, code: 'UNAUTHORIZED', statusCode: 401 };
+  if (config.deliveryFrontendApiToken && tokenMatches(candidate, config.deliveryFrontendApiToken)) {
+    const employeeId = String(req.headers['x-npp-delivery-employee-id'] ?? '').trim();
+    const principal = createDeliveryFrontendPrincipal(config, employeeId);
+    return principal
+      ? { ok: true, principal }
+      : { ok: false, code: 'UNAUTHORIZED', statusCode: 401 };
+  }
   if (config.mcpSalesApiToken && tokenMatches(candidate, config.mcpSalesApiToken)) {
     return { ok: true, principal: createMcpSalesPrincipal(config) };
   }
