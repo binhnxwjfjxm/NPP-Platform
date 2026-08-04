@@ -397,7 +397,19 @@ export async function executeAllocateFulfillmentDemand({
         return { failed: failure('NO_ALLOCATABLE_STOCK', 'No active non-expired location/lot has allocatable stock') };
       }
 
-      const allocations = [];
+      const existingAllocationRows = await repository.listDemandAllocations(client, {
+        installationId: requestContext.installationId,
+        demandId,
+      });
+      const baseSequence = existingAllocationRows.reduce(
+        (maximum, row) => Math.max(maximum, Number(row.allocation_sequence) || 0),
+        0,
+      );
+      if (baseSequence + plan.length > 10000) {
+        return { failed: failure('ALLOCATION_SEQUENCE_LIMIT_EXCEEDED', 'Fulfillment demand has too many allocation rows') };
+      }
+
+      const createdAllocations = [];
       const occurredAt = requestContext.receivedAt ?? new Date().toISOString();
       for (let index = 0; index < plan.length; index += 1) {
         const item = plan[index];
@@ -466,7 +478,7 @@ export async function executeAllocateFulfillmentDemand({
           baseVariantId: loaded.demand.base_variant_id,
           lotId: item.lotId,
           inventoryReservationId: reservationId,
-          allocationSequence: index + 1,
+          allocationSequence: baseSequence + index + 1,
           allocationPolicy: item.allocationPolicy,
           policyRank: item.policyRank,
           manualOverrideReason: item.manualOverrideReason,
@@ -490,17 +502,26 @@ export async function executeAllocateFulfillmentDemand({
           metadata: { allocationPolicy: item.allocationPolicy, policyRank: item.policyRank },
           occurredAt,
         });
-        allocations.push(mapAllocation(allocationRow));
+        createdAllocations.push(mapAllocation(allocationRow));
       }
 
-      const snapshot = allocationSnapshot(loaded.demand, allocations);
+      const allAllocationRows = await repository.listDemandAllocations(client, {
+        installationId: requestContext.installationId,
+        demandId,
+      });
+      const allAllocations = allAllocationRows.map(mapAllocation);
+      const snapshot = allocationSnapshot(loaded.demand, allAllocations);
       const audit = buildAuditRecord({
         requestContext,
         action: 'sales.fulfillment.allocate',
         resourceType: 'sales_fulfillment_demand',
         resourceId: demandId,
         afterData: snapshot,
-        metadata: { salesOrderId: loaded.demand.sales_order_id, allocationCount: allocations.length },
+        metadata: {
+          salesOrderId: loaded.demand.sales_order_id,
+          createdAllocationCount: createdAllocations.length,
+          totalAllocationCount: allAllocations.length,
+        },
       });
       const event = buildOutboxEvent({
         requestContext,
