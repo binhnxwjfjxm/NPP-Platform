@@ -1,0 +1,285 @@
+.workspace {
+  display: grid;
+  gap: 1rem;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.4fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.panel {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border-subtle, #d9dee8);
+  border-radius: 16px;
+  background: var(--surface-raised, #fff);
+  box-shadow: 0 10px 28px rgb(15 23 42 / 7%);
+}
+
+.panelHeading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+
+.panelHeading h2,
+.movementList h3 {
+  margin: 0;
+}
+
+.eyebrow {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted, #64748b);
+}
+
+.tripList,
+.stopList,
+.movementList {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tripCard {
+  display: grid;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.85rem;
+  border: 1px solid var(--border-subtle, #d9dee8);
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tripCard:hover,
+.tripCard.selected {
+  border-color: currentColor;
+  background: var(--surface-muted, #f8fafc);
+}
+
+.tripCard span,
+.tripCard small,
+.summaryGrid span,
+.dispatchedSummary span,
+.movementList small {
+  color: var(--text-muted, #64748b);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.status[data-status='locked'] {
+  background: #fef3c7;
+}
+
+.status[data-status='dispatched'] {
+  background: #dcfce7;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.summaryGrid div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border-radius: 12px;
+  background: var(--surface-muted, #f8fafc);
+}
+
+.dispatchForm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid #f59e0b;
+  border-radius: 14px;
+  background: #fffbeb;
+}
+
+.dispatchForm label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 700;
+}
+
+.dispatchForm input,
+.dispatchForm textarea {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+}
+
+.noteField,
+.checklist,
+.primaryButton {
+  grid-column: 1 / -1;
+}
+
+.checklist {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.75rem;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 75%);
+  font-size: 0.9rem;
+}
+
+.primaryButton,
+.secondaryButton,
+.linkButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0.6rem 0.85rem;
+  border-radius: 10px;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.primaryButton {
+  border: 1px solid #0f172a;
+  background: #0f172a;
+  color: #fff;
+}
+
+.secondaryButton,
+.linkButton {
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.tripCard:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.dispatchedSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border-radius: 14px;
+  background: #f0fdf4;
+}
+
+.dispatchedSummary p {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+}
+
+.notice {
+  grid-column: 1 / -1;
+  padding-top: 0.75rem;
+  border-top: 1px solid #bbf7d0;
+}
+
+.stopCard,
+.movementList article {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.8rem;
+  border: 1px solid var(--border-subtle, #d9dee8);
+  border-radius: 12px;
+}
+
+.stopCard span {
+  font-size: 0.9rem;
+}
+
+.movementList {
+  margin-top: 1rem;
+}
+
+.movementList article {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, auto);
+  align-items: center;
+}
+
+.movementList article > span {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.movementList code {
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+}
+
+.error,
+.message,
+.empty {
+  margin: 0;
+  padding: 0.75rem;
+  border-radius: 10px;
+}
+
+.error {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.message {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.empty {
+  color: var(--text-muted, #64748b);
+  background: var(--surface-muted, #f8fafc);
+}
+
+@media (max-width: 900px) {
+  .columns,
+  .summaryGrid,
+  .dispatchForm,
+  .dispatchedSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .noteField,
+  .checklist,
+  .primaryButton,
+  .notice {
+    grid-column: auto;
+  }
+
+  .movementList article {
+    grid-template-columns: 1fr;
+  }
+}
