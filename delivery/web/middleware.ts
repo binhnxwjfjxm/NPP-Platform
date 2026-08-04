@@ -31,7 +31,23 @@ function parseBasic(value: string | null): { username: string; password: string 
   }
 }
 
+function setupPending(): boolean {
+  return String(process.env.DELIVERY_SETUP_MODE || '').trim().toLowerCase() === 'true';
+}
+
+function setupCredential(): DeliveryCredential | null {
+  const username = String(process.env.DELIVERY_SETUP_USERNAME || '').trim();
+  const password = String(process.env.DELIVERY_SETUP_PASSWORD || '');
+  if (!/^[A-Za-z0-9._-]{2,80}$/.test(username) || password.length < 12) return null;
+  return Object.freeze({ username, password, employeeId: '' });
+}
+
 function credentials(): readonly DeliveryCredential[] | null {
+  if (setupPending()) {
+    const setup = setupCredential();
+    return setup ? Object.freeze([setup]) : null;
+  }
+
   const raw = process.env.DELIVERY_WEB_USERS_JSON;
   if (!raw?.trim()) return null;
   try {
@@ -81,6 +97,9 @@ export function middleware(request: NextRequest) {
   const user = supplied ? users.find((candidate) => candidate.username === supplied.username) : null;
   if (!supplied || !user || !constantTimeEqual(user.password, supplied.password)) {
     return deny(request, 401, 'UNAUTHORIZED', 'Authentication required');
+  }
+  if (setupPending() && request.nextUrl.pathname !== '/') {
+    return deny(request, 503, 'DELIVERY_DRIVER_SETUP_PENDING', 'Delivery driver setup is pending');
   }
   return NextResponse.next();
 }

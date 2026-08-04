@@ -25,12 +25,24 @@ test('Delivery frontend is a standalone mobile Next app with Auto Deploy OFF', (
 
 test('app auth maps unique credentials to server-owned employee identity', () => {
   assert.match(authSource, /DELIVERY_WEB_USERS_JSON/);
+  assert.match(authSource, /DELIVERY_SETUP_MODE/);
   assert.match(authSource, /employeeId/);
   assert.match(authSource, /DELIVERY_WEB_USER_DUPLICATE/);
   assert.match(authSource, /constantTimeEqual/);
   assert.doesNotMatch(authSource, /NEXT_PUBLIC_/);
   assert.match(middlewareSource, /DELIVERY_AUTH_NOT_CONFIGURED/);
   assert.match(middlewareSource, /DELIVERY_HTTPS_REQUIRED/);
+  assert.match(middlewareSource, /DELIVERY_DRIVER_SETUP_PENDING/);
+});
+
+test('setup-pending production is protected and never invents driver identity', () => {
+  assert.match(homeSource, /deliverySetupPending/);
+  assert.match(homeSource, /Chưa có hồ sơ tài xế đang hoạt động/);
+  assert.match(homeSource, /không tạo dữ liệu giao hàng giả/);
+  assert.match(detailSource, /deliverySetupPending/);
+  assert.match(middlewareSource, /DELIVERY_SETUP_USERNAME/);
+  assert.match(middlewareSource, /request\.nextUrl\.pathname !== '\/'/);
+  assert.doesNotMatch(homeSource, /employeeId:\s*['"][0-9a-f-]+/i);
 });
 
 test('Core token remains server-only and driver identity is a trusted header', () => {

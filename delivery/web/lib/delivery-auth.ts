@@ -62,6 +62,10 @@ function readStoredUsers(raw = process.env.DELIVERY_WEB_USERS_JSON): readonly St
   return Object.freeze(users);
 }
 
+export function deliverySetupPending(raw = process.env.DELIVERY_SETUP_MODE): boolean {
+  return String(raw || '').trim().toLowerCase() === 'true';
+}
+
 export function authenticateDeliveryUser(
   authorization: string | null,
   rawUsers = process.env.DELIVERY_WEB_USERS_JSON,
