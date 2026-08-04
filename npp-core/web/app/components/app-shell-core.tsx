@@ -50,6 +50,7 @@ const inventoryItems = [
 ];
 
 const salesItems = [
+  { href: '/management', label: 'Điều hành bán hàng', icon: 'panel' as const, testId: 'nav-sales-operations' },
   { href: '/sales/sales-orders', label: 'Đơn bán hàng', icon: 'panel' as const, testId: 'nav-sales-orders' },
 ];
 
@@ -143,7 +144,7 @@ function isInventoryPath(pathname: string): boolean {
 }
 
 function isSalesPath(pathname: string): boolean {
-  return pathname.startsWith('/sales');
+  return pathname.startsWith('/sales') || pathname.startsWith('/management');
 }
 
 function isPurchasingPath(pathname: string): boolean {
@@ -372,7 +373,7 @@ export function AppShell({
                 <span className={styles.navIcon}><Icon name="panel" /></span>
                 <span className={styles.navCopy}>
                   <span className={styles.navTitle}>Bán hàng</span>
-                  <span className={styles.navHint}>Đơn bán hàng và vòng đời thương mại</span>
+                  <span className={styles.navHint}>Tiếp nhận, duyệt và quản lý đơn bán hàng</span>
                 </span>
                 <span className={`${styles.chevron} ${salesOpen ? styles.chevronOpen : ''}`}>
                   <Icon name="chevron" />
