@@ -57,7 +57,10 @@ test('Phase 6D.3 migration locks packed claims, lineage and lifecycle', () => {
   assert.match(migration, /core\.delivery-order\.cancel/);
   assert.match(registry, /044_sales_delivery_order_handover/);
   assert.match(repository, /FOR UPDATE OF allocation/);
-  assert.match(repository, /delivery_order\.status IN \('draft', 'ready_to_dispatch'\)/);
+  assert.match(
+    repository,
+    /delivery_order\.status IN \('draft', 'ready_to_dispatch', 'dispatched', 'handed_over'\)/,
+  );
   assert.match(repository, /orders\.delivery_mode = 'PICKUP' THEN 'not_required'/);
   assert.match(service, /DELIVERY_ORDER_MIXED_SOURCE_FORBIDDEN/);
   assert.match(service, /warehouseAllowed\(requestContext, replay\.warehouse_id\)|loadDetail/);
