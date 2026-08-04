@@ -1,30 +1,44 @@
 import Link from 'next/link';
 import { AdminShell } from '../admin-shell';
-import { listCustomers, loadPendingOnboarding } from '@/lib/core-api';
-import CustomerOnboardingReview from './review';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CustomerOnboardingPage() {
-  const [requestsResult, customersResult] = await Promise.allSettled([
-    loadPendingOnboarding(),
-    listCustomers(),
-  ]);
-  const requests = requestsResult.status === 'fulfilled' ? requestsResult.value : [];
-  const customers = customersResult.status === 'fulfilled'
-    ? customersResult.value.sort((left, right) => left.code.localeCompare(right.code, 'vi'))
-    : [];
+export default function CustomerExceptionBoundaryPage() {
+  const nppOperationsUrl = (process.env.NPP_OPERATIONS_URL?.trim() || 'https://npp-platform.vercel.app').replace(/\/$/, '');
 
   return (
     <AdminShell
-      kicker="Duyệt khách hàng"
-      title="Xử lý đề nghị mở mã khách hàng"
-      subtitle="Tạo mã mới, liên kết khách có sẵn hoặc yêu cầu bổ sung theo đúng luồng NPP Core."
+      kicker="Việc cần cấp quản lý"
+      title="Ranh giới duyệt ngoại lệ"
+      subtitle="Admin chỉ xử lý trường hợp vượt quyền; tạo mã khách và xử lý đề nghị thông thường nằm trong NPP Operations."
       action={<Link className="actionLink" href="/">Quay lại tổng hợp</Link>}
     >
-      {requestsResult.status === 'rejected' ? <p className="warning" role="alert">Không tải được danh sách đề nghị đang chờ.</p> : null}
-      {customersResult.status === 'rejected' ? <p className="warning" role="alert">Không tải được danh sách khách hàng có sẵn để liên kết.</p> : null}
-      <CustomerOnboardingReview requests={requests} customers={customers} />
+      <p className="notice">
+        Hàng đợi ngoại lệ riêng chưa được backend phân loại. Vì vậy màn Admin không hiển thị các nút tạo mã, liên kết khách, yêu cầu bổ sung hoặc từ chối đề nghị thông thường.
+      </p>
+
+      <section className="sectionGrid">
+        <article className="card">
+          <header className="sectionHeader">
+            <div>
+              <h2>Khách hàng thông thường</h2>
+              <p>Sales Admin hoặc CS kiểm tra điểm bán, tạo mã mới hay liên kết khách đã có.</p>
+            </div>
+            <a href={`${nppOperationsUrl}/management/customer-onboarding`}>Mở trong NPP</a>
+          </header>
+          <p className="empty">Các thao tác hằng ngày được giữ nguyên trong NPP Operations.</p>
+        </article>
+
+        <article className="card">
+          <header className="sectionHeader">
+            <div>
+              <h2>Ngoại lệ cấp quản lý</h2>
+              <p>Trùng khách chưa rõ cách xử lý, rủi ro công nợ, hạn mức vượt chuẩn, giá đặc biệt hoặc yêu cầu mở lại khách bị khóa.</p>
+            </div>
+          </header>
+          <p className="empty">Chỉ mở nút duyệt tại đây khi backend trả đúng loại ngoại lệ, lý do đẩy lên, người gửi, ngưỡng vượt và audit log.</p>
+        </article>
+      </section>
     </AdminShell>
   );
 }

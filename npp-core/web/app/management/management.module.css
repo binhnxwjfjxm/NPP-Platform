@@ -1,0 +1,166 @@
+.page {
+  display: grid;
+  gap: 1rem;
+}
+
+.notice {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid #d7dee8;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #334155;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.summaryCard,
+.queueCard {
+  border: 1px solid #dce3ec;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.summaryCard {
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem;
+}
+
+.summaryCard strong {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.summaryCard span {
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.queueGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.queueCard {
+  overflow: hidden;
+}
+
+.queueHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.queueHeader h2,
+.queueHeader p {
+  margin: 0;
+}
+
+.queueHeader h2 {
+  font-size: 1rem;
+}
+
+.queueHeader p {
+  margin-top: 0.25rem;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.link {
+  color: #1d4ed8;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.item:last-child {
+  border-bottom: 0;
+}
+
+.itemTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.item strong {
+  overflow-wrap: anywhere;
+}
+
+.item small,
+.meta {
+  color: #64748b;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.empty {
+  margin: 0;
+  padding: 1.2rem 1rem;
+  color: #64748b;
+}
+
+.error {
+  margin: 0;
+  padding: 0.8rem 1rem;
+  color: #b91c1c;
+  background: #fef2f2;
+  border-bottom: 1px solid #fecaca;
+}
+
+@media (max-width: 900px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .queueGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .queueHeader,
+  .itemTop {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
