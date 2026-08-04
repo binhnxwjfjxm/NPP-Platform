@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { transitionDeliveryTrip } from '../../../../../../lib/logistics-gateway';
+import {
+  getDeliveryTripAction,
+  transitionDeliveryTrip,
+} from '../../../../../../lib/logistics-gateway';
 import { errorResponse, readJsonBody, requestIdFrom, responseHeaders } from '../../../../inventory/_shared';
 
 export const dynamic = 'force-dynamic';
+
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ tripId: string; action: string }> },
+) {
+  const requestId = requestIdFrom(request);
+  const { tripId, action } = await context.params;
+  try {
+    const data = await getDeliveryTripAction<unknown>(tripId, action, requestId);
+    return NextResponse.json({ data, requestId }, { status: 200, headers: responseHeaders(requestId) });
+  } catch (error) {
+    return errorResponse(error, requestId);
+  }
+}
 
 export async function POST(
   request: NextRequest,
