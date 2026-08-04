@@ -52,6 +52,7 @@ const inventoryItems = [
 const salesItems = [
   { href: '/management', label: 'Điều hành bán hàng', icon: 'panel' as const, testId: 'nav-sales-operations' },
   { href: '/sales/sales-orders', label: 'Đơn bán hàng', icon: 'panel' as const, testId: 'nav-sales-orders' },
+  { href: '/management/customer-onboarding', label: 'Mở / liên kết mã khách', icon: 'user' as const, testId: 'nav-customer-onboarding' },
 ];
 
 const purchasingItems = [
@@ -126,7 +127,7 @@ function Icon({ name }: { name: IconName }) {
 }
 
 function isActive(pathname: string, href: string): boolean {
-  if (href === '/organization') return pathname === href;
+  if (href === '/organization' || href === '/management') return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -373,7 +374,7 @@ export function AppShell({
                 <span className={styles.navIcon}><Icon name="panel" /></span>
                 <span className={styles.navCopy}>
                   <span className={styles.navTitle}>Bán hàng</span>
-                  <span className={styles.navHint}>Tiếp nhận, duyệt và quản lý đơn bán hàng</span>
+                  <span className={styles.navHint}>Đơn nhiều nguồn, mã khách và vòng đời thương mại</span>
                 </span>
                 <span className={`${styles.chevron} ${salesOpen ? styles.chevronOpen : ''}`}>
                   <Icon name="chevron" />
