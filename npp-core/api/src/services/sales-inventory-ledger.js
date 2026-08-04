@@ -37,6 +37,17 @@ function formatQuantity(value) {
   return `${negative ? '-' : ''}${whole}.${fraction}`;
 }
 
+function normalizeDate(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return normalized;
+  }
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
+}
+
 function warehouseIds(requestContext) {
   return Array.isArray(requestContext?.scopes?.warehouseIds)
     ? new Set(requestContext.scopes.warehouseIds.filter((id) => UUID_PATTERN.test(id)))
@@ -89,11 +100,7 @@ function normalizePayload(payload) {
     if (quantity === null || quantity <= 0n) {
       return failure('INVALID_QUANTITY', 'Sales movement quantity must be a positive exact decimal', false, { line: index + 1 });
     }
-    const identities = [
-      line.warehouseId,
-      line.baseVariantId,
-      line.baseUnitId,
-    ];
+    const identities = [line.warehouseId, line.baseVariantId, line.baseUnitId];
     if (identities.some((id) => !UUID_PATTERN.test(String(id ?? '')))
       || (line.locationId && !UUID_PATTERN.test(line.locationId))
       || (line.lotId && !UUID_PATTERN.test(line.lotId))) {
@@ -103,6 +110,10 @@ function normalizePayload(payload) {
     const baseUnitCode = String(line.baseUnitCode ?? '').trim().toUpperCase();
     if (!baseSku || baseSku.length > 96 || !baseUnitCode || baseUnitCode.length > 32) {
       return failure('INVALID_LINE_SNAPSHOT', 'Sales movement line snapshot is invalid', false, { line: index + 1 });
+    }
+    const expiryDate = normalizeDate(line.expiryDate);
+    if (line.expiryDate && !expiryDate) {
+      return failure('INVALID_EXPIRY_DATE', 'Sales movement expiry date is invalid', false, { line: index + 1 });
     }
     lineIds.add(sourceLineId);
     lines.push(Object.freeze({
@@ -116,7 +127,7 @@ function normalizePayload(payload) {
       baseUnitCode,
       lotId: line.lotId ?? null,
       lotCode: line.lotCode ?? null,
-      expiryDate: line.expiryDate ? String(line.expiryDate).slice(0, 10) : null,
+      expiryDate,
       quantity,
       metadata: line.metadata && typeof line.metadata === 'object' && !Array.isArray(line.metadata)
         ? line.metadata
@@ -260,5 +271,6 @@ export const salesInventoryLedgerInternals = Object.freeze({
   payloadHash,
   parseQuantity,
   formatQuantity,
+  normalizeDate,
   normalizePayload,
 });
