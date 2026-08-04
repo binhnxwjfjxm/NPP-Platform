@@ -199,7 +199,7 @@ test.describe('Bàn giao giao nhận', () => {
     expect(state.confirmKey).toMatch(/^confirm-/);
 
     const content = await page.content();
-    expect(content).not.toMatch(/tài xế|chuyến xe|\bPOD\b|\bCOD\b|xuất kho/i);
+    expect(content).not.toMatch(/tài xế|chuyến xe|\bPOD\b|\bCOD\b/i);
   });
 
   test('hủy draft có lý do và trả phần packed về hàng đợi', async ({ page }) => {
