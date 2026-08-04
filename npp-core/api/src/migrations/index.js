@@ -54,16 +54,6 @@ const SALES_FULFILLMENT_ALLOCATION_PICK_PACK_SQL = readFileSync(
   'utf8',
 );
 
-const SALES_FULFILLMENT_ALLOCATION_OPERATION_IDEMPOTENCY_SQL = readFileSync(
-  new URL('../../../../database/migrations/sales/044_sales_fulfillment_allocation_operation_idempotency.sql', import.meta.url),
-  'utf8',
-);
-
-const SALES_FULFILLMENT_ALLOCATION_PROJECTION_POLICY_SQL = readFileSync(
-  new URL('../../../../database/migrations/sales/045_sales_fulfillment_allocation_projection_policy.sql', import.meta.url),
-  'utf8',
-);
-
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_033,
   Object.freeze({
@@ -105,14 +95,6 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '043_sales_fulfillment_allocation_pick_pack',
     sql: SALES_FULFILLMENT_ALLOCATION_PICK_PACK_SQL,
-  }),
-  Object.freeze({
-    id: '044_sales_fulfillment_allocation_operation_idempotency',
-    sql: SALES_FULFILLMENT_ALLOCATION_OPERATION_IDEMPOTENCY_SQL,
-  }),
-  Object.freeze({
-    id: '045_sales_fulfillment_allocation_projection_policy',
-    sql: SALES_FULFILLMENT_ALLOCATION_PROJECTION_POLICY_SQL,
   }),
 ]);
 
