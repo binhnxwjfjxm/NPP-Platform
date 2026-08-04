@@ -49,6 +49,11 @@ const SALES_FULFILLMENT_RESERVATION_DEMAND_SQL = readFileSync(
   'utf8',
 );
 
+const SALES_FULFILLMENT_ALLOCATION_PICK_PACK_SQL = readFileSync(
+  new URL('../../../../database/migrations/sales/043_sales_fulfillment_allocation_pick_pack.sql', import.meta.url),
+  'utf8',
+);
+
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_033,
   Object.freeze({
@@ -86,6 +91,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '042_sales_fulfillment_reservation_demand',
     sql: SALES_FULFILLMENT_RESERVATION_DEMAND_SQL,
+  }),
+  Object.freeze({
+    id: '043_sales_fulfillment_allocation_pick_pack',
+    sql: SALES_FULFILLMENT_ALLOCATION_PICK_PACK_SQL,
   }),
 ]);
 
