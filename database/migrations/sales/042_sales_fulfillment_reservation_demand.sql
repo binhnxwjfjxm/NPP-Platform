@@ -3,7 +3,9 @@
 -- Exact location/lot reservation remains owned by Phase 6D.2 allocation.
 
 ALTER TABLE shared.sales_order_settings
-  ADD COLUMN IF NOT EXISTS allow_backorder boolean NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS allow_backorder boolean NOT NULL DEFAULT true;
+ALTER TABLE shared.sales_order_settings
+  ALTER COLUMN allow_backorder SET DEFAULT true;
 
 INSERT INTO shared.permission_catalog (
   permission_key, module, label, description, is_system, created_at
@@ -159,6 +161,61 @@ DROP TRIGGER IF EXISTS sales_order_fulfillment_demands_writer_guard
 CREATE TRIGGER sales_order_fulfillment_demands_writer_guard
 BEFORE INSERT OR UPDATE OR DELETE ON sales.sales_order_fulfillment_demands
 FOR EACH ROW EXECUTE FUNCTION sales.guard_sales_order_fulfillment_demand_write();
+
+-- Exact reservations and Sales reservation demand share one warehouse/SKU lock.
+-- The trigger is a database backstop in addition to the service-level preflight.
+CREATE OR REPLACE FUNCTION inventory.guard_inventory_reservation_against_sales_demand()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  warehouse_on_hand numeric(30,12);
+  warehouse_reserved numeric(30,12);
+  fulfillment_reserved numeric(30,12);
+BEGIN
+  IF NEW.state <> 'ACTIVE' THEN
+    RETURN NEW;
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtextextended(
+    concat_ws(':', 'sales-fulfillment-scope', NEW.installation_id, NEW.warehouse_id, NEW.base_variant_id),
+    0
+  ));
+
+  SELECT COALESCE(sum(balance.on_hand_quantity), 0),
+         COALESCE(sum(balance.reserved_quantity), 0)
+    INTO warehouse_on_hand, warehouse_reserved
+    FROM inventory.inventory_balances balance
+   WHERE balance.installation_id = NEW.installation_id
+     AND balance.warehouse_id = NEW.warehouse_id
+     AND balance.base_variant_id = NEW.base_variant_id;
+
+  SELECT COALESCE(sum(
+           demand.reserved_base_quantity - demand.allocated_base_quantity
+         ), 0)
+    INTO fulfillment_reserved
+    FROM sales.sales_order_fulfillment_demands demand
+   WHERE demand.installation_id = NEW.installation_id
+     AND demand.warehouse_id = NEW.warehouse_id
+     AND demand.base_variant_id = NEW.base_variant_id
+     AND demand.state = 'ACTIVE';
+
+  IF NEW.quantity > greatest(
+       warehouse_on_hand - warehouse_reserved - fulfillment_reserved,
+       0
+     ) THEN
+    RAISE EXCEPTION 'inventory_sales_fulfillment_reservation_denied';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS inventory_reservations_sales_demand_guard
+  ON inventory.inventory_reservations;
+CREATE TRIGGER inventory_reservations_sales_demand_guard
+BEFORE INSERT ON inventory.inventory_reservations
+FOR EACH ROW EXECUTE FUNCTION inventory.guard_inventory_reservation_against_sales_demand();
 
 -- Preserve exact-scope protection and add the warehouse-level demand backstop.
 CREATE OR REPLACE FUNCTION inventory.guard_inventory_negative_stock()
