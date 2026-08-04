@@ -24,6 +24,8 @@ export const PERMISSIONS = Object.freeze({
   coreSalesOrderPriceOverride: 'core.sales-order.price.override',
   coreSalesOrderDiscountOverride: 'core.sales-order.discount.override',
   coreSalesOrderCreditOverride: 'core.sales-order.credit.override',
+  coreFulfillmentRead: 'core.fulfillment.read',
+  coreFulfillmentConfigureBackorder: 'core.fulfillment.configure-backorder',
   coreCustomerOnboardingRead: 'core.customer-onboarding.read',
   coreCustomerOnboardingSubmit: 'core.customer-onboarding.submit',
   coreCustomerOnboardingReview: 'core.customer-onboarding.review',
@@ -42,6 +44,8 @@ const SALES_ORDER_PERMISSION_CATALOG = Object.freeze([
   ['coreSalesOrderPriceOverride', 'Ghi đè giá bán', 'Cho phép ghi đè giá bán do hệ thống phân giải khi có lý do.'],
   ['coreSalesOrderDiscountOverride', 'Chiết khấu bổ sung toàn đơn', 'Cho phép áp dụng chiết khấu bổ sung toàn đơn có lý do và phân bổ chính xác xuống từng dòng.'],
   ['coreSalesOrderCreditOverride', 'Duyệt ngoại lệ bán chịu', 'Cho phép duyệt ngoại lệ chính sách tín dụng có lý do và audit.'],
+  ['coreFulfillmentRead', 'Xem tình trạng giữ hàng', 'Cho phép xem số lượng đã giữ, còn thiếu và tiến độ thực hiện của đơn bán hàng trong phạm vi kho được cấp.'],
+  ['coreFulfillmentConfigureBackorder', 'Cấu hình cho phép thiếu hàng', 'Cho phép thay đổi chính sách cho xác nhận đơn khi tồn khả dụng không đủ.'],
 ].map(([key, label, description]) => Object.freeze({
   permissionKey: PERMISSIONS[key],
   module: 'Bán hàng',
