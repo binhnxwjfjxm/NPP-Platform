@@ -1,7 +1,8 @@
 import { handleInventoryRoutes as handleInventoryCoreRoutes } from './inventory-core.js';
 import { handleLogisticsRoutes } from './logistics.js';
 
-// Compatibility marker: handleFulfillmentOperationRoutes remains owned by inventory-core.js.
+// Compatibility markers: handleFulfillmentOperationRoutes and handleDeliveryOrderRoutes
+// remain owned by inventory-core.js; this wrapper only adds the Logistics namespace.
 export async function handleInventoryRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (pathname === '/api/logistics' || pathname.startsWith('/api/logistics/')) {
