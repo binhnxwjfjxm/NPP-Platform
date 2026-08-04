@@ -45,6 +45,15 @@ function sendServiceError(res, result, options) {
   );
 }
 
+function sanitizedUnexpectedError(error, requestId) {
+  const name = typeof error?.name === 'string' ? error.name.slice(0, 80) : 'Error';
+  const code = typeof error?.code === 'string' ? error.code.slice(0, 80) : null;
+  const message = typeof error?.message === 'string'
+    ? error.message.replace(/postgres(?:ql)?:\/\/\S+/gi, '[redacted]').slice(0, 240)
+    : 'Unknown fulfillment error';
+  return { event: 'fulfillment_unexpected_error', requestId, name, code, message };
+}
+
 function sendUnexpectedError(res, error, options) {
   if (
     error
@@ -65,6 +74,7 @@ function sendUnexpectedError(res, error, options) {
     );
     return;
   }
+  console.error(JSON.stringify(sanitizedUnexpectedError(error, options.requestId)));
   sendError(
     res,
     apiError(
