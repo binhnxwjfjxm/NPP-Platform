@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Be_Vietnam_Pro, IBM_Plex_Mono } from 'next/font/google';
+import { ManagementShortcut } from './components/management-shortcut';
 import './globals.css';
 import './ui-polish.css';
 import './components/lot3-ui-overrides.css';
@@ -30,7 +31,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="vi" className={`${beVietnamPro.variable} ${ibmPlexMono.variable}`}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <ManagementShortcut />
+      </body>
     </html>
   );
 }
