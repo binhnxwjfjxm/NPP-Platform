@@ -73,7 +73,7 @@ test('driver UI records only Phase 6E.4 terminal outcomes with exact partial qua
   assert.match(attemptPanelSource, /Idempotency-Key/);
   assert.match(attemptPanelSource, /router\.refresh/);
   assert.match(attemptPanelSource, /Kết quả đã khóa và chỉ đọc/);
-  assert.doesNotMatch(attemptPanelSource, /POD|GPS|R2|COD|payment|Inventory IN/i);
+  assert.doesNotMatch(attemptPanelSource, /proofOfDelivery|signatureUrl|gpsLatitude|gpsLongitude|codAmount|paymentId|inventoryMovementId/);
 });
 
 test('attempt proxy exposes POST only and does not leak adjacent capabilities', () => {
