@@ -32,8 +32,12 @@ test('Delivery production workflow is exact-command and manual-only', async () =
     'deploymentEnabled !== false',
     'api.vercel.com/v11/projects',
     'api.vercel.com/v10/projects/$project_id/domains',
-    'vercel@latest build --prod',
-    'vercel@latest deploy --prebuilt --prod',
+    'vercel@58.0.0 build --prod',
+    'vercel@58.0.0 deploy --prebuilt --prod',
+    'npm ci --ignore-scripts',
+    'api/logistics/driver/trips?limit=1&offset=0',
+    'x-npp-delivery-employee-id',
+    'Không tải được chuyến',
     'Chuyến của tôi',
     '/_next/static/',
     '/health/live',
@@ -41,6 +45,8 @@ test('Delivery production workflow is exact-command and manual-only', async () =
   ]) {
     assert.ok(script.includes(marker), `script missing ${marker}`);
   }
+  assert.doesNotMatch(script, /vercel@latest/);
+  assert.doesNotMatch(script, /npm install/);
   assert.doesNotMatch(script, /DATABASE_URL.*GITHUB_OUTPUT/);
   assert.doesNotMatch(script, /DELIVERY_CORE_API_TOKEN.*GITHUB_OUTPUT/);
 });

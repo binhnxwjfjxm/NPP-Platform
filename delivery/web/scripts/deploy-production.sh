@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+cd "$REPO_ROOT"
+
 : "${VERCEL_TOKEN:?VERCEL_TOKEN is required}"
 : "${HEROKU_API_KEY:?HEROKU_API_KEY is required}"
 : "${VERCEL_ORG_ID:?VERCEL_ORG_ID is required}"
@@ -84,32 +88,20 @@ try {
   if (!warehouseResult.rows.length) throw new Error('no_active_delivery_warehouses');
 
   const userResult = await pool.query(`
-    WITH candidates AS (
-      SELECT e.id,
-             COALESCE(NULLIF(to_jsonb(e)->>'full_name', ''), NULLIF(to_jsonb(e)->>'name', ''), dp.name, 'Tài xế') AS display_name,
-             true AS driver_ready,
-             0 AS priority
-        FROM logistics.driver_profiles dp
-        JOIN shared.employees e
-          ON e.installation_id = dp.installation_id
-         AND e.id = dp.employee_id
-       WHERE dp.is_active = true
-         AND dp.employee_id IS NOT NULL
-         AND COALESCE((to_jsonb(e)->>'is_active')::boolean, true) = true
-      UNION ALL
-      SELECT e.id,
-             COALESCE(NULLIF(to_jsonb(e)->>'full_name', ''), NULLIF(to_jsonb(e)->>'name', ''), 'Nhân viên giao hàng') AS display_name,
-             false AS driver_ready,
-             1 AS priority
-        FROM shared.employees e
-       WHERE COALESCE((to_jsonb(e)->>'is_active')::boolean, true) = true
-    )
-    SELECT id::text AS employee_id, display_name, driver_ready
-      FROM candidates
-     ORDER BY priority, id
+    SELECT e.id::text AS employee_id,
+           COALESCE(NULLIF(to_jsonb(e)->>'full_name', ''), NULLIF(to_jsonb(e)->>'name', ''), dp.name, 'Tài xế') AS display_name,
+           true AS driver_ready
+      FROM logistics.driver_profiles dp
+      JOIN shared.employees e
+        ON e.installation_id = dp.installation_id
+       AND e.id = dp.employee_id
+     WHERE dp.is_active = true
+       AND dp.employee_id IS NOT NULL
+       AND COALESCE((to_jsonb(e)->>'is_active')::boolean, true) = true
+     ORDER BY e.id
      LIMIT 1
   `);
-  if (!userResult.rows.length) throw new Error('no_active_employee_for_delivery_bootstrap');
+  if (!userResult.rows.length) throw new Error('no_active_driver_profile_for_delivery_bootstrap');
 
   process.stdout.write(JSON.stringify({
     warehouseIds: warehouseResult.rows.map((row) => row.id),
@@ -262,16 +254,16 @@ fi
 
 mkdir -p .vercel
 printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$project_id" > .vercel/project.json
-npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN" >/dev/null
+npx --yes vercel@58.0.0 pull --yes --environment=production --token="$VERCEL_TOKEN" >/dev/null
 test "$(jq -r '.projectId' .vercel/project.json)" = "$project_id"
 
+npm ci --ignore-scripts
 (
   cd delivery/web
-  npm install --no-audit --no-fund
   npm run verify
 )
-npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
-deployment_url="$(npx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+npx --yes vercel@58.0.0 build --prod --token="$VERCEL_TOKEN"
+deployment_url="$(npx --yes vercel@58.0.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
 test -n "$deployment_url"
 
 unauth="$(curl --silent --show-error --retry 5 --retry-delay 4 --output /dev/null --write-out '%{http_code}' "$deployment_url/")"
@@ -282,8 +274,21 @@ process.stdout.write(`${user.username}:${user.password}`);
 NODE
 )"
 echo "::add-mask::$auth"
+selected_employee_id="$(DELIVERY_USERS_JSON="$users_json" node --input-type=module <<'NODE'
+const [user] = JSON.parse(process.env.DELIVERY_USERS_JSON);
+process.stdout.write(user.employeeId);
+NODE
+)"
+api_body="${RUNNER_TEMP}/delivery-driver-api.json"
+curl --fail --silent --show-error --retry 5 --retry-delay 4 \
+  -H "Authorization: Bearer $delivery_token" \
+  -H "x-npp-delivery-employee-id: $selected_employee_id" \
+  -H "x-request-id: delivery-production-smoke-${GITHUB_RUN_ID:-local}" \
+  "$core_url/api/logistics/driver/trips?limit=1&offset=0" > "$api_body"
+jq -e '.data.items | type == "array"' "$api_body" >/dev/null
 html="$(curl --fail --silent --show-error --retry 5 --retry-delay 4 -u "$auth" "$deployment_url/")"
 grep -q 'Chuyến của tôi' <<<"$html"
+grep -qv 'Không tải được chuyến' <<<"$html"
 css_asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.css' | head -n 1)"
 js_asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.js' | head -n 1)"
 test -n "$css_asset"
