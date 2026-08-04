@@ -31,7 +31,7 @@ const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
   ['coreDeliveryTripPlan', 'Lập kế hoạch chuyến', 'Cho phép cập nhật xe, tài xế, thời gian và trạng thái planned của chuyến.'],
   ['coreDeliveryTripAssign', 'Gán phiếu giao vào chuyến', 'Cho phép gán, bỏ gán và xếp thứ tự điểm dừng trước khi khóa.'],
   ['coreDeliveryTripLock', 'Khóa kế hoạch chuyến', 'Cho phép khóa kế hoạch chuyến đã đủ xe, tài xế và phiếu giao.'],
-  ['coreDeliveryTripDispatch', 'Bàn giao và cho chuyến xuất phát', 'Cho phép xác nhận bàn giao vật lý, ghi Inventory OUT và chuyển chuyến đã khóa sang dispatched.'],
+  ['coreDeliveryTripDispatch', 'Bàn giao và cho chuyến xuất phát', 'Cho phép xác nhận bàn giao vật lý, ghi Inventory OUT cho toàn bộ Delivery Order và chuyển chuyến đã khóa sang dispatched.'],
 ].map(([key, label, description]) => Object.freeze({
   permissionKey: PERMISSIONS[key],
   module: 'Điều phối giao hàng',
