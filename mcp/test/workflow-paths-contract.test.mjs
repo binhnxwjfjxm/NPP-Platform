@@ -68,6 +68,33 @@ jobs:
   assert.deepEqual(errors, []);
 });
 
+test("auditor accepts Delivery frontend workspace paths", () => {
+  const errors = auditWorkflowText("delivery.yml", `
+on:
+  pull_request:
+    paths:
+      - "delivery/web/**"
+      - ".github/workflows/delivery.yml"
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: delivery/web
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          cache: npm
+          cache-dependency-path: delivery/web/package-lock.json
+      - run: npm ci
+      - run: npm run verify
+      - uses: actions/upload-artifact@v4
+        with:
+          path: delivery/web/playwright-report
+`);
+  assert.deepEqual(errors, []);
+});
+
 test("auditor accepts root workspace dependency triggers", () => {
   const errors = auditWorkflowText("core-foundation.yml", `
 on:
