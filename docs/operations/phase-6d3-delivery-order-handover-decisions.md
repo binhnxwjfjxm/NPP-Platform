@@ -117,13 +117,15 @@ Trigger lifecycle của Phase 6D.2 vẫn giữ nguyên. Sales Order cancellation
 
 ## 7. Projection
 
-Sales Order `delivery_status` được cập nhật theo chứng từ active:
+Đối với Sales Order có `delivery_mode = DELIVERY`, `delivery_status` được cập nhật theo chứng từ active:
 
 ```text
 có READY_TO_DISPATCH -> ready_to_dispatch
 chỉ có DRAFT         -> pending
 không còn active     -> pending
 ```
+
+Đối với `PICKUP`, Sales Order tiếp tục giữ `delivery_status = not_required` theo contract hiện có; trạng thái sẵn sàng nhận tại quầy nằm trên Delivery Order, không ép Sales Order sang `ready_to_dispatch`.
 
 Không dùng Delivery Order để thay đổi `fulfillment_status`, `settlement_status` hoặc inventory balance.
 
