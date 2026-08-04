@@ -1,0 +1,294 @@
+.workspace {
+  display: grid;
+  gap: 1rem;
+}
+
+.section {
+  border: 1px solid #d8dee9;
+  border-radius: 16px;
+  background: #fff;
+  padding: 1rem;
+  min-width: 0;
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.sectionHeading h2,
+.masterCard h3,
+.readyQueue h3 {
+  margin: 0;
+}
+
+.eyebrow {
+  margin: 0 0 0.25rem;
+  color: #52606d;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.masterGrid,
+.formGrid,
+.columns {
+  display: grid;
+  gap: 1rem;
+}
+
+.masterGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.columns {
+  grid-template-columns: minmax(260px, 0.72fr) minmax(0, 1.7fr);
+  align-items: start;
+}
+
+.formGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.masterCard {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid #e4e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.masterCard label,
+.formGrid label {
+  display: grid;
+  gap: 0.35rem;
+  color: #334e68;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.masterCard input,
+.formGrid input,
+.formGrid select {
+  width: 100%;
+  min-height: 42px;
+  box-sizing: border-box;
+  border: 1px solid #bcccdc;
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.55rem 0.7rem;
+  color: #102a43;
+  font: inherit;
+}
+
+.noteField {
+  grid-column: span 2;
+}
+
+.primaryButton,
+.secondaryButton,
+.dangerButton,
+.textButton,
+.moveButtons button {
+  border-radius: 10px;
+  min-height: 40px;
+  padding: 0.55rem 0.8rem;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.primaryButton {
+  border: 1px solid #1769aa;
+  background: #1769aa;
+  color: #fff;
+}
+
+.secondaryButton {
+  border: 1px solid #829ab1;
+  background: #fff;
+  color: #243b53;
+}
+
+.dangerButton {
+  border: 1px solid #b42318;
+  background: #b42318;
+  color: #fff;
+}
+
+.textButton {
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  color: #b42318;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.dangerButton:disabled,
+.textButton:disabled,
+.moveButtons button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.error,
+.message,
+.lockNotice {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+}
+
+.error {
+  border: 1px solid #f3b4ae;
+  background: #fff1f0;
+  color: #8a1c13;
+}
+
+.message {
+  border: 1px solid #a8d5ba;
+  background: #edf9f1;
+  color: #176b3a;
+}
+
+.lockNotice {
+  border: 1px solid #f0c36a;
+  background: #fff8e7;
+  color: #7a4b00;
+  font-weight: 700;
+}
+
+.list,
+.stopList,
+.readyQueue {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.listItem {
+  display: grid;
+  gap: 0.25rem;
+  width: 100%;
+  border: 1px solid #d8dee9;
+  border-radius: 12px;
+  background: #fff;
+  padding: 0.8rem;
+  text-align: left;
+  color: #102a43;
+  cursor: pointer;
+}
+
+.listItem span,
+.listItem small,
+.assignment small,
+.readyItem small {
+  color: #627d98;
+}
+
+.selected {
+  border-color: #1769aa;
+  box-shadow: 0 0 0 2px rgb(23 105 170 / 12%);
+}
+
+.status {
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+  background: #e8f1fb;
+  color: #174f78;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.status[data-status='locked'] {
+  background: #fff1d6;
+  color: #7a4b00;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin: 1rem 0;
+}
+
+.stopCard {
+  border: 1px solid #d8dee9;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.stopCard header,
+.assignment,
+.readyItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+}
+
+.stopCard header {
+  background: #f5f7fa;
+}
+
+.stopCard header p {
+  margin: 0.25rem 0 0;
+  color: #52606d;
+}
+
+.assignment + .assignment {
+  border-top: 1px solid #edf0f4;
+}
+
+.assignment span,
+.readyItem span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.moveButtons {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.moveButtons button {
+  min-width: 38px;
+  border: 1px solid #bcccdc;
+  background: #fff;
+}
+
+.readyQueue {
+  margin-top: 1rem;
+  border-top: 1px solid #e4e7eb;
+  padding-top: 1rem;
+}
+
+.readyItem {
+  border: 1px solid #e4e7eb;
+  border-radius: 12px;
+}
+
+.empty {
+  margin: 0;
+  color: #627d98;
+  padding: 0.75rem;
+  text-align: center;
+}
+
+@media (max-width: 1000px) {
+  .masterGrid,
+  .formGrid,
+  .columns {
+    grid-template-columns: 1fr;
+  }
+
+  .noteField {
+    grid-column: auto;
+  }
+}
