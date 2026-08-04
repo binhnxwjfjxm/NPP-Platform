@@ -1,0 +1,271 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f4f7f5;
+  color: #17231e;
+}
+
+* { box-sizing: border-box; }
+
+html { background: #f4f7f5; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top right, rgba(190, 222, 205, 0.45), transparent 34rem),
+    #f4f7f5;
+}
+
+a { color: inherit; }
+
+.pageShell {
+  width: min(100%, 760px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 20px 16px 48px;
+}
+
+.appHeader,
+.detailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.appHeader { justify-content: flex-start; }
+
+.brandMark {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border-radius: 16px;
+  background: #153c2f;
+  color: #fff;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  box-shadow: 0 9px 22px rgba(21, 60, 47, 0.2);
+}
+
+h1, h2, p { margin-top: 0; }
+
+h1 {
+  margin-bottom: 3px;
+  font-size: clamp(1.55rem, 5vw, 2.25rem);
+  line-height: 1.12;
+}
+
+h2 { margin-bottom: 10px; }
+
+.eyebrow {
+  margin-bottom: 5px;
+  color: #507065;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.welcome,
+.mutedText {
+  margin-bottom: 0;
+  color: #60746c;
+}
+
+.noticeCard,
+.stateCard,
+.tripOverview {
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid #d6e2dc;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 28px rgba(30, 68, 53, 0.06);
+}
+
+.noticeCard {
+  border-color: #c8ded3;
+  background: #edf7f1;
+}
+
+.noticeCard p,
+.stateCard p { margin: 6px 0 0; line-height: 1.55; color: #53675f; }
+
+.errorCard { border-color: #e6c9c6; background: #fff5f4; }
+
+.tripList { display: grid; gap: 14px; }
+
+.tripCard {
+  display: block;
+  padding: 18px;
+  border: 1px solid #d7e3dd;
+  border-radius: 20px;
+  background: #fff;
+  text-decoration: none;
+  box-shadow: 0 10px 30px rgba(31, 61, 49, 0.07);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.tripCard:hover,
+.tripCard:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 34px rgba(31, 61, 49, 0.13);
+  outline: 3px solid rgba(39, 112, 82, 0.2);
+}
+
+.cardTopline,
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  color: #60746c;
+  font-size: 0.84rem;
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #dff1e7;
+  color: #17543d;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.summaryGrid div {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 13px;
+  background: #f5f8f6;
+}
+
+dt {
+  margin-bottom: 3px;
+  color: #6f8179;
+  font-size: 0.75rem;
+}
+
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 750;
+}
+
+.openHint {
+  display: inline-block;
+  margin-top: 14px;
+  color: #1c6549;
+  font-weight: 800;
+}
+
+.backLink {
+  display: inline-block;
+  margin-bottom: 18px;
+  color: #28634d;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.backLink:focus-visible { outline: 3px solid rgba(39, 112, 82, 0.2); }
+
+.handoverNote {
+  margin: 14px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid #e2e9e5;
+  color: #52665d;
+  line-height: 1.55;
+}
+
+.stopSection { margin: 24px 0; }
+.sectionHeading h2 { margin: 0; color: #17231e; }
+
+.stopList {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stopCard {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #d7e3dd;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(31, 61, 49, 0.06);
+}
+
+.stopSequence {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 14px;
+  background: #153c2f;
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.stopAddress {
+  margin-bottom: 6px;
+  font-weight: 850;
+  line-height: 1.45;
+}
+
+.deliveryOrders {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.deliveryOrder {
+  padding: 13px;
+  border-left: 4px solid #4b9272;
+  border-radius: 12px;
+  background: #f5f8f6;
+}
+
+.deliveryOrder > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.deliveryOrder span { color: #5f746b; font-size: 0.86rem; }
+
+.deliveryOrder dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 0;
+}
+
+@media (min-width: 640px) {
+  .pageShell { padding: 32px 24px 64px; }
+  .tripCard, .tripOverview, .stopCard { padding: 22px; }
+}
+
+@media (max-width: 380px) {
+  .summaryGrid,
+  .deliveryOrder dl { grid-template-columns: 1fr; }
+  .stopCard { grid-template-columns: 36px minmax(0, 1fr); padding: 13px; }
+  .stopSequence { width: 36px; height: 36px; border-radius: 12px; }
+}
