@@ -227,6 +227,38 @@ export function loadConfig(envInput) {
     ? parseUuidList(configuredMcpSalesWarehouseIds, 'MCP_SALES_WAREHOUSE_IDS')
     : Object.freeze([]);
 
+  const deliveryFrontendApiToken = text(env.DELIVERY_FRONTEND_API_TOKEN);
+  const configuredDeliveryFrontendActorId = text(env.DELIVERY_FRONTEND_ACTOR_ID);
+  const configuredDeliveryFrontendWarehouseIds = text(env.DELIVERY_FRONTEND_WAREHOUSE_IDS);
+  const deliveryFrontendParts = [
+    deliveryFrontendApiToken,
+    configuredDeliveryFrontendActorId,
+    configuredDeliveryFrontendWarehouseIds,
+  ].filter(Boolean).length;
+  if (deliveryFrontendParts > 0 && (!deliveryFrontendApiToken || !configuredDeliveryFrontendWarehouseIds)) {
+    fail(
+      'incomplete_delivery_frontend_config',
+      'DELIVERY_FRONTEND_API_TOKEN and DELIVERY_FRONTEND_WAREHOUSE_IDS must be configured together',
+    );
+  }
+  if (deliveryFrontendApiToken) {
+    validateNamedToken(deliveryFrontendApiToken, 'DELIVERY_FRONTEND_API_TOKEN', nodeEnv);
+    if ([backendApiToken, mcpOnboardingApiToken, mcpSalesApiToken].includes(deliveryFrontendApiToken)) {
+      fail('delivery_frontend_token_reuse_forbidden', 'DELIVERY_FRONTEND_API_TOKEN must differ from other backend tokens');
+    }
+  }
+  const deliveryFrontendActorId = deliveryFrontendApiToken
+    ? validateServiceActorId(
+        configuredDeliveryFrontendActorId,
+        'DELIVERY_FRONTEND_ACTOR_ID',
+        nodeEnv,
+        'service:delivery-frontend',
+      )
+    : '';
+  const deliveryFrontendWarehouseIds = deliveryFrontendApiToken
+    ? parseUuidList(configuredDeliveryFrontendWarehouseIds, 'DELIVERY_FRONTEND_WAREHOUSE_IDS')
+    : Object.freeze([]);
+
   const r2Enabled = parseBoolean(env.R2_ENABLED, { defaultValue: false });
   const r2ContractRouteEnabled = parseBoolean(env.R2_CONTRACT_ROUTE_ENABLED, { defaultValue: false });
   const r2Region = text(env.R2_REGION) || SAFE_DEFAULTS.R2_REGION;
@@ -269,6 +301,9 @@ export function loadConfig(envInput) {
     mcpSalesApiToken,
     mcpSalesActorId,
     mcpSalesWarehouseIds,
+    deliveryFrontendApiToken,
+    deliveryFrontendActorId,
+    deliveryFrontendWarehouseIds,
     corsOrigins: parseCorsOrigins(env.CORS_ORIGINS, { nodeEnv }),
     r2Enabled,
     r2Endpoint,
@@ -292,6 +327,8 @@ export function getSanitizedConfig(config) {
     mcpOnboardingConfigured: Boolean(config.mcpOnboardingApiToken),
     mcpSalesConfigured: Boolean(config.mcpSalesApiToken),
     mcpSalesWarehouseScopeCount: config.mcpSalesWarehouseIds.length,
+    deliveryFrontendConfigured: Boolean(config.deliveryFrontendApiToken),
+    deliveryFrontendWarehouseScopeCount: config.deliveryFrontendWarehouseIds.length,
     databaseSslMode: config.databaseSslMode,
     corsOrigins: [...config.corsOrigins],
     storage: Object.freeze({
