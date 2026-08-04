@@ -10,6 +10,7 @@ const ALLOWED_QUERY_KEYS = new Set([
   'active',
   'limit',
   'offset',
+  'status',
   'baseVariantId',
   'warehouseId',
   'locationId',
@@ -150,14 +151,31 @@ async function requestInventory<T>({
   }
 }
 
+function assertUuid(value: string, code: string, message: string): void {
+  if (!UUID_PATTERN.test(value)) {
+    throw new InventoryGatewayError(code, message, 400, false);
+  }
+}
+
+function requiredIdempotencyKey(value: string | null | undefined): string {
+  const key = String(value ?? '').trim();
+  if (!/^[A-Za-z0-9._:-]{1,128}$/.test(key)) {
+    throw new InventoryGatewayError(
+      'INVALID_IDEMPOTENCY_KEY',
+      'Khóa chống xử lý trùng không hợp lệ',
+      400,
+      false,
+    );
+  }
+  return key;
+}
+
 export function listInventoryTrackingPolicies<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
   return requestInventory<T>({ path: '/tracking-policies', method: 'GET', requestId, searchParams });
 }
 
 export function getInventoryTrackingPolicy<T>(baseVariantId: string, requestId: string): Promise<T> {
-  if (!UUID_PATTERN.test(baseVariantId)) {
-    throw new InventoryGatewayError('INVALID_BASE_VARIANT_ID', 'Mã biến thể cơ sở không hợp lệ', 400, false);
-  }
+  assertUuid(baseVariantId, 'INVALID_BASE_VARIANT_ID', 'Mã biến thể cơ sở không hợp lệ');
   return requestInventory<T>({ path: `/tracking-policies/${baseVariantId}`, method: 'GET', requestId });
 }
 
@@ -167,9 +185,7 @@ export function upsertInventoryTrackingPolicy<T>(
   body: unknown,
   idempotencyKey?: string,
 ): Promise<T> {
-  if (!UUID_PATTERN.test(baseVariantId)) {
-    throw new InventoryGatewayError('INVALID_BASE_VARIANT_ID', 'Mã biến thể cơ sở không hợp lệ', 400, false);
-  }
+  assertUuid(baseVariantId, 'INVALID_BASE_VARIANT_ID', 'Mã biến thể cơ sở không hợp lệ');
   return requestInventory<T>({
     path: `/tracking-policies/${baseVariantId}`,
     method: 'PUT',
@@ -184,9 +200,7 @@ export function listInventoryLots<T>(requestId: string, searchParams: URLSearchP
 }
 
 export function getInventoryLot<T>(id: string, requestId: string): Promise<T> {
-  if (!UUID_PATTERN.test(id)) {
-    throw new InventoryGatewayError('INVALID_LOT_ID', 'Mã lô không hợp lệ', 400, false);
-  }
+  assertUuid(id, 'INVALID_LOT_ID', 'Mã lô không hợp lệ');
   return requestInventory<T>({ path: `/lots/${id}`, method: 'GET', requestId });
 }
 
@@ -203,9 +217,7 @@ export function listOpeningBalanceImports<T>(requestId: string, searchParams: UR
 }
 
 export function getOpeningBalanceImport<T>(id: string, requestId: string): Promise<T> {
-  if (!UUID_PATTERN.test(id)) {
-    throw new InventoryGatewayError('INVALID_OPENING_BALANCE_IMPORT_ID', 'Mã nhập tồn đầu kỳ không hợp lệ', 400, false);
-  }
+  assertUuid(id, 'INVALID_OPENING_BALANCE_IMPORT_ID', 'Mã nhập tồn đầu kỳ không hợp lệ');
   return requestInventory<T>({ path: `/opening-balances/${id}`, method: 'GET', requestId });
 }
 
@@ -224,5 +236,54 @@ export function postOpeningBalanceImport<T>(
     requestId,
     body,
     idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}`,
+  });
+}
+
+export function listFulfillmentWork<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
+  return requestInventory<T>({ path: '/fulfillment-work', method: 'GET', requestId, searchParams });
+}
+
+export function getFulfillmentSuggestions<T>(demandId: string, requestId: string): Promise<T> {
+  assertUuid(demandId, 'INVALID_FULFILLMENT_DEMAND_ID', 'Mã nhu cầu chuẩn bị hàng không hợp lệ');
+  return requestInventory<T>({
+    path: `/fulfillment-demands/${demandId}/suggestions`,
+    method: 'GET',
+    requestId,
+  });
+}
+
+export function allocateFulfillmentDemand<T>(
+  demandId: string,
+  requestId: string,
+  body: unknown,
+  idempotencyKey: string | null,
+): Promise<T> {
+  assertUuid(demandId, 'INVALID_FULFILLMENT_DEMAND_ID', 'Mã nhu cầu chuẩn bị hàng không hợp lệ');
+  return requestInventory<T>({
+    path: `/fulfillment-demands/${demandId}/allocate`,
+    method: 'POST',
+    requestId,
+    body,
+    idempotencyKey: requiredIdempotencyKey(idempotencyKey),
+  });
+}
+
+export function updateFulfillmentProgress<T>(
+  allocationId: string,
+  action: string,
+  requestId: string,
+  body: unknown,
+  idempotencyKey: string | null,
+): Promise<T> {
+  assertUuid(allocationId, 'INVALID_FULFILLMENT_ALLOCATION_ID', 'Mã dòng phân bổ không hợp lệ');
+  if (!['pick', 'pack'].includes(action)) {
+    throw new InventoryGatewayError('INVALID_FULFILLMENT_ACTION', 'Thao tác chuẩn bị hàng không hợp lệ', 400, false);
+  }
+  return requestInventory<T>({
+    path: `/fulfillment-allocations/${allocationId}/${action}`,
+    method: 'POST',
+    requestId,
+    body,
+    idempotencyKey: requiredIdempotencyKey(idempotencyKey),
   });
 }

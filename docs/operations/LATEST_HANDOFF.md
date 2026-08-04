@@ -4,88 +4,138 @@
 
 - Repository: `binhnxwjfjxm/NPP-Platform`.
 - Production branch: `main`.
-- Exact audited baseline `main`: `2cfb48710ebd048bafc6e0014eefc2fc5bedef89`.
-- PR #228 restored daily Sales Admin work to NPP Operations and limited Admin to aggregate/exception work.
-- PR #229 corrected Admin production smoke to use the canonical domain.
+- Exact audited baseline `main`: `057fdedf9bc8c586e0dc831c1a43e09067212d4e`.
+- Active branch: `agent/phase-6d2-allocation-pick-pack`.
+- Issue: `#235 — Phase 6D.2 — Phân bổ vị trí/lô, soạn và đóng gói`.
+- Draft PR: `#236 — feat(sales): phân bổ vị trí lô, soạn và đóng gói 6D.2`.
+- Exact implementation checkpoint before this handoff-only commit: `249a5208cae986ec3af097a401fd970af829ca71`.
 - Source merge does not prove backend deployment, database migration, backup, reconciliation or provider state. Audit every production operation again.
 
-## Verified frontend production checkpoint
+## Verified production checkpoint
 
-### NPP Operations
-
-- Vercel project: `npp-platform`.
-- Deployed source: `eff58bb4d318379e13c3925d2362244b627c7665`.
-- Deployment and real route/API smoke passed.
-- `npp-platform.vercel.app` remains the working fallback URL.
-- `office.nguyenlieuhungphat.com` was not attached at the last audit and must not be assumed present.
-
-### Admin MCP/NPP
-
-- Vercel project: `admin-mcp-npp`.
-- Deployed source: `2cfb48710ebd048bafc6e0014eefc2fc5bedef89`.
-- Canonical domain `admin.nguyenlieuhungphat.com` passed unauthenticated/authenticated production smoke.
-- Admin shows aggregate information and the management-exception boundary; daily customer-code and order confirmation work stays in NPP Operations.
-
-No Core backend, MCP backend or production database migration was performed during those frontend rollouts.
-
-## Active work
+The latest verified NPP frontend production source remains the navigation correction merged at:
 
 ```text
-Issue #230 — Phase 6D — Fulfillment, reservation and Delivery Order
-Draft PR #231 — Phase 6D.1 warehouse reservation demand
-Branch agent/phase-6d1-reservation-demand
-Baseline main@2cfb48710ebd048bafc6e0014eefc2fc5bedef89
-Migration 042_sales_fulfillment_reservation_demand
+057fdedf9bc8c586e0dc831c1a43e09067212d4e
 ```
 
-## Phase 6D.1 product behavior
+No Phase 6D.1 or Phase 6D.2 backend deployment, production migration or provider mutation was performed during this source task.
+
+Do not assume production has migrations `042` or `043`, reservation demand, exact allocation, pick or pack until a separate production rollout is explicitly authorized and audited.
+
+## Phase 6D.2 product behavior
 
 ```text
 confirmed Sales Order
--> resolve each line to its inventory-base SKU snapshot
--> lock warehouse + base-SKU availability
--> reserve the available quantity at warehouse level
--> record the remaining quantity as backorder when allowed
--> expose reserved/backordered totals and per-line projection
+-> Phase 6D.1 reserves available quantity at warehouse level
+-> Phase 6D.2 proposes exact storage location/lot
+-> create exact Inventory reservation in the same transaction
+-> warehouse confirms picked quantity
+-> warehouse confirms packed quantity
+-> packed quantity becomes input for Phase 6D.3 Delivery Order
 ```
 
-Locked rules:
+A normal Sales Order does not require two different people by default. One user may create and confirm the order when their role has both permissions. Price, discount, credit or other exceptions remain subject to their separate approval permissions and policies.
 
-- Warehouse demand is separate from exact location/lot allocation.
-- `allow_backorder=true` preserves current confirmation behavior while making shortages visible.
-- `allow_backorder=false` makes insufficient stock fail the complete confirmation transaction.
-- Sales demand, exact Inventory reservations and Inventory OUT share a concurrency lock and database backstops.
-- Amendment supersedes the old active demand in the same transaction.
-- Cancellation releases active demand when no downstream execution fact blocks cancellation.
-- Fulfillment progress is monotonic; allocation/pick/pack/issue cannot move backwards.
-- Sales Order content revision is separate from fulfillment projection status.
+## Locked allocation rules
+
+- Warehouse execution lives in NPP Operations under `Tồn kho & lô hàng -> Chuẩn bị hàng`.
+- It is not a global shortcut and is not daily CRUD in Admin or Delivery.
+- Allocation is scoped by installation, warehouse, active storage location, inventory-base SKU and lot.
+- Only active `storage` locations are eligible; receiving, shipping, quarantine, returns, damaged and other locations are rejected.
+- Lots with an expiry date use FEFO.
+- Lots without an expiry date use FIFO based on traceable first receipt time.
+- `expiry_tracking_mode = REQUIRED` requires an expiry date.
+- `expiry_tracking_mode = OPTIONAL` allows dated FEFO lots and undated FIFO lots.
+- Expired lots are always rejected.
+- Manual policy override requires `core.fulfillment.override-allocation-policy` and a reason, but cannot bypass scope, storage, expiry or available-stock checks.
+- Exact Inventory reservation and Sales allocation share transaction, lineage, idempotency, audit and outbox.
+- Pick cannot exceed allocated quantity.
+- Pack cannot exceed picked quantity.
+- Allocation, pick and pack progress is monotonic.
+- Backordered quantity prevents a partial execution from projecting a false full-completion state.
+
+## Migration and source structure
+
+Phase 6D.2 uses one consolidated migration:
+
+```text
+database/migrations/sales/043_sales_fulfillment_allocation_pick_pack.sql
+```
+
+Intermediate migration drafts were folded into `043` before merge. There is no patch chain `044/045` for this slice.
+
+Source includes:
+
+```text
+Sales fulfillment allocation repository/service/routes
+Inventory route integration
+warehouse-scoped permissions
+NPP fulfillment queue and workspace
+PostgreSQL integration coverage
+Browser E2E coverage
+```
+
+The automatic FEFO/FIFO flow is available in the NPP warehouse UI. Backend manual override is permissioned and reason-required; a dedicated permission-aware manual allocation UI is not claimed complete in this slice.
+
+## Exact-head gate evidence
+
+The implementation checkpoint `249a5208cae986ec3af097a401fd970af829ca71` passed:
+
+```text
+Foundation F0.2
+Phase 3 Split Validation including grouped migration rehearsal
+Phase 4 Inventory Ledger
+Phase 4 Inventory Balance
+Phase 4.3 Inventory Reservations
+Phase 6B.2 Sales Commercial Controls
+Core Foundation including PostgreSQL fulfillment integration
+Core UI build and Browser E2E
+Admin Frontend boundary CI
+```
+
+The PostgreSQL integration test verifies:
+
+```text
+two expiry lots ordered by FEFO
+exact Inventory reservations
+allocation command idempotency
+pack-before-pick rejection
+over-pick rejection
+pick and pack completion
+audit and outbox evidence
+concurrent allocation: one success and one conflict without over-allocation
+```
+
+CodeRabbit skipped the draft PR; required repository CI is the source gate and no CodeRabbit wait is required.
 
 ## Phase 6D sequence
 
 ```text
-6D.1 warehouse reservation demand and fulfillment projection ACTIVE — PR #231
-6D.2 exact location/lot allocation, FEFO/FIFO, pick and pack  NOT STARTED
-6D.3 Delivery Order foundation to ready_to_dispatch          NOT STARTED
-6D.4 Inventory issue/reversal and return lineage             NOT STARTED
+6D.1 warehouse reservation demand and fulfillment projection  SOURCE MERGED
+6D.2 exact location/lot allocation, FEFO/FIFO, pick and pack   SOURCE READY IN PR #236
+6D.3 Delivery Order foundation to ready_to_dispatch           NOT STARTED
+6D.4 Inventory issue/reversal and return lineage              NOT STARTED
 ```
 
 Phase 6E, not Phase 6D, owns vehicles, drivers, trips, stops, delivery attempts and POD.
 
 ## Production boundary
 
-Issue #230 and PR #231 authorize source work only.
+Issue #235 and PR #236 authorize source work only.
 
 They do not authorize:
 
 ```text
-production migration 042
+production migrations 042 or 043
 Core backend production deploy
 NPP frontend production redeploy
-MCP changes or deploy
+MCP, Admin or Delivery deploy
 provider, DNS or credential changes
+Phase 6D.3 Delivery Order work
 Phase 6E transportation execution
 merge to main without an explicit owner command
 ```
 
 > Updated: `2026-08-04`
-> Current checkpoint: Phase 6D.1 source implementation and exact-head CI on Draft PR #231.
+> Current checkpoint: Phase 6D.2 source implementation complete; final handoff-only commit requires exact-head CI before PR is marked ready.

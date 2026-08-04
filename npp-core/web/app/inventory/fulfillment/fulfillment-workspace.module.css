@@ -1,0 +1,404 @@
+.page {
+  display: grid;
+  gap: 1rem;
+  max-width: 1680px;
+  margin: 0 auto;
+}
+
+.hero,
+.queuePanel,
+.detailPanel,
+.stats article {
+  border: 1px solid #dce5e1;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(30, 58, 49, 0.06);
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 1.25rem;
+}
+
+.hero h2,
+.panelHeader h3,
+.detailHeader h3,
+.subsection h4 {
+  margin: 0;
+  color: #18352d;
+}
+
+.hero p,
+.panelHeader p,
+.detailHeader p,
+.actionBar p {
+  margin: 0.3rem 0 0;
+  color: #61726c;
+  line-height: 1.45;
+}
+
+.eyebrow {
+  margin: 0 0 0.3rem !important;
+  color: #167156 !important;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.stats article {
+  display: grid;
+  gap: 0.2rem;
+  padding: 1rem;
+}
+
+.stats strong {
+  color: #155c46;
+  font-size: 1.75rem;
+}
+
+.stats span {
+  color: #65766f;
+  font-weight: 700;
+}
+
+.error,
+.notice {
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  font-weight: 700;
+}
+
+.error {
+  border: 1px solid #efb8b8;
+  background: #fff1f1;
+  color: #9e2525;
+}
+
+.notice {
+  border: 1px solid #a9d8c8;
+  background: #effaf6;
+  color: #155c46;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(330px, 0.8fr) minmax(520px, 1.6fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.queuePanel,
+.detailPanel {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.detailPanel {
+  padding: 1rem;
+}
+
+.panelHeader,
+.detailHeader,
+.subsectionHeader,
+.allocationHead,
+.actionBar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.panelHeader {
+  padding: 1rem;
+  border-bottom: 1px solid #e5ece9;
+}
+
+.search {
+  width: min(230px, 45%);
+  min-height: 40px;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #cad7d2;
+  border-radius: 10px;
+  background: #fbfdfc;
+}
+
+.queue {
+  display: grid;
+  max-height: 760px;
+  overflow: auto;
+}
+
+.queueItem {
+  display: grid;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.95rem 1rem;
+  border: 0;
+  border-bottom: 1px solid #edf1ef;
+  background: #ffffff;
+  color: #283b35;
+  text-align: left;
+  cursor: pointer;
+}
+
+.queueItem:hover,
+.queueItemActive {
+  background: #f0f8f5;
+}
+
+.queueItemActive {
+  box-shadow: inset 4px 0 #167156;
+}
+
+.queueTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.queueTop strong {
+  color: #18352d;
+}
+
+.queueTop em,
+.status,
+.allocationHead em {
+  border-radius: 999px;
+  background: #e7f5f0;
+  color: #155c46;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.queueItem small,
+.queueItem span {
+  color: #64756e;
+}
+
+.quantities {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.detailHeader {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e5ece9;
+}
+
+.quantityGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 1rem 0;
+}
+
+.quantityGrid article {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border-radius: 12px;
+  background: #f5f8f7;
+}
+
+.quantityGrid span {
+  color: #6a7a74;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.quantityGrid strong {
+  color: #18352d;
+  overflow-wrap: anywhere;
+}
+
+.actionBar {
+  align-items: center;
+  padding: 1rem;
+  border: 1px solid #b9d9ce;
+  border-radius: 14px;
+  background: #f0faf6;
+}
+
+.primaryButton,
+.secondaryButton {
+  min-height: 40px;
+  padding: 0.55rem 0.85rem;
+  border-radius: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.primaryButton {
+  border: 1px solid #155c46;
+  background: #155c46;
+  color: #ffffff;
+}
+
+.secondaryButton {
+  border: 1px solid #b9c9c3;
+  background: #ffffff;
+  color: #29463d;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.subsection {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5ece9;
+}
+
+.subsectionHeader {
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.subsectionHeader span {
+  color: #65766f;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.candidates {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.candidates article {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border: 1px solid #dfe8e4;
+  border-radius: 12px;
+  background: #fbfdfc;
+}
+
+.candidates strong,
+.candidates span,
+.candidates small {
+  overflow-wrap: anywhere;
+}
+
+.candidates span,
+.candidates small {
+  color: #64756e;
+}
+
+.allocations {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.allocations > article {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid #dce5e1;
+  border-radius: 14px;
+  background: #fbfdfc;
+}
+
+.allocationHead div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.allocationHead span {
+  color: #64756e;
+  font-size: 0.85rem;
+}
+
+.progressRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.progressRow span {
+  padding: 0.6rem;
+  border-radius: 9px;
+  background: #eef3f1;
+  color: #65766f;
+}
+
+.progressRow strong {
+  display: block;
+  margin-top: 0.15rem;
+  color: #18352d;
+}
+
+.allocationActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.empty {
+  margin: 0;
+  padding: 1rem;
+  color: #6b7b75;
+}
+
+@media (max-width: 1180px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .queue {
+    max-height: 430px;
+  }
+
+  .quantityGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .hero,
+  .panelHeader,
+  .detailHeader,
+  .actionBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .stats,
+  .candidates,
+  .quantityGrid,
+  .progressRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .search {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats,
+  .candidates,
+  .quantityGrid,
+  .progressRow {
+    grid-template-columns: 1fr;
+  }
+}

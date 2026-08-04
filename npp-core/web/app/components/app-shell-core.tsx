@@ -43,6 +43,7 @@ const accessItems = [
 ];
 
 const inventoryItems = [
+  { href: '/inventory/fulfillment', label: 'Chuẩn bị hàng', icon: 'panel' as const, testId: 'nav-inventory-fulfillment' },
   { href: '/inventory/balances', label: 'Tra cứu tồn kho', icon: 'panel' as const, testId: 'nav-inventory-balances' },
   { href: '/inventory/tracking-policies', label: 'Chính sách lô', icon: 'panel' as const, testId: 'nav-inventory-policies' },
   { href: '/inventory/lots', label: 'Lô hàng', icon: 'panel' as const, testId: 'nav-inventory-lots' },
@@ -337,7 +338,7 @@ export function AppShell({
                 <span className={styles.navIcon}><Icon name="panel" /></span>
                 <span className={styles.navCopy}>
                   <span className={styles.navTitle}>Tồn kho &amp; lô hàng</span>
-                  <span className={styles.navHint}>Số lượng tồn, lô hàng, hạn dùng và tồn đầu kỳ</span>
+                  <span className={styles.navHint}>Chuẩn bị hàng, số lượng tồn, lô, hạn dùng và tồn đầu kỳ</span>
                 </span>
                 <span className={`${styles.chevron} ${inventoryOpen ? styles.chevronOpen : ''}`}>
                   <Icon name="chevron" />

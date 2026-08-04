@@ -2,7 +2,16 @@ import { randomUUID } from 'node:crypto';
 
 const SECRET_KEY_PATTERN = /(?:secret|token|password|passphrase|db_?url|database_?url|connection_?string|api_?key|auth_?token|private_?key)/i;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const MUTATING_SQL_PATTERN = /\b(?:insert\s+into|update\s+|delete\s+from|merge\s+into|truncate\s+|create\s+|alter\s+|drop\s+|grant\s+|revoke\s+)\b/i;
+const DIRECT_MUTATING_SQL_PATTERN = /^(?:insert\s+into|update\s+|delete\s+from|merge\s+into|truncate\s+|create\s+|alter\s+|drop\s+|grant\s+|revoke\s+)/i;
+const CTE_BODY_MUTATION_PATTERN = /\bas\s*\(\s*(?:insert\s+into|update\s+|delete\s+from|merge\s+into)\b/i;
+const CTE_MAIN_MUTATION_PATTERN = /\)\s*(?:insert\s+into|update\s+|delete\s+from|merge\s+into)\b/i;
+
+function isMutatingSql(normalizedSql) {
+  if (DIRECT_MUTATING_SQL_PATTERN.test(normalizedSql)) return true;
+  if (!normalizedSql.startsWith('with ')) return false;
+  return CTE_BODY_MUTATION_PATTERN.test(normalizedSql)
+    || CTE_MAIN_MUTATION_PATTERN.test(normalizedSql);
+}
 
 function shouldRedactKey(key) {
   return typeof key === 'string' && SECRET_KEY_PATTERN.test(key);
@@ -204,7 +213,7 @@ function createTrackedClient(client, writeState) {
     query: async (sql, values = []) => {
       const result = await client.query(sql, values);
       const normalizedSql = String(sql).trim().replace(/\s+/g, ' ').toLowerCase();
-      if (MUTATING_SQL_PATTERN.test(normalizedSql)) writeState.writeCount += 1;
+      if (isMutatingSql(normalizedSql)) writeState.writeCount += 1;
       if (normalizedSql.startsWith('insert into shared.core_audit_records')) writeState.auditCount += 1;
       if (normalizedSql.startsWith('insert into shared.core_outbox_events')) writeState.outboxCount += 1;
       return result;
