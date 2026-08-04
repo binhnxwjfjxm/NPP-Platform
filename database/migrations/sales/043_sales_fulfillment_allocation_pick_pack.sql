@@ -119,6 +119,13 @@ CREATE INDEX IF NOT EXISTS sales_order_fulfillment_allocations_operation_key_idx
   ON sales.sales_order_fulfillment_allocations (
     installation_id, operation_idempotency_key, allocation_sequence
   );
+CREATE UNIQUE INDEX IF NOT EXISTS sales_order_fulfillment_allocations_operation_scope_unique
+  ON sales.sales_order_fulfillment_allocations (
+    installation_id,
+    operation_idempotency_key,
+    COALESCE(location_id, '00000000-0000-0000-0000-000000000000'::uuid),
+    COALESCE(lot_id, '00000000-0000-0000-0000-000000000000'::uuid)
+  );
 CREATE INDEX IF NOT EXISTS sales_order_fulfillment_allocations_order_idx
   ON sales.sales_order_fulfillment_allocations (
     installation_id, sales_order_id, state, allocation_sequence
@@ -164,6 +171,31 @@ CREATE INDEX IF NOT EXISTS sales_order_fulfillment_allocation_events_allocation_
   ON sales.sales_order_fulfillment_allocation_events (
     installation_id, allocation_id, occurred_at, id
   );
+
+CREATE OR REPLACE FUNCTION sales.guard_allocated_fulfillment_demand_transition()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF OLD.state = 'ACTIVE'
+     AND NEW.state IS DISTINCT FROM OLD.state
+     AND EXISTS (
+       SELECT 1
+         FROM sales.sales_order_fulfillment_allocations allocation
+        WHERE allocation.installation_id = OLD.installation_id
+          AND allocation.fulfillment_demand_id = OLD.id
+     ) THEN
+    RAISE EXCEPTION 'sales_fulfillment_transition_blocked_by_allocation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sales_order_fulfillment_demands_block_allocated_transition
+  ON sales.sales_order_fulfillment_demands;
+CREATE TRIGGER sales_order_fulfillment_demands_block_allocated_transition
+BEFORE UPDATE OF state ON sales.sales_order_fulfillment_demands
+FOR EACH ROW EXECUTE FUNCTION sales.guard_allocated_fulfillment_demand_transition();
 
 CREATE OR REPLACE FUNCTION sales.guard_sales_order_fulfillment_allocation_write()
 RETURNS trigger
@@ -404,6 +436,7 @@ BEGIN
      AND demand.id = target_demand_id;
 
   SELECT CASE
+    WHEN count(*) = 0 THEN NULL
     WHEN sum(demand.packed_base_quantity) = sum(demand.reserved_base_quantity)
          AND sum(demand.reserved_base_quantity) > 0
          AND sum(demand.backordered_base_quantity) = 0 THEN 'packed'
