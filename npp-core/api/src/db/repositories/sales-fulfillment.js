@@ -14,7 +14,7 @@ export async function getFulfillmentSettings(client, { installationId }) {
     [installationId],
   );
   return Object.freeze({
-    allowBackorder: result.rows[0]?.allow_backorder === true,
+    allowBackorder: result.rows[0]?.allow_backorder !== false,
   });
 }
 
