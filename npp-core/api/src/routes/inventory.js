@@ -19,6 +19,7 @@ import {
 import { listInventoryMovementDrillDown } from '../services/inventory-balance.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
 import { handleFulfillmentOperationRoutes } from './fulfillment-operations.js';
+import { handleDeliveryOrderRoutes } from './delivery-orders.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -357,6 +358,9 @@ async function handleOpeningBalances(req, res, options, pathname, method) {
 
 export async function handleInventoryRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
+  if (pathname.startsWith('/api/delivery-orders')) {
+    return handleDeliveryOrderRoutes(req, res, options);
+  }
   if (!pathname.startsWith('/api/inventory')) return false;
   const method = String(req.method ?? 'GET').toUpperCase();
   if (await handleFulfillmentOperationRoutes(req, res, options)) return true;
