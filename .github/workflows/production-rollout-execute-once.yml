@@ -1,0 +1,242 @@
+name: Authorized one-shot Phase 6D/6E production rollout
+
+on:
+  push:
+    branches:
+      - agent/production-rollout-execute
+    paths:
+      - .github/workflows/production-rollout-execute-once.yml
+
+permissions:
+  contents: read
+  actions: write
+  issues: write
+
+concurrency:
+  group: authorized-production-rollout-6d-6e
+  cancel-in-progress: false
+
+jobs:
+  rollout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-core-latest-rollout
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DEPLOY_REF: main
+      APPROVED_TREE_BASE: 5b4a5680ab5368be360c799b9ac22527fcf7f862
+      HEROKU_APP_NAME: hung-phat
+      VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      NPP_URL: https://office.nguyenlieuhungphat.com
+      ADMIN_URL: https://admin.nguyenlieuhungphat.com
+      DELIVERY_URL: https://log.nguyenlieuhungphat.com
+
+    steps:
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact main and approved runtime tree
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          test -z "$(git diff --name-only "$APPROVED_TREE_BASE"..HEAD)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "SOURCE_SHA=$sha" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install locked repository dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install Heroku CLI using existing production path
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+          heroku --version
+
+      - name: Migrate production database 042 through 048
+        id: migrate
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          POSTGRES_SERVICE_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          gate="$RUNNER_TEMP/core-latest-production-gate.sh"
+          cp npp-core/api/scripts/core-latest-production-gate.sh "$gate"
+          GATE_FILE="$gate" python3 - <<'PY'
+          import os
+          from pathlib import Path
+          path = Path(os.environ['GATE_FILE'])
+          text = path.read_text()
+          old = '''snapshot_protected_counts "$database_url" "$before_file"\nheroku maintenance:on -a "$HEROKU_APP_NAME" >/dev/null\nmaintenance_enabled="true"\n'''
+          new = '''heroku maintenance:on -a "$HEROKU_APP_NAME" >/dev/null\nmaintenance_enabled="true"\nsnapshot_protected_counts "$database_url" "$before_file"\n'''
+          if old not in text:
+              raise SystemExit('maintenance_snapshot_order_contract_not_found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          bash -n "$gate"
+          REQUESTED_ACTION=migrate bash "$gate"
+
+      - name: Dispatch Core backend, NPP Operations and Admin workflows
+        id: deploy_existing
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          dispatch_and_wait() {
+            local workflow="$1"
+            shift
+            local started run_id
+            started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            gh workflow run "$workflow" --ref main "$@"
+            run_id=""
+            for _ in $(seq 1 60); do
+              run_id="$(
+                gh run list \
+                  --workflow "$workflow" \
+                  --branch main \
+                  --event workflow_dispatch \
+                  --limit 20 \
+                  --json databaseId,headSha,createdAt \
+                | jq -r --arg sha "$SOURCE_SHA" --arg started "$started" \
+                    'map(select(.headSha == $sha and .createdAt >= $started)) | sort_by(.createdAt) | reverse | .[0].databaseId // empty'
+              )"
+              [ -n "$run_id" ] && break
+              sleep 3
+            done
+            test -n "$run_id"
+            echo "Waiting for $workflow run $run_id"
+            gh run watch "$run_id" --exit-status
+            printf '%s=%s\n' "${workflow//[^A-Za-z0-9]/_}" "$run_id" >> "$GITHUB_OUTPUT"
+          }
+
+          dispatch_and_wait heroku-npp-backend-manual.yml -f action=deploy -f release_version=''
+          dispatch_and_wait vercel-production-manual.yml
+          dispatch_and_wait vercel-admin-production-manual.yml
+
+      - name: Create and deploy Delivery project fifth frontend
+        id: delivery
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          SECRET_DELIVERY_WEB_USERS_JSON: ${{ secrets.DELIVERY_WEB_USERS_JSON }}
+          CORE_WEB_ADMIN_USERNAME: ${{ secrets.CORE_WEB_ADMIN_USERNAME }}
+          CORE_WEB_ADMIN_PASSWORD: ${{ secrets.CORE_WEB_ADMIN_PASSWORD }}
+          DELIVERY_PROJECT_NAME: npp-delivery
+          DELIVERY_ROOT_DIRECTORY: delivery/web
+          DELIVERY_DOMAIN: log.nguyenlieuhungphat.com
+          CORE_HEROKU_APP_NAME: hung-phat
+          CORE_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
+          MCP_PROJECT_ID: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
+          ADMIN_PROJECT_ID: prj_0hp2A8WyUW4zgglShPTzL70hesVC
+          WEBSITE_PROJECT_ID: prj_rXqH83GFDHuEGUcQrrv82JBPWnjU
+        run: bash delivery/web/scripts/deploy-production.sh
+
+      - name: Final production smoke
+        id: smoke
+        shell: bash
+        env:
+          CORE_WEB_ADMIN_USERNAME: ${{ secrets.CORE_WEB_ADMIN_USERNAME }}
+          CORE_WEB_ADMIN_PASSWORD: ${{ secrets.CORE_WEB_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          auth="${CORE_WEB_ADMIN_USERNAME}:${CORE_WEB_ADMIN_PASSWORD}"
+
+          smoke_status() {
+            local url="$1" expected="$2" actual
+            actual="$(curl --silent --show-error --retry 8 --retry-delay 5 --connect-timeout 5 --max-time 20 --output /dev/null --write-out '%{http_code}' "$url")"
+            test "$actual" = "$expected"
+          }
+
+          smoke_auth() {
+            local url="$1" actual
+            actual="$(curl --silent --show-error --retry 8 --retry-delay 5 --connect-timeout 5 --max-time 20 -u "$auth" --output /dev/null --write-out '%{http_code}' "$url")"
+            test "$actual" = 200
+          }
+
+          smoke_status https://hung-phat-945da1547594.herokuapp.com/health/live 200
+          smoke_status https://hung-phat-945da1547594.herokuapp.com/health/ready 200
+          smoke_auth "$NPP_URL/dashboard"
+          smoke_auth "$NPP_URL/logistics/trips"
+          smoke_auth "$NPP_URL/logistics/dispatch"
+          smoke_auth "$ADMIN_URL/"
+
+          delivery_unauth="$(curl --silent --show-error --retry 12 --retry-delay 5 --connect-timeout 5 --max-time 20 --output /dev/null --write-out '%{http_code}' "$DELIVERY_URL/")"
+          test "$delivery_unauth" = 401
+          delivery_auth="$(DELIVERY_USERS_JSON="$DELIVERY_WEB_USERS_JSON" node --input-type=module <<'NODE'
+          const [user] = JSON.parse(process.env.DELIVERY_USERS_JSON || '[]');
+          if (!user?.username || !user?.password) process.exit(1);
+          process.stdout.write(`${user.username}:${user.password}`);
+          NODE
+          )"
+          echo "::add-mask::$delivery_auth"
+          delivery_html="$(curl --fail --silent --show-error --retry 12 --retry-delay 5 --connect-timeout 5 --max-time 20 -u "$delivery_auth" "$DELIVERY_URL/")"
+          grep -q 'Chuyến của tôi' <<<"$delivery_html"
+          grep -qv 'Không tải được chuyến' <<<"$delivery_html"
+          css_asset="$(printf '%s' "$delivery_html" | grep -oE '/_next/static/[^" ]+\.css' | head -n 1)"
+          js_asset="$(printf '%s' "$delivery_html" | grep -oE '/_next/static/[^" ]+\.js' | head -n 1)"
+          test -n "$css_asset"
+          test -n "$js_asset"
+          curl --fail --silent --show-error "$DELIVERY_URL$css_asset" >/dev/null
+          curl --fail --silent --show-error "$DELIVERY_URL$js_asset" >/dev/null
+
+      - name: Publish rollout evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          DELIVERY_PROJECT_ID: ${{ steps.delivery.outputs.project_id }}
+          DELIVERY_DEPLOYMENT_URL: ${{ steps.delivery.outputs.deployment_url }}
+        run: |
+          set -euo pipefail
+          body="$(cat <<EOT
+          ## Phase 6D/6E production rollout — ${OPERATION_STATUS}
+
+          - SOURCE_SHA: ${SOURCE_SHA}
+          - DATABASE_MIGRATIONS_042_048: ${{ steps.migrate.outcome }}
+          - CORE_BACKEND: ${{ steps.deploy_existing.outcome }}
+          - NPP_OPERATIONS: ${{ steps.deploy_existing.outcome }}
+          - ADMIN_MCP_NPP: ${{ steps.deploy_existing.outcome }}
+          - DELIVERY_PROJECT_ID: ${DELIVERY_PROJECT_ID}
+          - DELIVERY_DEPLOYMENT_URL: ${DELIVERY_DEPLOYMENT_URL}
+          - DELIVERY_DOMAIN: ${DELIVERY_URL}
+          - FINAL_SMOKE: ${{ steps.smoke.outcome }}
+          - GITHUB_RUN_ID: ${GITHUB_RUN_ID}
+          EOT
+          )"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/248/comments" -f body="$body" >/dev/null
+          if [ "$OPERATION_STATUS" = success ]; then
+            gh issue close 248 --reason completed >/dev/null
+          fi
