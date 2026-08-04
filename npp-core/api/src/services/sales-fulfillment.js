@@ -25,6 +25,11 @@ function warehouseAllowed(requestContext, warehouseId) {
     && requestContext.scopes.warehouseIds.includes(warehouseId);
 }
 
+function canReadFulfillment(requestContext) {
+  return Array.isArray(requestContext?.permissions)
+    && requestContext.permissions.includes('core.fulfillment.read');
+}
+
 function mapProjection(projection) {
   const lines = projection.lines.map((line) => Object.freeze({
     id: line.id,
@@ -172,6 +177,7 @@ export async function loadSalesOrderFulfillment(client, {
   requestContext,
   salesOrderId,
 }) {
+  if (!canReadFulfillment(requestContext)) return null;
   const projection = await repository.loadFulfillmentProjection(client, {
     installationId: requestContext.installationId,
     salesOrderId,
@@ -332,4 +338,5 @@ export const salesFulfillmentInternals = Object.freeze({
   normalizeInputRows,
   fulfillmentStatus,
   allocateWarehouseDemand,
+  canReadFulfillment,
 });
