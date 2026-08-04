@@ -79,7 +79,7 @@ test('full and zero reservation states are explicit', () => {
 });
 
 test('migration 042 owns warehouse demand without stealing lot allocation from Phase 6D.2', async () => {
-  const migration = await read('../../../database/migrations/sales/042_sales_fulfillment_reservation_demand.sql');
+  const migration = await read('../../database/migrations/sales/042_sales_fulfillment_reservation_demand.sql');
 
   assert.match(migration, /ADD COLUMN IF NOT EXISTS allow_backorder boolean NOT NULL DEFAULT true/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS sales\.sales_order_fulfillment_demands/);
@@ -94,10 +94,10 @@ test('migration 042 owns warehouse demand without stealing lot allocation from P
 
 test('confirmation, amendment replacement and cancellation stay in the Sales Order transaction', async () => {
   const [service, fulfillmentRepository, reservationRepository, migrations] = await Promise.all([
-    read('../src/services/sales-order.js'),
-    read('../src/db/repositories/sales-fulfillment.js'),
-    read('../src/db/repositories/inventory-reservations.js'),
-    read('../src/migrations/index.js'),
+    read('src/services/sales-order.js'),
+    read('src/db/repositories/sales-fulfillment.js'),
+    read('src/db/repositories/inventory-reservations.js'),
+    read('src/migrations/index.js'),
   ]);
 
   const confirmPosition = service.indexOf('await legacy.confirmSalesOrder');
