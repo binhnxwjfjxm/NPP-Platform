@@ -301,3 +301,30 @@ DROP TRIGGER IF EXISTS delivery_trips_transition_shape_guard ON logistics.delive
 CREATE TRIGGER delivery_trips_transition_shape_guard
 BEFORE UPDATE ON logistics.delivery_trips
 FOR EACH ROW EXECUTE FUNCTION logistics.guard_trip_transition_shape();
+
+CREATE OR REPLACE FUNCTION logistics.guard_dispatched_trip_issue_reversal()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF OLD.status = 'POSTED' AND NEW.status = 'REVERSED' AND EXISTS (
+    SELECT 1
+      FROM logistics.trip_dispatch_items dispatch_item
+      JOIN logistics.delivery_trips trip
+        ON trip.installation_id = dispatch_item.installation_id
+       AND trip.id = dispatch_item.trip_id
+     WHERE dispatch_item.installation_id = OLD.installation_id
+       AND dispatch_item.inventory_issue_id = OLD.id
+       AND trip.status = 'dispatched'
+  ) THEN
+    RAISE EXCEPTION 'logistics_dispatched_trip_issue_reversal_requires_trip_recovery';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS delivery_issue_dispatched_trip_reversal_guard
+  ON sales.delivery_order_inventory_issues;
+CREATE TRIGGER delivery_issue_dispatched_trip_reversal_guard
+BEFORE UPDATE OF status ON sales.delivery_order_inventory_issues
+FOR EACH ROW EXECUTE FUNCTION logistics.guard_dispatched_trip_issue_reversal();
