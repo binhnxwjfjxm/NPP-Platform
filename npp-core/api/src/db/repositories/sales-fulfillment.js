@@ -190,7 +190,6 @@ export async function updateSalesOrderFulfillmentStatus(client, {
   const result = await client.query(
     `UPDATE sales.sales_orders
         SET fulfillment_status = $3,
-            revision = revision + 1,
             updated_at = now(),
             updated_by = $4
       WHERE installation_id = $1
