@@ -84,6 +84,10 @@ test('Phase 6D.2 migrations lock exact reservation, monotonic progress and opera
     new URL('../../../database/migrations/sales/044_sales_fulfillment_allocation_operation_idempotency.sql', import.meta.url),
     'utf8',
   );
+  const projectionSql = readFileSync(
+    new URL('../../../database/migrations/sales/045_sales_fulfillment_allocation_projection_policy.sql', import.meta.url),
+    'utf8',
+  );
   const registry = readFileSync(new URL('../src/migrations/index.js', import.meta.url), 'utf8');
 
   assert.match(allocationSql, /sales_order_fulfillment_allocations/);
@@ -94,8 +98,12 @@ test('Phase 6D.2 migrations lock exact reservation, monotonic progress and opera
   assert.match(allocationSql, /core\.fulfillment\.override-allocation-policy/);
   assert.match(operationSql, /operation_idempotency_key/);
   assert.match(operationSql, /sales_fulfillment_allocation_operation_key_is_immutable/);
+  assert.match(projectionSql, /TG_OP = 'INSERT'/);
+  assert.match(projectionSql, /sum\(demand\.backordered_base_quantity\) = 0/);
+  assert.match(projectionSql, /sales_order_fulfillment_allocations_scope_idx/);
   assert.match(registry, /043_sales_fulfillment_allocation_pick_pack/);
   assert.match(registry, /044_sales_fulfillment_allocation_operation_idempotency/);
+  assert.match(registry, /045_sales_fulfillment_allocation_projection_policy/);
 });
 
 test('warehouse API routes and NPP navigation keep fulfillment inside Inventory', () => {
@@ -113,5 +121,5 @@ test('warehouse API routes and NPP navigation keep fulfillment inside Inventory'
   assert.match(workspace, /Phân bổ phần còn lại/);
   assert.match(workspace, /Soạn/);
   assert.match(workspace, /Đóng gói/);
-  assert.doesNotMatch(workspace, /tài xế|chuyến xe|POD|COD/i);
+  assert.doesNotMatch(workspace, /tài xế|chuyến xe|\bPOD\b|\bCOD\b/i);
 });
