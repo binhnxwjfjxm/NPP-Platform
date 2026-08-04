@@ -89,8 +89,7 @@ try {
 
   const userResult = await pool.query(`
     SELECT e.id::text AS employee_id,
-           COALESCE(NULLIF(to_jsonb(e)->>'full_name', ''), NULLIF(to_jsonb(e)->>'name', ''), dp.name, 'Tài xế') AS display_name,
-           true AS driver_ready
+           COALESCE(NULLIF(to_jsonb(e)->>'full_name', ''), NULLIF(to_jsonb(e)->>'name', ''), dp.name, 'Tài xế') AS display_name
       FROM logistics.driver_profiles dp
       JOIN shared.employees e
         ON e.installation_id = dp.installation_id
@@ -101,13 +100,13 @@ try {
      ORDER BY e.id
      LIMIT 1
   `);
-  if (!userResult.rows.length) throw new Error('no_active_driver_profile_for_delivery_bootstrap');
+  const user = userResult.rows[0] || null;
 
   process.stdout.write(JSON.stringify({
     warehouseIds: warehouseResult.rows.map((row) => row.id),
-    employeeId: userResult.rows[0].employee_id,
-    displayName: userResult.rows[0].display_name,
-    driverReady: Boolean(userResult.rows[0].driver_ready),
+    employeeId: user?.employee_id || null,
+    displayName: user?.display_name || null,
+    driverReady: Boolean(user),
   }));
 } finally {
   await pool.end();
@@ -115,17 +114,30 @@ try {
 NODE
 
 warehouse_ids="$(jq -r '.warehouseIds | join(",")' "$bootstrap_json")"
-employee_id="$(jq -r '.employeeId' "$bootstrap_json")"
-display_name="$(jq -r '.displayName' "$bootstrap_json")"
+employee_id="$(jq -r '.employeeId // empty' "$bootstrap_json")"
+display_name="$(jq -r '.displayName // empty' "$bootstrap_json")"
 driver_ready="$(jq -r '.driverReady' "$bootstrap_json")"
 test -n "$warehouse_ids"
-test -n "$employee_id"
 
 users_json="${SECRET_DELIVERY_WEB_USERS_JSON:-}"
 auth_source="delivery-secret"
-if [ -z "$users_json" ]; then
+setup_mode=false
+setup_username=""
+setup_password=""
+
+if [ "$driver_ready" != true ]; then
   test -n "${CORE_WEB_ADMIN_USERNAME:-}"
   test -n "${CORE_WEB_ADMIN_PASSWORD:-}"
+  setup_mode=true
+  setup_username="$CORE_WEB_ADMIN_USERNAME"
+  setup_password="$CORE_WEB_ADMIN_PASSWORD"
+  users_json=""
+  auth_source="core-web-setup"
+elif [ -z "$users_json" ]; then
+  test -n "${CORE_WEB_ADMIN_USERNAME:-}"
+  test -n "${CORE_WEB_ADMIN_PASSWORD:-}"
+  test -n "$employee_id"
+  test -n "$display_name"
   users_json="$(
     USERNAME="$CORE_WEB_ADMIN_USERNAME" PASSWORD="$CORE_WEB_ADMIN_PASSWORD" \
     EMPLOYEE_ID="$employee_id" DISPLAY_NAME="$display_name" \
@@ -142,7 +154,15 @@ NODE
   auth_source="core-web-bootstrap"
 fi
 
-DELIVERY_USERS_JSON="$users_json" node --input-type=module <<'NODE'
+if [ "$setup_mode" = true ]; then
+  SETUP_USERNAME="$setup_username" SETUP_PASSWORD="$setup_password" node --input-type=module <<'NODE'
+const username = String(process.env.SETUP_USERNAME || '');
+const password = String(process.env.SETUP_PASSWORD || '');
+if (!/^[A-Za-z0-9._-]{2,80}$/.test(username)) throw new Error('invalid_delivery_setup_username');
+if (password.length < 12) throw new Error('invalid_delivery_setup_password');
+NODE
+else
+  DELIVERY_USERS_JSON="$users_json" node --input-type=module <<'NODE'
 const users = JSON.parse(process.env.DELIVERY_USERS_JSON || 'null');
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 if (!Array.isArray(users) || users.length < 1 || users.length > 500) throw new Error('invalid_delivery_users');
@@ -160,11 +180,20 @@ for (const user of users) {
   employeeIds.add(employeeId);
 }
 NODE
+fi
 
-echo "::add-mask::$users_json"
+for secret in "$users_json" "$setup_username" "$setup_password"; do
+  [ -n "$secret" ] && echo "::add-mask::$secret"
+done
 write_env CORE_API_INTERNAL_URL "$core_url"
 write_env DELIVERY_CORE_API_TOKEN "$delivery_token"
-write_env DELIVERY_WEB_USERS_JSON "$users_json"
+write_env DELIVERY_SETUP_MODE "$setup_mode"
+if [ "$setup_mode" = true ]; then
+  write_env DELIVERY_SETUP_USERNAME "$setup_username"
+  write_env DELIVERY_SETUP_PASSWORD "$setup_password"
+else
+  write_env DELIVERY_WEB_USERS_JSON "$users_json"
+fi
 write_env DELIVERY_FRONTEND_WAREHOUSE_IDS "$warehouse_ids"
 
 core_payload="$(jq -n \
@@ -218,12 +247,23 @@ if (config.git?.deploymentEnabled !== false) throw new Error('delivery_auto_depl
 NODE
 
 DELIVERY_PROJECT_ID="$project_id" node --input-type=module <<'NODE'
+const setupMode = process.env.DELIVERY_SETUP_MODE === 'true';
 const values = {
   CORE_API_INTERNAL_URL: process.env.CORE_API_INTERNAL_URL,
   DELIVERY_CORE_API_TOKEN: process.env.DELIVERY_CORE_API_TOKEN,
-  DELIVERY_WEB_USERS_JSON: process.env.DELIVERY_WEB_USERS_JSON,
+  DELIVERY_SETUP_MODE: process.env.DELIVERY_SETUP_MODE,
   NEXT_PUBLIC_APP_LOGO_URL: '/logo-transparent.png',
+  ...(setupMode
+    ? {
+        DELIVERY_SETUP_USERNAME: process.env.DELIVERY_SETUP_USERNAME,
+        DELIVERY_SETUP_PASSWORD: process.env.DELIVERY_SETUP_PASSWORD,
+      }
+    : { DELIVERY_WEB_USERS_JSON: process.env.DELIVERY_WEB_USERS_JSON }),
 };
+const missing = Object.entries(values)
+  .filter(([, value]) => !String(value || '').trim())
+  .map(([key]) => key);
+if (missing.length) throw new Error(`missing_delivery_environment_values:${missing.join(',')}`);
 const response = await fetch(`https://api.vercel.com/v10/projects/${process.env.DELIVERY_PROJECT_ID}/env?teamId=${process.env.VERCEL_ORG_ID}&upsert=true`, {
   method: 'POST',
   headers: { Authorization: `Bearer ${process.env.VERCEL_TOKEN}`, 'Content-Type': 'application/json' },
@@ -268,27 +308,38 @@ test -n "$deployment_url"
 
 unauth="$(curl --silent --show-error --retry 5 --retry-delay 4 --output /dev/null --write-out '%{http_code}' "$deployment_url/")"
 test "$unauth" = 401
-auth="$(DELIVERY_USERS_JSON="$users_json" node --input-type=module <<'NODE'
+
+if [ "$setup_mode" = true ]; then
+  auth="${setup_username}:${setup_password}"
+  echo "::add-mask::$auth"
+  html="$(curl --fail --silent --show-error --retry 5 --retry-delay 4 -u "$auth" "$deployment_url/")"
+  grep -q 'Ứng dụng Giao hàng' <<<"$html"
+  grep -q 'Chưa có hồ sơ tài xế đang hoạt động' <<<"$html"
+  grep -qv 'Không tải được chuyến' <<<"$html"
+else
+  auth="$(DELIVERY_USERS_JSON="$users_json" node --input-type=module <<'NODE'
 const [user] = JSON.parse(process.env.DELIVERY_USERS_JSON);
 process.stdout.write(`${user.username}:${user.password}`);
 NODE
 )"
-echo "::add-mask::$auth"
-selected_employee_id="$(DELIVERY_USERS_JSON="$users_json" node --input-type=module <<'NODE'
+  echo "::add-mask::$auth"
+  selected_employee_id="$(DELIVERY_USERS_JSON="$users_json" node --input-type=module <<'NODE'
 const [user] = JSON.parse(process.env.DELIVERY_USERS_JSON);
 process.stdout.write(user.employeeId);
 NODE
 )"
-api_body="${RUNNER_TEMP}/delivery-driver-api.json"
-curl --fail --silent --show-error --retry 5 --retry-delay 4 \
-  -H "Authorization: Bearer $delivery_token" \
-  -H "x-npp-delivery-employee-id: $selected_employee_id" \
-  -H "x-request-id: delivery-production-smoke-${GITHUB_RUN_ID:-local}" \
-  "$core_url/api/logistics/driver/trips?limit=1&offset=0" > "$api_body"
-jq -e '.data.items | type == "array"' "$api_body" >/dev/null
-html="$(curl --fail --silent --show-error --retry 5 --retry-delay 4 -u "$auth" "$deployment_url/")"
-grep -q 'Chuyến của tôi' <<<"$html"
-grep -qv 'Không tải được chuyến' <<<"$html"
+  api_body="${RUNNER_TEMP}/delivery-driver-api.json"
+  curl --fail --silent --show-error --retry 5 --retry-delay 4 \
+    -H "Authorization: Bearer $delivery_token" \
+    -H "x-npp-delivery-employee-id: $selected_employee_id" \
+    -H "x-request-id: delivery-production-smoke-${GITHUB_RUN_ID:-local}" \
+    "$core_url/api/logistics/driver/trips?limit=1&offset=0" > "$api_body"
+  jq -e '.data.items | type == "array"' "$api_body" >/dev/null
+  html="$(curl --fail --silent --show-error --retry 5 --retry-delay 4 -u "$auth" "$deployment_url/")"
+  grep -q 'Chuyến của tôi' <<<"$html"
+  grep -qv 'Không tải được chuyến' <<<"$html"
+fi
+
 css_asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.css' | head -n 1)"
 js_asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.js' | head -n 1)"
 test -n "$css_asset"
@@ -306,4 +357,5 @@ case "$domain_status" in 200|401) domain_ready=true ;; esac
   echo "domain_ready=$domain_ready"
   echo "auth_source=$auth_source"
   echo "driver_ready=$driver_ready"
+  echo "setup_mode=$setup_mode"
 } >> "$GITHUB_OUTPUT"
