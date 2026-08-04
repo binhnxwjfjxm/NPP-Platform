@@ -17,6 +17,7 @@ const LOGISTICS_BOOTSTRAP_PERMISSIONS = Object.freeze([
   PERMISSIONS.coreDeliveryTripPlan,
   PERMISSIONS.coreDeliveryTripAssign,
   PERMISSIONS.coreDeliveryTripLock,
+  PERMISSIONS.coreDeliveryTripDispatch,
 ]);
 
 function withLogisticsBootstrapPermissions(principal) {
