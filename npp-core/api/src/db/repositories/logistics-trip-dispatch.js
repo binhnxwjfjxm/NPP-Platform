@@ -135,6 +135,30 @@ export async function markTripDispatched(client, values) {
   return result.rows[0] ?? null;
 }
 
+export async function insertDispatchTripEvent(client, values) {
+  const result = await client.query(
+    `INSERT INTO logistics.trip_events (
+       id, installation_id, trip_id, event_type, idempotency_key,
+       payload_hash, actor_id, request_id, source_app, reason,
+       metadata, occurred_at
+     ) VALUES ($1,$2,$3,'DISPATCHED',$4,$5,$6,$7,$8,NULL,$9,$10)
+     RETURNING *`,
+    [
+      values.id,
+      values.installationId,
+      values.tripId,
+      values.idempotencyKey,
+      values.payloadHash,
+      values.actorId,
+      values.requestId,
+      values.sourceApp,
+      values.metadata,
+      values.occurredAt,
+    ],
+  );
+  return result.rows[0];
+}
+
 export async function listDispatchItems(client, { installationId, tripId }) {
   const result = await client.query(
     `SELECT item.*,
