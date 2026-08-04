@@ -46,7 +46,8 @@ function closeServer(server) {
   return new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
 }
 
-async function fetchJson(response) {
+async function fetchJson(responseOrPromise) {
+  const response = await responseOrPromise;
   const body = await response.json();
   return { response, body };
 }
@@ -230,7 +231,7 @@ function salesOrderPayload(master) {
 }
 
 async function createReadyDeliveryOrder(baseUrl, config, master) {
-  const created = await fetchJson(await fetch(`${baseUrl}/api/sales-orders`, {
+  const created = await fetchJson(fetch(`${baseUrl}/api/sales-orders`, {
     method: 'POST',
     headers: authHeaders(config, `sales-create-${randomUUID()}`),
     body: JSON.stringify(salesOrderPayload(master)),
@@ -238,20 +239,20 @@ async function createReadyDeliveryOrder(baseUrl, config, master) {
   assert.equal(created.response.status, 201, JSON.stringify(created.body));
   const salesOrderId = created.body.data.id;
 
-  const confirmed = await fetchJson(await fetch(`${baseUrl}/api/sales-orders/${salesOrderId}/confirm`, {
+  const confirmed = await fetchJson(fetch(`${baseUrl}/api/sales-orders/${salesOrderId}/confirm`, {
     method: 'POST',
     headers: authHeaders(config, `sales-confirm-${randomUUID()}`),
     body: JSON.stringify({}),
   }));
   assert.equal(confirmed.response.status, 200, JSON.stringify(confirmed.body));
 
-  const work = await fetchJson(await fetch(`${baseUrl}/api/inventory/fulfillment-work`, {
+  const work = await fetchJson(fetch(`${baseUrl}/api/inventory/fulfillment-work`, {
     headers: authHeaders(config, null, false),
   }));
   const demand = work.body.data.find((item) => item.salesOrderId === salesOrderId);
   assert.ok(demand, JSON.stringify(work.body));
 
-  const allocated = await fetchJson(await fetch(
+  const allocated = await fetchJson(fetch(
     `${baseUrl}/api/inventory/fulfillment-demands/${demand.fulfillmentDemandId}/allocate`,
     {
       method: 'POST',
@@ -262,7 +263,7 @@ async function createReadyDeliveryOrder(baseUrl, config, master) {
   assert.equal(allocated.response.status, 201, JSON.stringify(allocated.body));
   const allocation = allocated.body.data.allocation.allocations[0];
 
-  const picked = await fetchJson(await fetch(
+  const picked = await fetchJson(fetch(
     `${baseUrl}/api/inventory/fulfillment-allocations/${allocation.id}/pick`,
     {
       method: 'POST',
@@ -272,7 +273,7 @@ async function createReadyDeliveryOrder(baseUrl, config, master) {
   ));
   assert.equal(picked.response.status, 201, JSON.stringify(picked.body));
 
-  const packed = await fetchJson(await fetch(
+  const packed = await fetchJson(fetch(
     `${baseUrl}/api/inventory/fulfillment-allocations/${allocation.id}/pack`,
     {
       method: 'POST',
@@ -282,14 +283,14 @@ async function createReadyDeliveryOrder(baseUrl, config, master) {
   ));
   assert.equal(packed.response.status, 201, JSON.stringify(packed.body));
 
-  const eligibility = await fetchJson(await fetch(
+  const eligibility = await fetchJson(fetch(
     `${baseUrl}/api/delivery-orders/eligibility?salesOrderId=${salesOrderId}`,
     { headers: authHeaders(config, null, false) },
   ));
   assert.equal(eligibility.response.status, 200, JSON.stringify(eligibility.body));
   assert.equal(eligibility.body.data[0].handoverMode, 'DELIVERY');
 
-  const delivery = await fetchJson(await fetch(`${baseUrl}/api/delivery-orders`, {
+  const delivery = await fetchJson(fetch(`${baseUrl}/api/delivery-orders`, {
     method: 'POST',
     headers: authHeaders(config, `delivery-create-${randomUUID()}`),
     body: JSON.stringify({
@@ -302,7 +303,7 @@ async function createReadyDeliveryOrder(baseUrl, config, master) {
   assert.equal(delivery.response.status, 201, JSON.stringify(delivery.body));
   const deliveryOrderId = delivery.body.data.deliveryOrder.id;
 
-  const ready = await fetchJson(await fetch(`${baseUrl}/api/delivery-orders/${deliveryOrderId}/confirm`, {
+  const ready = await fetchJson(fetch(`${baseUrl}/api/delivery-orders/${deliveryOrderId}/confirm`, {
     method: 'POST',
     headers: authHeaders(config, `delivery-confirm-${randomUUID()}`),
     body: JSON.stringify({}),
@@ -313,7 +314,7 @@ async function createReadyDeliveryOrder(baseUrl, config, master) {
 }
 
 async function createMaster(baseUrl, config, resource, body) {
-  const result = await fetchJson(await fetch(`${baseUrl}/api/logistics/${resource}`, {
+  const result = await fetchJson(fetch(`${baseUrl}/api/logistics/${resource}`, {
     method: 'POST',
     headers: authHeaders(config, `${resource}-${randomUUID()}`),
     body: JSON.stringify(body),
@@ -323,7 +324,7 @@ async function createMaster(baseUrl, config, resource, body) {
 }
 
 async function createTrip(baseUrl, config, payload, key = `trip-${randomUUID()}`) {
-  return fetchJson(await fetch(`${baseUrl}/api/logistics/trips`, {
+  return fetchJson(fetch(`${baseUrl}/api/logistics/trips`, {
     method: 'POST',
     headers: authHeaders(config, key),
     body: JSON.stringify(payload),
@@ -391,13 +392,13 @@ test('Phase 6E.1 prevents concurrent double assignment and locks the winning pla
     assert.equal(winner.body.data.trip.stops.length, 1);
     assert.equal(winner.body.data.trip.stops[0].assignments[0].deliveryOrderId, deliveryOrderId);
 
-    const eligible = await fetchJson(await fetch(`${baseUrl}/api/logistics/eligible-delivery-orders`, {
+    const eligible = await fetchJson(fetch(`${baseUrl}/api/logistics/eligible-delivery-orders`, {
       headers: authHeaders(config, null, false),
     }));
     assert.equal(eligible.response.status, 200, JSON.stringify(eligible.body));
     assert.equal(eligible.body.data.length, 0);
 
-    const planned = await fetchJson(await fetch(`${baseUrl}/api/logistics/trips/${winningTripId}/plan`, {
+    const planned = await fetchJson(fetch(`${baseUrl}/api/logistics/trips/${winningTripId}/plan`, {
       method: 'POST',
       headers: authHeaders(config, `plan-${randomUUID()}`),
       body: JSON.stringify({}),
@@ -405,7 +406,7 @@ test('Phase 6E.1 prevents concurrent double assignment and locks the winning pla
     assert.equal(planned.response.status, 200, JSON.stringify(planned.body));
     assert.equal(planned.body.data.trip.status, 'planned');
 
-    const locked = await fetchJson(await fetch(`${baseUrl}/api/logistics/trips/${winningTripId}/lock`, {
+    const locked = await fetchJson(fetch(`${baseUrl}/api/logistics/trips/${winningTripId}/lock`, {
       method: 'POST',
       headers: authHeaders(config, `lock-${randomUUID()}`),
       body: JSON.stringify({}),
@@ -413,7 +414,7 @@ test('Phase 6E.1 prevents concurrent double assignment and locks the winning pla
     assert.equal(locked.response.status, 200, JSON.stringify(locked.body));
     assert.equal(locked.body.data.trip.status, 'locked');
 
-    const lockedUpdate = await fetchJson(await fetch(`${baseUrl}/api/logistics/trips/${winningTripId}`, {
+    const lockedUpdate = await fetchJson(fetch(`${baseUrl}/api/logistics/trips/${winningTripId}`, {
       method: 'PUT',
       headers: authHeaders(config, `update-locked-${randomUUID()}`),
       body: JSON.stringify({ ...payload, note: 'Không được sửa' }),
