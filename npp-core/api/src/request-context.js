@@ -23,6 +23,7 @@ const LOGISTICS_BOOTSTRAP_PERMISSIONS = Object.freeze([
   PERMISSIONS.coreDeliveryTripLock,
   PERMISSIONS.coreDeliveryTripDispatch,
   PERMISSIONS.coreDeliveryTripDriverRead,
+  PERMISSIONS.coreDeliveryAttemptRead,
 ]);
 
 function withLogisticsBootstrapPermissions(principal) {
@@ -36,12 +37,27 @@ function withLogisticsBootstrapPermissions(principal) {
   });
 }
 
+function withDeliveryAttemptPermissions(principal) {
+  if (!principal || !Array.isArray(principal.roles) || !principal.roles.includes('driver')) return principal;
+  return Object.freeze({
+    ...principal,
+    permissions: Object.freeze([...new Set([
+      ...(Array.isArray(principal.permissions) ? principal.permissions : []),
+      PERMISSIONS.coreDeliveryAttemptRead,
+      PERMISSIONS.coreDeliveryAttemptRecord,
+    ])]),
+  });
+}
+
 export const createAnonymousPrincipal = base.createAnonymousPrincipal;
 export const createMcpOnboardingPrincipal = base.createMcpOnboardingPrincipal;
 export const createMcpSalesPrincipal = base.createMcpSalesPrincipal;
-export const createDeliveryFrontendPrincipal = base.createDeliveryFrontendPrincipal;
 export const createRequestContext = base.createRequestContext;
 export const safeRequestContext = base.safeRequestContext;
+
+export function createDeliveryFrontendPrincipal(config, employeeId) {
+  return withDeliveryAttemptPermissions(base.createDeliveryFrontendPrincipal(config, employeeId));
+}
 
 export function createBootstrapPrincipal(config) {
   return withLogisticsBootstrapPermissions(base.createBootstrapPrincipal(config));
@@ -52,7 +68,7 @@ export function authenticateRequest(req, config) {
   if (!result.ok) return result;
   return Object.freeze({
     ...result,
-    principal: withLogisticsBootstrapPermissions(result.principal),
+    principal: withDeliveryAttemptPermissions(withLogisticsBootstrapPermissions(result.principal)),
   });
 }
 
