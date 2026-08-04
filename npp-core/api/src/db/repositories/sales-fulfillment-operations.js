@@ -416,9 +416,11 @@ export async function getAllocationForUpdate(client, { installationId, allocatio
       JOIN sales.sales_order_fulfillment_demands demand
         ON demand.installation_id = allocation.installation_id
        AND demand.id = allocation.fulfillment_demand_id
+       AND demand.state = 'ACTIVE'
       JOIN sales.sales_orders orders
         ON orders.installation_id = allocation.installation_id
        AND orders.id = allocation.sales_order_id
+       AND orders.status = 'confirmed'
       JOIN sales.sales_order_versions version
         ON version.installation_id = allocation.installation_id
        AND version.id = allocation.sales_order_version_id
