@@ -1,5 +1,6 @@
 import { handleInventoryRoutes as handleInventoryCoreRoutes } from './inventory-core.js';
 import { handleLogisticsRoutes } from './logistics.js';
+import { handleLogisticsAttemptRoutes } from './logistics-attempts.js';
 import { handleLogisticsDispatchRoutes } from './logistics-dispatch.js';
 import { handleLogisticsDriverRoutes } from './logistics-driver.js';
 
@@ -10,6 +11,9 @@ export async function handleInventoryRoutes(req, res, options) {
   if (pathname === '/api/logistics/driver/trips'
       || pathname.startsWith('/api/logistics/driver/trips/')) {
     return handleLogisticsDriverRoutes(req, res, options);
+  }
+  if (/^\/api\/logistics\/trips\/[^/]+\/attempts$/.test(pathname)) {
+    return handleLogisticsAttemptRoutes(req, res, options);
   }
   if (/^\/api\/logistics\/trips\/[^/]+\/dispatch$/.test(pathname)) {
     return handleLogisticsDispatchRoutes(req, res, options);
