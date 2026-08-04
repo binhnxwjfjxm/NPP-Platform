@@ -1,0 +1,109 @@
+name: Manual Vercel Delivery production deploy
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vercel-delivery-production-manual
+  cancel-in-progress: false
+
+jobs:
+  deploy-delivery-production:
+    if: >-
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/deploy-vercel-delivery-production' &&
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DEPLOY_REF: main
+      VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      DELIVERY_PROJECT_NAME: npp-delivery
+      DELIVERY_ROOT_DIRECTORY: delivery/web
+      DELIVERY_DOMAIN: log.nguyenlieuhungphat.com
+      CORE_HEROKU_APP_NAME: hung-phat
+      CORE_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
+      MCP_PROJECT_ID: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
+      ADMIN_PROJECT_ID: prj_0hp2A8WyUW4zgglShPTzL70hesVC
+      WEBSITE_PROJECT_ID: prj_rXqH83GFDHuEGUcQrrv82JBPWnjU
+
+    steps:
+      - name: Validate exact issue command
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: test "${COMMENT_BODY:-}" = '/deploy-vercel-delivery-production'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install locked repository dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Validate Delivery production guard
+        run: |
+          bash -n delivery/web/scripts/deploy-production.sh
+          node --test delivery/web/test/delivery-production-workflow.test.mjs
+
+      - name: Create, configure and deploy Delivery production
+        id: delivery
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          SECRET_DELIVERY_WEB_USERS_JSON: ${{ secrets.DELIVERY_WEB_USERS_JSON }}
+          CORE_WEB_ADMIN_USERNAME: ${{ secrets.CORE_WEB_ADMIN_USERNAME }}
+          CORE_WEB_ADMIN_PASSWORD: ${{ secrets.CORE_WEB_ADMIN_PASSWORD }}
+        run: bash delivery/web/scripts/deploy-production.sh
+
+      - name: Publish sanitized Delivery rollout evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          body="$(cat <<EOT
+          ## Delivery production rollout — ${OPERATION_STATUS}
+
+          - SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          - PROJECT_ID: ${{ steps.delivery.outputs.project_id }}
+          - PROJECT_NAME: ${DELIVERY_PROJECT_NAME}
+          - ROOT_DIRECTORY: ${DELIVERY_ROOT_DIRECTORY}
+          - DEPLOYMENT_URL: ${{ steps.delivery.outputs.deployment_url }}
+          - DOMAIN: ${DELIVERY_DOMAIN}
+          - DOMAIN_READY: ${{ steps.delivery.outputs.domain_ready }}
+          - AUTH_SOURCE: ${{ steps.delivery.outputs.auth_source }}
+          - DRIVER_PROFILE_READY: ${{ steps.delivery.outputs.driver_ready }}
+          - AUTO_DEPLOY: OFF
+          - GITHUB_RUN_ID: ${GITHUB_RUN_ID}
+          EOT
+          )"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/248/comments" -f body="$body" >/dev/null
