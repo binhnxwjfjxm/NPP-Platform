@@ -1,0 +1,239 @@
+name: Resume Admin and Delivery production rollout
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: resume-admin-delivery-production-rollout
+  cancel-in-progress: false
+
+jobs:
+  rollout:
+    if: >-
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/resume-admin-delivery-production-rollout' &&
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DEPLOY_REF: main
+      VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      ADMIN_PROJECT_ID: prj_0hp2A8WyUW4zgglShPTzL70hesVC
+      DELIVERY_PROJECT_NAME: npp-delivery
+      DELIVERY_ROOT_DIRECTORY: delivery/web
+      DELIVERY_DOMAIN: log.nguyenlieuhungphat.com
+      CORE_HEROKU_APP_NAME: hung-phat
+      CORE_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
+      MCP_PROJECT_ID: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
+      WEBSITE_PROJECT_ID: prj_rXqH83GFDHuEGUcQrrv82JBPWnjU
+      CORE_URL: https://hung-phat-945da1547594.herokuapp.com
+      NPP_URL: https://office.nguyenlieuhungphat.com
+      ADMIN_URL: https://admin.nguyenlieuhungphat.com
+      DELIVERY_URL: https://log.nguyenlieuhungphat.com
+
+    steps:
+      - name: Validate exact Issue #5 command
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: test "${COMMENT_BODY:-}" = '/resume-admin-delivery-production-rollout'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Validate provider credentials
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$VERCEL_TOKEN"
+          test -n "$HEROKU_API_KEY"
+          echo "::add-mask::$VERCEL_TOKEN"
+          echo "::add-mask::$HEROKU_API_KEY"
+
+      - name: Link exact Admin project
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ env.ADMIN_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p .vercel
+          printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
+          npx --yes vercel@58.5.1 pull --yes --environment=production --token="$VERCEL_TOKEN" >/dev/null
+          test "$(node -e "process.stdout.write(require('./.vercel/project.json').projectId)")" = "$ADMIN_PROJECT_ID"
+          test "$(node -e "process.stdout.write(require('./admin/web/vercel.json').git.deploymentEnabled === false ? 'off' : 'on')")" = off
+
+      - name: Verify Admin source
+        working-directory: admin/web
+        run: |
+          npm install --no-audit --no-fund
+          npm run verify
+
+      - name: Build and deploy Admin production
+        id: admin
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ env.ADMIN_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes vercel@58.5.1 build --prod --token="$VERCEL_TOKEN"
+          url="$(npx --yes vercel@58.5.1 deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+          test -n "$url"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke Admin deployment
+        shell: bash
+        env:
+          DEPLOYMENT_URL: ${{ steps.admin.outputs.url }}
+          ADMIN_USERNAME: ${{ secrets.CORE_WEB_ADMIN_USERNAME }}
+          ADMIN_PASSWORD: ${{ secrets.CORE_WEB_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$ADMIN_USERNAME"
+          test -n "$ADMIN_PASSWORD"
+          unauth="$(curl --silent --show-error --retry 5 --retry-delay 4 --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/")"
+          test "$unauth" = 401
+          auth="${ADMIN_USERNAME}:${ADMIN_PASSWORD}"
+          for path in / /customer-onboarding; do
+            code="$(curl --silent --show-error --retry 5 --retry-delay 4 -u "$auth" --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL$path")"
+            test "$code" = 200
+          done
+          html="$(curl --fail --silent --show-error -u "$auth" "$DEPLOYMENT_URL/")"
+          asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.(css|js)' | head -n 1)"
+          test -n "$asset"
+          curl --fail --silent --show-error -u "$auth" "$DEPLOYMENT_URL$asset" >/dev/null
+
+      - name: Resolve or create fifth Delivery project
+        id: delivery_project
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          body="${RUNNER_TEMP}/delivery-project.json"
+          status="$(curl --silent --show-error --output "$body" --write-out '%{http_code}' \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v9/projects/$DELIVERY_PROJECT_NAME?teamId=$VERCEL_ORG_ID")"
+          if [ "$status" = 404 ]; then
+            payload="$(node -e 'process.stdout.write(JSON.stringify({name:process.env.DELIVERY_PROJECT_NAME,framework:"nextjs",rootDirectory:process.env.DELIVERY_ROOT_DIRECTORY}))')"
+            status="$(curl --silent --show-error --output "$body" --write-out '%{http_code}' \
+              -X POST \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H 'Content-Type: application/json' \
+              "https://api.vercel.com/v11/projects?teamId=$VERCEL_ORG_ID" \
+              --data "$payload")"
+          fi
+          case "$status" in 200|201) ;; *) cat "$body" >&2; exit 1 ;; esac
+          project_id="$(node -e "const p=require(process.argv[1]); if(!p.id) process.exit(1); process.stdout.write(p.id)" "$body")"
+          for forbidden in "$CORE_PROJECT_ID" "$MCP_PROJECT_ID" "$ADMIN_PROJECT_ID" "$WEBSITE_PROJECT_ID"; do
+            test "$project_id" != "$forbidden"
+          done
+          echo "project_id=$project_id" >> "$GITHUB_OUTPUT"
+          echo "VERCEL_PROJECT_ID=$project_id" >> "$GITHUB_ENV"
+
+      - name: Create, configure and deploy Delivery production
+        id: delivery
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          SECRET_DELIVERY_WEB_USERS_JSON: ${{ secrets.DELIVERY_WEB_USERS_JSON }}
+          CORE_WEB_ADMIN_USERNAME: ${{ secrets.CORE_WEB_ADMIN_USERNAME }}
+          CORE_WEB_ADMIN_PASSWORD: ${{ secrets.CORE_WEB_ADMIN_PASSWORD }}
+        run: bash delivery/web/scripts/deploy-production.sh
+
+      - name: Final production smoke
+        shell: bash
+        env:
+          ADMIN_USERNAME: ${{ secrets.CORE_WEB_ADMIN_USERNAME }}
+          ADMIN_PASSWORD: ${{ secrets.CORE_WEB_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for path in /health/live /health/ready; do
+            code="$(curl --silent --show-error --retry 5 --retry-delay 4 --output /dev/null --write-out '%{http_code}' "$CORE_URL$path")"
+            test "$code" = 200
+          done
+          code="$(curl --silent --show-error --retry 5 --retry-delay 4 --output /dev/null --write-out '%{http_code}' "$NPP_URL/login")"
+          test "$code" = 200
+          auth="${ADMIN_USERNAME}:${ADMIN_PASSWORD}"
+          for url in "$ADMIN_URL/" "$DELIVERY_URL/"; do
+            code="$(curl --silent --show-error --retry 5 --retry-delay 4 -u "$auth" --output /dev/null --write-out '%{http_code}' "$url")"
+            test "$code" = 200
+          done
+
+      - name: Publish rollout evidence and close Issue 248
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          body="$(cat <<EOT
+          ## Phase 6D/6E production rollout — completed
+
+          - SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          - DATABASE_MIGRATIONS_042_048: already applied and verified in prior guarded run
+          - CORE_BACKEND: deployed and smoke verified
+          - NPP_OPERATIONS: deployed and smoke verified
+          - ADMIN_MCP_NPP: deployed and smoke verified
+          - DELIVERY_PROJECT_ID: ${{ steps.delivery_project.outputs.project_id }}
+          - DELIVERY_DEPLOYMENT_URL: ${{ steps.delivery.outputs.deployment_url }}
+          - DELIVERY_DOMAIN: https://${DELIVERY_DOMAIN}
+          - DELIVERY_DOMAIN_READY: ${{ steps.delivery.outputs.domain_ready }}
+          - AUTO_DEPLOY: OFF
+          - MCP_FIELD_AND_BACKEND: not redeployed; no related runtime diff
+          - WEBSITE: not redeployed; separate repository and no related runtime diff
+          - FINAL_SMOKE: success
+          - GITHUB_RUN_ID: ${GITHUB_RUN_ID}
+          EOT
+          )"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/248/comments" -f body="$body" >/dev/null
+          gh issue close 248 --reason completed >/dev/null
+
+      - name: Publish sanitized failure evidence
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          body="$(cat <<EOT
+          ## Admin/Delivery production rollout recovery — failed
+
+          - SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          - ADMIN_DEPLOYMENT_URL: ${{ steps.admin.outputs.url }}
+          - DELIVERY_PROJECT_ID: ${{ steps.delivery_project.outputs.project_id }}
+          - DELIVERY_DEPLOYMENT_URL: ${{ steps.delivery.outputs.deployment_url }}
+          - GITHUB_RUN_ID: ${GITHUB_RUN_ID}
+
+          No secret values are included.
+          EOT
+          )"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/248/comments" -f body="$body" >/dev/null
