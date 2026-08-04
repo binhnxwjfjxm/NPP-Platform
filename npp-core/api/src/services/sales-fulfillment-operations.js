@@ -283,8 +283,8 @@ function buildManualPlan(payload, candidates, requestContext, remaining) {
     `${candidate.locationId ?? '<null>'}:${candidate.lotId ?? '<null>'}`,
     candidate,
   ]));
+  const requestedByScope = new Map();
   let requested = 0n;
-  const plan = [];
   for (let index = 0; index < payload.allocations.length; index += 1) {
     const input = payload.allocations[index] ?? {};
     const key = `${input.locationId ?? '<null>'}:${input.lotId ?? '<null>'}`;
@@ -293,23 +293,33 @@ function buildManualPlan(payload, candidates, requestContext, remaining) {
       return failure('ALLOCATION_SCOPE_NOT_AVAILABLE', 'Manual location/lot is unavailable', false, { line: index + 1 });
     }
     const quantity = parseQuantity(input.quantity);
-    const available = parseQuantity(candidate.availableBaseQuantity);
-    if (quantity === null || quantity <= 0n || quantity > available) {
-      return failure('INVALID_ALLOCATION_QUANTITY', 'Manual allocation quantity exceeds available stock', false, { line: index + 1 });
+    if (quantity === null || quantity <= 0n) {
+      return failure('INVALID_ALLOCATION_QUANTITY', 'Manual allocation quantity must be positive', false, { line: index + 1 });
     }
+    const accumulated = (requestedByScope.get(key)?.quantityScaled ?? 0n) + quantity;
+    const available = parseQuantity(candidate.availableBaseQuantity);
+    if (available === null || accumulated > available) {
+      return failure(
+        'INVALID_ALLOCATION_QUANTITY',
+        'Cumulative manual allocation quantity exceeds available stock',
+        false,
+        { line: index + 1 },
+      );
+    }
+    requestedByScope.set(key, Object.freeze({ candidate, quantityScaled: accumulated }));
     requested += quantity;
     if (requested > remaining) {
       return failure('ALLOCATION_EXCEEDS_RESERVED_DEMAND', 'Allocation exceeds remaining reserved demand');
     }
-    plan.push(Object.freeze({
-      locationId: candidate.locationId,
-      lotId: candidate.lotId,
-      allocationPolicy: 'MANUAL',
-      policyRank: candidate.rank,
-      manualOverrideReason: reason,
-      quantityScaled: quantity,
-    }));
   }
+  const plan = [...requestedByScope.values()].map(({ candidate, quantityScaled }) => Object.freeze({
+    locationId: candidate.locationId,
+    lotId: candidate.lotId,
+    allocationPolicy: 'MANUAL',
+    policyRank: candidate.rank,
+    manualOverrideReason: reason,
+    quantityScaled,
+  }));
   return Object.freeze({ ok: true, plan: Object.freeze(plan), reason });
 }
 
@@ -359,13 +369,30 @@ export async function executeAllocateFulfillmentDemand({
         operationIdempotencyKey: idempotencyKey,
       });
       if (replayRows.length > 0) {
-        if (replayRows.some((row) => row.payload_hash !== hash)) {
+        if (
+          replayRows.some((row) => row.payload_hash !== hash)
+          || replayRows.some((row) => row.fulfillment_demand_id !== demandId)
+        ) {
           return { failed: failure('IDEMPOTENCY_PAYLOAD_MISMATCH', 'Idempotency key was used with another allocation payload') };
         }
+        const replayDemand = await repository.getActiveDemandForUpdate(client, {
+          installationId: requestContext.installationId,
+          demandId,
+        });
+        if (!replayDemand || replayDemand.sales_order_status !== 'confirmed') {
+          return { failed: failure('FULFILLMENT_DEMAND_NOT_FOUND', 'Active confirmed fulfillment demand was not found') };
+        }
+        if (!warehouseAllowed(requestContext, replayDemand.warehouse_id)) {
+          return { failed: failure('WAREHOUSE_SCOPE_DENIED', 'Fulfillment demand is outside the authorized warehouse scope') };
+        }
+        const replayAllocationRows = await repository.listDemandAllocations(client, {
+          installationId: requestContext.installationId,
+          demandId,
+        });
         return Object.freeze({
           ok: true,
           replayed: true,
-          allocation: Object.freeze({ allocations: Object.freeze(replayRows.map(mapAllocation)) }),
+          allocation: allocationSnapshot(replayDemand, replayAllocationRows.map(mapAllocation)),
         });
       }
 
@@ -586,6 +613,12 @@ async function executeProgress({
           installationId: requestContext.installationId,
           allocationId,
         });
+        if (!replayAllocation) {
+          return { failed: failure('FULFILLMENT_ALLOCATION_NOT_FOUND', 'Active fulfillment allocation was not found') };
+        }
+        if (!warehouseAllowed(requestContext, replayAllocation.warehouse_id)) {
+          return { failed: failure('WAREHOUSE_SCOPE_DENIED', 'Allocation is outside the authorized warehouse scope') };
+        }
         return Object.freeze({ ok: true, replayed: true, allocation: mapAllocation(replayAllocation) });
       }
 
@@ -593,7 +626,7 @@ async function executeProgress({
         installationId: requestContext.installationId,
         allocationId,
       });
-      if (!allocation) return { failed: failure('FULFILLMENT_ALLOCATION_NOT_FOUND', 'Fulfillment allocation was not found') };
+      if (!allocation) return { failed: failure('FULFILLMENT_ALLOCATION_NOT_FOUND', 'Active fulfillment allocation was not found') };
       if (!warehouseAllowed(requestContext, allocation.warehouse_id)) {
         return { failed: failure('WAREHOUSE_SCOPE_DENIED', 'Allocation is outside the authorized warehouse scope') };
       }
