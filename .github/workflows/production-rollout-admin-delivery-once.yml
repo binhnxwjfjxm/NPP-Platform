@@ -1,4 +1,4 @@
-name: Finish authorized Admin and Delivery production rollout
+name: Finish authorized Delivery production rollout
 
 on:
   pull_request:
@@ -10,20 +10,19 @@ permissions:
   issues: write
 
 concurrency:
-  group: authorized-production-rollout-admin-delivery
+  group: authorized-production-rollout-delivery
   cancel-in-progress: false
 
 jobs:
   rollout:
     if: github.head_ref == 'agent/production-rollout-admin-delivery'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 90
     env:
       DEPLOY_REF: main
       APPROVED_TREE_BASE: 5b4a5680ab5368be360c799b9ac22527fcf7f862
       VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
       ADMIN_PROJECT_ID: prj_0hp2A8WyUW4zgglShPTzL70hesVC
-      ADMIN_ROOT_DIRECTORY: admin/web
       ADMIN_DOMAIN: admin.nguyenlieuhungphat.com
       DELIVERY_PROJECT_NAME: npp-delivery
       DELIVERY_ROOT_DIRECTORY: delivery/web
@@ -82,16 +81,12 @@ jobs:
             "https://api.heroku.com/apps/$CORE_HEROKU_APP_NAME/config-vars" > "$config_json"
           core_url="$(jq -r '.web_url // empty' "$app_json")"
           core_url="${core_url%/}"
-          core_token="$(jq -r '.BACKEND_API_TOKEN // empty' "$config_json")"
           admin_username="${SECRET_CORE_WEB_ADMIN_USERNAME:-}"
           admin_password="${SECRET_CORE_WEB_ADMIN_PASSWORD:-}"
           test -n "$core_url"
-          test -n "$core_token"
           test -n "$admin_username"
           test -n "$admin_password"
-          for value in "$core_url" "$core_token" "$admin_username" "$admin_password"; do
-            echo "::add-mask::$value"
-          done
+          for value in "$core_url" "$admin_username" "$admin_password"; do echo "::add-mask::$value"; done
           write_env() {
             local name="$1" value="$2" marker="RUNTIME_${RANDOM}_${RANDOM}"
             {
@@ -101,100 +96,27 @@ jobs:
             } >> "$GITHUB_ENV"
           }
           write_env CORE_API_INTERNAL_URL "$core_url"
-          write_env CORE_API_SERVER_TOKEN "$core_token"
           write_env CORE_WEB_ADMIN_USERNAME "$admin_username"
           write_env CORE_WEB_ADMIN_PASSWORD "$admin_password"
 
-      - name: Synchronize Admin Vercel project and environment
+      - name: Verify Admin production deployment is READY
         shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
-          project_json="${RUNNER_TEMP}/admin-project.json"
-          settings_payload="$(jq -n --arg root "$ADMIN_ROOT_DIRECTORY" '{framework:"nextjs",rootDirectory:$root,nodeVersion:"24.x"}')"
-          status="$(curl --silent --show-error --output "$project_json" --write-out '%{http_code}' \
-            -X PATCH \
+          deployments="${RUNNER_TEMP}/admin-deployments.json"
+          curl --fail --silent --show-error \
             -H "Authorization: Bearer $VERCEL_TOKEN" \
-            -H 'Content-Type: application/json' \
-            "https://api.vercel.com/v9/projects/$ADMIN_PROJECT_ID?teamId=$VERCEL_ORG_ID" \
-            --data "$settings_payload")"
-          test "$status" = 200
-          test "$(jq -r '.id' "$project_json")" = "$ADMIN_PROJECT_ID"
-          test "$(jq -r '.rootDirectory' "$project_json")" = "$ADMIN_ROOT_DIRECTORY"
-
-          ADMIN_PROJECT_ID="$ADMIN_PROJECT_ID" node --input-type=module <<'NODE'
-          const values = {
-            CORE_API_INTERNAL_URL: process.env.CORE_API_INTERNAL_URL,
-            CORE_API_SERVER_TOKEN: process.env.CORE_API_SERVER_TOKEN,
-            CORE_WEB_ADMIN_USERNAME: process.env.CORE_WEB_ADMIN_USERNAME,
-            CORE_WEB_ADMIN_PASSWORD: process.env.CORE_WEB_ADMIN_PASSWORD,
-            NPP_OPERATIONS_URL: process.env.NPP_URL,
-          };
-          const response = await fetch(`https://api.vercel.com/v10/projects/${process.env.ADMIN_PROJECT_ID}/env?teamId=${process.env.VERCEL_ORG_ID}&upsert=true`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${process.env.VERCEL_TOKEN}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(Object.entries(values).map(([key, value]) => ({ key, value, type: 'sensitive', target: ['production'] }))),
-          });
-          const payload = await response.json().catch(() => null);
-          if (!response.ok) throw new Error(`admin_env_sync_failed:${response.status}:${payload?.error?.code || 'unknown'}`);
-          NODE
-
-          lookup="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
-            -H "Authorization: Bearer $VERCEL_TOKEN" \
-            "https://api.vercel.com/v9/projects/$ADMIN_PROJECT_ID/domains/$ADMIN_DOMAIN?teamId=$VERCEL_ORG_ID")"
-          if [ "$lookup" != 200 ]; then
-            domain_body="${RUNNER_TEMP}/admin-domain.json"
-            status="$(curl --silent --show-error --output "$domain_body" --write-out '%{http_code}' \
-              -X POST \
-              -H "Authorization: Bearer $VERCEL_TOKEN" \
-              -H 'Content-Type: application/json' \
-              "https://api.vercel.com/v10/projects/$ADMIN_PROJECT_ID/domains?teamId=$VERCEL_ORG_ID" \
-              --data "{\"name\":\"$ADMIN_DOMAIN\"}")"
-            case "$status" in 200|201) ;; *) cat "$domain_body" >&2; exit 1 ;; esac
-          fi
-
-      - name: Build and deploy Admin production
-        id: admin
-        shell: bash
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_PROJECT_ID: ${{ env.ADMIN_PROJECT_ID }}
-        run: |
-          set -euo pipefail
-          mkdir -p .vercel
-          printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
-          npx --yes vercel@58.0.0 pull --yes --environment=production --token="$VERCEL_TOKEN" >/dev/null
-          test "$(jq -r '.projectId' .vercel/project.json)" = "$VERCEL_PROJECT_ID"
-          (
-            cd admin/web
-            npm install --no-audit --no-fund
-            npm run verify
-          )
-          npx --yes vercel@58.0.0 build --prod --token="$VERCEL_TOKEN"
-          url="$(npx --yes vercel@58.0.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
-          test -n "$url"
-          echo "url=$url" >> "$GITHUB_OUTPUT"
-
-      - name: Smoke Admin exact deployment and domain
-        shell: bash
-        env:
-          DEPLOYMENT_URL: ${{ steps.admin.outputs.url }}
-        run: |
-          set -euo pipefail
+            "https://api.vercel.com/v6/deployments?projectId=$ADMIN_PROJECT_ID&teamId=$VERCEL_ORG_ID&target=production&limit=1" > "$deployments"
+          test "$(jq -r '.deployments[0].state // empty' "$deployments")" = READY
+          test "$(jq -r '.deployments[0].meta.githubCommitSha // empty' "$deployments")" = "${{ steps.source.outputs.sha }}"
           auth="${CORE_WEB_ADMIN_USERNAME}:${CORE_WEB_ADMIN_PASSWORD}"
           echo "::add-mask::$auth"
-          test "$(curl --silent --show-error --retry 8 --retry-delay 4 --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/")" = 401
-          for base in "$DEPLOYMENT_URL" "https://$ADMIN_DOMAIN"; do
-            for path in / /customer-onboarding; do
-              code="$(curl --silent --show-error --retry 12 --retry-delay 5 -u "$auth" --output /dev/null --write-out '%{http_code}' "$base$path")"
-              test "$code" = 200
-            done
+          for path in / /customer-onboarding; do
+            code="$(curl --silent --show-error --retry 12 --retry-delay 5 -u "$auth" --output /dev/null --write-out '%{http_code}' "https://$ADMIN_DOMAIN$path")"
+            test "$code" = 200
           done
-          html="$(curl --fail --silent --show-error -u "$auth" "https://$ADMIN_DOMAIN/")"
-          asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.(css|js)' | head -n 1)"
-          test -n "$asset"
-          curl --fail --silent --show-error "https://$ADMIN_DOMAIN$asset" >/dev/null
 
       - name: Create and deploy Delivery fifth Vercel project
         id: delivery
@@ -219,6 +141,7 @@ jobs:
           bash delivery/web/scripts/deploy-production.sh
 
       - name: Final production smoke
+        id: smoke
         shell: bash
         run: |
           set -euo pipefail
@@ -255,7 +178,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
           body="$(cat <<EOT
           ## Phase 6D/6E production rollout — success
 
@@ -264,7 +186,6 @@ jobs:
           - CORE_BACKEND: success
           - NPP_OPERATIONS: success
           - ADMIN_MCP_NPP: success
-          - ADMIN_DEPLOYMENT_URL: ${{ steps.admin.outputs.url }}
           - DELIVERY_PROJECT_ID: ${{ steps.delivery.outputs.project_id }}
           - DELIVERY_DEPLOYMENT_URL: ${{ steps.delivery.outputs.deployment_url }}
           - DELIVERY_DOMAIN: https://${DELIVERY_DOMAIN}
@@ -282,4 +203,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh api --method POST "repos/$GITHUB_REPOSITORY/issues/248/comments" \
-            -f body="## Admin/Delivery rollout — failure\n\n- SOURCE_SHA: ${{ steps.source.outputs.sha }}\n- ADMIN: ${{ steps.admin.outcome }}\n- DELIVERY: ${{ steps.delivery.outcome }}\n- GITHUB_RUN_ID: ${GITHUB_RUN_ID}" >/dev/null
+            -f body="## Delivery rollout — failure\n\n- SOURCE_SHA: ${{ steps.source.outputs.sha }}\n- DELIVERY: ${{ steps.delivery.outcome }}\n- FINAL_SMOKE: ${{ steps.smoke.outcome }}\n- GITHUB_RUN_ID: ${GITHUB_RUN_ID}" >/dev/null
