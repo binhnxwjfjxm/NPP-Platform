@@ -207,7 +207,14 @@ export async function listAllocationCandidates(client, {
        AND balance.warehouse_id = $2
        AND balance.base_variant_id = $3
        AND balance.available_quantity > 0
-       AND (balance.location_id IS NULL OR location.is_active = true)
+       AND (
+         (balance.location_id IS NULL AND COALESCE(policy.location_required, false) = false)
+         OR (
+           balance.location_id IS NOT NULL
+           AND location.is_active = true
+           AND location.location_type = 'storage'
+         )
+       )
        AND (
          COALESCE(policy.lot_tracking_mode, 'NONE') = 'NONE'
          OR balance.lot_id IS NOT NULL
