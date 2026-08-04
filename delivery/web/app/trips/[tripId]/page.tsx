@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
-import { authenticateDeliveryUser } from '../../../lib/delivery-auth';
+import { authenticateDeliveryUser, deliverySetupPending } from '../../../lib/delivery-auth';
 import { getMyTrip } from '../../../lib/core-api';
 import { formatAddress, formatDateTime, safeErrorMessage } from '../../../lib/presentation';
 
@@ -9,6 +9,18 @@ export const dynamic = 'force-dynamic';
 type PageProps = Readonly<{ params: { tripId: string } }>;
 
 export default async function TripDetailPage({ params }: PageProps) {
+  if (deliverySetupPending()) {
+    return (
+      <main className="pageShell">
+        <Link className="backLink" href="/">← Ứng dụng Giao hàng</Link>
+        <section className="stateCard">
+          <strong>Chưa mở dữ liệu chuyến</strong>
+          <p>Ứng dụng đang chờ hồ sơ tài xế thật được tạo và liên kết với nhân viên.</p>
+        </section>
+      </main>
+    );
+  }
+
   const user = authenticateDeliveryUser(headers().get('authorization'));
   if (!user) {
     return (
