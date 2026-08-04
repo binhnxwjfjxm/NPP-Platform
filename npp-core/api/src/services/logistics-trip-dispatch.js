@@ -15,7 +15,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const QUANTITY_PATTERN = /^(0|[1-9]\d{0,17})(?:\.(\d{1,12}))?$/;
 const SCALE = 1_000_000_000_000n;
-const DELIVERY_TRIP_DISPATCH = 'DELIVERY_TRIP_DISPATCH';
+const LOGISTICS_DISPATCH = 'LOGISTICS_DISPATCH';
 
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
@@ -202,7 +202,7 @@ function issueSnapshot({ issueId, assignment, dispatchId, movementResult, dispat
     warehouseId: assignment.warehouse_id,
     handoverMode: assignment.handover_mode,
     deliveryOrderStatus: 'dispatched',
-    issueSourceType: DELIVERY_TRIP_DISPATCH,
+    issueSourceType: LOGISTICS_DISPATCH,
     issueSourceId: dispatchId,
     status: 'POSTED',
     inventoryMovementId: movementResult.movement.id,
@@ -241,7 +241,7 @@ async function issueDeliveryOrderInTransaction(client, {
   const issueIdempotencyKey = issueKeyFor(idempotencyKey, deliveryOrderId);
   const canonicalPayload = Object.freeze({
     deliveryOrderId,
-    issueSourceType: DELIVERY_TRIP_DISPATCH,
+    issueSourceType: LOGISTICS_DISPATCH,
     issueSourceId: dispatchId,
     occurredAt: dispatchedAt,
     receiverName: handoverReceiverName,
@@ -315,7 +315,7 @@ async function issueDeliveryOrderInTransaction(client, {
     id: issueId,
     installationId: requestContext.installationId,
     deliveryOrderId,
-    issueSourceType: DELIVERY_TRIP_DISPATCH,
+    issueSourceType: LOGISTICS_DISPATCH,
     issueSourceId: dispatchId,
     receiverName: handoverReceiverName,
     receiverNote: handoverNote,
@@ -390,7 +390,7 @@ async function issueDeliveryOrderInTransaction(client, {
         deliveryOrderId,
         salesOrderId: header.sales_order_id,
         issueId,
-        issueSourceType: DELIVERY_TRIP_DISPATCH,
+        issueSourceType: LOGISTICS_DISPATCH,
         issueSourceId: dispatchId,
         tripId: trip.id,
         tripNumber: trip.trip_number,
@@ -483,7 +483,7 @@ async function issueDeliveryOrderInTransaction(client, {
     metadata: {
       issueId,
       inventoryMovementId: movementResult.movement.id,
-      issueSourceType: DELIVERY_TRIP_DISPATCH,
+      issueSourceType: LOGISTICS_DISPATCH,
       issueSourceId: dispatchId,
       tripId: trip.id,
       tripNumber: trip.trip_number,
