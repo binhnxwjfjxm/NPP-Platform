@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 const SECRET_KEY_PATTERN = /(?:secret|token|password|passphrase|db_?url|database_?url|connection_?string|api_?key|auth_?token|private_?key)/i;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const MUTATING_SQL_PATTERN = /\b(?:insert\s+into|update\s+|delete\s+from|merge\s+into|truncate\s+|create\s+|alter\s+|drop\s+|grant\s+|revoke\s+)\b/i;
+const MUTATING_SQL_PATTERN = /^(?:insert\s+into|update\s+|delete\s+from|merge\s+into|truncate\s+|create\s+|alter\s+|drop\s+|grant\s+|revoke\s+)/i;
 
 function shouldRedactKey(key) {
   return typeof key === 'string' && SECRET_KEY_PATTERN.test(key);
