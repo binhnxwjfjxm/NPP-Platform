@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS sales.sales_order_fulfillment_allocations (
   picked_base_quantity numeric(30,12) NOT NULL DEFAULT 0 CHECK (picked_base_quantity >= 0),
   packed_base_quantity numeric(30,12) NOT NULL DEFAULT 0 CHECK (packed_base_quantity >= 0),
   state text NOT NULL DEFAULT 'ACTIVE' CHECK (state IN ('ACTIVE', 'COMPLETED')),
+  operation_idempotency_key text NOT NULL
+    CHECK (char_length(operation_idempotency_key) BETWEEN 1 AND 128),
   idempotency_key text NOT NULL CHECK (char_length(idempotency_key) BETWEEN 1 AND 128),
   payload_hash text NOT NULL CHECK (payload_hash ~ '^[0-9a-f]{64}$'),
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -109,12 +111,13 @@ CREATE TABLE IF NOT EXISTS sales.sales_order_fulfillment_allocations (
     ON UPDATE RESTRICT ON DELETE RESTRICT
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS sales_order_fulfillment_allocations_scope_unique
+CREATE INDEX IF NOT EXISTS sales_order_fulfillment_allocations_scope_idx
   ON sales.sales_order_fulfillment_allocations (
-    installation_id,
-    fulfillment_demand_id,
-    COALESCE(location_id, '00000000-0000-0000-0000-000000000000'::uuid),
-    COALESCE(lot_id, '00000000-0000-0000-0000-000000000000'::uuid)
+    installation_id, fulfillment_demand_id, location_id, lot_id, allocation_sequence
+  );
+CREATE INDEX IF NOT EXISTS sales_order_fulfillment_allocations_operation_key_idx
+  ON sales.sales_order_fulfillment_allocations (
+    installation_id, operation_idempotency_key, allocation_sequence
   );
 CREATE INDEX IF NOT EXISTS sales_order_fulfillment_allocations_order_idx
   ON sales.sales_order_fulfillment_allocations (
@@ -247,6 +250,7 @@ BEGIN
      OR NEW.policy_rank IS DISTINCT FROM OLD.policy_rank
      OR NEW.manual_override_reason IS DISTINCT FROM OLD.manual_override_reason
      OR NEW.allocated_base_quantity IS DISTINCT FROM OLD.allocated_base_quantity
+     OR NEW.operation_idempotency_key IS DISTINCT FROM OLD.operation_idempotency_key
      OR NEW.idempotency_key IS DISTINCT FROM OLD.idempotency_key
      OR NEW.payload_hash IS DISTINCT FROM OLD.payload_hash
      OR NEW.created_at IS DISTINCT FROM OLD.created_at
@@ -307,11 +311,24 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   previous_context text := current_setting('npp.sales_fulfillment_write_context', true);
-  target_demand_id uuid := COALESCE(NEW.fulfillment_demand_id, OLD.fulfillment_demand_id);
-  target_order_id uuid := COALESCE(NEW.sales_order_id, OLD.sales_order_id);
-  target_installation_id text := COALESCE(NEW.installation_id, OLD.installation_id);
+  target_demand_id uuid;
+  target_order_id uuid;
+  target_installation_id text;
+  target_actor_id text;
   progress_status text;
 BEGIN
+  IF TG_OP = 'INSERT' THEN
+    target_demand_id := NEW.fulfillment_demand_id;
+    target_order_id := NEW.sales_order_id;
+    target_installation_id := NEW.installation_id;
+    target_actor_id := NEW.updated_by;
+  ELSE
+    target_demand_id := COALESCE(NEW.fulfillment_demand_id, OLD.fulfillment_demand_id);
+    target_order_id := COALESCE(NEW.sales_order_id, OLD.sales_order_id);
+    target_installation_id := COALESCE(NEW.installation_id, OLD.installation_id);
+    target_actor_id := COALESCE(NEW.updated_by, OLD.updated_by);
+  END IF;
+
   PERFORM set_config('npp.sales_fulfillment_write_context', 'fulfillment_service', true);
 
   UPDATE sales.sales_order_fulfillment_demands demand
@@ -319,7 +336,7 @@ BEGIN
          picked_base_quantity = totals.picked_quantity,
          packed_base_quantity = totals.packed_quantity,
          updated_at = now(),
-         updated_by = COALESCE(NEW.updated_by, OLD.updated_by)
+         updated_by = target_actor_id
     FROM (
       SELECT
         COALESCE(sum(allocation.allocated_base_quantity), 0)::numeric(30,12) AS allocated_quantity,
@@ -334,13 +351,16 @@ BEGIN
 
   SELECT CASE
     WHEN sum(demand.packed_base_quantity) = sum(demand.reserved_base_quantity)
-         AND sum(demand.reserved_base_quantity) > 0 THEN 'packed'
+         AND sum(demand.reserved_base_quantity) > 0
+         AND sum(demand.backordered_base_quantity) = 0 THEN 'packed'
     WHEN sum(demand.packed_base_quantity) > 0 THEN 'partially_packed'
     WHEN sum(demand.picked_base_quantity) = sum(demand.reserved_base_quantity)
-         AND sum(demand.reserved_base_quantity) > 0 THEN 'picked'
+         AND sum(demand.reserved_base_quantity) > 0
+         AND sum(demand.backordered_base_quantity) = 0 THEN 'picked'
     WHEN sum(demand.picked_base_quantity) > 0 THEN 'partially_picked'
     WHEN sum(demand.allocated_base_quantity) = sum(demand.reserved_base_quantity)
-         AND sum(demand.reserved_base_quantity) > 0 THEN 'allocated'
+         AND sum(demand.reserved_base_quantity) > 0
+         AND sum(demand.backordered_base_quantity) = 0 THEN 'allocated'
     WHEN sum(demand.allocated_base_quantity) > 0 THEN 'partially_allocated'
     WHEN sum(demand.reserved_base_quantity) = 0 THEN 'backordered'
     WHEN sum(demand.backordered_base_quantity) > 0 THEN 'partially_reserved'
@@ -355,7 +375,7 @@ BEGIN
   UPDATE sales.sales_orders
      SET fulfillment_status = COALESCE(progress_status, fulfillment_status),
          updated_at = now(),
-         updated_by = COALESCE(NEW.updated_by, OLD.updated_by)
+         updated_by = target_actor_id
    WHERE installation_id = target_installation_id
      AND id = target_order_id
      AND status = 'confirmed';
