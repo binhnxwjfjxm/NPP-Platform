@@ -59,6 +59,11 @@ const SALES_DELIVERY_ORDER_HANDOVER_SQL = readFileSync(
   'utf8',
 );
 
+const SALES_INVENTORY_ISSUE_CUSTOMER_RETURN_SQL = readFileSync(
+  new URL('../../../../database/migrations/sales/045_sales_inventory_issue_customer_return.sql', import.meta.url),
+  'utf8',
+);
+
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_033,
   Object.freeze({
@@ -104,6 +109,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '044_sales_delivery_order_handover',
     sql: SALES_DELIVERY_ORDER_HANDOVER_SQL,
+  }),
+  Object.freeze({
+    id: '045_sales_inventory_issue_customer_return',
+    sql: SALES_INVENTORY_ISSUE_CUSTOMER_RETURN_SQL,
   }),
 ]);
 
