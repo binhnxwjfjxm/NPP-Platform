@@ -39,21 +39,27 @@ Mỗi allocation phải:
 - tạo đúng một active inventory reservation;
 - dùng cùng warehouse, location, base variant, lot và quantity với reservation;
 - không làm tổng allocation vượt `reserved_base_quantity`;
-- không chọn location không hoạt động;
+- chỉ dùng location loại `storage` đang hoạt động;
+- không dùng location `receiving`, `shipping`, `quarantine`, `returns`, `damaged` hoặc `other`;
 - không chọn lô đã hết hạn;
 - không chọn tồn khả dụng âm hoặc bằng 0.
+
+Nếu tracking policy bắt buộc location hoặc lot thì allocation thiếu scope tương ứng phải fail closed. Query đề xuất và database trigger cùng thực thi ranh giới này, nên manual/API call không thể bypass bằng cách gửi location cách ly hoặc lô hết hạn.
 
 Allocation và reservation được ghi trong cùng transaction với audit/outbox. Không có public API ghi trực tiếp progress table.
 
 ## 4. FEFO và FIFO
 
-Chính sách lấy hàng dựa trên `inventory.product_tracking_policies`:
+Chính sách lấy hàng dựa trên dữ liệu hạn dùng thực tế và `inventory.product_tracking_policies`:
 
-- `expiry_tracking_mode != NONE`: FEFO, hạn dùng gần nhất trước.
-- Không theo dõi hạn dùng: FIFO theo thời điểm nhập kho sớm nhất có thể truy vết từ inventory ledger.
+- Lô có `expiry_date`: FEFO, hạn dùng gần nhất trước.
+- Lô không có `expiry_date`: FIFO theo thời điểm nhập kho sớm nhất có thể truy vết từ inventory ledger.
+- `expiry_tracking_mode = REQUIRED`: lô thiếu hạn dùng không được allocation.
+- `expiry_tracking_mode = OPTIONAL`: lô có hạn dùng đi theo FEFO; lô không có hạn dùng đi theo FIFO sau nhóm lô có hạn dùng.
+- Bất kỳ lô nào có hạn dùng đã qua đều bị loại, không phụ thuộc tracking mode.
 - Tie-break ổn định: location code, lot code, ID.
 
-Auto allocation luôn dùng thứ tự policy. Manual allocation khác auto plan cần permission `core.fulfillment.override-allocation-policy` và lý do bắt buộc.
+Auto allocation luôn dùng thứ tự policy. Manual allocation khác auto plan cần permission `core.fulfillment.override-allocation-policy` và lý do bắt buộc, nhưng không được vượt qua các chốt storage, lot, expiry, available quantity và warehouse scope.
 
 ## 5. Pick và pack
 
@@ -79,6 +85,8 @@ partially_packed / packed
 
 `packed` chỉ nghĩa là hàng đã đóng gói và sẵn sàng cho Delivery Order. Nó chưa có nghĩa hàng đã rời kho, đã giao hoặc đã thu tiền.
 
+Khi đơn còn backorder, phần đã allocation/pick/pack chỉ tạo trạng thái `partially_*`; không được báo hoàn tất toàn bộ fulfillment.
+
 ## 7. Không thuộc Phase 6D.2
 
 - Delivery Order và `ready_to_dispatch`;
@@ -94,6 +102,8 @@ partially_packed / packed
 - FEFO/FIFO deterministic;
 - manual override permission + reason;
 - warehouse/location/lot scope fail closed;
+- chỉ active storage location được allocation;
+- required expiry và expired-lot rejection;
 - concurrent allocation không vượt reserved demand hoặc available stock;
 - pick/pack monotonic và quantity reconciliation;
 - audit/outbox rollback cùng business mutation;
