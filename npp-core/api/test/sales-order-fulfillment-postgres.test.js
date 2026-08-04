@@ -160,8 +160,9 @@ async function createOrder(baseUrl, config, fixture, quantity) {
     headers: authHeaders(config, `create-${randomUUID()}`),
     body: JSON.stringify(orderPayload(fixture, quantity)),
   });
-  assert.equal(response.status, 201, await response.text());
-  return (await response.json()).data;
+  const body = await response.json();
+  assert.equal(response.status, 201, JSON.stringify(body));
+  return body.data;
 }
 
 async function confirmOrder(baseUrl, config, orderId) {
@@ -195,7 +196,7 @@ test('confirmed orders reserve warehouse demand, prevent oversell and release on
 
     const first = await createOrder(baseUrl, config, fixture, 4);
     const firstConfirm = await confirmOrder(baseUrl, config, first.id);
-    assert.equal(firstConfirm.response.status, 200);
+    assert.equal(firstConfirm.response.status, 200, JSON.stringify(firstConfirm.body));
     assert.equal(firstConfirm.body.data.fulfillmentStatus, 'reserved');
     assert.equal(firstConfirm.body.data.fulfillment.totals.reservedBaseQuantity, '4.000000000000');
     assert.equal(firstConfirm.body.data.fulfillment.totals.backorderedBaseQuantity, '0.000000000000');
@@ -227,7 +228,7 @@ test('confirmed orders reserve warehouse demand, prevent oversell and release on
 
     const second = await createOrder(baseUrl, config, fixture, 3);
     const secondConfirm = await confirmOrder(baseUrl, config, second.id);
-    assert.equal(secondConfirm.response.status, 200);
+    assert.equal(secondConfirm.response.status, 200, JSON.stringify(secondConfirm.body));
     assert.equal(secondConfirm.body.data.fulfillmentStatus, 'partially_reserved');
     assert.equal(secondConfirm.body.data.fulfillment.totals.reservedBaseQuantity, '1.000000000000');
     assert.equal(secondConfirm.body.data.fulfillment.totals.backorderedBaseQuantity, '2.000000000000');
@@ -260,8 +261,9 @@ test('confirmed orders reserve warehouse demand, prevent oversell and release on
       headers: authHeaders(config, `cancel-${randomUUID()}`),
       body: JSON.stringify({ reason: 'Giải phóng hàng kiểm thử' }),
     });
-    assert.equal(cancelResponse.status, 200, await cancelResponse.text());
-    const cancelled = (await cancelResponse.json()).data;
+    const cancelBody = await cancelResponse.json();
+    assert.equal(cancelResponse.status, 200, JSON.stringify(cancelBody));
+    const cancelled = cancelBody.data;
     assert.equal(cancelled.status, 'cancelled');
     assert.equal(cancelled.fulfillmentStatus, 'cancelled');
 
@@ -274,12 +276,12 @@ test('confirmed orders reserve warehouse demand, prevent oversell and release on
     );
     const firstDemand = demandStates.rows.find((row) => row.sales_order_id === first.id);
     const secondDemand = demandStates.rows.find((row) => row.sales_order_id === second.id);
-    assert.equal(firstDemand.state, 'CANCELLED');
-    assert.equal(secondDemand.state, 'ACTIVE');
+    assert.equal(firstDemand?.state, 'CANCELLED');
+    assert.equal(secondDemand?.state, 'ACTIVE');
 
     const released = await createOrder(baseUrl, config, fixture, 4);
     const releasedConfirm = await confirmOrder(baseUrl, config, released.id);
-    assert.equal(releasedConfirm.response.status, 200);
+    assert.equal(releasedConfirm.response.status, 200, JSON.stringify(releasedConfirm.body));
     assert.equal(releasedConfirm.body.data.fulfillmentStatus, 'reserved');
     assert.equal(releasedConfirm.body.data.fulfillment.totals.reservedBaseQuantity, '4.000000000000');
   } finally {
