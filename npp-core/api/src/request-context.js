@@ -115,6 +115,8 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.coreSalesOrderPriceOverride,
       PERMISSIONS.coreSalesOrderDiscountOverride,
       PERMISSIONS.coreSalesOrderCreditOverride,
+      PERMISSIONS.coreFulfillmentRead,
+      PERMISSIONS.coreFulfillmentConfigureBackorder,
       PERMISSIONS.coreCustomerOnboardingRead,
       PERMISSIONS.coreCustomerOnboardingSubmit,
       PERMISSIONS.coreCustomerOnboardingReview,

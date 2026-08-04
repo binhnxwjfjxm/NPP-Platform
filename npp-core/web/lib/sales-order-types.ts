@@ -6,6 +6,16 @@ export type SalesOrderSourceType = 'MANUAL' | 'IMPORT' | 'API' | 'MCP';
 export type SalesOrderCustomerMode = 'EXISTING' | 'WALK_IN';
 export type SalesOrderTaxMode = 'EXCLUSIVE' | 'INCLUSIVE';
 export type SalesOrderDocumentDiscountMode = 'NONE' | 'PERCENT' | 'TOTAL_AMOUNT';
+export type SalesOrderFulfillmentStatus =
+  | 'unallocated'
+  | 'backordered'
+  | 'partially_reserved'
+  | 'reserved'
+  | 'partially_allocated'
+  | 'allocated'
+  | 'partially_fulfilled'
+  | 'fulfilled'
+  | 'cancelled';
 
 export type SalesOrderChannel = {
   id: string;
@@ -108,6 +118,44 @@ export type SalesOrderVersion = {
   lines?: SalesOrderLine[];
 };
 
+export type SalesOrderFulfillmentLine = {
+  id: string;
+  salesOrderVersionId: string;
+  salesOrderLineId: string;
+  lineNumber: number;
+  warehouseId: string;
+  salesVariantId: string;
+  baseVariantId: string;
+  sku: string;
+  orderedBaseQuantity: string;
+  reservedBaseQuantity: string;
+  backorderedBaseQuantity: string;
+  allocatedBaseQuantity: string;
+  pickedBaseQuantity: string;
+  packedBaseQuantity: string;
+  issuedBaseQuantity: string;
+  cancelledBaseQuantity: string;
+  state: 'ACTIVE' | 'SUPERSEDED' | 'CANCELLED' | 'COMPLETED';
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SalesOrderFulfillmentProjection = {
+  status: SalesOrderFulfillmentStatus;
+  allowBackorder: boolean;
+  totals: {
+    orderedBaseQuantity: string;
+    reservedBaseQuantity: string;
+    backorderedBaseQuantity: string;
+    allocatedBaseQuantity: string;
+    pickedBaseQuantity: string;
+    packedBaseQuantity: string;
+    issuedBaseQuantity: string;
+    cancelledBaseQuantity: string;
+  };
+  lines: SalesOrderFulfillmentLine[];
+};
+
 export type SalesOrder = {
   id: string;
   number: string | null;
@@ -131,7 +179,8 @@ export type SalesOrder = {
   salesChannelName: string | null;
   deliveryMode: SalesOrderDeliveryMode;
   collectionPolicy: SalesOrderCollectionPolicy;
-  fulfillmentStatus: string;
+  fulfillmentStatus: SalesOrderFulfillmentStatus;
+  fulfillment?: SalesOrderFulfillmentProjection | null;
   deliveryStatus: string;
   settlementStatus: string;
   currency: 'VND';

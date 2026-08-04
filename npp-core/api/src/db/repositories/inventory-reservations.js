@@ -17,6 +17,10 @@ export async function lockReservationScope(client, {
 }) {
   await client.query(
     'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+    [`sales-fulfillment-scope:${installationId}:${warehouseId}:${baseVariantId}`],
+  );
+  await client.query(
+    'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
     [[
       'inventory-reservation:scope',
       installationId,

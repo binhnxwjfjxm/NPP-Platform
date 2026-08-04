@@ -12,7 +12,10 @@ export const orderLabels: Record<string, string> = {
 };
 
 export const fulfillmentLabels: Record<string, string> = {
-  unallocated: 'Chưa phân bổ hàng',
+  unallocated: 'Chưa tạo nhu cầu giữ hàng',
+  backordered: 'Đang chờ hàng',
+  partially_reserved: 'Đã giữ một phần',
+  reserved: 'Đã giữ đủ hàng',
   partially_allocated: 'Phân bổ một phần',
   allocated: 'Đã phân bổ',
   partially_fulfilled: 'Thực hiện một phần',
@@ -208,6 +211,14 @@ export function formatMoney(value: string | number | null | undefined): string {
   return Number.isFinite(parsed)
     ? new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(parsed)
     : String(value ?? '0');
+}
+
+export function formatQuantity(value: string | null | undefined): string {
+  const normalized = String(value ?? '0').trim();
+  const match = /^(-?\d+)(?:\.(\d+))?$/.exec(normalized);
+  if (!match) return normalized;
+  const fraction = (match[2] ?? '').replace(/0+$/, '');
+  return fraction ? `${match[1]}.${fraction}` : match[1];
 }
 
 export function activeVersion(order: SalesOrder | null): SalesOrderVersion | null {

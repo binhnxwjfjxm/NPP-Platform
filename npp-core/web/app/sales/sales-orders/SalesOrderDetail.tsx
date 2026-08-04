@@ -6,6 +6,7 @@ import {
   collectionLabels,
   deliveryLabels,
   formatMoney,
+  formatQuantity,
   fulfillmentLabels,
   orderLabels,
   pendingVersion,
@@ -47,6 +48,7 @@ export default function SalesOrderDetail(props: Props) {
 
   const current = activeVersion(order);
   const amendment = pendingVersion(order);
+  const fulfillment = order.fulfillment;
   return (
     <section className={styles.detailPanel}>
       <header className={styles.panelHeading}>
@@ -64,6 +66,42 @@ export default function SalesOrderDetail(props: Props) {
         <article><span>Giao hàng</span><strong>{deliveryLabels[order.deliveryStatus] ?? order.deliveryStatus}</strong></article>
         <article><span>Thanh toán</span><strong>{settlementLabels[order.settlementStatus] ?? order.settlementStatus}</strong></article>
       </div>
+
+      {fulfillment && fulfillment.lines.length > 0 && (
+        <article className={styles.versionCard}>
+          <div className={styles.versionHeading}>
+            <div>
+              <h3>Tình trạng giữ hàng</h3>
+              <p>
+                {fulfillmentLabels[fulfillment.status] ?? fulfillment.status}
+                {' · '}
+                {fulfillment.allowBackorder
+                  ? 'Cho phép xác nhận phần còn chờ hàng'
+                  : 'Phải đủ toàn bộ hàng mới được xác nhận'}
+              </p>
+            </div>
+            <strong>{formatQuantity(fulfillment.totals.reservedBaseQuantity)} đã giữ</strong>
+          </div>
+          <div className={styles.moneyGrid}>
+            <span>Nhu cầu quy đổi <b>{formatQuantity(fulfillment.totals.orderedBaseQuantity)}</b></span>
+            <span>Đã giữ <b>{formatQuantity(fulfillment.totals.reservedBaseQuantity)}</b></span>
+            <span>Còn chờ hàng <b>{formatQuantity(fulfillment.totals.backorderedBaseQuantity)}</b></span>
+          </div>
+          <div className={styles.linesTable}>
+            <div className={styles.lineHeader}>
+              <span>SKU</span><span>Nhu cầu</span><span>Đã giữ</span><span>Còn thiếu</span>
+            </div>
+            {fulfillment.lines.map((line) => (
+              <div className={styles.lineRow} key={line.id}>
+                <span><b>{line.sku}</b><small>Dòng đơn {line.lineNumber}</small></span>
+                <span>{formatQuantity(line.orderedBaseQuantity)}</span>
+                <span>{formatQuantity(line.reservedBaseQuantity)}</span>
+                <span>{formatQuantity(line.backorderedBaseQuantity)}</span>
+              </div>
+            ))}
+          </div>
+        </article>
+      )}
 
       {current && (
         <article className={styles.versionCard}>

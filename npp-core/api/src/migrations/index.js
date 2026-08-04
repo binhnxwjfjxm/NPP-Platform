@@ -44,6 +44,11 @@ const CUSTOMER_ONBOARDING_REQUESTS_SQL = readFileSync(
   'utf8',
 );
 
+const SALES_FULFILLMENT_RESERVATION_DEMAND_SQL = readFileSync(
+  new URL('../../../../database/migrations/sales/042_sales_fulfillment_reservation_demand.sql', import.meta.url),
+  'utf8',
+);
+
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_033,
   Object.freeze({
@@ -77,6 +82,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '041_customer_onboarding_requests',
     sql: CUSTOMER_ONBOARDING_REQUESTS_SQL,
+  }),
+  Object.freeze({
+    id: '042_sales_fulfillment_reservation_demand',
+    sql: SALES_FULFILLMENT_RESERVATION_DEMAND_SQL,
   }),
 ]);
 

@@ -1,5 +1,6 @@
 import * as legacy from './sales-order-legacy.js';
 import * as pricingService from './pricing.js';
+import * as fulfillmentService from './sales-fulfillment.js';
 import * as commercialRepository from '../db/repositories/sales-order-commercial.js';
 import {
   allocateLargestRemainder,
@@ -296,15 +297,33 @@ function mergeCommercialFacts(salesOrder, facts) {
   });
 }
 
+function mergeFulfillmentProjection(salesOrder, fulfillment) {
+  if (!salesOrder) return salesOrder;
+  return Object.freeze({
+    ...salesOrder,
+    fulfillmentStatus: fulfillment?.status ?? salesOrder.fulfillmentStatus,
+    fulfillment: fulfillment ?? null,
+  });
+}
+
 async function enrichResult(client, requestContext, result) {
   if (!result?.ok || !result.salesOrder?.id) return result;
-  const facts = await commercialRepository.loadCommercialFacts(client, {
-    installationId: requestContext.installationId,
-    salesOrderId: result.salesOrder.id,
-  });
+  const [facts, fulfillment] = await Promise.all([
+    commercialRepository.loadCommercialFacts(client, {
+      installationId: requestContext.installationId,
+      salesOrderId: result.salesOrder.id,
+    }),
+    fulfillmentService.loadSalesOrderFulfillment(client, {
+      requestContext,
+      salesOrderId: result.salesOrder.id,
+    }),
+  ]);
   return Object.freeze({
     ...result,
-    salesOrder: mergeCommercialFacts(result.salesOrder, facts),
+    salesOrder: mergeFulfillmentProjection(
+      mergeCommercialFacts(result.salesOrder, facts),
+      fulfillment,
+    ),
   });
 }
 
@@ -516,13 +535,23 @@ export async function confirmSalesOrder(client, {
     versionNumber: resolvedVersion,
     idempotencyKey,
   });
+  if (!result.ok) return result;
+  const fulfillment = await fulfillmentService.replaceSalesOrderFulfillmentDemand(client, {
+    requestContext,
+    salesOrderId: id,
+    versionNumber: resolvedVersion,
+  });
+  if (!fulfillment.ok) return fulfillment;
   return enrichResult(client, requestContext, result);
 }
 
 export async function cancelSalesOrder(client, input) {
-  return enrichResult(
-    client,
-    input.requestContext,
-    await legacy.cancelSalesOrder(client, input),
-  );
+  const result = await legacy.cancelSalesOrder(client, input);
+  if (!result.ok) return result;
+  const fulfillment = await fulfillmentService.cancelSalesOrderFulfillmentDemand(client, {
+    requestContext: input.requestContext,
+    salesOrderId: input.id,
+  });
+  if (!fulfillment.ok) return fulfillment;
+  return enrichResult(client, input.requestContext, result);
 }

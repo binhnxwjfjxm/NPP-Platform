@@ -102,9 +102,15 @@ test('Phase 6C.1A validation — Core request requires a stable demand trigger a
   assert.equal(validateSubmission({ ...payload, approvedCustomerId: randomUUID() }).code, 'SUBMISSION_PRIVILEGED_FIELD_FORBIDDEN');
 });
 
-test('Phase 6C.1A migration is registered after 040 and is rerun-safe by construction', () => {
-  const migration = CORE_API_MIGRATIONS.at(-1);
-  assert.equal(migration.id, '041_customer_onboarding_requests');
+test('Phase 6C.1A migration stays after 040 and before later migrations', () => {
+  const commercialIndex = CORE_API_MIGRATIONS.findIndex(({ id }) => id === '040_sales_order_commercial_controls');
+  const onboardingIndex = CORE_API_MIGRATIONS.findIndex(({ id }) => id === '041_customer_onboarding_requests');
+  const fulfillmentIndex = CORE_API_MIGRATIONS.findIndex(({ id }) => id === '042_sales_fulfillment_reservation_demand');
+  assert.ok(commercialIndex >= 0);
+  assert.ok(onboardingIndex > commercialIndex);
+  assert.ok(fulfillmentIndex > onboardingIndex);
+
+  const migration = CORE_API_MIGRATIONS[onboardingIndex];
   assert.match(migration.sql, /CREATE TABLE IF NOT EXISTS sales\.customer_onboarding_requests/);
   assert.match(migration.sql, /ON CONFLICT \(permission_key\) DO UPDATE/);
   assert.match(migration.sql, /customer_onboarding_requests_source_demand_unique/);
