@@ -163,6 +163,14 @@ export function getDeliveryTrip<T>(tripId: string, requestId: string): Promise<T
   return requestLogistics<T>({ path: `/trips/${tripId}`, method: 'GET', requestId });
 }
 
+export function getDeliveryTripAction<T>(tripId: string, action: string, requestId: string): Promise<T> {
+  assertUuid(tripId, 'INVALID_TRIP_ID', 'Mã chuyến giao không hợp lệ');
+  if (action !== 'dispatch') {
+    throw new InventoryGatewayError('INVALID_TRIP_ACTION', 'Thao tác chuyến giao không hợp lệ', 400, false);
+  }
+  return requestLogistics<T>({ path: `/trips/${tripId}/${action}`, method: 'GET', requestId });
+}
+
 export function updateDeliveryTrip<T>(
   tripId: string,
   requestId: string,
@@ -187,7 +195,7 @@ export function transitionDeliveryTrip<T>(
   idempotencyKey: string | null,
 ): Promise<T> {
   assertUuid(tripId, 'INVALID_TRIP_ID', 'Mã chuyến giao không hợp lệ');
-  if (!['assign', 'unassign', 'reorder', 'plan', 'reopen', 'lock'].includes(action)) {
+  if (!['assign', 'unassign', 'reorder', 'plan', 'reopen', 'lock', 'dispatch'].includes(action)) {
     throw new InventoryGatewayError('INVALID_TRIP_ACTION', 'Thao tác chuyến giao không hợp lệ', 400, false);
   }
   return requestLogistics<T>({
