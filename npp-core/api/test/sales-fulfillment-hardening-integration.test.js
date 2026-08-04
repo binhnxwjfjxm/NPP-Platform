@@ -13,7 +13,7 @@ function testEnv() {
   return {
     NODE_ENV: 'test',
     HOST: '127.0.0.1',
-    PORT: '3063',
+    PORT: '3099',
     INSTALLATION_ID: `fulfillment-hardening-${randomUUID()}`,
     DATABASE_URL: process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || 'postgresql://user:password@127.0.0.1:5432/npp_platform',
     DATABASE_SSL_MODE: 'disable',
