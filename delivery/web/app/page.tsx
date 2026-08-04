@@ -1,12 +1,35 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
-import { authenticateDeliveryUser } from '../lib/delivery-auth';
+import { authenticateDeliveryUser, deliverySetupPending } from '../lib/delivery-auth';
 import { listMyTrips } from '../lib/core-api';
 import { formatDateTime, safeErrorMessage } from '../lib/presentation';
 
 export const dynamic = 'force-dynamic';
 
 export default async function DeliveryHomePage() {
+  if (deliverySetupPending()) {
+    return (
+      <main className="pageShell">
+        <header className="appHeader">
+          <div className="brandMark">HP</div>
+          <div>
+            <p className="eyebrow">Hưng Phát Company</p>
+            <h1>Ứng dụng Giao hàng</h1>
+            <p className="welcome">Hệ thống đã được triển khai</p>
+          </div>
+        </header>
+        <section className="stateCard">
+          <strong>Chưa có hồ sơ tài xế đang hoạt động</strong>
+          <p>Tạo hồ sơ tài xế và liên kết đúng nhân viên trong NPP Operations trước khi cấp tài khoản giao hàng.</p>
+        </section>
+        <section className="noticeCard">
+          <strong>Đang ở chế độ chờ cấu hình</strong>
+          <p>Ứng dụng chưa đọc chuyến và không tạo dữ liệu giao hàng giả. Sau khi có tài xế thật, chạy lại rollout Delivery để mở danh sách chuyến.</p>
+        </section>
+      </main>
+    );
+  }
+
   const headerStore = headers();
   const user = authenticateDeliveryUser(headerStore.get('authorization'));
   if (!user) {
