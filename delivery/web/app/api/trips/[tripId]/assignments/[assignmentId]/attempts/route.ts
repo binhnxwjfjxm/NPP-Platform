@@ -5,11 +5,66 @@ import type { RecordDeliveryAttemptPayload } from '../../../../../../../lib/type
 
 export const dynamic = 'force-dynamic';
 
+const MAX_ATTEMPT_BODY_BYTES = 65_536;
+
+class AttemptBodyError extends Error {
+  constructor(
+    readonly code: 'REQUEST_BODY_TOO_LARGE' | 'INVALID_JSON_BODY',
+    readonly status: 400 | 413,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 function errorResponse(code: string, message: string, status: number) {
   return NextResponse.json(
     { error: { code, message, retryable: status >= 500 } },
     { status, headers: { 'Cache-Control': 'no-store' } },
   );
+}
+
+async function readLimitedJson(request: NextRequest): Promise<unknown> {
+  const declaredLength = request.headers.get('content-length');
+  if (declaredLength !== null) {
+    const parsedLength = Number(declaredLength);
+    if (!Number.isSafeInteger(parsedLength) || parsedLength < 0) {
+      throw new AttemptBodyError('INVALID_JSON_BODY', 400, 'Dữ liệu kết quả giao không hợp lệ');
+    }
+    if (parsedLength > MAX_ATTEMPT_BODY_BYTES) {
+      throw new AttemptBodyError('REQUEST_BODY_TOO_LARGE', 413, 'Dữ liệu kết quả giao quá lớn');
+    }
+  }
+
+  if (!request.body) {
+    throw new AttemptBodyError('INVALID_JSON_BODY', 400, 'Dữ liệu kết quả giao không hợp lệ');
+  }
+
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let receivedBytes = 0;
+  let text = '';
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      receivedBytes += chunk.value.byteLength;
+      if (receivedBytes > MAX_ATTEMPT_BODY_BYTES) {
+        await reader.cancel('request_body_too_large').catch(() => {});
+        throw new AttemptBodyError('REQUEST_BODY_TOO_LARGE', 413, 'Dữ liệu kết quả giao quá lớn');
+      }
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+    text += decoder.decode();
+  } finally {
+    reader.releaseLock();
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new AttemptBodyError('INVALID_JSON_BODY', 400, 'Dữ liệu kết quả giao không hợp lệ');
+  }
 }
 
 export async function POST(
@@ -22,15 +77,13 @@ export async function POST(
   const user = authenticateDeliveryUser(request.headers.get('authorization'));
   if (!user) return errorResponse('UNAUTHORIZED', 'Không xác định được tài xế', 401);
 
-  const contentLength = Number(request.headers.get('content-length') || 0);
-  if (!Number.isFinite(contentLength) || contentLength > 65_536) {
-    return errorResponse('REQUEST_BODY_TOO_LARGE', 'Dữ liệu kết quả giao quá lớn', 413);
-  }
-
   let payload: RecordDeliveryAttemptPayload;
   try {
-    payload = await request.json() as RecordDeliveryAttemptPayload;
-  } catch {
+    payload = await readLimitedJson(request) as RecordDeliveryAttemptPayload;
+  } catch (error) {
+    if (error instanceof AttemptBodyError) {
+      return errorResponse(error.code, error.message, error.status);
+    }
     return errorResponse('INVALID_JSON_BODY', 'Dữ liệu kết quả giao không hợp lệ', 400);
   }
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
