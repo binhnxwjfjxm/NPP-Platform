@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fulfillmentOperationInternals } from '../src/services/sales-fulfillment-operations.js';
+import { handleFulfillmentOperationRoutes } from '../src/routes/fulfillment-operations.js';
 
 const {
   parseQuantity,
@@ -9,6 +10,10 @@ const {
   buildAutoPlan,
   buildManualPlan,
 } = fulfillmentOperationInternals;
+
+test('fulfillment route module is loadable', () => {
+  assert.equal(typeof handleFulfillmentOperationRoutes, 'function');
+});
 
 test('quantity helpers keep exact twelve-decimal arithmetic', () => {
   assert.equal(parseQuantity('12.345678901234'), 12345678901234n);
@@ -102,7 +107,7 @@ test('warehouse API routes and NPP navigation keep fulfillment inside Inventory'
   assert.match(inventoryRoutes, /handleFulfillmentOperationRoutes/);
   assert.match(fulfillmentRoutes, /\/api\/inventory\/fulfillment-work/);
   assert.match(fulfillmentRoutes, /\/allocate/);
-  assert.match(fulfillmentRoutes, /\/(pick\|pack)/);
+  assert.match(fulfillmentRoutes, /pick\|pack/);
   assert.match(shell, /href: '\/inventory\/fulfillment', label: 'Chuẩn bị hàng'/);
   assert.match(shell, /testId: 'nav-inventory-fulfillment'/);
   assert.match(workspace, /Phân bổ phần còn lại/);
