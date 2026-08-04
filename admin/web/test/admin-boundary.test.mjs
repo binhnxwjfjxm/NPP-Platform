@@ -69,7 +69,7 @@ test('admin only shows aggregate data and the management exception boundary', as
   ]);
 });
 
-test('NPP Operations owns daily order confirmation and customer code work', async () => {
+test('NPP Operations owns sales operations and customer code work', async () => {
   const [management, onboarding, review, actionRoute, gateway, middleware, domains] = await Promise.all([
     read('../../npp-core/web/app/management/page.tsx'),
     read('../../npp-core/web/app/management/customer-onboarding/page.tsx'),
@@ -81,8 +81,9 @@ test('NPP Operations owns daily order confirmation and customer code work', asyn
   ]);
 
   assert.doesNotMatch(management, /redirect\(/);
-  assert.match(management, /Công việc hằng ngày của Sales Admin/);
-  assert.match(management, /Đơn chờ xác nhận hằng ngày/);
+  assert.match(management, /Điều hành bán hàng/);
+  assert.match(management, /Đơn chờ xác nhận/);
+  assert.match(management, /các nguồn/);
   assert.match(management, /href="\/sales\/sales-orders"/);
   assert.match(management, /Đề nghị mở hoặc liên kết mã khách/);
   assert.match(management, /href="\/management\/customer-onboarding"/);
