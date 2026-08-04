@@ -8,6 +8,7 @@ const formEntrySource = readFileSync(new URL('../app/sales/sales-orders/SalesOrd
 const formSource = readFileSync(new URL('../app/sales/sales-orders/SalesOrderCommercialForm.tsx', import.meta.url), 'utf8');
 const detailSource = readFileSync(new URL('../app/sales/sales-orders/SalesOrderDetail.tsx', import.meta.url), 'utf8');
 const uiSource = readFileSync(new URL('../app/sales/sales-orders/sales-order-ui.ts', import.meta.url), 'utf8');
+const typesSource = readFileSync(new URL('../lib/sales-order-types.ts', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../app/sales/sales-orders/sales-orders.module.css', import.meta.url), 'utf8');
 const gatewaySource = readFileSync(new URL('../lib/sales-order-gateway.ts', import.meta.url), 'utf8');
 const bootstrapSource = readFileSync(new URL('../lib/sales-order-bootstrap.ts', import.meta.url), 'utf8');
@@ -101,12 +102,24 @@ test('Sales Order modal has one real vertical scroll owner and no desktop horizo
   assert.doesNotMatch(cssSource, /lineEntryGrid\{display:grid;grid-template-columns:1\.2fr 1\.2fr/);
 });
 
-test('Sales Order detail preserves independent business projections and immutable versions', () => {
+test('Sales Order detail preserves independent projections and shows reservation demand', () => {
   assert.match(detailSource, /Trạng thái đơn/);
   assert.match(detailSource, /Chuẩn bị hàng/);
   assert.match(detailSource, /Giao hàng/);
   assert.match(detailSource, /Thanh toán/);
+  assert.match(detailSource, /Tình trạng giữ hàng/);
+  assert.match(detailSource, /Nhu cầu quy đổi/);
+  assert.match(detailSource, /Đã giữ/);
+  assert.match(detailSource, /Còn chờ hàng/);
+  assert.match(detailSource, /fulfillment\.lines\.map/);
+  assert.match(detailSource, /formatQuantity\(line\.backorderedBaseQuantity\)/);
   assert.match(detailSource, /Lịch sử phiên bản/);
+  assert.match(uiSource, /backordered: 'Đang chờ hàng'/);
+  assert.match(uiSource, /partially_reserved: 'Đã giữ một phần'/);
+  assert.match(uiSource, /reserved: 'Đã giữ đủ hàng'/);
+  assert.match(uiSource, /export function formatQuantity/);
+  assert.match(typesSource, /SalesOrderFulfillmentProjection/);
+  assert.match(typesSource, /fulfillment\?: SalesOrderFulfillmentProjection \| null/);
   assert.match(uiSource, /currentVersionNumber/);
 });
 
