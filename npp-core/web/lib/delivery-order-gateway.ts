@@ -5,7 +5,7 @@ import { InventoryGatewayError } from './inventory-gateway';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REQUEST_TIMEOUT_MS = 30_000;
-const ALLOWED_QUERY_KEYS = new Set(['status', 'salesOrderId', 'limit', 'offset']);
+const ALLOWED_QUERY_KEYS = new Set(['status', 'salesOrderId', 'deliveryOrderId', 'limit', 'offset']);
 
 interface CoreEnvelope<T> {
   data?: T;
@@ -138,16 +138,9 @@ export function getDeliveryOrder<T>(deliveryOrderId: string, requestId: string):
   return requestDeliveryOrder<T>({ path: `/${deliveryOrderId}`, method: 'GET', requestId });
 }
 
-export function createDeliveryOrder<T>(
-  requestId: string,
-  body: unknown,
-  idempotencyKey: string | null,
-): Promise<T> {
+export function createDeliveryOrder<T>(requestId: string, body: unknown, idempotencyKey: string | null): Promise<T> {
   return requestDeliveryOrder<T>({
-    path: '',
-    method: 'POST',
-    requestId,
-    body,
+    path: '', method: 'POST', requestId, body,
     idempotencyKey: requiredIdempotencyKey(idempotencyKey),
   });
 }
@@ -160,11 +153,57 @@ export function transitionDeliveryOrder<T>(
   idempotencyKey: string | null,
 ): Promise<T> {
   assertUuid(deliveryOrderId, 'INVALID_DELIVERY_ORDER_ID', 'Mã chứng từ giao nhận không hợp lệ');
-  if (!['confirm', 'cancel'].includes(action)) {
+  if (!['confirm', 'cancel', 'pickup-handover', 'reverse-inventory-issue'].includes(action)) {
     throw new InventoryGatewayError('INVALID_DELIVERY_ORDER_ACTION', 'Thao tác giao nhận không hợp lệ', 400, false);
   }
   return requestDeliveryOrder<T>({
     path: `/${deliveryOrderId}/${action}`,
+    method: 'POST',
+    requestId,
+    body,
+    idempotencyKey: requiredIdempotencyKey(idempotencyKey),
+  });
+}
+
+export function listCustomerReturnEligibility<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
+  return requestDeliveryOrder<T>({
+    path: '/customer-returns/eligibility', method: 'GET', requestId, searchParams,
+  });
+}
+
+export function listCustomerReturns<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
+  return requestDeliveryOrder<T>({
+    path: '/customer-returns', method: 'GET', requestId, searchParams,
+  });
+}
+
+export function getCustomerReturn<T>(customerReturnId: string, requestId: string): Promise<T> {
+  assertUuid(customerReturnId, 'INVALID_CUSTOMER_RETURN_ID', 'Mã phiếu hàng khách trả không hợp lệ');
+  return requestDeliveryOrder<T>({
+    path: `/customer-returns/${customerReturnId}`, method: 'GET', requestId,
+  });
+}
+
+export function createCustomerReturn<T>(requestId: string, body: unknown, idempotencyKey: string | null): Promise<T> {
+  return requestDeliveryOrder<T>({
+    path: '/customer-returns', method: 'POST', requestId, body,
+    idempotencyKey: requiredIdempotencyKey(idempotencyKey),
+  });
+}
+
+export function transitionCustomerReturn<T>(
+  customerReturnId: string,
+  action: string,
+  requestId: string,
+  body: unknown,
+  idempotencyKey: string | null,
+): Promise<T> {
+  assertUuid(customerReturnId, 'INVALID_CUSTOMER_RETURN_ID', 'Mã phiếu hàng khách trả không hợp lệ');
+  if (!['receive', 'cancel'].includes(action)) {
+    throw new InventoryGatewayError('INVALID_CUSTOMER_RETURN_ACTION', 'Thao tác hàng khách trả không hợp lệ', 400, false);
+  }
+  return requestDeliveryOrder<T>({
+    path: `/customer-returns/${customerReturnId}/${action}`,
     method: 'POST',
     requestId,
     body,
