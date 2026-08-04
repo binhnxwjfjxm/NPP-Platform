@@ -24,6 +24,7 @@ function statusFor(code) {
     || code.includes('IDEMPOTENCY')
     || code.includes('EXCEEDS')
     || code.includes('ALREADY')
+    || code.includes('BLOCKED')
   ) return 409;
   if (code.startsWith('INVALID_') || code.endsWith('_REQUIRED') || code === 'NO_ALLOCATABLE_STOCK') return 400;
   return 500;
@@ -38,6 +39,40 @@ function sendServiceError(res, result, options) {
       result.details ?? {},
       Boolean(result.retryable),
       statusFor(result.code),
+    ),
+    options.requestId,
+    options.receivedAt,
+  );
+}
+
+function sendUnexpectedError(res, error, options) {
+  if (
+    error
+    && typeof error.statusCode === 'number'
+    && typeof error.publicMessage === 'string'
+  ) {
+    sendError(
+      res,
+      apiError(
+        error.code ?? 'INVALID_QUERY_PARAMETER',
+        error.publicMessage,
+        {},
+        false,
+        error.statusCode,
+      ),
+      options.requestId,
+      options.receivedAt,
+    );
+    return;
+  }
+  sendError(
+    res,
+    apiError(
+      'FULFILLMENT_QUERY_FAILED',
+      'Warehouse fulfillment data is temporarily unavailable',
+      {},
+      true,
+      503,
     ),
     options.requestId,
     options.receivedAt,
@@ -165,31 +200,26 @@ async function executeMutation(req, res, options, {
   permission,
   operation,
 }) {
-  const requestContext = await authenticateAndAuthorize(req, res, options, permission);
-  if (!requestContext) return true;
-  const payload = await readPayload(req, res, options);
-  if (payload === null) return true;
-  const idempotency = requireIdempotency(req);
-  if (!idempotency.ok) {
-    sendError(
-      res,
-      apiError(idempotency.code, idempotency.message, {}, false, 400),
-      options.requestId,
-      options.receivedAt,
-    );
-    return true;
-  }
   try {
+    const requestContext = await authenticateAndAuthorize(req, res, options, permission);
+    if (!requestContext) return true;
+    const payload = await readPayload(req, res, options);
+    if (payload === null) return true;
+    const idempotency = requireIdempotency(req);
+    if (!idempotency.ok) {
+      sendError(
+        res,
+        apiError(idempotency.code, idempotency.message, {}, false, 400),
+        options.requestId,
+        options.receivedAt,
+      );
+      return true;
+    }
     const result = await operation({ requestContext, payload, idempotencyKey: idempotency.key });
     if (!result.ok) sendServiceError(res, result, options);
     else writeSuccess(res, result, options, result.replayed ? 200 : 201);
-  } catch {
-    sendError(
-      res,
-      apiError('FULFILLMENT_OPERATION_FAILED', 'Warehouse fulfillment operation failed', {}, true, 503),
-      options.requestId,
-      options.receivedAt,
-    );
+  } catch (error) {
+    sendUnexpectedError(res, error, options);
   }
   return true;
 }
@@ -200,15 +230,15 @@ export async function handleFulfillmentOperationRoutes(req, res, options) {
   const method = String(req.method ?? 'GET').toUpperCase();
 
   if (pathname === '/api/inventory/fulfillment-work' && method === 'GET') {
-    const requestContext = await authenticateAndAuthorize(
-      req,
-      res,
-      options,
-      options.PERMISSIONS.coreFulfillmentRead,
-    );
-    if (!requestContext) return true;
-    const url = new URL(`http://localhost${req.url}`);
     try {
+      const requestContext = await authenticateAndAuthorize(
+        req,
+        res,
+        options,
+        options.PERMISSIONS.coreFulfillmentRead,
+      );
+      if (!requestContext) return true;
+      const url = new URL(`http://localhost${req.url}`);
       const result = await listFulfillmentWorkQueue(options.getPool(), {
         requestContext,
         status: url.searchParams.get('status'),
@@ -218,12 +248,7 @@ export async function handleFulfillmentOperationRoutes(req, res, options) {
       if (!result.ok) sendServiceError(res, result, options);
       else writeSuccess(res, result.work, options);
     } catch (error) {
-      sendError(
-        res,
-        apiError(error.code, error.publicMessage, {}, false, error.statusCode),
-        options.requestId,
-        options.receivedAt,
-      );
+      sendUnexpectedError(res, error, options);
     }
     return true;
   }
@@ -232,19 +257,23 @@ export async function handleFulfillmentOperationRoutes(req, res, options) {
     /^\/api\/inventory\/fulfillment-demands\/([^/]+)\/suggestions$/,
   );
   if (suggestionMatch && method === 'GET') {
-    const requestContext = await authenticateAndAuthorize(
-      req,
-      res,
-      options,
-      options.PERMISSIONS.coreFulfillmentRead,
-    );
-    if (!requestContext) return true;
-    const result = await suggestFulfillmentAllocation(options.getPool(), {
-      requestContext,
-      demandId: suggestionMatch[1],
-    });
-    if (!result.ok) sendServiceError(res, result, options);
-    else writeSuccess(res, result, options);
+    try {
+      const requestContext = await authenticateAndAuthorize(
+        req,
+        res,
+        options,
+        options.PERMISSIONS.coreFulfillmentRead,
+      );
+      if (!requestContext) return true;
+      const result = await suggestFulfillmentAllocation(options.getPool(), {
+        requestContext,
+        demandId: suggestionMatch[1],
+      });
+      if (!result.ok) sendServiceError(res, result, options);
+      else writeSuccess(res, result, options);
+    } catch (error) {
+      sendUnexpectedError(res, error, options);
+    }
     return true;
   }
 
