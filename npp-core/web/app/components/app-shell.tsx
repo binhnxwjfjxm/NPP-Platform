@@ -19,6 +19,8 @@ const operationalShortcutStyle: CSSProperties = {
   textDecoration: 'none',
 };
 
+type Shortcut = { href: string; label: string; testId: string };
+
 /**
  * Contract kept for the shared business navigation audit:
  * Danh mục nghiệp vụ
@@ -27,25 +29,31 @@ const operationalShortcutStyle: CSSProperties = {
  */
 export function AppShell(props: AppShellProps) {
   const pathname = usePathname();
-  const operationalShortcut = pathname.startsWith('/logistics')
-    ? { href: '/inventory/delivery-orders', label: 'Phiếu sẵn sàng giao', testId: 'logistics-delivery-order-shortcut' }
-    : pathname.startsWith('/inventory/delivery-orders')
-      ? { href: '/logistics/trips', label: 'Điều phối chuyến', testId: 'inventory-logistics-shortcut' }
-      : pathname.startsWith('/inventory')
-        ? { href: '/inventory/delivery-orders', label: 'Bàn giao giao nhận', testId: 'inventory-handover-shortcut' }
-        : null;
-  const actions = operationalShortcut || props.actions
+  const operationalShortcuts: Shortcut[] = pathname.startsWith('/logistics/trips')
+    ? [
+        { href: '/inventory/delivery-orders', label: 'Phiếu sẵn sàng giao', testId: 'logistics-delivery-order-shortcut' },
+        { href: '/logistics/dispatch', label: 'Bàn giao chuyến', testId: 'logistics-dispatch-shortcut' },
+      ]
+    : pathname.startsWith('/logistics')
+      ? [{ href: '/inventory/delivery-orders', label: 'Phiếu sẵn sàng giao', testId: 'logistics-delivery-order-shortcut' }]
+      : pathname.startsWith('/inventory/delivery-orders')
+        ? [{ href: '/logistics/trips', label: 'Điều phối chuyến', testId: 'inventory-logistics-shortcut' }]
+        : pathname.startsWith('/inventory')
+          ? [{ href: '/inventory/delivery-orders', label: 'Bàn giao giao nhận', testId: 'inventory-handover-shortcut' }]
+          : [];
+  const actions = operationalShortcuts.length || props.actions
     ? (
         <>
-          {operationalShortcut ? (
+          {operationalShortcuts.map((shortcut) => (
             <Link
-              href={operationalShortcut.href}
+              key={shortcut.href}
+              href={shortcut.href}
               style={operationalShortcutStyle}
-              data-testid={operationalShortcut.testId}
+              data-testid={shortcut.testId}
             >
-              {operationalShortcut.label}
+              {shortcut.label}
             </Link>
-          ) : null}
+          ))}
           {props.actions}
         </>
       )
