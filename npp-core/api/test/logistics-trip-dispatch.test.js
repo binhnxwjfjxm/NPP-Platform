@@ -28,6 +28,8 @@ test('migration 047 is registered once and owns immutable trip dispatch lineage'
   assert.match(matches[0].sql, /trip_dispatch_items_delivery_order_unique/);
   assert.match(matches[0].sql, /OLD\.status = 'locked' AND NEW\.status = 'dispatched'/);
   assert.match(matches[0].sql, /logistics_trip_dispatch_reconciliation_mismatch/);
+  assert.match(matches[0].sql, /logistics_dispatched_trip_issue_reversal_requires_trip_recovery/);
+  assert.match(matches[0].sql, /delivery_issue_dispatched_trip_reversal_guard/);
 });
 
 test('dispatch permission is known while attempt POD and COD permissions remain absent', () => {
