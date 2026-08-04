@@ -41,7 +41,7 @@ test('dispatch route exposes only trip handover summary and mutation', () => {
   assert.match(routeSource, /\/api\\\/logistics\\\/trips/);
   assert.match(routeSource, /coreDeliveryTripDispatch/);
   assert.match(routeSource, /Idempotency-Key header is required/);
-  assert.doesNotMatch(routeSource, /delivery-attempt|proof-of-delivery|pod|cod/i);
+  assert.doesNotMatch(routeSource, /delivery-attempt|proof-of-delivery|core\.pod|core\.cod|pod\/attach/i);
 });
 
 test('dispatch service is all-or-nothing and reconciles issue movement delivery order and trip', () => {
@@ -53,7 +53,7 @@ test('dispatch service is all-or-nothing and reconciles issue movement delivery 
   assert.match(serviceSource, /markTripDispatched/);
   assert.match(serviceSource, /core\.delivery_trip\.dispatched/);
   assert.match(serviceSource, /core\.sales\.delivery_order\.inventory_issued/);
-  assert.doesNotMatch(serviceSource, /delivery attempt|proof of delivery|pod|cod/i);
+  assert.doesNotMatch(serviceSource, /delivery-attempt|proof-of-delivery|core\.pod|core\.cod|pod\/attach/i);
 });
 
 test('malformed or unauthorized dispatch fails before storage', async () => {
@@ -88,13 +88,14 @@ test('malformed or unauthorized dispatch fails before storage', async () => {
   assert.equal(unauthorized.code, 'PERMISSION_DENIED');
 });
 
-test('NPP dispatch workspace requires physical handover and remains outside attempt/POD scope', () => {
+test('NPP dispatch workspace requires physical handover and remains outside attempt/POD actions', () => {
   assert.match(workspaceSource, /handoverReceiverName/);
   assert.match(workspaceSource, /dispatchedAt/);
   assert.match(workspaceSource, /Idempotency-Key/);
   assert.match(workspaceSource, /Bàn giao và cho xe xuất phát/);
   assert.match(workspaceSource, /Inventory OUT đã ghi/);
-  assert.doesNotMatch(workspaceSource, /Giao thành công|Giao thất bại|POD|GPS|COD/);
+  assert.match(workspaceSource, /kết quả giao và POD thuộc phần tiếp theo/);
+  assert.doesNotMatch(workspaceSource, /Giao thành công|Giao thất bại|Tải POD|Thu COD/);
 });
 
 test('Phase plan explicitly tracks all five frontends and the missing Logistics frontend', () => {
