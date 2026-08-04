@@ -110,14 +110,14 @@ export default async function ManagementPage() {
 
   return (
     <AppShell
-      kicker="Công việc hằng ngày của Sales Admin"
-      title="Đơn hàng và mã khách cần xử lý"
-      subtitle="Xác nhận đơn thông thường, tạo hoặc liên kết mã khách và theo dõi trạng thái xử lý ngay trong NPP Operations."
-      actions={<Link className={styles.link} href="/organization">Xem cơ cấu hệ thống</Link>}
+      kicker="Điều hành bán hàng"
+      title="Tiếp nhận và xử lý nhu cầu bán hàng"
+      subtitle="Tập trung đơn và nhu cầu mua từ các nguồn, xử lý mã khách, kiểm tra và chuyển thành đơn bán hàng chính thức."
+      actions={<Link className={styles.link} href="/sales/sales-orders">Xem đơn bán hàng</Link>}
     >
       <div className={styles.page} data-testid="management-overview-page">
         <p className={styles.notice}>
-          Đây là màn tác nghiệp hằng ngày của Sales Admin, CS và kế toán. Chỉ ngoại lệ vượt quyền mới chuyển lên Admin cấp quản lý.
+          Đây là trung tâm điều hành bán hàng chung. Mọi nguồn đơn đi vào cùng một hàng đợi để Sales Admin, CS và kế toán xử lý; chỉ ngoại lệ vượt quyền mới chuyển lên Admin cấp quản lý.
         </p>
 
         <section className={styles.summaryGrid} aria-label="Tóm tắt vận hành">
@@ -135,7 +135,7 @@ export default async function ManagementPage() {
           </article>
           <article className={styles.summaryCard}>
             <strong>{orders.data.length + onboarding.data.length}</strong>
-            <span>Việc hằng ngày đang chờ</span>
+            <span>Việc bán hàng đang chờ</span>
           </article>
         </section>
 
@@ -145,8 +145,8 @@ export default async function ManagementPage() {
           <article className={styles.queueCard}>
             <header className={styles.queueHeader}>
               <div>
-                <h2>Đơn chờ xác nhận hằng ngày</h2>
-                <p>Các đơn nháp thông thường cần Sales Admin kiểm tra và xác nhận.</p>
+                <h2>Đơn chờ xác nhận</h2>
+                <p>Các đơn nháp từ những nguồn tiếp nhận cần kiểm tra và xác nhận thành đơn bán hàng chính thức.</p>
               </div>
               <Link className={styles.link} href="/sales/sales-orders">Mở màn xác nhận</Link>
             </header>
