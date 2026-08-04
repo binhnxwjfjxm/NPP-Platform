@@ -78,6 +78,19 @@ test('full and zero reservation states are explicit', () => {
   );
 });
 
+test('fulfillment quantities require the dedicated read permission', () => {
+  assert.equal(
+    salesFulfillmentInternals.canReadFulfillment({ permissions: ['core.sales-order.read'] }),
+    false,
+  );
+  assert.equal(
+    salesFulfillmentInternals.canReadFulfillment({
+      permissions: ['core.sales-order.read', 'core.fulfillment.read'],
+    }),
+    true,
+  );
+});
+
 test('migration 042 owns warehouse demand without stealing lot allocation from Phase 6D.2', async () => {
   const migration = await read('../../database/migrations/sales/042_sales_fulfillment_reservation_demand.sql');
 
@@ -93,8 +106,9 @@ test('migration 042 owns warehouse demand without stealing lot allocation from P
 });
 
 test('confirmation, amendment replacement and cancellation stay in the Sales Order transaction', async () => {
-  const [service, fulfillmentRepository, reservationRepository, migrations] = await Promise.all([
+  const [service, fulfillmentService, fulfillmentRepository, reservationRepository, migrations] = await Promise.all([
     read('src/services/sales-order.js'),
+    read('src/services/sales-fulfillment.js'),
     read('src/db/repositories/sales-fulfillment.js'),
     read('src/db/repositories/inventory-reservations.js'),
     read('src/migrations/index.js'),
@@ -107,11 +121,13 @@ test('confirmation, amendment replacement and cancellation stay in the Sales Ord
   assert.match(service, /if \(!fulfillment\.ok\) return fulfillment/);
   assert.match(service, /cancelSalesOrderFulfillmentDemand/);
   assert.match(service, /loadSalesOrderFulfillment/);
+  assert.match(fulfillmentService, /permissions\.includes\('core\.fulfillment\.read'\)/);
 
   assert.match(fulfillmentRepository, /demand\.sales_order_id <> \$4/);
   assert.match(fulfillmentRepository, /reserved_base_quantity - demand\.allocated_base_quantity/);
   assert.match(fulfillmentRepository, /allowBackorder: result\.rows\[0\]\?\.allow_backorder !== false/);
   assert.match(fulfillmentRepository, /sales-fulfillment-scope/);
+  assert.doesNotMatch(fulfillmentRepository, /revision = revision \+ 1/);
   assert.match(reservationRepository, /sales-fulfillment-scope/);
   assert.match(migrations, /042_sales_fulfillment_reservation_demand/);
 });
