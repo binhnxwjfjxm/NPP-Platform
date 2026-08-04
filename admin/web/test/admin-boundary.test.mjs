@@ -10,12 +10,13 @@ async function assertMissing(path) {
 }
 
 test('admin remains a standalone manually deployed Vercel frontend', async () => {
-  const [pkg, vercel, shell, core, workflow] = await Promise.all([
+  const [pkg, vercel, shell, core, workflow, directWorkflow] = await Promise.all([
     read('package.json'),
     read('vercel.json'),
     read('app/admin-shell.tsx'),
     read('lib/core-api.ts'),
     read('../../.github/workflows/vercel-admin-production-manual.yml'),
+    read('../../.github/workflows/vercel-admin-production-direct.yml'),
   ]);
   assert.match(pkg, /admin-mcp-npp-web/);
   assert.match(vercel, /"deploymentEnabled"\s*:\s*false/);
@@ -33,6 +34,14 @@ test('admin remains a standalone manually deployed Vercel frontend', async () =>
   assert.match(workflow, /CORE_HEROKU_APP_NAME: hung-phat/);
   assert.match(workflow, /ADMIN_DOMAIN: admin\.nguyenlieuhungphat\.com/);
   assert.doesNotMatch(workflow, /DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY/);
+
+  assert.match(directWorkflow, /\/deploy-vercel-admin-production-direct/);
+  assert.match(directWorkflow, /ADMIN_ORIGIN: https:\/\/admin\.nguyenlieuhungphat\.com/);
+  assert.match(directWorkflow, /Smoke canonical Admin production domain/);
+  assert.match(directWorkflow, /\$ADMIN_ORIGIN\/customer-onboarding/);
+  assert.match(directWorkflow, /Tổng hợp và ngoại lệ cấp quản lý/);
+  assert.match(directWorkflow, /Ranh giới duyệt ngoại lệ/);
+  assert.doesNotMatch(directWorkflow, /-u "\$auth"[^\n]*"\$DEPLOYMENT_URL/);
 });
 
 test('admin only shows aggregate data and the management exception boundary', async () => {
