@@ -68,6 +68,10 @@ const SALES_INVENTORY_ISSUE_CUSTOMER_RETURN_SQL = [
     new URL('../../../../database/migrations/sales/045_sales_inventory_issue_customer_return_guards.sql', import.meta.url),
     'utf8',
   ),
+  readFileSync(
+    new URL('../../../../database/migrations/sales/045_sales_inventory_issue_customer_return_claims.sql', import.meta.url),
+    'utf8',
+  ),
 ].join('\n\n');
 
 export const CORE_API_MIGRATIONS = Object.freeze([
