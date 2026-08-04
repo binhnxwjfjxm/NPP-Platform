@@ -73,7 +73,7 @@ test('Phase 6D.4 migration locks issue, reversal, reservation and return lineage
   assert.match(foundation, /core\.delivery-order\.pickup-handover/);
   assert.match(foundation, /core\.delivery-order\.reverse-inventory-issue/);
   assert.match(foundation, /core\.customer-return\.receive/);
-  assert.match(guards, /delivery_order\.status IN \('draft', 'ready_to_dispatch', 'dispatched', 'handed_over'\)/);
+  assert.match(guards, /header\.status IN \('draft', 'ready_to_dispatch', 'dispatched', 'handed_over'\)/);
   assert.match(guards, /customer_return_quantity_exceeds_issued/);
   assert.match(guards, /delivery_issue_movement_line_mismatch/);
   assert.match(registry, /045_sales_inventory_issue_customer_return/);
