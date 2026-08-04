@@ -162,8 +162,8 @@ export async function listAllocationCandidates(client, {
     `SELECT
        balance.warehouse_id,
        balance.location_id,
-       location.location_code,
-       location.location_name,
+       location.code AS location_code,
+       location.name AS location_name,
        balance.base_variant_id,
        balance.lot_id,
        lot.lot_code,
@@ -235,7 +235,7 @@ export async function listAllocationCandidates(client, {
        CASE
          WHEN lot.expiry_date IS NULL THEN receipt.first_received_at
        END ASC NULLS LAST,
-       location.location_code ASC NULLS LAST,
+       location.code ASC NULLS LAST,
        lot.lot_code ASC NULLS LAST,
        balance.location_id ASC NULLS LAST,
        balance.lot_id ASC NULLS LAST
@@ -408,8 +408,8 @@ export async function getAllocationForUpdate(client, { installationId, allocatio
        orders.order_number,
        version.customer_code_snapshot,
        version.customer_name_snapshot,
-       location.location_code,
-       location.location_name,
+       location.code AS location_code,
+       location.name AS location_name,
        lot.lot_code,
        lot.expiry_date
       FROM sales.sales_order_fulfillment_allocations allocation
@@ -489,8 +489,8 @@ export async function listDemandAllocations(client, { installationId, demandId }
   const result = await client.query(
     `SELECT
        allocation.*,
-       location.location_code,
-       location.location_name,
+       location.code AS location_code,
+       location.name AS location_name,
        lot.lot_code,
        lot.expiry_date
       FROM sales.sales_order_fulfillment_allocations allocation
