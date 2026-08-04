@@ -80,6 +80,10 @@ test('Phase 6D.2 migration locks exact reservation, idempotency and monotonic pr
     new URL('../../../database/migrations/sales/043_sales_fulfillment_allocation_pick_pack.sql', import.meta.url),
     'utf8',
   );
+  const repositorySource = readFileSync(
+    new URL('../src/db/repositories/sales-fulfillment-operations.js', import.meta.url),
+    'utf8',
+  );
   const registry = readFileSync(new URL('../src/migrations/index.js', import.meta.url), 'utf8');
 
   assert.match(allocationSql, /sales_order_fulfillment_allocations/);
@@ -92,6 +96,14 @@ test('Phase 6D.2 migration locks exact reservation, idempotency and monotonic pr
   assert.match(allocationSql, /TG_OP = 'INSERT'/);
   assert.match(allocationSql, /sum\(demand\.backordered_base_quantity\) = 0/);
   assert.match(allocationSql, /sales_order_fulfillment_allocations_scope_idx/);
+  assert.match(allocationSql, /sales_fulfillment_allocation_requires_active_storage_location/);
+  assert.match(allocationSql, /sales_fulfillment_allocation_expired_lot_forbidden/);
+  assert.match(allocationSql, /sales_fulfillment_allocation_expiry_required/);
+  assert.match(repositorySource, /location\.location_type = 'storage'/);
+  assert.match(repositorySource, /expiry_tracking_mode, 'NONE'\) <> 'REQUIRED'/);
+  assert.match(repositorySource, /lot\.expiry_date IS NULL OR lot\.expiry_date >= CURRENT_DATE/);
+  assert.match(repositorySource, /WHEN lot\.expiry_date IS NOT NULL THEN 'FEFO'/);
+  assert.match(repositorySource, /ELSE 'FIFO'/);
   assert.match(registry, /043_sales_fulfillment_allocation_pick_pack/);
   assert.doesNotMatch(registry, /044_sales_fulfillment_allocation/);
   assert.doesNotMatch(registry, /045_sales_fulfillment_allocation/);
