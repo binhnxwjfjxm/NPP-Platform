@@ -62,6 +62,10 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install locked repository dependencies
+        working-directory: npp-core/api
+        run: npm --prefix ../../ ci --ignore-scripts
+
       - name: Validate provider credentials
         shell: bash
         env:
