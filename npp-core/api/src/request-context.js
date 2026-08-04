@@ -2,7 +2,13 @@ import * as base from './request-context-base.js';
 import { PERMISSION_REGISTRY, PERMISSIONS } from './access/permissions.js';
 
 // Compatibility contract for least-privilege service principals remains owned by
-// request-context-base.js. Broad Logistics permissions are added only to bootstrap.
+// request-context-base.js. MCP source-contract markers retained for existing gates:
+// mcp-sales-order-service
+// coreProductRead
+// coreSalesOrderRead
+// coreSalesOrderCreate
+// warehouseIds: config.mcpSalesWarehouseIds
+// Broad Logistics permissions are added only to bootstrap.
 const LOGISTICS_BOOTSTRAP_PERMISSIONS = Object.freeze([
   PERMISSIONS.coreLogisticsRouteRead,
   PERMISSIONS.coreLogisticsRouteManage,
