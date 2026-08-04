@@ -1,8 +1,10 @@
 # Phase 6D.3 — Delivery Order và bàn giao sau đóng gói
 
-> Status: **ACTIVE SOURCE DECISION**  
+> Status: **COMPLETED SOURCE DECISION**  
 > Baseline: `main@f08005b59d61e541a6bb3601382656f7ea32fa13`  
 > Issue: `#237`  
+> PR: `#238`  
+> Merge commit: `dd844a094c431170c1f600ae2c44338cc894766b`  
 > Scope: packed allocation → Delivery Order → ready-to-dispatch/pickup handover boundary.  
 > Tài liệu này không cho phép migration production, deploy production hoặc thay đổi provider.
 
@@ -178,7 +180,7 @@ NPP Operations có workspace `Tồn kho & lô hàng -> Bàn giao giao nhận` đ
 - cancel draft có lý do;
 - thấy rõ phần còn lại/backorder.
 
-Frontend phải gọi proxy/gateway thật, dùng idempotency key ổn định khi retry, chống stale response và giữ accessibility status/error.
+Frontend gọi proxy/gateway thật, dùng idempotency key ổn định khi retry, chống stale response và giữ accessibility status/error.
 
 Manual allocation override UI của Phase 6D.2 không được chắp vào workspace này. Backend contract hiện có vẫn giữ; dedicated UI tiếp tục là quyết định sản phẩm riêng.
 
@@ -194,7 +196,7 @@ Manual allocation override UI của Phase 6D.2 không được chắp vào works
 - production migration/deploy;
 - Phase 6E.
 
-## 12. Gate
+## 12. Gate đã đạt
 
 - migration 044 apply và rerun no-op;
 - migration rehearsal;
@@ -208,4 +210,4 @@ Manual allocation override UI của Phase 6D.2 không được chắp vào works
 - Core API tests;
 - NPP web build;
 - Browser E2E với proxy thật;
-- exact-head CI xanh trước merge.
+- exact-head CI 8/8 xanh trước merge.
