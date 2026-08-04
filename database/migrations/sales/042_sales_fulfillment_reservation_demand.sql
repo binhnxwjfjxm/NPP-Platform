@@ -137,18 +137,24 @@ BEGIN
      OR NEW.ordered_base_quantity IS DISTINCT FROM OLD.ordered_base_quantity
      OR NEW.reserved_base_quantity IS DISTINCT FROM OLD.reserved_base_quantity
      OR NEW.backordered_base_quantity IS DISTINCT FROM OLD.backordered_base_quantity
-     OR NEW.allocated_base_quantity IS DISTINCT FROM OLD.allocated_base_quantity
-     OR NEW.picked_base_quantity IS DISTINCT FROM OLD.picked_base_quantity
-     OR NEW.packed_base_quantity IS DISTINCT FROM OLD.packed_base_quantity
-     OR NEW.issued_base_quantity IS DISTINCT FROM OLD.issued_base_quantity
-     OR NEW.cancelled_base_quantity IS DISTINCT FROM OLD.cancelled_base_quantity
      OR NEW.created_at IS DISTINCT FROM OLD.created_at
      OR NEW.created_by IS DISTINCT FROM OLD.created_by THEN
     RAISE EXCEPTION 'sales_fulfillment_demand_immutable_fields_cannot_change';
   END IF;
 
-  IF OLD.state <> 'ACTIVE'
-     OR NEW.state NOT IN ('SUPERSEDED', 'CANCELLED', 'COMPLETED') THEN
+  IF OLD.state <> 'ACTIVE' THEN
+    RAISE EXCEPTION 'sales_fulfillment_demand_terminal_state_is_immutable';
+  END IF;
+
+  IF NEW.allocated_base_quantity < OLD.allocated_base_quantity
+     OR NEW.picked_base_quantity < OLD.picked_base_quantity
+     OR NEW.packed_base_quantity < OLD.packed_base_quantity
+     OR NEW.issued_base_quantity < OLD.issued_base_quantity
+     OR NEW.cancelled_base_quantity < OLD.cancelled_base_quantity THEN
+    RAISE EXCEPTION 'sales_fulfillment_progress_cannot_decrease';
+  END IF;
+
+  IF NEW.state NOT IN ('ACTIVE', 'SUPERSEDED', 'CANCELLED', 'COMPLETED') THEN
     RAISE EXCEPTION 'sales_fulfillment_demand_invalid_state_transition';
   END IF;
 
