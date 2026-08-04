@@ -6,12 +6,18 @@ const coreShellSource = readFileSync(new URL('../app/components/app-shell-core.t
 const wrapperSource = readFileSync(new URL('../app/components/app-shell.tsx', import.meta.url), 'utf8');
 const managementSource = readFileSync(new URL('../app/management/page.tsx', import.meta.url), 'utf8');
 
-test('NPP keeps sales operations inside the Sales navigation group', () => {
-  assert.match(coreShellSource, /href: '\/management'/);
-  assert.match(coreShellSource, /label: 'Điều hành bán hàng'/);
+test('NPP keeps all daily sales work inside the Sales navigation group', () => {
+  assert.match(coreShellSource, /href: '\/management', label: 'Điều hành bán hàng'/);
+  assert.match(coreShellSource, /href: '\/sales\/sales-orders', label: 'Đơn bán hàng'/);
+  assert.match(coreShellSource, /href: '\/management\/customer-onboarding', label: 'Mở \/ liên kết mã khách'/);
   assert.match(coreShellSource, /testId: 'nav-sales-operations'/);
+  assert.match(coreShellSource, /testId: 'nav-customer-onboarding'/);
   assert.match(coreShellSource, /pathname\.startsWith\('\/management'\)/);
-  assert.match(coreShellSource, /Tiếp nhận, duyệt và quản lý đơn bán hàng/);
+  assert.match(coreShellSource, /Đơn nhiều nguồn, mã khách và vòng đời thương mại/);
+});
+
+test('the Sales group stays active without marking both management links active', () => {
+  assert.match(coreShellSource, /href === '\/organization' \|\| href === '\/management'/);
 });
 
 test('NPP does not expose sales operations as a global shortcut', () => {
@@ -19,8 +25,10 @@ test('NPP does not expose sales operations as a global shortcut', () => {
   assert.doesNotMatch(wrapperSource, /Công việc hằng ngày/);
 });
 
-test('sales operations explains the multi-source order intake role', () => {
+test('sales operations explains multi-source intake and official customer-code handling', () => {
   assert.match(managementSource, /Điều hành bán hàng/);
   assert.match(managementSource, /các nguồn/);
+  assert.match(managementSource, /xử lý mã khách/);
   assert.match(managementSource, /đơn bán hàng chính thức/);
+  assert.match(managementSource, /Đề nghị mở hoặc liên kết mã khách/);
 });
