@@ -7,7 +7,7 @@ import { AppShell as CoreAppShell } from './app-shell-core';
 
 type AppShellProps = ComponentProps<typeof CoreAppShell>;
 
-const inventoryShortcutStyle: CSSProperties = {
+const operationalShortcutStyle: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   minHeight: '40px',
@@ -27,21 +27,23 @@ const inventoryShortcutStyle: CSSProperties = {
  */
 export function AppShell(props: AppShellProps) {
   const pathname = usePathname();
-  const inventoryShortcut = pathname.startsWith('/inventory')
-    ? pathname.startsWith('/inventory/delivery-orders')
-      ? { href: '/inventory/fulfillment', label: 'Chuẩn bị hàng' }
-      : { href: '/inventory/delivery-orders', label: 'Bàn giao giao nhận' }
-    : null;
-  const actions = inventoryShortcut || props.actions
+  const operationalShortcut = pathname.startsWith('/logistics')
+    ? { href: '/inventory/delivery-orders', label: 'Phiếu sẵn sàng giao', testId: 'logistics-delivery-order-shortcut' }
+    : pathname.startsWith('/inventory/delivery-orders')
+      ? { href: '/logistics/trips', label: 'Điều phối chuyến', testId: 'inventory-logistics-shortcut' }
+      : pathname.startsWith('/inventory')
+        ? { href: '/inventory/delivery-orders', label: 'Bàn giao giao nhận', testId: 'inventory-handover-shortcut' }
+        : null;
+  const actions = operationalShortcut || props.actions
     ? (
         <>
-          {inventoryShortcut ? (
+          {operationalShortcut ? (
             <Link
-              href={inventoryShortcut.href}
-              style={inventoryShortcutStyle}
-              data-testid="inventory-handover-shortcut"
+              href={operationalShortcut.href}
+              style={operationalShortcutStyle}
+              data-testid={operationalShortcut.testId}
             >
-              {inventoryShortcut.label}
+              {operationalShortcut.label}
             </Link>
           ) : null}
           {props.actions}
