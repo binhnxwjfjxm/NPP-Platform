@@ -212,9 +212,14 @@ async function seedNonExpiringLot(pool, context, master, { sourceKey, locationId
       metadata: { sourceKey },
     }],
   };
+  const requestContext = Object.freeze({
+    ...context,
+    requestId: `req-opening-${randomUUID()}`,
+    receivedAt: new Date().toISOString(),
+  });
   const posted = await postOpeningBalanceImport({
     adapter: pool,
-    requestContext: context,
+    requestContext,
     idempotencyKey: `opening-${sourceKey}-${randomUUID()}`,
     payload: { ...unsignedPayload, contentChecksum: sha256Hex(unsignedPayload) },
   });
