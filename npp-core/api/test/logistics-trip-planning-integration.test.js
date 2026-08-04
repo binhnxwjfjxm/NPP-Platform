@@ -185,7 +185,7 @@ async function seedInventory(pool, config, master) {
     sourceKey,
     sourceFilename: `${sourceKey}.xlsx`,
     documentDate: '2026-08-04',
-    metadata: { source: 'phase-6e1-integration' },
+    metadata: { source: 'phase-6e2-integration' },
     rows: [{
       warehouseId: master.warehouseId,
       locationId: master.locationId,
@@ -331,7 +331,7 @@ async function createTrip(baseUrl, config, payload, key = `trip-${randomUUID()}`
   }));
 }
 
-test('Phase 6E.1 prevents concurrent double assignment and locks the winning plan', async () => {
+test('Phase 6E.1 plans safely and Phase 6E.2 dispatches exactly once', async () => {
   const config = loadConfig(testEnv());
   const pool = getPool(config);
   let server;
@@ -422,25 +422,91 @@ test('Phase 6E.1 prevents concurrent double assignment and locks the winning pla
     assert.equal(lockedUpdate.response.status, 409, JSON.stringify(lockedUpdate.body));
     assert.equal(lockedUpdate.body.error.code, 'DELIVERY_TRIP_LOCKED');
 
+    const dispatchPayload = {
+      dispatchedAt: '2026-08-05T01:15:00.000Z',
+      handoverReceiverName: 'Tài xế kiểm thử',
+      handoverNote: 'Đã kiểm đủ kiện hàng',
+    };
+    const dispatchKeys = [`dispatch-${randomUUID()}`, `dispatch-${randomUUID()}`];
+    const dispatches = await Promise.all(dispatchKeys.map((key) => fetchJson(fetch(
+      `${baseUrl}/api/logistics/trips/${winningTripId}/dispatch`,
+      {
+        method: 'POST',
+        headers: authHeaders(config, key),
+        body: JSON.stringify(dispatchPayload),
+      },
+    ))));
+    assert.deepEqual(dispatches.map((entry) => entry.response.status).sort(), [200, 409]);
+    const successfulDispatchIndex = dispatches.findIndex((entry) => entry.response.status === 200);
+    assert.notEqual(successfulDispatchIndex, -1, JSON.stringify(dispatches));
+    const successfulDispatch = dispatches[successfulDispatchIndex];
+    const successfulDispatchKey = dispatchKeys[successfulDispatchIndex];
+    assert.equal(successfulDispatch.body.data.trip.status, 'dispatched');
+    assert.equal(successfulDispatch.body.data.trip.dispatchItems.length, 1);
+    assert.equal(successfulDispatch.body.data.replayed, false);
+
+    const replayDispatch = await fetchJson(fetch(
+      `${baseUrl}/api/logistics/trips/${winningTripId}/dispatch`,
+      {
+        method: 'POST',
+        headers: authHeaders(config, successfulDispatchKey),
+        body: JSON.stringify(dispatchPayload),
+      },
+    ));
+    assert.equal(replayDispatch.response.status, 200, JSON.stringify(replayDispatch.body));
+    assert.equal(replayDispatch.body.data.replayed, true);
+    assert.equal(replayDispatch.body.data.trip.dispatchItems.length, 1);
+
     const evidence = await pool.query(
       `SELECT trip.status,
-              count(assignment.id) FILTER (WHERE assignment.unassigned_at IS NULL)::int AS active_assignments
+              trip.dispatch_id,
+              trip.handover_receiver_name,
+              count(DISTINCT assignment.id) FILTER (WHERE assignment.unassigned_at IS NULL)::int AS active_assignments,
+              count(DISTINCT dispatch_item.id)::int AS dispatch_items
          FROM logistics.delivery_trips trip
          LEFT JOIN logistics.trip_order_assignments assignment
            ON assignment.installation_id = trip.installation_id
           AND assignment.trip_id = trip.id
+         LEFT JOIN logistics.trip_dispatch_items dispatch_item
+           ON dispatch_item.installation_id = trip.installation_id
+          AND dispatch_item.trip_id = trip.id
         WHERE trip.installation_id = $1 AND trip.id = $2
         GROUP BY trip.id`,
       [config.installationId, winningTripId],
     );
-    assert.deepEqual(evidence.rows[0], { status: 'locked', active_assignments: 1 });
+    assert.equal(evidence.rows[0].status, 'dispatched');
+    assert.ok(evidence.rows[0].dispatch_id);
+    assert.equal(evidence.rows[0].handover_receiver_name, 'Tài xế kiểm thử');
+    assert.equal(evidence.rows[0].active_assignments, 1);
+    assert.equal(evidence.rows[0].dispatch_items, 1);
+
+    const deliveryEvidence = await pool.query(
+      `SELECT delivery_order.status,
+              count(DISTINCT issue.id) FILTER (WHERE issue.status = 'POSTED')::int AS posted_issues,
+              count(DISTINCT movement.id) FILTER (WHERE movement.movement_type = 'SALES_DELIVERY_ISSUE')::int AS issue_movements
+         FROM sales.delivery_orders delivery_order
+         LEFT JOIN sales.delivery_order_inventory_issues issue
+           ON issue.installation_id = delivery_order.installation_id
+          AND issue.delivery_order_id = delivery_order.id
+         LEFT JOIN inventory.inventory_movements movement
+           ON movement.installation_id = issue.installation_id
+          AND movement.id = issue.inventory_movement_id
+        WHERE delivery_order.installation_id = $1 AND delivery_order.id = $2
+        GROUP BY delivery_order.id`,
+      [config.installationId, deliveryOrderId],
+    );
+    assert.deepEqual(deliveryEvidence.rows[0], {
+      status: 'dispatched',
+      posted_issues: 1,
+      issue_movements: 1,
+    });
 
     const audit = await pool.query(
       `SELECT count(*)::int AS count
          FROM shared.core_audit_records
         WHERE installation_id = $1
           AND resource_type = 'delivery_trip'
-          AND action = 'core.delivery_trip.locked'`,
+          AND action = 'logistics.delivery_trip.dispatch'`,
       [config.installationId],
     );
     const outbox = await pool.query(
@@ -448,7 +514,7 @@ test('Phase 6E.1 prevents concurrent double assignment and locks the winning pla
          FROM shared.core_outbox_events
         WHERE installation_id = $1
           AND aggregate_type = 'logistics.delivery_trip'
-          AND event_type = 'core.delivery_trip.locked'`,
+          AND event_type = 'core.delivery_trip.dispatched'`,
       [config.installationId],
     );
     assert.equal(audit.rows[0].count, 1);
