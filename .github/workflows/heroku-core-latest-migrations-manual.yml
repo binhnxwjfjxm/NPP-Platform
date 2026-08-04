@@ -38,6 +38,9 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
+    defaults:
+      run:
+        working-directory: npp-core
     env:
       DEPLOY_REF: main
       HEROKU_APP_NAME: hung-phat
@@ -76,17 +79,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Install locked dependencies
-        run: npm ci --ignore-scripts
+        run: npm --prefix .. ci --ignore-scripts
 
       - name: Validate Core migration gate
         shell: bash
         run: |
           set -euo pipefail
-          bash -n npp-core/api/scripts/core-latest-production-gate.sh
-          node --test npp-core/api/test/core-latest-production-gate-source.test.js
+          bash -n api/scripts/core-latest-production-gate.sh
+          node --test api/test/core-latest-production-gate-source.test.js
 
       - name: Install Heroku CLI
         shell: bash
@@ -107,6 +109,7 @@ jobs:
             /migrate-heroku-core-latest-production) action="migrate" ;;
             *) exit 1 ;;
           esac
+          cd ..
           REQUESTED_ACTION="$action" bash npp-core/api/scripts/core-latest-production-gate.sh
 
       - name: Record exact Core source

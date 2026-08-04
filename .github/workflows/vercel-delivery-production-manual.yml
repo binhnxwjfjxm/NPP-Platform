@@ -20,6 +20,9 @@ jobs:
       contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: delivery/web
     env:
       DEPLOY_REF: main
       VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
@@ -61,15 +64,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Install locked repository dependencies
-        run: npm ci --ignore-scripts
+        run: npm --prefix ../.. ci --ignore-scripts
 
       - name: Validate Delivery production guard
         run: |
-          bash -n delivery/web/scripts/deploy-production.sh
-          node --test delivery/web/test/delivery-production-workflow.test.mjs
+          bash -n scripts/deploy-production.sh
+          node --test test/delivery-production-workflow.test.mjs
 
       - name: Create, configure and deploy Delivery production
         id: delivery
@@ -80,7 +82,9 @@ jobs:
           SECRET_DELIVERY_WEB_USERS_JSON: ${{ secrets.DELIVERY_WEB_USERS_JSON }}
           CORE_WEB_ADMIN_USERNAME: ${{ secrets.CORE_WEB_ADMIN_USERNAME }}
           CORE_WEB_ADMIN_PASSWORD: ${{ secrets.CORE_WEB_ADMIN_PASSWORD }}
-        run: bash delivery/web/scripts/deploy-production.sh
+        run: |
+          cd ../..
+          bash delivery/web/scripts/deploy-production.sh
 
       - name: Publish sanitized Delivery rollout evidence
         if: always()
