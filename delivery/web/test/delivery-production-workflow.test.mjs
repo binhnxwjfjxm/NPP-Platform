@@ -42,6 +42,10 @@ test('Delivery production workflow is exact-command and manual-only', async () =
     'DELIVERY_FRONTEND_WAREHOUSE_IDS',
     'DELIVERY_CORE_API_TOKEN',
     'DELIVERY_WEB_USERS_JSON',
+    'DELIVERY_SETUP_MODE',
+    'DELIVERY_SETUP_USERNAME',
+    'DELIVERY_SETUP_PASSWORD',
+    'setup_mode=$setup_mode',
     'deploymentEnabled !== false',
     'api.vercel.com/v11/projects',
     'api.vercel.com/v10/projects/$project_id/domains',
@@ -52,12 +56,14 @@ test('Delivery production workflow is exact-command and manual-only', async () =
     'x-npp-delivery-employee-id',
     'Không tải được chuyến',
     'Chuyến của tôi',
+    'Chưa có hồ sơ tài xế đang hoạt động',
     '/_next/static/',
     '/health/live',
     '/health/ready',
   ]) {
     assert.ok(script.includes(marker), `script missing ${marker}`);
   }
+  assert.doesNotMatch(script, /no_active_driver_profile_for_delivery_bootstrap/);
   assert.doesNotMatch(script, /vercel@latest/);
   assert.doesNotMatch(script, /npm install/);
   assert.doesNotMatch(script, /DATABASE_URL.*GITHUB_OUTPUT/);
