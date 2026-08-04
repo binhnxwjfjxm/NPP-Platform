@@ -176,7 +176,7 @@ export async function listAllocationCandidates(client, {
        COALESCE(policy.location_required, false) AS location_required,
        receipt.first_received_at,
        CASE
-         WHEN COALESCE(policy.expiry_tracking_mode, 'NONE') <> 'NONE' THEN 'FEFO'
+         WHEN lot.expiry_date IS NOT NULL THEN 'FEFO'
          ELSE 'FIFO'
        END AS allocation_policy
       FROM inventory.inventory_balances balance
@@ -220,21 +220,20 @@ export async function listAllocationCandidates(client, {
          OR balance.lot_id IS NOT NULL
        )
        AND (
-         COALESCE(policy.expiry_tracking_mode, 'NONE') = 'NONE'
-         OR (lot.expiry_date IS NOT NULL AND lot.expiry_date >= CURRENT_DATE)
+         COALESCE(policy.expiry_tracking_mode, 'NONE') <> 'REQUIRED'
+         OR lot.expiry_date IS NOT NULL
        )
+       AND (lot.expiry_date IS NULL OR lot.expiry_date >= CURRENT_DATE)
        AND (
          COALESCE(policy.location_required, false) = false
          OR balance.location_id IS NOT NULL
        )
      ORDER BY
        CASE
-         WHEN COALESCE(policy.expiry_tracking_mode, 'NONE') <> 'NONE'
-         THEN lot.expiry_date
+         WHEN lot.expiry_date IS NOT NULL THEN lot.expiry_date
        END ASC NULLS LAST,
        CASE
-         WHEN COALESCE(policy.expiry_tracking_mode, 'NONE') = 'NONE'
-         THEN receipt.first_received_at
+         WHEN lot.expiry_date IS NULL THEN receipt.first_received_at
        END ASC NULLS LAST,
        location.location_code ASC NULLS LAST,
        lot.lot_code ASC NULLS LAST,
