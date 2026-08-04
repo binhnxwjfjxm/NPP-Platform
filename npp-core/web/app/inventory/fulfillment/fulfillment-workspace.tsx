@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import styles from './fulfillment-workspace.module.css';
 
@@ -135,8 +135,10 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return envelope.data;
 }
 
-function keyFor(prefix: string, id: string): string {
-  return `${prefix}-${id}-${Date.now()}`;
+function keyFor(prefix: string, id: string, fingerprint: string): string {
+  return `${prefix}-${id}-${fingerprint}`
+    .replace(/[^A-Za-z0-9._:-]/g, '_')
+    .slice(0, 128);
 }
 
 export default function FulfillmentWorkspace() {
@@ -148,6 +150,7 @@ export default function FulfillmentWorkspace() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const detailRequestRef = useRef(0);
 
   const selectedWork = work.find((item) => item.fulfillmentDemandId === selectedId) ?? null;
   const filteredWork = useMemo(() => {
@@ -178,7 +181,10 @@ export default function FulfillmentWorkspace() {
           : next[0]?.fulfillmentDemandId ?? null;
       setSelectedId(target);
       if (target) await loadDetail(target);
-      else setDetail(null);
+      else {
+        detailRequestRef.current += 1;
+        setDetail(null);
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Không tải được hàng đợi kho.');
     } finally {
@@ -187,23 +193,28 @@ export default function FulfillmentWorkspace() {
   }
 
   async function loadDetail(demandId: string) {
+    const requestNumber = detailRequestRef.current + 1;
+    detailRequestRef.current = requestNumber;
     setBusy(`detail-${demandId}`);
     setError(null);
+    setSelectedId(demandId);
     try {
       const next = await requestJson<SuggestionDetail>(
         `/api/inventory/fulfillment-demands/${demandId}/suggestions`,
       );
+      if (detailRequestRef.current !== requestNumber) return;
       setDetail(next);
-      setSelectedId(demandId);
     } catch (loadError) {
+      if (detailRequestRef.current !== requestNumber) return;
       setError(loadError instanceof Error ? loadError.message : 'Không tải được đề xuất vị trí/lô.');
     } finally {
-      setBusy(null);
+      if (detailRequestRef.current === requestNumber) setBusy(null);
     }
   }
 
   async function autoAllocate() {
-    if (!selectedId) return;
+    if (!selectedId || !detail) return;
+    const remainingFingerprint = detail.remainingBaseQuantity;
     setBusy('allocate');
     setError(null);
     setNotice(null);
@@ -212,7 +223,9 @@ export default function FulfillmentWorkspace() {
         `/api/inventory/fulfillment-demands/${selectedId}/allocate`,
         {
           method: 'POST',
-          headers: { 'Idempotency-Key': keyFor('allocate', selectedId) },
+          headers: {
+            'Idempotency-Key': keyFor('allocate', selectedId, remainingFingerprint),
+          },
           body: JSON.stringify({ mode: 'AUTO' }),
         },
       );
@@ -226,6 +239,9 @@ export default function FulfillmentWorkspace() {
   }
 
   async function updateProgress(allocation: Allocation, action: 'pick' | 'pack') {
+    const currentProgress = action === 'pick'
+      ? allocation.pickedBaseQuantity
+      : allocation.packedBaseQuantity;
     const quantity = action === 'pick'
       ? quantityDifference(allocation.allocatedBaseQuantity, allocation.pickedBaseQuantity)
       : quantityDifference(allocation.pickedBaseQuantity, allocation.packedBaseQuantity);
@@ -238,7 +254,9 @@ export default function FulfillmentWorkspace() {
         `/api/inventory/fulfillment-allocations/${allocation.id}/${action}`,
         {
           method: 'POST',
-          headers: { 'Idempotency-Key': keyFor(action, allocation.id) },
+          headers: {
+            'Idempotency-Key': keyFor(action, allocation.id, `${currentProgress}:${quantity}`),
+          },
           body: JSON.stringify({ quantity }),
         },
       );
@@ -290,8 +308,8 @@ export default function FulfillmentWorkspace() {
           <article><strong>{counts.packing}</strong><span>Đóng gói</span></article>
         </section>
 
-        {error ? <div className={styles.error} data-testid="fulfillment-error">{error}</div> : null}
-        {notice ? <div className={styles.notice} data-testid="fulfillment-notice">{notice}</div> : null}
+        {error ? <div className={styles.error} role="alert" data-testid="fulfillment-error">{error}</div> : null}
+        {notice ? <div className={styles.notice} role="status" data-testid="fulfillment-notice">{notice}</div> : null}
 
         <div className={styles.layout}>
           <section className={styles.queuePanel}>
@@ -304,6 +322,7 @@ export default function FulfillmentWorkspace() {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Tìm đơn, khách, SKU..."
+                aria-label="Tìm đơn, khách hàng hoặc SKU"
                 className={styles.search}
                 data-testid="fulfillment-search"
               />
