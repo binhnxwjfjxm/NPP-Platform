@@ -173,6 +173,9 @@ DECLARE
   write_context text := current_setting('npp.sales_fulfillment_allocation_write_context', true);
   demand_record sales.sales_order_fulfillment_demands;
   reservation_record inventory.inventory_reservations;
+  policy_record inventory.product_tracking_policies;
+  location_record shared.warehouse_locations;
+  lot_record inventory.inventory_lots;
   allocated_total numeric(30,12);
 BEGIN
   IF write_context IS DISTINCT FROM 'fulfillment_allocation_service' THEN
@@ -201,6 +204,57 @@ BEGIN
        OR NEW.warehouse_id IS DISTINCT FROM demand_record.warehouse_id
        OR NEW.base_variant_id IS DISTINCT FROM demand_record.base_variant_id THEN
       RAISE EXCEPTION 'sales_fulfillment_allocation_lineage_mismatch';
+    END IF;
+
+    SELECT * INTO policy_record
+      FROM inventory.product_tracking_policies
+     WHERE installation_id = NEW.installation_id
+       AND base_variant_id = NEW.base_variant_id;
+
+    IF COALESCE(policy_record.location_required, false)
+       AND NEW.location_id IS NULL THEN
+      RAISE EXCEPTION 'sales_fulfillment_allocation_location_required';
+    END IF;
+
+    IF NEW.location_id IS NOT NULL THEN
+      SELECT * INTO location_record
+        FROM shared.warehouse_locations
+       WHERE installation_id = NEW.installation_id
+         AND warehouse_id = NEW.warehouse_id
+         AND id = NEW.location_id;
+
+      IF NOT FOUND
+         OR location_record.is_active IS DISTINCT FROM true
+         OR location_record.location_type <> 'storage' THEN
+        RAISE EXCEPTION 'sales_fulfillment_allocation_requires_active_storage_location';
+      END IF;
+    END IF;
+
+    IF COALESCE(policy_record.lot_tracking_mode, 'NONE') = 'REQUIRED'
+       AND NEW.lot_id IS NULL THEN
+      RAISE EXCEPTION 'sales_fulfillment_allocation_lot_required';
+    END IF;
+
+    IF NEW.lot_id IS NOT NULL THEN
+      SELECT * INTO lot_record
+        FROM inventory.inventory_lots
+       WHERE installation_id = NEW.installation_id
+         AND id = NEW.lot_id;
+
+      IF NOT FOUND
+         OR lot_record.base_variant_id IS DISTINCT FROM NEW.base_variant_id THEN
+        RAISE EXCEPTION 'sales_fulfillment_allocation_lot_variant_mismatch';
+      END IF;
+
+      IF lot_record.expiry_date IS NOT NULL
+         AND lot_record.expiry_date < CURRENT_DATE THEN
+        RAISE EXCEPTION 'sales_fulfillment_allocation_expired_lot_forbidden';
+      END IF;
+
+      IF COALESCE(policy_record.expiry_tracking_mode, 'NONE') = 'REQUIRED'
+         AND lot_record.expiry_date IS NULL THEN
+        RAISE EXCEPTION 'sales_fulfillment_allocation_expiry_required';
+      END IF;
     END IF;
 
     SELECT COALESCE(sum(allocation.allocated_base_quantity), 0)
