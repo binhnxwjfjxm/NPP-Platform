@@ -250,27 +250,30 @@ function salesOrderPayload(master, quantity) {
   };
 }
 
-async function createAndConfirmOrder(baseUrl, config, master, quantity) {
-  const createResponse = await fetch(`${baseUrl}/api/sales-orders`, {
-    method: 'POST',
-    headers: authHeaders(config, `create-${randomUUID()}`),
-    body: JSON.stringify(salesOrderPayload(master, quantity)),
-  });
-  assert.equal(createResponse.status, 201, await createResponse.text());
-  const created = (await createResponse.json()).data;
-
-  const confirmResponse = await fetch(`${baseUrl}/api/sales-orders/${created.id}/confirm`, {
-    method: 'POST',
-    headers: authHeaders(config, `confirm-${randomUUID()}`),
-    body: JSON.stringify({}),
-  });
-  assert.equal(confirmResponse.status, 200, await confirmResponse.text());
-  return (await confirmResponse.json()).data;
-}
-
 async function fetchJson(response) {
   const body = await response.json();
   return { response, body };
+}
+
+async function createAndConfirmOrder(baseUrl, config, master, quantity) {
+  const createResult = await fetchJson(await fetch(`${baseUrl}/api/sales-orders`, {
+    method: 'POST',
+    headers: authHeaders(config, `create-${randomUUID()}`),
+    body: JSON.stringify(salesOrderPayload(master, quantity)),
+  }));
+  assert.equal(createResult.response.status, 201, JSON.stringify(createResult.body));
+  const created = createResult.body.data;
+
+  const confirmResult = await fetchJson(await fetch(
+    `${baseUrl}/api/sales-orders/${created.id}/confirm`,
+    {
+      method: 'POST',
+      headers: authHeaders(config, `confirm-${randomUUID()}`),
+      body: JSON.stringify({}),
+    },
+  ));
+  assert.equal(confirmResult.response.status, 200, JSON.stringify(confirmResult.body));
+  return confirmResult.body.data;
 }
 
 test('Phase 6D.2 allocates FEFO, creates exact reservations and keeps pick/pack monotonic', async () => {
