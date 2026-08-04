@@ -1,8 +1,10 @@
 import { createSuccessEnvelope } from '@npp/contracts';
 import { sendError, sendJson } from '../http-utils.js';
+import { normalizeIdempotencyKey, readJsonBody } from '../idempotency.js';
 import {
   getAssignedDriverTrip,
   listAssignedDriverTrips,
+  recordDriverDeliveryAttempt,
 } from '../services/logistics-driver-delivery.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
@@ -13,7 +15,14 @@ function statusFor(code) {
   if (code === 'UNAUTHORIZED') return 401;
   if (code === 'PERMISSION_DENIED' || code === 'WAREHOUSE_SCOPE_DENIED') return 403;
   if (code.endsWith('_NOT_FOUND')) return 404;
-  if (code.endsWith('_QUERY_FAILED')) return 503;
+  if (code.endsWith('_QUERY_FAILED') || code.endsWith('_TRANSACTION_FAILED')) return 503;
+  if (
+    code.includes('CONFLICT')
+    || code.includes('MISMATCH')
+    || code.includes('IDEMPOTENCY')
+    || code.includes('ALREADY')
+    || code.includes('EXCEEDS')
+  ) return 409;
   return 400;
 }
 
@@ -55,7 +64,7 @@ function sendServiceError(res, result, options) {
   );
 }
 
-async function authenticateDriver(req, res, options) {
+async function authenticateDriver(req, res, options, permission) {
   const auth = options.authenticate(req, options.config);
   if (!auth.ok) {
     res.setHeader('WWW-Authenticate', 'Bearer');
@@ -73,7 +82,7 @@ async function authenticateDriver(req, res, options) {
     requestId: options.requestId,
     receivedAt: options.receivedAt,
   });
-  if (!options.authorize(requestContext, options.PERMISSIONS.coreDeliveryTripDriverRead).ok) {
+  if (!options.authorize(requestContext, permission).ok) {
     sendError(
       res,
       apiError('PERMISSION_DENIED', 'Permission denied', {}, false, 403),
@@ -85,6 +94,20 @@ async function authenticateDriver(req, res, options) {
   return requestContext;
 }
 
+function requireIdempotency(req) {
+  try {
+    const key = normalizeIdempotencyKey(req.headers['idempotency-key']);
+    if (!key) return { ok: false, code: 'MISSING_IDEMPOTENCY_KEY', message: 'Idempotency-Key header is required' };
+    return { ok: true, key };
+  } catch (error) {
+    return {
+      ok: false,
+      code: error.code ?? 'INVALID_IDEMPOTENCY_KEY',
+      message: 'Idempotency-Key must use 1-128 safe characters',
+    };
+  }
+}
+
 export async function handleLogisticsDriverRoutes(req, res, options) {
   const url = new URL(`http://localhost${req.url}`);
   const pathname = url.pathname;
@@ -92,47 +115,98 @@ export async function handleLogisticsDriverRoutes(req, res, options) {
       && !pathname.startsWith('/api/logistics/driver/trips/')) return false;
 
   const method = String(req.method ?? 'GET').toUpperCase();
-  if (method !== 'GET') {
+  try {
+    if (method === 'GET') {
+      const requestContext = await authenticateDriver(
+        req,
+        res,
+        options,
+        options.PERMISSIONS.coreDeliveryTripDriverRead,
+      );
+      if (!requestContext) return true;
+
+      if (pathname === '/api/logistics/driver/trips') {
+        const result = await listAssignedDriverTrips(options.getPool(), {
+          requestContext,
+          limit: parseInteger(url.searchParams.get('limit'), 100, 500),
+          offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
+        });
+        if (!result.ok) sendServiceError(res, result, options);
+        else writeSuccess(res, { driver: result.driver, trips: result.trips }, options);
+        return true;
+      }
+
+      const detailMatch = pathname.match(/^\/api\/logistics\/driver\/trips\/([^/]+)$/);
+      if (!detailMatch) {
+        sendError(
+          res,
+          apiError('NOT_FOUND', 'Route not found', {}, false, 404),
+          options.requestId,
+          options.receivedAt,
+        );
+        return true;
+      }
+      const result = await getAssignedDriverTrip(options.getPool(), {
+        requestContext,
+        tripId: detailMatch[1],
+      });
+      if (!result.ok) sendServiceError(res, result, options);
+      else writeSuccess(res, { driver: result.driver, trip: result.trip }, options);
+      return true;
+    }
+
+    const attemptMatch = pathname.match(
+      /^\/api\/logistics\/driver\/trips\/([^/]+)\/assignments\/([^/]+)\/attempts$/,
+    );
+    if (method === 'POST' && attemptMatch) {
+      const requestContext = await authenticateDriver(
+        req,
+        res,
+        options,
+        options.PERMISSIONS.coreDeliveryAttemptRecord,
+      );
+      if (!requestContext) return true;
+      let payload;
+      try {
+        payload = await readJsonBody(req);
+      } catch (error) {
+        sendError(
+          res,
+          apiError(error.code, error.publicMessage, {}, false, error.statusCode),
+          options.requestId,
+          options.receivedAt,
+        );
+        return true;
+      }
+      const idempotency = requireIdempotency(req);
+      if (!idempotency.ok) {
+        sendError(
+          res,
+          apiError(idempotency.code, idempotency.message, {}, false, 400),
+          options.requestId,
+          options.receivedAt,
+        );
+        return true;
+      }
+      const result = await recordDriverDeliveryAttempt({
+        adapter: options.getPool(),
+        requestContext,
+        tripId: attemptMatch[1],
+        assignmentId: attemptMatch[2],
+        idempotencyKey: idempotency.key,
+        payload,
+      });
+      if (!result.ok) sendServiceError(res, result, options);
+      else writeSuccess(res, result, options);
+      return true;
+    }
+
     sendError(
       res,
       apiError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405),
       options.requestId,
       options.receivedAt,
     );
-    return true;
-  }
-
-  try {
-    const requestContext = await authenticateDriver(req, res, options);
-    if (!requestContext) return true;
-
-    if (pathname === '/api/logistics/driver/trips') {
-      const result = await listAssignedDriverTrips(options.getPool(), {
-        requestContext,
-        limit: parseInteger(url.searchParams.get('limit'), 100, 500),
-        offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
-      });
-      if (!result.ok) sendServiceError(res, result, options);
-      else writeSuccess(res, { driver: result.driver, trips: result.trips }, options);
-      return true;
-    }
-
-    const detailMatch = pathname.match(/^\/api\/logistics\/driver\/trips\/([^/]+)$/);
-    if (!detailMatch) {
-      sendError(
-        res,
-        apiError('NOT_FOUND', 'Route not found', {}, false, 404),
-        options.requestId,
-        options.receivedAt,
-      );
-      return true;
-    }
-    const result = await getAssignedDriverTrip(options.getPool(), {
-      requestContext,
-      tripId: detailMatch[1],
-    });
-    if (!result.ok) sendServiceError(res, result, options);
-    else writeSuccess(res, { driver: result.driver, trip: result.trip }, options);
     return true;
   } catch (error) {
     if (typeof error?.statusCode === 'number' && typeof error?.publicMessage === 'string') {
