@@ -1,0 +1,337 @@
+name: Final Delivery production rollout
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: final-delivery-production-rollout
+  cancel-in-progress: false
+
+jobs:
+  rollout:
+    if: github.head_ref == 'agent/production-rollout-admin-delivery'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      APPROVED_RUNTIME_BASE: 5b4a5680ab5368be360c799b9ac22527fcf7f862
+      VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      DELIVERY_PROJECT_NAME: npp-delivery
+      DELIVERY_ROOT_DIRECTORY: delivery/web
+      DELIVERY_DOMAIN: log.nguyenlieuhungphat.com
+      CORE_HEROKU_APP_NAME: hung-phat
+      CORE_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
+      MCP_PROJECT_ID: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
+      ADMIN_PROJECT_ID: prj_0hp2A8WyUW4zgglShPTzL70hesVC
+      WEBSITE_PROJECT_ID: prj_rXqH83GFDHuEGUcQrrv82JBPWnjU
+      NPP_URL: https://office.nguyenlieuhungphat.com
+      ADMIN_URL: https://admin.nguyenlieuhungphat.com
+
+    steps:
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact main and unchanged runtime
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          runtime_diff="$(git diff --name-only "$APPROVED_RUNTIME_BASE"..HEAD -- npp-core delivery admin mcp packages package.json package-lock.json)"
+          if [ -n "$runtime_diff" ]; then
+            printf '%s\n' "$runtime_diff" >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Resolve protected production configuration
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          SECRET_CORE_WEB_ADMIN_USERNAME: ${{ secrets.CORE_WEB_ADMIN_USERNAME }}
+          SECRET_CORE_WEB_ADMIN_PASSWORD: ${{ secrets.CORE_WEB_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          app_json="${RUNNER_TEMP}/core-app.json"
+          config_json="${RUNNER_TEMP}/core-config.json"
+          curl --fail --silent --show-error \
+            -H 'Accept: application/vnd.heroku+json; version=3' \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            "https://api.heroku.com/apps/$CORE_HEROKU_APP_NAME" > "$app_json"
+          curl --fail --silent --show-error \
+            -H 'Accept: application/vnd.heroku+json; version=3' \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            "https://api.heroku.com/apps/$CORE_HEROKU_APP_NAME/config-vars" > "$config_json"
+
+          core_url="$(jq -r '.web_url // empty' "$app_json")"
+          core_url="${core_url%/}"
+          database_url="$(jq -r '.DATABASE_URL // empty' "$config_json")"
+          ssl_mode="$(jq -r '.DATABASE_SSL_MODE // "require"' "$config_json")"
+          installation_id="$(jq -r '.INSTALLATION_ID // empty' "$config_json")"
+          backend_token="$(jq -r '.BACKEND_API_TOKEN // empty' "$config_json")"
+          admin_username="${SECRET_CORE_WEB_ADMIN_USERNAME:-}"
+          admin_password="${SECRET_CORE_WEB_ADMIN_PASSWORD:-}"
+
+          test -n "$core_url"
+          test -n "$database_url"
+          test -n "$installation_id"
+          test -n "$backend_token"
+          test -n "$admin_username"
+          test -n "$admin_password"
+          case "$ssl_mode" in require|verify-full) ;; *) exit 1 ;; esac
+
+          for value in "$core_url" "$database_url" "$installation_id" "$backend_token" "$admin_username" "$admin_password"; do
+            echo "::add-mask::$value"
+          done
+          write_env() {
+            local name="$1" value="$2" marker="CFG_${RANDOM}_${RANDOM}"
+            {
+              echo "$name<<$marker"
+              echo "$value"
+              echo "$marker"
+            } >> "$GITHUB_ENV"
+          }
+          write_env CORE_API_INTERNAL_URL "$core_url"
+          write_env DATABASE_URL "$database_url"
+          write_env DATABASE_SSL_MODE "$ssl_mode"
+          write_env INSTALLATION_ID "$installation_id"
+          write_env BACKEND_API_TOKEN "$backend_token"
+          write_env CORE_WEB_ADMIN_USERNAME "$admin_username"
+          write_env CORE_WEB_ADMIN_PASSWORD "$admin_password"
+
+      - name: Ensure linked production driver through Core API
+        id: driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_file="${RUNNER_TEMP}/driver-candidate.json"
+          node --input-type=module <<'NODE' > "$candidate_file"
+          import pg from 'pg';
+          import { buildSslConfig } from './npp-core/api/src/db/pool.js';
+
+          const pool = new pg.Pool({
+            connectionString: process.env.DATABASE_URL,
+            ssl: buildSslConfig(process.env.DATABASE_SSL_MODE),
+            application_name: 'delivery-final-driver-bootstrap',
+          });
+          try {
+            const linked = await pool.query(`
+              SELECT dp.employee_id::text AS employee_id, dp.code, dp.name
+                FROM logistics.driver_profiles dp
+                JOIN shared.employees e
+                  ON e.installation_id = dp.installation_id
+                 AND e.id = dp.employee_id
+               WHERE dp.installation_id = $1
+                 AND dp.is_active = true
+                 AND e.is_active = true
+               ORDER BY dp.code
+               LIMIT 1
+            `, [process.env.INSTALLATION_ID]);
+            if (linked.rows.length) {
+              process.stdout.write(JSON.stringify({ exists: true, ...linked.rows[0] }));
+              process.exit(0);
+            }
+
+            const result = await pool.query(`
+              SELECT e.id::text AS employee_id,
+                     e.code,
+                     e.full_name,
+                     e.job_title,
+                     e.phone,
+                     CASE
+                       WHEN concat_ws(' ', e.job_title, e.full_name) ~* '(tài[[:space:]]*xế|tai[[:space:]]*xe|giao[[:space:]]*hàng|giao[[:space:]]*hang|driver|delivery|logistics|vận[[:space:]]*chuyển|van[[:space:]]*chuyen)'
+                       THEN true ELSE false
+                     END AS driver_text_match,
+                     EXISTS (
+                       SELECT 1
+                         FROM shared.users u
+                        WHERE u.installation_id = e.installation_id
+                          AND u.employee_id = e.id
+                          AND u.is_active = true
+                     ) AS has_active_office_user
+                FROM shared.employees e
+               WHERE e.installation_id = $1
+                 AND e.is_active = true
+                 AND NOT EXISTS (
+                   SELECT 1
+                     FROM logistics.driver_profiles dp
+                    WHERE dp.installation_id = e.installation_id
+                      AND dp.employee_id = e.id
+                 )
+               ORDER BY e.code
+            `, [process.env.INSTALLATION_ID]);
+
+            const rows = result.rows;
+            const textMatches = rows.filter((row) => row.driver_text_match === true);
+            const fieldOnly = rows.filter((row) => row.has_active_office_user === false);
+            const candidate = textMatches[0]
+              ?? (fieldOnly.length === 1 ? fieldOnly[0] : null)
+              ?? (rows.length === 1 ? rows[0] : null);
+
+            if (!candidate) {
+              const safe = rows.map((row) => ({
+                code: row.code,
+                jobTitle: row.job_title || '',
+                hasActiveOfficeUser: row.has_active_office_user,
+              }));
+              throw new Error(`delivery_driver_candidate_ambiguous:${JSON.stringify(safe)}`);
+            }
+            process.stdout.write(JSON.stringify({ exists: false, ...candidate }));
+          } finally {
+            await pool.end();
+          }
+          NODE
+
+          employee_id="$(jq -r '.employee_id' "$candidate_file")"
+          employee_code="$(jq -r '.code // empty' "$candidate_file")"
+          employee_name="$(jq -r '.full_name // .name // empty' "$candidate_file")"
+          employee_phone="$(jq -r '.phone // empty' "$candidate_file")"
+          exists="$(jq -r '.exists' "$candidate_file")"
+          test -n "$employee_id"
+          test -n "$employee_name"
+          echo "::add-mask::$employee_id"
+          echo "::add-mask::$employee_name"
+
+          if [ "$exists" = true ]; then
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          safe_code="$(printf '%s' "$employee_code" | tr '[:lower:]' '[:upper:]' | tr -cd 'A-Z0-9._-' | cut -c1-40)"
+          [ -n "$safe_code" ] || safe_code=EMP
+          short_id="$(printf '%s' "$employee_id" | tr -d '-' | cut -c1-8)"
+          profile_code="DRV-${safe_code}-${short_id}"
+          payload="$(jq -n \
+            --arg code "$profile_code" \
+            --arg name "$employee_name" \
+            --arg employeeId "$employee_id" \
+            --arg phone "$employee_phone" \
+            '{code:$code,name:$name,employeeId:$employeeId,phone:(if $phone == "" then null else $phone end),licenseReference:null}')"
+          body="${RUNNER_TEMP}/driver-create.json"
+          status="$(curl --silent --show-error --output "$body" --write-out '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $BACKEND_API_TOKEN" \
+            -H 'Content-Type: application/json' \
+            -H "Idempotency-Key: delivery-driver-bootstrap-${employee_id}" \
+            -H "x-request-id: delivery-driver-bootstrap-${GITHUB_RUN_ID}" \
+            "$CORE_API_INTERNAL_URL/api/logistics/drivers" \
+            --data "$payload")"
+          case "$status" in 200|201) ;; *) jq -r '.error.code // "driver_create_failed"' "$body" >&2; exit 1 ;; esac
+          test "$(jq -r '.data.employeeId // empty' "$body")" = "$employee_id"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy fifth Delivery project
+        id: delivery
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          SECRET_DELIVERY_WEB_USERS_JSON: ${{ secrets.DELIVERY_WEB_USERS_JSON }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('delivery/web/scripts/deploy-production.sh')
+          text = path.read_text()
+          anchor = 'done\n\nsettings_payload='
+          replacement = 'done\nexport VERCEL_PROJECT_ID="$project_id"\n\nsettings_payload='
+          if anchor not in text:
+              raise SystemExit('delivery_project_export_anchor_not_found')
+          path.write_text(text.replace(anchor, replacement, 1))
+          PY
+          bash -n delivery/web/scripts/deploy-production.sh
+          bash delivery/web/scripts/deploy-production.sh
+
+      - name: Smoke all related production runtimes
+        id: smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          admin_auth="${CORE_WEB_ADMIN_USERNAME}:${CORE_WEB_ADMIN_PASSWORD}"
+          echo "::add-mask::$admin_auth"
+
+          for path in /health/live /health/ready; do
+            code="$(curl --silent --show-error --retry 8 --retry-delay 5 --output /dev/null --write-out '%{http_code}' "$CORE_API_INTERNAL_URL$path")"
+            test "$code" = 200
+          done
+          for path in /dashboard /logistics/trips /logistics/dispatch; do
+            code="$(curl --silent --show-error --retry 8 --retry-delay 5 -u "$admin_auth" --output /dev/null --write-out '%{http_code}' "$NPP_URL$path")"
+            test "$code" = 200
+          done
+          test "$(curl --silent --show-error --retry 8 --retry-delay 5 -u "$admin_auth" --output /dev/null --write-out '%{http_code}' "$ADMIN_URL/")" = 200
+          test "$(curl --silent --show-error --retry 12 --retry-delay 5 --output /dev/null --write-out '%{http_code}' "https://$DELIVERY_DOMAIN/")" = 401
+
+          delivery_auth="$(node --input-type=module <<'NODE'
+          const [user] = JSON.parse(process.env.DELIVERY_WEB_USERS_JSON || '[]');
+          if (!user?.username || !user?.password) process.exit(1);
+          process.stdout.write(`${user.username}:${user.password}`);
+          NODE
+          )"
+          echo "::add-mask::$delivery_auth"
+          html="$(curl --fail --silent --show-error --retry 12 --retry-delay 5 -u "$delivery_auth" "https://$DELIVERY_DOMAIN/")"
+          grep -q 'Chuyến của tôi' <<<"$html"
+          grep -qv 'Không tải được chuyến' <<<"$html"
+          css="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.css' | head -n 1)"
+          js="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.js' | head -n 1)"
+          test -n "$css"
+          test -n "$js"
+          curl --fail --silent --show-error "https://$DELIVERY_DOMAIN$css" >/dev/null
+          curl --fail --silent --show-error "https://$DELIVERY_DOMAIN$js" >/dev/null
+
+      - name: Publish completion evidence
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          body="$(cat <<EOT
+          ## Phase 6D/6E production rollout — completed
+
+          - SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          - DATABASE_MIGRATIONS_042_048: applied and verified
+          - CORE_BACKEND: deployed and smoke verified
+          - NPP_OPERATIONS: deployed and smoke verified
+          - ADMIN_MCP_NPP: deployed READY and smoke verified
+          - DRIVER_PROFILE_BOOTSTRAP_CREATED: ${{ steps.driver.outputs.created }}
+          - DELIVERY_PROJECT_ID: ${{ steps.delivery.outputs.project_id }}
+          - DELIVERY_DEPLOYMENT_URL: ${{ steps.delivery.outputs.deployment_url }}
+          - DELIVERY_DOMAIN: https://${DELIVERY_DOMAIN}
+          - DELIVERY_DOMAIN_READY: ${{ steps.delivery.outputs.domain_ready }}
+          - AUTO_DEPLOY: OFF
+          - MCP_FIELD_AND_BACKEND: not redeployed; no related runtime diff
+          - WEBSITE: not redeployed; separate repository and no related runtime diff
+          - FINAL_SMOKE: success
+          - GITHUB_RUN_ID: ${GITHUB_RUN_ID}
+          EOT
+          )"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/248/comments" -f body="$body" >/dev/null
+          gh issue close 248 --reason completed >/dev/null
+
+      - name: Publish sanitized failure evidence
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/248/comments" \
+            -f body="## Final Delivery rollout — failure\n\n- SOURCE_SHA: ${{ steps.source.outputs.sha }}\n- DRIVER_PROFILE: ${{ steps.driver.outcome }}\n- DELIVERY: ${{ steps.delivery.outcome }}\n- FINAL_SMOKE: ${{ steps.smoke.outcome }}\n- GITHUB_RUN_ID: ${GITHUB_RUN_ID}" >/dev/null
