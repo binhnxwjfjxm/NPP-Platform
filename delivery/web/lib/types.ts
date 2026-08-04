@@ -4,6 +4,41 @@ export type DeliveryUser = Readonly<{
   displayName: string;
 }>;
 
+export type DeliveryAttemptResult =
+  | 'delivered_full'
+  | 'delivered_partial'
+  | 'failed'
+  | 'rescheduled';
+
+export type DeliveryAttemptLine = Readonly<{
+  id?: string;
+  deliveryOrderLineId: string;
+  inventoryIssueLineId: string;
+  sku: string | null;
+  itemName: string | null;
+  unitCode: string | null;
+  issuedBaseQuantity: string;
+  deliveredBaseQuantity: string | null;
+}>;
+
+export type DeliveryAttemptSummary = Readonly<{
+  id: string;
+  result: DeliveryAttemptResult;
+  attemptedAt: string;
+  reasonCode: string | null;
+  note: string | null;
+  rescheduledFor: string | null;
+}>;
+
+export type DeliveryAttempt = DeliveryAttemptSummary & Readonly<{
+  tripId: string;
+  stopId: string;
+  assignmentId: string;
+  deliveryOrderId: string;
+  driverProfileId: string;
+  lines: readonly DeliveryAttemptLine[];
+}>;
+
 export type TripAssignment = Readonly<{
   assignmentId: string;
   deliveryOrderId: string;
@@ -14,6 +49,10 @@ export type TripAssignment = Readonly<{
   requestedDeliveryDate: string | null;
   collectionPolicy: string | null;
   assignedAt: string | null;
+  dispatchItemId: string | null;
+  inventoryIssueId: string | null;
+  attempt: DeliveryAttemptSummary | null;
+  lines: readonly DeliveryAttemptLine[];
 }>;
 
 export type TripStop = Readonly<{
@@ -48,6 +87,7 @@ export type DriverTrip = Readonly<{
   note: string | null;
   stopCount?: number;
   assignmentCount?: number;
+  attemptCount?: number;
   stops?: readonly TripStop[];
 }>;
 
@@ -66,4 +106,23 @@ export type DriverTripListResponse = Readonly<{
 export type DriverTripDetailResponse = Readonly<{
   driver: DriverSummary;
   trip: DriverTrip;
+}>;
+
+export type RecordDeliveryAttemptPayload = Readonly<{
+  result: DeliveryAttemptResult;
+  attemptedAt: string;
+  reasonCode?: string | null;
+  note?: string | null;
+  rescheduledFor?: string | null;
+  lines?: readonly Readonly<{
+    inventoryIssueLineId: string;
+    deliveredBaseQuantity: string;
+  }>[];
+}>;
+
+export type RecordDeliveryAttemptResponse = Readonly<{
+  ok: true;
+  attempt: DeliveryAttempt;
+  replayed: boolean;
+  eventId?: string;
 }>;
