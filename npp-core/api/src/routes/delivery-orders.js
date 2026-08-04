@@ -10,6 +10,16 @@ import {
   listDeliveryOrderEligibility,
   listDeliveryOrders,
 } from '../services/sales-delivery-orders.js';
+import {
+  executeCancelCustomerReturn,
+  executeCreateCustomerReturn,
+  executePickupHandover,
+  executeReceiveCustomerReturn,
+  executeReverseDeliveryInventoryIssue,
+  getCustomerReturn,
+  listCustomerReturnEligibility,
+  listCustomerReturns,
+} from '../services/sales-delivery-inventory.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -19,7 +29,11 @@ function statusFor(code) {
   if (code === 'UNAUTHORIZED') return 401;
   if (code === 'PERMISSION_DENIED' || code === 'WAREHOUSE_SCOPE_DENIED') return 403;
   if (code.endsWith('_NOT_FOUND')) return 404;
-  if (code === 'DOCUMENT_NUMBER_SERIES_UNAVAILABLE' || code === 'DELIVERY_ORDER_TRANSACTION_FAILED') return 503;
+  if (
+    code === 'DOCUMENT_NUMBER_SERIES_UNAVAILABLE'
+    || code.endsWith('_TRANSACTION_FAILED')
+    || code.endsWith('_QUERY_FAILED')
+  ) return 503;
   if (
     code.includes('CONFLICT')
     || code.includes('MISMATCH')
@@ -27,6 +41,10 @@ function statusFor(code) {
     || code.includes('IDEMPOTENCY')
     || code === 'INVALID_STATUS_TRANSITION'
     || code === 'PACKED_ALLOCATION_NOT_ELIGIBLE'
+    || code.endsWith('_NOT_READY')
+    || code.endsWith('_NOT_DRAFT')
+    || code.endsWith('_NOT_ALLOWED')
+    || code.endsWith('_BLOCKED')
   ) return 409;
   return 400;
 }
@@ -218,70 +236,147 @@ async function executeMutation(req, res, options, { permission, operation }) {
   return true;
 }
 
+async function executeRead(req, res, options, { permission, operation, select }) {
+  try {
+    const requestContext = await authenticateAndAuthorize(req, res, options, permission);
+    if (!requestContext) return true;
+    const result = await operation(requestContext);
+    if (!result.ok) sendServiceError(res, result, options);
+    else writeSuccess(res, select(result), options);
+  } catch (error) {
+    sendUnexpectedError(res, error, options);
+  }
+  return true;
+}
+
 export async function handleDeliveryOrderRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (pathname !== '/api/delivery-orders' && !pathname.startsWith('/api/delivery-orders/')) return false;
   const method = String(req.method ?? 'GET').toUpperCase();
+  const url = new URL(`http://localhost${req.url}`);
+
+  if (pathname === '/api/delivery-orders/customer-returns/eligibility' && method === 'GET') {
+    return executeRead(req, res, options, {
+      permission: options.PERMISSIONS.coreCustomerReturnRead,
+      operation: (requestContext) => listCustomerReturnEligibility(options.getPool(), {
+        requestContext,
+        deliveryOrderId: url.searchParams.get('deliveryOrderId'),
+        limit: parseInteger(url.searchParams.get('limit'), 500, 1000),
+        offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
+      }),
+      select: (result) => result.eligibility,
+    });
+  }
+
+  if (pathname === '/api/delivery-orders/customer-returns' && method === 'GET') {
+    return executeRead(req, res, options, {
+      permission: options.PERMISSIONS.coreCustomerReturnRead,
+      operation: (requestContext) => listCustomerReturns(options.getPool(), {
+        requestContext,
+        status: !url.searchParams.get('status') || url.searchParams.get('status') === 'all'
+          ? null
+          : url.searchParams.get('status'),
+        limit: parseInteger(url.searchParams.get('limit'), 200, 1000),
+        offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
+      }),
+      select: (result) => result.customerReturns,
+    });
+  }
+
+  if (pathname === '/api/delivery-orders/customer-returns' && method === 'POST') {
+    return executeMutation(req, res, options, {
+      permission: options.PERMISSIONS.coreCustomerReturnCreate,
+      operation: ({ requestContext, payload, idempotencyKey }) => executeCreateCustomerReturn({
+        adapter: options.getPool(), requestContext, payload, idempotencyKey,
+      }),
+    });
+  }
+
+  const returnTransitionMatch = pathname.match(/^\/api\/delivery-orders\/customer-returns\/([^/]+)\/(receive|cancel)$/);
+  if (returnTransitionMatch && method === 'POST') {
+    const [, customerReturnId, action] = returnTransitionMatch;
+    const receive = action === 'receive';
+    return executeMutation(req, res, options, {
+      permission: receive
+        ? options.PERMISSIONS.coreCustomerReturnReceive
+        : options.PERMISSIONS.coreCustomerReturnCancel,
+      operation: ({ requestContext, payload, idempotencyKey }) => (receive
+        ? executeReceiveCustomerReturn({
+            adapter: options.getPool(), requestContext, customerReturnId, payload, idempotencyKey,
+          })
+        : executeCancelCustomerReturn({
+            adapter: options.getPool(), requestContext, customerReturnId, payload, idempotencyKey,
+          })),
+    });
+  }
+
+  const returnDetailMatch = pathname.match(/^\/api\/delivery-orders\/customer-returns\/([^/]+)$/);
+  if (returnDetailMatch && method === 'GET') {
+    return executeRead(req, res, options, {
+      permission: options.PERMISSIONS.coreCustomerReturnRead,
+      operation: (requestContext) => getCustomerReturn(options.getPool(), {
+        requestContext,
+        customerReturnId: returnDetailMatch[1],
+      }),
+      select: (result) => result.customerReturn,
+    });
+  }
 
   if (pathname === '/api/delivery-orders/eligibility' && method === 'GET') {
-    try {
-      const requestContext = await authenticateAndAuthorize(
-        req,
-        res,
-        options,
-        options.PERMISSIONS.coreDeliveryOrderRead,
-      );
-      if (!requestContext) return true;
-      const url = new URL(`http://localhost${req.url}`);
-      const result = await listDeliveryOrderEligibility(options.getPool(), {
+    return executeRead(req, res, options, {
+      permission: options.PERMISSIONS.coreDeliveryOrderRead,
+      operation: (requestContext) => listDeliveryOrderEligibility(options.getPool(), {
         requestContext,
         salesOrderId: url.searchParams.get('salesOrderId'),
         limit: parseInteger(url.searchParams.get('limit'), 500, 1000),
         offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
-      });
-      if (!result.ok) sendServiceError(res, result, options);
-      else writeSuccess(res, result.eligibility, options);
-    } catch (error) {
-      sendUnexpectedError(res, error, options);
-    }
-    return true;
+      }),
+      select: (result) => result.eligibility,
+    });
   }
 
   if (pathname === '/api/delivery-orders' && method === 'GET') {
-    try {
-      const requestContext = await authenticateAndAuthorize(
-        req,
-        res,
-        options,
-        options.PERMISSIONS.coreDeliveryOrderRead,
-      );
-      if (!requestContext) return true;
-      const url = new URL(`http://localhost${req.url}`);
-      const status = url.searchParams.get('status');
-      const result = await listDeliveryOrders(options.getPool(), {
+    return executeRead(req, res, options, {
+      permission: options.PERMISSIONS.coreDeliveryOrderRead,
+      operation: (requestContext) => listDeliveryOrders(options.getPool(), {
         requestContext,
-        status: !status || status === 'all' ? null : status,
+        status: !url.searchParams.get('status') || url.searchParams.get('status') === 'all'
+          ? null
+          : url.searchParams.get('status'),
         salesOrderId: url.searchParams.get('salesOrderId'),
         limit: parseInteger(url.searchParams.get('limit'), 200, 1000),
         offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
-      });
-      if (!result.ok) sendServiceError(res, result, options);
-      else writeSuccess(res, result.deliveryOrders, options);
-    } catch (error) {
-      sendUnexpectedError(res, error, options);
-    }
-    return true;
+      }),
+      select: (result) => result.deliveryOrders,
+    });
   }
 
   if (pathname === '/api/delivery-orders' && method === 'POST') {
     return executeMutation(req, res, options, {
       permission: options.PERMISSIONS.coreDeliveryOrderCreate,
       operation: ({ requestContext, payload, idempotencyKey }) => executeCreateDeliveryOrder({
-        adapter: options.getPool(),
-        requestContext,
-        payload,
-        idempotencyKey,
+        adapter: options.getPool(), requestContext, payload, idempotencyKey,
       }),
+    });
+  }
+
+  const inventoryTransitionMatch = pathname.match(
+    /^\/api\/delivery-orders\/([^/]+)\/(pickup-handover|reverse-inventory-issue)$/,
+  );
+  if (inventoryTransitionMatch && method === 'POST') {
+    const [, deliveryOrderId, action] = inventoryTransitionMatch;
+    const pickup = action === 'pickup-handover';
+    return executeMutation(req, res, options, {
+      permission: pickup
+        ? options.PERMISSIONS.coreDeliveryOrderPickupHandover
+        : options.PERMISSIONS.coreDeliveryOrderReverseInventoryIssue,
+      operation: ({ requestContext, payload, idempotencyKey }) => (pickup
+        ? executePickupHandover({
+            adapter: options.getPool(), requestContext, deliveryOrderId, payload, idempotencyKey,
+          })
+        : executeReverseDeliveryInventoryIssue({
+            adapter: options.getPool(), requestContext, deliveryOrderId, payload, idempotencyKey,
+          })),
     });
   }
 
@@ -295,42 +390,24 @@ export async function handleDeliveryOrderRoutes(req, res, options) {
         : options.PERMISSIONS.coreDeliveryOrderCancel,
       operation: ({ requestContext, payload, idempotencyKey }) => (confirm
         ? executeConfirmDeliveryOrder({
-            adapter: options.getPool(),
-            requestContext,
-            deliveryOrderId,
-            payload,
-            idempotencyKey,
+            adapter: options.getPool(), requestContext, deliveryOrderId, payload, idempotencyKey,
           })
         : executeCancelDeliveryOrder({
-            adapter: options.getPool(),
-            requestContext,
-            deliveryOrderId,
-            payload,
-            idempotencyKey,
+            adapter: options.getPool(), requestContext, deliveryOrderId, payload, idempotencyKey,
           })),
     });
   }
 
   const detailMatch = pathname.match(/^\/api\/delivery-orders\/([^/]+)$/);
   if (detailMatch && method === 'GET') {
-    try {
-      const requestContext = await authenticateAndAuthorize(
-        req,
-        res,
-        options,
-        options.PERMISSIONS.coreDeliveryOrderRead,
-      );
-      if (!requestContext) return true;
-      const result = await getDeliveryOrder(options.getPool(), {
+    return executeRead(req, res, options, {
+      permission: options.PERMISSIONS.coreDeliveryOrderRead,
+      operation: (requestContext) => getDeliveryOrder(options.getPool(), {
         requestContext,
         deliveryOrderId: detailMatch[1],
-      });
-      if (!result.ok) sendServiceError(res, result, options);
-      else writeSuccess(res, result.deliveryOrder, options);
-    } catch (error) {
-      sendUnexpectedError(res, error, options);
-    }
-    return true;
+      }),
+      select: (result) => result.deliveryOrder,
+    });
   }
 
   sendError(

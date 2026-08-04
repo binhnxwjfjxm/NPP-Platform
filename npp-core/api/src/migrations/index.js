@@ -59,52 +59,35 @@ const SALES_DELIVERY_ORDER_HANDOVER_SQL = readFileSync(
   'utf8',
 );
 
+const SALES_INVENTORY_ISSUE_CUSTOMER_RETURN_SQL = [
+  readFileSync(
+    new URL('../../../../database/migrations/sales/045_sales_inventory_issue_customer_return.sql', import.meta.url),
+    'utf8',
+  ),
+  readFileSync(
+    new URL('../../../../database/migrations/sales/045_sales_inventory_issue_customer_return_guards.sql', import.meta.url),
+    'utf8',
+  ),
+  readFileSync(
+    new URL('../../../../database/migrations/sales/045_sales_inventory_issue_customer_return_claims.sql', import.meta.url),
+    'utf8',
+  ),
+].join('\n\n');
+
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_033,
-  Object.freeze({
-    id: '034_document_number_idempotency_namespace',
-    sql: DOCUMENT_NUMBER_IDEMPOTENCY_NAMESPACE_SQL,
-  }),
-  Object.freeze({
-    id: '035_purchase_order_line_entry_contract',
-    sql: PURCHASE_ORDER_LINE_ENTRY_CONTRACT_SQL,
-  }),
-  Object.freeze({
-    id: '036_supplier_purchase_pricing',
-    sql: SUPPLIER_PURCHASE_PRICING_SQL,
-  }),
-  Object.freeze({
-    id: '037_sales_order_foundation',
-    sql: SALES_ORDER_FOUNDATION_SQL,
-  }),
-  Object.freeze({
-    id: '038_sales_order_confirmation_guard',
-    sql: SALES_ORDER_CONFIRMATION_GUARD_SQL,
-  }),
-  Object.freeze({
-    id: '039_sales_order_operational_entry',
-    sql: SALES_ORDER_OPERATIONAL_ENTRY_SQL,
-  }),
-  Object.freeze({
-    id: '040_sales_order_commercial_controls',
-    sql: SALES_ORDER_COMMERCIAL_CONTROLS_SQL,
-  }),
-  Object.freeze({
-    id: '041_customer_onboarding_requests',
-    sql: CUSTOMER_ONBOARDING_REQUESTS_SQL,
-  }),
-  Object.freeze({
-    id: '042_sales_fulfillment_reservation_demand',
-    sql: SALES_FULFILLMENT_RESERVATION_DEMAND_SQL,
-  }),
-  Object.freeze({
-    id: '043_sales_fulfillment_allocation_pick_pack',
-    sql: SALES_FULFILLMENT_ALLOCATION_PICK_PACK_SQL,
-  }),
-  Object.freeze({
-    id: '044_sales_delivery_order_handover',
-    sql: SALES_DELIVERY_ORDER_HANDOVER_SQL,
-  }),
+  Object.freeze({ id: '034_document_number_idempotency_namespace', sql: DOCUMENT_NUMBER_IDEMPOTENCY_NAMESPACE_SQL }),
+  Object.freeze({ id: '035_purchase_order_line_entry_contract', sql: PURCHASE_ORDER_LINE_ENTRY_CONTRACT_SQL }),
+  Object.freeze({ id: '036_supplier_purchase_pricing', sql: SUPPLIER_PURCHASE_PRICING_SQL }),
+  Object.freeze({ id: '037_sales_order_foundation', sql: SALES_ORDER_FOUNDATION_SQL }),
+  Object.freeze({ id: '038_sales_order_confirmation_guard', sql: SALES_ORDER_CONFIRMATION_GUARD_SQL }),
+  Object.freeze({ id: '039_sales_order_operational_entry', sql: SALES_ORDER_OPERATIONAL_ENTRY_SQL }),
+  Object.freeze({ id: '040_sales_order_commercial_controls', sql: SALES_ORDER_COMMERCIAL_CONTROLS_SQL }),
+  Object.freeze({ id: '041_customer_onboarding_requests', sql: CUSTOMER_ONBOARDING_REQUESTS_SQL }),
+  Object.freeze({ id: '042_sales_fulfillment_reservation_demand', sql: SALES_FULFILLMENT_RESERVATION_DEMAND_SQL }),
+  Object.freeze({ id: '043_sales_fulfillment_allocation_pick_pack', sql: SALES_FULFILLMENT_ALLOCATION_PICK_PACK_SQL }),
+  Object.freeze({ id: '044_sales_delivery_order_handover', sql: SALES_DELIVERY_ORDER_HANDOVER_SQL }),
+  Object.freeze({ id: '045_sales_inventory_issue_customer_return', sql: SALES_INVENTORY_ISSUE_CUSTOMER_RETURN_SQL }),
 ]);
 
 export { runMigrations };

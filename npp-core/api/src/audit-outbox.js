@@ -35,6 +35,22 @@ function sanitizeJsonValue(value) {
   );
 }
 
+function sanitizeTransactionError(error) {
+  const raw = typeof error?.message === 'string' ? error.message : 'transaction_failed';
+  const message = raw
+    .replace(/(?:postgres(?:ql)?|https?):\/\/\S+/gi, '[redacted-url]')
+    .replace(/(?:password|token|secret|api[_-]?key)\s*[=:]\s*\S+/gi, '$1=[redacted]')
+    .replace(/[\r\n\t]+/g, ' ')
+    .slice(0, 240);
+  return Object.freeze({
+    event: 'audit_outbox_transaction_failed',
+    name: typeof error?.name === 'string' ? error.name.slice(0, 80) : 'Error',
+    code: typeof error?.code === 'string' ? error.code.slice(0, 80) : null,
+    constraint: typeof error?.constraint === 'string' ? error.constraint.slice(0, 160) : null,
+    message,
+  });
+}
+
 function requireString(value, errorCode) {
   if (typeof value !== 'string' || !value.trim()) throw new Error(errorCode);
   return value.trim();
@@ -263,6 +279,7 @@ export async function withAuditOutboxTransaction({ adapter, mutate }) {
     return result;
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
+    console.error(JSON.stringify(sanitizeTransactionError(error)));
     throw error;
   } finally {
     if (typeof client.release === 'function') await client.release();
