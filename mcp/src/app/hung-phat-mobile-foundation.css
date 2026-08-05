@@ -125,13 +125,6 @@ tbody tr:nth-child(even) {
   background: #fbfaf8;
 }
 
-[data-app-menu-panel="true"] {
-  border-color: var(--npp-color-border) !important;
-  background: var(--npp-color-surface) !important;
-  color: var(--npp-color-text) !important;
-  box-shadow: 0 -18px 52px rgba(63, 42, 24, 0.22) !important;
-}
-
 @media (max-width: 820px) {
   :root {
     --app-bottom-nav-bar-height: calc(64px + env(safe-area-inset-bottom));
@@ -302,7 +295,7 @@ tbody tr:nth-child(even) {
   [data-app-menu-panel="true"] {
     width: 100% !important;
     max-height: 92dvh !important;
-    border-radius: 20px 20px 0 0 !important;
+    border-radius: 0 0 24px 24px !important;
   }
 }
 
