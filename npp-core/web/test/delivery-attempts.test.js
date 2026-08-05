@@ -9,6 +9,7 @@ const routeSource = read('app/api/logistics/trips/[tripId]/attempts/route.ts');
 const podRouteSource = read('app/api/logistics/trips/[tripId]/attempts/[attemptId]/pod/route.ts');
 const workspaceSource = read('app/logistics/delivery-attempts/delivery-attempt-workspace.tsx');
 const appShellSource = read('app/components/app-shell.tsx');
+const middlewareSource = read('middleware.ts');
 
 test('NPP attempt and POD gateways are server-only and read-only', () => {
   assert.match(gatewaySource, /import 'server-only'/);
@@ -27,6 +28,14 @@ test('NPP routes expose GET summary and optional POD reads only', () => {
   assert.match(podRouteSource, /export async function GET/);
   assert.match(podRouteSource, /getDeliveryAttemptProofs/);
   assert.doesNotMatch(podRouteSource, /export async function (POST|PUT|PATCH|DELETE)/);
+});
+
+test('NPP logistics pages and APIs require the existing Basic Auth boundary', () => {
+  assert.match(middlewareSource, /'\/logistics\/:path\*'/);
+  assert.match(middlewareSource, /'\/api\/logistics\/:path\*'/);
+  assert.match(middlewareSource, /CORE_WEB_ADMIN_USERNAME/);
+  assert.match(middlewareSource, /CORE_WEB_ADMIN_PASSWORD/);
+  assert.match(middlewareSource, /constantTimeEqual/);
 });
 
 test('dispatcher workspace reads attempts and optional POD without driver mutation', () => {
