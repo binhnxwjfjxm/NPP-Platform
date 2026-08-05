@@ -48,7 +48,7 @@ function checkinTime(value?: string) {
 function actionItems(): Array<{ label: string; action: McpCustomerAction; icon: "cart" | "flask" | "eye" | "clock" | "skip" }> {
   return [
     { label: "Nhu cầu", action: "order", icon: "cart" },
-    { label: "Thử SP", action: "test", icon: "flask" },
+    { label: "Test", action: "test", icon: "flask" },
     { label: "Quan sát", action: "market_report", icon: "eye" },
     { label: "Theo dõi", action: "follow_up", icon: "clock" },
     { label: "Bỏ qua", action: "skip", icon: "skip" }
