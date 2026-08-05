@@ -135,7 +135,7 @@ export async function getPickupHandoverSource(client, { installationId, issueId 
       WHERE issue.installation_id = $1
         AND issue.id = $2::uuid
         AND issue.issue_source_type = 'PICKUP_HANDOVER'
-        AND issue.status = 'posted'
+        AND issue.status = 'POSTED'
         AND delivery_order.status = 'handed_over'
       FOR SHARE OF issue, delivery_order, sales_order, sales_version`,
     [installationId, issueId],
