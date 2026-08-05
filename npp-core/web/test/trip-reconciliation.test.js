@@ -13,6 +13,7 @@ test('NPP gateway allows only explicit reconciliation trip actions', () => {
   assert.match(gatewaySource, /READ_ACTIONS = new Set\(\['dispatch', 'reconciliation'\]\)/);
   assert.match(gatewaySource, /'return-receipts'/);
   assert.match(gatewaySource, /'close'/);
+  assert.match(gatewaySource, /key === 'status' && value === 'all'/);
   assert.match(gatewaySource, /CORE_API_SERVER_TOKEN/);
   assert.doesNotMatch(gatewaySource, /NEXT_PUBLIC_.*TOKEN/);
 });
