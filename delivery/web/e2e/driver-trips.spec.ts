@@ -9,7 +9,8 @@ test('tài xế xem chuyến và ghi giao một phần trên mobile', async ({ p
   await expect(page.getByText('Xin chào, Nguyễn Văn Tài')).toBeVisible();
   await expect(page.getByRole('link', { name: /TRP-20260804-00001/ })).toBeVisible();
   await expect(page.getByText('Ghi kết quả tại từng phiếu giao')).toBeVisible();
-  await expect(page.getByText(/Ảnh, chữ ký, GPS và thu tiền chưa thuộc phần này/)).toBeVisible();
+  await expect(page.getByText(/Ảnh hoặc xác nhận người nhận là bằng chứng tùy chọn/)).toBeVisible();
+  await expect(page.getByText(/GPS và thu tiền chưa thuộc luồng hiện tại/)).toBeVisible();
 
   await page.getByRole('link', { name: /TRP-20260804-00001/ }).click();
   await expect(page).toHaveURL(new RegExp(`/trips/${tripId}$`));
@@ -20,7 +21,8 @@ test('tài xế xem chuyến và ghi giao một phần trên mobile', async ({ p
   await expect(page.getByText('Cửa hàng Minh Tâm')).toBeVisible();
   await expect(page.getByText('DO-0002')).toBeVisible();
   await expect(page.getByTestId(`attempt-form-${assignmentOneId}`)).toBeVisible();
-  await expect(page.getByText(/không tự nhập kho, không POD\/GPS và không thu tiền/i)).toBeVisible();
+  await expect(page.getByText(/bằng chứng giao hàng là tùy chọn/i)).toBeVisible();
+  await expect(page.getByText(/không tự nhập lại kho và chưa xử lý thu tiền/i)).toBeVisible();
 
   const firstAttempt = page.getByTestId(`attempt-form-${assignmentOneId}`);
   await firstAttempt.getByLabel('Giao một phần').check();
