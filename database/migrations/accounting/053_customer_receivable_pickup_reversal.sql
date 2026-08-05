@@ -2,6 +2,19 @@
 -- Delivery attempts are immutable; the only existing 6F.1 source correction path is
 -- reversal of a posted PICKUP_HANDOVER inventory issue.
 
+-- A reversed source is no longer collectible. Keep allocated amount as historical
+-- allocation fact and project zero remaining amount for the reversed document.
+ALTER TABLE accounting.receivable_documents
+  DROP CONSTRAINT IF EXISTS receivable_documents_amount_check;
+ALTER TABLE accounting.receivable_documents
+  ADD CONSTRAINT receivable_documents_amount_check CHECK (
+    allocated_amount <= original_amount
+    AND (
+      (status = 'reversed' AND remaining_amount = 0)
+      OR (status <> 'reversed' AND remaining_amount = original_amount - allocated_amount)
+    )
+  );
+
 CREATE OR REPLACE FUNCTION accounting.reverse_pickup_receivable_on_inventory_reversal()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -40,6 +53,7 @@ BEGIN
 
   UPDATE accounting.receivable_documents
      SET status = 'reversed',
+         remaining_amount = 0,
          reversed_at = NEW.reversed_at,
          reversed_by = NEW.reversed_by,
          reversal_reason = NEW.reversal_reason,
