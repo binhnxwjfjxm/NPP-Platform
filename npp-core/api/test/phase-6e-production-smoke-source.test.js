@@ -45,6 +45,11 @@ test('Phase 6E production smoke is exact-main, fail-closed and scoped to Core/NP
     'DELIVERY_AUTH_SOURCE=',
     'DRIVER_PROFILE_READY=true',
     'expect_one_of',
+    'curl_exit=$?',
+    'rm -f "$response_file"',
+    "assert_error_code 'DELIVERY_TRIP_NOT_FOUND'",
+    "assert_error_code 'DELIVERY_ATTEMPT_NOT_FOUND'",
+    "! grep -q 'Không tải được chuyến'",
     'R2_ENABLED',
     'R2_CONFIGURATION_COMPLETE',
     'POD_OPTIONAL_ROUTE=success',
@@ -56,8 +61,11 @@ test('Phase 6E production smoke is exact-main, fail-closed and scoped to Core/NP
   assert.ok(!workflow.includes('hung-phat-mcp'));
   assert.ok(!script.includes('mcp.nguyenlieuhungphat.com'));
   assert.ok(!script.includes('${DELIVERY_WEB_USERS_JSON:?'));
+  assert.ok(!script.includes('head -c 1000'));
+  assert.ok(!script.includes('|| true'));
   assert.match(script, /if \[ -n "\$\{DELIVERY_WEB_USERS_JSON:-\}" \]; then/);
+  assert.match(script, /if \[ "\$curl_exit" -ne 0 \]; then/);
   assert.match(script, /if \[ "\$r2_enabled" = true \]; then/);
   assert.match(script, /Core unauthenticated \$path.*401/);
-  assert.match(script, /Core optional POD driver route.*403,404/);
+  assert.match(script, /Core optional POD driver route' 404/);
 });
