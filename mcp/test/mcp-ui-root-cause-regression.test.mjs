@@ -4,6 +4,8 @@ import { access, readFile } from "node:fs/promises";
 
 const layout = await readFile("src/app/layout.tsx", "utf8");
 const route = await readFile("src/app/mcp-setting/page.tsx", "utf8");
+const groupRoute = await readFile("src/app/mcp-setting/groups/page.tsx", "utf8");
+const groupStyles = await readFile("src/app/mcp-setting/groups/page.module.css", "utf8");
 const canonicalSettingsPage = await readFile("src/features/mcp-settings/McpReportSettingsPage.tsx", "utf8");
 
 test("mobile browser chrome uses the canvas theme instead of creating a second brown bottom row", () => {
@@ -25,4 +27,26 @@ test("MCP setting POST and PATCH mutations use stable idempotency and canonical 
   assert.match(canonicalSettingsPage, /function saveNewItem\(\)[\s\S]*?method: "POST"/);
   assert.match(canonicalSettingsPage, /function saveEditedItem\(\)[\s\S]*?method: "PATCH"/);
   assert.match(canonicalSettingsPage, /body: JSON\.stringify\(\{ itemId: item\.id, status:/);
+});
+
+test("report setting groups use one compact mobile list and a desktop table", () => {
+  assert.match(groupRoute, /className=\{styles\.mobileList\}/);
+  assert.match(groupRoute, /className=\{styles\.desktopTableWrap\}/);
+  assert.match(groupRoute, />\s*Thêm nhóm\s*</);
+  assert.doesNotMatch(groupRoute, /style=\{\{/);
+  assert.match(groupStyles, /\.mobileList\s*\{[\s\S]*?display:\s*grid/);
+  assert.match(groupStyles, /\.desktopTableWrap\s*\{[\s\S]*?display:\s*none/);
+  assert.match(groupStyles, /@media \(min-width:\s*720px\)[\s\S]*?\.mobileList\s*\{[\s\S]*?display:\s*none/);
+  assert.match(groupStyles, /@media \(min-width:\s*720px\)[\s\S]*?\.desktopTableWrap\s*\{[\s\S]*?display:\s*block/);
+});
+
+test("report setting group form is an accessible sheet and keeps idempotent mutations", () => {
+  assert.match(groupRoute, /role="dialog"/);
+  assert.match(groupRoute, /aria-modal="true"/);
+  assert.match(groupRoute, /event\.key === "Escape"/);
+  assert.match(groupRoute, /aria-label="Đóng biểu mẫu nhóm"/);
+  assert.match(groupRoute, /idempotentMutationFetch/);
+  assert.match(groupRoute, /operation: `report-setting-group\.\$\{method\.toLowerCase\(\)\}`/);
+  assert.match(groupStyles, /\.cardActions button,[\s\S]*?min-height:\s*44px/);
+  assert.match(groupStyles, /\.closeButton\s*\{[\s\S]*?width:\s*44px;[\s\S]*?height:\s*44px/);
 });
