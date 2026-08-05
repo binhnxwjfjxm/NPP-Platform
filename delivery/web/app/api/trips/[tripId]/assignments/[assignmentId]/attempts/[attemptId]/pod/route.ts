@@ -147,5 +147,3 @@ export async function POST(
     );
   }
 }
-
-export const podRouteInternals = Object.freeze({ MAX_POD_BODY_BYTES, readLimitedJson });
