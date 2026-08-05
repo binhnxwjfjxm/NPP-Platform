@@ -17,6 +17,7 @@ function statusFor(code) {
   if (code === 'PERMISSION_DENIED' || code === 'WAREHOUSE_SCOPE_DENIED') return 403;
   if (code.endsWith('_NOT_FOUND')) return 404;
   if (code.endsWith('_TRANSACTION_FAILED') || code.endsWith('_QUERY_FAILED')) return 503;
+  if (code.startsWith('INVALID_') && code !== 'INVALID_TRIP_STATUS_TRANSITION') return 400;
   if (
     code.includes('CONFLICT')
     || code.includes('MISMATCH')
