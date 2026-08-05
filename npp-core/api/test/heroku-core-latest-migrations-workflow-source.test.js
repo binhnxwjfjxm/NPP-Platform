@@ -19,7 +19,22 @@ test('manual Core migration workflow validates before checkout and persists sani
   );
   assert.match(source, /api\/test\/core-latest-production-gate-source\.test\.js/);
   assert.match(source, /api\/test\/heroku-core-latest-migrations-workflow-source\.test\.js/);
-  assert.match(source, /CORE_GATE_EVIDENCE_FILE: \$\{\{ runner\.temp \}\}\/core-latest-migration-evidence\.txt/);
+
+  const jobEnv = source.match(/    env:\n      DEPLOY_REF:[\s\S]*?\n\n    steps:/)?.[0] || '';
+  assert.ok(!jobEnv.includes('runner.temp'));
+  assert.ok(!jobEnv.includes('CORE_GATE_EVIDENCE_FILE'));
+  assert.equal(
+    source.match(/CORE_GATE_EVIDENCE_FILE: \$\{\{ runner\.temp \}\}\/core-latest-migration-evidence\.txt/g)?.length,
+    2,
+  );
+  assert.match(
+    source,
+    /- name: Audit or migrate Core latest schema[\s\S]*?CORE_GATE_EVIDENCE_FILE: \$\{\{ runner\.temp \}\}\/core-latest-migration-evidence\.txt/,
+  );
+  assert.match(
+    source,
+    /- name: Publish sanitized rollout evidence[\s\S]*?CORE_GATE_EVIDENCE_FILE: \$\{\{ runner\.temp \}\}\/core-latest-migration-evidence\.txt/,
+  );
   assert.match(source, /rm -f "\$CORE_GATE_EVIDENCE_FILE"/);
   assert.match(
     source,
