@@ -63,10 +63,11 @@ test('stop reorder is atomic and does not write invalid temporary sequences', ()
   assert.doesNotMatch(repositorySource, /stop_sequence = -stop_sequence/);
 });
 
-test('permission registry includes planning and dispatch while POD remains denied', () => {
+test('permission registry includes planning, dispatch and optional POD capabilities', () => {
   for (const permission of logisticsPermissions) assert.equal(isKnownPermissionKey(permission), true);
   assert.equal(isKnownPermissionKey(PERMISSIONS.coreDeliveryTripDispatch), true);
-  assert.equal(isKnownPermissionKey('core.pod.attach'), false);
+  assert.equal(isKnownPermissionKey(PERMISSIONS.corePodRead), true);
+  assert.equal(isKnownPermissionKey(PERMISSIONS.corePodAttach), true);
 });
 
 test('planning route stays separate from dispatch, attempts and POD mutations', () => {
