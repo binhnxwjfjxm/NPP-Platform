@@ -10,24 +10,26 @@ test("route session card preserves existing backend actions", () => {
     assert.match(cardSource, new RegExp(`action: "${action}"`));
   }
   assert.match(cardSource, /onToggleCheckin\(line\)/);
+  assert.match(cardSource, /onAction\(line, action\)/);
   assert.match(cardSource, /officialOrderHref\(line\)/);
   assert.match(cardSource, /useMcpCustomerDirections/);
   assert.match(cardSource, /requestMcpCustomerProfile/);
 });
 
-test("route session card uses a compact mature PWA hierarchy without hiding actions", () => {
+test("route session card keeps one compact primary row and an explicit action tray", () => {
   assert.match(cardSource, /data-mcp-session-card="true"/);
-  assert.match(cardSource, /data-customer-action-rows="2"/);
-  assert.match(cardSource, /styles\.primaryRow/);
-  assert.match(cardSource, /Check-in điểm bán/);
-  assert.match(cardSource, /ActionIcon/);
+  assert.match(cardSource, /data-session-primary-actions="4"/);
+  assert.match(cardSource, /data-customer-action-menu="open"/);
+  assert.match(cardSource, /data-customer-action-count="5"/);
+  assert.match(cardSource, /aria-expanded=\{actionsOpen\}/);
+  assert.match(cardSource, /<span>Thao tác<\/span>/);
+  assert.match(cardSource, /<span>\{checkinBusy \? "Đang xử lý" : line\.checkedIn \? "Đã check-in" : "Check-in"\}<\/span>/);
   assert.match(cardCss, /border-radius:\s*14px/);
-  assert.match(cardCss, /grid-template-columns:\s*minmax\(0, 1fr\) 48px 48px/);
-  assert.match(cardCss, /\.actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
-  assert.match(cardCss, /\.action\s*\{[\s\S]*?display:\s*flex/);
+  assert.match(cardCss, /grid-template-columns:\s*minmax\(0, 1fr\) 48px 48px 58px/);
+  assert.match(cardCss, /\.actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/);
+  assert.match(cardCss, /\.actionMenu\s*\{[\s\S]*?animation:\s*revealActions/);
   assert.doesNotMatch(cardCss, /overflow-x:\s*auto/);
   assert.doesNotMatch(cardCss, /scroll-snap-type/);
-  assert.doesNotMatch(cardCss, /\.actions\s*\{[^}]*display:\s*none/s);
 });
 
 test("route session card keeps the existing warm brand tone", () => {
