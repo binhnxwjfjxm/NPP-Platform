@@ -292,7 +292,7 @@ test('PostgreSQL POD is optional, driver-scoped, immutable and idempotent', asyn
       }),
     }));
     assert.equal(unavailablePhoto.response.status, 503, JSON.stringify(unavailablePhoto.body));
-    assert.equal(unavailablePhoto.body.error.code, 'POD_STORAGE_UNAVAILABLE');
+    assert.equal(unavailablePhoto.body.error.code, 'STORAGE_DISABLED');
 
     const listed = await fetchJson(fetch(endpoint, {
       headers: deliveryHeaders(config, employeeA),
