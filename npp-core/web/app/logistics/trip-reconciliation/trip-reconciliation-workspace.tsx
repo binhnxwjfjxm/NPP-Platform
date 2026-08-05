@@ -104,7 +104,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok || envelope.data === undefined) {
     throw new Error(envelope.error?.message || 'Yêu cầu đối soát không thành công.');
   }
-  return envelope.data;
+  return envelope.data as T;
 }
 
 function freshKey(prefix: string): string {
@@ -168,6 +168,18 @@ export default function TripReconciliationWorkspace() {
       .finally(() => setBusy(false));
   }, [loadTrips]);
 
+  async function reloadTrips() {
+    setBusy(true);
+    setError('');
+    try {
+      await loadTrips();
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Không tải được chuyến.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function selectTrip(tripId: string) {
     setSelectedTripId(tripId);
     setDetail(null);
@@ -207,10 +219,14 @@ export default function TripReconciliationWorkspace() {
           lines: selectedReturnLines,
         }),
       });
-      setReceiptKey('');
-      setReceiptNote('');
       setStatus('Đã ghi nhận hàng quay về kho và cập nhật tồn kho.');
-      await loadDetail(detail.id);
+      try {
+        await loadDetail(detail.id);
+        setReceiptKey('');
+        setReceiptNote('');
+      } catch {
+        setError('Đã ghi nhận hàng quay về kho nhưng chưa tải lại được dữ liệu. Tải lại trước khi tạo phiếu mới.');
+      }
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Không ghi nhận được hàng quay về kho.');
     } finally {
@@ -236,9 +252,13 @@ export default function TripReconciliationWorkspace() {
         headers: { 'Idempotency-Key': key },
         body: JSON.stringify({ closedAt: timestamp, note: closeNote.trim() || null }),
       });
-      setCloseKey('');
       setStatus('Chuyến đã được đóng sau khi đối soát đủ.');
-      await Promise.all([loadDetail(detail.id), loadTrips()]);
+      try {
+        await Promise.all([loadDetail(detail.id), loadTrips()]);
+        setCloseKey('');
+      } catch {
+        setError('Chuyến đã được đóng nhưng chưa tải lại được dữ liệu.');
+      }
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Không đóng được chuyến.');
     } finally {
@@ -261,7 +281,7 @@ export default function TripReconciliationWorkspace() {
           <section className={styles.panel}>
             <div className={styles.heading}>
               <div><p>Chuyến giao</p><h2>Chọn chuyến đối soát</h2></div>
-              <button type="button" onClick={() => loadTrips()} disabled={busy}>Tải lại</button>
+              <button type="button" onClick={reloadTrips} disabled={busy}>Tải lại</button>
             </div>
             <div className={styles.tripList}>
               {availableTrips.map((trip) => (
