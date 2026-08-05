@@ -1,0 +1,101 @@
+name: Manual Phase 6E production smoke
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: phase-6e-production-smoke-manual
+  cancel-in-progress: false
+
+jobs:
+  smoke-phase-6e-production:
+    if: >-
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/smoke-phase-6e-production' &&
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEPLOY_REF: main
+      HEROKU_APP_NAME: hung-phat
+      NPP_PRODUCTION_URL: https://office.nguyenlieuhungphat.com
+      NPP_FALLBACK_URL: https://npp-platform.vercel.app
+      DELIVERY_PRODUCTION_URL: https://log.nguyenlieuhungphat.com
+
+    steps:
+      - name: Validate exact issue command
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/smoke-phase-6e-production'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate Phase 6E production smoke contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n npp-core/api/scripts/phase-6e-production-smoke.sh
+          node --test npp-core/api/test/phase-6e-production-smoke-source.test.js
+
+      - name: Smoke Phase 6E production
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          CORE_WEB_ADMIN_USERNAME: ${{ secrets.CORE_WEB_ADMIN_USERNAME }}
+          CORE_WEB_ADMIN_PASSWORD: ${{ secrets.CORE_WEB_ADMIN_PASSWORD }}
+          DELIVERY_WEB_USERS_JSON: ${{ secrets.DELIVERY_WEB_USERS_JSON }}
+        run: bash npp-core/api/scripts/phase-6e-production-smoke.sh
+
+      - name: Record exact Phase 6E source
+        if: always()
+        shell: bash
+        run: echo "SOURCE_SHA=${{ steps.source.outputs.sha }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish sanitized Phase 6E closeout evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          evidence_file="$(mktemp)"
+          {
+            echo "## Phase 6E production smoke — ${OPERATION_STATUS}"
+            echo
+            cat "$GITHUB_STEP_SUMMARY"
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence_file"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/262/comments" \
+            -f body="$(cat "$evidence_file")" >/dev/null
+          rm -f "$evidence_file"
