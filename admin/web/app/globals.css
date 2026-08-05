@@ -25,9 +25,34 @@ button, input, select, textarea { font: inherit; }
   color: #fff;
   box-shadow: 0 8px 24px rgba(15, 23, 42, .18);
 }
-.brand { display: grid; gap: .1rem; text-decoration: none; }
-.brand strong { font-size: 1rem; }
-.brand span { color: #cbd5e1; font-size: .78rem; }
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: .7rem;
+  min-width: 0;
+  text-decoration: none;
+}
+.brandLogoFrame {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 12px;
+  background: #fff;
+}
+.brandLogo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 4px;
+}
+.brandCopy { display: grid; gap: .1rem; min-width: 0; }
+.brandCopy strong { font-size: 1rem; }
+.brandCopy span { overflow: hidden; color: #cbd5e1; font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
 .nav { display: flex; flex-wrap: wrap; gap: .5rem; }
 .nav a { padding: .55rem .75rem; border-radius: 999px; text-decoration: none; background: rgba(255,255,255,.1); }
 .nav a:hover { background: rgba(255,255,255,.18); }
@@ -66,4 +91,5 @@ button, input, select, textarea { font: inherit; }
   .main { width: min(100% - 1rem, 1180px); padding-top: 1rem; }
   .nav a { flex: 1 1 auto; text-align: center; }
   .actionLink { justify-content: center; }
+  .brandCopy span { white-space: normal; }
 }
