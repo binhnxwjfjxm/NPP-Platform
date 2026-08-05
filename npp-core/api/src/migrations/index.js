@@ -43,10 +43,16 @@ const LOGISTICS_DELIVERY_ATTEMPT_OUTBOX_SCHEDULE_SQL = readFileSync(
   'utf8',
 );
 
-const LOGISTICS_TRIP_RECONCILIATION_SQL = readFileSync(
-  new URL('../../../../database/migrations/logistics/051_logistics_trip_reconciliation.sql', import.meta.url),
-  'utf8',
-);
+const LOGISTICS_TRIP_RECONCILIATION_SQL = [
+  readFileSync(
+    new URL('../../../../database/migrations/logistics/051_logistics_trip_reconciliation.sql', import.meta.url),
+    'utf8',
+  ),
+  readFileSync(
+    new URL('../../../../database/migrations/logistics/051_logistics_trip_reconciliation_hardening.sql', import.meta.url),
+    'utf8',
+  ),
+].join('\n\n');
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
