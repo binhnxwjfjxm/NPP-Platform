@@ -20,9 +20,6 @@ jobs:
       contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: delivery/web
     env:
       DEPLOY_REF: main
       VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
@@ -66,9 +63,11 @@ jobs:
           node-version: 20
 
       - name: Install locked repository dependencies
+        working-directory: delivery/web
         run: npm --prefix ../.. ci --ignore-scripts
 
       - name: Validate Delivery production guard
+        working-directory: delivery/web
         run: |
           bash -n scripts/deploy-production.sh
           node --test test/delivery-production-workflow.test.mjs
@@ -76,6 +75,7 @@ jobs:
       - name: Create, configure and deploy Delivery production
         id: delivery
         shell: bash
+        working-directory: delivery/web
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
