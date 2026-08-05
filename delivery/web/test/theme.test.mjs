@@ -29,3 +29,10 @@ test('Delivery shell is mobile-first with sticky chrome and touch targets', () =
   assert.match(layout, /viewportFit:\s*'cover'/);
   assert.match(layout, /themeColor:\s*'#754706'/);
 });
+
+test('Delivery focus ring has an opaque edge for light and dark surfaces', () => {
+  assert.match(theme, /--hp-focus-inner:\s*#fffdf8/i);
+  assert.match(theme, /--hp-focus-outer:\s*#754706/i);
+  assert.match(theme, /outline:\s*2px solid var\(--hp-focus-inner\)/);
+  assert.match(theme, /box-shadow:\s*0 0 0 4px var\(--hp-focus-outer\)/);
+});
