@@ -74,7 +74,10 @@ jobs:
           CORE_WEB_ADMIN_USERNAME: ${{ secrets.CORE_WEB_ADMIN_USERNAME }}
           CORE_WEB_ADMIN_PASSWORD: ${{ secrets.CORE_WEB_ADMIN_PASSWORD }}
           DELIVERY_WEB_USERS_JSON: ${{ secrets.DELIVERY_WEB_USERS_JSON }}
-        run: bash npp-core/api/scripts/phase-6e-production-smoke.sh
+        run: |
+          set -E
+          trap 'printf "Phase 6E smoke assertion failed at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
+          source npp-core/api/scripts/phase-6e-production-smoke.sh
 
       - name: Record exact Phase 6E source
         if: always()

@@ -20,6 +20,8 @@ test('Phase 6E production smoke is exact-main, fail-closed and scoped to Core/NP
     'https://npp-platform.vercel.app',
     'https://log.nguyenlieuhungphat.com',
     'persist-credentials: false',
+    'Phase 6E smoke assertion failed at line',
+    'source npp-core/api/scripts/phase-6e-production-smoke.sh',
     'SOURCE_SHA=',
     'issues/262/comments',
   ]) {
@@ -63,6 +65,11 @@ test('Phase 6E production smoke is exact-main, fail-closed and scoped to Core/NP
   assert.ok(!script.includes('${DELIVERY_WEB_USERS_JSON:?'));
   assert.ok(!script.includes('head -c 1000'));
   assert.ok(!script.includes('|| true'));
+  assert.match(workflow, /set -E/);
+  assert.match(
+    workflow,
+    /trap 'printf "Phase 6E smoke assertion failed at line %s: %s\\n" "\$LINENO" "\$BASH_COMMAND" >&2' ERR/,
+  );
   assert.match(script, /if \[ -n "\$\{DELIVERY_WEB_USERS_JSON:-\}" \]; then/);
   assert.match(script, /if \[ "\$curl_exit" -ne 0 \]; then/);
   assert.match(script, /if \[ "\$r2_enabled" = true \]; then/);
