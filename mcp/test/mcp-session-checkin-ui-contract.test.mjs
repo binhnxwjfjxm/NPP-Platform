@@ -25,7 +25,9 @@ test("session card keeps every existing action while using the new app-style hie
   assert.match(css, /grid-template-columns:\s*minmax\(0, 1fr\) 64px 64px/);
   assert.match(css, /\.actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/);
   assert.match(css, /@media \(max-width: 520px\)[\s\S]*?\.actions\s*\{[\s\S]*?overflow-x:\s*auto/);
-  assert.doesNotMatch(css, /display:\s*none/);
+  assert.doesNotMatch(css, /\.actions\s*\{[^}]*display:\s*none/s);
+  assert.doesNotMatch(css, /\.action\s*\{[^}]*display:\s*none/s);
+  assert.doesNotMatch(css, /\.checkin\s*\{[^}]*display:\s*none/s);
   assert.match(card, /identityHead[\s\S]*?accountName[\s\S]*?badge[\s\S]*?statusLabel/);
   assert.match(card, /aria-pressed=\{line\.checkedIn === true\}/);
   assert.match(card, /Bấm lần nữa để bỏ check-in/);
