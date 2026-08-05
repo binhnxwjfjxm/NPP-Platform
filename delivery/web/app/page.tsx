@@ -152,8 +152,8 @@ export default async function DeliveryHomePage() {
       <DeliveryHeader title="Chuyến của tôi" subtitle={`Xin chào, ${user.displayName}`} />
       {content}
       <section className="noticeCard deliveryGuideCard">
-        <strong>Giao từng điểm, ghi ngay kết quả</strong>
-        <p>Mở chuyến, chọn điểm tiếp theo rồi ghi giao đủ, giao một phần, không giao được hoặc hẹn giao lại.</p>
+        <strong>Ghi kết quả tại từng phiếu giao</strong>
+        <p>Mở chuyến để ghi giao đủ, giao một phần, không giao được hoặc hẹn giao lại. Ảnh hoặc xác nhận người nhận là bằng chứng tùy chọn; GPS và thu tiền chưa thuộc luồng hiện tại.</p>
       </section>
     </main>
   );
