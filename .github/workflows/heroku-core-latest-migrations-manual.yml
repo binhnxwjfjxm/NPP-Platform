@@ -38,9 +38,6 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
-    defaults:
-      run:
-        working-directory: npp-core
     env:
       DEPLOY_REF: main
       HEROKU_APP_NAME: hung-phat
@@ -81,14 +78,18 @@ jobs:
           node-version: 20
 
       - name: Install locked dependencies
+        working-directory: npp-core
         run: npm --prefix .. ci --ignore-scripts
 
       - name: Validate Core migration gate
+        working-directory: npp-core
         shell: bash
         run: |
           set -euo pipefail
           bash -n api/scripts/core-latest-production-gate.sh
-          node --test api/test/core-latest-production-gate-source.test.js
+          node --test \
+            api/test/core-latest-production-gate-source.test.js \
+            api/test/heroku-core-latest-migrations-workflow-source.test.js
 
       - name: Install Heroku CLI
         shell: bash
@@ -109,7 +110,6 @@ jobs:
             /migrate-heroku-core-latest-production) action="migrate" ;;
             *) exit 1 ;;
           esac
-          cd ..
           REQUESTED_ACTION="$action" bash npp-core/api/scripts/core-latest-production-gate.sh
 
       - name: Record exact Core source
@@ -132,6 +132,6 @@ jobs:
             cat "$GITHUB_STEP_SUMMARY"
             echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
           } > "$evidence_file"
-          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/248/comments" \
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/262/comments" \
             -f body="$(cat "$evidence_file")" >/dev/null
           rm -f "$evidence_file"
