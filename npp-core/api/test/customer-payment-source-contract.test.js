@@ -85,7 +85,7 @@ test('customer payment API exposes create read allocate and compensating reversa
   assert.match(routes, /executeRequestWithIdempotency/);
   assert.match(routes, /withAuditOutboxTransaction/);
   assert.doesNotMatch(routes, /paid\s*=\s*true/i);
-  assert.doesNotMatch(routes, /refund|write[-_ ]?off|cod/i);
+  assert.doesNotMatch(routes, /refund|write[-_ ]?off|\bcod\b/i);
 });
 
 test('payment service permits cross-warehouse allocation only through authorized scopes', () => {
