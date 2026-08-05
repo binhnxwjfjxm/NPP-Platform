@@ -51,6 +51,7 @@ function safeQuery(searchParams: URLSearchParams): string {
   const next = new URLSearchParams();
   for (const [key, value] of searchParams.entries()) {
     if (!ALLOWED_QUERY_KEYS.has(key) || value.length > 128) continue;
+    if (key === 'status' && value === 'all') continue;
     next.append(key, value);
   }
   const serialized = next.toString();
