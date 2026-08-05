@@ -35,6 +35,7 @@ test('latest Core production gate protects migrations 042 through 052', async ()
     '/health/live',
     '/health/ready',
     'logistics.delivery_attempts',
+    'logistics.delivery_attempt_lines',
     'logistics.trip_return_receipts',
     'logistics.delivery_attempt_proofs',
     'core.delivery-attempt.record',
