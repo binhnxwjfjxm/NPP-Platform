@@ -32,10 +32,12 @@ test('migration 047 is registered once and owns immutable trip dispatch lineage'
   assert.match(matches[0].sql, /delivery_issue_dispatched_trip_reversal_guard/);
 });
 
-test('dispatch permission is known while attempt POD and COD permissions remain absent', () => {
+test('dispatch, attempt and optional POD permissions are known while COD remains absent', () => {
   assert.equal(isKnownPermissionKey(PERMISSIONS.coreDeliveryTripDispatch), true);
+  assert.equal(isKnownPermissionKey(PERMISSIONS.coreDeliveryAttemptRecord), true);
+  assert.equal(isKnownPermissionKey(PERMISSIONS.corePodRead), true);
+  assert.equal(isKnownPermissionKey(PERMISSIONS.corePodAttach), true);
   assert.equal(isKnownPermissionKey('core.delivery-attempt.create'), false);
-  assert.equal(isKnownPermissionKey('core.pod.attach'), false);
   assert.equal(isKnownPermissionKey('core.cod.collect'), false);
 });
 
