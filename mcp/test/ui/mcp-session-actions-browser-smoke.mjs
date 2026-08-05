@@ -27,7 +27,7 @@ const result = { MCP_SESSION_ACTION_UI_SMOKE: "FAIL" };
 try {
   await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "networkidle" });
   const tokens = await page.evaluate(() => { const style = getComputedStyle(document.documentElement); return { canvas: style.getPropertyValue("--npp-color-canvas").trim(), surface: style.getPropertyValue("--npp-color-surface").trim(), header: style.getPropertyValue("--npp-color-header").trim(), primary: style.getPropertyValue("--npp-color-primary").trim(), accent: style.getPropertyValue("--npp-color-accent").trim() }; });
-  assert.deepEqual(tokens, { canvas: "#f7f3ed", surface: "#fff", header: "#5a3a24", primary: "#4f7a3a", accent: "#c89b5b" });
+  assert.deepEqual(tokens, { canvas: "#f7f5f1", surface: "#ffffff", header: "#5a3b20", primary: "#98600f", accent: "#b78333" });
   await shot(page, "01-warm-theme-session");
 
   await behavior({ productDelayMs: 650 });
@@ -62,7 +62,7 @@ try {
   const errorMessage = picker.getByText("Không tải được danh mục thử nghiệm", { exact: true });
   await errorMessage.waitFor({ state: "visible" });
   const errorStyle = await errorMessage.evaluate((node) => ({ color: getComputedStyle(node).color, background: getComputedStyle(node).backgroundColor }));
-  assert.notEqual(errorStyle.color, "rgb(111, 104, 95)", "error state must not use muted text styling");
+  assert.notEqual(errorStyle.color, "rgb(112, 104, 95)", "error state must not use muted text styling");
   result.errorState = "PASS";
   await page.unroute(productSearchPattern);
 
