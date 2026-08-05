@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
+import DeliveryAppFrame from './DeliveryAppFrame';
 import './globals.css';
 import './hung-phat-mobile.css';
+import './delivery-app-experience.css';
 
 export const metadata: Metadata = {
   title: 'Hưng Phát Giao hàng',
@@ -19,7 +21,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="vi">
-      <body>{children}</body>
+      <body><DeliveryAppFrame>{children}</DeliveryAppFrame></body>
     </html>
   );
 }
