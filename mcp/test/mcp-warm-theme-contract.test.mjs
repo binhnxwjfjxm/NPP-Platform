@@ -27,10 +27,15 @@ test("warm-gold MCP palette is owned by the final semantic token layer", () => {
   }
 });
 
-test("mobile foundation loads last and PWA chrome follows the bronze theme", () => {
-  const foundationIndex = layout.indexOf('import "./hung-phat-mobile-foundation.css";');
+test("mobile foundation loads after both legacy theme and shell contract", () => {
+  const legacyIndex = layout.indexOf('import "./npp-theme.css";');
   const shellContractIndex = layout.indexOf('import "./app-shell-contract.css";');
-  assert.ok(foundationIndex > shellContractIndex, "mobile foundation must load after legacy and shell CSS");
+  const foundationIndex = layout.indexOf('import "./hung-phat-mobile-foundation.css";');
+  assert.ok(legacyIndex >= 0, "legacy theme import must exist");
+  assert.ok(shellContractIndex >= 0, "app shell contract import must exist");
+  assert.ok(foundationIndex >= 0, "mobile foundation import must exist");
+  assert.ok(foundationIndex > legacyIndex, "foundation must follow legacy theme");
+  assert.ok(foundationIndex > shellContractIndex, "foundation must follow shell contract");
   assert.match(layout, /viewportFit:\s*"cover"/);
   assert.match(layout, /themeColor:\s*"#754706"/);
 });
@@ -40,7 +45,15 @@ test("phone shell is a real app layout, not a stacked desktop sidebar", () => {
   assert.match(shell, /BOTTOM_NAV_LIMIT = 5/);
   assert.match(foundation, /@media \(max-width: 820px\)/);
   assert.match(foundation, /\.sidebar\s*\{[\s\S]*?display:\s*none\s*!important/);
+  assert.match(foundation, /--app-bottom-nav-bar-height:\s*calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(foundation, /grid-template-rows:\s*auto minmax\(0, 1fr\) var\(--app-bottom-nav-bar-height\)/);
-  assert.match(foundation, /\[data-app-scroll-region\][\s\S]*?overflow/);
+  assert.match(foundation, /\[data-app-scroll-region\][\s\S]*?overflow-y:\s*auto/);
   assert.match(foundation, /\.bottom-nav-link\.active/);
+});
+
+test("MCP focus ring keeps an opaque light and dark edge", () => {
+  assert.match(foundation, /--npp-color-focus-inner:\s*#fffdf8/i);
+  assert.match(foundation, /--npp-color-focus-outer:\s*#754706/i);
+  assert.match(foundation, /outline:\s*2px solid var\(--npp-color-focus-inner\)/);
+  assert.match(foundation, /box-shadow:\s*0 0 0 4px var\(--npp-color-focus-outer\)/);
 });
