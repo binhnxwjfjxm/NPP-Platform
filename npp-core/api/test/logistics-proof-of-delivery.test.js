@@ -80,6 +80,33 @@ test('manual POD works without a file and photo validates trusted metadata', () 
   assert.equal(invalidType.code, 'INVALID_POD_PHOTO');
 });
 
+test('capture time is required so identical retry bodies keep a stable idempotency hash', () => {
+  const now = new Date('2026-08-05T02:00:00.000Z');
+  const missingCaptureTime = logisticsProofOfDeliveryInternals.normalizeProofPayload({
+    podType: 'manual_confirm',
+    receiverName: 'Chị Lan',
+  }, { maxObjectBytes: 5_242_880, now });
+  assert.equal(missingCaptureTime.ok, false);
+  assert.equal(missingCaptureTime.code, 'INVALID_POD_CAPTURE_TIME');
+
+  const payload = {
+    podType: 'manual_confirm',
+    capturedAt: now.toISOString(),
+    receiverName: 'Chị Lan',
+  };
+  const first = logisticsProofOfDeliveryInternals.normalizeProofPayload(
+    payload,
+    { maxObjectBytes: 5_242_880, now },
+  );
+  const retry = logisticsProofOfDeliveryInternals.normalizeProofPayload(
+    payload,
+    { maxObjectBytes: 5_242_880, now: new Date(now.getTime() + 2_000) },
+  );
+  assert.equal(first.ok, true);
+  assert.equal(retry.ok, true);
+  assert.equal(first.normalized.payloadHash, retry.normalized.payloadHash);
+});
+
 test('signature, OTP and manual confirmation require only their own reference shape', () => {
   const now = new Date('2026-08-05T02:00:00.000Z');
   const signature = logisticsProofOfDeliveryInternals.normalizeProofPayload({
