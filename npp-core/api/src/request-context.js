@@ -29,6 +29,11 @@ const LOGISTICS_BOOTSTRAP_PERMISSIONS = Object.freeze([
   PERMISSIONS.coreDeliveryTripReturnReceive,
   PERMISSIONS.coreDeliveryTripClose,
   PERMISSIONS.coreReceivableRead,
+  PERMISSIONS.coreCustomerPaymentRead,
+  PERMISSIONS.coreCustomerPaymentCreate,
+  PERMISSIONS.coreCustomerPaymentReverse,
+  PERMISSIONS.coreReceivableAllocationCreate,
+  PERMISSIONS.coreReceivableAllocationReverse,
 ]);
 
 function withLogisticsBootstrapPermissions(principal) {
