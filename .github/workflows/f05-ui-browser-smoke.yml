@@ -89,6 +89,7 @@ jobs:
           node test/ui/f05-ui-browser-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/browser-smoke.log
           node test/ui/f05-ui-session-action-menu-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/session-action-menu-smoke.log
           node test/ui/f05-ui-app-shell-theme-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/app-shell-theme-smoke.log
+          node test/ui/f05-ui-lot-3-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/lot-3-smoke.log
           node test/ui/interaction-feedback-browser-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/interaction-feedback-smoke.log
           node test/ui/app-shell-browser-acceptance-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/app-shell-browser-acceptance.log
           node test/ui/mcp-settings-dialog-browser-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/mcp-settings-dialog.log
