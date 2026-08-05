@@ -31,6 +31,11 @@ export const PERMISSIONS = Object.freeze({
   coreCustomerPaymentReverse: 'core.customer-payment.reverse',
   coreReceivableAllocationCreate: 'core.receivable-allocation.create',
   coreReceivableAllocationReverse: 'core.receivable-allocation.reverse',
+  coreCustomerReturnCreditRead: 'core.customer-return-credit.read',
+  coreCustomerReturnCreditAllocate: 'core.customer-return-credit.allocate',
+  coreCustomerReturnCreditReverse: 'core.customer-return-credit.reverse',
+  coreCustomerRefundCreate: 'core.customer-refund.create',
+  coreCustomerRefundReverse: 'core.customer-refund.reverse',
 });
 
 const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
@@ -55,11 +60,7 @@ const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
   ['coreDeliveryTripReturnReceive', 'Đối soát giao hàng', 'Nhận hàng chưa giao về kho', 'Cho phép kho xác nhận thực nhận hàng chưa giao và ghi Inventory IN theo exact issue-line lineage.'],
   ['coreDeliveryTripClose', 'Đối soát giao hàng', 'Đóng chuyến đã đối soát', 'Cho phép đóng chuyến khi mọi phiếu có kết quả và toàn bộ hàng đã giao hoặc đã nhận lại kho.'],
 ].map(([key, module, label, description]) => Object.freeze({
-  permissionKey: PERMISSIONS[key],
-  module,
-  label,
-  description,
-  isSystem: true,
+  permissionKey: PERMISSIONS[key], module, label, description, isSystem: true,
 })));
 
 const ACCOUNTING_PERMISSION_CATALOG = Object.freeze([
@@ -69,12 +70,13 @@ const ACCOUNTING_PERMISSION_CATALOG = Object.freeze([
   ['coreCustomerPaymentReverse', 'Thu tiền khách hàng', 'Đảo phiếu thu khách hàng', 'Cho phép đảo phiếu thu chưa còn phân bổ đang hiệu lực, với lý do bắt buộc.'],
   ['coreReceivableAllocationCreate', 'Công nợ khách hàng', 'Phân bổ tiền vào công nợ', 'Cho phép phân bổ một phiếu thu vào một hoặc nhiều chứng từ phải thu trong phạm vi được cấp.'],
   ['coreReceivableAllocationReverse', 'Công nợ khách hàng', 'Đảo phân bổ công nợ', 'Cho phép đảo một phân bổ bằng chứng từ đảo bất biến.'],
+  ['coreCustomerReturnCreditRead', 'Điều chỉnh công nợ khách hàng', 'Xem credit hàng khách trả', 'Cho phép đọc credit phát sinh từ Customer Return đã được kho nhận trong phạm vi kho.'],
+  ['coreCustomerReturnCreditAllocate', 'Điều chỉnh công nợ khách hàng', 'Phân bổ credit hàng khách trả', 'Cho phép phân bổ phần credit chưa dùng vào khoản phải thu hợp lệ.'],
+  ['coreCustomerReturnCreditReverse', 'Điều chỉnh công nợ khách hàng', 'Đảo credit hàng khách trả', 'Cho phép đảo credit bằng bút toán bù sau khi hoàn tiền liên quan đã được đảo.'],
+  ['coreCustomerRefundCreate', 'Hoàn tiền khách hàng', 'Hoàn tiền từ số dư credit', 'Cho phép ghi nhận hoàn tiền từ credit chưa phân bổ, với nơi nhận và lý do bắt buộc.'],
+  ['coreCustomerRefundReverse', 'Hoàn tiền khách hàng', 'Đảo hoàn tiền khách hàng', 'Cho phép đảo một khoản hoàn tiền bằng bút toán bù bất biến.'],
 ].map(([key, module, label, description]) => Object.freeze({
-  permissionKey: PERMISSIONS[key],
-  module,
-  label,
-  description,
-  isSystem: true,
+  permissionKey: PERMISSIONS[key], module, label, description, isSystem: true,
 })));
 
 export const PERMISSION_CATALOG = Object.freeze([
