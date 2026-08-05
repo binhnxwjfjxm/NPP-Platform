@@ -14,10 +14,10 @@
 .summary { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-bottom: 14px; color: var(--muted); }
 .summary strong { color: var(--foreground); }
 .tableWrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
-table { width: 100%; min-width: 760px; border-collapse: collapse; }
-th, td { padding: 11px 12px; border-bottom: 1px solid var(--border); text-align: right; vertical-align: top; }
-th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
-td small { display: block; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+.tableWrap table { width: 100%; min-width: 760px; border-collapse: collapse; }
+.tableWrap th, .tableWrap td { padding: 11px 12px; border-bottom: 1px solid var(--border); text-align: right; vertical-align: top; }
+.tableWrap th:first-child, .tableWrap td:first-child, .tableWrap th:nth-child(2), .tableWrap td:nth-child(2) { text-align: left; }
+.tableWrap td small { display: block; color: var(--muted); margin-top: 3px; line-height: 1.4; }
 .actionBox { display: grid; gap: 12px; margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--background); }
 .actionBox h3, .receipts h3 { margin: 0; }
 .actionBox p { margin: 0; color: var(--muted); }
