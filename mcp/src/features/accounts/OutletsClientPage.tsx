@@ -20,6 +20,12 @@ function statusLabel(status: AccountStatus) {
   return "Chưa có dữ liệu";
 }
 
+function statusClass(status: AccountStatus) {
+  if (status === "active") return "summary-status-good";
+  if (status === "need_visit") return "summary-status-watch";
+  return "summary-status-muted";
+}
+
 function buildColumns(onSelect: (item: AccountItem) => void): DataTableColumn<AccountItem>[] {
   return [
     { key: "name", header: "Điểm bán", render: (row) => row.name },
@@ -33,6 +39,35 @@ function buildColumns(onSelect: (item: AccountItem) => void): DataTableColumn<Ac
     { key: "status", header: "Trạng thái", render: (row) => <span className="badge">{statusLabel(row.status)}</span> },
     { key: "detail", header: "", render: (row) => <button className="button compact" type="button" onClick={() => onSelect(row)}>Hồ sơ</button> }
   ];
+}
+
+function OutletMobileCard({ item, onSelect }: { item: AccountItem; onSelect: (item: AccountItem) => void }) {
+  return (
+    <article className="mobile-summary-card outlet-mobile-summary" data-outlet-mobile-card>
+      <div className="mobile-summary-head">
+        <div className="mobile-summary-title">
+          <span>{item.routeName} · {item.area}</span>
+          <h3>{item.name}</h3>
+        </div>
+        <span className={`mobile-summary-status ${statusClass(item.status)}`}>{statusLabel(item.status)}</span>
+      </div>
+
+      <div className="mobile-summary-decision-row">
+        <span>
+          <small>Ghé gần nhất</small>
+          <strong>{item.lastVisitDate || "Chưa có"}</strong>
+        </span>
+        <button
+          className="button compact mobile-summary-action"
+          type="button"
+          aria-label={`Mở hồ sơ ${item.name}`}
+          onClick={() => onSelect(item)}
+        >
+          Mở hồ sơ
+        </button>
+      </div>
+    </article>
+  );
 }
 
 function OutletSheet({ item, onClose }: { item: AccountItem | null; onClose: () => void }) {
@@ -54,6 +89,7 @@ function OutletSheet({ item, onClose }: { item: AccountItem | null; onClose: () 
           <div className="grid">
             <div className="metric-row"><span>Người liên hệ</span><strong>{item.contactName}</strong></div>
             <div className="metric-row"><span>Tuyến</span><strong>{item.routeName}</strong></div>
+            <div className="metric-row"><span>Khu vực</span><strong>{item.area}</strong></div>
             <div className="metric-row"><span>Ghé gần nhất</span><strong>{item.lastVisitDate}</strong></div>
             <div className="metric-row"><span>Đơn gần nhất</span><strong>{item.lastOrderDate}</strong></div>
           </div>
@@ -89,18 +125,29 @@ export function OutletsClientPage({ kpis, items }: { kpis: AccountKpi[]; items: 
 
       <FilterBar filters={[{ label: "Khu vực", value: "Tất cả" }, { label: "Hạng điểm bán", value: "A/B/C" }, { label: "Trạng thái", value: "Đang chăm sóc + Cần ghé lại" }]} />
 
-      <section className="grid cards">
+      <section className="grid cards route-kpi-grid">
         {kpis.map((row) => <KpiCard key={row.label} label={row.label} value={row.value} hint={row.hint} />)}
       </section>
 
-      <section className="hero-panel" style={{ marginTop: 18 }}>
-        <div className="card">
-          <h2 className="panel-title">Danh sách điểm bán</h2>
-          <DataTable columns={columns} rows={items} getRowKey={(row) => row.id} emptyMessage="Chưa có điểm bán" />
+      <section className="hero-panel route-list-layout">
+        <div className="card route-list-card">
+          <div className="route-list-heading">
+            <h2 className="panel-title">Danh sách điểm bán</h2>
+            <span>{items.length} điểm bán</span>
+          </div>
+
+          <div className="route-desktop-table">
+            <DataTable columns={columns} rows={items} getRowKey={(row) => row.id} emptyMessage="Chưa có điểm bán" />
+          </div>
+
+          <div className="route-mobile-list" aria-label="Danh sách điểm bán trên điện thoại">
+            {items.length ? items.map((item) => <OutletMobileCard item={item} key={item.id} onSelect={setSelected} />) : <div className="empty-inline">Chưa có điểm bán</div>}
+          </div>
         </div>
-        <div className="card">
+
+        <div className="card route-secondary-card">
           <h2 className="panel-title">Chất lượng hồ sơ</h2>
-          <div className="grid">
+          <div className="grid route-secondary-grid">
             <div className="metric-row"><span>Cần ghé lại</span><strong>{stats.needVisit}</strong></div>
             <div className="metric-row"><span>Thiếu liên hệ</span><strong>{stats.missingContact}</strong></div>
             <div className="metric-row"><span>Chưa có đơn</span><strong>{stats.noOrder}</strong></div>
@@ -109,7 +156,7 @@ export function OutletsClientPage({ kpis, items }: { kpis: AccountKpi[]; items: 
         </div>
       </section>
 
-      <section className="card">
+      <section className="card route-guidance-card">
         <h2 className="panel-title">Gợi ý chăm sóc điểm bán</h2>
         <article className="action-card">
           <div>

@@ -58,6 +58,7 @@ function sessionCustomerRows(lines) {
   return lines.map((line) => ({
     id: line.sessionCustomerId || line.id,
     session_id: "session-active",
+    route_id: "route-active",
     route_customer_id: line.routeCustomerId,
     sort_order: line.sortOrder,
     customer_name: line.accountName,
@@ -95,6 +96,43 @@ function visitRows(results) {
   }));
 }
 
+function followupRows() {
+  return [
+    {
+      id: "followup-high-overdue",
+      session_id: "session-active",
+      session_customer_id: "sc-existing",
+      route_id: "route-active",
+      customer_name: "UI Existing Customer",
+      route_name: "UI Smoke Active",
+      title: "Ghé lại xác nhận nhu cầu trưng bày",
+      owner: "Sales UI",
+      source: "session",
+      priority: "high",
+      status: "todo",
+      due_date: "2026-07-30",
+      note: "Kiểm tra vị trí trưng bày và ghi nhận phản hồi tại điểm bán.",
+      created_at: "2026-07-29T08:00:00.000Z"
+    },
+    {
+      id: "followup-doing",
+      session_id: "session-active",
+      session_customer_id: "sc-existing",
+      route_id: "route-active",
+      customer_name: "UI Existing Customer",
+      route_name: "UI Smoke Active",
+      title: "Theo dõi đơn hàng đã trao đổi",
+      owner: "Sales UI",
+      source: "order",
+      priority: "medium",
+      status: "doing",
+      due_date: "2099-12-31",
+      note: "Gọi lại xác nhận số lượng trước khi lập đơn chính thức.",
+      created_at: "2026-08-05T08:00:00.000Z"
+    }
+  ];
+}
+
 async function readTable(table) {
   if (table === "mcp_routes") {
     const data = await upstreamJson("/api/routes/data");
@@ -128,6 +166,7 @@ async function readTable(table) {
     const data = await upstreamJson("/api/mcp-day/data");
     return visitRows(data.results || []);
   }
+  if (table === "mcp_followups") return followupRows();
   throw new Error(`unsupported_read_table_${table}`);
 }
 

@@ -31,6 +31,7 @@ import "./mobile-app-geometry.css";
 import "./mcp-mobile-primary-flows.css";
 import "./mcp-mobile-support-flows.css";
 import "./mobile-home-dashboard.css";
+import "./mobile-list-summaries.css";
 
 export const metadata: Metadata = {
   title: "NPP MCP Field",
