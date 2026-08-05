@@ -279,6 +279,10 @@ export async function withAuditOutboxTransaction({ adapter, mutate }) {
 
     if (!replayWithoutWrites) {
       const expectsOutbox = result?.eventId !== undefined && result?.eventId !== null;
+      const explicitAuditCount = result?.expectedAuditCount !== undefined
+        && result?.expectedAuditCount !== null;
+      const explicitOutboxCount = result?.expectedOutboxCount !== undefined
+        && result?.expectedOutboxCount !== null;
       const requiredAuditCount = expectedCount(
         result?.expectedAuditCount,
         1,
@@ -289,8 +293,13 @@ export async function withAuditOutboxTransaction({ adapter, mutate }) {
         expectsOutbox ? 1 : 0,
         'invalid_expected_outbox_count',
       );
-      if (writeState.auditCount !== requiredAuditCount) throw new Error('audit_record_count_mismatch');
-      if (writeState.outboxCount !== requiredOutboxCount) throw new Error('outbox_event_count_mismatch');
+      if (writeState.auditCount !== requiredAuditCount) {
+        throw new Error(explicitAuditCount ? 'audit_record_count_mismatch' : 'audit_record_required');
+      }
+      if (writeState.outboxCount !== requiredOutboxCount) {
+        if (explicitOutboxCount) throw new Error('outbox_event_count_mismatch');
+        throw new Error(expectsOutbox ? 'outbox_event_required' : 'unexpected_outbox_event');
+      }
     }
 
     await client.query('COMMIT');
