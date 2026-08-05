@@ -90,6 +90,8 @@ test('Delivery production workflow is exact-command and manual-only', async () =
     'npm ci --ignore-scripts',
     'api/logistics/driver/trips?limit=1&offset=0',
     'x-npp-delivery-employee-id',
+    '.data.driver | type == "object"',
+    '.data.trips | type == "array"',
     'Không tải được chuyến',
     'Chuyến của tôi',
     'Chưa có hồ sơ tài xế đang hoạt động',
@@ -99,6 +101,7 @@ test('Delivery production workflow is exact-command and manual-only', async () =
   ]) {
     assert.ok(script.includes(marker), `script missing ${marker}`);
   }
+  assert.doesNotMatch(script, /\.data\.items/);
   assert.doesNotMatch(script, /"\$deployment_url\/"/);
   assert.doesNotMatch(script, /no_active_driver_profile_for_delivery_bootstrap/);
   assert.doesNotMatch(script, /vercel@latest/);
