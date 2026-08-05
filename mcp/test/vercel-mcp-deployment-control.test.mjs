@@ -134,6 +134,7 @@ test("MCP deploy separates protected exact-host reachability from public-domain 
     mcpWorkflow,
     /- name: Smoke configured MCP production domain[\s\S]*DEPLOYMENT_URL: \$\{\{ env\.MCP_PRODUCTION_URL \}\}/
   );
+  assert.match(mcpWorkflow, /for attempt in \$\(seq 1 6\)/);
   assert.match(mcpWorkflow, /assert_reachable \/\n/);
   assert.match(mcpWorkflow, /assert_reachable \/field-checks/);
   assert.match(mcpWorkflow, /200\|302\|307\|401\|403/);
@@ -142,6 +143,8 @@ test("MCP deploy separates protected exact-host reachability from public-domain 
   assert.match(mcpWorkflow, /assert_status \/routes/);
   assert.match(mcpWorkflow, /assert_status \/visits/);
   assert.match(mcpWorkflow, /assert_status \/field-checks/);
+  assert.match(mcpWorkflow, /curl --fail --location --silent --show-error --retry 5/);
+  assert.match(mcpWorkflow, /curl --fail --location --silent --show-error --retry 3/);
   assert.match(mcpWorkflow, /html\.match\(/);
   assert.ok(mcpWorkflow.includes("\\/_next\\/static\\/"));
   assert.match(mcpWorkflow, /MCP smoke asset=/);
