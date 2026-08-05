@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import './hung-phat-mobile.css';
 
 export const metadata: Metadata = {
   title: 'Hưng Phát Giao hàng',
@@ -11,7 +12,8 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
-  themeColor: '#153c2f',
+  viewportFit: 'cover',
+  themeColor: '#754706',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
