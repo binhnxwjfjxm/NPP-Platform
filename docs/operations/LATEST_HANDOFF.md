@@ -1,141 +1,115 @@
 # NPP Platform — Latest Handoff
 
-## Current source checkpoint
+## Việc đang làm
+
+Phase 6F.0 chốt luật công nợ, thu tiền, hàng trả và COD trước khi viết schema/API.
+
+```text
+đơn/giao hàng thực tế
+-> phát sinh receivable đúng quantity khách nhận
+-> ghi payment riêng
+-> allocation giải thích tiền trừ vào khoản nợ nào
+-> customer return tạo credit sau khi kho nhận
+-> COD tách tiền khách đã trả khỏi tiền tài xế đang giữ
+```
+
+## Source checkpoint
 
 - Repository: `binhnxwjfjxm/NPP-Platform`.
 - Production branch: `main`.
-- Exact audited baseline `main`: `057fdedf9bc8c586e0dc831c1a43e09067212d4e`.
-- Active branch: `agent/phase-6d2-allocation-pick-pack`.
-- Issue: `#235 — Phase 6D.2 — Phân bổ vị trí/lô, soạn và đóng gói`.
-- Draft PR: `#236 — feat(sales): phân bổ vị trí lô, soạn và đóng gói 6D.2`.
-- Exact implementation checkpoint before this handoff-only commit: `249a5208cae986ec3af097a401fd970af829ca71`.
-- Source merge does not prove backend deployment, database migration, backup, reconciliation or provider state. Audit every production operation again.
+- Exact base đã audit: `2725c65f5754aacbab923578f0a05369958a10af`.
+- Active branch: `agent/phase-6f0-receivable-payment-cod-decisions`.
+- Parent tracking: Issue `#284`.
+- Current slice: Issue `#285`.
+- Draft PR: `#293 — docs(accounting): chốt đề xuất công nợ và COD Phase 6F.0`.
+- Decision document: `docs/operations/phase-6f0-receivable-payment-cod-decisions.md`.
 
-## Verified production checkpoint
+PR #293 là decision-only và vẫn ở trạng thái Draft. Không có schema, migration, backend, frontend hoặc production mutation.
 
-The latest verified NPP frontend production source remains the navigation correction merged at:
-
-```text
-057fdedf9bc8c586e0dc831c1a43e09067212d4e
-```
-
-No Phase 6D.1 or Phase 6D.2 backend deployment, production migration or provider mutation was performed during this source task.
-
-Do not assume production has migrations `042` or `043`, reservation demand, exact allocation, pick or pack until a separate production rollout is explicitly authorized and audited.
-
-## Phase 6D.2 product behavior
+## Tiến độ plan đã xác minh
 
 ```text
-confirmed Sales Order
--> Phase 6D.1 reserves available quantity at warehouse level
--> Phase 6D.2 proposes exact storage location/lot
--> create exact Inventory reservation in the same transaction
--> warehouse confirms picked quantity
--> warehouse confirms packed quantity
--> packed quantity becomes input for Phase 6D.3 Delivery Order
+Phase 0–5   nền tảng source đã đóng theo Master Plan
+Phase 6B    Sales Order foundation đã hoàn tất
+Phase 6C    MCP customer/order bridge đã hoàn tất và đã rollout theo evidence trước đó
+Phase 6D    fulfillment, Delivery Order, inventory issue và Customer Return đã hoàn tất
+Phase 6E    trip, dispatch, Delivery app, attempt, reconciliation và optional POD đã đóng production qua Issue #262
+Phase 6F    đang ở 6F.0 decision gate; chưa bắt đầu mutation/schema
 ```
 
-A normal Sales Order does not require two different people by default. One user may create and confirm the order when their role has both permissions. Price, discount, credit or other exceptions remain subject to their separate approval permissions and policies.
+Issue #262 ghi nhận production migration đến `052`, backup/restore rehearsal, Core/NPP/Delivery rollout và smoke hoàn tất. Mọi production operation mới vẫn phải audit lại; không lấy evidence cũ làm quyền deploy Phase 6F.
 
-## Locked allocation rules
-
-- Warehouse execution lives in NPP Operations under `Tồn kho & lô hàng -> Chuẩn bị hàng`.
-- It is not a global shortcut and is not daily CRUD in Admin or Delivery.
-- Allocation is scoped by installation, warehouse, active storage location, inventory-base SKU and lot.
-- Only active `storage` locations are eligible; receiving, shipping, quarantine, returns, damaged and other locations are rejected.
-- Lots with an expiry date use FEFO.
-- Lots without an expiry date use FIFO based on traceable first receipt time.
-- `expiry_tracking_mode = REQUIRED` requires an expiry date.
-- `expiry_tracking_mode = OPTIONAL` allows dated FEFO lots and undated FIFO lots.
-- Expired lots are always rejected.
-- Manual policy override requires `core.fulfillment.override-allocation-policy` and a reason, but cannot bypass scope, storage, expiry or available-stock checks.
-- Exact Inventory reservation and Sales allocation share transaction, lineage, idempotency, audit and outbox.
-- Pick cannot exceed allocated quantity.
-- Pack cannot exceed picked quantity.
-- Allocation, pick and pack progress is monotonic.
-- Backordered quantity prevents a partial execution from projecting a false full-completion state.
-
-## Migration and source structure
-
-Phase 6D.2 uses one consolidated migration:
+## Bộ Issue Phase 6F
 
 ```text
-database/migrations/sales/043_sales_fulfillment_allocation_pick_pack.sql
+#284  Phase 6F tổng
+#285  6F.0 quyết định công nợ, tiền, hàng trả và COD
+#286  6F.1 sổ công nợ khách hàng
+#287  6F.2 thu tiền và phân bổ
+#288  6F.3 hàng trả, giảm nợ và hoàn tiền
+#289  6F.4 COD thu, bàn giao và đối soát
+#290  6F.5 tổng hợp, reconciliation và production closeout
 ```
 
-Intermediate migration drafts were folded into `043` before merge. There is no patch chain `044/045` for this slice.
+Thứ tự bắt buộc: `#285 -> #286 -> #287 -> #288 -> #289 -> #290`.
 
-Source includes:
+Không bắt đầu 6F.1 cho tới khi owner duyệt 6F.0.
+
+## Quyết định chính đang đề xuất
+
+- Order confirmation và dispatch không tự tạo receivable.
+- Actual accepted delivery/pickup mới post receivable.
+- Partial delivery chỉ post partial value; failed/rescheduled post zero cho phần chưa giao.
+- Payment và allocation là hai facts riêng; không dùng `paid=true`.
+- PREPAID chưa giao là customer credit/unapplied advance.
+- COD cash collection có thể settle customer ngay; cash handover của tài xế là axis nội bộ riêng.
+- Customer Return chỉ tạo credit sau trạng thái `RECEIVED`.
+- Paid return tạo customer credit trước; refund là action riêng.
+- Trip Return Receipt của hàng chưa giao không phải customer credit source.
+- MCP chưa đọc/ghi công nợ hoặc COD trong Phase 6F core implementation.
+
+Owner review theo D1–D11 trong decision document. Câu xác nhận đề xuất:
 
 ```text
-Sales fulfillment allocation repository/service/routes
-Inventory route integration
-warehouse-scoped permissions
-NPP fulfillment queue and workspace
-PostgreSQL integration coverage
-Browser E2E coverage
+APPROVE 6F.0 AS PROPOSED
 ```
 
-The automatic FEFO/FIFO flow is available in the NPP warehouse UI. Backend manual override is permissioned and reason-required; a dedicated permission-aware manual allocation UI is not claimed complete in this slice.
+## Luồng song song MCP UI
 
-## Exact-head gate evidence
+Issue `#291` cho phép một người khác sửa UI MCP trên branch riêng.
 
-The implementation checkpoint `249a5208cae986ec3af097a401fd970af829ca71` passed:
+Chỉ được sửa MCP frontend/test. Không được đụng:
 
 ```text
-Foundation F0.2
-Phase 3 Split Validation including grouped migration rehearsal
-Phase 4 Inventory Ledger
-Phase 4 Inventory Balance
-Phase 4.3 Inventory Reservations
-Phase 6B.2 Sales Commercial Controls
-Core Foundation including PostgreSQL fulfillment integration
-Core UI build and Browser E2E
-Admin Frontend boundary CI
+mcp/apps/backend/**
+database/**
+npp-core/**
+delivery/**
+admin/**
+workflow production
+Core receivable/payment/COD read model
 ```
 
-The PostgreSQL integration test verifies:
+Mỗi màn phải kê rõ trước khi sửa; giữ nguyên route, menu và nút nghiệp vụ hiện có. Không dùng CSS tổng làm mất `PageHeader`, nút `Tạo tuyến` hoặc đường vào trang.
 
-```text
-two expiry lots ordered by FEFO
-exact Inventory reservations
-allocation command idempotency
-pack-before-pick rejection
-over-pick rejection
-pick and pack completion
-audit and outbox evidence
-concurrent allocation: one success and one conflict without over-allocation
-```
+## PR cũ không được trộn
 
-CodeRabbit skipped the draft PR; required repository CI is the source gate and no CodeRabbit wait is required.
-
-## Phase 6D sequence
-
-```text
-6D.1 warehouse reservation demand and fulfillment projection  SOURCE MERGED
-6D.2 exact location/lot allocation, FEFO/FIFO, pick and pack   SOURCE READY IN PR #236
-6D.3 Delivery Order foundation to ready_to_dispatch           NOT STARTED
-6D.4 Inventory issue/reversal and return lineage              NOT STARTED
-```
-
-Phase 6E, not Phase 6D, owns vehicles, drivers, trips, stops, delivery attempts and POD.
+PR `#234` vẫn là nhánh NPP navigation cũ, không thuộc Phase 6F và không được trộn vào PR #293.
 
 ## Production boundary
 
-Issue #235 and PR #236 authorize source work only.
-
-They do not authorize:
+Phase 6F.0 không cho phép:
 
 ```text
-production migrations 042 or 043
-Core backend production deploy
-NPP frontend production redeploy
-MCP, Admin or Delivery deploy
-provider, DNS or credential changes
-Phase 6D.3 Delivery Order work
-Phase 6E transportation execution
-merge to main without an explicit owner command
+migration hoặc manual SQL production
+Core/Delivery/MCP backend deploy
+Vercel deploy
+provider, DNS hoặc secret change
+merge PR #293 trước owner approval
+mở 6F.1 mutation/schema
 ```
 
-> Updated: `2026-08-04`
-> Current checkpoint: Phase 6D.2 source implementation complete; final handoff-only commit requires exact-head CI before PR is marked ready.
+Source merge, production migration và deploy luôn là ba gate riêng.
+
+> Updated: `2026-08-05`
+> Current checkpoint: Phase 6F.0 Draft PR #293 chờ owner review; MCP UI có thể chạy song song theo Issue #291.
