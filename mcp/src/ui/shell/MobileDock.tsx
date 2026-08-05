@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { HTMLAttributes } from "react";
+import { NavIcon } from "./NavIcon";
 import type { NavItem } from "./navigation";
 
 type MobileDockProps = HTMLAttributes<HTMLElement> & {
@@ -32,7 +33,7 @@ export function MobileDock({ items, ...props }: MobileDockProps) {
             key={item.href}
             prefetch
           >
-            <span className="mobile-app-dock-icon nav-icon" aria-hidden="true">{item.icon}</span>
+            <span className="mobile-app-dock-icon nav-icon" aria-hidden="true"><NavIcon name={item.icon} width="22" height="22" /></span>
             <span className="mobile-app-dock-label nav-label">{item.shortLabel}</span>
           </Link>
         );
