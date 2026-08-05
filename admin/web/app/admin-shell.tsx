@@ -15,13 +15,20 @@ export function AdminShell({
   children: ReactNode;
 }) {
   const nppOperationsUrl = process.env.NPP_OPERATIONS_URL?.trim() || 'https://npp-platform.vercel.app';
+  const appLogoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim()
+    || 'https://office.nguyenlieuhungphat.com/logo-transparent.png';
 
   return (
     <div className="shell">
       <header className="topbar">
-        <Link className="brand" href="/">
-          <strong>Admin MCP/NPP</strong>
-          <span>Tổng hợp và ngoại lệ cấp quản lý</span>
+        <Link className="brand" href="/" aria-label="Admin MCP/NPP - Trang tổng hợp">
+          <span className="brandLogoFrame">
+            <img className="brandLogo" src={appLogoUrl} alt="Logo Hưng Phát Company" />
+          </span>
+          <span className="brandCopy">
+            <strong>Admin MCP/NPP</strong>
+            <span>Tổng hợp và ngoại lệ cấp quản lý</span>
+          </span>
         </Link>
         <nav className="nav" aria-label="Điều hướng quản lý">
           <Link href="/">Tổng hợp</Link>
