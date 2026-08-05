@@ -10,13 +10,15 @@ const masterPath = new URL("../src/features/mcp/McpMasterView.tsx", import.meta.
 const routePreviewPath = new URL("../src/features/mcp/RouteCustomerMediaPreview.tsx", import.meta.url);
 const readOwnerPath = new URL("../apps/backend/foundation/outlet-media-read.js", import.meta.url);
 
-test("customer card keeps every action visible in a compact two-row grid", async () => {
+test("customer card keeps photo, directions and five business actions in a compact tray", async () => {
   const [card, css] = await Promise.all([
     readFile(cardPath, "utf8"),
     readFile(cardCssPath, "utf8")
   ]);
 
-  assert.match(card, /data-customer-action-rows="2"/);
+  assert.match(card, /data-session-primary-actions="4"/);
+  assert.match(card, /data-customer-action-menu="open"/);
+  assert.match(card, /data-customer-action-count="5"/);
   assert.match(card, /ActionIcon name="photo"/);
   assert.match(card, /ActionIcon name="map"/);
   assert.match(card, /label: "Nhu cầu"/);
@@ -25,10 +27,10 @@ test("customer card keeps every action visible in a compact two-row grid", async
   assert.match(card, /label: "Theo dõi"/);
   assert.match(card, /label: "Bỏ qua"/);
 
-  assert.match(css, /grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
-  assert.match(css, /grid-template-columns:\s*minmax\(0, 1fr\) 48px 48px/);
-  assert.match(css, /\.checkin\s*\{[\s\S]*?min-height:\s*46px;/);
-  assert.match(css, /@media \(max-width: 520px\)[\s\S]*?\.actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/);
+  assert.match(css, /grid-template-columns:\s*minmax\(0, 1fr\) 48px 48px 58px/);
+  assert.match(css, /\.checkin\s*\{[\s\S]*?min-height:\s*44px;/);
+  assert.match(css, /@media \(max-width: 520px\)[\s\S]*?\.primaryRow\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 44px 44px 54px/);
   assert.doesNotMatch(css, /overflow-x:\s*auto/);
   assert.doesNotMatch(css, /scroll-snap-type/);
 });
