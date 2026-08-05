@@ -24,7 +24,8 @@ function statusFor(code) {
       || code.includes('STORAGE_UNAVAILABLE')
       || code.endsWith('_QUERY_FAILED')
       || code.endsWith('_TRANSACTION_FAILED')) return 503;
-  if (code.includes('CONFLICT') || code.includes('MISMATCH') || code.includes('IDEMPOTENCY')) return 409;
+  if (code.startsWith('INVALID_') || code === 'MISSING_IDEMPOTENCY_KEY') return 400;
+  if (code.includes('CONFLICT') || code.includes('MISMATCH')) return 409;
   return 400;
 }
 
