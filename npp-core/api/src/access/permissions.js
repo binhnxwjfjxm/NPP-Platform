@@ -25,6 +25,7 @@ export const PERMISSIONS = Object.freeze({
   coreDeliveryTripReconciliationRead: 'core.delivery-trip.reconciliation-read',
   coreDeliveryTripReturnReceive: 'core.delivery-trip.return-receive',
   coreDeliveryTripClose: 'core.delivery-trip.close',
+  coreReceivableRead: 'core.receivable.read',
 });
 
 const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
@@ -56,9 +57,20 @@ const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
   isSystem: true,
 })));
 
+const ACCOUNTING_PERMISSION_CATALOG = Object.freeze([
+  Object.freeze({
+    permissionKey: PERMISSIONS.coreReceivableRead,
+    module: 'Công nợ khách hàng',
+    label: 'Xem công nợ khách hàng',
+    description: 'Cho phép đọc số dư, chứng từ và sổ chi tiết công nợ khách hàng trong phạm vi kho được cấp.',
+    isSystem: true,
+  }),
+]);
+
 export const PERMISSION_CATALOG = Object.freeze([
   ...BASE_PERMISSION_CATALOG,
   ...LOGISTICS_PERMISSION_CATALOG,
+  ...ACCOUNTING_PERMISSION_CATALOG,
 ]);
 
 export const PERMISSION_REGISTRY = new Set(PERMISSION_CATALOG.map((entry) => entry.permissionKey));

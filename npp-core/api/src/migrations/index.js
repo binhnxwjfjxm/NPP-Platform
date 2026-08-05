@@ -13,51 +13,22 @@ import {
  * 045_sales_inventory_issue_customer_return
  */
 const LOGISTICS_TRIP_PLANNING_SQL = [
-  readFileSync(
-    new URL('../../../../database/migrations/logistics/046_logistics_trip_planning.sql', import.meta.url),
-    'utf8',
-  ),
-  readFileSync(
-    new URL('../../../../database/migrations/logistics/046_logistics_trip_planning_constraints.sql', import.meta.url),
-    'utf8',
-  ),
+  readFileSync(new URL('../../../../database/migrations/logistics/046_logistics_trip_planning.sql', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../../../database/migrations/logistics/046_logistics_trip_planning_constraints.sql', import.meta.url), 'utf8'),
 ].join('\n\n');
-
-const LOGISTICS_TRIP_DISPATCH_SQL = readFileSync(
-  new URL('../../../../database/migrations/logistics/047_logistics_trip_dispatch.sql', import.meta.url),
-  'utf8',
-);
-
-const LOGISTICS_DRIVER_DELIVERY_READ_SQL = readFileSync(
-  new URL('../../../../database/migrations/logistics/048_logistics_driver_delivery_read.sql', import.meta.url),
-  'utf8',
-);
-
-const LOGISTICS_DELIVERY_ATTEMPTS_SQL = readFileSync(
-  new URL('../../../../database/migrations/logistics/049_logistics_delivery_attempts.sql', import.meta.url),
-  'utf8',
-);
-
-const LOGISTICS_DELIVERY_ATTEMPT_OUTBOX_SCHEDULE_SQL = readFileSync(
-  new URL('../../../../database/migrations/logistics/050_logistics_delivery_attempt_outbox_schedule.sql', import.meta.url),
-  'utf8',
-);
-
+const LOGISTICS_TRIP_DISPATCH_SQL = readFileSync(new URL('../../../../database/migrations/logistics/047_logistics_trip_dispatch.sql', import.meta.url), 'utf8');
+const LOGISTICS_DRIVER_DELIVERY_READ_SQL = readFileSync(new URL('../../../../database/migrations/logistics/048_logistics_driver_delivery_read.sql', import.meta.url), 'utf8');
+const LOGISTICS_DELIVERY_ATTEMPTS_SQL = readFileSync(new URL('../../../../database/migrations/logistics/049_logistics_delivery_attempts.sql', import.meta.url), 'utf8');
+const LOGISTICS_DELIVERY_ATTEMPT_OUTBOX_SCHEDULE_SQL = readFileSync(new URL('../../../../database/migrations/logistics/050_logistics_delivery_attempt_outbox_schedule.sql', import.meta.url), 'utf8');
 const LOGISTICS_TRIP_RECONCILIATION_SQL = [
-  readFileSync(
-    new URL('../../../../database/migrations/logistics/051_logistics_trip_reconciliation.sql', import.meta.url),
-    'utf8',
-  ),
-  readFileSync(
-    new URL('../../../../database/migrations/logistics/051_logistics_trip_reconciliation_hardening.sql', import.meta.url),
-    'utf8',
-  ),
+  readFileSync(new URL('../../../../database/migrations/logistics/051_logistics_trip_reconciliation.sql', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../../../database/migrations/logistics/051_logistics_trip_reconciliation_hardening.sql', import.meta.url), 'utf8'),
 ].join('\n\n');
-
-const LOGISTICS_OPTIONAL_PROOF_OF_DELIVERY_SQL = readFileSync(
-  new URL('../../../../database/migrations/logistics/052_logistics_optional_proof_of_delivery.sql', import.meta.url),
-  'utf8',
-);
+const LOGISTICS_OPTIONAL_PROOF_OF_DELIVERY_SQL = readFileSync(new URL('../../../../database/migrations/logistics/052_logistics_optional_proof_of_delivery.sql', import.meta.url), 'utf8');
+const CUSTOMER_RECEIVABLE_LEDGER_SQL = [
+  readFileSync(new URL('../../../../database/migrations/accounting/053_customer_receivable_ledger.sql', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../../../database/migrations/accounting/053_customer_receivable_pickup_reversal.sql', import.meta.url), 'utf8'),
+].join('\n\n');
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -65,15 +36,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '047_logistics_trip_dispatch', sql: LOGISTICS_TRIP_DISPATCH_SQL }),
   Object.freeze({ id: '048_logistics_driver_delivery_read', sql: LOGISTICS_DRIVER_DELIVERY_READ_SQL }),
   Object.freeze({ id: '049_logistics_delivery_attempts', sql: LOGISTICS_DELIVERY_ATTEMPTS_SQL }),
-  Object.freeze({
-    id: '050_logistics_delivery_attempt_outbox_schedule',
-    sql: LOGISTICS_DELIVERY_ATTEMPT_OUTBOX_SCHEDULE_SQL,
-  }),
+  Object.freeze({ id: '050_logistics_delivery_attempt_outbox_schedule', sql: LOGISTICS_DELIVERY_ATTEMPT_OUTBOX_SCHEDULE_SQL }),
   Object.freeze({ id: '051_logistics_trip_reconciliation', sql: LOGISTICS_TRIP_RECONCILIATION_SQL }),
-  Object.freeze({
-    id: '052_logistics_optional_proof_of_delivery',
-    sql: LOGISTICS_OPTIONAL_PROOF_OF_DELIVERY_SQL,
-  }),
+  Object.freeze({ id: '052_logistics_optional_proof_of_delivery', sql: LOGISTICS_OPTIONAL_PROOF_OF_DELIVERY_SQL }),
+  Object.freeze({ id: '053_customer_receivable_ledger', sql: CUSTOMER_RECEIVABLE_LEDGER_SQL }),
 ]);
 
 export { runMigrations };

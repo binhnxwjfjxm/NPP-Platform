@@ -26,7 +26,7 @@ function deliveryHeaders(config, employeeId, idempotencyKey = null) {
   };
 }
 
-test('PostgreSQL driver attempts preserve ownership, idempotency and inventory custody', async () => {
+test('PostgreSQL driver attempts preserve ownership, idempotency, inventory custody and receivable posting', async () => {
   const installationId = `delivery-driver-${randomUUID()}`;
   const branchId = randomUUID();
   const warehouseId = randomUUID();
@@ -55,6 +55,8 @@ test('PostgreSQL driver attempts preserve ownership, idempotency and inventory c
   const fakeAllocationId = randomUUID();
   const fakeReservationId = randomUUID();
   const fakeVariantId = randomUUID();
+  const fakeUnitId = randomUUID();
+  const fakeOrderNumberAllocationId = randomUUID();
   const config = loadConfig({
     NODE_ENV: 'test',
     HOST: '127.0.0.1',
@@ -88,6 +90,21 @@ test('PostgreSQL driver attempts preserve ownership, idempotency and inventory c
       [warehouseId, installationId, branchId, actor],
     );
     await fixture.query(
+      `INSERT INTO shared.customers
+        (id, installation_id, code, name, payment_terms_days, credit_limit,
+         is_active, created_by, updated_by)
+       VALUES ($1,$2,'KH-001','Khách thử nghiệm',0,0,true,$3,$3)`,
+      [fakeCustomerId, installationId, actor],
+    );
+    await fixture.query(
+      `INSERT INTO shared.customer_addresses
+        (id, installation_id, customer_id, label, recipient_name,
+         address_line1, country_code, is_default, is_active, created_by, updated_by)
+       VALUES ($1,$2,$3,'Điểm giao','Khách thử nghiệm',
+         '12 Nguyễn Trãi','VN',true,true,$4,$4)`,
+      [fakeCustomerAddressId, installationId, fakeCustomerId, actor],
+    );
+    await fixture.query(
       `INSERT INTO shared.employees
         (id, installation_id, code, full_name, is_active, created_by, updated_by)
        VALUES
@@ -111,9 +128,82 @@ test('PostgreSQL driver attempts preserve ownership, idempotency and inventory c
       [driverA, driverB, installationId, employeeA, employeeB, actor],
     );
 
-    // The fixture needs exact downstream lineage but not every upstream sales/master row.
-    // Replica mode bypasses only FK/write-guard triggers while CHECK/NOT NULL constraints remain active.
+    // Receivable posting requires trusted customer and confirmed commercial snapshots.
+    // Replica mode remains limited to the unrelated logistics/fulfillment fixture chain;
+    // CHECK and NOT NULL constraints still validate every inserted commercial snapshot.
     await fixture.query("SET LOCAL session_replication_role = 'replica'");
+    await fixture.query(
+      `INSERT INTO sales.sales_orders (
+         id, installation_id, order_number, order_number_allocation_id,
+         status, current_version_number, source_type,
+         customer_id, customer_address_id, warehouse_id,
+         delivery_mode, collection_policy, fulfillment_status,
+         delivery_status, settlement_status, currency_code, revision,
+         confirmed_at, confirmed_by, created_by, updated_by
+       ) VALUES (
+         $1,$2,'SO-DELIVERY-1',$3,
+         'confirmed',1,'MANUAL',$4,$5,$6,
+         'DELIVERY','PREPAID','fulfilled','dispatched','not_due','VND',1,
+         '2026-08-04T00:10:00Z',$7,$7,$7
+       )`,
+      [
+        fakeSalesOrderId,
+        installationId,
+        fakeOrderNumberAllocationId,
+        fakeCustomerId,
+        fakeCustomerAddressId,
+        warehouseId,
+        actor,
+      ],
+    );
+    await fixture.query(
+      `INSERT INTO sales.sales_order_versions (
+         id, installation_id, sales_order_id, version_number, version_status,
+         customer_id, customer_code_snapshot, customer_name_snapshot,
+         customer_address_id, customer_address_snapshot,
+         warehouse_id, warehouse_code_snapshot, warehouse_name_snapshot,
+         delivery_mode, source_type, collection_policy, currency_code,
+         subtotal, discount_total, tax_total, total, revision,
+         created_by, updated_by, confirmed_at, confirmed_by
+       ) VALUES (
+         $1,$2,$3,1,'confirmed',$4,'KH-001','Khách thử nghiệm',$5,
+         '{"addressLine1":"12 Nguyễn Trãi"}'::jsonb,
+         $6,'WH-DELIVERY','Kho giao hàng','DELIVERY','MANUAL','PREPAID','VND',
+         300,0,0,300,1,$7,$7,'2026-08-04T00:10:00Z',$7
+       )`,
+      [
+        fakeSalesOrderVersionId,
+        installationId,
+        fakeSalesOrderId,
+        fakeCustomerId,
+        fakeCustomerAddressId,
+        warehouseId,
+        actor,
+      ],
+    );
+    await fixture.query(
+      `INSERT INTO sales.sales_order_version_lines (
+         id, installation_id, sales_order_version_id, line_number,
+         variant_id, sku_snapshot, item_name_snapshot,
+         unit_id, unit_code_snapshot, conversion_to_base,
+         ordered_quantity, base_quantity, price_source, unit_price,
+         discount_mode, discount_value, discount_amount,
+         tax_mode, tax_rate, tax_amount,
+         line_subtotal, line_total, created_by, updated_by
+       ) VALUES (
+         $1,$2,$3,1,$4,'SKU-DELIVERY','Mặt hàng giao thử',
+         $5,'EA',1,3,3,'MANUAL_OVERRIDE',100,
+         'TOTAL_AMOUNT',0,0,'EXCLUSIVE',0,0,300,300,$6,$6
+       )`,
+      [
+        fakeSalesOrderLineId,
+        installationId,
+        fakeSalesOrderVersionId,
+        fakeVariantId,
+        fakeUnitId,
+        actor,
+      ],
+    );
     await fixture.query(
       `INSERT INTO logistics.delivery_trips (
          id, installation_id, trip_number, warehouse_id, vehicle_id, primary_driver_id,
@@ -366,6 +456,10 @@ test('PostgreSQL driver attempts preserve ownership, idempotency and inventory c
            WHERE installation_id = $1 AND action = 'logistics.delivery_attempt.record') AS audits,
          (SELECT count(*) FROM shared.core_outbox_events
            WHERE installation_id = $1 AND event_type = 'core.delivery_attempt.recorded') AS outbox,
+         (SELECT count(*) FROM accounting.receivable_documents
+           WHERE installation_id = $1 AND source_document_type = 'DELIVERY_ATTEMPT') AS receivable_documents,
+         (SELECT count(*) FROM accounting.receivable_ledger_entries
+           WHERE installation_id = $1 AND source_document_type = 'DELIVERY_ATTEMPT') AS receivable_entries,
          (SELECT count(*) FROM inventory.inventory_movements WHERE installation_id = $1) AS movements`,
       [installationId],
     );
@@ -374,7 +468,27 @@ test('PostgreSQL driver attempts preserve ownership, idempotency and inventory c
     assert.equal(Number(facts.rows[0].trip_events), 1);
     assert.equal(Number(facts.rows[0].audits), 1);
     assert.equal(Number(facts.rows[0].outbox), 1);
+    assert.equal(Number(facts.rows[0].receivable_documents), 1);
+    assert.equal(Number(facts.rows[0].receivable_entries), 1);
     assert.equal(Number(facts.rows[0].movements), movementCountBefore);
+
+    const receivable = await pool.query(
+      `SELECT document.original_amount::text,
+              document.remaining_amount::text,
+              entry.amount::text AS ledger_amount
+         FROM accounting.receivable_documents document
+         JOIN accounting.receivable_ledger_entries entry
+           ON entry.installation_id = document.installation_id
+          AND entry.receivable_document_id = document.id
+        WHERE document.installation_id = $1
+          AND document.source_document_type = 'DELIVERY_ATTEMPT'`,
+      [installationId],
+    );
+    assert.deepEqual(receivable.rows[0], {
+      original_amount: '300.000000',
+      remaining_amount: '300.000000',
+      ledger_amount: '300.000000',
+    });
 
     await assert.rejects(
       pool.query(
