@@ -105,10 +105,10 @@ try {
       "core.pod.attach",
     ];
     const tableRows = await pool.query(
-      `SELECT required_name,
-              to_regclass(required_name) IS NOT NULL AS present
-         FROM unnest($1::text[]) AS required_name
-        ORDER BY required_name`,
+      `SELECT expected.required_name,
+              to_regclass(expected.required_name) IS NOT NULL AS present
+         FROM unnest($1::text[]) AS expected(required_name)
+        ORDER BY expected.required_name`,
       [requiredTables],
     );
     const permissionRows = await pool.query(
