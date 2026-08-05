@@ -6,6 +6,7 @@ import type { AttachProofOfDeliveryPayload } from '../../../../../../../../../li
 export const dynamic = 'force-dynamic';
 
 const MAX_POD_BODY_BYTES = 16 * 1024 * 1024;
+const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 
 class PodBodyError extends Error {
   constructor(
@@ -109,6 +110,15 @@ export async function POST(
   const user = authenticatedUser(request);
   if (!user) return errorResponse('UNAUTHORIZED', 'Không xác định được tài xế', 401);
 
+  const idempotencyKey = request.headers.get('idempotency-key')?.trim() || '';
+  if (!IDEMPOTENCY_PATTERN.test(idempotencyKey)) {
+    return errorResponse(
+      'INVALID_IDEMPOTENCY_KEY',
+      'Khóa chống ghi trùng phải có 1-128 ký tự an toàn',
+      400,
+    );
+  }
+
   let payload: AttachProofOfDeliveryPayload;
   try {
     payload = await readLimitedJson(request) as AttachProofOfDeliveryPayload;
@@ -124,7 +134,6 @@ export async function POST(
     return errorResponse('UNTRUSTED_POD_IDENTITY', 'Danh tính do máy chủ xác định', 400);
   }
 
-  const idempotencyKey = request.headers.get('idempotency-key')?.trim() || '';
   try {
     const data = await attachMyProof(
       user,
