@@ -64,17 +64,20 @@ test("phone shell is a field application with one header and one scroll region",
   assert.match(launchpad, /Đi tuyến hôm nay/);
   assert.match(launchpad, /href="\/visits"/);
   assert.match(foundation, /\.sidebar\s*\{[\s\S]*?display:\s*none\s*!important/);
-  assert.match(geometry, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
-  assert.match(geometry, /min-height:\s*54px/);
+  assert.match(geometry, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(72px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(geometry, /min-height:\s*52px/);
   assert.match(experience, /\.mobile-app-dock-link\.primary/);
   assert.match(experience, /\.mobile-home-primary-action/);
 });
 
-test("mobile dock is translucent with a warm brown glow", () => {
-  assert.match(geometry, /background:\s*rgba\(250, 244, 234, 0\.72\)/);
-  assert.match(geometry, /border-top:\s*1px solid rgba\(117, 71, 6, 0\.24\)/);
-  assert.match(geometry, /backdrop-filter:\s*blur\(20px\) saturate\(1\.25\)/);
-  assert.match(geometry, /0 -12px 32px rgba\(117, 71, 6, 0\.18\)/);
+test("mobile dock is floating translucent glass with a warm brown tint", () => {
+  assert.match(geometry, /background:\s*linear-gradient\(/);
+  assert.match(geometry, /rgba\(255, 253, 248, 0\.68\)/);
+  assert.match(geometry, /rgba\(239, 222, 195, 0\.58\)/);
+  assert.match(geometry, /border:\s*1px solid rgba\(117, 71, 6, 0\.18\)/);
+  assert.match(geometry, /border-radius:\s*20px/);
+  assert.match(geometry, /backdrop-filter:\s*blur\(22px\) saturate\(1\.35\)/);
+  assert.match(geometry, /background:\s*rgba\(152, 96, 15, 0\.12\)/);
 });
 
 test("every top-level MCP page has a canonical navigation entry", async () => {
