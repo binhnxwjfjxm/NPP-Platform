@@ -26,6 +26,38 @@ function deliveryHeaders(config, employeeId, idempotencyKey = null) {
   };
 }
 
+async function deleteInstallationFixtures(pool, installationId) {
+  const cleanup = await pool.connect();
+  try {
+    await cleanup.query('BEGIN');
+    await cleanup.query("SET LOCAL session_replication_role = 'replica'");
+    for (const table of [
+      'logistics.delivery_attempt_proofs',
+      'logistics.trip_events',
+      'shared.core_audit_records',
+      'shared.core_outbox_events',
+      'logistics.delivery_attempts',
+      'logistics.trip_order_assignments',
+      'logistics.trip_stops',
+      'logistics.delivery_trips',
+      'sales.delivery_orders',
+      'logistics.driver_profiles',
+      'logistics.vehicles',
+      'shared.employees',
+      'shared.warehouses',
+      'shared.branches',
+    ]) {
+      await cleanup.query(`DELETE FROM ${table} WHERE installation_id = $1`, [installationId]);
+    }
+    await cleanup.query('COMMIT');
+  } catch (error) {
+    await cleanup.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    cleanup.release();
+  }
+}
+
 test('PostgreSQL POD is optional, driver-scoped, immutable and idempotent', async () => {
   const installationId = `delivery-pod-${randomUUID()}`;
   const branchId = randomUUID();
@@ -201,6 +233,14 @@ test('PostgreSQL POD is optional, driver-scoped, immutable and idempotent', asyn
       note: 'Khách đã nhận hàng tại kho.',
     });
 
+    const missingKey = await fetchJson(fetch(endpoint, {
+      method: 'POST',
+      headers: deliveryHeaders(config, employeeA),
+      body: payload,
+    }));
+    assert.equal(missingKey.response.status, 400, JSON.stringify(missingKey.body));
+    assert.equal(missingKey.body.error.code, 'MISSING_IDEMPOTENCY_KEY');
+
     const competing = await Promise.all([
       fetchJson(fetch(endpoint, {
         method: 'POST',
@@ -292,6 +332,7 @@ test('PostgreSQL POD is optional, driver-scoped, immutable and idempotent', asyn
     await fixture.query("SET session_replication_role = 'origin'").catch(() => {});
     await fixture.query('ROLLBACK').catch(() => {});
     fixture.release();
+    await deleteInstallationFixtures(pool, installationId).catch(() => {});
     await closePool();
   }
 });
