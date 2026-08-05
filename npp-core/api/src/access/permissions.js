@@ -26,6 +26,11 @@ export const PERMISSIONS = Object.freeze({
   coreDeliveryTripReturnReceive: 'core.delivery-trip.return-receive',
   coreDeliveryTripClose: 'core.delivery-trip.close',
   coreReceivableRead: 'core.receivable.read',
+  coreCustomerPaymentRead: 'core.customer-payment.read',
+  coreCustomerPaymentCreate: 'core.customer-payment.create',
+  coreCustomerPaymentReverse: 'core.customer-payment.reverse',
+  coreReceivableAllocationCreate: 'core.receivable-allocation.create',
+  coreReceivableAllocationReverse: 'core.receivable-allocation.reverse',
 });
 
 const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
@@ -34,7 +39,7 @@ const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
   ['coreVehicleRead', 'Điều phối giao hàng', 'Xem phương tiện', 'Cho phép đọc danh mục phương tiện giao hàng.'],
   ['coreVehicleManage', 'Điều phối giao hàng', 'Quản lý phương tiện', 'Cho phép tạo phương tiện giao hàng phục vụ điều phối.'],
   ['coreDriverProfileRead', 'Điều phối giao hàng', 'Xem tài xế', 'Cho phép đọc hồ sơ tài xế giao hàng.'],
-  ['coreDriverProfileManage', 'Điều phối giao hàng', 'Quản lý tài xế', 'Cho phép tạo hồ sơ tài xế giao hàng.'],
+  ['coreDriverProfileManage', 'Điều phối giao hàng', 'Quản lý tài xế', 'Cho phép tạo hồ sơ tài xế giao hàng phục vụ điều phối.'],
   ['coreDeliveryTripRead', 'Điều phối giao hàng', 'Xem chuyến giao', 'Cho phép đọc chuyến, điểm dừng và phiếu giao được gán trong phạm vi kho.'],
   ['coreDeliveryTripCreate', 'Điều phối giao hàng', 'Tạo chuyến giao', 'Cho phép tạo chuyến giao nháp trong phạm vi kho.'],
   ['coreDeliveryTripPlan', 'Điều phối giao hàng', 'Lập kế hoạch chuyến', 'Cho phép cập nhật xe, tài xế, thời gian và trạng thái planned của chuyến.'],
@@ -58,14 +63,19 @@ const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
 })));
 
 const ACCOUNTING_PERMISSION_CATALOG = Object.freeze([
-  Object.freeze({
-    permissionKey: PERMISSIONS.coreReceivableRead,
-    module: 'Công nợ khách hàng',
-    label: 'Xem công nợ khách hàng',
-    description: 'Cho phép đọc số dư, chứng từ và sổ chi tiết công nợ khách hàng trong phạm vi kho được cấp.',
-    isSystem: true,
-  }),
-]);
+  ['coreReceivableRead', 'Công nợ khách hàng', 'Xem công nợ khách hàng', 'Cho phép đọc số dư, chứng từ và sổ chi tiết công nợ khách hàng trong phạm vi kho được cấp.'],
+  ['coreCustomerPaymentRead', 'Thu tiền khách hàng', 'Xem phiếu thu khách hàng', 'Cho phép đọc phiếu thu và lịch sử phân bổ trong phạm vi kho được cấp.'],
+  ['coreCustomerPaymentCreate', 'Thu tiền khách hàng', 'Ghi nhận tiền khách trả', 'Cho phép ghi nhận tiền mặt hoặc chuyển khoản đã thực nhận từ khách hàng.'],
+  ['coreCustomerPaymentReverse', 'Thu tiền khách hàng', 'Đảo phiếu thu khách hàng', 'Cho phép đảo phiếu thu chưa còn phân bổ đang hiệu lực, với lý do bắt buộc.'],
+  ['coreReceivableAllocationCreate', 'Công nợ khách hàng', 'Phân bổ tiền vào công nợ', 'Cho phép phân bổ một phiếu thu vào một hoặc nhiều chứng từ phải thu trong phạm vi được cấp.'],
+  ['coreReceivableAllocationReverse', 'Công nợ khách hàng', 'Đảo phân bổ công nợ', 'Cho phép đảo một phân bổ bằng chứng từ đảo bất biến.'],
+].map(([key, module, label, description]) => Object.freeze({
+  permissionKey: PERMISSIONS[key],
+  module,
+  label,
+  description,
+  isSystem: true,
+})));
 
 export const PERMISSION_CATALOG = Object.freeze([
   ...BASE_PERMISSION_CATALOG,
