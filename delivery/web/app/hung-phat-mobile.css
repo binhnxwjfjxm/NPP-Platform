@@ -1,0 +1,280 @@
+:root {
+  --hp-canvas: #f7f5f1;
+  --hp-surface: #ffffff;
+  --hp-surface-soft: #efebe4;
+  --hp-bronze: #98600f;
+  --hp-bronze-strong: #754706;
+  --hp-bronze-soft: #f3e6cf;
+  --hp-ink: #2d2924;
+  --hp-muted: #70685f;
+  --hp-border: #d8d0c4;
+  --hp-success: #386641;
+  --hp-danger: #a83b32;
+  --hp-shadow: 0 7px 20px rgba(72, 54, 34, 0.08);
+}
+
+html,
+body {
+  background: var(--hp-canvas);
+  color: var(--hp-ink);
+}
+
+body {
+  background:
+    radial-gradient(circle at 100% 0, rgba(152, 96, 15, 0.11), transparent 22rem),
+    var(--hp-canvas);
+  overscroll-behavior-y: none;
+}
+
+.pageShell {
+  width: min(100%, 600px);
+  padding: 0 14px calc(32px + env(safe-area-inset-bottom));
+}
+
+.appHeader,
+.detailHeader {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  min-height: 72px;
+  margin: 0 -14px 14px;
+  padding: calc(9px + env(safe-area-inset-top)) 14px 9px;
+  border-bottom: 1px solid rgba(116, 91, 58, 0.15);
+  background: rgba(250, 248, 244, 0.94);
+  box-shadow: 0 5px 16px rgba(72, 54, 34, 0.05);
+  backdrop-filter: blur(14px);
+}
+
+.brandLogoFrame {
+  width: 48px;
+  height: 48px;
+  border-color: var(--hp-border);
+  border-radius: 13px;
+  box-shadow: 0 5px 14px rgba(72, 54, 34, 0.11);
+}
+
+h1 {
+  color: var(--hp-ink);
+  font-size: clamp(1.35rem, 5.5vw, 1.8rem);
+}
+
+h2,
+.sectionHeading h2 {
+  color: var(--hp-ink);
+}
+
+.eyebrow {
+  margin-bottom: 2px;
+  color: var(--hp-bronze-strong);
+  font-size: 0.69rem;
+  letter-spacing: 0.08em;
+}
+
+.welcome,
+.mutedText,
+.cardTopline,
+.sectionHeading,
+dt {
+  color: var(--hp-muted);
+}
+
+.noticeCard,
+.stateCard,
+.tripOverview,
+.tripCard,
+.stopCard {
+  border-color: var(--hp-border);
+  border-radius: 14px;
+  background: var(--hp-surface);
+  box-shadow: var(--hp-shadow);
+}
+
+.noticeCard {
+  border-left: 4px solid var(--hp-bronze);
+  background: linear-gradient(135deg, #fffaf1, var(--hp-bronze-soft));
+}
+
+.noticeCard p,
+.stateCard p {
+  color: #5e554d;
+}
+
+.tripList,
+.stopList {
+  gap: 12px;
+}
+
+.tripCard {
+  padding: 15px;
+  touch-action: manipulation;
+}
+
+.tripCard:hover,
+.tripCard:focus-visible {
+  transform: none;
+  border-color: #b99d72;
+  box-shadow: 0 8px 22px rgba(72, 54, 34, 0.11);
+  outline: 3px solid rgba(152, 96, 15, 0.18);
+}
+
+.statusPill {
+  background: var(--hp-bronze-soft);
+  color: var(--hp-bronze-strong);
+}
+
+.summaryGrid {
+  gap: 8px;
+}
+
+.summaryGrid div {
+  min-height: 64px;
+  padding: 9px 10px;
+  border: 1px solid #e5ded4;
+  border-radius: 10px;
+  background: #fbfaf8;
+}
+
+.openHint,
+.backLink {
+  color: var(--hp-bronze-strong);
+}
+
+.openHint {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.backLink {
+  min-height: 44px;
+  margin: 0 0 8px;
+  padding-top: calc(10px + env(safe-area-inset-top));
+}
+
+.stopSection {
+  margin: 18px 0;
+}
+
+.stopCard {
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px;
+  padding: 13px;
+}
+
+.stopSequence {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: linear-gradient(180deg, #aa721d, var(--hp-bronze-strong));
+  color: #fffdf8;
+}
+
+.deliveryOrder {
+  border-left-color: var(--hp-bronze);
+  background: #fbfaf8;
+}
+
+.handoverNote {
+  border-top-color: var(--hp-border);
+  color: #5e554d;
+}
+
+button,
+input,
+select,
+textarea,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+input,
+select {
+  min-height: 46px;
+}
+
+button {
+  border-radius: 11px;
+}
+
+input,
+select,
+textarea {
+  border-color: var(--hp-border) !important;
+  background: var(--hp-surface) !important;
+  color: var(--hp-ink) !important;
+  accent-color: var(--hp-bronze);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(152, 96, 15, 0.22);
+  outline-offset: 2px;
+}
+
+.errorCard {
+  border-color: #dfb4ae;
+  background: #fff4f2;
+}
+
+@media (min-width: 640px) {
+  .pageShell {
+    padding: 0 20px 48px;
+  }
+
+  .appHeader,
+  .detailHeader {
+    margin-right: -20px;
+    margin-left: -20px;
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .tripCard,
+  .tripOverview,
+  .stopCard {
+    padding: 18px;
+  }
+}
+
+@media (max-width: 420px) {
+  .pageShell {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .appHeader,
+  .detailHeader {
+    min-height: 66px;
+    margin-right: -10px;
+    margin-left: -10px;
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .brandLogoFrame {
+    width: 44px;
+    height: 44px;
+  }
+
+  .noticeCard,
+  .stateCard,
+  .tripOverview,
+  .tripCard,
+  .stopCard {
+    border-radius: 12px;
+  }
+
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .deliveryOrder dl {
+    grid-template-columns: 1fr;
+  }
+}
