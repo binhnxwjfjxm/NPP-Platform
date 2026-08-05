@@ -98,6 +98,24 @@ test('transaction rolls back when mutation omits the mandatory audit record', as
   assert.ok(!client.calls.some(({ sql }) => sql === 'COMMIT'));
 });
 
+test('transaction cannot lower the mandatory audit count to zero', async () => {
+  const client = createClient();
+
+  await assert.rejects(
+    withAuditOutboxTransaction({
+      adapter: adapterFor(client),
+      mutate: async (transactionClient) => {
+        await transactionClient.query('UPDATE shared.example SET value = $1', ['changed']);
+        return { expectedAuditCount: 0 };
+      },
+    }),
+    /invalid_expected_audit_count/,
+  );
+
+  assert.equal(client.calls.at(-1).sql, 'ROLLBACK');
+  assert.ok(!client.calls.some(({ sql }) => sql === 'COMMIT'));
+});
+
 test('transaction rolls back when an event is declared without an outbox insert', async () => {
   const client = createClient();
 
