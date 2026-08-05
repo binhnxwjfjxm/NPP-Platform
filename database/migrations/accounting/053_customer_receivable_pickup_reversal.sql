@@ -120,3 +120,104 @@ CREATE TRIGGER delivery_inventory_issue_reverse_receivable
 AFTER UPDATE OF status ON sales.delivery_order_inventory_issues
 FOR EACH ROW
 EXECUTE FUNCTION accounting.reverse_pickup_receivable_on_inventory_reversal();
+
+-- The balance table is a projection only. Runtime writes must originate from an
+-- immutable ledger entry, while a full rebuild may only reconstruct the same ledger sum.
+CREATE OR REPLACE FUNCTION accounting.guard_customer_receivable_balance_write()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  write_context text := current_setting('npp.receivable_balance_write_context', true);
+BEGIN
+  IF write_context NOT IN ('ledger_apply', 'ledger_rebuild') THEN
+    RAISE EXCEPTION 'customer_receivable_balance_write_requires_ledger_context';
+  END IF;
+  IF TG_OP = 'TRUNCATE' THEN
+    RETURN NULL;
+  END IF;
+  RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+DROP TRIGGER IF EXISTS customer_receivable_balances_write_guard
+  ON accounting.customer_receivable_balances;
+CREATE TRIGGER customer_receivable_balances_write_guard
+BEFORE INSERT OR UPDATE OR DELETE ON accounting.customer_receivable_balances
+FOR EACH ROW EXECUTE FUNCTION accounting.guard_customer_receivable_balance_write();
+
+DROP TRIGGER IF EXISTS customer_receivable_balances_truncate_guard
+  ON accounting.customer_receivable_balances;
+CREATE TRIGGER customer_receivable_balances_truncate_guard
+BEFORE TRUNCATE ON accounting.customer_receivable_balances
+FOR EACH STATEMENT EXECUTE FUNCTION accounting.guard_customer_receivable_balance_write();
+
+CREATE OR REPLACE FUNCTION accounting.apply_customer_receivable_balance()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  previous_balance_context text := current_setting('npp.receivable_balance_write_context', true);
+BEGIN
+  PERFORM set_config('npp.receivable_balance_write_context', 'ledger_apply', true);
+  INSERT INTO accounting.customer_receivable_balances (
+    installation_id, customer_id, currency_code, balance, revision, updated_at
+  ) VALUES (
+    NEW.installation_id, NEW.customer_id, NEW.currency_code, NEW.amount, 1, NEW.occurred_at
+  )
+  ON CONFLICT (installation_id, customer_id, currency_code)
+  DO UPDATE SET balance = accounting.customer_receivable_balances.balance + EXCLUDED.balance,
+                revision = accounting.customer_receivable_balances.revision + 1,
+                updated_at = GREATEST(accounting.customer_receivable_balances.updated_at, EXCLUDED.updated_at);
+  PERFORM set_config(
+    'npp.receivable_balance_write_context',
+    COALESCE(previous_balance_context, ''),
+    true
+  );
+  RETURN NEW;
+EXCEPTION
+  WHEN OTHERS THEN
+    PERFORM set_config(
+      'npp.receivable_balance_write_context',
+      COALESCE(previous_balance_context, ''),
+      true
+    );
+    RAISE;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION accounting.rebuild_customer_receivable_balances()
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  previous_balance_context text := current_setting('npp.receivable_balance_write_context', true);
+BEGIN
+  PERFORM set_config('npp.receivable_balance_write_context', 'ledger_rebuild', true);
+  TRUNCATE TABLE accounting.customer_receivable_balances;
+  INSERT INTO accounting.customer_receivable_balances (
+    installation_id, customer_id, currency_code, balance, revision, updated_at
+  )
+  SELECT installation_id,
+         customer_id,
+         currency_code,
+         sum(amount)::numeric(20,6),
+         count(*)::bigint,
+         max(occurred_at)
+    FROM accounting.receivable_ledger_entries
+   GROUP BY installation_id, customer_id, currency_code;
+  PERFORM set_config(
+    'npp.receivable_balance_write_context',
+    COALESCE(previous_balance_context, ''),
+    true
+  );
+EXCEPTION
+  WHEN OTHERS THEN
+    PERFORM set_config(
+      'npp.receivable_balance_write_context',
+      COALESCE(previous_balance_context, ''),
+      true
+    );
+    RAISE;
+END;
+$$;
