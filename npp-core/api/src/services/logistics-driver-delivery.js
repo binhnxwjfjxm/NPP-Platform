@@ -6,6 +6,7 @@ import {
   insertOutboxEvent,
 } from '../audit-outbox.js';
 import * as repository from '../db/repositories/logistics-driver-delivery.js';
+import { postReceivableFromDeliveryAttempt } from './customer-receivable.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -346,6 +347,8 @@ function knownDatabaseFailure(error) {
     ['delivery_attempt_partial_quantity_mismatch', 'DELIVERY_ATTEMPT_PARTIAL_QUANTITY_MISMATCH', 'Partial delivery quantities are invalid'],
     ['delivery_attempt_line_source_mismatch', 'DELIVERY_ATTEMPT_LINEAGE_MISMATCH', 'Attempt line does not match Inventory OUT lineage'],
     ['delivery_attempt_lineage_mismatch', 'DELIVERY_ATTEMPT_LINEAGE_MISMATCH', 'Attempt does not match dispatched trip lineage'],
+    ['receivable_documents_source_unique', 'RECEIVABLE_SOURCE_CONFLICT', 'Accepted delivery already has a receivable document'],
+    ['receivable_ledger_entries_source_type_unique', 'RECEIVABLE_SOURCE_CONFLICT', 'Accepted delivery already has a receivable ledger entry'],
   ];
   for (const [needle, code, publicMessage] of mappings) {
     if (message.includes(needle) || error?.constraint === needle) {
@@ -523,6 +526,17 @@ export async function recordDriverDeliveryAttempt({
       unit_code_snapshot: sourceLines.find((source) => source.inventory_issue_line_id === line.inventory_issue_line_id)?.unit_code_snapshot,
     }));
     const snapshot = mapAttempt(inserted, snapshotLines);
+
+    if (normalized.result === 'delivered_full' || normalized.result === 'delivered_partial') {
+      const receivableResult = await postReceivableFromDeliveryAttempt(client, {
+        requestContext,
+        attemptId,
+      });
+      if (!receivableResult.ok) {
+        await client.query('ROLLBACK');
+        return receivableResult;
+      }
+    }
 
     await repository.insertDeliveryAttemptTripEvent(client, {
       id: randomUUID(),
