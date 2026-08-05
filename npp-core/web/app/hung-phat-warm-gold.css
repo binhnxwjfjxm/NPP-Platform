@@ -9,7 +9,8 @@
   --hp-ink: #2d2924;
   --hp-muted: #70685f;
   --hp-border: #d8d0c4;
-  --hp-focus: rgba(152, 96, 15, 0.22);
+  --hp-focus-inner: #fffdf8;
+  --hp-focus-outer: #754706;
   --hp-shadow: 0 8px 22px rgba(72, 54, 34, 0.08);
 
   --page-bg: var(--hp-canvas);
@@ -72,8 +73,6 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--hp-bronze) !important;
-  outline: 3px solid var(--hp-focus) !important;
-  outline-offset: 0;
 }
 
 button:focus-visible,
@@ -81,7 +80,9 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline-color: var(--hp-focus);
+  outline: 2px solid var(--hp-focus-inner) !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--hp-focus-outer) !important;
 }
 
 button:not(:disabled) {
