@@ -27,7 +27,7 @@ const result = { MCP_SESSION_ACTION_UI_SMOKE: "FAIL" };
 try {
   await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "networkidle" });
   const tokens = await page.evaluate(() => { const style = getComputedStyle(document.documentElement); return { canvas: style.getPropertyValue("--npp-color-canvas").trim(), surface: style.getPropertyValue("--npp-color-surface").trim(), header: style.getPropertyValue("--npp-color-header").trim(), primary: style.getPropertyValue("--npp-color-primary").trim(), accent: style.getPropertyValue("--npp-color-accent").trim() }; });
-  assert.deepEqual(tokens, { canvas: "#f7f5f1", surface: "#ffffff", header: "#5a3b20", primary: "#98600f", accent: "#b78333" });
+  assert.deepEqual(tokens, { canvas: "#f7f5f1", surface: "#fff", header: "#5a3b20", primary: "#98600f", accent: "#b78333" });
   await shot(page, "01-warm-theme-session");
 
   await behavior({ productDelayMs: 650 });
