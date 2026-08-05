@@ -136,41 +136,44 @@ export default async function TripDetailPage({ params }: PageProps) {
                     <div className="stopSequence" aria-label={`Điểm số ${stop.sequence}`}>{stop.sequence}</div>
                     <div className="stopBody">
                       <div className="stopHeadingRow">
-                        <p className="stopAddress">{formatAddress(stop.address)}</p>
+                        <p className="stopAddress">{isNextStop ? 'Điểm giao đang ưu tiên ở phía trên' : formatAddress(stop.address)}</p>
                         {isNextStop ? <span className="nextStopBadge">Tiếp theo</span> : null}
                       </div>
                       {stop.plannedArrivalAt ? (
                         <p className="mutedText">Dự kiến: {formatDateTime(stop.plannedArrivalAt)}</p>
                       ) : null}
                       <div className="deliveryOrders">
-                        {stop.assignments.map((assignment) => (
-                          <article
-                            className={assignment.attempt ? 'deliveryOrder completedAssignment' : 'deliveryOrder'}
-                            id={assignmentAnchor(assignment.assignmentId)}
-                            key={assignment.assignmentId}
-                          >
-                            <div className="deliveryOrderHeading">
-                              <div>
-                                <strong>{assignment.customerName || assignment.customerCode || 'Khách hàng'}</strong>
-                                <span>{assignment.deliveryOrderNumber || 'Phiếu giao chưa có số'}</span>
+                        {stop.assignments.map((assignment) => {
+                          const isNextAssignment = nextAssignment?.assignmentId === assignment.assignmentId;
+                          return (
+                            <article
+                              className={assignment.attempt ? 'deliveryOrder completedAssignment' : 'deliveryOrder'}
+                              id={assignmentAnchor(assignment.assignmentId)}
+                              key={assignment.assignmentId}
+                            >
+                              <div className="deliveryOrderHeading">
+                                <div>
+                                  <strong>{isNextAssignment ? 'Phiếu giao tiếp theo' : (assignment.customerName || assignment.customerCode || 'Khách hàng')}</strong>
+                                  <span>{isNextAssignment ? 'Thông tin chính ở thẻ ưu tiên phía trên' : (assignment.deliveryOrderNumber || 'Phiếu giao chưa có số')}</span>
+                                </div>
+                                <span className={assignment.attempt ? 'assignmentState done' : 'assignmentState'}>
+                                  {assignment.attempt ? 'Đã ghi' : 'Chờ ghi'}
+                                </span>
                               </div>
-                              <span className={assignment.attempt ? 'assignmentState done' : 'assignmentState'}>
-                                {assignment.attempt ? 'Đã ghi' : 'Chờ ghi'}
-                              </span>
-                            </div>
-                            <dl>
-                              <div>
-                                <dt>Ngày yêu cầu</dt>
-                                <dd>{assignment.requestedDeliveryDate || 'Chưa có'}</dd>
-                              </div>
-                              <div>
-                                <dt>Thu tiền</dt>
-                                <dd>{assignment.collectionPolicy || 'Theo phiếu'}</dd>
-                              </div>
-                            </dl>
-                            <DeliveryAttemptPanel tripId={trip.id} assignment={assignment} />
-                          </article>
-                        ))}
+                              <dl>
+                                <div>
+                                  <dt>Ngày yêu cầu</dt>
+                                  <dd>{assignment.requestedDeliveryDate || 'Chưa có'}</dd>
+                                </div>
+                                <div>
+                                  <dt>Thu tiền</dt>
+                                  <dd>{assignment.collectionPolicy || 'Theo phiếu'}</dd>
+                                </div>
+                              </dl>
+                              <DeliveryAttemptPanel tripId={trip.id} assignment={assignment} />
+                            </article>
+                          );
+                        })}
                       </div>
                     </div>
                   </li>
