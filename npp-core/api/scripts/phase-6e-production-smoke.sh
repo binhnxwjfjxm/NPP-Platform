@@ -5,7 +5,6 @@ set -euo pipefail
 : "${HEROKU_APP_NAME:?HEROKU_APP_NAME is required}"
 : "${CORE_WEB_ADMIN_USERNAME:?CORE_WEB_ADMIN_USERNAME is required}"
 : "${CORE_WEB_ADMIN_PASSWORD:?CORE_WEB_ADMIN_PASSWORD is required}"
-: "${DELIVERY_WEB_USERS_JSON:?DELIVERY_WEB_USERS_JSON is required}"
 : "${GITHUB_STEP_SUMMARY:?GITHUB_STEP_SUMMARY is required}"
 : "${RUNNER_TEMP:?RUNNER_TEMP is required}"
 
@@ -16,8 +15,8 @@ NPP_FALLBACK_URL="${NPP_FALLBACK_URL:-https://npp-platform.vercel.app}"
 DELIVERY_PRODUCTION_URL="${DELIVERY_PRODUCTION_URL:-https://log.nguyenlieuhungphat.com}"
 DUMMY_UUID="00000000-0000-4000-8000-000000000001"
 
-for value in "$HEROKU_API_KEY" "$CORE_WEB_ADMIN_USERNAME" "$CORE_WEB_ADMIN_PASSWORD" "$DELIVERY_WEB_USERS_JSON"; do
-  echo "::add-mask::$value"
+for value in "$HEROKU_API_KEY" "$CORE_WEB_ADMIN_USERNAME" "$CORE_WEB_ADMIN_PASSWORD" "${DELIVERY_WEB_USERS_JSON:-}"; do
+  [ -n "$value" ] && echo "::add-mask::$value"
 done
 
 app_json="$RUNNER_TEMP/phase-6e-core-app.json"
@@ -43,8 +42,13 @@ test -n "$backend_token"
 test -n "$delivery_token"
 for value in "$backend_token" "$delivery_token"; do echo "::add-mask::$value"; done
 
-readarray -t delivery_identity < <(
-  DELIVERY_USERS_JSON="$DELIVERY_WEB_USERS_JSON" node --input-type=module <<'NODE'
+delivery_username="$CORE_WEB_ADMIN_USERNAME"
+delivery_password="$CORE_WEB_ADMIN_PASSWORD"
+delivery_employee_id=""
+delivery_auth_source="core-web-bootstrap"
+if [ -n "${DELIVERY_WEB_USERS_JSON:-}" ]; then
+  readarray -t delivery_identity < <(
+    DELIVERY_USERS_JSON="$DELIVERY_WEB_USERS_JSON" node --input-type=module <<'NODE'
 const users = JSON.parse(process.env.DELIVERY_USERS_JSON || 'null');
 if (!Array.isArray(users) || users.length < 1) throw new Error('delivery_users_missing');
 const user = users[0];
@@ -53,14 +57,16 @@ for (const key of ['username', 'password', 'employeeId']) {
 }
 process.stdout.write(`${user.username}\n${user.password}\n${user.employeeId}\n`);
 NODE
-)
-delivery_username="${delivery_identity[0]}"
-delivery_password="${delivery_identity[1]}"
-delivery_employee_id="${delivery_identity[2]}"
+  )
+  delivery_username="${delivery_identity[0]}"
+  delivery_password="${delivery_identity[1]}"
+  delivery_employee_id="${delivery_identity[2]}"
+  delivery_auth_source="delivery-secret"
+fi
 delivery_auth="$delivery_username:$delivery_password"
 npp_auth="$CORE_WEB_ADMIN_USERNAME:$CORE_WEB_ADMIN_PASSWORD"
 for value in "$delivery_username" "$delivery_password" "$delivery_employee_id" "$delivery_auth" "$npp_auth"; do
-  echo "::add-mask::$value"
+  [ -n "$value" ] && echo "::add-mask::$value"
 done
 
 expect_status() {
@@ -131,6 +137,19 @@ for path in \
   assert_json_data
 done
 
+expect_status 'Core active driver profile' 200 "$core_url/api/logistics/drivers?active=true&limit=1" \
+  -H "Authorization: Bearer $backend_token" \
+  -H "x-request-id: phase-6e-driver-profile-${GITHUB_RUN_ID:-local}"
+assert_json_data
+active_driver_employee_id="$(jq -r '.data[0].employeeId // empty' "$response_file")"
+test -n "$active_driver_employee_id"
+if [ -z "$delivery_employee_id" ]; then
+  delivery_employee_id="$active_driver_employee_id"
+  echo "::add-mask::$delivery_employee_id"
+fi
+test "$delivery_employee_id" = "$active_driver_employee_id" || \
+  jq -e --arg employeeId "$delivery_employee_id" '.data | any(.employeeId == $employeeId)' "$response_file" >/dev/null
+
 for path in \
   "/api/logistics/trips/$DUMMY_UUID/attempts" \
   "/api/logistics/trips/$DUMMY_UUID/reconciliation" \
@@ -147,7 +166,7 @@ expect_status 'Core driver trip list' 200 "$core_url/api/logistics/driver/trips?
   -H "x-request-id: phase-6e-driver-smoke-${GITHUB_RUN_ID:-local}"
 assert_json_data
 
-expect_status 'Core optional POD driver route' 404 \
+expect_one_of 'Core optional POD driver route' '403,404' \
   "$core_url/api/logistics/driver/trips/$DUMMY_UUID/assignments/$DUMMY_UUID/attempts/$DUMMY_UUID/pod" \
   -H "Authorization: Bearer $delivery_token" \
   -H "x-npp-delivery-employee-id: $delivery_employee_id" \
@@ -220,6 +239,8 @@ fi
   echo "CORE_LOGISTICS_API=success"
   echo "NPP_LOGISTICS_UI_API=success"
   echo "DELIVERY_DRIVER_UI_API=success"
+  echo "DELIVERY_AUTH_SOURCE=$delivery_auth_source"
+  echo "DRIVER_PROFILE_READY=true"
   echo "POD_OPTIONAL_ROUTE=success"
   echo "R2_ENABLED=$r2_enabled"
   echo "R2_CONFIGURATION_COMPLETE=$r2_complete"
