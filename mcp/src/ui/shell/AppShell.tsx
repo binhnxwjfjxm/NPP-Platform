@@ -1,9 +1,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { FIELD_DOCK_ITEMS, SIDEBAR_NAV_ITEMS, shellSectionForHref, type NavItem } from "./navigation";
+import { FIELD_DOCK_ITEMS, SETTINGS_NAV_ITEM, SIDEBAR_NAV_ITEMS, shellSectionForHref, type NavItem } from "./navigation";
 import { AppTopBar, MobileAppMenuProvider } from "./MobileAppMenu";
 import { MobileDock } from "./MobileDock";
 import { MobileHomeLaunchpad } from "./MobileHomeLaunchpad";
+import { NavIcon } from "./NavIcon";
 
 const BOTTOM_NAV_LIMIT = 5;
 const BOTTOM_NAV_ITEMS = FIELD_DOCK_ITEMS.slice(0, BOTTOM_NAV_LIMIT);
@@ -17,7 +18,7 @@ function NavLinks({ activeHref, items }: { activeHref: string; items: NavItem[] 
         const isActive = item.href === activeHref;
         return (
           <Link className={isActive ? "sidebar-link active" : "sidebar-link"} href={item.href} key={item.href} prefetch>
-            <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+            <span className="nav-icon" aria-hidden="true"><NavIcon name={item.icon} width="20" height="20" /></span>
             <span className="nav-label">{item.label}</span>
           </Link>
         );
@@ -41,7 +42,7 @@ export function AppShell({ children, activeHref = "/" }: AppShellProps) {
           </div>
           <NavLinks activeHref={activeHref} items={SIDEBAR_NAV_ITEMS} />
           <Link className={activeHref === "/settings" ? "sidebar-link active utility-link" : "sidebar-link utility-link"} href="/settings" prefetch>
-            <span className="nav-icon" aria-hidden="true">⚙</span><span>Cài đặt ứng dụng</span>
+            <span className="nav-icon" aria-hidden="true"><NavIcon name={SETTINGS_NAV_ITEM.icon} width="20" height="20" /></span><span>Cài đặt ứng dụng</span>
           </Link>
           <div className="sidebar-footer">MCP-Plan · Quản lý phân phối</div>
         </aside>
