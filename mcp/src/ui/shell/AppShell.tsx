@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { FIELD_DOCK_ITEMS, SETTINGS_NAV_ITEM, SIDEBAR_NAV_ITEMS, shellSectionForHref, type NavItem } from "./navigation";
 import { AppTopBar, MobileAppMenuProvider } from "./MobileAppMenu";
 import { MobileDock } from "./MobileDock";
+import { MobileHomeLaunchpad } from "./MobileHomeLaunchpad";
 import { NavIcon } from "./NavIcon";
 
 const BOTTOM_NAV_LIMIT = 5;
@@ -48,6 +49,7 @@ export function AppShell({ children, activeHref = "/" }: AppShellProps) {
         <div className="app-content-shell" data-app-content-shell>
           <AppTopBar activeHref={activeHref} />
           <main className="main" data-app-scroll-region>
+            {activeHref === "/" ? <MobileHomeLaunchpad /> : null}
             {children}
           </main>
           <MobileDock items={BOTTOM_NAV_ITEMS} data-bottom-navigation="true" data-navigation-item-count={BOTTOM_NAV_ITEMS.length} />
