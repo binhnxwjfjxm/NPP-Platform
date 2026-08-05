@@ -156,7 +156,7 @@ export function McpLineCard({
         </button>
       </div>
 
-      <div className={styles.actions} data-customer-action-rows="1">
+      <div className={styles.actions} data-customer-action-rows="2">
         {line.orderId ? (
           <Link className={`${styles.action} ${styles.officialOrder}`} href={officialOrderHref(line)} aria-label={`Mở đơn NPP cho ${line.accountName}`}>
             <ActionIcon name="order" />
