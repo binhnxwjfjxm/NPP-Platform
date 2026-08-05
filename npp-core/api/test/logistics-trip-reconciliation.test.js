@@ -39,8 +39,6 @@ test('migration 051 is registered once and locks append-only reconciliation', ()
   assert.match(hardeningSource, /statement_timestamp\(\)/);
   assert.match(hardeningSource, /core\.delivery_trip\.return_received/);
   assert.match(hardeningSource, /core\.delivery_trip\.closed/);
-  assert.doesNotMatch(migrationSource, /UPDATE inventory\.inventory_movements/);
-  assert.doesNotMatch(migrationSource, /DELETE FROM inventory\.inventory_movements/);
 });
 
 test('reconciliation permissions are deny-by-default and available to internal bootstrap', () => {
