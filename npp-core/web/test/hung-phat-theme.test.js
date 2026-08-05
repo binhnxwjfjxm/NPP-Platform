@@ -24,8 +24,17 @@ test('NPP desktop theme uses the shared Hưng Phát warm-gold tokens', () => {
   assert.match(theme, /\[data-collapsed\] > aside/);
 });
 
+test('NPP focus ring has opaque light and dark edges', () => {
+  assert.match(theme, /--hp-focus-inner:\s*#fffdf8/i);
+  assert.match(theme, /--hp-focus-outer:\s*#754706/i);
+  assert.match(theme, /outline:\s*2px solid var\(--hp-focus-inner\)/);
+  assert.match(theme, /box-shadow:\s*0 0 0 4px var\(--hp-focus-outer\)/);
+});
+
 test('NPP loads the theme after existing layout overrides', () => {
   const themeIndex = layout.indexOf("import './hung-phat-warm-gold.css';");
   const previousIndex = layout.indexOf("import './issue-107-purchase-order-layout.css';");
+  assert.ok(themeIndex >= 0, 'warm-gold theme import must exist');
+  assert.ok(previousIndex >= 0, 'previous layout override import must exist');
   assert.ok(themeIndex > previousIndex);
 });
