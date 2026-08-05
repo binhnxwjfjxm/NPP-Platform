@@ -103,19 +103,19 @@ jobs:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           POSTGRES_SERVICE_CONTAINER: ${{ job.services.postgres.id }}
           COMMENT_BODY: ${{ github.event.comment.body }}
+          CORE_GATE_EVIDENCE_FILE: ${{ runner.temp }}/core-latest-migration-evidence.txt
         run: |
           set -euo pipefail
+          rm -f "$CORE_GATE_EVIDENCE_FILE"
           case "$COMMENT_BODY" in
             /audit-heroku-core-latest-migrations) action="audit" ;;
             /migrate-heroku-core-latest-production) action="migrate" ;;
             *) exit 1 ;;
           esac
-          REQUESTED_ACTION="$action" bash npp-core/api/scripts/core-latest-production-gate.sh
-
-      - name: Record exact Core source
-        if: always()
-        shell: bash
-        run: echo "SOURCE_SHA=${{ steps.source.outputs.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          GITHUB_STEP_SUMMARY="$CORE_GATE_EVIDENCE_FILE" \
+            REQUESTED_ACTION="$action" \
+            bash npp-core/api/scripts/core-latest-production-gate.sh
+          test -s "$CORE_GATE_EVIDENCE_FILE"
 
       - name: Publish sanitized rollout evidence
         if: always()
@@ -123,13 +123,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           OPERATION_STATUS: ${{ job.status }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          CORE_GATE_EVIDENCE_FILE: ${{ runner.temp }}/core-latest-migration-evidence.txt
         run: |
           set -euo pipefail
+          if [ "$OPERATION_STATUS" = success ]; then
+            test -s "$CORE_GATE_EVIDENCE_FILE"
+          fi
           evidence_file="$(mktemp)"
           {
             echo "## Core latest migration gate — ${OPERATION_STATUS}"
             echo
-            cat "$GITHUB_STEP_SUMMARY"
+            if [ -s "$CORE_GATE_EVIDENCE_FILE" ]; then
+              cat "$CORE_GATE_EVIDENCE_FILE"
+            else
+              echo "CORE_GATE_EVIDENCE=unavailable"
+            fi
+            echo "SOURCE_SHA=${SOURCE_SHA:-unavailable}"
             echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
           } > "$evidence_file"
           gh api --method POST "repos/$GITHUB_REPOSITORY/issues/262/comments" \
