@@ -177,7 +177,7 @@ SELECT '"'"'shared.customer_addresses='"'"' || count(*)::text FROM shared.custom
 SELECT '"'"'shared.employees='"'"' || count(*)::text FROM shared.employees;
 SELECT '"'"'shared.warehouses='"'"' || count(*)::text FROM shared.warehouses;
 SELECT '"'"'sales.sales_orders='"'"' || count(*)::text FROM sales.sales_orders;
-SELECT '"'"'sales.sales_order_lines='"'"' || count(*)::text FROM sales.sales_order_lines;
+SELECT '"'"'sales.sales_order_version_lines='"'"' || count(*)::text FROM sales.sales_order_version_lines;
 SELECT '"'"'inventory.inventory_movements='"'"' || count(*)::text FROM inventory.inventory_movements;
 SELECT '"'"'inventory.inventory_movement_lines='"'"' || count(*)::text FROM inventory.inventory_movement_lines;
 SQL
