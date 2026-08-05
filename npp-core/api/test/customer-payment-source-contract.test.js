@@ -53,12 +53,16 @@ test('customer payment series follows the customer installation lifecycle', () =
   assert.match(migration, /ON CONFLICT \(installation_id, code\) DO NOTHING/);
 });
 
-test('migration 054 hardening preserves active projections and reversible zero projection', () => {
+test('migration 054 hardening preserves active projections and deterministic append-only rejection', () => {
   assert.match(hardening, /status = 'reversed'/);
   assert.match(hardening, /allocated_amount = 0/);
   assert.match(hardening, /remaining_amount = 0/);
   assert.match(hardening, /status <> 'reversed'/);
   assert.match(hardening, /remaining_amount = original_amount - allocated_amount/);
+  assert.ok(
+    hardening.indexOf("IF TG_OP <> 'INSERT'")
+      < hardening.indexOf("write_context IS DISTINCT FROM 'receivable_service'"),
+  );
 });
 
 test('migration 054 is registered after receivable ledger migration 053', () => {
@@ -72,9 +76,12 @@ test('migration 054 is registered after receivable ledger migration 053', () => 
 
 test('customer payment API exposes create read allocate and compensating reversal only', () => {
   assert.match(routes, /pathname === '\/api\/customer-payments'/);
-  assert.match(routes, /\/api\/customer-payments\/\(\[\^\/\]\+\)\/allocations/);
-  assert.match(routes, /\/api\/customer-payments\/\(\[\^\/\]\+\)\/reverse/);
-  assert.match(routes, /\/api\/receivable-allocations\/\(\[\^\/\]\+\)\/reverse/);
+  assert.match(routes, /const allocationCreate = pathname\.match/);
+  assert.match(routes, /service\.allocateCustomerPayment/);
+  assert.match(routes, /const paymentReverse = pathname\.match/);
+  assert.match(routes, /service\.reverseCustomerPayment/);
+  assert.match(routes, /const allocationReverse = pathname\.match/);
+  assert.match(routes, /service\.reverseReceivableAllocation/);
   assert.match(routes, /executeRequestWithIdempotency/);
   assert.match(routes, /withAuditOutboxTransaction/);
   assert.doesNotMatch(routes, /paid\s*=\s*true/i);
