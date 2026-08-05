@@ -1,4 +1,6 @@
-export type NavItem = { label: string; shortLabel: string; href: string; description: string; icon: string };
+import type { NavIconName } from "./NavIcon";
+
+export type NavItem = { label: string; shortLabel: string; href: string; description: string; icon: NavIconName };
 export type ShellSection = "overview" | "routes" | "session" | "business";
 export type AppMenuGroup = { id: string; label: string; items: NavItem[] };
 
@@ -7,7 +9,7 @@ const OVERVIEW_NAV_ITEM: NavItem = {
   shortLabel: "Tổng",
   href: "/",
   description: "Tình hình kinh doanh và công việc cần xử lý",
-  icon: "⌂"
+  icon: "home"
 };
 
 const MCP_NAV_ITEM: NavItem = {
@@ -15,7 +17,7 @@ const MCP_NAV_ITEM: NavItem = {
   shortLabel: "MCP",
   href: "/mcp",
   description: "Quản lý tuyến và phiên đi thị trường",
-  icon: "◇"
+  icon: "mcp"
 };
 
 const ROUTES_NAV_ITEM: NavItem = {
@@ -23,7 +25,7 @@ const ROUTES_NAV_ITEM: NavItem = {
   shortLabel: "Tuyến",
   href: "/routes",
   description: "Quản lý tuyến và điểm bán trong tuyến",
-  icon: "◎"
+  icon: "route"
 };
 
 const VISITS_NAV_ITEM: NavItem = {
@@ -31,7 +33,7 @@ const VISITS_NAV_ITEM: NavItem = {
   shortLabel: "Đi tuyến",
   href: "/visits",
   description: "Ghi nhận kết quả tại từng điểm bán",
-  icon: "◉"
+  icon: "visit"
 };
 
 const SESSION_HISTORY_NAV_ITEM: NavItem = {
@@ -39,7 +41,7 @@ const SESSION_HISTORY_NAV_ITEM: NavItem = {
   shortLabel: "Phiên",
   href: "/mcp/sessions",
   description: "Tra cứu các phiên đi tuyến theo ngày",
-  icon: "▤"
+  icon: "history"
 };
 
 const CUSTOMERS_NAV_ITEM: NavItem = {
@@ -47,7 +49,7 @@ const CUSTOMERS_NAV_ITEM: NavItem = {
   shortLabel: "Khách",
   href: "/customers",
   description: "Hồ sơ và lịch sử chăm sóc điểm bán",
-  icon: "□"
+  icon: "customer"
 };
 
 const ORDERS_NAV_ITEM: NavItem = {
@@ -55,7 +57,7 @@ const ORDERS_NAV_ITEM: NavItem = {
   shortLabel: "Đơn",
   href: "/orders",
   description: "Theo dõi đơn hàng và doanh số",
-  icon: "+"
+  icon: "order"
 };
 
 const REPORTS_NAV_ITEM: NavItem = {
@@ -63,7 +65,7 @@ const REPORTS_NAV_ITEM: NavItem = {
   shortLabel: "Báo cáo",
   href: "/reports",
   description: "Báo cáo sau mỗi phiên đi tuyến",
-  icon: "▣"
+  icon: "report"
 };
 
 export const FIELD_CHECKS_NAV_ITEM: NavItem = {
@@ -71,7 +73,7 @@ export const FIELD_CHECKS_NAV_ITEM: NavItem = {
   shortLabel: "Thử SP",
   href: "/field-checks",
   description: "Theo dõi và cập nhật kết quả thử sản phẩm tại điểm bán",
-  icon: "◈"
+  icon: "field-check"
 };
 
 const PLANS_NAV_ITEM: NavItem = {
@@ -79,7 +81,7 @@ const PLANS_NAV_ITEM: NavItem = {
   shortLabel: "Việc",
   href: "/plans",
   description: "Công việc cần theo dõi và xử lý",
-  icon: "✓"
+  icon: "task"
 };
 
 const MCP_SETTINGS_NAV_ITEM: NavItem = {
@@ -87,7 +89,7 @@ const MCP_SETTINGS_NAV_ITEM: NavItem = {
   shortLabel: "Mẫu",
   href: "/mcp-setting",
   description: "Thiết lập lựa chọn nhanh cho báo cáo",
-  icon: "⚙"
+  icon: "settings"
 };
 
 export const PRIMARY_NAV_ITEMS: NavItem[] = [
@@ -125,7 +127,7 @@ export const SETTINGS_NAV_ITEM: NavItem = {
   shortLabel: "Cài đặt",
   href: "/settings",
   description: "Cài ứng dụng và cấu hình hành vi trên thiết bị",
-  icon: "⚙"
+  icon: "settings"
 };
 
 export const APP_MENU_GROUPS: AppMenuGroup[] = [
@@ -149,9 +151,10 @@ export const APP_MENU_GROUPS: AppMenuGroup[] = [
 export const NAV_ITEMS = SIDEBAR_NAV_ITEMS;
 
 export function navItemForHref(href: string) {
+  const normalizedHref = href === "/actions" ? "/plans" : href;
   return [...SIDEBAR_NAV_ITEMS, SETTINGS_NAV_ITEM]
     .sort((a, b) => b.href.length - a.href.length)
-    .find((item) => item.href === href || (item.href !== "/" && href.startsWith(`${item.href}/`))) || OVERVIEW_NAV_ITEM;
+    .find((item) => item.href === normalizedHref || (item.href !== "/" && normalizedHref.startsWith(`${item.href}/`))) || OVERVIEW_NAV_ITEM;
 }
 
 export function shellSectionForHref(href: string): ShellSection {
