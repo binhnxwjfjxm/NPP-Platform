@@ -26,19 +26,25 @@ async function screenshot(page, name) {
   await page.screenshot({ path: `${resultsDir}/${name}.png`, fullPage: true });
 }
 
+async function horizontalOverflow(page) {
+  return page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+}
+
 await waitForHttp(`${appBase}/`);
 await waitForHttp(`${appBase}/routes`);
+await waitForHttp(`${appBase}/customers`);
+await waitForHttp(`${appBase}/plans`);
 const browser = await chromium.launch({ headless: true });
 const result = { F05_APP_SHELL_THEME_SMOKE: "FAIL" };
 
 try {
-  const homeViewports = [
+  const mobileViewports = [
     { width: 360, height: 800 },
     { width: 390, height: 844 },
     { width: 430, height: 932 }
   ];
 
-  for (const viewport of homeViewports) {
+  for (const viewport of mobileViewports) {
     const homeContext = await browser.newContext({ viewport });
     const homePage = await homeContext.newPage();
     await homePage.goto(`${appBase}/`, { waitUntil: "networkidle" });
@@ -56,12 +62,89 @@ try {
       assert.equal(await commandGrid.evaluate((node) => getComputedStyle(node).display), "none", "desktop command grid must be hidden on mobile home");
     }
 
-    const overflow = await homePage.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    const overflow = await horizontalOverflow(homePage);
     assert.ok(overflow <= 1, `home must not overflow horizontally at ${viewport.width}px; overflow=${overflow}`);
     await homePage.locator("[data-bottom-navigation]").waitFor({ state: "visible" });
     await screenshot(homePage, `11-home-mobile-${viewport.width}`);
     await homeContext.close();
   }
+
+  const listSpecs = [
+    {
+      path: "/customers",
+      card: "[data-outlet-mobile-card]",
+      title: "UI Existing Customer",
+      action: /Mở hồ sơ/,
+      dialogName: "UI Existing Customer",
+      detailLabels: ["Người liên hệ", "Đơn gần nhất"],
+      forbiddenCardText: ["Người liên hệ", "Đơn gần nhất", "Doanh số tháng"]
+    },
+    {
+      path: "/plans",
+      card: "[data-plan-mobile-card]",
+      title: "Ghé lại xác nhận nhu cầu trưng bày",
+      action: /Mở chi tiết việc/,
+      dialogName: "Ghé lại xác nhận nhu cầu trưng bày",
+      detailLabels: ["Phụ trách", "Nguồn", "Ghi chú xử lý"],
+      forbiddenCardText: ["Phụ trách", "Nguồn", "Ghi chú xử lý"]
+    }
+  ];
+
+  for (const viewport of mobileViewports) {
+    for (const spec of listSpecs) {
+      const listContext = await browser.newContext({ viewport });
+      const listPage = await listContext.newPage();
+      await listPage.goto(`${appBase}${spec.path}`, { waitUntil: "networkidle" });
+
+      await listPage.locator(".page-header").waitFor({ state: "visible" });
+      await listPage.locator(".route-mobile-list").waitFor({ state: "visible" });
+      assert.equal(await listPage.locator(".route-desktop-table").evaluate((node) => getComputedStyle(node).display), "none");
+
+      const card = listPage.locator(spec.card).first();
+      await card.waitFor({ state: "visible" });
+      await card.getByText(spec.title, { exact: true }).waitFor({ state: "visible" });
+      for (const hiddenText of spec.forbiddenCardText) {
+        assert.equal(await card.getByText(hiddenText, { exact: true }).count(), 0, `${spec.path} mobile card must keep ${hiddenText} in details`);
+      }
+      if (spec.path === "/plans") {
+        await card.getByText("Quá hạn", { exact: true }).waitFor({ state: "visible" });
+        await card.getByText("Ưu tiên Cao", { exact: true }).waitFor({ state: "visible" });
+      }
+
+      const action = card.getByRole("button", { name: spec.action });
+      const actionHeight = await action.evaluate((node) => node.getBoundingClientRect().height);
+      assert.ok(actionHeight >= 44, `${spec.path} primary card action must be at least 44px`);
+      await action.click();
+
+      const dialog = listPage.getByRole("dialog", { name: spec.dialogName });
+      await dialog.waitFor({ state: "visible" });
+      for (const label of spec.detailLabels) {
+        await dialog.getByText(label, { exact: true }).waitFor({ state: "visible" });
+      }
+      await listPage.keyboard.press("Escape");
+      await dialog.waitFor({ state: "hidden" });
+
+      const overflow = await horizontalOverflow(listPage);
+      assert.ok(overflow <= 1, `${spec.path} must not overflow horizontally at ${viewport.width}px; overflow=${overflow}`);
+      await listPage.locator("[data-bottom-navigation]").waitFor({ state: "visible" });
+      await screenshot(listPage, `15-${spec.path.slice(1)}-mobile-${viewport.width}`);
+      await listContext.close();
+    }
+  }
+
+  const desktopContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const desktopPage = await desktopContext.newPage();
+  for (const spec of listSpecs) {
+    await desktopPage.goto(`${appBase}${spec.path}`, { waitUntil: "networkidle" });
+    await desktopPage.locator(".route-desktop-table .desktop-table").waitFor({ state: "visible" });
+    assert.equal(await desktopPage.locator(".route-mobile-list").evaluate((node) => getComputedStyle(node).display), "none");
+    const overflow = await horizontalOverflow(desktopPage);
+    assert.ok(overflow <= 1, `${spec.path} desktop must not overflow horizontally; overflow=${overflow}`);
+    await screenshot(desktopPage, `16-${spec.path.slice(1)}-desktop`);
+  }
+  await desktopPage.goto(`${appBase}/actions`, { waitUntil: "networkidle" });
+  await desktopPage.waitForURL((url) => url.pathname === "/plans");
+  await desktopContext.close();
 
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
@@ -94,7 +177,7 @@ try {
     });
     assert.equal(positions.bar, "sticky");
     assert.notEqual(positions.trigger, "fixed");
-    await screenshot(page, "12-app-shell-routes-topbar");
+    await screenshot(page, "17-app-shell-routes-topbar");
 
     await trigger.click();
     const menu = page.getByRole("dialog").last();
@@ -105,7 +188,7 @@ try {
     for (const label of ["Tổng quan", "Tuyến bán hàng", "Đi tuyến hôm nay", "Lịch sử phiên", "Điểm bán", "Đơn hàng", "Báo cáo phiên", "Kế hoạch", "Cài đặt MCP", "Cài đặt ứng dụng"]) {
       await menu.getByRole("button", { name: new RegExp(`^${label}`) }).first().waitFor({ state: "visible" });
     }
-    await screenshot(page, "13-app-shell-expanded-menu");
+    await screenshot(page, "18-app-shell-expanded-menu");
 
     await menu.getByRole("button", { name: /^Đi tuyến hôm nay/ }).click();
     await page.waitForURL((url) => url.pathname === "/mcp");
@@ -129,12 +212,15 @@ try {
     });
     assert.equal(formStyle.background, "rgb(255, 255, 255)");
     assert.equal(formStyle.border, "rgb(216, 208, 196)");
-    await screenshot(page, "14-business-form-theme");
+    await screenshot(page, "19-business-form-theme");
 
     result.F05_APP_SHELL_THEME_SMOKE = "PASS";
-    result.sections = ["home", "routes", "business", "session"];
-    result.homeViewports = homeViewports.map(({ width, height }) => `${width}x${height}`);
+    result.sections = ["home", "customers", "plans", "routes", "business", "session"];
+    result.mobileViewports = mobileViewports.map(({ width, height }) => `${width}x${height}`);
     result.homeLayout = "PASS";
+    result.mobileListSummaries = "PASS";
+    result.desktopTables = "PASS";
+    result.actionsRedirect = "PASS";
     result.topBar = "PASS";
     result.routeExportOwnership = "PASS";
     result.expandedMenu = "PASS";
