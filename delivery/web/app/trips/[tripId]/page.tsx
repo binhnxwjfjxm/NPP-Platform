@@ -57,7 +57,7 @@ export default async function TripDetailPage({ params }: PageProps) {
           <div>
             <p className="eyebrow">Chuyến đang giao</p>
             <h1>{trip.number}</h1>
-            <p className="welcome">{trip.licensePlate || trip.vehicleCode || 'Chưa có xe'} · {trip.warehouseName || trip.warehouseCode || 'Chưa có kho'}</p>
+            <p className="welcome">{trip.warehouseName || trip.warehouseCode || 'Chưa có kho'} · Đã xuất phát</p>
           </div>
           <span className="statusPill">{attemptCount}/{assignmentCount} phiếu</span>
         </header>
