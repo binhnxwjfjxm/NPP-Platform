@@ -83,7 +83,7 @@ try {
       path: "/plans",
       card: "[data-plan-mobile-card]",
       title: "Ghé lại xác nhận nhu cầu trưng bày",
-      action: /Xem chi tiết/,
+      action: /Mở chi tiết việc/,
       dialogName: "Ghé lại xác nhận nhu cầu trưng bày",
       detailLabels: ["Phụ trách", "Nguồn", "Ghi chú xử lý"],
       forbiddenCardText: ["Phụ trách", "Nguồn", "Ghi chú xử lý"]
