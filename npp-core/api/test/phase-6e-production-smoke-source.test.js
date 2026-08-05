@@ -31,6 +31,7 @@ test('Phase 6E production smoke is exact-main, fail-closed and scoped to Core/NP
     '/api/logistics/routes?limit=1',
     '/api/logistics/vehicles?limit=1',
     '/api/logistics/drivers?limit=1',
+    '/api/logistics/drivers?active=true&limit=1',
     '/api/logistics/trips?limit=1&offset=0',
     '/api/logistics/driver/trips?limit=1&offset=0',
     '/attempts',
@@ -39,6 +40,11 @@ test('Phase 6E production smoke is exact-main, fail-closed and scoped to Core/NP
     '/logistics/dispatch',
     '/logistics/delivery-attempts',
     '/logistics/trip-reconciliation',
+    'delivery_auth_source="core-web-bootstrap"',
+    'delivery_auth_source="delivery-secret"',
+    'DELIVERY_AUTH_SOURCE=',
+    'DRIVER_PROFILE_READY=true',
+    'expect_one_of',
     'R2_ENABLED',
     'R2_CONFIGURATION_COMPLETE',
     'POD_OPTIONAL_ROUTE=success',
@@ -49,6 +55,9 @@ test('Phase 6E production smoke is exact-main, fail-closed and scoped to Core/NP
 
   assert.ok(!workflow.includes('hung-phat-mcp'));
   assert.ok(!script.includes('mcp.nguyenlieuhungphat.com'));
+  assert.ok(!script.includes('${DELIVERY_WEB_USERS_JSON:?'));
+  assert.match(script, /if \[ -n "\$\{DELIVERY_WEB_USERS_JSON:-\}" \]; then/);
   assert.match(script, /if \[ "\$r2_enabled" = true \]; then/);
   assert.match(script, /Core unauthenticated \$path.*401/);
+  assert.match(script, /Core optional POD driver route.*403,404/);
 });
