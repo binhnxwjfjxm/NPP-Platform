@@ -28,6 +28,7 @@ import "./app-shell-contract.css";
 import "./hung-phat-mobile-foundation.css";
 import "./mobile-app-experience.css";
 import "./mobile-app-geometry.css";
+import "./mcp-primary-workflow.css";
 
 export const metadata: Metadata = {
   title: "NPP MCP Field",
