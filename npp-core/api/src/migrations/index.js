@@ -29,6 +29,10 @@ const CUSTOMER_RECEIVABLE_LEDGER_SQL = [
   readFileSync(new URL('../../../../database/migrations/accounting/053_customer_receivable_ledger.sql', import.meta.url), 'utf8'),
   readFileSync(new URL('../../../../database/migrations/accounting/053_customer_receivable_pickup_reversal.sql', import.meta.url), 'utf8'),
 ].join('\n\n');
+const CUSTOMER_PAYMENT_ALLOCATION_SQL = readFileSync(
+  new URL('../../../../database/migrations/accounting/054_customer_payment_allocation.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -40,6 +44,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '051_logistics_trip_reconciliation', sql: LOGISTICS_TRIP_RECONCILIATION_SQL }),
   Object.freeze({ id: '052_logistics_optional_proof_of_delivery', sql: LOGISTICS_OPTIONAL_PROOF_OF_DELIVERY_SQL }),
   Object.freeze({ id: '053_customer_receivable_ledger', sql: CUSTOMER_RECEIVABLE_LEDGER_SQL }),
+  Object.freeze({ id: '054_customer_payment_allocation', sql: CUSTOMER_PAYMENT_ALLOCATION_SQL }),
 ]);
 
 export { runMigrations };
