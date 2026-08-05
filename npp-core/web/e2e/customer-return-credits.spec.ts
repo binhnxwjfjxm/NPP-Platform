@@ -6,6 +6,6 @@ test('customer return credit workspace stays separate from warehouse return rece
   const workspace = page.getByTestId('customer-return-credit-workspace');
   await expect(workspace).toBeVisible();
   await expect(workspace).toContainText('Credit từ hàng khách trả');
-  await expect(workspace).toContainText('Credit chỉ phát sinh');
+  await expect(page.getByText(/Credit chỉ phát sinh khi kho đã nhận Customer Return/)).toBeVisible();
   await expect(page).toHaveURL(/\/accounting\/customer-return-credits$/);
 });
