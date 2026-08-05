@@ -1,24 +1,35 @@
 import Link from "next/link";
 
+const QUICK_LINKS = [
+  { href: "/routes", icon: "⌖", label: "Tuyến" },
+  { href: "/mcp/sessions", icon: "◷", label: "Phiên" },
+  { href: "/orders", icon: "＋", label: "Đơn" },
+  { href: "/reports", icon: "▣", label: "Báo cáo" },
+  { href: "/plans", icon: "✓", label: "Việc" }
+];
+
 export function MobileHomeLaunchpad() {
   return (
     <section className="mobile-home-launchpad" aria-label="Tác nghiệp nhanh hôm nay">
       <div className="mobile-home-launchpad-copy">
-        <span>Hôm nay ngoài thị trường</span>
-        <h1>Bắt đầu từ tuyến cần đi</h1>
-        <p>Mở tuyến, tiếp tục phiên và ghi kết quả tại từng điểm bán.</p>
+        <span>Tổng quan hôm nay</span>
+        <h1>Điều hành gọn trên điện thoại</h1>
+        <p>Mở tuyến trước, sau đó xem nhanh phiên, đơn, báo cáo và việc cần xử lý.</p>
       </div>
       <div className="mobile-home-launchpad-actions">
         <Link className="mobile-home-primary-action" href="/visits" prefetch>
           <span aria-hidden="true">◎</span>
-          <span><strong>Đi tuyến hôm nay</strong><small>Mở phiên và danh sách điểm bán</small></span>
+          <span><strong>Đi tuyến hôm nay</strong><small>Mở danh sách điểm bán và tiếp tục phiên</small></span>
           <b aria-hidden="true">›</b>
         </Link>
-        <div className="mobile-home-quick-grid">
-          <Link href="/routes" prefetch><span aria-hidden="true">⌖</span><strong>Tuyến</strong></Link>
-          <Link href="/orders" prefetch><span aria-hidden="true">＋</span><strong>Tạo đơn</strong></Link>
-          <Link href="/reports" prefetch><span aria-hidden="true">▣</span><strong>Báo cáo</strong></Link>
-        </div>
+        <nav className="mobile-home-quick-grid" aria-label="Lối tắt tổng quan">
+          {QUICK_LINKS.map((item) => (
+            <Link href={item.href} key={item.href} prefetch>
+              <span aria-hidden="true">{item.icon}</span>
+              <strong>{item.label}</strong>
+            </Link>
+          ))}
+        </nav>
       </div>
     </section>
   );
