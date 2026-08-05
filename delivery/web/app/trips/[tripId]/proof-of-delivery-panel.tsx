@@ -52,6 +52,7 @@ export default function ProofOfDeliveryPanel({ tripId, assignmentId, attemptId }
   const [proofs, setProofs] = useState<ProofOfDelivery[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [podType, setPodType] = useState<ProofOfDeliveryType>('manual_confirm');
+  const [capturedAt, setCapturedAt] = useState(() => new Date().toISOString());
   const [receiverName, setReceiverName] = useState('');
   const [reference, setReference] = useState('');
   const [note, setNote] = useState('');
@@ -71,11 +72,24 @@ export default function ProofOfDeliveryPanel({ tripId, assignmentId, attemptId }
     if (!response.ok || !body?.data) {
       throw new Error(body?.error?.message || 'Không tải được bằng chứng giao hàng.');
     }
-    setProofs([...body.data.proofs]);
+    return [...body.data.proofs];
   }, [endpoint]);
 
   useEffect(() => {
-    loadProofs().catch(() => {});
+    let active = true;
+    setError('');
+    loadProofs()
+      .then((nextProofs) => {
+        if (active) setProofs(nextProofs);
+      })
+      .catch((loadError) => {
+        if (active) {
+          setError(loadError instanceof Error ? loadError.message : 'Không tải được bằng chứng giao hàng.');
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, [loadProofs]);
 
   function operationKey(signature: string): string {
@@ -121,7 +135,7 @@ export default function ProofOfDeliveryPanel({ tripId, assignmentId, attemptId }
 
     const payload: AttachProofOfDeliveryPayload = {
       podType,
-      capturedAt: new Date().toISOString(),
+      capturedAt,
       receiverName: receiverName.trim() || null,
       confirmationReference: reference.trim() || null,
       note: note.trim() || null,
@@ -145,13 +159,15 @@ export default function ProofOfDeliveryPanel({ tripId, assignmentId, attemptId }
       if (!response.ok || !body?.data) {
         throw new Error(body?.error?.message || 'Không lưu được bằng chứng giao hàng.');
       }
-      await loadProofs();
+      const nextProofs = await loadProofs();
+      setProofs(nextProofs);
       keys.current.delete(signature);
       setMessage(body.data.replayed ? 'Bằng chứng này đã được lưu trước đó.' : 'Đã lưu bằng chứng giao hàng.');
       setReceiverName('');
       setReference('');
       setNote('');
       setPhoto(null);
+      setCapturedAt(new Date().toISOString());
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Không lưu được bằng chứng giao hàng.');
     } finally {
