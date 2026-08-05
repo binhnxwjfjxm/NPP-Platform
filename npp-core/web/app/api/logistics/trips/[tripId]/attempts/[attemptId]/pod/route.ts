@@ -6,10 +6,10 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ tripId: string; attemptId: string }> },
+  context: { params: { tripId: string; attemptId: string } },
 ) {
   const requestId = requestIdFrom(request);
-  const { tripId, attemptId } = await context.params;
+  const { tripId, attemptId } = context.params;
   try {
     const data = await getDeliveryAttemptProofs<unknown>(tripId, attemptId, requestId);
     return NextResponse.json(
