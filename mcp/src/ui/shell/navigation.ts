@@ -1,4 +1,6 @@
-export type NavItem = { label: string; shortLabel: string; href: string; description: string; icon: string };
+import type { NavIconName } from "./NavIcon";
+
+export type NavItem = { label: string; shortLabel: string; href: string; description: string; icon: NavIconName };
 export type ShellSection = "overview" | "routes" | "session" | "business";
 export type AppMenuGroup = { id: string; label: string; items: NavItem[] };
 
@@ -149,9 +151,10 @@ export const APP_MENU_GROUPS: AppMenuGroup[] = [
 export const NAV_ITEMS = SIDEBAR_NAV_ITEMS;
 
 export function navItemForHref(href: string) {
+  const normalizedHref = href === "/actions" ? "/plans" : href;
   return [...SIDEBAR_NAV_ITEMS, SETTINGS_NAV_ITEM]
     .sort((a, b) => b.href.length - a.href.length)
-    .find((item) => item.href === href || (item.href !== "/" && href.startsWith(`${item.href}/`))) || OVERVIEW_NAV_ITEM;
+    .find((item) => item.href === normalizedHref || (item.href !== "/" && normalizedHref.startsWith(`${item.href}/`))) || OVERVIEW_NAV_ITEM;
 }
 
 export function shellSectionForHref(href: string): ShellSection {
