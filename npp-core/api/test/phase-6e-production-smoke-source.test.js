@@ -51,6 +51,7 @@ test('Phase 6E production smoke is exact-main, fail-closed and scoped to Core/NP
     'rm -f "$response_file"',
     "assert_error_code 'DELIVERY_TRIP_NOT_FOUND'",
     "assert_error_code 'DELIVERY_ATTEMPT_NOT_FOUND'",
+    "grep -q 'Chuyến của tôi'",
     "! grep -q 'Không tải được chuyến'",
     'R2_ENABLED',
     'R2_CONFIGURATION_COMPLETE',
@@ -63,6 +64,7 @@ test('Phase 6E production smoke is exact-main, fail-closed and scoped to Core/NP
   assert.ok(!workflow.includes('hung-phat-mcp'));
   assert.ok(!script.includes('mcp.nguyenlieuhungphat.com'));
   assert.ok(!script.includes('${DELIVERY_WEB_USERS_JSON:?'));
+  assert.ok(!script.includes("grep -q 'Ứng dụng Giao hàng'"));
   assert.ok(!script.includes('head -c 1000'));
   assert.ok(!script.includes('|| true'));
   assert.match(workflow, /set -E/);
