@@ -45,14 +45,27 @@ function checkinTime(value?: string) {
   return date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 }
 
-function actionItems(): Array<{ label: string; action: McpCustomerAction; tone?: "primary" }> {
+function actionItems(): Array<{ label: string; action: McpCustomerAction; icon: "cart" | "flask" | "eye" | "clock" | "skip" }> {
   return [
-    { label: "Nhu cầu", action: "order", tone: "primary" },
-    { label: "Test", action: "test" },
-    { label: "Quan sát", action: "market_report" },
-    { label: "Theo dõi", action: "follow_up" },
-    { label: "Bỏ qua", action: "skip" }
+    { label: "Nhu cầu", action: "order", icon: "cart" },
+    { label: "Thử SP", action: "test", icon: "flask" },
+    { label: "Quan sát", action: "market_report", icon: "eye" },
+    { label: "Theo dõi", action: "follow_up", icon: "clock" },
+    { label: "Bỏ qua", action: "skip", icon: "skip" }
   ];
+}
+
+function ActionIcon({ name }: { name: "map" | "photo" | "cart" | "flask" | "eye" | "clock" | "skip" | "checkin" | "order" }) {
+  const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
+  if (name === "map") return <svg {...common}><path d="m9 18-6 3V6l6-3 6 3 6-3v15l-6 3-6-3Z"/><path d="M9 3v15M15 6v15"/></svg>;
+  if (name === "photo") return <svg {...common}><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 15-5-5L5 19"/></svg>;
+  if (name === "cart") return <svg {...common}><path d="M3 4h2l2 11h10l2-7H7"/><circle cx="9" cy="19" r="1"/><circle cx="17" cy="19" r="1"/></svg>;
+  if (name === "flask") return <svg {...common}><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/><path d="M8 15h8"/></svg>;
+  if (name === "eye") return <svg {...common}><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></svg>;
+  if (name === "clock") return <svg {...common}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>;
+  if (name === "skip") return <svg {...common}><path d="m5 5 14 14M19 5 5 19"/></svg>;
+  if (name === "order") return <svg {...common}><path d="M6 3h12v18H6z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>;
+  return <svg {...common}><path d="M12 2v4M12 18v4M4 12H2M22 12h-2"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>;
 }
 
 function officialOrderHref(line: McpDayLine) {
@@ -87,9 +100,9 @@ export function McpLineCard({
   }
 
   return (
-    <article className={`${styles.card} ${statusClass(line.status)} ${checkinEnabled ? "" : styles.withoutCheckin}`}>
+    <article className={`${styles.card} ${statusClass(line.status)} ${checkinEnabled ? "" : styles.withoutCheckin}`} data-mcp-session-card="true">
       <button className={styles.main} type="button" onClick={() => openProfile("detail")}>
-        <span className={styles.index}>#{line.sortOrder || "-"}</span>
+        <span className={styles.index}>{line.sortOrder || "–"}</span>
         <span className={styles.identity}>
           <span className={styles.identityHead}>
             <strong>{line.accountName}</strong>
@@ -99,61 +112,64 @@ export function McpLineCard({
           <span className={styles.summary}>{resultSummary(line)}</span>
         </span>
       </button>
-      <div className={styles.actions} data-customer-action-rows="2">
+
+      <div className={styles.primaryRow}>
+        {onToggleCheckin ? (
+          <button
+            className={`${styles.checkin} ${line.checkedIn ? styles.checkinActive : ""}`}
+            type="button"
+            aria-pressed={line.checkedIn === true}
+            aria-label={line.checkedIn ? `Bỏ check-in tại ${line.accountName}` : `Check-in vị trí hiện tại tại ${line.accountName}`}
+            title={line.checkedIn ? "Bấm lần nữa để bỏ check-in nếu thao tác nhầm" : "Chỉ lấy vị trí hiện tại khi bấm nút này"}
+            disabled={checkinBusy}
+            onClick={() => onToggleCheckin(line)}
+          >
+            <ActionIcon name="checkin" />
+            <span>
+              <strong>{checkinBusy ? "Đang xử lý" : line.checkedIn ? "Đã check-in" : "Check-in điểm bán"}</strong>
+              <small>{line.checkedIn ? checkinTime(line.checkinAt) : "Lấy vị trí GPS hiện tại"}</small>
+            </span>
+          </button>
+        ) : null}
+
         <a
-          className={`${styles.action} ${styles.directions}`}
+          className={styles.iconButton}
           href={directions.url}
           target="_blank"
           rel="noreferrer"
           aria-label={directions.exact ? `Chỉ đường đến ${line.accountName}` : `Tìm ${line.accountName} trên Google Maps`}
           title={directions.exact ? "Mở chỉ đường theo GPS điểm bán đã lưu" : "Khách chưa có GPS chính xác, mở tìm kiếm Google Maps"}
         >
-          ↗ Đường
+          <ActionIcon name="map" />
+          <span>Đường</span>
         </a>
+
         <button
-          className={`${styles.action} ${styles.photo}`}
+          className={styles.iconButton}
           type="button"
           onClick={() => openProfile("media")}
           aria-label={`Xem hoặc bổ sung ảnh cho ${line.accountName}`}
           title="Xem, chụp hoặc chọn ảnh điểm bán"
         >
-          📷 Ảnh
+          <ActionIcon name="photo" />
+          <span>Ảnh</span>
         </button>
+      </div>
+
+      <div className={styles.actions} data-customer-action-rows="1">
         {line.orderId ? (
-          <Link
-            className={`${styles.action} button primary`}
-            href={officialOrderHref(line)}
-            aria-label={`Mở đơn NPP cho ${line.accountName}`}
-          >
-            Đơn NPP
+          <Link className={`${styles.action} ${styles.officialOrder}`} href={officialOrderHref(line)} aria-label={`Mở đơn NPP cho ${line.accountName}`}>
+            <ActionIcon name="order" />
+            <span>Đơn NPP</span>
           </Link>
         ) : null}
         {actionItems().map((item) => (
-          <button
-            className={item.tone === "primary" ? `${styles.action} button primary` : styles.action}
-            type="button"
-            key={item.action}
-            onClick={() => onAction(line, item.action)}
-          >
-            {item.label}
+          <button className={styles.action} type="button" key={item.action} onClick={() => onAction(line, item.action)}>
+            <ActionIcon name={item.icon} />
+            <span>{item.label}</span>
           </button>
         ))}
       </div>
-      {onToggleCheckin ? (
-        <button
-          className={`${styles.checkin} ${line.checkedIn ? styles.checkinActive : ""}`}
-          type="button"
-          aria-pressed={line.checkedIn === true}
-          aria-label={line.checkedIn ? `Bỏ check-in tại ${line.accountName}` : `Check-in vị trí hiện tại tại ${line.accountName}`}
-          title={line.checkedIn ? "Bấm lần nữa để bỏ check-in nếu thao tác nhầm" : "Chỉ lấy vị trí hiện tại khi bấm nút này"}
-          disabled={checkinBusy}
-          onClick={() => onToggleCheckin(line)}
-        >
-          <span aria-hidden="true">{checkinBusy ? "…" : line.checkedIn ? "✓" : "⌖"}</span>
-          <strong>{checkinBusy ? "Đang xử lý" : line.checkedIn ? "Đã check-in" : "Check-in"}</strong>
-          <small>{line.checkedIn ? checkinTime(line.checkinAt) : "Lấy GPS"}</small>
-        </button>
-      ) : null}
     </article>
   );
 }
