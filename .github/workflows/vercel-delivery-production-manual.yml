@@ -23,6 +23,7 @@ jobs:
     env:
       DEPLOY_REF: main
       VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      VERCEL_PROJECT_ID: prj_aqsb62CiXpN1a1u3vU9P8SOKw2Ux
       DELIVERY_PROJECT_NAME: npp-delivery
       DELIVERY_ROOT_DIRECTORY: delivery/web
       DELIVERY_DOMAIN: log.nguyenlieuhungphat.com
