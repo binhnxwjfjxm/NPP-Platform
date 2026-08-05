@@ -10,6 +10,8 @@
   --hp-border: #d8d0c4;
   --hp-success: #386641;
   --hp-danger: #a83b32;
+  --hp-focus-inner: #fffdf8;
+  --hp-focus-outer: #754706;
   --hp-shadow: 0 7px 20px rgba(72, 54, 34, 0.08);
 }
 
@@ -113,8 +115,9 @@ dt {
 .tripCard:focus-visible {
   transform: none;
   border-color: #b99d72;
-  box-shadow: 0 8px 22px rgba(72, 54, 34, 0.11);
-  outline: 3px solid rgba(152, 96, 15, 0.18);
+  box-shadow: 0 0 0 4px var(--hp-focus-outer), 0 8px 22px rgba(72, 54, 34, 0.11);
+  outline: 2px solid var(--hp-focus-inner);
+  outline-offset: 2px;
 }
 
 .statusPill {
@@ -213,8 +216,9 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid rgba(152, 96, 15, 0.22);
+  outline: 2px solid var(--hp-focus-inner);
   outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--hp-focus-outer);
 }
 
 .errorCard {
