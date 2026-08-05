@@ -50,3 +50,22 @@ ALTER TABLE accounting.receivable_documents
       AND reversal_reason IS NOT NULL
     )
   );
+
+-- UPDATE and DELETE are forbidden regardless of caller context. The service
+-- context is only meaningful for appending a new immutable allocation fact.
+CREATE OR REPLACE FUNCTION accounting.guard_receivable_allocation_history()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  write_context text := current_setting('npp.receivable_write_context', true);
+BEGIN
+  IF TG_OP <> 'INSERT' THEN
+    RAISE EXCEPTION 'receivable_allocation_history_is_append_only';
+  END IF;
+  IF write_context IS DISTINCT FROM 'receivable_service' THEN
+    RAISE EXCEPTION 'receivable_history_write_requires_service_context';
+  END IF;
+  RETURN NEW;
+END;
+$$;
