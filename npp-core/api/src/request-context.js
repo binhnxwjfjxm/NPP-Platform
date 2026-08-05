@@ -24,6 +24,8 @@ const LOGISTICS_BOOTSTRAP_PERMISSIONS = Object.freeze([
   PERMISSIONS.coreDeliveryTripDispatch,
   PERMISSIONS.coreDeliveryTripDriverRead,
   PERMISSIONS.coreDeliveryAttemptRead,
+  PERMISSIONS.corePodRead,
+  PERMISSIONS.corePodAttach,
   PERMISSIONS.coreDeliveryTripReconciliationRead,
   PERMISSIONS.coreDeliveryTripReturnReceive,
   PERMISSIONS.coreDeliveryTripClose,
@@ -48,6 +50,8 @@ function withDeliveryAttemptPermissions(principal) {
       ...(Array.isArray(principal.permissions) ? principal.permissions : []),
       PERMISSIONS.coreDeliveryAttemptRead,
       PERMISSIONS.coreDeliveryAttemptRecord,
+      PERMISSIONS.corePodRead,
+      PERMISSIONS.corePodAttach,
     ])]),
   });
 }
