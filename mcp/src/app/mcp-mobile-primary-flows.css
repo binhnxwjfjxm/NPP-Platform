@@ -1,0 +1,171 @@
+/* Issue #294: mobile-app layout for primary MCP flows only.
+   Keep the existing Hưng Phát color tokens; change geometry, not brand tone. */
+
+@media (max-width: 820px) {
+  .app-shell:is(
+    [data-active-href="/"],
+    [data-active-href="/routes"],
+    [data-active-href="/visits"],
+    [data-active-href="/mcp"],
+    [data-active-href="/mcp/sessions"],
+    [data-active-href="/customers"],
+    [data-active-href="/visits/order-intent"]
+  ) [data-app-scroll-region] {
+    padding: 10px 12px calc(var(--app-bottom-nav-bar-height, 64px) + 22px);
+    scroll-padding-bottom: calc(var(--app-bottom-nav-bar-height, 64px) + 24px);
+  }
+
+  .app-shell:is(
+    [data-active-href="/"],
+    [data-active-href="/routes"],
+    [data-active-href="/visits"],
+    [data-active-href="/mcp"],
+    [data-active-href="/mcp/sessions"],
+    [data-active-href="/customers"],
+    [data-active-href="/visits/order-intent"]
+  ) .page-header {
+    display: grid;
+    gap: 10px;
+    margin: 0 0 12px;
+    padding: 14px;
+    border-radius: 16px;
+    position: relative;
+    overflow: visible;
+  }
+
+  .app-shell:is(
+    [data-active-href="/"],
+    [data-active-href="/routes"],
+    [data-active-href="/visits"],
+    [data-active-href="/mcp"],
+    [data-active-href="/mcp/sessions"],
+    [data-active-href="/customers"],
+    [data-active-href="/visits/order-intent"]
+  ) .page-header h1 {
+    font-size: clamp(1.3rem, 6vw, 1.65rem);
+    line-height: 1.15;
+  }
+
+  .app-shell:is(
+    [data-active-href="/"],
+    [data-active-href="/routes"],
+    [data-active-href="/visits"],
+    [data-active-href="/mcp"],
+    [data-active-href="/mcp/sessions"],
+    [data-active-href="/customers"],
+    [data-active-href="/visits/order-intent"]
+  ) :is(.page-header-actions, .header-actions, .toolbar-actions) {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .app-shell:is(
+    [data-active-href="/"],
+    [data-active-href="/routes"],
+    [data-active-href="/visits"],
+    [data-active-href="/mcp"],
+    [data-active-href="/mcp/sessions"],
+    [data-active-href="/customers"],
+    [data-active-href="/visits/order-intent"]
+  ) :is(button, .button, a.button, .btn) {
+    min-height: 46px;
+    border-radius: 12px;
+    touch-action: manipulation;
+  }
+
+  .app-shell:is(
+    [data-active-href="/"],
+    [data-active-href="/routes"],
+    [data-active-href="/visits"],
+    [data-active-href="/mcp"],
+    [data-active-href="/mcp/sessions"],
+    [data-active-href="/customers"],
+    [data-active-href="/visits/order-intent"]
+  ) :is(.grid, .cards-grid, .dashboard-grid, .content-grid, .split-grid, .two-column, .three-column) {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 10px;
+  }
+
+  .app-shell:is(
+    [data-active-href="/"],
+    [data-active-href="/routes"],
+    [data-active-href="/visits"],
+    [data-active-href="/mcp"],
+    [data-active-href="/mcp/sessions"],
+    [data-active-href="/customers"],
+    [data-active-href="/visits/order-intent"]
+  ) :is(.card, article, .panel, .section-card, .dashboard-section) {
+    border-radius: 16px;
+  }
+
+  .app-shell[data-active-href="/"] :is(.dashboard-command-grid, .dashboard-route-grid, .dashboard-alerts, .dashboard-actions) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .app-shell[data-active-href="/"] .dashboard-command-card {
+    min-height: 0;
+    padding: 15px;
+    border-radius: 16px;
+  }
+
+  .app-shell[data-active-href="/"] .dashboard-route-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .app-shell:is([data-active-href="/routes"], [data-active-href="/visits"], [data-active-href="/customers"], [data-active-href="/mcp/sessions"]) :is(.filter-bar, .filters, .filter-row) {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 2px 0 8px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .app-shell:is([data-active-href="/routes"], [data-active-href="/visits"], [data-active-href="/customers"], [data-active-href="/mcp/sessions"]) :is(.filter-bar, .filters, .filter-row) > * {
+    flex: 0 0 auto;
+    min-width: min(78vw, 260px);
+    scroll-snap-align: start;
+  }
+
+  .app-shell:is([data-active-href="/routes"], [data-active-href="/visits"], [data-active-href="/customers"], [data-active-href="/mcp/sessions"]) :is(table, .table) {
+    min-width: 680px;
+  }
+
+  .app-shell:is([data-active-href="/routes"], [data-active-href="/visits"], [data-active-href="/customers"], [data-active-href="/mcp/sessions"]) :is(.table-wrap, .table-container, .data-table-wrap) {
+    margin-inline: -2px;
+    border-radius: 14px;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+
+  .app-shell:is([data-active-href="/visits"], [data-active-href="/visits/order-intent"], [data-active-href="/mcp"]) :is(.form-actions, .sticky-actions, .session-actions, .order-actions) {
+    position: sticky;
+    z-index: 8;
+    bottom: calc(var(--app-bottom-nav-bar-height, 64px) + 8px);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 8px;
+    padding: 10px;
+    margin: 12px -2px 0;
+    border-radius: 16px;
+    backdrop-filter: blur(14px);
+  }
+
+  .app-shell[data-active-href="/visits/order-intent"] :is(fieldset, .form-section, .order-section) {
+    margin-bottom: 10px;
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .app-shell[data-active-href="/visits/order-intent"] :is(input, select, textarea) {
+    width: 100%;
+    min-height: 48px;
+    border-radius: 12px;
+  }
+}
