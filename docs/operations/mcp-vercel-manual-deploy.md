@@ -18,11 +18,11 @@ The MCP workflow pins its non-secret deployment identity directly in source:
 ```text
 Vercel team: team_hBA8rX68UHC8ogvREkOyQlJ2
 MCP project: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
-Production alias: https://mcp-field-binhnxwjfjxms-projects.vercel.app
+User-facing production domain: https://mcp.nguyenlieuhungphat.com
 Root directory: mcp
 ```
 
-The workflow rejects the NPP Core project ID and verifies the linked Vercel project and root directory before building.
+The workflow rejects the NPP Core project ID and verifies the linked Vercel project and root directory before building. The exact Vercel deployment URL may be protected by Vercel Authentication, so it is used for deployment identity and reachability checks; page content and static assets are verified on the public user-facing production domain.
 
 ## Required GitHub Actions secrets
 
@@ -62,7 +62,7 @@ The dedicated frontend project receives only the runtime values required by the 
 2. Confirm the five required GitHub Actions secrets are present and current.
 3. Run `Manual Vercel MCP production deploy` in GitHub Actions or comment `/deploy-vercel-mcp-production` on Issue #5.
 4. Verify exact `origin/main`, the dedicated project link, root `mcp`, and Auto Deploy OFF.
-5. Verify `/`, `/login`, `/visits`, and one `/_next/static/` asset.
-6. Record the deployed SHA and deployment URL.
+5. Verify the exact deployment is reachable, then verify `/`, `/mcp`, `/routes`, `/visits`, `/field-checks`, and one `/_next/static/` asset on `https://mcp.nguyenlieuhungphat.com`.
+6. Record the deployed SHA and exact deployment URL.
 
 A Core-only change uses `/deploy-vercel-production` and does not trigger this workflow. Heroku MCP deployment and future VPS/PostgreSQL cutover remain separate operations.
