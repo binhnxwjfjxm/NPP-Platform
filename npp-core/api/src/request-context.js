@@ -25,7 +25,6 @@ const LOGISTICS_BOOTSTRAP_PERMISSIONS = Object.freeze([
   PERMISSIONS.coreDeliveryTripDriverRead,
   PERMISSIONS.coreDeliveryAttemptRead,
   PERMISSIONS.corePodRead,
-  PERMISSIONS.corePodAttach,
   PERMISSIONS.coreDeliveryTripReconciliationRead,
   PERMISSIONS.coreDeliveryTripReturnReceive,
   PERMISSIONS.coreDeliveryTripClose,
