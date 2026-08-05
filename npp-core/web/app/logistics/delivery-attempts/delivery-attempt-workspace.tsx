@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import styles from './delivery-attempt-workspace.module.css';
 
@@ -100,6 +100,9 @@ export default function DeliveryAttemptWorkspace() {
   const [loadingProofId, setLoadingProofId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const selectedTripIdRef = useRef('');
+  const tripRequestRef = useRef(0);
+  const proofRequestRef = useRef(new Map<string, number>());
 
   const dispatchedTrips = useMemo(
     () => trips.filter((trip) => trip.status === 'dispatched'),
@@ -119,23 +122,34 @@ export default function DeliveryAttemptWorkspace() {
   }, [loadTrips]);
 
   async function selectTrip(trip: TripListItem) {
+    const requestVersion = ++tripRequestRef.current;
+    selectedTripIdRef.current = trip.id;
+    proofRequestRef.current.clear();
     setSelectedTrip(trip);
     setSummary(null);
     setProofsByAttempt({});
     setError('');
     setBusy(true);
     try {
-      setSummary(await requestJson<AttemptSummary>(`/api/logistics/trips/${trip.id}/attempts`));
+      const nextSummary = await requestJson<AttemptSummary>(`/api/logistics/trips/${trip.id}/attempts`);
+      if (tripRequestRef.current === requestVersion && selectedTripIdRef.current === trip.id) {
+        setSummary(nextSummary);
+      }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Không tải được kết quả giao.');
+      if (tripRequestRef.current === requestVersion && selectedTripIdRef.current === trip.id) {
+        setError(loadError instanceof Error ? loadError.message : 'Không tải được kết quả giao.');
+      }
     } finally {
-      setBusy(false);
+      if (tripRequestRef.current === requestVersion && selectedTripIdRef.current === trip.id) {
+        setBusy(false);
+      }
     }
   }
 
   async function toggleProofs(attemptId: string) {
     if (!selectedTrip) return;
     if (Object.prototype.hasOwnProperty.call(proofsByAttempt, attemptId)) {
+      proofRequestRef.current.delete(attemptId);
       setProofsByAttempt((current) => {
         const next = { ...current };
         delete next[attemptId];
@@ -143,17 +157,29 @@ export default function DeliveryAttemptWorkspace() {
       });
       return;
     }
+    const tripId = selectedTrip.id;
+    const requestVersion = (proofRequestRef.current.get(attemptId) ?? 0) + 1;
+    proofRequestRef.current.set(attemptId, requestVersion);
     setError('');
     setLoadingProofId(attemptId);
     try {
       const data = await requestJson<{ proofs: readonly Proof[] }>(
-        `/api/logistics/trips/${selectedTrip.id}/attempts/${attemptId}/pod`,
+        `/api/logistics/trips/${tripId}/attempts/${attemptId}/pod`,
       );
-      setProofsByAttempt((current) => ({ ...current, [attemptId]: data.proofs }));
+      if (selectedTripIdRef.current === tripId
+          && proofRequestRef.current.get(attemptId) === requestVersion) {
+        setProofsByAttempt((current) => ({ ...current, [attemptId]: data.proofs }));
+      }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Không tải được bằng chứng giao hàng.');
+      if (selectedTripIdRef.current === tripId
+          && proofRequestRef.current.get(attemptId) === requestVersion) {
+        setError(loadError instanceof Error ? loadError.message : 'Không tải được bằng chứng giao hàng.');
+      }
     } finally {
-      setLoadingProofId('');
+      if (selectedTripIdRef.current === tripId
+          && proofRequestRef.current.get(attemptId) === requestVersion) {
+        setLoadingProofId('');
+      }
     }
   }
 
