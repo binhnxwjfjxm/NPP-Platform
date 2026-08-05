@@ -354,7 +354,7 @@ NODE
     -H "x-npp-delivery-employee-id: $selected_employee_id" \
     -H "x-request-id: delivery-production-smoke-${GITHUB_RUN_ID:-local}" \
     "$core_url/api/logistics/driver/trips?limit=1&offset=0" > "$api_body"
-  jq -e '.data.items | type == "array"' "$api_body" >/dev/null
+  jq -e '(.data.driver | type == "object") and (.data.trips | type == "array")' "$api_body" >/dev/null
   html="$(curl --fail --silent --show-error --retry 5 --retry-delay 4 -u "$auth" "$smoke_url/")"
   grep -q 'Chuyến của tôi' <<<"$html"
   grep -qv 'Không tải được chuyến' <<<"$html"
