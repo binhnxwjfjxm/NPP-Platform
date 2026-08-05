@@ -197,7 +197,11 @@ export async function getCustomerPaymentById(client, {
         ORDER BY occurred_at, id`,
       [installationId, id],
     ),
-    listAllocationsForDocument(client, { installationId, documentId: id }),
+    listAllocationsForDocument(client, {
+      installationId,
+      documentId: id,
+      warehouseIds,
+    }),
   ]);
   return {
     ...document,
@@ -382,6 +386,7 @@ export async function getAllocationById(client, {
 export async function listAllocationsForDocument(client, {
   installationId,
   documentId,
+  warehouseIds,
 }) {
   const result = await client.query(
     `SELECT allocation.*,
@@ -411,8 +416,10 @@ export async function listAllocationsForDocument(client, {
           allocation.source_receivable_document_id = $2::uuid
           OR allocation.target_receivable_document_id = $2::uuid
         )
+        AND source.warehouse_id = ANY($3::uuid[])
+        AND target.warehouse_id = ANY($3::uuid[])
       ORDER BY allocation.allocation_date, allocation.created_at, allocation.id`,
-    [installationId, documentId],
+    [installationId, documentId, warehouseIds],
   );
   return result.rows ?? [];
 }
