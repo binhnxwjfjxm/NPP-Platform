@@ -82,6 +82,9 @@ try {
   assert.equal(await page.locator(".app-shell").getAttribute("data-shell-section"), "session");
   await page.locator("[data-app-top-bar]").getByText("Đi tuyến hôm nay", { exact: true }).waitFor({ state: "visible" });
   const customer = page.locator("article").filter({ hasText: "UI Existing Customer" }).first();
+  const actionTrigger = customer.getByRole("button", { name: "Thao tác", exact: true });
+  await actionTrigger.click();
+  assert.equal(await actionTrigger.getAttribute("aria-expanded"), "true");
   await customer.getByRole("button", { name: "Test", exact: true }).click();
   const form = page.getByRole("dialog", { name: "Ghi kết quả thử sản phẩm", exact: true });
   const input = form.getByPlaceholder("Nhập tên sản phẩm");

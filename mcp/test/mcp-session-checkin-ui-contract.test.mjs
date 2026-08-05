@@ -6,7 +6,7 @@ async function source(path) {
   return readFile(new URL(`../${path}`, import.meta.url), "utf8");
 }
 
-test("session card keeps every existing action in a visible compact grid", async () => {
+test("session card keeps check-in and every existing action behind compact controls", async () => {
   const card = await source("src/features/mcp/McpLineCard.tsx");
   const css = await source("src/features/mcp/McpLineCard.module.css");
 
@@ -17,17 +17,17 @@ test("session card keeps every existing action in a visible compact grid", async
   }
   assert.match(card, /line\.orderId \?/);
   assert.match(card, /Đơn NPP/);
-  assert.match(card, /data-customer-action-rows="2"/);
+  assert.match(card, /data-session-primary-actions="4"/);
+  assert.match(card, /data-customer-action-menu="open"/);
+  assert.match(card, /data-customer-action-count="5"/);
   assert.match(card, /styles\.primaryRow/);
-  assert.match(card, /Check-in điểm bán/);
+  assert.match(card, /<span>Thao tác<\/span>/);
   assert.match(card, /onToggleCheckin\(line\)/);
-  assert.match(card, /onAction\(line, item\.action\)/);
-  assert.match(css, /grid-template-columns:\s*minmax\(0, 1fr\) 48px 48px/);
-  assert.match(css, /\.actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(card, /onAction\(line, action\)/);
+  assert.match(css, /grid-template-columns:\s*minmax\(0, 1fr\) 48px 48px 58px/);
+  assert.match(css, /\.actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/);
   assert.doesNotMatch(css, /overflow-x:\s*auto/);
   assert.doesNotMatch(css, /scroll-snap-type/);
-  assert.doesNotMatch(css, /\.actions\s*\{[^}]*display:\s*none/s);
-  assert.doesNotMatch(css, /\.action\s*\{[^}]*display:\s*none/s);
   assert.doesNotMatch(css, /\.checkin\s*\{[^}]*display:\s*none/s);
   assert.match(card, /identityHead[\s\S]*?accountName[\s\S]*?badge[\s\S]*?statusLabel/);
   assert.match(card, /aria-pressed=\{line\.checkedIn === true\}/);

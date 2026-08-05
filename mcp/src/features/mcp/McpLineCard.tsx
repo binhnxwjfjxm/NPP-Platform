@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useId, useState } from "react";
 import type { McpDayLine } from "@/features/mcp-day/mcp-day.types";
 import { type McpCustomerAction } from "./mcp-customer-actions";
 import { requestMcpCustomerProfile } from "./mcp-customer-profile-events";
@@ -39,9 +40,9 @@ function resultSummary(line: McpDayLine) {
 }
 
 function checkinTime(value?: string) {
-  if (!value) return "Đã lưu GPS";
+  if (!value) return "đã lưu GPS";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Đã lưu GPS";
+  if (Number.isNaN(date.getTime())) return "đã lưu GPS";
   return date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 }
 
@@ -55,7 +56,9 @@ function actionItems(): Array<{ label: string; action: McpCustomerAction; icon: 
   ];
 }
 
-function ActionIcon({ name }: { name: "map" | "photo" | "cart" | "flask" | "eye" | "clock" | "skip" | "checkin" | "order" }) {
+type ActionIconName = "map" | "photo" | "cart" | "flask" | "eye" | "clock" | "skip" | "checkin" | "order" | "menu";
+
+function ActionIcon({ name }: { name: ActionIconName }) {
   const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
   if (name === "map") return <svg {...common}><path d="m9 18-6 3V6l6-3 6 3 6-3v15l-6 3-6-3Z"/><path d="M9 3v15M15 6v15"/></svg>;
   if (name === "photo") return <svg {...common}><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 15-5-5L5 19"/></svg>;
@@ -65,6 +68,7 @@ function ActionIcon({ name }: { name: "map" | "photo" | "cart" | "flask" | "eye"
   if (name === "clock") return <svg {...common}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>;
   if (name === "skip") return <svg {...common}><path d="m5 5 14 14M19 5 5 19"/></svg>;
   if (name === "order") return <svg {...common}><path d="M6 3h12v18H6z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>;
+  if (name === "menu") return <svg {...common}><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/></svg>;
   return <svg {...common}><path d="M12 2v4M12 18v4M4 12H2M22 12h-2"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>;
 }
 
@@ -93,10 +97,17 @@ export function McpLineCard({
 }) {
   const directions = useMcpCustomerDirections(line.routeCustomerId, line.accountName, line.area);
   const checkinEnabled = typeof onToggleCheckin === "function";
+  const actionMenuId = useId();
+  const [actionsOpen, setActionsOpen] = useState(false);
   const openLegacySheet = () => onOpen(line);
 
   function openProfile(focus: "detail" | "media") {
     requestMcpCustomerProfile({ line, focus, fallback: openLegacySheet });
+  }
+
+  function runAction(action: McpCustomerAction) {
+    setActionsOpen(false);
+    onAction(line, action);
   }
 
   return (
@@ -113,22 +124,19 @@ export function McpLineCard({
         </span>
       </button>
 
-      <div className={styles.primaryRow}>
+      <div className={styles.primaryRow} data-session-primary-actions="4">
         {onToggleCheckin ? (
           <button
             className={`${styles.checkin} ${line.checkedIn ? styles.checkinActive : ""}`}
             type="button"
             aria-pressed={line.checkedIn === true}
             aria-label={line.checkedIn ? `Bỏ check-in tại ${line.accountName}` : `Check-in vị trí hiện tại tại ${line.accountName}`}
-            title={line.checkedIn ? "Bấm lần nữa để bỏ check-in nếu thao tác nhầm" : "Chỉ lấy vị trí hiện tại khi bấm nút này"}
+            title={line.checkedIn ? `Đã check-in lúc ${checkinTime(line.checkinAt)}. Bấm lần nữa để bỏ check-in nếu thao tác nhầm` : "Chỉ lấy vị trí hiện tại khi bấm nút này"}
             disabled={checkinBusy}
             onClick={() => onToggleCheckin(line)}
           >
             <ActionIcon name="checkin" />
-            <span>
-              <strong>{checkinBusy ? "Đang xử lý" : line.checkedIn ? "Đã check-in" : "Check-in điểm bán"}</strong>
-              <small>{line.checkedIn ? checkinTime(line.checkinAt) : "Lấy vị trí GPS hiện tại"}</small>
-            </span>
+            <span>{checkinBusy ? "Đang xử lý" : line.checkedIn ? "Đã check-in" : "Check-in"}</span>
           </button>
         ) : null}
 
@@ -154,22 +162,37 @@ export function McpLineCard({
           <ActionIcon name="photo" />
           <span>Ảnh</span>
         </button>
+
+        <button
+          className={`${styles.iconButton} ${styles.actionsTrigger} ${actionsOpen ? styles.actionsTriggerActive : ""}`}
+          type="button"
+          aria-expanded={actionsOpen}
+          aria-controls={actionMenuId}
+          onClick={() => setActionsOpen((open) => !open)}
+        >
+          <ActionIcon name="menu" />
+          <span>Thao tác</span>
+        </button>
       </div>
 
-      <div className={styles.actions} data-customer-action-rows="2">
-        {line.orderId ? (
-          <Link className={`${styles.action} ${styles.officialOrder}`} href={officialOrderHref(line)} aria-label={`Mở đơn NPP cho ${line.accountName}`}>
-            <ActionIcon name="order" />
-            <span>Đơn NPP</span>
-          </Link>
-        ) : null}
-        {actionItems().map((item) => (
-          <button className={styles.action} type="button" key={item.action} onClick={() => onAction(line, item.action)}>
-            <ActionIcon name={item.icon} />
-            <span>{item.label}</span>
-          </button>
-        ))}
-      </div>
+      {actionsOpen ? (
+        <div className={styles.actionMenu} id={actionMenuId} data-customer-action-menu="open">
+          {line.orderId ? (
+            <Link className={styles.officialOrder} href={officialOrderHref(line)} aria-label={`Mở đơn NPP cho ${line.accountName}`}>
+              <ActionIcon name="order" />
+              <span>Đơn NPP</span>
+            </Link>
+          ) : null}
+          <div className={styles.actions} aria-label={`Thao tác với ${line.accountName}`} data-customer-action-count="5" role="group">
+            {actionItems().map((item) => (
+              <button className={styles.action} type="button" key={item.action} onClick={() => runAction(item.action)}>
+                <ActionIcon name={item.icon} />
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </article>
   );
 }
