@@ -7,6 +7,8 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_RESOURCE_PATTERN = /^(routes|vehicles|drivers|eligible-delivery-orders|trips)$/;
 const ALLOWED_QUERY_KEYS = new Set(['active', 'warehouseId', 'status', 'limit', 'offset']);
+const READ_ACTIONS = new Set(['dispatch', 'reconciliation']);
+const WRITE_ACTIONS = new Set(['assign', 'unassign', 'reorder', 'plan', 'reopen', 'lock', 'dispatch', 'return-receipts', 'close']);
 
 interface CoreEnvelope<T> {
   data?: T;
@@ -165,7 +167,7 @@ export function getDeliveryTrip<T>(tripId: string, requestId: string): Promise<T
 
 export function getDeliveryTripAction<T>(tripId: string, action: string, requestId: string): Promise<T> {
   assertUuid(tripId, 'INVALID_TRIP_ID', 'Mã chuyến giao không hợp lệ');
-  if (action !== 'dispatch') {
+  if (!READ_ACTIONS.has(action)) {
     throw new InventoryGatewayError('INVALID_TRIP_ACTION', 'Thao tác chuyến giao không hợp lệ', 400, false);
   }
   return requestLogistics<T>({ path: `/trips/${tripId}/${action}`, method: 'GET', requestId });
@@ -195,7 +197,7 @@ export function transitionDeliveryTrip<T>(
   idempotencyKey: string | null,
 ): Promise<T> {
   assertUuid(tripId, 'INVALID_TRIP_ID', 'Mã chuyến giao không hợp lệ');
-  if (!['assign', 'unassign', 'reorder', 'plan', 'reopen', 'lock', 'dispatch'].includes(action)) {
+  if (!WRITE_ACTIONS.has(action)) {
     throw new InventoryGatewayError('INVALID_TRIP_ACTION', 'Thao tác chuyến giao không hợp lệ', 400, false);
   }
   return requestLogistics<T>({
