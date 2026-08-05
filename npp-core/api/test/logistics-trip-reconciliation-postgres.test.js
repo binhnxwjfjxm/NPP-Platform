@@ -37,6 +37,8 @@ test('PostgreSQL reconciliation receives exact stock once and closes only at zer
     unit: randomUUID(),
     product: randomUUID(),
     variant: randomUUID(),
+    vehicle: randomUUID(),
+    driver: randomUUID(),
     trip: randomUUID(),
     stop: randomUUID(),
     assignment: randomUUID(),
@@ -60,7 +62,7 @@ test('PostgreSQL reconciliation receives exact stock once and closes only at zer
   const config = loadConfig({
     NODE_ENV: 'test',
     HOST: '127.0.0.1',
-    PORT: '3071',
+    PORT: '3098',
     INSTALLATION_ID: installationId,
     DATABASE_URL: process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || 'postgresql://user:password@127.0.0.1:5432/npp_platform',
     DATABASE_SSL_MODE: 'disable',
@@ -95,16 +97,29 @@ test('PostgreSQL reconciliation receives exact stock once and closes only at zer
         'SKU đối soát', 'BASE', true, true, true, true, ${quoted(ids.unit)}, 1, true,
         ${quoted(actor)}, ${quoted(actor)});
 
+      INSERT INTO logistics.vehicles
+        (id, installation_id, code, license_plate, vehicle_type, operational_status,
+         is_active, created_by, updated_by)
+      VALUES (${quoted(ids.vehicle)}, ${quoted(installationId)}, 'XE-RECON', '51A-51515',
+        'Xe tải', 'AVAILABLE', true, ${quoted(actor)}, ${quoted(actor)});
+
+      INSERT INTO logistics.driver_profiles
+        (id, installation_id, code, employee_id, name, is_active, created_by, updated_by)
+      VALUES (${quoted(ids.driver)}, ${quoted(installationId)}, 'DRV-RECON', NULL,
+        'Tài xế đối soát', true, ${quoted(actor)}, ${quoted(actor)});
+
       INSERT INTO logistics.delivery_trips
-        (id, installation_id, trip_number, warehouse_id, planned_start_at, status, revision,
-         create_idempotency_key, create_payload_hash, planned_at, planned_by, locked_at,
-         locked_by, dispatch_id, dispatch_idempotency_key, dispatch_payload_hash,
-         handover_receiver_name, dispatched_at, dispatched_by, created_by, updated_by)
+        (id, installation_id, trip_number, warehouse_id, vehicle_id, primary_driver_id,
+         planned_start_at, status, revision, create_idempotency_key, create_payload_hash,
+         planned_at, planned_by, locked_at, locked_by, dispatch_id,
+         dispatch_idempotency_key, dispatch_payload_hash, handover_receiver_name,
+         dispatched_at, dispatched_by, created_by, updated_by)
       VALUES (${quoted(ids.trip)}, ${quoted(installationId)}, 'TRIP-RECON', ${quoted(ids.warehouse)},
-        ${quoted(dispatchedAt)}, 'dispatched', 1, 'create-trip-recon', ${quoted('a'.repeat(64))},
-        ${quoted(dispatchedAt)}, ${quoted(actor)}, ${quoted(dispatchedAt)}, ${quoted(actor)},
-        ${quoted(ids.dispatch)}, 'dispatch-trip-recon', ${quoted('b'.repeat(64))},
-        'Tài xế đối soát', ${quoted(dispatchedAt)}, ${quoted(actor)}, ${quoted(actor)}, ${quoted(actor)});
+        ${quoted(ids.vehicle)}, ${quoted(ids.driver)}, ${quoted(dispatchedAt)}, 'dispatched', 1,
+        'create-trip-recon', ${quoted('a'.repeat(64))}, ${quoted(dispatchedAt)}, ${quoted(actor)},
+        ${quoted(dispatchedAt)}, ${quoted(actor)}, ${quoted(ids.dispatch)}, 'dispatch-trip-recon',
+        ${quoted('b'.repeat(64))}, 'Tài xế đối soát', ${quoted(dispatchedAt)}, ${quoted(actor)},
+        ${quoted(actor)}, ${quoted(actor)});
 
       INSERT INTO sales.delivery_orders
         (id, installation_id, delivery_order_number, delivery_order_number_allocation_id,
@@ -196,7 +211,7 @@ test('PostgreSQL reconciliation receives exact stock once and closes only at zer
          request_id, source_app, created_by)
       VALUES (${quoted(ids.attempt)}, ${quoted(installationId)}, ${quoted(ids.trip)}, ${quoted(ids.stop)},
         ${quoted(ids.assignment)}, ${quoted(ids.deliveryOrder)}, ${quoted(ids.dispatchItem)},
-        ${quoted(ids.inventoryIssue)}, ${quoted(randomUUID())}, 'delivered_partial', ${quoted(attemptedAt)},
+        ${quoted(ids.inventoryIssue)}, ${quoted(ids.driver)}, 'delivered_partial', ${quoted(attemptedAt)},
         NULL, 'Khách nhận một phần', NULL, 'attempt-recon', ${quoted('f'.repeat(64))},
         ${quoted(actor)}, 'request-attempt-recon', 'delivery-frontend', ${quoted(actor)});
 
