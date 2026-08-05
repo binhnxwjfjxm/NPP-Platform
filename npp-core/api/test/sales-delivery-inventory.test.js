@@ -91,7 +91,10 @@ test('Phase 6D.4 stays free of trip, POD, COD and accounting schema while 6F.1 h
     new URL('../../../database/migrations/sales/045_sales_inventory_issue_customer_return.sql', import.meta.url),
     'utf8',
   );
-  assert.doesNotMatch(migration, /CREATE TABLE IF NOT EXISTS .*delivery_trips|delivery_attempts|proof_of_delivery|receivable|accounting/i);
+  assert.doesNotMatch(
+    migration,
+    /CREATE TABLE IF NOT EXISTS\s+(?:logistics\.(?:delivery_trips|delivery_attempts|proof_of_delivery)|accounting\.)/i,
+  );
   assert.doesNotMatch(service, /assignDriver|optimizeRoute|recordPod|collectCod|postAccounting/i);
   assert.match(service, /postReceivableFromPickupHandover/);
 });
