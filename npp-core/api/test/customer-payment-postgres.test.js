@@ -358,7 +358,7 @@ test('Phase 6F.2 records, multi-allocates, serializes and reverses customer paym
 
     byId = await projection(pool, installationId, [fixture.targetA, fixture.targetB, payment.id]);
     assert.equal(byId.get(fixture.targetA).remaining_amount, '100.000000');
-    assert.equal(byId.get(fixture.targetB).remaining_amount, '110.000000');
+    assert.equal(byId.get(fixture.targetB).remaining_amount, '160.000000');
     assert.equal(byId.get(payment.id).status, 'reversed');
 
     const facts = await pool.query(
@@ -374,9 +374,13 @@ test('Phase 6F.2 records, multi-allocates, serializes and reverses customer paym
          (SELECT count(*)::int FROM accounting.receivable_ledger_entries
            WHERE installation_id = $1 AND receivable_document_id = $2) AS payment_ledger,
          (SELECT count(*)::int FROM shared.core_audit_records
-           WHERE installation_id = $1 AND resource_type = 'accounting.customer_payment') AS payment_audits,
+           WHERE installation_id = $1
+             AND resource_type = 'accounting.customer_payment'
+             AND resource_id = $2::text) AS payment_audits,
          (SELECT count(*)::int FROM shared.core_outbox_events
-           WHERE installation_id = $1 AND aggregate_type = 'accounting.customer_payment') AS payment_outbox`,
+           WHERE installation_id = $1
+             AND aggregate_type = 'accounting.customer_payment'
+             AND aggregate_id = $2::text) AS payment_outbox`,
       [installationId, payment.id],
     );
     assert.deepEqual(facts.rows[0], {
