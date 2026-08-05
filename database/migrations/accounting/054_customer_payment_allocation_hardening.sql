@@ -5,7 +5,8 @@
 
 ALTER TABLE accounting.receivable_documents
   DROP CONSTRAINT IF EXISTS receivable_documents_amount_check,
-  DROP CONSTRAINT IF EXISTS receivable_documents_state_projection_check;
+  DROP CONSTRAINT IF EXISTS receivable_documents_state_projection_check,
+  DROP CONSTRAINT IF EXISTS receivable_documents_reversal_reason_check;
 
 ALTER TABLE accounting.receivable_documents
   ADD CONSTRAINT receivable_documents_amount_check CHECK (
@@ -49,6 +50,10 @@ ALTER TABLE accounting.receivable_documents
       AND reversed_by IS NOT NULL
       AND reversal_reason IS NOT NULL
     )
+  ),
+  ADD CONSTRAINT receivable_documents_reversal_reason_check CHECK (
+    reversal_reason IS NULL
+    OR char_length(btrim(reversal_reason)) BETWEEN 1 AND 2000
   );
 
 -- UPDATE and DELETE are forbidden regardless of caller context. The service
