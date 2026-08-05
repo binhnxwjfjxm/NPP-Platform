@@ -1,397 +1,326 @@
 # Hướng dẫn sử dụng NPP Operations
 
-> Trạng thái tài liệu: **Cập nhật theo chức năng hiện có trên `main`**  
+> Trạng thái: **Cập nhật theo chức năng hiện có trên `main`**  
 > Ngày cập nhật: **2026-08-05**  
-> Đối tượng sử dụng: nhân sự vận hành NPP, Sales Admin, CS, kế toán, kho, quản lý bán hàng và các vai trò được cấp quyền phù hợp.  
-> Phạm vi: chỉ hướng dẫn những phần đã có trong hệ thống ở thời điểm hiện tại. Những chức năng chưa hoàn thiện hoặc chưa chốt quyền được ghi rõ là **chưa sử dụng chính thức**.
+> Địa chỉ sử dụng: `https://office.nguyenlieuhungphat.com`  
+> Nguyên tắc: hệ thống làm đến đâu, tài liệu hướng dẫn đến đó. Phần chưa chốt quyền hoặc chưa nghiệm thu không được coi là đã sẵn sàng vận hành.
 
 ---
 
-## 1. Mục đích của tài liệu
+## 1. Cách đọc tài liệu
 
-Tài liệu này dùng để hướng dẫn người dùng thao tác trên NPP Operations theo đúng chức năng đang có.
+Mỗi chức năng được gắn một trong ba trạng thái:
 
-Nguyên tắc cập nhật:
+- **Đã có thể sử dụng:** có màn hình và luồng thao tác đủ rõ để hướng dẫn.
+- **Sử dụng theo quyền được cấp:** chức năng đã có nhưng không phải tài khoản nào cũng được thao tác.
+- **Chưa sử dụng chính thức:** mới có nền kỹ thuật, chưa chốt quyền hoặc chưa nghiệm thu đầy đủ.
 
-- Hệ thống làm đến đâu, tài liệu cập nhật đến đó.
-- Không hướng dẫn một chức năng chỉ mới có trong kế hoạch nhưng chưa có giao diện hoặc chưa đủ điều kiện sử dụng.
-- Không mặc định người dùng nào cũng được thao tác mọi chức năng.
-- Quyền thực tế của từng tài khoản phụ thuộc cấu hình phân quyền trong hệ thống.
-- Khi một chức năng chưa chốt ma trận quyền, tài liệu chỉ mô tả mục đích và trạng thái, không coi đó là chức năng đã sẵn sàng vận hành.
+Không tự thử chức năng ghi dữ liệu production khi chưa được phân công.
 
 ---
 
-## 2. Địa chỉ truy cập
+## 2. Đăng nhập
 
-NPP Operations được sử dụng tại:
+**Trạng thái: Đã có thể sử dụng.**
 
-```text
-https://office.nguyenlieuhungphat.com
-```
-
-Các ứng dụng khác trong cùng nền tảng:
-
-```text
-Website đặt hàng:          https://nguyenlieuhungphat.com
-MCP Field:                 https://mcp.nguyenlieuhungphat.com
-Delivery / Giao hàng:      https://log.nguyenlieuhungphat.com
-Admin MCP/NPP:             https://admin.nguyenlieuhungphat.com
-```
-
-NPP Operations là nơi xử lý công việc vận hành hằng ngày. Admin MCP/NPP chỉ dùng cho tổng hợp và các ngoại lệ cần cấp quản lý, không thay thế công việc thường ngày của nhân viên NPP.
-
----
-
-## 3. Đăng nhập
-
-### 3.1 Cách đăng nhập
+### Cách đăng nhập
 
 1. Mở trình duyệt trên máy tính.
 2. Truy cập `https://office.nguyenlieuhungphat.com`.
-3. Nhập thông tin đăng nhập được cấp.
+3. Nhập tài khoản và mật khẩu được cấp.
 4. Chọn **Đăng nhập**.
-5. Sau khi đăng nhập thành công, hệ thống chuyển vào khu vực làm việc phù hợp với quyền của tài khoản.
+5. Chờ hệ thống chuyển vào NPP Operations.
 
-### 3.2 Khi không đăng nhập được
+### Kết quả đúng
 
-Kiểm tra lần lượt:
+- Trang NPP Operations mở thành công.
+- Menu chỉ hiển thị các phần tài khoản được phép xem.
+- Không xuất hiện thông báo hết phiên hoặc không có quyền.
 
-- Đúng địa chỉ NPP Operations.
-- Đúng tài khoản và mật khẩu.
-- Tài khoản chưa bị khóa hoặc ngừng hoạt động.
-- Tài khoản đã được gán đúng installation và vai trò.
-- Kết nối mạng đang hoạt động.
+### Khi không đăng nhập được
 
-Không gửi mật khẩu, mã truy cập hoặc thông tin bí mật qua nhóm chat công khai.
+1. Kiểm tra đúng địa chỉ `office.nguyenlieuhungphat.com`.
+2. Nhập lại tài khoản và mật khẩu.
+3. Kiểm tra bàn phím có bật Caps Lock hay không.
+4. Tải lại trang rồi đăng nhập lại.
+5. Nếu vẫn lỗi, báo người quản trị kiểm tra trạng thái tài khoản, installation và vai trò.
 
----
-
-## 4. Cách sử dụng giao diện chung
-
-### 4.1 Thanh điều hướng
-
-Thanh điều hướng dùng để mở các nhóm chức năng chính. Tùy quyền tài khoản, người dùng có thể chỉ nhìn thấy một phần menu.
-
-Các nhóm hiện có thể bao gồm:
-
-- Tổng quan hoặc cơ cấu hệ thống.
-- Tổ chức.
-- Đối tác.
-- Hàng hóa.
-- Kho.
-- Bán hàng.
-- Mua hàng.
-- Giao hàng và điều phối.
-- Quản lý tài khoản và quyền truy cập.
-
-Không thấy một menu không có nghĩa hệ thống bị lỗi. Trước tiên cần kiểm tra vai trò và quyền của tài khoản.
-
-### 4.2 Danh sách dữ liệu
-
-Các màn danh sách thường có:
-
-- Ô tìm kiếm.
-- Bộ lọc trạng thái.
-- Bộ lọc chi nhánh, kho hoặc thời gian.
-- Danh sách bản ghi.
-- Nút mở chi tiết.
-- Thông báo lỗi khi dữ liệu không tải được.
-
-Khi tìm kiếm không ra kết quả:
-
-1. Xóa bớt điều kiện lọc.
-2. Kiểm tra cách viết tên hoặc mã.
-3. Kiểm tra dữ liệu có thuộc đúng chi nhánh hoặc kho đang xem hay không.
-4. Kiểm tra tài khoản có quyền xem dữ liệu đó hay không.
-
-### 4.3 Trạng thái chứng từ
-
-Một chứng từ có thể có nhiều loại trạng thái khác nhau, ví dụ:
-
-- Trạng thái đơn hàng.
-- Trạng thái xử lý hàng.
-- Trạng thái giao hàng.
-- Trạng thái thanh toán.
-
-Không nên hiểu một trạng thái duy nhất là toàn bộ chứng từ đã hoàn tất.
+Không gửi mật khẩu hoặc token vào nhóm chat công khai.
 
 ---
 
-## 5. Tổ chức, chi nhánh và kho
+## 3. Sử dụng giao diện chung
 
-### 5.1 Mục đích
+**Trạng thái: Đã có thể sử dụng.**
 
-Khu vực tổ chức dùng để xem cơ cấu vận hành như:
+### Mở một chức năng
 
-- Chi nhánh.
-- Kho.
-- Vị trí trong kho.
-- Trạng thái hoạt động của từng đơn vị.
+1. Nhìn thanh menu bên trái.
+2. Chọn nhóm nghiệp vụ, ví dụ **Bán hàng**, **Mua hàng**, **Kho** hoặc **Tổ chức**.
+3. Nếu nhóm có menu con, chọn đúng màn cần mở.
+4. Kiểm tra tiêu đề trang để chắc chắn đã vào đúng chức năng.
 
-### 5.2 Cách xem
+### Tìm dữ liệu trong danh sách
+
+1. Mở màn danh sách.
+2. Nhập tên, mã hoặc từ khóa vào ô tìm kiếm nếu có.
+3. Chọn bộ lọc trạng thái, kho, chi nhánh hoặc thời gian nếu có.
+4. Chờ danh sách tải lại.
+5. Chọn một dòng để mở chi tiết.
+
+### Khi không tìm thấy dữ liệu
+
+1. Xóa bớt bộ lọc.
+2. Kiểm tra lại tên hoặc mã.
+3. Kiểm tra dữ liệu có thuộc đúng chi nhánh hoặc kho đang xem không.
+4. Kiểm tra tài khoản có quyền xem phạm vi dữ liệu đó không.
+5. Nếu trang báo lỗi tải dữ liệu, không nhập lại nhiều lần; tải lại một lần rồi báo người phụ trách nếu lỗi còn tiếp diễn.
+
+### Đọc trạng thái chứng từ
+
+Một chứng từ có thể đồng thời có nhiều trạng thái:
+
+- trạng thái đơn hàng;
+- trạng thái xử lý hàng;
+- trạng thái giao hàng;
+- trạng thái thanh toán.
+
+Không được hiểu “đã xác nhận đơn” là “đã giao hàng” hoặc “đã thanh toán”.
+
+---
+
+## 4. Tổ chức, chi nhánh, kho và vị trí kho
+
+**Trạng thái: Xem được; tạo/sửa phụ thuộc quyền.**
+
+### Cách xem cơ cấu
 
 1. Mở nhóm **Tổ chức** hoặc màn cơ cấu hệ thống.
-2. Chọn loại dữ liệu cần xem.
-3. Kiểm tra tên, mã và trạng thái hoạt động.
-4. Chọn một bản ghi để xem chi tiết nếu giao diện có hỗ trợ.
+2. Chọn loại dữ liệu cần xem: chi nhánh, kho hoặc vị trí kho.
+3. Tìm theo tên hoặc mã nếu màn hình có ô tìm kiếm.
+4. Kiểm tra trạng thái hoạt động của bản ghi.
+5. Mở chi tiết khi cần đối chiếu.
 
-### 5.3 Lưu ý
+### Khi dùng dữ liệu tổ chức trên chứng từ
 
-- Chỉ chọn chi nhánh và kho đang hoạt động khi lập chứng từ.
-- Không tự ý dùng một kho đã ngừng hoạt động.
-- Việc tạo, sửa hoặc khóa chi nhánh/kho phụ thuộc quyền quản trị được cấp.
+1. Chỉ chọn chi nhánh đang hoạt động.
+2. Chỉ chọn kho đang hoạt động.
+3. Kiểm tra kho thuộc đúng chi nhánh.
+4. Không chọn vị trí kho đã ngừng sử dụng.
+
+### Tạo hoặc sửa
+
+Chỉ thực hiện khi tài khoản có nút tạo/sửa và được giao nhiệm vụ. Nếu không thấy nút, không coi là lỗi; trước tiên kiểm tra quyền.
 
 ---
 
-## 6. Khách hàng và đối tác
+## 5. Khách hàng và điểm bán từ MCP
 
-### 6.1 Khách hàng chính thức
+**Trạng thái: Xem dữ liệu khách theo quyền; điểm bán MCP chưa tự động là khách chính thức.**
 
-Khách hàng chính thức là khách đã có mã trong NPP Core.
+### Phân biệt hai loại dữ liệu
 
-Khách hàng chính thức được dùng cho các nghiệp vụ như:
+- **Khách hàng chính thức:** đã có mã trong NPP Core, được dùng cho đơn bán hàng, giao hàng và công nợ.
+- **Điểm bán MCP:** điểm ghé hoặc điểm bán ngoài thị trường; chưa tự động có mã khách công ty.
 
-- Lập đơn bán hàng chính thức.
-- Giao hàng.
-- Theo dõi công nợ.
-- Áp dụng bảng giá hoặc chính sách thương mại.
+Một điểm bán MCP chỉ được dùng cho đơn bán hàng chính thức sau khi được tạo thành khách mới hoặc liên kết với khách đã tồn tại.
 
-### 6.2 Điểm bán từ MCP chưa phải khách hàng chính thức
+### Cách kiểm tra khách trước khi xử lý đơn
 
-Điểm bán được nhân viên thị trường thêm trong tuyến hoặc phiên làm việc chưa tự động trở thành khách hàng chính thức.
+1. Mở danh sách khách hàng hoặc màn chọn khách trong nghiệp vụ liên quan.
+2. Tìm theo tên, số điện thoại, địa chỉ hoặc mã khách.
+3. Kiểm tra trạng thái khách còn hoạt động.
+4. Kiểm tra đúng địa chỉ giao hàng.
+5. Nếu không tìm thấy khách, chuyển sang hàng đợi **Mở / liên kết mã khách**; không tự tạo dữ liệu trùng.
 
-Điểm bán chỉ được dùng để tạo đơn bán hàng chính thức khi đã:
+---
 
-- Được tạo thành khách hàng mới trong Core; hoặc
-- Được liên kết với một khách hàng Core đã tồn tại.
+## 6. Mở hoặc liên kết mã khách
 
-### 6.3 Đề nghị mở hoặc liên kết mã khách
+**Trạng thái: Có hàng đợi và màn xử lý; thao tác kết luận phụ thuộc quyền chưa chốt đầy đủ.**
 
-Màn này dùng để xử lý các điểm bán đã phát sinh nhu cầu mua hàng nhưng chưa có mã khách chính thức.
-
-Cách xem hàng đợi:
+### Mở hàng đợi
 
 1. Mở nhóm **Bán hàng**.
 2. Chọn **Mở / liên kết mã khách**.
 3. Xem danh sách đề nghị đang chờ.
-4. Mở đề nghị cần xử lý.
-5. Kiểm tra thông tin đề xuất như tên khách, địa chỉ và thông tin liên hệ.
-6. Kiểm tra khách có bị trùng với dữ liệu hiện có hay không.
+4. Chọn đề nghị cần kiểm tra.
 
-Các kết quả nghiệp vụ có thể gồm:
+### Kiểm tra một đề nghị
 
-- Tạo khách hàng mới.
-- Liên kết với khách hàng đã tồn tại.
-- Yêu cầu bổ sung thông tin.
-- Từ chối đề nghị.
-- Chuyển ngoại lệ lên cấp quản lý khi vượt quyền xử lý thông thường.
+1. Đọc tên điểm bán hoặc tên khách đề xuất.
+2. Kiểm tra số điện thoại và thông tin liên hệ nếu có.
+3. Kiểm tra địa chỉ, phường/xã và tỉnh/thành.
+4. Tìm trong dữ liệu khách hiện có để tránh tạo trùng.
+5. Đối chiếu nguồn đề nghị và thời điểm cập nhật.
+6. Ghi nhận phần thông tin còn thiếu nếu chưa đủ căn cứ xử lý.
 
-### 6.4 Trạng thái hiện tại
+### Kết quả nghiệp vụ có thể có
 
-Hệ thống đã có nền xử lý đề nghị mở hoặc liên kết mã khách và hàng đợi theo dõi.
+- tạo khách hàng mới;
+- liên kết với khách hàng đã tồn tại;
+- yêu cầu bổ sung thông tin;
+- từ chối đề nghị;
+- chuyển ngoại lệ lên cấp quản lý.
 
-Tuy nhiên, quyền chi tiết cho từng vai trò vẫn phải được chốt rõ trước khi áp dụng rộng rãi. Không coi mọi tài khoản NPP đều được quyền tạo hoặc duyệt mã khách.
+### Quy tắc hiện tại
+
+Không phải mọi tài khoản NPP đều được tạo hoặc duyệt mã khách. Chỉ bấm hành động kết luận khi tài khoản đã được giao quyền rõ ràng. Trường hợp trùng khách, rủi ro công nợ, hạn mức đặc biệt hoặc mở lại khách bị khóa phải chuyển đúng cấp xử lý.
 
 ---
 
 ## 7. Hàng hóa, SKU, đơn vị và giá
 
-### 7.1 Mục đích
+**Trạng thái: Tra cứu được theo quyền.**
 
-Khu vực hàng hóa dùng để xem dữ liệu phục vụ mua bán và tồn kho, gồm:
-
-- Sản phẩm.
-- Biến thể hoặc SKU.
-- Đơn vị tính.
-- Quy đổi đơn vị.
-- Mã vạch nếu có.
-- Bảng giá và nền giá bán.
-
-### 7.2 Cách tra cứu
+### Tìm sản phẩm hoặc SKU
 
 1. Mở nhóm **Hàng hóa**.
 2. Chọn danh sách sản phẩm hoặc SKU.
-3. Tìm theo tên, mã hoặc từ khóa.
-4. Mở chi tiết để kiểm tra đơn vị và thông tin liên quan.
+3. Nhập tên, mã hoặc từ khóa.
+4. Chọn đúng SKU cần dùng.
+5. Mở chi tiết để kiểm tra đơn vị tính, mã vạch và trạng thái hoạt động nếu có.
 
-### 7.3 Lưu ý khi dùng cho chứng từ
+### Kiểm tra trước khi dùng trên chứng từ
 
-- Phải chọn đúng SKU, không chỉ chọn tên sản phẩm chung.
-- Phải chọn đúng đơn vị tính.
-- Không tự nhập giá ngoài chính sách khi tài khoản không có quyền.
-- Khi giá không tải được hoặc không đúng, dừng xác nhận chứng từ và báo người phụ trách dữ liệu giá.
+1. Chọn đúng SKU, không chỉ dựa vào tên sản phẩm chung.
+2. Kiểm tra đúng đơn vị tính.
+3. Kiểm tra quy đổi đơn vị nếu mua hoặc bán theo thùng, gói hoặc đơn vị khác.
+4. Kiểm tra giá được hệ thống trả về.
+5. Nếu giá trống hoặc khác chính sách, dừng xác nhận và báo người phụ trách dữ liệu giá.
+
+### Không được làm
+
+- Không tự đổi giá ngoài chính sách khi không có quyền.
+- Không dùng SKU ngừng hoạt động.
+- Không nhập số lượng bằng một đơn vị nhưng hiểu theo đơn vị khác.
 
 ---
 
 ## 8. Điều hành bán hàng
 
-### 8.1 Mục đích
+**Trạng thái: Đã có thể xem và mở hàng đợi.**
 
-**Điều hành bán hàng** là trung tâm tiếp nhận và theo dõi nhu cầu bán hàng từ nhiều nguồn.
+Đây là nơi Sales Admin, CS hoặc kế toán theo dõi nhu cầu bán hàng từ các nguồn.
 
-Các nguồn có thể gồm:
-
-- Nhân viên NPP nhập trực tiếp.
-- MCP Field gửi nhu cầu hoặc order intent.
-- Website đặt hàng.
-- Các nguồn tích hợp khác trong tương lai.
-
-### 8.2 Nội dung hiện có
-
-Màn điều hành hiện có thể hiển thị:
-
-- Số lượng việc bán hàng đang chờ.
-- Đơn nháp chờ xác nhận.
-- Đề nghị mở hoặc liên kết mã khách.
-- Liên kết sang màn đơn bán hàng.
-- Liên kết sang màn xử lý mã khách.
-
-### 8.3 Cách sử dụng
+### Cách sử dụng
 
 1. Mở nhóm **Bán hàng**.
 2. Chọn **Điều hành bán hàng**.
-3. Kiểm tra phần **Đơn chờ xác nhận**.
-4. Kiểm tra phần **Đề nghị mở hoặc liên kết mã khách**.
-5. Chọn bản ghi cần xử lý hoặc mở màn chuyên trách tương ứng.
+3. Xem tổng số việc bán hàng đang chờ.
+4. Kiểm tra khu vực **Đơn chờ xác nhận**.
+5. Kiểm tra khu vực **Đề nghị mở hoặc liên kết mã khách**.
+6. Chọn liên kết sang màn chuyên trách tương ứng.
 
-### 8.4 Phân biệt NPP Operations và Admin
+### Xử lý đơn chờ xác nhận
 
-NPP Operations xử lý việc thường ngày như:
+1. Mở **Đơn chờ xác nhận** hoặc chọn **Xem đơn bán hàng**.
+2. Mở đơn cần kiểm tra.
+3. Đối chiếu khách hàng, kho, nguồn đơn và thời điểm cập nhật.
+4. Kiểm tra dòng hàng, số lượng và dữ liệu thương mại nếu tài khoản được xem.
+5. Chỉ xác nhận hoặc chuyển trạng thái khi vai trò đã được cấp quyền.
 
-- Kiểm tra nhu cầu bán hàng.
-- Xử lý đơn nháp thông thường.
-- Xử lý mã khách thông thường.
-- Theo dõi tiến độ xử lý.
+### Xử lý đề nghị mã khách
 
-Admin MCP/NPP chỉ xử lý ngoại lệ như:
+1. Mở dòng đề nghị.
+2. Kiểm tra thông tin điểm bán.
+3. Tìm khách trùng.
+4. Chuyển sang màn xử lý mã khách để thực hiện hành động được phép.
 
-- Khách trùng chưa rõ cách xử lý.
-- Khách có rủi ro công nợ.
-- Đơn vượt hạn mức.
-- Đơn vượt quyền chiết khấu.
-- Đơn dưới giá sàn.
-- Đơn cần duyệt trong điều kiện thiếu hàng hoặc rủi ro đặc biệt.
+### Ranh giới với Admin MCP/NPP
+
+NPP Operations xử lý công việc hằng ngày. Admin MCP/NPP chỉ xử lý ngoại lệ vượt quyền như hạn mức lớn, giá đặc biệt, khách rủi ro, khách bị khóa hoặc đơn cần cấp quản lý chấp thuận.
 
 ---
 
 ## 9. Đơn bán hàng
 
-### 9.1 Mục đích
+**Trạng thái: Có danh sách, chi tiết và nền xử lý; chưa coi việc tạo đơn mới là đã mở chính thức cho toàn bộ XNT.**
 
-Đơn bán hàng là chứng từ ghi nhận khách mua sản phẩm gì, số lượng bao nhiêu, tại kho hoặc chi nhánh nào và theo điều kiện thương mại nào.
+### Xem danh sách đơn
 
-### 9.2 Các phần nền hiện có
+1. Mở nhóm **Bán hàng**.
+2. Chọn **Đơn bán hàng**.
+3. Dùng bộ lọc trạng thái hoặc ô tìm kiếm nếu có.
+4. Chọn đơn cần xem.
+5. Kiểm tra thông tin khách, kho, nguồn đơn, dòng hàng và trạng thái.
 
-Hệ thống đã có nền cho:
+### Kiểm tra đơn nháp
 
-- Danh sách Sales Order.
-- Đơn nháp.
-- Chi tiết đơn.
-- Dòng hàng.
-- Dữ liệu thương mại.
-- Xác nhận hoặc chuyển trạng thái theo luồng được triển khai.
-- Liên kết sang các bước fulfillment và giao hàng ở các phase đã có.
+1. Mở đơn có trạng thái nháp hoặc chờ xác nhận.
+2. Kiểm tra khách có mã chính thức và đang hoạt động.
+3. Kiểm tra địa chỉ giao hàng.
+4. Kiểm tra chi nhánh và kho.
+5. Kiểm tra từng SKU, đơn vị và số lượng.
+6. Kiểm tra giá và thông tin thương mại.
+7. Kiểm tra ghi chú hoặc nguồn tạo đơn.
+8. Chỉ thực hiện hành động tiếp theo khi có quyền.
 
-### 9.3 Trạng thái sử dụng thực tế hiện tại
+### Tạo đơn mới
 
-**Chưa coi chức năng tạo đơn mới là đã sẵn sàng cho toàn bộ người dùng XNT.**
+**Chưa sử dụng chính thức cho toàn bộ người dùng XNT.**
 
-Lý do:
+Tại thời điểm cập nhật tài liệu:
 
-- Chưa chốt ma trận quyền chi tiết cho từng vai trò.
-- Chưa xác nhận mọi tài khoản cần dùng đã có nút và quyền tạo đơn.
-- Chưa nghiệm thu đầy đủ luồng tạo đơn đầu-cuối cho từng nhóm người dùng.
+- chưa chốt ma trận quyền ai được tạo, sửa, xác nhận, hủy hoặc duyệt ngoại lệ;
+- chưa xác nhận mọi tài khoản XNT đã nhìn thấy đúng nút tạo đơn;
+- chưa nghiệm thu đầy đủ luồng đầu-cuối theo từng vai trò.
 
-Do đó, tại thời điểm cập nhật tài liệu này:
-
-- Có thể xem và xử lý những đơn mà tài khoản được cấp quyền truy cập.
-- Chỉ thao tác tạo, sửa, xác nhận hoặc hủy khi tài khoản đã được cấp quyền rõ ràng và luồng đã được nghiệm thu.
-- Không hướng dẫn người dùng tự thử bằng dữ liệu production khi chưa có phân công.
-
-### 9.4 Quy trình dự kiến khi chức năng tạo đơn được mở chính thức
-
-Phần này chỉ dùng làm khung cập nhật, chưa coi là hướng dẫn vận hành hoàn chỉnh:
-
-1. Chọn khách hàng chính thức.
-2. Chọn địa chỉ giao hàng.
-3. Chọn chi nhánh và kho.
-4. Chọn SKU và đơn vị.
-5. Nhập số lượng.
-6. Kiểm tra giá và chính sách.
-7. Lưu nháp.
-8. Kiểm tra lại toàn bộ đơn.
-9. Xác nhận theo quyền.
-10. Chuyển sang fulfillment, giao hàng và công nợ theo lifecycle.
-
-Khi chức năng tạo đơn được hoàn thiện, mục này phải được cập nhật bằng ảnh màn hình, tên nút thật và quyền thao tác cụ thể.
+Vì vậy tài liệu không hướng dẫn người dùng tự tạo đơn production ở thời điểm này. Khi chức năng được mở chính thức, mục này phải được cập nhật theo đúng tên nút, trường nhập, quyền và kết quả thật trên giao diện.
 
 ---
 
 ## 10. Mua hàng
 
-### 10.1 Mục đích
+**Trạng thái: Đã có nền Purchase Order, nhận hàng và công nợ nhà cung cấp; chưa phát hành hướng dẫn thao tác đại trà.**
 
-Khu vực mua hàng phục vụ nghiệp vụ với nhà cung cấp.
+Hệ thống đã có các phần nghiệp vụ như Purchase Order, nhận hàng từng phần, chênh lệch, trả hàng nhà cung cấp, phải trả và phân bổ thanh toán.
 
-Nền chức năng đã có gồm:
+### Người dùng hiện tại cần làm gì
 
-- Purchase Order.
-- Dòng hàng mua.
-- Nhận hàng từng phần.
-- Chênh lệch số lượng hoặc chất lượng.
-- Trả hàng nhà cung cấp.
-- Ghi nhận phải trả.
-- Thanh toán và phân bổ thanh toán theo phạm vi đã triển khai.
+1. Chỉ mở và thao tác khi được phân công vào nghiệp vụ mua hàng.
+2. Kiểm tra nhà cung cấp, kho, SKU và đơn vị trước mọi hành động.
+3. Phân biệt rõ đặt mua với nhận hàng thực tế.
+4. Không sửa hoặc xóa chứng từ đã post.
+5. Khi sai, dùng nghiệp vụ đảo hoặc điều chỉnh được hệ thống hỗ trợ.
 
-### 10.2 Cách sử dụng ở thời điểm hiện tại
+### Chưa hướng dẫn thao tác tạo Purchase Order
 
-Người dùng chỉ thao tác phần mua hàng khi:
-
-- Được cấp đúng quyền.
-- Đã được hướng dẫn nghiệp vụ nội bộ.
-- Kho, nhà cung cấp, SKU và đơn vị đã được thiết lập đúng.
-
-Không sửa hoặc xóa chứng từ đã post. Khi sai phải dùng nghiệp vụ đảo hoặc điều chỉnh được hệ thống hỗ trợ.
-
-### 10.3 Lưu ý
-
-- Purchase Order không phải Goods Receipt.
-- Đặt mua không đồng nghĩa đã nhập kho.
-- Nhận hàng thực tế mới là cơ sở ghi nhận tồn kho và công nợ theo lifecycle.
+Chưa có tài liệu người dùng đủ bằng chứng về tên nút, trường nhập và quyền từng vai trò trên production. Phần này sẽ được bổ sung sau khi màn và quyền được nghiệm thu.
 
 ---
 
 ## 11. Kho và tồn kho
 
-### 11.1 Mục đích
+**Trạng thái: Có nền inventory ledger và các luồng kho; chưa phát hành hướng dẫn thao tác đại trà cho mọi vai trò.**
 
-Khu vực kho dùng để theo dõi:
+### Cách xem thông tin kho
 
-- Kho và vị trí kho.
-- Tồn kho.
-- Reservation.
-- Nhập, xuất, chuyển hoặc điều chỉnh theo nghiệp vụ được cho phép.
-- Lô và hạn dùng khi áp dụng.
+1. Mở nhóm **Kho**.
+2. Chọn màn tồn kho hoặc nghiệp vụ kho được cấp quyền.
+3. Chọn đúng kho và vị trí.
+4. Tìm SKU cần kiểm tra.
+5. Đọc đúng loại số lượng: tồn thực tế, đã giữ chỗ hoặc khả dụng nếu màn hình hiển thị.
 
-### 11.2 Nguyên tắc quan trọng
+### Nguyên tắc bắt buộc
 
-- Tồn kho phải dựa trên inventory ledger.
 - Không sửa trực tiếp số tồn.
-- Không cho âm kho mặc định.
+- Không tự tạo tồn âm.
+- Reservation không phải hàng đã xuất.
 - Chứng từ đã post không sửa hoặc xóa trực tiếp.
-- Sai phải dùng reversal hoặc adjustment.
+- Sai phải dùng reversal hoặc adjustment theo nghiệp vụ.
 
-### 11.3 Trạng thái hướng dẫn
+### Các thao tác chưa hướng dẫn đại trà
 
-Các chức năng nền kho đã được triển khai theo từng phase, nhưng tài liệu người dùng chi tiết cho từng thao tác nhập, xuất, reservation và điều chỉnh sẽ được bổ sung khi vai trò và màn hình vận hành được nghiệm thu hoàn chỉnh.
+Nhập, xuất, chuyển kho, stocktake, reservation và điều chỉnh chỉ được bổ sung hướng dẫn sau khi chốt vai trò và nghiệm thu đúng màn vận hành.
 
 ---
 
 ## 12. Fulfillment và Delivery Order
 
-### 12.1 Phân biệt các bước
+**Trạng thái: Có nền chức năng; sử dụng theo quyền và theo quy trình đã phân công.**
 
-Luồng bán hàng được tách như sau:
+Luồng đúng:
 
 ```text
 Sales Order
@@ -400,174 +329,165 @@ Sales Order
 → Delivery Trip / Delivery Attempt
 ```
 
-Ý nghĩa:
+### Cách đọc dữ liệu
 
-- Sales Order: khách đặt mua gì.
-- Fulfillment/Allocation: hàng nào được phân bổ để xử lý.
-- Delivery Order: phần hàng cần giao.
-- Delivery Trip: chuyến giao cụ thể.
-- Delivery Attempt: kết quả từng lần giao.
+1. Mở đơn bán hàng.
+2. Kiểm tra phần hàng đã được phân bổ.
+3. Kiểm tra Delivery Order được tạo cho phần hàng nào.
+4. Kiểm tra chuyến giao và kết quả từng lần giao.
+5. Không kết luận toàn bộ đơn hoàn tất chỉ vì một lần giao thành công.
 
-### 12.2 Lưu ý
+### Quy tắc
 
-- Một Sales Order có thể tạo nhiều Delivery Order.
-- Giao một phần không tự động hoàn thành toàn bộ đơn.
-- Giao thất bại không được làm mất dấu hàng đã xuất hoặc công việc cần xử lý tiếp.
-- Trạng thái đơn, trạng thái giao và trạng thái thanh toán là các trạng thái khác nhau.
+- Một Sales Order có thể có nhiều Delivery Order.
+- Giao một phần không tự hoàn tất toàn bộ đơn.
+- Giao thất bại không làm mất dấu phần hàng cần xử lý tiếp.
+- Trạng thái giao hàng khác trạng thái thanh toán.
 
-### 12.3 Trạng thái hiện tại
-
-Hệ thống đã có nền fulfillment, Delivery Order và điều phối theo các phase hiện tại. Hướng dẫn thao tác chi tiết sẽ được cập nhật sau khi từng vai trò vận hành được chốt và nghiệm thu trên giao diện production.
+Các thao tác phân bổ, tạo Delivery Order hoặc thay đổi lifecycle chưa được hướng dẫn đại trà khi ma trận quyền chưa chốt.
 
 ---
 
-## 13. Delivery / Giao hàng
+## 13. Điều phối chuyến giao trong NPP Operations
 
-Ứng dụng giao hàng dùng tại:
+**Trạng thái: Có workspace điều phối theo Phase 6E; chỉ người có quyền logistics được thao tác.**
 
-```text
-https://log.nguyenlieuhungphat.com
-```
+### Theo dõi chuyến
 
-Ứng dụng này dành cho luồng giao hàng và tài xế, tách khỏi NPP Operations.
+1. Mở nhóm giao hàng hoặc điều phối.
+2. Chọn danh sách chuyến.
+3. Chọn chuyến cần xem.
+4. Kiểm tra tài xế, kho, các điểm giao và Delivery Order được gán.
+5. Kiểm tra trạng thái chuyến và kết quả giao.
 
-NPP Operations dùng để chuẩn bị và điều phối nghiệp vụ. Delivery dùng để thực hiện chuyến giao và cập nhật kết quả theo quyền được cấp.
+### Xem kết quả giao hàng
 
-Không sử dụng tài khoản NPP Operations thay cho tài khoản tài xế nếu hai vai trò được tách riêng.
-
----
-
-## 14. Công nợ và thanh toán
-
-### 14.1 Nguyên tắc
-
-- Công nợ khách hàng dựa trên receivable ledger.
-- Công nợ nhà cung cấp dựa trên payable ledger.
-- Thanh toán phải có chứng từ và phân bổ.
-- Không dùng một cờ đơn giản như `đã trả` để thay cho lịch sử thanh toán thực tế.
-
-### 14.2 Trạng thái hiện tại
-
-Nền phải thu, phải trả, thanh toán và phân bổ đã được triển khai theo phạm vi từng phase. Hướng dẫn thao tác chi tiết cho người dùng sẽ được bổ sung khi các màn và quyền tương ứng được nghiệm thu đầy đủ.
+1. Mở chuyến hoặc Delivery Order liên quan.
+2. Xem từng delivery attempt.
+3. Đọc kết quả: giao đủ, giao một phần, không giao được hoặc hẹn giao lại.
+4. Kiểm tra số lượng thực giao và phần còn lại.
+5. Không ghi kết quả thay tài xế từ NPP Operations nếu màn chỉ cho phép đọc.
 
 ---
 
-## 15. Phân quyền người dùng
+## 14. Đối soát cuối chuyến
 
-### 15.1 Trạng thái hiện tại
+**Trạng thái: Đã có chức năng; dùng theo quyền điều phối và kho.**
 
-Hệ thống có nền người dùng, vai trò và permission. Tuy nhiên, ma trận quyền nghiệp vụ chi tiết cho từng nhóm người dùng chưa được coi là đã chốt hoàn chỉnh trong tài liệu này.
+### Cách đối soát
 
-Chưa được mặc định các vai trò sau có toàn quyền:
+1. Mở chuyến cần đối soát.
+2. Mở khu vực đối soát cuối chuyến.
+3. Kiểm tra số lượng đã xuất lên xe.
+4. Kiểm tra số lượng đã giao.
+5. Kiểm tra số lượng đã nhận lại kho.
+6. Kiểm tra phần còn trên xe hoặc chưa được giải quyết.
+7. Kho chỉ ghi nhận hàng về sau khi thực nhận.
+8. Chỉ đóng chuyến khi mọi điểm giao đã có kết quả và toàn bộ số lượng đã được giao hoặc nhận lại kho.
 
-- XNT.
-- Sales Admin.
-- CS.
-- Kế toán.
-- Kho.
-- Điều phối.
-- Quản lý bán hàng.
-- CEO hoặc Admin.
+### Không được làm
 
-### 15.2 Ma trận quyền cần chốt
-
-Mỗi chức năng cần xác định ít nhất các quyền:
-
-- Xem danh sách.
-- Xem chi tiết.
-- Tạo mới.
-- Sửa nháp.
-- Gửi xác nhận.
-- Xác nhận.
-- Từ chối.
-- Hủy.
-- Duyệt ngoại lệ.
-- Phân bổ kho.
-- Tạo Delivery Order.
-- Điều phối chuyến.
-- Ghi nhận giao hàng.
-- Ghi nhận hoặc phân bổ thanh toán.
-- Đảo hoặc điều chỉnh chứng từ.
-- Xuất dữ liệu.
-- Quản trị người dùng và quyền.
-
-### 15.3 Nguyên tắc sử dụng trước khi chốt quyền
-
-- Không cấp rộng chỉ để người dùng thấy đủ nút.
-- Không dùng tài khoản Admin cho công việc thường ngày.
-- Không dựa vào việc nút bị ẩn để thay cho bảo vệ backend.
-- Mọi thao tác quan trọng phải được backend kiểm tra quyền.
-- Quyền phải theo nguyên tắc deny-by-default.
+- Không đóng chuyến khi còn assignment chưa có kết quả.
+- Không ghi nhận hàng về kho khi chưa thực nhận.
+- Không tự đảo movement xuất cũ; hệ thống dùng luồng nhận lại có truy vết.
 
 ---
 
-## 16. Các phần chưa hướng dẫn sử dụng chính thức
+## 15. Bằng chứng giao hàng
 
-Tại thời điểm cập nhật tài liệu này, các phần sau chưa được coi là hoàn chỉnh cho người dùng phổ thông:
+**Trạng thái: Có chức năng tùy chọn; không bắt buộc mọi lần giao.**
 
-- Tạo Sales Order mới cho XNT và từng vai trò cụ thể.
-- Ma trận quyền hoàn chỉnh cho toàn bộ nghiệp vụ.
-- Duyệt ngoại lệ đầy đủ trong Admin.
-- Hướng dẫn chi tiết fulfillment và allocation.
-- Hướng dẫn thao tác kho đầy đủ theo từng loại chứng từ.
-- Hướng dẫn Delivery Order và điều phối chuyến theo từng vai trò.
-- Hướng dẫn công nợ và thanh toán đầy đủ.
-- Báo cáo vận hành hoàn chỉnh.
-- Các luồng MCP cutover chưa được nghiệm thu production.
+Bằng chứng giao hàng được gắn vào delivery attempt đã ghi nhận.
 
-Những mục này sẽ được bổ sung sau khi code, quyền, test và nghiệm thu tương ứng hoàn tất.
+### Trong NPP Operations
 
----
+1. Mở chuyến hoặc kết quả giao hàng.
+2. Mở phần bằng chứng giao hàng nếu có.
+3. Xem loại bằng chứng, thời điểm và thông tin liên quan.
+4. Mở ảnh bằng liên kết tạm thời nếu hệ thống cung cấp.
+5. NPP Operations chỉ xem theo quyền; không sửa delivery attempt đã ghi.
 
-## 17. Cách báo lỗi
+### Lưu ý
 
-Khi gặp lỗi, người dùng cần cung cấp:
-
-- Thời gian xảy ra lỗi.
-- Ứng dụng đang dùng.
-- Tên màn hình.
-- Thao tác vừa thực hiện.
-- Mã chứng từ hoặc mã bản ghi nếu có.
-- Nội dung thông báo lỗi.
-- Ảnh chụp màn hình không chứa mật khẩu hoặc bí mật hệ thống.
-
-Không gửi:
-
-- Mật khẩu.
-- Token.
-- API key.
-- DATABASE_URL.
-- Secret của Vercel, Heroku, Cloudflare hoặc dịch vụ khác.
+- Không có ảnh không đồng nghĩa kết quả giao không hợp lệ.
+- POD là tùy chọn theo chính sách công ty.
+- Không chia sẻ liên kết ảnh tạm thời ra ngoài phạm vi công việc.
 
 ---
 
-## 18. Quy tắc cập nhật tài liệu
+## 16. Admin MCP/NPP
 
-Mỗi khi hoàn thành một chức năng mới, cần cập nhật tài liệu này theo thứ tự:
+**Trạng thái: Ứng dụng riêng, không phải nơi làm việc hằng ngày của XNT.**
 
-1. Xác nhận chức năng đã merge vào `main`.
-2. Xác nhận quyền của từng vai trò.
-3. Xác nhận production đã deploy nếu hướng dẫn dành cho production.
-4. Chạy nghiệm thu thao tác thực tế.
-5. Bổ sung tên menu, tên nút và quy trình từng bước.
-6. Ghi rõ trường hợp lỗi và cách xử lý.
-7. Cập nhật ngày ở đầu tài liệu.
-8. Không xóa cảnh báo của phần chưa hoàn thiện cho đến khi có đủ bằng chứng.
+Địa chỉ: `https://admin.nguyenlieuhungphat.com`.
+
+Admin dùng để xem tổng hợp và xử lý ngoại lệ vượt quyền, không dùng thay Sales Admin, CS, kế toán hoặc kho.
+
+Người dùng NPP Operations không chuyển toàn bộ đơn hoặc mã khách sang Admin. Chỉ chuyển trường hợp thật sự vượt quyền theo quy định.
 
 ---
 
-## 19. Tóm tắt phạm vi đang dùng
+## 17. Phân quyền hiện tại
 
-Hiện tại NPP Operations đã có nền cho:
+**Trạng thái: Chưa chốt ma trận quyền nghiệp vụ đầy đủ cho toàn bộ vai trò XNT.**
 
-- Đăng nhập và truy cập theo tài khoản.
-- Cơ cấu tổ chức, chi nhánh và kho.
-- Dữ liệu khách hàng, nhà cung cấp, hàng hóa và giá.
-- Purchase Order và nhận hàng theo phạm vi đã triển khai.
-- Sales Order foundation và hàng đợi đơn nháp.
-- Điều hành bán hàng.
-- Đề nghị mở hoặc liên kết mã khách.
-- Fulfillment, Delivery Order và logistics foundation.
-- Inventory, phải thu, phải trả và audit foundation.
+Chưa được mặc định rằng một vai trò có thể thực hiện toàn bộ các thao tác sau:
 
-Nhưng người dùng chỉ được thao tác chức năng đã được cấp quyền và nghiệm thu. Đặc biệt, chức năng tạo đơn cho XNT chưa được coi là sẵn sàng chính thức cho đến khi chốt quyền và hoàn thiện luồng sử dụng.
+- tạo đơn;
+- sửa đơn nháp;
+- xác nhận đơn;
+- hủy đơn;
+- tạo hoặc liên kết mã khách;
+- duyệt ngoại lệ;
+- phân bổ hàng;
+- tạo Delivery Order;
+- điều phối chuyến;
+- ghi nhận hàng về kho;
+- xử lý thanh toán hoặc công nợ.
+
+Trước khi giao người dùng chính thức, phải chốt ma trận gồm vai trò, màn được xem, hành động được làm, phạm vi chi nhánh/kho và trường hợp cần cấp trên duyệt.
+
+---
+
+## 18. Xử lý lỗi chung
+
+### Trang không tải được
+
+1. Kiểm tra mạng.
+2. Tải lại trang một lần.
+3. Đăng nhập lại nếu phiên hết hạn.
+4. Ghi lại thời điểm, tên màn và nội dung thông báo.
+5. Báo người phụ trách; không bấm gửi lặp lại nhiều lần.
+
+### Không thấy nút thao tác
+
+1. Kiểm tra đang ở đúng màn.
+2. Kiểm tra trạng thái chứng từ có cho phép hành động không.
+3. Kiểm tra vai trò và quyền tài khoản.
+4. Không dùng tài khoản người khác để làm thay.
+
+### Bấm lưu nhưng không thành công
+
+1. Đọc thông báo lỗi trên màn hình.
+2. Kiểm tra các trường bắt buộc.
+3. Kiểm tra khách, SKU, kho và đơn vị còn hoạt động.
+4. Không bấm lưu liên tục.
+5. Báo người phụ trách nếu lỗi lặp lại.
+
+---
+
+## 19. Quy tắc cập nhật tài liệu
+
+Sau mỗi phần chức năng được hoàn thiện, tài liệu phải được cập nhật cùng đợt với các nội dung:
+
+1. Trạng thái chức năng.
+2. Vai trò được sử dụng.
+3. Đường dẫn menu.
+4. Tên nút và trường nhập đúng trên giao diện.
+5. Các bước thao tác.
+6. Điều kiện trước khi lưu hoặc xác nhận.
+7. Kết quả sau thao tác.
+8. Lỗi thường gặp.
+9. Ảnh màn hình khi giao diện ổn định.
+
+Không thêm quy trình dự kiến vào phần hướng dẫn sử dụng như thể chức năng đã hoạt động.
