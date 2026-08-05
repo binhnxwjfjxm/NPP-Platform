@@ -86,7 +86,7 @@ try {
     );
     assert.ok(primaryHeight >= 44, "session primary action must be touchable");
 
-    const moreTrigger = sessionCard.getByRole("button", { name: /Mở thao tác phụ của phiên/ });
+    const moreTrigger = sessionCard.locator('summary[aria-label^="Mở thao tác phụ của phiên"]');
     await moreTrigger.click();
     for (const label of ["PDF", "Excel", "Word", "Sửa phiên", "Xóa phiên"]) {
       await sessionCard.getByText(label, { exact: true }).waitFor({ state: "visible" });
