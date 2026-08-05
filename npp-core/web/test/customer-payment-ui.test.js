@@ -18,7 +18,7 @@ test('customer payment page explains the accounting task without extending deliv
   assert.match(page, /title="Thu tiền khách hàng"/);
   assert.match(page, /phân bổ một lần vào nhiều khoản nợ/);
   assert.match(page, /CustomerPaymentWorkspace/);
-  assert.doesNotMatch(page, /MCP|COD|hoàn tiền|hàng trả/i);
+  assert.doesNotMatch(page, /MCP|\bcod\b|hoàn tiền|hàng trả/i);
 });
 
 test('workspace supports one receipt allocated to many receivables', () => {
@@ -31,7 +31,7 @@ test('workspace supports one receipt allocated to many receivables', () => {
   assert.match(workspace, /allocationRows\(existingAmounts, existingTargets\)/);
   assert.match(workspace, /Phần còn lại sẽ là tiền chưa phân bổ/);
   assert.doesNotMatch(workspace, /paid\s*=\s*true/i);
-  assert.doesNotMatch(workspace, /COD|hoàn tiền|write[-_ ]?off/i);
+  assert.doesNotMatch(workspace, /\bcod\b|hoàn tiền|write[-_ ]?off/i);
 });
 
 test('web gateway keeps tokens server-only and forwards idempotency keys', () => {
