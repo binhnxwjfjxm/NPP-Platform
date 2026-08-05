@@ -38,6 +38,7 @@ test('migration 053 reverses pickup receivable atomically without deleting poste
   assert.match(pickupReversalMigration, /OLD\.status IS DISTINCT FROM 'POSTED'/);
   assert.match(pickupReversalMigration, /NEW\.status IS DISTINCT FROM 'REVERSED'/);
   assert.match(pickupReversalMigration, /NEW\.issue_source_type IS DISTINCT FROM 'PICKUP_HANDOVER'/);
+  assert.match(pickupReversalMigration, /remaining_amount = 0/);
   assert.match(pickupReversalMigration, /entry_type[\s\S]*'SALE_REVERSE'/);
   assert.match(pickupReversalMigration, /-receivable\.original_amount/);
   assert.match(pickupReversalMigration, /receivable_reversal_requires_unallocated_open_document/);
