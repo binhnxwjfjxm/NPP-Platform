@@ -35,6 +35,14 @@ type Draft = {
 type SheetMode = "create" | "edit";
 
 const emptyDraft: Draft = { title: "", description: "", sortOrder: "0" };
+const focusableSelector = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "textarea:not([disabled])",
+  "select:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
 
 async function requestJson(path: string, init?: RequestInit) {
   const method = String(init?.method || "GET").toUpperCase();
@@ -67,6 +75,7 @@ export default function Page() {
   const [sheetMode, setSheetMode] = useState<SheetMode | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const sheetRef = useRef<HTMLElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const returnFocusRef = useRef<HTMLButtonElement | null>(null);
 
@@ -93,7 +102,38 @@ export default function Page() {
     window.requestAnimationFrame(() => titleInputRef.current?.focus());
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !pending) closeSheet();
+      if (event.key === "Escape" && !pending) {
+        closeSheet();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const sheet = sheetRef.current;
+      if (!sheet) return;
+      const focusable = Array.from(sheet.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+        (element) => element.getClientRects().length > 0,
+      );
+      if (!focusable.length) {
+        event.preventDefault();
+        sheet.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (!sheet.contains(active)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+        return;
+      }
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     }
 
     window.addEventListener("keydown", handleKeyDown);
@@ -330,10 +370,12 @@ export default function Page() {
           }}
         >
           <section
+            ref={sheetRef}
             className={styles.sheet}
             role="dialog"
             aria-modal="true"
             aria-labelledby="report-group-sheet-title"
+            tabIndex={-1}
           >
             <div className={styles.sheetHandle} aria-hidden="true" />
             <div className={styles.sheetHeader}>
