@@ -54,6 +54,11 @@ const LOGISTICS_TRIP_RECONCILIATION_SQL = [
   ),
 ].join('\n\n');
 
+const LOGISTICS_OPTIONAL_PROOF_OF_DELIVERY_SQL = readFileSync(
+  new URL('../../../../database/migrations/logistics/052_logistics_optional_proof_of_delivery.sql', import.meta.url),
+  'utf8',
+);
+
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
   Object.freeze({ id: '046_logistics_trip_planning', sql: LOGISTICS_TRIP_PLANNING_SQL }),
@@ -65,6 +70,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
     sql: LOGISTICS_DELIVERY_ATTEMPT_OUTBOX_SCHEDULE_SQL,
   }),
   Object.freeze({ id: '051_logistics_trip_reconciliation', sql: LOGISTICS_TRIP_RECONCILIATION_SQL }),
+  Object.freeze({
+    id: '052_logistics_optional_proof_of_delivery',
+    sql: LOGISTICS_OPTIONAL_PROOF_OF_DELIVERY_SQL,
+  }),
 ]);
 
 export { runMigrations };
