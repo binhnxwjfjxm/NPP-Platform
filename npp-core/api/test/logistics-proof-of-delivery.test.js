@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CORE_API_MIGRATIONS } from '../src/migrations/index.js';
 import { PERMISSIONS, PERMISSION_REGISTRY } from '../src/access/permissions.js';
-import { logisticsProofOfDeliveryInternals } from '../src/services/logistics-proof-of-delivery.js';
+import {
+  attachDriverProof,
+  logisticsProofOfDeliveryInternals,
+} from '../src/services/logistics-proof-of-delivery.js';
+import { logisticsPodRouteInternals } from '../src/routes/logistics-pod.js';
 
 const migrationSource = readFileSync(
   new URL('../../../database/migrations/logistics/052_logistics_optional_proof_of_delivery.sql', import.meta.url),
@@ -105,6 +109,110 @@ test('capture time is required so identical retry bodies keep a stable idempoten
   assert.equal(first.ok, true);
   assert.equal(retry.ok, true);
   assert.equal(first.normalized.payloadHash, retry.normalized.payloadHash);
+});
+
+test('committed photo POD replays metadata when storage is temporarily unavailable', async () => {
+  const installationId = 'test-installation';
+  const attemptId = '10000000-0000-4000-8000-000000000001';
+  const tripId = '20000000-0000-4000-8000-000000000001';
+  const stopId = '30000000-0000-4000-8000-000000000001';
+  const assignmentId = '40000000-0000-4000-8000-000000000001';
+  const deliveryOrderId = '50000000-0000-4000-8000-000000000001';
+  const driverId = '60000000-0000-4000-8000-000000000001';
+  const warehouseId = '70000000-0000-4000-8000-000000000001';
+  const employeeId = '80000000-0000-4000-8000-000000000001';
+  const proofId = '90000000-0000-4000-8000-000000000001';
+  const now = new Date('2026-08-05T02:00:00.000Z');
+  const photoBytes = Buffer.from('already-committed-photo');
+  const payload = {
+    podType: 'photo',
+    capturedAt: now.toISOString(),
+    fileName: 'proof.jpg',
+    contentType: 'image/jpeg',
+    contentBase64: photoBytes.toString('base64'),
+  };
+  const normalized = logisticsProofOfDeliveryInternals.normalizeProofPayload(
+    payload,
+    { maxObjectBytes: 5_242_880, now },
+  );
+  assert.equal(normalized.ok, true);
+
+  const existingProof = {
+    id: proofId,
+    installation_id: installationId,
+    delivery_attempt_id: attemptId,
+    trip_id: tripId,
+    trip_stop_id: stopId,
+    assignment_id: assignmentId,
+    delivery_order_id: deliveryOrderId,
+    driver_profile_id: driverId,
+    pod_type: 'photo',
+    object_key: `${installationId}/images/2026/08/${proofId}-proof.jpg`,
+    original_filename: 'proof.jpg',
+    content_type: 'image/jpeg',
+    byte_size: photoBytes.length,
+    checksum_sha256: normalized.normalized.file.checksumSha256,
+    receiver_name: null,
+    confirmation_reference: null,
+    note: null,
+    captured_at: now.toISOString(),
+    idempotency_key: 'pod-photo-replay',
+    payload_hash: normalized.normalized.payloadHash,
+  };
+
+  const client = {
+    async query(sql) {
+      if (/^(BEGIN|COMMIT|ROLLBACK)$/.test(sql)
+          || sql.includes('set_config')
+          || sql.includes('pg_advisory_xact_lock')) return { rows: [] };
+      if (sql.includes('FROM logistics.driver_profiles driver')) {
+        return { rows: [{ id: driverId, code: 'DRV', name: 'Tài xế', employee_id: employeeId }] };
+      }
+      if (sql.includes('FROM logistics.delivery_attempts attempt')) {
+        return { rows: [{
+          delivery_attempt_id: attemptId,
+          trip_id: tripId,
+          trip_stop_id: stopId,
+          assignment_id: assignmentId,
+          delivery_order_id: deliveryOrderId,
+          driver_profile_id: driverId,
+          result: 'delivered_full',
+          attempted_at: now.toISOString(),
+          trip_number: 'TRIP-1',
+          trip_status: 'dispatched',
+          warehouse_id: warehouseId,
+          unassigned_at: null,
+        }] };
+      }
+      if (sql.includes('FROM logistics.delivery_attempt_proofs')) return { rows: [existingProof] };
+      throw new Error(`unexpected query: ${sql}`);
+    },
+    async release() {},
+  };
+  const result = await attachDriverProof({
+    adapter: { async connect() { return client; } },
+    storageAdapter: logisticsPodRouteInternals.STORAGE_UNAVAILABLE_ADAPTER,
+    requestContext: {
+      installationId,
+      employeeId,
+      actorId: 'driver:test',
+      requestId: 'req-photo-replay',
+      sourceApp: 'delivery-web',
+      permissions: ['core.delivery-trip.driver-read', 'core.pod.attach'],
+      scopes: { warehouseIds: [warehouseId] },
+    },
+    tripId,
+    assignmentId,
+    attemptId,
+    idempotencyKey: 'pod-photo-replay',
+    payload,
+    maxObjectBytes: 5_242_880,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.replayed, true);
+  assert.equal(result.proof.id, proofId);
+  assert.equal(result.proof.file.fileName, 'proof.jpg');
+  assert.equal(result.proof.file.downloadUrl, null);
 });
 
 test('signature, OTP and manual confirmation require only their own reference shape', () => {
