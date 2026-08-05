@@ -76,7 +76,10 @@ function normalizeProofPayload(payload, { maxObjectBytes, now = new Date() }) {
   const podType = String(payload?.podType ?? '').trim().toLowerCase();
   if (!POD_TYPES.has(podType)) return failure('INVALID_POD_TYPE', 'POD type is invalid');
 
-  const capturedAt = normalizeCapturedAt(payload?.capturedAt ?? now.toISOString(), now);
+  if (!Object.prototype.hasOwnProperty.call(payload ?? {}, 'capturedAt')) {
+    return failure('INVALID_POD_CAPTURE_TIME', 'POD capture time is required');
+  }
+  const capturedAt = normalizeCapturedAt(payload.capturedAt, now);
   if (!capturedAt) return failure('INVALID_POD_CAPTURE_TIME', 'POD capture time is invalid');
 
   const receiverName = payload?.receiverName == null ? null : normalizedText(payload.receiverName, 200);
