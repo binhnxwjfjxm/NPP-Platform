@@ -69,18 +69,36 @@ for value in "$delivery_username" "$delivery_password" "$delivery_employee_id" "
   [ -n "$value" ] && echo "::add-mask::$value"
 done
 
+request_status() {
+  local url="$1"
+  shift
+  local status curl_exit
+  set +e
+  status="$(curl --silent --show-error --connect-timeout 8 --max-time 30 --retry 4 --retry-delay 3 \
+    --output "$response_file" --write-out '%{http_code}' "$@" "$url")"
+  curl_exit=$?
+  set -e
+  if [ "$curl_exit" -ne 0 ]; then
+    rm -f "$response_file"
+    echo "Production smoke request failed to complete; curl exit=${curl_exit}." >&2
+    return 1
+  fi
+  printf '%s' "$status"
+}
+
 expect_status() {
   local label="$1"
   local expected="$2"
   local url="$3"
   shift 3
   local status
-  status="$(curl --silent --show-error --connect-timeout 8 --max-time 30 --retry 4 --retry-delay 3 \
-    --output "$response_file" --write-out '%{http_code}' "$@" "$url" || true)"
+  if ! status="$(request_status "$url" "$@")"; then
+    echo "$label failed before a complete HTTP response." >&2
+    exit 1
+  fi
   if [ "$status" != "$expected" ]; then
+    rm -f "$response_file"
     echo "$label failed: expected $expected, got ${status:-none}." >&2
-    head -c 1000 "$response_file" >&2 || true
-    echo >&2
     exit 1
   fi
 }
@@ -91,14 +109,15 @@ expect_one_of() {
   local url="$3"
   shift 3
   local status
-  status="$(curl --silent --show-error --connect-timeout 8 --max-time 30 --retry 4 --retry-delay 3 \
-    --output "$response_file" --write-out '%{http_code}' "$@" "$url" || true)"
+  if ! status="$(request_status "$url" "$@")"; then
+    echo "$label failed before a complete HTTP response." >&2
+    exit 1
+  fi
   case ",$allowed," in
     *",$status,"*) ;;
     *)
+      rm -f "$response_file"
       echo "$label failed: expected one of $allowed, got ${status:-none}." >&2
-      head -c 1000 "$response_file" >&2 || true
-      echo >&2
       exit 1
       ;;
   esac
@@ -110,6 +129,11 @@ assert_json_data() {
 
 assert_json_error() {
   jq -e '.error.code | type == "string"' "$response_file" >/dev/null
+}
+
+assert_error_code() {
+  local expected="$1"
+  test "$(jq -r '.error.code // empty' "$response_file")" = "$expected"
 }
 
 # Core runtime and deny-by-default route registration.
@@ -150,15 +174,23 @@ fi
 test "$delivery_employee_id" = "$active_driver_employee_id" || \
   jq -e --arg employeeId "$delivery_employee_id" '.data | any(.employeeId == $employeeId)' "$response_file" >/dev/null
 
-for path in \
-  "/api/logistics/trips/$DUMMY_UUID/attempts" \
-  "/api/logistics/trips/$DUMMY_UUID/reconciliation" \
-  "/api/logistics/trips/$DUMMY_UUID/attempts/$DUMMY_UUID/pod"; do
-  expect_status "Core dynamic capability $path" 404 "$core_url$path" \
-    -H "Authorization: Bearer $backend_token" \
-    -H "x-request-id: phase-6e-smoke-${GITHUB_RUN_ID:-local}"
-  assert_json_error
-done
+expect_status 'Core delivery attempt capability' 404 \
+  "$core_url/api/logistics/trips/$DUMMY_UUID/attempts" \
+  -H "Authorization: Bearer $backend_token" \
+  -H "x-request-id: phase-6e-attempt-smoke-${GITHUB_RUN_ID:-local}"
+assert_error_code 'DELIVERY_TRIP_NOT_FOUND'
+
+expect_status 'Core reconciliation capability' 404 \
+  "$core_url/api/logistics/trips/$DUMMY_UUID/reconciliation" \
+  -H "Authorization: Bearer $backend_token" \
+  -H "x-request-id: phase-6e-reconciliation-smoke-${GITHUB_RUN_ID:-local}"
+assert_error_code 'DELIVERY_TRIP_NOT_FOUND'
+
+expect_status 'Core dispatcher POD capability' 404 \
+  "$core_url/api/logistics/trips/$DUMMY_UUID/attempts/$DUMMY_UUID/pod" \
+  -H "Authorization: Bearer $backend_token" \
+  -H "x-request-id: phase-6e-dispatcher-pod-smoke-${GITHUB_RUN_ID:-local}"
+assert_error_code 'DELIVERY_ATTEMPT_NOT_FOUND'
 
 expect_status 'Core driver trip list' 200 "$core_url/api/logistics/driver/trips?limit=1&offset=0" \
   -H "Authorization: Bearer $delivery_token" \
@@ -166,12 +198,12 @@ expect_status 'Core driver trip list' 200 "$core_url/api/logistics/driver/trips?
   -H "x-request-id: phase-6e-driver-smoke-${GITHUB_RUN_ID:-local}"
 assert_json_data
 
-expect_one_of 'Core optional POD driver route' '403,404' \
+expect_status 'Core optional POD driver route' 404 \
   "$core_url/api/logistics/driver/trips/$DUMMY_UUID/assignments/$DUMMY_UUID/attempts/$DUMMY_UUID/pod" \
   -H "Authorization: Bearer $delivery_token" \
   -H "x-npp-delivery-employee-id: $delivery_employee_id" \
   -H "x-request-id: phase-6e-pod-smoke-${GITHUB_RUN_ID:-local}"
-assert_json_error
+assert_error_code 'DELIVERY_ATTEMPT_NOT_FOUND'
 
 # NPP Operations live domain, fallback alias, pages and same-origin API.
 for base_url in "$NPP_PRODUCTION_URL" "$NPP_FALLBACK_URL"; do
@@ -209,7 +241,7 @@ curl --fail --silent --show-error --retry 4 --retry-delay 3 -u "$delivery_auth" 
   "${DELIVERY_PRODUCTION_URL%/}/" > "$html_file"
 grep -q 'Ứng dụng Giao hàng' "$html_file"
 grep -q 'Chuyến của tôi' "$html_file"
-grep -qv 'Không tải được chuyến' "$html_file"
+! grep -q 'Không tải được chuyến' "$html_file"
 css_asset="$(grep -oE '/_next/static/[^" ]+\.css' "$html_file" | head -n 1)"
 js_asset="$(grep -oE '/_next/static/[^" ]+\.js' "$html_file" | head -n 1)"
 test -n "$css_asset"
