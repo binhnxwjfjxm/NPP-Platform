@@ -8,7 +8,7 @@ const gatewaySource = read('lib/delivery-attempt-gateway.ts');
 const routeSource = read('app/api/logistics/trips/[tripId]/attempts/route.ts');
 const podRouteSource = read('app/api/logistics/trips/[tripId]/attempts/[attemptId]/pod/route.ts');
 const workspaceSource = read('app/logistics/delivery-attempts/delivery-attempt-workspace.tsx');
-const appShellSource = read('app/components/app-shell.tsx');
+const appShellCoreSource = read('app/components/app-shell-core.tsx');
 const middlewareSource = read('middleware.ts');
 
 test('NPP attempt and POD gateways are server-only and read-only', () => {
@@ -52,8 +52,8 @@ test('dispatcher workspace reads attempts and optional POD without driver mutati
   assert.doesNotMatch(workspaceSource, /method:\s*'(POST|PUT|PATCH|DELETE)'|Idempotency-Key|driverId|employeeId/);
 });
 
-test('logistics navigation exposes read-only attempt monitor', () => {
-  assert.match(appShellSource, /\/logistics\/delivery-attempts/);
-  assert.match(appShellSource, /Kết quả lần giao/);
-  assert.match(appShellSource, /logistics-attempt-shortcut/);
+test('persistent logistics navigation exposes the read-only attempt monitor', () => {
+  assert.match(appShellCoreSource, /href: '\/logistics\/delivery-attempts'/);
+  assert.match(appShellCoreSource, /label: 'Kết quả lần giao'/);
+  assert.match(appShellCoreSource, /testId: 'nav-logistics-delivery-attempts'/);
 });
