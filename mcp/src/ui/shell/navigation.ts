@@ -9,7 +9,7 @@ const OVERVIEW_NAV_ITEM: NavItem = {
   shortLabel: "Tổng",
   href: "/",
   description: "Tình hình kinh doanh và công việc cần xử lý",
-  icon: "home"
+  icon: "⌂"
 };
 
 const MCP_NAV_ITEM: NavItem = {
@@ -17,7 +17,7 @@ const MCP_NAV_ITEM: NavItem = {
   shortLabel: "MCP",
   href: "/mcp",
   description: "Quản lý tuyến và phiên đi thị trường",
-  icon: "mcp"
+  icon: "◇"
 };
 
 const ROUTES_NAV_ITEM: NavItem = {
@@ -25,7 +25,7 @@ const ROUTES_NAV_ITEM: NavItem = {
   shortLabel: "Tuyến",
   href: "/routes",
   description: "Quản lý tuyến và điểm bán trong tuyến",
-  icon: "route"
+  icon: "◎"
 };
 
 const VISITS_NAV_ITEM: NavItem = {
@@ -33,7 +33,7 @@ const VISITS_NAV_ITEM: NavItem = {
   shortLabel: "Đi tuyến",
   href: "/visits",
   description: "Ghi nhận kết quả tại từng điểm bán",
-  icon: "visit"
+  icon: "◉"
 };
 
 const SESSION_HISTORY_NAV_ITEM: NavItem = {
@@ -41,7 +41,7 @@ const SESSION_HISTORY_NAV_ITEM: NavItem = {
   shortLabel: "Phiên",
   href: "/mcp/sessions",
   description: "Tra cứu các phiên đi tuyến theo ngày",
-  icon: "history"
+  icon: "▤"
 };
 
 const CUSTOMERS_NAV_ITEM: NavItem = {
@@ -49,7 +49,7 @@ const CUSTOMERS_NAV_ITEM: NavItem = {
   shortLabel: "Khách",
   href: "/customers",
   description: "Hồ sơ và lịch sử chăm sóc điểm bán",
-  icon: "customer"
+  icon: "□"
 };
 
 const ORDERS_NAV_ITEM: NavItem = {
@@ -57,7 +57,7 @@ const ORDERS_NAV_ITEM: NavItem = {
   shortLabel: "Đơn",
   href: "/orders",
   description: "Theo dõi đơn hàng và doanh số",
-  icon: "order"
+  icon: "+"
 };
 
 const REPORTS_NAV_ITEM: NavItem = {
@@ -65,7 +65,7 @@ const REPORTS_NAV_ITEM: NavItem = {
   shortLabel: "Báo cáo",
   href: "/reports",
   description: "Báo cáo sau mỗi phiên đi tuyến",
-  icon: "report"
+  icon: "▣"
 };
 
 export const FIELD_CHECKS_NAV_ITEM: NavItem = {
@@ -73,7 +73,7 @@ export const FIELD_CHECKS_NAV_ITEM: NavItem = {
   shortLabel: "Thử SP",
   href: "/field-checks",
   description: "Theo dõi và cập nhật kết quả thử sản phẩm tại điểm bán",
-  icon: "field-check"
+  icon: "◈"
 };
 
 const PLANS_NAV_ITEM: NavItem = {
@@ -81,7 +81,7 @@ const PLANS_NAV_ITEM: NavItem = {
   shortLabel: "Việc",
   href: "/plans",
   description: "Công việc cần theo dõi và xử lý",
-  icon: "task"
+  icon: "✓"
 };
 
 const MCP_SETTINGS_NAV_ITEM: NavItem = {
@@ -89,7 +89,7 @@ const MCP_SETTINGS_NAV_ITEM: NavItem = {
   shortLabel: "Mẫu",
   href: "/mcp-setting",
   description: "Thiết lập lựa chọn nhanh cho báo cáo",
-  icon: "settings"
+  icon: "⚙"
 };
 
 export const PRIMARY_NAV_ITEMS: NavItem[] = [
@@ -127,7 +127,7 @@ export const SETTINGS_NAV_ITEM: NavItem = {
   shortLabel: "Cài đặt",
   href: "/settings",
   description: "Cài ứng dụng và cấu hình hành vi trên thiết bị",
-  icon: "settings"
+  icon: "⚙"
 };
 
 export const APP_MENU_GROUPS: AppMenuGroup[] = [
