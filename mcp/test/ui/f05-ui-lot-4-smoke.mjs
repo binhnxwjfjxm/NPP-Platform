@@ -185,6 +185,23 @@ try {
     const dialog = page.getByRole("dialog", { name: "Thêm nhóm" });
     await dialog.waitFor({ state: "visible" });
     assert.equal(await dialog.getAttribute("aria-modal"), "true");
+
+    const closeButton = dialog.getByRole("button", { name: "Đóng biểu mẫu nhóm" });
+    const cancelButton = dialog.getByRole("button", { name: "Hủy" });
+    await closeButton.focus();
+    await page.keyboard.press("Shift+Tab");
+    assert.equal(
+      await cancelButton.evaluate((node) => document.activeElement === node),
+      true,
+      "Shift+Tab from first control must wrap to last control",
+    );
+    await page.keyboard.press("Tab");
+    assert.equal(
+      await closeButton.evaluate((node) => document.activeElement === node),
+      true,
+      "Tab from last control must wrap to first control",
+    );
+
     await page.keyboard.press("Escape");
     await dialog.waitFor({ state: "hidden" });
 
@@ -241,6 +258,7 @@ try {
   result.mobileViewports = mobileViewports.map(({ width, height }) => `${width}x${height}`);
   result.sixScreenNoOverflow = "PASS";
   result.groupSheetAccessibility = "PASS";
+  result.groupFocusTrap = "PASS";
   result.groupMutationIdempotency = "PASS";
   result.desktopGroupTable = "PASS";
   result.redirects = "PASS";
