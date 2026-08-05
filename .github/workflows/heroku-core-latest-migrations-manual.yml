@@ -41,7 +41,6 @@ jobs:
     env:
       DEPLOY_REF: main
       HEROKU_APP_NAME: hung-phat
-      CORE_GATE_EVIDENCE_FILE: ${{ runner.temp }}/core-latest-migration-evidence.txt
 
     steps:
       - name: Validate exact issue command
@@ -104,6 +103,7 @@ jobs:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           POSTGRES_SERVICE_CONTAINER: ${{ job.services.postgres.id }}
           COMMENT_BODY: ${{ github.event.comment.body }}
+          CORE_GATE_EVIDENCE_FILE: ${{ runner.temp }}/core-latest-migration-evidence.txt
         run: |
           set -euo pipefail
           rm -f "$CORE_GATE_EVIDENCE_FILE"
@@ -124,6 +124,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           OPERATION_STATUS: ${{ job.status }}
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          CORE_GATE_EVIDENCE_FILE: ${{ runner.temp }}/core-latest-migration-evidence.txt
         run: |
           set -euo pipefail
           if [ "$OPERATION_STATUS" = success ]; then
