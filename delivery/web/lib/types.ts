@@ -39,6 +39,48 @@ export type DeliveryAttempt = DeliveryAttemptSummary & Readonly<{
   lines: readonly DeliveryAttemptLine[];
 }>;
 
+export type ProofOfDeliveryType = 'photo' | 'signature' | 'otp' | 'manual_confirm';
+
+export type ProofOfDelivery = Readonly<{
+  id: string;
+  deliveryAttemptId: string;
+  tripId: string;
+  assignmentId: string;
+  deliveryOrderId: string;
+  driverProfileId: string;
+  podType: ProofOfDeliveryType;
+  receiverName: string | null;
+  confirmationReference: string | null;
+  note: string | null;
+  capturedAt: string;
+  file: Readonly<{
+    fileName: string;
+    contentType: string;
+    byteSize: number;
+    checksumSha256: string;
+    downloadUrl: string | null;
+    downloadExpiresIn: number | null;
+  }> | null;
+}>;
+
+export type AttachProofOfDeliveryPayload = Readonly<{
+  podType: ProofOfDeliveryType;
+  capturedAt: string;
+  receiverName?: string | null;
+  confirmationReference?: string | null;
+  note?: string | null;
+  fileName?: string;
+  contentType?: string;
+  contentBase64?: string;
+}>;
+
+export type AttachProofOfDeliveryResponse = Readonly<{
+  ok: true;
+  proof: ProofOfDelivery;
+  replayed: boolean;
+  eventId?: string;
+}>;
+
 export type TripAssignment = Readonly<{
   assignmentId: string;
   deliveryOrderId: string;
