@@ -34,11 +34,13 @@ export function AppShell(props: AppShellProps) {
         { href: '/inventory/delivery-orders', label: 'Phiếu sẵn sàng giao', testId: 'logistics-delivery-order-shortcut' },
         { href: '/logistics/dispatch', label: 'Bàn giao chuyến', testId: 'logistics-dispatch-shortcut' },
         { href: '/logistics/delivery-attempts', label: 'Kết quả lần giao', testId: 'logistics-attempt-shortcut' },
+        { href: '/logistics/trip-reconciliation', label: 'Đối soát cuối chuyến', testId: 'logistics-reconciliation-shortcut' },
       ]
     : pathname.startsWith('/logistics')
       ? [
           { href: '/inventory/delivery-orders', label: 'Phiếu sẵn sàng giao', testId: 'logistics-delivery-order-shortcut' },
           { href: '/logistics/delivery-attempts', label: 'Kết quả lần giao', testId: 'logistics-attempt-shortcut' },
+          { href: '/logistics/trip-reconciliation', label: 'Đối soát cuối chuyến', testId: 'logistics-reconciliation-shortcut' },
         ]
       : pathname.startsWith('/inventory/delivery-orders')
         ? [{ href: '/logistics/trips', label: 'Điều phối chuyến', testId: 'inventory-logistics-shortcut' }]
