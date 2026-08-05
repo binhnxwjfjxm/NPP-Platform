@@ -6,7 +6,7 @@ async function source(path) {
   return readFile(new URL(`../${path}`, import.meta.url), "utf8");
 }
 
-test("session card keeps every existing action while using the new app-style hierarchy", async () => {
+test("session card keeps every existing action in a visible compact grid", async () => {
   const card = await source("src/features/mcp/McpLineCard.tsx");
   const css = await source("src/features/mcp/McpLineCard.module.css");
 
@@ -17,14 +17,15 @@ test("session card keeps every existing action while using the new app-style hie
   }
   assert.match(card, /line\.orderId \?/);
   assert.match(card, /Đơn NPP/);
-  assert.match(card, /data-customer-action-rows="1"/);
+  assert.match(card, /data-customer-action-rows="2"/);
   assert.match(card, /styles\.primaryRow/);
   assert.match(card, /Check-in điểm bán/);
   assert.match(card, /onToggleCheckin\(line\)/);
   assert.match(card, /onAction\(line, item\.action\)/);
-  assert.match(css, /grid-template-columns:\s*minmax\(0, 1fr\) 64px 64px/);
-  assert.match(css, /\.actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/);
-  assert.match(css, /@media \(max-width: 520px\)[\s\S]*?\.actions\s*\{[\s\S]*?overflow-x:\s*auto/);
+  assert.match(css, /grid-template-columns:\s*minmax\(0, 1fr\) 48px 48px/);
+  assert.match(css, /\.actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+  assert.doesNotMatch(css, /overflow-x:\s*auto/);
+  assert.doesNotMatch(css, /scroll-snap-type/);
   assert.doesNotMatch(css, /\.actions\s*\{[^}]*display:\s*none/s);
   assert.doesNotMatch(css, /\.action\s*\{[^}]*display:\s*none/s);
   assert.doesNotMatch(css, /\.checkin\s*\{[^}]*display:\s*none/s);
