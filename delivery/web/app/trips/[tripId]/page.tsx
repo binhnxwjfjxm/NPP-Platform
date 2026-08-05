@@ -129,7 +129,7 @@ export default async function TripDetailPage({ params }: PageProps) {
 
         <section className="noticeCard">
           <strong>Hàng chưa giao vẫn ở trên xe</strong>
-          <p>Màn này chỉ ghi kết quả lần giao. Không tự nhập kho, không POD/GPS và không thu tiền.</p>
+          <p>Màn này ghi kết quả lần giao; bằng chứng giao hàng là tùy chọn. Hàng chưa giao không tự nhập lại kho và chưa xử lý thu tiền.</p>
         </section>
       </main>
     );
