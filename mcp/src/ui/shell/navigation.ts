@@ -13,11 +13,19 @@ export const PRIMARY_NAV_ITEMS: NavItem[] = [
 export const SIDEBAR_NAV_ITEMS: NavItem[] = [
   PRIMARY_NAV_ITEMS[0], PRIMARY_NAV_ITEMS[1],
   { label: "Tuyến bán hàng", shortLabel: "Tuyến", href: "/routes", description: "Quản lý tuyến và điểm bán trong tuyến", icon: "◎" },
-  { label: "Đi tuyến hôm nay", shortLabel: "Hôm nay", href: "/visits", description: "Ghi nhận kết quả tại từng điểm bán", icon: "◇" },
+  { label: "Đi tuyến hôm nay", shortLabel: "Đi tuyến", href: "/visits", description: "Ghi nhận kết quả tại từng điểm bán", icon: "◉" },
   { label: "Lịch sử phiên", shortLabel: "Phiên", href: "/mcp/sessions", description: "Tra cứu các phiên đi tuyến theo ngày", icon: "▤" },
   { label: "Cài đặt MCP", shortLabel: "Mẫu", href: "/mcp-setting", description: "Thiết lập lựa chọn nhanh cho báo cáo", icon: "⚙" },
   { label: "Điểm bán", shortLabel: "Khách", href: "/customers", description: "Hồ sơ và lịch sử chăm sóc điểm bán", icon: "□" },
   PRIMARY_NAV_ITEMS[2], PRIMARY_NAV_ITEMS[3], PRIMARY_NAV_ITEMS[4]
+];
+
+export const FIELD_DOCK_ITEMS: NavItem[] = [
+  PRIMARY_NAV_ITEMS[0],
+  SIDEBAR_NAV_ITEMS[2],
+  SIDEBAR_NAV_ITEMS[3],
+  PRIMARY_NAV_ITEMS[2],
+  PRIMARY_NAV_ITEMS[3]
 ];
 
 export const SETTINGS_NAV_ITEM: NavItem = {
