@@ -22,6 +22,10 @@ const routeSource = readFileSync(
   new URL('../src/routes/logistics-reconciliation.js', import.meta.url),
   'utf8',
 );
+const requestContextSource = readFileSync(
+  new URL('../src/request-context.js', import.meta.url),
+  'utf8',
+);
 
 test('migration 051 is registered once and locks append-only reconciliation', () => {
   const migrations = CORE_API_MIGRATIONS.filter((entry) => entry.id === '051_logistics_trip_reconciliation');
@@ -39,10 +43,13 @@ test('migration 051 is registered once and locks append-only reconciliation', ()
   assert.doesNotMatch(migrationSource, /DELETE FROM inventory\.inventory_movements/);
 });
 
-test('reconciliation permissions are deny-by-default capability keys', () => {
+test('reconciliation permissions are deny-by-default and available to internal bootstrap', () => {
   assert.equal(PERMISSIONS.coreDeliveryTripReconciliationRead, 'core.delivery-trip.reconciliation-read');
   assert.equal(PERMISSIONS.coreDeliveryTripReturnReceive, 'core.delivery-trip.return-receive');
   assert.equal(PERMISSIONS.coreDeliveryTripClose, 'core.delivery-trip.close');
+  assert.match(requestContextSource, /PERMISSIONS\.coreDeliveryTripReconciliationRead/);
+  assert.match(requestContextSource, /PERMISSIONS\.coreDeliveryTripReturnReceive/);
+  assert.match(requestContextSource, /PERMISSIONS\.coreDeliveryTripClose/);
 });
 
 test('trusted inventory contract accepts only logistics IN for trip return', () => {
@@ -103,13 +110,42 @@ test('receipt normalization is exact, positive, unique and canonical', () => {
   assert.equal(duplicated.code, 'INVALID_INVENTORY_ISSUE_LINE');
 });
 
+test('operational timestamps must follow dispatch and stay near server receipt time', () => {
+  const accepted = logisticsTripReconciliationInternals.validateOperationalTimestamp({
+    value: '2026-08-05T01:00:00.000Z',
+    requestReceivedAt: '2026-08-05T01:02:00.000Z',
+    dispatchedAt: '2026-08-05T00:30:00.000Z',
+    code: 'INVALID_RECEIVED_AT',
+    label: 'receivedAt',
+  });
+  assert.equal(accepted.ok, true);
+  const beforeDispatch = logisticsTripReconciliationInternals.validateOperationalTimestamp({
+    value: '2026-08-05T00:20:00.000Z',
+    requestReceivedAt: '2026-08-05T01:02:00.000Z',
+    dispatchedAt: '2026-08-05T00:30:00.000Z',
+    code: 'INVALID_RECEIVED_AT',
+    label: 'receivedAt',
+  });
+  assert.equal(beforeDispatch.code, 'INVALID_RECEIVED_AT');
+  const future = logisticsTripReconciliationInternals.validateOperationalTimestamp({
+    value: '2026-08-05T02:00:00.000Z',
+    requestReceivedAt: '2026-08-05T01:02:00.000Z',
+    dispatchedAt: '2026-08-05T00:30:00.000Z',
+    code: 'INVALID_RECEIVED_AT',
+    label: 'receivedAt',
+  });
+  assert.equal(future.code, 'INVALID_RECEIVED_AT');
+});
+
 test('service and routes keep return, close, audit and outbox in the server boundary', () => {
   assert.match(routeSource, /reconciliation\|return-receipts\|close/);
+  assert.match(routeSource, /code\.startsWith\('INVALID_'\)/);
   assert.match(serviceSource, /postServerOwnedDomainMovement/);
   assert.match(serviceSource, /LOGISTICS_TRIP_RETURN/);
   assert.match(serviceSource, /insertAuditRecord/);
   assert.match(serviceSource, /insertOutboxEvent/);
   assert.match(serviceSource, /core\.delivery_trip\.return_received/);
   assert.match(serviceSource, /core\.delivery_trip\.closed/);
+  assert.match(serviceSource, /delivery_trips_close_idempotency_unique/);
   assert.doesNotMatch(serviceSource, /reverseMovement|reverseIssue|SALES_CUSTOMER_RETURN/);
 });
