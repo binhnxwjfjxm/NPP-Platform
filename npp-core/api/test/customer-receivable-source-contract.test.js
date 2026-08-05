@@ -10,6 +10,10 @@ const migration = readFileSync(
   new URL('../../../database/migrations/accounting/053_customer_receivable_ledger.sql', import.meta.url),
   'utf8',
 );
+const pickupReversalMigration = readFileSync(
+  new URL('../../../database/migrations/accounting/053_customer_receivable_pickup_reversal.sql', import.meta.url),
+  'utf8',
+);
 const migrationRegistry = source('src/migrations/index.js');
 const deliveryAttempt = source('src/services/logistics-driver-delivery.js');
 const pickup = source('src/services/sales-delivery-inventory.js');
@@ -30,11 +34,22 @@ test('migration 053 owns append-only customer receivable facts and rebuildable b
   );
 });
 
+test('migration 053 reverses pickup receivable atomically without deleting posted history', () => {
+  assert.match(pickupReversalMigration, /OLD\.status IS DISTINCT FROM 'POSTED'/);
+  assert.match(pickupReversalMigration, /NEW\.status IS DISTINCT FROM 'REVERSED'/);
+  assert.match(pickupReversalMigration, /NEW\.issue_source_type IS DISTINCT FROM 'PICKUP_HANDOVER'/);
+  assert.match(pickupReversalMigration, /entry_type[\s\S]*'SALE_REVERSE'/);
+  assert.match(pickupReversalMigration, /-receivable\.original_amount/);
+  assert.match(pickupReversalMigration, /receivable_reversal_requires_unallocated_open_document/);
+  assert.doesNotMatch(pickupReversalMigration, /DELETE FROM accounting\./);
+});
+
 test('migration 053 is registered after logistics migration 052', () => {
   const position052 = migrationRegistry.indexOf('052_logistics_optional_proof_of_delivery');
   const position053 = migrationRegistry.indexOf('053_customer_receivable_ledger');
   assert.ok(position052 >= 0);
   assert.ok(position053 > position052);
+  assert.match(migrationRegistry, /053_customer_receivable_pickup_reversal\.sql/);
 });
 
 test('accepted delivery and pickup post receivable inside their existing transaction', () => {
