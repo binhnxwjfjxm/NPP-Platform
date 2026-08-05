@@ -3,6 +3,7 @@ import { handleLogisticsRoutes } from './logistics.js';
 import { handleLogisticsAttemptRoutes } from './logistics-attempts.js';
 import { handleLogisticsDispatchRoutes } from './logistics-dispatch.js';
 import { handleLogisticsDriverRoutes } from './logistics-driver.js';
+import { handleLogisticsReconciliationRoutes } from './logistics-reconciliation.js';
 
 // Compatibility markers: handleFulfillmentOperationRoutes and handleDeliveryOrderRoutes
 // remain owned by inventory-core.js; this wrapper adds Logistics namespaces.
@@ -17,6 +18,9 @@ export async function handleInventoryRoutes(req, res, options) {
   }
   if (/^\/api\/logistics\/trips\/[^/]+\/dispatch$/.test(pathname)) {
     return handleLogisticsDispatchRoutes(req, res, options);
+  }
+  if (/^\/api\/logistics\/trips\/[^/]+\/(reconciliation|return-receipts|close)$/.test(pathname)) {
+    return handleLogisticsReconciliationRoutes(req, res, options);
   }
   if (pathname === '/api/logistics' || pathname.startsWith('/api/logistics/')) {
     return handleLogisticsRoutes(req, res, options);

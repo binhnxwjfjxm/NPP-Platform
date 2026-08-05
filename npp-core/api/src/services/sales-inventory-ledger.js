@@ -6,6 +6,11 @@ const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const QUANTITY_PATTERN = /^(0|[1-9]\d{0,17})(?:\.(\d{1,12}))?$/;
 const CODE_PATTERN = /^[A-Z0-9_.-]{1,64}$/;
 const SCALE = 1_000_000_000_000n;
+const DOMAIN_MOVEMENT_RULES = new Map([
+  ['SALES_DELIVERY_ISSUE', Object.freeze({ sourceDomain: 'SALES', direction: 'OUT' })],
+  ['SALES_CUSTOMER_RETURN', Object.freeze({ sourceDomain: 'SALES', direction: 'IN' })],
+  ['LOGISTICS_TRIP_RETURN', Object.freeze({ sourceDomain: 'LOGISTICS', direction: 'IN' })],
+]);
 
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
@@ -56,37 +61,38 @@ function warehouseIds(requestContext) {
 
 function normalizePayload(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return failure('INVALID_INVENTORY_MOVEMENT', 'Server-owned Sales movement payload is required');
+    return failure('INVALID_INVENTORY_MOVEMENT', 'Server-owned domain movement payload is required');
   }
   const movementType = String(payload.movementType ?? '').trim().toUpperCase();
+  const rule = DOMAIN_MOVEMENT_RULES.get(movementType);
+  if (!rule) return failure('DOMAIN_MOVEMENT_TYPE_NOT_ALLOWED', 'Server-owned domain movement type is not allowed');
   const direction = String(payload.direction ?? '').trim().toUpperCase();
+  const sourceDomain = String(payload.sourceDomain ?? rule.sourceDomain).trim().toUpperCase();
   const sourceDocumentType = String(payload.sourceDocumentType ?? '').trim().toUpperCase();
   const sourceDocumentId = String(payload.sourceDocumentId ?? '').trim();
   const sourceDocumentNumber = String(payload.sourceDocumentNumber ?? '').trim();
   const documentDate = String(payload.documentDate ?? '').trim();
   const reasonCode = String(payload.reasonCode ?? movementType).trim().toUpperCase();
   const reasonNote = String(payload.reasonNote ?? '').trim();
-  if (!['SALES_DELIVERY_ISSUE', 'SALES_CUSTOMER_RETURN'].includes(movementType)) {
-    return failure('SALES_MOVEMENT_TYPE_NOT_ALLOWED', 'Sales movement type is not allowed');
+  if (direction !== rule.direction || sourceDomain !== rule.sourceDomain) {
+    return failure('INVALID_DIRECTION', 'Domain movement direction or owner is invalid');
   }
-  if ((movementType === 'SALES_DELIVERY_ISSUE' && direction !== 'OUT')
-    || (movementType === 'SALES_CUSTOMER_RETURN' && direction !== 'IN')) {
-    return failure('INVALID_DIRECTION', 'Sales movement direction is invalid');
-  }
-  if (!CODE_PATTERN.test(sourceDocumentType) || !UUID_PATTERN.test(sourceDocumentId)) {
-    return failure('INVALID_SOURCE_DOCUMENT', 'Sales movement source document is invalid');
+  if (!CODE_PATTERN.test(sourceDomain)
+    || !CODE_PATTERN.test(sourceDocumentType)
+    || !UUID_PATTERN.test(sourceDocumentId)) {
+    return failure('INVALID_SOURCE_DOCUMENT', 'Domain movement source document is invalid');
   }
   if (!sourceDocumentNumber || sourceDocumentNumber.length > 160) {
-    return failure('INVALID_SOURCE_DOCUMENT_NUMBER', 'Sales movement source document number is invalid');
+    return failure('INVALID_SOURCE_DOCUMENT_NUMBER', 'Domain movement source document number is invalid');
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(documentDate)) {
     return failure('INVALID_DOCUMENT_DATE', 'documentDate must use YYYY-MM-DD');
   }
   if (!CODE_PATTERN.test(reasonCode) || !reasonNote || reasonNote.length > 2000) {
-    return failure('INVALID_MOVEMENT_REASON', 'Sales movement reason is invalid');
+    return failure('INVALID_MOVEMENT_REASON', 'Domain movement reason is invalid');
   }
   if (!Array.isArray(payload.lines) || payload.lines.length < 1 || payload.lines.length > 10000) {
-    return failure('INVALID_MOVEMENT_LINES', 'Sales movement requires 1-10000 lines');
+    return failure('INVALID_MOVEMENT_LINES', 'Domain movement requires 1-10000 lines');
   }
   const lines = [];
   const lineIds = new Set();
@@ -95,25 +101,25 @@ function normalizePayload(payload) {
     const sourceLineId = String(line?.sourceLineId ?? '').trim();
     const quantity = parseQuantity(line?.quantity);
     if (!UUID_PATTERN.test(sourceLineId) || lineIds.has(sourceLineId)) {
-      return failure('INVALID_SOURCE_LINE', 'Sales movement source line is invalid or duplicated', false, { line: index + 1 });
+      return failure('INVALID_SOURCE_LINE', 'Domain movement source line is invalid or duplicated', false, { line: index + 1 });
     }
     if (quantity === null || quantity <= 0n) {
-      return failure('INVALID_QUANTITY', 'Sales movement quantity must be a positive exact decimal', false, { line: index + 1 });
+      return failure('INVALID_QUANTITY', 'Domain movement quantity must be a positive exact decimal', false, { line: index + 1 });
     }
     const identities = [line.warehouseId, line.baseVariantId, line.baseUnitId];
     if (identities.some((id) => !UUID_PATTERN.test(String(id ?? '')))
       || (line.locationId && !UUID_PATTERN.test(line.locationId))
       || (line.lotId && !UUID_PATTERN.test(line.lotId))) {
-      return failure('INVALID_LINE_IDENTITY', 'Sales movement line identity is invalid', false, { line: index + 1 });
+      return failure('INVALID_LINE_IDENTITY', 'Domain movement line identity is invalid', false, { line: index + 1 });
     }
     const baseSku = String(line.baseSku ?? '').trim().toUpperCase();
     const baseUnitCode = String(line.baseUnitCode ?? '').trim().toUpperCase();
     if (!baseSku || baseSku.length > 96 || !baseUnitCode || baseUnitCode.length > 32) {
-      return failure('INVALID_LINE_SNAPSHOT', 'Sales movement line snapshot is invalid', false, { line: index + 1 });
+      return failure('INVALID_LINE_SNAPSHOT', 'Domain movement line snapshot is invalid', false, { line: index + 1 });
     }
     const expiryDate = normalizeDate(line.expiryDate);
     if (line.expiryDate && !expiryDate) {
-      return failure('INVALID_EXPIRY_DATE', 'Sales movement expiry date is invalid', false, { line: index + 1 });
+      return failure('INVALID_EXPIRY_DATE', 'Domain movement expiry date is invalid', false, { line: index + 1 });
     }
     lineIds.add(sourceLineId);
     lines.push(Object.freeze({
@@ -139,6 +145,7 @@ function normalizePayload(payload) {
     value: Object.freeze({
       movementType,
       direction,
+      sourceDomain,
       sourceDocumentType,
       sourceDocumentId,
       sourceDocumentNumber,
@@ -173,7 +180,7 @@ async function replayOrMismatch(client, { requestContext, idempotencyKey, hash }
   return Object.freeze({ ok: true, movement, lines: Object.freeze(lines), replayed: true });
 }
 
-export async function postServerOwnedSalesMovement(client, {
+export async function postServerOwnedDomainMovement(client, {
   requestContext,
   idempotencyKey,
   payload,
@@ -201,7 +208,7 @@ export async function postServerOwnedSalesMovement(client, {
   const allowedWarehouses = warehouseIds(requestContext);
   if (allowedWarehouses.size === 0
     || normalized.value.lines.some((line) => !allowedWarehouses.has(line.warehouseId))) {
-    return failure('WAREHOUSE_SCOPE_DENIED', 'Sales movement is outside the current warehouse scope');
+    return failure('WAREHOUSE_SCOPE_DENIED', 'Domain movement is outside the current warehouse scope');
   }
 
   for (const line of normalized.value.lines) {
@@ -219,7 +226,7 @@ export async function postServerOwnedSalesMovement(client, {
     id: randomUUID(),
     installationId: requestContext.installationId,
     movementType: normalized.value.movementType,
-    sourceDomain: 'SALES',
+    sourceDomain: normalized.value.sourceDomain,
     sourceDocumentType: normalized.value.sourceDocumentType,
     sourceDocumentId: normalized.value.sourceDocumentId,
     sourceDocumentNumber: normalized.value.sourceDocumentNumber,
@@ -264,6 +271,14 @@ export async function postServerOwnedSalesMovement(client, {
     }));
   }
   return Object.freeze({ ok: true, movement, lines: Object.freeze(lines), replayed: false });
+}
+
+export async function postServerOwnedSalesMovement(client, args) {
+  const payload = { ...(args.payload ?? {}), sourceDomain: 'SALES' };
+  if (!['SALES_DELIVERY_ISSUE', 'SALES_CUSTOMER_RETURN'].includes(String(payload.movementType ?? '').toUpperCase())) {
+    return failure('SALES_MOVEMENT_TYPE_NOT_ALLOWED', 'Sales movement type is not allowed');
+  }
+  return postServerOwnedDomainMovement(client, { ...args, payload });
 }
 
 export const salesInventoryLedgerInternals = Object.freeze({
