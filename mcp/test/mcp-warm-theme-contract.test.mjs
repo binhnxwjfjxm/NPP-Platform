@@ -4,8 +4,12 @@ import { readFile } from "node:fs/promises";
 
 const legacyTheme = await readFile("src/app/npp-theme.css", "utf8");
 const foundation = await readFile("src/app/hung-phat-mobile-foundation.css", "utf8");
+const experience = await readFile("src/app/mobile-app-experience.css", "utf8");
 const layout = await readFile("src/app/layout.tsx", "utf8");
 const shell = await readFile("src/ui/shell/AppShell.tsx", "utf8");
+const dock = await readFile("src/ui/shell/MobileDock.tsx", "utf8");
+const launchpad = await readFile("src/ui/shell/MobileHomeLaunchpad.tsx", "utf8");
+const navigation = await readFile("src/ui/shell/navigation.ts", "utf8");
 
 const tokens = {
   "--npp-color-canvas": "#f7f5f1",
@@ -27,28 +31,37 @@ test("warm-gold MCP palette is owned by the final semantic token layer", () => {
   }
 });
 
-test("mobile foundation loads after both legacy theme and shell contract", () => {
+test("mobile application experience loads after legacy shell and theme layers", () => {
   const legacyIndex = layout.indexOf('import "./npp-theme.css";');
   const shellContractIndex = layout.indexOf('import "./app-shell-contract.css";');
   const foundationIndex = layout.indexOf('import "./hung-phat-mobile-foundation.css";');
+  const experienceIndex = layout.indexOf('import "./mobile-app-experience.css";');
   assert.ok(legacyIndex >= 0, "legacy theme import must exist");
   assert.ok(shellContractIndex >= 0, "app shell contract import must exist");
-  assert.ok(foundationIndex >= 0, "mobile foundation import must exist");
   assert.ok(foundationIndex > legacyIndex, "foundation must follow legacy theme");
   assert.ok(foundationIndex > shellContractIndex, "foundation must follow shell contract");
+  assert.ok(experienceIndex > foundationIndex, "application experience must be the final mobile layer");
   assert.match(layout, /viewportFit:\s*"cover"/);
   assert.match(layout, /themeColor:\s*"#754706"/);
 });
 
-test("phone shell is a real app layout, not a stacked desktop sidebar", () => {
+test("phone shell is a field application, not a stacked desktop website", () => {
   assert.match(shell, /data-bottom-navigation/);
   assert.match(shell, /BOTTOM_NAV_LIMIT = 5/);
-  assert.match(foundation, /@media \(max-width: 820px\)/);
+  assert.match(shell, /MobileHomeLaunchpad/);
+  assert.match(shell, /MobileContextBar/);
+  assert.match(shell, /MobileDock/);
+  assert.match(navigation, /FIELD_DOCK_ITEMS/);
+  assert.match(navigation, /href:\s*"\/visits"/);
+  assert.match(dock, /data-primary-action/);
+  assert.match(dock, /item\.href === "\/visits"/);
+  assert.match(launchpad, /Đi tuyến hôm nay/);
+  assert.match(launchpad, /href="\/visits"/);
   assert.match(foundation, /\.sidebar\s*\{[\s\S]*?display:\s*none\s*!important/);
-  assert.match(foundation, /--app-bottom-nav-bar-height:\s*calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
-  assert.match(foundation, /grid-template-rows:\s*auto minmax\(0, 1fr\) var\(--app-bottom-nav-bar-height\)/);
-  assert.match(foundation, /\[data-app-scroll-region\][\s\S]*?overflow-y:\s*auto/);
-  assert.match(foundation, /\.bottom-nav-link\.active/);
+  assert.match(experience, /grid-template-rows:\s*auto auto minmax\(0, 1fr\) calc\(76px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(experience, /\.mobile-app-dock-link\.primary/);
+  assert.match(experience, /\.mobile-home-primary-action/);
+  assert.match(experience, /\.mobile-context-bar/);
 });
 
 test("MCP focus ring keeps an opaque light and dark edge", () => {
