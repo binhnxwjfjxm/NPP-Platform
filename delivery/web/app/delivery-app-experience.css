@@ -1,0 +1,580 @@
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+}
+
+.deliveryAppFrame {
+  width: min(100%, 680px);
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) calc(78px + env(safe-area-inset-bottom));
+  margin: 0 auto;
+  overflow: hidden;
+  background: var(--hp-canvas);
+  box-shadow: 0 0 36px rgba(72, 54, 34, 0.1);
+}
+
+.deliveryAppTopBar {
+  z-index: 60;
+  display: flex;
+  min-height: calc(62px + env(safe-area-inset-top));
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+  border-bottom: 1px solid rgba(216, 208, 196, 0.9);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 5px 18px rgba(72, 54, 34, 0.06);
+  backdrop-filter: blur(16px);
+}
+
+.deliveryAppIdentity,
+.deliveryAppTopActions {
+  display: flex;
+  align-items: center;
+}
+
+.deliveryAppIdentity {
+  min-width: 0;
+  gap: 10px;
+}
+
+.deliveryAppMark {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 13px;
+  background: linear-gradient(145deg, #4a301b, var(--hp-bronze-strong));
+  color: #fffdf8;
+  box-shadow: 0 7px 16px rgba(117, 71, 6, 0.22);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.deliveryAppTitle {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.deliveryAppTitle small {
+  color: var(--hp-muted);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.deliveryAppTitle strong {
+  overflow: hidden;
+  color: var(--hp-ink);
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deliveryAppTopActions {
+  gap: 7px;
+}
+
+.deliveryTopButton {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  place-items: center;
+  border: 1px solid var(--hp-border);
+  border-radius: 13px;
+  background: var(--hp-surface);
+  color: var(--hp-bronze-strong);
+  cursor: pointer;
+  font-size: 23px;
+  font-weight: 800;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.deliveryAppContent {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+.deliveryAppContent .pageShell {
+  width: 100%;
+  max-width: none;
+  min-height: 100%;
+  margin: 0;
+  padding: 12px 12px 28px;
+}
+
+.deliveryAppContent .appHeader,
+.deliveryAppContent .detailHeader {
+  position: relative;
+  top: auto;
+  z-index: auto;
+  min-height: auto;
+  margin: 0 0 14px;
+  padding: 3px 2px 10px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.deliveryPageHeader {
+  align-items: center;
+}
+
+.deliveryPageHeader .brandLogoFrame {
+  width: 50px;
+  height: 50px;
+  border-radius: 16px;
+}
+
+.deliveryPageHeader h1,
+.deliveryTripHeader h1 {
+  margin: 0;
+  font-size: clamp(1.65rem, 8vw, 2.25rem);
+  line-height: 1.08;
+}
+
+.deliveryPageHeader .welcome,
+.deliveryTripHeader .welcome {
+  margin: 4px 0 0;
+}
+
+.deliverySectionHeading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 10px;
+}
+
+.deliverySectionHeading.compact {
+  align-items: center;
+}
+
+.deliverySectionHeading h2,
+.deliverySectionHeading p {
+  margin: 0;
+}
+
+.deliverySectionHeading h2 {
+  font-size: 1.05rem;
+}
+
+.deliverySectionHeading > span,
+.deliverySectionHeading > div + span {
+  border: 1px solid #dec49c;
+  border-radius: 999px;
+  background: var(--hp-bronze-soft);
+  color: var(--hp-bronze-strong);
+  font-size: 11px;
+  font-weight: 850;
+  padding: 6px 9px;
+}
+
+.activeTripSection,
+.otherTripsSection {
+  margin-bottom: 18px;
+}
+
+.primaryTripCard {
+  position: relative;
+  display: grid;
+  gap: 13px;
+  padding: 17px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 92% 0, rgba(255, 221, 168, 0.28), transparent 13rem),
+    linear-gradient(145deg, #4a301b, #754706 58%, #98600f);
+  color: #ffffff;
+  box-shadow: 0 18px 40px rgba(72, 54, 34, 0.22);
+  text-decoration: none;
+  scroll-margin-top: 12px;
+}
+
+.primaryTripCard::after {
+  position: absolute;
+  right: -46px;
+  bottom: -70px;
+  width: 180px;
+  height: 180px;
+  border: 30px solid rgba(255, 255, 255, 0.06);
+  border-radius: 50%;
+  content: "";
+  pointer-events: none;
+}
+
+.primaryTripCard > * {
+  position: relative;
+  z-index: 1;
+}
+
+.primaryTripCard .cardTopline,
+.primaryTripCard .cardTopline span:last-child {
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.primaryTripCard .statusPill {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.primaryTripTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.primaryTripTitle small {
+  color: #f3d7ad;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.primaryTripTitle h2 {
+  margin: 3px 0 0;
+  color: #ffffff;
+  font-size: 1.75rem;
+}
+
+.primaryTripArrow {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 23px;
+}
+
+.primaryTripSummary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.primaryTripSummary div {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.primaryTripSummary dt {
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.primaryTripSummary dd {
+  color: #ffffff;
+}
+
+.primaryTripAction {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 15px;
+  background: #fffdf8;
+  color: #4a301b;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.compactTripCard {
+  gap: 9px;
+}
+
+.compactTripMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.compactTripMeta span {
+  border-radius: 999px;
+  background: var(--hp-surface-soft);
+  color: var(--hp-muted);
+  font-size: 11px;
+  padding: 5px 8px;
+}
+
+.emptyTripState {
+  display: grid;
+  min-height: 190px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  text-align: center;
+  scroll-margin-top: 12px;
+}
+
+.emptyTripIcon {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border-radius: 20px;
+  background: var(--hp-bronze-soft);
+  color: var(--hp-bronze-strong);
+  font-size: 25px;
+  font-weight: 900;
+}
+
+.deliveryGuideCard,
+.deliveryBoundaryNote {
+  margin-top: 18px;
+}
+
+.nextStopCard {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 17px;
+  overflow: hidden;
+  border: 1px solid #d5b47e;
+  border-radius: 20px;
+  background: linear-gradient(150deg, #fffdf8, #f7e8cf);
+  box-shadow: 0 15px 34px rgba(117, 71, 6, 0.13);
+  scroll-margin-top: 12px;
+}
+
+.nextStopCard.completed {
+  border-color: #b8d0bd;
+  background: linear-gradient(150deg, #ffffff, #edf6ef);
+}
+
+.nextStopTopline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.nextStopTopline span {
+  color: var(--hp-bronze-strong);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nextStopTopline b {
+  border-radius: 999px;
+  background: var(--hp-bronze-strong);
+  color: #fffdf8;
+  font-size: 11px;
+  padding: 6px 9px;
+}
+
+.nextStopCard.completed .nextStopTopline b {
+  background: var(--hp-success);
+}
+
+.nextStopCard h2,
+.nextStopCard p {
+  margin: 0;
+}
+
+.nextStopCard h2 {
+  font-size: 1.35rem;
+  line-height: 1.15;
+}
+
+.nextStopAddress {
+  color: #544b43;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.nextStopMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.nextStopMeta span {
+  border: 1px solid #e3d2b7;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--hp-muted);
+  font-size: 10.5px;
+  padding: 5px 8px;
+}
+
+.nextStopAction {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  min-height: 56px;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+  padding: 9px 11px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #aa721d, var(--hp-bronze-strong));
+  color: #ffffff;
+  box-shadow: 0 10px 22px rgba(117, 71, 6, 0.2);
+  text-decoration: none;
+}
+
+.nextStopAction > span {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.15);
+  font-weight: 900;
+}
+
+.nextStopAction > b {
+  font-size: 23px;
+}
+
+.compactTripOverview {
+  margin-bottom: 18px;
+  padding: 14px;
+}
+
+.stopCard.nextStop {
+  border-color: #c89d5c;
+  box-shadow: 0 0 0 3px rgba(200, 157, 92, 0.14), var(--hp-shadow);
+}
+
+.stopHeadingRow,
+.deliveryOrderHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.stopHeadingRow .stopAddress {
+  flex: 1;
+}
+
+.nextStopBadge,
+.assignmentState {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--hp-bronze-soft);
+  color: var(--hp-bronze-strong);
+  font-size: 10px;
+  font-weight: 850;
+  padding: 5px 7px;
+}
+
+.assignmentState.done {
+  background: #e7f1e9;
+  color: var(--hp-success);
+}
+
+.deliveryOrder {
+  scroll-margin-top: 12px;
+}
+
+.completedAssignment {
+  opacity: 0.86;
+}
+
+.deliveryAppDock {
+  z-index: 70;
+  display: grid;
+  grid-template-columns: 1fr minmax(138px, 1.45fr) 1fr;
+  align-items: end;
+  gap: 6px;
+  min-height: calc(78px + env(safe-area-inset-bottom));
+  padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--hp-border);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 -10px 26px rgba(72, 54, 34, 0.1);
+}
+
+.deliveryDockItem {
+  display: grid;
+  min-height: 56px;
+  place-items: center;
+  align-content: center;
+  gap: 3px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--hp-muted);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.deliveryDockItem.active {
+  background: var(--hp-bronze-soft);
+  color: var(--hp-bronze-strong);
+}
+
+.deliveryDockItem span {
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.deliveryDockItem small {
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.deliveryDockPrimary {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 17px;
+  background: linear-gradient(180deg, #aa721d, var(--hp-bronze-strong));
+  color: #ffffff;
+  box-shadow: 0 10px 22px rgba(117, 71, 6, 0.24);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.deliveryDockPrimary span {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+@media (max-width: 390px) {
+  .deliveryAppContent .pageShell {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .primaryTripCard,
+  .nextStopCard {
+    padding: 15px;
+    border-radius: 19px;
+  }
+
+  .deliveryAppDock {
+    grid-template-columns: 0.9fr minmax(128px, 1.5fr) 0.9fr;
+    padding-right: 5px;
+    padding-left: 5px;
+  }
+
+  .deliveryDockPrimary {
+    font-size: 12px;
+  }
+}
