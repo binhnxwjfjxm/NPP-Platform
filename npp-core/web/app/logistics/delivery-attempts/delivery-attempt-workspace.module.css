@@ -154,6 +154,53 @@
   margin: 0;
 }
 
+.proofButton {
+  min-height: 38px;
+  margin-top: 0.75rem;
+  border: 1px solid rgba(29, 106, 66, 0.24);
+  border-radius: 10px;
+  background: white;
+  padding: 0.45rem 0.65rem;
+  color: #1d6a42;
+  font-weight: 800;
+}
+
+.proofList {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.65rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.proofList li {
+  display: grid;
+  gap: 0.2rem;
+  border-radius: 10px;
+  background: #eef7f1;
+  padding: 0.65rem;
+  color: #53685b;
+  font-size: 0.8rem;
+}
+
+.proofList strong {
+  color: #1e3f2b;
+}
+
+.proofList a {
+  color: #1d6a42;
+  font-weight: 800;
+}
+
+.noProof {
+  margin: 0.65rem 0 0;
+  border-radius: 10px;
+  background: #f5f7f5;
+  padding: 0.65rem;
+  color: #68776d;
+  font-size: 0.8rem;
+}
+
 .empty,
 .custodyNotice,
 .error {

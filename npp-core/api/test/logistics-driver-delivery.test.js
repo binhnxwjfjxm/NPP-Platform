@@ -63,7 +63,7 @@ test('migration 049 is registered once with immutable attempt facts', () => {
   assert.match(migrationSource, /core\.delivery-attempt\.record/);
 });
 
-test('Delivery principal can read and record own attempts but cannot dispatch or manage trips', () => {
+test('Delivery principal can read and record own attempts and optional POD but cannot dispatch or manage trips', () => {
   const principal = createDeliveryFrontendPrincipal(config, EMPLOYEE_ID);
   assert.equal(principal.employeeId, EMPLOYEE_ID);
   assert.deepEqual(principal.roles, ['driver']);
@@ -71,24 +71,32 @@ test('Delivery principal can read and record own attempts but cannot dispatch or
     PERMISSIONS.coreDeliveryTripDriverRead,
     PERMISSIONS.coreDeliveryAttemptRead,
     PERMISSIONS.coreDeliveryAttemptRecord,
+    PERMISSIONS.corePodRead,
+    PERMISSIONS.corePodAttach,
   ]);
   assert.deepEqual(principal.scopes.warehouseIds, [WAREHOUSE_ID]);
   assert.equal(isKnownPermissionKey(PERMISSIONS.coreDeliveryAttemptRead), true);
   assert.equal(isKnownPermissionKey(PERMISSIONS.coreDeliveryAttemptRecord), true);
+  assert.equal(isKnownPermissionKey(PERMISSIONS.corePodRead), true);
+  assert.equal(isKnownPermissionKey(PERMISSIONS.corePodAttach), true);
 
   const context = createRequestContext({ config, principal });
   assert.equal(requirePermission(context, PERMISSIONS.coreDeliveryTripDriverRead).ok, true);
   assert.equal(requirePermission(context, PERMISSIONS.coreDeliveryAttemptRead).ok, true);
   assert.equal(requirePermission(context, PERMISSIONS.coreDeliveryAttemptRecord).ok, true);
+  assert.equal(requirePermission(context, PERMISSIONS.corePodRead).ok, true);
+  assert.equal(requirePermission(context, PERMISSIONS.corePodAttach).ok, true);
   assert.equal(requirePermission(context, PERMISSIONS.coreDeliveryTripRead).ok, false);
   assert.equal(requirePermission(context, PERMISSIONS.coreDeliveryTripDispatch).ok, false);
 });
 
-test('dispatcher bootstrap can read attempt summary but cannot become driver recorder', () => {
+test('dispatcher bootstrap can read attempt summary and POD but cannot become driver recorder or attacher', () => {
   const principal = createBootstrapPrincipal(config);
   const context = createRequestContext({ config, principal });
   assert.equal(requirePermission(context, PERMISSIONS.coreDeliveryAttemptRead).ok, true);
+  assert.equal(requirePermission(context, PERMISSIONS.corePodRead).ok, true);
   assert.equal(requirePermission(context, PERMISSIONS.coreDeliveryAttemptRecord).ok, false);
+  assert.equal(requirePermission(context, PERMISSIONS.corePodAttach).ok, false);
   assert.equal(context.employeeId, null);
 });
 
@@ -106,6 +114,8 @@ test('Delivery token requires a trusted valid employee header', () => {
     PERMISSIONS.coreDeliveryTripDriverRead,
     PERMISSIONS.coreDeliveryAttemptRead,
     PERMISSIONS.coreDeliveryAttemptRecord,
+    PERMISSIONS.corePodRead,
+    PERMISSIONS.corePodAttach,
   ]);
 });
 

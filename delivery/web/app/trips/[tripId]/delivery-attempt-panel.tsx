@@ -7,6 +7,7 @@ import type {
   RecordDeliveryAttemptPayload,
   TripAssignment,
 } from '../../../lib/types';
+import ProofOfDeliveryPanel from './proof-of-delivery-panel';
 import styles from './delivery-attempt-panel.module.css';
 
 type Props = Readonly<{
@@ -162,6 +163,11 @@ export default function DeliveryAttemptPanel({ tripId, assignment }: Props) {
           </ul>
         ) : null}
         <p className={styles.terminalNotice}>Kết quả đã khóa và chỉ đọc.</p>
+        <ProofOfDeliveryPanel
+          tripId={tripId}
+          assignmentId={assignment.assignmentId}
+          attemptId={assignment.attempt.id}
+        />
       </section>
     );
   }

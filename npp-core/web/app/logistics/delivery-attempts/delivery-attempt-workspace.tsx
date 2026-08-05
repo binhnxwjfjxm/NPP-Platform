@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import styles from './delivery-attempt-workspace.module.css';
 
@@ -35,6 +35,19 @@ type Attempt = Readonly<{
   rescheduledFor: string | null;
 }>;
 
+type Proof = Readonly<{
+  id: string;
+  podType: 'photo' | 'signature' | 'otp' | 'manual_confirm';
+  receiverName: string | null;
+  confirmationReference: string | null;
+  note: string | null;
+  capturedAt: string;
+  file: Readonly<{
+    fileName: string;
+    downloadUrl: string | null;
+  }> | null;
+}>;
+
 type AttemptSummary = Readonly<{
   trip: Readonly<{
     id: string;
@@ -57,6 +70,13 @@ const RESULT_LABELS: Record<Attempt['result'], string> = {
   rescheduled: 'Hẹn giao lại',
 };
 
+const POD_LABELS: Record<Proof['podType'], string> = {
+  photo: 'Ảnh giao hàng',
+  signature: 'Tham chiếu chữ ký',
+  otp: 'Tham chiếu OTP',
+  manual_confirm: 'Xác nhận thủ công',
+};
+
 function formatDateTime(value: string | null): string {
   if (!value) return 'Chưa ghi nhận';
   const parsed = new Date(value);
@@ -76,8 +96,13 @@ export default function DeliveryAttemptWorkspace() {
   const [trips, setTrips] = useState<TripListItem[]>([]);
   const [selectedTrip, setSelectedTrip] = useState<TripListItem | null>(null);
   const [summary, setSummary] = useState<AttemptSummary | null>(null);
+  const [proofsByAttempt, setProofsByAttempt] = useState<Record<string, readonly Proof[]>>({});
+  const [loadingProofId, setLoadingProofId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const selectedTripIdRef = useRef('');
+  const tripRequestRef = useRef(0);
+  const proofRequestRef = useRef(new Map<string, number>());
 
   const dispatchedTrips = useMemo(
     () => trips.filter((trip) => trip.status === 'dispatched'),
@@ -97,16 +122,64 @@ export default function DeliveryAttemptWorkspace() {
   }, [loadTrips]);
 
   async function selectTrip(trip: TripListItem) {
+    const requestVersion = ++tripRequestRef.current;
+    selectedTripIdRef.current = trip.id;
+    proofRequestRef.current.clear();
     setSelectedTrip(trip);
     setSummary(null);
+    setProofsByAttempt({});
     setError('');
     setBusy(true);
     try {
-      setSummary(await requestJson<AttemptSummary>(`/api/logistics/trips/${trip.id}/attempts`));
+      const nextSummary = await requestJson<AttemptSummary>(`/api/logistics/trips/${trip.id}/attempts`);
+      if (tripRequestRef.current === requestVersion && selectedTripIdRef.current === trip.id) {
+        setSummary(nextSummary);
+      }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Không tải được kết quả giao.');
+      if (tripRequestRef.current === requestVersion && selectedTripIdRef.current === trip.id) {
+        setError(loadError instanceof Error ? loadError.message : 'Không tải được kết quả giao.');
+      }
     } finally {
-      setBusy(false);
+      if (tripRequestRef.current === requestVersion && selectedTripIdRef.current === trip.id) {
+        setBusy(false);
+      }
+    }
+  }
+
+  async function toggleProofs(attemptId: string) {
+    if (!selectedTrip) return;
+    if (Object.prototype.hasOwnProperty.call(proofsByAttempt, attemptId)) {
+      proofRequestRef.current.delete(attemptId);
+      setProofsByAttempt((current) => {
+        const next = { ...current };
+        delete next[attemptId];
+        return next;
+      });
+      return;
+    }
+    const tripId = selectedTrip.id;
+    const requestVersion = (proofRequestRef.current.get(attemptId) ?? 0) + 1;
+    proofRequestRef.current.set(attemptId, requestVersion);
+    setError('');
+    setLoadingProofId(attemptId);
+    try {
+      const data = await requestJson<{ proofs: readonly Proof[] }>(
+        `/api/logistics/trips/${tripId}/attempts/${attemptId}/pod`,
+      );
+      if (selectedTripIdRef.current === tripId
+          && proofRequestRef.current.get(attemptId) === requestVersion) {
+        setProofsByAttempt((current) => ({ ...current, [attemptId]: data.proofs }));
+      }
+    } catch (loadError) {
+      if (selectedTripIdRef.current === tripId
+          && proofRequestRef.current.get(attemptId) === requestVersion) {
+        setError(loadError instanceof Error ? loadError.message : 'Không tải được bằng chứng giao hàng.');
+      }
+    } finally {
+      if (selectedTripIdRef.current === tripId
+          && proofRequestRef.current.get(attemptId) === requestVersion) {
+        setLoadingProofId('');
+      }
     }
   }
 
@@ -117,7 +190,7 @@ export default function DeliveryAttemptWorkspace() {
     <AppShell
       kicker="Điều phối giao hàng"
       title="Theo dõi kết quả lần giao"
-      subtitle="Đọc kết quả tài xế đã ghi; không ghi thay tài xế và không tự nhập hàng về kho."
+      subtitle="Đọc kết quả và bằng chứng tùy chọn tài xế đã ghi; không ghi thay tài xế và không tự nhập hàng về kho."
       actions={<Link className={styles.linkButton} href="/logistics/dispatch">Bàn giao chuyến</Link>}
     >
       <div className={styles.workspace} data-testid="delivery-attempt-workspace">
@@ -129,7 +202,7 @@ export default function DeliveryAttemptWorkspace() {
                 <p>Chuyến đã xuất phát</p>
                 <h2>Chọn chuyến cần theo dõi</h2>
               </div>
-              <button type="button" onClick={() => loadTrips()} disabled={busy}>Tải lại</button>
+              <button type="button" onClick={() => loadTrips().catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Không tải được chuyến.'))} disabled={busy}>Tải lại</button>
             </div>
             <div className={styles.tripList}>
               {dispatchedTrips.map((trip) => (
@@ -165,24 +238,57 @@ export default function DeliveryAttemptWorkspace() {
               <p className={styles.empty}>Đang tải kết quả…</p>
             ) : (
               <div className={styles.attemptList} data-testid="attempt-summary-list">
-                {summary?.attempts.map((attempt) => (
-                  <article key={attempt.id} data-result={attempt.result}>
-                    <header>
-                      <div>
-                        <small>Điểm {attempt.stopSequence}</small>
-                        <strong>{attempt.deliveryOrderNumber || attempt.deliveryOrderId.slice(0, 8)}</strong>
-                        <span>{attempt.customerName || attempt.customerCode || 'Khách hàng'}</span>
-                      </div>
-                      <span className={styles.result}>{RESULT_LABELS[attempt.result]}</span>
-                    </header>
-                    <dl>
-                      <div><dt>Thời điểm</dt><dd>{formatDateTime(attempt.attemptedAt)}</dd></div>
-                      {attempt.reasonCode ? <div><dt>Lý do</dt><dd>{attempt.reasonCode}</dd></div> : null}
-                      {attempt.rescheduledFor ? <div><dt>Giao lại</dt><dd>{formatDateTime(attempt.rescheduledFor)}</dd></div> : null}
-                      {attempt.note ? <div><dt>Ghi chú</dt><dd>{attempt.note}</dd></div> : null}
-                    </dl>
-                  </article>
-                ))}
+                {summary?.attempts.map((attempt) => {
+                  const proofs = proofsByAttempt[attempt.id];
+                  return (
+                    <article key={attempt.id} data-result={attempt.result}>
+                      <header>
+                        <div>
+                          <small>Điểm {attempt.stopSequence}</small>
+                          <strong>{attempt.deliveryOrderNumber || attempt.deliveryOrderId.slice(0, 8)}</strong>
+                          <span>{attempt.customerName || attempt.customerCode || 'Khách hàng'}</span>
+                        </div>
+                        <span className={styles.result}>{RESULT_LABELS[attempt.result]}</span>
+                      </header>
+                      <dl>
+                        <div><dt>Thời điểm</dt><dd>{formatDateTime(attempt.attemptedAt)}</dd></div>
+                        {attempt.reasonCode ? <div><dt>Lý do</dt><dd>{attempt.reasonCode}</dd></div> : null}
+                        {attempt.rescheduledFor ? <div><dt>Giao lại</dt><dd>{formatDateTime(attempt.rescheduledFor)}</dd></div> : null}
+                        {attempt.note ? <div><dt>Ghi chú</dt><dd>{attempt.note}</dd></div> : null}
+                      </dl>
+                      <button
+                        type="button"
+                        className={styles.proofButton}
+                        onClick={() => toggleProofs(attempt.id)}
+                        disabled={loadingProofId === attempt.id}
+                      >
+                        {loadingProofId === attempt.id
+                          ? 'Đang tải…'
+                          : proofs === undefined
+                            ? 'Xem bằng chứng tùy chọn'
+                            : 'Ẩn bằng chứng'}
+                      </button>
+                      {proofs !== undefined ? (
+                        proofs.length ? (
+                          <ul className={styles.proofList} data-testid={`pod-list-${attempt.id}`}>
+                            {proofs.map((proof) => (
+                              <li key={proof.id}>
+                                <strong>{POD_LABELS[proof.podType]}</strong>
+                                <span>{formatDateTime(proof.capturedAt)}</span>
+                                {proof.receiverName ? <span>Người nhận: {proof.receiverName}</span> : null}
+                                {proof.confirmationReference ? <span>Tham chiếu: {proof.confirmationReference}</span> : null}
+                                {proof.note ? <span>Ghi chú: {proof.note}</span> : null}
+                                {proof.file?.downloadUrl ? (
+                                  <a href={proof.file.downloadUrl} target="_blank" rel="noreferrer">Xem ảnh</a>
+                                ) : proof.file ? <span>Ảnh đã lưu; liên kết tạm thời chưa khả dụng.</span> : null}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : <p className={styles.noProof}>Không có bằng chứng đính kèm; kết quả giao vẫn hợp lệ.</p>
+                      ) : null}
+                    </article>
+                  );
+                })}
                 {!summary?.attempts.length ? (
                   <p className={styles.empty}>Tài xế chưa ghi kết quả cho phiếu nào trong chuyến này.</p>
                 ) : null}

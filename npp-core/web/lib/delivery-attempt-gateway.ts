@@ -42,26 +42,20 @@ function baseUrl(): string {
   return parsed.toString().replace(/\/$/, '');
 }
 
-export async function getDeliveryAttemptSummary<T>(tripId: string, requestId: string): Promise<T> {
-  if (!UUID_PATTERN.test(tripId)) {
-    throw new InventoryGatewayError('INVALID_TRIP_ID', 'Mã chuyến giao không hợp lệ', 400, false);
-  }
+async function getCoreData<T>(path: string, requestId: string): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(
-      `${baseUrl()}/api/logistics/trips/${encodeURIComponent(tripId)}/attempts`,
-      {
-        method: 'GET',
-        cache: 'no-store',
-        signal: controller.signal,
-        headers: {
-          Authorization: `Bearer ${requiredServerValue('CORE_API_SERVER_TOKEN')}`,
-          Accept: 'application/json',
-          'x-request-id': requestId,
-        },
+    const response = await fetch(`${baseUrl()}${path}`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${requiredServerValue('CORE_API_SERVER_TOKEN')}`,
+        Accept: 'application/json',
+        'x-request-id': requestId,
       },
-    );
+    });
     let payload: CoreEnvelope<T>;
     try {
       payload = await response.json() as CoreEnvelope<T>;
@@ -87,4 +81,25 @@ export async function getDeliveryAttemptSummary<T>(tripId: string, requestId: st
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function getDeliveryAttemptSummary<T>(tripId: string, requestId: string): Promise<T> {
+  if (!UUID_PATTERN.test(tripId)) {
+    throw new InventoryGatewayError('INVALID_TRIP_ID', 'Mã chuyến giao không hợp lệ', 400, false);
+  }
+  return getCoreData<T>(`/api/logistics/trips/${encodeURIComponent(tripId)}/attempts`, requestId);
+}
+
+export async function getDeliveryAttemptProofs<T>(
+  tripId: string,
+  attemptId: string,
+  requestId: string,
+): Promise<T> {
+  if (!UUID_PATTERN.test(tripId) || !UUID_PATTERN.test(attemptId)) {
+    throw new InventoryGatewayError('INVALID_POD_LINEAGE', 'Mã chuyến hoặc lần giao không hợp lệ', 400, false);
+  }
+  return getCoreData<T>(
+    `/api/logistics/trips/${encodeURIComponent(tripId)}/attempts/${encodeURIComponent(attemptId)}/pod`,
+    requestId,
+  );
 }
