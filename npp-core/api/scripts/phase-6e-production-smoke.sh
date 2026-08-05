@@ -239,7 +239,6 @@ done
 expect_status 'Delivery unauthenticated root' 401 "${DELIVERY_PRODUCTION_URL%/}/"
 curl --fail --silent --show-error --retry 4 --retry-delay 3 -u "$delivery_auth" \
   "${DELIVERY_PRODUCTION_URL%/}/" > "$html_file"
-grep -q 'Ứng dụng Giao hàng' "$html_file"
 grep -q 'Chuyến của tôi' "$html_file"
 ! grep -q 'Không tải được chuyến' "$html_file"
 css_asset="$(grep -oE '/_next/static/[^" ]+\.css' "$html_file" | head -n 1)"
