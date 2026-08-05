@@ -237,10 +237,10 @@ function createTrackedClient(client, writeState) {
   });
 }
 
-function expectedCount(value, fallback, errorCode) {
+function expectedCount(value, fallback, minimum, errorCode) {
   if (value === undefined || value === null) return fallback;
   const normalized = Number(value);
-  if (!Number.isInteger(normalized) || normalized < 0 || normalized > 100) {
+  if (!Number.isInteger(normalized) || normalized < minimum || normalized > 100) {
     throw new Error(errorCode);
   }
   return normalized;
@@ -286,11 +286,13 @@ export async function withAuditOutboxTransaction({ adapter, mutate }) {
       const requiredAuditCount = expectedCount(
         result?.expectedAuditCount,
         1,
+        1,
         'invalid_expected_audit_count',
       );
       const requiredOutboxCount = expectedCount(
         result?.expectedOutboxCount,
         expectsOutbox ? 1 : 0,
+        0,
         'invalid_expected_outbox_count',
       );
       if (writeState.auditCount !== requiredAuditCount) {
