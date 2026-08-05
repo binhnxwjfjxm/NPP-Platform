@@ -1,0 +1,165 @@
+/* Issue #299: mobile-app layout for supporting MCP flows only.
+   Keep the existing Hưng Phát color tokens; change geometry, not brand tone. */
+
+@media (max-width: 820px) {
+  .app-shell:is(
+    [data-active-href="/orders"],
+    [data-active-href="/reports"],
+    [data-active-href="/field-checks"],
+    [data-active-href="/plans"],
+    [data-active-href="/settings"],
+    [data-active-href="/mcp-setting"]
+  ) [data-app-scroll-region] {
+    padding: 10px 12px calc(var(--app-bottom-nav-bar-height, 64px) + 22px);
+    scroll-padding-bottom: calc(var(--app-bottom-nav-bar-height, 64px) + 24px);
+  }
+
+  .app-shell:is(
+    [data-active-href="/orders"],
+    [data-active-href="/reports"],
+    [data-active-href="/field-checks"],
+    [data-active-href="/plans"],
+    [data-active-href="/settings"],
+    [data-active-href="/mcp-setting"]
+  ) .page-header {
+    display: grid;
+    gap: 10px;
+    margin: 0 0 12px;
+    padding: 14px;
+    border-radius: 16px;
+    position: relative;
+    overflow: visible;
+  }
+
+  .app-shell:is(
+    [data-active-href="/orders"],
+    [data-active-href="/reports"],
+    [data-active-href="/field-checks"],
+    [data-active-href="/plans"],
+    [data-active-href="/settings"],
+    [data-active-href="/mcp-setting"]
+  ) .page-header h1 {
+    font-size: clamp(1.3rem, 6vw, 1.65rem);
+    line-height: 1.15;
+  }
+
+  .app-shell:is(
+    [data-active-href="/orders"],
+    [data-active-href="/reports"],
+    [data-active-href="/field-checks"],
+    [data-active-href="/plans"],
+    [data-active-href="/settings"],
+    [data-active-href="/mcp-setting"]
+  ) :is(.page-header-actions, .header-actions, .toolbar-actions, .form-actions, .settings-actions) {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .app-shell:is(
+    [data-active-href="/orders"],
+    [data-active-href="/reports"],
+    [data-active-href="/field-checks"],
+    [data-active-href="/plans"],
+    [data-active-href="/settings"],
+    [data-active-href="/mcp-setting"]
+  ) :is(button, .button, a.button, .btn) {
+    min-height: 46px;
+    border-radius: 12px;
+    touch-action: manipulation;
+  }
+
+  .app-shell:is(
+    [data-active-href="/orders"],
+    [data-active-href="/reports"],
+    [data-active-href="/field-checks"],
+    [data-active-href="/plans"],
+    [data-active-href="/settings"],
+    [data-active-href="/mcp-setting"]
+  ) :is(.grid, .cards-grid, .content-grid, .split-grid, .two-column, .three-column, .settings-grid) {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 10px;
+  }
+
+  .app-shell:is(
+    [data-active-href="/orders"],
+    [data-active-href="/reports"],
+    [data-active-href="/field-checks"],
+    [data-active-href="/plans"],
+    [data-active-href="/settings"],
+    [data-active-href="/mcp-setting"]
+  ) :is(.card, article, .panel, .section-card, .settings-section, fieldset) {
+    border-radius: 16px;
+  }
+
+  .app-shell:is(
+    [data-active-href="/orders"],
+    [data-active-href="/reports"],
+    [data-active-href="/field-checks"],
+    [data-active-href="/plans"]
+  ) :is(.filter-bar, .filters, .filter-row, .toolbar) {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 2px 0 8px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .app-shell:is(
+    [data-active-href="/orders"],
+    [data-active-href="/reports"],
+    [data-active-href="/field-checks"],
+    [data-active-href="/plans"]
+  ) :is(.filter-bar, .filters, .filter-row, .toolbar) > * {
+    flex: 0 0 auto;
+    min-width: min(78vw, 260px);
+    scroll-snap-align: start;
+  }
+
+  .app-shell:is(
+    [data-active-href="/orders"],
+    [data-active-href="/reports"],
+    [data-active-href="/field-checks"],
+    [data-active-href="/plans"]
+  ) :is(table, .table) {
+    min-width: 680px;
+  }
+
+  .app-shell:is(
+    [data-active-href="/orders"],
+    [data-active-href="/reports"],
+    [data-active-href="/field-checks"],
+    [data-active-href="/plans"]
+  ) :is(.table-wrap, .table-container, .data-table-wrap) {
+    margin-inline: -2px;
+    border-radius: 14px;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+
+  .app-shell:is(
+    [data-active-href="/reports"],
+    [data-active-href="/field-checks"],
+    [data-active-href="/settings"],
+    [data-active-href="/mcp-setting"]
+  ) :is(.form-actions, .sticky-actions, .report-actions, .settings-actions) {
+    position: sticky;
+    z-index: 8;
+    bottom: calc(var(--app-bottom-nav-bar-height, 64px) + 8px);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 8px;
+    padding: 10px;
+    margin: 12px -2px 0;
+    border-radius: 16px;
+    backdrop-filter: blur(14px);
+  }
+
+  .app-shell:is([data-active-href="/settings"], [data-active-href="/mcp-setting"]) :is(input, select, textarea) {
+    width: 100%;
+    min-height: 48px;
+    border-radius: 12px;
+  }
+}

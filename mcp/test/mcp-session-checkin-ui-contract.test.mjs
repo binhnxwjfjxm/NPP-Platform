@@ -6,23 +6,29 @@ async function source(path) {
   return readFile(new URL(`../${path}`, import.meta.url), "utf8");
 }
 
-test("session card keeps the existing compact actions and adds an explicit NPP order link", async () => {
+test("session card keeps check-in and every existing action behind compact controls", async () => {
   const card = await source("src/features/mcp/McpLineCard.tsx");
   const css = await source("src/features/mcp/McpLineCard.module.css");
 
-  assert.match(card, /↗ Đường/);
-  assert.match(card, /📷 Ảnh/);
-  for (const label of ["Nhu cầu", "Test", "Quan sát", "Theo dõi", "Bỏ qua"]) {
-    assert.match(card, new RegExp(`label: "${label}"`));
+  assert.match(card, /useMcpCustomerDirections/);
+  assert.match(card, /requestMcpCustomerProfile/);
+  for (const action of ["order", "test", "market_report", "follow_up", "skip"]) {
+    assert.match(card, new RegExp(`action: "${action}"`));
   }
   assert.match(card, /line\.orderId \?/);
   assert.match(card, /Đơn NPP/);
-  assert.match(card, /data-customer-action-rows="2"/);
-  assert.match(css, /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
-  assert.match(css, /grid-template-rows:\s*repeat\(2,\s*minmax\(28px,\s*auto\)\)/);
-  assert.match(css, /grid-template-areas:[\s\S]*?"actions checkin"/);
-  assert.match(css, /\.checkin\s*\{[\s\S]*?grid-area:\s*checkin;[\s\S]*?width:\s*74px;[\s\S]*?min-height:\s*63px;/);
-  assert.match(css, /@media \(max-width: 520px\)[\s\S]*?\.checkin\s*\{[\s\S]*?width:\s*68px;[\s\S]*?min-height:\s*60px;/);
+  assert.match(card, /data-session-primary-actions="4"/);
+  assert.match(card, /data-customer-action-menu="open"/);
+  assert.match(card, /data-customer-action-count="5"/);
+  assert.match(card, /styles\.primaryRow/);
+  assert.match(card, /<span>Thao tác<\/span>/);
+  assert.match(card, /onToggleCheckin\(line\)/);
+  assert.match(card, /onAction\(line, action\)/);
+  assert.match(css, /grid-template-columns:\s*minmax\(0, 1fr\) 48px 48px 58px/);
+  assert.match(css, /\.actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/);
+  assert.doesNotMatch(css, /overflow-x:\s*auto/);
+  assert.doesNotMatch(css, /scroll-snap-type/);
+  assert.doesNotMatch(css, /\.checkin\s*\{[^}]*display:\s*none/s);
   assert.match(card, /identityHead[\s\S]*?accountName[\s\S]*?badge[\s\S]*?statusLabel/);
   assert.match(card, /aria-pressed=\{line\.checkedIn === true\}/);
   assert.match(card, /Bấm lần nữa để bỏ check-in/);

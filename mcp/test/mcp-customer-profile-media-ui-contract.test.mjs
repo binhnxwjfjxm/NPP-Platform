@@ -10,27 +10,29 @@ const masterPath = new URL("../src/features/mcp/McpMasterView.tsx", import.meta.
 const routePreviewPath = new URL("../src/features/mcp/RouteCustomerMediaPreview.tsx", import.meta.url);
 const readOwnerPath = new URL("../apps/backend/foundation/outlet-media-read.js", import.meta.url);
 
-test("customer card keeps seven quick actions in two rows beside an independent check-in", async () => {
+test("customer card keeps photo, directions and five business actions in a compact tray", async () => {
   const [card, css] = await Promise.all([
     readFile(cardPath, "utf8"),
     readFile(cardCssPath, "utf8")
   ]);
 
-  assert.match(card, /data-customer-action-rows="2"/);
-  assert.match(card, /📷 Ảnh/);
-  assert.match(card, /↗ Đường/);
-  assert.match(card, /label: "Đơn"/);
+  assert.match(card, /data-session-primary-actions="4"/);
+  assert.match(card, /data-customer-action-menu="open"/);
+  assert.match(card, /data-customer-action-count="5"/);
+  assert.match(card, /ActionIcon name="photo"/);
+  assert.match(card, /ActionIcon name="map"/);
+  assert.match(card, /label: "Nhu cầu"/);
   assert.match(card, /label: "Test"/);
   assert.match(card, /label: "Quan sát"/);
   assert.match(card, /label: "Theo dõi"/);
   assert.match(card, /label: "Bỏ qua"/);
 
-  assert.match(css, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
-  assert.match(css, /grid-template-rows:\s*repeat\(2, minmax\(28px, auto\)\)/);
-  assert.match(css, /"actions checkin"/);
-  assert.match(css, /\.checkin\s*\{[\s\S]*?grid-area:\s*checkin;/);
-  assert.match(css, /\.checkin\s*\{[\s\S]*?width:\s*74px;/);
-  assert.match(css, /@media \(max-width: 520px\)[\s\S]*?\.checkin\s*\{[\s\S]*?width:\s*68px;/);
+  assert.match(css, /grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/);
+  assert.match(css, /grid-template-columns:\s*minmax\(0, 1fr\) 48px 48px 58px/);
+  assert.match(css, /\.checkin\s*\{[\s\S]*?min-height:\s*44px;/);
+  assert.match(css, /@media \(max-width: 520px\)[\s\S]*?\.primaryRow\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 44px 44px 54px/);
+  assert.doesNotMatch(css, /overflow-x:\s*auto/);
+  assert.doesNotMatch(css, /scroll-snap-type/);
 });
 
 test("customer profile exposes full business details and shared private photo management", async () => {

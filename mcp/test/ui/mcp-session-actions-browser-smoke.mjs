@@ -12,6 +12,7 @@ async function reset() { const response = await fetch(`${mockBase}/__reset`, { m
 async function behavior(value) { const response = await fetch(`${mockBase}/__behavior`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) }); assert.equal(response.status, 200); }
 async function state() { const response = await fetch(`${mockBase}/__state`, { cache: "no-store" }); assert.equal(response.status, 200); return response.json(); }
 function card(page) { return page.locator("article").filter({ hasText: "UI Existing Customer" }).first(); }
+async function openCardAction(page, actionName) { const customer = card(page); const trigger = customer.getByRole("button", { name: "Thao tác", exact: true }); await trigger.click(); assert.equal(await trigger.getAttribute("aria-expanded"), "true"); await customer.getByRole("button", { name: actionName, exact: true }).click(); }
 async function saveAndWait(page, dialogName, saveName) { const dialog = page.getByRole("dialog", { name: dialogName, exact: true }); await dialog.getByRole("button", { name: saveName, exact: true }).click(); await dialog.waitFor({ state: "hidden" }); }
 async function shot(page, name) { await page.screenshot({ path: `${resultsDir}/${name}.png`, fullPage: true }); }
 
@@ -31,7 +32,7 @@ try {
   await shot(page, "01-warm-theme-session");
 
   await behavior({ productDelayMs: 650 });
-  await card(page).getByRole("button", { name: "Nhu cầu", exact: true }).click();
+  await openCardAction(page, "Nhu cầu");
   const order = page.getByRole("dialog", { name: "Ghi nhận nhu cầu mua", exact: true });
   await order.getByRole("button", { name: "+ Chọn sản phẩm", exact: true }).click();
   const picker = page.getByRole("dialog", { name: "Chọn sản phẩm", exact: true });
@@ -77,18 +78,18 @@ try {
   await order.getByRole("button", { name: "Đóng", exact: true }).filter({ hasText: "Đóng" }).click();
   await order.waitFor({ state: "hidden" });
 
-  await card(page).getByRole("button", { name: "Test", exact: true }).click();
+  await openCardAction(page, "Test");
   const testDialog = page.getByRole("dialog", { name: "Ghi kết quả thử sản phẩm", exact: true });
   await testDialog.getByPlaceholder("Nhập tên sản phẩm").fill("Trà UI Smoke");
   await testDialog.getByRole("button", { name: "Đạt", exact: true }).first().click();
   await saveAndWait(page, "Ghi kết quả thử sản phẩm", "Lưu kết quả thử");
 
-  await card(page).getByRole("button", { name: "Quan sát", exact: true }).click();
+  await openCardAction(page, "Quan sát");
   const reportDialog = page.getByRole("dialog", { name: "Ghi quan sát thị trường", exact: true });
   await reportDialog.getByRole("button", { name: "Cần báo giá", exact: true }).click();
   await saveAndWait(page, "Ghi quan sát thị trường", "Lưu quan sát");
 
-  await card(page).getByRole("button", { name: "Theo dõi", exact: true }).click();
+  await openCardAction(page, "Theo dõi");
   const followupDialog = page.getByRole("dialog", { name: "Tạo việc cần theo dõi", exact: true });
   await followupDialog.getByRole("button", { name: "Gửi báo giá", exact: true }).click();
   await followupDialog.getByRole("button", { name: "Mai", exact: true }).click();
