@@ -79,6 +79,12 @@ test('Delivery production workflow is exact-command and manual-only', async () =
     'deploymentEnabled !== false',
     'api.vercel.com/v11/projects',
     'api.vercel.com/v10/projects/$project_id/domains',
+    'delivery-deployment-meta.json',
+    'api.vercel.com/v13/deployments/$deployment_host',
+    '.meta.githubCommitSha // empty',
+    'index($domain) != null',
+    'smoke_url="https://$DELIVERY_DOMAIN"',
+    'Delivery custom-domain auth smoke failed',
     'vercel@58.0.0 build --prod',
     'vercel@58.0.0 deploy --prebuilt --prod',
     'npm ci --ignore-scripts',
@@ -93,6 +99,7 @@ test('Delivery production workflow is exact-command and manual-only', async () =
   ]) {
     assert.ok(script.includes(marker), `script missing ${marker}`);
   }
+  assert.doesNotMatch(script, /"\$deployment_url\/"/);
   assert.doesNotMatch(script, /no_active_driver_profile_for_delivery_bootstrap/);
   assert.doesNotMatch(script, /vercel@latest/);
   assert.doesNotMatch(script, /npm install/);

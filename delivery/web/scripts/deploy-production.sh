@@ -49,6 +49,7 @@ config_json="${RUNNER_TEMP}/core-config.json"
 bootstrap_json="${RUNNER_TEMP}/delivery-bootstrap.json"
 project_json="${RUNNER_TEMP}/delivery-project.json"
 settings_json="${RUNNER_TEMP}/delivery-settings.json"
+deployment_meta_json="${RUNNER_TEMP}/delivery-deployment-meta.json"
 
 curl --fail --silent --show-error \
   -H 'Accept: application/vnd.heroku+json; version=3' \
@@ -306,13 +307,32 @@ npx --yes vercel@58.0.0 build --prod --token="$VERCEL_TOKEN"
 deployment_url="$(npx --yes vercel@58.0.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
 test -n "$deployment_url"
 
-unauth="$(curl --silent --show-error --retry 5 --retry-delay 4 --output /dev/null --write-out '%{http_code}' "$deployment_url/")"
-test "$unauth" = 401
+deployment_host="${deployment_url#https://}"
+source_sha="$(git rev-parse HEAD)"
+curl --fail --silent --show-error \
+  -H "Authorization: Bearer $VERCEL_TOKEN" \
+  "https://api.vercel.com/v13/deployments/$deployment_host?teamId=$VERCEL_ORG_ID" > "$deployment_meta_json"
+test "$(jq -r '.projectId // .project.id // empty' "$deployment_meta_json")" = "$project_id"
+test "$(jq -r '.meta.githubCommitSha // empty' "$deployment_meta_json")" = "$source_sha"
+jq -e --arg domain "$DELIVERY_DOMAIN" '(.alias // []) | index($domain) != null' "$deployment_meta_json" >/dev/null
+
+smoke_url="https://$DELIVERY_DOMAIN"
+unauth=""
+deadline=$((SECONDS + 180))
+while [ "$SECONDS" -lt "$deadline" ]; do
+  unauth="$(curl --silent --show-error --connect-timeout 5 --max-time 15 --output /dev/null --write-out '%{http_code}' "$smoke_url/" || true)"
+  [ "$unauth" = 401 ] && break
+  sleep 3
+done
+if [ "$unauth" != 401 ]; then
+  echo "Delivery custom-domain auth smoke failed; expected 401, last status=${unauth:-none}." >&2
+  exit 1
+fi
 
 if [ "$setup_mode" = true ]; then
   auth="${setup_username}:${setup_password}"
   echo "::add-mask::$auth"
-  html="$(curl --fail --silent --show-error --retry 5 --retry-delay 4 -u "$auth" "$deployment_url/")"
+  html="$(curl --fail --silent --show-error --retry 5 --retry-delay 4 -u "$auth" "$smoke_url/")"
   grep -q 'Ứng dụng Giao hàng' <<<"$html"
   grep -q 'Chưa có hồ sơ tài xế đang hoạt động' <<<"$html"
   grep -qv 'Không tải được chuyến' <<<"$html"
@@ -335,7 +355,7 @@ NODE
     -H "x-request-id: delivery-production-smoke-${GITHUB_RUN_ID:-local}" \
     "$core_url/api/logistics/driver/trips?limit=1&offset=0" > "$api_body"
   jq -e '.data.items | type == "array"' "$api_body" >/dev/null
-  html="$(curl --fail --silent --show-error --retry 5 --retry-delay 4 -u "$auth" "$deployment_url/")"
+  html="$(curl --fail --silent --show-error --retry 5 --retry-delay 4 -u "$auth" "$smoke_url/")"
   grep -q 'Chuyến của tôi' <<<"$html"
   grep -qv 'Không tải được chuyến' <<<"$html"
 fi
@@ -344,12 +364,10 @@ css_asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.css' | head -
 js_asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.js' | head -n 1)"
 test -n "$css_asset"
 test -n "$js_asset"
-curl --fail --silent --show-error "$deployment_url$css_asset" >/dev/null
-curl --fail --silent --show-error "$deployment_url$js_asset" >/dev/null
+curl --fail --silent --show-error "$smoke_url$css_asset" >/dev/null
+curl --fail --silent --show-error "$smoke_url$js_asset" >/dev/null
 
-domain_status="$(curl --silent --show-error --connect-timeout 5 --max-time 15 --output /dev/null --write-out '%{http_code}' "https://$DELIVERY_DOMAIN/" || true)"
-domain_ready=false
-case "$domain_status" in 200|401) domain_ready=true ;; esac
+domain_ready=true
 
 {
   echo "project_id=$project_id"
