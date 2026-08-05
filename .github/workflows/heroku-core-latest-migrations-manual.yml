@@ -78,16 +78,18 @@ jobs:
           node-version: 20
 
       - name: Install locked dependencies
-        run: npm ci --ignore-scripts
+        working-directory: npp-core
+        run: npm --prefix .. ci --ignore-scripts
 
       - name: Validate Core migration gate
+        working-directory: npp-core
         shell: bash
         run: |
           set -euo pipefail
-          bash -n npp-core/api/scripts/core-latest-production-gate.sh
+          bash -n api/scripts/core-latest-production-gate.sh
           node --test \
-            npp-core/api/test/core-latest-production-gate-source.test.js \
-            npp-core/api/test/heroku-core-latest-migrations-workflow-source.test.js
+            api/test/core-latest-production-gate-source.test.js \
+            api/test/heroku-core-latest-migrations-workflow-source.test.js
 
       - name: Install Heroku CLI
         shell: bash
