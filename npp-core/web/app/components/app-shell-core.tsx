@@ -82,6 +82,7 @@ const purchasingItems: NavItem[] = [
 
 const accountingItems: NavItem[] = [
   { href: '/accounting/receivables', label: 'Công nợ phải thu', icon: 'accounting', testId: 'nav-receivables' },
+  { href: '/accounting/customer-payments', label: 'Thu tiền khách hàng', icon: 'accounting', testId: 'nav-customer-payments' },
   { href: '/accounting/payables', label: 'Công nợ phải trả', icon: 'accounting', testId: 'nav-payables' },
   { href: '/accounting/supplier-payments', label: 'Thanh toán nhà cung cấp', icon: 'accounting', testId: 'nav-supplier-payments' },
 ];
@@ -417,7 +418,7 @@ export function AppShell({
             {renderGroup({
               sectionLabel: 'Kế toán & công nợ',
               title: 'Kế toán & công nợ',
-              hint: 'Phải thu khách hàng, phải trả và thanh toán nhà cung cấp',
+              hint: 'Phải thu, thu tiền khách hàng, phải trả và thanh toán nhà cung cấp',
               icon: 'accounting',
               active: pathname.startsWith('/accounting'),
               open: accountingOpen,
