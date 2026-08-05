@@ -20,6 +20,9 @@ export const PERMISSIONS = Object.freeze({
   coreDeliveryTripDriverRead: 'core.delivery-trip.driver-read',
   coreDeliveryAttemptRead: 'core.delivery-attempt.read',
   coreDeliveryAttemptRecord: 'core.delivery-attempt.record',
+  coreDeliveryTripReconciliationRead: 'core.delivery-trip.reconciliation-read',
+  coreDeliveryTripReturnReceive: 'core.delivery-trip.return-receive',
+  coreDeliveryTripClose: 'core.delivery-trip.close',
 });
 
 const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
@@ -38,6 +41,9 @@ const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
   ['coreDeliveryTripDriverRead', 'Giao hàng', 'Xem chuyến được giao', 'Cho phép tài xế đọc các chuyến đã xuất phát được gán đúng cho hồ sơ tài xế liên kết với nhân viên của mình.'],
   ['coreDeliveryAttemptRead', 'Giao hàng', 'Xem kết quả lần giao', 'Cho phép đọc kết quả lần giao trong phạm vi chuyến và kho được cấp quyền.'],
   ['coreDeliveryAttemptRecord', 'Giao hàng', 'Ghi kết quả lần giao', 'Cho phép tài xế được xác thực ghi đúng một kết quả terminal cho assignment thuộc chuyến của mình.'],
+  ['coreDeliveryTripReconciliationRead', 'Đối soát giao hàng', 'Xem đối soát cuối chuyến', 'Cho phép đọc số đã xuất, đã giao, đã nhận lại và còn trên xe trong phạm vi kho.'],
+  ['coreDeliveryTripReturnReceive', 'Đối soát giao hàng', 'Nhận hàng chưa giao về kho', 'Cho phép kho xác nhận thực nhận hàng chưa giao và ghi Inventory IN theo exact issue-line lineage.'],
+  ['coreDeliveryTripClose', 'Đối soát giao hàng', 'Đóng chuyến đã đối soát', 'Cho phép đóng chuyến khi mọi phiếu có kết quả và toàn bộ hàng đã giao hoặc đã nhận lại kho.'],
 ].map(([key, module, label, description]) => Object.freeze({
   permissionKey: PERMISSIONS[key],
   module,
