@@ -10,12 +10,17 @@ const migration = readFileSync(
   new URL('../../../database/migrations/accounting/054_customer_payment_allocation.sql', import.meta.url),
   'utf8',
 );
+const hardening = readFileSync(
+  new URL('../../../database/migrations/accounting/054_customer_payment_allocation_hardening.sql', import.meta.url),
+  'utf8',
+);
 const migrationRegistry = apiSource('src/migrations/index.js');
 const permissions = apiSource('src/access/permissions.js');
 const requestContext = apiSource('src/request-context.js');
 const requestContextBase = apiSource('src/request-context-base.js');
 const routes = apiSource('src/routes/customer-payments.js');
 const service = apiSource('src/services/customer-payment.js');
+const repository = apiSource('src/db/repositories/customer-payment.js');
 
 function blockBetween(source, start, end) {
   const startIndex = source.indexOf(start);
@@ -41,12 +46,28 @@ test('migration 054 keeps payment and allocation as immutable accounting facts',
   assert.doesNotMatch(migration, /DELETE FROM accounting\.receivable_(allocations|allocation_reversals)/);
 });
 
+test('customer payment series follows the customer installation lifecycle', () => {
+  assert.match(migration, /ensure_customer_payment_series_for_installation/);
+  assert.match(migration, /AFTER INSERT ON shared\.customers/);
+  assert.match(migration, /customers_ensure_customer_payment_series/);
+  assert.match(migration, /ON CONFLICT \(installation_id, code\) DO NOTHING/);
+});
+
+test('migration 054 hardening preserves active projections and reversible zero projection', () => {
+  assert.match(hardening, /status = 'reversed'/);
+  assert.match(hardening, /allocated_amount = 0/);
+  assert.match(hardening, /remaining_amount = 0/);
+  assert.match(hardening, /status <> 'reversed'/);
+  assert.match(hardening, /remaining_amount = original_amount - allocated_amount/);
+});
+
 test('migration 054 is registered after receivable ledger migration 053', () => {
   const position053 = migrationRegistry.indexOf('053_customer_receivable_ledger');
   const position054 = migrationRegistry.indexOf('054_customer_payment_allocation');
   assert.ok(position053 >= 0);
   assert.ok(position054 > position053);
   assert.match(migrationRegistry, /054_customer_payment_allocation\.sql/);
+  assert.match(migrationRegistry, /054_customer_payment_allocation_hardening\.sql/);
 });
 
 test('customer payment API exposes create read allocate and compensating reversal only', () => {
@@ -66,6 +87,8 @@ test('payment service permits cross-warehouse allocation only through authorized
   assert.match(service, /target\.currency_code !== sourcePayment\.currency_code/);
   assert.match(service, /items\.sort\(\(left, right\) => left\.targetDocumentId\.localeCompare/);
   assert.doesNotMatch(service, /target\.warehouse_id !== sourcePayment\.warehouse_id/);
+  assert.match(repository, /source\.warehouse_id = ANY\(\$3::uuid\[\]\)/);
+  assert.match(repository, /target\.warehouse_id = ANY\(\$3::uuid\[\]\)/);
 });
 
 test('payment permissions are deny-by-default and never granted to MCP principals', () => {
