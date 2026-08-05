@@ -8,33 +8,60 @@ import type {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
+const CORE_REQUEST_TIMEOUT_MS = 30_000;
 
 type SuccessEnvelope<T> = Readonly<{ data: T }>;
+
+export class DeliveryPodGatewayError extends Error {
+  readonly code: string;
+  readonly status: number;
+
+  constructor(code: string, message: string, status: number) {
+    super(message);
+    this.name = 'DeliveryPodGatewayError';
+    this.code = code;
+    this.status = status;
+  }
+}
 
 function config() {
   const rawUrl = process.env.CORE_API_INTERNAL_URL?.trim();
   const credential = process.env.DELIVERY_CORE_API_TOKEN?.trim();
-  if (!rawUrl || !credential) throw new Error('DELIVERY_CORE_CONFIG_NOT_READY');
+  if (!rawUrl || !credential) {
+    throw new DeliveryPodGatewayError(
+      'DELIVERY_CORE_CONFIG_NOT_READY',
+      'Cổng Core chưa được cấu hình',
+      503,
+    );
+  }
   let url: URL;
   try {
     url = new URL(rawUrl);
   } catch {
-    throw new Error('DELIVERY_CORE_URL_INVALID');
+    throw new DeliveryPodGatewayError('DELIVERY_CORE_URL_INVALID', 'Địa chỉ Core không hợp lệ', 503);
   }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
-    throw new Error('DELIVERY_CORE_URL_INVALID');
+    throw new DeliveryPodGatewayError('DELIVERY_CORE_URL_INVALID', 'Địa chỉ Core không hợp lệ', 503);
   }
   if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') {
-    throw new Error('DELIVERY_CORE_HTTPS_REQUIRED');
+    throw new DeliveryPodGatewayError('DELIVERY_CORE_HTTPS_REQUIRED', 'Core production phải dùng HTTPS', 503);
   }
   return Object.freeze({ baseUrl: url.toString().replace(/\/$/, ''), credential });
 }
 
 function assertLineage(user: DeliveryUser, tripId: string, assignmentId: string, attemptId: string) {
-  if (!UUID_PATTERN.test(user.employeeId)) throw new Error('DELIVERY_USER_INVALID');
-  if (!UUID_PATTERN.test(tripId)) throw new Error('INVALID_TRIP_ID');
-  if (!UUID_PATTERN.test(assignmentId)) throw new Error('INVALID_ASSIGNMENT_ID');
-  if (!UUID_PATTERN.test(attemptId)) throw new Error('INVALID_DELIVERY_ATTEMPT_ID');
+  if (!UUID_PATTERN.test(user.employeeId)) {
+    throw new DeliveryPodGatewayError('DELIVERY_USER_INVALID', 'Danh tính tài xế không hợp lệ', 400);
+  }
+  if (!UUID_PATTERN.test(tripId)) {
+    throw new DeliveryPodGatewayError('INVALID_TRIP_ID', 'Mã chuyến không hợp lệ', 400);
+  }
+  if (!UUID_PATTERN.test(assignmentId)) {
+    throw new DeliveryPodGatewayError('INVALID_ASSIGNMENT_ID', 'Mã phiếu giao không hợp lệ', 400);
+  }
+  if (!UUID_PATTERN.test(attemptId)) {
+    throw new DeliveryPodGatewayError('INVALID_DELIVERY_ATTEMPT_ID', 'Mã lần giao không hợp lệ', 400);
+  }
 }
 
 async function coreRequest<T>(
@@ -46,32 +73,47 @@ async function coreRequest<T>(
 ): Promise<T> {
   assertLineage(user, tripId, assignmentId, attemptId);
   const core = config();
-  const response = await fetch(
-    `${core.baseUrl}/api/logistics/driver/trips/${encodeURIComponent(tripId)}`
-      + `/assignments/${encodeURIComponent(assignmentId)}`
-      + `/attempts/${encodeURIComponent(attemptId)}/pod`,
-    {
-      ...init,
-      cache: 'no-store',
-      headers: {
-        Authorization: `Bearer ${core.credential}`,
-        'x-npp-delivery-employee-id': user.employeeId,
-        'x-request-id': `delivery-web-pod-${crypto.randomUUID()}`,
-        Accept: 'application/json',
-        ...(init.headers ?? {}),
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CORE_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(
+      `${core.baseUrl}/api/logistics/driver/trips/${encodeURIComponent(tripId)}`
+        + `/assignments/${encodeURIComponent(assignmentId)}`
+        + `/attempts/${encodeURIComponent(attemptId)}/pod`,
+      {
+        ...init,
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${core.credential}`,
+          'x-npp-delivery-employee-id': user.employeeId,
+          'x-request-id': `delivery-web-pod-${crypto.randomUUID()}`,
+          Accept: 'application/json',
+          ...(init.headers ?? {}),
+        },
       },
-    },
-  );
-  const body = await response.json().catch(() => null) as (
-    SuccessEnvelope<T> & { error?: { code?: string; message?: string } }
-  ) | null;
-  if (!response.ok || !body?.data) {
-    const error = new Error(body?.error?.message || body?.error?.code || 'DELIVERY_POD_REQUEST_FAILED');
-    (error as Error & { status?: number; code?: string }).status = response.status;
-    (error as Error & { status?: number; code?: string }).code = body?.error?.code;
-    throw error;
+    );
+    const body = await response.json().catch(() => null) as (
+      SuccessEnvelope<T> & { error?: { code?: string; message?: string } }
+    ) | null;
+    if (!response.ok || !body?.data) {
+      throw new DeliveryPodGatewayError(
+        body?.error?.code || 'DELIVERY_POD_REQUEST_FAILED',
+        body?.error?.message || 'Không xử lý được bằng chứng giao hàng',
+        response.status,
+      );
+    }
+    return body.data;
+  } catch (error) {
+    if (error instanceof DeliveryPodGatewayError) throw error;
+    throw new DeliveryPodGatewayError(
+      'DELIVERY_POD_GATEWAY_UNAVAILABLE',
+      'Cổng bằng chứng giao hàng tạm thời không khả dụng',
+      503,
+    );
+  } finally {
+    clearTimeout(timeout);
   }
-  return body.data;
 }
 
 export async function listMyProofs(
@@ -98,7 +140,13 @@ export async function attachMyProof(
   payload: AttachProofOfDeliveryPayload,
   idempotencyKey: string,
 ): Promise<AttachProofOfDeliveryResponse> {
-  if (!IDEMPOTENCY_PATTERN.test(idempotencyKey)) throw new Error('INVALID_IDEMPOTENCY_KEY');
+  if (!IDEMPOTENCY_PATTERN.test(idempotencyKey)) {
+    throw new DeliveryPodGatewayError(
+      'INVALID_IDEMPOTENCY_KEY',
+      'Khóa chống ghi trùng không hợp lệ',
+      400,
+    );
+  }
   return coreRequest<AttachProofOfDeliveryResponse>(
     user,
     tripId,
@@ -114,3 +162,5 @@ export async function attachMyProof(
     },
   );
 }
+
+export const podApiInternals = Object.freeze({ CORE_REQUEST_TIMEOUT_MS });
