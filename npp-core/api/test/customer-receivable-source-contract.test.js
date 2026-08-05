@@ -44,6 +44,14 @@ test('migration 053 reverses pickup receivable atomically without deleting poste
   assert.doesNotMatch(pickupReversalMigration, /DELETE FROM accounting\./);
 });
 
+test('customer receivable balance is a guarded projection rebuilt only from ledger entries', () => {
+  assert.match(pickupReversalMigration, /customer_receivable_balance_write_requires_ledger_context/);
+  assert.match(pickupReversalMigration, /BEFORE INSERT OR UPDATE OR DELETE ON accounting\.customer_receivable_balances/);
+  assert.match(pickupReversalMigration, /BEFORE TRUNCATE ON accounting\.customer_receivable_balances/);
+  assert.match(pickupReversalMigration, /npp\.receivable_balance_write_context/);
+  assert.match(pickupReversalMigration, /FROM accounting\.receivable_ledger_entries/);
+});
+
 test('migration 053 is registered after logistics migration 052', () => {
   const position052 = migrationRegistry.indexOf('052_logistics_optional_proof_of_delivery');
   const position053 = migrationRegistry.indexOf('053_customer_receivable_ledger');
