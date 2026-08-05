@@ -16,6 +16,7 @@ on:
       - "mcp/src/app/manifest.ts"
       - "mcp/src/app/npp-theme.css"
       - "mcp/src/app/app-shell-contract.css"
+      - "mcp/src/app/hung-phat-mobile-foundation.css"
       - "mcp/src/app/page.tsx"
       - "mcp/src/app/settings/**"
       - "mcp/src/app/mcp-setting/**"
