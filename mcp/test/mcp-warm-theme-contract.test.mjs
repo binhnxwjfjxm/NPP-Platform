@@ -9,7 +9,6 @@ const geometry = await readFile("src/app/mobile-app-geometry.css", "utf8");
 const layout = await readFile("src/app/layout.tsx", "utf8");
 const shell = await readFile("src/ui/shell/AppShell.tsx", "utf8");
 const dock = await readFile("src/ui/shell/MobileDock.tsx", "utf8");
-const launchpad = await readFile("src/ui/shell/MobileHomeLaunchpad.tsx", "utf8");
 const navigation = await readFile("src/ui/shell/navigation.ts", "utf8");
 const marketChecks = await readFile("src/features/market-checks/MarketChecksClientPage.tsx", "utf8");
 
@@ -49,10 +48,10 @@ test("mobile application experience loads after legacy shell and theme layers", 
   assert.match(layout, /themeColor:\s*"#754706"/);
 });
 
-test("phone shell is a field application with one header and one scroll region", () => {
+test("phone shell has one header, one scroll region and no duplicate home launchpad", () => {
   assert.match(shell, /data-bottom-navigation/);
   assert.match(shell, /BOTTOM_NAV_LIMIT = 5/);
-  assert.match(shell, /MobileHomeLaunchpad/);
+  assert.doesNotMatch(shell, /MobileHomeLaunchpad/);
   assert.doesNotMatch(shell, /MobileContextBar/);
   assert.doesNotMatch(shell, /data-mobile-context-bar/);
   assert.match(shell, /MobileDock/);
@@ -61,13 +60,10 @@ test("phone shell is a field application with one header and one scroll region",
   assert.match(dock, /data-primary-action/);
   assert.match(dock, /item\.href === "\/visits"/);
   assert.match(dock, /bottom-nav-link/);
-  assert.match(launchpad, /Đi tuyến hôm nay/);
-  assert.match(launchpad, /href="\/visits"/);
   assert.match(foundation, /\.sidebar\s*\{[\s\S]*?display:\s*none\s*!important/);
   assert.match(geometry, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(geometry, /min-height:\s*54px/);
   assert.match(experience, /\.mobile-app-dock-link\.primary/);
-  assert.match(experience, /\.mobile-home-primary-action/);
 });
 
 test("mobile dock is attached translucent glass with a warm brown tint", () => {
