@@ -20,6 +20,8 @@ test('Delivery production workflow is exact-command and manual-only', async () =
     "github.event.comment.body == '/deploy-vercel-delivery-production'",
     'ref: ${{ env.DEPLOY_REF }}',
     'git rev-parse origin/main',
+    'VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2',
+    'VERCEL_PROJECT_ID: prj_aqsb62CiXpN1a1u3vU9P8SOKw2Ux',
     'DELIVERY_PROJECT_NAME: npp-delivery',
     'DELIVERY_ROOT_DIRECTORY: delivery/web',
     'DELIVERY_DOMAIN: log.nguyenlieuhungphat.com',
@@ -44,6 +46,17 @@ test('Delivery production workflow is exact-command and manual-only', async () =
     3,
     'Delivery workflow must scope the workspace to the three post-checkout run steps',
   );
+
+  const deliveryProjectId = workflow.match(/VERCEL_PROJECT_ID:\s*(prj_[A-Za-z0-9]+)/)?.[1];
+  assert.equal(deliveryProjectId, 'prj_aqsb62CiXpN1a1u3vU9P8SOKw2Ux');
+  for (const forbiddenProjectId of [
+    'prj_vFEAzoxesLqNJIfD8uF4q1kytpvk',
+    'prj_854SWdJeDEOPezAvvTZzTaRvZUSq',
+    'prj_0hp2A8WyUW4zgglShPTzL70hesVC',
+    'prj_rXqH83GFDHuEGUcQrrv82JBPWnjU',
+  ]) {
+    assert.notEqual(deliveryProjectId, forbiddenProjectId);
+  }
 
   assert.equal(rootLock.lockfileVersion, 3);
   const declared = { ...deliveryPackage.dependencies, ...deliveryPackage.devDependencies };
