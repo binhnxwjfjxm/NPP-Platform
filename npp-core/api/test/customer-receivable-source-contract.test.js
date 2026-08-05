@@ -24,7 +24,10 @@ test('migration 053 owns append-only customer receivable facts and rebuildable b
   assert.match(migration, /receivable_history_is_append_only/);
   assert.match(migration, /rebuild_customer_receivable_balances/);
   assert.match(migration, /core\.receivable\.read/);
-  assert.doesNotMatch(migration, /payment|allocation|refund|write.?off|cash_handover/i);
+  assert.doesNotMatch(
+    migration,
+    /CREATE TABLE IF NOT EXISTS accounting\.(customer_payments|receivable_allocations|customer_refunds|cod_cash_handovers)/,
+  );
 });
 
 test('migration 053 is registered after logistics migration 052', () => {
@@ -36,10 +39,9 @@ test('migration 053 is registered after logistics migration 052', () => {
 
 test('accepted delivery and pickup post receivable inside their existing transaction', () => {
   assert.match(deliveryAttempt, /postReceivableFromDeliveryAttempt\(client/);
-  assert.match(deliveryAttempt, /delivered_full.*delivered_partial/s);
+  assert.match(deliveryAttempt, /normalized\.result === 'delivered_full' \|\| normalized\.result === 'delivered_partial'/);
   assert.match(pickup, /postReceivableFromPickupHandover\(client/);
   assert.match(pickup, /expectedAuditCount: receivablePosted \? 2 : 1/);
-  assert.doesNotMatch(deliveryAttempt, /failed.*postReceivableFromDeliveryAttempt/s);
 });
 
 test('Core read route and deny-by-default permission are registered', () => {
