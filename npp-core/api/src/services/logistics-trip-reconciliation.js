@@ -12,6 +12,8 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const QUANTITY_PATTERN = /^(0|[1-9]\d{0,17})(?:\.(\d{1,12}))?$/;
 const SCALE = 1_000_000_000_000n;
+const MAX_OPERATION_BACKDATE_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_OPERATION_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
@@ -83,6 +85,27 @@ function permissions(requestContext) {
 function warehouseAllowed(requestContext, warehouseId) {
   return Array.isArray(requestContext?.scopes?.warehouseIds)
     && requestContext.scopes.warehouseIds.includes(warehouseId);
+}
+
+function validateOperationalTimestamp({
+  value,
+  requestReceivedAt,
+  dispatchedAt,
+  code,
+  label,
+}) {
+  const operationTime = new Date(value).getTime();
+  const serverTime = new Date(requestReceivedAt ?? Date.now()).getTime();
+  const dispatchTime = new Date(dispatchedAt).getTime();
+  if (!Number.isFinite(operationTime) || !Number.isFinite(serverTime) || !Number.isFinite(dispatchTime)) {
+    return failure(code, `${label} is invalid`);
+  }
+  const earliest = Math.max(dispatchTime, serverTime - MAX_OPERATION_BACKDATE_MS);
+  const latest = serverTime + MAX_OPERATION_FUTURE_SKEW_MS;
+  if (operationTime < earliest || operationTime > latest) {
+    return failure(code, `${label} must be after dispatch and within the allowed operating window`);
+  }
+  return Object.freeze({ ok: true, value: new Date(operationTime).toISOString() });
 }
 
 function mapReceipt(row) {
@@ -219,27 +242,25 @@ function normalizeReceiptPayload(tripId, payload) {
   lines.sort((left, right) => left.inventoryIssueLineId.localeCompare(right.inventoryIssueLineId));
   return Object.freeze({
     ok: true,
-    value: Object.freeze({
-      tripId,
-      receivedAt,
-      note,
-      lines: Object.freeze(lines),
-    }),
+    value: Object.freeze({ tripId, receivedAt, note, lines: Object.freeze(lines) }),
   });
 }
 
 function knownDatabaseFailure(error) {
   const message = String(error?.message ?? '');
   const mappings = [
-    ['trip_return_receipts_idempotency_unique', 'IDEMPOTENCY_PAYLOAD_MISMATCH', 'Receipt key was used with another payload'],
-    ['logistics_trip_return_quantity_exceeds_outstanding', 'RETURN_QUANTITY_EXCEEDS_OUTSTANDING', 'Returned quantity exceeds stock still held by the trip'],
-    ['logistics_trip_return_receipt_lineage_mismatch', 'RETURN_LINEAGE_MISMATCH', 'Return line does not belong to this trip'],
-    ['logistics_trip_close_missing_attempts', 'TRIP_CLOSE_MISSING_ATTEMPTS', 'Every assignment requires a delivery result before close'],
-    ['logistics_trip_close_receipt_posting', 'TRIP_CLOSE_RECEIPT_POSTING', 'A return receipt is still posting'],
-    ['logistics_trip_close_unreconciled_stock', 'TRIP_CLOSE_UNRECONCILED_STOCK', 'Trip still has undelivered stock outside the warehouse'],
+    ['trip_return_receipts_idempotency_unique', 'IDEMPOTENCY_PAYLOAD_MISMATCH', 'Receipt key was used with another payload', false],
+    ['delivery_trips_close_idempotency_unique', 'IDEMPOTENCY_PAYLOAD_MISMATCH', 'Close key was used with another trip', false],
+    ['logistics_trip_return_quantity_exceeds_outstanding', 'RETURN_QUANTITY_EXCEEDS_OUTSTANDING', 'Returned quantity exceeds stock still held by the trip', false],
+    ['logistics_trip_return_receipt_lineage_mismatch', 'RETURN_LINEAGE_MISMATCH', 'Return line does not belong to this trip', false],
+    ['logistics_trip_close_missing_attempts', 'TRIP_CLOSE_MISSING_ATTEMPTS', 'Every assignment requires a delivery result before close', false],
+    ['logistics_trip_close_receipt_posting', 'TRIP_CLOSE_RECEIPT_POSTING', 'A return receipt is still posting', true],
+    ['logistics_trip_close_unreconciled_stock', 'TRIP_CLOSE_UNRECONCILED_STOCK', 'Trip still has undelivered stock outside the warehouse', false],
   ];
-  for (const [needle, code, publicMessage] of mappings) {
-    if (message.includes(needle) || error?.constraint === needle) return failure(code, publicMessage, code.includes('CONFLICT'));
+  for (const [needle, code, publicMessage, retryable] of mappings) {
+    if (message.includes(needle) || error?.constraint === needle) {
+      return failure(code, publicMessage, retryable);
+    }
   }
   return null;
 }
@@ -309,10 +330,6 @@ export async function receiveTripReturn({
       await client.query('ROLLBACK');
       return detailBefore;
     }
-    if (detailBefore.trip.status !== 'dispatched') {
-      await client.query('ROLLBACK');
-      return failure('INVALID_TRIP_STATUS_TRANSITION', 'Only a dispatched trip can receive returned stock');
-    }
     const existing = await repository.getReceiptByIdempotencyKey(client, {
       installationId: requestContext.installationId,
       idempotencyKey,
@@ -325,6 +342,21 @@ export async function receiveTripReturn({
       const replay = await loadDetail(client, { requestContext, tripId });
       await client.query('COMMIT');
       return Object.freeze({ ok: true, trip: replay.trip, receiptId: existing.id, replayed: true });
+    }
+    if (detailBefore.trip.status !== 'dispatched') {
+      await client.query('ROLLBACK');
+      return failure('INVALID_TRIP_STATUS_TRANSITION', 'Only a dispatched trip can receive returned stock');
+    }
+    const operationalTime = validateOperationalTimestamp({
+      value: normalized.value.receivedAt,
+      requestReceivedAt: requestContext.receivedAt,
+      dispatchedAt: detailBefore.trip.dispatchedAt,
+      code: 'INVALID_RECEIVED_AT',
+      label: 'receivedAt',
+    });
+    if (!operationalTime.ok) {
+      await client.query('ROLLBACK');
+      return operationalTime;
     }
 
     const sourceLines = await repository.listReceiptSourceLinesForUpdate(client, {
@@ -358,7 +390,7 @@ export async function receiveTripReturn({
       installationId: requestContext.installationId,
       tripId,
       warehouseId: detailBefore.trip.warehouseId,
-      receivedAt: normalized.value.receivedAt,
+      receivedAt: operationalTime.value,
       note: normalized.value.note,
       idempotencyKey,
       payloadHash: hash,
@@ -383,9 +415,8 @@ export async function receiveTripReturn({
       receiptLines.push({ receiptLine, source, quantity: line.returnedBaseQuantity });
     }
 
-    const movementContext = Object.freeze({ ...requestContext, receivedAt: normalized.value.receivedAt });
     const movement = await postServerOwnedDomainMovement(client, {
-      requestContext: movementContext,
+      requestContext: Object.freeze({ ...requestContext, receivedAt: operationalTime.value }),
       idempotencyKey: eventKey('trip-return-movement', idempotencyKey),
       payload: {
         movementType: 'LOGISTICS_TRIP_RETURN',
@@ -394,7 +425,7 @@ export async function receiveTripReturn({
         sourceDocumentType: 'TRIP_RETURN_RECEIPT',
         sourceDocumentId: receiptId,
         sourceDocumentNumber: `${detailBefore.trip.number}-RETURN`,
-        documentDate: documentDate(normalized.value.receivedAt),
+        documentDate: documentDate(operationalTime.value),
         reasonCode: 'FAILED_DELIVERY_RETURN',
         reasonNote: normalized.value.note ?? 'Hàng chưa giao đã được kho thực nhận',
         metadata: { tripId, tripNumber: detailBefore.trip.number, receiptId },
@@ -429,31 +460,32 @@ export async function receiveTripReturn({
       return failure('INVENTORY_MOVEMENT_LINE_MISMATCH', 'Return movement line count is invalid');
     }
     for (let index = 0; index < receiptLines.length; index += 1) {
-      if (!await repository.attachMovementLine(client, {
+      const linked = await repository.attachMovementLine(client, {
         installationId: requestContext.installationId,
         receiptLineId: receiptLines[index].receiptLine.id,
         movementLineId: movement.lines[index].id,
-      })) {
+      });
+      if (!linked) {
         await client.query('ROLLBACK');
         return failure('INVENTORY_MOVEMENT_LINE_MISMATCH', 'Return movement line could not be linked');
       }
     }
-    if (!await repository.finalizeReturnReceipt(client, {
+    const finalized = await repository.finalizeReturnReceipt(client, {
       installationId: requestContext.installationId,
       receiptId,
       movementId: movement.movement.id,
-    })) {
+    });
+    if (!finalized) {
       await client.query('ROLLBACK');
       return failure('RETURN_RECEIPT_CONFLICT', 'Return receipt changed concurrently', true);
     }
 
-    const tripEventKey = eventKey('trip-return-receipt', idempotencyKey);
     await repository.insertTripEvent(client, {
       id: randomUUID(),
       installationId: requestContext.installationId,
       tripId,
       eventType: 'RETURN_RECEIPT_POSTED',
-      idempotencyKey: tripEventKey,
+      idempotencyKey: eventKey('trip-return-receipt', idempotencyKey),
       payloadHash: hash,
       actorId: requestContext.actorId,
       requestId: requestContext.requestId,
@@ -464,7 +496,7 @@ export async function receiveTripReturn({
         inventoryMovementId: movement.movement.id,
         lineCount: receiptLines.length,
       },
-      occurredAt: normalized.value.receivedAt,
+      occurredAt: operationalTime.value,
     });
     const detailAfter = await loadDetail(client, { requestContext, tripId });
     const receiptSnapshot = detailAfter.trip.receipts.find((item) => item.id === receiptId);
@@ -479,7 +511,7 @@ export async function receiveTripReturn({
         warehouseId: detailBefore.trip.warehouseId,
         inventoryMovementId: movement.movement.id,
       },
-      occurredAt: normalized.value.receivedAt,
+      occurredAt: operationalTime.value,
     }));
     await insertOutboxEvent(client, buildOutboxEvent({
       requestContext,
@@ -499,8 +531,6 @@ export async function receiveTripReturn({
         })),
       },
       metadata: { warehouseId: detailBefore.trip.warehouseId },
-      createdAt: normalized.value.receivedAt,
-      availableAt: normalized.value.receivedAt,
     }));
     await client.query('COMMIT');
     return Object.freeze({ ok: true, trip: detailAfter.trip, receiptId, replayed: false });
@@ -564,19 +594,31 @@ export async function closeReconciledTrip({
       await client.query('ROLLBACK');
       return failure('INVALID_TRIP_STATUS_TRANSITION', 'Only a dispatched trip can be closed');
     }
+    const operationalTime = validateOperationalTimestamp({
+      value: closedAt,
+      requestReceivedAt: requestContext.receivedAt,
+      dispatchedAt: before.trip.dispatchedAt,
+      code: 'INVALID_CLOSED_AT',
+      label: 'closedAt',
+    });
+    if (!operationalTime.ok) {
+      await client.query('ROLLBACK');
+      return operationalTime;
+    }
     if (!before.trip.canClose) {
       await client.query('ROLLBACK');
       return failure('TRIP_CLOSE_UNRECONCILED_STOCK', 'Trip still has missing attempts or outstanding stock');
     }
-    if (!await repository.closeTrip(client, {
+    const closed = await repository.closeTrip(client, {
       installationId: requestContext.installationId,
       tripId,
-      closedAt,
+      closedAt: operationalTime.value,
       actorId: requestContext.actorId,
       note,
       idempotencyKey,
       payloadHash: hash,
-    })) {
+    });
+    if (!closed) {
       await client.query('ROLLBACK');
       return failure('TRIP_CLOSE_CONFLICT', 'Trip status changed concurrently', true);
     }
@@ -591,8 +633,8 @@ export async function closeReconciledTrip({
       requestId: requestContext.requestId,
       sourceApp: requestContext.sourceApp,
       reason: note,
-      metadata: { closedAt },
-      occurredAt: closedAt,
+      metadata: { closedAt: operationalTime.value },
+      occurredAt: operationalTime.value,
     });
     const after = await loadDetail(client, { requestContext, tripId });
     await insertAuditRecord(client, buildAuditRecord({
@@ -603,7 +645,7 @@ export async function closeReconciledTrip({
       beforeData: before.trip,
       afterData: after.trip,
       metadata: { warehouseId: before.trip.warehouseId },
-      occurredAt: closedAt,
+      occurredAt: operationalTime.value,
     }));
     await insertOutboxEvent(client, buildOutboxEvent({
       requestContext,
@@ -615,11 +657,9 @@ export async function closeReconciledTrip({
         tripId,
         tripNumber: after.trip.number,
         warehouseId: after.trip.warehouseId,
-        closedAt,
+        closedAt: operationalTime.value,
       },
       metadata: { warehouseId: after.trip.warehouseId },
-      createdAt: closedAt,
-      availableAt: closedAt,
     }));
     await client.query('COMMIT');
     return Object.freeze({ ok: true, trip: after.trip, replayed: false });
@@ -639,5 +679,6 @@ export const logisticsTripReconciliationInternals = Object.freeze({
   parseQuantity,
   formatQuantity,
   strictTimestamp,
+  validateOperationalTimestamp,
   normalizeReceiptPayload,
 });
