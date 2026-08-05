@@ -20,7 +20,7 @@ const foundationWorkflow = await readFile(
 
 const CORE_PROJECT_ID = "prj_vFEAzoxesLqNJIfD8uF4q1kytpvk";
 const MCP_PROJECT_ID = "prj_854SWdJeDEOPezAvvTZzTaRvZUSq";
-const MCP_PRODUCTION_URL = "https://mcp-field-binhnxwjfjxms-projects.vercel.app";
+const MCP_PRODUCTION_URL = "https://mcp.nguyenlieuhungphat.com";
 
 test("MCP Vercel automatic deployments stay disabled", () => {
   assert.equal(mcpConfig.git?.deploymentEnabled, false);
@@ -119,7 +119,7 @@ test("MCP deploy never reports raw Vercel token failures", () => {
   assert.doesNotMatch(mcpWorkflow, /throw error;/);
 });
 
-test("MCP deploy builds, deploys and smokes its own Vercel artifact", () => {
+test("MCP deploy separates protected exact-host reachability from public-domain content smoke", () => {
   assert.match(mcpWorkflow, /vercel@latest pull/);
   assert.match(mcpWorkflow, /vercel@latest build/);
   assert.match(mcpWorkflow, /vercel@latest deploy/);
@@ -132,12 +132,19 @@ test("MCP deploy builds, deploys and smokes its own Vercel artifact", () => {
   );
   assert.match(
     mcpWorkflow,
-    /- name: Smoke configured MCP production alias[\s\S]*DEPLOYMENT_URL: \$\{\{ env\.MCP_PRODUCTION_URL \}\}/
+    /- name: Smoke configured MCP production domain[\s\S]*DEPLOYMENT_URL: \$\{\{ env\.MCP_PRODUCTION_URL \}\}/
   );
-  assert.match(mcpWorkflow, /assert_status \/ /);
+  assert.match(mcpWorkflow, /for attempt in \$\(seq 1 6\)/);
+  assert.match(mcpWorkflow, /assert_reachable \/\n/);
+  assert.match(mcpWorkflow, /assert_reachable \/field-checks/);
+  assert.match(mcpWorkflow, /200\|302\|307\|401\|403/);
+  assert.match(mcpWorkflow, /assert_status \/ 200 302 307/);
   assert.match(mcpWorkflow, /assert_status \/mcp/);
   assert.match(mcpWorkflow, /assert_status \/routes/);
   assert.match(mcpWorkflow, /assert_status \/visits/);
+  assert.match(mcpWorkflow, /assert_status \/field-checks/);
+  assert.match(mcpWorkflow, /curl --fail --location --silent --show-error --retry 5/);
+  assert.match(mcpWorkflow, /curl --fail --location --silent --show-error --retry 3/);
   assert.match(mcpWorkflow, /html\.match\(/);
   assert.ok(mcpWorkflow.includes("\\/_next\\/static\\/"));
   assert.match(mcpWorkflow, /MCP smoke asset=/);

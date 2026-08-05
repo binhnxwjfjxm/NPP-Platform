@@ -41,7 +41,7 @@ test("Vercel workflows are locked to distinct NPP and MCP projects", async () =>
 
   assert.match(mcp, /VERCEL_PROJECT_ID: prj_854SWdJeDEOPezAvvTZzTaRvZUSq/);
   assert.match(mcp, /CORE_VERCEL_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk/);
-  assert.match(mcp, /MCP_PRODUCTION_URL: https:\/\/mcp-field-binhnxwjfjxms-projects\.vercel\.app/);
+  assert.match(mcp, /MCP_PRODUCTION_URL: https:\/\/mcp\.nguyenlieuhungphat\.com/);
   assert.doesNotMatch(mcp, /vars\.VERCEL_MCP_PROJECT_ID/);
   assert.doesNotMatch(mcp, /vars\.VERCEL_MCP_PRODUCTION_URL/);
   assert.match(mcp, /MCP_ROOT_DIRECTORY: mcp/);

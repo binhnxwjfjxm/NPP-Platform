@@ -32,7 +32,7 @@ jobs:
       CORE_VERCEL_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
       DEPLOY_REF: main
       MCP_ROOT_DIRECTORY: mcp
-      MCP_PRODUCTION_URL: https://mcp-field-binhnxwjfjxms-projects.vercel.app
+      MCP_PRODUCTION_URL: https://mcp.nguyenlieuhungphat.com
       MCP_LEGACY_ACTOR_ID: service:mcp-plan:mcp-v1
 
     steps:
@@ -42,7 +42,7 @@ jobs:
           set -euo pipefail
           test "$VERCEL_PROJECT_ID" = "prj_854SWdJeDEOPezAvvTZzTaRvZUSq"
           test "$VERCEL_PROJECT_ID" != "$CORE_VERCEL_PROJECT_ID"
-          test "$MCP_PRODUCTION_URL" = "https://mcp-field-binhnxwjfjxms-projects.vercel.app"
+          test "$MCP_PRODUCTION_URL" = "https://mcp.nguyenlieuhungphat.com"
           test "$MCP_LEGACY_ACTOR_ID" = "service:mcp-plan:mcp-v1"
 
       - name: Validate Issue #5 trigger comment
@@ -264,28 +264,59 @@ jobs:
         run: |
           set -euo pipefail
 
+          assert_reachable() {
+            local path="$1"
+            local response=""
+            for attempt in $(seq 1 6); do
+              response="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL$path" || true)"
+              echo "MCP exact smoke path=$path attempt=$attempt status=${response:-000}"
+              case "$response" in
+                200|302|307|401|403) return 0 ;;
+              esac
+              [ "$attempt" -lt 6 ] && sleep 5
+            done
+            echo "Exact MCP deployment is not reachable at $path; got ${response:-000}" >&2
+            exit 1
+          }
+
+          # The exact deployment hostname can be protected by Vercel Authentication.
+          # Reachability is checked here; public page content and assets are checked
+          # against MCP_PRODUCTION_URL in the next step.
+          assert_reachable /
+          assert_reachable /field-checks
+
+      - name: Smoke configured MCP production domain
+        shell: bash
+        env:
+          DEPLOYMENT_URL: ${{ env.MCP_PRODUCTION_URL }}
+        run: |
+          set -euo pipefail
+
           assert_status() {
             local path="$1"
             shift
             local -a expected_codes=("$@")
-            local response
-            response="$(curl --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL$path")"
-            echo "MCP smoke path=$path status=$response"
-            for code in "${expected_codes[@]}"; do
-              [ "$response" = "$code" ] && return 0
+            local response=""
+            for attempt in $(seq 1 12); do
+              response="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL$path" || true)"
+              echo "MCP domain smoke path=$path attempt=$attempt status=${response:-000}"
+              for code in "${expected_codes[@]}"; do
+                [ "$response" = "$code" ] && return 0
+              done
+              [ "$attempt" -lt 12 ] && sleep 5
             done
-            echo "Unexpected MCP status for $path: expected one of ${expected_codes[*]}, got $response" >&2
+            echo "Unexpected MCP production status for $path: expected one of ${expected_codes[*]}, got ${response:-000}" >&2
             exit 1
           }
 
           assert_status / 200 302 307
-          assert_status /login 200 302 307 404
           assert_status /mcp 200 302 307
           assert_status /routes 200 302 307
-          assert_status /visits 200 302 307 401 403
+          assert_status /visits 200 302 307
+          assert_status /field-checks 200 302 307
 
           html_file="${RUNNER_TEMP}/mcp-production-root.html"
-          curl --fail --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors "$DEPLOYMENT_URL/" > "$html_file"
+          curl --fail --location --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors "$DEPLOYMENT_URL/" > "$html_file"
           asset="$(HTML_FILE="$html_file" node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
           const html = await readFile(process.env.HTML_FILE, "utf8");
@@ -296,27 +327,7 @@ jobs:
           )"
           test -n "$asset"
           echo "MCP smoke asset=$asset"
-          curl --fail --silent --show-error --retry 3 --retry-delay 2 "$DEPLOYMENT_URL$asset" >/dev/null
-
-      - name: Smoke configured MCP production alias
-        shell: bash
-        env:
-          DEPLOYMENT_URL: ${{ env.MCP_PRODUCTION_URL }}
-        run: |
-          set -euo pipefail
-          for attempt in $(seq 1 12); do
-            response="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/" || true)"
-            echo "MCP alias smoke attempt=$attempt status=${response:-000}"
-            case "$response" in
-              200|302|307)
-                echo "MCP production alias is serving: $DEPLOYMENT_URL"
-                exit 0
-                ;;
-            esac
-            [ "$attempt" -lt 12 ] && sleep 5
-          done
-          echo "MCP production alias did not become ready; last status: ${response:-000}" >&2
-          exit 1
+          curl --fail --location --silent --show-error --retry 3 --retry-delay 2 "$DEPLOYMENT_URL$asset" >/dev/null
 
       - name: Record successful exact SHA
         shell: bash
