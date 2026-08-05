@@ -39,7 +39,7 @@ const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
   ['coreVehicleRead', 'Điều phối giao hàng', 'Xem phương tiện', 'Cho phép đọc danh mục phương tiện giao hàng.'],
   ['coreVehicleManage', 'Điều phối giao hàng', 'Quản lý phương tiện', 'Cho phép tạo phương tiện giao hàng phục vụ điều phối.'],
   ['coreDriverProfileRead', 'Điều phối giao hàng', 'Xem tài xế', 'Cho phép đọc hồ sơ tài xế giao hàng.'],
-  ['coreDriverProfileManage', 'Điều phối giao hàng', 'Quản lý tài xế', 'Cho phép tạo hồ sơ tài xế giao hàng phục vụ điều phối.'],
+  ['coreDriverProfileManage', 'Điều phối giao hàng', 'Quản lý tài xế', 'Cho phép tạo hồ sơ tài xế giao hàng.'],
   ['coreDeliveryTripRead', 'Điều phối giao hàng', 'Xem chuyến giao', 'Cho phép đọc chuyến, điểm dừng và phiếu giao được gán trong phạm vi kho.'],
   ['coreDeliveryTripCreate', 'Điều phối giao hàng', 'Tạo chuyến giao', 'Cho phép tạo chuyến giao nháp trong phạm vi kho.'],
   ['coreDeliveryTripPlan', 'Điều phối giao hàng', 'Lập kế hoạch chuyến', 'Cho phép cập nhật xe, tài xế, thời gian và trạng thái planned của chuyến.'],
