@@ -35,7 +35,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '046_logistics_trip_planning', sql: LOGISTICS_TRIP_PLANNING_SQL }),
   Object.freeze({ id: '047_logistics_trip_dispatch', sql: LOGISTICS_TRIP_DISPATCH_SQL }),
   Object.freeze({ id: '048_logistics_driver_delivery_read', sql: LOGISTICS_DRIVER_DELIVERY_READ_SQL }),
-  Object.freeze({ id: '049_logistics_delivery_attempts', sql: LOGISTICS_DELIVERY_ATTEMPT_OUTBOX_SCHEDULE_SQL }),
+  Object.freeze({ id: '049_logistics_delivery_attempts', sql: LOGISTICS_DELIVERY_ATTEMPTS_SQL }),
   Object.freeze({ id: '050_logistics_delivery_attempt_outbox_schedule', sql: LOGISTICS_DELIVERY_ATTEMPT_OUTBOX_SCHEDULE_SQL }),
   Object.freeze({ id: '051_logistics_trip_reconciliation', sql: LOGISTICS_TRIP_RECONCILIATION_SQL }),
   Object.freeze({ id: '052_logistics_optional_proof_of_delivery', sql: LOGISTICS_OPTIONAL_PROOF_OF_DELIVERY_SQL }),
