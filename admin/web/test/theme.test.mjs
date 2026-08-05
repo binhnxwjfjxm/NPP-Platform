@@ -25,3 +25,10 @@ test('Admin remains responsive for desktop and mobile review flows', () => {
   assert.match(theme, /min-height:\s*46px/);
   assert.match(layout, /import '\.\/hung-phat-warm-gold\.css';/);
 });
+
+test('Admin focus ring has an opaque edge for light and dark surfaces', () => {
+  assert.match(theme, /--hp-focus-inner:\s*#fffdf8/i);
+  assert.match(theme, /--hp-focus-outer:\s*#754706/i);
+  assert.match(theme, /outline:\s*2px solid var\(--hp-focus-inner\)/);
+  assert.match(theme, /box-shadow:\s*0 0 0 4px var\(--hp-focus-outer\)/);
+});
