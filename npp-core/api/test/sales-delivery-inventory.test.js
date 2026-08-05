@@ -85,12 +85,16 @@ test('Phase 6D.4 migration locks issue, reversal, reservation and return lineage
   assert.doesNotMatch(route, /\/dispatch(?:'|\"|\/)/);
 });
 
-test('Phase 6D.4 does not implement trips, attempts, POD, COD or accounting', () => {
+test('Phase 6D.4 stays free of trip, POD, COD and accounting schema while 6F.1 hooks pickup receivable posting', () => {
   const service = readFileSync(new URL('../src/services/sales-delivery-inventory.js', import.meta.url), 'utf8');
   const migration = readFileSync(
     new URL('../../../database/migrations/sales/045_sales_inventory_issue_customer_return.sql', import.meta.url),
     'utf8',
   );
-  assert.doesNotMatch(migration, /CREATE TABLE IF NOT EXISTS .*delivery_trips|delivery_attempts|proof_of_delivery/i);
-  assert.doesNotMatch(service, /assignDriver|optimizeRoute|recordPod|collectCod|postReceivable|postAccounting/i);
+  assert.doesNotMatch(
+    migration,
+    /CREATE TABLE IF NOT EXISTS\s+(?:logistics\.(?:delivery_trips|delivery_attempts|proof_of_delivery)|accounting\.)/i,
+  );
+  assert.doesNotMatch(service, /assignDriver|optimizeRoute|recordPod|collectCod|postAccounting/i);
+  assert.match(service, /postReceivableFromPickupHandover/);
 });

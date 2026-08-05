@@ -237,6 +237,15 @@ function createTrackedClient(client, writeState) {
   });
 }
 
+function expectedCount(value, fallback, minimum, errorCode) {
+  if (value === undefined || value === null) return fallback;
+  const normalized = Number(value);
+  if (!Number.isInteger(normalized) || normalized < minimum || normalized > 100) {
+    throw new Error(errorCode);
+  }
+  return normalized;
+}
+
 export async function withAuditOutboxTransaction({ adapter, mutate }) {
   if (!adapter || typeof adapter.connect !== 'function') throw new Error('invalid_audit_outbox_adapter');
   if (typeof mutate !== 'function') throw new Error('invalid_mutation_callback');
@@ -269,10 +278,30 @@ export async function withAuditOutboxTransaction({ adapter, mutate }) {
       && writeState.outboxCount === 0;
 
     if (!replayWithoutWrites) {
-      if (writeState.auditCount !== 1) throw new Error('audit_record_required');
       const expectsOutbox = result?.eventId !== undefined && result?.eventId !== null;
-      if (expectsOutbox && writeState.outboxCount !== 1) throw new Error('outbox_event_required');
-      if (!expectsOutbox && writeState.outboxCount !== 0) throw new Error('unexpected_outbox_event');
+      const explicitAuditCount = result?.expectedAuditCount !== undefined
+        && result?.expectedAuditCount !== null;
+      const explicitOutboxCount = result?.expectedOutboxCount !== undefined
+        && result?.expectedOutboxCount !== null;
+      const requiredAuditCount = expectedCount(
+        result?.expectedAuditCount,
+        1,
+        1,
+        'invalid_expected_audit_count',
+      );
+      const requiredOutboxCount = expectedCount(
+        result?.expectedOutboxCount,
+        expectsOutbox ? 1 : 0,
+        0,
+        'invalid_expected_outbox_count',
+      );
+      if (writeState.auditCount !== requiredAuditCount) {
+        throw new Error(explicitAuditCount ? 'audit_record_count_mismatch' : 'audit_record_required');
+      }
+      if (writeState.outboxCount !== requiredOutboxCount) {
+        if (explicitOutboxCount) throw new Error('outbox_event_count_mismatch');
+        throw new Error(expectsOutbox ? 'outbox_event_required' : 'unexpected_outbox_event');
+      }
     }
 
     await client.query('COMMIT');

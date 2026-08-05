@@ -12,6 +12,7 @@ import * as repository from '../db/repositories/sales-delivery-inventory.js';
 import { allocateDocumentNumber } from './document-numbering.js';
 import { reverseInventoryMovement } from './inventory-ledger.js';
 import { postServerOwnedSalesMovement } from './sales-inventory-ledger.js';
+import { postReceivableFromPickupHandover } from './customer-receivable.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -202,6 +203,8 @@ function knownDatabaseFailure(error) {
     ['inventory_negative_stock_denied', 'INSUFFICIENT_INVENTORY', 'Inventory is insufficient for this issue'],
     ['customer_return_quantity_exceeds_issued', 'CUSTOMER_RETURN_QUANTITY_CONFLICT', 'Customer return exceeds the remaining issued quantity'],
     ['customer_return_origin_mismatch', 'CUSTOMER_RETURN_ORIGIN_MISMATCH', 'Customer return source lineage is invalid'],
+    ['receivable_documents_source_unique', 'RECEIVABLE_SOURCE_CONFLICT', 'Pickup handover already has a receivable document'],
+    ['receivable_ledger_entries_source_type_unique', 'RECEIVABLE_SOURCE_CONFLICT', 'Pickup handover already has a receivable ledger entry'],
   ];
   for (const [needle, code, publicMessage] of mappings) {
     if (message.includes(needle)) return failure(code, publicMessage, code.endsWith('CONFLICT'));
@@ -274,6 +277,7 @@ async function executeIssue({
     const transaction = await withAuditOutboxTransaction({
       adapter,
       mutate: async (client) => {
+        let receivablePosted = false;
         await repository.setDeliveryIssueWriteContext(client);
         await repository.lockOperationKey(client, {
           installationId: requestContext.installationId,
@@ -489,6 +493,14 @@ async function executeIssue({
           salesOrderId: header.sales_order_id,
           actorId: requestContext.actorId,
         });
+        if (issueSourceType === 'PICKUP_HANDOVER') {
+          const receivableResult = await postReceivableFromPickupHandover(client, {
+            requestContext,
+            issueId,
+          });
+          if (!receivableResult.ok) return { failed: receivableResult };
+          receivablePosted = Boolean(receivableResult.receivableDocument);
+        }
         const eventType = issueSourceType === 'PICKUP_HANDOVER' ? 'PICKUP_HANDED_OVER' : 'INVENTORY_ISSUED';
         await deliveryOrderRepository.insertDeliveryOrderEvent(client, {
           installationId: requestContext.installationId,
@@ -529,7 +541,15 @@ async function executeIssue({
         });
         await insertAuditRecord(client, audit);
         await insertOutboxEvent(client, event);
-        return Object.freeze({ ok: true, replayed: false, issue: detail.issue, auditId: audit.auditId, eventId: event.eventId });
+        return Object.freeze({
+          ok: true,
+          replayed: false,
+          issue: detail.issue,
+          auditId: audit.auditId,
+          eventId: event.eventId,
+          expectedAuditCount: receivablePosted ? 2 : 1,
+          expectedOutboxCount: receivablePosted ? 2 : 1,
+        });
       },
     });
     return transaction?.failed ?? transaction;
