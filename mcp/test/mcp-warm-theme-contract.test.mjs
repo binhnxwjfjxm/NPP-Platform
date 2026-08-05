@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 
 const legacyTheme = await readFile("src/app/npp-theme.css", "utf8");
 const foundation = await readFile("src/app/hung-phat-mobile-foundation.css", "utf8");
@@ -11,6 +11,7 @@ const shell = await readFile("src/ui/shell/AppShell.tsx", "utf8");
 const dock = await readFile("src/ui/shell/MobileDock.tsx", "utf8");
 const launchpad = await readFile("src/ui/shell/MobileHomeLaunchpad.tsx", "utf8");
 const navigation = await readFile("src/ui/shell/navigation.ts", "utf8");
+const marketChecks = await readFile("src/features/market-checks/MarketChecksClientPage.tsx", "utf8");
 
 const tokens = {
   "--npp-color-canvas": "#f7f5f1",
@@ -48,11 +49,12 @@ test("mobile application experience loads after legacy shell and theme layers", 
   assert.match(layout, /themeColor:\s*"#754706"/);
 });
 
-test("phone shell is a field application, not a stacked desktop website", () => {
+test("phone shell is a field application with one header and one scroll region", () => {
   assert.match(shell, /data-bottom-navigation/);
   assert.match(shell, /BOTTOM_NAV_LIMIT = 5/);
   assert.match(shell, /MobileHomeLaunchpad/);
-  assert.match(shell, /MobileContextBar/);
+  assert.doesNotMatch(shell, /MobileContextBar/);
+  assert.doesNotMatch(shell, /data-mobile-context-bar/);
   assert.match(shell, /MobileDock/);
   assert.match(navigation, /FIELD_DOCK_ITEMS/);
   assert.match(navigation, /href:\s*"\/visits"/);
@@ -62,11 +64,48 @@ test("phone shell is a field application, not a stacked desktop website", () => 
   assert.match(launchpad, /Đi tuyến hôm nay/);
   assert.match(launchpad, /href="\/visits"/);
   assert.match(foundation, /\.sidebar\s*\{[\s\S]*?display:\s*none\s*!important/);
-  assert.match(geometry, /grid-template-rows:\s*auto auto minmax\(0, 1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(geometry, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(geometry, /min-height:\s*54px/);
   assert.match(experience, /\.mobile-app-dock-link\.primary/);
   assert.match(experience, /\.mobile-home-primary-action/);
-  assert.match(experience, /\.mobile-context-bar/);
+});
+
+test("mobile dock is translucent with a warm brown glow", () => {
+  assert.match(geometry, /background:\s*rgba\(250, 244, 234, 0\.72\)/);
+  assert.match(geometry, /border-top:\s*1px solid rgba\(117, 71, 6, 0\.24\)/);
+  assert.match(geometry, /backdrop-filter:\s*blur\(20px\) saturate\(1\.25\)/);
+  assert.match(geometry, /0 -12px 32px rgba\(117, 71, 6, 0\.18\)/);
+});
+
+test("every top-level MCP page has a canonical navigation entry", async () => {
+  const entries = await readdir("src/app", { withFileTypes: true });
+  const routes = ["/"];
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === "api") continue;
+    try {
+      await readFile(`src/app/${entry.name}/page.tsx`, "utf8");
+      routes.push(`/${entry.name}`);
+    } catch {
+      // Nested-only route groups do not need a top-level navigation entry.
+    }
+  }
+
+  const registered = new Set(Array.from(navigation.matchAll(/href:\s*"([^"]+)"/g), (match) => match[1]));
+  for (const route of routes) {
+    assert.ok(registered.has(route), `top-level route ${route} must be registered in navigation.ts`);
+  }
+});
+
+test("field checks is a first-class menu route but not a bottom-dock item", () => {
+  assert.match(navigation, /FIELD_CHECKS_NAV_ITEM/);
+  assert.match(navigation, /href:\s*"\/field-checks"/);
+  assert.match(navigation, /SIDEBAR_NAV_ITEMS:[\s\S]*FIELD_CHECKS_NAV_ITEM/);
+  assert.match(navigation, /APP_MENU_GROUPS:[\s\S]*FIELD_CHECKS_NAV_ITEM/);
+  assert.match(marketChecks, /<AppShell activeHref="\/field-checks">/);
+
+  const dockItems = navigation.match(/export const FIELD_DOCK_ITEMS:[\s\S]*?=\s*\[([\s\S]*?)\];/)?.[1] || "";
+  assert.doesNotMatch(dockItems, /FIELD_CHECKS_NAV_ITEM/);
 });
 
 test("MCP focus ring keeps an opaque light and dark edge", () => {

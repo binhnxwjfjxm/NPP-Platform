@@ -243,7 +243,7 @@ export function MarketChecksClientPage({ groups }: { groups: MarketCheckSessionG
   }
 
   return (
-    <AppShell activeHref="/mcp">
+    <AppShell activeHref="/field-checks">
       <PageHeader eyebrow="MCP" title="Kết quả thử sản phẩm" subtitle="Tổng hợp kết quả thử sản phẩm theo từng phiên đi tuyến và điểm bán."><span className="badge">{needAction} cần xử lý</span></PageHeader>
       <FilterBar filters={[{ label: "Phạm vi", value: "Theo phiên đi tuyến" }, { label: "Trạng thái", value: needAction ? `${needAction} cần xử lý` : "Đã cập nhật" }, { label: "Sắp xếp", value: "Mới nhất trước" }]} />
 

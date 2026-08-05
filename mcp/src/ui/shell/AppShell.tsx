@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { FIELD_DOCK_ITEMS, SIDEBAR_NAV_ITEMS, navItemForHref, shellSectionForHref, type NavItem } from "./navigation";
+import { FIELD_DOCK_ITEMS, SIDEBAR_NAV_ITEMS, shellSectionForHref, type NavItem } from "./navigation";
 import { AppTopBar, MobileAppMenuProvider } from "./MobileAppMenu";
 import { MobileDock } from "./MobileDock";
 import { MobileHomeLaunchpad } from "./MobileHomeLaunchpad";
@@ -26,30 +26,6 @@ function NavLinks({ activeHref, items }: { activeHref: string; items: NavItem[] 
   );
 }
 
-function mobileBackHref(activeHref: string) {
-  if (activeHref.startsWith("/mcp/sessions")) return "/visits";
-  if (activeHref.startsWith("/customers")) return "/routes";
-  if (activeHref.startsWith("/visits")) return "/routes";
-  return "/";
-}
-
-function MobileContextBar({ activeHref }: { activeHref: string }) {
-  if (activeHref === "/") return null;
-  const current = navItemForHref(activeHref);
-  return (
-    <div className="mobile-context-bar" data-mobile-context-bar>
-      <Link className="mobile-context-back" href={mobileBackHref(activeHref)} prefetch aria-label="Quay lại">
-        <span aria-hidden="true">‹</span>
-      </Link>
-      <div className="mobile-context-copy">
-        <small>MCP Field</small>
-        <strong>{current.label}</strong>
-      </div>
-      <span className="mobile-context-status">Tác nghiệp</span>
-    </div>
-  );
-}
-
 export function AppShell({ children, activeHref = "/" }: AppShellProps) {
   const section = shellSectionForHref(activeHref);
   return (
@@ -71,7 +47,6 @@ export function AppShell({ children, activeHref = "/" }: AppShellProps) {
         </aside>
         <div className="app-content-shell" data-app-content-shell>
           <AppTopBar activeHref={activeHref} />
-          <MobileContextBar activeHref={activeHref} />
           <main className="main" data-app-scroll-region>
             {activeHref === "/" ? <MobileHomeLaunchpad /> : null}
             {children}
