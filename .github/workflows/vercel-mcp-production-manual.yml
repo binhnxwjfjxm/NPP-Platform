@@ -266,13 +266,16 @@ jobs:
 
           assert_reachable() {
             local path="$1"
-            local response
-            response="$(curl --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL$path")"
-            echo "MCP exact smoke path=$path status=$response"
-            case "$response" in
-              200|302|307|401|403) return 0 ;;
-            esac
-            echo "Exact MCP deployment is not reachable at $path; got $response" >&2
+            local response=""
+            for attempt in $(seq 1 6); do
+              response="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL$path" || true)"
+              echo "MCP exact smoke path=$path attempt=$attempt status=${response:-000}"
+              case "$response" in
+                200|302|307|401|403) return 0 ;;
+              esac
+              [ "$attempt" -lt 6 ] && sleep 5
+            done
+            echo "Exact MCP deployment is not reachable at $path; got ${response:-000}" >&2
             exit 1
           }
 
@@ -313,7 +316,7 @@ jobs:
           assert_status /field-checks 200 302 307
 
           html_file="${RUNNER_TEMP}/mcp-production-root.html"
-          curl --fail --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors "$DEPLOYMENT_URL/" > "$html_file"
+          curl --fail --location --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors "$DEPLOYMENT_URL/" > "$html_file"
           asset="$(HTML_FILE="$html_file" node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
           const html = await readFile(process.env.HTML_FILE, "utf8");
@@ -324,7 +327,7 @@ jobs:
           )"
           test -n "$asset"
           echo "MCP smoke asset=$asset"
-          curl --fail --silent --show-error --retry 3 --retry-delay 2 "$DEPLOYMENT_URL$asset" >/dev/null
+          curl --fail --location --silent --show-error --retry 3 --retry-delay 2 "$DEPLOYMENT_URL$asset" >/dev/null
 
       - name: Record successful exact SHA
         shell: bash
