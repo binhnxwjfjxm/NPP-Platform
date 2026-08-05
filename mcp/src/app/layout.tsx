@@ -25,10 +25,11 @@ import "./mcp-scroll-restore.css";
 import "./export-menu-fix.css";
 import "./npp-theme.css";
 import "./app-shell-contract.css";
+import "./hung-phat-mobile-foundation.css";
 
 export const metadata: Metadata = {
   title: "NPP MCP Field",
-  description: "Ứng dụng tác nghiệp thị trường của NPP Hùng Phát.",
+  description: "Ứng dụng tác nghiệp thị trường của NPP Hưng Phát.",
   applicationName: "NPP MCP Field",
   icons: {
     icon: "/api/pwa-icon?size=192",
@@ -50,8 +51,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  viewportFit: "auto",
-  themeColor: "#9a3412"
+  viewportFit: "cover",
+  themeColor: "#754706"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
