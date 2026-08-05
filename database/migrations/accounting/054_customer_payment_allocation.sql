@@ -17,30 +17,61 @@ SET module = EXCLUDED.module,
     description = EXCLUDED.description,
     is_system = EXCLUDED.is_system;
 
-INSERT INTO shared.document_number_series (
-  id, installation_id, code, document_type, name, prefix, number_template,
-  reset_policy, sequence_width, start_counter, timezone_name, description,
-  is_active, created_at, updated_at, created_by, updated_by
-)
-SELECT accounting.stable_uuid(customer_installation.installation_id || ':document-series:CUSTOMER_PAYMENT'),
-       customer_installation.installation_id,
-       'CUSTOMER_PAYMENT',
-       'CUSTOMER_PAYMENT',
-       'Phiếu thu khách hàng',
-       'CP-',
-       '{PREFIX}{YYYY}{MM}-{SEQ}',
-       'MONTHLY',
-       6,
-       1,
-       'Asia/Ho_Chi_Minh',
-       'Series mặc định cho phiếu thu khách hàng.',
-       true,
-       now(),
-       now(),
-       'migration:054_customer_payment_allocation',
-       'migration:054_customer_payment_allocation'
-  FROM (SELECT DISTINCT installation_id FROM shared.customers) customer_installation
-ON CONFLICT (installation_id, code) DO NOTHING;
+CREATE OR REPLACE FUNCTION accounting.ensure_customer_payment_series_for_installation(
+  p_installation_id text
+) RETURNS void
+LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO shared.document_number_series (
+    id, installation_id, code, document_type, name, prefix, number_template,
+    reset_policy, sequence_width, start_counter, timezone_name, description,
+    is_active, created_at, updated_at, created_by, updated_by
+  ) VALUES (
+    accounting.stable_uuid(p_installation_id || ':document-series:CUSTOMER_PAYMENT'),
+    p_installation_id,
+    'CUSTOMER_PAYMENT',
+    'CUSTOMER_PAYMENT',
+    'Phiếu thu khách hàng',
+    'CP-',
+    '{PREFIX}{YYYY}{MM}-{SEQ}',
+    'MONTHLY',
+    6,
+    1,
+    'Asia/Ho_Chi_Minh',
+    'Series mặc định cho phiếu thu khách hàng.',
+    true,
+    now(),
+    now(),
+    'system:customer-payment-series',
+    'system:customer-payment-series'
+  )
+  ON CONFLICT (installation_id, code) DO NOTHING;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION accounting.ensure_customer_payment_series_after_customer_insert()
+RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  PERFORM accounting.ensure_customer_payment_series_for_installation(NEW.installation_id);
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS customers_ensure_customer_payment_series ON shared.customers;
+CREATE TRIGGER customers_ensure_customer_payment_series
+AFTER INSERT ON shared.customers
+FOR EACH ROW EXECUTE FUNCTION accounting.ensure_customer_payment_series_after_customer_insert();
+
+DO $$
+DECLARE
+  installation record;
+BEGIN
+  FOR installation IN SELECT DISTINCT installation_id FROM shared.customers LOOP
+    PERFORM accounting.ensure_customer_payment_series_for_installation(installation.installation_id);
+  END LOOP;
+END;
+$$;
 
 ALTER TABLE accounting.receivable_documents
   ALTER COLUMN sales_order_id DROP NOT NULL,
