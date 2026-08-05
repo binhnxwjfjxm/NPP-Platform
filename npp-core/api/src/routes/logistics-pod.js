@@ -2,6 +2,7 @@ import { createSuccessEnvelope } from '@npp/contracts';
 import { sendError, sendJson } from '../http-utils.js';
 import { normalizeIdempotencyKey } from '../idempotency.js';
 import { createOptionalR2StorageAdapter } from '../storage/r2-adapter.js';
+import { createStorageError, STORAGE_ERROR_CODES } from '../storage/errors.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
 import {
   attachDriverProof,
@@ -10,6 +11,21 @@ import {
 } from '../services/logistics-proof-of-delivery.js';
 
 const MAX_POD_REQUEST_BYTES = 16 * 1024 * 1024;
+
+function storageUnavailable() {
+  throw createStorageError(STORAGE_ERROR_CODES.disabled, 'Photo storage is not configured', {
+    retryable: true,
+    statusCode: 503,
+  });
+}
+
+const STORAGE_UNAVAILABLE_ADAPTER = Object.freeze({
+  putObject: storageUnavailable,
+  createPresignedGetUrl: storageUnavailable,
+  async deleteObject() {
+    return Object.freeze({ deleted: false });
+  },
+});
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -180,11 +196,13 @@ async function authenticate(req, res, options, permissions, expandBootstrapScope
 }
 
 function resolveStorageAdapter(options) {
-  if (Object.prototype.hasOwnProperty.call(options, 'storageAdapter')) return options.storageAdapter;
+  if (Object.prototype.hasOwnProperty.call(options, 'storageAdapter')) {
+    return options.storageAdapter ?? STORAGE_UNAVAILABLE_ADAPTER;
+  }
   try {
-    return createOptionalR2StorageAdapter(options.config);
+    return createOptionalR2StorageAdapter(options.config) ?? STORAGE_UNAVAILABLE_ADAPTER;
   } catch {
-    return null;
+    return STORAGE_UNAVAILABLE_ADAPTER;
   }
 }
 
@@ -324,6 +342,7 @@ export async function handleLogisticsPodRoutes(req, res, options) {
 
 export const logisticsPodRouteInternals = Object.freeze({
   MAX_POD_REQUEST_BYTES,
+  STORAGE_UNAVAILABLE_ADAPTER,
   readLimitedJson,
   requireIdempotency,
   resolveStorageAdapter,
