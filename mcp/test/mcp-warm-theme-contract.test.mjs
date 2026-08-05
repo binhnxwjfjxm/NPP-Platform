@@ -6,6 +6,7 @@ const legacyTheme = await readFile("src/app/npp-theme.css", "utf8");
 const foundation = await readFile("src/app/hung-phat-mobile-foundation.css", "utf8");
 const experience = await readFile("src/app/mobile-app-experience.css", "utf8");
 const geometry = await readFile("src/app/mobile-app-geometry.css", "utf8");
+const primaryWorkflow = await readFile("src/app/mcp-primary-workflow.css", "utf8");
 const layout = await readFile("src/app/layout.tsx", "utf8");
 const shell = await readFile("src/ui/shell/AppShell.tsx", "utf8");
 const dock = await readFile("src/ui/shell/MobileDock.tsx", "utf8");
@@ -39,12 +40,14 @@ test("mobile application experience loads after legacy shell and theme layers", 
   const foundationIndex = layout.indexOf('import "./hung-phat-mobile-foundation.css";');
   const experienceIndex = layout.indexOf('import "./mobile-app-experience.css";');
   const geometryIndex = layout.indexOf('import "./mobile-app-geometry.css";');
+  const workflowIndex = layout.indexOf('import "./mcp-primary-workflow.css";');
   assert.ok(legacyIndex >= 0, "legacy theme import must exist");
   assert.ok(shellContractIndex >= 0, "app shell contract import must exist");
   assert.ok(foundationIndex > legacyIndex, "foundation must follow legacy theme");
   assert.ok(foundationIndex > shellContractIndex, "foundation must follow shell contract");
   assert.ok(experienceIndex > foundationIndex, "application experience must follow the theme foundation");
-  assert.ok(geometryIndex > experienceIndex, "stable dock geometry must be the final mobile layer");
+  assert.ok(geometryIndex > experienceIndex, "stable dock geometry must follow the application experience");
+  assert.ok(workflowIndex > geometryIndex, "primary workflow hierarchy must be the final mobile override");
   assert.match(layout, /viewportFit:\s*"cover"/);
   assert.match(layout, /themeColor:\s*"#754706"/);
 });
@@ -75,6 +78,19 @@ test("mobile dock is translucent with a warm brown glow", () => {
   assert.match(geometry, /border-top:\s*1px solid rgba\(117, 71, 6, 0\.24\)/);
   assert.match(geometry, /backdrop-filter:\s*blur\(20px\) saturate\(1\.25\)/);
   assert.match(geometry, /0 -12px 32px rgba\(117, 71, 6, 0\.18\)/);
+});
+
+test("primary mobile workflow has clear overview, route and visit hierarchy", () => {
+  assert.match(primaryWorkflow, /@media \(max-width: 820px\)/);
+  assert.match(primaryWorkflow, /\[data-active-href="\/"\] \.mobile-home-launchpad/);
+  assert.match(primaryWorkflow, /\[data-active-href="\/"\] \.dashboard-command-card:first-child/);
+  assert.match(primaryWorkflow, /\[data-active-href="\/routes"\] \.main > \.dashboard-section:first-of-type/);
+  assert.match(primaryWorkflow, /CHỌN TUYẾN ĐỂ BẮT ĐẦU/);
+  assert.match(primaryWorkflow, /\[data-active-href="\/routes"\][\s\S]*\.operational-list-actions \.button/);
+  assert.match(primaryWorkflow, /\[data-active-href="\/visits"\] \.mcp-session-hero/);
+  assert.match(primaryWorkflow, /ƯU TIÊN XỬ LÝ/);
+  assert.match(primaryWorkflow, /\[data-active-href="\/visits"\][\s\S]*\.mcp-line-list > article:first-child/);
+  assert.match(primaryWorkflow, /scroll-padding-bottom:\s*calc\(96px \+ env\(safe-area-inset-bottom\)\)/);
 });
 
 test("every top-level MCP page has a canonical navigation entry", async () => {
