@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS accounting.receivable_documents (
     allocated_amount <= original_amount
     AND remaining_amount = original_amount - allocated_amount
   ),
-  CONSTRAINT receivable_documents_status_check CHECK (
+  CONSTRAINT receivable_documents_state_projection_check CHECK (
     (status = 'open' AND allocated_amount = 0 AND remaining_amount = original_amount)
     OR (status = 'partially_allocated' AND allocated_amount > 0 AND remaining_amount > 0)
     OR (status = 'settled' AND remaining_amount = 0)
