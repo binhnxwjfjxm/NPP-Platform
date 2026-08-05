@@ -143,8 +143,8 @@ async function verifyMobile(browser) {
   assert.ok(Math.abs(before.bottom.bottom - before.viewport.height) <= 1, "bottom nav must attach directly to the viewport bottom edge");
   assert.equal(before.bottomPosition, "relative", "bottom navigation must be an AppShell row, not a fixed viewport overlay");
   assert.equal(before.bottomParentIsShell, true, "bottom navigation must be owned by app-content-shell");
-  assert.ok(Math.abs(before.bottom.height - 58) <= 1, "bottom nav visual height must stay at 58px");
-  assert.ok(before.firstBottomLinkHeight >= 49 && before.firstBottomLinkHeight <= 51, "bottom nav shortcuts must keep a 50px touch target");
+  assert.ok(Math.abs(before.bottom.height - 64) <= 1, "bottom nav visual height must stay at 64px before safe-area inset");
+  assert.ok(before.firstBottomLinkHeight >= 53 && before.firstBottomLinkHeight <= 55, "bottom nav shortcuts must keep a 54px touch target");
   assert.ok(before.bottomAppearance, "bottom navigation appearance must be measurable");
   assert.ok(before.bottomAppearance.borderRadius <= 0.1, "bottom nav shell must not render as a rounded floating card");
   assert.ok(before.bottomAppearance.borderTopWidth >= 1, "bottom nav must use a subtle top divider");

@@ -91,7 +91,7 @@ try {
     return { background: style.backgroundColor, border: style.borderTopColor };
   });
   assert.equal(formStyle.background, "rgb(255, 255, 255)");
-  assert.equal(formStyle.border, "rgb(232, 222, 210)");
+  assert.equal(formStyle.border, "rgb(216, 208, 196)");
   await screenshot(page, "14-business-form-theme");
 
   result.F05_APP_SHELL_THEME_SMOKE = "PASS";

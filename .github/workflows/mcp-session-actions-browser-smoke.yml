@@ -6,6 +6,7 @@ on:
       - ".github/workflows/mcp-session-actions-browser-smoke.yml"
       - "mcp/src/app/layout.tsx"
       - "mcp/src/app/npp-theme.css"
+      - "mcp/src/app/hung-phat-mobile-foundation.css"
       - "mcp/src/features/mcp/McpSessionCompactViewFinal2.tsx"
       - "mcp/src/lib/api/**"
       - "mcp/test/ui/mcp-session-actions-**"

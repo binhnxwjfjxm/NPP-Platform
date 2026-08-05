@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import './globals.css';
+import './hung-phat-warm-gold.css';
 
 export const metadata: Metadata = {
   title: 'Admin MCP/NPP — Hưng Phát',
