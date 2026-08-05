@@ -162,11 +162,13 @@ try {
     const mutationLog = [];
     await mockGroups(page, mutationLog);
     await page.goto(`${appBase}/mcp-setting/groups`, { waitUntil: "networkidle" });
-    await page.getByText("Sản phẩm đang dùng", { exact: true }).waitFor({ state: "visible" });
     await assertShell(page, `report groups at ${viewport.width}px`, true);
 
     const mobileList = page.locator("section[aria-label='Danh sách nhóm lựa chọn']");
     await mobileList.waitFor({ state: "visible" });
+    await mobileList
+      .getByText("Sản phẩm đang dùng", { exact: true })
+      .waitFor({ state: "visible" });
     assert.equal(
       await page.locator("section[aria-label='Bảng nhóm lựa chọn']").evaluate(
         (node) => getComputedStyle(node).display,
@@ -214,7 +216,6 @@ try {
   const desktopMutationLog = [];
   await mockGroups(desktopPage, desktopMutationLog);
   await desktopPage.goto(`${appBase}/mcp-setting/groups`, { waitUntil: "networkidle" });
-  await desktopPage.getByText("Sản phẩm đang dùng", { exact: true }).first().waitFor({ state: "visible" });
   await assertShell(desktopPage, "report groups desktop", false);
   assert.equal(
     await desktopPage.locator("section[aria-label='Danh sách nhóm lựa chọn']").evaluate(
@@ -222,8 +223,12 @@ try {
     ),
     "none",
   );
-  await desktopPage.locator("section[aria-label='Bảng nhóm lựa chọn']").waitFor({ state: "visible" });
-  assert.equal(await desktopPage.locator("table tbody tr").count(), 2);
+  const desktopTable = desktopPage.locator("section[aria-label='Bảng nhóm lựa chọn']");
+  await desktopTable.waitFor({ state: "visible" });
+  await desktopTable
+    .getByText("Sản phẩm đang dùng", { exact: true })
+    .waitFor({ state: "visible" });
+  assert.equal(await desktopTable.locator("table tbody tr").count(), 2);
   await screenshot(desktopPage, "25-groups-desktop");
 
   await desktopPage.goto(`${appBase}/actions`, { waitUntil: "networkidle" });
