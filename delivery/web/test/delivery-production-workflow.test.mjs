@@ -27,6 +27,23 @@ test('Delivery production workflow is exact-command and manual-only', async () =
     assert.ok(workflow.includes(marker), `workflow missing ${marker}`);
   }
   assert.doesNotMatch(workflow, /workflow_dispatch:/);
+  assert.doesNotMatch(
+    workflow,
+    /defaults:\s*\n\s*run:\s*\n\s*working-directory:\s*delivery\/web/,
+    'Delivery workflow must not require delivery/web before checkout',
+  );
+  const checkoutIndex = workflow.indexOf('- name: Checkout exact main');
+  const firstWorkingDirectoryIndex = workflow.indexOf('working-directory: delivery/web');
+  assert.ok(checkoutIndex >= 0, 'workflow missing checkout step');
+  assert.ok(
+    firstWorkingDirectoryIndex > checkoutIndex,
+    'Delivery working directory must only be used after checkout',
+  );
+  assert.equal(
+    workflow.match(/working-directory: delivery\/web/g)?.length,
+    3,
+    'Delivery workflow must scope the workspace to the three post-checkout run steps',
+  );
 
   assert.equal(rootLock.lockfileVersion, 3);
   const declared = { ...deliveryPackage.dependencies, ...deliveryPackage.devDependencies };
