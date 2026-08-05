@@ -84,6 +84,7 @@ try {
       "logistics.trip_events",
       "logistics.trip_dispatch_items",
       "logistics.delivery_attempts",
+      "logistics.delivery_attempt_lines",
       "logistics.trip_return_receipts",
       "logistics.trip_return_receipt_lines",
       "logistics.delivery_attempt_proofs",
