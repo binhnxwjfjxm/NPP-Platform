@@ -5,7 +5,7 @@ import test from 'node:test';
 const source = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
 test('shared navigation uses business grouping without fake system or unfinished-login status', async () => {
-  const shell = await source('../app/components/app-shell.tsx');
+  const shell = await source('../app/components/app-shell-core.tsx');
   assert.match(shell, /Danh mục nghiệp vụ/);
   assert.match(shell, /Tổ chức, đối tác, hàng hóa, giá và chứng từ/);
   assert.match(shell, /Quản lý tài khoản và quyền truy cập/);

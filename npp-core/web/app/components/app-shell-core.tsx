@@ -22,50 +22,67 @@ type IconName =
   | 'chevron'
   | 'panel'
   | 'accounting'
+  | 'truck'
   | 'user';
 
-const organizationItems = [
-  { href: '/organization', label: 'Tổng quan cơ cấu', icon: 'organization' as const, testId: 'nav-organization-overview' },
-  { href: '/organization/branches', label: 'Chi nhánh', icon: 'branches' as const, testId: 'nav-branches' },
-  { href: '/organization/warehouses', label: 'Kho hàng', icon: 'warehouses' as const, testId: 'nav-warehouses' },
-  { href: '/organization/locations', label: 'Vị trí kho', icon: 'locations' as const, testId: 'nav-locations' },
-  { href: '/customers', label: 'Khách hàng', icon: 'user' as const, testId: 'nav-customers' },
-  { href: '/suppliers', label: 'Nhà cung cấp', icon: 'user' as const, testId: 'nav-suppliers' },
-  { href: '/products', label: 'Danh mục sản phẩm', icon: 'panel' as const, testId: 'nav-products' },
-  { href: '/pricing', label: 'Giá bán & khuyến mãi', icon: 'panel' as const, testId: 'nav-pricing' },
-  { href: '/document-numbering', label: 'Số chứng từ', icon: 'panel' as const, testId: 'nav-document-numbering' },
+type NavItem = {
+  href: string;
+  label: string;
+  icon: IconName;
+  testId: string;
+};
+
+const organizationItems: NavItem[] = [
+  { href: '/organization', label: 'Tổng quan cơ cấu', icon: 'organization', testId: 'nav-organization-overview' },
+  { href: '/organization/branches', label: 'Chi nhánh', icon: 'branches', testId: 'nav-branches' },
+  { href: '/organization/warehouses', label: 'Kho hàng', icon: 'warehouses', testId: 'nav-warehouses' },
+  { href: '/organization/locations', label: 'Vị trí kho', icon: 'locations', testId: 'nav-locations' },
+  { href: '/customers', label: 'Khách hàng', icon: 'user', testId: 'nav-customers' },
+  { href: '/suppliers', label: 'Nhà cung cấp', icon: 'user', testId: 'nav-suppliers' },
+  { href: '/products', label: 'Danh mục sản phẩm', icon: 'panel', testId: 'nav-products' },
+  { href: '/pricing', label: 'Giá bán & khuyến mãi', icon: 'panel', testId: 'nav-pricing' },
+  { href: '/document-numbering', label: 'Số chứng từ', icon: 'panel', testId: 'nav-document-numbering' },
 ];
 
-const accessItems = [
-  { href: '/access/roles', label: 'Vai trò & phân quyền', icon: 'panel' as const, testId: 'nav-roles' },
-  { href: '/access/employees', label: 'Danh mục nhân sự', icon: 'user' as const, testId: 'nav-employees' },
-  { href: '/access/users', label: 'Người dùng', icon: 'user' as const, testId: 'nav-users' },
+const accessItems: NavItem[] = [
+  { href: '/access/roles', label: 'Vai trò & phân quyền', icon: 'panel', testId: 'nav-roles' },
+  { href: '/access/employees', label: 'Danh mục nhân sự', icon: 'user', testId: 'nav-employees' },
+  { href: '/access/users', label: 'Người dùng', icon: 'user', testId: 'nav-users' },
 ];
 
-const inventoryItems = [
-  { href: '/inventory/fulfillment', label: 'Chuẩn bị hàng', icon: 'panel' as const, testId: 'nav-inventory-fulfillment' },
-  { href: '/inventory/balances', label: 'Tra cứu tồn kho', icon: 'panel' as const, testId: 'nav-inventory-balances' },
-  { href: '/inventory/tracking-policies', label: 'Chính sách lô', icon: 'panel' as const, testId: 'nav-inventory-policies' },
-  { href: '/inventory/lots', label: 'Lô hàng', icon: 'panel' as const, testId: 'nav-inventory-lots' },
-  { href: '/inventory/opening-balances', label: 'Thiết lập tồn đầu kỳ', icon: 'panel' as const, testId: 'nav-inventory-opening' },
+const inventoryItems: NavItem[] = [
+  { href: '/inventory/fulfillment', label: 'Chuẩn bị hàng', icon: 'panel', testId: 'nav-inventory-fulfillment' },
+  { href: '/inventory/balances', label: 'Tra cứu tồn kho', icon: 'panel', testId: 'nav-inventory-balances' },
+  { href: '/inventory/tracking-policies', label: 'Chính sách lô', icon: 'panel', testId: 'nav-inventory-policies' },
+  { href: '/inventory/lots', label: 'Lô hàng', icon: 'panel', testId: 'nav-inventory-lots' },
+  { href: '/inventory/opening-balances', label: 'Thiết lập tồn đầu kỳ', icon: 'panel', testId: 'nav-inventory-opening' },
 ];
 
-const salesItems = [
-  { href: '/management', label: 'Điều hành bán hàng', icon: 'panel' as const, testId: 'nav-sales-operations' },
-  { href: '/sales/sales-orders', label: 'Đơn bán hàng', icon: 'panel' as const, testId: 'nav-sales-orders' },
-  { href: '/management/customer-onboarding', label: 'Mở / liên kết mã khách', icon: 'user' as const, testId: 'nav-customer-onboarding' },
+const logisticsItems: NavItem[] = [
+  { href: '/inventory/delivery-orders', label: 'Phiếu giao hàng', icon: 'truck', testId: 'nav-delivery-orders' },
+  { href: '/logistics/trips', label: 'Lập & xếp chuyến', icon: 'truck', testId: 'nav-logistics-trips' },
+  { href: '/logistics/dispatch', label: 'Bàn giao & xuất phát', icon: 'truck', testId: 'nav-logistics-dispatch' },
+  { href: '/logistics/delivery-attempts', label: 'Kết quả lần giao', icon: 'truck', testId: 'nav-logistics-delivery-attempts' },
+  { href: '/logistics/trip-reconciliation', label: 'Đối soát cuối chuyến', icon: 'truck', testId: 'nav-logistics-trip-reconciliation' },
+  { href: '/inventory/customer-returns', label: 'Hàng khách trả', icon: 'truck', testId: 'nav-customer-returns' },
 ];
 
-const purchasingItems = [
-  { href: '/purchasing/purchase-orders', label: 'Đơn đặt hàng', icon: 'panel' as const, testId: 'nav-purchase-orders' },
-  { href: '/purchasing/purchase-prices', label: 'Bảng giá mua', icon: 'panel' as const, testId: 'nav-purchase-prices' },
-  { href: '/purchasing/goods-receipts', label: 'Phiếu nhận hàng', icon: 'panel' as const, testId: 'nav-goods-receipts' },
-  { href: '/purchasing/supplier-returns', label: 'Phiếu trả NCC', icon: 'panel' as const, testId: 'nav-supplier-returns' },
+const salesItems: NavItem[] = [
+  { href: '/management', label: 'Điều hành bán hàng', icon: 'panel', testId: 'nav-sales-operations' },
+  { href: '/sales/sales-orders', label: 'Đơn bán hàng', icon: 'panel', testId: 'nav-sales-orders' },
+  { href: '/management/customer-onboarding', label: 'Mở / liên kết mã khách', icon: 'user', testId: 'nav-customer-onboarding' },
 ];
 
-const accountingItems = [
-  { href: '/accounting/payables', label: 'Công nợ phải trả', icon: 'accounting' as const, testId: 'nav-payables' },
-  { href: '/accounting/supplier-payments', label: 'Thanh toán nhà cung cấp', icon: 'accounting' as const, testId: 'nav-supplier-payments' },
+const purchasingItems: NavItem[] = [
+  { href: '/purchasing/purchase-orders', label: 'Đơn đặt hàng', icon: 'panel', testId: 'nav-purchase-orders' },
+  { href: '/purchasing/purchase-prices', label: 'Bảng giá mua', icon: 'panel', testId: 'nav-purchase-prices' },
+  { href: '/purchasing/goods-receipts', label: 'Phiếu nhận hàng', icon: 'panel', testId: 'nav-goods-receipts' },
+  { href: '/purchasing/supplier-returns', label: 'Phiếu trả NCC', icon: 'panel', testId: 'nav-supplier-returns' },
+];
+
+const accountingItems: NavItem[] = [
+  { href: '/accounting/payables', label: 'Công nợ phải trả', icon: 'accounting', testId: 'nav-payables' },
+  { href: '/accounting/supplier-payments', label: 'Thanh toán nhà cung cấp', icon: 'accounting', testId: 'nav-supplier-payments' },
 ];
 
 function Icon({ name }: { name: IconName }) {
@@ -112,6 +129,13 @@ function Icon({ name }: { name: IconName }) {
         <circle cx="16" cy="12" r="1.25" />
       </>
     ),
+    truck: (
+      <>
+        <path d="M3 6h11v10H3zM14 10h4l3 3v3h-7z" />
+        <circle cx="7" cy="18" r="2" />
+        <circle cx="18" cy="18" r="2" />
+      </>
+    ),
     user: (
       <>
         <circle cx="12" cy="8" r="4" />
@@ -142,19 +166,19 @@ function isOrganizationPath(pathname: string): boolean {
 }
 
 function isInventoryPath(pathname: string): boolean {
-  return pathname.startsWith('/inventory');
+  return pathname.startsWith('/inventory')
+    && !pathname.startsWith('/inventory/delivery-orders')
+    && !pathname.startsWith('/inventory/customer-returns');
+}
+
+function isLogisticsPath(pathname: string): boolean {
+  return pathname.startsWith('/logistics')
+    || pathname.startsWith('/inventory/delivery-orders')
+    || pathname.startsWith('/inventory/customer-returns');
 }
 
 function isSalesPath(pathname: string): boolean {
   return pathname.startsWith('/sales') || pathname.startsWith('/management');
-}
-
-function isPurchasingPath(pathname: string): boolean {
-  return pathname.startsWith('/purchasing');
-}
-
-function isAccountingPath(pathname: string): boolean {
-  return pathname.startsWith('/accounting');
 }
 
 function persistCollapsed(value: boolean) {
@@ -172,11 +196,12 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [organizationOpen, setOrganizationOpen] = useState(isOrganizationPath(pathname));
-  const [accessOpen, setAccessOpen] = useState(pathname.startsWith('/access'));
   const [inventoryOpen, setInventoryOpen] = useState(isInventoryPath(pathname));
+  const [logisticsOpen, setLogisticsOpen] = useState(isLogisticsPath(pathname));
   const [salesOpen, setSalesOpen] = useState(isSalesPath(pathname));
-  const [purchasingOpen, setPurchasingOpen] = useState(isPurchasingPath(pathname));
-  const [accountingOpen, setAccountingOpen] = useState(isAccountingPath(pathname));
+  const [purchasingOpen, setPurchasingOpen] = useState(pathname.startsWith('/purchasing'));
+  const [accountingOpen, setAccountingOpen] = useState(pathname.startsWith('/accounting'));
+  const [accessOpen, setAccessOpen] = useState(pathname.startsWith('/access'));
 
   useEffect(() => {
     setCollapsed(window.localStorage.getItem('npp-core-sidebar-collapsed') === '1');
@@ -184,46 +209,23 @@ export function AppShell({
 
   useEffect(() => {
     if (isOrganizationPath(pathname)) setOrganizationOpen(true);
-    if (pathname.startsWith('/access')) setAccessOpen(true);
     if (isInventoryPath(pathname)) setInventoryOpen(true);
+    if (isLogisticsPath(pathname)) setLogisticsOpen(true);
     if (isSalesPath(pathname)) setSalesOpen(true);
-    if (isPurchasingPath(pathname)) setPurchasingOpen(true);
-    if (isAccountingPath(pathname)) setAccountingOpen(true);
+    if (pathname.startsWith('/purchasing')) setPurchasingOpen(true);
+    if (pathname.startsWith('/accounting')) setAccountingOpen(true);
+    if (pathname.startsWith('/access')) setAccessOpen(true);
     setMobileOpen(false);
   }, [pathname]);
 
-  const organizationActive = isOrganizationPath(pathname);
-  const accessActive = pathname.startsWith('/access');
-  const inventoryActive = isInventoryPath(pathname);
-  const salesActive = isSalesPath(pathname);
-  const purchasingActive = pathname.startsWith('/purchasing');
-  const accountingActive = isAccountingPath(pathname);
+  const organizationChildren = useMemo(() => organizationItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
+  const inventoryChildren = useMemo(() => inventoryItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
+  const logisticsChildren = useMemo(() => logisticsItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
+  const salesChildren = useMemo(() => salesItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
+  const purchasingChildren = useMemo(() => purchasingItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
+  const accountingChildren = useMemo(() => accountingItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
+  const accessChildren = useMemo(() => accessItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
   const logoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim() || '/logo-transparent.png';
-
-  const organizationChildren = useMemo(
-    () => organizationItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })),
-    [pathname],
-  );
-  const accessChildren = useMemo(
-    () => accessItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })),
-    [pathname],
-  );
-  const inventoryChildren = useMemo(
-    () => inventoryItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })),
-    [pathname],
-  );
-  const salesChildren = useMemo(
-    () => salesItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })),
-    [pathname],
-  );
-  const purchasingChildren = useMemo(
-    () => purchasingItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })),
-    [pathname],
-  );
-  const accountingChildren = useMemo(
-    () => accountingItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })),
-    [pathname],
-  );
 
   function toggleCollapsed() {
     setCollapsed((current) => {
@@ -243,6 +245,69 @@ export function AppShell({
     setOpen((current) => !current);
   }
 
+  function renderGroup({
+    sectionLabel,
+    title: groupTitle,
+    hint,
+    icon,
+    active,
+    open,
+    setOpen,
+    testId,
+    children: groupChildren,
+  }: {
+    sectionLabel: string;
+    title: string;
+    hint: string;
+    icon: IconName;
+    active: boolean;
+    open: boolean;
+    setOpen: React.Dispatch<React.SetStateAction<boolean>>;
+    testId: string;
+    children: Array<NavItem & { active: boolean }>;
+  }) {
+    return (
+      <>
+        <p className={styles.navLabel}>{sectionLabel}</p>
+        <div className={`${styles.navGroup} ${active ? styles.navGroupActive : ''}`}>
+          <button
+            type="button"
+            className={`${styles.navItem} ${styles.navGroupButton}`}
+            onClick={() => openGroup(setOpen)}
+            aria-expanded={open}
+            data-testid={testId}
+            title={collapsed ? groupTitle : undefined}
+          >
+            <span className={styles.navIcon}><Icon name={icon} /></span>
+            <span className={styles.navCopy}>
+              <span className={styles.navTitle}>{groupTitle}</span>
+              <span className={styles.navHint}>{hint}</span>
+            </span>
+            <span className={`${styles.chevron} ${open ? styles.chevronOpen : ''}`}>
+              <Icon name="chevron" />
+            </span>
+          </button>
+
+          <div className={`${styles.subnav} ${open && !collapsed ? styles.subnavOpen : ''}`}>
+            {groupChildren.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                prefetch
+                className={`${styles.subnavItem} ${item.active ? styles.subnavItemActive : ''}`}
+                data-testid={item.testId}
+              >
+                <span className={styles.subnavRail} aria-hidden="true" />
+                <span className={styles.subnavIcon}><Icon name={item.icon} /></span>
+                <span>{item.label}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <div className={`${styles.shell} ${collapsed ? styles.shellCollapsed : ''}`} data-collapsed={collapsed ? 'true' : 'false'}>
       <aside
@@ -257,7 +322,7 @@ export function AppShell({
             </span>
             <span className={styles.brandText}>
               <strong>Hưng Phát Company</strong>
-              <small>NPP Core</small>
+              <small>NPP Operations</small>
             </span>
           </Link>
           <button
@@ -288,227 +353,89 @@ export function AppShell({
               </span>
             </Link>
 
-            <p className={styles.navLabel}>Danh mục quản lý</p>
-            <div className={`${styles.navGroup} ${organizationActive ? styles.navGroupActive : ''}`}>
-              <button
-                type="button"
-                className={`${styles.navItem} ${styles.navGroupButton}`}
-                onClick={() => openGroup(setOrganizationOpen)}
-                aria-expanded={organizationOpen}
-                data-testid="organization-menu-toggle"
-                title={collapsed ? 'Danh mục nghiệp vụ' : undefined}
-              >
-                <span className={styles.navIcon}><Icon name="organization" /></span>
-                <span className={styles.navCopy}>
-                  <span className={styles.navTitle}>Danh mục nghiệp vụ</span>
-                  <span className={styles.navHint}>Tổ chức, đối tác, hàng hóa, giá và chứng từ</span>
-                </span>
-                <span className={`${styles.chevron} ${organizationOpen ? styles.chevronOpen : ''}`}>
-                  <Icon name="chevron" />
-                </span>
-              </button>
+            {renderGroup({
+              sectionLabel: 'Danh mục quản lý',
+              title: 'Danh mục nghiệp vụ',
+              hint: 'Tổ chức, đối tác, hàng hóa, giá và chứng từ',
+              icon: 'organization',
+              active: isOrganizationPath(pathname),
+              open: organizationOpen,
+              setOpen: setOrganizationOpen,
+              testId: 'organization-menu-toggle',
+              children: organizationChildren,
+            })}
 
-              <div className={`${styles.subnav} ${organizationOpen && !collapsed ? styles.subnavOpen : ''}`}>
-                {organizationChildren.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    prefetch
-                    className={`${styles.subnavItem} ${item.active ? styles.subnavItemActive : ''}`}
-                    data-testid={item.testId}
-                  >
-                    <span className={styles.subnavRail} aria-hidden="true" />
-                    <span className={styles.subnavIcon}><Icon name={item.icon} /></span>
-                    <span>{item.label}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
+            {renderGroup({
+              sectionLabel: 'Tồn kho & lô hàng',
+              title: 'Tồn kho & lô hàng',
+              hint: 'Chuẩn bị hàng, số lượng tồn, lô, hạn dùng và tồn đầu kỳ',
+              icon: 'panel',
+              active: isInventoryPath(pathname),
+              open: inventoryOpen,
+              setOpen: setInventoryOpen,
+              testId: 'inventory-menu-toggle',
+              children: inventoryChildren,
+            })}
 
-            <p className={styles.navLabel}>Tồn kho &amp; lô hàng</p>
-            <div className={`${styles.navGroup} ${inventoryActive ? styles.navGroupActive : ''}`}>
-              <button
-                type="button"
-                className={`${styles.navItem} ${styles.navGroupButton}`}
-                onClick={() => openGroup(setInventoryOpen)}
-                aria-expanded={inventoryOpen}
-                data-testid="inventory-menu-toggle"
-                title={collapsed ? 'Tồn kho và lô hàng' : undefined}
-              >
-                <span className={styles.navIcon}><Icon name="panel" /></span>
-                <span className={styles.navCopy}>
-                  <span className={styles.navTitle}>Tồn kho &amp; lô hàng</span>
-                  <span className={styles.navHint}>Chuẩn bị hàng, số lượng tồn, lô, hạn dùng và tồn đầu kỳ</span>
-                </span>
-                <span className={`${styles.chevron} ${inventoryOpen ? styles.chevronOpen : ''}`}>
-                  <Icon name="chevron" />
-                </span>
-              </button>
+            {renderGroup({
+              sectionLabel: 'Giao nhận & điều phối',
+              title: 'Giao nhận & điều phối',
+              hint: 'Phiếu giao, chuyến xe, kết quả giao, đối soát và hàng trả',
+              icon: 'truck',
+              active: isLogisticsPath(pathname),
+              open: logisticsOpen,
+              setOpen: setLogisticsOpen,
+              testId: 'logistics-menu-toggle',
+              children: logisticsChildren,
+            })}
 
-              <div className={`${styles.subnav} ${inventoryOpen && !collapsed ? styles.subnavOpen : ''}`}>
-                {inventoryChildren.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    prefetch
-                    className={`${styles.subnavItem} ${item.active ? styles.subnavItemActive : ''}`}
-                    data-testid={item.testId}
-                  >
-                    <span className={styles.subnavRail} aria-hidden="true" />
-                    <span className={styles.subnavIcon}><Icon name={item.icon} /></span>
-                    <span>{item.label}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
+            {renderGroup({
+              sectionLabel: 'Bán hàng',
+              title: 'Bán hàng',
+              hint: 'Đơn nhiều nguồn, mã khách và vòng đời thương mại',
+              icon: 'panel',
+              active: isSalesPath(pathname),
+              open: salesOpen,
+              setOpen: setSalesOpen,
+              testId: 'sales-menu-toggle',
+              children: salesChildren,
+            })}
 
-            <p className={styles.navLabel}>Bán hàng</p>
-            <div className={`${styles.navGroup} ${salesActive ? styles.navGroupActive : ''}`}>
-              <button
-                type="button"
-                className={`${styles.navItem} ${styles.navGroupButton}`}
-                onClick={() => openGroup(setSalesOpen)}
-                aria-expanded={salesOpen}
-                data-testid="sales-menu-toggle"
-                title={collapsed ? 'Bán hàng' : undefined}
-              >
-                <span className={styles.navIcon}><Icon name="panel" /></span>
-                <span className={styles.navCopy}>
-                  <span className={styles.navTitle}>Bán hàng</span>
-                  <span className={styles.navHint}>Đơn nhiều nguồn, mã khách và vòng đời thương mại</span>
-                </span>
-                <span className={`${styles.chevron} ${salesOpen ? styles.chevronOpen : ''}`}>
-                  <Icon name="chevron" />
-                </span>
-              </button>
+            {renderGroup({
+              sectionLabel: 'Mua hàng',
+              title: 'Mua hàng',
+              hint: 'Đơn đặt hàng và phiếu nhận hàng',
+              icon: 'panel',
+              active: pathname.startsWith('/purchasing'),
+              open: purchasingOpen,
+              setOpen: setPurchasingOpen,
+              testId: 'purchasing-menu-toggle',
+              children: purchasingChildren,
+            })}
 
-              <div className={`${styles.subnav} ${salesOpen && !collapsed ? styles.subnavOpen : ''}`}>
-                {salesChildren.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    prefetch
-                    className={`${styles.subnavItem} ${item.active ? styles.subnavItemActive : ''}`}
-                    data-testid={item.testId}
-                  >
-                    <span className={styles.subnavRail} aria-hidden="true" />
-                    <span className={styles.subnavIcon}><Icon name={item.icon} /></span>
-                    <span>{item.label}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
+            {renderGroup({
+              sectionLabel: 'Kế toán & công nợ',
+              title: 'Kế toán & công nợ',
+              hint: 'Công nợ phải trả và thanh toán nhà cung cấp',
+              icon: 'accounting',
+              active: pathname.startsWith('/accounting'),
+              open: accountingOpen,
+              setOpen: setAccountingOpen,
+              testId: 'accounting-menu-toggle',
+              children: accountingChildren,
+            })}
 
-            <p className={styles.navLabel}>Mua hàng</p>
-            <div className={`${styles.navGroup} ${purchasingActive ? styles.navGroupActive : ''}`}>
-              <button
-                type="button"
-                className={`${styles.navItem} ${styles.navGroupButton}`}
-                onClick={() => openGroup(setPurchasingOpen)}
-                aria-expanded={purchasingOpen}
-                data-testid="purchasing-menu-toggle"
-                title={collapsed ? 'Mua hàng' : undefined}
-              >
-                <span className={styles.navIcon}><Icon name="panel" /></span>
-                <span className={styles.navCopy}>
-                  <span className={styles.navTitle}>Mua hàng</span>
-                  <span className={styles.navHint}>Đơn đặt hàng và phiếu nhận hàng</span>
-                </span>
-                <span className={`${styles.chevron} ${purchasingOpen ? styles.chevronOpen : ''}`}>
-                  <Icon name="chevron" />
-                </span>
-              </button>
-
-              <div className={`${styles.subnav} ${purchasingOpen && !collapsed ? styles.subnavOpen : ''}`}>
-                {purchasingChildren.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    prefetch
-                    className={`${styles.subnavItem} ${item.active ? styles.subnavItemActive : ''}`}
-                    data-testid={item.testId}
-                  >
-                    <span className={styles.subnavRail} aria-hidden="true" />
-                    <span className={styles.subnavIcon}><Icon name="panel" /></span>
-                    <span>{item.label}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-
-            <p className={styles.navLabel}>Kế toán &amp; công nợ</p>
-            <div className={`${styles.navGroup} ${accountingActive ? styles.navGroupActive : ''}`}>
-              <button
-                type="button"
-                className={`${styles.navItem} ${styles.navGroupButton}`}
-                onClick={() => openGroup(setAccountingOpen)}
-                aria-expanded={accountingOpen}
-                data-testid="accounting-menu-toggle"
-                title={collapsed ? 'Kế toán và công nợ' : undefined}
-              >
-                <span className={styles.navIcon}><Icon name="accounting" /></span>
-                <span className={styles.navCopy}>
-                  <span className={styles.navTitle}>Kế toán &amp; công nợ</span>
-                  <span className={styles.navHint}>Công nợ phải trả và thanh toán nhà cung cấp</span>
-                </span>
-                <span className={`${styles.chevron} ${accountingOpen ? styles.chevronOpen : ''}`}>
-                  <Icon name="chevron" />
-                </span>
-              </button>
-
-              <div className={`${styles.subnav} ${accountingOpen && !collapsed ? styles.subnavOpen : ''}`}>
-                {accountingChildren.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    prefetch
-                    className={`${styles.subnavItem} ${item.active ? styles.subnavItemActive : ''}`}
-                    data-testid={item.testId}
-                  >
-                    <span className={styles.subnavRail} aria-hidden="true" />
-                    <span className={styles.subnavIcon}><Icon name={item.icon} /></span>
-                    <span>{item.label}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-
-            <p className={styles.navLabel}>Quản trị hệ thống</p>
-            <div className={`${styles.navGroup} ${accessActive ? styles.navGroupActive : ''}`}>
-              <button
-                type="button"
-                className={`${styles.navItem} ${styles.navGroupButton}`}
-                onClick={() => openGroup(setAccessOpen)}
-                aria-expanded={accessOpen}
-                data-testid="access-menu-toggle"
-                title={collapsed ? 'Nhân sự và phân quyền' : undefined}
-              >
-                <span className={styles.navIcon}><Icon name="user" /></span>
-                <span className={styles.navCopy}>
-                  <span className={styles.navTitle}>Nhân sự &amp; phân quyền</span>
-                  <span className={styles.navHint}>Hồ sơ, tài khoản và phạm vi truy cập</span>
-                </span>
-                <span className={`${styles.chevron} ${accessOpen ? styles.chevronOpen : ''}`}>
-                  <Icon name="chevron" />
-                </span>
-              </button>
-
-              <div className={`${styles.subnav} ${accessOpen && !collapsed ? styles.subnavOpen : ''}`}>
-                {accessChildren.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    prefetch
-                    className={`${styles.subnavItem} ${item.active ? styles.subnavItemActive : ''}`}
-                    data-testid={item.testId}
-                  >
-                    <span className={styles.subnavRail} aria-hidden="true" />
-                    <span className={styles.subnavIcon}><Icon name={item.icon} /></span>
-                    <span>{item.label}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
+            {renderGroup({
+              sectionLabel: 'Quản trị hệ thống',
+              title: 'Nhân sự & phân quyền',
+              hint: 'Hồ sơ, tài khoản và phạm vi truy cập',
+              icon: 'user',
+              active: pathname.startsWith('/access'),
+              open: accessOpen,
+              setOpen: setAccessOpen,
+              testId: 'access-menu-toggle',
+              children: accessChildren,
+            })}
           </nav>
         </div>
 
@@ -549,9 +476,7 @@ export function AppShell({
             </div>
           </div>
 
-          <div className={styles.topbarActions}>
-            {actions}
-          </div>
+          <div className={styles.topbarActions}>{actions}</div>
         </header>
 
         <main className={styles.content}>{children}</main>

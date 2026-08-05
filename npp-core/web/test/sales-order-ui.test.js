@@ -144,7 +144,8 @@ test('Sales Order bootstrap reuses Core customer, organization, product and perm
 });
 
 test('AppShell keeps the existing navigation contract while exposing Sales Order', () => {
-  assert.match(appShellSource, /data-testid="sales-menu-toggle"/);
+  assert.match(appShellSource, /testId: 'sales-menu-toggle'/);
+  assert.match(appShellSource, /data-testid=\{testId\}/);
   assert.match(appShellSource, /testId: 'nav-sales-orders'/);
   assert.match(appShellSource, /href: '\/sales\/sales-orders'/);
 });

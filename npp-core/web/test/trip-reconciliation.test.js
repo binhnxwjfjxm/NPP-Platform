@@ -7,7 +7,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf
 const gatewaySource = read('lib/logistics-gateway.ts');
 const proxySource = read('app/api/logistics/trips/[tripId]/[action]/route.ts');
 const workspaceSource = read('app/logistics/trip-reconciliation/trip-reconciliation-workspace.tsx');
-const appShellSource = read('app/components/app-shell.tsx');
+const appShellCoreSource = read('app/components/app-shell-core.tsx');
 
 test('NPP gateway allows only explicit reconciliation trip actions', () => {
   assert.match(gatewaySource, /READ_ACTIONS = new Set\(\['dispatch', 'reconciliation'\]\)/);
@@ -36,8 +36,8 @@ test('workspace shows exact custody quantities and explicit warehouse receipt', 
   assert.doesNotMatch(workspaceSource, /driverId|employeeId|DATABASE_URL|CORE_API_SERVER_TOKEN/);
 });
 
-test('logistics navigation exposes reconciliation workspace', () => {
-  assert.match(appShellSource, /\/logistics\/trip-reconciliation/);
-  assert.match(appShellSource, /Đối soát cuối chuyến/);
-  assert.match(appShellSource, /logistics-reconciliation-shortcut/);
+test('persistent logistics navigation exposes reconciliation workspace', () => {
+  assert.match(appShellCoreSource, /href: '\/logistics\/trip-reconciliation'/);
+  assert.match(appShellCoreSource, /label: 'Đối soát cuối chuyến'/);
+  assert.match(appShellCoreSource, /testId: 'nav-logistics-trip-reconciliation'/);
 });

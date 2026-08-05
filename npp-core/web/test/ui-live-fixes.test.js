@@ -29,11 +29,22 @@ test('sidebar submenu expands by content and exposes every P0-P4 destination', a
     'nav-roles',
     'nav-employees',
     'nav-users',
+    'nav-inventory-fulfillment',
     'nav-inventory-balances',
     'nav-inventory-policies',
     'nav-inventory-lots',
     'nav-inventory-opening',
+    'nav-delivery-orders',
+    'nav-logistics-trips',
+    'nav-logistics-dispatch',
+    'nav-logistics-delivery-attempts',
+    'nav-logistics-trip-reconciliation',
+    'nav-customer-returns',
+    'nav-sales-operations',
+    'nav-sales-orders',
+    'nav-customer-onboarding',
     'nav-purchase-orders',
+    'nav-purchase-prices',
     'nav-goods-receipts',
     'nav-supplier-returns',
     'nav-payables',
@@ -42,11 +53,22 @@ test('sidebar submenu expands by content and exposes every P0-P4 destination', a
   for (const testId of requiredNavigationIds) {
     assert.match(shell, new RegExp(testId));
   }
-  assert.match(shell, /organizationOpen && !collapsed/);
-  assert.match(shell, /accessOpen && !collapsed/);
-  assert.match(shell, /inventoryOpen && !collapsed/);
-  assert.match(shell, /purchasingOpen && !collapsed/);
-  assert.match(shell, /accountingOpen && !collapsed/);
+
+  const requiredGroupToggles = [
+    'organization-menu-toggle',
+    'inventory-menu-toggle',
+    'logistics-menu-toggle',
+    'sales-menu-toggle',
+    'purchasing-menu-toggle',
+    'accounting-menu-toggle',
+    'access-menu-toggle',
+  ];
+  for (const testId of requiredGroupToggles) {
+    assert.match(shell, new RegExp(testId));
+  }
+
+  assert.match(shell, /open && !collapsed/);
+  assert.match(shell, /setOpen\(true\)/);
   assert.doesNotMatch(wrapper, /nav-payables/);
   assert.doesNotMatch(wrapper, /nav-supplier-payments/);
 });

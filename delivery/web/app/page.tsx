@@ -6,18 +6,29 @@ import { formatDateTime, safeErrorMessage } from '../lib/presentation';
 
 export const dynamic = 'force-dynamic';
 
+const deliveryLogoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim()
+  || 'https://office.nguyenlieuhungphat.com/logo-transparent.png';
+
+function DeliveryHeader({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <header className="appHeader">
+      <span className="brandLogoFrame">
+        <img className="brandLogo" src={deliveryLogoUrl} alt="Logo Hưng Phát Company" />
+      </span>
+      <div>
+        <p className="eyebrow">Hưng Phát Company</p>
+        <h1>{title}</h1>
+        <p className="welcome">{subtitle}</p>
+      </div>
+    </header>
+  );
+}
+
 export default async function DeliveryHomePage() {
   if (deliverySetupPending()) {
     return (
       <main className="pageShell">
-        <header className="appHeader">
-          <div className="brandMark">HP</div>
-          <div>
-            <p className="eyebrow">Hưng Phát Company</p>
-            <h1>Ứng dụng Giao hàng</h1>
-            <p className="welcome">Hệ thống đã được triển khai</p>
-          </div>
-        </header>
+        <DeliveryHeader title="Ứng dụng Giao hàng" subtitle="Hệ thống đã được triển khai" />
         <section className="stateCard">
           <strong>Chưa có hồ sơ tài xế đang hoạt động</strong>
           <p>Tạo hồ sơ tài xế và liên kết đúng nhân viên trong NPP Operations trước khi cấp tài khoản giao hàng.</p>
@@ -35,6 +46,7 @@ export default async function DeliveryHomePage() {
   if (!user) {
     return (
       <main className="pageShell">
+        <DeliveryHeader title="Ứng dụng Giao hàng" subtitle="Dành cho tài xế và nhân viên giao nhận" />
         <section className="stateCard errorCard">
           <strong>Không xác định được tài xế</strong>
           <p>Vui lòng tải lại trang và đăng nhập bằng tài khoản đã được cấp.</p>
@@ -96,17 +108,10 @@ export default async function DeliveryHomePage() {
 
   return (
     <main className="pageShell">
-      <header className="appHeader">
-        <div className="brandMark">HP</div>
-        <div>
-          <p className="eyebrow">Hưng Phát Company</p>
-          <h1>Chuyến của tôi</h1>
-          <p className="welcome">Xin chào, {user.displayName}</p>
-        </div>
-      </header>
+      <DeliveryHeader title="Chuyến của tôi" subtitle={`Xin chào, ${user.displayName}`} />
       <section className="noticeCard">
         <strong>Ghi kết quả tại từng phiếu giao</strong>
-        <p>Mở chuyến để ghi giao đủ, giao một phần, không giao được hoặc hẹn giao lại. Ảnh, chữ ký, GPS và thu tiền chưa thuộc phần này.</p>
+        <p>Mở chuyến để ghi giao đủ, giao một phần, không giao được hoặc hẹn giao lại. Ảnh hoặc xác nhận người nhận là bằng chứng tùy chọn; GPS và thu tiền chưa thuộc luồng hiện tại.</p>
       </section>
       {content}
     </main>
