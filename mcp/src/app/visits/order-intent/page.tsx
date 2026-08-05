@@ -18,7 +18,7 @@ export default function Page({ searchParams }: PageProps) {
   if (!sessionCustomerId || !orderId) redirect("/mcp");
 
   return (
-    <AppShell activeHref="/visits">
+    <AppShell activeHref="/visits/order-intent">
       <McpOfficialOrderPanel
         sessionCustomerId={sessionCustomerId}
         orderId={orderId}

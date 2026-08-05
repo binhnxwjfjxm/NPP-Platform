@@ -89,6 +89,12 @@ function settledError(results: PromiseSettledResult<unknown>[]) {
   return rejected.reason instanceof Error ? rejected.reason.message : "Không tải được một phần dữ liệu đơn NPP";
 }
 
+function stepClass(done: boolean, current: boolean) {
+  if (done) return "order-intent-step is-done";
+  if (current) return "order-intent-step is-current";
+  return "order-intent-step is-waiting";
+}
+
 export function McpOfficialOrderPanel({
   sessionCustomerId,
   orderId,
@@ -135,93 +141,140 @@ export function McpOfficialOrderPanel({
 
   const officialCustomerReady = onboarding?.officialOrderAllowed === true;
   const hasSalesOrder = Boolean(salesOrder?.coreSalesOrderId);
+  const canSyncCustomer = Boolean(onboarding?.coreRequestId) && !officialCustomerReady;
+  const customerCurrent = !loading && !officialCustomerReady;
+  const eligibilityCurrent = !loading && officialCustomerReady && !hasSalesOrder;
+  const salesOrderCurrent = !loading && hasSalesOrder;
 
   return (
     <main className="page-stack mcp-official-order-page">
-      <button className="button" type="button" onClick={() => router.back()}>← Quay lại phiên</button>
+      <div className="order-intent-back-row">
+        <button className="button order-intent-back" type="button" onClick={() => router.back()}>
+          ← Quay lại phiên
+        </button>
+      </div>
 
-      <section className="page-card">
+      <section className="page-card order-intent-heading">
         <span className="page-eyebrow">Nhu cầu mua MCP</span>
         <h1>Đơn bán hàng NPP</h1>
-        <p className="page-subtitle">
-          {customerName || "Điểm bán"} · {onboarding?.orderCode || orderId}
-        </p>
-        <p className="page-subtitle">
-          Sản phẩm và giá chính thức do NPP Core kiểm tra. MCP không dùng danh mục sản phẩm cũ để tạo đơn này.
-        </p>
+        <p className="page-subtitle">{customerName || "Điểm bán"} · {onboarding?.orderCode || orderId}</p>
       </section>
 
-      <section className="page-card" data-onboarding-status={onboarding?.status || "not_submitted"}>
-        <span className="page-eyebrow">Khách hàng chính thức</span>
-        <h2>{loading ? "Đang tải..." : onboardingStatusLabel(onboarding?.status)}</h2>
-        <p className="page-subtitle">
-          {officialCustomerReady
-            ? "Khách và địa chỉ đã được Core duyệt; đủ điều kiện tạo đơn nháp NPP."
-            : "Chưa đủ điều kiện tạo đơn. Nhu cầu mua vẫn được giữ nguyên trong MCP."}
-        </p>
-        {onboarding?.reviewReason ? <p className="page-subtitle">Ghi chú Core: {onboarding.reviewReason}</p> : null}
-        {onboarding?.coreRequestId && !officialCustomerReady ? (
-          <button
-            className="button primary"
-            type="button"
-            disabled={busy || loading}
-            onClick={() => run(async () => {
-              const projection = await syncCustomerOnboarding(sessionCustomerId, orderId);
-              setOnboarding(projection);
-              setMessage(onboardingStatusLabel(projection.status));
-            })}
-          >
-            {busy ? "Đang đồng bộ..." : "Đồng bộ trạng thái khách"}
-          </button>
-        ) : null}
-      </section>
-
-      <section className="page-card" data-core-sales-order-status={salesOrder?.status || "not_created"}>
-        <span className="page-eyebrow">Sales Order trong NPP</span>
-        <h2>{loading ? "Đang tải..." : coreSalesOrderStatusLabel(salesOrder?.status)}</h2>
-        {hasSalesOrder ? (
-          <div className="summary-grid">
-            <div><span>Mã đơn</span><strong>{salesOrder?.number || salesOrder?.coreSalesOrderId}</strong></div>
-            <div><span>Phiên bản</span><strong>{salesOrder?.currentVersionNumber || 1}</strong></div>
-            <div><span>Tổng chính thức</span><strong>{money(salesOrder?.total)}</strong></div>
-            <div><span>Tiền tệ</span><strong>{salesOrder?.currency || "VND"}</strong></div>
+      <ol className="order-intent-progress" aria-label="Tiến trình tạo đơn NPP">
+        <li className={stepClass(true, false)} data-order-step="intent">
+          <span className="order-intent-step-index" aria-hidden="true">1</span>
+          <div>
+            <small>Nhu cầu mua</small>
+            <strong>Đã ghi trong MCP</strong>
           </div>
-        ) : (
-          <p className="page-subtitle">Chưa tạo đơn chính thức. Không có tác động tự động khi chỉ mở màn hình này.</p>
-        )}
+          <b>Đã xong</b>
+        </li>
+        <li className={stepClass(officialCustomerReady, customerCurrent || loading)} data-order-step="customer">
+          <span className="order-intent-step-index" aria-hidden="true">2</span>
+          <div>
+            <small>Xác minh khách</small>
+            <strong>{loading ? "Đang tải..." : onboardingStatusLabel(onboarding?.status)}</strong>
+            {onboarding?.reviewReason ? <em>Ghi chú Core: {onboarding.reviewReason}</em> : null}
+          </div>
+          <b>{officialCustomerReady ? "Đã xong" : loading ? "Đang tải" : "Hiện tại"}</b>
+        </li>
+        <li className={stepClass(hasSalesOrder, eligibilityCurrent)} data-order-step="eligibility">
+          <span className="order-intent-step-index" aria-hidden="true">3</span>
+          <div>
+            <small>Điều kiện tạo đơn</small>
+            <strong>{officialCustomerReady ? "Đủ điều kiện" : "Chưa đủ điều kiện"}</strong>
+          </div>
+          <b>{hasSalesOrder ? "Đã xong" : eligibilityCurrent ? "Hiện tại" : "Chờ"}</b>
+        </li>
+        <li className={stepClass(false, salesOrderCurrent)} data-order-step="sales-order">
+          <span className="order-intent-step-index" aria-hidden="true">4</span>
+          <div>
+            <small>Đơn NPP</small>
+            <strong>{loading ? "Đang tải..." : coreSalesOrderStatusLabel(salesOrder?.status)}</strong>
+          </div>
+          <b>{salesOrderCurrent ? "Hiện tại" : "Chờ"}</b>
+        </li>
+      </ol>
 
-        {officialCustomerReady && !hasSalesOrder ? (
-          <button
-            className="button primary"
-            type="button"
-            disabled={busy || loading}
-            onClick={() => run(async () => {
-              const projection = await submitCoreSalesOrder(sessionCustomerId, orderId);
-              setSalesOrder(projection);
-              setMessage(coreSalesOrderStatusLabel(projection.status));
-            })}
-          >
-            {busy ? "Đang tạo..." : "Tạo đơn nháp NPP"}
-          </button>
+      {hasSalesOrder ? (
+        <section className="page-card order-intent-order-summary" aria-label="Thông tin đơn NPP">
+          <div><span>Mã đơn</span><strong>{salesOrder?.number || salesOrder?.coreSalesOrderId}</strong></div>
+          <div><span>Phiên bản</span><strong>{salesOrder?.currentVersionNumber || 1}</strong></div>
+          <div><span>Tổng chính thức</span><strong>{money(salesOrder?.total)}</strong></div>
+          <div><span>Tiền tệ</span><strong>{salesOrder?.currency || "VND"}</strong></div>
+        </section>
+      ) : null}
+
+      <section className="page-card order-intent-next-action" aria-label="Bước xử lý tiếp theo">
+        <span className="page-eyebrow">Bước tiếp theo</span>
+        {loading ? <h2>Đang tải trạng thái...</h2> : null}
+
+        {!loading && canSyncCustomer ? (
+          <>
+            <h2>Kiểm tra kết quả xác minh khách</h2>
+            <button
+              className="button primary"
+              type="button"
+              data-order-primary-action
+              disabled={busy}
+              onClick={() => run(async () => {
+                const projection = await syncCustomerOnboarding(sessionCustomerId, orderId);
+                setOnboarding(projection);
+                setMessage(onboardingStatusLabel(projection.status));
+              })}
+            >
+              {busy ? "Đang đồng bộ..." : "Đồng bộ trạng thái khách"}
+            </button>
+          </>
         ) : null}
 
-        {hasSalesOrder ? (
-          <button
-            className="button primary"
-            type="button"
-            disabled={busy || loading}
-            onClick={() => run(async () => {
-              const projection = await syncCoreSalesOrder(sessionCustomerId, orderId);
-              setSalesOrder(projection);
-              setMessage(coreSalesOrderStatusLabel(projection.status));
-            })}
-          >
-            {busy ? "Đang đồng bộ..." : "Đồng bộ đơn NPP"}
-          </button>
+        {!loading && !officialCustomerReady && !canSyncCustomer ? (
+          <>
+            <h2>Chờ xác minh khách</h2>
+            <p className="page-subtitle">Gửi đề nghị xác minh từ nhu cầu mua trong phiên.</p>
+          </>
+        ) : null}
+
+        {!loading && officialCustomerReady && !hasSalesOrder ? (
+          <>
+            <h2>Tạo đơn nháp NPP</h2>
+            <button
+              className="button primary"
+              type="button"
+              data-order-primary-action
+              disabled={busy}
+              onClick={() => run(async () => {
+                const projection = await submitCoreSalesOrder(sessionCustomerId, orderId);
+                setSalesOrder(projection);
+                setMessage(coreSalesOrderStatusLabel(projection.status));
+              })}
+            >
+              {busy ? "Đang tạo..." : "Tạo đơn nháp NPP"}
+            </button>
+          </>
+        ) : null}
+
+        {!loading && hasSalesOrder ? (
+          <>
+            <h2>{coreSalesOrderStatusLabel(salesOrder?.status)}</h2>
+            <button
+              className="button primary"
+              type="button"
+              data-order-primary-action
+              disabled={busy}
+              onClick={() => run(async () => {
+                const projection = await syncCoreSalesOrder(sessionCustomerId, orderId);
+                setSalesOrder(projection);
+                setMessage(coreSalesOrderStatusLabel(projection.status));
+              })}
+            >
+              {busy ? "Đang đồng bộ..." : "Đồng bộ đơn NPP"}
+            </button>
+          </>
         ) : null}
       </section>
 
-      {message ? <p className="page-card page-subtitle" role="status">{message}</p> : null}
+      {message ? <p className="page-card page-subtitle order-intent-message" role="status">{message}</p> : null}
     </main>
   );
 }

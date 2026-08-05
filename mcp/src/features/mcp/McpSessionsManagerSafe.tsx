@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { userFacingError } from "@/lib/ui/user-facing-error";
 import { idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
 import { BottomSheet } from "@/ui/overlay/BottomSheet";
-import { ExportMenu, buildExportLink } from "@/features/exports/ExportLinks";
 
 type SessionRow = {
   id: string;
@@ -143,55 +142,98 @@ async function callIdempotentApi(path: string, init: RequestInit, operation: str
   return parseApiResponse(response);
 }
 
-function SessionExportMenu({ session }: { session: SessionRow }) {
+function FilterSummary({
+  filters,
+  routes
+}: {
+  filters: { dateFrom: string; dateTo: string; routeId: string; status: string };
+  routes: { id: string; name: string }[];
+}) {
+  const routeName = routes.find((route) => route.id === filters.routeId)?.name || "Tất cả tuyến";
+  const statusName = filters.status ? labels[filters.status] || filters.status : "Tất cả trạng thái";
+  return <small>{filters.dateFrom} → {filters.dateTo} · {routeName} · {statusName}</small>;
+}
+
+function SessionMoreMenu({
+  session,
+  editable,
+  pending,
+  rebuilding,
+  onEdit,
+  onDelete,
+  onRebuild
+}: {
+  session: SessionRow;
+  editable: boolean;
+  pending: boolean;
+  rebuilding: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+  onRebuild: () => void;
+}) {
   const closed = isClosedSession(session);
 
   return (
-    <ExportMenu
-      label={closed ? "Xuất báo cáo" : "Xuất"}
-      groups={[
-        {
-          title: "Xuất văn phòng",
-          links: [
-            buildExportLink(
-              "PDF",
-              sessionPdfUrl(session.id),
-              "primary",
-              "Xem, in hoặc gửi quản lý"
-            ),
-            buildExportLink(
-              "Excel",
-              sessionExcelUrl(session.id),
-              undefined,
-              "Danh sách khách và trạng thái trong phiên"
-            ),
-            buildExportLink(
-              "Word",
-              sessionWordUrl(session.id),
-              undefined,
-              "Bản báo cáo có thể chỉnh sửa"
-            )
-          ]
-        },
-        {
-          title: "Dữ liệu AI",
-          links: [
-            buildExportLink(
-              closed ? "Dữ liệu JSON" : "Dữ liệu JSON tạm tính",
-              reportExportUrl(session.id, "json"),
-              undefined,
-              "Dữ liệu máy đọc có cấu trúc"
-            ),
-            buildExportLink(
-              "Markdown",
-              reportExportUrl(session.id, "markdown"),
-              undefined,
-              "Văn bản để dán vào AI hoặc lưu kỹ thuật"
-            )
-          ]
-        }
-      ]}
-    />
+    <details className="mcp-session-more-menu">
+      <summary
+        className="button mcp-session-more-trigger"
+        aria-label={`Mở thao tác phụ của phiên ${session.routeName}`}
+      >
+        ⋯
+      </summary>
+      <div className="mcp-session-more-panel">
+        <strong>Xuất báo cáo</strong>
+        <a href={sessionPdfUrl(session.id)} target="_blank" rel="noreferrer">PDF</a>
+        <a href={sessionExcelUrl(session.id)} target="_blank" rel="noreferrer">Excel</a>
+        <a href={sessionWordUrl(session.id)} target="_blank" rel="noreferrer">Word</a>
+        <a href={reportExportUrl(session.id, "json")} target="_blank" rel="noreferrer">
+          Dữ liệu JSON
+        </a>
+        <a href={reportExportUrl(session.id, "markdown")} target="_blank" rel="noreferrer">
+          Markdown
+        </a>
+
+        <strong>Quản lý phiên</strong>
+        {closed ? (
+          <button
+            type="button"
+            disabled={pending || rebuilding}
+            onClick={(event) => {
+              event.currentTarget.closest("details")?.removeAttribute("open");
+              onRebuild();
+            }}
+          >
+            {rebuilding ? "Đang tạo lại..." : "Tạo lại báo cáo"}
+          </button>
+        ) : (
+          <>
+            {editable ? (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={(event) => {
+                  event.currentTarget.closest("details")?.removeAttribute("open");
+                  onEdit();
+                }}
+              >
+                Sửa phiên
+              </button>
+            ) : null}
+            <button
+              className="danger"
+              type="button"
+              disabled={pending}
+              onClick={(event) => {
+                event.currentTarget.closest("details")?.removeAttribute("open");
+                onDelete();
+              }}
+            >
+              Xóa phiên
+            </button>
+          </>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -208,6 +250,7 @@ export function McpSessionsManagerSafe({
   };
 }) {
   const router = useRouter();
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [editing, setEditing] = useState<SessionRow | null>(null);
   const [deleting, setDeleting] = useState<SessionRow | null>(null);
   const [draft, setDraft] = useState<EditDraft>({
@@ -305,39 +348,57 @@ export function McpSessionsManagerSafe({
 
   return (
     <>
-      <form className="filter-bar mcp-session-filter" action="/mcp/sessions">
-        <label className="form-field">
-          <small>Từ</small>
-          <input name="dateFrom" type="date" defaultValue={filters.dateFrom} />
-        </label>
-        <label className="form-field">
-          <small>Đến</small>
-          <input name="dateTo" type="date" defaultValue={filters.dateTo} />
-        </label>
-        <label className="form-field">
-          <small>Tuyến</small>
-          <select name="routeId" defaultValue={filters.routeId}>
-            <option value="">Tất cả tuyến</option>
-            {data.routes.map((route) => (
-              <option key={route.id} value={route.id}>
-                {route.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="form-field">
-          <small>Trạng thái</small>
-          <select name="status" defaultValue={filters.status}>
-            <option value="">Tất cả</option>
-            <option value="active">Đang chạy</option>
-            <option value="done">Đã chốt</option>
-            <option value="cancelled">Đã hủy</option>
-          </select>
-        </label>
-        <button className="button primary" type="submit">
-          Lọc
+      <section className="mcp-session-filter-shell" aria-label="Bộ lọc phiên">
+        <button
+          className="button mcp-session-filter-toggle"
+          type="button"
+          aria-expanded={filtersOpen}
+          aria-controls="mcp-session-filter-form"
+          onClick={() => setFiltersOpen((value) => !value)}
+        >
+          <span>Bộ lọc</span>
+          <FilterSummary filters={filters} routes={data.routes} />
+          <b aria-hidden="true">{filtersOpen ? "−" : "+"}</b>
         </button>
-      </form>
+
+        <form
+          id="mcp-session-filter-form"
+          className={`filter-bar mcp-session-filter${filtersOpen ? " is-open" : ""}`}
+          action="/mcp/sessions"
+        >
+          <label className="form-field">
+            <small>Từ</small>
+            <input name="dateFrom" type="date" defaultValue={filters.dateFrom} />
+          </label>
+          <label className="form-field">
+            <small>Đến</small>
+            <input name="dateTo" type="date" defaultValue={filters.dateTo} />
+          </label>
+          <label className="form-field">
+            <small>Tuyến</small>
+            <select name="routeId" defaultValue={filters.routeId}>
+              <option value="">Tất cả tuyến</option>
+              {data.routes.map((route) => (
+                <option key={route.id} value={route.id}>
+                  {route.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="form-field">
+            <small>Trạng thái</small>
+            <select name="status" defaultValue={filters.status}>
+              <option value="">Tất cả</option>
+              <option value="active">Đang chạy</option>
+              <option value="done">Đã chốt</option>
+              <option value="cancelled">Đã hủy</option>
+            </select>
+          </label>
+          <button className="button primary" type="submit">
+            Áp dụng
+          </button>
+        </form>
+      </section>
 
       <div className="grid cards mcp-session-kpis">
         {data.kpis.map((item) => (
@@ -350,7 +411,7 @@ export function McpSessionsManagerSafe({
       </div>
 
       {message && !editing && !deleting ? (
-        <div className="empty-inline" style={{ marginTop: 12 }}>
+        <div className="empty-inline mcp-session-message" role="status">
           {message}
         </div>
       ) : null}
@@ -363,108 +424,57 @@ export function McpSessionsManagerSafe({
             const closed = isClosedSession(session);
             const editable = isEditableSession(session);
             const checklistHref = `/visits?routeId=${encodeURIComponent(session.routeId)}&date=${encodeURIComponent(session.sessionDate)}`;
+            const primaryHref = closed
+              ? `/reports?sessionId=${encodeURIComponent(session.id)}`
+              : checklistHref;
+            const primaryLabel = closed ? "Xem báo cáo phiên" : "Mở phiên";
 
             return (
-              <article className="action-card mcp-session-card" key={session.id}>
-                <div>
-                  <span className="badge">{labels[session.status] || session.status}</span>
+              <article className="action-card mcp-session-card" key={session.id} data-session-card>
+                <div className="mcp-session-card-copy">
+                  <div className="mcp-session-card-head">
+                    <span className="badge">{labels[session.status] || session.status}</span>
+                    <time dateTime={session.sessionDate}>{session.sessionDate}</time>
+                  </div>
                   <h3>{session.routeName}</h3>
-                  <p>
-                    {session.sessionDate} · {session.visitedCustomers}/
-                    {session.plannedCustomers} khách đã ghé
-                  </p>
-                  <p className="page-subtitle" style={{ marginTop: 4, fontSize: 12 }}>
-                    Kết quả phiên: {branchSummary(session)}
-                  </p>
+                  <div className="mcp-session-card-stats" aria-label="Kết quả ghé">
+                    <span><strong>{session.visitedCustomers}/{session.plannedCustomers}</strong><small>đã ghé</small></span>
+                    <span><strong>{session.orderCount || 0}</strong><small>đơn</small></span>
+                    <span><strong>{session.reportCount || 0}</strong><small>báo cáo</small></span>
+                  </div>
+                  <p className="page-subtitle">Kết quả phiên: {branchSummary(session)}</p>
                 </div>
 
-                <div
-                  className="mcp-session-card-actions"
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr)",
-                    gap: 8,
-                    width: "min(100%, 360px)"
-                  }}
-                >
-                  {closed ? (
-                    <>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "minmax(0, 1fr) auto",
-                          gap: 8
-                        }}
-                      >
-                        <Link
-                          className="button primary"
-                          href={`/reports?sessionId=${encodeURIComponent(session.id)}`}
-                          prefetch
-                        >
-                          Xem BC phiên
-                        </Link>
-                        <SessionExportMenu session={session} />
-                      </div>
-                      <button
-                        className="button"
-                        type="button"
-                        onClick={() => rebuildReport(session)}
-                        disabled={pending || rebuildingId === session.id}
-                      >
-                        {rebuildingId === session.id ? "Đang tạo lại..." : "Tạo lại báo cáo"}
-                      </button>
-                      <small className="page-subtitle">
-                        Phiên đã chốt, chỉ có thể xem và xuất báo cáo
-                      </small>
-                    </>
-                  ) : (
-                    <>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "minmax(0, 1fr) auto",
-                          gap: 8
-                        }}
-                      >
-                        <Link className="button primary" href={checklistHref} prefetch>
-                          Mở phiên
-                        </Link>
-                        <SessionExportMenu session={session} />
-                      </div>
-
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: editable ? "1fr 1fr" : "1fr",
-                          gap: 8
-                        }}
-                      >
-                        {editable ? (
-                          <button
-                            className="button"
-                            type="button"
-                            onClick={() => openEdit(session)}
-                          >
-                            Sửa phiên
-                          </button>
-                        ) : null}
-                        <button
-                          className="button danger"
-                          type="button"
-                          onClick={() => openDelete(session)}
-                        >
-                          Xóa phiên
-                        </button>
-                      </div>
-
-                      {session.status === "cancelled" ? (
-                        <small className="page-subtitle">
-                          Phiên đã hủy; chỉ xóa được khi chưa có hoạt động.
-                        </small>
-                      ) : null}
-                    </>
-                  )}
+                <div className="mcp-session-card-actions">
+                  <Link
+                    className="button primary"
+                    href={primaryHref}
+                    prefetch
+                    data-session-primary-action
+                  >
+                    {primaryLabel}
+                  </Link>
+                  <SessionMoreMenu
+                    session={session}
+                    editable={editable}
+                    pending={pending}
+                    rebuilding={rebuildingId === session.id}
+                    onEdit={() => openEdit(session)}
+                    onDelete={() => openDelete(session)}
+                    onRebuild={() => rebuildReport(session)}
+                  />
                 </div>
+
+                {closed ? (
+                  <small className="page-subtitle mcp-session-guard-note">
+                    Phiên đã chốt, chỉ xem, xuất hoặc tạo lại báo cáo.
+                  </small>
+                ) : null}
+                {session.status === "cancelled" ? (
+                  <small className="page-subtitle mcp-session-guard-note">
+                    Phiên đã hủy; chỉ xóa được khi chưa có hoạt động.
+                  </small>
+                ) : null}
               </article>
             );
           })
@@ -585,7 +595,7 @@ export function McpSessionsManagerSafe({
             </div>
             <div className="metric-row">
               <span>Nhánh phát sinh</span>
-              <strong style={{ whiteSpace: "normal", textAlign: "right" }}>
+              <strong className="mcp-session-delete-branches">
                 {branchSummary(deleting)}
               </strong>
             </div>

@@ -11,11 +11,6 @@ const QUICK_LINKS = [
 export function MobileHomeLaunchpad() {
   return (
     <section className="mobile-home-launchpad" aria-label="Tác nghiệp nhanh hôm nay">
-      <div className="mobile-home-launchpad-copy">
-        <span>Tổng quan hôm nay</span>
-        <h1>Điều hành gọn trên điện thoại</h1>
-        <p>Mở tuyến trước, sau đó xem nhanh phiên, đơn, báo cáo và việc cần xử lý.</p>
-      </div>
       <div className="mobile-home-launchpad-actions">
         <Link className="mobile-home-primary-action" href="/visits" prefetch>
           <span aria-hidden="true">◎</span>
