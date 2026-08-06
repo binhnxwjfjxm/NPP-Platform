@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const workflowUrl = new URL('../../.github/workflows/vercel-admin-production-direct.yml', import.meta.url);
+const workflowUrl = new URL('../../../.github/workflows/vercel-admin-production-direct.yml', import.meta.url);
 
 test('Admin production smoke verifies the first-party login and retained Basic Auth contract', async () => {
   const workflow = await readFile(workflowUrl, 'utf8');
