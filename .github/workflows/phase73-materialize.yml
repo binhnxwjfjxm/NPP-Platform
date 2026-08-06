@@ -1,0 +1,65 @@
+name: Materialize Phase 7.3 backend
+
+on:
+  push:
+    branches:
+      - agent/phase-7-3-stocktake
+    paths:
+      - ".github/workflows/phase73-materialize.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: agent/phase-7-3-stocktake
+          fetch-depth: 0
+
+      - name: Materialize backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/phase73
+          cat .phase73-payload/part-* | base64 --decode | tar -xzf - -C /tmp/phase73
+          cp /tmp/phase73/060_inventory_stocktake.sql database/migrations/inventory/060_inventory_stocktake.sql
+          cp /tmp/phase73/inventory-stocktake-repository.js npp-core/api/src/db/repositories/inventory-stocktake.js
+          cp /tmp/phase73/inventory-stocktake-service.js npp-core/api/src/services/inventory-stocktake.js
+          cp /tmp/phase73/inventory-stocktakes-route.js npp-core/api/src/routes/inventory-stocktakes.js
+          cp /tmp/phase73/migrations-index.js npp-core/api/src/migrations/index.js
+          cp /tmp/phase73/inventory-route.js npp-core/api/src/routes/inventory.js
+          cp /tmp/phase73/inventory-stocktake.test.js npp-core/api/test/inventory-stocktake.test.js
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('npp-core/api/package.json')
+          data = json.loads(path.read_text())
+          build = data['scripts']['build']
+          for command in (
+              'node --check src/db/repositories/inventory-stocktake.js',
+              'node --check src/services/inventory-stocktake.js',
+              'node --check src/routes/inventory-stocktakes.js',
+          ):
+              if command not in build:
+                  build += ' && ' + command
+          data['scripts']['build'] = build
+          data['scripts']['test:inventory-stocktake'] = 'node --test test/inventory-stocktake.test.js'
+          path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
+          PY
+          rm -rf .phase73-payload
+          rm -f .github/workflows/phase73-materialize.yml
+
+      - name: Commit backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(phase-7.3): add stocktake backend foundation"
+          git push origin HEAD:agent/phase-7-3-stocktake
