@@ -117,8 +117,7 @@ export function McpLineCard({
   }
 
   function openDirections() {
-    const opened = window.open(directions.url, "_blank", "noopener,noreferrer");
-    if (!opened) window.location.assign(directions.url);
+    window.location.assign(directions.url);
   }
 
   return (
