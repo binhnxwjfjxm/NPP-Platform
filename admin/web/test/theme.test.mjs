@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const theme = read('app/hung-phat-warm-gold.css');
+const styles = read('app/globals.css');
 const layout = read('app/layout.tsx');
 
 for (const [name, value] of Object.entries({
@@ -18,11 +19,27 @@ for (const [name, value] of Object.entries({
   });
 }
 
-test('Admin remains responsive for desktop and mobile review flows', () => {
-  assert.match(theme, /@media \(max-width: 850px\)/);
-  assert.match(theme, /@media \(max-width: 560px\)/);
-  assert.match(theme, /grid-template-columns:\s*repeat\(2/);
-  assert.match(theme, /min-height:\s*46px/);
+test('Admin matches the approved warm-gold dashboard geometry', () => {
+  assert.match(styles, /\.topbarInner/);
+  assert.match(styles, /\.metricGrid/);
+  assert.match(styles, /grid-template-columns:\s*repeat\(4/);
+  assert.match(styles, /\.dashboardGrid/);
+  assert.match(styles, /\.exceptionWorkspace/);
+  assert.match(styles, /\.iconBubble/);
+  assert.match(styles, /\.filterChip/);
+  assert.match(styles, /\.menuPanel/);
+  assert.match(styles, /border:\s*1px solid rgba\(152, 96, 15, 0\.13\)/);
+  assert.match(styles, /0 10px 32px rgba\(76, 48, 20, 0\.055\)/);
+});
+
+test('Admin remains responsive without a mobile bottom dock', () => {
+  assert.match(styles, /@media \(max-width: 850px\)/);
+  assert.match(styles, /@media \(max-width: 760px\)/);
+  assert.match(styles, /@media \(max-width: 640px\)/);
+  assert.match(styles, /@media \(max-width: 470px\)/);
+  assert.match(styles, /\.desktopNav\s*\{[\s\S]*?display:\s*none/);
+  assert.match(styles, /\.mobileMenuItem\s*\{[\s\S]*?display:\s*grid/);
+  assert.doesNotMatch(styles, /bottomDock|bottomNavigation/);
   assert.match(layout, /import '\.\/hung-phat-warm-gold\.css';/);
 });
 
