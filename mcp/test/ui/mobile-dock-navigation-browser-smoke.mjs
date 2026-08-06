@@ -23,7 +23,7 @@ async function waitForHttp(url, timeoutMs = 120000) {
 }
 
 function pathname(value) {
-  return new URL(value).pathname;
+  return new URL(value, appBase).pathname;
 }
 
 async function readDock(page) {
