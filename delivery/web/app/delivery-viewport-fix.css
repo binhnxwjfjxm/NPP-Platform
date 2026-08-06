@@ -1,5 +1,7 @@
-/* Keep the mobile PWA canvas pinned to the real standalone viewport.
-   Safe-area space remains owned by the dock; this layer only fixes the outer frame. */
+/* iPhone standalone can report a dynamic viewport shorter than the actual PWA canvas.
+   Browser mode keeps 100dvh from the base shell. Standalone mode uses the large
+   viewport so the frame reaches the physical canvas edge. Safe-area space remains
+   owned exactly once by the dock. */
 @media (max-width: 759px) {
   html,
   body {
@@ -10,16 +12,26 @@
   }
 
   body {
-    position: fixed;
-    inset: 0;
+    position: static;
   }
 
   .deliveryAppFrame {
-    position: fixed;
-    inset: 0;
     width: min(100%, 720px);
-    height: auto;
     min-height: 0;
     margin: 0 auto;
+  }
+}
+
+@media (max-width: 759px) and (display-mode: standalone) {
+  html,
+  body,
+  .deliveryAppFrame {
+    height: 100vh;
+    height: 100lvh;
+  }
+
+  .deliveryAppFrame {
+    position: relative;
+    inset: auto;
   }
 }
