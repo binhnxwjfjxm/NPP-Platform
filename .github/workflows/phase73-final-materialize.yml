@@ -34,7 +34,9 @@ jobs:
       - name: Materialize source
         run: |
           set -euo pipefail
-          # All staged chunk SHAs are verified against the local source artifact.
+          # Run only from a head that contains all verified payload chunks.
+          test -f .phase73-final/part-00
+          test -f .phase73-final/part-04
           cat .phase73-final/part-* > /tmp/phase73-final.b64
           echo "9da3b944c4a018f530fd26ee4afd870eea9e68e0e9bc0170e8a9d9f764093c03  /tmp/phase73-final.b64" | sha256sum --check
           base64 --decode /tmp/phase73-final.b64 > /tmp/phase73-final.tar.gz
