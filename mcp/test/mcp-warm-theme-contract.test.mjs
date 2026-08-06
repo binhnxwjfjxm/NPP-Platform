@@ -75,6 +75,18 @@ test("phone shell has one mobile home launchpad and one scroll region", () => {
   assert.match(experience, /\.mobile-app-dock-link\.primary/);
 });
 
+test("mobile dock puts daily work in the agreed five-item order", () => {
+  const dockItems = navigation.match(/export const FIELD_DOCK_ITEMS:[\s\S]*?=\s*\[([\s\S]*?)\];/)?.[1] || "";
+  assert.match(
+    dockItems,
+    /OVERVIEW_NAV_ITEM,[\s\S]*VISITS_NAV_ITEM,[\s\S]*CUSTOMERS_NAV_ITEM,[\s\S]*ORDERS_NAV_ITEM,[\s\S]*REPORTS_NAV_ITEM/,
+    "dock must be Tổng | Đi tuyến | Khách | Đơn | Báo cáo"
+  );
+  assert.doesNotMatch(dockItems, /ROUTES_NAV_ITEM/, "route management must not occupy the mobile dock");
+  assert.match(navigation, /SIDEBAR_NAV_ITEMS:[\s\S]*ROUTES_NAV_ITEM/, "routes must remain in the desktop sidebar");
+  assert.match(navigation, /APP_MENU_GROUPS:[\s\S]*ROUTES_NAV_ITEM/, "routes must remain in the expanded app menu");
+});
+
 test("mobile home is app-like, compact and keeps the warm brown tone", () => {
   assert.match(mobileHome, /data-active-href="\/"/);
   assert.match(mobileHome, /grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/);
