@@ -35,6 +35,11 @@ test("customer tab projects real route-customer fields from the backend read bou
   assert.match(client, /items: OutletItem\[\]/);
   assert.match(client, /Tên, liên hệ, khu vực hoặc tuyến/);
   assert.match(client, /Cần cập nhật GPS/);
+  assert.match(
+    client,
+    /status === "needs_gps" \? item\.status === "needs_gps" \|\| !item\.gps : item\.status === status/,
+    "Cần GPS filter must include every outlet counted by the KPI"
+  );
 
   for (const inventedField of ["tier", "lastVisitDate", "lastOrderDate", "monthlyRevenue"]) {
     assert.doesNotMatch(projection, new RegExp(`\\b${inventedField}\\b`), `customer projection must not invent ${inventedField}`);
