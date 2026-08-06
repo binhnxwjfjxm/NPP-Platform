@@ -2,6 +2,7 @@ import { handleInventoryRoutes as handleInventoryCoreRoutes } from './inventory-
 import { handleInventoryTransferRoutes } from './inventory-transfers.js';
 import { handleInventoryTransferReceiptRoutes } from './inventory-transfer-receipts.js';
 import { handleInventoryStocktakeRoutes } from './inventory-stocktakes.js';
+import { handleInventoryAdjustmentRoutes } from './inventory-adjustments.js';
 import { handleCodDriverRoutes } from './cod-driver.js';
 import { handleLogisticsRoutes } from './logistics.js';
 import { handleLogisticsAttemptRoutes } from './logistics-attempts.js';
@@ -11,9 +12,12 @@ import { handleLogisticsPodRoutes } from './logistics-pod.js';
 import { handleLogisticsReconciliationRoutes } from './logistics-reconciliation.js';
 
 // Compatibility markers: handleFulfillmentOperationRoutes and handleDeliveryOrderRoutes
-// remain owned by inventory-core.js; this wrapper adds transfer, stocktake and Logistics namespaces.
+// remain owned by inventory-core.js; this wrapper adds transfer, stocktake, adjustment and Logistics namespaces.
 export async function handleInventoryRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
+  if (pathname === '/api/inventory/adjustments' || pathname.startsWith('/api/inventory/adjustments/')) {
+    return handleInventoryAdjustmentRoutes(req, res, options);
+  }
   if (pathname === '/api/inventory/stocktakes' || pathname.startsWith('/api/inventory/stocktakes/')) {
     return handleInventoryStocktakeRoutes(req, res, options);
   }
