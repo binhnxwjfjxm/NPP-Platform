@@ -1,0 +1,63 @@
+name: Fix Phase 7.3 stocktake search
+
+on:
+  push:
+    branches:
+      - agent/phase-7-3-stocktake
+    paths:
+      - ".github/workflows/phase73-fix-stocktake-search.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/phase-7-3-stocktake
+          fetch-depth: 0
+
+      - name: Patch stocktake search typing
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('npp-core/web/app/inventory/stocktakes/stocktake-workspace.tsx')
+          source = path.read_text()
+          old = """      return !term || matchTerm(term, [
+        stocktake.stocktakeNumber,
+        stocktake.warehouseCode,
+        stocktake.warehouseName,
+        stocktake.status,
+      ]);
+"""
+          new = """      return !term || matchTerm(
+        stocktake.stocktakeNumber,
+        stocktake.warehouseCode,
+        stocktake.warehouseName,
+        stocktake.status,
+      ).includes(term);
+"""
+          if old in source:
+              source = source.replace(old, new, 1)
+          elif new not in source:
+              raise SystemExit('Unexpected stocktake search block')
+          path.write_text(source)
+          PY
+
+          npm ci
+          npm --prefix npp-core/web run typecheck
+
+      - name: Commit clean fix
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/phase73-fix-stocktake-search.yml
+          git add -A
+          git commit -m "fix(phase-7.3): type stocktake search correctly"
+          git push origin HEAD:agent/phase-7-3-stocktake
