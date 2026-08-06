@@ -1,0 +1,175 @@
+.tabRail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--ring-soft);
+}
+
+.tab,
+.tabActive {
+  display: grid;
+  min-width: 0;
+  min-height: 58px;
+  align-content: center;
+  gap: 3px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 9px 11px;
+  text-align: left;
+}
+
+.tab strong,
+.tabActive strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab small,
+.tabActive small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab:hover,
+.tab:focus-visible {
+  border-color: rgba(117, 71, 6, 0.18);
+  background: rgba(245, 237, 225, 0.55);
+  outline: none;
+}
+
+.tabActive {
+  border-color: rgba(117, 71, 6, 0.28);
+  background: linear-gradient(145deg, rgba(245, 232, 211, 0.96), rgba(255, 255, 255, 0.98));
+  color: var(--brand-strong);
+  box-shadow: 0 8px 18px rgba(72, 54, 34, 0.08);
+}
+
+.tabActive small {
+  color: #755f49;
+}
+
+.viewPanel {
+  display: grid;
+  min-width: 0;
+}
+
+.attentionRail {
+  display: flex;
+  gap: 7px;
+  margin-top: 14px;
+  overflow-x: auto;
+  padding: 2px 1px 4px;
+  scrollbar-width: thin;
+}
+
+.attentionRail button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+  padding: 0 12px;
+}
+
+.attentionRail button[aria-pressed="true"] {
+  border-color: var(--brand-strong);
+  background: var(--brand-strong);
+  color: #fff;
+}
+
+.attentionRail b {
+  display: grid;
+  min-width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(117, 71, 6, 0.1);
+  font-size: 10px;
+}
+
+.attentionRail button[aria-pressed="true"] b {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.overviewIntro {
+  display: grid;
+  gap: 4px;
+  margin-top: 16px;
+  border: 1px solid rgba(117, 71, 6, 0.18);
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(250, 245, 236, 0.98), rgba(255, 255, 255, 0.98));
+  padding: 14px 16px;
+}
+
+.overviewIntro strong {
+  color: var(--brand-strong);
+  font-size: 15px;
+}
+
+.overviewIntro span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.overviewGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  .tabRail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .overviewGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .tabRail {
+    display: flex;
+    gap: 7px;
+    overflow-x: auto;
+    padding: 5px;
+    scroll-snap-type: x proximity;
+  }
+
+  .tab,
+  .tabActive {
+    flex: 0 0 min(72vw, 238px);
+    min-height: 54px;
+    scroll-snap-align: start;
+  }
+
+  .tab strong,
+  .tabActive strong,
+  .tab small,
+  .tabActive small {
+    white-space: normal;
+  }
+
+  .overviewGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
