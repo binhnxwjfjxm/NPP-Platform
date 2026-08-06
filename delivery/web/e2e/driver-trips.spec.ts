@@ -3,10 +3,24 @@ import { expect, test } from '@playwright/test';
 const tripId = '30000000-0000-4000-8000-000000000001';
 const assignmentOneId = '90000000-0000-4000-8000-000000000001';
 
-test('tài xế ghi giao hàng, thu COD tiền mặt và bàn giao cuối chuyến trên mobile', async ({ page }) => {
+async function signIn(page: Parameters<typeof test>[0] extends never ? never : any) {
   await page.goto('/');
+  await expect(page).toHaveURL(/\/login(?:\?|$)/);
+  await page.getByLabel('Tên đăng nhập').fill('driver-a');
+  await page.getByLabel('Mật khẩu').fill('delivery-test-password');
+  await page.getByRole('button', { name: 'Vào ứng dụng' }).click();
+  await expect(page).toHaveURL(/\/$/);
+}
+
+test('tài xế đăng nhập một lần, reload vẫn giữ phiên và hoàn tất tác nghiệp mobile', async ({ page }) => {
+  await signIn(page);
   await expect(page.getByRole('heading', { name: 'Chuyến của tôi' })).toBeVisible();
   await expect(page.getByText('Xin chào, Nguyễn Văn Tài')).toBeVisible();
+
+  await page.reload();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('heading', { name: 'Chuyến của tôi' })).toBeVisible();
+
   const bottomNav = page.getByRole('navigation', { name: 'Điều hướng chính' });
   await expect(bottomNav).toBeVisible();
   await expect(bottomNav.getByText('Hôm nay')).toBeVisible();
@@ -45,12 +59,13 @@ test('tài xế ghi giao hàng, thu COD tiền mặt và bàn giao cuối chuy�
   await expect(page.getByText(/Delivery không sửa công nợ trực tiếp/)).toBeVisible();
 });
 
-test('sai mật khẩu bị từ chối trước khi vào app', async ({ browser }) => {
-  const context = await browser.newContext({
-    httpCredentials: { username: 'driver-a', password: 'wrong-password' },
-  });
-  const page = await context.newPage();
-  const response = await page.goto('/');
-  expect(response?.status()).toBe(401);
-  await context.close();
+test('sai mật khẩu ở lại màn đăng nhập và không vào app', async ({ page }) => {
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/login(?:\?|$)/);
+  await page.getByLabel('Tên đăng nhập').fill('driver-a');
+  await page.getByLabel('Mật khẩu').fill('wrong-password');
+  await page.getByRole('button', { name: 'Vào ứng dụng' }).click();
+  await expect(page).toHaveURL(/\/login\?error=invalid_credentials/);
+  await expect(page.getByRole('alert')).toContainText('chưa đúng');
+  await expect(page.getByRole('navigation', { name: 'Điều hướng chính' })).toHaveCount(0);
 });
