@@ -30,6 +30,7 @@ test('Admin matches the approved warm-gold dashboard geometry', () => {
   assert.match(styles, /\.menuPanel/);
   assert.match(styles, /border:\s*1px solid rgba\(152, 96, 15, 0\.13\)/);
   assert.match(styles, /0 10px 32px rgba\(76, 48, 20, 0\.055\)/);
+  assert.match(theme, /\.exceptionTableHeader\s*\{[^}]*grid-template-columns:\s*40px minmax\(0, 1fr\) auto/);
 });
 
 test('Admin remains responsive without a mobile bottom dock', () => {
@@ -37,8 +38,16 @@ test('Admin remains responsive without a mobile bottom dock', () => {
   assert.match(styles, /@media \(max-width: 760px\)/);
   assert.match(styles, /@media \(max-width: 640px\)/);
   assert.match(styles, /@media \(max-width: 470px\)/);
-  assert.match(styles, /\.desktopNav\s*\{[\s\S]*?display:\s*none/);
-  assert.match(styles, /\.mobileMenuItem\s*\{[\s\S]*?display:\s*grid/);
+
+  const mobileStart = styles.indexOf('@media (max-width: 760px)');
+  const mobileEnd = styles.indexOf('@media (max-width: 640px)', mobileStart);
+  assert.notEqual(mobileStart, -1);
+  assert.notEqual(mobileEnd, -1);
+  const mobileBreakpoint = styles.slice(mobileStart, mobileEnd);
+
+  assert.match(mobileBreakpoint, /\.desktopNav\s*\{[^}]*display:\s*none/);
+  assert.match(mobileBreakpoint, /\.mobileMenuItem\s*\{[^}]*display:\s*grid/);
+  assert.match(theme, /@media \(max-width: 760px\)\s*\{[\s\S]*?\.menuPanel\s*\{[^}]*top:\s*79px/);
   assert.doesNotMatch(styles, /bottomDock|bottomNavigation/);
   assert.match(layout, /import '\.\/hung-phat-warm-gold\.css';/);
 });
