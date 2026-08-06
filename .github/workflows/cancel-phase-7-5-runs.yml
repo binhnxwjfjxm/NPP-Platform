@@ -10,12 +10,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: cancel-phase-7-5-stale-runs-v2
+  group: cancel-phase-7-5-stale-runs-macos
   cancel-in-progress: true
 
 jobs:
   cancel-runs:
-    runs-on: ubuntu-24.04-arm
+    runs-on: macos-14
     timeout-minutes: 5
     steps:
       - name: Cancel Phase 7.5 and stale cleanup runs
