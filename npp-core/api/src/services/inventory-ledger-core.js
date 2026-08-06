@@ -18,6 +18,7 @@ const ENABLED_POSTING_TYPES = new Map([
   ['OPENING_BALANCE', 'IN'],
   ['PURCHASE_RECEIPT', 'IN'],
   ['SUPPLIER_RETURN', 'OUT'],
+  ['TRANSFER_ISSUE', 'OUT'],
 ]);
 
 function failure(code, message, retryable = false) {
@@ -119,7 +120,7 @@ function normalizePostingPayload(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return failure('INVALID_INPUT', 'Movement payload is required');
   const movementType = String(payload.movementType ?? '').trim().toUpperCase();
   const requiredDirection = ENABLED_POSTING_TYPES.get(movementType);
-  if (!requiredDirection) return failure('MOVEMENT_TYPE_NOT_ENABLED', 'Movement type is not enabled in the Phase 4.1 foundation');
+  if (!requiredDirection) return failure('MOVEMENT_TYPE_NOT_ENABLED', 'Movement type is not enabled in the inventory posting foundation');
   const sourceDomain = String(payload.sourceDomain ?? 'INVENTORY').trim().toUpperCase();
   if (!CODE_PATTERN.test(sourceDomain)) return failure('INVALID_SOURCE_DOMAIN', 'sourceDomain is invalid');
   const documentDate = strictDate(payload.documentDate);

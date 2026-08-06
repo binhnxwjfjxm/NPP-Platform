@@ -98,7 +98,7 @@ async function requestInventory<T>({
   idempotencyKey,
 }: {
   path: string;
-  method: 'GET' | 'POST' | 'PUT';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH';
   requestId: string;
   searchParams?: URLSearchParams;
   body?: unknown;
@@ -152,20 +152,13 @@ async function requestInventory<T>({
 }
 
 function assertUuid(value: string, code: string, message: string): void {
-  if (!UUID_PATTERN.test(value)) {
-    throw new InventoryGatewayError(code, message, 400, false);
-  }
+  if (!UUID_PATTERN.test(value)) throw new InventoryGatewayError(code, message, 400, false);
 }
 
 function requiredIdempotencyKey(value: string | null | undefined): string {
   const key = String(value ?? '').trim();
   if (!/^[A-Za-z0-9._:-]{1,128}$/.test(key)) {
-    throw new InventoryGatewayError(
-      'INVALID_IDEMPOTENCY_KEY',
-      'Khóa chống xử lý trùng không hợp lệ',
-      400,
-      false,
-    );
+    throw new InventoryGatewayError('INVALID_IDEMPOTENCY_KEY', 'Khóa chống xử lý trùng không hợp lệ', 400, false);
   }
   return key;
 }
@@ -179,12 +172,7 @@ export function getInventoryTrackingPolicy<T>(baseVariantId: string, requestId: 
   return requestInventory<T>({ path: `/tracking-policies/${baseVariantId}`, method: 'GET', requestId });
 }
 
-export function upsertInventoryTrackingPolicy<T>(
-  baseVariantId: string,
-  requestId: string,
-  body: unknown,
-  idempotencyKey?: string,
-): Promise<T> {
+export function upsertInventoryTrackingPolicy<T>(baseVariantId: string, requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
   assertUuid(baseVariantId, 'INVALID_BASE_VARIANT_ID', 'Mã biến thể cơ sở không hợp lệ');
   return requestInventory<T>({
     path: `/tracking-policies/${baseVariantId}`,
@@ -225,11 +213,7 @@ export function validateOpeningBalanceImport<T>(requestId: string, body: unknown
   return requestInventory<T>({ path: '/opening-balances/validate', method: 'POST', requestId, body });
 }
 
-export function postOpeningBalanceImport<T>(
-  requestId: string,
-  body: unknown,
-  idempotencyKey?: string,
-): Promise<T> {
+export function postOpeningBalanceImport<T>(requestId: string, body: unknown, idempotencyKey?: string): Promise<T> {
   return requestInventory<T>({
     path: '/opening-balances/post',
     method: 'POST',
@@ -245,19 +229,10 @@ export function listFulfillmentWork<T>(requestId: string, searchParams: URLSearc
 
 export function getFulfillmentSuggestions<T>(demandId: string, requestId: string): Promise<T> {
   assertUuid(demandId, 'INVALID_FULFILLMENT_DEMAND_ID', 'Mã nhu cầu chuẩn bị hàng không hợp lệ');
-  return requestInventory<T>({
-    path: `/fulfillment-demands/${demandId}/suggestions`,
-    method: 'GET',
-    requestId,
-  });
+  return requestInventory<T>({ path: `/fulfillment-demands/${demandId}/suggestions`, method: 'GET', requestId });
 }
 
-export function allocateFulfillmentDemand<T>(
-  demandId: string,
-  requestId: string,
-  body: unknown,
-  idempotencyKey: string | null,
-): Promise<T> {
+export function allocateFulfillmentDemand<T>(demandId: string, requestId: string, body: unknown, idempotencyKey: string | null): Promise<T> {
   assertUuid(demandId, 'INVALID_FULFILLMENT_DEMAND_ID', 'Mã nhu cầu chuẩn bị hàng không hợp lệ');
   return requestInventory<T>({
     path: `/fulfillment-demands/${demandId}/allocate`,
@@ -268,13 +243,7 @@ export function allocateFulfillmentDemand<T>(
   });
 }
 
-export function updateFulfillmentProgress<T>(
-  allocationId: string,
-  action: string,
-  requestId: string,
-  body: unknown,
-  idempotencyKey: string | null,
-): Promise<T> {
+export function updateFulfillmentProgress<T>(allocationId: string, action: string, requestId: string, body: unknown, idempotencyKey: string | null): Promise<T> {
   assertUuid(allocationId, 'INVALID_FULFILLMENT_ALLOCATION_ID', 'Mã dòng phân bổ không hợp lệ');
   if (!['pick', 'pack'].includes(action)) {
     throw new InventoryGatewayError('INVALID_FULFILLMENT_ACTION', 'Thao tác chuẩn bị hàng không hợp lệ', 400, false);
@@ -285,5 +254,50 @@ export function updateFulfillmentProgress<T>(
     requestId,
     body,
     idempotencyKey: requiredIdempotencyKey(idempotencyKey),
+  });
+}
+
+export function listInventoryTransfers<T>(requestId: string, searchParams: URLSearchParams): Promise<T> {
+  return requestInventory<T>({ path: '/transfers', method: 'GET', requestId, searchParams });
+}
+
+export function listInventoryTransferInTransit<T>(requestId: string, searchParams = new URLSearchParams()): Promise<T> {
+  return requestInventory<T>({ path: '/transfers/in-transit', method: 'GET', requestId, searchParams });
+}
+
+export function getInventoryTransfer<T>(id: string, requestId: string): Promise<T> {
+  assertUuid(id, 'INVALID_INVENTORY_TRANSFER_ID', 'Mã phiếu chuyển kho không hợp lệ');
+  return requestInventory<T>({ path: `/transfers/${id}`, method: 'GET', requestId });
+}
+
+export function createInventoryTransfer<T>(requestId: string, body: unknown, idempotencyKey?: string | null): Promise<T> {
+  return requestInventory<T>({
+    path: '/transfers',
+    method: 'POST',
+    requestId,
+    body,
+    idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}`,
+  });
+}
+
+export function updateInventoryTransfer<T>(id: string, requestId: string, body: unknown, idempotencyKey?: string | null): Promise<T> {
+  assertUuid(id, 'INVALID_INVENTORY_TRANSFER_ID', 'Mã phiếu chuyển kho không hợp lệ');
+  return requestInventory<T>({
+    path: `/transfers/${id}`,
+    method: 'PATCH',
+    requestId,
+    body,
+    idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}`,
+  });
+}
+
+export function transitionInventoryTransfer<T>(id: string, action: 'approve' | 'dispatch' | 'cancel', requestId: string, body: unknown, idempotencyKey?: string | null): Promise<T> {
+  assertUuid(id, 'INVALID_INVENTORY_TRANSFER_ID', 'Mã phiếu chuyển kho không hợp lệ');
+  return requestInventory<T>({
+    path: `/transfers/${id}/${action}`,
+    method: 'POST',
+    requestId,
+    body,
+    idempotencyKey: idempotencyKey?.trim() || `web-${randomUUID()}`,
   });
 }
