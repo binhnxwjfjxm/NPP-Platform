@@ -15,30 +15,42 @@ concurrency:
 
 jobs:
   cancel-runs:
-    runs-on: windows-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Cancel queued and in-progress Phase 7.5 runs
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_BRANCH: agent/phase-7-5-costing-foundation
         run: |
-          $ErrorActionPreference = 'Stop'
-          $repo = $env:GITHUB_REPOSITORY
-          $selfRun = [int64]$env:GITHUB_RUN_ID
-          $statuses = @('queued', 'in_progress', 'waiting', 'requested', 'pending')
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          api="https://api.github.com"
+          statuses=(queued in_progress waiting requested pending)
 
-          foreach ($status in $statuses) {
-            $response = gh api "/repos/$repo/actions/runs?branch=$($env:TARGET_BRANCH)&status=$status&per_page=100" | ConvertFrom-Json
-            foreach ($run in $response.workflow_runs) {
-              if ([int64]$run.id -eq $selfRun) { continue }
-              Write-Host "Cancelling run $($run.id) ($status)"
-              gh api -X POST "/repos/$repo/actions/runs/$($run.id)/cancel" | Out-Null
-            }
-          }
+          for status in "${statuses[@]}"; do
+            curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "${api}/repos/${repo}/actions/runs?branch=${TARGET_BRANCH}&status=${status}&per_page=100" \
+              | jq -r '.workflow_runs[].id' \
+              | while read -r run_id; do
+                  [ -z "$run_id" ] && continue
+                  echo "Cancelling run ${run_id} (${status})"
+                  curl -fsSL -X POST \
+                    -H "Authorization: Bearer ${GH_TOKEN}" \
+                    -H "Accept: application/vnd.github+json" \
+                    -H "X-GitHub-Api-Version: 2022-11-28" \
+                    "${api}/repos/${repo}/actions/runs/${run_id}/cancel" \
+                    -o /dev/null || true
+                done
+          done
 
-          Start-Sleep -Seconds 10
-          $remaining = gh api "/repos/$repo/actions/runs?branch=$($env:TARGET_BRANCH)&per_page=100" | ConvertFrom-Json
-          $active = @($remaining.workflow_runs | Where-Object { $_.status -in $statuses })
-          Write-Host "Remaining active runs: $($active.Count)"
-          $active | ForEach-Object { Write-Host "$($_.id)`t$($_.name)`t$($_.status)" }
+          sleep 10
+          remaining=$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${api}/repos/${repo}/actions/runs?branch=${TARGET_BRANCH}&per_page=100" \
+            | jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending")] | length')
+          echo "Remaining active runs: ${remaining}"
