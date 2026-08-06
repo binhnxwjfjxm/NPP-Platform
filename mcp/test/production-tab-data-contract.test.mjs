@@ -6,15 +6,40 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
 
-test("customer tab projects route customers from the backend read boundary", () => {
+test("customer tab projects real route-customer fields from the backend read boundary", () => {
   const page = read("src/features/accounts/AccountsPage.tsx");
   const projection = read("src/features/accounts/accounts-from-route-customers.ts");
+  const types = read("src/features/accounts/accounts.types.ts");
+  const client = read("src/features/accounts/OutletsClientPage.tsx");
 
   assert.match(page, /loadRouteCustomersData\(\)/);
+  assert.match(page, /accountsFromRouteCustomers\(routeCustomersData\)/);
+  assert.match(page, /outletsData\.outlets/);
   assert.doesNotMatch(page, /createApiClient/);
   assert.doesNotMatch(page, /getRouteCustomersData\(\)/);
-  assert.match(projection, /accountsFromRouteCustomers/);
-  assert.match(projection, /tier: "-"/);
+
+  assert.match(projection, /accountsFromRouteCustomers\(data: RouteCustomersData\): OutletsData/);
+  assert.match(projection, /routeCustomerId: customer\.id/);
+  assert.match(projection, /accountId: customer\.accountId \|\| null/);
+  assert.match(projection, /sortOrder: customer\.sortOrder/);
+  assert.match(projection, /status: toOutletStatus\(customer\.status\)/);
+  assert.match(projection, /gps: customer\.gps \|\| null/);
+  assert.match(projection, /note: customer\.note/);
+  assert.match(projection, /mapsUrl: mapsUrl\(customer\)/);
+  assert.match(projection, /label: "Có GPS"/);
+  assert.match(projection, /label: "Cần GPS"/);
+  assert.match(projection, /label: "Đang ẩn"/);
+
+  assert.match(types, /export type OutletItem/);
+  assert.match(types, /export type OutletsData/);
+  assert.match(client, /items: OutletItem\[\]/);
+  assert.match(client, /Tên, liên hệ, khu vực hoặc tuyến/);
+  assert.match(client, /Cần cập nhật GPS/);
+
+  for (const inventedField of ["tier", "lastVisitDate", "lastOrderDate", "monthlyRevenue"]) {
+    assert.doesNotMatch(projection, new RegExp(`\\b${inventedField}\\b`), `customer projection must not invent ${inventedField}`);
+    assert.doesNotMatch(client, new RegExp(`\\b${inventedField}\\b`), `customer UI must not render ${inventedField}`);
+  }
 });
 
 test("orders tab reads orders and customers through the backend provider", () => {
