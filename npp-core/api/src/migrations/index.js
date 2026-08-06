@@ -27,7 +27,7 @@ const LOGISTICS_TRIP_RECONCILIATION_SQL = [
 const LOGISTICS_OPTIONAL_PROOF_OF_DELIVERY_SQL = readFileSync(new URL('../../../../database/migrations/logistics/052_logistics_optional_proof_of_delivery.sql', import.meta.url), 'utf8');
 const CUSTOMER_RECEIVABLE_LEDGER_SQL = [
   readFileSync(new URL('../../../../database/migrations/accounting/053_customer_receivable_ledger.sql', import.meta.url), 'utf8'),
-  readFileSync(new URL('../../../../database/migrations/accounting/053_customer_receivable_pickup_reversal.sql', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../../../database/migrations/accounting/053_customer_RECEIVABLE_PICKUP_REVERSAL.sql', import.meta.url), 'utf8'),
 ].join('\n\n');
 const CUSTOMER_PAYMENT_ALLOCATION_SQL = [
   readFileSync(new URL('../../../../database/migrations/accounting/054_customer_payment_allocation.sql', import.meta.url), 'utf8'),
@@ -44,6 +44,7 @@ const COD_COLLECTION_HANDOVER_SQL = [
   readFileSync(new URL('../../../../database/migrations/accounting/056_cod_collection_handover_projections.sql', import.meta.url), 'utf8'),
 ].join('\n\n');
 const INVENTORY_TRANSFER_IN_TRANSIT_SQL = readFileSync(new URL('../../../../database/migrations/inventory/058_inventory_transfer_in_transit_foundation.sql', import.meta.url), 'utf8');
+const INVENTORY_TRANSFER_RECEIPT_RESOLUTION_SQL = readFileSync(new URL('../../../../database/migrations/inventory/059_inventory_transfer_receipt_resolution.sql', import.meta.url), 'utf8');
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -60,6 +61,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '056_cod_collection_handover', sql: COD_COLLECTION_HANDOVER_SQL }),
   Object.freeze({ id: '057_phase6f_reconciliation_views', sql: PHASE6F_RECONCILIATION_SQL }),
   Object.freeze({ id: '058_inventory_transfer_in_transit_foundation', sql: INVENTORY_TRANSFER_IN_TRANSIT_SQL }),
+  Object.freeze({ id: '059_inventory_transfer_receipt_resolution', sql: INVENTORY_TRANSFER_RECEIPT_RESOLUTION_SQL }),
 ]);
 
 export { runMigrations };
