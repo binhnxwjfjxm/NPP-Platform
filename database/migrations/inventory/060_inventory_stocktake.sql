@@ -268,7 +268,6 @@ BEGIN
      OR OLD.lot_id IS DISTINCT FROM NEW.lot_id
      OR OLD.source_variant_id <> NEW.source_variant_id
      OR OLD.source_unit_id <> NEW.source_unit_id
-     OR OLD.source_quantity <> NEW.source_quantity
      OR OLD.conversion_to_base <> NEW.conversion_to_base THEN
     RAISE EXCEPTION 'stocktake_snapshot_is_immutable';
   END IF;
