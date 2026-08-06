@@ -182,7 +182,7 @@ test('approved transfer dispatch posts one source issue and exposes in-transit w
     assert.equal(created.ok, true, created.message);
     assert.equal(created.transfer.status, 'draft');
     assert.equal(created.transfer.lines.length, 1);
-    assert.equal(created.transfer.lines[0].baseQuantity, '3');
+    assert.equal(created.transfer.lines[0].baseQuantity, '3.000000000000');
 
     const denied = await transaction(pool, (client) => createInventoryTransfer(client, {
       requestContext: requestContext(config.installationId, [master.sourceWarehouseId], `req-denied-${randomUUID()}`),
