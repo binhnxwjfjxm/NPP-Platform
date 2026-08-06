@@ -4,7 +4,7 @@ import { OutletsClientPage } from "./OutletsClientPage";
 
 export async function AccountsPage() {
   const routeCustomersData = await loadRouteCustomersData();
-  const accountsData = accountsFromRouteCustomers(routeCustomersData);
+  const outletsData = accountsFromRouteCustomers(routeCustomersData);
 
-  return <OutletsClientPage kpis={accountsData.kpis} items={accountsData.accounts} />;
+  return <OutletsClientPage kpis={outletsData.kpis} items={outletsData.outlets} />;
 }

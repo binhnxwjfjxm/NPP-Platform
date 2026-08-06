@@ -23,7 +23,22 @@ async function waitForHttp(url, timeoutMs = 120000) {
 }
 
 function pathname(value) {
-  return new URL(value).pathname;
+  return new URL(value, appBase).pathname;
+}
+
+async function readDock(page) {
+  const dock = page.locator('[data-bottom-navigation="true"]');
+  await dock.waitFor({ state: "visible" });
+  const links = dock.locator("a");
+  const values = [];
+  for (let index = 0; index < await links.count(); index += 1) {
+    values.push({
+      label: (await links.nth(index).innerText()).trim(),
+      href: pathname(await links.nth(index).getAttribute("href")),
+      documentNavigation: await links.nth(index).getAttribute("data-document-navigation")
+    });
+  }
+  return { dock, links, values };
 }
 
 await waitForHttp(`${appBase}/routes`);
@@ -34,19 +49,39 @@ const result = { MOBILE_DOCK_NAVIGATION: "FAIL" };
 
 try {
   await page.goto(`${appBase}/routes`, { waitUntil: "networkidle" });
-  const dock = page.locator('[data-bottom-navigation="true"]');
-  await dock.waitFor({ state: "visible" });
-
-  const links = dock.locator("a");
-  assert.equal(await links.count(), 5, "mobile dock must keep five top-level destinations");
-  for (let index = 0; index < await links.count(); index += 1) {
-    assert.equal(
-      await links.nth(index).getAttribute("data-document-navigation"),
-      "true",
-      "every dock destination must remain a document-level escape"
-    );
+  const routeDock = await readDock(page);
+  assert.equal(routeDock.values.length, 5, "mobile dock must keep five top-level destinations");
+  assert.deepEqual(
+    routeDock.values.map((item) => item.label),
+    ["Tổng", "Đi tuyến", "Khách", "Đơn", "Báo cáo"],
+    "mobile dock must use the agreed daily-work order"
+  );
+  assert.deepEqual(
+    routeDock.values.map((item) => item.href),
+    ["/", "/visits", "/customers", "/orders", "/reports"],
+    "mobile dock destinations must match the agreed routes"
+  );
+  assert.equal(routeDock.values.some((item) => item.href === "/routes"), false, "route management must leave the mobile dock");
+  for (const item of routeDock.values) {
+    assert.equal(item.documentNavigation, "true", "every dock destination must remain a document-level escape");
   }
 
+  const customerRequestPromise = page.waitForRequest((request) => {
+    return request.isNavigationRequest() && pathname(request.url()) === "/customers";
+  });
+  await routeDock.dock.getByRole("link", { name: "Khách", exact: true }).click();
+  const customerRequest = await customerRequestPromise;
+  assert.equal(customerRequest.resourceType(), "document", "Khách must open with document navigation");
+  await page.waitForURL((url) => url.pathname === "/customers");
+  const customerDock = await readDock(page);
+  assert.equal(
+    await customerDock.dock.getByRole("link", { name: "Khách", exact: true }).getAttribute("aria-current"),
+    "page",
+    "/customers must mark Khách active"
+  );
+
+  await page.goto(`${appBase}/routes`, { waitUntil: "networkidle" });
+  const dock = (await readDock(page)).dock;
   const visitLink = dock.getByRole("link", { name: "Đi tuyến", exact: true });
   const visitResponsePromise = page.waitForResponse((response) => {
     return response.request().isNavigationRequest() && pathname(response.url()) === "/visits";
@@ -63,8 +98,7 @@ try {
 
   await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "networkidle" });
   assert.equal(pathname(page.url()), "/visits", "active visit setup must remain on /visits");
-  const sessionDock = page.locator('[data-bottom-navigation="true"]');
-  await sessionDock.waitFor({ state: "visible" });
+  const sessionDock = (await readDock(page)).dock;
   const ordersLink = sessionDock.getByRole("link", { name: "Đơn", exact: true });
   const ordersRequestPromise = page.waitForRequest((request) => {
     return request.isNavigationRequest() && pathname(request.url()) === "/orders";
@@ -75,6 +109,8 @@ try {
   await page.waitForURL((url) => url.pathname === "/orders");
 
   await page.screenshot({ path: `${resultsDir}/mobile-dock-navigation-final.png`, fullPage: true });
+  result.dockLabels = routeDock.values.map((item) => item.label);
+  result.customerDestination = "/customers";
   result.entryRedirectStatus = visitResponse.status();
   result.noActiveDestination = "/routes";
   result.visitEscapeDestination = "/orders";

@@ -69,19 +69,21 @@
 
 .attentionRail {
   display: flex;
+  flex-wrap: wrap;
   gap: 7px;
   margin-top: 14px;
-  overflow-x: auto;
+  overflow-x: visible;
   padding: 2px 1px 4px;
-  scrollbar-width: thin;
 }
 
 .attentionRail button {
   display: inline-flex;
-  flex: 0 0 auto;
+  flex: 1 1 150px;
+  min-width: 0;
   align-items: center;
+  justify-content: space-between;
   gap: 7px;
-  min-height: 38px;
+  min-height: 42px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: #fff;
@@ -90,6 +92,7 @@
   font-size: 12px;
   font-weight: 850;
   padding: 0 12px;
+  text-align: left;
 }
 
 .attentionRail button[aria-pressed="true"] {
@@ -100,6 +103,7 @@
 
 .attentionRail b {
   display: grid;
+  flex: 0 0 auto;
   min-width: 22px;
   height: 22px;
   place-items: center;
@@ -148,25 +152,60 @@
 
 @media (max-width: 560px) {
   .tabRail {
-    display: flex;
-    gap: 7px;
-    overflow-x: auto;
-    padding: 5px;
-    scroll-snap-type: x proximity;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    overflow-x: hidden;
+    padding: 4px;
+    border-radius: 14px;
   }
 
   .tab,
   .tabActive {
-    flex: 0 0 min(72vw, 238px);
-    min-height: 54px;
-    scroll-snap-align: start;
+    width: 100%;
+    min-width: 0;
+    min-height: 58px;
+    gap: 0;
+    border-radius: 10px;
+    padding: 6px 3px;
+    text-align: center;
   }
 
   .tab strong,
-  .tabActive strong,
+  .tabActive strong {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 10px;
+    line-height: 1.12;
+    text-overflow: ellipsis;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+
   .tab small,
   .tabActive small {
-    white-space: normal;
+    display: none;
+  }
+
+  .attentionRail {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    overflow-x: hidden;
+  }
+
+  .attentionRail button {
+    width: 100%;
+    min-height: 44px;
+    border-radius: 12px;
+    padding: 7px 9px;
+    font-size: 10.5px;
+    line-height: 1.15;
+  }
+
+  .attentionRail button:last-child {
+    grid-column: 1 / -1;
   }
 
   .overviewGrid.overviewGrid {
