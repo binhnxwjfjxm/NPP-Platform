@@ -1,9 +1,9 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const tripId = '30000000-0000-4000-8000-000000000001';
 const assignmentOneId = '90000000-0000-4000-8000-000000000001';
 
-async function signIn(page: Parameters<typeof test>[0] extends never ? never : any) {
+async function signIn(page: Page) {
   await page.goto('/');
   await expect(page).toHaveURL(/\/login(?:\?|$)/);
   await page.getByLabel('Tên đăng nhập').fill('driver-a');
