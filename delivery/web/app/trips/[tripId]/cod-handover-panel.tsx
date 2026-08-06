@@ -6,11 +6,12 @@ import type { DriverCodOverview } from '../../../lib/types';
 import styles from './cod-panel.module.css';
 
 type Props = Readonly<{ tripId: string; overview: DriverCodOverview }>;
-const SCALE = 1_000_000n;
+const ZERO = BigInt(0);
+const SCALE = BigInt(1_000_000);
 
 function scaled(value: string) {
   const match = /^(\d+)(?:\.(\d{1,6}))?$/.exec(value.trim());
-  return match ? BigInt(match[1]) * SCALE + BigInt((match[2] ?? '').padEnd(6, '0')) : 0n;
+  return match ? BigInt(match[1]) * SCALE + BigInt((match[2] ?? '').padEnd(6, '0')) : ZERO;
 }
 
 function money(value: string) {
@@ -22,7 +23,7 @@ export default function CodHandoverPanel({ tripId, overview }: Props) {
   const cash = useMemo(() => overview.assignments.filter((assignment) => (
     assignment.collection?.collectionMethod === 'CASH'
     && !assignment.collection.reversed
-    && scaled(assignment.collection.custodyRemainingAmount) > 0n
+    && scaled(assignment.collection.custodyRemainingAmount) > ZERO
   )), [overview.assignments]);
   const [amounts, setAmounts] = useState<Record<string, string>>(() => Object.fromEntries(
     cash.map((assignment) => [assignment.collection!.id, assignment.collection!.custodyRemainingAmount]),
@@ -36,9 +37,9 @@ export default function CodHandoverPanel({ tripId, overview }: Props) {
   const lines = cash.map((assignment) => ({
     collectionId: assignment.collection!.id,
     amount: amounts[assignment.collection!.id] || '0',
-  })).filter((line) => scaled(line.amount) > 0n);
-  const expected = cash.reduce((total, assignment) => total + scaled(assignment.collection!.custodyRemainingAmount), 0n);
-  const handed = lines.reduce((total, line) => total + scaled(line.amount), 0n) + scaled(excess);
+  })).filter((line) => scaled(line.amount) > ZERO);
+  const expected = cash.reduce((total, assignment) => total + scaled(assignment.collection!.custodyRemainingAmount), ZERO);
+  const handed = lines.reduce((total, line) => total + scaled(line.amount), ZERO) + scaled(excess);
   const different = expected !== handed;
 
   async function submit() {
