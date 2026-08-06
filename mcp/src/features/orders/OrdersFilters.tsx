@@ -33,7 +33,14 @@ export function OrdersFilters({ filters, options, filteredOrders, totalOrders, t
         <label><span>Trạng thái</span><select value={filters.status} onChange={(event) => onChange("status", event.target.value)}><option value="">Tất cả trạng thái</option>{options.statuses.map((value) => <option key={value} value={value}>{getOrderStatusLabel(value)}</option>)}</select></label>
         <label><span>Nguồn đơn</span><select value={filters.source} onChange={(event) => onChange("source", event.target.value)}><option value="">Tất cả nguồn</option>{options.sources.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
       </div>
-      <div className={styles.filterSummary}><span><strong>{filteredOrders.length}</strong>/{totalOrders} đơn · {money.format(totalAmount)}</span><div>{filters.customer ? <button type="button" onClick={() => onChange("customer", "")}>Khách: {filters.customer} ×</button> : null}{activeFilterCount ? <button type="button" onClick={onReset}>Xóa {activeFilterCount} bộ lọc</button> : <small>Chưa áp dụng bộ lọc bổ sung</small>}</div></div>
+      <div className={styles.filterSummary}>
+        <span><strong>{filteredOrders.length}</strong>/{totalOrders} đơn · {money.format(totalAmount)}</span>
+        <div>
+          {!search && filters.search ? <button type="button" onClick={() => onChange("search", "")}>Tìm: {filters.search} ×</button> : null}
+          {filters.customer ? <button type="button" onClick={() => onChange("customer", "")}>Khách: {filters.customer} ×</button> : null}
+          {activeFilterCount ? <button type="button" onClick={onReset}>Xóa {activeFilterCount} bộ lọc</button> : <small>Chưa áp dụng bộ lọc bổ sung</small>}
+        </div>
+      </div>
     </section>
   );
 }
