@@ -267,9 +267,11 @@ jobs:
         shell: bash
         env:
           ADMIN_PROJECT_ID: ${{ steps.project.outputs.project_id }}
+          VERCEL_PROJECT_ID: ${{ steps.project.outputs.project_id }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
+          test "$VERCEL_PROJECT_ID" = "$ADMIN_PROJECT_ID"
           project_json="${RUNNER_TEMP}/admin-project-settings.json"
           payload="$(node -e 'process.stdout.write(JSON.stringify({framework:"nextjs",rootDirectory:process.env.ADMIN_ROOT_DIRECTORY,nodeVersion:"24.x"}))')"
           status="$(curl --silent --show-error --output "$project_json" --write-out '%{http_code}' \
@@ -314,6 +316,7 @@ jobs:
       - name: Build Admin production artifact
         id: build
         env:
+          VERCEL_PROJECT_ID: ${{ steps.project.outputs.project_id }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
 
@@ -321,6 +324,7 @@ jobs:
         id: deploy
         shell: bash
         env:
+          VERCEL_PROJECT_ID: ${{ steps.project.outputs.project_id }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
