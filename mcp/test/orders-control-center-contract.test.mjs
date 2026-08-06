@@ -21,6 +21,12 @@ function sectionBetween(start, end) {
   return page.slice(startIndex, endIndex);
 }
 
+function cssRule(source, selector) {
+  const match = source.match(new RegExp(`${selector}\\s*\\{([^{}]*)\\}`));
+  assert.ok(match, `${selector} rule must exist`);
+  return match[1];
+}
+
 test("orders page owns four URL-addressable work views", () => {
   assert.match(page, /type OrderView = "orders" \| "attention" \| "sales" \| "overview"/);
   assert.match(page, /searchParams\.get\("view"\)/);
@@ -170,9 +176,15 @@ test("orders tabs stay responsive without dashboard overflow", () => {
   assert.match(tabStyles, /\.tabRail \{[\s\S]*repeat\(4, minmax\(0, 1fr\)\)/);
   const mobileTabs = tabStyles.slice(tabStyles.indexOf("@media (max-width: 560px)"));
   assert.ok(mobileTabs, "mobile orders styles must exist");
-  assert.match(mobileTabs, /\.tabRail \{[\s\S]*display: grid;[\s\S]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\);[\s\S]*overflow-x: hidden;/);
-  assert.doesNotMatch(mobileTabs, /overflow-x:\s*(auto|scroll)/, "mobile orders controls must not scroll horizontally");
-  assert.doesNotMatch(mobileTabs, /scroll-snap/, "mobile orders controls must not require swipe snapping");
-  assert.match(mobileTabs, /\.attentionRail \{[\s\S]*display: grid;[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[\s\S]*overflow-x: hidden;/);
+  const tabRail = cssRule(mobileTabs, "\\.tabRail");
+  const attentionRail = cssRule(mobileTabs, "\\.attentionRail");
+  assert.match(tabRail, /display:\s*grid;/);
+  assert.match(tabRail, /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/);
+  assert.match(tabRail, /overflow-x:\s*hidden;/);
+  assert.doesNotMatch(tabRail, /overflow-x:\s*(auto|scroll)|scroll-snap/);
+  assert.match(attentionRail, /display:\s*grid;/);
+  assert.match(attentionRail, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
+  assert.match(attentionRail, /overflow-x:\s*hidden;/);
+  assert.doesNotMatch(attentionRail, /overflow-x:\s*(auto|scroll)|scroll-snap/);
   assert.match(tabStyles, /\.overviewGrid\.overviewGrid \{[\s\S]*repeat\(4, minmax\(0, 1fr\)\)/);
 });
