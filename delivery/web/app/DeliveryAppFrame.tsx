@@ -28,7 +28,10 @@ function DockLinkItem({ href, icon, label, active = false }: DockLink) {
 export default function DeliveryAppFrame({ children }: Readonly<{ children: ReactNode }>) {
   const pathname = usePathname();
   const router = useRouter();
+  const onLogin = pathname === '/login';
   const onTrip = pathname.startsWith('/trips/');
+
+  if (onLogin) return children;
 
   return (
     <div className="deliveryAppFrame" data-delivery-app-frame data-route-mode={onTrip ? 'trip' : 'home'}>
