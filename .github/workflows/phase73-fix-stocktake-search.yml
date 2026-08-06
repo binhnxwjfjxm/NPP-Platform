@@ -25,30 +25,16 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-
           path = Path('npp-core/web/app/inventory/stocktakes/stocktake-workspace.tsx')
           source = path.read_text()
-          old = """      return !term || matchTerm(term, [
-        stocktake.stocktakeNumber,
-        stocktake.warehouseCode,
-        stocktake.warehouseName,
-        stocktake.status,
-      ]);
-"""
-          new = """      return !term || matchTerm(
-        stocktake.stocktakeNumber,
-        stocktake.warehouseCode,
-        stocktake.warehouseName,
-        stocktake.status,
-      ).includes(term);
-"""
+          old = "      return !term || matchTerm(term, [\n        stocktake.stocktakeNumber,\n        stocktake.warehouseCode,\n        stocktake.warehouseName,\n        stocktake.status,\n      ]);\n"
+          new = "      return !term || matchTerm(\n        stocktake.stocktakeNumber,\n        stocktake.warehouseCode,\n        stocktake.warehouseName,\n        stocktake.status,\n      ).includes(term);\n"
           if old in source:
               source = source.replace(old, new, 1)
           elif new not in source:
               raise SystemExit('Unexpected stocktake search block')
           path.write_text(source)
           PY
-
           npm ci
           npm --prefix npp-core/web run typecheck
 
