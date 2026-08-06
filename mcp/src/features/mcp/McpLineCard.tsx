@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useId, useState } from "react";
 import type { McpDayLine } from "@/features/mcp-day/mcp-day.types";
 import { type McpCustomerAction } from "./mcp-customer-actions";
@@ -72,12 +73,13 @@ function ActionIcon({ name }: { name: ActionIconName }) {
   return <svg {...common}><path d="M12 2v4M12 18v4M4 12H2M22 12h-2"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>;
 }
 
-function officialOrderHref(line: McpDayLine) {
+function officialOrderHref(line: McpDayLine, returnTo: string) {
   const sessionCustomerId = line.sessionCustomerId || line.id;
   const params = new URLSearchParams({
     sessionCustomerId,
     orderId: String(line.orderId || ""),
-    customerName: line.accountName
+    customerName: line.accountName,
+    returnTo
   });
   return `/visits/order-intent?${params.toString()}`;
 }
@@ -95,11 +97,15 @@ export function McpLineCard({
   onToggleCheckin?: (line: McpDayLine) => void;
   checkinBusy?: boolean;
 }) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const directions = useMcpCustomerDirections(line.routeCustomerId, line.accountName, line.area);
   const checkinEnabled = typeof onToggleCheckin === "function";
   const actionMenuId = useId();
   const [actionsOpen, setActionsOpen] = useState(false);
   const openLegacySheet = () => onOpen(line);
+  const visitQuery = searchParams.toString();
+  const returnTo = pathname === "/visits" ? `/visits${visitQuery ? `?${visitQuery}` : ""}` : "/visits";
 
   function openProfile(focus: "detail" | "media") {
     requestMcpCustomerProfile({ line, focus, fallback: openLegacySheet });
@@ -178,7 +184,7 @@ export function McpLineCard({
       {actionsOpen ? (
         <div className={styles.actionMenu} id={actionMenuId} data-customer-action-menu="open">
           {line.orderId ? (
-            <Link className={styles.officialOrder} href={officialOrderHref(line)} aria-label={`Mở đơn NPP cho ${line.accountName}`}>
+            <Link className={styles.officialOrder} href={officialOrderHref(line, returnTo)} aria-label={`Mở đơn NPP cho ${line.accountName}`}>
               <ActionIcon name="order" />
               <span>Đơn NPP</span>
             </Link>
