@@ -6,6 +6,12 @@ async function source(path) {
   return readFile(new URL(`../${path}`, import.meta.url), "utf8");
 }
 
+function cssRule(sourceText, selector) {
+  const match = sourceText.match(new RegExp(`${selector}\\s*\\{([^{}]*)\\}`));
+  assert.ok(match, `${selector} rule must exist`);
+  return match[1];
+}
+
 test("session card keeps check-in and every existing action behind compact controls", async () => {
   const card = await source("src/features/mcp/McpLineCard.tsx");
   const css = await source("src/features/mcp/McpLineCard.module.css");
@@ -27,10 +33,19 @@ test("session card keeps check-in and every existing action behind compact contr
   assert.match(card, /<span>Thao tác<\/span>/);
   assert.match(card, /onToggleCheckin\(line\)/);
   assert.match(card, /onAction\(line, action\)/);
-  assert.match(css, /grid-template-columns:\s*minmax\(0, 1fr\) 62px 48px 58px/);
-  assert.match(css, /@media \(max-width: 520px\)[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) 60px 44px 54px/);
-  assert.match(css, /\.iconButton\s*\{[\s\S]*?min-height:\s*44px/);
-  assert.match(css, /\.actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/);
+
+  const primaryRow = cssRule(css, "\\.primaryRow");
+  const iconButton = cssRule(css, "\\.iconButton");
+  const actions = cssRule(css, "\\.actions");
+  assert.match(primaryRow, /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+62px\s+48px\s+58px/);
+  assert.match(iconButton, /min-height:\s*44px/);
+  assert.match(actions, /grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/);
+
+  const mobileStart = css.indexOf("@media (max-width: 520px)");
+  assert.ok(mobileStart >= 0, "mobile session card styles must exist");
+  const mobilePrimaryRow = cssRule(css.slice(mobileStart), "\\.primaryRow");
+  assert.match(mobilePrimaryRow, /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+60px\s+44px\s+54px/);
+
   assert.doesNotMatch(css, /overflow-x:\s*auto/);
   assert.doesNotMatch(css, /scroll-snap-type/);
   assert.doesNotMatch(css, /\.checkin\s*\{[^}]*display:\s*none/s);
