@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const middleware = read('middleware.ts');
 const session = read('lib/delivery-session.ts');
+const frame = read('app/DeliveryAppFrame.tsx');
 const loginPage = read('app/login/page.tsx');
 const loginRoute = read('app/api/auth/login/route.ts');
 const logoutRoute = read('app/api/auth/logout/route.ts');
@@ -32,13 +33,18 @@ test('Delivery browser navigation uses a first-party login page and keeps Basic 
   assert.match(loginPage, /Đăng nhập một lần/);
   assert.match(loginPage, /autoComplete="username"/);
   assert.match(loginPage, /autoComplete="current-password"/);
+  assert.match(frame, /pathname === '\/login'/);
+  assert.match(frame, /if \(onLogin\) return children/);
 });
 
-test('Delivery login maps credentials to the existing server-owned driver account', () => {
+test('Delivery login maps credentials to the existing server-owned driver account without changing origin', () => {
   assert.match(loginRoute, /authenticateDeliveryUser/);
   assert.match(loginRoute, /deliverySetupPending/);
   assert.match(loginRoute, /createDeliverySession/);
   assert.match(loginRoute, /response\.cookies\.set/);
+  assert.match(loginRoute, /Location:\s*location/);
+  assert.doesNotMatch(loginRoute + logoutRoute, /new URL\([^)]*, request\.url\)/);
+  assert.match(logoutRoute, /Location:\s*'\/login'/);
   assert.match(logoutRoute, /maxAge:\s*0/);
   assert.match(loginRoute + logoutRoute, /Cache-Control/);
 });
