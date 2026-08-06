@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const theme = read('app/hung-phat-mobile.css');
 const experience = read('app/delivery-app-experience.css');
+const mobileApp = read('app/delivery-mobile-app.css');
 const layout = read('app/layout.tsx');
 const frame = read('app/DeliveryAppFrame.tsx');
 const home = read('app/page.tsx');
@@ -24,19 +25,24 @@ test('Delivery uses the shared warm-gold palette', () => {
   }
 });
 
-test('Delivery is a stable mobile application shell with one scroll region', () => {
+test('Delivery is a stable mobile application shell with one scroll region and a four-item bottom nav', () => {
   assert.match(layout, /DeliveryAppFrame/);
   assert.match(layout, /import '\.\/delivery-app-experience\.css';/);
+  assert.match(layout, /import '\.\/delivery-mobile-app\.css';/);
   assert.match(layout, /viewportFit:\s*'cover'/);
-  assert.match(layout, /themeColor:\s*'#754706'/);
+  assert.match(layout, /themeColor:\s*'#3f2818'/);
   assert.match(frame, /data-delivery-app-frame/);
   assert.match(frame, /deliveryAppTopBar/);
-  assert.match(frame, /deliveryAppDock/);
-  assert.match(frame, /#next-delivery-action/);
+  assert.match(frame, /aria-label="Điều hướng chính"/);
+  assert.match(frame, /Hôm nay/);
+  assert.match(frame, /Điểm giao/);
+  assert.match(frame, /COD/);
+  assert.match(frame, /Đồng bộ/);
+  assert.doesNotMatch(frame, /deliveryDockPrimary/);
   assert.match(experience, /height:\s*100dvh/);
-  assert.match(experience, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(78px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(mobileApp, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(76px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(experience, /\.deliveryAppContent[\s\S]*?overflow-y:\s*auto/);
-  assert.match(experience, /\.deliveryDockPrimary/);
+  assert.match(mobileApp, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
 });
 
 test('Delivery prioritizes active trip, next stop and result action', () => {
@@ -47,7 +53,8 @@ test('Delivery prioritizes active trip, next stop and result action', () => {
   assert.match(trip, /const nextStop =/);
   assert.match(trip, /const nextAssignment =/);
   assert.match(trip, /id="next-delivery-action"/);
-  assert.match(trip, /nextStopCard/);
+  assert.match(trip, /id="route-section"/);
+  assert.match(trip, /id="cod-section"/);
   assert.match(trip, /Ghi kết quả giao hàng/);
   assert.match(trip, /id=\{assignmentAnchor\(assignment\.assignmentId\)\}/);
 });

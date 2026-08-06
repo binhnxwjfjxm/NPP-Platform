@@ -112,7 +112,7 @@ export default async function TripDetailPage({ params }: PageProps) {
           {trip.handoverNote ? <p className="handoverNote">Ghi chú bàn giao: {trip.handoverNote}</p> : null}
         </section>
 
-        <section className="stopSection">
+        <section className="stopSection" id="route-section">
           <div className="deliverySectionHeading">
             <div><p className="eyebrow">Lộ trình</p><h2>Thứ tự điểm giao</h2></div>
             <span>{trip.stops?.length ?? 0} điểm</span>
@@ -163,7 +163,9 @@ export default async function TripDetailPage({ params }: PageProps) {
           )}
         </section>
 
-        <CodHandoverPanel tripId={trip.id} overview={codOverview} />
+        <section id="cod-section" className="codSectionAnchor">
+          <CodHandoverPanel tripId={trip.id} overview={codOverview} />
+        </section>
 
         <section className="noticeCard deliveryBoundaryNote">
           <strong>Delivery chỉ ghi sự thật ngoài tuyến</strong>
