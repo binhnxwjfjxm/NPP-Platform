@@ -131,7 +131,8 @@ export function OutletsClientPage({ kpis, items }: { kpis: AccountKpi[]; items: 
       const matchesQuery = !term || [item.name, item.contactName, item.area, item.routeName]
         .some((value) => normalized(value || "").includes(term));
       const matchesRoute = route === "all" || item.routeName === route;
-      const matchesStatus = status === "all" || item.status === status;
+      const matchesStatus = status === "all"
+        || (status === "needs_gps" ? item.status === "needs_gps" || !item.gps : item.status === status);
       return matchesQuery && matchesRoute && matchesStatus;
     });
   }, [items, query, route, status]);
