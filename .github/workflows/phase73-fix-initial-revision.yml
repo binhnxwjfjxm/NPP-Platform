@@ -1,0 +1,75 @@
+name: Fix Phase 7.3 initial revision
+
+on:
+  push:
+    branches:
+      - agent/phase-7-3-stocktake
+    paths:
+      - ".github/workflows/phase73-fix-initial-revision.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/phase-7-3-stocktake
+          fetch-depth: 0
+
+      - name: Patch revision validation and regression test
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          service = Path('npp-core/api/src/services/inventory-stocktake.js')
+          source = service.read_text()
+          old = "const REVISION_PATTERN = /^[1-9]\\d{0,18}$/;"
+          new = "const REVISION_PATTERN = /^(0|[1-9]\\d{0,18})$/;"
+          if old in source:
+              source = source.replace(old, new, 1)
+          elif new not in source:
+              raise SystemExit('Unexpected revision pattern')
+          export_old = "export const stocktakeInternals = Object.freeze({\n  parseDecimal12,"
+          export_new = "export const stocktakeInternals = Object.freeze({\n  parseRevision,\n  parseDecimal12,"
+          if export_old in source:
+              source = source.replace(export_old, export_new, 1)
+          elif export_new not in source:
+              raise SystemExit('Unexpected stocktakeInternals export')
+          service.write_text(source)
+
+          test_file = Path('npp-core/api/test/inventory-stocktake.test.js')
+          tests = test_file.read_text()
+          marker = "test('stocktake decimal arithmetic keeps twelve decimal places without JavaScript float', () => {\n"
+          regression = """test('stocktake revision accepts the initial zero revision without allowing padded values', () => {
+            assert.equal(stocktakeInternals.parseRevision('0'), '0');
+            assert.equal(stocktakeInternals.parseRevision(0), '0');
+            assert.equal(stocktakeInternals.parseRevision('1'), '1');
+            assert.equal(stocktakeInternals.parseRevision('00'), null);
+            assert.equal(stocktakeInternals.parseRevision('-1'), null);
+          });
+
+          """
+          if regression not in tests:
+              if marker not in tests:
+                  raise SystemExit('Unit-test insertion marker not found')
+              tests = tests.replace(marker, regression + marker, 1)
+          test_file.write_text(tests)
+          PY
+
+          node --check npp-core/api/src/services/inventory-stocktake.js
+          node --check npp-core/api/test/inventory-stocktake.test.js
+
+      - name: Commit clean fix
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/phase73-fix-initial-revision.yml
+          git add -A
+          git commit -m "fix(phase-7.3): accept initial stocktake revision zero"
+          git push origin HEAD:agent/phase-7-3-stocktake
