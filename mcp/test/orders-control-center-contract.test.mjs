@@ -168,6 +168,11 @@ test("orders tabs stay responsive without dashboard overflow", () => {
   assert.match(styles, /@media \(max-width: 820px\)/);
   assert.match(styles, /@media \(max-width: 560px\)/);
   assert.match(tabStyles, /\.tabRail \{[\s\S]*repeat\(4, minmax\(0, 1fr\)\)/);
-  assert.match(tabStyles, /@media \(max-width: 560px\)[\s\S]*overflow-x: auto/);
+  const mobileTabs = tabStyles.slice(tabStyles.indexOf("@media (max-width: 560px)"));
+  assert.ok(mobileTabs, "mobile orders styles must exist");
+  assert.match(mobileTabs, /\.tabRail \{[\s\S]*display: grid;[\s\S]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\);[\s\S]*overflow-x: hidden;/);
+  assert.doesNotMatch(mobileTabs, /overflow-x:\s*(auto|scroll)/, "mobile orders controls must not scroll horizontally");
+  assert.doesNotMatch(mobileTabs, /scroll-snap/, "mobile orders controls must not require swipe snapping");
+  assert.match(mobileTabs, /\.attentionRail \{[\s\S]*display: grid;[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[\s\S]*overflow-x: hidden;/);
   assert.match(tabStyles, /\.overviewGrid\.overviewGrid \{[\s\S]*repeat\(4, minmax\(0, 1fr\)\)/);
 });
