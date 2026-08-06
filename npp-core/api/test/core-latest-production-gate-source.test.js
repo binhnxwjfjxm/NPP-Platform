@@ -66,6 +66,7 @@ test('latest Core production gate protects migrations 042 through 057', async ()
   assert.match(source, /FROM sales\.sales_order_version_lines/);
   assert.match(source, /test "\$HEROKU_APP_NAME" = "hung-phat"/);
   assert.match(source, /pending\.every/);
+  assert.match(source, /CORE_API_MIGRATIONS\.slice\(-12\)/);
   assert.match(source, /CORE_PHASE_6F_SCHEMA=ready/);
   assert.doesNotMatch(source, /CORE_PHASE_6E_SCHEMA/);
 });
