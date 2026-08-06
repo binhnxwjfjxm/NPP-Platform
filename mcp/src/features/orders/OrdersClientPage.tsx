@@ -56,7 +56,7 @@ const ATTENTION_VIEWS: Array<{ id: AttentionView; label: string }> = [
   { id: "stale", label: "Tồn quá 3 ngày" },
   { id: "possible_duplicate", label: "Nghi trùng" },
   { id: "cancelled", label: "Đã hủy" },
-  { id: "zero_value", label: "Giá trị bằng 0" }
+  { id: "zero_value", label: "Giá trị bằng 0 / không hợp lệ" }
 ];
 
 function isOrderView(value: string | null): value is OrderView {
@@ -65,7 +65,10 @@ function isOrderView(value: string | null): value is OrderView {
 
 function ordersForAttention(orders: OrderDto[], attention: AttentionView) {
   if (attention === "zero_value") {
-    return orders.filter((order) => Number(order.totalAmount || 0) <= 0);
+    return orders.filter((order) => {
+      const amount = Number(order.totalAmount ?? 0);
+      return !Number.isFinite(amount) || amount <= 0;
+    });
   }
   return filterOrders(orders, {
     ...DEFAULT_ORDER_FILTERS,
@@ -134,6 +137,7 @@ export function OrdersClientPage({
   const detailNavigationOwnedRef = useRef(false);
   const detailReturnFocusRef = useRef<HTMLElement | null>(null);
   const previousDetailIdRef = useRef<string | null>(detailOrderId);
+  const pendingScrollRef = useRef(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [sessions, setSessions] = useState<OrderSessionOption[]>([]);
@@ -160,6 +164,16 @@ export function OrdersClientPage({
     }
     return ids;
   }, [ordersResult.data]);
+  const filteredAttention = useMemo(() => {
+    const counts = {} as Record<AttentionView, number>;
+    const ids = new Set<string>();
+    for (const view of ATTENTION_VIEWS) {
+      const matchingOrders = ordersForAttention(filteredOrders, view.id);
+      counts[view.id] = matchingOrders.length;
+      matchingOrders.forEach((order) => ids.add(order.id));
+    }
+    return { counts, ids };
+  }, [filteredOrders]);
   const detailOrder = useMemo(
     () => ordersResult.data.find((order) => order.id === detailOrderId) ?? null,
     [detailOrderId, ordersResult.data]
@@ -173,6 +187,14 @@ export function OrdersClientPage({
     }
     previousDetailIdRef.current = detailOrderId;
   }, [detailOrderId]);
+
+  useEffect(() => {
+    if (!pendingScrollRef.current || activeView !== "orders") return;
+    pendingScrollRef.current = false;
+    window.requestAnimationFrame(() => {
+      document.getElementById("orders-result-list")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [activeView]);
 
   function updateFilter<Key extends keyof OrderFilters>(key: Key, value: OrderFilters[Key]) {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -189,11 +211,8 @@ export function OrdersClientPage({
 
   function goToOrders(next: Partial<OrderFilters> = {}) {
     setFilters((current) => ({ ...current, ...next, attention: "all" }));
+    pendingScrollRef.current = true;
     setView("orders");
-    window.setTimeout(
-      () => document.getElementById("orders-result-list")?.scrollIntoView({ behavior: "smooth", block: "start" }),
-      0
-    );
   }
 
   function selectAlert(alert: OrderAlert) {
@@ -328,11 +347,11 @@ export function OrdersClientPage({
           <section className={styles.alertSection}>
             <div className={styles.sectionTitle}>
               <div><h2>Cần xử lý</h2><p>Chỉ hiển thị đơn cần xem lại; không tự đổi lifecycle.</p></div>
-              <span>{attentionOrderIds.size} đơn</span>
+              <span>{filteredAttention.ids.size} đơn</span>
             </div>
-            {allAnalytics.alerts.length ? (
+            {analytics.alerts.length ? (
               <div className={styles.alertGrid}>
-                {allAnalytics.alerts.map((alert) => <AlertCard key={alert.key} alert={alert} onSelect={selectAlert} />)}
+                {analytics.alerts.map((alert) => <AlertCard key={alert.key} alert={alert} onSelect={selectAlert} />)}
               </div>
             ) : (
               <div className={styles.healthyState}>
@@ -350,7 +369,7 @@ export function OrdersClientPage({
                 aria-pressed={attentionView === view.id}
                 onClick={() => setAttentionView(view.id)}
               >
-                {view.label}<b>{ordersForAttention(filteredOrders, view.id).length}</b>
+                {view.label}<b>{filteredAttention.counts[view.id]}</b>
               </button>
             ))}
           </div>
@@ -422,7 +441,7 @@ export function OrdersClientPage({
             <strong>Nhìn nhanh để chọn bước tiếp theo</strong>
             <span>Không lặp toàn bộ báo cáo. Bấm chỉ số để đi đúng tab chi tiết.</span>
           </section>
-          <section className={`${styles.kpiGrid} ${tabs.overviewGrid}`} aria-label="Tổng quan đơn hàng">
+          <section className={`${styles.kpiGrid} ${tabs.overviewGrid}`} aria-label="Chỉ số tổng quan đơn hàng">
             <KpiCard label="Doanh số đặt hàng" value={money.format(allAnalytics.summary.totalAmount)} hint="Mở phân tích theo ngày, khách và tuyến" tone="strong" onClick={() => setView("sales")} />
             <KpiCard label="Số đơn" value={integer.format(allAnalytics.summary.orderCount)} hint="Mở danh sách và chi tiết đơn" onClick={() => setView("orders")} />
             <KpiCard label="Khách phát sinh" value={integer.format(allAnalytics.summary.customerCount)} hint={`${allAnalytics.summary.routeCount} tuyến có đơn`} onClick={() => setView("sales")} />
