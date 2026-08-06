@@ -13,10 +13,18 @@ test('migration 062 owns immutable facts and projector-only balances', () => {
   assert.match(sql, /inventory_cost_anomalies/);
   assert.match(sql, /inventory_cost_balances/);
   assert.match(sql, /inventory_cost_facts_are_append_only/);
-  assert.match(sql, /inventory_cost_balance_requires_projector_context/);
+  assert.match(sql, /inventory_cost_balances_projector_only/);
   assert.match(sql, /inventory_cost_reconciliation/);
   assert.match(sql, /core\.inventory-cost\.rebuild/);
   assert.doesNotMatch(sql, /UPDATE\s+inventory\.inventory_balances/i);
+});
+
+test('ledger document dates remain ISO date-only values', () => {
+  const source = readFileSync(
+    new URL('../src/db/repositories/inventory-costing.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /movement\.document_date::text AS document_date/);
 });
 
 test('fixed-point costing arithmetic is deterministic at scale 12', () => {

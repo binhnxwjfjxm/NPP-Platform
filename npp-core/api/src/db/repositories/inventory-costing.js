@@ -46,7 +46,7 @@ export async function listLedgerLines(client, { installationId, warehouseIds }) 
             movement.source_document_type,
             movement.source_document_id,
             movement.source_document_number,
-            movement.document_date,
+            movement.document_date::text AS document_date,
             movement.posted_at,
             movement.reversal_of_movement_id,
             movement.reason_code,
