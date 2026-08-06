@@ -6,6 +6,7 @@ const appShell = await readFile("src/ui/shell/AppShell.tsx", "utf8");
 const mobileMenu = await readFile("src/ui/shell/MobileAppMenu.tsx", "utf8");
 const menuCss = await readFile("src/ui/shell/MobileAppMenu.module.css", "utf8");
 const shellCss = await readFile("src/app/app-shell-contract.css", "utf8");
+const mobileFoundation = await readFile("src/app/hung-phat-mobile-foundation.css", "utf8");
 const navigation = await readFile("src/ui/shell/navigation.ts", "utf8");
 const theme = await readFile("src/app/npp-theme.css", "utf8");
 const routeExport = await readFile("src/features/mcp/RouteCustomerExportMenu.tsx", "utf8");
@@ -30,6 +31,10 @@ test("top and bottom app bars use translucent warm brown glass", () => {
   assert.match(shellCss, /backdrop-filter: blur\(24px\) saturate\(1\.38\)/);
   assert.match(shellCss, /0 -10px 28px rgba\(117, 71, 6, 0\.14\)/);
   assert.match(shellCss, /\.bottom-nav-link\.active \{[\s\S]*?background: rgba\(152, 96, 15, 0\.13\)/);
+
+  assert.match(mobileFoundation, /\[data-app-top-bar\] \{[\s\S]*?rgba\(57, 35, 22, 0\.80\)[\s\S]*?backdrop-filter: blur\(24px\) saturate\(1\.42\)/);
+  assert.match(mobileFoundation, /\[data-app-top-bar\] button \{[\s\S]*?rgba\(255, 249, 238, 0\.22\)/);
+  assert.match(mobileFoundation, /\[data-bottom-navigation="true"\] \{[\s\S]*?rgba\(255, 253, 248, 0\.78\)[\s\S]*?backdrop-filter: blur\(24px\) saturate\(1\.38\)/);
 });
 
 test("expanded menu contains operational navigation and keeps contextual actions first", () => {
