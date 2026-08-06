@@ -98,11 +98,13 @@ function stepClass(done: boolean, current: boolean) {
 export function McpOfficialOrderPanel({
   sessionCustomerId,
   orderId,
-  customerName
+  customerName,
+  returnTo
 }: {
   sessionCustomerId: string;
   orderId: string;
   customerName?: string;
+  returnTo: string;
 }) {
   const router = useRouter();
   const [onboarding, setOnboarding] = useState<CustomerOnboardingProjection | null>(null);
@@ -149,7 +151,7 @@ export function McpOfficialOrderPanel({
   return (
     <main className="page-stack mcp-official-order-page">
       <div className="order-intent-back-row">
-        <button className="button order-intent-back" type="button" onClick={() => router.back()}>
+        <button className="button order-intent-back" type="button" onClick={() => router.push(returnTo)}>
           ← Quay lại phiên
         </button>
       </div>

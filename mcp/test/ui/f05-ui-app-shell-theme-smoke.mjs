@@ -191,9 +191,9 @@ try {
     await screenshot(page, "18-app-shell-expanded-menu");
 
     await menu.getByRole("button", { name: /^Đi tuyến hôm nay/ }).click();
-    await page.waitForURL((url) => url.pathname === "/mcp");
-    assert.equal(await page.locator(".app-shell").getAttribute("data-shell-section"), "business");
-    await page.locator("[data-app-top-bar]").getByText("MCP", { exact: true }).waitFor({ state: "visible" });
+    await page.waitForURL((url) => url.pathname === "/routes");
+    assert.equal(await page.locator(".app-shell").getAttribute("data-shell-section"), "routes");
+    await page.locator("[data-app-top-bar]").getByText("Tuyến bán hàng", { exact: true }).waitFor({ state: "visible" });
 
     await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "networkidle" });
     assert.equal(await page.locator(".app-shell").getAttribute("data-shell-section"), "session");
