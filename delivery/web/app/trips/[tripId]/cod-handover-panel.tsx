@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { DriverCodOverview } from '../../../lib/types';
 import styles from './cod-panel.module.css';
@@ -34,6 +34,14 @@ export default function CodHandoverPanel({ tripId, overview }: Props) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const keyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setAmounts((current) => Object.fromEntries(cash.map((assignment) => {
+      const collection = assignment.collection!;
+      return [collection.id, current[collection.id] ?? collection.custodyRemainingAmount];
+    })));
+  }, [cash]);
+
   const lines = cash.map((assignment) => ({
     collectionId: assignment.collection!.id,
     amount: amounts[assignment.collection!.id] || '0',
