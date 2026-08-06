@@ -32,6 +32,19 @@ const page = await context.newPage();
 try {
   await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "networkidle" });
 
+  const directionsButton = page.locator('[data-customer-directions="true"]').first();
+  await directionsButton.waitFor({ state: "visible" });
+  assert.equal(await directionsButton.isEnabled(), true, "Di chuyển must be enabled on an active visit card");
+  const directionsBox = await directionsButton.boundingBox();
+  assert.ok(directionsBox, "Di chuyển must have a clickable box");
+  assert.ok(directionsBox.width >= 44 && directionsBox.height >= 42, `Di chuyển touch target is too small: ${JSON.stringify(directionsBox)}`);
+  const popupPromise = context.waitForEvent("page");
+  await directionsButton.click();
+  const mapsPage = await popupPromise;
+  await mapsPage.waitForLoadState("domcontentloaded", { timeout: 10_000 }).catch(() => undefined);
+  assert.match(mapsPage.url(), /^https:\/\/www\.google\.com\/maps\//, "Di chuyển must open Google Maps from one tap");
+  await mapsPage.close();
+
   const appMenuButton = page.getByRole("button", { name: "Mở menu ứng dụng", exact: true });
   await appMenuButton.waitFor({ state: "visible" });
   assert.equal(await appMenuButton.count(), 1, "mobile must have exactly one top menu button");
@@ -74,6 +87,7 @@ try {
   console.log(JSON.stringify({
     F05_UNIFIED_MOBILE_MENU_SMOKE: "PASS",
     viewport: "390x844",
+    directionsButton: "PASS",
     triggerCount: 1,
     standaloneSettingsButton: false,
     standaloneSessionButton: false,
