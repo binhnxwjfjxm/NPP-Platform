@@ -2,7 +2,30 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { AdminIcon } from './admin-icons';
 
-type AdminSection = 'overview' | 'exceptions';
+type AdminSection = 'overview' | 'exceptions' | 'menu';
+
+function BottomNavItem({
+  active,
+  href,
+  icon,
+  label,
+}: {
+  active: boolean;
+  href: string;
+  icon: 'overview' | 'exception' | 'menu';
+  label: string;
+}) {
+  return (
+    <Link
+      aria-current={active ? 'page' : undefined}
+      className={active ? 'adminBottomItem isActive' : 'adminBottomItem'}
+      href={href}
+    >
+      <AdminIcon name={icon} size={22} />
+      <span>{label}</span>
+    </Link>
+  );
+}
 
 export function AdminShell({
   activeSection,
@@ -22,16 +45,18 @@ export function AdminShell({
     || 'https://office.nguyenlieuhungphat.com/logo-transparent.png';
 
   return (
-    <div className="shell">
-      <header className="topbar">
+    <div className="shell adminAppShell" data-admin-app-shell data-active-section={activeSection}>
+      <header className="topbar adminAppTopbar">
         <div className="topbarInner">
           <Link className="brand" href="/" aria-label="Admin MCP/NPP - Trang tổng hợp">
             <span className="brandLogoFrame">
               <img className="brandLogo" src={appLogoUrl} alt="Logo Hưng Phát Company" />
             </span>
             <span className="brandCopy">
-              <strong>Admin MCP/NPP</strong>
-              <span>Tổng hợp và ngoại lệ cấp quản lý</span>
+              <strong className="brandProductName">Admin MCP/NPP</strong>
+              <span className="brandDescriptor">Tổng hợp và ngoại lệ cấp quản lý</span>
+              <small className="brandMobileEyebrow">Admin Hưng Phát</small>
+              <strong className="brandScreenName">{title}</strong>
             </span>
           </Link>
 
@@ -46,19 +71,23 @@ export function AdminShell({
             </Link>
           </nav>
 
-          <details className="appMenu">
+          <details className="appMenu desktopAppMenu">
             <summary className="menuTrigger" aria-label="Mở menu ứng dụng">
               <AdminIcon name="menu" size={22} />
             </summary>
             <div className="menuPanel">
               <p className="menuEyebrow">Điều hướng</p>
-              <Link className={activeSection === 'overview' ? 'menuItem mobileMenuItem isActive' : 'menuItem mobileMenuItem'} href="/">
+              <Link className={activeSection === 'overview' ? 'menuItem isActive' : 'menuItem'} href="/">
                 <span className="menuIcon"><AdminIcon name="overview" size={20} /></span>
                 <span><strong>Tổng hợp</strong><small>Toàn cảnh dành cho quản lý</small></span>
               </Link>
-              <Link className={activeSection === 'exceptions' ? 'menuItem mobileMenuItem isActive' : 'menuItem mobileMenuItem'} href="/customer-onboarding">
+              <Link className={activeSection === 'exceptions' ? 'menuItem isActive' : 'menuItem'} href="/customer-onboarding">
                 <span className="menuIcon"><AdminIcon name="exception" size={20} /></span>
                 <span><strong>Ngoại lệ cấp quản lý</strong><small>Ranh giới và việc vượt quyền</small></span>
+              </Link>
+              <Link className={activeSection === 'menu' ? 'menuItem isActive' : 'menuItem'} href="/menu">
+                <span className="menuIcon"><AdminIcon name="menu" size={20} /></span>
+                <span><strong>Menu ứng dụng</strong><small>Ứng dụng liên quan và thông tin PWA</small></span>
               </Link>
               <a className="menuItem" href={`${nppOperationsUrl}/management`}>
                 <span className="menuIcon"><AdminIcon name="operations" size={20} /></span>
@@ -70,14 +99,20 @@ export function AdminShell({
         </div>
       </header>
 
-      <main className="main">
-        <header className="pageHeader">
+      <main className="main adminAppMain">
+        <header className="pageHeader adminPageHeader">
           <p className="kicker">{kicker}</p>
           <h1>{title}</h1>
           <p className="pageSubtitle">{subtitle}</p>
         </header>
         {children}
       </main>
+
+      <nav className="adminBottomNav" aria-label="Điều hướng ứng dụng">
+        <BottomNavItem active={activeSection === 'overview'} href="/" icon="overview" label="Tổng quan" />
+        <BottomNavItem active={activeSection === 'exceptions'} href="/customer-onboarding" icon="exception" label="Ngoại lệ" />
+        <BottomNavItem active={activeSection === 'menu'} href="/menu" icon="menu" label="Menu" />
+      </nav>
     </div>
   );
 }
