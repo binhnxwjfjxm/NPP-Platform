@@ -8,6 +8,7 @@ on:
       - "mcp/src/features/mcp-settings/**"
       - "mcp/src/features/dashboard/**"
       - "mcp/src/features/settings/**"
+      - "mcp/src/features/orders/**"
       - "mcp/src/ui/layout/**"
       - "mcp/src/ui/shell/**"
       - "mcp/src/ui/feedback/**"
@@ -23,6 +24,7 @@ on:
       - "mcp/src/app/mcp-setting/**"
       - "mcp/src/app/routes/**"
       - "mcp/src/app/visits/**"
+      - "mcp/src/app/orders/**"
       - "mcp/src/app/api/**"
       - "mcp/src/lib/api/**"
       - "mcp/test/ui/f05-ui-**"
@@ -30,6 +32,7 @@ on:
       - "mcp/test/ui/interaction-feedback-**"
       - "mcp/test/ui/app-shell-browser-acceptance-smoke.mjs"
       - "mcp/test/ui/mobile-dock-navigation-browser-smoke.mjs"
+      - "mcp/test/ui/orders-tabs-browser-smoke.mjs"
       - "mcp/test/ui/route-customer-photo-management-browser-smoke.mjs"
   workflow_dispatch:
 
@@ -97,6 +100,7 @@ jobs:
           node test/ui/interaction-feedback-browser-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/interaction-feedback-smoke.log
           node test/ui/app-shell-browser-acceptance-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/app-shell-browser-acceptance.log
           node test/ui/mobile-dock-navigation-browser-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/mobile-dock-navigation.log
+          node test/ui/orders-tabs-browser-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/orders-tabs-browser.log
           node test/ui/mcp-settings-dialog-browser-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/mcp-settings-dialog.log
           node test/ui/route-customer-photo-management-browser-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/route-customer-photo-management.log
 
