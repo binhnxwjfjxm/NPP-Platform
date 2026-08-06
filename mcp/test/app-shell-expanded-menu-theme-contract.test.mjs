@@ -27,9 +27,7 @@ test("AppShell owns one sticky top bar and exposes semantic screen sections", ()
 test("top and bottom app bars use translucent warm brown glass", () => {
   assert.match(menuCss, /\.topBar \{[\s\S]*?rgba\(59, 36, 22, 0\.84\)[\s\S]*?backdrop-filter: blur\(24px\) saturate\(1\.42\)/);
   assert.match(menuCss, /\.trigger \{[\s\S]*?rgba\(255, 249, 238, 0\.2\)[\s\S]*?box-shadow/);
-  assert.match(shellCss, /\[data-bottom-navigation="true"\] \{[\s\S]*?rgba\(255, 253, 248, 0\.78\)[\s\S]*?rgba\(236, 214, 181, 0\.67\)/);
-  assert.match(shellCss, /backdrop-filter: blur\(24px\) saturate\(1\.38\)/);
-  assert.match(shellCss, /0 -10px 28px rgba\(117, 71, 6, 0\.14\)/);
+  assert.match(shellCss, /\[data-bottom-navigation="true"\]\s*\{[\s\S]*?rgba\(255, 253, 248, 0\.78\)[\s\S]*?rgba\(236, 214, 181, 0\.67\)[\s\S]*?0 -10px 28px rgba\(117, 71, 6, 0\.14\)[\s\S]*?backdrop-filter: blur\(24px\) saturate\(1\.38\)/);
   assert.match(shellCss, /\.bottom-nav-link\.active \{[\s\S]*?background: rgba\(152, 96, 15, 0\.13\)/);
 
   assert.match(mobileFoundation, /\[data-app-top-bar\] \{[\s\S]*?rgba\(57, 35, 22, 0\.80\)[\s\S]*?backdrop-filter: blur\(24px\) saturate\(1\.42\)/);
