@@ -53,14 +53,16 @@ try {
   });
   await visitLink.click();
   const visitResponse = await visitResponsePromise;
-  assert.ok(
-    [307, 308].includes(visitResponse.status()),
+  assert.equal(
+    visitResponse.status(),
+    307,
     `/visits entry must redirect before streaming a shell; status=${visitResponse.status()}`
   );
   await page.waitForURL((url) => url.pathname === "/routes");
   assert.equal(pathname(page.url()), "/routes", "no active session must land on route preparation");
 
   await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "networkidle" });
+  assert.equal(pathname(page.url()), "/visits", "active visit setup must remain on /visits");
   const sessionDock = page.locator('[data-bottom-navigation="true"]');
   await sessionDock.waitFor({ state: "visible" });
   const ordersLink = sessionDock.getByRole("link", { name: "Đơn", exact: true });
