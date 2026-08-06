@@ -9,33 +9,36 @@ permissions:
   actions: write
   contents: read
 
+concurrency:
+  group: cancel-phase-7-5-stale-runs
+  cancel-in-progress: true
+
 jobs:
   cancel-runs:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Cancel queued and in-progress Phase 7.5 runs
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_BRANCH: agent/phase-7-5-costing-foundation
         run: |
-          set -euo pipefail
-          repo="$GITHUB_REPOSITORY"
-          self_run="$GITHUB_RUN_ID"
+          $ErrorActionPreference = 'Stop'
+          $repo = $env:GITHUB_REPOSITORY
+          $selfRun = [int64]$env:GITHUB_RUN_ID
+          $statuses = @('queued', 'in_progress', 'waiting', 'requested', 'pending')
 
-          for status in queued in_progress waiting requested pending; do
-            gh api --paginate \
-              "/repos/${repo}/actions/runs?branch=${TARGET_BRANCH}&status=${status}&per_page=100" \
-              --jq '.workflow_runs[].id' |
-            while read -r run_id; do
-              [ -z "$run_id" ] && continue
-              [ "$run_id" = "$self_run" ] && continue
-              echo "Cancelling run ${run_id} (${status})"
-              gh api -X POST "/repos/${repo}/actions/runs/${run_id}/cancel" || true
-            done
-          done
+          foreach ($status in $statuses) {
+            $response = gh api "/repos/$repo/actions/runs?branch=$($env:TARGET_BRANCH)&status=$status&per_page=100" | ConvertFrom-Json
+            foreach ($run in $response.workflow_runs) {
+              if ([int64]$run.id -eq $selfRun) { continue }
+              Write-Host "Cancelling run $($run.id) ($status)"
+              gh api -X POST "/repos/$repo/actions/runs/$($run.id)/cancel" | Out-Null
+            }
+          }
 
-          sleep 10
-          echo "Remaining active runs for ${TARGET_BRANCH}:"
-          gh api --paginate \
-            "/repos/${repo}/actions/runs?branch=${TARGET_BRANCH}&per_page=100" \
-            --jq '.workflow_runs[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending") | [.id, .name, .status] | @tsv' || true
+          Start-Sleep -Seconds 10
+          $remaining = gh api "/repos/$repo/actions/runs?branch=$($env:TARGET_BRANCH)&per_page=100" | ConvertFrom-Json
+          $active = @($remaining.workflow_runs | Where-Object { $_.status -in $statuses })
+          Write-Host "Remaining active runs: $($active.Count)"
+          $active | ForEach-Object { Write-Host "$($_.id)`t$($_.name)`t$($_.status)" }
