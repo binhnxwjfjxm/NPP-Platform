@@ -5,6 +5,9 @@ import {
 
 export const PERMISSIONS = Object.freeze({
   ...BASE_PERMISSIONS,
+  coreInventoryTransferReceive: 'core.inventory-transfer.receive',
+  coreInventoryTransferDamageApprove: 'core.inventory-transfer.damage-approve',
+  coreInventoryTransferResolve: 'core.inventory-transfer.resolve',
   coreLogisticsRouteRead: 'core.logistics-route.read',
   coreLogisticsRouteManage: 'core.logistics-route.manage',
   coreVehicleRead: 'core.vehicle.read',
@@ -44,6 +47,14 @@ export const PERMISSIONS = Object.freeze({
   coreCodReconciliationAccept: 'core.cod-reconciliation.accept',
   coreCodAdjustmentCreate: 'core.cod-adjustment.create',
 });
+
+const INVENTORY_TRANSFER_RECEIPT_PERMISSION_CATALOG = Object.freeze([
+  ['coreInventoryTransferReceive', 'Kho', 'Nhận hàng chuyển kho', 'Cho phép ghi nhận hàng đạt, hư hỏng và hàng thừa chờ xác minh tại kho đích.'],
+  ['coreInventoryTransferDamageApprove', 'Kho', 'Duyệt hư hỏng chuyển kho', 'Cho phép quản lý kho đích xác nhận biên bản hư hỏng của lần nhận chuyển kho.'],
+  ['coreInventoryTransferResolve', 'Kho', 'Đóng chênh lệch chuyển kho', 'Cho phép quản lý kho đóng phần thiếu có lý do, không sửa số lượng xuất gốc.'],
+].map(([key, module, label, description]) => Object.freeze({
+  permissionKey: PERMISSIONS[key], module, label, description, isSystem: true,
+})));
 
 const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
   ['coreLogisticsRouteRead', 'Điều phối giao hàng', 'Xem tuyến giao hàng', 'Cho phép đọc tuyến giao hàng trong installation hiện tại.'],
@@ -95,6 +106,7 @@ const ACCOUNTING_PERMISSION_CATALOG = Object.freeze([
 
 export const PERMISSION_CATALOG = Object.freeze([
   ...BASE_PERMISSION_CATALOG,
+  ...INVENTORY_TRANSFER_RECEIPT_PERMISSION_CATALOG,
   ...LOGISTICS_PERMISSION_CATALOG,
   ...ACCOUNTING_PERMISSION_CATALOG,
 ]);
