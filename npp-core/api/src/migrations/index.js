@@ -27,7 +27,7 @@ const LOGISTICS_TRIP_RECONCILIATION_SQL = [
 const LOGISTICS_OPTIONAL_PROOF_OF_DELIVERY_SQL = readFileSync(new URL('../../../../database/migrations/logistics/052_logistics_optional_proof_of_delivery.sql', import.meta.url), 'utf8');
 const CUSTOMER_RECEIVABLE_LEDGER_SQL = [
   readFileSync(new URL('../../../../database/migrations/accounting/053_customer_receivable_ledger.sql', import.meta.url), 'utf8'),
-  readFileSync(new URL('../../../../database/migrations/accounting/053_customer_RECEIVABLE_PICKUP_REVERSAL.sql', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../../../database/migrations/accounting/053_customer_receivable_pickup_reversal.sql', import.meta.url), 'utf8'),
 ].join('\n\n');
 const CUSTOMER_PAYMENT_ALLOCATION_SQL = [
   readFileSync(new URL('../../../../database/migrations/accounting/054_customer_payment_allocation.sql', import.meta.url), 'utf8'),
