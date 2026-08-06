@@ -2,67 +2,83 @@ import type { AccountsData } from "./accounts.types";
 
 export const accountsMock: AccountsData = {
   kpis: [
-    { label: "Điểm bán", value: 4, hint: "Dữ liệu phát triển từ danh sách tuyến" },
-    { label: "Có GPS", value: 2, hint: "Có tọa độ để mở chỉ đường chính xác" },
-    { label: "Cần GPS", value: 1, hint: "Chưa có tọa độ hoặc cần cập nhật vị trí" },
-    { label: "Đang ẩn", value: 1, hint: "Không hiển thị trong tuyến hoạt động" }
+    { label: "Điểm bán active", value: 51, hint: "Đang nằm trong các tuyến MCP" },
+    { label: "Cần ghé lại", value: 9, hint: "Chưa có lượt ghé gần nhất hoặc chưa có đơn" },
+    { label: "Nhóm tier A", value: 12, hint: "Điểm bán ưu tiên doanh số" },
+    { label: "Doanh số mẫu", value: "18.4M", hint: "Số mẫu để thiết kế UI" }
   ],
   accounts: [
     {
-      id: "route-customer-cho-gao-001",
-      routeCustomerId: "route-customer-cho-gao-001",
-      accountId: "acc-cho-gao-001",
+      id: "acc-cho-gao-001",
       name: "Tạp hóa Minh Châu",
       contactName: "Chị Châu",
       area: "Chợ Gạo",
       routeName: "Tuyến Chợ Gạo trung tâm",
-      sortOrder: 1,
-      status: "active",
-      gps: { lat: 10.3589, lng: 106.4631, accuracyMeters: 12, updatedAt: "2026-07-03T08:00:00.000Z" },
-      note: "Điểm bán trong tuyến phát triển",
-      mapsUrl: "https://www.google.com/maps/dir/?api=1&destination=10.3589%2C106.4631&travelmode=driving"
+      tier: "A",
+      lastVisitDate: "2026-06-30",
+      lastOrderDate: "2026-06-29",
+      monthlyRevenue: 5200000,
+      status: "active"
     },
     {
-      id: "route-customer-cho-gao-002",
-      routeCustomerId: "route-customer-cho-gao-002",
-      accountId: "acc-cho-gao-002",
+      id: "acc-cho-gao-002",
       name: "Đại lý Thành Phát",
       contactName: "Anh Phát",
       area: "Chợ Gạo",
       routeName: "Tuyến Chợ Gạo trung tâm",
-      sortOrder: 2,
-      status: "active",
-      gps: { lat: 10.3612, lng: 106.4674, accuracyMeters: 18, updatedAt: "2026-07-03T08:15:00.000Z" },
-      note: "",
-      mapsUrl: "https://www.google.com/maps/dir/?api=1&destination=10.3612%2C106.4674&travelmode=driving"
+      tier: "A",
+      lastVisitDate: "2026-06-30",
+      lastOrderDate: "2026-06-29",
+      monthlyRevenue: 7100000,
+      status: "active"
     },
     {
-      id: "route-customer-my-tho-001",
-      routeCustomerId: "route-customer-my-tho-001",
-      accountId: "acc-my-tho-001",
+      id: "acc-my-tho-001",
       name: "Cửa hàng Hương Quê",
       contactName: "Chị Hương",
       area: "Mỹ Tho",
       routeName: "Tuyến Mỹ Tho phía Đông",
-      sortOrder: 1,
-      status: "needs_gps",
-      gps: null,
-      note: "Cần cập nhật tọa độ",
-      mapsUrl: "https://www.google.com/maps/search/?api=1&query=C%E1%BB%ADa%20h%C3%A0ng%20H%C6%B0%C6%A1ng%20Qu%C3%AA%2C%20M%E1%BB%B9%20Tho"
+      tier: "B",
+      lastVisitDate: "2026-06-28",
+      lastOrderDate: "-",
+      monthlyRevenue: 0,
+      status: "need_visit"
     },
     {
-      id: "route-customer-hidden-001",
-      routeCustomerId: "route-customer-hidden-001",
-      accountId: null,
-      name: "Điểm bán tạm ẩn",
-      contactName: "Chưa cập nhật",
+      id: "acc-go-cong-001",
+      name: "Tạp hóa Ven Sông",
+      contactName: "Anh Nam",
       area: "Gò Công",
       routeName: "Tuyến Gò Công ven sông",
-      sortOrder: 3,
-      status: "hidden",
-      gps: null,
-      note: "Đang ẩn khỏi tuyến hoạt động",
-      mapsUrl: "https://www.google.com/maps/search/?api=1&query=%C4%90i%E1%BB%83m%20b%C3%A1n%20t%E1%BA%A1m%20%E1%BA%A9n%2C%20G%C3%B2%20C%C3%B4ng"
+      tier: "C",
+      lastVisitDate: "2026-06-25",
+      lastOrderDate: "-",
+      monthlyRevenue: 0,
+      status: "need_visit"
+    },
+    {
+      id: "acc-cai-be-001",
+      name: "Đại lý Tân Lợi",
+      contactName: "Chị Lợi",
+      area: "Cái Bè",
+      routeName: "Tuyến Cái Bè đại lý mới",
+      tier: "B",
+      lastVisitDate: "2026-06-30",
+      lastOrderDate: "2026-06-30",
+      monthlyRevenue: 6100000,
+      status: "active"
+    },
+    {
+      id: "acc-data-001",
+      name: "Điểm bán thiếu thông tin",
+      contactName: "Chưa cập nhật",
+      area: "Tổng hợp",
+      routeName: "Tuyến bảo trì dữ liệu",
+      tier: "C",
+      lastVisitDate: "-",
+      lastOrderDate: "-",
+      monthlyRevenue: 0,
+      status: "inactive"
     }
   ]
 };
