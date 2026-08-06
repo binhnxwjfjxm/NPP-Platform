@@ -66,13 +66,16 @@
 }
 
 .successNotice,
-.errorNotice {
+.errorNotice,
+.infoNotice,
+.approvalNotice {
   border-radius: 12px;
   padding: 12px 14px;
   font-weight: 650;
 }
 
-.successNotice {
+.successNotice,
+.approvalNotice {
   border: 1px solid #abefc6;
   background: #ecfdf3;
   color: #067647;
@@ -82,6 +85,12 @@
   border: 1px solid #fecdca;
   background: #fef3f2;
   color: #b42318;
+}
+
+.infoNotice {
+  border: 1px solid #b2ddff;
+  background: #eff8ff;
+  color: #175cd3;
 }
 
 .summaryGrid {
@@ -94,7 +103,11 @@
 .panel,
 .filterPanel,
 .transferCard,
-.emptyState {
+.emptyState,
+.subPanel,
+.receiptCard,
+.resolutionCard,
+.closeShortPanel {
   border: 1px solid #e4e7ec;
   border-radius: 14px;
   background: #fff;
@@ -183,13 +196,17 @@
 }
 
 .panelHeader h2,
-.linesHeader h3 {
+.panelHeader h3,
+.panelHeader h4,
+.linesHeader h3,
+.receiptHistory h3 {
   margin: 2px 0 4px;
   color: #101828;
 }
 
 .panelHeader p,
-.linesHeader p {
+.linesHeader p,
+.closeShortPanel p {
   margin: 0;
   color: #667085;
 }
@@ -211,7 +228,10 @@
 }
 
 .lineList,
-.detailLineGrid {
+.detailLineGrid,
+.receiptLineList,
+.receiptHistory,
+.receiptWorkspace {
   display: grid;
   gap: 12px;
 }
@@ -245,7 +265,7 @@
   display: grid;
   gap: 5px;
   flex: 1 1 260px;
-  max-width: 420px;
+  max-width: 520px;
   margin-right: auto;
   color: #667085;
   font-size: 0.82rem;
@@ -293,7 +313,8 @@
 }
 
 .detailLineCard dl,
-.transferCard dl {
+.transferCard dl,
+.resolutionCard dl {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
@@ -301,19 +322,22 @@
 }
 
 .detailLineCard dl div,
-.transferCard dl div {
+.transferCard dl div,
+.resolutionCard dl div {
   display: grid;
   gap: 2px;
 }
 
 .detailLineCard dt,
-.transferCard dt {
+.transferCard dt,
+.resolutionCard dt {
   color: #667085;
   font-size: 0.78rem;
 }
 
 .detailLineCard dd,
-.transferCard dd {
+.transferCard dd,
+.resolutionCard dd {
   margin: 0;
   color: #101828;
   font-weight: 700;
@@ -349,7 +373,8 @@
   overflow-wrap: anywhere;
 }
 
-.transferCard p {
+.transferCard p,
+.resolutionCard p {
   margin: 0;
   color: #475467;
 }
@@ -359,15 +384,24 @@
   font-size: 0.82rem;
 }
 
-.statusBadge {
+.statusBadge,
+.reversedBadge {
   display: inline-flex;
   width: fit-content;
   border-radius: 999px;
-  background: #eff4ff;
   padding: 5px 9px;
-  color: #3538cd;
   font-size: 0.78rem;
   font-weight: 800;
+}
+
+.statusBadge {
+  background: #eff4ff;
+  color: #3538cd;
+}
+
+.reversedBadge {
+  background: #fef3f2;
+  color: #b42318;
 }
 
 .emptyState {
@@ -377,9 +411,104 @@
   color: #667085;
 }
 
+.receiptWorkspace {
+  padding-top: 18px;
+  border-top: 1px solid #eaecf0;
+}
+
+.resolutionGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.resolutionCard {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  min-width: 0;
+}
+
+.subPanel {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  background: #f9fafb;
+}
+
+.receiptLineEditor {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(180px, 1fr) repeat(3, minmax(110px, 0.65fr));
+  gap: 12px;
+  align-items: end;
+  padding: 14px;
+  border: 1px solid #d0d5dd;
+  border-radius: 12px;
+  background: #fff;
+  min-width: 0;
+}
+
+.receiptLineTitle {
+  display: grid;
+  gap: 5px;
+  align-self: center;
+  min-width: 0;
+}
+
+.receiptLineTitle strong,
+.receiptLineTitle span {
+  overflow-wrap: anywhere;
+}
+
+.receiptLineTitle span {
+  color: #667085;
+  font-size: 0.85rem;
+}
+
+.receiptHistory {
+  padding-top: 4px;
+}
+
+.receiptCard {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.receiptLineSummary {
+  display: grid;
+  gap: 8px;
+}
+
+.receiptLineSummary > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.6fr) minmax(260px, 1.4fr) minmax(180px, 1fr);
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f9fafb;
+  min-width: 0;
+}
+
+.receiptLineSummary span,
+.receiptLineSummary small {
+  color: #475467;
+  overflow-wrap: anywhere;
+}
+
+.closeShortPanel {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.2fr) auto;
+  gap: 14px;
+  align-items: end;
+  padding: 16px;
+  background: #fffbfa;
+}
+
 @media (max-width: 1100px) {
   .summaryGrid,
-  .cardGrid {
+  .cardGrid,
+  .resolutionGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -392,8 +521,22 @@
     width: fit-content;
   }
 
-  .lineEditor {
-    grid-template-columns: minmax(0, 1fr) minmax(130px, 180px);
+  .lineEditor,
+  .receiptLineEditor {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .receiptLineTitle,
+  .receiptLineEditor .fullWidth {
+    grid-column: 1 / -1;
+  }
+
+  .closeShortPanel {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .closeShortPanel > div:first-child {
+    grid-column: 1 / -1;
   }
 }
 
@@ -405,7 +548,8 @@
   .headerActions,
   .headerActions button,
   .actionRow,
-  .actionRow button {
+  .actionRow button,
+  .closeShortPanel button {
     width: 100%;
   }
 
@@ -415,7 +559,11 @@
   .detailFacts,
   .detailLineGrid,
   .filterPanel,
-  .lineEditor {
+  .lineEditor,
+  .resolutionGrid,
+  .receiptLineEditor,
+  .closeShortPanel,
+  .receiptLineSummary > div {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -431,11 +579,16 @@
   }
 
   .fullWidth,
-  .segmented {
+  .segmented,
+  .receiptLineTitle,
+  .receiptLineEditor .fullWidth,
+  .closeShortPanel > div:first-child {
     grid-column: auto;
   }
 
-  .panel {
+  .panel,
+  .subPanel,
+  .receiptCard {
     padding: 15px;
   }
 
