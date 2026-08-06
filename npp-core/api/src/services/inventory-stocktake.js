@@ -456,7 +456,7 @@ export async function requestRecount(client, { requestContext, stocktakeId, payl
   const loaded = await loadLocked(client, requestContext, stocktakeId);
   if (!loaded.ok) return loaded;
   const row = loaded.row;
-  if (row.status !== 'submitted') return failure('INVALID_STATUS_TRANSITION', 'Only a submitted stocktake can require recount');
+  if (!['counted', 'submitted', 'approved'].includes(row.status)) return failure('INVALID_STATUS_TRANSITION', 'Only a counted, submitted or approved stocktake can require recount');
   if (!revisionMatches(row, payload?.expectedRevision)) return failure('STOCKTAKE_REVISION_CONFLICT', 'Stocktake revision is stale');
   const reason = text(payload?.reason, 2000);
   if (!reason) return failure('RECOUNT_REASON_REQUIRED', 'A recount reason is required');
