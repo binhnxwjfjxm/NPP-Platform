@@ -8,6 +8,14 @@ export const PERMISSIONS = Object.freeze({
   coreInventoryTransferReceive: 'core.inventory-transfer.receive',
   coreInventoryTransferDamageApprove: 'core.inventory-transfer.damage-approve',
   coreInventoryTransferResolve: 'core.inventory-transfer.resolve',
+  coreStocktakeRead: 'core.stocktake.read',
+  coreStocktakeCreate: 'core.stocktake.create',
+  coreStocktakeCount: 'core.stocktake.count',
+  coreStocktakeSubmit: 'core.stocktake.submit',
+  coreStocktakeApprove: 'core.stocktake.approve',
+  coreStocktakePost: 'core.stocktake.post',
+  coreStocktakeCancel: 'core.stocktake.cancel',
+  coreStocktakeReverse: 'core.stocktake.reverse',
   coreLogisticsRouteRead: 'core.logistics-route.read',
   coreLogisticsRouteManage: 'core.logistics-route.manage',
   coreVehicleRead: 'core.vehicle.read',
@@ -52,6 +60,19 @@ const INVENTORY_TRANSFER_RECEIPT_PERMISSION_CATALOG = Object.freeze([
   ['coreInventoryTransferReceive', 'Kho', 'Nhận hàng chuyển kho', 'Cho phép ghi nhận hàng đạt, hư hỏng và hàng thừa chờ xác minh tại kho đích.'],
   ['coreInventoryTransferDamageApprove', 'Kho', 'Duyệt hư hỏng chuyển kho', 'Cho phép quản lý kho đích xác nhận biên bản hư hỏng của lần nhận chuyển kho.'],
   ['coreInventoryTransferResolve', 'Kho', 'Đóng chênh lệch chuyển kho', 'Cho phép quản lý kho đóng phần thiếu có lý do, không sửa số lượng xuất gốc.'],
+].map(([key, module, label, description]) => Object.freeze({
+  permissionKey: PERMISSIONS[key], module, label, description, isSystem: true,
+})));
+
+const STOCKTAKE_PERMISSION_CATALOG = Object.freeze([
+  ['coreStocktakeRead', 'Kho', 'Xem kiểm kê', 'Cho phép đọc danh sách, chi tiết và lịch sử vòng đếm kiểm kê trong phạm vi kho được cấp.'],
+  ['coreStocktakeCreate', 'Kho', 'Tạo kiểm kê', 'Cho phép tạo đợt kiểm kê và chụp snapshot tồn theo phạm vi kho được cấp.'],
+  ['coreStocktakeCount', 'Kho', 'Ghi nhận số đếm', 'Cho phép nhập số đếm mù và hoàn tất một vòng đếm kiểm kê.'],
+  ['coreStocktakeSubmit', 'Kho', 'Gửi duyệt kiểm kê', 'Cho phép khóa vòng đếm hiện tại và gửi kết quả kiểm kê để duyệt.'],
+  ['coreStocktakeApprove', 'Kho', 'Duyệt kiểm kê', 'Cho phép yêu cầu đếm lại hoặc duyệt một version kiểm kê do người khác gửi.'],
+  ['coreStocktakePost', 'Kho', 'Ghi sổ kiểm kê', 'Cho phép ghi một movement điều chỉnh kiểm kê từ kết quả đã duyệt.'],
+  ['coreStocktakeCancel', 'Kho', 'Hủy kiểm kê', 'Cho phép hủy đợt kiểm kê trước khi gửi duyệt.'],
+  ['coreStocktakeReverse', 'Kho', 'Đảo ghi sổ kiểm kê', 'Cho phép đảo movement kiểm kê khi chưa có movement phát sinh sau đó trên exact scope.'],
 ].map(([key, module, label, description]) => Object.freeze({
   permissionKey: PERMISSIONS[key], module, label, description, isSystem: true,
 })));
@@ -107,6 +128,7 @@ const ACCOUNTING_PERMISSION_CATALOG = Object.freeze([
 export const PERMISSION_CATALOG = Object.freeze([
   ...BASE_PERMISSION_CATALOG,
   ...INVENTORY_TRANSFER_RECEIPT_PERMISSION_CATALOG,
+  ...STOCKTAKE_PERMISSION_CATALOG,
   ...LOGISTICS_PERMISSION_CATALOG,
   ...ACCOUNTING_PERMISSION_CATALOG,
 ]);

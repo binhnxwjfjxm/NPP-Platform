@@ -258,6 +258,10 @@ export async function migrationVerifyWithAdapter(adapter) {
     'shared.permission_catalog': await tableExists(adapter, 'shared', 'permission_catalog'),
     'shared.roles': await tableExists(adapter, 'shared', 'roles'),
     'shared.role_permissions': await tableExists(adapter, 'shared', 'role_permissions'),
+    'inventory.inventory_scope_versions': await tableExists(adapter, 'inventory', 'inventory_scope_versions'),
+    'inventory.stocktakes': await tableExists(adapter, 'inventory', 'stocktakes'),
+    'inventory.stocktake_rounds': await tableExists(adapter, 'inventory', 'stocktake_rounds'),
+    'inventory.stocktake_lines': await tableExists(adapter, 'inventory', 'stocktake_lines'),
   };
   const constraints = {
     core_idempotency_records_scope_key: await constraintExists(adapter, 'shared', 'core_idempotency_records', 'core_idempotency_records_scope_key'),
@@ -278,6 +282,8 @@ export async function migrationVerifyWithAdapter(adapter) {
   const triggers = {
     core_audit_records_append_only: await triggerExists(adapter, 'shared', 'core_audit_records', 'core_audit_records_append_only'),
     roles_code_immutable: await triggerExists(adapter, 'shared', 'roles', 'roles_code_immutable'),
+    inventory_movement_lines_scope_version: await triggerExists(adapter, 'inventory', 'inventory_movement_lines', 'inventory_movement_lines_scope_version'),
+    stocktake_lines_history_guard: await triggerExists(adapter, 'inventory', 'stocktake_lines', 'stocktake_lines_history_guard'),
   };
   const indexes = {
     core_outbox_events_pending_available_idx: await indexExists(adapter, 'shared', 'core_outbox_events_pending_available_idx'),
@@ -291,6 +297,9 @@ export async function migrationVerifyWithAdapter(adapter) {
     roles_installation_code_idx: await indexExists(adapter, 'shared', 'roles_installation_code_idx'),
     role_permissions_role_idx: await indexExists(adapter, 'shared', 'role_permissions_role_idx'),
     role_permissions_permission_idx: await indexExists(adapter, 'shared', 'role_permissions_permission_idx'),
+    stocktakes_list_idx: await indexExists(adapter, 'inventory', 'stocktakes_list_idx'),
+    stocktake_rounds_stocktake_idx: await indexExists(adapter, 'inventory', 'stocktake_rounds_stocktake_idx'),
+    stocktake_lines_scope_idx: await indexExists(adapter, 'inventory', 'stocktake_lines_scope_idx'),
   };
 
   const issues = collectVerificationIssues({ status, tables, constraints, triggers, indexes });
