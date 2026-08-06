@@ -33,9 +33,9 @@ function base64UrlToBytes(value: string): Uint8Array {
 }
 
 function sessionSecret(): string | null {
-  return process.env.CORE_API_SERVER_TOKEN?.trim()
-    || process.env.CORE_WEB_ADMIN_PASSWORD
-    || null;
+  const serverToken = process.env.CORE_API_SERVER_TOKEN?.trim();
+  const password = process.env.CORE_WEB_ADMIN_PASSWORD;
+  return serverToken && password ? `${serverToken}\u0000${password}` : null;
 }
 
 async function signature(value: string, secret: string): Promise<string> {
