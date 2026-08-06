@@ -39,6 +39,10 @@ async function assertNoInventedMetrics(page) {
   }
 }
 
+function selectForLabel(page, label) {
+  return page.locator("label.form-field").filter({ has: page.getByText(label, { exact: true }) }).locator("select");
+}
+
 async function verifyMobile(browser) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
@@ -46,8 +50,8 @@ async function verifyMobile(browser) {
 
   await page.getByRole("heading", { name: "Điểm bán", exact: true }).waitFor({ state: "visible" });
   await page.getByPlaceholder("Tên, liên hệ, khu vực hoặc tuyến").waitFor({ state: "visible" });
-  assert.equal(await page.getByLabel("Tuyến", { exact: true }).count(), 1, "customers mobile must expose route filter");
-  assert.equal(await page.getByLabel("Trạng thái", { exact: true }).count(), 1, "customers mobile must expose status filter");
+  assert.equal(await selectForLabel(page, "Tuyến").count(), 1, "customers mobile must expose route filter");
+  assert.equal(await selectForLabel(page, "Trạng thái").count(), 1, "customers mobile must expose status filter");
   const cards = page.locator("[data-outlet-mobile-card]");
   const cardCount = await cards.count();
   assert.ok(cardCount, "customers mobile must render live route-customer cards");
