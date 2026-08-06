@@ -4,7 +4,7 @@ import * as ledgerRepository from '../db/repositories/inventory-ledger.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DECIMAL_PATTERN = /^(0|[1-9]\d{0,13})(?:\.(\d{1,12}))?$/;
-const REVISION_PATTERN = /^[1-9]\d{0,18}$/;
+const REVISION_PATTERN = /^(0|[1-9]\d{0,18})$/;
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const SCALE_6 = 1_000_000n;
 const SCALE_12 = 1_000_000_000_000n;
@@ -872,6 +872,7 @@ export async function reverseStocktake(client, { requestContext, stocktakeId, pa
 }
 
 export const stocktakeInternals = Object.freeze({
+  parseRevision,
   parseDecimal12,
   databaseScaled12,
   formatScale12,

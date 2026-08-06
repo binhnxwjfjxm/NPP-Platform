@@ -36,6 +36,14 @@ test('Phase 7.3 migration registers stocktake permissions and exact-scope waterm
   assert.doesNotMatch(migration, /UPDATE\s+inventory\.inventory_balances/i);
 });
 
+test('stocktake revision accepts the initial zero revision without allowing padded values', () => {
+  assert.equal(stocktakeInternals.parseRevision('0'), '0');
+  assert.equal(stocktakeInternals.parseRevision(0), '0');
+  assert.equal(stocktakeInternals.parseRevision('1'), '1');
+  assert.equal(stocktakeInternals.parseRevision('00'), null);
+  assert.equal(stocktakeInternals.parseRevision('-1'), null);
+});
+
 test('stocktake decimal arithmetic keeps twelve decimal places without JavaScript float', () => {
   const parsed = stocktakeInternals.parseDecimal12('123.456789012345', 'quantity');
   assert.equal(parsed.ok, true);
