@@ -10,8 +10,17 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:3005',
     trace: 'retain-on-failure',
-    ...devices['Pixel 7'],
   },
+  projects: [
+    {
+      name: 'chromium-mobile',
+      use: { ...devices['Pixel 7'], browserName: 'chromium' },
+    },
+    {
+      name: 'webkit-iphone',
+      use: { ...devices['iPhone 13'], browserName: 'webkit' },
+    },
+  ],
   webServer: [
     {
       command: 'node test/mock-core.mjs',
