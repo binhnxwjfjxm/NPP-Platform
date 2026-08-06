@@ -40,7 +40,7 @@ test('Delivery is a stable mobile application shell with one scroll region and a
   assert.match(frame, /Đồng bộ/);
   assert.doesNotMatch(frame, /deliveryDockPrimary/);
   assert.match(experience, /height:\s*100dvh/);
-  assert.match(mobileApp, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(76px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(mobileApp, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(experience, /\.deliveryAppContent[\s\S]*?overflow-y:\s*auto/);
   assert.match(mobileApp, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
 });
