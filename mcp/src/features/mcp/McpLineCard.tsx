@@ -116,6 +116,11 @@ export function McpLineCard({
     onAction(line, action);
   }
 
+  function openDirections() {
+    const opened = window.open(directions.url, "_blank", "noopener,noreferrer");
+    if (!opened) window.location.assign(directions.url);
+  }
+
   return (
     <article className={`${styles.card} ${statusClass(line.status)} ${checkinEnabled ? "" : styles.withoutCheckin}`} data-mcp-session-card="true">
       <button className={styles.main} type="button" onClick={() => openProfile("detail")}>
@@ -146,17 +151,17 @@ export function McpLineCard({
           </button>
         ) : null}
 
-        <a
+        <button
           className={styles.iconButton}
-          href={directions.url}
-          target="_blank"
-          rel="noreferrer"
-          aria-label={directions.exact ? `Chỉ đường đến ${line.accountName}` : `Tìm ${line.accountName} trên Google Maps`}
+          type="button"
+          onClick={openDirections}
+          aria-label={directions.exact ? `Di chuyển đến ${line.accountName}` : `Tìm đường đến ${line.accountName} trên Google Maps`}
           title={directions.exact ? "Mở chỉ đường theo GPS điểm bán đã lưu" : "Khách chưa có GPS chính xác, mở tìm kiếm Google Maps"}
+          data-customer-directions="true"
         >
           <ActionIcon name="map" />
-          <span>Đường</span>
-        </a>
+          <span>Di chuyển</span>
+        </button>
 
         <button
           className={styles.iconButton}
