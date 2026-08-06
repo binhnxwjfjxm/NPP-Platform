@@ -164,19 +164,27 @@ tbody tr:nth-child(even) {
 
   [data-app-top-bar] {
     min-height: 64px;
-    border-bottom: 1px solid rgba(116, 91, 58, 0.16) !important;
-    background: rgba(250, 248, 244, 0.96) !important;
-    color: var(--npp-color-text) !important;
-    box-shadow: 0 5px 16px rgba(72, 54, 34, 0.05) !important;
-    backdrop-filter: blur(14px);
+    border-bottom: 1px solid rgba(246, 221, 186, 0.25) !important;
+    background:
+      radial-gradient(circle at 14% -90%, rgba(227, 177, 101, 0.34), transparent 54%),
+      linear-gradient(112deg, rgba(57, 35, 22, 0.80), rgba(91, 55, 22, 0.71) 56%, rgba(125, 76, 12, 0.65)) !important;
+    color: #fffdf8 !important;
+    box-shadow:
+      0 9px 24px rgba(75, 47, 31, 0.20),
+      inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(1.42);
+    backdrop-filter: blur(24px) saturate(1.42);
   }
 
   [data-app-top-bar] button {
     min-width: 44px;
     min-height: 44px;
-    border-color: var(--npp-color-border) !important;
-    background: var(--npp-color-surface) !important;
-    color: var(--npp-color-primary-strong) !important;
+    border-color: rgba(255, 242, 219, 0.34) !important;
+    background: linear-gradient(145deg, rgba(255, 249, 238, 0.22), rgba(255, 241, 214, 0.10)) !important;
+    color: #fffdf8 !important;
+    box-shadow:
+      0 8px 20px rgba(43, 33, 27, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
   }
 
   [data-app-scroll-region] {
@@ -270,10 +278,16 @@ tbody tr:nth-child(even) {
   }
 
   .app-content-shell > [data-bottom-navigation="true"] {
-    border-top-color: var(--npp-color-border);
-    background: rgba(255, 255, 255, 0.97);
-    box-shadow: 0 -6px 18px rgba(72, 54, 34, 0.08);
+    border-top-color: rgba(117, 71, 6, 0.22);
+    background:
+      radial-gradient(circle at 50% -230%, rgba(185, 119, 27, 0.44), transparent 74%),
+      linear-gradient(180deg, rgba(255, 253, 248, 0.78), rgba(236, 214, 181, 0.67));
+    box-shadow:
+      0 -10px 28px rgba(117, 71, 6, 0.14),
+      inset 0 1px 0 rgba(255, 255, 255, 0.72);
     padding: 5px 6px calc(5px + env(safe-area-inset-bottom));
+    -webkit-backdrop-filter: blur(24px) saturate(1.38);
+    backdrop-filter: blur(24px) saturate(1.38);
   }
 
   .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link {
@@ -283,12 +297,12 @@ tbody tr:nth-child(even) {
   }
 
   .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.active {
-    background: var(--npp-color-primary-soft);
+    background: rgba(152, 96, 15, 0.13);
     color: var(--npp-color-primary-strong);
   }
 
   .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.active .nav-icon {
-    background: #ead6b4;
+    background: rgba(200, 155, 91, 0.22);
     color: var(--npp-color-primary-strong);
   }
 
