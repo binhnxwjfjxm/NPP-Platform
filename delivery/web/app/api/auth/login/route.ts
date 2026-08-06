@@ -24,6 +24,16 @@ function setupCredentialsValid(username: string, password: string): boolean {
     && constantTimeEqual(password, expectedPassword);
 }
 
+function redirect(location: string): NextResponse {
+  return new NextResponse(null, {
+    status: 303,
+    headers: {
+      Location: location,
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
 export async function POST(request: NextRequest) {
   const form = await request.formData();
   const username = String(form.get('username') || '').trim();
@@ -36,18 +46,16 @@ export async function POST(request: NextRequest) {
     : Boolean(authenticateDeliveryUser(basic));
 
   if (!valid) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('error', 'invalid_credentials');
-    if (returnTo !== '/') loginUrl.searchParams.set('returnTo', returnTo);
-    return NextResponse.redirect(loginUrl, 303);
+    const search = new URLSearchParams({ error: 'invalid_credentials' });
+    if (returnTo !== '/') search.set('returnTo', returnTo);
+    return redirect(`/login?${search.toString()}`);
   }
 
-  const response = NextResponse.redirect(new URL(returnTo, request.url), 303);
+  const response = redirect(returnTo);
   response.cookies.set(
     DELIVERY_SESSION_COOKIE,
     await createDeliverySession(username),
     deliverySessionCookieOptions(),
   );
-  response.headers.set('Cache-Control', 'no-store');
   return response;
 }
