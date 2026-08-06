@@ -49,8 +49,10 @@ export function KpiCard({ label, value, hint, tone = "default", onClick }: {
   tone?: "default" | "strong" | "warning";
   onClick?: () => void;
 }) {
+  const toneClass = tone === "default" ? "" : styles[`kpi_${tone}`];
+  const className = [styles.kpiCard, toneClass].filter(Boolean).join(" ");
   const content = <><span>{label}</span><strong>{value}</strong><small>{hint}</small></>;
-  return onClick ? <button className={`${styles.kpiCard} ${styles[`kpi_${tone}`]}`} type="button" onClick={onClick}>{content}</button> : <article className={`${styles.kpiCard} ${styles[`kpi_${tone}`]}`}>{content}</article>;
+  return onClick ? <button className={className} type="button" onClick={onClick}>{content}</button> : <article className={className}>{content}</article>;
 }
 
 export function BreakdownPanel({ title, subtitle, rows, onSelect }: {
