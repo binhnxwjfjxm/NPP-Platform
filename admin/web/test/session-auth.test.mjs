@@ -33,10 +33,13 @@ test('Admin browser navigation redirects to a first-party login page instead of 
   assert.match(loginPage, /autoComplete="current-password"/);
 });
 
-test('Admin login and logout endpoints only manage the signed session cookie', () => {
+test('Admin login and logout manage only the signed cookie and preserve the requesting origin', () => {
   assert.match(loginRoute, /authenticateAdminCredentials/);
   assert.match(loginRoute, /createAdminSession/);
   assert.match(loginRoute, /response\.cookies\.set/);
+  assert.match(loginRoute, /Location:\s*location/);
+  assert.doesNotMatch(loginRoute + logoutRoute, /new URL\([^)]*, request\.url\)/);
+  assert.match(logoutRoute, /Location:\s*'\/login'/);
   assert.match(logoutRoute, /maxAge:\s*0/);
   assert.match(loginRoute + logoutRoute, /Cache-Control/);
 });
