@@ -38,6 +38,7 @@ const CUSTOMER_RETURN_CREDIT_REFUND_SQL = [
   readFileSync(new URL('../../../../database/migrations/accounting/055_customer_return_credit_refund_posting.sql', import.meta.url), 'utf8'),
   readFileSync(new URL('../../../../database/migrations/accounting/055_customer_return_credit_refund_actions.sql', import.meta.url), 'utf8'),
 ].join('\n\n');
+const PHASE6F_RECONCILIATION_SQL = readFileSync(new URL('../../../../database/migrations/reporting/057_phase6f_reconciliation_views.sql', import.meta.url), 'utf8');
 const COD_COLLECTION_HANDOVER_SQL = [
   readFileSync(new URL('../../../../database/migrations/accounting/056_cod_collection_handover_schema.sql', import.meta.url), 'utf8'),
   readFileSync(new URL('../../../../database/migrations/accounting/056_cod_collection_handover_projections.sql', import.meta.url), 'utf8'),
@@ -56,6 +57,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '054_customer_payment_allocation', sql: CUSTOMER_PAYMENT_ALLOCATION_SQL }),
   Object.freeze({ id: '055_customer_return_credit_refund', sql: CUSTOMER_RETURN_CREDIT_REFUND_SQL }),
   Object.freeze({ id: '056_cod_collection_handover', sql: COD_COLLECTION_HANDOVER_SQL }),
+  Object.freeze({ id: '057_phase6f_reconciliation_views', sql: PHASE6F_RECONCILIATION_SQL }),
 ]);
 
 export { runMigrations };
