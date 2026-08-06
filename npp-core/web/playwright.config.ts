@@ -35,7 +35,7 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }], ['json', { outputFile: 'test-results/results.json' }]],
   use: { trace: 'retain-on-failure', screenshot: 'only-on-failure', video: 'retain-on-failure' },
   projects: [
-    { name: 'routes', testMatch: /(routes|cod-reconciliation)\.spec\.ts/, use: authenticatedBrowser },
+    { name: 'routes', testMatch: /(routes|cod-reconciliation|sales-settlement-reconciliation)\.spec\.ts/, use: authenticatedBrowser },
     { name: 'management', testMatch: /management\.spec\.ts/, use: authenticatedBrowser },
     { name: 'organization', testMatch: /organization\.spec\.ts/, use: authenticatedBrowser },
     { name: 'customers', testMatch: /customers\.spec\.ts/, use: authenticatedBrowser },
