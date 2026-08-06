@@ -63,7 +63,7 @@ export default function DeliveryAppFrame({ children }: Readonly<{ children: Reac
       <nav className="deliveryAppDock" aria-label="Điều hướng chính">
         <DockLinkItem href="/" icon="home" label="Hôm nay" active={!onTrip} />
         <DockLinkItem
-          href={onTrip ? '#next-delivery-action' : '#active-trip'}
+          href={onTrip ? '#route-section' : '#active-trip'}
           icon="route"
           label={onTrip ? 'Điểm giao' : 'Chuyến'}
           active={onTrip}
