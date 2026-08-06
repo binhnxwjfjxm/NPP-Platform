@@ -7,8 +7,17 @@ test('tài xế ghi giao hàng, thu COD tiền mặt và bàn giao cuối chuy�
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Chuyến của tôi' })).toBeVisible();
   await expect(page.getByText('Xin chào, Nguyễn Văn Tài')).toBeVisible();
+  const bottomNav = page.getByRole('navigation', { name: 'Điều hướng chính' });
+  await expect(bottomNav).toBeVisible();
+  await expect(bottomNav.getByText('Hôm nay')).toBeVisible();
+  await expect(bottomNav.getByText('Chuyến')).toBeVisible();
+  await expect(bottomNav.getByText('Hướng dẫn')).toBeVisible();
+  await expect(bottomNav.getByText('Đồng bộ')).toBeVisible();
+
   await page.getByRole('link', { name: /TRP-20260804-00001/ }).click();
   await expect(page).toHaveURL(new RegExp(`/trips/${tripId}$`));
+  await expect(page.getByRole('link', { name: 'Điểm giao' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('link', { name: 'COD' })).toBeVisible();
 
   const firstAttempt = page.getByTestId(`attempt-form-${assignmentOneId}`);
   await firstAttempt.getByLabel('Giao một phần').check();

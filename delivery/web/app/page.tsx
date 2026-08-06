@@ -3,17 +3,15 @@ import { headers } from 'next/headers';
 import { authenticateDeliveryUser, deliverySetupPending } from '../lib/delivery-auth';
 import { listMyTrips } from '../lib/core-api';
 import { formatDateTime, safeErrorMessage } from '../lib/presentation';
+import { DeliveryIcon } from './DeliveryIcon';
 
 export const dynamic = 'force-dynamic';
-
-const deliveryLogoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim()
-  || 'https://office.nguyenlieuhungphat.com/logo-transparent.png';
 
 function DeliveryHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <header className="appHeader deliveryPageHeader">
-      <span className="brandLogoFrame">
-        <img className="brandLogo" src={deliveryLogoUrl} alt="Logo Hưng Phát Company" />
+      <span className="pageHeaderIcon" aria-hidden="true">
+        <DeliveryIcon name="route" size={24} />
       </span>
       <div>
         <p className="eyebrow">Tác nghiệp hôm nay</p>
@@ -33,7 +31,7 @@ export default async function DeliveryHomePage() {
           <strong>Chưa có hồ sơ tài xế đang hoạt động</strong>
           <p>Tạo hồ sơ tài xế và liên kết đúng nhân viên trong NPP Operations trước khi cấp tài khoản giao hàng.</p>
         </section>
-        <section className="noticeCard">
+        <section className="noticeCard" id="delivery-guide">
           <strong>Đang ở chế độ chờ cấu hình</strong>
           <p>Ứng dụng chưa đọc chuyến và không tạo dữ liệu giao hàng giả.</p>
         </section>
@@ -61,7 +59,7 @@ export default async function DeliveryHomePage() {
     const [activeTrip, ...remainingTrips] = result.trips;
     content = !activeTrip ? (
       <section className="stateCard emptyTripState" id="active-trip">
-        <span className="emptyTripIcon" aria-hidden="true">✓</span>
+        <span className="emptyTripIcon" aria-hidden="true"><DeliveryIcon name="truck" size={28} /></span>
         <strong>Chưa có chuyến đang giao</strong>
         <p>Chuyến sẽ xuất hiện sau khi kho hoàn tất bàn giao và cho xe xuất phát.</p>
       </section>
@@ -76,7 +74,7 @@ export default async function DeliveryHomePage() {
             <div className="cardTopline"><span className="statusPill">Đã xuất phát</span><span>{formatDateTime(activeTrip.dispatchedAt)}</span></div>
             <div className="primaryTripTitle">
               <div><small>Mã chuyến</small><h2>{activeTrip.number}</h2></div>
-              <span className="primaryTripArrow" aria-hidden="true">→</span>
+              <span className="primaryTripArrow" aria-hidden="true"><DeliveryIcon name="route" size={24} /></span>
             </div>
             <dl className="summaryGrid primaryTripSummary">
               <div><dt>Xe</dt><dd>{activeTrip.licensePlate || activeTrip.vehicleCode || 'Chưa có'}</dd></div>
@@ -116,7 +114,7 @@ export default async function DeliveryHomePage() {
     <main className="pageShell">
       <DeliveryHeader title="Chuyến của tôi" subtitle={`Xin chào, ${user.displayName}`} />
       {content}
-      <section className="noticeCard deliveryGuideCard">
+      <section className="noticeCard deliveryGuideCard" id="delivery-guide">
         <strong>Ghi kết quả và tiền COD tại từng phiếu giao</strong>
         <p>Mở chuyến để ghi kết quả giao, tiền khách thực trả và bàn giao tiền mặt cuối chuyến. Ảnh hoặc xác nhận người nhận là bằng chứng tùy chọn; GPS chưa thuộc luồng hiện tại.</p>
       </section>

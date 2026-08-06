@@ -1,0 +1,259 @@
+/* Native-like Delivery shell, layered after the existing warm-gold styles. */
+.deliveryAppFrame {
+  width: min(100%, 720px);
+  grid-template-rows: auto minmax(0, 1fr) calc(64px + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(circle at 100% 0, rgba(177, 116, 34, 0.13), transparent 24rem),
+    var(--hp-canvas);
+  box-shadow: 0 0 42px rgba(63, 40, 24, 0.13);
+}
+
+.deliveryAppTopBar {
+  min-height: calc(68px + env(safe-area-inset-top));
+  align-items: flex-end;
+  padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+  border-bottom-color: rgba(237, 205, 158, 0.2);
+  background:
+    radial-gradient(circle at 88% 0, rgba(219, 160, 78, 0.22), transparent 13rem),
+    linear-gradient(135deg, #2e1d14, #4a301b 62%, #5b381a);
+  color: #fffaf2;
+  box-shadow: 0 8px 24px rgba(63, 40, 24, 0.2);
+}
+
+.deliveryAppMark,
+.deliveryTopButton {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+}
+
+.deliveryAppMark {
+  border: 1px solid rgba(255, 244, 225, 0.25);
+  background: linear-gradient(145deg, #c48a36, #8c570d);
+  color: #fffdf8;
+  box-shadow: 0 9px 20px rgba(31, 18, 11, 0.28);
+}
+
+.deliveryAppTitle small {
+  color: #e8c996;
+  font-size: 9.5px;
+  letter-spacing: 0.11em;
+}
+
+.deliveryAppTitle strong {
+  color: #fffdf8;
+}
+
+.deliveryTopButton {
+  min-height: 42px;
+  border-color: rgba(255, 244, 225, 0.22);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fffdf8;
+  backdrop-filter: blur(8px);
+}
+
+.deliveryAppContent .pageShell {
+  padding: 16px 13px 30px;
+}
+
+.deliveryAppContent .appHeader,
+.deliveryAppContent .detailHeader {
+  margin-bottom: 16px;
+}
+
+.deliveryPageHeader {
+  justify-content: flex-start;
+}
+
+.pageHeaderIcon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(152, 96, 15, 0.2);
+  border-radius: 16px;
+  background: linear-gradient(145deg, #fffdf8, #f2dfc1);
+  color: var(--hp-bronze-strong);
+  box-shadow: 0 10px 24px rgba(93, 58, 19, 0.1);
+}
+
+.deliveryPageHeader h1,
+.deliveryTripHeader h1 {
+  color: #39271b;
+  font-size: clamp(1.62rem, 7.5vw, 2.15rem);
+}
+
+.noticeCard,
+.stateCard,
+.tripOverview,
+.tripCard,
+.stopCard,
+.deliveryOrder {
+  border-color: rgba(132, 96, 53, 0.18);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.92) inset,
+    0 12px 30px rgba(78, 51, 27, 0.07);
+}
+
+.primaryTripCard {
+  padding: 18px;
+  border: 1px solid rgba(232, 194, 137, 0.25);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 92% 0, rgba(255, 221, 168, 0.28), transparent 13rem),
+    linear-gradient(145deg, #3c2719, #6d4308 58%, #98600f);
+  box-shadow: 0 20px 44px rgba(63, 40, 24, 0.24);
+}
+
+.primaryTripArrow {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+}
+
+.primaryTripAction {
+  min-height: 50px;
+  border-radius: 16px;
+}
+
+.compactTripCard,
+.compactTripOverview {
+  border-radius: 18px;
+}
+
+.compactTripMeta span {
+  border: 1px solid rgba(132, 96, 53, 0.12);
+  background: #f8f3eb;
+}
+
+.emptyTripState {
+  min-height: 210px;
+}
+
+.emptyTripIcon {
+  width: 62px;
+  height: 62px;
+  border: 1px solid rgba(152, 96, 15, 0.2);
+  border-radius: 21px;
+}
+
+.deliveryGuideCard,
+.deliveryBoundaryNote,
+.stopSection,
+.codSectionAnchor {
+  scroll-margin-top: 14px;
+}
+
+.nextStopCard {
+  padding: 18px;
+  border-color: rgba(170, 112, 28, 0.36);
+  border-radius: 22px;
+  box-shadow: 0 17px 38px rgba(92, 58, 18, 0.13);
+}
+
+.nextStopAction {
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  min-height: 58px;
+  border-radius: 17px;
+  box-shadow: 0 11px 24px rgba(117, 71, 6, 0.22);
+}
+
+.nextStopAction > span {
+  width: 38px;
+  height: 38px;
+}
+
+.stopCard.nextStop {
+  border-color: rgba(170, 112, 28, 0.42);
+  box-shadow:
+    0 0 0 3px rgba(200, 157, 92, 0.12),
+    0 12px 30px rgba(78, 51, 27, 0.08);
+}
+
+.deliveryOrder {
+  border-left-color: var(--hp-bronze);
+  border-radius: 14px;
+  background: #fcfaf6;
+}
+
+.deliveryAppDock {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 5px;
+  min-height: calc(64px + env(safe-area-inset-bottom));
+  padding: 5px 7px calc(5px + env(safe-area-inset-bottom));
+  border-top-color: rgba(121, 86, 47, 0.18);
+  background: rgba(255, 252, 247, 0.97);
+  box-shadow: 0 -12px 28px rgba(63, 40, 24, 0.12);
+  backdrop-filter: blur(18px);
+}
+
+.deliveryDockItem {
+  min-width: 0;
+  min-height: 48px;
+  gap: 2px;
+  padding: 3px 2px;
+  border-radius: 14px;
+  color: #786d63;
+}
+
+.deliveryDockItem span {
+  overflow: hidden;
+  max-width: 100%;
+  font-size: 9.5px;
+  font-weight: 850;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deliveryDockItem.active,
+.deliveryDockItem[aria-current="page"] {
+  background: linear-gradient(180deg, #f5e8d2, #ecd5b1);
+  color: #6f4308;
+  box-shadow: inset 0 0 0 1px rgba(152, 96, 15, 0.14);
+}
+
+.deliveryDockItem:active {
+  transform: translateY(1px);
+}
+
+@media (min-width: 760px) {
+  body {
+    padding: 12px;
+  }
+
+  .deliveryAppFrame {
+    height: calc(100dvh - 24px);
+    border: 1px solid rgba(121, 86, 47, 0.16);
+    border-radius: 28px;
+  }
+}
+
+@media (max-width: 390px) {
+  .deliveryAppContent .pageShell {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .primaryTripCard,
+  .nextStopCard {
+    padding: 15px;
+    border-radius: 20px;
+  }
+
+  .deliveryAppDock {
+    gap: 3px;
+    padding-right: 5px;
+    padding-left: 5px;
+  }
+
+  .deliveryDockItem {
+    border-radius: 13px;
+  }
+
+  .deliveryDockItem span {
+    font-size: 9px;
+  }
+}
