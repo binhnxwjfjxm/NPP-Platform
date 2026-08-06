@@ -289,20 +289,20 @@ SELECT
   line.source_unit_id,
   line.source_unit_code,
   resolution.remaining_source_quantity AS source_quantity,
-  line.source_quantity AS dispatched_source_quantity,
   line.conversion_to_base,
   line.base_variant_id,
   line.base_sku,
   resolution.remaining_base_quantity AS base_quantity,
+  line.lot_id,
+  line.lot_code,
+  line.expiry_date,
+  transfer.inventory_movement_id,
+  line.source_quantity AS dispatched_source_quantity,
   line.base_quantity AS dispatched_base_quantity,
   resolution.accepted_base_quantity,
   resolution.damaged_base_quantity,
   resolution.short_base_quantity,
-  resolution.over_base_quantity,
-  line.lot_id,
-  line.lot_code,
-  line.expiry_date,
-  transfer.inventory_movement_id
+  resolution.over_base_quantity
 FROM inventory.inventory_transfers transfer
 JOIN inventory.inventory_transfer_lines line
   ON line.installation_id = transfer.installation_id
