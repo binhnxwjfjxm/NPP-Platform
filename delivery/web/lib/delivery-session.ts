@@ -33,7 +33,11 @@ function base64UrlToBytes(value: string): Uint8Array {
 }
 
 function sessionSecret(): string | null {
-  return process.env.DELIVERY_CORE_API_TOKEN?.trim() || null;
+  const token = process.env.DELIVERY_CORE_API_TOKEN?.trim();
+  const authMaterial = String(process.env.DELIVERY_SETUP_MODE || '').trim().toLowerCase() === 'true'
+    ? process.env.DELIVERY_SETUP_PASSWORD
+    : process.env.DELIVERY_WEB_USERS_JSON;
+  return token && authMaterial ? `${token}\u0000${authMaterial}` : null;
 }
 
 async function signature(value: string, secret: string): Promise<string> {
