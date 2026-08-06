@@ -92,6 +92,7 @@ export async function resolveWarehouseLocation(client, { installationId, warehou
           ON l.installation_id = w.installation_id
          AND l.warehouse_id = w.id
          AND l.id = $3
+         AND l.location_type = 'storage'
        WHERE w.installation_id = $1 AND w.id = $2`
     : `SELECT
          w.id as warehouse_id,

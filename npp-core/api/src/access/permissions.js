@@ -16,6 +16,13 @@ export const PERMISSIONS = Object.freeze({
   coreStocktakePost: 'core.stocktake.post',
   coreStocktakeCancel: 'core.stocktake.cancel',
   coreStocktakeReverse: 'core.stocktake.reverse',
+  coreInventoryAdjustmentRead: 'core.inventory-adjustment.read',
+  coreInventoryAdjustmentCreate: 'core.inventory-adjustment.create',
+  coreInventoryAdjustmentSubmit: 'core.inventory-adjustment.submit',
+  coreInventoryAdjustmentApprove: 'core.inventory-adjustment.approve',
+  coreInventoryAdjustmentPost: 'core.inventory-adjustment.post',
+  coreInventoryAdjustmentCancel: 'core.inventory-adjustment.cancel',
+  coreInventoryAdjustmentReverse: 'core.inventory-adjustment.reverse',
   coreLogisticsRouteRead: 'core.logistics-route.read',
   coreLogisticsRouteManage: 'core.logistics-route.manage',
   coreVehicleRead: 'core.vehicle.read',
@@ -77,6 +84,18 @@ const STOCKTAKE_PERMISSION_CATALOG = Object.freeze([
   permissionKey: PERMISSIONS[key], module, label, description, isSystem: true,
 })));
 
+const INVENTORY_ADJUSTMENT_PERMISSION_CATALOG = Object.freeze([
+  ['coreInventoryAdjustmentRead', 'Kho', 'Xem phiếu xử lý tồn kho', 'Cho phép đọc phiếu điều chỉnh, cách ly, hư hỏng và tiêu hủy trong phạm vi kho được cấp.'],
+  ['coreInventoryAdjustmentCreate', 'Kho', 'Tạo phiếu xử lý tồn kho', 'Cho phép tạo phiếu điều chỉnh, chuyển cách ly, chuyển hư hỏng hoặc tiêu hủy.'],
+  ['coreInventoryAdjustmentSubmit', 'Kho', 'Gửi duyệt phiếu xử lý tồn kho', 'Cho phép gửi phiếu xử lý tồn kho để người khác duyệt.'],
+  ['coreInventoryAdjustmentApprove', 'Kho', 'Duyệt phiếu xử lý tồn kho', 'Cho phép duyệt phiếu do người khác tạo trong phạm vi kho được cấp.'],
+  ['coreInventoryAdjustmentPost', 'Kho', 'Ghi sổ phiếu xử lý tồn kho', 'Cho phép ghi movement append-only sau khi phiếu đã được duyệt.'],
+  ['coreInventoryAdjustmentCancel', 'Kho', 'Hủy phiếu xử lý tồn kho', 'Cho phép hủy phiếu trước khi ghi sổ với lý do bắt buộc.'],
+  ['coreInventoryAdjustmentReverse', 'Kho', 'Đảo phiếu xử lý tồn kho', 'Cho phép đảo movement khi chưa có movement phát sinh sau đó trên exact scope.'],
+].map(([key, module, label, description]) => Object.freeze({
+  permissionKey: PERMISSIONS[key], module, label, description, isSystem: true,
+})));
+
 const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
   ['coreLogisticsRouteRead', 'Điều phối giao hàng', 'Xem tuyến giao hàng', 'Cho phép đọc tuyến giao hàng trong installation hiện tại.'],
   ['coreLogisticsRouteManage', 'Điều phối giao hàng', 'Quản lý tuyến giao hàng', 'Cho phép tạo tuyến giao hàng phục vụ lập kế hoạch chuyến.'],
@@ -129,6 +148,7 @@ export const PERMISSION_CATALOG = Object.freeze([
   ...BASE_PERMISSION_CATALOG,
   ...INVENTORY_TRANSFER_RECEIPT_PERMISSION_CATALOG,
   ...STOCKTAKE_PERMISSION_CATALOG,
+  ...INVENTORY_ADJUSTMENT_PERMISSION_CATALOG,
   ...LOGISTICS_PERMISSION_CATALOG,
   ...ACCOUNTING_PERMISSION_CATALOG,
 ]);
