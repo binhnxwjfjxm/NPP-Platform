@@ -168,3 +168,111 @@ export type RecordDeliveryAttemptResponse = Readonly<{
   replayed: boolean;
   eventId?: string;
 }>;
+
+export type CodCollectionMethod = 'CASH' | 'BANK_TRANSFER' | 'NONE';
+export type CodCollectionStatus = 'collected_full' | 'collected_partial' | 'collected_excess' | 'not_collected';
+
+export type CodCollection = Readonly<{
+  id: string;
+  assignmentId: string;
+  deliveryAttemptId: string;
+  deliveryOrderId: string;
+  customerId: string;
+  sourceReceivableDocumentId: string;
+  paymentDocumentId: string | null;
+  paymentDocumentNumber: string | null;
+  collectionMethod: CodCollectionMethod;
+  collectionStatus: CodCollectionStatus;
+  currencyCode: string;
+  expectedAmount: string;
+  receivedAmount: string;
+  handedOverAmount: string;
+  custodyRemainingAmount: string;
+  externalReference: string | null;
+  reasonCode: string | null;
+  promisedBy: string | null;
+  dueAt: string | null;
+  note: string | null;
+  collectedAt: string;
+  reversed: boolean;
+  reversalReason: string | null;
+}>;
+
+export type CodAssignment = Readonly<{
+  assignmentId: string;
+  stopId: string;
+  stopSequence: number;
+  deliveryOrderId: string;
+  deliveryOrderNumber: string | null;
+  customerId: string;
+  customerCode: string | null;
+  customerName: string | null;
+  collectionPolicy: string | null;
+  deliveryAttemptId: string | null;
+  deliveryAttemptResult: DeliveryAttemptResult | null;
+  receivableDocumentId: string | null;
+  receivableDocumentNumber: string | null;
+  currencyCode: string | null;
+  amountDue: string | null;
+  collection: CodCollection | null;
+}>;
+
+export type CodHandoverLine = Readonly<{
+  id: string;
+  collectionId: string;
+  expectedAmount: string;
+  handedOverAmount: string;
+  customerCode: string | null;
+  customerName: string | null;
+  deliveryOrderNumber: string | null;
+}>;
+
+export type CodHandover = Readonly<{
+  id: string;
+  tripId: string;
+  tripNumber: string | null;
+  expectedTotal: string;
+  handedOverTotal: string;
+  unattributedExcessAmount: string;
+  differenceAmount: string;
+  reason: string | null;
+  note: string | null;
+  handedOverAt: string;
+  status: 'submitted' | 'reconciled' | 'discrepancy' | 'reversed' | 'acceptance_reversed';
+  lines: readonly CodHandoverLine[];
+}>;
+
+export type DriverCodOverview = Readonly<{
+  trip: Readonly<{
+    id: string;
+    number: string;
+    warehouseId: string;
+    warehouseCode: string | null;
+    warehouseName: string | null;
+    driverProfileId: string;
+    driverCode: string | null;
+    driverName: string | null;
+    custodyTotal: string;
+  }>;
+  assignments: readonly CodAssignment[];
+  handovers: readonly CodHandover[];
+}>;
+
+export type RecordCodCollectionPayload = Readonly<{
+  collectionMethod: CodCollectionMethod;
+  receivedAmount?: string;
+  externalReference?: string | null;
+  reasonCode?: string | null;
+  promisedBy?: string | null;
+  dueAt?: string | null;
+  note?: string | null;
+  collectedAt: string;
+}>;
+
+export type CreateCodHandoverPayload = Readonly<{
+  lines: readonly Readonly<{ collectionId: string; amount: string }>[];
+  unattributedExcessAmount?: string;
+  reason?: string | null;
+  note?: string | null;
+  handedOverAt: string;
+}>;

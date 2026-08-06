@@ -59,85 +59,50 @@ export default async function DeliveryHomePage() {
   try {
     const result = await listMyTrips(user);
     const [activeTrip, ...remainingTrips] = result.trips;
-
-    content = !activeTrip
-      ? (
-          <section className="stateCard emptyTripState" id="active-trip">
-            <span className="emptyTripIcon" aria-hidden="true">✓</span>
-            <strong>Chưa có chuyến đang giao</strong>
-            <p>Chuyến sẽ xuất hiện sau khi kho hoàn tất bàn giao và cho xe xuất phát.</p>
+    content = !activeTrip ? (
+      <section className="stateCard emptyTripState" id="active-trip">
+        <span className="emptyTripIcon" aria-hidden="true">✓</span>
+        <strong>Chưa có chuyến đang giao</strong>
+        <p>Chuyến sẽ xuất hiện sau khi kho hoàn tất bàn giao và cho xe xuất phát.</p>
+      </section>
+    ) : (
+      <>
+        <section className="activeTripSection" aria-labelledby="active-trip-heading">
+          <div className="deliverySectionHeading">
+            <div><p className="eyebrow">Ưu tiên lúc này</p><h2 id="active-trip-heading">Chuyến đang giao</h2></div>
+            <span>{activeTrip.attemptCount ?? 0}/{activeTrip.assignmentCount ?? 0} phiếu</span>
+          </div>
+          <Link className="tripCard primaryTripCard" href={`/trips/${activeTrip.id}`} id="active-trip">
+            <div className="cardTopline"><span className="statusPill">Đã xuất phát</span><span>{formatDateTime(activeTrip.dispatchedAt)}</span></div>
+            <div className="primaryTripTitle">
+              <div><small>Mã chuyến</small><h2>{activeTrip.number}</h2></div>
+              <span className="primaryTripArrow" aria-hidden="true">→</span>
+            </div>
+            <dl className="summaryGrid primaryTripSummary">
+              <div><dt>Xe</dt><dd>{activeTrip.licensePlate || activeTrip.vehicleCode || 'Chưa có'}</dd></div>
+              <div><dt>Kho</dt><dd>{activeTrip.warehouseName || activeTrip.warehouseCode || 'Chưa có'}</dd></div>
+              <div><dt>Điểm giao</dt><dd>{activeTrip.stopCount ?? 0}</dd></div>
+              <div><dt>Còn lại</dt><dd>{Math.max((activeTrip.assignmentCount ?? 0) - (activeTrip.attemptCount ?? 0), 0)}</dd></div>
+            </dl>
+            <span className="primaryTripAction">Mở điểm tiếp theo và ghi kết quả</span>
+          </Link>
+        </section>
+        {remainingTrips.length ? (
+          <section className="otherTripsSection" aria-labelledby="other-trips-heading">
+            <div className="deliverySectionHeading compact"><h2 id="other-trips-heading">Chuyến khác</h2><span>{remainingTrips.length}</span></div>
+            <div className="tripList">
+              {remainingTrips.map((trip) => (
+                <Link className="tripCard compactTripCard" href={`/trips/${trip.id}`} key={trip.id}>
+                  <div className="cardTopline"><span className="statusPill">Đã xuất phát</span><span>{formatDateTime(trip.dispatchedAt)}</span></div>
+                  <h2>{trip.number}</h2>
+                  <div className="compactTripMeta"><span>{trip.licensePlate || trip.vehicleCode || 'Chưa có xe'}</span><span>{trip.stopCount ?? 0} điểm</span><span>{trip.attemptCount ?? 0}/{trip.assignmentCount ?? 0} phiếu</span></div>
+                </Link>
+              ))}
+            </div>
           </section>
-        )
-      : (
-          <>
-            <section className="activeTripSection" aria-labelledby="active-trip-heading">
-              <div className="deliverySectionHeading">
-                <div>
-                  <p className="eyebrow">Ưu tiên lúc này</p>
-                  <h2 id="active-trip-heading">Chuyến đang giao</h2>
-                </div>
-                <span>{activeTrip.attemptCount ?? 0}/{activeTrip.assignmentCount ?? 0} phiếu</span>
-              </div>
-              <Link className="tripCard primaryTripCard" href={`/trips/${activeTrip.id}`} id="active-trip">
-                <div className="cardTopline">
-                  <span className="statusPill">Đã xuất phát</span>
-                  <span>{formatDateTime(activeTrip.dispatchedAt)}</span>
-                </div>
-                <div className="primaryTripTitle">
-                  <div>
-                    <small>Mã chuyến</small>
-                    <h2>{activeTrip.number}</h2>
-                  </div>
-                  <span className="primaryTripArrow" aria-hidden="true">→</span>
-                </div>
-                <dl className="summaryGrid primaryTripSummary">
-                  <div>
-                    <dt>Xe</dt>
-                    <dd>{activeTrip.licensePlate || activeTrip.vehicleCode || 'Chưa có'}</dd>
-                  </div>
-                  <div>
-                    <dt>Kho</dt>
-                    <dd>{activeTrip.warehouseName || activeTrip.warehouseCode || 'Chưa có'}</dd>
-                  </div>
-                  <div>
-                    <dt>Điểm giao</dt>
-                    <dd>{activeTrip.stopCount ?? 0}</dd>
-                  </div>
-                  <div>
-                    <dt>Còn lại</dt>
-                    <dd>{Math.max((activeTrip.assignmentCount ?? 0) - (activeTrip.attemptCount ?? 0), 0)}</dd>
-                  </div>
-                </dl>
-                <span className="primaryTripAction">Mở điểm tiếp theo và ghi kết quả</span>
-              </Link>
-            </section>
-
-            {remainingTrips.length ? (
-              <section className="otherTripsSection" aria-labelledby="other-trips-heading">
-                <div className="deliverySectionHeading compact">
-                  <h2 id="other-trips-heading">Chuyến khác</h2>
-                  <span>{remainingTrips.length}</span>
-                </div>
-                <div className="tripList">
-                  {remainingTrips.map((trip) => (
-                    <Link className="tripCard compactTripCard" href={`/trips/${trip.id}`} key={trip.id}>
-                      <div className="cardTopline">
-                        <span className="statusPill">Đã xuất phát</span>
-                        <span>{formatDateTime(trip.dispatchedAt)}</span>
-                      </div>
-                      <h2>{trip.number}</h2>
-                      <div className="compactTripMeta">
-                        <span>{trip.licensePlate || trip.vehicleCode || 'Chưa có xe'}</span>
-                        <span>{trip.stopCount ?? 0} điểm</span>
-                        <span>{trip.attemptCount ?? 0}/{trip.assignmentCount ?? 0} phiếu</span>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-          </>
-        );
+        ) : null}
+      </>
+    );
   } catch (error) {
     content = (
       <section className="stateCard errorCard" id="active-trip">
@@ -152,8 +117,8 @@ export default async function DeliveryHomePage() {
       <DeliveryHeader title="Chuyến của tôi" subtitle={`Xin chào, ${user.displayName}`} />
       {content}
       <section className="noticeCard deliveryGuideCard">
-        <strong>Ghi kết quả tại từng phiếu giao</strong>
-        <p>Mở chuyến để ghi giao đủ, giao một phần, không giao được hoặc hẹn giao lại. Ảnh hoặc xác nhận người nhận là bằng chứng tùy chọn; GPS và thu tiền chưa thuộc luồng hiện tại.</p>
+        <strong>Ghi kết quả và tiền COD tại từng phiếu giao</strong>
+        <p>Mở chuyến để ghi kết quả giao, tiền khách thực trả và bàn giao tiền mặt cuối chuyến. Ảnh hoặc xác nhận người nhận là bằng chứng tùy chọn; GPS chưa thuộc luồng hiện tại.</p>
       </section>
     </main>
   );

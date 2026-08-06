@@ -39,6 +39,13 @@ const LOGISTICS_BOOTSTRAP_PERMISSIONS = Object.freeze([
   PERMISSIONS.coreCustomerReturnCreditReverse,
   PERMISSIONS.coreCustomerRefundCreate,
   PERMISSIONS.coreCustomerRefundReverse,
+  PERMISSIONS.coreCodCollectionRead,
+  PERMISSIONS.coreCodCollectionRecord,
+  PERMISSIONS.coreCodHandoverRead,
+  PERMISSIONS.coreCodHandoverCreate,
+  PERMISSIONS.coreCodReconciliationRead,
+  PERMISSIONS.coreCodReconciliationAccept,
+  PERMISSIONS.coreCodAdjustmentCreate,
 ]);
 
 function withLogisticsBootstrapPermissions(principal) {
@@ -62,6 +69,10 @@ function withDeliveryAttemptPermissions(principal) {
       PERMISSIONS.coreDeliveryAttemptRecord,
       PERMISSIONS.corePodRead,
       PERMISSIONS.corePodAttach,
+      PERMISSIONS.coreCodCollectionRead,
+      PERMISSIONS.coreCodCollectionRecord,
+      PERMISSIONS.coreCodHandoverRead,
+      PERMISSIONS.coreCodHandoverCreate,
     ])]),
   });
 }
