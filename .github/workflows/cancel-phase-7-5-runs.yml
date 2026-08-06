@@ -1,0 +1,41 @@
+name: Cancel Phase 7.5 stale runs
+
+on:
+  push:
+    branches:
+      - agent/cancel-phase-7-5-runs
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cancel-runs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel queued and in-progress Phase 7.5 runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_BRANCH: agent/phase-7-5-costing-foundation
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          self_run="$GITHUB_RUN_ID"
+
+          for status in queued in_progress waiting requested pending; do
+            gh api --paginate \
+              "/repos/${repo}/actions/runs?branch=${TARGET_BRANCH}&status=${status}&per_page=100" \
+              --jq '.workflow_runs[].id' |
+            while read -r run_id; do
+              [ -z "$run_id" ] && continue
+              [ "$run_id" = "$self_run" ] && continue
+              echo "Cancelling run ${run_id} (${status})"
+              gh api -X POST "/repos/${repo}/actions/runs/${run_id}/cancel" || true
+            done
+          done
+
+          sleep 10
+          echo "Remaining active runs for ${TARGET_BRANCH}:"
+          gh api --paginate \
+            "/repos/${repo}/actions/runs?branch=${TARGET_BRANCH}&per_page=100" \
+            --jq '.workflow_runs[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending") | [.id, .name, .status] | @tsv' || true
