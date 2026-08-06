@@ -101,7 +101,7 @@ body {
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Exact 58px AppShell row. No safe-area or browser-chrome value may resize it. */
+  /* Exact 58px AppShell row. Glass stays edge-attached and does not resize with browser chrome. */
   .app-content-shell > [data-bottom-navigation="true"] {
     position: relative;
     inset: auto;
@@ -119,11 +119,17 @@ body {
     overflow: hidden;
     contain: layout paint;
     border: 0;
-    border-top: 1px solid color-mix(in srgb, var(--npp-color-border) 86%, #ffffff);
+    border-top: 1px solid rgba(117, 71, 6, 0.22);
     border-radius: 0;
-    background: var(--npp-color-surface);
-    box-shadow: 0 -4px 12px rgba(75, 47, 31, 0.06);
+    background:
+      radial-gradient(circle at 50% -240%, rgba(185, 119, 27, 0.42), transparent 74%),
+      linear-gradient(180deg, rgba(255, 253, 248, 0.78), rgba(236, 214, 181, 0.67));
+    box-shadow:
+      0 -10px 28px rgba(117, 71, 6, 0.14),
+      inset 0 1px 0 rgba(255, 255, 255, 0.72);
     padding: 4px 8px;
+    -webkit-backdrop-filter: blur(24px) saturate(1.38);
+    backdrop-filter: blur(24px) saturate(1.38);
   }
 
   .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link {
@@ -158,15 +164,15 @@ body {
   }
 
   .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.active {
-    background: rgba(79, 122, 58, 0.10);
-    color: var(--npp-color-primary);
-    box-shadow: none;
+    background: rgba(152, 96, 15, 0.13);
+    color: #754706;
+    box-shadow: inset 0 0 0 1px rgba(152, 96, 15, 0.08);
   }
 
   .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.active .nav-icon {
-    background: rgba(79, 122, 58, 0.14);
-    color: var(--npp-color-primary);
-    box-shadow: none;
+    background: rgba(200, 155, 91, 0.2);
+    color: #754706;
+    box-shadow: 0 4px 12px rgba(117, 71, 6, 0.1);
   }
 
   .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link .nav-label {
