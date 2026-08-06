@@ -60,7 +60,7 @@
   padding-inline: 0;
 }
 
-button:disabled {
+.workspace button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
