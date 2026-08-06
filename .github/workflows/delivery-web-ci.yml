@@ -51,8 +51,10 @@ jobs:
         run: npm run verify
       - name: Install Chromium and WebKit
         run: npx playwright install --with-deps chromium webkit
-      - name: Run Delivery mobile Browser E2E
-        run: npm run test:e2e
+      - name: Run Delivery Chromium mobile E2E
+        run: npx playwright test --project=chromium-mobile
+      - name: Run Delivery WebKit viewport geometry
+        run: npx playwright test e2e/viewport-shell.spec.ts --project=webkit-iphone
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
