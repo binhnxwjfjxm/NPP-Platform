@@ -6,9 +6,9 @@ import { PageHeader } from "@/ui/layout/PageHeader";
 import { BottomSheet } from "@/ui/overlay/BottomSheet";
 import { AppShell } from "@/ui/shell/AppShell";
 import { DataTable, type DataTableColumn } from "@/ui/table/DataTable";
-import type { AccountItem, AccountKpi, AccountStatus } from "./accounts.types";
+import type { AccountKpi, OutletItem, OutletStatus } from "./accounts.types";
 
-type StatusFilter = "all" | AccountStatus;
+type StatusFilter = "all" | OutletStatus;
 
 function normalized(value: string) {
   return value.trim().toLocaleLowerCase("vi-VN");
@@ -19,24 +19,24 @@ function hasContact(value: string) {
   return Boolean(contact) && contact !== "-" && contact !== "chưa cập nhật" && contact !== "chưa có sđt";
 }
 
-function statusLabel(status: AccountStatus) {
+function statusLabel(status: OutletStatus) {
   if (status === "active") return "Đang trong tuyến";
   if (status === "needs_gps") return "Cần cập nhật GPS";
   return "Đang ẩn";
 }
 
-function statusClass(status: AccountStatus) {
+function statusClass(status: OutletStatus) {
   if (status === "active") return "summary-status-good";
   if (status === "needs_gps") return "summary-status-watch";
   return "summary-status-muted";
 }
 
-function gpsLabel(item: AccountItem) {
+function gpsLabel(item: OutletItem) {
   if (!item.gps) return "Chưa có GPS";
   return `${item.gps.lat.toFixed(5)}, ${item.gps.lng.toFixed(5)}`;
 }
 
-function buildColumns(onSelect: (item: AccountItem) => void): DataTableColumn<AccountItem>[] {
+function buildColumns(onSelect: (item: OutletItem) => void): DataTableColumn<OutletItem>[] {
   return [
     { key: "sortOrder", header: "STT", render: (row) => row.sortOrder || "-", align: "right" },
     { key: "name", header: "Điểm bán", render: (row) => row.name },
@@ -49,7 +49,7 @@ function buildColumns(onSelect: (item: AccountItem) => void): DataTableColumn<Ac
   ];
 }
 
-function OutletMobileCard({ item, onSelect }: { item: AccountItem; onSelect: (item: AccountItem) => void }) {
+function OutletMobileCard({ item, onSelect }: { item: OutletItem; onSelect: (item: OutletItem) => void }) {
   return (
     <article className="mobile-summary-card outlet-mobile-summary" data-outlet-mobile-card>
       <div className="mobile-summary-head">
@@ -78,7 +78,7 @@ function OutletMobileCard({ item, onSelect }: { item: AccountItem; onSelect: (it
   );
 }
 
-function OutletSheet({ item, onClose }: { item: AccountItem | null; onClose: () => void }) {
+function OutletSheet({ item, onClose }: { item: OutletItem | null; onClose: () => void }) {
   return (
     <BottomSheet
       open={Boolean(item)}
@@ -87,7 +87,7 @@ function OutletSheet({ item, onClose }: { item: AccountItem | null; onClose: () 
       description={item ? `${item.routeName} · ${item.area}` : undefined}
       footer={
         <div className="sheet-action-grid">
-          {item ? <a className="button primary" href={item.mapsUrl} target="_blank" rel="noreferrer">Di chuyển</a> : null}
+          {item ? <a className="button primary" href={item.mapsUrl}>Di chuyển</a> : null}
           <button className="button" type="button" onClick={onClose}>Đóng</button>
         </div>
       }
@@ -118,8 +118,8 @@ function OutletSheet({ item, onClose }: { item: AccountItem | null; onClose: () 
   );
 }
 
-export function OutletsClientPage({ kpis, items }: { kpis: AccountKpi[]; items: AccountItem[] }) {
-  const [selected, setSelected] = useState<AccountItem | null>(null);
+export function OutletsClientPage({ kpis, items }: { kpis: AccountKpi[]; items: OutletItem[] }) {
+  const [selected, setSelected] = useState<OutletItem | null>(null);
   const [query, setQuery] = useState("");
   const [route, setRoute] = useState("all");
   const [status, setStatus] = useState<StatusFilter>("all");
