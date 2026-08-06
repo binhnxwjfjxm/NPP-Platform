@@ -1,0 +1,142 @@
+.page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: calc(24px + env(safe-area-inset-top)) 18px calc(24px + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(circle at 80% 0, rgba(206, 145, 52, 0.2), transparent 22rem),
+    linear-gradient(160deg, #2b190d 0%, #4a2e16 44%, #f7f2e9 44.2%, #fffdf9 100%);
+  color: #2d2924;
+}
+
+.card {
+  width: min(100%, 430px);
+  overflow: hidden;
+  border: 1px solid rgba(152, 96, 15, 0.18);
+  border-radius: 24px;
+  background: rgba(255, 253, 249, 0.98);
+  box-shadow: 0 28px 80px rgba(47, 29, 13, 0.28);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px;
+  background: linear-gradient(135deg, #2b190d, #573716);
+  color: #fffaf0;
+}
+
+.logoFrame {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid rgba(239, 189, 97, 0.65);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.logo {
+  width: 100%;
+  height: 100%;
+  padding: 6px;
+  object-fit: contain;
+}
+
+.brand strong,
+.brand span {
+  display: block;
+}
+
+.brand strong {
+  color: #f2c36d;
+  font-size: 1.05rem;
+}
+
+.brand span {
+  margin-top: 3px;
+  color: rgba(255, 250, 240, 0.72);
+  font-size: 0.78rem;
+}
+
+.content {
+  padding: 24px;
+}
+
+.content h1,
+.content p {
+  margin: 0;
+}
+
+.content h1 {
+  color: #342219;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 2rem;
+  letter-spacing: -0.03em;
+}
+
+.content > p {
+  margin-top: 8px;
+  color: #70685f;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.error {
+  margin-top: 16px !important;
+  padding: 11px 12px;
+  border: 1px solid rgba(166, 95, 19, 0.26);
+  border-radius: 12px;
+  background: #fff3df;
+  color: #7c4208 !important;
+  font-weight: 700;
+}
+
+.form {
+  display: grid;
+  gap: 15px;
+  margin-top: 22px;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+  color: #51483f;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.field input {
+  width: 100%;
+  min-height: 50px;
+  padding: 0 14px;
+  border: 1px solid rgba(121, 86, 47, 0.24);
+  border-radius: 13px;
+  background: #fff;
+  color: #2d2924;
+  outline: none;
+}
+
+.field input:focus {
+  border-color: #98600f;
+  box-shadow: 0 0 0 3px rgba(152, 96, 15, 0.14);
+}
+
+.submit {
+  min-height: 52px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #bd7d1f, #8b5308);
+  color: #fffdf8;
+  font-weight: 850;
+  cursor: pointer;
+  box-shadow: 0 12px 28px rgba(126, 73, 7, 0.24);
+}
+
+.note {
+  margin-top: 16px !important;
+  color: #8a8178 !important;
+  font-size: 0.76rem !important;
+  text-align: center;
+}
