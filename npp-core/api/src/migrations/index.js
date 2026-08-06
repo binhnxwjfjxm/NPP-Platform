@@ -47,6 +47,7 @@ const INVENTORY_TRANSFER_IN_TRANSIT_SQL = readFileSync(new URL('../../../../data
 const INVENTORY_TRANSFER_RECEIPT_RESOLUTION_SQL = readFileSync(new URL('../../../../database/migrations/inventory/059_inventory_transfer_receipt_resolution.sql', import.meta.url), 'utf8');
 const INVENTORY_STOCKTAKE_SQL = readFileSync(new URL('../../../../database/migrations/inventory/060_inventory_stocktake.sql', import.meta.url), 'utf8');
 const INVENTORY_ADJUSTMENTS_SQL = readFileSync(new URL('../../../../database/migrations/inventory/061_inventory_adjustments.sql', import.meta.url), 'utf8');
+const INVENTORY_COSTING_FOUNDATION_SQL = readFileSync(new URL('../../../../database/migrations/inventory/062_inventory_costing_foundation.sql', import.meta.url), 'utf8');
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -66,6 +67,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '059_inventory_transfer_receipt_resolution', sql: INVENTORY_TRANSFER_RECEIPT_RESOLUTION_SQL }),
   Object.freeze({ id: '060_inventory_stocktake', sql: INVENTORY_STOCKTAKE_SQL }),
   Object.freeze({ id: '061_inventory_adjustments', sql: INVENTORY_ADJUSTMENTS_SQL }),
+  Object.freeze({ id: '062_inventory_costing_foundation', sql: INVENTORY_COSTING_FOUNDATION_SQL }),
 ]);
 
 export { runMigrations };

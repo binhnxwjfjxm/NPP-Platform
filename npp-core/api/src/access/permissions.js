@@ -23,6 +23,9 @@ export const PERMISSIONS = Object.freeze({
   coreInventoryAdjustmentPost: 'core.inventory-adjustment.post',
   coreInventoryAdjustmentCancel: 'core.inventory-adjustment.cancel',
   coreInventoryAdjustmentReverse: 'core.inventory-adjustment.reverse',
+  coreInventoryCostRead: 'core.inventory-cost.read',
+  coreInventoryCostRebuild: 'core.inventory-cost.rebuild',
+  coreInventoryCostReconcile: 'core.inventory-cost.reconcile',
   coreLogisticsRouteRead: 'core.logistics-route.read',
   coreLogisticsRouteManage: 'core.logistics-route.manage',
   coreVehicleRead: 'core.vehicle.read',
@@ -96,6 +99,14 @@ const INVENTORY_ADJUSTMENT_PERMISSION_CATALOG = Object.freeze([
   permissionKey: PERMISSIONS[key], module, label, description, isSystem: true,
 })));
 
+const INVENTORY_COST_PERMISSION_CATALOG = Object.freeze([
+  ['coreInventoryCostRead', 'Kho', 'Xem giá vốn tồn kho', 'Cho phép đọc số lượng, giá trị, giá bình quân và cost fact trong phạm vi kho được cấp.'],
+  ['coreInventoryCostRebuild', 'Kho', 'Dựng lại giá vốn tồn kho', 'Cho phép dựng lại moving-average cost facts và projection từ inventory ledger bất biến.'],
+  ['coreInventoryCostReconcile', 'Kho', 'Đối soát giá vốn tồn kho', 'Cho phép đọc đối soát quantity ledger với costing projection và anomaly nguồn giá.'],
+].map(([key, module, label, description]) => Object.freeze({
+  permissionKey: PERMISSIONS[key], module, label, description, isSystem: true,
+}))); 
+
 const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
   ['coreLogisticsRouteRead', 'Điều phối giao hàng', 'Xem tuyến giao hàng', 'Cho phép đọc tuyến giao hàng trong installation hiện tại.'],
   ['coreLogisticsRouteManage', 'Điều phối giao hàng', 'Quản lý tuyến giao hàng', 'Cho phép tạo tuyến giao hàng phục vụ lập kế hoạch chuyến.'],
@@ -149,6 +160,7 @@ export const PERMISSION_CATALOG = Object.freeze([
   ...INVENTORY_TRANSFER_RECEIPT_PERMISSION_CATALOG,
   ...STOCKTAKE_PERMISSION_CATALOG,
   ...INVENTORY_ADJUSTMENT_PERMISSION_CATALOG,
+  ...INVENTORY_COST_PERMISSION_CATALOG,
   ...LOGISTICS_PERMISSION_CATALOG,
   ...ACCOUNTING_PERMISSION_CATALOG,
 ]);
