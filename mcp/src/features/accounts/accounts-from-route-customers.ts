@@ -2,35 +2,48 @@ import type { RouteCustomersData } from "@/features/mcp/route-customers.types";
 import type { AccountStatus, AccountsData } from "./accounts.types";
 
 function toAccountStatus(status: RouteCustomersData["customers"][number]["status"]): AccountStatus {
-  if (status === "hidden") return "inactive";
-  if (status === "needs_gps") return "need_visit";
-  return "active";
+  return status;
+}
+
+function mapsUrl(customer: RouteCustomersData["customers"][number]) {
+  if (customer.gps) {
+    const destination = `${customer.gps.lat},${customer.gps.lng}`;
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+  }
+
+  const query = [customer.accountName, customer.area]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(", ");
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
 export function accountsFromRouteCustomers(data: RouteCustomersData): AccountsData {
   const accounts = data.customers.map((customer) => ({
-    id: customer.accountId || customer.id,
+    id: customer.id,
+    routeCustomerId: customer.id,
+    accountId: customer.accountId || null,
     name: customer.accountName,
     contactName: customer.contactName,
     area: customer.area,
     routeName: customer.routeName,
-    tier: "-" as const,
-    lastVisitDate: "-",
-    lastOrderDate: "-",
-    monthlyRevenue: 0,
-    status: toAccountStatus(customer.status)
+    sortOrder: customer.sortOrder,
+    status: toAccountStatus(customer.status),
+    gps: customer.gps || null,
+    note: customer.note,
+    mapsUrl: mapsUrl(customer)
   }));
 
-  const active = accounts.filter((account) => account.status === "active").length;
-  const needVisit = accounts.filter((account) => account.status === "need_visit").length;
-  const inactive = accounts.filter((account) => account.status === "inactive").length;
+  const withGps = accounts.filter((account) => Boolean(account.gps)).length;
+  const needsGps = accounts.filter((account) => account.status === "needs_gps" || !account.gps).length;
+  const hidden = accounts.filter((account) => account.status === "hidden").length;
 
   return {
     kpis: [
-      { label: "Điểm bán", value: accounts.length, hint: "Từ danh sách khách trong tuyến" },
-      { label: "Đang chăm sóc", value: active, hint: "Đang hoạt động và đã có GPS" },
-      { label: "Cần ghé lại", value: needVisit, hint: "Thiếu vị trí hoặc cần cập nhật hồ sơ" },
-      { label: "Chưa có dữ liệu", value: inactive, hint: "Đang ẩn khỏi tuyến" }
+      { label: "Điểm bán", value: accounts.length, hint: "Danh sách khách đang có trong các tuyến" },
+      { label: "Có GPS", value: withGps, hint: "Có tọa độ để mở chỉ đường chính xác" },
+      { label: "Cần GPS", value: needsGps, hint: "Chưa có tọa độ hoặc đang chờ cập nhật vị trí" },
+      { label: "Đang ẩn", value: hidden, hint: "Điểm bán hiện không hiển thị trong tuyến hoạt động" }
     ],
     accounts
   };
