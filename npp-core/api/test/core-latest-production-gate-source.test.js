@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const scriptUrl = new URL('../scripts/core-latest-production-gate.sh', import.meta.url);
 
-test('latest Core production gate protects migrations 042 through 052', async () => {
+test('latest Core production gate protects migrations 042 through 057', async () => {
   const source = await readFile(scriptUrl, 'utf8');
   for (const id of [
     '042_sales_fulfillment_reservation_demand',
@@ -18,12 +18,17 @@ test('latest Core production gate protects migrations 042 through 052', async ()
     '050_logistics_delivery_attempt_outbox_schedule',
     '051_logistics_trip_reconciliation',
     '052_logistics_optional_proof_of_delivery',
+    '053_customer_receivable_ledger',
+    '054_customer_payment_allocation',
+    '055_customer_return_credit_refund',
+    '056_cod_collection_handover',
+    '057_phase6f_reconciliation_views',
   ]) {
     assert.match(source, new RegExp(id));
   }
   for (const marker of [
     'assert_allowed_pending',
-    'assert_phase6e_schema',
+    'assert_phase6f_schema',
     'pg:backups:capture',
     'pg_dump',
     'pg_restore',
@@ -38,9 +43,20 @@ test('latest Core production gate protects migrations 042 through 052', async ()
     'logistics.delivery_attempt_lines',
     'logistics.trip_return_receipts',
     'logistics.delivery_attempt_proofs',
-    'core.delivery-attempt.record',
-    'core.delivery-trip.reconciliation-read',
-    'core.pod.attach',
+    'accounting.receivable_documents',
+    'accounting.receivable_allocations',
+    'accounting.customer_return_adjustment_lines',
+    'accounting.customer_refunds',
+    'accounting.cod_collections',
+    'accounting.cod_cash_handovers',
+    'accounting.cod_cash_acceptances',
+    'reporting.phase6f_closeout_anomalies',
+    'core.receivable.read',
+    'core.customer-payment.create',
+    'core.customer-return-credit.allocate',
+    'core.customer-refund.create',
+    'core.cod-collection.record',
+    'core.cod-reconciliation.accept',
     'sales.sales_order_version_lines=',
     'inventory.inventory_movements=',
   ]) {
@@ -50,5 +66,7 @@ test('latest Core production gate protects migrations 042 through 052', async ()
   assert.match(source, /FROM sales\.sales_order_version_lines/);
   assert.match(source, /test "\$HEROKU_APP_NAME" = "hung-phat"/);
   assert.match(source, /pending\.every/);
-  assert.match(source, /CORE_PHASE_6E_SCHEMA=ready/);
+  assert.match(source, /CORE_API_MIGRATIONS\.slice\(-12\)/);
+  assert.match(source, /CORE_PHASE_6F_SCHEMA=ready/);
+  assert.doesNotMatch(source, /CORE_PHASE_6E_SCHEMA/);
 });
