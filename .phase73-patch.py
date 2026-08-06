@@ -1,0 +1,65 @@
+from pathlib import Path
+
+permissions = Path("npp-core/api/src/access/permissions.js")
+text = permissions.read_text()
+anchor = "  coreInventoryTransferResolve: 'core.inventory-transfer.resolve',\n"
+additions = """  coreStocktakeRead: 'core.stocktake.read',
+  coreStocktakeCreate: 'core.stocktake.create',
+  coreStocktakeCount: 'core.stocktake.count',
+  coreStocktakeSubmit: 'core.stocktake.submit',
+  coreStocktakeApprove: 'core.stocktake.approve',
+  coreStocktakePost: 'core.stocktake.post',
+  coreStocktakeCancel: 'core.stocktake.cancel',
+  coreStocktakeReverse: 'core.stocktake.reverse',
+"""
+if "coreStocktakeRead:" not in text:
+    text = text.replace(anchor, anchor + additions)
+
+catalog_anchor = "const LOGISTICS_PERMISSION_CATALOG = Object.freeze([\n"
+stocktake_catalog = """const STOCKTAKE_PERMISSION_CATALOG = Object.freeze([
+  ['coreStocktakeRead', 'Kho', 'Xem kiểm kê', 'Cho phép đọc danh sách, chi tiết và lịch sử vòng đếm kiểm kê trong phạm vi kho được cấp.'],
+  ['coreStocktakeCreate', 'Kho', 'Tạo kiểm kê', 'Cho phép tạo đợt kiểm kê và chụp snapshot tồn theo phạm vi kho được cấp.'],
+  ['coreStocktakeCount', 'Kho', 'Ghi nhận số đếm', 'Cho phép nhập số đếm mù và hoàn tất một vòng đếm kiểm kê.'],
+  ['coreStocktakeSubmit', 'Kho', 'Gửi duyệt kiểm kê', 'Cho phép khóa vòng đếm hiện tại và gửi kết quả kiểm kê để duyệt.'],
+  ['coreStocktakeApprove', 'Kho', 'Duyệt kiểm kê', 'Cho phép yêu cầu đếm lại hoặc duyệt một version kiểm kê do người khác gửi.'],
+  ['coreStocktakePost', 'Kho', 'Ghi sổ kiểm kê', 'Cho phép ghi một movement điều chỉnh kiểm kê từ kết quả đã duyệt.'],
+  ['coreStocktakeCancel', 'Kho', 'Hủy kiểm kê', 'Cho phép hủy đợt kiểm kê trước khi gửi duyệt.'],
+  ['coreStocktakeReverse', 'Kho', 'Đảo ghi sổ kiểm kê', 'Cho phép đảo movement kiểm kê khi chưa có movement phát sinh sau đó trên exact scope.'],
+].map(([key, module, label, description]) => Object.freeze({
+  permissionKey: PERMISSIONS[key], module, label, description, isSystem: true,
+})));
+
+"""
+if "const STOCKTAKE_PERMISSION_CATALOG" not in text:
+    text = text.replace(catalog_anchor, stocktake_catalog + catalog_anchor)
+if "...STOCKTAKE_PERMISSION_CATALOG," not in text:
+    text = text.replace(
+        "  ...INVENTORY_TRANSFER_RECEIPT_PERMISSION_CATALOG,\n",
+        "  ...INVENTORY_TRANSFER_RECEIPT_PERMISSION_CATALOG,\n  ...STOCKTAKE_PERMISSION_CATALOG,\n",
+    )
+permissions.write_text(text)
+
+cli = Path("npp-core/api/src/migrations/cli.js")
+text = cli.read_text()
+table_anchor = "    'shared.role_permissions': await tableExists(adapter, 'shared', 'role_permissions'),\n"
+table_add = """    'inventory.inventory_scope_versions': await tableExists(adapter, 'inventory', 'inventory_scope_versions'),
+    'inventory.stocktakes': await tableExists(adapter, 'inventory', 'stocktakes'),
+    'inventory.stocktake_rounds': await tableExists(adapter, 'inventory', 'stocktake_rounds'),
+    'inventory.stocktake_lines': await tableExists(adapter, 'inventory', 'stocktake_lines'),
+"""
+if "'inventory.stocktakes'" not in text:
+    text = text.replace(table_anchor, table_anchor + table_add)
+trigger_anchor = "    roles_code_immutable: await triggerExists(adapter, 'shared', 'roles', 'roles_code_immutable'),\n"
+trigger_add = """    inventory_movement_lines_scope_version: await triggerExists(adapter, 'inventory', 'inventory_movement_lines', 'inventory_movement_lines_scope_version'),
+    stocktake_lines_history_guard: await triggerExists(adapter, 'inventory', 'stocktake_lines', 'stocktake_lines_history_guard'),
+"""
+if "inventory_movement_lines_scope_version:" not in text:
+    text = text.replace(trigger_anchor, trigger_anchor + trigger_add)
+index_anchor = "    role_permissions_permission_idx: await indexExists(adapter, 'shared', 'role_permissions_permission_idx'),\n"
+index_add = """    stocktakes_list_idx: await indexExists(adapter, 'inventory', 'stocktakes_list_idx'),
+    stocktake_rounds_stocktake_idx: await indexExists(adapter, 'inventory', 'stocktake_rounds_stocktake_idx'),
+    stocktake_lines_scope_idx: await indexExists(adapter, 'inventory', 'stocktake_lines_scope_idx'),
+"""
+if "stocktakes_list_idx:" not in text:
+    text = text.replace(index_anchor, index_anchor + index_add)
+cli.write_text(text)
