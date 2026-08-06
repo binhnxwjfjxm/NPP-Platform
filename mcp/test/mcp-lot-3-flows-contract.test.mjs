@@ -5,8 +5,10 @@ import { readFile } from "node:fs/promises";
 const layout = await readFile("src/app/layout.tsx", "utf8");
 const styles = await readFile("src/app/mcp-lot-3-flows.css", "utf8");
 const home = await readFile("src/ui/shell/MobileHomeLaunchpad.tsx", "utf8");
+const visitsPage = await readFile("src/app/visits/page.tsx", "utf8");
 const orderPage = await readFile("src/app/visits/order-intent/page.tsx", "utf8");
 const orderPanel = await readFile("src/features/mcp/McpOfficialOrderPanel.tsx", "utf8");
+const lineCard = await readFile("src/features/mcp/McpLineCard.tsx", "utf8");
 const sessions = await readFile("src/features/mcp/McpSessionsManagerSafe.tsx", "utf8");
 
 const forbiddenPhase6F = /công nợ|thanh toán|\bCOD\b|payment|receivable|allocation/i;
@@ -30,6 +32,20 @@ test("order intent uses its exact route scope and one state-driven primary actio
   assert.match(orderPanel, /Đồng bộ đơn NPP/);
   assert.match(orderPanel, /session-customer\.customer-onboarding\.sync/);
   assert.doesNotMatch(orderPanel, forbiddenPhase6F);
+});
+
+test("visit flow keeps the current session reachable without changing business actions", () => {
+  assert.match(visitsPage, /loadMcpSessions/);
+  assert.match(visitsPage, /activeSessions\.sessions\.length === 1/);
+  assert.match(visitsPage, /activeSessions\.sessions\.length > 1/);
+  assert.match(visitsPage, /redirect\("\/routes"\)/);
+  assert.match(lineCard, /returnTo/);
+  assert.match(lineCard, /usePathname/);
+  assert.match(lineCard, /useSearchParams/);
+  assert.match(orderPage, /safeVisitReturnTo/);
+  assert.match(orderPage, /returnTo=\{returnTo\}/);
+  assert.match(orderPanel, /router\.push\(returnTo\)/);
+  assert.doesNotMatch(orderPanel, /router\.back\(\)/);
 });
 
 test("sessions collapses filters on mobile and keeps one primary action plus a secondary menu", () => {
