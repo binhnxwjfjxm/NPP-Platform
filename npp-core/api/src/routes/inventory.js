@@ -1,5 +1,6 @@
 import { handleInventoryRoutes as handleInventoryCoreRoutes } from './inventory-core.js';
 import { handleInventoryTransferRoutes } from './inventory-transfers.js';
+import { handleInventoryTransferReceiptRoutes } from './inventory-transfer-receipts.js';
 import { handleCodDriverRoutes } from './cod-driver.js';
 import { handleLogisticsRoutes } from './logistics.js';
 import { handleLogisticsAttemptRoutes } from './logistics-attempts.js';
@@ -13,6 +14,7 @@ import { handleLogisticsReconciliationRoutes } from './logistics-reconciliation.
 export async function handleInventoryRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (pathname === '/api/inventory/transfers' || pathname.startsWith('/api/inventory/transfers/')) {
+    if (await handleInventoryTransferReceiptRoutes(req, res, options)) return true;
     return handleInventoryTransferRoutes(req, res, options);
   }
   if (/^\/api\/logistics\/driver\/trips\/[^/]+\/assignments\/[^/]+\/attempts\/[^/]+\/pod$/.test(pathname)
