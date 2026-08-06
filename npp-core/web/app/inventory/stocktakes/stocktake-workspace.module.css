@@ -37,10 +37,10 @@
 .alert { border: 1px solid #f4b4ae; background: #fff5f4; color: #9f2117; }
 .statusMessage { border: 1px solid #abdbc2; background: #f0fff7; color: #11613c; }
 .tableWrap { overflow-x: auto; margin-top: 18px; border: 1px solid var(--border, #e0d6ca); border-radius: 11px; }
-table { width: 100%; min-width: 680px; border-collapse: collapse; }
-th, td { padding: 11px 12px; border-bottom: 1px solid var(--border, #e8dfd5); text-align: left; vertical-align: top; }
-th { background: var(--surface-soft, #fbf7f1); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
-td small { display: block; margin-top: 4px; color: var(--muted, #70665d); }
+.tableWrap table { width: 100%; min-width: 680px; border-collapse: collapse; }
+.tableWrap th, .tableWrap td { padding: 11px 12px; border-bottom: 1px solid var(--border, #e8dfd5); text-align: left; vertical-align: top; }
+.tableWrap th { background: var(--surface-soft, #fbf7f1); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+.tableWrap td small { display: block; margin-top: 4px; color: var(--muted, #70665d); }
 .quantityInput { min-width: 130px; }
 .history { margin-top: 20px; }
 .history ol { display: grid; gap: 8px; padding-left: 22px; }
