@@ -42,7 +42,7 @@ try {
   const mapsRequestPromise = page.waitForRequest((request) => {
     return request.isNavigationRequest() && /^https:\/\/www\.google\.com\/maps\//.test(request.url());
   });
-  await directionsButton.click();
+  await directionsButton.click({ noWaitAfter: true });
   const mapsRequest = await mapsRequestPromise;
   assert.match(mapsRequest.url(), /^https:\/\/www\.google\.com\/maps\//, "Di chuyển must navigate to Google Maps from one tap");
   await page.goto(visitUrl, { waitUntil: "networkidle" });
@@ -51,7 +51,7 @@ try {
   await appMenuButton.waitFor({ state: "visible" });
   assert.equal(await appMenuButton.count(), 1, "mobile must have exactly one top menu button");
   assert.equal(await page.getByRole("button", { name: "Cài đặt", exact: true }).count(), 0, "standalone settings button must be removed");
-  assert.equal(await page.getByRole("button", { name: "Mở menu tác vụ phiên", exact: true }).count(), 0, "standalone session action button must be removed");
+  assert.equal(await page.getByRole("button", { name: "Mở menu tác vụ phiên", exact: true }).count(), 0, "session header must not add a second menu trigger");
   assert.equal(await page.locator("[data-page-header-actions] button").count(), 0, "page header must not contain a second menu button");
 
   const triggerBox = await appMenuButton.boundingBox();
