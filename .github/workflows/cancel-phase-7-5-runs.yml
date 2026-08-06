@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: cancel-phase-7-5-stale-runs
+  group: cancel-phase-7-5-stale-runs-v2
   cancel-in-progress: true
 
 jobs:
@@ -18,24 +18,31 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
-      - name: Cancel all active Phase 7.5 runs
+      - name: Cancel Phase 7.5 and stale cleanup runs
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_BRANCH: agent/phase-7-5-costing-foundation
+          CLEANUP_BRANCH: agent/cancel-phase-7-5-runs
         run: |
           set -u
           repo="$GITHUB_REPOSITORY"
           api="https://api.github.com"
+          self="$GITHUB_RUN_ID"
           auth=(-H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
 
           for pass in 1 2 3 4 5 6; do
             echo "Cancellation pass ${pass}"
-            ids=$(curl --connect-timeout 5 --max-time 15 -fsSL "${auth[@]}" \
-              "${api}/repos/${repo}/actions/runs?branch=${TARGET_BRANCH}&per_page=100" \
-              | jq -r '.workflow_runs[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending") | .id') || ids=""
+            ids=""
+            for branch in "$TARGET_BRANCH" "$CLEANUP_BRANCH"; do
+              found=$(curl --connect-timeout 5 --max-time 15 -fsSL "${auth[@]}" \
+                "${api}/repos/${repo}/actions/runs?branch=${branch}&per_page=100" \
+                | jq -r '.workflow_runs[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending") | .id') || found=""
+              ids="${ids}"$'\n'"${found}"
+            done
 
+            ids=$(printf '%s\n' "$ids" | sed '/^$/d' | sort -u | grep -v "^${self}$" || true)
             if [ -z "$ids" ]; then
-              echo "Remaining active runs: 0"
+              echo "Remaining active runs excluding self: 0"
               exit 0
             fi
 
@@ -46,12 +53,15 @@ jobs:
                 "${api}/repos/${repo}/actions/runs/${run_id}/cancel" \
                 -o /dev/null || true
             done <<< "$ids"
-
             sleep 8
           done
 
-          remaining=$(curl --connect-timeout 5 --max-time 15 -fsSL "${auth[@]}" \
-            "${api}/repos/${repo}/actions/runs?branch=${TARGET_BRANCH}&per_page=100" \
-            | jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending")] | length')
-          echo "Remaining active runs: ${remaining}"
+          remaining=0
+          for branch in "$TARGET_BRANCH" "$CLEANUP_BRANCH"; do
+            count=$(curl --connect-timeout 5 --max-time 15 -fsSL "${auth[@]}" \
+              "${api}/repos/${repo}/actions/runs?branch=${branch}&per_page=100" \
+              | jq --arg self "$self" '[.workflow_runs[] | select((.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending") and (.id|tostring) != $self)] | length')
+            remaining=$((remaining + count))
+          done
+          echo "Remaining active runs excluding self: ${remaining}"
           test "$remaining" -eq 0
