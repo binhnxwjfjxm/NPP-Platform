@@ -45,7 +45,8 @@ export async function loadOrderSessions(customers: RouteCustomerItem[]): Promise
     const query = new URLSearchParams({ routeId });
     const response = await fetch(`/api/backend/mcp-settings/session-status?${query.toString()}`, {
       cache: "no-store",
-      headers: { Accept: "application/json" }
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(15_000)
     });
     const payload = await response.json().catch(() => ({})) as {
       data?: { sessions?: SessionStatusRow[] };
