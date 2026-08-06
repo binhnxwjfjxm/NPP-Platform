@@ -36,6 +36,13 @@ export const PERMISSIONS = Object.freeze({
   coreCustomerReturnCreditReverse: 'core.customer-return-credit.reverse',
   coreCustomerRefundCreate: 'core.customer-refund.create',
   coreCustomerRefundReverse: 'core.customer-refund.reverse',
+  coreCodCollectionRead: 'core.cod-collection.read',
+  coreCodCollectionRecord: 'core.cod-collection.record',
+  coreCodHandoverRead: 'core.cod-handover.read',
+  coreCodHandoverCreate: 'core.cod-handover.create',
+  coreCodReconciliationRead: 'core.cod-reconciliation.read',
+  coreCodReconciliationAccept: 'core.cod-reconciliation.accept',
+  coreCodAdjustmentCreate: 'core.cod-adjustment.create',
 });
 
 const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
@@ -59,6 +66,10 @@ const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
   ['coreDeliveryTripReconciliationRead', 'Đối soát giao hàng', 'Xem đối soát cuối chuyến', 'Cho phép đọc số đã xuất, đã giao, đã nhận lại và còn trên xe trong phạm vi kho.'],
   ['coreDeliveryTripReturnReceive', 'Đối soát giao hàng', 'Nhận hàng chưa giao về kho', 'Cho phép kho xác nhận thực nhận hàng chưa giao và ghi Inventory IN theo exact issue-line lineage.'],
   ['coreDeliveryTripClose', 'Đối soát giao hàng', 'Đóng chuyến đã đối soát', 'Cho phép đóng chuyến khi mọi phiếu có kết quả và toàn bộ hàng đã giao hoặc đã nhận lại kho.'],
+  ['coreCodCollectionRead', 'COD giao hàng', 'Xem tiền COD theo chuyến', 'Cho phép đọc tiền COD và số tiền tài xế đang giữ trong đúng phạm vi chuyến/kho.'],
+  ['coreCodCollectionRecord', 'COD giao hàng', 'Ghi nhận tiền COD đã thu', 'Cho phép tài xế ghi tiền thực thu hoặc lời hẹn của đúng phiếu giao được giao.'],
+  ['coreCodHandoverRead', 'COD giao hàng', 'Xem bàn giao tiền COD', 'Cho phép đọc các lần bàn giao tiền COD trong phạm vi được cấp.'],
+  ['coreCodHandoverCreate', 'COD giao hàng', 'Lập bàn giao tiền COD', 'Cho phép tài xế lập bàn giao tiền mặt COD theo exact collection lineage.'],
 ].map(([key, module, label, description]) => Object.freeze({
   permissionKey: PERMISSIONS[key], module, label, description, isSystem: true,
 })));
@@ -75,6 +86,9 @@ const ACCOUNTING_PERMISSION_CATALOG = Object.freeze([
   ['coreCustomerReturnCreditReverse', 'Điều chỉnh công nợ khách hàng', 'Đảo credit hàng khách trả', 'Cho phép đảo credit bằng bút toán bù sau khi hoàn tiền liên quan đã được đảo.'],
   ['coreCustomerRefundCreate', 'Hoàn tiền khách hàng', 'Hoàn tiền từ số dư credit', 'Cho phép ghi nhận hoàn tiền từ credit chưa phân bổ, với nơi nhận và lý do bắt buộc.'],
   ['coreCustomerRefundReverse', 'Hoàn tiền khách hàng', 'Đảo hoàn tiền khách hàng', 'Cho phép đảo một khoản hoàn tiền bằng bút toán bù bất biến.'],
+  ['coreCodReconciliationRead', 'Đối soát COD', 'Xem đối soát tiền COD', 'Cho phép kế toán/thu ngân đọc collection, bàn giao, tiền thực nhận và chênh lệch COD.'],
+  ['coreCodReconciliationAccept', 'Đối soát COD', 'Xác nhận tiền COD công ty nhận', 'Cho phép kế toán/thu ngân xác nhận số tiền thực nhận và trạng thái đối soát COD.'],
+  ['coreCodAdjustmentCreate', 'Đối soát COD', 'Đảo hoặc điều chỉnh COD', 'Cho phép tạo reversal/adjustment append-only cho collection, bàn giao hoặc xác nhận COD.'],
 ].map(([key, module, label, description]) => Object.freeze({
   permissionKey: PERMISSIONS[key], module, label, description, isSystem: true,
 })));

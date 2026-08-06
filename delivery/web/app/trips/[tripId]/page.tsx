@@ -2,8 +2,12 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { authenticateDeliveryUser, deliverySetupPending } from '../../../lib/delivery-auth';
 import { getMyTrip } from '../../../lib/core-api';
+import { getMyCodOverview } from '../../../lib/cod-api';
+import type { CodAssignment } from '../../../lib/types';
 import { formatAddress, formatDateTime, safeErrorMessage } from '../../../lib/presentation';
 import DeliveryAttemptPanel from './delivery-attempt-panel';
+import CodCollectionPanel from './cod-collection-panel';
+import CodHandoverPanel from './cod-handover-panel';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,8 +42,14 @@ export default async function TripDetailPage({ params }: PageProps) {
   }
 
   try {
-    const result = await getMyTrip(user, params.tripId);
+    const [result, codOverview] = await Promise.all([
+      getMyTrip(user, params.tripId),
+      getMyCodOverview(user, params.tripId),
+    ]);
     const { trip } = result;
+    const codByAssignment = new Map<string, CodAssignment>(
+      codOverview.assignments.map((assignment) => [assignment.assignmentId, assignment]),
+    );
     const attemptCount = trip.stops?.reduce(
       (total, stop) => total + stop.assignments.filter((assignment) => assignment.attempt).length,
       0,
@@ -84,7 +94,7 @@ export default async function TripDetailPage({ params }: PageProps) {
           <section className="nextStopCard completed" id="next-delivery-action">
             <div className="nextStopTopline"><span>Tiến độ chuyến</span><b>Hoàn tất</b></div>
             <h2>Đã ghi kết quả tất cả phiếu giao</h2>
-            <p className="nextStopAddress">Kiểm tra lại bằng chứng và ghi chú trước khi kết thúc công việc.</p>
+            <p className="nextStopAddress">Kiểm tra bằng chứng, tiền COD và bàn giao trước khi kết thúc công việc.</p>
           </section>
         )}
 
@@ -94,39 +104,21 @@ export default async function TripDetailPage({ params }: PageProps) {
             <span>{trip.stops?.length ?? 0} điểm</span>
           </div>
           <dl className="summaryGrid">
-            <div>
-              <dt>Tài xế</dt>
-              <dd>{trip.driverName || user.displayName}</dd>
-            </div>
-            <div>
-              <dt>Biển số</dt>
-              <dd>{trip.licensePlate || trip.vehicleCode || 'Chưa có'}</dd>
-            </div>
-            <div>
-              <dt>Kho xuất</dt>
-              <dd>{trip.warehouseName || trip.warehouseCode || 'Chưa có'}</dd>
-            </div>
-            <div>
-              <dt>Xuất phát</dt>
-              <dd>{formatDateTime(trip.dispatchedAt)}</dd>
-            </div>
+            <div><dt>Tài xế</dt><dd>{trip.driverName || user.displayName}</dd></div>
+            <div><dt>Biển số</dt><dd>{trip.licensePlate || trip.vehicleCode || 'Chưa có'}</dd></div>
+            <div><dt>Kho xuất</dt><dd>{trip.warehouseName || trip.warehouseCode || 'Chưa có'}</dd></div>
+            <div><dt>Xuất phát</dt><dd>{formatDateTime(trip.dispatchedAt)}</dd></div>
           </dl>
           {trip.handoverNote ? <p className="handoverNote">Ghi chú bàn giao: {trip.handoverNote}</p> : null}
         </section>
 
         <section className="stopSection">
           <div className="deliverySectionHeading">
-            <div>
-              <p className="eyebrow">Lộ trình</p>
-              <h2>Thứ tự điểm giao</h2>
-            </div>
+            <div><p className="eyebrow">Lộ trình</p><h2>Thứ tự điểm giao</h2></div>
             <span>{trip.stops?.length ?? 0} điểm</span>
           </div>
           {!trip.stops?.length ? (
-            <div className="stateCard">
-              <strong>Chưa có điểm giao</strong>
-              <p>Vui lòng liên hệ điều phối để kiểm tra chuyến.</p>
-            </div>
+            <div className="stateCard"><strong>Chưa có điểm giao</strong><p>Vui lòng liên hệ điều phối để kiểm tra chuyến.</p></div>
           ) : (
             <ol className="stopList">
               {trip.stops.map((stop) => {
@@ -139,38 +131,26 @@ export default async function TripDetailPage({ params }: PageProps) {
                         <p className="stopAddress">{isNextStop ? 'Điểm giao đang ưu tiên ở phía trên' : formatAddress(stop.address)}</p>
                         {isNextStop ? <span className="nextStopBadge">Tiếp theo</span> : null}
                       </div>
-                      {stop.plannedArrivalAt ? (
-                        <p className="mutedText">Dự kiến: {formatDateTime(stop.plannedArrivalAt)}</p>
-                      ) : null}
+                      {stop.plannedArrivalAt ? <p className="mutedText">Dự kiến: {formatDateTime(stop.plannedArrivalAt)}</p> : null}
                       <div className="deliveryOrders">
                         {stop.assignments.map((assignment) => {
                           const isNextAssignment = nextAssignment?.assignmentId === assignment.assignmentId;
+                          const codAssignment = codByAssignment.get(assignment.assignmentId);
                           return (
-                            <article
-                              className={assignment.attempt ? 'deliveryOrder completedAssignment' : 'deliveryOrder'}
-                              id={assignmentAnchor(assignment.assignmentId)}
-                              key={assignment.assignmentId}
-                            >
+                            <article className={assignment.attempt ? 'deliveryOrder completedAssignment' : 'deliveryOrder'} id={assignmentAnchor(assignment.assignmentId)} key={assignment.assignmentId}>
                               <div className="deliveryOrderHeading">
                                 <div>
                                   <strong>{isNextAssignment ? 'Phiếu giao tiếp theo' : (assignment.customerName || assignment.customerCode || 'Khách hàng')}</strong>
                                   <span>{isNextAssignment ? 'Thông tin chính ở thẻ ưu tiên phía trên' : (assignment.deliveryOrderNumber || 'Phiếu giao chưa có số')}</span>
                                 </div>
-                                <span className={assignment.attempt ? 'assignmentState done' : 'assignmentState'}>
-                                  {assignment.attempt ? 'Đã ghi' : 'Chờ ghi'}
-                                </span>
+                                <span className={assignment.attempt ? 'assignmentState done' : 'assignmentState'}>{assignment.attempt ? 'Đã ghi' : 'Chờ ghi'}</span>
                               </div>
                               <dl>
-                                <div>
-                                  <dt>Ngày yêu cầu</dt>
-                                  <dd>{assignment.requestedDeliveryDate || 'Chưa có'}</dd>
-                                </div>
-                                <div>
-                                  <dt>Thu tiền</dt>
-                                  <dd>{assignment.collectionPolicy || 'Theo phiếu'}</dd>
-                                </div>
+                                <div><dt>Ngày yêu cầu</dt><dd>{assignment.requestedDeliveryDate || 'Chưa có'}</dd></div>
+                                <div><dt>Thu tiền</dt><dd>{assignment.collectionPolicy || 'Theo phiếu'}</dd></div>
                               </dl>
                               <DeliveryAttemptPanel tripId={trip.id} assignment={assignment} />
+                              {codAssignment ? <CodCollectionPanel tripId={trip.id} assignment={codAssignment} /> : null}
                             </article>
                           );
                         })}
@@ -183,9 +163,11 @@ export default async function TripDetailPage({ params }: PageProps) {
           )}
         </section>
 
+        <CodHandoverPanel tripId={trip.id} overview={codOverview} />
+
         <section className="noticeCard deliveryBoundaryNote">
-          <strong>Hàng chưa giao vẫn ở trên xe</strong>
-          <p>Màn này ghi kết quả lần giao; bằng chứng giao hàng là tùy chọn. Hàng chưa giao không tự nhập lại kho và chưa xử lý thu tiền.</p>
+          <strong>Delivery chỉ ghi sự thật ngoài tuyến</strong>
+          <p>Kết quả giao, tiền khách thực trả và bàn giao tiền mặt được ghi riêng. Kế toán NPP xác nhận tiền công ty nhận; Delivery không sửa công nợ trực tiếp.</p>
         </section>
       </main>
     );

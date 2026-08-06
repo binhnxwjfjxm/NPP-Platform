@@ -73,12 +73,20 @@ test('Delivery principal can read and record own attempts and optional POD but c
     PERMISSIONS.coreDeliveryAttemptRecord,
     PERMISSIONS.corePodRead,
     PERMISSIONS.corePodAttach,
+    PERMISSIONS.coreCodCollectionRead,
+    PERMISSIONS.coreCodCollectionRecord,
+    PERMISSIONS.coreCodHandoverRead,
+    PERMISSIONS.coreCodHandoverCreate,
   ]);
   assert.deepEqual(principal.scopes.warehouseIds, [WAREHOUSE_ID]);
   assert.equal(isKnownPermissionKey(PERMISSIONS.coreDeliveryAttemptRead), true);
   assert.equal(isKnownPermissionKey(PERMISSIONS.coreDeliveryAttemptRecord), true);
   assert.equal(isKnownPermissionKey(PERMISSIONS.corePodRead), true);
   assert.equal(isKnownPermissionKey(PERMISSIONS.corePodAttach), true);
+  assert.equal(isKnownPermissionKey(PERMISSIONS.coreCodCollectionRead), true);
+  assert.equal(isKnownPermissionKey(PERMISSIONS.coreCodCollectionRecord), true);
+  assert.equal(isKnownPermissionKey(PERMISSIONS.coreCodHandoverRead), true);
+  assert.equal(isKnownPermissionKey(PERMISSIONS.coreCodHandoverCreate), true);
 
   const context = createRequestContext({ config, principal });
   assert.equal(requirePermission(context, PERMISSIONS.coreDeliveryTripDriverRead).ok, true);
@@ -86,6 +94,10 @@ test('Delivery principal can read and record own attempts and optional POD but c
   assert.equal(requirePermission(context, PERMISSIONS.coreDeliveryAttemptRecord).ok, true);
   assert.equal(requirePermission(context, PERMISSIONS.corePodRead).ok, true);
   assert.equal(requirePermission(context, PERMISSIONS.corePodAttach).ok, true);
+  assert.equal(requirePermission(context, PERMISSIONS.coreCodCollectionRead).ok, true);
+  assert.equal(requirePermission(context, PERMISSIONS.coreCodCollectionRecord).ok, true);
+  assert.equal(requirePermission(context, PERMISSIONS.coreCodHandoverRead).ok, true);
+  assert.equal(requirePermission(context, PERMISSIONS.coreCodHandoverCreate).ok, true);
   assert.equal(requirePermission(context, PERMISSIONS.coreDeliveryTripRead).ok, false);
   assert.equal(requirePermission(context, PERMISSIONS.coreDeliveryTripDispatch).ok, false);
 });
@@ -116,6 +128,10 @@ test('Delivery token requires a trusted valid employee header', () => {
     PERMISSIONS.coreDeliveryAttemptRecord,
     PERMISSIONS.corePodRead,
     PERMISSIONS.corePodAttach,
+    PERMISSIONS.coreCodCollectionRead,
+    PERMISSIONS.coreCodCollectionRecord,
+    PERMISSIONS.coreCodHandoverRead,
+    PERMISSIONS.coreCodHandoverCreate,
   ]);
 });
 

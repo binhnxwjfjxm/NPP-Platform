@@ -1,4 +1,5 @@
 import { handleInventoryRoutes as handleInventoryCoreRoutes } from './inventory-core.js';
+import { handleCodDriverRoutes } from './cod-driver.js';
 import { handleLogisticsRoutes } from './logistics.js';
 import { handleLogisticsAttemptRoutes } from './logistics-attempts.js';
 import { handleLogisticsDispatchRoutes } from './logistics-dispatch.js';
@@ -13,6 +14,10 @@ export async function handleInventoryRoutes(req, res, options) {
   if (/^\/api\/logistics\/driver\/trips\/[^/]+\/assignments\/[^/]+\/attempts\/[^/]+\/pod$/.test(pathname)
       || /^\/api\/logistics\/trips\/[^/]+\/attempts\/[^/]+\/pod$/.test(pathname)) {
     return handleLogisticsPodRoutes(req, res, options);
+  }
+  if (/^\/api\/logistics\/driver\/trips\/[^/]+\/(cod|cod-handovers)$/.test(pathname)
+      || /^\/api\/logistics\/driver\/trips\/[^/]+\/assignments\/[^/]+\/cod-collections$/.test(pathname)) {
+    return handleCodDriverRoutes(req, res, options);
   }
   if (pathname === '/api/logistics/driver/trips'
       || pathname.startsWith('/api/logistics/driver/trips/')) {
