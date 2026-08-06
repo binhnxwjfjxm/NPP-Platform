@@ -8,6 +8,7 @@ on:
       - "mcp/src/features/mcp-settings/**"
       - "mcp/src/features/dashboard/**"
       - "mcp/src/features/settings/**"
+      - "mcp/src/features/accounts/**"
       - "mcp/src/features/orders/**"
       - "mcp/src/ui/layout/**"
       - "mcp/src/ui/shell/**"
@@ -20,6 +21,7 @@ on:
       - "mcp/src/app/hung-phat-mobile-foundation.css"
       - "mcp/src/app/page.tsx"
       - "mcp/src/app/settings/**"
+      - "mcp/src/app/customers/**"
       - "mcp/src/app/mcp/**"
       - "mcp/src/app/mcp-setting/**"
       - "mcp/src/app/routes/**"
@@ -28,6 +30,7 @@ on:
       - "mcp/src/app/api/**"
       - "mcp/src/lib/api/**"
       - "mcp/test/ui/f05-ui-**"
+      - "mcp/test/ui/customers-page-browser-smoke.mjs"
       - "mcp/test/ui/mcp-settings-dialog-browser-smoke.mjs"
       - "mcp/test/ui/interaction-feedback-**"
       - "mcp/test/ui/app-shell-browser-acceptance-smoke.mjs"
@@ -100,6 +103,7 @@ jobs:
           node test/ui/interaction-feedback-browser-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/interaction-feedback-smoke.log
           node test/ui/app-shell-browser-acceptance-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/app-shell-browser-acceptance.log
           node test/ui/mobile-dock-navigation-browser-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/mobile-dock-navigation.log
+          node test/ui/customers-page-browser-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/customers-page-browser.log
           node test/ui/orders-tabs-browser-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/orders-tabs-browser.log
           node test/ui/mcp-settings-dialog-browser-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/mcp-settings-dialog.log
           node test/ui/route-customer-photo-management-browser-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/route-customer-photo-management.log

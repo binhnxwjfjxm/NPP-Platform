@@ -76,8 +76,8 @@ try {
       title: "UI Existing Customer",
       action: /Mở hồ sơ/,
       dialogName: "UI Existing Customer",
-      detailLabels: ["Người liên hệ", "Đơn gần nhất"],
-      forbiddenCardText: ["Người liên hệ", "Đơn gần nhất", "Doanh số tháng"]
+      detailLabels: ["Trạng thái hồ sơ", "Người liên hệ", "Tuyến", "Cập nhật GPS"],
+      forbiddenCardText: ["Đơn gần nhất", "Doanh số tháng", "Ghé gần nhất", "Hạng A"]
     },
     {
       path: "/plans",
@@ -104,7 +104,7 @@ try {
       await card.waitFor({ state: "visible" });
       await card.getByText(spec.title, { exact: true }).waitFor({ state: "visible" });
       for (const hiddenText of spec.forbiddenCardText) {
-        assert.equal(await card.getByText(hiddenText, { exact: true }).count(), 0, `${spec.path} mobile card must keep ${hiddenText} in details`);
+        assert.equal(await card.getByText(hiddenText, { exact: true }).count(), 0, `${spec.path} mobile card must not render ${hiddenText}`);
       }
       if (spec.path === "/plans") {
         await card.getByText("Quá hạn", { exact: true }).waitFor({ state: "visible" });
@@ -120,6 +120,13 @@ try {
       await dialog.waitFor({ state: "visible" });
       for (const label of spec.detailLabels) {
         await dialog.getByText(label, { exact: true }).waitFor({ state: "visible" });
+      }
+      if (spec.path === "/customers") {
+        for (const inventedLabel of ["Đơn gần nhất", "Doanh số tháng", "Ghé gần nhất", "Hạng A"]) {
+          assert.equal(await dialog.getByText(inventedLabel, { exact: true }).count(), 0, `customer dialog must not invent ${inventedLabel}`);
+        }
+        const directions = dialog.getByRole("link", { name: "Di chuyển", exact: true });
+        assert.match(String(await directions.getAttribute("href")), /^https:\/\/www\.google\.com\/maps\//);
       }
       await listPage.keyboard.press("Escape");
       await dialog.waitFor({ state: "hidden" });

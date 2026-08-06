@@ -48,7 +48,7 @@ const CUSTOMERS_NAV_ITEM: NavItem = {
   label: "Điểm bán",
   shortLabel: "Khách",
   href: "/customers",
-  description: "Hồ sơ và lịch sử chăm sóc điểm bán",
+  description: "Hồ sơ và dữ liệu điểm bán theo tuyến",
   icon: "□"
 };
 
@@ -116,8 +116,8 @@ export const SIDEBAR_NAV_ITEMS: NavItem[] = [
 
 export const FIELD_DOCK_ITEMS: NavItem[] = [
   OVERVIEW_NAV_ITEM,
-  ROUTES_NAV_ITEM,
   VISITS_NAV_ITEM,
+  CUSTOMERS_NAV_ITEM,
   ORDERS_NAV_ITEM,
   REPORTS_NAV_ITEM
 ];

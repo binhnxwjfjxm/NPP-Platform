@@ -4,6 +4,7 @@ import { chromium } from "playwright";
 
 const appBase = process.env.F05_UI_APP_BASE || "http://127.0.0.1:3000";
 const resultsDir = process.env.F05_UI_RESULTS_DIR || "test-results/f05-ui-smoke";
+const visitUrl = `${appBase}/visits?routeId=route-active&date=2099-12-30`;
 
 await mkdir(resultsDir, { recursive: true });
 
@@ -23,20 +24,34 @@ async function waitForHttp(url, timeoutMs = 120_000) {
   throw lastError || new Error(`timeout_waiting_for_${url}`);
 }
 
-await waitForHttp(`${appBase}/visits?routeId=route-active&date=2099-12-30`);
+await waitForHttp(visitUrl);
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const page = await context.newPage();
 
 try {
-  await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "networkidle" });
+  await page.goto(visitUrl, { waitUntil: "networkidle" });
+
+  const directionsButton = page.locator('[data-customer-directions="true"]').first();
+  await directionsButton.waitFor({ state: "visible" });
+  assert.equal(await directionsButton.isEnabled(), true, "Di chuyển must be enabled on an active visit card");
+  const directionsBox = await directionsButton.boundingBox();
+  assert.ok(directionsBox, "Di chuyển must have a clickable box");
+  assert.ok(directionsBox.width >= 44 && directionsBox.height >= 42, `Di chuyển touch target is too small: ${JSON.stringify(directionsBox)}`);
+  const mapsRequestPromise = page.waitForRequest((request) => {
+    return request.isNavigationRequest() && /^https:\/\/www\.google\.com\/maps\//.test(request.url());
+  });
+  await directionsButton.click({ noWaitAfter: true });
+  const mapsRequest = await mapsRequestPromise;
+  assert.match(mapsRequest.url(), /^https:\/\/www\.google\.com\/maps\//, "Di chuyển must navigate to Google Maps from one tap");
+  await page.goto(visitUrl, { waitUntil: "networkidle" });
 
   const appMenuButton = page.getByRole("button", { name: "Mở menu ứng dụng", exact: true });
   await appMenuButton.waitFor({ state: "visible" });
   assert.equal(await appMenuButton.count(), 1, "mobile must have exactly one top menu button");
   assert.equal(await page.getByRole("button", { name: "Cài đặt", exact: true }).count(), 0, "standalone settings button must be removed");
-  assert.equal(await page.getByRole("button", { name: "Mở menu tác vụ phiên", exact: true }).count(), 0, "standalone session action button must be removed");
+  assert.equal(await page.getByRole("button", { name: "Mở menu tác vụ phiên", exact: true }).count(), 0, "session header must not add a second menu trigger");
   assert.equal(await page.locator("[data-page-header-actions] button").count(), 0, "page header must not contain a second menu button");
 
   const triggerBox = await appMenuButton.boundingBox();
@@ -74,6 +89,7 @@ try {
   console.log(JSON.stringify({
     F05_UNIFIED_MOBILE_MENU_SMOKE: "PASS",
     viewport: "390x844",
+    directionsButton: "PASS",
     triggerCount: 1,
     standaloneSettingsButton: false,
     standaloneSessionButton: false,
