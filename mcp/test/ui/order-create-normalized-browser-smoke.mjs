@@ -92,18 +92,23 @@ async function orderControlCenterFlow(browser) {
   await page.goto(`${appBase}/orders`, { waitUntil: "networkidle" });
 
   await page.getByRole("heading", { name: "Trung tâm đơn hàng", exact: true }).waitFor({ state: "visible" });
-  await page.getByText("Đang đo doanh số đặt hàng", { exact: true }).waitFor({ state: "visible" });
-  await page.getByText("Doanh số theo khách", { exact: true }).waitFor({ state: "visible" });
-  await page.getByText("Cần chủ doanh nghiệp chú ý", { exact: true }).waitFor({ state: "visible" });
+  await page.getByRole("tabpanel", { name: "Đơn hàng" }).waitFor({ state: "visible" });
   await page.getByText(/7\/7 đơn/).waitFor({ state: "visible" });
 
   const routeSelect = page.locator("label").filter({ hasText: /^Tuyến/ }).locator("select");
   await routeSelect.selectOption({ label: "Tuyến phiên đang chạy" });
   await page.getByText(/4\/7 đơn/).waitFor({ state: "visible" });
-  assert.equal(await page.getByText("UI Other Route Customer", { exact: true }).count(), 0, "route drill-down must exclude other routes");
+  assert.equal(await page.getByText("UI Other Route Customer", { exact: true }).count(), 0, "route filter must exclude other routes");
 
-  const customerPanel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Doanh số theo khách", exact: true }) });
+  await page.getByRole("tab", { name: /Doanh số đặt hàng/ }).click();
+  await page.waitForURL((url) => url.searchParams.get("view") === "sales");
+  const salesPanel = page.getByRole("tabpanel", { name: "Doanh số đặt hàng" });
+  await salesPanel.getByText("Đang đo doanh số đặt hàng", { exact: true }).waitFor({ state: "visible" });
+  await salesPanel.getByText("Doanh số theo khách", { exact: true }).waitFor({ state: "visible" });
+
+  const customerPanel = salesPanel.locator("section").filter({ has: page.getByRole("heading", { name: "Doanh số theo khách", exact: true }) });
   await customerPanel.getByRole("button", { name: /UI Existing Customer/ }).click();
+  await page.waitForURL((url) => url.pathname === "/orders" && !url.searchParams.get("view"));
   await page.getByRole("button", { name: "Khách: UI Existing Customer ×", exact: true }).waitFor({ state: "visible" });
   assert.equal(await page.getByText("UI Second Customer", { exact: true }).count(), 0, "customer drill-down must own the order result list");
 
@@ -135,11 +140,14 @@ async function orderControlCenterFlow(browser) {
   await page.getByRole("button", { name: /Xóa 2 bộ lọc/ }).click();
   await page.getByText(/7\/7 đơn/).waitFor({ state: "visible" });
 
-  const attentionSelect = page.locator("label").filter({ hasText: /^Cần chú ý/ }).locator("select");
-  await attentionSelect.selectOption("possible_duplicate");
-  await page.getByText(/2\/7 đơn/).waitFor({ state: "visible" });
-  await page.locator("#orders-result-list").getByText("Nghi trùng", { exact: true }).first().waitFor({ state: "visible" });
+  await page.getByRole("tab", { name: /Cần xử lý/ }).click();
+  await page.waitForURL((url) => url.searchParams.get("view") === "attention");
+  const attentionPanel = page.getByRole("tabpanel", { name: "Cần xử lý" });
+  await attentionPanel.getByRole("button", { name: /Nghi trùng/ }).first().click();
+  await attentionPanel.getByText("Nghi trùng", { exact: true }).first().waitFor({ state: "visible" });
 
+  await page.getByRole("tab", { name: /Đơn hàng/ }).click();
+  await page.waitForURL((url) => url.pathname === "/orders" && !url.searchParams.get("view"));
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Xuất theo bộ lọc", exact: true }).click();
   const download = await downloadPromise;
