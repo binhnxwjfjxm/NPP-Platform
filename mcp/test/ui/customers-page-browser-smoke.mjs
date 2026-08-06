@@ -46,10 +46,11 @@ async function verifyMobile(browser) {
 
   await page.getByRole("heading", { name: "Điểm bán", exact: true }).waitFor({ state: "visible" });
   await page.getByPlaceholder("Tên, liên hệ, khu vực hoặc tuyến").waitFor({ state: "visible" });
-  assert.equal(await page.getByLabel("Tuyến").count(), 1, "customers mobile must expose route filter");
-  assert.equal(await page.getByLabel("Trạng thái").count(), 1, "customers mobile must expose status filter");
+  assert.equal(await page.getByLabel("Tuyến", { exact: true }).count(), 1, "customers mobile must expose route filter");
+  assert.equal(await page.getByLabel("Trạng thái", { exact: true }).count(), 1, "customers mobile must expose status filter");
   const cards = page.locator("[data-outlet-mobile-card]");
-  assert.ok(await cards.count(), "customers mobile must render live route-customer cards");
+  const cardCount = await cards.count();
+  assert.ok(cardCount, "customers mobile must render live route-customer cards");
   await assertNoInventedMetrics(page);
 
   const dock = page.locator('[data-bottom-navigation="true"]');
@@ -67,7 +68,7 @@ async function verifyMobile(browser) {
   const geometry = await verifyNoHorizontalOverflow(page, "customers mobile");
   await page.screenshot({ path: `${resultsDir}/customers-mobile.png`, fullPage: true });
   await context.close();
-  return { cards: await cards.count().catch(() => 0), geometry };
+  return { cards: cardCount, geometry };
 }
 
 async function verifyDesktop(browser) {
