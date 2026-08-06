@@ -18,11 +18,6 @@ jobs:
         with:
           ref: agent/phase-7-3-stocktake
           fetch-depth: 0
-      - name: Sync current main
-        run: |
-          set -euo pipefail
-          git fetch origin main
-          git merge --no-edit origin/main
       - name: Patch files
         run: |
           set -euo pipefail
