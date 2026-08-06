@@ -52,6 +52,7 @@ const accessItems: NavItem[] = [
 
 const inventoryItems: NavItem[] = [
   { href: '/inventory/fulfillment', label: 'Chuẩn bị hàng', icon: 'panel', testId: 'nav-inventory-fulfillment' },
+  { href: '/inventory/transfers', label: 'Chuyển kho', icon: 'panel', testId: 'nav-inventory-transfers' },
   { href: '/inventory/balances', label: 'Tra cứu tồn kho', icon: 'panel', testId: 'nav-inventory-balances' },
   { href: '/inventory/tracking-policies', label: 'Chính sách lô', icon: 'panel', testId: 'nav-inventory-policies' },
   { href: '/inventory/lots', label: 'Lô hàng', icon: 'panel', testId: 'nav-inventory-lots' },
@@ -370,7 +371,7 @@ export function AppShell({
             {renderGroup({
               sectionLabel: 'Tồn kho & lô hàng',
               title: 'Tồn kho & lô hàng',
-              hint: 'Chuẩn bị hàng, số lượng tồn, lô, hạn dùng và tồn đầu kỳ',
+              hint: 'Chuẩn bị hàng, chuyển kho, số lượng tồn, lô, hạn dùng và tồn đầu kỳ',
               icon: 'panel',
               active: isInventoryPath(pathname),
               open: inventoryOpen,
