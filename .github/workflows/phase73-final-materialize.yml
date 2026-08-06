@@ -34,8 +34,11 @@ jobs:
       - name: Materialize source
         run: |
           set -euo pipefail
-          # Payload is split only to stay within the repository contents API limit.
-          cat .phase73-final/part-* | base64 --decode | tar -xzf - -C .
+          cat .phase73-final/part-* > /tmp/phase73-final.b64
+          echo "9da3b944c4a018f530fd26ee4afd870eea9e68e0e9bc0170e8a9d9f764093c03  /tmp/phase73-final.b64" | sha256sum --check
+          base64 --decode /tmp/phase73-final.b64 > /tmp/phase73-final.tar.gz
+          echo "094003a48b3838bcd693bf8967bcf956959a6f970bfc9a857b6dac0e6607c154  /tmp/phase73-final.tar.gz" | sha256sum --check
+          tar -xzf /tmp/phase73-final.tar.gz -C .
           python3 .phase73-finalize.py
           rm -rf .phase73-final
           rm -f .phase73-finalize.py .github/workflows/phase73-final-materialize.yml
