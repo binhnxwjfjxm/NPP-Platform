@@ -23,6 +23,14 @@ test('Delivery PWA declares standalone metadata and install icons', () => {
   }
 });
 
+test('Delivery bottom navigation is compact while preserving iPhone safe area', () => {
+  const styles = read('app/delivery-mobile-app.css');
+  assert.match(styles, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(styles, /\.deliveryAppDock[\s\S]*?min-height:\s*calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(styles, /\.deliveryAppDock[\s\S]*?padding:\s*5px 7px calc\(5px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(styles, /\.deliveryDockItem[\s\S]*?min-height:\s*48px/);
+});
+
 test('Delivery service worker caches only static assets and uses a safe offline page', () => {
   const worker = read('public/sw.js');
   const offline = read('public/offline.html');
