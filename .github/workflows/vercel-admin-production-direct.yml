@@ -106,20 +106,50 @@ jobs:
 
           smoke_ok=false
           for attempt in $(seq 1 12); do
-            unauth="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$ADMIN_ORIGIN/" || true)"
+            login_file="${RUNNER_TEMP}/admin-login.html"
             overview_file="${RUNNER_TEMP}/admin-overview.html"
             onboarding_file="${RUNNER_TEMP}/admin-onboarding.html"
-            overview="$(curl --silent --show-error -u "$auth" --output "$overview_file" --write-out '%{http_code}' "$ADMIN_ORIGIN/" || true)"
-            onboarding="$(curl --silent --show-error -u "$auth" --output "$onboarding_file" --write-out '%{http_code}' "$ADMIN_ORIGIN/customer-onboarding" || true)"
 
-            if [ "$unauth" = 401 ] && [ "$overview" = 200 ] && [ "$onboarding" = 200 ] && \
+            challenge="$(curl --silent --show-error \
+              -H 'Accept: application/json' \
+              --output /dev/null --write-out '%{http_code}' \
+              "$ADMIN_ORIGIN/" || true)"
+            browser_meta="$(curl --silent --show-error \
+              -H 'Accept: text/html' \
+              --output /dev/null --write-out '%{http_code}|%{redirect_url}' \
+              "$ADMIN_ORIGIN/" || true)"
+            browser_status="${browser_meta%%|*}"
+            browser_redirect="${browser_meta#*|}"
+            login="$(curl --silent --show-error \
+              -H 'Accept: text/html' \
+              --output "$login_file" --write-out '%{http_code}' \
+              "$ADMIN_ORIGIN/login" || true)"
+            overview="$(curl --silent --show-error -u "$auth" \
+              --output "$overview_file" --write-out '%{http_code}' \
+              "$ADMIN_ORIGIN/" || true)"
+            onboarding="$(curl --silent --show-error -u "$auth" \
+              --output "$onboarding_file" --write-out '%{http_code}' \
+              "$ADMIN_ORIGIN/customer-onboarding" || true)"
+
+            case "$browser_status" in
+              307|308) browser_redirect_ok=true ;;
+              *) browser_redirect_ok=false ;;
+            esac
+
+            if [ "$challenge" = 401 ] && \
+               [ "$browser_redirect_ok" = true ] && \
+               [ "$browser_redirect" = "$ADMIN_ORIGIN/login" ] && \
+               [ "$login" = 200 ] && \
+               [ "$overview" = 200 ] && \
+               [ "$onboarding" = 200 ] && \
+               grep -Fq 'Đăng nhập một lần' "$login_file" && \
                grep -Fq 'Tổng hợp và ngoại lệ cấp quản lý' "$overview_file" && \
                grep -Fq 'Ranh giới duyệt ngoại lệ' "$onboarding_file"; then
               smoke_ok=true
               break
             fi
 
-            echo "Admin domain not ready yet: attempt=$attempt unauth=$unauth overview=$overview onboarding=$onboarding"
+            echo "Admin domain not ready: attempt=$attempt challenge=$challenge browser=$browser_status login=$login overview=$overview onboarding=$onboarding"
             sleep 5
           done
           test "$smoke_ok" = true
