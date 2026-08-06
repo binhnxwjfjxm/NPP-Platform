@@ -25,7 +25,8 @@ test('reconciliation route is GET-only, deny-by-default and warehouse scoped', (
   assert.match(route, /coreReceivableRead/);
   assert.match(route, /METHOD_NOT_ALLOWED/);
   assert.doesNotMatch(route, /readJsonBody|executeRequestWithIdempotency|withAuditOutboxTransaction/);
-  assert.match(repository, /warehouse_id = ANY\(\$2::uuid\[\]\)/);
+  assert.match(repository, /warehouseColumn \?\? 'warehouse_id'/);
+  assert.match(repository, /ANY\(\$2::uuid\[\]\)/);
   assert.match(repository, /reporting\.phase6f_closeout_anomalies/);
   assert.match(wrapper, /handleSalesSettlementReconciliationRoutes/);
 });
