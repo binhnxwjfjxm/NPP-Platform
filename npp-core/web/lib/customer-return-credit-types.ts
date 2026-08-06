@@ -1,0 +1,102 @@
+export type ReceivableAllocation = {
+  id: string;
+  sourceReceivableDocumentId: string;
+  sourceDocumentNumber: string | null;
+  sourceDocumentType: string | null;
+  sourceWarehouseId: string | null;
+  targetReceivableDocumentId: string;
+  targetDocumentNumber: string | null;
+  targetDocumentType: string | null;
+  targetWarehouseId: string | null;
+  amount: string;
+  allocationDate: string;
+  createdAt: string;
+  reversed: boolean;
+  reversalId: string | null;
+  reversalReason: string | null;
+  reversedAt: string | null;
+  metadata: Record<string, unknown>;
+};
+
+export type CustomerReturnAdjustmentLine = {
+  id: string;
+  lineNumber: number;
+  customerReturnLineId: string;
+  customerReturnReceiptLineId: string;
+  sourceReceivableDocumentId: string;
+  sourceReceivableLineId: string;
+  sourceDocumentNumber: string | null;
+  sourceDocumentType: string | null;
+  sku: string | null;
+  itemName: string | null;
+  unitCode: string | null;
+  acceptedBaseQuantity: string;
+  adjustmentAmount: string;
+  currencyCode: string;
+  metadata: Record<string, unknown>;
+};
+
+export type CustomerRefund = {
+  id: string;
+  receivableDocumentId: string;
+  sourceCreditDocumentId: string;
+  sourceCreditNumber: string | null;
+  sourceCreditType: string | null;
+  refundNumber: string | null;
+  customerId: string;
+  customerCode: string | null;
+  customerName: string | null;
+  warehouseId: string;
+  warehouseCode: string | null;
+  warehouseName: string | null;
+  currencyCode: string;
+  amount: string;
+  refundMethod: string;
+  destinationReference: string;
+  externalReference: string | null;
+  reason: string;
+  postedAt: string;
+  status: string;
+  reversalId: string | null;
+  reversalReason: string | null;
+  reversedAt: string | null;
+  metadata: Record<string, unknown>;
+};
+
+export type CustomerReturnCredit = {
+  id: string;
+  customerReturnId: string;
+  returnNumber: string;
+  customerReturnReceivedAt: string | null;
+  customerId: string;
+  customerCode: string | null;
+  customerName: string | null;
+  warehouseId: string;
+  warehouseCode: string | null;
+  warehouseName: string | null;
+  documentNumber: string;
+  currencyCode: string;
+  originalAmount: string;
+  allocatedAmount: string;
+  remainingAmount: string;
+  status: 'open' | 'partially_allocated' | 'settled' | 'reversed';
+  revision: string;
+  postedAt: string;
+  postedBy: string;
+  reversedAt: string | null;
+  reversedBy: string | null;
+  reversalReason: string | null;
+  lines: CustomerReturnAdjustmentLine[];
+  allocations: ReceivableAllocation[];
+  refunds: CustomerRefund[];
+};
+
+export type CustomerRefundDraft = {
+  sourceCreditDocumentId: string;
+  amount: string;
+  refundMethod: string;
+  destinationReference: string;
+  externalReference?: string;
+  reason: string;
+  refundDate: string;
+};
