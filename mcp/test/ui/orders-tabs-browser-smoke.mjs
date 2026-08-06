@@ -66,7 +66,7 @@ async function verifyMobile(browser) {
   await page.getByRole("tab", { name: /Tổng quan/ }).click();
   await page.waitForURL((url) => url.searchParams.get("view") === "overview");
   const overviewPanel = page.getByRole("tabpanel", { name: "Tổng quan đơn hàng" });
-  assert.equal(await overviewPanel.locator('[aria-label="Tổng quan đơn hàng"] > *').count(), 4, "overview must contain exactly four decision cards");
+  assert.equal(await overviewPanel.locator('[aria-label="Chỉ số tổng quan đơn hàng"] > *').count(), 4, "overview must contain exactly four decision cards");
   assert.equal(await overviewPanel.getByText("Nhịp doanh số theo ngày", { exact: true }).count(), 0, "overview must not duplicate the full sales report");
   await page.screenshot({ path: `${resultsDir}/orders-tabs-mobile.png`, fullPage: true });
   const overviewGeometry = await verifyNoBodyOverflow(page, "orders overview mobile");
