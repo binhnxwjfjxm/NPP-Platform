@@ -1,0 +1,25 @@
+/* Keep the mobile PWA canvas pinned to the real standalone viewport.
+   Safe-area space remains owned by the dock; this layer only fixes the outer frame. */
+@media (max-width: 759px) {
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  body {
+    position: fixed;
+    inset: 0;
+  }
+
+  .deliveryAppFrame {
+    position: fixed;
+    inset: 0;
+    width: min(100%, 720px);
+    height: auto;
+    min-height: 0;
+    margin: 0 auto;
+  }
+}

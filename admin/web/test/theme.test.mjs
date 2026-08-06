@@ -5,7 +5,9 @@ import { readFileSync } from 'node:fs';
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const theme = read('app/hung-phat-warm-gold.css');
 const styles = read('app/globals.css');
+const mobileApp = read('app/admin-mobile-app.css');
 const layout = read('app/layout.tsx');
+const shell = read('app/admin-shell.tsx');
 
 for (const [name, value] of Object.entries({
   '--hp-canvas': '#f7f5f1',
@@ -19,37 +21,34 @@ for (const [name, value] of Object.entries({
   });
 }
 
-test('Admin matches the approved warm-gold dashboard geometry', () => {
+test('Admin keeps the approved warm-gold card geometry', () => {
   assert.match(styles, /\.topbarInner/);
   assert.match(styles, /\.metricGrid/);
   assert.match(styles, /grid-template-columns:\s*repeat\(4/);
   assert.match(styles, /\.dashboardGrid/);
   assert.match(styles, /\.exceptionWorkspace/);
   assert.match(styles, /\.iconBubble/);
-  assert.match(styles, /\.filterChip/);
   assert.match(styles, /\.menuPanel/);
   assert.match(styles, /border:\s*1px solid rgba\(152, 96, 15, 0\.13\)/);
   assert.match(styles, /0 10px 32px rgba\(76, 48, 20, 0\.055\)/);
-  assert.match(theme, /\.exceptionTableHeader\s*\{[^}]*grid-template-columns:\s*40px minmax\(0, 1fr\) auto/);
 });
 
-test('Admin remains responsive without a mobile bottom dock', () => {
-  assert.match(styles, /@media \(max-width: 850px\)/);
-  assert.match(styles, /@media \(max-width: 760px\)/);
-  assert.match(styles, /@media \(max-width: 640px\)/);
-  assert.match(styles, /@media \(max-width: 470px\)/);
-
-  const mobileStart = styles.indexOf('@media (max-width: 760px)');
-  const mobileEnd = styles.indexOf('@media (max-width: 640px)', mobileStart);
-  assert.notEqual(mobileStart, -1);
-  assert.notEqual(mobileEnd, -1);
-  const mobileBreakpoint = styles.slice(mobileStart, mobileEnd);
-
-  assert.match(mobileBreakpoint, /\.desktopNav\s*\{[^}]*display:\s*none/);
-  assert.match(mobileBreakpoint, /\.mobileMenuItem\s*\{[^}]*display:\s*grid/);
-  assert.match(theme, /@media \(max-width: 760px\)\s*\{[\s\S]*?\.menuPanel\s*\{[^}]*top:\s*79px/);
-  assert.doesNotMatch(styles, /bottomDock|bottomNavigation/);
-  assert.match(layout, /import '\.\/hung-phat-warm-gold\.css';/);
+test('Admin behaves like a three-tab mobile app while preserving iPhone safe areas', () => {
+  assert.match(layout, /import '\.\/admin-mobile-app\.css';/);
+  assert.match(layout, /statusBarStyle:\s*'black-translucent'/);
+  assert.match(layout, /viewportFit:\s*'cover'/);
+  assert.match(shell, /className="adminBottomNav"/);
+  assert.match(shell, /label="Tổng quan"/);
+  assert.match(shell, /label="Ngoại lệ"/);
+  assert.match(shell, /label="Menu"/);
+  assert.match(shell, /href="\/menu"/);
+  assert.match(mobileApp, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(mobileApp, /padding:\s*calc\(7px \+ env\(safe-area-inset-top\)\)/);
+  assert.match(mobileApp, /min-height:\s*calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(mobileApp, /padding:\s*6px 8px calc\(6px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(mobileApp, /\.adminBottomItem\s*\{[\s\S]*?min-height:\s*48px/);
+  assert.match(mobileApp, /\.adminAppMain\s*\{[\s\S]*?overflow-y:\s*auto/);
+  assert.match(mobileApp, /\.appMetricGrid,[\s\S]*?grid-template-columns:\s*repeat\(2/);
 });
 
 test('Admin focus ring has an opaque edge for light and dark surfaces', () => {

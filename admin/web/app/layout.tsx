@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { PwaRegister } from './pwa-register';
 import './globals.css';
 import './hung-phat-warm-gold.css';
+import './admin-mobile-app.css';
 
 export const metadata: Metadata = {
   title: 'Admin MCP/NPP — Hưng Phát',
@@ -19,7 +20,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default',
+    statusBarStyle: 'black-translucent',
     title: 'Admin Hưng Phát',
   },
   other: {
