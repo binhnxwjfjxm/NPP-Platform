@@ -33,8 +33,33 @@ async function verifyNoBodyOverflow(page, label) {
   return geometry;
 }
 
-async function verifyMobile(browser) {
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+async function verifyNoHorizontalRail(locator, label, expectedColumns) {
+  const geometry = await locator.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return {
+      clientWidth: node.clientWidth,
+      scrollWidth: node.scrollWidth,
+      overflowX: style.overflowX,
+      display: style.display,
+      columns: style.gridTemplateColumns
+    };
+  });
+  assert.ok(geometry.scrollWidth <= geometry.clientWidth + 1, `${label}: rail must fit without horizontal scrolling`);
+  assert.notEqual(geometry.overflowX, "auto", `${label}: overflow-x auto is forbidden on mobile`);
+  assert.notEqual(geometry.overflowX, "scroll", `${label}: overflow-x scroll is forbidden on mobile`);
+  if (expectedColumns) {
+    assert.equal(geometry.display, "grid", `${label}: rail must use grid`);
+    assert.equal(
+      geometry.columns.split(" ").filter(Boolean).length,
+      expectedColumns,
+      `${label}: rail must resolve to ${expectedColumns} columns`
+    );
+  }
+  return geometry;
+}
+
+async function verifyMobile(browser, width, height) {
+  const context = await browser.newContext({ viewport: { width, height } });
   const page = await context.newPage();
   await page.goto(`${appBase}/orders`, { waitUntil: "networkidle" });
 
@@ -44,7 +69,15 @@ async function verifyMobile(browser) {
   await page.getByRole("button", { name: "+ Tạo đơn", exact: true }).waitFor({ state: "visible" });
   assert.equal(await page.locator('[role="tabpanel"]').count(), 1, "only the active orders panel may render");
   assert.ok(await page.getByText("DH-UI-001", { exact: false }).count(), "default orders list must render live order rows");
-  const defaultGeometry = await verifyNoBodyOverflow(page, "orders default mobile");
+
+  const mainRail = page.getByRole("tablist", { name: "Phân tích và xử lý đơn hàng" });
+  const mainRailGeometry = await verifyNoHorizontalRail(mainRail, `orders tabs ${width}px`, 4);
+  const visibleTabs = await tabs.evaluateAll((nodes) => nodes.map((node) => {
+    const rect = node.getBoundingClientRect();
+    return rect.width > 0 && rect.left >= -1 && rect.right <= window.innerWidth + 1;
+  }));
+  assert.ok(visibleTabs.every(Boolean), `${width}px: all four order tabs must be visible without swiping`);
+  const defaultGeometry = await verifyNoBodyOverflow(page, `orders default ${width}px`);
 
   await page.getByRole("tab", { name: /Cần xử lý/ }).click();
   await page.waitForURL((url) => url.pathname === "/orders" && url.searchParams.get("view") === "attention");
@@ -52,7 +85,10 @@ async function verifyMobile(browser) {
   for (const label of ["Chờ xử lý", "Tồn quá 3 ngày", "Nghi trùng", "Đã hủy", "Giá trị bằng 0"]) {
     await page.getByRole("button", { name: new RegExp(label) }).first().waitFor({ state: "visible" });
   }
+  const attentionRail = page.getByRole("tablist", { name: "Loại đơn cần xử lý" });
+  const attentionRailGeometry = await verifyNoHorizontalRail(attentionRail, `attention filters ${width}px`, 2);
   assert.ok(await page.getByText("Đơn có dấu hiệu trùng", { exact: false }).count(), "attention panel must show duplicate risk");
+  await verifyNoBodyOverflow(page, `orders attention ${width}px`);
 
   await page.getByRole("tab", { name: /Doanh số đặt hàng/ }).click();
   await page.waitForURL((url) => url.searchParams.get("view") === "sales");
@@ -61,17 +97,17 @@ async function verifyMobile(browser) {
   await salesPanel.getByText(/chưa phải doanh thu giao hàng hoặc tiền đã thu/).waitFor({ state: "visible" });
   assert.equal(await salesPanel.locator('[aria-label="Chỉ số doanh số đặt hàng"] > *').count(), 4, "sales panel must show four focused KPIs");
   await salesPanel.getByText("Nhịp doanh số theo ngày", { exact: true }).waitFor({ state: "visible" });
-  await verifyNoBodyOverflow(page, "orders sales mobile");
+  await verifyNoBodyOverflow(page, `orders sales ${width}px`);
 
   await page.getByRole("tab", { name: /Tổng quan/ }).click();
   await page.waitForURL((url) => url.searchParams.get("view") === "overview");
   const overviewPanel = page.getByRole("tabpanel", { name: "Tổng quan đơn hàng" });
   assert.equal(await overviewPanel.locator('[aria-label="Chỉ số tổng quan đơn hàng"] > *').count(), 4, "overview must contain exactly four decision cards");
   assert.equal(await overviewPanel.getByText("Nhịp doanh số theo ngày", { exact: true }).count(), 0, "overview must not duplicate the full sales report");
-  await page.screenshot({ path: `${resultsDir}/orders-tabs-mobile.png`, fullPage: true });
-  const overviewGeometry = await verifyNoBodyOverflow(page, "orders overview mobile");
+  if (width === 390) await page.screenshot({ path: `${resultsDir}/orders-tabs-mobile.png`, fullPage: true });
+  const overviewGeometry = await verifyNoBodyOverflow(page, `orders overview ${width}px`);
   await context.close();
-  return { defaultGeometry, overviewGeometry };
+  return { width, mainRailGeometry, attentionRailGeometry, defaultGeometry, overviewGeometry };
 }
 
 async function verifyDesktop(browser) {
@@ -81,12 +117,7 @@ async function verifyDesktop(browser) {
   assert.equal(await page.getByRole("tab").count(), 4);
   assert.equal(await page.locator('[data-bottom-navigation="true"]').isVisible(), false, "desktop must keep the mobile dock hidden");
   const rail = page.getByRole("tablist", { name: "Phân tích và xử lý đơn hàng" });
-  const railStyle = await rail.evaluate((node) => {
-    const style = getComputedStyle(node);
-    return { display: style.display, columns: style.gridTemplateColumns, overflowX: style.overflowX };
-  });
-  assert.equal(railStyle.display, "grid", "desktop orders tabs must use a four-column rail");
-  assert.equal(railStyle.columns.split(" ").filter(Boolean).length, 4, "desktop tab rail must resolve to four columns");
+  const railStyle = await verifyNoHorizontalRail(rail, "orders desktop", 4);
   const geometry = await verifyNoBodyOverflow(page, "orders desktop");
   await page.screenshot({ path: `${resultsDir}/orders-tabs-desktop.png`, fullPage: false });
   await context.close();
@@ -97,7 +128,14 @@ await waitForHttp(`${appBase}/orders`);
 const browser = await chromium.launch({ headless: true });
 const result = { ORDERS_TABS_BROWSER_SMOKE: "FAIL" };
 try {
-  result.mobile = await verifyMobile(browser);
+  result.mobile = [];
+  for (const viewport of [
+    { width: 360, height: 800 },
+    { width: 390, height: 844 },
+    { width: 430, height: 932 }
+  ]) {
+    result.mobile.push(await verifyMobile(browser, viewport.width, viewport.height));
+  }
   result.desktop = await verifyDesktop(browser);
   result.fourViews = "PASS";
   result.defaultOrders = "PASS";
@@ -105,6 +143,7 @@ try {
   result.orderSales = "PASS";
   result.overviewFourKpis = "PASS";
   result.noHorizontalOverflow = "PASS";
+  result.noHorizontalTabRail = "PASS";
   result.ORDERS_TABS_BROWSER_SMOKE = "PASS";
 } catch (error) {
   result.error = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack || ""}` : String(error);
