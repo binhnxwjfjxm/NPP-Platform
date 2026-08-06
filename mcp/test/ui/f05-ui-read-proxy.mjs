@@ -133,6 +133,48 @@ function followupRows() {
   ];
 }
 
+function orderRows() {
+  const row = (id, code, date, customer, routeName, sales, source, total, status) => ({
+    id,
+    order_code: code,
+    order_date: date,
+    customer_name: customer,
+    raw_payload: { routeName },
+    area: routeName,
+    sales,
+    source_type: source,
+    subtotal: total,
+    discount_total: 0,
+    grand_total: total,
+    status,
+    created_at: `${date}T08:00:00.000Z`
+  });
+  return [
+    row("order-current-draft", "DH-UI-001", "2099-12-30", "Cửa hàng Hiện tại", "Tuyến Trung tâm", "Sales A", "MCP", 150000, "draft"),
+    row("order-stale-draft", "DH-UI-002", "2099-12-24", "Cửa hàng Tồn", "Tuyến Bắc", "Sales B", "MCP", 200000, "draft"),
+    row("order-duplicate-a", "DH-UI-003", "2099-12-29", "Cửa hàng Trùng", "Tuyến Nam", "Sales A", "MCP", 300000, "confirmed"),
+    row("order-duplicate-b", "DH-UI-004", "2099-12-29", "Cửa hàng Trùng", "Tuyến Nam", "Sales A", "MCP", 300000, "confirmed"),
+    row("order-cancelled", "DH-UI-005", "2099-12-28", "Cửa hàng Hủy", "Tuyến Tây", "Sales C", "manual", 120000, "cancelled"),
+    row("order-zero", "DH-UI-006", "2099-12-27", "Cửa hàng Giá 0", "Tuyến Đông", "Sales C", "MCP", 0, "confirmed"),
+    row("order-delivered", "DH-UI-007", "2099-12-30", "Cửa hàng Đã giao", "Tuyến Trung tâm", "Sales A", "MCP", 450000, "delivered")
+  ];
+}
+
+function orderItemRows() {
+  return [
+    { order_id: "order-current-draft", quantity: 2 },
+    { order_id: "order-stale-draft", quantity: 1 },
+    { order_id: "order-stale-draft", quantity: 1 },
+    { order_id: "order-duplicate-a", quantity: 1 },
+    { order_id: "order-duplicate-a", quantity: 2 },
+    { order_id: "order-duplicate-b", quantity: 1 },
+    { order_id: "order-duplicate-b", quantity: 2 },
+    { order_id: "order-cancelled", quantity: 1 },
+    { order_id: "order-zero", quantity: 1 },
+    { order_id: "order-delivered", quantity: 4 }
+  ];
+}
+
 async function readTable(table) {
   if (table === "mcp_routes") {
     const data = await upstreamJson("/api/routes/data");
@@ -167,6 +209,8 @@ async function readTable(table) {
     return visitRows(data.results || []);
   }
   if (table === "mcp_followups") return followupRows();
+  if (table === "orders") return orderRows();
+  if (table === "order_items") return orderItemRows();
   throw new Error(`unsupported_read_table_${table}`);
 }
 
