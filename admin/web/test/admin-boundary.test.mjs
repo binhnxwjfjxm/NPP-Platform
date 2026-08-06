@@ -23,6 +23,8 @@ test('admin remains a standalone manually deployed Vercel frontend', async () =>
   assert.match(shell, /Admin MCP\/NPP/);
   assert.match(shell, /npp-platform\.vercel\.app/);
   assert.match(shell, /NPP_OPERATIONS_URL/);
+  assert.match(shell, /className="appMenu"/);
+  assert.match(shell, /NPP Operations/);
   assert.match(core, /CORE_API_INTERNAL_URL/);
   assert.match(core, /CORE_API_SERVER_TOKEN/);
   assert.doesNotMatch(core, /DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY/);
@@ -51,15 +53,21 @@ test('admin only shows aggregate data and the management exception boundary', as
     read('app/admin-shell.tsx'),
   ]);
 
-  assert.match(overview, /Tổng hợp và ngoại lệ cấp quản lý/);
+  assert.match(overview, /Tổng quan quản lý/);
   assert.match(overview, /Admin không tạo mã khách và không xác nhận mọi đơn hàng/);
-  assert.match(overview, /Backend hiện chưa phân loại hàng đợi ngoại lệ riêng/);
-  assert.match(overview, /npp-platform\.vercel\.app/);
+  assert.match(overview, /Chỉ hiển thị dữ liệu khi backend phân loại đúng ngoại lệ/);
+  assert.match(overview, /Việc hằng ngày ở NPP/);
+  assert.doesNotMatch(overview, /Mở NPP Operations|Mở NPP/);
+
+  assert.match(exceptionBoundary, /Ngoại lệ cấp quản lý/);
   assert.match(exceptionBoundary, /Ranh giới duyệt ngoại lệ/);
-  assert.match(exceptionBoundary, /không hiển thị các nút tạo mã/);
-  assert.match(exceptionBoundary, /management\/customer-onboarding/);
+  assert.match(exceptionBoundary, /không hiển thị nút duyệt giả/);
+  assert.doesNotMatch(exceptionBoundary, /Mở NPP Operations|Mở NPP/);
   assert.doesNotMatch(exceptionBoundary, /CustomerOnboardingReview|loadPendingOnboarding|listCustomers/);
+
   assert.match(shell, /Ngoại lệ cấp quản lý/);
+  assert.match(shell, /menuItem/);
+  assert.match(shell, /management/);
 
   await Promise.all([
     assertMissing('app/customer-onboarding/review.tsx'),
