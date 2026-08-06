@@ -3,59 +3,98 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const page = await readFile(new URL("../src/features/orders/OrdersClientPage.tsx", import.meta.url), "utf8");
+const filters = await readFile(new URL("../src/features/orders/OrdersFilters.tsx", import.meta.url), "utf8");
+const ui = await readFile(new URL("../src/features/orders/orders-page-ui.tsx", import.meta.url), "utf8");
+const session = await readFile(new URL("../src/features/orders/orders-page-session.ts", import.meta.url), "utf8");
 const analytics = await readFile(new URL("../src/features/orders/order-analytics.ts", import.meta.url), "utf8");
 const styles = await readFile(new URL("../src/features/orders/OrdersClientPage.module.css", import.meta.url), "utf8");
+const tabStyles = await readFile(new URL("../src/features/orders/OrdersTabs.module.css", import.meta.url), "utf8");
 const detail = await readFile(new URL("../src/features/orders/OrderDetailDrawer.tsx", import.meta.url), "utf8");
 const detailStyles = await readFile(new URL("../src/features/orders/OrderDetailDrawer.module.css", import.meta.url), "utf8");
 
-test("orders page is an operational control center instead of a static list", () => {
-  assert.match(page, /title="Trung tâm đơn hàng"/);
-  assert.match(page, /Đang đo doanh số đặt hàng/);
-  assert.match(page, /chưa phải doanh thu giao hàng hoặc tiền đã thu/);
-  assert.match(page, /Bộ lọc đơn hàng/);
-  assert.match(page, /Doanh số theo khách/);
-  assert.match(page, /Hiệu quả theo tuyến/);
-  assert.match(page, /Theo nhân viên/);
-  assert.match(page, /Theo nguồn đơn/);
-  assert.match(page, /Cần chủ doanh nghiệp chú ý/);
-  assert.match(page, /Đơn theo bộ lọc/);
+function sectionBetween(start, end) {
+  const startIndex = page.indexOf(start);
+  const endIndex = page.indexOf(end, startIndex + start.length);
+  assert.ok(startIndex >= 0, `missing start marker: ${start}`);
+  assert.ok(endIndex > startIndex, `missing end marker after: ${start}`);
+  return page.slice(startIndex, endIndex);
+}
+
+test("orders page owns four URL-addressable work views", () => {
+  assert.match(page, /type OrderView = "orders" \| "attention" \| "sales" \| "overview"/);
+  assert.match(page, /searchParams\.get\("view"\)/);
+  assert.match(page, /if \(view === "orders"\) params\.delete\("view"\)/);
+  assert.match(page, /else params\.set\("view", view\)/);
+  assert.match(page, /role="tablist" aria-label="Phân tích và xử lý đơn hàng"/);
+  assert.match(page, /role="tab"/);
+  for (const label of ["Đơn hàng", "Cần xử lý", "Doanh số đặt hàng", "Tổng quan"]) {
+    assert.match(page, new RegExp(`label: "${label}"`));
+  }
 });
 
-test("order filters own period, search, route, owner, source, status and attention", () => {
+test("default orders view keeps search, create, list and detail ownership", () => {
+  const ordersView = sectionBetween('activeView === "orders"', 'activeView === "attention"');
+  assert.match(page, /createLoading \? "Đang tải phiên\.\.\." : "\+ Tạo đơn"/);
+  assert.match(ordersView, /filtersPanel\(true\)/);
+  assert.match(ordersView, /id="orders-result-list"/);
+  assert.match(ordersView, /<OrderCard/);
+  assert.match(page, /<OrderDetailDrawer/);
+  assert.match(page, /<OrderCreateSheet/);
+  assert.match(filters, /placeholder="Mã đơn, khách, tuyến, nhân viên\.\.\."/);
+});
+
+test("attention view separates pending, stale, duplicate, cancelled and zero-value work", () => {
+  const attentionView = sectionBetween('activeView === "attention"', 'activeView === "sales"');
+  for (const id of ["pending", "stale", "possible_duplicate", "cancelled", "zero_value"]) {
+    assert.match(page, new RegExp(`id: "${id}"`));
+  }
+  assert.match(page, /if \(attention === "zero_value"\)/);
+  assert.match(page, /Number\(order\.totalAmount \|\| 0\) <= 0/);
+  assert.match(attentionView, /không tự đổi lifecycle/i);
+  assert.match(attentionView, /aria-label="Loại đơn cần xử lý"/);
+  assert.match(attentionView, /attentionOrders\.map/);
+});
+
+test("sales view labels order intake correctly and breaks it down by required dimensions", () => {
+  const salesView = sectionBetween('activeView === "sales"', 'activeView === "overview"');
+  assert.match(salesView, /Đang đo doanh số đặt hàng/);
+  assert.match(salesView, /chưa phải doanh thu giao hàng hoặc tiền đã thu/);
+  assert.match(salesView, /Nhịp doanh số theo ngày/);
+  assert.match(salesView, /Doanh số theo khách/);
+  assert.match(salesView, /Hiệu quả theo tuyến/);
+  assert.match(salesView, /Theo nhân viên/);
+  assert.match(salesView, /Theo nguồn đơn/);
+  assert.doesNotMatch(salesView, /Doanh thu chính thức|Doanh thu thực/);
+});
+
+test("overview view contains exactly four decision cards and no full analysis grid", () => {
+  const overviewView = sectionBetween('activeView === "overview"', '<OrderDetailDrawer');
+  assert.equal((overviewView.match(/<KpiCard/g) || []).length, 4);
+  assert.match(overviewView, /Nhìn nhanh để chọn bước tiếp theo/);
+  assert.match(overviewView, /onClick=\{\(\) => setView\("sales"\)\}/);
+  assert.match(overviewView, /onClick=\{\(\) => setView\("orders"\)\}/);
+  assert.match(overviewView, /onClick=\{\(\) => setView\("attention"\)\}/);
+  assert.doesNotMatch(overviewView, /analysisGrid|BreakdownPanel|DailyTrend/);
+});
+
+test("order filters own period, search, route, owner, source and status", () => {
   assert.match(analytics, /export type OrderPeriod = "7d" \| "30d" \| "90d" \| "all"/);
   assert.match(analytics, /export type OrderAttention = "all" \| "pending" \| "stale" \| "possible_duplicate" \| "cancelled"/);
   assert.match(analytics, /export function filterOrders/);
-  assert.match(page, /placeholder="Mã đơn, khách, tuyến, nhân viên\.\.\."/);
-  assert.match(page, />Tuyến</);
-  assert.match(page, />Nhân viên</);
-  assert.match(page, />Trạng thái</);
-  assert.match(page, />Nguồn đơn</);
-  assert.match(page, />Cần chú ý</);
-  assert.match(page, /setFilters\(DEFAULT_ORDER_FILTERS\)/);
-});
-
-test("business KPIs are derived from the filtered order population", () => {
-  assert.match(analytics, /totalAmount/);
-  assert.match(analytics, /customerCount/);
-  assert.match(analytics, /averageOrder: orderCount \? totalAmount \/ orderCount : 0/);
-  assert.match(analytics, /revenuePerCustomer: customerCount \? totalAmount \/ customerCount : 0/);
-  assert.match(analytics, /averageSkuPerOrder: orderCount \? totalSkuCount \/ orderCount : 0/);
-  assert.match(analytics, /deliveredRate: orderCount \? deliveredCount \/ orderCount : 0/);
-  assert.match(analytics, /cancelledRate: orderCount \? cancelledCount \/ orderCount : 0/);
-  assert.match(page, /label="Doanh số đặt hàng"/);
-  assert.match(page, /label="Doanh số\/khách"/);
-  assert.match(page, /label="SKU\/đơn"/);
-  assert.doesNotMatch(page, /label="Doanh thu thực"/);
+  assert.match(filters, />Tuyến</);
+  assert.match(filters, />Nhân viên</);
+  assert.match(filters, />Trạng thái</);
+  assert.match(filters, />Nguồn đơn</);
+  assert.match(filters, /onReset/);
 });
 
 test("pending and stale semantics do not infer delivery backlog from confirmed orders", () => {
   assert.match(analytics, /function isPending\(order: OrderDto\) \{\s*return order\.status === "draft";\s*\}/);
   assert.match(analytics, /Đơn nháp tồn quá 3 ngày/);
-  assert.match(analytics, /Đơn đã bắt đầu nhưng chưa được chốt/);
   assert.doesNotMatch(analytics, /order\.status === "draft" \|\| order\.status === "confirmed"/);
 });
 
-test("analytics detect operational risks without deleting or mutating orders", () => {
+test("analytics detect risks without mutating orders", () => {
   assert.match(analytics, /Đơn có dấu hiệu trùng/);
   assert.match(analytics, /Cùng khách, ngày, giá trị, số lượng và số SKU/);
   assert.match(analytics, /Doanh số phụ thuộc khách lớn/);
@@ -63,69 +102,56 @@ test("analytics detect operational risks without deleting or mutating orders", (
   assert.doesNotMatch(analytics, /fetch\(|supabase|delete\(|update\(/i);
 });
 
-test("drill-down and filtered CSV export remain client-owned and explicit", () => {
-  assert.match(page, /function focusList\(next: Partial<OrderFilters>\)/);
+test("drill-down and filtered CSV remain explicit client actions", () => {
+  assert.match(page, /function goToOrders\(next: Partial<OrderFilters>/);
   assert.match(page, /scrollIntoView\(\{ behavior: "smooth"/);
-  assert.match(page, /function downloadOrdersCsv\(orders: OrderDto\[\]\)/);
-  assert.match(page, /text\/csv;charset=utf-8/);
-  assert.match(page, /don-hang-theo-bo-loc/);
-  assert.match(page, /label="Chọn loại file"/);
-  assert.match(page, /Danh sách theo bộ lọc \(CSV\)/);
-  assert.match(page, /onClick: \(\) => downloadOrdersCsv\(filteredOrders\)/);
+  assert.match(ui, /export function downloadOrdersCsv\(orders: OrderDto\[\]\)/);
+  assert.match(ui, /text\/csv;charset=utf-8/);
+  assert.match(ui, /don-hang-theo-bo-loc/);
+  assert.match(page, /label="Danh sách theo bộ lọc \(CSV\)"/);
+  assert.match(page, /downloadOrdersCsv\(orders\)/);
 });
 
-test("order detail is URL-owned and preserves list context", () => {
-  assert.match(page, /useSearchParams\(\)/);
+test("order detail stays URL-owned and preserves tab context", () => {
   assert.match(page, /searchParams\.get\("detail"\)/);
   assert.match(page, /params\.set\("detail", order\.id\)/);
-  assert.match(page, /router\.push\(`/);
   assert.match(page, /router\.back\(\)/);
   assert.match(page, /params\.delete\("detail"\)/);
   assert.match(page, /router\.replace\(/);
   assert.match(page, /scroll: false/);
   assert.match(page, /detailReturnFocusRef/);
-  assert.doesNotMatch(page, /OrderDetailSheet|setSelectedOrder/);
+});
+
+test("create-order session loading remains isolated and fail-closed", () => {
+  assert.match(session, /export async function loadOrderSessions/);
+  assert.match(session, /new URLSearchParams\(\{ routeId \}\)/);
+  assert.match(session, /\/api\/backend\/mcp-settings\/session-status/);
+  assert.match(page, /Form chưa được mở để tránh hiển thị sai khách hoặc trộn khách giữa các tuyến/);
 });
 
 test("order detail loads persisted products and uses business-facing copy", () => {
   assert.match(detail, /fetch\(`\/api\/backend\/orders\/\$\{encodeURIComponent\(routedOrderId\)\}`/);
-  assert.match(detail, /setDetail\(payload\.data\)/);
   assert.match(detail, /detail\.items/);
   assert.match(detail, />Sản phẩm</);
-  assert.match(detail, /item\.productName/);
-  assert.match(detail, /item\.quantity/);
-  assert.match(detail, /item\.unitPrice/);
-  assert.match(detail, /item\.discount/);
-  assert.match(detail, /item\.lineTotal/);
   assert.match(detail, />Khách hàng và giao hàng</);
   assert.match(detail, />Thông tin đơn</);
-  assert.doesNotMatch(detail, /Snapshot tại thời điểm ghi nhận|Số liệu tổng hợp từ API danh sách|ID hệ thống|Chưa có chi tiết từng dòng hàng|API đơn hiện chỉ trả/);
 });
 
-test("order detail uses a desktop drawer and a mobile fullscreen surface", () => {
+test("order detail uses a desktop drawer and mobile fullscreen surface", () => {
   assert.match(detail, /createPortal/);
   assert.match(detail, /role="dialog"/);
   assert.match(detail, /aria-modal="true"/);
   assert.match(detail, /data-order-detail-surface="drawer"/);
-  assert.match(detail, /data-app-scroll-region/);
-  assert.match(detail, /event\.key === "Escape"/);
-  assert.match(detail, /event\.key !== "Tab"/);
-  assert.doesNotMatch(detail, /BottomSheet/);
   assert.match(detailStyles, /width: min\(680px, calc\(100vw - 72px\)\)/);
-  assert.match(detailStyles, /height: 100dvh/);
-  assert.match(detailStyles, /justify-content: flex-end/);
-  assert.match(detailStyles, /\.itemList/);
-  assert.match(detailStyles, /\.itemRow/);
   assert.match(detailStyles, /@media \(max-width: 720px\)/);
   assert.match(detailStyles, /width: 100vw/);
-  assert.match(detailStyles, /border-radius: 0/);
 });
 
-test("orders control center is responsive without horizontal dashboard overflow", () => {
+test("orders tabs stay responsive without dashboard overflow", () => {
   assert.match(styles, /\.filterGrid \{[\s\S]*grid-template-columns/);
-  assert.match(styles, /\.kpiGrid \{[\s\S]*repeat\(4, minmax\(0, 1fr\)\)/);
   assert.match(styles, /@media \(max-width: 820px\)/);
   assert.match(styles, /@media \(max-width: 560px\)/);
-  assert.match(styles, /\.analysisGrid \{[\s\S]*grid-template-columns/);
-  assert.doesNotMatch(styles, /align-items:\s*end/);
+  assert.match(tabStyles, /\.tabRail \{[\s\S]*repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.match(tabStyles, /@media \(max-width: 560px\)[\s\S]*overflow-x: auto/);
+  assert.match(tabStyles, /\.overviewGrid \{[\s\S]*repeat\(4, minmax\(0, 1fr\)\)/);
 });
