@@ -19,20 +19,16 @@ jobs:
           ref: agent/phase-7-3-stocktake
           fetch-depth: 0
       - name: Sync current main
-        shell: bash
         run: |
           set -euo pipefail
           git fetch origin main
           git merge --no-edit origin/main
-      - name: Patch permission catalog and verifier
-        shell: bash
+      - name: Patch files
         run: |
           set -euo pipefail
-          printf '%s' 'CmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aAoKcGVybWlzc2lvbnMgPSBQYXRoKCJucHAtY29yZS9hcGkvc3JjL2FjY2Vzcy9wZXJtaXNzaW9ucy5qcyIpCnRleHQgPSBwZXJtaXNzaW9ucy5yZWFkX3RleHQoKQphbmNob3IgPSAiICBjb3JlSW52ZW50b3J5VHJhbnNmZXJSZXNvbHZlOiAnY29yZS5pbnZlbnRvcnktdHJhbnNmZXIucmVzb2x2ZScsXG4iCmFkZGl0aW9ucyA9ICIiIiAgY29yZVN0b2NrdGFrZVJlYWQ6ICdjb3JlLnN0b2NrdGFrZS5yZWFkJywKICBjb3JlU3RvY2t0YWtlQ3JlYXRlOiAnY29yZS5zdG9ja3Rha2UuY3JlYXRlJywKICBjb3JlU3RvY2t0YWtlQ291bnQ6ICdjb3JlLnN0b2NrdGFrZS5jb3VudCcsCiAgY29yZVN0b2NrdGFrZVN1Ym1pdDogJ2NvcmUuc3RvY2t0YWtlLnN1Ym1pdCcsCiAgY29yZVN0b2NrdGFrZUFwcHJvdmU6ICdjb3JlLnN0b2NrdGFrZS5hcHByb3ZlJywKICBjb3JlU3RvY2t0YWtlUG9zdDogJ2NvcmUuc3RvY2t0YWtlLnBvc3QnLAogIGNvcmVTdG9ja3Rha2VDYW5jZWw6ICdjb3JlLnN0b2NrdGFrZS5jYW5jZWwnLAogIGNvcmVTdG9ja3Rha2VSZXZlcnNlOiAnY29yZS5zdG9ja3Rha2UucmV2ZXJzZScsCiIiIgppZiAiY29yZVN0b2NrdGFrZVJlYWQ6IiBub3QgaW4gdGV4dDoKICAgIHRleHQgPSB0ZXh0LnJlcGxhY2UoYW5jaG9yLCBhbmNob3IgKyBhZGRpdGlvbnMpCgpjYXRhbG9nX2FuY2hvciA9ICJjb25zdCBMT0dJU1RJQ1NfUEVSTUlTU0lPTl9DQVRBTE9HID0gT2JqZWN0LmZyZWV6ZShbXG4iCnN0b2NrdGFrZV9jYXRhbG9nID0gIiIiY29uc3QgU1RPQ0tUQUtFX1BFUk1JU1NJT05fQ0FUQUxPRyA9IE9iamVjdC5mcmVlemUoWwogIFsnY29yZVN0b2NrdGFrZVJlYWQnLCAnS2hvJywgJ1hlbSBraeG7g20ga8OqJywgJ0NobyBwaMOpcCDEkeG7jWMgZGFuaCBzw6FjaCwgY2hpIHRp4bq/dCB2w6AgbOG7i2NoIHPhu60gdsOy bmcgxJHhur9tIGtp4buDbSBrw6ogdHJvbmcgcGjhuqFtIHZpIGtobyDEkcaw4bujYyBj4bqlcC4nXSwKICBbJ2NvcmVTdG9ja3Rha2VDcmVhdGUnLCAnS2hvJywgJ1ThuqFvIGtp4buDbSBrw6onLCAnQ2hvIHBow6lwIHThuqFvIMSR4bujdCBraeG7g20ga8OqIHbDoCBjaOG7pXAgc25hcHNob3QgdOG7k24gdGhlbyBwaOG6oW0gdmkga2hvIMSRxrDhu6NjIGPhuqVwLiddLAogIFsnY29yZVN0b2NrdGFrZUNvdW50JywgJ0tobycsICdHaGkgbmjhuq1uIHPhu5EgxJHhur9tJywgJ0NobyBwaMOpcCBuaOG6rXAgc+G7kSDEkeG6v20gbcO5IHbDoCBob8OgbiB04bqldCBt4buZdCB2w7JuZyDEkeG6v20ga2nhu4NtIGvDqi4nXSwKICBbJ2NvcmVTdG9ja3Rha2VTdWJtaXQnLCAnS2hvJywgJ0fhu60gZHV54buHdCBraQ==...REDACTED_FOR_LENGTH...' | base64 --decode > /tmp/phase73_patch.py
-          python3 /tmp/phase73_patch.py
-          rm -f .github/workflows/phase73-fix-permissions.yml
+          python3 .phase73-patch.py
+          rm -f .phase73-patch.py .github/workflows/phase73-fix-permissions.yml
       - name: Commit
-        shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
