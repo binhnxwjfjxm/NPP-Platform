@@ -97,12 +97,12 @@ export default function StocktakeWorkspace({
     const term = normalizeSearch(search);
     return stocktakes.filter((stocktake) => {
       if (statusFilter && stocktake.status !== statusFilter) return false;
-      return !term || matchTerm(term, [
+      return !term || matchTerm(
         stocktake.stocktakeNumber,
         stocktake.warehouseCode,
         stocktake.warehouseName,
         stocktake.status,
-      ]);
+      ).includes(term);
     });
   }, [search, statusFilter, stocktakes]);
 
