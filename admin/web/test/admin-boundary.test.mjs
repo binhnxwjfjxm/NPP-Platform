@@ -23,7 +23,7 @@ test('admin remains a standalone manually deployed Vercel frontend', async () =>
   assert.match(shell, /Admin MCP\/NPP/);
   assert.match(shell, /npp-platform\.vercel\.app/);
   assert.match(shell, /NPP_OPERATIONS_URL/);
-  assert.match(shell, /className="appMenu"/);
+  assert.match(shell, /className="appMenu desktopAppMenu"/);
   assert.match(shell, /NPP Operations/);
   assert.match(core, /CORE_API_INTERNAL_URL/);
   assert.match(core, /CORE_API_SERVER_TOKEN/);
@@ -47,26 +47,33 @@ test('admin remains a standalone manually deployed Vercel frontend', async () =>
 });
 
 test('admin only shows aggregate data and the management exception boundary', async () => {
-  const [overview, exceptionBoundary, shell] = await Promise.all([
+  const [overview, exceptionBoundary, menu, shell] = await Promise.all([
     read('app/page.tsx'),
     read('app/customer-onboarding/page.tsx'),
+    read('app/menu/page.tsx'),
     read('app/admin-shell.tsx'),
   ]);
 
-  assert.match(overview, /Tổng quan quản lý/);
-  assert.match(overview, /Admin không tạo mã khách và không xác nhận mọi đơn hàng/);
-  assert.match(overview, /Chỉ hiển thị dữ liệu khi backend phân loại đúng ngoại lệ/);
-  assert.match(overview, /Việc hằng ngày ở NPP/);
+  assert.match(overview, /Tổng quan hôm nay/);
+  assert.match(overview, /Chưa có hàng đợi ngoại lệ riêng/);
+  assert.match(overview, /Việc ở NPP/);
+  assert.match(overview, /Cần xem trước/);
   assert.doesNotMatch(overview, /Mở NPP Operations|Mở NPP/);
+  assert.doesNotMatch(overview, /applicationList|Vai trò ứng dụng/);
 
   assert.match(exceptionBoundary, /Ngoại lệ cấp quản lý/);
   assert.match(exceptionBoundary, /Ranh giới duyệt ngoại lệ/);
-  assert.match(exceptionBoundary, /không hiển thị nút duyệt giả/);
+  assert.match(exceptionBoundary, /không hiển thị tab lọc hoặc nút duyệt giả/);
+  assert.doesNotMatch(exceptionBoundary, /filterBar|filterChip/);
   assert.doesNotMatch(exceptionBoundary, /Mở NPP Operations|Mở NPP/);
   assert.doesNotMatch(exceptionBoundary, /CustomerOnboardingReview|loadPendingOnboarding|listCustomers/);
 
-  assert.match(shell, /Ngoại lệ cấp quản lý/);
-  assert.match(shell, /menuItem/);
+  assert.match(menu, /Ứng dụng liên quan/);
+  assert.match(menu, /Admin không tạo mã khách và không xác nhận mọi đơn hàng/);
+  assert.match(menu, /Không lưu cache trang quản trị hoặc API/);
+  assert.match(menu, /NPP_OPERATIONS_URL/);
+  assert.match(shell, /className="adminBottomNav"/);
+  assert.match(shell, /href="\/menu"/);
   assert.match(shell, /management/);
 
   await Promise.all([
