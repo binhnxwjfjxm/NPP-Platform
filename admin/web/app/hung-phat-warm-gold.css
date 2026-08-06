@@ -36,6 +36,20 @@ textarea:focus-visible {
   box-shadow: 0 0 0 4px var(--hp-focus-outer);
 }
 
+/* Keep the exception column labels aligned with the row geometry below. */
+.exceptionTableHeader {
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  padding-right: 1.4rem;
+  padding-left: 1.4rem;
+}
+
+@media (max-width: 760px) {
+  .menuPanel {
+    top: 79px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
