@@ -9,10 +9,6 @@ export default defineConfig({
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: 'http://127.0.0.1:3005',
-    httpCredentials: {
-      username: 'driver-a',
-      password: 'delivery-test-password',
-    },
     trace: 'retain-on-failure',
     ...devices['Pixel 7'],
   },
