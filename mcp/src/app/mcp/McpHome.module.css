@@ -1,30 +1,41 @@
+.mobileFlow {
+  display: none;
+}
+
+.desktopFlow {
+  display: block;
+}
+
 .grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
   margin-bottom: 14px;
 }
 
 .card {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  align-content: space-between;
-  gap: 8px;
-  min-height: 132px;
-  aspect-ratio: 1.08 / 1;
-  border: 1px solid #e4e7ec;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 94px;
+  border: 1px solid rgba(152, 96, 15, 0.18);
   border-radius: 18px;
-  padding: 12px;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 10px 24px rgba(16, 24, 40, 0.04);
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(255, 253, 248, 0.98), rgba(247, 237, 220, 0.78));
+  box-shadow: 0 8px 22px rgba(72, 54, 34, 0.07);
 }
 
 .icon {
   display: inline-grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.7);
+  width: 46px;
+  height: 46px;
+  border: 1px solid rgba(152, 96, 15, 0.16);
+  border-radius: 15px;
+  background: rgba(255, 250, 241, 0.86);
+  color: var(--npp-color-primary-strong);
+  font-size: 20px;
   font-weight: 900;
 }
 
@@ -35,79 +46,294 @@
 }
 
 .content strong {
-  overflow: hidden;
-  color: #101828;
-  font-size: 15px;
+  color: var(--npp-color-text);
+  font-size: 15.5px;
   font-weight: 850;
   letter-spacing: -0.02em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .content small {
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  color: #475467;
-  font-size: 11.5px;
-  line-height: 1.35;
+  color: var(--npp-color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .cta {
-  justify-self: start;
+  justify-self: end;
+  border: 1px solid rgba(152, 96, 15, 0.14);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.75);
-  color: #101828;
+  background: rgba(255, 250, 241, 0.88);
+  color: var(--npp-color-primary-strong);
   font-size: 11.5px;
   font-weight: 850;
-  padding: 5px 9px;
+  padding: 7px 10px;
+  white-space: nowrap;
 }
 
 .routes {
-  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
-  border-color: #bfdbfe;
-}
-
-.routes .icon,
-.routes .cta {
-  color: #1d4ed8;
+  background: linear-gradient(135deg, rgba(250, 244, 233, 0.98), rgba(255, 255, 255, 0.96));
 }
 
 .session {
-  background: linear-gradient(135deg, #ecfdf3 0%, #ffffff 100%);
-  border-color: #abefc6;
-}
-
-.session .icon,
-.session .cta {
-  color: #067647;
+  background: linear-gradient(135deg, rgba(243, 238, 223, 0.98), rgba(255, 255, 255, 0.96));
 }
 
 .settings {
-  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 100%);
-  border-color: #fed7aa;
+  background: linear-gradient(135deg, rgba(248, 238, 220, 0.98), rgba(255, 255, 255, 0.96));
 }
 
-.settings .icon,
-.settings .cta {
-  color: #c2410c;
-}
+@media (max-width: 820px) {
+  .mobileFlow {
+    display: grid;
+    gap: 12px;
+  }
 
-@media (max-width: 1100px) {
-  .grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .desktopFlow {
+    display: none;
+  }
+
+  .primaryAction {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 13px;
+    min-height: 108px;
+    border: 1px solid rgba(255, 244, 222, 0.24);
+    border-radius: 24px;
+    padding: 18px;
+    background:
+      radial-gradient(circle at 90% 10%, rgba(255, 224, 166, 0.28), transparent 42%),
+      linear-gradient(135deg, #5a351d 0%, #81500f 58%, #b87918 100%);
+    color: #fffaf0;
+    box-shadow: 0 16px 34px rgba(91, 54, 20, 0.22);
+  }
+
+  .primaryIcon {
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    border: 1px solid rgba(255, 250, 240, 0.28);
+    border-radius: 18px;
+    background: rgba(255, 250, 240, 0.14);
+    font-size: 25px;
+    font-weight: 900;
+  }
+
+  .primaryCopy {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .primaryCopy strong {
+    font-size: 19px;
+    line-height: 1.15;
+    letter-spacing: -0.025em;
+  }
+
+  .primaryCopy small {
+    overflow: hidden;
+    color: rgba(255, 250, 240, 0.82);
+    font-size: 12.5px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chevron {
+    color: currentColor;
+    font-size: 28px;
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .mobileStats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: hidden;
+    border: 1px solid rgba(152, 96, 15, 0.16);
+    border-radius: 18px;
+    background: rgba(255, 253, 248, 0.82);
+    box-shadow: 0 8px 20px rgba(72, 54, 34, 0.06);
+    backdrop-filter: blur(16px) saturate(1.16);
+  }
+
+  .mobileStats div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+    padding: 13px 8px 12px;
+    text-align: center;
+  }
+
+  .mobileStats div + div {
+    border-left: 1px solid rgba(152, 96, 15, 0.13);
+  }
+
+  .mobileStats strong {
+    color: var(--npp-color-primary-strong);
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  .mobileStats span {
+    overflow: hidden;
+    color: var(--npp-color-text-muted);
+    font-size: 11px;
+    font-weight: 750;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobileActionList {
+    display: grid;
+    overflow: hidden;
+    border: 1px solid rgba(152, 96, 15, 0.15);
+    border-radius: 20px;
+    background: rgba(255, 253, 248, 0.88);
+    box-shadow: 0 9px 24px rgba(72, 54, 34, 0.07);
+    backdrop-filter: blur(18px) saturate(1.18);
+  }
+
+  .mobileAction {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    min-height: 76px;
+    padding: 12px 14px;
+    color: var(--npp-color-text);
+  }
+
+  .mobileAction + .mobileAction {
+    border-top: 1px solid rgba(152, 96, 15, 0.12);
+  }
+
+  .mobileActionIcon {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: 1px solid rgba(152, 96, 15, 0.14);
+    border-radius: 15px;
+    background: rgba(243, 230, 207, 0.72);
+    color: var(--npp-color-primary-strong);
+    font-size: 19px;
+    font-weight: 900;
+  }
+
+  .mobileActionCopy {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .mobileActionCopy strong {
+    font-size: 15px;
+    line-height: 1.2;
+  }
+
+  .mobileActionCopy small {
+    overflow: hidden;
+    color: var(--npp-color-text-muted);
+    font-size: 11.5px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobileAction .chevron {
+    color: rgba(117, 71, 6, 0.72);
+    font-size: 24px;
+  }
+
+  .mobileUtility {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 58px;
+    border: 1px solid rgba(152, 96, 15, 0.13);
+    border-radius: 17px;
+    padding: 8px 9px 8px 14px;
+    background: rgba(255, 253, 248, 0.72);
+  }
+
+  .mobileUtilityLabel {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    color: var(--npp-color-text);
+    font-size: 13px;
+  }
+
+  .mobileUtilityLabel > span {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 11px;
+    background: rgba(243, 230, 207, 0.76);
+    color: var(--npp-color-primary-strong);
+    font-size: 17px;
+    font-weight: 900;
+  }
+
+  .mobileUtility :global(.export-menu) {
+    position: relative;
+  }
+
+  .mobileUtility :global(.export-menu-trigger) {
+    min-width: 78px;
+    min-height: 42px;
+    border-color: rgba(152, 96, 15, 0.2);
+    background: rgba(243, 230, 207, 0.72);
+    color: var(--npp-color-primary-strong);
+    font-size: 12px;
+  }
+
+  .mobileUtility :global(.export-menu-panel) {
+    position: fixed !important;
+    right: 12px !important;
+    bottom: calc(var(--app-bottom-nav-bar-height) + 10px) !important;
+    left: 12px !important;
+    z-index: 80 !important;
+    width: auto !important;
+    max-height: 64dvh;
+    overflow-y: auto;
+    border-color: rgba(152, 96, 15, 0.18);
+    border-radius: 20px;
+    background: rgba(255, 253, 248, 0.97);
+    box-shadow: 0 20px 54px rgba(72, 42, 18, 0.25);
+    backdrop-filter: blur(24px) saturate(1.24);
   }
 }
 
-@media (max-width: 560px) {
-  .grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+@media (max-width: 370px) {
+  .primaryAction {
+    grid-template-columns: 46px minmax(0, 1fr) auto;
+    gap: 10px;
+    min-height: 102px;
+    padding: 15px;
   }
 
-  .card {
-    min-height: 118px;
-    padding: 10px;
+  .primaryIcon {
+    width: 46px;
+    height: 46px;
+    border-radius: 16px;
+  }
+
+  .primaryCopy strong {
+    font-size: 17px;
+  }
+
+  .mobileAction {
+    padding-right: 12px;
+    padding-left: 12px;
   }
 }
