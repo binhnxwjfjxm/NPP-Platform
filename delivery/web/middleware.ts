@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  DELIVERY_SESSION_COOKIE,
+  createDeliverySession,
+  deliverySessionCookieOptions,
+  safeDeliveryReturnTo,
+  verifyDeliverySession,
+} from './lib/delivery-session';
 
 const REALM = 'Hung Phat Delivery';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PUBLIC_PATHS = new Set(['/login', '/api/auth/login', '/api/auth/logout']);
 
 type DeliveryCredential = Readonly<{
   username: string;
@@ -86,22 +94,67 @@ function deny(request: NextRequest, status: 401 | 503, code: string, message: st
     : new NextResponse(message, { status, headers });
 }
 
-export function middleware(request: NextRequest) {
+function isBrowserNavigation(request: NextRequest): boolean {
+  return (request.method === 'GET' || request.method === 'HEAD')
+    && Boolean(request.headers.get('accept')?.includes('text/html'));
+}
+
+function loginRedirect(request: NextRequest) {
+  const loginUrl = request.nextUrl.clone();
+  loginUrl.pathname = '/login';
+  loginUrl.search = '';
+  const returnTo = safeDeliveryReturnTo(`${request.nextUrl.pathname}${request.nextUrl.search}`);
+  if (returnTo !== '/') loginUrl.searchParams.set('returnTo', returnTo);
+  return NextResponse.redirect(loginUrl);
+}
+
+function withInternalBasicAuth(request: NextRequest, user: DeliveryCredential) {
+  const headers = new Headers(request.headers);
+  headers.set('authorization', `Basic ${btoa(`${user.username}:${user.password}`)}`);
+  return NextResponse.next({ request: { headers } });
+}
+
+export async function middleware(request: NextRequest) {
+  if (PUBLIC_PATHS.has(request.nextUrl.pathname)) return NextResponse.next();
+
   const users = credentials();
-  if (!users) return deny(request, 503, 'DELIVERY_AUTH_NOT_CONFIGURED', 'Delivery access is not configured');
+  if (!users || !process.env.DELIVERY_CORE_API_TOKEN?.trim()) {
+    return deny(request, 503, 'DELIVERY_AUTH_NOT_CONFIGURED', 'Delivery access is not configured');
+  }
+
   const forwardedProtocol = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
   if (process.env.NODE_ENV === 'production' && forwardedProtocol !== 'https' && request.nextUrl.protocol !== 'https:') {
     return deny(request, 503, 'DELIVERY_HTTPS_REQUIRED', 'Delivery access requires HTTPS');
   }
+
+  const sessionUsername = await verifyDeliverySession(request.cookies.get(DELIVERY_SESSION_COOKIE)?.value);
+  const sessionUser = sessionUsername
+    ? users.find((candidate) => candidate.username === sessionUsername)
+    : null;
+  if (sessionUser) {
+    if (setupPending() && request.nextUrl.pathname !== '/') {
+      return deny(request, 503, 'DELIVERY_DRIVER_SETUP_PENDING', 'Delivery driver setup is pending');
+    }
+    return withInternalBasicAuth(request, sessionUser);
+  }
+
   const supplied = parseBasic(request.headers.get('authorization'));
   const user = supplied ? users.find((candidate) => candidate.username === supplied.username) : null;
-  if (!supplied || !user || !constantTimeEqual(user.password, supplied.password)) {
-    return deny(request, 401, 'UNAUTHORIZED', 'Authentication required');
+  if (supplied && user && constantTimeEqual(user.password, supplied.password)) {
+    if (setupPending() && request.nextUrl.pathname !== '/') {
+      return deny(request, 503, 'DELIVERY_DRIVER_SETUP_PENDING', 'Delivery driver setup is pending');
+    }
+    const response = NextResponse.next();
+    response.cookies.set(
+      DELIVERY_SESSION_COOKIE,
+      await createDeliverySession(user.username),
+      deliverySessionCookieOptions(),
+    );
+    return response;
   }
-  if (setupPending() && request.nextUrl.pathname !== '/') {
-    return deny(request, 503, 'DELIVERY_DRIVER_SETUP_PENDING', 'Delivery driver setup is pending');
-  }
-  return NextResponse.next();
+
+  if (isBrowserNavigation(request)) return loginRedirect(request);
+  return deny(request, 401, 'UNAUTHORIZED', 'Authentication required');
 }
 
 export const config = {

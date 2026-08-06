@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  ADMIN_SESSION_COOKIE,
+  adminCredentialsConfigured,
+  adminSessionCookieOptions,
+  authenticateAdminCredentials,
+  createAdminSession,
+  safeAdminReturnTo,
+  verifyAdminSession,
+} from './lib/admin-session';
 
 const REALM = 'Admin MCP/NPP';
-
-function constantTimeEqual(left: string, right: string): boolean {
-  const maxLength = Math.max(left.length, right.length);
-  let difference = left.length ^ right.length;
-  for (let index = 0; index < maxLength; index += 1) {
-    difference |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0);
-  }
-  return difference === 0;
-}
+const PUBLIC_PATHS = new Set(['/login', '/api/auth/login', '/api/auth/logout']);
 
 function credentials(value: string | null): { username: string; password: string } | null {
   if (!value?.startsWith('Basic ')) return null;
@@ -17,7 +18,9 @@ function credentials(value: string | null): { username: string; password: string
     const decoded = atob(value.slice(6));
     const separator = decoded.indexOf(':');
     return separator < 0 ? null : { username: decoded.slice(0, separator), password: decoded.slice(separator + 1) };
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 function deny(request: NextRequest, status: 401 | 503, code: string, message: string) {
@@ -30,19 +33,47 @@ function deny(request: NextRequest, status: 401 | 503, code: string, message: st
     : new NextResponse(message, { status, headers });
 }
 
-export function middleware(request: NextRequest) {
-  const username = process.env.CORE_WEB_ADMIN_USERNAME?.trim();
-  const password = process.env.CORE_WEB_ADMIN_PASSWORD;
-  if (!username || !password) return deny(request, 503, 'ADMIN_AUTH_NOT_CONFIGURED', 'Admin access is not configured');
+function isBrowserNavigation(request: NextRequest): boolean {
+  return (request.method === 'GET' || request.method === 'HEAD')
+    && Boolean(request.headers.get('accept')?.includes('text/html'));
+}
+
+function loginRedirect(request: NextRequest) {
+  const loginUrl = request.nextUrl.clone();
+  loginUrl.pathname = '/login';
+  loginUrl.search = '';
+  const returnTo = safeAdminReturnTo(`${request.nextUrl.pathname}${request.nextUrl.search}`);
+  if (returnTo !== '/') loginUrl.searchParams.set('returnTo', returnTo);
+  return NextResponse.redirect(loginUrl);
+}
+
+export async function middleware(request: NextRequest) {
+  if (PUBLIC_PATHS.has(request.nextUrl.pathname)) return NextResponse.next();
+  if (!adminCredentialsConfigured()) {
+    return deny(request, 503, 'ADMIN_AUTH_NOT_CONFIGURED', 'Admin access is not configured');
+  }
+
   const forwardedProtocol = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
   if (process.env.NODE_ENV === 'production' && forwardedProtocol !== 'https' && request.nextUrl.protocol !== 'https:') {
     return deny(request, 503, 'ADMIN_HTTPS_REQUIRED', 'Admin access requires HTTPS');
   }
+
+  const sessionToken = request.cookies.get(ADMIN_SESSION_COOKIE)?.value;
+  if (await verifyAdminSession(sessionToken)) return NextResponse.next();
+
   const supplied = credentials(request.headers.get('authorization'));
-  if (!supplied || !constantTimeEqual(supplied.username, username) || !constantTimeEqual(supplied.password, password)) {
-    return deny(request, 401, 'UNAUTHORIZED', 'Authentication required');
+  if (supplied && authenticateAdminCredentials(supplied.username, supplied.password)) {
+    const response = NextResponse.next();
+    response.cookies.set(
+      ADMIN_SESSION_COOKIE,
+      await createAdminSession(supplied.username.trim()),
+      adminSessionCookieOptions(),
+    );
+    return response;
   }
-  return NextResponse.next();
+
+  if (isBrowserNavigation(request)) return loginRedirect(request);
+  return deny(request, 401, 'UNAUTHORIZED', 'Authentication required');
 }
 
 export const config = {
