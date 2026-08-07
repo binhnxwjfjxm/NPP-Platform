@@ -43,6 +43,7 @@ import { handleGoodsReceiptRoutes } from './routes/goods-receipts.js';
 import { handleSupplierReturnRoutes } from './routes/supplier-returns.js';
 import { handlePurchaseOrderRoutes } from './routes/purchase-orders.js';
 import { handleSalesOrderRoutes } from './routes/sales-orders.js';
+import { handleReportingRoutes } from './routes/reporting-sales-purchasing.js';
 import { handleCustomerReceivableRoutes } from './routes/customer-receivables.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -446,6 +447,7 @@ export function createCoreApiServer(options = {}) {
     if (await handleSupplierRoutes(req, res, routeContext)) return;
     if (await handlePurchaseOrderRoutes(req, res, routeContext)) return;
     if (await handleSalesOrderRoutes(req, res, routeContext)) return;
+    if (await handleReportingRoutes(req, res, routeContext)) return;
     if (await handleCustomerReceivableRoutes(req, res, routeContext)) return;
     if (await handleGoodsReceiptRoutes(req, res, routeContext)) return;
     if (await handleSupplierReturnRoutes(req, res, routeContext)) return;

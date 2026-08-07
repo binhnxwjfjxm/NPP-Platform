@@ -72,12 +72,14 @@ const logisticsItems: NavItem[] = [
 ];
 
 const salesItems: NavItem[] = [
+  { href: '/sales/reporting', label: 'Báo cáo bán hàng', icon: 'dashboard', testId: 'nav-sales-reporting' },
   { href: '/management', label: 'Điều hành bán hàng', icon: 'panel', testId: 'nav-sales-operations' },
   { href: '/sales/sales-orders', label: 'Đơn bán hàng', icon: 'panel', testId: 'nav-sales-orders' },
   { href: '/management/customer-onboarding', label: 'Mở / liên kết mã khách', icon: 'user', testId: 'nav-customer-onboarding' },
 ];
 
 const purchasingItems: NavItem[] = [
+  { href: '/purchasing/reporting', label: 'Báo cáo mua hàng', icon: 'dashboard', testId: 'nav-purchasing-reporting' },
   { href: '/purchasing/purchase-orders', label: 'Đơn đặt hàng', icon: 'panel', testId: 'nav-purchase-orders' },
   { href: '/purchasing/purchase-prices', label: 'Bảng giá mua', icon: 'panel', testId: 'nav-purchase-prices' },
   { href: '/purchasing/goods-receipts', label: 'Phiếu nhận hàng', icon: 'panel', testId: 'nav-goods-receipts' },

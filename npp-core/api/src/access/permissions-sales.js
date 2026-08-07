@@ -47,6 +47,8 @@ export const PERMISSIONS = Object.freeze({
   coreCustomerOnboardingApprove: 'core.customer-onboarding.approve',
   coreCustomerOnboardingLinkExisting: 'core.customer-onboarding.link-existing',
   coreCustomerOnboardingReject: 'core.customer-onboarding.reject',
+  coreReportingSalesRead: 'core.reporting.sales.read',
+  coreReportingPurchasingRead: 'core.reporting.purchasing.read',
 });
 
 const SALES_ORDER_PERMISSION_CATALOG = Object.freeze([
@@ -99,6 +101,23 @@ const CUSTOMER_ONBOARDING_PERMISSION_CATALOG = Object.freeze([
   isSystem: true,
 })));
 
+const REPORTING_PERMISSION_CATALOG = Object.freeze([
+  Object.freeze({
+    permissionKey: PERMISSIONS.coreReportingSalesRead,
+    module: 'Báo cáo bán hàng',
+    label: 'Xem báo cáo bán hàng',
+    description: 'Cho phép đọc dashboard bán hàng trong đúng installation và phạm vi kho được cấp.',
+    isSystem: true,
+  }),
+  Object.freeze({
+    permissionKey: PERMISSIONS.coreReportingPurchasingRead,
+    module: 'Báo cáo mua hàng',
+    label: 'Xem báo cáo mua hàng',
+    description: 'Cho phép đọc dashboard mua hàng trong đúng installation và phạm vi kho được cấp.',
+    isSystem: true,
+  }),
+]);
+
 export const PERMISSION_CATALOG = Object.freeze([
   ...CORE_PERMISSION_CATALOG,
   Object.freeze({ permissionKey: PERMISSIONS.coreSupplierPurchasePriceRead, module: 'Mua hàng', label: 'Xem bảng giá mua', description: 'Cho phép đọc và phân giải giá mua theo nhà cung cấp, SKU, đơn vị, tiền tệ và hiệu lực.', isSystem: true }),
@@ -113,6 +132,7 @@ export const PERMISSION_CATALOG = Object.freeze([
   Object.freeze({ permissionKey: PERMISSIONS.corePayableAllocationReverse, module: 'Công nợ phải trả', label: 'Đảo phân bổ công nợ phải trả', description: 'Cho phép đảo một phân bổ công nợ bằng chứng từ đảo bất biến.', isSystem: true }),
   ...SALES_ORDER_PERMISSION_CATALOG,
   ...CUSTOMER_ONBOARDING_PERMISSION_CATALOG,
+  ...REPORTING_PERMISSION_CATALOG,
 ]);
 
 export const PERMISSION_REGISTRY = new Set(PERMISSION_CATALOG.map((entry) => entry.permissionKey));
