@@ -390,10 +390,23 @@ export async function inventoryReport(
          WHERE balance.installation_id = $1
            AND balance.warehouse_id = ANY($2::uuid[])
            AND ($5::uuid IS NULL OR balance.warehouse_id = $5::uuid)
+       ), costing_by_warehouse AS (
+         SELECT
+           scoped_warehouse.warehouse_id,
+           max(run.completed_at) AS completed_at
+         FROM inventory.inventory_cost_rebuild_runs run
+         CROSS JOIN LATERAL unnest(run.warehouse_ids) AS scoped_warehouse(warehouse_id)
+         WHERE run.installation_id = $1
+           AND scoped_warehouse.warehouse_id = ANY($2::uuid[])
+           AND ($5::uuid IS NULL OR scoped_warehouse.warehouse_id = $5::uuid)
+         GROUP BY scoped_warehouse.warehouse_id
        ), costing AS (
-         SELECT max(latest.completed_at) AS costing_projected_through
-         FROM inventory.inventory_cost_latest_runs latest
-         WHERE latest.installation_id = $1
+         SELECT CASE
+           WHEN count(*) = CASE WHEN $5::uuid IS NULL THEN cardinality($2::uuid[]) ELSE 1 END
+             THEN min(completed_at)
+           ELSE NULL
+         END AS costing_projected_through
+         FROM costing_by_warehouse
        )
        SELECT
          ledger.ledger_through,

@@ -53,7 +53,20 @@ test('8.2 period flow is SKU-scoped and canonical decimals remain strings', () =
   assert.match(inventory, /available_quantity::text/);
   assert.match(inventory, /inventory_value::text/);
   assert.match(inventory, /average_unit_cost::text/);
+  assert.match(inventory, /ORDER BY count\(DISTINCT movement\.id\) DESC, movement\.movement_type/);
+  assert.doesNotMatch(inventory, /ORDER BY movement_count::bigint/);
   assert.doesNotMatch(inventory, /parseFloat\(|parseInt\(/);
+});
+
+test('8.2 costing watermark is scoped and requires rebuild evidence for every requested warehouse', () => {
+  const inventory = source('../src/routes/reporting-inventory.js');
+
+  assert.match(inventory, /FROM inventory\.inventory_cost_rebuild_runs run/);
+  assert.match(inventory, /unnest\(run\.warehouse_ids\) AS scoped_warehouse\(warehouse_id\)/);
+  assert.match(inventory, /scoped_warehouse\.warehouse_id = ANY\(\$2::uuid\[\]\)/);
+  assert.match(inventory, /\$5::uuid IS NULL OR scoped_warehouse\.warehouse_id = \$5::uuid/);
+  assert.match(inventory, /count\(\*\) = CASE WHEN \$5::uuid IS NULL THEN cardinality\(\$2::uuid\[\]\) ELSE 1 END/);
+  assert.match(inventory, /THEN min\(completed_at\)/);
 });
 
 test('8.2 aging and slow-moving logic only uses canonical lot dates and outbound movements', () => {

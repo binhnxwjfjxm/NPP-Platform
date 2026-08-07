@@ -47,15 +47,22 @@ test('8.2 browser route uses the server-only Core gateway', () => {
   assert.doesNotMatch(workspace, /CORE_API_SERVER_TOKEN|CORE_API_INTERNAL_URL/);
 });
 
-test('8.2 UI keeps quantity and money display as decimal strings', () => {
+test('8.2 UI keeps quantity and money display as decimal strings and rounds without Number conversion', () => {
   const workspace = source('../app/components/inventory-reporting-workspace.tsx');
-  assert.match(workspace, /function formatDecimal/);
+  assert.match(workspace, /function incrementDigits/);
+  assert.match(workspace, /fraction\[fractionLimit\] >= '5'/);
   assert.match(workspace, /inventoryValueVnd/);
   assert.match(workspace, /openingQuantity/);
   assert.match(workspace, /inboundQuantity/);
   assert.match(workspace, /outboundQuantity/);
   assert.match(workspace, /closingQuantity/);
-  assert.doesNotMatch(workspace, /parseFloat\(|parseInt\(/);
+  assert.doesNotMatch(workspace, /parseFloat\(|parseInt\(|Number\(value\)/);
+});
+
+test('8.2 filter fields are locked while an inventory request is active', () => {
+  const workspace = source('../app/components/inventory-reporting-workspace.tsx');
+  const disabledFields = workspace.match(/disabled=\{busy\}/g) ?? [];
+  assert.ok(disabledFields.length >= 6);
 });
 
 test('8.2 UI states source limits instead of inventing FIFO aging', () => {

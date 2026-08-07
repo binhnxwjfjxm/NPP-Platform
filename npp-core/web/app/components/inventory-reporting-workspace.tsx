@@ -25,14 +25,47 @@ const EMPTY_FILTERS: Filters = Object.freeze({
   slowDays: '90',
 });
 
+function incrementDigits(value: string) {
+  const digits = value.split('');
+  let carry = 1;
+  for (let index = digits.length - 1; index >= 0 && carry; index -= 1) {
+    const next = digits[index].charCodeAt(0) - 48 + carry;
+    digits[index] = String(next % 10);
+    carry = next >= 10 ? 1 : 0;
+  }
+  if (carry) digits.unshift('1');
+  return digits.join('');
+}
+
 function formatDecimal(value: string | null | undefined, maxFraction = 6) {
   const normalized = String(value ?? '0').trim();
   const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(normalized);
   if (!match) return normalized || '0';
-  const [, sign, integer, fraction = ''] = match;
+
+  const [, sign, rawInteger, fraction = ''] = match;
+  const fractionLimit = Math.max(0, Math.trunc(maxFraction));
+  let integer = rawInteger;
+  let roundedFraction = fraction;
+
+  if (fraction.length > fractionLimit) {
+    roundedFraction = fraction.slice(0, fractionLimit);
+    if (fraction[fractionLimit] >= '5') {
+      const incremented = incrementDigits(`${integer}${roundedFraction}`);
+      if (fractionLimit === 0) {
+        integer = incremented;
+        roundedFraction = '';
+      } else {
+        integer = incremented.slice(0, -fractionLimit) || '0';
+        roundedFraction = incremented.slice(-fractionLimit).padStart(fractionLimit, '0');
+      }
+    }
+  }
+
+  const trimmedFraction = roundedFraction.replace(/0+$/, '');
   const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  const trimmed = fraction.replace(/0+$/, '').slice(0, maxFraction);
-  return `${sign}${grouped}${trimmed ? `,${trimmed}` : ''}`;
+  const isZero = /^0+$/.test(integer) && !trimmedFraction;
+  const displaySign = sign === '-' && !isZero ? '-' : '';
+  return `${displaySign}${grouped}${trimmedFraction ? `,${trimmedFraction}` : ''}`;
 }
 
 function formatMoney(value: string | null | undefined) {
@@ -158,6 +191,7 @@ export function InventoryReportingWorkspace() {
             <input
               type="date"
               value={draft.from}
+              disabled={busy}
               onChange={(event) => setDraft({ ...draft, from: event.target.value })}
             />
           </label>
@@ -166,6 +200,7 @@ export function InventoryReportingWorkspace() {
             <input
               type="date"
               value={draft.to}
+              disabled={busy}
               onChange={(event) => setDraft({ ...draft, to: event.target.value })}
             />
           </label>
@@ -173,6 +208,7 @@ export function InventoryReportingWorkspace() {
             <span>Kho</span>
             <select
               value={draft.warehouseId}
+              disabled={busy}
               onChange={(event) => setDraft({ ...draft, warehouseId: event.target.value })}
             >
               <option value="">Tất cả kho được cấp quyền</option>
@@ -187,6 +223,7 @@ export function InventoryReportingWorkspace() {
             <span>Chậm luân chuyển</span>
             <select
               value={draft.slowDays}
+              disabled={busy}
               onChange={(event) => setDraft({ ...draft, slowDays: event.target.value })}
             >
               <option value="30">30 ngày</option>
