@@ -1,0 +1,21 @@
+export type WarehouseOption = Readonly<{ warehouseId: string; warehouseCode: string; warehouseName: string }>;
+export type CurrencyAmount = Readonly<{ currencyCode: string; collectionCount: string; custodyRemainingAmount: string }>;
+export type CustodyDriver = Readonly<{ driverProfileId: string; driverCode: string; driverName: string; currencyCode: string; collectionCount: string; custodyRemainingAmount: string; oldestCollectedAt: string; oldestAgeDays: string }>;
+export type OverduePromise = Readonly<{ collectionId: string; warehouseId: string; warehouseCode: string; warehouseName: string; tripId: string; tripNumber: string; deliveryOrderId: string; deliveryOrderNumber: string | null; driverProfileId: string; driverCode: string; driverName: string; currencyCode: string; expectedAmount: string; reasonCode: string; promisedBy: string; dueAt: string; overdueDays: string }>;
+export type HandoverQueueRow = Readonly<{ handoverId: string; warehouseId: string; warehouseCode: string; warehouseName: string; tripId: string; tripNumber: string; driverProfileId: string; driverCode: string; driverName: string; currencyCode: string; claimedAmount: string; pendingAcceptanceAmount?: string; acceptedAmount?: string; handoverDifferenceAmount?: string; varianceAmount?: string; handedOverAt: string; acceptedAt?: string | null; projectionStatus: string }>;
+export type CollectionActivity = Readonly<{ currencyCode: string; collectionMethod: string; collectionStatus: string; collectionCount: string; expectedAmount: string; receivedAmount: string }>;
+export type HandoverActivity = Readonly<{ currencyCode: string; handoverCount: string; claimedAmount: string; handoverDifferenceAmount: string }>;
+export type AcceptanceActivity = Readonly<{ currencyCode: string; acceptanceCount: string; acceptedAmount: string; varianceAmount: string }>;
+export type RecentCollection = Readonly<{ collectionId: string; customerId: string; customerCode: string; customerName: string; warehouseId: string; warehouseCode: string; tripId: string; tripNumber: string; deliveryOrderId: string; deliveryOrderNumber: string | null; driverProfileId: string; driverCode: string; driverName: string; collectionMethod: string; collectionStatus: string; currencyCode: string; expectedAmount: string; receivedAmount: string; handedOverAmount: string; custodyRemainingAmount: string; collectedAt: string; lifecycleStatus: string; lifecycleMatches: boolean }>;
+export type RecentHandover = Readonly<{ handoverId: string; warehouseId: string; warehouseCode: string; warehouseName: string; tripId: string; tripNumber: string; driverProfileId: string; driverCode: string; driverName: string; currencyCode: string | null; currencyCount: string; expectedTotal: string; claimedAmount: string; pendingAcceptanceAmount: string; acceptedAmount: string; handoverDifferenceAmount: string; varianceAmount: string; projectionStatus: string; handedOverAt: string; acceptedAt: string | null; lifecycleMatches: boolean }>;
+export type LifecycleException = Readonly<{ anomalyType: string; sourceId: string; sourceNumber: string; reconciliationStatus: string; details: Readonly<Record<string, unknown>>; warehouseId: string }>;
+export type CurrencyLineageException = Readonly<{ handoverId: string; warehouseId: string; warehouseCode: string; warehouseName: string; tripId: string; tripNumber: string; driverProfileId: string; driverCode: string; driverName: string; currencyCount: string; handedOverAt: string; projectionStatus: string }>;
+export type CodReportingDashboard = Readonly<{
+  generatedAt: string;
+  businessTimezone: string;
+  filters: Readonly<{ from: string; to: string; warehouseId: string | null }>;
+  warehouses: readonly WarehouseOption[];
+  currentSnapshot: Readonly<{ custodyByCurrency: readonly CurrencyAmount[]; custodyByDriver: readonly CustodyDriver[]; overduePromises: readonly OverduePromise[]; pendingHandovers: readonly HandoverQueueRow[]; discrepancies: readonly HandoverQueueRow[] }>;
+  activity: Readonly<{ collections: readonly CollectionActivity[]; handovers: readonly HandoverActivity[]; acceptances: readonly AcceptanceActivity[]; recentCollections: readonly RecentCollection[]; recentHandovers: readonly RecentHandover[] }>;
+  exceptions: Readonly<{ lifecycle: readonly LifecycleException[]; currencyLineage: readonly CurrencyLineageException[] }>;
+}>;

@@ -31,6 +31,7 @@ export const PERMISSIONS = Object.freeze({
   coreReportingGrossMarginRead: 'core.reporting.gross-margin.read',
   coreReportingEmployeeMcpRead: 'core.reporting.employee-mcp.read',
   coreReportingLogisticsRead: 'core.reporting.logistics.read',
+  coreReportingCodRead: 'core.reporting.cod.read',
   coreLogisticsRouteRead: 'core.logistics-route.read',
   coreLogisticsRouteManage: 'core.logistics-route.manage',
   coreVehicleRead: 'core.vehicle.read',
@@ -110,6 +111,7 @@ const REPORTING_PERMISSION_CATALOG = Object.freeze([
   Object.freeze({ permissionKey: PERMISSIONS.coreReportingGrossMarginRead, module: 'Báo cáo lãi gộp', label: 'Xem báo cáo lãi gộp', description: 'Cho phép đọc doanh thu thuần, giá vốn Phase 7 và lãi gộp trong đúng installation và phạm vi kho được cấp.', isSystem: true }),
   Object.freeze({ permissionKey: PERMISSIONS.coreReportingEmployeeMcpRead, module: 'Báo cáo nhân sự & MCP', label: 'Xem hiệu suất nhân viên / MCP', description: 'Cho phép đọc hiệu suất route/session/visit/order-intent của MCP trong đúng installation và phạm vi field có thể xác minh canonical.', isSystem: true }),
   Object.freeze({ permissionKey: PERMISSIONS.coreReportingLogisticsRead, module: 'Báo cáo giao hàng', label: 'Xem hiệu suất giao hàng / logistics', description: 'Cho phép đọc báo cáo chuyến, điểm dừng, kết quả giao và hiệu suất tài xế/phương tiện trong đúng installation và phạm vi kho được cấp.', isSystem: true }),
+  Object.freeze({ permissionKey: PERMISSIONS.coreReportingCodRead, module: 'Báo cáo COD', label: 'Xem COD & đối soát vận hành', description: 'Cho phép đọc trạng thái thu COD, tiền tài xế đang giữ, bàn giao, kế toán tiếp nhận và ngoại lệ trong đúng installation và phạm vi kho được cấp.', isSystem: true }),
 ]);
 
 const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
@@ -166,20 +168,6 @@ export const PERMISSION_CATALOG = Object.freeze([
   ...LOGISTICS_PERMISSION_CATALOG,
   ...ACCOUNTING_PERMISSION_CATALOG,
 ]);
-
 export const PERMISSION_REGISTRY = new Set(PERMISSION_CATALOG.map((entry) => entry.permissionKey));
-
-export function isKnownPermissionKey(value) {
-  return typeof value === 'string' && PERMISSION_REGISTRY.has(value);
-}
-
-export function createPermissionCatalogRows(occurredAt = new Date().toISOString()) {
-  return PERMISSION_CATALOG.map((entry) => ({
-    permission_key: entry.permissionKey,
-    module: entry.module,
-    label: entry.label,
-    description: entry.description,
-    is_system: entry.isSystem,
-    created_at: occurredAt,
-  }));
-}
+export function isKnownPermissionKey(value) { return typeof value === 'string' && PERMISSION_REGISTRY.has(value); }
+export function createPermissionCatalogRows(occurredAt = new Date().toISOString()) { return PERMISSION_CATALOG.map((entry) => ({ permission_key: entry.permissionKey, module: entry.module, label: entry.label, description: entry.description, is_system: entry.isSystem, created_at: occurredAt })); }
