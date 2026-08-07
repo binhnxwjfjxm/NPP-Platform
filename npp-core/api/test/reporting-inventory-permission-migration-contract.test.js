@@ -16,21 +16,14 @@ function catalog(permissionKey) {
 function migrationPermissionRow(sql) {
   const match = /\(\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*(true|false)\s*,\s*now\(\)\s*\)/u.exec(sql);
   if (!match) return null;
-  return Object.freeze({
-    permissionKey: match[1],
-    module: match[2],
-    label: match[3],
-    description: match[4],
-    isSystem: match[5] === 'true',
-  });
+  return Object.freeze({ permissionKey: match[1], module: match[2], label: match[3], description: match[4], isSystem: match[5] === 'true' });
 }
 
-test('8.2 permission migration follows 064 and is registered with exact SQL', () => {
-  const previous = CORE_API_MIGRATIONS.at(-2);
-  const last = CORE_API_MIGRATIONS.at(-1);
-  assert.equal(previous?.id, '064_reporting_permission_catalog');
-  assert.equal(last?.id, '065_reporting_inventory_permission_catalog');
-  assert.equal(last?.sql, migrationSql);
+test('8.2 permission migration follows 064 and keeps exact SQL when later migrations exist', () => {
+  const index = CORE_API_MIGRATIONS.findIndex((migration) => migration.id === '065_reporting_inventory_permission_catalog');
+  assert.ok(index > 0);
+  assert.equal(CORE_API_MIGRATIONS[index - 1]?.id, '064_reporting_permission_catalog');
+  assert.equal(CORE_API_MIGRATIONS[index]?.sql, migrationSql);
 });
 
 test('8.2 migration metadata exactly matches runtime inventory reporting permission', () => {
