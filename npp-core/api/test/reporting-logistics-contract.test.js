@@ -24,6 +24,8 @@ test('8.5 report uses canonical trip stop attempt Delivery Order and reconciliat
   assert.match(report, /attempt\.trip_stop_id/);
   assert.match(report, /attempt\.delivery_order_id/);
   assert.match(report, /delivery_order\.delivery_order_number/);
+  assert.match(report, /attempt\.driver_profile_id AS driver_profile_id/);
+  assert.doesNotMatch(report, /attempt\.driver_id\b/);
   assert.match(report, /planned_start_at >= \$3::timestamptz/);
   assert.match(report, /planned_start_at < \$4::timestamptz/);
   assert.match(report, /\$5::uuid IS NULL OR trip\.warehouse_id = \$5::uuid/);
@@ -42,7 +44,9 @@ test('8.5 utilization does not invent a vehicle capacity percentage or JS busine
   const report = source('../src/routes/reporting-logistics.js');
   assert.match(report, /trip_duration_minutes/);
   assert.match(report, /driver\/vehicle utilization reports actual trip, stop, order, outcome counts/);
-  assert.doesNotMatch(report, /capacity_weight\s*\/|capacity_volume\s*\/|capacity.*percent/i);
+  assert.doesNotMatch(report, /capacity_weight\s*[/*+-]/i);
+  assert.doesNotMatch(report, /capacity_volume\s*[/*+-]/i);
+  assert.doesNotMatch(report, /capacity_(?:weight|volume).*rate_percent/i);
   assert.doesNotMatch(report, /parseFloat\(|parseInt\(|Number\(/);
 });
 

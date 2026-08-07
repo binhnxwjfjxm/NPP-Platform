@@ -281,7 +281,7 @@ export async function logisticsReport(adapter, requestContext, filters, warehous
               delivery_order.delivery_order_number,
               delivery_order.customer_code_snapshot,
               delivery_order.customer_name_snapshot,
-              attempt.driver_id AS driver_profile_id,
+              attempt.driver_profile_id AS driver_profile_id,
               driver.code AS driver_code,
               driver.name AS driver_name,
               attempt.result,
@@ -301,7 +301,7 @@ export async function logisticsReport(adapter, requestContext, filters, warehous
           AND delivery_order.id = attempt.delivery_order_id
          JOIN logistics.driver_profiles driver
            ON driver.installation_id = attempt.installation_id
-          AND driver.id = attempt.driver_id
+          AND driver.id = attempt.driver_profile_id
         WHERE attempt.installation_id = $1
         ORDER BY attempt.attempted_at DESC, attempt.id DESC
         LIMIT 200`,

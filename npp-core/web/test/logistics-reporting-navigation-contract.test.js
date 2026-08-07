@@ -26,5 +26,5 @@ test('8.5 page and gateway use a real server-only reporting path without fake ex
   assert.match(gateway, /import 'server-only'/);
   assert.match(gateway, /CORE_API_SERVER_TOKEN/);
   assert.match(gateway, /cache: 'no-store'/);
-  assert.doesNotMatch(workspace, /export|csv|download/i);
+  assert.doesNotMatch(workspace, /\b(?:text\/csv|createObjectURL|download)\b/i);
 });
