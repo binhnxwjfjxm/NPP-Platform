@@ -32,6 +32,10 @@ export type PurchaseOrderBootstrap = {
   lookupError: string | null;
 };
 
+export type PurchaseOrderBootstrapOptions = Readonly<{
+  search?: string;
+}>;
+
 function joinLabels(labels: string[]) {
   if (labels.length === 0) return '';
   if (labels.length === 1) return labels[0];
@@ -45,7 +49,10 @@ function lookupErrorMessage(labels: string[]) {
     : null;
 }
 
-export async function loadPurchaseOrderBootstrap(requestId?: string | null): Promise<PurchaseOrderBootstrap> {
+export async function loadPurchaseOrderBootstrap(
+  requestId?: string | null,
+  options: PurchaseOrderBootstrapOptions = {},
+): Promise<PurchaseOrderBootstrap> {
   const normalizedRequestId = resolvePurchaseOrderRequestId(requestId);
   const [
     ordersResult,
@@ -53,7 +60,10 @@ export async function loadPurchaseOrderBootstrap(requestId?: string | null): Pro
     organizationResult,
     permissionsResult,
   ] = await Promise.allSettled([
-    listPurchaseOrders<PurchaseOrder>(normalizedRequestId, { limit: 1000 }),
+    listPurchaseOrders<PurchaseOrder>(normalizedRequestId, {
+      limit: 1000,
+      ...(options.search?.trim() ? { search: options.search.trim().slice(0, 256) } : {}),
+    }),
     listAllSuppliers<Supplier>(normalizedRequestId, new URLSearchParams({ active: 'true', limit: '1000' })),
     loadOrganizationSnapshot(),
     loadPurchaseOrderPermissionKeys(normalizedRequestId),

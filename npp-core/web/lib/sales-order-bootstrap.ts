@@ -30,10 +30,20 @@ export type SalesOrderBootstrap = {
   checkedAt: string;
 };
 
-export async function loadSalesOrderBootstrap(requestId?: string | null): Promise<SalesOrderBootstrap> {
+export type SalesOrderBootstrapOptions = Readonly<{
+  search?: string;
+}>;
+
+export async function loadSalesOrderBootstrap(
+  requestId?: string | null,
+  options: SalesOrderBootstrapOptions = {},
+): Promise<SalesOrderBootstrap> {
   const normalizedRequestId = resolveSalesOrderRequestId(requestId);
   const [orders, customers, organization, products, permissions] = await Promise.allSettled([
-    listSalesOrders<SalesOrder>(normalizedRequestId, { limit: 1000 }),
+    listSalesOrders<SalesOrder>(normalizedRequestId, {
+      limit: 1000,
+      ...(options.search?.trim() ? { search: options.search.trim().slice(0, 256) } : {}),
+    }),
     listAllCustomers<Customer>(normalizedRequestId, new URLSearchParams({ active: 'true', limit: '1000' })),
     loadOrganizationSnapshot(),
     listProducts<Product>(normalizedRequestId, new URLSearchParams({ active: 'true', orderable: 'true', limit: '1000' })),

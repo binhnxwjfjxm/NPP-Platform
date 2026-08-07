@@ -4,9 +4,19 @@ import { resolvePurchaseOrderRequestId } from '../../../lib/purchase-order-gatew
 
 export const dynamic = 'force-dynamic';
 
-export default async function PurchaseOrdersPage() {
+type PageProps = Readonly<{
+  searchParams?: Readonly<{ search?: string | string[] }>;
+}>;
+
+function firstSearch(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return String(raw ?? '').trim().slice(0, 256);
+}
+
+export default async function PurchaseOrdersPage({ searchParams }: PageProps) {
   const requestId = resolvePurchaseOrderRequestId(null);
-  const initialBootstrap = await loadPurchaseOrderBootstrap(requestId);
+  const search = firstSearch(searchParams?.search);
+  const initialBootstrap = await loadPurchaseOrderBootstrap(requestId, { search });
 
   return (
     <PurchaseOrderWorkspace initialBootstrap={initialBootstrap} />
