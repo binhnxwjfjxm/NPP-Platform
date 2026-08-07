@@ -73,7 +73,7 @@ const INVENTORY_TRANSFER_RECEIPT_PERMISSION_CATALOG = Object.freeze([
   ['coreInventoryTransferReceive', 'Kho', 'Nhận hàng chuyển kho', 'Cho phép ghi nhận hàng đạt, hư hỏng và hàng thừa chờ xác minh tại kho đích.'],
   ['coreInventoryTransferDamageApprove', 'Kho', 'Duyệt hư hỏng chuyển kho', 'Cho phép quản lý kho đích xác nhận biên bản hư hỏng của lần nhận chuyển kho.'],
   ['coreInventoryTransferResolve', 'Kho', 'Đóng chênh lệch chuyển kho', 'Cho phép quản lý kho đóng phần thiếu có lý do, không sửa số lượng xuất gốc.'],
-].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true }));
+].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true })));
 
 const STOCKTAKE_PERMISSION_CATALOG = Object.freeze([
   ['coreStocktakeRead', 'Kho', 'Xem kiểm kê', 'Cho phép đọc danh sách, chi tiết và lịch sử vòng đếm kiểm kê trong phạm vi kho được cấp.'],
@@ -84,7 +84,7 @@ const STOCKTAKE_PERMISSION_CATALOG = Object.freeze([
   ['coreStocktakePost', 'Kho', 'Ghi sổ kiểm kê', 'Cho phép ghi một movement điều chỉnh kiểm kê từ kết quả đã duyệt.'],
   ['coreStocktakeCancel', 'Kho', 'Hủy kiểm kê', 'Cho phép hủy đợt kiểm kê trước khi gửi duyệt.'],
   ['coreStocktakeReverse', 'Kho', 'Đảo ghi sổ kiểm kê', 'Cho phép đảo movement kiểm kê khi chưa có movement phát sinh sau đó trên exact scope.'],
-].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true }));
+].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true })));
 
 const INVENTORY_ADJUSTMENT_PERMISSION_CATALOG = Object.freeze([
   ['coreInventoryAdjustmentRead', 'Kho', 'Xem phiếu xử lý tồn kho', 'Cho phép đọc phiếu điều chỉnh, cách ly, hư hỏng và tiêu hủy trong phạm vi kho được cấp.'],
@@ -94,13 +94,13 @@ const INVENTORY_ADJUSTMENT_PERMISSION_CATALOG = Object.freeze([
   ['coreInventoryAdjustmentPost', 'Kho', 'Ghi sổ phiếu xử lý tồn kho', 'Cho phép ghi movement append-only sau khi phiếu đã được duyệt.'],
   ['coreInventoryAdjustmentCancel', 'Kho', 'Hủy phiếu xử lý tồn kho', 'Cho phép hủy phiếu trước khi ghi sổ với lý do bắt buộc.'],
   ['coreInventoryAdjustmentReverse', 'Kho', 'Đảo phiếu xử lý tồn kho', 'Cho phép đảo movement khi chưa có movement phát sinh sau đó trên exact scope.'],
-].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true }));
+].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true })));
 
 const INVENTORY_COST_PERMISSION_CATALOG = Object.freeze([
   ['coreInventoryCostRead', 'Kho', 'Xem giá vốn tồn kho', 'Cho phép đọc số lượng, giá trị, giá bình quân và cost fact trong phạm vi kho được cấp.'],
   ['coreInventoryCostRebuild', 'Kho', 'Dựng lại giá vốn tồn kho', 'Cho phép dựng lại moving-average cost facts và projection từ inventory ledger bất biến.'],
   ['coreInventoryCostReconcile', 'Kho', 'Đối soát giá vốn tồn kho', 'Cho phép đọc đối soát quantity ledger với costing projection và anomaly nguồn giá.'],
-].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true }));
+].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true })));
 
 const REPORTING_PERMISSION_CATALOG = Object.freeze([
   Object.freeze({ permissionKey: PERMISSIONS.coreReportingInventoryRead, module: 'Báo cáo tồn kho', label: 'Xem báo cáo tồn kho', description: 'Cho phép đọc dashboard tồn kho trong đúng installation và phạm vi kho được cấp.', isSystem: true }),
@@ -114,7 +114,7 @@ const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
   ['coreVehicleRead', 'Điều phối giao hàng', 'Xem phương tiện', 'Cho phép đọc danh mục phương tiện giao hàng.'],
   ['coreVehicleManage', 'Điều phối giao hàng', 'Quản lý phương tiện', 'Cho phép tạo phương tiện giao hàng phục vụ điều phối.'],
   ['coreDriverProfileRead', 'Điều phối giao hàng', 'Xem tài xế', 'Cho phép đọc hồ sơ tài xế giao hàng.'],
-  ['coreDriverProfileManage', 'Điều phối giao hàng', 'Quản lý tài xế', 'Cho phép tạo hồ sơ tài xế giao hàng.'],
+  ['coreDriverProfileManage', 'Điều phối giao hàng', 'Quản lý tài xế', 'Cho phép tạo hồ sơ tài xế giao hàng phục vụ điều phối.'],
   ['coreDeliveryTripRead', 'Điều phối giao hàng', 'Xem chuyến giao', 'Cho phép đọc chuyến, điểm dừng và phiếu giao được gán trong phạm vi kho.'],
   ['coreDeliveryTripCreate', 'Điều phối giao hàng', 'Tạo chuyến giao', 'Cho phép tạo chuyến giao nháp trong phạm vi kho.'],
   ['coreDeliveryTripPlan', 'Điều phối giao hàng', 'Lập kế hoạch chuyến', 'Cho phép cập nhật xe, tài xế, thời gian và trạng thái planned của chuyến.'],
@@ -133,7 +133,7 @@ const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
   ['coreCodCollectionRecord', 'COD giao hàng', 'Ghi nhận tiền COD đã thu', 'Cho phép tài xế ghi tiền thực thu hoặc lời hẹn của đúng phiếu giao được giao.'],
   ['coreCodHandoverRead', 'COD giao hàng', 'Xem bàn giao tiền COD', 'Cho phép đọc các lần bàn giao tiền COD trong phạm vi được cấp.'],
   ['coreCodHandoverCreate', 'COD giao hàng', 'Lập bàn giao tiền COD', 'Cho phép tài xế lập bàn giao tiền mặt COD theo exact collection lineage.'],
-].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true }));
+].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true })));
 
 const ACCOUNTING_PERMISSION_CATALOG = Object.freeze([
   ['coreReceivableRead', 'Công nợ khách hàng', 'Xem công nợ khách hàng', 'Cho phép đọc số dư, chứng từ và sổ chi tiết công nợ khách hàng trong phạm vi kho được cấp.'],
@@ -150,7 +150,7 @@ const ACCOUNTING_PERMISSION_CATALOG = Object.freeze([
   ['coreCodReconciliationRead', 'Đối soát COD', 'Xem đối soát tiền COD', 'Cho phép kế toán/thu ngân đọc collection, bàn giao, tiền thực nhận và chênh lệch COD.'],
   ['coreCodReconciliationAccept', 'Đối soát COD', 'Xác nhận tiền COD công ty nhận', 'Cho phép kế toán/thu ngân xác nhận số tiền thực nhận và trạng thái đối soát COD.'],
   ['coreCodAdjustmentCreate', 'Đối soát COD', 'Đảo hoặc điều chỉnh COD', 'Cho phép tạo reversal/adjustment append-only cho collection, bàn giao hoặc xác nhận COD.'],
-].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true }));
+].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true })));
 
 export const PERMISSION_CATALOG = Object.freeze([
   ...BASE_PERMISSION_CATALOG,
