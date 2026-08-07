@@ -8,7 +8,7 @@ import { PERMISSION_REGISTRY, PERMISSIONS } from './access/permissions.js';
 // coreSalesOrderRead
 // coreSalesOrderCreate
 // warehouseIds: config.mcpSalesWarehouseIds
-// Broad operational permissions are added only to bootstrap.
+// Broad operational/reporting permissions are added only to bootstrap.
 const LOGISTICS_BOOTSTRAP_PERMISSIONS = Object.freeze([
   PERMISSIONS.coreLogisticsRouteRead,
   PERMISSIONS.coreLogisticsRouteManage,
@@ -46,6 +46,8 @@ const LOGISTICS_BOOTSTRAP_PERMISSIONS = Object.freeze([
   PERMISSIONS.coreCodReconciliationRead,
   PERMISSIONS.coreCodReconciliationAccept,
   PERMISSIONS.coreCodAdjustmentCreate,
+  PERMISSIONS.coreReportingSalesRead,
+  PERMISSIONS.coreReportingPurchasingRead,
 ]);
 
 function withLogisticsBootstrapPermissions(principal) {

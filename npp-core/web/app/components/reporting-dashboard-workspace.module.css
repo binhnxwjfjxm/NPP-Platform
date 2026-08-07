@@ -1,0 +1,298 @@
+.workspace {
+  display: grid;
+  gap: 18px;
+}
+
+.filters,
+.panel,
+.statusPanel {
+  border: 1px solid var(--border-color, #dfe4ea);
+  border-radius: 18px;
+  background: var(--surface-color, #fff);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 5%);
+}
+
+.filters,
+.panel,
+.statusPanel {
+  padding: 18px;
+}
+
+.filterHeading,
+.sectionHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.filterHeading h2,
+.sectionHeading h2 {
+  margin: 2px 0 0;
+  font-size: 1rem;
+}
+
+.filterHeading small,
+.sectionHeading small,
+.sectionHeading > span {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.eyebrow {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.filterGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 220px));
+  gap: 12px;
+}
+
+.filterGrid label {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.filterGrid input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+}
+
+.filterActions,
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.filterActions {
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.primaryButton,
+.secondaryButton,
+.headerLink {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  padding: 8px 13px;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.primaryButton {
+  border: 1px solid #0f172a;
+  background: #0f172a;
+  color: #fff;
+}
+
+.secondaryButton,
+.headerLink {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summaryGrid article {
+  display: grid;
+  gap: 6px;
+  min-height: 118px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 16px;
+  background: #fff;
+}
+
+.summaryGrid span {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.summaryGrid strong {
+  color: #0f172a;
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.summaryGrid small {
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.statusGrid,
+.twoColumns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.statusList {
+  display: grid;
+  gap: 8px;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-top: 1px solid #edf2f7;
+  padding-top: 8px;
+}
+
+.statusRow:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.statusRow span {
+  color: #475569;
+  font-size: 0.86rem;
+}
+
+.statusRow strong {
+  color: #0f172a;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.tableWrap table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+}
+
+.tableWrap th,
+.tableWrap td {
+  border-bottom: 1px solid #edf2f7;
+  padding: 10px 8px;
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.84rem;
+}
+
+.tableWrap th {
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.tableWrap td {
+  color: #1e293b;
+}
+
+.tableWrap td > small {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+}
+
+.tableWrap a {
+  color: #0f172a;
+  text-underline-offset: 3px;
+}
+
+.empty {
+  padding: 22px !important;
+  color: #64748b !important;
+  text-align: center !important;
+}
+
+.error {
+  margin: 0;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  padding: 11px 13px;
+  background: #fff7f7;
+  color: #991b1b;
+}
+
+.lineage {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .statusGrid,
+  .twoColumns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .filters,
+  .panel,
+  .statusPanel {
+    border-radius: 14px;
+    padding: 14px;
+  }
+
+  .filterHeading,
+  .sectionHeading {
+    display: grid;
+  }
+
+  .filterGrid,
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .filterActions {
+    justify-content: stretch;
+  }
+
+  .filterActions button {
+    flex: 1;
+  }
+
+  .headerActions {
+    width: 100%;
+  }
+
+  .headerLink {
+    flex: 1;
+  }
+}
