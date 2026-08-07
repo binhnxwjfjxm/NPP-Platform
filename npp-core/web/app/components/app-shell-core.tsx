@@ -42,6 +42,7 @@ const organizationItems: NavItem[] = [
 const accessItems: NavItem[] = [
   { href: '/access/roles', label: 'Vai trò & phân quyền', icon: 'panel', testId: 'nav-roles' },
   { href: '/access/employees', label: 'Danh mục nhân sự', icon: 'user', testId: 'nav-employees' },
+  { href: '/access/employees/performance', label: 'Hiệu suất nhân viên / MCP', icon: 'dashboard', testId: 'nav-employee-mcp-reporting' },
   { href: '/access/users', label: 'Người dùng', icon: 'user', testId: 'nav-users' },
 ];
 
@@ -168,7 +169,7 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
         {renderGroup({ sectionLabel: 'Bán hàng', title: 'Bán hàng', hint: 'Đơn nhiều nguồn, mã khách và vòng đời thương mại', icon: 'panel', active: isSalesPath(pathname), open: salesOpen, setOpen: setSalesOpen, testId: 'sales-menu-toggle', children: salesChildren })}
         {renderGroup({ sectionLabel: 'Mua hàng', title: 'Mua hàng', hint: 'Đơn đặt hàng và phiếu nhận hàng', icon: 'panel', active: pathname.startsWith('/purchasing'), open: purchasingOpen, setOpen: setPurchasingOpen, testId: 'purchasing-menu-toggle', children: purchasingChildren })}
         {renderGroup({ sectionLabel: 'Kế toán & công nợ', title: 'Kế toán & công nợ', hint: 'Tuổi nợ, phải thu, thu tiền, phải trả và thanh toán nhà cung cấp', icon: 'accounting', active: pathname.startsWith('/accounting'), open: accountingOpen, setOpen: setAccountingOpen, testId: 'accounting-menu-toggle', children: accountingChildren })}
-        {renderGroup({ sectionLabel: 'Quản trị hệ thống', title: 'Nhân sự & phân quyền', hint: 'Hồ sơ, tài khoản và phạm vi truy cập', icon: 'user', active: pathname.startsWith('/access'), open: accessOpen, setOpen: setAccessOpen, testId: 'access-menu-toggle', children: accessChildren })}
+        {renderGroup({ sectionLabel: 'Quản trị hệ thống', title: 'Nhân sự & phân quyền', hint: 'Hồ sơ, hiệu suất field, tài khoản và phạm vi truy cập', icon: 'user', active: pathname.startsWith('/access'), open: accessOpen, setOpen: setAccessOpen, testId: 'access-menu-toggle', children: accessChildren })}
       </nav></div>
       <div className={styles.sidebarFooter}><div className={styles.userPlaceholder} title={collapsed ? 'Tài khoản người dùng' : undefined}><span className={styles.userAvatar}><Icon name="user" /></span><span className={styles.userCopy}><strong>Tài khoản người dùng</strong><small>Quản lý tài khoản và quyền truy cập</small></span></div></div>
     </aside>

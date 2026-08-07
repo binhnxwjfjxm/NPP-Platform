@@ -29,6 +29,7 @@ export const PERMISSIONS = Object.freeze({
   coreReportingInventoryRead: 'core.reporting.inventory.read',
   coreReportingAgingRead: 'core.reporting.aging.read',
   coreReportingGrossMarginRead: 'core.reporting.gross-margin.read',
+  coreReportingEmployeeMcpRead: 'core.reporting.employee-mcp.read',
   coreLogisticsRouteRead: 'core.logistics-route.read',
   coreLogisticsRouteManage: 'core.logistics-route.manage',
   coreVehicleRead: 'core.vehicle.read',
@@ -106,6 +107,7 @@ const REPORTING_PERMISSION_CATALOG = Object.freeze([
   Object.freeze({ permissionKey: PERMISSIONS.coreReportingInventoryRead, module: 'Báo cáo tồn kho', label: 'Xem báo cáo tồn kho', description: 'Cho phép đọc dashboard tồn kho trong đúng installation và phạm vi kho được cấp.', isSystem: true }),
   Object.freeze({ permissionKey: PERMISSIONS.coreReportingAgingRead, module: 'Báo cáo công nợ', label: 'Xem tuổi nợ phải thu / phải trả', description: 'Cho phép đọc tuổi khoản phải thu và tuổi nợ phải trả trong đúng installation và phạm vi kho được cấp.', isSystem: true }),
   Object.freeze({ permissionKey: PERMISSIONS.coreReportingGrossMarginRead, module: 'Báo cáo lãi gộp', label: 'Xem báo cáo lãi gộp', description: 'Cho phép đọc doanh thu thuần, giá vốn Phase 7 và lãi gộp trong đúng installation và phạm vi kho được cấp.', isSystem: true }),
+  Object.freeze({ permissionKey: PERMISSIONS.coreReportingEmployeeMcpRead, module: 'Báo cáo nhân sự & MCP', label: 'Xem hiệu suất nhân viên / MCP', description: 'Cho phép đọc hiệu suất route/session/visit/order-intent của MCP trong đúng installation và phạm vi field có thể xác minh canonical.', isSystem: true }),
 ]);
 
 const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
