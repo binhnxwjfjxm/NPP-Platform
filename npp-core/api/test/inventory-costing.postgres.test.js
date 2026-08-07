@@ -431,7 +431,7 @@ test('moving-average rebuild preserves transfer carrying cost and exposes source
           WHERE installation_id = $1`,
         [config.installationId],
       ),
-      /inventory_cost_balance_requires_projector_context/,
+      /inventory_cost_balances_projector_only/,
     );
   } finally {
     await closePool();
