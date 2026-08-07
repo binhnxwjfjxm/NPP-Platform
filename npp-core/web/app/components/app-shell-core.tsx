@@ -87,6 +87,7 @@ const purchasingItems: NavItem[] = [
 
 const accountingItems: NavItem[] = [
   { href: '/accounting/aging', label: 'Tuổi nợ', icon: 'dashboard', testId: 'nav-aging-reporting' },
+  { href: '/accounting/cod-reporting', label: 'COD & đối soát', icon: 'dashboard', testId: 'nav-cod-reporting' },
   { href: '/accounting/receivables', label: 'Công nợ phải thu', icon: 'accounting', testId: 'nav-receivables' },
   { href: '/accounting/customer-payments', label: 'Thu tiền khách hàng', icon: 'accounting', testId: 'nav-customer-payments' },
   { href: '/accounting/payables', label: 'Công nợ phải trả', icon: 'accounting', testId: 'nav-payables' },
