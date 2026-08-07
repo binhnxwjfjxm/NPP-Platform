@@ -53,6 +53,7 @@ const REPORTING_PERMISSION_CATALOG_SQL = readFileSync(new URL('../../../../datab
 const REPORTING_INVENTORY_PERMISSION_CATALOG_SQL = readFileSync(new URL('../../../../database/migrations/shared/065_reporting_inventory_permission_catalog.sql', import.meta.url), 'utf8');
 const REPORTING_AGING_GROSS_MARGIN_PERMISSION_CATALOG_SQL = readFileSync(new URL('../../../../database/migrations/shared/066_reporting_aging_gross_margin_permission_catalog.sql', import.meta.url), 'utf8');
 const REPORTING_EMPLOYEE_MCP_PERMISSION_CATALOG_SQL = readFileSync(new URL('../../../../database/migrations/shared/067_reporting_employee_mcp_permission_catalog.sql', import.meta.url), 'utf8');
+const REPORTING_LOGISTICS_PERMISSION_CATALOG_SQL = readFileSync(new URL('../../../../database/migrations/shared/068_reporting_logistics_permission_catalog.sql', import.meta.url), 'utf8');
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -78,6 +79,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '065_reporting_inventory_permission_catalog', sql: REPORTING_INVENTORY_PERMISSION_CATALOG_SQL }),
   Object.freeze({ id: '066_reporting_aging_gross_margin_permission_catalog', sql: REPORTING_AGING_GROSS_MARGIN_PERMISSION_CATALOG_SQL }),
   Object.freeze({ id: '067_reporting_employee_mcp_permission_catalog', sql: REPORTING_EMPLOYEE_MCP_PERMISSION_CATALOG_SQL }),
+  Object.freeze({ id: '068_reporting_logistics_permission_catalog', sql: REPORTING_LOGISTICS_PERMISSION_CATALOG_SQL }),
 ]);
 
 export { runMigrations };

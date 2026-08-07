@@ -10,6 +10,7 @@ import { purchasingReport } from './reporting-purchasing.js';
 import { inventoryReport, normalizeSlowDays } from './reporting-inventory.js';
 import { agingReport, grossMarginReport } from './reporting-finance.js';
 import { employeeMcpReport, resolveEmployeeMcpScope } from './reporting-employee-mcp.js';
+import { logisticsReport } from './reporting-logistics.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -59,6 +60,7 @@ function reportingFamily(pathname) {
   if (pathname === '/api/reporting/aging') return 'aging';
   if (pathname === '/api/reporting/gross-margin') return 'gross-margin';
   if (pathname === '/api/reporting/employee-mcp') return 'employee-mcp';
+  if (pathname === '/api/reporting/logistics') return 'logistics';
   return null;
 }
 
@@ -68,6 +70,7 @@ function reportingPermission(options, family) {
   if (family === 'inventory') return options.PERMISSIONS.coreReportingInventoryRead;
   if (family === 'aging') return options.PERMISSIONS.coreReportingAgingRead;
   if (family === 'gross-margin') return options.PERMISSIONS.coreReportingGrossMarginRead;
+  if (family === 'logistics') return options.PERMISSIONS.coreReportingLogisticsRead;
   return options.PERMISSIONS.coreReportingEmployeeMcpRead;
 }
 
@@ -178,6 +181,8 @@ export async function handleReportingRoutes(req, res, options) {
       report = await agingReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
     } else if (family === 'gross-margin') {
       report = await grossMarginReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
+    } else if (family === 'logistics') {
+      report = await logisticsReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
     } else {
       const fieldScope = await resolveEmployeeMcpScope(options.getPool(), requestContext);
       if (!fieldScope.ok) {
