@@ -51,6 +51,7 @@ const accessItems: NavItem[] = [
 ];
 
 const inventoryItems: NavItem[] = [
+  { href: '/inventory/reporting', label: 'Báo cáo tồn kho', icon: 'dashboard', testId: 'nav-inventory-reporting' },
   { href: '/inventory/fulfillment', label: 'Chuẩn bị hàng', icon: 'panel', testId: 'nav-inventory-fulfillment' },
   { href: '/inventory/transfers', label: 'Chuyển kho', icon: 'panel', testId: 'nav-inventory-transfers' },
   { href: '/inventory/stocktakes', label: 'Kiểm kê kho', icon: 'panel', testId: 'nav-inventory-stocktakes' },

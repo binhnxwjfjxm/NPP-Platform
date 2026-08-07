@@ -1,0 +1,242 @@
+.workspace {
+  display: grid;
+  gap: 18px;
+}
+
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.linkButton,
+.primaryButton,
+.secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--border, #d7dce3);
+  background: var(--surface, #fff);
+  color: inherit;
+  text-decoration: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.primaryButton {
+  background: #20242a;
+  color: #fff;
+  border-color: #20242a;
+}
+
+.secondaryButton {
+  background: transparent;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto auto;
+  gap: 12px;
+  align-items: end;
+  padding: 16px;
+  border: 1px solid var(--border, #e0e4e8);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #5e6672;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #cfd5dc;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+  color: #1d2228;
+  font: inherit;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.card {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--border, #e0e4e8);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+}
+
+.cardLabel {
+  margin: 0 0 8px;
+  color: #68717c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cardValue {
+  margin: 0;
+  font-size: clamp(18px, 2vw, 25px);
+  line-height: 1.15;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.cardHint {
+  margin: 7px 0 0;
+  color: #5f6873;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.notice,
+.error,
+.loading {
+  padding: 13px 15px;
+  border-radius: 12px;
+  border: 1px solid #d8dde3;
+  background: #f7f8fa;
+  line-height: 1.5;
+}
+
+.error {
+  border-color: #d9a1a1;
+  background: #fff5f5;
+}
+
+.section {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border, #e0e4e8);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sectionHeader h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.sectionHeader p {
+  margin: 5px 0 0;
+  color: #69727e;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid #e2e5e9;
+  border-radius: 11px;
+}
+
+.table {
+  width: 100%;
+  min-width: 780px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th,
+.table td {
+  padding: 10px 11px;
+  border-bottom: 1px solid #eaedf0;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.table th {
+  background: #f7f8fa;
+  color: #555f6a;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.numeric {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.statusGood,
+.statusWarn,
+.statusBad,
+.statusNeutral {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.statusGood { background: #eaf7ee; color: #176b37; }
+.statusWarn { background: #fff6df; color: #825b00; }
+.statusBad { background: #fff0f0; color: #9b2626; }
+.statusNeutral { background: #eef1f4; color: #505962; }
+
+.empty {
+  padding: 18px;
+  color: #5f6873;
+  text-align: center;
+}
+
+.sourceNote {
+  display: grid;
+  gap: 5px;
+  color: #6d7680;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.sourceNote code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1180px) {
+  .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .filters { grid-template-columns: repeat(2, minmax(0, 1fr)) auto auto; }
+}
+
+@media (max-width: 720px) {
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .filters { grid-template-columns: 1fr; }
+  .primaryButton,
+  .secondaryButton { width: 100%; }
+  .sectionHeader { flex-direction: column; }
+  .headerActions { width: 100%; }
+  .linkButton { flex: 1 1 auto; }
+}

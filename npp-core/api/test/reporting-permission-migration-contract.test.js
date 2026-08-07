@@ -27,12 +27,11 @@ function migrationPermissionRows(sql) {
   ]));
 }
 
-test('8.1 reporting permission metadata is forward-migrated immediately after 063', () => {
-  const previous = CORE_API_MIGRATIONS.at(-2);
-  const last = CORE_API_MIGRATIONS.at(-1);
-  assert.equal(previous?.id, '063_inventory_costing_periods_backdate');
-  assert.equal(last?.id, '064_reporting_permission_catalog');
-  assert.equal(last?.sql, migrationSql);
+test('8.1 reporting permission metadata follows 063 even when later migrations exist', () => {
+  const index = CORE_API_MIGRATIONS.findIndex((migration) => migration.id === '064_reporting_permission_catalog');
+  assert.ok(index > 0);
+  assert.equal(CORE_API_MIGRATIONS[index - 1]?.id, '063_inventory_costing_periods_backdate');
+  assert.equal(CORE_API_MIGRATIONS[index]?.sql, migrationSql);
 });
 
 test('8.1 migration rows exactly match the runtime permission catalog metadata', () => {
