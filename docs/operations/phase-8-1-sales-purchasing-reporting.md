@@ -5,7 +5,7 @@ Issue: #370
 
 Baseline: `main@edac86e9c6aa8e75267ff11219f04f240395e8b4`
 
-This slice implements only the first operational reporting family after the Phase 8.0 source gate. It adds no database migration and does not authorize production deploy.
+This slice implements only the first operational reporting family after the Phase 8.0 source gate. It includes one forward-only metadata migration (`064_reporting_permission_catalog`) so the two new reporting permissions exist in the canonical database permission catalog. It does not add reporting tables/read models and does not authorize production deploy or production migration.
 
 ## User outcome
 
@@ -53,7 +53,7 @@ Backend endpoints:
 - `GET /api/reporting/sales` requires `core.reporting.sales.read`;
 - `GET /api/reporting/purchasing` requires `core.reporting.purchasing.read`.
 
-Both deny by default. Reporting permissions are registered in the existing permission catalog. No end-user role is bulk-assigned in this slice.
+Both deny by default. Reporting permissions are registered in the runtime permission catalog and in the database catalog through forward-only migration `064_reporting_permission_catalog`. Migration 064 only upserts canonical permission metadata; it does not assign either permission to any end-user role.
 
 The internal NPP bootstrap service principal receives only these two Phase 8.1 reporting permissions so the existing server-side gateway can call Core. End-user access remains a separate role/scope concern.
 
@@ -77,11 +77,17 @@ When `from`/`to` are omitted, Core owns the default period:
 
 Timestamp-backed Sales filtering uses local midnight inclusive through the next local midnight exclusive. Purchase/receipt `date` columns compare calendar dates directly.
 
-## Production boundary
+## Migration and production boundary
 
-This slice is source-only until separately authorized. It does not:
+Source includes migration `064_reporting_permission_catalog` because migration verification requires the database permission catalog to match the runtime permission registry. It is metadata-only and rerunnable through `ON CONFLICT (permission_key) DO UPDATE`.
+
+Source merge does **not** authorize applying 064 on production. Any later production DB mutation remains a separate gate and must follow the repository sequence:
+
+`audit pending -> backup -> restore rehearsal -> pre-reconciliation -> migration -> verify/rerun -> post-reconciliation -> smoke`
+
+This slice does not:
 
 - deploy Vercel or Heroku;
-- run a production migration;
+- run migration 064 on production;
 - change the production database manually;
 - start Phase 8.2.

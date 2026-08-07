@@ -49,6 +49,7 @@ const INVENTORY_STOCKTAKE_SQL = readFileSync(new URL('../../../../database/migra
 const INVENTORY_ADJUSTMENTS_SQL = readFileSync(new URL('../../../../database/migrations/inventory/061_inventory_adjustments.sql', import.meta.url), 'utf8');
 const INVENTORY_COSTING_FOUNDATION_SQL = readFileSync(new URL('../../../../database/migrations/inventory/062_inventory_costing_foundation.sql', import.meta.url), 'utf8');
 const INVENTORY_COSTING_PERIODS_BACKDATE_SQL = readFileSync(new URL('../../../../database/migrations/inventory/063_inventory_costing_periods_backdate.sql', import.meta.url), 'utf8');
+const REPORTING_PERMISSION_CATALOG_SQL = readFileSync(new URL('../../../../database/migrations/shared/064_reporting_permission_catalog.sql', import.meta.url), 'utf8');
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -70,6 +71,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '061_inventory_adjustments', sql: INVENTORY_ADJUSTMENTS_SQL }),
   Object.freeze({ id: '062_inventory_costing_foundation', sql: INVENTORY_COSTING_FOUNDATION_SQL }),
   Object.freeze({ id: '063_inventory_costing_periods_backdate', sql: INVENTORY_COSTING_PERIODS_BACKDATE_SQL }),
+  Object.freeze({ id: '064_reporting_permission_catalog', sql: REPORTING_PERMISSION_CATALOG_SQL }),
 ]);
 
 export { runMigrations };
