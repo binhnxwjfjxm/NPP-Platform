@@ -7,6 +7,7 @@ import {
 } from './reporting-common.js';
 import { salesReport } from './reporting-sales.js';
 import { purchasingReport } from './reporting-purchasing.js';
+import { inventoryReport, normalizeSlowDays } from './reporting-inventory.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -62,13 +63,22 @@ async function authenticateAndAuthorize(req, res, options, permission) {
   }
 }
 
+function reportingFamily(pathname) {
+  if (pathname === '/api/reporting/sales') return 'sales';
+  if (pathname === '/api/reporting/purchasing') return 'purchasing';
+  if (pathname === '/api/reporting/inventory') return 'inventory';
+  return null;
+}
+
+function reportingPermission(options, family) {
+  if (family === 'sales') return options.PERMISSIONS.coreReportingSalesRead;
+  if (family === 'purchasing') return options.PERMISSIONS.coreReportingPurchasingRead;
+  return options.PERMISSIONS.coreReportingInventoryRead;
+}
+
 export async function handleReportingRoutes(req, res, options) {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-  const family = url.pathname === '/api/reporting/sales'
-    ? 'sales'
-    : url.pathname === '/api/reporting/purchasing'
-      ? 'purchasing'
-      : null;
+  const family = reportingFamily(url.pathname);
   if (!family) return false;
 
   const method = String(req.method ?? 'GET').toUpperCase();
@@ -82,10 +92,12 @@ export async function handleReportingRoutes(req, res, options) {
     return true;
   }
 
-  const permission = family === 'sales'
-    ? options.PERMISSIONS.coreReportingSalesRead
-    : options.PERMISSIONS.coreReportingPurchasingRead;
-  const requestContext = await authenticateAndAuthorize(req, res, options, permission);
+  const requestContext = await authenticateAndAuthorize(
+    req,
+    res,
+    options,
+    reportingPermission(options, family),
+  );
   if (!requestContext) return true;
 
   const normalized = normalizeFilters({
@@ -97,6 +109,25 @@ export async function handleReportingRoutes(req, res, options) {
     sendError(
       res,
       apiError(normalized.code, normalized.message, normalized.details, false, normalized.statusCode),
+      options.requestId,
+      options.receivedAt,
+    );
+    return true;
+  }
+
+  const slowDays = family === 'inventory'
+    ? normalizeSlowDays(url.searchParams.get('slowDays'))
+    : undefined;
+  if (family === 'inventory' && slowDays === null) {
+    sendError(
+      res,
+      apiError(
+        'INVALID_REPORTING_SLOW_DAYS',
+        'Ngưỡng hàng chậm luân chuyển phải là số nguyên từ 30 đến 365 ngày',
+        {},
+        false,
+        400,
+      ),
       options.requestId,
       options.receivedAt,
     );
@@ -115,9 +146,20 @@ export async function handleReportingRoutes(req, res, options) {
   }
 
   try {
-    const report = family === 'sales'
-      ? await salesReport(options.getPool(), requestContext, normalized, scope.warehouseIds)
-      : await purchasingReport(options.getPool(), requestContext, normalized, scope.warehouseIds);
+    let report;
+    if (family === 'sales') {
+      report = await salesReport(options.getPool(), requestContext, normalized, scope.warehouseIds);
+    } else if (family === 'purchasing') {
+      report = await purchasingReport(options.getPool(), requestContext, normalized, scope.warehouseIds);
+    } else {
+      report = await inventoryReport(
+        options.getPool(),
+        requestContext,
+        normalized,
+        scope.warehouseIds,
+        slowDays,
+      );
+    }
     res.setHeader('Cache-Control', 'no-store');
     sendSuccess(res, report, options.requestId, options.receivedAt);
   } catch (error) {
