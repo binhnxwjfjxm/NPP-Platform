@@ -63,6 +63,12 @@ import { buildSslConfig } from "./npp-core/api/src/db/pool.js";
 
 const { Pool } = pg;
 const command = process.env.CORE_GATE_COMMAND;
+const migrationIdsInRange = (first, last) => CORE_API_MIGRATIONS
+  .map((migration) => migration.id)
+  .filter((id) => {
+    const numericPrefix = Number.parseInt(id.slice(0, 3), 10);
+    return numericPrefix >= first && numericPrefix <= last;
+  });
 const pool = new Pool({
   connectionString: process.env.CORE_GATE_DATABASE_URL,
   ssl: buildSslConfig(process.env.CORE_GATE_SSL_MODE),
@@ -165,7 +171,7 @@ try {
       ok: missingRelations.length === 0 && missingPermissions.length === 0,
       missingRelations,
       missingPermissions,
-      registryTail: CORE_API_MIGRATIONS.slice(-12).map((migration) => migration.id),
+      registryTail: migrationIdsInRange(46, 57),
     };
   } else if (command === "phase7inventory") {
     const requiredRelations = [
@@ -246,7 +252,7 @@ try {
       ok: missingRelations.length === 0 && missingPermissions.length === 0,
       missingRelations,
       missingPermissions,
-      registryTail: CORE_API_MIGRATIONS.slice(-5).map((migration) => migration.id),
+      registryTail: migrationIdsInRange(58, 62),
     };
   } else throw new Error("unknown_core_gate_command");
   process.stdout.write(`${JSON.stringify({ command, result })}\n`);
