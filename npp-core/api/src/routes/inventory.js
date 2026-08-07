@@ -4,6 +4,7 @@ import { handleInventoryTransferReceiptRoutes } from './inventory-transfer-recei
 import { handleInventoryStocktakeRoutes } from './inventory-stocktakes.js';
 import { handleInventoryAdjustmentRoutes } from './inventory-adjustments.js';
 import { handleInventoryCostingRoutes } from './inventory-costing.js';
+import { handleInventoryCostingPeriodRoutes } from './inventory-costing-periods.js';
 import { handleCodDriverRoutes } from './cod-driver.js';
 import { handleLogisticsRoutes } from './logistics.js';
 import { handleLogisticsAttemptRoutes } from './logistics-attempts.js';
@@ -17,6 +18,7 @@ import { handleLogisticsReconciliationRoutes } from './logistics-reconciliation.
 export async function handleInventoryRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (pathname === '/api/inventory/costing' || pathname.startsWith('/api/inventory/costing/')) {
+    if (await handleInventoryCostingPeriodRoutes(req, res, options)) return true;
     return handleInventoryCostingRoutes(req, res, options);
   }
   if (pathname === '/api/inventory/adjustments' || pathname.startsWith('/api/inventory/adjustments/')) {

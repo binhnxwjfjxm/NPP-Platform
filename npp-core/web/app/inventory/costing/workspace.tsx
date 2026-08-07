@@ -3,10 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import type {
+  InventoryCostAdjustmentEvent,
   InventoryCostAnomaly,
   InventoryCostBalance,
+  InventoryCostDiscrepancy,
   InventoryCostFact,
   InventoryCostRebuildResult,
+  InventoryCostingPeriod,
   InventoryCostingRun,
   InventoryCostReconciliation,
 } from '../../../lib/inventory-costing-types';
@@ -17,11 +20,14 @@ type Props = {
   initialFacts: InventoryCostFact[];
   initialAnomalies: InventoryCostAnomaly[];
   initialReconciliation: InventoryCostReconciliation[];
+  initialPeriods: InventoryCostingPeriod[];
+  initialAdjustments: InventoryCostAdjustmentEvent[];
+  initialDiscrepancies: InventoryCostDiscrepancy[];
   initialRun: InventoryCostingRun | null;
   initialError: string | null;
 };
 
-type Tab = 'balances' | 'reconciliation' | 'anomalies' | 'facts';
+type Tab = 'balances' | 'periods' | 'reconciliation' | 'discrepancies' | 'adjustments' | 'anomalies' | 'facts';
 
 function trimDecimal(value: string | null, digits = 6): string {
   if (value === null) return '—';
@@ -37,15 +43,11 @@ function moneyVnd(value: string | null): string {
   const [wholeRaw, fraction = ''] = normalized.split('.');
   let whole = BigInt(wholeRaw || '0');
   if (Number(fraction[0] ?? '0') >= 5) whole += 1n;
-  const digits = whole.toString();
-  const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const grouped = whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   return `${negative ? '-' : ''}${grouped} ₫`;
 }
 
-async function browserRequest<T>(
-  path: string,
-  options: RequestInit = {},
-): Promise<T> {
+async function browserRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`/api/inventory/costing/${path}`, {
     cache: 'no-store',
     ...options,
@@ -60,9 +62,7 @@ async function browserRequest<T>(
     error?: { message?: string };
   } | null;
   if (!payload || !response.ok || !Object.prototype.hasOwnProperty.call(payload, 'data')) {
-    throw new Error(
-      payload?.error?.message ?? 'Không thể tải dữ liệu giá vốn tồn kho',
-    );
+    throw new Error(payload?.error?.message ?? 'Không thể tải dữ liệu giá vốn tồn kho');
   }
   return payload.data as T;
 }
@@ -74,7 +74,22 @@ function statusLabel(value: string): string {
     OK: 'Khớp',
     QUANTITY_MISMATCH: 'Lệch số lượng',
     COST_ANOMALY: 'Có bất thường giá',
+    OPEN: 'Đang mở',
+    CLOSED: 'Đã khóa',
+    RESOLVED: 'Đã xử lý',
   }[value] ?? value;
+}
+
+function nextPeriodStart(periods: InventoryCostingPeriod[]): string {
+  const open = periods.find((item) => item.status === 'OPEN');
+  if (open) return open.periodStart;
+  const latestClosed = periods.find((item) => item.status === 'CLOSED');
+  if (latestClosed) {
+    const [year, month] = latestClosed.periodStart.split('-').map(Number);
+    return new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
+  }
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
 }
 
 export default function InventoryCostingWorkspace({
@@ -82,6 +97,9 @@ export default function InventoryCostingWorkspace({
   initialFacts,
   initialAnomalies,
   initialReconciliation,
+  initialPeriods,
+  initialAdjustments,
+  initialDiscrepancies,
   initialRun,
   initialError,
 }: Props) {
@@ -89,6 +107,9 @@ export default function InventoryCostingWorkspace({
   const [facts, setFacts] = useState(initialFacts);
   const [anomalies, setAnomalies] = useState(initialAnomalies);
   const [reconciliation, setReconciliation] = useState(initialReconciliation);
+  const [periods, setPeriods] = useState(initialPeriods);
+  const [adjustments, setAdjustments] = useState(initialAdjustments);
+  const [discrepancies, setDiscrepancies] = useState(initialDiscrepancies);
   const [run, setRun] = useState(initialRun);
   const [tab, setTab] = useState<Tab>('balances');
   const [error, setError] = useState(initialError);
@@ -101,31 +122,45 @@ export default function InventoryCostingWorkspace({
     setRebuildKey(`web-costing-rebuild-${crypto.randomUUID()}`);
   }, []);
 
+  const openPeriod = periods.find((item) => item.status === 'OPEN') ?? null;
+  const suggestedPeriodStart = nextPeriodStart(periods);
   const totals = useMemo(() => ({
     pools: balances.length,
     costed: balances.filter((item) => item.status === 'COSTED').length,
     anomalies: anomalies.length,
-    mismatches: reconciliation.filter(
-      (item) => item.reconciliationStatus !== 'OK',
-    ).length,
-  }), [balances, anomalies, reconciliation]);
+    discrepancies: discrepancies.filter((item) => item.status === 'OPEN').length,
+  }), [balances, anomalies, discrepancies]);
 
   async function refresh() {
     const currentEpoch = epoch.current + 1;
     epoch.current = currentEpoch;
-    const [nextBalances, nextFacts, nextAnomalies, nextReconciliation, nextRun] =
-      await Promise.all([
-        browserRequest<InventoryCostBalance[]>('balances'),
-        browserRequest<InventoryCostFact[]>('facts?limit=100'),
-        browserRequest<InventoryCostAnomaly[]>('anomalies?limit=100'),
-        browserRequest<InventoryCostReconciliation[]>('reconciliation?limit=500'),
-        browserRequest<InventoryCostingRun | null>('run'),
-      ]);
+    const [
+      nextBalances,
+      nextFacts,
+      nextAnomalies,
+      nextReconciliation,
+      nextPeriods,
+      nextAdjustments,
+      nextDiscrepancies,
+      nextRun,
+    ] = await Promise.all([
+      browserRequest<InventoryCostBalance[]>('balances'),
+      browserRequest<InventoryCostFact[]>('facts?limit=100'),
+      browserRequest<InventoryCostAnomaly[]>('anomalies?limit=100'),
+      browserRequest<InventoryCostReconciliation[]>('reconciliation?limit=500'),
+      browserRequest<InventoryCostingPeriod[]>('periods'),
+      browserRequest<InventoryCostAdjustmentEvent[]>('adjustments'),
+      browserRequest<InventoryCostDiscrepancy[]>('discrepancies'),
+      browserRequest<InventoryCostingRun | null>('run'),
+    ]);
     if (epoch.current !== currentEpoch) return;
     setBalances(nextBalances);
     setFacts(nextFacts);
     setAnomalies(nextAnomalies);
     setReconciliation(nextReconciliation);
+    setPeriods(nextPeriods);
+    setAdjustments(nextAdjustments);
+    setDiscrepancies(nextDiscrepancies);
     setRun(nextRun);
   }
 
@@ -141,16 +176,32 @@ export default function InventoryCostingWorkspace({
         body: JSON.stringify({}),
       });
       await refresh();
-      setNotice(
-        `Đã dựng ${result.run.factCount} cost fact; ${result.run.anomalyCount} dòng cần xử lý nguồn giá.`,
-      );
+      setNotice(`Đã dựng ${result.run.factCount} cost fact; ${result.anomalyCount} dòng cần xử lý.`);
       setRebuildKey(`web-costing-rebuild-${crypto.randomUUID()}`);
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : 'Không dựng lại được giá vốn tồn kho',
-      );
+      setError(caught instanceof Error ? caught.message : 'Không dựng lại được giá vốn tồn kho');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function mutatePeriod(action: 'open' | 'close', periodStart: string) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await browserRequest(`periods/${action}`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': `web-costing-period-${action}-${crypto.randomUUID()}` },
+        body: JSON.stringify({ periodStart }),
+      });
+      await refresh();
+      setNotice(action === 'open'
+        ? `Đã mở kỳ giá vốn ${periodStart}.`
+        : `Đã khóa kỳ giá vốn ${periodStart} sau đối soát.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Không cập nhật được kỳ giá vốn');
     } finally {
       setBusy(false);
     }
@@ -160,7 +211,7 @@ export default function InventoryCostingWorkspace({
     <AppShell
       title="Giá vốn tồn kho"
       kicker="Kho"
-      subtitle="Bình quân gia quyền di động theo kho và SKU cơ sở; dữ liệu được dựng lại từ movement bất biến."
+      subtitle="Bình quân gia quyền di động theo kho và SKU cơ sở; kỳ đã khóa không bị dựng lại âm thầm."
       actions={(
         <button
           type="button"
@@ -169,7 +220,7 @@ export default function InventoryCostingWorkspace({
           disabled={busy || !rebuildKey}
           data-testid="inventory-costing-rebuild"
         >
-          {busy ? 'Đang dựng…' : 'Dựng lại giá vốn'}
+          {busy ? 'Đang xử lý…' : 'Dựng lại giá vốn'}
         </button>
       )}
     >
@@ -181,7 +232,7 @@ export default function InventoryCostingWorkspace({
           <article><span>Cost pool</span><strong>{totals.pools}</strong></article>
           <article><span>Đã tính giá</span><strong>{totals.costed}</strong></article>
           <article><span>Anomaly</span><strong>{totals.anomalies}</strong></article>
-          <article><span>Lệch đối soát</span><strong>{totals.mismatches}</strong></article>
+          <article><span>Chờ đối soát</span><strong>{totals.discrepancies}</strong></article>
         </section>
 
         <section className={styles.runCard}>
@@ -190,16 +241,18 @@ export default function InventoryCostingWorkspace({
             <p>Pool: installation + warehouse + base SKU · tiền tệ VND.</p>
           </div>
           <div className={styles.runMeta}>
-            {run
-              ? <>Run {run.id.slice(0, 8)} · {new Date(run.completedAt).toLocaleString('vi-VN')}</>
-              : 'Chưa có projection'}
+            <span>{openPeriod ? `Kỳ mở ${openPeriod.periodStart} → ${openPeriod.periodEnd}` : 'Chưa có kỳ giá vốn đang mở'}</span>
+            <span>{run ? `Run ${run.id.slice(0, 8)} · ${new Date(run.completedAt).toLocaleString('vi-VN')}` : 'Chưa có projection'}</span>
           </div>
         </section>
 
         <div className={styles.tabs} role="tablist" aria-label="Dữ liệu giá vốn">
           {([
             ['balances', 'Giá trị tồn'],
+            ['periods', 'Kỳ giá vốn'],
             ['reconciliation', 'Đối soát'],
+            ['discrepancies', 'Chờ xử lý'],
+            ['adjustments', 'Điều chỉnh giá'],
             ['anomalies', 'Bất thường'],
             ['facts', 'Cost facts'],
           ] as const).map(([value, label]) => (
@@ -208,7 +261,7 @@ export default function InventoryCostingWorkspace({
               type="button"
               role="tab"
               aria-selected={tab === value}
-              className={tab === value ? styles.activeTab : styles.tab}
+              className={tab === value ? `${styles.tab} ${styles.activeTab}` : styles.tab}
               onClick={() => setTab(value)}
             >
               {label}
@@ -218,94 +271,64 @@ export default function InventoryCostingWorkspace({
 
         {tab === 'balances' ? (
           <section className={styles.tableWrap}>
-            <table>
-              <thead><tr>
-                <th>Kho</th><th>SKU</th><th>Số lượng</th>
-                <th>Giá trị tồn</th><th>Giá bình quân</th><th>Trạng thái</th>
-              </tr></thead>
-              <tbody>
-                {balances.map((item) => (
-                  <tr key={`${item.warehouseId}:${item.baseVariantId}`}>
-                    <td>{item.warehouseCode ?? item.warehouseName ?? item.warehouseId}</td>
-                    <td>{item.baseSku ?? item.baseVariantId}</td>
-                    <td>{trimDecimal(item.quantity)}</td>
-                    <td>{moneyVnd(item.inventoryValue)}</td>
-                    <td>{moneyVnd(item.averageUnitCost)}</td>
-                    <td><span className={styles.badge}>{statusLabel(item.status)}</span></td>
-                  </tr>
-                ))}
-                {balances.length === 0 ? (
-                  <tr><td colSpan={6} className={styles.empty}>Chưa có projection giá vốn.</td></tr>
-                ) : null}
-              </tbody>
+            <table><thead><tr><th>Kho</th><th>SKU</th><th>Số lượng</th><th>Giá trị tồn</th><th>Giá bình quân</th><th>Trạng thái</th></tr></thead>
+              <tbody>{balances.map((item) => (
+                <tr key={`${item.warehouseId}:${item.baseVariantId}`}>
+                  <td>{item.warehouseCode ?? item.warehouseName ?? item.warehouseId}</td>
+                  <td>{item.baseSku ?? item.baseVariantId}</td>
+                  <td>{trimDecimal(item.quantity)}</td><td>{moneyVnd(item.inventoryValue)}</td>
+                  <td>{moneyVnd(item.averageUnitCost)}</td><td><span className={styles.badge}>{statusLabel(item.status)}</span></td>
+                </tr>
+              ))}{balances.length === 0 ? <tr><td colSpan={6} className={styles.empty}>Chưa có projection giá vốn.</td></tr> : null}</tbody>
             </table>
           </section>
+        ) : null}
+
+        {tab === 'periods' ? (
+          <div className={styles.stack}>
+            <section className={styles.runCard}>
+              <strong>{openPeriod ? `Kỳ ${openPeriod.periodStart} đang mở` : `Kỳ kế tiếp: ${suggestedPeriodStart}`}</strong>
+              <p>Khi đóng kỳ, hệ thống dựng lại phần lịch sử còn mở, chặn nếu còn anomaly/lệch đối soát và lưu snapshot bất biến.</p>
+              <div>
+                {openPeriod ? (
+                  <button type="button" className={styles.primary} disabled={busy} onClick={() => mutatePeriod('close', openPeriod.periodStart)} data-testid="inventory-costing-period-close">Khóa kỳ sau đối soát</button>
+                ) : (
+                  <button type="button" className={styles.primary} disabled={busy} onClick={() => mutatePeriod('open', suggestedPeriodStart)} data-testid="inventory-costing-period-open">Mở kỳ {suggestedPeriodStart}</button>
+                )}
+              </div>
+            </section>
+            <section className={styles.tableWrap}><table><thead><tr><th>Kỳ</th><th>Trạng thái</th><th>Snapshot</th><th>Mở bởi</th><th>Đóng bởi</th></tr></thead>
+              <tbody>{periods.map((item) => <tr key={item.id}><td>{item.periodStart} → {item.periodEnd}</td><td><span className={styles.badge}>{statusLabel(item.status)}</span></td><td>{item.status === 'CLOSED' ? `${item.snapshotPoolCount} pool` : '—'}</td><td>{item.openedBy}</td><td>{item.closedBy ?? '—'}</td></tr>)}
+              {periods.length === 0 ? <tr><td colSpan={5} className={styles.empty}>Chưa mở kỳ giá vốn đầu tiên.</td></tr> : null}</tbody></table></section>
+          </div>
         ) : null}
 
         {tab === 'reconciliation' ? (
-          <section className={styles.tableWrap}>
-            <table>
-              <thead><tr>
-                <th>Kho</th><th>SKU</th><th>Ledger</th>
-                <th>Costing</th><th>Chênh lệch</th><th>Kết quả</th>
-              </tr></thead>
-              <tbody>
-                {reconciliation.map((item) => (
-                  <tr key={`${item.warehouseId}:${item.baseVariantId}`}>
-                    <td>{item.warehouseCode ?? item.warehouseId}</td>
-                    <td>{item.baseSku ?? item.baseVariantId}</td>
-                    <td>{trimDecimal(item.ledgerQuantity)}</td>
-                    <td>{trimDecimal(item.costingQuantity)}</td>
-                    <td>{trimDecimal(item.quantityDifference)}</td>
-                    <td><span className={styles.badge}>{statusLabel(item.reconciliationStatus)}</span></td>
-                  </tr>
-                ))}
-                {reconciliation.length === 0 ? (
-                  <tr><td colSpan={6} className={styles.empty}>Chưa có dữ liệu đối soát.</td></tr>
-                ) : null}
-              </tbody>
-            </table>
-          </section>
+          <section className={styles.tableWrap}><table><thead><tr><th>Kho</th><th>SKU</th><th>Ledger</th><th>Costing</th><th>Chênh lệch</th><th>Kết quả</th></tr></thead>
+            <tbody>{reconciliation.map((item) => <tr key={`${item.warehouseId}:${item.baseVariantId}`}><td>{item.warehouseCode ?? item.warehouseId}</td><td>{item.baseSku ?? item.baseVariantId}</td><td>{trimDecimal(item.ledgerQuantity)}</td><td>{trimDecimal(item.costingQuantity)}</td><td>{trimDecimal(item.quantityDifference)}</td><td><span className={styles.badge}>{statusLabel(item.reconciliationStatus)}</span></td></tr>)}
+            {reconciliation.length === 0 ? <tr><td colSpan={6} className={styles.empty}>Chưa có dữ liệu đối soát.</td></tr> : null}</tbody></table></section>
+        ) : null}
+
+        {tab === 'discrepancies' ? (
+          <section className={styles.lines}>{discrepancies.map((item) => <article className={styles.line} key={item.id}><div><strong>{item.code}</strong> <span className={styles.badge}>{statusLabel(item.status)}</span></div><p>{item.message}</p><small>{item.warehouseCode ?? item.warehouseId} · {item.baseSku ?? item.baseVariantId} · {item.inventoryMovementLineId ? `movement line ${item.inventoryMovementLineId.slice(0, 8)}` : item.costAdjustmentEventId ? `cost event ${item.costAdjustmentEventId.slice(0, 8)}` : item.stableKey}</small></article>)}
+          {discrepancies.length === 0 ? <div className={styles.empty}>Không có discrepancy giá vốn.</div> : null}</section>
+        ) : null}
+
+        {tab === 'adjustments' ? (
+          <section className={styles.tableWrap}><table><thead><tr><th>Ngày ghi nhận</th><th>Kho / SKU</th><th>Loại</th><th>SL</th><th>Giá trị</th><th>Nguồn</th></tr></thead>
+            <tbody>{adjustments.map((item) => <tr key={item.id}><td>{item.postingDate}</td><td>{item.warehouseCode ?? item.warehouseId}<br />{item.baseSku ?? item.baseVariantId}</td><td>{item.eventType}</td><td>{trimDecimal(item.quantityDelta)}</td><td>{moneyVnd(item.valueDelta)}</td><td>{item.sourceDocumentType}<br />{item.sourceDocumentId}</td></tr>)}
+            {adjustments.length === 0 ? <tr><td colSpan={6} className={styles.empty}>Chưa có landed cost, price variance hoặc forward correction.</td></tr> : null}</tbody></table></section>
         ) : null}
 
         {tab === 'anomalies' ? (
-          <section className={styles.lines}>
-            {anomalies.map((item) => (
-              <article className={styles.line} key={item.id}>
-                <div><strong>{item.code}</strong><span>{item.warehouseCode} · {item.baseSku}</span></div>
-                <p>{item.message}</p>
-                <small>Movement {item.inventoryMovementId.slice(0, 8)} · line {item.inventoryMovementLineId.slice(0, 8)}</small>
-              </article>
-            ))}
-            {anomalies.length === 0 ? <div className={styles.empty}>Không có anomaly nguồn giá.</div> : null}
-          </section>
+          <section className={styles.lines}>{anomalies.map((item) => <article className={styles.line} key={item.id}><div><strong>{item.code}</strong><span>{item.warehouseCode} · {item.baseSku}</span></div><p>{item.message}</p><small>Movement {item.inventoryMovementId.slice(0, 8)} · line {item.inventoryMovementLineId.slice(0, 8)}</small></article>)}
+          {anomalies.length === 0 ? <div className={styles.empty}>Không có anomaly nguồn giá.</div> : null}</section>
         ) : null}
 
         {tab === 'facts' ? (
-          <section className={styles.tableWrap}>
-            <table>
-              <thead><tr>
-                <th>Thời điểm</th><th>Kho / SKU</th><th>Loại</th>
-                <th>SL</th><th>Đơn giá</th><th>Giá trị</th><th>Nguồn</th>
-              </tr></thead>
-              <tbody>
-                {facts.map((item) => (
-                  <tr key={item.id}>
-                    <td>{new Date(item.movementPostedAt).toLocaleString('vi-VN')}</td>
-                    <td>{item.warehouseCode ?? item.warehouseId}<br />{item.baseSku ?? item.baseVariantId}</td>
-                    <td>{item.eventType}</td>
-                    <td>{trimDecimal(item.quantityDelta)}</td>
-                    <td>{moneyVnd(item.unitCost)}</td>
-                    <td>{moneyVnd(item.valueDelta)}</td>
-                    <td>{item.sourceCostType}<br />{item.sourceDocumentNumber ?? item.sourceLineReference ?? '—'}</td>
-                  </tr>
-                ))}
-                {facts.length === 0 ? (
-                  <tr><td colSpan={7} className={styles.empty}>Chưa có cost fact.</td></tr>
-                ) : null}
-              </tbody>
-            </table>
-          </section>
+          <section className={styles.tableWrap}><table><thead><tr><th>Thời điểm</th><th>Kho / SKU</th><th>Loại</th><th>SL</th><th>Đơn giá</th><th>Giá trị</th><th>Nguồn</th></tr></thead>
+            <tbody>{facts.map((item) => <tr key={item.id}><td>{new Date(item.movementPostedAt).toLocaleString('vi-VN')}</td><td>{item.warehouseCode ?? item.warehouseId}<br />{item.baseSku ?? item.baseVariantId}</td><td>{item.eventType}</td><td>{trimDecimal(item.quantityDelta)}</td><td>{moneyVnd(item.unitCost)}</td><td>{moneyVnd(item.valueDelta)}</td><td>{item.sourceCostType}<br />{item.sourceDocumentNumber ?? item.sourceLineReference ?? '—'}</td></tr>)}
+            {facts.length === 0 ? <tr><td colSpan={7} className={styles.empty}>Chưa có cost fact.</td></tr> : null}</tbody></table></section>
         ) : null}
       </div>
     </AppShell>

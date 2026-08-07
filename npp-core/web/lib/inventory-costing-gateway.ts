@@ -114,9 +114,7 @@ async function requestCosting<T>({
   const query = new URLSearchParams();
   for (const [key, value] of searchParams?.entries() ?? []) {
     if (['status', 'runId', 'movementId', 'code', 'limit', 'offset'].includes(key)
-        && value.length <= 128) {
-      query.append(key, value);
-    }
+        && value.length <= 128) query.append(key, value);
   }
   try {
     const response = await fetch(
@@ -177,61 +175,50 @@ async function requestCosting<T>({
   }
 }
 
-export const listInventoryCostBalances = <T>(
-  requestId: string,
-  searchParams = new URLSearchParams(),
-) => requestCosting<T>({
-  path: '/balances',
-  method: 'GET',
-  requestId,
-  searchParams,
-});
+const get = <T>(path: string, requestId: string, searchParams = new URLSearchParams()) =>
+  requestCosting<T>({ path, method: 'GET', requestId, searchParams });
 
-export const listInventoryCostFacts = <T>(
+const post = <T>(
+  path: string,
   requestId: string,
-  searchParams = new URLSearchParams(),
-) => requestCosting<T>({
-  path: '/facts',
-  method: 'GET',
-  requestId,
-  searchParams,
-});
+  body: unknown,
+  idempotencyKey: string | null,
+) => requestCosting<T>({ path, method: 'POST', requestId, body, idempotencyKey });
 
-export const listInventoryCostAnomalies = <T>(
-  requestId: string,
-  searchParams = new URLSearchParams(),
-) => requestCosting<T>({
-  path: '/anomalies',
-  method: 'GET',
-  requestId,
-  searchParams,
-});
-
-export const listInventoryCostReconciliation = <T>(
-  requestId: string,
-  searchParams = new URLSearchParams(),
-) => requestCosting<T>({
-  path: '/reconciliation',
-  method: 'GET',
-  requestId,
-  searchParams,
-});
-
+export const listInventoryCostBalances = <T>(requestId: string, searchParams = new URLSearchParams()) =>
+  get<T>('/balances', requestId, searchParams);
+export const listInventoryCostFacts = <T>(requestId: string, searchParams = new URLSearchParams()) =>
+  get<T>('/facts', requestId, searchParams);
+export const listInventoryCostAnomalies = <T>(requestId: string, searchParams = new URLSearchParams()) =>
+  get<T>('/anomalies', requestId, searchParams);
+export const listInventoryCostReconciliation = <T>(requestId: string, searchParams = new URLSearchParams()) =>
+  get<T>('/reconciliation', requestId, searchParams);
 export const getLatestInventoryCostingRun = <T>(requestId: string) =>
-  requestCosting<T>({
-    path: '/run',
-    method: 'GET',
-    requestId,
-  });
+  get<T>('/run', requestId);
+export const listInventoryCostingPeriods = <T>(requestId: string) =>
+  get<T>('/periods', requestId);
+export const listInventoryCostAdjustments = <T>(requestId: string) =>
+  get<T>('/adjustments', requestId);
+export const listInventoryCostDiscrepancies = <T>(requestId: string) =>
+  get<T>('/discrepancies', requestId);
 
 export const rebuildInventoryCosting = <T>(
   requestId: string,
   body: unknown,
   idempotencyKey: string | null,
-) => requestCosting<T>({
-  path: '/rebuild',
-  method: 'POST',
-  requestId,
-  body,
-  idempotencyKey,
-});
+) => post<T>('/rebuild', requestId, body, idempotencyKey);
+export const openInventoryCostingPeriod = <T>(
+  requestId: string,
+  body: unknown,
+  idempotencyKey: string | null,
+) => post<T>('/periods/open', requestId, body, idempotencyKey);
+export const closeInventoryCostingPeriod = <T>(
+  requestId: string,
+  body: unknown,
+  idempotencyKey: string | null,
+) => post<T>('/periods/close', requestId, body, idempotencyKey);
+export const createInventoryCostAdjustment = <T>(
+  requestId: string,
+  body: unknown,
+  idempotencyKey: string | null,
+) => post<T>('/adjustments', requestId, body, idempotencyKey);
