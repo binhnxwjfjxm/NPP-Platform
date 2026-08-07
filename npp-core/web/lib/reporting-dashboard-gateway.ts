@@ -7,7 +7,7 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const ALLOWED_QUERY = new Set(['from', 'to', 'warehouseId']);
 
 type CoreEnvelope<T> = {
-  data?: T;
+  data?: T | null;
   error?: {
     code?: string;
     message?: string;
@@ -113,12 +113,13 @@ export async function getReportingDashboard(
       query.set(name, String(value));
     }
   }
+  const serializedQuery = query.toString();
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(
-      `${baseUrl()}/api/reporting/${family}${query.size ? `?${query}` : ''}`,
+      `${baseUrl()}/api/reporting/${family}${serializedQuery ? `?${serializedQuery}` : ''}`,
       {
         method: 'GET',
         cache: 'no-store',
@@ -149,7 +150,7 @@ export async function getReportingDashboard(
         payload.error?.details ?? {},
       );
     }
-    if (!Object.prototype.hasOwnProperty.call(payload, 'data')) {
+    if (!Object.prototype.hasOwnProperty.call(payload, 'data') || payload.data === null) {
       throw new ReportingDashboardGatewayError(
         'REPORTING_GATEWAY_RESPONSE_INVALID',
         'Phản hồi báo cáo không hợp lệ',

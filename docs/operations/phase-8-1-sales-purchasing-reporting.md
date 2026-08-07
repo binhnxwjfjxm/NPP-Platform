@@ -29,6 +29,7 @@ A navigation item is valid only when the matching page and rendered workspace ex
 | Scope | server-owned installation plus authorized warehouse scope; optional requested warehouse must already be authorized |
 | Mode | live query, `Cache-Control: no-store` |
 | Drill-down | customer rows -> `/sales/sales-orders?search=<customer-code>`; SKU rows -> a canonical sample order number on `/sales/sales-orders`; page action opens `/sales/sales-orders` |
+| Ranking identity | Top customers group by stable `customer_id`; top SKU groups by stable `variant_id`; latest snapshots are display labels only, so a rename inside the period cannot split one entity into multiple ranking rows |
 | Reconciliation assertion | currency totals equal the sum of effective Sales Order version totals under the exact filter/scope; no draft amendment can replace the latest confirmed/superseded commercial version |
 
 ## Purchasing metric contract
@@ -44,6 +45,7 @@ A navigation item is valid only when the matching page and rendered workspace ex
 | Scope | server-owned installation plus authorized warehouse scope; optional requested warehouse must already be authorized |
 | Mode | live query, `Cache-Control: no-store` |
 | Drill-down | supplier rows -> `/purchasing/purchase-orders?search=<supplier-code>`; SKU rows -> a canonical sample PO number; page actions open existing Purchase Order and Goods Receipt routes |
+| Ranking identity | Top suppliers use stable `supplier_id`; top SKU groups by stable `variant_id`; changing SKU/name snapshots inside the period cannot split one item into multiple ranking rows |
 | Reconciliation assertion | currency totals equal effective PO totals under the exact filter/scope; posted/reversed receipt counts reconcile to `goods_receipts` under the receipt-date filter |
 
 ## Permission contract
@@ -68,7 +70,7 @@ The internal NPP bootstrap service principal receives only these two Phase 8.1 r
 - No CSV/export button is added in 8.1 because official export requires the separate `core.reporting.export` contract.
 - Existing `/dashboard` remains the organization overview and is not repurposed into Phase 8 reporting.
 
-## Period defaults
+## Period defaults and bounds
 
 When `from`/`to` are omitted, Core owns the default period:
 
@@ -76,6 +78,15 @@ When `from`/`to` are omitted, Core owns the default period:
 - `to`: current business date in `Asia/Ho_Chi_Minh`.
 
 Timestamp-backed Sales filtering uses local midnight inclusive through the next local midnight exclusive. Purchase/receipt `date` columns compare calendar dates directly.
+
+A requested period is inclusive and may span at most **366 calendar days**. Longer requests fail before aggregate queries run so one read-only request cannot fan out over unbounded reporting history.
+
+## Error and scope hardening
+
+- warehouse UUID input is normalized before comparison with server-owned scope;
+- bootstrap warehouse expansion is caught and returns a sanitized reporting scope error if the database lookup fails;
+- raw PostgreSQL/SQLSTATE error codes are never returned to clients;
+- unknown query failures return the reporting API error contract and are logged server-side only with bounded diagnostic metadata.
 
 ## Migration and production boundary
 

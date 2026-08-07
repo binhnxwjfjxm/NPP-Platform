@@ -47,7 +47,7 @@ test('8.1 drill-down buttons only target existing NPP operational routes', () =>
   assert.match(workspace, /entityCode/);
 });
 
-test('8.1 browser routes proxy through server-only Core gateway', () => {
+test('8.1 browser routes proxy through server-only Core gateway with validated payloads', () => {
   assert.equal(exists('../app/api/reporting/sales/route.ts'), true);
   assert.equal(exists('../app/api/reporting/purchasing/route.ts'), true);
 
@@ -60,9 +60,20 @@ test('8.1 browser routes proxy through server-only Core gateway', () => {
   assert.match(gateway, /CORE_API_INTERNAL_URL/);
   assert.match(gateway, /CORE_API_SERVER_TOKEN/);
   assert.match(gateway, /cache: 'no-store'/);
+  assert.match(gateway, /payload\.data === null/);
+  assert.match(gateway, /const serializedQuery = query\.toString\(\)/);
+  assert.match(workspace, /const serializedQuery = query\.toString\(\)/);
+  assert.doesNotMatch(gateway + workspace, /query\.size/);
   assert.match(salesApi, /getReportingDashboard\(\s*'sales'/s);
   assert.match(purchasingApi, /getReportingDashboard\(\s*'purchasing'/s);
   assert.doesNotMatch(workspace, /CORE_API_SERVER_TOKEN|CORE_API_INTERNAL_URL/);
+});
+
+test('8.1 Sales summary labels state the confirmed_at reporting basis', () => {
+  const workspace = source('../app/components/reporting-dashboard-workspace.tsx');
+  assert.match(workspace, /Đơn có ngày xác nhận trong kỳ/);
+  assert.match(workspace, /sales\.sales_orders\.confirmed_at/);
+  assert.match(workspace, /Đã hủy sau xác nhận/);
 });
 
 test('8.1 web formatting does not perform business arithmetic with JavaScript Number', () => {

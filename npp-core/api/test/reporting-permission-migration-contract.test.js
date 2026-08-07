@@ -13,24 +13,45 @@ function catalog(permissionKey) {
   return PERMISSION_CATALOG.find((entry) => entry.permissionKey === permissionKey);
 }
 
-test('8.1 reporting permission metadata is forward-migrated after 063', () => {
+function migrationPermissionRows(sql) {
+  const rowPattern = /\(\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*(true|false)\s*,\s*now\(\)\s*\)/gu;
+  return new Map([...sql.matchAll(rowPattern)].map((match) => [
+    match[1],
+    Object.freeze({
+      permissionKey: match[1],
+      module: match[2],
+      label: match[3],
+      description: match[4],
+      isSystem: match[5] === 'true',
+    }),
+  ]));
+}
+
+test('8.1 reporting permission metadata is forward-migrated immediately after 063', () => {
+  const previous = CORE_API_MIGRATIONS.at(-2);
   const last = CORE_API_MIGRATIONS.at(-1);
+  assert.equal(previous?.id, '063_inventory_costing_periods_backdate');
   assert.equal(last?.id, '064_reporting_permission_catalog');
-  assert.match(last?.sql ?? '', /core\.reporting\.sales\.read/);
-  assert.match(last?.sql ?? '', /core\.reporting\.purchasing\.read/);
+  assert.equal(last?.sql, migrationSql);
 });
 
-test('8.1 migration metadata exactly matches the runtime permission catalog', () => {
+test('8.1 migration rows exactly match the runtime permission catalog metadata', () => {
   const sales = catalog(PERMISSIONS.coreReportingSalesRead);
   const purchasing = catalog(PERMISSIONS.coreReportingPurchasingRead);
   assert.ok(sales);
   assert.ok(purchasing);
 
+  const rows = migrationPermissionRows(migrationSql);
+  assert.equal(rows.size, 2);
+
   for (const entry of [sales, purchasing]) {
-    assert.match(migrationSql, new RegExp(entry.permissionKey.replaceAll('.', '\\.'), 'u'));
-    assert.ok(migrationSql.includes(`'${entry.module}'`));
-    assert.ok(migrationSql.includes(`'${entry.label}'`));
-    assert.ok(migrationSql.includes(`'${entry.description}'`));
+    assert.deepEqual(rows.get(entry.permissionKey), {
+      permissionKey: entry.permissionKey,
+      module: entry.module,
+      label: entry.label,
+      description: entry.description,
+      isSystem: entry.isSystem,
+    });
   }
 });
 

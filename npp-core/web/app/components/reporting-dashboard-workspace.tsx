@@ -97,9 +97,10 @@ async function requestReport(family: ReportingFamily, filters: Filters): Promise
   const query = new URLSearchParams();
   if (filters.from) query.set('from', filters.from);
   if (filters.to) query.set('to', filters.to);
+  const serializedQuery = query.toString();
 
   const response = await fetch(
-    `/api/reporting/${family}${query.size ? `?${query}` : ''}`,
+    `/api/reporting/${family}${serializedQuery ? `?${serializedQuery}` : ''}`,
     { method: 'GET', cache: 'no-store' },
   );
   const envelope = await response.json().catch(() => ({})) as ApiEnvelope<ReportingDashboard>;
@@ -235,9 +236,13 @@ export function ReportingDashboardWorkspace({ family }: { family: ReportingFamil
 
         <section className={styles.summaryGrid} aria-label="Tổng hợp báo cáo">
           <article>
-            <span>Tổng chứng từ trong kỳ</span>
+            <span>{isSales ? 'Đơn có ngày xác nhận trong kỳ' : 'Tổng đơn mua trong kỳ'}</span>
             <strong>{report?.summary.allOrderCount ?? '0'}</strong>
-            <small>Bao gồm mọi trạng thái có nguồn ngày trong kỳ</small>
+            <small>
+              {isSales
+                ? 'Theo sales.sales_orders.confirmed_at; gồm mọi trạng thái sau khi đơn đã được xác nhận.'
+                : 'Theo purchasing.purchase_orders.order_date; gồm mọi trạng thái của đơn mua trong kỳ.'}
+            </small>
           </article>
           <article>
             <span>{isSales ? 'Đơn bán có hiệu lực' : 'Đơn mua có hiệu lực'}</span>
@@ -245,9 +250,13 @@ export function ReportingDashboardWorkspace({ family }: { family: ReportingFamil
             <small>{report?.basis.effectiveStates.map(label).join(' · ') || 'Theo source contract'}</small>
           </article>
           <article>
-            <span>Đã hủy</span>
+            <span>{isSales ? 'Đã hủy sau xác nhận' : 'Đã hủy'}</span>
             <strong>{report?.summary.cancelledOrderCount ?? '0'}</strong>
-            <small>Không cộng vào giá trị có hiệu lực</small>
+            <small>
+              {isSales
+                ? 'Chỉ tính đơn có confirmed_at nằm trong kỳ; không cộng vào giá trị có hiệu lực.'
+                : 'Không cộng vào giá trị có hiệu lực.'}
+            </small>
           </article>
           {!isSales ? (
             <>

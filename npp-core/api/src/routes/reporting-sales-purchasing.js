@@ -42,12 +42,28 @@ async function authenticateAndAuthorize(req, res, options, permission) {
     return null;
   }
 
-  requestContext = await ensureWarehouseScopes(options.getPool(), requestContext);
-  return requestContext;
+  try {
+    requestContext = await ensureWarehouseScopes(options.getPool(), requestContext);
+    return requestContext;
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'reporting_scope_lookup_failed',
+      requestId: options.requestId,
+      errorName: error?.name ?? null,
+      errorCode: typeof error?.code === 'string' ? error.code : null,
+    }));
+    sendError(
+      res,
+      apiError('REPORTING_SCOPE_LOOKUP_FAILED', 'Không tải được phạm vi kho', {}, true, 503),
+      options.requestId,
+      options.receivedAt,
+    );
+    return null;
+  }
 }
 
 export async function handleReportingRoutes(req, res, options) {
-  const url = new URL(`http://localhost${req.url}`);
+  const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   const family = url.pathname === '/api/reporting/sales'
     ? 'sales'
     : url.pathname === '/api/reporting/purchasing'
@@ -105,14 +121,21 @@ export async function handleReportingRoutes(req, res, options) {
     res.setHeader('Cache-Control', 'no-store');
     sendSuccess(res, report, options.requestId, options.receivedAt);
   } catch (error) {
+    console.error(JSON.stringify({
+      event: 'reporting_query_failed',
+      requestId: options.requestId,
+      family,
+      errorName: error?.name ?? null,
+      errorCode: typeof error?.code === 'string' ? error.code : null,
+    }));
     sendError(
       res,
       apiError(
-        error?.code ?? 'REPORTING_QUERY_FAILED',
+        'REPORTING_QUERY_FAILED',
         'Không tải được báo cáo vận hành',
         {},
-        true,
-        error?.statusCode ?? 503,
+        false,
+        503,
       ),
       options.requestId,
       options.receivedAt,

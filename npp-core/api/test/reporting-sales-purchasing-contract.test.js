@@ -13,7 +13,7 @@ test('8.1 registers dedicated Sales and Purchasing reporting permissions', () =>
   assert.equal(PERMISSION_REGISTRY.has(PERMISSIONS.coreReportingPurchasingRead), true);
 });
 
-test('8.1 reporting dates use the locked Ho Chi Minh business boundary', () => {
+test('8.1 reporting dates use the locked Ho Chi Minh business boundary and bounded periods', () => {
   const normalized = reportingInternals.normalizeFilters(
     { from: '2026-08-01', to: '2026-08-07' },
     new Date('2026-08-07T12:00:00.000Z'),
@@ -35,9 +35,17 @@ test('8.1 reporting dates use the locked Ho Chi Minh business boundary', () => {
     reportingInternals.normalizeFilters({ from: '2026-02-31', to: '2026-08-07' }).code,
     'INVALID_REPORTING_DATE',
   );
+  assert.equal(
+    reportingInternals.normalizeFilters({ from: '2024-01-01', to: '2024-12-31' }).ok,
+    true,
+  );
+  assert.equal(
+    reportingInternals.normalizeFilters({ from: '2024-01-01', to: '2025-01-01' }).code,
+    'INVALID_REPORTING_PERIOD',
+  );
 });
 
-test('8.1 reporting warehouse scope fails closed and never broadens a requested warehouse', () => {
+test('8.1 reporting warehouse scope normalizes UUID case and fails closed', () => {
   const filters = reportingInternals.normalizeFilters({ from: '2026-08-01', to: '2026-08-07' });
   assert.equal(filters.ok, true);
 
@@ -47,6 +55,21 @@ test('8.1 reporting warehouse scope fails closed and never broadens a requested 
   );
 
   const warehouseId = '11111111-1111-4111-8111-111111111111';
+  const uppercaseWarehouseId = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA';
+  const normalizedUppercase = reportingInternals.normalizeFilters({
+    from: '2026-08-01',
+    to: '2026-08-07',
+    warehouseId: uppercaseWarehouseId,
+  });
+  assert.equal(normalizedUppercase.warehouseId, uppercaseWarehouseId.toLowerCase());
+  assert.equal(
+    reportingInternals.validateScope(
+      { scopes: { warehouseIds: [uppercaseWarehouseId] } },
+      normalizedUppercase,
+    ).ok,
+    true,
+  );
+
   const outsideWarehouseId = '22222222-2222-4222-8222-222222222222';
   const scopedFilters = reportingInternals.normalizeFilters({
     from: '2026-08-01',
@@ -71,6 +94,10 @@ test('8.1 live queries keep canonical source, lifecycle and currency contracts e
 
   assert.match(route, /coreReportingSalesRead/);
   assert.match(route, /coreReportingPurchasingRead/);
+  assert.match(route, /REPORTING_SCOPE_LOOKUP_FAILED/);
+  assert.match(route, /REPORTING_QUERY_FAILED/);
+  assert.match(route, /new URL\(req\.url \?\? '\/', 'http:\/\/127\.0\.0\.1'\)/);
+  assert.doesNotMatch(route, /error\?\.code \?\? 'REPORTING_QUERY_FAILED'/);
   assert.match(sales, /sales\.sales_orders/);
   assert.match(sales, /sales\.sales_order_versions/);
   assert.match(sales, /version_status IN \('confirmed','superseded'\)/);
@@ -83,17 +110,30 @@ test('8.1 live queries keep canonical source, lifecycle and currency contracts e
   assert.match(purchasing, /GROUP BY currency_code/);
   assert.match(sales, /status IN \('confirmed','closed'\)/);
   assert.match(purchasing, /approved','partially_received','fully_received','closed/);
+  assert.match(common, /MAX_REPORTING_RANGE_DAYS = 366/);
   assert.doesNotMatch(route + common + sales + purchasing, /readJsonBody|executeRequestWithIdempotency|withAuditOutboxTransaction/);
 
   assert.match(server, /handleReportingRoutes/);
   assert.match(server, /reporting-sales-purchasing\.js/);
 });
 
+test('8.1 ranking groups by stable IDs and uses latest snapshots only as display labels', () => {
+  const sales = source('../src/routes/reporting-sales.js');
+  const purchasing = source('../src/routes/reporting-purchasing.js');
+
+  assert.match(sales, /GROUP BY currency_code, customer_id/);
+  assert.match(sales, /array_agg\(customer_code_snapshot ORDER BY confirmed_at DESC, id DESC\)/);
+  assert.match(sales, /GROUP BY scoped\.currency_code, sovl\.variant_id/);
+  assert.match(sales, /array_agg\(sovl\.sku_snapshot ORDER BY scoped\.confirmed_at DESC, scoped\.id DESC\)/);
+  assert.match(purchasing, /GROUP BY scoped\.currency_code, pol\.variant_id/);
+  assert.match(purchasing, /array_agg\(pol\.sku_snapshot ORDER BY scoped\.order_date DESC, scoped\.created_at DESC, scoped\.id DESC\)/);
+});
+
 test('8.1 reporting keeps decimal values as database strings for the web layer', () => {
   const sales = source('../src/routes/reporting-sales.js');
   const purchasing = source('../src/routes/reporting-purchasing.js');
-  assert.match(sales, /sum\(total\).*::text/s);
-  assert.match(purchasing, /sum\(total\).*::text/s);
+  assert.match(sales, /COALESCE\(sum\(total\), 0::numeric\)::text/);
+  assert.match(purchasing, /COALESCE\(sum\(total\), 0::numeric\)::text/);
   assert.match(sales, /sum\(sovl\.base_quantity\)/);
   assert.match(purchasing, /sum\(pol\.base_quantity\)/);
   assert.match(sales, /base_quantity::text/);

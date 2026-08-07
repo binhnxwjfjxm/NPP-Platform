@@ -36,7 +36,6 @@ const RECEIPT_SCOPED_CTE = `
       AND ($5::uuid IS NULL OR gr.warehouse_id = $5::uuid)
   )`;
 
-
 export async function purchasingReport(adapter, requestContext, filters, warehouseIds) {
   const params = [
     requestContext.installationId,
@@ -136,20 +135,20 @@ export async function purchasingReport(adapter, requestContext, filters, warehou
          SELECT
            scoped.currency_code,
            pol.variant_id,
-           pol.sku_snapshot,
-           pol.item_name_snapshot,
+           (array_agg(pol.sku_snapshot ORDER BY scoped.order_date DESC, scoped.created_at DESC, scoped.id DESC))[1] AS sku_snapshot,
+           (array_agg(pol.item_name_snapshot ORDER BY scoped.order_date DESC, scoped.created_at DESC, scoped.id DESC))[1] AS item_name_snapshot,
            COALESCE(sum(pol.base_quantity), 0::numeric) AS base_quantity,
            COALESCE(sum(pol.line_total), 0::numeric) AS total_value,
            (array_agg(
              COALESCE(scoped.document_number, scoped.id::text)
-             ORDER BY scoped.order_date DESC, scoped.created_at DESC
+             ORDER BY scoped.order_date DESC, scoped.created_at DESC, scoped.id DESC
            ))[1] AS sample_document_number
          FROM scoped
          JOIN purchasing.purchase_order_lines pol
            ON pol.installation_id = $1
           AND pol.purchase_order_id = scoped.id
          WHERE scoped.status IN ${effective}
-         GROUP BY scoped.currency_code, pol.variant_id, pol.sku_snapshot, pol.item_name_snapshot
+         GROUP BY scoped.currency_code, pol.variant_id
        ),
        ranked AS (
          SELECT grouped.*,

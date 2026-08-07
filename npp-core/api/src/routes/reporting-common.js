@@ -2,9 +2,11 @@ import * as warehouseRepository from '../db/repositories/warehouse.js';
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_REPORTING_RANGE_DAYS = 366;
 
 export const BUSINESS_TIMEZONE = 'Asia/Ho_Chi_Minh';
 const BUSINESS_OFFSET = '+07:00';
+const DAY_MS = 86_400_000;
 
 function failure(code, message, statusCode = 400, details = {}) {
   return Object.freeze({ ok: false, code, message, statusCode, details });
@@ -45,6 +47,12 @@ function toInstant(date) {
   return new Date(`${date}T00:00:00${BUSINESS_OFFSET}`).toISOString();
 }
 
+function reportingRangeDays(from, to) {
+  const fromMs = Date.parse(`${from}T00:00:00.000Z`);
+  const toMs = Date.parse(`${to}T00:00:00.000Z`);
+  return Math.floor((toMs - fromMs) / DAY_MS) + 1;
+}
+
 export function normalizeFilters(input = {}, now = new Date()) {
   const today = businessDateNow(now);
   const parsedFrom = strictDate(input.from);
@@ -58,8 +66,14 @@ export function normalizeFilters(input = {}, now = new Date()) {
   if (from > to) {
     return failure('INVALID_REPORTING_PERIOD', 'Ngày bắt đầu không được sau ngày kết thúc');
   }
+  if (reportingRangeDays(from, to) > MAX_REPORTING_RANGE_DAYS) {
+    return failure(
+      'INVALID_REPORTING_PERIOD',
+      `Khoảng báo cáo không được vượt quá ${MAX_REPORTING_RANGE_DAYS} ngày`,
+    );
+  }
 
-  const warehouseId = String(input.warehouseId ?? '').trim() || null;
+  const warehouseId = String(input.warehouseId ?? '').trim().toLowerCase() || null;
   if (warehouseId && !UUID_PATTERN.test(warehouseId)) {
     return failure('INVALID_REPORTING_WAREHOUSE', 'Kho báo cáo không hợp lệ');
   }
@@ -110,7 +124,7 @@ function authorizedWarehouseIds(requestContext) {
     ? [...new Set(
       requestContext.scopes.warehouseIds
         .filter((value) => typeof value === 'string' && value.trim())
-        .map((value) => value.trim()),
+        .map((value) => value.trim().toLowerCase()),
     )]
     : [];
 }
@@ -142,11 +156,13 @@ export function mapRows(rows) {
 
 export const reportingInternals = Object.freeze({
   BUSINESS_TIMEZONE,
+  MAX_REPORTING_RANGE_DAYS,
   strictDate,
   businessDateNow,
   firstDayOfMonth,
   nextDate,
   toInstant,
+  reportingRangeDays,
   normalizeFilters,
   validateScope,
   mapRow,

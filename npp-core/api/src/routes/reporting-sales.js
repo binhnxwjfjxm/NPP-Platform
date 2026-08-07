@@ -35,7 +35,6 @@ const SALES_SCOPED_CTE = `
       AND ($5::uuid IS NULL OR so.warehouse_id = $5::uuid)
   )`;
 
-
 export async function salesReport(adapter, requestContext, filters, warehouseIds) {
   const params = [
     requestContext.installationId,
@@ -102,13 +101,13 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
          SELECT
            currency_code,
            customer_id,
-           customer_code_snapshot,
-           customer_name_snapshot,
+           (array_agg(customer_code_snapshot ORDER BY confirmed_at DESC, id DESC))[1] AS customer_code_snapshot,
+           (array_agg(customer_name_snapshot ORDER BY confirmed_at DESC, id DESC))[1] AS customer_name_snapshot,
            count(*) AS document_count,
            COALESCE(sum(total), 0::numeric) AS total_value
          FROM scoped
          WHERE status IN ('confirmed','closed')
-         GROUP BY currency_code, customer_id, customer_code_snapshot, customer_name_snapshot
+         GROUP BY currency_code, customer_id
        ),
        ranked AS (
          SELECT grouped.*,
@@ -136,20 +135,20 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
          SELECT
            scoped.currency_code,
            sovl.variant_id,
-           sovl.sku_snapshot,
-           sovl.item_name_snapshot,
+           (array_agg(sovl.sku_snapshot ORDER BY scoped.confirmed_at DESC, scoped.id DESC))[1] AS sku_snapshot,
+           (array_agg(sovl.item_name_snapshot ORDER BY scoped.confirmed_at DESC, scoped.id DESC))[1] AS item_name_snapshot,
            COALESCE(sum(sovl.base_quantity), 0::numeric) AS base_quantity,
            COALESCE(sum(sovl.line_total), 0::numeric) AS total_value,
            (array_agg(
              COALESCE(scoped.order_number, scoped.id::text)
-             ORDER BY scoped.confirmed_at DESC
+             ORDER BY scoped.confirmed_at DESC, scoped.id DESC
            ))[1] AS sample_document_number
          FROM scoped
          JOIN sales.sales_order_version_lines sovl
            ON sovl.installation_id = $1
           AND sovl.sales_order_version_id = scoped.version_id
          WHERE scoped.status IN ('confirmed','closed')
-         GROUP BY scoped.currency_code, sovl.variant_id, sovl.sku_snapshot, sovl.item_name_snapshot
+         GROUP BY scoped.currency_code, sovl.variant_id
        ),
        ranked AS (
          SELECT grouped.*,
