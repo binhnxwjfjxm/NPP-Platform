@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const scriptUrl = new URL('../scripts/core-latest-production-gate.sh', import.meta.url);
 
-test('latest Core production gate protects migrations 042 through 057', async () => {
+test('latest Core production gate protects migrations 042 through 062', async () => {
   const source = await readFile(scriptUrl, 'utf8');
   for (const id of [
     '042_sales_fulfillment_reservation_demand',
@@ -23,12 +23,19 @@ test('latest Core production gate protects migrations 042 through 057', async ()
     '055_customer_return_credit_refund',
     '056_cod_collection_handover',
     '057_phase6f_reconciliation_views',
+    '058_inventory_transfer_in_transit_foundation',
+    '059_inventory_transfer_receipt_resolution',
+    '060_inventory_stocktake',
+    '061_inventory_adjustments',
+    '062_inventory_costing_foundation',
   ]) {
     assert.match(source, new RegExp(id));
   }
   for (const marker of [
     'assert_allowed_pending',
     'assert_phase6f_schema',
+    'assert_phase7_inventory_schema',
+    'phase7inventory',
     'pg:backups:capture',
     'pg_dump',
     'pg_restore',
@@ -57,6 +64,18 @@ test('latest Core production gate protects migrations 042 through 057', async ()
     'core.customer-refund.create',
     'core.cod-collection.record',
     'core.cod-reconciliation.accept',
+    'inventory.inventory_transfers',
+    'inventory.inventory_transfer_receipts',
+    'inventory.inventory_scope_versions',
+    'inventory.stocktakes',
+    'inventory.inventory_adjustments',
+    'inventory.inventory_cost_rebuild_runs',
+    'inventory.inventory_cost_reconciliation',
+    'core.inventory-transfer.receive',
+    'core.stocktake.post',
+    'core.inventory-adjustment.post',
+    'core.inventory-cost.rebuild',
+    'CORE_PHASE_7_INVENTORY_SCHEMA=ready',
     'sales.sales_order_version_lines=',
     'inventory.inventory_movements=',
   ]) {
@@ -67,6 +86,8 @@ test('latest Core production gate protects migrations 042 through 057', async ()
   assert.match(source, /test "\$HEROKU_APP_NAME" = "hung-phat"/);
   assert.match(source, /pending\.every/);
   assert.match(source, /CORE_API_MIGRATIONS\.slice\(-12\)/);
+  assert.match(source, /CORE_API_MIGRATIONS\.slice\(-5\)/);
   assert.match(source, /CORE_PHASE_6F_SCHEMA=ready/);
+  assert.match(source, /CORE_PHASE_7_INVENTORY_SCHEMA=ready/);
   assert.doesNotMatch(source, /CORE_PHASE_6E_SCHEMA/);
 });
