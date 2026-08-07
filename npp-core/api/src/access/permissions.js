@@ -26,6 +26,7 @@ export const PERMISSIONS = Object.freeze({
   coreInventoryCostRead: 'core.inventory-cost.read',
   coreInventoryCostRebuild: 'core.inventory-cost.rebuild',
   coreInventoryCostReconcile: 'core.inventory-cost.reconcile',
+  coreReportingInventoryRead: 'core.reporting.inventory.read',
   coreLogisticsRouteRead: 'core.logistics-route.read',
   coreLogisticsRouteManage: 'core.logistics-route.manage',
   coreVehicleRead: 'core.vehicle.read',
@@ -105,7 +106,17 @@ const INVENTORY_COST_PERMISSION_CATALOG = Object.freeze([
   ['coreInventoryCostReconcile', 'Kho', 'Đối soát giá vốn tồn kho', 'Cho phép đọc đối soát quantity ledger với costing projection và anomaly nguồn giá.'],
 ].map(([key, module, label, description]) => Object.freeze({
   permissionKey: PERMISSIONS[key], module, label, description, isSystem: true,
-}))); 
+})));
+
+const INVENTORY_REPORTING_PERMISSION_CATALOG = Object.freeze([
+  Object.freeze({
+    permissionKey: PERMISSIONS.coreReportingInventoryRead,
+    module: 'Báo cáo tồn kho',
+    label: 'Xem báo cáo tồn kho',
+    description: 'Cho phép đọc dashboard tồn kho trong đúng installation và phạm vi kho được cấp.',
+    isSystem: true,
+  }),
+]);
 
 const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
   ['coreLogisticsRouteRead', 'Điều phối giao hàng', 'Xem tuyến giao hàng', 'Cho phép đọc tuyến giao hàng trong installation hiện tại.'],
@@ -161,6 +172,7 @@ export const PERMISSION_CATALOG = Object.freeze([
   ...STOCKTAKE_PERMISSION_CATALOG,
   ...INVENTORY_ADJUSTMENT_PERMISSION_CATALOG,
   ...INVENTORY_COST_PERMISSION_CATALOG,
+  ...INVENTORY_REPORTING_PERMISSION_CATALOG,
   ...LOGISTICS_PERMISSION_CATALOG,
   ...ACCOUNTING_PERMISSION_CATALOG,
 ]);
