@@ -60,6 +60,7 @@ const inventoryItems: NavItem[] = [
 ];
 
 const logisticsItems: NavItem[] = [
+  { href: '/logistics/reporting', label: 'Hiệu suất giao hàng', icon: 'dashboard', testId: 'nav-logistics-reporting' },
   { href: '/inventory/delivery-orders', label: 'Phiếu giao hàng', icon: 'truck', testId: 'nav-delivery-orders' },
   { href: '/logistics/trips', label: 'Lập & xếp chuyến', icon: 'truck', testId: 'nav-logistics-trips' },
   { href: '/logistics/dispatch', label: 'Bàn giao & xuất phát', icon: 'truck', testId: 'nav-logistics-dispatch' },
