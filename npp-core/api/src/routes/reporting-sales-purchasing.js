@@ -77,6 +77,9 @@ export async function handleReportingRoutes(req, res, options) {
     return true;
   }
 
+  const requestContext = await authenticateAndAuthorize(req, res, options, reportingPermission(options, family));
+  if (!requestContext) return true;
+
   if (family === 'aging' && (url.searchParams.has('from') || url.searchParams.has('to'))) {
     sendError(
       res,
@@ -92,9 +95,6 @@ export async function handleReportingRoutes(req, res, options) {
     );
     return true;
   }
-
-  const requestContext = await authenticateAndAuthorize(req, res, options, reportingPermission(options, family));
-  if (!requestContext) return true;
 
   const normalized = normalizeFilters({
     from: family === 'aging' ? null : url.searchParams.get('from'),

@@ -21,7 +21,17 @@ export async function agingReport(adapter, requestContext, filters, warehouseIds
     ELSE 'OVERDUE_91_PLUS'
   END`;
 
-  const [arSummary, arCustomers, arDocuments, apSummary, apSuppliers, apDocuments] = await Promise.all([
+  const [scopeWarehouses, arSummary, arCustomers, arDocuments, apSummary, apSuppliers, apDocuments] = await Promise.all([
+    adapter.query(
+      `SELECT warehouse.id AS warehouse_id,
+              warehouse.code AS warehouse_code,
+              warehouse.name AS warehouse_name
+         FROM shared.warehouses warehouse
+        WHERE warehouse.installation_id = $1
+          AND warehouse.id = ANY($2::uuid[])
+        ORDER BY warehouse.code, warehouse.id`,
+      params,
+    ),
     adapter.query(
       `SELECT document.currency_code, ${arBucket} AS age_bucket,
               count(*)::text AS document_count,
@@ -180,6 +190,7 @@ export async function agingReport(adapter, requestContext, filters, warehouseIds
     timezone: BUSINESS_TIMEZONE,
     currentDate,
     filters: Object.freeze({ warehouseId: filters.warehouseId }),
+    scopeWarehouses: mapRows(scopeWarehouses.rows),
     basis: Object.freeze({
       receivable: 'current remaining_amount on sale receivable documents; age is source_document_date because AR has no canonical due_date',
       payable: 'current remaining_amount on payable documents; contractual overdue uses canonical due_date snapshot',

@@ -8,21 +8,51 @@ import styles from './inventory-reporting-workspace.module.css';
 
 type ApiEnvelope<T> = Readonly<{ data?: T; error?: { message?: string } }>;
 
-type Warehouse = { id: string; code: string };
+type Warehouse = { id: string; code: string; name: string };
+
+function incrementDigits(value: string) {
+  const digits = value.split('');
+  for (let index = digits.length - 1; index >= 0; index -= 1) {
+    if (digits[index] !== '9') {
+      digits[index] = String.fromCharCode(digits[index].charCodeAt(0) + 1);
+      return digits.join('');
+    }
+    digits[index] = '0';
+  }
+  return `1${digits.join('')}`;
+}
 
 function formatDecimal(value: string | null | undefined, maxFraction = 0) {
   const normalized = String(value ?? '0').trim();
   const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(normalized);
   if (!match) return normalized || '0';
-  const [, sign, integerRaw, fraction = ''] = match;
-  const kept = fraction.slice(0, maxFraction);
-  const grouped = integerRaw.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const [, rawSign, integerRaw, fraction = ''] = match;
+  const precision = Math.max(0, maxFraction);
+  let integer = integerRaw.replace(/^0+(?=\d)/, '');
+  let kept = fraction.slice(0, precision);
+  const shouldRound = fraction.length > precision && fraction[precision] >= '5';
+
+  if (shouldRound) {
+    if (precision === 0) {
+      integer = incrementDigits(integer);
+    } else {
+      const combined = incrementDigits(`${integer}${kept.padEnd(precision, '0')}`);
+      const splitAt = combined.length - precision;
+      integer = combined.slice(0, splitAt) || '0';
+      kept = combined.slice(splitAt).padStart(precision, '0');
+    }
+  }
+
   const trimmed = kept.replace(/0+$/, '');
+  const isZero = /^0+$/.test(integer) && !trimmed;
+  const sign = rawSign && !isZero ? rawSign : '';
+  const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   return `${sign}${grouped}${trimmed ? `,${trimmed}` : ''}`;
 }
 
 function money(value: string | null | undefined, currency: string) {
-  return `${formatDecimal(value)} ${currency}`;
+  const maxFraction = currency === 'VND' ? 0 : 6;
+  return `${formatDecimal(value, maxFraction)} ${currency}`;
 }
 
 function arBucket(value: string) {
@@ -43,14 +73,6 @@ async function requestReport(warehouseId = ''): Promise<AgingDashboard> {
   return envelope.data;
 }
 
-function deriveWarehouses(report: AgingDashboard): Warehouse[] {
-  const map = new Map<string, Warehouse>();
-  for (const row of [...report.receivable.documents, ...report.payable.documents]) {
-    if (row.warehouseId && row.warehouseCode) map.set(row.warehouseId, { id: row.warehouseId, code: row.warehouseCode });
-  }
-  return [...map.values()].sort((a, b) => a.code.localeCompare(b.code));
-}
-
 export function AgingReportingWorkspace() {
   const [warehouseId, setWarehouseId] = useState('');
   const [warehouseOptions, setWarehouseOptions] = useState<Warehouse[]>([]);
@@ -58,13 +80,17 @@ export function AgingReportingWorkspace() {
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
 
-  const load = useCallback(async (nextWarehouseId = '', initialize = false) => {
+  const load = useCallback(async (nextWarehouseId = '') => {
     setBusy(true);
     setError('');
     try {
       const next = await requestReport(nextWarehouseId);
       setReport(next);
-      if (initialize) setWarehouseOptions(deriveWarehouses(next));
+      setWarehouseOptions(next.scopeWarehouses.map((warehouse) => ({
+        id: warehouse.warehouseId,
+        code: warehouse.warehouseCode,
+        name: warehouse.warehouseName,
+      })));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Không tải được báo cáo tuổi nợ.');
     } finally {
@@ -72,7 +98,7 @@ export function AgingReportingWorkspace() {
     }
   }, []);
 
-  useEffect(() => { void load('', true); }, [load]);
+  useEffect(() => { void load(''); }, [load]);
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -104,7 +130,7 @@ export function AgingReportingWorkspace() {
             <span>Kho</span>
             <select value={warehouseId} disabled={busy} onChange={(event) => setWarehouseId(event.target.value)}>
               <option value="">Tất cả kho được cấp quyền</option>
-              {warehouseOptions.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code}</option>)}
+              {warehouseOptions.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} — {warehouse.name}</option>)}
             </select>
           </label>
           <button className={styles.primaryButton} type="submit" disabled={busy}>Áp dụng</button>

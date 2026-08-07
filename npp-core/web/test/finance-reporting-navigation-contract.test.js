@@ -7,6 +7,9 @@ const exists = (path) => existsSync(new URL(path, import.meta.url));
 
 test('8.3 places gross margin in Sales and aging in Accounting with real pages', () => {
   const shell = source('../app/components/app-shell-core.tsx');
+  for (const marker of ['const salesItems', 'const purchasingItems', 'const accountingItems', 'function Icon']) {
+    assert.ok(shell.includes(marker), `Thiếu mốc ${marker} trong app-shell-core.tsx`);
+  }
   const salesGroup = shell.slice(shell.indexOf('const salesItems'), shell.indexOf('const purchasingItems'));
   const accountingGroup = shell.slice(shell.indexOf('const accountingItems'), shell.indexOf('function Icon'));
   assert.match(salesGroup, /href: '\/sales\/gross-margin'.*label: 'Lãi gộp'.*testId: 'nav-gross-margin-reporting'/);
@@ -30,6 +33,24 @@ test('8.3 browser routes proxy only through server-only Core gateway', () => {
   assert.match(gateway, /cache: 'no-store'/);
   assert.match(gateway, /payload\.data === null/);
   assert.doesNotMatch(aging + margin, /CORE_API_SERVER_TOKEN|CORE_API_INTERNAL_URL|NEXT_PUBLIC_.*TOKEN/);
+});
+
+test('8.3 reporting screens and proxy APIs remain behind the existing Core Basic gate', () => {
+  const middleware = source('../middleware.ts');
+  assert.match(middleware, /'\/sales\/:path\*'/);
+  assert.match(middleware, /'\/purchasing\/:path\*'/);
+  assert.match(middleware, /'\/accounting\/:path\*'/);
+  assert.match(middleware, /'\/api\/reporting\/:path\*'/);
+});
+
+test('8.3 aging warehouse filter uses full scope and money display rounds as strings', () => {
+  const aging = source('../app/components/aging-reporting-workspace.tsx');
+  assert.match(aging, /next\.scopeWarehouses\.map/);
+  assert.doesNotMatch(aging, /deriveWarehouses/);
+  assert.match(aging, /function incrementDigits/);
+  assert.match(aging, /fraction\[precision\] >= '5'/);
+  assert.match(aging, /currency === 'VND' \? 0 : 6/);
+  assert.doesNotMatch(aging, /parseFloat\(|parseInt\(|Number\(value\)/);
 });
 
 test('8.3 only links existing owner screens and does not invent export or global reporting', () => {

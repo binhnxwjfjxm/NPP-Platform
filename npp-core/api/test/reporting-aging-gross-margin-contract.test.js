@@ -12,7 +12,13 @@ test('8.3 registers dedicated aging and gross-margin permissions', () => {
   assert.equal(PERMISSION_REGISTRY.has(PERMISSIONS.coreReportingGrossMarginRead), true);
 });
 
-test('8.3 reporting routes are real, warehouse scoped and deny historical AR aging filters', () => {
+test('8.3 current Core bootstrap compatibility includes the new reporting permissions', () => {
+  const context = source('../src/request-context.js');
+  assert.match(context, /PERMISSIONS\.coreReportingAgingRead/);
+  assert.match(context, /PERMISSIONS\.coreReportingGrossMarginRead/);
+});
+
+test('8.3 reporting routes authenticate before aging validation and stay warehouse scoped', () => {
   const route = source('../src/routes/reporting-sales-purchasing.js');
   assert.match(route, /\/api\/reporting\/aging/);
   assert.match(route, /\/api\/reporting\/gross-margin/);
@@ -20,6 +26,10 @@ test('8.3 reporting routes are real, warehouse scoped and deny historical AR agi
   assert.match(route, /coreReportingGrossMarginRead/);
   assert.match(route, /AGING_HISTORICAL_FILTER_UNSUPPORTED/);
   assert.match(route, /validateScope/);
+  const handler = route.slice(route.indexOf('export async function handleReportingRoutes'));
+  assert.ok(handler.indexOf('authenticateAndAuthorize') >= 0);
+  assert.ok(handler.indexOf('AGING_HISTORICAL_FILTER_UNSUPPORTED') >= 0);
+  assert.ok(handler.indexOf('authenticateAndAuthorize') < handler.indexOf('AGING_HISTORICAL_FILTER_UNSUPPORTED'));
 });
 
 test('8.3 AR age does not invent due date while AP uses canonical due_date', () => {
@@ -34,6 +44,13 @@ test('8.3 AR age does not invent due date while AP uses canonical due_date', () 
   assert.doesNotMatch(finance, /customer_account_entries|supplier_payable_entries/);
 });
 
+test('8.3 aging warehouse options come from full authorized warehouse scope', () => {
+  const finance = source('../src/routes/reporting-finance.js');
+  assert.match(finance, /FROM shared\.warehouses warehouse/);
+  assert.match(finance, /warehouse\.id = ANY\(\$2::uuid\[\]\)/);
+  assert.match(finance, /scopeWarehouses: mapRows\(scopeWarehouses\.rows\)/);
+});
+
 test('8.3 gross margin uses recognized net revenue and exact Phase 7 movement-line cost lineage', () => {
   const finance = source('../src/routes/reporting-finance.js');
   assert.match(finance, /line\.gross_amount - line\.discount_amount/);
@@ -46,6 +63,14 @@ test('8.3 gross margin uses recognized net revenue and exact Phase 7 movement-li
   assert.match(finance, /NON_VND_REVENUE/);
   assert.match(finance, /MISSING_COST_FACT/);
   assert.doesNotMatch(finance, /parseFloat\(|parseInt\(|Number\(/);
+});
+
+test('8.3 canonical accounting schema prevents zero return divisor and null currency facts', () => {
+  const receivable = source('../../../database/migrations/accounting/053_customer_receivable_ledger.sql');
+  const returnSchema = source('../../../database/migrations/accounting/055_customer_return_credit_refund_schema.sql');
+  assert.match(receivable, /accepted_base_quantity numeric\(30,12\) NOT NULL CHECK \(accepted_base_quantity > 0\)/);
+  assert.match(receivable, /currency_code text NOT NULL/);
+  assert.match(returnSchema, /currency_code text NOT NULL/);
 });
 
 test('8.3 permission migration is metadata-only and ordered after 065', () => {

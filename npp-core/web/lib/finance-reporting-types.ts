@@ -1,5 +1,11 @@
 export type ReportingWarehouseFilter = Readonly<{ warehouseId: string | null }>;
 
+export type ReportingWarehouseOption = Readonly<{
+  warehouseId: string;
+  warehouseCode: string;
+  warehouseName: string;
+}>;
+
 export type AgingBucketRow = Readonly<{
   currencyCode: string;
   ageBucket: string;
@@ -57,6 +63,7 @@ export type AgingDashboard = Readonly<{
   timezone: 'Asia/Ho_Chi_Minh';
   currentDate: string;
   filters: ReportingWarehouseFilter;
+  scopeWarehouses: readonly ReportingWarehouseOption[];
   basis: Readonly<{ receivable: string; payable: string; currency: string }>;
   receivable: Readonly<{
     summary: readonly AgingBucketRow[];
