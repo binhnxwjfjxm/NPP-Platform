@@ -29,6 +29,16 @@ test('Phase 8.6 gateway is server-only GET and reporting workspace stays read-on
   assert.doesNotMatch(workspace, /Number\(/);
 });
 
+test('Phase 8.6 renders period collection, handover and acceptance activity without cross-currency totals', () => {
+  const workspace = source('../app/components/cod-reporting-workspace.tsx');
+  assert.match(workspace, /report\?\.activity\.collections/);
+  assert.match(workspace, /report\?\.activity\.handovers/);
+  assert.match(workspace, /report\?\.activity\.acceptances/);
+  assert.match(workspace, /Bàn giao trong kỳ/);
+  assert.match(workspace, /Kế toán tiếp nhận trong kỳ/);
+  assert.doesNotMatch(workspace, /reduce\([^\n]*activity\.(handovers|acceptances)/);
+});
+
 test('Phase 8.6 keeps real operational drill-down and snapshot-period warning', () => {
   const workspace = source('../app/components/cod-reporting-workspace.tsx');
   assert.match(workspace, /\/accounting\/cod-reconciliation/);
