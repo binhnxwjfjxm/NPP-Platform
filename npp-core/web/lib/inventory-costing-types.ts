@@ -94,9 +94,68 @@ export type InventoryCostReconciliation = {
   reconciliationStatus: 'OK' | 'QUANTITY_MISMATCH' | 'COST_ANOMALY';
 };
 
+export type InventoryCostingPeriod = {
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  status: 'OPEN' | 'CLOSED';
+  closedRebuildRunId: string | null;
+  openedAt: string;
+  openedBy: string;
+  closedAt: string | null;
+  closedBy: string | null;
+  snapshotPoolCount: number;
+  snapshotAnomalyPoolCount: number;
+};
+
+export type InventoryCostAdjustmentEvent = {
+  id: string;
+  eventType: 'LANDED_COST' | 'PURCHASE_PRICE_VARIANCE' | 'FORWARD_CORRECTION';
+  effectiveDate: string;
+  postingDate: string;
+  warehouseId: string;
+  warehouseCode: string | null;
+  baseVariantId: string;
+  baseSku: string | null;
+  quantityDelta: string;
+  valueDelta: string;
+  currencyCode: 'VND';
+  allocationGroupId: string | null;
+  allocationBasis: 'PURCHASE_VALUE' | 'BASE_QUANTITY' | null;
+  sourceDocumentType: string;
+  sourceDocumentId: string;
+  sourceLineReference: string | null;
+  originalCostFactId: string | null;
+  originalMovementLineId: string | null;
+  createdAt: string;
+  metadata: Record<string, unknown>;
+};
+
+export type InventoryCostDiscrepancy = {
+  id: string;
+  code: string;
+  status: 'OPEN' | 'RESOLVED';
+  warehouseId: string;
+  warehouseCode: string | null;
+  baseVariantId: string;
+  baseSku: string | null;
+  inventoryMovementId: string | null;
+  inventoryMovementLineId: string | null;
+  costAdjustmentEventId: string | null;
+  periodId: string | null;
+  stableKey: string;
+  message: string;
+  details: Record<string, unknown>;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  resolvedAt: string | null;
+};
+
 export type InventoryCostRebuildResult = {
   run: InventoryCostingRun;
   balances?: InventoryCostBalance[];
   anomalyCount: number;
+  reconciliationMismatchCount?: number;
+  discrepancyCount?: number;
   replayed: boolean;
 };

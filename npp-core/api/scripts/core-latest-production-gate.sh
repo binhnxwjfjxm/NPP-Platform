@@ -9,7 +9,7 @@ set -euo pipefail
 action="${REQUESTED_ACTION:-audit}"
 test "$HEROKU_APP_NAME" = "hung-phat"
 
-expected_pending_json='["042_sales_fulfillment_reservation_demand","043_sales_fulfillment_allocation_pick_pack","044_sales_delivery_order_handover","045_sales_inventory_issue_customer_return","046_logistics_trip_planning","047_logistics_trip_dispatch","048_logistics_driver_delivery_read","049_logistics_delivery_attempts","050_logistics_delivery_attempt_outbox_schedule","051_logistics_trip_reconciliation","052_logistics_optional_proof_of_delivery","053_customer_receivable_ledger","054_customer_payment_allocation","055_customer_return_credit_refund","056_cod_collection_handover","057_phase6f_reconciliation_views","058_inventory_transfer_in_transit_foundation","059_inventory_transfer_receipt_resolution","060_inventory_stocktake","061_inventory_adjustments","062_inventory_costing_foundation"]'
+expected_pending_json='["042_sales_fulfillment_reservation_demand","043_sales_fulfillment_allocation_pick_pack","044_sales_delivery_order_handover","045_sales_inventory_issue_customer_return","046_logistics_trip_planning","047_logistics_trip_dispatch","048_logistics_driver_delivery_read","049_logistics_delivery_attempts","050_logistics_delivery_attempt_outbox_schedule","051_logistics_trip_reconciliation","052_logistics_optional_proof_of_delivery","053_customer_receivable_ledger","054_customer_payment_allocation","055_customer_return_credit_refund","056_cod_collection_handover","057_phase6f_reconciliation_views","058_inventory_transfer_in_transit_foundation","059_inventory_transfer_receipt_resolution","060_inventory_stocktake","061_inventory_adjustments","062_inventory_costing_foundation","063_inventory_costing_periods_backdate"]'
 maintenance_enabled="false"
 backup_id=""
 restore_database="core_latest_restore_${GITHUB_RUN_ID:-local}_${GITHUB_RUN_ATTEMPT:-1}"
@@ -199,6 +199,10 @@ try {
       "inventory.inventory_cost_balances",
       "inventory.inventory_cost_latest_runs",
       "inventory.inventory_cost_reconciliation",
+      "inventory.inventory_costing_periods",
+      "inventory.inventory_cost_period_balances",
+      "inventory.inventory_cost_adjustment_events",
+      "inventory.inventory_cost_discrepancies",
     ];
     const requiredPermissions = [
       "core.inventory-transfer.read",
@@ -252,7 +256,7 @@ try {
       ok: missingRelations.length === 0 && missingPermissions.length === 0,
       missingRelations,
       missingPermissions,
-      registryTail: migrationIdsInRange(58, 62),
+      registryTail: migrationIdsInRange(58, 63),
     };
   } else throw new Error("unknown_core_gate_command");
   process.stdout.write(`${JSON.stringify({ command, result })}\n`);
@@ -297,7 +301,7 @@ assert_phase7_inventory_schema() {
   local output
   output="$(run_core_command phase7inventory "$target_url" "$target_ssl_mode")"
   test "$(jq -r '.result.ok' <<<"$output")" = "true"
-  test "$(jq -c '.result.registryTail' <<<"$output")" = '["058_inventory_transfer_in_transit_foundation","059_inventory_transfer_receipt_resolution","060_inventory_stocktake","061_inventory_adjustments","062_inventory_costing_foundation"]'
+  test "$(jq -c '.result.registryTail' <<<"$output")" = '["058_inventory_transfer_in_transit_foundation","059_inventory_transfer_receipt_resolution","060_inventory_stocktake","061_inventory_adjustments","062_inventory_costing_foundation","063_inventory_costing_periods_backdate"]'
 }
 
 snapshot_protected_counts() {
