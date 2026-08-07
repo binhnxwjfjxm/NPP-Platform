@@ -17,7 +17,7 @@ const shell = readFileSync(
 
 test('costing workspace exposes rebuild and drill-down tabs', () => {
   assert.match(workspace, /Dựng lại giá vốn/);
-  assert.match(workspace, /Số dư giá vốn/);
+  assert.match(workspace, /Giá trị tồn/);
   assert.match(workspace, /Đối soát/);
   assert.match(workspace, /Bất thường/);
   assert.match(workspace, /Cost facts/);
