@@ -9,6 +9,7 @@ import {
   withAuditOutboxTransaction,
 } from '../audit-outbox.js';
 import * as onboardingService from '../services/customer-onboarding.js';
+import * as profileService from '../services/customer-portal-profile.js';
 import * as registrationService from '../services/customer-portal-registration.js';
 import * as service from '../services/customer-portal.js';
 
@@ -150,6 +151,27 @@ async function auditRegistrationMutation(client, { requestContext, action, reque
   }));
 }
 
+async function auditProfileMutation(client, { requestContext, membership, beforeProfile, profile }) {
+  await insertAuditRecord(client, buildAuditRecord({
+    requestContext,
+    action: 'customer_portal.profile.update',
+    resourceType: 'customer',
+    resourceId: membership.customer_id,
+    beforeData: beforeProfile,
+    afterData: profile,
+    metadata: { source: 'CUSTOMER_PORTAL', portalUserId: membership.portal_user_id },
+  }));
+  await insertOutboxEvent(client, buildOutboxEvent({
+    requestContext,
+    aggregateType: 'shared.customer',
+    aggregateId: membership.customer_id,
+    eventType: 'shared.customer.customer_portal_profile_updated',
+    eventVersion: 1,
+    payload: profile,
+    metadata: { source: 'CUSTOMER_PORTAL', portalUserId: membership.portal_user_id },
+  }));
+}
+
 function rollbackBusinessFailure(result) {
   return Object.freeze({ ...result, failed: true });
 }
@@ -191,10 +213,11 @@ function unexpectedMutationError(error, operation, options) {
     },
   }));
   const isRegistration = operation.startsWith('registration');
+  const isProfileUpdate = operation === 'profile-update';
   const isCreate = operation === 'create';
   return apiError(
-    isRegistration ? 'CUSTOMER_PORTAL_REGISTRATION_FAILED' : isCreate ? 'CUSTOMER_PORTAL_ORDER_CREATE_FAILED' : 'CUSTOMER_PORTAL_ORDER_CANCEL_FAILED',
-    isRegistration ? 'Không thể xử lý đăng ký điểm bán.' : isCreate ? 'Không thể tạo đơn hàng.' : 'Không thể hủy đơn hàng.',
+    isRegistration ? 'CUSTOMER_PORTAL_REGISTRATION_FAILED' : isProfileUpdate ? 'CUSTOMER_PORTAL_PROFILE_UPDATE_FAILED' : isCreate ? 'CUSTOMER_PORTAL_ORDER_CREATE_FAILED' : 'CUSTOMER_PORTAL_ORDER_CANCEL_FAILED',
+    isRegistration ? 'Không thể xử lý đăng ký điểm bán.' : isProfileUpdate ? 'Không thể cập nhật thông tin điểm bán.' : isCreate ? 'Không thể tạo đơn hàng.' : 'Không thể hủy đơn hàng.',
     {},
     retryable,
     retryable ? 503 : 500,
@@ -399,9 +422,54 @@ export async function handleCustomerPortalRoutes(req, res, options) {
   const { requestContext, membership } = portal;
 
   if (req.method === 'GET' && url.pathname === '/api/customer-portal/me') {
-    sendSuccess(res, { profile: service.portalProfile(membership) }, options.requestId, options.receivedAt);
+    const result = await profileService.getPortalProfile(options.getPool(), { requestContext, membership });
+    result.ok ? sendSuccess(res, { profile: result.profile }, options.requestId, options.receivedAt) : sendServiceError(res, result, options);
     return true;
   }
+
+  if (req.method === 'PATCH' && url.pathname === '/api/customer-portal/me') {
+    const payload = await readPayload(req, res, options);
+    if (payload === null) return true;
+    const key = idempotencyKey(req);
+    if (!key.ok) {
+      sendError(res, apiError(key.code, key.message, {}, false, 400), options.requestId, options.receivedAt);
+      return true;
+    }
+    try {
+      const execution = await options.executeRequestWithIdempotency({
+        idempotencyStore: options.idempotencyStore,
+        req,
+        requestContext,
+        requestId: options.requestId,
+        receivedAt: options.receivedAt,
+        route: '/api/customer-portal/me',
+        payload,
+        onProcess: async () => {
+          const result = await withAuditOutboxTransaction({
+            adapter: options.getPool(),
+            mutate: async (client) => {
+              const updated = await profileService.updatePortalProfile(client, { requestContext, membership, payload });
+              if (!updated.ok) return rollbackBusinessFailure(updated);
+              await auditProfileMutation(client, {
+                requestContext,
+                membership,
+                beforeProfile: updated.beforeProfile,
+                profile: updated.profile,
+              });
+              return auditedBusinessSuccess(updated);
+            },
+          });
+          if (!result.ok) return idempotentFailure(result, options);
+          return idempotentSuccess({ profile: result.profile }, options);
+        },
+      });
+      sendJson(res, execution.response.statusCode, execution.response.body, execution.response.requestId ?? options.requestId, execution.response.contentType);
+    } catch (error) {
+      sendError(res, unexpectedMutationError(error, 'profile-update', options), options.requestId, options.receivedAt);
+    }
+    return true;
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/customer-portal/addresses') {
     const result = await service.listPortalAddresses(options.getPool(), { requestContext, membership });
     result.ok ? sendSuccess(res, { addresses: result.addresses }, options.requestId, options.receivedAt) : sendServiceError(res, result, options);
