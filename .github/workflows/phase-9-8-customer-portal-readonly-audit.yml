@@ -37,7 +37,10 @@ jobs:
           grep -F 'GITHUB_EVENT_PATH' "$workflow" >/dev/null
           grep -F 'node "$SCRIPT_PATH" audit' "$workflow" >/dev/null
           grep -F 'PORTAL_AUDIT_OK' "$workflow" >/dev/null
-          ! grep -F 'provision' "$workflow" | grep -F 'node "$SCRIPT_PATH" provision' >/dev/null
+          if grep -F 'node "$SCRIPT_PATH" provision' "$workflow" >/dev/null; then
+            echo 'Read-only audit workflow must never invoke provision mode.' >&2
+            exit 1
+          fi
 
   audit-production:
     if: >-
@@ -145,8 +148,7 @@ jobs:
             exit 1
           fi
 
-          audit_ok="$(jq -r '.ok == true and .mode == "audit" and .ready == true' <<<"$json")"
-          if [ "$audit_ok" = 'true' ]; then
+          if jq -e '.ok == true and .mode == "audit" and .ready == true' <<<"$json" >/dev/null; then
             {
               echo "PORTAL_AUDIT_OK=true"
               echo "PORTAL_AUDIT_REPLAYED=$(jq -r '.replayed // false' <<<"$json")"
