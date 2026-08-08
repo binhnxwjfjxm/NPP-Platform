@@ -71,8 +71,9 @@ jobs:
           node-version: 20
 
       - name: Install MCP backend audit dependency
+        working-directory: mcp/apps/backend
         shell: bash
-        run: npm ci --prefix mcp/apps/backend --ignore-scripts
+        run: npm ci --ignore-scripts
 
       - name: Audit MCP Heroku runtime read-only
         shell: bash
