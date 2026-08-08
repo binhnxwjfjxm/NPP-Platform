@@ -95,6 +95,14 @@ async function auditMutation(client, { requestContext, action, eventType, order 
   }));
 }
 
+function rollbackBusinessFailure(result) {
+  return Object.freeze({ ...result, failed: true });
+}
+
+function auditedBusinessSuccess(result) {
+  return Object.freeze({ ...result, expectedAuditCount: 1, expectedOutboxCount: 1 });
+}
+
 function idempotentSuccess(data, options, statusCode = 200) {
   return { statusCode, contentType: 'application/json', requestId: options.requestId, body: createSuccessEnvelope(data, options.requestId, options.receivedAt) };
 }
@@ -171,9 +179,9 @@ export async function handleCustomerPortalRoutes(req, res, options) {
             adapter: options.getPool(),
             mutate: async (client) => {
               const created = await service.createPortalOrder(client, { requestContext, membership, idempotencyKey: key.key, payload });
-              if (!created.ok) return created;
+              if (!created.ok) return rollbackBusinessFailure(created);
               await auditMutation(client, { requestContext, action: 'customer_portal_create', eventType: 'sales.sales_order.customer_portal_created', order: created.order });
-              return created;
+              return auditedBusinessSuccess(created);
             },
           });
           if (!result.ok) return idempotentFailure(result, options);
@@ -210,9 +218,9 @@ export async function handleCustomerPortalRoutes(req, res, options) {
             adapter: options.getPool(),
             mutate: async (client) => {
               const cancelled = await service.cancelPortalOrder(client, { requestContext, membership, orderId: cancelMatch[1] });
-              if (!cancelled.ok) return cancelled;
+              if (!cancelled.ok) return rollbackBusinessFailure(cancelled);
               await auditMutation(client, { requestContext, action: 'customer_portal_cancel', eventType: 'sales.sales_order.customer_portal_cancelled', order: cancelled.order });
-              return cancelled;
+              return auditedBusinessSuccess(cancelled);
             },
           });
           if (!result.ok) return idempotentFailure(result, options);
