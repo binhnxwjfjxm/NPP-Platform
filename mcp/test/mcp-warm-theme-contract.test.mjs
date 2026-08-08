@@ -7,6 +7,7 @@ const foundation = await readFile("src/app/hung-phat-mobile-foundation.css", "ut
 const experience = await readFile("src/app/mobile-app-experience.css", "utf8");
 const geometry = await readFile("src/app/mobile-app-geometry.css", "utf8");
 const mobileHome = await readFile("src/app/mobile-home-dashboard.css", "utf8");
+const cardDepth = await readFile("src/app/card-depth.css", "utf8");
 const layout = await readFile("src/app/layout.tsx", "utf8");
 const shell = await readFile("src/ui/shell/AppShell.tsx", "utf8");
 const dock = await readFile("src/ui/shell/MobileDock.tsx", "utf8");
@@ -41,6 +42,8 @@ test("mobile application experience loads after legacy shell and theme layers", 
   const experienceIndex = layout.indexOf('import "./mobile-app-experience.css";');
   const geometryIndex = layout.indexOf('import "./mobile-app-geometry.css";');
   const homeIndex = layout.indexOf('import "./mobile-home-dashboard.css";');
+  const lotThreeIndex = layout.indexOf('import "./mcp-lot-3-flows.css";');
+  const cardDepthIndex = layout.indexOf('import "./card-depth.css";');
   assert.ok(legacyIndex >= 0, "legacy theme import must exist");
   assert.ok(shellContractIndex >= 0, "app shell contract import must exist");
   assert.ok(foundationIndex > legacyIndex, "foundation must follow legacy theme");
@@ -48,8 +51,22 @@ test("mobile application experience loads after legacy shell and theme layers", 
   assert.ok(experienceIndex > foundationIndex, "application experience must follow the theme foundation");
   assert.ok(geometryIndex > experienceIndex, "stable dock geometry must follow application experience");
   assert.ok(homeIndex > geometryIndex, "route-specific home layout must load after shared mobile layers");
+  assert.ok(cardDepthIndex > lotThreeIndex, "card depth must be the final visual override layer");
   assert.match(layout, /viewportFit:\s*"cover"/);
   assert.match(layout, /themeColor:\s*"#754706"/);
+});
+
+test("MCP content cards use shadow depth instead of visible outlines", () => {
+  assert.match(cardDepth, /--npp-shadow-card:[\s\S]*?0 2px 6px[\s\S]*?0 12px 28px/);
+  assert.match(cardDepth, /--npp-shadow-raised:[\s\S]*?0 18px 40px/);
+  assert.match(cardDepth, /\[class\*="_card__"\]/);
+  assert.match(cardDepth, /\[class\*="_setupCard__"\]/);
+  assert.match(cardDepth, /\[class\*="_mobileActionList__"\]/);
+  assert.match(cardDepth, /border:\s*0\s*!important/);
+  assert.match(cardDepth, /box-shadow:\s*var\(--npp-shadow-card\)\s*!important/);
+  assert.match(cardDepth, /@media \(hover: hover\) and \(pointer: fine\)[\s\S]*?transform:\s*none\s*!important/);
+  assert.doesNotMatch(cardDepth, /\.filter-bar[\s\S]*?border:\s*0\s*!important/);
+  assert.doesNotMatch(cardDepth, /(?:input|select|textarea|\.button)[\s\S]*?border:\s*0\s*!important/);
 });
 
 test("phone shell has one mobile home launchpad and one scroll region", () => {

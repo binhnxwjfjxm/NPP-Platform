@@ -33,6 +33,7 @@ import "./mcp-mobile-support-flows.css";
 import "./mobile-home-dashboard.css";
 import "./mobile-list-summaries.css";
 import "./mcp-lot-3-flows.css";
+import "./card-depth.css";
 
 export const metadata: Metadata = {
   title: "NPP MCP Field",

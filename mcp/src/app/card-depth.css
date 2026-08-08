@@ -1,0 +1,87 @@
+:root {
+  /* Card depth is owned here so legacy screen CSS can keep its layout without reintroducing outlines. */
+  --npp-shadow-card:
+    0 2px 6px rgba(72, 54, 34, 0.055),
+    0 12px 28px rgba(72, 54, 34, 0.105);
+  --npp-shadow-raised:
+    0 4px 10px rgba(72, 54, 34, 0.075),
+    0 18px 40px rgba(72, 54, 34, 0.15);
+  --shadow: var(--npp-shadow-card);
+}
+
+/*
+ * Content surfaces use depth instead of a visible perimeter.
+ * Controls, filter bars, chips, fields, separators and focus rings intentionally keep borders.
+ */
+.card,
+.action-card,
+.mobile-row-card,
+.settings-card,
+.today-summary-card,
+.operational-list-card,
+.dashboard-command-card,
+.dashboard-alert-card,
+.dashboard-action-card,
+.dashboard-route-card,
+.dashboard-module-card,
+.dashboard-today-card,
+.mcp-session-hero,
+.mcp-line-card,
+.outlet-focus-card,
+.route-focus-card,
+.visit-focus-card,
+.field-focus-card,
+[class*="_card__"],
+[class*="_setupCard__"],
+[class*="_mobileStats__"],
+[class*="_mobileActionList__"],
+[class*="_mobileUtility__"] {
+  border: 0 !important;
+  background-clip: padding-box;
+  box-shadow: var(--npp-shadow-card) !important;
+}
+
+/* State still reads through badges and subtle surface tint, never through a cartoon-like outline. */
+[class*="McpLineCard_card__"] {
+  box-shadow: var(--npp-shadow-card) !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .card:hover,
+  .action-card:hover,
+  .mobile-row-card:hover,
+  .settings-card:hover,
+  .today-summary-card:hover,
+  .operational-list-card:hover,
+  .dashboard-command-card:hover,
+  .dashboard-alert-card:hover,
+  .dashboard-action-card:hover,
+  .dashboard-route-card:hover,
+  .dashboard-module-card:hover,
+  .dashboard-today-card:hover,
+  .mcp-session-hero:hover,
+  .mcp-line-card:hover,
+  .outlet-focus-card:hover,
+  .route-focus-card:hover,
+  .visit-focus-card:hover,
+  .field-focus-card:hover,
+  [class*="_card__"]:hover,
+  [class*="_setupCard__"]:hover,
+  [class*="_mobileStats__"]:hover,
+  [class*="_mobileActionList__"]:hover,
+  [class*="_mobileUtility__"]:hover {
+    transform: none !important;
+    box-shadow: var(--npp-shadow-raised) !important;
+  }
+}
+
+@media (max-width: 820px) {
+  :root {
+    --npp-shadow-card:
+      0 2px 5px rgba(72, 54, 34, 0.05),
+      0 10px 24px rgba(72, 54, 34, 0.09);
+    --npp-shadow-raised:
+      0 3px 8px rgba(72, 54, 34, 0.065),
+      0 14px 32px rgba(72, 54, 34, 0.12);
+  }
+}
