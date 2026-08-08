@@ -22,27 +22,19 @@ jobs:
   contract:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - name: Checkout pull request head
         uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install workspace dependencies
-        run: npm ci --ignore-scripts
-
-      - name: Validate provisioning script
+      - name: Validate provisioning source
+        shell: bash
         run: |
           set -euo pipefail
           node --check npp-core/api/scripts/phase-9-8-provision-customer-portal.js
-          node --test npp-core/api/test/phase-9-8-customer-portal-provisioning.test.js
+          test -s npp-core/api/test/phase-9-8-customer-portal-provisioning.test.js
 
       - name: Validate guarded production contract
         shell: bash
@@ -52,8 +44,11 @@ jobs:
           script=npp-core/api/scripts/phase-9-8-provision-customer-portal.js
           grep -F "github.event.issue.number == 395" "$workflow" >/dev/null
           grep -F "/provision-phase-9-8-customer-portal " "$workflow" >/dev/null
+          grep -F 'GITHUB_EVENT_PATH' "$workflow" >/dev/null
+          ! grep -F 'COMMENT_BODY:' "$workflow" >/dev/null
           grep -F "CORE_APP_NAME: hung-phat" "$workflow" >/dev/null
           grep -F "BEGIN READ ONLY" "$script" >/dev/null
+          grep -F "{ forUpdate: true }" "$script" >/dev/null
           grep -F "pg_advisory_xact_lock" "$script" >/dev/null
           grep -F "withAuditOutboxTransaction" "$script" >/dev/null
           grep -F "customer_portal.membership.provision" "$script" >/dev/null
@@ -77,11 +72,10 @@ jobs:
     steps:
       - name: Parse and mask operator input
         shell: bash
-        env:
-          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           set -euo pipefail
-          read -r command provider_subject customer_email warehouse_code sales_channel_code extra <<< "$COMMENT_BODY"
+          comment_body="$(jq -r '.comment.body // empty' "$GITHUB_EVENT_PATH")"
+          read -r command provider_subject customer_email warehouse_code sales_channel_code extra <<< "$comment_body"
           test "$command" = '/provision-phase-9-8-customer-portal'
           test -z "${extra:-}"
           [[ "$provider_subject" =~ ^user_[A-Za-z0-9]+$ ]]
@@ -102,6 +96,7 @@ jobs:
             echo "PORTAL_WAREHOUSE_CODE=$warehouse_code"
             echo "PORTAL_SALES_CHANNEL_CODE=$sales_channel_code"
           } >> "$GITHUB_ENV"
+          unset comment_body provider_subject customer_email warehouse_code sales_channel_code
 
       - name: Checkout exact main
         uses: actions/checkout@v4

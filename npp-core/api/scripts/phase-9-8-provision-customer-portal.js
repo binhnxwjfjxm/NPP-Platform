@@ -99,8 +99,8 @@ async function readPayloadFromStdin() {
   return validateProvisioningPayload(parsed);
 }
 
-async function resolveTarget(client, installationId, input) {
-  const customerRows = (await client.query(
+async function resolveCustomer(client, installationId, customerEmail) {
+  const rows = (await client.query(
     `SELECT id, code, name
        FROM shared.customers
       WHERE installation_id = $1
@@ -108,24 +108,57 @@ async function resolveTarget(client, installationId, input) {
         AND lower(btrim(COALESCE(email, ''))) = lower(btrim($2))
       ORDER BY code ASC
       LIMIT 3`,
-    [installationId, input.customerEmail],
+    [installationId, customerEmail],
   )).rows;
-  if (customerRows.length !== 1) {
-    throw operationalError('customer_email_resolution_failed', { matchCount: customerRows.length });
+  if (rows.length !== 1) {
+    throw operationalError('customer_email_resolution_failed', { matchCount: rows.length });
+  }
+  return rows[0];
+}
+
+async function resolveWarehouse(client, installationId, requestedCode) {
+  const params = [installationId];
+  let query = `SELECT id, code, name
+                 FROM shared.warehouses
+                WHERE installation_id = $1
+                  AND is_active = true`;
+  if (requestedCode) {
+    query += ' AND code = $2 LIMIT 2';
+    params.push(requestedCode);
+  } else {
+    query += ' ORDER BY code ASC LIMIT 21';
+  }
+  const rows = (await client.query(query, params)).rows;
+  return chooseWarehouse(rows, requestedCode);
+}
+
+async function resolveSalesChannel(client, installationId, requestedCode) {
+  if (requestedCode) {
+    const rows = (await client.query(
+      `SELECT id, code, name
+         FROM shared.sales_channels
+        WHERE installation_id = $1
+          AND is_active = true
+          AND code = $2
+        LIMIT 2`,
+      [installationId, requestedCode],
+    )).rows;
+    return chooseSalesChannel(rows, requestedCode);
   }
 
-  const warehouseRows = (await client.query(
+  const portalRows = (await client.query(
     `SELECT id, code, name
-       FROM shared.warehouses
+       FROM shared.sales_channels
       WHERE installation_id = $1
         AND is_active = true
-      ORDER BY code ASC
-      LIMIT 21`,
+        AND code = 'CUSTOMER_PORTAL'
+      LIMIT 2`,
     [installationId],
   )).rows;
-  const warehouse = chooseWarehouse(warehouseRows, input.warehouseCode);
+  if (portalRows.length === 1) return portalRows[0];
+  if (portalRows.length > 1) throw operationalError('sales_channel_selection_ambiguous');
 
-  const channelRows = (await client.query(
+  const activeRows = (await client.query(
     `SELECT id, code, name
        FROM shared.sales_channels
       WHERE installation_id = $1
@@ -134,12 +167,18 @@ async function resolveTarget(client, installationId, input) {
       LIMIT 21`,
     [installationId],
   )).rows;
-  const salesChannel = chooseSalesChannel(channelRows, input.salesChannelCode);
-
-  return Object.freeze({ customer: customerRows[0], warehouse, salesChannel });
+  return chooseSalesChannel(activeRows);
 }
 
-async function getExistingIdentity(client, installationId, providerSubject) {
+async function resolveTarget(client, installationId, input) {
+  const customer = await resolveCustomer(client, installationId, input.customerEmail);
+  const warehouse = await resolveWarehouse(client, installationId, input.warehouseCode);
+  const salesChannel = await resolveSalesChannel(client, installationId, input.salesChannelCode);
+  return Object.freeze({ customer, warehouse, salesChannel });
+}
+
+async function getExistingIdentity(client, installationId, providerSubject, { forUpdate = false } = {}) {
+  const lockClause = forUpdate ? '\n      FOR UPDATE OF pi, pu' : '';
   return (await client.query(
     `SELECT pi.portal_user_id, pu.status AS portal_user_status
        FROM shared.portal_identities pi
@@ -148,8 +187,7 @@ async function getExistingIdentity(client, installationId, providerSubject) {
         AND pu.id = pi.portal_user_id
       WHERE pi.installation_id = $1
         AND pi.provider = $2
-        AND pi.provider_subject = $3
-      FOR UPDATE OF pi, pu`,
+        AND pi.provider_subject = $3${lockClause}`,
     [installationId, PROVIDER, providerSubject],
   )).rows[0] ?? null;
 }
@@ -277,7 +315,12 @@ async function provision(pool, installationId, input) {
         [`${installationId}:${PROVIDER}:${input.providerSubject}`],
       );
       const target = await resolveTarget(client, installationId, input);
-      const existing = await getExistingIdentity(client, installationId, input.providerSubject);
+      const existing = await getExistingIdentity(
+        client,
+        installationId,
+        input.providerSubject,
+        { forUpdate: true },
+      );
       if (existing) {
         const membership = await getActiveMembership(client, installationId, existing.portal_user_id);
         assertReplayMatches(existing, membership, target);

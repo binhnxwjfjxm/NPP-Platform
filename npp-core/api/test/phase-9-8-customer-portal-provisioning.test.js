@@ -13,30 +13,57 @@ const payload = Object.freeze({
   customerEmail: 'portal@example.com',
 });
 
-function createFakePool() {
+function createFakePool({
+  warehouses = [{ id: '20000000-0000-4000-8000-000000000001', code: 'WH01', name: 'Main Warehouse' }],
+  channels = [{ id: '30000000-0000-4000-8000-000000000001', code: 'CUSTOMER_PORTAL', name: 'Customer Portal' }],
+} = {}) {
   const state = {
     portalUser: null,
     identity: null,
     membership: null,
     auditCount: 0,
     insertCount: 0,
+    readOnly: false,
   };
 
   const client = {
     async query(sql, params = []) {
       const normalized = String(sql).trim().replace(/\s+/g, ' ').toLowerCase();
-      if (normalized === 'begin' || normalized === 'begin read only' || normalized === 'commit' || normalized === 'rollback') {
+      if (normalized === 'begin read only') {
+        state.readOnly = true;
         return { rows: [] };
+      }
+      if (normalized === 'begin') {
+        state.readOnly = false;
+        return { rows: [] };
+      }
+      if (normalized === 'commit' || normalized === 'rollback') {
+        state.readOnly = false;
+        return { rows: [] };
+      }
+      if (state.readOnly && normalized.includes(' for update')) {
+        throw new Error('read_only_lock_forbidden');
       }
       if (normalized.startsWith('select pg_advisory_xact_lock')) return { rows: [{ ok: true }] };
       if (normalized.includes('from shared.customers') && normalized.includes("lower(btrim(coalesce(email, '')))")) {
         return { rows: [{ id: '10000000-0000-4000-8000-000000000001', code: 'CUS001', name: 'Portal Customer' }] };
       }
       if (normalized.includes('from shared.warehouses') && normalized.includes('is_active = true')) {
-        return { rows: [{ id: '20000000-0000-4000-8000-000000000001', code: 'WH01', name: 'Main Warehouse' }] };
+        const rows = normalized.includes('code = $2')
+          ? warehouses.filter((row) => row.code === params[1]).slice(0, 2)
+          : warehouses.slice(0, 21);
+        return { rows };
       }
       if (normalized.includes('from shared.sales_channels') && normalized.includes('is_active = true')) {
-        return { rows: [{ id: '30000000-0000-4000-8000-000000000001', code: 'CUSTOMER_PORTAL', name: 'Customer Portal' }] };
+        let rows;
+        if (normalized.includes('code = $2')) {
+          rows = channels.filter((row) => row.code === params[1]).slice(0, 2);
+        } else if (normalized.includes("code = 'customer_portal'")) {
+          rows = channels.filter((row) => row.code === 'CUSTOMER_PORTAL').slice(0, 2);
+        } else {
+          rows = channels.slice(0, 21);
+        }
+        return { rows };
       }
       if (normalized.includes('from shared.portal_identities pi')) {
         if (!state.identity) return { rows: [] };
@@ -53,9 +80,9 @@ function createFakePool() {
           allow_cancel: state.membership.allowCancel,
           customer_code: 'CUS001',
           customer_active: true,
-          warehouse_code: 'WH01',
+          warehouse_code: state.membership.warehouseCode,
           warehouse_active: true,
-          sales_channel_code: 'CUSTOMER_PORTAL',
+          sales_channel_code: state.membership.channelCode,
           sales_channel_active: true,
         }] };
       }
@@ -78,6 +105,8 @@ function createFakePool() {
           channelId: params[5],
           collectionPolicy: params[6],
           allowCancel: true,
+          warehouseCode: warehouses.find((row) => row.id === params[4])?.code,
+          channelCode: channels.find((row) => row.id === params[5])?.code,
         };
         return { rows: [] };
       }
@@ -121,6 +150,38 @@ test('warehouse and sales-channel selection fail closed on ambiguity', () => {
     () => chooseSalesChannel([{ code: 'DIRECT' }, { code: 'MCP' }]),
     /sales_channel_selection_ambiguous/,
   );
+});
+
+test('audit stays read-only and never requests a row lock', async () => {
+  const pool = createFakePool();
+  const result = await run('audit', payload, { config: { installationId: 'installation-test' }, pool });
+  assert.equal(result.ok, true);
+  assert.equal(result.mode, 'audit');
+  assert.equal(result.replayed, false);
+  assert.equal(pool.state.insertCount, 0);
+  assert.equal(pool.state.auditCount, 0);
+});
+
+test('explicit warehouse and sales-channel codes resolve beyond general list caps', async () => {
+  const warehouses = Array.from({ length: 25 }, (_, index) => ({
+    id: `20000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    code: `WH${String(index + 1).padStart(2, '0')}`,
+    name: `Warehouse ${index + 1}`,
+  }));
+  const channels = Array.from({ length: 25 }, (_, index) => ({
+    id: `30000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    code: `CHANNEL${String(index + 1).padStart(2, '0')}`,
+    name: `Channel ${index + 1}`,
+  }));
+  const pool = createFakePool({ warehouses, channels });
+  const result = await run('audit', {
+    ...payload,
+    warehouseCode: 'WH25',
+    salesChannelCode: 'CHANNEL25',
+  }, { config: { installationId: 'installation-test' }, pool });
+
+  assert.equal(result.warehouseCode, 'WH25');
+  assert.equal(result.salesChannelCode, 'CHANNEL25');
 });
 
 test('provisioning is transactional, audited and idempotent on replay', async () => {
