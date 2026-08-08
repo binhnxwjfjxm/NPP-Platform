@@ -82,6 +82,7 @@ jobs:
           AUDITED_MAIN_SHA: ${{ steps.source.outputs.sha }}
         run: >-
           node
+          --import ./mcp/apps/backend/scripts/production-r2-permission-id-preload.js
           --import ./mcp/apps/backend/scripts/production-r2-ephemeral-admin-preload.js
           ./mcp/apps/backend/scripts/production-media-audit.js
 
