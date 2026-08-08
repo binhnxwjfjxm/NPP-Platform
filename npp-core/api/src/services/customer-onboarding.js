@@ -1,5 +1,6 @@
 import { createRequestFingerprint } from '../idempotency.js';
 import * as repository from '../db/repositories/customer-onboarding.js';
+import * as portalRepository from '../db/repositories/customer-portal.js';
 import * as customerService from './customer.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -13,6 +14,12 @@ const STATUS_VALUES = new Set([
   'rejected',
   'cancelled',
 ]);
+const PORTAL_COLLECTION_POLICIES = new Set([
+  'PREPAID',
+  'COLLECT_ON_DELIVERY',
+  'COLLECT_AFTER_DELIVERY',
+  'CREDIT_TERMS',
+]);
 const PRIVILEGED_SUBMISSION_FIELDS = Object.freeze([
   'status',
   'reviewedByActorId',
@@ -22,6 +29,15 @@ const PRIVILEGED_SUBMISSION_FIELDS = Object.freeze([
   'approvedCustomerAddressId',
   'customerId',
   'addressId',
+]);
+const PORTAL_AUTHORITY_FIELDS = Object.freeze([
+  'sourceSystem',
+  'sourceOutletId',
+  'sourceDemandReference',
+  'orderRequired',
+  'triggerReason',
+  'sourceMetadata',
+  'requestedByPortalUserId',
 ]);
 
 function text(value) {
@@ -50,8 +66,8 @@ function stableSubmissionShape(normalized) {
     sourceSystem: normalized.sourceSystem,
     sourceOutletId: normalized.sourceOutletId,
     sourceDemandReference: normalized.sourceDemandReference,
-    orderRequired: true,
-    triggerReason: 'OFFICIAL_ORDER_REQUIRED',
+    orderRequired: normalized.orderRequired,
+    triggerReason: normalized.triggerReason,
     proposedName: normalized.proposedName,
     proposedPhone: normalized.proposedPhone,
     proposedAddressLabel: normalized.proposedAddressLabel,
@@ -70,36 +86,8 @@ export function hashSubmission(normalized) {
   return createRequestFingerprint(stableSubmissionShape(normalized));
 }
 
-export function validateSubmission(payload) {
-  if (!isPlainObject(payload)) {
-    return { ok: false, code: 'INVALID_INPUT', message: 'Customer verification payload is required' };
-  }
-  const forbidden = PRIVILEGED_SUBMISSION_FIELDS.find((key) => Object.prototype.hasOwnProperty.call(payload, key));
-  if (forbidden) {
-    return {
-      ok: false,
-      code: 'SUBMISSION_PRIVILEGED_FIELD_FORBIDDEN',
-      message: `Submission cannot set ${forbidden}`,
-    };
-  }
-
-  const sourceSystem = text(payload.sourceSystem || 'MCP').toUpperCase();
-  if (sourceSystem !== 'MCP') {
-    return { ok: false, code: 'INVALID_SOURCE_SYSTEM', message: 'Only MCP submissions are accepted in Phase 6C.1A' };
-  }
-  const sourceOutletId = text(payload.sourceOutletId);
-  if (!sourceOutletId || sourceOutletId.length > 128) {
-    return { ok: false, code: 'MISSING_SOURCE_OUTLET', message: 'sourceOutletId is required and must not exceed 128 characters' };
-  }
-  const sourceDemandReference = text(payload.sourceDemandReference);
-  if (!sourceDemandReference || sourceDemandReference.length > 128) {
-    return { ok: false, code: 'MISSING_DEMAND_REFERENCE', message: 'sourceDemandReference is required and must not exceed 128 characters' };
-  }
-  if (payload.orderRequired !== true) {
-    return { ok: false, code: 'ORDER_REQUIRED_TRIGGER_MISSING', message: 'An explicit official-order trigger is required' };
-  }
-
-  if (!isPlainObject(payload.proposedCustomer)) {
+function validateCustomerSnapshot(payload) {
+  if (!isPlainObject(payload?.proposedCustomer)) {
     return { ok: false, code: 'INVALID_CUSTOMER_SNAPSHOT', message: 'proposedCustomer is required' };
   }
   const proposedName = text(payload.proposedCustomer.name);
@@ -136,6 +124,54 @@ export function validateSubmission(payload) {
     return { ok: false, code: 'INVALID_COUNTRY_CODE', message: 'countryCode must be a two-letter code' };
   }
 
+  return {
+    ok: true,
+    normalized: {
+      proposedName,
+      proposedPhone: proposedPhone || null,
+      proposedAddressLabel: label,
+      proposedAddressLine1,
+      proposedAddressLine2: addressLine2.value,
+      proposedWard: ward.value,
+      proposedDistrict: district.value,
+      proposedProvince: province.value,
+      proposedPostalCode: postalCode.value,
+      proposedCountryCode,
+    },
+  };
+}
+
+export function validateSubmission(payload) {
+  if (!isPlainObject(payload)) {
+    return { ok: false, code: 'INVALID_INPUT', message: 'Customer verification payload is required' };
+  }
+  const forbidden = PRIVILEGED_SUBMISSION_FIELDS.find((key) => Object.prototype.hasOwnProperty.call(payload, key));
+  if (forbidden) {
+    return {
+      ok: false,
+      code: 'SUBMISSION_PRIVILEGED_FIELD_FORBIDDEN',
+      message: `Submission cannot set ${forbidden}`,
+    };
+  }
+
+  const sourceSystem = text(payload.sourceSystem || 'MCP').toUpperCase();
+  if (sourceSystem !== 'MCP') {
+    return { ok: false, code: 'INVALID_SOURCE_SYSTEM', message: 'Only MCP submissions are accepted on this endpoint' };
+  }
+  const sourceOutletId = text(payload.sourceOutletId);
+  if (!sourceOutletId || sourceOutletId.length > 128) {
+    return { ok: false, code: 'MISSING_SOURCE_OUTLET', message: 'sourceOutletId is required and must not exceed 128 characters' };
+  }
+  const sourceDemandReference = text(payload.sourceDemandReference);
+  if (!sourceDemandReference || sourceDemandReference.length > 128) {
+    return { ok: false, code: 'MISSING_DEMAND_REFERENCE', message: 'sourceDemandReference is required and must not exceed 128 characters' };
+  }
+  if (payload.orderRequired !== true) {
+    return { ok: false, code: 'ORDER_REQUIRED_TRIGGER_MISSING', message: 'An explicit official-order trigger is required' };
+  }
+
+  const snapshot = validateCustomerSnapshot(payload);
+  if (!snapshot.ok) return snapshot;
   const sourceMetadata = payload.sourceMetadata ?? {};
   if (!isPlainObject(sourceMetadata) || JSON.stringify(sourceMetadata).length > 8000) {
     return { ok: false, code: 'INVALID_SOURCE_METADATA', message: 'sourceMetadata must be an object of at most 8000 characters' };
@@ -147,31 +183,39 @@ export function validateSubmission(payload) {
       sourceSystem,
       sourceOutletId,
       sourceDemandReference,
-      proposedName,
-      proposedPhone: proposedPhone || null,
-      proposedAddressLabel: label,
-      proposedAddressLine1,
-      proposedAddressLine2: addressLine2.value,
-      proposedWard: ward.value,
-      proposedDistrict: district.value,
-      proposedProvince: province.value,
-      proposedPostalCode: postalCode.value,
-      proposedCountryCode,
+      orderRequired: true,
+      triggerReason: 'OFFICIAL_ORDER_REQUIRED',
+      ...snapshot.normalized,
       sourceMetadata,
     },
   };
 }
 
-export async function submitRequest(client, {
-  requestContext,
-  payload,
-  idempotencyKey,
-}) {
-  const validation = validateSubmission(payload);
-  if (!validation.ok) return validation;
-  const normalized = validation.normalized;
-  const payloadHash = hashSubmission(normalized);
+export function validatePortalRegistration(payload) {
+  if (!isPlainObject(payload)) {
+    return { ok: false, code: 'INVALID_INPUT', message: 'Registration payload is required' };
+  }
+  const forbidden = [...PRIVILEGED_SUBMISSION_FIELDS, ...PORTAL_AUTHORITY_FIELDS]
+    .find((key) => Object.prototype.hasOwnProperty.call(payload, key));
+  if (forbidden) {
+    return {
+      ok: false,
+      code: 'PORTAL_REGISTRATION_AUTHORITY_FIELD_FORBIDDEN',
+      message: `Registration cannot set ${forbidden}`,
+    };
+  }
+  const snapshot = validateCustomerSnapshot(payload);
+  if (!snapshot.ok) return snapshot;
+  return { ok: true, normalized: snapshot.normalized };
+}
 
+async function submitNormalizedRequest(client, {
+  requestContext,
+  normalized,
+  idempotencyKey,
+  requestedByPortalUserId = null,
+}) {
+  const payloadHash = hashSubmission(normalized);
   const lookup = {
     installationId: requestContext.installationId,
     sourceSystem: normalized.sourceSystem,
@@ -199,6 +243,7 @@ export async function submitRequest(client, {
     ...normalized,
     requestedByActorId: requestContext.actorId,
     requestedByEmployeeId: requestContext.employeeId,
+    requestedByPortalUserId,
     idempotencyKey,
     payloadHash,
   });
@@ -213,6 +258,109 @@ export async function submitRequest(client, {
     code: 'DEMAND_REFERENCE_CONFLICT',
     message: 'The demand reference was concurrently created with a different payload',
   };
+}
+
+export async function submitRequest(client, {
+  requestContext,
+  payload,
+  idempotencyKey,
+}) {
+  const validation = validateSubmission(payload);
+  if (!validation.ok) return validation;
+  return submitNormalizedRequest(client, {
+    requestContext,
+    normalized: validation.normalized,
+    idempotencyKey,
+  });
+}
+
+export async function submitPortalRegistration(client, {
+  requestContext,
+  portalUserId,
+  payload,
+  idempotencyKey,
+}) {
+  if (!validUuid(portalUserId)) {
+    return { ok: false, code: 'CUSTOMER_PORTAL_IDENTITY_REQUIRED', message: 'Portal identity is required' };
+  }
+  const validation = validatePortalRegistration(payload);
+  if (!validation.ok) return validation;
+  const normalized = {
+    sourceSystem: 'CUSTOMER_PORTAL',
+    sourceOutletId: portalUserId,
+    sourceDemandReference: 'SELF_REGISTRATION',
+    orderRequired: false,
+    triggerReason: 'CUSTOMER_REGISTRATION',
+    ...validation.normalized,
+    sourceMetadata: { channel: 'customer-ordering' },
+  };
+  return submitNormalizedRequest(client, {
+    requestContext,
+    normalized,
+    idempotencyKey,
+    requestedByPortalUserId: portalUserId,
+  });
+}
+
+export async function getPortalRegistration(client, { requestContext, portalUserId }) {
+  if (!validUuid(portalUserId)) return { ok: true, request: null };
+  const request = await repository.getCustomerOnboardingRequestByPortalUser(client, {
+    installationId: requestContext.installationId,
+    portalUserId,
+  });
+  return { ok: true, request };
+}
+
+export async function resubmitPortalRegistration(client, {
+  requestContext,
+  portalUserId,
+  id,
+  payload,
+  idempotencyKey,
+}) {
+  if (!validUuid(portalUserId) || !validUuid(id)) {
+    return { ok: false, code: 'CUSTOMER_ONBOARDING_NOT_FOUND', message: 'Customer registration was not found' };
+  }
+  const expected = normalizeExpectedVersion(payload);
+  if (!expected.ok) return expected;
+  const validation = validatePortalRegistration(payload);
+  if (!validation.ok) return validation;
+  const current = await repository.getCustomerOnboardingRequestByPortalUser(client, {
+    installationId: requestContext.installationId,
+    portalUserId,
+    forUpdate: true,
+  });
+  if (!current || current.id !== id) {
+    return { ok: false, code: 'CUSTOMER_ONBOARDING_NOT_FOUND', message: 'Customer registration was not found' };
+  }
+  if (current.version !== expected.value) {
+    return { ok: false, code: 'CUSTOMER_ONBOARDING_VERSION_CONFLICT', message: 'Customer registration changed; reload and retry' };
+  }
+  if (current.status !== 'need_more_info') {
+    return { ok: false, code: 'INVALID_STATUS_TRANSITION', message: 'Only registrations needing more information can be resubmitted' };
+  }
+  const normalized = {
+    sourceSystem: 'CUSTOMER_PORTAL',
+    sourceOutletId: portalUserId,
+    sourceDemandReference: 'SELF_REGISTRATION',
+    orderRequired: false,
+    triggerReason: 'CUSTOMER_REGISTRATION',
+    ...validation.normalized,
+    sourceMetadata: { channel: 'customer-ordering' },
+  };
+  const request = await repository.updatePortalRegistrationRequest(client, {
+    installationId: requestContext.installationId,
+    id,
+    portalUserId,
+    expectedVersion: expected.value,
+    normalized,
+    idempotencyKey,
+    payloadHash: hashSubmission(normalized),
+  });
+  if (!request) {
+    return { ok: false, code: 'CUSTOMER_ONBOARDING_VERSION_CONFLICT', message: 'Customer registration changed; reload and retry' };
+  }
+  return { ok: true, request, beforeData: current, changed: true };
 }
 
 export async function getRequest(client, { requestContext, id, restrictToRequester = false }) {
@@ -244,6 +392,7 @@ export async function listRequests(client, {
     sourceSystem: restrictToRequester ? 'MCP' : null,
     sourceOutletId: text(sourceOutletId) || null,
     requestedByActorId: restrictToRequester ? requestContext.actorId : null,
+    requestedByPortalUserId: null,
     limit,
     offset,
   });
@@ -353,6 +502,85 @@ export async function cancelRequest(client, args) {
   });
 }
 
+async function resolvePortalWarehouse(client, { installationId, requestedId }) {
+  if (requestedId) {
+    if (!validUuid(requestedId)) return { ok: false, code: 'INVALID_PORTAL_WAREHOUSE', message: 'portalWarehouseId must be a UUID' };
+    const warehouse = await portalRepository.getActiveWarehouseById(client, { installationId, warehouseId: requestedId.trim() });
+    return warehouse
+      ? { ok: true, warehouse }
+      : { ok: false, code: 'CUSTOMER_PORTAL_WAREHOUSE_NOT_FOUND', message: 'Customer Portal warehouse was not found or is inactive' };
+  }
+  const warehouses = await portalRepository.listActiveWarehouses(client, { installationId, limit: 2 });
+  if (warehouses.length !== 1) {
+    return { ok: false, code: 'CUSTOMER_PORTAL_WAREHOUSE_SELECTION_REQUIRED', message: 'Select an active warehouse for this customer portal membership' };
+  }
+  return { ok: true, warehouse: warehouses[0] };
+}
+
+async function resolvePortalSalesChannel(client, { installationId, requestedId }) {
+  if (requestedId) {
+    if (!validUuid(requestedId)) return { ok: false, code: 'INVALID_PORTAL_SALES_CHANNEL', message: 'portalSalesChannelId must be a UUID' };
+    const salesChannel = await portalRepository.getActiveSalesChannelById(client, { installationId, salesChannelId: requestedId.trim() });
+    return salesChannel
+      ? { ok: true, salesChannel }
+      : { ok: false, code: 'CUSTOMER_PORTAL_SALES_CHANNEL_NOT_FOUND', message: 'Customer Portal sales channel was not found or is inactive' };
+  }
+  const canonical = await portalRepository.getActiveSalesChannelByCode(client, { installationId, code: 'CUSTOMER_PORTAL' });
+  if (canonical) return { ok: true, salesChannel: canonical };
+  const channels = await portalRepository.listActiveSalesChannels(client, { installationId, limit: 2 });
+  if (channels.length !== 1) {
+    return { ok: false, code: 'CUSTOMER_PORTAL_SALES_CHANNEL_SELECTION_REQUIRED', message: 'Select an active sales channel for this customer portal membership' };
+  }
+  return { ok: true, salesChannel: channels[0] };
+}
+
+async function activatePortalMembershipForRequest(client, { requestContext, request, payload, customerId }) {
+  if (!request.requestedByPortalUserId) return { ok: true, membership: null };
+  const portalUser = await portalRepository.getPortalUserForUpdate(client, {
+    installationId: requestContext.installationId,
+    portalUserId: request.requestedByPortalUserId,
+  });
+  if (!portalUser || portalUser.status !== 'ACTIVE') {
+    return { ok: false, code: 'CUSTOMER_PORTAL_USER_INACTIVE', message: 'Customer Portal user is not active' };
+  }
+  const existing = await portalRepository.getActiveMembershipByPortalUser(client, {
+    installationId: requestContext.installationId,
+    portalUserId: request.requestedByPortalUserId,
+  });
+  if (existing) {
+    if (existing.customer_id !== customerId) {
+      return { ok: false, code: 'CUSTOMER_PORTAL_MEMBERSHIP_CONFLICT', message: 'Portal user already has an active membership for another customer' };
+    }
+    return { ok: true, membership: Object.freeze({ ...existing, created: false }) };
+  }
+
+  const warehouse = await resolvePortalWarehouse(client, {
+    installationId: requestContext.installationId,
+    requestedId: text(payload?.portalWarehouseId),
+  });
+  if (!warehouse.ok) return warehouse;
+  const salesChannel = await resolvePortalSalesChannel(client, {
+    installationId: requestContext.installationId,
+    requestedId: text(payload?.portalSalesChannelId),
+  });
+  if (!salesChannel.ok) return salesChannel;
+  const collectionPolicy = text(payload?.portalCollectionPolicy || 'COLLECT_ON_DELIVERY').toUpperCase();
+  if (!PORTAL_COLLECTION_POLICIES.has(collectionPolicy)) {
+    return { ok: false, code: 'INVALID_PORTAL_COLLECTION_POLICY', message: 'portalCollectionPolicy is invalid' };
+  }
+  const membership = await portalRepository.insertActivePortalMembership(client, {
+    installationId: requestContext.installationId,
+    portalUserId: request.requestedByPortalUserId,
+    customerId,
+    defaultWarehouseId: warehouse.warehouse.id,
+    salesChannelId: salesChannel.salesChannel.id,
+    collectionPolicy,
+    allowCancel: payload?.portalAllowCancel !== false,
+    actorId: requestContext.actorId,
+  });
+  return { ok: true, membership: Object.freeze({ ...membership, created: true }) };
+}
+
 export async function approveNewCustomer(client, { requestContext, id, payload }) {
   const expected = normalizeExpectedVersion(payload);
   if (!expected.ok) return expected;
@@ -405,7 +633,7 @@ export async function approveNewCustomer(client, { requestContext, id, payload }
   });
   if (!address.ok) return address;
 
-  return transition(client, {
+  const transitioned = await transition(client, {
     requestContext,
     id: before.id,
     payload,
@@ -414,6 +642,15 @@ export async function approveNewCustomer(client, { requestContext, id, payload }
     approvedCustomerId: customer.customer.id,
     approvedCustomerAddressId: address.address.id,
   });
+  if (!transitioned.ok) return transitioned;
+  const portal = await activatePortalMembershipForRequest(client, {
+    requestContext,
+    request: transitioned.request,
+    payload,
+    customerId: customer.customer.id,
+  });
+  if (!portal.ok) return portal;
+  return { ...transitioned, portalMembership: portal.membership };
 }
 
 export async function linkExistingCustomer(client, { requestContext, id, payload }) {
@@ -445,7 +682,7 @@ export async function linkExistingCustomer(client, { requestContext, id, payload
   if (!link.address_is_active) {
     return { ok: false, code: 'CUSTOMER_ADDRESS_INACTIVE', message: 'Selected customer address is inactive' };
   }
-  return transition(client, {
+  const transitioned = await transition(client, {
     requestContext,
     id: before.id,
     payload,
@@ -454,4 +691,13 @@ export async function linkExistingCustomer(client, { requestContext, id, payload
     approvedCustomerId: link.customer_id,
     approvedCustomerAddressId: link.address_id,
   });
+  if (!transitioned.ok) return transitioned;
+  const portal = await activatePortalMembershipForRequest(client, {
+    requestContext,
+    request: transitioned.request,
+    payload,
+    customerId: link.customer_id,
+  });
+  if (!portal.ok) return portal;
+  return { ...transitioned, portalMembership: portal.membership };
 }

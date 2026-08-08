@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { AppShell } from '../../components/app-shell';
 import {
+  getCustomerOnboardingPortalOptions,
   listCustomerOnboardingRequests,
   resolveCustomerOnboardingRequestId,
   type CustomerOnboardingRequestSummary,
+  type CustomerPortalActivationOptions,
 } from '../../../lib/customer-onboarding-gateway';
 import { listAllCustomers, resolveCustomerRequestId } from '../../../lib/customer-gateway';
 import type { Customer } from '../../../lib/customer-types';
@@ -13,6 +15,7 @@ export const dynamic = 'force-dynamic';
 
 const ONBOARDING_PAGE_SIZE = 100;
 const CUSTOMER_PAGE_SIZE = 200;
+const EMPTY_PORTAL_OPTIONS: CustomerPortalActivationOptions = { warehouses: [], salesChannels: [] };
 
 type LoadResult<T> = {
   data: T;
@@ -104,11 +107,29 @@ async function loadActiveCustomers(): Promise<LoadResult<Customer[]>> {
   }
 }
 
+async function loadPortalOptions(enabled: boolean): Promise<LoadResult<CustomerPortalActivationOptions>> {
+  if (!enabled) return { data: EMPTY_PORTAL_OPTIONS, error: null };
+  try {
+    return {
+      data: await getCustomerOnboardingPortalOptions(resolveCustomerOnboardingRequestId(null)),
+      error: null,
+    };
+  } catch {
+    return {
+      data: EMPTY_PORTAL_OPTIONS,
+      error: 'Không tải được danh sách kho/kênh bán để kích hoạt tài khoản khách hàng.',
+    };
+  }
+}
+
 export default async function CustomerOnboardingReviewPage() {
   const [requests, customers] = await Promise.all([
     loadPendingRequests(),
     loadActiveCustomers(),
   ]);
+  const portalOptions = await loadPortalOptions(
+    requests.data.some((request) => request.sourceSystem === 'CUSTOMER_PORTAL'),
+  );
 
   return (
     <AppShell
@@ -119,7 +140,12 @@ export default async function CustomerOnboardingReviewPage() {
     >
       {requests.error ? <p role="alert">{requests.error}</p> : null}
       {customers.error ? <p role="alert">{customers.error}</p> : null}
-      <CustomerOnboardingReview requests={requests.data} customers={customers.data} />
+      {portalOptions.error ? <p role="alert">{portalOptions.error}</p> : null}
+      <CustomerOnboardingReview
+        requests={requests.data}
+        customers={customers.data}
+        portalOptions={portalOptions.data}
+      />
     </AppShell>
   );
 }

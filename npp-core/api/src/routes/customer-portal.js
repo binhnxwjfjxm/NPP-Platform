@@ -8,15 +8,22 @@ import {
   insertOutboxEvent,
   withAuditOutboxTransaction,
 } from '../audit-outbox.js';
+import * as onboardingService from '../services/customer-onboarding.js';
+import * as registrationService from '../services/customer-portal-registration.js';
 import * as service from '../services/customer-portal.js';
 
 const ORDER_PATH = /^\/api\/customer-portal\/orders\/([0-9a-f-]{36})$/i;
 const CANCEL_PATH = /^\/api\/customer-portal\/orders\/([0-9a-f-]{36})\/cancel$/i;
+const REGISTRATION_COLLECTION = '/api/customer-portal/registrations';
+const REGISTRATION_CURRENT = '/api/customer-portal/registrations/current';
+const REGISTRATION_RESUBMIT_PATH = /^\/api\/customer-portal\/registrations\/([0-9a-f-]{36})\/resubmit$/i;
 const STATIC_PATHS = new Set([
   '/api/customer-portal/me',
   '/api/customer-portal/addresses',
   '/api/customer-portal/catalog',
   '/api/customer-portal/orders',
+  REGISTRATION_COLLECTION,
+  REGISTRATION_CURRENT,
 ]);
 const RETRYABLE_ERROR_CODES = new Set(['40001', '40P01', '57P01', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE']);
 
@@ -26,16 +33,19 @@ function apiError(code, message, details = {}, retryable = false, statusCode = 5
 
 function statusFor(code, fallback = 400) {
   if (code === 'CUSTOMER_PORTAL_AUTH_REQUIRED' || code.includes('TOKEN_')) return 401;
-  if (code.includes('MEMBERSHIP') || code.endsWith('_FORBIDDEN') || code === 'DELIVERY_ADDRESS_NOT_FOUND') return 403;
-  if (code.endsWith('_NOT_FOUND')) return 404;
   if (code === 'INVALID_IDEMPOTENCY_KEY' || code === 'MISSING_IDEMPOTENCY_KEY') return 400;
-  if (code.includes('CONFLICT') || code.includes('DUPLICATE') || code.includes('IDEMPOTENCY') || code === 'INVALID_STATUS_TRANSITION' || code === 'SALES_ORDER_HAS_EXECUTION_FACTS') return 409;
+  if (code.includes('CONFLICT') || code.includes('DUPLICATE') || code.includes('IDEMPOTENCY') || code === 'INVALID_STATUS_TRANSITION' || code === 'SALES_ORDER_HAS_EXECUTION_FACTS' || code === 'CUSTOMER_PORTAL_ALREADY_ACTIVE') return 409;
+  if (code.includes('MEMBERSHIP') || code.includes('SUSPENDED') || code.endsWith('_FORBIDDEN') || code === 'DELIVERY_ADDRESS_NOT_FOUND') return 403;
+  if (code.endsWith('_NOT_FOUND')) return 404;
   if (code.includes('UNAVAILABLE') || code.includes('NOT_CONFIGURED')) return 503;
   return fallback;
 }
 
 function isKnownPath(pathname) {
-  return STATIC_PATHS.has(pathname) || ORDER_PATH.test(pathname) || CANCEL_PATH.test(pathname);
+  return STATIC_PATHS.has(pathname)
+    || ORDER_PATH.test(pathname)
+    || CANCEL_PATH.test(pathname)
+    || REGISTRATION_RESUBMIT_PATH.test(pathname);
 }
 
 function sendServiceError(res, result, options) {
@@ -65,16 +75,26 @@ function idempotencyKey(req) {
   }
 }
 
-async function authenticatePortal(req, res, options) {
+async function authenticateIdentity(req, res, options) {
   const auth = await options.customerPortalAuth.authenticate(req);
   if (!auth.ok) {
     if (auth.statusCode === 401) res.setHeader('WWW-Authenticate', 'Bearer');
     sendError(res, apiError(auth.code, auth.statusCode === 503 ? 'Customer Portal authentication is unavailable.' : 'Authorization required.', {}, auth.statusCode === 503, auth.statusCode), options.requestId, options.receivedAt);
     return null;
   }
+  const requestContext = registrationService.createPortalRegistrationRequestContext(
+    options.createContext,
+    options.config,
+    auth.subject,
+    { requestId: options.requestId, receivedAt: options.receivedAt },
+  );
+  return Object.freeze({ ...auth, requestContext });
+}
+
+async function authenticateMembership(identityAuth, req, res, options) {
   const membershipResult = await service.resolvePortalMembership(options.getPool(), {
     installationId: options.config.installationId,
-    subject: auth.subject,
+    subject: identityAuth.subject,
   });
   if (!membershipResult.ok) {
     sendServiceError(res, membershipResult, options);
@@ -87,7 +107,7 @@ async function authenticatePortal(req, res, options) {
     { requestId: options.requestId, receivedAt: options.receivedAt },
   );
   req.requestContext = requestContext;
-  return Object.freeze({ requestContext, membership: membershipResult.membership, claims: auth.claims });
+  return Object.freeze({ requestContext, membership: membershipResult.membership, claims: identityAuth.claims });
 }
 
 async function auditMutation(client, { requestContext, action, eventType, order }) {
@@ -107,6 +127,26 @@ async function auditMutation(client, { requestContext, action, eventType, order 
     eventVersion: 1,
     payload: order,
     metadata: { source: 'CUSTOMER_PORTAL' },
+  }));
+}
+
+async function auditRegistrationMutation(client, { requestContext, action, request, portalUserId }) {
+  await insertAuditRecord(client, buildAuditRecord({
+    requestContext,
+    action: `customer_portal.registration.${action}`,
+    resourceType: 'customer_onboarding_request',
+    resourceId: request.id,
+    afterData: request,
+    metadata: { source: 'CUSTOMER_PORTAL', portalUserId },
+  }));
+  await insertOutboxEvent(client, buildOutboxEvent({
+    requestContext,
+    aggregateType: 'sales.customer_onboarding_request',
+    aggregateId: request.id,
+    eventType: `sales.customer_onboarding.customer_portal_${action}`,
+    eventVersion: request.version,
+    payload: request,
+    metadata: { source: 'CUSTOMER_PORTAL', portalUserId },
   }));
 }
 
@@ -150,22 +190,213 @@ function unexpectedMutationError(error, operation, options) {
       code,
     },
   }));
+  const isRegistration = operation.startsWith('registration');
+  const isCreate = operation === 'create';
   return apiError(
-    operation === 'create' ? 'CUSTOMER_PORTAL_ORDER_CREATE_FAILED' : 'CUSTOMER_PORTAL_ORDER_CANCEL_FAILED',
-    operation === 'create' ? 'Không thể tạo đơn hàng.' : 'Không thể hủy đơn hàng.',
+    isRegistration ? 'CUSTOMER_PORTAL_REGISTRATION_FAILED' : isCreate ? 'CUSTOMER_PORTAL_ORDER_CREATE_FAILED' : 'CUSTOMER_PORTAL_ORDER_CANCEL_FAILED',
+    isRegistration ? 'Không thể xử lý đăng ký điểm bán.' : isCreate ? 'Không thể tạo đơn hàng.' : 'Không thể hủy đơn hàng.',
     {},
     retryable,
     retryable ? 503 : 500,
   );
 }
 
+async function handleRegistrationRoutes(req, res, options, url, identityAuth) {
+  const resubmitMatch = REGISTRATION_RESUBMIT_PATH.exec(url.pathname);
+  const requestContext = identityAuth.requestContext;
+
+  if (req.method === 'GET' && url.pathname === REGISTRATION_CURRENT) {
+    const identityResult = await registrationService.resolvePortalIdentity(options.getPool(), {
+      installationId: requestContext.installationId,
+      subject: identityAuth.subject,
+    });
+    if (!identityResult.ok) {
+      sendServiceError(res, identityResult, options);
+      return true;
+    }
+    if (!identityResult.identity) {
+      sendSuccess(res, { state: 'unregistered', registration: null, profile: null }, options.requestId, options.receivedAt);
+      return true;
+    }
+    const membershipResult = await registrationService.resolvePortalMembershipByUser(options.getPool(), {
+      installationId: requestContext.installationId,
+      portalUserId: identityResult.identity.portal_user_id,
+    });
+    if (!membershipResult.ok) {
+      sendServiceError(res, membershipResult, options);
+      return true;
+    }
+    const registrationResult = await onboardingService.getPortalRegistration(options.getPool(), {
+      requestContext,
+      portalUserId: identityResult.identity.portal_user_id,
+    });
+    const state = registrationService.registrationState({
+      identity: identityResult.identity,
+      membership: membershipResult.membership,
+      membershipUnavailable: membershipResult.membershipUnavailable,
+      request: registrationResult.request,
+    });
+    sendSuccess(res, {
+      state,
+      registration: registrationService.publicRegistration(registrationResult.request),
+      profile: membershipResult.membership ? service.portalProfile(membershipResult.membership) : null,
+    }, options.requestId, options.receivedAt);
+    return true;
+  }
+
+  if (req.method === 'POST' && url.pathname === REGISTRATION_COLLECTION) {
+    const payload = await readPayload(req, res, options);
+    if (payload === null) return true;
+    const key = idempotencyKey(req);
+    if (!key.ok) {
+      sendError(res, apiError(key.code, key.message, {}, false, 400), options.requestId, options.receivedAt);
+      return true;
+    }
+    try {
+      const execution = await options.executeRequestWithIdempotency({
+        idempotencyStore: options.idempotencyStore,
+        req,
+        requestContext,
+        requestId: options.requestId,
+        receivedAt: options.receivedAt,
+        route: REGISTRATION_COLLECTION,
+        payload,
+        onProcess: async () => {
+          const result = await withAuditOutboxTransaction({
+            adapter: options.getPool(),
+            mutate: async (client) => {
+              const identityResult = await registrationService.ensurePortalIdentity(client, {
+                requestContext,
+                subject: identityAuth.subject,
+                displayName: payload?.proposedCustomer?.name,
+              });
+              if (!identityResult.ok) return rollbackBusinessFailure(identityResult);
+              const membershipResult = await registrationService.resolvePortalMembershipByUser(client, {
+                installationId: requestContext.installationId,
+                portalUserId: identityResult.identity.portal_user_id,
+              });
+              if (!membershipResult.ok) return rollbackBusinessFailure(membershipResult);
+              if (membershipResult.hasActiveMembership) {
+                return rollbackBusinessFailure({
+                  ok: false,
+                  code: 'CUSTOMER_PORTAL_ALREADY_ACTIVE',
+                  message: 'Tài khoản đã được kích hoạt cho khách hàng.',
+                  statusCode: 409,
+                });
+              }
+              const submitted = await onboardingService.submitPortalRegistration(client, {
+                requestContext,
+                portalUserId: identityResult.identity.portal_user_id,
+                payload,
+                idempotencyKey: key.key,
+              });
+              if (!submitted.ok) return rollbackBusinessFailure(submitted);
+              if (submitted.replayed === true) return { ...submitted, portalUserId: identityResult.identity.portal_user_id, replayed: true };
+              await auditRegistrationMutation(client, {
+                requestContext,
+                action: 'submitted',
+                request: submitted.request,
+                portalUserId: identityResult.identity.portal_user_id,
+              });
+              return auditedBusinessSuccess({ ...submitted, portalUserId: identityResult.identity.portal_user_id });
+            },
+          });
+          if (!result.ok) return idempotentFailure(result, options);
+          return idempotentSuccess({
+            state: result.request.status,
+            registration: registrationService.publicRegistration(result.request),
+            replayed: Boolean(result.replayed),
+          }, options, result.replayed ? 200 : 201);
+        },
+      });
+      sendJson(res, execution.response.statusCode, execution.response.body, execution.response.requestId ?? options.requestId, execution.response.contentType);
+    } catch (error) {
+      sendError(res, unexpectedMutationError(error, 'registration-submit', options), options.requestId, options.receivedAt);
+    }
+    return true;
+  }
+
+  if (req.method === 'POST' && resubmitMatch) {
+    const payload = await readPayload(req, res, options);
+    if (payload === null) return true;
+    const key = idempotencyKey(req);
+    if (!key.ok) {
+      sendError(res, apiError(key.code, key.message, {}, false, 400), options.requestId, options.receivedAt);
+      return true;
+    }
+    try {
+      const execution = await options.executeRequestWithIdempotency({
+        idempotencyStore: options.idempotencyStore,
+        req,
+        requestContext,
+        requestId: options.requestId,
+        receivedAt: options.receivedAt,
+        route: `${REGISTRATION_COLLECTION}/${resubmitMatch[1]}/resubmit`,
+        payload,
+        onProcess: async () => {
+          const result = await withAuditOutboxTransaction({
+            adapter: options.getPool(),
+            mutate: async (client) => {
+              const identityResult = await registrationService.resolvePortalIdentity(client, {
+                installationId: requestContext.installationId,
+                subject: identityAuth.subject,
+                forUpdate: true,
+              });
+              if (!identityResult.ok) return rollbackBusinessFailure(identityResult);
+              if (!identityResult.identity) {
+                return rollbackBusinessFailure({ ok: false, code: 'CUSTOMER_ONBOARDING_NOT_FOUND', message: 'Customer registration was not found', statusCode: 404 });
+              }
+              const updated = await onboardingService.resubmitPortalRegistration(client, {
+                requestContext,
+                portalUserId: identityResult.identity.portal_user_id,
+                id: resubmitMatch[1],
+                payload,
+                idempotencyKey: key.key,
+              });
+              if (!updated.ok) return rollbackBusinessFailure(updated);
+              await auditRegistrationMutation(client, {
+                requestContext,
+                action: 'resubmitted',
+                request: updated.request,
+                portalUserId: identityResult.identity.portal_user_id,
+              });
+              return auditedBusinessSuccess(updated);
+            },
+          });
+          if (!result.ok) return idempotentFailure(result, options);
+          return idempotentSuccess({
+            state: result.request.status,
+            registration: registrationService.publicRegistration(result.request),
+          }, options);
+        },
+      });
+      sendJson(res, execution.response.statusCode, execution.response.body, execution.response.requestId ?? options.requestId, execution.response.contentType);
+    } catch (error) {
+      sendError(res, unexpectedMutationError(error, 'registration-resubmit', options), options.requestId, options.receivedAt);
+    }
+    return true;
+  }
+
+  if (url.pathname === REGISTRATION_COLLECTION || url.pathname === REGISTRATION_CURRENT || resubmitMatch) {
+    sendError(res, apiError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405), options.requestId, options.receivedAt);
+    return true;
+  }
+  return false;
+}
+
 export async function handleCustomerPortalRoutes(req, res, options) {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   if (!url.pathname.startsWith('/api/customer-portal')) return false;
-  const portal = await authenticatePortal(req, res, options);
+  const identityAuth = await authenticateIdentity(req, res, options);
+  if (!identityAuth) return true;
+  res.setHeader('Cache-Control', 'no-store');
+
+  const registrationHandled = await handleRegistrationRoutes(req, res, options, url, identityAuth);
+  if (registrationHandled) return true;
+
+  const portal = await authenticateMembership(identityAuth, req, res, options);
   if (!portal) return true;
   const { requestContext, membership } = portal;
-  res.setHeader('Cache-Control', 'no-store');
 
   if (req.method === 'GET' && url.pathname === '/api/customer-portal/me') {
     sendSuccess(res, { profile: service.portalProfile(membership) }, options.requestId, options.receivedAt);

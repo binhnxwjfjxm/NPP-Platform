@@ -5,6 +5,7 @@ import { useRef, useState } from 'react';
 import type {
   CustomerOnboardingAction,
   CustomerOnboardingRequestSummary,
+  CustomerPortalActivationOptions,
 } from '../../../lib/customer-onboarding-gateway';
 import type { Customer, CustomerAddress } from '../../../lib/customer-types';
 import styles from './customer-onboarding-review.module.css';
@@ -12,6 +13,7 @@ import styles from './customer-onboarding-review.module.css';
 type Props = {
   requests: CustomerOnboardingRequestSummary[];
   customers: Customer[];
+  portalOptions: CustomerPortalActivationOptions;
 };
 
 type Feedback = { kind: 'success' | 'error'; text: string } | null;
@@ -54,7 +56,17 @@ function fullAddress(address: CustomerAddress): string {
     .join(', ');
 }
 
-export default function CustomerOnboardingReview({ requests, customers }: Props) {
+function defaultWarehouseId(options: CustomerPortalActivationOptions): string {
+  return options.warehouses.length === 1 ? options.warehouses[0].id : '';
+}
+
+function defaultSalesChannelId(options: CustomerPortalActivationOptions): string {
+  const canonical = options.salesChannels.filter((item) => item.code === 'CUSTOMER_PORTAL');
+  if (canonical.length === 1) return canonical[0].id;
+  return options.salesChannels.length === 1 ? options.salesChannels[0].id : '';
+}
+
+export default function CustomerOnboardingReview({ requests, customers, portalOptions }: Props) {
   const router = useRouter();
   const actionKeys = useRef<Record<string, string>>({});
   const busyRequests = useRef<Set<string>>(new Set());
@@ -65,6 +77,8 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
   const [codeByRequest, setCodeByRequest] = useState<Record<string, string>>({});
   const [customerByRequest, setCustomerByRequest] = useState<Record<string, string>>({});
   const [addressByRequest, setAddressByRequest] = useState<Record<string, string>>({});
+  const [warehouseByRequest, setWarehouseByRequest] = useState<Record<string, string>>({});
+  const [salesChannelByRequest, setSalesChannelByRequest] = useState<Record<string, string>>({});
   const [addressesByRequest, setAddressesByRequest] = useState<Record<string, CustomerAddress[]>>({});
   const [addressLoadingByRequest, setAddressLoadingByRequest] = useState<Record<string, boolean>>({});
 
@@ -171,6 +185,17 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
     void performAction(request, action, { reason });
   }
 
+  function portalActivationPayload(request: CustomerOnboardingRequestSummary): Record<string, string> | null {
+    if (request.sourceSystem !== 'CUSTOMER_PORTAL') return {};
+    const portalWarehouseId = warehouseByRequest[request.id] ?? defaultWarehouseId(portalOptions);
+    const portalSalesChannelId = salesChannelByRequest[request.id] ?? defaultSalesChannelId(portalOptions);
+    if (!portalWarehouseId || !portalSalesChannelId) {
+      setFeedback({ kind: 'error', text: 'Cần chọn kho mặc định và kênh bán cho tài khoản khách hàng.' });
+      return null;
+    }
+    return { portalWarehouseId, portalSalesChannelId };
+  }
+
   function approveNewCustomer(request: CustomerOnboardingRequestSummary) {
     const customerCode = codeByRequest[request.id]?.trim().toUpperCase() || '';
     if (!/^[A-Z0-9_-]{1,64}$/.test(customerCode)) {
@@ -180,7 +205,9 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
       });
       return;
     }
-    void performAction(request, 'approve', { customerCode });
+    const activation = portalActivationPayload(request);
+    if (activation === null) return;
+    void performAction(request, 'approve', { customerCode, ...activation });
   }
 
   function linkExistingCustomer(request: CustomerOnboardingRequestSummary) {
@@ -190,7 +217,9 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
       setFeedback({ kind: 'error', text: 'Cần chọn khách hàng và địa chỉ cần liên kết.' });
       return;
     }
-    void performAction(request, 'link-existing', { customerId, addressId });
+    const activation = portalActivationPayload(request);
+    if (activation === null) return;
+    void performAction(request, 'link-existing', { customerId, addressId, ...activation });
   }
 
   return (
@@ -210,8 +239,11 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
           const reason = reasonByRequest[request.id] || '';
           const selectedCustomer = customerByRequest[request.id] || '';
           const selectedAddress = addressByRequest[request.id] || '';
+          const selectedWarehouse = warehouseByRequest[request.id] ?? defaultWarehouseId(portalOptions);
+          const selectedSalesChannel = salesChannelByRequest[request.id] ?? defaultSalesChannelId(portalOptions);
           const addresses = addressesByRequest[request.id] || [];
           const address = request.proposedCustomer.address;
+          const isPortal = request.sourceSystem === 'CUSTOMER_PORTAL';
           const isBusy = busyByRequest[request.id] === true;
           const addressLoading = addressLoadingByRequest[request.id] === true;
           return (
@@ -226,8 +258,14 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
 
               <dl className={styles.details}>
                 <div><dt>Địa chỉ</dt><dd>{[address.addressLine1, address.ward, address.district, address.province].filter(Boolean).join(', ')}</dd></div>
-                <div><dt>Điểm bán nguồn</dt><dd>{request.sourceOutletId}</dd></div>
-                <div><dt>Nhu cầu mua hàng</dt><dd>{request.sourceDemandReference}</dd></div>
+                {isPortal ? (
+                  <div><dt>Nguồn</dt><dd>Ứng dụng khách hàng</dd></div>
+                ) : (
+                  <>
+                    <div><dt>Điểm bán nguồn</dt><dd>{request.sourceOutletId}</dd></div>
+                    <div><dt>Nhu cầu mua hàng</dt><dd>{request.sourceDemandReference}</dd></div>
+                  </>
+                )}
                 <div><dt>Cập nhật</dt><dd>{new Date(request.updatedAt).toLocaleString('vi-VN')}</dd></div>
                 {request.reviewReason ? <div><dt>Lý do gần nhất</dt><dd>{request.reviewReason}</dd></div> : null}
               </dl>
@@ -246,6 +284,43 @@ export default function CustomerOnboardingReview({ requests, customers }: Props)
 
               {request.status === 'under_review' ? (
                 <div className={styles.reviewGrid}>
+                  {isPortal ? (
+                    <section className={styles.actionPanel}>
+                      <h3>Kích hoạt quyền đặt hàng</h3>
+                      <label>
+                        Kho mặc định
+                        <select
+                          value={selectedWarehouse}
+                          onChange={(event) => setWarehouseByRequest((current) => ({
+                            ...current,
+                            [request.id]: event.target.value,
+                          }))}
+                        >
+                          <option value="">Chọn kho</option>
+                          {portalOptions.warehouses.map((warehouse) => (
+                            <option value={warehouse.id} key={warehouse.id}>{warehouse.code} — {warehouse.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Kênh bán
+                        <select
+                          value={selectedSalesChannel}
+                          onChange={(event) => setSalesChannelByRequest((current) => ({
+                            ...current,
+                            [request.id]: event.target.value,
+                          }))}
+                        >
+                          <option value="">Chọn kênh bán</option>
+                          {portalOptions.salesChannels.map((channel) => (
+                            <option value={channel.id} key={channel.id}>{channel.code} — {channel.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <p>Chính sách thu mặc định: thu khi giao hàng.</p>
+                    </section>
+                  ) : null}
+
                   <section className={styles.actionPanel}>
                     <h3>Duyệt tạo khách mới</h3>
                     <label>

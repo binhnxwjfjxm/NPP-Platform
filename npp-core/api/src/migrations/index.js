@@ -57,6 +57,7 @@ const REPORTING_LOGISTICS_PERMISSION_CATALOG_SQL = readFileSync(new URL('../../.
 const REPORTING_COD_PERMISSION_CATALOG_SQL = readFileSync(new URL('../../../../database/migrations/shared/069_reporting_cod_permission_catalog.sql', import.meta.url), 'utf8');
 const REPORTING_OPERATIONS_HISTORY_CONTROL_TOWER_SQL = readFileSync(new URL('../../../../database/migrations/reporting/070_reporting_operations_history_control_tower.sql', import.meta.url), 'utf8');
 const CUSTOMER_PORTAL_ORDER_INTAKE_SQL = readFileSync(new URL('../../../../database/migrations/sales/071_customer_portal_order_intake.sql', import.meta.url), 'utf8');
+const CUSTOMER_PORTAL_REGISTRATION_ONBOARDING_SQL = readFileSync(new URL('../../../../database/migrations/sales/072_customer_portal_registration_onboarding.sql', import.meta.url), 'utf8');
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -86,6 +87,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '069_reporting_cod_permission_catalog', sql: REPORTING_COD_PERMISSION_CATALOG_SQL }),
   Object.freeze({ id: '070_reporting_operations_history_control_tower', sql: REPORTING_OPERATIONS_HISTORY_CONTROL_TOWER_SQL }),
   Object.freeze({ id: '071_customer_portal_order_intake', sql: CUSTOMER_PORTAL_ORDER_INTAKE_SQL }),
+  Object.freeze({ id: '072_customer_portal_registration_onboarding', sql: CUSTOMER_PORTAL_REGISTRATION_ONBOARDING_SQL }),
 ]);
 
 export { runMigrations };

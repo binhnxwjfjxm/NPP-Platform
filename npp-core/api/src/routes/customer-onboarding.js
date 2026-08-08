@@ -9,6 +9,7 @@ import {
   withAuditOutboxTransaction,
 } from '../audit-outbox.js';
 import * as service from '../services/customer-onboarding.js';
+import * as optionsService from '../services/customer-onboarding-options.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -207,9 +208,21 @@ function parsePaging(url) {
 export async function handleCustomerOnboardingRoutes(req, res, options) {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   const collectionPath = '/api/customer-onboarding-requests';
+  const portalOptionsPath = '/api/customer-onboarding-portal-options';
   const itemMatch = url.pathname.match(/^\/api\/customer-onboarding-requests\/([^/]+)$/);
   const actionMatch = url.pathname.match(/^\/api\/customer-onboarding-requests\/([^/]+)\/(review|need-more-info|approve|link-existing|reject|cancel)$/);
-  if (url.pathname !== collectionPath && !itemMatch && !actionMatch) return false;
+  if (url.pathname !== collectionPath && url.pathname !== portalOptionsPath && !itemMatch && !actionMatch) return false;
+
+  if (url.pathname === portalOptionsPath && req.method === 'GET') {
+    const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreCustomerOnboardingReview);
+    if (!requestContext) return true;
+    const result = await optionsService.listPortalActivationOptions(options.getPool(), { requestContext });
+    sendSuccess(res, {
+      warehouses: result.warehouses,
+      salesChannels: result.salesChannels,
+    }, options.requestId, options.receivedAt);
+    return true;
+  }
 
   if (url.pathname === collectionPath && req.method === 'POST') {
     const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreCustomerOnboardingSubmit);
