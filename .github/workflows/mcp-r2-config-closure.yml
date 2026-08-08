@@ -1,0 +1,96 @@
+name: MCP R2 production config closure
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: mcp-r2-production-config-closure
+  cancel-in-progress: false
+
+jobs:
+  close-r2-config:
+    if: >-
+      github.event.issue.number == 391 &&
+      github.event.comment.body == '/close-mcp-r2-config' &&
+      (github.actor == 'binhnxwjfjxm' || github.actor == 'khuongbinhinfo-a11y')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AUDIT_REF: main
+      HEROKU_APP_NAME: hung-phat-mcp
+      MCP_R2_CONFIG_CLOSURE_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-config-closure-evidence.md
+      MCP_MEDIA_AUDIT_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-media-audit-evidence.md
+    steps:
+      - name: Validate exact closure command
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: test "$COMMENT_BODY" = '/close-mcp-r2-config'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.AUDIT_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mcp/apps/backend/package-lock.json
+
+      - name: Install MCP backend dependency
+        working-directory: mcp/apps/backend
+        run: npm ci --ignore-scripts
+
+      - name: Close Heroku MCP R2 config and smoke R2
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          AUDITED_MAIN_SHA: ${{ steps.source.outputs.sha }}
+        run: node mcp/apps/backend/scripts/production-r2-config-closure.js
+
+      - name: Reconcile MCP R2 media after config closure
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          AUDITED_MAIN_SHA: ${{ steps.source.outputs.sha }}
+        run: node mcp/apps/backend/scripts/production-media-audit.js
+
+      - name: Publish sanitized Phase 9.4 closure evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          evidence_file="$(mktemp)"
+          {
+            echo "## Phase 9.4 R2 production closure — ${OPERATION_STATUS}"
+            echo
+            for source in "$MCP_R2_CONFIG_CLOSURE_EVIDENCE_FILE" "$MCP_MEDIA_AUDIT_EVIDENCE_FILE"; do
+              if [ -s "$source" ]; then
+                cat "$source"
+              fi
+            done
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence_file"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/391/comments" \
+            -f body="$(cat "$evidence_file")" >/dev/null
+          rm -f "$evidence_file"
