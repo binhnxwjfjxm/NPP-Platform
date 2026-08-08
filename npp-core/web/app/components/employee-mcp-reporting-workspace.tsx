@@ -118,13 +118,11 @@ export function EmployeeMcpReportingWorkspace() {
             <strong>Nguồn dùng chung cho quản trị:</strong> màn này đọc trực tiếp MCP canonical facts. Admin Control Tower sau này dùng lại chính contract này, không tính lại KPI riêng. `area` chỉ là mô tả khu vực, không được suy thành territory. Field outlet chưa qua onboarding không tự trở thành khách hàng Core.
           </div>
 
-          <div className={styles.tabList} role="tablist" aria-label="Nhóm hiệu suất nhân viên và MCP">
+          <div className={styles.tabList}>
             {PERFORMANCE_TABS.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
-                role="tab"
-                aria-selected={activeTab === tab.id}
                 className={`${styles.tabButton}${activeTab === tab.id ? ` ${styles.tabButtonActive}` : ''}`}
                 onClick={() => setActiveTab(tab.id)}
                 data-testid={`employee-mcp-tab-${tab.id}`}
