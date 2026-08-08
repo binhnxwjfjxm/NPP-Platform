@@ -9,6 +9,7 @@ import {
 
 const HEROKU_ACCEPT = "application/vnd.heroku+json; version=3";
 const EXPECTED_APP = "hung-phat-mcp";
+const SOURCE_APP = "hung-phat";
 const EXPECTED_BUCKET = "hung-phat";
 const EXPECTED_PUBLIC_URL = "https://pub-7d2987fab97d4e3ebb2021a823973862.r2.dev";
 const REQUIRED_SECRET_CONFIG = Object.freeze([
@@ -46,9 +47,25 @@ async function herokuRequest(appName, apiKey, { method = "GET", body = null } = 
   return response.json();
 }
 
-function assertSecretConfig(config) {
-  const missing = REQUIRED_SECRET_CONFIG.filter((name) => !text(config?.[name]));
-  if (missing.length > 0) fail(`missing_runtime_${missing.map((name) => name.toLowerCase()).join("__")}`);
+function missingSecretConfig(config) {
+  return REQUIRED_SECRET_CONFIG.filter((name) => !text(config?.[name]));
+}
+
+function assertSecretConfig(config, label = "runtime") {
+  const missing = missingSecretConfig(config);
+  if (missing.length > 0) {
+    fail(`${label}_missing_${missing.map((name) => name.toLowerCase()).join("__")}`);
+  }
+}
+
+function assertCloudflareR2Endpoint(value) {
+  let hostname;
+  try {
+    hostname = new URL(value).hostname.toLowerCase();
+  } catch {
+    fail("core_r2_endpoint_invalid");
+  }
+  if (!hostname.endsWith(".r2.cloudflarestorage.com")) fail("core_r2_endpoint_not_cloudflare");
 }
 
 function r2Config(config) {
@@ -131,9 +148,22 @@ async function main() {
   if (appName !== EXPECTED_APP) fail("unexpected_mcp_app");
 
   const before = await herokuRequest(appName, apiKey);
-  assertSecretConfig(before);
-
+  const missingBefore = missingSecretConfig(before);
   const patch = {};
+  let copiedFromCore = false;
+
+  if (missingBefore.length > 0) {
+    const source = await herokuRequest(SOURCE_APP, apiKey);
+    assertSecretConfig(source, "core_runtime");
+    assertCloudflareR2Endpoint(source.R2_ENDPOINT);
+    if (text(source.R2_BUCKET_NAME) && text(source.R2_BUCKET_NAME) !== EXPECTED_BUCKET) {
+      fail("core_r2_bucket_mismatch");
+    }
+    for (const name of missingBefore) patch[name] = source[name];
+    if (!text(before.R2_REGION) && text(source.R2_REGION)) patch.R2_REGION = source.R2_REGION;
+    copiedFromCore = true;
+  }
+
   if (text(before.R2_BUCKET_NAME) !== EXPECTED_BUCKET) patch.R2_BUCKET_NAME = EXPECTED_BUCKET;
   if (text(before.CLOUDFLARE_R2_PUBLIC_URL) !== EXPECTED_PUBLIC_URL) {
     patch.CLOUDFLARE_R2_PUBLIC_URL = EXPECTED_PUBLIC_URL;
@@ -144,6 +174,7 @@ async function main() {
 
   const after = await herokuRequest(appName, apiKey);
   assertSecretConfig(after);
+  assertCloudflareR2Endpoint(after.R2_ENDPOINT);
   if (text(after.R2_BUCKET_NAME) !== EXPECTED_BUCKET) fail("r2_bucket_patch_not_applied");
   if (text(after.CLOUDFLARE_R2_PUBLIC_URL) !== EXPECTED_PUBLIC_URL) fail("r2_public_url_patch_not_applied");
 
@@ -160,6 +191,7 @@ async function main() {
     `AUDITED_MAIN_SHA=${auditedMainSha}`,
     `HEROKU_APP_NAME=${appName}`,
     `MCP_R2_CONFIG_CHANGED=${changed}`,
+    `MCP_R2_SECRET_CONFIG_COPIED_FROM_CORE=${copiedFromCore}`,
     "MCP_R2_REQUIRED_SECRET_CONFIG_PRESENT=true",
     "MCP_R2_BUCKET_CONFIGURED=true",
     "MCP_R2_PUBLIC_URL_CONFIGURED=true",
