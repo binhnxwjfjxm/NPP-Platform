@@ -1,0 +1,258 @@
+name: Phase 9.8 Customer Portal production config
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/phase-9-8-customer-portal-production.yml
+      - npp-core/api/src/customer-portal-auth.js
+      - npp-core/api/src/routes/customer-portal.js
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: phase-9-8-customer-portal-production
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pull request head
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate production contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow=.github/workflows/phase-9-8-customer-portal-production.yml
+          auth=npp-core/api/src/customer-portal-auth.js
+          routes=npp-core/api/src/routes/customer-portal.js
+
+          grep -F "github.event.issue.number == 395" "$workflow" >/dev/null
+          grep -F "github.event.comment.body == '/configure-phase-9-8-customer-portal'" "$workflow" >/dev/null
+          grep -F "CORE_APP_NAME: hung-phat" "$workflow" >/dev/null
+          grep -F "CLERK_ISSUER: https://clerk.nguyenlieuhungphat.com" "$workflow" >/dev/null
+          grep -F "CLERK_JWKS_URL: https://clerk.nguyenlieuhungphat.com/.well-known/jwks.json" "$workflow" >/dev/null
+          grep -F "CLERK_AUTHORIZED_PARTIES: https://sales.nguyenlieuhungphat.com" "$workflow" >/dev/null
+
+          grep -F "CUSTOMER_PORTAL_ENABLED" "$auth" >/dev/null
+          grep -F "CUSTOMER_PORTAL_CLERK_ISSUER" "$auth" >/dev/null
+          grep -F "CUSTOMER_PORTAL_CLERK_JWKS_URL" "$auth" >/dev/null
+          grep -F "CUSTOMER_PORTAL_CLERK_AUTHORIZED_PARTIES" "$auth" >/dev/null
+          grep -F "'/api/customer-portal/me'" "$routes" >/dev/null
+
+  configure-and-smoke:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 395 &&
+      github.event.comment.body == '/configure-phase-9-8-customer-portal' &&
+      (
+        github.actor == 'binhnxwjfjxm' ||
+        github.actor == 'khuongbinhinfo-a11y'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DEPLOY_REF: main
+      CORE_APP_NAME: hung-phat
+      CLERK_ISSUER: https://clerk.nguyenlieuhungphat.com
+      CLERK_JWKS_URL: https://clerk.nguyenlieuhungphat.com/.well-known/jwks.json
+      CLERK_AUTHORIZED_PARTIES: https://sales.nguyenlieuhungphat.com
+    steps:
+      - name: Validate exact operator command
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/configure-phase-9-8-customer-portal'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Install Heroku CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Configure and smoke Customer Portal
+        id: portal
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -euo pipefail
+          test "$CORE_APP_NAME" = "hung-phat"
+
+          app_json="$(curl --fail --silent --show-error \
+            -H 'Accept: application/vnd.heroku+json; version=3' \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            "https://api.heroku.com/apps/$CORE_APP_NAME")"
+          app_name="$(jq -r '.name // empty' <<<"$app_json")"
+          app_url="$(jq -r '.web_url // empty' <<<"$app_json" | sed 's:/*$::')"
+          test "$app_name" = "$CORE_APP_NAME"
+          test -n "$app_url"
+
+          config_json="$(heroku config -a "$CORE_APP_NAME" --json)"
+          before_enabled="$(jq -r '.CUSTOMER_PORTAL_ENABLED // empty' <<<"$config_json")"
+          before_issuer="$(jq -r '.CUSTOMER_PORTAL_CLERK_ISSUER // empty' <<<"$config_json")"
+          before_jwks="$(jq -r '.CUSTOMER_PORTAL_CLERK_JWKS_URL // empty' <<<"$config_json")"
+          before_parties="$(jq -r '.CUSTOMER_PORTAL_CLERK_AUTHORIZED_PARTIES // empty' <<<"$config_json")"
+          before_audience="$(jq -r '.CUSTOMER_PORTAL_CLERK_AUDIENCE // empty' <<<"$config_json")"
+
+          assert_absent_or_exact() {
+            local name="$1"
+            local actual="$2"
+            local expected="$3"
+            if [ -n "$actual" ] && [ "$actual" != "$expected" ]; then
+              echo "Customer Portal config mismatch for $name; refusing overwrite." >&2
+              exit 1
+            fi
+          }
+
+          assert_absent_or_exact CUSTOMER_PORTAL_ENABLED "$before_enabled" true
+          assert_absent_or_exact CUSTOMER_PORTAL_CLERK_ISSUER "$before_issuer" "$CLERK_ISSUER"
+          assert_absent_or_exact CUSTOMER_PORTAL_CLERK_JWKS_URL "$before_jwks" "$CLERK_JWKS_URL"
+          assert_absent_or_exact CUSTOMER_PORTAL_CLERK_AUTHORIZED_PARTIES "$before_parties" "$CLERK_AUTHORIZED_PARTIES"
+          if [ -n "$before_audience" ]; then
+            echo "CUSTOMER_PORTAL_CLERK_AUDIENCE is already configured; refusing to mix audience and authorized-party policies." >&2
+            exit 1
+          fi
+
+          previous_release="$(heroku releases --json -a "$CORE_APP_NAME" | jq -r '.[0].version // empty')"
+          test -n "$previous_release"
+
+          mutated=false
+          if [ "$before_enabled" != "true" ] || \
+             [ "$before_issuer" != "$CLERK_ISSUER" ] || \
+             [ "$before_jwks" != "$CLERK_JWKS_URL" ] || \
+             [ "$before_parties" != "$CLERK_AUTHORIZED_PARTIES" ]; then
+            heroku config:set -a "$CORE_APP_NAME" \
+              CUSTOMER_PORTAL_ENABLED=true \
+              CUSTOMER_PORTAL_CLERK_ISSUER="$CLERK_ISSUER" \
+              CUSTOMER_PORTAL_CLERK_JWKS_URL="$CLERK_JWKS_URL" \
+              CUSTOMER_PORTAL_CLERK_AUTHORIZED_PARTIES="$CLERK_AUTHORIZED_PARTIES" \
+              >/dev/null
+            mutated=true
+          fi
+
+          rollback_config() {
+            if [ "$mutated" != "true" ]; then
+              return 0
+            fi
+            unset_names=()
+            [ -z "$before_enabled" ] && unset_names+=(CUSTOMER_PORTAL_ENABLED)
+            [ -z "$before_issuer" ] && unset_names+=(CUSTOMER_PORTAL_CLERK_ISSUER)
+            [ -z "$before_jwks" ] && unset_names+=(CUSTOMER_PORTAL_CLERK_JWKS_URL)
+            [ -z "$before_parties" ] && unset_names+=(CUSTOMER_PORTAL_CLERK_AUTHORIZED_PARTIES)
+            if [ "${#unset_names[@]}" -gt 0 ]; then
+              heroku config:unset -a "$CORE_APP_NAME" "${unset_names[@]}" >/dev/null || true
+            fi
+          }
+
+          fail_after_mutation() {
+            echo "$1" >&2
+            rollback_config
+            exit 1
+          }
+
+          after_json="$(heroku config -a "$CORE_APP_NAME" --json)"
+          [ "$(jq -r '.CUSTOMER_PORTAL_ENABLED // empty' <<<"$after_json")" = "true" ] || fail_after_mutation 'CUSTOMER_PORTAL_ENABLED mismatch after config set.'
+          [ "$(jq -r '.CUSTOMER_PORTAL_CLERK_ISSUER // empty' <<<"$after_json")" = "$CLERK_ISSUER" ] || fail_after_mutation 'CUSTOMER_PORTAL_CLERK_ISSUER mismatch after config set.'
+          [ "$(jq -r '.CUSTOMER_PORTAL_CLERK_JWKS_URL // empty' <<<"$after_json")" = "$CLERK_JWKS_URL" ] || fail_after_mutation 'CUSTOMER_PORTAL_CLERK_JWKS_URL mismatch after config set.'
+          [ "$(jq -r '.CUSTOMER_PORTAL_CLERK_AUTHORIZED_PARTIES // empty' <<<"$after_json")" = "$CLERK_AUTHORIZED_PARTIES" ] || fail_after_mutation 'CUSTOMER_PORTAL_CLERK_AUTHORIZED_PARTIES mismatch after config set.'
+          [ -z "$(jq -r '.CUSTOMER_PORTAL_CLERK_AUDIENCE // empty' <<<"$after_json")" ] || fail_after_mutation 'CUSTOMER_PORTAL_CLERK_AUDIENCE unexpectedly present.'
+
+          jwks_file="$(mktemp)"
+          portal_file="$(mktemp)"
+          trap 'rm -f "$jwks_file" "$portal_file"' EXIT
+          curl --fail --silent --show-error --connect-timeout 5 --max-time 15 "$CLERK_JWKS_URL" -o "$jwks_file" \
+            || fail_after_mutation 'Clerk JWKS is not reachable.'
+          jq -e '.keys | type == "array" and length > 0' "$jwks_file" >/dev/null \
+            || fail_after_mutation 'Clerk JWKS payload has no keys.'
+
+          smoke_health() {
+            local path="$1"
+            local deadline=$((SECONDS + 180))
+            local status=""
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 --output /dev/null --write-out '%{http_code}' "$app_url$path" || true)"
+              if [ "$status" = "200" ]; then
+                return 0
+              fi
+              sleep 3
+            done
+            return 1
+          }
+
+          smoke_health /health/live || fail_after_mutation 'Core /health/live failed after Customer Portal config.'
+          smoke_health /health/ready || fail_after_mutation 'Core /health/ready failed after Customer Portal config.'
+
+          portal_status="$(curl --silent --show-error --connect-timeout 5 --max-time 15 \
+            --output "$portal_file" --write-out '%{http_code}' \
+            "$app_url/api/customer-portal/me" || true)"
+          [ "$portal_status" = "401" ] || fail_after_mutation "Customer Portal unauthenticated smoke returned HTTP $portal_status instead of 401."
+          jq -e '.error.code == "CUSTOMER_PORTAL_AUTH_REQUIRED"' "$portal_file" >/dev/null \
+            || fail_after_mutation 'Customer Portal unauthenticated smoke returned unexpected error code.'
+
+          active_release="$(heroku releases --json -a "$CORE_APP_NAME" | jq -r '.[0].version // empty')"
+          test -n "$active_release"
+          {
+            echo "SOURCE_SHA=${{ steps.source.outputs.sha }}"
+            echo "CORE_APP_NAME=$CORE_APP_NAME"
+            echo "PREVIOUS_RELEASE=$previous_release"
+            echo "ACTIVE_RELEASE=$active_release"
+            echo "CONFIG_MUTATED=$mutated"
+            echo "CUSTOMER_PORTAL_CONFIG_READY=true"
+            echo "CLERK_JWKS_REACHABLE=true"
+            echo "CORE_HEALTH_LIVE=200"
+            echo "CORE_HEALTH_READY=200"
+            echo "CUSTOMER_PORTAL_UNAUTH_SMOKE=401"
+            echo "CUSTOMER_PORTAL_AUTH_ERROR=CUSTOMER_PORTAL_AUTH_REQUIRED"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish sanitized Phase 9.8 evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          evidence_file="$(mktemp)"
+          {
+            echo "## Phase 9.8 Customer Portal production config — ${OPERATION_STATUS}"
+            echo
+            cat "$GITHUB_STEP_SUMMARY"
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence_file"
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/395/comments" \
+            -f body="$(cat "$evidence_file")" \
+            >/dev/null
+          rm -f "$evidence_file"
