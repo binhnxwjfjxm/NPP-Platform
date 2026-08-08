@@ -39,23 +39,30 @@ function canonicalQuery(entries) {
     .join("&");
 }
 
-function r2ObjectUrl(config, objectKey) {
+function r2BucketUrl(config) {
   const endpoint = new URL(config.endpoint);
-  endpoint.pathname = `/${encodeURIComponent(config.bucket)}/${encodePath(objectKey)}`;
+  endpoint.pathname = `/${encodeURIComponent(config.bucket)}`;
   endpoint.search = "";
   return endpoint;
 }
 
-function signedR2ObjectRequest(config, objectKey, method, { now = new Date() } = {}) {
-  const url = r2ObjectUrl(config, objectKey);
+function r2ObjectUrl(config, objectKey) {
+  const endpoint = r2BucketUrl(config);
+  endpoint.pathname = `${endpoint.pathname}/${encodePath(objectKey)}`;
+  return endpoint;
+}
+
+function signedR2Request(config, url, method, { queryEntries = [], now = new Date() } = {}) {
   const amzDate = timestamp(now);
   const dateStamp = amzDate.slice(0, 8);
   const scope = credentialScope(dateStamp, config.region);
   const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+  const query = canonicalQuery(queryEntries);
+  url.search = query;
   const canonicalRequest = [
     method,
     url.pathname,
-    "",
+    query,
     `host:${url.host}\nx-amz-content-sha256:${UNSIGNED_PAYLOAD}\nx-amz-date:${amzDate}\n`,
     signedHeaders,
     UNSIGNED_PAYLOAD
@@ -73,6 +80,10 @@ function signedR2ObjectRequest(config, objectKey, method, { now = new Date() } =
       }
     }
   };
+}
+
+function signedR2ObjectRequest(config, objectKey, method, options = {}) {
+  return signedR2Request(config, r2ObjectUrl(config, objectKey), method, options);
 }
 
 function presignR2Object(config, objectKey, method, signedHeaders, canonicalHeaders, { expiresSeconds = 300, now = new Date() } = {}) {
@@ -134,10 +145,35 @@ export function presignR2Get(config, objectKey, { expiresSeconds = 300, now = ne
   return { getUrl: signed.url, expiresAt: signed.expiresAt };
 }
 
+export function signedR2GetRequest(config, objectKey, options = {}) {
+  return signedR2ObjectRequest(config, objectKey, "GET", options);
+}
+
 export function signedR2HeadRequest(config, objectKey, options = {}) {
   return signedR2ObjectRequest(config, objectKey, "HEAD", options);
 }
 
 export function signedR2DeleteRequest(config, objectKey, options = {}) {
   return signedR2ObjectRequest(config, objectKey, "DELETE", options);
+}
+
+export function signedR2ListRequest(
+  config,
+  { prefix = "", continuationToken = null, maxKeys = 1000, now = new Date() } = {}
+) {
+  const boundedMaxKeys = Math.max(1, Math.min(Math.trunc(Number(maxKeys) || 1000), 1000));
+  const queryEntries = [
+    ["list-type", "2"],
+    ["max-keys", String(boundedMaxKeys)]
+  ];
+  if (prefix) queryEntries.push(["prefix", String(prefix)]);
+  if (continuationToken) queryEntries.push(["continuation-token", String(continuationToken)]);
+  return signedR2Request(config, r2BucketUrl(config), "GET", { queryEntries, now });
+}
+
+export function signedR2LifecycleRequest(config, { now = new Date() } = {}) {
+  return signedR2Request(config, r2BucketUrl(config), "GET", {
+    queryEntries: [["lifecycle", ""]],
+    now
+  });
 }

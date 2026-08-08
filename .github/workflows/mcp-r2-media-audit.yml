@@ -1,0 +1,106 @@
+name: MCP R2 media audit
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: mcp-r2-media-audit
+  cancel-in-progress: false
+
+jobs:
+  audit-media:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 391 &&
+        github.event.comment.body == '/audit-mcp-r2-media' &&
+        (
+          github.actor == 'binhnxwjfjxm' ||
+          github.actor == 'khuongbinhinfo-a11y'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AUDIT_REF: main
+      HEROKU_APP_NAME: hung-phat-mcp
+      MCP_MEDIA_AUDIT_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-media-audit-evidence.md
+    steps:
+      - name: Validate exact audit command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/audit-mcp-r2-media'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.AUDIT_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mcp/apps/backend/package-lock.json
+
+      - name: Install MCP backend audit dependency
+        working-directory: mcp/apps/backend
+        shell: bash
+        run: npm ci --ignore-scripts
+
+      - name: Audit MCP R2 media read-only
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          AUDITED_MAIN_SHA: ${{ steps.source.outputs.sha }}
+        run: node mcp/apps/backend/scripts/production-media-audit.js
+
+      - name: Publish sanitized Phase 9.4 evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          evidence_file="$(mktemp)"
+          {
+            echo "## Phase 9.4 MCP R2 media audit — ${OPERATION_STATUS}"
+            echo
+            if [ -s "$MCP_MEDIA_AUDIT_EVIDENCE_FILE" ]; then
+              cat "$MCP_MEDIA_AUDIT_EVIDENCE_FILE"
+            else
+              echo "AUDIT_EVIDENCE=unavailable"
+            fi
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence_file"
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/391/comments" \
+            -f body="$(cat "$evidence_file")" \
+            >/dev/null
+          rm -f "$evidence_file"
