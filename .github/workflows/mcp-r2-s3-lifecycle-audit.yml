@@ -1,0 +1,107 @@
+name: MCP R2 S3 lifecycle audit
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: mcp-r2-s3-lifecycle-audit
+  cancel-in-progress: false
+
+jobs:
+  audit-r2-s3-lifecycle:
+    if: >-
+      github.event.issue.number == 391 &&
+      startsWith(github.event.comment.body, '/audit-mcp-r2-s3-lifecycle ') &&
+      (github.actor == 'binhnxwjfjxm' || github.actor == 'khuongbinhinfo-a11y')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AUDIT_REF: main
+      HEROKU_APP_NAME: hung-phat-mcp
+      MCP_R2_S3_LIFECYCLE_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-s3-lifecycle-evidence.md
+      MCP_MEDIA_AUDIT_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-media-audit-evidence.md
+    steps:
+      - name: Validate command and mask envelope
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          case "$COMMENT_BODY" in
+            '/audit-mcp-r2-s3-lifecycle '*) ;;
+            *) exit 1 ;;
+          esac
+          envelope="${COMMENT_BODY#'/audit-mcp-r2-s3-lifecycle '}"
+          if [[ ! "$envelope" =~ ^[A-Za-z0-9_-]+={0,2}$ ]]; then
+            exit 1
+          fi
+          echo "::add-mask::$envelope"
+          echo "MCP_R2_S3_LIFECYCLE_ENVELOPE_B64=$envelope" >> "$GITHUB_ENV"
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.AUDIT_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mcp/apps/backend/package-lock.json
+
+      - name: Install MCP backend dependency
+        working-directory: mcp/apps/backend
+        run: npm ci --ignore-scripts
+
+      - name: Read lifecycle through R2 S3 credentials and reconcile historical media
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          AUDITED_MAIN_SHA: ${{ steps.source.outputs.sha }}
+        run: >-
+          node
+          --import ./mcp/apps/backend/scripts/production-r2-s3-lifecycle-preload.js
+          ./mcp/apps/backend/scripts/production-media-audit.js
+
+      - name: Publish sanitized Phase 9.4 S3 lifecycle evidence and redact envelope
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          set -euo pipefail
+          evidence_file="$(mktemp)"
+          {
+            echo "## Phase 9.4 R2 S3 lifecycle audit — ${OPERATION_STATUS}"
+            echo
+            for source in "$MCP_R2_S3_LIFECYCLE_EVIDENCE_FILE" "$MCP_MEDIA_AUDIT_EVIDENCE_FILE"; do
+              if [ -s "$source" ]; then
+                cat "$source"
+              fi
+            done
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence_file"
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
+            -f body='/audit-mcp-r2-s3-lifecycle [redacted]' >/dev/null
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/391/comments" \
+            -f body="$(cat "$evidence_file")" >/dev/null
+          rm -f "$evidence_file"
