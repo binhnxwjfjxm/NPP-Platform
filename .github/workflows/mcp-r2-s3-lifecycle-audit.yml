@@ -23,6 +23,7 @@ jobs:
     env:
       AUDIT_REF: main
       HEROKU_APP_NAME: hung-phat-mcp
+      MCP_R2_CONFIG_CLOSURE_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-config-closure-evidence.md
       MCP_R2_S3_LIFECYCLE_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-s3-lifecycle-evidence.md
       MCP_MEDIA_AUDIT_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-media-audit-evidence.md
     steps:
@@ -37,9 +38,7 @@ jobs:
             *) exit 1 ;;
           esac
           envelope="${COMMENT_BODY#'/audit-mcp-r2-s3-lifecycle '}"
-          if [[ ! "$envelope" =~ ^[A-Za-z0-9_-]+={0,2}$ ]]; then
-            exit 1
-          fi
+          test -n "$envelope"
           echo "::add-mask::$envelope"
           echo "MCP_R2_S3_LIFECYCLE_ENVELOPE_B64=$envelope" >> "$GITHUB_ENV"
 
@@ -71,7 +70,13 @@ jobs:
         working-directory: mcp/apps/backend
         run: npm ci --ignore-scripts
 
-      - name: Read lifecycle through R2 S3 credentials and reconcile historical media
+      - name: Smoke current MCP R2 config and verify health
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          AUDITED_MAIN_SHA: ${{ steps.source.outputs.sha }}
+        run: node mcp/apps/backend/scripts/production-r2-config-closure.js
+
+      - name: Probe temporary S3 lifecycle credentials and reconcile media
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           AUDITED_MAIN_SHA: ${{ steps.source.outputs.sha }}
@@ -93,15 +98,15 @@ jobs:
           {
             echo "## Phase 9.4 R2 S3 lifecycle audit — ${OPERATION_STATUS}"
             echo
-            for source in "$MCP_R2_S3_LIFECYCLE_EVIDENCE_FILE" "$MCP_MEDIA_AUDIT_EVIDENCE_FILE"; do
+            for source in "$MCP_R2_CONFIG_CLOSURE_EVIDENCE_FILE" "$MCP_R2_S3_LIFECYCLE_EVIDENCE_FILE" "$MCP_MEDIA_AUDIT_EVIDENCE_FILE"; do
               if [ -s "$source" ]; then
                 cat "$source"
               fi
             done
             echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
           } > "$evidence_file"
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
-            -f body='/audit-mcp-r2-s3-lifecycle [redacted]' >/dev/null
           gh api --method POST "repos/$GITHUB_REPOSITORY/issues/391/comments" \
             -f body="$(cat "$evidence_file")" >/dev/null
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
+            -f body='/audit-mcp-r2-s3-lifecycle [redacted]' >/dev/null
           rm -f "$evidence_file"

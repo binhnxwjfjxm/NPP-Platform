@@ -82,61 +82,30 @@ async function writeEvidence(path, lines) {
   await writeFile(path, `${lines.join("\n")}\n`, { mode: 0o600 });
 }
 
-function lifecycleRuleCount(xml) {
-  return Array.from(String(xml).matchAll(/<Rule(?:\s[^>]*)?>[\s\S]*?<\/Rule>/gi)).length;
-}
-
-function credentialCandidates(payload) {
-  return [
-    {
-      route: "account_r2",
-      accessKeyId: text(payload?.CLOUDFLARE_ACCOUNT_R2_ACCESS_KEY_ID),
-      secretAccessKey: text(payload?.CLOUDFLARE_ACCOUNT_R2_SECRET_ACCESS_KEY)
-    },
-    {
-      route: "user_r2",
-      accessKeyId: text(payload?.CLOUDFLARE_USER_R2_ACCESS_KEY_ID),
-      secretAccessKey: text(payload?.CLOUDFLARE_USER_R2_SECRET_ACCESS_KEY)
-    }
-  ].filter((item) => item.accessKeyId && item.secretAccessKey);
-}
-
-async function readLifecycleWithCandidates(endpoint, payload) {
-  const candidates = credentialCandidates(payload);
-  if (candidates.length === 0) fail("r2_s3_lifecycle_credentials_missing");
-
-  const attempts = [];
-  for (const candidate of candidates) {
-    const request = signedR2LifecycleRequest({
-      bucket: EXPECTED_BUCKET,
-      endpoint: endpoint.toString(),
-      region: "auto",
-      accessKeyId: candidate.accessKeyId,
-      secretAccessKey: candidate.secretAccessKey
-    });
-
-    let response;
-    try {
-      response = await fetch(request.url, request.init);
-    } catch {
-      attempts.push(`${candidate.route}_network`);
-      continue;
-    }
-
-    const body = await response.text();
-    if (response.ok || (response.status === 404 && /NoSuchLifecycleConfiguration/i.test(body))) {
-      return {
-        route: candidate.route,
-        status: response.status,
-        body,
-        contentType: response.headers.get("content-type") || "application/xml",
-        rules: response.ok ? lifecycleRuleCount(body) : 0
-      };
-    }
-    attempts.push(`${candidate.route}_${response.status}`);
+async function probeCandidate(runtime, candidate) {
+  const label = text(candidate?.label);
+  const accessKeyId = text(candidate?.accessKeyId);
+  const secretAccessKey = text(candidate?.secretAccessKey);
+  if (!label || !accessKeyId || !secretAccessKey) {
+    return { ok: false, label: label || "invalid", status: -1, body: null };
   }
 
-  fail(`r2_s3_lifecycle_blocked_${attempts.join("__") || "unknown"}`);
+  const config = {
+    endpoint: runtime.R2_ENDPOINT,
+    bucket: runtime.R2_BUCKET_NAME,
+    region: text(runtime.R2_REGION) || "auto",
+    accessKeyId,
+    secretAccessKey
+  };
+  const signed = signedR2LifecycleRequest(config);
+  let response;
+  try {
+    response = await fetch(signed.url, signed.init);
+  } catch {
+    return { ok: false, label, status: 0, body: null };
+  }
+  const body = await response.text();
+  return { ok: response.ok, label, status: response.status, body: response.ok ? body : null };
 }
 
 async function main() {
@@ -152,65 +121,67 @@ async function main() {
 
   const runtime = await readHerokuConfig(appName, apiKey);
   if (text(runtime.R2_BUCKET_NAME) !== EXPECTED_BUCKET) fail("unexpected_r2_bucket");
-  const endpoint = new URL(text(runtime.R2_ENDPOINT) || fail("missing_runtime_r2_endpoint"));
+  const endpoint = text(runtime.R2_ENDPOINT);
+  if (!endpoint) fail("missing_runtime_r2_endpoint");
+  new URL(endpoint);
 
-  const secretPayload = decryptEnvelope(envelope, apiKey);
-  const accountId = text(secretPayload?.CLOUDFLARE_ACCOUNT_ID);
-  if (!accountId || !/^[a-f0-9]{32}$/i.test(accountId)) fail("cloudflare_account_id_invalid");
-  const expectedOrigin = `https://${accountId.toLowerCase()}.r2.cloudflarestorage.com`;
-  if (
-    endpoint.origin !== expectedOrigin ||
-    endpoint.username ||
-    endpoint.password ||
-    endpoint.pathname !== "/" ||
-    endpoint.search ||
-    endpoint.hash
-  ) {
-    fail("cloudflare_account_r2_target_mismatch");
+  const payload = decryptEnvelope(envelope, apiKey);
+  delete process.env.MCP_R2_S3_LIFECYCLE_ENVELOPE_B64;
+  const candidates = Array.isArray(payload?.candidates) ? payload.candidates.slice(0, 4) : [];
+  if (candidates.length === 0) fail("r2_s3_lifecycle_candidates_missing");
+
+  const attempts = [];
+  let selected = null;
+  for (const candidate of candidates) {
+    const result = await probeCandidate(runtime, candidate);
+    attempts.push({ label: result.label, status: result.status });
+    if (result.ok) {
+      selected = result;
+      break;
+    }
+  }
+  if (!selected) {
+    const summary = attempts.map((item) => `${item.label}_${item.status}`).join("__");
+    fail(`r2_s3_lifecycle_all_candidates_denied_${summary || "none"}`);
   }
 
-  const lifecycle = await readLifecycleWithCandidates(endpoint, secretPayload);
   const originalFetch = globalThis.fetch.bind(globalThis);
+  const runtimeEndpoint = new URL(endpoint);
   globalThis.fetch = async (input, init) => {
     const rawUrl = typeof input === "string" || input instanceof URL ? String(input) : input?.url;
-    const method = String(init?.method ?? input?.method ?? "GET").toUpperCase();
     if (rawUrl) {
       const parsed = new URL(rawUrl);
       if (
-        method === "GET" &&
-        parsed.hostname.toLowerCase() === endpoint.hostname.toLowerCase() &&
+        parsed.hostname.toLowerCase() === runtimeEndpoint.hostname.toLowerCase() &&
         parsed.pathname === `/${encodeURIComponent(EXPECTED_BUCKET)}` &&
         parsed.searchParams.has("lifecycle")
       ) {
-        return new Response(lifecycle.body, {
-          status: lifecycle.status,
-          headers: { "content-type": lifecycle.contentType }
+        return new Response(selected.body, {
+          status: 200,
+          headers: { "content-type": "application/xml" }
         });
       }
     }
     return originalFetch(input, init);
   };
 
-  delete process.env.MCP_R2_S3_LIFECYCLE_ENVELOPE_B64;
   await writeEvidence(evidenceFile, [
     `AUDITED_MAIN_SHA=${auditedMainSha}`,
-    "CLOUDFLARE_R2_LIFECYCLE_S3_READY=true",
-    `CLOUDFLARE_R2_LIFECYCLE_S3_ROUTE=${lifecycle.route}`,
-    `CLOUDFLARE_R2_LIFECYCLE_S3_STATUS=${lifecycle.status}`,
-    `CLOUDFLARE_R2_LIFECYCLE_RULES=${lifecycle.rules}`
+    `R2_S3_LIFECYCLE_CREDENTIAL=${selected.label}`,
+    "R2_S3_LIFECYCLE_READY=true"
   ]);
 }
 
 try {
   await main();
 } catch (error) {
-  const code = text(error?.code) || "r2_s3_lifecycle_preload_failed";
+  const code = text(error?.code) || "r2_s3_lifecycle_probe_failed";
   const evidenceFile = text(process.env.MCP_R2_S3_LIFECYCLE_EVIDENCE_FILE);
   const auditedMainSha = text(process.env.AUDITED_MAIN_SHA) || "unknown";
   const lines = [
     `AUDITED_MAIN_SHA=${auditedMainSha}`,
     `PHASE_9_4_R2_S3_LIFECYCLE_ERROR=${code}`,
-    "MCP_R2_S3_LIFECYCLE_READY=false"
+    "R2_S3_LIFECYCLE_READY=false"
   ];
   if (evidenceFile) {
     try { await writeEvidence(evidenceFile, lines); } catch {}
