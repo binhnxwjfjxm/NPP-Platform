@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - .github/workflows/phase-9-8-customer-portal-readonly-audit.yml
+      - npp-core/api/scripts/phase-9-8-provision-customer-portal.js
+      - npp-core/api/test/phase-9-8-customer-portal-provisioning.test.js
   issue_comment:
     types:
       - created
@@ -31,19 +33,27 @@ jobs:
         run: |
           set -euo pipefail
           workflow=.github/workflows/phase-9-8-customer-portal-readonly-audit.yml
+          script=npp-core/api/scripts/phase-9-8-provision-customer-portal.js
           issue_condition='github.event.issue.number == 39''5'
           audit_command='/audit-phase-9-8-customer-portal'' '
           event_path='GITHUB_EVENT_''PATH'
           audit_runner='node "$SCRIPT_PATH" au''dit'
           audit_marker='PORTAL_AUDIT_''OK'
           forbidden_runner='node "$SCRIPT_PATH" pro''vision'
+          customer_field='customer''Code'
           grep -F "$issue_condition" "$workflow" >/dev/null
           grep -F "$audit_command" "$workflow" >/dev/null
           grep -F "$event_path" "$workflow" >/dev/null
           grep -F "$audit_runner" "$workflow" >/dev/null
           grep -F "$audit_marker" "$workflow" >/dev/null
+          grep -F "$customer_field" "$workflow" "$script" >/dev/null
+          grep -F 'heroku@11.0.0' "$workflow" >/dev/null
           if awk '/^  audit-production:/{flag=1} flag' "$workflow" | grep -F "$forbidden_runner" >/dev/null; then
             echo 'Read-only audit workflow must never invoke provision mode.' >&2
+            exit 1
+          fi
+          if grep -F 'customerEmail' "$workflow" "$script" >/dev/null; then
+            echo 'Read-only audit must bind by canonical customer code, not customer email.' >&2
             exit 1
           fi
 
@@ -75,28 +85,30 @@ jobs:
           echo "EVIDENCE_FILE=$evidence_file" >> "$GITHUB_ENV"
 
           comment_body="$(jq -r '.comment.body // empty' "$GITHUB_EVENT_PATH")"
-          read -r command provider_subject customer_email warehouse_code sales_channel_code extra <<< "$comment_body"
+          read -r command provider_subject customer_code warehouse_code sales_channel_code extra <<< "$comment_body"
           test "$command" = '/audit-phase-9-8-customer-portal'
           test -z "${extra:-}"
           [[ "$provider_subject" =~ ^user_[A-Za-z0-9]+$ ]]
-          [[ "$customer_email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]
+          [[ "$customer_code" =~ ^[A-Za-z0-9_-]{1,64}$ ]]
 
+          customer_code="${customer_code^^}"
           warehouse_code="${warehouse_code:-}"
           sales_channel_code="${sales_channel_code:-}"
           [ "$warehouse_code" = '-' ] && warehouse_code=''
           [ "$sales_channel_code" = '-' ] && sales_channel_code=''
-          if [ -n "$warehouse_code" ]; then [[ "$warehouse_code" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; fi
-          if [ -n "$sales_channel_code" ]; then [[ "$sales_channel_code" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; fi
+          warehouse_code="${warehouse_code^^}"
+          sales_channel_code="${sales_channel_code^^}"
+          if [ -n "$warehouse_code" ]; then [[ "$warehouse_code" =~ ^[A-Z0-9_-]{1,64}$ ]]; fi
+          if [ -n "$sales_channel_code" ]; then [[ "$sales_channel_code" =~ ^[A-Z0-9_-]{1,64}$ ]]; fi
 
           echo "::add-mask::$provider_subject"
-          echo "::add-mask::$customer_email"
           {
             echo "PORTAL_PROVIDER_SUBJECT=$provider_subject"
-            echo "PORTAL_CUSTOMER_EMAIL=$customer_email"
+            echo "PORTAL_CUSTOMER_CODE=$customer_code"
             echo "PORTAL_WAREHOUSE_CODE=$warehouse_code"
             echo "PORTAL_SALES_CHANNEL_CODE=$sales_channel_code"
           } >> "$GITHUB_ENV"
-          unset comment_body provider_subject customer_email warehouse_code sales_channel_code
+          unset comment_body provider_subject customer_code warehouse_code sales_channel_code
 
       - name: Checkout exact main
         uses: actions/checkout@v4
@@ -142,10 +154,10 @@ jobs:
 
           payload="$(jq -cn \
             --arg providerSubject "$PORTAL_PROVIDER_SUBJECT" \
-            --arg customerEmail "$PORTAL_CUSTOMER_EMAIL" \
+            --arg customerCode "$PORTAL_CUSTOMER_CODE" \
             --arg warehouseCode "$PORTAL_WAREHOUSE_CODE" \
             --arg salesChannelCode "$PORTAL_SALES_CHANNEL_CODE" \
-            '{providerSubject:$providerSubject,customerEmail:$customerEmail,warehouseCode:$warehouseCode,salesChannelCode:$salesChannelCode}')"
+            '{providerSubject:$providerSubject,customerCode:$customerCode,warehouseCode:$warehouseCode,salesChannelCode:$salesChannelCode}')"
 
           set +e
           raw="$(printf '%s' "$payload" | heroku run --no-tty -a "$CORE_APP_NAME" -- node "$SCRIPT_PATH" audit 2>&1)"
