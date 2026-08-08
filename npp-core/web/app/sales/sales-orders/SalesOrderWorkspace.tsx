@@ -17,6 +17,14 @@ import {
 } from './sales-order-ui';
 import styles from './sales-orders.module.css';
 
+type OrderSourceFilter = 'all' | 'internal' | 'mcp' | 'customer';
+
+function sourceBucket(order: SalesOrder): Exclude<OrderSourceFilter, 'all'> {
+  if (order.sourceType === 'MCP') return 'mcp';
+  if (order.sourceType === 'API' && order.sourceId?.startsWith('CUSTOMER_PORTAL:')) return 'customer';
+  return 'internal';
+}
+
 export default function SalesOrderWorkspace({ initialBootstrap }: { initialBootstrap: SalesOrderBootstrap }) {
   const [orders, setOrders] = useState(initialBootstrap.salesOrders);
   const [selected, setSelected] = useState<SalesOrder | null>(null);
@@ -26,6 +34,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const [error, setError] = useState<string | null>(initialBootstrap.errors.orders);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
+  const [source, setSource] = useState<OrderSourceFilter>('all');
   const [formMode, setFormMode] = useState<SalesOrderFormMode | null>(null);
   const [formVersion, setFormVersion] = useState<SalesOrderVersion | null>(null);
   const [amendmentReason, setAmendmentReason] = useState('');
@@ -45,6 +54,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
     const term = search.trim().toLocaleLowerCase('vi');
     return orders.filter((order) => {
       if (status !== 'all' && order.status !== status) return false;
+      if (source !== 'all' && sourceBucket(order) !== source) return false;
       if (!term) return true;
       return [
         order.number,
@@ -57,7 +67,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         .filter(Boolean)
         .some((value) => String(value).toLocaleLowerCase('vi').includes(term));
     });
-  }, [orders, search, status]);
+  }, [orders, search, status, source]);
 
   const handleFormError = useCallback((message: string) => {
     setError(message || null);
@@ -167,6 +177,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         <div className={styles.toolbar}>
           <label><span>Tìm đơn</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Số đơn, khách hoặc kênh bán" /></label>
           <label><span>Trạng thái</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Tất cả</option><option value="draft">Nháp</option><option value="confirmed">Đã xác nhận</option><option value="cancelled">Đã hủy</option><option value="closed">Đã hoàn tất</option></select></label>
+          <label><span>Nguồn</span><select value={source} onChange={(event) => setSource(event.target.value as OrderSourceFilter)}><option value="all">Tất cả</option><option value="internal">Nội bộ</option><option value="mcp">MCP</option><option value="customer">Khách hàng</option></select></label>
         </div>
 
         <div className={styles.contentGrid}>
