@@ -70,7 +70,10 @@ export async function updatePortalProfile(client, { requestContext, membership, 
     return failure('CUSTOMER_PORTAL_PROFILE_ADDRESS_NOT_FOUND', 'Điểm bán chưa có địa chỉ đang hoạt động để chỉnh sửa.', 404);
   }
 
-  const outletName = typeof payload?.outletName === 'string' ? payload.outletName.trim() : '';
+  const hasOutletName = Object.prototype.hasOwnProperty.call(payload ?? {}, 'outletName');
+  const outletName = hasOutletName
+    ? (typeof payload.outletName === 'string' ? payload.outletName.trim() : '')
+    : before.profile.outletName;
   if (!outletName || outletName.length > 256) {
     return failure('INVALID_NAME', 'Tên điểm bán là bắt buộc và không được vượt quá 256 ký tự.');
   }

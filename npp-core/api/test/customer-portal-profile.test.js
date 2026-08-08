@@ -22,6 +22,7 @@ test('customer portal profile edit exposes optimistic versions and cannot mutate
   assert.match(profileSource, /updatedAt: row\.updated_at/);
   assert.match(profileSource, /expectedUpdatedAt: expectedCustomerUpdatedAt/);
   assert.match(profileSource, /expectedUpdatedAt: expectedAddressUpdatedAt/);
+  assert.match(profileSource, /hasOutletName[\s\S]*before\.profile\.outletName/);
   assert.doesNotMatch(profileSource, /groupId\s*:/);
   assert.doesNotMatch(profileSource, /responsibleEmployeeId\s*:/);
   assert.doesNotMatch(profileSource, /defaultWarehouseId\s*:/);
