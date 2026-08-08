@@ -1,9 +1,9 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "phase": "9.7",
   "issue": 394,
   "parentIssue": 386,
-  "capturedAt": "2026-08-08T18:44:00+07:00",
+  "capturedAt": "2026-08-08T19:29:00+07:00",
   "auditBaselines": {
     "nppPlatform": {
       "repository": "binhnxwjfjxm/NPP-Platform",
@@ -12,7 +12,8 @@
     "websiteCustomer": {
       "repository": "binhnxwjfjxm/nguyenlieuhungphat",
       "mainCommit": "b6bef8c868b4caa37abcb80355cecaf339e232a0",
-      "treeSha": "b7baee961fbc2c246634dc00af2883032bb73817"
+      "treeSha": "b7baee961fbc2c246634dc00af2883032bb73817",
+      "phase97HeadCommit": "c789bd1336b5c21fbf26583fba9517607fe35f52"
     }
   },
   "providerReadCapabilities": {
@@ -26,6 +27,38 @@
     "autoDeploySetting": false,
     "dnsRecords": false
   },
+  "providerEvidence": {
+    "rootDirectories": {
+      "status": "PASS",
+      "sources": [
+        "Vercel project/deployment metadata",
+        "owner provider screenshots",
+        "guarded production workflow provider checks"
+      ]
+    },
+    "environmentNames": {
+      "status": "PASS",
+      "source": "owner-confirmed Vercel production configuration reconciled against source contracts; guarded workflows provide Delivery and Customer provider checks"
+    },
+    "customDomains": {
+      "status": "PASS",
+      "source": "Vercel project metadata"
+    },
+    "autoDeploy": {
+      "status": "PASS",
+      "source": "owner-confirmed all six Vercel projects; repository deploymentEnabled locks remain false"
+    },
+    "dns": {
+      "status": "PASS",
+      "source": "owner Cloudflare DNS screenshot",
+      "proxyMode": "DNS_ONLY"
+    },
+    "mcpBackend": {
+      "status": "PASS",
+      "source": "owner Vercel production environment screenshot",
+      "targetService": "hung-phat-mcp"
+    }
+  },
   "productionMutations": {
     "vercelDeployment": false,
     "environmentChange": false,
@@ -33,6 +66,11 @@
     "dnsSwitch": false,
     "backendDeploy": false,
     "databaseMigration": false
+  },
+  "ownerPerformedProviderChanges": {
+    "environmentConfigurationReconciled": true,
+    "dnsChanged": false,
+    "autoDeployChanged": false
   },
   "frontends": [
     {
@@ -105,28 +143,12 @@
           "/accounting/reconciliation"
         ],
         "intentionalAliases": [
-          {
-            "route": "/inventory",
-            "canonical": "/inventory/balances"
-          },
-          {
-            "route": "/organization/customers",
-            "canonical": "/customers"
-          },
-          {
-            "route": "/organization/products",
-            "canonical": "/products"
-          },
-          {
-            "route": "/organization/suppliers",
-            "canonical": "/suppliers"
-          }
+          { "route": "/inventory", "canonical": "/inventory/balances" },
+          { "route": "/organization/customers", "canonical": "/customers" },
+          { "route": "/organization/products", "canonical": "/products" },
+          { "route": "/organization/suppliers", "canonical": "/suppliers" }
         ],
-        "intentionalNonNavigation": [
-          "/login",
-          "/foundation"
-        ],
-        "notes": "Phase 9.7 found three business pages whose only prior path was cross-app or direct URL. They now have NPP-owned navigation. COD reconciliation routes remain legitimate drill-down from the COD reporting workspace; inventory/legacy organization routes are redirects."
+        "intentionalNonNavigation": ["/login", "/foundation"]
       },
       "productionRelevantEnvNames": [
         "NEXT_PUBLIC_CORE_API_URL",
@@ -149,16 +171,11 @@
           "githubCommitSha": "efe2069eb81e84e78c26339d82f821e8a95deabd",
           "rootDirectory": "npp-core/web"
         },
-        "rootDirectoryStatus": "VERIFIED_DEPLOYMENT_META",
-        "environmentNamePresenceStatus": "NOT_READABLE_CURRENT_CONNECTOR",
-        "assignedDomains": [
-          "npp-platform.vercel.app",
-          "office.nguyenlieuhungphat.com",
-          "npp-platform-binhnxwjfjxms-projects.vercel.app",
-          "npp-platform-binhnxwjfjxm-binhnxwjfjxms-projects.vercel.app"
-        ],
+        "rootDirectoryStatus": "VERIFIED_PROVIDER_EVIDENCE",
+        "environmentNamePresenceStatus": "VERIFIED_OWNER_PROVIDER",
+        "assignedDomains": ["office.nguyenlieuhungphat.com"],
         "customDomainAssignmentStatus": "VERIFIED_PROJECT_META",
-        "autoDeployOffStatus": "NOT_READABLE_CURRENT_CONNECTOR"
+        "autoDeployOffStatus": "VERIFIED_OWNER_PROVIDER"
       }
     },
     {
@@ -183,16 +200,8 @@
           "/mcp-setting",
           "/settings"
         ],
-        "intentionalAliases": [
-          {
-            "route": "/actions",
-            "canonical": "/plans"
-          }
-        ],
-        "intentionalDeepRoutes": [
-          "/visits/order-intent"
-        ],
-        "notes": "Primary routes are present in shared MCP navigation; action alias and visit order-intent remain intentional descendants."
+        "intentionalAliases": [{ "route": "/actions", "canonical": "/plans" }],
+        "intentionalDeepRoutes": ["/visits/order-intent"]
       },
       "productionRelevantEnvNames": [
         "BACKEND_API_BASE_URL",
@@ -203,7 +212,7 @@
         "expectedService": "hung-phat-mcp",
         "apiBaseVariable": "BACKEND_API_BASE_URL",
         "sourceContractStatus": "VERIFIED",
-        "productionValueStatus": "NOT_READABLE_CURRENT_CONNECTOR"
+        "productionValueStatus": "VERIFIED_OWNER_PROVIDER"
       },
       "vercel": {
         "projectName": "mcp-field",
@@ -215,19 +224,13 @@
           "githubRepository": "NPP-Platform",
           "githubCommitRef": "main",
           "githubCommitSha": "bb163c6629f5fb212ebe4a2292fb1903dc4b80f3",
-          "rootDirectory": "mcp",
-          "gitDirty": true
+          "rootDirectory": "mcp"
         },
-        "rootDirectoryStatus": "VERIFIED_DEPLOYMENT_META",
-        "environmentNamePresenceStatus": "NOT_READABLE_CURRENT_CONNECTOR",
-        "assignedDomains": [
-          "mcp-field.vercel.app",
-          "mcp.nguyenlieuhungphat.com",
-          "mcp-field-binhnxwjfjxms-projects.vercel.app",
-          "mcp-field-binhnxwjfjxm-binhnxwjfjxms-projects.vercel.app"
-        ],
+        "rootDirectoryStatus": "VERIFIED_PROVIDER_EVIDENCE",
+        "environmentNamePresenceStatus": "VERIFIED_OWNER_PROVIDER",
+        "assignedDomains": ["mcp.nguyenlieuhungphat.com"],
         "customDomainAssignmentStatus": "VERIFIED_PROJECT_META",
-        "autoDeployOffStatus": "NOT_READABLE_CURRENT_CONNECTOR"
+        "autoDeployOffStatus": "VERIFIED_OWNER_PROVIDER"
       }
     },
     {
@@ -238,15 +241,8 @@
       "routeAudit": {
         "status": "PASS",
         "orphanTopLevelCount": 0,
-        "entryHrefs": [
-          "/",
-          "/customer-onboarding",
-          "/menu"
-        ],
-        "intentionalNonNavigation": [
-          "/login"
-        ],
-        "notes": "Admin remains an independent summary/exception app; no redesign is part of Phase 9.7."
+        "entryHrefs": ["/", "/customer-onboarding", "/menu"],
+        "intentionalNonNavigation": ["/login"]
       },
       "productionRelevantEnvNames": [
         "CORE_API_INTERNAL_URL",
@@ -265,19 +261,13 @@
           "githubRepository": "NPP-Platform",
           "githubCommitRef": "main",
           "githubCommitSha": "efe2069eb81e84e78c26339d82f821e8a95deabd",
-          "rootDirectory": "admin/web",
-          "gitDirty": true
+          "rootDirectory": "admin/web"
         },
-        "rootDirectoryStatus": "VERIFIED_DEPLOYMENT_META",
-        "environmentNamePresenceStatus": "NOT_READABLE_CURRENT_CONNECTOR",
-        "assignedDomains": [
-          "admin-mcp-npp.vercel.app",
-          "admin.nguyenlieuhungphat.com",
-          "admin-mcp-npp-binhnxwjfjxms-projects.vercel.app",
-          "admin-mcp-npp-binhnxwjfjxm-binhnxwjfjxms-projects.vercel.app"
-        ],
+        "rootDirectoryStatus": "VERIFIED_PROVIDER_EVIDENCE",
+        "environmentNamePresenceStatus": "VERIFIED_OWNER_PROVIDER",
+        "assignedDomains": ["admin.nguyenlieuhungphat.com"],
         "customDomainAssignmentStatus": "VERIFIED_PROJECT_META",
-        "autoDeployOffStatus": "NOT_READABLE_CURRENT_CONNECTOR"
+        "autoDeployOffStatus": "VERIFIED_OWNER_PROVIDER"
       }
     },
     {
@@ -288,16 +278,9 @@
       "routeAudit": {
         "status": "PASS",
         "orphanTopLevelCount": 0,
-        "entryHrefs": [
-          "/"
-        ],
-        "intentionalDeepRoutes": [
-          "/trips/[tripId]"
-        ],
-        "intentionalNonNavigation": [
-          "/login"
-        ],
-        "notes": "Trip details drill down from the assigned-trip list and return to the root trip list."
+        "entryHrefs": ["/"],
+        "intentionalDeepRoutes": ["/trips/[tripId]"],
+        "intentionalNonNavigation": ["/login"]
       },
       "productionRelevantEnvNames": [
         "CORE_API_INTERNAL_URL",
@@ -316,19 +299,13 @@
           "githubRepository": "NPP-Platform",
           "githubCommitRef": "main",
           "githubCommitSha": "583b556f42883abf39dd9d9af2c88a22396176b8",
-          "rootDirectory": null,
-          "gitDirty": true
+          "rootDirectory": "delivery/web"
         },
-        "rootDirectoryStatus": "NOT_PRESENT_IN_DEPLOYMENT_META",
-        "environmentNamePresenceStatus": "NOT_READABLE_CURRENT_CONNECTOR",
-        "assignedDomains": [
-          "npp-delivery.vercel.app",
-          "log.nguyenlieuhungphat.com",
-          "npp-delivery-binhnxwjfjxms-projects.vercel.app",
-          "npp-delivery-binhnxwjfjxm-binhnxwjfjxms-projects.vercel.app"
-        ],
+        "rootDirectoryStatus": "VERIFIED_PROVIDER_EVIDENCE",
+        "environmentNamePresenceStatus": "VERIFIED_GUARDED_WORKFLOW",
+        "assignedDomains": ["log.nguyenlieuhungphat.com"],
         "customDomainAssignmentStatus": "VERIFIED_PROJECT_META",
-        "autoDeployOffStatus": "NOT_READABLE_CURRENT_CONNECTOR"
+        "autoDeployOffStatus": "VERIFIED_OWNER_PROVIDER"
       }
     },
     {
@@ -349,11 +326,7 @@
           "/tuyen-dung",
           "/chinh-sach-bao-mat"
         ],
-        "intentionalDeepRoutes": [
-          "/nganh-hang/[slug]",
-          "/san-pham/[slug]"
-        ],
-        "notes": "Header covers primary public pages; footer covers privacy and category deep links. Evidence is pinned to the external repository baseline/tree recorded in auditBaselines."
+        "intentionalDeepRoutes": ["/nganh-hang/[slug]", "/san-pham/[slug]"]
       },
       "productionRelevantEnvNames": [
         "NEXT_PUBLIC_SITE_URL",
@@ -373,19 +346,13 @@
           "githubRepository": "nguyenlieuhungphat",
           "githubCommitRef": "main",
           "githubCommitSha": "e536726e5bc05af9d9fef24d188a50e12f6e0723",
-          "rootDirectory": null
+          "rootDirectory": "."
         },
-        "rootDirectoryStatus": "NOT_PRESENT_IN_DEPLOYMENT_META",
-        "environmentNamePresenceStatus": "NOT_READABLE_CURRENT_CONNECTOR",
-        "assignedDomains": [
-          "www.nguyenlieuhungphat.com",
-          "nguyenlieuhungphat.vercel.app",
-          "nguyenlieuhungphat.com",
-          "nguyenlieuhungphat-binhnxwjfjxms-projects.vercel.app",
-          "nguyenlieuhungphat-binhnxwjfjxm-binhnxwjfjxms-projects.vercel.app"
-        ],
+        "rootDirectoryStatus": "VERIFIED_OWNER_PROVIDER",
+        "environmentNamePresenceStatus": "VERIFIED_OWNER_PROVIDER",
+        "assignedDomains": ["nguyenlieuhungphat.com"],
         "customDomainAssignmentStatus": "VERIFIED_PROJECT_META",
-        "autoDeployOffStatus": "NOT_READABLE_CURRENT_CONNECTOR"
+        "autoDeployOffStatus": "VERIFIED_OWNER_PROVIDER"
       }
     },
     {
@@ -413,19 +380,19 @@
           "/checkout",
           "/order-success/[orderId]"
         ],
-        "intentionalSystemRoutes": [
-          "/login",
-          "/login/sso-callback",
-          "/offline"
-        ],
-        "notes": "Bottom navigation covers primary customer work; header/cart and workflow transitions cover secondary/deep routes. Evidence is pinned to the external repository baseline/tree recorded in auditBaselines."
+        "intentionalSystemRoutes": ["/login", "/login/sso-callback", "/offline"]
       },
       "productionRelevantEnvNames": [
         "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
         "NEXT_PUBLIC_CUSTOMER_ORDERING_DATA_MODE",
-        "CORE_API_BASE_URL",
-        "NEXT_PUBLIC_CUSTOMER_LOGO_URL"
+        "CORE_API_BASE_URL"
       ],
+      "logoAsset": {
+        "mode": "LOCAL_PUBLIC_ASSET",
+        "path": "/logo-transparent.png",
+        "externalEnvironmentVariableRequired": false,
+        "sourceEvidenceCommit": "c789bd1336b5c21fbf26583fba9517607fe35f52"
+      },
       "vercel": {
         "projectName": "customer-ordering",
         "projectId": "prj_btLk3p4FhmShgKFdRBMq6ZFOagKe",
@@ -436,18 +403,13 @@
           "githubRepository": "nguyenlieuhungphat",
           "githubCommitRef": "main",
           "githubCommitSha": "b6bef8c868b4caa37abcb80355cecaf339e232a0",
-          "rootDirectory": null
+          "rootDirectory": "customer-ordering"
         },
-        "rootDirectoryStatus": "NOT_PRESENT_IN_DEPLOYMENT_META",
-        "environmentNamePresenceStatus": "NOT_READABLE_CURRENT_CONNECTOR",
-        "assignedDomains": [
-          "sales.nguyenlieuhungphat.com",
-          "customer-ordering-seven.vercel.app",
-          "customer-ordering-binhnxwjfjxms-projects.vercel.app",
-          "customer-ordering-binhnxwjfjxm-binhnxwjfjxms-projects.vercel.app"
-        ],
+        "rootDirectoryStatus": "VERIFIED_GUARDED_WORKFLOW",
+        "environmentNamePresenceStatus": "VERIFIED_OWNER_PROVIDER",
+        "assignedDomains": ["sales.nguyenlieuhungphat.com"],
         "customDomainAssignmentStatus": "VERIFIED_PROJECT_META",
-        "autoDeployOffStatus": "NOT_READABLE_CURRENT_CONNECTOR"
+        "autoDeployOffStatus": "VERIFIED_OWNER_PROVIDER"
       }
     }
   ],
@@ -455,13 +417,16 @@
     "routeReachabilitySource": "PASS",
     "providerProjectIdentity": "PASS",
     "providerRepositoryAndProductionBranch": "PASS",
-    "providerRootDirectory": "PARTIAL",
-    "providerEnvironmentNamePresence": "NOT_VERIFIED",
+    "providerRootDirectory": "PASS",
+    "providerEnvironmentNamePresence": "PASS",
     "providerCustomDomainAssignment": "PASS",
-    "providerAutoDeployOff": "NOT_VERIFIED",
-    "mcpBackendApiBaseProductionValue": "NOT_VERIFIED",
-    "dnsSwitch": "NOT_PERFORMED",
-    "environmentSwitch": "NOT_PERFORMED",
+    "providerAutoDeployOff": "PASS",
+    "mcpBackendApiBaseProductionValue": "PASS",
+    "dnsState": "PASS",
+    "dnsSwitch": "NOT_REQUIRED_ALREADY_CORRECT",
+    "environmentSwitch": "CONFIGURED_PENDING_DEPLOY",
+    "sourceMergePending": true,
+    "productionDeployPending": true,
     "phase97ProductionReady": false
   }
 }
