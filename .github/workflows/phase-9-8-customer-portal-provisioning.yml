@@ -46,6 +46,7 @@ jobs:
           grep -F "/provision-phase-9-8-customer-portal " "$workflow" >/dev/null
           grep -F 'GITHUB_EVENT_PATH' "$workflow" >/dev/null
           ! grep -F 'COMMENT_BODY:' "$workflow" >/dev/null
+          grep -F 'RUNNER_TEMP' "$workflow" >/dev/null
           grep -F 'EVIDENCE_FILE' "$workflow" >/dev/null
           grep -F "CORE_APP_NAME: hung-phat" "$workflow" >/dev/null
           grep -F "BEGIN READ ONLY" "$script" >/dev/null
@@ -70,13 +71,15 @@ jobs:
       DEPLOY_REF: main
       CORE_APP_NAME: hung-phat
       SCRIPT_PATH: npp-core/api/scripts/phase-9-8-provision-customer-portal.js
-      EVIDENCE_FILE: ${{ runner.temp }}/phase-9-8-customer-portal-provisioning-evidence.txt
     steps:
       - name: Parse and mask operator input
         shell: bash
         run: |
           set -euo pipefail
-          : > "$EVIDENCE_FILE"
+          evidence_file="${RUNNER_TEMP}/phase-9-8-customer-portal-provisioning-evidence.txt"
+          : > "$evidence_file"
+          echo "EVIDENCE_FILE=$evidence_file" >> "$GITHUB_ENV"
+
           comment_body="$(jq -r '.comment.body // empty' "$GITHUB_EVENT_PATH")"
           read -r command provider_subject customer_email warehouse_code sales_channel_code extra <<< "$comment_body"
           test "$command" = '/provision-phase-9-8-customer-portal'
@@ -277,7 +280,7 @@ jobs:
             echo
             echo "SOURCE_SHA=${SOURCE_SHA:-unavailable}"
             echo "CORE_RELEASE=${CORE_RELEASE:-unavailable}"
-            if [ -s "$EVIDENCE_FILE" ]; then
+            if [ -n "${EVIDENCE_FILE:-}" ] && [ -s "$EVIDENCE_FILE" ]; then
               cat "$EVIDENCE_FILE"
             else
               echo "PROVISIONING_EVIDENCE=unavailable_before_provision_step"
