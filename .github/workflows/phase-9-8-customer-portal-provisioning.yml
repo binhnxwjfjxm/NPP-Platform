@@ -46,6 +46,7 @@ jobs:
           grep -F "/provision-phase-9-8-customer-portal " "$workflow" >/dev/null
           grep -F 'GITHUB_EVENT_PATH' "$workflow" >/dev/null
           ! grep -F 'COMMENT_BODY:' "$workflow" >/dev/null
+          grep -F 'EVIDENCE_FILE' "$workflow" >/dev/null
           grep -F "CORE_APP_NAME: hung-phat" "$workflow" >/dev/null
           grep -F "BEGIN READ ONLY" "$script" >/dev/null
           grep -F "{ forUpdate: true }" "$script" >/dev/null
@@ -69,11 +70,13 @@ jobs:
       DEPLOY_REF: main
       CORE_APP_NAME: hung-phat
       SCRIPT_PATH: npp-core/api/scripts/phase-9-8-provision-customer-portal.js
+      EVIDENCE_FILE: ${{ runner.temp }}/phase-9-8-customer-portal-provisioning-evidence.txt
     steps:
       - name: Parse and mask operator input
         shell: bash
         run: |
           set -euo pipefail
+          : > "$EVIDENCE_FILE"
           comment_body="$(jq -r '.comment.body // empty' "$GITHUB_EVENT_PATH")"
           read -r command provider_subject customer_email warehouse_code sales_channel_code extra <<< "$comment_body"
           test "$command" = '/provision-phase-9-8-customer-portal'
@@ -161,6 +164,10 @@ jobs:
             --arg salesChannelCode "$PORTAL_SALES_CHANNEL_CODE" \
             '{providerSubject:$providerSubject,customerEmail:$customerEmail,warehouseCode:$warehouseCode,salesChannelCode:$salesChannelCode}')"
 
+          record_evidence() {
+            tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
+          }
+
           run_portal() {
             local mode="$1"
             local output_file="$2"
@@ -188,7 +195,7 @@ jobs:
               echo "CUSTOMER_PORTAL_PROVISIONING_AUDIT=false"
               echo "CUSTOMER_PORTAL_PROVISIONING_ERROR=$(jq -r '.code // "audit_failed"' "$audit_file")"
               echo "CUSTOMER_PORTAL_PROVISIONING_DETAILS=$(jq -c '.details // {}' "$audit_file")"
-            } >> "$GITHUB_STEP_SUMMARY"
+            } | record_evidence
             exit 1
           fi
           jq -e '.ok == true and .mode == "audit" and .ready == true' "$audit_file" >/dev/null
@@ -199,13 +206,13 @@ jobs:
               echo "CUSTOMER_PORTAL_PROVISIONING=false"
               echo "CUSTOMER_PORTAL_PROVISIONING_ERROR=$(jq -r '.code // "provision_failed"' "$provision_file")"
               echo "CUSTOMER_PORTAL_PROVISIONING_DETAILS=$(jq -c '.details // {}' "$provision_file")"
-            } >> "$GITHUB_STEP_SUMMARY"
+            } | record_evidence
             exit 1
           fi
           jq -e '.ok == true and .mode == "provision" and .ready == true' "$provision_file" >/dev/null
 
           if ! run_portal provision "$replay_file"; then
-            echo "CUSTOMER_PORTAL_REPLAY_VERIFY=false" >> "$GITHUB_STEP_SUMMARY"
+            echo "CUSTOMER_PORTAL_REPLAY_VERIFY=false" | record_evidence
             exit 1
           fi
           jq -e '.ok == true and .mode == "provision" and .ready == true and .replayed == true' "$replay_file" >/dev/null
@@ -225,7 +232,7 @@ jobs:
             echo "WAREHOUSE_CODE=$warehouse_code"
             echo "SALES_CHANNEL_CODE=$channel_code"
             echo "COLLECTION_POLICY=$collection_policy"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | record_evidence
 
       - name: Smoke Core and fail-closed Customer Portal boundary
         id: smoke
@@ -234,6 +241,9 @@ jobs:
           APP_URL: ${{ steps.preflight.outputs.app_url }}
         run: |
           set -euo pipefail
+          record_evidence() {
+            tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null
+          }
           app_url="${APP_URL%/}"
           live="$(curl --silent --show-error --connect-timeout 5 --max-time 15 --output /dev/null --write-out '%{http_code}' "$app_url/health/live")"
           ready="$(curl --silent --show-error --connect-timeout 5 --max-time 15 --output /dev/null --write-out '%{http_code}' "$app_url/health/ready")"
@@ -249,7 +259,7 @@ jobs:
             echo "CORE_HEALTH_READY=$ready"
             echo "CUSTOMER_PORTAL_UNAUTH_SMOKE=$portal"
             echo "CUSTOMER_PORTAL_AUTHENTICATED_SMOKE=not_exercised_no_clerk_session"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | record_evidence
 
       - name: Publish sanitized Phase 9.8 provisioning evidence
         if: always()
@@ -257,15 +267,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           OPERATION_STATUS: ${{ job.status }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          CORE_RELEASE: ${{ steps.preflight.outputs.release }}
         run: |
           set -euo pipefail
           evidence_file="$(mktemp)"
           {
             echo "## Phase 9.8 Customer Portal provisioning — ${OPERATION_STATUS}"
             echo
-            echo "SOURCE_SHA=${{ steps.source.outputs.sha }}"
-            echo "CORE_RELEASE=${{ steps.preflight.outputs.release }}"
-            cat "$GITHUB_STEP_SUMMARY"
+            echo "SOURCE_SHA=${SOURCE_SHA:-unavailable}"
+            echo "CORE_RELEASE=${CORE_RELEASE:-unavailable}"
+            if [ -s "$EVIDENCE_FILE" ]; then
+              cat "$EVIDENCE_FILE"
+            else
+              echo "PROVISIONING_EVIDENCE=unavailable_before_provision_step"
+            fi
             echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
           } > "$evidence_file"
           gh api \
