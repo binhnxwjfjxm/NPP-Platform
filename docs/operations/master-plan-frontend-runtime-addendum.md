@@ -1,138 +1,102 @@
 # Master Plan Addendum — Frontend and Runtime Topology
 
 > Status: **ACTIVE — OWNER LOCKED**  
-> Date: `2026-07-31`  
-> Applies to: `NPP_PLATFORM_MASTER_PLAN.md`  
-> Related approval: `docs/operations/phase-6a-owner-approval.md`
+> Original date: `2026-07-31`  
+> Phase 9.0 topology refresh: `2026-08-08`  
+> Applies to: `NPP_PLATFORM_MASTER_PLAN.md`
 
-This addendum updates the active Master Plan frontend/runtime topology. Where the Master Plan still says “two frontend” or lists only MCP and NPP Vercel projects, this addendum takes precedence until the next full Master Plan consolidation.
+This addendum is the active frontend/runtime topology. Where the older Master Plan or the original version of this addendum conflicts with the verified Phase 9 topology, this file and the Phase 9 decision sources take precedence.
 
 ## 1. Frontend projects
 
-The installation has five Vercel frontend projects across two GitHub repositories.
+The installation has **six independent Vercel frontend projects** across two GitHub repositories.
 
 ```text
 Repository: binhnxwjfjxm/NPP-Platform
-├── MCP frontend
-├── NPP operations frontend
-├── Admin MCP/NPP frontend
-└── Delivery frontend
+├── MCP Field                         source: mcp/**
+├── NPP Operations                    source: npp-core/web/**
+├── Admin MCP/NPP                     source: admin/web/**
+└── Delivery                          source: delivery/web/**
 
-Separate website repository in the same GitHub account/organization
-└── Public website + customer-ordering frontend
+Repository: binhnxwjfjxm/nguyenlieuhungphat
+├── Public Website                    source: website/root app
+└── Customer Ordering                 source: customer-ordering/**
 ```
 
-### MCP frontend
+Website and Customer Ordering share a repository but are **separate Vercel projects and separate deployment units**. Customer Ordering is not a route group inside the Website deployment.
 
-Mobile/PWA for field employees:
+Live Vercel project/domain readback during Phase 9.0 observed:
 
-```text
-field routes
-field outlets
-visits/check-in
-GPS and field media
-surveys/tests/reports
-onboarding drafts and Core references
-read-only Core order/delivery projections according to permission
-```
+| Surface | Project | Production domain |
+| --- | --- | --- |
+| Website | `nguyenlieuhungphat` | `nguyenlieuhungphat.com` |
+| Customer Ordering | `customer-ordering` | `sales.nguyenlieuhungphat.com` |
+| NPP Operations | `npp-platform` | `office.nguyenlieuhungphat.com` |
+| MCP Field | `mcp-field` | `mcp.nguyenlieuhungphat.com` |
+| Admin MCP/NPP | `admin-mcp-npp` | `admin.nguyenlieuhungphat.com` |
+| Delivery | `npp-delivery` | `log.nguyenlieuhungphat.com` |
 
-It keeps the existing correct MCP mobile UX and does not reuse the NPP desktop AppShell.
+The current provider read tool does not expose root-directory or environment-variable values. Those values must be read back from the provider before any 9.7 mutation; do not infer them from this source map.
 
-### NPP operations frontend
+### MCP Field
 
-The full internal operations application currently under development:
+Mobile/PWA for field employees: routes, outlets, visits/check-in, media, surveys/reports, route/session work and canonical Core integrations permitted by scope. It keeps its own mobile UX and backend boundary.
 
-```text
-internal users, employees, roles and permissions
-customers and suppliers
-products, pricing and numbering
-purchasing and payable operations
-sales operations
-inventory and warehouse operations
-logistics/dispatch management
-accounting operations and reporting
-```
+### NPP Operations
 
-It is desktop-first but remains responsive. It is the authoritative management surface for internal identities and scopes.
+Internal operations surface for identity/access, master data, sales, purchasing, inventory, logistics, accounting and reporting. Core remains authoritative for internal identity, permissions/scopes and canonical business lifecycles.
 
-### Admin MCP/NPP frontend
+### Admin MCP/NPP
 
-A responsive owner/management control tower for desktop and mobile:
+Independent owner/management surface for summary, exceptions and limited approval/review flows. It does not duplicate the full NPP CRUD application. Admin and NPP Operations are separate apps; cross-app navigation is not an architecture dependency.
 
-```text
-combined operational totals and states
-warnings and exceptions
-MCP/NPP/delivery monitoring
-small permissioned approval surface
-management reports and drill-down links
-```
+### Delivery
 
-It must not duplicate the full NPP CRUD application. It has no separate backend and uses controlled Core reporting/approval APIs.
+Mobile/PWA for assigned trips/stops, dispatch handover, POD, actual delivery, failure/partial flows and permitted COD collection/handover work. It uses Core APIs rather than a separate Delivery business backend.
 
-### Delivery frontend
+### Website
 
-A small mobile/PWA for warehouse handover and drivers:
+Public website/content/catalog experience in `binhnxwjfjxm/nguyenlieuhungphat`.
 
-```text
-assigned trips and stops
-handover/dispatch checklist
-receiver and POD
-actual delivered quantities
-collection state
-failed/partial/rescheduled delivery
-cash-handover status where permitted
-```
+### Customer Ordering
 
-It has no separate backend and uses Core Logistics/Accounting APIs.
-
-### Website + customer ordering frontend
-
-The existing public website remains in its separate repository. Customer ordering is added to the same website Vercel project and calls Core APIs.
-
-Customer authentication, self-registration matching, sales-owner assignment and personal-sales attribution are deferred decisions and are not part of Phase 6B.
+External customer PWA in `customer-ordering/**`. Clerk authenticates external identity; Core will own customer/account membership and canonical catalog/order business authority. The current mock/local order adapter is replaced in Phase 9.2 through a server-side Customer Portal boundary; no Core server secret goes to the browser.
 
 ## 2. Backend services
 
-Frontend project count does not change backend ownership.
+Frontend count does not change backend ownership:
 
 ```text
-MCP API
-NPP Core API
+Core API   -> Core-owned canonical business domains
+MCP API    -> MCP field domain + canonical Core integration
 ```
 
-- MCP API writes MCP-owned field data only.
-- Core API owns internal identity/authorization, official customers, Sales Orders, inventory, logistics and accounting.
-- Admin, Delivery and customer ordering do not get independent business backends.
-- Cross-domain calls use canonical APIs and idempotent event/outbox contracts.
+Core and MCP deploy/release/smoke/rollback independently. Admin, Delivery, Website and Customer Ordering do not gain independent business authorities merely because they are separate frontends.
 
 ## 3. Database
 
-The installation continues to use one PostgreSQL cluster with domain schemas:
+The target remains one PostgreSQL installation shared by domain schemas. No frontend connects directly to PostgreSQL.
 
-```text
-shared
-mcp
-sales
-purchasing
-inventory
-logistics
-accounting
-reporting
-```
-
-No frontend connects directly to PostgreSQL. Service DB roles remain schema-restricted.
+Actual production DB attachment/credential/role capability must be audited from provider truth before Phase 9.3 mutation; documentation must not claim least privilege that the provider/tier has not verified.
 
 ## 4. Deployment boundary
 
-Each frontend project has its own build/root configuration, environment allowlist, domain and manual production rollout control. Connecting the same monorepo to multiple Vercel projects does not authorize automatic deployment.
+Each of the six frontend projects is an independent deployment unit with its own project configuration, domain and environment boundary. Source merge does not imply production deployment.
 
-The website repository and NPP-Platform repository deploy independently. Source merge never implies provider deployment.
+Provider rules remain:
+
+- Vercel Auto Deploy must remain OFF;
+- Core and MCP Heroku automatic deploy remain OFF;
+- frontend-only changes do not authorize backend deployment;
+- production mutation requires an explicit owner command.
 
 ## 5. Current architecture summary
 
 ```text
-5 Vercel frontend projects
+6 Vercel frontend projects
 2 backend services
-1 PostgreSQL cluster
+1 shared PostgreSQL installation
 2 GitHub repositories
 ```
+
+Detailed Phase 9.0 evidence and unresolved provider gates are recorded in `docs/operations/phase-9-0-readiness-audit.md`.
