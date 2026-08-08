@@ -54,6 +54,9 @@ const LOGISTICS_BOOTSTRAP_PERMISSIONS = Object.freeze([
   PERMISSIONS.coreReportingEmployeeMcpRead,
   PERMISSIONS.coreReportingLogisticsRead,
   PERMISSIONS.coreReportingCodRead,
+  PERMISSIONS.coreReportingAuditHistoryRead,
+  PERMISSIONS.coreReportingControlTowerRead,
+  PERMISSIONS.coreReportingExport,
 ]);
 
 function withLogisticsBootstrapPermissions(principal) {
