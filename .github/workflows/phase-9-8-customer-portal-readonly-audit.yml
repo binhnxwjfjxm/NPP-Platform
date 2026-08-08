@@ -37,7 +37,7 @@ jobs:
           grep -F 'GITHUB_EVENT_PATH' "$workflow" >/dev/null
           grep -F 'node "$SCRIPT_PATH" audit' "$workflow" >/dev/null
           grep -F 'PORTAL_AUDIT_OK' "$workflow" >/dev/null
-          if grep -F 'node "$SCRIPT_PATH" provision' "$workflow" >/dev/null; then
+          if awk '/^  audit-production:/{flag=1} flag' "$workflow" | grep -F 'node "$SCRIPT_PATH" provision' >/dev/null; then
             echo 'Read-only audit workflow must never invoke provision mode.' >&2
             exit 1
           fi
