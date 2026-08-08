@@ -4,12 +4,13 @@ import { writeFile } from "node:fs/promises";
 const HEROKU_ACCEPT = "application/vnd.heroku+json; version=3";
 const EXPECTED_APP = "hung-phat-mcp";
 const EXPECTED_BUCKET = "hung-phat";
+const CURVE = "prime256v1";
 const CURVE_ORDER = BigInt("0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
 const PUBLIC_KEY_BYTES = 65;
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
-const R2_READ_PERMISSION_ID = "b4992e1108244f5d8bfbd5744320c2e1";
 const TOKEN_TTL_MS = 10 * 60 * 1000;
+const R2_READ_PERMISSION_NAME = "Workers R2 Storage Read";
 
 function text(value) {
   const normalized = String(value ?? "").trim();
@@ -56,7 +57,7 @@ function decryptEnvelope(payload, secret) {
   const ciphertext = packed.subarray(cipherStart);
 
   try {
-    const ecdh = createECDH("prime256v1");
+    const ecdh = createECDH(CURVE);
     ecdh.setPrivateKey(scalarFromSecret(secret));
     const shared = ecdh.computeSecret(peerPublic);
     const key = sha256Buffer(Buffer.concat([
@@ -67,7 +68,9 @@ function decryptEnvelope(payload, secret) {
     decipher.setAuthTag(tag);
     const plain = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
     const parsed = JSON.parse(plain);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) fail("r2_ephemeral_admin_payload_invalid");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      fail("r2_ephemeral_admin_payload_invalid");
+    }
     return parsed;
   } catch (error) {
     if (error?.code === "r2_ephemeral_admin_payload_invalid") throw error;
@@ -77,6 +80,27 @@ function decryptEnvelope(payload, secret) {
 
 async function writeEvidence(path, lines) {
   await writeFile(path, `${lines.join("\n")}\n`, { mode: 0o600 });
+}
+
+async function cloudflareJson(url, token, { method = "GET", body = null } = {}) {
+  let response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(body ? { "Content-Type": "application/json" } : {})
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+  } catch {
+    return { ok: false, status: 0, payload: null };
+  }
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {}
+  return { ok: response.ok && payload?.success === true, status: response.status, payload };
 }
 
 async function readHerokuConfig(appName, apiKey) {
@@ -99,16 +123,42 @@ function accountFromEndpoint(endpointValue) {
   return match[1].toLowerCase();
 }
 
-function tokenPolicy(accountId) {
+function permissionGroupsUrl(route, accountId) {
+  if (route === "account_parent") {
+    return `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/tokens/permission_groups`;
+  }
+  return "https://api.cloudflare.com/client/v4/user/tokens/permission_groups";
+}
+
+async function resolveR2ReadPermissionId(route, parentToken, accountId) {
+  const url = new URL(permissionGroupsUrl(route, accountId));
+  url.searchParams.set("name", R2_READ_PERMISSION_NAME);
+  const result = await cloudflareJson(url.toString(), parentToken);
+  if (!result.ok) {
+    return { ok: false, status: result.status, code: "permission_lookup_denied" };
+  }
+  const groups = Array.isArray(result.payload?.result) ? result.payload.result : [];
+  const group = groups.find((item) =>
+    text(item?.name) === R2_READ_PERMISSION_NAME &&
+    Array.isArray(item?.scopes) &&
+    item.scopes.includes("com.cloudflare.api.account")
+  );
+  if (!text(group?.id)) {
+    return { ok: false, status: result.status, code: "permission_group_missing" };
+  }
+  return { ok: true, id: group.id };
+}
+
+function tokenPolicy(accountId, permissionId) {
   const now = Date.now();
   return {
     name: `phase-9-4-r2-lifecycle-read-${text(process.env.GITHUB_RUN_ID) || "manual"}`,
     not_before: new Date(now - 60_000).toISOString(),
-    expires_on: new Date(now + TOKEN_TL_MS).toISOString(),
+    expires_on: new Date(now + TOKEN_TTL_MS).toISOString(),
     policies: [
       {
         effect: "allow",
-        permission_groups: [{ id: R2_READ_PERMISSION_ID }],
+        permission_groups: [{ id: permissionId }],
         resources: {
           [`com.cloudflare.api.account.${accountId}`]: {
             "com.cloudflare.edge.r2.bucket.*": "*"
@@ -119,59 +169,47 @@ function tokenPolicy(accountId) {
   };
 }
 
-async function createChildToken({ route, parentToken, accountId }) {
-  const endpoint = route === "account_parent"
+function tokenCreateUrl(route, accountId) {
+  return route === "account_parent"
     ? `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/tokens`
     : "https://api.cloudflare.com/client/v4/user/tokens";
-  let response;
-  try {
-    response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${parentToken}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(tokenPolicy(accountId))
-    });
-  } catch {
-    return { ok: false, route, status: 0, code: "network" };
-  }
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {}
-  const result = payload?.result;
-  if (!response.ok || payload?.success !== true || !text(result?.id) || !text(result?.value)) {
-    return {
-      ok: false,
-      route,
-      status: response.status,
-      code: payload?.success === true ? "invalid_response" : "denied"
-    };
+}
+
+function tokenDeleteUrl(route, accountId, tokenId) {
+  return route === "account_parent"
+    ? `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/tokens/${encodeURIComponent(tokenId)}`
+    : `https://api.cloudflare.com/client/v4/user/tokens/${encodeURIComponent(tokenId)}`;
+}
+
+async function createChildToken({ route, parentToken, accountId }) {
+  const permission = await resolveR2ReadPermissionId(route, parentToken, accountId);
+  if (!permission.ok) return { ok: false, route, status: permission.status, code: permission.code };
+
+  const result = await cloudflareJson(
+    tokenCreateUrl(route, accountId),
+    parentToken,
+    { method: "POST", body: tokenPolicy(accountId, permission.id) }
+  );
+  const created = result.payload?.result;
+  if (!result.ok || !text(created?.id) || !text(created?.value)) {
+    return { ok: false, route, status: result.status, code: "token_create_denied" };
   }
   return {
     ok: true,
     route,
-    tokenId: result.id,
-    tokenValue: result.value,
+    tokenId: created.id,
+    tokenValue: created.value,
     parentToken
   };
 }
 
 async function deleteChildToken(child, accountId) {
-  const endpoint = child.route === "account_parent"
-    ? `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/tokens/${encodeURIComponent(child.tokenId)}`
-    : `https://api.cloudflare.com/client/v4/user/tokens/${encodeURIComponent(child.tokenId)}`;
-  let response;
-  try {
-    response = await fetch(endpoint, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${child.parentToken}` }
-    });
-  } catch {
-    fail("cloudflare_ephemeral_token_delete_network_failed");
-  }
-  if (!response.ok) fail(`cloudflare_ephemeral_token_delete_status_${response.status}`);
+  const result = await cloudflareJson(
+    tokenDeleteUrl(child.route, accountId, child.tokenId),
+    child.parentToken,
+    { method: "DELETE" }
+  );
+  if (!result.ok) fail(`cloudflare_ephemeral_token_delete_status_${result.status}`);
 }
 
 async function createEphemeralToken(parentTokens, accountId) {
@@ -181,19 +219,19 @@ async function createEphemeralToken(parentTokens, accountId) {
     ["user_parent", parentTokens.user]
   ];
   for (const [route, token] of routes) {
-    if (!text(toke)) {
+    if (!text(token)) {
       attempts.push({ route, status: -1, code: "missing" });
       continue;
     }
-    const result = await createChildToken({ route, parentToken: toke, accountId });
+    const result = await createChildToken({ route, parentToken: token, accountId });
     if (result.ok) return { child: result, attempts };
     attempts.push(result);
   }
   const accountAttempt = attempts.find((item) => item.route === "account_parent");
   const userAttempt = attempts.find((item) => item.route === "user_parent");
   fail(
-    `cloudflare_ephemeral_token_create_blocked_account_${accountAttempt?.status ?? -1}` +
-    `__user_${userAttempt?.status ?? -1}`
+    `cloudflare_ephemeral_token_create_blocked_account_${accountAttempt?.status ?? -1}_${accountAttempt?.code ?? "unknown"}` +
+    `__user_${userAttempt?.status ?? -1}_${userAttempt?.code ?? "unknown"}`
   );
 }
 
@@ -218,27 +256,15 @@ function lifecycleXml(rules) {
 }
 
 async function readLifecycleWithEphemeral(child, accountId) {
-  let response;
-  try {
-    response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}` +
+  const result = await cloudflareJson(
+    `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}` +
       `/r2/buckets/${encodeURIComponent(EXPECTED_BUCKET)}/lifecycle`,
-      { headers: { Authorization: `Bearer ${child.tokenValue}` } }
-    );
-  } catch {
-    fail("cloudflare_ephemeral_r2_lifecycle_network_failed");
-  }
-  if (!response.ok) fail(`cloudflare_ephemeral_r2_lifecycle_status_${response.status}`);
-  let payload;
-  try {
-    payload = await response.json();
-  } catch {
-    fail("cloudflare_ephemeral_r2_lifecycle_response_invalid");
-  }
-  if (payload?.success !== true || !Array.isArray(payload?.result?.rules)) {
-    fail("cloudflare_ephemeral_r2_lifecycle_response_invalid");
-  }
-  return payload.result.rules;
+    child.tokenValue
+  );
+  if (!result.ok) fail(`cloudflare_ephemeral_r2_lifecycle_status_${result.status}`);
+  const rules = result.payload?.result?.rules;
+  if (!Array.isArray(rules)) fail("cloudflare_ephemeral_r2_lifecycle_response_invalid");
+  return rules;
 }
 
 async function main() {
@@ -271,10 +297,12 @@ async function main() {
   );
 
   let rules;
+  let deleteSucceeded = false;
   try {
     rules = await readLifecycleWithEphemeral(child, accountId);
   } finally {
     await deleteChildToken(child, accountId);
+    deleteSucceeded = true;
   }
 
   const syntheticXml = lifecycleXml(rules);
@@ -302,8 +330,8 @@ async function main() {
     `AUDITED_MAIN_SHA=${auditedMainSha}`,
     `CLOUDFLARE_EPHEMERAL_TOKEN_ROUTE=${child.route}`,
     "CLOUDFLARE_EPHEMERAL_TOKEN_CREATED=true",
-    "CLOUDFLARE_EPHEMERAL_TOKEN_DELETED=true",
-    "CLOUDFLAER_R2_LIFECYCLE_EPHEMERAL_READY=true",
+    `CLOUDFLARE_EPHEMERAL_TOKEN_DELETED=${deleteSucceeded}`,
+    "CLOUDFLARE_R2_LIFECYCLE_EPHEMERAL_READY=true",
     `CLOUDFLARE_R2_LIFECYCLE_RULES=${rules.length}`
   ]);
 }

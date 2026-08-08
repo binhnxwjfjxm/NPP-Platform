@@ -107,6 +107,6 @@ jobs:
           } > "$evidence_file"
           gh api --method POST "repos/$GITHUB_REPOSITORY/issues/391/comments" \
             -f body="$(cat "$evidence_file")" >/dev/null
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$COMENT_ID" \
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
             -f body='/audit-mcp-r2-ephemeral-admin [redacted]' >/dev/null
           rm -f "$evidence_file"
