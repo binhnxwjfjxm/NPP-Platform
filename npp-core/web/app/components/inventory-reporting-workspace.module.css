@@ -71,6 +71,43 @@
   font: inherit;
 }
 
+.tabList {
+  display: flex;
+  gap: 8px;
+  padding: 5px;
+  overflow-x: auto;
+  border: 1px solid #dfe3e8;
+  border-radius: 12px;
+  background: #f7f8fa;
+  scrollbar-width: thin;
+}
+
+.tabButton {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 8px 13px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #5a6470;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.tabButton:hover {
+  background: #fff;
+  color: #262b31;
+}
+
+.tabButtonActive {
+  border-color: #cfd5dc;
+  background: #fff;
+  color: #20242a;
+  box-shadow: 0 2px 8px rgba(32, 36, 42, 0.07);
+}
+
 .cards {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -239,4 +276,9 @@
   .sectionHeader { flex-direction: column; }
   .headerActions { width: 100%; }
   .linkButton { flex: 1 1 auto; }
+  .tabList { margin-inline: -2px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabButton { transition: none; }
 }
