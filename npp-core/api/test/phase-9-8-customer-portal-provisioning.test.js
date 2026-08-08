@@ -16,6 +16,7 @@ const payload = Object.freeze({
 function createFakePool({
   warehouses = [{ id: '20000000-0000-4000-8000-000000000001', code: 'WH01', name: 'Main Warehouse' }],
   channels = [{ id: '30000000-0000-4000-8000-000000000001', code: 'CUSTOMER_PORTAL', name: 'Customer Portal' }],
+  simulateConcurrentDeactivation = false,
 } = {}) {
   const state = {
     portalUser: null,
@@ -24,6 +25,7 @@ function createFakePool({
     auditCount: 0,
     insertCount: 0,
     readOnly: false,
+    targetShareLocks: new Set(),
   };
 
   const client = {
@@ -31,30 +33,35 @@ function createFakePool({
       const normalized = String(sql).trim().replace(/\s+/g, ' ').toLowerCase();
       if (normalized === 'begin read only') {
         state.readOnly = true;
+        state.targetShareLocks.clear();
         return { rows: [] };
       }
       if (normalized === 'begin') {
         state.readOnly = false;
+        state.targetShareLocks.clear();
         return { rows: [] };
       }
       if (normalized === 'commit' || normalized === 'rollback') {
         state.readOnly = false;
         return { rows: [] };
       }
-      if (state.readOnly && normalized.includes(' for update')) {
+      if (state.readOnly && (normalized.includes(' for update') || normalized.includes(' for share'))) {
         throw new Error('read_only_lock_forbidden');
       }
       if (normalized.startsWith('select pg_advisory_xact_lock')) return { rows: [{ ok: true }] };
       if (normalized.includes('from shared.customers') && normalized.includes("lower(btrim(coalesce(email, '')))")) {
+        if (normalized.includes(' for share')) state.targetShareLocks.add('customer');
         return { rows: [{ id: '10000000-0000-4000-8000-000000000001', code: 'CUS001', name: 'Portal Customer' }] };
       }
       if (normalized.includes('from shared.warehouses') && normalized.includes('is_active = true')) {
+        if (normalized.includes(' for share')) state.targetShareLocks.add('warehouse');
         const rows = normalized.includes('code = $2')
           ? warehouses.filter((row) => row.code === params[1]).slice(0, 2)
           : warehouses.slice(0, 21);
         return { rows };
       }
       if (normalized.includes('from shared.sales_channels') && normalized.includes('is_active = true')) {
+        if (normalized.includes(' for share')) state.targetShareLocks.add('sales_channel');
         let rows;
         if (normalized.includes('code = $2')) {
           rows = channels.filter((row) => row.code === params[1]).slice(0, 2);
@@ -87,6 +94,9 @@ function createFakePool({
         }] };
       }
       if (normalized.startsWith('insert into shared.portal_users')) {
+        if (simulateConcurrentDeactivation && state.targetShareLocks.size !== 3) {
+          throw new Error('concurrent_target_deactivation_not_blocked');
+        }
         state.insertCount += 1;
         state.portalUser = { id: params[0], status: 'ACTIVE' };
         return { rows: [] };
@@ -152,7 +162,7 @@ test('warehouse and sales-channel selection fail closed on ambiguity', () => {
   );
 });
 
-test('audit stays read-only and never requests a row lock', async () => {
+test('audit stays read-only and never requests target or identity row locks', async () => {
   const pool = createFakePool();
   const result = await run('audit', payload, { config: { installationId: 'installation-test' }, pool });
   assert.equal(result.ok, true);
@@ -160,6 +170,7 @@ test('audit stays read-only and never requests a row lock', async () => {
   assert.equal(result.replayed, false);
   assert.equal(pool.state.insertCount, 0);
   assert.equal(pool.state.auditCount, 0);
+  assert.equal(pool.state.targetShareLocks.size, 0);
 });
 
 test('explicit warehouse and sales-channel codes resolve beyond general list caps', async () => {
@@ -184,6 +195,13 @@ test('explicit warehouse and sales-channel codes resolve beyond general list cap
   assert.equal(result.salesChannelCode, 'CHANNEL25');
 });
 
+test('provision locks all active targets before writes so concurrent deactivation is blocked', async () => {
+  const pool = createFakePool({ simulateConcurrentDeactivation: true });
+  const result = await run('provision', payload, { config: { installationId: 'installation-test' }, pool });
+  assert.equal(result.ok, true);
+  assert.deepEqual([...pool.state.targetShareLocks].sort(), ['customer', 'sales_channel', 'warehouse']);
+});
+
 test('provisioning is transactional, audited and idempotent on replay', async () => {
   const pool = createFakePool();
   const config = { installationId: 'installation-test' };
@@ -199,10 +217,11 @@ test('provisioning is transactional, audited and idempotent on replay', async ()
   assert.equal(pool.state.auditCount, 1);
   assert.equal('providerSubject' in first, false);
   assert.equal('customerEmail' in first, false);
+  assert.deepEqual([...pool.state.targetShareLocks].sort(), ['customer', 'sales_channel', 'warehouse']);
 
   const second = await run('provision', payload, { config, pool });
   assert.equal(second.ok, true);
   assert.equal(second.replayed, true);
   assert.equal(pool.state.insertCount, 3, 'replay must not create additional portal records');
-  assert.equal(pool.state.auditCount, 1, 'replay must remain read-only');
+  assert.equal(pool.state.auditCount, 1, 'replay must remain read-only after target and identity locks');
 });

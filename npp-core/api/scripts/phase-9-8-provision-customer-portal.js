@@ -26,6 +26,10 @@ function normalizeOptionalCode(value, field) {
   return normalized;
 }
 
+function shareClause(forShare) {
+  return forShare ? '\n      FOR SHARE' : '';
+}
+
 export function validateProvisioningPayload(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw operationalError('invalid_provisioning_payload');
@@ -99,7 +103,7 @@ async function readPayloadFromStdin() {
   return validateProvisioningPayload(parsed);
 }
 
-async function resolveCustomer(client, installationId, customerEmail) {
+async function resolveCustomer(client, installationId, customerEmail, { forShare = false } = {}) {
   const rows = (await client.query(
     `SELECT id, code, name
        FROM shared.customers
@@ -107,7 +111,7 @@ async function resolveCustomer(client, installationId, customerEmail) {
         AND is_active = true
         AND lower(btrim(COALESCE(email, ''))) = lower(btrim($2))
       ORDER BY code ASC
-      LIMIT 3`,
+      LIMIT 3${shareClause(forShare)}`,
     [installationId, customerEmail],
   )).rows;
   if (rows.length !== 1) {
@@ -116,23 +120,23 @@ async function resolveCustomer(client, installationId, customerEmail) {
   return rows[0];
 }
 
-async function resolveWarehouse(client, installationId, requestedCode) {
+async function resolveWarehouse(client, installationId, requestedCode, { forShare = false } = {}) {
   const params = [installationId];
   let query = `SELECT id, code, name
                  FROM shared.warehouses
                 WHERE installation_id = $1
                   AND is_active = true`;
   if (requestedCode) {
-    query += ' AND code = $2 LIMIT 2';
+    query += ` AND code = $2 LIMIT 2${shareClause(forShare)}`;
     params.push(requestedCode);
   } else {
-    query += ' ORDER BY code ASC LIMIT 21';
+    query += ` ORDER BY code ASC LIMIT 21${shareClause(forShare)}`;
   }
   const rows = (await client.query(query, params)).rows;
   return chooseWarehouse(rows, requestedCode);
 }
 
-async function resolveSalesChannel(client, installationId, requestedCode) {
+async function resolveSalesChannel(client, installationId, requestedCode, { forShare = false } = {}) {
   if (requestedCode) {
     const rows = (await client.query(
       `SELECT id, code, name
@@ -140,7 +144,7 @@ async function resolveSalesChannel(client, installationId, requestedCode) {
         WHERE installation_id = $1
           AND is_active = true
           AND code = $2
-        LIMIT 2`,
+        LIMIT 2${shareClause(forShare)}`,
       [installationId, requestedCode],
     )).rows;
     return chooseSalesChannel(rows, requestedCode);
@@ -152,7 +156,7 @@ async function resolveSalesChannel(client, installationId, requestedCode) {
       WHERE installation_id = $1
         AND is_active = true
         AND code = 'CUSTOMER_PORTAL'
-      LIMIT 2`,
+      LIMIT 2${shareClause(forShare)}`,
     [installationId],
   )).rows;
   if (portalRows.length === 1) return portalRows[0];
@@ -164,16 +168,16 @@ async function resolveSalesChannel(client, installationId, requestedCode) {
       WHERE installation_id = $1
         AND is_active = true
       ORDER BY code ASC
-      LIMIT 21`,
+      LIMIT 21${shareClause(forShare)}`,
     [installationId],
   )).rows;
   return chooseSalesChannel(activeRows);
 }
 
-async function resolveTarget(client, installationId, input) {
-  const customer = await resolveCustomer(client, installationId, input.customerEmail);
-  const warehouse = await resolveWarehouse(client, installationId, input.warehouseCode);
-  const salesChannel = await resolveSalesChannel(client, installationId, input.salesChannelCode);
+async function resolveTarget(client, installationId, input, { forShare = false } = {}) {
+  const customer = await resolveCustomer(client, installationId, input.customerEmail, { forShare });
+  const warehouse = await resolveWarehouse(client, installationId, input.warehouseCode, { forShare });
+  const salesChannel = await resolveSalesChannel(client, installationId, input.salesChannelCode, { forShare });
   return Object.freeze({ customer, warehouse, salesChannel });
 }
 
@@ -314,7 +318,7 @@ async function provision(pool, installationId, input) {
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         [`${installationId}:${PROVIDER}:${input.providerSubject}`],
       );
-      const target = await resolveTarget(client, installationId, input);
+      const target = await resolveTarget(client, installationId, input, { forShare: true });
       const existing = await getExistingIdentity(
         client,
         installationId,

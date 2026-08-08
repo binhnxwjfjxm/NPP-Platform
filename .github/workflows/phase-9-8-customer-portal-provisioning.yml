@@ -22,26 +22,37 @@ jobs:
   contract:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: npp-core
     steps:
       - name: Checkout pull request head
         uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Validate provisioning source
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install workspaces
+        run: npm --prefix .. ci
+
+      - name: Validate provisioning behavior
         shell: bash
         run: |
           set -euo pipefail
-          node --check npp-core/api/scripts/phase-9-8-provision-customer-portal.js
-          test -s npp-core/api/test/phase-9-8-customer-portal-provisioning.test.js
+          node --check api/scripts/phase-9-8-provision-customer-portal.js
+          node --test api/test/phase-9-8-customer-portal-provisioning.test.js
 
       - name: Validate guarded production contract
         shell: bash
         run: |
           set -euo pipefail
-          workflow=.github/workflows/phase-9-8-customer-portal-provisioning.yml
-          script=npp-core/api/scripts/phase-9-8-provision-customer-portal.js
+          workflow=../.github/workflows/phase-9-8-customer-portal-provisioning.yml
+          script=api/scripts/phase-9-8-provision-customer-portal.js
           grep -F "github.event.issue.number == 395" "$workflow" >/dev/null
           grep -F "/provision-phase-9-8-customer-portal " "$workflow" >/dev/null
           grep -F 'GITHUB_EVENT_PATH' "$workflow" >/dev/null
@@ -51,6 +62,7 @@ jobs:
           grep -F "CORE_APP_NAME: hung-phat" "$workflow" >/dev/null
           grep -F "BEGIN READ ONLY" "$script" >/dev/null
           grep -F "{ forUpdate: true }" "$script" >/dev/null
+          grep -F "{ forShare: true }" "$script" >/dev/null
           grep -F "pg_advisory_xact_lock" "$script" >/dev/null
           grep -F "withAuditOutboxTransaction" "$script" >/dev/null
           grep -F "customer_portal.membership.provision" "$script" >/dev/null
