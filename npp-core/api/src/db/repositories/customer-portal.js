@@ -73,3 +73,61 @@ export async function getActiveCustomerAddress(client, { installationId, custome
     [installationId, customerId, addressId],
   )).rows[0] ?? null;
 }
+
+export async function listPortalOrderSnapshots(client, {
+  installationId,
+  customerId,
+  warehouseId,
+  limit = 100,
+  offset = 0,
+}) {
+  return (await client.query(
+    `SELECT
+       so.id,
+       so.order_number,
+       so.status,
+       so.current_version_number,
+       so.source_type,
+       so.source_id,
+       so.customer_id,
+       so.fulfillment_status,
+       so.delivery_status,
+       so.created_at,
+       so.updated_at,
+       so.confirmed_at,
+       so.cancelled_at,
+       sov.customer_address_id,
+       sov.customer_address_snapshot,
+       sov.note AS version_note,
+       COALESCE(
+         jsonb_agg(
+           jsonb_build_object(
+             'sku', line.sku_snapshot,
+             'itemName', line.item_name_snapshot,
+             'unitCode', line.unit_code_snapshot,
+             'quantity', line.ordered_quantity::text,
+             'unitPrice', line.unit_price::text,
+             'note', line.note
+           ) ORDER BY line.line_number
+         ) FILTER (WHERE line.id IS NOT NULL),
+         '[]'::jsonb
+       ) AS lines
+     FROM sales.sales_orders so
+     JOIN sales.sales_order_versions sov
+       ON sov.installation_id = so.installation_id
+      AND sov.sales_order_id = so.id
+      AND sov.version_number = so.current_version_number
+     LEFT JOIN sales.sales_order_version_lines line
+       ON line.installation_id = sov.installation_id
+      AND line.sales_order_version_id = sov.id
+     WHERE so.installation_id = $1
+       AND so.customer_id = $2
+       AND so.warehouse_id = $3
+       AND so.source_type = 'API'
+       AND so.source_id LIKE 'CUSTOMER_PORTAL:%'
+     GROUP BY so.id, sov.id
+     ORDER BY so.created_at DESC, so.id DESC
+     LIMIT $4 OFFSET $5`,
+    [installationId, customerId, warehouseId, limit, offset],
+  )).rows;
+}

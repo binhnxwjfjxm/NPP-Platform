@@ -11,9 +11,34 @@ import { createCustomerPortalAuthenticator } from './customer-portal-auth.js';
 import { handleCustomerPortalRoutes } from './routes/customer-portal.js';
 
 const __filename = fileURLToPath(import.meta.url);
+const RETRYABLE_ERROR_CODES = new Set(['40001', '40P01', '57P01', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE']);
 
 function closeHttpServer(server) {
   return new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+}
+
+function unexpectedPortalResponse(error, requestId, pathName) {
+  const code = typeof error?.code === 'string' ? error.code : null;
+  const retryable = error?.retryable === true || (code ? RETRYABLE_ERROR_CODES.has(code) : false);
+  console.error(JSON.stringify({
+    event: 'customer_portal_request_error',
+    requestId,
+    path: pathName,
+    error: {
+      name: error instanceof Error ? error.name : 'Error',
+      message: error instanceof Error ? error.message : String(error ?? 'unknown'),
+      code,
+    },
+  }));
+  return {
+    statusCode: retryable ? 503 : 500,
+    error: {
+      code: 'CUSTOMER_PORTAL_UNAVAILABLE',
+      message: 'Customer Portal is temporarily unavailable.',
+      details: {},
+      retryable,
+    },
+  };
 }
 
 export function createCustomerPortalAwareServer(options = {}) {
@@ -42,16 +67,13 @@ export function createCustomerPortalAwareServer(options = {}) {
         requestId,
         receivedAt,
       });
-    } catch {
+    } catch (error) {
+      const response = unexpectedPortalResponse(error, requestId, url.pathname);
       if (!res.headersSent) {
-        res.statusCode = 503;
+        res.statusCode = response.statusCode;
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.setHeader('Cache-Control', 'no-store');
-        res.end(JSON.stringify({
-          error: { code: 'CUSTOMER_PORTAL_UNAVAILABLE', message: 'Customer Portal is temporarily unavailable.', details: {}, retryable: true },
-          requestId,
-          receivedAt,
-        }));
+        res.end(JSON.stringify({ error: response.error, requestId, receivedAt }));
       } else if (!res.writableEnded) {
         res.end();
       }

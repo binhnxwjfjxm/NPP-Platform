@@ -86,10 +86,11 @@ jobs:
         run: |
           set -euo pipefail
           test "$(cat ../../Procfile)" = "web: npm run start:core-api"
+          test -f src/customer-portal-server.js
           node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
           const pkg = JSON.parse(await readFile("../../package.json", "utf8"));
-          if (pkg.scripts?.["start:core-api"] !== "npm --workspace npp-core-api run start") {
+          if (pkg.scripts?.["start:core-api"] !== "node npp-core/api/src/customer-portal-server.js") {
             throw new Error("unexpected_core_api_start_contract");
           }
           NODE

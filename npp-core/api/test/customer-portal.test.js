@@ -16,24 +16,33 @@ function jwt(privateKey, kid, payload) {
   return `${header}.${body}.${signature}`;
 }
 
-test('customer portal verifies Clerk RS256 token and rejects wrong issuer', async () => {
-  const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-  const kid = 'portal-test-key';
+function jwkFor(publicKey, kid) {
   const jwk = publicKey.export({ format: 'jwk' });
   jwk.kid = kid;
   jwk.alg = 'RS256';
   jwk.use = 'sig';
-  const now = Date.parse('2026-08-08T04:00:00Z');
-  const env = {
+  return jwk;
+}
+
+function authEnv(overrides = {}) {
+  return {
     CUSTOMER_PORTAL_ENABLED: 'true',
     CUSTOMER_PORTAL_CLERK_ISSUER: 'https://clerk.example.test',
     CUSTOMER_PORTAL_CLERK_JWKS_URL: 'https://clerk.example.test/.well-known/jwks.json',
     CUSTOMER_PORTAL_CLERK_AUTHORIZED_PARTIES: 'https://sales.example.test',
+    ...overrides,
   };
+}
+
+test('customer portal verifies Clerk RS256 token and rejects wrong issuer', async () => {
+  const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const kid = 'portal-test-key';
+  const now = Date.parse('2026-08-08T04:00:00Z');
+  const env = authEnv();
   const auth = createCustomerPortalAuthenticator({
     env,
     now: () => now,
-    fetchImpl: async () => ({ ok: true, json: async () => ({ keys: [jwk] }) }),
+    fetchImpl: async () => ({ ok: true, json: async () => ({ keys: [jwkFor(publicKey, kid)] }) }),
   });
   const good = jwt(privateKey, kid, {
     iss: env.CUSTOMER_PORTAL_CLERK_ISSUER,
@@ -54,6 +63,86 @@ test('customer portal verifies Clerk RS256 token and rejects wrong issuer', asyn
   const rejected = await auth.authenticate({ headers: { authorization: `Bearer ${wrongIssuer}` } });
   assert.equal(rejected.ok, false);
   assert.equal(rejected.code, 'CUSTOMER_PORTAL_TOKEN_ISSUER_INVALID');
+});
+
+test('customer portal rejects bad signature, expired token and wrong authorized party', async () => {
+  const signing = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const other = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const kid = 'portal-security-key';
+  const now = Date.parse('2026-08-08T04:00:00Z');
+  const env = authEnv();
+  const auth = createCustomerPortalAuthenticator({
+    env,
+    now: () => now,
+    fetchImpl: async () => ({ ok: true, json: async () => ({ keys: [jwkFor(signing.publicKey, kid)] }) }),
+  });
+  const base = { iss: env.CUSTOMER_PORTAL_CLERK_ISSUER, sub: 'user_customer_123', azp: 'https://sales.example.test' };
+
+  const badSignature = await auth.authenticate({ headers: { authorization: `Bearer ${jwt(other.privateKey, kid, { ...base, exp: Math.floor(now / 1000) + 300 })}` } });
+  assert.equal(badSignature.ok, false);
+  assert.equal(badSignature.code, 'CUSTOMER_PORTAL_TOKEN_SIGNATURE_INVALID');
+
+  const expired = await auth.authenticate({ headers: { authorization: `Bearer ${jwt(signing.privateKey, kid, { ...base, exp: Math.floor(now / 1000) - 120 })}` } });
+  assert.equal(expired.ok, false);
+  assert.equal(expired.code, 'CUSTOMER_PORTAL_TOKEN_EXPIRED');
+
+  const wrongParty = await auth.authenticate({ headers: { authorization: `Bearer ${jwt(signing.privateKey, kid, { ...base, azp: 'https://other.example.test', exp: Math.floor(now / 1000) + 300 })}` } });
+  assert.equal(wrongParty.ok, false);
+  assert.equal(wrongParty.code, 'CUSTOMER_PORTAL_TOKEN_AUTHORIZED_PARTY_INVALID');
+});
+
+test('customer portal refreshes JWKS once when Clerk rotates to an unknown kid', async () => {
+  const oldKey = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const newKey = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const now = Date.parse('2026-08-08T04:00:00Z');
+  const env = authEnv();
+  let fetchCount = 0;
+  const auth = createCustomerPortalAuthenticator({
+    env,
+    now: () => now,
+    fetchImpl: async () => {
+      fetchCount += 1;
+      const keys = fetchCount === 1
+        ? [jwkFor(oldKey.publicKey, 'old-kid')]
+        : [jwkFor(newKey.publicKey, 'new-kid')];
+      return { ok: true, json: async () => ({ keys }) };
+    },
+  });
+  const token = jwt(newKey.privateKey, 'new-kid', {
+    iss: env.CUSTOMER_PORTAL_CLERK_ISSUER,
+    sub: 'user_customer_123',
+    azp: 'https://sales.example.test',
+    exp: Math.floor(now / 1000) + 300,
+  });
+  const result = await auth.authenticate({ headers: { authorization: `Bearer ${token}` } });
+  assert.equal(result.ok, true);
+  assert.equal(fetchCount, 2);
+});
+
+test('customer portal fails closed on missing verifier scope or JWKS outage', async () => {
+  const missingScope = createCustomerPortalAuthenticator({
+    env: authEnv({ CUSTOMER_PORTAL_CLERK_AUTHORIZED_PARTIES: '', CUSTOMER_PORTAL_CLERK_AUDIENCE: '' }),
+  });
+  assert.deepEqual(await missingScope.authenticate({ headers: {} }), { ok: false, code: 'CUSTOMER_PORTAL_AUTH_CONFIG_INVALID', statusCode: 503 });
+
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const now = Date.parse('2026-08-08T04:00:00Z');
+  const env = authEnv();
+  const unavailable = createCustomerPortalAuthenticator({
+    env,
+    now: () => now,
+    fetchImpl: async () => { throw new Error('network-down'); },
+  });
+  const token = jwt(privateKey, 'missing-kid', {
+    iss: env.CUSTOMER_PORTAL_CLERK_ISSUER,
+    sub: 'user_customer_123',
+    azp: 'https://sales.example.test',
+    exp: Math.floor(now / 1000) + 300,
+  });
+  const result = await unavailable.authenticate({ headers: { authorization: `Bearer ${token}` } });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'CUSTOMER_PORTAL_AUTH_UNAVAILABLE');
+  assert.equal(result.statusCode, 503);
 });
 
 test('portal request context is least privilege and warehouse scoped from membership', () => {
@@ -77,6 +166,7 @@ test('migration owns identity and membership but not a second order table', () =
   assert.match(sql, /sales\.customer_portal_memberships/);
   assert.match(sql, /default_warehouse_id/);
   assert.match(sql, /sales_channel_id/);
+  assert.match(sql, /customer_portal_memberships_one_active_user_idx/);
   assert.doesNotMatch(sql, /CREATE TABLE IF NOT EXISTS sales\.customer_portal_orders/i);
 });
 

@@ -49,6 +49,9 @@ export function loadCustomerPortalAuthConfig(env = process.env) {
   const jwksUrl = httpUrl(text(env.CUSTOMER_PORTAL_CLERK_JWKS_URL), 'CUSTOMER_PORTAL_CLERK_JWKS_URL');
   const audience = text(env.CUSTOMER_PORTAL_CLERK_AUDIENCE) || null;
   const authorizedParties = splitCsv(env.CUSTOMER_PORTAL_CLERK_AUTHORIZED_PARTIES);
+  if (!audience && authorizedParties.length === 0) {
+    throw new Error('CUSTOMER_PORTAL_CLERK_AUDIENCE or CUSTOMER_PORTAL_CLERK_AUTHORIZED_PARTIES is required');
+  }
   return Object.freeze({ enabled: true, issuer, jwksUrl, audience, authorizedParties });
 }
 
@@ -101,9 +104,9 @@ export function createCustomerPortalAuthenticator({
 
   let cache = { expiresAt: 0, keys: new Map() };
 
-  async function loadKeys() {
+  async function loadKeys(forceRefresh = false) {
     const nowMs = now();
-    if (cache.expiresAt > nowMs && cache.keys.size > 0) return cache.keys;
+    if (!forceRefresh && cache.expiresAt > nowMs && cache.keys.size > 0) return cache.keys;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
@@ -135,8 +138,12 @@ export function createCustomerPortalAuthenticator({
     const payload = decodeJsonSegment(parts[1]);
     if (!header || header.alg !== 'RS256' || typeof header.kid !== 'string') return authFailure('CUSTOMER_PORTAL_TOKEN_INVALID');
     try {
-      const keys = await loadKeys();
-      const key = keys.get(header.kid);
+      let keys = await loadKeys();
+      let key = keys.get(header.kid);
+      if (!key) {
+        keys = await loadKeys(true);
+        key = keys.get(header.kid);
+      }
       if (!key) return authFailure('CUSTOMER_PORTAL_TOKEN_KEY_UNKNOWN');
       const signed = Buffer.from(`${parts[0]}.${parts[1]}`);
       const signature = base64UrlDecode(parts[2]);

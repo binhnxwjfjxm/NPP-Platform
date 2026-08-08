@@ -10,6 +10,16 @@ import {
 } from '../audit-outbox.js';
 import * as service from '../services/customer-portal.js';
 
+const ORDER_PATH = /^\/api\/customer-portal\/orders\/([0-9a-f-]{36})$/i;
+const CANCEL_PATH = /^\/api\/customer-portal\/orders\/([0-9a-f-]{36})\/cancel$/i;
+const STATIC_PATHS = new Set([
+  '/api/customer-portal/me',
+  '/api/customer-portal/addresses',
+  '/api/customer-portal/catalog',
+  '/api/customer-portal/orders',
+]);
+const RETRYABLE_ERROR_CODES = new Set(['40001', '40P01', '57P01', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE']);
+
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
 }
@@ -18,9 +28,14 @@ function statusFor(code, fallback = 400) {
   if (code === 'CUSTOMER_PORTAL_AUTH_REQUIRED' || code.includes('TOKEN_')) return 401;
   if (code.includes('MEMBERSHIP') || code.endsWith('_FORBIDDEN') || code === 'DELIVERY_ADDRESS_NOT_FOUND') return 403;
   if (code.endsWith('_NOT_FOUND')) return 404;
+  if (code === 'INVALID_IDEMPOTENCY_KEY' || code === 'MISSING_IDEMPOTENCY_KEY') return 400;
   if (code.includes('CONFLICT') || code.includes('DUPLICATE') || code.includes('IDEMPOTENCY') || code === 'INVALID_STATUS_TRANSITION' || code === 'SALES_ORDER_HAS_EXECUTION_FACTS') return 409;
   if (code.includes('UNAVAILABLE') || code.includes('NOT_CONFIGURED')) return 503;
   return fallback;
+}
+
+function isKnownPath(pathname) {
+  return STATIC_PATHS.has(pathname) || ORDER_PATH.test(pathname) || CANCEL_PATH.test(pathname);
 }
 
 function sendServiceError(res, result, options) {
@@ -122,6 +137,28 @@ function parseCatalogQuery(url) {
   };
 }
 
+function unexpectedMutationError(error, operation, options) {
+  const code = typeof error?.code === 'string' ? error.code : null;
+  const retryable = error?.retryable === true || (code ? RETRYABLE_ERROR_CODES.has(code) : false);
+  console.error(JSON.stringify({
+    event: 'customer_portal_mutation_error',
+    operation,
+    requestId: options.requestId,
+    error: {
+      name: error instanceof Error ? error.name : 'Error',
+      message: error instanceof Error ? error.message : String(error ?? 'unknown'),
+      code,
+    },
+  }));
+  return apiError(
+    operation === 'create' ? 'CUSTOMER_PORTAL_ORDER_CREATE_FAILED' : 'CUSTOMER_PORTAL_ORDER_CANCEL_FAILED',
+    operation === 'create' ? 'Không thể tạo đơn hàng.' : 'Không thể hủy đơn hàng.',
+    {},
+    retryable,
+    retryable ? 503 : 500,
+  );
+}
+
 export async function handleCustomerPortalRoutes(req, res, options) {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   if (!url.pathname.startsWith('/api/customer-portal')) return false;
@@ -150,7 +187,7 @@ export async function handleCustomerPortalRoutes(req, res, options) {
     return true;
   }
 
-  const orderMatch = /^\/api\/customer-portal\/orders\/([0-9a-f-]{36})$/i.exec(url.pathname);
+  const orderMatch = ORDER_PATH.exec(url.pathname);
   if (req.method === 'GET' && orderMatch) {
     const result = await service.getPortalOrder(options.getPool(), { requestContext, membership, orderId: orderMatch[1] });
     result.ok ? sendSuccess(res, { order: result.order }, options.requestId, options.receivedAt) : sendServiceError(res, result, options);
@@ -189,13 +226,13 @@ export async function handleCustomerPortalRoutes(req, res, options) {
         },
       });
       sendJson(res, execution.response.statusCode, execution.response.body, execution.response.requestId ?? options.requestId, execution.response.contentType);
-    } catch {
-      sendError(res, apiError('CUSTOMER_PORTAL_ORDER_CREATE_FAILED', 'Không thể tạo đơn hàng.', {}, true, 503), options.requestId, options.receivedAt);
+    } catch (error) {
+      sendError(res, unexpectedMutationError(error, 'create', options), options.requestId, options.receivedAt);
     }
     return true;
   }
 
-  const cancelMatch = /^\/api\/customer-portal\/orders\/([0-9a-f-]{36})\/cancel$/i.exec(url.pathname);
+  const cancelMatch = CANCEL_PATH.exec(url.pathname);
   if (req.method === 'POST' && cancelMatch) {
     const payload = await readPayload(req, res, options);
     if (payload === null) return true;
@@ -228,12 +265,18 @@ export async function handleCustomerPortalRoutes(req, res, options) {
         },
       });
       sendJson(res, execution.response.statusCode, execution.response.body, execution.response.requestId ?? options.requestId, execution.response.contentType);
-    } catch {
-      sendError(res, apiError('CUSTOMER_PORTAL_ORDER_CANCEL_FAILED', 'Không thể hủy đơn hàng.', {}, true, 503), options.requestId, options.receivedAt);
+    } catch (error) {
+      sendError(res, unexpectedMutationError(error, 'cancel', options), options.requestId, options.receivedAt);
     }
     return true;
   }
 
-  sendError(res, apiError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405), options.requestId, options.receivedAt);
+  const knownPath = isKnownPath(url.pathname);
+  sendError(
+    res,
+    apiError(knownPath ? 'METHOD_NOT_ALLOWED' : 'CUSTOMER_PORTAL_ROUTE_NOT_FOUND', knownPath ? 'Method not allowed' : 'Route not found', {}, false, knownPath ? 405 : 404),
+    options.requestId,
+    options.receivedAt,
+  );
   return true;
 }

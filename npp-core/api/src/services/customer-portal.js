@@ -7,6 +7,16 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{8,200}$/;
 const MAX_ORDER_LINES = 200;
 const PORTAL_SOURCE_PREFIX = 'CUSTOMER_PORTAL:';
+const CATALOG_PRICE_CONCURRENCY = 4;
+const PROCESSING_FULFILLMENT_STATES = new Set([
+  'backordered',
+  'partially_reserved', 'reserved',
+  'partially_allocated', 'allocated',
+  'partially_picked', 'picked',
+  'partially_packed', 'packed',
+  'partially_issued', 'issued',
+  'partially_fulfilled', 'fulfilled',
+]);
 
 function failure(code, message, statusCode = 400, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, statusCode, retryable, details });
@@ -15,6 +25,21 @@ function failure(code, message, statusCode = 400, retryable = false, details = {
 function numeric(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function mapWithConcurrency(values, concurrency, mapper) {
+  if (values.length === 0) return [];
+  const output = new Array(values.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      output[index] = await mapper(values[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, () => worker()));
+  return output;
 }
 
 function mapAddress(row) {
@@ -46,19 +71,28 @@ function customerStatus(order) {
   if (order.status === 'cancelled') return 'CANCELLED';
   if (order.status === 'closed') return 'COMPLETED';
   if (['dispatched', 'partially_delivered'].includes(order.deliveryStatus)) return 'DELIVERING';
-  if (['allocated', 'partially_allocated', 'reserved', 'partially_reserved', 'backordered'].includes(order.fulfillmentStatus)) return 'PROCESSING';
+  if (PROCESSING_FULFILLMENT_STATES.has(order.fulfillmentStatus)) return 'PROCESSING';
   if (order.status === 'confirmed') return 'CONFIRMED';
   return 'SUBMITTED';
 }
 
-function mapPortalOrder(order) {
-  const version = currentVersion(order);
-  const lines = Array.isArray(version?.lines) ? version.lines : [];
+function timelineFor(order) {
   const status = customerStatus(order);
   const timeline = [{ status: 'SUBMITTED', at: order.createdAt, note: 'Đơn đã được gửi từ ứng dụng.' }];
   if (order.confirmedAt) timeline.push({ status: 'CONFIRMED', at: order.confirmedAt, note: 'Đơn đã được xác nhận.' });
   if (order.cancelledAt) timeline.push({ status: 'CANCELLED', at: order.cancelledAt, note: 'Đơn đã được hủy.' });
   if (status === 'COMPLETED') timeline.push({ status: 'COMPLETED', at: order.updatedAt, note: 'Đơn đã hoàn tất.' });
+  return Object.freeze(timeline);
+}
+
+function submissionKey(sourceId) {
+  const value = String(sourceId ?? '');
+  return value.startsWith(PORTAL_SOURCE_PREFIX) ? value.split(':').at(-1) ?? '' : '';
+}
+
+function mapPortalOrder(order) {
+  const version = currentVersion(order);
+  const lines = Array.isArray(version?.lines) ? version.lines : [];
   const address = version?.customerAddress ?? {};
   const mappedLines = lines.map((line) => Object.freeze({
     sku: line.sku,
@@ -70,13 +104,12 @@ function mapPortalOrder(order) {
     unitPrice: numeric(line.unitPrice),
     currency: 'VND',
   }));
-  const sourceId = String(order.sourceId ?? '');
   return Object.freeze({
     id: order.id,
     code: order.number ?? `SO-${order.id.slice(0, 8).toUpperCase()}`,
     submittedAt: order.createdAt,
-    status,
-    statusTimeline: Object.freeze(timeline),
+    status: customerStatus(order),
+    statusTimeline: timelineFor(order),
     address: Object.freeze({
       id: version?.customerAddressId ?? '',
       label: String(address.label ?? 'Địa chỉ giao hàng'),
@@ -90,7 +123,52 @@ function mapPortalOrder(order) {
     pricedSubtotal: mappedLines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0),
     hasPendingPrice: false,
     orderNote: version?.note ?? '',
-    submissionKey: sourceId.startsWith(PORTAL_SOURCE_PREFIX) ? sourceId.split(':').at(-1) ?? '' : '',
+    submissionKey: submissionKey(order.sourceId),
+  });
+}
+
+function mapPortalSnapshot(row) {
+  const address = row.customer_address_snapshot ?? {};
+  const rawLines = Array.isArray(row.lines) ? row.lines : [];
+  const mappedLines = rawLines.map((line) => Object.freeze({
+    sku: String(line.sku ?? ''),
+    productName: String(line.itemName ?? ''),
+    packaging: line.unitCode ?? '',
+    unit: line.unitCode ?? '',
+    quantity: numeric(line.quantity),
+    note: line.note ?? '',
+    unitPrice: numeric(line.unitPrice),
+    currency: 'VND',
+  }));
+  const orderForStatus = {
+    status: row.status,
+    fulfillmentStatus: row.fulfillment_status,
+    deliveryStatus: row.delivery_status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    confirmedAt: row.confirmed_at,
+    cancelledAt: row.cancelled_at,
+  };
+  return Object.freeze({
+    id: row.id,
+    code: row.order_number ?? `SO-${row.id.slice(0, 8).toUpperCase()}`,
+    submittedAt: row.created_at,
+    status: customerStatus(orderForStatus),
+    statusTimeline: timelineFor(orderForStatus),
+    address: Object.freeze({
+      id: row.customer_address_id ?? '',
+      label: String(address.label ?? 'Địa chỉ giao hàng'),
+      recipientName: String(address.recipientName ?? ''),
+      phone: String(address.phone ?? ''),
+      addressLine: [address.addressLine1, address.addressLine2, address.ward, address.district, address.province].filter(Boolean).join(', '),
+      isDefault: false,
+    }),
+    lines: Object.freeze(mappedLines),
+    totalQuantity: mappedLines.reduce((sum, line) => sum + line.quantity, 0),
+    pricedSubtotal: mappedLines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0),
+    hasPendingPrice: false,
+    orderNote: row.version_note ?? '',
+    submissionKey: submissionKey(row.source_id),
   });
 }
 
@@ -153,7 +231,7 @@ export async function listPortalCatalog(client, {
   });
   if (!result.ok) return result;
   const priceAt = new Date().toISOString();
-  const items = await Promise.all(result.skuOptions.map(async (option) => {
+  const items = await mapWithConcurrency(result.skuOptions, CATALOG_PRICE_CONCURRENCY, async (option) => {
     const resolved = await pricingService.resolvePrice(client, {
       installationId: requestContext.installationId,
       payload: {
@@ -179,7 +257,7 @@ export async function listPortalCatalog(client, {
         ? Object.freeze({ status: 'available', amount: Number(resolved.resolution.finalUnitPriceMinor), currency: 'VND' })
         : Object.freeze({ status: 'customer_price_pending', amount: null, currency: 'VND' }),
     });
-  }));
+  });
   return Object.freeze({ ok: true, items: Object.freeze(items), limit: normalizedLimit, offset: normalizedOffset, hasMore: items.length === normalizedLimit });
 }
 
@@ -256,21 +334,14 @@ export async function createPortalOrder(client, {
 }
 
 export async function listPortalOrders(client, { requestContext, membership }) {
-  const listed = await salesOrderService.listSalesOrders(client, {
-    requestContext,
+  const rows = await portalRepository.listPortalOrderSnapshots(client, {
+    installationId: requestContext.installationId,
     customerId: membership.customer_id,
+    warehouseId: membership.default_warehouse_id,
     limit: 100,
     offset: 0,
   });
-  if (!listed.ok) return listed;
-  const orders = [];
-  for (const summary of listed.salesOrders.filter(portalSource)) {
-    const loaded = await salesOrderService.getSalesOrder(client, { requestContext, id: summary.id });
-    if (loaded.ok && portalSource(loaded.salesOrder) && loaded.salesOrder.customerId === membership.customer_id) {
-      orders.push(mapPortalOrder(loaded.salesOrder));
-    }
-  }
-  return Object.freeze({ ok: true, orders: Object.freeze(orders) });
+  return Object.freeze({ ok: true, orders: Object.freeze(rows.map(mapPortalSnapshot)) });
 }
 
 export async function getPortalOrder(client, { requestContext, membership, orderId }) {
