@@ -46,20 +46,27 @@ test('admin remains a standalone manually deployed Vercel frontend', async () =>
   assert.doesNotMatch(directWorkflow, /-u "\$auth"[^\n]*"\$DEPLOYMENT_URL/);
 });
 
-test('admin only shows aggregate data and the management exception boundary', async () => {
-  const [overview, exceptionBoundary, menu, shell] = await Promise.all([
+test('admin exposes aggregate Control Tower and drills into NPP without duplicating CRUD', async () => {
+  const [overview, controlTower, exceptionBoundary, menu, shell] = await Promise.all([
     read('app/page.tsx'),
+    read('lib/control-tower.ts'),
     read('app/customer-onboarding/page.tsx'),
     read('app/menu/page.tsx'),
     read('app/admin-shell.tsx'),
   ]);
 
-  assert.match(overview, /Tổng quan hôm nay/);
-  assert.match(overview, /Chưa có hàng đợi ngoại lệ riêng/);
-  assert.match(overview, /Việc ở NPP/);
-  assert.match(overview, /Cần xem trước/);
-  assert.doesNotMatch(overview, /Mở NPP Operations|Mở NPP/);
+  assert.match(overview, /Tổng quan điều hành/);
+  assert.match(overview, /Control Tower/);
+  assert.match(overview, /Cảnh báo & drill-down/);
+  assert.match(overview, /NPP_OPERATIONS_URL/);
+  assert.match(overview, /accounting\/cod-reporting/);
+  assert.match(overview, /inventory\/reporting/);
+  assert.match(overview, /logistics\/reporting/);
+  assert.match(overview, /operations\/audit-history/);
+  assert.match(overview, /operations\/import-export-history/);
+  assert.match(controlTower, /\/api\/reporting\/control-tower/);
   assert.doesNotMatch(overview, /applicationList|Vai trò ứng dụng/);
+  assert.doesNotMatch(overview, /requestCore|SELECT\s|INSERT\s|UPDATE\s|DELETE\s/i);
 
   assert.match(exceptionBoundary, /Ngoại lệ cấp quản lý/);
   assert.match(exceptionBoundary, /Ranh giới duyệt ngoại lệ/);

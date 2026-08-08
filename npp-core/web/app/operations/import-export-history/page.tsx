@@ -52,7 +52,7 @@ export default async function ImportExportHistoryPage({ searchParams }: { search
               <td><span className={styles.primary}>{row.definitionKey}</span><span className={styles.muted}>v{row.definitionVersion}</span></td>
               <td><span className={styles.primary}>{row.status}</span><span className={styles.muted}>Xong: {time(row.completedAt)}</span></td>
               <td><span className={styles.primary}>{row.actorId}</span><span className={styles.muted}>{row.sourceApp}</span></td>
-              <td>{row.rowCount ?? '—'} dòng<span className={styles.muted}>{row.failureCode || (row.hasResult ? 'Có kết quả canonical' : 'Chưa có artifact')}</span></td>
+              <td>{row.rowCount == null ? '—' : `${row.rowCount} dòng`}<span className={styles.muted}>{row.failureCode || (row.hasResult ? 'Có kết quả canonical' : 'Chưa có artifact')}</span></td>
             </tr>)}</tbody>
           </table></div> : <p className={styles.empty}>Chưa có job import/export canonical trong phạm vi lọc.</p>}
           {result.data?.page.hasMore && result.data.page.nextCursor ? <div className={styles.pager}><Link className={styles.secondary} href={nextHref(searchParams, result.data.page.nextCursor)}>Trang tiếp</Link></div> : null}

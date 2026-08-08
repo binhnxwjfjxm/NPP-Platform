@@ -34,7 +34,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export async function loadControlTower(): Promise<AdminControlTowerData> {
   const data = await requestCore<unknown>('/api/reporting/control-tower');
-  if (!isRecord(data) || !isRecord(data.management) || !Array.isArray(data.warnings) || typeof data.generatedAt !== 'string' || typeof data.timezone !== 'string') {
+  if (!isRecord(data)
+    || !isRecord(data.management)
+    || !isRecord(data.filters)
+    || typeof data.filters.from !== 'string'
+    || typeof data.filters.to !== 'string'
+    || !(data.filters.warehouseId === null || typeof data.filters.warehouseId === 'string')
+    || !Array.isArray(data.warnings)
+    || typeof data.generatedAt !== 'string'
+    || typeof data.timezone !== 'string') {
     throw new CoreApiError('ADMIN_CONTROL_TOWER_RESPONSE_INVALID', 'Dữ liệu Control Tower không hợp lệ', 502, false);
   }
   return data as unknown as AdminControlTowerData;

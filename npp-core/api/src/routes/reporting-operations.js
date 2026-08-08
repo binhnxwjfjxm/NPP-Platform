@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer';
-import { BUSINESS_TIMEZONE, mapRow, mapRows } from './reporting-common.js';
+import { BUSINESS_TIMEZONE, mapRow } from './reporting-common.js';
 import { salesReport } from './reporting-sales.js';
 import { purchasingReport } from './reporting-purchasing.js';
 import { inventoryReport } from './reporting-inventory.js';
@@ -9,6 +9,7 @@ import { logisticsReport } from './reporting-logistics.js';
 import { codReport } from './reporting-cod.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CURSOR_TIMESTAMP_PATTERN = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?Z$/;
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 200;
 const IMPORT_EXPORT_DIRECTIONS = new Set(['IMPORT', 'EXPORT']);
@@ -31,8 +32,20 @@ function normalizeLimit(value) {
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= MAX_LIMIT ? parsed : null;
 }
 
+function isValidCursorTimestamp(value) {
+  if (typeof value !== 'string') return false;
+  const match = CURSOR_TIMESTAMP_PATTERN.exec(value);
+  if (!match) return false;
+  const millis = (match[2] ?? '').padEnd(3, '0').slice(0, 3);
+  const parsed = new Date(`${match[1]}.${millis}Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 19) === match[1];
+}
+
 function encodeCursor(at, id) {
-  return Buffer.from(JSON.stringify({ at, id }), 'utf8').toString('base64url');
+  if (!isValidCursorTimestamp(at) || !UUID_PATTERN.test(String(id ?? ''))) {
+    throw new Error('invalid_history_cursor_source');
+  }
+  return Buffer.from(JSON.stringify({ at, id: String(id).toLowerCase() }), 'utf8').toString('base64url');
 }
 
 function decodeCursor(value) {
@@ -43,11 +56,54 @@ function decodeCursor(value) {
     const parsed = JSON.parse(Buffer.from(text, 'base64url').toString('utf8'));
     const at = typeof parsed?.at === 'string' ? parsed.at : '';
     const id = typeof parsed?.id === 'string' ? parsed.id.toLowerCase() : '';
-    if (Number.isNaN(Date.parse(at)) || !UUID_PATTERN.test(id)) return undefined;
-    return Object.freeze({ at: new Date(at).toISOString(), id });
+    if (!isValidCursorTimestamp(at) || !UUID_PATTERN.test(id)) return undefined;
+    return Object.freeze({ at, id });
   } catch {
     return undefined;
   }
+}
+
+function mapAuditHistoryRow(row) {
+  return Object.freeze({
+    auditId: String(row.audit_id),
+    actorId: String(row.actor_id),
+    employeeId: row.employee_id == null ? null : String(row.employee_id),
+    sourceApp: String(row.source_app),
+    requestId: String(row.request_id),
+    action: String(row.action),
+    resourceType: String(row.resource_type),
+    resourceId: row.resource_id == null ? null : String(row.resource_id),
+    occurredAt: row.occurred_at,
+    hasBeforeData: row.has_before_data === true,
+    hasAfterData: row.has_after_data === true,
+    hasMetadata: row.has_metadata === true,
+  });
+}
+
+function mapImportExportHistoryRow(row) {
+  return Object.freeze({
+    jobId: String(row.job_id),
+    direction: String(row.direction),
+    definitionKey: String(row.definition_key),
+    definitionVersion: String(row.definition_version),
+    format: String(row.format),
+    status: String(row.status),
+    actorId: String(row.actor_id),
+    employeeId: row.employee_id == null ? null : String(row.employee_id),
+    sourceApp: String(row.source_app),
+    requestId: String(row.request_id),
+    normalizedFilters: row.normalized_filters ?? {},
+    effectiveScopes: row.effective_scopes ?? {},
+    businessTimezone: String(row.business_timezone),
+    sourceAsOf: row.source_as_of ?? null,
+    rowCount: row.row_count == null ? null : String(row.row_count),
+    hasResult: row.has_result === true,
+    resultChecksumSha256: row.result_checksum_sha256 == null ? null : String(row.result_checksum_sha256),
+    failureCode: row.failure_code == null ? null : String(row.failure_code),
+    requestedAt: row.requested_at,
+    startedAt: row.started_at ?? null,
+    completedAt: row.completed_at ?? null,
+  });
 }
 
 export function normalizeAuditHistoryFilters(searchParams, normalizedPeriod) {
@@ -110,7 +166,8 @@ export async function auditHistoryReport(adapter, requestContext, filters) {
             resource_type, resource_id, occurred_at,
             (before_data IS NOT NULL) AS has_before_data,
             (after_data IS NOT NULL) AS has_after_data,
-            metadata
+            COALESCE(metadata <> '{}'::jsonb, false) AS has_metadata,
+            to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at
        FROM shared.core_audit_records
       WHERE installation_id = $1
         AND occurred_at >= $2::timestamptz
@@ -142,8 +199,8 @@ export async function auditHistoryReport(adapter, requestContext, filters) {
     generatedAt: requestContext.receivedAt,
     timezone: BUSINESS_TIMEZONE,
     filters: Object.freeze({ from: filters.from, to: filters.to, action: filters.action, resourceType: filters.resourceType, sourceApp: filters.sourceApp, limit: filters.limit }),
-    rows: mapRows(visible),
-    page: Object.freeze({ hasMore, nextCursor: hasMore && last ? encodeCursor(last.occurred_at, last.audit_id) : null }),
+    rows: Object.freeze(visible.map(mapAuditHistoryRow)),
+    page: Object.freeze({ hasMore, nextCursor: hasMore && last ? encodeCursor(last.cursor_at, last.audit_id) : null }),
   });
 }
 
@@ -154,7 +211,8 @@ export async function importExportHistoryReport(adapter, requestContext, filters
             normalized_filters, effective_scopes, business_timezone, source_as_of,
             row_count::text, (result_object_key IS NOT NULL) AS has_result,
             result_checksum_sha256, failure_code,
-            requested_at, started_at, completed_at
+            requested_at, started_at, completed_at,
+            to_char(requested_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at
        FROM reporting.import_export_jobs
       WHERE installation_id = $1
         AND requested_at >= $2::timestamptz
@@ -186,8 +244,8 @@ export async function importExportHistoryReport(adapter, requestContext, filters
     generatedAt: requestContext.receivedAt,
     timezone: BUSINESS_TIMEZONE,
     filters: Object.freeze({ from: filters.from, to: filters.to, direction: filters.direction, status: filters.status, definitionKey: filters.definitionKey, limit: filters.limit }),
-    rows: mapRows(visible),
-    page: Object.freeze({ hasMore, nextCursor: hasMore && last ? encodeCursor(last.requested_at, last.job_id) : null }),
+    rows: Object.freeze(visible.map(mapImportExportHistoryRow)),
+    page: Object.freeze({ hasMore, nextCursor: hasMore && last ? encodeCursor(last.cursor_at, last.job_id) : null }),
   });
 }
 
@@ -209,7 +267,17 @@ function codManagementView(report) {
 }
 
 export async function controlTowerReport(adapter, requestContext, filters, warehouseIds) {
-  const fieldScopePromise = resolveEmployeeMcpScope(adapter, requestContext);
+  const canReadInstallationMcp = requestContext.roles?.includes('bootstrap') === true;
+  const hasEmployeeScope = typeof requestContext.employeeId === 'string' && requestContext.employeeId.trim().length > 0;
+  const fieldScopePromise = (!canReadInstallationMcp && !hasEmployeeScope)
+    ? Promise.resolve(Object.freeze({
+      ok: false,
+      code: 'EMPLOYEE_MCP_SCOPE_DENIED',
+      message: 'Cần phạm vi nhân viên canonical để xem báo cáo MCP',
+      statusCode: 403,
+      details: {},
+    }))
+    : resolveEmployeeMcpScope(adapter, requestContext);
   const loaders = [
     ['sales', () => salesReport(adapter, requestContext, filters, warehouseIds)],
     ['purchasing', () => purchasingReport(adapter, requestContext, filters, warehouseIds)],
@@ -260,6 +328,7 @@ export const operationsReportingInternals = Object.freeze({
   MAX_LIMIT,
   encodeCursor,
   decodeCursor,
+  isValidCursorTimestamp,
   normalizeLimit,
   normalizeAuditHistoryFilters,
   normalizeImportExportHistoryFilters,

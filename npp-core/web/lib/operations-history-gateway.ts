@@ -7,7 +7,7 @@ type PageState = { hasMore: boolean; nextCursor: string | null };
 export type AuditHistoryRow = {
   auditId: string; actorId: string; employeeId: string | null; sourceApp: string; requestId: string;
   action: string; resourceType: string; resourceId: string | null; occurredAt: string;
-  hasBeforeData: boolean; hasAfterData: boolean; metadata: Record<string, unknown>;
+  hasBeforeData: boolean; hasAfterData: boolean; hasMetadata: boolean;
 };
 
 export type ImportExportHistoryRow = {

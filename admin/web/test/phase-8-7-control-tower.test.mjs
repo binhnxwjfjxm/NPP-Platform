@@ -9,6 +9,9 @@ test('Phase 8.7 Admin is aggregate control tower with NPP drill-down, not duplic
   const gateway = source('../lib/control-tower.ts');
 
   assert.match(gateway, /\/api\/reporting\/control-tower/);
+  assert.match(gateway, /isRecord\(data\.filters\)/);
+  assert.match(gateway, /typeof data\.filters\.from !== 'string'/);
+  assert.match(gateway, /typeof data\.filters\.to !== 'string'/);
   assert.match(page, /Control Tower/);
   assert.match(page, /accounting\/cod-reporting/);
   assert.match(page, /inventory\/reporting/);
