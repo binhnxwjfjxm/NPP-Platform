@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createDecipheriv, createHash } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import {
   presignR2Get,
@@ -63,9 +63,35 @@ function assertCloudflareR2Endpoint(value) {
   try {
     hostname = new URL(value).hostname.toLowerCase();
   } catch {
-    fail("core_r2_endpoint_invalid");
+    fail("r2_endpoint_invalid");
   }
-  if (!hostname.endsWith(".r2.cloudflarestorage.com")) fail("core_r2_endpoint_not_cloudflare");
+  if (!hostname.endsWith(".r2.cloudflarestorage.com")) fail("r2_endpoint_not_cloudflare");
+}
+
+function decryptBootstrap(payload, apiKey) {
+  let packed;
+  try {
+    packed = Buffer.from(payload, "base64url");
+  } catch {
+    fail("r2_bootstrap_payload_invalid");
+  }
+  if (packed.length < 29) fail("r2_bootstrap_payload_invalid");
+  const iv = packed.subarray(0, 12);
+  const tag = packed.subarray(12, 28);
+  const ciphertext = packed.subarray(28);
+  const key = createHash("sha256").update(apiKey).digest();
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(tag);
+    const plain = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+    const parsed = JSON.parse(plain);
+    assertSecretConfig(parsed, "bootstrap");
+    assertCloudflareR2Endpoint(parsed.R2_ENDPOINT);
+    return parsed;
+  } catch (error) {
+    if (error?.code && String(error.code).startsWith("bootstrap_")) throw error;
+    fail("r2_bootstrap_decrypt_failed");
+  }
 }
 
 function r2Config(config) {
@@ -110,7 +136,7 @@ async function smokeR2(config, runId) {
 }
 
 async function readApp(appName, apiKey) {
-  const response = await fetch(`https://api.heroku.com/apps/${encodeURIComponent(appName)}`, {
+  const response = await fetch(`htttps://api.heroku.com/apps/${encodeURIComponent(appName)}`, {
     headers: { Accept: HEROKU_ACCEPT, Authorization: `Bearer ${apiKey}` }
   });
   if (!response.ok) fail("heroku_app_read_failed");
@@ -142,26 +168,34 @@ async function main() {
   const apiKey = text(process.env.HEROKU_API_KEY);
   const appName = text(process.env.HEROKU_APP_NAME);
   const auditedMainSha = text(process.env.AUDITED_MAIN_SHA);
-  const runId = text(process.env.GITHUB_RUN_ID) || "manual";
+  const runId = text(process.env.GITHUB_RUN_ID)  || "manual";
   const evidenceFile = text(process.env.MCP_R2_CONFIG_CLOSURE_EVIDENCE_FILE);
+  const bootstrapPayload = text(process.env.MCP_R2_BOOTSTRAP_B64);
   if (!apiKey || !appName || !auditedMainSha || !evidenceFile) fail("r2_config_closure_environment_incomplete");
   if (appName !== EXPECTED_APP) fail("unexpected_mcp_app");
 
   const before = await herokuRequest(appName, apiKey);
   const missingBefore = missingSecretConfig(before);
   const patch = {};
-  let copiedFromCore = false;
+  let credentialSource = "existing_mcp";
 
   if (missingBefore.length > 0) {
-    const source = await herokuRequest(SOURCE_APP, apiKey);
-    assertSecretConfig(source, "core_runtime");
-    assertCloudflareR2Endpoint(source.R2_ENDPOINT);
-    if (text(source.R2_BUCKET_NAME) && text(source.R2_BUCKET_NAME) !== EXPECTED_BUCKET) {
-      fail("core_r2_bucket_mismatch");
+    if (bootstrapPayload) {
+      const bootstrap = decryptBootstrap(bootstrapPayload, apiKey);
+      for (const name of missingBefore) patch[name] = bootstrap[name];
+      if (!text(before.R2_REGION) && text(bootstrap.R2_REGION)) patch.R2_REGION = bootstrap.R2_REGION;
+      credentialSource = "encrypted_bootstrap";
+    } else {
+      const source = await herokuRequest(SOURCE_APP, apiKey);
+      assertSecretConfig(source, "core_runtime");
+      assertCloudflareR2Endpoint(source.R2_ENDPOINT);
+      if (text(source.R2_BUCKET_NAME) && text(source.R2_BUCKET_NAME) !== EXPECTED_BUCKET) {
+        fail("core_r2_bucket_mismatch");
+      }
+      for (const name of missingBefore) patch[name] = source[name];
+      if (!text(before.R2_REGION) && text(source.R2_REGION)) patch.R2_REGION = source.R2_REGION;
+      credentialSource = "core_runtime";
     }
-    for (const name of missingBefore) patch[name] = source[name];
-    if (!text(before.R2_REGION) && text(source.R2_REGION)) patch.R2_REGION = source.R2_REGION;
-    copiedFromCore = true;
   }
 
   if (text(before.R2_BUCKET_NAME) !== EXPECTED_BUCKET) patch.R2_BUCKET_NAME = EXPECTED_BUCKET;
@@ -191,7 +225,7 @@ async function main() {
     `AUDITED_MAIN_SHA=${auditedMainSha}`,
     `HEROKU_APP_NAME=${appName}`,
     `MCP_R2_CONFIG_CHANGED=${changed}`,
-    `MCP_R2_SECRET_CONFIG_COPIED_FROM_CORE=${copiedFromCore}`,
+    `MCP_R2_CREDENTIAL_SOURCE=${credentialSource}`,
     "MCP_R2_REQUIRED_SECRET_CONFIG_PRESENT=true",
     "MCP_R2_BUCKET_CONFIGURED=true",
     "MCP_R2_PUBLIC_URL_CONFIGURED=true",
