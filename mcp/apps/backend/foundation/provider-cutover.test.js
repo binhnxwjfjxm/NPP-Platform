@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
   assessCutoverReadiness,
@@ -10,11 +11,47 @@ import {
   redactSensitiveText,
   validateCutoverPlan
 } from "./provider-cutover.js";
+import {
+  assessPhase96Gate,
+  assessPhase96RuntimeDecommission,
+  buildPhase96ImportPlan,
+  PHASE_96_IMPORT_POLICY,
+  PHASE_96_TEST_ONLY_POLICY
+} from "./phase-9-6-cutover.js";
 
 const plan = JSON.parse(readFileSync(
   new URL("../../../audit/phase-6c0f/fixtures/cutover-plan.json", import.meta.url),
   "utf8"
 ));
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalize(value[key])]));
+  return value;
+}
+function canonicalJson(value) { return JSON.stringify(canonicalize(value)); }
+function sha256(value) { return createHash("sha256").update(value).digest("hex"); }
+function rowsDigest(rows) { return sha256([...rows].map(canonicalJson).sort().join("\n")); }
+function phase95Fixture() {
+  const classifications = {
+    routes: [{ sourceId: "route-test", disposition: "operational_import" }],
+    orders: [{ sourceId: "order-test", disposition: "reconciliation_required" }],
+    session_reports: [{ sourceId: "report-test", disposition: "archive_only" }]
+  };
+  const findings = [{ type: "mapping_collision", entity: "routes" }];
+  const flattened = Object.entries(classifications).flatMap(([entity, rows]) => rows.map((row) => ({ entity, ...row })));
+  const body = {
+    phase: "9.5",
+    installationId: "installation-test",
+    classificationCount: flattened.length,
+    classificationSha256: rowsDigest(flattened),
+    findingCount: findings.length,
+    findingsSha256: rowsDigest(findings),
+    importReady: false
+  };
+  const manifest = { ...body, manifestSha256: sha256(canonicalJson(body)) };
+  return { manifest, classifications, findings };
+}
 
 test("draft cutover plan is structurally valid but not operationally ready", () => {
   const validation = validateCutoverPlan(plan, { expectedSourceCommit: plan.source.commit });
@@ -159,4 +196,97 @@ test("over-privileged runtime role fails closed", () => {
   assert.equal(result.ready, false);
   assert.match(result.issues.join(" "), /runtime_has_core_table_write/);
   assert.match(result.issues.join(" "), /runtime_has_mcp_schema_create/);
+});
+
+test("Phase 9.6 owner test-only decision creates a zero-import plan bound to the exact 9.5 snapshot", () => {
+  const snapshot = phase95Fixture();
+  const result = buildPhase96ImportPlan({
+    snapshot,
+    ownerDecision: {
+      policy: PHASE_96_TEST_ONLY_POLICY,
+      installationId: snapshot.manifest.installationId,
+      snapshotManifestSha256: snapshot.manifest.manifestSha256
+    }
+  });
+  assert.equal(result.ready, true);
+  assert.equal(result.mode, "ZERO_OPERATIONAL_IMPORT");
+  assert.equal(result.counts.import, 0);
+  assert.equal(result.counts.archive, 3);
+  assert.equal(result.counts.reconciliationObserved, 1);
+});
+
+test("Phase 9.6 refuses stale owner decisions and tampered snapshot classifications", () => {
+  const snapshot = phase95Fixture();
+  const stale = buildPhase96ImportPlan({
+    snapshot,
+    ownerDecision: {
+      policy: PHASE_96_TEST_ONLY_POLICY,
+      installationId: snapshot.manifest.installationId,
+      snapshotManifestSha256: "b".repeat(64)
+    }
+  });
+  assert.equal(stale.ready, false);
+  assert.match(stale.blockers.join(" "), /owner_decision_snapshot_mismatch/);
+
+  const tampered = structuredClone(snapshot);
+  tampered.classifications.routes.push({ sourceId: "route-extra", disposition: "operational_import" });
+  const invalid = buildPhase96ImportPlan({
+    snapshot: tampered,
+    ownerDecision: {
+      policy: PHASE_96_TEST_ONLY_POLICY,
+      installationId: snapshot.manifest.installationId,
+      snapshotManifestSha256: snapshot.manifest.manifestSha256
+    }
+  });
+  assert.equal(invalid.ready, false);
+  assert.match(invalid.blockers.join(" "), /classification/);
+});
+
+test("Phase 9.6 real-import path still honors the Phase 9.5 import gate", () => {
+  const snapshot = phase95Fixture();
+  const result = buildPhase96ImportPlan({
+    snapshot,
+    ownerDecision: {
+      policy: PHASE_96_IMPORT_POLICY,
+      installationId: snapshot.manifest.installationId,
+      snapshotManifestSha256: snapshot.manifest.manifestSha256
+    }
+  });
+  assert.equal(result.ready, false);
+  assert.match(result.blockers.join(" "), /phase_9_5_import_not_ready/);
+});
+
+test("Phase 9.6 runtime closure requires PostgreSQL, removes legacy runtime vars and verifies bridges", () => {
+  const runtime = assessPhase96RuntimeDecommission({
+    persistenceProvider: "postgresql",
+    configVariableNames: ["DATABASE_URL", "PERSISTENCE_PROVIDER", "INSTALLATION_ID"],
+    bridgeEvidence: { customerOnboarding: true, coreSalesOrder: true, retryIdempotency: true }
+  });
+  assert.equal(runtime.ready, true);
+
+  const legacy = assessPhase96RuntimeDecommission({
+    persistenceProvider: "postgresql",
+    configVariableNames: ["DATABASE_URL", "PERSISTENCE_PROVIDER", "SUPABASE_URL"],
+    bridgeEvidence: { customerOnboarding: true, coreSalesOrder: true, retryIdempotency: true }
+  });
+  assert.equal(legacy.ready, false);
+  assert.match(legacy.blockers.join(" "), /SUPABASE_URL/);
+});
+
+test("Phase 9.6 final gate combines data and runtime evidence", () => {
+  const snapshot = phase95Fixture();
+  const importPlan = buildPhase96ImportPlan({
+    snapshot,
+    ownerDecision: {
+      policy: PHASE_96_TEST_ONLY_POLICY,
+      installationId: snapshot.manifest.installationId,
+      snapshotManifestSha256: snapshot.manifest.manifestSha256
+    }
+  });
+  const runtime = assessPhase96RuntimeDecommission({
+    persistenceProvider: "postgresql",
+    configVariableNames: ["DATABASE_URL", "PERSISTENCE_PROVIDER"],
+    bridgeEvidence: { customerOnboarding: true, coreSalesOrder: true, retryIdempotency: true }
+  });
+  assert.deepEqual(assessPhase96Gate({ importPlan, runtime }), { ready: true, blockers: [] });
 });
