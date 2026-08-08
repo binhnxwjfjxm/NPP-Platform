@@ -9,7 +9,7 @@ set -euo pipefail
 action="${REQUESTED_ACTION:-audit}"
 test "$HEROKU_APP_NAME" = "hung-phat"
 
-expected_pending_json='["042_sales_fulfillment_reservation_demand","043_sales_fulfillment_allocation_pick_pack","044_sales_delivery_order_handover","045_sales_inventory_issue_customer_return","046_logistics_trip_planning","047_logistics_trip_dispatch","048_logistics_driver_delivery_read","049_logistics_delivery_attempts","050_logistics_delivery_attempt_outbox_schedule","051_logistics_trip_reconciliation","052_logistics_optional_proof_of_delivery","053_customer_receivable_ledger","054_customer_payment_allocation","055_customer_return_credit_refund","056_cod_collection_handover","057_phase6f_reconciliation_views","058_inventory_transfer_in_transit_foundation","059_inventory_transfer_receipt_resolution","060_inventory_stocktake","061_inventory_adjustments","062_inventory_costing_foundation","063_inventory_costing_periods_backdate"]'
+expected_pending_json='["042_sales_fulfillment_reservation_demand","043_sales_fulfillment_allocation_pick_pack","044_sales_delivery_order_handover","045_sales_inventory_issue_customer_return","046_logistics_trip_planning","047_logistics_trip_dispatch","048_logistics_driver_delivery_read","049_logistics_delivery_attempts","050_logistics_delivery_attempt_outbox_schedule","051_logistics_trip_reconciliation","052_logistics_optional_proof_of_delivery","053_customer_receivable_ledger","054_customer_payment_allocation","055_customer_return_credit_refund","056_cod_collection_handover","057_phase6f_reconciliation_views","058_inventory_transfer_in_transit_foundation","059_inventory_transfer_receipt_resolution","060_inventory_stocktake","061_inventory_adjustments","062_inventory_costing_foundation","063_inventory_costing_periods_backdate","064_reporting_permission_catalog","065_reporting_inventory_permission_catalog","066_reporting_aging_gross_margin_permission_catalog","067_reporting_employee_mcp_permission_catalog","068_reporting_logistics_permission_catalog","069_reporting_cod_permission_catalog","070_reporting_operations_history_control_tower"]'
 maintenance_enabled="false"
 backup_id=""
 restore_database="core_latest_restore_${GITHUB_RUN_ID:-local}_${GITHUB_RUN_ATTEMPT:-1}"
@@ -69,18 +69,47 @@ const migrationIdsInRange = (first, last) => CORE_API_MIGRATIONS
     const numericPrefix = Number.parseInt(id.slice(0, 3), 10);
     return numericPrefix >= first && numericPrefix <= last;
   });
+
 const pool = new Pool({
   connectionString: process.env.CORE_GATE_DATABASE_URL,
   ssl: buildSslConfig(process.env.CORE_GATE_SSL_MODE),
   application_name: "npp-core-latest-production-gate",
 });
+
+async function verifyCatalog(requiredRelations, requiredPermissions, firstMigration, lastMigration) {
+  const relationRows = await pool.query(
+    `SELECT expected.required_name,
+            to_regclass(expected.required_name) IS NOT NULL AS present
+       FROM unnest($1::text[]) AS expected(required_name)
+      ORDER BY expected.required_name`,
+    [requiredRelations],
+  );
+  const permissionRows = await pool.query(
+    `SELECT expected.permission_key,
+            catalog.permission_key IS NOT NULL AS present
+       FROM unnest($1::text[]) AS expected(permission_key)
+       LEFT JOIN shared.permission_catalog catalog
+         ON catalog.permission_key = expected.permission_key
+      ORDER BY expected.permission_key`,
+    [requiredPermissions],
+  );
+  const missingRelations = relationRows.rows.filter((row) => !row.present).map((row) => row.required_name);
+  const missingPermissions = permissionRows.rows.filter((row) => !row.present).map((row) => row.permission_key);
+  return {
+    ok: missingRelations.length === 0 && missingPermissions.length === 0,
+    missingRelations,
+    missingPermissions,
+    registryTail: migrationIdsInRange(firstMigration, lastMigration),
+  };
+}
+
 try {
   let result;
   if (command === "status") result = await migrationStatusWithAdapter(pool, CORE_API_MIGRATIONS);
   else if (command === "migrate") result = await runMigrations(pool, CORE_API_MIGRATIONS);
   else if (command === "verify") result = await migrationVerifyWithAdapter(pool);
   else if (command === "phase6f") {
-    const requiredRelations = [
+    result = await verifyCatalog([
       "logistics.delivery_routes",
       "logistics.vehicles",
       "logistics.driver_profiles",
@@ -114,8 +143,7 @@ try {
       "reporting.phase6f_cod_collection_reconciliation",
       "reporting.phase6f_cod_handover_reconciliation",
       "reporting.phase6f_closeout_anomalies",
-    ];
-    const requiredPermissions = [
+    ], [
       "core.delivery-trip.read",
       "core.delivery-trip.create",
       "core.delivery-trip.plan",
@@ -148,33 +176,9 @@ try {
       "core.cod-reconciliation.read",
       "core.cod-reconciliation.accept",
       "core.cod-adjustment.create",
-    ];
-    const relationRows = await pool.query(
-      `SELECT expected.required_name,
-              to_regclass(expected.required_name) IS NOT NULL AS present
-         FROM unnest($1::text[]) AS expected(required_name)
-        ORDER BY expected.required_name`,
-      [requiredRelations],
-    );
-    const permissionRows = await pool.query(
-      `SELECT expected.permission_key,
-              catalog.permission_key IS NOT NULL AS present
-         FROM unnest($1::text[]) AS expected(permission_key)
-         LEFT JOIN shared.permission_catalog catalog
-           ON catalog.permission_key = expected.permission_key
-        ORDER BY expected.permission_key`,
-      [requiredPermissions],
-    );
-    const missingRelations = relationRows.rows.filter((row) => !row.present).map((row) => row.required_name);
-    const missingPermissions = permissionRows.rows.filter((row) => !row.present).map((row) => row.permission_key);
-    result = {
-      ok: missingRelations.length === 0 && missingPermissions.length === 0,
-      missingRelations,
-      missingPermissions,
-      registryTail: migrationIdsInRange(46, 57),
-    };
+    ], 46, 57);
   } else if (command === "phase7inventory") {
-    const requiredRelations = [
+    result = await verifyCatalog([
       "inventory.inventory_transfers",
       "inventory.inventory_transfer_lines",
       "inventory.inventory_transfer_in_transit",
@@ -203,8 +207,7 @@ try {
       "inventory.inventory_cost_period_balances",
       "inventory.inventory_cost_adjustment_events",
       "inventory.inventory_cost_discrepancies",
-    ];
-    const requiredPermissions = [
+    ], [
       "core.inventory-transfer.read",
       "core.inventory-transfer.create",
       "core.inventory-transfer.update",
@@ -233,31 +236,23 @@ try {
       "core.inventory-cost.read",
       "core.inventory-cost.rebuild",
       "core.inventory-cost.reconcile",
-    ];
-    const relationRows = await pool.query(
-      `SELECT expected.required_name,
-              to_regclass(expected.required_name) IS NOT NULL AS present
-         FROM unnest($1::text[]) AS expected(required_name)
-        ORDER BY expected.required_name`,
-      [requiredRelations],
-    );
-    const permissionRows = await pool.query(
-      `SELECT expected.permission_key,
-              catalog.permission_key IS NOT NULL AS present
-         FROM unnest($1::text[]) AS expected(permission_key)
-         LEFT JOIN shared.permission_catalog catalog
-           ON catalog.permission_key = expected.permission_key
-        ORDER BY expected.permission_key`,
-      [requiredPermissions],
-    );
-    const missingRelations = relationRows.rows.filter((row) => !row.present).map((row) => row.required_name);
-    const missingPermissions = permissionRows.rows.filter((row) => !row.present).map((row) => row.permission_key);
-    result = {
-      ok: missingRelations.length === 0 && missingPermissions.length === 0,
-      missingRelations,
-      missingPermissions,
-      registryTail: migrationIdsInRange(58, 63),
-    };
+    ], 58, 63);
+  } else if (command === "phase8reporting") {
+    result = await verifyCatalog([
+      "reporting.import_export_jobs",
+    ], [
+      "core.reporting.sales.read",
+      "core.reporting.purchasing.read",
+      "core.reporting.inventory.read",
+      "core.reporting.aging.read",
+      "core.reporting.gross-margin.read",
+      "core.reporting.employee-mcp.read",
+      "core.reporting.logistics.read",
+      "core.reporting.cod.read",
+      "core.reporting.audit-history.read",
+      "core.reporting.control-tower.read",
+      "core.reporting.export",
+    ], 64, 70);
   } else throw new Error("unknown_core_gate_command");
   process.stdout.write(`${JSON.stringify({ command, result })}\n`);
 } finally {
@@ -287,21 +282,24 @@ NODE
 }
 
 assert_phase6f_schema() {
-  local target_url="$1"
-  local target_ssl_mode="$2"
   local output
-  output="$(run_core_command phase6f "$target_url" "$target_ssl_mode")"
+  output="$(run_core_command phase6f "$1" "$2")"
   test "$(jq -r '.result.ok' <<<"$output")" = "true"
   test "$(jq -c '.result.registryTail' <<<"$output")" = '["046_logistics_trip_planning","047_logistics_trip_dispatch","048_logistics_driver_delivery_read","049_logistics_delivery_attempts","050_logistics_delivery_attempt_outbox_schedule","051_logistics_trip_reconciliation","052_logistics_optional_proof_of_delivery","053_customer_receivable_ledger","054_customer_payment_allocation","055_customer_return_credit_refund","056_cod_collection_handover","057_phase6f_reconciliation_views"]'
 }
 
 assert_phase7_inventory_schema() {
-  local target_url="$1"
-  local target_ssl_mode="$2"
   local output
-  output="$(run_core_command phase7inventory "$target_url" "$target_ssl_mode")"
+  output="$(run_core_command phase7inventory "$1" "$2")"
   test "$(jq -r '.result.ok' <<<"$output")" = "true"
   test "$(jq -c '.result.registryTail' <<<"$output")" = '["058_inventory_transfer_in_transit_foundation","059_inventory_transfer_receipt_resolution","060_inventory_stocktake","061_inventory_adjustments","062_inventory_costing_foundation","063_inventory_costing_periods_backdate"]'
+}
+
+assert_phase8_reporting_schema() {
+  local output
+  output="$(run_core_command phase8reporting "$1" "$2")"
+  test "$(jq -r '.result.ok' <<<"$output")" = "true"
+  test "$(jq -c '.result.registryTail' <<<"$output")" = '["064_reporting_permission_catalog","065_reporting_inventory_permission_catalog","066_reporting_aging_gross_margin_permission_catalog","067_reporting_employee_mcp_permission_catalog","068_reporting_logistics_permission_catalog","069_reporting_cod_permission_catalog","070_reporting_operations_history_control_tower"]'
 }
 
 snapshot_protected_counts() {
@@ -351,11 +349,14 @@ if [ "$action" = "audit" ]; then
   if [ "$production_pending" = '[]' ]; then
     assert_phase6f_schema "$database_url" "$ssl_mode"
     assert_phase7_inventory_schema "$database_url" "$ssl_mode"
+    assert_phase8_reporting_schema "$database_url" "$ssl_mode"
     echo "CORE_PHASE_6F_SCHEMA=ready" >> "$GITHUB_STEP_SUMMARY"
     echo "CORE_PHASE_7_INVENTORY_SCHEMA=ready" >> "$GITHUB_STEP_SUMMARY"
+    echo "CORE_PHASE_8_REPORTING_SCHEMA=ready" >> "$GITHUB_STEP_SUMMARY"
   else
-    echo "CORE_PHASE_6F_SCHEMA=pending_migration" >> "$GITHUB_STEP_SUMMARY"
-    echo "CORE_PHASE_7_INVENTORY_SCHEMA=pending_migration" >> "$GITHUB_STEP_SUMMARY"
+    echo "CORE_PHASE_6F_SCHEMA=not_reverified_while_pending" >> "$GITHUB_STEP_SUMMARY"
+    echo "CORE_PHASE_7_INVENTORY_SCHEMA=not_reverified_while_pending" >> "$GITHUB_STEP_SUMMARY"
+    echo "CORE_PHASE_8_REPORTING_SCHEMA=pending_migration" >> "$GITHUB_STEP_SUMMARY"
   fi
   exit 0
 fi
@@ -393,6 +394,7 @@ restore_final="$(run_core_command status "$restore_url" disable)"
 test "$(pending_json "$restore_final")" = '[]'
 assert_phase6f_schema "$restore_url" disable
 assert_phase7_inventory_schema "$restore_url" disable
+assert_phase8_reporting_schema "$restore_url" disable
 
 snapshot_protected_counts "$database_url" "$before_file"
 heroku maintenance:on -a "$HEROKU_APP_NAME" >/dev/null
@@ -405,6 +407,7 @@ production_final="$(run_core_command status "$database_url" "$ssl_mode")"
 test "$(pending_json "$production_final")" = '[]'
 assert_phase6f_schema "$database_url" "$ssl_mode"
 assert_phase7_inventory_schema "$database_url" "$ssl_mode"
+assert_phase8_reporting_schema "$database_url" "$ssl_mode"
 snapshot_protected_counts "$database_url" "$after_file"
 assert_counts_unchanged "$before_file" "$after_file"
 heroku maintenance:off -a "$HEROKU_APP_NAME" >/dev/null
@@ -420,6 +423,7 @@ smoke_health /health/ready
   echo "CORE_RESTORE_REHEARSAL=success"
   echo "CORE_PHASE_6F_SCHEMA=ready"
   echo "CORE_PHASE_7_INVENTORY_SCHEMA=ready"
+  echo "CORE_PHASE_8_REPORTING_SCHEMA=ready"
   echo "CORE_PRODUCTION_MIGRATION=success"
   echo "CORE_PRODUCTION_PENDING=[]"
   echo "CORE_PRODUCTION_RECONCILIATION=success"
