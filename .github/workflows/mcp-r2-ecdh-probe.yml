@@ -1,0 +1,128 @@
+name: MCP R2 ECDH credential probe
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: mcp-r2-ecdh-credential-probe
+  cancel-in-progress: false
+
+jobs:
+  probe-r2-credential:
+    if: >-
+      github.event.issue.number == 391 &&
+      (
+        github.event.comment.body == '/prepare-mcp-r2-ecdh' ||
+        startsWith(github.event.comment.body, '/replace-mcp-r2-ecdh ')
+      ) &&
+      (github.actor == 'binhnxwjfjxm' || github.actor == 'khuongbinhinfo-a11y')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AUDIT_REF: main
+      HEROKU_APP_NAME: hung-phat-mcp
+      MCP_R2_ECDH_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-ecdh-evidence.md
+      MCP_R2_CONFIG_CLOSURE_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-config-closure-evidence.md
+      MCP_MEDIA_AUDIT_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-media-audit-evidence.md
+    steps:
+      - name: Validate command and mask envelope
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          if [ "$COMMENT_BODY" = '/prepare-mcp-r2-ecdh' ]; then
+            echo 'MCP_R2_ECDH_MODE=prepare' >> "$GITHUB_ENV"
+            exit 0
+          fi
+          case "$COMMENT_BODY" in
+            '/replace-mcp-r2-ecdh '*) ;;
+            *) exit 1 ;;
+          esac
+          envelope="${COMMENT_BODY#'/replace-mcp-r2-ecdh '}"
+          test -n "$envelope"
+          echo "::add-mask::$envelope"
+          echo 'MCP_R2_ECDH_MODE=replace' >> "$GITHUB_ENV"
+          echo "MCP_R2_ECDH_ENVELOPE_B64=$envelope" >> "$GITHUB_ENV"
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.AUDIT_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mcp/apps/backend/package-lock.json
+
+      - name: Install MCP backend dependency
+        working-directory: mcp/apps/backend
+        run: npm ci --ignore-scripts
+
+      - name: Prepare transport or probe candidate credential
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          AUDITED_MAIN_SHA: ${{ steps.source.outputs.sha }}
+        run: node mcp/apps/backend/scripts/production-r2-ecdh-probe.js
+
+      - name: Verify patched MCP R2 config, smoke and health
+        if: env.MCP_R2_ECDH_MODE == 'replace'
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          AUDITED_MAIN_SHA: ${{ steps.source.outputs.sha }}
+        run: node mcp/apps/backend/scripts/production-r2-config-closure.js
+
+      - name: Reconcile MCP R2 media
+        if: env.MCP_R2_ECDH_MODE == 'replace'
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          AUDITED_MAIN_SHA: ${{ steps.source.outputs.sha }}
+        run: node mcp/apps/backend/scripts/production-media-audit.js
+
+      - name: Publish sanitized Phase 9.4 ECDH evidence and redact envelope
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          evidence_file="$(mktemp)"
+          {
+            echo "## Phase 9.4 R2 ECDH probe — ${OPERATION_STATUS}"
+            echo
+            for source in "$MCP_R2_ECDH_EVIDENCE_FILE" "$MCP_R2_CONFIG_CLOSURE_EVIDENCE_FILE" "$MCP_MEDIA_AUDIT_EVIDENCE_FILE"; do
+              if [ -s "$source" ]; then
+                cat "$source"
+              fi
+            done
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence_file"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/391/comments" \
+            -f body="$(cat "$evidence_file)" >/dev/null
+          if [[ "$COMMENT_BODY" == '/replace-mcp-r2-ecdh '* ]]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$COMENT_ID" \
+              -f body='/replace-mcp-r2-ecdh [redacted]' >/dev/null
+          fi
+          rm -f "$evidence_file"
