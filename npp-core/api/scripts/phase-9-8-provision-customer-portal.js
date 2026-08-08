@@ -9,7 +9,6 @@ const COLLECTION_POLICY = 'COLLECT_ON_DELIVERY';
 const ACTOR_ID = 'ops:phase-9-8-customer-portal-provisioning';
 const SOURCE_APP = 'phase-9-8-customer-portal-provisioning';
 const SUBJECT_PATTERN = /^user_[A-Za-z0-9]+$/;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
 
 function operationalError(code, details = {}) {
@@ -19,9 +18,12 @@ function operationalError(code, details = {}) {
   return error;
 }
 
-function normalizeOptionalCode(value, field) {
+function normalizeCode(value, field, { required = false } = {}) {
   const normalized = String(value ?? '').trim().toUpperCase();
-  if (!normalized) return '';
+  if (!normalized) {
+    if (required) throw operationalError(`missing_${field}`);
+    return '';
+  }
   if (!CODE_PATTERN.test(normalized)) throw operationalError(`invalid_${field}`);
   return normalized;
 }
@@ -35,16 +37,12 @@ export function validateProvisioningPayload(value) {
     throw operationalError('invalid_provisioning_payload');
   }
   const providerSubject = String(value.providerSubject ?? '').trim();
-  const customerEmail = String(value.customerEmail ?? '').trim().toLowerCase();
   if (!SUBJECT_PATTERN.test(providerSubject)) throw operationalError('invalid_clerk_subject');
-  if (!EMAIL_PATTERN.test(customerEmail) || customerEmail.length > 320) {
-    throw operationalError('invalid_customer_email');
-  }
   return Object.freeze({
     providerSubject,
-    customerEmail,
-    warehouseCode: normalizeOptionalCode(value.warehouseCode, 'warehouse_code'),
-    salesChannelCode: normalizeOptionalCode(value.salesChannelCode, 'sales_channel_code'),
+    customerCode: normalizeCode(value.customerCode, 'customer_code', { required: true }),
+    warehouseCode: normalizeCode(value.warehouseCode, 'warehouse_code'),
+    salesChannelCode: normalizeCode(value.salesChannelCode, 'sales_channel_code'),
   });
 }
 
@@ -103,19 +101,21 @@ async function readPayloadFromStdin() {
   return validateProvisioningPayload(parsed);
 }
 
-async function resolveCustomer(client, installationId, customerEmail, { forShare = false } = {}) {
+async function resolveCustomer(client, installationId, customerCode, { forShare = false } = {}) {
   const rows = (await client.query(
     `SELECT id, code, name
        FROM shared.customers
       WHERE installation_id = $1
         AND is_active = true
-        AND lower(btrim(COALESCE(email, ''))) = lower(btrim($2))
-      ORDER BY code ASC
-      LIMIT 3${shareClause(forShare)}`,
-    [installationId, customerEmail],
+        AND code = $2
+      LIMIT 2${shareClause(forShare)}`,
+    [installationId, customerCode],
   )).rows;
   if (rows.length !== 1) {
-    throw operationalError('customer_email_resolution_failed', { matchCount: rows.length });
+    throw operationalError('customer_code_not_resolved', {
+      requestedCode: customerCode,
+      matchCount: rows.length,
+    });
   }
   return rows[0];
 }
@@ -175,7 +175,7 @@ async function resolveSalesChannel(client, installationId, requestedCode, { forS
 }
 
 async function resolveTarget(client, installationId, input, { forShare = false } = {}) {
-  const customer = await resolveCustomer(client, installationId, input.customerEmail, { forShare });
+  const customer = await resolveCustomer(client, installationId, input.customerCode, { forShare });
   const warehouse = await resolveWarehouse(client, installationId, input.warehouseCode, { forShare });
   const salesChannel = await resolveSalesChannel(client, installationId, input.salesChannelCode, { forShare });
   return Object.freeze({ customer, warehouse, salesChannel });

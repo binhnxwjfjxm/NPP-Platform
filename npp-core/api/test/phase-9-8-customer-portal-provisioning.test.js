@@ -10,10 +10,11 @@ import {
 
 const payload = Object.freeze({
   providerSubject: 'user_ABC123xyz',
-  customerEmail: 'portal@example.com',
+  customerCode: 'CUS001',
 });
 
 function createFakePool({
+  customers = [{ id: '10000000-0000-4000-8000-000000000001', code: 'CUS001', name: 'Portal Customer' }],
   warehouses = [{ id: '20000000-0000-4000-8000-000000000001', code: 'WH01', name: 'Main Warehouse' }],
   channels = [{ id: '30000000-0000-4000-8000-000000000001', code: 'CUSTOMER_PORTAL', name: 'Customer Portal' }],
   simulateConcurrentDeactivation = false,
@@ -49,9 +50,9 @@ function createFakePool({
         throw new Error('read_only_lock_forbidden');
       }
       if (normalized.startsWith('select pg_advisory_xact_lock')) return { rows: [{ ok: true }] };
-      if (normalized.includes('from shared.customers') && normalized.includes("lower(btrim(coalesce(email, '')))")) {
+      if (normalized.includes('from shared.customers') && normalized.includes('code = $2')) {
         if (normalized.includes(' for share')) state.targetShareLocks.add('customer');
-        return { rows: [{ id: '10000000-0000-4000-8000-000000000001', code: 'CUS001', name: 'Portal Customer' }] };
+        return { rows: customers.filter((row) => row.code === params[1]).slice(0, 2) };
       }
       if (normalized.includes('from shared.warehouses') && normalized.includes('is_active = true')) {
         if (normalized.includes(' for share')) state.targetShareLocks.add('warehouse');
@@ -85,7 +86,7 @@ function createFakePool({
           sales_channel_id: state.membership.channelId,
           collection_policy: state.membership.collectionPolicy,
           allow_cancel: state.membership.allowCancel,
-          customer_code: 'CUS001',
+          customer_code: state.membership.customerCode,
           customer_active: true,
           warehouse_code: state.membership.warehouseCode,
           warehouse_active: true,
@@ -115,6 +116,7 @@ function createFakePool({
           channelId: params[5],
           collectionPolicy: params[6],
           allowCancel: true,
+          customerCode: customers.find((row) => row.id === params[3])?.code,
           warehouseCode: warehouses.find((row) => row.id === params[4])?.code,
           channelCode: channels.find((row) => row.id === params[5])?.code,
         };
@@ -135,18 +137,27 @@ function createFakePool({
   };
 }
 
-test('payload validation normalizes optional codes and rejects malformed identity', () => {
+test('payload validation normalizes canonical codes and rejects malformed identity/code', () => {
   assert.deepEqual(
-    validateProvisioningPayload({ ...payload, warehouseCode: 'wh01', salesChannelCode: 'customer_portal' }),
+    validateProvisioningPayload({ ...payload, customerCode: 'cus001', warehouseCode: 'wh01', salesChannelCode: 'customer_portal' }),
     {
       providerSubject: 'user_ABC123xyz',
-      customerEmail: 'portal@example.com',
+      customerCode: 'CUS001',
       warehouseCode: 'WH01',
       salesChannelCode: 'CUSTOMER_PORTAL',
     },
   );
   assert.throws(() => validateProvisioningPayload({ ...payload, providerSubject: 'not-a-clerk-user' }), /invalid_clerk_subject/);
-  assert.throws(() => validateProvisioningPayload({ ...payload, customerEmail: 'bad-email' }), /invalid_customer_email/);
+  assert.throws(() => validateProvisioningPayload({ providerSubject: payload.providerSubject }), /missing_customer_code/);
+  assert.throws(() => validateProvisioningPayload({ ...payload, customerCode: 'bad code' }), /invalid_customer_code/);
+});
+
+test('customer code resolution fails closed when canonical customer is absent', async () => {
+  const pool = createFakePool({ customers: [] });
+  await assert.rejects(
+    run('audit', payload, { config: { installationId: 'installation-test' }, pool }),
+    /customer_code_not_resolved/,
+  );
 });
 
 test('warehouse and sales-channel selection fail closed on ambiguity', () => {
@@ -216,7 +227,6 @@ test('provisioning is transactional, audited and idempotent on replay', async ()
   assert.equal(pool.state.insertCount, 3);
   assert.equal(pool.state.auditCount, 1);
   assert.equal('providerSubject' in first, false);
-  assert.equal('customerEmail' in first, false);
   assert.deepEqual([...pool.state.targetShareLocks].sort(), ['customer', 'sales_channel', 'warehouse']);
 
   const second = await run('provision', payload, { config, pool });

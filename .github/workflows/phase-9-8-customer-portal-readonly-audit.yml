@@ -4,9 +4,10 @@ on:
   pull_request:
     paths:
       - .github/workflows/phase-9-8-customer-portal-readonly-audit.yml
+      - npp-core/api/scripts/phase-9-8-provision-customer-portal.js
+      - npp-core/api/test/phase-9-8-customer-portal-provisioning.test.js
   issue_comment:
-    types:
-      - created
+    types: [created]
 
 permissions:
   contents: read
@@ -25,25 +26,33 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-
       - name: Validate read-only audit contract
         shell: bash
         run: |
           set -euo pipefail
           workflow=.github/workflows/phase-9-8-customer-portal-readonly-audit.yml
+          script=npp-core/api/scripts/phase-9-8-provision-customer-portal.js
           issue_condition='github.event.issue.number == 39''5'
           audit_command='/audit-phase-9-8-customer-portal'' '
           event_path='GITHUB_EVENT_''PATH'
           audit_runner='node "$SCRIPT_PATH" au''dit'
           audit_marker='PORTAL_AUDIT_''OK'
           forbidden_runner='node "$SCRIPT_PATH" pro''vision'
+          customer_field='customer''Code'
+          forbidden_customer_field='customer''Email'
           grep -F "$issue_condition" "$workflow" >/dev/null
           grep -F "$audit_command" "$workflow" >/dev/null
           grep -F "$event_path" "$workflow" >/dev/null
           grep -F "$audit_runner" "$workflow" >/dev/null
           grep -F "$audit_marker" "$workflow" >/dev/null
+          grep -F "$customer_field" "$workflow" "$script" >/dev/null
+          grep -F 'heroku@11.0.0' "$workflow" >/dev/null
           if awk '/^  audit-production:/{flag=1} flag' "$workflow" | grep -F "$forbidden_runner" >/dev/null; then
             echo 'Read-only audit workflow must never invoke provision mode.' >&2
+            exit 1
+          fi
+          if grep -F "$forbidden_customer_field" "$workflow" "$script" >/dev/null; then
+            echo 'Read-only audit must bind by canonical customer code, not customer email.' >&2
             exit 1
           fi
 
@@ -52,10 +61,7 @@ jobs:
       github.event_name == 'issue_comment' &&
       github.event.issue.number == 395 &&
       startsWith(github.event.comment.body, '/audit-phase-9-8-customer-portal ') &&
-      (
-        github.actor == 'binhnxwjfjxm' ||
-        github.actor == 'khuongbinhinfo-a11y'
-      )
+      (github.actor == 'binhnxwjfjxm' || github.actor == 'khuongbinhinfo-a11y')
     permissions:
       contents: read
       issues: write
@@ -73,30 +79,29 @@ jobs:
           evidence_file="${RUNNER_TEMP}/phase-9-8-customer-portal-readonly-audit.txt"
           : > "$evidence_file"
           echo "EVIDENCE_FILE=$evidence_file" >> "$GITHUB_ENV"
-
           comment_body="$(jq -r '.comment.body // empty' "$GITHUB_EVENT_PATH")"
-          read -r command provider_subject customer_email warehouse_code sales_channel_code extra <<< "$comment_body"
+          read -r command provider_subject customer_code warehouse_code sales_channel_code extra <<< "$comment_body"
           test "$command" = '/audit-phase-9-8-customer-portal'
           test -z "${extra:-}"
           [[ "$provider_subject" =~ ^user_[A-Za-z0-9]+$ ]]
-          [[ "$customer_email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]
-
+          [[ "$customer_code" =~ ^[A-Za-z0-9_-]{1,64}$ ]]
+          customer_code="${customer_code^^}"
           warehouse_code="${warehouse_code:-}"
           sales_channel_code="${sales_channel_code:-}"
           [ "$warehouse_code" = '-' ] && warehouse_code=''
           [ "$sales_channel_code" = '-' ] && sales_channel_code=''
-          if [ -n "$warehouse_code" ]; then [[ "$warehouse_code" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; fi
-          if [ -n "$sales_channel_code" ]; then [[ "$sales_channel_code" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; fi
-
+          warehouse_code="${warehouse_code^^}"
+          sales_channel_code="${sales_channel_code^^}"
+          if [ -n "$warehouse_code" ]; then [[ "$warehouse_code" =~ ^[A-Z0-9_-]{1,64}$ ]]; fi
+          if [ -n "$sales_channel_code" ]; then [[ "$sales_channel_code" =~ ^[A-Z0-9_-]{1,64}$ ]]; fi
           echo "::add-mask::$provider_subject"
-          echo "::add-mask::$customer_email"
           {
             echo "PORTAL_PROVIDER_SUBJECT=$provider_subject"
-            echo "PORTAL_CUSTOMER_EMAIL=$customer_email"
+            echo "PORTAL_CUSTOMER_CODE=$customer_code"
             echo "PORTAL_WAREHOUSE_CODE=$warehouse_code"
             echo "PORTAL_SALES_CHANNEL_CODE=$sales_channel_code"
           } >> "$GITHUB_ENV"
-          unset comment_body provider_subject customer_email warehouse_code sales_channel_code
+          unset comment_body provider_subject customer_code warehouse_code sales_channel_code
 
       - name: Checkout exact main
         uses: actions/checkout@v4
@@ -104,7 +109,6 @@ jobs:
           ref: ${{ env.DEPLOY_REF }}
           fetch-depth: 0
           persist-credentials: false
-
       - name: Verify exact origin/main SHA
         id: source
         shell: bash
@@ -114,12 +118,10 @@ jobs:
           sha="$(git rev-parse HEAD)"
           test "$sha" = "$(git rev-parse origin/main)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
       - name: Setup Node for pinned Heroku CLI
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Install pinned Heroku CLI
         shell: bash
         working-directory: npp-core
@@ -127,7 +129,6 @@ jobs:
           set -euo pipefail
           npm install --global --ignore-scripts heroku@11.0.0
           heroku --version | grep -F 'heroku/11.0.0' >/dev/null
-
       - name: Read-only Customer Portal target audit
         id: audit
         shell: bash
@@ -139,33 +140,20 @@ jobs:
           release="$(heroku releases --json -a "$CORE_APP_NAME" | jq -r '.[0].version // empty')"
           test -n "$release"
           echo "release=$release" >> "$GITHUB_OUTPUT"
-
-          payload="$(jq -cn \
-            --arg providerSubject "$PORTAL_PROVIDER_SUBJECT" \
-            --arg customerEmail "$PORTAL_CUSTOMER_EMAIL" \
-            --arg warehouseCode "$PORTAL_WAREHOUSE_CODE" \
-            --arg salesChannelCode "$PORTAL_SALES_CHANNEL_CODE" \
-            '{providerSubject:$providerSubject,customerEmail:$customerEmail,warehouseCode:$warehouseCode,salesChannelCode:$salesChannelCode}')"
-
+          payload="$(jq -cn --arg providerSubject "$PORTAL_PROVIDER_SUBJECT" --arg customerCode "$PORTAL_CUSTOMER_CODE" --arg warehouseCode "$PORTAL_WAREHOUSE_CODE" --arg salesChannelCode "$PORTAL_SALES_CHANNEL_CODE" '{providerSubject:$providerSubject,customerCode:$customerCode,warehouseCode:$warehouseCode,salesChannelCode:$salesChannelCode}')"
           set +e
           raw="$(printf '%s' "$payload" | heroku run --no-tty -a "$CORE_APP_NAME" -- node "$SCRIPT_PATH" audit 2>&1)"
           cli_status=$?
           set -e
-
           json="$(sed -n 's/^PHASE_9_8_PORTAL_RESULT=//p' <<<"$raw" | tail -n 1)"
           if [ -z "$json" ] || ! jq -e 'type == "object" and has("ok")' <<<"$json" >/dev/null; then
-            {
-              echo "PORTAL_AUDIT_OK=false"
-              echo "PORTAL_AUDIT_ERROR=provisioning_result_unreadable"
-              echo "PORTAL_AUDIT_CLI_STATUS=$cli_status"
-            } >> "$EVIDENCE_FILE"
+            { echo 'PORTAL_AUDIT_OK=false'; echo 'PORTAL_AUDIT_ERROR=provisioning_result_unreadable'; echo "PORTAL_AUDIT_CLI_STATUS=$cli_status"; } >> "$EVIDENCE_FILE"
             cat "$EVIDENCE_FILE" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-
           if jq -e '.ok == true and .mode == "audit" and .ready == true' <<<"$json" >/dev/null; then
             {
-              echo "PORTAL_AUDIT_OK=true"
+              echo 'PORTAL_AUDIT_OK=true'
               echo "PORTAL_AUDIT_REPLAYED=$(jq -r '.replayed // false' <<<"$json")"
               echo "CUSTOMER_CODE=$(jq -r '.customerCode // empty' <<<"$json")"
               echo "WAREHOUSE_CODE=$(jq -r '.warehouseCode // empty' <<<"$json")"
@@ -176,9 +164,8 @@ jobs:
             cat "$EVIDENCE_FILE" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-
           {
-            echo "PORTAL_AUDIT_OK=false"
+            echo 'PORTAL_AUDIT_OK=false'
             echo "PORTAL_AUDIT_ERROR=$(jq -r '.code // "audit_failed"' <<<"$json")"
             echo "PORTAL_AUDIT_DETAILS=$(jq -c '.details // {}' <<<"$json")"
             echo "PORTAL_AUDIT_CLI_STATUS=$cli_status"
@@ -202,15 +189,8 @@ jobs:
             echo
             echo "SOURCE_SHA=${SOURCE_SHA:-unavailable}"
             echo "CORE_RELEASE=${CORE_RELEASE:-unavailable}"
-            if [ -n "${EVIDENCE_FILE:-}" ] && [ -s "$EVIDENCE_FILE" ]; then
-              cat "$EVIDENCE_FILE"
-            else
-              echo "PORTAL_AUDIT_EVIDENCE=unavailable"
-            fi
+            if [ -n "${EVIDENCE_FILE:-}" ] && [ -s "$EVIDENCE_FILE" ]; then cat "$EVIDENCE_FILE"; else echo 'PORTAL_AUDIT_EVIDENCE=unavailable'; fi
             echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
           } > "$evidence_file"
-          gh api --method POST \
-            "repos/$GITHUB_REPOSITORY/issues/395/comments" \
-            -f body="$(cat "$evidence_file")" \
-            >/dev/null
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/395/comments" -f body="$(cat "$evidence_file")" >/dev/null
           rm -f "$evidence_file"
