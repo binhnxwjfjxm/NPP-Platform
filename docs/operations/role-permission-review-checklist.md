@@ -1,5 +1,23 @@
 # Role & Permission Review Checklist
 
+> Historical evidence: this checklist records the Phase 2 implementation review.  
+> Phase 9.0 decision lock: role/preset semantics are governed by #386 and `docs/operations/phase-9-0-readiness-audit.md`.
+
+## Phase 9 clarification
+
+The earlier implementation may use immutable role codes/default-role behavior internally, but that must **not** be read as the Phase 9 product rule that businesses are forced to use a fixed role list.
+
+Phase 9 target:
+
+- owner/admin can create a business role and name it for the organization;
+- preset/template is only a suggested starting permission set;
+- a permitted administrator can add/remove permissions before saving and edit permissions later;
+- backend authorization is based on actual permission + scope and remains deny-by-default;
+- role name is never an authorization shortcut;
+- Phase 9.1 reconciles the backend permission registry, route/action use and permission-management UI.
+
+The items below remain historical verification of the original implementation unless a later Phase 9 slice explicitly changes them.
+
 - [x] Migration 008 creates `shared.permission_catalog`, `shared.roles`, and `shared.role_permissions`.
 - [x] Permission catalog rows match the registry exactly.
 - [x] Role code is uppercase, immutable, and unique per installation.
@@ -19,7 +37,7 @@
 - [x] Playwright covers unauthenticated 401, authenticated CRUD, conflict, and refresh behavior.
 - [x] No fallback memory repository or production DB bypass was introduced.
 
-## CI evidence
+## Historical CI evidence
 
 ```text
 Foundation F0.2         PASS
@@ -40,4 +58,4 @@ Squash merge:
 f4cdb1e555dff2dc265ea95179a481b21bbba3d1
 ```
 
-Production migration and deployment were not performed as part of this review.
+Production migration and deployment were not performed as part of that review.
