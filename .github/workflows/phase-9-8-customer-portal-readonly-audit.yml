@@ -1,0 +1,199 @@
+name: Phase 9.8 Customer Portal read-only audit
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/phase-9-8-customer-portal-readonly-audit.yml
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: phase-9-8-customer-portal-readonly-audit
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pull request head
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate read-only audit contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow=.github/workflows/phase-9-8-customer-portal-readonly-audit.yml
+          grep -F "github.event.issue.number == 395" "$workflow" >/dev/null
+          grep -F "/audit-phase-9-8-customer-portal " "$workflow" >/dev/null
+          grep -F 'GITHUB_EVENT_PATH' "$workflow" >/dev/null
+          grep -F 'node "$SCRIPT_PATH" audit' "$workflow" >/dev/null
+          grep -F 'PORTAL_AUDIT_OK' "$workflow" >/dev/null
+          ! grep -F 'provision' "$workflow" | grep -F 'node "$SCRIPT_PATH" provision' >/dev/null
+
+  audit-production:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 395 &&
+      startsWith(github.event.comment.body, '/audit-phase-9-8-customer-portal ') &&
+      (
+        github.actor == 'binhnxwjfjxm' ||
+        github.actor == 'khuongbinhinfo-a11y'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DEPLOY_REF: main
+      CORE_APP_NAME: hung-phat
+      SCRIPT_PATH: npp-core/api/scripts/phase-9-8-provision-customer-portal.js
+    steps:
+      - name: Parse and mask operator input
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_file="${RUNNER_TEMP}/phase-9-8-customer-portal-readonly-audit.txt"
+          : > "$evidence_file"
+          echo "EVIDENCE_FILE=$evidence_file" >> "$GITHUB_ENV"
+
+          comment_body="$(jq -r '.comment.body // empty' "$GITHUB_EVENT_PATH")"
+          read -r command provider_subject customer_email warehouse_code sales_channel_code extra <<< "$comment_body"
+          test "$command" = '/audit-phase-9-8-customer-portal'
+          test -z "${extra:-}"
+          [[ "$provider_subject" =~ ^user_[A-Za-z0-9]+$ ]]
+          [[ "$customer_email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]
+
+          warehouse_code="${warehouse_code:-}"
+          sales_channel_code="${sales_channel_code:-}"
+          [ "$warehouse_code" = '-' ] && warehouse_code=''
+          [ "$sales_channel_code" = '-' ] && sales_channel_code=''
+          if [ -n "$warehouse_code" ]; then [[ "$warehouse_code" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; fi
+          if [ -n "$sales_channel_code" ]; then [[ "$sales_channel_code" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; fi
+
+          echo "::add-mask::$provider_subject"
+          echo "::add-mask::$customer_email"
+          {
+            echo "PORTAL_PROVIDER_SUBJECT=$provider_subject"
+            echo "PORTAL_CUSTOMER_EMAIL=$customer_email"
+            echo "PORTAL_WAREHOUSE_CODE=$warehouse_code"
+            echo "PORTAL_SALES_CHANNEL_CODE=$sales_channel_code"
+          } >> "$GITHUB_ENV"
+          unset comment_body provider_subject customer_email warehouse_code sales_channel_code
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Install Heroku CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Read-only Customer Portal target audit
+        id: audit
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -euo pipefail
+          test "$CORE_APP_NAME" = 'hung-phat'
+          release="$(heroku releases --json -a "$CORE_APP_NAME" | jq -r '.[0].version // empty')"
+          test -n "$release"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+          payload="$(jq -cn \
+            --arg providerSubject "$PORTAL_PROVIDER_SUBJECT" \
+            --arg customerEmail "$PORTAL_CUSTOMER_EMAIL" \
+            --arg warehouseCode "$PORTAL_WAREHOUSE_CODE" \
+            --arg salesChannelCode "$PORTAL_SALES_CHANNEL_CODE" \
+            '{providerSubject:$providerSubject,customerEmail:$customerEmail,warehouseCode:$warehouseCode,salesChannelCode:$salesChannelCode}')"
+
+          set +e
+          raw="$(printf '%s' "$payload" | heroku run --no-tty -a "$CORE_APP_NAME" -- node "$SCRIPT_PATH" audit 2>&1)"
+          cli_status=$?
+          set -e
+
+          json="$(sed -n 's/^PHASE_9_8_PORTAL_RESULT=//p' <<<"$raw" | tail -n 1)"
+          if [ -z "$json" ] || ! jq -e 'type == "object" and has("ok")' <<<"$json" >/dev/null; then
+            {
+              echo "PORTAL_AUDIT_OK=false"
+              echo "PORTAL_AUDIT_ERROR=provisioning_result_unreadable"
+              echo "PORTAL_AUDIT_CLI_STATUS=$cli_status"
+            } >> "$EVIDENCE_FILE"
+            cat "$EVIDENCE_FILE" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          audit_ok="$(jq -r '.ok == true and .mode == "audit" and .ready == true' <<<"$json")"
+          if [ "$audit_ok" = 'true' ]; then
+            {
+              echo "PORTAL_AUDIT_OK=true"
+              echo "PORTAL_AUDIT_REPLAYED=$(jq -r '.replayed // false' <<<"$json")"
+              echo "CUSTOMER_CODE=$(jq -r '.customerCode // empty' <<<"$json")"
+              echo "WAREHOUSE_CODE=$(jq -r '.warehouseCode // empty' <<<"$json")"
+              echo "SALES_CHANNEL_CODE=$(jq -r '.salesChannelCode // empty' <<<"$json")"
+              echo "COLLECTION_POLICY=$(jq -r '.collectionPolicy // empty' <<<"$json")"
+              echo "PORTAL_AUDIT_CLI_STATUS=$cli_status"
+            } >> "$EVIDENCE_FILE"
+            cat "$EVIDENCE_FILE" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "PORTAL_AUDIT_OK=false"
+            echo "PORTAL_AUDIT_ERROR=$(jq -r '.code // "audit_failed"' <<<"$json")"
+            echo "PORTAL_AUDIT_DETAILS=$(jq -c '.details // {}' <<<"$json")"
+            echo "PORTAL_AUDIT_CLI_STATUS=$cli_status"
+          } >> "$EVIDENCE_FILE"
+          cat "$EVIDENCE_FILE" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - name: Publish sanitized read-only audit evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          CORE_RELEASE: ${{ steps.audit.outputs.release }}
+        run: |
+          set -euo pipefail
+          evidence_file="$(mktemp)"
+          {
+            echo "## Phase 9.8 Customer Portal read-only audit — ${OPERATION_STATUS}"
+            echo
+            echo "SOURCE_SHA=${SOURCE_SHA:-unavailable}"
+            echo "CORE_RELEASE=${CORE_RELEASE:-unavailable}"
+            if [ -n "${EVIDENCE_FILE:-}" ] && [ -s "$EVIDENCE_FILE" ]; then
+              cat "$EVIDENCE_FILE"
+            else
+              echo "PORTAL_AUDIT_EVIDENCE=unavailable"
+            fi
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence_file"
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/395/comments" \
+            -f body="$(cat "$evidence_file")" \
+            >/dev/null
+          rm -f "$evidence_file"
