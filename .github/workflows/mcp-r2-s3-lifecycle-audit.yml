@@ -37,7 +37,9 @@ jobs:
             *) exit 1 ;;
           esac
           envelope="${COMMENT_BODY#'/audit-mcp-r2-s3-lifecycle '}"
-          test -n "$envelope"
+          if [[ ! "$envelope" =~ ^[A-Za-z0-9_-]+={0,2}$ ]]; then
+            exit 1
+          fi
           echo "::add-mask::$envelope"
           echo "MCP_R2_S3_LIFECYCLE_ENVELOPE_B64=$envelope" >> "$GITHUB_ENV"
 
@@ -98,8 +100,8 @@ jobs:
             done
             echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
           } > "$evidence_file"
-          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/391/comments" \
-            -f body="$(cat "$evidence_file")" >/dev/null
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
             -f body='/audit-mcp-r2-s3-lifecycle [redacted]' >/dev/null
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/391/comments" \
+            -f body="$(cat "$evidence_file")" >/dev/null
           rm -f "$evidence_file"

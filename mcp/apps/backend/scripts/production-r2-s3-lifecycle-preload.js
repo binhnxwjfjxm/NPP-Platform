@@ -157,7 +157,15 @@ async function main() {
   const secretPayload = decryptEnvelope(envelope, apiKey);
   const accountId = text(secretPayload?.CLOUDFLARE_ACCOUNT_ID);
   if (!accountId || !/^[a-f0-9]{32}$/i.test(accountId)) fail("cloudflare_account_id_invalid");
-  if (endpoint.hostname.toLowerCase() !== `${accountId.toLowerCase()}.r2.cloudflarestorage.com`) {
+  const expectedOrigin = `https://${accountId.toLowerCase()}.r2.cloudflarestorage.com`;
+  if (
+    endpoint.origin !== expectedOrigin ||
+    endpoint.username ||
+    endpoint.password ||
+    endpoint.pathname !== "/" ||
+    endpoint.search ||
+    endpoint.hash
+  ) {
     fail("cloudflare_account_r2_target_mismatch");
   }
 
@@ -165,9 +173,11 @@ async function main() {
   const originalFetch = globalThis.fetch.bind(globalThis);
   globalThis.fetch = async (input, init) => {
     const rawUrl = typeof input === "string" || input instanceof URL ? String(input) : input?.url;
+    const method = String(init?.method ?? input?.method ?? "GET").toUpperCase();
     if (rawUrl) {
       const parsed = new URL(rawUrl);
       if (
+        method === "GET" &&
         parsed.hostname.toLowerCase() === endpoint.hostname.toLowerCase() &&
         parsed.pathname === `/${encodeURIComponent(EXPECTED_BUCKET)}` &&
         parsed.searchParams.has("lifecycle")
