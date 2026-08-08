@@ -12,6 +12,13 @@ import { agingReport, grossMarginReport } from './reporting-finance.js';
 import { employeeMcpReport, resolveEmployeeMcpScope } from './reporting-employee-mcp.js';
 import { logisticsReport } from './reporting-logistics.js';
 import { codReport } from './reporting-cod.js';
+import {
+  auditHistoryReport,
+  controlTowerReport,
+  importExportHistoryReport,
+  normalizeAuditHistoryFilters,
+  normalizeImportExportHistoryFilters,
+} from './reporting-operations.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -63,6 +70,9 @@ function reportingFamily(pathname) {
   if (pathname === '/api/reporting/employee-mcp') return 'employee-mcp';
   if (pathname === '/api/reporting/logistics') return 'logistics';
   if (pathname === '/api/reporting/cod') return 'cod';
+  if (pathname === '/api/reporting/audit-history') return 'audit-history';
+  if (pathname === '/api/reporting/import-export-history') return 'import-export-history';
+  if (pathname === '/api/reporting/control-tower') return 'control-tower';
   return null;
 }
 
@@ -74,7 +84,18 @@ function reportingPermission(options, family) {
   if (family === 'gross-margin') return options.PERMISSIONS.coreReportingGrossMarginRead;
   if (family === 'logistics') return options.PERMISSIONS.coreReportingLogisticsRead;
   if (family === 'cod') return options.PERMISSIONS.coreReportingCodRead;
+  if (family === 'audit-history' || family === 'import-export-history') return options.PERMISSIONS.coreReportingAuditHistoryRead;
+  if (family === 'control-tower') return options.PERMISSIONS.coreReportingControlTowerRead;
   return options.PERMISSIONS.coreReportingEmployeeMcpRead;
+}
+
+function sendNormalizedError(res, normalized, options) {
+  sendError(
+    res,
+    apiError(normalized.code, normalized.message, normalized.details ?? {}, false, normalized.statusCode ?? 400),
+    options.requestId,
+    options.receivedAt,
+  );
 }
 
 export async function handleReportingRoutes(req, res, options) {
@@ -88,7 +109,8 @@ export async function handleReportingRoutes(req, res, options) {
     return true;
   }
 
-  const warehouseScoped = family !== 'employee-mcp';
+  const historyFamily = family === 'audit-history' || family === 'import-export-history';
+  const warehouseScoped = family !== 'employee-mcp' && !historyFamily;
   const requestContext = await authenticateAndAuthorize(
     req,
     res,
@@ -97,6 +119,38 @@ export async function handleReportingRoutes(req, res, options) {
     warehouseScoped,
   );
   if (!requestContext) return true;
+
+  if (historyFamily) {
+    const period = normalizeFilters({ from: url.searchParams.get('from'), to: url.searchParams.get('to'), warehouseId: null }, new Date(options.receivedAt));
+    if (!period.ok) {
+      sendNormalizedError(res, period, options);
+      return true;
+    }
+    const historyFilters = family === 'audit-history'
+      ? normalizeAuditHistoryFilters(url.searchParams, period)
+      : normalizeImportExportHistoryFilters(url.searchParams, period);
+    if (!historyFilters.ok) {
+      sendNormalizedError(res, historyFilters, options);
+      return true;
+    }
+    try {
+      const report = family === 'audit-history'
+        ? await auditHistoryReport(options.getPool(), requestContext, historyFilters)
+        : await importExportHistoryReport(options.getPool(), requestContext, historyFilters);
+      res.setHeader('Cache-Control', 'no-store');
+      sendSuccess(res, report, options.requestId, options.receivedAt);
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: 'reporting_query_failed',
+        requestId: options.requestId,
+        family,
+        errorName: error?.name ?? null,
+        errorCode: typeof error?.code === 'string' ? error.code : null,
+      }));
+      sendError(res, apiError('REPORTING_QUERY_FAILED', 'Không tải được lịch sử vận hành', {}, false, 503), options.requestId, options.receivedAt);
+    }
+    return true;
+  }
 
   if (family === 'employee-mcp'
     && !requestContext.roles?.includes('bootstrap')
@@ -148,7 +202,7 @@ export async function handleReportingRoutes(req, res, options) {
     warehouseId: warehouseScoped ? url.searchParams.get('warehouseId') : null,
   }, new Date(options.receivedAt));
   if (!normalized.ok) {
-    sendError(res, apiError(normalized.code, normalized.message, normalized.details, false, normalized.statusCode), options.requestId, options.receivedAt);
+    sendNormalizedError(res, normalized, options);
     return true;
   }
 
@@ -167,7 +221,7 @@ export async function handleReportingRoutes(req, res, options) {
   if (warehouseScoped) {
     warehouseScope = validateScope(requestContext, normalized);
     if (!warehouseScope.ok) {
-      sendError(res, apiError(warehouseScope.code, warehouseScope.message, warehouseScope.details, false, warehouseScope.statusCode), options.requestId, options.receivedAt);
+      sendNormalizedError(res, warehouseScope, options);
       return true;
     }
   }
@@ -188,10 +242,12 @@ export async function handleReportingRoutes(req, res, options) {
       report = await logisticsReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
     } else if (family === 'cod') {
       report = await codReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
+    } else if (family === 'control-tower') {
+      report = await controlTowerReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
     } else {
       const fieldScope = await resolveEmployeeMcpScope(options.getPool(), requestContext);
       if (!fieldScope.ok) {
-        sendError(res, apiError(fieldScope.code, fieldScope.message, fieldScope.details, false, fieldScope.statusCode), options.requestId, options.receivedAt);
+        sendNormalizedError(res, fieldScope, options);
         return true;
       }
       report = await employeeMcpReport(options.getPool(), requestContext, normalized, fieldScope);

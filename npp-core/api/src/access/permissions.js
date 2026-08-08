@@ -32,6 +32,9 @@ export const PERMISSIONS = Object.freeze({
   coreReportingEmployeeMcpRead: 'core.reporting.employee-mcp.read',
   coreReportingLogisticsRead: 'core.reporting.logistics.read',
   coreReportingCodRead: 'core.reporting.cod.read',
+  coreReportingAuditHistoryRead: 'core.reporting.audit-history.read',
+  coreReportingControlTowerRead: 'core.reporting.control-tower.read',
+  coreReportingExport: 'core.reporting.export',
   coreLogisticsRouteRead: 'core.logistics-route.read',
   coreLogisticsRouteManage: 'core.logistics-route.manage',
   coreVehicleRead: 'core.vehicle.read',
@@ -112,6 +115,9 @@ const REPORTING_PERMISSION_CATALOG = Object.freeze([
   Object.freeze({ permissionKey: PERMISSIONS.coreReportingEmployeeMcpRead, module: 'Báo cáo nhân sự & MCP', label: 'Xem hiệu suất nhân viên / MCP', description: 'Cho phép đọc hiệu suất route/session/visit/order-intent của MCP trong đúng installation và phạm vi field có thể xác minh canonical.', isSystem: true }),
   Object.freeze({ permissionKey: PERMISSIONS.coreReportingLogisticsRead, module: 'Báo cáo giao hàng', label: 'Xem hiệu suất giao hàng / logistics', description: 'Cho phép đọc báo cáo chuyến, điểm dừng, kết quả giao và hiệu suất tài xế/phương tiện trong đúng installation và phạm vi kho được cấp.', isSystem: true }),
   Object.freeze({ permissionKey: PERMISSIONS.coreReportingCodRead, module: 'Báo cáo COD', label: 'Xem COD & đối soát vận hành', description: 'Cho phép đọc trạng thái thu COD, tiền tài xế đang giữ, bàn giao, kế toán tiếp nhận và ngoại lệ trong đúng installation và phạm vi kho được cấp.', isSystem: true }),
+  Object.freeze({ permissionKey: PERMISSIONS.coreReportingAuditHistoryRead, module: 'Lịch sử vận hành', label: 'Xem audit và lịch sử import/export', description: 'Cho phép đọc audit/activity append-only và metadata lịch sử import/export canonical trong đúng installation.', isSystem: true }),
+  Object.freeze({ permissionKey: PERMISSIONS.coreReportingControlTowerRead, module: 'Điều hành quản lý', label: 'Xem Admin Control Tower', description: 'Cho phép đọc tập aggregate quản lý đã phê duyệt từ các contract báo cáo Phase 8 trong phạm vi được cấp; không cấp quyền xem toàn bộ chi tiết.', isSystem: true }),
+  Object.freeze({ permissionKey: PERMISSIONS.coreReportingExport, module: 'Xuất báo cáo', label: 'Yêu cầu xuất báo cáo chính thức', description: 'Cho phép yêu cầu export canonical khi đồng thời có quyền đọc report-family tương ứng; quyền này không tự cấp quyền xem báo cáo.', isSystem: true }),
 ]);
 
 const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
