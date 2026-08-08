@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "phase": "9.5",
+  "baseline": "bcf78f3498a2a90626b535fa9aac4877cb255c6e",
+  "source": {
+    "provider": "legacy-supabase-rest",
+    "schema": "public",
+    "readOnly": true
+  },
+  "target": {
+    "provider": "postgresql",
+    "schema": "mcp",
+    "readOnly": true
+  },
+  "mappingRules": {
+    "allowedEvidence": [
+      "exact_id",
+      "explicit_legacy_id",
+      "preserve_source_id"
+    ],
+    "forbiddenEvidence": [
+      "name_only",
+      "phone_only",
+      "address_only",
+      "fuzzy_match"
+    ],
+    "sourceIdentity": [
+      "installation_id",
+      "entity",
+      "legacy_id"
+    ],
+    "proposedStableIdIsMapping": true
+  },
+  "entities": [
+    {"name":"routes","sourceTable":"mcp_routes","targetTable":"mcp_routes","required":true,"importance":"operational","dependencies":[]},
+    {"name":"route_customers","sourceTable":"mcp_route_customers","targetTable":"mcp_route_customers","required":true,"importance":"operational","dependencies":[{"field":"route_id","entity":"routes","required":true}]},
+    {"name":"route_sessions","sourceTable":"mcp_route_sessions","targetTable":"mcp_route_sessions","required":true,"importance":"operational","dependencies":[{"field":"route_id","entity":"routes","required":true}]},
+    {"name":"session_customers","sourceTable":"mcp_session_customers","targetTable":"mcp_session_customers","required":true,"importance":"operational","dependencies":[{"field":"session_id","entity":"route_sessions","required":true},{"field":"route_id","entity":"routes","required":true},{"field":"route_customer_id","entity":"route_customers","required":false}]},
+    {"name":"visits","sourceTable":"mcp_visits","targetTable":"mcp_visits","required":true,"importance":"operational","dependencies":[{"field":"session_id","entity":"route_sessions","required":false},{"field":"session_customer_id","entity":"session_customers","required":false},{"field":"route_id","entity":"routes","required":false},{"field":"route_customer_id","entity":"route_customers","required":false}]},
+    {"name":"followups","sourceTable":"mcp_followups","targetTable":"mcp_followups","required":false,"importance":"operational","dependencies":[{"field":"session_id","entity":"route_sessions","required":false},{"field":"session_customer_id","entity":"session_customers","required":false},{"field":"visit_id","entity":"visits","required":false},{"field":"route_id","entity":"routes","required":false},{"field":"route_customer_id","entity":"route_customers","required":false}]},
+    {"name":"session_reports","sourceTable":"mcp_session_reports","targetTable":"mcp_session_reports","required":false,"importance":"archive","dependencies":[{"field":"session_id","entity":"route_sessions","required":true},{"field":"route_id","entity":"routes","required":false}]},
+    {"name":"market_reports","sourceTable":"market_reports","targetTable":"market_reports","required":false,"importance":"archive","dependencies":[]},
+    {"name":"orders","sourceTable":"orders","targetTable":"orders","required":true,"importance":"classified","dependencies":[]},
+    {"name":"order_items","sourceTable":"order_items","targetTable":"order_items","required":true,"importance":"classified","dependencies":[{"field":"order_id","entity":"orders","required":true}]},
+    {"name":"report_setting_groups","sourceTable":"mcp_setting_groups","targetTable":"mcp_report_setting_groups","required":true,"importance":"operational","dependencies":[]},
+    {"name":"report_settings","sourceTable":"mcp_setting_items","targetTable":"mcp_report_settings","required":true,"importance":"operational","dependencies":[{"field":"group_id","entity":"report_setting_groups","required":true}]},
+    {"name":"outlet_media","sourceTable":"mcp_outlet_media","targetTable":"mcp_outlet_media","required":true,"importance":"operational","dependencies":[{"field":"route_customer_id","entity":"route_customers","required":true},{"field":"session_id","entity":"route_sessions","required":true}]}
+  ],
+  "legacyOrderClasses": [
+    "OFFICIAL_ORDER_MIGRATION_CANDIDATE",
+    "FIELD_ORDER_INTENT",
+    "SAMPLE_TEST_DEMAND",
+    "HISTORICAL_DISPLAY_ONLY",
+    "INVALID_ORPHAN_RECONCILIATION_REQUIRED"
+  ]
+}
