@@ -134,6 +134,15 @@ const EXPECTED_PHASE97_FRONTENDS = [
   ["npp-operations", "binhnxwjfjxm/NPP-Platform", "npp-core/web", "npp-platform", "prj_vFEAzoxesLqNJIfD8uF4q1kytpvk", "office.nguyenlieuhungphat.com"],
   ["website", "binhnxwjfjxm/nguyenlieuhungphat", ".", "nguyenlieuhungphat", "prj_rXqH83GFDHuEGUcQrrv82JBPWnjU", "nguyenlieuhungphat.com"]
 ];
+const REQUIRED_NPP_PRODUCTION_ENV_NAMES = [
+  "NEXT_PUBLIC_CORE_API_URL",
+  "CORE_API_INTERNAL_URL",
+  "CORE_API_SERVER_TOKEN",
+  "CORE_WEB_ADMIN_USERNAME",
+  "CORE_WEB_ADMIN_PASSWORD",
+  "FOUNDATION_TEST_UI_ENABLED",
+  "FOUNDATION_R2_TEST_ENABLED"
+];
 
 function assertNoSensitiveManifestValues(value, path = "manifest") {
   if (Array.isArray(value)) {
@@ -217,6 +226,11 @@ test("Phase 9.7 locks source-declared production environment variable names with
     for (const name of frontend.productionRelevantEnvNames) {
       assert.match(source, new RegExp(`^${name}=`, "m"), `${id}:${name}`);
     }
+  }
+  const npp = phase97Manifest.frontends.find((item) => item.id === "npp-operations");
+  assert.deepEqual([...npp.productionRelevantEnvNames].sort(), [...REQUIRED_NPP_PRODUCTION_ENV_NAMES].sort());
+  for (const name of REQUIRED_NPP_PRODUCTION_ENV_NAMES) {
+    assert.match(phase97EnvFiles["npp-operations"], new RegExp(`^${name}=`, "m"), `npp-operations:${name}`);
   }
   assertNoSensitiveManifestValues(phase97Manifest);
 });
