@@ -109,3 +109,51 @@ test("database gate proves backup restore, idempotency, verification and reconci
   assert.doesNotMatch(deployment, /(?:^|\n)\s*(?:export\s+)?SUPABASE_[A-Z0-9_]*\s*=/i);
   assert.doesNotMatch(deployment, /\$\{\{\s*(?:secrets|vars|env)\.SUPABASE_/i);
 });
+
+test("Phase 9.3 Heroku runtime audit is read-only and provider-derived", async () => {
+  const auditWorkflowPath = new URL(".github/workflows/heroku-mcp-runtime-audit.yml", root);
+  const auditScriptPath = new URL("mcp/apps/backend/scripts/production-runtime-audit.sh", root);
+  const auditWorkflow = (await readFile(auditWorkflowPath, "utf8")).replace(/\r\n/g, "\n");
+  const auditScript = (await readFile(auditScriptPath, "utf8")).replace(/\r\n/g, "\n");
+
+  execFileSync("bash", ["-n", fileURLToPath(auditScriptPath)]);
+
+  assert.match(auditWorkflow, /github\.event\.issue\.number == 390/);
+  assert.match(auditWorkflow, /github\.event\.comment\.body == '\/audit-heroku-mcp-production'/);
+  assert.match(auditWorkflow, /HEROKU_APP_NAME: hung-phat-mcp/);
+  assert.match(auditWorkflow, /HEROKU_DB_OWNER_APP_NAME: hung-phat/);
+  assert.match(auditWorkflow, /persist-credentials: false/);
+  assert.match(auditWorkflow, /bash mcp\/apps\/backend\/scripts\/production-runtime-audit\.sh/);
+  assert.match(auditWorkflow, /issues\/390\/comments/);
+  assert.doesNotMatch(auditWorkflow, /manual-production-deploy\.sh/);
+
+  assert.match(auditScript, /\/apps\/\$HEROKU_APP_NAME\/config-vars/);
+  assert.match(auditScript, /\/apps\/\$HEROKU_DB_OWNER_APP_NAME\/addons/);
+  assert.match(auditScript, /\/apps\/\$HEROKU_APP_NAME\/addon-attachments/);
+  assert.match(auditScript, /\/apps\/\$HEROKU_APP_NAME\/releases/);
+  assert.match(auditScript, /createPostgresqlPersistence/);
+  assert.match(auditScript, /shared_database_target/);
+  assert.match(auditScript, /MCP_MIGRATION_DATABASE_URL/);
+  assert.match(auditScript, /PERSISTENCE_PROVIDER/);
+  assert.match(auditScript, /MCP_LEGACY_RUNTIME_ENABLED/);
+  assert.match(auditScript, /heroku-postgresql:essential-/);
+  assert.match(auditScript, /expected_credential_mode="essential_owner"/);
+  assert.match(auditScript, /expected_credential_mode="separated"/);
+  assert.match(auditScript, /health_status "\$app_url" \/health\/live/);
+  assert.match(auditScript, /health_status "\$app_url" \/health\/ready/);
+  assert.match(auditScript, /MCP_SOURCE_CORRELATION=container_release_does_not_expose_git_sha/);
+
+  for (const forbiddenMutation of [
+    /pg:backups/,
+    /maintenance:on/,
+    /maintenance:off/,
+    /container:push/,
+    /container:release/,
+    /migration:migrate/,
+    /migration:verify/,
+    /config:set/,
+    /--request\s+PATCH/
+  ]) {
+    assert.doesNotMatch(auditScript, forbiddenMutation);
+  }
+});
