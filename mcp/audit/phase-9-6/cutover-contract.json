@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "phase": "9.6",
+  "baseline": "9ed63840b56bd91ea82b976df920786bf905f8b2",
+  "parentIssue": 386,
+  "issue": 393,
+  "dependsOn": 392,
+  "ownerPolicyIntent": "TEST_ONLY_ARCHIVE_NO_OPERATIONAL_IMPORT",
+  "ownerPolicyBinding": {
+    "requiresExactPhase95ManifestSha256": true,
+    "requiresExactInstallationId": true,
+    "boundManifestSha256": null
+  },
+  "dataGate": {
+    "verifyPhase95ManifestSelfHash": true,
+    "verifyClassificationCountAndHash": true,
+    "verifyFindingsCountAndHash": true,
+    "zeroOperationalImportAllowedForOwnerTestOnlyPolicy": true,
+    "realOperationalImportRequiresPhase95ImportReady": true,
+    "crossInstallationBoundaryMustBeResolved": true
+  },
+  "runtimeGate": {
+    "canonicalProvider": "postgresql",
+    "requiredConfigVariableNames": ["DATABASE_URL", "PERSISTENCE_PROVIDER"],
+    "legacyRuntimeVariableNamesForbiddenAfterCutover": ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "MCP_LEGACY_RUNTIME_ENABLED"],
+    "requiredBridgeEvidence": ["customerOnboarding", "coreSalesOrder", "retryIdempotency"]
+  },
+  "boundaries": {
+    "productionMutationAuthorized": false,
+    "productionImportPerformed": false,
+    "adapterOrProviderChanged": false,
+    "dnsOrFrontendCutover": false,
+    "manualSqlForbidden": true,
+    "legacyEvidenceMustBeRetained": true
+  }
+}
