@@ -120,9 +120,9 @@ jobs:
             echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
           } > "$evidence_file"
           gh api --method POST "repos/$GITHUB_REPOSITORY/issues/391/comments" \
-            -f body="$(cat "$evidence_file)" >/dev/null
+            -f body="$(cat "$evidence_file")" >/dev/null
           if [[ "$COMMENT_BODY" == '/replace-mcp-r2-ecdh '* ]]; then
-            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$COMENT_ID" \
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
               -f body='/replace-mcp-r2-ecdh [redacted]' >/dev/null
           fi
           rm -f "$evidence_file"
