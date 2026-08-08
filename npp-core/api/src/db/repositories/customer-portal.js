@@ -54,7 +54,7 @@ export async function ensurePortalIdentity(client, {
 }) {
   await client.query(
     'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-    [`portal-identity:${installationId}:${provider}:${providerSubject}`],
+    [`${installationId}:${provider}:${providerSubject}`],
   );
   const existing = await getPortalIdentityBySubject(client, {
     installationId,
@@ -101,6 +101,34 @@ export async function getPortalUserForUpdate(client, { installationId, portalUse
 }
 
 export async function getActiveMembershipByPortalUser(client, { installationId, portalUserId }) {
+  const rows = (await client.query(
+    `SELECT id AS membership_id,
+            portal_user_id,
+            customer_id,
+            default_warehouse_id,
+            sales_channel_id,
+            collection_policy,
+            allow_cancel
+       FROM sales.customer_portal_memberships
+      WHERE installation_id = $1
+        AND portal_user_id = $2
+        AND status = 'ACTIVE'
+      ORDER BY created_at ASC
+      LIMIT 2`,
+    [installationId, portalUserId],
+  )).rows;
+  if (rows.length === 0) return null;
+  if (rows.length > 1) {
+    return Object.freeze({
+      membership_conflict: true,
+      portal_user_id: portalUserId,
+      customer_id: null,
+    });
+  }
+  return Object.freeze({ ...rows[0], membership_conflict: false });
+}
+
+export async function getUsableMembershipByPortalUser(client, { installationId, portalUserId }) {
   const rows = (await client.query(
     `SELECT
        pu.id AS portal_user_id,

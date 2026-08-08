@@ -60,12 +60,13 @@ test('pre-membership request context is stable, least privilege and does not exp
   assert.equal(context.sourceApp, 'customer-ordering');
 });
 
-test('registration state never treats an approved request without membership as active', () => {
+test('registration state never treats an unusable or unbound membership as active', () => {
   const identity = { portal_user_id: '11111111-1111-4111-8111-111111111111' };
   assert.equal(registrationState({ identity: null, membership: null, request: null }), 'unregistered');
   assert.equal(registrationState({ identity, membership: null, request: { status: 'submitted' } }), 'submitted');
   assert.equal(registrationState({ identity, membership: null, request: { status: 'need_more_info' } }), 'need_more_info');
   assert.equal(registrationState({ identity, membership: null, request: { status: 'approved' } }), 'activation_pending');
+  assert.equal(registrationState({ identity, membership: null, membershipUnavailable: true, request: { status: 'approved' } }), 'suspended');
   assert.equal(registrationState({ identity, membership: { id: 'membership' }, request: { status: 'approved' } }), 'active_customer');
 });
 
@@ -108,22 +109,44 @@ test('072 migration generalizes onboarding without weakening MCP source semantic
   assert.match(sql, /customer_onboarding_requests_one_portal_registration_idx/);
 });
 
-test('migration registry includes 072 and registration routes run before membership gate', () => {
-  const registry = readFileSync(new URL('../src/migrations/index.js', import.meta.url), 'utf8');
-  assert.match(registry, /072_customer_portal_registration_onboarding/);
+test('identity lock namespace matches guarded provisioning and active membership truth is separated from usability', () => {
+  const repository = readFileSync(new URL('../src/db/repositories/customer-portal.js', import.meta.url), 'utf8');
+  const provisioning = readFileSync(new URL('../scripts/phase-9-8-provision-customer-portal.js', import.meta.url), 'utf8');
+  assert.match(repository, /`\$\{installationId\}:\$\{provider\}:\$\{providerSubject\}`/);
+  assert.match(provisioning, /`\$\{installationId\}:\$\{PROVIDER\}:\$\{input\.providerSubject\}`/);
+  assert.match(repository, /getActiveMembershipByPortalUser[\s\S]*FROM sales\.customer_portal_memberships/);
+  assert.match(repository, /getUsableMembershipByPortalUser/);
+  const migration071 = readFileSync(new URL('../../../database/migrations/sales/071_customer_portal_order_intake.sql', import.meta.url), 'utf8');
+  assert.match(migration071, /customer_portal_memberships_one_active_user_idx/);
+});
 
+test('registration routes run before membership gate and unsupported registration methods stop at 405', () => {
   const route = readFileSync(new URL('../src/routes/customer-portal.js', import.meta.url), 'utf8');
   const registrationIndex = route.indexOf('const registrationHandled = await handleRegistrationRoutes');
   const membershipIndex = route.indexOf('const portal = await authenticateMembership');
   assert.ok(registrationIndex >= 0);
   assert.ok(membershipIndex > registrationIndex);
-  assert.match(route, /\/api\/customer-portal\/registrations/);
-  assert.match(route, /resubmit/);
   assert.match(route, /CUSTOMER_PORTAL_ALREADY_ACTIVE/);
-  assert.match(route, /registrationService\.publicRegistration/);
+  assert.match(route, /membershipResult\.hasActiveMembership/);
+  assert.match(route, /url\.pathname === REGISTRATION_COLLECTION \|\| url\.pathname === REGISTRATION_CURRENT \|\| resubmitMatch/);
+  const conflictIndex = route.indexOf("code.includes('CONFLICT')");
+  const membershipStatusIndex = route.indexOf("code.includes('MEMBERSHIP')");
+  assert.ok(conflictIndex >= 0 && membershipStatusIndex > conflictIndex);
 });
 
-test('approval and link-existing bind portal membership inside onboarding transaction', () => {
+test('reviewer options and NPP UI carry warehouse and sales-channel activation choices', () => {
+  const onboardingRoute = readFileSync(new URL('../src/routes/customer-onboarding.js', import.meta.url), 'utf8');
+  assert.match(onboardingRoute, /customer-onboarding-portal-options/);
+  assert.match(onboardingRoute, /coreCustomerOnboardingReview/);
+
+  const reviewUi = readFileSync(new URL('../../web/app/management/customer-onboarding/customer-onboarding-review.tsx', import.meta.url), 'utf8');
+  assert.match(reviewUi, /sourceSystem === 'CUSTOMER_PORTAL'/);
+  assert.match(reviewUi, /portalWarehouseId/);
+  assert.match(reviewUi, /portalSalesChannelId/);
+  assert.match(reviewUi, /Kích hoạt quyền đặt hàng/);
+});
+
+test('approval and link-existing keep portal membership binding inside the onboarding transaction', () => {
   const source = readFileSync(new URL('../src/services/customer-onboarding.js', import.meta.url), 'utf8');
   assert.match(source, /activatePortalMembershipForRequest/);
   assert.match(source, /portalMembership: portal\.membership/);

@@ -14,6 +14,7 @@ const ALLOWED_STATUSES = new Set([
   'rejected',
   'cancelled',
 ]);
+const ALLOWED_SOURCE_SYSTEMS = new Set(['MCP', 'CUSTOMER_PORTAL']);
 const ALLOWED_ACTIONS = new Set([
   'review',
   'need-more-info',
@@ -39,6 +40,7 @@ export type CustomerOnboardingAction =
 export type CustomerOnboardingRequestSummary = {
   id: string;
   status: string;
+  sourceSystem: 'MCP' | 'CUSTOMER_PORTAL';
   sourceOutletId: string;
   sourceDemandReference: string;
   proposedCustomer: {
@@ -61,6 +63,17 @@ export type CustomerOnboardingRequestSummary = {
   version: number;
   submittedAt: string;
   updatedAt: string;
+};
+
+export type CustomerPortalActivationOption = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+export type CustomerPortalActivationOptions = {
+  warehouses: CustomerPortalActivationOption[];
+  salesChannels: CustomerPortalActivationOption[];
 };
 
 export class CustomerOnboardingGatewayError extends Error {
@@ -90,6 +103,7 @@ function isPositiveInteger(value: unknown): value is number {
 
 function isCustomerOnboardingRequestSummary(value: unknown): value is CustomerOnboardingRequestSummary {
   if (!isRecord(value) || !ALLOWED_STATUSES.has(String(value.status ?? ''))) return false;
+  if (!ALLOWED_SOURCE_SYSTEMS.has(String(value.sourceSystem ?? ''))) return false;
   const proposedCustomer = value.proposedCustomer;
   if (!isRecord(proposedCustomer)) return false;
   const address = proposedCustomer.address;
@@ -113,6 +127,14 @@ function isCustomerOnboardingRequestSummary(value: unknown): value is CustomerOn
     && isNullableString(address.postalCode)
     && typeof address.countryCode === 'string'
     && typeof address.label === 'string';
+}
+
+function isPortalActivationOption(value: unknown): value is CustomerPortalActivationOption {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && UUID_PATTERN.test(value.id)
+    && typeof value.code === 'string'
+    && typeof value.name === 'string';
 }
 
 export function normalizeCustomerOnboardingGatewayError(error: unknown): CustomerOnboardingGatewayError {
@@ -306,6 +328,28 @@ export async function listCustomerOnboardingRequests({
     );
   }
   return requests;
+}
+
+export async function getCustomerOnboardingPortalOptions(
+  requestId: string,
+): Promise<CustomerPortalActivationOptions> {
+  const data = await requestCore<{ warehouses: unknown; salesChannels: unknown }>({
+    method: 'GET',
+    path: '/api/customer-onboarding-portal-options',
+    requestId,
+  });
+  if (!Array.isArray(data.warehouses)
+    || !data.warehouses.every(isPortalActivationOption)
+    || !Array.isArray(data.salesChannels)
+    || !data.salesChannels.every(isPortalActivationOption)) {
+    throw new CustomerOnboardingGatewayError(
+      'CUSTOMER_ONBOARDING_GATEWAY_RESPONSE_INVALID',
+      'Phản hồi cấu hình Customer Portal không hợp lệ',
+      502,
+      false,
+    );
+  }
+  return { warehouses: data.warehouses, salesChannels: data.salesChannels };
 }
 
 export async function getCustomerOnboardingRequest(

@@ -33,10 +33,10 @@ function apiError(code, message, details = {}, retryable = false, statusCode = 5
 
 function statusFor(code, fallback = 400) {
   if (code === 'CUSTOMER_PORTAL_AUTH_REQUIRED' || code.includes('TOKEN_')) return 401;
-  if (code.includes('MEMBERSHIP') || code.includes('SUSPENDED') || code.endsWith('_FORBIDDEN') || code === 'DELIVERY_ADDRESS_NOT_FOUND') return 403;
-  if (code.endsWith('_NOT_FOUND')) return 404;
   if (code === 'INVALID_IDEMPOTENCY_KEY' || code === 'MISSING_IDEMPOTENCY_KEY') return 400;
   if (code.includes('CONFLICT') || code.includes('DUPLICATE') || code.includes('IDEMPOTENCY') || code === 'INVALID_STATUS_TRANSITION' || code === 'SALES_ORDER_HAS_EXECUTION_FACTS' || code === 'CUSTOMER_PORTAL_ALREADY_ACTIVE') return 409;
+  if (code.includes('MEMBERSHIP') || code.includes('SUSPENDED') || code.endsWith('_FORBIDDEN') || code === 'DELIVERY_ADDRESS_NOT_FOUND') return 403;
+  if (code.endsWith('_NOT_FOUND')) return 404;
   if (code.includes('UNAVAILABLE') || code.includes('NOT_CONFIGURED')) return 503;
   return fallback;
 }
@@ -222,6 +222,10 @@ async function handleRegistrationRoutes(req, res, options, url, identityAuth) {
       installationId: requestContext.installationId,
       portalUserId: identityResult.identity.portal_user_id,
     });
+    if (!membershipResult.ok) {
+      sendServiceError(res, membershipResult, options);
+      return true;
+    }
     const registrationResult = await onboardingService.getPortalRegistration(options.getPool(), {
       requestContext,
       portalUserId: identityResult.identity.portal_user_id,
@@ -229,6 +233,7 @@ async function handleRegistrationRoutes(req, res, options, url, identityAuth) {
     const state = registrationService.registrationState({
       identity: identityResult.identity,
       membership: membershipResult.membership,
+      membershipUnavailable: membershipResult.membershipUnavailable,
       request: registrationResult.request,
     });
     sendSuccess(res, {
@@ -270,7 +275,8 @@ async function handleRegistrationRoutes(req, res, options, url, identityAuth) {
                 installationId: requestContext.installationId,
                 portalUserId: identityResult.identity.portal_user_id,
               });
-              if (membershipResult.membership) {
+              if (!membershipResult.ok) return rollbackBusinessFailure(membershipResult);
+              if (membershipResult.hasActiveMembership) {
                 return rollbackBusinessFailure({
                   ok: false,
                   code: 'CUSTOMER_PORTAL_ALREADY_ACTIVE',
@@ -371,6 +377,10 @@ async function handleRegistrationRoutes(req, res, options, url, identityAuth) {
     return true;
   }
 
+  if (url.pathname === REGISTRATION_COLLECTION || url.pathname === REGISTRATION_CURRENT || resubmitMatch) {
+    sendError(res, apiError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405), options.requestId, options.receivedAt);
+    return true;
+  }
   return false;
 }
 

@@ -54,15 +54,31 @@ export async function ensurePortalIdentity(client, {
 }
 
 export async function resolvePortalMembershipByUser(client, { installationId, portalUserId }) {
-  const membership = await portalRepository.getActiveMembershipByPortalUser(client, {
+  const activeMembership = await portalRepository.getActiveMembershipByPortalUser(client, {
     installationId,
     portalUserId,
   });
-  return Object.freeze({ ok: true, membership });
+  if (!activeMembership) {
+    return Object.freeze({ ok: true, membership: null, hasActiveMembership: false, membershipUnavailable: false });
+  }
+  if (activeMembership.membership_conflict === true) {
+    return failure('CUSTOMER_PORTAL_MEMBERSHIP_CONFLICT', 'Tài khoản có nhiều membership đang hoạt động.', 409);
+  }
+  const membership = await portalRepository.getUsableMembershipByPortalUser(client, {
+    installationId,
+    portalUserId,
+  });
+  return Object.freeze({
+    ok: true,
+    membership,
+    hasActiveMembership: true,
+    membershipUnavailable: !membership,
+  });
 }
 
-export function registrationState({ identity, membership, request }) {
+export function registrationState({ identity, membership, request, membershipUnavailable = false }) {
   if (!identity) return 'unregistered';
+  if (membershipUnavailable) return 'suspended';
   if (membership) return 'active_customer';
   if (!request) return 'unregistered';
   if (request.status === 'approved' || request.status === 'linked_existing') return 'activation_pending';
