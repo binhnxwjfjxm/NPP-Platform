@@ -17,6 +17,14 @@ function closeHttpServer(server) {
   return new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
 }
 
+export function resolveCustomerPortalRuntimeConfig(config, env = process.env) {
+  const explicitHost = String(env?.HOST ?? '').trim();
+  if (config.nodeEnv === 'production' && !explicitHost && config.host === '127.0.0.1') {
+    return Object.freeze({ ...config, host: '0.0.0.0' });
+  }
+  return config;
+}
+
 function unexpectedPortalResponse(error, requestId, pathName) {
   const code = typeof error?.code === 'string' ? error.code : null;
   const retryable = error?.retryable === true || (code ? RETRYABLE_ERROR_CODES.has(code) : false);
@@ -42,7 +50,8 @@ function unexpectedPortalResponse(error, requestId, pathName) {
 }
 
 export function createCustomerPortalAwareServer(options = {}) {
-  const runtimeConfig = options.config ?? loadConfig();
+  const loadedConfig = options.config ?? loadConfig();
+  const runtimeConfig = resolveCustomerPortalRuntimeConfig(loadedConfig, options.env ?? process.env);
   const baseServer = createCoreApiServer({ ...options, config: runtimeConfig });
   const baseHandler = baseServer.listeners('request')[0];
   const idempotencyStore = options.idempotencyStore
@@ -82,7 +91,8 @@ export function createCustomerPortalAwareServer(options = {}) {
 }
 
 export function startCustomerPortalAwareServer(options = {}) {
-  const runtimeConfig = options.config ?? loadConfig();
+  const loadedConfig = options.config ?? loadConfig();
+  const runtimeConfig = resolveCustomerPortalRuntimeConfig(loadedConfig, options.env ?? process.env);
   const server = createCustomerPortalAwareServer({ ...options, config: runtimeConfig });
   return new Promise((resolve, reject) => {
     server.once('error', reject);
@@ -96,7 +106,7 @@ export function startCustomerPortalAwareServer(options = {}) {
 
 const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === __filename;
 if (isMainModule) {
-  const config = loadConfig();
+  const config = resolveCustomerPortalRuntimeConfig(loadConfig(), process.env);
   const server = await startCustomerPortalAwareServer({ config });
   let shuttingDown = false;
   const stop = async (signal) => {
