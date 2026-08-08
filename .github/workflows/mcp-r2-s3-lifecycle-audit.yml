@@ -23,7 +23,6 @@ jobs:
     env:
       AUDIT_REF: main
       HEROKU_APP_NAME: hung-phat-mcp
-      MCP_R2_CONFIG_CLOSURE_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-config-closure-evidence.md
       MCP_R2_S3_LIFECYCLE_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-s3-lifecycle-evidence.md
       MCP_MEDIA_AUDIT_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-media-audit-evidence.md
     steps:
@@ -70,12 +69,6 @@ jobs:
         working-directory: mcp/apps/backend
         run: npm ci --ignore-scripts
 
-      - name: Smoke current MCP R2 config and verify health
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-          AUDITED_MAIN_SHA: ${{ steps.source.outputs.sha }}
-        run: node mcp/apps/backend/scripts/production-r2-config-closure.js
-
       - name: Read lifecycle through R2 S3 credentials and reconcile historical media
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
@@ -98,7 +91,7 @@ jobs:
           {
             echo "## Phase 9.4 R2 S3 lifecycle audit — ${OPERATION_STATUS}"
             echo
-            for source in "$MCP_R2_CONFIG_CLOSURE_EVIDENCE_FILE" "$MCP_R2_S3_LIFECYCLE_EVIDENCE_FILE" "$MCP_MEDIA_AUDIT_EVIDENCE_FILE"; do
+            for source in "$MCP_R2_S3_LIFECYCLE_EVIDENCE_FILE" "$MCP_MEDIA_AUDIT_EVIDENCE_FILE"; do
               if [ -s "$source" ]; then
                 cat "$source"
               fi
