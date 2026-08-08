@@ -1,0 +1,432 @@
+{
+  "schemaVersion": 2,
+  "phase": "9.7",
+  "issue": 394,
+  "parentIssue": 386,
+  "capturedAt": "2026-08-08T19:29:00+07:00",
+  "auditBaselines": {
+    "nppPlatform": {
+      "repository": "binhnxwjfjxm/NPP-Platform",
+      "mainCommit": "528218c25328628f5859cde2675943fb781fcdff"
+    },
+    "websiteCustomer": {
+      "repository": "binhnxwjfjxm/nguyenlieuhungphat",
+      "mainCommit": "b6bef8c868b4caa37abcb80355cecaf339e232a0",
+      "treeSha": "b7baee961fbc2c246634dc00af2883032bb73817",
+      "phase97HeadCommit": "c789bd1336b5c21fbf26583fba9517607fe35f52"
+    }
+  },
+  "providerReadCapabilities": {
+    "projectList": true,
+    "productionDeploymentMetadata": true,
+    "deploymentGitRepositoryBranch": true,
+    "deploymentRootDirectoryWhenPresent": true,
+    "environmentVariableNames": false,
+    "environmentVariableValues": false,
+    "customDomainAssignments": true,
+    "autoDeploySetting": false,
+    "dnsRecords": false
+  },
+  "providerEvidence": {
+    "rootDirectories": {
+      "status": "PASS",
+      "sources": [
+        "Vercel project/deployment metadata",
+        "owner provider screenshots",
+        "guarded production workflow provider checks"
+      ]
+    },
+    "environmentNames": {
+      "status": "PASS",
+      "source": "owner-confirmed Vercel production configuration reconciled against source contracts; guarded workflows provide Delivery and Customer provider checks"
+    },
+    "customDomains": {
+      "status": "PASS",
+      "source": "Vercel project metadata"
+    },
+    "autoDeploy": {
+      "status": "PASS",
+      "source": "owner-confirmed all six Vercel projects; repository deploymentEnabled locks remain false"
+    },
+    "dns": {
+      "status": "PASS",
+      "source": "owner Cloudflare DNS screenshot",
+      "proxyMode": "DNS_ONLY"
+    },
+    "mcpBackend": {
+      "status": "PASS",
+      "source": "owner Vercel production environment screenshot",
+      "targetService": "hung-phat-mcp"
+    }
+  },
+  "productionMutations": {
+    "vercelDeployment": false,
+    "environmentChange": false,
+    "domainChange": false,
+    "dnsSwitch": false,
+    "backendDeploy": false,
+    "databaseMigration": false
+  },
+  "ownerPerformedProviderChanges": {
+    "environmentConfigurationReconciled": true,
+    "dnsChanged": false,
+    "autoDeployChanged": false
+  },
+  "frontends": [
+    {
+      "id": "npp-operations",
+      "repository": "binhnxwjfjxm/NPP-Platform",
+      "sourceRoot": "npp-core/web",
+      "expectedDomain": "office.nguyenlieuhungphat.com",
+      "routeAudit": {
+        "status": "PASS",
+        "orphanTopLevelCount": 0,
+        "fixedOrphans": [
+          "/operations/audit-history",
+          "/operations/import-export-history",
+          "/accounting/customer-return-credits"
+        ],
+        "entryHrefs": [
+          "/dashboard",
+          "/organization",
+          "/organization/branches",
+          "/organization/warehouses",
+          "/organization/locations",
+          "/customers",
+          "/suppliers",
+          "/products",
+          "/pricing",
+          "/document-numbering",
+          "/access/roles",
+          "/access/employees",
+          "/access/employees/performance",
+          "/access/users",
+          "/inventory/reporting",
+          "/inventory/fulfillment",
+          "/inventory/transfers",
+          "/inventory/stocktakes",
+          "/inventory/adjustments",
+          "/inventory/costing",
+          "/inventory/balances",
+          "/inventory/tracking-policies",
+          "/inventory/lots",
+          "/inventory/opening-balances",
+          "/logistics/reporting",
+          "/inventory/delivery-orders",
+          "/logistics/trips",
+          "/logistics/dispatch",
+          "/logistics/delivery-attempts",
+          "/logistics/trip-reconciliation",
+          "/inventory/customer-returns",
+          "/sales/reporting",
+          "/sales/gross-margin",
+          "/management",
+          "/sales/sales-orders",
+          "/management/customer-onboarding",
+          "/purchasing/reporting",
+          "/purchasing/purchase-orders",
+          "/purchasing/purchase-prices",
+          "/purchasing/goods-receipts",
+          "/purchasing/supplier-returns",
+          "/accounting/aging",
+          "/accounting/cod-reporting",
+          "/accounting/receivables",
+          "/accounting/customer-payments",
+          "/accounting/customer-return-credits",
+          "/accounting/payables",
+          "/accounting/supplier-payments",
+          "/operations/audit-history",
+          "/operations/import-export-history"
+        ],
+        "intentionalDeepRoutes": [
+          "/accounting/cod-reconciliation",
+          "/accounting/reconciliation"
+        ],
+        "intentionalAliases": [
+          { "route": "/inventory", "canonical": "/inventory/balances" },
+          { "route": "/organization/customers", "canonical": "/customers" },
+          { "route": "/organization/products", "canonical": "/products" },
+          { "route": "/organization/suppliers", "canonical": "/suppliers" }
+        ],
+        "intentionalNonNavigation": ["/login", "/foundation"]
+      },
+      "productionRelevantEnvNames": [
+        "NEXT_PUBLIC_CORE_API_URL",
+        "CORE_API_INTERNAL_URL",
+        "CORE_API_SERVER_TOKEN",
+        "CORE_WEB_ADMIN_USERNAME",
+        "CORE_WEB_ADMIN_PASSWORD",
+        "FOUNDATION_TEST_UI_ENABLED",
+        "FOUNDATION_R2_TEST_ENABLED"
+      ],
+      "vercel": {
+        "projectName": "npp-platform",
+        "projectId": "prj_vFEAzoxesLqNJIfD8uF4q1kytpvk",
+        "latestProductionDeployment": {
+          "id": "dpl_6nfRHEFES9aeEb9FYfcdrxy2tq1D",
+          "state": "READY",
+          "target": "production",
+          "githubRepository": "NPP-Platform",
+          "githubCommitRef": "main",
+          "githubCommitSha": "efe2069eb81e84e78c26339d82f821e8a95deabd",
+          "rootDirectory": "npp-core/web"
+        },
+        "rootDirectoryStatus": "VERIFIED_PROVIDER_EVIDENCE",
+        "environmentNamePresenceStatus": "VERIFIED_OWNER_PROVIDER",
+        "assignedDomains": ["office.nguyenlieuhungphat.com"],
+        "customDomainAssignmentStatus": "VERIFIED_PROJECT_META",
+        "autoDeployOffStatus": "VERIFIED_OWNER_PROVIDER"
+      }
+    },
+    {
+      "id": "mcp-field",
+      "repository": "binhnxwjfjxm/NPP-Platform",
+      "sourceRoot": "mcp",
+      "expectedDomain": "mcp.nguyenlieuhungphat.com",
+      "routeAudit": {
+        "status": "PASS",
+        "orphanTopLevelCount": 0,
+        "entryHrefs": [
+          "/",
+          "/mcp",
+          "/routes",
+          "/visits",
+          "/mcp/sessions",
+          "/customers",
+          "/orders",
+          "/reports",
+          "/field-checks",
+          "/plans",
+          "/mcp-setting",
+          "/settings"
+        ],
+        "intentionalAliases": [{ "route": "/actions", "canonical": "/plans" }],
+        "intentionalDeepRoutes": ["/visits/order-intent"]
+      },
+      "productionRelevantEnvNames": [
+        "BACKEND_API_BASE_URL",
+        "BACKEND_API_TOKEN",
+        "MCP_LEGACY_ACTOR_ID"
+      ],
+      "backendTarget": {
+        "expectedService": "hung-phat-mcp",
+        "apiBaseVariable": "BACKEND_API_BASE_URL",
+        "sourceContractStatus": "VERIFIED",
+        "productionValueStatus": "VERIFIED_OWNER_PROVIDER"
+      },
+      "vercel": {
+        "projectName": "mcp-field",
+        "projectId": "prj_854SWdJeDEOPezAvvTZzTaRvZUSq",
+        "latestProductionDeployment": {
+          "id": "dpl_2jQxiqBSqgzMk8YwLmCWWE8LTwqC",
+          "state": "READY",
+          "target": "production",
+          "githubRepository": "NPP-Platform",
+          "githubCommitRef": "main",
+          "githubCommitSha": "bb163c6629f5fb212ebe4a2292fb1903dc4b80f3",
+          "rootDirectory": "mcp"
+        },
+        "rootDirectoryStatus": "VERIFIED_PROVIDER_EVIDENCE",
+        "environmentNamePresenceStatus": "VERIFIED_OWNER_PROVIDER",
+        "assignedDomains": ["mcp.nguyenlieuhungphat.com"],
+        "customDomainAssignmentStatus": "VERIFIED_PROJECT_META",
+        "autoDeployOffStatus": "VERIFIED_OWNER_PROVIDER"
+      }
+    },
+    {
+      "id": "admin-mcp-npp",
+      "repository": "binhnxwjfjxm/NPP-Platform",
+      "sourceRoot": "admin/web",
+      "expectedDomain": "admin.nguyenlieuhungphat.com",
+      "routeAudit": {
+        "status": "PASS",
+        "orphanTopLevelCount": 0,
+        "entryHrefs": ["/", "/customer-onboarding", "/menu"],
+        "intentionalNonNavigation": ["/login"]
+      },
+      "productionRelevantEnvNames": [
+        "CORE_API_INTERNAL_URL",
+        "CORE_API_SERVER_TOKEN",
+        "CORE_WEB_ADMIN_USERNAME",
+        "CORE_WEB_ADMIN_PASSWORD",
+        "NPP_OPERATIONS_URL"
+      ],
+      "vercel": {
+        "projectName": "admin-mcp-npp",
+        "projectId": "prj_0hp2A8WyUW4zgglShPTzL70hesVC",
+        "latestProductionDeployment": {
+          "id": "dpl_GNHs8JimZ1HQ8zBnNTgYpTMgdk2r",
+          "state": "READY",
+          "target": "production",
+          "githubRepository": "NPP-Platform",
+          "githubCommitRef": "main",
+          "githubCommitSha": "efe2069eb81e84e78c26339d82f821e8a95deabd",
+          "rootDirectory": "admin/web"
+        },
+        "rootDirectoryStatus": "VERIFIED_PROVIDER_EVIDENCE",
+        "environmentNamePresenceStatus": "VERIFIED_OWNER_PROVIDER",
+        "assignedDomains": ["admin.nguyenlieuhungphat.com"],
+        "customDomainAssignmentStatus": "VERIFIED_PROJECT_META",
+        "autoDeployOffStatus": "VERIFIED_OWNER_PROVIDER"
+      }
+    },
+    {
+      "id": "delivery",
+      "repository": "binhnxwjfjxm/NPP-Platform",
+      "sourceRoot": "delivery/web",
+      "expectedDomain": "log.nguyenlieuhungphat.com",
+      "routeAudit": {
+        "status": "PASS",
+        "orphanTopLevelCount": 0,
+        "entryHrefs": ["/"],
+        "intentionalDeepRoutes": ["/trips/[tripId]"],
+        "intentionalNonNavigation": ["/login"]
+      },
+      "productionRelevantEnvNames": [
+        "CORE_API_INTERNAL_URL",
+        "DELIVERY_CORE_API_TOKEN",
+        "DELIVERY_WEB_USERS_JSON",
+        "DELIVERY_SETUP_MODE",
+        "NEXT_PUBLIC_APP_LOGO_URL"
+      ],
+      "vercel": {
+        "projectName": "npp-delivery",
+        "projectId": "prj_aqsb62CiXpN1a1u3vU9P8SOKw2Ux",
+        "latestProductionDeployment": {
+          "id": "dpl_H59cRD5uRMSxHZfekdg2eFTipaZU",
+          "state": "READY",
+          "target": "production",
+          "githubRepository": "NPP-Platform",
+          "githubCommitRef": "main",
+          "githubCommitSha": "583b556f42883abf39dd9d9af2c88a22396176b8",
+          "rootDirectory": "delivery/web"
+        },
+        "rootDirectoryStatus": "VERIFIED_PROVIDER_EVIDENCE",
+        "environmentNamePresenceStatus": "VERIFIED_GUARDED_WORKFLOW",
+        "assignedDomains": ["log.nguyenlieuhungphat.com"],
+        "customDomainAssignmentStatus": "VERIFIED_PROJECT_META",
+        "autoDeployOffStatus": "VERIFIED_OWNER_PROVIDER"
+      }
+    },
+    {
+      "id": "website",
+      "repository": "binhnxwjfjxm/nguyenlieuhungphat",
+      "sourceRoot": ".",
+      "expectedDomain": "nguyenlieuhungphat.com",
+      "routeAudit": {
+        "status": "PASS",
+        "orphanTopLevelCount": 0,
+        "evidenceMode": "EXTERNAL_GITHUB_AUDIT",
+        "entryHrefs": [
+          "/",
+          "/gioi-thieu",
+          "/nganh-hang",
+          "/san-pham",
+          "/lien-he",
+          "/tuyen-dung",
+          "/chinh-sach-bao-mat"
+        ],
+        "intentionalDeepRoutes": ["/nganh-hang/[slug]", "/san-pham/[slug]"]
+      },
+      "productionRelevantEnvNames": [
+        "NEXT_PUBLIC_SITE_URL",
+        "NEXT_PUBLIC_R2_ASSET_URL",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_QUOTE_CHAT_ID",
+        "TELEGRAM_ADMIN_CHAT_ID",
+        "TELEGRAM_HR_CHAT_ID"
+      ],
+      "vercel": {
+        "projectName": "nguyenlieuhungphat",
+        "projectId": "prj_rXqH83GFDHuEGUcQrrv82JBPWnjU",
+        "latestProductionDeployment": {
+          "id": "dpl_BvW6e1swnSzLCBszSJKm4a8RrsbY",
+          "state": "READY",
+          "target": "production",
+          "githubRepository": "nguyenlieuhungphat",
+          "githubCommitRef": "main",
+          "githubCommitSha": "e536726e5bc05af9d9fef24d188a50e12f6e0723",
+          "rootDirectory": "."
+        },
+        "rootDirectoryStatus": "VERIFIED_OWNER_PROVIDER",
+        "environmentNamePresenceStatus": "VERIFIED_OWNER_PROVIDER",
+        "assignedDomains": ["nguyenlieuhungphat.com"],
+        "customDomainAssignmentStatus": "VERIFIED_PROJECT_META",
+        "autoDeployOffStatus": "VERIFIED_OWNER_PROVIDER"
+      }
+    },
+    {
+      "id": "customer-ordering",
+      "repository": "binhnxwjfjxm/nguyenlieuhungphat",
+      "sourceRoot": "customer-ordering",
+      "expectedDomain": "sales.nguyenlieuhungphat.com",
+      "routeAudit": {
+        "status": "PASS",
+        "orphanTopLevelCount": 0,
+        "evidenceMode": "EXTERNAL_GITHUB_AUDIT",
+        "entryHrefs": [
+          "/",
+          "/products",
+          "/quick-order",
+          "/orders",
+          "/account",
+          "/news",
+          "/cart"
+        ],
+        "intentionalDeepRoutes": [
+          "/products/[sku]",
+          "/orders/[orderId]",
+          "/news/[articleId]",
+          "/checkout",
+          "/order-success/[orderId]"
+        ],
+        "intentionalSystemRoutes": ["/login", "/login/sso-callback", "/offline"]
+      },
+      "productionRelevantEnvNames": [
+        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+        "NEXT_PUBLIC_CUSTOMER_ORDERING_DATA_MODE",
+        "CORE_API_BASE_URL"
+      ],
+      "logoAsset": {
+        "mode": "LOCAL_PUBLIC_ASSET",
+        "path": "/logo-transparent.png",
+        "externalEnvironmentVariableRequired": false,
+        "sourceEvidenceCommit": "c789bd1336b5c21fbf26583fba9517607fe35f52"
+      },
+      "vercel": {
+        "projectName": "customer-ordering",
+        "projectId": "prj_btLk3p4FhmShgKFdRBMq6ZFOagKe",
+        "latestProductionDeployment": {
+          "id": "dpl_4zXVAtUNvxkZaamsLAaj8dssXcqG",
+          "state": "READY",
+          "target": "production",
+          "githubRepository": "nguyenlieuhungphat",
+          "githubCommitRef": "main",
+          "githubCommitSha": "b6bef8c868b4caa37abcb80355cecaf339e232a0",
+          "rootDirectory": "customer-ordering"
+        },
+        "rootDirectoryStatus": "VERIFIED_GUARDED_WORKFLOW",
+        "environmentNamePresenceStatus": "VERIFIED_OWNER_PROVIDER",
+        "assignedDomains": ["sales.nguyenlieuhungphat.com"],
+        "customDomainAssignmentStatus": "VERIFIED_PROJECT_META",
+        "autoDeployOffStatus": "VERIFIED_OWNER_PROVIDER"
+      }
+    }
+  ],
+  "gate": {
+    "routeReachabilitySource": "PASS",
+    "providerProjectIdentity": "PASS",
+    "providerRepositoryAndProductionBranch": "PASS",
+    "providerRootDirectory": "PASS",
+    "providerEnvironmentNamePresence": "PASS",
+    "providerCustomDomainAssignment": "PASS",
+    "providerAutoDeployOff": "PASS",
+    "mcpBackendApiBaseProductionValue": "PASS",
+    "dnsState": "PASS",
+    "dnsSwitch": "NOT_REQUIRED_ALREADY_CORRECT",
+    "environmentSwitch": "CONFIGURED_PENDING_DEPLOY",
+    "sourceMergePending": true,
+    "productionDeployPending": true,
+    "phase97ProductionReady": false
+  }
+}
