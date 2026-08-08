@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 
 import "./vercel-mcp-deployment-control.test.mjs";
@@ -126,13 +126,63 @@ const phase97EnvFiles = {
   )
 };
 
-test("Phase 9.7 manifest locks exactly six independent frontend projects", () => {
+const EXPECTED_PHASE97_FRONTENDS = [
+  ["admin-mcp-npp", "binhnxwjfjxm/NPP-Platform", "admin/web", "admin-mcp-npp", "prj_0hp2A8WyUW4zgglShPTzL70hesVC", "admin.nguyenlieuhungphat.com"],
+  ["customer-ordering", "binhnxwjfjxm/nguyenlieuhungphat", "customer-ordering", "customer-ordering", "prj_btLk3p4FhmShgKFdRBMq6ZFOagKe", "sales.nguyenlieuhungphat.com"],
+  ["delivery", "binhnxwjfjxm/NPP-Platform", "delivery/web", "npp-delivery", "prj_aqsb62CiXpN1a1u3vU9P8SOKw2Ux", "log.nguyenlieuhungphat.com"],
+  ["mcp-field", "binhnxwjfjxm/NPP-Platform", "mcp", "mcp-field", "prj_854SWdJeDEOPezAvvTZzTaRvZUSq", "mcp.nguyenlieuhungphat.com"],
+  ["npp-operations", "binhnxwjfjxm/NPP-Platform", "npp-core/web", "npp-platform", "prj_vFEAzoxesLqNJIfD8uF4q1kytpvk", "office.nguyenlieuhungphat.com"],
+  ["website", "binhnxwjfjxm/nguyenlieuhungphat", ".", "nguyenlieuhungphat", "prj_rXqH83GFDHuEGUcQrrv82JBPWnjU", "nguyenlieuhungphat.com"]
+];
+
+function assertNoSensitiveManifestValues(value, path = "manifest") {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertNoSensitiveManifestValues(item, `${path}[${index}]`));
+    return;
+  }
+  if (!value || typeof value !== "object") {
+    if (typeof value === "string" && !path.includes(".productionRelevantEnvNames[")) {
+      assert.doesNotMatch(value, /postgres(?:ql)?:\/\/|vcp_|cfat_|cfut_|os_v2_|sb_secret_/i, path);
+    }
+    return;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    const childPath = `${path}.${key}`;
+    if (!childPath.includes(".productionRelevantEnvNames")) {
+      assert.doesNotMatch(key, /(?:password|secret|token|credential|database.?url)/i, childPath);
+    }
+    assertNoSensitiveManifestValues(child, childPath);
+  }
+}
+
+async function collectMcpSourceFiles(directoryUrl) {
+  const files = [];
+  for (const entry of await readdir(directoryUrl, { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name === ".next" || entry.name === "coverage") continue;
+    const child = new URL(`${entry.name}${entry.isDirectory() ? "/" : ""}`, directoryUrl);
+    if (entry.isDirectory()) {
+      files.push(...await collectMcpSourceFiles(child));
+      continue;
+    }
+    if (/\.(?:ts|tsx|js|mjs|json)$/.test(entry.name) && !/\.test\./.test(entry.name)) files.push(child);
+  }
+  return files;
+}
+
+test("Phase 9.7 manifest locks the exact six frontend identities", () => {
   assert.equal(phase97Manifest.phase, "9.7");
   assert.equal(phase97Manifest.issue, 394);
-  assert.equal(phase97Manifest.frontends.length, 6);
-  assert.equal(new Set(phase97Manifest.frontends.map((item) => item.id)).size, 6);
-  assert.equal(new Set(phase97Manifest.frontends.map((item) => item.vercel.projectId)).size, 6);
-  assert.equal(new Set(phase97Manifest.frontends.map((item) => item.expectedDomain)).size, 6);
+  const actual = phase97Manifest.frontends
+    .map((item) => [
+      item.id,
+      item.repository,
+      item.sourceRoot,
+      item.vercel.projectName,
+      item.vercel.projectId,
+      item.expectedDomain
+    ])
+    .sort((a, b) => a[0].localeCompare(b[0]));
+  assert.deepEqual(actual, EXPECTED_PHASE97_FRONTENDS);
 });
 
 test("Phase 9.7 source route audit has no orphan top-level business route", () => {
@@ -150,6 +200,16 @@ test("Phase 9.7 source route audit has no orphan top-level business route", () =
   }
 });
 
+test("Phase 9.7 external frontend route evidence is pinned to the audited external repository tree", () => {
+  assert.match(phase97Manifest.auditBaselines.websiteCustomer.mainCommit, /^[0-9a-f]{40}$/);
+  assert.match(phase97Manifest.auditBaselines.websiteCustomer.treeSha, /^[0-9a-f]{40}$/);
+  for (const id of ["website", "customer-ordering"]) {
+    const frontend = phase97Manifest.frontends.find((item) => item.id === id);
+    assert.equal(frontend.repository, "binhnxwjfjxm/nguyenlieuhungphat");
+    assert.equal(frontend.routeAudit.evidenceMode, "EXTERNAL_GITHUB_AUDIT");
+  }
+});
+
 test("Phase 9.7 locks source-declared production environment variable names without values", () => {
   for (const [id, source] of Object.entries(phase97EnvFiles)) {
     const frontend = phase97Manifest.frontends.find((item) => item.id === id);
@@ -158,9 +218,7 @@ test("Phase 9.7 locks source-declared production environment variable names with
       assert.match(source, new RegExp(`^${name}=`, "m"), `${id}:${name}`);
     }
   }
-  const serialized = JSON.stringify(phase97Manifest);
-  assert.doesNotMatch(serialized, /postgres(?:ql)?:\/\//i);
-  assert.doesNotMatch(serialized, /\b(?:password|secret|token)\s*[:=]/i);
+  assertNoSensitiveManifestValues(phase97Manifest);
 });
 
 test("Phase 9.7 Vercel evidence is repository/main/READY but production drift remains explicit", () => {
@@ -174,6 +232,8 @@ test("Phase 9.7 Vercel evidence is repository/main/READY but production drift re
       frontend.repository,
       frontend.id
     );
+    assert.equal(frontend.vercel.customDomainAssignmentStatus, "VERIFIED_PROJECT_META", frontend.id);
+    assert.ok(frontend.vercel.assignedDomains.includes(frontend.expectedDomain), frontend.id);
   }
   const nppMain = phase97Manifest.auditBaselines.nppPlatform.mainCommit;
   const externalMain = phase97Manifest.auditBaselines.websiteCustomer.mainCommit;
@@ -188,18 +248,19 @@ test("Phase 9.7 Vercel evidence is repository/main/READY but production drift re
     phase97Manifest.frontends.some(
       (item) =>
         item.repository.endsWith("/nguyenlieuhungphat") &&
+        item.id === "website" &&
         item.vercel.latestProductionDeployment.githubCommitSha !== externalMain
     )
   );
 });
 
-test("Phase 9.7 refuses to claim provider closure that the current connector cannot read", () => {
+test("Phase 9.7 refuses to claim provider closure that remains unreadable", () => {
   assert.equal(phase97Manifest.gate.routeReachabilitySource, "PASS");
   assert.equal(phase97Manifest.gate.providerProjectIdentity, "PASS");
   assert.equal(phase97Manifest.gate.providerRepositoryAndProductionBranch, "PASS");
   assert.equal(phase97Manifest.gate.providerRootDirectory, "PARTIAL");
   assert.equal(phase97Manifest.gate.providerEnvironmentNamePresence, "NOT_VERIFIED");
-  assert.equal(phase97Manifest.gate.providerCustomDomainAssignment, "NOT_VERIFIED");
+  assert.equal(phase97Manifest.gate.providerCustomDomainAssignment, "PASS");
   assert.equal(phase97Manifest.gate.providerAutoDeployOff, "NOT_VERIFIED");
   assert.equal(phase97Manifest.gate.mcpBackendApiBaseProductionValue, "NOT_VERIFIED");
   assert.equal(phase97Manifest.gate.phase97ProductionReady, false);
@@ -224,5 +285,15 @@ test("Phase 9.7 MCP source keeps backend API routing server-owned", async () => 
   assert.equal(mcp.backendTarget.apiBaseVariable, "BACKEND_API_BASE_URL");
   assert.match(serverEnv, /required\("BACKEND_API_BASE_URL"\)/);
   assert.match(nextConfig, /requiredBuildEnv\("BACKEND_API_BASE_URL"\)/);
-  assert.doesNotMatch(serverEnv, /NEXT_PUBLIC_BACKEND_API_BASE_URL/);
+
+  const scanned = [
+    ...await collectMcpSourceFiles(new URL("../src/", import.meta.url)),
+    new URL("../next.config.mjs", import.meta.url),
+    new URL("../package.json", import.meta.url),
+    new URL("../tsconfig.json", import.meta.url)
+  ];
+  for (const file of scanned) {
+    const source = await readFile(file, "utf8");
+    assert.doesNotMatch(source, /NEXT_PUBLIC_BACKEND_API_BASE_URL/, file.pathname);
+  }
 });
