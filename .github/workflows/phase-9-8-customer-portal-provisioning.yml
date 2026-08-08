@@ -1,0 +1,281 @@
+name: Phase 9.8 Customer Portal provisioning
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/phase-9-8-customer-portal-provisioning.yml
+      - npp-core/api/scripts/phase-9-8-provision-customer-portal.js
+      - npp-core/api/test/phase-9-8-customer-portal-provisioning.test.js
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: phase-9-8-customer-portal-provisioning
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout pull request head
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install workspace dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Validate provisioning script
+        run: |
+          set -euo pipefail
+          node --check npp-core/api/scripts/phase-9-8-provision-customer-portal.js
+          node --test npp-core/api/test/phase-9-8-customer-portal-provisioning.test.js
+
+      - name: Validate guarded production contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow=.github/workflows/phase-9-8-customer-portal-provisioning.yml
+          script=npp-core/api/scripts/phase-9-8-provision-customer-portal.js
+          grep -F "github.event.issue.number == 395" "$workflow" >/dev/null
+          grep -F "/provision-phase-9-8-customer-portal " "$workflow" >/dev/null
+          grep -F "CORE_APP_NAME: hung-phat" "$workflow" >/dev/null
+          grep -F "BEGIN READ ONLY" "$script" >/dev/null
+          grep -F "pg_advisory_xact_lock" "$script" >/dev/null
+          grep -F "withAuditOutboxTransaction" "$script" >/dev/null
+          grep -F "customer_portal.membership.provision" "$script" >/dev/null
+          grep -F "COLLECT_ON_DELIVERY" "$script" >/dev/null
+
+  provision-and-verify:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 395 &&
+      startsWith(github.event.comment.body, '/provision-phase-9-8-customer-portal ') &&
+      (
+        github.actor == 'binhnxwjfjxm' ||
+        github.actor == 'khuongbinhinfo-a11y'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEPLOY_REF: main
+      CORE_APP_NAME: hung-phat
+      SCRIPT_PATH: npp-core/api/scripts/phase-9-8-provision-customer-portal.js
+    steps:
+      - name: Parse and mask operator input
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          read -r command provider_subject customer_email warehouse_code sales_channel_code extra <<< "$COMMENT_BODY"
+          test "$command" = '/provision-phase-9-8-customer-portal'
+          test -z "${extra:-}"
+          [[ "$provider_subject" =~ ^user_[A-Za-z0-9]+$ ]]
+          [[ "$customer_email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]
+
+          warehouse_code="${warehouse_code:-}"
+          sales_channel_code="${sales_channel_code:-}"
+          [ "$warehouse_code" = '-' ] && warehouse_code=''
+          [ "$sales_channel_code" = '-' ] && sales_channel_code=''
+          if [ -n "$warehouse_code" ]; then [[ "$warehouse_code" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; fi
+          if [ -n "$sales_channel_code" ]; then [[ "$sales_channel_code" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; fi
+
+          echo "::add-mask::$provider_subject"
+          echo "::add-mask::$customer_email"
+          {
+            echo "PORTAL_PROVIDER_SUBJECT=$provider_subject"
+            echo "PORTAL_CUSTOMER_EMAIL=$customer_email"
+            echo "PORTAL_WAREHOUSE_CODE=$warehouse_code"
+            echo "PORTAL_SALES_CHANNEL_CODE=$sales_channel_code"
+          } >> "$GITHUB_ENV"
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Install Heroku CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Preflight Core target and deployed provisioning script
+        id: preflight
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -euo pipefail
+          test "$CORE_APP_NAME" = 'hung-phat'
+          app_json="$(curl --fail --silent --show-error \
+            -H 'Accept: application/vnd.heroku+json; version=3' \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            "https://api.heroku.com/apps/$CORE_APP_NAME")"
+          app_url="$(jq -r '.web_url // empty' <<<"$app_json" | sed 's:/*$::')"
+          test "$(jq -r '.name // empty' <<<"$app_json")" = "$CORE_APP_NAME"
+          test -n "$app_url"
+          release="$(heroku releases --json -a "$CORE_APP_NAME" | jq -r '.[0].version // empty')"
+          test -n "$release"
+
+          heroku run --no-tty -a "$CORE_APP_NAME" -- test -f "$SCRIPT_PATH" >/dev/null \
+            || { echo 'core_release_missing_provisioning_script' >&2; exit 1; }
+
+          {
+            echo "app_url=$app_url"
+            echo "release=$release"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Audit, provision and verify idempotent replay
+        id: provision
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -euo pipefail
+          payload="$(jq -cn \
+            --arg providerSubject "$PORTAL_PROVIDER_SUBJECT" \
+            --arg customerEmail "$PORTAL_CUSTOMER_EMAIL" \
+            --arg warehouseCode "$PORTAL_WAREHOUSE_CODE" \
+            --arg salesChannelCode "$PORTAL_SALES_CHANNEL_CODE" \
+            '{providerSubject:$providerSubject,customerEmail:$customerEmail,warehouseCode:$warehouseCode,salesChannelCode:$salesChannelCode}')"
+
+          run_portal() {
+            local mode="$1"
+            local output_file="$2"
+            local raw status json
+            set +e
+            raw="$(printf '%s' "$payload" | heroku run --no-tty -a "$CORE_APP_NAME" -- node "$SCRIPT_PATH" "$mode" 2>&1)"
+            status=$?
+            set -e
+            json="$(sed -n 's/^PHASE_9_8_PORTAL_RESULT=//p' <<<"$raw" | tail -n 1)"
+            if [ -z "$json" ] || ! jq -e 'type == "object" and has("ok")' <<<"$json" >/dev/null; then
+              echo '{"ok":false,"code":"provisioning_result_unreadable"}' > "$output_file"
+              return 1
+            fi
+            printf '%s' "$json" > "$output_file"
+            return "$status"
+          }
+
+          audit_file="$(mktemp)"
+          provision_file="$(mktemp)"
+          replay_file="$(mktemp)"
+          trap 'rm -f "$audit_file" "$provision_file" "$replay_file"' EXIT
+
+          if ! run_portal audit "$audit_file"; then
+            {
+              echo "CUSTOMER_PORTAL_PROVISIONING_AUDIT=false"
+              echo "CUSTOMER_PORTAL_PROVISIONING_ERROR=$(jq -r '.code // "audit_failed"' "$audit_file")"
+              echo "CUSTOMER_PORTAL_PROVISIONING_DETAILS=$(jq -c '.details // {}' "$audit_file")"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          jq -e '.ok == true and .mode == "audit" and .ready == true' "$audit_file" >/dev/null
+
+          if ! run_portal provision "$provision_file"; then
+            {
+              echo "CUSTOMER_PORTAL_PROVISIONING_AUDIT=true"
+              echo "CUSTOMER_PORTAL_PROVISIONING=false"
+              echo "CUSTOMER_PORTAL_PROVISIONING_ERROR=$(jq -r '.code // "provision_failed"' "$provision_file")"
+              echo "CUSTOMER_PORTAL_PROVISIONING_DETAILS=$(jq -c '.details // {}' "$provision_file")"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          jq -e '.ok == true and .mode == "provision" and .ready == true' "$provision_file" >/dev/null
+
+          if ! run_portal provision "$replay_file"; then
+            echo "CUSTOMER_PORTAL_REPLAY_VERIFY=false" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          jq -e '.ok == true and .mode == "provision" and .ready == true and .replayed == true' "$replay_file" >/dev/null
+
+          customer_code="$(jq -r '.customerCode' "$provision_file")"
+          warehouse_code="$(jq -r '.warehouseCode' "$provision_file")"
+          channel_code="$(jq -r '.salesChannelCode' "$provision_file")"
+          collection_policy="$(jq -r '.collectionPolicy' "$provision_file")"
+          first_replayed="$(jq -r '.replayed' "$provision_file")"
+
+          {
+            echo "CUSTOMER_PORTAL_PROVISIONING_AUDIT=true"
+            echo "CUSTOMER_PORTAL_PROVISIONING=true"
+            echo "CUSTOMER_PORTAL_FIRST_OPERATION_REPLAYED=$first_replayed"
+            echo "CUSTOMER_PORTAL_REPLAY_VERIFY=true"
+            echo "CUSTOMER_CODE=$customer_code"
+            echo "WAREHOUSE_CODE=$warehouse_code"
+            echo "SALES_CHANNEL_CODE=$channel_code"
+            echo "COLLECTION_POLICY=$collection_policy"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke Core and fail-closed Customer Portal boundary
+        id: smoke
+        shell: bash
+        env:
+          APP_URL: ${{ steps.preflight.outputs.app_url }}
+        run: |
+          set -euo pipefail
+          app_url="${APP_URL%/}"
+          live="$(curl --silent --show-error --connect-timeout 5 --max-time 15 --output /dev/null --write-out '%{http_code}' "$app_url/health/live")"
+          ready="$(curl --silent --show-error --connect-timeout 5 --max-time 15 --output /dev/null --write-out '%{http_code}' "$app_url/health/ready")"
+          portal_file="$(mktemp)"
+          trap 'rm -f "$portal_file"' EXIT
+          portal="$(curl --silent --show-error --connect-timeout 5 --max-time 15 --output "$portal_file" --write-out '%{http_code}' "$app_url/api/customer-portal/me")"
+          test "$live" = '200'
+          test "$ready" = '200'
+          test "$portal" = '401'
+          jq -e '.error.code == "CUSTOMER_PORTAL_AUTH_REQUIRED"' "$portal_file" >/dev/null
+          {
+            echo "CORE_HEALTH_LIVE=$live"
+            echo "CORE_HEALTH_READY=$ready"
+            echo "CUSTOMER_PORTAL_UNAUTH_SMOKE=$portal"
+            echo "CUSTOMER_PORTAL_AUTHENTICATED_SMOKE=not_exercised_no_clerk_session"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish sanitized Phase 9.8 provisioning evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          evidence_file="$(mktemp)"
+          {
+            echo "## Phase 9.8 Customer Portal provisioning — ${OPERATION_STATUS}"
+            echo
+            echo "SOURCE_SHA=${{ steps.source.outputs.sha }}"
+            echo "CORE_RELEASE=${{ steps.preflight.outputs.release }}"
+            cat "$GITHUB_STEP_SUMMARY"
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence_file"
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/395/comments" \
+            -f body="$(cat "$evidence_file")" \
+            >/dev/null
+          rm -f "$evidence_file"
