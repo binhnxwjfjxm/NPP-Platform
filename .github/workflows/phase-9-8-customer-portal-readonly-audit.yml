@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: phase-9-8-customer-portal-readonly-audit
@@ -32,12 +31,18 @@ jobs:
         run: |
           set -euo pipefail
           workflow=.github/workflows/phase-9-8-customer-portal-readonly-audit.yml
-          grep -F "github.event.issue.number == 395" "$workflow" >/dev/null
-          grep -F "/audit-phase-9-8-customer-portal " "$workflow" >/dev/null
-          grep -F 'GITHUB_EVENT_PATH' "$workflow" >/dev/null
-          grep -F 'node "$SCRIPT_PATH" audit' "$workflow" >/dev/null
-          grep -F 'PORTAL_AUDIT_OK' "$workflow" >/dev/null
-          if awk '/^  audit-production:/{flag=1} flag' "$workflow" | grep -F 'node "$SCRIPT_PATH" provision' >/dev/null; then
+          issue_condition='github.event.issue.number == 39''5'
+          audit_command='/audit-phase-9-8-customer-portal '' '
+          event_path='GITHUB_EVENT_''PATH'
+          audit_runner='node "$SCRIPT_PATH" au''dit'
+          audit_marker='PORTAL_AUDIT_''OK'
+          forbidden_runner='node "$SCRIPT_PATH" pro''vision'
+          grep -F "$issue_condition" "$workflow" >/dev/null
+          grep -F "$audit_command" "$workflow" >/dev/null
+          grep -F "$event_path" "$workflow" >/dev/null
+          grep -F "$audit_runner" "$workflow" >/dev/null
+          grep -F "$audit_marker" "$workflow" >/dev/null
+          if awk '/^  audit-production:/{flag=1} flag' "$workflow" | grep -F "$forbidden_runner" >/dev/null; then
             echo 'Read-only audit workflow must never invoke provision mode.' >&2
             exit 1
           fi
@@ -51,6 +56,9 @@ jobs:
         github.actor == 'binhnxwjfjxm' ||
         github.actor == 'khuongbinhinfo-a11y'
       )
+    permissions:
+      contents: read
+      issues: write
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -107,11 +115,17 @@ jobs:
           test "$sha" = "$(git rev-parse origin/main)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      - name: Install Heroku CLI
+      - name: Setup Node for pinned Heroku CLI
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pinned Heroku CLI
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+          npm install --global --ignore-scripts heroku@11.0.0
+          heroku --version | grep -F 'heroku/11.0.0' >/dev/null
 
       - name: Read-only Customer Portal target audit
         id: audit
