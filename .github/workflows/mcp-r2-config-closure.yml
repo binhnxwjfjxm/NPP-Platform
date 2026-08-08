@@ -16,7 +16,10 @@ jobs:
   close-r2-config:
     if: >-
       github.event.issue.number == 391 &&
-      github.event.comment.body == '/close-mcp-r2-config' &&
+      (
+        github.event.comment.body == '/close-mcp-r2-config' ||
+        startsWith(github.event.comment.body, '/bootstrap-mcp-r2-config ')
+      ) &&
       (github.actor == 'binhnxwjfjxm' || github.actor == 'khuongbinhinfo-a11y')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -26,11 +29,23 @@ jobs:
       MCP_R2_CONFIG_CLOSURE_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-config-closure-evidence.md
       MCP_MEDIA_AUDIT_EVIDENCE_FILE: ${{ github.workspace }}/.mcp-r2-media-audit-evidence.md
     steps:
-      - name: Validate exact closure command
+      - name: Validate closure command and mask bootstrap payload
         shell: bash
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
-        run: test "$COMMENT_BODY" = '/close-mcp-r2-config'
+        run: |
+          set -euo pipefail
+          if [ "$COMMENT_BODY" = '/close-mcp-r2-config' ]; then
+            exit 0
+          fi
+          case "$COMMENT_BODY" in
+            '/bootstrap-mcp-r2-config '*) ;;
+            *) exit 1 ;;
+          esac
+          payload="${COMMENT_BODY#'/bootstrap-mcp-r2-config '}"
+          test -n "$payload"
+          echo "::add-mask::$payload"
+          echo "MCP_R2_BOOTSTRAP_B64=$payload" >> "$GITHUB_ENV"
 
       - name: Checkout exact main
         uses: actions/checkout@v4
@@ -72,12 +87,14 @@ jobs:
           AUDITED_MAIN_SHA: ${{ steps.source.outputs.sha }}
         run: node mcp/apps/backend/scripts/production-media-audit.js
 
-      - name: Publish sanitized Phase 9.4 closure evidence
+      - name: Publish sanitized Phase 9.4 closure evidence and redact bootstrap comment
         if: always()
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           OPERATION_STATUS: ${{ job.status }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           set -euo pipefail
           evidence_file="$(mktemp)"
@@ -93,4 +110,8 @@ jobs:
           } > "$evidence_file"
           gh api --method POST "repos/$GITHUB_REPOSITORY/issues/391/comments" \
             -f body="$(cat "$evidence_file")" >/dev/null
+          if [[ "$COMMENT_BODY" == '/bootstrap-mcp-r2-config '* ]]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
+              -f body='/bootstrap-mcp-r2-config [redacted]' >/dev/null
+          fi
           rm -f "$evidence_file"
