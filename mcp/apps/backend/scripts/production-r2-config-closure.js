@@ -4,7 +4,8 @@ import {
   presignR2Get,
   presignR2Put,
   signedR2DeleteRequest,
-  signedR2HeadRequest
+  signedR2HeadRequest,
+  signedR2LifecycleRequest
 } from "../foundation/r2-storage.js";
 
 const HEROKU_ACCEPT = "application/vnd.heroku+json; version=3";
@@ -104,39 +105,61 @@ function r2Config(config) {
   });
 }
 
+async function fetchOrFail(url, init, code) {
+  try {
+    return await fetch(url, init);
+  } catch {
+    fail(code);
+  }
+}
+
 async function smokeR2(config, runId) {
   const payload = `phase-9-4-r2-smoke:${runId}:${Date.now()}`;
   const key = `mcp-plan/_phase-9-4-smoke/${runId}-${sha256(payload).slice(0, 16)}.txt`;
   const put = presignR2Put(config, key, "text/plain", { expiresSeconds: 120 });
   let uploaded = false;
   try {
-    const putResponse = await fetch(put.putUrl, {
+    const putResponse = await fetchOrFail(put.putUrl, {
       method: "PUT",
       headers: put.requiredHeaders,
       body: payload
-    });
+    }, "r2_smoke_put_network_failed");
     if (!putResponse.ok) fail("r2_smoke_put_failed");
     uploaded = true;
 
     const get = presignR2Get(config, key, { expiresSeconds: 120 });
-    const getResponse = await fetch(get.getUrl);
+    const getResponse = await fetchOrFail(get.getUrl, undefined, "r2_smoke_get_network_failed");
     if (!getResponse.ok) fail("r2_smoke_get_failed");
     if (await getResponse.text() !== payload) fail("r2_smoke_content_mismatch");
   } finally {
     if (uploaded) {
       const deletion = signedR2DeleteRequest(config, key);
-      const deleteResponse = await fetch(deletion.url, deletion.init);
+      const deleteResponse = await fetchOrFail(deletion.url, deletion.init, "r2_smoke_delete_network_failed");
       if (!deleteResponse.ok && deleteResponse.status !== 404) fail("r2_smoke_delete_failed");
       const head = signedR2HeadRequest(config, key);
-      const headResponse = await fetch(head.url, head.init);
+      const headResponse = await fetchOrFail(head.url, head.init, "r2_smoke_head_network_failed");
       if (headResponse.status !== 404) fail("r2_smoke_delete_verification_failed");
     }
   }
   return true;
 }
 
+async function probeLifecycle(config) {
+  const request = signedR2LifecycleRequest(config);
+  let response;
+  try {
+    response = await fetch(request.url, request.init);
+  } catch {
+    fail("bootstrap_r2_lifecycle_network_failed");
+  }
+  const body = await response.text();
+  if (response.status === 404 && /NoSuchLifecycleConfiguration/i.test(body)) return true;
+  if (!response.ok) fail(`bootstrap_r2_lifecycle_status_${response.status}`);
+  return true;
+}
+
 async function readApp(appName, apiKey) {
-  const response = await fetch(`htttps://api.heroku.com/apps/${encodeURIComponent(appName)}`, {
+  const response = await fetch(`https://api.heroku.com/apps/${encodeURIComponent(appName)}`, {
     headers: { Accept: HEROKU_ACCEPT, Authorization: `Bearer ${apiKey}` }
   });
   if (!response.ok) fail("heroku_app_read_failed");
@@ -168,7 +191,7 @@ async function main() {
   const apiKey = text(process.env.HEROKU_API_KEY);
   const appName = text(process.env.HEROKU_APP_NAME);
   const auditedMainSha = text(process.env.AUDITED_MAIN_SHA);
-  const runId = text(process.env.GITHUB_RUN_ID)  || "manual";
+  const runId = text(process.env.GITHUB_RUN_ID) || "manual";
   const evidenceFile = text(process.env.MCP_R2_CONFIG_CLOSURE_EVIDENCE_FILE);
   const bootstrapPayload = text(process.env.MCP_R2_BOOTSTRAP_B64);
   if (!apiKey || !appName || !auditedMainSha || !evidenceFile) fail("r2_config_closure_environment_incomplete");
@@ -176,26 +199,40 @@ async function main() {
 
   const before = await herokuRequest(appName, apiKey);
   const missingBefore = missingSecretConfig(before);
+  const bootstrap = bootstrapPayload ? decryptBootstrap(bootstrapPayload, apiKey) : null;
+  const replaceExisting = Boolean(bootstrap?.R2_REPLACE_EXISTING);
   const patch = {};
   let credentialSource = "existing_mcp";
+  let candidateSmokeVerified = false;
 
-  if (missingBefore.length > 0) {
-    if (bootstrapPayload) {
-      const bootstrap = decryptBootstrap(bootstrapPayload, apiKey);
-      for (const name of missingBefore) patch[name] = bootstrap[name];
-      if (!text(before.R2_REGION) && text(bootstrap.R2_REGION)) patch.R2_REGION = bootstrap.R2_REGION;
-      credentialSource = "encrypted_bootstrap";
-    } else {
-      const source = await herokuRequest(SOURCE_APP, apiKey);
-      assertSecretConfig(source, "core_runtime");
-      assertCloudflareR2Endpoint(source.R2_ENDPOINT);
-      if (text(source.R2_BUCKET_NAME) && text(source.R2_BUCKET_NAME) !== EXPECTED_BUCKET) {
-        fail("core_r2_bucket_mismatch");
-      }
-      for (const name of missingBefore) patch[name] = source[name];
-      if (!text(before.R2_REGION) && text(source.R2_REGION)) patch.R2_REGION = source.R2_REGION;
-      credentialSource = "core_runtime";
+  if (bootstrap && (missingBefore.length > 0 || replaceExisting)) {
+    const candidateRuntime = {
+      ...before,
+      ...bootstrap,
+      R2_BUCKET_NAME: EXPECTED_BUCKET,
+      CLOUDFLARE_R2_PUBLIC_URL: EXPECTED_PUBLIC_URL
+    };
+    assertSecretConfig(candidateRuntime, "bootstrap");
+    assertCloudflareR2Endpoint(candidateRuntime.R2_ENDPOINT);
+    const candidate = r2Config(candidateRuntime);
+    await probeLifecycle(candidate);
+    await smokeR2(candidate, `${runId}-probe`);
+    candidateSmokeVerified = true;
+    for (const name of REQUIRED_SECRET_CONFIG) {
+      if (replaceExisting || missingBefore.includes(name)) patch[name] = bootstrap[name];
     }
+    if ((replaceExisting || !text(before.R2_REGION)) && text(bootstrap.R2_REGION)) patch.R2_REGION = bootstrap.R2_REGION;
+    credentialSource = replaceExisting ? "encrypted_bootstrap_replace" : "encrypted_bootstrap";
+  } else if (missingBefore.length > 0) {
+    const source = await herokuRequest(SOURCE_APP, apiKey);
+    assertSecretConfig(source, "core_runtime");
+    assertCloudflareR2Endpoint(source.R2_ENDPOINT);
+    if (text(source.R2_BUCKET_NAME) && text(source.R2_BUCKET_NAME) !== EXPECTED_BUCKET) {
+      fail("core_r2_bucket_mismatch");
+    }
+    for (const name of missingBefore) patch[name] = source[name];
+    if (!text(before.R2_REGION) && text(source.R2_REGION)) patch.R2_REGION = source.R2_REGION;
+    credentialSource = "core_runtime";
   }
 
   if (text(before.R2_BUCKET_NAME) !== EXPECTED_BUCKET) patch.R2_BUCKET_NAME = EXPECTED_BUCKET;
@@ -217,7 +254,7 @@ async function main() {
   if (!webUrl) fail("mcp_web_url_missing");
 
   const r2 = r2Config(after);
-  await smokeR2(r2, runId);
+  if (!candidateSmokeVerified) await smokeR2(r2, runId);
   const health = await waitForHealth(webUrl);
 
   const targetFingerprint = sha256(`${new URL(r2.endpoint).hostname.toLowerCase()}\n${r2.bucket}`);
