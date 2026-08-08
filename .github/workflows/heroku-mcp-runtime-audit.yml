@@ -1,0 +1,108 @@
+name: MCP Heroku runtime audit
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: heroku-mcp-runtime-audit
+  cancel-in-progress: false
+
+jobs:
+  audit-runtime:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.number == 390 &&
+        github.event.comment.body == '/audit-heroku-mcp-production' &&
+        (
+          github.actor == 'binhnxwjfjxm' ||
+          github.actor == 'khuongbinhinfo-a11y'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DEPLOY_REF: main
+      HEROKU_APP_NAME: hung-phat-mcp
+      HEROKU_DB_OWNER_APP_NAME: hung-phat
+      HEROKU_FORBIDDEN_APP_NAME: hung-phat
+      HEROKU_REQUIRED_STACK: container
+      HEROKU_REQUIRED_CONFIG_NAMES: BACKEND_API_TOKEN,CORE_ONBOARDING_API_BASE_URL,CORE_ONBOARDING_API_TOKEN,CORE_ONBOARDING_TIMEOUT_MS,CORE_SALES_API_BASE_URL,CORE_SALES_API_TOKEN,CORE_SALES_DEFAULT_WAREHOUSE_ID,CORE_SALES_TIMEOUT_MS,CORS_ORIGINS,DATABASE_URL,INSTALLATION_ID,MCP_DB_ROLE,MCP_DB_SCHEMA,MCP_LEGACY_ACTOR_ID,MCP_LEGACY_RUNTIME_ENABLED,MCP_SERVICE_PERMISSIONS,MCP_SERVICE_SCOPES,NPP_CODE,PERSISTENCE_PROVIDER
+      MCP_MIGRATION_CREDENTIAL_MODE: essential_owner
+      MCP_AUDIT_EVIDENCE_FILE: ${{ runner.temp }}/mcp-runtime-audit-evidence.md
+    steps:
+      - name: Validate exact audit command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/audit-heroku-mcp-production'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install MCP backend audit dependency
+        shell: bash
+        run: npm ci --prefix mcp/apps/backend --ignore-scripts
+
+      - name: Audit MCP Heroku runtime read-only
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          AUDITED_MAIN_SHA: ${{ steps.source.outputs.sha }}
+        run: bash mcp/apps/backend/scripts/production-runtime-audit.sh
+
+      - name: Publish sanitized Phase 9.3 evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          evidence_file="$(mktemp)"
+          {
+            echo "## Phase 9.3 MCP runtime audit — ${OPERATION_STATUS}"
+            echo
+            if [ -s "$MCP_AUDIT_EVIDENCE_FILE" ]; then
+              cat "$MCP_AUDIT_EVIDENCE_FILE"
+            else
+              echo "AUDIT_EVIDENCE=unavailable"
+            fi
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence_file"
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/390/comments" \
+            -f body="$(cat "$evidence_file")" \
+            >/dev/null
+          rm -f "$evidence_file"
