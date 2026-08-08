@@ -6,77 +6,88 @@
 > Website/Customer baseline: `main@b6bef8c868b4caa37abcb80355cecaf339e232a0`  
 > Production mutation in this source slice: **NONE**
 
-## 1. Kết luận source reachability
+## 1. Route reachability result
 
-Audit route/navigation không phát hiện defect top-level cần sửa UI.
+Phase 9.7 audited the six frontends and found **three real NPP Operations reachability defects**. They were fixed in the owning NPP shell rather than relying on cross-app navigation:
 
-- **NPP Operations**: business routes được đi vào từ Core AppShell theo nhóm access, organization, sales, purchasing, inventory, logistics, accounting và operations. `/login`, `/dashboard`, `/foundation` là auth/landing/internal surfaces, không phải orphan business navigation.
-- **MCP Field**: `/`, `/mcp`, `/routes`, `/visits`, `/mcp/sessions`, `/customers`, `/orders`, `/reports`, `/field-checks`, `/plans`, `/mcp-setting`, `/settings` đều có entry. `/actions` là alias của `/plans`; `/visits/order-intent` là deep workflow dưới Visits.
-- **Admin MCP/NPP**: `/`, `/customer-onboarding`, `/menu` có entry; `/login` là auth route. Không redesign Admin trong 9.7.
-- **Delivery**: `/` là danh sách chuyến; `/trips/[tripId]` là drill-down và có đường quay lại danh sách; `/login` là auth route.
-- **Website**: header phủ `/`, `/gioi-thieu`, `/nganh-hang`, `/san-pham`, `/lien-he`, `/tuyen-dung`; footer phủ privacy và category links. Dynamic category/product routes là deep routes.
-- **Customer Ordering**: bottom navigation phủ Home/Products/Quick Order/Orders/Account; header/cart phủ News/Cart; checkout, order-success, detail, SSO callback và offline là workflow/deep/system routes.
+- `/operations/audit-history` — previously reachable from Admin Control Tower/direct URL, but had no NPP-owned entry;
+- `/operations/import-export-history` — same cross-app-only problem;
+- `/accounting/customer-return-credits` — business page existed but had no navigation entry.
 
-Machine-readable evidence nằm ở `docs/operations/phase-9-7-route-runtime-manifest.json`. Regression được nối vào test Vercel deployment control hiện hữu để route/source/provider claims không bị nới lỏng âm thầm.
+The fix adds NPP-owned entries for all three. This respects the Phase 9 boundary that Admin and NPP Operations are independent apps and the normal NPP experience must not depend on switching through Admin.
+
+The remaining audited routes are classified rather than duplicated:
+
+- `/accounting/cod-reconciliation` and `/accounting/reconciliation` are intentional drill-down routes from the existing `COD & đối soát` workspace;
+- `/inventory` redirects to `/inventory/balances`;
+- legacy `/organization/customers`, `/organization/products`, `/organization/suppliers` routes redirect to their canonical top-level pages;
+- `/login` and `/foundation` are auth/internal surfaces, not business navigation items.
+
+Other frontend results:
+
+- **MCP Field**: all primary route entries are present; `/actions` is an alias of `/plans`; `/visits/order-intent` is an intentional deep workflow.
+- **Admin MCP/NPP**: `/`, `/customer-onboarding`, `/menu` have entries; `/login` is auth. No Admin redesign was done.
+- **Delivery**: `/` owns the assigned-trip list; `/trips/[tripId]` is a valid drill-down; `/login` is auth.
+- **Website**: header/footer cover primary public routes; category/product dynamic pages are deep routes.
+- **Customer Ordering**: bottom navigation covers primary work; News/Cart have header entries; checkout, success, detail, SSO callback and offline routes are workflow/deep/system routes.
+
+Machine-readable evidence is in `docs/operations/phase-9-7-route-runtime-manifest.json`. The existing Vercel deployment-control regression suite now checks the manifest against source navigation.
 
 ## 2. Vercel provider readback
 
-Đã đọc được đúng **6 project** và production deployment metadata. Tất cả latest deployment được quan sát đều `READY`, target `production`, Git ref `main`, đúng owning repository.
+The connected Vercel provider exposed exactly six projects. Latest production deployment metadata observed during the audit was `READY`, target `production`, Git ref `main`, and pointed to the expected owning repository.
 
-| Surface | Project | Deployed SHA lúc audit | Root evidence |
+| Surface | Project | Deployed SHA at audit | Root evidence |
 | --- | --- | --- | --- |
 | NPP Operations | `npp-platform` | `efe2069...` | `npp-core/web` — deployment metadata |
 | MCP Field | `mcp-field` | `bb163c6...` | `mcp` — deployment metadata |
 | Admin MCP/NPP | `admin-mcp-npp` | `efe2069...` | `admin/web` — deployment metadata |
-| Delivery | `npp-delivery` | `583b556...` | không có field root trong metadata trả về |
-| Website | `nguyenlieuhungphat` | `e536726...` | không có field root trong metadata trả về |
-| Customer Ordering | `customer-ordering` | `b6bef8c...` | không có field root trong metadata trả về |
+| Delivery | `npp-delivery` | `583b556...` | root field absent in returned metadata |
+| Website | `nguyenlieuhungphat` | `e536726...` | root field absent in returned metadata |
+| Customer Ordering | `customer-ordering` | `b6bef8c...` | root field absent in returned metadata |
 
-Production SHA không đồng nhất với current `main` là **deployment drift có chủ đích cần rollout riêng**, không phải bằng chứng source lỗi. Source merge không đồng nghĩa production deployment.
+Production SHA drift from current repository `main` is recorded as deployment state, not treated as a source defect. Source merge and production deployment remain separate gates.
 
-Một số deployment MCP/Admin/Delivery trả `gitDirty=1`. 9.7 chỉ ghi nhận field này như provider evidence; không suy diễn nó thành source defect hoặc tự tạo commit để “sửa”.
+Some MCP/Admin/Delivery deployment metadata includes `gitDirty=1`; this is recorded as provider evidence only and is not automatically interpreted as a source defect.
 
-## 3. Env/backend contract
+## 3. Env/backend source contract
 
-Source chỉ khóa **tên biến**, không ghi value vào manifest.
+Only variable **names** are recorded; no secret values are written to source evidence.
 
-Đặc biệt MCP frontend:
-- build/runtime server-side bắt buộc `BACKEND_API_BASE_URL`, `BACKEND_API_TOKEN`, `MCP_LEGACY_ACTOR_ID`;
-- `BACKEND_API_BASE_URL` được đọc trong server boundary, không có `NEXT_PUBLIC_BACKEND_API_BASE_URL`;
-- backend đích theo architecture là `hung-phat-mcp`.
+For MCP Field the server/build contract requires:
 
-Current Vercel connector không đọc được env-name presence/value, vì vậy 9.7 **không tuyên bố production `BACKEND_API_BASE_URL` đã trỏ đúng**. Đây vẫn là provider evidence gate.
+- `BACKEND_API_BASE_URL`;
+- `BACKEND_API_TOKEN`;
+- `MCP_LEGACY_ACTOR_ID`.
 
-## 4. Provider fields chưa verify được
+`BACKEND_API_BASE_URL` remains server-owned; there is no browser `NEXT_PUBLIC_BACKEND_API_BASE_URL`. The architecture target is the MCP backend `hung-phat-mcp`.
 
-Current connector không cung cấp đủ readback cho:
+The current Vercel connector cannot read the production env-name/value set, so this source slice does **not** claim that the production `BACKEND_API_BASE_URL` value has been verified against `hung-phat-mcp`.
+
+## 4. Provider evidence still unavailable
+
+The current connector does not expose enough readback for:
 
 - Vercel environment-variable names/values;
-- custom-domain assignment;
+- custom-domain assignments;
 - Auto Deploy project setting;
-- root directory đối với Delivery, Website, Customer Ordering khi deployment metadata không có field này;
+- root directory for Delivery, Website and Customer Ordering when deployment metadata omits it;
 - DNS records;
-- production value của MCP `BACKEND_API_BASE_URL`.
+- production value of MCP `BACKEND_API_BASE_URL`.
 
-Không dùng source docs, domain kỳ vọng hoặc READY status để thay thế các evidence này.
+Expected domains from the active topology remain configuration targets, not substitutes for provider readback.
 
-## 5. Production gate
+## 5. Current gate
 
-Source route reachability: **PASS**.  
-Project identity + repository + production branch from deployment metadata: **PASS**.  
-Root directory: **PARTIAL**.  
-Env-name presence: **NOT VERIFIED**.  
-Custom domain assignment: **NOT VERIFIED**.  
-Auto Deploy provider setting: **NOT VERIFIED**.  
-MCP API-base production value: **NOT VERIFIED**.  
-DNS/env switch: **NOT PERFORMED**.
+- Source route reachability after the three NPP fixes: **PASS**.
+- Project identity + repository + production branch from deployment metadata: **PASS**.
+- Root-directory provider evidence: **PARTIAL**.
+- Env-name presence: **NOT VERIFIED**.
+- Custom-domain assignment: **NOT VERIFIED**.
+- Auto Deploy provider setting: **NOT VERIFIED**.
+- MCP API-base production value: **NOT VERIFIED**.
+- DNS/env switch: **NOT PERFORMED**.
 
-Vì vậy Phase 9.7 **chưa được gọi production-ready/closed** chỉ từ source PR này.
+Therefore this source PR must **not** be called Phase 9.7 production-ready/closed. A separate explicitly authorized operation must obtain the missing provider readback, perform only the necessary env/domain/DNS changes, and smoke the affected frontends.
 
-Một operation riêng, có owner command rõ, phải đọc provider fields còn thiếu bằng capability phù hợp rồi mới:
-1. khóa root/domain/env/Auto Deploy;
-2. verify MCP API base trỏ MCP backend;
-3. thực hiện DNS/env switch nếu thực sự cần;
-4. smoke từng frontend bị ảnh hưởng.
-
-Không deploy, đổi env/domain/DNS, chạy migration hoặc final data closeout trong source slice này. Final production closeout thuộc #395.
+No Vercel deploy, env/domain/DNS mutation, backend deploy, database migration or final data closeout is performed here. Final production closeout remains #395.
