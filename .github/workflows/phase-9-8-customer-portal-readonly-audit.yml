@@ -32,7 +32,7 @@ jobs:
           set -euo pipefail
           workflow=.github/workflows/phase-9-8-customer-portal-readonly-audit.yml
           issue_condition='github.event.issue.number == 39''5'
-          audit_command='/audit-phase-9-8-customer-portal '' '
+          audit_command='/audit-phase-9-8-customer-portal'' '
           event_path='GITHUB_EVENT_''PATH'
           audit_runner='node "$SCRIPT_PATH" au''dit'
           audit_marker='PORTAL_AUDIT_''OK'
