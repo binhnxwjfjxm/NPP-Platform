@@ -21,6 +21,7 @@ const REQUEST_COLUMNS = `
   source_metadata,
   requested_by_actor_id,
   requested_by_employee_id,
+  requested_by_portal_user_id,
   reviewed_by_actor_id,
   status,
   review_reason,
@@ -61,6 +62,7 @@ function mapRequest(row) {
     sourceMetadata: row.source_metadata ?? {},
     requestedByActorId: row.requested_by_actor_id,
     requestedByEmployeeId: row.requested_by_employee_id,
+    requestedByPortalUserId: row.requested_by_portal_user_id,
     reviewedByActorId: row.reviewed_by_actor_id,
     status: row.status,
     reviewReason: row.review_reason,
@@ -113,11 +115,12 @@ export async function insertCustomerOnboardingRequest(client, input) {
       source_metadata,
       requested_by_actor_id,
       requested_by_employee_id,
+      requested_by_portal_user_id,
       status,
       idempotency_key,
       payload_hash
     ) VALUES (
-      $1,$2,$3,$4,$5,true,'OFFICIAL_ORDER_REQUIRED',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'submitted',$19,$20
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,'submitted',$22,$23
     )
     ON CONFLICT (installation_id, source_system, source_outlet_id, source_demand_reference) DO NOTHING
     RETURNING ${REQUEST_COLUMNS}`,
@@ -127,6 +130,8 @@ export async function insertCustomerOnboardingRequest(client, input) {
       input.sourceSystem,
       input.sourceOutletId,
       input.sourceDemandReference,
+      input.orderRequired,
+      input.triggerReason,
       input.proposedName,
       input.proposedPhone,
       input.proposedAddressLabel,
@@ -140,6 +145,7 @@ export async function insertCustomerOnboardingRequest(client, input) {
       input.sourceMetadata,
       input.requestedByActorId,
       input.requestedByEmployeeId,
+      input.requestedByPortalUserId ?? null,
       input.idempotencyKey,
       input.payloadHash,
     ],
@@ -178,12 +184,32 @@ export async function getCustomerOnboardingRequestBySourceDemand(client, {
   return mapRequest(result.rows[0]);
 }
 
+export async function getCustomerOnboardingRequestByPortalUser(client, {
+  installationId,
+  portalUserId,
+  forUpdate = false,
+}) {
+  const result = await client.query(
+    `SELECT ${REQUEST_COLUMNS}
+     FROM sales.customer_onboarding_requests
+     WHERE installation_id = $1
+       AND source_system = 'CUSTOMER_PORTAL'
+       AND requested_by_portal_user_id = $2
+     ORDER BY created_at DESC, id DESC
+     LIMIT 1
+     ${forUpdate ? 'FOR UPDATE' : ''}`,
+    [installationId, portalUserId],
+  );
+  return mapRequest(result.rows[0]);
+}
+
 export async function listCustomerOnboardingRequests(client, {
   installationId,
   status,
   sourceSystem,
   sourceOutletId,
   requestedByActorId,
+  requestedByPortalUserId,
   limit = 100,
   offset = 0,
 }) {
@@ -199,10 +225,72 @@ export async function listCustomerOnboardingRequests(client, {
   if (sourceSystem) append('source_system = ?', sourceSystem);
   if (sourceOutletId) append('source_outlet_id = ?', sourceOutletId);
   if (requestedByActorId) append('requested_by_actor_id = ?', requestedByActorId);
+  if (requestedByPortalUserId) append('requested_by_portal_user_id = ?', requestedByPortalUserId);
   values.push(limit, offset);
   sql += ` ORDER BY created_at DESC, id DESC LIMIT $${values.length - 1} OFFSET $${values.length}`;
   const result = await client.query(sql, values);
   return result.rows.map(mapRequest);
+}
+
+export async function updatePortalRegistrationRequest(client, {
+  installationId,
+  id,
+  portalUserId,
+  expectedVersion,
+  normalized,
+  idempotencyKey,
+  payloadHash,
+}) {
+  const result = await client.query(
+    `UPDATE sales.customer_onboarding_requests
+     SET proposed_name = $1,
+         proposed_phone = $2,
+         proposed_address_label = $3,
+         proposed_address_line1 = $4,
+         proposed_address_line2 = $5,
+         proposed_ward = $6,
+         proposed_district = $7,
+         proposed_province = $8,
+         proposed_postal_code = $9,
+         proposed_country_code = $10,
+         source_metadata = $11,
+         status = 'submitted',
+         reviewed_by_actor_id = NULL,
+         review_reason = NULL,
+         reviewed_at = NULL,
+         idempotency_key = $12,
+         payload_hash = $13,
+         version = version + 1,
+         submitted_at = now(),
+         updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond')
+     WHERE installation_id = $14
+       AND id = $15
+       AND source_system = 'CUSTOMER_PORTAL'
+       AND requested_by_portal_user_id = $16
+       AND version = $17
+       AND status = 'need_more_info'
+     RETURNING ${REQUEST_COLUMNS}`,
+    [
+      normalized.proposedName,
+      normalized.proposedPhone,
+      normalized.proposedAddressLabel,
+      normalized.proposedAddressLine1,
+      normalized.proposedAddressLine2,
+      normalized.proposedWard,
+      normalized.proposedDistrict,
+      normalized.proposedProvince,
+      normalized.proposedPostalCode,
+      normalized.proposedCountryCode,
+      normalized.sourceMetadata,
+      idempotencyKey,
+      payloadHash,
+      installationId,
+      id,
+      portalUserId,
+      expectedVersion,
+    ],
+  );
+  return mapRequest(result.rows[0]);
 }
 
 export async function transitionCustomerOnboardingRequest(client, {
