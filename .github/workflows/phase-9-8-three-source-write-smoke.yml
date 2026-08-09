@@ -1,0 +1,209 @@
+name: Phase 9.8 three-source production WRITE smoke
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/phase-9-8-three-source-write-smoke.yml
+      - npp-core/api/scripts/phase-9-8-three-source-write-smoke.js
+      - npp-core/api/test/phase-9-8-three-source-write-smoke.test.js
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-9-8-three-source-write-smoke
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: npp-core
+    steps:
+      - name: Checkout pull request head
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install workspaces
+        run: npm --prefix .. ci
+      - name: Validate smoke script and guard contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check api/scripts/phase-9-8-three-source-write-smoke.js
+          node --test api/test/phase-9-8-three-source-write-smoke.test.js
+
+  smoke-and-verify:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 395 &&
+      github.event.comment.body == '/smoke-phase-9-8-three-source-write' &&
+      (github.actor == 'binhnxwjfjxm' || github.actor == 'khuongbinhinfo-a11y')
+    permissions:
+      contents: read
+      issues: write
+    defaults:
+      run:
+        working-directory: npp-core
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEPLOY_REF: main
+      CORE_APP_NAME: hung-phat
+      SCRIPT_PATH: npp-core/api/scripts/phase-9-8-three-source-write-smoke.js
+      CUSTOMER_ORDERING_ORIGIN: https://sales.nguyenlieuhungphat.com
+    steps:
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Setup Node for pinned Heroku CLI
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install pinned Heroku CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global --ignore-scripts heroku@11.0.0
+          heroku --version | grep -F 'heroku/11.0.0' >/dev/null
+      - name: Preflight exact Core release and deployed smoke script
+        id: preflight
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$CORE_APP_NAME" = 'hung-phat'
+          app_json="$(curl --fail --silent --show-error -H 'Accept: application/vnd.heroku+json; version=3' -H "Authorization: Bearer $HEROKU_API_KEY" "https://api.heroku.com/apps/$CORE_APP_NAME")"
+          app_url="$(jq -r '.web_url // empty' <<<"$app_json" | sed 's:/*$::')"
+          test "$(jq -r '.name // empty' <<<"$app_json")" = "$CORE_APP_NAME"
+          test -n "$app_url"
+          release="$(heroku releases --json -a "$CORE_APP_NAME" | jq -r '.[0].version // empty')"
+          test -n "$release"
+          release_json="$(curl --fail --silent --show-error -H 'Accept: application/vnd.heroku+json; version=3' -H "Authorization: Bearer $HEROKU_API_KEY" "https://api.heroku.com/apps/$CORE_APP_NAME/releases/$release")"
+          slug_id="$(jq -r '.slug.id // empty' <<<"$release_json")"
+          test -n "$slug_id"
+          slug_json="$(curl --fail --silent --show-error -H 'Accept: application/vnd.heroku+json; version=3' -H "Authorization: Bearer $HEROKU_API_KEY" "https://api.heroku.com/apps/$CORE_APP_NAME/slugs/$slug_id")"
+          deployed_sha="$(jq -r '.commit // empty' <<<"$slug_json")"
+          test -n "$deployed_sha"
+          test "$deployed_sha" = "$SOURCE_SHA"
+          heroku run --no-tty -a "$CORE_APP_NAME" -- test -f "$SCRIPT_PATH" >/dev/null
+          echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "deployed_sha=$deployed_sha" >> "$GITHUB_OUTPUT"
+      - name: Exercise Internal MCP and Customer Portal writes then rollback
+        id: write_smoke
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -euo pipefail
+          evidence_file="${RUNNER_TEMP}/phase-9-8-three-source-write-evidence.txt"
+          : > "$evidence_file"
+          echo "EVIDENCE_FILE=$evidence_file" >> "$GITHUB_ENV"
+          set +e
+          raw="$(heroku run --no-tty -a "$CORE_APP_NAME" -- node "$SCRIPT_PATH" 2>&1)"
+          command_status=$?
+          set -e
+          json="$(sed -n 's/^PHASE_9_8_WRITE_SMOKE_RESULT=//p' <<<"$raw" | tail -n 1)"
+          if [ -z "$json" ] || ! jq -e 'type == "object" and has("ok")' <<<"$json" >/dev/null; then
+            echo 'WRITE_SMOKE_RESULT=unreadable' | tee -a "$GITHUB_STEP_SUMMARY" "$evidence_file" >/dev/null
+            exit 1
+          fi
+          jq -e '
+            .ok == true and
+            .internalWriteRollback == true and
+            .mcpWriteRollback == true and
+            .customerPortalServiceWriteRollback == true and
+            .mcpSourceDuplicateGuard == true and
+            .customerPortalSourceDuplicateGuard == true and
+            .productionPersistedTestRows == 0 and
+            .customerPortalHttpClerkWrite == "not_exercised_no_test_session"
+          ' <<<"$json" >/dev/null
+          test "$command_status" -eq 0
+          {
+            echo 'INTERNAL_WRITE_ROLLBACK=pass'
+            echo 'MCP_WRITE_ROLLBACK=pass'
+            echo 'CUSTOMER_PORTAL_SERVICE_WRITE_ROLLBACK=pass'
+            echo 'MCP_SOURCE_DUPLICATE_GUARD=pass'
+            echo 'CUSTOMER_PORTAL_SOURCE_DUPLICATE_GUARD=pass'
+            echo 'PRODUCTION_PERSISTED_TEST_ROWS=0'
+            echo 'CUSTOMER_PORTAL_HTTP_CLERK_WRITE=not_exercised_no_test_session'
+          } | tee -a "$GITHUB_STEP_SUMMARY" "$evidence_file" >/dev/null
+      - name: Smoke Core and Customer Ordering PWA runtime
+        id: runtime
+        shell: bash
+        env:
+          APP_URL: ${{ steps.preflight.outputs.app_url }}
+        run: |
+          set -euo pipefail
+          record_evidence() { tee -a "$GITHUB_STEP_SUMMARY" "$EVIDENCE_FILE" >/dev/null; }
+          app_url="${APP_URL%/}"
+          live="$(curl --silent --show-error --connect-timeout 5 --max-time 15 --output /dev/null --write-out '%{http_code}' "$app_url/health/live")"
+          ready="$(curl --silent --show-error --connect-timeout 5 --max-time 15 --output /dev/null --write-out '%{http_code}' "$app_url/health/ready")"
+          test "$live" = '200'
+          test "$ready" = '200'
+
+          manifest="$(curl --fail --silent --show-error --location --connect-timeout 5 --max-time 20 "$CUSTOMER_ORDERING_ORIGIN/manifest.webmanifest")"
+          jq -e '.icons | any(.src == "/icon-192-20260809.png") and any(.src == "/icon-512-20260809.png")' <<<"$manifest" >/dev/null
+          worker="$(curl --fail --silent --show-error --location --connect-timeout 5 --max-time 20 "$CUSTOMER_ORDERING_ORIGIN/sw.js")"
+          grep -F 'hp-customer-ordering-shell-v2-20260809' <<<"$worker" >/dev/null
+          grep -F '/icon-192-20260809.png' <<<"$worker" >/dev/null
+          grep -F '/icon-512-20260809.png' <<<"$worker" >/dev/null
+          for path in /icon-192-20260809.png /icon-512-20260809.png /account; do
+            code="$(curl --silent --show-error --location --connect-timeout 5 --max-time 20 --output /dev/null --write-out '%{http_code}' "$CUSTOMER_ORDERING_ORIGIN$path")"
+            test "$code" = '200'
+          done
+          {
+            echo "CORE_HEALTH_LIVE=$live"
+            echo "CORE_HEALTH_READY=$ready"
+            echo 'CUSTOMER_ORDERING_MANIFEST_ICON_VERSION=pass'
+            echo 'CUSTOMER_ORDERING_SERVICE_WORKER_CACHE_VERSION=pass'
+            echo 'CUSTOMER_ORDERING_VERSIONED_ICONS_HTTP=pass'
+            echo 'CUSTOMER_ORDERING_ACCOUNT_ROUTE_HTTP=200'
+          } | record_evidence
+      - name: Publish sanitized Phase 9.8 write evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          CORE_RELEASE: ${{ steps.preflight.outputs.release }}
+          DEPLOYED_SHA: ${{ steps.preflight.outputs.deployed_sha }}
+        run: |
+          set -euo pipefail
+          evidence="$(mktemp)"
+          {
+            echo "## Phase 9.8 three-source production WRITE smoke — ${OPERATION_STATUS}"
+            echo
+            echo "SOURCE_SHA=${SOURCE_SHA:-unavailable}"
+            echo "CORE_RELEASE=${CORE_RELEASE:-unavailable}"
+            echo "DEPLOYED_SHA=${DEPLOYED_SHA:-unavailable}"
+            if [ -n "${EVIDENCE_FILE:-}" ] && [ -s "$EVIDENCE_FILE" ]; then cat "$EVIDENCE_FILE"; else echo 'WRITE_EVIDENCE=unavailable_before_write_step'; fi
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/395/comments" -f body="$(cat "$evidence")" >/dev/null
+          rm -f "$evidence"
