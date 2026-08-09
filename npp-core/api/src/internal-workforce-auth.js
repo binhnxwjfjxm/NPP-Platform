@@ -282,6 +282,7 @@ export function createInternalWorkforceAuthenticator({
           userId: identity.user_id,
         });
         if (!credential || isFutureDate(credential.locked_until, now())) {
+          await fakePasswordWork(password);
           return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_INVALID_CREDENTIALS'));
         }
 
