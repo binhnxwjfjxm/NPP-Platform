@@ -1,7 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { E2E_WORKFORCE_USER_ID } from './workforce-auth-fixture';
 
 const TEST_TOKEN_MARKER = process.env.E2E_BACKEND_API_TOKEN ?? '';
 const TEST_DATABASE_MARKER = process.env.E2E_DATABASE_URL ?? '';
+const EXPECTED_ACTOR_ID = `user:${E2E_WORKFORCE_USER_ID}`;
+const EXPECTED_SOURCE_APP = 'npp-operations-web';
 
 function expectNoSensitiveData(value: string) {
   expect(value).not.toContain('Authorization');
@@ -22,9 +25,9 @@ test.describe('Foundation UI enabled', () => {
     await expect(page.getByRole('heading', { name: 'NPP Platform readiness' })).toBeVisible();
     await expect(page.getByText('Operational', { exact: true })).toBeVisible();
     await expect(page.getByText('Ready', { exact: true })).toBeVisible();
-    await expect(page.getByTestId('actor-id')).toHaveText('bootstrap:e2e');
+    await expect(page.getByTestId('actor-id')).toHaveText(EXPECTED_ACTOR_ID);
     await expect(page.getByTestId('installation-id')).toHaveText('e2e-installation');
-    await expect(page.getByTestId('source-app')).toHaveText('npp-core-api');
+    await expect(page.getByTestId('source-app')).toHaveText(EXPECTED_SOURCE_APP);
     await expect(page.getByText('Adapter disabled', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: /Run R2 contract test/i })).toHaveCount(0);
   });
@@ -58,9 +61,9 @@ test.describe('Foundation UI enabled', () => {
     const payload = await response.json();
     expect(payload.apiLive).toBe(true);
     expect(payload.apiReady).toBe(true);
-    expect(payload.authenticatedContext.actorId).toBe('bootstrap:e2e');
+    expect(payload.authenticatedContext.actorId).toBe(EXPECTED_ACTOR_ID);
     expect(payload.authenticatedContext.installationId).toBe('e2e-installation');
-    expect(payload.authenticatedContext.sourceApp).toBe('npp-core-api');
+    expect(payload.authenticatedContext.sourceApp).toBe(EXPECTED_SOURCE_APP);
     expect(payload.r2State.enabled).toBe(false);
     expect(payload.r2State.contractRouteEnabled).toBe(false);
     expectNoSensitiveData(JSON.stringify(payload));

@@ -19,9 +19,10 @@ test('Phase 8.6 gateway is server-only GET and reporting workspace stays read-on
   const route = source('../app/api/reporting/cod/route.ts');
   const workspace = source('../app/components/cod-reporting-workspace.tsx');
   assert.match(gateway, /server-only/);
-  assert.match(gateway, /CORE_API_SERVER_TOKEN/);
+  assert.match(gateway, /requireNppWorkforceSessionToken/);
+  assert.doesNotMatch(gateway, /process\.env\.CORE_API_SERVER_TOKEN/);
   assert.match(gateway, /\/api\/reporting\/cod/);
-  assert.match(gateway, /method: 'GET'/);
+  assert.match(gateway, /method:\s*'GET'/);
   assert.doesNotMatch(gateway, /NEXT_PUBLIC_.*TOKEN/);
   assert.match(route, /export async function GET/);
   assert.doesNotMatch(route, /export async function (POST|PUT|PATCH|DELETE)/);

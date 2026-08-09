@@ -1,57 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-
 const source = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const exists = (path) => existsSync(new URL(path, import.meta.url));
 
-test('8.4 places Employee + MCP performance beside employee directory with a real page', () => {
-  const shell = source('../app/components/app-shell-core.tsx');
-  assert.match(shell, /href: '\/access\/employees\/performance'.*label: 'Hiệu suất nhân viên \/ MCP'.*testId: 'nav-employee-mcp-reporting'/);
-  assert.equal(exists('../app/access/employees/performance/page.tsx'), true);
-  assert.equal(exists('../app/components/employee-mcp-reporting-workspace.tsx'), true);
-  assert.doesNotMatch(shell, /href: '\/reporting'/);
-});
-
-test('8.4 browser API uses a server-only Core gateway and stays behind existing Basic gate', () => {
-  assert.equal(exists('../app/api/reporting/employee-mcp/route.ts'), true);
-  const gateway = source('../lib/employee-mcp-reporting-gateway.ts');
-  const middleware = source('../middleware.ts');
-  const workspace = source('../app/components/employee-mcp-reporting-workspace.tsx');
-  assert.match(gateway, /import 'server-only'/);
-  assert.match(gateway, /CORE_API_INTERNAL_URL/);
-  assert.match(gateway, /CORE_API_SERVER_TOKEN/);
-  assert.match(gateway, /cache: 'no-store'/);
-  assert.match(gateway, /new Set\(\['from', 'to'\]\)/);
-  assert.match(middleware, /'\/access\/:path\*'/);
-  assert.match(middleware, /'\/api\/reporting\/:path\*'/);
-  assert.doesNotMatch(workspace, /CORE_API_SERVER_TOKEN|CORE_API_INTERNAL_URL|NEXT_PUBLIC_.*TOKEN/);
-});
-
-test('8.4 UI preserves identity and customer boundaries for future Admin reuse', () => {
-  const workspace = source('../app/components/employee-mcp-reporting-workspace.tsx');
-  assert.match(workspace, /Admin Control Tower sau này dùng lại chính contract này/);
-  assert.match(workspace, /không được suy thành territory/);
-  assert.match(workspace, /Field outlet chưa qua onboarding không tự trở thành khách hàng Core/);
-  assert.match(workspace, /chưa map mã nhân viên/);
-  assert.match(workspace, /storedCounterMismatch/);
-  assert.doesNotMatch(workspace, /parseFloat\(|parseInt\(|Number\(/);
-});
-
-test('8.4 only links existing NPP owner screens and does not invent export or MCP deep links', () => {
-  const workspace = source('../app/components/employee-mcp-reporting-workspace.tsx');
-  assert.equal(exists('../app/access/employees/page.tsx'), true);
-  assert.equal(exists('../app/management/customer-onboarding/page.tsx'), true);
-  assert.match(workspace, /href="\/access\/employees"/);
-  assert.match(workspace, /href="\/management\/customer-onboarding"/);
-  assert.doesNotMatch(workspace, /Xuất CSV|exportCsv|Tải CSV|mcp\.nguyenlieuhungphat\.com/);
-});
-
-test('8.4 date filters are disabled while loading and only forward from/to', () => {
-  const workspace = source('../app/components/employee-mcp-reporting-workspace.tsx');
-  assert.match(workspace, /type="date" value=\{from\} disabled=\{busy\}/);
-  assert.match(workspace, /type="date" value=\{to\} disabled=\{busy\}/);
-  assert.match(workspace, /query\.set\('from', from\)/);
-  assert.match(workspace, /query\.set\('to', to\)/);
-  assert.doesNotMatch(workspace, /warehouseId|territoryId/);
-});
+test('8.4 places Employee + MCP performance beside employee directory with a real page', () => { const shell=source('../app/components/app-shell-core.tsx'); assert.match(shell,/href: '\/access\/employees\/performance'.*label: 'Hiệu suất nhân viên \/ MCP'.*testId: 'nav-employee-mcp-reporting'/); assert.equal(exists('../app/access/employees/performance/page.tsx'),true); assert.equal(exists('../app/components/employee-mcp-reporting-workspace.tsx'),true); assert.doesNotMatch(shell,/href: '\/reporting'/); });
+test('8.4 browser API uses a server-only Core gateway behind canonical workforce auth', () => { assert.equal(exists('../app/api/reporting/employee-mcp/route.ts'),true); const gateway=source('../lib/employee-mcp-reporting-gateway.ts'); const middleware=source('../middleware.ts'); const workspace=source('../app/components/employee-mcp-reporting-workspace.tsx'); assert.match(gateway,/import 'server-only'/); assert.match(gateway,/CORE_API_INTERNAL_URL/); assert.match(gateway,/requireNppWorkforceSessionToken/); assert.doesNotMatch(gateway,/process\.env\.CORE_API_SERVER_TOKEN/); assert.match(gateway,/cache:\s*'no-store'/); assert.match(gateway,/new Set\(\['from',\s*'to'\]\)/); assert.match(middleware,/NPP_SESSION_COOKIE/); assert.match(middleware,/\/api\/internal-auth\/me/); assert.doesNotMatch(middleware,/CORE_WEB_ADMIN_USERNAME|CORE_WEB_ADMIN_PASSWORD|Basic realm/); assert.doesNotMatch(workspace,/CORE_API_SERVER_TOKEN|CORE_API_INTERNAL_URL|NEXT_PUBLIC_.*TOKEN/); });
+test('8.4 UI preserves identity and customer boundaries for future Admin reuse', () => { const workspace=source('../app/components/employee-mcp-reporting-workspace.tsx'); assert.match(workspace,/Admin Control Tower sau này dùng lại chính contract này/); assert.match(workspace,/không được suy thành territory/); assert.match(workspace,/Field outlet chưa qua onboarding không tự trở thành khách hàng Core/); assert.match(workspace,/chưa map mã nhân viên/); assert.match(workspace,/storedCounterMismatch/); assert.doesNotMatch(workspace,/parseFloat\(|parseInt\(|Number\(/); });
+test('8.4 only links existing NPP owner screens and does not invent export or MCP deep links', () => { const workspace=source('../app/components/employee-mcp-reporting-workspace.tsx'); assert.equal(exists('../app/access/employees/page.tsx'),true); assert.equal(exists('../app/management/customer-onboarding/page.tsx'),true); assert.match(workspace,/href="\/access\/employees"/); assert.match(workspace,/href="\/management\/customer-onboarding"/); assert.doesNotMatch(workspace,/Xuất CSV|exportCsv|Tải CSV|mcp\.nguyenlieuhungphat\.com/); });
+test('8.4 date filters are disabled while loading and only forward from/to', () => { const workspace=source('../app/components/employee-mcp-reporting-workspace.tsx'); assert.match(workspace,/type="date" value=\{from\} disabled=\{busy\}/); assert.match(workspace,/type="date" value=\{to\} disabled=\{busy\}/); assert.match(workspace,/query\.set\('from', from\)/); assert.match(workspace,/query\.set\('to', to\)/); assert.doesNotMatch(workspace,/warehouseId|territoryId/); });

@@ -12,8 +12,8 @@ describe('purchase-order web contract', () => {
     const gateway = read('../lib/purchase-order-gateway.ts');
     assert.match(gateway, /const UUID_PATTERN/);
     assert.match(gateway, /const ALLOWED_QUERY_KEYS/);
-    assert.match(gateway, /function assertIdempotencyKey/);
-    assert.match(gateway, /idempotencyKey: assertIdempotencyKey\(idempotencyKey\)/);
+    assert.match(gateway, /IDEMPOTENCY_KEY_PATTERN/);
+    assert.match(gateway, /idempotencyKey:\s*key\(k\)/);
     assert.doesNotMatch(gateway, /idempotencyKey\?\.trim\(\) \|\| `web-/);
   });
 
@@ -63,7 +63,7 @@ describe('purchase-order web contract', () => {
     assert.doesNotMatch(editor + permissionEditor, /MutationObserver|parseFloat/);
   });
 
-  it('keeps server tokens behind same-origin route handlers', () => {
+  it('keeps server credentials behind same-origin route handlers', () => {
     const collection = read('../app/api/purchase-orders/route.ts');
     const detail = read('../app/api/purchase-orders/[id]/route.ts');
     const action = read('../app/api/purchase-orders/[id]/_action.ts');

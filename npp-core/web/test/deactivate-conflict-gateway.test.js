@@ -12,8 +12,8 @@ test('same-origin gateways and routes forward sanitized conflict details', () =>
   const productRoute = read('../app/api/products/[id]/route.ts');
   const organizationRoute = read('../app/api/organization/[resource]/[id]/route.ts');
 
-  assert.match(productGateway, /payload\.error\?\.details \?\? \{\}/);
-  assert.match(organizationGateway, /payload\.error\?\.details \?\? \{\}/);
+  assert.match(productGateway, /\.error\?\.details\s*\?\?\s*\{\}/);
+  assert.match(organizationGateway, /\.error\?\.details\s*\?\?\s*\{\}/);
   assert.match(productRoute, /details: normalized\.details/);
   assert.match(organizationRoute, /details: normalized\.details/);
 });

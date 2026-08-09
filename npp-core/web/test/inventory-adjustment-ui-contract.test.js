@@ -26,7 +26,8 @@ test('web screen uses a real server gateway and catch-all proxy', () => {
   assert.match(page, /loadInventorySnapshot/);
   assert.match(page, /loadOrganizationSnapshot/);
   assert.match(gateway, /CORE_API_INTERNAL_URL/);
-  assert.match(gateway, /CORE_API_SERVER_TOKEN/);
+  assert.match(gateway, /requireNppWorkforceSessionToken/);
+  assert.doesNotMatch(gateway, /process\.env\.CORE_API_SERVER_TOKEN/);
   assert.match(gateway, /Idempotency-Key/);
   assert.match(route, /transitionInventoryAdjustment/);
   assert.match(route, /submit.*approve.*post.*cancel.*reverse/s);

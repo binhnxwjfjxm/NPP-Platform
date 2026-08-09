@@ -3,12 +3,13 @@ import { test, expect } from '@playwright/test';
 test.describe('Kho vận không auth', () => {
   test('chặn route inventory và API inventory khi chưa đăng nhập', async ({ page, request }) => {
     const pageResponse = await page.goto('/inventory/balances');
-    expect(pageResponse?.status()).toBe(401);
-    expect(pageResponse?.headers()['www-authenticate']).toContain('Basic');
+    expect(pageResponse?.status()).toBe(200);
+    await expect(page).toHaveURL(/\/login\?returnTo=%2Finventory%2Fbalances$/);
+    await expect(page.getByRole('heading', { name: 'Đăng nhập hệ thống' })).toBeVisible();
 
     const apiResponse = await request.get('/api/inventory/tracking-policies');
     expect(apiResponse.status()).toBe(401);
-    expect(apiResponse.headers()['www-authenticate']).toContain('Basic');
+    expect(apiResponse.headers()['www-authenticate']).toBeUndefined();
 
     const postResponse = await request.post('/api/inventory/opening-balances/post', {
       data: {
@@ -19,6 +20,6 @@ test.describe('Kho vận không auth', () => {
       },
     });
     expect(postResponse.status()).toBe(401);
-    expect(postResponse.headers()['www-authenticate']).toContain('Basic');
+    expect(postResponse.headers()['www-authenticate']).toBeUndefined();
   });
 });

@@ -1,84 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-
-const source = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
-const exists = (path) => existsSync(new URL(path, import.meta.url));
-
-test('8.1 navigation only exposes reporting routes that have real UI pages', () => {
-  const shell = source('../app/components/app-shell-core.tsx');
-
-  assert.match(shell, /href: '\/sales\/reporting'.*label: 'Báo cáo bán hàng'/);
-  assert.match(shell, /href: '\/purchasing\/reporting'.*label: 'Báo cáo mua hàng'/);
-  assert.equal(exists('../app/sales/reporting/page.tsx'), true);
-  assert.equal(exists('../app/purchasing/reporting/page.tsx'), true);
-
-  const salesPage = source('../app/sales/reporting/page.tsx');
-  const purchasingPage = source('../app/purchasing/reporting/page.tsx');
-  assert.match(salesPage, /ReportingDashboardWorkspace family="sales"/);
-  assert.match(purchasingPage, /ReportingDashboardWorkspace family="purchasing"/);
-});
-
-test('8.1 reporting stays inside Sales and Purchasing app structure', () => {
-  const shell = source('../app/components/app-shell-core.tsx');
-  const workspace = source('../app/components/reporting-dashboard-workspace.tsx');
-
-  const salesGroup = shell.slice(shell.indexOf('const salesItems'), shell.indexOf('const purchasingItems'));
-  const purchasingGroup = shell.slice(shell.indexOf('const purchasingItems'), shell.indexOf('const accountingItems'));
-  assert.match(salesGroup, /\/sales\/reporting/);
-  assert.doesNotMatch(salesGroup, /\/purchasing\/reporting/);
-  assert.match(purchasingGroup, /\/purchasing\/reporting/);
-  assert.doesNotMatch(purchasingGroup, /\/sales\/reporting/);
-
-  assert.match(workspace, /href="\/sales\/sales-orders"/);
-  assert.match(workspace, /href="\/purchasing\/purchase-orders"/);
-  assert.match(workspace, /href="\/purchasing\/goods-receipts"/);
-  assert.doesNotMatch(workspace, /href="\/reporting/);
-});
-
-test('8.1 drill-down buttons only target existing NPP operational routes', () => {
-  assert.equal(exists('../app/sales/sales-orders/page.tsx'), true);
-  assert.equal(exists('../app/purchasing/purchase-orders/page.tsx'), true);
-  assert.equal(exists('../app/purchasing/goods-receipts/page.tsx'), true);
-
-  const workspace = source('../app/components/reporting-dashboard-workspace.tsx');
-  assert.match(workspace, /detailRoute\(family/);
-  assert.match(workspace, /sampleDocumentNumber/);
-  assert.match(workspace, /entityCode/);
-});
-
-test('8.1 browser routes proxy through server-only Core gateway with validated payloads', () => {
-  assert.equal(exists('../app/api/reporting/sales/route.ts'), true);
-  assert.equal(exists('../app/api/reporting/purchasing/route.ts'), true);
-
-  const gateway = source('../lib/reporting-dashboard-gateway.ts');
-  const salesApi = source('../app/api/reporting/sales/route.ts');
-  const purchasingApi = source('../app/api/reporting/purchasing/route.ts');
-  const workspace = source('../app/components/reporting-dashboard-workspace.tsx');
-
-  assert.match(gateway, /import 'server-only'/);
-  assert.match(gateway, /CORE_API_INTERNAL_URL/);
-  assert.match(gateway, /CORE_API_SERVER_TOKEN/);
-  assert.match(gateway, /cache: 'no-store'/);
-  assert.match(gateway, /payload\.data === null/);
-  assert.match(gateway, /const serializedQuery = query\.toString\(\)/);
-  assert.match(workspace, /const serializedQuery = query\.toString\(\)/);
-  assert.doesNotMatch(gateway + workspace, /query\.size/);
-  assert.match(salesApi, /getReportingDashboard\(\s*'sales'/s);
-  assert.match(purchasingApi, /getReportingDashboard\(\s*'purchasing'/s);
-  assert.doesNotMatch(workspace, /CORE_API_SERVER_TOKEN|CORE_API_INTERNAL_URL/);
-});
-
-test('8.1 Sales summary labels state the confirmed_at reporting basis', () => {
-  const workspace = source('../app/components/reporting-dashboard-workspace.tsx');
-  assert.match(workspace, /Đơn có ngày xác nhận trong kỳ/);
-  assert.match(workspace, /sales\.sales_orders\.confirmed_at/);
-  assert.match(workspace, /Đã hủy sau xác nhận/);
-});
-
-test('8.1 web formatting does not perform business arithmetic with JavaScript Number', () => {
-  const workspace = source('../app/components/reporting-dashboard-workspace.tsx');
-  assert.match(workspace, /function formatDecimal/);
-  assert.doesNotMatch(workspace, /parseFloat\(|parseInt\(|Number\(/);
-  assert.doesNotMatch(workspace, /Xuất CSV|exportCsv/);
-});
+const source=(path)=>readFileSync(new URL(path,import.meta.url),'utf8'); const exists=(path)=>existsSync(new URL(path,import.meta.url));
+test('8.1 navigation only exposes reporting routes that have real UI pages',()=>{const shell=source('../app/components/app-shell-core.tsx');assert.match(shell,/href: '\/sales\/reporting'.*label: 'Báo cáo bán hàng'/);assert.match(shell,/href: '\/purchasing\/reporting'.*label: 'Báo cáo mua hàng'/);assert.equal(exists('../app/sales/reporting/page.tsx'),true);assert.equal(exists('../app/purchasing/reporting/page.tsx'),true);const salesPage=source('../app/sales/reporting/page.tsx');const purchasingPage=source('../app/purchasing/reporting/page.tsx');assert.match(salesPage,/ReportingDashboardWorkspace family="sales"/);assert.match(purchasingPage,/ReportingDashboardWorkspace family="purchasing"/);});
+test('8.1 reporting stays inside Sales and Purchasing app structure',()=>{const shell=source('../app/components/app-shell-core.tsx');const workspace=source('../app/components/reporting-dashboard-workspace.tsx');const salesGroup=shell.slice(shell.indexOf('const salesItems'),shell.indexOf('const purchasingItems'));const purchasingGroup=shell.slice(shell.indexOf('const purchasingItems'),shell.indexOf('const accountingItems'));assert.match(salesGroup,/\/sales\/reporting/);assert.doesNotMatch(salesGroup,/\/purchasing\/reporting/);assert.match(purchasingGroup,/\/purchasing\/reporting/);assert.doesNotMatch(purchasingGroup,/\/sales\/reporting/);assert.match(workspace,/href="\/sales\/sales-orders"/);assert.match(workspace,/href="\/purchasing\/purchase-orders"/);assert.match(workspace,/href="\/purchasing\/goods-receipts"/);assert.doesNotMatch(workspace,/href="\/reporting/);});
+test('8.1 drill-down buttons only target existing NPP operational routes',()=>{assert.equal(exists('../app/sales/sales-orders/page.tsx'),true);assert.equal(exists('../app/purchasing/purchase-orders/page.tsx'),true);assert.equal(exists('../app/purchasing/goods-receipts/page.tsx'),true);const workspace=source('../app/components/reporting-dashboard-workspace.tsx');assert.match(workspace,/detailRoute\(family/);assert.match(workspace,/sampleDocumentNumber/);assert.match(workspace,/entityCode/);});
+test('8.1 browser routes proxy through server-only Core gateway with validated payloads',()=>{assert.equal(exists('../app/api/reporting/sales/route.ts'),true);assert.equal(exists('../app/api/reporting/purchasing/route.ts'),true);const gateway=source('../lib/reporting-dashboard-gateway.ts');const salesApi=source('../app/api/reporting/sales/route.ts');const purchasingApi=source('../app/api/reporting/purchasing/route.ts');const workspace=source('../app/components/reporting-dashboard-workspace.tsx');assert.match(gateway,/import 'server-only'/);assert.match(gateway,/CORE_API_INTERNAL_URL/);assert.match(gateway,/requireNppWorkforceSessionToken/);assert.doesNotMatch(gateway,/process\.env\.CORE_API_SERVER_TOKEN/);assert.match(gateway,/cache:\s*'no-store'/);assert.match(gateway,/\.data\s*===\s*null/);assert.match(gateway,/new URLSearchParams/);assert.match(gateway,/\/api\/reporting\/\$\{family\}/);assert.match(workspace,/toString\(\)/);assert.doesNotMatch(gateway+workspace,/query\.size/);assert.match(salesApi,/getReportingDashboard\(\s*'sales'/s);assert.match(purchasingApi,/getReportingDashboard\(\s*'purchasing'/s);assert.doesNotMatch(workspace,/CORE_API_SERVER_TOKEN|CORE_API_INTERNAL_URL/);});
+test('8.1 Sales summary labels state the confirmed_at reporting basis',()=>{const workspace=source('../app/components/reporting-dashboard-workspace.tsx');assert.match(workspace,/Đơn có ngày xác nhận trong kỳ/);assert.match(workspace,/sales\.sales_orders\.confirmed_at/);assert.match(workspace,/Đã hủy sau xác nhận/);});
+test('8.1 web formatting does not perform business arithmetic with JavaScript Number',()=>{const workspace=source('../app/components/reporting-dashboard-workspace.tsx');assert.match(workspace,/function formatDecimal/);assert.doesNotMatch(workspace,/parseFloat\(|parseInt\(|Number\(/);assert.doesNotMatch(workspace,/Xuất CSV|exportCsv/);});

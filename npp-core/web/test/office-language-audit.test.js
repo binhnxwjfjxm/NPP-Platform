@@ -18,7 +18,7 @@ test('login and user pages use neutral office language', async () => {
     source('../app/access/users/user-workspace.tsx'),
   ]);
   assert.match(login, /Đăng nhập hệ thống/);
-  assert.match(login, /liên hệ bộ phận quản trị/);
+  assert.match(login, /liên hệ người quản trị tài khoản nội bộ/);
   assert.doesNotMatch(login, /hộp thoại xác thực|Thông tin kết nối hệ thống|không gian quản trị/);
   assert.match(users, /Quản lý tài khoản sử dụng hệ thống/);
   assert.doesNotMatch(users, /chưa phải thông tin đăng nhập thật|tập vai trò trống/);
