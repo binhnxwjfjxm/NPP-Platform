@@ -1,6 +1,6 @@
 import OpeningBalanceCsvWorkspace from './opening-balance-csv-workspace';
 import { createEmptyInventorySnapshot } from '../../../lib/inventory-types';
-import { loadInventorySnapshot } from '../../../lib/inventory-snapshot';
+import { loadInventoryOpeningBalanceSnapshot } from '../../../lib/inventory-scoped-snapshot';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +9,7 @@ export default async function InventoryOpeningBalancesPage() {
   let initialError: string | null = null;
 
   try {
-    initialData = await loadInventorySnapshot();
+    initialData = await loadInventoryOpeningBalanceSnapshot();
   } catch (error) {
     initialError = error instanceof Error ? error.message : 'Không tải được lịch sử nhập tồn đầu kỳ.';
   }

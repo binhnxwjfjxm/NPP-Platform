@@ -1,25 +1,30 @@
-import InventoryWorkspace from '../inventory-workspace';
+import InventoryScopedWorkspace from '../inventory-scoped-workspace';
 import { createEmptyInventorySnapshot } from '../../../lib/inventory-types';
-import { loadInventorySnapshot } from '../../../lib/inventory-snapshot';
+import { loadInventoryTrackingPolicySnapshot } from '../../../lib/inventory-scoped-snapshot';
+import type { InventoryTrackingPolicyCandidate } from '../../../lib/inventory-policy-types';
 
 export const dynamic = 'force-dynamic';
 
 export default async function InventoryTrackingPoliciesPage() {
   let initialData = createEmptyInventorySnapshot();
+  let initialCandidates: InventoryTrackingPolicyCandidate[] = [];
   let initialError: string | null = null;
 
   try {
-    initialData = await loadInventorySnapshot();
+    const loaded = await loadInventoryTrackingPolicySnapshot();
+    initialData = loaded.snapshot;
+    initialCandidates = loaded.candidates;
   } catch (error) {
-    initialError = error instanceof Error ? error.message : 'Không tải được dữ liệu tồn kho';
+    initialError = error instanceof Error ? error.message : 'Không tải được chính sách quản lý lô';
   }
 
   return (
-    <InventoryWorkspace
+    <InventoryScopedWorkspace
       scope="tracking-policies"
       title="Chính sách quản lý lô"
       subtitle="Chọn cách quản lý lô, hạn sử dụng và vị trí cho từng SKU."
       initialSnapshot={initialData}
+      initialCandidates={initialCandidates}
       initialError={initialError}
     />
   );
