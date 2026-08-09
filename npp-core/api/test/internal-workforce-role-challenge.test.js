@@ -17,10 +17,24 @@ test('role editor exposes an explicit Web/PWA owner-code toggle', async () => {
   assert.match(source, /Đăng nhập Web\/PWA yêu cầu mã xác nhận của chủ sở hữu/);
 });
 
-test('owner credential bootstrap is runtime-secret driven and does not embed owner passwords', async () => {
+test('production challenge uses one bounded Cloudflare request for both permanent owners after DB transaction', async () => {
+  const source = await readFile(new URL('../src/internal-workforce-auth.js', import.meta.url), 'utf8');
+  assert.match(source, /AbortSignal\.timeout\(CHALLENGE_EMAIL_TIMEOUT_MS\)/);
+  assert.match(source, /to: recipients/);
+  assert.match(source, /INTERNAL_AUTH_OWNER_CHALLENGE_REQUIRED/);
+  const transactionStart = source.indexOf('const transactionResult = await withAuditOutboxTransaction');
+  const deliveryStart = source.indexOf('if (transactionResult.challengeDelivery)');
+  assert.ok(transactionStart >= 0 && deliveryStart > transactionStart);
+  const transactionSection = source.slice(transactionStart, deliveryStart);
+  assert.doesNotMatch(transactionSection, /await sendOwnerChallengeEmail/);
+  assert.match(transactionSection, /expectedAuditCount: 2/);
+});
+
+test('owner credential bootstrap is runtime-secret driven and follows canonical DB SSL config', async () => {
   const source = await readFile(new URL('../scripts/bootstrap-workforce-owners.js', import.meta.url), 'utf8');
   assert.match(source, /OWNER_BOOTSTRAP_CREDENTIALS_JSON/);
   assert.match(source, /setInternalUserCredential/);
   assert.match(source, /allowSecurityOwnerMutation: true/);
+  assert.match(source, /buildSslConfig\(sslMode\)/);
   assert.doesNotMatch(source, /password\s*:\s*['"][^'"]+['"]/);
 });

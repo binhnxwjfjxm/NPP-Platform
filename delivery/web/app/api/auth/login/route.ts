@@ -18,6 +18,13 @@ function redirect(location: string): NextResponse {
   });
 }
 
+function loginError(returnTo: string, error: string, challenge = false) {
+  const search = new URLSearchParams({ error });
+  if (challenge) search.set('challenge', 'owner');
+  if (returnTo !== '/') search.set('returnTo', returnTo);
+  return redirect(`/login?${search.toString()}`);
+}
+
 export async function POST(request: NextRequest) {
   const form = await request.formData();
   const loginName = String(form.get('username') || '').trim();
@@ -36,16 +43,17 @@ export async function POST(request: NextRequest) {
   });
 
   if (!result.ok || !result.data?.token) {
-    const error = result.code === 'INTERNAL_AUTH_OWNER_CODE_INVALID'
-      ? 'owner_code_invalid'
-      : result.code === 'INTERNAL_AUTH_OWNER_CHALLENGE_UNAVAILABLE'
-        ? 'owner_challenge_unavailable'
-        : result.status >= 500
-          ? 'auth_unavailable'
-          : 'invalid_credentials';
-    const search = new URLSearchParams({ error });
-    if (returnTo !== '/') search.set('returnTo', returnTo);
-    return redirect(`/login?${search.toString()}`);
+    if (result.code === 'INTERNAL_AUTH_OWNER_CHALLENGE_REQUIRED') {
+      return loginError(returnTo, 'owner_challenge_required', true);
+    }
+    if (result.code === 'INTERNAL_AUTH_OWNER_CODE_INVALID') {
+      return loginError(returnTo, 'owner_code_invalid', true);
+    }
+    if (result.code === 'INTERNAL_AUTH_OWNER_CHALLENGE_UNAVAILABLE') {
+      return loginError(returnTo, 'owner_challenge_unavailable', true);
+    }
+    if (result.status >= 500) return loginError(returnTo, 'auth_unavailable');
+    return loginError(returnTo, 'invalid_credentials');
   }
 
   const response = redirect(returnTo);

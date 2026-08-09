@@ -30,6 +30,7 @@ const IMPLEMENTATION_OWNER_ROLE = 'system:implementation-owner';
 const DEFAULT_CHALLENGE_TTL_SECONDS = 5 * 60;
 const DEFAULT_CHALLENGE_MAX_ATTEMPTS = 5;
 const DEFAULT_CHALLENGE_RESEND_COOLDOWN_SECONDS = 60;
+const CHALLENGE_EMAIL_TIMEOUT_MS = 5_000;
 
 function text(value) {
   return String(value ?? '').trim();
@@ -125,25 +126,32 @@ async function sendOwnerChallengeEmail(fetchImpl, runtime, config, { code, sourc
   const subject = 'Mã xác nhận đăng nhập Hưng Phát';
   const textBody = `Có yêu cầu đăng nhập Web/PWA vào hệ thống Hưng Phát (${sourceApp}). Mã xác nhận: ${code}. Mã hết hạn sau ${Math.ceil(runtime.ttlSeconds / 60)} phút. Nếu không phải yêu cầu hợp lệ, không cung cấp mã này.`;
   const htmlBody = `<p>Có yêu cầu đăng nhập Web/PWA vào hệ thống Hưng Phát (${sourceApp}).</p><p>Mã xác nhận: <strong>${code}</strong></p><p>Mã hết hạn sau ${Math.ceil(runtime.ttlSeconds / 60)} phút. Nếu không phải yêu cầu hợp lệ, không cung cấp mã này.</p>`;
-
-  for (const recipient of config.securityOwnerEmails) {
-    const response = await fetchImpl(endpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${runtime.apiToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        to: recipient,
-        from: runtime.from,
-        subject,
-        text: textBody,
-        html: htmlBody,
-      }),
-    });
-    if (!response?.ok) throw new Error('INTERNAL_AUTH_EMAIL_SEND_FAILED');
-    const payload = await response.json().catch(() => null);
-    if (!payload?.success) throw new Error('INTERNAL_AUTH_EMAIL_SEND_FAILED');
+  const recipients = config.securityOwnerEmails.map((email) => email.toLowerCase());
+  const response = await fetchImpl(endpoint, {
+    method: 'POST',
+    signal: AbortSignal.timeout(CHALLENGE_EMAIL_TIMEOUT_MS),
+    headers: {
+      Authorization: `Bearer ${runtime.apiToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      to: recipients,
+      from: runtime.from,
+      subject,
+      text: textBody,
+      html: htmlBody,
+    }),
+  });
+  if (!response?.ok) throw new Error('INTERNAL_AUTH_EMAIL_SEND_FAILED');
+  const payload = await response.json().catch(() => null);
+  const result = payload?.result;
+  const accepted = new Set([
+    ...(Array.isArray(result?.delivered) ? result.delivered : []),
+    ...(Array.isArray(result?.queued) ? result.queued : []),
+  ].map((email) => String(email).toLowerCase()));
+  const permanentBounces = Array.isArray(result?.permanent_bounces) ? result.permanent_bounces : [];
+  if (!payload?.success || permanentBounces.length > 0 || recipients.some((email) => !accepted.has(email))) {
+    throw new Error('INTERNAL_AUTH_EMAIL_SEND_FAILED');
   }
 }
 
@@ -328,7 +336,7 @@ export function createInternalWorkforceAuthenticator({
       requestId: text(payload.requestId) || `auth_${sessionId}`,
     };
 
-    const auditDeniedLogin = async (client, failure) => {
+    const auditDeniedLogin = async (client, failure, extras = {}) => {
       await insertAuditRecord(client, buildAuditRecord({
         requestContext,
         action: 'login_denied',
@@ -343,7 +351,7 @@ export function createInternalWorkforceAuthenticator({
           reasonCode: failure.code,
         },
       }));
-      return { denied: failure };
+      return { denied: failure, ...extras };
     };
 
     if (!identity.user_is_active || !identity.employee_is_active) {
@@ -388,10 +396,17 @@ export function createInternalWorkforceAuthenticator({
           userId: identity.user_id,
         });
         const challengeRequired = internalWebChallengeRequired(authorization, config);
+        let verifiedChallenge = false;
         if (challengeRequired) {
           const submittedCode = text(payload.ownerCode);
           if (config.allowFixedOwnerCode) {
             if (!constantTimeTextMatch(submittedCode, config.testCode)) {
+              await repo.recordPasswordFailure(client, {
+                installationId: payload.installationId,
+                userId: identity.user_id,
+                lockThreshold: LOCK_THRESHOLD,
+                lockSeconds: LOCK_SECONDS,
+              });
               return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CODE_INVALID', 401));
             }
           } else {
@@ -417,44 +432,47 @@ export function createInternalWorkforceAuthenticator({
                 && !Number.isNaN(existingCreatedAt.getTime())
                 && (currentTime.getTime() - existingCreatedAt.getTime()) < (emailChallengeRuntime.resendCooldownSeconds * 1000);
 
-              if (!withinCooldown) {
-                await repo.cancelActiveLoginChallenges(client, {
-                  installationId: payload.installationId,
-                  userId: identity.user_id,
-                  sourceApp,
-                });
-                const challengeId = randomUUID();
-                const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-                const challengeExpiresAt = new Date(currentTime.getTime() + (emailChallengeRuntime.ttlSeconds * 1000));
-                const challenge = await repo.insertLoginChallenge(client, {
-                  id: challengeId,
-                  installationId: payload.installationId,
-                  userId: identity.user_id,
-                  codeHash: challengeHash(emailChallengeRuntime.pepper, challengeId, identity.user_id, code),
-                  sourceApp,
-                  expiresAt: challengeExpiresAt.toISOString(),
-                });
-                try {
-                  await sendOwnerChallengeEmail(fetchImpl, emailChallengeRuntime, config, { code, sourceApp });
-                } catch {
-                  await repo.cancelLoginChallenge(client, { id: challengeId });
-                  return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CHALLENGE_UNAVAILABLE', 503));
-                }
-                await insertAuditRecord(client, buildAuditRecord({
-                  requestContext,
-                  action: 'login_challenge_issued',
-                  resourceType: 'internal_login_challenge',
-                  resourceId: challenge.id,
-                  afterData: {
-                    userId: identity.user_id,
-                    sourceApp,
-                    accessChannel: 'WEB',
-                    recipientCount: 2,
-                    expiresAt: challenge.expires_at,
-                  },
-                }));
+              if (withinCooldown) {
+                return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CHALLENGE_REQUIRED', 401));
               }
-              return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CODE_INVALID', 401));
+
+              await repo.cancelActiveLoginChallenges(client, {
+                installationId: payload.installationId,
+                userId: identity.user_id,
+                sourceApp,
+              });
+              const challengeId = randomUUID();
+              const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+              const challengeExpiresAt = new Date(currentTime.getTime() + (emailChallengeRuntime.ttlSeconds * 1000));
+              const challenge = await repo.insertLoginChallenge(client, {
+                id: challengeId,
+                installationId: payload.installationId,
+                userId: identity.user_id,
+                codeHash: challengeHash(emailChallengeRuntime.pepper, challengeId, identity.user_id, code),
+                sourceApp,
+                expiresAt: challengeExpiresAt.toISOString(),
+              });
+              await insertAuditRecord(client, buildAuditRecord({
+                requestContext,
+                action: 'login_challenge_issued',
+                resourceType: 'internal_login_challenge',
+                resourceId: challenge.id,
+                afterData: {
+                  userId: identity.user_id,
+                  sourceApp,
+                  accessChannel: 'WEB',
+                  recipientCount: 2,
+                  expiresAt: challenge.expires_at,
+                },
+              }));
+              return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CHALLENGE_REQUIRED', 401), {
+                expectedAuditCount: 2,
+                challengeDelivery: Object.freeze({
+                  challengeId,
+                  code,
+                  sourceApp,
+                }),
+              });
             }
 
             const challenge = await repo.findActiveLoginChallengeForUpdate(client, {
@@ -470,6 +488,12 @@ export function createInternalWorkforceAuthenticator({
               && Number(challenge.failed_attempts ?? 0) < emailChallengeRuntime.maxAttempts;
             if (!challengeUsable) {
               if (challenge) await repo.cancelLoginChallenge(client, { id: challenge.id });
+              await repo.recordPasswordFailure(client, {
+                installationId: payload.installationId,
+                userId: identity.user_id,
+                lockThreshold: LOCK_THRESHOLD,
+                lockSeconds: LOCK_SECONDS,
+              });
               return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CODE_INVALID', 401));
             }
 
@@ -484,10 +508,24 @@ export function createInternalWorkforceAuthenticator({
                 id: challenge.id,
                 maxAttempts: emailChallengeRuntime.maxAttempts,
               });
+              await repo.recordPasswordFailure(client, {
+                installationId: payload.installationId,
+                userId: identity.user_id,
+                lockThreshold: LOCK_THRESHOLD,
+                lockSeconds: LOCK_SECONDS,
+              });
               return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CODE_INVALID', 401));
             }
             const consumed = await repo.consumeLoginChallenge(client, { id: challenge.id });
-            if (!consumed) return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CODE_INVALID', 401));
+            if (!consumed) {
+              await repo.recordPasswordFailure(client, {
+                installationId: payload.installationId,
+                userId: identity.user_id,
+                lockThreshold: LOCK_THRESHOLD,
+                lockSeconds: LOCK_SECONDS,
+              });
+              return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CODE_INVALID', 401));
+            }
             await insertAuditRecord(client, buildAuditRecord({
               requestContext,
               action: 'login_challenge_verified',
@@ -500,6 +538,7 @@ export function createInternalWorkforceAuthenticator({
                 verified: true,
               },
             }));
+            verifiedChallenge = true;
           }
         }
 
@@ -531,9 +570,47 @@ export function createInternalWorkforceAuthenticator({
             webLoginChallengeRequired: challengeRequired,
           },
         }));
-        return { session, authorization };
+        return {
+          session,
+          authorization,
+          ...(verifiedChallenge ? { expectedAuditCount: 2 } : {}),
+        };
       },
     });
+
+    if (transactionResult.challengeDelivery) {
+      try {
+        await sendOwnerChallengeEmail(fetchImpl, emailChallengeRuntime, config, {
+          code: transactionResult.challengeDelivery.code,
+          sourceApp: transactionResult.challengeDelivery.sourceApp,
+        });
+      } catch {
+        try {
+          await withAuditOutboxTransaction({
+            adapter: pool,
+            mutate: async (client) => {
+              await repo.cancelLoginChallenge(client, { id: transactionResult.challengeDelivery.challengeId });
+              await insertAuditRecord(client, buildAuditRecord({
+                requestContext,
+                action: 'login_challenge_delivery_failed',
+                resourceType: 'internal_login_challenge',
+                resourceId: transactionResult.challengeDelivery.challengeId,
+                afterData: {
+                  userId: identity.user_id,
+                  sourceApp,
+                  accessChannel: 'WEB',
+                  cancelled: true,
+                },
+              }));
+              return { cancelled: true };
+            },
+          });
+        } catch {
+          // The login still fails closed even if cleanup/audit cannot be persisted.
+        }
+        return authFailure('INTERNAL_AUTH_OWNER_CHALLENGE_UNAVAILABLE', 503);
+      }
+    }
 
     if (transactionResult.denied) return transactionResult.denied;
 

@@ -215,6 +215,15 @@ test('fixed owner code failure is rate-limited through the credential failure co
     async lockCredentialForLogin() {
       return { password_hash: passwordHash, failed_attempts: 0, locked_until: null };
     },
+    async loadUserAuthorization() {
+      return {
+        roles: [],
+        permissionKeys: [],
+        scopes: { branchIds: [], warehouseIds: [], territoryIds: [] },
+        ownerKind: 'TEMPORARY',
+      };
+    },
+    async loadInstallationOwnerScopes() { return { branchIds: [], warehouseIds: [] }; },
     async recordPasswordFailure() { failures += 1; },
   };
   const authenticator = createInternalWorkforceAuthenticator({ config: config(), pool: auditPool(), repo });

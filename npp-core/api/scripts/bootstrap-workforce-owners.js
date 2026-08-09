@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { buildSslConfig } from '../src/db/pool.js';
 import { loadInternalWorkforceAuthConfig } from '../src/internal-workforce-config.js';
 import {
   reconcileSecurityOwners,
@@ -53,7 +54,7 @@ const credentials = parseCredentials(credentialsRaw, expectedEmails);
 const sslMode = String(process.env.DATABASE_SSL_MODE ?? 'require').trim().toLowerCase();
 const pool = new Pool({
   connectionString,
-  ssl: sslMode === 'require' ? { rejectUnauthorized: false } : false,
+  ssl: buildSslConfig(sslMode),
 });
 
 const client = await pool.connect();

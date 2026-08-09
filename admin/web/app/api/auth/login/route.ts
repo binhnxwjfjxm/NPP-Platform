@@ -49,8 +49,11 @@ export async function POST(request: NextRequest) {
   });
 
   if (!result.ok) {
+    if (result.code === 'INTERNAL_AUTH_OWNER_CHALLENGE_REQUIRED') {
+      return loginError(returnTo, 'owner_challenge_required', true);
+    }
     if (result.code === 'INTERNAL_AUTH_OWNER_CODE_INVALID') {
-      return loginError(returnTo, ownerCode ? 'invalid_owner_code' : 'owner_challenge_required', true);
+      return loginError(returnTo, 'invalid_owner_code', true);
     }
     if (result.code === 'INTERNAL_AUTH_OWNER_CHALLENGE_UNAVAILABLE') {
       return loginError(returnTo, 'owner_challenge_unavailable', true);
