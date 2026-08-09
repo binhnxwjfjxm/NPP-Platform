@@ -135,9 +135,9 @@ function recoverCommittedDraft(path: string, init: RequestInit): {
   recovered: boolean;
 } {
   if (!isDraftSave(path, methodOf(init))) return { path, init, recovered: false };
-  const recovery = recoveryForDraftPath(path);
-  if (!recovery) return { path, init, recovered: false };
-  const draft = pendingVersion(recovery.order);
+  const draftRecovery = recoveryForDraftPath(path);
+  if (!draftRecovery) return { path, init, recovered: false };
+  const draft = pendingVersion(draftRecovery.order);
   if (!draft || typeof init.body !== 'string') return { path, init, recovered: false };
   let body: Record<string, unknown>;
   try {
@@ -146,7 +146,7 @@ function recoverCommittedDraft(path: string, init: RequestInit): {
     return { path, init, recovered: false };
   }
   const recoveredPath = path === '/api/sales-orders'
-    ? `/api/sales-orders/${recovery.order.id}/draft`
+    ? `/api/sales-orders/${draftRecovery.order.id}/draft`
     : path;
   const headers = Object.fromEntries(new Headers(init.headers ?? {}).entries());
   headers['idempotency-key'] = `sales-save-recovery-${crypto.randomUUID()}`;
