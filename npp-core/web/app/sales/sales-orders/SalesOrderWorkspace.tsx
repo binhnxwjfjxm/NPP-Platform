@@ -11,6 +11,7 @@ import {
   activeVersion,
   apiRequest,
   collectionLabels,
+  formatVietnamDateTime,
   mutationKey,
   orderLabels,
   pendingVersion,
@@ -196,7 +197,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                   <b>{order.customerCode} — {order.customerName}</b>
                   <small>Kho {order.warehouseCode} · {collectionLabels[order.collectionPolicy]}</small>
                   <small>Kênh {order.salesChannelCode ?? 'chưa snapshot'}{order.salesChannelName ? ` — ${order.salesChannelName}` : ''}</small>
-                  <small>Cập nhật {new Date(order.updatedAt).toLocaleString('vi-VN')}</small>
+                  <small>Cập nhật {formatVietnamDateTime(order.updatedAt)}</small>
                 </button>
               ))}
               {filtered.length === 0 && <p className={styles.empty}>Chưa có đơn phù hợp.</p>}
