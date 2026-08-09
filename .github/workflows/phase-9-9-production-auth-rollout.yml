@@ -1,0 +1,335 @@
+name: Phase 9.9 production auth rollout
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: phase-9-9-production-auth-rollout
+  cancel-in-progress: false
+
+jobs:
+  rollout:
+    if: >-
+      github.event.issue.number == 433 &&
+      startsWith(github.event.comment.body, '/rollout-phase-9-9-auth-production ') &&
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEPLOY_REF: main
+      HEROKU_APP_NAME: hung-phat
+
+    steps:
+      - name: Validate command and mask rollout payload
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          prefix='/rollout-phase-9-9-auth-production '
+          [[ "$COMMENT_BODY" == "$prefix"* ]]
+          payload="${COMMENT_BODY#"$prefix"}"
+          test -n "$payload"
+          echo "::add-mask::$payload"
+          echo "P99_ROLLOUT_B64=$payload" >> "$GITHUB_ENV"
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Heroku CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Parse production rollout config
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          const raw = process.env.P99_ROLLOUT_B64 || '';
+          let cfg;
+          try {
+            cfg = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+          } catch {
+            throw new Error('P99_ROLLOUT_CONFIG_INVALID');
+          }
+          const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          const accountId = String(cfg.cloudflareAccountId || '').trim();
+          const from = String(cfg.from || '').trim().toLowerCase();
+          const permanent = Array.isArray(cfg.securityOwnerEmails)
+            ? [...new Set(cfg.securityOwnerEmails.map((v) => String(v).trim().toLowerCase()).filter(Boolean))]
+            : [];
+          const temporary = Array.isArray(cfg.implementationOwnerEmails)
+            ? [...new Set(cfg.implementationOwnerEmails.map((v) => String(v).trim().toLowerCase()).filter(Boolean))]
+            : [];
+          const delivery = String(cfg.credentialDeliveryEmail || '').trim().toLowerCase();
+          const challenge = cfg.webOwnerChallengeRequired === true ? 'true' : 'false';
+          if (!/^[a-f0-9]{32}$/i.test(accountId)) throw new Error('P99_CLOUDFLARE_ACCOUNT_ID_INVALID');
+          if (!email.test(from)) throw new Error('P99_EMAIL_FROM_INVALID');
+          if (permanent.length !== 2 || permanent.some((v) => !email.test(v))) throw new Error('P99_PERMANENT_OWNER_EMAILS_INVALID');
+          if (temporary.length !== 1 || temporary.some((v) => !email.test(v))) throw new Error('P99_TEMP_OWNER_EMAIL_INVALID');
+          if (permanent.includes(temporary[0])) throw new Error('P99_OWNER_EMAIL_OVERLAP');
+          if (!email.test(delivery) || delivery !== temporary[0]) throw new Error('P99_CREDENTIAL_DELIVERY_EMAIL_INVALID');
+          const rows = {
+            P99_CF_ACCOUNT_ID: accountId,
+            P99_EMAIL_FROM: from,
+            P99_SECURITY_OWNER_EMAILS: permanent.join(','),
+            P99_IMPLEMENTATION_OWNER_EMAILS: temporary.join(','),
+            P99_CREDENTIAL_DELIVERY_EMAIL: delivery,
+            P99_WEB_OWNER_CHALLENGE_REQUIRED: challenge,
+          };
+          for (const [key, value] of Object.entries(rows)) appendFileSync(process.env.GITHUB_ENV, `${key}=${value}\n`);
+          NODE
+
+      - name: Preflight Heroku and Cloudflare email channel
+        id: preflight
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -euo pipefail
+          test "$HEROKU_APP_NAME" = 'hung-phat'
+
+          app_json="$(curl --fail --silent --show-error \
+            -H 'Accept: application/vnd.heroku+json; version=3' \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            "https://api.heroku.com/apps/$HEROKU_APP_NAME")"
+          app_name="$(jq -r '.name // empty' <<<"$app_json")"
+          app_url="$(jq -r '.web_url // empty' <<<"$app_json")"
+          app_url="${app_url%/}"
+          test "$app_name" = "$HEROKU_APP_NAME"
+          test -n "$app_url"
+          echo "HEROKU_APP_URL=$app_url" >> "$GITHUB_ENV"
+
+          config_json="$(heroku config -a "$HEROKU_APP_NAME" --json)"
+          for key in DATABASE_URL INSTALLATION_ID CLOUDFLARE_EMAIL_API_TOKEN; do
+            jq -e --arg key "$key" 'has($key) and (.[$key] | type == "string" and length > 0)' <<<"$config_json" >/dev/null || {
+              echo "::error::Required Heroku config is missing: $key" >&2
+              exit 1
+            }
+          done
+          email_token="$(jq -r '.CLOUDFLARE_EMAIL_API_TOKEN' <<<"$config_json")"
+          previous_enabled="$(jq -r '.INTERNAL_AUTH_ENABLED // "false"' <<<"$config_json")"
+          echo "::add-mask::$email_token"
+          export CF_EMAIL_TOKEN="$email_token"
+          echo "CF_EMAIL_TOKEN=$email_token" >> "$GITHUB_ENV"
+          echo "previous_enabled=$previous_enabled" >> "$GITHUB_OUTPUT"
+
+          node --input-type=module <<'NODE'
+          const endpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(process.env.P99_CF_ACCOUNT_ID)}/email/sending/send`;
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${process.env.CF_EMAIL_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              to: process.env.P99_CREDENTIAL_DELIVERY_EMAIL,
+              from: { email: process.env.P99_EMAIL_FROM, name: 'Hưng Phát Security' },
+              subject: 'Hưng Phát Security — kiểm tra kênh xác thực',
+              text: 'Kênh email bảo mật cho NPP Platform đã kết nối thành công. Không cần phản hồi email này.',
+              html: '<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>Hưng Phát Security</h2><p>Kênh email bảo mật cho NPP Platform đã kết nối thành công.</p><p style="color:#667085">Không cần phản hồi email này.</p></div>',
+            }),
+          });
+          const payload = await response.json().catch(() => null);
+          const accepted = new Set([...(payload?.result?.delivered || []), ...(payload?.result?.queued || [])].map((v) => String(v).toLowerCase()));
+          if (!response.ok || payload?.success !== true || !accepted.has(process.env.P99_CREDENTIAL_DELIVERY_EMAIL.toLowerCase())) {
+            const code = payload?.errors?.[0]?.code ?? 'unknown';
+            throw new Error(`P99_EMAIL_PREFLIGHT_FAILED:${response.status}:${code}`);
+          }
+          NODE
+
+      - name: Configure canonical internal auth runtime
+        id: configure
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -euo pipefail
+          config_json="$(heroku config -a "$HEROKU_APP_NAME" --json)"
+          pepper="$(jq -r '.INTERNAL_AUTH_CHALLENGE_PEPPER // empty' <<<"$config_json")"
+          if [ "${#pepper}" -lt 32 ]; then
+            pepper="$(openssl rand -hex 32)"
+          fi
+          echo "::add-mask::$pepper"
+          heroku config:set -a "$HEROKU_APP_NAME" \
+            INTERNAL_AUTH_ENABLED=true \
+            INTERNAL_SESSION_TTL_SECONDS=28800 \
+            INTERNAL_WEB_OWNER_CHALLENGE_REQUIRED="$P99_WEB_OWNER_CHALLENGE_REQUIRED" \
+            ALLOW_FIXED_OWNER_CODE=false \
+            SECURITY_OWNER_TEST_CODE= \
+            SECURITY_OWNER_EMAILS="$P99_SECURITY_OWNER_EMAILS" \
+            IMPLEMENTATION_OWNER_EMAILS="$P99_IMPLEMENTATION_OWNER_EMAILS" \
+            CLOUDFLARE_ACCOUNT_ID="$P99_CF_ACCOUNT_ID" \
+            INTERNAL_AUTH_EMAIL_FROM="$P99_EMAIL_FROM" \
+            INTERNAL_AUTH_CHALLENGE_PEPPER="$pepper" \
+            INTERNAL_WEB_CHALLENGE_TTL_SECONDS=300 \
+            INTERNAL_WEB_CHALLENGE_MAX_ATTEMPTS=5 \
+            INTERNAL_WEB_CHALLENGE_RESEND_COOLDOWN_SECONDS=60 \
+            >/dev/null
+
+      - name: Wait for Core live and ready after config release
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in /health/live /health/ready; do
+            ok=false
+            for _ in $(seq 1 60); do
+              status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 --output /dev/null --write-out '%{http_code}' "$HEROKU_APP_URL$path" || true)"
+              if [ "$status" = 200 ]; then ok=true; break; fi
+              sleep 3
+            done
+            [ "$ok" = true ] || { echo "::error::Core health failed for $path" >&2; exit 1; }
+          done
+
+      - name: Generate temporary Owner credentials
+        id: credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          credential_file="$RUNNER_TEMP/p99-owner-credentials.json"
+          CREDENTIAL_FILE="$credential_file" node --input-type=module <<'NODE'
+          import { randomBytes } from 'node:crypto';
+          import { writeFileSync } from 'node:fs';
+          const emails = [
+            ...process.env.P99_SECURITY_OWNER_EMAILS.split(','),
+            ...process.env.P99_IMPLEMENTATION_OWNER_EMAILS.split(','),
+          ];
+          const credentials = Object.fromEntries(emails.map((email) => [email, randomBytes(18).toString('base64url')]));
+          writeFileSync(process.env.CREDENTIAL_FILE, JSON.stringify(credentials), { mode: 0o600 });
+          for (const password of Object.values(credentials)) console.log(`::add-mask::${password}`);
+          console.log(`::add-mask::${JSON.stringify(credentials)}`);
+          NODE
+          echo "file=$credential_file" >> "$GITHUB_OUTPUT"
+
+      - name: Bootstrap 2 permanent + 1 temporary Owner
+        id: bootstrap
+        continue-on-error: true
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          CREDENTIAL_FILE: ${{ steps.credentials.outputs.file }}
+        run: |
+          set -euo pipefail
+          credentials_json="$(cat "$CREDENTIAL_FILE")"
+          echo "::add-mask::$credentials_json"
+          heroku run -a "$HEROKU_APP_NAME" --exit-code --no-tty \
+            -e "OWNER_BOOTSTRAP_CREDENTIALS_JSON=$credentials_json" \
+            -- node npp-core/api/scripts/bootstrap-workforce-owners.js
+
+      - name: Send temporary credentials to Implementation Owner
+        id: credential_delivery
+        if: steps.bootstrap.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          CREDENTIAL_FILE: ${{ steps.credentials.outputs.file }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const credentials = JSON.parse(readFileSync(process.env.CREDENTIAL_FILE, 'utf8'));
+          const entries = Object.entries(credentials);
+          const rows = entries.map(([email, password]) => `<tr><td style="padding:8px;border-bottom:1px solid #eee">${email}</td><td style="padding:8px;border-bottom:1px solid #eee;font-family:monospace;font-weight:700">${password}</td></tr>`).join('');
+          const textRows = entries.map(([email, password]) => `${email}: ${password}`).join('\n');
+          const endpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(process.env.P99_CF_ACCOUNT_ID)}/email/sending/send`;
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${process.env.CF_EMAIL_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              to: process.env.P99_CREDENTIAL_DELIVERY_EMAIL,
+              from: { email: process.env.P99_EMAIL_FROM, name: 'Hưng Phát Security' },
+              subject: 'Hưng Phát Security — tài khoản Owner đã sẵn sàng',
+              text: `Ba tài khoản Owner production đã được bootstrap. Mật khẩu tạm:\n\n${textRows}\n\nKhông chuyển tiếp email này.`,
+              html: `<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#1d2939"><div style="padding:22px;border:1px solid #e4e7ec;border-radius:14px"><div style="font-size:12px;letter-spacing:.12em;color:#667085;font-weight:700">HƯNG PHÁT SECURITY</div><h2 style="margin:10px 0 6px">Tài khoản Owner đã sẵn sàng</h2><p style="color:#475467">Ba tài khoản production đã được bootstrap. Đây là mật khẩu tạm để kiểm tra đăng nhập.</p><table style="width:100%;border-collapse:collapse;font-size:14px">${rows}</table><p style="margin-top:18px;color:#b42318;font-weight:700">Không chuyển tiếp email này.</p></div></div>`,
+            }),
+          });
+          const payload = await response.json().catch(() => null);
+          const accepted = new Set([...(payload?.result?.delivered || []), ...(payload?.result?.queued || [])].map((v) => String(v).toLowerCase()));
+          if (!response.ok || payload?.success !== true || !accepted.has(process.env.P99_CREDENTIAL_DELIVERY_EMAIL.toLowerCase())) {
+            const code = payload?.errors?.[0]?.code ?? 'unknown';
+            throw new Error(`P99_CREDENTIAL_EMAIL_FAILED:${response.status}:${code}`);
+          }
+          NODE
+
+      - name: Restore prior auth state if rollout did not complete
+        if: ${{ always() && steps.configure.outcome == 'success' && (steps.bootstrap.outcome != 'success' || steps.credential_delivery.outcome != 'success') }}
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          PREVIOUS_ENABLED: ${{ steps.preflight.outputs.previous_enabled }}
+        run: |
+          set -euo pipefail
+          heroku config:set -a "$HEROKU_APP_NAME" INTERNAL_AUTH_ENABLED="$PREVIOUS_ENABLED" >/dev/null
+
+      - name: Enforce rollout outcome
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test '${{ steps.bootstrap.outcome }}' = 'success'
+          test '${{ steps.credential_delivery.outcome }}' = 'success'
+
+      - name: Final production auth smoke
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$HEROKU_APP_URL/health/live")" = 200
+          test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$HEROKU_APP_URL/health/ready")" = 200
+
+      - name: Publish sanitized Phase 9.9 rollout evidence and redact command
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          set -euo pipefail
+          body="$(cat <<EOT
+          ## Phase 9.9 production auth rollout — ${OPERATION_STATUS}
+
+          - SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          - HEROKU_APP: ${HEROKU_APP_NAME}
+          - AUTH_CONFIG: runtime-only
+          - OWNER_CREDENTIALS: bootstrap script / not logged
+          - CREDENTIAL_DELIVERY: Implementation Owner verified destination
+          - FIXED_OWNER_CODE: disabled
+          - CORE_LIVE_READY: checked by workflow
+          - GITHUB_RUN_ID: ${GITHUB_RUN_ID}
+          EOT
+          )"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/433/comments" -f body="$body" >/dev/null
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" \
+            -f body='/rollout-phase-9-9-auth-production [redacted]' >/dev/null
