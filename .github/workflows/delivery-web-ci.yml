@@ -37,9 +37,7 @@ jobs:
       run:
         working-directory: delivery/web
     env:
-      CORE_API_INTERNAL_URL: http://127.0.0.1:4010
-      DELIVERY_CORE_API_TOKEN: delivery-core-test-token-000000
-      DELIVERY_WEB_USERS_JSON: '[{"username":"driver-a","password":"delivery-test-password","employeeId":"10000000-0000-4000-8000-000000000001","displayName":"Nguyễn Văn Tài"}]'
+      CORE_API_INTERNAL_URL: http://127.0.0.1:4011
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -5,46 +5,53 @@ import { readFileSync } from 'node:fs';
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const middleware = read('middleware.ts');
 const session = read('lib/delivery-session.ts');
+const auth = read('lib/delivery-auth.ts');
+const authClient = read('lib/internal-auth-client.ts');
+const coreApi = read('lib/core-api.ts');
+const attemptApi = read('lib/attempt-api.ts');
+const codApi = read('lib/cod-api.ts');
+const podApi = read('lib/pod-api.ts');
 const frame = read('app/DeliveryAppFrame.tsx');
 const loginPage = read('app/login/page.tsx');
 const loginRoute = read('app/api/auth/login/route.ts');
 const logoutRoute = read('app/api/auth/logout/route.ts');
 
-test('Delivery PWA uses a signed HttpOnly session cookie that survives reloads', () => {
+test('Delivery PWA stores only the opaque canonical Core workforce session in an HttpOnly cookie', () => {
   assert.match(session, /DELIVERY_SESSION_COOKIE = 'hp_delivery_session'/);
-  assert.match(session, /HMAC/);
-  assert.match(session, /SHA-256/);
-  assert.match(session, /60 \* 60 \* 24 \* 30/);
   assert.match(session, /httpOnly:\s*true/);
   assert.match(session, /sameSite:\s*'lax'/);
   assert.match(session, /secure:\s*process\.env\.NODE_ENV === 'production'/);
-  assert.match(session, /DELIVERY_CORE_API_TOKEN/);
-  assert.doesNotMatch(session, /password[^\n]*payload|payload[^\n]*password/i);
+  assert.doesNotMatch(session, /HMAC|SHA-256|DELIVERY_CORE_API_TOKEN|DELIVERY_WEB_USERS_JSON|DELIVERY_SETUP_PASSWORD/);
+  assert.match(authClient, /cookies\(\)\.get\(DELIVERY_SESSION_COOKIE\)/);
+  assert.match(authClient, /token\?\.startsWith\('nppusr\.'/);
 });
 
-test('Delivery browser navigation uses a first-party login page and keeps Basic Auth for deployment smoke', () => {
-  assert.match(middleware, /PUBLIC_PATHS/);
-  assert.match(middleware, /isBrowserNavigation/);
-  assert.match(middleware, /loginRedirect/);
-  assert.match(middleware, /verifyDeliverySession/);
-  assert.match(middleware, /withInternalBasicAuth/);
-  assert.match(middleware, /createDeliverySession/);
-  assert.match(middleware, /WWW-Authenticate/);
-  assert.match(loginPage, /Đăng nhập một lần/);
-  assert.match(loginPage, /autoComplete="username"/);
-  assert.match(loginPage, /autoComplete="current-password"/);
-  assert.match(frame, /pathname === '\/login'/);
-  assert.match(frame, /if \(onLogin\) return children/);
+test('Delivery middleware resolves employee identity from Core /me and overwrites browser-owned identity headers', () => {
+  assert.match(middleware, /\/api\/internal-auth\/me/);
+  assert.match(middleware, /Authorization:\s*`Bearer \$\{token\}`/);
+  assert.match(middleware, /encodeDeliveryInternalAuthorization/);
+  assert.match(middleware, /headers\.set\('authorization'/);
+  assert.match(middleware, /headers\.delete\('x-npp-delivery-employee-id'\)/);
+  assert.match(middleware, /clearInvalidSession/);
+  assert.doesNotMatch(middleware, /DELIVERY_WEB_USERS_JSON|DELIVERY_CORE_API_TOKEN|DELIVERY_SETUP_USERNAME|DELIVERY_SETUP_PASSWORD/);
+  assert.match(auth, /INTERNAL_IDENTITY_VERSION = 'v2'/);
 });
 
-test('Delivery login maps credentials to the existing server-owned driver account without changing origin', () => {
-  assert.match(loginRoute, /authenticateDeliveryUser/);
-  assert.match(loginRoute, /deliverySetupPending/);
-  assert.match(loginRoute, /createDeliverySession/);
+test('Delivery login and logout use canonical Core internal-auth and retain professional branded login', () => {
+  assert.match(loginRoute, /requestDeliveryInternalAuth<LoginData>\('\/api\/internal-auth\/login'/);
+  assert.match(loginRoute, /sourceApp:\s*DELIVERY_INTERNAL_SOURCE_APP/);
   assert.match(loginRoute, /response\.cookies\.set/);
-  assert.match(loginRoute, /Location:\s*location/);
-  assert.doesNotMatch(loginRoute + logoutRoute, /new URL\([^)]*, request\.url\)/);
-  assert.match(logoutRoute, /Location:\s*'\/login'/);
+  assert.match(logoutRoute, /\/api\/internal-auth\/logout/);
   assert.match(logoutRoute, /maxAge:\s*0/);
-  assert.match(loginRoute + logoutRoute, /Cache-Control/);
+  assert.match(loginPage, /Welcome to Hung Phat Operations\./);
+  assert.match(loginPage, /Logo Hưng Phát Company/);
+  assert.match(loginPage, /name="ownerCode"/);
+  assert.match(frame, /pathname === '\/login'/);
+});
+
+test('Delivery Core gateways forward the employee session bearer and never the legacy service token/header', () => {
+  const gateways = coreApi + attemptApi + codApi + podApi;
+  assert.match(gateways, /requireDeliverySessionToken/);
+  assert.match(gateways, /Authorization:\s*`Bearer \$\{requireDeliverySessionToken\(\)\}`/);
+  assert.doesNotMatch(gateways, /DELIVERY_CORE_API_TOKEN|x-npp-delivery-employee-id/);
 });

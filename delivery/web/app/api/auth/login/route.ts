@@ -1,52 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateDeliveryUser, deliverySetupPending } from '../../../../lib/delivery-auth';
+import { DELIVERY_INTERNAL_SOURCE_APP, requestDeliveryInternalAuth } from '../../../../lib/internal-auth-client';
 import {
   DELIVERY_SESSION_COOKIE,
-  createDeliverySession,
   deliverySessionCookieOptions,
   safeDeliveryReturnTo,
 } from '../../../../lib/delivery-session';
 
-function constantTimeEqual(left: string, right: string): boolean {
-  const maxLength = Math.max(left.length, right.length);
-  let difference = left.length ^ right.length;
-  for (let index = 0; index < maxLength; index += 1) {
-    difference |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0);
-  }
-  return difference === 0;
-}
-
-function setupCredentialsValid(username: string, password: string): boolean {
-  const expectedUsername = String(process.env.DELIVERY_SETUP_USERNAME || '').trim();
-  const expectedPassword = String(process.env.DELIVERY_SETUP_PASSWORD || '');
-  return Boolean(expectedUsername && expectedPassword)
-    && constantTimeEqual(username, expectedUsername)
-    && constantTimeEqual(password, expectedPassword);
-}
+type LoginData = Readonly<{
+  token: string;
+  session: Readonly<{ expiresAt?: string }>;
+}>;
 
 function redirect(location: string): NextResponse {
   return new NextResponse(null, {
     status: 303,
-    headers: {
-      Location: location,
-      'Cache-Control': 'no-store',
-    },
+    headers: { Location: location, 'Cache-Control': 'no-store' },
   });
 }
 
 export async function POST(request: NextRequest) {
   const form = await request.formData();
-  const username = String(form.get('username') || '').trim();
+  const loginName = String(form.get('username') || '').trim();
   const password = String(form.get('password') || '');
+  const ownerCode = String(form.get('ownerCode') || '').trim();
   const returnTo = safeDeliveryReturnTo(String(form.get('returnTo') || '/'));
 
-  const basic = `Basic ${Buffer.from(`${username}:${password}`, 'utf8').toString('base64')}`;
-  const valid = deliverySetupPending()
-    ? setupCredentialsValid(username, password)
-    : Boolean(authenticateDeliveryUser(basic));
+  const result = await requestDeliveryInternalAuth<LoginData>('/api/internal-auth/login', {
+    method: 'POST',
+    body: {
+      loginName,
+      password,
+      ...(ownerCode ? { ownerCode } : {}),
+      sourceApp: DELIVERY_INTERNAL_SOURCE_APP,
+    },
+  });
 
-  if (!valid) {
-    const search = new URLSearchParams({ error: 'invalid_credentials' });
+  if (!result.ok || !result.data?.token) {
+    const error = result.code === 'INTERNAL_AUTH_OWNER_CODE_INVALID'
+      ? 'owner_code_invalid'
+      : result.code === 'INTERNAL_AUTH_OWNER_CHALLENGE_UNAVAILABLE'
+        ? 'owner_challenge_unavailable'
+        : result.status >= 500
+          ? 'auth_unavailable'
+          : 'invalid_credentials';
+    const search = new URLSearchParams({ error });
     if (returnTo !== '/') search.set('returnTo', returnTo);
     return redirect(`/login?${search.toString()}`);
   }
@@ -54,8 +51,8 @@ export async function POST(request: NextRequest) {
   const response = redirect(returnTo);
   response.cookies.set(
     DELIVERY_SESSION_COOKIE,
-    await createDeliverySession(username),
-    deliverySessionCookieOptions(),
+    result.data.token,
+    deliverySessionCookieOptions(result.data.session?.expiresAt),
   );
   return response;
 }

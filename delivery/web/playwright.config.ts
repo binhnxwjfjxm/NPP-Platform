@@ -29,10 +29,20 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
+      command: 'node test/mock-core-auth-proxy.mjs',
+      url: 'http://127.0.0.1:4011/api/internal-auth/me',
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
+    {
       command: 'npm run dev',
       url: 'http://127.0.0.1:3005',
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
+      env: {
+        ...process.env,
+        CORE_API_INTERNAL_URL: 'http://127.0.0.1:4011',
+      },
     },
   ],
 });
