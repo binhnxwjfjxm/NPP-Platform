@@ -108,7 +108,15 @@ function challengeHash(pepper, challengeId, userId, code) {
   return createHmac('sha256', pepper).update(`${challengeId}:${userId}:${code}`).digest('hex');
 }
 
+function challengeRecipients(config = {}) {
+  return [...new Set([
+    ...(Array.isArray(config.securityOwnerEmails) ? config.securityOwnerEmails : []),
+    ...(Array.isArray(config.implementationOwnerEmails) ? config.implementationOwnerEmails : []),
+  ].map((email) => text(email).toLowerCase()).filter(Boolean))];
+}
+
 function validEmailChallengeRuntime(runtime, config, fetchImpl) {
+  const recipients = challengeRecipients(config);
   return Boolean(
     runtime.accountId
     && runtime.apiToken
@@ -116,7 +124,10 @@ function validEmailChallengeRuntime(runtime, config, fetchImpl) {
     && runtime.pepper.length >= 32
     && Array.isArray(config.securityOwnerEmails)
     && config.securityOwnerEmails.length === 2
-    && config.securityOwnerEmails.every((email) => EMAIL_PATTERN.test(email))
+    && Array.isArray(config.implementationOwnerEmails)
+    && config.implementationOwnerEmails.length === 1
+    && recipients.length === 3
+    && recipients.every((email) => EMAIL_PATTERN.test(email))
     && typeof fetchImpl === 'function'
   );
 }
@@ -126,7 +137,7 @@ async function sendOwnerChallengeEmail(fetchImpl, runtime, config, { code, sourc
   const subject = 'Mã xác nhận đăng nhập Hưng Phát';
   const textBody = `Có yêu cầu đăng nhập Web/PWA vào hệ thống Hưng Phát (${sourceApp}). Mã xác nhận: ${code}. Mã hết hạn sau ${Math.ceil(runtime.ttlSeconds / 60)} phút. Nếu không phải yêu cầu hợp lệ, không cung cấp mã này.`;
   const htmlBody = `<p>Có yêu cầu đăng nhập Web/PWA vào hệ thống Hưng Phát (${sourceApp}).</p><p>Mã xác nhận: <strong>${code}</strong></p><p>Mã hết hạn sau ${Math.ceil(runtime.ttlSeconds / 60)} phút. Nếu không phải yêu cầu hợp lệ, không cung cấp mã này.</p>`;
-  const recipients = config.securityOwnerEmails.map((email) => email.toLowerCase());
+  const recipients = challengeRecipients(config);
   const response = await fetchImpl(endpoint, {
     method: 'POST',
     signal: AbortSignal.timeout(CHALLENGE_EMAIL_TIMEOUT_MS),
@@ -136,7 +147,7 @@ async function sendOwnerChallengeEmail(fetchImpl, runtime, config, { code, sourc
     },
     body: JSON.stringify({
       to: recipients,
-      from: runtime.from,
+      from: { address: runtime.from, name: 'Hưng Phát Security' },
       subject,
       text: textBody,
       html: htmlBody,
@@ -461,7 +472,7 @@ export function createInternalWorkforceAuthenticator({
                   userId: identity.user_id,
                   sourceApp,
                   accessChannel: 'WEB',
-                  recipientCount: 2,
+                  recipientCount: challengeRecipients(config).length,
                   expiresAt: challenge.expires_at,
                 },
               }));
