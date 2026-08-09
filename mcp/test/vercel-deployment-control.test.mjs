@@ -147,6 +147,15 @@ const RETIRED_ADMIN_HUMAN_ENV_NAMES = [
   "CORE_WEB_ADMIN_USERNAME",
   "CORE_WEB_ADMIN_PASSWORD"
 ];
+const CURRENT_DELIVERY_PRODUCTION_ENV_NAMES = [
+  "CORE_API_INTERNAL_URL",
+  "NEXT_PUBLIC_APP_LOGO_URL"
+];
+const RETIRED_DELIVERY_HUMAN_ENV_NAMES = [
+  "DELIVERY_CORE_API_TOKEN",
+  "DELIVERY_WEB_USERS_JSON",
+  "DELIVERY_SETUP_MODE"
+];
 
 function assertNoSensitiveManifestValues(value, path = "manifest") {
   if (Array.isArray(value)) {
@@ -224,11 +233,11 @@ test("Phase 9.7 external frontend evidence is pinned to exact GitHub commits", (
   }
 });
 
-test("Phase 9.7 env evidence stays historical while Phase 9.9 Admin supersession is explicit", () => {
+test("Phase 9.7 env evidence stays historical while Phase 9.9 Admin and Delivery supersessions are explicit", () => {
   for (const [id, source] of Object.entries(phase97EnvFiles)) {
     const frontend = phase97Manifest.frontends.find((item) => item.id === id);
     assert.ok(frontend, id);
-    if (id === "admin-mcp-npp") continue;
+    if (id === "admin-mcp-npp" || id === "delivery") continue;
     for (const name of frontend.productionRelevantEnvNames) {
       assert.match(source, new RegExp(`^${name}=`, "m"), `${id}:${name}`);
     }
@@ -251,6 +260,24 @@ test("Phase 9.7 env evidence stays historical while Phase 9.9 Admin supersession
     .map((line) => line.slice(0, line.indexOf("=")))
     .sort();
   assert.deepEqual(currentAdminNames, [...CURRENT_ADMIN_PRODUCTION_ENV_NAMES].sort());
+
+  const historicalDelivery = phase97Manifest.frontends.find((item) => item.id === "delivery");
+  const currentDelivery = phase97EnvFiles.delivery;
+  assert.ok(historicalDelivery);
+  for (const name of RETIRED_DELIVERY_HUMAN_ENV_NAMES) {
+    assert.ok(historicalDelivery.productionRelevantEnvNames.includes(name), `phase-9.7:${name}`);
+    assert.doesNotMatch(currentDelivery, new RegExp(`^${name}=`, "m"), `phase-9.9:${name}`);
+  }
+  for (const name of CURRENT_DELIVERY_PRODUCTION_ENV_NAMES) {
+    assert.match(currentDelivery, new RegExp(`^${name}=`, "m"), `phase-9.9:${name}`);
+  }
+  const currentDeliveryNames = currentDelivery
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^[A-Z0-9_]+=/.test(line))
+    .map((line) => line.slice(0, line.indexOf("=")))
+    .sort();
+  assert.deepEqual(currentDeliveryNames, [...CURRENT_DELIVERY_PRODUCTION_ENV_NAMES].sort());
 
   const npp = phase97Manifest.frontends.find((item) => item.id === "npp-operations");
   assert.deepEqual([...npp.productionRelevantEnvNames].sort(), [...REQUIRED_NPP_PRODUCTION_ENV_NAMES].sort());

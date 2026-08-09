@@ -42,8 +42,11 @@ test('Delivery service worker caches only static assets and uses a safe offline 
   assert.match(offline, /Dữ liệu chuyến và kết quả giao hàng không được lưu ngoại tuyến/);
 });
 
-test('PWA public assets bypass Basic Auth while application pages remain protected', () => {
+test('PWA public assets bypass workforce session gate while application pages remain protected', () => {
   const middleware = read('middleware.ts');
   assert.match(middleware, /manifest\.webmanifest\|sw\.js\|offline\.html\|icons\//);
-  assert.match(middleware, /WWW-Authenticate/);
+  assert.match(middleware, /DELIVERY_SESSION_COOKIE/);
+  assert.match(middleware, /\/api\/internal-auth\/me/);
+  assert.match(middleware, /UNAUTHORIZED/);
+  assert.doesNotMatch(middleware, /WWW-Authenticate|Basic realm/);
 });
