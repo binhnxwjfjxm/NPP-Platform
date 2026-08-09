@@ -1,6 +1,8 @@
 import {
   createHash,
+  createHmac,
   randomBytes,
+  randomInt,
   randomUUID,
   scrypt,
   timingSafeEqual,
@@ -14,6 +16,7 @@ const scryptAsync = promisify(scrypt);
 const SESSION_TOKEN_PREFIX = 'nppusr.';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const LOGIN_PATTERN = /^[a-z0-9._-]+$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SOURCE_APP_PATTERN = /^[a-z0-9][a-z0-9._-]{1,63}$/;
 const PASSWORD_MIN_LENGTH = 10;
 const PASSWORD_MAX_LENGTH = 256;
@@ -24,6 +27,9 @@ const SCRYPT_KEY_LENGTH = 64;
 const FAKE_SALT = Buffer.from('npp-phase-9-9-login-timing-salt');
 const OWNER_ROLE = 'system:security-owner';
 const IMPLEMENTATION_OWNER_ROLE = 'system:implementation-owner';
+const DEFAULT_CHALLENGE_TTL_SECONDS = 5 * 60;
+const DEFAULT_CHALLENGE_MAX_ATTEMPTS = 5;
+const DEFAULT_CHALLENGE_RESEND_COOLDOWN_SECONDS = 60;
 
 function text(value) {
   return String(value ?? '').trim();
@@ -39,7 +45,9 @@ function authFailure(code = 'INTERNAL_AUTH_REQUIRED', statusCode = 401) {
 
 function normalizeLogin(value) {
   const loginName = text(value).toLowerCase();
-  return LOGIN_PATTERN.test(loginName) && loginName.length <= 128 ? loginName : '';
+  if (LOGIN_PATTERN.test(loginName) && loginName.length <= 128) return loginName;
+  if (EMAIL_PATTERN.test(loginName) && loginName.length <= 256) return loginName;
+  return '';
 }
 
 function normalizeSourceApp(value) {
@@ -71,6 +79,78 @@ function isFutureDate(value, referenceDate) {
   if (!value) return false;
   const parsed = new Date(value);
   return !Number.isNaN(parsed.getTime()) && parsed.getTime() > referenceDate.getTime();
+}
+
+function boundedInteger(value, fallback, min, max) {
+  const parsed = Number.parseInt(text(value), 10);
+  return Number.isInteger(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
+}
+
+function loadEmailChallengeRuntime(env = process.env) {
+  return Object.freeze({
+    accountId: text(env.CLOUDFLARE_ACCOUNT_ID),
+    apiToken: text(env.CLOUDFLARE_EMAIL_API_TOKEN),
+    from: text(env.INTERNAL_AUTH_EMAIL_FROM),
+    pepper: text(env.INTERNAL_AUTH_CHALLENGE_PEPPER),
+    ttlSeconds: boundedInteger(env.INTERNAL_WEB_CHALLENGE_TTL_SECONDS, DEFAULT_CHALLENGE_TTL_SECONDS, 60, 900),
+    maxAttempts: boundedInteger(env.INTERNAL_WEB_CHALLENGE_MAX_ATTEMPTS, DEFAULT_CHALLENGE_MAX_ATTEMPTS, 1, 10),
+    resendCooldownSeconds: boundedInteger(
+      env.INTERNAL_WEB_CHALLENGE_RESEND_COOLDOWN_SECONDS,
+      DEFAULT_CHALLENGE_RESEND_COOLDOWN_SECONDS,
+      15,
+      300,
+    ),
+  });
+}
+
+function challengeHash(pepper, challengeId, userId, code) {
+  return createHmac('sha256', pepper).update(`${challengeId}:${userId}:${code}`).digest('hex');
+}
+
+function validEmailChallengeRuntime(runtime, config, fetchImpl) {
+  return Boolean(
+    runtime.accountId
+    && runtime.apiToken
+    && EMAIL_PATTERN.test(runtime.from)
+    && runtime.pepper.length >= 32
+    && Array.isArray(config.securityOwnerEmails)
+    && config.securityOwnerEmails.length === 2
+    && config.securityOwnerEmails.every((email) => EMAIL_PATTERN.test(email))
+    && typeof fetchImpl === 'function'
+  );
+}
+
+async function sendOwnerChallengeEmail(fetchImpl, runtime, config, { code, sourceApp }) {
+  const endpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(runtime.accountId)}/email/sending/send`;
+  const subject = 'Mã xác nhận đăng nhập Hưng Phát';
+  const textBody = `Có yêu cầu đăng nhập Web/PWA vào hệ thống Hưng Phát (${sourceApp}). Mã xác nhận: ${code}. Mã hết hạn sau ${Math.ceil(runtime.ttlSeconds / 60)} phút. Nếu không phải yêu cầu hợp lệ, không cung cấp mã này.`;
+  const htmlBody = `<p>Có yêu cầu đăng nhập Web/PWA vào hệ thống Hưng Phát (${sourceApp}).</p><p>Mã xác nhận: <strong>${code}</strong></p><p>Mã hết hạn sau ${Math.ceil(runtime.ttlSeconds / 60)} phút. Nếu không phải yêu cầu hợp lệ, không cung cấp mã này.</p>`;
+
+  for (const recipient of config.securityOwnerEmails) {
+    const response = await fetchImpl(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${runtime.apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: recipient,
+        from: runtime.from,
+        subject,
+        text: textBody,
+        html: htmlBody,
+      }),
+    });
+    if (!response?.ok) throw new Error('INTERNAL_AUTH_EMAIL_SEND_FAILED');
+    const payload = await response.json().catch(() => null);
+    if (!payload?.success) throw new Error('INTERNAL_AUTH_EMAIL_SEND_FAILED');
+  }
+}
+
+export function internalWebChallengeRequired(authorization = {}, config = {}) {
+  if (authorization.ownerKind === 'PERMANENT') return true;
+  if (authorization.ownerKind === 'TEMPORARY' && config.webOwnerChallengeRequired !== false) return true;
+  return authorization.webLoginChallengeRequired === true;
 }
 
 async function derivePassword(password, salt) {
@@ -171,18 +251,8 @@ async function resolveAuthorization(repo, client, { installationId, userId }) {
       territoryIds: Object.freeze(scopes.territoryIds),
     }),
     ownerKind: authorization.ownerKind ?? null,
+    webLoginChallengeRequired: authorization.webLoginChallengeRequired === true,
   });
-}
-
-function challengeResult(config, ownerCode) {
-  if (!config.webOwnerChallengeRequired) return { ok: true };
-  if (!config.allowFixedOwnerCode) {
-    return { ok: false, code: 'INTERNAL_AUTH_OWNER_CHALLENGE_UNAVAILABLE', statusCode: 503 };
-  }
-  if (!constantTimeTextMatch(text(ownerCode), config.testCode)) {
-    return { ok: false, code: 'INTERNAL_AUTH_OWNER_CODE_INVALID', statusCode: 401 };
-  }
-  return { ok: true };
 }
 
 export function canManageSecurityOwners(requestContext = {}) {
@@ -223,8 +293,11 @@ export function createInternalWorkforceAuthenticator({
   pool,
   repo = defaultRepo,
   now = () => new Date(),
+  env = process.env,
+  fetchImpl = globalThis.fetch,
 } = {}) {
   if (!config || !pool || typeof pool.query !== 'function') throw new Error('INTERNAL_AUTH_ADAPTER_INVALID');
+  const emailChallengeRuntime = loadEmailChallengeRuntime(env);
 
   async function login(payload = {}) {
     if (!config.enabled) return authFailure('INTERNAL_AUTH_NOT_CONFIGURED', 503);
@@ -310,24 +383,123 @@ export function createInternalWorkforceAuthenticator({
           return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_INVALID_CREDENTIALS'));
         }
 
-        const ownerBinding = typeof repo.getSecurityOwnerBindingForUser === 'function'
-          ? await repo.getSecurityOwnerBindingForUser(client, {
-              installationId: payload.installationId,
-              userId: identity.user_id,
-            })
-          : { owner_kind: 'UNKNOWN' };
-        if (ownerBinding) {
-          const challenge = challengeResult(config, payload.ownerCode);
-          if (!challenge.ok) {
-            if (challenge.code === 'INTERNAL_AUTH_OWNER_CODE_INVALID') {
-              await repo.recordPasswordFailure(client, {
+        const authorization = await resolveAuthorization(repo, client, {
+          installationId: payload.installationId,
+          userId: identity.user_id,
+        });
+        const challengeRequired = internalWebChallengeRequired(authorization, config);
+        if (challengeRequired) {
+          const submittedCode = text(payload.ownerCode);
+          if (config.allowFixedOwnerCode) {
+            if (!constantTimeTextMatch(submittedCode, config.testCode)) {
+              return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CODE_INVALID', 401));
+            }
+          } else {
+            if (!validEmailChallengeRuntime(emailChallengeRuntime, config, fetchImpl)) {
+              return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CHALLENGE_UNAVAILABLE', 503));
+            }
+
+            if (!submittedCode) {
+              const existingChallenge = await repo.findActiveLoginChallengeForUpdate(client, {
                 installationId: payload.installationId,
                 userId: identity.user_id,
-                lockThreshold: LOCK_THRESHOLD,
-                lockSeconds: LOCK_SECONDS,
+                sourceApp,
               });
+              const currentTime = now();
+              const existingCreatedAt = existingChallenge ? new Date(existingChallenge.created_at) : null;
+              const existingExpiresAt = existingChallenge ? new Date(existingChallenge.expires_at) : null;
+              const existingStillUsable = existingChallenge
+                && !Number.isNaN(existingExpiresAt.getTime())
+                && existingExpiresAt.getTime() > currentTime.getTime()
+                && Number(existingChallenge.failed_attempts ?? 0) < emailChallengeRuntime.maxAttempts;
+              const withinCooldown = existingStillUsable
+                && existingCreatedAt
+                && !Number.isNaN(existingCreatedAt.getTime())
+                && (currentTime.getTime() - existingCreatedAt.getTime()) < (emailChallengeRuntime.resendCooldownSeconds * 1000);
+
+              if (!withinCooldown) {
+                await repo.cancelActiveLoginChallenges(client, {
+                  installationId: payload.installationId,
+                  userId: identity.user_id,
+                  sourceApp,
+                });
+                const challengeId = randomUUID();
+                const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+                const challengeExpiresAt = new Date(currentTime.getTime() + (emailChallengeRuntime.ttlSeconds * 1000));
+                const challenge = await repo.insertLoginChallenge(client, {
+                  id: challengeId,
+                  installationId: payload.installationId,
+                  userId: identity.user_id,
+                  codeHash: challengeHash(emailChallengeRuntime.pepper, challengeId, identity.user_id, code),
+                  sourceApp,
+                  expiresAt: challengeExpiresAt.toISOString(),
+                });
+                try {
+                  await sendOwnerChallengeEmail(fetchImpl, emailChallengeRuntime, config, { code, sourceApp });
+                } catch {
+                  await repo.cancelLoginChallenge(client, { id: challengeId });
+                  return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CHALLENGE_UNAVAILABLE', 503));
+                }
+                await insertAuditRecord(client, buildAuditRecord({
+                  requestContext,
+                  action: 'login_challenge_issued',
+                  resourceType: 'internal_login_challenge',
+                  resourceId: challenge.id,
+                  afterData: {
+                    userId: identity.user_id,
+                    sourceApp,
+                    accessChannel: 'WEB',
+                    recipientCount: 2,
+                    expiresAt: challenge.expires_at,
+                  },
+                }));
+              }
+              return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CODE_INVALID', 401));
             }
-            return auditDeniedLogin(client, authFailure(challenge.code, challenge.statusCode));
+
+            const challenge = await repo.findActiveLoginChallengeForUpdate(client, {
+              installationId: payload.installationId,
+              userId: identity.user_id,
+              sourceApp,
+            });
+            const challengeExpiry = challenge ? new Date(challenge.expires_at) : null;
+            const challengeUsable = challenge
+              && challengeExpiry
+              && !Number.isNaN(challengeExpiry.getTime())
+              && challengeExpiry.getTime() > now().getTime()
+              && Number(challenge.failed_attempts ?? 0) < emailChallengeRuntime.maxAttempts;
+            if (!challengeUsable) {
+              if (challenge) await repo.cancelLoginChallenge(client, { id: challenge.id });
+              return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CODE_INVALID', 401));
+            }
+
+            const expectedHash = challengeHash(
+              emailChallengeRuntime.pepper,
+              challenge.id,
+              identity.user_id,
+              submittedCode,
+            );
+            if (!constantTimeTextMatch(expectedHash, challenge.code_hash)) {
+              await repo.incrementLoginChallengeFailure(client, {
+                id: challenge.id,
+                maxAttempts: emailChallengeRuntime.maxAttempts,
+              });
+              return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CODE_INVALID', 401));
+            }
+            const consumed = await repo.consumeLoginChallenge(client, { id: challenge.id });
+            if (!consumed) return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CODE_INVALID', 401));
+            await insertAuditRecord(client, buildAuditRecord({
+              requestContext,
+              action: 'login_challenge_verified',
+              resourceType: 'internal_login_challenge',
+              resourceId: challenge.id,
+              afterData: {
+                userId: identity.user_id,
+                sourceApp,
+                accessChannel: 'WEB',
+                verified: true,
+              },
+            }));
           }
         }
 
@@ -335,10 +507,6 @@ export function createInternalWorkforceAuthenticator({
           installationId: payload.installationId,
           userId: identity.user_id,
           updatedBy: actorId,
-        });
-        const authorization = await resolveAuthorization(repo, client, {
-          installationId: payload.installationId,
-          userId: identity.user_id,
         });
         const session = await repo.insertSession(client, {
           sessionId,
@@ -360,6 +528,7 @@ export function createInternalWorkforceAuthenticator({
             accessChannel: 'WEB',
             expiresAt: session.expires_at,
             ownerKind: authorization.ownerKind,
+            webLoginChallengeRequired: challengeRequired,
           },
         }));
         return { session, authorization };

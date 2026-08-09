@@ -68,6 +68,7 @@ export function listPermissions(client) {
 function normalizeRoleCatalogRows(rows) {
   return rows.map((row) => ({
     ...row,
+    web_login_challenge_required: Boolean(row.web_login_challenge_required),
     permission_keys: Array.isArray(row.permission_keys) ? row.permission_keys.filter(Boolean) : [],
   }));
 }
@@ -107,6 +108,9 @@ function validateRoleInput(payload) {
   if (hasOwn(payload, 'isActive') && typeof payload.isActive !== 'boolean') {
     return { ok: false, code: 'INVALID_ACTIVE_STATUS', message: 'isActive phải là kiểu boolean' };
   }
+  if (hasOwn(payload, 'webLoginChallengeRequired') && typeof payload.webLoginChallengeRequired !== 'boolean') {
+    return { ok: false, code: 'INVALID_WEB_LOGIN_CHALLENGE_POLICY', message: 'webLoginChallengeRequired phải là kiểu boolean' };
+  }
 
   const permissionKeys = normalizePermissionKeys(payload.permissionKeys);
   if (permissionKeys.some((key) => !isKnownPermissionKey(key))) {
@@ -120,6 +124,7 @@ function validateRoleInput(payload) {
       name,
       description: description || null,
       isActive: payload.isActive !== false,
+      webLoginChallengeRequired: payload.webLoginChallengeRequired === true,
       permissionKeys,
     },
   };
@@ -156,6 +161,7 @@ export async function createRole(client, { installationId, payload, createdBy })
     name: validation.normalized.name,
     description: validation.normalized.description,
     isActive: validation.normalized.isActive,
+    webLoginChallengeRequired: validation.normalized.webLoginChallengeRequired,
     createdBy,
     updatedBy: createdBy,
   });
@@ -196,6 +202,9 @@ export async function updateRole(client, { id, installationId, payload, updatedB
   if (hasOwn(payload, 'isActive') && typeof payload.isActive !== 'boolean') {
     return { ok: false, code: 'INVALID_ACTIVE_STATUS', message: 'isActive phải là kiểu boolean' };
   }
+  if (hasOwn(payload, 'webLoginChallengeRequired') && typeof payload.webLoginChallengeRequired !== 'boolean') {
+    return { ok: false, code: 'INVALID_WEB_LOGIN_CHALLENGE_POLICY', message: 'webLoginChallengeRequired phải là kiểu boolean' };
+  }
 
   const nextName = payload?.name === undefined ? existing.name : normalizeText(payload.name);
   const nextDescription = payload?.description === undefined ? existing.description ?? '' : normalizeText(payload.description);
@@ -203,12 +212,16 @@ export async function updateRole(client, { id, installationId, payload, updatedB
     ? existingPermissionKeys
     : normalizePermissionKeys(payload.permissionKeys);
   const nextIsActive = payload?.isActive === undefined ? existing.is_active : payload.isActive;
+  const nextWebLoginChallengeRequired = payload?.webLoginChallengeRequired === undefined
+    ? Boolean(existing.web_login_challenge_required)
+    : payload.webLoginChallengeRequired;
 
   const validation = validateRoleInput({
     code: existing.code,
     name: nextName,
     description: nextDescription,
     isActive: nextIsActive,
+    webLoginChallengeRequired: nextWebLoginChallengeRequired,
     permissionKeys: nextPermissionKeys,
   });
   if (!validation.ok) return validation;
@@ -228,10 +241,11 @@ export async function updateRole(client, { id, installationId, payload, updatedB
     || currentPermissionKeys.some((key, index) => key !== nextSortedPermissionKeys[index]);
   const statusChanged = existing.is_active !== nextIsActive;
   const metadataChanged = nextName !== existing.name || (nextDescription || null) !== (existing.description ?? null);
+  const loginPolicyChanged = Boolean(existing.web_login_challenge_required) !== nextWebLoginChallengeRequired;
 
-  if (!permissionsChanged && !statusChanged && !metadataChanged) {
+  if (!permissionsChanged && !statusChanged && !metadataChanged && !loginPolicyChanged) {
     const snapshot = { ...existing, permission_keys: existingPermissionKeys };
-    return { ok: true, role: snapshot, beforeData: snapshot, changed: false };
+    return { ok: true, role: normalizeRoleCatalogRows([snapshot])[0], beforeData: normalizeRoleCatalogRows([snapshot])[0], changed: false };
   }
 
   const updated = await accessRepo.updateRoleRecord(client, {
@@ -240,6 +254,7 @@ export async function updateRole(client, { id, installationId, payload, updatedB
     name: validation.normalized.name,
     description: validation.normalized.description,
     isActive: nextIsActive,
+    webLoginChallengeRequired: nextWebLoginChallengeRequired,
     updatedBy,
     expectedUpdatedAt: expected.value,
   });
@@ -261,7 +276,7 @@ export async function updateRole(client, { id, installationId, payload, updatedB
   return {
     ok: true,
     role: normalizeRoleCatalogRows([role])[0],
-    beforeData: { ...existing, permission_keys: existingPermissionKeys },
+    beforeData: normalizeRoleCatalogRows([{ ...existing, permission_keys: existingPermissionKeys }])[0],
     changed: true,
   };
 }
@@ -279,7 +294,7 @@ export async function updateRoleStatus(client, { id, installationId, isActive, u
   const existingPermissionKeys = await accessRepo.listRolePermissionKeys(client, { installationId, roleId: existing.id });
   if (existing.is_active === isActive) {
     const snapshot = { ...existing, permission_keys: existingPermissionKeys };
-    return { ok: true, role: snapshot, beforeData: snapshot, changed: false };
+    return { ok: true, role: normalizeRoleCatalogRows([snapshot])[0], beforeData: normalizeRoleCatalogRows([snapshot])[0], changed: false };
   }
 
   const updated = await accessRepo.updateRoleActiveStatus(client, {
@@ -295,7 +310,7 @@ export async function updateRoleStatus(client, { id, installationId, isActive, u
   return {
     ok: true,
     role: normalizeRoleCatalogRows([role])[0],
-    beforeData: { ...existing, permission_keys: existingPermissionKeys },
+    beforeData: normalizeRoleCatalogRows([{ ...existing, permission_keys: existingPermissionKeys }])[0],
     changed: true,
   };
 }
@@ -326,7 +341,7 @@ export async function updateRolePermissions(client, { id, installationId, permis
 
   if (!permissionsChanged) {
     const snapshot = { ...existing, permission_keys: existingPermissionKeys };
-    return { ok: true, role: snapshot, beforeData: snapshot, changed: false };
+    return { ok: true, role: normalizeRoleCatalogRows([snapshot])[0], beforeData: normalizeRoleCatalogRows([snapshot])[0], changed: false };
   }
 
   const updated = await accessRepo.updateRoleRecord(client, {
@@ -335,6 +350,7 @@ export async function updateRolePermissions(client, { id, installationId, permis
     name: existing.name,
     description: existing.description,
     isActive: existing.is_active,
+    webLoginChallengeRequired: Boolean(existing.web_login_challenge_required),
     updatedBy,
     expectedUpdatedAt: expected.value,
   });
@@ -351,7 +367,7 @@ export async function updateRolePermissions(client, { id, installationId, permis
   return {
     ok: true,
     role: normalizeRoleCatalogRows([role])[0],
-    beforeData: { ...existing, permission_keys: existingPermissionKeys },
+    beforeData: normalizeRoleCatalogRows([{ ...existing, permission_keys: existingPermissionKeys }])[0],
     changed: true,
   };
 }

@@ -14,6 +14,7 @@ export type AccessRole = {
   name: string;
   description: string | null;
   is_active: boolean;
+  web_login_challenge_required: boolean;
   created_at: string;
   updated_at: string;
   created_by: string | null;

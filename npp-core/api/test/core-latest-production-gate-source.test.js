@@ -19,6 +19,7 @@ test('latest Core production gate derives protected pending migrations from the 
   assert.match(migrationRegistry, /071_customer_portal_order_intake/);
   assert.match(migrationRegistry, /072_customer_portal_registration_onboarding/);
   assert.match(migrationRegistry, /073_internal_workforce_auth/);
+  assert.match(migrationRegistry, /074_internal_web_login_challenge/);
 
   for (const marker of [
     'assert_allowed_pending',
