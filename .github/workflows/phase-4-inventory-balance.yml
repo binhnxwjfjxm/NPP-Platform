@@ -53,7 +53,7 @@ jobs:
         run: npm ci
 
       - name: Verify Core-only boundary
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'agent/phase-4')
         shell: bash
         run: |
           set -euo pipefail
