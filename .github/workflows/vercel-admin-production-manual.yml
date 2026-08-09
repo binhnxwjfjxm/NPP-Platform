@@ -114,49 +114,33 @@ jobs:
           test "$project_id" != "$WEBSITE_PROJECT_ID"
           echo "project_id=$project_id" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve protected Admin runtime values
+      - name: Resolve Admin runtime values
         id: runtime
         shell: bash
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           SECRET_CORE_API_INTERNAL_URL: ${{ secrets.CORE_API_INTERNAL_URL }}
-          SECRET_CORE_API_SERVER_TOKEN: ${{ secrets.CORE_API_SERVER_TOKEN }}
-          SECRET_CORE_WEB_ADMIN_USERNAME: ${{ secrets.CORE_WEB_ADMIN_USERNAME }}
-          SECRET_CORE_WEB_ADMIN_PASSWORD: ${{ secrets.CORE_WEB_ADMIN_PASSWORD }}
         run: |
-          set -uo pipefail
+          set -euo pipefail
           core_url="${SECRET_CORE_API_INTERNAL_URL:-}"
-          core_token="${SECRET_CORE_API_SERVER_TOKEN:-}"
-          admin_username="${SECRET_CORE_WEB_ADMIN_USERNAME:-}"
-          admin_password="${SECRET_CORE_WEB_ADMIN_PASSWORD:-}"
           runtime_source="github-secrets"
 
-          if [ -z "$core_url" ] || [ -z "$core_token" ]; then
+          if [ -z "$core_url" ]; then
             runtime_source="heroku-core"
             if [ -n "${HEROKU_API_KEY:-}" ]; then
               app_json="$(curl --fail --silent --show-error \
                 -H 'Accept: application/vnd.heroku+json; version=3' \
                 -H "Authorization: Bearer $HEROKU_API_KEY" \
                 "https://api.heroku.com/apps/$CORE_HEROKU_APP_NAME" 2>/dev/null || true)"
-              config_json="$(curl --fail --silent --show-error \
-                -H 'Accept: application/vnd.heroku+json; version=3' \
-                -H "Authorization: Bearer $HEROKU_API_KEY" \
-                "https://api.heroku.com/apps/$CORE_HEROKU_APP_NAME/config-vars" 2>/dev/null || true)"
-              if [ -z "$core_url" ] && [ -n "$app_json" ]; then
+              if [ -n "$app_json" ]; then
                 core_url="$(printf '%s' "$app_json" | jq -r '.web_url // empty' 2>/dev/null || true)"
                 core_url="${core_url%/}"
-              fi
-              if [ -z "$core_token" ] && [ -n "$config_json" ]; then
-                core_token="$(printf '%s' "$config_json" | jq -r '.BACKEND_API_TOKEN // empty' 2>/dev/null || true)"
               fi
             fi
           fi
 
           missing=()
           [ -n "$core_url" ] || missing+=(CORE_API_INTERNAL_URL)
-          [ -n "$core_token" ] || missing+=(CORE_API_SERVER_TOKEN)
-          [ -n "$admin_username" ] || missing+=(CORE_WEB_ADMIN_USERNAME)
-          [ -n "$admin_password" ] || missing+=(CORE_WEB_ADMIN_PASSWORD)
           missing_csv="$(IFS=,; echo "${missing[*]}")"
           echo "missing=$missing_csv" >> "$GITHUB_OUTPUT"
           echo "source=$runtime_source" >> "$GITHUB_OUTPUT"
@@ -172,22 +156,13 @@ jobs:
           }
           NODE
 
-          for value in "$core_url" "$core_token" "$admin_username" "$admin_password"; do
-            echo "::add-mask::$value"
-          done
-          write_env() {
-            local name="$1" value="$2" marker
-            marker="ADMIN_${name}_${RANDOM}_${RANDOM}"
-            {
-              echo "$name<<$marker"
-              echo "$value"
-              echo "$marker"
-            } >> "$GITHUB_ENV"
-          }
-          write_env CORE_API_INTERNAL_URL "$core_url"
-          write_env CORE_API_SERVER_TOKEN "$core_token"
-          write_env CORE_WEB_ADMIN_USERNAME "$admin_username"
-          write_env CORE_WEB_ADMIN_PASSWORD "$admin_password"
+          echo "::add-mask::$core_url"
+          marker="ADMIN_CORE_API_INTERNAL_URL_${RANDOM}_${RANDOM}"
+          {
+            echo "CORE_API_INTERNAL_URL<<$marker"
+            echo "$core_url"
+            echo "$marker"
+          } >> "$GITHUB_ENV"
 
       - name: Synchronize Admin production environment
         id: envsync
@@ -200,9 +175,6 @@ jobs:
           node --input-type=module <<'NODE'
           const values = {
             CORE_API_INTERNAL_URL: process.env.CORE_API_INTERNAL_URL,
-            CORE_API_SERVER_TOKEN: process.env.CORE_API_SERVER_TOKEN,
-            CORE_WEB_ADMIN_USERNAME: process.env.CORE_WEB_ADMIN_USERNAME,
-            CORE_WEB_ADMIN_PASSWORD: process.env.CORE_WEB_ADMIN_PASSWORD,
             NPP_OPERATIONS_URL: process.env.NPP_OPERATIONS_URL,
           };
           const missing = Object.entries(values)
@@ -341,12 +313,9 @@ jobs:
           set -euo pipefail
           unauth="$(curl --silent --show-error --retry 5 --retry-delay 4 --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/")"
           test "$unauth" = 401
-          auth="${CORE_WEB_ADMIN_USERNAME}:${CORE_WEB_ADMIN_PASSWORD}"
-          for path in / /customer-onboarding; do
-            code="$(curl --silent --show-error --retry 5 --retry-delay 4 -u "$auth" --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL$path")"
-            test "$code" = 200
-          done
-          html="$(curl --fail --silent --show-error -u "$auth" "$DEPLOYMENT_URL/")"
+          login_code="$(curl --silent --show-error --retry 5 --retry-delay 4 --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/login")"
+          test "$login_code" = 200
+          html="$(curl --fail --silent --show-error "$DEPLOYMENT_URL/login")"
           asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.(css|js)' | head -n 1)"
           test -n "$asset"
           curl --fail --silent --show-error "$DEPLOYMENT_URL$asset" >/dev/null
@@ -377,7 +346,7 @@ jobs:
           RUNTIME_SOURCE: ${{ steps.runtime.outputs.source }}
         run: |
           set -euo pipefail
-          gh issue comment 5 --body "Admin Vercel production deploy succeeded for SHA ${{ steps.target.outputs.sha }}. Project: \`$PROJECT_ID\`. Deployment: $DEPLOYMENT_URL. Domain \`$ADMIN_DOMAIN\` verified: \`$DOMAIN_VERIFIED\`. Runtime source: \`$RUNTIME_SOURCE\`. Website, NPP and MCP domains were attached to their projects. \`log.nguyenlieuhungphat.com\` remains reserved until the Delivery frontend exists."
+          gh issue comment 5 --body "Admin Vercel production deploy succeeded for SHA ${{ steps.target.outputs.sha }}. Project: \`$PROJECT_ID\`. Deployment: $DEPLOYMENT_URL. Domain \`$ADMIN_DOMAIN\` verified: \`$DOMAIN_VERIFIED\`. Runtime source: \`$RUNTIME_SOURCE\`. Website, NPP and MCP domains were attached to their projects. Human authorization uses the canonical Core employee session; authenticated production smoke remains a separate operator gate."
 
       - name: Report failed Admin rollout
         if: failure()

@@ -1,4 +1,5 @@
 import 'server-only';
+import { deliveryCoreBaseUrl, requireDeliverySessionToken } from './internal-auth-client';
 import type {
   AttachProofOfDeliveryPayload,
   AttachProofOfDeliveryResponse,
@@ -24,44 +25,11 @@ export class DeliveryPodGatewayError extends Error {
   }
 }
 
-function config() {
-  const rawUrl = process.env.CORE_API_INTERNAL_URL?.trim();
-  const credential = process.env.DELIVERY_CORE_API_TOKEN?.trim();
-  if (!rawUrl || !credential) {
-    throw new DeliveryPodGatewayError(
-      'DELIVERY_CORE_CONFIG_NOT_READY',
-      'Cổng Core chưa được cấu hình',
-      503,
-    );
-  }
-  let url: URL;
-  try {
-    url = new URL(rawUrl);
-  } catch {
-    throw new DeliveryPodGatewayError('DELIVERY_CORE_URL_INVALID', 'Địa chỉ Core không hợp lệ', 503);
-  }
-  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
-    throw new DeliveryPodGatewayError('DELIVERY_CORE_URL_INVALID', 'Địa chỉ Core không hợp lệ', 503);
-  }
-  if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') {
-    throw new DeliveryPodGatewayError('DELIVERY_CORE_HTTPS_REQUIRED', 'Core production phải dùng HTTPS', 503);
-  }
-  return Object.freeze({ baseUrl: url.toString().replace(/\/$/, ''), credential });
-}
-
 function assertLineage(user: DeliveryUser, tripId: string, assignmentId: string, attemptId: string) {
-  if (!UUID_PATTERN.test(user.employeeId)) {
-    throw new DeliveryPodGatewayError('DELIVERY_USER_INVALID', 'Danh tính tài xế không hợp lệ', 400);
-  }
-  if (!UUID_PATTERN.test(tripId)) {
-    throw new DeliveryPodGatewayError('INVALID_TRIP_ID', 'Mã chuyến không hợp lệ', 400);
-  }
-  if (!UUID_PATTERN.test(assignmentId)) {
-    throw new DeliveryPodGatewayError('INVALID_ASSIGNMENT_ID', 'Mã phiếu giao không hợp lệ', 400);
-  }
-  if (!UUID_PATTERN.test(attemptId)) {
-    throw new DeliveryPodGatewayError('INVALID_DELIVERY_ATTEMPT_ID', 'Mã lần giao không hợp lệ', 400);
-  }
+  if (!UUID_PATTERN.test(user.employeeId)) throw new DeliveryPodGatewayError('DELIVERY_USER_INVALID', 'Danh tính tài xế không hợp lệ', 400);
+  if (!UUID_PATTERN.test(tripId)) throw new DeliveryPodGatewayError('INVALID_TRIP_ID', 'Mã chuyến không hợp lệ', 400);
+  if (!UUID_PATTERN.test(assignmentId)) throw new DeliveryPodGatewayError('INVALID_ASSIGNMENT_ID', 'Mã phiếu giao không hợp lệ', 400);
+  if (!UUID_PATTERN.test(attemptId)) throw new DeliveryPodGatewayError('INVALID_DELIVERY_ATTEMPT_ID', 'Mã lần giao không hợp lệ', 400);
 }
 
 async function coreRequest<T>(
@@ -72,12 +40,11 @@ async function coreRequest<T>(
   init: RequestInit,
 ): Promise<T> {
   assertLineage(user, tripId, assignmentId, attemptId);
-  const core = config();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), CORE_REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(
-      `${core.baseUrl}/api/logistics/driver/trips/${encodeURIComponent(tripId)}`
+      `${deliveryCoreBaseUrl()}/api/logistics/driver/trips/${encodeURIComponent(tripId)}`
         + `/assignments/${encodeURIComponent(assignmentId)}`
         + `/attempts/${encodeURIComponent(attemptId)}/pod`,
       {
@@ -85,17 +52,14 @@ async function coreRequest<T>(
         cache: 'no-store',
         signal: controller.signal,
         headers: {
-          Authorization: `Bearer ${core.credential}`,
-          'x-npp-delivery-employee-id': user.employeeId,
+          Authorization: `Bearer ${requireDeliverySessionToken()}`,
           'x-request-id': `delivery-web-pod-${crypto.randomUUID()}`,
           Accept: 'application/json',
           ...(init.headers ?? {}),
         },
       },
     );
-    const body = await response.json().catch(() => null) as (
-      SuccessEnvelope<T> & { error?: { code?: string; message?: string } }
-    ) | null;
+    const body = await response.json().catch(() => null) as (SuccessEnvelope<T> & { error?: { code?: string; message?: string } }) | null;
     if (!response.ok || !body?.data) {
       throw new DeliveryPodGatewayError(
         body?.error?.code || 'DELIVERY_POD_REQUEST_FAILED',
@@ -106,11 +70,7 @@ async function coreRequest<T>(
     return body.data;
   } catch (error) {
     if (error instanceof DeliveryPodGatewayError) throw error;
-    throw new DeliveryPodGatewayError(
-      'DELIVERY_POD_GATEWAY_UNAVAILABLE',
-      'Cổng bằng chứng giao hàng tạm thời không khả dụng',
-      503,
-    );
+    throw new DeliveryPodGatewayError('DELIVERY_POD_GATEWAY_UNAVAILABLE', 'Cổng bằng chứng giao hàng tạm thời không khả dụng', 503);
   } finally {
     clearTimeout(timeout);
   }
@@ -122,13 +82,7 @@ export async function listMyProofs(
   assignmentId: string,
   attemptId: string,
 ): Promise<readonly ProofOfDelivery[]> {
-  const data = await coreRequest<{ proofs: readonly ProofOfDelivery[] }>(
-    user,
-    tripId,
-    assignmentId,
-    attemptId,
-    { method: 'GET' },
-  );
+  const data = await coreRequest<{ proofs: readonly ProofOfDelivery[] }>(user, tripId, assignmentId, attemptId, { method: 'GET' });
   return data.proofs;
 }
 
@@ -141,26 +95,13 @@ export async function attachMyProof(
   idempotencyKey: string,
 ): Promise<AttachProofOfDeliveryResponse> {
   if (!IDEMPOTENCY_PATTERN.test(idempotencyKey)) {
-    throw new DeliveryPodGatewayError(
-      'INVALID_IDEMPOTENCY_KEY',
-      'Khóa chống ghi trùng không hợp lệ',
-      400,
-    );
+    throw new DeliveryPodGatewayError('INVALID_IDEMPOTENCY_KEY', 'Khóa chống ghi trùng không hợp lệ', 400);
   }
-  return coreRequest<AttachProofOfDeliveryResponse>(
-    user,
-    tripId,
-    assignmentId,
-    attemptId,
-    {
-      method: 'POST',
-      headers: {
-        'Idempotency-Key': idempotencyKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    },
-  );
+  return coreRequest<AttachProofOfDeliveryResponse>(user, tripId, assignmentId, attemptId, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 }
 
 export const podApiInternals = Object.freeze({ CORE_REQUEST_TIMEOUT_MS });

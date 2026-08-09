@@ -1,4 +1,5 @@
 import 'server-only';
+import { deliveryCoreBaseUrl, requireDeliverySessionToken } from './internal-auth-client';
 import type {
   DeliveryUser,
   DriverTripDetailResponse,
@@ -9,36 +10,18 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 
 type SuccessEnvelope<T> = Readonly<{ data: T; requestId?: string; receivedAt?: string }>;
 
-function coreConfig() {
-  const rawUrl = process.env.CORE_API_INTERNAL_URL?.trim();
-  const token = process.env.DELIVERY_CORE_API_TOKEN?.trim();
-  if (!rawUrl || !token) throw new Error('DELIVERY_CORE_CONFIG_NOT_READY');
-  let url: URL;
-  try {
-    url = new URL(rawUrl);
-  } catch {
-    throw new Error('DELIVERY_CORE_URL_INVALID');
-  }
-  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('DELIVERY_CORE_URL_INVALID');
-  if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') {
-    throw new Error('DELIVERY_CORE_HTTPS_REQUIRED');
-  }
-  return Object.freeze({ baseUrl: url.toString().replace(/\/$/, ''), token });
-}
-
 function validUser(user: DeliveryUser) {
   return Boolean(user.username && user.displayName && UUID_PATTERN.test(user.employeeId));
 }
 
 async function requestCore<T>(path: string, user: DeliveryUser): Promise<T> {
   if (!validUser(user)) throw new Error('DELIVERY_USER_INVALID');
-  const config = coreConfig();
-  const response = await fetch(`${config.baseUrl}${path}`, {
+  const response = await fetch(`${deliveryCoreBaseUrl()}${path}`, {
     method: 'GET',
     headers: {
-      Authorization: `Bearer ${config.token}`,
-      'x-npp-delivery-employee-id': user.employeeId,
+      Authorization: `Bearer ${requireDeliverySessionToken()}`,
       'x-request-id': `delivery-web-${crypto.randomUUID()}`,
+      Accept: 'application/json',
     },
     cache: 'no-store',
   });

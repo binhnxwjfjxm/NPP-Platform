@@ -26,8 +26,8 @@ test('admin remains a standalone manually deployed Vercel frontend', async () =>
   assert.match(shell, /className="appMenu desktopAppMenu"/);
   assert.match(shell, /NPP Operations/);
   assert.match(core, /CORE_API_INTERNAL_URL/);
-  assert.match(core, /CORE_API_SERVER_TOKEN/);
-  assert.doesNotMatch(core, /DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(core, /employeeSessionToken/);
+  assert.doesNotMatch(core, /CORE_API_SERVER_TOKEN|DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY/);
   assert.doesNotMatch(`${shell}\n${core}`, /npp-core\/web/);
 
   assert.match(workflow, /\/deploy-vercel-admin-production/);
@@ -120,10 +120,10 @@ test('NPP Operations owns sales operations and customer code work', async () => 
   assert.match(actionRoute, /CROSS_SITE_REQUEST_REJECTED/);
   assert.match(actionRoute, /mutateCustomerOnboardingRequest/);
   assert.match(gateway, /CORE_API_INTERNAL_URL/);
-  assert.match(gateway, /CORE_API_SERVER_TOKEN/);
-  assert.doesNotMatch(gateway, /DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY/);
-  assert.match(middleware, /'\/management\/:path\*'/);
-  assert.match(middleware, /customer-onboarding-requests/);
+  assert.match(gateway, /requireNppWorkforceSessionToken/);
+  assert.doesNotMatch(gateway, /CORE_API_SERVER_TOKEN|DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(middleware, /NPP_SESSION_COOKIE/);
+  assert.match(middleware, /\/api\/internal-auth\/me/);
 
   assert.match(domains, /npp-platform\.vercel\.app/);
   assert.match(domains, /Tên miền tùy chỉnh là alias/);

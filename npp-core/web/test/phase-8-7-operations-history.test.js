@@ -16,6 +16,7 @@ test('Phase 8.7 NPP owns detailed audit and import/export history surfaces', () 
   assert.match(jobs, /definitionKey/);
   assert.match(gateway, /\/api\/reporting\/audit-history/);
   assert.match(gateway, /\/api\/reporting\/import-export-history/);
-  assert.match(gateway, /CORE_API_SERVER_TOKEN/);
+  assert.match(gateway, /requireNppWorkforceSessionToken/);
+  assert.doesNotMatch(gateway, /process\.env\.CORE_API_SERVER_TOKEN/);
   assert.doesNotMatch(audit, /beforeData|afterData/);
 });

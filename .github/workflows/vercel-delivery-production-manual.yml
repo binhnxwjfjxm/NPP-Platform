@@ -80,9 +80,6 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-          SECRET_DELIVERY_WEB_USERS_JSON: ${{ secrets.DELIVERY_WEB_USERS_JSON }}
-          CORE_WEB_ADMIN_USERNAME: ${{ secrets.CORE_WEB_ADMIN_USERNAME }}
-          CORE_WEB_ADMIN_PASSWORD: ${{ secrets.CORE_WEB_ADMIN_PASSWORD }}
         run: |
           cd ../..
           bash delivery/web/scripts/deploy-production.sh

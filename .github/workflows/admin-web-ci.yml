@@ -39,8 +39,5 @@ jobs:
       - name: Verify Admin frontend
         env:
           CORE_API_INTERNAL_URL: https://core.example.invalid
-          CORE_API_SERVER_TOKEN: test-server-token-not-for-production
-          CORE_WEB_ADMIN_USERNAME: test-admin
-          CORE_WEB_ADMIN_PASSWORD: test-password
           NPP_OPERATIONS_URL: https://office.nguyenlieuhungphat.com
         run: npm run verify

@@ -2,6 +2,7 @@ import { createSuccessEnvelope } from '@npp/contracts';
 import { sendJson, sendSuccess, sendError } from '../http-utils.js';
 import { readJsonBody, normalizeIdempotencyKey, executeRequestWithIdempotency } from '../idempotency.js';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
+import { canManageSecurityOwners, guardSecurityOwnerUserMutation } from '../internal-workforce-auth.js';
 import * as accessService from '../services/access-users.js';
 
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
@@ -53,6 +54,8 @@ function serviceStatus(result) {
   switch (result?.code) {
     case 'NOT_FOUND':
       return 404;
+    case 'SECURITY_OWNER_PROTECTED':
+      return 403;
     case 'DUPLICATE_LOGIN':
     case 'DUPLICATE_EMPLOYEE':
     case 'CONFLICT':
@@ -102,6 +105,17 @@ function serviceErrorBody(result, requestId, receivedAt) {
     requestId,
     receivedAt,
   };
+}
+
+async function guardUserMutation(client, context, userId) {
+  const result = await guardSecurityOwnerUserMutation(client, {
+    installationId: context.requestContext.installationId,
+    userId,
+    allowSecurityOwnerMutation: canManageSecurityOwners(context.requestContext),
+  });
+  return result.ok
+    ? result
+    : { ...result, message: 'Security Owner được bảo vệ khỏi thay đổi bởi quản trị viên thông thường' };
 }
 
 async function handleListUsers(req, res, context) {
@@ -283,12 +297,16 @@ export async function handleAccessUserRoutes(req, res, options) {
     await executeUserMutation(req, res, context, {
       route: `/api/access/users/${rolesMatch[1]}/roles`,
       statusCode: 200,
-      action: (client, payload) => accessService.replaceUserRoles(client, {
-        id: rolesMatch[1],
-        installationId: requestContext.installationId,
-        payload,
-        updatedBy: requestContext.actorId,
-      }),
+      action: async (client, payload) => {
+        const protection = await guardUserMutation(client, context, rolesMatch[1]);
+        if (!protection.ok) return protection;
+        return accessService.replaceUserRoles(client, {
+          id: rolesMatch[1],
+          installationId: requestContext.installationId,
+          payload,
+          updatedBy: requestContext.actorId,
+        });
+      },
     });
     return true;
   }
@@ -302,12 +320,16 @@ export async function handleAccessUserRoutes(req, res, options) {
     await executeUserMutation(req, res, context, {
       route: `/api/access/users/${userMatch[1]}`,
       statusCode: 200,
-      action: (client, payload) => accessService.updateUserStatus(client, {
-        id: userMatch[1],
-        installationId: requestContext.installationId,
-        payload,
-        updatedBy: requestContext.actorId,
-      }),
+      action: async (client, payload) => {
+        const protection = await guardUserMutation(client, context, userMatch[1]);
+        if (!protection.ok) return protection;
+        return accessService.updateUserStatus(client, {
+          id: userMatch[1],
+          installationId: requestContext.installationId,
+          payload,
+          updatedBy: requestContext.actorId,
+        });
+      },
     });
     return true;
   }

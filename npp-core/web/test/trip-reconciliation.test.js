@@ -10,11 +10,12 @@ const workspaceSource = read('app/logistics/trip-reconciliation/trip-reconciliat
 const appShellCoreSource = read('app/components/app-shell-core.tsx');
 
 test('NPP gateway allows only explicit reconciliation trip actions', () => {
-  assert.match(gatewaySource, /READ_ACTIONS = new Set\(\['dispatch', 'reconciliation'\]\)/);
+  assert.match(gatewaySource, /READ_ACTIONS\s*=\s*new Set\(\['dispatch',\s*'reconciliation'\]\)/);
   assert.match(gatewaySource, /'return-receipts'/);
   assert.match(gatewaySource, /'close'/);
-  assert.match(gatewaySource, /key === 'status' && value === 'all'/);
-  assert.match(gatewaySource, /CORE_API_SERVER_TOKEN/);
+  assert.match(gatewaySource, /k(?:ey)?\s*===?\s*'status'\s*&&\s*v(?:alue)?\s*===?\s*'all'/);
+  assert.match(gatewaySource, /requireNppWorkforceSessionToken/);
+  assert.doesNotMatch(gatewaySource, /process\.env\.CORE_API_SERVER_TOKEN/);
   assert.doesNotMatch(gatewaySource, /NEXT_PUBLIC_.*TOKEN/);
 });
 

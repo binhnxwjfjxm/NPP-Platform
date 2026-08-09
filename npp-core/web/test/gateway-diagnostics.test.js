@@ -18,8 +18,8 @@ test('gateway diagnostics distinguish 404, 503 configuration and 401 authenticat
   assert.doesNotMatch(diagnostics, /Authorization|CORE_API_INTERNAL_URL|CORE_API_SERVER_TOKEN|payload|body/);
 
   assert.match(customerGateway, /logGatewayFailure/);
-  assert.match(customerGateway, /gateway: 'customer'/);
-  assert.match(customerGateway, /upstreamPath: path/);
-  assert.match(customerGateway, /status: normalized\.statusCode/);
+  assert.match(customerGateway, /gateway:\s*'customer'/);
+  assert.match(customerGateway, /upstreamPath:\s*path/);
+  assert.match(customerGateway, /status:\s*[A-Za-z_$][\w$]*\.statusCode/);
   assert.match(customerGateway, /requestId/);
 });

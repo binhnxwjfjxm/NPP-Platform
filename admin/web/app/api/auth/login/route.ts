@@ -2,10 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   ADMIN_SESSION_COOKIE,
   adminSessionCookieOptions,
-  authenticateAdminCredentials,
-  createAdminSession,
   safeAdminReturnTo,
 } from '../../../../lib/admin-session';
+import {
+  ADMIN_INTERNAL_SOURCE_APP,
+  requestInternalAuth,
+} from '../../../../lib/internal-auth-client';
+
+type LoginData = {
+  token?: string;
+  session?: { expiresAt?: string };
+};
 
 function redirect(location: string): NextResponse {
   return new NextResponse(null, {
@@ -17,23 +24,50 @@ function redirect(location: string): NextResponse {
   });
 }
 
+function loginError(returnTo: string, error: string, challenge = false) {
+  const search = new URLSearchParams({ error });
+  if (challenge) search.set('challenge', 'owner');
+  if (returnTo !== '/') search.set('returnTo', returnTo);
+  return redirect(`/login?${search.toString()}`);
+}
+
 export async function POST(request: NextRequest) {
   const form = await request.formData();
   const username = String(form.get('username') || '').trim();
   const password = String(form.get('password') || '');
+  const ownerCode = String(form.get('ownerCode') || '').trim();
   const returnTo = safeAdminReturnTo(String(form.get('returnTo') || '/'));
 
-  if (!authenticateAdminCredentials(username, password)) {
-    const search = new URLSearchParams({ error: 'invalid_credentials' });
-    if (returnTo !== '/') search.set('returnTo', returnTo);
-    return redirect(`/login?${search.toString()}`);
+  const result = await requestInternalAuth<LoginData>('/api/internal-auth/login', {
+    method: 'POST',
+    body: {
+      loginName: username,
+      password,
+      ...(ownerCode ? { ownerCode } : {}),
+      sourceApp: ADMIN_INTERNAL_SOURCE_APP,
+    },
+  });
+
+  if (!result.ok) {
+    if (result.code === 'INTERNAL_AUTH_OWNER_CODE_INVALID') {
+      return loginError(returnTo, ownerCode ? 'invalid_owner_code' : 'owner_challenge_required', true);
+    }
+    if (result.code === 'INTERNAL_AUTH_OWNER_CHALLENGE_UNAVAILABLE') {
+      return loginError(returnTo, 'owner_challenge_unavailable', true);
+    }
+    if (result.status === 401) return loginError(returnTo, 'invalid_credentials');
+    return loginError(returnTo, 'core_unavailable');
   }
+
+  const token = result.data?.token?.trim();
+  const expiresAt = result.data?.session?.expiresAt;
+  if (!token || !expiresAt) return loginError(returnTo, 'core_response_invalid');
 
   const response = redirect(returnTo);
   response.cookies.set(
     ADMIN_SESSION_COOKIE,
-    await createAdminSession(username),
-    adminSessionCookieOptions(),
+    token,
+    adminSessionCookieOptions(expiresAt),
   );
   return response;
 }

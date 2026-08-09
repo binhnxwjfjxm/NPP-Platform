@@ -2,10 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-function webSource(relativePath) {
-  return readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
-}
-
+function webSource(relativePath) { return readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8'); }
 const page = webSource('app/accounting/customer-payments/page.tsx');
 const workspace = webSource('app/accounting/customer-payments/customer-payment-workspace.tsx');
 const gateway = webSource('lib/customer-payment-gateway.ts');
@@ -15,48 +12,15 @@ const allocationReverseRoute = webSource('app/api/receivable-allocations/[id]/re
 const navigation = webSource('app/components/app-shell-core.tsx');
 
 test('customer payment page explains the accounting task without extending delivery or MCP', () => {
-  assert.match(page, /title="Thu tiền khách hàng"/);
-  assert.match(page, /phân bổ một lần vào nhiều khoản nợ/);
-  assert.match(page, /CustomerPaymentWorkspace/);
-  assert.doesNotMatch(page, /MCP|\bcod\b|hoàn tiền|hàng trả/i);
+  assert.match(page, /title="Thu tiền khách hàng"/); assert.match(page, /phân bổ một lần vào nhiều khoản nợ/); assert.match(page, /CustomerPaymentWorkspace/); assert.doesNotMatch(page, /MCP|\bcod\b|hoàn tiền|hàng trả/i);
 });
-
 test('workspace supports one receipt allocated to many receivables', () => {
-  assert.match(workspace, /data-testid="customer-payment-form"/);
-  assert.match(workspace, /data-testid="customer-payment-create-allocation-table"/);
-  assert.match(workspace, /data-testid="customer-payment-allocation-form"/);
-  assert.match(workspace, /allocations: createRows\.length \? createRows : undefined/);
-  assert.match(workspace, /allocations: existingRows/);
-  assert.match(workspace, /allocationRows\(createAmounts, createTargets\)/);
-  assert.match(workspace, /allocationRows\(existingAmounts, existingTargets\)/);
-  assert.match(workspace, /Phần còn lại sẽ là tiền chưa phân bổ/);
-  assert.doesNotMatch(workspace, /paid\s*=\s*true/i);
-  assert.doesNotMatch(workspace, /\bcod\b|hoàn tiền|write[-_ ]?off/i);
+  assert.match(workspace, /data-testid="customer-payment-form"/); assert.match(workspace, /data-testid="customer-payment-create-allocation-table"/); assert.match(workspace, /data-testid="customer-payment-allocation-form"/); assert.match(workspace, /allocations: createRows\.length \? createRows : undefined/); assert.match(workspace, /allocations: existingRows/); assert.match(workspace, /allocationRows\(createAmounts, createTargets\)/); assert.match(workspace, /allocationRows\(existingAmounts, existingTargets\)/); assert.match(workspace, /Phần còn lại sẽ là tiền chưa phân bổ/); assert.doesNotMatch(workspace, /paid\s*=\s*true/i); assert.doesNotMatch(workspace, /\bcod\b|hoàn tiền|write[-_ ]?off/i);
 });
-
-test('web gateway keeps tokens server-only and forwards idempotency keys', () => {
-  assert.match(gateway, /import 'server-only'/);
-  assert.match(gateway, /CORE_API_INTERNAL_URL/);
-  assert.match(gateway, /CORE_API_SERVER_TOKEN/);
-  assert.match(gateway, /'Idempotency-Key': idempotencyKey/);
-  assert.match(gateway, /\/api\/customer-payments\/\$\{assertUuid\(id/);
-  assert.match(gateway, /\/api\/receivable-allocations\/\$\{assertUuid\(id/);
-  assert.doesNotMatch(gateway, /NEXT_PUBLIC_.*TOKEN/);
+test('web gateway keeps workforce sessions server-only and forwards idempotency keys', () => {
+  assert.match(gateway, /import 'server-only'/); assert.match(gateway, /CORE_API_INTERNAL_URL/); assert.match(gateway, /requireNppWorkforceSessionToken/); assert.doesNotMatch(gateway, /process\.env\.CORE_API_SERVER_TOKEN/); assert.match(gateway, /'Idempotency-Key':\s*idempotencyKey/); assert.match(gateway, /\/api\/customer-payments\/\$\{uuid\(id/); assert.match(gateway, /\/api\/receivable-allocations\/\$\{uuid\(id/); assert.doesNotMatch(gateway, /NEXT_PUBLIC_.*TOKEN/);
 });
-
 test('web API surface exposes collection, multi-allocation and compensating reversal', () => {
-  assert.match(collectionRoute, /createCustomerPayment/);
-  assert.match(collectionRoute, /listCustomerPayments/);
-  assert.match(allocationRoute, /allocateCustomerPayment/);
-  assert.match(allocationReverseRoute, /reverseReceivableAllocation/);
-  for (const source of [collectionRoute, allocationRoute, allocationReverseRoute]) {
-    assert.match(source, /customerPaymentRequestId/);
-    assert.match(source, /customerPaymentErrorResponse/);
-  }
+  assert.match(collectionRoute, /createCustomerPayment/); assert.match(collectionRoute, /listCustomerPayments/); assert.match(allocationRoute, /allocateCustomerPayment/); assert.match(allocationReverseRoute, /reverseReceivableAllocation/); for (const source of [collectionRoute, allocationRoute, allocationReverseRoute]) { assert.match(source, /customerPaymentRequestId/); assert.match(source, /customerPaymentErrorResponse/); }
 });
-
-test('accounting navigation exposes customer payments as its own task', () => {
-  assert.match(navigation, /href: '\/accounting\/customer-payments'/);
-  assert.match(navigation, /label: 'Thu tiền khách hàng'/);
-  assert.match(navigation, /testId: 'nav-customer-payments'/);
-});
+test('accounting navigation exposes customer payments as its own task', () => { assert.match(navigation, /href: '\/accounting\/customer-payments'/); assert.match(navigation, /label: 'Thu tiền khách hàng'/); assert.match(navigation, /testId: 'nav-customer-payments'/); });

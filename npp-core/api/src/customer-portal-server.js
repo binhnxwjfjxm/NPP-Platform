@@ -5,10 +5,18 @@ import { resolveRequestId } from '@npp/shared-utils';
 import { loadConfig } from './config.js';
 import { closePool, getPool } from './db/pool.js';
 import { createPostgresIdempotencyStore, executeRequestWithIdempotency } from './idempotency.js';
-import { createRequestContext } from './request-context.js';
+import {
+  authenticateRequest as authenticateServiceRequest,
+  createRequestContext,
+  requirePermission,
+  PERMISSIONS,
+} from './request-context.js';
 import { createCoreApiServer } from './server.js';
 import { createCustomerPortalAuthenticator } from './customer-portal-auth.js';
 import { handleCustomerPortalRoutes } from './routes/customer-portal.js';
+import { loadInternalWorkforceAuthConfig } from './internal-workforce-config.js';
+import { createInternalWorkforceAuthenticator } from './internal-workforce-auth.js';
+import { handleInternalWorkforceAuthRoutes } from './routes/internal-workforce-auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const RETRYABLE_ERROR_CODES = new Set(['40001', '40P01', '57P01', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE']);
@@ -49,44 +57,105 @@ function unexpectedPortalResponse(error, requestId, pathName) {
   };
 }
 
+function sendInternalAuthUnavailable(res, requestId, receivedAt) {
+  res.statusCode = 503;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.end(JSON.stringify({
+    error: {
+      code: 'INTERNAL_AUTH_UNAVAILABLE',
+      message: 'Internal authentication is temporarily unavailable.',
+      details: {},
+      retryable: true,
+    },
+    requestId,
+    receivedAt,
+  }));
+}
+
 export function createCustomerPortalAwareServer(options = {}) {
   const loadedConfig = options.config ?? loadConfig();
-  const runtimeConfig = resolveCustomerPortalRuntimeConfig(loadedConfig, options.env ?? process.env);
-  const baseServer = createCoreApiServer({ ...options, config: runtimeConfig });
+  const env = options.env ?? process.env;
+  const runtimeConfig = resolveCustomerPortalRuntimeConfig(loadedConfig, env);
+  const pool = options.pool ?? getPool(runtimeConfig);
+  const internalAuthConfig = options.internalAuthConfig ?? loadInternalWorkforceAuthConfig(env);
+  const internalAuth = options.internalAuth ?? createInternalWorkforceAuthenticator({
+    config: internalAuthConfig,
+    pool,
+  });
+  const authenticate = (req, config) => req.internalWorkforceAuthResult
+    ?? authenticateServiceRequest(req, config);
+  const baseServer = createCoreApiServer({ ...options, config: runtimeConfig, authenticateRequest: authenticate });
   const baseHandler = baseServer.listeners('request')[0];
   const idempotencyStore = options.idempotencyStore
-    ?? createPostgresIdempotencyStore(options.idempotencyAdapter ?? getPool(runtimeConfig));
-  const portalAuth = options.customerPortalAuth ?? createCustomerPortalAuthenticator({ env: options.env ?? process.env });
+    ?? createPostgresIdempotencyStore(options.idempotencyAdapter ?? pool);
+  const portalAuth = options.customerPortalAuth ?? createCustomerPortalAuthenticator({ env });
+  const createContext = options.createRequestContext ?? createRequestContext;
+  const authorize = options.requirePermission ?? requirePermission;
 
   return http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-    if (!url.pathname.startsWith('/api/customer-portal')) {
-      return baseHandler(req, res);
+    if (url.pathname.startsWith('/api/customer-portal')) {
+      const receivedAt = new Date().toISOString();
+      const requestId = resolveRequestId(req.headers['x-request-id'], 'req');
+      try {
+        await handleCustomerPortalRoutes(req, res, {
+          config: runtimeConfig,
+          customerPortalAuth: portalAuth,
+          idempotencyStore,
+          executeRequestWithIdempotency,
+          createContext,
+          getPool: () => pool,
+          requestId,
+          receivedAt,
+        });
+      } catch (error) {
+        const response = unexpectedPortalResponse(error, requestId, url.pathname);
+        if (!res.headersSent) {
+          res.statusCode = response.statusCode;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.setHeader('Cache-Control', 'no-store');
+          res.end(JSON.stringify({ error: response.error, requestId, receivedAt }));
+        } else if (!res.writableEnded) {
+          res.end();
+        }
+      }
+      return;
     }
+
     const receivedAt = new Date().toISOString();
     const requestId = resolveRequestId(req.headers['x-request-id'], 'req');
-    try {
-      await handleCustomerPortalRoutes(req, res, {
+    let internalAuthResult = null;
+    if (internalAuthConfig.enabled) {
+      try {
+        internalAuthResult = await internalAuth.resolveRequest(req, {
+          installationId: runtimeConfig.installationId,
+        });
+      } catch {
+        sendInternalAuthUnavailable(res, requestId, receivedAt);
+        return;
+      }
+    }
+    req.internalWorkforceAuthResult = internalAuthResult;
+
+    if (url.pathname === '/api/internal-auth' || url.pathname.startsWith('/api/internal-auth/')) {
+      await handleInternalWorkforceAuthRoutes(req, res, {
         config: runtimeConfig,
-        customerPortalAuth: portalAuth,
-        idempotencyStore,
-        executeRequestWithIdempotency,
-        createContext: options.createRequestContext ?? createRequestContext,
-        getPool: () => getPool(runtimeConfig),
+        internalAuthConfig,
+        internalAuth,
+        internalAuthResult,
+        authenticate,
+        authorize,
+        PERMISSIONS,
+        createContext,
+        getPool: () => pool,
         requestId,
         receivedAt,
       });
-    } catch (error) {
-      const response = unexpectedPortalResponse(error, requestId, url.pathname);
-      if (!res.headersSent) {
-        res.statusCode = response.statusCode;
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.setHeader('Cache-Control', 'no-store');
-        res.end(JSON.stringify({ error: response.error, requestId, receivedAt }));
-      } else if (!res.writableEnded) {
-        res.end();
-      }
+      return;
     }
+
+    return baseHandler(req, res);
   });
 }
 

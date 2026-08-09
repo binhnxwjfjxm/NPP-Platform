@@ -35,5 +35,6 @@ test('server gateway owns period and adjustment mutations', () => {
   assert.match(gateway, /openInventoryCostingPeriod/);
   assert.match(gateway, /closeInventoryCostingPeriod/);
   assert.match(gateway, /createInventoryCostAdjustment/);
-  assert.match(gateway, /CORE_API_SERVER_TOKEN/);
+  assert.match(gateway, /requireNppWorkforceSessionToken/);
+  assert.doesNotMatch(gateway, /process\.env\.CORE_API_SERVER_TOKEN/);
 });

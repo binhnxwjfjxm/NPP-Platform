@@ -45,170 +45,24 @@ smoke_core() {
 }
 
 app_json="${RUNNER_TEMP}/core-app.json"
-config_json="${RUNNER_TEMP}/core-config.json"
-bootstrap_json="${RUNNER_TEMP}/delivery-bootstrap.json"
 project_json="${RUNNER_TEMP}/delivery-project.json"
 settings_json="${RUNNER_TEMP}/delivery-settings.json"
-deployment_meta_json="${RUNNER_TEMP}/delivery-deployment-meta.json"
 
 curl --fail --silent --show-error \
   -H 'Accept: application/vnd.heroku+json; version=3' \
   -H "Authorization: Bearer $HEROKU_API_KEY" \
   "https://api.heroku.com/apps/$CORE_HEROKU_APP_NAME" > "$app_json"
-curl --fail --silent --show-error \
-  -H 'Accept: application/vnd.heroku+json; version=3' \
-  -H "Authorization: Bearer $HEROKU_API_KEY" \
-  "https://api.heroku.com/apps/$CORE_HEROKU_APP_NAME/config-vars" > "$config_json"
 
 core_url="$(jq -r '.web_url // empty' "$app_json")"
 core_url="${core_url%/}"
-database_url="$(jq -r '.DATABASE_URL // empty' "$config_json")"
-ssl_mode="$(jq -r '.DATABASE_SSL_MODE // "require"' "$config_json")"
-delivery_token="$(jq -r '.DELIVERY_FRONTEND_API_TOKEN // empty' "$config_json")"
 test -n "$core_url"
-test -n "$database_url"
-case "$ssl_mode" in require|verify-full) ;; *) echo "Core database TLS is not enforced." >&2; exit 1 ;; esac
-if [ -z "$delivery_token" ]; then delivery_token="$(openssl rand -hex 32)"; fi
-for secret in "$database_url" "$delivery_token"; do echo "::add-mask::$secret"; done
-
-DATABASE_URL="$database_url" DATABASE_SSL_MODE="$ssl_mode" node --input-type=module <<'NODE' > "$bootstrap_json"
-import pg from 'pg';
-import { buildSslConfig } from './npp-core/api/src/db/pool.js';
-const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: buildSslConfig(process.env.DATABASE_SSL_MODE),
-  application_name: 'delivery-production-bootstrap-audit',
-});
-try {
-  const warehouseResult = await pool.query(`
-    SELECT id::text
-      FROM shared.warehouses
-     WHERE is_active = true
-     ORDER BY id
-  `);
-  if (!warehouseResult.rows.length) throw new Error('no_active_delivery_warehouses');
-
-  const userResult = await pool.query(`
-    SELECT e.id::text AS employee_id,
-           COALESCE(NULLIF(to_jsonb(e)->>'full_name', ''), NULLIF(to_jsonb(e)->>'name', ''), dp.name, 'Tài xế') AS display_name
-      FROM logistics.driver_profiles dp
-      JOIN shared.employees e
-        ON e.installation_id = dp.installation_id
-       AND e.id = dp.employee_id
-     WHERE dp.is_active = true
-       AND dp.employee_id IS NOT NULL
-       AND COALESCE((to_jsonb(e)->>'is_active')::boolean, true) = true
-     ORDER BY e.id
-     LIMIT 1
-  `);
-  const user = userResult.rows[0] || null;
-
-  process.stdout.write(JSON.stringify({
-    warehouseIds: warehouseResult.rows.map((row) => row.id),
-    employeeId: user?.employee_id || null,
-    displayName: user?.display_name || null,
-    driverReady: Boolean(user),
-  }));
-} finally {
-  await pool.end();
-}
+CORE_URL="$core_url" node --input-type=module <<'NODE'
+const url = new URL(process.env.CORE_URL);
+if (url.protocol !== 'https:' || url.username || url.password) throw new Error('invalid_core_api_internal_url');
 NODE
-
-warehouse_ids="$(jq -r '.warehouseIds | join(",")' "$bootstrap_json")"
-employee_id="$(jq -r '.employeeId // empty' "$bootstrap_json")"
-display_name="$(jq -r '.displayName // empty' "$bootstrap_json")"
-driver_ready="$(jq -r '.driverReady' "$bootstrap_json")"
-test -n "$warehouse_ids"
-
-users_json="${SECRET_DELIVERY_WEB_USERS_JSON:-}"
-auth_source="delivery-secret"
-setup_mode=false
-setup_username=""
-setup_password=""
-
-if [ "$driver_ready" != true ]; then
-  test -n "${CORE_WEB_ADMIN_USERNAME:-}"
-  test -n "${CORE_WEB_ADMIN_PASSWORD:-}"
-  setup_mode=true
-  setup_username="$CORE_WEB_ADMIN_USERNAME"
-  setup_password="$CORE_WEB_ADMIN_PASSWORD"
-  users_json=""
-  auth_source="core-web-setup"
-elif [ -z "$users_json" ]; then
-  test -n "${CORE_WEB_ADMIN_USERNAME:-}"
-  test -n "${CORE_WEB_ADMIN_PASSWORD:-}"
-  test -n "$employee_id"
-  test -n "$display_name"
-  users_json="$(
-    USERNAME="$CORE_WEB_ADMIN_USERNAME" PASSWORD="$CORE_WEB_ADMIN_PASSWORD" \
-    EMPLOYEE_ID="$employee_id" DISPLAY_NAME="$display_name" \
-    node --input-type=module <<'NODE'
-const value = [{
-  username: process.env.USERNAME,
-  password: process.env.PASSWORD,
-  employeeId: process.env.EMPLOYEE_ID,
-  displayName: process.env.DISPLAY_NAME,
-}];
-process.stdout.write(JSON.stringify(value));
-NODE
-  )"
-  auth_source="core-web-bootstrap"
-fi
-
-if [ "$setup_mode" = true ]; then
-  SETUP_USERNAME="$setup_username" SETUP_PASSWORD="$setup_password" node --input-type=module <<'NODE'
-const username = String(process.env.SETUP_USERNAME || '');
-const password = String(process.env.SETUP_PASSWORD || '');
-if (!/^[A-Za-z0-9._-]{2,80}$/.test(username)) throw new Error('invalid_delivery_setup_username');
-if (password.length < 12) throw new Error('invalid_delivery_setup_password');
-NODE
-else
-  DELIVERY_USERS_JSON="$users_json" node --input-type=module <<'NODE'
-const users = JSON.parse(process.env.DELIVERY_USERS_JSON || 'null');
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-if (!Array.isArray(users) || users.length < 1 || users.length > 500) throw new Error('invalid_delivery_users');
-const usernames = new Set();
-const employeeIds = new Set();
-for (const user of users) {
-  const username = String(user?.username || '');
-  const employeeId = String(user?.employeeId || '');
-  if (!/^[A-Za-z0-9._-]{2,80}$/.test(username)) throw new Error('invalid_delivery_username');
-  if (String(user?.password || '').length < 12) throw new Error('invalid_delivery_password');
-  if (!uuid.test(employeeId)) throw new Error('invalid_delivery_employee');
-  if (!String(user?.displayName || '').trim()) throw new Error('invalid_delivery_display_name');
-  if (usernames.has(username) || employeeIds.has(employeeId)) throw new Error('duplicate_delivery_user');
-  usernames.add(username);
-  employeeIds.add(employeeId);
-}
-NODE
-fi
-
-for secret in "$users_json" "$setup_username" "$setup_password"; do
-  [ -n "$secret" ] && echo "::add-mask::$secret"
-done
 write_env CORE_API_INTERNAL_URL "$core_url"
-write_env DELIVERY_CORE_API_TOKEN "$delivery_token"
-write_env DELIVERY_SETUP_MODE "$setup_mode"
-if [ "$setup_mode" = true ]; then
-  write_env DELIVERY_SETUP_USERNAME "$setup_username"
-  write_env DELIVERY_SETUP_PASSWORD "$setup_password"
-else
-  write_env DELIVERY_WEB_USERS_JSON "$users_json"
-fi
-write_env DELIVERY_FRONTEND_WAREHOUSE_IDS "$warehouse_ids"
+write_env NEXT_PUBLIC_APP_LOGO_URL '/logo-transparent.png'
 
-core_payload="$(jq -n \
-  --arg token "$delivery_token" \
-  --arg actor 'service:delivery-frontend' \
-  --arg warehouses "$warehouse_ids" \
-  '{DELIVERY_FRONTEND_API_TOKEN:$token,DELIVERY_FRONTEND_ACTOR_ID:$actor,DELIVERY_FRONTEND_WAREHOUSE_IDS:$warehouses}')"
-curl --fail --silent --show-error \
-  -X PATCH \
-  -H 'Accept: application/vnd.heroku+json; version=3' \
-  -H "Authorization: Bearer $HEROKU_API_KEY" \
-  -H 'Content-Type: application/json' \
-  "https://api.heroku.com/apps/$CORE_HEROKU_APP_NAME/config-vars" \
-  --data "$core_payload" >/dev/null
 smoke_core /health/live
 smoke_core /health/ready
 
@@ -248,22 +102,11 @@ if (config.git?.deploymentEnabled !== false) throw new Error('delivery_auto_depl
 NODE
 
 DELIVERY_PROJECT_ID="$project_id" node --input-type=module <<'NODE'
-const setupMode = process.env.DELIVERY_SETUP_MODE === 'true';
 const values = {
   CORE_API_INTERNAL_URL: process.env.CORE_API_INTERNAL_URL,
-  DELIVERY_CORE_API_TOKEN: process.env.DELIVERY_CORE_API_TOKEN,
-  DELIVERY_SETUP_MODE: process.env.DELIVERY_SETUP_MODE,
-  NEXT_PUBLIC_APP_LOGO_URL: '/logo-transparent.png',
-  ...(setupMode
-    ? {
-        DELIVERY_SETUP_USERNAME: process.env.DELIVERY_SETUP_USERNAME,
-        DELIVERY_SETUP_PASSWORD: process.env.DELIVERY_SETUP_PASSWORD,
-      }
-    : { DELIVERY_WEB_USERS_JSON: process.env.DELIVERY_WEB_USERS_JSON }),
+  NEXT_PUBLIC_APP_LOGO_URL: process.env.NEXT_PUBLIC_APP_LOGO_URL,
 };
-const missing = Object.entries(values)
-  .filter(([, value]) => !String(value || '').trim())
-  .map(([key]) => key);
+const missing = Object.entries(values).filter(([, value]) => !String(value || '').trim()).map(([key]) => key);
 if (missing.length) throw new Error(`missing_delivery_environment_values:${missing.join(',')}`);
 const response = await fetch(`https://api.vercel.com/v10/projects/${process.env.DELIVERY_PROJECT_ID}/env?teamId=${process.env.VERCEL_ORG_ID}&upsert=true`, {
   method: 'POST',
@@ -307,73 +150,31 @@ npx --yes vercel@58.0.0 build --prod --token="$VERCEL_TOKEN"
 deployment_url="$(npx --yes vercel@58.0.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
 test -n "$deployment_url"
 
-deployment_host="${deployment_url#https://}"
-source_sha="$(git rev-parse HEAD)"
-curl --fail --silent --show-error \
-  -H "Authorization: Bearer $VERCEL_TOKEN" \
-  "https://api.vercel.com/v13/deployments/$deployment_host?teamId=$VERCEL_ORG_ID" > "$deployment_meta_json"
-test "$(jq -r '.projectId // .project.id // empty' "$deployment_meta_json")" = "$project_id"
-test "$(jq -r '.meta.githubCommitSha // empty' "$deployment_meta_json")" = "$source_sha"
-jq -e --arg domain "$DELIVERY_DOMAIN" '(.alias // []) | index($domain) != null' "$deployment_meta_json" >/dev/null
-
-smoke_url="https://$DELIVERY_DOMAIN"
-unauth=""
 deadline=$((SECONDS + 180))
 while [ "$SECONDS" -lt "$deadline" ]; do
-  unauth="$(curl --silent --show-error --connect-timeout 5 --max-time 15 --output /dev/null --write-out '%{http_code}' "$smoke_url/" || true)"
-  [ "$unauth" = 401 ] && break
+  unauth="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$deployment_url/" || true)"
+  login_code="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$deployment_url/login" || true)"
+  [ "$unauth" = 401 ] && [ "$login_code" = 200 ] && break
   sleep 3
 done
-if [ "$unauth" != 401 ]; then
-  echo "Delivery custom-domain auth smoke failed; expected 401, last status=${unauth:-none}." >&2
-  exit 1
-fi
+test "${unauth:-}" = 401
+test "${login_code:-}" = 200
+html="$(curl --fail --silent --show-error "$deployment_url/login")"
+printf '%s' "$html" | grep -F 'Welcome to Hung Phat Operations.' >/dev/null
+asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.(css|js)' | head -n 1)"
+test -n "$asset"
+curl --fail --silent --show-error "$deployment_url$asset" >/dev/null
 
-if [ "$setup_mode" = true ]; then
-  auth="${setup_username}:${setup_password}"
-  echo "::add-mask::$auth"
-  html="$(curl --fail --silent --show-error --retry 5 --retry-delay 4 -u "$auth" "$smoke_url/")"
-  grep -q 'Ứng dụng Giao hàng' <<<"$html"
-  grep -q 'Chưa có hồ sơ tài xế đang hoạt động' <<<"$html"
-  grep -qv 'Không tải được chuyến' <<<"$html"
-else
-  auth="$(DELIVERY_USERS_JSON="$users_json" node --input-type=module <<'NODE'
-const [user] = JSON.parse(process.env.DELIVERY_USERS_JSON);
-process.stdout.write(`${user.username}:${user.password}`);
-NODE
-)"
-  echo "::add-mask::$auth"
-  selected_employee_id="$(DELIVERY_USERS_JSON="$users_json" node --input-type=module <<'NODE'
-const [user] = JSON.parse(process.env.DELIVERY_USERS_JSON);
-process.stdout.write(user.employeeId);
-NODE
-)"
-  api_body="${RUNNER_TEMP}/delivery-driver-api.json"
-  curl --fail --silent --show-error --retry 5 --retry-delay 4 \
-    -H "Authorization: Bearer $delivery_token" \
-    -H "x-npp-delivery-employee-id: $selected_employee_id" \
-    -H "x-request-id: delivery-production-smoke-${GITHUB_RUN_ID:-local}" \
-    "$core_url/api/logistics/driver/trips?limit=1&offset=0" > "$api_body"
-  jq -e '(.data.driver | type == "object") and (.data.trips | type == "array")' "$api_body" >/dev/null
-  html="$(curl --fail --silent --show-error --retry 5 --retry-delay 4 -u "$auth" "$smoke_url/")"
-  grep -q 'Chuyến của tôi' <<<"$html"
-  grep -qv 'Không tải được chuyến' <<<"$html"
-fi
-
-css_asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.css' | head -n 1)"
-js_asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.js' | head -n 1)"
-test -n "$css_asset"
-test -n "$js_asset"
-curl --fail --silent --show-error "$smoke_url$css_asset" >/dev/null
-curl --fail --silent --show-error "$smoke_url$js_asset" >/dev/null
-
-domain_ready=true
+smoke_url="https://$DELIVERY_DOMAIN"
+domain_login="$(curl --silent --show-error --retry 5 --retry-delay 3 --output /dev/null --write-out '%{http_code}' "$smoke_url/login" || true)"
+domain_ready=false
+[ "$domain_login" = 200 ] && domain_ready=true
 
 {
   echo "project_id=$project_id"
   echo "deployment_url=$deployment_url"
   echo "domain_ready=$domain_ready"
-  echo "auth_source=$auth_source"
-  echo "driver_ready=$driver_ready"
-  echo "setup_mode=$setup_mode"
+  echo "auth_source=core-workforce-session"
+  echo "driver_ready=runtime-authorized"
+  echo "setup_mode=false"
 } >> "$GITHUB_OUTPUT"

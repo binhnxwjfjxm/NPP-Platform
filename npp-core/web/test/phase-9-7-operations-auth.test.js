@@ -4,8 +4,10 @@ import test from 'node:test';
 
 const middleware = await readFile(new URL('../middleware.ts', import.meta.url), 'utf8');
 
-test('Phase 9.7 keeps operations history behind the NPP web-auth middleware', () => {
-  assert.match(middleware, /'\/operations\/:path\*'/);
-  assert.match(middleware, /process\.env\.CORE_WEB_ADMIN_USERNAME/);
-  assert.match(middleware, /process\.env\.CORE_WEB_ADMIN_PASSWORD/);
+test('Phase 9.7 keeps operations history behind canonical NPP workforce auth', () => {
+  assert.match(middleware, /NPP_SESSION_COOKIE/);
+  assert.match(middleware, /\/api\/internal-auth\/me/);
+  assert.match(middleware, /loginRedirect/);
+  assert.match(middleware, /NPP_AUTH_UNAVAILABLE/);
+  assert.doesNotMatch(middleware, /CORE_WEB_ADMIN_USERNAME|CORE_WEB_ADMIN_PASSWORD|Basic realm/);
 });

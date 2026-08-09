@@ -1,4 +1,5 @@
 import 'server-only';
+import { deliveryCoreBaseUrl, requireDeliverySessionToken } from './internal-auth-client';
 import type {
   CreateCodHandoverPayload,
   DeliveryUser,
@@ -10,19 +11,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 
 type SuccessEnvelope<T> = Readonly<{ data: T }>;
-
 type CoreError = Error & { status?: number; code?: string };
-
-function config() {
-  const rawUrl = process.env.CORE_API_INTERNAL_URL?.trim();
-  const credential = process.env.DELIVERY_CORE_API_TOKEN?.trim();
-  if (!rawUrl || !credential) throw new Error('DELIVERY_CORE_CONFIG_NOT_READY');
-  let url: URL;
-  try { url = new URL(rawUrl); } catch { throw new Error('DELIVERY_CORE_URL_INVALID'); }
-  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('DELIVERY_CORE_URL_INVALID');
-  if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') throw new Error('DELIVERY_CORE_HTTPS_REQUIRED');
-  return Object.freeze({ baseUrl: url.toString().replace(/\/$/, ''), credential });
-}
 
 async function callCore<T>(
   user: DeliveryUser,
@@ -32,13 +21,11 @@ async function callCore<T>(
 ): Promise<T> {
   if (!UUID_PATTERN.test(user.employeeId)) throw new Error('DELIVERY_USER_INVALID');
   if (idempotencyKey !== undefined && !IDEMPOTENCY_PATTERN.test(idempotencyKey)) throw new Error('INVALID_IDEMPOTENCY_KEY');
-  const core = config();
-  const response = await fetch(`${core.baseUrl}${path}`, {
+  const response = await fetch(`${deliveryCoreBaseUrl()}${path}`, {
     ...init,
     cache: 'no-store',
     headers: {
-      Authorization: `Bearer ${core.credential}`,
-      'x-npp-delivery-employee-id': user.employeeId,
+      Authorization: `Bearer ${requireDeliverySessionToken()}`,
       'x-request-id': `delivery-web-cod-${crypto.randomUUID()}`,
       Accept: 'application/json',
       ...(init.body ? { 'Content-Type': 'application/json' } : {}),

@@ -1,73 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-
-const source = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
-const exists = (path) => existsSync(new URL(path, import.meta.url));
-
-test('8.2 inventory navigation has a real page and workspace in the Inventory group', () => {
-  const shell = source('../app/components/app-shell-core.tsx');
-  const inventoryGroup = shell.slice(shell.indexOf('const inventoryItems'), shell.indexOf('const logisticsItems'));
-
-  assert.match(inventoryGroup, /href: '\/inventory\/reporting'.*label: 'Báo cáo tồn kho'.*testId: 'nav-inventory-reporting'/);
-  assert.equal(exists('../app/inventory/reporting/page.tsx'), true);
-  const page = source('../app/inventory/reporting/page.tsx');
-  assert.match(page, /InventoryReportingWorkspace/);
-  assert.equal(exists('../app/components/inventory-reporting-workspace.tsx'), true);
-  assert.doesNotMatch(shell, /href: '\/reporting'/);
-});
-
-test('8.2 dashboard buttons only target existing Inventory operational pages', () => {
-  const workspace = source('../app/components/inventory-reporting-workspace.tsx');
-
-  for (const route of ['balances', 'costing', 'lots']) {
-    assert.equal(exists(`../app/inventory/${route}/page.tsx`), true);
-  }
-  assert.match(workspace, /href="\/inventory\/balances"/);
-  assert.match(workspace, /href="\/inventory\/costing"/);
-  assert.match(workspace, /href="\/inventory\/lots"/);
-  assert.doesNotMatch(workspace, /href="\/inventory\/movements"/);
-  assert.doesNotMatch(workspace, /Xuất CSV|exportCsv|Tải CSV/);
-});
-
-test('8.2 browser route uses the server-only Core gateway', () => {
-  assert.equal(exists('../app/api/reporting/inventory/route.ts'), true);
-  const api = source('../app/api/reporting/inventory/route.ts');
-  const gateway = source('../lib/inventory-reporting-gateway.ts');
-  const workspace = source('../app/components/inventory-reporting-workspace.tsx');
-
-  assert.match(api, /getInventoryReportingDashboard/);
-  assert.match(gateway, /import 'server-only'/);
-  assert.match(gateway, /CORE_API_INTERNAL_URL/);
-  assert.match(gateway, /CORE_API_SERVER_TOKEN/);
-  assert.match(gateway, /ALLOWED_QUERY = new Set\(\['from', 'to', 'warehouseId', 'slowDays'\]\)/);
-  assert.match(gateway, /payload\.data === null/);
-  assert.match(gateway, /cache: 'no-store'/);
-  assert.doesNotMatch(gateway + workspace, /NEXT_PUBLIC_.*TOKEN|NEXT_PUBLIC_.*SECRET/);
-  assert.doesNotMatch(workspace, /CORE_API_SERVER_TOKEN|CORE_API_INTERNAL_URL/);
-});
-
-test('8.2 UI keeps quantity and money display as decimal strings and rounds without Number conversion', () => {
-  const workspace = source('../app/components/inventory-reporting-workspace.tsx');
-  assert.match(workspace, /function incrementDigits/);
-  assert.match(workspace, /fraction\[fractionLimit\] >= '5'/);
-  assert.match(workspace, /inventoryValueVnd/);
-  assert.match(workspace, /openingQuantity/);
-  assert.match(workspace, /inboundQuantity/);
-  assert.match(workspace, /outboundQuantity/);
-  assert.match(workspace, /closingQuantity/);
-  assert.doesNotMatch(workspace, /parseFloat\(|parseInt\(|Number\(value\)/);
-});
-
-test('8.2 filter fields are locked while an inventory request is active', () => {
-  const workspace = source('../app/components/inventory-reporting-workspace.tsx');
-  const disabledFields = workspace.match(/disabled=\{busy\}/g) ?? [];
-  assert.ok(disabledFields.length >= 6);
-});
-
-test('8.2 UI states source limits instead of inventing FIFO aging', () => {
-  const workspace = source('../app/components/inventory-reporting-workspace.tsx');
-  assert.match(workspace, /Không suy diễn FIFO age/);
-  assert.match(workspace, /manufactured_date canonical/);
-  assert.match(workspace, /không cộng số lượng của các SKU khác đơn vị với nhau/);
-});
+const source=(path)=>readFileSync(new URL(path,import.meta.url),'utf8'); const exists=(path)=>existsSync(new URL(path,import.meta.url));
+test('8.2 inventory navigation has a real page and workspace in the Inventory group',()=>{const shell=source('../app/components/app-shell-core.tsx');const inventoryGroup=shell.slice(shell.indexOf('const inventoryItems'),shell.indexOf('const logisticsItems'));assert.match(inventoryGroup,/href: '\/inventory\/reporting'.*label: 'Báo cáo tồn kho'.*testId: 'nav-inventory-reporting'/);assert.equal(exists('../app/inventory/reporting/page.tsx'),true);const page=source('../app/inventory/reporting/page.tsx');assert.match(page,/InventoryReportingWorkspace/);assert.equal(exists('../app/components/inventory-reporting-workspace.tsx'),true);assert.doesNotMatch(shell,/href: '\/reporting'/);});
+test('8.2 dashboard buttons only target existing Inventory operational pages',()=>{const workspace=source('../app/components/inventory-reporting-workspace.tsx');for(const route of ['balances','costing','lots'])assert.equal(exists(`../app/inventory/${route}/page.tsx`),true);assert.match(workspace,/href="\/inventory\/balances"/);assert.match(workspace,/href="\/inventory\/costing"/);assert.match(workspace,/href="\/inventory\/lots"/);assert.doesNotMatch(workspace,/href="\/inventory\/movements"/);assert.doesNotMatch(workspace,/Xuất CSV|exportCsv|Tải CSV/);});
+test('8.2 browser route uses the server-only Core gateway',()=>{assert.equal(exists('../app/api/reporting/inventory/route.ts'),true);const api=source('../app/api/reporting/inventory/route.ts');const gateway=source('../lib/inventory-reporting-gateway.ts');const workspace=source('../app/components/inventory-reporting-workspace.tsx');assert.match(api,/getInventoryReportingDashboard/);assert.match(gateway,/import 'server-only'/);assert.match(gateway,/CORE_API_INTERNAL_URL/);assert.match(gateway,/requireNppWorkforceSessionToken/);assert.doesNotMatch(gateway,/process\.env\.CORE_API_SERVER_TOKEN/);assert.match(gateway,/ALLOWED_QUERY\s*=\s*new Set\(\['from',\s*'to',\s*'warehouseId',\s*'slowDays'\]\)/);assert.match(gateway,/Object\.prototype\.hasOwnProperty\.call\([^,]+,\s*'data'\)/);assert.match(gateway,/\.data\s*===\s*null/);assert.match(gateway,/cache:\s*'no-store'/);assert.doesNotMatch(gateway+workspace,/NEXT_PUBLIC_.*TOKEN|NEXT_PUBLIC_.*SECRET/);assert.doesNotMatch(workspace,/CORE_API_SERVER_TOKEN|CORE_API_INTERNAL_URL/);});
+test('8.2 UI keeps quantity and money display as decimal strings and rounds without Number conversion',()=>{const workspace=source('../app/components/inventory-reporting-workspace.tsx');assert.match(workspace,/function incrementDigits/);assert.match(workspace,/fraction\[fractionLimit\] >= '5'/);assert.match(workspace,/inventoryValueVnd/);assert.match(workspace,/openingQuantity/);assert.match(workspace,/inboundQuantity/);assert.match(workspace,/outboundQuantity/);assert.match(workspace,/closingQuantity/);assert.doesNotMatch(workspace,/parseFloat\(|parseInt\(|Number\(value\)/);});
+test('8.2 filter fields are locked while an inventory request is active',()=>{const workspace=source('../app/components/inventory-reporting-workspace.tsx');const disabledFields=workspace.match(/disabled=\{busy\}/g)??[];assert.ok(disabledFields.length>=6);});
+test('8.2 UI states source limits instead of inventing FIFO aging',()=>{const workspace=source('../app/components/inventory-reporting-workspace.tsx');assert.match(workspace,/Không suy diễn FIFO age/);assert.match(workspace,/manufactured_date canonical/);assert.match(workspace,/không cộng số lượng của các SKU khác đơn vị với nhau/);});

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const source = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
+const boundedSearch = /\.set\('search',\s*[^;]*\.search\.trim\(\)\.slice\(0,\s*256\)\)/;
 
 test('8.1 Sales drill-down search reaches the canonical server-side list query', () => {
   const page = source('../app/sales/sales-orders/page.tsx');
@@ -14,7 +15,7 @@ test('8.1 Sales drill-down search reaches the canonical server-side list query',
   assert.match(bootstrap, /listSalesOrders<.*>\(normalizedRequestId, \{/s);
   assert.match(bootstrap, /search: options\.search\.trim\(\)\.slice\(0, 256\)/);
   assert.match(gateway, /ALLOWED_QUERY_KEYS.*'search'/);
-  assert.match(gateway, /query\.set\('search', params\.search\.trim\(\)\.slice\(0, 256\)\)/);
+  assert.match(gateway, boundedSearch);
 });
 
 test('8.1 Purchasing drill-down search reaches the canonical server-side list query', () => {
@@ -27,7 +28,7 @@ test('8.1 Purchasing drill-down search reaches the canonical server-side list qu
   assert.match(bootstrap, /listPurchaseOrders<.*>\(normalizedRequestId, \{/s);
   assert.match(bootstrap, /search: options\.search\.trim\(\)\.slice\(0, 256\)/);
   assert.match(gateway, /ALLOWED_QUERY_KEYS.*'search'/);
-  assert.match(gateway, /query\.set\('search', params\.search\.trim\(\)\.slice\(0, 256\)\)/);
+  assert.match(gateway, boundedSearch);
 });
 
 test('8.1 drill-down search is bounded and does not add a new detail route', () => {

@@ -7,6 +7,8 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf
 const packageSource = read('package.json');
 const middlewareSource = read('middleware.ts');
 const authSource = read('lib/delivery-auth.ts');
+const sessionSource = read('lib/delivery-session.ts');
+const authClientSource = read('lib/internal-auth-client.ts');
 const readGatewaySource = read('lib/core-api.ts');
 const attemptGatewaySource = read('lib/attempt-api.ts');
 const homeSource = read('app/page.tsx');
@@ -26,40 +28,32 @@ test('Delivery frontend is a standalone mobile Next app with Auto Deploy OFF', (
   assert.match(manifestSource, /orientation: 'portrait'/);
 });
 
-test('app auth maps unique credentials to server-owned employee identity', () => {
-  assert.match(authSource, /DELIVERY_WEB_USERS_JSON/);
-  assert.match(authSource, /DELIVERY_SETUP_MODE/);
+test('Delivery identity comes only from canonical Core workforce session', () => {
+  assert.match(sessionSource, /hp_delivery_session/);
+  assert.match(authClientSource, /\/api\/internal-auth/);
+  assert.match(middlewareSource, /\/api\/internal-auth\/me/);
+  assert.match(authSource, /INTERNAL_IDENTITY_VERSION = 'v2'/);
   assert.match(authSource, /employeeId/);
-  assert.match(authSource, /DELIVERY_WEB_USER_DUPLICATE/);
-  assert.match(authSource, /constantTimeEqual/);
-  assert.doesNotMatch(authSource, /NEXT_PUBLIC_/);
-  assert.match(middlewareSource, /DELIVERY_AUTH_NOT_CONFIGURED/);
+  assert.doesNotMatch(authSource + sessionSource + middlewareSource, /DELIVERY_WEB_USERS_JSON|DELIVERY_SETUP_PASSWORD|DELIVERY_CORE_API_TOKEN/);
   assert.match(middlewareSource, /DELIVERY_HTTPS_REQUIRED/);
-  assert.match(middlewareSource, /DELIVERY_DRIVER_SETUP_PENDING/);
 });
 
-test('setup-pending production blocks all attempt mutations and invents no driver identity', () => {
+test('legacy setup mode is inert and invents no driver identity', () => {
   assert.match(homeSource, /deliverySetupPending/);
-  assert.match(homeSource, /Chưa có hồ sơ tài xế đang hoạt động/);
-  assert.match(homeSource, /không tạo dữ liệu giao hàng giả/);
   assert.match(detailSource, /deliverySetupPending/);
-  assert.match(attemptRouteSource, /deliverySetupPending/);
-  assert.match(attemptRouteSource, /DELIVERY_DRIVER_SETUP_PENDING/);
-  assert.match(middlewareSource, /DELIVERY_SETUP_USERNAME/);
-  assert.match(middlewareSource, /request\.nextUrl\.pathname !== '\/'/);
+  assert.match(authSource, /deliverySetupPending\(\): boolean[\s\S]*return false/);
   assert.doesNotMatch(homeSource, /employeeId:\s*['"][0-9a-f-]+/i);
 });
 
-test('Core credential remains server-only and browser cannot supply driver identity', () => {
+test('Core credential remains HttpOnly and browser cannot supply driver identity', () => {
   assert.match(readGatewaySource, /import 'server-only'/);
   assert.match(attemptGatewaySource, /import 'server-only'/);
-  assert.match(attemptGatewaySource, /DELIVERY_CORE_API_TOKEN/);
-  assert.match(attemptGatewaySource, /x-npp-delivery-employee-id/);
+  assert.match(attemptGatewaySource, /requireDeliverySessionToken/);
   assert.match(attemptGatewaySource, /Idempotency-Key/);
   assert.match(attemptGatewaySource, /cache: 'no-store'/);
-  assert.doesNotMatch(attemptGatewaySource, /NEXT_PUBLIC_.*TOKEN/);
+  assert.doesNotMatch(attemptGatewaySource, /DELIVERY_CORE_API_TOKEN|x-npp-delivery-employee-id|NEXT_PUBLIC_.*TOKEN/);
   assert.match(attemptRouteSource, /UNTRUSTED_DRIVER_IDENTITY/);
-  assert.doesNotMatch(detailSource + attemptPanelSource, /DELIVERY_CORE_API_TOKEN|CORE_API_INTERNAL_URL|employeeId|driverId/);
+  assert.doesNotMatch(detailSource + attemptPanelSource, /DELIVERY_CORE_API_TOKEN|CORE_API_INTERNAL_URL|driverId/);
 });
 
 test('driver UI records only Phase 6E.4 terminal outcomes with exact partial quantities', () => {
