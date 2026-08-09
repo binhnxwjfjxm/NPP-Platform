@@ -64,17 +64,8 @@ export class SalesOrderUiError extends Error {
   }
 }
 
-type DraftRecovery = Readonly<{ order: SalesOrder }>;
-
-let lastSavedDraft: DraftRecovery | null = null;
-const draftRecoveries = new Map<string, DraftRecovery>();
-
 function methodOf(init: RequestInit): string {
   return String(init.method ?? 'GET').toUpperCase();
-}
-
-function isEntrySettings(path: string, method: string): boolean {
-  return method === 'GET' && path === '/api/sales-orders/entry-settings';
 }
 
 function isDraftSave(path: string, method: string): boolean {
@@ -88,24 +79,6 @@ function isConfirm(path: string, method: string): boolean {
   if (method !== 'POST') return false;
   return /^\/api\/sales-orders\/[^/]+\/confirm$/.test(path)
     || /^\/api\/sales-orders\/[^/]+\/amendments\/[^/]+\/confirm$/.test(path);
-}
-
-function orderIdFromPath(path: string): string | null {
-  return /^\/api\/sales-orders\/([^/]+)/.exec(path)?.[1] ?? null;
-}
-
-function isSalesOrder(value: unknown): value is SalesOrder {
-  return Boolean(value)
-    && typeof value === 'object'
-    && typeof (value as SalesOrder).id === 'string'
-    && Array.isArray((value as SalesOrder).versions);
-}
-
-function recoveryForDraftPath(path: string): DraftRecovery | null {
-  const orderId = orderIdFromPath(path);
-  if (orderId) return draftRecoveries.get(orderId) ?? null;
-  if (lastSavedDraft && draftRecoveries.has(lastSavedDraft.order.id)) return lastSavedDraft;
-  return null;
 }
 
 function validateDraftDiscountIntent(path: string, init: RequestInit): void {
@@ -129,65 +102,36 @@ function validateDraftDiscountIntent(path: string, init: RequestInit): void {
   }
 }
 
-function recoverCommittedDraft(path: string, init: RequestInit): {
-  path: string;
-  init: RequestInit;
-  recovered: boolean;
-} {
-  if (!isDraftSave(path, methodOf(init))) return { path, init, recovered: false };
-  const draftRecovery = recoveryForDraftPath(path);
-  if (!draftRecovery) return { path, init, recovered: false };
-  const draft = pendingVersion(draftRecovery.order);
-  if (!draft || typeof init.body !== 'string') return { path, init, recovered: false };
-  let body: Record<string, unknown>;
-  try {
-    body = JSON.parse(init.body) as Record<string, unknown>;
-  } catch {
-    return { path, init, recovered: false };
-  }
-  const recoveredPath = path === '/api/sales-orders'
-    ? `/api/sales-orders/${draftRecovery.order.id}/draft`
-    : path;
-  const headers = Object.fromEntries(new Headers(init.headers ?? {}).entries());
-  headers['idempotency-key'] = `sales-save-recovery-${crypto.randomUUID()}`;
-  return {
-    path: recoveredPath,
-    init: {
-      ...init,
-      method: 'PUT',
-      headers,
-      body: JSON.stringify({ ...body, expectedRevision: draft.revision }),
-    },
-    recovered: true,
-  };
+export function draftRecoveryTarget(
+  order: SalesOrder,
+  amendmentVersionNumber?: string | null,
+): Readonly<{ path: string; expectedRevision: string }> | null {
+  const draft = pendingVersion(order);
+  if (!draft) return null;
+  return Object.freeze({
+    path: amendmentVersionNumber
+      ? `/api/sales-orders/${order.id}/amendments/${amendmentVersionNumber}/draft`
+      : `/api/sales-orders/${order.id}/draft`,
+    expectedRevision: draft.revision,
+  });
 }
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const initialMethod = methodOf(init);
-  if (isEntrySettings(path, initialMethod)) lastSavedDraft = null;
-
-  const request = recoverCommittedDraft(path, init);
-  const requestMethod = methodOf(request.init);
-  validateDraftDiscountIntent(request.path, request.init);
-  const response = await fetch(request.path, {
-    ...request.init,
+  const requestMethod = methodOf(init);
+  validateDraftDiscountIntent(path, init);
+  const response = await fetch(path, {
+    ...init,
     cache: 'no-store',
     headers: {
       Accept: 'application/json',
-      ...(request.init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      ...Object.fromEntries(new Headers(request.init.headers ?? {}).entries()),
+      ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...Object.fromEntries(new Headers(init.headers ?? {}).entries()),
     },
   });
   const payload = await response.json().catch(() => null) as ApiEnvelope<T> | null;
   if (!response.ok || !payload || !Object.prototype.hasOwnProperty.call(payload, 'data')) {
     const code = payload?.error?.code ?? 'SALES_ORDER_REQUEST_FAILED';
-    const priceChangedConfirm = code === 'SALES_PRICE_CHANGED' && isConfirm(request.path, requestMethod);
-    if (isConfirm(request.path, requestMethod)) {
-      const confirmedOrderId = orderIdFromPath(request.path);
-      if (confirmedOrderId && lastSavedDraft?.order.id === confirmedOrderId) {
-        draftRecoveries.set(confirmedOrderId, lastSavedDraft);
-      }
-    }
+    const priceChangedConfirm = code === 'SALES_PRICE_CHANGED' && isConfirm(path, requestMethod);
     throw new SalesOrderUiError(
       code,
       payload?.error?.message ?? 'Yêu cầu bán hàng không thành công',
@@ -196,20 +140,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
       response.status,
     );
   }
-
-  const data = payload.data as T;
-  if (isDraftSave(request.path, requestMethod) && isSalesOrder(data)) {
-    lastSavedDraft = { order: data };
-    if (request.recovered) draftRecoveries.set(data.id, lastSavedDraft);
-  }
-  if (isConfirm(request.path, requestMethod)) {
-    const confirmedOrderId = orderIdFromPath(request.path);
-    if (confirmedOrderId) {
-      draftRecoveries.delete(confirmedOrderId);
-      if (lastSavedDraft?.order.id === confirmedOrderId) lastSavedDraft = null;
-    }
-  }
-  return data;
+  return payload.data as T;
 }
 
 export function mutationKey(prefix: string): string {

@@ -19,6 +19,7 @@ import type {
 } from '../../../lib/sales-order-types';
 import {
   apiRequest,
+  draftRecoveryTarget,
   mutationKey,
   SalesOrderUiError,
 } from './sales-order-ui';
@@ -250,6 +251,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const [showMore, setShowMore] = useState(Boolean(version?.note));
   const [lines, setLines] = useState<LineDraft[]>(versionLines(version));
   const linesRef = useRef(lines);
+  const committedDraftRef = useRef<SalesOrder | null>(null);
   const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
   const [taxReady, setTaxReady] = useState(Boolean(version?.lines?.length));
   const [skuTerm, setSkuTerm] = useState('');
@@ -731,19 +733,31 @@ export default function SalesOrderCommercialForm(props: Props) {
     try {
       let path = '/api/sales-orders';
       let method = 'POST';
-      if (props.mode === 'draft') {
+      let draftPayload = payload();
+      const recovery = committedDraftRef.current
+        ? draftRecoveryTarget(
+          committedDraftRef.current,
+          props.mode === 'amendment' ? version?.versionNumber : null,
+        )
+        : null;
+      if (recovery) {
+        path = recovery.path;
+        method = 'PUT';
+        draftPayload = { ...draftPayload, expectedRevision: recovery.expectedRevision };
+      } else if (props.mode === 'draft') {
         path = `/api/sales-orders/${props.orderId}/draft`;
         method = 'PUT';
-      }
-      if (props.mode === 'amendment') {
+      } else if (props.mode === 'amendment') {
         path = `/api/sales-orders/${props.orderId}/amendments/${version?.versionNumber}/draft`;
         method = 'PUT';
       }
       savedOrder = await apiRequest<SalesOrder>(path, {
         method,
         headers: { 'Idempotency-Key': saveKey },
-        body: JSON.stringify(payload()),
+        body: JSON.stringify(draftPayload),
       });
+      committedDraftRef.current = savedOrder;
+      setSaveKey(mutationKey(`sales-${props.mode}-save`));
       if (confirmAfter) {
         const confirmPath = props.mode === 'amendment'
           ? `/api/sales-orders/${savedOrder.id}/amendments/${version?.versionNumber}/confirm`
@@ -753,6 +767,7 @@ export default function SalesOrderCommercialForm(props: Props) {
           headers: { 'Idempotency-Key': confirmKey },
           body: JSON.stringify({}),
         });
+        committedDraftRef.current = null;
       }
       setDirty(false);
       props.onSaved(savedOrder);
@@ -761,13 +776,13 @@ export default function SalesOrderCommercialForm(props: Props) {
         setPricingMismatch('Giá hệ thống đã thay đổi. Hệ thống đã tính lại; hãy xem từng dòng rồi lưu lại.');
         const effectiveAt = new Date().toISOString();
         setPricingAt(effectiveAt);
-        setSaveKey(mutationKey(`sales-${props.mode}-save`));
         setConfirmKey(mutationKey(`sales-${props.mode}-confirm`));
         await repriceAll(effectiveAt);
         onError('Giá hệ thống đã thay đổi; cần review trước khi lưu.');
       } else {
         if (error instanceof SalesOrderUiError && !error.retryable) {
           setSaveKey(mutationKey(`sales-${props.mode}-save`));
+          setConfirmKey(mutationKey(`sales-${props.mode}-confirm`));
         }
         onError(error instanceof Error ? error.message : 'Không lưu được đơn bán hàng');
       }

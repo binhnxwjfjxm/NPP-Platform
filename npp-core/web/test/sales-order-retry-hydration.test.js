@@ -6,28 +6,39 @@ const uiSource = readFileSync(
   new URL('../app/sales/sales-orders/sales-order-ui.ts', import.meta.url),
   'utf8',
 );
+const formSource = readFileSync(
+  new URL('../app/sales/sales-orders/SalesOrderCommercialForm.tsx', import.meta.url),
+  'utf8',
+);
 const workspaceSource = readFileSync(
   new URL('../app/sales/sales-orders/SalesOrderWorkspace.tsx', import.meta.url),
   'utf8',
 );
 
-test('failed confirms recover drafts per order using the latest revision and a fresh save key', () => {
-  assert.match(uiSource, /const draftRecoveries = new Map<string, DraftRecovery>\(\)/);
-  assert.match(uiSource, /draftRecoveries\.set\(confirmedOrderId, lastSavedDraft\)/);
-  assert.match(uiSource, /draftRecoveries\.delete\(confirmedOrderId\)/);
-  assert.match(uiSource, /recoveryForDraftPath/);
-  assert.match(uiSource, /sales-save-recovery-/);
-  assert.match(uiSource, /expectedRevision: draft\.revision/);
-  assert.match(uiSource, /Object\.fromEntries\(new Headers\(request\.init\.headers/);
-  assert.match(uiSource, /payload\?\.error\?\.retryable === true \|\| response\.status >= 500/);
-  assert.doesNotMatch(uiSource, /failedConfirmOrderIds/);
-  assert.doesNotMatch(uiSource, /sales-confirm-retry-/);
+test('each Sales Order form owns the exact committed draft used for confirm retry', () => {
+  assert.match(formSource, /const committedDraftRef = useRef<SalesOrder \| null>\(null\)/);
+  assert.match(formSource, /draftRecoveryTarget\([\s\S]*committedDraftRef\.current/);
+  assert.match(formSource, /path = recovery\.path/);
+  assert.match(formSource, /expectedRevision: recovery\.expectedRevision/);
+  assert.match(formSource, /committedDraftRef\.current = savedOrder/);
+  assert.match(formSource, /committedDraftRef\.current = null/);
+  assert.match(formSource, /setSaveKey\(mutationKey\(`sales-\$\{props\.mode\}-save`\)\)/);
 });
 
-test('a successful confirm only clears recovery for that confirmed order', () => {
-  assert.match(uiSource, /draftRecoveries\.delete\(confirmedOrderId\)/);
-  assert.match(uiSource, /lastSavedDraft\?\.order\.id === confirmedOrderId/);
-  assert.doesNotMatch(uiSource, /draftRecoveries\.clear\(\)/);
+test('draft recovery targets the committed order itself and has no shared mutable form state', () => {
+  assert.match(uiSource, /export function draftRecoveryTarget/);
+  assert.match(uiSource, /`\/api\/sales-orders\/\$\{order\.id\}\/draft`/);
+  assert.match(uiSource, /expectedRevision: draft\.revision/);
+  assert.doesNotMatch(uiSource, /lastSavedDraft/);
+  assert.doesNotMatch(uiSource, /draftRecoveries/);
+  assert.doesNotMatch(uiSource, /recoveryForDraftPath/);
+  assert.doesNotMatch(uiSource, /sales-save-recovery-/);
+});
+
+test('retryable confirm failures keep the server idempotency key while non-retryable fixes rotate it', () => {
+  assert.match(uiSource, /payload\?\.error\?\.retryable === true \|\| response\.status >= 500 \|\| priceChangedConfirm/);
+  assert.match(formSource, /error\.code === 'SALES_PRICE_CHANGED'[\s\S]*setConfirmKey\(mutationKey/);
+  assert.match(formSource, /!error\.retryable[\s\S]*setSaveKey\(mutationKey[\s\S]*setConfirmKey\(mutationKey/);
 });
 
 test('Sales Order timestamps render deterministically in Vietnam time during SSR and hydration', () => {
