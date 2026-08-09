@@ -3,40 +3,21 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const scriptUrl = new URL('../scripts/core-latest-production-gate.sh', import.meta.url);
+const migrationRegistryUrl = new URL('../src/migrations/index.js', import.meta.url);
 
-test('latest Core production gate protects migrations 042 through 070', async () => {
-  const source = await readFile(scriptUrl, 'utf8');
-  for (const id of [
-    '042_sales_fulfillment_reservation_demand',
-    '043_sales_fulfillment_allocation_pick_pack',
-    '044_sales_delivery_order_handover',
-    '045_sales_inventory_issue_customer_return',
-    '046_logistics_trip_planning',
-    '047_logistics_trip_dispatch',
-    '048_logistics_driver_delivery_read',
-    '049_logistics_delivery_attempts',
-    '050_logistics_delivery_attempt_outbox_schedule',
-    '051_logistics_trip_reconciliation',
-    '052_logistics_optional_proof_of_delivery',
-    '053_customer_receivable_ledger',
-    '054_customer_payment_allocation',
-    '055_customer_return_credit_refund',
-    '056_cod_collection_handover',
-    '057_phase6f_reconciliation_views',
-    '058_inventory_transfer_in_transit_foundation',
-    '059_inventory_transfer_receipt_resolution',
-    '060_inventory_stocktake',
-    '061_inventory_adjustments',
-    '062_inventory_costing_foundation',
-    '063_inventory_costing_periods_backdate',
-    '064_reporting_permission_catalog',
-    '065_reporting_inventory_permission_catalog',
-    '066_reporting_aging_gross_margin_permission_catalog',
-    '067_reporting_employee_mcp_permission_catalog',
-    '068_reporting_logistics_permission_catalog',
-    '069_reporting_cod_permission_catalog',
-    '070_reporting_operations_history_control_tower',
-  ]) assert.match(source, new RegExp(id));
+test('latest Core production gate derives protected pending migrations from the canonical registry', async () => {
+  const [source, migrationRegistry] = await Promise.all([
+    readFile(scriptUrl, 'utf8'),
+    readFile(migrationRegistryUrl, 'utf8'),
+  ]);
+
+  assert.match(source, /import \{ CORE_API_MIGRATIONS \} from "\.\/npp-core\/api\/src\/migrations\/index\.js"/);
+  assert.match(source, /const protectedMigrationIds = CORE_API_MIGRATIONS/);
+  assert.match(source, /Number\.parseInt\(id\.slice\(0, 3\), 10\)/);
+  assert.match(source, /numericPrefix >= 42/);
+  assert.doesNotMatch(source, /expected_pending_json='\[/);
+  assert.match(migrationRegistry, /071_customer_portal_order_intake/);
+  assert.match(migrationRegistry, /072_customer_portal_registration_onboarding/);
 
   for (const marker of [
     'assert_allowed_pending',
