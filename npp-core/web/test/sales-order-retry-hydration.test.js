@@ -11,15 +11,23 @@ const workspaceSource = readFileSync(
   'utf8',
 );
 
-test('any failed confirm recovers the committed draft using its latest revision and a fresh save key', () => {
-  assert.match(uiSource, /isConfirm\(request\.path, requestMethod\) && lastSavedDraft/);
-  assert.match(uiSource, /draftRecovery = lastSavedDraft/);
+test('failed confirms recover drafts per order using the latest revision and a fresh save key', () => {
+  assert.match(uiSource, /const draftRecoveries = new Map<string, DraftRecovery>\(\)/);
+  assert.match(uiSource, /draftRecoveries\.set\(confirmedOrderId, lastSavedDraft\)/);
+  assert.match(uiSource, /draftRecoveries\.delete\(confirmedOrderId\)/);
+  assert.match(uiSource, /recoveryForDraftPath/);
   assert.match(uiSource, /sales-save-recovery-/);
   assert.match(uiSource, /expectedRevision: draft\.revision/);
   assert.match(uiSource, /Object\.fromEntries\(new Headers\(request\.init\.headers/);
   assert.match(uiSource, /payload\?\.error\?\.retryable === true \|\| response\.status >= 500/);
   assert.doesNotMatch(uiSource, /failedConfirmOrderIds/);
   assert.doesNotMatch(uiSource, /sales-confirm-retry-/);
+});
+
+test('a successful confirm only clears recovery for that confirmed order', () => {
+  assert.match(uiSource, /draftRecoveries\.delete\(confirmedOrderId\)/);
+  assert.match(uiSource, /lastSavedDraft\?\.order\.id === confirmedOrderId/);
+  assert.doesNotMatch(uiSource, /draftRecoveries\.clear\(\)/);
 });
 
 test('Sales Order timestamps render deterministically in Vietnam time during SSR and hydration', () => {
