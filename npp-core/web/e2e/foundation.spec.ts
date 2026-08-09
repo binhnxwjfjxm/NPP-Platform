@@ -19,8 +19,14 @@ function expectNoSensitiveData(value: string) {
 
 test.describe('Foundation UI enabled', () => {
   test('renders the readiness dashboard with actual Core API state', async ({ page }) => {
+    const statusResponse = page.waitForResponse((response) => (
+      response.url().endsWith('/api/foundation/status')
+      && response.request().method() === 'GET'
+      && response.status() === 200
+    ));
     const response = await page.goto('/foundation');
     expect(response?.status()).toBe(200);
+    await statusResponse;
 
     await expect(page.getByRole('heading', { name: 'NPP Platform readiness' })).toBeVisible();
     await expect(page.getByText('Operational', { exact: true })).toBeVisible();

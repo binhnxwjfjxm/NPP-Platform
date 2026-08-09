@@ -1,6 +1,6 @@
-import InventoryWorkspace from '../inventory-workspace';
+import InventoryScopedWorkspace from '../inventory-scoped-workspace';
 import { createEmptyInventorySnapshot } from '../../../lib/inventory-types';
-import { loadInventorySnapshot } from '../../../lib/inventory-snapshot';
+import { loadInventoryBalancesSnapshot } from '../../../lib/inventory-scoped-snapshot';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,13 +9,13 @@ export default async function InventoryBalancesPage() {
   let initialError: string | null = null;
 
   try {
-    initialData = await loadInventorySnapshot();
+    initialData = await loadInventoryBalancesSnapshot();
   } catch (error) {
     initialError = error instanceof Error ? error.message : 'Không tải được dữ liệu tồn kho';
   }
 
   return (
-    <InventoryWorkspace
+    <InventoryScopedWorkspace
       scope="balances"
       title="Tra cứu tồn kho"
       subtitle="Xem số lượng hiện tại, khả dụng, đang giữ và vị trí hàng theo dữ liệu thực tế của hệ thống."

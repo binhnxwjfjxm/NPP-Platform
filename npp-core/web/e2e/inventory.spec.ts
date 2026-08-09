@@ -69,13 +69,19 @@ test.describe('Kho vận', () => {
     const sourceKey = `opening-${suffix}`;
 
     await page.goto('/inventory/balances');
-    await expect(page.getByTestId('inventory-page')).toBeVisible();
-    await expect(page.getByTestId('inventory-balances-section').getByRole('heading', { name: 'Tồn kho', exact: true })).toBeVisible();
+    await expect(page.getByTestId('inventory-balances-page')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Số dư tồn kho', exact: true })).toBeVisible();
+    await expect(page.getByTestId('inventory-balances-section')).toBeVisible();
     await expect(page.getByTestId('inventory-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
 
     await page.goto('/inventory/tracking-policies');
-    await expect(page.getByTestId(`inventory-policy-row-${fixture.baseVariant.sku}`)).toBeVisible();
-    await page.getByTestId(`edit-policy-${fixture.baseVariant.sku}`).click();
+    await expect(page.getByTestId('inventory-tracking-policies-page')).toBeVisible();
+    await expect(page.getByTestId('inventory-policies-section')).toContainText(fixture.baseVariant.sku);
+    const skuSelect = page.getByTestId('inventory-policy-base-variant-select');
+    const skuOption = skuSelect.locator(`option[value="${fixture.baseVariant.id}"]`);
+    await expect(skuOption).toContainText(fixture.baseVariant.sku);
+    await skuSelect.selectOption(fixture.baseVariant.id);
+    await expect(skuSelect).toHaveValue(fixture.baseVariant.id);
     await expect(page.getByTestId('inventory-policy-editor')).toBeVisible();
 
     await page.goto('/inventory/opening-balances');
@@ -102,7 +108,7 @@ test.describe('Kho vận', () => {
     await page.goto('/inventory/balances');
     await expect(page.getByTestId('inventory-balances-section')).toContainText('LOT-001');
     await expect(page.getByTestId('inventory-balances-section')).toContainText('144.000000000000');
-    await page.getByTestId('inventory-search-input').fill('LOT-001');
+    await page.getByTestId('inventory-balances-search-input').fill('LOT-001');
     await expect(page.getByTestId('inventory-balances-section')).toContainText('LOT-001');
     expectNoSensitiveData(await page.content());
   });
