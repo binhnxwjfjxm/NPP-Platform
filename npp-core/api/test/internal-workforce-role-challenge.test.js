@@ -17,10 +17,14 @@ test('role editor exposes an explicit Web/PWA owner-code toggle', async () => {
   assert.match(source, /Đăng nhập Web\/PWA yêu cầu mã xác nhận của chủ sở hữu/);
 });
 
-test('production challenge uses one bounded Cloudflare request for both permanent owners after DB transaction', async () => {
+test('production challenge uses one bounded Cloudflare request for all 3 configured Owners after DB transaction', async () => {
   const source = await readFile(new URL('../src/internal-workforce-auth.js', import.meta.url), 'utf8');
   assert.match(source, /AbortSignal\.timeout\(CHALLENGE_EMAIL_TIMEOUT_MS\)/);
+  assert.match(source, /resolveOwnerChallengeRecipients\(config\)/);
+  assert.match(source, /implementationOwnerEmails/);
   assert.match(source, /to: recipients/);
+  assert.match(source, /from:\s*\{ address: runtime\.from, name: 'Hưng Phát Security' \}/);
+  assert.doesNotMatch(source, /recipientCount:\s*2/);
   assert.match(source, /INTERNAL_AUTH_OWNER_CHALLENGE_REQUIRED/);
   const transactionStart = source.indexOf('const transactionResult = await withAuditOutboxTransaction');
   const deliveryStart = source.indexOf('if (transactionResult.challengeDelivery)');
@@ -30,11 +34,14 @@ test('production challenge uses one bounded Cloudflare request for both permanen
   assert.match(transactionSection, /expectedAuditCount: 2/);
 });
 
-test('owner credential bootstrap is runtime-secret driven and follows canonical DB SSL config', async () => {
+test('owner credential bootstrap is runtime-secret driven, keeps 2 permanent + 1 temporary Owner, and follows canonical DB SSL config', async () => {
   const source = await readFile(new URL('../scripts/bootstrap-workforce-owners.js', import.meta.url), 'utf8');
   assert.match(source, /OWNER_BOOTSTRAP_CREDENTIALS_JSON/);
   assert.match(source, /setInternalUserCredential/);
   assert.match(source, /allowSecurityOwnerMutation: true/);
+  assert.match(source, /securityOwnerEmails\.length !== 2/);
+  assert.match(source, /implementationOwnerEmails\.length !== 1/);
+  assert.match(source, /WORKFORCE_OWNER_BOOTSTRAP_REQUIRES_2_PERMANENT_AND_1_TEMPORARY_OWNER/);
   assert.match(source, /buildSslConfig\(sslMode\)/);
   assert.doesNotMatch(source, /password\s*:\s*['"][^'"]+['"]/);
 });
