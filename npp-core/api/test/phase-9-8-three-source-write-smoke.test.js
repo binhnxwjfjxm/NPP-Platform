@@ -23,7 +23,10 @@ test('workflow is owner-guarded and verifies deployed PWA icon assets', () => {
   assert.match(workflow, /github\.event\.issue\.number == 395/);
   assert.match(workflow, /github\.event\.comment\.body == '\/smoke-phase-9-8-three-source-write'/);
   assert.match(workflow, /heroku@11\.0\.0/);
+  assert.match(workflow, /smoke-and-verify:[\s\S]*working-directory: npp-core/);
   assert.match(workflow, /heroku run --no-tty/);
+  assert.match(workflow, /slugs\/\$slug_id/);
+  assert.match(workflow, /test \"\$deployed_sha\" = \"\$SOURCE_SHA\"/);
   assert.match(workflow, /PHASE_9_8_WRITE_SMOKE_RESULT/);
   assert.match(workflow, /icon-192-20260809\.png/);
   assert.match(workflow, /icon-512-20260809\.png/);

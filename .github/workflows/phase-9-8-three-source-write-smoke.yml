@@ -51,6 +51,9 @@ jobs:
     permissions:
       contents: read
       issues: write
+    defaults:
+      run:
+        working-directory: npp-core
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -89,6 +92,7 @@ jobs:
         shell: bash
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
           set -euo pipefail
           test "$CORE_APP_NAME" = 'hung-phat'
@@ -98,9 +102,17 @@ jobs:
           test -n "$app_url"
           release="$(heroku releases --json -a "$CORE_APP_NAME" | jq -r '.[0].version // empty')"
           test -n "$release"
+          release_json="$(curl --fail --silent --show-error -H 'Accept: application/vnd.heroku+json; version=3' -H "Authorization: Bearer $HEROKU_API_KEY" "https://api.heroku.com/apps/$CORE_APP_NAME/releases/$release")"
+          slug_id="$(jq -r '.slug.id // empty' <<<"$release_json")"
+          test -n "$slug_id"
+          slug_json="$(curl --fail --silent --show-error -H 'Accept: application/vnd.heroku+json; version=3' -H "Authorization: Bearer $HEROKU_API_KEY" "https://api.heroku.com/apps/$CORE_APP_NAME/slugs/$slug_id")"
+          deployed_sha="$(jq -r '.commit // empty' <<<"$slug_json")"
+          test -n "$deployed_sha"
+          test "$deployed_sha" = "$SOURCE_SHA"
           heroku run --no-tty -a "$CORE_APP_NAME" -- test -f "$SCRIPT_PATH" >/dev/null
           echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
           echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "deployed_sha=$deployed_sha" >> "$GITHUB_OUTPUT"
       - name: Exercise Internal MCP and Customer Portal writes then rollback
         id: write_smoke
         shell: bash
@@ -180,6 +192,7 @@ jobs:
           OPERATION_STATUS: ${{ job.status }}
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
           CORE_RELEASE: ${{ steps.preflight.outputs.release }}
+          DEPLOYED_SHA: ${{ steps.preflight.outputs.deployed_sha }}
         run: |
           set -euo pipefail
           evidence="$(mktemp)"
@@ -188,6 +201,7 @@ jobs:
             echo
             echo "SOURCE_SHA=${SOURCE_SHA:-unavailable}"
             echo "CORE_RELEASE=${CORE_RELEASE:-unavailable}"
+            echo "DEPLOYED_SHA=${DEPLOYED_SHA:-unavailable}"
             if [ -n "${EVIDENCE_FILE:-}" ] && [ -s "$EVIDENCE_FILE" ]; then cat "$EVIDENCE_FILE"; else echo 'WRITE_EVIDENCE=unavailable_before_write_step'; fi
             echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
           } > "$evidence"
