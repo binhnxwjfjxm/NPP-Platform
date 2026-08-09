@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
       return loginError(returnTo, 'owner_challenge_unavailable', true);
     }
     if (result.status >= 500) return loginError(returnTo, 'auth_unavailable');
+    if (result.ok) return loginError(returnTo, 'auth_unavailable');
     return loginError(returnTo, 'invalid_credentials');
   }
 
