@@ -17,6 +17,7 @@ const LOGIN_PATTERN = /^[a-z0-9._-]+$/;
 const SOURCE_APP_PATTERN = /^[a-z0-9][a-z0-9._-]{1,63}$/;
 const PASSWORD_MIN_LENGTH = 10;
 const PASSWORD_MAX_LENGTH = 256;
+const MAX_USER_SCOPE_COUNT = 10_000;
 const LOCK_THRESHOLD = 5;
 const LOCK_SECONDS = 15 * 60;
 const SCRYPT_KEY_LENGTH = 64;
@@ -129,9 +130,13 @@ function normalizeScopes(scopes = {}) {
 
 function invalidScopePayload(scopes) {
   if (!scopes || typeof scopes !== 'object') return true;
+  let totalScopeCount = 0;
   for (const key of ['branchIds', 'warehouseIds', 'territoryIds']) {
-    if (!Array.isArray(scopes[key] ?? [])) return true;
-    if ((scopes[key] ?? []).some((item) => typeof item !== 'string' || !UUID_PATTERN.test(item.trim()))) return true;
+    const values = scopes[key] ?? [];
+    if (!Array.isArray(values)) return true;
+    totalScopeCount += values.length;
+    if (totalScopeCount > MAX_USER_SCOPE_COUNT) return true;
+    if (values.some((item) => typeof item !== 'string' || !UUID_PATTERN.test(item.trim()))) return true;
   }
   return false;
 }
@@ -238,15 +243,9 @@ export function createInternalWorkforceAuthenticator({
       await fakePasswordWork(password);
       return authFailure('INTERNAL_AUTH_INVALID_CREDENTIALS');
     }
-    if (!identity.user_is_active || !identity.employee_is_active) {
-      return authFailure('INTERNAL_AUTH_INVALID_CREDENTIALS');
-    }
 
     const actorId = `user:${identity.user_id}`;
     const sessionId = randomUUID();
-    const token = `${SESSION_TOKEN_PREFIX}${sessionId}.${randomBytes(32).toString('base64url')}`;
-    const issuedAt = now();
-    const expiresAt = new Date(issuedAt.getTime() + (config.sessionTtlSeconds * 1000));
     const sourceApp = normalizeSourceApp(payload.sourceApp);
     const requestContext = {
       installationId: payload.installationId,
@@ -273,6 +272,20 @@ export function createInternalWorkforceAuthenticator({
       }));
       return { denied: failure };
     };
+
+    if (!identity.user_is_active || !identity.employee_is_active) {
+      await fakePasswordWork(password);
+      const failure = authFailure('INTERNAL_AUTH_INVALID_CREDENTIALS');
+      const denied = await withAuditOutboxTransaction({
+        adapter: pool,
+        mutate: (client) => auditDeniedLogin(client, failure),
+      });
+      return denied.denied ?? failure;
+    }
+
+    const token = `${SESSION_TOKEN_PREFIX}${sessionId}.${randomBytes(32).toString('base64url')}`;
+    const issuedAt = now();
+    const expiresAt = new Date(issuedAt.getTime() + (config.sessionTtlSeconds * 1000));
 
     const transactionResult = await withAuditOutboxTransaction({
       adapter: pool,
