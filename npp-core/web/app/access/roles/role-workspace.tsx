@@ -18,6 +18,7 @@ type RoleDraft = {
   name: string;
   description: string;
   isActive: boolean;
+  webLoginChallengeRequired: boolean;
 };
 
 type Props = {
@@ -37,7 +38,7 @@ function joinClasses(...values: Array<string | false | null | undefined>) {
 }
 
 function emptyDraft(): RoleDraft {
-  return { code: '', name: '', description: '', isActive: true };
+  return { code: '', name: '', description: '', isActive: true, webLoginChallengeRequired: false };
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -102,7 +103,8 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
     .filter((role) => {
       const matchesStatus = statusFilter === 'all' || (statusFilter === 'active' ? role.is_active : !role.is_active);
       const rolePermissionText = role.permission_keys.map((key) => permissionMap.get(key)?.label ?? key).join(' ');
-      const matchesText = !normalizedSearch || matchTerm(role.code, role.name, role.description, rolePermissionText).includes(normalizedSearch);
+      const challengeText = role.web_login_challenge_required ? 'web pwa mã xác nhận' : 'web pwa mật khẩu';
+      const matchesText = !normalizedSearch || matchTerm(role.code, role.name, role.description, rolePermissionText, challengeText).includes(normalizedSearch);
       return matchesStatus && matchesText;
     })
     .sort((left, right) => left.code.localeCompare(right.code)), [normalizedSearch, permissionMap, roles, statusFilter]);
@@ -154,7 +156,13 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
     if (!role) return;
     setError(null);
     setNotice(null);
-    setDraft({ code: role.code, name: role.name, description: role.description ?? '', isActive: role.is_active });
+    setDraft({
+      code: role.code,
+      name: role.name,
+      description: role.description ?? '',
+      isActive: role.is_active,
+      webLoginChallengeRequired: role.web_login_challenge_required,
+    });
     setSelectedPermissionKeys([...role.permission_keys]);
     setSelectedPresetId('');
     setEditor({ mode: 'edit', roleId });
@@ -183,6 +191,7 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
       name: draft.name.trim(),
       description: draft.description.trim(),
       isActive: draft.isActive,
+      webLoginChallengeRequired: draft.webLoginChallengeRequired,
       permissionKeys: selectedPermissionKeys,
       ...(current ? { expectedUpdatedAt: current.updated_at } : {}),
     };
@@ -266,7 +275,7 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
                 {visibleRoles.length ? visibleRoles.map((role) => (
                   <tr key={role.id} data-testid={`role-row-${role.code}`}>
                     <td><code>{role.code}</code></td>
-                    <td><div className={styles.entityStack}><strong>{role.name}</strong><span>{role.description || 'Không có mô tả'}</span></div></td>
+                    <td><div className={styles.entityStack}><strong>{role.name}</strong><span>{role.description || 'Không có mô tả'}</span><span>{role.web_login_challenge_required ? 'Web/PWA: yêu cầu mã xác nhận' : 'Web/PWA: chỉ tài khoản và mật khẩu'}</span></div></td>
                     <td className={styles.relationCell}><div className={styles.entityStack}><strong>{formatCompactNumber(role.permission_keys.length)} quyền</strong><span>{role.permission_keys.length ? role.permission_keys.map((key) => permissionMap.get(key)?.label ?? key).join(' · ') : 'Chưa gán quyền'}</span></div></td>
                     <td><span className={joinClasses(styles.statusPill, role.is_active ? styles.toneSuccess : styles.toneDanger)}>{role.is_active ? 'Đang hoạt động' : 'Ngừng hoạt động'}</span></td>
                     <td>{formatDateTime(role.updated_at)}</td>
@@ -302,6 +311,8 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
                     <label>Tên vai trò<input data-testid="role-name-input" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} required maxLength={256} /></label>
                     <label>Mô tả<textarea data-testid="role-description-input" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} maxLength={512} rows={5} /></label>
                     <label className={matrixStyles.inlineToggle}><input data-testid="role-active-toggle" type="checkbox" checked={draft.isActive} onChange={(event) => setDraft((current) => ({ ...current, isActive: event.target.checked }))} />Đang hoạt động</label>
+                    <label className={matrixStyles.inlineToggle}><input data-testid="role-web-login-challenge-toggle" type="checkbox" checked={draft.webLoginChallengeRequired} onChange={(event) => setDraft((current) => ({ ...current, webLoginChallengeRequired: event.target.checked }))} />Đăng nhập Web/PWA yêu cầu mã xác nhận của chủ sở hữu</label>
+                    <p>Mã xác nhận chỉ gửi tới hai Security Owner cố định. Role giao nhận hoặc field có thể để tắt; role kế toán hoặc nhạy cảm có thể bật.</p>
                     <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => setEditor(null)}>Hủy</button><button type="submit" className={styles.primaryButton} disabled={busy !== null}>{busy === 'save' ? 'Đang lưu…' : editor.mode === 'create' ? 'Tạo vai trò' : 'Lưu thay đổi'}</button></div>
                   </div>
 

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createPermissionCatalogRows } from '../../access/permissions.js';
 
-const ROLE_COLUMNS = `id, installation_id, code, name, description, is_active, created_at, updated_at, created_by, updated_by`;
+const ROLE_COLUMNS = `id, installation_id, code, name, description, is_active, web_login_challenge_required, created_at, updated_at, created_by, updated_by`;
 
 function normalizeSearch(search) {
   return typeof search === 'string' ? search.trim() : '';
@@ -60,6 +60,7 @@ export async function insertRole(client, {
   name,
   description,
   isActive,
+  webLoginChallengeRequired = false,
   createdBy,
   updatedBy,
 }) {
@@ -67,8 +68,8 @@ export async function insertRole(client, {
   const now = new Date().toISOString();
   const result = await client.query(
     `INSERT INTO shared.roles
-      (id, installation_id, code, name, description, is_active, created_at, updated_at, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      (id, installation_id, code, name, description, is_active, web_login_challenge_required, created_at, updated_at, created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      ON CONFLICT (installation_id, code) DO NOTHING
      RETURNING ${ROLE_COLUMNS}`,
     [
@@ -78,6 +79,7 @@ export async function insertRole(client, {
       name,
       description ?? null,
       Boolean(isActive),
+      Boolean(webLoginChallengeRequired),
       now,
       now,
       createdBy,
@@ -145,6 +147,7 @@ export async function listRolesForInstallation(client, {
       r.name,
       r.description,
       r.is_active,
+      r.web_login_challenge_required,
       r.created_at,
       r.updated_at,
       r.created_by,
@@ -173,7 +176,7 @@ export async function listRolesForInstallation(client, {
 
   params.push(limit, offset);
   query += `
-    GROUP BY r.id, r.installation_id, r.code, r.name, r.description, r.is_active, r.created_at, r.updated_at, r.created_by, r.updated_by
+    GROUP BY r.id, r.installation_id, r.code, r.name, r.description, r.is_active, r.web_login_challenge_required, r.created_at, r.updated_at, r.created_by, r.updated_by
     ORDER BY r.code ASC
     LIMIT $${params.length - 1}
     OFFSET $${params.length}
@@ -193,6 +196,7 @@ export async function getRoleForInstallationWithPermissions(client, { id, instal
       r.name,
       r.description,
       r.is_active,
+      r.web_login_challenge_required,
       r.created_at,
       r.updated_at,
       r.created_by,
@@ -206,7 +210,7 @@ export async function getRoleForInstallationWithPermissions(client, { id, instal
       ON rp.installation_id = r.installation_id
      AND rp.role_id = r.id
     WHERE r.installation_id = $1 AND r.id = $2
-    GROUP BY r.id, r.installation_id, r.code, r.name, r.description, r.is_active, r.created_at, r.updated_at, r.created_by, r.updated_by
+    GROUP BY r.id, r.installation_id, r.code, r.name, r.description, r.is_active, r.web_login_challenge_required, r.created_at, r.updated_at, r.created_by, r.updated_by
     `,
     [installationId, id],
   );
@@ -242,6 +246,7 @@ export async function updateRoleRecord(client, {
   name,
   description,
   isActive,
+  webLoginChallengeRequired,
   updatedBy,
   expectedUpdatedAt,
 }) {
@@ -250,13 +255,14 @@ export async function updateRoleRecord(client, {
      SET name = $1,
          description = $2,
          is_active = $3,
+         web_login_challenge_required = $4,
          updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
-         updated_by = $4
-     WHERE id = $5
-       AND installation_id = $6
-       AND updated_at = $7
+         updated_by = $5
+     WHERE id = $6
+       AND installation_id = $7
+       AND updated_at = $8
      RETURNING ${ROLE_COLUMNS}`,
-    [name, description ?? null, isActive, updatedBy, id, installationId, expectedUpdatedAt],
+    [name, description ?? null, isActive, Boolean(webLoginChallengeRequired), updatedBy, id, installationId, expectedUpdatedAt],
   );
   return result.rows[0] || null;
 }

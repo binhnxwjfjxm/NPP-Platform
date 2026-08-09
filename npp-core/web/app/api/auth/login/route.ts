@@ -18,7 +18,8 @@ export async function POST(request: NextRequest) {
   const returnTo = safeNppReturnTo(String(form.get('returnTo') || '/'));
   const result = await requestNppInternalAuth<LoginData>('/api/internal-auth/login', { method: 'POST', body: { loginName: username, password, ...(ownerCode ? { ownerCode } : {}), sourceApp: NPP_INTERNAL_SOURCE_APP } });
   if (!result.ok) {
-    if (result.code === 'INTERNAL_AUTH_OWNER_CODE_INVALID') return loginError(returnTo, ownerCode ? 'invalid_owner_code' : 'owner_challenge_required', true);
+    if (result.code === 'INTERNAL_AUTH_OWNER_CHALLENGE_REQUIRED') return loginError(returnTo, 'owner_challenge_required', true);
+    if (result.code === 'INTERNAL_AUTH_OWNER_CODE_INVALID') return loginError(returnTo, 'invalid_owner_code', true);
     if (result.code === 'INTERNAL_AUTH_OWNER_CHALLENGE_UNAVAILABLE') return loginError(returnTo, 'owner_challenge_unavailable', true);
     if (result.status === 401) return loginError(returnTo, 'invalid_credentials');
     return loginError(returnTo, 'core_unavailable');

@@ -19,11 +19,19 @@ export async function findLoginIdentity(client, { installationId, loginName }) {
      LEFT JOIN shared.user_credentials c
        ON c.installation_id = u.installation_id
       AND c.user_id = u.id
+     LEFT JOIN shared.security_owner_bindings ob
+       ON ob.installation_id = u.installation_id
+      AND ob.user_id = u.id
      WHERE u.installation_id = $1
-       AND u.login_name = $2`,
+       AND (
+         u.login_name = $2
+         OR (ob.user_id IS NOT NULL AND lower(e.email) = lower($2))
+       )
+     ORDER BY CASE WHEN u.login_name = $2 THEN 0 ELSE 1 END, u.id
+     LIMIT 2`,
     [installationId, loginName],
   );
-  return result.rows?.[0] ?? null;
+  return result.rows?.length === 1 ? result.rows[0] : null;
 }
 
 export async function lockCredentialForLogin(client, { installationId, userId }) {
@@ -187,6 +195,7 @@ export async function loadUserAuthorization(client, { installationId, userId }) 
     client.query(
       `SELECT
          r.code AS role_code,
+         r.web_login_challenge_required,
          rp.permission_key
        FROM shared.user_roles ur
        JOIN shared.roles r
@@ -217,8 +226,10 @@ export async function loadUserAuthorization(client, { installationId, userId }) 
 
   const roles = [];
   const permissionKeys = [];
+  let webLoginChallengeRequired = false;
   for (const row of rolesResult.rows ?? []) {
     if (row.role_code && !roles.includes(String(row.role_code))) roles.push(String(row.role_code));
+    if (row.web_login_challenge_required === true) webLoginChallengeRequired = true;
     if (row.permission_key && !permissionKeys.includes(String(row.permission_key))) {
       permissionKeys.push(String(row.permission_key));
     }
@@ -237,6 +248,7 @@ export async function loadUserAuthorization(client, { installationId, userId }) 
     permissionKeys,
     scopes,
     ownerKind: ownerResult.rows?.[0]?.owner_kind ?? null,
+    webLoginChallengeRequired,
   };
 }
 
@@ -411,4 +423,85 @@ export async function validateUserScopeIds(client, { installationId, scopes }) {
     missingBranchIds: branchIds.filter((id) => !foundBranches.has(id)),
     missingWarehouseIds: warehouseIds.filter((id) => !foundWarehouses.has(id)),
   };
+}
+
+export async function findActiveLoginChallengeForUpdate(client, { installationId, userId, sourceApp }) {
+  const result = await client.query(
+    `SELECT id, code_hash, source_app, created_at, expires_at, failed_attempts, consumed_at, cancelled_at
+     FROM shared.internal_login_challenges
+     WHERE installation_id = $1
+       AND user_id = $2
+       AND source_app = $3
+       AND consumed_at IS NULL
+       AND cancelled_at IS NULL
+     ORDER BY created_at DESC
+     LIMIT 1
+     FOR UPDATE`,
+    [installationId, userId, sourceApp],
+  );
+  return result.rows?.[0] ?? null;
+}
+
+export async function cancelActiveLoginChallenges(client, { installationId, userId, sourceApp }) {
+  await client.query(
+    `UPDATE shared.internal_login_challenges
+     SET cancelled_at = COALESCE(cancelled_at, now())
+     WHERE installation_id = $1
+       AND user_id = $2
+       AND source_app = $3
+       AND consumed_at IS NULL
+       AND cancelled_at IS NULL`,
+    [installationId, userId, sourceApp],
+  );
+}
+
+export async function insertLoginChallenge(client, {
+  id,
+  installationId,
+  userId,
+  codeHash,
+  sourceApp,
+  expiresAt,
+}) {
+  const result = await client.query(
+    `INSERT INTO shared.internal_login_challenges (
+       id, installation_id, user_id, code_hash, source_app, created_at, expires_at,
+       failed_attempts, consumed_at, cancelled_at
+     ) VALUES ($1, $2, $3, $4, $5, now(), $6, 0, NULL, NULL)
+     RETURNING id, source_app, created_at, expires_at, failed_attempts`,
+    [id, installationId, userId, codeHash, sourceApp, expiresAt],
+  );
+  return result.rows?.[0] ?? null;
+}
+
+export async function incrementLoginChallengeFailure(client, { id, maxAttempts }) {
+  const result = await client.query(
+    `UPDATE shared.internal_login_challenges
+     SET failed_attempts = LEAST(failed_attempts + 1, 100),
+         cancelled_at = CASE WHEN failed_attempts + 1 >= $2 THEN now() ELSE cancelled_at END
+     WHERE id = $1
+     RETURNING failed_attempts, cancelled_at`,
+    [id, maxAttempts],
+  );
+  return result.rows?.[0] ?? null;
+}
+
+export async function consumeLoginChallenge(client, { id }) {
+  const result = await client.query(
+    `UPDATE shared.internal_login_challenges
+     SET consumed_at = now()
+     WHERE id = $1 AND consumed_at IS NULL AND cancelled_at IS NULL
+     RETURNING id, consumed_at`,
+    [id],
+  );
+  return result.rows?.[0] ?? null;
+}
+
+export async function cancelLoginChallenge(client, { id }) {
+  await client.query(
+    `UPDATE shared.internal_login_challenges
+     SET cancelled_at = COALESCE(cancelled_at, now())
+     WHERE id = $1 AND consumed_at IS NULL`,
+    [id],
+  );
 }

@@ -59,6 +59,7 @@ const REPORTING_OPERATIONS_HISTORY_CONTROL_TOWER_SQL = readFileSync(new URL('../
 const CUSTOMER_PORTAL_ORDER_INTAKE_SQL = readFileSync(new URL('../../../../database/migrations/sales/071_customer_portal_order_intake.sql', import.meta.url), 'utf8');
 const CUSTOMER_PORTAL_REGISTRATION_ONBOARDING_SQL = readFileSync(new URL('../../../../database/migrations/sales/072_customer_portal_registration_onboarding.sql', import.meta.url), 'utf8');
 const INTERNAL_WORKFORCE_AUTH_SQL = readFileSync(new URL('../../../../database/migrations/shared/073_internal_workforce_auth.sql', import.meta.url), 'utf8');
+const INTERNAL_WEB_LOGIN_CHALLENGE_SQL = readFileSync(new URL('../../../../database/migrations/shared/074_internal_web_login_challenge.sql', import.meta.url), 'utf8');
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -90,6 +91,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '071_customer_portal_order_intake', sql: CUSTOMER_PORTAL_ORDER_INTAKE_SQL }),
   Object.freeze({ id: '072_customer_portal_registration_onboarding', sql: CUSTOMER_PORTAL_REGISTRATION_ONBOARDING_SQL }),
   Object.freeze({ id: '073_internal_workforce_auth', sql: INTERNAL_WORKFORCE_AUTH_SQL }),
+  Object.freeze({ id: '074_internal_web_login_challenge', sql: INTERNAL_WEB_LOGIN_CHALLENGE_SQL }),
 ]);
 
 export { runMigrations };
