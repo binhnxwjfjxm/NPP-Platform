@@ -17,10 +17,14 @@ test('role editor exposes an explicit Web/PWA owner-code toggle', async () => {
   assert.match(source, /Đăng nhập Web\/PWA yêu cầu mã xác nhận của chủ sở hữu/);
 });
 
-test('production challenge uses one bounded Cloudflare request for both permanent owners after DB transaction', async () => {
+test('production challenge uses one bounded Cloudflare request for the canonical Owner recipient set after DB transaction', async () => {
   const source = await readFile(new URL('../src/internal-workforce-auth.js', import.meta.url), 'utf8');
   assert.match(source, /AbortSignal\.timeout\(CHALLENGE_EMAIL_TIMEOUT_MS\)/);
   assert.match(source, /to: recipients/);
+  assert.match(source, /implementationOwnerEmails/);
+  assert.match(source, /from:\s*\{\s*address:\s*runtime\.from,\s*name:\s*'Hưng Phát Security'\s*\}/s);
+  assert.match(source, /recipientCount:\s*challengeRecipients\(config\)\.length/);
+  assert.doesNotMatch(source, /recipientCount:\s*2/);
   assert.match(source, /INTERNAL_AUTH_OWNER_CHALLENGE_REQUIRED/);
   const transactionStart = source.indexOf('const transactionResult = await withAuditOutboxTransaction');
   const deliveryStart = source.indexOf('if (transactionResult.challengeDelivery)');
@@ -36,5 +40,6 @@ test('owner credential bootstrap is runtime-secret driven and follows canonical 
   assert.match(source, /setInternalUserCredential/);
   assert.match(source, /allowSecurityOwnerMutation: true/);
   assert.match(source, /buildSslConfig\(sslMode\)/);
+  assert.match(source, /securityOwnerEmails\.length !== 2 \|\| config\.implementationOwnerEmails\.length !== 1/);
   assert.doesNotMatch(source, /password\s*:\s*['"][^'"]+['"]/);
 });
