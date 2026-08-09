@@ -216,11 +216,14 @@ async function mutation(req, res, options, requestContext, {
         };
       },
     });
-    sendJson(res, execution.statusCode, execution.body, {
-      'content-type': execution.contentType,
-      'x-request-id': execution.requestId,
-      ...(execution.replayed ? { 'idempotent-replay': 'true' } : {}),
-    });
+    if (execution.replayed) res.setHeader('idempotent-replay', 'true');
+    sendJson(
+      res,
+      execution.response.statusCode,
+      execution.response.body,
+      execution.response.requestId ?? options.requestId,
+      execution.response.contentType ?? 'application/json',
+    );
   } catch {
     sendError(
       res,

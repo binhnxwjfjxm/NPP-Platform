@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { PERMISSIONS, PERMISSION_REGISTRY } from '../src/access/permissions.js';
+import { agingReport } from '../src/routes/reporting-finance.js';
 
 const source = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
@@ -49,6 +50,29 @@ test('8.3 aging warehouse options come from full authorized warehouse scope', ()
   assert.match(finance, /FROM shared\.warehouses warehouse/);
   assert.match(finance, /warehouse\.id = ANY\(\$2::uuid\[\]\)/);
   assert.match(finance, /scopeWarehouses: mapRows\(scopeWarehouses\.rows\)/);
+});
+
+test('10.1 aging warehouse scope query binds only the placeholders it declares', async () => {
+  const calls = [];
+  const adapter = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      return { rows: [] };
+    },
+  };
+  const warehouseIds = ['11111111-1111-4111-8111-111111111111'];
+  await agingReport(
+    adapter,
+    {
+      installationId: 'installation-1',
+      receivedAt: '2026-08-10T00:00:00.000Z',
+    },
+    { warehouseId: null },
+    warehouseIds,
+  );
+  assert.equal(calls.length, 7);
+  assert.deepEqual(calls[0].params, ['installation-1', warehouseIds]);
+  for (const call of calls.slice(1)) assert.equal(call.params.length, 4);
 });
 
 test('8.3 gross margin uses recognized net revenue and exact Phase 7 movement-line cost lineage', () => {

@@ -1,12 +1,14 @@
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import test from 'node:test';
+import { Readable } from 'node:stream';
 import {
   allocateLargestRemainder,
   monthBounds,
   parse12,
 } from '../src/services/inventory-costing-period-utils.js';
 import { compareEvents } from '../src/services/inventory-costing-period-support.js';
+import { handleInventoryCostingPeriodRoutes } from '../src/routes/inventory-costing-periods.js';
 
 const migration = readFileSync(
   new URL('../../../database/migrations/inventory/063_inventory_costing_periods_backdate.sql', import.meta.url),
@@ -68,6 +70,66 @@ test('event ordering follows effective date, movement posting lineage, then cost
   assert.deepEqual(events.map((event) => event.kind === 'movement' ? event.row.movement_line_id : event.row.id), ['l1', 'l2', 'b']);
 });
 
+test('10.1 costing mutation unwraps canonical idempotency response instead of returning 503', async () => {
+  const req = Readable.from(['{}']);
+  req.method = 'POST';
+  req.url = '/api/inventory/costing/rebuild';
+  req.headers = { 'idempotency-key': 'phase-10-1-costing' };
+
+  const responseHeaders = {};
+  let statusCode = null;
+  let responseBody = '';
+  const res = {
+    setHeader(name, value) {
+      responseHeaders[String(name).toLowerCase()] = value;
+    },
+    writeHead(status, headers = {}) {
+      statusCode = status;
+      for (const [name, value] of Object.entries(headers)) {
+        responseHeaders[String(name).toLowerCase()] = value;
+      }
+    },
+    end(body = '') {
+      responseBody = String(body);
+    },
+  };
+
+  const handled = await handleInventoryCostingPeriodRoutes(req, res, {
+    config: {},
+    requestId: 'req-phase-10-1',
+    receivedAt: '2026-08-10T00:00:00.000Z',
+    authenticate: () => ({ ok: true, principal: { id: 'actor-1' } }),
+    authorize: () => ({ ok: true }),
+    createContext: () => ({
+      installationId: 'installation-1',
+      actorId: 'actor-1',
+      roles: [],
+      scopes: {
+        warehouseIds: ['11111111-1111-4111-8111-111111111111'],
+        branchIds: [],
+        territoryIds: [],
+      },
+    }),
+    getPool: () => ({}),
+    idempotencyStore: {},
+    executeRequestWithIdempotency: async () => ({
+      response: {
+        statusCode: 200,
+        contentType: 'application/json',
+        requestId: 'req-phase-10-1',
+        body: { data: { status: 'rebuilt' } },
+      },
+      replayed: true,
+    }),
+  });
+
+  assert.equal(handled, true);
+  assert.equal(statusCode, 200);
+  assert.equal(responseHeaders['x-request-id'], 'req-phase-10-1');
+  assert.equal(responseHeaders['idempotent-replay'], 'true');
+  assert.deepEqual(JSON.parse(responseBody), { data: { status: 'rebuilt' } });
+});
+
 test('phase 7.6 source locks closed periods and keeps corrections append-only', () => {
   for (const marker of [
     'inventory.inventory_costing_periods',
@@ -97,6 +159,7 @@ test('phase 7.6 source locks closed periods and keeps corrections append-only', 
   assert.match(adjustmentService, /purchaseValue/);
   assert.match(routes, /withAuditOutboxTransaction/);
   assert.match(routes, /executeRequestWithIdempotency/);
+  assert.match(routes, /execution\.response\.statusCode/);
   assert.match(routes, /core\.inventory-cost\.rebuild/);
   assert.match(routes, /core\.inventory-cost\.reconcile/);
 });

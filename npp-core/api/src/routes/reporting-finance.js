@@ -30,7 +30,7 @@ export async function agingReport(adapter, requestContext, filters, warehouseIds
         WHERE warehouse.installation_id = $1
           AND warehouse.id = ANY($2::uuid[])
         ORDER BY warehouse.code, warehouse.id`,
-      params,
+      [requestContext.installationId, warehouseIds],
     ),
     adapter.query(
       `SELECT document.currency_code, ${arBucket} AS age_bucket,
