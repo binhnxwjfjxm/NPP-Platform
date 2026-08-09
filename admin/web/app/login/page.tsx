@@ -36,7 +36,7 @@ export default function AdminLoginPage({ searchParams }: LoginPageProps) {
 
         <div className={styles.content}>
           <h1 id="admin-login-title">Đăng nhập</h1>
-          <p>Nhân viên dùng tên đăng nhập được cấp. Security/Implementation Owner có thể dùng email Owner đã đăng ký.</p>
+          <p>Đăng nhập bằng tài khoản nhân viên được cấp. Security/Implementation Owner có thể dùng email Owner đã đăng ký.</p>
           {message ? <p className={styles.error} role="alert">{message}</p> : null}
 
           <form className={styles.form} action="/api/auth/login" method="post">
