@@ -57,6 +57,7 @@ export class SalesOrderUiError extends Error {
     message: string,
     public readonly retryable = false,
     public readonly details: unknown = {},
+    public readonly statusCode = 0,
   ) {
     super(message);
     this.name = 'SalesOrderUiError';
@@ -67,6 +68,7 @@ type DraftRecovery = Readonly<{ order: SalesOrder }>;
 
 let lastSavedDraft: DraftRecovery | null = null;
 let draftRecovery: DraftRecovery | null = null;
+const failedConfirmOrderIds = new Set<string>();
 
 function methodOf(init: RequestInit): string {
   return String(init.method ?? 'GET').toUpperCase();
@@ -103,6 +105,7 @@ function isSalesOrder(value: unknown): value is SalesOrder {
 function resetDraftRecovery(): void {
   lastSavedDraft = null;
   draftRecovery = null;
+  failedConfirmOrderIds.clear();
 }
 
 function validateDraftDiscountIntent(path: string, init: RequestInit): void {
@@ -162,43 +165,57 @@ function recoverCommittedDraft(path: string, init: RequestInit): {
   };
 }
 
+function withFreshConfirmKey(path: string, init: RequestInit): RequestInit {
+  if (!isConfirm(path, methodOf(init))) return init;
+  const orderId = orderIdFromPath(path);
+  if (!orderId || !failedConfirmOrderIds.has(orderId)) return init;
+  const headers = new Headers(init.headers ?? {});
+  headers.set('Idempotency-Key', `sales-confirm-retry-${crypto.randomUUID()}`);
+  return { ...init, headers };
+}
+
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const initialMethod = methodOf(init);
   if (isEntrySettings(path, initialMethod)) resetDraftRecovery();
 
-  const request = recoverCommittedDraft(path, init);
-  const requestMethod = methodOf(request.init);
-  validateDraftDiscountIntent(request.path, request.init);
-  const response = await fetch(request.path, {
-    ...request.init,
+  const recovered = recoverCommittedDraft(path, init);
+  const requestInit = withFreshConfirmKey(recovered.path, recovered.init);
+  const requestMethod = methodOf(requestInit);
+  validateDraftDiscountIntent(recovered.path, requestInit);
+  const response = await fetch(recovered.path, {
+    ...requestInit,
     cache: 'no-store',
     headers: {
       Accept: 'application/json',
-      ...(request.init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      ...(request.init.headers ?? {}),
+      ...(requestInit.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...(requestInit.headers ?? {}),
     },
   });
   const payload = await response.json().catch(() => null) as ApiEnvelope<T> | null;
   if (!response.ok || !payload || !Object.prototype.hasOwnProperty.call(payload, 'data')) {
     const code = payload?.error?.code ?? 'SALES_ORDER_REQUEST_FAILED';
-    if (code === 'SALES_PRICE_CHANGED' && isConfirm(request.path, requestMethod) && lastSavedDraft) {
-      const confirmedOrderId = orderIdFromPath(request.path);
-      if (confirmedOrderId === lastSavedDraft.order.id) draftRecovery = lastSavedDraft;
+    if (isConfirm(recovered.path, requestMethod)) {
+      const confirmedOrderId = orderIdFromPath(recovered.path);
+      if (confirmedOrderId) {
+        failedConfirmOrderIds.add(confirmedOrderId);
+        if (lastSavedDraft?.order.id === confirmedOrderId) draftRecovery = lastSavedDraft;
+      }
     }
     throw new SalesOrderUiError(
       code,
       payload?.error?.message ?? 'Yêu cầu bán hàng không thành công',
-      payload?.error?.retryable === true,
+      payload?.error?.retryable === true || response.status >= 500,
       payload?.error?.details ?? {},
+      response.status,
     );
   }
 
   const data = payload.data as T;
-  if (isDraftSave(request.path, requestMethod) && isSalesOrder(data)) {
+  if (isDraftSave(recovered.path, requestMethod) && isSalesOrder(data)) {
     lastSavedDraft = { order: data };
-    if (request.recovered) draftRecovery = lastSavedDraft;
+    if (recovered.recovered) draftRecovery = lastSavedDraft;
   }
-  if (isConfirm(request.path, requestMethod)) resetDraftRecovery();
+  if (isConfirm(recovered.path, requestMethod)) resetDraftRecovery();
   return data;
 }
 
@@ -219,6 +236,19 @@ export function formatQuantity(value: string | null | undefined): string {
   if (!match) return normalized;
   const fraction = (match[2] ?? '').replace(/0+$/, '');
   return fraction ? `${match[1]}.${fraction}` : match[1];
+}
+
+const VIETNAM_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+export function formatVietnamDateTime(value: string | null | undefined): string {
+  const parsed = new Date(String(value ?? ''));
+  if (Number.isNaN(parsed.getTime())) return '—';
+  const local = new Date(parsed.getTime() + VIETNAM_UTC_OFFSET_MS);
+  return `${pad2(local.getUTCDate())}/${pad2(local.getUTCMonth() + 1)}/${local.getUTCFullYear()} ${pad2(local.getUTCHours())}:${pad2(local.getUTCMinutes())}`;
 }
 
 export function activeVersion(order: SalesOrder | null): SalesOrderVersion | null {

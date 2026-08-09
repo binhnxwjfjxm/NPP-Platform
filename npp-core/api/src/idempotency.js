@@ -209,13 +209,13 @@ export function createPostgresIdempotencyStore(adapter) {
   });
 }
 
-function errorResponse({ code, message, statusCode, requestId, receivedAt, details = {} }) {
+function errorResponse({ code, message, statusCode, requestId, receivedAt, details = {}, retryable = false }) {
   return {
     statusCode,
     contentType: 'application/json',
     requestId,
     body: createErrorEnvelope(
-      { code, message, statusCode, details },
+      { code, message, statusCode, details, retryable },
       requestId,
       receivedAt,
     ),
@@ -316,13 +316,16 @@ export async function executeRequestWithIdempotency({
     await idempotencyStore.markCompleted(scope, requestId, response);
     return { response, replayed: false };
   } catch (error) {
+    const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 503;
+    const retryable = typeof error?.retryable === 'boolean' ? error.retryable : statusCode >= 500;
     const failureResponse = errorResponse({
       code: error.code ?? 'INTERNAL_ERROR',
       message: error.publicMessage ?? 'Request failed',
-      statusCode: error.statusCode ?? 500,
+      statusCode,
       requestId,
       receivedAt,
       details: error.details ?? {},
+      retryable,
     });
     await idempotencyStore.markFailed(scope, requestId, failureResponse);
     return { response: failureResponse, replayed: false };
