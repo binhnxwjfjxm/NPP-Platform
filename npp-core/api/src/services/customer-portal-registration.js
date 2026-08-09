@@ -87,11 +87,17 @@ export function registrationState({ identity, membership, request, membershipUna
 
 export function publicRegistration(request) {
   if (!request) return null;
+  const businessType = typeof request.sourceMetadata?.businessType === 'string'
+    ? request.sourceMetadata.businessType
+    : null;
   return Object.freeze({
     id: request.id,
     status: request.status,
     version: request.version,
-    proposedCustomer: request.proposedCustomer,
+    proposedCustomer: Object.freeze({
+      ...request.proposedCustomer,
+      ...(businessType ? { businessType } : {}),
+    }),
     reviewReason: request.reviewReason ?? null,
     submittedAt: request.submittedAt,
     updatedAt: request.updatedAt,

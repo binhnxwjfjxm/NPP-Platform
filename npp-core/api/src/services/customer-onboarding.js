@@ -20,6 +20,15 @@ const PORTAL_COLLECTION_POLICIES = new Set([
   'COLLECT_AFTER_DELIVERY',
   'CREDIT_TERMS',
 ]);
+const PORTAL_BUSINESS_TYPES = new Set([
+  'Cửa hàng bán lẻ',
+  'Trà sữa / đồ uống',
+  'Mỳ cay / quán ăn',
+  'Tiệm bánh',
+  'Nhà hàng',
+  'Nhà phân phối',
+  'Khác',
+]);
 const PRIVILEGED_SUBMISSION_FIELDS = Object.freeze([
   'status',
   'reviewedByActorId',
@@ -141,6 +150,19 @@ function validateCustomerSnapshot(payload) {
   };
 }
 
+function validatePortalBusinessType(payload) {
+  const businessType = text(payload?.proposedCustomer?.businessType);
+  if (!businessType) return { ok: true, value: null };
+  if (businessType.length > 128 || !PORTAL_BUSINESS_TYPES.has(businessType)) {
+    return {
+      ok: false,
+      code: 'INVALID_CUSTOMER_BUSINESS_TYPE',
+      message: 'Customer business type is invalid',
+    };
+  }
+  return { ok: true, value: businessType };
+}
+
 export function validateSubmission(payload) {
   if (!isPlainObject(payload)) {
     return { ok: false, code: 'INVALID_INPUT', message: 'Customer verification payload is required' };
@@ -206,7 +228,9 @@ export function validatePortalRegistration(payload) {
   }
   const snapshot = validateCustomerSnapshot(payload);
   if (!snapshot.ok) return snapshot;
-  return { ok: true, normalized: snapshot.normalized };
+  const businessType = validatePortalBusinessType(payload);
+  if (!businessType.ok) return businessType;
+  return { ok: true, normalized: snapshot.normalized, businessType: businessType.value };
 }
 
 async function submitNormalizedRequest(client, {
@@ -292,7 +316,10 @@ export async function submitPortalRegistration(client, {
     orderRequired: false,
     triggerReason: 'CUSTOMER_REGISTRATION',
     ...validation.normalized,
-    sourceMetadata: { channel: 'customer-ordering' },
+    sourceMetadata: {
+      channel: 'customer-ordering',
+      ...(validation.businessType ? { businessType: validation.businessType } : {}),
+    },
   };
   return submitNormalizedRequest(client, {
     requestContext,
@@ -346,7 +373,10 @@ export async function resubmitPortalRegistration(client, {
     orderRequired: false,
     triggerReason: 'CUSTOMER_REGISTRATION',
     ...validation.normalized,
-    sourceMetadata: { channel: 'customer-ordering' },
+    sourceMetadata: {
+      channel: 'customer-ordering',
+      ...(validation.businessType ? { businessType: validation.businessType } : {}),
+    },
   };
   const request = await repository.updatePortalRegistrationRequest(client, {
     installationId: requestContext.installationId,
