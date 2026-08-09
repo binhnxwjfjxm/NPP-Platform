@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { validatePortalRegistration } from '../src/services/customer-onboarding.js';
 import { publicRegistration } from '../src/services/customer-portal-registration.js';
+
+const onboardingSource = await readFile(new URL('../src/services/customer-onboarding.js', import.meta.url), 'utf8');
 
 function payload(businessType) {
   return {
     proposedCustomer: {
       name: 'Quán Mẫu',
       phone: '0901234567',
-      businessType,
+      ...(businessType ? { businessType } : {}),
       address: {
         label: 'Địa chỉ chính',
         addressLine1: '1 Đường Mẫu',
@@ -30,12 +33,17 @@ test('portal registration accepts only supported business types', () => {
   assert.equal(rejected.code, 'INVALID_CUSTOMER_BUSINESS_TYPE');
 });
 
+test('portal submit and resubmit both persist business type in server-owned source metadata', () => {
+  const businessTypeMetadataWrites = onboardingSource.match(/sourceMetadata:\s*\{\s*channel: 'customer-ordering',\s*\.\.\.\(validation\.businessType \? \{ businessType: validation\.businessType \} : \{\}\),\s*\}/g) ?? [];
+  assert.equal(businessTypeMetadataWrites.length, 2);
+});
+
 test('public registration returns business type from server-owned source metadata', () => {
   const view = publicRegistration({
     id: '11111111-1111-4111-8111-111111111111',
     status: 'submitted',
     version: 1,
-    proposedCustomer: payload('Tiệm bánh').proposedCustomer,
+    proposedCustomer: payload().proposedCustomer,
     sourceMetadata: { channel: 'customer-ordering', businessType: 'Tiệm bánh' },
     reviewReason: null,
     submittedAt: '2026-08-09T00:00:00.000Z',

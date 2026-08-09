@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start -p 3003",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/*.test.js",
+    "test": "node --test test/*.test.js test/*.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:report": "playwright show-report",
