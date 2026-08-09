@@ -2,6 +2,7 @@ import { createSuccessEnvelope } from '@npp/contracts';
 import { sendJson, sendSuccess, sendError } from '../http-utils.js';
 import { readJsonBody, normalizeIdempotencyKey } from '../idempotency.js';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
+import { canManageSecurityOwners, guardSecurityOwnerEmployeeMutation } from '../internal-workforce-auth.js';
 import * as employeeService from '../services/employee.js';
 
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
@@ -51,6 +52,7 @@ function requireIdempotencyKey(req) {
 
 function serviceStatus(result) {
   if (result.code === 'NOT_FOUND' || result.code === 'BRANCH_NOT_FOUND') return 404;
+  if (result.code === 'SECURITY_OWNER_PROTECTED') return 403;
   if (result.code === 'DUPLICATE_CODE' || result.code === 'CONFLICT' || result.code === 'BRANCH_INACTIVE') return 409;
   return 400;
 }
@@ -204,6 +206,20 @@ async function handlePatch(req, res, context, id) {
     const result = await withAuditOutboxTransaction({
       adapter: context.getPool(),
       mutate: async (client) => {
+        const protection = await guardSecurityOwnerEmployeeMutation(client, {
+          installationId: context.requestContext.installationId,
+          employeeId: id,
+          allowSecurityOwnerMutation: canManageSecurityOwners(context.requestContext),
+        });
+        if (!protection.ok) {
+          throw Object.assign(new Error('EMPLOYEE_UPDATE_FAILED'), {
+            serviceResult: {
+              ...protection,
+              message: 'Security Owner employee được bảo vệ khỏi thay đổi bởi quản trị viên thông thường',
+            },
+          });
+        }
+
         const serviceResult = typeof payload.isActive === 'boolean'
           ? await employeeService.updateEmployeeStatus(client, {
             id,

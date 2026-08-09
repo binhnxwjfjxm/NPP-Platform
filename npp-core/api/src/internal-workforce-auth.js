@@ -66,6 +66,12 @@ function constantTimeTextMatch(left, right) {
   return timingSafeEqual(a, b);
 }
 
+function isFutureDate(value, referenceDate) {
+  if (!value) return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.getTime() > referenceDate.getTime();
+}
+
 async function derivePassword(password, salt) {
   return scryptAsync(password, salt, SCRYPT_KEY_LENGTH, {
     N: 16_384,
@@ -174,6 +180,39 @@ function challengeResult(config, ownerCode) {
   return { ok: true };
 }
 
+export function canManageSecurityOwners(requestContext = {}) {
+  const roles = Array.isArray(requestContext.roles) ? requestContext.roles : [];
+  return roles.includes('bootstrap')
+    || roles.includes(OWNER_ROLE)
+    || roles.includes(IMPLEMENTATION_OWNER_ROLE);
+}
+
+export async function guardSecurityOwnerUserMutation(client, {
+  repo = defaultRepo,
+  installationId,
+  userId,
+  allowSecurityOwnerMutation = false,
+}) {
+  if (allowSecurityOwnerMutation || !UUID_PATTERN.test(text(userId))) return { ok: true };
+  const binding = await repo.getSecurityOwnerBindingForUser(client, { installationId, userId });
+  return binding
+    ? { ok: false, code: 'SECURITY_OWNER_PROTECTED', statusCode: 403 }
+    : { ok: true };
+}
+
+export async function guardSecurityOwnerEmployeeMutation(client, {
+  repo = defaultRepo,
+  installationId,
+  employeeId,
+  allowSecurityOwnerMutation = false,
+}) {
+  if (allowSecurityOwnerMutation || !UUID_PATTERN.test(text(employeeId))) return { ok: true };
+  const binding = await repo.getSecurityOwnerBindingForEmployee(client, { installationId, employeeId });
+  return binding
+    ? { ok: false, code: 'SECURITY_OWNER_PROTECTED', statusCode: 403 }
+    : { ok: true };
+}
+
 export function createInternalWorkforceAuthenticator({
   config,
   pool,
@@ -202,23 +241,6 @@ export function createInternalWorkforceAuthenticator({
     if (!identity.user_is_active || !identity.employee_is_active) {
       return authFailure('INTERNAL_AUTH_INVALID_CREDENTIALS');
     }
-    if (identity.locked_until && new Date(identity.locked_until).getTime() > now().getTime()) {
-      return authFailure('INTERNAL_AUTH_INVALID_CREDENTIALS');
-    }
-
-    const passwordOk = await verifyInternalPassword(password, identity.password_hash);
-    if (!passwordOk) {
-      await repo.recordPasswordFailure(pool, {
-        installationId: payload.installationId,
-        userId: identity.user_id,
-        lockThreshold: LOCK_THRESHOLD,
-        lockSeconds: LOCK_SECONDS,
-      });
-      return authFailure('INTERNAL_AUTH_INVALID_CREDENTIALS');
-    }
-
-    const challenge = challengeResult(config, payload.ownerCode);
-    if (!challenge.ok) return authFailure(challenge.code, challenge.statusCode);
 
     const actorId = `user:${identity.user_id}`;
     const sessionId = randomUUID();
@@ -230,6 +252,38 @@ export function createInternalWorkforceAuthenticator({
     const transactionResult = await withAuditOutboxTransaction({
       adapter: pool,
       mutate: async (client) => {
+        const credential = await repo.lockCredentialForLogin(client, {
+          installationId: payload.installationId,
+          userId: identity.user_id,
+        });
+        if (!credential || isFutureDate(credential.locked_until, now())) {
+          return { denied: authFailure('INTERNAL_AUTH_INVALID_CREDENTIALS') };
+        }
+
+        const passwordOk = await verifyInternalPassword(password, credential.password_hash);
+        if (!passwordOk) {
+          await repo.recordPasswordFailure(client, {
+            installationId: payload.installationId,
+            userId: identity.user_id,
+            lockThreshold: LOCK_THRESHOLD,
+            lockSeconds: LOCK_SECONDS,
+          });
+          return { denied: authFailure('INTERNAL_AUTH_INVALID_CREDENTIALS') };
+        }
+
+        const challenge = challengeResult(config, payload.ownerCode);
+        if (!challenge.ok) {
+          if (challenge.code === 'INTERNAL_AUTH_OWNER_CODE_INVALID') {
+            await repo.recordPasswordFailure(client, {
+              installationId: payload.installationId,
+              userId: identity.user_id,
+              lockThreshold: LOCK_THRESHOLD,
+              lockSeconds: LOCK_SECONDS,
+            });
+          }
+          return { denied: authFailure(challenge.code, challenge.statusCode) };
+        }
+
         await repo.resetPasswordFailures(client, {
           installationId: payload.installationId,
           userId: identity.user_id,
@@ -271,6 +325,8 @@ export function createInternalWorkforceAuthenticator({
         return { session, authorization };
       },
     });
+
+    if (transactionResult.denied) return transactionResult.denied;
 
     return Object.freeze({
       ok: true,
@@ -346,6 +402,7 @@ export async function setInternalUserCredential(client, {
   userId,
   password,
   actorId,
+  allowSecurityOwnerMutation = false,
 }) {
   if (!UUID_PATTERN.test(text(userId))) {
     return { ok: false, code: 'INVALID_USER_ID', statusCode: 400 };
@@ -353,6 +410,14 @@ export async function setInternalUserCredential(client, {
   if (!await repo.userExistsForInstallation(client, { installationId, userId })) {
     return { ok: false, code: 'USER_NOT_FOUND', statusCode: 404 };
   }
+  const protection = await guardSecurityOwnerUserMutation(client, {
+    repo,
+    installationId,
+    userId,
+    allowSecurityOwnerMutation,
+  });
+  if (!protection.ok) return protection;
+
   let passwordHash;
   try {
     passwordHash = await hashInternalPassword(password);
@@ -370,11 +435,19 @@ export async function replaceInternalUserScopes(client, {
   userId,
   scopes,
   actorId,
+  allowSecurityOwnerMutation = false,
 }) {
   if (!UUID_PATTERN.test(text(userId))) return { ok: false, code: 'INVALID_USER_ID', statusCode: 400 };
   if (!await repo.userExistsForInstallation(client, { installationId, userId })) {
     return { ok: false, code: 'USER_NOT_FOUND', statusCode: 404 };
   }
+  const protection = await guardSecurityOwnerUserMutation(client, {
+    repo,
+    installationId,
+    userId,
+    allowSecurityOwnerMutation,
+  });
+  if (!protection.ok) return protection;
   if (invalidScopePayload(scopes)) return { ok: false, code: 'INVALID_SCOPE', statusCode: 400 };
   const normalized = normalizeScopes(scopes);
   if (normalized.territoryIds.length > 0) {
@@ -398,11 +471,19 @@ export async function revokeInternalUserSessions(client, {
   installationId,
   userId,
   actorId,
+  allowSecurityOwnerMutation = false,
 }) {
   if (!UUID_PATTERN.test(text(userId))) return { ok: false, code: 'INVALID_USER_ID', statusCode: 400 };
   if (!await repo.userExistsForInstallation(client, { installationId, userId })) {
     return { ok: false, code: 'USER_NOT_FOUND', statusCode: 404 };
   }
+  const protection = await guardSecurityOwnerUserMutation(client, {
+    repo,
+    installationId,
+    userId,
+    allowSecurityOwnerMutation,
+  });
+  if (!protection.ok) return protection;
   const revokedSessionCount = await repo.revokeAllUserSessions(client, {
     installationId,
     userId,
@@ -418,6 +499,9 @@ export async function revokeInternalSession(client, {
   userId,
   actorId,
 }) {
+  if (!UUID_PATTERN.test(text(sessionId)) || !UUID_PATTERN.test(text(userId))) {
+    return { ok: false, code: 'INVALID_SESSION_ID', statusCode: 400 };
+  }
   const revoked = await repo.revokeSession(client, {
     sessionId,
     installationId,

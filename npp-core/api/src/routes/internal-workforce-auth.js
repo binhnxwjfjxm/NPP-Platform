@@ -2,8 +2,7 @@ import { readJsonBody } from '../idempotency.js';
 import { sendError, sendSuccess } from '../http-utils.js';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
 import {
-  INTERNAL_IMPLEMENTATION_OWNER_ROLE,
-  INTERNAL_SECURITY_OWNER_ROLE,
+  canManageSecurityOwners,
   reconcileSecurityOwners,
   replaceInternalUserScopes,
   revokeInternalSession,
@@ -38,6 +37,10 @@ function publicMessage(code) {
       return 'Phạm vi được cấp không thuộc installation hiện tại';
     case 'TERRITORY_SCOPE_NOT_CONFIGURED':
       return 'Phạm vi địa bàn chưa có registry canonical để cấp quyền';
+    case 'SECURITY_OWNER_PROTECTED':
+      return 'Security Owner chỉ được thay đổi bởi Security Owner hoặc bootstrap';
+    case 'INVALID_SESSION_ID':
+      return 'Phiên đăng nhập không hợp lệ';
     case 'SECURITY_OWNER_CONFIG_INCOMPLETE':
       return 'Cấu hình Security Owner chưa đầy đủ';
     case 'SECURITY_OWNER_USER_NOT_FOUND':
@@ -106,12 +109,6 @@ function requirePermission(options, requestContext, permission) {
   return Boolean(result?.ok);
 }
 
-function canManageSecurityOwners(requestContext) {
-  return requestContext.roles.includes('bootstrap')
-    || requestContext.roles.includes(INTERNAL_SECURITY_OWNER_ROLE)
-    || requestContext.roles.includes(INTERNAL_IMPLEMENTATION_OWNER_ROLE);
-}
-
 async function runAuditedMutation(options, requestContext, {
   action,
   resourceType,
@@ -154,7 +151,6 @@ async function handleLogin(req, res, options) {
       sendServiceError(res, result, options.requestId, options.receivedAt);
       return;
     }
-    res.setHeader('Cache-Control', 'no-store');
     sendSuccess(res, {
       token: result.token,
       session: result.session,
@@ -212,6 +208,10 @@ async function handleLogout(req, res, options) {
       }),
       auditAfter: (result) => ({ revoked: result.revoked }),
     });
+    if (transaction.failed) {
+      sendServiceError(res, transaction.result, options.requestId, options.receivedAt);
+      return;
+    }
     sendSuccess(res, { loggedOut: true, revoked: transaction.result.revoked }, options.requestId, options.receivedAt);
   } catch {
     sendError(res, createError('INTERNAL_AUTH_UNAVAILABLE', 'Không thể đăng xuất phiên hiện tại', 503, true), options.requestId, options.receivedAt);
@@ -245,6 +245,7 @@ async function handleCredential(req, res, options, userId) {
         userId,
         password: payload?.password,
         actorId: requestContext.actorId,
+        allowSecurityOwnerMutation: canManageSecurityOwners(requestContext),
       }),
       auditAfter: (result) => ({ credentialUpdated: true, revokedSessionCount: result.revokedSessionCount }),
     });
@@ -289,6 +290,7 @@ async function handleScopes(req, res, options, userId) {
         userId,
         scopes: payload?.scopes,
         actorId: requestContext.actorId,
+        allowSecurityOwnerMutation: canManageSecurityOwners(requestContext),
       }),
       auditAfter: (result) => ({ scopes: result.scopes }),
     });
@@ -325,6 +327,7 @@ async function handleRevokeUser(req, res, options, userId) {
         installationId: requestContext.installationId,
         userId,
         actorId: requestContext.actorId,
+        allowSecurityOwnerMutation: canManageSecurityOwners(requestContext),
       }),
       auditAfter: (result) => ({ revokedSessionCount: result.revokedSessionCount }),
     });
@@ -386,6 +389,8 @@ async function handleOwnerReconcile(req, res, options) {
 export async function handleInternalWorkforceAuthRoutes(req, res, options) {
   const pathname = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
   if (!(pathname === '/api/internal-auth' || pathname.startsWith('/api/internal-auth/'))) return false;
+
+  res.setHeader('Cache-Control', 'no-store');
 
   if (!options.internalAuthConfig?.enabled) {
     sendError(res, createError('INTERNAL_AUTH_NOT_CONFIGURED', 'Xác thực nội bộ chưa được bật', 503), options.requestId, options.receivedAt);

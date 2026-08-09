@@ -26,6 +26,17 @@ export async function findLoginIdentity(client, { installationId, loginName }) {
   return result.rows?.[0] ?? null;
 }
 
+export async function lockCredentialForLogin(client, { installationId, userId }) {
+  const result = await client.query(
+    `SELECT password_hash, failed_attempts, locked_until
+     FROM shared.user_credentials
+     WHERE installation_id = $1 AND user_id = $2
+     FOR UPDATE`,
+    [installationId, userId],
+  );
+  return result.rows?.[0] ?? null;
+}
+
 export async function recordPasswordFailure(client, {
   installationId,
   userId,
@@ -293,6 +304,29 @@ export async function userExistsForInstallation(client, { installationId, userId
     [installationId, userId],
   );
   return Boolean(result.rows?.[0]);
+}
+
+export async function getSecurityOwnerBindingForUser(client, { installationId, userId }) {
+  const result = await client.query(
+    `SELECT user_id, owner_kind
+     FROM shared.security_owner_bindings
+     WHERE installation_id = $1 AND user_id = $2`,
+    [installationId, userId],
+  );
+  return result.rows?.[0] ?? null;
+}
+
+export async function getSecurityOwnerBindingForEmployee(client, { installationId, employeeId }) {
+  const result = await client.query(
+    `SELECT b.user_id, b.owner_kind
+     FROM shared.security_owner_bindings b
+     JOIN shared.users u
+       ON u.installation_id = b.installation_id
+      AND u.id = b.user_id
+     WHERE b.installation_id = $1 AND u.employee_id = $2`,
+    [installationId, employeeId],
+  );
+  return result.rows?.[0] ?? null;
 }
 
 export async function findOwnerCandidatesByEmails(client, { installationId, emails }) {
