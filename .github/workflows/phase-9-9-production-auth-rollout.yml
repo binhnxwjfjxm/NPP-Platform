@@ -116,6 +116,18 @@ jobs:
         run: |
           set -euo pipefail
           test "$HEROKU_APP_NAME" = 'hung-phat'
+
+          app_json="$(curl --fail --silent --show-error \
+            -H 'Accept: application/vnd.heroku+json; version=3' \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            "https://api.heroku.com/apps/$HEROKU_APP_NAME")"
+          app_name="$(jq -r '.name // empty' <<<"$app_json")"
+          app_url="$(jq -r '.web_url // empty' <<<"$app_json")"
+          app_url="${app_url%/}"
+          test "$app_name" = "$HEROKU_APP_NAME"
+          test -n "$app_url"
+          echo "HEROKU_APP_URL=$app_url" >> "$GITHUB_ENV"
+
           config_json="$(heroku config -a "$HEROKU_APP_NAME" --json)"
           for key in DATABASE_URL INSTALLATION_ID CLOUDFLARE_EMAIL_API_TOKEN; do
             jq -e --arg key "$key" 'has($key) and (.[$key] | type == "string" and length > 0)' <<<"$config_json" >/dev/null || {
@@ -126,6 +138,7 @@ jobs:
           email_token="$(jq -r '.CLOUDFLARE_EMAIL_API_TOKEN' <<<"$config_json")"
           previous_enabled="$(jq -r '.INTERNAL_AUTH_ENABLED // "false"' <<<"$config_json")"
           echo "::add-mask::$email_token"
+          export CF_EMAIL_TOKEN="$email_token"
           echo "CF_EMAIL_TOKEN=$email_token" >> "$GITHUB_ENV"
           echo "previous_enabled=$previous_enabled" >> "$GITHUB_OUTPUT"
 
@@ -171,6 +184,7 @@ jobs:
             INTERNAL_SESSION_TTL_SECONDS=28800 \
             INTERNAL_WEB_OWNER_CHALLENGE_REQUIRED="$P99_WEB_OWNER_CHALLENGE_REQUIRED" \
             ALLOW_FIXED_OWNER_CODE=false \
+            SECURITY_OWNER_TEST_CODE= \
             SECURITY_OWNER_EMAILS="$P99_SECURITY_OWNER_EMAILS" \
             IMPLEMENTATION_OWNER_EMAILS="$P99_IMPLEMENTATION_OWNER_EMAILS" \
             CLOUDFLARE_ACCOUNT_ID="$P99_CF_ACCOUNT_ID" \
@@ -180,17 +194,15 @@ jobs:
             INTERNAL_WEB_CHALLENGE_MAX_ATTEMPTS=5 \
             INTERNAL_WEB_CHALLENGE_RESEND_COOLDOWN_SECONDS=60 \
             >/dev/null
-          heroku config:unset SECURITY_OWNER_TEST_CODE -a "$HEROKU_APP_NAME" >/dev/null 2>&1 || true
 
       - name: Wait for Core live and ready after config release
         shell: bash
         run: |
           set -euo pipefail
-          app_url='https://hung-phat-945da1547594.herokuapp.com'
           for path in /health/live /health/ready; do
             ok=false
             for _ in $(seq 1 60); do
-              status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 --output /dev/null --write-out '%{http_code}' "$app_url$path" || true)"
+              status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 --output /dev/null --write-out '%{http_code}' "$HEROKU_APP_URL$path" || true)"
               if [ "$status" = 200 ]; then ok=true; break; fi
               sleep 3
             done
@@ -232,21 +244,10 @@ jobs:
             -e "OWNER_BOOTSTRAP_CREDENTIALS_JSON=$credentials_json" \
             -- node npp-core/api/scripts/bootstrap-workforce-owners.js
 
-      - name: Restore prior auth state if bootstrap failed
-        if: steps.bootstrap.outcome != 'success'
-        shell: bash
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-          PREVIOUS_ENABLED: ${{ steps.preflight.outputs.previous_enabled }}
-        run: |
-          set -euo pipefail
-          heroku config:set -a "$HEROKU_APP_NAME" INTERNAL_AUTH_ENABLED="$PREVIOUS_ENABLED" >/dev/null
-
-      - name: Enforce bootstrap success
-        shell: bash
-        run: test '${{ steps.bootstrap.outcome }}' = 'success'
-
       - name: Send temporary credentials to Implementation Owner
+        id: credential_delivery
+        if: steps.bootstrap.outcome == 'success'
+        continue-on-error: true
         shell: bash
         env:
           CREDENTIAL_FILE: ${{ steps.credentials.outputs.file }}
@@ -281,13 +282,31 @@ jobs:
           }
           NODE
 
-      - name: Final production auth smoke
+      - name: Restore prior auth state if rollout did not complete
+        if: ${{ always() && steps.configure.outcome == 'success' && (steps.bootstrap.outcome != 'success' || steps.credential_delivery.outcome != 'success') }}
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          PREVIOUS_ENABLED: ${{ steps.preflight.outputs.previous_enabled }}
+        run: |
+          set -euo pipefail
+          heroku config:set -a "$HEROKU_APP_NAME" INTERNAL_AUTH_ENABLED="$PREVIOUS_ENABLED" >/dev/null
+
+      - name: Enforce rollout outcome
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
-          app_url='https://hung-phat-945da1547594.herokuapp.com'
-          test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$app_url/health/live")" = 200
-          test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$app_url/health/ready")" = 200
+          test '${{ steps.bootstrap.outcome }}' = 'success'
+          test '${{ steps.credential_delivery.outcome }}' = 'success'
+
+      - name: Final production auth smoke
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$HEROKU_APP_URL/health/live")" = 200
+          test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$HEROKU_APP_URL/health/ready")" = 200
 
       - name: Publish sanitized Phase 9.9 rollout evidence and redact command
         if: always()
