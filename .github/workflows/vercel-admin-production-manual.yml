@@ -121,7 +121,7 @@ jobs:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
           SECRET_CORE_API_INTERNAL_URL: ${{ secrets.CORE_API_INTERNAL_URL }}
         run: |
-          set -uo pipefail
+          set -euo pipefail
           core_url="${SECRET_CORE_API_INTERNAL_URL:-}"
           runtime_source="github-secrets"
 

@@ -24,6 +24,17 @@ function loginRedirect(request: NextRequest) {
   return NextResponse.redirect(loginUrl);
 }
 
+function clearInvalidSession(response: NextResponse) {
+  response.cookies.set(ADMIN_SESSION_COOKIE, '', {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 0,
+  });
+  return response;
+}
+
 function coreBaseUrl(): string | null {
   const raw = process.env.CORE_API_INTERNAL_URL?.trim();
   if (!raw) return null;
@@ -44,7 +55,7 @@ async function sessionIsActive(token: string): Promise<'active' | 'invalid' | 'u
   const baseUrl = coreBaseUrl();
   if (!baseUrl) return 'unavailable';
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8_000);
+  const timeout = setTimeout(() => controller.abort(), 3_000);
   try {
     const response = await fetch(`${baseUrl}/api/internal-auth/me`, {
       method: 'GET',
@@ -82,8 +93,10 @@ export async function middleware(request: NextRequest) {
   const state = await sessionIsActive(sessionToken);
   if (state === 'active') return NextResponse.next();
   if (state === 'invalid') {
-    if (isBrowserNavigation(request)) return loginRedirect(request);
-    return deny(request, 401, 'UNAUTHORIZED', 'Authentication required');
+    const response = isBrowserNavigation(request)
+      ? loginRedirect(request)
+      : deny(request, 401, 'UNAUTHORIZED', 'Authentication required');
+    return clearInvalidSession(response);
   }
   return deny(request, 503, 'ADMIN_AUTH_UNAVAILABLE', 'NPP Core authentication is temporarily unavailable');
 }
