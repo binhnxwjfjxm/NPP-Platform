@@ -23,6 +23,24 @@ type ActionResponse = {
   error?: { message?: string; retryable?: boolean };
 };
 
+const UPDATED_AT_FORMATTER = new Intl.DateTimeFormat('vi-VN', {
+  dateStyle: 'short',
+  timeStyle: 'medium',
+  timeZone: 'Asia/Ho_Chi_Minh',
+});
+
+function formatUpdatedAt(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : UPDATED_AT_FORMATTER.format(date);
+}
+
+function portalBusinessType(request: CustomerOnboardingRequestSummary): string {
+  const metadata = (request as CustomerOnboardingRequestSummary & { sourceMetadata?: unknown }).sourceMetadata;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return '';
+  const value = (metadata as Record<string, unknown>).businessType;
+  return typeof value === 'string' ? value : '';
+}
+
 function statusLabel(status: string): string {
   if (status === 'submitted') return 'Mới gửi';
   if (status === 'under_review') return 'Đang xem xét';
@@ -244,6 +262,7 @@ export default function CustomerOnboardingReview({ requests, customers, portalOp
           const addresses = addressesByRequest[request.id] || [];
           const address = request.proposedCustomer.address;
           const isPortal = request.sourceSystem === 'CUSTOMER_PORTAL';
+          const businessType = isPortal ? portalBusinessType(request) : '';
           const isBusy = busyByRequest[request.id] === true;
           const addressLoading = addressLoadingByRequest[request.id] === true;
           return (
@@ -259,14 +278,17 @@ export default function CustomerOnboardingReview({ requests, customers, portalOp
               <dl className={styles.details}>
                 <div><dt>Địa chỉ</dt><dd>{[address.addressLine1, address.ward, address.district, address.province].filter(Boolean).join(', ')}</dd></div>
                 {isPortal ? (
-                  <div><dt>Nguồn</dt><dd>Ứng dụng khách hàng</dd></div>
+                  <>
+                    <div><dt>Nguồn</dt><dd>Ứng dụng khách hàng</dd></div>
+                    {businessType ? <div><dt>Mô hình quán</dt><dd>{businessType}</dd></div> : null}
+                  </>
                 ) : (
                   <>
                     <div><dt>Điểm bán nguồn</dt><dd>{request.sourceOutletId}</dd></div>
                     <div><dt>Nhu cầu mua hàng</dt><dd>{request.sourceDemandReference}</dd></div>
                   </>
                 )}
-                <div><dt>Cập nhật</dt><dd>{new Date(request.updatedAt).toLocaleString('vi-VN')}</dd></div>
+                <div><dt>Cập nhật</dt><dd>{formatUpdatedAt(request.updatedAt)}</dd></div>
                 {request.reviewReason ? <div><dt>Lý do gần nhất</dt><dd>{request.reviewReason}</dd></div> : null}
               </dl>
 
@@ -322,7 +344,9 @@ export default function CustomerOnboardingReview({ requests, customers, portalOp
                   ) : null}
 
                   <section className={styles.actionPanel}>
-                    <h3>Duyệt tạo khách mới</h3>
+                    <h3>Tạo khách mới từ đăng ký</h3>
+                    <p>Tên khách sẽ tạo: <strong>{request.proposedCustomer.name}</strong></p>
+                    <p>Tên này lấy từ ô “Tên quán / điểm bán” khách đã nhập, không lấy từ tên tài khoản đăng nhập.</p>
                     <label>
                       Mã khách hàng
                       <input
@@ -336,12 +360,13 @@ export default function CustomerOnboardingReview({ requests, customers, portalOp
                       />
                     </label>
                     <button type="button" disabled={isBusy} onClick={() => approveNewCustomer(request)}>
-                      Duyệt tạo khách mới
+                      Tạo khách mới & kích hoạt
                     </button>
                   </section>
 
                   <section className={styles.actionPanel}>
                     <h3>Liên kết khách đã có</h3>
+                    <p>Chỉ dùng nhánh này khi điểm bán đã có mã khách trên Core.</p>
                     <label>
                       Khách hàng
                       <select value={selectedCustomer} onChange={(event) => void chooseCustomer(request.id, event.target.value)}>

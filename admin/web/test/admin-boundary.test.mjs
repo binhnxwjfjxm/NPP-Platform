@@ -113,7 +113,8 @@ test('NPP Operations owns sales operations and customer code work', async () => 
   assert.doesNotMatch(onboarding, /redirect\(/);
   assert.match(onboarding, /CustomerOnboardingReview/);
   assert.match(onboarding, /Tạo hoặc liên kết mã khách hàng/);
-  assert.match(review, /Duyệt tạo khách mới/);
+  assert.match(review, /Tạo khách mới từ đăng ký/);
+  assert.match(review, /Tên khách sẽ tạo/);
   assert.match(review, /Liên kết khách đã có/);
   assert.match(review, /Idempotency-Key/);
   assert.match(actionRoute, /CROSS_SITE_REQUEST_REJECTED/);
