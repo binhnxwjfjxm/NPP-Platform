@@ -1,0 +1,8 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const read=(path)=>readFileSync(new URL(`../${path}`,import.meta.url),'utf8');
+const middleware=read('middleware.ts');const session=read('lib/workforce-session.ts');const authClient=read('lib/internal-auth-client.ts');const loginPage=read('app/login/page.tsx');const loginRoute=read('app/api/auth/login/route.ts');const logoutRoute=read('app/api/auth/logout/route.ts');
+test('NPP Operations uses opaque Core workforce session cookie',()=>{assert.match(session,/NPP_SESSION_COOKIE = 'hp_npp_session'/);assert.match(session,/httpOnly:\s*true/);assert.match(session,/sameSite:\s*'lax'/);assert.match(authClient,/token\?\.startsWith\('nppusr\.'/);assert.doesNotMatch(session+authClient,/CORE_WEB_ADMIN_USERNAME|CORE_WEB_ADMIN_PASSWORD|CORE_API_SERVER_TOKEN/);});
+test('NPP middleware protects deep links and validates every session through Core me',()=>{assert.match(middleware,/\/api\/internal-auth\/me/);assert.match(middleware,/Authorization:\s*`Bearer \$\{token\}`/);assert.match(middleware,/loginRedirect/);assert.match(middleware,/clearInvalidSession/);assert.match(middleware,/NPP_AUTH_UNAVAILABLE/);assert.doesNotMatch(middleware,/Basic realm|CORE_WEB_ADMIN_USERNAME|CORE_WEB_ADMIN_PASSWORD/);});
+test('NPP login is branded and Core-backed; logout revokes Core session',()=>{assert.match(loginPage,/Welcome to Hung Phat Operations\./);assert.match(loginPage,/Logo Hưng Phát Company/);assert.match(loginRoute,/\/api\/internal-auth\/login/);assert.match(loginRoute,/sourceApp:\s*NPP_INTERNAL_SOURCE_APP/);assert.match(loginRoute,/ownerCode/);assert.match(logoutRoute,/\/api\/internal-auth\/logout/);assert.match(logoutRoute,/maxAge:\s*0/);});

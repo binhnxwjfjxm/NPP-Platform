@@ -1,53 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const BASIC_REALM = 'NPP Core';
-
-function constantTimeEqual(left: string, right: string): boolean {
-  const maxLength = Math.max(left.length, right.length);
-  let difference = left.length ^ right.length;
-  for (let index = 0; index < maxLength; index += 1) difference |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0);
-  return difference === 0;
-}
-
-function parseBasicAuthorization(value: string | null): { username: string; password: string } | null {
-  if (!value?.startsWith('Basic ')) return null;
-  try {
-    const decoded = atob(value.slice(6));
-    const separator = decoded.indexOf(':');
-    if (separator < 0) return null;
-    return { username: decoded.slice(0, separator), password: decoded.slice(separator + 1) };
-  } catch { return null; }
-}
-
-function deny(request: NextRequest, status: 401 | 503, code: string, message: string) {
-  const headers = new Headers({
-    'Cache-Control': 'no-store',
-    ...(status === 401 ? { 'WWW-Authenticate': `Basic realm="${BASIC_REALM}", charset="UTF-8"` } : {}),
-  });
-  if (request.nextUrl.pathname.startsWith('/api/')) return NextResponse.json({ error: { code, message, retryable: false } }, { status, headers });
-  return new NextResponse(message, { status, headers });
-}
-
-export function middleware(request: NextRequest) {
-  const configuredUsername = process.env.CORE_WEB_ADMIN_USERNAME?.trim();
-  const configuredPassword = process.env.CORE_WEB_ADMIN_PASSWORD;
-  if (!configuredUsername || !configuredPassword) return deny(request, 503, 'CORE_WEB_AUTH_NOT_CONFIGURED', 'Core web access is not configured');
-  const forwardedProtocol = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
-  if (process.env.NODE_ENV === 'production' && forwardedProtocol !== 'https' && request.nextUrl.protocol !== 'https:') {
-    return deny(request, 503, 'CORE_WEB_HTTPS_REQUIRED', 'Core web access requires HTTPS');
-  }
-  const credentials = parseBasicAuthorization(request.headers.get('authorization'));
-  if (!credentials || !constantTimeEqual(credentials.username, configuredUsername) || !constantTimeEqual(credentials.password, configuredPassword)) {
-    return deny(request, 401, 'UNAUTHORIZED', 'Authentication required');
-  }
-  return NextResponse.next();
-}
-
-export const config = {
-  matcher: [
-    '/dashboard/:path*', '/management/:path*', '/operations/:path*', '/organization/:path*', '/customers/:path*', '/suppliers/:path*', '/products/:path*', '/pricing/:path*', '/document-numbering/:path*', '/access/:path*', '/inventory/:path*', '/logistics/:path*', '/sales/:path*', '/purchasing/:path*', '/accounting/:path*',
-    '/api/organization/:path*', '/api/access/:path*', '/api/customers/:path*', '/api/customer-groups/:path*', '/api/customer-onboarding-requests/:path*', '/api/suppliers/:path*',
-    '/api/products/:path*', '/api/product-categories/:path*', '/api/product-brands/:path*', '/api/units/:path*', '/api/product-units/:path*',
-    '/api/sales-channels/:path*', '/api/price-lists/:path*', '/api/pricing/:path*', '/api/document-number-series/:path*', '/api/inventory/:path*', '/api/logistics/:path*', '/api/reporting/:path*',
-  ],
-};
+import { NPP_SESSION_COOKIE, safeNppReturnTo } from './lib/workforce-session';
+const PUBLIC_PATHS=new Set(['/login','/api/auth/login','/api/auth/logout']);
+function deny(request:NextRequest,status:401|503,code:string,message:string){const headers=new Headers({'Cache-Control':'no-store'});return request.nextUrl.pathname.startsWith('/api/')?NextResponse.json({error:{code,message,retryable:status===503}},{status,headers}):new NextResponse(message,{status,headers});}
+function browser(request:NextRequest){return(request.method==='GET'||request.method==='HEAD')&&Boolean(request.headers.get('accept')?.includes('text/html'));}
+function loginRedirect(request:NextRequest){const u=request.nextUrl.clone();u.pathname='/login';u.search='';const r=safeNppReturnTo(`${request.nextUrl.pathname}${request.nextUrl.search}`);if(r!=='/')u.searchParams.set('returnTo',r);return NextResponse.redirect(u);}
+function clearInvalidSession(response:NextResponse){response.cookies.set(NPP_SESSION_COOKIE,'',{httpOnly:true,sameSite:'lax',secure:process.env.NODE_ENV==='production',path:'/',maxAge:0});return response;}
+function e2eBasicAllowed(request:NextRequest){if(process.env.NODE_ENV!=='test')return false;const user=process.env.CORE_WEB_ADMIN_USERNAME?.trim();const pass=process.env.CORE_WEB_ADMIN_PASSWORD||'';if(!user||!pass)return false;const auth=request.headers.get('authorization')||'';if(!auth.startsWith('Basic '))return false;try{return atob(auth.slice(6))===`${user}:${pass}`;}catch{return false;}}
+function coreBaseUrl():string|null{const raw=process.env.CORE_API_INTERNAL_URL?.trim();if(!raw)return null;try{const u=new URL(raw);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)return null;if(process.env.NODE_ENV==='production'&&u.protocol!=='https:')return null;u.pathname=u.pathname.replace(/\/$/,'');u.search='';u.hash='';return u.toString().replace(/\/$/,'');}catch{return null;}}
+async function sessionState(token:string):Promise<'active'|'invalid'|'unavailable'>{const base=coreBaseUrl();if(!base)return'unavailable';const c=new AbortController();const t=setTimeout(()=>c.abort(),3_000);try{const r=await fetch(`${base}/api/internal-auth/me`,{method:'GET',cache:'no-store',signal:c.signal,headers:{Authorization:`Bearer ${token}`,Accept:'application/json'}});if(r.ok)return'active';if(r.status===401||r.status===403)return'invalid';return'unavailable';}catch{return'unavailable';}finally{clearTimeout(t);}}
+export async function middleware(request:NextRequest){if(PUBLIC_PATHS.has(request.nextUrl.pathname))return NextResponse.next();if(e2eBasicAllowed(request))return NextResponse.next();const fp=request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();if(process.env.NODE_ENV==='production'&&fp!=='https'&&request.nextUrl.protocol!=='https:')return deny(request,503,'NPP_HTTPS_REQUIRED','NPP Operations access requires HTTPS');const token=request.cookies.get(NPP_SESSION_COOKIE)?.value?.trim();if(!token)return browser(request)?loginRedirect(request):deny(request,401,'UNAUTHORIZED','Authentication required');const state=await sessionState(token);if(state==='active')return NextResponse.next();if(state==='invalid')return clearInvalidSession(browser(request)?loginRedirect(request):deny(request,401,'UNAUTHORIZED','Authentication required'));return deny(request,503,'NPP_AUTH_UNAVAILABLE','NPP Core authentication is temporarily unavailable');}
+export const config={matcher:['/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|offline.html|icons/|logo-transparent.png).*)']};

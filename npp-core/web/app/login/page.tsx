@@ -1,38 +1,25 @@
+import { safeNppReturnTo } from '../../lib/workforce-session';
 import styles from './login.module.css';
 
-export default function LoginPage() {
+type LoginPageProps = Readonly<{ searchParams?: Readonly<{ error?: string; returnTo?: string; challenge?: string }> }>;
+function errorMessage(error?: string) {
+  if (error === 'invalid_owner_code') return 'Mã bảo mật chủ sở hữu chưa đúng.';
+  if (error === 'owner_challenge_required') return 'Tài khoản Security Owner cần mã bảo mật để đăng nhập.';
+  if (error === 'owner_challenge_unavailable') return 'Xác minh Security Owner chưa sẵn sàng trên môi trường này.';
+  if (error === 'core_unavailable') return 'Hệ thống xác thực đang tạm thời chưa sẵn sàng.';
+  if (error === 'core_response_invalid') return 'Phản hồi xác thực chưa hợp lệ. Vui lòng thử lại.';
+  return error ? 'Tên đăng nhập hoặc mật khẩu chưa đúng.' : null;
+}
+export default function LoginPage({ searchParams }: LoginPageProps) {
   const logoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim() || '/logo-transparent.png';
-
-  return (
-    <main className={styles.page}>
-      <section className={styles.card}>
-        <div className={styles.brand}>
-          <span className={styles.logoFrame}>
-            <img src={logoUrl} alt="Logo Hưng Phát Company" className={styles.logo} />
-          </span>
-          <div className={styles.brandText}>
-            <strong>Hưng Phát Company</strong>
-            <span>Hệ thống quản trị nội bộ</span>
-          </div>
-        </div>
-
-        <p className={styles.eyebrow}>Cổng quản trị</p>
-        <h1 className={styles.title}>Đăng nhập hệ thống</h1>
-        <p className={styles.lead}>
-          Đăng nhập để sử dụng các chức năng quản lý tổ chức, hàng hóa, giá bán, tồn kho và phân quyền.
-        </p>
-
-        <div className={styles.panel}>
-          <p className={styles.hint}>Hướng dẫn truy cập</p>
-          <p className={styles.note}>
-            Sử dụng tài khoản được cấp để tiếp tục vào khu vực làm việc.
-          </p>
-        </div>
-
-        <p className={styles.footer}>
-          Không truy cập được hệ thống? Vui lòng liên hệ bộ phận quản trị để được hỗ trợ.
-        </p>
-      </section>
-    </main>
-  );
+  const returnTo = safeNppReturnTo(searchParams?.returnTo);
+  const error = errorMessage(searchParams?.error);
+  const showOwnerCode = searchParams?.challenge === 'owner';
+  return <main className={styles.page}><section className={styles.card} aria-labelledby="npp-login-title">
+    <div className={styles.brand}><span className={styles.logoFrame}><img src={logoUrl} alt="Logo Hưng Phát Company" className={styles.logo} /></span><div className={styles.brandText}><strong>Hưng Phát Company</strong><span>NPP Operations</span></div></div>
+    <p className={styles.eyebrow}>Welcome to Hung Phat Operations.</p><h1 className={styles.title} id="npp-login-title">Đăng nhập hệ thống</h1><p className={styles.lead}>Dùng tài khoản nhân viên được cấp để vào đúng chức năng và phạm vi công việc.</p>
+    {error ? <p className={styles.error} role="alert">{error}</p> : null}
+    <form className={styles.form} action="/api/auth/login" method="post"><input type="hidden" name="returnTo" value={returnTo} /><label className={styles.field}><span>Tên đăng nhập</span><input name="username" autoComplete="username" required maxLength={128} autoFocus /></label><label className={styles.field}><span>Mật khẩu</span><input name="password" type="password" autoComplete="current-password" required /></label>{showOwnerCode ? <label className={styles.field}><span>Mã bảo mật Security Owner</span><input name="ownerCode" inputMode="numeric" autoComplete="one-time-code" maxLength={32} /></label> : null}<button className={styles.submit} type="submit">Đăng nhập</button></form>
+    <div className={styles.panel}><p className={styles.hint}>Bảo mật nội bộ</p><p className={styles.note}>Phiên đăng nhập gắn với đúng nhân viên, vai trò, quyền và phạm vi hiện tại trong NPP Core.</p></div><p className={styles.footer}>Không truy cập được hệ thống? Vui lòng liên hệ người quản trị tài khoản nội bộ.</p>
+  </section></main>;
 }
