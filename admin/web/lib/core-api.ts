@@ -7,6 +7,7 @@ import type {
   CustomerOnboardingRequestSummary,
   OverviewData,
 } from './types';
+import { readAdminSessionToken } from './internal-auth-client';
 
 const REQUEST_TIMEOUT_MS = 8_000;
 const ONBOARDING_PAGE_SIZE = 100;
@@ -34,7 +35,7 @@ type Envelope<T> = {
   error?: { code?: string; message?: string; retryable?: boolean; details?: unknown };
 };
 
-function requiredServerValue(name: 'CORE_API_INTERNAL_URL' | 'CORE_API_SERVER_TOKEN'): string {
+function requiredServerValue(name: 'CORE_API_INTERNAL_URL'): string {
   const value = process.env[name]?.trim();
   if (!value) throw new CoreApiError('ADMIN_CORE_NOT_CONFIGURED', 'Kết nối NPP Core chưa được cấu hình', 503, false);
   return value;
@@ -70,6 +71,12 @@ function safePath(path: string): string {
   return path;
 }
 
+function employeeSessionToken(): string {
+  const token = readAdminSessionToken();
+  if (!token) throw new CoreApiError('UNAUTHORIZED', 'Cần đăng nhập', 401, false);
+  return token;
+}
+
 export async function requestCore<T>(
   path: string,
   options: { method?: 'GET' | 'POST'; body?: unknown; idempotencyKey?: string } = {},
@@ -82,7 +89,7 @@ export async function requestCore<T>(
       cache: 'no-store',
       signal: controller.signal,
       headers: {
-        Authorization: `Bearer ${requiredServerValue('CORE_API_SERVER_TOKEN')}`,
+        Authorization: `Bearer ${employeeSessionToken()}`,
         Accept: 'application/json',
         'x-request-id': requestId(),
         ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),

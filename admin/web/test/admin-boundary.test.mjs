@@ -26,8 +26,8 @@ test('admin remains a standalone manually deployed Vercel frontend', async () =>
   assert.match(shell, /className="appMenu desktopAppMenu"/);
   assert.match(shell, /NPP Operations/);
   assert.match(core, /CORE_API_INTERNAL_URL/);
-  assert.match(core, /CORE_API_SERVER_TOKEN/);
-  assert.doesNotMatch(core, /DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(core, /employeeSessionToken/);
+  assert.doesNotMatch(core, /CORE_API_SERVER_TOKEN|DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY/);
   assert.doesNotMatch(`${shell}\n${core}`, /npp-core\/web/);
 
   assert.match(workflow, /\/deploy-vercel-admin-production/);
