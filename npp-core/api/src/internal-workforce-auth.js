@@ -248,6 +248,31 @@ export function createInternalWorkforceAuthenticator({
     const issuedAt = now();
     const expiresAt = new Date(issuedAt.getTime() + (config.sessionTtlSeconds * 1000));
     const sourceApp = normalizeSourceApp(payload.sourceApp);
+    const requestContext = {
+      installationId: payload.installationId,
+      actorId,
+      employeeId: identity.employee_id,
+      sourceApp,
+      requestId: text(payload.requestId) || `auth_${sessionId}`,
+    };
+
+    const auditDeniedLogin = async (client, failure) => {
+      await insertAuditRecord(client, buildAuditRecord({
+        requestContext,
+        action: 'login_denied',
+        resourceType: 'internal_user',
+        resourceId: identity.user_id,
+        afterData: {
+          userId: identity.user_id,
+          employeeId: identity.employee_id,
+          sourceApp,
+          accessChannel: 'WEB',
+          outcome: 'DENIED',
+          reasonCode: failure.code,
+        },
+      }));
+      return { denied: failure };
+    };
 
     const transactionResult = await withAuditOutboxTransaction({
       adapter: pool,
@@ -257,7 +282,7 @@ export function createInternalWorkforceAuthenticator({
           userId: identity.user_id,
         });
         if (!credential || isFutureDate(credential.locked_until, now())) {
-          return { denied: authFailure('INTERNAL_AUTH_INVALID_CREDENTIALS') };
+          return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_INVALID_CREDENTIALS'));
         }
 
         const passwordOk = await verifyInternalPassword(password, credential.password_hash);
@@ -268,7 +293,7 @@ export function createInternalWorkforceAuthenticator({
             lockThreshold: LOCK_THRESHOLD,
             lockSeconds: LOCK_SECONDS,
           });
-          return { denied: authFailure('INTERNAL_AUTH_INVALID_CREDENTIALS') };
+          return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_INVALID_CREDENTIALS'));
         }
 
         const challenge = challengeResult(config, payload.ownerCode);
@@ -281,7 +306,7 @@ export function createInternalWorkforceAuthenticator({
               lockSeconds: LOCK_SECONDS,
             });
           }
-          return { denied: authFailure(challenge.code, challenge.statusCode) };
+          return auditDeniedLogin(client, authFailure(challenge.code, challenge.statusCode));
         }
 
         await repo.resetPasswordFailures(client, {
@@ -301,13 +326,6 @@ export function createInternalWorkforceAuthenticator({
           sourceApp,
           expiresAt: expiresAt.toISOString(),
         });
-        const requestContext = {
-          installationId: payload.installationId,
-          actorId,
-          employeeId: identity.employee_id,
-          sourceApp,
-          requestId: text(payload.requestId) || `auth_${sessionId}`,
-        };
         await insertAuditRecord(client, buildAuditRecord({
           requestContext,
           action: 'login',
