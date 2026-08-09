@@ -310,17 +310,25 @@ export function createInternalWorkforceAuthenticator({
           return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_INVALID_CREDENTIALS'));
         }
 
-        const challenge = challengeResult(config, payload.ownerCode);
-        if (!challenge.ok) {
-          if (challenge.code === 'INTERNAL_AUTH_OWNER_CODE_INVALID') {
-            await repo.recordPasswordFailure(client, {
+        const ownerBinding = typeof repo.getSecurityOwnerBindingForUser === 'function'
+          ? await repo.getSecurityOwnerBindingForUser(client, {
               installationId: payload.installationId,
               userId: identity.user_id,
-              lockThreshold: LOCK_THRESHOLD,
-              lockSeconds: LOCK_SECONDS,
-            });
+            })
+          : { owner_kind: 'UNKNOWN' };
+        if (ownerBinding) {
+          const challenge = challengeResult(config, payload.ownerCode);
+          if (!challenge.ok) {
+            if (challenge.code === 'INTERNAL_AUTH_OWNER_CODE_INVALID') {
+              await repo.recordPasswordFailure(client, {
+                installationId: payload.installationId,
+                userId: identity.user_id,
+                lockThreshold: LOCK_THRESHOLD,
+                lockSeconds: LOCK_SECONDS,
+              });
+            }
+            return auditDeniedLogin(client, authFailure(challenge.code, challenge.statusCode));
           }
-          return auditDeniedLogin(client, authFailure(challenge.code, challenge.statusCode));
         }
 
         await repo.resetPasswordFailures(client, {
