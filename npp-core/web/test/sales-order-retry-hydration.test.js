@@ -11,13 +11,15 @@ const workspaceSource = readFileSync(
   'utf8',
 );
 
-test('any failed confirm recovers the last committed draft and rotates the next confirm idempotency key', () => {
-  assert.match(uiSource, /failedConfirmOrderIds/);
-  assert.match(uiSource, /failedConfirmOrderIds\.add\(confirmedOrderId\)/);
+test('any failed confirm recovers the committed draft using its latest revision and a fresh save key', () => {
+  assert.match(uiSource, /isConfirm\(request\.path, requestMethod\) && lastSavedDraft/);
   assert.match(uiSource, /draftRecovery = lastSavedDraft/);
-  assert.match(uiSource, /sales-confirm-retry-/);
+  assert.match(uiSource, /sales-save-recovery-/);
   assert.match(uiSource, /expectedRevision: draft\.revision/);
+  assert.match(uiSource, /Object\.fromEntries\(new Headers\(request\.init\.headers/);
   assert.match(uiSource, /payload\?\.error\?\.retryable === true \|\| response\.status >= 500/);
+  assert.doesNotMatch(uiSource, /failedConfirmOrderIds/);
+  assert.doesNotMatch(uiSource, /sales-confirm-retry-/);
 });
 
 test('Sales Order timestamps render deterministically in Vietnam time during SSR and hydration', () => {

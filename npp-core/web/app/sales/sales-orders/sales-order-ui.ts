@@ -68,7 +68,6 @@ type DraftRecovery = Readonly<{ order: SalesOrder }>;
 
 let lastSavedDraft: DraftRecovery | null = null;
 let draftRecovery: DraftRecovery | null = null;
-const failedConfirmOrderIds = new Set<string>();
 
 function methodOf(init: RequestInit): string {
   return String(init.method ?? 'GET').toUpperCase();
@@ -105,7 +104,6 @@ function isSalesOrder(value: unknown): value is SalesOrder {
 function resetDraftRecovery(): void {
   lastSavedDraft = null;
   draftRecovery = null;
-  failedConfirmOrderIds.clear();
 }
 
 function validateDraftDiscountIntent(path: string, init: RequestInit): void {
@@ -154,68 +152,59 @@ function recoverCommittedDraft(path: string, init: RequestInit): {
   const recoveredPath = path === '/api/sales-orders'
     ? `/api/sales-orders/${draftRecovery.order.id}/draft`
     : path;
+  const headers = Object.fromEntries(new Headers(init.headers ?? {}).entries());
+  headers['idempotency-key'] = `sales-save-recovery-${crypto.randomUUID()}`;
   return {
     path: recoveredPath,
     init: {
       ...init,
       method: 'PUT',
+      headers,
       body: JSON.stringify({ ...body, expectedRevision: draft.revision }),
     },
     recovered: true,
   };
 }
 
-function withFreshConfirmKey(path: string, init: RequestInit): RequestInit {
-  if (!isConfirm(path, methodOf(init))) return init;
-  const orderId = orderIdFromPath(path);
-  if (!orderId || !failedConfirmOrderIds.has(orderId)) return init;
-  const headers = new Headers(init.headers ?? {});
-  headers.set('Idempotency-Key', `sales-confirm-retry-${crypto.randomUUID()}`);
-  return { ...init, headers };
-}
-
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const initialMethod = methodOf(init);
   if (isEntrySettings(path, initialMethod)) resetDraftRecovery();
 
-  const recovered = recoverCommittedDraft(path, init);
-  const requestInit = withFreshConfirmKey(recovered.path, recovered.init);
-  const requestMethod = methodOf(requestInit);
-  validateDraftDiscountIntent(recovered.path, requestInit);
-  const response = await fetch(recovered.path, {
-    ...requestInit,
+  const request = recoverCommittedDraft(path, init);
+  const requestMethod = methodOf(request.init);
+  validateDraftDiscountIntent(request.path, request.init);
+  const response = await fetch(request.path, {
+    ...request.init,
     cache: 'no-store',
     headers: {
       Accept: 'application/json',
-      ...(requestInit.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      ...(requestInit.headers ?? {}),
+      ...(request.init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...Object.fromEntries(new Headers(request.init.headers ?? {}).entries()),
     },
   });
   const payload = await response.json().catch(() => null) as ApiEnvelope<T> | null;
   if (!response.ok || !payload || !Object.prototype.hasOwnProperty.call(payload, 'data')) {
     const code = payload?.error?.code ?? 'SALES_ORDER_REQUEST_FAILED';
-    if (isConfirm(recovered.path, requestMethod)) {
-      const confirmedOrderId = orderIdFromPath(recovered.path);
-      if (confirmedOrderId) {
-        failedConfirmOrderIds.add(confirmedOrderId);
-        if (lastSavedDraft?.order.id === confirmedOrderId) draftRecovery = lastSavedDraft;
-      }
+    const priceChangedConfirm = code === 'SALES_PRICE_CHANGED' && isConfirm(request.path, requestMethod);
+    if (isConfirm(request.path, requestMethod) && lastSavedDraft) {
+      const confirmedOrderId = orderIdFromPath(request.path);
+      if (confirmedOrderId === lastSavedDraft.order.id) draftRecovery = lastSavedDraft;
     }
     throw new SalesOrderUiError(
       code,
       payload?.error?.message ?? 'Yêu cầu bán hàng không thành công',
-      payload?.error?.retryable === true || response.status >= 500,
+      payload?.error?.retryable === true || response.status >= 500 || priceChangedConfirm,
       payload?.error?.details ?? {},
       response.status,
     );
   }
 
   const data = payload.data as T;
-  if (isDraftSave(recovered.path, requestMethod) && isSalesOrder(data)) {
+  if (isDraftSave(request.path, requestMethod) && isSalesOrder(data)) {
     lastSavedDraft = { order: data };
-    if (recovered.recovered) draftRecovery = lastSavedDraft;
+    if (request.recovered) draftRecovery = lastSavedDraft;
   }
-  if (isConfirm(recovered.path, requestMethod)) resetDraftRecovery();
+  if (isConfirm(request.path, requestMethod)) resetDraftRecovery();
   return data;
 }
 
