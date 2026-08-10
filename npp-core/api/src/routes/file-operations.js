@@ -1,7 +1,11 @@
 import { createSuccessEnvelope } from '@npp/contracts';
 import { sendError, sendJson, sendSuccess } from '../http-utils.js';
 import { normalizeIdempotencyKey, readJsonBody } from '../idempotency.js';
-import { withAuditOutboxTransaction } from '../audit-outbox.js';
+import {
+  buildAuditRecord,
+  insertAuditRecord,
+  withAuditOutboxTransaction,
+} from '../audit-outbox.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
 import * as service from '../services/file-operations.js';
 
@@ -10,6 +14,17 @@ const STOCKTAKE_PERMISSIONS = Object.freeze({
   create: 'core.stocktake.create',
   count: 'core.stocktake.count',
 });
+
+const OFFICIAL_POST_PATHS = new Set([
+  '/api/file-operations/products/export',
+  '/api/file-operations/products/import',
+  '/api/file-operations/pricing/export',
+  '/api/file-operations/pricing/import',
+  '/api/file-operations/stocktake/export',
+  '/api/file-operations/stocktake/import',
+  '/api/file-operations/inventory/movements/export',
+  '/api/file-operations/quotation',
+]);
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -27,7 +42,13 @@ function statusFor(result) {
 function sendServiceError(res, result, options) {
   sendError(
     res,
-    apiError(result.code ?? 'FILE_OPERATION_FAILED', result.message ?? 'File operation failed', result.details ?? {}, Boolean(result.retryable), statusFor(result)),
+    apiError(
+      result.code ?? 'FILE_OPERATION_FAILED',
+      result.message ?? 'File operation failed',
+      result.details ?? {},
+      Boolean(result.retryable),
+      statusFor(result),
+    ),
     options.requestId,
     options.receivedAt,
   );
@@ -69,7 +90,9 @@ function withWarehouseScopes(requestContext, warehouseIds) {
   return Object.freeze({
     ...requestContext,
     scopes,
-    authContext: requestContext.authContext ? Object.freeze({ ...requestContext.authContext, scopes }) : requestContext.authContext,
+    authContext: requestContext.authContext
+      ? Object.freeze({ ...requestContext.authContext, scopes })
+      : requestContext.authContext,
   });
 }
 
@@ -115,8 +138,44 @@ function requireIdempotency(req) {
     if (!key) return { ok: false, code: 'MISSING_IDEMPOTENCY_KEY', message: 'Idempotency-Key header is required' };
     return { ok: true, key };
   } catch (error) {
-    return { ok: false, code: error.code ?? 'INVALID_IDEMPOTENCY_KEY', message: 'Idempotency-Key must use 1-128 safe characters' };
+    return {
+      ok: false,
+      code: error.code ?? 'INVALID_IDEMPOTENCY_KEY',
+      message: 'Idempotency-Key must use 1-128 safe characters',
+    };
   }
+}
+
+function sanitizeOfficialResult(pathname, result) {
+  if (pathname !== '/api/file-operations/stocktake/export' || !result?.ok) return result;
+  const columns = Array.isArray(result.columns)
+    ? result.columns.filter((column) => column !== 'systemQuantity')
+    : result.columns;
+  const rows = Array.isArray(result.rows)
+    ? result.rows.map((row) => {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+      const { systemQuantity: _hidden, ...safe } = row;
+      return Object.freeze(safe);
+    })
+    : result.rows;
+  return Object.freeze({ ...result, columns: columns ? Object.freeze(columns) : columns, rows: rows ? Object.freeze(rows) : rows });
+}
+
+function auditSummary(pathname, result) {
+  const rowCount = Array.isArray(result.rows)
+    ? result.rows.length
+    : Number.isInteger(result.import?.totalItems)
+      ? result.import.totalItems
+      : Number.isInteger(result.import?.imported)
+        ? result.import.imported
+        : null;
+  return Object.freeze({
+    jobId: result.jobId ?? null,
+    operation: pathname.replace('/api/file-operations/', ''),
+    rowCount,
+    stocktakeId: result.stocktake?.id ?? null,
+    stocktakeStatus: result.stocktake?.status ?? null,
+  });
 }
 
 async function executeOfficialOperation(req, res, options, { requestContext, pathname, payload, operation }) {
@@ -135,28 +194,42 @@ async function executeOfficialOperation(req, res, options, { requestContext, pat
       route: `POST ${pathname}`,
       payload,
       onProcess: async () => {
-        const result = await withAuditOutboxTransaction({
+        const transaction = await withAuditOutboxTransaction({
           adapter: options.getPool(),
-          mutate: (client) => operation(client),
+          mutate: async (client) => {
+            const rawResult = await operation(client);
+            if (!rawResult.ok) return { failed: rawResult, skipAudit: true };
+            const result = sanitizeOfficialResult(pathname, rawResult);
+            const summary = auditSummary(pathname, result);
+            await insertAuditRecord(client, buildAuditRecord({
+              requestContext,
+              action: 'file_operation',
+              resourceType: 'import_export_job',
+              resourceId: result.jobId ?? options.requestId,
+              afterData: summary,
+              metadata: { pathname },
+            }));
+            return { result };
+          },
         });
-        if (!result.ok) {
+        if (transaction.failed) {
           return {
-            statusCode: statusFor(result),
+            statusCode: statusFor(transaction.failed),
             contentType: 'application/json',
             requestId: options.requestId,
             body: {
               error: {
-                code: result.code,
-                message: result.message,
-                retryable: Boolean(result.retryable),
-                details: result.details ?? {},
+                code: transaction.failed.code,
+                message: transaction.failed.message,
+                retryable: Boolean(transaction.failed.retryable),
+                details: transaction.failed.details ?? {},
               },
               requestId: options.requestId,
               receivedAt: options.receivedAt,
             },
           };
         }
-        const { ok: _ok, ...data } = result;
+        const { ok: _ok, ...data } = transaction.result;
         return {
           statusCode: 200,
           contentType: 'application/json',
@@ -168,7 +241,12 @@ async function executeOfficialOperation(req, res, options, { requestContext, pat
     res.setHeader('Cache-Control', 'no-store');
     sendJson(res, execution.response.statusCode, execution.response.body, execution.response.requestId ?? options.requestId, execution.response.contentType);
   } catch {
-    sendError(res, apiError('FILE_OPERATION_STORAGE_UNAVAILABLE', 'File operation storage is temporarily unavailable', {}, true, 503), options.requestId, options.receivedAt);
+    sendError(
+      res,
+      apiError('FILE_OPERATION_STORAGE_UNAVAILABLE', 'File operation storage is temporarily unavailable', {}, true, 503),
+      options.requestId,
+      options.receivedAt,
+    );
   }
 }
 
@@ -177,19 +255,9 @@ export async function handleFileOperationRoutes(req, res, options) {
   const pathname = url.pathname;
   if (!pathname.startsWith('/api/file-operations/')) return false;
   const method = String(req.method || 'GET').toUpperCase();
-  const known = new Set([
-    '/api/file-operations/products/export',
-    '/api/file-operations/products/import',
-    '/api/file-operations/pricing/export',
-    '/api/file-operations/pricing/import',
-    '/api/file-operations/stocktake/export',
-    '/api/file-operations/stocktake/import',
-    '/api/file-operations/inventory/movements',
-    '/api/file-operations/inventory/movements/export',
-    '/api/file-operations/quotation',
-  ]);
-  if (!known.has(pathname)) return false;
-  if (pathname === '/api/file-operations/inventory/movements' ? method !== 'GET' : method !== 'POST') {
+  const isMovementRead = pathname === '/api/file-operations/inventory/movements';
+  if (!isMovementRead && !OFFICIAL_POST_PATHS.has(pathname)) return false;
+  if (isMovementRead ? method !== 'GET' : method !== 'POST') {
     sendError(res, apiError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405), options.requestId, options.receivedAt);
     return true;
   }
@@ -197,7 +265,7 @@ export async function handleFileOperationRoutes(req, res, options) {
   const requestContext = await authenticateAndAuthorize(req, res, options, pathname, method);
   if (!requestContext) return true;
 
-  if (method === 'GET' && pathname === '/api/file-operations/inventory/movements') {
+  if (isMovementRead) {
     try {
       const result = await service.listMovementRows(options.getPool(), {
         requestContext,
@@ -218,68 +286,49 @@ export async function handleFileOperationRoutes(req, res, options) {
   const payload = await readPayload(req, res, options);
   if (payload === null) return true;
 
-  if (pathname === '/api/file-operations/products/export') {
-    await executeOfficialOperation(req, res, options, {
-      requestContext, pathname, payload,
-      operation: (client) => service.exportProductRows(client, { requestContext, format: payload?.format }),
-    });
-    return true;
-  }
-  if (pathname === '/api/file-operations/products/import') {
-    await executeOfficialOperation(req, res, options, {
-      requestContext, pathname, payload,
-      operation: (client) => service.importProductRows(client, { requestContext, payload }),
-    });
-    return true;
-  }
-  if (pathname === '/api/file-operations/pricing/export') {
-    await executeOfficialOperation(req, res, options, {
-      requestContext, pathname, payload,
-      operation: (client) => service.exportPricingRows(client, { requestContext, format: payload?.format }),
-    });
-    return true;
-  }
-  if (pathname === '/api/file-operations/pricing/import') {
-    await executeOfficialOperation(req, res, options, {
-      requestContext, pathname, payload,
-      operation: (client) => service.importPricingRows(client, { requestContext, payload }),
-    });
-    return true;
-  }
-  if (pathname === '/api/file-operations/stocktake/export') {
-    await executeOfficialOperation(req, res, options, {
-      requestContext, pathname, payload,
-      operation: (client) => service.exportStocktakeRows(client, {
-        requestContext, warehouseId: payload?.warehouseId, format: payload?.format,
-      }),
-    });
-    return true;
-  }
-  if (pathname === '/api/file-operations/stocktake/import') {
-    await executeOfficialOperation(req, res, options, {
-      requestContext, pathname, payload,
-      operation: (client) => service.importStocktakeRows(client, { requestContext, payload }),
-    });
-    return true;
-  }
-  if (pathname === '/api/file-operations/inventory/movements/export') {
-    await executeOfficialOperation(req, res, options, {
-      requestContext, pathname, payload,
-      operation: (client) => service.listMovementRows(client, {
-        requestContext,
-        filters: payload?.filters ?? {},
-        format: payload?.format,
-        recordExport: true,
-      }),
-    });
-    return true;
-  }
-  if (pathname === '/api/file-operations/quotation') {
-    await executeOfficialOperation(req, res, options, {
-      requestContext, pathname, payload,
-      operation: (client) => service.buildQuotationRows(client, { requestContext, payload }),
-    });
-    return true;
-  }
-  return false;
+  const operations = {
+    '/api/file-operations/products/export': (client) => service.exportProductRows(client, {
+      requestContext,
+      format: payload?.format,
+    }),
+    '/api/file-operations/products/import': (client) => service.importProductRows(client, {
+      requestContext,
+      payload,
+    }),
+    '/api/file-operations/pricing/export': (client) => service.exportPricingRows(client, {
+      requestContext,
+      format: payload?.format,
+    }),
+    '/api/file-operations/pricing/import': (client) => service.importPricingRows(client, {
+      requestContext,
+      payload,
+    }),
+    '/api/file-operations/stocktake/export': (client) => service.exportStocktakeRows(client, {
+      requestContext,
+      warehouseId: payload?.warehouseId,
+      format: payload?.format,
+    }),
+    '/api/file-operations/stocktake/import': (client) => service.importStocktakeRows(client, {
+      requestContext,
+      payload,
+    }),
+    '/api/file-operations/inventory/movements/export': (client) => service.listMovementRows(client, {
+      requestContext,
+      filters: payload?.filters ?? {},
+      format: payload?.format,
+      recordExport: true,
+    }),
+    '/api/file-operations/quotation': (client) => service.buildQuotationRows(client, {
+      requestContext,
+      payload,
+    }),
+  };
+
+  await executeOfficialOperation(req, res, options, {
+    requestContext,
+    pathname,
+    payload,
+    operation: operations[pathname],
+  });
+  return true;
 }

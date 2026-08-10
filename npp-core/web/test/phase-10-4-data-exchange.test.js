@@ -8,14 +8,14 @@ const root = path.resolve(import.meta.dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
 test('Phase 10.4 generic XLSX round-trips a tabular workbook', () => {
-  const workbook = createTabularXlsx({ sheetName: 'Kiểm kê', headers: ['warehouseCode', 'sku', 'actualCount'], rows: [['KHO-A', 'SKU-001', '12.5'], ['KHO-A', 'SKU-002', '0']] });
+  const workbook = createTabularXlsx({ sheetName: 'Kiểm ké', headers: ['warehouseCode', 'sku', 'actualCount'], rows: [['KHO-A', 'SKU-001', '12.5'], ['KHO-A', 'SKU-002', '0']] });
   assert.equal(workbook.subarray(0, 2).toString('utf8'), 'PK');
   assert.deepEqual(parseTabularXlsx(workbook), [['warehouseCode', 'sku', 'actualCount'], ['KHO-A', 'SKU-001', '12.5'], ['KHO-A', 'SKU-002', '0']]);
 });
 
 test('Phase 10.4 workspace uses official file-operation APIs and canonical inventory drill-down', () => {
   const source = read('app/operations/data-exchange/workspace.tsx');
-  for (const route of ['products/export', 'products/import', 'pricing/export', 'pricing/import', 'stocktake/export', 'stocktake/import', 'quotation']) assert.match(source, new RegExp(`/api/file-operations/${route}`));
+  for (const path of ['products/export', 'products/import', 'pricing/export', 'pricing/import', 'stocktake/export', 'stocktake/import', 'quotation']) assert.match(source, new RegExp(`/api/file-operations/${path}`));
   assert.match(source, /\/api\/inventory\/balances\/drill-down/);
   assert.doesNotMatch(source, /\/api\/inventory\/balances[^'"`]*['"`][\s\S]{0,80}method:\s*['"](?:POST|PUT|PATCH|DELETE)['"]/);
   assert.doesNotMatch(source, /baseQuantityDelta\s*:/);
@@ -38,6 +38,17 @@ test('Phase 10.4 pricing keeps legacy blank-sourceKey rows on optimistic canonic
   assert.match(source, /blankSource/);
   assert.match(source, /expectedUpdatedAt: match\.item\.updated_at/);
   assert.match(source, /\/api\/price-lists\/\$\{list\.id\}\/items\/\$\{match\.item\.id\}/);
+});
+
+
+test('Phase 10.4 rejects ambiguous legacy price matches and preserves quotation lineage', () => {
+  const source = read('app/operations/data-exchange/workspace.tsx');
+  assert.match(source, /const matches = existingRows\.filter/);
+  assert.match(source, /matches\.length !== 1/);
+  assert.match(source, /effective_from/);
+  assert.match(source, /lineTotal: String\(row\.lineTotalMinor/);
+  assert.match(source, /priceListCode: String\(row\.priceListCode/);
+  assert.match(source, /row\.lineTotal, row\.priceListCode/);
 });
 
 test('Phase 10.4 page is reachable from canonical import/export history', () => {

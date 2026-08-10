@@ -47,7 +47,7 @@ type Movement = {
 
 type ApiEnvelope<T> = { data?: T; error?: { code?: string; message?: string; retryable?: boolean } };
 type RowMap = Record<string, string>;
-type QuotationRow = { sku: string; name: string; product: string; basePrice: string; finalPrice: string; currency: string; error: string };
+type QuotationRow = { sku: string; name: string; product: string; quantity: string; finalPrice: string; lineTotal: string; priceListCode: string; currency: string; error: string };
 type MovementView = Movement & { stockAfter: string };
 
 const PRODUCT_COLUMNS = [
@@ -277,12 +277,20 @@ export default function DataExchangeWorkspace() {
           const listCode = String(row.priceListCode ?? '').trim().toUpperCase(); const sku = String(row.sku ?? '').trim().toUpperCase(); const adjustmentType = String(row.adjustmentType ?? '').trim().toUpperCase();
           const list = listByCode.get(listCode); if (!list) throw new Error(`Dòng giá ${index + 1}: priceListCode ${listCode || 'trống'} không tồn tại.`);
           const minQuantity = exactQuantity(String(row.minQuantity ?? '0'), 'minQuantity', 6); const maxQuantity = String(row.maxQuantity ?? '').trim() ? exactQuantity(String(row.maxQuantity), 'maxQuantity', 6) : null;
-          const match = existingRows.find(({ list: currentList, item }) => currentList.id === list.id && item.sku.toUpperCase() === sku && item.adjustment_type === adjustmentType && trimDecimal(item.min_quantity) === trimDecimal(minQuantity) && trimDecimal(item.max_quantity ?? '') === trimDecimal(maxQuantity ?? ''));
-          if (!match) throw new Error(`Không thể cập nhật ${listCode}/${sku}: dòng cũ chưa có sourceKey và không tìm thấy identity duy nhất để PATCH.`);
+          const effectiveFrom = optional(row.effectiveFrom); const effectiveTo = optional(row.effectiveTo);
+          const matches = existingRows.filter(({ list: currentList, item }) => currentList.id === list.id
+            && item.sku.toUpperCase() === sku
+            && item.adjustment_type === adjustmentType
+            && trimDecimal(item.min_quantity) === trimDecimal(minQuantity)
+            && trimDecimal(item.max_quantity ?? '') === trimDecimal(maxQuantity ?? '')
+            && String(item.effective_from ?? '') === String(effectiveFrom ?? '')
+            && String(item.effective_to ?? '') === String(effectiveTo ?? ''));
+          if (matches.length !== 1) throw new Error(`Không thể cập nhật ${listCode}/${sku}: cần đúng 1 dòng legacy khớp identity + khoảng hiệu lực, hiện có ${matches.length}.`);
+          const match = matches[0];
           const amountMinor = optional(row.amountMinor); const rateBps = optional(row.rateBps);
           await requestJson(`/api/price-lists/${list.id}/items/${match.item.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
             adjustmentType, amountMinor, rateBps: rateBps ? Number(rateBps) : null, minQuantity, maxQuantity,
-            effectiveFrom: optional(row.effectiveFrom), effectiveTo: optional(row.effectiveTo), externalRuleCode: optional(row.externalRuleCode), note: optional(row.note),
+            effectiveFrom, effectiveTo, externalRuleCode: optional(row.externalRuleCode), note: optional(row.note),
             isActive: bool(String(row.isActive ?? ''), 'isActive'), expectedUpdatedAt: match.item.updated_at,
           }) });
         }
@@ -331,7 +339,11 @@ export default function DataExchangeWorkspace() {
       const result = await requestJson<OfficialRows>('/api/file-operations/quotation', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotency('p10_quotation') }, body: JSON.stringify({
         skus: unique, quantity, currencyCode: 'VND', channelId: quotationContext.channelId || null, customerGroupId: quotationContext.customerGroupId || null, customerId: quotationContext.customerId || null, format: 'tabular',
       }) });
-      const rows = result.rows.map((row) => ({ sku: String(row.sku ?? ''), name: String(row.skuName ?? ''), product: String(row.productName ?? ''), basePrice: '', finalPrice: String(row.unitPriceMinor ?? ''), currency: String(row.currencyCode ?? 'VND'), error: '' }));
+      const rows = result.rows.map((row) => ({
+        sku: String(row.sku ?? ''), name: String(row.skuName ?? ''), product: String(row.productName ?? ''),
+        quantity: String(row.quantity ?? quantity), finalPrice: String(row.unitPriceMinor ?? ''), lineTotal: String(row.lineTotalMinor ?? ''),
+        priceListCode: String(row.priceListCode ?? ''), currency: String(row.currencyCode ?? 'VND'), error: '',
+      }));
       setQuotationRows(rows); setMessage(`Đã tính giá canonical cho ${rows.length} SKU${result.jobId ? ` · job ${result.jobId}` : ''}.`);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
@@ -340,7 +352,7 @@ export default function DataExchangeWorkspace() {
     begin();
     try {
       if (!quotationRows.length) throw new Error('Hãy tính báo giá trước khi xuất file.');
-      const rows = quotationRows.map((row) => [row.sku, row.product, row.name, quotationContext.quantity, row.currency, row.finalPrice, '', '']);
+      const rows = quotationRows.map((row) => [row.sku, row.product, row.name, row.quantity, row.currency, row.finalPrice, row.lineTotal, row.priceListCode]);
       await exportTable('bao-gia.xlsx', 'Báo giá', [...QUOTATION_COLUMNS], rows, format); setMessage(`Đã xuất ${rows.length} dòng báo giá.`);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
@@ -398,7 +410,7 @@ export default function DataExchangeWorkspace() {
         <label className={styles.field}>Nhóm khách<select value={quotationContext.customerGroupId} onChange={(event) => setQuotationContext({ ...quotationContext, customerGroupId: event.target.value })}><option value="">Không chọn</option>{groups.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label>
         <label className={styles.field}>Khách hàng<select value={quotationContext.customerId} onChange={(event) => setQuotationContext({ ...quotationContext, customerId: event.target.value })}><option value="">Không chọn</option>{customers.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label>
         <label className={styles.field}>Số lượng<input inputMode="decimal" value={quotationContext.quantity} onChange={(event) => setQuotationContext({ ...quotationContext, quantity: event.target.value })} /></label></div>
-        {quotationRows.length ? <div className={styles.tableWrap}><table><thead><tr><th>SKU</th><th>Sản phẩm</th><th>Giá nền</th><th>Giá áp dụng</th><th>Trạng thái</th></tr></thead><tbody>{quotationRows.map((row) => <tr key={row.sku}><td><strong>{row.sku}</strong><small>{row.name}</small></td><td>{row.product}</td><td>{row.basePrice || '—'}</td><td>{row.finalPrice || '—'}</td><td>{row.error || 'Đã tính'}</td></tr>)}</tbody></table></div> : null}
+        {quotationRows.length ? <div className={styles.tableWrap}><table><thead><tr><th>SKU</th><th>Sản phẩm</th><th>SL</th><th>Giá áp dụng</th><th>Thành tiền</th><th>Bảng giá gốc</th><th>Trạng thái</th></tr></thead><tbody>{quotationRows.map((row) => <tr key={row.sku}><td><strong>{row.sku}</strong><small>{row.name}</small></td><td>{row.product}</td><td>{row.quantity}</td><td>{row.finalPrice || '—'}</td><td>{row.lineTotal || '—'}</td><td>{row.priceListCode || '—'}</td><td>{row.error || 'Đã tính'}</td></tr>)}</tbody></table></div> : null}
       </section> : null}
 
       {tab === 'movements' ? <section className={styles.panel}><div className={styles.panelTitle}><div><h2>Tra cứu biến động theo SKU</h2><p>Balance trả lời còn bao nhiêu; ledger drill-down trả lời từng lần +/− và chứng từ nguồn.</p></div><button type="button" className={styles.primaryButton} onClick={() => void loadMovements()} disabled={busy}>Truy vấn biến động</button></div>
