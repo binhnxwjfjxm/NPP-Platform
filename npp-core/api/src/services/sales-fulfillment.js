@@ -198,6 +198,17 @@ export async function replaceSalesOrderFulfillmentDemand(client, {
   const normalized = normalizeInputRows(rows, requestContext);
   if (!normalized.ok) return normalized;
 
+  if (await repository.hasActiveAllocationFacts(client, {
+    installationId: requestContext.installationId,
+    salesOrderId,
+  })) {
+    return failure(
+      'SALES_ORDER_HAS_EXECUTION_FACTS',
+      'Đơn bán hàng đã có phân bổ/soạn hàng; không thể xác nhận phiên bản mới trực tiếp.',
+      false,
+    );
+  }
+
   const settings = await repository.getFulfillmentSettings(client, {
     installationId: requestContext.installationId,
   });
