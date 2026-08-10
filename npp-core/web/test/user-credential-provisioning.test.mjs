@@ -12,6 +12,18 @@ test('user workspace provisions employee login, role and password before activat
   assert.match(source, /Tạo tài khoản/);
 });
 
+test('partial user provisioning keeps the same modal draft and resumes as edit instead of creating again', async () => {
+  const source = await readFile(new URL('../app/access/users/user-workspace.tsx', import.meta.url), 'utf8');
+  const partialStart = source.indexOf('if (!created) throw caught;');
+  const partialEnd = source.indexOf("'USER_PROVISIONING_INCOMPLETE'", partialStart);
+  assert.ok(partialStart >= 0 && partialEnd > partialStart, 'partial provisioning recovery branch must exist');
+  const recovery = source.slice(partialStart, partialEnd);
+  assert.match(recovery, /setEditor\(\{ mode: 'edit', userId: created\.id \}\)/);
+  assert.match(recovery, /mergeUser\(current, latest\)/);
+  assert.doesNotMatch(recovery, /closeEditor\(\)|setDraft\(emptyDraft\(\)\)/);
+  assert.match(source, /if \(busy === 'save'\) return;/);
+});
+
 test('credential proxy uses the canonical workforce session and Core credential endpoint', async () => {
   const source = await readFile(new URL('../app/api/access/users/[id]/credential/route.ts', import.meta.url), 'utf8');
   assert.match(source, /requireNppWorkforceSessionToken/);
