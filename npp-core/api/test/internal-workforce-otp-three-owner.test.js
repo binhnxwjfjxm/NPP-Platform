@@ -52,7 +52,7 @@ function auditPool() {
   };
 }
 
-function challengeRepo(passwordHash, state = {}) {
+function challengeRepo(passwordHash, state = {}, ownerKind = 'PERMANENT') {
   return {
     async findLoginIdentity() {
       return {
@@ -75,7 +75,7 @@ function challengeRepo(passwordHash, state = {}) {
         roles: [],
         permissionKeys: [],
         scopes: { branchIds: [], warehouseIds: [], territoryIds: [] },
-        ownerKind: 'PERMANENT',
+        ownerKind,
         webLoginChallengeRequired: false,
       };
     },
@@ -100,7 +100,7 @@ function challengeRepo(passwordHash, state = {}) {
   };
 }
 
-async function issueChallenge(fetchImpl, state = {}) {
+async function issueChallenge(fetchImpl, state = {}, ownerKind = 'PERMANENT') {
   const passwordHash = await hashInternalPassword(PASSWORD);
   const pool = auditPool();
   const authenticator = createInternalWorkforceAuthenticator({
@@ -108,12 +108,12 @@ async function issueChallenge(fetchImpl, state = {}) {
     env: challengeEnv(),
     fetchImpl,
     pool,
-    repo: challengeRepo(passwordHash, state),
+    repo: challengeRepo(passwordHash, state, ownerKind),
     now: () => NOW,
   });
   const result = await authenticator.login({
     installationId: INSTALLATION_ID,
-    requestId: 'req_three_owner_otp',
+    requestId: 'req_owner_otp',
     loginName: 'employee@example.test',
     password: PASSWORD,
     sourceApp: 'npp-operations-web',
@@ -121,7 +121,7 @@ async function issueChallenge(fetchImpl, state = {}) {
   return { result, pool };
 }
 
-test('production OTP targets exactly the normalized unique 2 permanent + 1 temporary Owner set', async () => {
+test('production OTP targets exactly the normalized unique 2 permanent Security Owners', async () => {
   let outbound = null;
   const fetchImpl = async (_url, options) => {
     outbound = JSON.parse(options.body);
@@ -146,9 +146,9 @@ test('production OTP targets exactly the normalized unique 2 permanent + 1 tempo
   assert.deepEqual(outbound.to, [
     'owner1@example.test',
     'owner2@example.test',
-    'implementation@example.test',
   ]);
-  assert.equal(new Set(outbound.to).size, 3);
+  assert.equal(new Set(outbound.to).size, 2);
+  assert.equal(outbound.to.includes('implementation@example.test'), false);
   assert.equal(outbound.to.includes('employee@example.test'), false);
   assert.deepEqual(outbound.from, {
     address: 'security@example.test',
@@ -160,10 +160,36 @@ test('production OTP targets exactly the normalized unique 2 permanent + 1 tempo
     && values[6] === 'login_challenge_issued'
   ));
   assert.ok(issuedAudit);
-  assert.equal(issuedAudit.values[10].recipientCount, 3);
+  assert.equal(issuedAudit.values[10].recipientCount, 2);
 });
 
-test('production OTP fails closed when any Owner recipient is not delivered or queued', async () => {
+test('temporary Implementation Owner is challenged but never receives the OTP', async () => {
+  let outbound = null;
+  const fetchImpl = async (_url, options) => {
+    outbound = JSON.parse(options.body);
+    return {
+      ok: true,
+      async json() {
+        return {
+          success: true,
+          result: {
+            delivered: outbound.to,
+            queued: [],
+            permanent_bounces: [],
+          },
+        };
+      },
+    };
+  };
+
+  const { result } = await issueChallenge(fetchImpl, {}, 'TEMPORARY');
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'INTERNAL_AUTH_OWNER_CHALLENGE_REQUIRED');
+  assert.deepEqual(outbound.to, ['owner1@example.test', 'owner2@example.test']);
+  assert.equal(outbound.to.includes('implementation@example.test'), false);
+});
+
+test('production OTP fails closed when any permanent Security Owner recipient is not delivered or queued', async () => {
   const state = {};
   const fetchImpl = async (_url, options) => {
     const outbound = JSON.parse(options.body);
@@ -173,7 +199,7 @@ test('production OTP fails closed when any Owner recipient is not delivered or q
         return {
           success: true,
           result: {
-            delivered: outbound.to.slice(0, 2),
+            delivered: outbound.to.slice(0, 1),
             queued: [],
             permanent_bounces: [],
           },
@@ -189,7 +215,7 @@ test('production OTP fails closed when any Owner recipient is not delivered or q
   assert.equal(state.cancelled, 1);
 });
 
-test('production OTP fails closed on any permanent bounce even when all Owners are accepted', async () => {
+test('production OTP fails closed on any permanent bounce even when both Security Owners are accepted', async () => {
   const state = {};
   const fetchImpl = async (_url, options) => {
     const outbound = JSON.parse(options.body);
@@ -201,7 +227,7 @@ test('production OTP fails closed on any permanent bounce even when all Owners a
           result: {
             delivered: outbound.to,
             queued: [],
-            permanent_bounces: [outbound.to[2]],
+            permanent_bounces: [outbound.to[1]],
           },
         };
       },
