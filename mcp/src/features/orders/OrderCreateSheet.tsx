@@ -64,7 +64,7 @@ function catalogPrice(value: unknown) {
 }
 
 function catalogPriceLabel(value?: number | null) {
-  return value === null || value === undefined ? "Giá theo Core" : money.format(value);
+  return value === null || value === undefined ? "Chưa có giá Core" : money.format(value);
 }
 
 function apiErrorMessage(payload: unknown, fallback: string) {
@@ -229,10 +229,10 @@ export function OrderCreateSheet({
   const categorySections = useMemo(() => groupCatalogCategories(categoryOptions), [categoryOptions]);
   const total = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-  const hasCorePricedItems = items.some((item) => item.price === null || item.price === undefined);
+  const hasUnresolvedPrices = items.some((item) => (item.price === null || item.price === undefined) && item.unitPrice <= 0);
   const selectedQuantityByVariant = useMemo(() => new Map(items.map((item) => [item.variantId, item.quantity])), [items]);
   const customerReady = customerMode === "existing" ? Boolean(routeCustomerId) : Boolean(manualCustomer.name.trim());
-  const readyToSubmit = customerReady && items.length > 0 && mobilePanel === "cart";
+  const readyToSubmit = customerReady && items.length > 0 && mobilePanel === "cart" && !hasUnresolvedPrices;
 
   const loadProducts = useCallback(async (query: string, category: string, brand: string) => {
     const requestId = ++productRequestRef.current;
@@ -433,6 +433,12 @@ export function OrderCreateSheet({
       setMobilePanel("catalog");
       return;
     }
+    const unresolvedPriceItem = items.find((item) => (item.price === null || item.price === undefined) && item.unitPrice <= 0);
+    if (unresolvedPriceItem) {
+      setMessage(`Nhập đơn giá tạm lớn hơn 0 cho ${unresolvedPriceItem.name} · ${variantPrimaryLabel(unresolvedPriceItem)} trước khi tạo đơn.`);
+      setMobilePanel("cart");
+      return;
+    }
     if (mobilePanel !== "cart") {
       setMessage("Kiểm tra số lượng và đơn giá, sau đó bấm Tạo đơn.");
       setMobilePanel("cart");
@@ -517,7 +523,7 @@ export function OrderCreateSheet({
     : items.length === 0
       ? "Đã chọn khách · chọn vị sản phẩm"
       : `${items.length} dòng · ${totalQuantity} sản phẩm`);
-  const totalLabel = hasCorePricedItems ? "Giá theo Core" : money.format(total);
+  const totalLabel = hasUnresolvedPrices ? "Cần đơn giá tạm" : money.format(total);
 
   return (
     <BottomSheet
@@ -777,8 +783,22 @@ export function OrderCreateSheet({
                         <button type="button" onClick={() => addProduct(item)} disabled={saving} aria-label={`Tăng ${item.name}`}>+</button>
                       </div>
                     </div>
-                    <label className={styles.priceField}><span>{item.price === null || item.price === undefined ? "Đơn giá tạm" : "Đơn giá"}</span><input type="number" min="0" inputMode="decimal" value={item.price === null && item.unitPrice === 0 ? "" : item.unitPrice} placeholder={item.price === null ? "Core xác định" : undefined} onChange={(event) => updateItem(item.variantId, "unitPrice", Number(event.target.value))} disabled={saving} /></label>
-                    <div className={styles.lineTotal}><span>Thành tiền</span><strong>{item.price === null || item.price === undefined ? "Core xác định" : money.format(item.quantity * item.unitPrice)}</strong></div>
+                    <label className={styles.priceField}>
+                      <span>{item.price === null || item.price === undefined ? "Đơn giá tạm *" : "Đơn giá"}</span>
+                      <input
+                        type="number"
+                        min={item.price === null || item.price === undefined ? 1 : 0}
+                        inputMode="decimal"
+                        value={(item.price === null || item.price === undefined) && item.unitPrice <= 0 ? "" : item.unitPrice}
+                        placeholder={item.price === null || item.price === undefined ? "Nhập giá" : undefined}
+                        onChange={(event) => updateItem(item.variantId, "unitPrice", Number(event.target.value))}
+                        disabled={saving}
+                      />
+                    </label>
+                    <div className={styles.lineTotal}>
+                      <span>Thành tiền</span>
+                      <strong>{(item.price === null || item.price === undefined) && item.unitPrice <= 0 ? "Chưa có giá" : money.format(item.quantity * item.unitPrice)}</strong>
+                    </div>
                   </div>
                 </article>
               ))}

@@ -84,12 +84,17 @@ test("selected catalog variant click decrements or removes while cart plus still
   assert.match(sheetStyles, /\.variantButton \{[\s\S]*min-height: 64px/);
 });
 
-test("Core null catalog price stays unknown instead of becoming a real zero price", () => {
+test("standalone null Core price stays unresolved until a positive temporary price is entered", () => {
   assert.match(sheet, /price: catalogPrice\(item\.price\)/);
-  assert.match(sheet, /return value === null \|\| value === undefined \? "Giá theo Core" : money\.format\(value\)/);
-  assert.match(sheet, /const hasCorePricedItems = items\.some/);
-  assert.match(sheet, /const totalLabel = hasCorePricedItems \? "Giá theo Core" : money\.format\(total\)/);
-  assert.match(sheet, /placeholder=\{item\.price === null \? "Core xác định" : undefined\}/);
+  assert.match(sheet, /return value === null \|\| value === undefined \? "Chưa có giá Core" : money\.format\(value\)/);
+  assert.match(sheet, /const hasUnresolvedPrices = items\.some\(\(item\) => \(item\.price === null \|\| item\.price === undefined\) && item\.unitPrice <= 0\)/);
+  assert.match(sheet, /const readyToSubmit = customerReady && items\.length > 0 && mobilePanel === "cart" && !hasUnresolvedPrices/);
+  assert.match(sheet, /const unresolvedPriceItem = items\.find\(\(item\) => \(item\.price === null \|\| item\.price === undefined\) && item\.unitPrice <= 0\)/);
+  assert.match(sheet, /Nhập đơn giá tạm lớn hơn 0/);
+  assert.match(sheet, /const totalLabel = hasUnresolvedPrices \? "Cần đơn giá tạm" : money\.format\(total\)/);
+  assert.match(sheet, /"Đơn giá tạm \*"/);
+  assert.match(sheet, /placeholder=\{item\.price === null \|\| item\.price === undefined \? "Nhập giá" : undefined\}/);
+  assert.match(sheet, /"Chưa có giá"/);
   assert.doesNotMatch(sheet, /money\.format\(Number\(product\.price \|\| 0\)\)/);
 });
 
