@@ -166,16 +166,21 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
 
   const normalizedSearch = normalizeSearch(search);
   const employeeFilterOptions = useMemo(() => {
-    const assignedEmployees = new Map<string, string>();
+    const assignedEmployeeIds = new Set<string>();
     for (const customer of customers) {
-      if (customer.responsible_employee_id && customer.responsible_employee_name) {
-        assignedEmployees.set(customer.responsible_employee_id, customer.responsible_employee_name);
-      }
+      if (customer.responsible_employee_id) assignedEmployeeIds.add(customer.responsible_employee_id);
     }
-    return [...assignedEmployees.entries()]
-      .map(([id, name]) => ({ id, name }))
-      .sort((left, right) => left.name.localeCompare(right.name, 'vi'));
-  }, [customers]);
+    return employees
+      .filter((employee) => assignedEmployeeIds.has(employee.id))
+      .map((employee) => ({ id: employee.id, label: `${employee.code} · ${employee.full_name}` }))
+      .sort((left, right) => left.label.localeCompare(right.label, 'vi'));
+  }, [customers, employees]);
+
+  useEffect(() => {
+    if (employeeFilter === 'all' || employeeFilter === 'unassigned') return;
+    if (!employeeFilterOptions.some((option) => option.id === employeeFilter)) setEmployeeFilter('all');
+  }, [employeeFilter, employeeFilterOptions]);
+
   const visibleCustomers = useMemo(() => customers
     .filter((customer) => {
       const statusMatches = statusFilter === 'all' || (statusFilter === 'active' ? customer.is_active : !customer.is_active);
@@ -212,7 +217,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
       const [nextCustomers, nextGroups, nextEmployees] = await Promise.all([
         requestJson<Customer[]>('/api/customers?limit=1000'),
         requestJson<CustomerGroup[]>('/api/customer-groups?limit=1000'),
-        requestJson<EmployeeOption[]>('/api/access/employees?active=true&limit=1000'),
+        requestJson<EmployeeOption[]>('/api/access/employees?limit=1000'),
       ]);
       setCustomers(nextCustomers);
       setGroups(nextGroups);
@@ -238,7 +243,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
   }
 
   useEffect(() => {
-    void requestJson<EmployeeOption[]>('/api/access/employees?active=true&limit=1000')
+    void requestJson<EmployeeOption[]>('/api/access/employees?limit=1000')
       .then(setEmployees)
       .catch(() => setEmployees([]));
   }, []);
@@ -622,7 +627,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                 <select id="customers-employee-filter" data-testid="customers-employee-filter" value={employeeFilter} onChange={(event) => setEmployeeFilter(event.currentTarget.value)}>
                   <option value="all">Tất cả phụ trách</option>
                   <option value="unassigned">Chưa giao phụ trách</option>
-                  {employeeFilterOptions.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
+                  {employeeFilterOptions.map((employee) => <option key={employee.id} value={employee.id}>{employee.label}</option>)}
                 </select>
               </div>
             </section>
@@ -692,7 +697,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                   <label>Mã khách hàng<input data-testid="customer-code-input" value={customerDraft.code} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, code: next })); }} disabled={customerEditor.mode === 'edit' || Boolean(pendingCreatedCustomer)} required /></label>
                   <label>Tên khách hàng<input data-testid="customer-name-input" value={customerDraft.name} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, name: next })); }} disabled={Boolean(pendingCreatedCustomer)} required /></label>
                   <label>Nhóm khách hàng<select value={customerDraft.groupId} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, groupId: next })); }} disabled={Boolean(pendingCreatedCustomer)}><option value="">Không phân nhóm</option>{groups.filter((group) => group.is_active || group.id === customerDraft.groupId).map((group) => <option key={group.id} value={group.id}>{group.code} · {group.name}</option>)}</select></label>
-                  <label>Nhân sự phụ trách<select value={customerDraft.responsibleEmployeeId} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, responsibleEmployeeId: next })); }} disabled={Boolean(pendingCreatedCustomer)}><option value="">Chưa giao phụ trách</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.code} · {employee.full_name}</option>)}</select></label>
+                  <label>Nhân sự phụ trách<select value={customerDraft.responsibleEmployeeId} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, responsibleEmployeeId: next })); }} disabled={Boolean(pendingCreatedCustomer)}><option value="">Chưa giao phụ trách</option>{employees.filter((employee) => employee.is_active || employee.id === customerDraft.responsibleEmployeeId).map((employee) => <option key={employee.id} value={employee.id}>{employee.code} · {employee.full_name}</option>)}</select></label>
                   <label>Điện thoại<input data-testid="customer-phone-input" value={customerDraft.phone} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, phone: next })); }} disabled={Boolean(pendingCreatedCustomer)} /></label>
                   <label>Email<input data-testid="customer-email-input" type="email" value={customerDraft.email} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, email: next })); }} disabled={Boolean(pendingCreatedCustomer)} /></label>
                   <label>Mã số thuế<input value={customerDraft.taxCode} onChange={(event) => { const next = event.currentTarget.value; setCustomerDraft((value) => ({ ...value, taxCode: next })); }} disabled={Boolean(pendingCreatedCustomer)} /></label>
