@@ -148,6 +148,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterState>('all');
   const [groupFilter, setGroupFilter] = useState('all');
+  const [employeeFilter, setEmployeeFilter] = useState('all');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialError);
   const [notice, setNotice] = useState<string | null>(null);
@@ -164,10 +165,25 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
   const addressCreateKey = useRef('');
 
   const normalizedSearch = normalizeSearch(search);
+  const employeeFilterOptions = useMemo(() => {
+    const assignedEmployees = new Map<string, string>();
+    for (const customer of customers) {
+      if (customer.responsible_employee_id && customer.responsible_employee_name) {
+        assignedEmployees.set(customer.responsible_employee_id, customer.responsible_employee_name);
+      }
+    }
+    return [...assignedEmployees.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((left, right) => left.name.localeCompare(right.name, 'vi'));
+  }, [customers]);
   const visibleCustomers = useMemo(() => customers
     .filter((customer) => {
       const statusMatches = statusFilter === 'all' || (statusFilter === 'active' ? customer.is_active : !customer.is_active);
       const groupMatches = groupFilter === 'all' || customer.group_id === groupFilter;
+      const employeeMatches = employeeFilter === 'all'
+        || (employeeFilter === 'unassigned'
+          ? !customer.responsible_employee_id
+          : customer.responsible_employee_id === employeeFilter);
       const textMatches = !normalizedSearch || matchTerm(
         customer.code,
         customer.name,
@@ -177,9 +193,9 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
         customer.group_name,
         customer.responsible_employee_name,
       ).includes(normalizedSearch);
-      return statusMatches && groupMatches && textMatches;
+      return statusMatches && groupMatches && employeeMatches && textMatches;
     })
-    .sort((left, right) => left.code.localeCompare(right.code)), [customers, groupFilter, normalizedSearch, statusFilter]);
+    .sort((left, right) => left.code.localeCompare(right.code)), [customers, employeeFilter, groupFilter, normalizedSearch, statusFilter]);
 
   const counts = useMemo(() => {
     const active = customers.filter((customer) => customer.is_active).length;
@@ -584,9 +600,9 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
             </section>
 
             <section className={joinClasses(styles.toolbar, customerStyles.toolbarGrid)}>
-              <div className={styles.toolbarSearch}>
-                <label htmlFor="customers-search">Tìm kiếm khách hàng</label>
-                <input id="customers-search" data-testid="customers-search-input" type="search" value={search} onChange={(event) => setSearch(event.currentTarget.value)} placeholder="Mã, tên, điện thoại, mã số thuế" />
+              <div className={joinClasses(styles.toolbarSearch, customerStyles.toolbarSearchCompact)}>
+                <label htmlFor="customers-search">Tìm kiếm</label>
+                <input id="customers-search" data-testid="customers-search-input" type="search" value={search} onChange={(event) => setSearch(event.currentTarget.value)} placeholder="Mã, tên, liên hệ…" />
               </div>
               <div className={styles.toolbarFilter}>
                 <label htmlFor="customers-status-filter">Trạng thái</label>
@@ -599,6 +615,14 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                 <select id="customers-group-filter" data-testid="customers-group-filter" value={groupFilter} onChange={(event) => setGroupFilter(event.currentTarget.value)}>
                   <option value="all">Tất cả nhóm</option>
                   {groups.map((group) => <option key={group.id} value={group.id}>{group.code} · {group.name}</option>)}
+                </select>
+              </div>
+              <div className={joinClasses(styles.toolbarFilter, customerStyles.toolbarEmployeeCompact)}>
+                <label htmlFor="customers-employee-filter">Nhân viên phụ trách</label>
+                <select id="customers-employee-filter" data-testid="customers-employee-filter" value={employeeFilter} onChange={(event) => setEmployeeFilter(event.currentTarget.value)}>
+                  <option value="all">Tất cả phụ trách</option>
+                  <option value="unassigned">Chưa giao phụ trách</option>
+                  {employeeFilterOptions.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
                 </select>
               </div>
             </section>
