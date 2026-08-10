@@ -19,9 +19,12 @@ import {
 } from '../../../lib/stocktake-types';
 import styles from './stocktake-workspace.module.css';
 
+type WarehouseOption = { id: string; code: string; name: string };
+
 type Props = {
   initialStocktakes: Stocktake[];
   balances: InventoryBalance[];
+  warehouses: WarehouseOption[];
   initialPermissionKeys: string[];
   initialError: string | null;
   initialLookupError: string | null;
@@ -57,6 +60,7 @@ function lineLabel(line: StocktakeLine): string {
 export default function StocktakeWorkspace({
   initialStocktakes,
   balances,
+  warehouses,
   initialPermissionKeys,
   initialError,
   initialLookupError,
@@ -78,17 +82,6 @@ export default function StocktakeWorkspace({
   const idempotencyKeys = useRef(new Map<string, string>());
   const permissions = useMemo(() => new Set(initialPermissionKeys), [initialPermissionKeys]);
   const scopeBalances = useMemo(() => uniqueScopes(balances), [balances]);
-  const warehouses = useMemo(() => {
-    const rows = new Map<string, { id: string; code: string; name: string }>();
-    for (const balance of scopeBalances) {
-      rows.set(balance.warehouse_id, {
-        id: balance.warehouse_id,
-        code: balance.warehouse_code,
-        name: balance.warehouse_name,
-      });
-    }
-    return [...rows.values()].sort((a, b) => a.code.localeCompare(b.code));
-  }, [scopeBalances]);
   const availableScopes = useMemo(
     () => scopeBalances.filter((balance) => balance.warehouse_id === warehouseId),
     [scopeBalances, warehouseId],
@@ -287,7 +280,7 @@ export default function StocktakeWorkspace({
             </div>
             <label>
               Kho kiểm kê
-              <select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); setSelectedScopes(new Set()); }}>
+              <select data-testid="stocktake-warehouse" value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); setSelectedScopes(new Set()); }}>
                 <option value="">Chọn kho</option>
                 {warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} · {warehouse.name}</option>)}
               </select>
