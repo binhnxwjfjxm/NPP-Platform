@@ -35,7 +35,6 @@ import {
   PURCHASE_ORDER_SKU_FILTERS,
   filterPurchaseOrderSkuOptions,
   normalizePurchaseOrderSkuSearchFailure,
-  purchaseOrderBulkTemplate,
   type PurchaseOrderSkuFilter,
 } from '../../../../lib/purchase-order-sku-entry';
 import styles from '../../../organization/organization.module.css';
@@ -559,27 +558,60 @@ export default function PurchaseOrderEditorV4({
     await refreshLinePrice(line.key, automaticLine);
   }
 
-  function downloadTemplate() {
-    const blob = new Blob([`\uFEFF${purchaseOrderBulkTemplate()}`], { type: PURCHASE_ORDER_BULK_TEMPLATE_MIME });
-    const href = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = href;
-    link.download = PURCHASE_ORDER_BULK_TEMPLATE_FILENAME;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(href);
+  async function downloadTemplate() {
+    try {
+      const response = await fetch('/api/purchase-orders/bulk-template', {
+        method: 'GET',
+        cache: 'no-store',
+        headers: { Accept: PURCHASE_ORDER_BULK_TEMPLATE_MIME },
+      });
+      if (!response.ok) throw new Error('TEMPLATE_FAILED');
+      const blob = await response.blob();
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = href;
+      link.download = PURCHASE_ORDER_BULK_TEMPLATE_FILENAME;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(href);
+      setError(null);
+    } catch {
+      setError('Không tải được tệp mẫu XLSX.');
+    }
   }
 
   async function handleBulkFile(file: File | null) {
     if (!file) return;
     if (file.size > MAX_BULK_FILE_BYTES) return setError('Tệp nhập nhiều dòng không được vượt quá 2 MB.');
     try {
-      setBulkText(await file.text());
+      const isXlsx = file.name.toLowerCase().endsWith('.xlsx') || file.type === PURCHASE_ORDER_BULK_TEMPLATE_MIME;
+      let text: string;
+      if (isXlsx) {
+        const response = await fetch('/api/purchase-orders/bulk-xlsx', {
+          method: 'POST',
+          cache: 'no-store',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': PURCHASE_ORDER_BULK_TEMPLATE_MIME,
+          },
+          body: file,
+        });
+        const payload = await response.json().catch(() => ({})) as ApiEnvelope<{ text: string }>;
+        if (!response.ok || !payload.data?.text) {
+          throw new Error(payload.error?.message || 'Không đọc được tệp XLSX.');
+        }
+        text = payload.data.text;
+      } else {
+        text = await file.text();
+      }
+      setBulkText(text);
       setBulkPreview([]);
       setError(null);
-    } catch {
-      setError('Không đọc được tệp đã chọn.');
+    } catch (failure) {
+      setBulkText('');
+      setBulkPreview([]);
+      setError(failure instanceof Error ? failure.message : 'Không đọc được tệp đã chọn.');
     }
   }
 
@@ -776,9 +808,9 @@ export default function PurchaseOrderEditorV4({
               </div> : null}
 
               {entryMode === 'bulk' ? <div className={localStyles.modePanel}>
-                <div className={localStyles.bulkIntro}><div><strong>Nhập nhiều dòng theo 3 bước</strong><span>Chọn tệp hoặc dán dữ liệu → Kiểm tra SKU → Thêm dòng và tự phân giải giá mua</span></div><button type="button" className={styles.secondaryButton} onClick={downloadTemplate}>Tải mẫu CSV cho Excel</button></div>
+                <div className={localStyles.bulkIntro}><div><strong>Nhập nhiều dòng theo 3 bước</strong><span>Chọn tệp hoặc dán dữ liệu → Kiểm tra SKU → Thêm dòng và tự phân giải giá mua</span></div><button type="button" className={styles.secondaryButton} onClick={() => void downloadTemplate()}>Tải mẫu XLSX</button></div>
                 <div className={localStyles.bulkTabs}><button type="button" className={bulkSourceMode === 'file' ? localStyles.modeTabActive : localStyles.modeTab} onClick={() => setBulkSourceMode('file')}>Chọn tệp</button><button type="button" className={bulkSourceMode === 'paste' ? localStyles.modeTabActive : localStyles.modeTab} onClick={() => setBulkSourceMode('paste')}>Dán từ Excel</button></div>
-                {bulkSourceMode === 'file' ? <label className={localStyles.fileDrop}>Chọn tệp CSV, TSV hoặc TXT<input type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" onChange={(event) => void handleBulkFile(event.target.files?.[0] ?? null)} /><span>Tối đa 2 MB. Giá để trống sẽ dùng bảng giá mua.</span></label> : <label>Dán bảng từ Excel<textarea value={bulkText} onChange={(event) => { setBulkText(event.target.value); setBulkPreview([]); }} rows={7} placeholder={'SKU\tSố lượng\tĐơn giá\tKiểu chiết khấu\tGiá trị chiết khấu\tThuế %\tGhi chú'} /></label>}
+                {bulkSourceMode === 'file' ? <label className={localStyles.fileDrop}>Chọn tệp XLSX, CSV, TSV hoặc TXT<input type="file" accept=".xlsx,.csv,.tsv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/tab-separated-values,text/plain" onChange={(event) => void handleBulkFile(event.target.files?.[0] ?? null)} /><span>Tối đa 2 MB. Giá để trống sẽ dùng bảng giá mua.</span></label> : <label>Dán bảng từ Excel<textarea value={bulkText} onChange={(event) => { setBulkText(event.target.value); setBulkPreview([]); }} rows={7} placeholder={'SKU\tSố lượng\tĐơn giá\tKiểu chiết khấu\tGiá trị chiết khấu\tThuế %\tGhi chú'} /></label>}
                 {canOverridePrice ? <label className={priceStyles.bulkReason}>Lý do nhập tay giá cho các dòng có đơn giá<input value={bulkOverrideReason} maxLength={1000} onChange={(event) => setBulkOverrideReason(event.target.value)} placeholder="Ví dụ: Giá thương lượng riêng theo báo giá…" /></label> : null}
                 <div className={localStyles.bulkActions}><button type="button" className={styles.secondaryButton} onClick={() => void checkBulkRows()} disabled={bulkResolving || !bulkText.trim()}>{bulkResolving ? 'Đang kiểm tra…' : 'Kiểm tra dữ liệu'}</button><button type="button" className={styles.primaryButton} onClick={() => void addBulkRows()} disabled={validBulkCount === 0}>Thêm {validBulkCount || ''} dòng hợp lệ</button></div>
                 {bulkPreview.length ? <div className={localStyles.previewWrap}><table className={localStyles.previewTable}><thead><tr><th>Dòng</th><th>SKU</th><th>Số lượng</th>{canReadPrice ? <><th>Đơn giá</th><th>Chiết khấu</th><th>Thuế</th></> : null}<th>Kết quả</th></tr></thead><tbody>{bulkPreview.map((row) => { const messages = [...row.errors, ...(row.resolutionError ? [row.resolutionError] : [])]; return <tr key={row.rowNumber}><td>{row.rowNumber}</td><td>{row.sku || '—'}</td><td>{row.quantity || '—'}</td>{canReadPrice ? <><td>{row.unitPrice || 'Tự áp giá'}</td><td>{discountModeLabel(row.discountMode)} · {row.discountValue}</td><td>{row.taxRate}%</td></> : null}<td className={messages.length ? localStyles.previewError : localStyles.previewSuccess}>{messages.length ? messages.join(' ') : `Hợp lệ: ${row.option?.sku ?? ''}`}</td></tr>; })}</tbody></table></div> : null}
