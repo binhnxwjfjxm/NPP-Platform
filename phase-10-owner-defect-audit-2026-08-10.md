@@ -654,3 +654,164 @@ Không nên sửa trùng:
 - import/export/quotation (#15) vì đang nằm PR #448.
 
 **Audit này không thực hiện bất kỳ mutation nào lên repo/provider.**
+
+---
+
+# Addendum — production defects bổ sung 2026-08-10
+
+Các mục dưới đây được bổ sung sau khi Owner test trực tiếp production. Không renumber 1–26 cũ để giữ nguyên tham chiếu audit ban đầu.
+
+## A1. Kho tạo xong nhưng các màn khác không thấy; phải quay lại Kho/Tải lại mới xuất hiện
+
+**Trạng thái:** 🔴 **CẦN FIX — persistence/revalidation + warehouse-source contract**
+
+### Audit source
+Màn quản trị tổ chức/kho `npp-core/web/app/organization/organization-workspace.tsx` sau khi POST/PATCH thành công có gọi `loadAll()` và reload lại 3 master list `branches / warehouses / warehouse-locations`. Vì vậy ngay trong màn quản trị Kho, code hiện có ý định refresh state sau mutation.
+
+Tuy nhiên các màn nghiệp vụ khác không cùng dùng một canonical warehouse source. Audit trước đã xác nhận:
+- Logistics Trip Planning dựng danh sách kho từ `eligibleOrders + trips`.
+- Stocktake có chỗ dựng warehouse options từ inventory balances.
+
+### Kết luận
+Triệu chứng “tạo kho xong nhưng sang tab khác không thấy” là **lỗi thật ở cross-screen warehouse data source/revalidation**, không nên xử lý bằng cách bắt người dùng quay lại Kho rồi bấm tải lại.
+
+### Hướng sửa đúng
+- Một canonical endpoint/list warehouse active theo installation + permission/scope.
+- Các tab dùng canonical warehouse options, sau đó mới áp operation eligibility riêng.
+- Mutation tạo/sửa kho phải invalidate/revalidate cache/state có liên quan.
+- Test: tạo kho mới → chuyển thẳng sang các màn có selector kho → kho phải hiện nếu user có quyền, không cần reload thủ công.
+
+---
+
+## A2. Chỉnh sửa vị trí kho — popup tự biến mất khi đang nhập text
+
+**Trạng thái:** ⚪/🔴 **CẦN FIX — UI state/modal regression, cần browser repro để chốt trigger**
+
+### Audit source
+Trong `organization-workspace.tsx`:
+- modal được giữ bởi `editor` state;
+- typing vào code/name chỉ cập nhật `locationDraft`;
+- backdrop gọi `closeModals` khi click backdrop;
+- dialog có `stopPropagation()`.
+
+Không thấy business rule nào cho phép modal tự đóng khi nhập text. Vì vậy hành vi Owner thấy **không phải logic nghiệp vụ đúng**.
+
+### Kết luận
+Đây là UI regression thật. Source đọc tĩnh chưa đủ chứng minh trigger chính xác (rerender/remount, click propagation, route/state refresh hoặc runtime khác), nên khi sửa phải reproduce browser trước rồi khóa regression test.
+
+### Gate
+- mở Edit Location;
+- gõ liên tục code/name;
+- đổi warehouse/type;
+- modal không được tự đóng;
+- draft không mất cho tới Save/Cancel/explicit backdrop close.
+
+---
+
+## A3. Điều phối giao hàng — tạo xe/tài xế/chuyến trả 400
+
+Production evidence Owner báo:
+- `POST /api/logistics/drivers` → 400
+- `POST /api/logistics/vehicles` → 400
+- tạo chuyến cũng lỗi trong cùng flow.
+
+**Trạng thái:** 🔴 **CẦN FIX — form/API validation UX; warehouse defect có thể kéo theo trip create**
+
+### Audit source frontend
+`trip-planning-workspace.tsx` gửi:
+- vehicle: `{ code, licensePlate, vehicleType }`
+- driver: `{ code, name, phone }`
+- trip: `{ warehouseId, deliveryRouteId, vehicleId, primaryDriverId, plannedStartAt, note }`
+
+Master buttons chỉ disable khi `code` hoặc `name` rỗng. Trip button disable khi chưa có `warehouseId`.
+
+### Audit source backend
+Backend `logistics-trip-planning.js` trả 400 cho các validation code như:
+- `INVALID_VEHICLE`
+- `INVALID_DRIVER_PROFILE`
+- `INVALID_DELIVERY_TRIP`
+
+Vehicle yêu cầu code + licensePlate + vehicleType hợp lệ. Driver yêu cầu code + name; `employeeId` có thể null. Trip yêu cầu warehouseId hợp lệ và đúng scope; route/vehicle/driver có thể nullable theo contract nhưng nếu gửi giá trị thì phải là UUID hợp lệ.
+
+### Kết luận
+Không thể coi 400 là “thao tác sai của người dùng” khi form không giải thích field/contract nào sai. Đây là defect UX/API contract surfacing.
+
+Đặc biệt trip create có thể fail dây chuyền từ lỗi warehouse selector A1/#6/#8: không có canonical warehouse option → không tạo được trip đúng contract.
+
+### Hướng sửa
+- Map error code/details thành lỗi ngay field, không chỉ generic banner.
+- Client validation phải khớp backend contract.
+- Xe: label/required state rõ code, biển số, loại xe.
+- Tài xế: code + tên bắt buộc; phone optional; nếu sau này link employee thì dùng selector employee, không bắt UUID.
+- Trip: warehouse lấy canonical warehouse selector; route/vehicle/driver select từ master active.
+- API regression test payload UI ↔ backend schema.
+
+---
+
+## A4. Sales Order xác nhận vẫn 503 trên production dù source từng được fix
+
+Production evidence Owner báo lại:
+`POST /api/sales-orders/<id>/confirm` → `503 Service Unavailable`.
+
+**Trạng thái:** ⚪/🔴 **PRODUCTION REGRESSION — KHÔNG ĐƯỢC ĐÁNH DẤU ĐÓNG CHỈ VÌ SOURCE ĐÃ FIX**
+
+### Quan hệ với mục #26
+Mục #26 vẫn đúng về lịch sử: PR #437/10.1 đã có source fix cho retry/idempotency/hydration.
+
+Nhưng evidence mới chứng minh **production hiện vẫn tái hiện 503**. Do đó trạng thái vận hành của #26 phải hiểu là:
+- source-level known bug: đã fix;
+- production journey: **chưa pass**.
+
+### Hướng audit/sửa
+Không viết lại fix cũ trước khi biết root cause mới. Capture:
+- exact frontend SHA đang chạy;
+- exact Core backend release/SHA;
+- response error code + requestId;
+- idempotency record state;
+- Core log của đúng request.
+
+Nếu production đang chạy source cũ → rollout đúng SHA. Nếu exact fix đã deploy mà vẫn 503 → đây là defect mới và phải sửa theo request evidence.
+
+### Gate
+Một Sales Order draft hợp lệ confirm thành công; retry cùng intent không duplicate; không 503; không React hydration error.
+
+---
+
+## A5. Nhập tồn đầu/nhập kho đang bắt quá nhiều trường; SP không quản lý lô vẫn khó nhập
+
+**Trạng thái:** 🔴 **CẦN FIX — operator input contract/UX**
+
+### Owner requirement đã khóa bổ sung
+Đối với thao tác nhập số lượng hàng thông thường, người vận hành không nên phải nhớ/gõ UUID hoặc các mã nội bộ đã có sẵn trong hệ thống.
+
+Input lõi người dùng cần nhập là:
+- **SKU**
+- **Số lượng**
+
+Các trường còn lại phải được resolve/chọn theo master data và policy:
+- Kho: selector từ canonical warehouse master.
+- Vị trí: selector theo kho; chỉ bắt buộc khi inventory/tracking policy yêu cầu.
+- Lô: chỉ hiện/bắt buộc nếu SKU có `lot_tracking_mode = REQUIRED`; SKU không quản lý lô không được bị chặn vì thiếu lot.
+- Hạn sử dụng: chỉ yêu cầu theo expiry policy (`OPTIONAL/REQUIRED`).
+- Variant/baseVariant/internal IDs: resolve server-side từ SKU; không bắt người dùng nhập UUID.
+- Các code/reference đã tồn tại: dùng selector/search, không bắt nhớ mã nội bộ.
+
+### File import
+File operator-facing nên ưu tiên cột dễ hiểu. Tối thiểu cho row đơn giản:
+`SKU | Số lượng`
+
+Nếu operation cần context thì thêm cột business-readable có điều kiện, ví dụ:
+`Kho | Vị trí | SKU | Số lượng | Lô | Hạn sử dụng`
+
+Trong đó `Vị trí/Lô/Hạn` không được blanket-required cho mọi SKU.
+
+### Boundary nghiệp vụ
+- Opening Balance vẫn là flow riêng, dùng cho khởi tạo/chuyển dữ liệu đầu kỳ.
+- Stocktake actual-count vẫn không update balance trực tiếp; đi qua Stocktake lifecycle.
+- Inbound receipt/GRN phải giữ source-document semantics của nhập hàng; UX đơn giản không được bypass accounting/inventory audit trail.
+
+### Gate
+- SKU không quản lý lô: nhập được với SKU + quantity + warehouse context cần thiết.
+- SKU quản lý lô bắt buộc: UI/file yêu cầu lot rõ ràng.
+- Không có raw UUID field cho người vận hành.
+- Error chỉ đúng row/field thiếu, không trả generic “thiếu dữ liệu”.
