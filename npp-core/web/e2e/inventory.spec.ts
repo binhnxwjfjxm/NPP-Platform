@@ -70,7 +70,8 @@ test.describe('Kho vận', () => {
 
     await page.goto('/inventory/balances');
     await expect(page.getByTestId('inventory-balances-page')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Số dư tồn kho', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Tra cứu tồn kho', exact: true })).toBeVisible();
+    await expect(page.getByTestId('inventory-local-controls')).toBeVisible();
     await expect(page.getByTestId('inventory-balances-section')).toBeVisible();
     await expect(page.getByTestId('inventory-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
 
