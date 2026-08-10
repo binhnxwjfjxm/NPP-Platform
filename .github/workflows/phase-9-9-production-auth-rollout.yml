@@ -69,8 +69,34 @@ jobs:
 
       - name: Parse production rollout config
         shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
           set -euo pipefail
+          if [ "$P99_ROLLOUT_B64" = 'current-config' ]; then
+            config_json="$(heroku config -a "$HEROKU_APP_NAME" --json)"
+            current_payload="$(CONFIG_JSON="$config_json" node --input-type=module <<'NODE'
+          const runtime = JSON.parse(process.env.CONFIG_JSON || '{}');
+          const permanent = String(runtime.SECURITY_OWNER_EMAILS || '')
+            .split(',').map((value) => value.trim()).filter(Boolean);
+          const temporary = String(runtime.IMPLEMENTATION_OWNER_EMAILS || '')
+            .split(',').map((value) => value.trim()).filter(Boolean);
+          const cfg = {
+            cloudflareAccountId: String(runtime.CLOUDFLARE_ACCOUNT_ID || '').trim(),
+            from: String(runtime.INTERNAL_AUTH_EMAIL_FROM || '').trim(),
+            securityOwnerEmails: permanent,
+            implementationOwnerEmails: temporary,
+            credentialDeliveryEmail: temporary.length === 1 ? temporary[0] : '',
+            webOwnerChallengeRequired: String(runtime.INTERNAL_WEB_OWNER_CHALLENGE_REQUIRED || '').trim().toLowerCase() === 'true',
+          };
+          process.stdout.write(Buffer.from(JSON.stringify(cfg), 'utf8').toString('base64url'));
+          NODE
+            )"
+            test -n "$current_payload"
+            echo "::add-mask::$current_payload"
+            export P99_ROLLOUT_B64="$current_payload"
+          fi
+
           node --input-type=module <<'NODE'
           import { appendFileSync } from 'node:fs';
           const raw = process.env.P99_ROLLOUT_B64 || '';
