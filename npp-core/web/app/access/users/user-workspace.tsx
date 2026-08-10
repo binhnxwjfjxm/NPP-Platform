@@ -10,7 +10,6 @@ import { formatDateTime, matchTerm, normalizeSearch } from '../../../lib/organiz
 type FilterState = 'all' | 'active' | 'inactive';
 type EditorState = { mode: 'create' | 'edit'; userId: string | null } | null;
 type ToggleState = { userId: string; nextActive: boolean } | null;
-
 type UserDraft = {
   loginName: string;
   employeeId: string;
@@ -18,19 +17,16 @@ type UserDraft = {
   isActive: boolean;
   roleIds: string[];
 };
-
 type Props = {
   initialUsers: AccessUser[];
   initialRoles: AccessRole[];
   initialEmployees: Employee[];
   initialError?: string | null;
 };
-
 type ApiEnvelope<T> = {
   data?: T;
   error?: { code?: string; message?: string; retryable?: boolean };
 };
-
 type CredentialResult = {
   userId: string;
   credentialUpdated: boolean;
@@ -92,6 +88,10 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return payload.data;
 }
 
+function mergeUser(list: AccessUser[], user: AccessUser) {
+  return [...list.filter((item) => item.id !== user.id), user];
+}
+
 export default function UserWorkspace({
   initialUsers,
   initialRoles,
@@ -111,8 +111,14 @@ export default function UserWorkspace({
   const [toggleState, setToggleState] = useState<ToggleState>(null);
   const [draft, setDraft] = useState<UserDraft>(emptyDraft());
 
-  const employeeMap = useMemo(() => new Map(employees.map((employee) => [employee.id, employee])), [employees]);
-  const roleMap = useMemo(() => new Map(roles.map((role) => [role.id, role])), [roles]);
+  const employeeMap = useMemo(
+    () => new Map(employees.map((employee) => [employee.id, employee])),
+    [employees],
+  );
+  const roleMap = useMemo(
+    () => new Map(roles.map((role) => [role.id, role])),
+    [roles],
+  );
   const normalizedSearch = normalizeSearch(search);
 
   const eligibleEmployees = useMemo(() => {
@@ -138,7 +144,13 @@ export default function UserWorkspace({
       ).includes(normalizedSearch);
       return matchesStatus && matchesText;
     })
-    .sort((left, right) => left.login_name.localeCompare(right.login_name)), [employeeMap, normalizedSearch, roleMap, statusFilter, users]);
+    .sort((left, right) => left.login_name.localeCompare(right.login_name)), [
+      employeeMap,
+      normalizedSearch,
+      roleMap,
+      statusFilter,
+      users,
+    ]);
 
   const counts = useMemo(() => {
     const active = users.filter((user) => user.is_active).length;
@@ -198,8 +210,11 @@ export default function UserWorkspace({
   }
 
   function closeEditor() {
+    if (busy === 'save') return;
     setEditor(null);
     setDraft(emptyDraft());
+    setError(null);
+    setConflict(false);
   }
 
   function toggleRole(roleId: string) {
@@ -260,21 +275,27 @@ export default function UserWorkspace({
         });
       }
 
-      setUsers((current) => [...current.filter((user) => user.id !== latest.id), latest]);
+      setUsers((current) => mergeUser(current, latest));
       setNotice('Đã tạo tài khoản, mật khẩu và vai trò. Nhân viên có thể đăng nhập bằng tên đăng nhập vừa cấp.');
-      closeEditor();
+      setEditor(null);
+      setDraft(emptyDraft());
     } catch (caught) {
-      if (created) {
-        const refreshed = await requestJson<AccessUser[]>('/api/access/users?limit=1000').catch(() => null);
-        if (refreshed) setUsers(refreshed);
-        closeEditor();
-        const message = caught instanceof Error ? caught.message : 'Không hoàn tất được việc cấp tài khoản';
-        throw new ApiRequestError(
-          'USER_PROVISIONING_INCOMPLETE',
-          `${message}. Tài khoản đã được giữ ở trạng thái không hoạt động; mở Sửa để hoàn tất rồi mới kích hoạt.`,
-        );
-      }
-      throw caught;
+      if (!created) throw caught;
+
+      const refreshed = await requestJson<AccessUser[]>('/api/access/users?limit=1000').catch(() => null);
+      const latest = refreshed?.find((user) => user.id === created?.id) ?? created;
+      if (refreshed) setUsers(refreshed);
+      else setUsers((current) => mergeUser(current, latest));
+
+      // Crucial recovery rule: the identity already exists. Keep the user's draft and
+      // switch the same modal to edit mode so Retry finishes this account instead of
+      // creating a duplicate or forcing the operator to start again.
+      setEditor({ mode: 'edit', userId: created.id });
+      const message = caught instanceof Error ? caught.message : 'Không hoàn tất được việc cấp tài khoản';
+      throw new ApiRequestError(
+        'USER_PROVISIONING_INCOMPLETE',
+        `${message}. Tài khoản đã được giữ an toàn ở trạng thái hiện tại; biểu mẫu vẫn mở để hoàn tất vai trò, mật khẩu và kích hoạt.`,
+      );
     }
   }
 
@@ -342,7 +363,9 @@ export default function UserWorkspace({
       }
 
       setNotice(changed ? 'Đã cập nhật người dùng.' : 'Không có thay đổi cần lưu.');
-      closeEditor();
+      setEditor(null);
+      setDraft(emptyDraft());
+      setError(null);
     } catch (caught) {
       handleFailure(caught);
     } finally {
@@ -392,17 +415,11 @@ export default function UserWorkspace({
           <div className={styles.headerText}>
             <p className={styles.kicker}>Nhân sự &amp; phân quyền</p>
             <h1 className={styles.title}>Người dùng</h1>
-            <p className={styles.subtitle}>
-              Quản lý tài khoản sử dụng hệ thống, liên kết nhân sự và phân quyền theo công việc.
-            </p>
+            <p className={styles.subtitle}>Quản lý tài khoản sử dụng hệ thống, liên kết nhân sự và phân quyền theo công việc.</p>
           </div>
           <div className={styles.headerActions}>
-            <button className={styles.secondaryButton} type="button" onClick={() => reloadUsers()} disabled={busy !== null}>
-              Tải lại
-            </button>
-            <button className={styles.primaryButton} type="button" onClick={openCreate} disabled={busy !== null || eligibleEmployees.length === 0}>
-              Thêm người dùng
-            </button>
+            <button className={styles.secondaryButton} type="button" onClick={() => reloadUsers()} disabled={busy !== null}>Tải lại</button>
+            <button className={styles.primaryButton} type="button" onClick={openCreate} disabled={busy !== null || eligibleEmployees.length === 0}>Thêm người dùng</button>
           </div>
         </header>
 
@@ -412,251 +429,65 @@ export default function UserWorkspace({
           <article className={styles.summaryCard}><span>Không hoạt động</span><strong>{counts.inactive}</strong></article>
         </section>
 
-        {error && (
-          <div className={styles.errorNotice} role="alert">
-            {error}
-            {conflict && (
-              <div className={styles.conflictActions}>
-                <button className={styles.secondaryButton} type="button" onClick={() => reloadUsers('Đã tải lại phiên bản mới nhất.')} disabled={busy !== null}>
-                  Tải lại dữ liệu
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+        {error && !editor && <div className={styles.errorNotice} role="alert">{error}</div>}
         {notice && <div className={styles.notice} role="status">{notice}</div>}
 
         <section className={styles.toolbar} aria-label="Bộ lọc người dùng">
-          <label className={styles.field}>
-            Tìm kiếm
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.currentTarget.value)}
-              placeholder="Tên đăng nhập, nhân sự hoặc vai trò"
-            />
-          </label>
-          <label className={styles.field}>
-            Trạng thái
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as FilterState)}>
-              <option value="all">Tất cả</option>
-              <option value="active">Đang hoạt động</option>
-              <option value="inactive">Không hoạt động</option>
-            </select>
-          </label>
-          <div className={styles.headerActions}>
-            <span className={styles.muted}>{visibleUsers.length} kết quả</span>
-          </div>
+          <label className={styles.field}>Tìm kiếm<input type="search" value={search} onChange={(event) => setSearch(event.currentTarget.value)} placeholder="Tên đăng nhập, nhân sự hoặc vai trò" /></label>
+          <label className={styles.field}>Trạng thái<select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as FilterState)}><option value="all">Tất cả</option><option value="active">Đang hoạt động</option><option value="inactive">Không hoạt động</option></select></label>
+          <div className={styles.headerActions}><span className={styles.muted}>{visibleUsers.length} kết quả</span></div>
         </section>
 
         <section className={styles.tableSection}>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Tên đăng nhập</th>
-                  <th>Nhân sự</th>
-                  <th>Vai trò</th>
-                  <th>Trạng thái</th>
-                  <th>Cập nhật</th>
-                  <th>Hành động</th>
-                </tr>
-              </thead>
+              <thead><tr><th>Tên đăng nhập</th><th>Nhân sự</th><th>Vai trò</th><th>Trạng thái</th><th>Cập nhật</th><th>Hành động</th></tr></thead>
               <tbody>
                 {visibleUsers.map((user) => {
                   const employee = employeeMap.get(user.employee_id ?? '');
-                  const userRoles = (user.role_ids ?? [])
-                    .map((roleId) => roleMap.get(roleId))
-                    .filter((role): role is AccessRole => Boolean(role));
-                  return (
-                    <tr key={user.id}>
-                      <td className={styles.loginName}>{user.login_name}</td>
-                      <td>
-                        <div className={styles.employeeCell}>
-                          <strong>{employee?.full_name ?? user.employee_full_name ?? 'Không xác định'}</strong>
-                          <span>{employee?.code ?? user.employee_code ?? ''}</span>
-                        </div>
-                      </td>
-                      <td>
-                        {userRoles.length > 0 ? (
-                          <div className={styles.roleList}>
-                            {userRoles.map((role) => <span key={role.id} className={styles.roleChip}>{role.name}</span>)}
-                          </div>
-                        ) : <span className={styles.muted}>Chưa gán vai trò</span>}
-                      </td>
-                      <td>
-                        <span className={joinClasses(styles.statusBadge, user.is_active ? styles.active : styles.inactive)}>
-                          {user.is_active ? 'Hoạt động' : 'Không hoạt động'}
-                        </span>
-                      </td>
-                      <td>{formatDateTime(user.updated_at)}</td>
-                      <td>
-                        <div className={styles.rowActions}>
-                          <button className={styles.secondaryButton} type="button" onClick={() => openEdit(user.id)} disabled={busy !== null}>Sửa</button>
-                          <button
-                            className={user.is_active ? styles.dangerButton : styles.successButton}
-                            type="button"
-                            onClick={() => setToggleState({ userId: user.id, nextActive: !user.is_active })}
-                            disabled={busy !== null}
-                          >
-                            {user.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
+                  const userRoles = (user.role_ids ?? []).map((roleId) => roleMap.get(roleId)).filter((role): role is AccessRole => Boolean(role));
+                  return <tr key={user.id}>
+                    <td className={styles.loginName}>{user.login_name}</td>
+                    <td><div className={styles.employeeCell}><strong>{employee?.full_name ?? user.employee_full_name ?? 'Không xác định'}</strong><span>{employee?.code ?? user.employee_code ?? ''}</span></div></td>
+                    <td>{userRoles.length > 0 ? <div className={styles.roleList}>{userRoles.map((role) => <span key={role.id} className={styles.roleChip}>{role.name}</span>)}</div> : <span className={styles.muted}>Chưa gán vai trò</span>}</td>
+                    <td><span className={joinClasses(styles.statusBadge, user.is_active ? styles.active : styles.inactive)}>{user.is_active ? 'Hoạt động' : 'Không hoạt động'}</span></td>
+                    <td>{formatDateTime(user.updated_at)}</td>
+                    <td><div className={styles.rowActions}><button className={styles.secondaryButton} type="button" onClick={() => openEdit(user.id)} disabled={busy !== null}>Sửa</button><button className={user.is_active ? styles.dangerButton : styles.successButton} type="button" onClick={() => setToggleState({ userId: user.id, nextActive: !user.is_active })} disabled={busy !== null}>{user.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button></div></td>
+                  </tr>;
                 })}
-                {visibleUsers.length === 0 && (
-                  <tr><td colSpan={6} className={styles.emptyState}>Không có người dùng phù hợp.</td></tr>
-                )}
+                {visibleUsers.length === 0 && <tr><td colSpan={6} className={styles.emptyState}>Không có người dùng phù hợp.</td></tr>}
               </tbody>
             </table>
           </div>
         </section>
 
-        {editor && (
-          <div className={styles.modalBackdrop} role="presentation">
-            <section className={styles.modalPanel} role="dialog" aria-modal="true" aria-labelledby="user-editor-title">
-              <header className={styles.modalHeader}>
-                <div>
-                  <h2 id="user-editor-title">{editor.mode === 'create' ? 'Thêm người dùng' : 'Cập nhật người dùng'}</h2>
-                  <p>{editor.mode === 'create'
-                    ? 'Chọn nhân sự, cấp tên đăng nhập, mật khẩu và vai trò trong một lần.'
-                    : 'Cập nhật vai trò, trạng thái hoặc đặt lại mật khẩu đăng nhập.'}</p>
-                </div>
-                <button className={styles.closeButton} type="button" onClick={closeEditor} aria-label="Đóng" disabled={busy !== null}>×</button>
-              </header>
-
-              <div className={styles.modalBody}>
-                <div className={styles.formGrid}>
-                  <label className={styles.field}>
-                    Tên đăng nhập
-                    <input
-                      value={draft.loginName}
-                      onChange={(event) => setDraft((current) => ({ ...current, loginName: event.currentTarget.value }))}
-                      disabled={editor.mode === 'edit' || busy !== null}
-                      placeholder="vi-du.nguyen"
-                      autoComplete="off"
-                    />
-                  </label>
-
-                  {editor.mode === 'create' ? (
-                    <label className={styles.field}>
-                      Nhân sự đang hoạt động chưa có tài khoản
-                      <select
-                        value={draft.employeeId}
-                        onChange={(event) => setDraft((current) => ({ ...current, employeeId: event.currentTarget.value }))}
-                        disabled={busy !== null}
-                      >
-                        <option value="">Chọn nhân sự</option>
-                        {eligibleEmployees.map((employee) => (
-                          <option key={employee.id} value={employee.id}>{employee.full_name} — {employee.code}</option>
-                        ))}
-                      </select>
-                    </label>
-                  ) : (
-                    <label className={styles.field}>
-                      Nhân sự liên kết
-                      <input value={`${editingUser?.employee_full_name ?? ''}${editingUser?.employee_code ? ` — ${editingUser.employee_code}` : ''}`} disabled />
-                    </label>
-                  )}
-
-                  <label className={styles.field}>
-                    {editor.mode === 'create' ? 'Mật khẩu đăng nhập' : 'Mật khẩu mới'}
-                    <input
-                      type="password"
-                      value={draft.password}
-                      onChange={(event) => setDraft((current) => ({ ...current, password: event.currentTarget.value }))}
-                      disabled={busy !== null}
-                      minLength={10}
-                      maxLength={256}
-                      autoComplete="new-password"
-                      placeholder={editor.mode === 'create' ? 'Ít nhất 10 ký tự' : 'Để trống nếu không đổi'}
-                    />
-                    <small>{editor.mode === 'create'
-                      ? 'Mật khẩu này được cấp trực tiếp cho nhân viên để đăng nhập lần đầu.'
-                      : 'Nhập mật khẩu mới sẽ đồng thời thu hồi các phiên đăng nhập cũ của người dùng.'}</small>
-                  </label>
-
-                  <label className={styles.field}>
-                    Trạng thái sau khi cấp tài khoản
-                    <select
-                      value={draft.isActive ? 'active' : 'inactive'}
-                      onChange={(event) => setDraft((current) => ({ ...current, isActive: event.currentTarget.value === 'active' }))}
-                      disabled={busy !== null}
-                    >
-                      <option value="active">Hoạt động</option>
-                      <option value="inactive">Không hoạt động</option>
-                    </select>
-                  </label>
-
-                  <div className={styles.field}>
-                    Vai trò
-                    <div className={styles.checkboxGrid}>
-                      {selectableRoles.map((role) => {
-                        const assigned = draft.roleIds.includes(role.id);
-                        return (
-                          <label key={role.id} className={styles.roleOption}>
-                            <input
-                              type="checkbox"
-                              checked={assigned}
-                              onChange={() => toggleRole(role.id)}
-                              disabled={busy !== null}
-                            />
-                            <span>
-                              <strong>{role.name}</strong>
-                              {!role.is_active && <small>Vai trò không hoạt động — bỏ chọn để thu hồi</small>}
-                            </span>
-                          </label>
-                        );
-                      })}
-                      {selectableRoles.length === 0 && <span className={styles.muted}>Không có vai trò đang hoạt động.</span>}
-                    </div>
-                    {editor.mode === 'create' && <small>Chọn ít nhất một vai trò để tài khoản có quyền sử dụng app.</small>}
-                  </div>
-                </div>
+        {editor && <div className={styles.modalBackdrop} role="presentation">
+          <section className={styles.modalPanel} role="dialog" aria-modal="true" aria-labelledby="user-editor-title">
+            <header className={styles.modalHeader}>
+              <div><h2 id="user-editor-title">{editor.mode === 'create' ? 'Thêm người dùng' : 'Cập nhật người dùng'}</h2><p>{editor.mode === 'create' ? 'Chọn nhân sự, cấp tên đăng nhập, mật khẩu và vai trò trong một lần.' : 'Cập nhật vai trò, trạng thái hoặc đặt lại mật khẩu đăng nhập.'}</p></div>
+              <button className={styles.closeButton} type="button" onClick={closeEditor} aria-label="Đóng" disabled={busy !== null}>×</button>
+            </header>
+            <div className={styles.modalBody}>
+              {error && <div className={styles.errorNotice} role="alert">{error}{conflict && <div className={styles.conflictActions}><button className={styles.secondaryButton} type="button" onClick={() => reloadUsers('Đã tải lại phiên bản mới nhất.')} disabled={busy !== null}>Tải lại dữ liệu</button></div>}</div>}
+              <div className={styles.formGrid}>
+                <label className={styles.field}>Tên đăng nhập<input value={draft.loginName} onChange={(event) => setDraft((current) => ({ ...current, loginName: event.currentTarget.value }))} disabled={editor.mode === 'edit' || busy !== null} placeholder="vi-du.nguyen" autoComplete="off" /></label>
+                {editor.mode === 'create' ? <label className={styles.field}>Nhân sự đang hoạt động chưa có tài khoản<select value={draft.employeeId} onChange={(event) => setDraft((current) => ({ ...current, employeeId: event.currentTarget.value }))} disabled={busy !== null}><option value="">Chọn nhân sự</option>{eligibleEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name} — {employee.code}</option>)}</select></label> : <label className={styles.field}>Nhân sự liên kết<input value={`${editingUser?.employee_full_name ?? employeeMap.get(draft.employeeId)?.full_name ?? ''}${editingUser?.employee_code ? ` — ${editingUser.employee_code}` : employeeMap.get(draft.employeeId)?.code ? ` — ${employeeMap.get(draft.employeeId)?.code}` : ''}`} disabled /></label>}
+                <label className={styles.field}>{editor.mode === 'create' ? 'Mật khẩu đăng nhập' : 'Mật khẩu mới'}<input type="password" value={draft.password} onChange={(event) => setDraft((current) => ({ ...current, password: event.currentTarget.value }))} disabled={busy !== null} minLength={10} maxLength={256} autoComplete="new-password" placeholder={editor.mode === 'create' ? 'Ít nhất 10 ký tự' : 'Để trống nếu không đổi'} /><small>{editor.mode === 'create' ? 'Mật khẩu này được cấp trực tiếp cho nhân viên để đăng nhập lần đầu.' : 'Nhập mật khẩu mới sẽ đồng thời thu hồi các phiên đăng nhập cũ của người dùng.'}</small></label>
+                <label className={styles.field}>Trạng thái sau khi cấp tài khoản<select value={draft.isActive ? 'active' : 'inactive'} onChange={(event) => setDraft((current) => ({ ...current, isActive: event.currentTarget.value === 'active' }))} disabled={busy !== null}><option value="active">Hoạt động</option><option value="inactive">Không hoạt động</option></select></label>
+                <div className={styles.field}>Vai trò<div className={styles.checkboxGrid}>{selectableRoles.map((role) => { const assigned = draft.roleIds.includes(role.id); return <label key={role.id} className={styles.roleOption}><input type="checkbox" checked={assigned} onChange={() => toggleRole(role.id)} disabled={busy !== null} /><span><strong>{role.name}</strong>{!role.is_active && <small>Vai trò không hoạt động — bỏ chọn để thu hồi</small>}</span></label>; })}{selectableRoles.length === 0 && <span className={styles.muted}>Không có vai trò đang hoạt động.</span>}</div>{editor.mode === 'create' && <small>Chọn ít nhất một vai trò để tài khoản có quyền sử dụng app.</small>}</div>
               </div>
+            </div>
+            <footer className={styles.modalFooter}><button className={styles.secondaryButton} type="button" onClick={closeEditor} disabled={busy !== null}>Hủy</button><button className={styles.primaryButton} type="button" onClick={saveEditor} disabled={busy !== null || Boolean(createFormIncomplete) || Boolean(editPasswordInvalid)}>{busy === 'save' ? 'Đang lưu…' : editor.mode === 'create' ? 'Tạo tài khoản' : 'Lưu'}</button></footer>
+          </section>
+        </div>}
 
-              <footer className={styles.modalFooter}>
-                <button className={styles.secondaryButton} type="button" onClick={closeEditor} disabled={busy !== null}>Hủy</button>
-                <button
-                  className={styles.primaryButton}
-                  type="button"
-                  onClick={saveEditor}
-                  disabled={busy !== null || Boolean(createFormIncomplete) || Boolean(editPasswordInvalid)}
-                >
-                  {busy === 'save' ? 'Đang lưu…' : editor.mode === 'create' ? 'Tạo tài khoản' : 'Lưu'}
-                </button>
-              </footer>
-            </section>
-          </div>
-        )}
-
-        {toggleState && (
-          <div className={styles.modalBackdrop} role="presentation">
-            <section className={joinClasses(styles.modalPanel, styles.confirmPanel)} role="dialog" aria-modal="true" aria-labelledby="toggle-user-title">
-              <header className={styles.modalHeader}>
-                <div>
-                  <h3 id="toggle-user-title">Xác nhận thay đổi trạng thái</h3>
-                </div>
-                <button className={styles.closeButton} type="button" onClick={() => setToggleState(null)} aria-label="Đóng" disabled={busy !== null}>×</button>
-              </header>
-              <div className={styles.modalBody}>
-                <p className={styles.confirmText}>
-                  {toggleState.nextActive
-                    ? 'Đưa người dùng này vào sử dụng? Nhân sự liên kết phải đang hoạt động.'
-                    : 'Ngừng sử dụng người dùng này? Các vai trò được giữ nguyên để có thể dùng lại khi cần.'}
-                </p>
-              </div>
-              <footer className={styles.modalFooter}>
-                <button className={styles.secondaryButton} type="button" onClick={() => setToggleState(null)} disabled={busy !== null}>Hủy</button>
-                <button className={toggleState.nextActive ? styles.successButton : styles.dangerButton} type="button" onClick={confirmToggle} disabled={busy !== null}>
-                  {busy === 'toggle' ? 'Đang xử lý…' : 'Xác nhận'}
-                </button>
-              </footer>
-            </section>
-          </div>
-        )}
+        {toggleState && <div className={styles.modalBackdrop} role="presentation">
+          <section className={joinClasses(styles.modalPanel, styles.confirmPanel)} role="dialog" aria-modal="true" aria-labelledby="toggle-user-title">
+            <header className={styles.modalHeader}><div><h3 id="toggle-user-title">Xác nhận thay đổi trạng thái</h3></div><button className={styles.closeButton} type="button" onClick={() => setToggleState(null)} aria-label="Đóng" disabled={busy !== null}>×</button></header>
+            <div className={styles.modalBody}><p className={styles.confirmText}>{toggleState.nextActive ? 'Đưa người dùng này vào sử dụng? Nhân sự liên kết phải đang hoạt động.' : 'Ngừng sử dụng người dùng này? Các vai trò được giữ nguyên để có thể dùng lại khi cần.'}</p></div>
+            <footer className={styles.modalFooter}><button className={styles.secondaryButton} type="button" onClick={() => setToggleState(null)} disabled={busy !== null}>Hủy</button><button className={toggleState.nextActive ? styles.successButton : styles.dangerButton} type="button" onClick={confirmToggle} disabled={busy !== null}>{busy === 'toggle' ? 'Đang xử lý…' : 'Xác nhận'}</button></footer>
+          </section>
+        </div>}
       </main>
     </AppShell>
   );
