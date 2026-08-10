@@ -6,6 +6,7 @@ import {
   setInternalUserCredential,
 } from '../src/internal-workforce-auth.js';
 import * as repo from '../src/db/repositories/internal-workforce-auth.js';
+import { ensureSecurityOwnerUsers } from './workforce-owner-identity.js';
 
 const { Pool } = pg;
 const BOOTSTRAP_ACTOR = 'bootstrap:workforce-owner-credentials';
@@ -60,6 +61,14 @@ const pool = new Pool({
 const client = await pool.connect();
 try {
   await client.query('BEGIN');
+
+  const identityPreparation = await ensureSecurityOwnerUsers(client, {
+    installationId,
+    emails: expectedEmails,
+    actorId: BOOTSTRAP_ACTOR,
+  });
+  if (!identityPreparation.ok) throw new Error(identityPreparation.code);
+
   const reconciliation = await reconcileSecurityOwners(client, {
     repo,
     config,
@@ -102,6 +111,7 @@ try {
     ownerCount: expectedEmails.length,
     permanentOwnerCount: config.securityOwnerEmails.length,
     temporaryOwnerCount: config.implementationOwnerEmails.length,
+    provisionedUserCount: identityPreparation.provisionedUserCount,
   }));
 } catch (error) {
   await client.query('ROLLBACK');
