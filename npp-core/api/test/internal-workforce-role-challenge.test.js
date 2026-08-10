@@ -20,7 +20,7 @@ test('production challenge uses one bounded Cloudflare request to the authentica
   const source = await readFile(new URL('../src/internal-workforce-auth.js', import.meta.url), 'utf8');
   assert.match(source, /AbortSignal\.timeout\(CHALLENGE_EMAIL_TIMEOUT_MS\)/);
   assert.match(source, /identity\.employee_email/);
-  assert.match(source, /to:\s*\[recipientEmail\]/);
+  assert.match(source, /to:\s*\[recipient\]/);
   assert.match(source, /from:\s*\{\s*address:\s*runtime\.from,\s*name:\s*'Hưng Phát Security'\s*\}/s);
   assert.match(source, /recipientCount:\s*1/);
   assert.match(source, /không dùng cho ngân hàng/i);
