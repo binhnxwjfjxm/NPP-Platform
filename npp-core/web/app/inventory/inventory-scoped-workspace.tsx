@@ -270,6 +270,7 @@ export default function InventoryScopedWorkspace({
           <div className={styles.heroControls}>
             <div className={styles.toolbar}>
               <input
+                aria-label={searchPlaceholder}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={searchPlaceholder}
