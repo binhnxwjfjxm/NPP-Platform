@@ -1,5 +1,18 @@
 .toolbarGrid {
-  grid-template-columns: minmax(0, 1.5fr) 180px 220px;
+  grid-template-columns: minmax(210px, 1.25fr) minmax(130px, 0.6fr) minmax(165px, 0.8fr) minmax(180px, 0.9fr);
+  gap: 8px;
+  padding: 10px;
+}
+
+.toolbarGrid label {
+  gap: 4px;
+}
+
+.toolbarGrid input,
+.toolbarGrid select {
+  min-height: 34px;
+  padding: 6px 8px;
+  font-size: 0.76rem;
 }
 
 .sectionTabs {
@@ -150,7 +163,14 @@
 }
 
 @media (max-width: 1050px) {
-  .toolbarGrid,
+  .toolbarGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .toolbarSearchCompact {
+    grid-column: 1 / -1;
+  }
+
   .splitGrid {
     grid-template-columns: 1fr;
   }
@@ -163,6 +183,17 @@
 
   .fullWidth {
     grid-column: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .toolbarGrid {
+    gap: 7px;
+    padding: 9px;
+  }
+
+  .toolbarEmployeeCompact {
+    grid-column: 1 / -1;
   }
 }
 

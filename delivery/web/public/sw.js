@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hung-phat-delivery-static-v1';
+const CACHE_NAME = 'hung-phat-delivery-static-v2';
 const OFFLINE_URL = '/offline.html';
 const STATIC_ASSETS = [
   OFFLINE_URL,

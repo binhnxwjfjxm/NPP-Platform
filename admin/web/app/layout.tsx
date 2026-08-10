@@ -12,11 +12,11 @@ export const metadata: Metadata = {
   manifest: '/manifest.webmanifest',
   icons: {
     icon: [
-      { url: '/api/pwa-icon?size=192', sizes: '192x192', type: 'image/png' },
-      { url: '/api/pwa-icon?size=512', sizes: '512x512', type: 'image/png' },
+      { url: '/icons/admin-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/admin-512.png', sizes: '512x512', type: 'image/png' },
     ],
-    shortcut: '/api/pwa-icon?size=192',
-    apple: '/api/pwa-icon?size=512',
+    shortcut: '/icons/admin-192.png',
+    apple: [{ url: '/icons/admin-180.png', sizes: '180x180', type: 'image/png' }],
   },
   appleWebApp: {
     capable: true,
