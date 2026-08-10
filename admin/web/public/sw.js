@@ -1,12 +1,19 @@
-const CACHE_NAME = 'admin-mcp-npp-static-v1';
+const CACHE_NAME = 'admin-mcp-npp-static-v2';
 const OFFLINE_URL = '/offline.html';
-const STATIC_PATH_PREFIXES = ['/_next/static/', '/api/pwa-icon'];
-const STATIC_PATHS = ['/manifest.webmanifest', OFFLINE_URL];
+const STATIC_PATH_PREFIXES = ['/_next/static/', '/icons/'];
+const STATIC_PATHS = [
+  '/manifest.webmanifest',
+  OFFLINE_URL,
+  '/icons/admin-180.png',
+  '/icons/admin-192.png',
+  '/icons/admin-512.png',
+  '/icons/admin-maskable-512.png',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.add(OFFLINE_URL))
+      .then((cache) => cache.addAll(STATIC_PATHS))
       .then(() => self.skipWaiting()),
   );
 });
