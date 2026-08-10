@@ -32,6 +32,11 @@ type CustomerOnboardingProjection = {
   officialOrderAllowed: boolean;
 };
 
+type CustomerOnboardingLoadResult = {
+  projection: CustomerOnboardingProjection;
+  syncError: string | null;
+};
+
 function onboardingFromPayload(payload: unknown): CustomerOnboardingProjection {
   const data = payload && typeof payload === "object" ? (payload as { data?: unknown }).data : null;
   if (!data || typeof data !== "object") throw new Error("Core trả về trạng thái khách không hợp lệ");
@@ -78,6 +83,22 @@ async function syncCustomerOnboarding(sessionCustomerId: string, orderId: string
   return onboardingFromPayload(payload);
 }
 
+async function loadCustomerOnboarding(sessionCustomerId: string, orderId: string): Promise<CustomerOnboardingLoadResult> {
+  const projection = await getCustomerOnboarding(sessionCustomerId, orderId);
+  if (!projection.coreRequestId) return { projection, syncError: null };
+  try {
+    return {
+      projection: await syncCustomerOnboarding(sessionCustomerId, orderId),
+      syncError: null
+    };
+  } catch (error) {
+    return {
+      projection,
+      syncError: error instanceof Error ? error.message : "Không đồng bộ được trạng thái khách"
+    };
+  }
+}
+
 function money(value?: string | null) {
   const amount = Number(value || 0);
   return Number.isFinite(amount) ? `${Math.round(amount).toLocaleString("vi-VN")}đ` : "—";
@@ -117,14 +138,15 @@ export function McpOfficialOrderPanel({
     let active = true;
     setLoading(true);
     Promise.allSettled([
-      getCustomerOnboarding(sessionCustomerId, orderId),
+      loadCustomerOnboarding(sessionCustomerId, orderId),
       getCoreSalesOrderProjection(sessionCustomerId, orderId)
     ])
       .then(([onboardingResult, orderResult]) => {
         if (!active) return;
-        if (onboardingResult.status === "fulfilled") setOnboarding(onboardingResult.value);
+        if (onboardingResult.status === "fulfilled") setOnboarding(onboardingResult.value.projection);
         if (orderResult.status === "fulfilled") setSalesOrder(orderResult.value);
-        setMessage(settledError([onboardingResult, orderResult]));
+        const onboardingSyncError = onboardingResult.status === "fulfilled" ? onboardingResult.value.syncError : null;
+        setMessage(onboardingSyncError || settledError([onboardingResult, orderResult]));
       })
       .finally(() => {
         if (active) setLoading(false);

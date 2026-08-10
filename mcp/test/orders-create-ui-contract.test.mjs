@@ -74,11 +74,23 @@ test("catalog groups variants and follows distributor priority", () => {
   assert.match(sheet, /\.sort\(compareCatalogProducts\)/);
 });
 
-test("variant selection is add-only and visibly confirmed", () => {
-  assert.match(sheet, /onClick=\{\(\) => addProduct\(product\)\}/);
-  assert.match(sheet, /setAddedNotice\(`/);
+test("selected catalog variant click decrements or removes while cart plus still increments", () => {
+  assert.match(sheet, /function toggleCatalogProduct\(product: ProductCatalogItem\)/);
+  assert.match(sheet, /if \(selectedQuantity > 0\) \{[\s\S]*decreaseProduct\(product\.variantId\);[\s\S]*announceQuantity\(product, selectedQuantity - 1\);/);
+  assert.match(sheet, /onClick=\{\(\) => toggleCatalogProduct\(product\)\}/);
+  assert.match(sheet, /chạm để giảm/);
+  assert.match(sheet, /onClick=\{\(\) => addProduct\(item\)\}/);
   assert.match(sheet, /aria-live="assertive"/);
   assert.match(sheetStyles, /\.variantButton \{[\s\S]*min-height: 64px/);
+});
+
+test("Core null catalog price stays unknown instead of becoming a real zero price", () => {
+  assert.match(sheet, /price: catalogPrice\(item\.price\)/);
+  assert.match(sheet, /return value === null \|\| value === undefined \? "Giá theo Core" : money\.format\(value\)/);
+  assert.match(sheet, /const hasCorePricedItems = items\.some/);
+  assert.match(sheet, /const totalLabel = hasCorePricedItems \? "Giá theo Core" : money\.format\(total\)/);
+  assert.match(sheet, /placeholder=\{item\.price === null \? "Core xác định" : undefined\}/);
+  assert.doesNotMatch(sheet, /money\.format\(Number\(product\.price \|\| 0\)\)/);
 });
 
 test("primary create action requires a separate cart review gesture", () => {

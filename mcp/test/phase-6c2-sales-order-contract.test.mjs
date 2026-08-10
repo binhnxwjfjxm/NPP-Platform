@@ -11,6 +11,7 @@ test("purchase-demand picker routes only to canonical NPP Core Sales products", 
   const searchProxy = read("src/app/api/products/search/route.ts");
   const variantsProxy = read("src/app/api/products/[id]/variants/route.ts");
   const demandUi = read("src/features/mcp/McpSessionCompactViewFinal2.tsx");
+  const orderCreateUi = read("src/features/orders/OrderCreateSheet.tsx");
   assert.match(api, /searchCoreSalesSkus/);
   assert.match(api, /listCoreProductVariants/);
   assert.match(api, /item\.id === variant\.id && item\.productId === productId/);
@@ -25,6 +26,12 @@ test("purchase-demand picker routes only to canonical NPP Core Sales products", 
   assert.match(variantsProxy, /\/api\/core-sales\/products\/\$\{encodeURIComponent\(productId\)\}\/variants/);
   assert.match(demandUi, /fetch\(`\/api\/products\/search/);
   assert.match(demandUi, /fetch\(`\/api\/products\/\$\{encodeURIComponent\(productId\)\}\/variants/);
+  assert.match(demandUi, /price: catalogPrice\(item\.price\)/);
+  assert.match(demandUi, /catalogPriceLabel\(variant\.price\)/);
+  assert.doesNotMatch(demandUi, /formatMoney\(Number\(variant\.price \|\| 0\)\)/);
+  assert.match(orderCreateUi, /price: catalogPrice\(item\.price\)/);
+  assert.match(orderCreateUi, /"Giá theo Core"/);
+  assert.doesNotMatch(orderCreateUi, /money\.format\(Number\(product\.price \|\| 0\)\)/);
 });
 
 test("official order creation is explicit, pending-safe and reachable after session lock", () => {
@@ -51,6 +58,10 @@ test("official order creation is explicit, pending-safe and reachable after sess
   assert.match(panel, /Tạo đơn nháp NPP/);
   assert.match(panel, /submitCoreSalesOrder/);
   assert.match(panel, /Promise\.allSettled/);
+  assert.match(panel, /async function loadCustomerOnboarding/);
+  assert.match(panel, /if \(!projection\.coreRequestId\) return \{ projection, syncError: null \}/);
+  assert.match(panel, /projection: await syncCustomerOnboarding\(sessionCustomerId, orderId\)/);
+  assert.match(panel, /loadCustomerOnboarding\(sessionCustomerId, orderId\)/);
   assert.match(panel, /const \[busy, setBusy\] = useState\(false\)/);
   assert.match(panel, /if \(busy\) return/);
   assert.match(panel, /setBusy\(true\)/);
@@ -58,6 +69,16 @@ test("official order creation is explicit, pending-safe and reachable after sess
   assert.doesNotMatch(panel, /useTransition/);
   assert.match(page, /McpOfficialOrderPanel/);
   assert.doesNotMatch(panel, /confirmCoreSalesOrder/);
+});
+
+test("MCP source orders stay visible in the canonical NPP Operations Sales Order list", () => {
+  const workspace = read("../npp-core/web/app/sales/sales-orders/SalesOrderWorkspace.tsx");
+  const repository = read("../npp-core/api/src/db/repositories/sales-order.js");
+  assert.match(workspace, /if \(order\.sourceType === 'MCP'\) return 'mcp'/);
+  assert.match(workspace, /const \[source, setSource\] = useState<OrderSourceFilter>\('all'\)/);
+  assert.match(workspace, /<option value="mcp">MCP<\/option>/);
+  assert.match(repository, /so\.source_type, so\.source_id, so\.source_outlet_id/);
+  assert.doesNotMatch(repository, /source_type\s*(?:<>|!=)\s*['"]MCP['"]/i);
 });
 
 test("MCP and Core Sales principals are least privilege and warehouse scoped", () => {
