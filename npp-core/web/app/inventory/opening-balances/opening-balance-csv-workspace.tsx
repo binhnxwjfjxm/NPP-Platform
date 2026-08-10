@@ -58,6 +58,7 @@ const HEADER_ALIASES = Object.fromEntries(CSV_COLUMNS.flatMap((column) => [
   [column.label, column.key],
   [column.key, column.key],
 ]));
+const SOURCE_KEY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 // Migration vocabulary: “Mã kho” is now selected from the canonical warehouse list;
 // “Mã tham chiếu SKU” is now the business-readable SKU column; “Tải mẫu Excel/CSV” still downloads UTF-8 CSV.
 
@@ -99,7 +100,7 @@ function parseCsv(text: string): CsvRow[] {
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) return [];
   const delimiter = delimiterFor(lines[0]);
-  const headers = parseLine(lines[0], delimiter).map((header) => HEADER_ALIASES[header.trim()] ?? header.trim());
+  const headers: string[] = parseLine(lines[0], delimiter).map((header) => HEADER_ALIASES[header.trim()] ?? header.trim());
   const required = new Set(['sku', 'sourceQuantity']);
   if ([...required].some((key) => !headers.includes(key))) return [];
   return lines.slice(1).map((line) => {
@@ -202,21 +203,26 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
   useEffect(() => {
     let active = true;
     setBusy('bootstrap');
-    Promise.all([
-      requestJson<WarehouseOption[]>('/api/inventory/opening-balances/operator/warehouses'),
-      requestJson<OpeningBalanceImport[]>('/api/inventory/opening-balances?limit=200'),
-    ])
-      .then(([warehouses, nextImports]) => {
+
+    const warehousesRequest = requestJson<WarehouseOption[]>('/api/inventory/opening-balances/operator/warehouses')
+      .then((warehouses) => {
         if (!active) return;
         setWarehouseOptions(warehouses);
-        setImports(nextImports);
         if (warehouses.length === 1) setSelectedWarehouseId(warehouses[0].id);
         if (initialError) setMessage(null);
       })
       .catch((error) => {
         if (!active) return;
-        setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Không tải được lịch sử nhập tồn đầu kỳ hoặc danh mục kho.' });
+        setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Không tải được danh mục kho.' });
+      });
+
+    const historyRequest = requestJson<OpeningBalanceImport[]>('/api/inventory/opening-balances?limit=200')
+      .then((nextImports) => {
+        if (active) setImports(nextImports);
       })
+      .catch(() => undefined);
+
+    void Promise.allSettled([warehousesRequest, historyRequest])
       .finally(() => { if (active) setBusy(null); });
     return () => { active = false; };
   }, [initialError]);
@@ -287,7 +293,9 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
 
   async function validate() {
     if (!selectedWarehouseId) { setMessage({ kind: 'error', text: 'Chọn kho trước khi kiểm tra tệp.' }); return; }
-    if (!sourceKey.trim()) { setMessage({ kind: 'error', text: 'Nhập mã đợt dữ liệu để tránh nhập trùng.' }); return; }
+    const normalizedSourceKey = sourceKey.trim().toUpperCase();
+    if (!normalizedSourceKey) { setMessage({ kind: 'error', text: 'Nhập mã đợt dữ liệu để tránh nhập trùng.' }); return; }
+    if (!SOURCE_KEY_PATTERN.test(normalizedSourceKey)) { setMessage({ kind: 'error', text: 'Mã đợt dữ liệu chỉ dùng chữ không dấu, số và các ký tự . _ : - (tối đa 128 ký tự).' }); return; }
     if (!rows.length) { setMessage({ kind: 'error', text: 'Chọn tệp CSV trước khi kiểm tra.' }); return; }
     if (localErrors.length) { setMessage({ kind: 'error', text: 'Tệp còn dòng thiếu SKU hoặc số lượng. Sửa các dòng báo đỏ trước.' }); return; }
     const revision = draftRevision.current;
@@ -330,12 +338,12 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
       }
       await requestJson('/api/inventory/opening-balances/operator/post', {
         method: 'POST',
-        headers: { 'Idempotency-Key': `opening-${body.sourceKey}-${contentChecksum.slice(0, 16)}` },
+        headers: { 'Idempotency-Key': `opening-${contentChecksum}` },
         body: JSON.stringify({ ...body, contentChecksum }),
       });
-      const next = await requestJson<OpeningBalanceImport[]>('/api/inventory/opening-balances?limit=200');
+      const next = await requestJson<OpeningBalanceImport[]>('/api/inventory/opening-balances?limit=200').catch(() => null);
       draftRevision.current += 1;
-      setImports(next);
+      if (next) setImports(next);
       setRows([]);
       setValidation(null);
       setValidationChecksum(null);

@@ -284,8 +284,7 @@ export default function UserWorkspace({
 
       const refreshed = await requestJson<AccessUser[]>('/api/access/users?limit=1000').catch(() => null);
       const latest = refreshed?.find((user) => user.id === created?.id) ?? created;
-      if (refreshed) setUsers(refreshed);
-      else setUsers((current) => mergeUser(current, latest));
+      setUsers((current) => mergeUser(refreshed ?? current, latest));
 
       // Crucial recovery rule: the identity already exists. Keep the user's draft and
       // switch the same modal to edit mode so Retry finishes this account instead of

@@ -110,6 +110,12 @@ function writeSuccess(res, data, options, statusCode = 200) {
   );
 }
 
+function serviceFailureStatus(result) {
+  if (result?.code === 'WAREHOUSE_SCOPE_DENIED' || result?.code === 'PERMISSION_DENIED') return 403;
+  if (result?.retryable) return 503;
+  return result?.statusCode ?? 400;
+}
+
 function warehouseAllowed(requestContext, warehouseId) {
   return Array.isArray(requestContext.scopes?.warehouseIds)
     && requestContext.scopes.warehouseIds.includes(warehouseId);
@@ -264,6 +270,7 @@ export async function resolveOpeningBalanceOperatorPayload(client, requestContex
     if (locationCode) {
       if (!LOCATION_CODE_PATTERN.test(locationCode)) {
         rowErrors.push({ lineNumber, code: 'INVALID_LOCATION_CODE', message: `Mã vị trí ${locationCode} không hợp lệ.` });
+        displayRows.push({ lineNumber, warehouseCode: warehouse.code, warehouseName: warehouse.name, sku, locationCode, sourceQuantity: source.sourceQuantity ?? '' });
         continue;
       }
       location = locationMap.get(locationCode.toUpperCase()) ?? null;
@@ -329,13 +336,17 @@ export async function resolveOpeningBalanceOperatorPayload(client, requestContex
 }
 
 function mergeValidationRows(displayRows, serviceRows) {
-  return displayRows.map((display, index) => ({
-    ...display,
-    ...(serviceRows[index] ?? {}),
-    sourceQuantityScaled: serviceRows[index]?.sourceQuantityScaled === undefined || serviceRows[index]?.sourceQuantityScaled === null
-      ? serviceRows[index]?.sourceQuantityScaled
-      : String(serviceRows[index].sourceQuantityScaled),
-  }));
+  const byLineNumber = new Map(serviceRows.map((row) => [Number(row.lineNumber), row]));
+  return displayRows.map((display) => {
+    const service = byLineNumber.get(Number(display.lineNumber)) ?? {};
+    return {
+      ...display,
+      ...service,
+      sourceQuantityScaled: service.sourceQuantityScaled === undefined || service.sourceQuantityScaled === null
+        ? service.sourceQuantityScaled
+        : String(service.sourceQuantityScaled),
+    };
+  });
 }
 
 export async function handleOpeningBalanceOperatorRoutes(req, res, options) {
@@ -388,7 +399,7 @@ export async function handleOpeningBalanceOperatorRoutes(req, res, options) {
         payload: resolved.legacyPayload,
       });
       if (!result.ok && result.code) {
-        sendError(res, apiError(result.code, result.message, result.details ?? {}, Boolean(result.retryable), result.statusCode ?? 400), options.requestId, options.receivedAt);
+        sendError(res, apiError(result.code, result.message, result.details ?? {}, Boolean(result.retryable), serviceFailureStatus(result)), options.requestId, options.receivedAt);
         return true;
       }
       writeSuccess(res, {
@@ -423,7 +434,7 @@ export async function handleOpeningBalanceOperatorRoutes(req, res, options) {
         payload: resolved.legacyPayload,
       });
       if (!result.ok) {
-        sendError(res, apiError(result.code, result.message, result.details ?? {}, Boolean(result.retryable), result.code === 'WAREHOUSE_SCOPE_DENIED' ? 403 : 400), options.requestId, options.receivedAt);
+        sendError(res, apiError(result.code, result.message, result.details ?? {}, Boolean(result.retryable), serviceFailureStatus(result)), options.requestId, options.receivedAt);
         return true;
       }
       writeSuccess(res, {

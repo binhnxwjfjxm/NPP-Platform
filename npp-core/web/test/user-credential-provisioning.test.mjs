@@ -19,7 +19,8 @@ test('partial user provisioning keeps the same modal draft and resumes as edit i
   assert.ok(partialStart >= 0 && partialEnd > partialStart, 'partial provisioning recovery branch must exist');
   const recovery = source.slice(partialStart, partialEnd);
   assert.match(recovery, /setEditor\(\{ mode: 'edit', userId: created\.id \}\)/);
-  assert.match(recovery, /mergeUser\(current, latest\)/);
+  assert.match(recovery, /mergeUser\(refreshed \?\? current, latest\)/);
+  assert.doesNotMatch(recovery, /if \(refreshed\) setUsers\(refreshed\)/);
   assert.doesNotMatch(recovery, /closeEditor\(\)|setDraft\(emptyDraft\(\)\)/);
   assert.match(source, /if \(busy === 'save'\) return;/);
 });
