@@ -10,27 +10,26 @@ test('Web/PWA challenge policy is forced for permanent owners and OR-ed across r
   assert.equal(internalWebChallengeRequired({ ownerKind: null, webLoginChallengeRequired: false }, { webOwnerChallengeRequired: true }), false);
 });
 
-test('role editor exposes an explicit Web/PWA owner-code toggle', async () => {
+test('role editor exposes an explicit Web/PWA login challenge toggle', async () => {
   const source = await readFile(new URL('../../web/app/access/roles/role-workspace.tsx', import.meta.url), 'utf8');
   assert.match(source, /role-web-login-challenge-toggle/);
   assert.match(source, /webLoginChallengeRequired/);
-  assert.match(source, /Đăng nhập Web\/PWA yêu cầu mã xác nhận của chủ sở hữu/);
 });
 
-test('production challenge uses one bounded Cloudflare request for the canonical Owner recipient set after DB transaction', async () => {
+test('production challenge uses one bounded Cloudflare request to the authenticating employee email after DB transaction', async () => {
   const source = await readFile(new URL('../src/internal-workforce-auth.js', import.meta.url), 'utf8');
   assert.match(source, /AbortSignal\.timeout\(CHALLENGE_EMAIL_TIMEOUT_MS\)/);
-  assert.match(source, /to: recipients/);
-  assert.match(source, /implementationOwnerEmails/);
+  assert.match(source, /identity\.employee_email/);
+  assert.match(source, /to:\s*\[recipientEmail\]/);
   assert.match(source, /from:\s*\{\s*address:\s*runtime\.from,\s*name:\s*'Hưng Phát Security'\s*\}/s);
-  assert.match(source, /recipientCount:\s*challengeRecipients\(config\)\.length/);
-  assert.doesNotMatch(source, /recipientCount:\s*2/);
+  assert.match(source, /recipientCount:\s*1/);
+  assert.match(source, /không dùng cho ngân hàng/i);
   assert.match(source, /INTERNAL_AUTH_OWNER_CHALLENGE_REQUIRED/);
   const transactionStart = source.indexOf('const transactionResult = await withAuditOutboxTransaction');
   const deliveryStart = source.indexOf('if (transactionResult.challengeDelivery)');
   assert.ok(transactionStart >= 0 && deliveryStart > transactionStart);
   const transactionSection = source.slice(transactionStart, deliveryStart);
-  assert.doesNotMatch(transactionSection, /await sendOwnerChallengeEmail/);
+  assert.doesNotMatch(transactionSection, /await sendLoginChallengeEmail/);
   assert.match(transactionSection, /expectedAuditCount: 2/);
 });
 

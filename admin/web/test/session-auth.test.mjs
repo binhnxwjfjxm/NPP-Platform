@@ -31,7 +31,8 @@ test('Admin browser navigation validates the employee session through Core inste
   assert.match(loginPage, /tài khoản nhân viên/);
   assert.match(loginPage, /autoComplete="username"/);
   assert.match(loginPage, /autoComplete="current-password"/);
-  assert.match(loginPage, /Mã xác minh chủ sở hữu/);
+  assert.match(loginPage, /Mã xác minh đăng nhập/);
+  assert.match(loginPage, /email của chính tài khoản/);
 });
 
 test('Admin login and logout proxy the canonical Core internal-auth lifecycle without exposing the token to browser JavaScript', () => {
