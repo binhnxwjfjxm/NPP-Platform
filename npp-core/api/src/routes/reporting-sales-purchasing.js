@@ -7,7 +7,7 @@ import {
 } from './reporting-common.js';
 import { salesReport } from './reporting-sales.js';
 import { purchasingReport } from './reporting-purchasing.js';
-import { inventoryReport, normalizeSlowDays } from './reporting-inventory.js';
+import { inventoryReport, normalizeSlowDays } from './reporting-inventory-safe.js';
 import { agingReport, grossMarginReport } from './reporting-finance.js';
 import { employeeMcpReport, resolveEmployeeMcpScope } from './reporting-employee-mcp.js';
 import { logisticsReport } from './reporting-logistics.js';
