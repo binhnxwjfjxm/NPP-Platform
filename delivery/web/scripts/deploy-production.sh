@@ -150,25 +150,46 @@ npx --yes vercel@58.0.0 build --prod --token="$VERCEL_TOKEN"
 deployment_url="$(npx --yes vercel@58.0.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
 test -n "$deployment_url"
 
-deadline=$((SECONDS + 180))
-while [ "$SECONDS" -lt "$deadline" ]; do
-  unauth="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$deployment_url/" || true)"
-  login_code="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$deployment_url/login" || true)"
-  [ "$unauth" = 401 ] && [ "$login_code" = 200 ] && break
+# The generated Vercel hostname may be protected by Vercel Authentication.
+# It is still useful for proving that the exact deployment exists, but app
+# behavior and static assets must be verified on the canonical production domain.
+deployment_reachable=false
+last_deployment_status=""
+for attempt in $(seq 1 10); do
+  last_deployment_status="$(curl --silent --show-error --connect-timeout 5 --max-time 15 \
+    --output /dev/null --write-out '%{http_code}' "$deployment_url/login" || true)"
+  case "$last_deployment_status" in
+    200|301|302|303|307|308|401|403)
+      deployment_reachable=true
+      break
+      ;;
+  esac
+  echo "Delivery deployment hostname not reachable yet: attempt=$attempt status=${last_deployment_status:-none}"
   sleep 3
 done
-test "${unauth:-}" = 401
-test "${login_code:-}" = 200
-html="$(curl --fail --silent --show-error "$deployment_url/login")"
-printf '%s' "$html" | grep -F 'Welcome to Hung Phat Operations.' >/dev/null
-asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.(css|js)' | head -n 1)"
-test -n "$asset"
-curl --fail --silent --show-error "$deployment_url$asset" >/dev/null
+test "$deployment_reachable" = true
 
 smoke_url="https://$DELIVERY_DOMAIN"
-domain_login="$(curl --silent --show-error --retry 5 --retry-delay 3 --output /dev/null --write-out '%{http_code}' "$smoke_url/login" || true)"
 domain_ready=false
-[ "$domain_login" = 200 ] && domain_ready=true
+for attempt in $(seq 1 12); do
+  login_file="${RUNNER_TEMP}/delivery-login.html"
+  unauth="$(curl --silent --show-error --connect-timeout 5 --max-time 15 \
+    --output /dev/null --write-out '%{http_code}' "$smoke_url/" || true)"
+  login_code="$(curl --silent --show-error --connect-timeout 5 --max-time 15 \
+    -H 'Accept: text/html' --output "$login_file" --write-out '%{http_code}' \
+    "$smoke_url/login" || true)"
+  if [ "$unauth" = 401 ] && [ "$login_code" = 200 ] && \
+     grep -Fq 'Welcome to Hung Phat Operations.' "$login_file"; then
+    asset="$(grep -oE '/_next/static/[^" ]+\.(css|js)' "$login_file" | head -n 1)"
+    if [ -n "$asset" ] && curl --fail --silent --show-error "$smoke_url$asset" >/dev/null; then
+      domain_ready=true
+      break
+    fi
+  fi
+  echo "Delivery canonical domain not ready: attempt=$attempt root=$unauth login=$login_code"
+  sleep 5
+done
+test "$domain_ready" = true
 
 {
   echo "project_id=$project_id"

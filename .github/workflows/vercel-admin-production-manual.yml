@@ -26,23 +26,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
+      DEPLOY_REF: main
       VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      VERCEL_PROJECT_ID: prj_0hp2A8WyUW4zgglShPTzL70hesVC
       ADMIN_PROJECT_NAME: admin-mcp-npp
       ADMIN_ROOT_DIRECTORY: admin/web
-      CORE_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
-      MCP_PROJECT_ID: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
-      WEBSITE_PROJECT_ID: prj_rXqH83GFDHuEGUcQrrv82JBPWnjU
-      CORE_HEROKU_APP_NAME: hung-phat
       ADMIN_DOMAIN: admin.nguyenlieuhungphat.com
-      NPP_DOMAIN: office.nguyenlieuhungphat.com
-      MCP_DOMAIN: mcp.nguyenlieuhungphat.com
-      WEBSITE_DOMAIN: nguyenlieuhungphat.com
+      ADMIN_ORIGIN: https://admin.nguyenlieuhungphat.com
+      CORE_HEROKU_APP_NAME: hung-phat
       NPP_OPERATIONS_URL: https://office.nguyenlieuhungphat.com
-      DEPLOY_REF: main
 
     steps:
-      - name: Validate Issue #5 trigger
-        id: trigger
+      - name: Validate exact Admin production command
         if: github.event_name == 'issue_comment'
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
@@ -53,24 +48,26 @@ jobs:
         with:
           ref: ${{ env.DEPLOY_REF }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify exact origin/main SHA
-        id: target
+        id: source
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin main --depth=1
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
           sha="$(git rev-parse HEAD)"
           test "$sha" = "$(git rev-parse origin/main)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      - name: Setup Node
+      - name: Setup Node 24
         uses: actions/setup-node@v4
         with:
           node-version: 24
 
-      - name: Validate Vercel credential
-        id: provider
+      - name: Validate exact Admin Vercel project
+        id: project
         shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -78,41 +75,23 @@ jobs:
           set -euo pipefail
           test -n "$VERCEL_TOKEN"
           echo "::add-mask::$VERCEL_TOKEN"
-          [[ "$VERCEL_TOKEN" =~ ^vcp_[A-Za-z0-9_-]+$ ]]
-
-      - name: Create or resolve Admin Vercel project
-        id: project
-        shell: bash
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          set -euo pipefail
           project_json="${RUNNER_TEMP}/admin-project.json"
-          status="$(curl --silent --show-error --output "$project_json" --write-out '%{http_code}' \
+          curl --fail --silent --show-error \
             -H "Authorization: Bearer $VERCEL_TOKEN" \
-            "https://api.vercel.com/v9/projects/$ADMIN_PROJECT_NAME?teamId=$VERCEL_ORG_ID")"
-          if [ "$status" = 404 ]; then
-            payload="$(node -e 'process.stdout.write(JSON.stringify({name:process.env.ADMIN_PROJECT_NAME,framework:"nextjs",rootDirectory:process.env.ADMIN_ROOT_DIRECTORY}))')"
-            status="$(curl --silent --show-error --output "$project_json" --write-out '%{http_code}' \
-              -X POST \
-              -H "Authorization: Bearer $VERCEL_TOKEN" \
-              -H 'Content-Type: application/json' \
-              "https://api.vercel.com/v11/projects?teamId=$VERCEL_ORG_ID" \
-              --data "$payload")"
-          fi
-          case "$status" in
-            200|201) ;;
-            *)
-              echo "::error::Vercel project resolution failed with HTTP $status" >&2
-              cat "$project_json" >&2
-              exit 1
-              ;;
-          esac
-          project_id="$(PROJECT_FILE="$project_json" node --input-type=module -e 'import {readFileSync} from "node:fs"; const p=JSON.parse(readFileSync(process.env.PROJECT_FILE,"utf8")); if(!p.id) process.exit(1); process.stdout.write(p.id)')"
-          test "$project_id" != "$CORE_PROJECT_ID"
-          test "$project_id" != "$MCP_PROJECT_ID"
-          test "$project_id" != "$WEBSITE_PROJECT_ID"
-          echo "project_id=$project_id" >> "$GITHUB_OUTPUT"
+            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID" > "$project_json"
+          PROJECT_FILE="$project_json" node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const project = JSON.parse(readFileSync(process.env.PROJECT_FILE, 'utf8'));
+          if (project.id !== process.env.VERCEL_PROJECT_ID) throw new Error('unexpected_admin_project');
+          if (project.name !== process.env.ADMIN_PROJECT_NAME) throw new Error(`unexpected_admin_name:${project.name}`);
+          if (project.rootDirectory !== process.env.ADMIN_ROOT_DIRECTORY) throw new Error(`unexpected_admin_root:${project.rootDirectory}`);
+          if (project.framework !== 'nextjs') throw new Error(`unexpected_admin_framework:${project.framework}`);
+          NODE
+          node --input-type=module <<'NODE'
+          import { readFile } from 'node:fs/promises';
+          const config = JSON.parse(await readFile('admin/web/vercel.json', 'utf8'));
+          if (config.git?.deploymentEnabled !== false) throw new Error('admin_auto_deploy_not_locked');
+          NODE
 
       - name: Resolve Admin runtime values
         id: runtime
@@ -124,38 +103,21 @@ jobs:
           set -euo pipefail
           core_url="${SECRET_CORE_API_INTERNAL_URL:-}"
           runtime_source="github-secrets"
-
           if [ -z "$core_url" ]; then
             runtime_source="heroku-core"
-            if [ -n "${HEROKU_API_KEY:-}" ]; then
-              app_json="$(curl --fail --silent --show-error \
-                -H 'Accept: application/vnd.heroku+json; version=3' \
-                -H "Authorization: Bearer $HEROKU_API_KEY" \
-                "https://api.heroku.com/apps/$CORE_HEROKU_APP_NAME" 2>/dev/null || true)"
-              if [ -n "$app_json" ]; then
-                core_url="$(printf '%s' "$app_json" | jq -r '.web_url // empty' 2>/dev/null || true)"
-                core_url="${core_url%/}"
-              fi
-            fi
+            test -n "${HEROKU_API_KEY:-}"
+            app_json="$(curl --fail --silent --show-error \
+              -H 'Accept: application/vnd.heroku+json; version=3' \
+              -H "Authorization: Bearer $HEROKU_API_KEY" \
+              "https://api.heroku.com/apps/$CORE_HEROKU_APP_NAME")"
+            core_url="$(printf '%s' "$app_json" | jq -r '.web_url // empty')"
+            core_url="${core_url%/}"
           fi
-
-          missing=()
-          [ -n "$core_url" ] || missing+=(CORE_API_INTERNAL_URL)
-          missing_csv="$(IFS=,; echo "${missing[*]}")"
-          echo "missing=$missing_csv" >> "$GITHUB_OUTPUT"
-          echo "source=$runtime_source" >> "$GITHUB_OUTPUT"
-          if [ -n "$missing_csv" ]; then
-            echo "::error::Admin runtime values are missing: $missing_csv" >&2
-            exit 1
-          fi
-
+          test -n "$core_url"
           CORE_URL="$core_url" node --input-type=module <<'NODE'
           const url = new URL(process.env.CORE_URL);
-          if (url.protocol !== 'https:' || url.username || url.password) {
-            throw new Error('invalid_core_api_internal_url');
-          }
+          if (url.protocol !== 'https:' || url.username || url.password) throw new Error('invalid_core_api_internal_url');
           NODE
-
           echo "::add-mask::$core_url"
           marker="ADMIN_CORE_API_INTERNAL_URL_${RANDOM}_${RANDOM}"
           {
@@ -163,13 +125,13 @@ jobs:
             echo "$core_url"
             echo "$marker"
           } >> "$GITHUB_ENV"
+          echo "source=$runtime_source" >> "$GITHUB_OUTPUT"
 
       - name: Synchronize Admin production environment
         id: envsync
         shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          ADMIN_PROJECT_ID: ${{ steps.project.outputs.project_id }}
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
@@ -181,9 +143,12 @@ jobs:
             .filter(([, value]) => !String(value || '').trim())
             .map(([key]) => key);
           if (missing.length) throw new Error(`missing_admin_environment_values:${missing.join(',')}`);
-          const response = await fetch(`https://api.vercel.com/v10/projects/${process.env.ADMIN_PROJECT_ID}/env?teamId=${process.env.VERCEL_ORG_ID}&upsert=true`, {
+          const response = await fetch(`https://api.vercel.com/v10/projects/${process.env.VERCEL_PROJECT_ID}/env?teamId=${process.env.VERCEL_ORG_ID}&upsert=true`, {
             method: 'POST',
-            headers: { Authorization: `Bearer ${process.env.VERCEL_TOKEN}`, 'Content-Type': 'application/json' },
+            headers: {
+              Authorization: `Bearer ${process.env.VERCEL_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
             body: JSON.stringify(Object.entries(values).map(([key, value]) => ({
               key,
               value,
@@ -193,90 +158,21 @@ jobs:
           });
           const payload = await response.json().catch(() => null);
           if (!response.ok) {
-            const code = payload?.error?.code || 'unknown';
-            const message = payload?.error?.message || 'Vercel rejected the environment update';
-            throw new Error(`admin_env_upsert_failed:${response.status}:${code}:${message}`);
+            throw new Error(`admin_env_upsert_failed:${response.status}:${payload?.error?.code || 'unknown'}`);
           }
           NODE
 
-      - name: Attach frontend domains to their projects
-        id: domains
-        shell: bash
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          ADMIN_PROJECT_ID: ${{ steps.project.outputs.project_id }}
-        run: |
-          set -euo pipefail
-          attach_domain() {
-            local project_id="$1" domain="$2" lookup status body
-            body="${RUNNER_TEMP}/domain-${domain//./-}.json"
-            lookup="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
-              -H "Authorization: Bearer $VERCEL_TOKEN" \
-              "https://api.vercel.com/v9/projects/$project_id/domains/$domain?teamId=$VERCEL_ORG_ID")"
-            [ "$lookup" = 200 ] && return 0
-            status="$(curl --silent --show-error --output "$body" --write-out '%{http_code}' \
-              -X POST \
-              -H "Authorization: Bearer $VERCEL_TOKEN" \
-              -H 'Content-Type: application/json' \
-              "https://api.vercel.com/v10/projects/$project_id/domains?teamId=$VERCEL_ORG_ID" \
-              --data "{\"name\":\"$domain\"}")"
-            case "$status" in
-              200|201) ;;
-              *)
-                echo "::error::Cannot attach $domain to $project_id (HTTP $status)" >&2
-                cat "$body" >&2
-                exit 1
-                ;;
-            esac
-          }
-          attach_domain "$WEBSITE_PROJECT_ID" "$WEBSITE_DOMAIN"
-          attach_domain "$CORE_PROJECT_ID" "$NPP_DOMAIN"
-          attach_domain "$MCP_PROJECT_ID" "$MCP_DOMAIN"
-          attach_domain "$ADMIN_PROJECT_ID" "$ADMIN_DOMAIN"
-
-      - name: Enforce and link exact Admin project
+      - name: Link exact Admin project
         id: link
         shell: bash
         env:
-          ADMIN_PROJECT_ID: ${{ steps.project.outputs.project_id }}
-          VERCEL_PROJECT_ID: ${{ steps.project.outputs.project_id }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
-          test "$VERCEL_PROJECT_ID" = "$ADMIN_PROJECT_ID"
-          project_json="${RUNNER_TEMP}/admin-project-settings.json"
-          payload="$(node -e 'process.stdout.write(JSON.stringify({framework:"nextjs",rootDirectory:process.env.ADMIN_ROOT_DIRECTORY,nodeVersion:"24.x"}))')"
-          status="$(curl --silent --show-error --output "$project_json" --write-out '%{http_code}' \
-            -X PATCH \
-            -H "Authorization: Bearer $VERCEL_TOKEN" \
-            -H 'Content-Type: application/json' \
-            "https://api.vercel.com/v9/projects/$ADMIN_PROJECT_ID?teamId=$VERCEL_ORG_ID" \
-            --data "$payload")"
-          if [ "$status" != 200 ]; then
-            echo "::error::Cannot enforce Admin project settings (HTTP $status)" >&2
-            cat "$project_json" >&2
-            exit 1
-          fi
-          PROJECT_FILE="$project_json" node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
-          const project = JSON.parse(readFileSync(process.env.PROJECT_FILE, 'utf8'));
-          if (project.id !== process.env.ADMIN_PROJECT_ID) throw new Error('unexpected_admin_project');
-          if (project.rootDirectory !== process.env.ADMIN_ROOT_DIRECTORY) {
-            throw new Error(`unexpected_admin_root:${project.rootDirectory}`);
-          }
-          if (project.framework !== 'nextjs') throw new Error(`unexpected_admin_framework:${project.framework}`);
-          NODE
-
           mkdir -p .vercel
-          printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$ADMIN_PROJECT_ID" > .vercel/project.json
-          npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN" >/dev/null
-          node --input-type=module <<'NODE'
-          import { readFile } from 'node:fs/promises';
-          const linked = JSON.parse(await readFile('.vercel/project.json', 'utf8'));
-          if (linked.projectId !== process.env.ADMIN_PROJECT_ID) throw new Error('unexpected_linked_admin_project');
-          const config = JSON.parse(await readFile('admin/web/vercel.json', 'utf8'));
-          if (config.git?.deploymentEnabled !== false) throw new Error('admin_auto_deploy_not_locked');
-          NODE
+          printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
+          npx --yes vercel@58.0.0 pull --yes --environment=production --token="$VERCEL_TOKEN" >/dev/null
+          test "$(jq -r '.projectId' .vercel/project.json)" = "$VERCEL_PROJECT_ID"
 
       - name: Verify Admin source
         id: verify
@@ -287,52 +183,86 @@ jobs:
 
       - name: Build Admin production artifact
         id: build
+        shell: bash
         env:
-          VERCEL_PROJECT_ID: ${{ steps.project.outputs.project_id }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
+        run: npx --yes vercel@58.0.0 build --prod --token="$VERCEL_TOKEN"
 
       - name: Deploy Admin production artifact
         id: deploy
         shell: bash
         env:
-          VERCEL_PROJECT_ID: ${{ steps.project.outputs.project_id }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
-          url="$(npx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+          url="$(npx --yes vercel@58.0.0 deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
           test -n "$url"
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
-      - name: Smoke exact Admin deployment
-        id: smoke
+      - name: Smoke exact Admin deployment reachability
+        id: deployment_smoke
         shell: bash
         env:
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
         run: |
           set -euo pipefail
-          unauth="$(curl --silent --show-error --retry 5 --retry-delay 4 --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/")"
-          test "$unauth" = 401
-          login_code="$(curl --silent --show-error --retry 5 --retry-delay 4 --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/login")"
-          test "$login_code" = 200
-          html="$(curl --fail --silent --show-error "$DEPLOYMENT_URL/login")"
-          asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.(css|js)' | head -n 1)"
-          test -n "$asset"
-          curl --fail --silent --show-error "$DEPLOYMENT_URL$asset" >/dev/null
+          reachable=false
+          last_status=""
+          for attempt in $(seq 1 10); do
+            last_status="$(curl --silent --show-error --connect-timeout 5 --max-time 15 \
+              --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/login" || true)"
+            case "$last_status" in
+              200|301|302|303|307|308|401|403)
+                reachable=true
+                break
+                ;;
+            esac
+            echo "Admin deployment hostname not reachable yet: attempt=$attempt status=${last_status:-none}"
+            sleep 3
+          done
+          test "$reachable" = true
 
-      - name: Read Admin domain state
+      - name: Smoke canonical Admin production domain
+        id: domain_smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          domain_ready=false
+          for attempt in $(seq 1 12); do
+            login_file="${RUNNER_TEMP}/admin-login.html"
+            unauth="$(curl --silent --show-error --connect-timeout 5 --max-time 15 \
+              --output /dev/null --write-out '%{http_code}' "$ADMIN_ORIGIN/" || true)"
+            login_code="$(curl --silent --show-error --connect-timeout 5 --max-time 15 \
+              -H 'Accept: text/html' --output "$login_file" --write-out '%{http_code}' \
+              "$ADMIN_ORIGIN/login" || true)"
+            if [ "$unauth" = 401 ] && [ "$login_code" = 200 ] && \
+               grep -Fq 'Admin MCP/NPP' "$login_file" && \
+               grep -Fq 'Đăng nhập' "$login_file"; then
+              asset="$(grep -oE '/_next/static/[^" ]+\.(css|js)' "$login_file" | head -n 1)"
+              if [ -n "$asset" ] && curl --fail --silent --show-error "$ADMIN_ORIGIN$asset" >/dev/null; then
+                domain_ready=true
+                break
+              fi
+            fi
+            echo "Admin canonical domain not ready: attempt=$attempt root=$unauth login=$login_code"
+            sleep 5
+          done
+          test "$domain_ready" = true
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Admin domain ownership
         id: domainstate
         shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          ADMIN_PROJECT_ID: ${{ steps.project.outputs.project_id }}
         run: |
           set -euo pipefail
           body="${RUNNER_TEMP}/admin-domain.json"
           curl --fail --silent --show-error \
             -H "Authorization: Bearer $VERCEL_TOKEN" \
-            "https://api.vercel.com/v9/projects/$ADMIN_PROJECT_ID/domains/$ADMIN_DOMAIN?teamId=$VERCEL_ORG_ID" > "$body"
+            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID/domains/$ADMIN_DOMAIN?teamId=$VERCEL_ORG_ID" > "$body"
           verified="$(DOMAIN_FILE="$body" node --input-type=module -e 'import {readFileSync} from "node:fs"; const p=JSON.parse(readFileSync(process.env.DOMAIN_FILE,"utf8")); process.stdout.write(String(p.verified===true))')"
+          test "$verified" = true
           echo "verified=$verified" >> "$GITHUB_OUTPUT"
 
       - name: Report successful Admin rollout
@@ -340,30 +270,27 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          PROJECT_ID: ${{ steps.project.outputs.project_id }}
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
-          DOMAIN_VERIFIED: ${{ steps.domainstate.outputs.verified }}
-          RUNTIME_SOURCE: ${{ steps.runtime.outputs.source }}
         run: |
           set -euo pipefail
-          gh issue comment 5 --body "Admin Vercel production deploy succeeded for SHA ${{ steps.target.outputs.sha }}. Project: \`$PROJECT_ID\`. Deployment: $DEPLOYMENT_URL. Domain \`$ADMIN_DOMAIN\` verified: \`$DOMAIN_VERIFIED\`. Runtime source: \`$RUNTIME_SOURCE\`. Website, NPP and MCP domains were attached to their projects. Human authorization uses the canonical Core employee session; authenticated production smoke remains a separate operator gate."
+          gh issue comment 5 --body "Admin Vercel production deploy succeeded for SHA \`${{ steps.source.outputs.sha }}\`. Project: \`$VERCEL_PROJECT_ID\`. Deployment hostname reachable: \`true\`. Canonical domain: \`$ADMIN_ORIGIN\`. Domain smoke: \`${{ steps.domain_smoke.outputs.ready }}\`. Domain verified: \`${{ steps.domainstate.outputs.verified }}\`. Runtime source: \`${{ steps.runtime.outputs.source }}\`."
 
       - name: Report failed Admin rollout
         if: failure()
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_SHA: ${{ steps.target.outputs.sha }}
+          TARGET_SHA: ${{ steps.source.outputs.sha }}
           PROJECT_OUTCOME: ${{ steps.project.outcome }}
           RUNTIME_OUTCOME: ${{ steps.runtime.outcome }}
-          RUNTIME_MISSING: ${{ steps.runtime.outputs.missing }}
           ENV_OUTCOME: ${{ steps.envsync.outcome }}
-          DOMAIN_OUTCOME: ${{ steps.domains.outcome }}
           LINK_OUTCOME: ${{ steps.link.outcome }}
           VERIFY_OUTCOME: ${{ steps.verify.outcome }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
           DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
-          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+          DEPLOYMENT_SMOKE_OUTCOME: ${{ steps.deployment_smoke.outcome }}
+          DOMAIN_SMOKE_OUTCOME: ${{ steps.domain_smoke.outcome }}
+          DOMAIN_STATE_OUTCOME: ${{ steps.domainstate.outcome }}
         run: |
           set -euo pipefail
           report="$(mktemp)"
@@ -374,15 +301,13 @@ jobs:
             echo "- project: \`${PROJECT_OUTCOME:-not-run}\`"
             echo "- runtime: \`${RUNTIME_OUTCOME:-not-run}\`"
             echo "- environment: \`${ENV_OUTCOME:-not-run}\`"
-            echo "- domains: \`${DOMAIN_OUTCOME:-not-run}\`"
             echo "- link: \`${LINK_OUTCOME:-not-run}\`"
             echo "- verify: \`${VERIFY_OUTCOME:-not-run}\`"
             echo "- build: \`${BUILD_OUTCOME:-not-run}\`"
             echo "- deploy: \`${DEPLOY_OUTCOME:-not-run}\`"
-            echo "- smoke: \`${SMOKE_OUTCOME:-not-run}\`"
-            if [ -n "${RUNTIME_MISSING:-}" ]; then
-              echo "- missing runtime names: \`$RUNTIME_MISSING\`"
-            fi
+            echo "- deployment hostname smoke: \`${DEPLOYMENT_SMOKE_OUTCOME:-not-run}\`"
+            echo "- canonical domain smoke: \`${DOMAIN_SMOKE_OUTCOME:-not-run}\`"
+            echo "- domain ownership: \`${DOMAIN_STATE_OUTCOME:-not-run}\`"
             echo
             echo "No secret values are included in this report."
           } > "$report"
