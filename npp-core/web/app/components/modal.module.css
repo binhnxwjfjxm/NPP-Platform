@@ -4,14 +4,14 @@
   z-index: 100;
   display: grid;
   place-items: center;
-  padding: 1.5rem;
+  padding: 1rem;
   background: rgba(15, 23, 42, .58);
   backdrop-filter: blur(3px);
 }
 
 .dialog {
-  width: min(720px, calc(100vw - 3rem));
-  max-height: calc(100vh - 3rem);
+  width: min(720px, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
   overflow: hidden;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -22,7 +22,12 @@
 }
 
 .large {
-  width: min(980px, calc(100vw - 3rem));
+  width: min(1180px, calc(100vw - 2rem));
+}
+
+.workspace {
+  width: min(1480px, calc(100vw - 2rem));
+  height: min(94dvh, 980px);
 }
 
 .header {
@@ -30,21 +35,14 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 1.25rem;
+  min-width: 0;
   padding: 1.2rem 1.35rem 1rem;
   border-bottom: 1px solid #e5e7eb;
 }
 
-.header h2 {
-  margin: 0;
-  font-size: 1.25rem;
-  color: #172033;
-}
-
-.header p {
-  margin: .35rem 0 0;
-  color: #64748b;
-  line-height: 1.5;
-}
+.header > div { min-width: 0; }
+.header h2 { margin: 0; font-size: 1.25rem; color: #172033; }
+.header p { margin: .35rem 0 0; color: #64748b; line-height: 1.5; }
 
 .closeButton {
   flex: 0 0 auto;
@@ -59,19 +57,41 @@
 }
 
 .body {
+  min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: auto;
+  overscroll-behavior: contain;
   padding: 1.25rem 1.35rem;
+}
+
+.large .body,
+.workspace .body {
+  overflow-x: hidden;
+}
+
+.large .body > *,
+.workspace .body > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .footer {
   display: flex;
+  min-width: 0;
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: .7rem;
   padding: 1rem 1.35rem 1.2rem;
   border-top: 1px solid #e5e7eb;
   background: #f8fafc;
+}
+
+@media (max-width: 1080px) {
+  .large,
+  .workspace {
+    width: calc(100vw - 1.25rem);
+  }
 }
 
 @media (max-width: 640px) {
@@ -81,9 +101,11 @@
   }
 
   .dialog,
-  .large {
+  .large,
+  .workspace {
     width: 100%;
-    max-height: 92vh;
+    height: auto;
+    max-height: 92dvh;
     border-radius: 20px 20px 0 0;
   }
 
@@ -94,7 +116,5 @@
     padding-right: 1rem;
   }
 
-  .footer > * {
-    width: 100%;
-  }
+  .footer > * { width: 100%; }
 }
