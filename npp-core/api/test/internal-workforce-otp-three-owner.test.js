@@ -52,7 +52,7 @@ function auditPool() {
   };
 }
 
-function challengeRepo(passwordHash, state = {}, ownerKind = 'PERMANENT') {
+function challengeRepo(passwordHash, state = {}, ownerKind = 'PERMANENT', employeeEmail = 'employee@example.test') {
   return {
     async findLoginIdentity() {
       return {
@@ -61,6 +61,7 @@ function challengeRepo(passwordHash, state = {}, ownerKind = 'PERMANENT') {
         user_is_active: true,
         employee_id: EMPLOYEE_ID,
         employee_full_name: 'Employee Test',
+        employee_email: employeeEmail,
         employee_is_active: true,
         password_hash: passwordHash,
         failed_attempts: 0,
@@ -100,7 +101,7 @@ function challengeRepo(passwordHash, state = {}, ownerKind = 'PERMANENT') {
   };
 }
 
-async function issueChallenge(fetchImpl, state = {}, ownerKind = 'PERMANENT') {
+async function issueChallenge(fetchImpl, state = {}, ownerKind = 'PERMANENT', employeeEmail = 'employee@example.test') {
   const passwordHash = await hashInternalPassword(PASSWORD);
   const pool = auditPool();
   const authenticator = createInternalWorkforceAuthenticator({
@@ -108,7 +109,7 @@ async function issueChallenge(fetchImpl, state = {}, ownerKind = 'PERMANENT') {
     env: challengeEnv(),
     fetchImpl,
     pool,
-    repo: challengeRepo(passwordHash, state, ownerKind),
+    repo: challengeRepo(passwordHash, state, ownerKind, employeeEmail),
     now: () => NOW,
   });
   const result = await authenticator.login({
@@ -121,7 +122,7 @@ async function issueChallenge(fetchImpl, state = {}, ownerKind = 'PERMANENT') {
   return { result, pool };
 }
 
-test('production OTP targets exactly the normalized unique 2 permanent Security Owners', async () => {
+test('production OTP targets only the authenticating employee canonical email', async () => {
   let outbound = null;
   const fetchImpl = async (_url, options) => {
     outbound = JSON.parse(options.body);
@@ -140,30 +141,32 @@ test('production OTP targets exactly the normalized unique 2 permanent Security 
     };
   };
 
-  const { result, pool } = await issueChallenge(fetchImpl);
+  const { result, pool } = await issueChallenge(
+    fetchImpl,
+    {},
+    'PERMANENT',
+    'Employee.Canonical@example.test',
+  );
   assert.equal(result.ok, false);
   assert.equal(result.code, 'INTERNAL_AUTH_OWNER_CHALLENGE_REQUIRED');
-  assert.deepEqual(outbound.to, [
-    'owner1@example.test',
-    'owner2@example.test',
-  ]);
-  assert.equal(new Set(outbound.to).size, 2);
-  assert.equal(outbound.to.includes('implementation@example.test'), false);
-  assert.equal(outbound.to.includes('employee@example.test'), false);
+  assert.deepEqual(outbound.to, ['employee.canonical@example.test']);
+  assert.equal(outbound.to.includes('owner1@example.test'), false);
+  assert.equal(outbound.to.includes('owner2@example.test'), false);
   assert.deepEqual(outbound.from, {
     address: 'security@example.test',
     name: 'Hưng Phát Security',
   });
+  assert.match(outbound.text, /không dùng cho ngân hàng/i);
 
   const issuedAudit = pool.queries.find(({ sql, values }) => (
     sql.includes('INSERT INTO shared.core_audit_records')
     && values[6] === 'login_challenge_issued'
   ));
   assert.ok(issuedAudit);
-  assert.equal(issuedAudit.values[10].recipientCount, 2);
+  assert.equal(issuedAudit.values[10].recipientCount, 1);
 });
 
-test('temporary Implementation Owner is challenged but never receives the OTP', async () => {
+test('temporary Implementation Owner receives the challenge at their own canonical employee email', async () => {
   let outbound = null;
   const fetchImpl = async (_url, options) => {
     outbound = JSON.parse(options.body);
@@ -182,31 +185,27 @@ test('temporary Implementation Owner is challenged but never receives the OTP', 
     };
   };
 
-  const { result } = await issueChallenge(fetchImpl, {}, 'TEMPORARY');
+  const { result } = await issueChallenge(fetchImpl, {}, 'TEMPORARY', 'Implementation@example.test');
   assert.equal(result.ok, false);
   assert.equal(result.code, 'INTERNAL_AUTH_OWNER_CHALLENGE_REQUIRED');
-  assert.deepEqual(outbound.to, ['owner1@example.test', 'owner2@example.test']);
-  assert.equal(outbound.to.includes('implementation@example.test'), false);
+  assert.deepEqual(outbound.to, ['implementation@example.test']);
 });
 
-test('production OTP fails closed when any permanent Security Owner recipient is not delivered or queued', async () => {
+test('production OTP fails closed when the authenticating employee recipient is not delivered or queued', async () => {
   const state = {};
-  const fetchImpl = async (_url, options) => {
-    const outbound = JSON.parse(options.body);
-    return {
-      ok: true,
-      async json() {
-        return {
-          success: true,
-          result: {
-            delivered: outbound.to.slice(0, 1),
-            queued: [],
-            permanent_bounces: [],
-          },
-        };
-      },
-    };
-  };
+  const fetchImpl = async () => ({
+    ok: true,
+    async json() {
+      return {
+        success: true,
+        result: {
+          delivered: [],
+          queued: [],
+          permanent_bounces: [],
+        },
+      };
+    },
+  });
 
   const { result } = await issueChallenge(fetchImpl, state);
   assert.equal(result.ok, false);
@@ -215,7 +214,7 @@ test('production OTP fails closed when any permanent Security Owner recipient is
   assert.equal(state.cancelled, 1);
 });
 
-test('production OTP fails closed on any permanent bounce even when both Security Owners are accepted', async () => {
+test('production OTP fails closed on a permanent bounce for the authenticating employee', async () => {
   const state = {};
   const fetchImpl = async (_url, options) => {
     const outbound = JSON.parse(options.body);
@@ -227,7 +226,7 @@ test('production OTP fails closed on any permanent bounce even when both Securit
           result: {
             delivered: outbound.to,
             queued: [],
-            permanent_bounces: [outbound.to[1]],
+            permanent_bounces: outbound.to,
           },
         };
       },

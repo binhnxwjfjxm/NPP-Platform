@@ -7,9 +7,9 @@ type LoginPageProps = Readonly<{
 
 function errorMessage(error?: string): string | null {
   if (!error) return null;
-  if (error === 'invalid_owner_code') return 'Mã xác minh chủ sở hữu chưa đúng.';
-  if (error === 'owner_challenge_required') return 'Tài khoản này yêu cầu mã xác minh từ chủ sở hữu để đăng nhập Web/PWA.';
-  if (error === 'owner_challenge_unavailable') return 'Xác minh chủ sở hữu chưa sẵn sàng trên môi trường này.';
+  if (error === 'invalid_owner_code') return 'Mã xác minh đăng nhập chưa đúng.';
+  if (error === 'owner_challenge_required') return 'Mã xác minh đã được gửi tới email của tài khoản. Nhập mã để hoàn tất đăng nhập.';
+  if (error === 'owner_challenge_unavailable') return 'Xác minh đăng nhập chưa sẵn sàng cho tài khoản này. Vui lòng kiểm tra email nhân viên đã được cấu hình.';
   if (error === 'core_unavailable' || error === 'core_response_invalid') return 'NPP Core tạm thời chưa sẵn sàng. Vui lòng thử lại.';
   return 'Tên đăng nhập/email hoặc mật khẩu chưa đúng.';
 }
@@ -51,13 +51,13 @@ export default function AdminLoginPage({ searchParams }: LoginPageProps) {
             </label>
             {ownerChallenge ? (
               <label className={styles.field}>
-                <span>Mã xác minh chủ sở hữu</span>
+                <span>Mã xác minh đăng nhập</span>
                 <input name="ownerCode" inputMode="numeric" autoComplete="one-time-code" maxLength={6} required />
               </label>
             ) : null}
             <button className={styles.submit} type="submit">Vào ứng dụng</button>
           </form>
-          <p className={styles.note}>Phiên đăng nhập được giữ bằng cookie HttpOnly và được NPP Core xác minh lại.</p>
+          <p className={styles.note}>Nếu tài khoản yêu cầu xác minh bổ sung, mã được gửi tới email của chính tài khoản. Phiên đăng nhập được giữ bằng cookie HttpOnly và được NPP Core xác minh lại.</p>
         </div>
       </section>
     </main>
