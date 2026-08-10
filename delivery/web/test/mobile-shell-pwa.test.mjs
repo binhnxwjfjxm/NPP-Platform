@@ -23,6 +23,22 @@ test('Delivery PWA declares standalone metadata and install icons', () => {
   }
 });
 
+test('Delivery approved source and derived PWA icons have exact dimensions', () => {
+  const files = [
+    ['../../../pwa-icon-deliveri.png', 512],
+    ['../public/icons/delivery-180.png', 180],
+    ['../public/icons/delivery-192.png', 192],
+    ['../public/icons/delivery-512.png', 512],
+    ['../public/icons/delivery-maskable-512.png', 512],
+  ];
+  for (const [path, size] of files) {
+    const bytes = readFileSync(new URL(path, import.meta.url));
+    assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.equal(bytes.readUInt32BE(16), size, `${path} width`);
+    assert.equal(bytes.readUInt32BE(20), size, `${path} height`);
+  }
+});
+
 test('Delivery bottom navigation is compact while preserving iPhone safe area', () => {
   const styles = read('app/delivery-mobile-app.css');
   assert.match(styles, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
@@ -34,6 +50,8 @@ test('Delivery bottom navigation is compact while preserving iPhone safe area', 
 test('Delivery service worker caches only static assets and uses a safe offline page', () => {
   const worker = read('public/sw.js');
   const offline = read('public/offline.html');
+  assert.match(worker, /hung-phat-delivery-static-v2/);
+  assert.doesNotMatch(worker, /hung-phat-delivery-static-v1/);
   assert.match(worker, /request\.mode === 'navigate'/);
   assert.match(worker, /caches\.match\(OFFLINE_URL\)/);
   assert.match(worker, /url\.pathname\.startsWith\('\/_next\/static\/'\)/);
