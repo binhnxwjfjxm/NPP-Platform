@@ -36,7 +36,10 @@ export function loadInternalWorkforceAuthConfig(env = process.env) {
     86_400,
     'INTERNAL_SESSION_TTL_INVALID',
   );
-  const webOwnerChallengeRequired = parseBoolean(env.INTERNAL_WEB_OWNER_CHALLENGE_REQUIRED, true);
+  const configuredWebOwnerChallengeRequired = parseBoolean(env.INTERNAL_WEB_OWNER_CHALLENGE_REQUIRED, true);
+  // Every production Owner is a privileged account and must pass the Web/PWA challenge.
+  // Role-level challenge policy remains independent for non-Owner workforce users.
+  const webOwnerChallengeRequired = nodeEnv === 'production' ? true : configuredWebOwnerChallengeRequired;
   const allowFixedOwnerCode = parseBoolean(env.ALLOW_FIXED_OWNER_CODE, false);
   const testCode = text(env.SECURITY_OWNER_TEST_CODE);
   const securityOwnerEmails = normalizeEmailList(env.SECURITY_OWNER_EMAILS);

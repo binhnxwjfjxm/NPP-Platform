@@ -14,6 +14,7 @@ type ToggleState = { userId: string; nextActive: boolean } | null;
 type UserDraft = {
   loginName: string;
   employeeId: string;
+  password: string;
   isActive: boolean;
   roleIds: string[];
 };
@@ -28,6 +29,12 @@ type Props = {
 type ApiEnvelope<T> = {
   data?: T;
   error?: { code?: string; message?: string; retryable?: boolean };
+};
+
+type CredentialResult = {
+  userId: string;
+  credentialUpdated: boolean;
+  revokedSessionCount: number;
 };
 
 class ApiRequestError extends Error {
@@ -45,7 +52,7 @@ function joinClasses(...values: Array<string | false | null | undefined>) {
 }
 
 function emptyDraft(): UserDraft {
-  return { loginName: '', employeeId: '', isActive: true, roleIds: [] };
+  return { loginName: '', employeeId: '', password: '', isActive: true, roleIds: [] };
 }
 
 function sortedIds(ids: string[]) {
@@ -61,6 +68,10 @@ function sameIds(left: string[], right: string[]) {
 function idempotencyKey(suffix: string) {
   const random = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
   return `web-${suffix}-${Date.now()}-${random}`;
+}
+
+function passwordIsValid(password: string) {
+  return password.length >= 10 && password.length <= 256;
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -179,6 +190,7 @@ export default function UserWorkspace({
     setDraft({
       loginName: user.login_name,
       employeeId: user.employee_id ?? '',
+      password: '',
       isActive: user.is_active,
       roleIds: [...(user.role_ids ?? [])],
     });
@@ -209,8 +221,74 @@ export default function UserWorkspace({
     setError(caught instanceof Error ? caught.message : 'Lỗi không xác định');
   }
 
+  async function provisionNewUser() {
+    let created: AccessUser | null = null;
+    try {
+      // New accounts stay disabled until role + credential provisioning finishes.
+      created = await requestJson<AccessUser>('/api/access/users', {
+        method: 'POST',
+        body: JSON.stringify({
+          loginName: draft.loginName,
+          employeeId: draft.employeeId,
+          isActive: false,
+        }),
+        headers: { 'Idempotency-Key': idempotencyKey('user-create') },
+      });
+
+      let latest = await requestJson<AccessUser>(`/api/access/users/${created.id}/roles`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          roleIds: sortedIds(draft.roleIds),
+          expectedUpdatedAt: created.updated_at,
+        }),
+        headers: { 'Idempotency-Key': idempotencyKey('user-roles') },
+      });
+
+      await requestJson<CredentialResult>(`/api/access/users/${created.id}/credential`, {
+        method: 'PUT',
+        body: JSON.stringify({ password: draft.password }),
+      });
+
+      if (draft.isActive) {
+        latest = await requestJson<AccessUser>(`/api/access/users/${created.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            isActive: true,
+            expectedUpdatedAt: latest.updated_at,
+          }),
+          headers: { 'Idempotency-Key': idempotencyKey('user-activate') },
+        });
+      }
+
+      setUsers((current) => [...current.filter((user) => user.id !== latest.id), latest]);
+      setNotice('Đã tạo tài khoản, mật khẩu và vai trò. Nhân viên có thể đăng nhập bằng tên đăng nhập vừa cấp.');
+      closeEditor();
+    } catch (caught) {
+      if (created) {
+        const refreshed = await requestJson<AccessUser[]>('/api/access/users?limit=1000').catch(() => null);
+        if (refreshed) setUsers(refreshed);
+        closeEditor();
+        const message = caught instanceof Error ? caught.message : 'Không hoàn tất được việc cấp tài khoản';
+        throw new ApiRequestError(
+          'USER_PROVISIONING_INCOMPLETE',
+          `${message}. Tài khoản đã được giữ ở trạng thái không hoạt động; mở Sửa để hoàn tất rồi mới kích hoạt.`,
+        );
+      }
+      throw caught;
+    }
+  }
+
   async function saveEditor() {
     if (!editor) return;
+    if (editor.mode === 'create' && !passwordIsValid(draft.password)) {
+      setError('Mật khẩu phải có từ 10 đến 256 ký tự.');
+      return;
+    }
+    if (editor.mode === 'edit' && draft.password && !passwordIsValid(draft.password)) {
+      setError('Mật khẩu mới phải có từ 10 đến 256 ký tự.');
+      return;
+    }
+
     setBusy('save');
     setError(null);
     setNotice(null);
@@ -218,18 +296,7 @@ export default function UserWorkspace({
 
     try {
       if (editor.mode === 'create') {
-        const created = await requestJson<AccessUser>('/api/access/users', {
-          method: 'POST',
-          body: JSON.stringify({
-            loginName: draft.loginName,
-            employeeId: draft.employeeId,
-            isActive: draft.isActive,
-          }),
-          headers: { 'Idempotency-Key': idempotencyKey('user-create') },
-        });
-        setUsers((current) => [...current, created]);
-        setNotice('Đã tạo người dùng. Có thể phân quyền bằng thao tác Sửa.');
-        closeEditor();
+        await provisionNewUser();
         return;
       }
 
@@ -240,19 +307,6 @@ export default function UserWorkspace({
       let latest = original;
       let changed = false;
 
-      if (draft.isActive !== original.is_active) {
-        latest = await requestJson<AccessUser>(`/api/access/users/${original.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({
-            isActive: draft.isActive,
-            expectedUpdatedAt: latest.updated_at,
-          }),
-          headers: { 'Idempotency-Key': idempotencyKey('user-status') },
-        });
-        setUsers((current) => current.map((user) => (user.id === latest.id ? latest : user)));
-        changed = true;
-      }
-
       if (!sameIds(draft.roleIds, original.role_ids ?? [])) {
         latest = await requestJson<AccessUser>(`/api/access/users/${original.id}/roles`, {
           method: 'PATCH',
@@ -261,6 +315,27 @@ export default function UserWorkspace({
             expectedUpdatedAt: latest.updated_at,
           }),
           headers: { 'Idempotency-Key': idempotencyKey('user-roles') },
+        });
+        setUsers((current) => current.map((user) => (user.id === latest.id ? latest : user)));
+        changed = true;
+      }
+
+      if (draft.password) {
+        await requestJson<CredentialResult>(`/api/access/users/${original.id}/credential`, {
+          method: 'PUT',
+          body: JSON.stringify({ password: draft.password }),
+        });
+        changed = true;
+      }
+
+      if (draft.isActive !== latest.is_active) {
+        latest = await requestJson<AccessUser>(`/api/access/users/${original.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            isActive: draft.isActive,
+            expectedUpdatedAt: latest.updated_at,
+          }),
+          headers: { 'Idempotency-Key': idempotencyKey('user-status') },
         });
         setUsers((current) => current.map((user) => (user.id === latest.id ? latest : user)));
         changed = true;
@@ -302,6 +377,10 @@ export default function UserWorkspace({
       setBusy(null);
     }
   }
+
+  const createFormIncomplete = editor?.mode === 'create'
+    && (!draft.loginName.trim() || !draft.employeeId || !passwordIsValid(draft.password) || draft.roleIds.length === 0);
+  const editPasswordInvalid = editor?.mode === 'edit' && Boolean(draft.password) && !passwordIsValid(draft.password);
 
   return (
     <AppShell
@@ -441,7 +520,9 @@ export default function UserWorkspace({
               <header className={styles.modalHeader}>
                 <div>
                   <h2 id="user-editor-title">{editor.mode === 'create' ? 'Thêm người dùng' : 'Cập nhật người dùng'}</h2>
-                  <p>{editor.mode === 'create' ? 'Tạo tài khoản và hoàn thiện phân quyền sau khi lưu.' : 'Cập nhật trạng thái và vai trò được giao.'}</p>
+                  <p>{editor.mode === 'create'
+                    ? 'Chọn nhân sự, cấp tên đăng nhập, mật khẩu và vai trò trong một lần.'
+                    : 'Cập nhật vai trò, trạng thái hoặc đặt lại mật khẩu đăng nhập.'}</p>
                 </div>
                 <button className={styles.closeButton} type="button" onClick={closeEditor} aria-label="Đóng" disabled={busy !== null}>×</button>
               </header>
@@ -481,7 +562,24 @@ export default function UserWorkspace({
                   )}
 
                   <label className={styles.field}>
-                    Trạng thái
+                    {editor.mode === 'create' ? 'Mật khẩu đăng nhập' : 'Mật khẩu mới'}
+                    <input
+                      type="password"
+                      value={draft.password}
+                      onChange={(event) => setDraft((current) => ({ ...current, password: event.currentTarget.value }))}
+                      disabled={busy !== null}
+                      minLength={10}
+                      maxLength={256}
+                      autoComplete="new-password"
+                      placeholder={editor.mode === 'create' ? 'Ít nhất 10 ký tự' : 'Để trống nếu không đổi'}
+                    />
+                    <small>{editor.mode === 'create'
+                      ? 'Mật khẩu này được cấp trực tiếp cho nhân viên để đăng nhập lần đầu.'
+                      : 'Nhập mật khẩu mới sẽ đồng thời thu hồi các phiên đăng nhập cũ của người dùng.'}</small>
+                  </label>
+
+                  <label className={styles.field}>
+                    Trạng thái sau khi cấp tài khoản
                     <select
                       value={draft.isActive ? 'active' : 'inactive'}
                       onChange={(event) => setDraft((current) => ({ ...current, isActive: event.currentTarget.value === 'active' }))}
@@ -492,31 +590,30 @@ export default function UserWorkspace({
                     </select>
                   </label>
 
-                  {editor.mode === 'edit' && (
-                    <div className={styles.field}>
-                      Vai trò
-                      <div className={styles.checkboxGrid}>
-                        {selectableRoles.map((role) => {
-                          const assigned = draft.roleIds.includes(role.id);
-                          return (
-                            <label key={role.id} className={styles.roleOption}>
-                              <input
-                                type="checkbox"
-                                checked={assigned}
-                                onChange={() => toggleRole(role.id)}
-                                disabled={busy !== null}
-                              />
-                              <span>
-                                <strong>{role.name}</strong>
-                                {!role.is_active && <small>Vai trò không hoạt động — bỏ chọn để thu hồi</small>}
-                              </span>
-                            </label>
-                          );
-                        })}
-                        {selectableRoles.length === 0 && <span className={styles.muted}>Không có vai trò đang hoạt động.</span>}
-                      </div>
+                  <div className={styles.field}>
+                    Vai trò
+                    <div className={styles.checkboxGrid}>
+                      {selectableRoles.map((role) => {
+                        const assigned = draft.roleIds.includes(role.id);
+                        return (
+                          <label key={role.id} className={styles.roleOption}>
+                            <input
+                              type="checkbox"
+                              checked={assigned}
+                              onChange={() => toggleRole(role.id)}
+                              disabled={busy !== null}
+                            />
+                            <span>
+                              <strong>{role.name}</strong>
+                              {!role.is_active && <small>Vai trò không hoạt động — bỏ chọn để thu hồi</small>}
+                            </span>
+                          </label>
+                        );
+                      })}
+                      {selectableRoles.length === 0 && <span className={styles.muted}>Không có vai trò đang hoạt động.</span>}
                     </div>
-                  )}
+                    {editor.mode === 'create' && <small>Chọn ít nhất một vai trò để tài khoản có quyền sử dụng app.</small>}
+                  </div>
                 </div>
               </div>
 
@@ -526,9 +623,9 @@ export default function UserWorkspace({
                   className={styles.primaryButton}
                   type="button"
                   onClick={saveEditor}
-                  disabled={busy !== null || (editor.mode === 'create' && (!draft.loginName.trim() || !draft.employeeId))}
+                  disabled={busy !== null || Boolean(createFormIncomplete) || Boolean(editPasswordInvalid)}
                 >
-                  {busy === 'save' ? 'Đang lưu…' : 'Lưu'}
+                  {busy === 'save' ? 'Đang lưu…' : editor.mode === 'create' ? 'Tạo tài khoản' : 'Lưu'}
                 </button>
               </footer>
             </section>
