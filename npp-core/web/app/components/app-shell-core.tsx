@@ -41,9 +41,9 @@ function loadCurrentUser(): Promise<CurrentUser | null> {
         const payload = await response.json().catch(() => null) as CurrentUserEnvelope | null;
         return response.ok && payload?.data ? payload.data : null;
       })
-      .catch(() => {
+      .catch(() => null)
+      .finally(() => {
         currentUserRequest = null;
-        return null;
       });
   }
   return currentUserRequest;
@@ -215,10 +215,10 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
     return <>
       <p className={styles.navLabel}>{sectionLabel}</p>
       <div className={`${styles.navGroup} ${active ? styles.navGroupActive : ''}`}>
-        <button type="button" className={`${styles.navItem} ${styles.navGroupButton}`} onClick={() => openGroup(setOpen)} aria-expanded={open} data-testid={testId} title={collapsed ? groupTitle : undefined}>
+        <button type="button" className={`${styles.navItem} ${styles.navGroupButton}`} onClick={() => openGroup(setOpen)} aria-expanded={childrenVisible} data-testid={testId} title={collapsed ? groupTitle : undefined}>
           <span className={styles.navIcon}><Icon name={icon} /></span>
           <span className={styles.navCopy}><span className={styles.navTitle}>{groupTitle}</span><span className={styles.navHint}>{hint}</span></span>
-          <span className={`${styles.chevron} ${open ? styles.chevronOpen : ''}`}><Icon name="chevron" /></span>
+          <span className={`${styles.chevron} ${childrenVisible ? styles.chevronOpen : ''}`}><Icon name="chevron" /></span>
         </button>
         <div className={`${styles.subnav} ${childrenVisible ? styles.subnavOpen : ''}`} aria-hidden={!childrenVisible}>
           <div className={styles.subnavInner}>
