@@ -13,6 +13,10 @@
   --mcp-metal-ink: #54340d;
   --mcp-metal-ink-soft: #6b4a20;
   --mcp-metal-cream: #fff8e9;
+  --mcp-metal-bronze-lightest: #6d4008;
+  --mcp-metal-bronze-mid: #543008;
+  --mcp-metal-bronze-dark: #603606;
+  --mcp-metal-bronze-hover-lightest: #754706;
 
   --mcp-metal-champagne-surface:
     linear-gradient(104deg, transparent 0 31%, rgba(255, 255, 255, 0.16) 43%, transparent 57%),
@@ -34,25 +38,40 @@
     ),
     linear-gradient(180deg, #faedcf 0%, #e6c78f 49%, #f1ddb5 100%);
 
+  /*
+   * The bronze base stays deliberately dark: even the lightest hover stop,
+   * after the translucent sheen/brushing layers are composited, keeps cream
+   * action text above the 4.5:1 small-text contrast floor.
+   */
   --mcp-metal-bronze-surface:
-    linear-gradient(104deg, transparent 0 30%, rgba(255, 247, 228, 0.14) 44%, transparent 60%),
+    linear-gradient(104deg, transparent 0 30%, rgba(255, 247, 228, 0.12) 44%, transparent 60%),
     repeating-linear-gradient(
       0deg,
-      rgba(255, 255, 255, 0.045) 0 1px,
+      rgba(255, 255, 255, 0.04) 0 1px,
       rgba(75, 45, 12, 0.045) 1px 2px,
       transparent 2px 4px
     ),
-    linear-gradient(180deg, #cda15d 0%, #a97532 50%, #8c591d 100%);
+    linear-gradient(
+      180deg,
+      var(--mcp-metal-bronze-lightest) 0%,
+      var(--mcp-metal-bronze-mid) 50%,
+      var(--mcp-metal-bronze-dark) 100%
+    );
 
   --mcp-metal-bronze-hover:
-    linear-gradient(104deg, transparent 0 28%, rgba(255, 247, 228, 0.18) 44%, transparent 61%),
+    linear-gradient(104deg, transparent 0 28%, rgba(255, 247, 228, 0.14) 44%, transparent 61%),
     repeating-linear-gradient(
       0deg,
-      rgba(255, 255, 255, 0.055) 0 1px,
+      rgba(255, 255, 255, 0.05) 0 1px,
       rgba(75, 45, 12, 0.045) 1px 2px,
       transparent 2px 4px
     ),
-    linear-gradient(180deg, #d6aa65 0%, #b17d38 50%, #946021 100%);
+    linear-gradient(
+      180deg,
+      var(--mcp-metal-bronze-hover-lightest) 0%,
+      var(--mcp-metal-bronze-dark) 50%,
+      var(--mcp-metal-bronze-lightest) 100%
+    );
 
   --mcp-metal-danger-surface:
     linear-gradient(104deg, transparent 0 31%, rgba(255, 255, 255, 0.16) 44%, transparent 58%),
@@ -338,7 +357,7 @@ button.danger,
 
   .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link .nav-icon {
     background: transparent !important;
-    color: currentColor !important;
+    color: currentcolor !important;
     box-shadow: none !important;
   }
 
@@ -374,6 +393,24 @@ button.danger,
       inset 0 -1px 0 rgba(69, 40, 8, 0.28),
       0 7px 16px rgba(91, 57, 18, 0.20) !important;
   }
+}
+
+/*
+ * Metal shadows are decorative; keyboard focus must stay stronger than them.
+ * Re-apply the existing opaque inner/outer focus ring after every metal layer.
+ */
+.app-shell :is(button, a.button, [role="button"], [role="tab"]):focus-visible,
+.app-shell[data-active-href="/"] .mobile-home-primary-action:focus-visible,
+.app-shell[data-active-href="/"] .mobile-home-quick-grid a:focus-visible,
+.app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link:focus-visible,
+.app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.active:not(.primary):focus-visible {
+  outline: 2px solid var(--npp-color-focus-inner) !important;
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 4px var(--npp-color-focus-outer),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    inset 0 -1px 0 rgba(91, 57, 18, 0.18),
+    0 4px 10px rgba(91, 57, 18, 0.13) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

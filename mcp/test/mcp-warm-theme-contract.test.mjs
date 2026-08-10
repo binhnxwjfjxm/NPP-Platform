@@ -76,6 +76,8 @@ test("MCP action controls use restrained satin champagne metal without metalizin
   assert.match(metalActions, /--mcp-metal-champagne-surface:/);
   assert.match(metalActions, /--mcp-metal-bronze-surface:/);
   assert.match(metalActions, /--mcp-metal-danger-surface:/);
+  assert.match(metalActions, /--mcp-metal-bronze-lightest:\s*#6d4008/i);
+  assert.match(metalActions, /--mcp-metal-bronze-hover-lightest:\s*#754706/i);
   assert.match(metalActions, /repeating-linear-gradient\(\s*0deg/);
   assert.match(metalActions, /\.button:not\(\.primary\):not\(\.danger\)/);
   assert.match(metalActions, /\.button\.primary/);
@@ -90,6 +92,8 @@ test("MCP action controls use restrained satin champagne metal without metalizin
   assert.match(metalActions, /\.dashboard-alert-card > strong/);
   assert.match(metalActions, /\[class\*="_customerList__"\] button[\s\S]*?text-shadow:\s*none/);
   assert.match(metalActions, /\[class\*="_variantButton__"\][\s\S]*?text-shadow:\s*none/);
+  assert.match(metalActions, /color:\s*currentcolor\s*!important/);
+  assert.doesNotMatch(metalActions, /currentColor/);
   assert.doesNotMatch(metalActions, /(?:^|,|\n)\s*\.card\s*(?:,|\{)/m);
   assert.doesNotMatch(metalActions, /(?:^|,|\n)\s*\.dashboard-(?:alert|command|route)-card\s*(?:,|\{)/m);
 });
@@ -181,9 +185,11 @@ test("field checks is a first-class menu route but not a bottom-dock item", () =
   assert.doesNotMatch(dockItems, /FIELD_CHECKS_NAV_ITEM/);
 });
 
-test("MCP focus ring keeps an opaque light and dark edge", () => {
+test("MCP focus ring keeps an opaque light and dark edge above the satin metal shadow", () => {
   assert.match(foundation, /--npp-color-focus-inner:\s*#fffdf8/i);
   assert.match(foundation, /--npp-color-focus-outer:\s*#754706/i);
   assert.match(foundation, /outline:\s*2px solid var\(--npp-color-focus-inner\)/);
   assert.match(foundation, /box-shadow:\s*0 0 0 4px var\(--npp-color-focus-outer\)/);
+  assert.match(metalActions, /:focus-visible[\s\S]*?outline:\s*2px solid var\(--npp-color-focus-inner\)\s*!important/);
+  assert.match(metalActions, /:focus-visible[\s\S]*?0 0 0 4px var\(--npp-color-focus-outer\)/);
 });
