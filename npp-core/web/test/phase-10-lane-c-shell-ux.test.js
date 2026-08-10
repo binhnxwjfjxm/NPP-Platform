@@ -40,8 +40,10 @@ test('Phase 10 Lane C animates submenu and route content without display toggles
   assert.match(shellCss, /overflow-anchor:\s*none/);
   assert.match(shellSource, /<main key=\{pathname\} className=\{styles\.content\}/);
   assert.match(shellCss, /animation:\s*content-enter 150ms ease-out/);
-  assert.match(shellCss, /@keyframes content-enter\s*\{[\s\S]*?from \{ opacity: 0\.74; \}[\s\S]*?to \{ opacity: 1; \}/);
-  assert.doesNotMatch(shellCss, /@keyframes content-enter\s*\{[\s\S]*?transform:/);
+  const contentKeyframes = shellCss.match(/@keyframes content-enter\s*\{([\s\S]*?)\n\}/)?.[1] ?? '';
+  assert.match(contentKeyframes, /from \{ opacity: 0\.74; \}/);
+  assert.match(contentKeyframes, /to \{ opacity: 1; \}/);
+  assert.doesNotMatch(contentKeyframes, /transform:/);
   assert.match(shellCss, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(shellCss, /\.content \{ animation: none; \}/);
 });
