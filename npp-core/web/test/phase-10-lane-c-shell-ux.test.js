@@ -46,5 +46,6 @@ test('Phase 10 Lane C provides wide modal workspace reflow without body horizont
   assert.match(modalCss, /\.large\s*\{[\s\S]*?1180px/);
   assert.match(modalCss, /\.workspace\s*\{[\s\S]*?1480px/);
   assert.match(modalCss, /\.large \.body,[\s\S]*?\.workspace \.body\s*\{[\s\S]*?overflow-x:\s*hidden/);
-  assert.match(modalCss, /@media \(max-width: 640px\)[\s\S]*?\.workspace[\s\S]*?width:\s*100%/);
+  assert.match(modalCss, /@media \(max-width: 640px\)/);
+  assert.match(modalCss, /\.dialog,\s*\.large,\s*\.workspace\s*\{[^}]*width:\s*100%/);
 });
