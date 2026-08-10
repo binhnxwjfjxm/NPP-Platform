@@ -8,6 +8,7 @@ const experience = await readFile("src/app/mobile-app-experience.css", "utf8");
 const geometry = await readFile("src/app/mobile-app-geometry.css", "utf8");
 const mobileHome = await readFile("src/app/mobile-home-dashboard.css", "utf8");
 const cardDepth = await readFile("src/app/card-depth.css", "utf8");
+const metalActions = await readFile("src/app/satin-metal-actions.css", "utf8");
 const layout = await readFile("src/app/layout.tsx", "utf8");
 const shell = await readFile("src/ui/shell/AppShell.tsx", "utf8");
 const dock = await readFile("src/ui/shell/MobileDock.tsx", "utf8");
@@ -44,6 +45,7 @@ test("mobile application experience loads after legacy shell and theme layers", 
   const homeIndex = layout.indexOf('import "./mobile-home-dashboard.css";');
   const lotThreeIndex = layout.indexOf('import "./mcp-lot-3-flows.css";');
   const cardDepthIndex = layout.indexOf('import "./card-depth.css";');
+  const metalActionsIndex = layout.indexOf('import "./satin-metal-actions.css";');
   assert.ok(legacyIndex >= 0, "legacy theme import must exist");
   assert.ok(shellContractIndex >= 0, "app shell contract import must exist");
   assert.ok(foundationIndex > legacyIndex, "foundation must follow legacy theme");
@@ -51,7 +53,8 @@ test("mobile application experience loads after legacy shell and theme layers", 
   assert.ok(experienceIndex > foundationIndex, "application experience must follow the theme foundation");
   assert.ok(geometryIndex > experienceIndex, "stable dock geometry must follow application experience");
   assert.ok(homeIndex > geometryIndex, "route-specific home layout must load after shared mobile layers");
-  assert.ok(cardDepthIndex > lotThreeIndex, "card depth must be the final visual override layer");
+  assert.ok(cardDepthIndex > lotThreeIndex, "card depth must follow route-specific visual layers");
+  assert.ok(metalActionsIndex > cardDepthIndex, "satin metal actions must be the final visual action layer");
   assert.match(layout, /viewportFit:\s*"cover"/);
   assert.match(layout, /themeColor:\s*"#754706"/);
 });
@@ -69,6 +72,28 @@ test("MCP content cards use shadow depth instead of visible outlines", () => {
   assert.doesNotMatch(cardDepth, /(?:input|select|textarea|\.button)[\s\S]*?border:\s*0\s*!important/);
 });
 
+test("MCP action controls use restrained satin champagne metal without metalizing content cards", () => {
+  assert.match(metalActions, /--mcp-metal-champagne-surface:/);
+  assert.match(metalActions, /--mcp-metal-bronze-surface:/);
+  assert.match(metalActions, /--mcp-metal-danger-surface:/);
+  assert.match(metalActions, /repeating-linear-gradient\(\s*0deg/);
+  assert.match(metalActions, /\.button:not\(\.primary\):not\(\.danger\)/);
+  assert.match(metalActions, /\.button\.primary/);
+  assert.match(metalActions, /\.button\.danger/);
+  assert.match(metalActions, /\.mobile-home-primary-action/);
+  assert.match(metalActions, /\.mobile-home-quick-grid a/);
+  assert.match(metalActions, /data-bottom-navigation="true"[\s\S]*?\.bottom-nav-link/);
+  assert.match(metalActions, /\[data-app-top-bar\] button/);
+  assert.match(metalActions, /\.mcp-status-chips button/);
+  assert.match(metalActions, /\.report-chip/);
+  assert.match(metalActions, /\.mcp-add-customer-fab/);
+  assert.match(metalActions, /\.dashboard-alert-card > strong/);
+  assert.match(metalActions, /\[class\*="_customerList__"\] button[\s\S]*?text-shadow:\s*none/);
+  assert.match(metalActions, /\[class\*="_variantButton__"\][\s\S]*?text-shadow:\s*none/);
+  assert.doesNotMatch(metalActions, /(?:^|,|\n)\s*\.card\s*(?:,|\{)/m);
+  assert.doesNotMatch(metalActions, /(?:^|,|\n)\s*\.dashboard-(?:alert|command|route)-card\s*(?:,|\{)/m);
+});
+
 test("phone shell has one mobile home launchpad and one scroll region", () => {
   assert.match(shell, /data-bottom-navigation/);
   assert.match(shell, /BOTTOM_NAV_LIMIT = 5/);
@@ -84,7 +109,7 @@ test("phone shell has one mobile home launchpad and one scroll region", () => {
   assert.match(dock, /bottom-nav-link/);
   assert.match(launchpad, /Đi tuyến hôm nay/);
   for (const href of ["/routes", "/mcp/sessions", "/orders", "/reports", "/plans"]) {
-    assert.match(launchpad, new RegExp(`href:\s*"${href.replace("/", "\\/")}"|href=\\"${href.replace("/", "\\/")}\\"`));
+    assert.match(launchpad, new RegExp(`href:\\s*"${href.replace("/", "\\/")}"|href=\\\\"${href.replace("/", "\\/")}\\\\"`));
   }
   assert.match(foundation, /\.sidebar\s*\{[\s\S]*?display:\s*none\s*!important/);
   assert.match(geometry, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);

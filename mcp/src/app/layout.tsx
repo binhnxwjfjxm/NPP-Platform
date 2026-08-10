@@ -34,6 +34,7 @@ import "./mobile-home-dashboard.css";
 import "./mobile-list-summaries.css";
 import "./mcp-lot-3-flows.css";
 import "./card-depth.css";
+import "./satin-metal-actions.css";
 
 export const metadata: Metadata = {
   title: "NPP MCP Field",
