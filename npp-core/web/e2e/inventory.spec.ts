@@ -106,10 +106,12 @@ test.describe('Kho vận', () => {
     await expect(page.getByText(sourceKey.toUpperCase(), { exact: true })).toBeVisible();
 
     await page.goto('/inventory/balances');
-    await expect(page.getByTestId('inventory-balances-section')).toContainText('LOT-001');
-    await expect(page.getByTestId('inventory-balances-section')).toContainText('144.000000000000');
+    const balances = page.getByTestId('inventory-balances-section');
+    await expect(balances).toContainText('LOT-001');
+    await expect(balances).toContainText('144');
+    await expect(balances).not.toContainText('144.000000000000');
     await page.getByTestId('inventory-balances-search-input').fill('LOT-001');
-    await expect(page.getByTestId('inventory-balances-section')).toContainText('LOT-001');
+    await expect(balances).toContainText('LOT-001');
     expectNoSensitiveData(await page.content());
   });
 });

@@ -195,9 +195,11 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                 >
                   <div className={styles.orderCardTop}><strong>{order.number ?? 'Đơn nháp chưa cấp số'}</strong><span>{orderLabels[order.status] ?? order.status}</span></div>
                   <b>{order.customerCode} — {order.customerName}</b>
-                  <small>Kho {order.warehouseCode} · {collectionLabels[order.collectionPolicy]}</small>
-                  <small>Kênh {order.salesChannelCode ?? 'chưa snapshot'}{order.salesChannelName ? ` — ${order.salesChannelName}` : ''}</small>
-                  <small>Cập nhật {formatVietnamDateTime(order.updatedAt)}</small>
+                  <div className={styles.orderCardMeta}>
+                    <small>Kho {order.warehouseCode} · {collectionLabels[order.collectionPolicy]}</small>
+                    <small>Kênh {order.salesChannelCode ?? 'chưa snapshot'}{order.salesChannelName ? ` — ${order.salesChannelName}` : ''}</small>
+                    <small>Cập nhật {formatVietnamDateTime(order.updatedAt)}</small>
+                  </div>
                 </button>
               ))}
               {filtered.length === 0 && <p className={styles.empty}>Chưa có đơn phù hợp.</p>}

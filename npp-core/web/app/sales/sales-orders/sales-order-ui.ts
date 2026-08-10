@@ -1,3 +1,4 @@
+import { formatExactDecimal } from '../../../lib/decimal-display.js';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
 
 export const collectionLabels: Record<string, string> = {
@@ -155,11 +156,7 @@ export function formatMoney(value: string | number | null | undefined): string {
 }
 
 export function formatQuantity(value: string | null | undefined): string {
-  const normalized = String(value ?? '0').trim();
-  const match = /^(-?\d+)(?:\.(\d+))?$/.exec(normalized);
-  if (!match) return normalized;
-  const fraction = (match[2] ?? '').replace(/0+$/, '');
-  return fraction ? `${match[1]}.${fraction}` : match[1];
+  return formatExactDecimal(value);
 }
 
 const VIETNAM_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
