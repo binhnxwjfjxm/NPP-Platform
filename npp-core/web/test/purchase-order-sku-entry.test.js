@@ -8,7 +8,6 @@ import {
   filterPurchaseOrderSkuOptions,
   groupPurchaseOrderSkuOptions,
   normalizePurchaseOrderSkuSearchFailure,
-  purchaseOrderBulkTemplate,
 } from '../lib/purchase-order-sku-entry.js';
 
 test('requires at least two characters for quick search', () => {
@@ -57,13 +56,7 @@ test('groups SKU rows by product for browse mode', () => {
   assert.equal(groups[0].options.length, 2);
 });
 
-test('bulk template is an Excel-friendly Vietnamese CSV', () => {
-  const template = purchaseOrderBulkTemplate();
-  assert.equal(PURCHASE_ORDER_BULK_TEMPLATE_FILENAME, 'mau-nhap-don-dat-hang.csv');
-  assert.equal(PURCHASE_ORDER_BULK_TEMPLATE_MIME, 'text/csv;charset=utf-8');
-  assert.match(template, /Số lượng/);
-  assert.match(template, /Kiểu chiết khấu/);
-  assert.match(template, /SKU;Số lượng;Đơn giá/);
-  assert.doesNotMatch(template, /\t/);
-  assert.doesNotMatch(template, /TOTAL_AMOUNT/);
+test('bulk template contract is a real XLSX download', () => {
+  assert.equal(PURCHASE_ORDER_BULK_TEMPLATE_FILENAME, 'mau-nhap-don-dat-hang.xlsx');
+  assert.equal(PURCHASE_ORDER_BULK_TEMPLATE_MIME, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 });

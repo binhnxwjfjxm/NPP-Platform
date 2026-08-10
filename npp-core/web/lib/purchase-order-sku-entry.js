@@ -6,8 +6,8 @@ export const PURCHASE_ORDER_SKU_FILTERS = Object.freeze({
   all: 'all',
 });
 
-export const PURCHASE_ORDER_BULK_TEMPLATE_FILENAME = 'mau-nhap-don-dat-hang.csv';
-export const PURCHASE_ORDER_BULK_TEMPLATE_MIME = 'text/csv;charset=utf-8';
+export const PURCHASE_ORDER_BULK_TEMPLATE_FILENAME = 'mau-nhap-don-dat-hang.xlsx';
+export const PURCHASE_ORDER_BULK_TEMPLATE_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 export function normalizePurchaseOrderSkuSearchFailure(error) {
   const code = String(error?.code ?? '').trim();
@@ -49,11 +49,4 @@ export function groupPurchaseOrderSkuOptions(options) {
     groups.set(key, current);
   }
   return [...groups.values()].sort((left, right) => String(left.productCode).localeCompare(String(right.productCode)));
-}
-
-export function purchaseOrderBulkTemplate() {
-  return [
-    'SKU;Số lượng;Đơn giá;Kiểu chiết khấu;Giá trị chiết khấu;Thuế %;Ghi chú',
-    'SKU-MAU;10;25000;Giảm tổng dòng;0;8;',
-  ].join('\r\n');
 }
