@@ -1,0 +1,269 @@
+name: Lane G approved PWA icon resize
+
+on:
+  push:
+    branches:
+      - agent/fix-admin-delivery-pwa-icons
+
+permissions:
+  contents: write
+
+jobs:
+  resize-and-map:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Pillow
+        run: python -m pip install --disable-pip-version-check pillow
+      - name: Resize approved sources and map PWA assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          from pathlib import Path
+          from PIL import Image
+
+          ROOT = Path('.')
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = ROOT / path
+              text = p.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'Expected audited text not found in {path}: {old!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          def save_png(image: Image.Image, path: Path, size: int) -> None:
+              resized = image.resize((size, size), Image.Resampling.LANCZOS)
+              path.parent.mkdir(parents=True, exist_ok=True)
+              resized.save(path, format='PNG', optimize=True, compress_level=9)
+
+          def process_source(source_path: str, output_prefix: str, sizes: tuple[int, ...]) -> None:
+              source = ROOT / source_path
+              before_bytes = source.stat().st_size
+              with Image.open(source) as opened:
+                  opened.load()
+                  width, height = opened.size
+                  print(f'{source_path}: before={width}x{height}, bytes={before_bytes}, mode={opened.mode}')
+                  if width != height:
+                      raise SystemExit(f'{source_path} must be square; refusing to crop approved artwork')
+                  if width < 512:
+                      raise SystemExit(f'{source_path} is smaller than 512px; refusing to upscale approved artwork')
+                  master = opened.convert('RGBA').resize((512, 512), Image.Resampling.LANCZOS)
+
+              master.save(source, format='PNG', optimize=True, compress_level=9)
+              print(f'{source_path}: after=512x512, bytes={source.stat().st_size}')
+
+              prefix = ROOT / output_prefix
+              for size in sizes:
+                  save_png(master, Path(f'{prefix}-{size}.png'), size)
+              save_png(master, Path(f'{prefix}-maskable-512.png'), 512)
+
+          process_source('pwa-icon-admin.png', 'admin/web/public/icons/admin', (180, 192, 512))
+          process_source('pwa-icon-deliveri.png', 'delivery/web/public/icons/delivery', (180, 192, 512))
+
+          replace_once('admin/web/app/manifest.ts', "src: '/api/pwa-icon?size=192'", "src: '/icons/admin-192.png'")
+          replace_once('admin/web/app/manifest.ts', "src: '/api/pwa-icon?size=512'", "src: '/icons/admin-512.png'")
+          replace_once('admin/web/app/manifest.ts', "src: '/api/pwa-icon?size=512&maskable=1'", "src: '/icons/admin-maskable-512.png'")
+
+          replace_once('admin/web/app/layout.tsx', "{ url: '/api/pwa-icon?size=192', sizes: '192x192', type: 'image/png' }", "{ url: '/icons/admin-192.png', sizes: '192x192', type: 'image/png' }")
+          replace_once('admin/web/app/layout.tsx', "{ url: '/api/pwa-icon?size=512', sizes: '512x512', type: 'image/png' }", "{ url: '/icons/admin-512.png', sizes: '512x512', type: 'image/png' }")
+          replace_once('admin/web/app/layout.tsx', "shortcut: '/api/pwa-icon?size=192'", "shortcut: '/icons/admin-192.png'")
+          replace_once('admin/web/app/layout.tsx', "apple: '/api/pwa-icon?size=512'", "apple: [{ url: '/icons/admin-180.png', sizes: '180x180', type: 'image/png' }]")
+
+          replace_once('admin/web/middleware.ts', 'manifest.webmanifest|sw.js|offline.html|api/pwa-icon', 'manifest.webmanifest|sw.js|offline.html|icons/')
+
+          replace_once('admin/web/public/sw.js', "const CACHE_NAME = 'admin-mcp-npp-static-v1';", "const CACHE_NAME = 'admin-mcp-npp-static-v2';")
+          replace_once('admin/web/public/sw.js', "const STATIC_PATH_PREFIXES = ['/_next/static/', '/api/pwa-icon'];", "const STATIC_PATH_PREFIXES = ['/_next/static/', '/icons/'];")
+          replace_once(
+              'admin/web/public/sw.js',
+              "const STATIC_PATHS = ['/manifest.webmanifest', OFFLINE_URL];",
+              "const STATIC_PATHS = [\n  '/manifest.webmanifest',\n  OFFLINE_URL,\n  '/icons/admin-180.png',\n  '/icons/admin-192.png',\n  '/icons/admin-512.png',\n  '/icons/admin-maskable-512.png',\n];",
+          )
+          replace_once('admin/web/public/sw.js', '.then((cache) => cache.add(OFFLINE_URL))', '.then((cache) => cache.addAll(STATIC_PATHS))')
+
+          replace_once('delivery/web/public/sw.js', "const CACHE_NAME = 'hung-phat-delivery-static-v1';", "const CACHE_NAME = 'hung-phat-delivery-static-v2';")
+
+          icon_route = ROOT / 'admin/web/app/api/pwa-icon/route.ts'
+          if not icon_route.exists():
+              raise SystemExit('Audited Admin dynamic icon route is missing')
+          icon_route.unlink()
+
+          admin_test = r'''import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import { existsSync, readFileSync } from 'node:fs';
+
+          const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+          const binary = (path) => readFileSync(new URL(`../${path}`, import.meta.url));
+
+          const manifest = read('app/manifest.ts');
+          const layout = read('app/layout.tsx');
+          const register = read('app/pwa-register.tsx');
+          const serviceWorker = read('public/sw.js');
+          const offline = read('public/offline.html');
+          const middleware = read('middleware.ts');
+
+          function assertPngSize(path, size) {
+            const bytes = binary(path);
+            assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+            assert.equal(bytes.readUInt32BE(16), size, `${path} width`);
+            assert.equal(bytes.readUInt32BE(20), size, `${path} height`);
+          }
+
+          test('Admin exposes an installable standalone manifest with approved static icons', () => {
+            assert.match(manifest, /display:\s*'standalone'/);
+            assert.match(manifest, /start_url:\s*'\/'/);
+            assert.match(manifest, /scope:\s*'\/'/);
+            assert.match(manifest, /\/icons\/admin-192\.png/);
+            assert.match(manifest, /\/icons\/admin-512\.png/);
+            assert.match(manifest, /\/icons\/admin-maskable-512\.png/);
+            assert.match(manifest, /purpose:\s*'maskable'/);
+            assert.match(manifest, /theme_color:\s*'#2b180b'/i);
+            assert.doesNotMatch(manifest, /api\/pwa-icon/);
+          });
+
+          test('Admin approved source is resized before mapping and derived icons have exact dimensions', () => {
+            const source = readFileSync(new URL('../../../pwa-icon-admin.png', import.meta.url));
+            assert.equal(source.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+            assert.equal(source.readUInt32BE(16), 512);
+            assert.equal(source.readUInt32BE(20), 512);
+            assert.ok(source.byteLength < 1_200_000, 'resized Admin source should be materially smaller than the original');
+            assertPngSize('public/icons/admin-180.png', 180);
+            assertPngSize('public/icons/admin-192.png', 192);
+            assertPngSize('public/icons/admin-512.png', 512);
+            assertPngSize('public/icons/admin-maskable-512.png', 512);
+          });
+
+          test('Admin layout advertises PWA metadata without disabling zoom', () => {
+            assert.match(layout, /manifest:\s*'\/manifest\.webmanifest'/);
+            assert.match(layout, /\/icons\/admin-180\.png/);
+            assert.match(layout, /\/icons\/admin-192\.png/);
+            assert.match(layout, /\/icons\/admin-512\.png/);
+            assert.match(layout, /appleWebApp/);
+            assert.match(layout, /mobile-web-app-capable/);
+            assert.match(layout, /viewportFit:\s*'cover'/);
+            assert.match(layout, /themeColor:\s*'#2b180b'/i);
+            assert.match(layout, /<PwaRegister\s*\/>/);
+            assert.doesNotMatch(layout, /api\/pwa-icon|maximumScale|userScalable/);
+          });
+
+          test('Admin registers a root-scoped service worker', () => {
+            assert.match(register, /serviceWorker\.register\('\/sw\.js'/);
+            assert.match(register, /scope:\s*'\/'/);
+            assert.match(register, /updateViaCache:\s*'none'/);
+          });
+
+          test('Admin service worker replaces old icon cache and keeps private pages and APIs out of runtime cache', () => {
+            assert.match(serviceWorker, /admin-mcp-npp-static-v2/);
+            assert.match(serviceWorker, /cache\.addAll\(STATIC_PATHS\)/);
+            assert.match(serviceWorker, /request\.mode === 'navigate'/);
+            assert.match(serviceWorker, /fetch\(request\)\.catch\(\(\) => caches\.match\(OFFLINE_URL\)\)/);
+            assert.match(serviceWorker, /if \(!isStaticAsset\(url\)\) return/);
+            assert.match(serviceWorker, /'\/_next\/static\/'/);
+            assert.match(serviceWorker, /'\/icons\/'/);
+            assert.doesNotMatch(serviceWorker, /api\/pwa-icon|admin-mcp-npp-static-v1/);
+            assert.match(offline, /Không có kết nối/);
+          });
+
+          test('PWA install assets stay public while Admin pages remain protected', () => {
+            assert.match(middleware, /manifest\.webmanifest/);
+            assert.match(middleware, /sw\.js/);
+            assert.match(middleware, /offline\.html/);
+            assert.match(middleware, /icons\//);
+            assert.doesNotMatch(middleware, /api\/pwa-icon/);
+            assert.equal(existsSync(new URL('../app/api/pwa-icon/route.ts', import.meta.url)), false);
+          });
+          '''.replace(/^          /gm, '')
+          ;
+          (ROOT / 'admin/web/test/pwa.test.mjs').write_text(admin_test, encoding='utf-8')
+
+          delivery_test = r'''import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import { existsSync, readFileSync } from 'node:fs';
+
+          const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+          const binary = (path) => readFileSync(new URL(`../${path}`, import.meta.url));
+
+          function assertPngSize(path, size) {
+            const bytes = binary(path);
+            assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+            assert.equal(bytes.readUInt32BE(16), size, `${path} width`);
+            assert.equal(bytes.readUInt32BE(20), size, `${path} height`);
+          }
+
+          test('Delivery PWA declares standalone metadata and install icons', () => {
+            const layout = read('app/layout.tsx');
+            const manifest = read('app/manifest.ts');
+            assert.match(layout, /PwaRegister/);
+            assert.match(layout, /appleWebApp/);
+            assert.match(layout, /delivery-180\.png/);
+            assert.match(manifest, /display:\s*'standalone'/);
+            assert.match(manifest, /delivery-maskable-512\.png/);
+            assert.match(manifest, /purpose:\s*'maskable'/);
+            for (const icon of [
+              'public/icons/delivery-180.png',
+              'public/icons/delivery-192.png',
+              'public/icons/delivery-512.png',
+              'public/icons/delivery-maskable-512.png',
+            ]) {
+              assert.equal(existsSync(new URL(`../${icon}`, import.meta.url)), true, `${icon} must exist`);
+            }
+          });
+
+          test('Delivery approved source is resized before mapping and derived icons have exact dimensions', () => {
+            const source = readFileSync(new URL('../../../pwa-icon-deliveri.png', import.meta.url));
+            assert.equal(source.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+            assert.equal(source.readUInt32BE(16), 512);
+            assert.equal(source.readUInt32BE(20), 512);
+            assert.ok(source.byteLength < 1_200_000, 'resized Delivery source should be materially smaller than the original');
+            assertPngSize('public/icons/delivery-180.png', 180);
+            assertPngSize('public/icons/delivery-192.png', 192);
+            assertPngSize('public/icons/delivery-512.png', 512);
+            assertPngSize('public/icons/delivery-maskable-512.png', 512);
+          });
+
+          test('Delivery bottom navigation is compact while preserving iPhone safe area', () => {
+            const styles = read('app/delivery-mobile-app.css');
+            assert.match(styles, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
+            assert.match(styles, /\.deliveryAppDock[\s\S]*?min-height:\s*calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
+            assert.match(styles, /\.deliveryAppDock[\s\S]*?padding:\s*5px 7px calc\(5px \+ env\(safe-area-inset-bottom\)\)/);
+            assert.match(styles, /\.deliveryDockItem[\s\S]*?min-height:\s*48px/);
+          });
+
+          test('Delivery service worker rotates the old icon cache and caches only static assets', () => {
+            const worker = read('public/sw.js');
+            const offline = read('public/offline.html');
+            assert.match(worker, /hung-phat-delivery-static-v2/);
+            assert.doesNotMatch(worker, /hung-phat-delivery-static-v1/);
+            assert.match(worker, /request\.mode === 'navigate'/);
+            assert.match(worker, /caches\.match\(OFFLINE_URL\)/);
+            assert.match(worker, /url\.pathname\.startsWith\('\/_next\/static\/'\)/);
+            assert.match(worker, /url\.pathname\.startsWith\('\/icons\/'\)/);
+            assert.doesNotMatch(worker, /url\.pathname\.startsWith\('\/api\/'\)/);
+            assert.match(offline, /Dữ liệu chuyến và kết quả giao hàng không được lưu ngoại tuyến/);
+          });
+
+          test('PWA public assets bypass workforce session gate while application pages remain protected', () => {
+            const middleware = read('middleware.ts');
+            assert.match(middleware, /manifest\.webmanifest\|sw\.js\|offline\.html\|icons\//);
+            assert.match(middleware, /DELIVERY_SESSION_COOKIE/);
+            assert.match(middleware, /\/api\/internal-auth\/me/);
+            assert.match(middleware, /UNAUTHORIZED/);
+            assert.doesNotMatch(middleware, /WWW-Authenticate|Basic realm/);
+          });
+          '''.replace(/^          /gm, '')
+          ;
+          (ROOT / 'delivery/web/test/mobile-shell-pwa.test.mjs').write_text(delivery_test, encoding='utf-8')
+          PY
+
+          rm .github/workflows/lane-g-resize-icons.yml
+          git status --short
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(pwa): map approved admin and delivery icons'
+          git push origin HEAD:agent/fix-admin-delivery-pwa-icons
