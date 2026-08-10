@@ -20,9 +20,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 <<'PY'
+          from base64 import b64decode
           from pathlib import Path
 
           ROOT = Path('.')
+
+          def decoded(value: str) -> str:
+              return b64decode(value).decode('utf-8')
 
           def replace_once(path: str, old: str, new: str) -> None:
               p = ROOT / path
@@ -37,179 +41,38 @@ jobs:
               text = p.read_text(encoding='utf-8')
               start = text.find(start_marker)
               if start < 0:
-                  raise SystemExit(f'{path}: start marker not found: {start_marker!r}')
+                  raise SystemExit(f'{path}: start marker not found')
               end = text.find(end_marker, start + len(start_marker))
               if end < 0:
-                  raise SystemExit(f'{path}: end marker not found: {end_marker!r}')
+                  raise SystemExit(f'{path}: end marker not found')
               if text.find(start_marker, start + len(start_marker)) >= 0:
                   raise SystemExit(f'{path}: start marker is not unique')
               p.write_text(text[:start] + new_block + text[end:], encoding='utf-8')
 
+          admin_smoke = decoded('ICAgICAgLSBuYW1lOiBTbW9rZSBleGFjdCBBZG1pbiBkZXBsb3ltZW50IHJlYWNoYWJpbGl0eQogICAgICAgIHNoZWxsOiBiYXNoCiAgICAgICAgZW52OgogICAgICAgICAgREVQTE9ZTUVOVF9VUkw6ICR7eyBzdGVwcy5kZXBsb3kub3V0cHV0cy51cmwgfX0KICAgICAgICBydW46IHwKICAgICAgICAgIHNldCAtZXVvIHBpcGVmYWlsCiAgICAgICAgICBhc3NlcnRfcmVhY2hhYmxlKCkgewogICAgICAgICAgICBsb2NhbCBwYXRoPSIkMSIgcmVzcG9uc2U9IiIKICAgICAgICAgICAgZm9yIGF0dGVtcHQgaW4gJChzZXEgMSA2KTsgZG8KICAgICAgICAgICAgICByZXNwb25zZT0iJChjdXJsIC0tc2lsZW50IC0tc2hvdy1lcnJvciAtLW91dHB1dCAvZGV2L251bGwgLS13cml0ZS1vdXQgJyV7aHR0cF9jb2RlfScgIiRERVBMT1lNRU5UX1VSTCRwYXRoIiB8fCB0cnVlKSIKICAgICAgICAgICAgICBlY2hvICJBZG1pbiBleGFjdCBzbW9rZSBwYXRoPSRwYXRoIGF0dGVtcHQ9JGF0dGVtcHQgc3RhdHVzPSR7cmVzcG9uc2U6LTAwMH0iCiAgICAgICAgICAgICAgY2FzZSAiJHJlc3BvbnNlIiBpbgogICAgICAgICAgICAgICAgMjAwfDMwMnwzMDd8NDAxfDQwMykgcmV0dXJuIDAgOzsKICAgICAgICAgICAgICBlc2FjCiAgICAgICAgICAgICAgWyAiJGF0dGVtcHQiIC1sdCA2IF0gJiYgc2xlZXAgNQogICAgICAgICAgICBkb25lCiAgICAgICAgICAgIGVjaG8gIkV4YWN0IEFkbWluIGRlcGxveW1lbnQgaXMgbm90IHJlYWNoYWJsZSBhdCAkcGF0aDsgZ290ICR7cmVzcG9uc2U6LTAwMH0iID4mMgogICAgICAgICAgICByZXR1cm4gMQogICAgICAgICAgfQogICAgICAgICAgIyBWZXJjZWwgQXV0aGVudGljYXRpb24gbWF5IHByb3RlY3QgdGhlIGdlbmVyYXRlZCBkZXBsb3ltZW50IGhvc3RuYW1lLgogICAgICAgICAgIyBDYW5vbmljYWwgcHVibGljIGJlaGF2aW9yIGlzIHZhbGlkYXRlZCBhZ2FpbnN0IEFETUlOX09SSUdJTiBiZWxvdy4KICAgICAgICAgIGFzc2VydF9yZWFjaGFibGUgLwogICAgICAgICAgYXNzZXJ0X3JlYWNoYWJsZSAvbG9naW4KCiAgICAgIC0gbmFtZTogU21va2UgY2Fub25pY2FsIEFkbWluIHByb2R1Y3Rpb24gZG9tYWluCiAgICAgICAgaWQ6IHNtb2tlCiAgICAgICAgc2hlbGw6IGJhc2gKICAgICAgICBydW46IHwKICAgICAgICAgIHNldCAtZXVvIHBpcGVmYWlsCiAgICAgICAgICBzbW9rZV9vaz1mYWxzZQogICAgICAgICAgbG9naW5fZmlsZT0iJHtSVU5ORVJfVEVNUH0vYWRtaW4tbG9naW4uaHRtbCIKICAgICAgICAgIGZvciBhdHRlbXB0IGluICQoc2VxIDEgMTIpOyBkbwogICAgICAgICAgICBjaGFsbGVuZ2U9IiQoY3VybCAtLXNpbGVudCAtLXNob3ctZXJyb3IgXAogICAgICAgICAgICAgIC1IICdBY2NlcHQ6IGFwcGxpY2F0aW9uL2pzb24nIFwKICAgICAgICAgICAgICAtLW91dHB1dCAvZGV2L251bGwgLS13cml0ZS1vdXQgJyV7aHR0cF9jb2RlfScgXAogICAgICAgICAgICAgICIkQURNSU5fT1JJR0lOLyIgfHwgdHJ1ZSkiCiAgICAgICAgICAgIGJyb3dzZXJfbWV0YT0iJChjdXJsIC0tc2lsZW50IC0tc2hvdy1lcnJvciBcCiAgICAgICAgICAgICAgLUggJ0FjY2VwdDogdGV4dC9odG1sJyBcCiAgICAgICAgICAgICAgLS1vdXRwdXQgL2Rldi9udWxsIC0td3JpdGUtb3V0ICcle2h0dHBfY29kZX18JXtyZWRpcmVjdF91cmx9JyBcCiAgICAgICAgICAgICAgIiRBRE1JTl9PUklHSU4vIiB8fCB0cnVlKSIKICAgICAgICAgICAgYnJvd3Nlcl9zdGF0dXM9IiR7YnJvd3Nlcl9tZXRhJSV8Kn0iCiAgICAgICAgICAgIGJyb3dzZXJfcmVkaXJlY3Q9IiR7YnJvd3Nlcl9tZXRhIyp8fSIKICAgICAgICAgICAgbG9naW5fY29kZT0iJChjdXJsIC0tc2lsZW50IC0tc2hvdy1lcnJvciBcCiAgICAgICAgICAgICAgLUggJ0FjY2VwdDogdGV4dC9odG1sJyBcCiAgICAgICAgICAgICAgLS1vdXRwdXQgIiRsb2dpbl9maWxlIiAtLXdyaXRlLW91dCAnJXtodHRwX2NvZGV9JyBcCiAgICAgICAgICAgICAgIiRBRE1JTl9PUklHSU4vbG9naW4iIHx8IHRydWUpIgogICAgICAgICAgICBjYXNlICIkYnJvd3Nlcl9zdGF0dXMiIGluCiAgICAgICAgICAgICAgMzA3fDMwOCkgYnJvd3Nlcl9yZWRpcmVjdF9vaz10cnVlIDs7CiAgICAgICAgICAgICAgKikgYnJvd3Nlcl9yZWRpcmVjdF9vaz1mYWxzZSA7OwogICAgICAgICAgICBlc2FjCiAgICAgICAgICAgIGlmIFsgIiRjaGFsbGVuZ2UiID0gNDAxIF0gJiYgXAogICAgICAgICAgICAgICBbICIkYnJvd3Nlcl9yZWRpcmVjdF9vayIgPSB0cnVlIF0gJiYgXAogICAgICAgICAgICAgICBbICIkYnJvd3Nlcl9yZWRpcmVjdCIgPSAiJEFETUlOX09SSUdJTi9sb2dpbiIgXSAmJiBcCiAgICAgICAgICAgICAgIFsgIiRsb2dpbl9jb2RlIiA9IDIwMCBdICYmIFwKICAgICAgICAgICAgICAgZ3JlcCAtRnEgJ23DoyDEkcaw4bujYyBn4butaSB04bubaSBlbWFpbCBj4bunYSBjaMOtbmggdMOgaSBraG/huqNuJyAiJGxvZ2luX2ZpbGUiOyB0aGVuCiAgICAgICAgICAgICAgc21va2Vfb2s9dHJ1ZQogICAgICAgICAgICAgIGJyZWFrCiAgICAgICAgICAgIGZpCiAgICAgICAgICAgIGVjaG8gIkFkbWluIGNhbm9uaWNhbCBkb21haW4gbm90IHJlYWR5OiBhdHRlbXB0PSRhdHRlbXB0IGNoYWxsZW5nZT0kY2hhbGxlbmdlIGJyb3dzZXI9JGJyb3dzZXJfc3RhdHVzIGxvZ2luPSRsb2dpbl9jb2RlIgogICAgICAgICAgICBzbGVlcCA1CiAgICAgICAgICBkb25lCiAgICAgICAgICB0ZXN0ICIkc21va2Vfb2siID0gdHJ1ZQogICAgICAgICAgaHRtbD0iJChjYXQgIiRsb2dpbl9maWxlIikiCiAgICAgICAgICBhc3NldD0iJChwcmludGYgJyVzJyAiJGh0bWwiIHwgZ3JlcCAtb0UgJy9fbmV4dC9zdGF0aWMvW14iIF0rXC4oY3NzfGpzKScgfCBoZWFkIC1uIDEpIgogICAgICAgICAgdGVzdCAtbiAiJGFzc2V0IgogICAgICAgICAgY3VybCAtLWZhaWwgLS1zaWxlbnQgLS1zaG93LWVycm9yICIkQURNSU5fT1JJR0lOJGFzc2V0IiA+L2Rldi9udWxsCgo=')
+          delivery_smoke = decoded('YXNzZXJ0X2RlcGxveW1lbnRfcmVhY2hhYmxlKCkgewogIGxvY2FsIHBhdGg9IiQxIiByZXNwb25zZT0iIgogIGZvciBhdHRlbXB0IGluICQoc2VxIDEgNik7IGRvCiAgICByZXNwb25zZT0iJChjdXJsIC0tc2lsZW50IC0tc2hvdy1lcnJvciAtLW91dHB1dCAvZGV2L251bGwgLS13cml0ZS1vdXQgJyV7aHR0cF9jb2RlfScgIiRkZXBsb3ltZW50X3VybCRwYXRoIiB8fCB0cnVlKSIKICAgIGVjaG8gIkRlbGl2ZXJ5IGV4YWN0IHNtb2tlIHBhdGg9JHBhdGggYXR0ZW1wdD0kYXR0ZW1wdCBzdGF0dXM9JHtyZXNwb25zZTotMDAwfSIKICAgIGNhc2UgIiRyZXNwb25zZSIgaW4KICAgICAgMjAwfDMwMnwzMDd8NDAxfDQwMykgcmV0dXJuIDAgOzsKICAgIGVzYWMKICAgIFsgIiRhdHRlbXB0IiAtbHQgNiBdICYmIHNsZWVwIDUKICBkb25lCiAgZWNobyAiRXhhY3QgRGVsaXZlcnkgZGVwbG95bWVudCBpcyBub3QgcmVhY2hhYmxlIGF0ICRwYXRoOyBnb3QgJHtyZXNwb25zZTotMDAwfS4iID4mMgogIHJldHVybiAxCn0KCiMgVmVyY2VsIEF1dGhlbnRpY2F0aW9uIG1heSBwcm90ZWN0IHRoZSBnZW5lcmF0ZWQgZGVwbG95bWVudCBob3N0bmFtZS4KIyBDYW5vbmljYWwgcHVibGljIGJlaGF2aW9yIGFuZCBhc3NldHMgYXJlIHZhbGlkYXRlZCBvbiB0aGUgY3VzdG9tIGRvbWFpbi4KYXNzZXJ0X2RlcGxveW1lbnRfcmVhY2hhYmxlIC8KYXNzZXJ0X2RlcGxveW1lbnRfcmVhY2hhYmxlIC9sb2dpbgoKc21va2VfdXJsPSJodHRwczovLyRERUxJVkVSWV9ET01BSU4iCmRvbWFpbl9yZWFkeT1mYWxzZQpsb2dpbl9maWxlPSIke1JVTk5FUl9URU1QfS9kZWxpdmVyeS1sb2dpbi5odG1sIgpmb3IgYXR0ZW1wdCBpbiAkKHNlcSAxIDEyKTsgZG8KICB1bmF1dGg9IiQoY3VybCAtLXNpbGVudCAtLXNob3ctZXJyb3IgXAogICAgLUggJ0FjY2VwdDogYXBwbGljYXRpb24vanNvbicgXAogICAgLS1vdXRwdXQgL2Rldi9udWxsIC0td3JpdGUtb3V0ICcle2h0dHBfY29kZX0nIFwKICAgICIkc21va2VfdXJsLyIgfHwgdHJ1ZSkiCiAgZG9tYWluX2xvZ2luPSIkKGN1cmwgLS1zaWxlbnQgLS1zaG93LWVycm9yIFwKICAgIC1IICdBY2NlcHQ6IHRleHQvaHRtbCcgXAogICAgLS1vdXRwdXQgIiRsb2dpbl9maWxlIiAtLXdyaXRlLW91dCAnJXtodHRwX2NvZGV9JyBcCiAgICAiJHNtb2tlX3VybC9sb2dpbiIgfHwgdHJ1ZSkiCiAgaWYgWyAiJHVuYXV0aCIgPSA0MDEgXSAmJiBcCiAgICAgWyAiJGRvbWFpbl9sb2dpbiIgPSAyMDAgXSAmJiBcCiAgICAgZ3JlcCAtRnEgJ1dlbGNvbWUgdG8gSHVuZyBQaGF0IE9wZXJhdGlvbnMuJyAiJGxvZ2luX2ZpbGUiOyB0aGVuCiAgICBkb21haW5fcmVhZHk9dHJ1ZQogICAgYnJlYWsKICBmaQogIGVjaG8gIkRlbGl2ZXJ5IGNhbm9uaWNhbCBkb21haW4gbm90IHJlYWR5OiBhdHRlbXB0PSRhdHRlbXB0IHVuYXV0aD0kdW5hdXRoIGxvZ2luPSRkb21haW5fbG9naW4iCiAgc2xlZXAgNQpkb25lCnRlc3QgIiRkb21haW5fcmVhZHkiID0gdHJ1ZQpodG1sPSIkKGNhdCAiJGxvZ2luX2ZpbGUiKSIKYXNzZXQ9IiQocHJpbnRmICclcycgIiRodG1sIiB8IGdyZXAgLW9FICcvX25leHQvc3RhdGljL1teIiBdK1wuKGNzc3xqcyknIHwgaGVhZCAtbiAxKSIKdGVzdCAtbiAiJGFzc2V0IgpjdXJsIC0tZmFpbCAtLXNpbGVudCAtLXNob3ctZXJyb3IgIiRzbW9rZV91cmwkYXNzZXQiID4vZGV2L251bGwKCg==')
+          admin_test_append = decoded('CnRlc3QoJ0FkbWluIG1hbnVhbCByb2xsb3V0IHRvbGVyYXRlcyBwcm90ZWN0ZWQgZGVwbG95bWVudCBob3N0cyBhbmQgdmFsaWRhdGVzIHRoZSBjYW5vbmljYWwgZG9tYWluJywgYXN5bmMgKCkgPT4gewogIGNvbnN0IHdvcmtmbG93ID0gYXdhaXQgcmVhZEZpbGUobWFudWFsV29ya2Zsb3dVcmwsICd1dGY4Jyk7CgogIGFzc2VydC5tYXRjaCh3b3JrZmxvdywgL0FETUlOX09SSUdJTjogaHR0cHM6XC9cL2FkbWluXC5uZ3V5ZW5saWV1aHVuZ3BoYXRcLmNvbS8pOwogIGFzc2VydC5tYXRjaCh3b3JrZmxvdywgLzIwMFx8MzAyXHwzMDdcfDQwMVx8NDAzLyk7CiAgYXNzZXJ0Lm1hdGNoKHdvcmtmbG93LCAvQWNjZXB0OiBhcHBsaWNhdGlvblwvanNvbi8pOwogIGFzc2VydC5tYXRjaCh3b3JrZmxvdywgL0FjY2VwdDogdGV4dFwvaHRtbC8pOwogIGFzc2VydC5tYXRjaCh3b3JrZmxvdywgL1wkQURNSU5fT1JJR0lOXC9sb2dpbi8pOwogIGFzc2VydC5tYXRjaCh3b3JrZmxvdywgL23DoyDEkcaw4bujYyBn4butaSB04bubaSBlbWFpbCBj4bunYSBjaMOtbmggdMOgaSBraG/huqNuLyk7CiAgYXNzZXJ0LmRvZXNOb3RNYXRjaCh3b3JrZmxvdywgL3Rlc3QgIlwkbG9naW5fY29kZSIgPSAyMDAvKTsKfSk7Cg==')
+
           admin_workflow = '.github/workflows/vercel-admin-production-manual.yml'
-          replace_once(
-              admin_workflow,
-              '      ADMIN_DOMAIN: admin.nguyenlieuhungphat.com\n',
-              '      ADMIN_DOMAIN: admin.nguyenlieuhungphat.com\n      ADMIN_ORIGIN: https://admin.nguyenlieuhungphat.com\n',
-          )
-          deploy_expr = '$' + '{{ steps.deploy.outputs.url }}'
-          admin_smoke = '''      - name: Smoke exact Admin deployment reachability
-        shell: bash
-        env:
-          DEPLOYMENT_URL: __DEPLOY_EXPR__
-        run: |
-          set -euo pipefail
-          assert_reachable() {
-            local path="$1" response=""
-            for attempt in $(seq 1 6); do
-              response="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL$path" || true)"
-              echo "Admin exact smoke path=$path attempt=$attempt status=${response:-000}"
-              case "$response" in
-                200|302|307|401|403) return 0 ;;
-              esac
-              [ "$attempt" -lt 6 ] && sleep 5
-            done
-            echo "Exact Admin deployment is not reachable at $path; got ${response:-000}" >&2
-            return 1
-          }
-          # Vercel Authentication may protect the generated deployment hostname.
-          # Canonical public behavior is validated against ADMIN_ORIGIN below.
-          assert_reachable /
-          assert_reachable /login
-
-      - name: Smoke canonical Admin production domain
-        id: smoke
-        shell: bash
-        run: |
-          set -euo pipefail
-          smoke_ok=false
-          login_file="${RUNNER_TEMP}/admin-login.html"
-          for attempt in $(seq 1 12); do
-            challenge="$(curl --silent --show-error \\
-              -H 'Accept: application/json' \\
-              --output /dev/null --write-out '%{http_code}' \\
-              "$ADMIN_ORIGIN/" || true)"
-            browser_meta="$(curl --silent --show-error \\
-              -H 'Accept: text/html' \\
-              --output /dev/null --write-out '%{http_code}|%{redirect_url}' \\
-              "$ADMIN_ORIGIN/" || true)"
-            browser_status="${browser_meta%%|*}"
-            browser_redirect="${browser_meta#*|}"
-            login_code="$(curl --silent --show-error \\
-              -H 'Accept: text/html' \\
-              --output "$login_file" --write-out '%{http_code}' \\
-              "$ADMIN_ORIGIN/login" || true)"
-            case "$browser_status" in
-              307|308) browser_redirect_ok=true ;;
-              *) browser_redirect_ok=false ;;
-            esac
-            if [ "$challenge" = 401 ] && \\
-               [ "$browser_redirect_ok" = true ] && \\
-               [ "$browser_redirect" = "$ADMIN_ORIGIN/login" ] && \\
-               [ "$login_code" = 200 ] && \\
-               grep -Fq 'mã được gửi tới email của chính tài khoản' "$login_file"; then
-              smoke_ok=true
-              break
-            fi
-            echo "Admin canonical domain not ready: attempt=$attempt challenge=$challenge browser=$browser_status login=$login_code"
-            sleep 5
-          done
-          test "$smoke_ok" = true
-          html="$(cat "$login_file")"
-          asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.(css|js)' | head -n 1)"
-          test -n "$asset"
-          curl --fail --silent --show-error "$ADMIN_ORIGIN$asset" >/dev/null
-
-'''.replace('__DEPLOY_EXPR__', deploy_expr)
-          replace_between(
-              admin_workflow,
-              '      - name: Smoke exact Admin deployment\n',
-              '      - name: Read Admin domain state\n',
-              admin_smoke,
-          )
+          replace_once(admin_workflow, '      ADMIN_DOMAIN: admin.nguyenlieuhungphat.com\n', '      ADMIN_DOMAIN: admin.nguyenlieuhungphat.com\n      ADMIN_ORIGIN: https://admin.nguyenlieuhungphat.com\n')
+          replace_between(admin_workflow, '      - name: Smoke exact Admin deployment\n', '      - name: Read Admin domain state\n', admin_smoke)
 
           admin_test = 'admin/web/test/admin-production-smoke.test.mjs'
-          replace_once(
-              admin_test,
-              "const workflowUrl = new URL('../../../.github/workflows/vercel-admin-production-direct.yml', import.meta.url);\n",
-              "const workflowUrl = new URL('../../../.github/workflows/vercel-admin-production-direct.yml', import.meta.url);\nconst manualWorkflowUrl = new URL('../../../.github/workflows/vercel-admin-production-manual.yml', import.meta.url);\n",
-          )
+          replace_once(admin_test, "const workflowUrl = new URL('../../../.github/workflows/vercel-admin-production-direct.yml', import.meta.url);\n", "const workflowUrl = new URL('../../../.github/workflows/vercel-admin-production-direct.yml', import.meta.url);\nconst manualWorkflowUrl = new URL('../../../.github/workflows/vercel-admin-production-manual.yml', import.meta.url);\n")
           admin_test_path = ROOT / admin_test
-          admin_test_path.write_text(
-              admin_test_path.read_text(encoding='utf-8') + '''\n\ntest('Admin manual rollout tolerates protected deployment hosts and validates the canonical domain', async () => {\n  const workflow = await readFile(manualWorkflowUrl, 'utf8');\n\n  assert.match(workflow, /ADMIN_ORIGIN: https:\/\/admin\.nguyenlieuhungphat\.com/);\n  assert.match(workflow, /200\|302\|307\|401\|403/);\n  assert.match(workflow, /Accept: application\/json/);\n  assert.match(workflow, /Accept: text\/html/);\n  assert.match(workflow, /\$ADMIN_ORIGIN\/login/);\n  assert.match(workflow, /mã được gửi tới email của chính tài khoản/);\n  assert.doesNotMatch(workflow, /test "\$login_code" = 200/);\n});\n''',
-              encoding='utf-8',
-          )
+          admin_test_path.write_text(admin_test_path.read_text(encoding='utf-8') + admin_test_append, encoding='utf-8')
 
           delivery_script = 'delivery/web/scripts/deploy-production.sh'
-          delivery_smoke = '''assert_deployment_reachable() {
-  local path="$1" response=""
-  for attempt in $(seq 1 6); do
-    response="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$deployment_url$path" || true)"
-    echo "Delivery exact smoke path=$path attempt=$attempt status=${response:-000}"
-    case "$response" in
-      200|302|307|401|403) return 0 ;;
-    esac
-    [ "$attempt" -lt 6 ] && sleep 5
-  done
-  echo "Exact Delivery deployment is not reachable at $path; got ${response:-000}." >&2
-  return 1
-}
-
-# Vercel Authentication may protect the generated deployment hostname.
-# Canonical public behavior and assets are validated on the custom domain.
-assert_deployment_reachable /
-assert_deployment_reachable /login
-
-smoke_url="https://$DELIVERY_DOMAIN"
-domain_ready=false
-login_file="${RUNNER_TEMP}/delivery-login.html"
-for attempt in $(seq 1 12); do
-  unauth="$(curl --silent --show-error \\
-    -H 'Accept: application/json' \\
-    --output /dev/null --write-out '%{http_code}' \\
-    "$smoke_url/" || true)"
-  domain_login="$(curl --silent --show-error \\
-    -H 'Accept: text/html' \\
-    --output "$login_file" --write-out '%{http_code}' \\
-    "$smoke_url/login" || true)"
-  if [ "$unauth" = 401 ] && \\
-     [ "$domain_login" = 200 ] && \\
-     grep -Fq 'Welcome to Hung Phat Operations.' "$login_file"; then
-    domain_ready=true
-    break
-  fi
-  echo "Delivery canonical domain not ready: attempt=$attempt unauth=$unauth login=$domain_login"
-  sleep 5
-done
-test "$domain_ready" = true
-html="$(cat "$login_file")"
-asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.(css|js)' | head -n 1)"
-test -n "$asset"
-curl --fail --silent --show-error "$smoke_url$asset" >/dev/null
-
-'''
-          replace_between(
-              delivery_script,
-              'deadline=$((SECONDS + 180))\n',
-              '{\n  echo "project_id=$project_id"\n',
-              delivery_smoke,
-          )
+          replace_between(delivery_script, 'deadline=$((SECONDS + 180))\n', '{\n  echo "project_id=$project_id"\n', delivery_smoke)
 
           delivery_test = 'delivery/web/test/delivery-production-workflow.test.mjs'
-          replace_once(
-              delivery_test,
-              "    'vercel@58.0.0 deploy --prebuilt --prod',\n    'npm ci --ignore-scripts',\n",
-              "    'vercel@58.0.0 deploy --prebuilt --prod',\n    '200|302|307|401|403',\n    'smoke_url=\"https://$DELIVERY_DOMAIN\"',\n    \"-H 'Accept: application/json'\",\n    \"-H 'Accept: text/html'\",\n    'test \"$domain_ready\" = true',\n    'npm ci --ignore-scripts',\n",
-          )
+          replace_once(delivery_test, "    'vercel@58.0.0 deploy --prebuilt --prod',\n    'npm ci --ignore-scripts',\n", "    'vercel@58.0.0 deploy --prebuilt --prod',\n    '200|302|307|401|403',\n    'smoke_url=\"https://$DELIVERY_DOMAIN\"',\n    \"-H 'Accept: application/json'\",\n    \"-H 'Accept: text/html'\",\n    'test \"$domain_ready\" = true',\n    'npm ci --ignore-scripts',\n")
           delivery_test_path = ROOT / delivery_test
           text = delivery_test_path.read_text(encoding='utf-8')
           marker = "  assert.doesNotMatch(script, /vercel@latest/);\n"
           if text.count(marker) != 1:
               raise SystemExit('delivery test insertion marker is not unique')
-          text = text.replace(
-              marker,
-              "  assert.doesNotMatch(script, /\\[ \"\\$unauth\" = 401 \\] && \\[ \"\\$login_code\" = 200 \\]/);\n" + marker,
-              1,
-          )
+          text = text.replace(marker, "  assert.doesNotMatch(script, /\\[ \"\\$unauth\" = 401 \\] && \\[ \"\\$login_code\" = 200 \\]/);\n" + marker, 1)
           delivery_test_path.write_text(text, encoding='utf-8')
           PY
 
