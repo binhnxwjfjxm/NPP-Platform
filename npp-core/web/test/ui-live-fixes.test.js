@@ -11,8 +11,8 @@ test('sidebar submenu expands by content and exposes every P0-P4 destination', a
     readSource('../app/components/app-shell.tsx'),
   ]);
 
-  assert.match(styles, /\.subnav\s*\{[\s\S]*grid-template-rows:\s*0fr/);
-  assert.match(styles, /\.subnavOpen\s*\{[\s\S]*grid-template-rows:\s*1fr/);
+  assert.match(styles, /\.subnav\s*\{[^}]*grid-template-rows:\s*0fr/);
+  assert.match(styles, /\.subnavOpen\s*\{[^}]*grid-template-rows:\s*1fr/);
   assert.doesNotMatch(styles, /\.subnav\s*\{[^}]*display:\s*none/);
   assert.doesNotMatch(styles, /max-height:\s*260px/);
 
