@@ -30,7 +30,7 @@ test("purchase-demand picker routes only to canonical NPP Core Sales products", 
   assert.match(demandUi, /catalogPriceLabel\(variant\.price\)/);
   assert.doesNotMatch(demandUi, /formatMoney\(Number\(variant\.price \|\| 0\)\)/);
   assert.match(orderCreateUi, /price: catalogPrice\(item\.price\)/);
-  assert.match(orderCreateUi, /"Giá theo Core"/);
+  assert.match(orderCreateUi, /"Chưa có giá Core"/);
   assert.doesNotMatch(orderCreateUi, /money\.format\(Number\(product\.price \|\| 0\)\)/);
 });
 
