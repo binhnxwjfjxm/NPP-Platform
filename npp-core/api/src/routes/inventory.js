@@ -13,6 +13,7 @@ import { handleLogisticsDispatchRoutes } from './logistics-dispatch.js';
 import { handleLogisticsDriverRoutes } from './logistics-driver.js';
 import { handleLogisticsPodRoutes } from './logistics-pod.js';
 import { handleLogisticsReconciliationRoutes } from './logistics-reconciliation.js';
+import { handleWarehouseSelectorRoutes } from './warehouse-selectors.js';
 
 // Compatibility markers: handleFulfillmentOperationRoutes and handleDeliveryOrderRoutes
 // remain owned by inventory-core.js; this wrapper adds transfer, stocktake, adjustment and Logistics namespaces.
@@ -27,6 +28,9 @@ export async function handleInventoryRoutes(req, res, options) {
   }
   if (pathname === '/api/inventory/adjustments' || pathname.startsWith('/api/inventory/adjustments/')) {
     return handleInventoryAdjustmentRoutes(req, res, options);
+  }
+  if (pathname === '/api/inventory/stocktakes/warehouses') {
+    return handleWarehouseSelectorRoutes(req, res, options);
   }
   if (pathname === '/api/inventory/stocktakes' || pathname.startsWith('/api/inventory/stocktakes/')) {
     return handleInventoryStocktakeRoutes(req, res, options);
@@ -55,6 +59,9 @@ export async function handleInventoryRoutes(req, res, options) {
   }
   if (/^\/api\/logistics\/trips\/[^/]+\/(reconciliation|return-receipts|close)$/.test(pathname)) {
     return handleLogisticsReconciliationRoutes(req, res, options);
+  }
+  if (pathname === '/api/logistics/warehouses') {
+    return handleWarehouseSelectorRoutes(req, res, options);
   }
   if (pathname === '/api/logistics' || pathname.startsWith('/api/logistics/')) {
     return handleLogisticsRoutes(req, res, options);

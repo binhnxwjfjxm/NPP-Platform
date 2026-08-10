@@ -20,6 +20,16 @@ test('stocktake UI keeps blind count and PageHeader actions', () => {
   assert.match(workspace, /crypto\.randomUUID\(\)/);
 });
 
+test('stocktake page uses canonical scoped warehouse master independently from balances', () => {
+  assert.match(page, /listStocktakeWarehouses/);
+  assert.match(page, /warehousesResult/);
+  assert.match(page, /warehouses=\{/);
+  assert.match(gateway, /path:'\/warehouses'/);
+  assert.match(workspace, /warehouses: WarehouseOption\[\]/);
+  assert.doesNotMatch(workspace, /const warehouses = useMemo/);
+  assert.match(workspace, /data-testid="stocktake-warehouse"/);
+});
+
 test('stocktake page uses real Core gateway and is discoverable in Inventory navigation', () => {
   assert.match(page, /listStocktakes/);
   assert.match(page, /listInventoryBalances/);
