@@ -1,0 +1,232 @@
+name: Deploy smoke protection helper
+
+on:
+  push:
+    branches:
+      - agent/deploy-smoke-protection-helper
+
+permissions:
+  contents: write
+
+jobs:
+  repair-smoke-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Repair Admin and Delivery production smoke gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          ROOT = Path('.')
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = ROOT / path
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one audited block, found {count}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          admin_workflow = '.github/workflows/vercel-admin-production-manual.yml'
+          replace_once(
+              admin_workflow,
+              '      ADMIN_DOMAIN: admin.nguyenlieuhungphat.com\n',
+              '      ADMIN_DOMAIN: admin.nguyenlieuhungphat.com\n      ADMIN_ORIGIN: https://admin.nguyenlieuhungphat.com\n',
+          )
+
+          old_admin_smoke = '''      - name: Smoke exact Admin deployment
+                  id: smoke
+                  shell: bash
+                  env:
+                    DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+                  run: |
+                    set -euo pipefail
+                    unauth="$(curl --silent --show-error --retry 5 --retry-delay 4 --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/")"
+                    test "$unauth" = 401
+                    login_code="$(curl --silent --show-error --retry 5 --retry-delay 4 --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL/login")"
+                    test "$login_code" = 200
+                    html="$(curl --fail --silent --show-error "$DEPLOYMENT_URL/login")"
+                    asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\\.(css|js)' | head -n 1)"
+                    test -n "$asset"
+                    curl --fail --silent --show-error "$DEPLOYMENT_URL$asset" >/dev/null
+          '''
+          new_admin_smoke = '''      - name: Smoke exact Admin deployment reachability
+                  shell: bash
+                  env:
+                    DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+                  run: |
+                    set -euo pipefail
+                    assert_reachable() {
+                      local path="$1" response=""
+                      for attempt in $(seq 1 6); do
+                        response="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$DEPLOYMENT_URL$path" || true)"
+                        echo "Admin exact smoke path=$path attempt=$attempt status=${response:-000}"
+                        case "$response" in
+                          200|302|307|401|403) return 0 ;;
+                        esac
+                        [ "$attempt" -lt 6 ] && sleep 5
+                      done
+                      echo "Exact Admin deployment is not reachable at $path; got ${response:-000}" >&2
+                      return 1
+                    }
+                    # Vercel Authentication may protect the generated deployment hostname.
+                    # Canonical public behavior is validated against ADMIN_ORIGIN below.
+                    assert_reachable /
+                    assert_reachable /login
+
+                - name: Smoke canonical Admin production domain
+                  id: smoke
+                  shell: bash
+                  run: |
+                    set -euo pipefail
+                    smoke_ok=false
+                    login_file="${RUNNER_TEMP}/admin-login.html"
+                    for attempt in $(seq 1 12); do
+                      challenge="$(curl --silent --show-error \\
+                        -H 'Accept: application/json' \\
+                        --output /dev/null --write-out '%{http_code}' \\
+                        "$ADMIN_ORIGIN/" || true)"
+                      browser_meta="$(curl --silent --show-error \\
+                        -H 'Accept: text/html' \\
+                        --output /dev/null --write-out '%{http_code}|%{redirect_url}' \\
+                        "$ADMIN_ORIGIN/" || true)"
+                      browser_status="${browser_meta%%|*}"
+                      browser_redirect="${browser_meta#*|}"
+                      login_code="$(curl --silent --show-error \\
+                        -H 'Accept: text/html' \\
+                        --output "$login_file" --write-out '%{http_code}' \\
+                        "$ADMIN_ORIGIN/login" || true)"
+                      case "$browser_status" in
+                        307|308) browser_redirect_ok=true ;;
+                        *) browser_redirect_ok=false ;;
+                      esac
+                      if [ "$challenge" = 401 ] && \\
+                         [ "$browser_redirect_ok" = true ] && \\
+                         [ "$browser_redirect" = "$ADMIN_ORIGIN/login" ] && \\
+                         [ "$login_code" = 200 ] && \\
+                         grep -Fq 'mã được gửi tới email của chính tài khoản' "$login_file"; then
+                        smoke_ok=true
+                        break
+                      fi
+                      echo "Admin canonical domain not ready: attempt=$attempt challenge=$challenge browser=$browser_status login=$login_code"
+                      sleep 5
+                    done
+                    test "$smoke_ok" = true
+                    html="$(cat "$login_file")"
+                    asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\\.(css|js)' | head -n 1)"
+                    test -n "$asset"
+                    curl --fail --silent --show-error "$ADMIN_ORIGIN$asset" >/dev/null
+          '''
+          # Dedent the source literals back to the exact workflow indentation.
+          import textwrap
+          replace_once(admin_workflow, textwrap.dedent(old_admin_smoke), textwrap.dedent(new_admin_smoke))
+
+          admin_test = 'admin/web/test/admin-production-smoke.test.mjs'
+          replace_once(
+              admin_test,
+              "const workflowUrl = new URL('../../../.github/workflows/vercel-admin-production-direct.yml', import.meta.url);\n",
+              "const workflowUrl = new URL('../../../.github/workflows/vercel-admin-production-direct.yml', import.meta.url);\nconst manualWorkflowUrl = new URL('../../../.github/workflows/vercel-admin-production-manual.yml', import.meta.url);\n",
+          )
+          admin_test_path = ROOT / admin_test
+          admin_test_path.write_text(
+              admin_test_path.read_text(encoding='utf-8') + '''\n\ntest('Admin manual rollout tolerates protected deployment hosts and validates the canonical domain', async () => {\n  const workflow = await readFile(manualWorkflowUrl, 'utf8');\n\n  assert.match(workflow, /ADMIN_ORIGIN: https:\\/\\/admin\\.nguyenlieuhungphat\\.com/);\n  assert.match(workflow, /200\\|302\\|307\\|401\\|403/);\n  assert.match(workflow, /Accept: application\\/json/);\n  assert.match(workflow, /Accept: text\\/html/);\n  assert.match(workflow, /\\$ADMIN_ORIGIN\\/login/);\n  assert.match(workflow, /mã được gửi tới email của chính tài khoản/);\n  assert.doesNotMatch(workflow, /test "\\$login_code" = 200/);\n});\n''',
+              encoding='utf-8',
+          )
+
+          delivery_script = 'delivery/web/scripts/deploy-production.sh'
+          old_delivery_smoke = '''deadline=$((SECONDS + 180))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            unauth="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$deployment_url/" || true)"
+            login_code="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$deployment_url/login" || true)"
+            [ "$unauth" = 401 ] && [ "$login_code" = 200 ] && break
+            sleep 3
+          done
+          test "${unauth:-}" = 401
+          test "${login_code:-}" = 200
+          html="$(curl --fail --silent --show-error "$deployment_url/login")"
+          printf '%s' "$html" | grep -F 'Welcome to Hung Phat Operations.' >/dev/null
+          asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\\.(css|js)' | head -n 1)"
+          test -n "$asset"
+          curl --fail --silent --show-error "$deployment_url$asset" >/dev/null
+
+          smoke_url="https://$DELIVERY_DOMAIN"
+          domain_login="$(curl --silent --show-error --retry 5 --retry-delay 3 --output /dev/null --write-out '%{http_code}' "$smoke_url/login" || true)"
+          domain_ready=false
+          [ "$domain_login" = 200 ] && domain_ready=true
+          '''
+          new_delivery_smoke = '''assert_deployment_reachable() {
+            local path="$1" response=""
+            for attempt in $(seq 1 6); do
+              response="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$deployment_url$path" || true)"
+              echo "Delivery exact smoke path=$path attempt=$attempt status=${response:-000}"
+              case "$response" in
+                200|302|307|401|403) return 0 ;;
+              esac
+              [ "$attempt" -lt 6 ] && sleep 5
+            done
+            echo "Exact Delivery deployment is not reachable at $path; got ${response:-000}." >&2
+            return 1
+          }
+
+          # Vercel Authentication may protect the generated deployment hostname.
+          # Canonical public behavior and assets are validated on the custom domain.
+          assert_deployment_reachable /
+          assert_deployment_reachable /login
+
+          smoke_url="https://$DELIVERY_DOMAIN"
+          domain_ready=false
+          login_file="${RUNNER_TEMP}/delivery-login.html"
+          for attempt in $(seq 1 12); do
+            unauth="$(curl --silent --show-error \\
+              -H 'Accept: application/json' \\
+              --output /dev/null --write-out '%{http_code}' \\
+              "$smoke_url/" || true)"
+            domain_login="$(curl --silent --show-error \\
+              -H 'Accept: text/html' \\
+              --output "$login_file" --write-out '%{http_code}' \\
+              "$smoke_url/login" || true)"
+            if [ "$unauth" = 401 ] && \\
+               [ "$domain_login" = 200 ] && \\
+               grep -Fq 'Welcome to Hung Phat Operations.' "$login_file"; then
+              domain_ready=true
+              break
+            fi
+            echo "Delivery canonical domain not ready: attempt=$attempt unauth=$unauth login=$domain_login"
+            sleep 5
+          done
+          test "$domain_ready" = true
+          html="$(cat "$login_file")"
+          asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\\.(css|js)' | head -n 1)"
+          test -n "$asset"
+          curl --fail --silent --show-error "$smoke_url$asset" >/dev/null
+          '''
+          replace_once(delivery_script, textwrap.dedent(old_delivery_smoke), textwrap.dedent(new_delivery_smoke))
+
+          delivery_test = 'delivery/web/test/delivery-production-workflow.test.mjs'
+          replace_once(
+              delivery_test,
+              "    'vercel@58.0.0 deploy --prebuilt --prod',\n    'npm ci --ignore-scripts',\n",
+              "    'vercel@58.0.0 deploy --prebuilt --prod',\n    '200|302|307|401|403',\n    'smoke_url=\"https://$DELIVERY_DOMAIN\"',\n    \"-H 'Accept: application/json'\",\n    \"-H 'Accept: text/html'\",\n    'test \"$domain_ready\" = true',\n    'npm ci --ignore-scripts',\n",
+          )
+          delivery_test_path = ROOT / delivery_test
+          text = delivery_test_path.read_text(encoding='utf-8')
+          text = text.replace(
+              "  assert.doesNotMatch(script, /vercel@latest/);\n",
+              "  assert.doesNotMatch(script, /\\[ \\\"\\$unauth\\\" = 401 \\] && \\[ \\\"\\$login_code\\\" = 200 \\]/);\n  assert.doesNotMatch(script, /vercel@latest/);\n",
+              1,
+          )
+          delivery_test_path.write_text(text, encoding='utf-8')
+          PY
+
+          rm .github/workflows/deploy-smoke-protection-helper.yml
+          git status --short
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(deploy): smoke canonical protected frontends'
+          git push origin HEAD:agent/deploy-smoke-protection-helper
