@@ -58,8 +58,10 @@ const HEADER_ALIASES = Object.fromEntries(CSV_COLUMNS.flatMap((column) => [
   [column.label, column.key],
   [column.key, column.key],
 ]));
+// Migration vocabulary: “Mã kho” is now selected from the canonical warehouse list;
+// “Mã tham chiếu SKU” is now the business-readable SKU column; “Tải mẫu Excel/CSV” still downloads UTF-8 CSV.
 
-function parseLine(line: string): string[] {
+function parseLine(line: string, delimiter = ','): string[] {
   const cells: string[] = [];
   let value = '';
   let quoted = false;
@@ -68,7 +70,7 @@ function parseLine(line: string): string[] {
     if (character === '"') {
       if (quoted && line[index + 1] === '"') { value += '"'; index += 1; }
       else quoted = !quoted;
-    } else if (character === ',' && !quoted) {
+    } else if (character === delimiter && !quoted) {
       cells.push(value.trim());
       value = '';
     } else {
@@ -79,14 +81,29 @@ function parseLine(line: string): string[] {
   return cells;
 }
 
+function delimiterFor(line: string) {
+  const candidates = [',', ';', '\t'];
+  let best = ',';
+  let bestCount = -1;
+  for (const delimiter of candidates) {
+    const count = parseLine(line, delimiter).length - 1;
+    if (count > bestCount) {
+      best = delimiter;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
 function parseCsv(text: string): CsvRow[] {
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) return [];
-  const headers = parseLine(lines[0]).map((header) => HEADER_ALIASES[header.trim()] ?? header.trim());
+  const delimiter = delimiterFor(lines[0]);
+  const headers = parseLine(lines[0], delimiter).map((header) => HEADER_ALIASES[header.trim()] ?? header.trim());
   const required = new Set(['sku', 'sourceQuantity']);
   if ([...required].some((key) => !headers.includes(key))) return [];
   return lines.slice(1).map((line) => {
-    const cells = parseLine(line);
+    const cells = parseLine(line, delimiter);
     const row = Object.fromEntries(headers.map((header, index) => [header.trim(), cells[index] ?? ''])) as Partial<CsvRow>;
     return Object.fromEntries(HEADERS.map((header) => [header, row[header as keyof CsvRow] ?? ''])) as CsvRow;
   });
@@ -198,7 +215,7 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
       })
       .catch((error) => {
         if (!active) return;
-        setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Không tải được dữ liệu tồn đầu kỳ.' });
+        setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Không tải được lịch sử nhập tồn đầu kỳ hoặc danh mục kho.' });
       })
       .finally(() => { if (active) setBusy(null); });
     return () => { active = false; };
@@ -342,7 +359,7 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
       {message ? <div className={message.kind === 'success' ? styles.success : styles.error} role={message.kind === 'error' ? 'alert' : undefined}>{message.text}</div> : null}
 
       <section className={styles.steps} aria-label="Các bước nhập tồn đầu kỳ">
-        <article><strong>1</strong><span>Tải tệp mẫu</span><button type="button" onClick={downloadTemplate}>Tải mẫu CSV</button></article>
+        <article><strong>1</strong><span>Tải tệp mẫu</span><button type="button" onClick={downloadTemplate}>Tải mẫu Excel/CSV</button></article>
         <article><strong>2</strong><span>Chọn tệp đã điền</span><label>Chọn tệp<input type="file" accept=".csv,text/csv" data-testid="inventory-opening-file-input" onChange={(event) => { const file = event.target.files?.[0]; if (file) void chooseFile(file); }} /></label></article>
         <article><strong>3</strong><span>Kiểm tra dữ liệu</span><button type="button" onClick={() => void validate()} disabled={busy !== null}>{busy === 'validate' ? 'Đang kiểm tra…' : 'Kiểm tra tệp'}</button></article>
         <article><strong>4</strong><span>Xác nhận ghi nhận</span><button type="button" onClick={() => void post()} disabled={busy !== null || !validation || !validationChecksum || validation.rowErrors.length > 0}>{busy === 'post' ? 'Đang ghi nhận…' : 'Xác nhận nhập tồn'}</button></article>
