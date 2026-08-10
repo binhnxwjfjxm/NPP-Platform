@@ -11,7 +11,7 @@ type ModalProps = {
   children: ReactNode;
   footer?: ReactNode;
   testId?: string;
-  size?: 'medium' | 'large';
+  size?: 'medium' | 'large' | 'workspace';
 };
 
 const FOCUSABLE = [
@@ -90,6 +90,12 @@ export default function Modal({
 
   if (!open) return null;
 
+  const sizeClass = size === 'workspace'
+    ? styles.workspace
+    : size === 'large'
+      ? styles.large
+      : '';
+
   return (
     <div
       className={styles.backdrop}
@@ -100,13 +106,14 @@ export default function Modal({
     >
       <div
         ref={dialogRef}
-        className={`${styles.dialog} ${size === 'large' ? styles.large : ''}`}
+        className={`${styles.dialog} ${sizeClass}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
         data-testid={testId}
+        data-size={size}
       >
         <header className={styles.header}>
           <div>

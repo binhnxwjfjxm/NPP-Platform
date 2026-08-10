@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { AppShell } from '../components/app-shell';
 import styles from './inventory-workspace.module.css';
@@ -8,7 +7,6 @@ import {
   formatDate,
   formatDateTime,
   formatQuantity,
-  inventoryTabs,
   matchTerm,
   normalizeSearch,
   type InventoryBalance,
@@ -164,17 +162,6 @@ export default function InventoryScopedWorkspace({
     if (!selectedBalance && balances.length > 0) setSelectedBalance(balances[0]);
   }, [balances, selectedBalance]);
 
-  const activeTab = inventoryTabs.find((tab) => tab.href === `/inventory/${scope}`) ?? inventoryTabs[0];
-  const sectionTitle = scope === 'balances'
-    ? 'Số dư tồn kho'
-    : scope === 'tracking-policies'
-      ? 'Chính sách lô và hạn dùng'
-      : 'Danh sách lô hàng';
-  const sectionDescription = scope === 'balances'
-    ? 'Xem số lượng theo kho, vị trí, SKU, lô và hạn dùng. Chọn một dòng để xem lịch sử biến động.'
-    : scope === 'tracking-policies'
-      ? 'Chọn SKU chuẩn rồi thiết lập yêu cầu quản lý lô, hạn sử dụng và vị trí.'
-      : 'Tra cứu lô hàng theo SKU, ngày sản xuất, hạn sử dụng và tham chiếu nhà cung cấp.';
   const searchPlaceholder = scope === 'balances'
     ? 'Tìm theo kho, vị trí, SKU hoặc lô'
     : scope === 'tracking-policies'
@@ -279,36 +266,22 @@ export default function InventoryScopedWorkspace({
   return (
     <AppShell title={title} subtitle={subtitle} kicker="Tồn kho, lô và nhập đầu kỳ">
       <div className={styles.page} data-testid={`inventory-${scope}-page`}>
-        <section className={styles.hero}>
-          <div className={styles.topRow}>
-            <div className={styles.titleBlock}>
-              <p className={styles.kicker}>Quản lý tồn kho</p>
-              <h1 className={styles.title}>{sectionTitle}</h1>
-              <p className={styles.subtitle}>{sectionDescription}</p>
+        <section className={`${styles.hero} ${styles.compactHero}`} data-testid="inventory-local-controls">
+          <div className={styles.heroControls}>
+            <div className={styles.toolbar}>
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={searchPlaceholder}
+                className={styles.searchInput}
+                data-testid={`inventory-${scope}-search-input`}
+              />
             </div>
             <div className={styles.actionRow}>
               <button type="button" className={styles.primaryAction} onClick={refreshCurrent} disabled={busy === 'refresh'}>
                 {busy === 'refresh' ? 'Đang làm mới...' : 'Làm mới dữ liệu'}
               </button>
-              {scope !== 'balances' ? <Link href="/inventory/balances" className={styles.secondaryAction}>Về tồn kho</Link> : null}
             </div>
-          </div>
-          <div className={styles.tabs} aria-label="Điều hướng tồn kho">
-            {inventoryTabs.map((tab) => (
-              <Link key={tab.href} href={tab.href} className={`${styles.tab} ${activeTab.href === tab.href ? styles.tabActive : ''}`}>
-                <span className={styles.tabLabel}>{tab.label}</span>
-                <span className={styles.tabHint}>{tab.hint}</span>
-              </Link>
-            ))}
-          </div>
-          <div className={styles.toolbar}>
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={searchPlaceholder}
-              className={styles.searchInput}
-              data-testid={`inventory-${scope}-search-input`}
-            />
           </div>
           {error ? <div className={`${styles.banner} ${styles.bannerError}`} data-testid="inventory-error">{error}</div> : null}
           {notice ? <div className={`${styles.banner} ${notice.kind === 'success' ? styles.bannerSuccess : styles.bannerError}`}>{notice.message}</div> : null}

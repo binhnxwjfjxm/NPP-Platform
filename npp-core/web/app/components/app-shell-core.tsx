@@ -26,6 +26,28 @@ type IconName =
   | 'user';
 
 type NavItem = { href: string; label: string; icon: IconName; testId: string };
+type CurrentUser = Readonly<{ employeeFullName: string | null; loginName: string | null }>;
+type CurrentUserEnvelope = Readonly<{ data?: CurrentUser }>;
+
+let currentUserRequest: Promise<CurrentUser | null> | null = null;
+
+function loadCurrentUser(): Promise<CurrentUser | null> {
+  if (!currentUserRequest) {
+    currentUserRequest = fetch('/api/auth/me', {
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null) as CurrentUserEnvelope | null;
+        return response.ok && payload?.data ? payload.data : null;
+      })
+      .catch(() => {
+        currentUserRequest = null;
+        return null;
+      });
+  }
+  return currentUserRequest;
+}
 
 const organizationItems: NavItem[] = [
   { href: '/organization', label: 'Tổng quan cơ cấu', icon: 'organization', testId: 'nav-organization-overview' },
@@ -115,7 +137,15 @@ function isActive(pathname: string, href: string): boolean {
   if (href === '/organization' || href === '/management') return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
-function isOrganizationPath(pathname: string): boolean { return pathname.startsWith('/organization') || pathname.startsWith('/customers') || pathname.startsWith('/suppliers') || pathname.startsWith('/products') || pathname.startsWith('/pricing') || pathname.startsWith('/document-numbering'); }
+
+function isOrganizationPath(pathname: string): boolean {
+  return pathname.startsWith('/organization')
+    || pathname.startsWith('/customers')
+    || pathname.startsWith('/suppliers')
+    || pathname.startsWith('/products')
+    || pathname.startsWith('/pricing')
+    || pathname.startsWith('/document-numbering');
+}
 function isInventoryPath(pathname: string): boolean { return pathname.startsWith('/inventory') && !pathname.startsWith('/inventory/delivery-orders') && !pathname.startsWith('/inventory/customer-returns'); }
 function isLogisticsPath(pathname: string): boolean { return pathname.startsWith('/logistics') || pathname.startsWith('/inventory/delivery-orders') || pathname.startsWith('/inventory/customer-returns'); }
 function isSalesPath(pathname: string): boolean { return pathname.startsWith('/sales') || pathname.startsWith('/management'); }
@@ -125,6 +155,7 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [organizationOpen, setOrganizationOpen] = useState(isOrganizationPath(pathname));
   const [inventoryOpen, setInventoryOpen] = useState(isInventoryPath(pathname));
   const [logisticsOpen, setLogisticsOpen] = useState(isLogisticsPath(pathname));
@@ -134,6 +165,11 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
   const [accessOpen, setAccessOpen] = useState(pathname.startsWith('/access'));
 
   useEffect(() => { setCollapsed(window.localStorage.getItem('npp-core-sidebar-collapsed') === '1'); }, []);
+  useEffect(() => {
+    let active = true;
+    void loadCurrentUser().then((user) => { if (active) setCurrentUser(user); });
+    return () => { active = false; };
+  }, []);
   useEffect(() => {
     if (isOrganizationPath(pathname)) setOrganizationOpen(true);
     if (isInventoryPath(pathname)) setInventoryOpen(true);
@@ -153,18 +189,53 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
   const accountingChildren = useMemo(() => accountingItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
   const accessChildren = useMemo(() => accessItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
   const logoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim() || '/logo-transparent.png';
+  const currentUserName = currentUser?.employeeFullName?.trim() || currentUser?.loginName?.trim() || 'Tài khoản người dùng';
+  const currentUserLogin = currentUser?.loginName?.trim() || null;
 
-  function toggleCollapsed() { setCollapsed((current) => { const next = !current; persistCollapsed(next); return next; }); }
-  function openGroup(setOpen: React.Dispatch<React.SetStateAction<boolean>>) { if (collapsed) { setCollapsed(false); persistCollapsed(false); setOpen(true); return; } setOpen((current) => !current); }
+  function toggleCollapsed() {
+    setCollapsed((current) => {
+      const next = !current;
+      persistCollapsed(next);
+      return next;
+    });
+  }
+
+  function openGroup(setOpen: React.Dispatch<React.SetStateAction<boolean>>) {
+    if (collapsed) {
+      setCollapsed(false);
+      persistCollapsed(false);
+      setOpen(true);
+      return;
+    }
+    setOpen((current) => !current);
+  }
 
   function renderGroup({ sectionLabel, title: groupTitle, hint, icon, active, open, setOpen, testId, children: groupChildren }: { sectionLabel: string; title: string; hint: string; icon: IconName; active: boolean; open: boolean; setOpen: React.Dispatch<React.SetStateAction<boolean>>; testId: string; children: Array<NavItem & { active: boolean }> }) {
-    return <><p className={styles.navLabel}>{sectionLabel}</p><div className={`${styles.navGroup} ${active ? styles.navGroupActive : ''}`}><button type="button" className={`${styles.navItem} ${styles.navGroupButton}`} onClick={() => openGroup(setOpen)} aria-expanded={open} data-testid={testId} title={collapsed ? groupTitle : undefined}><span className={styles.navIcon}><Icon name={icon} /></span><span className={styles.navCopy}><span className={styles.navTitle}>{groupTitle}</span><span className={styles.navHint}>{hint}</span></span><span className={`${styles.chevron} ${open ? styles.chevronOpen : ''}`}><Icon name="chevron" /></span></button><div className={`${styles.subnav} ${open && !collapsed ? styles.subnavOpen : ''}`}>{groupChildren.map((item) => <Link key={item.href} href={item.href} prefetch className={`${styles.subnavItem} ${item.active ? styles.subnavItemActive : ''}`} data-testid={item.testId}><span className={styles.subnavRail} aria-hidden="true" /><span className={styles.subnavIcon}><Icon name={item.icon} /></span><span>{item.label}</span></Link>)}</div></div></>;
+    const childrenVisible = open && !collapsed;
+    return <>
+      <p className={styles.navLabel}>{sectionLabel}</p>
+      <div className={`${styles.navGroup} ${active ? styles.navGroupActive : ''}`}>
+        <button type="button" className={`${styles.navItem} ${styles.navGroupButton}`} onClick={() => openGroup(setOpen)} aria-expanded={open} data-testid={testId} title={collapsed ? groupTitle : undefined}>
+          <span className={styles.navIcon}><Icon name={icon} /></span>
+          <span className={styles.navCopy}><span className={styles.navTitle}>{groupTitle}</span><span className={styles.navHint}>{hint}</span></span>
+          <span className={`${styles.chevron} ${open ? styles.chevronOpen : ''}`}><Icon name="chevron" /></span>
+        </button>
+        <div className={`${styles.subnav} ${childrenVisible ? styles.subnavOpen : ''}`} aria-hidden={!childrenVisible}>
+          <div className={styles.subnavInner}>
+            {groupChildren.map((item) => <Link key={item.href} href={item.href} prefetch className={`${styles.subnavItem} ${item.active ? styles.subnavItemActive : ''}`} data-testid={item.testId} tabIndex={childrenVisible ? undefined : -1}><span className={styles.subnavRail} aria-hidden="true" /><span className={styles.subnavIcon}><Icon name={item.icon} /></span><span>{item.label}</span></Link>)}
+          </div>
+        </div>
+      </div>
+    </>;
   }
 
   return <div className={`${styles.shell} ${collapsed ? styles.shellCollapsed : ''}`} data-collapsed={collapsed ? 'true' : 'false'}>
     <aside className={`${styles.sidebar} ${mobileOpen ? styles.sidebarOpen : ''}`} aria-label="Điều hướng chính" data-testid="app-sidebar">
-      <div className={styles.brandRow}><Link href="/dashboard" className={styles.brand} aria-label="Hưng Phát Company - Trang tổng quan"><span className={styles.logoFrame}><img src={logoUrl} alt="Logo Hưng Phát Company" className={styles.logo} /></span><span className={styles.brandText}><strong>Hưng Phát Company</strong><small>NPP Operations</small></span></Link><button type="button" className={styles.collapseButton} onClick={toggleCollapsed} aria-label={collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'} title={collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'} data-testid="sidebar-collapse-button"><Icon name="panel" /></button></div>
-      <div className={styles.navScroll}><nav className={styles.nav}>
+      <div className={styles.brandRow}>
+        <Link href="/dashboard" className={styles.brand} aria-label="Hưng Phát Company - Trang tổng quan"><span className={styles.logoFrame}><img src={logoUrl} alt="Logo Hưng Phát Company" className={styles.logo} /></span><span className={styles.brandText}><strong>Hưng Phát Company</strong><small>NPP Operations</small></span></Link>
+        <button type="button" className={styles.collapseButton} onClick={toggleCollapsed} aria-label={collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'} title={collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'} data-testid="sidebar-collapse-button"><Icon name="panel" /></button>
+      </div>
+      <div className={styles.navScroll} data-testid="sidebar-nav-scroll"><nav className={styles.nav}>
         <p className={styles.navLabel}>Điều hành</p><Link href="/dashboard" className={`${styles.navItem} ${pathname === '/dashboard' ? styles.navItemActive : ''}`} data-testid="nav-dashboard" title={collapsed ? 'Tổng quan điều hành' : undefined}><span className={styles.navIcon}><Icon name="dashboard" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Tổng quan điều hành</span><span className={styles.navHint}>Thông tin tổng hợp phục vụ điều hành</span></span></Link>
         {renderGroup({ sectionLabel: 'Danh mục quản lý', title: 'Danh mục nghiệp vụ', hint: 'Tổ chức, đối tác, hàng hóa, giá và chứng từ', icon: 'organization', active: isOrganizationPath(pathname), open: organizationOpen, setOpen: setOrganizationOpen, testId: 'organization-menu-toggle', children: organizationChildren })}
         {renderGroup({ sectionLabel: 'Tồn kho & lô hàng', title: 'Tồn kho & lô hàng', hint: 'Chuẩn bị hàng, chuyển kho, số lượng tồn, lô, hạn dùng và tồn đầu kỳ', icon: 'panel', active: isInventoryPath(pathname), open: inventoryOpen, setOpen: setInventoryOpen, testId: 'inventory-menu-toggle', children: inventoryChildren })}
@@ -176,9 +247,20 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
         <Link href="/operations/import-export-history" className={`${styles.navItem} ${pathname === '/operations/import-export-history' ? styles.navItemActive : ''}`} data-testid="nav-import-export-history" title={collapsed ? 'Lịch sử import / export' : undefined}><span className={styles.navIcon}><Icon name="panel" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Lịch sử import / export</span><span className={styles.navHint}>Theo dõi các lượt trao đổi dữ liệu canonical</span></span></Link>
         {renderGroup({ sectionLabel: 'Quản trị hệ thống', title: 'Nhân sự & phân quyền', hint: 'Hồ sơ, hiệu suất field, tài khoản và phạm vi truy cập', icon: 'user', active: pathname.startsWith('/access'), open: accessOpen, setOpen: setAccessOpen, testId: 'access-menu-toggle', children: accessChildren })}
       </nav></div>
-      <div className={styles.sidebarFooter}><div className={styles.userPlaceholder} title={collapsed ? 'Tài khoản người dùng' : undefined}><span className={styles.userAvatar}><Icon name="user" /></span><span className={styles.userCopy}><strong>Tài khoản người dùng</strong><small>Quản lý tài khoản và quyền truy cập</small></span></div></div>
+      <div className={styles.sidebarFooter}>
+        <div className={styles.userPlaceholder} title={collapsed ? currentUserName : undefined} data-testid="sidebar-current-user">
+          <span className={styles.userAvatar}><img src={logoUrl} alt="" className={styles.userAvatarImage} /></span>
+          <span className={styles.userCopy}>
+            <strong data-testid="sidebar-current-user-name">{currentUserName}</strong>
+            <small>{currentUserLogin && currentUserLogin !== currentUserName ? `@${currentUserLogin}` : 'Đang đăng nhập'}</small>
+          </span>
+        </div>
+      </div>
     </aside>
     <button type="button" className={`${styles.backdrop} ${mobileOpen ? '' : styles.backdropHidden}`} onClick={() => setMobileOpen(false)} aria-label="Đóng thanh điều hướng" />
-    <div className={styles.main}><header className={styles.topbar}><div className={styles.topbarLeft}><button type="button" className={styles.mobileMenuButton} onClick={() => setMobileOpen((value) => !value)} aria-label="Mở thanh điều hướng" aria-expanded={mobileOpen}><Icon name="panel" /></button><div className={styles.titleBlock}><p className={styles.kicker}>{kicker}</p><h1 className={styles.title}>{title}</h1>{subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}</div></div><div className={styles.topbarActions}>{actions}</div></header><main className={styles.content}>{children}</main></div>
+    <div className={styles.main}>
+      <header className={styles.topbar}><div className={styles.topbarLeft}><button type="button" className={styles.mobileMenuButton} onClick={() => setMobileOpen((value) => !value)} aria-label="Mở thanh điều hướng" aria-expanded={mobileOpen}><Icon name="panel" /></button><div className={styles.titleBlock}><p className={styles.kicker}>{kicker}</p><h1 className={styles.title}>{title}</h1>{subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}</div></div><div className={styles.topbarActions}>{actions}</div></header>
+      <main key={pathname} className={styles.content} data-testid="app-content">{children}</main>
+    </div>
   </div>;
 }
