@@ -1,0 +1,105 @@
+name: Lane G maskable padding helper
+
+on:
+  push:
+    branches:
+      - agent/lane-g-maskable-helper
+
+permissions:
+  contents: write
+
+jobs:
+  pad-maskable-icons:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Pillow
+        run: python -m pip install --disable-pip-version-check pillow
+      - name: Generate separately padded maskable icons
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFilter
+
+          ROOT = Path('.')
+          CANVAS = 512
+          SAFE_SCALE = 0.56
+          FOREGROUND = round(CANVAS * SAFE_SCALE)
+          INSET = (CANVAS - FOREGROUND) // 2
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = ROOT / path
+              text = p.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'Expected audited text not found in {path}: {old!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          def generate(master_path: str, regular_path: str, maskable_path: str) -> None:
+              with Image.open(ROOT / master_path) as opened:
+                  master = opened.convert('RGBA')
+              if master.size != (CANVAS, CANVAS):
+                  raise SystemExit(f'{master_path} must already be resized to 512x512 before maskable mapping')
+
+              # Keep the approved palette full-bleed while removing recognizable edge detail.
+              background = master.filter(ImageFilter.GaussianBlur(radius=64))
+              foreground = master.resize((FOREGROUND, FOREGROUND), Image.Resampling.LANCZOS)
+              overlay = background.copy()
+              overlay.paste(foreground, (INSET, INSET))
+
+              # Feather the transition so the padded approved artwork does not appear as a hard square.
+              blend_mask = Image.new('L', (CANVAS, CANVAS), 0)
+              draw = ImageDraw.Draw(blend_mask)
+              draw.rectangle(
+                  (INSET, INSET, INSET + FOREGROUND - 1, INSET + FOREGROUND - 1),
+                  fill=255,
+              )
+              blend_mask = blend_mask.filter(ImageFilter.GaussianBlur(radius=12))
+              result = Image.composite(overlay, background, blend_mask)
+              result.save(ROOT / maskable_path, format='PNG', optimize=True, compress_level=9)
+
+              regular = (ROOT / regular_path).read_bytes()
+              maskable = (ROOT / maskable_path).read_bytes()
+              if regular == maskable:
+                  raise SystemExit(f'{maskable_path} must differ from the regular icon')
+              print(
+                  f'{maskable_path}: canvas={CANVAS} foreground={FOREGROUND}x{FOREGROUND} '
+                  f'inset={INSET}px bytes={len(maskable)}'
+              )
+
+          generate(
+              'pwa-icon-admin.png',
+              'admin/web/public/icons/admin-512.png',
+              'admin/web/public/icons/admin-maskable-512.png',
+          )
+          generate(
+              'pwa-icon-deliveri.png',
+              'delivery/web/public/icons/delivery-512.png',
+              'delivery/web/public/icons/delivery-maskable-512.png',
+          )
+
+          replace_once(
+              'admin/web/test/pwa.test.mjs',
+              "test('Admin registers a root-scoped service worker', () => {\n",
+              "test('Admin maskable icon uses separately padded artwork', () => {\n  const regular = readFileSync(new URL('../public/icons/admin-512.png', import.meta.url));\n  const maskable = readFileSync(new URL('../public/icons/admin-maskable-512.png', import.meta.url));\n  assert.equal(maskable.equals(regular), false);\n});\n\ntest('Admin registers a root-scoped service worker', () => {\n",
+          )
+          replace_once(
+              'delivery/web/test/mobile-shell-pwa.test.mjs',
+              "test('Delivery bottom navigation is compact while preserving iPhone safe area', () => {\n",
+              "test('Delivery maskable icon uses separately padded artwork', () => {\n  const regular = readFileSync(new URL('../public/icons/delivery-512.png', import.meta.url));\n  const maskable = readFileSync(new URL('../public/icons/delivery-maskable-512.png', import.meta.url));\n  assert.equal(maskable.equals(regular), false);\n});\n\ntest('Delivery bottom navigation is compact while preserving iPhone safe area', () => {\n",
+          )
+          PY
+
+          rm .github/workflows/lane-g-maskable-helper.yml
+          git status --short
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(pwa): pad maskable Admin and Delivery artwork'
+          git push origin HEAD:agent/lane-g-maskable-helper
