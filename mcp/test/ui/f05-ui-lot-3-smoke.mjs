@@ -98,6 +98,7 @@ try {
 
     const orderContext = await browser.newContext({ viewport });
     const orderPage = await orderContext.newPage();
+    let onboardingSyncCount = 0;
 
     await orderPage.route(
       "**/api/backend/mcp-day/session-customer/customer-onboarding?*",
@@ -137,6 +138,7 @@ try {
     await orderPage.route(
       "**/api/backend/mcp-day/session-customer/customer-onboarding/sync",
       async (route) => {
+        onboardingSyncCount += 1;
         assert.ok(route.request().headers()["idempotency-key"], "customer sync must stay idempotent");
         await route.fulfill({
           status: 200,
@@ -187,11 +189,8 @@ try {
       "/visits/order-intent"
     );
     assert.equal(await orderPage.locator("[data-order-step]").count(), 4);
-    assert.equal(await orderPage.locator("[data-order-primary-action]").count(), 1);
-
-    const syncCustomer = orderPage.getByRole("button", { name: "Đồng bộ trạng thái khách", exact: true });
-    await syncCustomer.waitFor({ state: "visible" });
-    await syncCustomer.click();
+    assert.equal(onboardingSyncCount, 1, "opening order intent must refresh the submitted Core onboarding request exactly once");
+    assert.equal(await orderPage.getByRole("button", { name: "Đồng bộ trạng thái khách", exact: true }).count(), 0, "approved customer must advance without a manual sync click");
 
     const createOrder = orderPage.getByRole("button", { name: "Tạo đơn nháp NPP", exact: true });
     await createOrder.waitFor({ state: "visible" });

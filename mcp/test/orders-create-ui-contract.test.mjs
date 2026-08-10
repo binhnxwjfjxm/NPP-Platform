@@ -74,11 +74,28 @@ test("catalog groups variants and follows distributor priority", () => {
   assert.match(sheet, /\.sort\(compareCatalogProducts\)/);
 });
 
-test("variant selection is add-only and visibly confirmed", () => {
-  assert.match(sheet, /onClick=\{\(\) => addProduct\(product\)\}/);
-  assert.match(sheet, /setAddedNotice\(`/);
+test("selected catalog variant click decrements or removes while cart plus still increments", () => {
+  assert.match(sheet, /function toggleCatalogProduct\(product: ProductCatalogItem\)/);
+  assert.match(sheet, /if \(selectedQuantity > 0\) \{[\s\S]*decreaseProduct\(product\.variantId\);[\s\S]*announceQuantity\(product, selectedQuantity - 1\);/);
+  assert.match(sheet, /onClick=\{\(\) => toggleCatalogProduct\(product\)\}/);
+  assert.match(sheet, /chạm để giảm/);
+  assert.match(sheet, /onClick=\{\(\) => addProduct\(item\)\}/);
   assert.match(sheet, /aria-live="assertive"/);
   assert.match(sheetStyles, /\.variantButton \{[\s\S]*min-height: 64px/);
+});
+
+test("standalone null Core price stays unresolved until a positive temporary price is entered", () => {
+  assert.match(sheet, /price: catalogPrice\(item\.price\)/);
+  assert.match(sheet, /return value === null \|\| value === undefined \? "Chưa có giá Core" : money\.format\(value\)/);
+  assert.match(sheet, /const hasUnresolvedPrices = items\.some\(\(item\) => \(item\.price === null \|\| item\.price === undefined\) && item\.unitPrice <= 0\)/);
+  assert.match(sheet, /const readyToSubmit = customerReady && items\.length > 0 && mobilePanel === "cart" && !hasUnresolvedPrices/);
+  assert.match(sheet, /const unresolvedPriceItem = items\.find\(\(item\) => \(item\.price === null \|\| item\.price === undefined\) && item\.unitPrice <= 0\)/);
+  assert.match(sheet, /Nhập đơn giá tạm lớn hơn 0/);
+  assert.match(sheet, /const totalLabel = hasUnresolvedPrices \? "Cần đơn giá tạm" : money\.format\(total\)/);
+  assert.match(sheet, /"Đơn giá tạm \*"/);
+  assert.match(sheet, /placeholder=\{item\.price === null \|\| item\.price === undefined \? "Nhập giá" : undefined\}/);
+  assert.match(sheet, /"Chưa có giá"/);
+  assert.doesNotMatch(sheet, /money\.format\(Number\(product\.price \|\| 0\)\)/);
 });
 
 test("primary create action requires a separate cart review gesture", () => {

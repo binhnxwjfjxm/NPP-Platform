@@ -298,8 +298,18 @@ async function existingSessionCustomerFlow(browser) {
   assert.equal(await peach.count(), 1, "peach variant must live inside the same product card");
 
   await strawberry.click();
-  await syrupCard.getByText("1 trong đơn", { exact: true }).waitFor({ state: "visible" });
+  const selectedStrawberry = syrupCard.getByRole("button", { name: /Giảm Siro Hưng Phát, Dâu/ });
+  await selectedStrawberry.waitFor({ state: "visible" });
+  await syrupCard.getByText("1 trong đơn · chạm để giảm", { exact: true }).waitFor({ state: "visible" });
   assert.equal(orderRequests(await mockState()).length, 0, "variant selection must not submit an order");
+
+  await selectedStrawberry.click();
+  await syrupCard.getByRole("button", { name: /Thêm Siro Hưng Phát, Dâu/ }).waitFor({ state: "visible" });
+  assert.equal(await syrupCard.getByText(/trong đơn/).count(), 0, "clicking the selected catalog variant again must remove it from the cart");
+  assert.equal(orderRequests(await mockState()).length, 0, "catalog decrement must not submit an order");
+
+  await syrupCard.getByRole("button", { name: /Thêm Siro Hưng Phát, Dâu/ }).click();
+  await syrupCard.getByText("1 trong đơn · chạm để giảm", { exact: true }).waitFor({ state: "visible" });
 
   await dialog.getByRole("button", { name: "Xem lại đơn", exact: true }).click();
   await dialog.getByText("Đơn đang lên", { exact: true }).waitFor({ state: "visible" });
