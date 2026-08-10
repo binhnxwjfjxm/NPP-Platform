@@ -58,8 +58,10 @@ const money = new Intl.NumberFormat("vi-VN", {
 });
 
 function catalogPrice(value: unknown) {
-  if (value === null || value === undefined || value === "") return null;
-  const parsed = Number(value);
+  if (value === null || value === undefined) return null;
+  const normalized = typeof value === "string" ? value.trim() : value;
+  if (normalized === "") return null;
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
 }
 

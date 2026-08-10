@@ -27,9 +27,13 @@ test("purchase-demand picker routes only to canonical NPP Core Sales products", 
   assert.match(demandUi, /fetch\(`\/api\/products\/search/);
   assert.match(demandUi, /fetch\(`\/api\/products\/\$\{encodeURIComponent\(productId\)\}\/variants/);
   assert.match(demandUi, /price: catalogPrice\(item\.price\)/);
+  assert.match(demandUi, /const normalized = typeof value === "string" \? value\.trim\(\) : value/);
+  assert.match(demandUi, /if \(normalized === ""\) return null/);
   assert.match(demandUi, /catalogPriceLabel\(variant\.price\)/);
   assert.doesNotMatch(demandUi, /formatMoney\(Number\(variant\.price \|\| 0\)\)/);
   assert.match(orderCreateUi, /price: catalogPrice\(item\.price\)/);
+  assert.match(orderCreateUi, /const normalized = typeof value === "string" \? value\.trim\(\) : value/);
+  assert.match(orderCreateUi, /if \(normalized === ""\) return null/);
   assert.match(orderCreateUi, /"Chưa có giá Core"/);
   assert.doesNotMatch(orderCreateUi, /money\.format\(Number\(product\.price \|\| 0\)\)/);
 });
