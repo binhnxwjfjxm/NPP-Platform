@@ -109,10 +109,11 @@ function challengeHash(pepper, challengeId, userId, code) {
 }
 
 function challengeRecipients(config = {}) {
-  return [...new Set([
-    ...(Array.isArray(config.securityOwnerEmails) ? config.securityOwnerEmails : []),
-    ...(Array.isArray(config.implementationOwnerEmails) ? config.implementationOwnerEmails : []),
-  ].map((email) => text(email).toLowerCase()).filter(Boolean))];
+  return [...new Set(
+    (Array.isArray(config.securityOwnerEmails) ? config.securityOwnerEmails : [])
+      .map((email) => text(email).toLowerCase())
+      .filter(Boolean),
+  )];
 }
 
 function validEmailChallengeRuntime(runtime, config, fetchImpl) {
@@ -124,9 +125,7 @@ function validEmailChallengeRuntime(runtime, config, fetchImpl) {
     && runtime.pepper.length >= 32
     && Array.isArray(config.securityOwnerEmails)
     && config.securityOwnerEmails.length === 2
-    && Array.isArray(config.implementationOwnerEmails)
-    && config.implementationOwnerEmails.length === 1
-    && recipients.length === 3
+    && recipients.length === 2
     && recipients.every((email) => EMAIL_PATTERN.test(email))
     && typeof fetchImpl === 'function'
   );
