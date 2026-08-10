@@ -8,7 +8,8 @@ test('shared navigation uses business grouping without fake system or unfinished
   const shell = await source('../app/components/app-shell-core.tsx');
   assert.match(shell, /Danh mục nghiệp vụ/);
   assert.match(shell, /Tổ chức, đối tác, hàng hóa, giá và chứng từ/);
-  assert.match(shell, /Quản lý tài khoản và quyền truy cập/);
+  assert.match(shell, /Nhân sự & phân quyền/);
+  assert.match(shell, /Hồ sơ, hiệu suất field, tài khoản và phạm vi truy cập/);
   assert.doesNotMatch(shell, /Đăng nhập sẽ được bổ sung|Hệ thống trực tuyến/);
 });
 
