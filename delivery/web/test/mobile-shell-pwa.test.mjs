@@ -39,6 +39,12 @@ test('Delivery approved source and derived PWA icons have exact dimensions', () 
   }
 });
 
+test('Delivery maskable icon uses separately padded artwork', () => {
+  const regular = readFileSync(new URL('../public/icons/delivery-512.png', import.meta.url));
+  const maskable = readFileSync(new URL('../public/icons/delivery-maskable-512.png', import.meta.url));
+  assert.equal(maskable.equals(regular), false);
+});
+
 test('Delivery bottom navigation is compact while preserving iPhone safe area', () => {
   const styles = read('app/delivery-mobile-app.css');
   assert.match(styles, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);

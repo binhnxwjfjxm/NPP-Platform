@@ -54,6 +54,12 @@ test('Admin approved source and derived PWA icons have exact dimensions', () => 
   }
 });
 
+test('Admin maskable icon uses separately padded artwork', () => {
+  const regular = readFileSync(new URL('../public/icons/admin-512.png', import.meta.url));
+  const maskable = readFileSync(new URL('../public/icons/admin-maskable-512.png', import.meta.url));
+  assert.equal(maskable.equals(regular), false);
+});
+
 test('Admin registers a root-scoped service worker', () => {
   assert.match(register, /serviceWorker\.register\('\/sw\.js'/);
   assert.match(register, /scope:\s*'\/'/);
