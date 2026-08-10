@@ -1,3 +1,5 @@
+import { formatExactDecimal } from './decimal-display.js';
+
 export type InventoryTrackingPolicy = {
   installation_id: string;
   base_variant_id: string;
@@ -176,5 +178,5 @@ export function formatCompactNumber(value: number): string {
 }
 
 export function formatQuantity(value: string | null | undefined): string {
-  return value ?? '0';
+  return formatExactDecimal(value);
 }
