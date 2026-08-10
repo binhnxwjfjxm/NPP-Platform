@@ -6,7 +6,7 @@ import {
   postOpeningBalanceOperator,
   resolveOpeningBalanceOperatorRequestId,
   validateOpeningBalanceOperator,
-} from '../../../../../../../lib/opening-balance-operator-gateway';
+} from '../../../../../../lib/opening-balance-operator-gateway';
 
 function headers(requestId: string) {
   return { 'Cache-Control': 'no-store', 'x-request-id': requestId };
