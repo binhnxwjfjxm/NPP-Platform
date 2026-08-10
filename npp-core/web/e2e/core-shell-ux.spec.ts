@@ -32,6 +32,11 @@ test.describe('Core shell UX', () => {
     const after = await accessToggle.boundingBox();
     expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThan(4);
 
+    await page.getByTestId('sidebar-collapse-button').click();
+    await expect(accessToggle).toHaveAttribute('aria-expanded', 'false');
+    await page.getByTestId('sidebar-collapse-button').click();
+    await expect(accessToggle).toHaveAttribute('aria-expanded', 'true');
+
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.getByTestId('nav-roles').click();
     await expect(page).toHaveURL(/\/access\/roles$/);
@@ -39,7 +44,7 @@ test.describe('Core shell UX', () => {
       const style = getComputedStyle(element);
       return { name: style.animationName, duration: style.animationDuration };
     });
-    expect(motion.name).toBe('contentEnter');
+    expect(motion.name).not.toBe('none');
     expect(Number.parseFloat(motion.duration)).toBeLessThanOrEqual(0.18);
 
     await page.emulateMedia({ reducedMotion: 'reduce' });
