@@ -22,6 +22,20 @@ test('inventory reporting compacts sparse PostgreSQL bind values', () => {
   );
 });
 
+test('inventory reporting ignores placeholder-like text outside executable SQL parameters', () => {
+  const sql = `SELECT $1, '$7', "quoted$8", foo$9, $$body $10$$, $tag$body $11$tag$, $3
+-- comment $12
+/* block $13 /* nested $14 */ still comment */`;
+  const compacted = compactReportingQueryBindings(sql, ['a', 'unused', 'c']);
+  assert.equal(
+    compacted.sql,
+    `SELECT $1, '$7', "quoted$8", foo$9, $$body $10$$, $tag$body $11$tag$, $2
+-- comment $12
+/* block $13 /* nested $14 */ still comment */`,
+  );
+  assert.deepEqual(compacted.values, ['a', 'c']);
+});
+
 test('inventory reporting adapter renumbers sparse placeholders before PostgreSQL sees them', async () => {
   const calls = [];
   const adapter = {

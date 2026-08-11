@@ -89,12 +89,20 @@ async function importPricingBySku(client, { installationId, payload, createdBy }
 
   let itemsCreated = 0;
   let itemsUpdated = 0;
+  const listCache = new Map();
+  const variantCache = new Map();
   for (const row of items) {
     const priceListCode = upper(row.priceListCode);
     const sku = upper(row.sku);
-    const list = await repo.getPriceListByCode(client, { installationId, code: priceListCode });
+    if (!listCache.has(priceListCode)) {
+      listCache.set(priceListCode, await repo.getPriceListByCode(client, { installationId, code: priceListCode }));
+    }
+    const list = listCache.get(priceListCode);
     if (!list) return invalid('PRICE_LIST_NOT_FOUND', `Price list ${priceListCode} not found`);
-    const variant = await repo.getVariantBySkuForPricing(client, { installationId, sku });
+    if (!variantCache.has(sku)) {
+      variantCache.set(sku, await repo.getVariantBySkuForPricing(client, { installationId, sku }));
+    }
+    const variant = variantCache.get(sku);
     if (!variant) return invalid('VARIANT_NOT_FOUND', `SKU ${sku} not found`);
 
     const candidates = (await repo.listPriceListItems(client, {

@@ -107,9 +107,9 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
   async function submitPricingImport(rows: RowMap[]) {
-    if (rows.length > 2000) throw new Error('Mỗi lần chỉ nhập tối đa 2.000 dòng giá.');
     begin();
     try {
+      if (rows.length > 2000) throw new Error('Mỗi lần chỉ nhập tối đa 2.000 dòng giá.');
       const list = selectedBasePriceList();
       const seen = new Set<string>();
       const items = rows.map((row, index) => {
@@ -121,9 +121,10 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
         if (!/^(?:0|[1-9]\d{0,18})$/.test(amountMinor)) throw new Error(`Dòng ${index + 2} · SKU ${sku}: Giá bán phải là số nguyên không âm.`);
         return { priceListCode: list.code, sku, adjustmentType: 'FIXED_PRICE', amountMinor, minQuantity: '0', maxQuantity: null, effectiveFrom: null, effectiveTo: null, sourceKind: 'IMPORT', note: null, isActive: true };
       });
+      const sourceBatchId = `price-file-${crypto.randomUUID()}`;
       const result = await requestJson<{ itemsCreated?: number; itemsUpdated?: number; totalItems?: number }>('/api/pricing/import', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matchBySku: true, sourceBatchId: `price-file-${crypto.randomUUID()}`, items }),
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': sourceBatchId },
+        body: JSON.stringify({ matchBySku: true, sourceBatchId, items }),
       });
       setPendingImport(null);
       setMessage(`Đã cập nhật ${result.itemsUpdated ?? 0} SKU, tạo giá lần đầu cho ${result.itemsCreated ?? 0} SKU trong ${list.code}.`);

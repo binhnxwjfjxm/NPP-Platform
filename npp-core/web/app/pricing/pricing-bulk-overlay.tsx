@@ -15,6 +15,8 @@ type PreviewRow = { sku: string; status: PreviewStatus; reason: string; item: Pr
 type ImportResult = { channelsCreated: number; listsCreated: number; itemsCreated: number; itemsUpdated: number; totalItems: number };
 type ApiEnvelope<T> = { data?: T; error?: { code?: string; message?: string; retryable?: boolean; details?: unknown } };
 
+const PRICE_ITEM_PAGE_SIZE = 2000;
+const MAX_PRICE_ITEM_OFFSET = 10000;
 const ADJUSTMENT_LABELS: Record<PriceAdjustmentType, string> = {
   FIXED_PRICE: 'Đặt giá trực tiếp',
   PERCENT_DISCOUNT: 'Giảm phần trăm',
@@ -32,6 +34,16 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     throw error;
   }
   return payload.data as T;
+}
+
+async function listAllPriceListItems(priceListId: string, signal?: AbortSignal): Promise<PriceListItem[]> {
+  const rows: PriceListItem[] = [];
+  for (let offset = 0; offset <= MAX_PRICE_ITEM_OFFSET; offset += PRICE_ITEM_PAGE_SIZE) {
+    const page = await requestJson<PriceListItem[]>(`/api/price-lists/${priceListId}/items?limit=${PRICE_ITEM_PAGE_SIZE}&offset=${offset}`, { signal });
+    rows.push(...page);
+    if (page.length < PRICE_ITEM_PAGE_SIZE) return rows;
+  }
+  throw new Error('Bảng giá đã đạt giới hạn đọc 12.000 dòng; chưa thể xác định an toàn các SKU đã có. Hãy lọc hoặc tách bảng giá trước khi cập nhật hàng loạt.');
 }
 
 function apiDate(value: string): string | null { return value ? new Date(value).toISOString() : null; }
@@ -64,6 +76,7 @@ export default function PricingBulkOverlay() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [lists, setLists] = useState<PriceList[]>([]);
   const [items, setItems] = useState<PriceListItem[]>([]);
   const [selectedListId, setSelectedListId] = useState('');
@@ -86,6 +99,16 @@ export default function PricingBulkOverlay() {
     for (const item of items) if (!map.has(upper(item.sku))) map.set(upper(item.sku), item);
     return map;
   }, [items]);
+  const activeRowsBySku = useMemo(() => {
+    const map = new Map<string, PriceListItem[]>();
+    for (const item of items) {
+      if (!item.is_active) continue;
+      const sku = upper(item.sku);
+      const rows = map.get(sku);
+      if (rows) rows.push(item); else map.set(sku, [item]);
+    }
+    return map;
+  }, [items]);
   const existingSkus = useMemo(() => [...skuMeta.keys()].sort((a, b) => a.localeCompare(b)), [skuMeta]);
   const visibleExistingSkus = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('vi');
@@ -100,25 +123,25 @@ export default function PricingBulkOverlay() {
   useEffect(() => {
     if (!open || lists.length) return;
     const controller = new AbortController();
-    setLoading(true); setMessage(null);
+    setLoading(true); setMessage(null); setError(null);
     requestJson<PriceList[]>('/api/price-lists?active=true&limit=1000', { signal: controller.signal })
       .then((nextLists) => {
         setLists(nextLists);
         if (!selectedListId && nextLists.length) setSelectedListId(nextLists.find((list) => list.list_type === 'BASE')?.id ?? nextLists[0].id);
       })
-      .catch((error) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : 'Không tải được bảng giá.'); })
+      .catch((cause) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Không tải được bảng giá.'); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [open, lists.length, selectedListId]);
 
   useEffect(() => {
-    setItems([]); setSelectedSkus(new Set()); setFixedPrices({});
+    setItems([]); setSelectedSkus(new Set()); setFixedPrices({}); setMessage(null); setError(null);
     if (!open || !selectedListId) return;
     const controller = new AbortController();
     setLoading(true);
-    requestJson<PriceListItem[]>(`/api/price-lists/${selectedListId}/items?limit=2000`, { signal: controller.signal })
+    listAllPriceListItems(selectedListId, controller.signal)
       .then(setItems)
-      .catch((error) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : 'Không tải được các dòng giá hiện có.'); })
+      .catch((cause) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Không tải được các dòng giá hiện có.'); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [open, selectedListId]);
@@ -131,7 +154,7 @@ export default function PricingBulkOverlay() {
     const targetFrom = dateKey(apiDate(effectiveFrom));
     const targetTo = dateKey(apiDate(effectiveTo));
     return selectedSkuList.map((sku) => {
-      const activeRows = items.filter((item) => upper(item.sku) === sku && item.is_active);
+      const activeRows = activeRowsBySku.get(sku) ?? [];
       const matchingRows = activeRows.filter((item) => item.adjustment_type === adjustmentType
         && decimalKey(item.min_quantity) === decimalKey(minQuantity || '0')
         && decimalKey(item.max_quantity) === decimalKey(maxQuantity)
@@ -143,7 +166,7 @@ export default function PricingBulkOverlay() {
       if (activeRows.length) return { sku, status: 'SKIP', reason: 'SKU có quy tắc khác điều kiện; không tạo dòng chồng lấn âm thầm.', item: null };
       return { sku, status: 'CREATE', reason: 'Chưa có dòng cùng điều kiện; hệ thống sẽ tra SKU chuẩn và tạo mới.', item: null };
     });
-  }, [adjustmentType, conflictPolicy, effectiveFrom, effectiveTo, items, maxQuantity, minQuantity, selectedSkuList]);
+  }, [activeRowsBySku, adjustmentType, conflictPolicy, effectiveFrom, effectiveTo, maxQuantity, minQuantity, selectedSkuList]);
 
   const actionableRows = preview.filter((row) => row.status !== 'SKIP');
   const usesAmount = ['FIXED_PRICE', 'AMOUNT_DISCOUNT', 'AMOUNT_MARKUP'].includes(adjustmentType);
@@ -157,7 +180,7 @@ export default function PricingBulkOverlay() {
   function toggleSku(sku: string, checked: boolean) {
     setSelectedSkus((current) => { const next = new Set(current); if (checked) next.add(sku); else next.delete(sku); return next; });
   }
-  function close() { if (!busy) { setOpen(false); setMessage(null); } }
+  function close() { if (!busy) { setOpen(false); setMessage(null); setError(null); } }
 
   function validate(): string | null {
     if (!selectedList) return 'Chọn bảng giá/chương trình.';
@@ -177,16 +200,17 @@ export default function PricingBulkOverlay() {
 
   async function applyBulk() {
     const validation = validate();
-    if (validation) { setMessage(validation); return; }
+    if (validation) { setError(validation); setMessage(null); return; }
     const list = selectedList as PriceList;
-    setBusy(true); setMessage(null);
+    setBusy(true); setMessage(null); setError(null);
     try {
       const rateBps = usesAmount ? null : percentToBps(sharedValue);
+      const sourceBatchId = `web-bulk-sku-${crypto.randomUUID()}`;
       const result = await requestJson<ImportResult>('/api/pricing/import', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': sourceBatchId },
         body: JSON.stringify({
           matchBySku: true,
-          sourceBatchId: `web-bulk-sku-${crypto.randomUUID()}`,
+          sourceBatchId,
           items: actionableRows.map((row) => ({
             priceListCode: list.code,
             sku: row.sku,
@@ -199,18 +223,19 @@ export default function PricingBulkOverlay() {
           })),
         }),
       });
-      setMessage(`Đã hoàn tất: tạo ${result.itemsCreated}, cập nhật ${result.itemsUpdated}, tổng ${result.totalItems} SKU.`);
-      setItems(await requestJson<PriceListItem[]>(`/api/price-lists/${list.id}/items?limit=2000`));
+      setItems(await listAllPriceListItems(list.id));
       setSelectedSkus(new Set()); setFixedPrices({});
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không áp dụng được giá cho các SKU đã chọn.');
+      setMessage(`Đã hoàn tất: tạo ${result.itemsCreated}, cập nhật ${result.itemsUpdated}, tổng ${result.totalItems} SKU.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không áp dụng được giá cho các SKU đã chọn.');
     } finally { setBusy(false); }
   }
 
   return <>
-    <button type="button" className={styles.launchButton} onClick={() => setOpen(true)} data-testid="open-bulk-pricing">Thiết lập giá nhiều SKU</button>
+    <button type="button" className={styles.launchButton} onClick={() => { setError(null); setOpen(true); }} data-testid="open-bulk-pricing">Thiết lập giá nhiều SKU</button>
     <Modal open={open} title="Thiết lập giá cho nhiều SKU" description="SKU là khóa tra cứu. Gõ hoặc dán SKU; hệ thống tự tìm đúng dòng giá và các định danh liên quan ở phía sau." onClose={close} testId="bulk-pricing-modal" size="large"
       footer={<><button type="button" className={styles.secondaryButton} onClick={close} disabled={busy}>Đóng</button><button type="button" className={styles.primaryButton} onClick={() => void applyBulk()} disabled={busy || loading || !actionableRows.length} data-testid="apply-bulk-pricing">{busy ? 'Đang áp dụng…' : `Áp dụng ${actionableRows.length || ''} SKU`}</button></>}>
+      {error ? <div className={styles.errorNotice} role="alert">{error}</div> : null}
       {message ? <div className={styles.notice} role="status">{message}</div> : null}
       <div className={styles.scopeGrid}>
         <label>Bảng giá / chương trình<select value={selectedListId} onChange={(event) => setSelectedListId(event.target.value)}><option value="">Chọn bảng giá</option>{lists.map((list) => <option key={list.id} value={list.id}>{list.code} — {list.name}</option>)}</select></label>
