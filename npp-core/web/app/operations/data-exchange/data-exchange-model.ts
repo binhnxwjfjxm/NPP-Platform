@@ -52,11 +52,8 @@ export const PRODUCT_REQUIRED_COLUMNS = [
   'productCode', 'productName', 'productIsCatalogVisible', 'productIsOrderable', 'productIsActive',
   'sku', 'skuName', 'variantKind', 'isInventoryBase', 'isSellable', 'isCatalogVisible', 'isActive',
 ] as const;
-export const PRICING_COLUMNS = [
-  'priceListCode', 'priceListName', 'listType', 'currencyCode', 'sku', 'sourceKey', 'adjustmentType',
-  'amountMinor', 'rateBps', 'minQuantity', 'maxQuantity', 'effectiveFrom', 'effectiveTo', 'externalRuleCode', 'note', 'isActive',
-] as const;
-export const PRICE_UPDATE_COLUMNS = ['sku', 'amountMinor'] as const;
+export const PRICING_COLUMNS = ['sku', 'amountMinor'] as const;
+export const PRICE_UPDATE_COLUMNS = PRICING_COLUMNS;
 export const STOCKTAKE_COLUMNS = ['warehouseCode', 'locationCode', 'sku', 'lotCode', 'actualCount'] as const;
 export const QUOTATION_COLUMNS = ['sku', 'productName', 'skuName', 'quantity', 'currencyCode', 'unitPriceMinor', 'lineTotalMinor', 'priceListCode'] as const;
 
