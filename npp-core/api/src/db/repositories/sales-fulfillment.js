@@ -66,6 +66,23 @@ export async function getConfirmedFulfillmentInput(client, {
   return result.rows;
 }
 
+export async function hasActiveAllocationFacts(client, { installationId, salesOrderId }) {
+  const result = await client.query(
+    `SELECT EXISTS (
+       SELECT 1
+         FROM sales.sales_order_fulfillment_demands demand
+         JOIN sales.sales_order_fulfillment_allocations allocation
+           ON allocation.installation_id = demand.installation_id
+          AND allocation.fulfillment_demand_id = demand.id
+        WHERE demand.installation_id = $1
+          AND demand.sales_order_id = $2
+          AND demand.state = 'ACTIVE'
+     ) AS blocked`,
+    [installationId, salesOrderId],
+  );
+  return result.rows[0]?.blocked === true;
+}
+
 export async function lockFulfillmentScope(client, {
   installationId,
   warehouseId,
