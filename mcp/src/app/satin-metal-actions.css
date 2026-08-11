@@ -1,0 +1,428 @@
+/*
+ * Phase 10 #19 — MCP satin metal action system.
+ *
+ * Visual-only layer based on ui-mau-metal.png:
+ * - keep content cards/surfaces matte;
+ * - apply champagne/bronze brushed metal only to controls and CTA affordances;
+ * - preserve danger semantics with a restrained rose-metal variant.
+ */
+
+:root {
+  --mcp-metal-border: #a87835;
+  --mcp-metal-border-strong: #815318;
+  --mcp-metal-ink: #54340d;
+  --mcp-metal-ink-soft: #6b4a20;
+  --mcp-metal-cream: #fff8e9;
+  --mcp-metal-bronze-lightest: #6d4008;
+  --mcp-metal-bronze-mid: #543008;
+  --mcp-metal-bronze-dark: #603606;
+  --mcp-metal-bronze-hover-lightest: #754706;
+
+  --mcp-metal-champagne-surface:
+    linear-gradient(104deg, transparent 0 31%, rgba(255, 255, 255, 0.16) 43%, transparent 57%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.055) 0 1px,
+      rgba(94, 58, 17, 0.025) 1px 2px,
+      transparent 2px 4px
+    ),
+    linear-gradient(180deg, #f6e7c7 0%, #e1c18a 49%, #eed7ac 100%);
+
+  --mcp-metal-champagne-hover:
+    linear-gradient(104deg, transparent 0 29%, rgba(255, 255, 255, 0.22) 44%, transparent 60%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.065) 0 1px,
+      rgba(94, 58, 17, 0.025) 1px 2px,
+      transparent 2px 4px
+    ),
+    linear-gradient(180deg, #faedcf 0%, #e6c78f 49%, #f1ddb5 100%);
+
+  /*
+   * The bronze base stays deliberately dark: even the lightest hover stop,
+   * after the translucent sheen/brushing layers are composited, keeps cream
+   * action text above the 4.5:1 small-text contrast floor.
+   */
+  --mcp-metal-bronze-surface:
+    linear-gradient(104deg, transparent 0 30%, rgba(255, 247, 228, 0.12) 44%, transparent 60%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.04) 0 1px,
+      rgba(75, 45, 12, 0.045) 1px 2px,
+      transparent 2px 4px
+    ),
+    linear-gradient(
+      180deg,
+      var(--mcp-metal-bronze-lightest) 0%,
+      var(--mcp-metal-bronze-mid) 50%,
+      var(--mcp-metal-bronze-dark) 100%
+    );
+
+  --mcp-metal-bronze-hover:
+    linear-gradient(104deg, transparent 0 28%, rgba(255, 247, 228, 0.14) 44%, transparent 61%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.05) 0 1px,
+      rgba(75, 45, 12, 0.045) 1px 2px,
+      transparent 2px 4px
+    ),
+    linear-gradient(
+      180deg,
+      var(--mcp-metal-bronze-hover-lightest) 0%,
+      var(--mcp-metal-bronze-dark) 50%,
+      var(--mcp-metal-bronze-lightest) 100%
+    );
+
+  --mcp-metal-danger-surface:
+    linear-gradient(104deg, transparent 0 31%, rgba(255, 255, 255, 0.16) 44%, transparent 58%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.05) 0 1px,
+      rgba(105, 36, 29, 0.025) 1px 2px,
+      transparent 2px 4px
+    ),
+    linear-gradient(180deg, #f7d9d3 0%, #dfa098 50%, #efc0b8 100%);
+
+  --mcp-metal-light-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    inset 0 -1px 0 rgba(91, 57, 18, 0.19),
+    0 4px 10px rgba(91, 57, 18, 0.13),
+    0 1px 2px rgba(91, 57, 18, 0.09);
+
+  --mcp-metal-strong-shadow:
+    inset 0 1px 0 rgba(255, 249, 235, 0.32),
+    inset 0 -1px 0 rgba(69, 40, 8, 0.30),
+    0 7px 16px rgba(91, 57, 18, 0.18),
+    0 2px 4px rgba(69, 40, 8, 0.13);
+}
+
+/* Light champagne controls: secondary actions, chips, close controls and quick navigation. */
+.button:not(.primary):not(.danger),
+.sheet-close,
+.mcp-status-chips button,
+.report-chip,
+.mcp-order-picker-filters button,
+.order-open-picker-button,
+.order-picker-filter-toggle,
+.order-picker-popup-close,
+.mobile-context-back,
+[data-app-top-bar] button,
+[class*="_modeTabs__"] button,
+[class*="_mobileTabs__"] button,
+[class*="_toolButton__"],
+[class*="_customerContinue__"],
+[class*="_selectedCustomerSummary__"] button,
+[class*="_quantityControl__"] button,
+[class*="_footer__"] button:not([class*="_danger__"]) {
+  border: 1px solid var(--mcp-metal-border) !important;
+  background: var(--mcp-metal-champagne-surface) !important;
+  color: var(--mcp-metal-ink) !important;
+  box-shadow: var(--mcp-metal-light-shadow) !important;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.38);
+}
+
+/* Strong bronze controls retain the existing primary-action hierarchy. */
+.button.primary,
+button.primary,
+.mcp-add-customer-fab,
+.order-picker-done-button,
+.mobile-home-primary-action {
+  border: 1px solid var(--mcp-metal-border-strong) !important;
+  background: var(--mcp-metal-bronze-surface) !important;
+  color: var(--mcp-metal-cream) !important;
+  box-shadow: var(--mcp-metal-strong-shadow) !important;
+  text-shadow: 0 1px 1px rgba(58, 34, 7, 0.42);
+}
+
+/* Destructive actions stay unmistakably destructive while sharing the same satin construction. */
+.button.danger,
+button.danger,
+.mcp-photo-preview > button,
+[data-app-menu-panel="true"] button[class*="_danger__"] {
+  border: 1px solid #a94b40 !important;
+  background: var(--mcp-metal-danger-surface) !important;
+  color: #7c251d !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
+    inset 0 -1px 0 rgba(117, 38, 30, 0.18),
+    0 4px 10px rgba(117, 38, 30, 0.13) !important;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.30);
+}
+
+/* Selected controls use the richer bronze surface instead of introducing a second accent color. */
+.mcp-status-chips button.active,
+.report-chip.selected,
+.mcp-order-picker-filters button.active,
+[class*="_modeTabs__"] [class*="_activeTab__"],
+[class*="_mobileTabs__"] [class*="_activeTab__"] {
+  border-color: var(--mcp-metal-border-strong) !important;
+  background: var(--mcp-metal-bronze-surface) !important;
+  color: var(--mcp-metal-cream) !important;
+  box-shadow: var(--mcp-metal-strong-shadow) !important;
+  text-shadow: 0 1px 1px rgba(58, 34, 7, 0.40);
+}
+
+.mcp-status-chips button.active b,
+.report-chip.selected,
+[class*="_modeTabs__"] [class*="_activeTab__"] strong,
+[class*="_modeTabs__"] [class*="_activeTab__"] small,
+[class*="_mobileTabs__"] [class*="_activeTab__"] strong,
+[class*="_mobileTabs__"] [class*="_activeTab__"] small {
+  color: inherit !important;
+}
+
+/* Dashboard cards remain matte; only their visible CTA affordances receive metal treatment. */
+.dashboard-alert-card > strong,
+.dashboard-command-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border: 1px solid var(--mcp-metal-border);
+  border-radius: 11px;
+  background: var(--mcp-metal-champagne-surface);
+  color: var(--mcp-metal-ink) !important;
+  box-shadow: var(--mcp-metal-light-shadow);
+  padding: 7px 11px;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.38);
+}
+
+/* The dark expanded app menu uses bronze metal so its text contrast remains intact. */
+[data-app-menu-panel="true"] button:not([class*="_danger__"]) {
+  border-color: rgba(226, 190, 129, 0.58) !important;
+  background: var(--mcp-metal-bronze-surface) !important;
+  color: var(--mcp-metal-cream) !important;
+  box-shadow: var(--mcp-metal-strong-shadow) !important;
+}
+
+[data-app-menu-panel="true"] button:not([class*="_danger__"]) :is(strong, small, span) {
+  color: inherit;
+}
+
+[data-app-menu-panel="true"] button[aria-current="page"],
+[data-app-menu-panel="true"] button[class*="_menuItemActive__"] {
+  border-color: rgba(255, 226, 174, 0.82) !important;
+  filter: brightness(1.07) saturate(1.04);
+}
+
+/* Top-bar menu button matches the light champagne reference instead of translucent glass. */
+[data-app-top-bar] button {
+  min-width: 42px;
+  min-height: 42px;
+}
+
+[data-app-top-bar] button[aria-expanded="true"] {
+  border-color: var(--mcp-metal-border-strong) !important;
+  filter: brightness(0.98) saturate(1.03);
+}
+
+/* Preserve readable disabled states after replacing flat fills. */
+.button:disabled,
+.button[aria-disabled="true"],
+.mcp-status-chips button:disabled,
+.report-chip:disabled,
+[data-app-menu-panel="true"] button:disabled,
+[class*="_modeTabs__"] button:disabled,
+[class*="_mobileTabs__"] button:disabled,
+[class*="_toolButton__"]:disabled,
+[class*="_quantityControl__"] button:disabled,
+[class*="_footer__"] button:disabled {
+  filter: grayscale(0.18);
+  opacity: 0.52;
+  box-shadow: none !important;
+}
+
+/* Keep field/product/customer cards matte even when they contain button semantics. */
+[class*="_customerList__"] button,
+[class*="_variantButton__"],
+.product-card,
+.variant-chip {
+  text-shadow: none;
+}
+
+/* Fine-pointer hover keeps the surface satin, not glossy or floating excessively. */
+@media (hover: hover) and (pointer: fine) {
+  .button:not(.primary):not(.danger):hover:not(:disabled),
+  .sheet-close:hover,
+  .mcp-status-chips button:hover:not(:disabled),
+  .report-chip:hover:not(:disabled),
+  .mcp-order-picker-filters button:hover:not(:disabled),
+  .order-open-picker-button:hover:not(:disabled),
+  .order-picker-filter-toggle:hover:not(:disabled),
+  .order-picker-popup-close:hover:not(:disabled),
+  [data-app-top-bar] button:hover:not(:disabled),
+  [class*="_modeTabs__"] button:hover:not(:disabled),
+  [class*="_mobileTabs__"] button:hover:not(:disabled),
+  [class*="_toolButton__"]:hover:not(:disabled),
+  [class*="_customerContinue__"]:hover:not(:disabled),
+  [class*="_selectedCustomerSummary__"] button:hover:not(:disabled),
+  [class*="_quantityControl__"] button:hover:not(:disabled),
+  [class*="_footer__"] button:not([class*="_danger__"]):hover:not(:disabled) {
+    border-color: var(--mcp-metal-border-strong) !important;
+    background: var(--mcp-metal-champagne-hover) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.78),
+      inset 0 -1px 0 rgba(91, 57, 18, 0.21),
+      0 6px 12px rgba(91, 57, 18, 0.15) !important;
+  }
+
+  .button.primary:hover:not(:disabled),
+  button.primary:hover:not(:disabled),
+  .mcp-add-customer-fab:hover,
+  .order-picker-done-button:hover:not(:disabled),
+  .mobile-home-primary-action:hover {
+    background: var(--mcp-metal-bronze-hover) !important;
+  }
+
+  [data-app-menu-panel="true"] button:not([class*="_danger__"]):hover:not(:disabled) {
+    background: var(--mcp-metal-bronze-hover) !important;
+    filter: brightness(1.03);
+  }
+}
+
+@media (max-width: 820px) {
+  /* Reference home: one rich brushed CTA, five light champagne quick actions. */
+  .app-shell[data-active-href="/"] .mobile-home-primary-action {
+    border-radius: 18px;
+    background: var(--mcp-metal-bronze-surface) !important;
+    color: var(--mcp-metal-cream) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 249, 235, 0.34),
+      inset 0 -1px 0 rgba(69, 40, 8, 0.32),
+      0 10px 22px rgba(91, 57, 18, 0.20) !important;
+  }
+
+  .app-shell[data-active-href="/"] .mobile-home-primary-action > span:first-child {
+    border: 1px solid rgba(255, 240, 211, 0.34);
+    background:
+      repeating-linear-gradient(
+        0deg,
+        rgba(255, 255, 255, 0.06) 0 1px,
+        transparent 1px 4px
+      ),
+      rgba(255, 248, 232, 0.13) !important;
+    color: var(--mcp-metal-cream) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.16),
+      0 3px 8px rgba(65, 38, 8, 0.14);
+  }
+
+  .app-shell[data-active-href="/"] .mobile-home-primary-action :is(strong, small, b) {
+    color: inherit !important;
+  }
+
+  .app-shell[data-active-href="/"] .mobile-home-quick-grid a {
+    border: 1px solid var(--mcp-metal-border) !important;
+    background: var(--mcp-metal-champagne-surface) !important;
+    color: var(--mcp-metal-ink) !important;
+    box-shadow: var(--mcp-metal-light-shadow) !important;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.38);
+  }
+
+  .app-shell[data-active-href="/"] .mobile-home-quick-grid a :is(span, strong) {
+    color: inherit !important;
+  }
+
+  /* Five-item dock keeps existing geometry; each navigation control becomes a satin tile. */
+  .app-content-shell > [data-bottom-navigation="true"] {
+    border-top-color: rgba(131, 85, 28, 0.24) !important;
+    background: rgba(250, 247, 240, 0.96) !important;
+    box-shadow:
+      0 -8px 20px rgba(91, 57, 18, 0.10),
+      inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(1.15);
+    backdrop-filter: blur(18px) saturate(1.15);
+  }
+
+  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link {
+    border: 1px solid rgba(169, 120, 53, 0.72) !important;
+    background: var(--mcp-metal-champagne-surface) !important;
+    color: var(--mcp-metal-ink-soft) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.68),
+      inset 0 -1px 0 rgba(91, 57, 18, 0.15),
+      0 2px 5px rgba(91, 57, 18, 0.09) !important;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.34);
+  }
+
+  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.active:not(.primary) {
+    border-color: var(--mcp-metal-border-strong) !important;
+    background: var(--mcp-metal-champagne-hover) !important;
+    color: var(--mcp-metal-ink) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.76),
+      inset 0 -1px 0 rgba(91, 57, 18, 0.20),
+      0 3px 7px rgba(91, 57, 18, 0.12) !important;
+  }
+
+  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link .nav-icon {
+    background: transparent !important;
+    color: currentcolor !important;
+    box-shadow: none !important;
+  }
+
+  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.primary {
+    color: var(--mcp-metal-ink) !important;
+  }
+
+  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.primary .mobile-app-dock-icon {
+    border: 4px solid rgba(255, 250, 240, 0.88) !important;
+    background: var(--mcp-metal-bronze-surface) !important;
+    color: var(--mcp-metal-cream) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 249, 235, 0.30),
+      inset 0 -1px 0 rgba(69, 40, 8, 0.28),
+      0 7px 14px rgba(91, 57, 18, 0.22) !important;
+  }
+
+  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.primary .mobile-app-dock-label {
+    color: var(--mcp-metal-ink) !important;
+  }
+
+  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.primary.active .mobile-app-dock-icon {
+    box-shadow:
+      0 0 0 2px #d8b77e,
+      inset 0 1px 0 rgba(255, 249, 235, 0.34),
+      inset 0 -1px 0 rgba(69, 40, 8, 0.30),
+      0 7px 14px rgba(91, 57, 18, 0.24) !important;
+  }
+
+  .mcp-add-customer-fab {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 249, 235, 0.30),
+      inset 0 -1px 0 rgba(69, 40, 8, 0.28),
+      0 7px 16px rgba(91, 57, 18, 0.20) !important;
+  }
+}
+
+/*
+ * Metal shadows are decorative; keyboard focus must stay stronger than them.
+ * Re-apply the existing opaque inner/outer focus ring after every metal layer.
+ */
+.app-shell :is(button, a.button, [role="button"], [role="tab"]):focus-visible,
+.app-shell[data-active-href="/"] .mobile-home-primary-action:focus-visible,
+.app-shell[data-active-href="/"] .mobile-home-quick-grid a:focus-visible,
+.app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link:focus-visible,
+.app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.active:not(.primary):focus-visible {
+  outline: 2px solid var(--npp-color-focus-inner) !important;
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 4px var(--npp-color-focus-outer),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    inset 0 -1px 0 rgba(91, 57, 18, 0.18),
+    0 4px 10px rgba(91, 57, 18, 0.13) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button,
+  .sheet-close,
+  .mcp-status-chips button,
+  .report-chip,
+  .mobile-home-primary-action,
+  .mobile-home-quick-grid a,
+  [data-app-top-bar] button,
+  [data-app-menu-panel="true"] button,
+  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link {
+    transition-duration: 0.01ms !important;
+  }
+}
