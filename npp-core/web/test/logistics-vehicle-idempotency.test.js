@@ -60,14 +60,14 @@ function successfulFetchRecorder() {
   };
 }
 
-test('A1-A3 master create sends Core-safe idempotency headers at runtime and preserves trip behavior', async () => {
+test('A1-A4 create sends Core-safe idempotency headers at runtime and preserves trip mutation behavior', async () => {
   assert.ok(workspaceSource.includes("return `${prefix}:${parts.filter(Boolean).join(':')}`;"));
   assert.ok(coreIdempotencySource.includes('const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;'));
 
   const recorder = successfulFetchRecorder();
   const gateway = loadGateway(recorder.fetch);
 
-  for (const resource of ['routes', 'vehicles', 'drivers']) {
+  for (const resource of ['routes', 'vehicles', 'drivers', 'trips']) {
     const sourceKey = `${resource}:create`;
     const expected = createHash('sha256').update(sourceKey, 'utf8').digest('hex');
     await gateway.createLogisticsResource(resource, `req-${resource}`, { code: resource }, sourceKey);
@@ -80,6 +80,9 @@ test('A1-A3 master create sends Core-safe idempotency headers at runtime and pre
   await gateway.createLogisticsResource('drivers', 'req-safe-driver', { code: 'driver-safe' }, 'driver_create');
   assert.equal(recorder.calls.at(-1).init.headers['Idempotency-Key'], 'driver_create');
 
+  await gateway.createLogisticsResource('trips', 'req-safe-trip', { warehouseId: '11111111-1111-4111-8111-111111111111' }, 'trip_create_safe');
+  assert.equal(recorder.calls.at(-1).init.headers['Idempotency-Key'], 'trip_create_safe');
+
   const tripId = '11111111-1111-4111-8111-111111111111';
   await gateway.updateDeliveryTrip(tripId, 'req-update-trip', { revision: '1' }, 'trip_update_safe');
   assert.equal(recorder.calls.at(-1).init.method, 'PUT');
@@ -90,7 +93,7 @@ test('A1-A3 master create sends Core-safe idempotency headers at runtime and pre
   assert.equal(recorder.calls.at(-1).init.headers['Idempotency-Key'], 'trip_plan_safe');
 
   assert.notEqual(
-    createHash('sha256').update('route:create', 'utf8').digest('hex'),
-    'route_create',
+    createHash('sha256').update('trip:create', 'utf8').digest('hex'),
+    'trip_create',
   );
 });
