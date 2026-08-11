@@ -66,6 +66,14 @@ test('manual order UI is wired for channel and commercial permissions', () => {
   assert.doesNotMatch(form, /Kiểu CK thêm/);
 });
 
+test('Sales Order line keeps optional controls compact until explicitly expanded', () => {
+  assert.match(form, /const \[expandedLineId, setExpandedLineId\] = useState<string \| null>\(null\);/);
+  assert.match(form, /aria-expanded=\{expandedLineId === line\.variantId\}/);
+  assert.match(form, /hidden=\{expandedLineId !== line\.variantId\}/);
+  assert.doesNotMatch(form, /className=\{styles\.lineCommercialActions\}/);
+  assert.doesNotMatch(form, /<details className=\{styles\.lineDetails\}>/);
+});
+
 test('desktop modal has one real stable vertical scroll owner', () => {
   assert.match(styles, /\.orderEditorBody\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?overflow-y:\s*scroll;[\s\S]*?scrollbar-gutter:\s*stable;/);
   assert.match(styles, /\.orderEditorModal\s*\{[\s\S]*?overflow:\s*hidden;/);
