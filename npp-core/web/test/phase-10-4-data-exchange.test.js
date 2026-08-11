@@ -20,8 +20,10 @@ test('Phase 10.4 generic XLSX round-trips a tabular workbook', () => {
   assert.deepEqual(parseTabularXlsx(workbook), [['Mã kho', 'SKU', 'Số đếm thực tế'], ['KHO-A', 'SKU-001', '12.5'], ['KHO-A', 'SKU-002', '0']]);
 });
 
-test('Phase 10.4 workspace uses official file-operation APIs and canonical inventory drill-down', () => {
-  for (const endpoint of ['products/export', 'products/import', 'pricing/export', 'pricing/import', 'stocktake/export', 'stocktake/import', 'quotation']) assert.match(dataExchange, new RegExp(`/api/file-operations/${endpoint}`));
+test('Phase 10.4 workspace uses official file operations and canonical SKU pricing mutation', () => {
+  for (const endpoint of ['products/export', 'products/import', 'pricing/export', 'stocktake/export', 'stocktake/import', 'quotation']) assert.match(dataExchange, new RegExp(`/api/file-operations/${endpoint}`));
+  assert.match(actions, /\/api\/pricing\/import/);
+  assert.match(actions, /matchBySku:\s*true/);
   assert.match(workspace, /\/api\/inventory\/balances\/drill-down/);
   assert.doesNotMatch(dataExchange, /\/api\/inventory\/balances[^'"`]*['"`][\s\S]{0,80}method:\s*['"](?:POST|PUT|PATCH|DELETE)['"]/);
   assert.doesNotMatch(dataExchange, /baseQuantityDelta\s*:/);
@@ -38,16 +40,22 @@ test('Phase 10.4 stocktake export stays blind and creates only draft count data'
   assert.match(view, /Chưa gửi duyệt, chưa ghi sổ tồn/);
 });
 
-test('Phase 10.4 pricing keeps legacy blank-sourceKey rows on optimistic canonical PATCH', () => {
-  assert.match(actions, /blankSource/);
-  assert.match(actions, /expectedUpdatedAt: match\.item\.updated_at/);
-  assert.match(actions, /\/api\/price-lists\/\$\{list\.id\}\/items\/\$\{match\.item\.id\}/);
+test('routine price file is exactly SKU plus selling price and list context stays outside the file', () => {
+  assert.match(model, /const PRICING_COLUMNS = \['sku', 'amountMinor'\]/);
+  assert.match(model, /const PRICE_UPDATE_COLUMNS = PRICING_COLUMNS/);
+  assert.match(model, /amountMinor: 'Giá bán \(VND\)'/);
+  assert.match(actions, /requireColumns\(rows, PRICE_UPDATE_COLUMNS\)/);
+  assert.match(actions, /priceListCode: list\.code/);
+  assert.match(actions, /adjustmentType: 'FIXED_PRICE'/);
+  assert.match(actions, /SKU \$\{sku\} bị lặp trong file/);
+  assert.match(view, /File cập nhật chỉ cần đúng 2 cột/);
+  assert.match(view, /Bảng giá nền cần cập nhật/);
+  assert.match(view, /Không cần mã bảng giá, source key hay loại điều chỉnh trong file/);
 });
 
-test('Phase 10.4 rejects ambiguous legacy price matches and preserves quotation lineage', () => {
-  assert.match(actions, /const matches = existingRows\.filter/);
-  assert.match(actions, /matches\.length !== 1/);
-  assert.match(actions, /effective_from/);
+test('SKU-keyed price updates preserve quotation lineage', () => {
+  assert.match(actions, /matchBySku:\s*true/);
+  assert.match(actions, /sourceBatchId: `price-file-\$\{crypto\.randomUUID\(\)\}`/);
   assert.match(workspace, /lineTotal: String\(row\.lineTotalMinor/);
   assert.match(workspace, /priceListCode: String\(row\.priceListCode/);
   assert.match(workspace, /row\.lineTotal, row\.priceListCode/);
