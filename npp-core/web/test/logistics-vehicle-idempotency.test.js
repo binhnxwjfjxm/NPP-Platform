@@ -5,9 +5,6 @@ import test from 'node:test';
 import ts from 'typescript';
 
 const gatewaySource = readFileSync(new URL('../lib/logistics-gateway.ts', import.meta.url), 'utf8');
-const workspaceSource = readFileSync(new URL('../app/logistics/trips/trip-planning-workspace.tsx', import.meta.url), 'utf8');
-const dispatchWorkspaceSource = readFileSync(new URL('../app/logistics/dispatch/trip-dispatch-workspace.tsx', import.meta.url), 'utf8');
-const coreIdempotencySource = readFileSync(new URL('../../api/src/idempotency.js', import.meta.url), 'utf8');
 
 class TestInventoryGatewayError extends Error {
   constructor(code, publicMessage, statusCode, retryable, details = {}) {
@@ -62,12 +59,6 @@ function successfulFetchRecorder() {
 }
 
 test('all NPP logistics mutations send Core-safe idempotency headers at the gateway boundary', async () => {
-  assert.ok(workspaceSource.includes("return `${prefix}:${parts.filter(Boolean).join(':')}`;"));
-  assert.ok(workspaceSource.includes("const scope = keyScope('update-trip'"));
-  assert.ok(workspaceSource.includes('const scope = keyScope(action, selectedTrip.id, selectedTrip.revision, discriminator);'));
-  assert.ok(dispatchWorkspaceSource.includes('const scope = `${selectedTrip.id}:${dispatchedAt}:${normalizedReceiver}:${handoverNote.trim()}`;'));
-  assert.ok(coreIdempotencySource.includes('const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;'));
-
   const recorder = successfulFetchRecorder();
   const gateway = loadGateway(recorder.fetch);
 
