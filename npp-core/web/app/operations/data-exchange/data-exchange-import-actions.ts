@@ -1,10 +1,20 @@
 import {
-  type RowMap, type OfficialRows, type Stocktake, type PriceList, type PriceItem, type ImportKind, PRODUCT_COLUMNS, PRODUCT_REQUIRED_COLUMNS, PRICING_COLUMNS, STOCKTAKE_COLUMNS,
+  type RowMap, type OfficialRows, type Stocktake, type PriceList, type PriceItem, type ImportKind, type Unit, type PendingImport,
+  PRODUCT_COLUMNS, PRODUCT_REQUIRED_COLUMNS, PRICING_COLUMNS, STOCKTAKE_COLUMNS,
   labelFor, displayCell, pricingChoice, bool, boolChoice, variantChoice, lotChoice, expiryChoice, normalizeProductChoices,
 } from './data-exchange-model';
 import { optional, exactQuantity, exportTable, readTable, requireColumns, requestJson, idempotency, trimDecimal } from './data-exchange-file-utils';
 
-export function buildDataExchangeImportActions(ctx: any) {
+type WarehouseOption = { id: string; code: string; name: string };
+type ImportActionsContext = Record<string, any> & {
+  units: Unit[];
+  priceLists: PriceList[];
+  warehouses: WarehouseOption[];
+  pendingImport: PendingImport | null;
+  setPendingImport: (value: PendingImport | null | ((current: PendingImport | null) => PendingImport | null)) => void;
+};
+
+export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
   const {
     units, productColumns, pricingColumns, pendingImport, setPendingImport, refreshReferenceData, setMessage, setBusy, fail, begin, priceLists, warehouses, stocktakeWarehouse,
   } = ctx;
@@ -140,7 +150,6 @@ export function buildDataExchangeImportActions(ctx: any) {
   function updatePendingRow(index: number, key: string, value: string) {
     setPendingImport((current) => current ? { ...current, rows: current.rows.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: value } : row) } : current);
   }
-
 
   return { productTemplate, productExport, pricingExport, stocktakeExport, prepareImport, confirmPendingImport, updatePendingRow };
 }

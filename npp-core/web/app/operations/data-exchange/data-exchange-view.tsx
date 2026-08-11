@@ -2,10 +2,25 @@
 
 import { AppShell } from '../../components/app-shell-core';
 import styles from './data-exchange.module.css';
-import { type Tab, PRODUCT_COLUMNS, PRICING_COLUMNS } from './data-exchange-model';
+import {
+  type Tab, type Category, type Channel, type CustomerGroup, type Customer, type Balance, type QuotationRow, type MovementView,
+  PRODUCT_COLUMNS, PRICING_COLUMNS,
+} from './data-exchange-model';
 import { scopeKey, trimDecimal, scaled12 } from './data-exchange-file-utils';
 
-export function DataExchangeView({ ctx }: { ctx: any }) {
+type WarehouseOption = { id: string; code: string; name: string };
+type DataExchangeViewContext = Record<string, any> & {
+  warehouses: WarehouseOption[];
+  categories: Category[];
+  channels: Channel[];
+  groups: CustomerGroup[];
+  customers: Customer[];
+  quotationRows: QuotationRow[];
+  balances: Balance[];
+  movementRows: MovementView[];
+};
+
+export function DataExchangeView({ ctx }: { ctx: DataExchangeViewContext }) {
   const {
     tab, setTab, setError, setMessage, setPendingImport, busy, setBusy, error, message, fileRefs, fileInput, productTemplate, productExport, columnChooser,
     productColumns, setProductColumns, previewTable, pricingExport, pricingColumns, setPricingColumns, stocktakeExport, stocktakeWarehouse,

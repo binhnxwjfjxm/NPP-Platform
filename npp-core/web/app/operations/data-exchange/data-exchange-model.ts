@@ -52,7 +52,6 @@ export const PRODUCT_COLUMNS = [
 export const PRODUCT_REQUIRED_COLUMNS = [
   'productCode', 'productName', 'productIsCatalogVisible', 'productIsOrderable', 'productIsActive',
   'sku', 'skuName', 'variantKind', 'isInventoryBase', 'isSellable', 'isCatalogVisible', 'isActive',
-  'unitCode', 'conversionToBase', 'lotTrackingMode', 'expiryTrackingMode', 'locationRequired',
 ] as const;
 export const PRICING_COLUMNS = [
   'priceListCode', 'priceListName', 'listType', 'currencyCode', 'sku', 'sourceKey', 'adjustmentType',

@@ -1,12 +1,22 @@
 'use client';
 
 import styles from './data-exchange.module.css';
-import { PRICING_COLUMNS, STOCKTAKE_COLUMNS, labelFor, boolChoice, variantChoice, lotChoice, expiryChoice } from './data-exchange-model';
+import { type ImportKind, type PendingImport, type RowMap, type Unit, PRICING_COLUMNS, STOCKTAKE_COLUMNS, labelFor, boolChoice, variantChoice, lotChoice, expiryChoice } from './data-exchange-model';
 
-export function DataExchangeImportPreview({ ctx }: { ctx: any }) {
+type PreviewContext = {
+  pendingImport: PendingImport | null;
+  tab: ImportKind;
+  setPendingImport: (value: PendingImport | null) => void;
+  busy: boolean;
+  confirmPendingImport: () => Promise<unknown> | unknown;
+  units: Unit[];
+  updatePendingRow: (index: number, key: string, value: string) => void;
+};
+
+export function DataExchangeImportPreview({ ctx }: { ctx: PreviewContext }) {
   const { pendingImport, tab, setPendingImport, busy, confirmPendingImport, units, updatePendingRow } = ctx;
     if (!pendingImport || pendingImport.kind !== tab) return null;
-    const rows = pendingImport.rows;
+    const rows: RowMap[] = pendingImport.rows;
     if (pendingImport.kind === 'products') return <div className={styles.previewCard} data-testid="product-import-preview"><div className={styles.previewHeader}><div><strong>Xem trước trước khi nhập</strong><span>{pendingImport.fileName} · {rows.length} dòng. Có thể sửa các lựa chọn ngay tại đây, không cần quay lại Excel.</span></div><div className={styles.buttonRow}><button className={styles.secondaryButton} type="button" onClick={() => setPendingImport(null)} disabled={busy}>Bỏ file</button><button className={styles.primaryButton} type="button" onClick={() => void confirmPendingImport()} disabled={busy}>Xác nhận nhập {rows.length} dòng</button></div></div><div className={styles.tableWrap}><table className={styles.previewTable}><thead><tr><th>Dòng</th><th>Mã SP</th><th>SKU</th><th>Loại SKU</th><th>Đơn vị tính</th><th>Hệ số quy đổi</th><th>Tồn chuẩn</th><th>Quản lý lô</th><th>Hạn sử dụng</th><th>Vị trí kho</th></tr></thead><tbody>{rows.map((row, index) => {
       const base = boolChoice(row.isInventoryBase ?? '') === 'CÓ';
       return <tr key={`${row.productCode}-${row.sku}-${index}`}><td>{index + 2}</td><td>{row.productCode || '—'}</td><td><strong>{row.sku || '—'}</strong></td><td><select value={variantChoice(row.variantKind ?? '')} onChange={(event) => updatePendingRow(index, 'variantKind', event.target.value)}><option value="">Chọn</option><option value="BASE">Đơn vị lẻ</option><option value="CARTON">Thùng</option><option value="OTHER">Quy cách khác</option></select></td><td><select value={String(row.unitCode ?? '').toUpperCase()} onChange={(event) => updatePendingRow(index, 'unitCode', event.target.value)}><option value="">Chọn đơn vị</option>{units.filter((unit) => unit.is_active).map((unit) => <option key={unit.id} value={unit.code.toUpperCase()}>{unit.code} · {unit.name}</option>)}</select></td><td><input inputMode="decimal" value={row.conversionToBase ?? ''} onChange={(event) => updatePendingRow(index, 'conversionToBase', event.target.value)} placeholder={base ? '1' : 'VD: 24'} /></td><td><select value={boolChoice(row.isInventoryBase ?? '')} onChange={(event) => { const value = event.target.value; updatePendingRow(index, 'isInventoryBase', value); if (value === 'KHÔNG') { updatePendingRow(index, 'lotTrackingMode', ''); updatePendingRow(index, 'expiryTrackingMode', ''); updatePendingRow(index, 'locationRequired', ''); } }}><option value="">Chọn</option><option value="CÓ">Có</option><option value="KHÔNG">Không</option></select></td><td><select disabled={!base} value={base ? lotChoice(row.lotTrackingMode ?? '') : ''} onChange={(event) => updatePendingRow(index, 'lotTrackingMode', event.target.value)}><option value="">Chọn</option><option value="KHÔNG">Không</option><option value="CÓ">Có</option></select></td><td><select disabled={!base} value={base ? expiryChoice(row.expiryTrackingMode ?? '') : ''} onChange={(event) => updatePendingRow(index, 'expiryTrackingMode', event.target.value)}><option value="">Chọn</option><option value="KHÔNG">Không quản lý</option><option value="TÙY CHỌN">Có thể nhập</option><option value="BẮT BUỘC">Bắt buộc nhập</option></select></td><td><select disabled={!base} value={base ? boolChoice(row.locationRequired ?? '') : ''} onChange={(event) => updatePendingRow(index, 'locationRequired', event.target.value)}><option value="">Chọn</option><option value="KHÔNG">Không bắt buộc</option><option value="CÓ">Bắt buộc</option></select></td></tr>;
