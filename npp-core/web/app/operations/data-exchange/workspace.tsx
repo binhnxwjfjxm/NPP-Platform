@@ -9,7 +9,7 @@ import { buildDataExchangeImportActions } from './data-exchange-import-actions';
 import {
   type Tab, type ImportKind, type Product, type Variant, type Category, type Brand, type Unit, type PriceList,
   type Channel, type CustomerGroup, type Customer, type Balance, type Movement, type PendingImport,
-  type OfficialRows, type QuotationRow, type MovementView, PRODUCT_COLUMNS, PRICING_COLUMNS, QUOTATION_COLUMNS, TABS, labelFor, humanizeMessage,
+  type OfficialRows, type QuotationRow, type MovementView, PRODUCT_COLUMNS, QUOTATION_COLUMNS, TABS, labelFor, humanizeMessage,
 } from './data-exchange-model';
 import { exactQuantity, exportTable, scaled12, formatScaled12, scopeKey, requestJson, idempotency } from './data-exchange-file-utils';
 
@@ -20,7 +20,8 @@ export default function DataExchangeWorkspace() {
   const [products, setProducts] = useState<Product[]>([]); const [categories, setCategories] = useState<Category[]>([]); const [brands, setBrands] = useState<Brand[]>([]); const [units, setUnits] = useState<Unit[]>([]);
   const [priceLists, setPriceLists] = useState<PriceList[]>([]); const [channels, setChannels] = useState<Channel[]>([]); const [groups, setGroups] = useState<CustomerGroup[]>([]); const [customers, setCustomers] = useState<Customer[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [message, setMessage] = useState('');
-  const [productColumns, setProductColumns] = useState<Set<string>>(new Set(PRODUCT_COLUMNS)); const [pricingColumns, setPricingColumns] = useState<Set<string>>(new Set(PRICING_COLUMNS));
+  const [productColumns, setProductColumns] = useState<Set<string>>(new Set(PRODUCT_COLUMNS));
+  const [pricingPriceListId, setPricingPriceListId] = useState('');
   const [stocktakeWarehouse, setStocktakeWarehouse] = useState(''); const [quotationScope, setQuotationScope] = useState<'all' | 'category' | 'sku'>('all'); const [quotationCategory, setQuotationCategory] = useState('');
   const [quotationSkus, setQuotationSkus] = useState(''); const [quotationContext, setQuotationContext] = useState({ channelId: '', customerGroupId: '', customerId: '', quantity: '1' });
   const [quotationRows, setQuotationRows] = useState<QuotationRow[]>([]); const [selectedBalanceKey, setSelectedBalanceKey] = useState(''); const [movementRows, setMovementRows] = useState<MovementView[]>([]);
@@ -43,6 +44,7 @@ export default function DataExchangeWorkspace() {
       requestJson<Customer[]>('/api/customers?limit=1000'), requestJson<Balance[]>('/api/inventory/balances?limit=1000'),
     ]);
     setProducts(nextProducts); setCategories(nextCategories); setBrands(nextBrands); setUnits(nextUnits); setPriceLists(nextLists); setChannels(nextChannels); setGroups(nextGroups); setCustomers(nextCustomers); setBalances(nextBalances);
+    if (!pricingPriceListId) setPricingPriceListId(nextLists.find((item) => item.is_active && item.list_type === 'BASE')?.id ?? '');
     if (!stocktakeWarehouse && nextBalances.length) setStocktakeWarehouse(nextBalances[0].warehouse_id);
   }
   useEffect(() => { refreshReferenceData().catch((cause) => setError(cause instanceof Error ? cause.message : 'Không tải được dữ liệu nền.')); }, []);
@@ -51,7 +53,7 @@ export default function DataExchangeWorkspace() {
   function toggleColumn(setter: (value: Set<string>) => void, current: Set<string>, column: string) { const next = new Set(current); if (next.has(column)) next.delete(column); else next.add(column); setter(next); }
 
   const { productTemplate, productExport, pricingExport, stocktakeExport, prepareImport, confirmPendingImport, updatePendingRow } = buildDataExchangeImportActions({
-    units, productColumns, pricingColumns, pendingImport, setPendingImport, refreshReferenceData, setMessage, setBusy, fail, begin, priceLists, warehouses, stocktakeWarehouse,
+    units, productColumns, pendingImport, setPendingImport, refreshReferenceData, setMessage, setBusy, fail, begin, priceLists, pricingPriceListId, warehouses, stocktakeWarehouse,
   });
 
   async function buildQuotation() {
@@ -89,9 +91,7 @@ export default function DataExchangeWorkspace() {
   function columnChooser(columns: readonly string[], selected: Set<string>, setter: (value: Set<string>) => void) {
     return <details className={styles.columns}><summary>Chọn thông tin muốn xuất ({selected.size}/{columns.length})</summary><div className={styles.columnGrid}>{columns.map((column) => <label key={column}><input type="checkbox" checked={selected.has(column)} onChange={() => toggleColumn(setter, selected, column)} />{labelFor(column)}</label>)}</div></details>;
   }
-  function previewTable() {
-    return <DataExchangeImportPreview ctx={{ pendingImport, tab, setPendingImport, busy, confirmPendingImport, units, updatePendingRow }} />;
-  }
+  function previewTable() { return <DataExchangeImportPreview ctx={{ pendingImport, tab, setPendingImport, busy, confirmPendingImport, units, updatePendingRow }} />; }
 
-  return <DataExchangeView ctx={{ tab, setTab, setError, setMessage, setPendingImport, busy, setBusy, error, message, fileRefs, fileInput, productTemplate, productExport, columnChooser, productColumns, setProductColumns, previewTable, pricingExport, pricingColumns, setPricingColumns, stocktakeExport, stocktakeWarehouse, setStocktakeWarehouse, warehouses, buildQuotation, quotationExport, quotationRows, quotationScope, setQuotationScope, quotationCategory, setQuotationCategory, categories, quotationSkus, setQuotationSkus, quotationContext, setQuotationContext, channels, groups, customers, loadMovements, selectedBalanceKey, setSelectedBalanceKey, setMovementRows, balances, selectedBalance, movementRows, refreshReferenceData, begin, fail }} />;
+  return <DataExchangeView ctx={{ tab, setTab, setError, setMessage, setPendingImport, busy, setBusy, error, message, fileRefs, fileInput, productTemplate, productExport, columnChooser, productColumns, setProductColumns, previewTable, pricingExport, priceLists, pricingPriceListId, setPricingPriceListId, stocktakeExport, stocktakeWarehouse, setStocktakeWarehouse, warehouses, buildQuotation, quotationExport, quotationRows, quotationScope, setQuotationScope, quotationCategory, setQuotationCategory, categories, quotationSkus, setQuotationSkus, quotationContext, setQuotationContext, channels, groups, customers, loadMovements, selectedBalanceKey, setSelectedBalanceKey, setMovementRows, balances, selectedBalance, movementRows, refreshReferenceData, begin, fail }} />;
 }

@@ -1,4 +1,3 @@
-
 export type Tab = 'products' | 'pricing' | 'stocktake' | 'quotation' | 'movements';
 export type ImportKind = 'products' | 'pricing' | 'stocktake';
 export type Product = {
@@ -53,10 +52,8 @@ export const PRODUCT_REQUIRED_COLUMNS = [
   'productCode', 'productName', 'productIsCatalogVisible', 'productIsOrderable', 'productIsActive',
   'sku', 'skuName', 'variantKind', 'isInventoryBase', 'isSellable', 'isCatalogVisible', 'isActive',
 ] as const;
-export const PRICING_COLUMNS = [
-  'priceListCode', 'priceListName', 'listType', 'currencyCode', 'sku', 'sourceKey', 'adjustmentType',
-  'amountMinor', 'rateBps', 'minQuantity', 'maxQuantity', 'effectiveFrom', 'effectiveTo', 'externalRuleCode', 'note', 'isActive',
-] as const;
+export const PRICING_COLUMNS = ['sku', 'amountMinor'] as const;
+export const PRICE_UPDATE_COLUMNS = PRICING_COLUMNS;
 export const STOCKTAKE_COLUMNS = ['warehouseCode', 'locationCode', 'sku', 'lotCode', 'actualCount'] as const;
 export const QUOTATION_COLUMNS = ['sku', 'productName', 'skuName', 'quantity', 'currencyCode', 'unitPriceMinor', 'lineTotalMinor', 'priceListCode'] as const;
 
@@ -67,7 +64,7 @@ export const COLUMN_LABELS: Record<string, string> = {
   isCatalogVisible: 'Hiển thị SKU khi bán hàng', isActive: 'SKU đang sử dụng', unitCode: 'Đơn vị tính', conversionToBase: 'Hệ số quy đổi về đơn vị tồn chuẩn',
   lotTrackingMode: 'Quản lý theo lô', expiryTrackingMode: 'Quản lý hạn sử dụng', locationRequired: 'Bắt buộc chọn vị trí kho',
   priceListCode: 'Mã bảng giá', priceListName: 'Tên bảng giá', listType: 'Loại bảng giá', currencyCode: 'Tiền tệ', sourceKey: 'Mã nguồn dòng giá',
-  adjustmentType: 'Cách tính giá', amountMinor: 'Số tiền', rateBps: 'Tỷ lệ', minQuantity: 'Số lượng từ', maxQuantity: 'Số lượng đến', effectiveFrom: 'Hiệu lực từ',
+  adjustmentType: 'Cách tính giá', amountMinor: 'Giá bán (VND)', rateBps: 'Tỷ lệ', minQuantity: 'Số lượng từ', maxQuantity: 'Số lượng đến', effectiveFrom: 'Hiệu lực từ',
   effectiveTo: 'Hiệu lực đến', externalRuleCode: 'Mã quy tắc ngoài', note: 'Ghi chú', warehouseCode: 'Mã kho', locationCode: 'Mã vị trí', lotCode: 'Mã lô',
   actualCount: 'Số đếm thực tế', quantity: 'Số lượng', unitPriceMinor: 'Đơn giá', lineTotalMinor: 'Thành tiền',
 };
