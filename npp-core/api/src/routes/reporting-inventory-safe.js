@@ -5,17 +5,26 @@ import {
 
 const PLACEHOLDER_PATTERN = /\$(\d+)/g;
 
+export function compactReportingQueryBindings(sql, values = []) {
+  const referenced = [...new Set([...String(sql).matchAll(PLACEHOLDER_PATTERN)].map((match) => Number(match[1])))]
+    .sort((left, right) => left - right);
+  for (const number of referenced) {
+    if (!Number.isInteger(number) || number < 1 || values.length < number) {
+      const error = new Error(`reporting_query_binding_missing:${number}:${values.length}`);
+      error.code = 'REPORTING_QUERY_BINDING_MISSING';
+      throw error;
+    }
+  }
+  const indexByOriginal = new Map(referenced.map((number, index) => [number, index + 1]));
+  const rewrittenSql = String(sql).replace(PLACEHOLDER_PATTERN, (_match, rawNumber) => `$${indexByOriginal.get(Number(rawNumber))}`);
+  return Object.freeze({
+    sql: rewrittenSql,
+    values: Object.freeze(referenced.map((number) => values[number - 1])),
+  });
+}
+
 export function exactReportingQueryValues(sql, values = []) {
-  let highest = 0;
-  for (const match of String(sql).matchAll(PLACEHOLDER_PATTERN)) {
-    highest = Math.max(highest, Number(match[1]));
-  }
-  if (values.length < highest) {
-    const error = new Error(`reporting_query_binding_missing:${highest}:${values.length}`);
-    error.code = 'REPORTING_QUERY_BINDING_MISSING';
-    throw error;
-  }
-  return values.slice(0, highest);
+  return [...compactReportingQueryBindings(sql, values).values];
 }
 
 function exactBindingAdapter(adapter) {
@@ -24,7 +33,8 @@ function exactBindingAdapter(adapter) {
   }
   return Object.freeze({
     query(sql, values = []) {
-      return adapter.query(sql, exactReportingQueryValues(sql, values));
+      const compacted = compactReportingQueryBindings(sql, values);
+      return adapter.query(compacted.sql, [...compacted.values]);
     },
   });
 }
@@ -36,6 +46,7 @@ export function inventoryReport(adapter, ...args) {
 export { normalizeSlowDays };
 
 export const reportingInventoryBindingInternals = Object.freeze({
+  compactReportingQueryBindings,
   exactReportingQueryValues,
   exactBindingAdapter,
 });
