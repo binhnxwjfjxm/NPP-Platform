@@ -76,8 +76,9 @@ test("MCP action controls use restrained satin champagne metal without metalizin
   assert.match(metalActions, /--mcp-metal-champagne-surface:/);
   assert.match(metalActions, /--mcp-metal-bronze-surface:/);
   assert.match(metalActions, /--mcp-metal-danger-surface:/);
-  assert.match(metalActions, /--mcp-metal-bronze-lightest:\s*#6d4008/i);
-  assert.match(metalActions, /--mcp-metal-bronze-hover-lightest:\s*#754706/i);
+  assert.match(metalActions, /--mcp-metal-brush:/);
+  assert.match(metalActions, /--mcp-metal-bronze-lightest:\s*#dfc18c/i);
+  assert.match(metalActions, /--mcp-metal-bronze-hover-lightest:\s*#e5cb9d/i);
   assert.match(metalActions, /repeating-linear-gradient\(\s*0deg/);
   assert.match(metalActions, /\.button:not\(\.primary\):not\(\.danger\)/);
   assert.match(metalActions, /\.button\.primary/);
@@ -90,12 +91,22 @@ test("MCP action controls use restrained satin champagne metal without metalizin
   assert.match(metalActions, /\.report-chip/);
   assert.match(metalActions, /\.mcp-add-customer-fab/);
   assert.match(metalActions, /\.dashboard-alert-card > strong/);
+  assert.match(metalActions, /\.button\.primary[\s\S]*?color:\s*var\(--mcp-metal-ink\)\s*!important/);
   assert.match(metalActions, /\[class\*="_customerList__"\] button[\s\S]*?text-shadow:\s*none/);
   assert.match(metalActions, /\[class\*="_variantButton__"\][\s\S]*?text-shadow:\s*none/);
   assert.match(metalActions, /color:\s*currentcolor\s*!important/);
   assert.doesNotMatch(metalActions, /currentColor/);
   assert.doesNotMatch(metalActions, /(?:^|,|\n)\s*\.card\s*(?:,|\{)/m);
   assert.doesNotMatch(metalActions, /(?:^|,|\n)\s*\.dashboard-(?:alert|command|route)-card\s*(?:,|\{)/m);
+});
+
+test("final satin layer normalizes all five dock tiles to one baseline", () => {
+  assert.match(metalActions, /\.bottom-nav-link\s*\{[\s\S]*?min-height:\s*54px;[\s\S]*?transform:\s*none\s*!important/);
+  assert.match(metalActions, /\.bottom-nav-link\.primary,[\s\S]*?\.bottom-nav-link\.primary\.active\s*\{[\s\S]*?transform:\s*none\s*!important/);
+  assert.match(metalActions, /\.bottom-nav-link\.primary \.mobile-app-dock-icon\s*\{[\s\S]*?width:\s*30px\s*!important;[\s\S]*?height:\s*25px\s*!important;[\s\S]*?border:\s*0\s*!important;[\s\S]*?background:\s*transparent\s*!important;[\s\S]*?box-shadow:\s*none\s*!important/);
+  assert.match(metalActions, /\.bottom-nav-link\.primary \.mobile-app-dock-icon\s*\{[\s\S]*?border-radius:\s*0\s*!important/);
+  assert.match(metalActions, /\.bottom-nav-link\.primary\.active \.mobile-app-dock-icon\s*\{[\s\S]*?box-shadow:\s*none\s*!important/);
+  assert.match(metalActions, /\.bottom-nav-link\.primary \.mobile-app-dock-label\s*\{[\s\S]*?margin-top:\s*0\s*!important/);
 });
 
 test("phone shell has one mobile home launchpad and one scroll region", () => {

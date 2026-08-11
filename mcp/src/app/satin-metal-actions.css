@@ -2,98 +2,75 @@
  * Phase 10 #19 — MCP satin metal action system.
  *
  * Visual-only layer based on ui-mau-metal.png:
- * - keep content cards/surfaces matte;
- * - apply champagne/bronze brushed metal only to controls and CTA affordances;
- * - preserve danger semantics with a restrained rose-metal variant.
+ * - content cards/surfaces stay matte;
+ * - action controls use restrained champagne satin with very fine brushing;
+ * - active/primary controls use a slightly richer champagne tone, not dark wood/brass;
+ * - destructive actions preserve danger semantics.
  */
 
 :root {
-  --mcp-metal-border: #a87835;
-  --mcp-metal-border-strong: #815318;
-  --mcp-metal-ink: #54340d;
-  --mcp-metal-ink-soft: #6b4a20;
-  --mcp-metal-cream: #fff8e9;
-  --mcp-metal-bronze-lightest: #6d4008;
-  --mcp-metal-bronze-mid: #543008;
-  --mcp-metal-bronze-dark: #603606;
-  --mcp-metal-bronze-hover-lightest: #754706;
+  --mcp-metal-border: #b58e59;
+  --mcp-metal-border-strong: #98703b;
+  --mcp-metal-ink: #3d2a18;
+  --mcp-metal-ink-soft: #5c4731;
+  --mcp-metal-cream: #fffaf0;
+  --mcp-metal-bronze-lightest: #dfc18c;
+  --mcp-metal-bronze-mid: #c99f62;
+  --mcp-metal-bronze-dark: #d6b477;
+  --mcp-metal-bronze-hover-lightest: #e5cb9d;
+
+  --mcp-metal-brush:
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.022) 0 1px,
+      rgba(92, 65, 38, 0.012) 1px 2px,
+      transparent 2px 9px
+    );
 
   --mcp-metal-champagne-surface:
-    linear-gradient(104deg, transparent 0 31%, rgba(255, 255, 255, 0.16) 43%, transparent 57%),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, 0.055) 0 1px,
-      rgba(94, 58, 17, 0.025) 1px 2px,
-      transparent 2px 4px
-    ),
-    linear-gradient(180deg, #f6e7c7 0%, #e1c18a 49%, #eed7ac 100%);
+    linear-gradient(102deg, transparent 0 34%, rgba(255, 255, 255, 0.18) 47%, transparent 61%),
+    var(--mcp-metal-brush),
+    linear-gradient(180deg, #f7eddc 0%, #e8d2b0 50%, #f1e1c7 100%);
 
   --mcp-metal-champagne-hover:
-    linear-gradient(104deg, transparent 0 29%, rgba(255, 255, 255, 0.22) 44%, transparent 60%),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, 0.065) 0 1px,
-      rgba(94, 58, 17, 0.025) 1px 2px,
-      transparent 2px 4px
-    ),
-    linear-gradient(180deg, #faedcf 0%, #e6c78f 49%, #f1ddb5 100%);
+    linear-gradient(102deg, transparent 0 32%, rgba(255, 255, 255, 0.22) 47%, transparent 63%),
+    var(--mcp-metal-brush),
+    linear-gradient(180deg, #faf1e2 0%, #ecd9ba 50%, #f4e6d0 100%);
 
-  /*
-   * The bronze base stays deliberately dark: even the lightest hover stop,
-   * after the translucent sheen/brushing layers are composited, keeps cream
-   * action text above the 4.5:1 small-text contrast floor.
-   */
   --mcp-metal-bronze-surface:
-    linear-gradient(104deg, transparent 0 30%, rgba(255, 247, 228, 0.12) 44%, transparent 60%),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, 0.04) 0 1px,
-      rgba(75, 45, 12, 0.045) 1px 2px,
-      transparent 2px 4px
-    ),
+    linear-gradient(102deg, transparent 0 33%, rgba(255, 250, 238, 0.14) 47%, transparent 62%),
+    var(--mcp-metal-brush),
     linear-gradient(
       180deg,
       var(--mcp-metal-bronze-lightest) 0%,
-      var(--mcp-metal-bronze-mid) 50%,
+      var(--mcp-metal-bronze-mid) 52%,
       var(--mcp-metal-bronze-dark) 100%
     );
 
   --mcp-metal-bronze-hover:
-    linear-gradient(104deg, transparent 0 28%, rgba(255, 247, 228, 0.14) 44%, transparent 61%),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, 0.05) 0 1px,
-      rgba(75, 45, 12, 0.045) 1px 2px,
-      transparent 2px 4px
-    ),
+    linear-gradient(102deg, transparent 0 31%, rgba(255, 250, 238, 0.18) 47%, transparent 64%),
+    var(--mcp-metal-brush),
     linear-gradient(
       180deg,
       var(--mcp-metal-bronze-hover-lightest) 0%,
-      var(--mcp-metal-bronze-dark) 50%,
-      var(--mcp-metal-bronze-lightest) 100%
+      #cda66d 52%,
+      #dfc28f 100%
     );
 
   --mcp-metal-danger-surface:
-    linear-gradient(104deg, transparent 0 31%, rgba(255, 255, 255, 0.16) 44%, transparent 58%),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, 0.05) 0 1px,
-      rgba(105, 36, 29, 0.025) 1px 2px,
-      transparent 2px 4px
-    ),
-    linear-gradient(180deg, #f7d9d3 0%, #dfa098 50%, #efc0b8 100%);
+    linear-gradient(102deg, transparent 0 34%, rgba(255, 255, 255, 0.16) 47%, transparent 61%),
+    var(--mcp-metal-brush),
+    linear-gradient(180deg, #f7e3df 0%, #e6b8b1 52%, #efd0ca 100%);
 
   --mcp-metal-light-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.72),
-    inset 0 -1px 0 rgba(91, 57, 18, 0.19),
-    0 4px 10px rgba(91, 57, 18, 0.13),
-    0 1px 2px rgba(91, 57, 18, 0.09);
+    inset 0 1px 0 rgba(255, 255, 255, 0.66),
+    inset 0 -1px 0 rgba(82, 57, 31, 0.11),
+    0 2px 5px rgba(82, 57, 31, 0.10);
 
   --mcp-metal-strong-shadow:
-    inset 0 1px 0 rgba(255, 249, 235, 0.32),
-    inset 0 -1px 0 rgba(69, 40, 8, 0.30),
-    0 7px 16px rgba(91, 57, 18, 0.18),
-    0 2px 4px rgba(69, 40, 8, 0.13);
+    inset 0 1px 0 rgba(255, 252, 244, 0.48),
+    inset 0 -1px 0 rgba(82, 57, 31, 0.14),
+    0 4px 10px rgba(82, 57, 31, 0.13);
 }
 
 /* Light champagne controls: secondary actions, chips, close controls and quick navigation. */
@@ -118,10 +95,10 @@
   background: var(--mcp-metal-champagne-surface) !important;
   color: var(--mcp-metal-ink) !important;
   box-shadow: var(--mcp-metal-light-shadow) !important;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.38);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28);
 }
 
-/* Strong bronze controls retain the existing primary-action hierarchy. */
+/* Primary controls are richer champagne, not a dark brown slab. */
 .button.primary,
 button.primary,
 .mcp-add-customer-fab,
@@ -129,9 +106,9 @@ button.primary,
 .mobile-home-primary-action {
   border: 1px solid var(--mcp-metal-border-strong) !important;
   background: var(--mcp-metal-bronze-surface) !important;
-  color: var(--mcp-metal-cream) !important;
+  color: var(--mcp-metal-ink) !important;
   box-shadow: var(--mcp-metal-strong-shadow) !important;
-  text-shadow: 0 1px 1px rgba(58, 34, 7, 0.42);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
 /* Destructive actions stay unmistakably destructive while sharing the same satin construction. */
@@ -139,17 +116,17 @@ button.primary,
 button.danger,
 .mcp-photo-preview > button,
 [data-app-menu-panel="true"] button[class*="_danger__"] {
-  border: 1px solid #a94b40 !important;
+  border: 1px solid #aa5b50 !important;
   background: var(--mcp-metal-danger-surface) !important;
-  color: #7c251d !important;
+  color: #702c24 !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.58),
-    inset 0 -1px 0 rgba(117, 38, 30, 0.18),
-    0 4px 10px rgba(117, 38, 30, 0.13) !important;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.30);
+    inset 0 1px 0 rgba(255, 255, 255, 0.54),
+    inset 0 -1px 0 rgba(117, 38, 30, 0.12),
+    0 2px 5px rgba(117, 38, 30, 0.10) !important;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 
-/* Selected controls use the richer bronze surface instead of introducing a second accent color. */
+/* Selected controls use the same richer champagne family. */
 .mcp-status-chips button.active,
 .report-chip.selected,
 .mcp-order-picker-filters button.active,
@@ -157,9 +134,9 @@ button.danger,
 [class*="_mobileTabs__"] [class*="_activeTab__"] {
   border-color: var(--mcp-metal-border-strong) !important;
   background: var(--mcp-metal-bronze-surface) !important;
-  color: var(--mcp-metal-cream) !important;
+  color: var(--mcp-metal-ink) !important;
   box-shadow: var(--mcp-metal-strong-shadow) !important;
-  text-shadow: 0 1px 1px rgba(58, 34, 7, 0.40);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
 .mcp-status-chips button.active b,
@@ -184,14 +161,14 @@ button.danger,
   color: var(--mcp-metal-ink) !important;
   box-shadow: var(--mcp-metal-light-shadow);
   padding: 7px 11px;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.38);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 
-/* The dark expanded app menu uses bronze metal so its text contrast remains intact. */
+/* Expanded app-menu actions use the richer champagne tile on the dark panel. */
 [data-app-menu-panel="true"] button:not([class*="_danger__"]) {
-  border-color: rgba(226, 190, 129, 0.58) !important;
+  border-color: rgba(214, 180, 119, 0.72) !important;
   background: var(--mcp-metal-bronze-surface) !important;
-  color: var(--mcp-metal-cream) !important;
+  color: var(--mcp-metal-ink) !important;
   box-shadow: var(--mcp-metal-strong-shadow) !important;
 }
 
@@ -201,11 +178,10 @@ button.danger,
 
 [data-app-menu-panel="true"] button[aria-current="page"],
 [data-app-menu-panel="true"] button[class*="_menuItemActive__"] {
-  border-color: rgba(255, 226, 174, 0.82) !important;
-  filter: brightness(1.07) saturate(1.04);
+  border-color: rgba(247, 228, 196, 0.90) !important;
+  filter: brightness(1.03) saturate(1.01);
 }
 
-/* Top-bar menu button matches the light champagne reference instead of translucent glass. */
 [data-app-top-bar] button {
   min-width: 42px;
   min-height: 42px;
@@ -213,7 +189,7 @@ button.danger,
 
 [data-app-top-bar] button[aria-expanded="true"] {
   border-color: var(--mcp-metal-border-strong) !important;
-  filter: brightness(0.98) saturate(1.03);
+  filter: brightness(0.99);
 }
 
 /* Preserve readable disabled states after replacing flat fills. */
@@ -227,8 +203,8 @@ button.danger,
 [class*="_toolButton__"]:disabled,
 [class*="_quantityControl__"] button:disabled,
 [class*="_footer__"] button:disabled {
-  filter: grayscale(0.18);
-  opacity: 0.52;
+  filter: grayscale(0.16);
+  opacity: 0.54;
   box-shadow: none !important;
 }
 
@@ -240,7 +216,6 @@ button.danger,
   text-shadow: none;
 }
 
-/* Fine-pointer hover keeps the surface satin, not glossy or floating excessively. */
 @media (hover: hover) and (pointer: fine) {
   .button:not(.primary):not(.danger):hover:not(:disabled),
   .sheet-close:hover,
@@ -261,50 +236,40 @@ button.danger,
     border-color: var(--mcp-metal-border-strong) !important;
     background: var(--mcp-metal-champagne-hover) !important;
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.78),
-      inset 0 -1px 0 rgba(91, 57, 18, 0.21),
-      0 6px 12px rgba(91, 57, 18, 0.15) !important;
+      inset 0 1px 0 rgba(255, 255, 255, 0.70),
+      inset 0 -1px 0 rgba(82, 57, 31, 0.12),
+      0 3px 7px rgba(82, 57, 31, 0.11) !important;
   }
 
   .button.primary:hover:not(:disabled),
   button.primary:hover:not(:disabled),
   .mcp-add-customer-fab:hover,
   .order-picker-done-button:hover:not(:disabled),
-  .mobile-home-primary-action:hover {
-    background: var(--mcp-metal-bronze-hover) !important;
-  }
-
+  .mobile-home-primary-action:hover,
   [data-app-menu-panel="true"] button:not([class*="_danger__"]):hover:not(:disabled) {
     background: var(--mcp-metal-bronze-hover) !important;
-    filter: brightness(1.03);
   }
 }
 
 @media (max-width: 820px) {
-  /* Reference home: one rich brushed CTA, five light champagne quick actions. */
+  /* Home reference: satin champagne CTA with fine brushing and low depth. */
   .app-shell[data-active-href="/"] .mobile-home-primary-action {
     border-radius: 18px;
     background: var(--mcp-metal-bronze-surface) !important;
-    color: var(--mcp-metal-cream) !important;
+    color: var(--mcp-metal-ink) !important;
     box-shadow:
-      inset 0 1px 0 rgba(255, 249, 235, 0.34),
-      inset 0 -1px 0 rgba(69, 40, 8, 0.32),
-      0 10px 22px rgba(91, 57, 18, 0.20) !important;
+      inset 0 1px 0 rgba(255, 255, 255, 0.44),
+      inset 0 -1px 0 rgba(82, 57, 31, 0.13),
+      0 5px 12px rgba(82, 57, 31, 0.13) !important;
   }
 
   .app-shell[data-active-href="/"] .mobile-home-primary-action > span:first-child {
-    border: 1px solid rgba(255, 240, 211, 0.34);
-    background:
-      repeating-linear-gradient(
-        0deg,
-        rgba(255, 255, 255, 0.06) 0 1px,
-        transparent 1px 4px
-      ),
-      rgba(255, 248, 232, 0.13) !important;
-    color: var(--mcp-metal-cream) !important;
+    border: 1px solid rgba(126, 89, 45, 0.26);
+    background: rgba(255, 250, 240, 0.24) !important;
+    color: var(--mcp-metal-ink) !important;
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.16),
-      0 3px 8px rgba(65, 38, 8, 0.14);
+      inset 0 1px 0 rgba(255, 255, 255, 0.34),
+      0 1px 3px rgba(82, 57, 31, 0.09);
   }
 
   .app-shell[data-active-href="/"] .mobile-home-primary-action :is(strong, small, b) {
@@ -316,101 +281,94 @@ button.danger,
     background: var(--mcp-metal-champagne-surface) !important;
     color: var(--mcp-metal-ink) !important;
     box-shadow: var(--mcp-metal-light-shadow) !important;
-    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.38);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.24);
   }
 
   .app-shell[data-active-href="/"] .mobile-home-quick-grid a :is(span, strong) {
     color: inherit !important;
   }
 
-  /* Five-item dock keeps existing geometry; each navigation control becomes a satin tile. */
+  /* Bottom dock: all five tiles share one baseline and one icon geometry. */
   .app-content-shell > [data-bottom-navigation="true"] {
-    border-top-color: rgba(131, 85, 28, 0.24) !important;
-    background: rgba(250, 247, 240, 0.96) !important;
+    border-top-color: rgba(126, 89, 45, 0.18) !important;
+    background: rgba(250, 247, 240, 0.97) !important;
     box-shadow:
-      0 -8px 20px rgba(91, 57, 18, 0.10),
-      inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
-    -webkit-backdrop-filter: blur(18px) saturate(1.15);
-    backdrop-filter: blur(18px) saturate(1.15);
+      0 -5px 14px rgba(82, 57, 31, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.66) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(1.08);
+    backdrop-filter: blur(18px) saturate(1.08);
   }
 
   .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link {
-    border: 1px solid rgba(169, 120, 53, 0.72) !important;
+    min-height: 54px;
+    transform: none !important;
+    border: 1px solid rgba(181, 142, 89, 0.68) !important;
     background: var(--mcp-metal-champagne-surface) !important;
     color: var(--mcp-metal-ink-soft) !important;
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.68),
-      inset 0 -1px 0 rgba(91, 57, 18, 0.15),
-      0 2px 5px rgba(91, 57, 18, 0.09) !important;
-    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.34);
+      inset 0 1px 0 rgba(255, 255, 255, 0.62),
+      inset 0 -1px 0 rgba(82, 57, 31, 0.09),
+      0 1px 3px rgba(82, 57, 31, 0.08) !important;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.22);
   }
 
-  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.active:not(.primary) {
+  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.active {
     border-color: var(--mcp-metal-border-strong) !important;
-    background: var(--mcp-metal-champagne-hover) !important;
+    background: var(--mcp-metal-bronze-surface) !important;
     color: var(--mcp-metal-ink) !important;
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.76),
-      inset 0 -1px 0 rgba(91, 57, 18, 0.20),
-      0 3px 7px rgba(91, 57, 18, 0.12) !important;
+      inset 0 1px 0 rgba(255, 255, 255, 0.48),
+      inset 0 -1px 0 rgba(82, 57, 31, 0.12),
+      0 2px 5px rgba(82, 57, 31, 0.10) !important;
   }
 
-  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link .nav-icon {
+  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link .nav-icon,
+  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.primary .mobile-app-dock-icon {
+    width: 30px !important;
+    height: 25px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
     background: transparent !important;
     color: currentcolor !important;
     box-shadow: none !important;
+    font-size: 19px !important;
   }
 
-  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.primary {
+  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.primary,
+  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.primary.active {
+    transform: none !important;
     color: var(--mcp-metal-ink) !important;
-  }
-
-  .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.primary .mobile-app-dock-icon {
-    border: 4px solid rgba(255, 250, 240, 0.88) !important;
-    background: var(--mcp-metal-bronze-surface) !important;
-    color: var(--mcp-metal-cream) !important;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 249, 235, 0.30),
-      inset 0 -1px 0 rgba(69, 40, 8, 0.28),
-      0 7px 14px rgba(91, 57, 18, 0.22) !important;
   }
 
   .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.primary .mobile-app-dock-label {
-    color: var(--mcp-metal-ink) !important;
+    margin-top: 0 !important;
+    color: inherit !important;
   }
 
   .app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.primary.active .mobile-app-dock-icon {
-    box-shadow:
-      0 0 0 2px #d8b77e,
-      inset 0 1px 0 rgba(255, 249, 235, 0.34),
-      inset 0 -1px 0 rgba(69, 40, 8, 0.30),
-      0 7px 14px rgba(91, 57, 18, 0.24) !important;
+    box-shadow: none !important;
   }
 
   .mcp-add-customer-fab {
     box-shadow:
-      inset 0 1px 0 rgba(255, 249, 235, 0.30),
-      inset 0 -1px 0 rgba(69, 40, 8, 0.28),
-      0 7px 16px rgba(91, 57, 18, 0.20) !important;
+      inset 0 1px 0 rgba(255, 255, 255, 0.46),
+      inset 0 -1px 0 rgba(82, 57, 31, 0.13),
+      0 4px 10px rgba(82, 57, 31, 0.13) !important;
   }
 }
 
-/*
- * Metal shadows are decorative; keyboard focus must stay stronger than them.
- * Re-apply the existing opaque inner/outer focus ring after every metal layer.
- */
+/* Metal shadows are decorative; keyboard focus stays stronger than them. */
 .app-shell :is(button, a.button, [role="button"], [role="tab"]):focus-visible,
 .app-shell[data-active-href="/"] .mobile-home-primary-action:focus-visible,
 .app-shell[data-active-href="/"] .mobile-home-quick-grid a:focus-visible,
-.app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link:focus-visible,
-.app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link.active:not(.primary):focus-visible {
+.app-content-shell > [data-bottom-navigation="true"] .bottom-nav-link:focus-visible {
   outline: 2px solid var(--npp-color-focus-inner) !important;
   outline-offset: 2px;
   box-shadow:
     0 0 0 4px var(--npp-color-focus-outer),
-    inset 0 1px 0 rgba(255, 255, 255, 0.62),
-    inset 0 -1px 0 rgba(91, 57, 18, 0.18),
-    0 4px 10px rgba(91, 57, 18, 0.13) !important;
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
+    inset 0 -1px 0 rgba(82, 57, 31, 0.10),
+    0 2px 5px rgba(82, 57, 31, 0.10) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
