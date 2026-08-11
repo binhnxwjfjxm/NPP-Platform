@@ -194,9 +194,13 @@ export function createIdempotencyReplayResponse(record) {
   };
 }
 
+function responseIsRetryableFailure(response) {
+  return Number(response?.statusCode) >= 500 || response?.body?.error?.retryable === true;
+}
+
 function failedRecordIsRetryable(record) {
   return record?.status === 'failed'
-    && (Number(record.response_status) >= 500 || record.response_body?.error?.retryable === true);
+    && responseIsRetryableFailure({ statusCode: record.response_status, body: record.response_body });
 }
 
 function responseForExistingRecord(record, requestFingerprint, requestId, receivedAt) {
@@ -296,7 +300,11 @@ export async function executeRequestWithIdempotency({
 
   try {
     const response = await onProcess();
-    await idempotencyStore.markCompleted(scope, requestId, response);
+    if (responseIsRetryableFailure(response)) {
+      await idempotencyStore.markFailed(scope, requestId, response);
+    } else {
+      await idempotencyStore.markCompleted(scope, requestId, response);
+    }
     return { response, replayed: false };
   } catch (error) {
     const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 503;
