@@ -4,6 +4,7 @@ import { PwaRegister } from './pwa-register';
 import './globals.css';
 import './hung-phat-warm-gold.css';
 import './admin-mobile-app.css';
+import './admin-management-shell.css';
 
 export const metadata: Metadata = {
   title: 'Admin MCP/NPP — Hưng Phát',
@@ -18,34 +19,15 @@ export const metadata: Metadata = {
     shortcut: '/icons/admin-192.png',
     apple: [{ url: '/icons/admin-180.png', sizes: '180x180', type: 'image/png' }],
   },
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'black-translucent',
-    title: 'Admin Hưng Phát',
-  },
-  other: {
-    'mobile-web-app-capable': 'yes',
-  },
-  formatDetection: {
-    telephone: false,
-  },
+  appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'Admin Hưng Phát' },
+  other: { 'mobile-web-app-capable': 'yes' },
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  viewportFit: 'cover',
-  colorScheme: 'light',
-  themeColor: '#2b180b',
+  width: 'device-width', initialScale: 1, viewportFit: 'cover', colorScheme: 'light', themeColor: '#2b180b',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
-  return (
-    <html lang="vi">
-      <body>
-        <PwaRegister />
-        {children}
-      </body>
-    </html>
-  );
+  return <html lang="vi"><body><PwaRegister />{children}</body></html>;
 }

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { AdminIcon } from './admin-icons';
 import { AdminShell } from './admin-shell';
 import { loadControlTower } from '@/lib/control-tower';
@@ -19,111 +20,30 @@ function exactDecimal(value: string): string {
   return `${sign}${grouped}${fraction ? `,${fraction}` : ''}`;
 }
 
-function nonZero(value: string): boolean { return value !== '—' && !/^0(?:\.0+)?$/.test(value); }
-
 export default async function AdminOverviewPage() {
   const data = await loadControlTower().catch(() => null);
-  const nppOperationsUrl = (process.env.NPP_OPERATIONS_URL?.trim() || 'https://npp-platform.vercel.app').replace(/\/$/, '');
-
   const sales = data?.management.sales?.summary;
   const inventory = data?.management.inventory?.summary;
   const logistics = data?.management.logistics?.summary;
   const grossMargin = data?.management.grossMargin?.summary;
-  const employeeMcp = data?.management.employeeMcp?.summary;
-  const cod = data?.management.cod;
-  const aging = data?.management.aging;
-
-  const inventoryExceptions = text(inventory, 'costingExceptionCount');
-  const failedDeliveries = text(logistics, 'failedCount');
-  const rescheduledDeliveries = text(logistics, 'rescheduledCount');
-  const pendingDeliveryResults = text(logistics, 'pendingResultCount');
-  const codNeedsAttention = Boolean(cod && (
-    cod.hasPendingHandovers || cod.hasDiscrepancies || cod.hasOverduePromises || cod.hasLifecycleExceptions || cod.hasCurrencyLineageExceptions
-  ));
-  const needAttention = !data || data.warnings.length > 0 || codNeedsAttention || nonZero(inventoryExceptions) || nonZero(failedDeliveries) || nonZero(rescheduledDeliveries) || nonZero(pendingDeliveryResults);
-  const grossMarginVnd = text(grossMargin, 'grossMarginVnd');
 
   return (
-    <AdminShell
-      activeSection="overview"
-      kicker="Phase 8.7 · Control Tower"
-      title="Tổng quan điều hành"
-      subtitle={data ? `Kỳ ${data.filters.from} → ${data.filters.to} · ${data.timezone}` : 'Tổng hợp quản lý từ các contract báo cáo NPP canonical.'}
-    >
-      {!data ? <p className="warning compactWarning" role="alert">Control Tower tạm thời chưa tải được. NPP Operations vẫn là màn nghiệp vụ chi tiết.</p> : null}
-      {data?.warnings.length ? <p className="warning compactWarning" role="alert">Một số nguồn đang thiếu: {data.warnings.map((item) => item.family).join(', ')}.</p> : null}
+    <AdminShell activeSection="overview" title="Tổng quan quản trị" subtitle="Tín hiệu ưu tiên, tình hình vận hành và các quyết định cần chú ý.">
+      {!data ? <p className="warning compactWarning" role="alert">Dữ liệu tổng hợp tạm thời chưa sẵn sàng.</p> : null}
+      {data?.warnings.length ? <p className="warning compactWarning" role="alert">Một số nguồn dữ liệu đang chưa đầy đủ.</p> : null}
 
-      <section className="card managementHero" aria-label="Tình trạng cần quản lý">
-        <span className="managementHeroIcon"><AdminIcon name="exception" size={28} /></span>
-        <div className="managementHeroCopy">
-          <p>Control Tower</p>
-          <h2>{needAttention ? 'Có tín hiệu cần quản lý xem' : 'Chưa có cảnh báo nổi bật trong dữ liệu đã tải'}</h2>
-          <span>Admin chỉ tổng hợp và cảnh báo; xử lý chi tiết mở lại đúng màn NPP Operations.</span>
-        </div>
-        <a className="managementHeroAction" href={`${nppOperationsUrl}/operations/audit-history`}>
-          Xem audit <AdminIcon name="chevronRight" size={18} />
-        </a>
+      <section className="metricGrid appMetricGrid" aria-label="KPI quản trị">
+        <article className="card metricCard"><span className="iconBubble"><AdminIcon name="clipboard" /></span><div className="metricCopy"><span>Đơn bán hiệu lực</span><strong>{text(sales, 'effectiveOrderCount')}</strong></div></article>
+        <article className="card metricCard"><span className="iconBubble"><AdminIcon name="warehouse" /></span><div className="metricCopy"><span>SKU đang có tồn</span><strong>{text(inventory, 'stockedSkuCount')}</strong></div></article>
+        <article className="card metricCard"><span className="iconBubble"><AdminIcon name="exception" /></span><div className="metricCopy"><span>Giao thất bại</span><strong>{text(logistics, 'failedCount')}</strong></div></article>
+        <article className="card metricCard"><span className="iconBubble"><AdminIcon name="coin" /></span><div className="metricCopy"><span>Lãi gộp VND</span><strong>{text(grossMargin, 'grossMarginVnd') === '—' ? '—' : exactDecimal(text(grossMargin, 'grossMarginVnd'))}</strong></div></article>
       </section>
 
-      <section className="metricGrid appMetricGrid" aria-label="KPI quản lý">
-        <article className="card metricCard">
-          <span className="iconBubble"><AdminIcon name="clipboard" /></span>
-          <div className="metricCopy"><span>Đơn bán hiệu lực</span><strong>{text(sales, 'effectiveOrderCount')}</strong></div>
-        </article>
-        <article className="card metricCard">
-          <span className="iconBubble"><AdminIcon name="warehouse" /></span>
-          <div className="metricCopy"><span>SKU đang có tồn</span><strong>{text(inventory, 'stockedSkuCount')}</strong></div>
-        </article>
-        <article className="card metricCard">
-          <span className="iconBubble"><AdminIcon name="exception" /></span>
-          <div className="metricCopy"><span>Lần giao thất bại</span><strong>{failedDeliveries}</strong></div>
-        </article>
-        <article className="card metricCard">
-          <span className="iconBubble"><AdminIcon name="coin" /></span>
-          <div className="metricCopy"><span>Lãi gộp VND</span><strong>{grossMarginVnd === '—' ? '—' : exactDecimal(grossMarginVnd)}</strong></div>
-        </article>
-      </section>
-
-      <p className="sectionEyebrow">Cảnh báo & drill-down</p>
-      <section className="card dashboardCard priorityListCard">
-        <div className="managementList">
-          <a className="managementRow" href={`${nppOperationsUrl}/accounting/cod-reporting`}>
-            <span className="rowIcon"><AdminIcon name="coin" size={20} /></span>
-            <span className="rowLabel">COD / bàn giao / đối soát</span>
-            <span className={codNeedsAttention ? 'rowValue' : 'rowValue isUnavailable'}>{cod ? (codNeedsAttention ? 'Cần xem' : 'Ổn') : '—'}</span>
-            <AdminIcon className="rowChevron" name="chevronRight" size={19} />
-          </a>
-          <a className="managementRow" href={`${nppOperationsUrl}/inventory/reporting`}>
-            <span className="rowIcon"><AdminIcon name="warehouse" size={20} /></span>
-            <span className="rowLabel">Ngoại lệ giá vốn / tồn kho</span>
-            <span className={nonZero(inventoryExceptions) ? 'rowValue' : 'rowValue isUnavailable'}>{inventoryExceptions}</span>
-            <AdminIcon className="rowChevron" name="chevronRight" size={19} />
-          </a>
-          <a className="managementRow" href={`${nppOperationsUrl}/logistics/reporting`}>
-            <span className="rowIcon"><AdminIcon name="exception" size={20} /></span>
-            <span className="rowLabel">Giao thất bại / dời lịch / thiếu kết quả</span>
-            <span className="rowValue">{failedDeliveries} / {rescheduledDeliveries} / {pendingDeliveryResults}</span>
-            <AdminIcon className="rowChevron" name="chevronRight" size={19} />
-          </a>
-          <a className="managementRow" href={`${nppOperationsUrl}/accounting/aging`}>
-            <span className="rowIcon"><AdminIcon name="tag" size={20} /></span>
-            <span className="rowLabel">Công nợ theo currency / tuổi nợ</span>
-            <span className="rowValue">{aging ? `${aging.receivableSummary.length + aging.payableSummary.length} nhóm` : '—'}</span>
-            <AdminIcon className="rowChevron" name="chevronRight" size={19} />
-          </a>
-          <a className="managementRow" href={`${nppOperationsUrl}/access/employees/performance`}>
-            <span className="rowIcon"><AdminIcon name="user" size={20} /></span>
-            <span className="rowLabel">Phiên MCP / order intent</span>
-            <span className="rowValue">{text(employeeMcp, 'sessionCount')} / {text(employeeMcp, 'orderIntentCount')}</span>
-            <AdminIcon className="rowChevron" name="chevronRight" size={19} />
-          </a>
-          <a className="managementRow" href={`${nppOperationsUrl}/operations/import-export-history`}>
-            <span className="rowIcon"><AdminIcon name="clipboard" size={20} /></span>
-            <span className="rowLabel">Lịch sử import / export canonical</span>
-            <span className="rowValue isUnavailable">Mở NPP</span>
-            <AdminIcon className="rowChevron" name="chevronRight" size={19} />
-          </a>
-        </div>
+      <p className="sectionEyebrow">Trung tâm quản trị</p>
+      <section className="adminOverviewActions" aria-label="Đi tới trung tâm quản trị">
+        <Link className="card adminOverviewAction" href="/approvals"><span className="rowIcon"><AdminIcon name="check" size={21} /></span><span><strong>Phê duyệt</strong><small>Các đề xuất cần quyết định quản lý</small></span><AdminIcon name="chevronRight" size={18} /></Link>
+        <Link className="card adminOverviewAction" href="/alerts"><span className="rowIcon"><AdminIcon name="exception" size={21} /></span><span><strong>Cảnh báo</strong><small>Tín hiệu bất thường theo quy tắc</small></span><AdminIcon name="chevronRight" size={18} /></Link>
+        <Link className="card adminOverviewAction" href="/reports"><span className="rowIcon"><AdminIcon name="document" size={21} /></span><span><strong>Báo cáo</strong><small>Tổng hợp quản trị Core và MCP</small></span><AdminIcon name="chevronRight" size={18} /></Link>
       </section>
     </AdminShell>
   );
