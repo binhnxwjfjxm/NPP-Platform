@@ -26,7 +26,7 @@ export default async function InventoryTransfersPage() {
     [transfers, inTransit, balances, locations] = await Promise.all([
       listInventoryTransfers<InventoryTransfer[]>(requestId, new URLSearchParams({ limit: '500' })),
       listInventoryTransferInTransit<InventoryTransferInTransit[]>(requestId, new URLSearchParams({ limit: '1000' })),
-      listInventoryBalances<InventoryBalance[]>(requestId, new URLSearchParams({ limit: '2000' })),
+      listInventoryBalances<InventoryBalance[]>(requestId, new URLSearchParams({ limit: '1000' })),
       listOrganizationResource<WarehouseLocation[]>(
         'warehouse-locations',
         requestId,
