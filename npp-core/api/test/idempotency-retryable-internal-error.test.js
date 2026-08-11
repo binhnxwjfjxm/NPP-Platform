@@ -78,3 +78,91 @@ test('same idempotency key reclaims a retryable failed record and processes agai
   assert.equal(result.response.statusCode, 200);
   assert.equal(result.replayed, false);
 });
+
+test('returned retryable 503 is stored as failed and the same key can process again', async () => {
+  let record = null;
+  let processCount = 0;
+  const store = {
+    async reserve(_scope, fingerprint, requestId) {
+      if (!record) {
+        record = {
+          request_fingerprint: fingerprint,
+          request_id: requestId,
+          status: 'processing',
+          response_status: null,
+          response_content_type: null,
+          response_body: null,
+        };
+        return { created: true, record };
+      }
+      return { created: false, record };
+    },
+    async reclaimFailed(_scope, fingerprint, requestId) {
+      assert.equal(record.status, 'failed');
+      assert.equal(fingerprint, record.request_fingerprint);
+      record = {
+        ...record,
+        request_id: requestId,
+        status: 'processing',
+        response_status: null,
+        response_content_type: null,
+        response_body: null,
+      };
+      return { claimed: true, record };
+    },
+    async markCompleted(_scope, requestId, response) {
+      record = {
+        ...record,
+        request_id: requestId,
+        status: 'completed',
+        response_status: response.statusCode,
+        response_content_type: response.contentType,
+        response_body: response.body,
+      };
+    },
+    async markFailed(_scope, requestId, response) {
+      record = {
+        ...record,
+        request_id: requestId,
+        status: 'failed',
+        response_status: response.statusCode,
+        response_content_type: response.contentType,
+        response_body: response.body,
+      };
+    },
+  };
+
+  const first = await executeRequestWithIdempotency(baseArgs(store, 'request-returned-503', async () => {
+    processCount += 1;
+    return {
+      statusCode: 503,
+      contentType: 'application/json',
+      requestId: 'request-returned-503',
+      body: {
+        error: {
+          code: 'DOCUMENT_NUMBER_SERIES_UNAVAILABLE',
+          message: 'Document number series is unavailable',
+          retryable: true,
+          details: {},
+        },
+      },
+    };
+  }));
+  assert.equal(first.response.statusCode, 503);
+  assert.equal(first.replayed, false);
+  assert.equal(record.status, 'failed');
+
+  const second = await executeRequestWithIdempotency(baseArgs(store, 'request-returned-503-retry', async () => {
+    processCount += 1;
+    return {
+      statusCode: 200,
+      contentType: 'application/json',
+      requestId: 'request-returned-503-retry',
+      body: { data: { status: 'confirmed', number: 'SO-260811-000001' } },
+    };
+  }));
+  assert.equal(second.response.statusCode, 200);
+  assert.equal(second.replayed, false);
+  assert.equal(record.status, 'completed');
+  assert.equal(processCount, 2);
+});
