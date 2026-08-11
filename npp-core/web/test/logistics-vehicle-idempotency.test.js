@@ -6,6 +6,7 @@ import ts from 'typescript';
 
 const gatewaySource = readFileSync(new URL('../lib/logistics-gateway.ts', import.meta.url), 'utf8');
 const workspaceSource = readFileSync(new URL('../app/logistics/trips/trip-planning-workspace.tsx', import.meta.url), 'utf8');
+const dispatchWorkspaceSource = readFileSync(new URL('../app/logistics/dispatch/trip-dispatch-workspace.tsx', import.meta.url), 'utf8');
 const coreIdempotencySource = readFileSync(new URL('../../api/src/idempotency.js', import.meta.url), 'utf8');
 
 class TestInventoryGatewayError extends Error {
@@ -60,8 +61,11 @@ function successfulFetchRecorder() {
   };
 }
 
-test('A1-A4 create sends Core-safe idempotency headers at runtime and preserves trip mutation behavior', async () => {
+test('all NPP logistics mutations send Core-safe idempotency headers at the gateway boundary', async () => {
   assert.ok(workspaceSource.includes("return `${prefix}:${parts.filter(Boolean).join(':')}`;"));
+  assert.ok(workspaceSource.includes("const scope = keyScope('update-trip'"));
+  assert.ok(workspaceSource.includes('const scope = keyScope(action, selectedTrip.id, selectedTrip.revision, discriminator);'));
+  assert.ok(dispatchWorkspaceSource.includes('const scope = `${selectedTrip.id}:${dispatchedAt}:${normalizedReceiver}:${handoverNote.trim()}`;'));
   assert.ok(coreIdempotencySource.includes('const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;'));
 
   const recorder = successfulFetchRecorder();
@@ -84,16 +88,32 @@ test('A1-A4 create sends Core-safe idempotency headers at runtime and preserves 
   assert.equal(recorder.calls.at(-1).init.headers['Idempotency-Key'], 'trip_create_safe');
 
   const tripId = '11111111-1111-4111-8111-111111111111';
-  await gateway.updateDeliveryTrip(tripId, 'req-update-trip', { revision: '1' }, 'trip_update_safe');
+  const updateSourceKey = `update-trip:${tripId}:1:vehicle:driver:route:2026-08-11T21:51:00`;
+  const expectedUpdateKey = createHash('sha256').update(updateSourceKey, 'utf8').digest('hex');
+  await gateway.updateDeliveryTrip(tripId, 'req-update-trip', { revision: '1' }, updateSourceKey);
   assert.equal(recorder.calls.at(-1).init.method, 'PUT');
+  assert.equal(recorder.calls.at(-1).init.headers['Idempotency-Key'], expectedUpdateKey);
+
+  await gateway.updateDeliveryTrip(tripId, 'req-safe-update-trip', { revision: '1' }, 'trip_update_safe');
   assert.equal(recorder.calls.at(-1).init.headers['Idempotency-Key'], 'trip_update_safe');
 
-  await gateway.transitionDeliveryTrip(tripId, 'plan', 'req-plan-trip', {}, 'trip_plan_safe');
-  assert.equal(recorder.calls.at(-1).init.method, 'POST');
+  const actions = ['assign', 'unassign', 'reorder', 'plan', 'reopen', 'lock', 'dispatch', 'return-receipts', 'close'];
+  for (const action of actions) {
+    const sourceKey = `trip:${action}:${tripId}:1`;
+    const expected = createHash('sha256').update(sourceKey, 'utf8').digest('hex');
+    await gateway.transitionDeliveryTrip(tripId, action, `req-${action}`, {}, sourceKey);
+    const call = recorder.calls.at(-1);
+    assert.equal(call.init.method, 'POST');
+    assert.ok(call.url.endsWith(`/api/logistics/trips/${tripId}/${action}`));
+    assert.equal(call.init.headers['Idempotency-Key'], expected);
+    assert.match(call.init.headers['Idempotency-Key'], /^[A-Za-z0-9._-]{64}$/);
+  }
+
+  await gateway.transitionDeliveryTrip(tripId, 'plan', 'req-safe-plan-trip', {}, 'trip_plan_safe');
   assert.equal(recorder.calls.at(-1).init.headers['Idempotency-Key'], 'trip_plan_safe');
 
   assert.notEqual(
     createHash('sha256').update('trip:create', 'utf8').digest('hex'),
-    'trip_create',
+    createHash('sha256').update('trip:plan', 'utf8').digest('hex'),
   );
 });
