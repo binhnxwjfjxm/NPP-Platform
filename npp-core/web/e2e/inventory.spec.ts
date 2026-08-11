@@ -86,11 +86,15 @@ test.describe('Kho vận', () => {
     await expect(page.getByTestId('inventory-policy-editor')).toBeVisible();
 
     await page.goto('/inventory/opening-balances');
+    const warehouseSelect = page.getByTestId('inventory-opening-warehouse-select');
+    await expect(warehouseSelect.locator(`option[value="${fixture.warehouse.id}"]`)).toContainText(fixture.warehouse.code);
+    await warehouseSelect.selectOption(fixture.warehouse.id);
+    await expect(warehouseSelect).toHaveValue(fixture.warehouse.id);
     await page.getByTestId('inventory-opening-source-key-input').fill(sourceKey);
     await page.getByTestId('inventory-opening-document-date-input').fill('2026-07-28');
     const csv = [
-      'warehouseId,locationId,sourceVariantId,sourceQuantity,lotCode,manufacturedDate,expiryDate,supplierLotReference,sourceLineReference',
-      `${fixture.warehouse.id},${fixture.location.id},${fixture.sourceVariant.id},12.000000,LOT-001,2026-01-01,2027-01-01,SUP-001,Sheet1!2`,
+      'SKU,Số lượng,Vị trí,Mã lô,Ngày sản xuất,Hạn sử dụng,Mã lô nhà cung cấp,Tham chiếu dòng',
+      `${fixture.sourceVariant.sku},12.000000,${fixture.location.code},LOT-001,2026-01-01,2027-01-01,SUP-001,Sheet1!2`,
     ].join('\n');
     await page.getByTestId('inventory-opening-file-input').setInputFiles({
       name: 'opening-balance.csv', mimeType: 'text/csv', buffer: Buffer.from(csv),
@@ -99,7 +103,7 @@ test.describe('Kho vận', () => {
     await expect(page.getByText('LOT-001', { exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: 'Kiểm tra tệp' }).click();
-    await expect(page.getByText('Dữ liệu hợp lệ. Có thể xác nhận nhập tồn.')).toBeVisible();
+    await expect(page.getByText('Dữ liệu đã resolve đúng kho, vị trí và SKU. Có thể xác nhận nhập tồn.')).toBeVisible();
     const postButton = page.getByRole('button', { name: 'Xác nhận nhập tồn' });
     await expect(postButton).toBeEnabled();
     await postButton.click();
