@@ -4,6 +4,10 @@ import { AdminIcon } from './admin-icons';
 
 type AdminSection = 'overview' | 'approvals' | 'alerts' | 'reports';
 
+export const ADMIN_ROUTE_ALIASES = {
+  '/customer-onboarding': '/approvals',
+} as const;
+
 const primaryNav: Array<{ section: AdminSection; href: string; label: string; icon: 'overview' | 'check' | 'exception' | 'document' }> = [
   { section: 'overview', href: '/', label: 'Tổng quan', icon: 'overview' },
   { section: 'approvals', href: '/approvals', label: 'Phê duyệt', icon: 'check' },
