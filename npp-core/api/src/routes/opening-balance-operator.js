@@ -175,7 +175,9 @@ async function resolveSkuMap(client, installationId, skus) {
   if (skus.length === 0) return new Map();
   const result = await client.query(
     `SELECT pv.id, pv.sku, pv.unit_id, unit.code AS unit_code,
-            p.code AS product_code, p.name AS product_name
+            p.code AS product_code, p.name AS product_name,
+            base.id AS base_variant_id, base.sku AS base_sku,
+            policy.lot_tracking_mode, policy.expiry_tracking_mode, policy.location_required
        FROM shared.product_variants pv
        JOIN shared.products p
          ON p.installation_id = pv.installation_id
@@ -183,6 +185,14 @@ async function resolveSkuMap(client, installationId, skus) {
        LEFT JOIN shared.units_of_measure unit
          ON unit.installation_id = pv.installation_id
         AND unit.id = pv.unit_id
+       LEFT JOIN shared.product_variants base
+         ON base.installation_id = pv.installation_id
+        AND base.product_id = pv.product_id
+        AND base.is_inventory_base = true
+        AND base.is_active = true
+       LEFT JOIN inventory.product_tracking_policies policy
+         ON policy.installation_id = base.installation_id
+        AND policy.base_variant_id = base.id
       WHERE pv.installation_id = $1
         AND upper(pv.sku) = ANY($2::text[])
         AND pv.is_active = true
@@ -308,6 +318,11 @@ export async function resolveOpeningBalanceOperatorPayload(client, requestContex
       sourceUnitCode: variant.unit_code,
       productCode: variant.product_code,
       productName: variant.product_name,
+      baseVariantId: variant.base_variant_id,
+      baseSku: variant.base_sku,
+      lotTrackingMode: variant.lot_tracking_mode ?? null,
+      expiryTrackingMode: variant.expiry_tracking_mode ?? null,
+      locationRequired: variant.location_required ?? null,
       sourceQuantity: source.sourceQuantity,
       lotCode: source.lotCode || null,
       manufacturedDate: source.manufacturedDate || null,

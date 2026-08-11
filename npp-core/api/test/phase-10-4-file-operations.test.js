@@ -47,12 +47,24 @@ test('official operations write canonical import export history', () => {
   assert.match(serviceSource, /definitionKey: 'sales-quotation'/);
 });
 
-test('file operation routes are deny-by-default and idempotent for official operations', () => {
+test('file operation routes are deny-by-default, idempotent and audit successful official operations', () => {
   assert.match(routeSource, /requiredPermissions/);
   assert.match(routeSource, /normalizeIdempotencyKey/);
   assert.match(routeSource, /executeRequestWithIdempotency/);
+  assert.match(routeSource, /buildAuditRecord/);
+  assert.match(routeSource, /insertAuditRecord/);
+  assert.match(routeSource, /resourceType: 'import_export_job'/);
+  assert.match(routeSource, /if \(!rawResult\.ok\) return \{ failed: rawResult, skipAudit: true \}/);
+  assert.match(routeSource, /if \(transaction\.failed\)/);
   assert.match(routeSource, /\/api\/file-operations\/products\/import/);
   assert.match(routeSource, /\/api\/file-operations\/stocktake\/import/);
   assert.match(routeSource, /\/api\/file-operations\/quotation/);
   assert.match(wrapperSource, /handleFileOperationRoutes/);
+});
+
+test('official stocktake export is blind at the Core API boundary', () => {
+  assert.match(routeSource, /sanitizeOfficialResult/);
+  assert.match(routeSource, /pathname !== '\/api\/file-operations\/stocktake\/export'/);
+  assert.match(routeSource, /systemQuantity:\s*_hidden/);
+  assert.match(routeSource, /column !== 'systemQuantity'/);
 });

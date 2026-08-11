@@ -31,7 +31,7 @@ export default async function ImportExportHistoryPage({ searchParams }: { search
       kicker="Phase 8.7 · Lịch sử vận hành"
       title="Import / Export history"
       subtitle="Metadata job canonical của Core. Download CSV cũ ở browser/MCP không được giả thành lịch sử chính thức."
-      actions={<Link className={styles.secondary} href="/operations/audit-history">Audit & hoạt động</Link>}
+      actions={<div className={styles.actions}><Link className={styles.secondary} href="/operations/data-exchange">Import / Export & Báo giá</Link><Link className={styles.secondary} href="/operations/audit-history">Audit & hoạt động</Link></div>}
     >
       <form className={styles.toolbar} method="get">
         <label className={styles.field}>Từ ngày<input name="from" type="date" defaultValue={params.from ?? ''} /></label>
