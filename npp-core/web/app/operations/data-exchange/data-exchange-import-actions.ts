@@ -85,16 +85,16 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
-  function selectedBasePriceList() {
+  function selectedPriceList() {
     const list = priceLists.find((item) => item.id === pricingPriceListId) ?? null;
-    if (!list) throw new Error('Chọn bảng giá cần cập nhật.');
-    if (list.list_type !== 'BASE') throw new Error('Cập nhật file SKU + Giá bán chỉ áp dụng cho bảng giá nền.');
+    if (!list) throw new Error('Chọn bảng giá/chương trình cần cập nhật.');
+    if (!list.is_active) throw new Error('Bảng giá/chương trình đã ngừng sử dụng.');
     return list;
   }
   async function pricingExport(format: 'xlsx' | 'csv') {
     begin();
     try {
-      const list = selectedBasePriceList();
+      const list = selectedPriceList();
       const result = await requestJson<OfficialRows>('/api/file-operations/pricing/export', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotency('p10_pricing_export') }, body: JSON.stringify({ format }) });
       const sourceRows = result.rows.filter((row) => String(row.priceListCode ?? '').toUpperCase() === list.code.toUpperCase()
         && String(row.adjustmentType ?? '').toUpperCase() === 'FIXED_PRICE'
@@ -103,14 +103,14 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
         && (row.isActive === true || String(row.isActive ?? '').toLowerCase() === 'true'));
       const rows = sourceRows.map((row) => [String(row.sku ?? ''), String(row.amountMinor ?? '')]);
       await exportTable(`cap-nhat-gia-${list.code}.xlsx`, 'Cập nhật giá', [...PRICE_UPDATE_COLUMNS], rows, format);
-      setMessage(`Đã xuất ${rows.length} SKU của ${list.code}. File chỉ gồm SKU và Giá bán.`);
+      setMessage(`Đã xuất ${rows.length} SKU của ${list.code}. File chỉ gồm SKU và Giá bán; file rỗng vẫn dùng làm mẫu để thêm giá mới.`);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
   async function submitPricingImport(rows: RowMap[]) {
     begin();
     try {
       if (rows.length > 2000) throw new Error('Mỗi lần chỉ nhập tối đa 2.000 dòng giá.');
-      const list = selectedBasePriceList();
+      const list = selectedPriceList();
       const seen = new Set<string>();
       const items = rows.map((row, index) => {
         const sku = String(row.sku ?? '').trim().toUpperCase();
@@ -127,7 +127,7 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
         body: JSON.stringify({ matchBySku: true, sourceBatchId, items }),
       });
       setPendingImport(null);
-      setMessage(`Đã cập nhật ${result.itemsUpdated ?? 0} SKU, tạo giá lần đầu cho ${result.itemsCreated ?? 0} SKU trong ${list.code}.`);
+      setMessage(`Đã cập nhật ${result.itemsUpdated ?? 0} SKU, tạo mới ${result.itemsCreated ?? 0} dòng giá theo SKU trong ${list.code}.`);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 

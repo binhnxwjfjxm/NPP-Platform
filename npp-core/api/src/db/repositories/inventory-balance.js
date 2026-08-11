@@ -75,8 +75,14 @@ export async function getInventoryBalance(client, {
   const result = await client.query(
     `SELECT balance.installation_id,
             balance.warehouse_id,
+            warehouse.code AS warehouse_code,
+            warehouse.name AS warehouse_name,
             balance.location_id,
+            location.code AS location_code,
+            location.name AS location_name,
             balance.base_variant_id,
+            base.sku AS base_sku,
+            base.name AS base_variant_name,
             balance.lot_id,
             lot.lot_code,
             lot.expiry_date,
@@ -86,6 +92,16 @@ export async function getInventoryBalance(client, {
             balance.projected_through,
             balance.updated_at
        FROM inventory.inventory_balances balance
+       JOIN shared.warehouses warehouse
+         ON warehouse.installation_id = balance.installation_id
+        AND warehouse.id = balance.warehouse_id
+       LEFT JOIN shared.warehouse_locations location
+         ON location.installation_id = balance.installation_id
+        AND location.warehouse_id = balance.warehouse_id
+        AND location.id = balance.location_id
+       JOIN shared.product_variants base
+         ON base.installation_id = balance.installation_id
+        AND base.id = balance.base_variant_id
        LEFT JOIN inventory.inventory_lots lot
          ON lot.installation_id = balance.installation_id
         AND lot.id = balance.lot_id
@@ -110,8 +126,14 @@ export async function listInventoryBalances(client, {
   const result = await client.query(
     `SELECT balance.installation_id,
             balance.warehouse_id,
+            warehouse.code AS warehouse_code,
+            warehouse.name AS warehouse_name,
             balance.location_id,
+            location.code AS location_code,
+            location.name AS location_name,
             balance.base_variant_id,
+            base.sku AS base_sku,
+            base.name AS base_variant_name,
             balance.lot_id,
             lot.lot_code,
             lot.expiry_date,
@@ -121,6 +143,16 @@ export async function listInventoryBalances(client, {
             balance.projected_through,
             balance.updated_at
        FROM inventory.inventory_balances balance
+       JOIN shared.warehouses warehouse
+         ON warehouse.installation_id = balance.installation_id
+        AND warehouse.id = balance.warehouse_id
+       LEFT JOIN shared.warehouse_locations location
+         ON location.installation_id = balance.installation_id
+        AND location.warehouse_id = balance.warehouse_id
+        AND location.id = balance.location_id
+       JOIN shared.product_variants base
+         ON base.installation_id = balance.installation_id
+        AND base.id = balance.base_variant_id
        LEFT JOIN inventory.inventory_lots lot
          ON lot.installation_id = balance.installation_id
         AND lot.id = balance.lot_id
