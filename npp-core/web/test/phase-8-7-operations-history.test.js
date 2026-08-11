@@ -12,7 +12,7 @@ test('Phase 8.7 NPP owns detailed audit and import/export history surfaces', () 
   assert.match(audit, /Audit & hoạt động hệ thống/);
   assert.match(audit, /action/);
   assert.match(audit, /resourceType/);
-  assert.match(jobs, /Import \/ Export history/);
+  assert.match(jobs, /Lịch sử nhập \/ xuất dữ liệu/);
   assert.match(jobs, /definitionKey/);
   assert.match(gateway, /\/api\/reporting\/audit-history/);
   assert.match(gateway, /\/api\/reporting\/import-export-history/);

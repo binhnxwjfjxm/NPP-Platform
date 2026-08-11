@@ -84,10 +84,13 @@ test('data exchange uses inventory balance API within supported limit', () => {
   assert.match(transfers, /listInventoryBalances[\s\S]*limit: '1000'/);
 });
 
-test('business screens add a contextual shortcut without moving central data exchange page', () => {
-  const shell = read('app/components/app-shell.tsx');
-  for (const tab of ['products', 'pricing', 'stocktake', 'quotation', 'movements']) assert.match(shell, new RegExp(`tab: '${tab}'`));
-  assert.match(shell, /\/operations\/data-exchange\?tab=\$\{shortcut\.tab\}/);
+test('central data exchange is persistent navigation and preserves direct tab deep links', () => {
+  const shell = read('app/components/app-shell-core.tsx');
+  const wrapper = read('app/components/app-shell.tsx');
+  assert.match(shell, /href="\/operations\/data-exchange"/);
+  assert.match(shell, /data-testid="nav-data-exchange"/);
+  assert.match(shell, /Nhập \/ xuất dữ liệu/);
+  assert.doesNotMatch(wrapper, /usePathname/);
   assert.match(workspace, /useSearchParams/);
   assert.match(workspace, /searchParams\.get\('tab'\)/);
   assert.match(view, /title="Nhập \/ xuất dữ liệu & báo giá"/);
