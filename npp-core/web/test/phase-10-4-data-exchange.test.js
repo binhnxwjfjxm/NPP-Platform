@@ -40,17 +40,22 @@ test('Phase 10.4 stocktake export stays blind and creates only draft count data'
   assert.match(view, /Chưa gửi duyệt, chưa ghi sổ tồn/);
 });
 
-test('routine price file is exactly SKU plus selling price and list context stays outside the file', () => {
+test('routine fixed-price file is exactly SKU plus selling price for active price lists and programs', () => {
   assert.match(model, /const PRICING_COLUMNS = \['sku', 'amountMinor'\]/);
   assert.match(model, /const PRICE_UPDATE_COLUMNS = PRICING_COLUMNS/);
   assert.match(model, /amountMinor: 'Giá bán \(VND\)'/);
   assert.match(actions, /requireColumns\(rows, PRICE_UPDATE_COLUMNS\)/);
   assert.match(actions, /priceListCode: list\.code/);
   assert.match(actions, /adjustmentType: 'FIXED_PRICE'/);
+  assert.match(actions, /matchBySku:\s*true/);
   assert.match(actions, /SKU \$\{sku\} bị lặp trong file/);
-  assert.match(view, /File cập nhật chỉ cần đúng 2 cột/);
-  assert.match(view, /Bảng giá nền cần cập nhật/);
-  assert.match(view, /Không cần mã bảng giá, source key hay loại điều chỉnh trong file/);
+  assert.match(actions, /if \(!list\.is_active\) throw new Error\('Bảng giá\/chương trình đã ngừng sử dụng\.'\)/);
+  assert.doesNotMatch(actions, /chỉ áp dụng cho bảng giá nền/);
+  assert.match(view, /File chỉ cần đúng 2 cột/);
+  assert.match(view, /Bảng giá nền cần cập nhật \/ chương trình CTKM/);
+  assert.match(view, /priceLists\.filter\(\(list\) => list\.is_active\)/);
+  assert.doesNotMatch(view, /list\.is_active && list\.list_type === 'BASE'/);
+  assert.match(view, /Dòng tương ứng đã có thì cập nhật; chưa có thì tạo FIXED_PRICE mới/);
 });
 
 test('SKU-keyed price updates preserve quotation lineage', () => {
