@@ -116,7 +116,7 @@
 .pillDanger { background: rgba(168, 55, 35, 0.12); color: #8d2917; }
 .stack { display: grid; gap: 10px; }
 .gridTwo { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.9fr); gap: 14px; }
-.panel { display: grid; gap: 12px; padding: 16px; border: 1px solid rgba(52, 32, 24, 0.08); border-radius: 18px; background: #fffdfb; }
+.panel { display: grid; align-content: start; gap: 12px; padding: 16px; border: 1px solid rgba(52, 32, 24, 0.08); border-radius: 18px; background: #fffdfb; }
 .panelTitle { margin: 0; color: #2f2925; font-size: 1rem; font-weight: 840; }
 .panelCopy { margin: 0; color: #6a5b52; font-size: 0.9rem; line-height: 1.55; }
 .rowActions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -124,7 +124,14 @@
 .miniButtonDanger { background: rgba(168, 55, 35, 0.12); color: #8d2917; }
 .miniButtonSuccess { background: rgba(24, 109, 58, 0.12); color: #1f6f3b; }
 .errorList { margin: 0; padding-left: 20px; color: #7d2413; line-height: 1.6; }
-.twoColumnForm { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.twoColumnForm { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
+.twoColumnForm > .panel { padding: 12px; border-radius: 14px; gap: 10px; }
+.twoColumnForm .formGrid { gap: 8px; }
+.twoColumnForm .selectInput { min-height: 38px; padding: 8px 10px; border-radius: 10px; }
+.twoColumnForm .tableWrap { border-radius: 12px; }
+.twoColumnForm .table th,
+.twoColumnForm .table td { padding: 9px 10px; }
+.twoColumnForm .primaryAction { padding: 9px 14px; border-radius: 10px; box-shadow: none; }
 .fullWidth { grid-column: 1 / -1; }
 
 @media (max-width: 1180px) {

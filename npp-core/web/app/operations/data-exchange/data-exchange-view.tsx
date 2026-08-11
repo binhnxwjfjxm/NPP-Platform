@@ -3,8 +3,8 @@
 import { AppShell } from '../../components/app-shell-core';
 import styles from './data-exchange.module.css';
 import {
-  type Tab, type Category, type Channel, type CustomerGroup, type Customer, type Balance, type QuotationRow, type MovementView,
-  PRODUCT_COLUMNS, PRICING_COLUMNS,
+  type Tab, type Category, type Channel, type CustomerGroup, type Customer, type Balance, type QuotationRow, type MovementView, type PriceList,
+  PRODUCT_COLUMNS,
 } from './data-exchange-model';
 import { scopeKey, trimDecimal, scaled12 } from './data-exchange-file-utils';
 
@@ -15,6 +15,7 @@ type DataExchangeViewContext = Record<string, any> & {
   channels: Channel[];
   groups: CustomerGroup[];
   customers: Customer[];
+  priceLists: PriceList[];
   quotationRows: QuotationRow[];
   balances: Balance[];
   movementRows: MovementView[];
@@ -23,7 +24,7 @@ type DataExchangeViewContext = Record<string, any> & {
 export function DataExchangeView({ ctx }: { ctx: DataExchangeViewContext }) {
   const {
     tab, setTab, setError, setMessage, setPendingImport, busy, setBusy, error, message, fileRefs, fileInput, productTemplate, productExport, columnChooser,
-    productColumns, setProductColumns, previewTable, pricingExport, pricingColumns, setPricingColumns, stocktakeExport, stocktakeWarehouse,
+    productColumns, setProductColumns, previewTable, pricingExport, priceLists, pricingPriceListId, setPricingPriceListId, stocktakeExport, stocktakeWarehouse,
     setStocktakeWarehouse, warehouses, buildQuotation, quotationExport, quotationRows, quotationScope, setQuotationScope, quotationCategory,
     setQuotationCategory, categories, quotationSkus, setQuotationSkus, quotationContext, setQuotationContext, channels, groups, customers,
     loadMovements, selectedBalanceKey, setSelectedBalanceKey, setMovementRows, balances, selectedBalance, movementRows, refreshReferenceData, begin, fail,
@@ -40,7 +41,7 @@ export function DataExchangeView({ ctx }: { ctx: DataExchangeViewContext }) {
         <button type="button" className={styles.secondaryButton} onClick={() => void productExport('xlsx')} disabled={busy}>Xuất Excel</button><button type="button" className={styles.secondaryButton} onClick={() => void productExport('csv')} disabled={busy}>Xuất CSV</button>
       </div></div>{columnChooser(PRODUCT_COLUMNS, productColumns, setProductColumns)}<div className={styles.guardrail}><strong>Cách khai báo SKU</strong><span>Mỗi SKU chọn Đơn vị tính và Hệ số quy đổi. SKU dùng làm đơn vị tồn chuẩn có hệ số = 1; tại SKU này chọn thêm Có/Không quản lý theo lô, cách quản lý hạn sử dụng và có bắt buộc vị trí kho hay không.</span></div><p className={styles.note}>Khi cập nhật sản phẩm đã có, file cần chứa đầy đủ các SKU đang sử dụng của sản phẩm đó để tránh vô tình bỏ sót quy cách.</p>{previewTable()}</section> : null}
 
-      {tab === 'pricing' ? <section className={styles.panel}><div className={styles.panelTitle}><div><h2>Giá bán theo SKU</h2><p>Nhập hoặc xuất hàng loạt giá bán. Hệ thống đối chiếu Mã bảng giá + SKU và kiểm tra phiên bản trước khi cập nhật dữ liệu cũ.</p></div><div className={styles.buttonRow}>{fileInput('pricing', '.xlsx,.csv', 'pricing')}<button type="button" className={styles.primaryButton} onClick={() => fileRefs.current.pricing?.click()} disabled={busy}>Chọn file để nhập</button><button type="button" className={styles.secondaryButton} onClick={() => void pricingExport('xlsx')} disabled={busy}>Xuất Excel</button><button type="button" className={styles.secondaryButton} onClick={() => void pricingExport('csv')} disabled={busy}>Xuất CSV</button></div></div>{columnChooser(PRICING_COLUMNS, pricingColumns, setPricingColumns)}{previewTable()}</section> : null}
+      {tab === 'pricing' ? <section className={styles.panel}><div className={styles.panelTitle}><div><h2>Cập nhật giá bán theo SKU</h2><p>Chọn một bảng giá nền. File cập nhật chỉ cần đúng 2 cột: <strong>SKU</strong> và <strong>Giá bán (VND)</strong>. SKU là khóa tra cứu; hệ thống tự tìm sản phẩm, dòng giá và định danh nội bộ ở phía sau.</p></div><div className={styles.buttonRow}>{fileInput('pricing', '.xlsx,.csv', 'pricing')}<button type="button" className={styles.primaryButton} onClick={() => fileRefs.current.pricing?.click()} disabled={busy || !pricingPriceListId}>Chọn file để cập nhật</button><button type="button" className={styles.secondaryButton} onClick={() => void pricingExport('xlsx')} disabled={busy || !pricingPriceListId}>Xuất Excel 2 cột</button><button type="button" className={styles.secondaryButton} onClick={() => void pricingExport('csv')} disabled={busy || !pricingPriceListId}>Xuất CSV 2 cột</button></div></div><label className={styles.field}>Bảng giá nền cần cập nhật<select value={pricingPriceListId} onChange={(event) => { setPricingPriceListId(event.target.value); setPendingImport(null); setError(''); setMessage(''); }}><option value="">Chọn bảng giá</option>{priceLists.filter((list) => list.is_active && list.list_type === 'BASE').map((list) => <option key={list.id} value={list.id}>{list.code} · {list.name}</option>)}</select></label><div className={styles.guardrail}><strong>Không cần mã bảng giá, source key hay loại điều chỉnh trong file.</strong><span>Đổi giá thường xuyên chỉ sửa cột Giá bán. Khi xác nhận, backend đối chiếu SKU + bảng giá + điều kiện mặc định; nếu đã có thì cập nhật, chưa có thì tạo giá nền cho SKU đó.</span></div>{previewTable()}</section> : null}
 
       {tab === 'stocktake' ? <section className={styles.panel}><div className={styles.panelTitle}><div><h2>Nhập số kiểm kê thực tế</h2><p>Chọn kho, tải file kiểm kê, điền số đếm thực tế rồi nhập lại. Hệ thống chỉ tạo phiếu kiểm kê nháp; tồn kho chưa thay đổi cho đến khi phiếu được duyệt và ghi sổ.</p></div><div className={styles.buttonRow}>{fileInput('stocktake', '.xlsx,.csv', 'stocktake')}<button type="button" className={styles.primaryButton} onClick={() => fileRefs.current.stocktake?.click()} disabled={busy}>Chọn file số đếm</button><button type="button" className={styles.secondaryButton} onClick={() => void stocktakeExport('xlsx')} disabled={busy}>Tải mẫu Excel</button><button type="button" className={styles.secondaryButton} onClick={() => void stocktakeExport('csv')} disabled={busy}>Tải mẫu CSV</button></div></div><label className={styles.field}>Kho kiểm kê<select value={stocktakeWarehouse} onChange={(event) => setStocktakeWarehouse(event.target.value)}><option value="">Chọn kho</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} · {warehouse.name}</option>)}</select></label><div className={styles.guardrail}><strong>Kiểm kê không thay đổi tồn ngay.</strong><span>Số đếm thực tế → tạo phiếu kiểm kê nháp → gửi duyệt → duyệt → ghi sổ chênh lệch. Chưa gửi duyệt, chưa ghi sổ tồn.</span><a href="/inventory/stocktakes">Mở màn Kiểm kê kho</a></div>{previewTable()}</section> : null}
 

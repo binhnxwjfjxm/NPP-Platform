@@ -1,9 +1,9 @@
 import {
-  type RowMap, type OfficialRows, type Stocktake, type PriceList, type PriceItem, type ImportKind, type Unit, type PendingImport, type Category, type Brand,
-  PRODUCT_COLUMNS, PRODUCT_REQUIRED_COLUMNS, PRICING_COLUMNS, STOCKTAKE_COLUMNS,
-  labelFor, displayCell, pricingChoice, bool, boolChoice, variantChoice, lotChoice, expiryChoice, normalizeProductChoices,
+  type RowMap, type OfficialRows, type Stocktake, type PriceList, type ImportKind, type Unit, type PendingImport, type Category, type Brand,
+  PRODUCT_COLUMNS, PRODUCT_REQUIRED_COLUMNS, PRICE_UPDATE_COLUMNS, STOCKTAKE_COLUMNS,
+  labelFor, displayCell, boolChoice, variantChoice, lotChoice, expiryChoice, normalizeProductChoices,
 } from './data-exchange-model';
-import { optional, exactQuantity, exportTable, readTable, requireColumns, requestJson, idempotency, trimDecimal } from './data-exchange-file-utils';
+import { exactQuantity, exportTable, readTable, requireColumns, requestJson, idempotency, trimDecimal } from './data-exchange-file-utils';
 
 type WarehouseOption = { id: string; code: string; name: string };
 type ImportActionsContext = Record<string, any> & {
@@ -16,7 +16,8 @@ type ImportActionsContext = Record<string, any> & {
 
 export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
   const {
-    units, productColumns, pricingColumns, pendingImport, setPendingImport, refreshReferenceData, setMessage, setBusy, fail, begin, priceLists, warehouses, stocktakeWarehouse,
+    units, productColumns, pendingImport, setPendingImport, refreshReferenceData, setMessage, setBusy, fail, begin,
+    priceLists, pricingPriceListId, warehouses, stocktakeWarehouse,
   } = ctx;
   async function productTemplate(format: 'xlsx' | 'csv') {
     begin();
@@ -84,44 +85,49 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
-  async function loadPricingItems() {
-    const rows: Array<{ list: PriceList; item: PriceItem }> = [];
-    await Promise.all(priceLists.map(async (list) => { const items = await requestJson<PriceItem[]>(`/api/price-lists/${list.id}/items?limit=2000`); for (const item of items) rows.push({ list, item }); })); return rows;
+  function selectedBasePriceList() {
+    const list = priceLists.find((item) => item.id === pricingPriceListId) ?? null;
+    if (!list) throw new Error('Chọn bảng giá cần cập nhật.');
+    if (list.list_type !== 'BASE') throw new Error('Cập nhật file SKU + Giá bán chỉ áp dụng cho bảng giá nền.');
+    return list;
   }
   async function pricingExport(format: 'xlsx' | 'csv') {
     begin();
     try {
+      const list = selectedBasePriceList();
       const result = await requestJson<OfficialRows>('/api/file-operations/pricing/export', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotency('p10_pricing_export') }, body: JSON.stringify({ format }) });
-      const selected = PRICING_COLUMNS.filter((column) => pricingColumns.has(column) && result.columns.includes(column)); if (!selected.length) throw new Error('Chọn ít nhất một cột để xuất.');
-      const rows = result.rows.map((row) => selected.map((column) => displayCell(column, row[column]))); await exportTable('bang-gia-sku.xlsx', 'Giá bán SKU', selected, rows, format); setMessage(`Đã xuất ${rows.length} dòng giá.`);
+      const sourceRows = result.rows.filter((row) => String(row.priceListCode ?? '').toUpperCase() === list.code.toUpperCase()
+        && String(row.adjustmentType ?? '').toUpperCase() === 'FIXED_PRICE'
+        && trimDecimal(String(row.minQuantity ?? '0')) === '0'
+        && !String(row.maxQuantity ?? '').trim() && !String(row.effectiveFrom ?? '').trim() && !String(row.effectiveTo ?? '').trim()
+        && (row.isActive === true || String(row.isActive ?? '').toLowerCase() === 'true'));
+      const rows = sourceRows.map((row) => [String(row.sku ?? ''), String(row.amountMinor ?? '')]);
+      await exportTable(`cap-nhat-gia-${list.code}.xlsx`, 'Cập nhật giá', [...PRICE_UPDATE_COLUMNS], rows, format);
+      setMessage(`Đã xuất ${rows.length} SKU của ${list.code}. File chỉ gồm SKU và Giá bán.`);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
-  async function submitPricingImport(rows: RowMap[], fileName: string) {
-    if (rows.length > 2000) throw new Error('Mỗi lần chỉ nhập tối đa 2.000 dòng giá.'); begin();
+  async function submitPricingImport(rows: RowMap[]) {
+    begin();
     try {
-      const blankSource = rows.filter((row) => !String(row.sourceKey ?? '').trim()); const officialRows = rows.filter((row) => String(row.sourceKey ?? '').trim());
-      if (officialRows.length) {
-        await requestJson('/api/file-operations/pricing/import', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotency('p10_pricing_import') }, body: JSON.stringify({ format: fileName.toLowerCase().endsWith('.xlsx') ? 'xlsx' : 'csv', rows: officialRows }) });
-      }
-      if (blankSource.length) {
-        const listByCode = new Map<string, PriceList>(priceLists.map((item) => [item.code.toUpperCase(), item] as const)); const existingRows = await loadPricingItems();
-        for (const [index, row] of blankSource.entries()) {
-          const listCode = String(row.priceListCode ?? '').trim().toUpperCase(); const sku = String(row.sku ?? '').trim().toUpperCase(); const adjustmentType = String(row.adjustmentType ?? '').trim().toUpperCase();
-          const list = listByCode.get(listCode); if (!list) throw new Error(`Dòng ${index + 2}: Mã bảng giá ${listCode || 'đang trống'} không tồn tại.`);
-          const minQuantity = exactQuantity(String(row.minQuantity ?? '0'), 'minQuantity', 6); const maxQuantity = String(row.maxQuantity ?? '').trim() ? exactQuantity(String(row.maxQuantity), 'maxQuantity', 6) : null;
-          const effectiveFrom = optional(row.effectiveFrom); const effectiveTo = optional(row.effectiveTo);
-          const matches = existingRows.filter(({ list: currentList, item }) => currentList.id === list.id && item.sku.toUpperCase() === sku && item.adjustment_type === adjustmentType
-            && trimDecimal(item.min_quantity) === trimDecimal(minQuantity) && trimDecimal(item.max_quantity ?? '') === trimDecimal(maxQuantity ?? '')
-            && String(item.effective_from ?? '') === String(effectiveFrom ?? '') && String(item.effective_to ?? '') === String(effectiveTo ?? ''));
-          if (matches.length !== 1) throw new Error(`Không thể xác định duy nhất dòng giá ${listCode}/${sku}. Hãy xuất file mới nhất rồi sửa trên file đó.`);
-          const match = matches[0]; const amountMinor = optional(row.amountMinor); const rateBps = optional(row.rateBps);
-          await requestJson(`/api/price-lists/${list.id}/items/${match.item.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-            adjustmentType, amountMinor, rateBps: rateBps ? Number(rateBps) : null, minQuantity, maxQuantity, effectiveFrom, effectiveTo,
-            externalRuleCode: optional(row.externalRuleCode), note: optional(row.note), isActive: bool(String(row.isActive ?? ''), 'isActive'), expectedUpdatedAt: match.item.updated_at,
-          }) });
-        }
-      }
-      setPendingImport(null); setMessage(`Đã xử lý ${rows.length} dòng giá${blankSource.length ? `; ${blankSource.length} dòng dữ liệu cũ đã được cập nhật có kiểm tra phiên bản.` : ''}`);
+      if (rows.length > 2000) throw new Error('Mỗi lần chỉ nhập tối đa 2.000 dòng giá.');
+      const list = selectedBasePriceList();
+      const seen = new Set<string>();
+      const items = rows.map((row, index) => {
+        const sku = String(row.sku ?? '').trim().toUpperCase();
+        const amountMinor = String(row.amountMinor ?? '').trim();
+        if (!sku) throw new Error(`Dòng ${index + 2}: SKU đang trống.`);
+        if (seen.has(sku)) throw new Error(`Dòng ${index + 2}: SKU ${sku} bị lặp trong file.`);
+        seen.add(sku);
+        if (!/^(?:0|[1-9]\d{0,18})$/.test(amountMinor)) throw new Error(`Dòng ${index + 2} · SKU ${sku}: Giá bán phải là số nguyên không âm.`);
+        return { priceListCode: list.code, sku, adjustmentType: 'FIXED_PRICE', amountMinor, minQuantity: '0', maxQuantity: null, effectiveFrom: null, effectiveTo: null, sourceKind: 'IMPORT', note: null, isActive: true };
+      });
+      const sourceBatchId = `price-file-${crypto.randomUUID()}`;
+      const result = await requestJson<{ itemsCreated?: number; itemsUpdated?: number; totalItems?: number }>('/api/pricing/import', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': sourceBatchId },
+        body: JSON.stringify({ matchBySku: true, sourceBatchId, items }),
+      });
+      setPendingImport(null);
+      setMessage(`Đã cập nhật ${result.itemsUpdated ?? 0} SKU, tạo giá lần đầu cho ${result.itemsCreated ?? 0} SKU trong ${list.code}.`);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
 
@@ -148,7 +154,7 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
     try {
       let rows = await readTable(file);
       if (kind === 'products') { requireColumns(rows, PRODUCT_REQUIRED_COLUMNS); rows = normalizeProductChoices(rows); }
-      if (kind === 'pricing') { requireColumns(rows, ['priceListCode', 'sku', 'adjustmentType', 'sourceKey', 'isActive']); rows = rows.map((row) => ({ ...row, listType: pricingChoice('listType', row.listType ?? ''), adjustmentType: pricingChoice('adjustmentType', row.adjustmentType ?? ''), isActive: boolChoice(row.isActive ?? '') || row.isActive })); }
+      if (kind === 'pricing') requireColumns(rows, PRICE_UPDATE_COLUMNS);
       if (kind === 'stocktake') requireColumns(rows, STOCKTAKE_COLUMNS);
       setPendingImport({ kind, fileName: file.name, rows }); setMessage(`Đã đọc ${rows.length} dòng từ “${file.name}”. Kiểm tra bảng xem trước rồi bấm Xác nhận nhập.`);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
@@ -156,7 +162,7 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
   async function confirmPendingImport() {
     if (!pendingImport) return;
     if (pendingImport.kind === 'products') return submitProductImport(pendingImport.rows, pendingImport.fileName);
-    if (pendingImport.kind === 'pricing') return submitPricingImport(pendingImport.rows, pendingImport.fileName);
+    if (pendingImport.kind === 'pricing') return submitPricingImport(pendingImport.rows);
     return submitStocktakeImport(pendingImport.rows, pendingImport.fileName);
   }
   function updatePendingRow(index: number, key: string, value: string) {

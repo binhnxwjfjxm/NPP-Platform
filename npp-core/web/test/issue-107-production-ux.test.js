@@ -51,20 +51,24 @@ test('purchase-order layout gives discovery results dedicated height and keeps t
   assert.match(layout, /position:\s*sticky/);
 });
 
-test('multi-SKU pricing previews conflicts and persists one atomic import batch', async () => {
+test('multi-SKU pricing previews conflicts and persists one SKU-keyed idempotent import batch', async () => {
   const [page, overlay] = await Promise.all([
     readSource('../app/pricing/page.tsx'),
     readSource('../app/pricing/pricing-bulk-overlay.tsx'),
   ]);
 
   assert.match(page, /PricingBulkOverlay/);
-  assert.match(overlay, /Chọn tất cả đang hiển thị/);
+  assert.match(overlay, /Chọn kết quả/);
   assert.match(overlay, /SKIP_EXISTING/);
-  assert.match(overlay, /UPSERT_BULK/);
-  assert.match(overlay, /Không ghi đè âm thầm|không ghi đè âm thầm/);
-  assert.match(overlay, /sourceKey: row\.sourceKey/);
+  assert.match(overlay, /UPSERT_SKU/);
+  assert.match(overlay, /không tạo dòng chồng lấn âm thầm/);
+  assert.match(overlay, /matchBySku:\s*true/);
+  assert.match(overlay, /sourceBatchId/);
+  assert.match(overlay, /'Idempotency-Key': sourceBatchId/);
   assert.match(overlay, /requestJson<ImportResult>\('\/api\/pricing\/import'/);
   assert.equal((overlay.match(/\/api\/pricing\/import/g) ?? []).length, 1);
   assert.doesNotMatch(overlay, /wildcard/i);
-  assert.match(overlay, /adjustmentType === 'FIXED_PRICE'[\s\S]*fixedPrices\[row\.variant\.id\]/);
+  assert.match(overlay, /adjustmentType === 'FIXED_PRICE'[\s\S]*fixedPrices\[row\.sku\]/);
+  assert.match(overlay, /listAllPriceListItems/);
+  assert.match(overlay, /role="alert"/);
 });
