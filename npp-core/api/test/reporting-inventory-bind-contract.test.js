@@ -36,6 +36,13 @@ test('inventory reporting ignores placeholder-like text outside executable SQL p
   assert.deepEqual(compacted.values, ['a', 'c']);
 });
 
+test('inventory reporting ignores placeholders inside PostgreSQL escape strings', () => {
+  const sql = String.raw`SELECT $1, E'\' $7', $3`;
+  const compacted = compactReportingQueryBindings(sql, ['a', 'unused', 'c']);
+  assert.equal(compacted.sql, String.raw`SELECT $1, E'\' $7', $2`);
+  assert.deepEqual(compacted.values, ['a', 'c']);
+});
+
 test('inventory reporting adapter renumbers sparse placeholders before PostgreSQL sees them', async () => {
   const calls = [];
   const adapter = {

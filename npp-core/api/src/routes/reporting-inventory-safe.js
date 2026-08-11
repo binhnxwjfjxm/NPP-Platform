@@ -13,8 +13,13 @@ function reportingPlaceholderTokens(sql) {
   while (index < source.length) {
     const char = source[index];
     if (char === "'") {
+      const prefix = source[index - 1] ?? '';
+      const beforePrefix = index > 1 ? source[index - 2] : '';
+      const escapeString = (prefix === 'E' || prefix === 'e')
+        && (!beforePrefix || !IDENTIFIER_CHAR.test(beforePrefix));
       index += 1;
       while (index < source.length) {
+        if (escapeString && source[index] === '\\') { index += Math.min(2, source.length - index); continue; }
         if (source[index] === "'" && source[index + 1] === "'") { index += 2; continue; }
         if (source[index] === "'") { index += 1; break; }
         index += 1;
