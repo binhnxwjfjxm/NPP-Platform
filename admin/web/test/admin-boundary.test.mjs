@@ -40,3 +40,12 @@ test('management reports provide mobile KPI, period comparison and Core/MCP sour
   for (const label of ['Hôm nay','7 ngày','Tháng này','Quý này','Kỳ hiện tại','Kỳ trước','Xu hướng kỳ','Nhận định quản trị']) assert.match(page,new RegExp(label));
   assert.match(page,/\/reports\/\$\{item\.id\}/); assert.match(page,/Dữ liệu dưới đây là dữ liệu mẫu frontend/); assert.match(detail,/Tóm tắt kỳ báo cáo/); assert.match(detail,/Chỉ số quản trị/); assert.match(detail,/Nguồn dữ liệu/); assert.match(data,/source:'Core'/); assert.match(data,/source:'MCP'/); assert.match(data,/source:'Core \+ MCP'/); assert.match(css,/\.sparkBars/); assert.match(css,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/); assert.doesNotMatch(`${page}\n${detail}\n${data}`, /requestCore|fetch\(|method=['"]?(POST|PUT|PATCH|DELETE)|Idempotency-Key/);
 });
+
+test('overview aggregates decision centers and mobile shell does not double-reserve bottom safe area', async () => {
+  const [overview, css] = await Promise.all([read('app/page.tsx'), read('app/admin-management-shell.css')]);
+  assert.match(overview, /approvalFixtures/); assert.match(overview, /adminAlerts/); assert.match(overview, /reportPreviews/);
+  for (const label of ['Nhịp quản trị','Chờ phê duyệt','Cảnh báo mở','Ưu tiên hôm nay','Trung tâm quản trị']) assert.match(overview,new RegExp(label));
+  assert.match(overview,/dữ liệu mẫu frontend/i); assert.match(overview,/overviewDecisionStrip/); assert.match(overview,/overviewFocusList/);
+  assert.match(css,/grid-template-rows:auto minmax\(0,1fr\) auto/); assert.doesNotMatch(css,/grid-template-rows:auto minmax\(0,1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(css,/padding:5px 8px max\(5px,env\(safe-area-inset-bottom\)\)/); assert.match(css,/adminPageHeader h1\{font-size:1\.42rem/); assert.match(css,/\.adminBottomItem span\{font-size:\.58rem/);
+});

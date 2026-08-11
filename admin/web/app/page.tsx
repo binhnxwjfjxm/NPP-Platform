@@ -2,6 +2,9 @@ import Link from 'next/link';
 import { AdminIcon } from './admin-icons';
 import { AdminShell } from './admin-shell';
 import { loadControlTower } from '@/lib/control-tower';
+import { approvalFixtures } from './approvals/approval-fixtures';
+import { adminAlerts } from './alerts/alert-preview-data';
+import { reportPreviews } from './reports/report-preview-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +30,14 @@ export default async function AdminOverviewPage() {
   const logistics = data?.management.logistics?.summary;
   const grossMargin = data?.management.grossMargin?.summary;
 
+  const pendingApprovals = approvalFixtures.filter((item) => item.state === 'pending');
+  const urgentApprovals = pendingApprovals.filter((item) => item.priority === 'critical');
+  const activeAlerts = adminAlerts.filter((item) => item.status === 'active');
+  const highAlerts = activeAlerts.filter((item) => item.severity === 'critical' || item.severity === 'high');
+  const executiveReport = reportPreviews.find((item) => item.id === 'executive-overview');
+  const priorityApproval = urgentApprovals[0] ?? pendingApprovals[0];
+  const priorityAlert = activeAlerts.find((item) => item.severity === 'critical') ?? highAlerts[0] ?? activeAlerts[0];
+
   return (
     <AdminShell activeSection="overview" title="Tổng quan quản trị" subtitle="Tín hiệu ưu tiên, tình hình vận hành và các quyết định cần chú ý.">
       {!data ? <p className="warning compactWarning" role="alert">Dữ liệu tổng hợp tạm thời chưa sẵn sàng.</p> : null}
@@ -39,11 +50,25 @@ export default async function AdminOverviewPage() {
         <article className="card metricCard"><span className="iconBubble"><AdminIcon name="coin" /></span><div className="metricCopy"><span>Lãi gộp VND</span><strong>{text(grossMargin, 'grossMarginVnd') === '—' ? '—' : exactDecimal(text(grossMargin, 'grossMarginVnd'))}</strong></div></article>
       </section>
 
+      <p className="sectionEyebrow">Nhịp quản trị</p>
+      <section className="overviewDecisionStrip" aria-label="Tóm tắt quyết định và cảnh báo">
+        <div><span>Chờ phê duyệt</span><strong>{pendingApprovals.length}</strong><small>{urgentApprovals.length} ưu tiên cao</small></div>
+        <div><span>Cảnh báo mở</span><strong>{activeAlerts.length}</strong><small>{highAlerts.length} mức cao</small></div>
+        <div><span>Điều hành</span><strong>{executiveReport?.current ?? '—'}</strong><small>{executiveReport?.delta ?? 'Chưa có so sánh'}</small></div>
+      </section>
+      <p className="adminPreviewNotice overviewPreviewNotice">Phê duyệt, cảnh báo và báo cáo bên dưới đang dùng dữ liệu mẫu frontend để chốt trải nghiệm; KPI vận hành phía trên vẫn lấy từ nguồn tổng hợp hiện có.</p>
+
+      <p className="sectionEyebrow">Ưu tiên hôm nay</p>
+      <section className="overviewFocusList" aria-label="Việc cần chú ý hôm nay">
+        {priorityApproval ? <Link className="card overviewFocusItem" href={`/approvals/${priorityApproval.id}`}><span className="rowIcon"><AdminIcon name="check" size={19} /></span><span><small>Phê duyệt</small><strong>{priorityApproval.title}</strong><em>{priorityApproval.impact}</em></span><AdminIcon name="chevronRight" size={17} /></Link> : null}
+        {priorityAlert ? <Link className="card overviewFocusItem" href={`/alerts/${priorityAlert.id}`}><span className="rowIcon"><AdminIcon name="exception" size={19} /></span><span><small>Cảnh báo</small><strong>{priorityAlert.title}</strong><em>{priorityAlert.actual} · Ngưỡng {priorityAlert.threshold}</em></span><AdminIcon name="chevronRight" size={17} /></Link> : null}
+      </section>
+
       <p className="sectionEyebrow">Trung tâm quản trị</p>
       <section className="adminOverviewActions" aria-label="Đi tới trung tâm quản trị">
-        <Link className="card adminOverviewAction" href="/approvals"><span className="rowIcon"><AdminIcon name="check" size={21} /></span><span><strong>Phê duyệt</strong><small>Các đề xuất cần quyết định quản lý</small></span><AdminIcon name="chevronRight" size={18} /></Link>
-        <Link className="card adminOverviewAction" href="/alerts"><span className="rowIcon"><AdminIcon name="exception" size={21} /></span><span><strong>Cảnh báo</strong><small>Tín hiệu bất thường theo quy tắc</small></span><AdminIcon name="chevronRight" size={18} /></Link>
-        <Link className="card adminOverviewAction" href="/reports"><span className="rowIcon"><AdminIcon name="document" size={21} /></span><span><strong>Báo cáo</strong><small>Tổng hợp quản trị Core và MCP</small></span><AdminIcon name="chevronRight" size={18} /></Link>
+        <Link className="card adminOverviewAction" href="/approvals"><span className="rowIcon"><AdminIcon name="check" size={20} /></span><span><strong>Phê duyệt</strong><small>{pendingApprovals.length} đề xuất chờ quyết định · {urgentApprovals.length} ưu tiên cao</small></span><AdminIcon name="chevronRight" size={17} /></Link>
+        <Link className="card adminOverviewAction" href="/alerts"><span className="rowIcon"><AdminIcon name="exception" size={20} /></span><span><strong>Cảnh báo</strong><small>{activeAlerts.length} cảnh báo đang hoạt động · {highAlerts.length} mức cao</small></span><AdminIcon name="chevronRight" size={17} /></Link>
+        <Link className="card adminOverviewAction" href="/reports"><span className="rowIcon"><AdminIcon name="document" size={20} /></span><span><strong>Báo cáo</strong><small>Điều hành {executiveReport?.current ?? '—'} · {executiveReport?.delta ?? 'chưa có so sánh'}</small></span><AdminIcon name="chevronRight" size={17} /></Link>
       </section>
     </AdminShell>
   );
