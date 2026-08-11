@@ -103,7 +103,7 @@ test.describe('Kho vận', () => {
     await expect(page.getByText('LOT-001', { exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: 'Kiểm tra tệp' }).click();
-    await expect(page.getByText('Dữ liệu đã resolve đúng kho, vị trí và SKU. Có thể xác nhận nhập tồn.')).toBeVisible();
+    await expect(page.getByText('Dữ liệu đã khớp kho, vị trí, SKU và chính sách tồn kho. Có thể xác nhận nhập tồn.')).toBeVisible();
     const postButton = page.getByRole('button', { name: 'Xác nhận nhập tồn' });
     await expect(postButton).toBeEnabled();
     await postButton.click();
