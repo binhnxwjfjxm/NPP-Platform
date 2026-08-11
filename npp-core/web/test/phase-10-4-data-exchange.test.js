@@ -55,7 +55,9 @@ test('routine price file is exactly SKU plus selling price and list context stay
 
 test('SKU-keyed price updates preserve quotation lineage', () => {
   assert.match(actions, /matchBySku:\s*true/);
-  assert.match(actions, /sourceBatchId: `price-file-\$\{crypto\.randomUUID\(\)\}`/);
+  assert.match(actions, /const sourceBatchId = `price-file-\$\{crypto\.randomUUID\(\)\}`/);
+  assert.match(actions, /'Idempotency-Key': sourceBatchId/);
+  assert.match(actions, /JSON\.stringify\(\{ matchBySku: true, sourceBatchId, items \}\)/);
   assert.match(workspace, /lineTotal: String\(row\.lineTotalMinor/);
   assert.match(workspace, /priceListCode: String\(row\.priceListCode/);
   assert.match(workspace, /row\.lineTotal, row\.priceListCode/);
