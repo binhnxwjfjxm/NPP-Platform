@@ -45,3 +45,27 @@ test('admin main module shells follow locked mobile taxonomy without fake mutati
   for (const label of ['Điều hành', 'Kinh doanh & lợi nhuận', 'Công nợ', 'Kho', 'Giao vận & COD', 'MCP / thị trường', 'Nhân sự / hiệu suất', 'Phê duyệt & cảnh báo']) assert.match(reports, new RegExp(label.replace(/[\/]/g, '\\/')));
   assert.doesNotMatch(`${approvals}\n${alerts}\n${reports}`, /requestCore|fetch\(|POST|PUT|PATCH|DELETE|Idempotency-Key/);
 });
+
+test('approval center provides mobile prioritization, detail context and disabled integration actions', async () => {
+  const [page, detail, fixtures, css] = await Promise.all([
+    read('app/approvals/page.tsx'), read('app/approvals/[approvalId]/page.tsx'), read('app/approvals/approval-fixtures.ts'), read('app/admin-management-shell.css'),
+  ]);
+  assert.match(page, /Chờ quyết định/);
+  assert.match(page, /Chờ bổ sung/);
+  assert.match(page, /Ưu tiên cao/);
+  assert.match(page, /approvalMetaGrid/);
+  assert.match(page, /\/approvals\/\$\{item\.id\}/);
+  assert.match(detail, /Lý do đề xuất/);
+  assert.match(detail, /Quy tắc liên quan/);
+  assert.match(detail, /Dữ liệu và bằng chứng/);
+  assert.match(detail, /Lịch sử/);
+  assert.match(detail, /Phê duyệt/);
+  assert.match(detail, /Yêu cầu bổ sung/);
+  assert.match(detail, /Từ chối/);
+  assert.match(detail, /disabled/);
+  assert.match(detail, /Chưa kết nối|chưa gửi yêu cầu tới backend/i);
+  assert.match(fixtures, /source: 'Core'/);
+  assert.match(fixtures, /source: 'MCP'/);
+  assert.match(css, /\.approvalDecisionBar/);
+  assert.doesNotMatch(`${page}\n${detail}\n${fixtures}`, /requestCore|fetch\(|method=['"]?(POST|PUT|PATCH|DELETE)|Idempotency-Key/);
+});
