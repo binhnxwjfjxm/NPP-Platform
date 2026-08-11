@@ -100,7 +100,7 @@ function parseCsv(text: string): CsvRow[] {
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) return [];
   const delimiter = delimiterFor(lines[0]);
-  const headers = parseLine(lines[0], delimiter).map((header) => HEADER_ALIASES[header.trim()] ?? header.trim());
+  const headers: string[] = parseLine(lines[0], delimiter).map((header) => HEADER_ALIASES[header.trim()] ?? header.trim());
   if (!headers.includes('sku') || !headers.includes('sourceQuantity')) return [];
   return lines.slice(1).map((line) => {
     const cells = parseLine(line, delimiter);
@@ -207,16 +207,15 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
     return missing.length ? { line: index + 2, message: `Thiếu ${missing.join(', ')}` } : null;
   }).filter(Boolean) as Array<{ line: number; message: string }>, [effectiveRows]);
 
-  function invalidateDraft(clearResolution = false) {
+  function invalidateDraft() {
     draftRevision.current += 1;
     setValidation(null);
     setValidationChecksum(null);
-    if (clearResolution) setResolvedRows([]);
   }
 
   function updateRow(index: number, patch: Partial<CsvRow>) {
     setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row));
-    invalidateDraft(false);
+    invalidateDraft();
     setMessage(null);
   }
 
@@ -252,7 +251,8 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
     let active = true;
     setLocationOptions([]);
     setDefaultLocationCode('');
-    invalidateDraft(true);
+    invalidateDraft();
+    setResolvedRows([]);
     if (!selectedWarehouseId) return () => { active = false; };
     setBusy('locations');
     requestJson<LocationEnvelope>(`/api/inventory/opening-balances/operator/locations?warehouseId=${encodeURIComponent(selectedWarehouseId)}`)
@@ -265,8 +265,9 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
   }, [selectedWarehouseId]);
 
   async function chooseFile(file: File) {
-    invalidateDraft(true);
+    invalidateDraft();
     setRows([]);
+    setResolvedRows([]);
     setMessage(null);
     setFilename('');
     if (!file.name.toLowerCase().endsWith('.csv')) {
@@ -350,7 +351,7 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
       const body = normalizedBody();
       const contentChecksum = await checksum(body);
       if (contentChecksum !== validationChecksum) {
-        invalidateDraft(false);
+        invalidateDraft();
         setMessage({ kind: 'error', text: 'Kho, vị trí hoặc dữ liệu đã thay đổi sau lần kiểm tra. Vui lòng kiểm tra lại trước khi xác nhận.' });
         return;
       }
@@ -379,7 +380,7 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
   return <AppShell title="Thiết lập tồn đầu kỳ" subtitle="Chọn kho, nhập SKU và số lượng; hệ thống tự áp dụng chính sách lô/hạn dùng đã cấu hình theo SKU.">
     <main className={styles.page} data-testid="inventory-page">
       <header className={styles.header}>
-        <div><p className={styles.kicker}>TỒN KHO</p><h1>Nhập tồn đầu kỳ</h1><p>Mỗi đợt nhập thuộc một kho. File chỉ cần thông tin vận hành; chính sách lô/hạn dùng lấy từ danh mục SKU.</p></div>
+        <div><p className={styles.kicker}>TỒN KHO</p><h1>Nhập tồn đầu kỳ</h1><p>Mỗi đợt nhập thuộc một kho. Nhân viên chỉ dùng SKU và mã vị trí, không cần biết ID hệ thống. Chính sách lô/hạn dùng lấy từ danh mục SKU.</p></div>
         <Link href="/inventory/balances" className={styles.backLink}>Về tra cứu tồn kho</Link>
       </header>
 
@@ -396,12 +397,12 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
         <h2>Thông tin đợt nhập</h2>
         <div className={styles.formGrid}>
           <label><span>Kho *</span><select data-testid="inventory-opening-warehouse-select" value={selectedWarehouseId} onChange={(event) => { setSelectedWarehouseId(event.target.value); setMessage(null); }} disabled={busy === 'bootstrap'}><option value="">Chọn kho</option>{warehouseOptions.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} — {warehouse.name}</option>)}</select></label>
-          <label><span>Vị trí mặc định</span><select data-testid="inventory-opening-location-select" value={defaultLocationCode} onChange={(event) => { setDefaultLocationCode(event.target.value); invalidateDraft(true); }} disabled={!selectedWarehouseId || busy === 'locations'}><option value="">Không chọn — lấy theo từng dòng CSV</option>{locationOptions.map((location) => <option key={location.id} value={location.code}>{location.code} — {location.name}</option>)}</select><small>Dòng CSV có Vị trí sẽ ưu tiên vị trí của dòng đó.</small></label>
-          <label><span>Mã đợt dữ liệu *</span><input value={sourceKey} onChange={(event) => { setSourceKey(event.target.value); invalidateDraft(false); }} placeholder="Ví dụ TONDAUKY-2026-08" data-testid="inventory-opening-source-key-input" /></label>
-          <label><span>Ngày ghi nhận</span><input type="date" value={documentDate} onChange={(event) => { setDocumentDate(event.target.value); invalidateDraft(false); }} data-testid="inventory-opening-document-date-input" /></label>
+          <label><span>Vị trí mặc định</span><select data-testid="inventory-opening-location-select" value={defaultLocationCode} onChange={(event) => { setDefaultLocationCode(event.target.value); invalidateDraft(); setResolvedRows([]); }} disabled={!selectedWarehouseId || busy === 'locations'}><option value="">Không chọn — lấy theo từng dòng CSV</option>{locationOptions.map((location) => <option key={location.id} value={location.code}>{location.code} — {location.name}</option>)}</select><small>Dòng CSV có Vị trí sẽ ưu tiên vị trí của dòng đó.</small></label>
+          <label><span>Mã đợt dữ liệu *</span><input value={sourceKey} onChange={(event) => { setSourceKey(event.target.value); invalidateDraft(); }} placeholder="Ví dụ TONDAUKY-2026-08" data-testid="inventory-opening-source-key-input" /></label>
+          <label><span>Ngày ghi nhận</span><input type="date" value={documentDate} onChange={(event) => { setDocumentDate(event.target.value); invalidateDraft(); }} data-testid="inventory-opening-document-date-input" /></label>
           <label><span>Tệp đã chọn</span><input value={filename || 'Chưa chọn tệp'} readOnly /></label>
         </div>
-        <p className={styles.helper}>Mẫu chỉ cần <strong>SKU</strong>, <strong>Số lượng</strong> và <strong>Vị trí</strong> khi cần. Sau khi đối chiếu, màn hình sẽ tự yêu cầu Mã lô/Hạn sử dụng đúng theo chính sách của SKU; không cần khai báo chính sách trong file tồn đầu kỳ.</p>
+        <p className={styles.helper}>Mã kho được chọn từ danh mục kho; Mã tham chiếu SKU là mã SKU nghiệp vụ trong file, không phải ID hệ thống. Mẫu chỉ cần <strong>SKU</strong>, <strong>Số lượng</strong> và <strong>Vị trí</strong> khi cần. Sau khi đối chiếu, màn hình sẽ tự yêu cầu Mã lô/Hạn sử dụng đúng theo chính sách của SKU; không cần khai báo chính sách trong file tồn đầu kỳ.</p>
       </section>
 
       <section className={styles.card}>
