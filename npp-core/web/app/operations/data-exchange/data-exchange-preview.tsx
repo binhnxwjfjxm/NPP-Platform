@@ -1,11 +1,11 @@
 'use client';
 
 import styles from './data-exchange.module.css';
-import { type ImportKind, type PendingImport, type RowMap, type Unit, PRICING_COLUMNS, STOCKTAKE_COLUMNS, labelFor, boolChoice, variantChoice, lotChoice, expiryChoice } from './data-exchange-model';
+import { type Tab, type PendingImport, type RowMap, type Unit, PRICING_COLUMNS, STOCKTAKE_COLUMNS, labelFor, boolChoice, variantChoice, lotChoice, expiryChoice } from './data-exchange-model';
 
 type PreviewContext = {
   pendingImport: PendingImport | null;
-  tab: ImportKind;
+  tab: Tab;
   setPendingImport: (value: PendingImport | null) => void;
   busy: boolean;
   confirmPendingImport: () => Promise<unknown> | unknown;
