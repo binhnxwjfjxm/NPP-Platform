@@ -8,6 +8,7 @@ import {
 } from '../audit-outbox.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
 import * as service from '../services/file-operations.js';
+import * as productOnboardingService from '../services/product-onboarding-file.js';
 
 const STOCKTAKE_PERMISSIONS = Object.freeze({
   read: 'core.stocktake.read',
@@ -70,8 +71,8 @@ async function readPayload(req, res, options) {
 
 function requiredPermissions(pathname, method, permissions) {
   if (method === 'GET' && pathname === '/api/file-operations/inventory/movements') return [permissions.coreInventoryRead];
-  if (pathname === '/api/file-operations/products/export') return [permissions.coreProductRead];
-  if (pathname === '/api/file-operations/products/import') return [permissions.coreProductWrite];
+  if (pathname === '/api/file-operations/products/export') return [permissions.coreProductRead, permissions.coreInventoryTrackingPolicyRead];
+  if (pathname === '/api/file-operations/products/import') return [permissions.coreProductWrite, permissions.coreInventoryTrackingPolicyManage];
   if (pathname === '/api/file-operations/pricing/export') return [permissions.corePriceRead];
   if (pathname === '/api/file-operations/pricing/import') return [permissions.corePriceWrite];
   if (pathname === '/api/file-operations/stocktake/export') return [STOCKTAKE_PERMISSIONS.read];
@@ -287,11 +288,11 @@ export async function handleFileOperationRoutes(req, res, options) {
   if (payload === null) return true;
 
   const operations = {
-    '/api/file-operations/products/export': (client) => service.exportProductRows(client, {
+    '/api/file-operations/products/export': (client) => productOnboardingService.exportProductOnboardingRows(client, {
       requestContext,
       format: payload?.format,
     }),
-    '/api/file-operations/products/import': (client) => service.importProductRows(client, {
+    '/api/file-operations/products/import': (client) => productOnboardingService.importProductOnboardingRows(client, {
       requestContext,
       payload,
     }),

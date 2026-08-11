@@ -56,11 +56,19 @@ test('Delivery production workflow stays manual-only and deploys canonical workf
     'npm ci --ignore-scripts',
     '/health/live',
     '/health/ready',
+    'deployment_reachable=false',
+    '200|301|302|303|307|308|401|403',
+    'smoke_url="https://$DELIVERY_DOMAIN"',
     'Welcome to Hung Phat Operations.',
+    'test "$domain_ready" = true',
+    'curl --fail --silent --show-error "$smoke_url$asset"',
     'auth_source=core-workforce-session',
     'setup_mode=false',
   ]) assert.ok(script.includes(marker), `script missing ${marker}`);
 
+  assert.match(script, /\$deployment_url\/login/);
+  assert.doesNotMatch(script, /html=.*\$deployment_url\/login/);
+  assert.doesNotMatch(script, /\$deployment_url\$asset/);
   assert.doesNotMatch(script, /DATABASE_URL|DELIVERY_FRONTEND_API_TOKEN|DELIVERY_CORE_API_TOKEN|DELIVERY_WEB_USERS_JSON|DELIVERY_SETUP_MODE|DELIVERY_SETUP_USERNAME|DELIVERY_SETUP_PASSWORD|x-npp-delivery-employee-id/);
   assert.doesNotMatch(script, /vercel@latest/);
   assert.doesNotMatch(script, /npm install/);

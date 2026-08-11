@@ -57,6 +57,18 @@ const money = new Intl.NumberFormat("vi-VN", {
   maximumFractionDigits: 0
 });
 
+function catalogPrice(value: unknown) {
+  if (value === null || value === undefined) return null;
+  const normalized = typeof value === "string" ? value.trim() : value;
+  if (normalized === "") return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function catalogPriceLabel(value?: number | null) {
+  return value === null || value === undefined ? "Chưa có giá Core" : money.format(value);
+}
+
 function apiErrorMessage(payload: unknown, fallback: string) {
   if (!payload || typeof payload !== "object") return fallback;
   const value = payload as { error?: string | { message?: string }; detail?: string; message?: string };
@@ -92,7 +104,7 @@ function normalizeCatalogItems(value: unknown): ProductCatalogItem[] {
       sellUnit: item.sellUnit ?? null,
       packUnit: item.packUnit ?? null,
       packQuantity: item.packQuantity ?? null,
-      price: Number(item.price || 0)
+      price: catalogPrice(item.price)
     }));
 }
 
@@ -219,9 +231,10 @@ export function OrderCreateSheet({
   const categorySections = useMemo(() => groupCatalogCategories(categoryOptions), [categoryOptions]);
   const total = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+  const hasUnresolvedPrices = items.some((item) => (item.price === null || item.price === undefined) && item.unitPrice <= 0);
   const selectedQuantityByVariant = useMemo(() => new Map(items.map((item) => [item.variantId, item.quantity])), [items]);
   const customerReady = customerMode === "existing" ? Boolean(routeCustomerId) : Boolean(manualCustomer.name.trim());
-  const readyToSubmit = customerReady && items.length > 0 && mobilePanel === "cart";
+  const readyToSubmit = customerReady && items.length > 0 && mobilePanel === "cart" && !hasUnresolvedPrices;
 
   const loadProducts = useCallback(async (query: string, category: string, brand: string) => {
     const requestId = ++productRequestRef.current;
@@ -297,8 +310,10 @@ export function OrderCreateSheet({
     if (!current || (selectedSession && current.routeId !== selectedSession.routeId)) setRouteCustomerId("");
   }, [activeCustomers, routeCustomerId, selectedSession]);
 
-  function announceAdded(product: ProductCatalogItem, nextQuantity: number) {
-    setAddedNotice(`${product.name} · ${variantPrimaryLabel(product)}: ${nextQuantity} trong đơn`);
+  function announceQuantity(product: ProductCatalogItem, nextQuantity: number) {
+    setAddedNotice(nextQuantity > 0
+      ? `${product.name} · ${variantPrimaryLabel(product)}: ${nextQuantity} trong đơn`
+      : `${product.name} · ${variantPrimaryLabel(product)}: đã bỏ khỏi đơn`);
     if (addedNoticeTimerRef.current !== null) window.clearTimeout(addedNoticeTimerRef.current);
     addedNoticeTimerRef.current = window.setTimeout(() => setAddedNotice(""), 1800);
   }
@@ -314,9 +329,9 @@ export function OrderCreateSheet({
     setItems((current) => {
       const existed = current.find((item) => item.variantId === product.variantId);
       if (existed) return current.map((item) => item.variantId === product.variantId ? { ...item, quantity: item.quantity + 1 } : item);
-      return [...current, { ...product, quantity: 1, unitPrice: Number(product.price || 0) }];
+      return [...current, { ...product, quantity: 1, unitPrice: product.price ?? 0 }];
     });
-    announceAdded(product, nextQuantity);
+    announceQuantity(product, nextQuantity);
   }
 
   function decreaseProduct(variantId: string) {
@@ -325,6 +340,16 @@ export function OrderCreateSheet({
       if (item.quantity <= 1) return [];
       return [{ ...item, quantity: item.quantity - 1 }];
     }));
+  }
+
+  function toggleCatalogProduct(product: ProductCatalogItem) {
+    const selectedQuantity = selectedQuantityByVariant.get(product.variantId) || 0;
+    if (selectedQuantity > 0) {
+      decreaseProduct(product.variantId);
+      announceQuantity(product, selectedQuantity - 1);
+      return;
+    }
+    addProduct(product);
   }
 
   function updateItem(variantId: string, field: "quantity" | "unitPrice", value: number) {
@@ -408,6 +433,12 @@ export function OrderCreateSheet({
     if (items.length === 0) {
       setMessage("Chọn ít nhất một vị hoặc quy cách sản phẩm.");
       setMobilePanel("catalog");
+      return;
+    }
+    const unresolvedPriceItem = items.find((item) => (item.price === null || item.price === undefined) && item.unitPrice <= 0);
+    if (unresolvedPriceItem) {
+      setMessage(`Nhập đơn giá tạm lớn hơn 0 cho ${unresolvedPriceItem.name} · ${variantPrimaryLabel(unresolvedPriceItem)} trước khi tạo đơn.`);
+      setMobilePanel("cart");
       return;
     }
     if (mobilePanel !== "cart") {
@@ -494,6 +525,7 @@ export function OrderCreateSheet({
     : items.length === 0
       ? "Đã chọn khách · chọn vị sản phẩm"
       : `${items.length} dòng · ${totalQuantity} sản phẩm`);
+  const totalLabel = hasUnresolvedPrices ? "Cần đơn giá tạm" : money.format(total);
 
   return (
     <BottomSheet
@@ -506,7 +538,7 @@ export function OrderCreateSheet({
         <div className={styles.footer}>
           <div className={styles.footerSummary} aria-live="polite">
             <small>{footerHint}</small>
-            <strong>{money.format(total)}</strong>
+            <strong>{totalLabel}</strong>
           </div>
           <button className={`${styles.cartButton} button`} type="button" onClick={() => requestPanel("cart")} disabled={saving || items.length === 0}>
             Đơn ({totalQuantity})
@@ -702,16 +734,18 @@ export function OrderCreateSheet({
                             type="button"
                             key={product.variantId}
                             className={`${styles.variantButton} ${selectedQuantity ? styles.variantSelected : ""}`}
-                            onClick={() => addProduct(product)}
+                            onClick={() => toggleCatalogProduct(product)}
                             disabled={!customerReady || saving}
-                            aria-label={`Thêm ${product.name}, ${primaryLabel} vào đơn`}
+                            aria-label={selectedQuantity
+                              ? `Giảm ${product.name}, ${primaryLabel} trong đơn`
+                              : `Thêm ${product.name}, ${primaryLabel} vào đơn`}
                             title={`${product.name} · ${primaryLabel} · ${secondaryLabel}`}
                           >
                             <span className={styles.variantName}>{primaryLabel}</span>
                             <small>{secondaryLabel}</small>
                             <span className={styles.variantFooter}>
-                              <strong>{money.format(Number(product.price || 0))}</strong>
-                              <em>{selectedQuantity ? `${selectedQuantity} trong đơn` : "+ Thêm"}</em>
+                              <strong>{catalogPriceLabel(product.price)}</strong>
+                              <em>{selectedQuantity ? `${selectedQuantity} trong đơn · chạm để giảm` : "+ Thêm"}</em>
                             </span>
                           </button>
                         );
@@ -728,7 +762,7 @@ export function OrderCreateSheet({
           <section className={`${styles.section} ${styles.cartSection}`}>
             <div className={styles.sectionHead}>
               <div><strong>Đơn đang lên</strong><small>{items.length} dòng · {totalQuantity} sản phẩm</small></div>
-              <b className={styles.cartTotal}>{money.format(total)}</b>
+              <b className={styles.cartTotal}>{totalLabel}</b>
             </div>
             <div className={styles.itemList}>
               {items.length === 0 ? <p className={styles.emptyState}>Chưa có sản phẩm. Mở tab Sản phẩm và chọn vị ngay trong card nhãn hàng.</p> : null}
@@ -751,8 +785,22 @@ export function OrderCreateSheet({
                         <button type="button" onClick={() => addProduct(item)} disabled={saving} aria-label={`Tăng ${item.name}`}>+</button>
                       </div>
                     </div>
-                    <label className={styles.priceField}><span>Đơn giá</span><input type="number" min="0" inputMode="decimal" value={item.unitPrice} onChange={(event) => updateItem(item.variantId, "unitPrice", Number(event.target.value))} disabled={saving} /></label>
-                    <div className={styles.lineTotal}><span>Thành tiền</span><strong>{money.format(item.quantity * item.unitPrice)}</strong></div>
+                    <label className={styles.priceField}>
+                      <span>{item.price === null || item.price === undefined ? "Đơn giá tạm *" : "Đơn giá"}</span>
+                      <input
+                        type="number"
+                        min={item.price === null || item.price === undefined ? 1 : 0}
+                        inputMode="decimal"
+                        value={(item.price === null || item.price === undefined) && item.unitPrice <= 0 ? "" : item.unitPrice}
+                        placeholder={item.price === null || item.price === undefined ? "Nhập giá" : undefined}
+                        onChange={(event) => updateItem(item.variantId, "unitPrice", Number(event.target.value))}
+                        disabled={saving}
+                      />
+                    </label>
+                    <div className={styles.lineTotal}>
+                      <span>Thành tiền</span>
+                      <strong>{(item.price === null || item.price === undefined) && item.unitPrice <= 0 ? "Chưa có giá" : money.format(item.quantity * item.unitPrice)}</strong>
+                    </div>
                   </div>
                 </article>
               ))}

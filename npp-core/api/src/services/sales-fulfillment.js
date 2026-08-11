@@ -30,6 +30,24 @@ function canReadFulfillment(requestContext) {
     && requestContext.permissions.includes('core.fulfillment.read');
 }
 
+function allocationTransitionBlocked(error) {
+  return error?.code === 'P0001'
+    && error?.message === 'sales_fulfillment_transition_blocked_by_allocation';
+}
+
+async function lockActiveSalesOrderDemands(client, installationId, salesOrderId) {
+  await client.query(
+    `SELECT id
+       FROM sales.sales_order_fulfillment_demands
+      WHERE installation_id = $1
+        AND sales_order_id = $2
+        AND state = 'ACTIVE'
+      ORDER BY id ASC
+      FOR UPDATE`,
+    [installationId, salesOrderId],
+  );
+}
+
 function mapProjection(projection) {
   const lines = projection.lines.map((line) => Object.freeze({
     id: line.id,
@@ -198,6 +216,20 @@ export async function replaceSalesOrderFulfillmentDemand(client, {
   const normalized = normalizeInputRows(rows, requestContext);
   if (!normalized.ok) return normalized;
 
+  // Allocation operations lock the active demand row before taking fulfillment-scope locks.
+  // Keep the same lock order here so confirm/amendment cannot race an allocation or deadlock it.
+  await lockActiveSalesOrderDemands(client, requestContext.installationId, salesOrderId);
+  if (await repository.hasActiveAllocationFacts(client, {
+    installationId: requestContext.installationId,
+    salesOrderId,
+  })) {
+    return failure(
+      'SALES_ORDER_HAS_EXECUTION_FACTS',
+      'Đơn bán hàng đã có phân bổ/soạn hàng; không thể xác nhận phiên bản mới trực tiếp.',
+      false,
+    );
+  }
+
   const settings = await repository.getFulfillmentSettings(client, {
     installationId: requestContext.installationId,
   });
@@ -220,11 +252,22 @@ export async function replaceSalesOrderFulfillmentDemand(client, {
   }
 
   await repository.setFulfillmentWriteContext(client);
-  await repository.supersedeActiveDemands(client, {
-    installationId: requestContext.installationId,
-    salesOrderId,
-    actorId: requestContext.actorId,
-  });
+  try {
+    await repository.supersedeActiveDemands(client, {
+      installationId: requestContext.installationId,
+      salesOrderId,
+      actorId: requestContext.actorId,
+    });
+  } catch (error) {
+    // The DB trigger is the authoritative last guard if an older/nonstandard writer
+    // manages to create execution facts outside the normal demand-row lock protocol.
+    if (!allocationTransitionBlocked(error)) throw error;
+    return failure(
+      'SALES_ORDER_HAS_EXECUTION_FACTS',
+      'Đơn bán hàng đã có phân bổ/soạn hàng; không thể xác nhận phiên bản mới trực tiếp.',
+      false,
+    );
+  }
 
   const allAllocations = [];
   for (const [, lines] of orderedGroups) {

@@ -108,36 +108,29 @@ function challengeHash(pepper, challengeId, userId, code) {
   return createHmac('sha256', pepper).update(`${challengeId}:${userId}:${code}`).digest('hex');
 }
 
-function challengeRecipients(config = {}) {
-  return [...new Set([
-    ...(Array.isArray(config.securityOwnerEmails) ? config.securityOwnerEmails : []),
-    ...(Array.isArray(config.implementationOwnerEmails) ? config.implementationOwnerEmails : []),
-  ].map((email) => text(email).toLowerCase()).filter(Boolean))];
+function normalizeChallengeRecipient(value) {
+  const email = text(value).toLowerCase();
+  return EMAIL_PATTERN.test(email) && email.length <= 256 ? email : '';
 }
 
-function validEmailChallengeRuntime(runtime, config, fetchImpl) {
-  const recipients = challengeRecipients(config);
+function validEmailChallengeRuntime(runtime, recipientEmail, fetchImpl) {
   return Boolean(
     runtime.accountId
     && runtime.apiToken
     && EMAIL_PATTERN.test(runtime.from)
     && runtime.pepper.length >= 32
-    && Array.isArray(config.securityOwnerEmails)
-    && config.securityOwnerEmails.length === 2
-    && Array.isArray(config.implementationOwnerEmails)
-    && config.implementationOwnerEmails.length === 1
-    && recipients.length === 3
-    && recipients.every((email) => EMAIL_PATTERN.test(email))
+    && normalizeChallengeRecipient(recipientEmail)
     && typeof fetchImpl === 'function'
   );
 }
 
-async function sendOwnerChallengeEmail(fetchImpl, runtime, config, { code, sourceApp }) {
+async function sendLoginChallengeEmail(fetchImpl, runtime, { recipientEmail, code, sourceApp }) {
   const endpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(runtime.accountId)}/email/sending/send`;
-  const subject = 'Mã xác nhận đăng nhập Hưng Phát';
-  const textBody = `Có yêu cầu đăng nhập Web/PWA vào hệ thống Hưng Phát (${sourceApp}). Mã xác nhận: ${code}. Mã hết hạn sau ${Math.ceil(runtime.ttlSeconds / 60)} phút. Nếu không phải yêu cầu hợp lệ, không cung cấp mã này.`;
-  const htmlBody = `<p>Có yêu cầu đăng nhập Web/PWA vào hệ thống Hưng Phát (${sourceApp}).</p><p>Mã xác nhận: <strong>${code}</strong></p><p>Mã hết hạn sau ${Math.ceil(runtime.ttlSeconds / 60)} phút. Nếu không phải yêu cầu hợp lệ, không cung cấp mã này.</p>`;
-  const recipients = challengeRecipients(config);
+  const subject = 'Mã xác nhận đăng nhập hệ thống Hưng Phát';
+  const textBody = `Có yêu cầu đăng nhập Web/PWA vào hệ thống Hưng Phát (${sourceApp}). Mã xác nhận: ${code}. Mã hết hạn sau ${Math.ceil(runtime.ttlSeconds / 60)} phút. Mã này chỉ dùng cho đăng nhập hệ thống Hưng Phát, không dùng cho ngân hàng, thanh toán hoặc giao dịch tài chính. Nếu không phải yêu cầu của bạn, không cung cấp mã này.`;
+  const htmlBody = `<p>Có yêu cầu đăng nhập Web/PWA vào hệ thống Hưng Phát (${sourceApp}).</p><p>Mã xác nhận: <strong>${code}</strong></p><p>Mã hết hạn sau ${Math.ceil(runtime.ttlSeconds / 60)} phút.</p><p>Mã này chỉ dùng cho đăng nhập hệ thống Hưng Phát, không dùng cho ngân hàng, thanh toán hoặc giao dịch tài chính.</p><p>Nếu không phải yêu cầu của bạn, không cung cấp mã này.</p>`;
+  const recipient = normalizeChallengeRecipient(recipientEmail);
+  if (!recipient) throw new Error('INTERNAL_AUTH_EMAIL_SEND_FAILED');
   const response = await fetchImpl(endpoint, {
     method: 'POST',
     signal: AbortSignal.timeout(CHALLENGE_EMAIL_TIMEOUT_MS),
@@ -146,7 +139,7 @@ async function sendOwnerChallengeEmail(fetchImpl, runtime, config, { code, sourc
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      to: recipients,
+      to: [recipient],
       from: { address: runtime.from, name: 'Hưng Phát Security' },
       subject,
       text: textBody,
@@ -161,7 +154,7 @@ async function sendOwnerChallengeEmail(fetchImpl, runtime, config, { code, sourc
     ...(Array.isArray(result?.queued) ? result.queued : []),
   ].map((email) => String(email).toLowerCase()));
   const permanentBounces = Array.isArray(result?.permanent_bounces) ? result.permanent_bounces : [];
-  if (!payload?.success || permanentBounces.length > 0 || recipients.some((email) => !accepted.has(email))) {
+  if (!payload?.success || permanentBounces.length > 0 || !accepted.has(recipient)) {
     throw new Error('INTERNAL_AUTH_EMAIL_SEND_FAILED');
   }
 }
@@ -407,6 +400,7 @@ export function createInternalWorkforceAuthenticator({
           userId: identity.user_id,
         });
         const challengeRequired = internalWebChallengeRequired(authorization, config);
+        const challengeRecipientEmail = normalizeChallengeRecipient(identity.employee_email);
         let verifiedChallenge = false;
         if (challengeRequired) {
           const submittedCode = text(payload.ownerCode);
@@ -421,7 +415,7 @@ export function createInternalWorkforceAuthenticator({
               return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CODE_INVALID', 401));
             }
           } else {
-            if (!validEmailChallengeRuntime(emailChallengeRuntime, config, fetchImpl)) {
+            if (!validEmailChallengeRuntime(emailChallengeRuntime, challengeRecipientEmail, fetchImpl)) {
               return auditDeniedLogin(client, authFailure('INTERNAL_AUTH_OWNER_CHALLENGE_UNAVAILABLE', 503));
             }
 
@@ -472,7 +466,7 @@ export function createInternalWorkforceAuthenticator({
                   userId: identity.user_id,
                   sourceApp,
                   accessChannel: 'WEB',
-                  recipientCount: challengeRecipients(config).length,
+                  recipientCount: 1,
                   expiresAt: challenge.expires_at,
                 },
               }));
@@ -482,6 +476,7 @@ export function createInternalWorkforceAuthenticator({
                   challengeId,
                   code,
                   sourceApp,
+                  recipientEmail: challengeRecipientEmail,
                 }),
               });
             }
@@ -591,7 +586,8 @@ export function createInternalWorkforceAuthenticator({
 
     if (transactionResult.challengeDelivery) {
       try {
-        await sendOwnerChallengeEmail(fetchImpl, emailChallengeRuntime, config, {
+        await sendLoginChallengeEmail(fetchImpl, emailChallengeRuntime, {
+          recipientEmail: transactionResult.challengeDelivery.recipientEmail,
           code: transactionResult.challengeDelivery.code,
           sourceApp: transactionResult.challengeDelivery.sourceApp,
         });

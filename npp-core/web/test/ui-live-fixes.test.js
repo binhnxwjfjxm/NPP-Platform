@@ -11,8 +11,9 @@ test('sidebar submenu expands by content and exposes every P0-P4 destination', a
     readSource('../app/components/app-shell.tsx'),
   ]);
 
-  assert.match(styles, /\.subnav\s*\{[\s\S]*display: none/);
-  assert.match(styles, /\.subnavOpen\s*\{[\s\S]*display: grid/);
+  assert.match(styles, /\.subnav\s*\{[^}]*grid-template-rows:\s*0fr/);
+  assert.match(styles, /\.subnavOpen\s*\{[^}]*grid-template-rows:\s*1fr/);
+  assert.doesNotMatch(styles, /\.subnav\s*\{[^}]*display:\s*none/);
   assert.doesNotMatch(styles, /max-height:\s*260px/);
 
   const requiredNavigationIds = [
@@ -177,8 +178,11 @@ test('customer creation saves a default address without duplicating the customer
   assert.doesNotMatch(layout, /ui-live-fixes\.css/);
 });
 
-test('users remain internal identities instead of partial password accounts', async () => {
+test('user access flow provisions a complete credentialed account instead of a partial identity', async () => {
   const workspace = await readSource('../app/access/users/user-workspace.tsx');
   assert.match(workspace, /Quản lý tài khoản sử dụng hệ thống/);
-  assert.doesNotMatch(workspace, /type="password"/);
+  assert.match(workspace, /type="password"/);
+  assert.match(workspace, /\/credential/);
+  assert.match(workspace, /roleIds:\s*sortedIds\(draft\.roleIds\)/);
+  assert.match(workspace, /isActive:\s*false/);
 });

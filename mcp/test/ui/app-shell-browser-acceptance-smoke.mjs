@@ -152,8 +152,8 @@ async function verifyMobile(browser) {
     assert.ok(Math.abs(margin) <= 0.1, "bottom nav must not have floating outer margins");
   }
   assert.ok(before.activeBottomAppearance, "active bottom navigation item must be measurable");
-  assert.equal(before.activeBottomAppearance.backgroundImage, "none", "active bottom item must not use the old gradient pill");
-  assert.equal(before.activeBottomAppearance.boxShadow, "none", "active bottom item must not use an oversized floating shadow");
+  assert.match(before.activeBottomAppearance.backgroundImage, /linear-gradient/, "active bottom item must use the satin champagne metal surface");
+  assert.notEqual(before.activeBottomAppearance.boxShadow, "none", "active bottom item must keep restrained satin-metal depth");
 
   await page.evaluate(() => {
     const main = document.querySelector("[data-app-scroll-region]");
@@ -261,7 +261,7 @@ try {
   result.desktop = await verifyDesktop(browser);
   result.singleMenuTrigger = "PASS";
   result.bottomNavigationLimit = "PASS";
-  result.flatNativeBottomNavigation = "PASS";
+  result.satinMetalBottomNavigation = "PASS";
   result.stableBottomNavigation = "PASS";
   result.noOverlap = "PASS";
   result.fixedTopBar = "PASS";

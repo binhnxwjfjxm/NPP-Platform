@@ -19,6 +19,7 @@ on:
       - "mcp/src/app/npp-theme.css"
       - "mcp/src/app/app-shell-contract.css"
       - "mcp/src/app/hung-phat-mobile-foundation.css"
+      - "mcp/src/app/satin-metal-actions.css"
       - "mcp/src/app/page.tsx"
       - "mcp/src/app/settings/**"
       - "mcp/src/app/customers/**"

@@ -6,9 +6,9 @@ type LoginPageProps = Readonly<{
 }>;
 
 function errorMessage(error?: string) {
-  if (error === 'owner_code_invalid') return 'Mã xác nhận chủ sở hữu chưa đúng.';
-  if (error === 'owner_challenge_required') return 'Tài khoản này yêu cầu mã xác nhận từ chủ sở hữu để đăng nhập Web/PWA.';
-  if (error === 'owner_challenge_unavailable') return 'Xác minh chủ sở hữu chưa sẵn sàng trên môi trường này.';
+  if (error === 'owner_code_invalid') return 'Mã xác nhận đăng nhập chưa đúng.';
+  if (error === 'owner_challenge_required') return 'Mã xác nhận đã được gửi tới email của tài khoản. Nhập mã để hoàn tất đăng nhập.';
+  if (error === 'owner_challenge_unavailable') return 'Xác minh đăng nhập chưa sẵn sàng cho tài khoản này. Vui lòng kiểm tra email nhân viên đã được cấu hình.';
   if (error === 'auth_unavailable') return 'Hệ thống xác thực đang tạm thời chưa sẵn sàng.';
   return error ? 'Tên đăng nhập/email hoặc mật khẩu chưa đúng.' : null;
 }
@@ -50,13 +50,13 @@ export default function DeliveryLoginPage({ searchParams }: LoginPageProps) {
             </label>
             {ownerChallenge ? (
               <label className={styles.field}>
-                <span>Mã xác nhận chủ sở hữu</span>
+                <span>Mã xác nhận đăng nhập</span>
                 <input name="ownerCode" inputMode="numeric" autoComplete="one-time-code" maxLength={6} required />
               </label>
             ) : null}
             <button className={styles.submit} type="submit">Vào ứng dụng</button>
           </form>
-          <p className={styles.note}>Phiên được xác thực trực tiếp bởi NPP Core và có thể bị thu hồi ngay khi tài khoản bị khóa.</p>
+          <p className={styles.note}>Nếu tài khoản yêu cầu xác minh bổ sung, mã được gửi tới email của chính tài khoản. Phiên được xác thực trực tiếp bởi NPP Core và có thể bị thu hồi ngay khi tài khoản bị khóa.</p>
         </div>
       </section>
     </main>
