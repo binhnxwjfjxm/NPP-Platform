@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     shortcut: '/icons/admin-192.png',
     apple: [{ url: '/icons/admin-180.png', sizes: '180x180', type: 'image/png' }],
   },
-  appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'Admin Hưng Phát' },
+  appleWebApp: { capable: true, statusBarStyle: 'black', title: 'Admin Hưng Phát' },
   other: { 'mobile-web-app-capable': 'yes' },
   formatDetection: { telephone: false },
 };
