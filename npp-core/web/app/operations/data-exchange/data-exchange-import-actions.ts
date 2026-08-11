@@ -1,5 +1,5 @@
 import {
-  type RowMap, type OfficialRows, type Stocktake, type PriceList, type PriceItem, type ImportKind, type Unit, type PendingImport,
+  type RowMap, type OfficialRows, type Stocktake, type PriceList, type PriceItem, type ImportKind, type Unit, type PendingImport, type Category, type Brand,
   PRODUCT_COLUMNS, PRODUCT_REQUIRED_COLUMNS, PRICING_COLUMNS, STOCKTAKE_COLUMNS,
   labelFor, displayCell, pricingChoice, bool, boolChoice, variantChoice, lotChoice, expiryChoice, normalizeProductChoices,
 } from './data-exchange-model';
@@ -32,12 +32,22 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
       setMessage(`Đã xuất ${rows.length} dòng SKU.`);
     } catch (cause) { fail(cause); } finally { setBusy(false); }
   }
-  function validateProductRows(rows: RowMap[]) {
+  function validateProductRows(rows: RowMap[], categories: Category[], brands: Brand[]) {
     const activeUnits = new Set(units.filter((unit) => unit.is_active).map((unit) => unit.code.toUpperCase()));
+    const categoryCodes = new Set(categories.map((item) => item.code.toUpperCase()));
+    const brandCodes = new Set(brands.map((item) => item.code.toUpperCase()));
+    const productIdentity = new Map<string, string>();
     for (const [index, row] of rows.entries()) {
-      const line = index + 2; const sku = String(row.sku ?? '').trim().toUpperCase();
-      if (!String(row.productCode ?? '').trim() || !String(row.productName ?? '').trim()) throw new Error(`Dòng ${line}: cần có Mã sản phẩm và Tên sản phẩm.`);
+      const line = index + 2; const productCode = String(row.productCode ?? '').trim().toUpperCase(); const sku = String(row.sku ?? '').trim().toUpperCase();
+      if (!productCode || !String(row.productName ?? '').trim()) throw new Error(`Dòng ${line}: cần có Mã sản phẩm và Tên sản phẩm.`);
+      const categoryCode = String(row.categoryCode ?? '').trim().toUpperCase(); const brandCode = String(row.brandCode ?? '').trim().toUpperCase();
+      if (categoryCode && !categoryCodes.has(categoryCode)) throw new Error(`Dòng ${line} · Mã SP ${productCode}: Loại sản phẩm “${categoryCode}” không tồn tại. Chọn lại Loại sản phẩm bằng tên trong bảng xem trước.`);
+      if (brandCode && !brandCodes.has(brandCode)) throw new Error(`Dòng ${line} · Mã SP ${productCode}: Nhãn hàng “${brandCode}” không tồn tại. Chọn lại Nhãn hàng bằng tên trong bảng xem trước.`);
       for (const field of ['productIsCatalogVisible', 'productIsOrderable', 'productIsActive']) if (!boolChoice(String(row[field] ?? ''))) throw new Error(`Dòng ${line}: chọn Có hoặc Không ở “${labelFor(field)}”.`);
+      const identity = JSON.stringify([String(row.productName ?? '').trim(), String(row.catalogName ?? '').trim(), categoryCode, brandCode, String(row.description ?? '').trim(), String(row.notes ?? '').trim(), boolChoice(String(row.productIsCatalogVisible ?? '')), boolChoice(String(row.productIsOrderable ?? '')), boolChoice(String(row.productIsActive ?? ''))]);
+      const existingIdentity = productIdentity.get(productCode);
+      if (existingIdentity && existingIdentity !== identity) throw new Error(`Mã SP ${productCode}: thông tin cấp sản phẩm đang không đồng nhất giữa các dòng SKU. Hãy chỉnh cùng một Loại sản phẩm, Nhãn hàng và trạng thái cho toàn bộ SKU của mã này.`);
+      productIdentity.set(productCode, identity);
       if (!sku) continue;
       if (!String(row.skuName ?? '').trim()) throw new Error(`Dòng ${line} · SKU ${sku}: cần có Tên SKU / quy cách.`);
       if (!['BASE', 'CARTON', 'OTHER'].includes(variantChoice(String(row.variantKind ?? '')))) throw new Error(`Dòng ${line} · SKU ${sku}: chọn Loại SKU.`);
@@ -60,8 +70,10 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
     }
   }
   async function submitProductImport(rows: RowMap[], fileName: string) {
-    validateProductRows(rows); begin();
+    begin();
     try {
+      const [categories, brands] = await Promise.all([requestJson<Category[]>('/api/product-categories?limit=1000'), requestJson<Brand[]>('/api/product-brands?limit=1000')]);
+      validateProductRows(rows, categories, brands);
       const result = await requestJson<{ import?: { imported?: number }; onboarding?: { variantsConfigured?: number; policiesConfigured?: number } }>('/api/file-operations/products/import', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotency('p10_product_import') },
         body: JSON.stringify({ format: fileName.toLowerCase().endsWith('.xlsx') ? 'xlsx' : 'csv', rows }),
@@ -150,6 +162,5 @@ export function buildDataExchangeImportActions(ctx: ImportActionsContext) {
   function updatePendingRow(index: number, key: string, value: string) {
     setPendingImport((current) => current ? { ...current, rows: current.rows.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: value } : row) } : current);
   }
-
   return { productTemplate, productExport, pricingExport, stocktakeExport, prepareImport, confirmPendingImport, updatePendingRow };
 }
