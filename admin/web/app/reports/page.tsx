@@ -1,25 +1,30 @@
+import Link from 'next/link';
 import { AdminIconTabs } from '../admin-icon-tabs';
 import { AdminShell } from '../admin-shell';
+import { reportDomainLabel, reportPreviews, type ReportDomain } from './report-preview-data';
+import styles from './report-center.module.css';
 
-const tabs = [
-  { href: '/reports', label: 'Điều hành', icon: 'overview' as const, active: true },
-  { href: '/reports?tab=sales-profit', label: 'Kinh doanh & lợi nhuận', icon: 'tag' as const },
-  { href: '/reports?tab=debt', label: 'Công nợ', icon: 'coin' as const },
-  { href: '/reports?tab=inventory', label: 'Kho', icon: 'warehouse' as const },
-  { href: '/reports?tab=delivery-cod', label: 'Giao vận & COD', icon: 'truck' as const },
-  { href: '/reports?tab=mcp', label: 'MCP / thị trường', icon: 'mobile' as const },
-  { href: '/reports?tab=people', label: 'Nhân sự / hiệu suất', icon: 'user' as const },
-  { href: '/reports?tab=decisions', label: 'Phê duyệt & cảnh báo', icon: 'document' as const },
+const tabs=[
+{key:'executive',label:'Điều hành',icon:'overview' as const},{key:'sales-profit',label:'Kinh doanh & lợi nhuận',icon:'tag' as const},{key:'debt',label:'Công nợ',icon:'coin' as const},{key:'inventory',label:'Kho',icon:'warehouse' as const},{key:'delivery-cod',label:'Giao vận & COD',icon:'truck' as const},{key:'mcp',label:'MCP / thị trường',icon:'mobile' as const},{key:'people',label:'Nhân sự / hiệu suất',icon:'user' as const},{key:'decisions',label:'Phê duyệt & cảnh báo',icon:'document' as const},
 ];
+const periods=['Hôm nay','7 ngày','Tháng này','Quý này'];
 
-export default function ReportsPage() {
-  return (
-    <AdminShell activeSection="reports" title="Báo cáo quản trị" subtitle="Báo cáo điều hành tổng hợp từ Core và MCP, tối ưu cho quản lý trên mobile.">
-      <AdminIconTabs label="Nhóm báo cáo quản trị" tabs={tabs} />
-      <section className="card adminModulePlaceholder" aria-label="Khung báo cáo quản trị">
-        <span className="emptyStateIcon">≋</span>
-        <div><h2>Khung báo cáo đã sẵn sàng</h2><p>KPI, xu hướng, so sánh kỳ và các báo cáo Core/MCP sẽ được triển khai ở bước báo cáo riêng.</p></div>
-      </section>
-    </AdminShell>
-  );
+export default function ReportsPage({searchParams}:{searchParams?:{tab?:string;period?:string}}){
+ const selected=tabs.some(t=>t.key===searchParams?.tab)?(searchParams?.tab as ReportDomain):'executive';
+ const period=periods.includes(searchParams?.period??'')?searchParams?.period??'Tháng này':'Tháng này';
+ const tabItems=tabs.map(t=>({href:t.key==='executive'?'/reports':`/reports?tab=${t.key}`,label:t.label,icon:t.icon,active:selected===t.key}));
+ const item=reportPreviews.find(r=>r.domain===selected)??reportPreviews[0];
+ return <AdminShell activeSection="reports" title="Báo cáo quản trị" subtitle="Theo dõi KPI, xu hướng và điểm cần chú ý từ Core và MCP trên mobile.">
+  <AdminIconTabs label="Nhóm báo cáo quản trị" tabs={tabItems}/>
+  <div className={styles.periodTabs} aria-label="Kỳ báo cáo">{periods.map(p=><Link key={p} className={`${styles.periodTab} ${period===p?styles.periodActive:''}`} href={`/reports?tab=${selected}&period=${encodeURIComponent(p)}`}>{p}</Link>)}</div>
+  <p className="adminPreviewNotice">Dữ liệu dưới đây là dữ liệu mẫu frontend để chốt giao diện báo cáo. Chưa phải số liệu production.</p>
+  <section className={`card ${styles.hero}`}>
+   <div className={styles.heroCopy}><span className={styles.eyebrow}>{reportDomainLabel[item.domain]} · {period}</span><h2>{item.title}</h2><p>{item.summary}</p></div>
+   <div className={styles.comparison}><small>Kỳ hiện tại</small><strong>{item.current}</strong><span className={styles.delta}>{item.delta}</span><small>Kỳ trước</small><b>{item.previous}</b></div>
+  </section>
+  <section className={styles.kpiGrid} aria-label="KPI quản trị">{item.metrics.map(metric=><div className={`card ${styles.kpi}`} key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.note}</small></div>)}</section>
+  <section className={`card ${styles.trend}`}><div className={styles.sectionHeading}><div><span>Xu hướng kỳ</span><h3>Diễn biến nhanh</h3></div><strong>{item.delta}</strong></div><div className={styles.sparkBars} aria-label="Biểu đồ xu hướng mẫu">{[42,55,49,67,61,74,82].map((h,i)=><span key={i} style={{height:`${h}%`}}/> )}</div></section>
+  <section className={`card ${styles.highlights}`}><div className={styles.sectionHeading}><div><span>Điểm cần chú ý</span><h3>Nhận định quản trị</h3></div></div>{item.highlights.map((h,i)=><div className={styles.highlightRow} key={h}><span>{i+1}</span><p>{h}</p></div>)}</section>
+  <Link className={`card ${styles.detailLink}`} href={`/reports/${item.id}`}><span>Xem báo cáo chi tiết</span><strong>→</strong></Link>
+ </AdminShell>;
 }

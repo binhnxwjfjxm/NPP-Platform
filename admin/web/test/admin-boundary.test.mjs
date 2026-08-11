@@ -34,3 +34,9 @@ test('alert center exposes rule-driven mobile monitoring without production muta
   for (const label of ['Nghiêm trọng','Cao','Cần chú ý','Rule','Ngưỡng','Thực tế','Nguồn']) assert.match(`${page}\n${data}`, new RegExp(label));
   assert.match(page,/alertRuleList/); assert.match(page,/Dữ liệu dưới đây là dữ liệu mẫu frontend/); assert.match(detail,/Tín hiệu cảnh báo/); assert.match(detail,/Quy tắc liên quan/); assert.match(detail,/Hướng rà soát/); assert.match(detail,/Lịch sử tín hiệu/); assert.match(data,/source:'Core'/); assert.match(data,/source:'MCP'/); assert.match(css,/\.alertComparison/); assert.match(css,/\.alertSeverity\.is-critical/); assert.doesNotMatch(`${page}\n${detail}\n${data}`, /requestCore|fetch\(|method=['"]?(POST|PUT|PATCH|DELETE)|Idempotency-Key/);
 });
+
+test('management reports provide mobile KPI, period comparison and Core/MCP source context without production calls', async () => {
+  const [page, detail, data, css] = await Promise.all([read('app/reports/page.tsx'), read('app/reports/[reportId]/page.tsx'), read('app/reports/report-preview-data.ts'), read('app/reports/report-center.module.css')]);
+  for (const label of ['Hôm nay','7 ngày','Tháng này','Quý này','Kỳ hiện tại','Kỳ trước','Xu hướng kỳ','Nhận định quản trị']) assert.match(page,new RegExp(label));
+  assert.match(page,/\/reports\/\$\{item\.id\}/); assert.match(page,/Dữ liệu dưới đây là dữ liệu mẫu frontend/); assert.match(detail,/Tóm tắt kỳ báo cáo/); assert.match(detail,/Chỉ số quản trị/); assert.match(detail,/Nguồn dữ liệu/); assert.match(data,/source:'Core'/); assert.match(data,/source:'MCP'/); assert.match(data,/source:'Core \+ MCP'/); assert.match(css,/\.sparkBars/); assert.match(css,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/); assert.doesNotMatch(`${page}\n${detail}\n${data}`, /requestCore|fetch\(|method=['"]?(POST|PUT|PATCH|DELETE)|Idempotency-Key/);
+});
