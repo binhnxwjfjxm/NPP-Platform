@@ -220,7 +220,15 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
       .then((nextImports) => {
         if (active) setImports(nextImports);
       })
-      .catch(() => undefined);
+      .catch((error) => {
+        if (!active) return;
+        setMessage({
+          kind: 'error',
+          text: error instanceof Error
+            ? `Không tải được lịch sử nhập tồn đầu kỳ: ${error.message}`
+            : 'Không tải được lịch sử nhập tồn đầu kỳ.',
+        });
+      });
 
     void Promise.allSettled([warehousesRequest, historyRequest])
       .finally(() => { if (active) setBusy(null); });
