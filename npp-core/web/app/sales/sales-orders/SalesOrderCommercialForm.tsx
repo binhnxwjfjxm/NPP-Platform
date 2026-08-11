@@ -250,6 +250,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const [note, setNote] = useState(version?.note ?? '');
   const [showMore, setShowMore] = useState(Boolean(version?.note));
   const [lines, setLines] = useState<LineDraft[]>(versionLines(version));
+  const [expandedLineId, setExpandedLineId] = useState<string | null>(null);
   const linesRef = useRef(lines);
   const committedDraftRef = useRef<SalesOrder | null>(null);
   const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
@@ -874,18 +875,41 @@ export default function SalesOrderCommercialForm(props: Props) {
             <header className={styles.lineTableHeader}><span>Hàng hóa</span><span>Số lượng</span><span>Giá nền</span><span>Giá hệ thống</span><span>Giá cuối</span><span>Thành tiền</span><span /></header>
             {lines.map((line, index) => (
               <article className={styles.orderLineCard} key={line.variantId} data-testid={`sales-order-line-${index + 1}`}>
-                <div className={styles.lineIdentity}><strong>{line.sku} — {line.name}</strong><span>ĐVT {line.unitCode || '—'}</span>{line.priceError && <small className={styles.ineligible}>{line.priceError}</small>}</div>
+                <div className={styles.lineIdentity}>
+                  <strong>{line.sku} — {line.name}</strong>
+                  <div className={styles.inlineActions}>
+                    <span>ĐVT {line.unitCode || '—'}</span>
+                    <button
+                      type="button"
+                      className={styles.linkButton}
+                      aria-expanded={expandedLineId === line.variantId}
+                      aria-controls={`sales-order-line-details-${index + 1}`}
+                      onClick={() => setExpandedLineId((current) => current === line.variantId ? null : line.variantId)}
+                    >
+                      {expandedLineId === line.variantId ? 'Ẩn chi tiết' : 'Chi tiết'}
+                    </button>
+                  </div>
+                  {line.priceError && <small className={styles.ineligible}>{line.priceError}</small>}
+                </div>
                 <label><span>SL</span><input inputMode="decimal" value={line.quantity} onChange={(event) => { const value = event.target.value; setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: value, priceError: null } : item)); markDirty(); }} /></label>
                 <div className={styles.priceCell}><span>Giá nền</span><strong>{line.resolvingPrice ? 'Đang tính…' : vnd(line.baseUnitPriceMinor)}</strong></div>
                 <div className={styles.priceCell}><span>Giá hệ thống</span><strong>{line.resolvingPrice ? 'Đang tính…' : vnd(line.systemUnitPriceMinor)}</strong><small>{pricingSummary(line)}</small></div>
-                <div className={styles.priceCell}><span>Giá bán cuối</span><strong>{line.resolvingPrice ? 'Đang tính…' : vnd(finalUnitPrice(line))}</strong>{line.manualUnitPriceMinor && <small className={styles.manualBadge}>Giá ngoại lệ</small>}</div>
+                <div className={styles.priceCell}>
+                  <span>Giá bán cuối</span>
+                  <div className={styles.inlineActions}>
+                    <strong>{line.resolvingPrice ? 'Đang tính…' : vnd(finalUnitPrice(line))}</strong>
+                    {!line.manualUnitPriceMinor && canPriceOverride && (
+                      <button type="button" className={styles.linkButton} aria-label={`Dùng giá ngoại lệ cho ${line.sku}`} onClick={() => enableManualPrice(index)}>Giá ngoại lệ</button>
+                    )}
+                    {line.manualUnitPriceMinor && (
+                      <button type="button" className={styles.linkButton} aria-label={`Dùng lại giá hệ thống cho ${line.sku}`} onClick={() => useSystemPrice(index)}>Giá hệ thống</button>
+                    )}
+                  </div>
+                  {line.manualUnitPriceMinor && <small className={styles.manualBadge}>Giá ngoại lệ</small>}
+                </div>
                 <div className={styles.priceCell}><span>Tiền hàng dự kiến</span><strong>{vnd(grossMinor(line))}</strong></div>
                 <button type="button" className={styles.removeLineButton} onClick={() => { setLines((current) => current.filter((_, itemIndex) => itemIndex !== index)); markDirty(); }}>Xóa</button>
 
-                <div className={styles.lineCommercialActions}>
-                  {!line.manualUnitPriceMinor && canPriceOverride && <button type="button" onClick={() => enableManualPrice(index)}>Dùng giá ngoại lệ</button>}
-                  {line.manualUnitPriceMinor && <button type="button" onClick={() => useSystemPrice(index)}>Dùng lại giá hệ thống</button>}
-                </div>
                 {line.manualUnitPriceMinor && (
                   <div className={styles.manualPriceEditor}>
                     <label><span>Giá bán cuối *</span><input inputMode="numeric" value={line.manualUnitPriceMinor} onChange={(event) => { const value = event.target.value.replace(/\D/g, ''); setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, manualUnitPriceMinor: value } : item)); markDirty(); }} /></label>
@@ -893,15 +917,18 @@ export default function SalesOrderCommercialForm(props: Props) {
                     <p>Giá hệ thống để đối chiếu: <strong>{vnd(line.systemUnitPriceMinor)}</strong></p>
                   </div>
                 )}
-                <details className={styles.lineDetails}>
-                  <summary>Xem đầy đủ cách hình thành giá và thuế</summary>
+                <div
+                  id={`sales-order-line-details-${index + 1}`}
+                  className={styles.lineDetails}
+                  hidden={expandedLineId !== line.variantId}
+                >
                   <div className={styles.priceTrace}>
                     {line.priceSteps.length === 0 && <span>Core sẽ tái phân giải khi lưu.</span>}
                     {line.priceSteps.filter((step) => step.kind !== 'RESOLUTION').map((step, stepIndex) => <div key={`${step.kind}-${stepIndex}`}><span>{pricingLabel(step)}{step.reason ? ` · ${step.reason}` : ''}</span><b>{step.afterUnitPriceMinor ? vnd(step.afterUnitPriceMinor) : '—'}</b></div>)}
                     <div><span>Ngữ cảnh</span><b>{customerMode === 'WALK_IN' ? 'Khách vãng lai' : 'Khách/nhóm khách'} · {entrySettings?.salesChannels.find((channel) => channel.id === salesChannelId)?.code ?? 'Chưa chọn kênh'}</b></div>
                     <div><span>Thuế Core · {line.taxMode === 'INCLUSIVE' ? 'Giá đã gồm thuế' : 'Giá chưa gồm thuế'} · {line.taxRate}%</span><b>Tính lại sau phân bổ CK đơn</b></div>
                   </div>
-                </details>
+                </div>
               </article>
             ))}
             {lines.length === 0 && <p className={styles.empty}>Chưa có hàng hóa. Dùng ô tìm nhanh phía trên để thêm hàng.</p>}
