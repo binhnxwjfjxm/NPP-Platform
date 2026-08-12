@@ -1,4 +1,5 @@
 import 'server-only';
+import { isValidIdempotencyKey, normalizeIdempotencyKey } from '@npp/contracts';
 import { deliveryCoreBaseUrl, requireDeliverySessionToken } from './internal-auth-client';
 import type {
   CreateCodHandoverPayload,
@@ -8,7 +9,6 @@ import type {
 } from './types';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 
 type SuccessEnvelope<T> = Readonly<{ data: T }>;
 type CoreError = Error & { status?: number; code?: string };
@@ -20,7 +20,12 @@ async function callCore<T>(
   idempotencyKey?: string,
 ): Promise<T> {
   if (!UUID_PATTERN.test(user.employeeId)) throw new Error('DELIVERY_USER_INVALID');
-  if (idempotencyKey !== undefined && !IDEMPOTENCY_PATTERN.test(idempotencyKey)) throw new Error('INVALID_IDEMPOTENCY_KEY');
+  const normalizedIdempotencyKey = idempotencyKey === undefined
+    ? null
+    : normalizeIdempotencyKey(idempotencyKey);
+  if (idempotencyKey !== undefined && (!normalizedIdempotencyKey || !isValidIdempotencyKey(normalizedIdempotencyKey))) {
+    throw new Error('INVALID_IDEMPOTENCY_KEY');
+  }
   const response = await fetch(`${deliveryCoreBaseUrl()}${path}`, {
     ...init,
     cache: 'no-store',
@@ -29,7 +34,7 @@ async function callCore<T>(
       'x-request-id': `delivery-web-cod-${crypto.randomUUID()}`,
       Accept: 'application/json',
       ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+      ...(normalizedIdempotencyKey ? { 'Idempotency-Key': normalizedIdempotencyKey } : {}),
       ...(init.headers ?? {}),
     },
   });

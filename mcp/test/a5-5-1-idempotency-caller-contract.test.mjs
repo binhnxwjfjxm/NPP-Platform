@@ -6,12 +6,14 @@ async function source(path) {
   return readFile(new URL(`../${path}`, import.meta.url), "utf8");
 }
 
-test("mutation helper creates one key and reuses it across network retries", async () => {
+test("mutation helper creates one canonical key and reuses it across network retries", async () => {
   const helper = await source("src/lib/api/idempotent-fetch.ts");
 
-  assert.match(helper, /const idempotencyKey = options\.key \|\| createIdempotencyKey\(options\.operation\);/);
+  assert.match(helper, /createIdempotencyKey as createContractIdempotencyKey/);
+  assert.match(helper, /const idempotencyKey = normalizeIdempotencyKey\(/);
   assert.match(helper, /headers\.set\("Idempotency-Key", idempotencyKey\);/);
   assert.match(helper, /for \(let attempt = 0; attempt <= retries; attempt \+= 1\)/);
+  assert.doesNotMatch(helper, /\$\{operationPrefix\(operation\)\}:/, "generator must not use a colon separator");
   assert.doesNotMatch(
     helper,
     /for \(let attempt[\s\S]*?createIdempotencyKey\(/,

@@ -1,4 +1,5 @@
 import 'server-only';
+import { isValidIdempotencyKey, normalizeIdempotencyKey } from '@npp/contracts';
 import { deliveryCoreBaseUrl, requireDeliverySessionToken } from './internal-auth-client';
 import type {
   DeliveryUser,
@@ -7,7 +8,6 @@ import type {
 } from './types';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 type SuccessEnvelope<T> = Readonly<{ data: T }>;
 
@@ -21,7 +21,8 @@ export async function recordMyDeliveryAttempt(
   if (!UUID_PATTERN.test(user.employeeId)) throw new Error('DELIVERY_USER_INVALID');
   if (!UUID_PATTERN.test(tripId)) throw new Error('INVALID_TRIP_ID');
   if (!UUID_PATTERN.test(assignmentId)) throw new Error('INVALID_ASSIGNMENT_ID');
-  if (!IDEMPOTENCY_PATTERN.test(idempotencyKey)) throw new Error('INVALID_IDEMPOTENCY_KEY');
+  const normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
+  if (!normalizedIdempotencyKey || !isValidIdempotencyKey(normalizedIdempotencyKey)) throw new Error('INVALID_IDEMPOTENCY_KEY');
 
   const response = await fetch(
     `${deliveryCoreBaseUrl()}/api/logistics/driver/trips/${encodeURIComponent(tripId)}/assignments/${encodeURIComponent(assignmentId)}/attempts`,
@@ -31,7 +32,7 @@ export async function recordMyDeliveryAttempt(
       headers: {
         Authorization: `Bearer ${requireDeliverySessionToken()}`,
         'x-request-id': `delivery-web-attempt-${crypto.randomUUID()}`,
-        'Idempotency-Key': idempotencyKey,
+        'Idempotency-Key': normalizedIdempotencyKey,
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },

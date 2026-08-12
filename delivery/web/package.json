@@ -13,6 +13,7 @@
     "verify": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
+    "@npp/contracts": "file:../../packages/contracts",
     "next": "^14.2.35",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
