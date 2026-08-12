@@ -1,4 +1,4 @@
-/* Phase 3.2 UI polish: neutral coffee-brown palette, whiter surfaces, and restrained motion. */
+/* Phase 3.2 UI polish: neutral coffee-brown palette and whiter surfaces. Shared motion tokens live here; component motion stays with its owning component. */
 
 :root {
   --npp-page: #f8f8f7;
@@ -14,6 +14,15 @@
   --npp-brown-700: #493a33;
   --npp-brown-600: #574239;
   --npp-taupe: #b8a79a;
+  --npp-motion-route-duration: 170ms;
+  --npp-motion-tab-duration: 150ms;
+  --npp-motion-nav-duration: 160ms;
+  --npp-motion-action-duration: 110ms;
+  --npp-motion-route-distance: 6px;
+  --npp-motion-tab-distance: 4px;
+  --npp-motion-ease-enter: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --npp-motion-ease-standard: ease;
+  --npp-motion-ease-action: ease-out;
 }
 
 html,
@@ -27,18 +36,6 @@ body {
   background: linear-gradient(180deg, var(--npp-brown-900) 0%, var(--npp-brown-950) 100%) !important;
   color: #f7f5f3 !important;
   box-shadow: 10px 0 32px rgba(25, 20, 18, 0.14) !important;
-}
-
-[data-testid="app-sidebar"] [class*="navItem"],
-[data-testid="app-sidebar"] [class*="subnavItem"],
-[data-testid="app-sidebar"] button {
-  transition:
-    background-color 170ms ease,
-    background 170ms ease,
-    border-color 170ms ease,
-    color 170ms ease,
-    box-shadow 170ms ease,
-    transform 150ms ease !important;
 }
 
 [data-testid="app-sidebar"] [class*="navItemActive"] {
@@ -125,23 +122,6 @@ body {
 [data-testid="app-sidebar"] ~ div[class*="main"] [class*="actionButtonPrimary"]:hover {
   border-color: var(--npp-brown-700) !important;
   background: linear-gradient(180deg, var(--npp-brown-600), var(--npp-brown-700)) !important;
-}
-
-/* Route content enters gently; do not retain a transform/filter containing block after the animation. */
-[data-testid="app-sidebar"] ~ div[class*="main"] > main {
-  animation: npp-route-enter 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
-  animation-fill-mode: none;
-}
-
-@keyframes npp-route-enter {
-  from {
-    opacity: 0.25;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 /* Organization and employee surfaces share organization.module.css. */
@@ -262,9 +242,5 @@ main:has(img[alt="Logo Hưng Phát Company"]) [class*="hint"] {
     animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
-  }
-
-  [data-testid="app-sidebar"] ~ div[class*="main"] > main {
-    animation: none !important;
   }
 }

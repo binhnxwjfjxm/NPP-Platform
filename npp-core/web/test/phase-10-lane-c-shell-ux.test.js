@@ -39,11 +39,11 @@ test('Phase 10 Lane C animates submenu and route content without display toggles
   assert.match(shellCss, /\.subnavOpen\s*\{[\s\S]*?grid-template-rows:\s*1fr/);
   assert.match(shellCss, /overflow-anchor:\s*none/);
   assert.match(shellSource, /<main key=\{pathname\} className=\{styles\.content\}/);
-  assert.match(shellCss, /animation:\s*content-enter 150ms ease-out/);
+  assert.match(shellCss, /animation:\s*content-enter var\(--npp-motion-route-duration\) var\(--npp-motion-ease-enter\)/);
+  assert.match(shellCss, /animation-fill-mode:\s*none/);
   const contentKeyframes = shellCss.match(/@keyframes content-enter\s*\{([\s\S]*?)\n\}/)?.[1] ?? '';
-  assert.match(contentKeyframes, /from \{ opacity: 0\.74; \}/);
-  assert.match(contentKeyframes, /to \{ opacity: 1; \}/);
-  assert.doesNotMatch(contentKeyframes, /transform:/);
+  assert.match(contentKeyframes, /from \{ opacity: 0\.82; transform: translateY\(var\(--npp-motion-route-distance\)\); \}/);
+  assert.match(contentKeyframes, /to \{ opacity: 1; transform: translateY\(0\); \}/);
   assert.match(shellCss, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(shellCss, /\.content \{ animation: none; \}/);
 });
