@@ -149,6 +149,35 @@ export async function listCoreProductVariants(productId, requestContext, config,
   return data;
 }
 
+export async function resolveCoreBasePrice(variantId, requestContext, config, options = {}) {
+  const normalized = requiredUuid(variantId, "core_sales_variant_id_required", "core_sales_variant_id_invalid");
+  const priceAt = String(options.priceAt || new Date().toISOString()).trim();
+  const data = await coreRequest(
+    config,
+    requestContext,
+    "/api/pricing/resolve",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        variantId: normalized,
+        quantity: "1",
+        currencyCode: "VND",
+        priceAt
+      })
+    },
+    options
+  );
+  const amount = Number(data?.baseUnitPriceMinor);
+  if (!data || typeof data !== "object" || !Number.isFinite(amount) || amount < 0) {
+    throw integrationError("core_sales_price_response_invalid", 502, null, true);
+  }
+  return Object.freeze({
+    amount,
+    currency: String(data.currencyCode || "VND"),
+    priceAt: String(data.priceAt || priceAt)
+  });
+}
+
 export async function createCoreSalesOrder(payload, requestContext, config, options = {}) {
   const idempotencyKey = String(options.idempotencyKey || "").trim();
   if (!idempotencyKey) throw integrationError("core_sales_idempotency_key_required", 400);

@@ -1,5 +1,5 @@
 import { authorizeCommand } from "./authorization.js";
-import { listCoreProductVariants, searchCoreSalesSkus } from "./core-sales-client.js";
+import { listCoreProductVariants, resolveCoreBasePrice, searchCoreSalesSkus } from "./core-sales-client.js";
 import {
   getSalesOrderProjection,
   submitSalesOrder,
@@ -9,6 +9,7 @@ import {
 const MAX_JSON_BODY_BYTES = 256 * 1024;
 const MAX_VERIFIED_VARIANTS = 50;
 const VARIANT_CHECK_CONCURRENCY = 5;
+const CATALOG_PRICE_CONCURRENCY = 4;
 const CORE_SALES_READ_PERMISSION = "mcp.sales-order.read";
 const CORE_SALES_CREATE_PERMISSION = "mcp.sales-order.create";
 
@@ -54,7 +55,7 @@ async function readJsonBody(req) {
   }
 }
 
-function mapSkuOption(item) {
+function mapSkuOption(item, price) {
   return Object.freeze({
     productId: item.productId,
     variantId: item.id,
@@ -68,7 +69,7 @@ function mapSkuOption(item) {
     sellUnit: item.unitCode,
     packUnit: null,
     packQuantity: null,
-    price: null,
+    price,
     coreUnitId: item.unitId,
     conversionToBase: item.conversionToBase,
     allowsFractional: item.allowsFractional,
@@ -108,6 +109,19 @@ async function mapWithConcurrency(items, limit, worker) {
   return results;
 }
 
+async function mapCatalogOptions(options, context, config, fetchImpl) {
+  const priceAt = new Date().toISOString();
+  return mapWithConcurrency(options, CATALOG_PRICE_CONCURRENCY, async (item) => {
+    try {
+      const resolved = await resolveCoreBasePrice(item.id, context, config, { fetchImpl, priceAt });
+      return mapSkuOption(item, resolved.amount);
+    } catch (error) {
+      if (error?.code === "BASE_PRICE_NOT_FOUND") return mapSkuOption(item, null);
+      throw error;
+    }
+  });
+}
+
 async function searchProducts(url, context, config, fetchImpl) {
   authorizeCoreSales(context, config, CORE_SALES_READ_PERMISSION);
   const options = await searchCoreSalesSkus(
@@ -120,7 +134,7 @@ async function searchProducts(url, context, config, fetchImpl) {
       offset: Math.max(0, Number(url.searchParams.get("offset")) || 0)
     }
   );
-  return response(options.map(mapSkuOption));
+  return response(await mapCatalogOptions(options, context, config, fetchImpl));
 }
 
 async function loadProductVariants(productId, url, context, config, fetchImpl) {
@@ -138,7 +152,7 @@ async function loadProductVariants(productId, url, context, config, fetchImpl) {
     });
     return options.find((item) => item.id === variant.id && item.productId === productId) || null;
   });
-  return response(verified.filter(Boolean).map(mapSkuOption));
+  return response(await mapCatalogOptions(verified.filter(Boolean), context, config, fetchImpl));
 }
 
 async function loadSalesOrder(url, context, config, fetchImpl) {
