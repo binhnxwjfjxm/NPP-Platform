@@ -99,6 +99,7 @@ try {
     const orderContext = await browser.newContext({ viewport });
     const orderPage = await orderContext.newPage();
     let onboardingSyncCount = 0;
+    let salesOrderSubmitCount = 0;
 
     await orderPage.route(
       "**/api/backend/mcp-day/session-customer/customer-onboarding?*",
@@ -160,6 +161,7 @@ try {
     await orderPage.route(
       "**/api/backend/mcp-day/session-customer/sales-order/submit",
       async (route) => {
+        salesOrderSubmitCount += 1;
         assert.ok(route.request().headers()["idempotency-key"], "sales order submit must stay idempotent");
         await route.fulfill({
           status: 200,
@@ -182,31 +184,19 @@ try {
     const returnTo = "/visits?routeId=route-active&date=2099-12-30";
     await orderPage.goto(
       `${appBase}/visits/order-intent?sessionCustomerId=sc-existing&orderId=order-ui&customerName=UI%20Existing%20Customer&returnTo=${encodeURIComponent(returnTo)}`,
-      { waitUntil: "networkidle" }
+      { waitUntil: "domcontentloaded" }
     );
 
-    assert.equal(
-      await orderPage.locator(".app-shell").getAttribute("data-active-href"),
-      "/visits/order-intent"
-    );
-    assert.equal(await orderPage.locator("[data-order-step]").count(), 4);
+    await orderPage.waitForURL((url) => (
+      url.pathname === "/visits" &&
+      url.searchParams.get("routeId") === "route-active" &&
+      url.searchParams.get("date") === "2099-12-30"
+    ));
+
     assert.equal(onboardingSyncCount, 1, "opening order intent must refresh the submitted Core onboarding request exactly once");
-    assert.equal(await orderPage.getByRole("button", { name: "Đồng bộ trạng thái khách", exact: true }).count(), 0, "approved customer must advance without a manual sync click");
-
-    const createOrder = orderPage.getByRole("button", { name: "Tạo đơn nháp NPP", exact: true });
-    await createOrder.waitFor({ state: "visible" });
-    assert.equal(await orderPage.locator("[data-order-primary-action]").count(), 1);
-    await Promise.all([
-      orderPage.waitForURL((url) => (
-        url.pathname === "/visits" &&
-        url.searchParams.get("routeId") === "route-active" &&
-        url.searchParams.get("date") === "2099-12-30"
-      )),
-      createOrder.click()
-    ]);
-
+    assert.equal(salesOrderSubmitCount, 1, "approved Core customer must automatically create exactly one Sales Order");
     assert.equal(await orderPage.locator(".app-shell").getAttribute("data-active-href"), "/visits");
-    assert.equal(await orderPage.getByRole("button", { name: "Đồng bộ đơn NPP", exact: true }).count(), 0, "successful create must leave the order workspace instead of waiting for manual sales-order sync");
+    assert.equal(await orderPage.getByRole("button", { name: "Đồng bộ đơn NPP", exact: true }).count(), 0, "successful automatic create must leave the order workspace");
     assert.ok(await horizontalOverflow(orderPage) <= 1, `returned visit overflow at ${viewport.width}px`);
     await orderPage.locator('[data-bottom-navigation] a[aria-current="page"]').getByText("Đi tuyến", { exact: true }).waitFor({ state: "visible" });
     await screenshot(orderPage, `22-order-returned-session-mobile-${viewport.width}`);
