@@ -22,7 +22,7 @@
         "./src/*"
       ],
       "@npp/contracts": [
-        "../packages/contracts/index.js"
+        "../packages/contracts"
       ]
     },
     "plugins": [

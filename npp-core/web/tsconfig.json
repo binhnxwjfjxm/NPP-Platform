@@ -18,7 +18,7 @@
     "incremental": true,
     "paths": {
       "@npp/contracts": [
-        "../../packages/contracts/index.js"
+        "../../packages/contracts"
       ]
     },
     "plugins": [
