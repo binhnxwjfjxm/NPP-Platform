@@ -4,11 +4,23 @@ import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import type { AgingDashboard } from '../../lib/finance-reporting-types';
 import { AppShell } from './app-shell';
+import {
+  WorkspaceTabPanel,
+  WorkspaceTabs,
+  type WorkspaceTabOption,
+} from './workspace-tabs';
 import styles from './inventory-reporting-workspace.module.css';
 
 type ApiEnvelope<T> = Readonly<{ data?: T; error?: { message?: string } }>;
-
 type Warehouse = { id: string; code: string; name: string };
+type AgingReportTab = 'receivable' | 'payable';
+
+const AGING_TABS: readonly WorkspaceTabOption<AgingReportTab>[] = Object.freeze([
+  { id: 'receivable', label: 'Phải thu' },
+  { id: 'payable', label: 'Phải trả' },
+]);
+
+const AGING_TAB_PREFIX = 'aging-reporting';
 
 function incrementDigits(value: string) {
   const digits = value.split('');
@@ -79,6 +91,7 @@ export function AgingReportingWorkspace() {
   const [report, setReport] = useState<AgingDashboard | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState<AgingReportTab>('receivable');
 
   const load = useCallback(async (nextWarehouseId = '') => {
     setBusy(true);
@@ -145,37 +158,49 @@ export function AgingReportingWorkspace() {
             <strong>Ngày chốt hiện tại:</strong> {report.currentDate}. AR chưa có due date canonical nên không gắn nhãn “quá hạn”; AP dùng due date thật. Tiền luôn tách theo currency.
           </div>
 
-          <section className={styles.section}>
-            <div className={styles.sectionHeader}><div><h2>Phải thu khách hàng</h2><p>Tuổi khoản phải thu tính từ ngày chứng từ nguồn trên số dư hiện còn phải thu.</p></div><Link className={styles.linkButton} href="/accounting/receivables">Mở công nợ phải thu</Link></div>
-            <div className={styles.tableWrap}><table className={styles.table}>
-              <thead><tr><th>Tiền tệ</th><th>Tuổi khoản phải thu</th><th className={styles.numeric}>Chứng từ</th><th className={styles.numeric}>Còn phải thu</th></tr></thead>
-              <tbody>{report.receivable.summary.map((row) => <tr key={`${row.currencyCode}:${row.ageBucket}`}><td>{row.currencyCode}</td><td>{arBucket(row.ageBucket)}</td><td className={styles.numeric}>{formatDecimal(row.documentCount)}</td><td className={styles.numeric}>{money(row.remainingAmount, row.currencyCode)}</td></tr>)}{!report.receivable.summary.length ? <tr><td className={styles.empty} colSpan={4}>Không có khoản phải thu đang mở.</td></tr> : null}</tbody>
-            </table></div>
-          </section>
+          <WorkspaceTabs
+            tabs={AGING_TABS}
+            activeTab={activeTab}
+            onChange={setActiveTab}
+            idPrefix={AGING_TAB_PREFIX}
+            label="Chi tiết tuổi nợ"
+          />
 
-          <section className={styles.section}>
-            <div className={styles.sectionHeader}><div><h2>Khách hàng còn công nợ</h2><p>Xếp theo số dư còn phải thu, giữ nguyên từng đồng tiền.</p></div></div>
-            <div className={styles.tableWrap}><table className={styles.table}>
-              <thead><tr><th>Khách hàng</th><th>Tiền tệ</th><th className={styles.numeric}>Chứng từ</th><th className={styles.numeric}>Còn phải thu</th><th>Chứng từ cũ nhất</th><th className={styles.numeric}>Tuổi lớn nhất</th></tr></thead>
-              <tbody>{report.receivable.customers.map((row) => <tr key={`${row.customerId}:${row.currencyCode}`}><td><strong>{row.customerCode}</strong><br />{row.customerName}</td><td>{row.currencyCode}</td><td className={styles.numeric}>{formatDecimal(row.documentCount)}</td><td className={styles.numeric}>{money(row.remainingAmount, row.currencyCode)}</td><td>{row.oldestDocumentDate ?? '—'}</td><td className={styles.numeric}>{row.oldestAgeDays ?? '0'} ngày</td></tr>)}{!report.receivable.customers.length ? <tr><td className={styles.empty} colSpan={6}>Không có dữ liệu.</td></tr> : null}</tbody>
-            </table></div>
-          </section>
+          <WorkspaceTabPanel tabId="receivable" activeTab={activeTab} idPrefix={AGING_TAB_PREFIX}>
+            <section className={styles.section} data-testid="aging-receivable-summary">
+              <div className={styles.sectionHeader}><div><h2>Phải thu khách hàng</h2><p>Tuổi khoản phải thu tính từ ngày chứng từ nguồn trên số dư hiện còn phải thu.</p></div><Link className={styles.linkButton} href="/accounting/receivables">Mở công nợ phải thu</Link></div>
+              <div className={styles.tableWrap}><table className={styles.table}>
+                <thead><tr><th>Tiền tệ</th><th>Tuổi khoản phải thu</th><th className={styles.numeric}>Chứng từ</th><th className={styles.numeric}>Còn phải thu</th></tr></thead>
+                <tbody>{report.receivable.summary.map((row) => <tr key={`${row.currencyCode}:${row.ageBucket}`}><td>{row.currencyCode}</td><td>{arBucket(row.ageBucket)}</td><td className={styles.numeric}>{formatDecimal(row.documentCount)}</td><td className={styles.numeric}>{money(row.remainingAmount, row.currencyCode)}</td></tr>)}{!report.receivable.summary.length ? <tr><td className={styles.empty} colSpan={4}>Không có khoản phải thu đang mở.</td></tr> : null}</tbody>
+              </table></div>
+            </section>
 
-          <section className={styles.section}>
-            <div className={styles.sectionHeader}><div><h2>Phải trả nhà cung cấp</h2><p>Quá hạn tính đúng từ due date đã khóa trên chứng từ phải trả.</p></div><Link className={styles.linkButton} href="/accounting/payables">Mở công nợ phải trả</Link></div>
-            <div className={styles.tableWrap}><table className={styles.table}>
-              <thead><tr><th>Tiền tệ</th><th>Trạng thái hạn</th><th className={styles.numeric}>Chứng từ</th><th className={styles.numeric}>Còn phải trả</th></tr></thead>
-              <tbody>{report.payable.summary.map((row) => <tr key={`${row.currencyCode}:${row.ageBucket}`}><td>{row.currencyCode}</td><td>{apBucket(row.ageBucket)}</td><td className={styles.numeric}>{formatDecimal(row.documentCount)}</td><td className={styles.numeric}>{money(row.remainingAmount, row.currencyCode)}</td></tr>)}{!report.payable.summary.length ? <tr><td className={styles.empty} colSpan={4}>Không có khoản phải trả đang mở.</td></tr> : null}</tbody>
-            </table></div>
-          </section>
+            <section className={styles.section} data-testid="aging-receivable-customers">
+              <div className={styles.sectionHeader}><div><h2>Khách hàng còn công nợ</h2><p>Xếp theo số dư còn phải thu, giữ nguyên từng đồng tiền.</p></div></div>
+              <div className={styles.tableWrap}><table className={styles.table}>
+                <thead><tr><th>Khách hàng</th><th>Tiền tệ</th><th className={styles.numeric}>Chứng từ</th><th className={styles.numeric}>Còn phải thu</th><th>Chứng từ cũ nhất</th><th className={styles.numeric}>Tuổi lớn nhất</th></tr></thead>
+                <tbody>{report.receivable.customers.map((row) => <tr key={`${row.customerId}:${row.currencyCode}`}><td><strong>{row.customerCode}</strong><br />{row.customerName}</td><td>{row.currencyCode}</td><td className={styles.numeric}>{formatDecimal(row.documentCount)}</td><td className={styles.numeric}>{money(row.remainingAmount, row.currencyCode)}</td><td>{row.oldestDocumentDate ?? '—'}</td><td className={styles.numeric}>{row.oldestAgeDays ?? '0'} ngày</td></tr>)}{!report.receivable.customers.length ? <tr><td className={styles.empty} colSpan={6}>Không có dữ liệu.</td></tr> : null}</tbody>
+              </table></div>
+            </section>
+          </WorkspaceTabPanel>
 
-          <section className={styles.section}>
-            <div className={styles.sectionHeader}><div><h2>Nhà cung cấp còn công nợ</h2><p>Ưu tiên số dư lớn và cho biết mức quá hạn lớn nhất.</p></div></div>
-            <div className={styles.tableWrap}><table className={styles.table}>
-              <thead><tr><th>Nhà cung cấp</th><th>Tiền tệ</th><th className={styles.numeric}>Chứng từ</th><th className={styles.numeric}>Còn phải trả</th><th>Hạn sớm nhất</th><th className={styles.numeric}>Quá hạn lớn nhất</th></tr></thead>
-              <tbody>{report.payable.suppliers.map((row) => <tr key={`${row.supplierId}:${row.currencyCode}`}><td><strong>{row.supplierCode}</strong><br />{row.supplierName}</td><td>{row.currencyCode}</td><td className={styles.numeric}>{formatDecimal(row.documentCount)}</td><td className={styles.numeric}>{money(row.remainingAmount, row.currencyCode)}</td><td>{row.earliestDueDate ?? '—'}</td><td className={styles.numeric}>{row.maxOverdueDays ?? '0'} ngày</td></tr>)}{!report.payable.suppliers.length ? <tr><td className={styles.empty} colSpan={6}>Không có dữ liệu.</td></tr> : null}</tbody>
-            </table></div>
-          </section>
+          <WorkspaceTabPanel tabId="payable" activeTab={activeTab} idPrefix={AGING_TAB_PREFIX}>
+            <section className={styles.section} data-testid="aging-payable-summary">
+              <div className={styles.sectionHeader}><div><h2>Phải trả nhà cung cấp</h2><p>Quá hạn tính đúng từ due date đã khóa trên chứng từ phải trả.</p></div><Link className={styles.linkButton} href="/accounting/payables">Mở công nợ phải trả</Link></div>
+              <div className={styles.tableWrap}><table className={styles.table}>
+                <thead><tr><th>Tiền tệ</th><th>Trạng thái hạn</th><th className={styles.numeric}>Chứng từ</th><th className={styles.numeric}>Còn phải trả</th></tr></thead>
+                <tbody>{report.payable.summary.map((row) => <tr key={`${row.currencyCode}:${row.ageBucket}`}><td>{row.currencyCode}</td><td>{apBucket(row.ageBucket)}</td><td className={styles.numeric}>{formatDecimal(row.documentCount)}</td><td className={styles.numeric}>{money(row.remainingAmount, row.currencyCode)}</td></tr>)}{!report.payable.summary.length ? <tr><td className={styles.empty} colSpan={4}>Không có khoản phải trả đang mở.</td></tr> : null}</tbody>
+              </table></div>
+            </section>
+
+            <section className={styles.section} data-testid="aging-payable-suppliers">
+              <div className={styles.sectionHeader}><div><h2>Nhà cung cấp còn công nợ</h2><p>Ưu tiên số dư lớn và cho biết mức quá hạn lớn nhất.</p></div></div>
+              <div className={styles.tableWrap}><table className={styles.table}>
+                <thead><tr><th>Nhà cung cấp</th><th>Tiền tệ</th><th className={styles.numeric}>Chứng từ</th><th className={styles.numeric}>Còn phải trả</th><th>Hạn sớm nhất</th><th className={styles.numeric}>Quá hạn lớn nhất</th></tr></thead>
+                <tbody>{report.payable.suppliers.map((row) => <tr key={`${row.supplierId}:${row.currencyCode}`}><td><strong>{row.supplierCode}</strong><br />{row.supplierName}</td><td>{row.currencyCode}</td><td className={styles.numeric}>{formatDecimal(row.documentCount)}</td><td className={styles.numeric}>{money(row.remainingAmount, row.currencyCode)}</td><td>{row.earliestDueDate ?? '—'}</td><td className={styles.numeric}>{row.maxOverdueDays ?? '0'} ngày</td></tr>)}{!report.payable.suppliers.length ? <tr><td className={styles.empty} colSpan={6}>Không có dữ liệu.</td></tr> : null}</tbody>
+              </table></div>
+            </section>
+          </WorkspaceTabPanel>
         </> : null}
       </div>
     </AppShell>
