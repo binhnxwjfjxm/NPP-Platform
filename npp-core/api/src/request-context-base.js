@@ -165,6 +165,7 @@ export function createMcpSalesPrincipal(config) {
     roles: ['mcp-sales-order-service'],
     permissions: [
       PERMISSIONS.coreProductRead,
+      PERMISSIONS.corePriceRead,
       PERMISSIONS.coreSalesOrderRead,
       PERMISSIONS.coreSalesOrderCreate,
     ],
