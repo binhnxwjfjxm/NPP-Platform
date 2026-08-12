@@ -156,7 +156,7 @@ export function canonicalErrorPayload(
   const rawCode = nested.code || source.code || source.message || source.error || fallbackCode(httpStatus);
   const code = canonicalErrorCode(rawCode, httpStatus);
   const explicitMessage = String(source.publicMessage || nested.message || "").trim();
-  const mayUseExplicitMessage = httpStatus < 500 && /^[A-Z][A-Z0-9_]{2,127}$/.test(String(nested.code || source.code || ""));
+  const mayUseExplicitMessage = httpStatus < 500 && /^[A-Z][A-Z0-9_]{2,127}$/.test(code);
   const message = PUBLIC_MESSAGES[code] || (mayUseExplicitMessage ? explicitMessage : "") || fallbackMessage(httpStatus);
   const details = sanitizePublicDetails(source.publicDetails || nested.details || source.details);
   const retryable =
