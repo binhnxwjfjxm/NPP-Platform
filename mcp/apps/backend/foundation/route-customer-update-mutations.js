@@ -1,4 +1,5 @@
 import { normalizeIdempotencyProviderError } from "./idempotency.js";
+import { providerPersistence } from "./provider-runtime.js";
 import { supabaseRpc } from "./supabase-adapter.js";
 
 function text(value) {
@@ -76,6 +77,46 @@ function normalizeMutationError(error) {
   return error;
 }
 
+async function syncActiveSessionCustomerIdentity(routeCustomerId, context, config, options) {
+  if (config?.persistence?.provider !== "postgresql") return;
+  const persistence = options?.persistence || providerPersistence();
+  await persistence.withTransaction(async (client) => {
+    await client.query(
+      `UPDATE mcp.mcp_session_customers AS session_customer
+       SET customer_name = route_customer.customer_name,
+           account_name = route_customer.customer_name,
+           phone = route_customer.phone,
+           area = route_customer.area,
+           address = route_customer.address,
+           updated_at = now()
+       FROM mcp.mcp_route_customers AS route_customer,
+            mcp.mcp_route_sessions AS route_session
+       WHERE route_customer.installation_id = $1
+         AND route_customer.id = $2
+         AND session_customer.installation_id = route_customer.installation_id
+         AND session_customer.route_customer_id = route_customer.id
+         AND route_session.installation_id = session_customer.installation_id
+         AND route_session.id = session_customer.session_id
+         AND route_session.status = 'active'
+         AND NOT EXISTS (
+           SELECT 1
+           FROM mcp.orders AS customer_order
+           WHERE customer_order.installation_id = session_customer.installation_id
+             AND customer_order.id = session_customer.order_id
+             AND customer_order.customer_onboarding_request_id IS NOT NULL
+         )
+         AND (
+           session_customer.customer_name IS DISTINCT FROM route_customer.customer_name
+           OR session_customer.account_name IS DISTINCT FROM route_customer.customer_name
+           OR session_customer.phone IS DISTINCT FROM route_customer.phone
+           OR session_customer.area IS DISTINCT FROM route_customer.area
+           OR session_customer.address IS DISTINCT FROM route_customer.address
+         )`,
+      [context.installation.id, routeCustomerId]
+    );
+  });
+}
+
 export async function updateRouteCustomer(routeCustomerIdInput, body, context, config, options) {
   const routeCustomerId = text(routeCustomerIdInput || body.routeCustomerId || body.route_customer_id);
   if (!routeCustomerId) badRequest("route_customer_id_required");
@@ -99,7 +140,7 @@ export async function updateRouteCustomer(routeCustomerIdInput, body, context, c
   );
 
   try {
-    return await supabaseRpc(config, "mcp_idempotent_update_route_customer", {
+    const result = await supabaseRpc(config, "mcp_idempotent_update_route_customer", {
       p_route_customer_id: routeCustomerId,
       p_customer_name: optionalText(body, ["customerName", "customer_name", "accountName", "account_name", "name"]),
       p_phone: optionalText(body, ["phone"]),
@@ -115,6 +156,8 @@ export async function updateRouteCustomer(routeCustomerIdInput, body, context, c
       p_google_maps_url: googleMapsUrl,
       p_context: foundationContext(context)
     }, { fetchImpl: options?.fetchImpl || fetch });
+    await syncActiveSessionCustomerIdentity(routeCustomerId, context, config, options);
+    return result;
   } catch (error) {
     throw normalizeMutationError(error);
   }
