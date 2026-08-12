@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
-import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import ts from 'typescript';
+import {
+  createIdempotencyKey,
+  isValidIdempotencyKey,
+  normalizeIdempotencyKey,
+} from '../../../packages/contracts/index.js';
 
 const gatewaySource = readFileSync(new URL('../lib/logistics-gateway.ts', import.meta.url), 'utf8');
 
@@ -28,7 +32,9 @@ function loadGateway(mockFetch) {
   const module = { exports: {} };
   const mockRequire = (specifier) => {
     if (specifier === 'server-only') return {};
-    if (specifier === 'node:crypto') return { createHash, randomUUID };
+    if (specifier === '@npp/contracts') {
+      return { createIdempotencyKey, isValidIdempotencyKey, normalizeIdempotencyKey };
+    }
     if (specifier === './inventory-gateway') return { InventoryGatewayError: TestInventoryGatewayError };
     if (specifier === './internal-auth-client') return { requireNppWorkforceSessionToken: () => 'test-session-token' };
     throw new Error(`Unexpected gateway dependency: ${specifier}`);
@@ -58,53 +64,59 @@ function successfulFetchRecorder() {
   };
 }
 
-test('all NPP logistics mutations send Core-safe idempotency headers at the gateway boundary', async () => {
+const TEST_UUID = '11111111-1111-4111-8111-111111111111';
+
+test('all NPP logistics mutations enforce the shared Core-safe idempotency contract without private hashing', async () => {
   const recorder = successfulFetchRecorder();
   const gateway = loadGateway(recorder.fetch);
 
   for (const resource of ['routes', 'vehicles', 'drivers', 'trips']) {
-    const sourceKey = `${resource}:create`;
-    const expected = createHash('sha256').update(sourceKey, 'utf8').digest('hex');
+    const sourceKey = createIdempotencyKey(`logistics-${resource}-create`, TEST_UUID);
     await gateway.createLogisticsResource(resource, `req-${resource}`, { code: resource }, sourceKey);
     const call = recorder.calls.at(-1);
     assert.equal(call.init.method, 'POST');
-    assert.equal(call.init.headers['Idempotency-Key'], expected);
-    assert.match(call.init.headers['Idempotency-Key'], /^[A-Za-z0-9._-]{64}$/);
+    assert.equal(call.init.headers['Idempotency-Key'], sourceKey);
+    assert.equal(isValidIdempotencyKey(call.init.headers['Idempotency-Key']), true);
   }
 
   await gateway.createLogisticsResource('drivers', 'req-safe-driver', { code: 'driver-safe' }, 'driver_create');
   assert.equal(recorder.calls.at(-1).init.headers['Idempotency-Key'], 'driver_create');
 
-  await gateway.createLogisticsResource('trips', 'req-safe-trip', { warehouseId: '11111111-1111-4111-8111-111111111111' }, 'trip_create_safe');
+  await gateway.createLogisticsResource('trips', 'req-safe-trip', { warehouseId: TEST_UUID }, 'trip_create_safe');
   assert.equal(recorder.calls.at(-1).init.headers['Idempotency-Key'], 'trip_create_safe');
 
-  const tripId = '11111111-1111-4111-8111-111111111111';
-  const updateSourceKey = `update-trip:${tripId}:1:vehicle:driver:route:2026-08-11T21:51:00`;
-  const expectedUpdateKey = createHash('sha256').update(updateSourceKey, 'utf8').digest('hex');
+  const tripId = TEST_UUID;
+  const updateSourceKey = createIdempotencyKey('logistics-trip-update', TEST_UUID);
   await gateway.updateDeliveryTrip(tripId, 'req-update-trip', { revision: '1' }, updateSourceKey);
   assert.equal(recorder.calls.at(-1).init.method, 'PUT');
-  assert.equal(recorder.calls.at(-1).init.headers['Idempotency-Key'], expectedUpdateKey);
+  assert.equal(recorder.calls.at(-1).init.headers['Idempotency-Key'], updateSourceKey);
 
   await gateway.updateDeliveryTrip(tripId, 'req-safe-update-trip', { revision: '1' }, 'trip_update_safe');
   assert.equal(recorder.calls.at(-1).init.headers['Idempotency-Key'], 'trip_update_safe');
 
   const actions = ['assign', 'unassign', 'reorder', 'plan', 'reopen', 'lock', 'dispatch', 'return-receipts', 'close'];
   for (const action of actions) {
-    const sourceKey = `trip:${action}:${tripId}:1`;
-    const expected = createHash('sha256').update(sourceKey, 'utf8').digest('hex');
+    const sourceKey = createIdempotencyKey(`logistics-trip-${action}`, TEST_UUID);
     await gateway.transitionDeliveryTrip(tripId, action, `req-${action}`, {}, sourceKey);
     const call = recorder.calls.at(-1);
     assert.equal(call.init.method, 'POST');
     assert.ok(call.url.endsWith(`/api/logistics/trips/${tripId}/${action}`));
-    assert.equal(call.init.headers['Idempotency-Key'], expected);
-    assert.match(call.init.headers['Idempotency-Key'], /^[A-Za-z0-9._-]{64}$/);
+    assert.equal(call.init.headers['Idempotency-Key'], sourceKey);
+    assert.equal(isValidIdempotencyKey(call.init.headers['Idempotency-Key']), true);
   }
 
   await gateway.transitionDeliveryTrip(tripId, 'plan', 'req-safe-plan-trip', {}, 'trip_plan_safe');
   assert.equal(recorder.calls.at(-1).init.headers['Idempotency-Key'], 'trip_plan_safe');
 
+  const callsBeforeInvalidKey = recorder.calls.length;
+  await assert.rejects(
+    () => gateway.transitionDeliveryTrip(tripId, 'plan', 'req-invalid-plan-trip', {}, `trip:plan:${tripId}:1`),
+    (error) => error?.code === 'INVALID_IDEMPOTENCY_KEY' && error?.statusCode === 400,
+  );
+  assert.equal(recorder.calls.length, callsBeforeInvalidKey);
+
   assert.notEqual(
-    createHash('sha256').update('trip:create', 'utf8').digest('hex'),
-    createHash('sha256').update('trip:plan', 'utf8').digest('hex'),
+    createIdempotencyKey('logistics-trip-create', TEST_UUID),
+    createIdempotencyKey('logistics-trip-plan', TEST_UUID),
   );
 });
