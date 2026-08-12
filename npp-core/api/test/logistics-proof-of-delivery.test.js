@@ -122,7 +122,7 @@ test('committed photo POD replays metadata when storage is temporarily unavailab
   const warehouseId = '70000000-0000-4000-8000-000000000001';
   const employeeId = '80000000-0000-4000-8000-000000000001';
   const proofId = '90000000-0000-4000-8000-000000000001';
-  const now = new Date('2026-08-05T02:00:00.000Z');
+  const now = new Date();
   const photoBytes = Buffer.from('already-committed-photo');
   const payload = {
     podType: 'photo',

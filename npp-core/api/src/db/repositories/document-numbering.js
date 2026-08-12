@@ -24,6 +24,12 @@ function nowMilliseconds() {
   return new Date().toISOString();
 }
 
+function allocationConflictError() {
+  const error = new Error('document_number_allocation_conflict');
+  error.code = '23505';
+  return error;
+}
+
 export async function listDocumentNumberSeries(client, {
   installationId,
   search,
@@ -199,26 +205,18 @@ export async function updateCounter(client, { installationId, seriesId, periodKe
 
 export async function insertAllocation(client, data) {
   const id = randomUUID();
-  await client.query('SAVEPOINT document_number_allocation_insert');
-  let result;
-  try {
-    result = await client.query(
-      `INSERT INTO shared.document_number_allocations
-        (id, installation_id, series_id, idempotency_key, document_date, period_key,
-         counter_value, document_number, allocated_at, actor_id, request_id, source_app, metadata)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,clock_timestamp(),$9,$10,$11,$12)
-       RETURNING id`,
-      [id, data.installationId, data.seriesId, data.idempotencyKey, data.documentDate,
-        data.periodKey, data.counterValue, data.documentNumber, data.actorId,
-        data.requestId, data.sourceApp, data.metadata ?? {}],
-    );
-    await client.query('RELEASE SAVEPOINT document_number_allocation_insert');
-  } catch (error) {
-    await client.query('ROLLBACK TO SAVEPOINT document_number_allocation_insert');
-    await client.query('RELEASE SAVEPOINT document_number_allocation_insert');
-    throw error;
-  }
-  if (!result.rows[0]) return null;
+  const result = await client.query(
+    `INSERT INTO shared.document_number_allocations
+      (id, installation_id, series_id, idempotency_key, document_date, period_key,
+       counter_value, document_number, allocated_at, actor_id, request_id, source_app, metadata)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,clock_timestamp(),$9,$10,$11,$12)
+     ON CONFLICT DO NOTHING
+     RETURNING id`,
+    [id, data.installationId, data.seriesId, data.idempotencyKey, data.documentDate,
+      data.periodKey, data.counterValue, data.documentNumber, data.actorId,
+      data.requestId, data.sourceApp, data.metadata ?? {}],
+  );
+  if (!result.rows[0]) throw allocationConflictError();
   const allocation = await client.query(
     `SELECT ${ALLOCATION_COLUMNS}
      FROM shared.document_number_allocations dna
