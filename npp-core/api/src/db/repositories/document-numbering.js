@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+const MAX_COUNTER = 999999999999999999n;
+
 const SERIES_COLUMNS = `dns.id, dns.installation_id, dns.code, dns.document_type, dns.name,
   dns.prefix, dns.number_template, dns.reset_policy, dns.sequence_width, dns.start_counter,
   dns.timezone_name, dns.description, dns.is_active, dns.created_at, dns.updated_at,
@@ -160,7 +162,28 @@ export async function ensureAndLockCounter(client, { installationId, seriesId, p
      FOR UPDATE`,
     [installationId, seriesId, periodKey],
   );
-  return result.rows[0] ?? null;
+  const counter = result.rows[0] ?? null;
+  if (!counter) return null;
+
+  const history = await client.query(
+    `SELECT max(counter_value) AS max_counter
+     FROM shared.document_number_allocations
+     WHERE installation_id = $1 AND series_id = $2 AND period_key = $3`,
+    [installationId, seriesId, periodKey],
+  );
+  const maxCounter = history.rows[0]?.max_counter;
+  if (maxCounter === null || maxCounter === undefined) return counter;
+
+  const allocatedMax = BigInt(String(maxCounter));
+  const historyNextCounter = allocatedMax >= MAX_COUNTER ? MAX_COUNTER : allocatedMax + 1n;
+  if (historyNextCounter <= BigInt(String(counter.next_counter))) return counter;
+
+  return updateCounter(client, {
+    installationId,
+    seriesId,
+    periodKey,
+    nextCounter: historyNextCounter.toString(),
+  });
 }
 
 export async function updateCounter(client, { installationId, seriesId, periodKey, nextCounter }) {
@@ -176,16 +199,25 @@ export async function updateCounter(client, { installationId, seriesId, periodKe
 
 export async function insertAllocation(client, data) {
   const id = randomUUID();
-  const result = await client.query(
-    `INSERT INTO shared.document_number_allocations
-      (id, installation_id, series_id, idempotency_key, document_date, period_key,
-       counter_value, document_number, allocated_at, actor_id, request_id, source_app, metadata)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,clock_timestamp(),$9,$10,$11,$12)
-     RETURNING id`,
-    [id, data.installationId, data.seriesId, data.idempotencyKey, data.documentDate,
-      data.periodKey, data.counterValue, data.documentNumber, data.actorId,
-      data.requestId, data.sourceApp, data.metadata ?? {}],
-  );
+  await client.query('SAVEPOINT document_number_allocation_insert');
+  let result;
+  try {
+    result = await client.query(
+      `INSERT INTO shared.document_number_allocations
+        (id, installation_id, series_id, idempotency_key, document_date, period_key,
+         counter_value, document_number, allocated_at, actor_id, request_id, source_app, metadata)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,clock_timestamp(),$9,$10,$11,$12)
+       RETURNING id`,
+      [id, data.installationId, data.seriesId, data.idempotencyKey, data.documentDate,
+        data.periodKey, data.counterValue, data.documentNumber, data.actorId,
+        data.requestId, data.sourceApp, data.metadata ?? {}],
+    );
+    await client.query('RELEASE SAVEPOINT document_number_allocation_insert');
+  } catch (error) {
+    await client.query('ROLLBACK TO SAVEPOINT document_number_allocation_insert');
+    await client.query('RELEASE SAVEPOINT document_number_allocation_insert');
+    throw error;
+  }
   if (!result.rows[0]) return null;
   const allocation = await client.query(
     `SELECT ${ALLOCATION_COLUMNS}
