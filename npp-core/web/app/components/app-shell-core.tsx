@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import styles from './app-shell.module.css';
 
 type AppShellProps = {
@@ -29,6 +29,7 @@ type NavItem = { href: string; label: string; icon: IconName; testId: string };
 type CurrentUser = Readonly<{ employeeFullName: string | null; loginName: string | null }>;
 type CurrentUserEnvelope = Readonly<{ data?: CurrentUser }>;
 
+const SIDEBAR_SCROLL_STORAGE_KEY = 'npp-core-sidebar-scroll-top';
 let currentUserRequest: Promise<CurrentUser | null> | null = null;
 
 function loadCurrentUser(): Promise<CurrentUser | null> {
@@ -153,6 +154,8 @@ function persistCollapsed(value: boolean) { window.localStorage.setItem('npp-cor
 
 export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị doanh nghiệp', children, actions }: AppShellProps) {
   const pathname = usePathname();
+  const navScrollRef = useRef<HTMLDivElement>(null);
+  const accessStableMotion = pathname.startsWith('/access');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -165,6 +168,15 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
   const [accessOpen, setAccessOpen] = useState(pathname.startsWith('/access'));
 
   useEffect(() => { setCollapsed(window.localStorage.getItem('npp-core-sidebar-collapsed') === '1'); }, []);
+  useLayoutEffect(() => {
+    const navScroll = navScrollRef.current;
+    if (!navScroll) return;
+    const storedScrollTop = Number.parseFloat(window.sessionStorage.getItem(SIDEBAR_SCROLL_STORAGE_KEY) ?? '');
+    if (Number.isFinite(storedScrollTop)) navScroll.scrollTop = Math.max(0, storedScrollTop);
+    return () => {
+      window.sessionStorage.setItem(SIDEBAR_SCROLL_STORAGE_KEY, String(navScroll.scrollTop));
+    };
+  }, []);
   useEffect(() => {
     let active = true;
     void loadCurrentUser().then((user) => { if (active) setCurrentUser(user); });
@@ -210,7 +222,7 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
     setOpen((current) => !current);
   }
 
-  function renderGroup({ sectionLabel, title: groupTitle, hint, icon, active, open, setOpen, testId, children: groupChildren }: { sectionLabel: string; title: string; hint: string; icon: IconName; active: boolean; open: boolean; setOpen: React.Dispatch<React.SetStateAction<boolean>>; testId: string; children: Array<NavItem & { active: boolean }> }) {
+  function renderGroup({ sectionLabel, title: groupTitle, hint, icon, active, open, setOpen, testId, children: groupChildren, stableMotion = false }: { sectionLabel: string; title: string; hint: string; icon: IconName; active: boolean; open: boolean; setOpen: React.Dispatch<React.SetStateAction<boolean>>; testId: string; children: Array<NavItem & { active: boolean }>; stableMotion?: boolean }) {
     const childrenVisible = open && !collapsed;
     return <>
       <p className={styles.navLabel}>{sectionLabel}</p>
@@ -220,7 +232,7 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
           <span className={styles.navCopy}><span className={styles.navTitle}>{groupTitle}</span><span className={styles.navHint}>{hint}</span></span>
           <span className={`${styles.chevron} ${childrenVisible ? styles.chevronOpen : ''}`}><Icon name="chevron" /></span>
         </button>
-        <div className={`${styles.subnav} ${childrenVisible ? styles.subnavOpen : ''}`} aria-hidden={!childrenVisible}>
+        <div className={`${styles.subnav} ${childrenVisible ? styles.subnavOpen : ''}`} aria-hidden={!childrenVisible} data-testid={`${testId}-subnav`} style={stableMotion ? { transition: 'none' } : undefined}>
           <div className={styles.subnavInner}>
             {groupChildren.map((item) => <Link key={item.href} href={item.href} prefetch className={`${styles.subnavItem} ${item.active ? styles.subnavItemActive : ''}`} data-testid={item.testId} tabIndex={childrenVisible ? undefined : -1}><span className={styles.subnavRail} aria-hidden="true" /><span className={styles.subnavIcon}><Icon name={item.icon} /></span><span>{item.label}</span></Link>)}
           </div>
@@ -235,7 +247,7 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
         <Link href="/dashboard" className={styles.brand} aria-label="Hưng Phát Company - Trang tổng quan"><span className={styles.logoFrame}><img src={logoUrl} alt="Logo Hưng Phát Company" className={styles.logo} /></span><span className={styles.brandText}><strong>Hưng Phát Company</strong><small>NPP Operations</small></span></Link>
         <button type="button" className={styles.collapseButton} onClick={toggleCollapsed} aria-label={collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'} title={collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'} data-testid="sidebar-collapse-button"><Icon name="panel" /></button>
       </div>
-      <div className={styles.navScroll} data-testid="sidebar-nav-scroll"><nav className={styles.nav}>
+      <div ref={navScrollRef} className={styles.navScroll} data-testid="sidebar-nav-scroll"><nav className={styles.nav}>
         <p className={styles.navLabel}>Điều hành</p><Link href="/dashboard" className={`${styles.navItem} ${pathname === '/dashboard' ? styles.navItemActive : ''}`} data-testid="nav-dashboard" title={collapsed ? 'Tổng quan điều hành' : undefined}><span className={styles.navIcon}><Icon name="dashboard" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Tổng quan điều hành</span><span className={styles.navHint}>Thông tin tổng hợp phục vụ điều hành</span></span></Link>
         {renderGroup({ sectionLabel: 'Danh mục quản lý', title: 'Danh mục nghiệp vụ', hint: 'Tổ chức, đối tác, hàng hóa, giá và chứng từ', icon: 'organization', active: isOrganizationPath(pathname), open: organizationOpen, setOpen: setOrganizationOpen, testId: 'organization-menu-toggle', children: organizationChildren })}
         {renderGroup({ sectionLabel: 'Tồn kho & lô hàng', title: 'Tồn kho & lô hàng', hint: 'Chuẩn bị hàng, chuyển kho, số lượng tồn, lô, hạn dùng và tồn đầu kỳ', icon: 'panel', active: isInventoryPath(pathname), open: inventoryOpen, setOpen: setInventoryOpen, testId: 'inventory-menu-toggle', children: inventoryChildren })}
@@ -246,7 +258,7 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
         <p className={styles.navLabel}>Vận hành hệ thống</p><Link href="/operations/data-exchange" className={`${styles.navItem} ${pathname === '/operations/data-exchange' ? styles.navItemActive : ''}`} data-testid="nav-data-exchange" title={collapsed ? 'Nhập / xuất dữ liệu' : undefined}><span className={styles.navIcon}><Icon name="panel" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Nhập / xuất dữ liệu</span><span className={styles.navHint}>Sản phẩm, giá bán, kiểm kê, báo giá và biến động kho</span></span></Link>
         <Link href="/operations/audit-history" className={`${styles.navItem} ${pathname === '/operations/audit-history' ? styles.navItemActive : ''}`} data-testid="nav-audit-history" title={collapsed ? 'Lịch sử thay đổi' : undefined}><span className={styles.navIcon}><Icon name="dashboard" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Lịch sử thay đổi</span><span className={styles.navHint}>Tra cứu thay đổi và dấu vết vận hành</span></span></Link>
         <Link href="/operations/import-export-history" className={`${styles.navItem} ${pathname === '/operations/import-export-history' ? styles.navItemActive : ''}`} data-testid="nav-import-export-history" title={collapsed ? 'Lịch sử nhập / xuất' : undefined}><span className={styles.navIcon}><Icon name="panel" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Lịch sử nhập / xuất</span><span className={styles.navHint}>Theo dõi các lần nhập và xuất dữ liệu</span></span></Link>
-        {renderGroup({ sectionLabel: 'Quản trị hệ thống', title: 'Nhân sự & phân quyền', hint: 'Hồ sơ, hiệu suất field, tài khoản và phạm vi truy cập', icon: 'user', active: pathname.startsWith('/access'), open: accessOpen, setOpen: setAccessOpen, testId: 'access-menu-toggle', children: accessChildren })}
+        {renderGroup({ sectionLabel: 'Quản trị hệ thống', title: 'Nhân sự & phân quyền', hint: 'Hồ sơ, hiệu suất field, tài khoản và phạm vi truy cập', icon: 'user', active: pathname.startsWith('/access'), open: accessOpen, setOpen: setAccessOpen, testId: 'access-menu-toggle', children: accessChildren, stableMotion: true })}
       </nav></div>
       <div className={styles.sidebarFooter}>
         <div className={styles.userPlaceholder} title={collapsed ? currentUserName : undefined} data-testid="sidebar-current-user">
@@ -261,7 +273,7 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
     <button type="button" className={`${styles.backdrop} ${mobileOpen ? '' : styles.backdropHidden}`} onClick={() => setMobileOpen(false)} aria-label="Đóng thanh điều hướng" />
     <div className={styles.main}>
       <header className={styles.topbar}><div className={styles.topbarLeft}><button type="button" className={styles.mobileMenuButton} onClick={() => setMobileOpen((value) => !value)} aria-label="Mở thanh điều hướng" aria-expanded={mobileOpen}><Icon name="panel" /></button><div className={styles.titleBlock}><p className={styles.kicker}>{kicker}</p><h1 className={styles.title}>{title}</h1>{subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}</div></div><div className={styles.topbarActions}>{actions}</div></header>
-      <main key={pathname} className={styles.content} data-testid="app-content">{children}</main>
+      <main key={pathname} className={styles.content} style={accessStableMotion ? { animation: 'none' } : undefined} data-testid="app-content">{children}</main>
     </div>
   </div>;
 }
