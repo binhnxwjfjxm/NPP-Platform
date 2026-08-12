@@ -61,6 +61,22 @@ test("legacy string errors become stable uppercase codes and generic messages", 
   assert.deepEqual(result.payload.error.details, {});
 });
 
+test("lowercase business codes keep their explicit safe public message", () => {
+  const result = canonicalErrorPayload(
+    {
+      code: "customer_address_required",
+      statusCode: 400,
+      publicMessage: "Cần bổ sung địa chỉ điểm bán trước khi gửi đề nghị xác minh / mở mã."
+    },
+    { requestId: "request_12345678", receivedAt: "2026-07-14T00:00:00.000Z" }
+  );
+
+  assert.equal(result.statusCode, 400);
+  assert.equal(result.payload.error.code, "CUSTOMER_ADDRESS_REQUIRED");
+  assert.equal(result.payload.error.message, "Cần bổ sung địa chỉ điểm bán trước khi gửi đề nghị xác minh / mở mã.");
+  assert.equal(result.payload.error.retryable, false);
+});
+
 test("detail sanitizer removes infrastructure-shaped keys recursively", () => {
   assert.deepEqual(
     sanitizePublicDetails({ safe: 1, nested: { token: "x", reason: "valid" }, providerUrl: "https://secret" }),
