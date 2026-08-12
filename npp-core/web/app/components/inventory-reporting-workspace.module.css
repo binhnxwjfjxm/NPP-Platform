@@ -24,6 +24,18 @@
   text-decoration: none;
   font: inherit;
   cursor: pointer;
+  transition:
+    transform var(--npp-motion-action-duration) var(--npp-motion-ease-action),
+    background var(--npp-motion-action-duration) var(--npp-motion-ease-action),
+    border-color var(--npp-motion-action-duration) var(--npp-motion-ease-action),
+    color var(--npp-motion-action-duration) var(--npp-motion-ease-action),
+    box-shadow var(--npp-motion-action-duration) var(--npp-motion-ease-action);
+}
+
+.linkButton:active,
+.primaryButton:active,
+.secondaryButton:active {
+  transform: translateY(1px);
 }
 
 .primaryButton {
@@ -98,6 +110,12 @@
   font-weight: 750;
   white-space: nowrap;
   cursor: pointer;
+  transition:
+    transform var(--npp-motion-action-duration) var(--npp-motion-ease-action),
+    background var(--npp-motion-action-duration) var(--npp-motion-ease-action),
+    border-color var(--npp-motion-action-duration) var(--npp-motion-ease-action),
+    color var(--npp-motion-action-duration) var(--npp-motion-ease-action),
+    box-shadow var(--npp-motion-action-duration) var(--npp-motion-ease-action);
 }
 
 .tabButton:hover {
@@ -110,6 +128,10 @@
   background: #fff;
   color: #20242a;
   box-shadow: 0 2px 8px rgba(32, 36, 42, 0.07);
+}
+
+.tabButton:active {
+  transform: translateY(1px);
 }
 
 .tabCount {
@@ -130,6 +152,13 @@
   display: grid;
   gap: 18px;
   min-width: 0;
+  animation: workspace-tab-enter var(--npp-motion-tab-duration) var(--npp-motion-ease-enter);
+  animation-fill-mode: none;
+}
+
+@keyframes workspace-tab-enter {
+  from { opacity: 0.86; transform: translateY(var(--npp-motion-tab-distance)); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .cards {
@@ -314,5 +343,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .linkButton,
+  .primaryButton,
+  .secondaryButton,
   .tabButton { transition: none; }
+
+  .tabPanel { animation: none; }
 }
