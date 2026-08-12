@@ -9,6 +9,7 @@ const home = await readFile("src/ui/shell/MobileHomeLaunchpad.tsx", "utf8");
 const visitsPage = await readFile("src/app/visits/page.tsx", "utf8");
 const orderPage = await readFile("src/app/visits/order-intent/page.tsx", "utf8");
 const orderPanel = await readFile("src/features/mcp/McpOfficialOrderPanel.tsx", "utf8");
+const visitSession = await readFile("src/features/mcp/McpSessionCompactViewFinal2.tsx", "utf8");
 const lineCard = await readFile("src/features/mcp/McpLineCard.tsx", "utf8");
 const sessions = await readFile("src/features/mcp/McpSessionsManagerSafe.tsx", "utf8");
 
@@ -33,6 +34,15 @@ test("order intent uses its exact route scope and one state-driven primary actio
   assert.match(orderPanel, /Đồng bộ đơn NPP/);
   assert.match(orderPanel, /session-customer\.customer-onboarding\.sync/);
   assert.doesNotMatch(orderPanel, forbiddenPhase6F);
+});
+
+test("approved Core customer leaves visit sheet for official order workspace", () => {
+  assert.match(visitSession, /customerOnboarding\?\.officialOrderAllowed === true/);
+  assert.match(visitSession, /Tiếp tục tạo đơn NPP/);
+  assert.match(visitSession, /onContinueOfficialOrder/);
+  assert.match(visitSession, /orderId:\s*orderIntentId/);
+  assert.match(visitSession, /returnTo/);
+  assert.match(visitSession, /router\.push\(`\/visits\/order-intent\?\$\{params\.toString\(\)\}`\)/);
 });
 
 test("visit flow keeps the current session reachable without changing business actions", () => {
