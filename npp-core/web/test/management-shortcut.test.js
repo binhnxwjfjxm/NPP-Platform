@@ -16,10 +16,12 @@ test('NPP keeps all daily sales work inside the Sales navigation group', () => {
   assert.match(coreShellSource, /Đơn nhiều nguồn, mã khách và vòng đời thương mại/);
 });
 
-test('customer context surfaces the canonical onboarding workspace without creating another lifecycle', () => {
+test('customer onboarding stays only in the Sales navigation group', () => {
   assert.match(coreShellSource, /href: '\/customers', label: 'Khách hàng'/);
-  assert.match(coreShellSource, /href: '\/management\/customer-onboarding', label: 'Yêu cầu mở mã khách hàng', icon: 'user', testId: 'nav-customer-onboarding-from-customers'/);
-  assert.equal((coreShellSource.match(/href: '\/management\/customer-onboarding'/g) || []).length, 2);
+  assert.match(coreShellSource, /href: '\/management\/customer-onboarding', label: 'Mở \/ liên kết mã khách', icon: 'user', testId: 'nav-customer-onboarding'/);
+  assert.equal((coreShellSource.match(/href: '\/management\/customer-onboarding'/g) || []).length, 1);
+  assert.doesNotMatch(coreShellSource, /Yêu cầu mở mã khách hàng/);
+  assert.doesNotMatch(coreShellSource, /nav-customer-onboarding-from-customers/);
   assert.doesNotMatch(coreShellSource, /\/customers\/customer-onboarding/);
 });
 

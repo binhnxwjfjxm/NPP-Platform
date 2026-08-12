@@ -29,18 +29,21 @@ function config() {
   });
 }
 
-test('dedicated MCP Sales token can read canonical products and create/read draft orders only', () => {
+test('dedicated MCP Sales token can read canonical products and BASE prices and create/read draft orders only', () => {
   const appConfig = config();
   const principal = createMcpSalesPrincipal(appConfig);
   assert.equal(principal.actorId, 'service:mcp-sales-order');
   assert.deepEqual(principal.scopes.warehouseIds, [WAREHOUSE_ID]);
   assert.deepEqual([...principal.permissions].sort(), [
     PERMISSIONS.coreProductRead,
+    PERMISSIONS.corePriceRead,
     PERMISSIONS.coreSalesOrderRead,
     PERMISSIONS.coreSalesOrderCreate,
   ].sort());
   assert.equal(requirePermission({ permissions: principal.permissions }, PERMISSIONS.coreProductRead).ok, true);
   assert.equal(requirePermission({ permissions: principal.permissions }, PERMISSIONS.coreProductWrite).ok, false);
+  assert.equal(requirePermission({ permissions: principal.permissions }, PERMISSIONS.corePriceRead).ok, true);
+  assert.equal(requirePermission({ permissions: principal.permissions }, PERMISSIONS.corePriceWrite).ok, false);
   assert.equal(requirePermission({ permissions: principal.permissions }, PERMISSIONS.coreSalesOrderRead).ok, true);
   assert.equal(requirePermission({ permissions: principal.permissions }, PERMISSIONS.coreSalesOrderCreate).ok, true);
   assert.equal(requirePermission({ permissions: principal.permissions }, PERMISSIONS.coreSalesOrderConfirm).ok, false);
