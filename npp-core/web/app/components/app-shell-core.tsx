@@ -23,7 +23,8 @@ type IconName =
   | 'panel'
   | 'accounting'
   | 'truck'
-  | 'user';
+  | 'user'
+  | 'logout';
 
 type NavItem = { href: string; label: string; icon: IconName; testId: string };
 type CurrentUser = Readonly<{ employeeFullName: string | null; loginName: string | null }>;
@@ -130,6 +131,7 @@ function Icon({ name }: { name: IconName }) {
     accounting: <><rect x="5" y="4" width="14" height="16" rx="2" /><path d="M8 8h8M8 12h6M8 16h4" /><circle cx="16" cy="12" r="1.25" /></>,
     truck: <><path d="M3 6h11v10H3zM14 10h4l3 3v3h-7z" /><circle cx="7" cy="18" r="2" /><circle cx="18" cy="18" r="2" /></>,
     user: <><circle cx="12" cy="8" r="4" /><path d="M4.5 21a7.5 7.5 0 0 1 15 0" /></>,
+    logout: <><path d="M10 5H5v14h5" /><path d="M14 8l4 4-4 4M18 12H9" /></>,
   };
   return <svg aria-hidden="true" viewBox="0 0 24 24" className={styles.icon} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }
@@ -268,6 +270,12 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
             <small>{currentUserLogin && currentUserLogin !== currentUserName ? `@${currentUserLogin}` : 'Đang đăng nhập'}</small>
           </span>
         </div>
+        <form action="/api/auth/logout" method="post">
+          <button type="submit" className={styles.navItem} data-testid="sidebar-logout" aria-label="Đăng xuất" title={collapsed ? 'Đăng xuất' : undefined}>
+            <span className={styles.navIcon}><Icon name="logout" /></span>
+            <span className={styles.navCopy}><span className={styles.navTitle}>Đăng xuất</span><span className={styles.navHint}>Kết thúc phiên làm việc</span></span>
+          </button>
+        </form>
       </div>
     </aside>
     <button type="button" className={`${styles.backdrop} ${mobileOpen ? '' : styles.backdropHidden}`} onClick={() => setMobileOpen(false)} aria-label="Đóng thanh điều hướng" />
