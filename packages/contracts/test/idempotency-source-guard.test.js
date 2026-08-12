@@ -47,7 +47,7 @@ test('MCP frontend and backend speak the same canonical idempotency language', a
   const backend = await source('mcp/apps/backend/foundation/request-context.js');
   assert.match(client, /createIdempotencyKey as createContractIdempotencyKey/);
   assert.doesNotMatch(client, /\$\{operationPrefix\(operation\)\}:/);
-  assert.match(backend, /from "@npp\/contracts"/);
+  assert.match(backend, /from "\.\.\/\.\.\/\.\.\/\.\.\/packages\/contracts\/index\.js"/);
   assert.doesNotMatch(backend, /IDEMPOTENCY_KEY_PATTERN\s*=/);
 });
 

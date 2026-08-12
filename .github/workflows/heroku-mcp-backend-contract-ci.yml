@@ -9,6 +9,7 @@ on:
       - mcp/test/heroku-mcp-backend-*.mjs
       - mcp/test/phase-6c0b-persistence-boundary.test.mjs
       - mcp/package.json
+      - packages/contracts/**
   push:
     branches:
       - agent/heroku-mcp-backend-contract
@@ -20,6 +21,7 @@ on:
       - mcp/test/heroku-mcp-backend-*.mjs
       - mcp/test/phase-6c0b-persistence-boundary.test.mjs
       - mcp/package.json
+      - packages/contracts/**
   workflow_dispatch:
 
 permissions:
@@ -73,7 +75,7 @@ jobs:
         run: npm --workspace mcp run build
 
       - name: Build MCP backend container
-        run: docker build -f mcp/apps/backend/Dockerfile mcp/apps/backend -t heroku-mcp-backend:${{ github.sha }}
+        run: docker build -f mcp/apps/backend/Dockerfile . -t heroku-mcp-backend:${{ github.sha }}
 
       - name: Smoke the MCP backend container
         shell: bash

@@ -2,7 +2,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import {
   isValidIdempotencyKey,
   normalizeIdempotencyKey as normalizeContractIdempotencyKey
-} from "@npp/contracts";
+} from "../../../../packages/contracts/index.js";
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 const ACTOR_ID_PATTERN = /^(service|user):[A-Za-z0-9][A-Za-z0-9._:-]{2,126}$/;

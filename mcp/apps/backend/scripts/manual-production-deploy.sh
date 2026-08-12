@@ -227,7 +227,7 @@ case "$requested_action" in
     heroku container:login
     (
       cd mcp/apps/backend
-      heroku container:push web -a "$HEROKU_APP_NAME"
+      heroku container:push web -a "$HEROKU_APP_NAME" --context-path ../../..
     )
     heroku container:release web -a "$HEROKU_APP_NAME"
     active_release_version="$(refresh_release_version)"
