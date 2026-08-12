@@ -4,6 +4,11 @@ import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { AppShell } from './app-shell';
 import type { InventoryReportingDashboard } from '../../lib/inventory-reporting-types';
+import {
+  WorkspaceTabPanel,
+  WorkspaceTabs,
+  type WorkspaceTabOption,
+} from './workspace-tabs';
 import styles from './inventory-reporting-workspace.module.css';
 
 type ApiEnvelope<T> = Readonly<{
@@ -18,12 +23,31 @@ type Filters = Readonly<{
   slowDays: string;
 }>;
 
+type InventoryReportTab =
+  | 'overview'
+  | 'positions'
+  | 'movement'
+  | 'slow-moving'
+  | 'lots'
+  | 'exceptions';
+
 const EMPTY_FILTERS: Filters = Object.freeze({
   from: '',
   to: '',
   warehouseId: '',
   slowDays: '90',
 });
+
+const INVENTORY_TABS: readonly WorkspaceTabOption<InventoryReportTab>[] = Object.freeze([
+  { id: 'overview', label: 'Tổng quan' },
+  { id: 'positions', label: 'Tồn hiện tại' },
+  { id: 'movement', label: 'Luân chuyển' },
+  { id: 'slow-moving', label: 'Chậm luân chuyển' },
+  { id: 'lots', label: 'Lô & hạn dùng' },
+  { id: 'exceptions', label: 'Ngoại lệ' },
+]);
+
+const INVENTORY_TAB_PREFIX = 'inventory-reporting';
 
 function incrementDigits(value: string) {
   const digits = value.split('');
@@ -125,6 +149,7 @@ export function InventoryReportingWorkspace() {
   const [warehouseOptions, setWarehouseOptions] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState<InventoryReportTab>('overview');
 
   const load = useCallback(async (filters: Filters, initialize = false) => {
     setBusy(true);
@@ -276,184 +301,228 @@ export function InventoryReportingWorkspace() {
               </article>
             </div>
 
-            <div className={styles.notice}>
+            <div className={styles.statusStrip}>
               <strong>Watermark:</strong>{' '}
               ledger {formatDateTime(report.projectionState.ledgerThrough)} · tồn {formatDateTime(report.projectionState.quantityProjectedThrough)} · giá vốn {formatDateTime(report.projectionState.costingProjectedThrough)}
               {report.projectionState.quantityProjectionStale ? ' · Projection tồn đang chậm hơn ledger.' : ' · Projection tồn theo kịp ledger.'}
             </div>
 
-            <section className={styles.section}>
-              <div className={styles.sectionHeader}>
-                <div>
-                  <h2>Tổng quan theo kho</h2>
-                  <p>Đếm SKU và giá trị tiền theo từng kho; không cộng số lượng của các SKU khác đơn vị với nhau.</p>
+            <WorkspaceTabs
+              tabs={INVENTORY_TABS}
+              activeTab={activeTab}
+              onChange={setActiveTab}
+              idPrefix={INVENTORY_TAB_PREFIX}
+              label="Chi tiết báo cáo tồn kho"
+            />
+
+            <WorkspaceTabPanel
+              tabId="overview"
+              activeTab={activeTab}
+              idPrefix={INVENTORY_TAB_PREFIX}
+            >
+              <section className={styles.section}>
+                <div className={styles.sectionHeader}>
+                  <div>
+                    <h2>Tổng quan theo kho</h2>
+                    <p>Đếm SKU và giá trị tiền theo từng kho; không cộng số lượng của các SKU khác đơn vị với nhau.</p>
+                  </div>
+                  <Link className={styles.linkButton} href="/inventory/balances">Mở tra cứu tồn</Link>
                 </div>
-                <Link className={styles.linkButton} href="/inventory/balances">Mở tra cứu tồn</Link>
-              </div>
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead><tr><th>Kho</th><th className={styles.numeric}>SKU có tồn</th><th className={styles.numeric}>SKU có giữ</th><th className={styles.numeric}>Giá trị VND</th><th className={styles.numeric}>Ngoại lệ</th><th>Projection tồn</th></tr></thead>
-                  <tbody>
-                    {report.warehouseSummary.map((row) => (
-                      <tr key={row.warehouseId}>
-                        <td><strong>{row.warehouseCode}</strong><br />{row.warehouseName}</td>
-                        <td className={styles.numeric}>{formatDecimal(row.stockedSkuCount, 0)}</td>
-                        <td className={styles.numeric}>{formatDecimal(row.reservedSkuCount, 0)}</td>
-                        <td className={styles.numeric}>{formatMoney(row.inventoryValueVnd)}</td>
-                        <td className={styles.numeric}>{formatDecimal(row.costingExceptionCount, 0)}</td>
-                        <td>{formatDateTime(row.quantityProjectedThrough)}</td>
-                      </tr>
-                    ))}
-                    {!report.warehouseSummary.length ? <tr><td className={styles.empty} colSpan={6}>Chưa có dữ liệu tồn trong phạm vi.</td></tr> : null}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-
-            <section className={styles.section}>
-              <div className={styles.sectionHeader}>
-                <div>
-                  <h2>Tồn khả dụng & giá trị hiện tại</h2>
-                  <p>On-hand, reserved, available lấy từ projection tồn; giá trị và giá bình quân lấy từ MWA_V1.</p>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead><tr><th>Kho</th><th className={styles.numeric}>SKU có tồn</th><th className={styles.numeric}>SKU có giữ</th><th className={styles.numeric}>Giá trị VND</th><th className={styles.numeric}>Ngoại lệ</th><th>Projection tồn</th></tr></thead>
+                    <tbody>
+                      {report.warehouseSummary.map((row) => (
+                        <tr key={row.warehouseId}>
+                          <td><strong>{row.warehouseCode}</strong><br />{row.warehouseName}</td>
+                          <td className={styles.numeric}>{formatDecimal(row.stockedSkuCount, 0)}</td>
+                          <td className={styles.numeric}>{formatDecimal(row.reservedSkuCount, 0)}</td>
+                          <td className={styles.numeric}>{formatMoney(row.inventoryValueVnd)}</td>
+                          <td className={styles.numeric}>{formatDecimal(row.costingExceptionCount, 0)}</td>
+                          <td>{formatDateTime(row.quantityProjectedThrough)}</td>
+                        </tr>
+                      ))}
+                      {!report.warehouseSummary.length ? <tr><td className={styles.empty} colSpan={6}>Chưa có dữ liệu tồn trong phạm vi.</td></tr> : null}
+                    </tbody>
+                  </table>
                 </div>
-                <Link className={styles.linkButton} href="/inventory/costing">Mở giá vốn</Link>
-              </div>
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead><tr><th>Kho</th><th>SKU</th><th className={styles.numeric}>On-hand</th><th className={styles.numeric}>Reserved</th><th className={styles.numeric}>Available</th><th className={styles.numeric}>Giá trị</th><th className={styles.numeric}>Giá BQ</th><th>Cost</th></tr></thead>
-                  <tbody>
-                    {report.currentPositions.map((row) => (
-                      <tr key={`${row.warehouseId}:${row.variantId}`}>
-                        <td>{row.warehouseCode}</td><td><strong>{row.sku}</strong></td>
-                        <td className={styles.numeric}>{formatDecimal(row.onHandQuantity)}</td>
-                        <td className={styles.numeric}>{formatDecimal(row.reservedQuantity)}</td>
-                        <td className={styles.numeric}>{formatDecimal(row.availableQuantity)}</td>
-                        <td className={styles.numeric}>{row.inventoryValue === null ? '—' : formatMoney(row.inventoryValue)}</td>
-                        <td className={styles.numeric}>{row.averageUnitCost === null ? '—' : formatMoney(row.averageUnitCost)}</td>
-                        <td><span className={row.costingStatus === 'COSTED' ? styles.statusGood : styles.statusBad}>{row.costingStatus}</span></td>
-                      </tr>
-                    ))}
-                    {!report.currentPositions.length ? <tr><td className={styles.empty} colSpan={8}>Không có vị thế tồn hiện tại.</td></tr> : null}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+              </section>
+            </WorkspaceTabPanel>
 
-            <section className={styles.section}>
-              <div className={styles.sectionHeader}>
-                <div>
-                  <h2>Nhập – xuất – tồn theo kỳ</h2>
-                  <p>{report.filters.from} → {report.filters.to}. Số lượng chỉ so sánh trong cùng SKU; nguồn là ledger append-only.</p>
+            <WorkspaceTabPanel
+              tabId="positions"
+              activeTab={activeTab}
+              idPrefix={INVENTORY_TAB_PREFIX}
+            >
+              <section className={styles.section}>
+                <div className={styles.sectionHeader}>
+                  <div>
+                    <h2>Tồn khả dụng & giá trị hiện tại</h2>
+                    <p>On-hand, reserved, available lấy từ projection tồn; giá trị và giá bình quân lấy từ MWA_V1.</p>
+                  </div>
+                  <Link className={styles.linkButton} href="/inventory/costing">Mở giá vốn</Link>
                 </div>
-              </div>
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead><tr><th>Kho</th><th>SKU</th><th className={styles.numeric}>Đầu kỳ</th><th className={styles.numeric}>Nhập</th><th className={styles.numeric}>Xuất</th><th className={styles.numeric}>Cuối kỳ</th><th className={styles.numeric}>Dòng movement</th></tr></thead>
-                  <tbody>
-                    {report.periodFlow.map((row) => (
-                      <tr key={`${row.warehouseId}:${row.variantId}`}>
-                        <td>{row.warehouseCode}</td><td><strong>{row.sku}</strong></td>
-                        <td className={styles.numeric}>{formatDecimal(row.openingQuantity)}</td>
-                        <td className={styles.numeric}>{formatDecimal(row.inboundQuantity)}</td>
-                        <td className={styles.numeric}>{formatDecimal(row.outboundQuantity)}</td>
-                        <td className={styles.numeric}>{formatDecimal(row.closingQuantity)}</td>
-                        <td className={styles.numeric}>{formatDecimal(row.movementLineCount, 0)}</td>
-                      </tr>
-                    ))}
-                    {!report.periodFlow.length ? <tr><td className={styles.empty} colSpan={7}>Không có movement trong kỳ và không có số dư cuối kỳ.</td></tr> : null}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead><tr><th>Kho</th><th>SKU</th><th className={styles.numeric}>On-hand</th><th className={styles.numeric}>Reserved</th><th className={styles.numeric}>Available</th><th className={styles.numeric}>Giá trị</th><th className={styles.numeric}>Giá BQ</th><th>Cost</th></tr></thead>
+                    <tbody>
+                      {report.currentPositions.map((row) => (
+                        <tr key={`${row.warehouseId}:${row.variantId}`}>
+                          <td>{row.warehouseCode}</td><td><strong>{row.sku}</strong></td>
+                          <td className={styles.numeric}>{formatDecimal(row.onHandQuantity)}</td>
+                          <td className={styles.numeric}>{formatDecimal(row.reservedQuantity)}</td>
+                          <td className={styles.numeric}>{formatDecimal(row.availableQuantity)}</td>
+                          <td className={styles.numeric}>{row.inventoryValue === null ? '—' : formatMoney(row.inventoryValue)}</td>
+                          <td className={styles.numeric}>{row.averageUnitCost === null ? '—' : formatMoney(row.averageUnitCost)}</td>
+                          <td><span className={row.costingStatus === 'COSTED' ? styles.statusGood : styles.statusBad}>{row.costingStatus}</span></td>
+                        </tr>
+                      ))}
+                      {!report.currentPositions.length ? <tr><td className={styles.empty} colSpan={8}>Không có vị thế tồn hiện tại.</td></tr> : null}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </WorkspaceTabPanel>
 
-            <section className={styles.section}>
-              <div className={styles.sectionHeader}>
-                <div><h2>Hàng chậm luân chuyển</h2><p>On-hand dương và không có OUT trong {report.filters.slowDays} ngày gần nhất; “chưa từng xuất” được tách rõ.</p></div>
-              </div>
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead><tr><th>Kho</th><th>SKU</th><th className={styles.numeric}>On-hand</th><th className={styles.numeric}>Available</th><th>Lần xuất cuối</th><th className={styles.numeric}>Số ngày</th><th className={styles.numeric}>Giá trị VND</th></tr></thead>
-                  <tbody>
-                    {report.slowMoving.map((row) => (
-                      <tr key={`${row.warehouseId}:${row.variantId}`}>
-                        <td>{row.warehouseCode}</td><td><strong>{row.sku}</strong></td>
-                        <td className={styles.numeric}>{formatDecimal(row.onHandQuantity)}</td>
-                        <td className={styles.numeric}>{formatDecimal(row.availableQuantity)}</td>
-                        <td>{row.neverOutbound ? 'Chưa từng xuất' : row.lastOutDate ?? '—'}</td>
-                        <td className={styles.numeric}>{row.daysSinceOutbound ?? '—'}</td>
-                        <td className={styles.numeric}>{row.inventoryValueVnd === null ? '—' : formatMoney(row.inventoryValueVnd)}</td>
-                      </tr>
-                    ))}
-                    {!report.slowMoving.length ? <tr><td className={styles.empty} colSpan={7}>Không có SKU chậm luân chuyển theo ngưỡng đã chọn.</td></tr> : null}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+            <WorkspaceTabPanel
+              tabId="movement"
+              activeTab={activeTab}
+              idPrefix={INVENTORY_TAB_PREFIX}
+            >
+              <section className={styles.section}>
+                <div className={styles.sectionHeader}>
+                  <div>
+                    <h2>Nhập – xuất – tồn theo kỳ</h2>
+                    <p>{report.filters.from} → {report.filters.to}. Số lượng chỉ so sánh trong cùng SKU; nguồn là ledger append-only.</p>
+                  </div>
+                </div>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead><tr><th>Kho</th><th>SKU</th><th className={styles.numeric}>Đầu kỳ</th><th className={styles.numeric}>Nhập</th><th className={styles.numeric}>Xuất</th><th className={styles.numeric}>Cuối kỳ</th><th className={styles.numeric}>Dòng movement</th></tr></thead>
+                    <tbody>
+                      {report.periodFlow.map((row) => (
+                        <tr key={`${row.warehouseId}:${row.variantId}`}>
+                          <td>{row.warehouseCode}</td><td><strong>{row.sku}</strong></td>
+                          <td className={styles.numeric}>{formatDecimal(row.openingQuantity)}</td>
+                          <td className={styles.numeric}>{formatDecimal(row.inboundQuantity)}</td>
+                          <td className={styles.numeric}>{formatDecimal(row.outboundQuantity)}</td>
+                          <td className={styles.numeric}>{formatDecimal(row.closingQuantity)}</td>
+                          <td className={styles.numeric}>{formatDecimal(row.movementLineCount, 0)}</td>
+                        </tr>
+                      ))}
+                      {!report.periodFlow.length ? <tr><td className={styles.empty} colSpan={7}>Không có movement trong kỳ và không có số dư cuối kỳ.</td></tr> : null}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
 
-            <section className={styles.section}>
-              <div className={styles.sectionHeader}>
-                <div><h2>Lô, tuổi sản xuất & hạn dùng</h2><p>Tuổi chỉ tính khi lô có manufactured_date canonical. Không suy diễn FIFO age cho hàng không quản lý lô dưới MWA.</p></div>
-                <Link className={styles.linkButton} href="/inventory/lots">Mở danh mục lô</Link>
-              </div>
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead><tr><th>Kho</th><th>SKU</th><th>Lô</th><th>Ngày SX</th><th>Hạn dùng</th><th className={styles.numeric}>On-hand</th><th className={styles.numeric}>Available</th><th>Trạng thái</th></tr></thead>
-                  <tbody>
-                    {report.expiryLots.map((row) => (
-                      <tr key={`${row.warehouseId}:${row.lotId}`}>
-                        <td>{row.warehouseCode}</td><td><strong>{row.sku}</strong></td><td>{row.lotCode}</td>
-                        <td>{row.manufacturedDate ?? '—'}{row.manufacturedAgeDays ? ` (${row.manufacturedAgeDays} ngày)` : ''}</td>
-                        <td>{row.expiryDate ?? '—'}</td>
-                        <td className={styles.numeric}>{formatDecimal(row.onHandQuantity)}</td>
-                        <td className={styles.numeric}>{formatDecimal(row.availableQuantity)}</td>
-                        <td><span className={expiryClass(row.expiryBucket)}>{expiryLabel(row.expiryBucket)}</span></td>
-                      </tr>
-                    ))}
-                    {!report.expiryLots.length ? <tr><td className={styles.empty} colSpan={8}>Không có lô còn hàng trong phạm vi.</td></tr> : null}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+              <section className={styles.section}>
+                <div className={styles.sectionHeader}><div><h2>Loại movement trong kỳ</h2><p>Đếm chứng từ/dòng/SKU theo loại movement, không cộng quantity giữa các SKU khác nhau.</p></div></div>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead><tr><th>Loại movement</th><th className={styles.numeric}>Movement</th><th className={styles.numeric}>Dòng</th><th className={styles.numeric}>SKU</th></tr></thead>
+                    <tbody>
+                      {report.movementTypes.map((row) => (
+                        <tr key={row.movementType}><td>{row.movementType}</td><td className={styles.numeric}>{row.movementCount}</td><td className={styles.numeric}>{row.movementLineCount}</td><td className={styles.numeric}>{row.skuCount}</td></tr>
+                      ))}
+                      {!report.movementTypes.length ? <tr><td className={styles.empty} colSpan={4}>Không có movement trong kỳ.</td></tr> : null}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </WorkspaceTabPanel>
 
-            <section className={styles.section}>
-              <div className={styles.sectionHeader}>
-                <div><h2>Ngoại lệ quantity ↔ costing</h2><p>Đối chiếu quantity ledger bất biến với projection costing mới nhất. Chỉ hiển thị dòng khác OK.</p></div>
-                <Link className={styles.linkButton} href="/inventory/costing">Mở đối soát giá vốn</Link>
-              </div>
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead><tr><th>Kho</th><th>SKU</th><th className={styles.numeric}>Ledger qty</th><th className={styles.numeric}>Costing qty</th><th className={styles.numeric}>Chênh lệch</th><th>Trạng thái</th><th className={styles.numeric}>Anomaly</th></tr></thead>
-                  <tbody>
-                    {report.exceptions.map((row) => (
-                      <tr key={`${row.warehouseId}:${row.variantId}`}>
-                        <td>{row.warehouseCode}</td><td><strong>{row.sku}</strong></td>
-                        <td className={styles.numeric}>{formatDecimal(row.ledgerQuantity)}</td>
-                        <td className={styles.numeric}>{formatDecimal(row.costingQuantity)}</td>
-                        <td className={styles.numeric}>{formatDecimal(row.quantityDifference)}</td>
-                        <td><span className={styles.statusBad}>{row.reconciliationStatus}</span></td>
-                        <td className={styles.numeric}>{formatDecimal(row.anomalyCount, 0)}</td>
-                      </tr>
-                    ))}
-                    {!report.exceptions.length ? <tr><td className={styles.empty} colSpan={7}>Không có chênh lệch costing hiện tại.</td></tr> : null}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+            <WorkspaceTabPanel
+              tabId="slow-moving"
+              activeTab={activeTab}
+              idPrefix={INVENTORY_TAB_PREFIX}
+            >
+              <section className={styles.section}>
+                <div className={styles.sectionHeader}>
+                  <div><h2>Hàng chậm luân chuyển</h2><p>On-hand dương và không có OUT trong {report.filters.slowDays} ngày gần nhất; “chưa từng xuất” được tách rõ.</p></div>
+                </div>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead><tr><th>Kho</th><th>SKU</th><th className={styles.numeric}>On-hand</th><th className={styles.numeric}>Available</th><th>Lần xuất cuối</th><th className={styles.numeric}>Số ngày</th><th className={styles.numeric}>Giá trị VND</th></tr></thead>
+                    <tbody>
+                      {report.slowMoving.map((row) => (
+                        <tr key={`${row.warehouseId}:${row.variantId}`}>
+                          <td>{row.warehouseCode}</td><td><strong>{row.sku}</strong></td>
+                          <td className={styles.numeric}>{formatDecimal(row.onHandQuantity)}</td>
+                          <td className={styles.numeric}>{formatDecimal(row.availableQuantity)}</td>
+                          <td>{row.neverOutbound ? 'Chưa từng xuất' : row.lastOutDate ?? '—'}</td>
+                          <td className={styles.numeric}>{row.daysSinceOutbound ?? '—'}</td>
+                          <td className={styles.numeric}>{row.inventoryValueVnd === null ? '—' : formatMoney(row.inventoryValueVnd)}</td>
+                        </tr>
+                      ))}
+                      {!report.slowMoving.length ? <tr><td className={styles.empty} colSpan={7}>Không có SKU chậm luân chuyển theo ngưỡng đã chọn.</td></tr> : null}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </WorkspaceTabPanel>
 
-            <section className={styles.section}>
-              <div className={styles.sectionHeader}><div><h2>Loại movement trong kỳ</h2><p>Đếm chứng từ/dòng/SKU theo loại movement, không cộng quantity giữa các SKU khác nhau.</p></div></div>
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead><tr><th>Loại movement</th><th className={styles.numeric}>Movement</th><th className={styles.numeric}>Dòng</th><th className={styles.numeric}>SKU</th></tr></thead>
-                  <tbody>
-                    {report.movementTypes.map((row) => (
-                      <tr key={row.movementType}><td>{row.movementType}</td><td className={styles.numeric}>{row.movementCount}</td><td className={styles.numeric}>{row.movementLineCount}</td><td className={styles.numeric}>{row.skuCount}</td></tr>
-                    ))}
-                    {!report.movementTypes.length ? <tr><td className={styles.empty} colSpan={4}>Không có movement trong kỳ.</td></tr> : null}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+            <WorkspaceTabPanel
+              tabId="lots"
+              activeTab={activeTab}
+              idPrefix={INVENTORY_TAB_PREFIX}
+            >
+              <section className={styles.section}>
+                <div className={styles.sectionHeader}>
+                  <div><h2>Lô, tuổi sản xuất & hạn dùng</h2><p>Tuổi chỉ tính khi lô có manufactured_date canonical. Không suy diễn FIFO age cho hàng không quản lý lô dưới MWA.</p></div>
+                  <Link className={styles.linkButton} href="/inventory/lots">Mở danh mục lô</Link>
+                </div>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead><tr><th>Kho</th><th>SKU</th><th>Lô</th><th>Ngày SX</th><th>Hạn dùng</th><th className={styles.numeric}>On-hand</th><th className={styles.numeric}>Available</th><th>Trạng thái</th></tr></thead>
+                    <tbody>
+                      {report.expiryLots.map((row) => (
+                        <tr key={`${row.warehouseId}:${row.lotId}`}>
+                          <td>{row.warehouseCode}</td><td><strong>{row.sku}</strong></td><td>{row.lotCode}</td>
+                          <td>{row.manufacturedDate ?? '—'}{row.manufacturedAgeDays ? ` (${row.manufacturedAgeDays} ngày)` : ''}</td>
+                          <td>{row.expiryDate ?? '—'}</td>
+                          <td className={styles.numeric}>{formatDecimal(row.onHandQuantity)}</td>
+                          <td className={styles.numeric}>{formatDecimal(row.availableQuantity)}</td>
+                          <td><span className={expiryClass(row.expiryBucket)}>{expiryLabel(row.expiryBucket)}</span></td>
+                        </tr>
+                      ))}
+                      {!report.expiryLots.length ? <tr><td className={styles.empty} colSpan={8}>Không có lô còn hàng trong phạm vi.</td></tr> : null}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </WorkspaceTabPanel>
+
+            <WorkspaceTabPanel
+              tabId="exceptions"
+              activeTab={activeTab}
+              idPrefix={INVENTORY_TAB_PREFIX}
+            >
+              <section className={styles.section}>
+                <div className={styles.sectionHeader}>
+                  <div><h2>Ngoại lệ quantity ↔ costing</h2><p>Đối chiếu quantity ledger bất biến với projection costing mới nhất. Chỉ hiển thị dòng khác OK.</p></div>
+                  <Link className={styles.linkButton} href="/inventory/costing">Mở đối soát giá vốn</Link>
+                </div>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead><tr><th>Kho</th><th>SKU</th><th className={styles.numeric}>Ledger qty</th><th className={styles.numeric}>Costing qty</th><th className={styles.numeric}>Chênh lệch</th><th>Trạng thái</th><th className={styles.numeric}>Anomaly</th></tr></thead>
+                    <tbody>
+                      {report.exceptions.map((row) => (
+                        <tr key={`${row.warehouseId}:${row.variantId}`}>
+                          <td>{row.warehouseCode}</td><td><strong>{row.sku}</strong></td>
+                          <td className={styles.numeric}>{formatDecimal(row.ledgerQuantity)}</td>
+                          <td className={styles.numeric}>{formatDecimal(row.costingQuantity)}</td>
+                          <td className={styles.numeric}>{formatDecimal(row.quantityDifference)}</td>
+                          <td><span className={styles.statusBad}>{row.reconciliationStatus}</span></td>
+                          <td className={styles.numeric}>{formatDecimal(row.anomalyCount, 0)}</td>
+                        </tr>
+                      ))}
+                      {!report.exceptions.length ? <tr><td className={styles.empty} colSpan={7}>Không có chênh lệch costing hiện tại.</td></tr> : null}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </WorkspaceTabPanel>
 
             <div className={styles.sourceNote}>
               <span><strong>Nguồn quantity:</strong> <code>{report.basis.quantityTruth}</code></span>
