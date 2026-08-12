@@ -5,6 +5,7 @@ import {
   createCoreSalesOrder,
   listCoreProductVariants,
   readCoreSalesOrder,
+  resolveCoreBasePrice,
   searchCoreSalesSkus
 } from "./core-sales-client.js";
 
@@ -92,6 +93,39 @@ test("Core product variants use exact canonical route and reject path-shaped IDs
     () => readCoreSalesOrder("../orders", context, config),
     (error) => error.code === "core_sales_order_id_invalid" && error.statusCode === 400
   );
+});
+
+test("Core base price uses canonical pricing resolver and does not substitute final price", async () => {
+  const priceAt = "2026-08-12T09:00:00.000Z";
+  let seen;
+  const resolved = await resolveCoreBasePrice(variantId, context, config, {
+    priceAt,
+    fetchImpl: async (url, init) => {
+      seen = { url, init };
+      return jsonResponse(200, {
+        data: {
+          variantId,
+          currencyCode: "VND",
+          priceAt,
+          baseUnitPriceMinor: "125000",
+          finalUnitPriceMinor: "99000"
+        }
+      });
+    }
+  });
+
+  assert.equal(seen.url, "https://core.example.test/api/pricing/resolve");
+  assert.equal(seen.init.method, "POST");
+  assert.equal(seen.init.headers.Authorization, `Bearer ${config.coreSales.apiToken}`);
+  assert.deepEqual(JSON.parse(seen.init.body), {
+    variantId,
+    quantity: "1",
+    currencyCode: "VND",
+    priceAt
+  });
+  assert.equal(resolved.amount, 125000);
+  assert.equal(resolved.currency, "VND");
+  assert.equal(resolved.priceAt, priceAt);
 });
 
 test("Core Sales create sends deterministic idempotency header and maps draft", async () => {

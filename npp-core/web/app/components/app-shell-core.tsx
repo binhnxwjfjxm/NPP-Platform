@@ -57,6 +57,7 @@ const organizationItems: NavItem[] = [
   { href: '/organization/warehouses', label: 'Kho hàng', icon: 'warehouses', testId: 'nav-warehouses' },
   { href: '/organization/locations', label: 'Vị trí kho', icon: 'locations', testId: 'nav-locations' },
   { href: '/customers', label: 'Khách hàng', icon: 'user', testId: 'nav-customers' },
+  { href: '/management/customer-onboarding', label: 'Yêu cầu mở mã khách hàng', icon: 'user', testId: 'nav-customer-onboarding-from-customers' },
   { href: '/suppliers', label: 'Nhà cung cấp', icon: 'user', testId: 'nav-suppliers' },
   { href: '/products', label: 'Danh mục sản phẩm', icon: 'panel', testId: 'nav-products' },
   { href: '/pricing', label: 'Giá bán & khuyến mãi', icon: 'panel', testId: 'nav-pricing' },

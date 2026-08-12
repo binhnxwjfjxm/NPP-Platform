@@ -42,43 +42,117 @@ function jsonResponse(status, data) {
   };
 }
 
-test("Core Sales product search uses the dedicated route and clamps limit", async () => {
-  let seen;
+function skuOption(overrides = {}) {
+  return {
+    id: variantA,
+    productId,
+    productName: "Trà NPP",
+    sku: "SKU-A",
+    variantName: "A",
+    unitId: "88888888-8888-4888-8888-888888888888",
+    unitCode: "GOI",
+    conversionToBase: "1",
+    allowsFractional: false,
+    defaultTaxMode: "EXCLUSIVE",
+    defaultTaxRate: "0",
+    ...overrides
+  };
+}
+
+test("Core Sales product search enriches canonical SKU/unit data with Core BASE price", async () => {
+  const calls = [];
   const result = await handleCoreSalesApi(
     { method: "GET" },
     new URL("http://mcp.local/api/core-sales/products/search?q=tra&limit=999"),
     requestContext(),
     config,
     {
-      fetchImpl: async (url) => {
-        seen = new URL(url);
-        return jsonResponse(200, { data: [{
-          id: variantA,
-          productId,
-          productName: "Trà NPP",
-          sku: "SKU-A",
-          variantName: "A",
-          unitId: "88888888-8888-4888-8888-888888888888",
-          unitCode: "GOI",
-          conversionToBase: "1",
-          allowsFractional: false,
-          defaultTaxMode: "EXCLUSIVE",
-          defaultTaxRate: "0"
-        }] });
+      fetchImpl: async (url, init) => {
+        const parsed = new URL(url);
+        calls.push({ url: parsed, init });
+        if (parsed.pathname === "/api/sales-orders/sku-search") {
+          return jsonResponse(200, { data: [skuOption()] });
+        }
+        if (parsed.pathname === "/api/pricing/resolve") {
+          const body = JSON.parse(init.body);
+          assert.equal(body.variantId, variantA);
+          assert.equal(body.quantity, "1");
+          assert.equal(body.currencyCode, "VND");
+          assert.ok(body.priceAt);
+          return jsonResponse(200, {
+            data: {
+              variantId: variantA,
+              currencyCode: "VND",
+              priceAt: body.priceAt,
+              baseUnitPriceMinor: "125000",
+              finalUnitPriceMinor: "99000"
+            }
+          });
+        }
+        throw new Error(`unexpected_url:${url}`);
       }
     }
   );
 
   assert.equal(result.statusCode, 200);
   assert.equal(result.payload.data[0].catalogSource, "NPP_CORE");
-  assert.equal(seen.pathname, "/api/sales-orders/sku-search");
-  assert.equal(seen.searchParams.get("search"), "tra");
-  assert.equal(seen.searchParams.get("limit"), "50");
+  assert.equal(result.payload.data[0].sellUnit, "GOI");
+  assert.equal(result.payload.data[0].price, 125000);
+  const searchCall = calls.find((call) => call.url.pathname === "/api/sales-orders/sku-search");
+  assert.equal(searchCall.url.searchParams.get("search"), "tra");
+  assert.equal(searchCall.url.searchParams.get("limit"), "50");
+  assert.equal(calls.filter((call) => call.url.pathname === "/api/pricing/resolve").length, 1);
 });
 
-test("product variant route reads exact NPP product and rechecks only eligible Sales SKUs", async () => {
+test("missing Core BASE price stays null without falling back to a legacy MCP price", async () => {
+  const result = await handleCoreSalesApi(
+    { method: "GET" },
+    new URL("http://mcp.local/api/core-sales/products/search?q=tea"),
+    requestContext(),
+    config,
+    {
+      fetchImpl: async (url) => {
+        const parsed = new URL(url);
+        if (parsed.pathname === "/api/sales-orders/sku-search") {
+          return jsonResponse(200, { data: [skuOption({ legacyPrice: 1 })] });
+        }
+        if (parsed.pathname === "/api/pricing/resolve") {
+          return jsonResponse(409, { error: { code: "BASE_PRICE_NOT_FOUND", message: "No BASE price is configured" } });
+        }
+        throw new Error(`unexpected_url:${url}`);
+      }
+    }
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.payload.data[0].price, null);
+});
+
+test("Core pricing infrastructure failure is surfaced instead of masquerading as missing price", async () => {
+  await assert.rejects(
+    () => handleCoreSalesApi(
+      { method: "GET" },
+      new URL("http://mcp.local/api/core-sales/products/search?q=tea"),
+      requestContext(),
+      config,
+      {
+        fetchImpl: async (url) => {
+          const parsed = new URL(url);
+          if (parsed.pathname === "/api/sales-orders/sku-search") return jsonResponse(200, { data: [skuOption()] });
+          if (parsed.pathname === "/api/pricing/resolve") {
+            return jsonResponse(503, { error: { code: "PRICING_STORAGE_UNAVAILABLE", message: "Pricing unavailable" } });
+          }
+          throw new Error(`unexpected_url:${url}`);
+        }
+      }
+    ),
+    (error) => error.code === "PRICING_STORAGE_UNAVAILABLE" && error.statusCode === 502 && error.publicRetryable === true
+  );
+});
+
+test("product variant route reads exact NPP product and rechecks only eligible Sales SKUs before pricing", async () => {
   const calls = [];
-  const fetchImpl = async (url) => {
+  const fetchImpl = async (url, init) => {
     calls.push(url);
     if (url === `https://core.example.test/api/products/${productId}/variants`) {
       return jsonResponse(200, { data: [
@@ -91,11 +165,20 @@ test("product variant route reads exact NPP product and rechecks only eligible S
     }
     const parsed = new URL(url);
     if (parsed.pathname === "/api/sales-orders/sku-search" && parsed.searchParams.get("search") === "SKU-A") {
-      return jsonResponse(200, { data: [{
-        id: variantA, productId, productName: "Sản phẩm A", sku: "SKU-A", variantName: "A",
-        unitId: "unit-a", unitCode: "CAI", conversionToBase: "1", allowsFractional: false,
-        defaultTaxMode: "EXCLUSIVE", defaultTaxRate: "0"
-      }] });
+      return jsonResponse(200, { data: [skuOption({ productName: "Sản phẩm A", unitId: "unit-a", unitCode: "CAI" })] });
+    }
+    if (parsed.pathname === "/api/pricing/resolve") {
+      const body = JSON.parse(init.body);
+      assert.equal(body.variantId, variantA);
+      return jsonResponse(200, {
+        data: {
+          variantId: variantA,
+          currencyCode: "VND",
+          priceAt: body.priceAt,
+          baseUnitPriceMinor: "88000",
+          finalUnitPriceMinor: "88000"
+        }
+      });
     }
     throw new Error(`unexpected_url:${url}`);
   };
@@ -110,8 +193,10 @@ test("product variant route reads exact NPP product and rechecks only eligible S
 
   assert.equal(result.statusCode, 200);
   assert.deepEqual(result.payload.data.map((item) => item.variantId), [variantA]);
+  assert.equal(result.payload.data[0].price, 88000);
   assert.equal(calls.includes(`https://core.example.test/api/products/${productId}/variants`), true);
   assert.equal(calls.filter((url) => url.includes("/api/sales-orders/sku-search")).length, 1);
+  assert.equal(calls.filter((url) => url.includes("/api/pricing/resolve")).length, 1);
 });
 
 test("Core Sales routes deny missing permission or warehouse scope", async () => {
