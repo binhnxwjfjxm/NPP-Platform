@@ -77,15 +77,11 @@ test("route-customer update sends the full canonical 13-field contract and trust
 test("PostgreSQL route-customer update reconciles identity into mutable active-session snapshots only", async () => {
   const calls = [];
   const queries = [];
-  const postgresConfig = {
-    ...config,
-    persistence: { provider: "postgresql" }
-  };
 
   await updateRouteCustomer("route-customer-1", {
     customerName: "Điểm bán đã đổi tên",
     address: "99 Đường mới"
-  }, context, postgresConfig, {
+  }, context, config, {
     fetchImpl: provider(calls),
     persistence: persistence(queries)
   });
@@ -110,16 +106,12 @@ test("PostgreSQL route-customer update reconciles identity into mutable active-s
 test("PostgreSQL idempotency replay still retries active-session identity reconciliation", async () => {
   const calls = [];
   const queries = [];
-  const postgresConfig = {
-    ...config,
-    persistence: { provider: "postgresql" }
-  };
   const replayPayload = {
     data: { id: "route-customer-1", customerName: "Điểm bán đã đổi tên" },
     meta: { idempotency: { replayed: true, originalRequestId: "request-original" } }
   };
 
-  const result = await updateRouteCustomer("route-customer-1", { note: "retry" }, context, postgresConfig, {
+  const result = await updateRouteCustomer("route-customer-1", { note: "retry" }, context, config, {
     fetchImpl: provider(calls, replayPayload),
     persistence: persistence(queries)
   });

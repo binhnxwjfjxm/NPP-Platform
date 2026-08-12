@@ -40,7 +40,7 @@
 }
 
 .app-shell[data-active-href="/mcp/sessions"] .mcp-session-kpis > :nth-child(n + 4) {
-  display: none;
+  display: none !important;
 }
 
 .app-shell[data-active-href="/mcp/sessions"] .mcp-session-kpis .card {

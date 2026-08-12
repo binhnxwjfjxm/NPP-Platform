@@ -78,7 +78,7 @@ function normalizeMutationError(error) {
 }
 
 async function syncActiveSessionCustomerIdentity(routeCustomerId, context, config, options) {
-  if (config?.persistence?.provider !== "postgresql") return;
+  if (config?.persistence?.provider !== "postgresql" && !options?.persistence) return;
   const persistence = options?.persistence || providerPersistence();
   await persistence.withTransaction(async (client) => {
     await client.query(
