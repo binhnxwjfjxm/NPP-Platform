@@ -230,9 +230,26 @@
 .subnavIcon .icon { width: 15px; height: 15px; }
 
 .sidebarFooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 8px 12px 11px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
+
+.sidebarFooter .userPlaceholder { flex: 1 1 auto; min-width: 0; }
+.sidebarFooter form { display: flex; flex: 0 0 auto; }
+.sidebarFooter form .navItem {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+  border-radius: 8px;
+}
+.sidebarFooter form .navCopy { display: none; }
+.sidebarFooter form .navIcon { width: 28px; height: 28px; flex-basis: 28px; }
 
 .userPlaceholder {
   display: flex;
@@ -348,7 +365,11 @@
 .shellCollapsed .nav { padding-inline: 10px; }
 .shellCollapsed .navItem { justify-content: center; padding-inline: 8px; }
 .shellCollapsed .navIcon { width: 30px; height: 30px; flex-basis: 30px; }
-.shellCollapsed .userPlaceholder { justify-content: center; padding: 5px 0; }
+.shellCollapsed .sidebarFooter { gap: 4px; padding-inline: 8px; }
+.shellCollapsed .sidebarFooter .userPlaceholder { flex: 1 1 auto; min-width: 0; padding: 5px 0; }
+.shellCollapsed .sidebarFooter .userAvatar { width: 28px; height: 28px; flex-basis: 28px; }
+.shellCollapsed .sidebarFooter form .navItem { width: 28px; height: 28px; min-height: 28px; padding: 0; }
+.shellCollapsed .sidebarFooter form .navIcon { width: 24px; height: 24px; flex-basis: 24px; }
 
 @media (prefers-reduced-motion: reduce) {
   .sidebar,
@@ -386,6 +407,12 @@
   .brandRow { justify-content: flex-start; flex-direction: row; }
   .shellCollapsed .navItem { justify-content: flex-start; padding-inline: 10px; }
   .shellCollapsed .userPlaceholder { justify-content: flex-start; }
+  .sidebarFooter form .navCopy,
+  .shellCollapsed .sidebarFooter form .navCopy { display: none; }
+  .shellCollapsed .sidebarFooter { gap: 8px; padding-inline: 12px; }
+  .shellCollapsed .sidebarFooter .userAvatar { width: 34px; height: 34px; flex-basis: 34px; }
+  .shellCollapsed .sidebarFooter form .navItem { width: 34px; height: 34px; min-height: 34px; padding: 0; justify-content: center; }
+  .shellCollapsed .sidebarFooter form .navIcon { width: 28px; height: 28px; flex-basis: 28px; }
 }
 
 @media (max-width: 760px) {
