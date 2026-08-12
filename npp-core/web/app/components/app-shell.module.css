@@ -20,7 +20,7 @@
   background: linear-gradient(180deg, #342018 0%, #291a15 100%);
   color: #f8f3ee;
   box-shadow: 10px 0 32px rgba(40, 24, 18, 0.12);
-  transition: width 180ms ease, transform 180ms ease;
+  transition: width var(--npp-motion-nav-duration) var(--npp-motion-ease-standard), transform var(--npp-motion-nav-duration) var(--npp-motion-ease-standard);
 }
 
 .brandRow {
@@ -96,7 +96,7 @@
   background: rgba(255, 255, 255, 0.06);
   color: inherit;
   cursor: pointer;
-  transition: background 150ms ease, transform 150ms ease, border-color 150ms ease;
+  transition: background var(--npp-motion-action-duration) var(--npp-motion-ease-action), transform var(--npp-motion-action-duration) var(--npp-motion-ease-action), border-color var(--npp-motion-action-duration) var(--npp-motion-ease-action);
 }
 
 .collapseButton { width: 34px; height: 34px; flex: 0 0 34px; }
@@ -144,7 +144,7 @@
   text-align: left;
   text-decoration: none;
   cursor: pointer;
-  transition: background 150ms ease, color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+  transition: background var(--npp-motion-action-duration) var(--npp-motion-ease-action), color var(--npp-motion-action-duration) var(--npp-motion-ease-action), border-color var(--npp-motion-action-duration) var(--npp-motion-ease-action), box-shadow var(--npp-motion-action-duration) var(--npp-motion-ease-action);
 }
 
 .navItem:hover { border-color: rgba(255, 255, 255, 0.07); background: rgba(255, 255, 255, 0.065); color: #fff; }
@@ -179,7 +179,7 @@
   flex: 0 0 18px;
   place-items: center;
   color: rgba(248, 243, 238, 0.45);
-  transition: transform 160ms ease;
+  transition: transform var(--npp-motion-nav-duration) var(--npp-motion-ease-standard);
 }
 .chevron .icon { width: 15px; height: 15px; }
 .chevronOpen { transform: rotate(90deg); }
@@ -191,7 +191,7 @@
   margin: 0 0 0 17px;
   opacity: 0;
   pointer-events: none;
-  transition: grid-template-rows 170ms ease, opacity 120ms ease, margin 170ms ease;
+  transition: grid-template-rows var(--npp-motion-nav-duration) var(--npp-motion-ease-standard), opacity var(--npp-motion-nav-duration) var(--npp-motion-ease-standard), margin var(--npp-motion-nav-duration) var(--npp-motion-ease-standard);
 }
 
 .subnavInner {
@@ -220,7 +220,7 @@
   font-size: 0.79rem;
   font-weight: 580;
   text-decoration: none;
-  transition: background 140ms ease, color 140ms ease;
+  transition: background var(--npp-motion-action-duration) var(--npp-motion-ease-action), color var(--npp-motion-action-duration) var(--npp-motion-ease-action);
 }
 .subnavItem:hover { background: rgba(255, 255, 255, 0.055); color: #fff; }
 .subnavItemActive { background: rgba(181, 119, 79, 0.2); color: #fff4eb; }
@@ -283,7 +283,7 @@
   min-height: 100vh;
   margin-left: var(--sidebar-width);
   padding: 0 28px 32px;
-  transition: margin-left 180ms ease;
+  transition: margin-left var(--npp-motion-nav-duration) var(--npp-motion-ease-standard);
 }
 
 .topbar {
@@ -326,7 +326,7 @@
   font-weight: 680;
   text-decoration: none;
   cursor: pointer;
-  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background 120ms ease;
+  transition: transform var(--npp-motion-action-duration) var(--npp-motion-ease-action), box-shadow var(--npp-motion-action-duration) var(--npp-motion-ease-action), border-color var(--npp-motion-action-duration) var(--npp-motion-ease-action), background var(--npp-motion-action-duration) var(--npp-motion-ease-action);
 }
 .actionButton:hover { border-color: #c6b8ae; background: #fff; box-shadow: 0 3px 0 #c2b6ad, 0 7px 15px rgba(54, 39, 30, 0.1); transform: translateY(-1px); }
 .actionButton:active { box-shadow: 0 1px 0 #b9aca3; transform: translateY(1px); }
@@ -342,12 +342,13 @@
   min-width: 0;
   max-width: 1680px;
   margin: 0 auto;
-  animation: content-enter 150ms ease-out;
+  animation: content-enter var(--npp-motion-route-duration) var(--npp-motion-ease-enter);
+  animation-fill-mode: none;
 }
 
 @keyframes content-enter {
-  from { opacity: 0.74; }
-  to { opacity: 1; }
+  from { opacity: 0.82; transform: translateY(var(--npp-motion-route-distance)); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .backdrop { position: fixed; inset: 0; z-index: 40; border: 0; background: rgba(25, 17, 13, 0.46); backdrop-filter: blur(2px); }
