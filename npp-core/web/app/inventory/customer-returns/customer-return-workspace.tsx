@@ -142,6 +142,7 @@ export default function CustomerReturnWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const requestRef = useRef(0);
+  const tabInitializedRef = useRef(false);
 
   const selectedEligibility = eligibility.find((row) => row.issueLineId === selectedEligibilityId) ?? null;
   const counts = useMemo(() => ({
@@ -169,6 +170,10 @@ export default function CustomerReturnWorkspace() {
       if (requestRef.current !== requestNumber) return;
       setEligibility(nextEligibility);
       setReturns(nextReturns);
+      if (!tabInitializedRef.current) {
+        tabInitializedRef.current = true;
+        setActiveTab(nextEligibility.length === 0 && nextReturns.length > 0 ? 'process' : 'create');
+      }
       const source = nextEligibility.find((row) => row.issueLineId === selectedEligibilityId) ?? nextEligibility[0] ?? null;
       setSelectedEligibilityId(source?.issueLineId ?? null);
       setQuantity(source?.availableReturnBaseQuantity ?? '');
@@ -264,6 +269,7 @@ export default function CustomerReturnWorkspace() {
       setNotice(action === 'receive'
         ? 'Đã xác nhận thực nhận và ghi Inventory IN theo đúng movement nguồn.'
         : 'Đã hủy phiếu nháp; số lượng nguồn được mở lại để lập phiếu khác.');
+      if (action === 'cancel') setActiveTab('create');
       await loadAll(selectedReturn.id);
     } catch (operationError) {
       setError(operationError instanceof Error ? operationError.message : 'Không cập nhật được phiếu hàng khách trả.');

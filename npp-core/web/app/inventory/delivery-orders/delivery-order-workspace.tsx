@@ -195,6 +195,7 @@ export default function DeliveryOrderWorkspace() {
   const [notice, setNotice] = useState<string | null>(null);
   const requestRef = useRef(0);
   const pickupAttemptAtRef = useRef<string | null>(null);
+  const tabInitializedRef = useRef(false);
 
   const groups = useMemo(() => groupEligibility(eligibility), [eligibility]);
   const selectedGroup = groups.find((group) => group.key === selectedGroupKey) ?? null;
@@ -225,6 +226,10 @@ export default function DeliveryOrderWorkspace() {
       setEligibility(nextEligibility);
       setOrders(nextOrders);
       const nextGroups = groupEligibility(nextEligibility);
+      if (!tabInitializedRef.current) {
+        tabInitializedRef.current = true;
+        setActiveTab(nextGroups.length === 0 && nextOrders.length > 0 ? 'manage' : 'create');
+      }
       const group = nextGroups.find((item) => item.key === selectedGroupKey) ?? nextGroups[0] ?? null;
       setSelectedGroupKey(group?.key ?? null);
       seedQuantities(group);
@@ -324,6 +329,7 @@ export default function DeliveryOrderWorkspace() {
       } as const;
       setNotice(messages[action]);
       pickupAttemptAtRef.current = null;
+      if (action === 'cancel') setActiveTab('create');
       await loadAll(selectedOrder.id);
     } catch (operationError) {
       setError(operationError instanceof Error ? operationError.message : 'Không cập nhật được chứng từ.');

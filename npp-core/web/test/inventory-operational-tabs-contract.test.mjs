@@ -20,6 +20,8 @@ test('delivery order uses two workflow tabs without splitting lifecycle actions'
   assert.match(workspace, /data-testid="delivery-order-pickup-handover"/);
   assert.match(workspace, /data-testid="delivery-order-reverse-issue"/);
   assert.match(workspace, /setActiveTab\('manage'\);[\s\S]*await loadAll\(result\.deliveryOrder\.id\)/);
+  assert.match(workspace, /nextGroups\.length === 0 && nextOrders\.length > 0 \? 'manage' : 'create'/);
+  assert.match(workspace, /if \(action === 'cancel'\) setActiveTab\('create'\);[\s\S]*await loadAll\(selectedOrder\.id\)/);
 
   const statsIndex = workspace.indexOf('className={styles.stats}');
   const tabsIndex = workspace.indexOf('<WorkspaceTabs');
@@ -40,6 +42,8 @@ test('customer return uses two workflow tabs and keeps receive/cancel together',
   assert.match(workspace, /data-testid="customer-return-receive"/);
   assert.match(workspace, /data-testid="customer-return-cancel"/);
   assert.match(workspace, /setActiveTab\('process'\);[\s\S]*await loadAll\(result\.customerReturn\.id\)/);
+  assert.match(workspace, /nextEligibility\.length === 0 && nextReturns\.length > 0 \? 'process' : 'create'/);
+  assert.match(workspace, /if \(action === 'cancel'\) setActiveTab\('create'\);[\s\S]*await loadAll\(selectedReturn\.id\)/);
 
   const statsIndex = workspace.indexOf('className={styles.stats}');
   const tabsIndex = workspace.indexOf('<WorkspaceTabs');
