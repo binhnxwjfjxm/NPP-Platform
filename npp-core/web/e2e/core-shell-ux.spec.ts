@@ -16,40 +16,49 @@ test.describe('Core shell UX', () => {
     await expect(page.getByText('Về tồn kho', { exact: true })).toHaveCount(0);
   });
 
-  test('opens the access submenu without a sidebar jump and uses light route motion', async ({ page }) => {
+  test('keeps the access submenu stable while opening and switching access tabs', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
     await page.goto('/dashboard');
 
     const navScroll = page.getByTestId('sidebar-nav-scroll');
-    await navScroll.evaluate((element) => { element.scrollTop = element.scrollHeight; });
     const accessToggle = page.getByTestId('access-menu-toggle');
+    const accessSubnav = page.getByTestId('access-menu-toggle-subnav');
+
+    await navScroll.evaluate((element) => { element.scrollTop = element.scrollHeight; });
     await expect(accessToggle).toBeVisible();
-    const before = await accessToggle.boundingBox();
+    const beforeOpen = await accessToggle.boundingBox();
 
     await accessToggle.click();
     await expect(accessToggle).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByTestId('nav-roles')).toBeVisible();
-    const after = await accessToggle.boundingBox();
-    expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThan(4);
+    await expect(accessSubnav).toHaveCSS('transition-duration', '0s');
+    const afterOpen = await accessToggle.boundingBox();
+    expect(Math.abs((afterOpen?.y ?? 0) - (beforeOpen?.y ?? 0))).toBeLessThan(4);
 
-    await page.getByTestId('sidebar-collapse-button').click();
-    await expect(accessToggle).toHaveAttribute('aria-expanded', 'false');
-    await page.getByTestId('sidebar-collapse-button').click();
-    await expect(accessToggle).toHaveAttribute('aria-expanded', 'true');
+    const scrollBeforeRoute = await navScroll.evaluate((element) => element.scrollTop);
+    const toggleBeforeRoute = await accessToggle.boundingBox();
+    expect(scrollBeforeRoute).toBeGreaterThan(0);
 
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.getByTestId('nav-roles').click();
     await expect(page).toHaveURL(/\/access\/roles$/);
-    const motion = await page.getByTestId('app-content').evaluate((element) => {
-      const style = getComputedStyle(element);
-      return { name: style.animationName, duration: style.animationDuration };
-    });
-    expect(motion.name).not.toBe('none');
-    expect(Number.parseFloat(motion.duration)).toBeLessThanOrEqual(0.18);
+    await expect(accessToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('app-content')).toHaveCSS('animation-name', 'none');
+    await expect.poll(async () => Math.abs((await navScroll.evaluate((element) => element.scrollTop)) - scrollBeforeRoute)).toBeLessThan(4);
+    const toggleOnRoles = await accessToggle.boundingBox();
+    expect(Math.abs((toggleOnRoles?.y ?? 0) - (toggleBeforeRoute?.y ?? 0))).toBeLessThan(4);
 
-    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.getByTestId('nav-users').click();
     await expect(page).toHaveURL(/\/access\/users$/);
-    await expect.poll(() => page.getByTestId('app-content').evaluate((element) => getComputedStyle(element).animationName)).toBe('none');
+    await expect(accessToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect.poll(async () => Math.abs((await navScroll.evaluate((element) => element.scrollTop)) - scrollBeforeRoute)).toBeLessThan(4);
+    const toggleOnUsers = await accessToggle.boundingBox();
+    expect(Math.abs((toggleOnUsers?.y ?? 0) - (toggleBeforeRoute?.y ?? 0))).toBeLessThan(4);
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.getByTestId('nav-employees').click();
+    await expect(page).toHaveURL(/\/access\/employees$/);
+    await expect(page.getByTestId('app-content')).toHaveCSS('animation-name', 'none');
+    await expect(accessSubnav).toHaveCSS('transition-duration', '0s');
   });
 });
