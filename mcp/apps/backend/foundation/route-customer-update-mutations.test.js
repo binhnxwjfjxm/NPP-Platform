@@ -25,6 +25,19 @@ function provider(calls, payload = { data: { id: "route-customer-1" }, meta: { i
   };
 }
 
+function persistence(queries) {
+  return {
+    async withTransaction(work) {
+      return work({
+        async query(sql, params) {
+          queries.push({ sql, params });
+          return { rowCount: 1, rows: [] };
+        }
+      });
+    }
+  };
+}
+
 test("route-customer update sends the full canonical 13-field contract and trusted context", async () => {
   const calls = [];
   const fetchImpl = provider(calls);
@@ -59,6 +72,52 @@ test("route-customer update sends the full canonical 13-field contract and trust
   assert.equal(args.p_context.idempotencyKey, context.idempotencyKey);
   assert.equal(args.p_context.installationId, "installation-a");
   assert.equal(args.p_context.actorId, "service:npp-a:mcp-v1");
+});
+
+test("PostgreSQL route-customer update reconciles identity into mutable active-session snapshots only", async () => {
+  const calls = [];
+  const queries = [];
+
+  await updateRouteCustomer("route-customer-1", {
+    customerName: "Điểm bán đã đổi tên",
+    address: "99 Đường mới"
+  }, context, config, {
+    fetchImpl: provider(calls),
+    persistence: persistence(queries)
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(queries.length, 1);
+  assert.deepEqual(queries[0].params, ["installation-a", "route-customer-1"]);
+  assert.match(queries[0].sql, /UPDATE mcp\.mcp_session_customers AS session_customer/);
+  assert.match(queries[0].sql, /customer_name = route_customer\.customer_name/);
+  assert.match(queries[0].sql, /account_name = route_customer\.customer_name/);
+  assert.match(queries[0].sql, /phone = route_customer\.phone/);
+  assert.match(queries[0].sql, /area = route_customer\.area/);
+  assert.match(queries[0].sql, /address = route_customer\.address/);
+  assert.match(queries[0].sql, /route_session\.status = 'active'/);
+  assert.match(queries[0].sql, /customer_onboarding_request_id IS NOT NULL/);
+  assert.match(queries[0].sql, /NOT EXISTS/);
+  assert.doesNotMatch(queries[0].sql, /SET[\s\S]*visit_status\s*=/);
+  assert.doesNotMatch(queries[0].sql, /SET[\s\S]*order_id\s*=/);
+  assert.doesNotMatch(queries[0].sql, /SET[\s\S]*checkin_/);
+});
+
+test("PostgreSQL idempotency replay still retries active-session identity reconciliation", async () => {
+  const calls = [];
+  const queries = [];
+  const replayPayload = {
+    data: { id: "route-customer-1", customerName: "Điểm bán đã đổi tên" },
+    meta: { idempotency: { replayed: true, originalRequestId: "request-original" } }
+  };
+
+  const result = await updateRouteCustomer("route-customer-1", { note: "retry" }, context, config, {
+    fetchImpl: provider(calls, replayPayload),
+    persistence: persistence(queries)
+  });
+
+  assert.equal(result.meta.idempotency.replayed, true);
+  assert.equal(queries.length, 1);
 });
 
 test("omitted route-customer fields stay null so the canonical owner preserves current values", async () => {

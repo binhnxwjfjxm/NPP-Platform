@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const layout = await readFile("src/app/layout.tsx", "utf8");
 const styles = await readFile("src/app/mcp-lot-3-flows.css", "utf8");
+const sessionOwnerStyles = await readFile("src/app/mcp-sessions-owner-polish.css", "utf8");
 const home = await readFile("src/ui/shell/MobileHomeLaunchpad.tsx", "utf8");
 const visitsPage = await readFile("src/app/visits/page.tsx", "utf8");
 const orderPage = await readFile("src/app/visits/order-intent/page.tsx", "utf8");
@@ -68,7 +69,20 @@ test("sessions collapses filters on mobile and keeps one primary action plus a s
   assert.doesNotMatch(sessions, forbiddenPhase6F);
 });
 
-test("lot 3 CSS is last, route-scoped and keeps warm geometry", () => {
+test("sessions owner polish keeps three KPIs in one light row and filter chrome flat", () => {
+  const satinIndex = layout.indexOf('import "./satin-metal-actions.css";');
+  const ownerPolishIndex = layout.indexOf('import "./mcp-sessions-owner-polish.css";');
+  assert.ok(satinIndex >= 0);
+  assert.ok(ownerPolishIndex > satinIndex);
+  assert.match(sessionOwnerStyles, /grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(sessionOwnerStyles, /mcp-session-kpis[\s\S]*\.card[\s\S]*border:\s*0/);
+  assert.match(sessionOwnerStyles, /mcp-session-kpis[\s\S]*\.card-hint[\s\S]*display:\s*none/);
+  assert.match(sessionOwnerStyles, /mcp-session-filter-toggle[\s\S]*border:\s*0/);
+  assert.match(sessionOwnerStyles, /mcp-session-filter-toggle[\s\S]*background:\s*transparent/);
+  assert.match(sessionOwnerStyles, /mcp-session-filter[\s\S]*background:\s*transparent/);
+});
+
+test("lot 3 CSS is route-scoped and keeps warm geometry", () => {
   const listIndex = layout.indexOf('import "./mobile-list-summaries.css";');
   const lot3Index = layout.indexOf('import "./mcp-lot-3-flows.css";');
   assert.ok(listIndex >= 0);
