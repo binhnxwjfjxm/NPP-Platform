@@ -269,8 +269,9 @@ export function McpOfficialOrderPanel({
               disabled={busy}
               onClick={() => run(async () => {
                 const projection = await submitCoreSalesOrder(sessionCustomerId, orderId);
+                if (!projection.coreSalesOrderId) throw new Error("Core chưa trả về mã đơn bán hàng");
                 setSalesOrder(projection);
-                setMessage(coreSalesOrderStatusLabel(projection.status));
+                router.push(returnTo);
               })}
             >
               {busy ? "Đang tạo..." : "Tạo đơn nháp NPP"}
