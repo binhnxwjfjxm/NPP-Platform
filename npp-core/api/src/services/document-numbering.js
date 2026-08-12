@@ -288,7 +288,7 @@ export async function updateDocumentNumberSeries(client, { installationId, id, p
   const existing = await repository.getDocumentNumberSeriesById(client, { installationId, id, forUpdate: true });
   if (!existing) return failure('NOT_FOUND', 'Document number series not found');
   if (normalizedPayload.code !== undefined && normalizeCode(normalizedPayload.code) !== existing.code) return failure('IMMUTABLE_IDENTITY', 'Series code is immutable');
-  if (normalizedPayload.documentType !== undefined && normalizeDocumentType(normalizedPayload.documentType) !== existing.document_type) return failure('IMMUTABLE_IDENTITY', 'Document type is immutable');
+  if (normalizedPayload.documentType !== undefined && normalizeDocumentType(normalizedPayload.documentType) !== existing.document_type) return failure('IMMUTABLE_IDENTITY', 'Series document type is immutable');
   const publicValidation = validatePublicPayload(normalizedPayload, existing);
   if (publicValidation) return publicValidation;
   const validation = validateSeriesPayload(normalizedPayload, existing);
@@ -347,35 +347,36 @@ export async function allocateDocumentNumber(client, {
   });
   if (!counter) return failure('COUNTER_UNAVAILABLE', 'Series counter is unavailable', true);
 
-  const currentCounter = BigInt(String(counter.next_counter));
-  const rendered = renderNumber(series, documentDate, currentCounter);
-  if (!rendered.ok) return rendered;
-  if (currentCounter >= MAX_COUNTER) return failure('SEQUENCE_OVERFLOW', 'Counter reached the maximum supported value');
+  let currentCounter = BigInt(String(counter.next_counter));
+  let allocation = null;
 
-  let allocation;
-  try {
-    allocation = await repository.insertAllocation(client, {
-      installationId,
-      seriesId,
-      idempotencyKey,
-      documentDate: documentDate.value,
-      periodKey,
-      counterValue: currentCounter.toString(),
-      documentNumber: rendered.documentNumber,
-      actorId,
-      requestId,
-      sourceApp,
-      metadata,
-    });
-  } catch (error) {
-    if (error?.code === '23505') {
+  while (!allocation) {
+    const rendered = renderNumber(series, documentDate, currentCounter);
+    if (!rendered.ok) return rendered;
+    if (currentCounter >= MAX_COUNTER) return failure('SEQUENCE_OVERFLOW', 'Counter reached the maximum supported value');
+
+    try {
+      allocation = await repository.insertAllocation(client, {
+        installationId,
+        seriesId,
+        idempotencyKey,
+        documentDate: documentDate.value,
+        periodKey,
+        counterValue: currentCounter.toString(),
+        documentNumber: rendered.documentNumber,
+        actorId,
+        requestId,
+        sourceApp,
+        metadata,
+      });
+    } catch (error) {
+      if (error?.code !== '23505') throw error;
       const concurrentReplay = await repository.getAllocationByIdempotencyKey(client, { installationId, seriesId, idempotencyKey });
       if (concurrentReplay) return replayOrMismatch(concurrentReplay, documentDate, metadata);
-      return failure('DOCUMENT_NUMBER_CONFLICT', 'Rendered document number conflicts with an existing allocation');
+      currentCounter += 1n;
     }
-    throw error;
   }
-  if (!allocation) return failure('ALLOCATION_FAILED', 'Document number could not be allocated', true);
+
   await repository.updateCounter(client, {
     installationId,
     seriesId,
