@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import { WorkspaceTabPanel, WorkspaceTabs, type WorkspaceTabOption } from '../../components/workspace-tabs';
 import styles from '../delivery-orders/delivery-order-workspace.module.css';
 
 type ReturnEligibility = {
@@ -70,6 +71,13 @@ type CustomerReturn = {
 };
 
 type ApiEnvelope<T> = { data?: T; error?: { message?: string } };
+type CustomerReturnTab = 'create' | 'process';
+
+const CUSTOMER_RETURN_TABS: readonly WorkspaceTabOption<CustomerReturnTab>[] = [
+  { id: 'create', label: 'Lập phiếu trả' },
+  { id: 'process', label: 'Nhận & xử lý' },
+];
+
 const SCALE = 1_000_000_000_000n;
 
 function parseQuantity(value: string): bigint {
@@ -117,6 +125,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export default function CustomerReturnWorkspace() {
+  const [activeTab, setActiveTab] = useState<CustomerReturnTab>('create');
   const [eligibility, setEligibility] = useState<ReturnEligibility[]>([]);
   const [returns, setReturns] = useState<CustomerReturn[]>([]);
   const [selectedEligibilityId, setSelectedEligibilityId] = useState<string | null>(null);
@@ -214,6 +223,7 @@ export default function CustomerReturnWorkspace() {
       });
       setNotice('Đã tạo phiếu hàng khách trả nháp; tồn kho chưa thay đổi.');
       setReasonNote(''); setNote('');
+      setActiveTab('process');
       await loadAll(result.customerReturn.id);
     } catch (operationError) {
       setError(operationError instanceof Error ? operationError.message : 'Không tạo được phiếu hàng khách trả.');
@@ -282,7 +292,15 @@ export default function CustomerReturnWorkspace() {
         {error ? <div className={styles.error} role="alert" data-testid="customer-return-error">{error}</div> : null}
         {notice ? <div className={styles.notice} role="status" data-testid="customer-return-notice">{notice}</div> : null}
 
-        <div className={styles.layout}>
+        <WorkspaceTabs
+          tabs={CUSTOMER_RETURN_TABS}
+          activeTab={activeTab}
+          onChange={setActiveTab}
+          idPrefix="customer-return-workflow"
+          label="Nghiệp vụ hàng khách trả"
+        />
+
+        <WorkspaceTabPanel tabId="create" activeTab={activeTab} idPrefix="customer-return-workflow">
           <section className={styles.panel}>
             <div className={styles.panelHeader}><div><h3>Dòng hàng đã xuất</h3><p>Chọn đúng movement line còn số lượng có thể trả.</p></div></div>
             <div className={styles.queue}>
@@ -309,7 +327,9 @@ export default function CustomerReturnWorkspace() {
               </div>
             ) : null}
           </section>
+        </WorkspaceTabPanel>
 
+        <WorkspaceTabPanel tabId="process" activeTab={activeTab} idPrefix="customer-return-workflow">
           <section className={styles.panel}>
             <div className={styles.panelHeader}><div><h3>Phiếu hàng khách trả</h3><p>Phiếu nháp chưa làm tăng tồn kho.</p></div></div>
             <div className={styles.queue}>
@@ -342,7 +362,7 @@ export default function CustomerReturnWorkspace() {
               </div>
             ) : null}
           </section>
-        </div>
+        </WorkspaceTabPanel>
       </div>
     </AppShell>
   );

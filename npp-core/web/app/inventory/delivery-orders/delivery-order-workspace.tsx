@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import { WorkspaceTabPanel, WorkspaceTabs, type WorkspaceTabOption } from '../../components/workspace-tabs';
 import styles from './delivery-order-workspace.module.css';
 
 type Eligibility = {
@@ -85,6 +86,13 @@ type EligibilityGroup = {
   requestedDeliveryDate: string | null;
   rows: Eligibility[];
 };
+
+type DeliveryOrderTab = 'create' | 'manage';
+
+const DELIVERY_ORDER_TABS: readonly WorkspaceTabOption<DeliveryOrderTab>[] = [
+  { id: 'create', label: 'Lập chứng từ' },
+  { id: 'manage', label: 'Theo dõi & xử lý' },
+];
 
 const SCALE = 1_000_000_000_000n;
 
@@ -170,6 +178,7 @@ function groupEligibility(rows: Eligibility[]): EligibilityGroup[] {
 }
 
 export default function DeliveryOrderWorkspace() {
+  const [activeTab, setActiveTab] = useState<DeliveryOrderTab>('create');
   const [eligibility, setEligibility] = useState<Eligibility[]>([]);
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
@@ -276,6 +285,7 @@ export default function DeliveryOrderWorkspace() {
         body: JSON.stringify({ lines }),
       });
       setNotice('Đã tạo Delivery Order nháp từ phần hàng đã đóng gói.');
+      setActiveTab('manage');
       await loadAll(result.deliveryOrder.id);
     } catch (operationError) {
       setError(operationError instanceof Error ? operationError.message : 'Không tạo được Delivery Order.');
@@ -347,7 +357,15 @@ export default function DeliveryOrderWorkspace() {
         {error ? <div className={styles.error} role="alert" data-testid="delivery-order-error">{error}</div> : null}
         {notice ? <div className={styles.notice} role="status" data-testid="delivery-order-notice">{notice}</div> : null}
 
-        <div className={styles.layout}>
+        <WorkspaceTabs
+          tabs={DELIVERY_ORDER_TABS}
+          activeTab={activeTab}
+          onChange={setActiveTab}
+          idPrefix="delivery-order-workflow"
+          label="Nghiệp vụ bàn giao giao nhận"
+        />
+
+        <WorkspaceTabPanel tabId="create" activeTab={activeTab} idPrefix="delivery-order-workflow">
           <section className={styles.panel}>
             <div className={styles.panelHeader}><div><h3>Phần packed chưa bàn giao</h3><p>Mỗi nhóm thuộc đúng một đơn, một phiên bản và một kho.</p></div></div>
             <div className={styles.queue}>
@@ -375,7 +393,9 @@ export default function DeliveryOrderWorkspace() {
               </div>
             ) : null}
           </section>
+        </WorkspaceTabPanel>
 
+        <WorkspaceTabPanel tabId="manage" activeTab={activeTab} idPrefix="delivery-order-workflow">
           <section className={styles.panel}>
             <div className={styles.panelHeader}><div><h3>Delivery Orders</h3><p>Delivery chỉ nhận việc sau khi chứng từ được xác nhận.</p></div></div>
             <div className={styles.queue}>
@@ -429,7 +449,7 @@ export default function DeliveryOrderWorkspace() {
               </div>
             ) : null}
           </section>
-        </div>
+        </WorkspaceTabPanel>
       </div>
     </AppShell>
   );
