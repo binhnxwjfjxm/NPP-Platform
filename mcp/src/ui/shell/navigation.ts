@@ -45,11 +45,25 @@ const SESSION_HISTORY_NAV_ITEM: NavItem = {
 };
 
 const CUSTOMERS_NAV_ITEM: NavItem = {
-  label: "Điểm bán",
+  label: "Khách hàng",
   shortLabel: "Khách",
   href: "/customers",
-  description: "Hồ sơ và dữ liệu điểm bán theo tuyến",
+  description: "Điểm bán và trạng thái mở / liên kết mã khách",
   icon: "□"
+};
+
+const CUSTOMER_DIRECTORY_NAV_ITEM: NavItem = {
+  ...CUSTOMERS_NAV_ITEM,
+  label: "Điểm bán",
+  shortLabel: "Điểm bán"
+};
+
+const CUSTOMER_ONBOARDING_NAV_ITEM: NavItem = {
+  label: "Mở / liên kết mã",
+  shortLabel: "Mở mã",
+  href: "/customers/onboarding",
+  description: "Theo dõi và gửi đề nghị mở / liên kết mã khách sang Core",
+  icon: "◇"
 };
 
 const ORDERS_NAV_ITEM: NavItem = {
@@ -137,9 +151,14 @@ export const APP_MENU_GROUPS: AppMenuGroup[] = [
     items: [OVERVIEW_NAV_ITEM, VISITS_NAV_ITEM, ORDERS_NAV_ITEM, PLANS_NAV_ITEM]
   },
   {
+    id: "customers",
+    label: "Khách hàng",
+    items: [CUSTOMER_DIRECTORY_NAV_ITEM, CUSTOMER_ONBOARDING_NAV_ITEM]
+  },
+  {
     id: "mcp",
     label: "Quản lý MCP",
-    items: [MCP_NAV_ITEM, ROUTES_NAV_ITEM, SESSION_HISTORY_NAV_ITEM, CUSTOMERS_NAV_ITEM, REPORTS_NAV_ITEM, FIELD_CHECKS_NAV_ITEM]
+    items: [MCP_NAV_ITEM, ROUTES_NAV_ITEM, SESSION_HISTORY_NAV_ITEM, REPORTS_NAV_ITEM, FIELD_CHECKS_NAV_ITEM]
   },
   {
     id: "configuration",
