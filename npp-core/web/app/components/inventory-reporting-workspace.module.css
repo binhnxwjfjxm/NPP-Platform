@@ -83,7 +83,10 @@
 }
 
 .tabButton {
+  display: inline-flex;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
   min-height: 38px;
   padding: 8px 13px;
   border: 1px solid transparent;
@@ -93,6 +96,7 @@
   font: inherit;
   font-size: 12px;
   font-weight: 750;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -106,6 +110,26 @@
   background: #fff;
   color: #20242a;
   box-shadow: 0 2px 8px rgba(32, 36, 42, 0.07);
+}
+
+.tabCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  min-height: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #e9edf2;
+  color: #4f5964;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tabPanel {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
 }
 
 .cards {
@@ -152,6 +176,15 @@
   border: 1px solid #d8dde3;
   background: #f7f8fa;
   line-height: 1.5;
+}
+
+.statusStrip {
+  padding: 8px 11px;
+  border-top: 1px solid #e1e5e9;
+  border-bottom: 1px solid #e1e5e9;
+  color: #5f6873;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .error {
@@ -277,6 +310,7 @@
   .headerActions { width: 100%; }
   .linkButton { flex: 1 1 auto; }
   .tabList { margin-inline: -2px; }
+  .statusStrip { padding-inline: 4px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
