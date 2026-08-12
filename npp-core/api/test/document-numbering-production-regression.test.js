@@ -108,7 +108,7 @@ test('document numbering repairs a stale counter from immutable allocation histo
   }
 });
 
-test('document number uniqueness conflict remains a business conflict without aborting the transaction', async () => {
+test('document number uniqueness conflict skips the occupied number without aborting the transaction', async () => {
   const config = testConfig();
   const pool = createPgPool(config);
   try {
@@ -127,6 +127,7 @@ test('document number uniqueness conflict remains a business conflict without ab
 
     const first = await allocate(pool, config, firstSeries, `conflict-first-${suffix}`);
     assert.equal(first.ok, true, first.message);
+    assert.equal(first.allocation.document_number, `${prefix}202608-000001`);
 
     const second = await inTransaction(pool, async (client) => {
       const result = await service.allocateDocumentNumber(client, {
@@ -143,9 +144,17 @@ test('document number uniqueness conflict remains a business conflict without ab
       return result;
     });
 
-    assert.equal(second.ok, false);
-    assert.equal(second.code, 'DOCUMENT_NUMBER_CONFLICT');
-    assert.equal(second.retryable, false);
+    assert.equal(second.ok, true, second.message);
+    assert.equal(String(second.allocation.counter_value), '2');
+    assert.equal(second.allocation.document_number, `${prefix}202608-000002`);
+
+    const counter = await pool.query(
+      `SELECT next_counter
+       FROM shared.document_number_counters
+       WHERE installation_id = $1 AND series_id = $2 AND period_key = '2026-08'`,
+      [config.installationId, secondSeries.id],
+    );
+    assert.equal(String(counter.rows[0].next_counter), '3');
   } finally {
     await pool.end();
   }
