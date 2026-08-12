@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
 import {
@@ -133,6 +133,7 @@ export function McpOfficialOrderPanel({
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const autoSalesOrderAttempt = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -169,6 +170,25 @@ export function McpOfficialOrderPanel({
   const customerCurrent = !loading && !officialCustomerReady;
   const eligibilityCurrent = !loading && officialCustomerReady && !hasSalesOrder;
   const salesOrderCurrent = !loading && hasSalesOrder;
+
+  useEffect(() => {
+    if (loading || busy || !officialCustomerReady || hasSalesOrder) return;
+    const attemptKey = `${sessionCustomerId}:${orderId}:${onboarding?.coreCustomerId || "approved"}`;
+    if (autoSalesOrderAttempt.current === attemptKey) return;
+    autoSalesOrderAttempt.current = attemptKey;
+    setBusy(true);
+    setMessage(null);
+    void submitCoreSalesOrder(sessionCustomerId, orderId)
+      .then((projection) => {
+        if (!projection.coreSalesOrderId) throw new Error("Core chưa trả về mã đơn bán hàng");
+        setSalesOrder(projection);
+        router.push(returnTo);
+      })
+      .catch((error) => {
+        setMessage(error instanceof Error ? error.message : "Không tự tạo được đơn NPP");
+      })
+      .finally(() => setBusy(false));
+  }, [loading, busy, officialCustomerReady, hasSalesOrder, sessionCustomerId, orderId, onboarding?.coreCustomerId, returnTo, router]);
 
   return (
     <main className="page-stack mcp-official-order-page">
@@ -261,7 +281,7 @@ export function McpOfficialOrderPanel({
 
         {!loading && officialCustomerReady && !hasSalesOrder ? (
           <>
-            <h2>Tạo đơn nháp NPP</h2>
+            <h2>{busy ? "Đang tự tạo đơn nháp NPP" : "Tạo đơn nháp NPP"}</h2>
             <button
               className="button primary"
               type="button"
@@ -274,7 +294,7 @@ export function McpOfficialOrderPanel({
                 router.push(returnTo);
               })}
             >
-              {busy ? "Đang tạo..." : "Tạo đơn nháp NPP"}
+              {busy ? "Đang tạo..." : "Thử tạo lại đơn NPP"}
             </button>
           </>
         ) : null}
