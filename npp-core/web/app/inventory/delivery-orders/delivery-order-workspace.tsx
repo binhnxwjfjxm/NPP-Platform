@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import { WorkspaceTabPanel, WorkspaceTabs, type WorkspaceTabOption } from '../../components/workspace-tabs';
 import styles from './delivery-order-workspace.module.css';
 
 type Eligibility = {
@@ -85,6 +86,13 @@ type EligibilityGroup = {
   requestedDeliveryDate: string | null;
   rows: Eligibility[];
 };
+
+type DeliveryOrderTab = 'create' | 'manage';
+
+const DELIVERY_ORDER_TABS: readonly WorkspaceTabOption<DeliveryOrderTab>[] = [
+  { id: 'create', label: 'Lập chứng từ' },
+  { id: 'manage', label: 'Theo dõi & xử lý' },
+];
 
 const SCALE = 1_000_000_000_000n;
 
@@ -170,6 +178,7 @@ function groupEligibility(rows: Eligibility[]): EligibilityGroup[] {
 }
 
 export default function DeliveryOrderWorkspace() {
+  const [activeTab, setActiveTab] = useState<DeliveryOrderTab>('create');
   const [eligibility, setEligibility] = useState<Eligibility[]>([]);
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
@@ -186,6 +195,7 @@ export default function DeliveryOrderWorkspace() {
   const [notice, setNotice] = useState<string | null>(null);
   const requestRef = useRef(0);
   const pickupAttemptAtRef = useRef<string | null>(null);
+  const tabInitializedRef = useRef(false);
 
   const groups = useMemo(() => groupEligibility(eligibility), [eligibility]);
   const selectedGroup = groups.find((group) => group.key === selectedGroupKey) ?? null;
@@ -216,6 +226,10 @@ export default function DeliveryOrderWorkspace() {
       setEligibility(nextEligibility);
       setOrders(nextOrders);
       const nextGroups = groupEligibility(nextEligibility);
+      if (!tabInitializedRef.current) {
+        tabInitializedRef.current = true;
+        setActiveTab(nextGroups.length === 0 && nextOrders.length > 0 ? 'manage' : 'create');
+      }
       const group = nextGroups.find((item) => item.key === selectedGroupKey) ?? nextGroups[0] ?? null;
       setSelectedGroupKey(group?.key ?? null);
       seedQuantities(group);
@@ -276,6 +290,7 @@ export default function DeliveryOrderWorkspace() {
         body: JSON.stringify({ lines }),
       });
       setNotice('Đã tạo Delivery Order nháp từ phần hàng đã đóng gói.');
+      setActiveTab('manage');
       await loadAll(result.deliveryOrder.id);
     } catch (operationError) {
       setError(operationError instanceof Error ? operationError.message : 'Không tạo được Delivery Order.');
@@ -314,6 +329,7 @@ export default function DeliveryOrderWorkspace() {
       } as const;
       setNotice(messages[action]);
       pickupAttemptAtRef.current = null;
+      if (action === 'cancel') setActiveTab('create');
       await loadAll(selectedOrder.id);
     } catch (operationError) {
       setError(operationError instanceof Error ? operationError.message : 'Không cập nhật được chứng từ.');
@@ -347,7 +363,15 @@ export default function DeliveryOrderWorkspace() {
         {error ? <div className={styles.error} role="alert" data-testid="delivery-order-error">{error}</div> : null}
         {notice ? <div className={styles.notice} role="status" data-testid="delivery-order-notice">{notice}</div> : null}
 
-        <div className={styles.layout}>
+        <WorkspaceTabs
+          tabs={DELIVERY_ORDER_TABS}
+          activeTab={activeTab}
+          onChange={setActiveTab}
+          idPrefix="delivery-order-workflow"
+          label="Nghiệp vụ bàn giao giao nhận"
+        />
+
+        <WorkspaceTabPanel tabId="create" activeTab={activeTab} idPrefix="delivery-order-workflow">
           <section className={styles.panel}>
             <div className={styles.panelHeader}><div><h3>Phần packed chưa bàn giao</h3><p>Mỗi nhóm thuộc đúng một đơn, một phiên bản và một kho.</p></div></div>
             <div className={styles.queue}>
@@ -375,7 +399,9 @@ export default function DeliveryOrderWorkspace() {
               </div>
             ) : null}
           </section>
+        </WorkspaceTabPanel>
 
+        <WorkspaceTabPanel tabId="manage" activeTab={activeTab} idPrefix="delivery-order-workflow">
           <section className={styles.panel}>
             <div className={styles.panelHeader}><div><h3>Delivery Orders</h3><p>Delivery chỉ nhận việc sau khi chứng từ được xác nhận.</p></div></div>
             <div className={styles.queue}>
@@ -429,7 +455,7 @@ export default function DeliveryOrderWorkspace() {
               </div>
             ) : null}
           </section>
-        </div>
+        </WorkspaceTabPanel>
       </div>
     </AppShell>
   );
