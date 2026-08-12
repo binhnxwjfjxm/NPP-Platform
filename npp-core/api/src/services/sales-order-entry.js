@@ -4,6 +4,7 @@ import * as commercialRepository from '../db/repositories/sales-order-commercial
 export * from './sales-order-entry-legacy.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SOURCE_CHANNEL_CODE_BY_TYPE = Object.freeze({ MCP: 'MCP' });
 
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
@@ -12,6 +13,11 @@ function failure(code, message, retryable = false, details = {}) {
 function hasPermission(requestContext, permission) {
   return Array.isArray(requestContext?.permissions)
     && requestContext.permissions.includes(permission);
+}
+
+function sourceChannelCode(payload) {
+  const sourceType = String(payload?.sourceType ?? '').trim().toUpperCase();
+  return SOURCE_CHANNEL_CODE_BY_TYPE[sourceType] ?? null;
 }
 
 export async function getSalesOrderEntrySettings(client, { requestContext }) {
@@ -57,6 +63,24 @@ export async function normalizeSalesOrderEntryPayload(client, args) {
   let salesChannelId = String(
     normalized.payload.salesChannelId ?? args.payload?.salesChannelId ?? '',
   ).trim();
+  if (!salesChannelId) {
+    const canonicalSourceChannelCode = sourceChannelCode(normalized.payload);
+    if (canonicalSourceChannelCode) {
+      const channels = await commercialRepository.listActiveSalesChannels(client, {
+        installationId,
+      });
+      const sourceChannel = channels.find((channel) => (
+        String(channel.code ?? '').trim().toUpperCase() === canonicalSourceChannelCode
+      ));
+      if (!sourceChannel) {
+        return failure(
+          'SALES_CHANNEL_NOT_FOUND',
+          `Chưa cấu hình kênh bán hàng ${canonicalSourceChannelCode} đang hoạt động`,
+        );
+      }
+      salesChannelId = sourceChannel.id;
+    }
+  }
   if (!salesChannelId) {
     salesChannelId = await commercialRepository.getDefaultSalesChannelId(client, {
       installationId,

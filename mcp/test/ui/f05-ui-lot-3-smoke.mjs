@@ -179,8 +179,9 @@ try {
       }
     );
 
+    const returnTo = "/visits?routeId=route-active&date=2099-12-30";
     await orderPage.goto(
-      `${appBase}/visits/order-intent?sessionCustomerId=sc-existing&orderId=order-ui&customerName=UI%20Existing%20Customer`,
+      `${appBase}/visits/order-intent?sessionCustomerId=sc-existing&orderId=order-ui&customerName=UI%20Existing%20Customer&returnTo=${encodeURIComponent(returnTo)}`,
       { waitUntil: "networkidle" }
     );
 
@@ -195,14 +196,20 @@ try {
     const createOrder = orderPage.getByRole("button", { name: "Tạo đơn nháp NPP", exact: true });
     await createOrder.waitFor({ state: "visible" });
     assert.equal(await orderPage.locator("[data-order-primary-action]").count(), 1);
-    await createOrder.click();
+    await Promise.all([
+      orderPage.waitForURL((url) => (
+        url.pathname === "/visits" &&
+        url.searchParams.get("routeId") === "route-active" &&
+        url.searchParams.get("date") === "2099-12-30"
+      )),
+      createOrder.click()
+    ]);
 
-    await orderPage.getByRole("button", { name: "Đồng bộ đơn NPP", exact: true }).waitFor({ state: "visible" });
-    assert.equal(await orderPage.locator("[data-order-primary-action]").count(), 1);
-    await orderPage.getByText("SO-UI-001", { exact: true }).waitFor({ state: "visible" });
-    assert.ok(await horizontalOverflow(orderPage) <= 1, `order intent overflow at ${viewport.width}px`);
+    assert.equal(await orderPage.locator(".app-shell").getAttribute("data-active-href"), "/visits");
+    assert.equal(await orderPage.getByRole("button", { name: "Đồng bộ đơn NPP", exact: true }).count(), 0, "successful create must leave the order workspace instead of waiting for manual sales-order sync");
+    assert.ok(await horizontalOverflow(orderPage) <= 1, `returned visit overflow at ${viewport.width}px`);
     await orderPage.locator('[data-bottom-navigation] a[aria-current="page"]').getByText("Đi tuyến", { exact: true }).waitFor({ state: "visible" });
-    await screenshot(orderPage, `22-order-intent-mobile-${viewport.width}`);
+    await screenshot(orderPage, `22-order-returned-session-mobile-${viewport.width}`);
     await orderContext.close();
   }
 
