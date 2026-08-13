@@ -25,6 +25,22 @@ test('partial user provisioning keeps the same modal draft and resumes as edit i
   assert.match(source, /if \(busy === 'save'\) return;/);
 });
 
+test('user editor snapshots input values before functional draft state updates', async () => {
+  const source = await readFile(new URL('../app/access/users/user-workspace.tsx', import.meta.url), 'utf8');
+  const editorStart = source.indexOf('{editor &&');
+  const editorEnd = source.indexOf('{toggleState &&', editorStart);
+  assert.ok(editorStart >= 0 && editorEnd > editorStart, 'user editor source must be present');
+  const editorSource = source.slice(editorStart, editorEnd);
+
+  assert.equal((editorSource.match(/const value = event\.currentTarget\.value;/g) ?? []).length, 3);
+  assert.equal((editorSource.match(/const isActive = event\.currentTarget\.value === 'active';/g) ?? []).length, 1);
+  assert.doesNotMatch(
+    editorSource,
+    /setDraft\(\(current\) => \(\{[^}]*event\.currentTarget\.value/s,
+    'functional state updaters must not dereference React currentTarget after the handler returns',
+  );
+});
+
 test('credential proxy uses the canonical workforce session and Core credential endpoint', async () => {
   const source = await readFile(new URL('../app/api/access/users/[id]/credential/route.ts', import.meta.url), 'utf8');
   assert.match(source, /requireNppWorkforceSessionToken/);
