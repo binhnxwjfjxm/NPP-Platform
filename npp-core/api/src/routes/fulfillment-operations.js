@@ -9,6 +9,7 @@ import {
   listFulfillmentWorkQueue,
   suggestFulfillmentAllocation,
 } from '../services/sales-fulfillment-operations.js';
+import { attachFulfillmentOrderTotals } from '../services/fulfillment-order-summary.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -255,8 +256,15 @@ export async function handleFulfillmentOperationRoutes(req, res, options) {
         limit: parseInteger(url.searchParams.get('limit'), 200, 1000),
         offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
       });
-      if (!result.ok) sendServiceError(res, result, options);
-      else writeSuccess(res, result.work, options);
+      if (!result.ok) {
+        sendServiceError(res, result, options);
+      } else {
+        const work = await attachFulfillmentOrderTotals(options.getPool(), {
+          requestContext,
+          work: result.work,
+        });
+        writeSuccess(res, work, options);
+      }
     } catch (error) {
       sendUnexpectedError(res, error, options);
     }
