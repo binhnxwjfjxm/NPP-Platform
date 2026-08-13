@@ -72,6 +72,17 @@ type SuggestionDetail = {
   allocations: Allocation[];
 };
 
+type OrderGroup = {
+  salesOrderId: string;
+  orderNumber: string | null;
+  customerCode: string;
+  customerName: string;
+  warehouseCode: string;
+  warehouseName: string;
+  requestedDeliveryDate: string | null;
+  items: WorkItem[];
+};
+
 type ApiEnvelope<T> = {
   data?: T;
   error?: { message?: string; code?: string };
@@ -121,6 +132,31 @@ function statusLabel(value: string): string {
   return labels[value] ?? value;
 }
 
+function groupBySalesOrder(items: WorkItem[]): OrderGroup[] {
+  const groups = new Map<string, OrderGroup>();
+  for (const item of items) {
+    const existing = groups.get(item.salesOrderId);
+    if (existing) {
+      existing.items.push(item);
+      continue;
+    }
+    groups.set(item.salesOrderId, {
+      salesOrderId: item.salesOrderId,
+      orderNumber: item.orderNumber,
+      customerCode: item.customerCode,
+      customerName: item.customerName,
+      warehouseCode: item.warehouseCode,
+      warehouseName: item.warehouseName,
+      requestedDeliveryDate: item.requestedDeliveryDate,
+      items: [item],
+    });
+  }
+  return Array.from(groups.values()).map((group) => ({
+    ...group,
+    items: [...group.items].sort((left, right) => left.lineNumber - right.lineNumber),
+  }));
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     cache: 'no-store',
@@ -163,20 +199,27 @@ export default function FulfillmentWorkspace() {
   const detailRequestRef = useRef(0);
 
   const selectedWork = work.find((item) => item.fulfillmentDemandId === selectedId) ?? null;
-  const filteredWork = useMemo(() => {
+  const groupedWork = useMemo(() => groupBySalesOrder(work), [work]);
+  const filteredGroups = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('vi');
-    if (!term) return work;
-    return work.filter((item) => [
-      item.orderNumber,
-      item.customerCode,
-      item.customerName,
-      item.warehouseCode,
-      item.warehouseName,
-      item.sku,
-      item.itemName,
-      statusLabel(item.fulfillmentStatus),
+    if (!term) return groupedWork;
+    return groupedWork.filter((group) => [
+      group.orderNumber,
+      group.customerCode,
+      group.customerName,
+      group.warehouseCode,
+      group.warehouseName,
+      ...group.items.flatMap((item) => [
+        item.sku,
+        item.itemName,
+        statusLabel(item.fulfillmentStatus),
+      ]),
     ].filter(Boolean).join(' ').toLocaleLowerCase('vi').includes(term));
-  }, [search, work]);
+  }, [groupedWork, search]);
+  const visibleProductCount = useMemo(
+    () => filteredGroups.reduce((total, group) => total + group.items.length, 0),
+    [filteredGroups],
+  );
 
   async function loadWork(preferredId?: string | null) {
     setLoading(true);
@@ -216,7 +259,7 @@ export default function FulfillmentWorkspace() {
       setDetail(next);
     } catch (loadError) {
       if (detailRequestRef.current !== requestNumber) return;
-      setError(loadError instanceof Error ? loadError.message : 'Không tải được đề xuất vị trí/lô.');
+      setError(loadError instanceof Error ? loadError.message : 'Không tải được vị trí/lô gợi ý.');
     } finally {
       if (detailRequestRef.current === requestNumber) setBusy(null);
     }
@@ -239,7 +282,7 @@ export default function FulfillmentWorkspace() {
           body: JSON.stringify({ mode: 'AUTO' }),
         },
       );
-      setNotice('Đã phân bổ phần hàng còn lại theo thứ tự FEFO/FIFO.');
+      setNotice('Đã phân bổ phần hàng còn lại vào vị trí/lô phù hợp.');
       await loadWork(selectedId);
     } catch (operationError) {
       setError(operationError instanceof Error ? operationError.message : 'Không phân bổ được hàng.');
@@ -271,7 +314,7 @@ export default function FulfillmentWorkspace() {
         },
       );
       setNotice(action === 'pick'
-        ? 'Đã xác nhận soạn phần hàng còn lại của dòng phân bổ.'
+        ? 'Đã xác nhận soạn phần hàng còn lại.'
         : 'Đã xác nhận đóng gói phần hàng đã soạn.');
       await loadWork(selectedId);
     } catch (operationError) {
@@ -297,14 +340,14 @@ export default function FulfillmentWorkspace() {
     <AppShell
       kicker="Kho và hoàn tất đơn"
       title="Chuẩn bị hàng"
-      subtitle="Phân bổ đúng vị trí/lô, xác nhận soạn và đóng gói phần hàng đã được giữ cho đơn bán hàng."
+      subtitle="Theo từng đơn hàng: chọn vị trí/lô, xác nhận soạn và đóng gói phần hàng đã được giữ."
     >
       <div className={styles.page} data-testid="fulfillment-workspace">
         <section className={styles.hero}>
           <div>
             <p className={styles.eyebrow}>Hàng đợi kho</p>
             <h2>Đơn đã xác nhận cần chuẩn bị</h2>
-            <p>Kho chỉ thao tác phần đã giữ. FEFO áp dụng cho hàng có hạn dùng; FIFO áp dụng cho hàng không theo dõi hạn dùng.</p>
+            <p>Chọn một đơn, sau đó chọn từng sản phẩm để xem vị trí/lô và thực hiện phần việc kho.</p>
           </div>
           <button type="button" className={styles.secondaryButton} onClick={() => void loadWork(selectedId)} disabled={loading || busy !== null}>
             {loading ? 'Đang tải...' : 'Làm mới'}
@@ -313,7 +356,7 @@ export default function FulfillmentWorkspace() {
 
         <section className={styles.stats} aria-label="Tổng hợp hàng đợi kho">
           <article><strong>{counts.waiting}</strong><span>Chờ phân bổ</span></article>
-          <article><strong>{counts.allocating}</strong><span>Đang phân bổ</span></article>
+          <article><strong>{counts.allocating}</strong><span>Đã phân bổ</span></article>
           <article><strong>{counts.picking}</strong><span>Đang soạn</span></article>
           <article><strong>{counts.packing}</strong><span>Đóng gói</span></article>
         </section>
@@ -325,8 +368,8 @@ export default function FulfillmentWorkspace() {
           <section className={styles.queuePanel}>
             <div className={styles.panelHeader}>
               <div>
-                <h3>Đơn và mặt hàng</h3>
-                <p>{filteredWork.length} dòng công việc trong phạm vi kho được cấp.</p>
+                <h3>Đơn cần chuẩn bị</h3>
+                <p>{filteredGroups.length} đơn · {visibleProductCount} sản phẩm trong phạm vi kho được cấp.</p>
               </div>
               <input
                 value={search}
@@ -338,55 +381,73 @@ export default function FulfillmentWorkspace() {
               />
             </div>
             <div className={styles.queue}>
-              {filteredWork.length === 0 ? <p className={styles.empty}>Không có công việc kho phù hợp.</p> : null}
-              {filteredWork.map((item) => (
-                <button
-                  type="button"
-                  key={item.fulfillmentDemandId}
-                  className={`${styles.queueItem} ${selectedId === item.fulfillmentDemandId ? styles.queueItemActive : ''}`}
-                  onClick={() => void loadDetail(item.fulfillmentDemandId)}
-                  data-testid={`fulfillment-work-${item.fulfillmentDemandId}`}
+              {filteredGroups.length === 0 ? <p className={styles.empty}>Không có đơn hàng phù hợp.</p> : null}
+              {filteredGroups.map((group) => (
+                <article
+                  key={group.salesOrderId}
+                  className={styles.orderGroup}
+                  data-testid={`fulfillment-order-${group.salesOrderId}`}
                 >
-                  <span className={styles.queueTop}>
-                    <strong>{item.orderNumber || 'Đơn chưa có số'}</strong>
-                    <em>{statusLabel(item.fulfillmentStatus)}</em>
-                  </span>
-                  <span>{item.customerCode} — {item.customerName}</span>
-                  <span>{item.sku} — {item.itemName}</span>
-                  <small>{item.warehouseCode} · Giao {formatDate(item.requestedDeliveryDate)}</small>
-                  <span className={styles.quantities}>
-                    Giữ {formatQuantity(item.reservedBaseQuantity)} · Phân bổ {formatQuantity(item.allocatedBaseQuantity)} · Soạn {formatQuantity(item.pickedBaseQuantity)} · Gói {formatQuantity(item.packedBaseQuantity)}
-                  </span>
-                </button>
+                  <div className={styles.orderGroupHeader}>
+                    <div>
+                      <strong>{group.orderNumber || 'Đơn chưa có số'}</strong>
+                      <span>{group.customerCode} — {group.customerName}</span>
+                    </div>
+                    <small>{group.items.length} sản phẩm</small>
+                  </div>
+                  <div className={styles.productList}>
+                    {group.items.map((item) => (
+                      <button
+                        type="button"
+                        key={item.fulfillmentDemandId}
+                        className={`${styles.queueItem} ${selectedId === item.fulfillmentDemandId ? styles.queueItemActive : ''}`}
+                        onClick={() => void loadDetail(item.fulfillmentDemandId)}
+                        data-testid={`fulfillment-product-${item.fulfillmentDemandId}`}
+                      >
+                        <span className={styles.queueTop}>
+                          <strong>{item.itemName}</strong>
+                          <em>{statusLabel(item.fulfillmentStatus)}</em>
+                        </span>
+                        <span className={styles.productMeta}>
+                          {item.sku} · SL {formatQuantity(item.orderedBaseQuantity)} {item.unitCode}
+                        </span>
+                        <small>{item.warehouseCode} · Giao {formatDate(item.requestedDeliveryDate)}</small>
+                        <span className={styles.quantities}>
+                          Giữ {formatQuantity(item.reservedBaseQuantity)} · Phân bổ {formatQuantity(item.allocatedBaseQuantity)} · Soạn {formatQuantity(item.pickedBaseQuantity)} · Gói {formatQuantity(item.packedBaseQuantity)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </article>
               ))}
             </div>
           </section>
 
           <section className={styles.detailPanel}>
-            {!selectedWork ? <p className={styles.empty}>Chọn một dòng công việc để chuẩn bị hàng.</p> : (
+            {!selectedWork ? <p className={styles.empty}>Chọn một sản phẩm trong đơn để chuẩn bị hàng.</p> : (
               <>
                 <div className={styles.detailHeader}>
                   <div>
                     <p className={styles.eyebrow}>{selectedWork.orderNumber || 'Đơn bán hàng'}</p>
-                    <h3>{selectedWork.sku} — {selectedWork.itemName}</h3>
-                    <p>{selectedWork.customerCode} — {selectedWork.customerName}</p>
+                    <h3>{selectedWork.itemName}</h3>
+                    <p>{selectedWork.sku} · SL {formatQuantity(selectedWork.orderedBaseQuantity)} {selectedWork.unitCode} · {selectedWork.customerName}</p>
                   </div>
                   <span className={styles.status}>{statusLabel(selectedWork.fulfillmentStatus)}</span>
                 </div>
 
                 <div className={styles.quantityGrid}>
-                  <article><span>Đặt</span><strong>{formatQuantity(selectedWork.orderedBaseQuantity)}</strong></article>
-                  <article><span>Đã giữ</span><strong>{formatQuantity(selectedWork.reservedBaseQuantity)}</strong></article>
-                  <article><span>Còn thiếu</span><strong>{formatQuantity(selectedWork.backorderedBaseQuantity)}</strong></article>
-                  <article><span>Đã phân bổ</span><strong>{formatQuantity(selectedWork.allocatedBaseQuantity)}</strong></article>
-                  <article><span>Đã soạn</span><strong>{formatQuantity(selectedWork.pickedBaseQuantity)}</strong></article>
-                  <article><span>Đã đóng gói</span><strong>{formatQuantity(selectedWork.packedBaseQuantity)}</strong></article>
+                  <article><span>Đặt</span><strong>{formatQuantity(selectedWork.orderedBaseQuantity)} {selectedWork.unitCode}</strong></article>
+                  <article><span>Đã giữ</span><strong>{formatQuantity(selectedWork.reservedBaseQuantity)} {selectedWork.unitCode}</strong></article>
+                  <article><span>Còn thiếu</span><strong>{formatQuantity(selectedWork.backorderedBaseQuantity)} {selectedWork.unitCode}</strong></article>
+                  <article><span>Đã phân bổ</span><strong>{formatQuantity(selectedWork.allocatedBaseQuantity)} {selectedWork.unitCode}</strong></article>
+                  <article><span>Đã soạn</span><strong>{formatQuantity(selectedWork.pickedBaseQuantity)} {selectedWork.unitCode}</strong></article>
+                  <article><span>Đã đóng gói</span><strong>{formatQuantity(selectedWork.packedBaseQuantity)} {selectedWork.unitCode}</strong></article>
                 </div>
 
                 <div className={styles.actionBar}>
                   <div>
                     <strong>Phân bổ theo hệ thống</strong>
-                    <p>Hệ thống chọn lô gần hết hạn trước hoặc hàng nhập trước theo chính sách SKU.</p>
+                    <p>Hệ thống tự chọn vị trí/lô phù hợp theo hạn dùng và thứ tự nhập hàng.</p>
                   </div>
                   <button
                     type="button"
@@ -401,15 +462,15 @@ export default function FulfillmentWorkspace() {
 
                 <section className={styles.subsection}>
                   <div className={styles.subsectionHeader}>
-                    <h4>Đề xuất vị trí và lô</h4>
-                    <span>Còn {formatQuantity(detail?.remainingBaseQuantity ?? '0')} cần phân bổ</span>
+                    <h4>Vị trí và lô gợi ý</h4>
+                    <span>Còn {formatQuantity(detail?.remainingBaseQuantity ?? '0')} {selectedWork.unitCode} cần phân bổ</span>
                   </div>
                   <div className={styles.candidates}>
                     {(detail?.candidates ?? []).slice(0, 12).map((candidate) => (
                       <article key={`${candidate.locationId ?? 'none'}-${candidate.lotId ?? 'none'}`}>
-                        <strong>#{candidate.rank} · {candidate.locationCode || 'Không vị trí'}</strong>
-                        <span>Lô {candidate.lotCode || 'Không lô'} · {candidate.allocationPolicy}</span>
-                        <span>Khả dụng {formatQuantity(candidate.availableBaseQuantity)}</span>
+                        <strong>#{candidate.rank} · {candidate.locationCode || 'Chưa có vị trí'}</strong>
+                        <span>Lô {candidate.lotCode || 'Không theo lô'}</span>
+                        <span>Khả dụng {formatQuantity(candidate.availableBaseQuantity)} {selectedWork.unitCode}</span>
                         <small>{candidate.expiryDate ? `HSD ${formatDate(candidate.expiryDate)}` : `Nhập đầu ${formatDate(candidate.firstReceivedAt)}`}</small>
                       </article>
                     ))}
@@ -419,8 +480,8 @@ export default function FulfillmentWorkspace() {
 
                 <section className={styles.subsection}>
                   <div className={styles.subsectionHeader}>
-                    <h4>Các dòng đã phân bổ</h4>
-                    <span>{detail?.allocations.length ?? 0} dòng</span>
+                    <h4>Vị trí/lô đã chọn</h4>
+                    <span>{detail?.allocations.length ?? 0} vị trí/lô</span>
                   </div>
                   <div className={styles.allocations}>
                     {(detail?.allocations ?? []).map((allocation) => {
@@ -430,15 +491,15 @@ export default function FulfillmentWorkspace() {
                         <article key={allocation.id} data-testid={`fulfillment-allocation-${allocation.id}`}>
                           <div className={styles.allocationHead}>
                             <div>
-                              <strong>{allocation.locationCode || 'Không vị trí'} · Lô {allocation.lotCode || 'Không lô'}</strong>
-                              <span>{allocation.allocationPolicy}{allocation.expiryDate ? ` · HSD ${formatDate(allocation.expiryDate)}` : ''}</span>
+                              <strong>{allocation.locationCode || 'Chưa có vị trí'} · Lô {allocation.lotCode || 'Không theo lô'}</strong>
+                              <span>{allocation.expiryDate ? `HSD ${formatDate(allocation.expiryDate)}` : 'Không theo dõi hạn dùng'}</span>
                             </div>
                             <em>{allocation.state === 'COMPLETED' ? 'Đã đóng gói' : 'Đang xử lý'}</em>
                           </div>
                           <div className={styles.progressRow}>
-                            <span>Phân bổ <strong>{formatQuantity(allocation.allocatedBaseQuantity)}</strong></span>
-                            <span>Soạn <strong>{formatQuantity(allocation.pickedBaseQuantity)}</strong></span>
-                            <span>Gói <strong>{formatQuantity(allocation.packedBaseQuantity)}</strong></span>
+                            <span>Phân bổ <strong>{formatQuantity(allocation.allocatedBaseQuantity)} {selectedWork.unitCode}</strong></span>
+                            <span>Soạn <strong>{formatQuantity(allocation.pickedBaseQuantity)} {selectedWork.unitCode}</strong></span>
+                            <span>Gói <strong>{formatQuantity(allocation.packedBaseQuantity)} {selectedWork.unitCode}</strong></span>
                           </div>
                           <div className={styles.allocationActions}>
                             <button
@@ -461,7 +522,7 @@ export default function FulfillmentWorkspace() {
                         </article>
                       );
                     })}
-                    {detail && detail.allocations.length === 0 ? <p className={styles.empty}>Chưa có dòng phân bổ.</p> : null}
+                    {detail && detail.allocations.length === 0 ? <p className={styles.empty}>Chưa có vị trí/lô đã phân bổ.</p> : null}
                   </div>
                 </section>
               </>

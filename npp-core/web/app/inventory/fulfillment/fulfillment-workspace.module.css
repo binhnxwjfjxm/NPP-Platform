@@ -92,7 +92,7 @@
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(330px, 0.8fr) minmax(520px, 1.6fr);
+  grid-template-columns: minmax(360px, 0.9fr) minmax(520px, 1.5fr);
   gap: 1rem;
   align-items: start;
 }
@@ -134,21 +134,73 @@
 
 .queue {
   display: grid;
+  gap: 0.75rem;
   max-height: 760px;
+  padding: 0.75rem;
   overflow: auto;
+  background: #f8fbfa;
+}
+
+.orderGroup {
+  overflow: hidden;
+  border: 1px solid #dfe8e4;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.orderGroupHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.85rem 0.9rem;
+  border-bottom: 1px solid #e7eeeb;
+  background: #f4f9f7;
+}
+
+.orderGroupHeader div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.orderGroupHeader strong {
+  color: #18352d;
+  font-size: 1rem;
+}
+
+.orderGroupHeader span,
+.orderGroupHeader small {
+  color: #64756e;
+}
+
+.orderGroupHeader small {
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  background: #e7f5f0;
+  color: #155c46;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.productList {
+  display: grid;
 }
 
 .queueItem {
   display: grid;
   gap: 0.35rem;
   width: 100%;
-  padding: 0.95rem 1rem;
+  padding: 0.85rem 0.9rem;
   border: 0;
   border-bottom: 1px solid #edf1ef;
   background: #ffffff;
   color: #283b35;
   text-align: left;
   cursor: pointer;
+}
+
+.queueItem:last-child {
+  border-bottom: 0;
 }
 
 .queueItem:hover,
@@ -187,6 +239,11 @@
 .queueItem small,
 .queueItem span {
   color: #64756e;
+}
+
+.productMeta {
+  color: #29463d !important;
+  font-weight: 800;
 }
 
 .quantities {
@@ -400,5 +457,9 @@
   .quantityGrid,
   .progressRow {
     grid-template-columns: 1fr;
+  }
+
+  .orderGroupHeader {
+    flex-direction: column;
   }
 }
