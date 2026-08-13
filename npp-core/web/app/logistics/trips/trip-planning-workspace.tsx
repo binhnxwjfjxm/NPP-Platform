@@ -136,8 +136,8 @@ export default function TripPlanningWorkspace() {
     setTripDraft((current) => ({
       ...current,
       warehouseId: nextWarehouses.some((warehouse) => warehouse.id === current.warehouseId) ? current.warehouseId : nextWarehouses[0]?.id || '',
-      vehicleId: nextVehicles.some((vehicle) => vehicle.id === current.vehicleId) ? current.vehicleId : nextVehicles[0]?.id || '',
-      primaryDriverId: nextDrivers.some((driver) => driver.id === current.primaryDriverId) ? current.primaryDriverId : nextDrivers[0]?.id || '',
+      vehicleId: current.vehicleId && !nextVehicles.some((vehicle) => vehicle.id === current.vehicleId) ? '' : current.vehicleId,
+      primaryDriverId: current.primaryDriverId && !nextDrivers.some((driver) => driver.id === current.primaryDriverId) ? '' : current.primaryDriverId,
     }));
   }, []);
 
