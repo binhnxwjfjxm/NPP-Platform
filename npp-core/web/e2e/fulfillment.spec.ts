@@ -2,8 +2,12 @@ import { test, expect, type Page } from '@playwright/test';
 
 const DEMAND_ID = '11111111-1111-4111-8111-111111111111';
 const SECOND_DEMAND_ID = '11111111-1111-4111-8111-222222222222';
+const OTHER_DEMAND_ID = '11111111-1111-4111-8111-333333333333';
 const ALLOCATION_ID = '22222222-2222-4222-8222-222222222222';
 const SALES_ORDER_ID = '33333333-3333-4333-8333-333333333333';
+const OTHER_SALES_ORDER_ID = '33333333-3333-4333-8333-444444444444';
+const WAREHOUSE_ID = '44444444-4444-4444-8444-444444444444';
+const OTHER_WAREHOUSE_ID = '44444444-4444-4444-8444-555555555555';
 
 type Allocation = {
   id: string;
@@ -43,13 +47,18 @@ async function mockFulfillmentApis(page: Page) {
     fulfillmentDemandId: DEMAND_ID,
     salesOrderId: SALES_ORDER_ID,
     orderNumber: 'SO-260804-000001',
+    orderSubtotal: '75000',
+    orderDiscountTotal: '5000',
+    orderTaxTotal: '10000',
     orderTotal: '80000',
+    salesChannelCode: 'OFFICE',
+    salesChannelName: 'NPP Operations',
     fulfillmentStatus,
     requestedDeliveryDate: '2026-08-05',
     sourceType: 'MANUAL',
     customerCode: 'KH-001',
     customerName: 'Cửa hàng Minh Anh',
-    warehouseId: '44444444-4444-4444-8444-444444444444',
+    warehouseId: WAREHOUSE_ID,
     warehouseCode: 'KHO-CHINH',
     warehouseName: 'Kho chính',
     salesOrderVersionId: '55555555-5555-4555-8555-555555555555',
@@ -87,8 +96,47 @@ async function mockFulfillmentApis(page: Page) {
     allocationCount: 0,
   });
 
+  const otherWork = () => ({
+    fulfillmentDemandId: OTHER_DEMAND_ID,
+    salesOrderId: OTHER_SALES_ORDER_ID,
+    orderNumber: 'SO-260804-000002',
+    orderSubtotal: '110000',
+    orderDiscountTotal: '0',
+    orderTaxTotal: '10000',
+    orderTotal: '120000',
+    salesChannelCode: 'MCP',
+    salesChannelName: 'MCP Field',
+    fulfillmentStatus: 'allocated',
+    requestedDeliveryDate: '2026-08-06',
+    sourceType: 'MCP',
+    customerCode: 'KH-002',
+    customerName: 'Đại lý Nam Phát',
+    warehouseId: OTHER_WAREHOUSE_ID,
+    warehouseCode: 'KHO-PHU',
+    warehouseName: 'Kho phụ',
+    salesOrderVersionId: '55555555-5555-4555-8555-666666666666',
+    salesOrderLineId: '66666666-6666-4666-8666-888888888888',
+    lineNumber: 1,
+    itemName: 'Nguyên liệu C',
+    sku: 'NL-C',
+    unitCode: 'BAO',
+    baseVariantId: '77777777-7777-4777-8777-999999999999',
+    orderedBaseQuantity: '4.000000000000',
+    reservedBaseQuantity: '4.000000000000',
+    backorderedBaseQuantity: '0.000000000000',
+    allocatedBaseQuantity: '4.000000000000',
+    pickedBaseQuantity: '0.000000000000',
+    packedBaseQuantity: '0.000000000000',
+    allocationCount: 1,
+    createdAt: '2026-08-04T04:00:00.000Z',
+    updatedAt: '2026-08-04T04:00:00.000Z',
+  });
+
   await page.route('**/api/inventory/fulfillment-work**', async (route) => {
-    await route.fulfill({ status: 200, json: { data: [work(), secondWork()], requestId: 'e2e-fulfillment-work' } });
+    await route.fulfill({
+      status: 200,
+      json: { data: [work(), secondWork(), otherWork()], requestId: 'e2e-fulfillment-work' },
+    });
   });
 
   await page.route(`**/api/inventory/fulfillment-demands/${DEMAND_ID}/suggestions`, async (route) => {
@@ -134,8 +182,30 @@ async function mockFulfillmentApis(page: Page) {
     await route.fulfill({
       status: 200,
       json: {
-        data: { demand: secondWork(), remainingBaseQuantity: '2.000000000000', candidates: [], suggestedPlan: [], allocations: [] },
+        data: {
+          demand: secondWork(),
+          remainingBaseQuantity: '2.000000000000',
+          candidates: [],
+          suggestedPlan: [],
+          allocations: [],
+        },
         requestId: 'e2e-fulfillment-suggestion-second',
+      },
+    });
+  });
+
+  await page.route(`**/api/inventory/fulfillment-demands/${OTHER_DEMAND_ID}/suggestions`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: {
+        data: {
+          demand: otherWork(),
+          remainingBaseQuantity: '0.000000000000',
+          candidates: [],
+          suggestedPlan: [],
+          allocations: [],
+        },
+        requestId: 'e2e-fulfillment-suggestion-other',
       },
     });
   });
@@ -171,7 +241,10 @@ async function mockFulfillmentApis(page: Page) {
     allocatedBaseQuantity = '3.000000000000';
     await route.fulfill({
       status: 201,
-      json: { data: { ok: true, replayed: false, allocation: { allocations: [allocation] } }, requestId: 'e2e-fulfillment-allocate' },
+      json: {
+        data: { ok: true, replayed: false, allocation: { allocations: [allocation] } },
+        requestId: 'e2e-fulfillment-allocate',
+      },
     });
   });
 
@@ -179,19 +252,27 @@ async function mockFulfillmentApis(page: Page) {
     pickedBaseQuantity = '3.000000000000';
     fulfillmentStatus = 'picked';
     allocation = allocation ? { ...allocation, pickedBaseQuantity, updatedAt: '2026-08-04T03:02:00.000Z' } : allocation;
-    await route.fulfill({ status: 201, json: { data: { ok: true, replayed: false, allocation }, requestId: 'e2e-fulfillment-pick' } });
+    await route.fulfill({
+      status: 201,
+      json: { data: { ok: true, replayed: false, allocation }, requestId: 'e2e-fulfillment-pick' },
+    });
   });
 
   await page.route(`**/api/inventory/fulfillment-allocations/${ALLOCATION_ID}/pack`, async (route) => {
     packedBaseQuantity = '3.000000000000';
     fulfillmentStatus = 'packed';
-    allocation = allocation ? { ...allocation, packedBaseQuantity, state: 'COMPLETED', updatedAt: '2026-08-04T03:03:00.000Z' } : allocation;
-    await route.fulfill({ status: 201, json: { data: { ok: true, replayed: false, allocation }, requestId: 'e2e-fulfillment-pack' } });
+    allocation = allocation
+      ? { ...allocation, packedBaseQuantity, state: 'COMPLETED', updatedAt: '2026-08-04T03:03:00.000Z' }
+      : allocation;
+    await route.fulfill({
+      status: 201,
+      json: { data: { ok: true, replayed: false, allocation }, requestId: 'e2e-fulfillment-pack' },
+    });
   });
 }
 
 test.describe('Chuẩn bị hàng', () => {
-  test('danh sách đơn gọn, preview ERP theo dòng sản phẩm và giữ đúng luồng kho', async ({ page }) => {
+  test('lọc theo đơn/kênh bán, đối soát tổng và giữ đúng luồng kho', async ({ page }) => {
     await mockFulfillmentApis(page);
     await page.goto('/inventory/fulfillment');
 
@@ -200,14 +281,56 @@ test.describe('Chuẩn bị hàng', () => {
     await expect(page.getByTestId('inventory-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByTestId('nav-inventory-fulfillment')).toBeVisible();
 
-    const orderRow = page.getByTestId(`fulfillment-order-${SALES_ORDER_ID}`);
-    await expect(orderRow).toHaveCount(1);
-    await expect(orderRow).toContainText('SO-260804-000001');
-    await expect(orderRow).toContainText('80.000');
-    await expect(orderRow).not.toContainText('Bột nguyên liệu A');
-    await expect(orderRow).not.toContainText('BOT-A-25KG');
-    await expect(orderRow).not.toContainText('Phụ gia B');
+    const firstOrder = page.getByTestId(`fulfillment-order-${SALES_ORDER_ID}`);
+    const secondOrder = page.getByTestId(`fulfillment-order-${OTHER_SALES_ORDER_ID}`);
 
+    await expect(firstOrder).toHaveCount(1);
+    await expect(firstOrder).toContainText('SO-260804-000001');
+    await expect(firstOrder).toContainText('Cửa hàng Minh Anh');
+    await expect(firstOrder).toContainText('Chờ phân bổ');
+    await expect(firstOrder).toContainText('OFFICE');
+    await expect(firstOrder).toContainText('80.000');
+    await expect(firstOrder).not.toContainText('Bột nguyên liệu A');
+    await expect(firstOrder).not.toContainText('BOT-A-25KG');
+
+    await expect(secondOrder).toContainText('Đại lý Nam Phát');
+    await expect(secondOrder).toContainText('Đã phân bổ');
+    await expect(secondOrder).toContainText('MCP');
+
+    await expect(page.getByTestId('fulfillment-summary-orders')).toContainText('2/2');
+    await expect(page.getByTestId('fulfillment-summary-value')).toContainText('200.000');
+
+    const financial = page.getByTestId('fulfillment-order-financial-breakdown');
+    await expect(financial).toContainText('Tạm tính 75.000');
+    await expect(financial).toContainText('CK 5.000');
+    await expect(financial).toContainText('Thuế 10.000');
+
+    await page.getByTestId('fulfillment-filter-channel').selectOption('MCP');
+    await expect(firstOrder).toHaveCount(0);
+    await expect(secondOrder).toHaveCount(1);
+    await expect(page.getByTestId('fulfillment-summary-orders')).toContainText('1/2');
+    await expect(page.getByTestId('fulfillment-summary-value')).toContainText('120.000');
+
+    await page.getByTestId('fulfillment-filter-reset').click();
+    await expect(firstOrder).toHaveCount(1);
+    await expect(secondOrder).toHaveCount(1);
+
+    await page.getByTestId('fulfillment-filter-status').selectOption('waiting');
+    await expect(firstOrder).toHaveCount(1);
+    await expect(secondOrder).toHaveCount(0);
+    await page.getByTestId('fulfillment-filter-reset').click();
+
+    await page.getByTestId('fulfillment-filter-warehouse').selectOption(OTHER_WAREHOUSE_ID);
+    await expect(firstOrder).toHaveCount(0);
+    await expect(secondOrder).toHaveCount(1);
+    await page.getByTestId('fulfillment-filter-reset').click();
+
+    await page.getByTestId('fulfillment-search').fill('PHUGIA-B');
+    await expect(firstOrder).toHaveCount(1);
+    await expect(secondOrder).toHaveCount(0);
+    await page.getByTestId('fulfillment-filter-reset').click();
+
+    await firstOrder.click();
     const table = page.getByTestId('fulfillment-product-table');
     await expect(table.getByText('Bột nguyên liệu A', { exact: true })).toBeVisible();
     await expect(table.getByText('BOT-A-25KG', { exact: true })).toBeVisible();
@@ -218,10 +341,6 @@ test.describe('Chuẩn bị hàng', () => {
     const selectedProduct = page.getByTestId('fulfillment-selected-product');
     await expect(selectedProduct.getByRole('heading', { name: 'Phụ gia B', exact: true })).toBeVisible();
     await expect(selectedProduct).toContainText('PHUGIA-B');
-
-    await page.getByTestId('fulfillment-search').fill('PHUGIA-B');
-    await expect(page.getByTestId(`fulfillment-order-${SALES_ORDER_ID}`)).toHaveCount(1);
-    await page.getByTestId('fulfillment-search').fill('');
 
     await page.getByTestId(`fulfillment-product-${DEMAND_ID}`).click();
     await expect(selectedProduct.getByRole('heading', { name: 'Bột nguyên liệu A', exact: true })).toBeVisible();
