@@ -109,7 +109,7 @@ test('all NPP logistics mutations enforce the shared Core-safe idempotency contr
   assert.equal(recorder.calls.at(-1).init.headers['Idempotency-Key'], 'trip_plan_safe');
 
   const callsBeforeInvalidKey = recorder.calls.length;
-  await assert.rejects(
+  assert.throws(
     () => gateway.transitionDeliveryTrip(tripId, 'plan', 'req-invalid-plan-trip', {}, `trip:plan:${tripId}:1`),
     (error) => error?.code === 'INVALID_IDEMPOTENCY_KEY' && error?.statusCode === 400,
   );
