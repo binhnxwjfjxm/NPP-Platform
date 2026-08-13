@@ -43,9 +43,10 @@ test('Lane I keeps compact KPI and responsive shortcut presentation', () => {
   const page = source('../app/dashboard/page.tsx');
   const css = source('../app/dashboard/dashboard.module.css');
 
-  assert.match(page, /dashboard-metric-branches/);
-  assert.match(page, /dashboard-metric-warehouses/);
-  assert.match(page, /dashboard-metric-locations/);
+  for (const metricId of ['branches', 'warehouses', 'locations']) {
+    assert.match(page, new RegExp(`id: '${metricId}'`));
+  }
+  assert.match(page, /data-testid=\{`dashboard-metric-\$\{metric\.id\}`\}/);
   assert.match(css, /\.shortcutGrid/);
   assert.match(css, /repeat\(4, minmax\(0, 1fr\)\)/);
   assert.match(css, /@media \(max-width: 720px\)/);
