@@ -72,6 +72,61 @@ async function seedPlanningFixture(pool, installationId) {
   return { warehouseId, vehicleId, driverId };
 }
 
+async function seedLifecycleAssignment(pool, installationId, tripId) {
+  const actor = 'test:lifecycle-fixture';
+  const stopId = randomUUID();
+  const assignmentId = randomUUID();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SET LOCAL session_replication_role = 'replica'");
+    await client.query(
+      `INSERT INTO logistics.trip_stops
+        (id, installation_id, trip_id, stop_sequence, customer_id, customer_address_id,
+         address_snapshot, planned_arrival_at, created_by, updated_by)
+       VALUES ($1,$2,$3,1,$4,$5,'{"fullAddress":"Lifecycle fixture"}'::jsonb,NULL,$6,$6)`,
+      [stopId, installationId, tripId, randomUUID(), randomUUID(), actor],
+    );
+    await client.query(
+      `INSERT INTO logistics.trip_order_assignments
+        (id, installation_id, trip_id, trip_stop_id, delivery_order_id, assigned_by)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [assignmentId, installationId, tripId, stopId, randomUUID(), actor],
+    );
+    await client.query('COMMIT');
+    return { stopId, assignmentId };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function removeLifecycleAssignment(pool, installationId, fixture) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SET LOCAL session_replication_role = 'replica'");
+    await client.query(
+      `DELETE FROM logistics.trip_order_assignments
+        WHERE installation_id = $1 AND id = $2`,
+      [installationId, fixture.assignmentId],
+    );
+    await client.query(
+      `DELETE FROM logistics.trip_stops
+        WHERE installation_id = $1 AND id = $2`,
+      [installationId, fixture.stopId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function mutate(baseUrl, config, tripId, action, payload, key) {
   return fetchJson(fetch(`${baseUrl}/api/logistics/trips/${tripId}${action ? `/${action}` : ''}`, {
     method: action ? 'POST' : 'PUT',
@@ -84,6 +139,7 @@ test('G1 lifecycle makes planned read-only until reopen and keeps locked immutab
   const config = loadConfig(testEnv());
   const pool = getPool(config);
   let server;
+  let lifecycleAssignment = null;
   try {
     const { warehouseId, vehicleId, driverId } = await seedPlanningFixture(pool, config.installationId);
     server = await startServer({ config });
@@ -103,6 +159,7 @@ test('G1 lifecycle makes planned read-only until reopen and keeps locked immutab
     }));
     assert.equal(created.response.status, 201, JSON.stringify(created.body));
     const tripId = created.body.data.trip.id;
+    lifecycleAssignment = await seedLifecycleAssignment(pool, config.installationId, tripId);
 
     const planned = await mutate(baseUrl, config, tripId, 'plan', {}, `plan-${randomUUID()}`);
     assert.equal(planned.response.status, 200, JSON.stringify(planned.body));
@@ -191,6 +248,9 @@ test('G1 lifecycle makes planned read-only until reopen and keeps locked immutab
     assert.equal(lockedUpdate.body.error.code, 'DELIVERY_TRIP_LOCKED');
   } finally {
     if (server) await closeServer(server);
+    if (lifecycleAssignment) {
+      await removeLifecycleAssignment(pool, config.installationId, lifecycleAssignment);
+    }
     await closePool();
   }
 });
