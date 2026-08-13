@@ -160,6 +160,48 @@ test('Lane H — standard identity is server-owned and one active series per typ
     }));
     assert.equal(activation.ok, false);
     assert.equal(activation.code, 'ACTIVE_SERIES_EXISTS');
+
+    const legacyReceiptId = randomUUID();
+    await pool.query(
+      `INSERT INTO shared.document_number_series (
+         id, installation_id, code, document_type, name, prefix, number_template,
+         reset_policy, sequence_width, start_counter, is_active, created_by, updated_by
+       ) VALUES ($1,$2,'PURCHASE_RECEIPT','PURCHASE_RECEIPT','Legacy purchase receipt','GR-',
+                 '{PREFIX}{YYYY}{MM}-{SEQ}','MONTHLY',6,1,true,'test:lane-h','test:lane-h')`,
+      [legacyReceiptId, config.installationId],
+    );
+
+    const receiptLookup = await repository.getDocumentNumberSeriesByCode(pool, {
+      installationId: config.installationId,
+      code: 'PURCHASE_RECEIPT',
+    });
+    assert.equal(receiptLookup.id, legacyReceiptId, 'legacy PURCHASE_RECEIPT must resolve as the active GOODS_RECEIPT business type');
+
+    const receiptList = await repository.listDocumentNumberSeries(pool, {
+      installationId: config.installationId,
+      documentType: 'GOODS_RECEIPT',
+    });
+    assert.equal(receiptList.some((series) => series.id === legacyReceiptId), true);
+
+    const conflictingReceipt = await createStandard(pool, config.installationId, {
+      documentType: 'GOODS_RECEIPT',
+      name: 'Phiếu nhập kho mới',
+      prefix: 'GRN-',
+    });
+    assert.equal(conflictingReceipt.ok, false);
+    assert.equal(conflictingReceipt.code, 'ACTIVE_SERIES_EXISTS');
+
+    await assert.rejects(
+      pool.query(
+        `INSERT INTO shared.document_number_series (
+           id, installation_id, code, document_type, name, prefix, number_template,
+           reset_policy, sequence_width, start_counter, is_active, created_by, updated_by
+         ) VALUES ($1,$2,$3,'GOODS_RECEIPT','Direct receipt duplicate','GRN-',
+                   '{PREFIX}{YYYY}{MM}-{SEQ}','MONTHLY',6,1,true,'test:lane-h','test:lane-h')`,
+        [randomUUID(), config.installationId, `GOODS_RECEIPT_${randomUUID().slice(0, 8).toUpperCase()}`],
+      ),
+      /document_number_series_one_active_type_unique/,
+    );
   } finally {
     await closePool();
   }

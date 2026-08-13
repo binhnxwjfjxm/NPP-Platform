@@ -64,7 +64,8 @@ export async function listDocumentNumberSeries(client, {
   }
   if (documentType) {
     params.push(documentType);
-    query += ` AND dns.document_type = $${params.length}`;
+    query += ` AND (CASE WHEN dns.document_type = 'PURCHASE_RECEIPT' THEN 'GOODS_RECEIPT' ELSE dns.document_type END)
+      = (CASE WHEN $${params.length} = 'PURCHASE_RECEIPT' THEN 'GOODS_RECEIPT' ELSE $${params.length} END)`;
   }
   if (search) {
     params.push(`%${search}%`);
@@ -95,7 +96,8 @@ export async function getActiveDocumentNumberSeriesByType(client, {
     `SELECT ${SERIES_COLUMNS}
        FROM shared.document_number_series dns
       WHERE dns.installation_id = $1
-        AND dns.document_type = $2
+        AND (CASE WHEN dns.document_type = 'PURCHASE_RECEIPT' THEN 'GOODS_RECEIPT' ELSE dns.document_type END)
+          = (CASE WHEN $2 = 'PURCHASE_RECEIPT' THEN 'GOODS_RECEIPT' ELSE $2 END)
         AND dns.is_active = true
         AND ($3::uuid IS NULL OR dns.id <> $3)
       ORDER BY dns.created_at ASC, dns.id ASC
