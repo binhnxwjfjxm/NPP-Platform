@@ -4,18 +4,21 @@ import { normalizeIdempotencyKey, readJsonBody } from '../idempotency.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
 import { assignDeliveryOrders } from '../services/logistics-trip-batch-assignment.js';
 import {
+  createDriverProfile,
+  listDriverEmployees,
+  listDriverProfiles,
+  lockDeliveryTrip,
+  planDeliveryTrip,
+} from '../services/logistics-driver-profile.js';
+import {
   createDeliveryRoute,
   createDeliveryTrip,
-  createDriverProfile,
   createVehicle,
   getDeliveryTrip,
   listDeliveryRoutes,
   listDeliveryTrips,
-  listDriverProfiles,
   listEligibleDeliveryOrders,
   listVehicles,
-  lockDeliveryTrip,
-  planDeliveryTrip,
   reopenDeliveryTrip,
   reorderTripStops,
   unassignDeliveryOrder,
@@ -37,6 +40,7 @@ function statusFor(code) {
     || code.includes('DUPLICATE')
     || code.includes('IDEMPOTENCY')
     || code.includes('ALREADY_ASSIGNED')
+    || code.includes('ALREADY_LINKED')
     || code.includes('LOCKED')
     || code.includes('NOT_EDITABLE')
     || code.includes('NOT_ELIGIBLE')
@@ -376,6 +380,18 @@ export async function handleLogisticsRoutes(req, res, options) {
         adapter: options.getPool(), requestContext, payload,
       }),
       select: (result) => result.vehicle,
+    });
+  }
+
+  if (pathname === '/api/logistics/driver-employees' && method === 'GET') {
+    return executeRead(req, res, options, {
+      permission: options.PERMISSIONS.coreDriverProfileRead,
+      operation: (requestContext) => listDriverEmployees(options.getPool(), {
+        requestContext,
+        limit: parseInteger(url.searchParams.get('limit'), 1000, 1000),
+        offset: parseInteger(url.searchParams.get('offset'), 0, 100000),
+      }),
+      select: (result) => result.employees,
     });
   }
 
