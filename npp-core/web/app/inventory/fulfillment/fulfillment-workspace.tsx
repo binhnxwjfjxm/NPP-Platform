@@ -8,7 +8,10 @@ import styles from './fulfillment-workspace.module.css';
 type WorkItem = {
   fulfillmentDemandId: string;
   salesOrderId: string;
+  salesOrderVersionId: string;
+  salesOrderLineId: string;
   orderNumber: string | null;
+  orderTotal: string | null;
   fulfillmentStatus: string;
   requestedDeliveryDate: string | null;
   sourceType: string;
@@ -21,6 +24,7 @@ type WorkItem = {
   itemName: string;
   sku: string;
   unitCode: string;
+  baseVariantId: string;
   orderedBaseQuantity: string;
   reservedBaseQuantity: string;
   backorderedBaseQuantity: string;
@@ -75,6 +79,7 @@ type SuggestionDetail = {
 type OrderGroup = {
   salesOrderId: string;
   orderNumber: string | null;
+  orderTotal: string | null;
   customerCode: string;
   customerName: string;
   warehouseCode: string;
@@ -111,6 +116,17 @@ function formatQuantity(value: string): string {
   return normalized.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
 }
 
+function formatMoney(value: string | null): string {
+  if (value === null || value === undefined || String(value).trim() === '') return 'Chưa có tổng';
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return 'Chưa có tổng';
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND',
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
 function formatDate(value: string | null): string {
   if (!value) return 'Chưa đặt';
   const date = new Date(value);
@@ -121,7 +137,7 @@ function statusLabel(value: string): string {
   const labels: Record<string, string> = {
     backordered: 'Chờ hàng',
     partially_reserved: 'Giữ một phần',
-    reserved: 'Đã giữ hàng',
+    reserved: 'Chờ phân bổ',
     partially_allocated: 'Phân bổ một phần',
     allocated: 'Đã phân bổ',
     partially_picked: 'Đang soạn',
@@ -143,6 +159,7 @@ function groupBySalesOrder(items: WorkItem[]): OrderGroup[] {
     groups.set(item.salesOrderId, {
       salesOrderId: item.salesOrderId,
       orderNumber: item.orderNumber,
+      orderTotal: item.orderTotal,
       customerCode: item.customerCode,
       customerName: item.customerName,
       warehouseCode: item.warehouseCode,
@@ -200,6 +217,10 @@ export default function FulfillmentWorkspace() {
 
   const selectedWork = work.find((item) => item.fulfillmentDemandId === selectedId) ?? null;
   const groupedWork = useMemo(() => groupBySalesOrder(work), [work]);
+  const selectedOrder = useMemo(() => {
+    if (!selectedWork) return groupedWork[0] ?? null;
+    return groupedWork.find((group) => group.salesOrderId === selectedWork.salesOrderId) ?? null;
+  }, [groupedWork, selectedWork]);
   const filteredGroups = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('vi');
     if (!term) return groupedWork;
@@ -209,17 +230,9 @@ export default function FulfillmentWorkspace() {
       group.customerName,
       group.warehouseCode,
       group.warehouseName,
-      ...group.items.flatMap((item) => [
-        item.sku,
-        item.itemName,
-        statusLabel(item.fulfillmentStatus),
-      ]),
+      ...group.items.flatMap((item) => [item.sku, item.itemName, statusLabel(item.fulfillmentStatus)]),
     ].filter(Boolean).join(' ').toLocaleLowerCase('vi').includes(term));
   }, [groupedWork, search]);
-  const visibleProductCount = useMemo(
-    () => filteredGroups.reduce((total, group) => total + group.items.length, 0),
-    [filteredGroups],
-  );
 
   async function loadWork(preferredId?: string | null) {
     setLoading(true);
@@ -263,6 +276,11 @@ export default function FulfillmentWorkspace() {
     } finally {
       if (detailRequestRef.current === requestNumber) setBusy(null);
     }
+  }
+
+  function selectOrder(group: OrderGroup) {
+    const firstItem = group.items[0];
+    if (firstItem) void loadDetail(firstItem.fulfillmentDemandId);
   }
 
   async function autoAllocate() {
@@ -340,36 +358,30 @@ export default function FulfillmentWorkspace() {
     <AppShell
       kicker="Kho và hoàn tất đơn"
       title="Chuẩn bị hàng"
-      subtitle="Theo từng đơn hàng: chọn vị trí/lô, xác nhận soạn và đóng gói phần hàng đã được giữ."
+      subtitle="Chọn đơn, kiểm tra sản phẩm và xử lý phân bổ, soạn, đóng gói theo từng dòng hàng."
     >
       <div className={styles.page} data-testid="fulfillment-workspace">
-        <section className={styles.hero}>
-          <div>
-            <p className={styles.eyebrow}>Hàng đợi kho</p>
-            <h2>Đơn đã xác nhận cần chuẩn bị</h2>
-            <p>Chọn một đơn, sau đó chọn từng sản phẩm để xem vị trí/lô và thực hiện phần việc kho.</p>
+        <div className={styles.topBar}>
+          <div className={styles.stageSummary} aria-label="Tổng hợp hàng đợi kho">
+            <span><strong>{counts.waiting}</strong> chờ phân bổ</span>
+            <span><strong>{counts.allocating}</strong> đã phân bổ</span>
+            <span><strong>{counts.picking}</strong> đang soạn</span>
+            <span><strong>{counts.packing}</strong> đóng gói</span>
           </div>
           <button type="button" className={styles.secondaryButton} onClick={() => void loadWork(selectedId)} disabled={loading || busy !== null}>
             {loading ? 'Đang tải...' : 'Làm mới'}
           </button>
-        </section>
-
-        <section className={styles.stats} aria-label="Tổng hợp hàng đợi kho">
-          <article><strong>{counts.waiting}</strong><span>Chờ phân bổ</span></article>
-          <article><strong>{counts.allocating}</strong><span>Đã phân bổ</span></article>
-          <article><strong>{counts.picking}</strong><span>Đang soạn</span></article>
-          <article><strong>{counts.packing}</strong><span>Đóng gói</span></article>
-        </section>
+        </div>
 
         {error ? <div className={styles.error} role="alert" data-testid="fulfillment-error">{error}</div> : null}
         {notice ? <div className={styles.notice} role="status" data-testid="fulfillment-notice">{notice}</div> : null}
 
         <div className={styles.layout}>
-          <section className={styles.queuePanel}>
-            <div className={styles.panelHeader}>
+          <section className={styles.queuePanel} aria-label="Danh sách đơn cần chuẩn bị">
+            <div className={styles.queueHeader}>
               <div>
                 <h3>Đơn cần chuẩn bị</h3>
-                <p>{filteredGroups.length} đơn · {visibleProductCount} sản phẩm trong phạm vi kho được cấp.</p>
+                <p>{filteredGroups.length} đơn</p>
               </div>
               <input
                 value={search}
@@ -380,150 +392,181 @@ export default function FulfillmentWorkspace() {
                 data-testid="fulfillment-search"
               />
             </div>
-            <div className={styles.queue}>
+            <div className={styles.orderList}>
               {filteredGroups.length === 0 ? <p className={styles.empty}>Không có đơn hàng phù hợp.</p> : null}
               {filteredGroups.map((group) => (
-                <article
+                <button
+                  type="button"
                   key={group.salesOrderId}
-                  className={styles.orderGroup}
+                  className={`${styles.orderRow} ${selectedOrder?.salesOrderId === group.salesOrderId ? styles.orderRowActive : ''}`}
+                  onClick={() => selectOrder(group)}
                   data-testid={`fulfillment-order-${group.salesOrderId}`}
                 >
-                  <div className={styles.orderGroupHeader}>
-                    <div>
-                      <strong>{group.orderNumber || 'Đơn chưa có số'}</strong>
-                      <span>{group.customerCode} — {group.customerName}</span>
-                    </div>
-                    <small>{group.items.length} sản phẩm</small>
-                  </div>
-                  <div className={styles.productList}>
-                    {group.items.map((item) => (
-                      <button
-                        type="button"
-                        key={item.fulfillmentDemandId}
-                        className={`${styles.queueItem} ${selectedId === item.fulfillmentDemandId ? styles.queueItemActive : ''}`}
-                        onClick={() => void loadDetail(item.fulfillmentDemandId)}
-                        data-testid={`fulfillment-product-${item.fulfillmentDemandId}`}
-                      >
-                        <span className={styles.queueTop}>
-                          <strong>{item.itemName}</strong>
-                          <em>{statusLabel(item.fulfillmentStatus)}</em>
-                        </span>
-                        <span className={styles.productMeta}>
-                          {item.sku} · SL {formatQuantity(item.orderedBaseQuantity)} {item.unitCode}
-                        </span>
-                        <small>{item.warehouseCode} · Giao {formatDate(item.requestedDeliveryDate)}</small>
-                        <span className={styles.quantities}>
-                          Giữ {formatQuantity(item.reservedBaseQuantity)} · Phân bổ {formatQuantity(item.allocatedBaseQuantity)} · Soạn {formatQuantity(item.pickedBaseQuantity)} · Gói {formatQuantity(item.packedBaseQuantity)}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </article>
+                  <span>{group.orderNumber || 'Đơn chưa có số'}</span>
+                  <strong>{formatMoney(group.orderTotal)}</strong>
+                </button>
               ))}
             </div>
           </section>
 
           <section className={styles.detailPanel}>
-            {!selectedWork ? <p className={styles.empty}>Chọn một sản phẩm trong đơn để chuẩn bị hàng.</p> : (
+            {!selectedOrder || !selectedWork ? <p className={styles.empty}>Chọn một đơn để xem chi tiết chuẩn bị hàng.</p> : (
               <>
-                <div className={styles.detailHeader}>
-                  <div>
-                    <p className={styles.eyebrow}>{selectedWork.orderNumber || 'Đơn bán hàng'}</p>
-                    <h3>{selectedWork.itemName}</h3>
-                    <p>{selectedWork.sku} · SL {formatQuantity(selectedWork.orderedBaseQuantity)} {selectedWork.unitCode} · {selectedWork.customerName}</p>
+                <header className={styles.orderHeader} data-testid="fulfillment-order-preview">
+                  <div className={styles.orderTitle}>
+                    <span>Đơn bán hàng</span>
+                    <h3>{selectedOrder.orderNumber || 'Đơn chưa có số'}</h3>
                   </div>
-                  <span className={styles.status}>{statusLabel(selectedWork.fulfillmentStatus)}</span>
-                </div>
-
-                <div className={styles.quantityGrid}>
-                  <article><span>Đặt</span><strong>{formatQuantity(selectedWork.orderedBaseQuantity)} {selectedWork.unitCode}</strong></article>
-                  <article><span>Đã giữ</span><strong>{formatQuantity(selectedWork.reservedBaseQuantity)} {selectedWork.unitCode}</strong></article>
-                  <article><span>Còn thiếu</span><strong>{formatQuantity(selectedWork.backorderedBaseQuantity)} {selectedWork.unitCode}</strong></article>
-                  <article><span>Đã phân bổ</span><strong>{formatQuantity(selectedWork.allocatedBaseQuantity)} {selectedWork.unitCode}</strong></article>
-                  <article><span>Đã soạn</span><strong>{formatQuantity(selectedWork.pickedBaseQuantity)} {selectedWork.unitCode}</strong></article>
-                  <article><span>Đã đóng gói</span><strong>{formatQuantity(selectedWork.packedBaseQuantity)} {selectedWork.unitCode}</strong></article>
-                </div>
-
-                <div className={styles.actionBar}>
-                  <div>
-                    <strong>Phân bổ theo hệ thống</strong>
-                    <p>Hệ thống tự chọn vị trí/lô phù hợp theo hạn dùng và thứ tự nhập hàng.</p>
+                  <div className={styles.orderMeta}>
+                    <strong>{selectedOrder.customerName}</strong>
+                    <span>{selectedOrder.customerCode} · {selectedOrder.warehouseName} · Giao {formatDate(selectedOrder.requestedDeliveryDate)}</span>
                   </div>
-                  <button
-                    type="button"
-                    className={styles.primaryButton}
-                    onClick={autoAllocate}
-                    disabled={!detail || parseQuantity(detail.remainingBaseQuantity) <= 0n || busy !== null}
-                    data-testid="fulfillment-auto-allocate"
-                  >
-                    {busy === 'allocate' ? 'Đang phân bổ...' : 'Phân bổ phần còn lại'}
-                  </button>
-                </div>
-
-                <section className={styles.subsection}>
-                  <div className={styles.subsectionHeader}>
-                    <h4>Vị trí và lô gợi ý</h4>
-                    <span>Còn {formatQuantity(detail?.remainingBaseQuantity ?? '0')} {selectedWork.unitCode} cần phân bổ</span>
+                  <div className={styles.orderTotal}>
+                    <span>Tổng đơn</span>
+                    <strong>{formatMoney(selectedOrder.orderTotal)}</strong>
                   </div>
-                  <div className={styles.candidates}>
-                    {(detail?.candidates ?? []).slice(0, 12).map((candidate) => (
-                      <article key={`${candidate.locationId ?? 'none'}-${candidate.lotId ?? 'none'}`}>
-                        <strong>#{candidate.rank} · {candidate.locationCode || 'Chưa có vị trí'}</strong>
-                        <span>Lô {candidate.lotCode || 'Không theo lô'}</span>
-                        <span>Khả dụng {formatQuantity(candidate.availableBaseQuantity)} {selectedWork.unitCode}</span>
-                        <small>{candidate.expiryDate ? `HSD ${formatDate(candidate.expiryDate)}` : `Nhập đầu ${formatDate(candidate.firstReceivedAt)}`}</small>
-                      </article>
-                    ))}
-                    {detail && detail.candidates.length === 0 ? <p className={styles.empty}>Không còn vị trí/lô khả dụng.</p> : null}
+                </header>
+
+                <section className={styles.productSection}>
+                  <div className={styles.sectionHeading}>
+                    <div>
+                      <h4>Sản phẩm trong đơn</h4>
+                      <p>Chọn một dòng để xử lý.</p>
+                    </div>
+                    <span>{selectedOrder.items.length} dòng</span>
+                  </div>
+                  <div className={styles.tableScroll}>
+                    <div className={styles.productTable} data-testid="fulfillment-product-table">
+                      <div className={`${styles.productRow} ${styles.tableHeader}`} aria-hidden="true">
+                        <span>Sản phẩm</span><span>SKU</span><span>Đặt</span><span>Phân bổ</span><span>Soạn</span><span>Đóng gói</span><span>Trạng thái</span>
+                      </div>
+                      {selectedOrder.items.map((item) => (
+                        <button
+                          type="button"
+                          key={item.fulfillmentDemandId}
+                          className={`${styles.productRow} ${selectedId === item.fulfillmentDemandId ? styles.productRowActive : ''}`}
+                          onClick={() => void loadDetail(item.fulfillmentDemandId)}
+                          data-testid={`fulfillment-product-${item.fulfillmentDemandId}`}
+                        >
+                          <strong>{item.itemName}</strong>
+                          <span>{item.sku}</span>
+                          <span>{formatQuantity(item.orderedBaseQuantity)} {item.unitCode}</span>
+                          <span>{formatQuantity(item.allocatedBaseQuantity)}</span>
+                          <span>{formatQuantity(item.pickedBaseQuantity)}</span>
+                          <span>{formatQuantity(item.packedBaseQuantity)}</span>
+                          <em>{statusLabel(item.fulfillmentStatus)}</em>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </section>
 
-                <section className={styles.subsection}>
-                  <div className={styles.subsectionHeader}>
-                    <h4>Vị trí/lô đã chọn</h4>
-                    <span>{detail?.allocations.length ?? 0} vị trí/lô</span>
+                <section className={styles.processSection} data-testid="fulfillment-selected-product">
+                  <div className={styles.processHeader}>
+                    <div>
+                      <span>Đang xử lý sản phẩm</span>
+                      <h4>{selectedWork.itemName}</h4>
+                      <p>{selectedWork.sku} · Đơn vị {selectedWork.unitCode}</p>
+                    </div>
+                    <strong className={styles.status}>{statusLabel(selectedWork.fulfillmentStatus)}</strong>
                   </div>
-                  <div className={styles.allocations}>
-                    {(detail?.allocations ?? []).map((allocation) => {
-                      const pickRemaining = quantityDifference(allocation.allocatedBaseQuantity, allocation.pickedBaseQuantity);
-                      const packRemaining = quantityDifference(allocation.pickedBaseQuantity, allocation.packedBaseQuantity);
-                      return (
-                        <article key={allocation.id} data-testid={`fulfillment-allocation-${allocation.id}`}>
-                          <div className={styles.allocationHead}>
-                            <div>
-                              <strong>{allocation.locationCode || 'Chưa có vị trí'} · Lô {allocation.lotCode || 'Không theo lô'}</strong>
-                              <span>{allocation.expiryDate ? `HSD ${formatDate(allocation.expiryDate)}` : 'Không theo dõi hạn dùng'}</span>
+
+                  <div className={styles.progressStrip}>
+                    <span>Đặt <strong>{formatQuantity(selectedWork.orderedBaseQuantity)}</strong></span>
+                    <span>Đã giữ <strong>{formatQuantity(selectedWork.reservedBaseQuantity)}</strong></span>
+                    <span>Còn thiếu <strong>{formatQuantity(selectedWork.backorderedBaseQuantity)}</strong></span>
+                    <span>Phân bổ <strong>{formatQuantity(selectedWork.allocatedBaseQuantity)}</strong></span>
+                    <span>Soạn <strong>{formatQuantity(selectedWork.pickedBaseQuantity)}</strong></span>
+                    <span>Đóng gói <strong>{formatQuantity(selectedWork.packedBaseQuantity)}</strong></span>
+                  </div>
+
+                  <div className={styles.allocateToolbar}>
+                    <div>
+                      <strong>Còn {formatQuantity(detail?.remainingBaseQuantity ?? '0')} {selectedWork.unitCode} cần phân bổ</strong>
+                      <span>Hệ thống chọn vị trí/lô phù hợp; người dùng thao tác trên đúng sản phẩm đang chọn.</span>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      onClick={autoAllocate}
+                      disabled={!detail || parseQuantity(detail.remainingBaseQuantity) <= 0n || busy !== null}
+                      data-testid="fulfillment-auto-allocate"
+                    >
+                      {busy === 'allocate' ? 'Đang phân bổ...' : 'Phân bổ phần còn lại'}
+                    </button>
+                  </div>
+
+                  <section className={styles.subsection}>
+                    <div className={styles.sectionHeading}>
+                      <div><h4>Vị trí có thể lấy</h4><p>Tham khảo trước khi phân bổ.</p></div>
+                      <span>{detail?.candidates.length ?? 0} vị trí</span>
+                    </div>
+                    <div className={styles.tableScroll}>
+                      <div className={styles.locationTable}>
+                        <div className={`${styles.locationRow} ${styles.tableHeader}`} aria-hidden="true">
+                          <span>Vị trí</span><span>Lô</span><span>Khả dụng</span><span>Hạn dùng / nhập đầu</span>
+                        </div>
+                        {(detail?.candidates ?? []).slice(0, 12).map((candidate) => (
+                          <div className={styles.locationRow} key={`${candidate.locationId ?? 'none'}-${candidate.lotId ?? 'none'}`}>
+                            <strong>{candidate.locationCode || 'Chưa có vị trí'}</strong>
+                            <span>{candidate.lotCode || 'Không theo lô'}</span>
+                            <span>{formatQuantity(candidate.availableBaseQuantity)} {selectedWork.unitCode}</span>
+                            <span>{candidate.expiryDate ? `HSD ${formatDate(candidate.expiryDate)}` : `Nhập ${formatDate(candidate.firstReceivedAt)}`}</span>
+                          </div>
+                        ))}
+                        {detail && detail.candidates.length === 0 ? <p className={styles.emptyTable}>Không còn vị trí/lô khả dụng.</p> : null}
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className={styles.subsection}>
+                    <div className={styles.sectionHeading}>
+                      <div><h4>Phân bổ và thao tác</h4><p>Soạn, đóng gói theo từng vị trí/lô đã phân bổ.</p></div>
+                      <span>{detail?.allocations.length ?? 0} dòng</span>
+                    </div>
+                    <div className={styles.tableScroll}>
+                      <div className={styles.allocationTable}>
+                        <div className={`${styles.allocationRow} ${styles.tableHeader}`} aria-hidden="true">
+                          <span>Vị trí / lô</span><span>Phân bổ</span><span>Soạn</span><span>Đóng gói</span><span>Trạng thái</span><span>Thao tác</span>
+                        </div>
+                        {(detail?.allocations ?? []).map((allocation) => {
+                          const pickRemaining = quantityDifference(allocation.allocatedBaseQuantity, allocation.pickedBaseQuantity);
+                          const packRemaining = quantityDifference(allocation.pickedBaseQuantity, allocation.packedBaseQuantity);
+                          return (
+                            <div className={styles.allocationRow} key={allocation.id} data-testid={`fulfillment-allocation-${allocation.id}`}>
+                              <div>
+                                <strong>{allocation.locationCode || 'Chưa có vị trí'}</strong>
+                                <small>{allocation.lotCode || 'Không theo lô'}{allocation.expiryDate ? ` · HSD ${formatDate(allocation.expiryDate)}` : ''}</small>
+                              </div>
+                              <span>{formatQuantity(allocation.allocatedBaseQuantity)}</span>
+                              <span>{formatQuantity(allocation.pickedBaseQuantity)}</span>
+                              <span>{formatQuantity(allocation.packedBaseQuantity)}</span>
+                              <em>{allocation.state === 'COMPLETED' ? 'Đã đóng gói' : 'Đang xử lý'}</em>
+                              <div className={styles.rowActions}>
+                                <button
+                                  type="button"
+                                  className={styles.secondaryButton}
+                                  disabled={parseQuantity(pickRemaining) <= 0n || busy !== null}
+                                  onClick={() => void updateProgress(allocation, 'pick')}
+                                >
+                                  {busy === `pick-${allocation.id}` ? 'Đang xác nhận...' : `Soạn ${formatQuantity(pickRemaining)}`}
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.primaryButton}
+                                  disabled={parseQuantity(packRemaining) <= 0n || busy !== null}
+                                  onClick={() => void updateProgress(allocation, 'pack')}
+                                >
+                                  {busy === `pack-${allocation.id}` ? 'Đang xác nhận...' : `Đóng gói ${formatQuantity(packRemaining)}`}
+                                </button>
+                              </div>
                             </div>
-                            <em>{allocation.state === 'COMPLETED' ? 'Đã đóng gói' : 'Đang xử lý'}</em>
-                          </div>
-                          <div className={styles.progressRow}>
-                            <span>Phân bổ <strong>{formatQuantity(allocation.allocatedBaseQuantity)} {selectedWork.unitCode}</strong></span>
-                            <span>Soạn <strong>{formatQuantity(allocation.pickedBaseQuantity)} {selectedWork.unitCode}</strong></span>
-                            <span>Gói <strong>{formatQuantity(allocation.packedBaseQuantity)} {selectedWork.unitCode}</strong></span>
-                          </div>
-                          <div className={styles.allocationActions}>
-                            <button
-                              type="button"
-                              className={styles.secondaryButton}
-                              disabled={parseQuantity(pickRemaining) <= 0n || busy !== null}
-                              onClick={() => void updateProgress(allocation, 'pick')}
-                            >
-                              {busy === `pick-${allocation.id}` ? 'Đang xác nhận...' : `Soạn ${formatQuantity(pickRemaining)}`}
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.primaryButton}
-                              disabled={parseQuantity(packRemaining) <= 0n || busy !== null}
-                              onClick={() => void updateProgress(allocation, 'pack')}
-                            >
-                              {busy === `pack-${allocation.id}` ? 'Đang xác nhận...' : `Đóng gói ${formatQuantity(packRemaining)}`}
-                            </button>
-                          </div>
-                        </article>
-                      );
-                    })}
-                    {detail && detail.allocations.length === 0 ? <p className={styles.empty}>Chưa có vị trí/lô đã phân bổ.</p> : null}
-                  </div>
+                          );
+                        })}
+                        {detail && detail.allocations.length === 0 ? <p className={styles.emptyTable}>Chưa có vị trí/lô đã phân bổ.</p> : null}
+                      </div>
+                    </div>
+                  </section>
                 </section>
               </>
             )}
