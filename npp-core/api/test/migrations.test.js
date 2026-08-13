@@ -79,3 +79,27 @@ test('registers canonical access role and permission schema migration', () => {
   assert.match(migration.sql, /INSERT INTO shared\.permission_catalog/);
   assert.match(migration.sql, /ON CONFLICT \(permission_key\) DO UPDATE/);
 });
+
+test('legacy 046 installations receive the forward trip-stop reorder constraint migration', async () => {
+  const planning = CORE_API_MIGRATIONS.find(({ id }) => id === '046_logistics_trip_planning');
+  const correction = CORE_API_MIGRATIONS.find(({ id }) => id === '075_logistics_trip_stop_reorder_constraint');
+
+  assert.ok(planning);
+  assert.ok(correction);
+  assert.match(correction.sql, /DROP CONSTRAINT IF EXISTS trip_stops_sequence_unique/);
+  assert.match(correction.sql, /UNIQUE \(installation_id, trip_id, stop_sequence\)/);
+  assert.match(correction.sql, /DEFERRABLE INITIALLY IMMEDIATE/);
+
+  const adapter = fakeAdapter(['046_logistics_trip_planning']);
+  const result = await runMigrations(adapter, [planning, correction]);
+
+  assert.deepEqual(result.applied, ['075_logistics_trip_stop_reorder_constraint']);
+  assert.equal(
+    adapter.calls.some((call) => call.sql.includes('DEFERRABLE INITIALLY IMMEDIATE')),
+    true,
+  );
+  assert.deepEqual(
+    adapter.calls.filter((call) => call.sql.startsWith('INSERT INTO')).map((call) => call.values[0]),
+    ['075_logistics_trip_stop_reorder_constraint'],
+  );
+});
