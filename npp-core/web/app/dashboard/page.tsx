@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { AppShell } from '../components/app-shell';
+import { DashboardOperations, type DashboardStructureMetric } from './dashboard-operations';
 import styles from './dashboard.module.css';
 import { loadOrganizationSnapshot } from '../../lib/organization-snapshot';
 import {
@@ -59,6 +60,10 @@ const shortcutGroups = [
   items: ReadonlyArray<{ href: string; label: string; icon: ShortcutIcon }>;
 }>;
 
+const shortcuts = shortcutGroups.flatMap((group) =>
+  group.items.map((item) => ({ ...item, group: group.title, groupId: group.id })),
+);
+
 function ShortcutGlyph({ icon }: { icon: ShortcutIcon }) {
   const path = {
     sales: <><path d="M5 6h14v12H5z" /><path d="M8 10h8M8 14h5" /></>,
@@ -89,7 +94,7 @@ export default async function DashboardPage() {
     initialError = error instanceof Error ? error.message : 'Không tải được dữ liệu tổng quan';
   }
 
-  const metrics = [
+  const metrics: readonly DashboardStructureMetric[] = [
     {
       id: 'branches',
       label: 'Chi nhánh',
@@ -108,73 +113,57 @@ export default async function DashboardPage() {
       total: snapshot.locations.length,
       active: snapshot.locations.filter((item) => item.is_active).length,
     },
-  ] as const;
+  ];
 
   return (
     <AppShell
       title="Tổng quan điều hành"
-      subtitle="Đi thẳng tới công việc cần xử lý và giữ lại các chỉ số nền thực sự hữu ích."
+      subtitle="Đi thẳng tới công việc cần xử lý, đồng thời nhìn được các chỉ số vận hành quan trọng trên cùng một màn hình."
       kicker="Điều hành nhanh"
     >
       <main className={styles.page} data-testid="dashboard-launchpad-page">
         {initialError ? (
           <div className={styles.dataNotice} role="status" data-testid="dashboard-kpi-stale">
-            KPI cơ cấu chưa cập nhật: {initialError}. Các lối tắt nghiệp vụ vẫn sử dụng bình thường.
+            KPI cơ cấu chưa cập nhật: {initialError}. Các lối tắt nghiệp vụ và báo cáo canonical vẫn sử dụng bình thường.
           </div>
         ) : null}
 
-        <section className={styles.metrics} aria-labelledby="dashboard-metrics-title">
-          <div className={styles.sectionHeading}>
-            <div>
-              <p className={styles.eyebrow}>Nhịp hệ thống</p>
-              <h2 id="dashboard-metrics-title">Cơ cấu đang hoạt động</h2>
+        <DashboardOperations structureMetrics={metrics}>
+          <section className={styles.launchpad} aria-labelledby="dashboard-launchpad-title">
+            <div className={styles.sectionHeading}>
+              <div>
+                <p className={styles.eyebrow}>Truy cập nhanh</p>
+                <h2 id="dashboard-launchpad-title">Mở đúng việc, không qua màn trung gian</h2>
+              </div>
+              <span className={styles.sectionHint}>Lối tắt gọn trong 3 hàng trên desktop</span>
             </div>
-            <Link href="/organization" className={styles.inlineLink}>Xem cơ cấu</Link>
-          </div>
 
-          <div className={styles.metricGrid}>
-            {metrics.map((metric) => (
-              <article key={metric.id} className={styles.metric} data-testid={`dashboard-metric-${metric.id}`}>
-                <span>{metric.label}</span>
-                <strong>{formatCompactNumber(metric.active)}</strong>
-                <small>{formatCompactNumber(metric.total)} tổng cộng</small>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className={styles.launchpad} aria-labelledby="dashboard-launchpad-title">
-          <div className={styles.sectionHeading}>
-            <div>
-              <p className={styles.eyebrow}>Lối tắt nghiệp vụ</p>
-              <h2 id="dashboard-launchpad-title">Mở đúng việc, không qua màn trung gian</h2>
+            <div className={styles.shortcutGrid}>
+              {shortcuts.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={styles.shortcut}
+                  data-group={item.groupId}
+                  data-testid={`dashboard-shortcut-${item.href.replaceAll('/', '-').replace(/^-+/, '')}`}
+                >
+                  <ShortcutGlyph icon={item.icon} />
+                  <span className={styles.shortcutCopy}>
+                    <strong>{item.label}</strong>
+                    <small>{item.group}</small>
+                  </span>
+                  <svg className={styles.arrow} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="m9 6 6 6-6 6" />
+                  </svg>
+                </Link>
+              ))}
             </div>
-          </div>
+          </section>
+        </DashboardOperations>
 
-          <div className={styles.groups}>
-            {shortcutGroups.map((group) => (
-              <section key={group.id} className={styles.group} data-testid={`dashboard-group-${group.id}`}>
-                <h3>{group.title}</h3>
-                <div className={styles.shortcutGrid}>
-                  {group.items.map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={styles.shortcut}
-                      data-testid={`dashboard-shortcut-${item.href.replaceAll('/', '-').replace(/^-+/, '')}`}
-                    >
-                      <ShortcutGlyph icon={item.icon} />
-                      <span>{item.label}</span>
-                      <svg className={styles.arrow} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                        <path d="m9 6 6 6-6 6" />
-                      </svg>
-                    </Link>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        </section>
+        <p className={styles.sourceNote}>
+          Chỉ số cơ cấu: {formatCompactNumber(metrics.reduce((sum, metric) => sum + metric.active, 0))} điểm đang hoạt động. Số liệu đo lường bên dưới đọc từ các reporting read-model canonical hiện có.
+        </p>
       </main>
     </AppShell>
   );
