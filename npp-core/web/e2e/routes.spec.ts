@@ -54,7 +54,7 @@ test.describe('Core web route smoke', () => {
   test('root route redirects into the dashboard shell', async ({ page }) => {
     await expectHealthyRoute(page, '/');
     await expect(page).toHaveURL(/\/dashboard$/);
-    await expect(page.getByRole('heading', { name: 'Tổng quan cơ cấu', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Tổng quan điều hành', exact: true })).toBeVisible();
   });
 
   test('login page loads cleanly in Vietnamese', async ({ page }) => {
@@ -66,8 +66,9 @@ test.describe('Core web route smoke', () => {
 
   test('dashboard page follows the office shell contract', async ({ page }) => {
     await expectHealthyRoute(page, '/dashboard');
-    await expect(page.getByTestId('organization-overview-page')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Tổng quan cơ cấu', exact: true })).toBeVisible();
+    await expect(page.getByTestId('dashboard-launchpad-page')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Tổng quan điều hành', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Phiếu nhận hàng', exact: true })).toHaveAttribute('href', '/purchasing/goods-receipts');
     await expect(page.getByText('Hưng Phát Company')).toBeVisible();
     await expect(page.getByTestId('app-sidebar')).toHaveCSS('position', 'fixed');
     expectNoSensitiveData(await page.content());
