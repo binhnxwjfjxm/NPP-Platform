@@ -1,5 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 
+const DEMAND_ID = '11111111-1111-4111-8111-111111111111';
+const SECOND_DEMAND_ID = '11111111-1111-4111-8111-222222222222';
+const ALLOCATION_ID = '22222222-2222-4222-8222-222222222222';
+const SALES_ORDER_ID = '33333333-3333-4333-8333-333333333333';
+
 type Allocation = {
   id: string;
   fulfillmentDemandId: string;
@@ -28,8 +33,9 @@ type Allocation = {
 };
 
 async function mockFulfillmentApis(page: Page) {
-  const demandId = '11111111-1111-4111-8111-111111111111';
-  const allocationId = '22222222-2222-4222-8222-222222222222';
+  const demandId = DEMAND_ID;
+  const secondDemandId = SECOND_DEMAND_ID;
+  const allocationId = ALLOCATION_ID;
   let fulfillmentStatus = 'reserved';
   let allocatedBaseQuantity = '0.000000000000';
   let pickedBaseQuantity = '0.000000000000';
@@ -38,7 +44,7 @@ async function mockFulfillmentApis(page: Page) {
 
   const work = () => ({
     fulfillmentDemandId: demandId,
-    salesOrderId: '33333333-3333-4333-8333-333333333333',
+    salesOrderId: SALES_ORDER_ID,
     orderNumber: 'SO-260804-000001',
     fulfillmentStatus,
     requestedDeliveryDate: '2026-08-05',
@@ -66,10 +72,27 @@ async function mockFulfillmentApis(page: Page) {
     updatedAt: '2026-08-04T03:00:00.000Z',
   });
 
+  const secondWork = () => ({
+    ...work(),
+    fulfillmentDemandId: secondDemandId,
+    salesOrderLineId: '66666666-6666-4666-8666-777777777777',
+    lineNumber: 2,
+    itemName: 'Phụ gia B',
+    sku: 'PHUGIA-B',
+    unitCode: 'THUNG',
+    baseVariantId: '77777777-7777-4777-8777-888888888888',
+    orderedBaseQuantity: '2.000000000000',
+    reservedBaseQuantity: '2.000000000000',
+    allocatedBaseQuantity: '0.000000000000',
+    pickedBaseQuantity: '0.000000000000',
+    packedBaseQuantity: '0.000000000000',
+    allocationCount: 0,
+  });
+
   await page.route('**/api/inventory/fulfillment-work**', async (route) => {
     await route.fulfill({
       status: 200,
-      json: { data: [work()], requestId: 'e2e-fulfillment-work' },
+      json: { data: [work(), secondWork()], requestId: 'e2e-fulfillment-work' },
     });
   });
 
@@ -108,6 +131,22 @@ async function mockFulfillmentApis(page: Page) {
           allocations: allocation ? [allocation] : [],
         },
         requestId: 'e2e-fulfillment-suggestion',
+      },
+    });
+  });
+
+  await page.route(`**/api/inventory/fulfillment-demands/${secondDemandId}/suggestions`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: {
+        data: {
+          demand: secondWork(),
+          remainingBaseQuantity: '2.000000000000',
+          candidates: [],
+          suggestedPlan: [],
+          allocations: [],
+        },
+        requestId: 'e2e-fulfillment-suggestion-second',
       },
     });
   });
@@ -198,7 +237,7 @@ async function mockFulfillmentApis(page: Page) {
 }
 
 test.describe('Chuẩn bị hàng', () => {
-  test('nằm trong nhóm Kho và đi đúng luồng phân bổ, soạn, đóng gói', async ({ page }) => {
+  test('gom nhiều sản phẩm cùng Sales Order vào một nhóm và giữ đúng luồng kho', async ({ page }) => {
     await mockFulfillmentApis(page);
     await page.goto('/inventory/fulfillment');
 
@@ -206,14 +245,29 @@ test.describe('Chuẩn bị hàng', () => {
     await expect(page.getByRole('heading', { name: 'Chuẩn bị hàng', exact: true })).toBeVisible();
     await expect(page.getByTestId('inventory-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByTestId('nav-inventory-fulfillment')).toBeVisible();
-    await expect(page.getByText('SO-260804-000001', { exact: true })).toBeVisible();
-    await expect(page.getByText('BOT-A-25KG — Bột nguyên liệu A', { exact: true })).toBeVisible();
-    await expect(page.getByText('LOT-A-001', { exact: false })).toBeVisible();
-    await expect(page.getByText('FEFO', { exact: false })).toBeVisible();
+
+    const orderGroup = page.getByTestId(`fulfillment-order-${SALES_ORDER_ID}`);
+    await expect(orderGroup).toHaveCount(1);
+    await expect(orderGroup.getByText('SO-260804-000001', { exact: true })).toBeVisible();
+    await expect(orderGroup.getByText('2 sản phẩm', { exact: true })).toBeVisible();
+    const firstProduct = page.getByTestId(`fulfillment-product-${DEMAND_ID}`);
+    const secondProduct = page.getByTestId(`fulfillment-product-${SECOND_DEMAND_ID}`);
+    await expect(firstProduct.getByText('Bột nguyên liệu A', { exact: true })).toBeVisible();
+    await expect(firstProduct.getByText('BOT-A-25KG · SL 3 BAO', { exact: true })).toBeVisible();
+    await expect(secondProduct.getByText('Phụ gia B', { exact: true })).toBeVisible();
+    await expect(secondProduct.getByText('PHUGIA-B · SL 2 THUNG', { exact: true })).toBeVisible();
+
+    await page.getByTestId('fulfillment-search').fill('PHUGIA-B');
+    await expect(page.getByTestId(`fulfillment-order-${SALES_ORDER_ID}`)).toHaveCount(1);
+    await expect(page.getByTestId(`fulfillment-product-${SECOND_DEMAND_ID}`)).toBeVisible();
+    await page.getByTestId('fulfillment-search').fill('');
+
+    const initialContent = await page.content();
+    expect(initialContent).not.toMatch(/\bFEFO\b|\bFIFO\b|fulfillment demand|allocation policy/i);
 
     await page.getByTestId('fulfillment-auto-allocate').click();
     await expect(page.getByTestId('fulfillment-notice')).toContainText('Đã phân bổ');
-    await expect(page.getByTestId(`fulfillment-allocation-22222222-2222-4222-8222-222222222222`)).toBeVisible();
+    await expect(page.getByTestId(`fulfillment-allocation-${ALLOCATION_ID}`)).toBeVisible();
     await expect(page.getByText('Đã phân bổ', { exact: true }).first()).toBeVisible();
 
     await page.getByRole('button', { name: 'Soạn 3', exact: true }).click();
@@ -223,9 +277,8 @@ test.describe('Chuẩn bị hàng', () => {
     await page.getByRole('button', { name: 'Đóng gói 3', exact: true }).click();
     await expect(page.getByTestId('fulfillment-notice')).toContainText('Đã xác nhận đóng gói');
     await expect(page.getByText('Đã đóng gói', { exact: true }).first()).toBeVisible();
-    await expect(page.getByText('Đã đóng gói', { exact: true }).last()).toBeVisible();
 
     const content = await page.content();
-    expect(content).not.toMatch(/tài xế|chuyến xe|\bPOD\b|\bCOD\b/i);
+    expect(content).not.toMatch(/tài xế|chuyến xe|\bPOD\b|\bCOD\b|\bFEFO\b|\bFIFO\b/i);
   });
 });
