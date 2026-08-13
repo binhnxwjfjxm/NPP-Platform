@@ -37,7 +37,9 @@ function draftTrip() {
 
 test('G2 giữ xe và tài xế trống qua load/reload, chỉ dùng lựa chọn explicit và create gửi null khi để trống', async ({ page }) => {
   let created = false;
-  let createPayload: Record<string, unknown> | null = null;
+  let createObserved = false;
+  let createdVehicleId: unknown;
+  let createdPrimaryDriverId: unknown;
 
   await page.route('**/api/logistics/warehouses', (route) => fulfill(route, [
     { id: warehouseId, code: 'KHO-CHINH', name: 'Kho chính' },
@@ -53,7 +55,10 @@ test('G2 giữ xe và tài xế trống qua load/reload, chỉ dùng lựa chọ
   await page.route(`**/api/logistics/trips/${tripId}`, (route) => fulfill(route, draftTrip()));
   await page.route('**/api/logistics/trips', async (route) => {
     if (route.request().method() === 'POST') {
-      createPayload = route.request().postDataJSON() as Record<string, unknown>;
+      const payload = route.request().postDataJSON() as { vehicleId?: unknown; primaryDriverId?: unknown };
+      createdVehicleId = payload.vehicleId;
+      createdPrimaryDriverId = payload.primaryDriverId;
+      createObserved = true;
       created = true;
       await fulfill(route, { trip: draftTrip() }, 201);
       return;
@@ -81,7 +86,7 @@ test('G2 giữ xe và tài xế trống qua load/reload, chỉ dùng lựa chọ
   await expect(driver).toHaveValue('');
 
   await page.getByTestId('create-trip-button').click();
-  expect(createPayload).not.toBeNull();
-  expect(createPayload?.vehicleId).toBeNull();
-  expect(createPayload?.primaryDriverId).toBeNull();
+  expect(createObserved).toBe(true);
+  expect(createdVehicleId).toBeNull();
+  expect(createdPrimaryDriverId).toBeNull();
 });
