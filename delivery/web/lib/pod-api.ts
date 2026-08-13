@@ -1,4 +1,5 @@
 import 'server-only';
+import { isValidIdempotencyKey, normalizeIdempotencyKey } from '@npp/contracts';
 import { deliveryCoreBaseUrl, requireDeliverySessionToken } from './internal-auth-client';
 import type {
   AttachProofOfDeliveryPayload,
@@ -8,7 +9,6 @@ import type {
 } from './types';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 const CORE_REQUEST_TIMEOUT_MS = 30_000;
 
 type SuccessEnvelope<T> = Readonly<{ data: T }>;
@@ -94,12 +94,13 @@ export async function attachMyProof(
   payload: AttachProofOfDeliveryPayload,
   idempotencyKey: string,
 ): Promise<AttachProofOfDeliveryResponse> {
-  if (!IDEMPOTENCY_PATTERN.test(idempotencyKey)) {
+  const normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
+  if (!normalizedIdempotencyKey || !isValidIdempotencyKey(normalizedIdempotencyKey)) {
     throw new DeliveryPodGatewayError('INVALID_IDEMPOTENCY_KEY', 'Khóa chống ghi trùng không hợp lệ', 400);
   }
   return coreRequest<AttachProofOfDeliveryResponse>(user, tripId, assignmentId, attemptId, {
     method: 'POST',
-    headers: { 'Idempotency-Key': idempotencyKey, 'Content-Type': 'application/json' },
+    headers: { 'Idempotency-Key': normalizedIdempotencyKey, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
 }

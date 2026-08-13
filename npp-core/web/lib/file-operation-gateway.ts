@@ -1,4 +1,5 @@
 import 'server-only';
+import { isValidIdempotencyKey, normalizeIdempotencyKey } from '@npp/contracts';
 import { randomUUID } from 'node:crypto';
 import { requireNppWorkforceSessionToken } from './internal-auth-client';
 
@@ -24,12 +25,14 @@ function baseUrl() {
 }
 function safePath(value: string) { const path = value.replace(/^\/+|\/+$/g, ''); if (!SAFE_PATHS.has(path)) throw new FileOperationGatewayError('FILE_OPERATION_PATH_INVALID', 'Đường dẫn import/export không hợp lệ', 404, false); return path; }
 function safeQuery(source?: URLSearchParams) { const query = new URLSearchParams(); for (const [key, value] of source?.entries() ?? []) if (SAFE_QUERY_KEYS.has(key) && value.length <= 128) query.append(key, value); return query.size ? `?${query}` : ''; }
+function optionalIdempotencyKey(value:string|null|undefined){const normalized=normalizeIdempotencyKey(value);if(!normalized)return null;if(!isValidIdempotencyKey(normalized))throw new FileOperationGatewayError('INVALID_IDEMPOTENCY_KEY','Khóa chống trùng yêu cầu không hợp lệ',400,false);return normalized;}
 export async function requestFileOperation<T>({ path, method, body, searchParams, idempotencyKey, requestId }: { path: string; method: 'GET' | 'POST'; body?: unknown; searchParams?: URLSearchParams; idempotencyKey?: string | null; requestId?: string | null }): Promise<T> {
   const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const normalizedIdempotencyKey=optionalIdempotencyKey(idempotencyKey);
   try {
     const response = await fetch(`${baseUrl()}/api/file-operations/${safePath(path)}${safeQuery(searchParams)}`, {
       method, cache: 'no-store', signal: controller.signal,
-      headers: { Authorization: `Bearer ${requireNppWorkforceSessionToken()}`, Accept: 'application/json', 'x-request-id': requestId?.trim() || `web_${randomUUID()}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(idempotencyKey?.trim() ? { 'Idempotency-Key': idempotencyKey.trim() } : {}) },
+      headers: { Authorization: `Bearer ${requireNppWorkforceSessionToken()}`, Accept: 'application/json', 'x-request-id': requestId?.trim() || `web_${randomUUID()}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(normalizedIdempotencyKey ? { 'Idempotency-Key': normalizedIdempotencyKey } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const payload = await response.json().catch(() => null) as Envelope<T> | null;

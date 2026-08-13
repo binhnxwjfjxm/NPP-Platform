@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "node --check index.js",
-    "test": "node --test test/contracts.test.js",
+    "test": "node --test test/*.test.js",
     "verify": "npm run build && npm run test"
   }
 }

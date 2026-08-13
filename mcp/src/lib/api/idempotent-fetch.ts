@@ -1,3 +1,9 @@
+import {
+  createIdempotencyKey as createContractIdempotencyKey,
+  isValidIdempotencyKey,
+  normalizeIdempotencyKey,
+} from "@npp/contracts";
+
 const RETRYABLE_STATUSES = new Set([502, 503, 504]);
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -7,27 +13,8 @@ type IdempotentMutationOptions = {
   retries?: number;
 };
 
-function operationPrefix(value: string) {
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._:-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-  if (!normalized) throw new Error("idempotency_operation_required");
-  return normalized;
-}
-
-function randomPart() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
-}
-
 export function createIdempotencyKey(operation: string) {
-  return `${operationPrefix(operation)}:${randomPart()}`.slice(0, 192);
+  return createContractIdempotencyKey(operation);
 }
 
 function sleep(milliseconds: number) {
@@ -42,7 +29,12 @@ export async function idempotentMutationFetch(
   const method = String(init.method || "POST").toUpperCase();
   if (!MUTATION_METHODS.has(method)) throw new Error("idempotency_mutation_method_required");
 
-  const idempotencyKey = options.key || createIdempotencyKey(options.operation);
+  const idempotencyKey = normalizeIdempotencyKey(
+    options.key || createIdempotencyKey(options.operation)
+  );
+  if (!idempotencyKey || !isValidIdempotencyKey(idempotencyKey)) {
+    throw new Error("invalid_idempotency_key");
+  }
   const headers = new Headers(init.headers);
   headers.set("Idempotency-Key", idempotencyKey);
 

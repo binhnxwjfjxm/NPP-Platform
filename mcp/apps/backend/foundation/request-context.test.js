@@ -166,8 +166,12 @@ test("principal validation rejects invalid permissions, scopes and service emplo
   );
 });
 
-test("invalid request and idempotency IDs are normalized or rejected", () => {
+test("request and idempotency IDs use the shared canonical contract", () => {
   assert.match(normalizeRequestId("bad"), /^req_/);
+  assert.equal(normalizeIdempotencyKey("a"), "a");
   assert.equal(normalizeIdempotencyKey("order-create-12345678"), "order-create-12345678");
-  assert.throws(() => normalizeIdempotencyKey("bad key"), /invalid_idempotency_key/);
+  assert.equal(normalizeIdempotencyKey(` ${"x".repeat(128)} `), "x".repeat(128));
+  for (const invalid of ["bad key", "bad:key", "bad+key", "bad~key", "x".repeat(129)]) {
+    assert.throws(() => normalizeIdempotencyKey(invalid), /invalid_idempotency_key/);
+  }
 });

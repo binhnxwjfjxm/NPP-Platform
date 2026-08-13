@@ -1,7 +1,10 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  isValidIdempotencyKey,
+  normalizeIdempotencyKey as normalizeContractIdempotencyKey
+} from "../../../../packages/contracts/index.js";
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
-const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:~+-]{7,191}$/;
 const ACTOR_ID_PATTERN = /^(service|user):[A-Za-z0-9][A-Za-z0-9._:-]{2,126}$/;
 const EMPLOYEE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$/;
 const ROLE_PATTERN = /^mcp\.[a-z0-9][a-z0-9._:-]{1,126}$/;
@@ -20,9 +23,9 @@ export function normalizeRequestId(value) {
 }
 
 export function normalizeIdempotencyKey(value) {
-  const candidate = String(value ?? "").trim();
+  const candidate = normalizeContractIdempotencyKey(value);
   if (!candidate) return null;
-  if (!IDEMPOTENCY_KEY_PATTERN.test(candidate)) {
+  if (!isValidIdempotencyKey(candidate)) {
     const error = new Error("invalid_idempotency_key");
     error.code = "invalid_idempotency_key";
     error.statusCode = 400;

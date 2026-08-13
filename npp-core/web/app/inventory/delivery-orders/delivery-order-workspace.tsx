@@ -1,5 +1,6 @@
 'use client';
 
+import { createIdempotencyKey } from '@npp/contracts';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
@@ -95,6 +96,8 @@ const DELIVERY_ORDER_TABS: readonly WorkspaceTabOption<DeliveryOrderTab>[] = [
 ];
 
 const SCALE = 1_000_000_000_000n;
+const IDEMPOTENCY_INTENT_CACHE_LIMIT = 256;
+const idempotencyKeys = new Map<string, string>();
 
 function parseQuantity(value: string): bigint {
   const normalized = String(value ?? '').trim();
@@ -150,7 +153,16 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function keyFor(prefix: string, ...parts: string[]): string {
-  return `${prefix}-${parts.join('-')}`.replace(/[^A-Za-z0-9._:-]/g, '_').slice(0, 128);
+  const intent = `${prefix}:${parts.join(':')}`;
+  const existing = idempotencyKeys.get(intent);
+  if (existing) return existing;
+  const key = createIdempotencyKey(`delivery-order-${prefix}`);
+  if (idempotencyKeys.size >= IDEMPOTENCY_INTENT_CACHE_LIMIT) {
+    const oldest = idempotencyKeys.keys().next().value;
+    if (oldest) idempotencyKeys.delete(oldest);
+  }
+  idempotencyKeys.set(intent, key);
+  return key;
 }
 
 function groupEligibility(rows: Eligibility[]): EligibilityGroup[] {

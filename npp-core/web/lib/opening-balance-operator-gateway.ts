@@ -1,10 +1,10 @@
 import 'server-only';
+import { isValidIdempotencyKey, normalizeIdempotencyKey } from '@npp/contracts';
 import { randomUUID } from 'node:crypto';
 import { nppCoreBaseUrl, requireNppWorkforceSessionToken } from './internal-auth-client';
 
 const REQUEST_TIMEOUT_MS = 30_000;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
-const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 type CoreEnvelope<T> = Readonly<{
   data?: T;
@@ -30,8 +30,8 @@ export function resolveOpeningBalanceOperatorRequestId(value: string | null | un
 }
 
 function idempotencyKey(value: string | null | undefined) {
-  const normalized = String(value ?? '').trim();
-  if (!IDEMPOTENCY_KEY_PATTERN.test(normalized)) {
+  const normalized = normalizeIdempotencyKey(value);
+  if (!normalized || !isValidIdempotencyKey(normalized)) {
     throw new OpeningBalanceOperatorGatewayError(
       'INVALID_IDEMPOTENCY_KEY',
       'Khóa chống nhập trùng không hợp lệ',

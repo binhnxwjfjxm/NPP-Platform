@@ -1,5 +1,6 @@
 'use client';
 
+import { createIdempotencyKey } from '@npp/contracts';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
@@ -79,6 +80,8 @@ const CUSTOMER_RETURN_TABS: readonly WorkspaceTabOption<CustomerReturnTab>[] = [
 ];
 
 const SCALE = 1_000_000_000_000n;
+const IDEMPOTENCY_INTENT_CACHE_LIMIT = 256;
+const idempotencyKeys = new Map<string, string>();
 
 function parseQuantity(value: string): bigint {
   const normalized = String(value ?? '').trim();
@@ -104,7 +107,16 @@ function statusLabel(value: CustomerReturn['status']): string {
 }
 
 function keyFor(prefix: string, ...parts: string[]): string {
-  return `${prefix}-${parts.join('-')}`.replace(/[^A-Za-z0-9._:-]/g, '_').slice(0, 128);
+  const intent = `${prefix}:${parts.join(':')}`;
+  const existing = idempotencyKeys.get(intent);
+  if (existing) return existing;
+  const key = createIdempotencyKey(`customer-return-${prefix}`);
+  if (idempotencyKeys.size >= IDEMPOTENCY_INTENT_CACHE_LIMIT) {
+    const oldest = idempotencyKeys.keys().next().value;
+    if (oldest) idempotencyKeys.delete(oldest);
+  }
+  idempotencyKeys.set(intent, key);
+  return key;
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {

@@ -1,7 +1,5 @@
 import { createHash } from 'node:crypto';
-import { createErrorEnvelope } from '@npp/contracts';
-
-const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
+import { createErrorEnvelope, IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 
 export const IDEMPOTENCY_ERROR_CODES = Object.freeze({
   invalidKey: 'IDEMPOTENCY_KEY_INVALID',

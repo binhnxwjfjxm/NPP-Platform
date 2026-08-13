@@ -12,7 +12,10 @@ describe('purchase-order web contract', () => {
     const gateway = read('../lib/purchase-order-gateway.ts');
     assert.match(gateway, /const UUID_PATTERN/);
     assert.match(gateway, /const ALLOWED_QUERY_KEYS/);
-    assert.match(gateway, /IDEMPOTENCY_KEY_PATTERN/);
+    assert.match(gateway, /from '@npp\/contracts'/);
+    assert.match(gateway, /normalizeIdempotencyKey/);
+    assert.match(gateway, /isValidIdempotencyKey/);
+    assert.doesNotMatch(gateway, /const IDEMPOTENCY_KEY_PATTERN/);
     assert.match(gateway, /idempotencyKey:\s*key\(k\)/);
     assert.doesNotMatch(gateway, /idempotencyKey\?\.trim\(\) \|\| `web-/);
   });

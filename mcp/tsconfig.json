@@ -20,6 +20,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@npp/contracts": [
+        "../packages/contracts"
       ]
     },
     "plugins": [
