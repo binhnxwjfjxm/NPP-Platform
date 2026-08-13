@@ -2,8 +2,8 @@ import { createSuccessEnvelope } from '@npp/contracts';
 import { sendError, sendJson } from '../http-utils.js';
 import { normalizeIdempotencyKey, readJsonBody } from '../idempotency.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
+import { assignDeliveryOrders } from '../services/logistics-trip-batch-assignment.js';
 import {
-  assignDeliveryOrder,
   createDeliveryRoute,
   createDeliveryTrip,
   createDriverProfile,
@@ -467,7 +467,7 @@ export async function handleLogisticsRoutes(req, res, options) {
     const actions = {
       assign: {
         permission: options.PERMISSIONS.coreDeliveryTripAssign,
-        operation: assignDeliveryOrder,
+        operation: assignDeliveryOrders,
       },
       unassign: {
         permission: options.PERMISSIONS.coreDeliveryTripAssign,
