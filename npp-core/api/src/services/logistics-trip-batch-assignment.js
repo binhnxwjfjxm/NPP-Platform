@@ -138,6 +138,9 @@ export async function assignDeliveryOrders({ adapter, requestContext, tripId, pa
         if (tripRow.status === 'locked') {
           return { failed: true, result: failure('DELIVERY_TRIP_LOCKED', 'Locked trip cannot be changed') };
         }
+        if (tripRow.status !== 'draft') {
+          return { failed: true, result: failure('DELIVERY_TRIP_NOT_EDITABLE', 'Planned trip is read-only; reopen it before making changes') };
+        }
 
         replay = await loadReplay(client, { requestContext, tripId, idempotencyKey, hash });
         if (replay) return replay.ok ? replay : { failed: true, result: replay };

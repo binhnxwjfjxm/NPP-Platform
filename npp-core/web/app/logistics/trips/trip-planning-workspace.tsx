@@ -229,7 +229,7 @@ export default function TripPlanningWorkspace() {
 
   async function assignSelectedOrders() {
     const targetTrip = trips.find((trip) => trip.id === assignmentTripId);
-    if (!targetTrip || selectedDeliveryOrderIds.length === 0 || targetTrip.status === 'locked') return;
+    if (!targetTrip || selectedDeliveryOrderIds.length === 0 || targetTrip.status !== 'draft') return;
     const deliveryOrderIds = [...selectedDeliveryOrderIds].sort();
     const scope = keyScope('assign-batch', targetTrip.id, ...deliveryOrderIds);
     await runOperation(scope, async () => {
@@ -253,11 +253,11 @@ export default function TripPlanningWorkspace() {
     await tripAction('reorder', { stopIds }, stopIds.join('-'));
   }
 
-  const editable = selectedTrip !== null && selectedTrip.status !== 'locked';
+  const editable = selectedTrip?.status === 'draft';
   const canPlan = selectedTrip?.status === 'draft' && Boolean(selectedTrip.stops?.length);
   const canLock = selectedTrip?.status === 'planned';
-  const routeTrips = trips.filter((trip) => trip.deliveryRouteId === assignmentRouteId && trip.status !== 'locked');
-  const assignmentTrip = trips.find((trip) => trip.id === assignmentTripId) ?? null;
+  const routeTrips = trips.filter((trip) => trip.deliveryRouteId === assignmentRouteId && trip.status === 'draft');
+  const assignmentTrip = trips.find((trip) => trip.id === assignmentTripId && trip.status === 'draft') ?? null;
   const selectedEligible = eligible.filter((order) => order.warehouseId === assignmentTrip?.warehouseId);
 
   function changeAssignmentRoute(routeId: string) {
@@ -325,7 +325,7 @@ export default function TripPlanningWorkspace() {
                 <div className={styles.actions}>
                   {editable ? <button type="button" className={styles.secondaryButton} onClick={updateTrip} disabled={busy !== null}>Lưu kế hoạch</button> : null}
                   {canPlan ? <button type="button" className={styles.primaryButton} onClick={() => tripAction('plan', {}, 'plan')} disabled={busy !== null} data-testid="plan-trip-button">Chuyển sang đã lập kế hoạch</button> : null}
-                  {selectedTrip.status === 'planned' ? <button type="button" className={styles.secondaryButton} onClick={() => tripAction('reopen', { reason: 'Điều chỉnh kế hoạch trước khi khóa' }, 'reopen')} disabled={busy !== null}>Mở lại chỉnh sửa</button> : null}
+                  {selectedTrip.status === 'planned' ? <button type="button" className={styles.secondaryButton} onClick={() => tripAction('reopen', { reason: 'Điều chỉnh kế hoạch trước khi khóa' }, 'reopen')} disabled={busy !== null} data-testid="reopen-trip-button">Mở lại chỉnh sửa</button> : null}
                   {canLock ? <button type="button" className={styles.dangerButton} onClick={() => tripAction('lock', {}, 'lock')} disabled={busy !== null} data-testid="lock-trip-button">Khóa kế hoạch</button> : null}
                 </div>
                 <div className={styles.stopList} data-testid="trip-stop-list">
@@ -334,6 +334,7 @@ export default function TripPlanningWorkspace() {
                   </article>)}
                   {!selectedTrip.stops?.length ? <p className={styles.empty}>Chưa có điểm giao.</p> : null}
                 </div>
+                {selectedTrip.status === 'planned' ? <p className={styles.lockNotice} data-testid="planned-read-only">Kế hoạch đã lập và đang chỉ đọc. Mở lại chỉnh sửa để thay đổi xe, tài xế, điểm dừng hoặc phiếu giao.</p> : null}
                 {selectedTrip.status === 'locked' ? <p className={styles.lockNotice} data-testid="locked-read-only">Kế hoạch đã khóa. Xe, tài xế, điểm dừng và phiếu giao chỉ được đọc.</p> : null}
               </> : <p className={styles.empty}>Chọn chuyến bên trái để lập kế hoạch.</p>}
             </section>
