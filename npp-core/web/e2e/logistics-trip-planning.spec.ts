@@ -5,6 +5,7 @@ const emptyWarehouseId = '10101010-1010-4010-8010-101010101010';
 const routeId = '22222222-2222-4222-8222-222222222222';
 const vehicleId = '33333333-3333-4333-8333-333333333333';
 const driverId = '44444444-4444-4444-8444-444444444444';
+const employeeId = '12121212-1212-4121-8121-121212121212';
 const tripId = '55555555-5555-4555-8555-555555555555';
 const stopId = '66666666-6666-4666-8666-666666666666';
 const deliveryOrderIdA = '77777777-7777-4777-8777-777777777777';
@@ -86,7 +87,7 @@ async function mockLogisticsApis(page: Page, state: State) {
   ]));
   await page.route('**/api/logistics/routes?**', (route) => fulfill(route, [{ id: routeId, code: 'TUYEN-Q1', name: 'Tuyến Quận 1', defaultWarehouseId: warehouseId, isActive: true }]));
   await page.route('**/api/logistics/vehicles?**', (route) => fulfill(route, [{ id: vehicleId, code: 'XE-01', licensePlate: '51C-12345', vehicleType: 'Xe tải nhỏ', operationalStatus: 'AVAILABLE', isActive: true }]));
-  await page.route('**/api/logistics/drivers?**', (route) => fulfill(route, [{ id: driverId, code: 'TX-01', name: 'Nguyễn Văn Tài', phone: '0900000000', isActive: true }]));
+  await page.route('**/api/logistics/drivers?**', (route) => fulfill(route, [{ id: driverId, employeeId, code: 'TX-01', name: 'Nguyễn Văn Tài', phone: '0900000000', isActive: true }]));
   await page.route('**/api/logistics/eligible-delivery-orders**', (route) => fulfill(route, eligibleOrders().filter((order) => !state.assignedIds.includes(order.id))));
   await page.route('**/api/logistics/trips', async (route) => {
     if (route.request().method() === 'POST') {
@@ -224,18 +225,21 @@ test('điều phối viên tạo chuyến, gán batch, lập và khóa; locked s
   for (const key of state.keys) expect(key).toMatch(/^[A-Za-z0-9._-]{1,128}$/);
 });
 
-test('vehicle và driver dùng đúng contract; backend 400 được chỉ ra ở field thay vì generic', async ({ page }) => {
+test('vehicle và driver dùng đúng contract; driver bắt buộc chọn canonical employee', async ({ page }) => {
   const state = makeState({ created: false });
   await mockLogisticsApis(page, state);
   let vehiclePayload: Record<string, unknown> | null = null;
   let driverPayload: Record<string, unknown> | null = null;
+  let employees = [{ id: employeeId, code: 'NV-002', fullName: 'Tài xế mới', jobTitle: 'Tài xế', phone: '0900000002', branchId: null, isActive: true }];
   await page.route('**/api/logistics/vehicles', async (route) => {
     vehiclePayload = route.request().postDataJSON();
     await fulfillError(route, 'INVALID_VEHICLE', 'Vehicle payload is invalid');
   });
+  await page.route('**/api/logistics/driver-employees?**', (route) => fulfill(route, employees));
   await page.route('**/api/logistics/drivers', async (route) => {
     driverPayload = route.request().postDataJSON();
-    await fulfill(route, { id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', code: 'TX-02', name: 'Tài xế mới', phone: null, isActive: true }, 201);
+    employees = [];
+    await fulfill(route, { id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', employeeId, code: 'NV-002', name: 'Tài xế mới', phone: '0900000002', isActive: true }, 201);
   });
   await page.goto('/logistics/trips');
 
@@ -248,9 +252,16 @@ test('vehicle và driver dùng đúng contract; backend 400 được chỉ ra �
   await expect(page.getByText('Kiểm tra biển số theo hợp đồng API.')).toBeVisible();
   expect(vehiclePayload).toEqual({ code: 'XE-02', licensePlate: '51C-99999', vehicleType: 'Xe tải' });
 
-  await page.getByLabel('Mã tài xế').fill('TX-02');
-  await page.getByLabel('Tên tài xế').fill('Tài xế mới');
+  await expect(page.getByLabel('Mã tài xế')).toHaveCount(0);
+  await expect(page.getByLabel('Tên tài xế')).toHaveCount(0);
+  const employeeSelect = page.getByTestId('driver-employee');
+  await employeeSelect.focus();
+  await expect(employeeSelect.locator(`option[value="${employeeId}"]`)).toHaveText('NV-002 · Tài xế mới · Tài xế');
+  await employeeSelect.selectOption(employeeId);
+  await expect(page.getByTestId('driver-employee-canonical')).toContainText('NV-002 · Tài xế mới · 0900000002');
+  await page.getByLabel('Thông tin bằng lái').fill('B2-002');
   await page.getByTestId('create-driver').click();
-  await expect(page.getByText('Đã thêm danh mục điều phối.')).toBeVisible();
-  expect(driverPayload).toEqual({ code: 'TX-02', name: 'Tài xế mới', phone: null });
+  await expect(page.getByText('Đã liên kết nhân sự với hồ sơ tài xế.')).toBeVisible();
+  expect(driverPayload).toEqual({ employeeId, licenseReference: 'B2-002' });
+  await expect(employeeSelect.locator(`option[value="${employeeId}"]`)).toHaveCount(0);
 });

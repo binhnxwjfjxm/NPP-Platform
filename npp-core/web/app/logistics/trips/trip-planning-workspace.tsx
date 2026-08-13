@@ -7,7 +7,8 @@ import styles from './trip-planning-workspace.module.css';
 type Warehouse = { id: string; code: string; name: string };
 type LogisticsRoute = { id: string; code: string; name: string; defaultWarehouseId: string | null; defaultWarehouseCode?: string | null; defaultWarehouseName?: string | null; isActive: boolean };
 type Vehicle = { id: string; code: string; licensePlate: string; vehicleType: string; operationalStatus: string; isActive: boolean };
-type Driver = { id: string; code: string; name: string; phone: string | null; isActive: boolean };
+type Driver = { id: string; employeeId: string | null; code: string; name: string; phone: string | null; isActive: boolean };
+type DriverEmployee = { id: string; code: string; fullName: string; jobTitle: string | null; phone: string | null; branchId: string | null; isActive: boolean };
 type EligibleDeliveryOrder = {
   id: string; number: string | null; salesOrderId: string; warehouseId: string; warehouseCode: string; warehouseName: string;
   customerId: string; customerAddressId: string; customerCode: string; customerName: string; destination: Record<string, unknown>;
@@ -23,12 +24,14 @@ type Trip = {
 };
 type ApiEnvelope<T> = { data?: T; error?: { code?: string; message?: string; details?: unknown } };
 type MasterDraft = { code: string; name: string; extra: string; warehouseId?: string };
+type DriverDraft = { employeeId: string; licenseReference: string };
 type TripDraft = { warehouseId: string; deliveryRouteId: string; vehicleId: string; primaryDriverId: string; plannedStartAt: string; note: string };
 type FieldErrors = Record<string, string>;
 type WorkspaceTab = 'planning' | 'assignment';
 
 const emptyMaster: MasterDraft = { code: '', name: '', extra: '' };
 const emptyRouteMaster: MasterDraft = { code: '', name: '', extra: '', warehouseId: '' };
+const emptyDriver: DriverDraft = { employeeId: '', licenseReference: '' };
 const emptyTrip: TripDraft = { warehouseId: '', deliveryRouteId: '', vehicleId: '', primaryDriverId: '', plannedStartAt: '', note: '' };
 
 class LogisticsRequestError extends Error {
@@ -62,9 +65,9 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 function keyScope(prefix: string, ...parts: Array<string | null | undefined>): string { return [prefix, ...parts.filter(Boolean)].join('|'); }
 function hasErrors(errors: FieldErrors): boolean { return Object.keys(errors).length > 0; }
-function masterPrefix(resource: 'routes' | 'vehicles' | 'drivers') { return resource === 'routes' ? 'route' : resource === 'vehicles' ? 'vehicle' : 'driver'; }
+function masterPrefix(resource: 'routes' | 'vehicles') { return resource === 'routes' ? 'route' : 'vehicle'; }
 
-function validateMaster(resource: 'routes' | 'vehicles' | 'drivers', draft: MasterDraft): FieldErrors {
+function validateMaster(resource: 'routes' | 'vehicles', draft: MasterDraft): FieldErrors {
   const prefix = masterPrefix(resource);
   const errors: FieldErrors = {};
   const code = draft.code.trim();
@@ -74,10 +77,9 @@ function validateMaster(resource: 'routes' | 'vehicles' | 'drivers', draft: Mast
   else if (code.length > 64) errors[`${prefix}.code`] = 'Mã tối đa 64 ký tự.';
   if (!name) errors[`${prefix}.${resource === 'vehicles' ? 'licensePlate' : 'name'}`] = resource === 'vehicles' ? 'Bắt buộc nhập biển số.' : 'Bắt buộc nhập tên.';
   if (resource === 'vehicles' && name.length > 32) errors['vehicle.licensePlate'] = 'Biển số tối đa 32 ký tự.';
-  if (resource !== 'vehicles' && name.length > 256) errors[`${prefix}.name`] = 'Tên tối đa 256 ký tự.';
+  if (resource === 'routes' && name.length > 256) errors['route.name'] = 'Tên tối đa 256 ký tự.';
   if (resource === 'vehicles' && !extra) errors['vehicle.vehicleType'] = 'Bắt buộc nhập loại xe.';
   if (resource === 'vehicles' && extra.length > 80) errors['vehicle.vehicleType'] = 'Loại xe tối đa 80 ký tự.';
-  if (resource === 'drivers' && extra.length > 32) errors['driver.phone'] = 'Số điện thoại tối đa 32 ký tự.';
   if (resource === 'routes' && !draft.warehouseId) errors['route.warehouseId'] = 'Bắt buộc chọn kho áp dụng.';
   return errors;
 }
@@ -85,7 +87,9 @@ function validateMaster(resource: 'routes' | 'vehicles' | 'drivers', draft: Mast
 function serverFieldErrors(code?: string): FieldErrors {
   if (code === 'INVALID_LOGISTICS_ROUTE') return { 'route.warehouseId': 'Chọn kho áp dụng hợp lệ cho tuyến.' };
   if (code === 'INVALID_VEHICLE') return { 'vehicle.code': 'Kiểm tra mã xe theo hợp đồng API.', 'vehicle.licensePlate': 'Kiểm tra biển số theo hợp đồng API.', 'vehicle.vehicleType': 'Kiểm tra loại xe theo hợp đồng API.' };
-  if (code === 'INVALID_DRIVER_PROFILE') return { 'driver.code': 'Kiểm tra mã tài xế theo hợp đồng API.', 'driver.name': 'Kiểm tra tên tài xế theo hợp đồng API.' };
+  if (code === 'INVALID_DRIVER_PROFILE') return { 'driver.employeeId': 'Bắt buộc chọn nhân sự hợp lệ cho tài xế.' };
+  if (code === 'DRIVER_EMPLOYEE_NOT_AVAILABLE') return { 'driver.employeeId': 'Nhân sự không còn hoạt động hoặc không thuộc installation hiện tại.', 'trip.primaryDriverId': 'Tài xế phải liên kết với nhân sự đang hoạt động.' };
+  if (code === 'DRIVER_EMPLOYEE_ALREADY_LINKED') return { 'driver.employeeId': 'Nhân sự này đã có hồ sơ tài xế đang hoạt động.' };
   if (code === 'DELIVERY_ROUTE_WAREHOUSE_MISMATCH' || code === 'DELIVERY_ROUTE_NOT_AVAILABLE') return { 'trip.deliveryRouteId': 'Tuyến không thuộc kho xuất phát đã chọn.' };
   if (code === 'INVALID_DELIVERY_TRIP') return { 'trip.warehouseId': 'Chọn kho hợp lệ trong phạm vi được cấp quyền.', 'trip.plannedStartAt': 'Kiểm tra thời gian dự kiến.' };
   return {};
@@ -96,12 +100,15 @@ export default function TripPlanningWorkspace() {
   const [routes, setRoutes] = useState<LogisticsRoute[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [driverEmployees, setDriverEmployees] = useState<DriverEmployee[]>([]);
+  const [driverEmployeesBusy, setDriverEmployeesBusy] = useState(false);
+  const driverEmployeesLoaded = useRef(false);
   const [eligible, setEligible] = useState<EligibleDeliveryOrder[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [routeDraft, setRouteDraft] = useState<MasterDraft>(emptyRouteMaster);
   const [vehicleDraft, setVehicleDraft] = useState<MasterDraft>(emptyMaster);
-  const [driverDraft, setDriverDraft] = useState<MasterDraft>(emptyMaster);
+  const [driverDraft, setDriverDraft] = useState<DriverDraft>(emptyDriver);
   const [tripDraft, setTripDraft] = useState<TripDraft>(emptyTrip);
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('planning');
   const [assignmentRouteId, setAssignmentRouteId] = useState('');
@@ -154,6 +161,24 @@ export default function TripPlanningWorkspace() {
     }));
   }, []);
 
+  const loadDriverEmployees = useCallback(async (force = false) => {
+    if (driverEmployeesLoaded.current && !force) return;
+    setDriverEmployeesBusy(true);
+    try {
+      const employees = await requestJson<DriverEmployee[]>('/api/logistics/driver-employees?limit=1000');
+      setDriverEmployees(employees);
+      driverEmployeesLoaded.current = true;
+    } finally {
+      setDriverEmployeesBusy(false);
+    }
+  }, []);
+
+  const ensureDriverEmployees = useCallback(() => {
+    void loadDriverEmployees().catch((loadError) => {
+      setError(loadError instanceof Error ? loadError.message : 'Không tải được danh sách nhân sự cho tài xế.');
+    });
+  }, [loadDriverEmployees]);
+
   const loadTrip = useCallback(async (tripId: string) => {
     const detail = await requestJson<Trip>(`/api/logistics/trips/${tripId}`);
     setSelectedTrip(detail);
@@ -174,7 +199,7 @@ export default function TripPlanningWorkspace() {
     } finally { setBusy(null); }
   }
 
-  async function createMaster(resource: 'routes' | 'vehicles' | 'drivers', draft: MasterDraft) {
+  async function createMaster(resource: 'routes' | 'vehicles', draft: MasterDraft) {
     const validation = validateMaster(resource, draft);
     if (hasErrors(validation)) { setFieldErrors(validation); setError('Kiểm tra các trường được đánh dấu trước khi tạo.'); return; }
     const normalized = { code: draft.code.trim(), name: draft.name.trim(), extra: draft.extra.trim(), warehouseId: draft.warehouseId?.trim() || '' };
@@ -182,14 +207,33 @@ export default function TripPlanningWorkspace() {
     await runOperation(scope, async () => {
       const body = resource === 'routes'
         ? { code: normalized.code, name: normalized.name, description: normalized.extra || null, defaultWarehouseId: normalized.warehouseId }
-        : resource === 'vehicles'
-          ? { code: normalized.code, licensePlate: normalized.name, vehicleType: normalized.extra }
-          : { code: normalized.code, name: normalized.name, phone: normalized.extra || null };
+        : { code: normalized.code, licensePlate: normalized.name, vehicleType: normalized.extra };
       await requestJson(`/api/logistics/${resource}`, { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey(scope) }, body: JSON.stringify(body) });
       if (resource === 'routes') setRouteDraft(emptyRouteMaster);
       if (resource === 'vehicles') setVehicleDraft(emptyMaster);
-      if (resource === 'drivers') setDriverDraft(emptyMaster);
       await loadLists(); setMessage('Đã thêm danh mục điều phối.');
+    });
+  }
+
+  async function createDriver() {
+    const employeeId = driverDraft.employeeId.trim();
+    if (!employeeId) {
+      setFieldErrors({ 'driver.employeeId': 'Bắt buộc chọn nhân sự.' });
+      setError('Chọn nhân sự trước khi tạo hồ sơ tài xế.');
+      return;
+    }
+    const licenseReference = driverDraft.licenseReference.trim();
+    const scope = keyScope('create-drivers', employeeId, licenseReference);
+    await runOperation(scope, async () => {
+      await requestJson('/api/logistics/drivers', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey(scope) },
+        body: JSON.stringify({ employeeId, licenseReference: licenseReference || null }),
+      });
+      setDriverDraft(emptyDriver);
+      driverEmployeesLoaded.current = false;
+      await Promise.all([loadLists(), loadDriverEmployees(true)]);
+      setMessage('Đã liên kết nhân sự với hồ sơ tài xế.');
     });
   }
 
@@ -313,7 +357,7 @@ export default function TripPlanningWorkspace() {
             <div className={styles.masterGrid}>
               <MasterForm resource="routes" title="Tuyến giao" draft={routeDraft} labels={['Mã tuyến', 'Tên tuyến', 'Mô tả']} onChange={setRouteDraft} onSubmit={() => createMaster('routes', routeDraft)} disabled={busy !== null} testId="create-route" fieldErrors={fieldErrors} warehouses={warehouses} />
               <MasterForm resource="vehicles" title="Phương tiện" draft={vehicleDraft} labels={['Mã xe', 'Biển số', 'Loại xe']} onChange={setVehicleDraft} onSubmit={() => createMaster('vehicles', vehicleDraft)} disabled={busy !== null} testId="create-vehicle" fieldErrors={fieldErrors} />
-              <MasterForm resource="drivers" title="Tài xế" draft={driverDraft} labels={['Mã tài xế', 'Tên tài xế', 'Số điện thoại']} onChange={setDriverDraft} onSubmit={() => createMaster('drivers', driverDraft)} disabled={busy !== null} testId="create-driver" fieldErrors={fieldErrors} />
+              <DriverForm draft={driverDraft} employees={driverEmployees} onChange={setDriverDraft} onSubmit={createDriver} onLoadEmployees={ensureDriverEmployees} disabled={busy !== null} loadingEmployees={driverEmployeesBusy} fieldErrors={fieldErrors} />
             </div>
           </section>
 
@@ -390,16 +434,41 @@ export default function TripPlanningWorkspace() {
 function FieldError({ message }: { message?: string }) { return message ? <small role="alert">{message}</small> : null; }
 
 function MasterForm({ resource, title, draft, labels, onChange, onSubmit, disabled, testId, fieldErrors, warehouses = [] }: {
-  resource: 'routes' | 'vehicles' | 'drivers'; title: string; draft: MasterDraft; labels: [string, string, string]; onChange: (value: MasterDraft) => void; onSubmit: () => void; disabled: boolean; testId: string; fieldErrors: FieldErrors; warehouses?: Warehouse[];
+  resource: 'routes' | 'vehicles'; title: string; draft: MasterDraft; labels: [string, string, string]; onChange: (value: MasterDraft) => void; onSubmit: () => void; disabled: boolean; testId: string; fieldErrors: FieldErrors; warehouses?: Warehouse[];
 }) {
-  const prefix = masterPrefix(resource); const secondKey = resource === 'vehicles' ? 'licensePlate' : 'name'; const thirdKey = resource === 'vehicles' ? 'vehicleType' : resource === 'drivers' ? 'phone' : 'description';
+  const prefix = masterPrefix(resource); const secondKey = resource === 'vehicles' ? 'licensePlate' : 'name'; const thirdKey = resource === 'vehicles' ? 'vehicleType' : 'description';
   const needsExtra = resource === 'vehicles';
   return <div className={styles.masterCard}><h3>{title}</h3>
     <label>{labels[0]}<input value={draft.code} maxLength={64} onChange={(event) => onChange({ ...draft, code: event.target.value })} disabled={disabled} aria-invalid={Boolean(fieldErrors[`${prefix}.code`])} /><FieldError message={fieldErrors[`${prefix}.code`]} /></label>
     <label>{labels[1]}<input value={draft.name} maxLength={resource === 'vehicles' ? 32 : 256} onChange={(event) => onChange({ ...draft, name: event.target.value })} disabled={disabled} aria-invalid={Boolean(fieldErrors[`${prefix}.${secondKey}`])} /><FieldError message={fieldErrors[`${prefix}.${secondKey}`]} /></label>
-    <label>{labels[2]}<input value={draft.extra} maxLength={resource === 'vehicles' ? 80 : resource === 'drivers' ? 32 : undefined} onChange={(event) => onChange({ ...draft, extra: event.target.value })} disabled={disabled} aria-invalid={Boolean(fieldErrors[`${prefix}.${thirdKey}`])} /><FieldError message={fieldErrors[`${prefix}.${thirdKey}`]} /></label>
+    <label>{labels[2]}<input value={draft.extra} maxLength={resource === 'vehicles' ? 80 : undefined} onChange={(event) => onChange({ ...draft, extra: event.target.value })} disabled={disabled} aria-invalid={Boolean(fieldErrors[`${prefix}.${thirdKey}`])} /><FieldError message={fieldErrors[`${prefix}.${thirdKey}`]} /></label>
     {resource === 'routes' ? <label>Kho áp dụng<select value={draft.warehouseId || ''} onChange={(event) => onChange({ ...draft, warehouseId: event.target.value })} disabled={disabled} data-testid="route-warehouse" aria-invalid={Boolean(fieldErrors['route.warehouseId'])}><option value="">Chọn kho</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} · {warehouse.name}</option>)}</select><FieldError message={fieldErrors['route.warehouseId']} /></label> : null}
     <button type="button" className={styles.secondaryButton} onClick={onSubmit} disabled={disabled || !draft.code.trim() || !draft.name.trim() || (needsExtra && !draft.extra.trim()) || (resource === 'routes' && !draft.warehouseId)} data-testid={testId}>Thêm {title.toLowerCase()}</button>
+  </div>;
+}
+
+function DriverForm({ draft, employees, onChange, onSubmit, onLoadEmployees, disabled, loadingEmployees, fieldErrors }: {
+  draft: DriverDraft; employees: DriverEmployee[]; onChange: (value: DriverDraft) => void; onSubmit: () => void; onLoadEmployees: () => void; disabled: boolean; loadingEmployees: boolean; fieldErrors: FieldErrors;
+}) {
+  const selectedEmployee = employees.find((employee) => employee.id === draft.employeeId) ?? null;
+  return <div className={styles.masterCard}><h3>Tài xế</h3>
+    <label>Nhân sự tài xế
+      <select
+        value={draft.employeeId}
+        onFocus={onLoadEmployees}
+        onChange={(event) => onChange({ ...draft, employeeId: event.target.value })}
+        disabled={disabled || loadingEmployees}
+        data-testid="driver-employee"
+        aria-invalid={Boolean(fieldErrors['driver.employeeId'])}
+      >
+        <option value="">{loadingEmployees ? 'Đang tải nhân sự…' : 'Chọn nhân sự'}</option>
+        {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.code} · {employee.fullName}{employee.jobTitle ? ` · ${employee.jobTitle}` : ''}</option>)}
+      </select>
+      <FieldError message={fieldErrors['driver.employeeId']} />
+    </label>
+    {selectedEmployee ? <small data-testid="driver-employee-canonical">Mã, tên và số điện thoại lấy từ hồ sơ nhân sự: {selectedEmployee.code} · {selectedEmployee.fullName}{selectedEmployee.phone ? ` · ${selectedEmployee.phone}` : ''}</small> : <small>Mã, tên và số điện thoại tài xế được lấy từ hồ sơ nhân sự.</small>}
+    <label>Thông tin bằng lái<input value={draft.licenseReference} maxLength={128} onChange={(event) => onChange({ ...draft, licenseReference: event.target.value })} disabled={disabled} /></label>
+    <button type="button" className={styles.secondaryButton} onClick={onSubmit} disabled={disabled || loadingEmployees || !draft.employeeId} data-testid="create-driver">Thêm tài xế</button>
   </div>;
 }
 
@@ -415,7 +484,7 @@ function TripFields({ draft, setDraft, warehouses, routes, vehicles, drivers, di
     }} disabled={disabled || lockWarehouse} data-testid="trip-warehouse" aria-invalid={Boolean(fieldErrors['trip.warehouseId'])}><option value="">Chọn kho</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} · {warehouse.name}</option>)}</select><FieldError message={fieldErrors['trip.warehouseId']} /></label>
     <label>Tuyến giao<select value={draft.deliveryRouteId} onChange={(event) => setDraft({ ...draft, deliveryRouteId: event.target.value })} disabled={disabled || !draft.warehouseId} data-testid="trip-route" aria-invalid={Boolean(fieldErrors['trip.deliveryRouteId'])}><option value="">Không dùng tuyến mẫu</option>{availableRoutes.map((route) => <option key={route.id} value={route.id}>{route.code} · {route.name}</option>)}</select><FieldError message={fieldErrors['trip.deliveryRouteId']} /></label>
     <label>Phương tiện<select value={draft.vehicleId} onChange={(event) => setDraft({ ...draft, vehicleId: event.target.value })} disabled={disabled} data-testid="trip-vehicle" aria-invalid={Boolean(fieldErrors['trip.vehicleId'])}><option value="">Chọn xe</option>{vehicles.filter((vehicle) => vehicle.isActive && vehicle.operationalStatus === 'AVAILABLE').map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.code} · {vehicle.licensePlate}</option>)}</select><FieldError message={fieldErrors['trip.vehicleId']} /></label>
-    <label>Tài xế chính<select value={draft.primaryDriverId} onChange={(event) => setDraft({ ...draft, primaryDriverId: event.target.value })} disabled={disabled} data-testid="trip-driver" aria-invalid={Boolean(fieldErrors['trip.driverId'])}><option value="">Chọn tài xế</option>{drivers.filter((driver) => driver.isActive).map((driver) => <option key={driver.id} value={driver.id}>{driver.code} · {driver.name}</option>)}</select><FieldError message={fieldErrors['trip.primaryDriverId']} /></label>
+    <label>Tài xế chính<select value={draft.primaryDriverId} onChange={(event) => setDraft({ ...draft, primaryDriverId: event.target.value })} disabled={disabled} data-testid="trip-driver" aria-invalid={Boolean(fieldErrors['trip.primaryDriverId'])}><option value="">Chọn tài xế</option>{drivers.filter((driver) => driver.isActive).map((driver) => <option key={driver.id} value={driver.id}>{driver.code} · {driver.name}</option>)}</select><FieldError message={fieldErrors['trip.primaryDriverId']} /></label>
     <label>Giờ dự kiến<input type="datetime-local" value={draft.plannedStartAt} onChange={(event) => setDraft({ ...draft, plannedStartAt: event.target.value })} disabled={disabled} aria-invalid={Boolean(fieldErrors['trip.plannedStartAt'])} /><FieldError message={fieldErrors['trip.plannedStartAt']} /></label>
     <label className={styles.noteField}>Ghi chú<input value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} disabled={disabled} /></label>
   </div>;

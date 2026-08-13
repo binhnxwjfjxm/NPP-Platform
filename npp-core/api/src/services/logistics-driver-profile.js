@@ -1,11 +1,18 @@
-import * as employeeRepository from '../db/repositories/employee.js';
-import * as logisticsRepository from '../db/repositories/logistics-trip-planning.js';
+import { randomUUID } from 'node:crypto';
 import {
-  createDriverProfile as createDriverProfileBase,
+  buildAuditRecord,
+  buildOutboxEvent,
+  insertAuditRecord,
+  insertOutboxEvent,
+  withAuditOutboxTransaction,
+} from '../audit-outbox.js';
+import * as employeeRepository from '../db/repositories/employee.js';
+import * as planningRepository from '../db/repositories/logistics-trip-planning.js';
+import * as driverRepository from '../db/repositories/logistics-driver-profile.js';
+import {
   getDeliveryTrip,
-  listDriverProfiles as listDriverProfilesBase,
-  lockDeliveryTrip as lockDeliveryTripBase,
   planDeliveryTrip as planDeliveryTripBase,
+  lockDeliveryTrip as lockDeliveryTripBase,
 } from './logistics-trip-planning.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -14,7 +21,28 @@ function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
 }
 
-function employeeCandidate(row) {
+function trimText(value, max) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  return text.length <= max ? text : undefined;
+}
+
+function mapDriver(row) {
+  return Object.freeze({
+    id: row.id,
+    code: row.employee_code ?? row.code,
+    employeeId: row.employee_id ?? null,
+    name: row.employee_name ?? row.name,
+    phone: row.employee_phone ?? row.phone ?? null,
+    licenseReference: row.license_reference ?? null,
+    isActive: Boolean(row.is_active),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
+}
+
+function mapEmployee(row) {
   return Object.freeze({
     id: row.id,
     code: row.code,
@@ -26,125 +54,130 @@ function employeeCandidate(row) {
   });
 }
 
-async function activeEmployees(adapter, requestContext, limit = 1000, offset = 0) {
-  return employeeRepository.listEmployeesForInstallation(adapter, {
-    installationId: requestContext.installationId,
-    active: true,
-    branchId: null,
-    limit,
-    offset,
-  });
-}
-
-async function activeEmployeeById(adapter, requestContext, employeeId) {
-  if (!UUID_PATTERN.test(String(employeeId ?? ''))) return null;
-  const employee = await employeeRepository.getEmployeeByIdForInstallationForShare(adapter, {
-    id: employeeId,
-    installationId: requestContext.installationId,
-  });
-  return employee?.is_active ? employee : null;
-}
-
-async function activeDriverByEmployee(adapter, requestContext, employeeId) {
-  const rows = await logisticsRepository.listDrivers(adapter, {
-    installationId: requestContext.installationId,
-    active: true,
-    limit: 1000,
-    offset: 0,
-  });
-  return rows.find((row) => row.employee_id === employeeId) ?? null;
-}
-
-async function validateTripDriverEmployee(adapter, requestContext, tripId) {
-  const detail = await getDeliveryTrip(adapter, { requestContext, tripId });
-  if (!detail.ok) return detail;
-  const driverId = detail.trip.primaryDriverId;
+async function validateTripDriver(adapter, { requestContext, tripId }) {
+  const tripResult = await getDeliveryTrip(adapter, { requestContext, tripId });
+  if (!tripResult.ok) return tripResult;
+  const driverId = tripResult.trip.primaryDriverId;
   if (!driverId) return failure('DRIVER_EMPLOYEE_NOT_AVAILABLE', 'Trip driver must be linked to an active employee');
-
-  const driverRows = await logisticsRepository.listDrivers(adapter, {
+  const driver = await driverRepository.getDriverWithEmployee(adapter, {
     installationId: requestContext.installationId,
-    active: true,
-    limit: 1000,
-    offset: 0,
+    driverId,
   });
-  const driver = driverRows.find((row) => row.id === driverId);
-  if (!driver?.employee_id) {
+  if (!driver || !driver.is_active || !driver.employee_id || driver.employee_is_active !== true) {
     return failure('DRIVER_EMPLOYEE_NOT_AVAILABLE', 'Trip driver must be linked to an active employee');
   }
-  const employee = await activeEmployeeById(adapter, requestContext, driver.employee_id);
-  if (!employee) return failure('DRIVER_EMPLOYEE_NOT_AVAILABLE', 'Trip driver employee is inactive or unavailable');
-  return Object.freeze({ ok: true, driver, employee });
+  return Object.freeze({ ok: true });
 }
 
 export async function listDriverEmployees(adapter, { requestContext, limit = 1000, offset = 0 }) {
-  const employees = await activeEmployees(adapter, requestContext, limit, offset);
-  const drivers = await logisticsRepository.listDrivers(adapter, {
+  const rows = await driverRepository.listAvailableDriverEmployees(adapter, {
     installationId: requestContext.installationId,
-    active: true,
-    limit: 1000,
-    offset: 0,
+    limit,
+    offset,
   });
-  const linkedEmployeeIds = new Set(drivers.map((driver) => driver.employee_id).filter(Boolean));
-  return Object.freeze({
-    ok: true,
-    employees: Object.freeze(employees
-      .filter((employee) => !linkedEmployeeIds.has(employee.id))
-      .map(employeeCandidate)),
-  });
+  return Object.freeze({ ok: true, employees: Object.freeze(rows.map(mapEmployee)) });
 }
 
-export async function listDriverProfiles(adapter, args) {
-  const result = await listDriverProfilesBase(adapter, args);
-  if (!result.ok || args.active !== true) return result;
-  const employees = await activeEmployees(adapter, args.requestContext, 10000, 0);
-  const activeEmployeeIds = new Set(employees.map((employee) => employee.id));
-  return Object.freeze({
-    ...result,
-    drivers: Object.freeze(result.drivers.filter((driver) => driver.employeeId && activeEmployeeIds.has(driver.employeeId))),
+export async function listDriverProfiles(adapter, { requestContext, active = null, limit = 200, offset = 0 }) {
+  const rows = await driverRepository.listDriverProfiles(adapter, {
+    installationId: requestContext.installationId,
+    active,
+    limit,
+    offset,
   });
+  return Object.freeze({ ok: true, drivers: Object.freeze(rows.map(mapDriver)) });
 }
 
 export async function createDriverProfile({ adapter, requestContext, payload }) {
-  const employeeId = typeof payload?.employeeId === 'string' ? payload.employeeId : '';
-  if (!UUID_PATTERN.test(employeeId)) {
-    return failure('INVALID_DRIVER_PROFILE', 'Driver profile requires a valid employee');
+  const employeeId = typeof payload?.employeeId === 'string' && UUID_PATTERN.test(payload.employeeId)
+    ? payload.employeeId
+    : null;
+  const licenseReference = trimText(payload?.licenseReference, 128);
+  if (!employeeId || licenseReference === undefined) {
+    return failure('INVALID_DRIVER_PROFILE', 'A canonical employee is required for the driver profile');
   }
-  const employee = await activeEmployeeById(adapter, requestContext, employeeId);
-  if (!employee) return failure('DRIVER_EMPLOYEE_NOT_AVAILABLE', 'Employee is inactive or unavailable');
-  const linked = await activeDriverByEmployee(adapter, requestContext, employeeId);
-  if (linked) return failure('DRIVER_EMPLOYEE_ALREADY_LINKED', 'Employee already has an active driver profile');
 
-  const canonicalPayload = {
-    employeeId,
-    code: employee.code,
-    name: employee.full_name,
-    phone: employee.phone ?? null,
-    licenseReference: payload?.licenseReference ?? null,
-  };
-  const result = await createDriverProfileBase({ adapter, requestContext, payload: canonicalPayload });
-  if (result.ok || result.code !== 'LOGISTICS_MASTER_TRANSACTION_FAILED') return result;
+  try {
+    const result = await withAuditOutboxTransaction({
+      adapter,
+      mutate: async (client) => {
+        await client.query(
+          'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+          [`${requestContext.installationId}:driver:${employeeId}`],
+        );
+        const employee = await employeeRepository.getEmployeeByIdForInstallationForShare(client, {
+          id: employeeId,
+          installationId: requestContext.installationId,
+        });
+        if (!employee || !employee.is_active) {
+          return Object.freeze({ failed: true, result: failure('DRIVER_EMPLOYEE_NOT_AVAILABLE', 'Employee is inactive or outside this installation') });
+        }
+        const duplicate = await driverRepository.findActiveDriverByEmployee(client, {
+          installationId: requestContext.installationId,
+          employeeId,
+        });
+        if (duplicate) {
+          return Object.freeze({ failed: true, result: failure('DRIVER_EMPLOYEE_ALREADY_LINKED', 'Employee already has an active driver profile') });
+        }
 
-  // Resolve races/DB guards back to a stable business error instead of leaking a retryable 503.
-  const employeeAfter = await activeEmployeeById(adapter, requestContext, employeeId);
-  if (!employeeAfter) return failure('DRIVER_EMPLOYEE_NOT_AVAILABLE', 'Employee is inactive or unavailable');
-  const linkedAfter = await activeDriverByEmployee(adapter, requestContext, employeeId);
-  if (linkedAfter) return failure('DRIVER_EMPLOYEE_ALREADY_LINKED', 'Employee already has an active driver profile');
-  return result;
+        const row = await planningRepository.insertDriver(client, {
+          id: randomUUID(),
+          installationId: requestContext.installationId,
+          code: employee.code,
+          employeeId: employee.id,
+          name: employee.full_name,
+          phone: employee.phone,
+          licenseReference,
+          actorId: requestContext.actorId,
+        });
+        const driver = mapDriver({
+          ...row,
+          employee_code: employee.code,
+          employee_name: employee.full_name,
+          employee_phone: employee.phone,
+        });
+        const action = 'core.driver_profile.created';
+        await insertAuditRecord(client, buildAuditRecord({
+          requestContext,
+          action,
+          resourceType: 'driver_profile',
+          resourceId: driver.id,
+          afterData: driver,
+          metadata: { employeeId },
+        }));
+        const outbox = buildOutboxEvent({
+          requestContext,
+          aggregateType: 'logistics.driver_profile',
+          aggregateId: driver.id,
+          eventType: action,
+          payload: driver,
+          metadata: { employeeId },
+        });
+        await insertOutboxEvent(client, outbox);
+        return Object.freeze({ driver, eventId: outbox.eventId });
+      },
+    });
+    if (result?.failed) return result.result;
+    return Object.freeze({ ok: true, driver_profile: result.driver });
+  } catch (error) {
+    if (error?.code === '23503') {
+      return failure('DRIVER_EMPLOYEE_NOT_AVAILABLE', 'Employee is inactive or outside this installation');
+    }
+    if (error?.code === '23505') {
+      return failure('DRIVER_PROFILE_CODE_CONFLICT', 'Canonical employee code conflicts with another driver profile');
+    }
+    return failure('LOGISTICS_MASTER_TRANSACTION_FAILED', 'Logistics master transaction failed', true);
+  }
 }
 
-async function transitionWithDriverEmployee(baseTransition, args) {
-  const validation = await validateTripDriverEmployee(args.adapter, args.requestContext, args.tripId);
-  if (!validation.ok) return validation;
-  const result = await baseTransition(args);
-  if (result.ok || result.code !== 'DELIVERY_TRIP_TRANSACTION_FAILED') return result;
-  const after = await validateTripDriverEmployee(args.adapter, args.requestContext, args.tripId);
-  return after.ok ? result : after;
+export async function planDeliveryTrip(args) {
+  const driverValidation = await validateTripDriver(args.adapter, args);
+  if (!driverValidation.ok) return driverValidation;
+  return planDeliveryTripBase(args);
 }
 
-export function planDeliveryTrip(args) {
-  return transitionWithDriverEmployee(planDeliveryTripBase, args);
-}
-
-export function lockDeliveryTrip(args) {
-  return transitionWithDriverEmployee(lockDeliveryTripBase, args);
+export async function lockDeliveryTrip(args) {
+  const driverValidation = await validateTripDriver(args.adapter, args);
+  if (!driverValidation.ok) return driverValidation;
+  return lockDeliveryTripBase(args);
 }
