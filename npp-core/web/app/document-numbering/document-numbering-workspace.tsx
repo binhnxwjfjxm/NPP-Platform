@@ -16,12 +16,14 @@ const DOCUMENT_TYPES = [
   { value: 'PURCHASE_ORDER', label: 'Đơn mua hàng' },
   { value: 'GOODS_RECEIPT', label: 'Phiếu nhập kho' },
   { value: 'GOODS_ISSUE', label: 'Phiếu xuất kho' },
-  { value: 'WAREHOUSE_TRANSFER', label: 'Phiếu chuyển kho' },
+  { value: 'DELIVERY_ORDER', label: 'Phiếu giao hàng' },
+  { value: 'INVENTORY_TRANSFER', label: 'Phiếu chuyển kho' },
   { value: 'INVENTORY_ADJUSTMENT', label: 'Phiếu điều chỉnh tồn kho' },
   { value: 'CUSTOMER_RETURN', label: 'Phiếu nhận hàng trả lại' },
   { value: 'SUPPLIER_RETURN', label: 'Phiếu trả hàng nhà cung cấp' },
-  { value: 'RECEIPT', label: 'Phiếu thu' },
-  { value: 'PAYMENT', label: 'Phiếu chi' },
+  { value: 'CUSTOMER_PAYMENT', label: 'Phiếu thu' },
+  { value: 'SUPPLIER_PAYMENT', label: 'Phiếu chi' },
+  { value: 'CUSTOMER_REFUND', label: 'Phiếu hoàn tiền khách hàng' },
   { value: 'INVOICE', label: 'Hóa đơn' },
 ] as const;
 
@@ -32,17 +34,11 @@ const RESET_POLICY_LABELS: Record<DocumentNumberSeriesForm['resetPolicy'], strin
 };
 
 const EMPTY_FORM: DocumentNumberSeriesForm = {
-  code: '',
   documentType: 'SALES_ORDER',
   name: '',
   prefix: 'SO-',
   numberTemplate: '{PREFIX}{YYYY}{MM}-{SEQ}',
   resetPolicy: 'MONTHLY',
-  sequenceWidth: '6',
-  startCounter: '1',
-  timezoneName: 'Asia/Ho_Chi_Minh',
-  description: '',
-  isActive: true,
 };
 
 function todayInVietnam() {
@@ -60,17 +56,11 @@ function documentTypeLabel(value: string) {
 
 function seriesToForm(series: DocumentNumberSeries): DocumentNumberSeriesForm {
   return {
-    code: series.code,
     documentType: series.document_type,
     name: series.name,
     prefix: series.prefix,
     numberTemplate: series.number_template,
     resetPolicy: series.reset_policy,
-    sequenceWidth: String(series.sequence_width),
-    startCounter: String(series.start_counter),
-    timezoneName: series.timezone_name,
-    description: series.description ?? '',
-    isActive: series.is_active,
   };
 }
 
@@ -113,7 +103,6 @@ export default function DocumentNumberingWorkspace() {
       if (activeFilter === 'inactive' && item.is_active) return false;
       if (!query) return true;
       return [
-        item.code,
         item.document_type,
         documentTypeLabel(item.document_type),
         item.name,
@@ -188,10 +177,11 @@ export default function DocumentNumberingWorkspace() {
     setNotice(null);
     try {
       const body = {
-        ...form,
-        sequenceWidth: Number(form.sequenceWidth),
-        startCounter: form.startCounter,
-        description: form.description || null,
+        documentType: form.documentType,
+        name: form.name,
+        prefix: form.prefix,
+        numberTemplate: form.numberTemplate,
+        resetPolicy: form.resetPolicy,
         ...(editing ? { expectedUpdatedAt: editing.updated_at } : {}),
       };
       const saved = editing
@@ -268,7 +258,7 @@ export default function DocumentNumberingWorkspace() {
   return (
     <AppShell
       title="Số chứng từ"
-      subtitle="Thiết lập quy tắc đánh số tự động theo từng loại chứng từ"
+      subtitle="Thiết lập cách đánh số tự động theo từng loại chứng từ"
       kicker="Quản lý chứng từ"
     >
       <main className={styles.workspace} data-testid="document-numbering-page">
@@ -276,7 +266,7 @@ export default function DocumentNumberingWorkspace() {
           <div>
             <span className={styles.eyebrow}>Thiết lập quy tắc</span>
             <h2>Quy tắc đánh số dùng chung</h2>
-            <p>Cấu hình cách tạo số theo từng loại chứng từ. Quy tắc đã phát sinh số sẽ giữ nguyên cấu trúc để bảo đảm lịch sử.</p>
+            <p>Mỗi loại chứng từ chỉ có một quy tắc đang sử dụng. Mã kỹ thuật do hệ thống quản lý tự động.</p>
           </div>
           <button type="button" className={styles.primaryButton} onClick={openCreate} data-testid="add-number-series-button">
             Thêm quy tắc
@@ -291,7 +281,7 @@ export default function DocumentNumberingWorkspace() {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Tìm mã, loại chứng từ hoặc tên quy tắc"
+              placeholder="Tìm loại chứng từ hoặc tên quy tắc"
               data-testid="number-series-search"
             />
             <select value={activeFilter} onChange={(event) => setActiveFilter(event.target.value as typeof activeFilter)}>
@@ -307,25 +297,24 @@ export default function DocumentNumberingWorkspace() {
           <div className={styles.tableWrapper}>
             <table className={styles.table}>
               <thead>
-                <tr><th>Mã</th><th>Loại chứng từ</th><th>Cấu trúc số</th><th>Chu kỳ</th><th>Số đã cấp</th><th>Trạng thái</th><th>Thao tác</th></tr>
+                <tr><th>Quy tắc</th><th>Cấu trúc số</th><th>Chu kỳ</th><th>Số đã cấp</th><th>Trạng thái</th><th>Thao tác</th></tr>
               </thead>
               <tbody>
                 {visibleSeries.map((item) => (
-                  <tr key={item.id} data-testid={`number-series-row-${item.code}`} className={selected?.id === item.id ? styles.selectedRow : undefined}>
-                    <td><strong>{item.code}</strong><small>{item.name}</small></td>
-                    <td>{documentTypeLabel(item.document_type)}</td>
+                  <tr key={item.id} data-testid={`number-series-row-${item.id}`} className={selected?.id === item.id ? styles.selectedRow : undefined}>
+                    <td><strong>{item.name}</strong><small>{documentTypeLabel(item.document_type)}</small></td>
                     <td><code>{item.number_template}</code>{item.format_locked ? <span className={styles.locked}>Đã cố định</span> : null}</td>
                     <td>{RESET_POLICY_LABELS[item.reset_policy]}</td>
                     <td>{item.allocation_count}</td>
                     <td>{item.is_active ? 'Đang sử dụng' : 'Đã ngừng'}</td>
                     <td className={styles.actions}>
-                      <button type="button" onClick={() => void selectSeries(item)} data-testid={`select-number-series-${item.code}`}>Chi tiết</button>
+                      <button type="button" onClick={() => void selectSeries(item)} data-testid={`select-number-series-${item.id}`}>Chi tiết</button>
                       <button type="button" onClick={() => openEdit(item)}>Sửa</button>
                       <button type="button" disabled={busy} onClick={() => void toggleActive(item)}>{item.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button>
                     </td>
                   </tr>
                 ))}
-                {visibleSeries.length === 0 ? <tr><td colSpan={7} className={styles.empty}>Chưa có quy tắc phù hợp</td></tr> : null}
+                {visibleSeries.length === 0 ? <tr><td colSpan={6} className={styles.empty}>Chưa có quy tắc phù hợp</td></tr> : null}
               </tbody>
             </table>
           </div>
@@ -335,7 +324,7 @@ export default function DocumentNumberingWorkspace() {
           <section className={styles.detailGrid} data-testid="number-series-detail">
             <div className={styles.panel}>
               <div className={styles.sectionHeader}>
-                <div><span className={styles.eyebrow}>Cấp số tham chiếu</span><h3>{selected.code} — {selected.name}</h3></div>
+                <div><span className={styles.eyebrow}>Cấp số tham chiếu</span><h3>{selected.name}</h3><small>{documentTypeLabel(selected.document_type)}</small></div>
                 <span className={selected.is_active ? styles.activeBadge : styles.inactiveBadge}>{selected.is_active ? 'Đang sử dụng' : 'Đã ngừng'}</span>
               </div>
               <p className={styles.warning}>
@@ -408,22 +397,21 @@ export default function DocumentNumberingWorkspace() {
 
         <Modal
           open={showForm}
-          title={editing ? `Sửa ${editing.code}` : 'Tạo quy tắc đánh số'}
-          description="Thiết lập cấu trúc số, chu kỳ đánh lại và số thứ tự bắt đầu."
+          title={editing ? `Sửa ${editing.name}` : 'Tạo quy tắc đánh số'}
+          description="Chọn loại chứng từ và cấu hình cách hiển thị số. Mã kỹ thuật được hệ thống tự quản lý."
           onClose={closeForm}
           testId="number-series-modal"
           size="large"
           footer={(
             <>
               <button type="button" className={styles.secondaryButton} disabled={busy} onClick={closeForm}>Hủy</button>
-              <button type="button" className={styles.primaryButton} disabled={busy || !form.code.trim() || !form.name.trim()} onClick={() => void saveSeries()} data-testid="save-number-series-button">Lưu quy tắc</button>
+              <button type="button" className={styles.primaryButton} disabled={busy || !form.name.trim()} onClick={() => void saveSeries()} data-testid="save-number-series-button">Lưu quy tắc</button>
             </>
           )}
         >
           {error ? <div className={styles.errorBanner} role="alert">{error}</div> : null}
           {editing?.format_locked ? <p className={styles.warning}>Cấu trúc số đã được cố định vì quy tắc này đã có lịch sử cấp số.</p> : null}
           <div className={styles.formGrid} data-testid="number-series-form">
-            <label>Mã quy tắc<input value={form.code} disabled={Boolean(editing)} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })} data-testid="number-series-code-input" /></label>
             <label>
               Loại chứng từ
               <select value={form.documentType} disabled={Boolean(editing)} onChange={(event) => setForm({ ...form, documentType: event.target.value })} data-testid="document-type-input">
@@ -446,12 +434,7 @@ export default function DocumentNumberingWorkspace() {
                 <option value="MONTHLY">Theo tháng</option>
               </select>
             </label>
-            <label>Số chữ số<input type="number" min="1" max="18" value={form.sequenceWidth} disabled={Boolean(editing?.format_locked)} onChange={(event) => setForm({ ...form, sequenceWidth: event.target.value })} data-testid="sequence-width-input" /></label>
-            <label>Số thứ tự bắt đầu<input value={form.startCounter} disabled={Boolean(editing?.format_locked)} onChange={(event) => setForm({ ...form, startCounter: event.target.value })} data-testid="start-counter-input" /></label>
-            <label>Múi giờ<input value={form.timezoneName} disabled={Boolean(editing?.format_locked)} onChange={(event) => setForm({ ...form, timezoneName: event.target.value })} /></label>
-            <label className={styles.wide}>Mô tả<textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
           </div>
-          <label className={styles.check}><input type="checkbox" checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} /> Đang sử dụng</label>
         </Modal>
       </main>
     </AppShell>

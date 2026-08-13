@@ -2,6 +2,22 @@ import { randomUUID } from 'node:crypto';
 
 const MAX_COUNTER = 999999999999999999n;
 
+const LEGACY_SERIES_CODE_TO_DOCUMENT_TYPE = Object.freeze({
+  SALES_ORDER: 'SALES_ORDER',
+  PURCHASE_ORDER: 'PURCHASE_ORDER',
+  PURCHASE_RECEIPT: 'GOODS_RECEIPT',
+  DELIVERY_ORDER: 'DELIVERY_ORDER',
+  INVENTORY_TRANSFER: 'INVENTORY_TRANSFER',
+  INVENTORY_ADJUSTMENT: 'INVENTORY_ADJUSTMENT',
+  CUSTOMER_RETURN: 'CUSTOMER_RETURN',
+  SUPPLIER_RETURN: 'SUPPLIER_RETURN',
+  CUSTOMER_PAYMENT: 'CUSTOMER_PAYMENT',
+  SUPPLIER_PAYMENT: 'SUPPLIER_PAYMENT',
+  CUSTOMER_REFUND: 'CUSTOMER_REFUND',
+  GOODS_ISSUE: 'GOODS_ISSUE',
+  INVOICE: 'INVOICE',
+});
+
 const SERIES_COLUMNS = `dns.id, dns.installation_id, dns.code, dns.document_type, dns.name,
   dns.prefix, dns.number_template, dns.reset_policy, dns.sequence_width, dns.start_counter,
   dns.timezone_name, dns.description, dns.is_active, dns.created_at, dns.updated_at,
@@ -55,7 +71,7 @@ export async function listDocumentNumberSeries(client, {
     query += ` AND (dns.code ILIKE $${params.length} OR dns.name ILIKE $${params.length} OR dns.document_type ILIKE $${params.length})`;
   }
   params.push(limit, offset);
-  query += ` ORDER BY dns.document_type, dns.code LIMIT $${params.length - 1} OFFSET $${params.length}`;
+  query += ` ORDER BY dns.document_type, dns.is_active DESC, dns.created_at DESC, dns.id LIMIT $${params.length - 1} OFFSET $${params.length}`;
   return (await client.query(query, params)).rows;
 }
 
@@ -69,14 +85,47 @@ export async function getDocumentNumberSeriesById(client, { installationId, id, 
   return result.rows[0] ?? null;
 }
 
-export async function getDocumentNumberSeriesByCode(client, { installationId, code, forUpdate = false }) {
+export async function getActiveDocumentNumberSeriesByType(client, {
+  installationId,
+  documentType,
+  excludeId = null,
+  forUpdate = false,
+}) {
   const result = await client.query(
     `SELECT ${SERIES_COLUMNS}
-     FROM shared.document_number_series dns
-     WHERE dns.installation_id = $1 AND dns.code = $2${forUpdate ? ' FOR UPDATE OF dns' : ''}`,
+       FROM shared.document_number_series dns
+      WHERE dns.installation_id = $1
+        AND dns.document_type = $2
+        AND dns.is_active = true
+        AND ($3::uuid IS NULL OR dns.id <> $3)
+      ORDER BY dns.created_at ASC, dns.id ASC
+      LIMIT 1${forUpdate ? ' FOR UPDATE OF dns' : ''}`,
+    [installationId, documentType, excludeId],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function getDocumentNumberSeriesByExactCode(client, { installationId, code, forUpdate = false }) {
+  const result = await client.query(
+    `SELECT ${SERIES_COLUMNS}
+       FROM shared.document_number_series dns
+      WHERE dns.installation_id = $1
+        AND dns.code = $2${forUpdate ? ' FOR UPDATE OF dns' : ''}`,
     [installationId, code],
   );
   return result.rows[0] ?? null;
+}
+
+export async function getDocumentNumberSeriesByCode(client, { installationId, code, forUpdate = false }) {
+  const mappedDocumentType = LEGACY_SERIES_CODE_TO_DOCUMENT_TYPE[code] ?? null;
+  if (mappedDocumentType) {
+    return getActiveDocumentNumberSeriesByType(client, {
+      installationId,
+      documentType: mappedDocumentType,
+      forUpdate,
+    });
+  }
+  return getDocumentNumberSeriesByExactCode(client, { installationId, code, forUpdate });
 }
 
 export async function insertDocumentNumberSeries(client, data) {
