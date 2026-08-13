@@ -37,11 +37,13 @@ function closeServer(server) {
   return new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
 }
 
-async function seedWarehouse(pool, installationId) {
+async function seedPlanningFixture(pool, installationId) {
   const actor = 'test:lifecycle-fixture';
   const suffix = randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase();
   const branchId = randomUUID();
   const warehouseId = randomUUID();
+  const vehicleId = randomUUID();
+  const driverId = randomUUID();
   await pool.query(
     `INSERT INTO shared.branches
       (id, installation_id, code, name, is_active, created_by, updated_by)
@@ -54,7 +56,20 @@ async function seedWarehouse(pool, installationId) {
      VALUES ($1,$2,$3,$4,$5,'main',true,$6,$6)`,
     [warehouseId, installationId, branchId, `WH-${suffix}`, `Kho ${suffix}`, actor],
   );
-  return warehouseId;
+  await pool.query(
+    `INSERT INTO logistics.vehicles
+      (id, installation_id, code, license_plate, vehicle_type, operational_status,
+       is_active, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,'Xe tải','AVAILABLE',true,$5,$5)`,
+    [vehicleId, installationId, `XE-${suffix}`, `PLATE-${suffix}`, actor],
+  );
+  await pool.query(
+    `INSERT INTO logistics.driver_profiles
+      (id, installation_id, code, employee_id, name, is_active, created_by, updated_by)
+     VALUES ($1,$2,$3,NULL,$4,true,$5,$5)`,
+    [driverId, installationId, `DRV-${suffix}`, `Tài xế ${suffix}`, actor],
+  );
+  return { warehouseId, vehicleId, driverId };
 }
 
 async function mutate(baseUrl, config, tripId, action, payload, key) {
@@ -70,7 +85,7 @@ test('G1 lifecycle makes planned read-only until reopen and keeps locked immutab
   const pool = getPool(config);
   let server;
   try {
-    const warehouseId = await seedWarehouse(pool, config.installationId);
+    const { warehouseId, vehicleId, driverId } = await seedPlanningFixture(pool, config.installationId);
     server = await startServer({ config });
     const baseUrl = `http://${config.host}:${config.port}`;
 
@@ -80,8 +95,8 @@ test('G1 lifecycle makes planned read-only until reopen and keeps locked immutab
       body: JSON.stringify({
         warehouseId,
         deliveryRouteId: null,
-        vehicleId: null,
-        primaryDriverId: null,
+        vehicleId,
+        primaryDriverId: driverId,
         plannedStartAt: null,
         note: 'G1 draft',
       }),
@@ -149,8 +164,8 @@ test('G1 lifecycle makes planned read-only until reopen and keeps locked immutab
 
     const updated = await mutate(baseUrl, config, tripId, '', {
       deliveryRouteId: null,
-      vehicleId: null,
-      primaryDriverId: null,
+      vehicleId,
+      primaryDriverId: driverId,
       plannedStartAt: null,
       note: 'edit after reopen',
     }, `update-draft-${randomUUID()}`);
