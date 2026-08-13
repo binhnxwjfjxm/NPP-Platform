@@ -1,12 +1,14 @@
 import Link from 'next/link';
 import { AppShell } from '../components/app-shell';
-import { DashboardOperations, type DashboardStructureMetric } from './dashboard-operations';
+import { DashboardOperations } from './dashboard-operations';
+import type { DashboardReports, DashboardStructureMetric } from './dashboard-report-types';
 import styles from './dashboard.module.css';
 import { loadOrganizationSnapshot } from '../../lib/organization-snapshot';
-import {
-  createEmptyOrganizationSnapshot,
-  formatCompactNumber,
-} from '../../lib/organization-types';
+import { createEmptyOrganizationSnapshot, formatCompactNumber } from '../../lib/organization-types';
+import { getReportingDashboard, resolveReportingRequestId } from '../../lib/reporting-dashboard-gateway';
+import { getInventoryReportingDashboard, resolveInventoryReportingRequestId } from '../../lib/inventory-reporting-gateway';
+import { getLogisticsDashboard, resolveLogisticsReportingRequestId } from '../../lib/logistics-reporting-gateway';
+import { getAgingDashboard, resolveFinanceReportingRequestId } from '../../lib/finance-reporting-gateway';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,6 +86,23 @@ function ShortcutGlyph({ icon }: { icon: ShortcutIcon }) {
   );
 }
 
+async function loadDashboardReports(): Promise<{ reports: DashboardReports; errors: string[] }> {
+  const [sales, inventory, logistics, aging] = await Promise.allSettled([
+    getReportingDashboard('sales', resolveReportingRequestId(null)),
+    getInventoryReportingDashboard(resolveInventoryReportingRequestId(null)),
+    getLogisticsDashboard(resolveLogisticsReportingRequestId(null)),
+    getAgingDashboard(resolveFinanceReportingRequestId(null)),
+  ]);
+
+  const reports: DashboardReports = {};
+  const errors: string[] = [];
+  if (sales.status === 'fulfilled') reports.sales = sales.value; else errors.push('bán hàng');
+  if (inventory.status === 'fulfilled') reports.inventory = inventory.value; else errors.push('tồn kho');
+  if (logistics.status === 'fulfilled') reports.logistics = logistics.value; else errors.push('giao hàng');
+  if (aging.status === 'fulfilled') reports.aging = aging.value; else errors.push('công nợ');
+  return { reports, errors };
+}
+
 export default async function DashboardPage() {
   let snapshot = createEmptyOrganizationSnapshot();
   let initialError: string | null = null;
@@ -94,6 +113,7 @@ export default async function DashboardPage() {
     initialError = error instanceof Error ? error.message : 'Không tải được dữ liệu tổng quan';
   }
 
+  const { reports, errors: reportErrors } = await loadDashboardReports();
   const metrics: readonly DashboardStructureMetric[] = [
     {
       id: 'branches',
@@ -124,11 +144,11 @@ export default async function DashboardPage() {
       <main className={styles.page} data-testid="dashboard-launchpad-page">
         {initialError ? (
           <div className={styles.dataNotice} role="status" data-testid="dashboard-kpi-stale">
-            KPI cơ cấu chưa cập nhật: {initialError}. Các lối tắt nghiệp vụ và báo cáo canonical vẫn sử dụng bình thường.
+            KPI cơ cấu chưa cập nhật: {initialError}. Các lối tắt nghiệp vụ vẫn sử dụng bình thường.
           </div>
         ) : null}
 
-        <DashboardOperations structureMetrics={metrics}>
+        <DashboardOperations structureMetrics={metrics} reports={reports} reportErrors={reportErrors}>
           <section className={styles.launchpad} aria-labelledby="dashboard-launchpad-title">
             <div className={styles.sectionHeading}>
               <div>
@@ -162,7 +182,7 @@ export default async function DashboardPage() {
         </DashboardOperations>
 
         <p className={styles.sourceNote}>
-          Chỉ số cơ cấu: {formatCompactNumber(metrics.reduce((sum, metric) => sum + metric.active, 0))} điểm đang hoạt động. Số liệu đo lường bên dưới đọc từ các reporting read-model canonical hiện có.
+          Chỉ số cơ cấu: {formatCompactNumber(metrics.reduce((sum, metric) => sum + metric.active, 0))} điểm đang hoạt động. Các card đo lường chỉ hiển thị dữ liệu reporting canonical mà tài khoản hiện tại được phép đọc.
         </p>
       </main>
     </AppShell>
