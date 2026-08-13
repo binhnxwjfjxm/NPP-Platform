@@ -488,6 +488,7 @@ async function mutateTrip({
   operationType,
   eventType,
   reason = null,
+  allowedStatuses = ['draft'],
   mutate,
 }) {
   if (!UUID_PATTERN.test(String(tripId ?? ''))) return failure('INVALID_TRIP_ID', 'Trip id is invalid');
@@ -518,8 +519,11 @@ async function mutateTrip({
           const detail = await loadTripDetail(client, { requestContext, tripId });
           return { ...detail, replayed: true, skipAudit: true };
         }
-        if (before.trip.status === 'locked') {
-          return { failed: true, result: failure('DELIVERY_TRIP_LOCKED', 'Locked trip cannot be changed') };
+        if (Array.isArray(allowedStatuses) && !allowedStatuses.includes(before.trip.status)) {
+          if (before.trip.status === 'locked') {
+            return { failed: true, result: failure('DELIVERY_TRIP_LOCKED', 'Locked trip cannot be changed') };
+          }
+          return { failed: true, result: failure('DELIVERY_TRIP_NOT_EDITABLE', 'Planned trip is read-only; reopen it before making changes') };
         }
         await setWriteContext(client);
         const mutation = await mutate(client, before.trip);
@@ -689,6 +693,7 @@ function transition(args, expectedStatus, nextStatus, eventType, reason = null) 
     operationType: eventType,
     eventType,
     reason,
+    allowedStatuses: null,
     mutate: async (client, trip) => {
       if (trip.status !== expectedStatus) {
         return failure('INVALID_TRIP_STATUS_TRANSITION', `Trip must be ${expectedStatus} before ${nextStatus}`);

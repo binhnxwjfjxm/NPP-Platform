@@ -402,7 +402,7 @@ export async function updateTripPlan(client, values) {
             revision = revision + 1,
             updated_at = now(),
             updated_by = $8
-      WHERE installation_id = $1 AND id = $2 AND status IN ('draft', 'planned')
+      WHERE installation_id = $1 AND id = $2 AND status = 'draft'
       RETURNING *`,
     [
       values.installationId,
