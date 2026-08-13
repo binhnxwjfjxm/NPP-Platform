@@ -68,7 +68,7 @@ test.describe('Core web route smoke', () => {
     await expectHealthyRoute(page, '/dashboard');
     await expect(page.getByTestId('dashboard-launchpad-page')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Tổng quan điều hành', exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Phiếu nhận hàng', exact: true })).toHaveAttribute('href', '/purchasing/goods-receipts');
+    await expect(page.getByTestId('dashboard-shortcut-purchasing-goods-receipts')).toHaveAttribute('href', '/purchasing/goods-receipts');
     await expect(page.getByText('Hưng Phát Company')).toBeVisible();
     await expect(page.getByTestId('app-sidebar')).toHaveCSS('position', 'fixed');
     expectNoSensitiveData(await page.content());
