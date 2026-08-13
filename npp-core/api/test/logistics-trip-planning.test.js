@@ -59,7 +59,7 @@ test('database guards active assignment, eligible Delivery Order and locked trip
 });
 
 test('stop reorder is atomic and does not write invalid temporary sequences', () => {
-  assert.match(repositorySource, /SET CONSTRAINTS trip_stops_sequence_unique DEFERRED/);
+  assert.match(repositorySource, /SET CONSTRAINTS logistics\.trip_stops_sequence_unique DEFERRED/);
   assert.doesNotMatch(repositorySource, /stop_sequence = -stop_sequence/);
 });
 
