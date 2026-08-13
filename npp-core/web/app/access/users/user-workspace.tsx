@@ -1,5 +1,6 @@
 'use client';
 
+import { createIdempotencyKey } from '@npp/contracts';
 import { useMemo, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import styles from './user-workspace.module.css';
@@ -43,6 +44,9 @@ class ApiRequestError extends Error {
   }
 }
 
+const IDEMPOTENCY_INTENT_CACHE_LIMIT = 256;
+const idempotencyKeys = new Map<string, string>();
+
 function joinClasses(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(' ');
 }
@@ -61,9 +65,18 @@ function sameIds(left: string[], right: string[]) {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-function idempotencyKey(suffix: string) {
-  const random = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
-  return `web-${suffix}-${Date.now()}-${random}`;
+function keyFor(operation: string, resourceId: string, payload: unknown): string {
+  const fingerprint = JSON.stringify(payload);
+  const intent = `${operation}:${resourceId}:${fingerprint}`;
+  const existing = idempotencyKeys.get(intent);
+  if (existing) return existing;
+  const key = createIdempotencyKey(`access-user-${operation}`);
+  if (idempotencyKeys.size >= IDEMPOTENCY_INTENT_CACHE_LIMIT) {
+    const oldest = idempotencyKeys.keys().next().value;
+    if (oldest) idempotencyKeys.delete(oldest);
+  }
+  idempotencyKeys.set(intent, key);
+  return key;
 }
 
 function passwordIsValid(password: string) {
@@ -240,23 +253,25 @@ export default function UserWorkspace({
     let created: AccessUser | null = null;
     try {
       // New accounts stay disabled until role + credential provisioning finishes.
+      const createPayload = {
+        loginName: draft.loginName,
+        employeeId: draft.employeeId,
+        isActive: false,
+      };
       created = await requestJson<AccessUser>('/api/access/users', {
         method: 'POST',
-        body: JSON.stringify({
-          loginName: draft.loginName,
-          employeeId: draft.employeeId,
-          isActive: false,
-        }),
-        headers: { 'Idempotency-Key': idempotencyKey('user-create') },
+        body: JSON.stringify(createPayload),
+        headers: { 'Idempotency-Key': keyFor('create', draft.employeeId, createPayload) },
       });
 
+      const rolesPayload = {
+        roleIds: sortedIds(draft.roleIds),
+        expectedUpdatedAt: created.updated_at,
+      };
       let latest = await requestJson<AccessUser>(`/api/access/users/${created.id}/roles`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          roleIds: sortedIds(draft.roleIds),
-          expectedUpdatedAt: created.updated_at,
-        }),
-        headers: { 'Idempotency-Key': idempotencyKey('user-roles') },
+        body: JSON.stringify(rolesPayload),
+        headers: { 'Idempotency-Key': keyFor('roles', created.id, rolesPayload) },
       });
 
       await requestJson<CredentialResult>(`/api/access/users/${created.id}/credential`, {
@@ -265,13 +280,14 @@ export default function UserWorkspace({
       });
 
       if (draft.isActive) {
+        const statusPayload = {
+          isActive: true,
+          expectedUpdatedAt: latest.updated_at,
+        };
         latest = await requestJson<AccessUser>(`/api/access/users/${created.id}`, {
           method: 'PATCH',
-          body: JSON.stringify({
-            isActive: true,
-            expectedUpdatedAt: latest.updated_at,
-          }),
-          headers: { 'Idempotency-Key': idempotencyKey('user-activate') },
+          body: JSON.stringify(statusPayload),
+          headers: { 'Idempotency-Key': keyFor('status', created.id, statusPayload) },
         });
       }
 
@@ -328,13 +344,14 @@ export default function UserWorkspace({
       let changed = false;
 
       if (!sameIds(draft.roleIds, original.role_ids ?? [])) {
+        const rolesPayload = {
+          roleIds: sortedIds(draft.roleIds),
+          expectedUpdatedAt: latest.updated_at,
+        };
         latest = await requestJson<AccessUser>(`/api/access/users/${original.id}/roles`, {
           method: 'PATCH',
-          body: JSON.stringify({
-            roleIds: sortedIds(draft.roleIds),
-            expectedUpdatedAt: latest.updated_at,
-          }),
-          headers: { 'Idempotency-Key': idempotencyKey('user-roles') },
+          body: JSON.stringify(rolesPayload),
+          headers: { 'Idempotency-Key': keyFor('roles', original.id, rolesPayload) },
         });
         setUsers((current) => current.map((user) => (user.id === latest.id ? latest : user)));
         changed = true;
@@ -349,13 +366,14 @@ export default function UserWorkspace({
       }
 
       if (draft.isActive !== latest.is_active) {
+        const statusPayload = {
+          isActive: draft.isActive,
+          expectedUpdatedAt: latest.updated_at,
+        };
         latest = await requestJson<AccessUser>(`/api/access/users/${original.id}`, {
           method: 'PATCH',
-          body: JSON.stringify({
-            isActive: draft.isActive,
-            expectedUpdatedAt: latest.updated_at,
-          }),
-          headers: { 'Idempotency-Key': idempotencyKey('user-status') },
+          body: JSON.stringify(statusPayload),
+          headers: { 'Idempotency-Key': keyFor('status', original.id, statusPayload) },
         });
         setUsers((current) => current.map((user) => (user.id === latest.id ? latest : user)));
         changed = true;
@@ -382,13 +400,14 @@ export default function UserWorkspace({
     setNotice(null);
     setConflict(false);
     try {
+      const statusPayload = {
+        isActive: toggleState.nextActive,
+        expectedUpdatedAt: user.updated_at,
+      };
       const updated = await requestJson<AccessUser>(`/api/access/users/${user.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          isActive: toggleState.nextActive,
-          expectedUpdatedAt: user.updated_at,
-        }),
-        headers: { 'Idempotency-Key': idempotencyKey('user-toggle') },
+        body: JSON.stringify(statusPayload),
+        headers: { 'Idempotency-Key': keyFor('status', user.id, statusPayload) },
       });
       setUsers((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setNotice(toggleState.nextActive ? 'Đã kích hoạt người dùng.' : 'Đã ngừng sử dụng người dùng.');
