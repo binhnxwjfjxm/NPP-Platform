@@ -46,15 +46,9 @@ export type DocumentNumberHistory = {
 };
 
 export type DocumentNumberSeriesForm = {
-  code: string;
   documentType: string;
   name: string;
   prefix: string;
   numberTemplate: string;
   resetPolicy: DocumentNumberResetPolicy;
-  sequenceWidth: string;
-  startCounter: string;
-  timezoneName: string;
-  description: string;
-  isActive: boolean;
 };

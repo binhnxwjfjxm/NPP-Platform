@@ -5,10 +5,12 @@ on:
     paths:
       - "database/migrations/shared/015_document_numbering.sql"
       - "database/migrations/shared/016_permission_catalog_alignment.sql"
+      - "database/migrations/shared/077_document_numbering_active_series.sql"
       - "npp-core/api/src/audit-outbox.js"
       - "npp-core/api/src/db/repositories/document-numbering.js"
       - "npp-core/api/src/services/document-numbering*.js"
       - "npp-core/api/src/routes/document-numbering.js"
+      - "npp-core/api/src/migrations/index.js"
       - "npp-core/api/test/document-numbering*.test.js"
       - "npp-core/api/test/audit-outbox-replay.test.js"
       - "npp-core/api/package.json"
@@ -25,10 +27,12 @@ on:
     paths:
       - "database/migrations/shared/015_document_numbering.sql"
       - "database/migrations/shared/016_permission_catalog_alignment.sql"
+      - "database/migrations/shared/077_document_numbering_active_series.sql"
       - "npp-core/api/src/audit-outbox.js"
       - "npp-core/api/src/db/repositories/document-numbering.js"
       - "npp-core/api/src/services/document-numbering*.js"
       - "npp-core/api/src/routes/document-numbering.js"
+      - "npp-core/api/src/migrations/index.js"
       - "npp-core/api/test/document-numbering*.test.js"
       - "npp-core/api/test/audit-outbox-replay.test.js"
       - "npp-core/api/package.json"
@@ -130,7 +134,7 @@ jobs:
             "pack": "document-numbering",
             "commitSha": "${EVIDENCE_SHA}",
             "databaseTarget": "ephemeral-postgresql-16",
-            "migrationSet": "002-016",
+            "migrationSet": "002-077",
             "workflowRunId": "${GITHUB_RUN_ID}",
             "productionAssumptionReused": false
           }

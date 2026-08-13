@@ -10,7 +10,7 @@ function apiError(code, message, details = {}, retryable = false, statusCode = 5
 
 function statusFor(result) {
   if (result.code === 'NOT_FOUND') return 404;
-  if (['DUPLICATE_CODE', 'CONFLICT', 'FORMAT_LOCKED', 'SERIES_INACTIVE',
+  if (['DUPLICATE_CODE', 'ACTIVE_SERIES_EXISTS', 'CONFLICT', 'FORMAT_LOCKED', 'SERIES_INACTIVE',
     'SEQUENCE_OVERFLOW', 'DOCUMENT_NUMBER_CONFLICT', 'IMMUTABLE_IDENTITY',
     'IDEMPOTENCY_PAYLOAD_MISMATCH'].includes(result.code)) return 409;
   return 400;

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import * as repository from '../db/repositories/document-numbering.js';
 
 const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
@@ -9,6 +10,22 @@ const SUPPORTED_TOKENS = new Set(['{PREFIX}', '{YYYY}', '{YY}', '{MM}', '{SEQ}']
 const RESET_POLICIES = new Set(['NONE', 'YEARLY', 'MONTHLY']);
 const MAX_COUNTER = 999999999999999999n;
 const MAX_ALLOCATABLE_COUNTER = MAX_COUNTER - 1n;
+
+const STANDARD_DOCUMENT_TYPE_CODES = Object.freeze({
+  SALES_ORDER: 'SALES_ORDER',
+  PURCHASE_ORDER: 'PURCHASE_ORDER',
+  GOODS_RECEIPT: 'PURCHASE_RECEIPT',
+  DELIVERY_ORDER: 'DELIVERY_ORDER',
+  INVENTORY_TRANSFER: 'INVENTORY_TRANSFER',
+  INVENTORY_ADJUSTMENT: 'INVENTORY_ADJUSTMENT',
+  CUSTOMER_RETURN: 'CUSTOMER_RETURN',
+  SUPPLIER_RETURN: 'SUPPLIER_RETURN',
+  CUSTOMER_PAYMENT: 'CUSTOMER_PAYMENT',
+  SUPPLIER_PAYMENT: 'SUPPLIER_PAYMENT',
+  CUSTOMER_REFUND: 'CUSTOMER_REFUND',
+  GOODS_ISSUE: 'GOODS_ISSUE',
+  INVOICE: 'INVOICE',
+});
 
 function failure(code, message, retryable = false) {
   return Object.freeze({ ok: false, code, message, retryable });
@@ -30,6 +47,13 @@ function normalizeCode(value) {
 function normalizeDocumentType(value) {
   const normalized = String(value ?? '').trim().toUpperCase();
   return DOCUMENT_TYPE_PATTERN.test(normalized) ? normalized : null;
+}
+
+function systemSeriesCode(documentType) {
+  const base = STANDARD_DOCUMENT_TYPE_CODES[documentType] ?? null;
+  if (!base) return null;
+  const suffix = randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase();
+  return `${base}_${suffix}`;
 }
 
 function normalizePrefix(value) {
@@ -205,14 +229,13 @@ function validatePublicPayload(payload, existing = null) {
       : existing?.number_template ?? '{PREFIX}{YYYY}{MM}-{SEQ}',
   );
 
-  // Syntax and reset-policy errors keep their original precedence in validateSeriesPayload.
   if (!resetPolicy || !numberTemplate) return null;
   return validateResetTemplate(resetPolicy, numberTemplate);
 }
 
 function validateSeriesPayload(payload, existing = null) {
-  const code = existing?.code ?? normalizeCode(payload.code);
   const documentType = existing?.document_type ?? normalizeDocumentType(payload.documentType);
+  const code = existing?.code ?? systemSeriesCode(documentType) ?? normalizeCode(payload.code);
   const name = cleanText(payload.name ?? existing?.name, 256, { required: true });
   const prefix = normalizePrefix(payload.prefix ?? existing?.prefix ?? '');
   const numberTemplate = normalizeTemplate(payload.numberTemplate ?? existing?.number_template ?? '{PREFIX}{YYYY}{MM}-{SEQ}');
@@ -223,8 +246,8 @@ function validateSeriesPayload(payload, existing = null) {
   const descriptionSource = Object.prototype.hasOwnProperty.call(payload, 'description') ? payload.description : existing?.description;
   const description = cleanText(descriptionSource, 2000);
   const isActive = normalizeBoolean(payload.isActive, existing?.is_active ?? true);
-  if (!code) return failure('INVALID_CODE', 'Series code is invalid');
   if (!documentType) return failure('INVALID_DOCUMENT_TYPE', 'Document type is invalid');
+  if (!code) return failure('INVALID_CODE', 'Series code is invalid');
   if (!name) return failure('INVALID_NAME', 'Series name is required');
   if (prefix === null) return failure('INVALID_PREFIX', 'Prefix is invalid');
   if (!numberTemplate) return failure('INVALID_TEMPLATE', 'Number template is invalid');
@@ -251,6 +274,13 @@ function formatChanged(existing, next) {
     || existing.timezone_name !== next.timezoneName;
 }
 
+function activeSeriesExistsFailure() {
+  return failure(
+    'ACTIVE_SERIES_EXISTS',
+    'Loại chứng từ này đã có một quy tắc đang sử dụng. Hãy ngừng quy tắc hiện tại trước khi tạo hoặc kích hoạt quy tắc khác.',
+  );
+}
+
 export async function listDocumentNumberSeries(client, input) {
   const documentType = input.documentType ? normalizeDocumentType(input.documentType) : undefined;
   if (input.documentType && !documentType) return failure('INVALID_DOCUMENT_TYPE', 'Document type is invalid');
@@ -268,13 +298,33 @@ export async function createDocumentNumberSeries(client, { installationId, paylo
   if (publicValidation) return publicValidation;
   const validation = validateSeriesPayload(payload ?? {});
   if (!validation.ok) return validation;
+
+  if (validation.value.isActive) {
+    const currentActive = await repository.getActiveDocumentNumberSeriesByType(client, {
+      installationId,
+      documentType: validation.value.documentType,
+    });
+    if (currentActive) return activeSeriesExistsFailure();
+  }
+
   const series = await repository.insertDocumentNumberSeries(client, {
     installationId,
     ...validation.value,
     createdBy,
   });
   if (series) return Object.freeze({ ok: true, series });
-  const duplicate = await repository.getDocumentNumberSeriesByCode(client, { installationId, code: validation.value.code });
+
+  if (validation.value.isActive) {
+    const active = await repository.getActiveDocumentNumberSeriesByType(client, {
+      installationId,
+      documentType: validation.value.documentType,
+    });
+    if (active) return activeSeriesExistsFailure();
+  }
+  const duplicate = await repository.getDocumentNumberSeriesByExactCode(client, {
+    installationId,
+    code: validation.value.code,
+  });
   return duplicate ? failure('DUPLICATE_CODE', 'Series code already exists') : failure('CONFLICT', 'Series could not be created', true);
 }
 
@@ -296,15 +346,28 @@ export async function updateDocumentNumberSeries(client, { installationId, id, p
   if (existing.format_locked && formatChanged(existing, validation.value)) {
     return failure('FORMAT_LOCKED', 'Series format is locked after the first allocation; create a new series instead');
   }
-  const series = await repository.updateDocumentNumberSeries(client, {
-    installationId,
-    id,
-    ...validation.value,
-    expectedUpdatedAt,
-    updatedBy,
-  });
-  if (!series) return failure('CONFLICT', 'Series was changed by another request', true);
-  return Object.freeze({ ok: true, series, beforeData: existing, action: 'update' });
+  if (validation.value.isActive && !existing.is_active) {
+    const currentActive = await repository.getActiveDocumentNumberSeriesByType(client, {
+      installationId,
+      documentType: existing.document_type,
+      excludeId: existing.id,
+    });
+    if (currentActive) return activeSeriesExistsFailure();
+  }
+  try {
+    const series = await repository.updateDocumentNumberSeries(client, {
+      installationId,
+      id,
+      ...validation.value,
+      expectedUpdatedAt,
+      updatedBy,
+    });
+    if (!series) return failure('CONFLICT', 'Series was changed by another request', true);
+    return Object.freeze({ ok: true, series, beforeData: existing, action: 'update' });
+  } catch (error) {
+    if (error?.code === '23505' && validation.value.isActive) return activeSeriesExistsFailure();
+    throw error;
+  }
 }
 
 export async function listDocumentNumberAllocations(client, input) {
@@ -393,4 +456,6 @@ export const documentNumberingInternals = Object.freeze({
   normalizeTemplate,
   validateResetTemplate,
   validatePublicPayload,
+  systemSeriesCode,
+  STANDARD_DOCUMENT_TYPE_CODES,
 });

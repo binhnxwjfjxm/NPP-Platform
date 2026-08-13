@@ -4,37 +4,46 @@ function suffix() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`.toUpperCase();
 }
 
-test('document numbering admin creates, allocates, replays and locks a series', async ({ page }) => {
+test('document numbering admin uses system identity, enforces one active series and preserves format lock', async ({ page }) => {
   const id = suffix();
-  const code = `SO-${id}`;
+  const name = `Hóa đơn E2E ${id}`;
   const key = `e2e-number-${id}`;
 
   await page.goto('/document-numbering');
   await expect(page.getByTestId('document-numbering-page')).toBeVisible();
 
   await page.getByTestId('add-number-series-button').click();
-  await page.getByTestId('number-series-code-input').fill(code);
-  await page.getByTestId('document-type-input').selectOption('SALES_ORDER');
-  await page.getByTestId('number-series-name-input').fill(`Đơn bán E2E ${id}`);
-  await page.getByTestId('number-prefix-input').fill('SO-');
+  await expect(page.getByTestId('number-series-code-input')).toHaveCount(0);
+  await page.getByTestId('document-type-input').selectOption('INVOICE');
+  await page.getByTestId('number-series-name-input').fill(name);
+  await page.getByTestId('number-prefix-input').fill('IV-');
   await page.getByTestId('number-template-input').fill('{PREFIX}{YYYY}{MM}-{SEQ}');
   await page.getByTestId('reset-policy-select').selectOption('MONTHLY');
-  await page.getByTestId('sequence-width-input').fill('6');
-  await page.getByTestId('start-counter-input').fill('1');
   await page.getByTestId('save-number-series-button').click();
 
-  const row = page.getByTestId(`number-series-row-${code}`);
+  const row = page.getByRole('row').filter({ hasText: name }).first();
   await expect(row).toBeVisible();
   await expect(page.getByTestId('numbering-notice')).toContainText('Đã tạo quy tắc đánh số');
+  await expect(row).not.toContainText(/INVOICE_[0-9A-F]{8}/);
 
-  await row.getByTestId(`select-number-series-${code}`).click();
+  await page.getByTestId('add-number-series-button').click();
+  await page.getByTestId('document-type-input').selectOption('INVOICE');
+  await page.getByTestId('number-series-name-input').fill(`Hóa đơn trùng ${id}`);
+  await page.getByTestId('number-prefix-input').fill('IV2-');
+  await page.getByTestId('number-template-input').fill('{PREFIX}{YYYY}{MM}-{SEQ}');
+  await page.getByTestId('reset-policy-select').selectOption('MONTHLY');
+  await page.getByTestId('save-number-series-button').click();
+  await expect(page.getByTestId('number-series-modal').getByRole('alert')).toContainText('đã có một quy tắc đang sử dụng');
+  await page.getByTestId('number-series-modal').getByRole('button', { name: 'Hủy' }).click();
+
+  await row.getByRole('button', { name: 'Chi tiết' }).click();
   const detail = page.getByTestId('number-series-detail');
   await expect(detail).toBeVisible();
   await page.getByTestId('allocation-date-input').fill('2026-07-27');
   await page.getByTestId('allocation-key-input').fill(key);
   await page.getByTestId('allocate-test-number-button').click();
 
-  const expectedNumber = 'SO-202607-000001';
+  const expectedNumber = 'IV-202607-000001';
   await expect(page.getByTestId('allocation-result')).toContainText(expectedNumber);
   await expect(page.getByTestId(`allocation-row-${expectedNumber}`)).toBeVisible();
   await expect(detail.getByText('Số tiếp theo', { exact: true }).locator('..')).toContainText('2');
