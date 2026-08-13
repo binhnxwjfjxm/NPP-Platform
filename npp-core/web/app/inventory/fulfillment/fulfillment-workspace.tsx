@@ -11,7 +11,12 @@ type WorkItem = {
   salesOrderVersionId: string;
   salesOrderLineId: string;
   orderNumber: string | null;
+  orderSubtotal: string | null;
+  orderDiscountTotal: string | null;
+  orderTaxTotal: string | null;
   orderTotal: string | null;
+  salesChannelCode: string | null;
+  salesChannelName: string | null;
   fulfillmentStatus: string;
   requestedDeliveryDate: string | null;
   sourceType: string;
@@ -79,9 +84,16 @@ type SuggestionDetail = {
 type OrderGroup = {
   salesOrderId: string;
   orderNumber: string | null;
+  orderSubtotal: string | null;
+  orderDiscountTotal: string | null;
+  orderTaxTotal: string | null;
   orderTotal: string | null;
+  salesChannelCode: string | null;
+  salesChannelName: string | null;
+  fulfillmentStatus: string;
   customerCode: string;
   customerName: string;
+  warehouseId: string;
   warehouseCode: string;
   warehouseName: string;
   requestedDeliveryDate: string | null;
@@ -92,6 +104,8 @@ type ApiEnvelope<T> = {
   data?: T;
   error?: { message?: string; code?: string };
 };
+
+type StatusFilter = 'all' | 'waiting' | 'allocated' | 'picking' | 'packing';
 
 const SCALE = 1_000_000_000_000n;
 const IDEMPOTENCY_INTENT_CACHE_LIMIT = 256;
@@ -116,6 +130,12 @@ function formatQuantity(value: string): string {
   return normalized.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
 }
 
+function moneyNumber(value: string | null): number {
+  if (value === null || value === undefined || String(value).trim() === '') return 0;
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
 function formatMoney(value: string | null): string {
   if (value === null || value === undefined || String(value).trim() === '') return 'Chưa có tổng';
   const amount = Number(value);
@@ -125,6 +145,14 @@ function formatMoney(value: string | null): string {
     currency: 'VND',
     maximumFractionDigits: 0,
   }).format(amount);
+}
+
+function formatMoneyNumber(value: number): string {
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND',
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 function formatDate(value: string | null): string {
@@ -148,6 +176,14 @@ function statusLabel(value: string): string {
   return labels[value] ?? value;
 }
 
+function statusBucket(value: string): Exclude<StatusFilter, 'all'> | 'other' {
+  if (['backordered', 'partially_reserved', 'reserved'].includes(value)) return 'waiting';
+  if (['partially_allocated', 'allocated'].includes(value)) return 'allocated';
+  if (['partially_picked', 'picked'].includes(value)) return 'picking';
+  if (['partially_packed', 'packed'].includes(value)) return 'packing';
+  return 'other';
+}
+
 function groupBySalesOrder(items: WorkItem[]): OrderGroup[] {
   const groups = new Map<string, OrderGroup>();
   for (const item of items) {
@@ -159,9 +195,16 @@ function groupBySalesOrder(items: WorkItem[]): OrderGroup[] {
     groups.set(item.salesOrderId, {
       salesOrderId: item.salesOrderId,
       orderNumber: item.orderNumber,
+      orderSubtotal: item.orderSubtotal,
+      orderDiscountTotal: item.orderDiscountTotal,
+      orderTaxTotal: item.orderTaxTotal,
       orderTotal: item.orderTotal,
+      salesChannelCode: item.salesChannelCode,
+      salesChannelName: item.salesChannelName,
+      fulfillmentStatus: item.fulfillmentStatus,
       customerCode: item.customerCode,
       customerName: item.customerName,
+      warehouseId: item.warehouseId,
       warehouseCode: item.warehouseCode,
       warehouseName: item.warehouseName,
       requestedDeliveryDate: item.requestedDeliveryDate,
@@ -209,6 +252,9 @@ export default function FulfillmentWorkspace() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<SuggestionDetail | null>(null);
   const [search, setSearch] = useState('');
+  const [channelFilter, setChannelFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [warehouseFilter, setWarehouseFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -221,18 +267,59 @@ export default function FulfillmentWorkspace() {
     if (!selectedWork) return groupedWork[0] ?? null;
     return groupedWork.find((group) => group.salesOrderId === selectedWork.salesOrderId) ?? null;
   }, [groupedWork, selectedWork]);
+  const channelOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    for (const group of groupedWork) {
+      const code = group.salesChannelCode?.trim() || '__unassigned__';
+      const label = group.salesChannelName?.trim()
+        ? `${group.salesChannelCode ?? 'Chưa có mã'} — ${group.salesChannelName}`
+        : 'Chưa có kênh bán';
+      options.set(code, label);
+    }
+    return [...options.entries()].sort((left, right) => left[1].localeCompare(right[1], 'vi'));
+  }, [groupedWork]);
+  const warehouseOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    for (const group of groupedWork) options.set(group.warehouseId, `${group.warehouseCode} — ${group.warehouseName}`);
+    return [...options.entries()].sort((left, right) => left[1].localeCompare(right[1], 'vi'));
+  }, [groupedWork]);
   const filteredGroups = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('vi');
-    if (!term) return groupedWork;
-    return groupedWork.filter((group) => [
-      group.orderNumber,
-      group.customerCode,
-      group.customerName,
-      group.warehouseCode,
-      group.warehouseName,
-      ...group.items.flatMap((item) => [item.sku, item.itemName, statusLabel(item.fulfillmentStatus)]),
-    ].filter(Boolean).join(' ').toLocaleLowerCase('vi').includes(term));
-  }, [groupedWork, search]);
+    return groupedWork.filter((group) => {
+      const channelMatches = channelFilter === 'all'
+        || (channelFilter === '__unassigned__'
+          ? !group.salesChannelCode
+          : group.salesChannelCode === channelFilter);
+      const statusMatches = statusFilter === 'all' || statusBucket(group.fulfillmentStatus) === statusFilter;
+      const warehouseMatches = warehouseFilter === 'all' || group.warehouseId === warehouseFilter;
+      if (!channelMatches || !statusMatches || !warehouseMatches) return false;
+      if (!term) return true;
+      return [
+        group.orderNumber,
+        group.customerCode,
+        group.customerName,
+        group.warehouseCode,
+        group.warehouseName,
+        group.salesChannelCode,
+        group.salesChannelName,
+        ...group.items.flatMap((item) => [item.sku, item.itemName, statusLabel(item.fulfillmentStatus)]),
+      ].filter(Boolean).join(' ').toLocaleLowerCase('vi').includes(term);
+    });
+  }, [channelFilter, groupedWork, search, statusFilter, warehouseFilter]);
+  const summary = useMemo(() => ({
+    visibleOrders: filteredGroups.length,
+    totalOrders: groupedWork.length,
+    visibleValue: filteredGroups.reduce((total, group) => total + moneyNumber(group.orderTotal), 0),
+    waiting: filteredGroups.filter((group) => statusBucket(group.fulfillmentStatus) === 'waiting').length,
+    inProgress: filteredGroups.filter((group) => ['allocated', 'picking'].includes(statusBucket(group.fulfillmentStatus))).length,
+    packed: filteredGroups.filter((group) => statusBucket(group.fulfillmentStatus) === 'packing').length,
+  }), [filteredGroups, groupedWork.length]);
+  const hasFilters = Boolean(
+    search.trim()
+    || channelFilter !== 'all'
+    || statusFilter !== 'all'
+    || warehouseFilter !== 'all',
+  );
 
   async function loadWork(preferredId?: string | null) {
     setLoading(true);
@@ -281,6 +368,13 @@ export default function FulfillmentWorkspace() {
   function selectOrder(group: OrderGroup) {
     const firstItem = group.items[0];
     if (firstItem) void loadDetail(firstItem.fulfillmentDemandId);
+  }
+
+  function resetFilters() {
+    setSearch('');
+    setChannelFilter('all');
+    setStatusFilter('all');
+    setWarehouseFilter('all');
   }
 
   async function autoAllocate() {
@@ -347,12 +441,13 @@ export default function FulfillmentWorkspace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const counts = useMemo(() => ({
-    waiting: work.filter((item) => ['backordered', 'partially_reserved', 'reserved'].includes(item.fulfillmentStatus)).length,
-    allocating: work.filter((item) => ['partially_allocated', 'allocated'].includes(item.fulfillmentStatus)).length,
-    picking: work.filter((item) => ['partially_picked', 'picked'].includes(item.fulfillmentStatus)).length,
-    packing: work.filter((item) => ['partially_packed', 'packed'].includes(item.fulfillmentStatus)).length,
-  }), [work]);
+  useEffect(() => {
+    if (filteredGroups.length === 0) return;
+    if (selectedWork && filteredGroups.some((group) => group.salesOrderId === selectedWork.salesOrderId)) return;
+    const firstItem = filteredGroups[0]?.items[0];
+    if (firstItem) void loadDetail(firstItem.fulfillmentDemandId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredGroups, selectedWork]);
 
   return (
     <AppShell
@@ -363,10 +458,11 @@ export default function FulfillmentWorkspace() {
       <div className={styles.page} data-testid="fulfillment-workspace">
         <div className={styles.topBar}>
           <div className={styles.stageSummary} aria-label="Tổng hợp hàng đợi kho">
-            <span><strong>{counts.waiting}</strong> chờ phân bổ</span>
-            <span><strong>{counts.allocating}</strong> đã phân bổ</span>
-            <span><strong>{counts.picking}</strong> đang soạn</span>
-            <span><strong>{counts.packing}</strong> đóng gói</span>
+            <span data-testid="fulfillment-summary-orders"><strong>{summary.visibleOrders}/{summary.totalOrders}</strong> đơn sau lọc</span>
+            <span data-testid="fulfillment-summary-value"><strong>{formatMoneyNumber(summary.visibleValue)}</strong> giá trị</span>
+            <span><strong>{summary.waiting}</strong> chờ phân bổ</span>
+            <span><strong>{summary.inProgress}</strong> đang xử lý</span>
+            <span><strong>{summary.packed}</strong> đóng gói</span>
           </div>
           <button type="button" className={styles.secondaryButton} onClick={() => void loadWork(selectedId)} disabled={loading || busy !== null}>
             {loading ? 'Đang tải...' : 'Làm mới'}
@@ -381,7 +477,7 @@ export default function FulfillmentWorkspace() {
             <div className={styles.queueHeader}>
               <div>
                 <h3>Đơn cần chuẩn bị</h3>
-                <p>{filteredGroups.length} đơn</p>
+                <p>{summary.visibleOrders}/{summary.totalOrders} đơn · {formatMoneyNumber(summary.visibleValue)}</p>
               </div>
               <input
                 value={search}
@@ -391,6 +487,53 @@ export default function FulfillmentWorkspace() {
                 className={styles.search}
                 data-testid="fulfillment-search"
               />
+              <div className={styles.filters} aria-label="Bộ lọc đơn">
+                <label>
+                  <span>Kênh bán</span>
+                  <select
+                    value={channelFilter}
+                    onChange={(event) => setChannelFilter(event.target.value)}
+                    data-testid="fulfillment-filter-channel"
+                  >
+                    <option value="all">Tất cả kênh</option>
+                    {channelOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>Trạng thái</span>
+                  <select
+                    value={statusFilter}
+                    onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+                    data-testid="fulfillment-filter-status"
+                  >
+                    <option value="all">Tất cả</option>
+                    <option value="waiting">Chờ phân bổ</option>
+                    <option value="allocated">Đã phân bổ</option>
+                    <option value="picking">Đang soạn</option>
+                    <option value="packing">Đóng gói</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Kho</span>
+                  <select
+                    value={warehouseFilter}
+                    onChange={(event) => setWarehouseFilter(event.target.value)}
+                    data-testid="fulfillment-filter-warehouse"
+                  >
+                    <option value="all">Tất cả kho</option>
+                    {warehouseOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className={styles.clearFilters}
+                  onClick={resetFilters}
+                  disabled={!hasFilters}
+                  data-testid="fulfillment-filter-reset"
+                >
+                  Xóa lọc
+                </button>
+              </div>
             </div>
             <div className={styles.orderList}>
               {filteredGroups.length === 0 ? <p className={styles.empty}>Không có đơn hàng phù hợp.</p> : null}
@@ -402,8 +545,17 @@ export default function FulfillmentWorkspace() {
                   onClick={() => selectOrder(group)}
                   data-testid={`fulfillment-order-${group.salesOrderId}`}
                 >
-                  <span>{group.orderNumber || 'Đơn chưa có số'}</span>
-                  <strong>{formatMoney(group.orderTotal)}</strong>
+                  <span className={styles.orderIdentity}>
+                    <span className={styles.orderPrimary}>
+                      <strong>{group.orderNumber || 'Đơn chưa có số'}</strong>
+                      <em>{statusLabel(group.fulfillmentStatus)}</em>
+                    </span>
+                    <small>{group.customerName}</small>
+                  </span>
+                  <span className={styles.orderMoney}>
+                    <strong>{formatMoney(group.orderTotal)}</strong>
+                    <small>{group.salesChannelCode || 'Chưa có kênh'}</small>
+                  </span>
                 </button>
               ))}
             </div>
@@ -419,11 +571,24 @@ export default function FulfillmentWorkspace() {
                   </div>
                   <div className={styles.orderMeta}>
                     <strong>{selectedOrder.customerName}</strong>
-                    <span>{selectedOrder.customerCode} · {selectedOrder.warehouseName} · Giao {formatDate(selectedOrder.requestedDeliveryDate)}</span>
+                    <span>
+                      {selectedOrder.customerCode}
+                      {' · '}
+                      {selectedOrder.salesChannelName || selectedOrder.salesChannelCode || 'Chưa có kênh bán'}
+                      {' · '}
+                      {selectedOrder.warehouseName}
+                      {' · Giao '}
+                      {formatDate(selectedOrder.requestedDeliveryDate)}
+                    </span>
                   </div>
                   <div className={styles.orderTotal}>
                     <span>Tổng đơn</span>
                     <strong>{formatMoney(selectedOrder.orderTotal)}</strong>
+                    <small data-testid="fulfillment-order-financial-breakdown">
+                      Tạm tính {formatMoney(selectedOrder.orderSubtotal)}
+                      {' · CK '}{formatMoney(selectedOrder.orderDiscountTotal)}
+                      {' · Thuế '}{formatMoney(selectedOrder.orderTaxTotal)}
+                    </small>
                   </div>
                 </header>
 
