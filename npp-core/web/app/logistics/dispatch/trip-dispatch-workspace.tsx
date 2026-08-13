@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createIdempotencyKey } from '@npp/contracts';
 import { AppShell } from '../../components/app-shell';
 import styles from './trip-dispatch-workspace.module.css';
 
@@ -151,9 +152,7 @@ export default function TripDispatchWorkspace() {
   function operationKey(scope: string): string {
     const existing = operationKeys.current.get(scope);
     if (existing) return existing;
-    const next = `web-trip-dispatch-${scope}-${crypto.randomUUID()}`
-      .replace(/[^A-Za-z0-9._:-]/g, '_')
-      .slice(0, 128);
+    const next = createIdempotencyKey('web-trip-dispatch');
     operationKeys.current.set(scope, next);
     return next;
   }

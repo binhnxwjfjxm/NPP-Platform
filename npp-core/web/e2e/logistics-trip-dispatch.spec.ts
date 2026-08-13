@@ -130,7 +130,9 @@ test('kho bàn giao chuyến đã khóa, ghi Inventory OUT và chuyển sang rea
   await expect(page.getByText('Đã bàn giao 1 phiếu và cho chuyến xuất phát.')).toBeVisible();
   await expect(page.getByTestId('dispatch-trip-button')).toHaveCount(0);
 
-  expect(state.key).toMatch(/^web-trip-dispatch-/);
+  expect(state.key).toMatch(/^web-trip-dispatch-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  expect(state.key).toMatch(/^[A-Za-z0-9._-]{1,128}$/);
+  expect(state.key).not.toContain(':');
   expect(state.payload?.handoverReceiverName).toBe('Nguyễn Văn Tài');
   expect(String(state.payload?.dispatchedAt)).toMatch(/^2026-08-05T/);
 });
