@@ -312,7 +312,7 @@ export async function userExistsForInstallation(client, { installationId, userId
      JOIN shared.employees e
        ON e.installation_id = u.installation_id AND e.id = u.employee_id
      WHERE u.installation_id = $1 AND u.id = $2
-       AND u.is_active = true AND e.is_active = true`,
+       AND e.is_active = true`,
     [installationId, userId],
   );
   return Boolean(result.rows?.[0]);
