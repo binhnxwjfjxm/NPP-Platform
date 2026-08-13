@@ -5,7 +5,7 @@ import { AppShell } from '../../components/app-shell';
 import styles from './trip-planning-workspace.module.css';
 
 type Warehouse = { id: string; code: string; name: string };
-type LogisticsRoute = { id: string; code: string; name: string; defaultWarehouseId: string | null; isActive: boolean };
+type LogisticsRoute = { id: string; code: string; name: string; defaultWarehouseId: string | null; defaultWarehouseCode?: string | null; defaultWarehouseName?: string | null; isActive: boolean };
 type Vehicle = { id: string; code: string; licensePlate: string; vehicleType: string; operationalStatus: string; isActive: boolean };
 type Driver = { id: string; code: string; name: string; phone: string | null; isActive: boolean };
 type EligibleDeliveryOrder = {
@@ -22,12 +22,13 @@ type Trip = {
   status: 'draft' | 'planned' | 'locked'; note: string | null; revision: string; stopCount?: number; assignmentCount?: number; stops?: TripStop[];
 };
 type ApiEnvelope<T> = { data?: T; error?: { code?: string; message?: string; details?: unknown } };
-type MasterDraft = { code: string; name: string; extra: string };
+type MasterDraft = { code: string; name: string; extra: string; warehouseId?: string };
 type TripDraft = { warehouseId: string; deliveryRouteId: string; vehicleId: string; primaryDriverId: string; plannedStartAt: string; note: string };
 type FieldErrors = Record<string, string>;
 type WorkspaceTab = 'planning' | 'assignment';
 
 const emptyMaster: MasterDraft = { code: '', name: '', extra: '' };
+const emptyRouteMaster: MasterDraft = { code: '', name: '', extra: '', warehouseId: '' };
 const emptyTrip: TripDraft = { warehouseId: '', deliveryRouteId: '', vehicleId: '', primaryDriverId: '', plannedStartAt: '', note: '' };
 
 class LogisticsRequestError extends Error {
@@ -77,12 +78,15 @@ function validateMaster(resource: 'routes' | 'vehicles' | 'drivers', draft: Mast
   if (resource === 'vehicles' && !extra) errors['vehicle.vehicleType'] = 'Bắt buộc nhập loại xe.';
   if (resource === 'vehicles' && extra.length > 80) errors['vehicle.vehicleType'] = 'Loại xe tối đa 80 ký tự.';
   if (resource === 'drivers' && extra.length > 32) errors['driver.phone'] = 'Số điện thoại tối đa 32 ký tự.';
+  if (resource === 'routes' && !draft.warehouseId) errors['route.warehouseId'] = 'Bắt buộc chọn kho áp dụng.';
   return errors;
 }
 
 function serverFieldErrors(code?: string): FieldErrors {
+  if (code === 'INVALID_LOGISTICS_ROUTE') return { 'route.warehouseId': 'Chọn kho áp dụng hợp lệ cho tuyến.' };
   if (code === 'INVALID_VEHICLE') return { 'vehicle.code': 'Kiểm tra mã xe theo hợp đồng API.', 'vehicle.licensePlate': 'Kiểm tra biển số theo hợp đồng API.', 'vehicle.vehicleType': 'Kiểm tra loại xe theo hợp đồng API.' };
   if (code === 'INVALID_DRIVER_PROFILE') return { 'driver.code': 'Kiểm tra mã tài xế theo hợp đồng API.', 'driver.name': 'Kiểm tra tên tài xế theo hợp đồng API.' };
+  if (code === 'DELIVERY_ROUTE_WAREHOUSE_MISMATCH' || code === 'DELIVERY_ROUTE_NOT_AVAILABLE') return { 'trip.deliveryRouteId': 'Tuyến không thuộc kho xuất phát đã chọn.' };
   if (code === 'INVALID_DELIVERY_TRIP') return { 'trip.warehouseId': 'Chọn kho hợp lệ trong phạm vi được cấp quyền.', 'trip.plannedStartAt': 'Kiểm tra thời gian dự kiến.' };
   return {};
 }
@@ -95,7 +99,7 @@ export default function TripPlanningWorkspace() {
   const [eligible, setEligible] = useState<EligibleDeliveryOrder[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
-  const [routeDraft, setRouteDraft] = useState<MasterDraft>(emptyMaster);
+  const [routeDraft, setRouteDraft] = useState<MasterDraft>(emptyRouteMaster);
   const [vehicleDraft, setVehicleDraft] = useState<MasterDraft>(emptyMaster);
   const [driverDraft, setDriverDraft] = useState<MasterDraft>(emptyMaster);
   const [tripDraft, setTripDraft] = useState<TripDraft>(emptyTrip);
@@ -133,11 +137,20 @@ export default function TripPlanningWorkspace() {
     setDrivers(nextDrivers);
     setEligible(nextEligible);
     setTrips(nextTrips);
-    setTripDraft((current) => ({
+    setTripDraft((current) => {
+      const warehouseId = nextWarehouses.some((warehouse) => warehouse.id === current.warehouseId) ? current.warehouseId : nextWarehouses[0]?.id || '';
+      const selectedRoute = nextRoutes.find((route) => route.id === current.deliveryRouteId);
+      return {
+        ...current,
+        warehouseId,
+        deliveryRouteId: selectedRoute && selectedRoute.defaultWarehouseId === warehouseId ? current.deliveryRouteId : '',
+        vehicleId: current.vehicleId && !nextVehicles.some((vehicle) => vehicle.id === current.vehicleId) ? '' : current.vehicleId,
+        primaryDriverId: current.primaryDriverId && !nextDrivers.some((driver) => driver.id === current.primaryDriverId) ? '' : current.primaryDriverId,
+      };
+    });
+    setRouteDraft((current) => ({
       ...current,
-      warehouseId: nextWarehouses.some((warehouse) => warehouse.id === current.warehouseId) ? current.warehouseId : nextWarehouses[0]?.id || '',
-      vehicleId: current.vehicleId && !nextVehicles.some((vehicle) => vehicle.id === current.vehicleId) ? '' : current.vehicleId,
-      primaryDriverId: current.primaryDriverId && !nextDrivers.some((driver) => driver.id === current.primaryDriverId) ? '' : current.primaryDriverId,
+      warehouseId: current.warehouseId && nextWarehouses.some((warehouse) => warehouse.id === current.warehouseId) ? current.warehouseId : '',
     }));
   }, []);
 
@@ -164,16 +177,16 @@ export default function TripPlanningWorkspace() {
   async function createMaster(resource: 'routes' | 'vehicles' | 'drivers', draft: MasterDraft) {
     const validation = validateMaster(resource, draft);
     if (hasErrors(validation)) { setFieldErrors(validation); setError('Kiểm tra các trường được đánh dấu trước khi tạo.'); return; }
-    const normalized = { code: draft.code.trim(), name: draft.name.trim(), extra: draft.extra.trim() };
-    const scope = keyScope(`create-${resource}`, normalized.code, normalized.name, normalized.extra);
+    const normalized = { code: draft.code.trim(), name: draft.name.trim(), extra: draft.extra.trim(), warehouseId: draft.warehouseId?.trim() || '' };
+    const scope = keyScope(`create-${resource}`, normalized.code, normalized.name, normalized.extra, resource === 'routes' ? normalized.warehouseId : null);
     await runOperation(scope, async () => {
       const body = resource === 'routes'
-        ? { code: normalized.code, name: normalized.name, description: normalized.extra || null, defaultWarehouseId: tripDraft.warehouseId || null }
+        ? { code: normalized.code, name: normalized.name, description: normalized.extra || null, defaultWarehouseId: normalized.warehouseId }
         : resource === 'vehicles'
           ? { code: normalized.code, licensePlate: normalized.name, vehicleType: normalized.extra }
           : { code: normalized.code, name: normalized.name, phone: normalized.extra || null };
       await requestJson(`/api/logistics/${resource}`, { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey(scope) }, body: JSON.stringify(body) });
-      if (resource === 'routes') setRouteDraft(emptyMaster);
+      if (resource === 'routes') setRouteDraft(emptyRouteMaster);
       if (resource === 'vehicles') setVehicleDraft(emptyMaster);
       if (resource === 'drivers') setDriverDraft(emptyMaster);
       await loadLists(); setMessage('Đã thêm danh mục điều phối.');
@@ -184,7 +197,11 @@ export default function TripPlanningWorkspace() {
     const validation: FieldErrors = {};
     if (!tripDraft.warehouseId) validation['trip.warehouseId'] = 'Bắt buộc chọn kho xuất phát.';
     else if (!warehouses.some((warehouse) => warehouse.id === tripDraft.warehouseId)) validation['trip.warehouseId'] = 'Kho không còn hoạt động hoặc ngoài phạm vi được cấp quyền.';
-    if (tripDraft.deliveryRouteId && !routes.some((route) => route.id === tripDraft.deliveryRouteId)) validation['trip.deliveryRouteId'] = 'Tuyến giao không hợp lệ.';
+    if (tripDraft.deliveryRouteId) {
+      const route = routes.find((candidate) => candidate.id === tripDraft.deliveryRouteId && candidate.isActive);
+      if (!route) validation['trip.deliveryRouteId'] = 'Tuyến giao không hợp lệ.';
+      else if (route.defaultWarehouseId !== tripDraft.warehouseId) validation['trip.deliveryRouteId'] = 'Tuyến giao thuộc kho khác.';
+    }
     if (tripDraft.vehicleId && !vehicles.some((vehicle) => vehicle.id === tripDraft.vehicleId && vehicle.isActive && vehicle.operationalStatus === 'AVAILABLE')) validation['trip.vehicleId'] = 'Xe không còn khả dụng.';
     if (tripDraft.primaryDriverId && !drivers.some((driver) => driver.id === tripDraft.primaryDriverId && driver.isActive)) validation['trip.primaryDriverId'] = 'Tài xế không còn khả dụng.';
     if (tripDraft.plannedStartAt && Number.isNaN(new Date(tripDraft.plannedStartAt).getTime())) validation['trip.plannedStartAt'] = 'Thời gian dự kiến không hợp lệ.';
@@ -294,7 +311,7 @@ export default function TripPlanningWorkspace() {
           <section className={styles.section} aria-labelledby="logistics-master-heading">
             <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Danh mục điều phối</p><h2 id="logistics-master-heading">Tuyến, xe và tài xế</h2></div></div>
             <div className={styles.masterGrid}>
-              <MasterForm resource="routes" title="Tuyến giao" draft={routeDraft} labels={['Mã tuyến', 'Tên tuyến', 'Mô tả']} onChange={setRouteDraft} onSubmit={() => createMaster('routes', routeDraft)} disabled={busy !== null} testId="create-route" fieldErrors={fieldErrors} />
+              <MasterForm resource="routes" title="Tuyến giao" draft={routeDraft} labels={['Mã tuyến', 'Tên tuyến', 'Mô tả']} onChange={setRouteDraft} onSubmit={() => createMaster('routes', routeDraft)} disabled={busy !== null} testId="create-route" fieldErrors={fieldErrors} warehouses={warehouses} />
               <MasterForm resource="vehicles" title="Phương tiện" draft={vehicleDraft} labels={['Mã xe', 'Biển số', 'Loại xe']} onChange={setVehicleDraft} onSubmit={() => createMaster('vehicles', vehicleDraft)} disabled={busy !== null} testId="create-vehicle" fieldErrors={fieldErrors} />
               <MasterForm resource="drivers" title="Tài xế" draft={driverDraft} labels={['Mã tài xế', 'Tên tài xế', 'Số điện thoại']} onChange={setDriverDraft} onSubmit={() => createMaster('drivers', driverDraft)} disabled={busy !== null} testId="create-driver" fieldErrors={fieldErrors} />
             </div>
@@ -345,7 +362,7 @@ export default function TripPlanningWorkspace() {
             <label>Tuyến giao
               <select value={assignmentRouteId} onChange={(event) => changeAssignmentRoute(event.target.value)} disabled={busy !== null} data-testid="assignment-route">
                 <option value="">Chọn tuyến</option>
-                {routes.map((route) => <option key={route.id} value={route.id}>{route.code} · {route.name}</option>)}
+                {routes.filter((route) => route.defaultWarehouseId).map((route) => <option key={route.id} value={route.id}>{route.code} · {route.name} · {route.defaultWarehouseCode || 'Kho tuyến'}</option>)}
               </select>
             </label>
             <label>Chuyến giao
@@ -372,8 +389,8 @@ export default function TripPlanningWorkspace() {
 
 function FieldError({ message }: { message?: string }) { return message ? <small role="alert">{message}</small> : null; }
 
-function MasterForm({ resource, title, draft, labels, onChange, onSubmit, disabled, testId, fieldErrors }: {
-  resource: 'routes' | 'vehicles' | 'drivers'; title: string; draft: MasterDraft; labels: [string, string, string]; onChange: (value: MasterDraft) => void; onSubmit: () => void; disabled: boolean; testId: string; fieldErrors: FieldErrors;
+function MasterForm({ resource, title, draft, labels, onChange, onSubmit, disabled, testId, fieldErrors, warehouses = [] }: {
+  resource: 'routes' | 'vehicles' | 'drivers'; title: string; draft: MasterDraft; labels: [string, string, string]; onChange: (value: MasterDraft) => void; onSubmit: () => void; disabled: boolean; testId: string; fieldErrors: FieldErrors; warehouses?: Warehouse[];
 }) {
   const prefix = masterPrefix(resource); const secondKey = resource === 'vehicles' ? 'licensePlate' : 'name'; const thirdKey = resource === 'vehicles' ? 'vehicleType' : resource === 'drivers' ? 'phone' : 'description';
   const needsExtra = resource === 'vehicles';
@@ -381,16 +398,22 @@ function MasterForm({ resource, title, draft, labels, onChange, onSubmit, disabl
     <label>{labels[0]}<input value={draft.code} maxLength={64} onChange={(event) => onChange({ ...draft, code: event.target.value })} disabled={disabled} aria-invalid={Boolean(fieldErrors[`${prefix}.code`])} /><FieldError message={fieldErrors[`${prefix}.code`]} /></label>
     <label>{labels[1]}<input value={draft.name} maxLength={resource === 'vehicles' ? 32 : 256} onChange={(event) => onChange({ ...draft, name: event.target.value })} disabled={disabled} aria-invalid={Boolean(fieldErrors[`${prefix}.${secondKey}`])} /><FieldError message={fieldErrors[`${prefix}.${secondKey}`]} /></label>
     <label>{labels[2]}<input value={draft.extra} maxLength={resource === 'vehicles' ? 80 : resource === 'drivers' ? 32 : undefined} onChange={(event) => onChange({ ...draft, extra: event.target.value })} disabled={disabled} aria-invalid={Boolean(fieldErrors[`${prefix}.${thirdKey}`])} /><FieldError message={fieldErrors[`${prefix}.${thirdKey}`]} /></label>
-    <button type="button" className={styles.secondaryButton} onClick={onSubmit} disabled={disabled || !draft.code.trim() || !draft.name.trim() || (needsExtra && !draft.extra.trim())} data-testid={testId}>Thêm {title.toLowerCase()}</button>
+    {resource === 'routes' ? <label>Kho áp dụng<select value={draft.warehouseId || ''} onChange={(event) => onChange({ ...draft, warehouseId: event.target.value })} disabled={disabled} data-testid="route-warehouse" aria-invalid={Boolean(fieldErrors['route.warehouseId'])}><option value="">Chọn kho</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} · {warehouse.name}</option>)}</select><FieldError message={fieldErrors['route.warehouseId']} /></label> : null}
+    <button type="button" className={styles.secondaryButton} onClick={onSubmit} disabled={disabled || !draft.code.trim() || !draft.name.trim() || (needsExtra && !draft.extra.trim()) || (resource === 'routes' && !draft.warehouseId)} data-testid={testId}>Thêm {title.toLowerCase()}</button>
   </div>;
 }
 
 function TripFields({ draft, setDraft, warehouses, routes, vehicles, drivers, disabled, lockWarehouse = false, fieldErrors }: {
   draft: TripDraft; setDraft: (value: TripDraft) => void; warehouses: Warehouse[]; routes: LogisticsRoute[]; vehicles: Vehicle[]; drivers: Driver[]; disabled: boolean; lockWarehouse?: boolean; fieldErrors: FieldErrors;
 }) {
+  const availableRoutes = routes.filter((route) => route.isActive && route.defaultWarehouseId === draft.warehouseId);
   return <div className={styles.formGrid}>
-    <label>Kho xuất phát<select value={draft.warehouseId} onChange={(event) => setDraft({ ...draft, warehouseId: event.target.value })} disabled={disabled || lockWarehouse} data-testid="trip-warehouse" aria-invalid={Boolean(fieldErrors['trip.warehouseId'])}><option value="">Chọn kho</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} · {warehouse.name}</option>)}</select><FieldError message={fieldErrors['trip.warehouseId']} /></label>
-    <label>Tuyến giao<select value={draft.deliveryRouteId} onChange={(event) => setDraft({ ...draft, deliveryRouteId: event.target.value })} disabled={disabled} aria-invalid={Boolean(fieldErrors['trip.deliveryRouteId'])}><option value="">Không dùng tuyến mẫu</option>{routes.map((route) => <option key={route.id} value={route.id}>{route.code} · {route.name}</option>)}</select><FieldError message={fieldErrors['trip.deliveryRouteId']} /></label>
+    <label>Kho xuất phát<select value={draft.warehouseId} onChange={(event) => {
+      const warehouseId = event.target.value;
+      const selectedRoute = routes.find((route) => route.id === draft.deliveryRouteId);
+      setDraft({ ...draft, warehouseId, deliveryRouteId: selectedRoute?.defaultWarehouseId === warehouseId ? draft.deliveryRouteId : '' });
+    }} disabled={disabled || lockWarehouse} data-testid="trip-warehouse" aria-invalid={Boolean(fieldErrors['trip.warehouseId'])}><option value="">Chọn kho</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} · {warehouse.name}</option>)}</select><FieldError message={fieldErrors['trip.warehouseId']} /></label>
+    <label>Tuyến giao<select value={draft.deliveryRouteId} onChange={(event) => setDraft({ ...draft, deliveryRouteId: event.target.value })} disabled={disabled || !draft.warehouseId} data-testid="trip-route" aria-invalid={Boolean(fieldErrors['trip.deliveryRouteId'])}><option value="">Không dùng tuyến mẫu</option>{availableRoutes.map((route) => <option key={route.id} value={route.id}>{route.code} · {route.name}</option>)}</select><FieldError message={fieldErrors['trip.deliveryRouteId']} /></label>
     <label>Phương tiện<select value={draft.vehicleId} onChange={(event) => setDraft({ ...draft, vehicleId: event.target.value })} disabled={disabled} data-testid="trip-vehicle" aria-invalid={Boolean(fieldErrors['trip.vehicleId'])}><option value="">Chọn xe</option>{vehicles.filter((vehicle) => vehicle.isActive && vehicle.operationalStatus === 'AVAILABLE').map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.code} · {vehicle.licensePlate}</option>)}</select><FieldError message={fieldErrors['trip.vehicleId']} /></label>
     <label>Tài xế chính<select value={draft.primaryDriverId} onChange={(event) => setDraft({ ...draft, primaryDriverId: event.target.value })} disabled={disabled} data-testid="trip-driver" aria-invalid={Boolean(fieldErrors['trip.driverId'])}><option value="">Chọn tài xế</option>{drivers.filter((driver) => driver.isActive).map((driver) => <option key={driver.id} value={driver.id}>{driver.code} · {driver.name}</option>)}</select><FieldError message={fieldErrors['trip.primaryDriverId']} /></label>
     <label>Giờ dự kiến<input type="datetime-local" value={draft.plannedStartAt} onChange={(event) => setDraft({ ...draft, plannedStartAt: event.target.value })} disabled={disabled} aria-invalid={Boolean(fieldErrors['trip.plannedStartAt'])} /><FieldError message={fieldErrors['trip.plannedStartAt']} /></label>

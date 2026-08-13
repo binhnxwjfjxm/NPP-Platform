@@ -7,6 +7,7 @@ import {
   withAuditOutboxTransaction,
 } from '../audit-outbox.js';
 import * as repository from '../db/repositories/logistics-trip-planning.js';
+import * as warehouseRepository from '../db/repositories/warehouse.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DECIMAL_PATTERN = /^(?:0|[1-9]\d{0,17})(?:\.\d{1,12})?$/;
@@ -201,6 +202,27 @@ async function loadTripDetail(client, { requestContext, tripId, forUpdate = fals
   });
 }
 
+async function validateRouteWarehouse(client, { requestContext, deliveryRouteId, warehouseId }) {
+  if (!deliveryRouteId) return Object.freeze({ ok: true });
+  const rows = await repository.listRoutes(client, {
+    installationId: requestContext.installationId,
+    active: true,
+    limit: 1000,
+    offset: 0,
+  });
+  const route = rows.find((candidate) => candidate.id === deliveryRouteId);
+  if (!route || !route.default_warehouse_id) {
+    return failure('DELIVERY_ROUTE_NOT_AVAILABLE', 'Delivery route is inactive or has no warehouse configuration');
+  }
+  if (!warehouseAllowed(requestContext, route.default_warehouse_id)) {
+    return failure('WAREHOUSE_SCOPE_DENIED', 'Delivery route warehouse is outside the authorized scope');
+  }
+  if (route.default_warehouse_id !== warehouseId) {
+    return failure('DELIVERY_ROUTE_WAREHOUSE_MISMATCH', 'Delivery route belongs to another warehouse');
+  }
+  return Object.freeze({ ok: true, route: mapRoute(route) });
+}
+
 function eventName(eventType) {
   return {
     CREATED: 'core.delivery_trip.created',
@@ -290,11 +312,20 @@ export async function createDeliveryRoute({ adapter, requestContext, payload }) 
   const code = trimText(payload?.code, 64, true)?.toUpperCase();
   const name = trimText(payload?.name, 256, true);
   const defaultWarehouseId = nullableUuid(payload?.defaultWarehouseId);
-  if (!code || !name || defaultWarehouseId === undefined) {
-    return failure('INVALID_LOGISTICS_ROUTE', 'Route code, name or warehouse is invalid');
+  if (!code || !name || !defaultWarehouseId) {
+    return failure('INVALID_LOGISTICS_ROUTE', 'Route code, name and warehouse are required');
   }
-  if (defaultWarehouseId && !warehouseAllowed(requestContext, defaultWarehouseId)) {
+  if (!warehouseAllowed(requestContext, defaultWarehouseId)) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Default warehouse is outside the authorized scope');
+  }
+  const activeWarehouses = await warehouseRepository.listWarehousesForInstallation(adapter, {
+    installationId: requestContext.installationId,
+    active: true,
+    limit: 10000,
+    offset: 0,
+  });
+  if (!activeWarehouses.some((warehouse) => warehouse.id === defaultWarehouseId)) {
+    return failure('DELIVERY_ROUTE_WAREHOUSE_NOT_AVAILABLE', 'Default warehouse is not active');
   }
   return createMaster({
     adapter, requestContext, resourceType: 'delivery_route', payload,
@@ -440,6 +471,12 @@ export async function createDeliveryTrip({ adapter, requestContext, payload, ide
           const detail = await loadTripDetail(client, { requestContext, tripId: replay.id });
           return { ...detail, replayed: true, skipAudit: true };
         }
+        const routeValidation = await validateRouteWarehouse(client, {
+          requestContext,
+          deliveryRouteId: normalized.deliveryRouteId,
+          warehouseId: normalized.warehouseId,
+        });
+        if (!routeValidation.ok) return { failed: true, result: routeValidation };
         await setWriteContext(client);
         const date = businessDate(normalized.plannedStartAt);
         const sequence = await repository.allocateTripNumber(client, {
@@ -573,7 +610,13 @@ export function updateDeliveryTrip(args) {
   };
   return mutateTrip({
     ...args, payload: normalized, operationType: 'UPDATE', eventType: 'UPDATED',
-    mutate: async (client) => {
+    mutate: async (client, trip) => {
+      const routeValidation = await validateRouteWarehouse(client, {
+        requestContext: args.requestContext,
+        deliveryRouteId: normalized.deliveryRouteId,
+        warehouseId: trip.warehouseId,
+      });
+      if (!routeValidation.ok) return routeValidation;
       const row = await repository.updateTripPlan(client, {
         installationId: args.requestContext.installationId, tripId: args.tripId,
         ...normalized, actorId: args.requestContext.actorId,
