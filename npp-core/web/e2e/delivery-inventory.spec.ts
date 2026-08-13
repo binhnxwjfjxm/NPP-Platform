@@ -98,7 +98,7 @@ test.describe('Phase 6D.4 Delivery Order inventory boundary', () => {
 
     await expect(page.getByTestId('delivery-order-notice')).toContainText('ghi xuất kho');
     await expect(page.getByText('Đã bàn giao tại quầy', { exact: true }).first()).toBeVisible();
-    expect(state.handoverKey).toMatch(/^pickup-handover-/);
+    expect(state.handoverKey).toMatch(/^delivery-order-pickup-handover-/);
     expect(state.handoverBody).toMatchObject({
       receiverName: 'Nguyễn Văn Nhận',
       receiverNote: 'Đã đối chiếu hàng tại quầy',
@@ -240,7 +240,7 @@ test.describe('Phase 6D.4 Hàng khách trả', () => {
 
     await expect(page.getByTestId('customer-return-notice')).toContainText('tồn kho chưa thay đổi');
     await expect(page.getByText('Nháp chờ nhận', { exact: true }).first()).toBeVisible();
-    expect(state.createKey).toMatch(/^create-return-/);
+    expect(state.createKey).toMatch(/^customer-return-create-return-/);
     expect(state.createBody).toMatchObject({
       lines: [{ issueLineId, quantity: '2', reasonCode: 'DAMAGED_OR_UNWANTED', reasonNote: 'Bao bì bị lỗi' }],
     });
@@ -249,7 +249,7 @@ test.describe('Phase 6D.4 Hàng khách trả', () => {
     await page.getByTestId('customer-return-receive').click();
     await expect(page.getByTestId('customer-return-notice')).toContainText('ghi Inventory IN');
     await expect(page.getByText('Đã nhận vào kho', { exact: true }).first()).toBeVisible();
-    expect(state.receiveKey).toMatch(/^return-receive-/);
+    expect(state.receiveKey).toMatch(/^customer-return-return-receive-/);
     expect(state.receiveBody).toMatchObject({
       expectedRevision: '1',
       lines: [{ customerReturnLineId: returnLineId, acceptedQuantity: '1' }],
