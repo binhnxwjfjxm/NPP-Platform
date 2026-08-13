@@ -91,12 +91,19 @@ async function seedMasterData(pool, installationId) {
   const variantId = randomUUID();
   const channelId = randomUUID();
   const priceListId = randomUUID();
+  const employeeId = randomUUID();
 
   await pool.query(
     `INSERT INTO shared.branches
       (id, installation_id, code, name, is_active, created_by, updated_by)
      VALUES ($1,$2,$3,$4,true,$5,$5)`,
     [branchId, installationId, `BR-${suffix}`, `Chi nhánh ${suffix}`, actor],
+  );
+  await pool.query(
+    `INSERT INTO shared.employees
+      (id, installation_id, code, full_name, job_title, phone, is_active, created_by, updated_by)
+     VALUES ($1,$2,'TX-01','Tài xế kiểm thử','Tài xế','0900000000',true,$3,$3)`,
+    [employeeId, installationId, actor],
   );
   await pool.query(
     `INSERT INTO shared.warehouses
@@ -165,7 +172,7 @@ async function seedMasterData(pool, installationId) {
      VALUES ($1,$2,$3,$4,'FIXED_PRICE',10000,0,'ADMIN',true,$5,$5)`,
     [randomUUID(), installationId, priceListId, variantId, actor],
   );
-  return { warehouseId, locationId, customerId, addressId, variantId, channelId };
+  return { warehouseId, locationId, customerId, addressId, variantId, channelId, employeeId };
 }
 
 async function seedInventory(pool, config, master) {
@@ -353,9 +360,8 @@ test('Phase 6E.1 plans safely and Phase 6E.2 dispatches exactly once', async () 
       vehicleType: 'Xe tải nhỏ',
     });
     const driver = await createMaster(baseUrl, config, 'drivers', {
-      code: 'TX-01',
-      name: 'Tài xế kiểm thử',
-      phone: '0900000000',
+      employeeId: master.employeeId,
+      licenseReference: 'B2-TEST',
     });
 
     const payload = {

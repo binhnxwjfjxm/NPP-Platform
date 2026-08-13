@@ -43,12 +43,19 @@ async function seedPlanningFixture(pool, installationId) {
   const branchId = randomUUID();
   const warehouseId = randomUUID();
   const vehicleId = randomUUID();
+  const employeeId = randomUUID();
   const driverId = randomUUID();
   await pool.query(
     `INSERT INTO shared.branches
       (id, installation_id, code, name, is_active, created_by, updated_by)
      VALUES ($1,$2,$3,$4,true,$5,$5)`,
     [branchId, installationId, `BR-${suffix}`, `Chi nhánh ${suffix}`, actor],
+  );
+  await pool.query(
+    `INSERT INTO shared.employees
+      (id, installation_id, code, full_name, job_title, phone, is_active, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,'Tài xế','0900000000',true,$5,$5)`,
+    [employeeId, installationId, `DRV-${suffix}`, `Tài xế ${suffix}`, actor],
   );
   await pool.query(
     `INSERT INTO shared.warehouses
@@ -66,8 +73,8 @@ async function seedPlanningFixture(pool, installationId) {
   await pool.query(
     `INSERT INTO logistics.driver_profiles
       (id, installation_id, code, employee_id, name, is_active, created_by, updated_by)
-     VALUES ($1,$2,$3,NULL,$4,true,$5,$5)`,
-    [driverId, installationId, `DRV-${suffix}`, `Tài xế ${suffix}`, actor],
+     VALUES ($1,$2,$3,$4,$5,true,$6,$6)`,
+    [driverId, installationId, `DRV-${suffix}`, employeeId, `Tài xế ${suffix}`, actor],
   );
   return { warehouseId, vehicleId, driverId };
 }
