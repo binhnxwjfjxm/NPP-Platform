@@ -1,4 +1,4 @@
-import InventoryScopedWorkspace from '../inventory-scoped-workspace';
+import InventoryBalancesWorkspace from './inventory-balances-workspace';
 import { createEmptyInventorySnapshot } from '../../../lib/inventory-types';
 import { loadInventoryBalancesSnapshot } from '../../../lib/inventory-scoped-snapshot';
 
@@ -15,8 +15,7 @@ export default async function InventoryBalancesPage() {
   }
 
   return (
-    <InventoryScopedWorkspace
-      scope="balances"
+    <InventoryBalancesWorkspace
       title="Tra cứu tồn kho"
       subtitle="Xem số lượng hiện tại, khả dụng, đang giữ và vị trí hàng theo dữ liệu thực tế của hệ thống."
       initialSnapshot={initialData}

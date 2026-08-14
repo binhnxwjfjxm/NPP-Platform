@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from '../../components/app-shell-core';
 import type { SalesOrderBootstrap } from '../../../lib/sales-order-bootstrap';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
@@ -26,11 +26,20 @@ function sourceBucket(order: SalesOrder): Exclude<OrderSourceFilter, 'all'> {
   return 'internal';
 }
 
+function orderCardStatus(order: SalesOrder): string {
+  const orderStatus = orderLabels[order.status] ?? order.status;
+  if (order.status !== 'confirmed') return orderStatus;
+  if (order.fulfillmentStatus === 'backordered') return `${orderStatus} · Chờ hàng`;
+  if (order.fulfillmentStatus === 'partially_reserved') return `${orderStatus} · Chờ hàng một phần`;
+  return orderStatus;
+}
+
 export default function SalesOrderWorkspace({ initialBootstrap }: { initialBootstrap: SalesOrderBootstrap }) {
   const [orders, setOrders] = useState(initialBootstrap.salesOrders);
   const [selected, setSelected] = useState<SalesOrder | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialBootstrap.errors.orders);
   const [search, setSearch] = useState('');
@@ -50,6 +59,30 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const canPriceOverride = permissions.has(SALES_ORDER_PERMISSION_KEYS.priceOverride);
   const canDiscountOverride = permissions.has(SALES_ORDER_PERMISSION_KEYS.discountOverride);
   const canQuickCreateCustomer = permissions.has(SALES_ORDER_PERMISSION_KEYS.customerWrite);
+
+  const refreshOrders = useCallback(async (showNotice: boolean) => {
+    setRefreshing(true);
+    if (showNotice) {
+      setError(null);
+      setNotice(null);
+    }
+    try {
+      const next = await apiRequest<SalesOrder[]>('/api/sales-orders?limit=1000');
+      const sorted = [...next].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+      setOrders(sorted);
+      setSelected((current) => current ? sorted.find((item) => item.id === current.id) ?? null : null);
+      setError(null);
+      if (showNotice) setNotice('Danh sách đơn bán hàng đã được làm mới.');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Không tải được danh sách đơn bán hàng');
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshOrders(false);
+  }, [refreshOrders]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('vi');
@@ -179,6 +212,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
           <label><span>Tìm đơn</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Số đơn, khách hoặc kênh bán" /></label>
           <label><span>Trạng thái</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Tất cả</option><option value="draft">Nháp</option><option value="confirmed">Đã xác nhận</option><option value="cancelled">Đã hủy</option><option value="closed">Đã hoàn tất</option></select></label>
           <label><span>Nguồn</span><select value={source} onChange={(event) => setSource(event.target.value as OrderSourceFilter)}><option value="all">Tất cả</option><option value="internal">Nội bộ</option><option value="mcp">MCP</option><option value="customer">Khách hàng</option></select></label>
+          <button type="button" onClick={() => void refreshOrders(true)} disabled={refreshing}>{refreshing ? 'Đang làm mới…' : 'Làm mới'}</button>
         </div>
 
         <div className={styles.contentGrid}>
@@ -193,7 +227,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                   disabled={loadingId === order.id}
                   onClick={() => loadOrder(order.id)}
                 >
-                  <div className={styles.orderCardTop}><strong>{order.number ?? 'Đơn nháp chưa cấp số'}</strong><span>{orderLabels[order.status] ?? order.status}</span></div>
+                  <div className={styles.orderCardTop}><strong>{order.number ?? 'Đơn nháp chưa cấp số'}</strong><span>{orderCardStatus(order)}</span></div>
                   <b>{order.customerCode} — {order.customerName}</b>
                   <div className={styles.orderCardMeta}>
                     <small>Kho {order.warehouseCode} · {collectionLabels[order.collectionPolicy]}</small>

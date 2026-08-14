@@ -32,6 +32,15 @@ export function safeErrorMessage(error: unknown): string {
   if (code === 'DELIVERY_DRIVER_PROFILE_NOT_FOUND') {
     return 'Tài khoản chưa được liên kết với hồ sơ tài xế đang hoạt động.';
   }
+  if (code === 'WAREHOUSE_SCOPE_DENIED') {
+    return 'Tài khoản chưa được cấp phạm vi kho của chuyến. Quản trị viên cần cấp đúng kho giao hàng rồi đăng nhập lại.';
+  }
+  if (code === 'PERMISSION_DENIED') {
+    return 'Tài khoản chưa có đủ quyền Giao hàng. Quản trị viên cần cấp vai trò Tài xế / Giao hàng rồi đăng nhập lại.';
+  }
+  if (code === 'DELIVERY_DRIVER_TRIPS_QUERY_FAILED' || code === 'DELIVERY_DRIVER_TRIP_QUERY_FAILED') {
+    return 'Hệ thống chưa tải được dữ liệu chuyến từ Core. Vui lòng thử lại; nếu còn lỗi cần kiểm tra backend/migration.';
+  }
   if (code === 'DELIVERY_TRIP_NOT_FOUND') return 'Chuyến không tồn tại hoặc không được giao cho tài khoản này.';
   if (code === 'DELIVERY_CORE_CONFIG_NOT_READY') return 'Kết nối hệ thống giao hàng chưa được cấu hình.';
   return 'Dữ liệu giao hàng tạm thời chưa khả dụng. Vui lòng thử lại sau.';
