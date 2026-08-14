@@ -23,15 +23,19 @@ test('tài xế đăng nhập một lần, reload vẫn giữ phiên và hoàn t
 
   const bottomNav = page.getByRole('navigation', { name: 'Điều hướng chính' });
   await expect(bottomNav).toBeVisible();
-  await expect(bottomNav.getByText('Hôm nay')).toBeVisible();
-  await expect(bottomNav.getByText('Chuyến')).toBeVisible();
-  await expect(bottomNav.getByText('Hướng dẫn')).toBeVisible();
-  await expect(bottomNav.getByText('Đồng bộ')).toBeVisible();
+  await expect(bottomNav.getByRole('link', { name: 'Chuyến' })).toHaveAttribute('aria-current', 'page');
+  await expect(bottomNav.getByRole('link', { name: 'Tiền đang giữ' })).toBeVisible();
+  await expect(bottomNav.getByText('Tài khoản')).toBeVisible();
+  await expect(bottomNav.getByText('Soạn hàng')).toHaveCount(0);
+  await expect(bottomNav.getByText('Đồng bộ')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Đồng bộ dữ liệu' })).toBeVisible();
 
   await page.getByRole('link', { name: /TRP-20260804-00001/ }).click();
   await expect(page).toHaveURL(new RegExp(`/trips/${tripId}$`));
-  await expect(page.getByRole('link', { name: 'Điểm giao', exact: true })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('link', { name: 'COD' })).toBeVisible();
+  await expect(bottomNav.getByRole('link', { name: 'Chuyến' })).toHaveAttribute('aria-current', 'page');
+  await expect(bottomNav.getByRole('link', { name: 'Tiền đang giữ' })).toBeVisible();
+  await expect(bottomNav.getByRole('link', { name: 'Điểm giao' })).toHaveCount(0);
+  await expect(bottomNav.getByRole('link', { name: 'COD' })).toHaveCount(0);
 
   const firstOrder = page.locator(`#assignment-${assignmentOneId}`);
   await expect(firstOrder.getByText('Giá trị đơn')).toBeVisible();
@@ -72,9 +76,12 @@ test('tài xế đăng nhập một lần, reload vẫn giữ phiên và hoàn t
 
   const handover = page.getByTestId('cod-handover-panel');
   await expect(handover).toBeVisible();
-  await handover.getByRole('button', { name: 'Lập bàn giao COD' }).click();
-  await expect(handover).toContainText('Không còn tiền mặt COD chờ bàn giao');
-  await expect(handover).toContainText('submitted');
+  await handover.getByRole('button', { name: /Tiền đang giữ/ }).click();
+  const custodyDialog = page.getByRole('dialog').filter({ hasText: 'Tiền đang giữ / Bàn giao tiền' });
+  await expect(custodyDialog).toBeVisible();
+  await custodyDialog.getByRole('button', { name: 'Lập bàn giao COD' }).click();
+  await expect(custodyDialog).toContainText('Không còn tiền mặt COD chờ bàn giao');
+  await expect(custodyDialog).toContainText('submitted');
   await expect(page.getByText(/Delivery không sửa công nợ trực tiếp/)).toBeVisible();
 });
 
