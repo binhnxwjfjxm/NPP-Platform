@@ -12,10 +12,11 @@ export async function listPurchaseOrderTrackingRequirements(client, { installati
        JOIN shared.product_variants source
          ON source.installation_id = pol.installation_id
         AND source.id = pol.variant_id
-       JOIN shared.product_variants base
+       LEFT JOIN shared.product_variants base
          ON base.installation_id = source.installation_id
         AND base.product_id = source.product_id
         AND base.is_inventory_base = true
+        AND base.is_active = true
        LEFT JOIN inventory.product_tracking_policies policy
          ON policy.installation_id = pol.installation_id
         AND policy.base_variant_id = base.id

@@ -313,7 +313,7 @@ export async function handleGoodsReceiptRoutes(req, res, options) {
   }
 
   if (pathname === '/api/goods-receipts/tracking-requirements' && method === 'GET') {
-    const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreGoodsReceiptRead);
+    const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreGoodsReceiptCreate);
     if (!requestContext) return true;
     await handleTrackingRequirements(req, res, options, requestContext);
     return true;
