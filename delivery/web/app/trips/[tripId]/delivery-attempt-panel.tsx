@@ -1,5 +1,6 @@
 'use client';
 
+import { createIdempotencyKey } from '@npp/contracts';
 import { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type {
@@ -69,7 +70,7 @@ export default function DeliveryAttemptPanel({ tripId, assignment }: Props) {
   function operationKey(signature: string): string {
     const existing = keys.current.get(signature);
     if (existing) return existing;
-    const next = `delivery-attempt-${crypto.randomUUID()}`;
+    const next = createIdempotencyKey('delivery-attempt');
     keys.current.set(signature, next);
     return next;
   }
@@ -163,97 +164,103 @@ export default function DeliveryAttemptPanel({ tripId, assignment }: Props) {
           </ul>
         ) : null}
         <p className={styles.terminalNotice}>Kết quả đã khóa và chỉ đọc.</p>
-        <ProofOfDeliveryPanel
-          tripId={tripId}
-          assignmentId={assignment.assignmentId}
-          attemptId={assignment.attempt.id}
-        />
+        <details>
+          <summary>Thêm / xem bằng chứng giao hàng</summary>
+          <ProofOfDeliveryPanel
+            tripId={tripId}
+            assignmentId={assignment.assignmentId}
+            attemptId={assignment.attempt.id}
+          />
+        </details>
       </section>
     );
   }
 
   return (
-    <section className={styles.panel} data-testid={`attempt-form-${assignment.assignmentId}`}>
-      <fieldset disabled={busy}>
-        <legend>Ghi kết quả giao</legend>
-        <div className={styles.resultGrid}>
-          {(Object.keys(LABELS) as DeliveryAttemptResult[]).map((value) => (
-            <label key={value} className={result === value ? styles.selectedResult : ''}>
-              <input
-                type="radio"
-                name={`result-${assignment.assignmentId}`}
-                value={value}
-                checked={result === value}
-                onChange={() => setResult(value)}
-              />
-              {LABELS[value]}
-            </label>
-          ))}
-        </div>
-
-        {result === 'delivered_partial' ? (
-          <div className={styles.lineEditor}>
-            <p>Nhập số thực giao trên từng dòng. Tổng phải lớn hơn 0 và nhỏ hơn hàng đã xuất.</p>
-            {assignment.lines.map((line) => (
-              <label key={line.inventoryIssueLineId}>
-                <span>
-                  <strong>{line.itemName || line.sku || 'Mặt hàng'}</strong>
-                  <small>Đã xuất: {quantityText(line.issuedBaseQuantity)} {line.unitCode || ''}</small>
-                </span>
+    <details className={styles.panel} data-testid={`attempt-workflow-${assignment.assignmentId}`}>
+      <summary>Ghi kết quả giao</summary>
+      <section data-testid={`attempt-form-${assignment.assignmentId}`}>
+        <fieldset disabled={busy}>
+          <legend>Kết quả giao</legend>
+          <div className={styles.resultGrid}>
+            {(Object.keys(LABELS) as DeliveryAttemptResult[]).map((value) => (
+              <label key={value} className={result === value ? styles.selectedResult : ''}>
                 <input
-                  inputMode="decimal"
-                  value={quantities[line.inventoryIssueLineId] || '0'}
-                  onChange={(event) => setQuantities((current) => ({
-                    ...current,
-                    [line.inventoryIssueLineId]: event.target.value,
-                  }))}
-                  aria-label={`Số thực giao ${line.itemName || line.sku || ''}`}
+                  type="radio"
+                  name={`result-${assignment.assignmentId}`}
+                  value={value}
+                  checked={result === value}
+                  onChange={() => setResult(value)}
                 />
+                {LABELS[value]}
               </label>
             ))}
-            <small>Tổng hàng đã xuất tham chiếu: {totalIssued.toLocaleString('vi-VN')}</small>
           </div>
-        ) : null}
 
-        {result === 'failed' || result === 'rescheduled' ? (
-          <label className={styles.field}>
-            Lý do
-            <select value={reasonCode} onChange={(event) => setReasonCode(event.target.value)}>
-              <option value="">Chọn lý do</option>
-              {REASONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-        ) : null}
+          {result === 'delivered_partial' ? (
+            <div className={styles.lineEditor}>
+              <p>Nhập số thực giao trên từng dòng. Tổng phải lớn hơn 0 và nhỏ hơn hàng đã xuất.</p>
+              {assignment.lines.map((line) => (
+                <label key={line.inventoryIssueLineId}>
+                  <span>
+                    <strong>{line.itemName || line.sku || 'Mặt hàng'}</strong>
+                    <small>Đã xuất: {quantityText(line.issuedBaseQuantity)} {line.unitCode || ''}</small>
+                  </span>
+                  <input
+                    inputMode="decimal"
+                    value={quantities[line.inventoryIssueLineId] || '0'}
+                    onChange={(event) => setQuantities((current) => ({
+                      ...current,
+                      [line.inventoryIssueLineId]: event.target.value,
+                    }))}
+                    aria-label={`Số thực giao ${line.itemName || line.sku || ''}`}
+                  />
+                </label>
+              ))}
+              <small>Tổng hàng đã xuất tham chiếu: {totalIssued.toLocaleString('vi-VN')}</small>
+            </div>
+          ) : null}
 
-        {result === 'rescheduled' ? (
+          {result === 'failed' || result === 'rescheduled' ? (
+            <label className={styles.field}>
+              Lý do
+              <select value={reasonCode} onChange={(event) => setReasonCode(event.target.value)}>
+                <option value="">Chọn lý do</option>
+                {REASONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+          ) : null}
+
+          {result === 'rescheduled' ? (
+            <label className={styles.field}>
+              Thời điểm giao lại
+              <input
+                type="datetime-local"
+                min={localDateTimeValue(new Date())}
+                value={rescheduledFor}
+                onChange={(event) => setRescheduledFor(event.target.value)}
+              />
+            </label>
+          ) : null}
+
           <label className={styles.field}>
-            Thời điểm giao lại
-            <input
-              type="datetime-local"
-              min={localDateTimeValue(new Date())}
-              value={rescheduledFor}
-              onChange={(event) => setRescheduledFor(event.target.value)}
+            Ghi chú
+            <textarea
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              maxLength={2000}
+              rows={2}
+              placeholder="Thông tin cần để điều phối theo dõi"
             />
           </label>
-        ) : null}
 
-        <label className={styles.field}>
-          Ghi chú
-          <textarea
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            maxLength={2000}
-            rows={2}
-            placeholder="Thông tin cần để điều phối theo dõi"
-          />
-        </label>
-
-        {error ? <p className={styles.error} role="alert">{error}</p> : null}
-        {message ? <p className={styles.message} role="status">{message}</p> : null}
-        <button type="button" className={styles.submit} onClick={submitAttempt} disabled={busy}>
-          {busy ? 'Đang ghi…' : 'Xác nhận kết quả'}
-        </button>
-      </fieldset>
-    </section>
+          {error ? <p className={styles.error} role="alert">{error}</p> : null}
+          {message ? <p className={styles.message} role="status">{message}</p> : null}
+          <button type="button" className={styles.submit} onClick={submitAttempt} disabled={busy}>
+            {busy ? 'Đang ghi…' : 'Xác nhận kết quả'}
+          </button>
+        </fieldset>
+      </section>
+    </details>
   );
 }

@@ -30,9 +30,11 @@ test('tài xế đăng nhập một lần, reload vẫn giữ phiên và hoàn t
 
   await page.getByRole('link', { name: /TRP-20260804-00001/ }).click();
   await expect(page).toHaveURL(new RegExp(`/trips/${tripId}$`));
-  await expect(page.getByRole('link', { name: 'Điểm giao' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('link', { name: 'Điểm giao', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('link', { name: 'COD' })).toBeVisible();
 
+  const workflow = page.getByTestId(`attempt-workflow-${assignmentOneId}`);
+  await workflow.locator('summary').click();
   const firstAttempt = page.getByTestId(`attempt-form-${assignmentOneId}`);
   await firstAttempt.getByLabel('Giao một phần').check();
   await firstAttempt.getByLabel('Số thực giao Bột nguyên liệu A').fill('1');
@@ -40,6 +42,8 @@ test('tài xế đăng nhập một lần, reload vẫn giữ phiên và hoàn t
   await firstAttempt.getByRole('button', { name: 'Xác nhận kết quả' }).click();
 
   await expect(page.getByTestId(`attempt-recorded-${assignmentOneId}`)).toBeVisible();
+  const codWorkflow = page.getByTestId(`cod-workflow-${assignmentOneId}`);
+  await codWorkflow.locator('summary').click();
   const codForm = page.getByTestId(`cod-form-${assignmentOneId}`);
   await expect(codForm).toBeVisible();
   await codForm.getByLabel('Tiền mặt').check();

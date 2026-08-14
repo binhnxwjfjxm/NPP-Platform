@@ -1,0 +1,118 @@
+.nextPointer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+  border: 1px solid #d5b47e;
+  border-radius: 15px;
+  background: #fff8ed;
+  padding: 10px 12px;
+  color: #5d4728;
+  font-size: 12px;
+}
+
+.nextPointer a {
+  color: #754706;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.stopWorkspace {
+  scroll-margin-top: 14px;
+}
+
+.customerHeading {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 9px;
+}
+
+.customerHeading h3,
+.customerHeading p {
+  margin: 0;
+}
+
+.customerHeading h3 {
+  color: #33291f;
+  font-size: 1.05rem;
+}
+
+.customerHeading p {
+  color: #5f574f;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.assignmentMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 9px 0;
+}
+
+.assignmentMeta span {
+  border-radius: 999px;
+  background: #f5f1eb;
+  color: #665d53;
+  padding: 5px 8px;
+  font-size: 10.5px;
+}
+
+.goodsSummary {
+  margin: 6px 0 8px;
+  color: #554d45;
+  font-size: 12px;
+}
+
+.orderDetails,
+.secondaryAction {
+  margin-top: 8px;
+  border: 1px solid #e2dbd2;
+  border-radius: 12px;
+  background: #fffdfa;
+  overflow: hidden;
+}
+
+.orderDetails > summary,
+.secondaryAction > summary {
+  min-height: 42px;
+  box-sizing: border-box;
+  padding: 12px;
+  color: #754706;
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.orderDetails ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0 12px 12px;
+  list-style: none;
+}
+
+.orderDetails li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid #eee8df;
+  padding-top: 8px;
+  font-size: 12px;
+}
+
+.orderDetails li span {
+  min-width: 0;
+  color: #4e473f;
+}
+
+.orderDetails li strong {
+  flex: 0 0 auto;
+  color: #2f2a25;
+}
+
+.secondaryAction > :not(summary) {
+  margin: 0 10px 10px;
+}

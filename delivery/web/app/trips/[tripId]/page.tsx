@@ -4,10 +4,20 @@ import { authenticateDeliveryUser, deliverySetupPending } from '../../../lib/del
 import { getMyTrip } from '../../../lib/core-api';
 import { getMyCodOverview } from '../../../lib/cod-api';
 import type { CodAssignment } from '../../../lib/types';
-import { formatAddress, formatDateTime, safeErrorMessage } from '../../../lib/presentation';
+import {
+  customerPhoneFromSnapshot,
+  formatAddress,
+  formatCollectionPolicy,
+  formatDateTime,
+  formatQuantity,
+  locationUrlFromSnapshot,
+  safeErrorMessage,
+} from '../../../lib/presentation';
 import DeliveryAttemptPanel from './delivery-attempt-panel';
 import CodCollectionPanel from './cod-collection-panel';
 import CodHandoverPanel from './cod-handover-panel';
+import CustomerStopActions from './customer-stop-actions';
+import styles from './trip-customer.module.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,7 +69,6 @@ export default async function TripDetailPage({ params }: PageProps) {
       0,
     ) ?? 0;
     const nextStop = trip.stops?.find((stop) => stop.assignments.some((assignment) => !assignment.attempt));
-    const nextAssignment = nextStop?.assignments.find((assignment) => !assignment.attempt);
 
     return (
       <main className="pageShell tripDetailShell">
@@ -72,24 +81,11 @@ export default async function TripDetailPage({ params }: PageProps) {
           <span className="statusPill">{attemptCount}/{assignmentCount} phiếu</span>
         </header>
 
-        {nextStop && nextAssignment ? (
-          <section className="nextStopCard" id="next-delivery-action" aria-labelledby="next-stop-heading">
-            <div className="nextStopTopline">
-              <span>Điểm tiếp theo</span>
-              <b>#{nextStop.sequence}</b>
-            </div>
-            <h2 id="next-stop-heading">{nextAssignment.customerName || nextAssignment.customerCode || 'Khách hàng'}</h2>
-            <p className="nextStopAddress">{formatAddress(nextStop.address)}</p>
-            <div className="nextStopMeta">
-              <span>{nextAssignment.deliveryOrderNumber || 'Phiếu giao chưa có số'}</span>
-              {nextStop.plannedArrivalAt ? <span>Dự kiến {formatDateTime(nextStop.plannedArrivalAt)}</span> : null}
-            </div>
-            <a className="nextStopAction" href={`#${assignmentAnchor(nextAssignment.assignmentId)}`}>
-              <span aria-hidden="true">✓</span>
-              <strong>Ghi kết quả giao hàng</strong>
-              <b aria-hidden="true">›</b>
-            </a>
-          </section>
+        {nextStop ? (
+          <div className={styles.nextPointer}>
+            <strong>Điểm tiếp theo: #{nextStop.sequence}</strong>
+            <a href="#next-delivery-action">Mở điểm giao ↓</a>
+          </div>
         ) : (
           <section className="nextStopCard completed" id="next-delivery-action">
             <div className="nextStopTopline"><span>Tiến độ chuyến</span><b>Hoàn tất</b></div>
@@ -123,34 +119,92 @@ export default async function TripDetailPage({ params }: PageProps) {
             <ol className="stopList">
               {trip.stops.map((stop) => {
                 const isNextStop = nextStop?.id === stop.id;
+                const primaryAssignment = stop.assignments[0];
+                const customerName = primaryAssignment?.customerName || primaryAssignment?.customerCode || 'Khách hàng';
+                const address = formatAddress(stop.address);
+                const phone = customerPhoneFromSnapshot(stop.address);
+                const locationUrl = locationUrlFromSnapshot(stop.address);
                 return (
-                  <li className={isNextStop ? 'stopCard nextStop' : 'stopCard'} key={stop.id}>
+                  <li
+                    className={`${isNextStop ? 'stopCard nextStop' : 'stopCard'} ${styles.stopWorkspace}`}
+                    id={isNextStop ? 'next-delivery-action' : undefined}
+                    key={stop.id}
+                  >
                     <div className="stopSequence" aria-label={`Điểm số ${stop.sequence}`}>{stop.sequence}</div>
                     <div className="stopBody">
                       <div className="stopHeadingRow">
-                        <p className="stopAddress">{isNextStop ? 'Điểm giao đang ưu tiên ở phía trên' : formatAddress(stop.address)}</p>
+                        <div className={styles.customerHeading}>
+                          <h3>{customerName}</h3>
+                          <p>{address}</p>
+                        </div>
                         {isNextStop ? <span className="nextStopBadge">Tiếp theo</span> : null}
                       </div>
                       {stop.plannedArrivalAt ? <p className="mutedText">Dự kiến: {formatDateTime(stop.plannedArrivalAt)}</p> : null}
+                      <CustomerStopActions
+                        tripId={trip.id}
+                        customerId={stop.customerId}
+                        customerName={customerName}
+                        address={address}
+                        phone={phone}
+                        locationUrl={locationUrl}
+                      />
+
                       <div className="deliveryOrders">
                         {stop.assignments.map((assignment) => {
-                          const isNextAssignment = nextAssignment?.assignmentId === assignment.assignmentId;
                           const codAssignment = codByAssignment.get(assignment.assignmentId);
+                          const codRelevant = Boolean(
+                            codAssignment
+                            && codAssignment.collectionPolicy === 'COLLECT_ON_DELIVERY'
+                            && ['delivered_full', 'delivered_partial'].includes(codAssignment.deliveryAttemptResult ?? ''),
+                          );
+                          const firstItem = assignment.lines[0];
                           return (
-                            <article className={assignment.attempt ? 'deliveryOrder completedAssignment' : 'deliveryOrder'} id={assignmentAnchor(assignment.assignmentId)} key={assignment.assignmentId}>
+                            <article
+                              className={assignment.attempt ? 'deliveryOrder completedAssignment' : 'deliveryOrder'}
+                              id={assignmentAnchor(assignment.assignmentId)}
+                              key={assignment.assignmentId}
+                            >
                               <div className="deliveryOrderHeading">
                                 <div>
-                                  <strong>{isNextAssignment ? 'Phiếu giao tiếp theo' : (assignment.customerName || assignment.customerCode || 'Khách hàng')}</strong>
-                                  <span>{isNextAssignment ? 'Thông tin chính ở thẻ ưu tiên phía trên' : (assignment.deliveryOrderNumber || 'Phiếu giao chưa có số')}</span>
+                                  <strong>{assignment.deliveryOrderNumber || 'Phiếu giao chưa có số'}</strong>
+                                  <span>{assignment.customerCode || 'Khách hàng'}</span>
                                 </div>
                                 <span className={assignment.attempt ? 'assignmentState done' : 'assignmentState'}>{assignment.attempt ? 'Đã ghi' : 'Chờ ghi'}</span>
                               </div>
-                              <dl>
-                                <div><dt>Ngày yêu cầu</dt><dd>{assignment.requestedDeliveryDate || 'Chưa có'}</dd></div>
-                                <div><dt>Thu tiền</dt><dd>{assignment.collectionPolicy || 'Theo phiếu'}</dd></div>
-                              </dl>
+                              <div className={styles.assignmentMeta}>
+                                <span>Ngày yêu cầu: {assignment.requestedDeliveryDate || 'Chưa có'}</span>
+                                <span>{formatCollectionPolicy(assignment.collectionPolicy)}</span>
+                              </div>
+                              <p className={styles.goodsSummary}>
+                                {assignment.lines.length > 0
+                                  ? `${assignment.lines.length} mặt hàng · ${firstItem?.itemName || firstItem?.sku || 'Hàng giao'}`
+                                  : 'Chưa có dữ liệu hàng xuất kho'}
+                              </p>
+                              <details className={styles.orderDetails}>
+                                <summary>Xem chi tiết đơn</summary>
+                                {assignment.lines.length > 0 ? (
+                                  <ul>
+                                    {assignment.lines.map((line) => (
+                                      <li key={line.inventoryIssueLineId}>
+                                        <span>{line.itemName || line.sku || 'Mặt hàng'}{line.sku ? ` · ${line.sku}` : ''}</span>
+                                        <strong>{formatQuantity(line.issuedBaseQuantity)} {line.unitCode || ''}</strong>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <p className="mutedText">Chưa có dữ liệu hàng xuất kho để đối chiếu.</p>
+                                )}
+                              </details>
                               <DeliveryAttemptPanel tripId={trip.id} assignment={assignment} />
-                              {codAssignment ? <CodCollectionPanel tripId={trip.id} assignment={codAssignment} /> : null}
+                              {codRelevant && codAssignment ? (
+                                <details
+                                  className={styles.secondaryAction}
+                                  data-testid={`cod-workflow-${assignment.assignmentId}`}
+                                >
+                                  <summary>{codAssignment.collection ? 'Xem tiền COD' : 'Thu tiền COD'}</summary>
+                                  <CodCollectionPanel tripId={trip.id} assignment={codAssignment} />
+                                </details>
+                              ) : null}
                             </article>
                           );
                         })}
