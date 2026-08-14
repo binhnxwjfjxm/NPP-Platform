@@ -13,6 +13,10 @@ export default function DocumentPrintDock({
   value,
   options,
   onChange,
+  secondaryLabel,
+  secondaryValue,
+  secondaryOptions,
+  onSecondaryChange,
   onRefresh,
   refreshing = false,
   children,
@@ -21,6 +25,10 @@ export default function DocumentPrintDock({
   value: string;
   options: DocumentPrintOption[];
   onChange: (id: string) => void;
+  secondaryLabel?: string;
+  secondaryValue?: string;
+  secondaryOptions?: DocumentPrintOption[];
+  onSecondaryChange?: (id: string) => void;
   onRefresh?: () => void;
   refreshing?: boolean;
   children: ReactNode;
@@ -37,6 +45,16 @@ export default function DocumentPrintDock({
           ))}
         </select>
       </label>
+      {secondaryLabel && secondaryOptions?.length && onSecondaryChange ? (
+        <label className={styles.selector}>
+          <span>{secondaryLabel}</span>
+          <select value={secondaryValue} onChange={(event) => onSecondaryChange(event.currentTarget.value)}>
+            {secondaryOptions.map((option) => (
+              <option key={option.id} value={option.id}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       {onRefresh ? (
         <button
           type="button"
