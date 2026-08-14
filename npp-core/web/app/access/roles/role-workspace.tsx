@@ -276,7 +276,7 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
                   <tr key={role.id} data-testid={`role-row-${role.code}`}>
                     <td><code>{role.code}</code></td>
                     <td><div className={styles.entityStack}><strong>{role.name}</strong><span>{role.description || 'Không có mô tả'}</span><span>{role.web_login_challenge_required ? 'Web/PWA: yêu cầu mã xác nhận' : 'Web/PWA: chỉ tài khoản và mật khẩu'}</span></div></td>
-                    <td className={styles.relationCell}><div className={styles.entityStack}><strong>{formatCompactNumber(role.permission_keys.length)} quyền</strong><span>{role.permission_keys.length ? role.permission_keys.map((key) => permissionMap.get(key)?.label ?? key).join(' · ') : 'Chưa gán quyền'}</span></div></td>
+                    <td className={styles.relationCell}><div className={styles.entityStack}><strong>{formatCompactNumber(role.permission_keys.length)} quyền</strong><span>{role.permission_keys.length ? `${role.permission_keys.slice(0, 2).map((key) => permissionMap.get(key)?.label ?? key).join(' · ')}${role.permission_keys.length > 2 ? ` · +${formatCompactNumber(role.permission_keys.length - 2)} quyền khác` : ''}` : 'Chưa gán quyền'}</span></div></td>
                     <td><span className={joinClasses(styles.statusPill, role.is_active ? styles.toneSuccess : styles.toneDanger)}>{role.is_active ? 'Đang hoạt động' : 'Ngừng hoạt động'}</span></td>
                     <td>{formatDateTime(role.updated_at)}</td>
                     <td><div className={styles.rowActions}>
