@@ -8,13 +8,13 @@ import type { CustomerPayment } from '../../../lib/customer-payment-types';
 type Envelope<T> = { data?: T };
 
 function money(value: string, currencyCode: string) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return `${value} ${currencyCode}`;
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: currencyCode,
-    maximumFractionDigits: 6,
-  }).format(numeric);
+  const normalized = String(value ?? '').trim();
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(normalized);
+  if (!match) return `${normalized || '—'} ${currencyCode}`;
+  const sign = match[1];
+  const whole = match[2].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const fraction = (match[3] ?? '').replace(/0+$/, '');
+  return `${sign}${whole}${fraction ? `,${fraction}` : ''} ${currencyCode}`;
 }
 
 function dateText(value: string | null | undefined) {
