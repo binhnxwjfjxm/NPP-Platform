@@ -200,6 +200,7 @@ export default function GoodsReceiptWorkspace({
   const [loadingList, setLoadingList] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const actionKeys = useRef(new Map<string, string>());
+  const refreshGeneration = useRef(0);
 
   const normalizedSearch = search.trim().toLocaleLowerCase('vi-VN');
   const visibleItems = useMemo(() => items.filter((goodsReceipt) => {
@@ -243,6 +244,8 @@ export default function GoodsReceiptWorkspace({
   }, [editor, pendingAction, selectedGoodsReceipt]);
 
   function upsertReceipt(goodsReceipt: GoodsReceipt) {
+    refreshGeneration.current += 1;
+    setLoadingList(false);
     setItems((current) => {
       const index = current.findIndex((item) => item.id === goodsReceipt.id);
       if (index < 0) return [goodsReceipt, ...current];
@@ -251,6 +254,8 @@ export default function GoodsReceiptWorkspace({
   }
 
   async function loadAll(successMessage?: string) {
+    const generation = refreshGeneration.current + 1;
+    refreshGeneration.current = generation;
     setLoadingList(true);
     setError(null);
     setNotice(null);
@@ -261,6 +266,8 @@ export default function GoodsReceiptWorkspace({
         requestJson<GoodsReceipt[]>('/api/goods-receipts?limit=1000'),
         requestJson<PurchaseOrder[]>('/api/purchase-orders?limit=1000'),
       ]);
+
+      if (refreshGeneration.current !== generation) return;
 
       if (receiptsResult.status === 'fulfilled') {
         setItems(receiptsResult.value);
@@ -288,7 +295,9 @@ export default function GoodsReceiptWorkspace({
         setNotice('Đã cập nhật nguồn tải thành công; nguồn còn lỗi đang giữ dữ liệu gần nhất.');
       }
     } finally {
-      setLoadingList(false);
+      if (refreshGeneration.current === generation) {
+        setLoadingList(false);
+      }
     }
   }
 
@@ -546,7 +555,7 @@ export default function GoodsReceiptWorkspace({
       if (selectedGoodsReceipt?.id === updated.id) setSelectedGoodsReceipt(updated);
       setPendingAction(null);
       setReverseReason('');
-      setNotice(action === 'post' ? 'Phiếu nhận hàng đã được ghi sổ.' : 'Phiếu nhận hàng đã được đảo.');
+      void loadAll(action === 'post' ? 'Phiếu nhận hàng đã được ghi sổ.' : 'Phiếu nhận hàng đã được đảo.');
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Không thực hiện được thao tác phiếu nhận hàng');
     } finally {

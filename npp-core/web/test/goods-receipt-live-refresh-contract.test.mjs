@@ -32,3 +32,29 @@ test('goods receipt refresh keeps purchase orders live and preserves last-known-
   assert.ok(eligibilityBlock.includes("'partially_received'"));
   assert.doesNotMatch(eligibilityBlock, /totalAmount/);
 });
+
+test('goods receipt refresh ignores stale snapshots across newer refreshes and mutations', async () => {
+  const source = await readFile(sourceUrl, 'utf8');
+
+  assert.match(source, /const refreshGeneration = useRef\(0\);/);
+  assert.match(
+    source,
+    /function upsertReceipt\(goodsReceipt: GoodsReceipt\) \{\s*refreshGeneration\.current \+= 1;\s*setLoadingList\(false\);\s*setItems/s,
+  );
+  assert.match(
+    source,
+    /async function loadAll\(successMessage\?: string\) \{\s*const generation = refreshGeneration\.current \+ 1;\s*refreshGeneration\.current = generation;/s,
+  );
+  assert.match(
+    source,
+    /Promise\.allSettled[\s\S]*?if \(refreshGeneration\.current !== generation\) return;[\s\S]*?if \(receiptsResult\.status === 'fulfilled'\)/,
+  );
+  assert.match(
+    source,
+    /finally \{\s*if \(refreshGeneration\.current === generation\) \{\s*setLoadingList\(false\);\s*\}\s*\}/s,
+  );
+  assert.match(
+    source,
+    /upsertReceipt\(updated\);[\s\S]*?void loadAll\(action === 'post' \? 'Phiếu nhận hàng đã được ghi sổ\.' : 'Phiếu nhận hàng đã được đảo\.'\);/,
+  );
+});
