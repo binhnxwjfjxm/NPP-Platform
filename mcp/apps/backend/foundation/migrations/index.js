@@ -33,6 +33,10 @@ const MCP_LEGACY_REPORT_SETTINGS_SEED_SQL = readFileSync(
   new URL("./sql/008_mcp_legacy_report_settings_seed.sql", import.meta.url),
   "utf8"
 );
+const MCP_CUSTOMER_MEDIA_LINK_SQL = readFileSync(
+  new URL("./sql/009_mcp_customer_media_link.sql", import.meta.url),
+  "utf8"
+);
 
 export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_001_write_foundation", sql: MCP_WRITE_FOUNDATION_SQL }),
@@ -42,7 +46,8 @@ export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_005_session_runtime_contract", sql: MCP_SESSION_RUNTIME_CONTRACT_SQL }),
   Object.freeze({ id: "mcp_006_customer_onboarding_sync", sql: MCP_CUSTOMER_ONBOARDING_SYNC_SQL }),
   Object.freeze({ id: "mcp_007_core_sales_order_sync", sql: MCP_CORE_SALES_ORDER_SYNC_SQL }),
-  Object.freeze({ id: "mcp_008_legacy_report_settings_seed", sql: MCP_LEGACY_REPORT_SETTINGS_SEED_SQL })
+  Object.freeze({ id: "mcp_008_legacy_report_settings_seed", sql: MCP_LEGACY_REPORT_SETTINGS_SEED_SQL }),
+  Object.freeze({ id: "mcp_009_customer_media_link", sql: MCP_CUSTOMER_MEDIA_LINK_SQL })
 ]);
 
 const MCP_READ_MODELS = Object.freeze([
@@ -189,11 +194,7 @@ async function constraintExists(adapter, table, constraint) {
 }
 
 async function indexExists(adapter, index) {
-  return exists(
-    adapter,
-    "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'mcp' AND indexname = $1) AS exists",
-    [index]
-  );
+  return exists(adapter, "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'mcp' AND indexname = $1) AS exists", [index]);
 }
 
 async function triggerExists(adapter, table, trigger) {
@@ -270,6 +271,10 @@ export async function migrationVerifyWithAdapter(adapter, migrations = MCP_MIGRA
       "mcp_orders_core_sales_order_shape"
     ),
     coreSalesOrderUniqueIndex: await indexExists(adapter, "mcp_orders_core_sales_order_unique"),
+    routeCustomerCoreCustomerIdColumn: await columnExists(adapter, "mcp_route_customers", "core_customer_id"),
+    routeCustomerCoreAddressIdColumn: await columnExists(adapter, "mcp_route_customers", "core_customer_address_id"),
+    routeCustomerCoreLinkageTrigger: await triggerExists(adapter, "orders", "mcp_orders_route_customer_core_linkage"),
+    outletMediaSharedRegistryTrigger: await triggerExists(adapter, "mcp_outlet_media", "mcp_outlet_media_shared_registry"),
     reportSettingGroupKeyIndex: await indexExists(adapter, "mcp_report_settings_group_key_unique"),
     outboxPendingIndex: await indexExists(adapter, "mcp_outbox_events_pending_available_idx"),
     routeCustomerOrderIndex: await indexExists(adapter, "mcp_route_customers_route_sort_idx"),

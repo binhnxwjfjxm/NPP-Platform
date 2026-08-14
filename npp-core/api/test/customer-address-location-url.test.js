@@ -13,8 +13,11 @@ const baseAddress = Object.freeze({
   isDefault: true,
 });
 
-test('customer address location migration is registered after 077', () => {
-  assert.equal(CORE_API_MIGRATIONS.at(-1)?.id, '078_customer_address_location_url');
+test('customer address location migration remains ordered immediately before customer media', () => {
+  const locationIndex = CORE_API_MIGRATIONS.findIndex((migration) => migration.id === '078_customer_address_location_url');
+  const mediaIndex = CORE_API_MIGRATIONS.findIndex((migration) => migration.id === '079_customer_media');
+  assert.notEqual(locationIndex, -1);
+  assert.equal(mediaIndex, locationIndex + 1);
 });
 
 test('customer address location URL is optional, trimmed and provider-neutral HTTPS', () => {

@@ -37,7 +37,8 @@ const EXPECTED_MIGRATIONS = [
   "mcp_005_session_runtime_contract",
   "mcp_006_customer_onboarding_sync",
   "mcp_007_core_sales_order_sync",
-  "mcp_008_legacy_report_settings_seed"
+  "mcp_008_legacy_report_settings_seed",
+  "mcp_009_customer_media_link"
 ];
 
 test("MCP migrations use a unique registry namespace and apply once in one locked transaction", async () => {
@@ -59,6 +60,7 @@ test("MCP migrations use a unique registry namespace and apply once in one locke
   assert.equal(adapter.calls.some((call) => call.text.includes("mcp_session_customers_visited_counter")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("customer_onboarding_request_id")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("core_sales_order_id")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("mcp_orders_route_customer_core_linkage")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("Exact source counts: 7 groups, 53 items")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("ON DELETE CASCADE")), true);
 
@@ -244,6 +246,22 @@ test("MCP legacy report settings seed is canonical, exact and non-destructive", 
   const executableSql = sql.replace(/^\s*--.*$/gm, "");
   assert.doesNotMatch(executableSql, /\b(?:DELETE|TRUNCATE)\b/i);
   assert.doesNotMatch(sql, /postgresql:\/\/|SUPABASE_(?:ANON|SERVICE|SECRET|PUBLISHABLE)_KEY/i);
+});
+
+test("MCP customer media linkage migration is canonical and reuses R2 objects", () => {
+  const sql = MCP_MIGRATIONS[8].sql;
+  const canonicalSql = readFileSync(
+    new URL("../../../../../database/migrations/mcp/009_mcp_customer_media_link.sql", import.meta.url),
+    "utf8"
+  );
+  assert.equal(sql, canonicalSql);
+  assert.match(sql, /core_customer_id text NULL/);
+  assert.match(sql, /core_customer_address_id text NULL/);
+  assert.match(sql, /mcp_orders_route_customer_core_linkage/);
+  assert.match(sql, /mcp_outlet_media_shared_registry/);
+  assert.match(sql, /sync_route_customer_media_to_shared/);
+  assert.match(sql, /source_app = 'MCP'/);
+  assert.doesNotMatch(sql, /CREATE\s+TABLE\s+shared\.customer_media/i);
 });
 
 test("migration failure rolls back and preserves the original error", async () => {

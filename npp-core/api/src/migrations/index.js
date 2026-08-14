@@ -76,6 +76,10 @@ const CUSTOMER_ADDRESS_LOCATION_URL_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/078_customer_address_location_url.sql', import.meta.url),
   'utf8',
 );
+const CUSTOMER_MEDIA_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/079_customer_media.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -112,6 +116,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '076_logistics_driver_employee_integrity', sql: LOGISTICS_DRIVER_EMPLOYEE_INTEGRITY_SQL }),
   Object.freeze({ id: '077_document_numbering_active_series', sql: DOCUMENT_NUMBERING_ACTIVE_SERIES_SQL }),
   Object.freeze({ id: '078_customer_address_location_url', sql: CUSTOMER_ADDRESS_LOCATION_URL_SQL }),
+  Object.freeze({ id: '079_customer_media', sql: CUSTOMER_MEDIA_SQL }),
 ]);
 
 export { runMigrations };

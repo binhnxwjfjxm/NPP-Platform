@@ -249,6 +249,27 @@ export function createR2StorageAdapter(config, { client, presign = getSignedUrl 
     }
   }
 
+  async function createPresignedPutUrl({
+    installationId,
+    key,
+    contentType = DEFAULT_CONTENT_TYPE,
+    expiresIn,
+  }) {
+    const scopedKey = assertInstallationScopedObjectKey({ key, installationId });
+    const ttl = validatePresignTtl(expiresIn, config.r2PresignedUrlMaxSeconds);
+    try {
+      const command = new PutObjectCommand({
+        Bucket: config.r2Bucket,
+        Key: scopedKey,
+        ContentType: String(contentType || DEFAULT_CONTENT_TYPE),
+      });
+      const url = await presign(providerClient, command, { expiresIn: ttl });
+      return Object.freeze({ url, expiresIn: ttl, contentType: String(contentType || DEFAULT_CONTENT_TYPE) });
+    } catch (error) {
+      throw normalizeProviderError(error, STORAGE_ERROR_CODES.presignFailed, 'Storage upload presign failed');
+    }
+  }
+
   async function createPresignedGetUrl({
     installationId,
     key,
@@ -276,6 +297,7 @@ export function createR2StorageAdapter(config, { client, presign = getSignedUrl 
     headObject,
     getObject,
     deleteObject,
+    createPresignedPutUrl,
     createPresignedGetUrl,
   });
 }
