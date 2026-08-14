@@ -339,9 +339,10 @@
 .mobileMenuButton { display: none; width: 38px; height: 38px; border-color: #d7cec7; background: #fff; color: #5b3425; }
 
 .content {
+  width: 100%;
   min-width: 0;
-  max-width: 1680px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   animation: content-enter var(--npp-motion-route-duration) var(--npp-motion-ease-enter);
   animation-fill-mode: none;
 }

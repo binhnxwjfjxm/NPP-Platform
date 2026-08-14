@@ -4,6 +4,7 @@ import { createIdempotencyKey } from '@npp/contracts';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import { StatusBadge } from '../../components/status-badge';
 import { WorkspaceTabPanel, WorkspaceTabs, type WorkspaceTabOption } from '../../components/workspace-tabs';
 import styles from './delivery-order-workspace.module.css';
 
@@ -420,7 +421,7 @@ export default function DeliveryOrderWorkspace() {
               {orders.length === 0 ? <p className={styles.empty}>Chưa có Delivery Order.</p> : null}
               {orders.map((order) => (
                 <button type="button" key={order.id} className={`${styles.queueItem} ${selectedOrderId === order.id ? styles.active : ''}`} onClick={() => void loadOrder(order.id)} data-testid={`delivery-order-${order.id}`}>
-                  <span className={styles.queueTop}><strong>{order.number || 'Chứng từ nháp'}</strong><em>{statusLabel(order.status)}</em></span>
+                  <span className={styles.queueTop}><strong>{order.number || 'Chứng từ nháp'}</strong><StatusBadge status={order.status} label={statusLabel(order.status)} /></span>
                   <span>{order.salesOrderNumber || 'Đơn bán hàng'} · {order.customerCode} — {order.customerName}</span>
                   <small>{order.warehouseCode} · {order.lineCount ?? 0} dòng · {formatQuantity(order.totalBaseQuantity)}</small>
                 </button>
@@ -429,7 +430,7 @@ export default function DeliveryOrderWorkspace() {
 
             {selectedOrder ? (
               <div className={styles.builder}>
-                <div className={styles.detailHeader}><div><p className={styles.eyebrow}>{selectedOrder.number || 'Delivery Order nháp'}</p><h3>{selectedOrder.customerCode} — {selectedOrder.customerName}</h3><p>{selectedOrder.salesOrderNumber || 'Đơn bán hàng'} · {selectedOrder.warehouseCode}</p></div><span className={styles.status}>{statusLabel(selectedOrder.status)}</span></div>
+                <div className={styles.detailHeader}><div><p className={styles.eyebrow}>{selectedOrder.number || 'Delivery Order nháp'}</p><h3>{selectedOrder.customerCode} — {selectedOrder.customerName}</h3><p>{selectedOrder.salesOrderNumber || 'Đơn bán hàng'} · {selectedOrder.warehouseCode}</p></div><StatusBadge status={selectedOrder.status} label={statusLabel(selectedOrder.status)} /></div>
                 <div className={styles.lines}>
                   {(selectedOrder.lines ?? []).map((line) => (
                     <article key={line.id}><div><strong>{line.sku} — {line.itemName}</strong><span>{line.locationCode || 'Không vị trí'} · Lô {line.lotCode || 'Không lô'}</span></div><strong>{formatQuantity(line.deliveryBaseQuantity)} {line.unitCode}</strong></article>

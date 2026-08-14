@@ -28,6 +28,7 @@ type DriverDraft = { employeeId: string; licenseReference: string };
 type TripDraft = { warehouseId: string; deliveryRouteId: string; vehicleId: string; primaryDriverId: string; plannedStartAt: string; note: string };
 type FieldErrors = Record<string, string>;
 type WorkspaceTab = 'planning' | 'assignment';
+type PlanningView = 'create-list' | 'detail';
 
 const emptyMaster: MasterDraft = { code: '', name: '', extra: '' };
 const emptyRouteMaster: MasterDraft = { code: '', name: '', extra: '', warehouseId: '' };
@@ -111,6 +112,7 @@ export default function TripPlanningWorkspace() {
   const [driverDraft, setDriverDraft] = useState<DriverDraft>(emptyDriver);
   const [tripDraft, setTripDraft] = useState<TripDraft>(emptyTrip);
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('planning');
+  const [planningView, setPlanningView] = useState<PlanningView>('create-list');
   const [assignmentRouteId, setAssignmentRouteId] = useState('');
   const [assignmentTripId, setAssignmentTripId] = useState('');
   const [selectedDeliveryOrderIds, setSelectedDeliveryOrderIds] = useState<string[]>([]);
@@ -340,6 +342,41 @@ export default function TripPlanningWorkspace() {
       : [...current, order.id]);
   }
 
+  const tripList = (compact: boolean) => (
+    <section className={`${styles.section} ${compact ? styles.tripListCompact : styles.tripListStandalone}`} aria-labelledby={compact ? 'trip-list-detail-heading' : 'trip-list-heading'}>
+      <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Danh sách</p><h2 id={compact ? 'trip-list-detail-heading' : 'trip-list-heading'}>Các chuyến giao</h2></div>
+        <button type="button" className={styles.secondaryButton} onClick={() => loadLists()} disabled={busy !== null}>Tải lại</button>
+      </div>
+      <div className={styles.list} data-testid="trip-list">
+        {trips.map((trip) => <button type="button" key={trip.id} className={`${styles.listItem} ${selectedTrip?.id === trip.id ? styles.selected : ''}`} onClick={() => runOperation(`load-${trip.id}`, () => loadTrip(trip.id))}><strong>{trip.number}</strong><span>{trip.routeCode || 'Chưa chọn tuyến'} · {trip.warehouseCode || 'Kho'}</span><small>{statusLabel(trip.status)} · {trip.stopCount || 0} điểm · {trip.assignmentCount || 0} phiếu</small></button>)}
+        {!trips.length && busy !== 'load' ? <p className={styles.empty}>Chưa có chuyến giao.</p> : null}
+      </div>
+    </section>
+  );
+
+  const tripDetail = (
+    <section className={styles.section} aria-labelledby="trip-detail-heading">
+      <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Chi tiết</p><h2 id="trip-detail-heading">{selectedTrip ? selectedTrip.number : 'Chọn một chuyến'}</h2></div>{selectedTrip ? <span className={styles.status} data-status={selectedTrip.status}>{statusLabel(selectedTrip.status)}</span> : null}</div>
+      {selectedTrip ? <>
+        <TripFields draft={tripDraft} setDraft={setTripDraft} warehouses={warehouses} routes={routes} vehicles={vehicles} drivers={drivers} disabled={busy !== null || !editable} lockWarehouse fieldErrors={fieldErrors} />
+        <div className={styles.actions}>
+          {editable ? <button type="button" className={styles.secondaryButton} onClick={updateTrip} disabled={busy !== null}>Lưu kế hoạch</button> : null}
+          {canPlan ? <button type="button" className={styles.primaryButton} onClick={() => tripAction('plan', {}, 'plan')} disabled={busy !== null} data-testid="plan-trip-button">Chuyển sang đã lập kế hoạch</button> : null}
+          {selectedTrip.status === 'planned' ? <button type="button" className={styles.secondaryButton} onClick={() => tripAction('reopen', { reason: 'Điều chỉnh kế hoạch trước khi khóa' }, 'reopen')} disabled={busy !== null} data-testid="reopen-trip-button">Mở lại chỉnh sửa</button> : null}
+          {canLock ? <button type="button" className={styles.dangerButton} onClick={() => tripAction('lock', {}, 'lock')} disabled={busy !== null} data-testid="lock-trip-button">Khóa kế hoạch</button> : null}
+        </div>
+        <div className={styles.stopList} data-testid="trip-stop-list">
+          {(selectedTrip.stops || []).map((stop, index) => <article className={styles.stopCard} key={stop.id}><header><div><strong>Điểm {stop.sequence}</strong><p>{addressLabel(stop.address)}</p></div>{editable ? <div className={styles.moveButtons}><button type="button" onClick={() => moveStop(stop.id, -1)} disabled={busy !== null || index === 0} aria-label="Đưa điểm giao lên">↑</button><button type="button" onClick={() => moveStop(stop.id, 1)} disabled={busy !== null || index === (selectedTrip.stops?.length || 0) - 1} aria-label="Đưa điểm giao xuống">↓</button></div> : null}</header>
+            {stop.assignments.map((assignment) => <div className={styles.assignment} key={assignment.assignmentId}><span><strong>{businessNumber(assignment.deliveryOrderNumber, 'Thiếu mã phiếu giao')}</strong><small>{assignment.customerCode} · {assignment.customerName}</small></span>{editable ? <button type="button" className={styles.textButton} onClick={() => tripAction('unassign', { deliveryOrderId: assignment.deliveryOrderId, reason: 'Điều chỉnh kế hoạch chuyến' }, assignment.deliveryOrderId)} disabled={busy !== null}>Bỏ khỏi chuyến</button> : null}</div>)}
+          </article>)}
+          {!selectedTrip.stops?.length ? <p className={styles.empty}>Chưa có điểm giao.</p> : null}
+        </div>
+        {selectedTrip.status === 'planned' ? <p className={styles.lockNotice} data-testid="planned-read-only">Kế hoạch đã lập và đang chỉ đọc. Mở lại chỉnh sửa để thay đổi xe, tài xế, điểm dừng hoặc phiếu giao.</p> : null}
+        {selectedTrip.status === 'locked' ? <p className={styles.lockNotice} data-testid="locked-read-only">Kế hoạch đã khóa. Xe, tài xế, điểm dừng và phiếu giao chỉ được đọc.</p> : null}
+      </> : <p className={styles.empty}>Chọn chuyến trong danh sách để lập kế hoạch.</p>}
+    </section>
+  );
+
   return (
     <AppShell kicker="Giao nhận" title="Điều phối giao hàng" subtitle="Lập chuyến và gán nhiều phiếu giao theo tuyến; chưa xuất kho hay ghi kết quả giao.">
       <div className={styles.workspace} data-testid="trip-planning-workspace">
@@ -352,54 +389,33 @@ export default function TripPlanningWorkspace() {
         </div>
 
         {activeTab === 'planning' ? <>
-          <section className={styles.section} aria-labelledby="logistics-master-heading">
-            <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Danh mục điều phối</p><h2 id="logistics-master-heading">Tuyến, xe và tài xế</h2></div></div>
-            <div className={styles.masterGrid}>
-              <MasterForm resource="routes" title="Tuyến giao" draft={routeDraft} labels={['Mã tuyến', 'Tên tuyến', 'Mô tả']} onChange={setRouteDraft} onSubmit={() => createMaster('routes', routeDraft)} disabled={busy !== null} testId="create-route" fieldErrors={fieldErrors} warehouses={warehouses} />
-              <MasterForm resource="vehicles" title="Phương tiện" draft={vehicleDraft} labels={['Mã xe', 'Biển số', 'Loại xe']} onChange={setVehicleDraft} onSubmit={() => createMaster('vehicles', vehicleDraft)} disabled={busy !== null} testId="create-vehicle" fieldErrors={fieldErrors} />
-              <DriverForm draft={driverDraft} employees={driverEmployees} onChange={setDriverDraft} onSubmit={createDriver} onLoadEmployees={ensureDriverEmployees} disabled={busy !== null} loadingEmployees={driverEmployeesBusy} fieldErrors={fieldErrors} />
-            </div>
-          </section>
-
-          <section className={styles.section} aria-labelledby="create-trip-heading">
-            <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Kế hoạch chuyến</p><h2 id="create-trip-heading">Tạo chuyến giao</h2></div>
-              <button type="button" className={styles.primaryButton} onClick={createTrip} disabled={busy !== null || !tripDraft.warehouseId} data-testid="create-trip-button">Tạo chuyến</button>
-            </div>
-            <TripFields draft={tripDraft} setDraft={setTripDraft} warehouses={warehouses} routes={routes} vehicles={vehicles} drivers={drivers} disabled={busy !== null} fieldErrors={fieldErrors} />
-          </section>
-
-          <div className={styles.columns}>
-            <section className={styles.section} aria-labelledby="trip-list-heading">
-              <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Danh sách</p><h2 id="trip-list-heading">Các chuyến giao</h2></div>
-                <button type="button" className={styles.secondaryButton} onClick={() => loadLists()} disabled={busy !== null}>Tải lại</button>
-              </div>
-              <div className={styles.list} data-testid="trip-list">
-                {trips.map((trip) => <button type="button" key={trip.id} className={`${styles.listItem} ${selectedTrip?.id === trip.id ? styles.selected : ''}`} onClick={() => runOperation(`load-${trip.id}`, () => loadTrip(trip.id))}><strong>{trip.number}</strong><span>{trip.routeCode || 'Chưa chọn tuyến'} · {trip.warehouseCode || 'Kho'}</span><small>{statusLabel(trip.status)} · {trip.stopCount || 0} điểm · {trip.assignmentCount || 0} phiếu</small></button>)}
-                {!trips.length && busy !== 'load' ? <p className={styles.empty}>Chưa có chuyến giao.</p> : null}
-              </div>
-            </section>
-
-            <section className={styles.section} aria-labelledby="trip-detail-heading">
-              <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Chi tiết</p><h2 id="trip-detail-heading">{selectedTrip ? selectedTrip.number : 'Chọn một chuyến'}</h2></div>{selectedTrip ? <span className={styles.status} data-status={selectedTrip.status}>{statusLabel(selectedTrip.status)}</span> : null}</div>
-              {selectedTrip ? <>
-                <TripFields draft={tripDraft} setDraft={setTripDraft} warehouses={warehouses} routes={routes} vehicles={vehicles} drivers={drivers} disabled={busy !== null || !editable} lockWarehouse fieldErrors={fieldErrors} />
-                <div className={styles.actions}>
-                  {editable ? <button type="button" className={styles.secondaryButton} onClick={updateTrip} disabled={busy !== null}>Lưu kế hoạch</button> : null}
-                  {canPlan ? <button type="button" className={styles.primaryButton} onClick={() => tripAction('plan', {}, 'plan')} disabled={busy !== null} data-testid="plan-trip-button">Chuyển sang đã lập kế hoạch</button> : null}
-                  {selectedTrip.status === 'planned' ? <button type="button" className={styles.secondaryButton} onClick={() => tripAction('reopen', { reason: 'Điều chỉnh kế hoạch trước khi khóa' }, 'reopen')} disabled={busy !== null} data-testid="reopen-trip-button">Mở lại chỉnh sửa</button> : null}
-                  {canLock ? <button type="button" className={styles.dangerButton} onClick={() => tripAction('lock', {}, 'lock')} disabled={busy !== null} data-testid="lock-trip-button">Khóa kế hoạch</button> : null}
-                </div>
-                <div className={styles.stopList} data-testid="trip-stop-list">
-                  {(selectedTrip.stops || []).map((stop, index) => <article className={styles.stopCard} key={stop.id}><header><div><strong>Điểm {stop.sequence}</strong><p>{addressLabel(stop.address)}</p></div>{editable ? <div className={styles.moveButtons}><button type="button" onClick={() => moveStop(stop.id, -1)} disabled={busy !== null || index === 0} aria-label="Đưa điểm giao lên">↑</button><button type="button" onClick={() => moveStop(stop.id, 1)} disabled={busy !== null || index === (selectedTrip.stops?.length || 0) - 1} aria-label="Đưa điểm giao xuống">↓</button></div> : null}</header>
-                    {stop.assignments.map((assignment) => <div className={styles.assignment} key={assignment.assignmentId}><span><strong>{businessNumber(assignment.deliveryOrderNumber, 'Thiếu mã phiếu giao')}</strong><small>{assignment.customerCode} · {assignment.customerName}</small></span>{editable ? <button type="button" className={styles.textButton} onClick={() => tripAction('unassign', { deliveryOrderId: assignment.deliveryOrderId, reason: 'Điều chỉnh kế hoạch chuyến' }, assignment.deliveryOrderId)} disabled={busy !== null}>Bỏ khỏi chuyến</button> : null}</div>)}
-                  </article>)}
-                  {!selectedTrip.stops?.length ? <p className={styles.empty}>Chưa có điểm giao.</p> : null}
-                </div>
-                {selectedTrip.status === 'planned' ? <p className={styles.lockNotice} data-testid="planned-read-only">Kế hoạch đã lập và đang chỉ đọc. Mở lại chỉnh sửa để thay đổi xe, tài xế, điểm dừng hoặc phiếu giao.</p> : null}
-                {selectedTrip.status === 'locked' ? <p className={styles.lockNotice} data-testid="locked-read-only">Kế hoạch đã khóa. Xe, tài xế, điểm dừng và phiếu giao chỉ được đọc.</p> : null}
-              </> : <p className={styles.empty}>Chọn chuyến bên trái để lập kế hoạch.</p>}
-            </section>
+          <div className={styles.subtabs} role="tablist" aria-label="Chế độ lập chuyến">
+            <button type="button" role="tab" aria-selected={planningView === 'create-list'} className={`${styles.subtab} ${planningView === 'create-list' ? styles.subtabActive : ''}`} onClick={() => setPlanningView('create-list')} data-testid="planning-create-list-tab">Tạo & danh sách</button>
+            <button type="button" role="tab" aria-selected={planningView === 'detail'} className={`${styles.subtab} ${planningView === 'detail' ? styles.subtabActive : ''}`} onClick={() => setPlanningView('detail')} data-testid="planning-detail-tab">Chi tiết chuyến</button>
           </div>
+
+          {planningView === 'create-list' ? <>
+            <section className={styles.section} aria-labelledby="logistics-master-heading">
+              <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Danh mục điều phối</p><h2 id="logistics-master-heading">Tuyến, xe và tài xế</h2></div></div>
+              <div className={styles.masterGrid}>
+                <MasterForm resource="routes" title="Tuyến giao" draft={routeDraft} labels={['Mã tuyến', 'Tên tuyến', 'Mô tả']} onChange={setRouteDraft} onSubmit={() => createMaster('routes', routeDraft)} disabled={busy !== null} testId="create-route" fieldErrors={fieldErrors} warehouses={warehouses} />
+                <MasterForm resource="vehicles" title="Phương tiện" draft={vehicleDraft} labels={['Mã xe', 'Biển số', 'Loại xe']} onChange={setVehicleDraft} onSubmit={() => createMaster('vehicles', vehicleDraft)} disabled={busy !== null} testId="create-vehicle" fieldErrors={fieldErrors} />
+                <DriverForm draft={driverDraft} employees={driverEmployees} onChange={setDriverDraft} onSubmit={createDriver} onLoadEmployees={ensureDriverEmployees} disabled={busy !== null} loadingEmployees={driverEmployeesBusy} fieldErrors={fieldErrors} />
+              </div>
+            </section>
+
+            <section className={styles.section} aria-labelledby="create-trip-heading">
+              <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Kế hoạch chuyến</p><h2 id="create-trip-heading">Tạo chuyến giao</h2></div>
+                <button type="button" className={styles.primaryButton} onClick={createTrip} disabled={busy !== null || !tripDraft.warehouseId} data-testid="create-trip-button">Tạo chuyến</button>
+              </div>
+              <TripFields draft={tripDraft} setDraft={setTripDraft} warehouses={warehouses} routes={routes} vehicles={vehicles} drivers={drivers} disabled={busy !== null} fieldErrors={fieldErrors} />
+            </section>
+
+            {tripList(false)}
+          </> : <div className={styles.detailColumns}>
+            {tripDetail}
+            {tripList(true)}
+          </div>}
         </> : <section className={styles.section} aria-labelledby="assign-trip-heading" data-testid="assignment-workspace">
           <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>Gán chuyến</p><h2 id="assign-trip-heading">Tuyến → Chuyến → Phiếu giao</h2></div></div>
           <div className={styles.formGrid}>
@@ -441,7 +457,7 @@ function MasterForm({ resource, title, draft, labels, onChange, onSubmit, disabl
   return <div className={styles.masterCard}><h3>{title}</h3>
     <label>{labels[0]}<input value={draft.code} maxLength={64} onChange={(event) => onChange({ ...draft, code: event.target.value })} disabled={disabled} aria-invalid={Boolean(fieldErrors[`${prefix}.code`])} /><FieldError message={fieldErrors[`${prefix}.code`]} /></label>
     <label>{labels[1]}<input value={draft.name} maxLength={resource === 'vehicles' ? 32 : 256} onChange={(event) => onChange({ ...draft, name: event.target.value })} disabled={disabled} aria-invalid={Boolean(fieldErrors[`${prefix}.${secondKey}`])} /><FieldError message={fieldErrors[`${prefix}.${secondKey}`]} /></label>
-    <label>{labels[2]}<input value={draft.extra} maxLength={resource === 'vehicles' ? 80 : undefined} onChange={(event) => onChange({ ...draft, extra: event.target.value })} disabled={disabled} aria-invalid={Boolean(fieldErrors[`${prefix}.${thirdKey}`])} /><FieldError message={fieldErrors[`${prefix}.${thirdKey}`]} /></label>
+    <label>{labels[2]}<input value={draft.extra} maxLength={resource === 'vehicles' ? 80 : undefined} onChange={(event) => onChange({ ...draft, extra: event.target.value })} disabled={disabled} /><FieldError message={fieldErrors[`${prefix}.${thirdKey}`]} /></label>
     {resource === 'routes' ? <label>Kho áp dụng<select value={draft.warehouseId || ''} onChange={(event) => onChange({ ...draft, warehouseId: event.target.value })} disabled={disabled} data-testid="route-warehouse" aria-invalid={Boolean(fieldErrors['route.warehouseId'])}><option value="">Chọn kho</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} · {warehouse.name}</option>)}</select><FieldError message={fieldErrors['route.warehouseId']} /></label> : null}
     <button type="button" className={styles.secondaryButton} onClick={onSubmit} disabled={disabled || !draft.code.trim() || !draft.name.trim() || (needsExtra && !draft.extra.trim()) || (resource === 'routes' && !draft.warehouseId)} data-testid={testId}>Thêm {title.toLowerCase()}</button>
   </div>;

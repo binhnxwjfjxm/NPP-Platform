@@ -1,12 +1,12 @@
 .wideModal {
-  width: min(1180px, 96vw);
-  max-height: 92vh;
+  width: min(1560px, 98vw);
+  max-height: 94vh;
   overflow: auto;
 }
 
 .detailModal {
-  width: min(980px, 94vw);
-  max-height: 90vh;
+  width: min(1280px, 96vw);
+  max-height: 92vh;
   overflow: auto;
 }
 
@@ -124,13 +124,17 @@
 }
 
 .modalActions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 4px;
-  padding-top: 12px;
+  padding: 12px 0 2px;
   border-top: 1px solid #ebe6e2;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), #fff 30%);
 }
 
 .detailGrid {
@@ -188,6 +192,12 @@
 }
 
 @media (max-width: 860px) {
+  .wideModal,
+  .detailModal {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+  }
+
   .headerGrid,
   .detailGrid,
   .totals,
