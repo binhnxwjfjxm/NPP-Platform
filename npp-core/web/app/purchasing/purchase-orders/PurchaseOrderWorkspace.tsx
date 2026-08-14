@@ -27,6 +27,7 @@ import { shouldShowPurchaseOrderProductsCatalogLink } from '../../../lib/purchas
 
 type Props = {
   initialBootstrap: PurchaseOrderBootstrap;
+  initialSearch: string;
 };
 
 type StatusFilter = PurchaseOrderStatus | 'all';
@@ -71,11 +72,12 @@ function actionMessage(action: ActionName, purchaseOrder: PurchaseOrder) {
 
 export default function PurchaseOrderWorkspace({
   initialBootstrap,
+  initialSearch,
 }: Props) {
   const [bootstrap, setBootstrap] = useState<PurchaseOrderBootstrap>(initialBootstrap);
   const [error, setError] = useState<string | null>(initialBootstrap.errors.orders);
   const [notice, setNotice] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [selectedPurchaseOrder, setSelectedPurchaseOrder] = useState<PurchaseOrder | null>(null);
   const [selectedReceipts, setSelectedReceipts] = useState<GoodsReceipt[]>([]);
