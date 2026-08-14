@@ -47,6 +47,9 @@ test('Delivery login and logout use canonical Core internal-auth and retain prof
   assert.match(loginPage, /Logo Hưng Phát Company/);
   assert.match(loginPage, /name="ownerCode"/);
   assert.match(frame, /pathname === '\/login'/);
+  assert.match(frame, /action="\/api\/auth\/logout"/);
+  assert.match(frame, /Mở menu tài khoản/);
+  assert.match(frame, /Đăng xuất/);
 });
 
 test('Delivery Core gateways forward the employee session bearer and never the legacy service token/header', () => {

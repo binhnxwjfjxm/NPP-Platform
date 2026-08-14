@@ -51,14 +51,43 @@ export default function DeliveryAppFrame({ children }: Readonly<{ children: Reac
             <strong>{onTrip ? 'Chi tiết chuyến' : 'Chuyến hôm nay'}</strong>
           </span>
         </div>
-        <button
-          className="deliveryTopButton"
-          type="button"
-          onClick={() => router.refresh()}
-          aria-label="Đồng bộ dữ liệu"
-        >
-          <DeliveryIcon name="sync" size={21} />
-        </button>
+        <div className="deliveryTopActions">
+          <button
+            className="deliveryTopButton"
+            type="button"
+            onClick={() => router.refresh()}
+            aria-label="Đồng bộ dữ liệu"
+          >
+            <DeliveryIcon name="sync" size={21} />
+          </button>
+          <details className="deliveryAccountMenu">
+            <summary className="deliveryTopButton deliveryAccountTrigger" aria-label="Mở menu tài khoản">
+              <DeliveryIcon name="user" size={21} />
+            </summary>
+            <div className="deliveryAccountPanel">
+              <div className="deliveryAccountHeading">
+                <span className="deliveryAccountIcon" aria-hidden="true">
+                  <DeliveryIcon name="user" size={20} />
+                </span>
+                <span>
+                  <small>Tài khoản giao hàng</small>
+                  <strong>Phiên làm việc hiện tại</strong>
+                </span>
+              </div>
+              <form className="deliveryLogoutForm" action="/api/auth/logout" method="post">
+                <button className="deliveryLogoutButton" type="submit">
+                  <span className="deliveryLogoutIcon" aria-hidden="true">
+                    <DeliveryIcon name="logout" size={20} />
+                  </span>
+                  <span>
+                    <strong>Đăng xuất</strong>
+                    <small>Kết thúc phiên trên thiết bị này</small>
+                  </span>
+                </button>
+              </form>
+            </div>
+          </details>
+        </div>
       </header>
 
       <div className="deliveryAppContent">{children}</div>
