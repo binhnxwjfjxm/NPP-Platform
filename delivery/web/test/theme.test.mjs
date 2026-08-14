@@ -26,7 +26,7 @@ test('Delivery uses the shared warm-gold palette', () => {
   }
 });
 
-test('Delivery is a stable mobile application shell with one scroll region and a four-item bottom nav', () => {
+test('Delivery is a stable mobile application shell with one scroll region and capability-driven bottom navigation', () => {
   assert.match(layout, /DeliveryAppFrame/);
   assert.match(layout, /import '\.\/delivery-app-experience\.css';/);
   assert.match(layout, /import '\.\/delivery-mobile-app\.css';/);
@@ -35,15 +35,16 @@ test('Delivery is a stable mobile application shell with one scroll region and a
   assert.match(frame, /data-delivery-app-frame/);
   assert.match(frame, /deliveryAppTopBar/);
   assert.match(frame, /aria-label="Điều hướng chính"/);
-  assert.match(frame, /Hôm nay/);
-  assert.match(frame, /Điểm giao/);
-  assert.match(frame, /COD/);
-  assert.match(frame, /Đồng bộ/);
+  assert.match(frame, /href="\/" icon="route" label="Chuyến"/);
+  assert.match(frame, /href="\/custody" icon="wallet" label="Tiền đang giữ"/);
+  assert.match(frame, /<span>Tài khoản<\/span>/);
+  assert.match(frame, /aria-label="Đồng bộ dữ liệu"/);
+  assert.doesNotMatch(frame, /label="Soạn hàng"/);
   assert.doesNotMatch(frame, /deliveryDockPrimary/);
   assert.match(experience, /height:\s*100dvh/);
   assert.match(mobileApp, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(experience, /\.deliveryAppContent[\s\S]*?overflow-y:\s*auto/);
-  assert.match(mobileApp, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.match(mobileApp, /grid-template-columns:\s*repeat\(auto-fit, minmax\(70px, 1fr\)\)/);
 });
 
 test('Delivery prioritizes active trip, next stop and a compact popup result action', () => {
