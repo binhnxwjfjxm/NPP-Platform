@@ -22,7 +22,11 @@ export default function CodCollectionDialog({ tripId, assignment }: Props) {
         eyebrow="Tiền thu khi giao"
         title={assignment.deliveryOrderNumber || 'COD'}
       >
-        <CodCollectionPanel tripId={tripId} assignment={assignment} />
+        <CodCollectionPanel
+          tripId={tripId}
+          assignment={assignment}
+          onCompleted={() => setOpen(false)}
+        />
       </MobileActionDialog>
     </div>
   );

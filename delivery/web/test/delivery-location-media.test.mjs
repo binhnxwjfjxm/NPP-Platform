@@ -11,6 +11,8 @@ const coreApiSource = read('lib/core-api.ts');
 const attemptSource = read('app/trips/[tripId]/delivery-attempt-panel.tsx');
 const detailSource = read('app/trips/[tripId]/delivery-order-detail-dialog.tsx');
 const dialogSource = read('app/trips/[tripId]/mobile-action-dialog.tsx');
+const codSource = read('app/trips/[tripId]/cod-collection-panel.tsx');
+const codDialogSource = read('app/trips/[tripId]/cod-collection-dialog.tsx');
 
 test('Delivery stop workspace keeps immutable phone/location snapshot available without leaking coordinate fields', () => {
   assert.match(pageSource, /customerPhoneFromSnapshot\(stop\.address\)/);
@@ -73,4 +75,15 @@ test('Touched attempt mutation uses shared canonical idempotency generator and r
   assert.match(attemptSource, /keys\.current\.get\(signature\)/);
   assert.match(attemptSource, /keys\.current\.set\(signature, next\)/);
   assert.doesNotMatch(attemptSource, /`delivery-attempt-\$\{crypto\.randomUUID\(\)\}`/);
+});
+
+test('COD workflow closes its popup after a successful write and uses canonical replay-safe idempotency', () => {
+  assert.match(codDialogSource, /onCompleted=\{\(\) => setOpen\(false\)\}/);
+  assert.match(codSource, /import \{ createIdempotencyKey \} from '@npp\/contracts'/);
+  assert.match(codSource, /createIdempotencyKey\('cod-collection'\)/);
+  assert.match(codSource, /operationsRef\.current\.get\(signature\)/);
+  assert.match(codSource, /operationsRef\.current\.set\(signature, operation\)/);
+  assert.match(codSource, /body: operation\.body/);
+  assert.match(codSource, /onCompleted\?\.\(\)/);
+  assert.doesNotMatch(codSource, /crypto\.randomUUID|`cod-collection-\$\{/);
 });

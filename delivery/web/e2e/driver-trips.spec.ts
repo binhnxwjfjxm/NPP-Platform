@@ -59,10 +59,16 @@ test('tài xế đăng nhập một lần, reload vẫn giữ phiên và hoàn t
   await codForm.getByLabel('Số tiền thực thu').fill('300000');
   await codForm.getByRole('button', { name: 'Xác nhận tiền COD' }).click();
 
+  await expect(codForm).toBeHidden();
+  await expect(codWorkflow.getByRole('button', { name: 'Xem COD' })).toBeVisible();
+  await codWorkflow.getByRole('button', { name: 'Xem COD' }).click();
   const collection = page.getByTestId(`cod-collection-${assignmentOneId}`);
   await expect(collection).toBeVisible();
   await expect(collection).toContainText('Tài xế còn giữ');
   await expect(collection).toContainText('300.000');
+  const codDialog = page.getByRole('dialog').filter({ hasText: 'Tiền thu khi giao' });
+  await codDialog.getByRole('button', { name: /Đóng/ }).click();
+  await expect(codDialog).toBeHidden();
 
   const handover = page.getByTestId('cod-handover-panel');
   await expect(handover).toBeVisible();
