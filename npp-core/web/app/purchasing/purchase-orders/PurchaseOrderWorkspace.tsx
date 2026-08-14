@@ -31,6 +31,7 @@ type Props = {
 };
 
 type StatusFilter = PurchaseOrderStatus | 'all';
+type OrderListState = 'fresh' | 'stale' | 'unknown';
 type EditorState = { mode: 'create' | 'edit'; purchaseOrder: PurchaseOrder | null } | null;
 type ActionName = 'submit' | 'approve' | 'cancel';
 type ActionState = { action: ActionName; purchaseOrder: PurchaseOrder } | null;
@@ -75,7 +76,11 @@ export default function PurchaseOrderWorkspace({
   initialSearch,
 }: Props) {
   const [bootstrap, setBootstrap] = useState<PurchaseOrderBootstrap>(initialBootstrap);
-  const [error, setError] = useState<string | null>(initialBootstrap.errors.orders);
+  const [error, setError] = useState<string | null>(null);
+  const [orderListState, setOrderListState] = useState<OrderListState>(
+    initialBootstrap.errors.orders ? 'unknown' : 'fresh',
+  );
+  const [orderListError, setOrderListError] = useState<string | null>(initialBootstrap.errors.orders);
   const [notice, setNotice] = useState<string | null>(null);
   const [search, setSearch] = useState(initialSearch);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -114,6 +119,15 @@ export default function PurchaseOrderWorkspace({
     draft: bootstrap.purchaseOrders.filter((item) => item.status === 'draft').length,
     pending: bootstrap.purchaseOrders.filter((item) => item.status === 'pending_approval').length,
   }), [bootstrap.purchaseOrders]);
+
+  const orderCountsKnown = orderListState !== 'unknown';
+  const canRenderOrderList = orderListState === 'fresh' || bootstrap.purchaseOrders.length > 0;
+  const countValue = (value: number) => orderCountsKnown ? formatDecimalString(String(value)) : '—';
+  const listStateHint = orderListState === 'unknown'
+    ? 'Chưa xác định do tải danh sách lỗi'
+    : orderListState === 'stale'
+      ? 'Dữ liệu gần nhất — lần cập nhật mới bị lỗi'
+      : null;
 
   const createPolicy = purchaseOrderActionPolicy('draft', bootstrap.permissionKeys);
   const lookupIssues = useMemo(() => describePurchaseOrderLookupIssues(bootstrap), [bootstrap]);
@@ -159,12 +173,17 @@ export default function PurchaseOrderWorkspace({
         checkedAt: next.checkedAt,
         lookupError: next.lookupError,
       }));
-      setError(next.errors.orders);
+      setOrderListState((current) => next.errors.orders
+        ? (current === 'unknown' ? 'unknown' : 'stale')
+        : 'fresh');
+      setOrderListError(next.errors.orders);
       if (successMessage && !next.errors.orders && !next.errors.suppliers && !next.errors.warehouses && !next.errors.products && !next.errors.permissions) {
         setNotice(successMessage);
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Không tải được danh sách đơn đặt hàng');
+      const message = loadError instanceof Error ? loadError.message : 'Không tải được danh sách đơn đặt hàng';
+      setOrderListState((current) => current === 'unknown' ? 'unknown' : 'stale');
+      setOrderListError(message);
     } finally {
       setLoadingList(false);
     }
@@ -305,6 +324,13 @@ export default function PurchaseOrderWorkspace({
     >
       <section className={styles.page} data-testid="purchase-orders-page">
         {error ? <div className={`${styles.banner} ${styles.bannerError}`} role="alert">{error}</div> : null}
+        {orderListError ? (
+          <div className={`${styles.banner} ${styles.bannerError}`} role="alert" data-testid="purchase-order-data-state-banner">
+            {orderListState === 'stale'
+              ? `Không cập nhật được danh sách đơn đặt hàng. Đang giữ dữ liệu từ lần tải thành công gần nhất. ${orderListError}`
+              : `Chưa xác định được danh sách đơn đặt hàng hiện tại. ${orderListError}`}
+          </div>
+        ) : null}
         {lookupMessage ? <div className={`${styles.banner} ${styles.bannerError}`} role="alert">{lookupMessage}</div> : null}
         {showProductsCatalogLink ? (
           <p className={localStyles.contextualHelp}>
@@ -319,13 +345,13 @@ export default function PurchaseOrderWorkspace({
 
         <section className={styles.summaryGrid} aria-label="Số liệu đơn đặt hàng">
           <article className={styles.summaryCard}>
-            <span>Tổng đơn</span><strong>{formatDecimalString(String(counts.total))}</strong><small>Trong phạm vi kho được cấp</small>
+            <span>Tổng đơn</span><strong data-testid="purchase-order-total-count">{countValue(counts.total)}</strong><small>{listStateHint || 'Trong phạm vi kho được cấp'}</small>
           </article>
           <article className={styles.summaryCard}>
-            <span>Đơn nháp</span><strong>{formatDecimalString(String(counts.draft))}</strong><small>Còn có thể chỉnh sửa</small>
+            <span>Đơn nháp</span><strong>{countValue(counts.draft)}</strong><small>{listStateHint || 'Còn có thể chỉnh sửa'}</small>
           </article>
           <article className={styles.summaryCard}>
-            <span>Chờ duyệt</span><strong>{formatDecimalString(String(counts.pending))}</strong><small>Cần người có quyền phê duyệt</small>
+            <span>Chờ duyệt</span><strong>{countValue(counts.pending)}</strong><small>{listStateHint || 'Cần người có quyền phê duyệt'}</small>
           </article>
         </section>
 
@@ -346,18 +372,30 @@ export default function PurchaseOrderWorkspace({
         <section className={styles.tableSection}>
           <div className={styles.sectionHeader}>
             <div><p className={styles.panelKicker}>Danh sách mua hàng</p><h2>Đơn đặt hàng nhà cung cấp</h2></div>
-            <span className={styles.panelChip}>{formatDecimalString(String(visibleItems.length))} đơn</span>
+            <span className={styles.panelChip} data-testid="purchase-order-list-count">
+              {orderListState === 'unknown'
+                ? 'Chưa xác định'
+                : `${formatDecimalString(String(visibleItems.length))} đơn${orderListState === 'stale' ? ' · dữ liệu cũ' : ''}`}
+            </span>
           </div>
-          <PurchaseOrderList
-            purchaseOrders={visibleItems}
-            permissionKeys={bootstrap.permissionKeys}
-            busyId={busyId}
-            onView={(purchaseOrder) => void openView(purchaseOrder)}
-            onEdit={(purchaseOrder) => void openEdit(purchaseOrder)}
-            onSubmit={(purchaseOrder) => openAction('submit', purchaseOrder)}
-            onApprove={(purchaseOrder) => openAction('approve', purchaseOrder)}
-            onCancel={(purchaseOrder) => openAction('cancel', purchaseOrder)}
-          />
+          {canRenderOrderList ? (
+            <PurchaseOrderList
+              purchaseOrders={visibleItems}
+              permissionKeys={bootstrap.permissionKeys}
+              busyId={busyId}
+              onView={(purchaseOrder) => void openView(purchaseOrder)}
+              onEdit={(purchaseOrder) => void openEdit(purchaseOrder)}
+              onSubmit={(purchaseOrder) => openAction('submit', purchaseOrder)}
+              onApprove={(purchaseOrder) => openAction('approve', purchaseOrder)}
+              onCancel={(purchaseOrder) => openAction('cancel', purchaseOrder)}
+            />
+          ) : (
+            <div className={styles.emptyState} data-testid="purchase-order-list-unavailable">
+              {orderListState === 'stale'
+                ? 'Lần tải thành công gần nhất không có đơn; lần cập nhật hiện tại thất bại nên chưa thể khẳng định danh sách hiện tại đang rỗng.'
+                : 'Chưa xác định được danh sách đơn đặt hàng hiện tại. Hãy cập nhật dữ liệu để thử lại.'}
+            </div>
+          )}
         </section>
       </section>
 
