@@ -133,6 +133,7 @@ export default function DeliveryAttemptPanel({ tripId, assignment }: Props) {
       setMessage(body.data.replayed
         ? 'Yêu cầu đã được xử lý trước đó; đang tải lại kết quả.'
         : 'Đã ghi kết quả giao.');
+      setDialogOpen(false);
       router.refresh();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Không ghi được kết quả giao.');

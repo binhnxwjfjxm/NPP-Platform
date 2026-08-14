@@ -39,6 +39,7 @@ test('tài xế đăng nhập một lần, reload vẫn giữ phiên và hoàn t
   const detailDialog = page.getByRole('dialog').filter({ hasText: 'Chi tiết đơn giao' });
   await expect(detailDialog).toContainText('Bột nguyên liệu A');
   await detailDialog.getByRole('button', { name: /Đóng/ }).click();
+  await expect(detailDialog).toBeHidden();
 
   await firstOrder.getByRole('button', { name: 'Ghi giao' }).click();
   const firstAttempt = page.getByTestId(`attempt-form-${assignmentOneId}`);
@@ -48,6 +49,7 @@ test('tài xế đăng nhập một lần, reload vẫn giữ phiên và hoàn t
   await firstAttempt.getByLabel('Ghi chú').fill('Khách nhận một bao');
   await firstAttempt.getByRole('button', { name: 'Xác nhận kết quả' }).click();
 
+  await expect(firstAttempt).toBeHidden();
   await expect(page.getByTestId(`attempt-recorded-${assignmentOneId}`)).toBeVisible();
   const codWorkflow = page.getByTestId(`cod-workflow-${assignmentOneId}`);
   await codWorkflow.getByRole('button', { name: 'Thu COD' }).click();
