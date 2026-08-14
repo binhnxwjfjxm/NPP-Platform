@@ -5,6 +5,7 @@ import { loadStocktakePermissionKeys } from '../../../lib/stocktake-context';
 import { listStocktakes, listStocktakeWarehouses, normalizeStocktakeGatewayError } from '../../../lib/stocktake-gateway';
 import type { Stocktake } from '../../../lib/stocktake-types';
 import StocktakeWorkspace from './stocktake-workspace';
+import StocktakePrintDock from './StocktakePrintDock';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,7 @@ export default async function StocktakesPage() {
     listStocktakeWarehouses<WarehouseOption[]>(requestId),
     loadStocktakePermissionKeys(requestId),
   ]);
+  const stocktakes = stocktakesResult.status === 'fulfilled' ? stocktakesResult.value : [];
   const initialError = stocktakesResult.status === 'rejected'
     ? normalizeStocktakeGatewayError(stocktakesResult.reason).publicMessage
     : null;
@@ -28,13 +30,16 @@ export default async function StocktakesPage() {
     : null;
 
   return (
-    <StocktakeWorkspace
-      initialStocktakes={stocktakesResult.status === 'fulfilled' ? stocktakesResult.value : []}
-      balances={balancesResult.status === 'fulfilled' ? balancesResult.value : []}
-      warehouses={warehousesResult.status === 'fulfilled' ? warehousesResult.value : []}
-      initialPermissionKeys={permissionsResult.status === 'fulfilled' ? permissionsResult.value : []}
-      initialError={initialError}
-      initialLookupError={lookupError}
-    />
+    <>
+      <StocktakeWorkspace
+        initialStocktakes={stocktakes}
+        balances={balancesResult.status === 'fulfilled' ? balancesResult.value : []}
+        warehouses={warehousesResult.status === 'fulfilled' ? warehousesResult.value : []}
+        initialPermissionKeys={permissionsResult.status === 'fulfilled' ? permissionsResult.value : []}
+        initialError={initialError}
+        initialLookupError={lookupError}
+      />
+      <StocktakePrintDock initialStocktakes={stocktakes} />
+    </>
   );
 }
