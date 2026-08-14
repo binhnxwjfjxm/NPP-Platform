@@ -9,14 +9,14 @@ import {
   formatAddress,
   formatCollectionPolicy,
   formatDateTime,
-  formatQuantity,
   locationUrlFromSnapshot,
   safeErrorMessage,
 } from '../../../lib/presentation';
-import DeliveryAttemptPanel from './delivery-attempt-panel';
-import CodCollectionPanel from './cod-collection-panel';
+import CodCollectionDialog from './cod-collection-dialog';
 import CodHandoverPanel from './cod-handover-panel';
 import CustomerStopActions from './customer-stop-actions';
+import DeliveryAttemptPanel from './delivery-attempt-panel';
+import DeliveryOrderDetailDialog from './delivery-order-detail-dialog';
 import styles from './trip-customer.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -25,6 +25,17 @@ type PageProps = Readonly<{ params: { tripId: string } }>;
 
 function assignmentAnchor(value: string) {
   return `assignment-${String(value).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+}
+
+function money(value: string | null | undefined, currencyCode: string | null | undefined) {
+  const number = Number(value ?? 0);
+  const currency = currencyCode || 'VND';
+  if (!Number.isFinite(number)) return `${value ?? '0'} ${currency}`;
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(number);
 }
 
 export default async function TripDetailPage({ params }: PageProps) {
@@ -139,7 +150,7 @@ export default async function TripDetailPage({ params }: PageProps) {
                         </div>
                         {isNextStop ? <span className="nextStopBadge">Tiếp theo</span> : null}
                       </div>
-                      {stop.plannedArrivalAt ? <p className="mutedText">Dự kiến: {formatDateTime(stop.plannedArrivalAt)}</p> : null}
+                      {stop.plannedArrivalAt ? <p className={styles.plannedAt}>Dự kiến: {formatDateTime(stop.plannedArrivalAt)}</p> : null}
                       <CustomerStopActions
                         tripId={trip.id}
                         customerId={stop.customerId}
@@ -149,7 +160,7 @@ export default async function TripDetailPage({ params }: PageProps) {
                         locationUrl={locationUrl}
                       />
 
-                      <div className="deliveryOrders">
+                      <div className={`deliveryOrders ${styles.deliveryOrders}`}>
                         {stop.assignments.map((assignment) => {
                           const codAssignment = codByAssignment.get(assignment.assignmentId);
                           const codRelevant = Boolean(
@@ -160,51 +171,43 @@ export default async function TripDetailPage({ params }: PageProps) {
                           const firstItem = assignment.lines[0];
                           return (
                             <article
-                              className={assignment.attempt ? 'deliveryOrder completedAssignment' : 'deliveryOrder'}
+                              className={`${assignment.attempt ? 'deliveryOrder completedAssignment' : 'deliveryOrder'} ${styles.deliveryOrder}`}
                               id={assignmentAnchor(assignment.assignmentId)}
                               key={assignment.assignmentId}
                             >
                               <div className="deliveryOrderHeading">
                                 <div>
                                   <strong>{assignment.deliveryOrderNumber || 'Phiếu giao chưa có số'}</strong>
-                                  <span>{assignment.customerCode || 'Khách hàng'}</span>
+                                  <span>{formatCollectionPolicy(assignment.collectionPolicy)}</span>
                                 </div>
                                 <span className={assignment.attempt ? 'assignmentState done' : 'assignmentState'}>{assignment.attempt ? 'Đã ghi' : 'Chờ ghi'}</span>
                               </div>
-                              <div className={styles.assignmentMeta}>
-                                <span>Ngày yêu cầu: {assignment.requestedDeliveryDate || 'Chưa có'}</span>
-                                <span>{formatCollectionPolicy(assignment.collectionPolicy)}</span>
+
+                              <div className={styles.orderValueRow}>
+                                <span>Giá trị đơn</span>
+                                <strong>
+                                  {assignment.totalAmount !== null && assignment.totalAmount !== undefined
+                                    ? money(assignment.totalAmount, assignment.currencyCode)
+                                    : 'Chưa có dữ liệu giá'}
+                                </strong>
                               </div>
+
                               <p className={styles.goodsSummary}>
                                 {assignment.lines.length > 0
                                   ? `${assignment.lines.length} mặt hàng · ${firstItem?.itemName || firstItem?.sku || 'Hàng giao'}`
                                   : 'Chưa có dữ liệu hàng xuất kho'}
                               </p>
-                              <details className={styles.orderDetails}>
-                                <summary>Xem chi tiết đơn</summary>
-                                {assignment.lines.length > 0 ? (
-                                  <ul>
-                                    {assignment.lines.map((line) => (
-                                      <li key={line.inventoryIssueLineId}>
-                                        <span>{line.itemName || line.sku || 'Mặt hàng'}{line.sku ? ` · ${line.sku}` : ''}</span>
-                                        <strong>{formatQuantity(line.issuedBaseQuantity)} {line.unitCode || ''}</strong>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                ) : (
-                                  <p className="mutedText">Chưa có dữ liệu hàng xuất kho để đối chiếu.</p>
-                                )}
-                              </details>
-                              <DeliveryAttemptPanel tripId={trip.id} assignment={assignment} />
-                              {codRelevant && codAssignment ? (
-                                <details
-                                  className={styles.secondaryAction}
-                                  data-testid={`cod-workflow-${assignment.assignmentId}`}
-                                >
-                                  <summary>{codAssignment.collection ? 'Xem tiền COD' : 'Thu tiền COD'}</summary>
-                                  <CodCollectionPanel tripId={trip.id} assignment={codAssignment} />
-                                </details>
+                              {assignment.requestedDeliveryDate ? (
+                                <p className={styles.requestedDate}>Ngày yêu cầu: {assignment.requestedDeliveryDate}</p>
                               ) : null}
+
+                              <div className={styles.assignmentActions}>
+                                <DeliveryOrderDetailDialog assignment={assignment} />
+                                <DeliveryAttemptPanel tripId={trip.id} assignment={assignment} />
+                                {codRelevant && codAssignment ? (
+                                  <CodCollectionDialog tripId={trip.id} assignment={codAssignment} />
+                                ) : null}
+                              </div>
                             </article>
                           );
                         })}

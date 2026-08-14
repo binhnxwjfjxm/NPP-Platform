@@ -3,13 +3,13 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   border: 1px solid #d5b47e;
-  border-radius: 15px;
+  border-radius: 13px;
   background: #fff8ed;
-  padding: 10px 12px;
+  padding: 8px 10px;
   color: #5d4728;
-  font-size: 12px;
+  font-size: 11.5px;
 }
 
 .nextPointer a {
@@ -19,13 +19,22 @@
 }
 
 .stopWorkspace {
+  gap: 9px !important;
   scroll-margin-top: 14px;
+  padding: 11px !important;
+}
+
+.stopWorkspace :global(.stopSequence) {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  font-size: 0.95rem;
 }
 
 .customerHeading {
   display: grid;
-  gap: 5px;
-  margin-bottom: 9px;
+  gap: 3px;
+  margin: 0;
 }
 
 .customerHeading h3,
@@ -35,84 +44,88 @@
 
 .customerHeading h3 {
   color: #33291f;
-  font-size: 1.05rem;
+  font-size: 0.98rem;
 }
 
 .customerHeading p {
   color: #5f574f;
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 11.5px;
+  line-height: 1.35;
 }
 
-.assignmentMeta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 9px 0;
-}
-
-.assignmentMeta span {
-  border-radius: 999px;
-  background: #f5f1eb;
-  color: #665d53;
-  padding: 5px 8px;
+.plannedAt {
+  margin: 4px 0 0;
+  color: #7a7066;
   font-size: 10.5px;
 }
 
-.goodsSummary {
-  margin: 6px 0 8px;
-  color: #554d45;
-  font-size: 12px;
+.deliveryOrders {
+  gap: 7px !important;
+  margin-top: 9px !important;
 }
 
-.orderDetails,
-.secondaryAction {
-  margin-top: 8px;
-  border: 1px solid #e2dbd2;
-  border-radius: 12px;
-  background: #fffdfa;
-  overflow: hidden;
+.deliveryOrder {
+  padding: 10px !important;
+  border-left-width: 3px !important;
+  border-radius: 11px !important;
 }
 
-.orderDetails > summary,
-.secondaryAction > summary {
-  min-height: 42px;
-  box-sizing: border-box;
-  padding: 12px;
-  color: #754706;
-  font-size: 12px;
-  font-weight: 850;
-  cursor: pointer;
-}
-
-.orderDetails ul {
-  display: grid;
-  gap: 7px;
-  margin: 0;
-  padding: 0 12px 12px;
-  list-style: none;
-}
-
-.orderDetails li {
-  display: flex;
-  align-items: flex-start;
+.orderValueRow {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  border-top: 1px solid #eee8df;
-  padding-top: 8px;
-  font-size: 12px;
+  margin-top: 7px;
+  border-radius: 10px;
+  background: #fff9ef;
+  padding: 7px 9px;
 }
 
-.orderDetails li span {
-  min-width: 0;
-  color: #4e473f;
+.orderValueRow span {
+  color: #766856;
+  font-size: 10.5px;
+  font-weight: 750;
 }
 
-.orderDetails li strong {
+.orderValueRow strong {
+  color: #754706;
+  font-size: 13px;
+}
+
+.goodsSummary,
+.requestedDate {
+  margin: 6px 0 0;
+  color: #62584f;
+  font-size: 10.8px;
+  line-height: 1.35;
+}
+
+.requestedDate {
+  color: #80766c;
+}
+
+.assignmentActions {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px !important;
+  margin-top: 8px;
+}
+
+.assignmentActions > * {
   flex: 0 0 auto;
-  color: #2f2a25;
 }
 
-.secondaryAction > :not(summary) {
-  margin: 0 10px 10px;
+@media (max-width: 380px) {
+  .stopWorkspace {
+    grid-template-columns: 34px minmax(0, 1fr) !important;
+    padding: 9px !important;
+  }
+
+  .stopWorkspace :global(.stopSequence) {
+    width: 34px;
+    height: 34px;
+  }
 }

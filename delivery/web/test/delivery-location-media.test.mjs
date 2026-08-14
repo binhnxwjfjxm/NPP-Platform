@@ -9,8 +9,12 @@ const actionSource = read('app/trips/[tripId]/customer-stop-actions.tsx');
 const mediaRouteSource = read('app/api/trips/[tripId]/customers/[customerId]/media/route.ts');
 const coreApiSource = read('lib/core-api.ts');
 const attemptSource = read('app/trips/[tripId]/delivery-attempt-panel.tsx');
+const detailSource = read('app/trips/[tripId]/delivery-order-detail-dialog.tsx');
+const dialogSource = read('app/trips/[tripId]/mobile-action-dialog.tsx');
+const codSource = read('app/trips/[tripId]/cod-collection-panel.tsx');
+const codDialogSource = read('app/trips/[tripId]/cod-collection-dialog.tsx');
 
-test('Delivery stop workspace keeps immutable phone/location snapshot visible without leaking coordinate fields', () => {
+test('Delivery stop workspace keeps immutable phone/location snapshot available without leaking coordinate fields', () => {
   assert.match(pageSource, /customerPhoneFromSnapshot\(stop\.address\)/);
   assert.match(pageSource, /locationUrlFromSnapshot\(stop\.address\)/);
   assert.match(presentationSource, /address\?\.customerPhone/);
@@ -19,10 +23,11 @@ test('Delivery stop workspace keeps immutable phone/location snapshot visible wi
   assert.match(actionSource, /href=\{`tel:\$\{phone\}`\}/);
   assert.match(actionSource, /href=\{locationUrl\}/);
   assert.doesNotMatch(pageSource + actionSource, /latitude|longitude|gpsLatitude|gpsLongitude/i);
-  assert.doesNotMatch(pageSource, /Điểm giao đang ưu tiên ở phía trên/);
 });
 
-test('Missing phone/location/photo stays non-blocking and customer photos load only after explicit click', () => {
+test('Customer actions are compact and open in one popup; photos still load only after explicit click', () => {
+  assert.match(actionSource, />Thao tác<\/button>/);
+  assert.match(actionSource, /MobileActionDialog/);
   assert.match(actionSource, /Chưa có SĐT/);
   assert.match(actionSource, /Chưa có định vị/);
   assert.match(actionSource, />Xem ảnh khách<\/button>/);
@@ -30,6 +35,8 @@ test('Missing phone/location/photo stays non-blocking and customer photos load o
   assert.match(actionSource, /fetch\([\s\S]*\/customers\/\$\{encodeURIComponent\(customerId\)\}\/media/);
   assert.match(actionSource, /body\.data\.media\.slice\(0, 3\)/);
   assert.match(actionSource, /Vẫn có thể tiếp tục giao hàng bình thường/);
+  assert.match(dialogSource, /createPortal/);
+  assert.match(dialogSource, /role="dialog"/);
   assert.doesNotMatch(pageSource, /<img/);
 });
 
@@ -41,13 +48,25 @@ test('Delivery photo read stays behind same-origin and driver-scoped Core trip p
   assert.doesNotMatch(actionSource, /CORE_API_INTERNAL_URL|requireDeliverySessionToken|shared\.customer_media/);
 });
 
-test('Delivery order card exposes human labels, goods before attempt and read-only order details', () => {
+test('Delivery order card exposes value and opens MCP-style read-only order details instead of expanding inline', () => {
   assert.match(pageSource, /formatCollectionPolicy\(assignment\.collectionPolicy\)/);
-  assert.doesNotMatch(pageSource, /<dd>\{assignment\.collectionPolicy/);
-  assert.match(pageSource, /assignment\.lines\.length/);
-  assert.match(pageSource, /Xem chi tiết đơn/);
-  assert.match(pageSource, /formatQuantity\(line\.issuedBaseQuantity\)/);
-  assert.match(attemptSource, /<summary>Ghi kết quả giao<\/summary>/);
+  assert.match(pageSource, /Giá trị đơn/);
+  assert.match(pageSource, /assignment\.totalAmount/);
+  assert.match(pageSource, /DeliveryOrderDetailDialog/);
+  assert.doesNotMatch(pageSource, /<summary>Xem chi tiết đơn<\/summary>/);
+  assert.match(detailSource, /MobileActionDialog/);
+  assert.match(detailSource, /line\.issuedUnitQuantity/);
+  assert.match(detailSource, /line\.unitPrice/);
+  assert.match(detailSource, /line\.lineAmount/);
+  assert.match(detailSource, /chỉ đọc để tài xế đối chiếu/);
+});
+
+test('Delivery attempt workflow opens in popup so the stop card stays compact', () => {
+  assert.match(attemptSource, /MobileActionDialog/);
+  assert.match(attemptSource, />Ghi giao<\/button>/);
+  assert.doesNotMatch(attemptSource, /<summary>Ghi kết quả giao<\/summary>/);
+  assert.match(attemptSource, /attempt-form-/);
+  assert.match(attemptSource, /attempt-recorded-/);
 });
 
 test('Touched attempt mutation uses shared canonical idempotency generator and reuses the key by operation signature', () => {
@@ -56,4 +75,16 @@ test('Touched attempt mutation uses shared canonical idempotency generator and r
   assert.match(attemptSource, /keys\.current\.get\(signature\)/);
   assert.match(attemptSource, /keys\.current\.set\(signature, next\)/);
   assert.doesNotMatch(attemptSource, /`delivery-attempt-\$\{crypto\.randomUUID\(\)\}`/);
+});
+
+test('COD workflow closes its popup after a successful write and uses canonical replay-safe idempotency', () => {
+  assert.match(codDialogSource, /onCompleted=\{\(\) => setOpen\(false\)\}/);
+  assert.match(codSource, /import \{ createIdempotencyKey \} from '@npp\/contracts'/);
+  assert.match(codSource, /createIdempotencyKey\('cod-collection'\)/);
+  assert.match(codSource, /operationsRef\.current\.get\(signature\)/);
+  assert.match(codSource, /operationsRef\.current\.set\(signature, operation\)/);
+  assert.match(codSource, /body: operation\.body/);
+  assert.match(codSource, /onCompleted\?\.\(\)/);
+  assert.doesNotMatch(codSource, /crypto\.randomUUID/);
+  assert.doesNotMatch(codSource, /Idempotency-Key['"]?:\s*`cod-collection-/);
 });

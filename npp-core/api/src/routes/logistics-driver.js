@@ -8,6 +8,7 @@ import {
   listAssignedDriverTrips,
   recordDriverDeliveryAttempt,
 } from '../services/logistics-driver-delivery.js';
+import { getAssignedDriverTripCommercial } from '../services/logistics-driver-commercial.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CUSTOMER_MEDIA_VIEW_TTL_SECONDS = 300;
@@ -222,7 +223,7 @@ export async function handleLogisticsDriverRoutes(req, res, options) {
         );
         return true;
       }
-      const result = await getAssignedDriverTrip(options.getPool(), {
+      const result = await getAssignedDriverTripCommercial(options.getPool(), {
         requestContext,
         tripId: detailMatch[1],
       });

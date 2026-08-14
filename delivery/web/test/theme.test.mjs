@@ -46,7 +46,7 @@ test('Delivery is a stable mobile application shell with one scroll region and a
   assert.match(mobileApp, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
 });
 
-test('Delivery prioritizes active trip, next stop and result action', () => {
+test('Delivery prioritizes active trip, next stop and a compact popup result action', () => {
   assert.match(home, /const \[activeTrip, \.\.\.remainingTrips\]/);
   assert.match(home, /id="active-trip"/);
   assert.match(home, /primaryTripCard/);
@@ -57,7 +57,9 @@ test('Delivery prioritizes active trip, next stop and result action', () => {
   assert.match(trip, /nextStopBadge/);
   assert.match(trip, /id="route-section"/);
   assert.match(trip, /id="cod-section"/);
-  assert.match(attempt, /<summary>Ghi kết quả giao<\/summary>/);
+  assert.match(attempt, />Ghi giao<\/button>/);
+  assert.match(attempt, /MobileActionDialog/);
+  assert.doesNotMatch(attempt, /<summary>Ghi kết quả giao<\/summary>/);
   assert.match(trip, /id=\{assignmentAnchor\(assignment\.assignmentId\)\}/);
 });
 

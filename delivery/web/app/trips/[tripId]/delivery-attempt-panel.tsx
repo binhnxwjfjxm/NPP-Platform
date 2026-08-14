@@ -8,6 +8,7 @@ import type {
   RecordDeliveryAttemptPayload,
   TripAssignment,
 } from '../../../lib/types';
+import MobileActionDialog from './mobile-action-dialog';
 import ProofOfDeliveryPanel from './proof-of-delivery-panel';
 import styles from './delivery-attempt-panel.module.css';
 
@@ -49,6 +50,7 @@ function quantityText(value: string): string {
 
 export default function DeliveryAttemptPanel({ tripId, assignment }: Props) {
   const router = useRouter();
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [result, setResult] = useState<DeliveryAttemptResult>('delivered_full');
   const [attemptedAt] = useState(() => new Date().toISOString());
   const [reasonCode, setReasonCode] = useState('');
@@ -131,6 +133,7 @@ export default function DeliveryAttemptPanel({ tripId, assignment }: Props) {
       setMessage(body.data.replayed
         ? 'Yêu cầu đã được xử lý trước đó; đang tải lại kết quả.'
         : 'Đã ghi kết quả giao.');
+      setDialogOpen(false);
       router.refresh();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Không ghi được kết quả giao.');
@@ -141,126 +144,145 @@ export default function DeliveryAttemptPanel({ tripId, assignment }: Props) {
 
   if (assignment.attempt) {
     return (
-      <section className={styles.recorded} data-testid={`attempt-recorded-${assignment.assignmentId}`}>
-        <div className={styles.recordedHeading}>
-          <strong>{LABELS[assignment.attempt.result]}</strong>
-          <span>{formatDateTime(assignment.attempt.attemptedAt)}</span>
-        </div>
-        {assignment.attempt.reasonCode ? <p>Lý do: {assignment.attempt.reasonCode}</p> : null}
-        {assignment.attempt.rescheduledFor ? (
-          <p>Giao lại: {formatDateTime(assignment.attempt.rescheduledFor)}</p>
-        ) : null}
-        {assignment.attempt.note ? <p>Ghi chú: {assignment.attempt.note}</p> : null}
-        {assignment.lines.some((line) => line.deliveredBaseQuantity !== null) ? (
-          <ul className={styles.recordedLines}>
-            {assignment.lines.map((line) => (
-              <li key={line.inventoryIssueLineId}>
-                <span>{line.itemName || line.sku || 'Mặt hàng'}</span>
-                <strong>
-                  {quantityText(line.deliveredBaseQuantity || '0')} / {quantityText(line.issuedBaseQuantity)} {line.unitCode || ''}
-                </strong>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <p className={styles.terminalNotice}>Kết quả đã khóa và chỉ đọc.</p>
-        <details>
-          <summary>Thêm / xem bằng chứng giao hàng</summary>
-          <ProofOfDeliveryPanel
-            tripId={tripId}
-            assignmentId={assignment.assignmentId}
-            attemptId={assignment.attempt.id}
-          />
-        </details>
-      </section>
+      <div data-testid={`attempt-recorded-${assignment.assignmentId}`}>
+        <button className={`${styles.trigger} ${styles.recordedTrigger}`} type="button" onClick={() => setDialogOpen(true)}>
+          {LABELS[assignment.attempt.result]}
+        </button>
+        <MobileActionDialog
+          open={dialogOpen}
+          onClose={() => setDialogOpen(false)}
+          eyebrow="Kết quả giao"
+          title={assignment.deliveryOrderNumber || 'Phiếu giao'}
+        >
+          <section className={styles.recorded}>
+            <div className={styles.recordedHeading}>
+              <strong>{LABELS[assignment.attempt.result]}</strong>
+              <span>{formatDateTime(assignment.attempt.attemptedAt)}</span>
+            </div>
+            {assignment.attempt.reasonCode ? <p>Lý do: {assignment.attempt.reasonCode}</p> : null}
+            {assignment.attempt.rescheduledFor ? (
+              <p>Giao lại: {formatDateTime(assignment.attempt.rescheduledFor)}</p>
+            ) : null}
+            {assignment.attempt.note ? <p>Ghi chú: {assignment.attempt.note}</p> : null}
+            {assignment.lines.some((line) => line.deliveredBaseQuantity !== null) ? (
+              <ul className={styles.recordedLines}>
+                {assignment.lines.map((line) => (
+                  <li key={line.inventoryIssueLineId}>
+                    <span>{line.itemName || line.sku || 'Mặt hàng'}</span>
+                    <strong>
+                      {quantityText(line.deliveredBaseQuantity || '0')} / {quantityText(line.issuedBaseQuantity)} {line.unitCode || ''}
+                    </strong>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <p className={styles.terminalNotice}>Kết quả đã khóa và chỉ đọc.</p>
+          </section>
+          <section className={styles.podSection}>
+            <h3>Bằng chứng giao hàng</h3>
+            <ProofOfDeliveryPanel
+              tripId={tripId}
+              assignmentId={assignment.assignmentId}
+              attemptId={assignment.attempt.id}
+            />
+          </section>
+        </MobileActionDialog>
+      </div>
     );
   }
 
   return (
-    <details className={styles.panel} data-testid={`attempt-workflow-${assignment.assignmentId}`}>
-      <summary>Ghi kết quả giao</summary>
-      <section data-testid={`attempt-form-${assignment.assignmentId}`}>
-        <fieldset disabled={busy}>
-          <legend>Kết quả giao</legend>
-          <div className={styles.resultGrid}>
-            {(Object.keys(LABELS) as DeliveryAttemptResult[]).map((value) => (
-              <label key={value} className={result === value ? styles.selectedResult : ''}>
-                <input
-                  type="radio"
-                  name={`result-${assignment.assignmentId}`}
-                  value={value}
-                  checked={result === value}
-                  onChange={() => setResult(value)}
-                />
-                {LABELS[value]}
-              </label>
-            ))}
-          </div>
-
-          {result === 'delivered_partial' ? (
-            <div className={styles.lineEditor}>
-              <p>Nhập số thực giao trên từng dòng. Tổng phải lớn hơn 0 và nhỏ hơn hàng đã xuất.</p>
-              {assignment.lines.map((line) => (
-                <label key={line.inventoryIssueLineId}>
-                  <span>
-                    <strong>{line.itemName || line.sku || 'Mặt hàng'}</strong>
-                    <small>Đã xuất: {quantityText(line.issuedBaseQuantity)} {line.unitCode || ''}</small>
-                  </span>
+    <div data-testid={`attempt-workflow-${assignment.assignmentId}`}>
+      <button className={styles.trigger} type="button" onClick={() => setDialogOpen(true)}>Ghi giao</button>
+      <MobileActionDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        eyebrow="Tác nghiệp"
+        title={assignment.deliveryOrderNumber || 'Ghi kết quả giao'}
+      >
+        <section className={styles.panel} data-testid={`attempt-form-${assignment.assignmentId}`}>
+          <fieldset disabled={busy}>
+            <legend>Kết quả giao</legend>
+            <div className={styles.resultGrid}>
+              {(Object.keys(LABELS) as DeliveryAttemptResult[]).map((value) => (
+                <label key={value} className={result === value ? styles.selectedResult : ''}>
                   <input
-                    inputMode="decimal"
-                    value={quantities[line.inventoryIssueLineId] || '0'}
-                    onChange={(event) => setQuantities((current) => ({
-                      ...current,
-                      [line.inventoryIssueLineId]: event.target.value,
-                    }))}
-                    aria-label={`Số thực giao ${line.itemName || line.sku || ''}`}
+                    type="radio"
+                    name={`result-${assignment.assignmentId}`}
+                    value={value}
+                    checked={result === value}
+                    onChange={() => setResult(value)}
                   />
+                  {LABELS[value]}
                 </label>
               ))}
-              <small>Tổng hàng đã xuất tham chiếu: {totalIssued.toLocaleString('vi-VN')}</small>
             </div>
-          ) : null}
 
-          {result === 'failed' || result === 'rescheduled' ? (
-            <label className={styles.field}>
-              Lý do
-              <select value={reasonCode} onChange={(event) => setReasonCode(event.target.value)}>
-                <option value="">Chọn lý do</option>
-                {REASONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-            </label>
-          ) : null}
+            {result === 'delivered_partial' ? (
+              <div className={styles.lineEditor}>
+                <p>Nhập số thực giao trên từng dòng. Tổng phải lớn hơn 0 và nhỏ hơn hàng đã xuất.</p>
+                {assignment.lines.map((line) => (
+                  <label key={line.inventoryIssueLineId}>
+                    <span>
+                      <strong>{line.itemName || line.sku || 'Mặt hàng'}</strong>
+                      <small>Đã xuất: {quantityText(line.issuedBaseQuantity)} {line.unitCode || ''}</small>
+                    </span>
+                    <input
+                      inputMode="decimal"
+                      value={quantities[line.inventoryIssueLineId] || '0'}
+                      onChange={(event) => setQuantities((current) => ({
+                        ...current,
+                        [line.inventoryIssueLineId]: event.target.value,
+                      }))}
+                      aria-label={`Số thực giao ${line.itemName || line.sku || ''}`}
+                    />
+                  </label>
+                ))}
+                <small>Tổng hàng đã xuất tham chiếu: {totalIssued.toLocaleString('vi-VN')}</small>
+              </div>
+            ) : null}
 
-          {result === 'rescheduled' ? (
+            {result === 'failed' || result === 'rescheduled' ? (
+              <label className={styles.field}>
+                Lý do
+                <select value={reasonCode} onChange={(event) => setReasonCode(event.target.value)}>
+                  <option value="">Chọn lý do</option>
+                  {REASONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </label>
+            ) : null}
+
+            {result === 'rescheduled' ? (
+              <label className={styles.field}>
+                Thời điểm giao lại
+                <input
+                  type="datetime-local"
+                  min={localDateTimeValue(new Date())}
+                  value={rescheduledFor}
+                  onChange={(event) => setRescheduledFor(event.target.value)}
+                />
+              </label>
+            ) : null}
+
             <label className={styles.field}>
-              Thời điểm giao lại
-              <input
-                type="datetime-local"
-                min={localDateTimeValue(new Date())}
-                value={rescheduledFor}
-                onChange={(event) => setRescheduledFor(event.target.value)}
+              Ghi chú
+              <textarea
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                maxLength={2000}
+                rows={2}
+                placeholder="Thông tin cần để điều phối theo dõi"
               />
             </label>
-          ) : null}
 
-          <label className={styles.field}>
-            Ghi chú
-            <textarea
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              maxLength={2000}
-              rows={2}
-              placeholder="Thông tin cần để điều phối theo dõi"
-            />
-          </label>
-
-          {error ? <p className={styles.error} role="alert">{error}</p> : null}
-          {message ? <p className={styles.message} role="status">{message}</p> : null}
-          <button type="button" className={styles.submit} onClick={submitAttempt} disabled={busy}>
-            {busy ? 'Đang ghi…' : 'Xác nhận kết quả'}
-          </button>
-        </fieldset>
-      </section>
-    </details>
+            {error ? <p className={styles.error} role="alert">{error}</p> : null}
+            {message ? <p className={styles.message} role="status">{message}</p> : null}
+            <button type="button" className={styles.submit} onClick={submitAttempt} disabled={busy}>
+              {busy ? 'Đang ghi…' : 'Xác nhận kết quả'}
+            </button>
+          </fieldset>
+        </section>
+      </MobileActionDialog>
+    </div>
   );
 }

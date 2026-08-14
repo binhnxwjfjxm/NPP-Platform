@@ -1,11 +1,18 @@
 'use client';
 
+import { createIdempotencyKey } from '@npp/contracts';
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CodAssignment, CodCollectionMethod, RecordCodCollectionPayload } from '../../../lib/types';
 import styles from './cod-panel.module.css';
 
-type Props = Readonly<{ tripId: string; assignment: CodAssignment }>;
+type Props = Readonly<{
+  tripId: string;
+  assignment: CodAssignment;
+  onCompleted?: () => void;
+}>;
+
+type PendingOperation = Readonly<{ key: string; body: string }>;
 
 function money(value: string | null, currency = 'VND') {
   const number = Number(value ?? 0);
@@ -25,7 +32,7 @@ const METHOD_LABELS: Record<CodCollectionMethod, string> = {
   NONE: 'Chưa thu',
 };
 
-export default function CodCollectionPanel({ tripId, assignment }: Props) {
+export default function CodCollectionPanel({ tripId, assignment, onCompleted }: Props) {
   const router = useRouter();
   const [method, setMethod] = useState<CodCollectionMethod>('CASH');
   const [receivedAmount, setReceivedAmount] = useState(assignment.amountDue ?? '');
@@ -36,7 +43,7 @@ export default function CodCollectionPanel({ tripId, assignment }: Props) {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const keyRef = useRef<string | null>(null);
+  const operationsRef = useRef(new Map<string, PendingOperation>());
 
   if (assignment.collectionPolicy !== 'COLLECT_ON_DELIVERY') return null;
   if (!['delivered_full', 'delivered_partial'].includes(assignment.deliveryAttemptResult ?? '')) return null;
@@ -78,7 +85,8 @@ export default function CodCollectionPanel({ tripId, assignment }: Props) {
       setMessage('Chưa thu tiền cần có lý do, người hẹn và thời điểm hẹn trả.');
       return;
     }
-    const payload: RecordCodCollectionPayload = {
+
+    const logicalPayload = {
       collectionMethod: method,
       receivedAmount: method === 'NONE' ? undefined : receivedAmount,
       externalReference: method === 'BANK_TRANSFER' ? externalReference.trim() : null,
@@ -86,21 +94,33 @@ export default function CodCollectionPanel({ tripId, assignment }: Props) {
       promisedBy: method === 'NONE' ? promisedBy.trim() : null,
       dueAt: method === 'NONE' ? new Date(dueAt).toISOString() : null,
       note: note.trim() || null,
-      collectedAt: new Date().toISOString(),
     };
-    if (!keyRef.current) keyRef.current = `cod-collection-${crypto.randomUUID()}`;
+    const signature = JSON.stringify(logicalPayload);
+    let operation = operationsRef.current.get(signature);
+    if (!operation) {
+      const payload: RecordCodCollectionPayload = {
+        ...logicalPayload,
+        collectedAt: new Date().toISOString(),
+      };
+      operation = Object.freeze({
+        key: createIdempotencyKey('cod-collection'),
+        body: JSON.stringify(payload),
+      });
+      operationsRef.current.set(signature, operation);
+    }
+
     setBusy(true);
     try {
       const response = await fetch(`/api/trips/${encodeURIComponent(tripId)}/assignments/${encodeURIComponent(assignment.assignmentId)}/cod-collections`, {
         method: 'POST',
         cache: 'no-store',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyRef.current },
-        body: JSON.stringify(payload),
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operation.key },
+        body: operation.body,
       });
       const body = await response.json().catch(() => null) as { data?: unknown; error?: { message?: string } } | null;
       if (!response.ok || !body?.data) throw new Error(body?.error?.message || 'Không ghi được tiền COD.');
-      keyRef.current = null;
       setMessage('Đã ghi tiền COD.');
+      onCompleted?.();
       router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không ghi được tiền COD.');

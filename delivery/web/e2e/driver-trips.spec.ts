@@ -33,27 +33,42 @@ test('tài xế đăng nhập một lần, reload vẫn giữ phiên và hoàn t
   await expect(page.getByRole('link', { name: 'Điểm giao', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('link', { name: 'COD' })).toBeVisible();
 
-  const workflow = page.getByTestId(`attempt-workflow-${assignmentOneId}`);
-  await workflow.locator('summary').click();
+  const firstOrder = page.locator(`#assignment-${assignmentOneId}`);
+  await expect(firstOrder.getByText('Giá trị đơn')).toBeVisible();
+  await firstOrder.getByRole('button', { name: 'Chi tiết đơn' }).click();
+  const detailDialog = page.getByRole('dialog').filter({ hasText: 'Chi tiết đơn giao' });
+  await expect(detailDialog).toContainText('Bột nguyên liệu A');
+  await detailDialog.getByRole('button', { name: /Đóng/ }).click();
+  await expect(detailDialog).toBeHidden();
+
+  await firstOrder.getByRole('button', { name: 'Ghi giao' }).click();
   const firstAttempt = page.getByTestId(`attempt-form-${assignmentOneId}`);
+  await expect(firstAttempt).toBeVisible();
   await firstAttempt.getByLabel('Giao một phần').check();
   await firstAttempt.getByLabel('Số thực giao Bột nguyên liệu A').fill('1');
   await firstAttempt.getByLabel('Ghi chú').fill('Khách nhận một bao');
   await firstAttempt.getByRole('button', { name: 'Xác nhận kết quả' }).click();
 
+  await expect(firstAttempt).toBeHidden();
   await expect(page.getByTestId(`attempt-recorded-${assignmentOneId}`)).toBeVisible();
   const codWorkflow = page.getByTestId(`cod-workflow-${assignmentOneId}`);
-  await codWorkflow.locator('summary').click();
+  await codWorkflow.getByRole('button', { name: 'Thu COD' }).click();
   const codForm = page.getByTestId(`cod-form-${assignmentOneId}`);
   await expect(codForm).toBeVisible();
   await codForm.getByLabel('Tiền mặt').check();
   await codForm.getByLabel('Số tiền thực thu').fill('300000');
   await codForm.getByRole('button', { name: 'Xác nhận tiền COD' }).click();
 
+  await expect(codForm).toBeHidden();
+  await expect(codWorkflow.getByRole('button', { name: 'Xem COD' })).toBeVisible();
+  await codWorkflow.getByRole('button', { name: 'Xem COD' }).click();
   const collection = page.getByTestId(`cod-collection-${assignmentOneId}`);
   await expect(collection).toBeVisible();
   await expect(collection).toContainText('Tài xế còn giữ');
   await expect(collection).toContainText('300.000');
+  const codDialog = page.getByRole('dialog').filter({ hasText: 'Tiền thu khi giao' });
+  await codDialog.getByRole('button', { name: /Đóng/ }).click();
+  await expect(codDialog).toBeHidden();
 
   const handover = page.getByTestId('cod-handover-panel');
   await expect(handover).toBeVisible();
