@@ -25,7 +25,7 @@ test('tài xế đăng nhập một lần, reload vẫn giữ phiên và hoàn t
   await expect(bottomNav).toBeVisible();
   await expect(bottomNav.getByRole('link', { name: 'Chuyến' })).toHaveAttribute('aria-current', 'page');
   await expect(bottomNav.getByRole('link', { name: 'Tiền đang giữ' })).toBeVisible();
-  await expect(bottomNav.getByText('Tài khoản')).toBeVisible();
+  await expect(bottomNav.getByText('Tài khoản', { exact: true })).toBeVisible();
   await expect(bottomNav.getByText('Soạn hàng')).toHaveCount(0);
   await expect(bottomNav.getByText('Đồng bộ')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Đồng bộ dữ liệu' })).toBeVisible();
