@@ -32,12 +32,17 @@
     display: none !important;
   }
 
-  .printSurface,
-  .printSurface * {
+  .printSurface {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  .printSurface[data-print-active='true'],
+  .printSurface[data-print-active='true'] * {
     visibility: visible !important;
   }
 
-  .printSurface {
+  .printSurface[data-print-active='true'] {
     display: block !important;
     position: absolute;
     inset: 0 auto auto 0;
@@ -48,8 +53,21 @@
     font-family: Arial, Helvetica, sans-serif;
   }
 
-  @page {
+  .printSurface[data-print-size='A4'] {
+    page: document-a4;
+  }
+
+  .printSurface[data-print-size='A5'] {
+    page: document-a5;
+  }
+
+  @page document-a4 {
     size: A4 portrait;
     margin: 11mm 10mm 12mm;
+  }
+
+  @page document-a5 {
+    size: A5 portrait;
+    margin: 9mm 8mm 10mm;
   }
 }
