@@ -9,6 +9,7 @@ import {
   PURCHASE_ORDER_STATUS_LABELS,
 } from '../../../../lib/purchase-order-types';
 import styles from '../../../organization/organization.module.css';
+import PurchaseOrderPrintSheet from '../PurchaseOrderPrintSheet';
 
 type Props = {
   purchaseOrders: PurchaseOrder[];
@@ -91,6 +92,7 @@ export default function PurchaseOrderList({
                         Xem
                       </button>
                     ) : null}
+                    {policy.view && purchaseOrder.number ? <PurchaseOrderPrintSheet purchaseOrder={purchaseOrder} /> : null}
                     {policy.edit ? (
                       <button type="button" onClick={() => onEdit(purchaseOrder)} disabled={disabled}>
                         Sửa

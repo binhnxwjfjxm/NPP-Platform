@@ -90,20 +90,20 @@ kbd {
   background-clip: padding-box;
 }
 
-/* Shared print foundation. Global page isolation belongs here rather than in a
-   CSS Module because Next.js requires CSS Module selectors to stay locally pure. */
+/* Shared print foundation. Only the PrintAction-selected surface is exposed to
+   the printer so list pages can host many hidden printable documents safely. */
 @media print {
   html,
   body {
     background: #fff !important;
   }
 
-  body:has([data-print-surface]) * {
+  body[data-printing='true'] * {
     visibility: hidden !important;
   }
 
-  body:has([data-print-surface]) [data-print-surface],
-  body:has([data-print-surface]) [data-print-surface] * {
+  body[data-printing='true'] [data-print-active='true'],
+  body[data-printing='true'] [data-print-active='true'] * {
     visibility: visible !important;
   }
 }

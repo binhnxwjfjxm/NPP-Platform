@@ -1,0 +1,181 @@
+.sheet {
+  width: 100%;
+  color: #171717;
+  font-size: 10.5pt;
+  line-height: 1.38;
+}
+
+.header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.9fr);
+  gap: 18px;
+  align-items: start;
+  border-bottom: 2px solid #242424;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+}
+
+.brand {
+  display: block;
+  font-size: 16pt;
+  letter-spacing: 0.06em;
+}
+
+.brandBlock p,
+.titleBlock p {
+  margin: 3px 0 0;
+  color: #444;
+}
+
+.titleBlock {
+  text-align: right;
+}
+
+.titleBlock h1 {
+  margin: 0;
+  font-size: 18pt;
+  line-height: 1.15;
+}
+
+.status {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 2px 7px;
+  border: 1px solid #777;
+  border-radius: 999px;
+  font-size: 8.5pt;
+  font-weight: 700;
+}
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 16px;
+  margin-bottom: 13px;
+}
+
+.metaItem {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.38fr) minmax(0, 1fr);
+  gap: 8px;
+  border-bottom: 1px dotted #aaa;
+  padding: 2px 0 4px;
+}
+
+.metaItem span {
+  color: #555;
+}
+
+.metaItem strong {
+  overflow-wrap: anywhere;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 7px 0 10px;
+  page-break-inside: auto;
+}
+
+.table th,
+.table td {
+  border: 1px solid #999;
+  padding: 5px 6px;
+  vertical-align: top;
+}
+
+.table th {
+  background: #f1f1f1 !important;
+  font-size: 9pt;
+  text-align: left;
+}
+
+.table tr {
+  break-inside: avoid;
+}
+
+.right {
+  text-align: right !important;
+  white-space: nowrap;
+}
+
+.center {
+  text-align: center !important;
+}
+
+.summary {
+  width: min(360px, 100%);
+  margin: 8px 0 12px auto;
+}
+
+.summaryRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 3px 0;
+  border-bottom: 1px dotted #aaa;
+}
+
+.summaryRow span {
+  color: #444;
+}
+
+.emphasis {
+  margin-top: 3px;
+  padding-top: 6px;
+  border-top: 2px solid #222;
+  border-bottom: 0;
+  font-size: 12pt;
+}
+
+.note {
+  margin: 9px 0 16px;
+  padding: 8px 10px;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+.signatures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+  text-align: center;
+  break-inside: avoid;
+}
+
+.signatures div {
+  min-height: 72px;
+}
+
+.signatures strong,
+.signatures span {
+  display: block;
+}
+
+.signatures span {
+  margin-top: 3px;
+  color: #555;
+  font-size: 8.5pt;
+}
+
+.footer {
+  margin-top: 14px;
+  padding-top: 7px;
+  border-top: 1px solid #aaa;
+  color: #666;
+  font-size: 8pt;
+  text-align: center;
+}
+
+@media print {
+  .sheet {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
