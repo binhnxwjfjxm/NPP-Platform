@@ -114,6 +114,14 @@ function warehouseAllowed(requestContext, warehouseId) {
 }
 
 function mapLine(line) {
+  const trackingPolicy = line.tracking_base_variant_id && line.lot_tracking_mode && line.expiry_tracking_mode
+    ? Object.freeze({
+      baseVariantId: line.tracking_base_variant_id,
+      lotTrackingMode: line.lot_tracking_mode,
+      expiryTrackingMode: line.expiry_tracking_mode,
+      locationRequired: Boolean(line.location_required),
+    })
+    : null;
   return Object.freeze({
     id: line.id,
     lineNumber: Number(line.line_number),
@@ -145,6 +153,7 @@ function mapLine(line) {
     expiryDate: line.expiry_date ?? null,
     supplierLotReference: line.supplier_lot_reference ?? null,
     note: line.note ?? null,
+    trackingPolicy,
   });
 }
 

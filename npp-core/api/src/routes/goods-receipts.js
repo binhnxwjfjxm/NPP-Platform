@@ -10,6 +10,7 @@ import {
 } from '../audit-outbox.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
 import * as goodsReceiptService from '../services/goods-receipt.js';
+import * as goodsReceiptTrackingService from '../services/goods-receipt-tracking.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -273,6 +274,16 @@ async function handleGet(res, options, requestContext, id) {
   sendSuccess(res, result.goodsReceipt, options.requestId, options.receivedAt);
 }
 
+async function handleTrackingRequirements(req, res, options, requestContext) {
+  const url = new URL(`http://localhost${req.url}`);
+  const result = await goodsReceiptTrackingService.getPurchaseOrderTrackingRequirements(options.getPool(), {
+    requestContext,
+    purchaseOrderId: url.searchParams.get('purchaseOrderId'),
+  });
+  if (!result.ok) return sendServiceError(res, result, options);
+  sendSuccess(res, result.requirements, options.requestId, options.receivedAt);
+}
+
 export async function handleGoodsReceiptRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (pathname !== '/api/goods-receipts' && !pathname.startsWith('/api/goods-receipts/')) return false;
@@ -298,6 +309,13 @@ export async function handleGoodsReceiptRoutes(req, res, options) {
       statusCode: 201,
       mutate: (client) => goodsReceiptService.createGoodsReceipt(client, { requestContext, payload }),
     });
+    return true;
+  }
+
+  if (pathname === '/api/goods-receipts/tracking-requirements' && method === 'GET') {
+    const requestContext = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreGoodsReceiptRead);
+    if (!requestContext) return true;
+    await handleTrackingRequirements(req, res, options, requestContext);
     return true;
   }
 

@@ -24,7 +24,11 @@ const LINE_COLUMNS = `grl.id, grl.installation_id, grl.goods_receipt_id,
   grl.location_id, grl.lot_id, grl.lot_code_snapshot, grl.manufactured_date,
   grl.expiry_date, grl.supplier_lot_reference, grl.note,
   grl.created_at, grl.updated_at, grl.created_by, grl.updated_by,
-  pol.line_number AS purchase_order_line_number`;
+  pol.line_number AS purchase_order_line_number,
+  tracking_base_variant.id AS tracking_base_variant_id,
+  tracking_policy.lot_tracking_mode,
+  tracking_policy.expiry_tracking_mode,
+  tracking_policy.location_required`;
 
 function normalizedWarehouseIds(warehouseIds) {
   return Array.isArray(warehouseIds)
@@ -126,6 +130,17 @@ export async function getGoodsReceiptLines(client, { installationId, receiptId }
      JOIN purchasing.purchase_order_lines pol
        ON pol.installation_id = grl.installation_id
       AND pol.id = grl.purchase_order_line_id
+     JOIN shared.product_variants source_variant
+       ON source_variant.installation_id = grl.installation_id
+      AND source_variant.id = grl.variant_id
+     LEFT JOIN shared.product_variants tracking_base_variant
+       ON tracking_base_variant.installation_id = source_variant.installation_id
+      AND tracking_base_variant.product_id = source_variant.product_id
+      AND tracking_base_variant.is_inventory_base = true
+      AND tracking_base_variant.is_active = true
+     LEFT JOIN inventory.product_tracking_policies tracking_policy
+       ON tracking_policy.installation_id = grl.installation_id
+      AND tracking_policy.base_variant_id = tracking_base_variant.id
      WHERE grl.installation_id = $1 AND grl.goods_receipt_id = $2
      ORDER BY grl.line_number ASC`,
     [installationId, receiptId],
