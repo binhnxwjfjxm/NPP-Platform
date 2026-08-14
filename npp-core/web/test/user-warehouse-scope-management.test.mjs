@@ -22,6 +22,15 @@ test('warehouse scope management lives in the canonical access/users screen', ()
   assert.match(accessTypes, /owner_kind: 'PERMANENT' \| 'TEMPORARY' \| null/);
 });
 
+test('warehouse selection keeps branch and warehouse scopes structurally consistent', () => {
+  assert.match(workspace, /function toggleBranch\(branchId: string\)/);
+  assert.match(workspace, /warehouseIds: current\.warehouseIds\.filter/);
+  assert.match(workspace, /function toggleWarehouse\(warehouse: Warehouse\)/);
+  assert.match(workspace, /current\.branchIds\.includes\(warehouse\.branch_id\)/);
+  assert.match(workspace, /toggleBranch\(branch\.id\)/);
+  assert.match(workspace, /toggleWarehouse\(warehouse\)/);
+});
+
 test('scope mutation uses canonical shared HTTP Idempotency-Key and reuses key by logical intent', () => {
   assert.match(workspace, /createIdempotencyKey\(`access-user-\$\{operation\}`\)/);
   assert.match(workspace, /const existing = idempotencyKeys\.get\(intent\)/);

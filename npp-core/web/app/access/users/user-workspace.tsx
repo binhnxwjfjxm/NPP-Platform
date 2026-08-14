@@ -221,8 +221,11 @@ export default function UserWorkspace({
     const assigned = new Set(editingUser?.warehouse_ids ?? []);
     return warehouses
       .filter((warehouse) => warehouse.is_active || assigned.has(warehouse.id))
-      .sort((left, right) => left.code.localeCompare(right.code));
-  }, [editingUser?.warehouse_ids, warehouses]);
+      .sort((left, right) => {
+        const branchCompare = (branchMap.get(left.branch_id)?.code ?? '').localeCompare(branchMap.get(right.branch_id)?.code ?? '');
+        return branchCompare || left.code.localeCompare(right.code);
+      });
+  }, [branchMap, editingUser?.warehouse_ids, warehouses]);
 
   async function reloadUsers(successMessage = 'Dữ liệu người dùng đã được tải lại.') {
     setBusy('reload');
@@ -284,12 +287,31 @@ export default function UserWorkspace({
     }));
   }
 
-  function toggleScope(kind: 'branchIds' | 'warehouseIds', id: string) {
+  function toggleBranch(branchId: string) {
+    setDraft((current) => {
+      if (!current.branchIds.includes(branchId)) {
+        return { ...current, branchIds: [...current.branchIds, branchId] };
+      }
+      const warehouseIds = current.warehouseIds.filter(
+        (warehouseId) => branchMap.get(warehouses.find((warehouse) => warehouse.id === warehouseId)?.branch_id ?? '')?.id !== branchId,
+      );
+      return {
+        ...current,
+        branchIds: current.branchIds.filter((id) => id !== branchId),
+        warehouseIds,
+      };
+    });
+  }
+
+  function toggleWarehouse(warehouse: Warehouse) {
     setDraft((current) => ({
       ...current,
-      [kind]: current[kind].includes(id)
-        ? current[kind].filter((currentId) => currentId !== id)
-        : [...current[kind], id],
+      branchIds: current.branchIds.includes(warehouse.branch_id)
+        ? current.branchIds
+        : [...current.branchIds, warehouse.branch_id],
+      warehouseIds: current.warehouseIds.includes(warehouse.id)
+        ? current.warehouseIds.filter((id) => id !== warehouse.id)
+        : [...current.warehouseIds, warehouse.id],
     }));
   }
 
@@ -596,8 +618,8 @@ export default function UserWorkspace({
                 }} disabled={busy !== null}><option value="active">Hoạt động</option><option value="inactive">Không hoạt động</option></select></label>
                 <div className={styles.field}>Vai trò<div className={styles.checkboxGrid}>{selectableRoles.map((role) => { const assigned = draft.roleIds.includes(role.id); return <label key={role.id} className={styles.roleOption}><input type="checkbox" checked={assigned} onChange={() => toggleRole(role.id)} disabled={busy !== null} /><span><strong>{role.name}</strong>{!role.is_active && <small>Vai trò không hoạt động — bỏ chọn để thu hồi</small>}</span></label>; })}{selectableRoles.length === 0 && <span className={styles.muted}>Không có vai trò đang hoạt động.</span>}</div>{editor.mode === 'create' && <small>Chọn ít nhất một vai trò để tài khoản có quyền sử dụng app.</small>}</div>
                 {editingUser?.owner_kind ? <div className={styles.field}>Phạm vi dữ liệu<div className={styles.notice}><strong>Security Owner — toàn installation</strong><div>Owner luôn thấy toàn bộ chi nhánh/kho, kể cả kho ngưng hoạt động có lịch sử. Không giới hạn bằng user scope.</div></div></div> : <>
-                  <div className={styles.field}>Chi nhánh<div className={styles.checkboxGrid}>{selectableBranches.map((branch) => { const assigned = draft.branchIds.includes(branch.id); return <label key={branch.id} className={styles.roleOption}><input type="checkbox" checked={assigned} onChange={() => toggleScope('branchIds', branch.id)} disabled={busy !== null} /><span><strong>{branch.name}</strong><small>{branch.code}{!branch.is_active ? ' · ngưng hoạt động / lịch sử' : ''}</small></span></label>; })}{selectableBranches.length === 0 && <span className={styles.muted}>Không có chi nhánh để gán.</span>}</div></div>
-                  <div className={styles.field}>Kho dữ liệu<div className={styles.checkboxGrid}>{selectableWarehouses.map((warehouse) => { const assigned = draft.warehouseIds.includes(warehouse.id); const branch = branchMap.get(warehouse.branch_id); return <label key={warehouse.id} className={styles.roleOption}><input type="checkbox" checked={assigned} onChange={() => toggleScope('warehouseIds', warehouse.id)} disabled={busy !== null} /><span><strong>{warehouse.name}</strong><small>{warehouse.code}{branch ? ` · ${branch.name}` : ''}{!warehouse.is_active ? ' · ngưng hoạt động / lịch sử' : ''}</small></span></label>; })}{selectableWarehouses.length === 0 && <span className={styles.muted}>Không có kho để gán.</span>}</div><small>Không chọn kho nào = zero-scope: tài khoản vẫn đăng nhập được nhưng dữ liệu theo kho bị deny-by-default.</small></div>
+                  <div className={styles.field}>Chi nhánh<div className={styles.checkboxGrid}>{selectableBranches.map((branch) => { const assigned = draft.branchIds.includes(branch.id); return <label key={branch.id} className={styles.roleOption}><input type="checkbox" checked={assigned} onChange={() => toggleBranch(branch.id)} disabled={busy !== null} /><span><strong>{branch.name}</strong><small>{branch.code}{!branch.is_active ? ' · ngưng hoạt động / lịch sử' : ''}</small></span></label>; })}{selectableBranches.length === 0 && <span className={styles.muted}>Không có chi nhánh để gán.</span>}</div></div>
+                  <div className={styles.field}>Kho dữ liệu<div className={styles.checkboxGrid}>{selectableWarehouses.map((warehouse) => { const assigned = draft.warehouseIds.includes(warehouse.id); const branch = branchMap.get(warehouse.branch_id); return <label key={warehouse.id} className={styles.roleOption}><input type="checkbox" checked={assigned} onChange={() => toggleWarehouse(warehouse)} disabled={busy !== null} /><span><strong>{warehouse.name}</strong><small>{warehouse.code}{branch ? ` · ${branch.name}` : ''}{!warehouse.is_active ? ' · ngưng hoạt động / lịch sử' : ''}</small></span></label>; })}{selectableWarehouses.length === 0 && <span className={styles.muted}>Không có kho để gán.</span>}</div><small>Không chọn kho nào = zero-scope: tài khoản vẫn đăng nhập được nhưng dữ liệu theo kho bị deny-by-default.</small></div>
                 </>}
               </div>
             </div>
