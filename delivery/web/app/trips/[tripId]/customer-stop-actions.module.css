@@ -1,0 +1,136 @@
+.root {
+  display: grid;
+  gap: 8px;
+}
+
+.phoneLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: #544b43;
+  font-size: 13px;
+}
+
+.phoneLine strong {
+  color: #754706;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.action {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 1px solid #dec49c;
+  border-radius: 12px;
+  background: #fffdf8;
+  color: #754706;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.action:disabled,
+.disabled {
+  border-color: #e4dfd8;
+  background: #f5f3f0;
+  color: #8b857d;
+  cursor: default;
+}
+
+.feedback {
+  color: #17613a;
+  font-weight: 700;
+}
+
+.backdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  align-items: end;
+  padding: 18px 12px calc(18px + env(safe-area-inset-bottom));
+  background: rgba(38, 31, 24, 0.56);
+}
+
+.dialog {
+  width: min(100%, 620px);
+  max-height: 82dvh;
+  margin: 0 auto;
+  overflow-y: auto;
+  border-radius: 20px;
+  background: #fffdf8;
+  padding: 14px;
+  box-shadow: 0 24px 70px rgba(38, 31, 24, 0.32);
+}
+
+.dialogHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.dialogHeading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.dialogHeading small {
+  color: #7a7066;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.dialogHeading button {
+  width: 40px;
+  height: 40px;
+  border: 1px solid #ded6ca;
+  border-radius: 12px;
+  background: white;
+  color: #4a301b;
+  font-size: 26px;
+  cursor: pointer;
+}
+
+.state {
+  margin: 12px 0;
+  border-radius: 12px;
+  background: #f5f1eb;
+  padding: 14px;
+  color: #625a52;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.gallery {
+  display: grid;
+  gap: 10px;
+}
+
+.gallery img {
+  display: block;
+  width: 100%;
+  max-height: 58dvh;
+  object-fit: contain;
+  border-radius: 14px;
+  background: #eee9e1;
+}
+
+@media (max-width: 390px) {
+  .actions {
+    grid-template-columns: 1fr 1fr;
+  }
+}

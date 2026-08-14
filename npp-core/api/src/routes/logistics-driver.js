@@ -1,11 +1,16 @@
 import { createSuccessEnvelope } from '@npp/contracts';
 import { sendError, sendJson } from '../http-utils.js';
 import { normalizeIdempotencyKey, readJsonBody } from '../idempotency.js';
+import { createOptionalR2StorageAdapter } from '../storage/r2-adapter.js';
+import * as customerMediaRepository from '../db/repositories/customer-media.js';
 import {
   getAssignedDriverTrip,
   listAssignedDriverTrips,
   recordDriverDeliveryAttempt,
 } from '../services/logistics-driver-delivery.js';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CUSTOMER_MEDIA_VIEW_TTL_SECONDS = 300;
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -108,6 +113,69 @@ function requireIdempotency(req) {
   }
 }
 
+async function readDriverCustomerMedia(res, options, requestContext, tripId, customerId) {
+  if (!UUID_PATTERN.test(String(tripId ?? '')) || !UUID_PATTERN.test(String(customerId ?? ''))) {
+    sendError(
+      res,
+      apiError('INVALID_DELIVERY_CUSTOMER_MEDIA_PATH', 'Trip or customer id is invalid', {}, false, 400),
+      options.requestId,
+      options.receivedAt,
+    );
+    return;
+  }
+
+  const tripResult = await getAssignedDriverTrip(options.getPool(), { requestContext, tripId });
+  if (!tripResult.ok) {
+    sendServiceError(res, tripResult, options);
+    return;
+  }
+  const belongsToTrip = (tripResult.trip.stops ?? []).some(
+    (stop) => String(stop.customerId) === String(customerId),
+  );
+  if (!belongsToTrip) {
+    sendServiceError(
+      res,
+      { ok: false, code: 'DELIVERY_CUSTOMER_NOT_FOUND', message: 'Customer is not part of this assigned trip' },
+      options,
+    );
+    return;
+  }
+
+  const mediaResult = await customerMediaRepository.listReadyCustomerMedia(options.getPool(), {
+    installationId: requestContext.installationId,
+    customerId,
+  });
+  if (!mediaResult.ok) {
+    sendServiceError(res, mediaResult, options);
+    return;
+  }
+  if (mediaResult.media.length === 0) {
+    writeSuccess(res, { media: [], maxPhotos: mediaResult.maxPhotos }, options);
+    return;
+  }
+
+  const storage = createOptionalR2StorageAdapter(options.config);
+  if (!storage) {
+    sendError(
+      res,
+      apiError('CUSTOMER_MEDIA_STORAGE_UNAVAILABLE', 'Kho ảnh khách hàng chưa sẵn sàng', {}, true, 503),
+      options.requestId,
+      options.receivedAt,
+    );
+    return;
+  }
+  const ttl = Math.min(CUSTOMER_MEDIA_VIEW_TTL_SECONDS, options.config.r2PresignedUrlMaxSeconds);
+  const media = await Promise.all(mediaResult.media.map(async (item) => {
+    const signed = await storage.createPresignedGetUrl({
+      installationId: requestContext.installationId,
+      key: item.objectKey,
+      expiresIn: ttl,
+    });
+    return customerMediaRepository.customerMediaPublic(item, signed.url);
+  }));
+  writeSuccess(res, { media, maxPhotos: mediaResult.maxPhotos }, options);
+}
+
 export async function handleLogisticsDriverRoutes(req, res, options) {
   const url = new URL(`http://localhost${req.url}`);
   const pathname = url.pathname;
@@ -133,6 +201,14 @@ export async function handleLogisticsDriverRoutes(req, res, options) {
         });
         if (!result.ok) sendServiceError(res, result, options);
         else writeSuccess(res, { driver: result.driver, trips: result.trips }, options);
+        return true;
+      }
+
+      const mediaMatch = pathname.match(
+        /^\/api\/logistics\/driver\/trips\/([^/]+)\/customers\/([^/]+)\/media$/,
+      );
+      if (mediaMatch) {
+        await readDriverCustomerMedia(res, options, requestContext, mediaMatch[1], mediaMatch[2]);
         return true;
       }
 

@@ -1,3 +1,12 @@
+const ADDRESS_METADATA_KEYS = new Set([
+  'customerPhone',
+  'locationUrl',
+  'latitude',
+  'longitude',
+  'lat',
+  'lng',
+]);
+
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return 'Chưa có';
   const date = new Date(value);
@@ -21,10 +30,50 @@ export function formatAddress(address: Record<string, unknown> | null | undefine
     .map((value) => value.trim());
   const unique = [...new Set(parts)];
   if (unique.length > 0) return unique.join(', ');
-  const fallback = Object.values(address)
+  const fallback = Object.entries(address)
+    .filter(([key]) => !ADDRESS_METADATA_KEYS.has(key))
+    .map(([, value]) => value)
     .filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
     .map((value) => value.trim());
   return fallback.length > 0 ? [...new Set(fallback)].join(', ') : 'Chưa có địa chỉ';
+}
+
+export function customerPhoneFromSnapshot(address: Record<string, unknown> | null | undefined): string | null {
+  const value = address?.customerPhone;
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return normalized || null;
+}
+
+export function locationUrlFromSnapshot(address: Record<string, unknown> | null | undefined): string | null {
+  const value = address?.locationUrl;
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (!normalized) return null;
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null;
+    return normalized;
+  } catch {
+    return null;
+  }
+}
+
+export function formatCollectionPolicy(value: string | null | undefined): string {
+  switch (value) {
+    case 'PREPAID': return 'Đã thanh toán trước';
+    case 'COLLECT_ON_DELIVERY': return 'Thu khi giao';
+    case 'COLLECT_AFTER_DELIVERY': return 'Thu sau giao';
+    case 'CREDIT_TERMS': return 'Công nợ theo hạn';
+    case 'NO_COLLECTION': return 'Không thu tại điểm giao';
+    default: return 'Theo phiếu giao';
+  }
+}
+
+export function formatQuantity(value: string | null | undefined): string {
+  if (!value) return '0';
+  const normalized = value.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+  return normalized || '0';
 }
 
 export function safeErrorMessage(error: unknown): string {
