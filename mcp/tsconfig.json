@@ -23,6 +23,9 @@
       ],
       "@npp/contracts": [
         "../packages/contracts"
+      ],
+      "@npp/contracts/*": [
+        "../packages/contracts/*"
       ]
     },
     "plugins": [

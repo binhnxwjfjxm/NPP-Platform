@@ -105,8 +105,19 @@ SET search_path = pg_catalog
 AS $function$
 DECLARE
   canonical_code text;
+  route_customer_id text;
 BEGIN
-  IF NEW.route_customer_id IS NULL THEN
+  route_customer_id := COALESCE(
+    NULLIF(btrim(COALESCE(NEW.raw_payload ->> 'routeCustomerId', '')), ''),
+    NULLIF(btrim(COALESCE(NEW.source_id, '')), '')
+  );
+
+  IF route_customer_id IS NULL OR NOT EXISTS (
+    SELECT 1
+      FROM mcp.mcp_route_customers AS route_customer
+     WHERE route_customer.installation_id = NEW.installation_id
+       AND route_customer.id = route_customer_id
+  ) THEN
     RETURN NEW;
   END IF;
 
@@ -138,9 +149,9 @@ BEGIN
          last_core_sync_at = COALESCE(NEW.customer_onboarding_last_synced_at, now()),
          updated_at = now()
    WHERE installation_id = NEW.installation_id
-     AND id = NEW.route_customer_id;
+     AND id = route_customer_id;
 
-  PERFORM mcp.sync_route_customer_media_to_shared(NEW.route_customer_id);
+  PERFORM mcp.sync_route_customer_media_to_shared(route_customer_id);
   RETURN NEW;
 END
 $function$;
@@ -186,8 +197,21 @@ FOR EACH ROW
 EXECUTE FUNCTION mcp.sync_outlet_media_shared_registry();
 
 -- Backfill durable outlet linkage from the latest onboarding projection already stored
--- on MCP orders. Do not infer identity from an order at read time after this migration.
-WITH latest AS (
+-- on MCP orders. source_id is the canonical persisted route-customer reference for existing
+-- customer orders; raw_payload.routeCustomerId is retained as a compatibility fallback.
+WITH linked_orders AS (
+  SELECT
+    order_row.*,
+    route_customer.id AS route_customer_id
+  FROM mcp.orders AS order_row
+  JOIN mcp.mcp_route_customers AS route_customer
+    ON route_customer.installation_id = order_row.installation_id
+   AND route_customer.id = COALESCE(
+     NULLIF(btrim(COALESCE(order_row.raw_payload ->> 'routeCustomerId', '')), ''),
+     NULLIF(btrim(COALESCE(order_row.source_id, '')), '')
+   )
+  WHERE order_row.customer_onboarding_request_id IS NOT NULL
+), latest AS (
   SELECT DISTINCT ON (installation_id, route_customer_id)
     installation_id,
     route_customer_id,
@@ -196,9 +220,7 @@ WITH latest AS (
     core_customer_id,
     core_customer_address_id,
     customer_onboarding_last_synced_at
-  FROM mcp.orders
-  WHERE route_customer_id IS NOT NULL
-    AND customer_onboarding_request_id IS NOT NULL
+  FROM linked_orders
   ORDER BY installation_id, route_customer_id,
            customer_onboarding_last_synced_at DESC NULLS LAST,
            updated_at DESC,

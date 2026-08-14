@@ -1,7 +1,4 @@
-import {
-  CUSTOMER_MEDIA_MAX_PHOTOS,
-  compressCustomerPhoto,
-} from "@npp/contracts/customer-media-browser";
+import { compressCustomerPhoto } from "@npp/contracts/customer-media-browser";
 
 export type OutletMediaLocation = {
   lat: number;
@@ -18,7 +15,7 @@ export type OutletPhotoDraft = {
   status: "pending" | "uploading" | "done" | "error";
 };
 
-export const MAX_OUTLET_PHOTOS = CUSTOMER_MEDIA_MAX_PHOTOS;
+export const MAX_OUTLET_PHOTOS = 3;
 
 function object(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
