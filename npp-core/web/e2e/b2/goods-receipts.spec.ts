@@ -65,6 +65,7 @@ async function createApprovedPurchaseOrder(
   warehouseId: string,
   variantId: string,
   unitPrice: string,
+  discountAmount = '0',
 ) {
   const create = await request.post('/api/purchase-orders', {
     headers: { 'Idempotency-Key': key(`po-create-${discriminator}`) },
@@ -80,7 +81,7 @@ async function createApprovedPurchaseOrder(
         variantId,
         quantity: '5',
         unitPrice,
-        discountAmount: '0',
+        discountAmount,
         taxAmount: '0',
         priceOverrideReason: 'Giá fixture Browser E2E B2',
       }],
@@ -151,7 +152,7 @@ async function createMultiPurchaseOrderFixture(request: APIRequestContext, suffi
     request, suffix, 'P', supplier.id, paidWarehouse.id, paidVariant.id, '10000',
   );
   const zeroPurchaseOrder = await createApprovedPurchaseOrder(
-    request, suffix, 'Z', supplier.id, zeroWarehouse.id, zeroVariant.id, '0',
+    request, suffix, 'Z', supplier.id, zeroWarehouse.id, zeroVariant.id, '10000', '50000',
   );
 
   return {
