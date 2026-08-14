@@ -184,7 +184,10 @@ export default function GoodsReceiptWorkspace({
   initialLookupError,
 }: Props) {
   const [items, setItems] = useState<GoodsReceipt[]>(initialGoodsReceipts);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(initialPurchaseOrders);
   const [error, setError] = useState<string | null>(initialError || initialLookupError);
+  const [receiptRefreshError, setReceiptRefreshError] = useState<string | null>(null);
+  const [purchaseOrderRefreshError, setPurchaseOrderRefreshError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -197,6 +200,7 @@ export default function GoodsReceiptWorkspace({
   const [loadingList, setLoadingList] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const actionKeys = useRef(new Map<string, string>());
+  const refreshGeneration = useRef(0);
 
   const normalizedSearch = search.trim().toLocaleLowerCase('vi-VN');
   const visibleItems = useMemo(() => items.filter((goodsReceipt) => {
@@ -225,8 +229,8 @@ export default function GoodsReceiptWorkspace({
   }), [items]);
 
   const eligiblePurchaseOrders = useMemo(
-    () => initialPurchaseOrders.filter((purchaseOrder) => ['approved', 'partially_received'].includes(purchaseOrder.status)),
-    [initialPurchaseOrders],
+    () => purchaseOrders.filter((purchaseOrder) => ['approved', 'partially_received'].includes(purchaseOrder.status)),
+    [purchaseOrders],
   );
 
   const draftPolicy = goodsReceiptActionPolicy('draft', initialPermissionKeys);
@@ -240,6 +244,8 @@ export default function GoodsReceiptWorkspace({
   }, [editor, pendingAction, selectedGoodsReceipt]);
 
   function upsertReceipt(goodsReceipt: GoodsReceipt) {
+    refreshGeneration.current += 1;
+    setLoadingList(false);
     setItems((current) => {
       const index = current.findIndex((item) => item.id === goodsReceipt.id);
       if (index < 0) return [goodsReceipt, ...current];
@@ -248,16 +254,50 @@ export default function GoodsReceiptWorkspace({
   }
 
   async function loadAll(successMessage?: string) {
+    const generation = refreshGeneration.current + 1;
+    refreshGeneration.current = generation;
     setLoadingList(true);
     setError(null);
+    setNotice(null);
+    setReceiptRefreshError(null);
+    setPurchaseOrderRefreshError(null);
     try {
-      const receipts = await requestJson<GoodsReceipt[]>('/api/goods-receipts?limit=1000');
-      setItems(receipts);
-      if (successMessage) setNotice(successMessage);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Không tải được danh sách phiếu nhận hàng');
+      const [receiptsResult, purchaseOrdersResult] = await Promise.allSettled([
+        requestJson<GoodsReceipt[]>('/api/goods-receipts?limit=1000'),
+        requestJson<PurchaseOrder[]>('/api/purchase-orders?limit=1000'),
+      ]);
+
+      if (refreshGeneration.current !== generation) return;
+
+      if (receiptsResult.status === 'fulfilled') {
+        setItems(receiptsResult.value);
+      } else {
+        setReceiptRefreshError(
+          receiptsResult.reason instanceof Error
+            ? receiptsResult.reason.message
+            : 'Không tải được danh sách phiếu nhận hàng',
+        );
+      }
+
+      if (purchaseOrdersResult.status === 'fulfilled') {
+        setPurchaseOrders(purchaseOrdersResult.value);
+      } else {
+        setPurchaseOrderRefreshError(
+          purchaseOrdersResult.reason instanceof Error
+            ? purchaseOrdersResult.reason.message
+            : 'Không tải được danh sách đơn đặt hàng',
+        );
+      }
+
+      if (successMessage && receiptsResult.status === 'fulfilled' && purchaseOrdersResult.status === 'fulfilled') {
+        setNotice(successMessage);
+      } else if (receiptsResult.status === 'fulfilled' || purchaseOrdersResult.status === 'fulfilled') {
+        setNotice('Đã cập nhật nguồn tải thành công; nguồn còn lỗi đang giữ dữ liệu gần nhất.');
+      }
     } finally {
-      setLoadingList(false);
+      if (refreshGeneration.current === generation) {
+        setLoadingList(false);
+      }
     }
   }
 
@@ -515,7 +555,7 @@ export default function GoodsReceiptWorkspace({
       if (selectedGoodsReceipt?.id === updated.id) setSelectedGoodsReceipt(updated);
       setPendingAction(null);
       setReverseReason('');
-      setNotice(action === 'post' ? 'Phiếu nhận hàng đã được ghi sổ.' : 'Phiếu nhận hàng đã được đảo.');
+      void loadAll(action === 'post' ? 'Phiếu nhận hàng đã được ghi sổ.' : 'Phiếu nhận hàng đã được đảo.');
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Không thực hiện được thao tác phiếu nhận hàng');
     } finally {
@@ -528,8 +568,9 @@ export default function GoodsReceiptWorkspace({
       <button
         type="button"
         className={shellStyles.actionButton}
-        onClick={() => void loadAll('Danh sách phiếu nhận hàng đã được cập nhật.')}
+        onClick={() => void loadAll('Danh sách phiếu nhận hàng và đơn đặt hàng đã được cập nhật.')}
         disabled={loadingList}
+        data-testid="goods-receipt-refresh-button"
       >
         {loadingList ? 'Đang cập nhật…' : 'Cập nhật dữ liệu'}
       </button>
@@ -555,6 +596,16 @@ export default function GoodsReceiptWorkspace({
     >
       <section className={styles.page} data-testid="goods-receipts-page">
         {error ? <div className={`${styles.banner} ${styles.bannerError}`} role="alert">{error}</div> : null}
+        {receiptRefreshError ? (
+          <div className={`${styles.banner} ${styles.bannerError}`} role="alert" data-testid="goods-receipt-refresh-error">
+            Phiếu nhận hàng chưa cập nhật: {receiptRefreshError}. Đang giữ dữ liệu gần nhất.
+          </div>
+        ) : null}
+        {purchaseOrderRefreshError ? (
+          <div className={`${styles.banner} ${styles.bannerError}`} role="alert" data-testid="purchase-order-refresh-error">
+            Đơn đặt hàng chưa cập nhật: {purchaseOrderRefreshError}. Đang giữ dữ liệu gần nhất.
+          </div>
+        ) : null}
         {notice ? <div className={`${styles.banner} ${styles.bannerSuccess}`} role="status">{notice}</div> : null}
         {!purchaseOrderReadable ? (
           <div className={`${styles.banner} ${styles.bannerError}`} role="status">
