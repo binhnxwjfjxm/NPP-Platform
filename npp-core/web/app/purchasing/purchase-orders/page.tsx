@@ -16,9 +16,12 @@ function firstSearch(value: string | string[] | undefined) {
 export default async function PurchaseOrdersPage({ searchParams }: PageProps) {
   const requestId = resolvePurchaseOrderRequestId(null);
   const search = firstSearch(searchParams?.search);
-  const initialBootstrap = await loadPurchaseOrderBootstrap(requestId, { search });
+  const initialBootstrap = await loadPurchaseOrderBootstrap(requestId);
 
   return (
-    <PurchaseOrderWorkspace initialBootstrap={initialBootstrap} />
+    <PurchaseOrderWorkspace
+      initialBootstrap={initialBootstrap}
+      initialSearch={search}
+    />
   );
 }
