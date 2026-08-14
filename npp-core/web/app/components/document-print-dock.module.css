@@ -1,0 +1,74 @@
+.dock {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 70;
+  display: flex;
+  align-items: end;
+  gap: 6px;
+  max-width: min(520px, calc(100vw - 28px));
+  padding: 7px;
+  border: 1px solid rgba(91, 52, 37, 0.2);
+  border-radius: 12px;
+  background: rgba(250, 248, 245, 0.96);
+  box-shadow: 0 10px 30px rgba(48, 35, 26, 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.selector {
+  display: grid;
+  gap: 3px;
+  min-width: min(290px, 48vw);
+}
+
+.selector span {
+  color: #6d645f;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.selector select {
+  min-height: 2rem;
+  max-width: 100%;
+  border: 1px solid rgba(91, 52, 37, 0.2);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.3rem 0.45rem;
+  color: inherit;
+  font-size: 0.8rem;
+}
+
+.refresh {
+  min-width: 2rem;
+  min-height: 2rem;
+  border: 1px solid rgba(91, 52, 37, 0.2);
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.refresh:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+@media (max-width: 720px) {
+  .dock {
+    right: 10px;
+    bottom: 10px;
+    max-width: calc(100vw - 20px);
+  }
+
+  .selector {
+    min-width: 0;
+    width: min(58vw, 270px);
+  }
+}
+
+@media print {
+  .dock {
+    display: none !important;
+  }
+}
