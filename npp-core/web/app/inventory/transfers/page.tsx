@@ -11,6 +11,7 @@ import TransferWorkspace, {
   type InventoryTransfer,
   type InventoryTransferInTransit,
 } from './transfer-workspace';
+import TransferPrintDock from './TransferPrintDock';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,12 +39,15 @@ export default async function InventoryTransfersPage() {
   }
 
   return (
-    <TransferWorkspace
-      initialTransfers={transfers}
-      initialInTransit={inTransit}
-      balances={balances}
-      locations={locations}
-      initialError={initialError}
-    />
+    <>
+      <TransferWorkspace
+        initialTransfers={transfers}
+        initialInTransit={inTransit}
+        balances={balances}
+        locations={locations}
+        initialError={initialError}
+      />
+      <TransferPrintDock initialTransfers={transfers} />
+    </>
   );
 }
