@@ -20,6 +20,12 @@ test('core web package exposes independent build and verification scripts', asyn
   assert.match(pkg.scripts.verify, /build/);
 });
 
+test('core web resolves shared contract subpaths during project-root builds', async () => {
+  const tsconfig = await readJson('tsconfig.json');
+  assert.deepEqual(tsconfig.compilerOptions.paths?.['@npp/contracts'], ['../../packages/contracts']);
+  assert.deepEqual(tsconfig.compilerOptions.paths?.['@npp/contracts/*'], ['../../packages/contracts/*']);
+});
+
 test('Core web Vercel project cannot deploy automatically from Git pushes', async () => {
   const config = await readJson('vercel.json');
   assert.equal(config.git?.deploymentEnabled, false);
