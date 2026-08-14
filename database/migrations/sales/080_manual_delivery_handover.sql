@@ -8,7 +8,7 @@ INSERT INTO shared.permission_catalog (
   'core.delivery-order.manual-handover',
   'Giao nhận',
   'Xác nhận giao thủ công',
-  'Cho phép NPP Operations xác nhận giao trực tiếp một Delivery Order giao tận nơi đã sẵn sàng, ghi Inventory OUT và công nợ theo lượng thực giao.',
+  'Cho phép NPP Operations xác nhận giao trực tiếp Delivery Order giao tận nơi, ghi Inventory OUT và công nợ theo lượng thực giao.',
   true,
   now()
 )
@@ -46,7 +46,10 @@ ALTER TABLE accounting.receivable_documents
   DROP CONSTRAINT IF EXISTS receivable_documents_source_document_type_check;
 ALTER TABLE accounting.receivable_documents
   ADD CONSTRAINT receivable_documents_source_document_type_check
-  CHECK (source_document_type IN ('DELIVERY_ATTEMPT', 'PICKUP_HANDOVER', 'MANUAL_HANDOVER'));
+  CHECK (source_document_type IN (
+    'DELIVERY_ATTEMPT', 'PICKUP_HANDOVER', 'CUSTOMER_PAYMENT',
+    'CUSTOMER_RETURN', 'CUSTOMER_REFUND', 'MANUAL_HANDOVER'
+  ));
 
 -- Accepted delivery is a per-Sales-Order-line fact. Do not sum quantities across SKUs.
 -- The projection is derived from non-reversed SALE_DELIVERY receivable lines because
