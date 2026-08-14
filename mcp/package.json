@@ -43,6 +43,7 @@
     "test:theme-contract": "node --test test/mcp-warm-theme-contract.test.mjs test/a5-5-2-session-action-live-caller-contract.test.mjs test/app-shell-expanded-menu-theme-contract.test.mjs test/interaction-feedback-contract.test.mjs test/app-shell-browser-acceptance-contract.test.mjs test/mcp-ui-root-cause-regression.test.mjs test/mcp-customer-profile-media-ui-contract.test.mjs test/route-customer-photo-gallery-contract.test.mjs test/route-customer-photo-management-contract.test.mjs"
   },
   "dependencies": {
+    "@npp/contracts": "file:../packages/contracts",
     "next": "^14.2.35",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
