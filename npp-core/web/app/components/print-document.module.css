@@ -28,15 +28,6 @@
 }
 
 @media print {
-  :global(body *) {
-    visibility: hidden !important;
-  }
-
-  :global(html),
-  :global(body) {
-    background: #fff !important;
-  }
-
   .printAction {
     display: none !important;
   }
