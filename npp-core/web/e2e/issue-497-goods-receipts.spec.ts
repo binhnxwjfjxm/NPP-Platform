@@ -200,7 +200,10 @@ test.describe('Issue #497 — Phiếu nhận hàng bắt buộc số lô', () =>
     expect(postCalls).toBe(0);
 
     const lotCode = `LOT-${fixture.suffix}`;
-    await lotInput.fill(lotCode);
+    await lotInput.focus();
+    await lotInput.pressSequentially(lotCode);
+    await expect(lotInput).toBeFocused();
+    await expect(lotInput).toHaveValue(lotCode);
     await editor.getByTestId('goods-receipt-save-button').click();
     await expect(editor).toHaveCount(0);
     await expect(page.getByText('Đã cập nhật phiếu nhận hàng nháp.')).toBeVisible();
