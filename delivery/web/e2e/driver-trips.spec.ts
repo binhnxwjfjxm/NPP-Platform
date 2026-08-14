@@ -33,9 +33,16 @@ test('tài xế đăng nhập một lần, reload vẫn giữ phiên và hoàn t
   await expect(page.getByRole('link', { name: 'Điểm giao', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('link', { name: 'COD' })).toBeVisible();
 
-  const workflow = page.getByTestId(`attempt-workflow-${assignmentOneId}`);
-  await workflow.locator('summary').click();
+  const firstOrder = page.locator(`#assignment-${assignmentOneId}`);
+  await expect(firstOrder.getByText('Giá trị đơn')).toBeVisible();
+  await firstOrder.getByRole('button', { name: 'Chi tiết đơn' }).click();
+  const detailDialog = page.getByRole('dialog').filter({ hasText: 'Chi tiết đơn giao' });
+  await expect(detailDialog).toContainText('Bột nguyên liệu A');
+  await detailDialog.getByRole('button', { name: /Đóng/ }).click();
+
+  await firstOrder.getByRole('button', { name: 'Ghi giao' }).click();
   const firstAttempt = page.getByTestId(`attempt-form-${assignmentOneId}`);
+  await expect(firstAttempt).toBeVisible();
   await firstAttempt.getByLabel('Giao một phần').check();
   await firstAttempt.getByLabel('Số thực giao Bột nguyên liệu A').fill('1');
   await firstAttempt.getByLabel('Ghi chú').fill('Khách nhận một bao');
@@ -43,7 +50,7 @@ test('tài xế đăng nhập một lần, reload vẫn giữ phiên và hoàn t
 
   await expect(page.getByTestId(`attempt-recorded-${assignmentOneId}`)).toBeVisible();
   const codWorkflow = page.getByTestId(`cod-workflow-${assignmentOneId}`);
-  await codWorkflow.locator('summary').click();
+  await codWorkflow.getByRole('button', { name: 'Thu COD' }).click();
   const codForm = page.getByTestId(`cod-form-${assignmentOneId}`);
   await expect(codForm).toBeVisible();
   await codForm.getByLabel('Tiền mặt').check();

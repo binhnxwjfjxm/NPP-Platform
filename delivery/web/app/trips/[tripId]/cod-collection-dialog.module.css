@@ -1,0 +1,11 @@
+.trigger {
+  min-height: 36px;
+  border: 1px solid #d9ba86;
+  border-radius: 10px;
+  background: #fff3dc;
+  padding: 0 11px;
+  color: #754706;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 850;
+}

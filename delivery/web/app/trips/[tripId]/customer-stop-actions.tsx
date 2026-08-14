@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { DeliveryCustomerMediaItem, DeliveryCustomerMediaResponse } from '../../../lib/core-api';
+import MobileActionDialog from './mobile-action-dialog';
 import styles from './customer-stop-actions.module.css';
 
 type Props = Readonly<{
@@ -21,14 +22,13 @@ export default function CustomerStopActions({
   phone,
   locationUrl,
 }: Props) {
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [media, setMedia] = useState<readonly DeliveryCustomerMediaItem[] | null>(null);
   const [mediaError, setMediaError] = useState('');
   const [copyMessage, setCopyMessage] = useState('');
 
   async function openMedia() {
-    setDialogOpen(true);
     if (media !== null || loading) return;
     setLoading(true);
     setMediaError('');
@@ -66,64 +66,60 @@ export default function CustomerStopActions({
 
   return (
     <div className={styles.root}>
-      <p className={styles.phoneLine}><strong>SĐT</strong><span>{phone || 'Chưa có'}</span></p>
-      <div className={styles.actions} aria-label={`Thao tác tại ${customerName}`}>
-        {phone ? (
-          <a className={styles.action} href={`tel:${phone}`}>Gọi khách</a>
-        ) : (
-          <span className={`${styles.action} ${styles.disabled}`} aria-disabled="true">Chưa có SĐT</span>
-        )}
-        {locationUrl ? (
-          <a className={styles.action} href={locationUrl} target="_blank" rel="noreferrer">Mở định vị</a>
-        ) : (
-          <span className={`${styles.action} ${styles.disabled}`} aria-disabled="true">Chưa có định vị</span>
-        )}
-        <button
-          className={styles.action}
-          type="button"
-          onClick={copyAddress}
-          disabled={!address || address === 'Chưa có địa chỉ'}
-        >
-          Sao chép địa chỉ
-        </button>
-        <button className={styles.action} type="button" onClick={openMedia}>Xem ảnh khách</button>
+      <div className={styles.compactRow}>
+        <p className={styles.phoneLine}><strong>SĐT</strong><span>{phone || 'Chưa có'}</span></p>
+        <button className={styles.trigger} type="button" onClick={() => setOpen(true)}>Thao tác</button>
       </div>
-      {copyMessage ? <small className={styles.feedback} role="status">{copyMessage}</small> : null}
 
-      {dialogOpen ? (
-        <div className={styles.backdrop} role="presentation" onMouseDown={() => setDialogOpen(false)}>
-          <section
-            className={styles.dialog}
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Ảnh khách ${customerName}`}
-            onMouseDown={(event) => event.stopPropagation()}
+      <MobileActionDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        eyebrow="Khách hàng"
+        title={customerName}
+      >
+        <p className={styles.address}>{address}</p>
+        <div className={styles.actions} aria-label={`Thao tác tại ${customerName}`}>
+          {phone ? (
+            <a className={styles.action} href={`tel:${phone}`}>Gọi khách</a>
+          ) : (
+            <span className={`${styles.action} ${styles.disabled}`} aria-disabled="true">Chưa có SĐT</span>
+          )}
+          {locationUrl ? (
+            <a className={styles.action} href={locationUrl} target="_blank" rel="noreferrer">Mở định vị</a>
+          ) : (
+            <span className={`${styles.action} ${styles.disabled}`} aria-disabled="true">Chưa có định vị</span>
+          )}
+          <button
+            className={styles.action}
+            type="button"
+            onClick={copyAddress}
+            disabled={!address || address === 'Chưa có địa chỉ'}
           >
-            <div className={styles.dialogHeading}>
-              <div><small>Khách hàng</small><strong>{customerName}</strong></div>
-              <button type="button" onClick={() => setDialogOpen(false)} aria-label="Đóng ảnh khách">×</button>
-            </div>
-            {loading ? <p className={styles.state}>Đang tải ảnh…</p> : null}
-            {!loading && mediaError ? <p className={styles.state} role="status">{mediaError}</p> : null}
-            {!loading && !mediaError && visibleMedia.length === 0 ? (
-              <p className={styles.state}>Khách chưa có ảnh. Vẫn có thể tiếp tục giao hàng bình thường.</p>
-            ) : null}
-            {!loading && visibleMedia.length > 0 ? (
-              <div className={styles.gallery}>
-                {visibleMedia.map((item, index) => (
-                  <img
-                    key={item.id}
-                    src={item.viewUrl || ''}
-                    alt={`Ảnh khách ${customerName} ${index + 1}`}
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                  />
-                ))}
-              </div>
-            ) : null}
-          </section>
+            Sao chép địa chỉ
+          </button>
+          <button className={styles.action} type="button" onClick={openMedia}>Xem ảnh khách</button>
         </div>
-      ) : null}
+        {copyMessage ? <small className={styles.feedback} role="status">{copyMessage}</small> : null}
+
+        {loading ? <p className={styles.state}>Đang tải ảnh…</p> : null}
+        {!loading && mediaError ? <p className={styles.state} role="status">{mediaError}</p> : null}
+        {!loading && media !== null && !mediaError && visibleMedia.length === 0 ? (
+          <p className={styles.state}>Khách chưa có ảnh. Vẫn có thể tiếp tục giao hàng bình thường.</p>
+        ) : null}
+        {!loading && visibleMedia.length > 0 ? (
+          <div className={styles.gallery}>
+            {visibleMedia.map((item, index) => (
+              <img
+                key={item.id}
+                src={item.viewUrl || ''}
+                alt={`Ảnh khách ${customerName} ${index + 1}`}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+              />
+            ))}
+          </div>
+        ) : null}
+      </MobileActionDialog>
     </div>
   );
 }

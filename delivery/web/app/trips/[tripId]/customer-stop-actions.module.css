@@ -1,30 +1,61 @@
 .root {
-  display: grid;
-  gap: 8px;
+  min-width: 0;
+}
+
+.compactRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
 }
 
 .phoneLine {
   display: flex;
+  min-width: 0;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin: 0;
-  color: #544b43;
-  font-size: 13px;
+  color: #60564d;
+  font-size: 11.5px;
 }
 
 .phoneLine strong {
   color: #754706;
 }
 
+.trigger {
+  flex: 0 0 auto;
+  min-height: 32px;
+  border: 1px solid #ddc39a;
+  border-radius: 10px;
+  background: #fffdf8;
+  padding: 0 10px;
+  color: #754706;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.address {
+  margin: 0 0 12px;
+  border-radius: 12px;
+  background: #f7f3ed;
+  padding: 10px 11px;
+  color: #5e554c;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
+  gap: 8px;
 }
 
 .action {
   display: flex;
-  min-height: 42px;
+  min-height: 44px;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
@@ -37,7 +68,6 @@
   font-weight: 800;
   text-align: center;
   text-decoration: none;
-  cursor: pointer;
 }
 
 .action:disabled,
@@ -45,92 +75,36 @@
   border-color: #e4dfd8;
   background: #f5f3f0;
   color: #8b857d;
-  cursor: default;
 }
 
 .feedback {
+  display: block;
+  margin-top: 8px;
   color: #17613a;
   font-weight: 700;
 }
 
-.backdrop {
-  position: fixed;
-  z-index: 120;
-  inset: 0;
-  display: grid;
-  align-items: end;
-  padding: 18px 12px calc(18px + env(safe-area-inset-bottom));
-  background: rgba(38, 31, 24, 0.56);
-}
-
-.dialog {
-  width: min(100%, 620px);
-  max-height: 82dvh;
-  margin: 0 auto;
-  overflow-y: auto;
-  border-radius: 20px;
-  background: #fffdf8;
-  padding: 14px;
-  box-shadow: 0 24px 70px rgba(38, 31, 24, 0.32);
-}
-
-.dialogHeading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.dialogHeading > div {
-  display: grid;
-  gap: 2px;
-}
-
-.dialogHeading small {
-  color: #7a7066;
-  font-size: 10px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.dialogHeading button {
-  width: 40px;
-  height: 40px;
-  border: 1px solid #ded6ca;
-  border-radius: 12px;
-  background: white;
-  color: #4a301b;
-  font-size: 26px;
-  cursor: pointer;
-}
-
 .state {
-  margin: 12px 0;
+  margin: 12px 0 0;
   border-radius: 12px;
   background: #f5f1eb;
-  padding: 14px;
+  padding: 12px;
   color: #625a52;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
 .gallery {
   display: grid;
   gap: 10px;
+  margin-top: 12px;
 }
 
 .gallery img {
   display: block;
   width: 100%;
-  max-height: 58dvh;
+  max-height: 54dvh;
   object-fit: contain;
   border-radius: 14px;
   background: #eee9e1;
-}
-
-@media (max-width: 390px) {
-  .actions {
-    grid-template-columns: 1fr 1fr;
-  }
 }

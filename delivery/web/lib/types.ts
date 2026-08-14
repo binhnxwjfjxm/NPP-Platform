@@ -19,6 +19,9 @@ export type DeliveryAttemptLine = Readonly<{
   unitCode: string | null;
   issuedBaseQuantity: string;
   deliveredBaseQuantity: string | null;
+  issuedUnitQuantity?: string | null;
+  unitPrice?: string | null;
+  lineAmount?: string | null;
 }>;
 
 export type DeliveryAttemptSummary = Readonly<{
@@ -93,6 +96,8 @@ export type TripAssignment = Readonly<{
   assignedAt: string | null;
   dispatchItemId: string | null;
   inventoryIssueId: string | null;
+  currencyCode?: string | null;
+  totalAmount?: string | null;
   attempt: DeliveryAttemptSummary | null;
   lines: readonly DeliveryAttemptLine[];
 }>;
