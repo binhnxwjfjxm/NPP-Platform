@@ -129,6 +129,7 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.coreDeliveryOrderCancel,
       PERMISSIONS.coreDeliveryOrderIssueInventory,
       PERMISSIONS.coreDeliveryOrderPickupHandover,
+      PERMISSIONS.coreDeliveryOrderManualHandover,
       PERMISSIONS.coreDeliveryOrderReverseInventoryIssue,
       PERMISSIONS.coreCustomerReturnRead,
       PERMISSIONS.coreCustomerReturnCreate,

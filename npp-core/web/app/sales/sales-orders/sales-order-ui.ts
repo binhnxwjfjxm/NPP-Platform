@@ -1,3 +1,4 @@
+import { createIdempotencyKey } from '@npp/contracts';
 import { formatExactDecimal } from '../../../lib/decimal-display.js';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
 
@@ -145,7 +146,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
 }
 
 export function mutationKey(prefix: string): string {
-  return `${prefix}-${crypto.randomUUID()}`;
+  return createIdempotencyKey(prefix);
 }
 
 export function formatMoney(value: string | number | null | undefined): string {
