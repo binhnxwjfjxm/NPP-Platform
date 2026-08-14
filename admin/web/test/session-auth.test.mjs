@@ -7,6 +7,7 @@ const middleware = read('middleware.ts');
 const session = read('lib/admin-session.ts');
 const authClient = read('lib/internal-auth-client.ts');
 const coreApi = read('lib/core-api.ts');
+const shell = read('app/admin-shell.tsx');
 const loginPage = read('app/login/page.tsx');
 const loginRoute = read('app/api/auth/login/route.ts');
 const logoutRoute = read('app/api/auth/logout/route.ts');
@@ -43,5 +44,7 @@ test('Admin login and logout proxy the canonical Core internal-auth lifecycle wi
   assert.match(logoutRoute, /\/api\/internal-auth\/logout/);
   assert.match(logoutRoute, /maxAge:\s*0/);
   assert.match(loginRoute + logoutRoute, /Cache-Control/);
+  assert.match(shell, /action="\/api\/auth\/logout"/);
+  assert.match(shell, /Đăng xuất/);
   assert.doesNotMatch(loginRoute + logoutRoute, /CORE_API_SERVER_TOKEN|CORE_WEB_ADMIN_USERNAME|CORE_WEB_ADMIN_PASSWORD/);
 });

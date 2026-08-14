@@ -5,7 +5,7 @@ async function signIn(page: Page) {
   await expect(page).toHaveURL(/\/login(?:\?|$)/);
   await page.getByLabel('Tên đăng nhập').fill('driver-a');
   await page.getByLabel('Mật khẩu').fill('delivery-test-password');
-  await page.getByRole('button', { name: 'Vào ứng dụng' }).click();
+  await page.getByRole('button', { name: 'Đăng nhập' }).click();
   await expect(page).toHaveURL(/\/$/);
 }
 

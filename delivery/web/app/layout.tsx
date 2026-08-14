@@ -5,6 +5,7 @@ import './globals.css';
 import './hung-phat-mobile.css';
 import './delivery-app-experience.css';
 import './delivery-mobile-app.css';
+import './delivery-account-menu.css';
 import './delivery-viewport-fix.css';
 
 export const metadata: Metadata = {

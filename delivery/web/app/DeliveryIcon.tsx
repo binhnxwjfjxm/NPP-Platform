@@ -4,9 +4,11 @@ export type DeliveryIconName =
   | 'back'
   | 'guide'
   | 'home'
+  | 'logout'
   | 'route'
   | 'sync'
   | 'truck'
+  | 'user'
   | 'wallet';
 
 type DeliveryIconProps = Readonly<{
@@ -44,6 +46,13 @@ export function DeliveryIcon({ name, size = 22, ...props }: DeliveryIconProps) {
         <path d="M9.5 20v-6h5v6" />
       </>
     ),
+    logout: (
+      <>
+        <path d="M10 5H5v14h5" />
+        <path d="m14 8 4 4-4 4" />
+        <path d="M18 12H9" />
+      </>
+    ),
     route: (
       <>
         <circle cx="6" cy="18" r="2.25" />
@@ -65,6 +74,12 @@ export function DeliveryIcon({ name, size = 22, ...props }: DeliveryIconProps) {
         <path d="M14 9h3.5l3 3.5V16H14z" />
         <circle cx="7" cy="17.5" r="1.75" />
         <circle cx="17.5" cy="17.5" r="1.75" />
+      </>
+    ),
+    user: (
+      <>
+        <circle cx="12" cy="8" r="3.5" />
+        <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
       </>
     ),
     wallet: (

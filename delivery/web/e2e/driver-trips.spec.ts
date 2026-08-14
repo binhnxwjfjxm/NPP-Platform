@@ -8,7 +8,7 @@ async function signIn(page: Page) {
   await expect(page).toHaveURL(/\/login(?:\?|$)/);
   await page.getByLabel('Tên đăng nhập').fill('driver-a');
   await page.getByLabel('Mật khẩu').fill('delivery-test-password');
-  await page.getByRole('button', { name: 'Vào ứng dụng' }).click();
+  await page.getByRole('button', { name: 'Đăng nhập' }).click();
   await expect(page).toHaveURL(/\/$/);
 }
 
@@ -59,13 +59,28 @@ test('tài xế đăng nhập một lần, reload vẫn giữ phiên và hoàn t
   await expect(page.getByText(/Delivery không sửa công nợ trực tiếp/)).toBeVisible();
 });
 
+test('tài xế đăng xuất từ menu tài khoản, xóa phiên và reload vẫn ở màn đăng nhập', async ({ page }) => {
+  await signIn(page);
+  await page.getByLabel('Mở menu tài khoản').click();
+  await expect(page.getByRole('button', { name: /Đăng xuất/ })).toBeVisible();
+  await page.getByRole('button', { name: /Đăng xuất/ }).click();
+
+  await expect(page).toHaveURL(/\/login(?:\?|$)/);
+  await expect(page.getByRole('button', { name: 'Đăng nhập' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Điều hướng chính' })).toHaveCount(0);
+
+  await page.reload();
+  await expect(page).toHaveURL(/\/login(?:\?|$)/);
+  await expect(page.getByRole('button', { name: 'Đăng nhập' })).toBeVisible();
+});
+
 test('sai mật khẩu ở lại màn đăng nhập và không vào app', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveURL(/\/login(?:\?|$)/);
   await page.getByLabel('Tên đăng nhập').fill('driver-a');
   await page.getByLabel('Mật khẩu').fill('wrong-password');
-  await page.getByRole('button', { name: 'Vào ứng dụng' }).click();
-  await expect(page).toHaveURL(/\/login\?error=invalid_credentials/);
-  await expect(page.getByRole('alert')).toContainText('chưa đúng');
+  await page.getByRole('button', { name: 'Đăng nhập' }).click();
+  await expect(page).toHaveURL(/\/login(?:\?|$)/);
+  await expect(page.getByRole('alert').filter({ hasText: 'chưa đúng' })).toContainText('chưa đúng');
   await expect(page.getByRole('navigation', { name: 'Điều hướng chính' })).toHaveCount(0);
 });
