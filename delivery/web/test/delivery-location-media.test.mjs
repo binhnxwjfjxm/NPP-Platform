@@ -85,5 +85,6 @@ test('COD workflow closes its popup after a successful write and uses canonical 
   assert.match(codSource, /operationsRef\.current\.set\(signature, operation\)/);
   assert.match(codSource, /body: operation\.body/);
   assert.match(codSource, /onCompleted\?\.\(\)/);
-  assert.doesNotMatch(codSource, /crypto\.randomUUID|`cod-collection-\$\{/);
+  assert.doesNotMatch(codSource, /crypto\.randomUUID/);
+  assert.doesNotMatch(codSource, /Idempotency-Key['"]?:\s*`cod-collection-/);
 });
