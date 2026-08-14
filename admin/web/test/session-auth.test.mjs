@@ -28,7 +28,7 @@ test('Admin browser navigation validates the employee session through Core inste
   assert.match(middleware, /loginRedirect/);
   assert.match(middleware, /\/api\/internal-auth\/me/);
   assert.match(middleware, /ADMIN_SESSION_COOKIE/);
-  assert.doesNotMatch(middlewar, /WWW-Authenticate|Basic realm|CORE_WEB_ADMIN_USERNAME|CORE_WEB_ADMIN_PASSWORD/);
+  assert.doesNotMatch(middleware, /WWW-Authenticate|Basic realm|CORE_WEB_ADMIN_USERNAME|CORE_WEB_ADMIN_PASSWORD/);
   assert.match(loginPage, /tài khoản nhân viên/);
   assert.match(loginPage, /autoComplete="username"/);
   assert.match(loginPage, /autoComplete="current-password"/);
