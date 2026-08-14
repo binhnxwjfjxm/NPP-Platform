@@ -10,6 +10,7 @@ const layout = read('app/layout.tsx');
 const frame = read('app/DeliveryAppFrame.tsx');
 const home = read('app/page.tsx');
 const trip = read('app/trips/[tripId]/page.tsx');
+const attempt = read('app/trips/[tripId]/delivery-attempt-panel.tsx');
 
 const tokens = {
   '--hp-canvas': '#f7f5f1',
@@ -51,11 +52,12 @@ test('Delivery prioritizes active trip, next stop and result action', () => {
   assert.match(home, /primaryTripCard/);
   assert.match(home, /Mở điểm tiếp theo và ghi kết quả/);
   assert.match(trip, /const nextStop =/);
-  assert.match(trip, /const nextAssignment =/);
-  assert.match(trip, /id="next-delivery-action"/);
+  assert.match(trip, /const isNextStop = nextStop\?\.id === stop\.id/);
+  assert.match(trip, /id=\{isNextStop \? 'next-delivery-action' : undefined\}/);
+  assert.match(trip, /nextStopBadge/);
   assert.match(trip, /id="route-section"/);
   assert.match(trip, /id="cod-section"/);
-  assert.match(trip, /Ghi kết quả giao hàng/);
+  assert.match(attempt, /<summary>Ghi kết quả giao<\/summary>/);
   assert.match(trip, /id=\{assignmentAnchor\(assignment\.assignmentId\)\}/);
 });
 
