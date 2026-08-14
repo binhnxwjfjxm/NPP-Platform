@@ -66,6 +66,6 @@ test('sai mật khẩu ở lại màn đăng nhập và không vào app', async 
   await page.getByLabel('Mật khẩu').fill('wrong-password');
   await page.getByRole('button', { name: 'Đăng nhập' }).click();
   await expect(page).toHaveURL(/\/login(?:\?|$)/);
-  await expect(page.getByRole('alert')).toContainText('chưa đúng');
+  await expect(page.getByRole('alert').filter({ hasText: 'chưa đúng' })).toContainText('chưa đúng');
   await expect(page.getByRole('navigation', { name: 'Điều hướng chính' })).toHaveCount(0);
 });
