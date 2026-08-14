@@ -45,9 +45,10 @@ test('Delivery maskable icon uses separately padded artwork', () => {
   assert.equal(maskable.equals(regular), false);
 });
 
-test('Delivery bottom navigation is compact while preserving iPhone safe area', () => {
+test('Delivery bottom navigation adapts to permission-visible tabs while preserving iPhone safe area', () => {
   const styles = read('app/delivery-mobile-app.css');
   assert.match(styles, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(styles, /\.deliveryAppDock[\s\S]*?grid-template-columns:\s*repeat\(auto-fit, minmax\(70px, 1fr\)\)/);
   assert.match(styles, /\.deliveryAppDock[\s\S]*?min-height:\s*calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(styles, /\.deliveryAppDock[\s\S]*?padding:\s*5px 7px calc\(5px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(styles, /\.deliveryDockItem[\s\S]*?min-height:\s*48px/);
@@ -69,6 +70,7 @@ test('Delivery service worker caches only static assets and uses a safe offline 
 test('PWA public assets bypass workforce session gate while application pages remain protected', () => {
   const middleware = read('middleware.ts');
   assert.match(middleware, /manifest\.webmanifest\|sw\.js\|offline\.html\|icons\//);
+  assert.match(middleware, /logo-transparent\.png/);
   assert.match(middleware, /DELIVERY_SESSION_COOKIE/);
   assert.match(middleware, /\/api\/internal-auth\/me/);
   assert.match(middleware, /UNAUTHORIZED/);

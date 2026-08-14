@@ -26,6 +26,18 @@ test('Task B snapshots customer phone and address location URL into the Sales Or
   assert.match(commercialRepository, /copyCommercialSnapshotToDraft[\s\S]*applyCustomerDeliveryAddressSnapshot/);
 });
 
+test('Lane A4 snapshots customerPhone even when customer_address_id is null and scopes locationUrl to an address', () => {
+  assert.match(commercialRepository, /WHEN version\.customer_id IS NULL THEN version\.customer_address_snapshot/);
+  assert.match(
+    commercialRepository,
+    /'customerPhone'[\s\S]*?FROM shared\.customers AS customer[\s\S]*?\|\| CASE[\s\S]*?WHEN version\.customer_address_id IS NULL THEN '\{\}'::jsonb[\s\S]*?'locationUrl'/,
+  );
+  assert.doesNotMatch(
+    commercialRepository,
+    /WHEN version\.customer_address_id IS NULL THEN version\.customer_address_snapshot/,
+  );
+});
+
 test('Task B keeps the address snapshot immutable through Delivery Order, Trip Stop and driver read projection', () => {
   assert.match(deliveryOrderRepository, /version\.customer_address_snapshot/);
   assert.match(

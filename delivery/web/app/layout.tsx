@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from 'next';
+import { headers } from 'next/headers';
+import { deliveryCapabilitiesFromHeaders } from '../lib/delivery-capabilities';
 import DeliveryAppFrame from './DeliveryAppFrame';
 import PwaRegister from './PwaRegister';
 import './globals.css';
@@ -35,11 +37,12 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const capabilities = deliveryCapabilitiesFromHeaders(headers());
   return (
     <html lang="vi">
       <body>
         <PwaRegister />
-        <DeliveryAppFrame>{children}</DeliveryAppFrame>
+        <DeliveryAppFrame capabilities={capabilities}>{children}</DeliveryAppFrame>
       </body>
     </html>
   );

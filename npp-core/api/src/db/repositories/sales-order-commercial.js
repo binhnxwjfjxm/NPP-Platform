@@ -56,7 +56,7 @@ async function applyCustomerDeliveryAddressSnapshot(client, {
   const result = await client.query(
     `UPDATE sales.sales_order_versions AS version
         SET customer_address_snapshot = CASE
-              WHEN version.customer_address_id IS NULL THEN version.customer_address_snapshot
+              WHEN version.customer_id IS NULL THEN version.customer_address_snapshot
               ELSE COALESCE(version.customer_address_snapshot, '{}'::jsonb)
                 || jsonb_build_object(
                   'customerPhone', (
@@ -65,16 +65,21 @@ async function applyCustomerDeliveryAddressSnapshot(client, {
                      WHERE customer.installation_id = version.installation_id
                        AND customer.id = version.customer_id
                      LIMIT 1
-                  ),
-                  'locationUrl', (
-                    SELECT address.location_url
-                      FROM shared.customer_addresses AS address
-                     WHERE address.installation_id = version.installation_id
-                       AND address.customer_id = version.customer_id
-                       AND address.id = version.customer_address_id
-                     LIMIT 1
                   )
                 )
+                || CASE
+                  WHEN version.customer_address_id IS NULL THEN '{}'::jsonb
+                  ELSE jsonb_build_object(
+                    'locationUrl', (
+                      SELECT address.location_url
+                        FROM shared.customer_addresses AS address
+                       WHERE address.installation_id = version.installation_id
+                         AND address.customer_id = version.customer_id
+                         AND address.id = version.customer_address_id
+                       LIMIT 1
+                    )
+                  )
+                END
             END,
             updated_at = now()
       WHERE version.installation_id = $1

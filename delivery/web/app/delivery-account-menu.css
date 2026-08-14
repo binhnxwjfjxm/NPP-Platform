@@ -4,31 +4,33 @@
   gap: 8px;
 }
 
-.deliveryAccountMenu {
+.deliveryDockAccount {
   position: relative;
+  min-width: 0;
 }
 
-.deliveryAccountTrigger {
-  display: grid;
-  place-items: center;
+.deliveryDockAccountTrigger {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
   list-style: none;
-  cursor: pointer;
 }
 
-.deliveryAccountTrigger::-webkit-details-marker {
+.deliveryDockAccountTrigger::-webkit-details-marker {
   display: none;
 }
 
-.deliveryAccountMenu[open] .deliveryAccountTrigger {
-  border-color: rgba(232, 201, 150, 0.42);
-  background: rgba(255, 255, 255, 0.17);
+.deliveryDockAccount[open] .deliveryDockAccountTrigger {
+  background: linear-gradient(180deg, #f5e8d2, #ecd5b1);
+  color: #6f4308;
+  box-shadow: inset 0 0 0 1px rgba(152, 96, 15, 0.14);
 }
 
 .deliveryAccountPanel {
   position: absolute;
   z-index: 80;
-  top: calc(100% + 9px);
   right: 0;
+  bottom: calc(100% + 9px);
   width: min(286px, calc(100vw - 28px));
   overflow: hidden;
   border: 1px solid rgba(126, 87, 42, 0.18);

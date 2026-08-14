@@ -1,12 +1,67 @@
 .panel {
   margin-top: 1rem;
+}
+.custodyTrigger {
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .2rem .75rem;
+  align-items: center;
+  padding: .85rem 1rem;
   border: 1px solid var(--border, #d8dee8);
   border-radius: 16px;
-  padding: 1rem;
   background: #fff;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
-.panel h3 { margin: 0 0 .35rem; font-size: 1rem; }
-.panel p { margin: .25rem 0; }
+.custodyTrigger span { font-size: .82rem; font-weight: 750; }
+.custodyTrigger strong { grid-row: 1 / span 2; grid-column: 2; font-size: 1.05rem; }
+.custodyTrigger small { color: #586174; }
+.sheetBackdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(25, 20, 16, .42);
+}
+.sheet {
+  width: min(100%, 560px);
+  max-height: min(84dvh, 760px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  border-radius: 20px 20px 0 0;
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  background: #fff;
+  box-shadow: 0 -18px 48px rgba(25, 20, 16, .22);
+}
+.sheetHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding-bottom: .75rem;
+  border-bottom: 1px solid #e5e9ef;
+}
+.sheetHeader p,
+.sheetHeader h3 { margin: 0; }
+.sheetHeader p { color: #586174; font-size: .78rem; font-weight: 750; }
+.sheetHeader h3 { margin-top: .15rem; font-size: 1.3rem; }
+.closeButton {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 12px;
+  background: #f1f3f6;
+  color: #334155;
+  font: inherit;
+  font-size: 1.45rem;
+  cursor: pointer;
+}
 .summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -47,6 +102,8 @@
 .lines { display: grid; gap: .55rem; margin-top: .75rem; }
 .line { display: grid; grid-template-columns: 1fr minmax(7rem, 9rem); gap: .6rem; align-items: center; }
 .line input { width: 100%; box-sizing: border-box; border: 1px solid #b9c2d0; border-radius: 10px; padding: .65rem; font: inherit; text-align: right; }
+.historyBlock { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid #e5e9ef; }
+.historyBlock h3 { margin: 0; font-size: .95rem; }
 .history { margin: .8rem 0 0; padding: 0; list-style: none; display: grid; gap: .5rem; }
 .history li { padding: .65rem; border-radius: 10px; background: #f5f7fb; }
 @media (max-width: 430px) {
