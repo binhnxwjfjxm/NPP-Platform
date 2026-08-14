@@ -3,7 +3,36 @@ import { randomUUID } from 'node:crypto';
 const USER_COLUMNS = 'id, installation_id, employee_id, login_name, is_active, created_at, updated_at, created_by, updated_by';
 const USER_SELECT_COLUMNS = 'u.id, u.installation_id, u.employee_id, u.login_name, u.is_active, u.created_at, u.updated_at, u.created_by, u.updated_by';
 const USER_WITH_EMPLOYEE_COLUMNS = `${USER_SELECT_COLUMNS}, e.code AS employee_code, e.full_name AS employee_full_name`;
-const USER_GROUP_COLUMNS = `${USER_SELECT_COLUMNS}, e.code, e.full_name`;
+const USER_GROUP_COLUMNS = `${USER_SELECT_COLUMNS}, e.code, e.full_name, ob.owner_kind`;
+
+const USER_ASSIGNMENT_COLUMNS = `
+      COALESCE(
+        ARRAY_AGG(DISTINCT ur.role_id ORDER BY ur.role_id) FILTER (WHERE ur.role_id IS NOT NULL),
+        ARRAY[]::uuid[]
+      ) AS role_ids,
+      COALESCE(
+        ARRAY_AGG(DISTINCT us.scope_id ORDER BY us.scope_id) FILTER (WHERE us.scope_type = 'BRANCH'),
+        ARRAY[]::uuid[]
+      ) AS branch_ids,
+      COALESCE(
+        ARRAY_AGG(DISTINCT us.scope_id ORDER BY us.scope_id) FILTER (WHERE us.scope_type = 'WAREHOUSE'),
+        ARRAY[]::uuid[]
+      ) AS warehouse_ids,
+      ob.owner_kind`;
+
+const USER_ASSIGNMENT_JOINS = `
+    LEFT JOIN shared.user_roles ur
+      ON ur.installation_id = u.installation_id
+     AND ur.user_id = u.id
+    LEFT JOIN shared.user_scopes us
+      ON us.installation_id = u.installation_id
+     AND us.user_id = u.id
+    LEFT JOIN shared.security_owner_bindings ob
+      ON ob.installation_id = u.installation_id
+     AND ob.user_id = u.id
+    LEFT JOIN shared.employees e
+      ON e.installation_id = u.installation_id
+     AND e.id = u.employee_id`;
 
 export async function listUsersForInstallation(client, {
   installationId,
@@ -16,17 +45,9 @@ export async function listUsersForInstallation(client, {
   let query = `
     SELECT
       ${USER_WITH_EMPLOYEE_COLUMNS},
-      COALESCE(
-        ARRAY_AGG(DISTINCT ur.role_id ORDER BY ur.role_id) FILTER (WHERE ur.role_id IS NOT NULL),
-        ARRAY[]::uuid[]
-      ) AS role_ids
+      ${USER_ASSIGNMENT_COLUMNS}
     FROM shared.users u
-    LEFT JOIN shared.user_roles ur
-      ON ur.installation_id = u.installation_id
-     AND ur.user_id = u.id
-    LEFT JOIN shared.employees e
-      ON e.installation_id = u.installation_id
-     AND e.id = u.employee_id
+    ${USER_ASSIGNMENT_JOINS}
     WHERE u.installation_id = $1
   `;
 
@@ -92,17 +113,9 @@ export async function getUserForInstallationWithRoles(client, { id, installation
   const result = await client.query(
     `SELECT
        ${USER_WITH_EMPLOYEE_COLUMNS},
-       COALESCE(
-         ARRAY_AGG(DISTINCT ur.role_id ORDER BY ur.role_id) FILTER (WHERE ur.role_id IS NOT NULL),
-         ARRAY[]::uuid[]
-       ) AS role_ids
+       ${USER_ASSIGNMENT_COLUMNS}
      FROM shared.users u
-     LEFT JOIN shared.user_roles ur
-       ON ur.installation_id = u.installation_id
-      AND ur.user_id = u.id
-     LEFT JOIN shared.employees e
-       ON e.installation_id = u.installation_id
-      AND e.id = u.employee_id
+     ${USER_ASSIGNMENT_JOINS}
      WHERE u.installation_id = $1 AND u.id = $2
      GROUP BY ${USER_GROUP_COLUMNS}`,
     [installationId, id],

@@ -35,6 +35,9 @@ export type AccessUser = {
   created_by: string | null;
   updated_by: string | null;
   role_ids: string[];
+  branch_ids: string[];
+  warehouse_ids: string[];
+  owner_kind: 'PERMANENT' | 'TEMPORARY' | null;
 };
 
 export type AccessSnapshot = {

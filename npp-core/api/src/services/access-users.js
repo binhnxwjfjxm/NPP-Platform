@@ -42,6 +42,10 @@ function notFound() {
   return { ok: false, code: 'NOT_FOUND', message: 'Người dùng không tồn tại' };
 }
 
+function normalizeUuidArray(value) {
+  return Array.isArray(value) ? value.filter(Boolean).map(String) : [];
+}
+
 function normalizeUserRow(row) {
   return {
     id: row.id,
@@ -55,7 +59,10 @@ function normalizeUserRow(row) {
     updated_at: row.updated_at,
     created_by: row.created_by,
     updated_by: row.updated_by,
-    role_ids: Array.isArray(row.role_ids) ? row.role_ids.filter(Boolean).map(String) : [],
+    role_ids: normalizeUuidArray(row.role_ids),
+    branch_ids: normalizeUuidArray(row.branch_ids),
+    warehouse_ids: normalizeUuidArray(row.warehouse_ids),
+    owner_kind: row.owner_kind || null,
   };
 }
 
