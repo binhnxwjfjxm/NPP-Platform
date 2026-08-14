@@ -28,7 +28,10 @@ test('Task B snapshots customer phone and address location URL into the Sales Or
 
 test('Task B keeps the address snapshot immutable through Delivery Order, Trip Stop and driver read projection', () => {
   assert.match(deliveryOrderRepository, /version\.customer_address_snapshot/);
-  assert.match(deliveryOrderService, /destinationSnapshot:\s*normalized\.destinationSnapshot/);
+  assert.match(
+    deliveryOrderService,
+    /const destinationSnapshot = first\.delivery_mode === 'DELIVERY'[\s\S]*?\? first\.customer_address_snapshot[\s\S]*?destinationSnapshot,/,
+  );
   assert.match(deliveryOrderRepository, /JSON\.stringify\(data\.destinationSnapshot \?\? \{\}\)/);
   assert.match(tripPlanningService, /addressSnapshot:\s*deliveryOrder\.destination_snapshot/);
   assert.match(driverRepository, /stop\.address_snapshot/);
