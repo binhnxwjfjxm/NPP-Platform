@@ -1,4 +1,5 @@
 import CustomerWorkspace from './customer-workspace';
+import CustomerMediaLauncher from './customer-media-launcher';
 import type { Customer, CustomerGroup } from '../../lib/customer-types';
 import { listVietnamProvinces } from '../../lib/vietnam-administrative-data';
 import {
@@ -27,11 +28,14 @@ export default async function CustomersPage() {
   }
 
   return (
-    <CustomerWorkspace
-      initialCustomers={initialCustomers}
-      initialGroups={initialGroups}
-      initialProvinces={initialProvinces}
-      initialError={initialError}
-    />
+    <>
+      <CustomerWorkspace
+        initialCustomers={initialCustomers}
+        initialGroups={initialGroups}
+        initialProvinces={initialProvinces}
+        initialError={initialError}
+      />
+      <CustomerMediaLauncher customers={initialCustomers} />
+    </>
   );
 }

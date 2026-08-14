@@ -4,10 +4,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./customer-media-browser": {
+      "types": "./customer-media-browser.d.ts",
+      "default": "./customer-media-browser.js"
+    }
   },
   "scripts": {
-    "build": "node --check index.js",
+    "build": "node --check index.js && node --check customer-media-browser.js",
     "test": "node --test test/*.test.js",
     "verify": "npm run build && npm run test"
   }

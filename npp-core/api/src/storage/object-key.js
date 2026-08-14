@@ -91,6 +91,12 @@ export function assertInstallationScopedObjectKey({ key, installationId } = {}) 
   if (segments.some((segment) => !segment || segment === '.' || segment === '..')) {
     invalid('Storage key contains an unsafe path component');
   }
-  if (segments[0] !== installation) invalid('Storage key is outside the installation scope');
+
+  const coreScoped = segments[0] === installation;
+  const legacyMcpScoped = segments.length >= 4
+    && segments[0] === 'mcp-plan'
+    && segments[1] === 'outlets'
+    && segments[2] === installation;
+  if (!coreScoped && !legacyMcpScoped) invalid('Storage key is outside the installation scope');
   return normalizedKey;
 }

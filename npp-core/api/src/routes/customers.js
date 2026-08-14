@@ -1,8 +1,18 @@
+import { randomUUID } from 'node:crypto';
 import { createSuccessEnvelope } from '@npp/contracts';
 import { sendJson, sendSuccess, sendError } from '../http-utils.js';
 import { readJsonBody, normalizeIdempotencyKey } from '../idempotency.js';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
+import { createOptionalR2StorageAdapter } from '../storage/r2-adapter.js';
+import { buildR2ObjectKey } from '../storage/object-key.js';
 import * as customerService from '../services/customer.js';
+import * as customerMediaRepository from '../db/repositories/customer-media.js';
+
+const CUSTOMER_MEDIA_MAX_BYTES = 5 * 1024 * 1024;
+const CUSTOMER_MEDIA_VIEW_TTL_SECONDS = 300;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CLIENT_UPLOAD_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
+const CUSTOMER_MEDIA_MIME_TYPES = new Set(['image/jpeg', 'image/webp', 'image/png']);
 
 function createError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -50,8 +60,18 @@ function requireIdempotencyKey(req) {
 }
 
 function serviceStatus(result) {
-  if (['NOT_FOUND', 'GROUP_NOT_FOUND', 'EMPLOYEE_NOT_FOUND'].includes(result.code)) return 404;
-  if (['DUPLICATE_CODE', 'CONFLICT', 'GROUP_INACTIVE', 'EMPLOYEE_INACTIVE', 'CUSTOMER_INACTIVE'].includes(result.code)) return 409;
+  if (['NOT_FOUND', 'GROUP_NOT_FOUND', 'EMPLOYEE_NOT_FOUND', 'CUSTOMER_MEDIA_NOT_FOUND'].includes(result.code)) return 404;
+  if ([
+    'DUPLICATE_CODE',
+    'CONFLICT',
+    'GROUP_INACTIVE',
+    'EMPLOYEE_INACTIVE',
+    'CUSTOMER_INACTIVE',
+    'CUSTOMER_MEDIA_LIMIT_REACHED',
+    'CUSTOMER_MEDIA_READ_ONLY',
+    'CUSTOMER_MEDIA_CONTENT_TYPE_MISMATCH',
+    'CUSTOMER_MEDIA_SIZE_MISMATCH',
+  ].includes(result.code)) return 409;
   return 400;
 }
 
@@ -202,6 +222,294 @@ async function executePatch(res, context, {
     }
     sendError(res, createError('INTERNAL_ERROR', 'Failed to update customer master data', {}, true, 500), context.requestId, context.receivedAt);
   }
+}
+
+function customerMediaStorage(context) {
+  const storage = createOptionalR2StorageAdapter(context.config);
+  if (!storage) {
+    throw Object.assign(new Error('CUSTOMER_MEDIA_STORAGE_UNAVAILABLE'), {
+      code: 'CUSTOMER_MEDIA_STORAGE_UNAVAILABLE',
+      publicMessage: 'Kho ảnh khách hàng chưa sẵn sàng',
+      statusCode: 503,
+    });
+  }
+  return storage;
+}
+
+function customerMediaAudit(media) {
+  return {
+    id: media.id,
+    customerId: media.customerId,
+    sourceApp: media.sourceApp,
+    mimeType: media.mimeType,
+    expectedByteSize: media.expectedByteSize,
+    actualByteSize: media.actualByteSize,
+    width: media.width,
+    height: media.height,
+    status: media.status,
+  };
+}
+
+function mediaExecutionError(result, context) {
+  return {
+    statusCode: serviceStatus(result),
+    contentType: 'application/json',
+    requestId: context.requestId,
+    body: {
+      error: {
+        code: result.code,
+        message: result.message,
+        retryable: Boolean(result.retryable),
+        details: {},
+      },
+      requestId: context.requestId,
+      receivedAt: context.receivedAt,
+    },
+  };
+}
+
+async function executeIdempotentMediaMutation(req, context, {
+  route,
+  payload,
+  action,
+  beforeTransaction,
+  mutate,
+}) {
+  const keyResult = requireIdempotencyKey(req);
+  if (!keyResult.ok) return { invalidKey: keyResult };
+  try {
+    const execution = await context.executeRequestWithIdempotency({
+      idempotencyStore: context.idempotencyStore,
+      req,
+      requestContext: context.requestContext,
+      requestId: context.requestId,
+      receivedAt: context.receivedAt,
+      route,
+      payload,
+      onProcess: async () => {
+        const prepared = beforeTransaction ? await beforeTransaction() : undefined;
+        const transactionResult = await withAuditOutboxTransaction({
+          adapter: context.getPool(),
+          mutate: async (client) => {
+            const result = await mutate(client, prepared);
+            if (!result.ok) return { serviceResult: result, skipAudit: true };
+            if (result.replayed === true || result.changed === false) {
+              return { entity: result.media, replayed: true };
+            }
+            await insertAuditRecord(client, buildAuditRecord({
+              requestContext: context.requestContext,
+              action,
+              resourceType: 'customer_media',
+              resourceId: result.media.id,
+              afterData: customerMediaAudit(result.media),
+              metadata: { customerId: result.media.customerId, sourceApp: result.media.sourceApp },
+            }));
+            return { entity: result.media };
+          },
+        });
+        if (transactionResult.skipAudit) return mediaExecutionError(transactionResult.serviceResult, context);
+        return {
+          statusCode: action === 'create' ? 201 : 200,
+          contentType: 'application/json',
+          requestId: context.requestId,
+          body: createSuccessEnvelope(
+            { id: transactionResult.entity.id, customerId: transactionResult.entity.customerId },
+            context.requestId,
+            context.receivedAt,
+          ),
+        };
+      },
+    });
+    return { execution };
+  } catch (error) {
+    if (error?.code && error?.statusCode) return { executionError: error };
+    return { storageError: true };
+  }
+}
+
+async function handleListCustomerMedia(res, context, customerId) {
+  try {
+    const result = await customerMediaRepository.listReadyCustomerMedia(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      customerId,
+    });
+    if (!result.ok) return sendServiceError(res, result, context);
+    const storage = customerMediaStorage(context);
+    const ttl = Math.min(CUSTOMER_MEDIA_VIEW_TTL_SECONDS, context.config.r2PresignedUrlMaxSeconds);
+    const media = await Promise.all(result.media.map(async (item) => {
+      const signed = await storage.createPresignedGetUrl({
+        installationId: context.requestContext.installationId,
+        key: item.objectKey,
+        expiresIn: ttl,
+      });
+      return customerMediaRepository.customerMediaPublic(item, signed.url);
+    }));
+    sendSuccess(res, { media, maxPhotos: result.maxPhotos }, context.requestId, context.receivedAt);
+  } catch (error) {
+    sendError(
+      res,
+      createError(error?.code || 'CUSTOMER_MEDIA_UNAVAILABLE', error?.publicMessage || 'Không tải được ảnh khách hàng', {}, true, error?.statusCode || 503),
+      context.requestId,
+      context.receivedAt,
+    );
+  }
+}
+
+async function handlePrepareCustomerMedia(req, res, context, customerId, payload) {
+  const clientUploadId = String(payload.clientUploadId ?? '').trim();
+  const mimeType = String(payload.mimeType ?? '').trim().toLowerCase();
+  const byteSize = Number(payload.byteSize);
+  const maxBytes = Math.min(CUSTOMER_MEDIA_MAX_BYTES, Number(context.config.r2MaxObjectBytes || CUSTOMER_MEDIA_MAX_BYTES));
+  if (!CLIENT_UPLOAD_ID_PATTERN.test(clientUploadId)) {
+    return sendError(res, createError('INVALID_CLIENT_UPLOAD_ID', 'Mã tải ảnh không hợp lệ', {}, false, 400), context.requestId, context.receivedAt);
+  }
+  if (!CUSTOMER_MEDIA_MIME_TYPES.has(mimeType)) {
+    return sendError(res, createError('INVALID_MEDIA_MIME_TYPE', 'Định dạng ảnh không hợp lệ', {}, false, 400), context.requestId, context.receivedAt);
+  }
+  if (!Number.isInteger(byteSize) || byteSize < 1 || byteSize > maxBytes) {
+    return sendError(res, createError('INVALID_MEDIA_BYTE_SIZE', 'Dung lượng ảnh không hợp lệ', { maxBytes }, false, 400), context.requestId, context.receivedAt);
+  }
+
+  const id = randomUUID();
+  const extension = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
+  const objectKey = buildR2ObjectKey({
+    installationId: context.requestContext.installationId,
+    namespace: 'images',
+    filename: `customer-${customerId}-${id}.${extension}`,
+    uuid: id,
+  });
+  const mutation = await executeIdempotentMediaMutation(req, context, {
+    route: `/api/customers/${customerId}/media/prepare`,
+    payload: { action: 'prepare', clientUploadId, mimeType, byteSize },
+    action: 'create',
+    mutate: (client) => customerMediaRepository.prepareCoreCustomerMedia(client, {
+      id,
+      installationId: context.requestContext.installationId,
+      customerId,
+      clientUploadId,
+      objectKey,
+      mimeType,
+      expectedByteSize: byteSize,
+      actorId: context.requestContext.actorId,
+    }),
+  });
+  if (mutation.invalidKey) {
+    return sendError(res, createError(mutation.invalidKey.code, mutation.invalidKey.message, {}, false, 400), context.requestId, context.receivedAt);
+  }
+  if (mutation.storageError) {
+    return sendError(res, createError('IDEMPOTENCY_STORAGE_ERROR', 'Idempotency storage unavailable', {}, true, 503), context.requestId, context.receivedAt);
+  }
+  if (mutation.executionError) {
+    return sendError(res, createError(mutation.executionError.code, mutation.executionError.publicMessage || 'Không chuẩn bị được ảnh', {}, false, mutation.executionError.statusCode), context.requestId, context.receivedAt);
+  }
+  if (mutation.execution.response.statusCode >= 400) {
+    res.setHeader('Cache-Control', 'no-store');
+    return sendJson(res, mutation.execution.response.statusCode, mutation.execution.response.body, context.requestId, 'application/json');
+  }
+
+  try {
+    const mediaId = mutation.execution.response.body?.data?.id;
+    const media = await customerMediaRepository.getCustomerMedia(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      customerId,
+      mediaId,
+    });
+    if (!media || media.sourceApp !== 'CORE' || media.status !== 'pending') {
+      return sendError(res, createError('CUSTOMER_MEDIA_NOT_PENDING', 'Ảnh khách hàng không còn chờ tải', {}, false, 409), context.requestId, context.receivedAt);
+    }
+    const storage = customerMediaStorage(context);
+    const ttl = Math.min(CUSTOMER_MEDIA_VIEW_TTL_SECONDS, context.config.r2PresignedUrlMaxSeconds);
+    const signed = await storage.createPresignedPutUrl({
+      installationId: context.requestContext.installationId,
+      key: media.objectKey,
+      contentType: media.mimeType,
+      expiresIn: ttl,
+    });
+    sendJson(
+      res,
+      201,
+      createSuccessEnvelope({ mediaId: media.id, putUrl: signed.url, mimeType: media.mimeType, expiresIn: signed.expiresIn }, context.requestId, context.receivedAt),
+      context.requestId,
+      'application/json',
+    );
+  } catch (error) {
+    sendError(res, createError(error?.code || 'CUSTOMER_MEDIA_STORAGE_UNAVAILABLE', 'Không cấp được đường dẫn tải ảnh', {}, true, error?.statusCode || 503), context.requestId, context.receivedAt);
+  }
+}
+
+async function handleFinalizeCustomerMedia(req, res, context, customerId, payload) {
+  const mediaId = String(payload.mediaId ?? '').trim();
+  const width = Number(payload.width);
+  const height = Number(payload.height);
+  if (!UUID_PATTERN.test(mediaId)) {
+    return sendError(res, createError('INVALID_CUSTOMER_MEDIA_ID', 'Mã ảnh không hợp lệ', {}, false, 400), context.requestId, context.receivedAt);
+  }
+  if (!Number.isInteger(width) || width < 1 || width > 20000 || !Number.isInteger(height) || height < 1 || height > 20000) {
+    return sendError(res, createError('INVALID_MEDIA_DIMENSIONS', 'Kích thước ảnh không hợp lệ', {}, false, 400), context.requestId, context.receivedAt);
+  }
+
+  let media;
+  try {
+    media = await customerMediaRepository.getCustomerMedia(context.getPool(), {
+      installationId: context.requestContext.installationId,
+      customerId,
+      mediaId,
+    });
+    if (!media) return sendServiceError(res, { code: 'CUSTOMER_MEDIA_NOT_FOUND', message: 'Customer photo not found' }, context);
+    if (media.sourceApp !== 'CORE') return sendServiceError(res, { code: 'CUSTOMER_MEDIA_READ_ONLY', message: 'MCP customer photos are managed by MCP' }, context);
+  } catch {
+    return sendError(res, createError('CUSTOMER_MEDIA_UNAVAILABLE', 'Không đọc được ảnh khách hàng', {}, true, 503), context.requestId, context.receivedAt);
+  }
+
+  const mutation = await executeIdempotentMediaMutation(req, context, {
+    route: `/api/customers/${customerId}/media/finalize`,
+    payload: { action: 'finalize', mediaId, width, height },
+    action: 'update',
+    beforeTransaction: async () => {
+      const storage = customerMediaStorage(context);
+      return storage.headObject({ installationId: context.requestContext.installationId, key: media.objectKey });
+    },
+    mutate: (client, head) => {
+      const contentType = String(head.contentType || '').split(';')[0].trim().toLowerCase();
+      return customerMediaRepository.finalizeCoreCustomerMedia(client, {
+        installationId: context.requestContext.installationId,
+        customerId,
+        mediaId,
+        actualByteSize: Number(head.size),
+        mimeType: contentType,
+        width,
+        height,
+        etag: head.etag,
+        actorId: context.requestContext.actorId,
+      });
+    },
+  });
+  if (mutation.invalidKey) {
+    return sendError(res, createError(mutation.invalidKey.code, mutation.invalidKey.message, {}, false, 400), context.requestId, context.receivedAt);
+  }
+  if (mutation.storageError) {
+    return sendError(res, createError('IDEMPOTENCY_STORAGE_ERROR', 'Idempotency storage unavailable', {}, true, 503), context.requestId, context.receivedAt);
+  }
+  if (mutation.executionError) {
+    return sendError(res, createError(mutation.executionError.code, mutation.executionError.publicMessage || 'Không hoàn tất được ảnh', {}, false, mutation.executionError.statusCode), context.requestId, context.receivedAt);
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  sendJson(
+    res,
+    mutation.execution.response.statusCode,
+    mutation.execution.response.body,
+    mutation.execution.response.requestId ?? context.requestId,
+    mutation.execution.response.contentType,
+  );
+}
+
+async function handleCustomerMediaPost(req, res, context, customerId) {
+  const payload = await readPayload(req, res, context);
+  if (payload === null) return;
+  const action = String(payload.action ?? '').trim().toLowerCase();
+  if (action === 'prepare') return handlePrepareCustomerMedia(req, res, context, customerId, payload);
+  if (action === 'finalize') return handleFinalizeCustomerMedia(req, res, context, customerId, payload);
+  sendError(res, createError('INVALID_CUSTOMER_MEDIA_ACTION', 'Thao tác ảnh khách hàng không hợp lệ', {}, false, 400), context.requestId, context.receivedAt);
 }
 
 async function handleListGroups(req, res, context) {
@@ -472,6 +780,16 @@ export async function handleCustomerRoutes(req, res, options) {
   }
   if (pathname === '/api/customers' && method === 'POST') {
     await handleCreateCustomer(req, res, context);
+    return true;
+  }
+
+  const mediaMatch = pathname.match(/^\/api\/customers\/([^/]+)\/media$/);
+  if (mediaMatch && method === 'GET') {
+    await handleListCustomerMedia(res, context, mediaMatch[1]);
+    return true;
+  }
+  if (mediaMatch && method === 'POST') {
+    await handleCustomerMediaPost(req, res, context, mediaMatch[1]);
     return true;
   }
 
