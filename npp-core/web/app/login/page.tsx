@@ -239,7 +239,7 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
               </form>
             </div>
           )}
-          <p className={styles.note}>Phiên đăng nhập gắn với đúng nhân viên, vai trò, quyền và phạm vi hiện tại trong NPP Core.</p>
+          <p className={styles.note}>Phiên đăng nhập gắn với đúng nhân viên, vai trò, quyền và phạm vi hiện tại trong NPP Core. Không truy cập được hệ thống? Vui lòng liên hệ người quản trị tài khoản nội bộ.</p>
         </div>
       </section>
     </main>
