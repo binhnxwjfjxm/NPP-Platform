@@ -14,6 +14,7 @@ import type {
   ReceivableAllocationTarget,
 } from '../../../lib/customer-payment-types';
 import CustomerPaymentWorkspace from './customer-payment-workspace';
+import CustomerPaymentPrintDock from './CustomerPaymentPrintDock';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,6 +77,7 @@ export default async function CustomerPaymentsPage() {
         initialPaymentDate={localDate()}
         initialError={error}
       />
+      <CustomerPaymentPrintDock initialPayments={payments} />
     </AppShell>
   );
 }
