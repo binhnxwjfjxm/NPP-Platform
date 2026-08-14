@@ -48,6 +48,45 @@ function provenance(trace) {
   };
 }
 
+async function applyCustomerDeliveryAddressSnapshot(client, {
+  installationId,
+  salesOrderId,
+  versionNumber,
+}) {
+  const result = await client.query(
+    `UPDATE sales.sales_order_versions AS version
+        SET customer_address_snapshot = CASE
+              WHEN version.customer_address_id IS NULL THEN version.customer_address_snapshot
+              ELSE COALESCE(version.customer_address_snapshot, '{}'::jsonb)
+                || jsonb_build_object(
+                  'customerPhone', (
+                    SELECT customer.phone
+                      FROM shared.customers AS customer
+                     WHERE customer.installation_id = version.installation_id
+                       AND customer.id = version.customer_id
+                     LIMIT 1
+                  ),
+                  'locationUrl', (
+                    SELECT address.location_url
+                      FROM shared.customer_addresses AS address
+                     WHERE address.installation_id = version.installation_id
+                       AND address.customer_id = version.customer_id
+                       AND address.id = version.customer_address_id
+                     LIMIT 1
+                  )
+                )
+            END,
+            updated_at = now()
+      WHERE version.installation_id = $1
+        AND version.sales_order_id = $2
+        AND version.version_number = $3
+        AND version.version_status = 'draft'
+      RETURNING version.id`,
+    [installationId, salesOrderId, versionNumber],
+  );
+  return result.rowCount === 1;
+}
+
 export async function applyCommercialSnapshot(client, {
   installationId,
   salesOrderId,
@@ -99,6 +138,12 @@ export async function applyCommercialSnapshot(client, {
   );
   const versionId = rows(versionResult)[0]?.id;
   if (!versionId) return false;
+  const addressSnapshotApplied = await applyCustomerDeliveryAddressSnapshot(client, {
+    installationId,
+    salesOrderId,
+    versionNumber,
+  });
+  if (!addressSnapshotApplied) return false;
 
   for (const line of lines) {
     const source = line.manualReason ? 'MANUAL_OVERRIDE' : 'PRICE_ENGINE';
@@ -223,6 +268,12 @@ export async function copyCommercialSnapshotToDraft(client, {
     [installationId, salesOrderId, fromVersionNumber, toVersionNumber],
   );
   if (header.rowCount !== 1) return false;
+  const addressSnapshotApplied = await applyCustomerDeliveryAddressSnapshot(client, {
+    installationId,
+    salesOrderId,
+    versionNumber: toVersionNumber,
+  });
+  if (!addressSnapshotApplied) return false;
   const lines = await client.query(
     `UPDATE sales.sales_order_version_lines AS target
         SET base_unit_price = source.base_unit_price,
