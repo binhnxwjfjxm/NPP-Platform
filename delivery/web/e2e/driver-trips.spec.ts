@@ -30,7 +30,7 @@ test('tài xế đăng nhập một lần, reload vẫn giữ phiên và hoàn t
 
   await page.getByRole('link', { name: /TRP-20260804-00001/ }).click();
   await expect(page).toHaveURL(new RegExp(`/trips/${tripId}$`));
-  await expect(page.getByRole('link', { name: 'Điểm giao' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('link', { name: 'Điểm giao', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('link', { name: 'COD' })).toBeVisible();
 
   const workflow = page.getByTestId(`attempt-workflow-${assignmentOneId}`);
