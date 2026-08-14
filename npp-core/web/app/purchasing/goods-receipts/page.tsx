@@ -1,4 +1,5 @@
 import GoodsReceiptWorkspace from './GoodsReceiptWorkspace';
+import GoodsReceiptPrintDock from './GoodsReceiptPrintDock';
 import type { GoodsReceipt } from '../../../lib/goods-receipt-types';
 import type { PurchaseOrder } from '../../../lib/purchase-order-types';
 import type { Warehouse, WarehouseLocation } from '../../../lib/organization-types';
@@ -20,6 +21,7 @@ export default async function GoodsReceiptsPage() {
     loadPurchaseOrderPermissionKeys(requestId),
   ]);
 
+  const initialReceipts = receiptsResult.status === 'fulfilled' ? receiptsResult.value : [];
   const initialError = receiptsResult.status === 'rejected'
     ? normalizeGoodsReceiptGatewayError(receiptsResult.reason).publicMessage
     : null;
@@ -30,20 +32,22 @@ export default async function GoodsReceiptsPage() {
     : null;
 
   return (
-    <GoodsReceiptWorkspace
-      initialGoodsReceipts={receiptsResult.status === 'fulfilled' ? receiptsResult.value : []}
-      initialPurchaseOrders={ordersResult.status === 'fulfilled' ? ordersResult.value : []}
-      initialWarehouses={organizationResult.status === 'fulfilled'
-        ? organizationResult.value.warehouses.filter((warehouse: Warehouse) => warehouse.is_active)
-        : []}
-      initialLocations={organizationResult.status === 'fulfilled'
-        ? organizationResult.value.locations.filter((location: WarehouseLocation) => location.is_active)
-        : []}
-      initialPermissionKeys={receiptPermissionsResult.status === 'fulfilled' ? receiptPermissionsResult.value : []}
-      initialPurchaseOrderPermissionKeys={purchaseOrderPermissionsResult.status === 'fulfilled' ? purchaseOrderPermissionsResult.value : []}
-      initialError={initialError}
-      initialLookupError={initialLookupError}
-    />
+    <>
+      <GoodsReceiptWorkspace
+        initialGoodsReceipts={initialReceipts}
+        initialPurchaseOrders={ordersResult.status === 'fulfilled' ? ordersResult.value : []}
+        initialWarehouses={organizationResult.status === 'fulfilled'
+          ? organizationResult.value.warehouses.filter((warehouse: Warehouse) => warehouse.is_active)
+          : []}
+        initialLocations={organizationResult.status === 'fulfilled'
+          ? organizationResult.value.locations.filter((location: WarehouseLocation) => location.is_active)
+          : []}
+        initialPermissionKeys={receiptPermissionsResult.status === 'fulfilled' ? receiptPermissionsResult.value : []}
+        initialPurchaseOrderPermissionKeys={purchaseOrderPermissionsResult.status === 'fulfilled' ? purchaseOrderPermissionsResult.value : []}
+        initialError={initialError}
+        initialLookupError={initialLookupError}
+      />
+      <GoodsReceiptPrintDock initialReceipts={initialReceipts} />
+    </>
   );
 }
-
