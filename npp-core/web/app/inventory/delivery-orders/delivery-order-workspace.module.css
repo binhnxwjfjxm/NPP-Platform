@@ -1,15 +1,15 @@
 .page {
   display: grid;
-  gap: 1rem;
+  gap: 0.9rem;
 }
 
 .hero,
 .panel,
 .stats article {
   border: 1px solid var(--line, #d9e0e7);
-  border-radius: 18px;
+  border-radius: 14px;
   background: var(--surface, #fff);
-  box-shadow: 0 10px 30px rgb(15 23 42 / 5%);
+  box-shadow: 0 6px 18px rgb(15 23 42 / 4%);
 }
 
 .hero {
@@ -17,7 +17,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1.25rem;
+  padding: 1rem 1.1rem;
 }
 
 .hero h2,
@@ -33,7 +33,7 @@
 .eyebrow {
   margin: 0 0 0.3rem;
   color: var(--accent, #14532d) !important;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -42,17 +42,17 @@
 .stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: 0.65rem;
 }
 
 .stats article {
   display: grid;
-  gap: 0.2rem;
-  padding: 1rem;
+  gap: 0.15rem;
+  padding: 0.8rem 0.9rem;
 }
 
 .stats strong {
-  font-size: 1.55rem;
+  font-size: 1.35rem;
 }
 
 .stats span,
@@ -72,8 +72,18 @@
 }
 
 .panel {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.78fr) minmax(0, 1.35fr);
+  grid-template-areas:
+    'header header'
+    'queue detail';
   min-width: 0;
   overflow: hidden;
+  align-items: stretch;
+}
+
+.panelHeader {
+  grid-area: header;
 }
 
 .panelHeader,
@@ -82,31 +92,33 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1rem 1.1rem;
+  padding: 0.85rem 1rem;
   border-bottom: 1px solid var(--line, #d9e0e7);
 }
 
 .panelHeader p,
 .detailHeader p {
-  margin: 0.3rem 0 0;
+  margin: 0.25rem 0 0;
 }
 
 .queue {
+  grid-area: queue;
   display: grid;
-  gap: 0.55rem;
-  max-height: 420px;
+  align-content: start;
+  gap: 0.4rem;
+  max-height: min(68vh, 760px);
   overflow: auto;
-  padding: 0.8rem;
-  border-bottom: 1px solid var(--line, #d9e0e7);
+  padding: 0.65rem;
+  border-right: 1px solid var(--line, #d9e0e7);
 }
 
 .queueItem {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.28rem;
   width: 100%;
-  padding: 0.85rem;
+  padding: 0.65rem 0.7rem;
   border: 1px solid var(--line, #d9e0e7);
-  border-radius: 14px;
+  border-radius: 10px;
   background: transparent;
   text-align: left;
   cursor: pointer;
@@ -116,7 +128,7 @@
 .queueItem:focus-visible,
 .active {
   border-color: var(--accent, #166534);
-  background: rgb(22 101 52 / 6%);
+  background: rgb(22 101 52 / 5%);
   outline: none;
 }
 
@@ -124,49 +136,54 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.6rem;
 }
 
 .queueTop em,
 .status {
   border-radius: 999px;
-  background: rgb(22 101 52 / 10%);
-  color: var(--accent, #166534);
-  font-size: 0.78rem;
+  background: #f3f1ef;
+  color: #615852;
+  font-size: 0.76rem;
   font-style: normal;
   font-weight: 750;
-  padding: 0.3rem 0.55rem;
+  padding: 0.28rem 0.5rem;
   white-space: nowrap;
 }
 
 .builder {
+  grid-area: detail;
   display: grid;
-  gap: 1rem;
-  padding: 1rem;
+  align-content: start;
+  gap: 0.85rem;
+  min-width: 0;
+  max-height: min(68vh, 760px);
+  overflow: auto;
+  padding: 0.85rem;
 }
 
 .builder .detailHeader {
-  padding: 0 0 0.9rem;
+  padding: 0 0 0.75rem;
 }
 
 .lines {
   display: grid;
-  gap: 0.65rem;
+  gap: 0.55rem;
 }
 
 .lines article {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.8rem;
-  padding: 0.8rem;
+  gap: 0.75rem;
+  padding: 0.65rem;
   border: 1px solid var(--line, #d9e0e7);
-  border-radius: 12px;
+  border-radius: 9px;
 }
 
 .lines article > div {
   display: grid;
-  gap: 0.2rem;
+  gap: 0.18rem;
 }
 
 .lines label,
@@ -179,34 +196,36 @@
 }
 
 .lines input,
-.cancelField input {
+.cancelField input,
+.cancelField select {
   width: 100%;
   border: 1px solid var(--line, #cbd5e1);
-  border-radius: 10px;
+  border-radius: 9px;
   background: var(--surface, #fff);
   color: inherit;
   font: inherit;
-  padding: 0.58rem 0.65rem;
+  padding: 0.55rem 0.62rem;
 }
 
 .lines input:focus,
-.cancelField input:focus {
+.cancelField input:focus,
+.cancelField select:focus {
   border-color: var(--accent, #166534);
   outline: 3px solid rgb(22 101 52 / 12%);
 }
 
 .actions {
   display: grid;
-  gap: 0.7rem;
+  gap: 0.6rem;
 }
 
 .primaryButton,
 .secondaryButton,
 .dangerButton {
-  border-radius: 12px;
+  border-radius: 10px;
   font: inherit;
   font-weight: 750;
-  padding: 0.7rem 0.9rem;
+  padding: 0.65rem 0.85rem;
   cursor: pointer;
 }
 
@@ -238,8 +257,8 @@
 .error,
 .notice,
 .cancelled {
-  border-radius: 12px;
-  padding: 0.8rem 1rem;
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
 }
 
 .error {
@@ -262,7 +281,7 @@
 
 .empty {
   margin: 0;
-  padding: 1rem;
+  padding: 0.9rem;
   color: var(--muted, #667085);
   text-align: center;
 }
@@ -270,6 +289,25 @@
 @media (max-width: 1050px) {
   .layout {
     grid-template-columns: 1fr;
+  }
+
+  .panel {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'header'
+      'queue'
+      'detail';
+  }
+
+  .queue {
+    max-height: 360px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line, #d9e0e7);
+  }
+
+  .builder {
+    max-height: none;
+    overflow: visible;
   }
 }
 

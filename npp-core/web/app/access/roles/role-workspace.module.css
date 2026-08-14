@@ -1,13 +1,13 @@
 .editorModal {
-  width: min(1120px, calc(100vw - 36px));
+  width: min(1180px, calc(100vw - 36px));
   max-height: calc(100vh - 36px);
   overflow: auto;
 }
 
 .editorLayout {
   display: grid;
-  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
-  gap: 16px;
+  grid-template-columns: minmax(320px, 0.82fr) minmax(480px, 1.18fr);
+  gap: 14px;
   align-items: start;
 }
 
@@ -15,15 +15,15 @@
 .permissionColumn {
   min-width: 0;
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .presetPanel {
   display: grid;
-  gap: 7px;
-  padding: 12px;
+  gap: 6px;
+  padding: 10px;
   border: 1px solid #ded7d1;
-  border-radius: 10px;
+  border-radius: 9px;
   background: #f8f6f4;
 }
 
@@ -35,8 +35,8 @@
 
 .presetPanel select {
   width: 100%;
-  min-height: 40px;
-  padding: 8px 10px;
+  min-height: 38px;
+  padding: 7px 9px;
   border: 1px solid #d8d1cb;
   border-radius: 8px;
   background: #fff;
@@ -49,37 +49,42 @@
   margin: 0;
   color: #716a66;
   font-size: 0.72rem;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
 .permissionColumn {
-  padding: 16px;
+  padding: 12px;
   border: 1px solid #e2dfdc;
-  border-radius: 12px;
-  background: #fafafa;
+  border-radius: 10px;
+  background: #fbfaf9;
 }
 
 .permissionGroup {
   display: grid;
-  gap: 8px;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
 }
 
 .permissionGroup + .permissionGroup {
-  padding-top: 4px;
-  border-top: 1px solid #ece9e6;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .permissionGroupHeader {
   display: flex;
-  align-items: baseline;
+  min-height: 30px;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #dfdbd7;
 }
 
 .permissionGroupHeader strong {
   color: #3f3733;
-  font-size: 0.84rem;
-  font-weight: 740;
+  font-size: 0.82rem;
+  font-weight: 760;
 }
 
 .permissionGroupCount {
@@ -88,8 +93,10 @@
 
 .permissionList {
   display: grid;
-  max-height: min(62vh, 660px);
-  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  max-height: min(66vh, 700px);
+  gap: 12px 18px;
   overflow: auto;
   padding-right: 4px;
   scrollbar-gutter: stable;
@@ -97,48 +104,51 @@
 
 .permissionItem {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  column-gap: 10px;
-  row-gap: 4px;
-  padding: 11px 12px;
-  border: 1px solid #e2dfdc;
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 2px 7px rgba(42, 37, 34, 0.035);
-  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+  grid-template-columns: 18px minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 2px;
+  min-height: 34px;
+  padding: 5px 3px;
+  border: 0;
+  border-bottom: 1px solid #ece8e4;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transition: background 120ms ease;
 }
 
 .permissionItem:hover {
-  border-color: #cfc7c1;
-  box-shadow: 0 5px 14px rgba(42, 37, 34, 0.07);
-  transform: translateY(-1px);
+  border-color: #ece8e4;
+  background: #f5f2ef;
+  box-shadow: none;
+  transform: none;
 }
 
 .permissionItem label {
   display: grid;
   grid-column: 1 / -1;
-  grid-template-columns: 20px minmax(0, 1fr);
+  grid-template-columns: 18px minmax(0, 1fr);
   align-items: start;
-  gap: 10px;
+  gap: 8px;
   color: #38322f;
-  font-size: 0.78rem;
-  font-weight: 700;
+  font-size: 0.77rem;
+  font-weight: 690;
   letter-spacing: 0;
   cursor: pointer;
 }
 
 .permissionItem label span {
   min-width: 0;
-  line-height: 1.38;
+  line-height: 1.32;
   overflow-wrap: anywhere;
 }
 
 .permissionItem input,
 .permissionItem input[type='checkbox'] {
-  width: 18px !important;
-  min-width: 18px !important;
-  height: 18px !important;
-  min-height: 18px !important;
+  width: 17px !important;
+  min-width: 17px !important;
+  height: 17px !important;
+  min-height: 17px !important;
   margin: 1px 0 0 !important;
   padding: 0 !important;
   border-radius: 4px;
@@ -154,11 +164,10 @@
 .permissionMeta {
   grid-column: 2;
   color: #716a66;
-  font-size: 0.71rem;
-  line-height: 1.45;
+  font-size: 0.69rem;
+  line-height: 1.32;
 }
 
-/* Unassigned verification permissions stay out of the product UI; existing grants remain visible so they can be revoked. */
 .permissionItem:has(input[data-testid='permission-core.audit-outbox.test.write']:not(:checked)),
 .permissionItem:has(input[data-testid='permission-core.idempotency.test.write']:not(:checked)),
 .permissionItem:has(input[data-testid='permission-core.storage.r2.test.write']:not(:checked)) {
@@ -166,9 +175,9 @@
 }
 
 .permissionEmpty {
-  padding: 14px 12px;
+  padding: 12px 10px;
   border: 1px dashed #d8d2cd;
-  border-radius: 10px;
+  border-radius: 8px;
   color: #786f69;
   font-size: 0.76rem;
   text-align: center;
@@ -177,12 +186,12 @@
 .fieldRow {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .editorColumn textarea {
   width: 100%;
-  min-height: 112px;
+  min-height: 104px;
   box-sizing: border-box;
   padding: 9px 10px;
   border: 1px solid #d8d1cb;
@@ -231,7 +240,8 @@
   }
 
   .editorLayout,
-  .fieldRow {
+  .fieldRow,
+  .permissionList {
     grid-template-columns: 1fr;
   }
 
@@ -248,20 +258,17 @@
   }
 
   .permissionColumn {
-    padding: 12px;
+    padding: 10px;
   }
 
   .permissionItem {
-    padding: 10px;
+    min-height: 38px;
+    padding: 7px 3px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .permissionItem {
     transition: none;
-  }
-
-  .permissionItem:hover {
-    transform: none;
   }
 }

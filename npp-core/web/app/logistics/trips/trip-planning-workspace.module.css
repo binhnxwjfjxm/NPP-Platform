@@ -1,13 +1,13 @@
 .workspace {
   display: grid;
-  gap: 1rem;
+  gap: 0.9rem;
 }
 
 .section {
   border: 1px solid #d8dee9;
-  border-radius: 16px;
+  border-radius: 14px;
   background: #fff;
-  padding: 1rem;
+  padding: 0.9rem;
   min-width: 0;
 }
 
@@ -16,7 +16,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.85rem;
 }
 
 .sectionHeading h2,
@@ -28,7 +28,7 @@
 .eyebrow {
   margin: 0 0 0.25rem;
   color: #52606d;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -36,9 +36,10 @@
 
 .masterGrid,
 .formGrid,
-.columns {
+.columns,
+.detailColumns {
   display: grid;
-  gap: 1rem;
+  gap: 0.9rem;
 }
 
 .masterGrid {
@@ -50,38 +51,86 @@
   align-items: start;
 }
 
+.detailColumns {
+  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.72fr);
+  align-items: start;
+}
+
 .formGrid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.subtabs {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem;
+  border: 1px solid #d8dee9;
+  border-radius: 10px;
+  background: #f5f7fa;
+}
+
+.subtab {
+  min-height: 34px;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #52606d;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.subtabActive {
+  border-color: #b8c9d8;
+  background: #fff;
+  color: #174f78;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 8%);
+}
+
+.tripListStandalone .list {
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+}
+
+.tripListCompact .list {
+  max-height: min(72vh, 760px);
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
 .masterCard {
   display: grid;
-  gap: 0.75rem;
-  padding: 0.9rem;
+  gap: 0.65rem;
+  padding: 0.8rem;
   border: 1px solid #e4e7eb;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #f8fafc;
 }
 
 .masterCard label,
 .formGrid label {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.32rem;
   color: #334e68;
-  font-size: 0.85rem;
+  font-size: 0.83rem;
   font-weight: 700;
 }
 
 .masterCard input,
+.masterCard select,
 .formGrid input,
 .formGrid select {
   width: 100%;
-  min-height: 42px;
+  min-height: 40px;
   box-sizing: border-box;
   border: 1px solid #bcccdc;
-  border-radius: 10px;
+  border-radius: 9px;
   background: #fff;
-  padding: 0.55rem 0.7rem;
+  padding: 0.5rem 0.65rem;
   color: #102a43;
   font: inherit;
 }
@@ -95,9 +144,9 @@
 .dangerButton,
 .textButton,
 .moveButtons button {
-  border-radius: 10px;
-  min-height: 40px;
-  padding: 0.55rem 0.8rem;
+  border-radius: 9px;
+  min-height: 38px;
+  padding: 0.5rem 0.75rem;
   font: inherit;
   font-weight: 800;
   cursor: pointer;
@@ -141,8 +190,8 @@
 .message,
 .lockNotice {
   margin: 0;
-  padding: 0.75rem 0.9rem;
-  border-radius: 12px;
+  padding: 0.7rem 0.85rem;
+  border-radius: 10px;
 }
 
 .error {
@@ -168,17 +217,17 @@
 .stopList,
 .readyQueue {
   display: grid;
-  gap: 0.65rem;
+  gap: 0.55rem;
 }
 
 .listItem {
   display: grid;
-  gap: 0.25rem;
+  gap: 0.22rem;
   width: 100%;
   border: 1px solid #d8dee9;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fff;
-  padding: 0.8rem;
+  padding: 0.65rem;
   text-align: left;
   color: #102a43;
   cursor: pointer;
@@ -197,29 +246,37 @@
 }
 
 .status {
+  border: 1px solid #d8d2cc;
   border-radius: 999px;
-  padding: 0.35rem 0.65rem;
-  background: #e8f1fb;
-  color: #174f78;
-  font-size: 0.8rem;
+  padding: 0.3rem 0.6rem;
+  background: #f3f1ef;
+  color: #615852;
+  font-size: 0.78rem;
   font-weight: 800;
 }
 
+.status[data-status='planned'] {
+  border-color: #c8c7ee;
+  background: #f0effd;
+  color: #4d4b92;
+}
+
 .status[data-status='locked'] {
-  background: #fff1d6;
+  border-color: #ebcf8a;
+  background: #fff7df;
   color: #7a4b00;
 }
 
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.65rem;
-  margin: 1rem 0;
+  gap: 0.55rem;
+  margin: 0.8rem 0;
 }
 
 .stopCard {
   border: 1px solid #d8dee9;
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
 }
 
@@ -229,8 +286,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.75rem;
+  gap: 0.7rem;
+  padding: 0.7rem;
 }
 
 .stopCard header {
@@ -264,31 +321,50 @@
 }
 
 .readyQueue {
-  margin-top: 1rem;
+  margin-top: 0.9rem;
   border-top: 1px solid #e4e7eb;
-  padding-top: 1rem;
+  padding-top: 0.9rem;
 }
 
 .readyItem {
   border: 1px solid #e4e7eb;
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 .empty {
   margin: 0;
   color: #627d98;
-  padding: 0.75rem;
+  padding: 0.7rem;
   text-align: center;
 }
 
 @media (max-width: 1000px) {
   .masterGrid,
   .formGrid,
-  .columns {
+  .columns,
+  .detailColumns {
     grid-template-columns: 1fr;
   }
 
   .noteField {
     grid-column: auto;
+  }
+
+  .tripListStandalone .list {
+    grid-template-columns: 1fr;
+  }
+
+  .tripListCompact .list {
+    max-height: 360px;
+  }
+}
+
+@media (max-width: 620px) {
+  .subtabs {
+    width: 100%;
+  }
+
+  .subtab {
+    flex: 1;
   }
 }

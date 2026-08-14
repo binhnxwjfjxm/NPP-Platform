@@ -215,6 +215,7 @@ test('điều phối viên tạo chuyến, gán batch, lập và khóa; locked s
   await page.getByTestId('assign-selected-orders').click();
 
   await page.getByTestId('planning-tab').click();
+  await page.getByTestId('planning-detail-tab').click();
   await page.getByRole('button', { name: /TRP-20260804-00001/ }).first().click();
   await expect(page.getByTestId('trip-stop-list')).toContainText('12 Nguyễn Trãi');
   await page.getByTestId('plan-trip-button').click();

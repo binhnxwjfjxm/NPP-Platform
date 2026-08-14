@@ -5,7 +5,7 @@
 
 .columns {
   display: grid;
-  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.4fr);
+  grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.5fr);
   gap: 1rem;
   align-items: start;
 }
@@ -14,9 +14,9 @@
   min-width: 0;
   padding: 1rem;
   border: 1px solid var(--border-subtle, #d9dee8);
-  border-radius: 16px;
+  border-radius: 14px;
   background: var(--surface-raised, #fff);
-  box-shadow: 0 10px 28px rgb(15 23 42 / 7%);
+  box-shadow: 0 7px 20px rgb(15 23 42 / 5%);
 }
 
 .panelHeading {
@@ -24,7 +24,7 @@
   justify-content: space-between;
   gap: 1rem;
   align-items: start;
-  margin-bottom: 1rem;
+  margin-bottom: 0.9rem;
 }
 
 .panelHeading h2,
@@ -45,16 +45,22 @@
 .stopList,
 .movementList {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.65rem;
+}
+
+.tripList {
+  max-height: min(72vh, 760px);
+  overflow: auto;
+  padding-right: 0.15rem;
 }
 
 .tripCard {
   display: grid;
-  gap: 0.25rem;
+  gap: 0.22rem;
   width: 100%;
-  padding: 0.85rem;
+  padding: 0.7rem;
   border: 1px solid var(--border-subtle, #d9dee8);
-  border-radius: 12px;
+  border-radius: 10px;
   background: transparent;
   color: inherit;
   text-align: left;
@@ -71,52 +77,67 @@
 .tripCard small,
 .summaryGrid span,
 .dispatchedSummary span,
-.movementList small {
+.movementList small,
+.driverIdentity span,
+.receiverHint {
   color: var(--text-muted, #64748b);
 }
 
 .status {
   display: inline-flex;
   align-items: center;
-  min-height: 32px;
-  padding: 0.25rem 0.65rem;
+  min-height: 30px;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid #d8d2cc;
   border-radius: 999px;
-  background: #e2e8f0;
-  font-size: 0.8rem;
+  background: #f3f1ef;
+  color: #615852;
+  font-size: 0.78rem;
   font-weight: 800;
 }
 
 .status[data-status='locked'] {
-  background: #fef3c7;
+  border-color: #ebcf8a;
+  background: #fff7df;
+  color: #7a4b00;
 }
 
 .status[data-status='dispatched'] {
-  background: #dcfce7;
+  border-color: #c8c7ee;
+  background: #f0effd;
+  color: #4d4b92;
 }
 
 .summaryGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 1rem;
+  gap: 0.7rem;
+  margin-bottom: 0.9rem;
 }
 
-.summaryGrid div {
+.summaryGrid div,
+.driverIdentity {
   display: grid;
-  gap: 0.25rem;
-  padding: 0.75rem;
-  border-radius: 12px;
+  gap: 0.22rem;
+  padding: 0.7rem;
+  border-radius: 10px;
   background: var(--surface-muted, #f8fafc);
+}
+
+.driverIdentity {
+  grid-column: 1 / -1;
+  border: 1px solid #d9dee8;
+  background: #fff;
 }
 
 .dispatchForm {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.8rem;
+  gap: 0.75rem;
   margin-bottom: 1rem;
-  padding: 1rem;
-  border: 1px solid #f59e0b;
-  border-radius: 14px;
+  padding: 0.9rem;
+  border: 1px solid #f0c36a;
+  border-radius: 12px;
   background: #fffbeb;
 }
 
@@ -129,12 +150,45 @@
 .dispatchForm input,
 .dispatchForm textarea {
   width: 100%;
-  padding: 0.65rem 0.75rem;
+  padding: 0.6rem 0.7rem;
   border: 1px solid #cbd5e1;
-  border-radius: 10px;
+  border-radius: 9px;
   background: #fff;
   color: #0f172a;
   font: inherit;
+}
+
+.receiverChoice {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.receiverChoice label {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #d7cba8;
+  border-radius: 9px;
+  background: rgb(255 255 255 / 78%);
+  cursor: pointer;
+}
+
+.receiverChoice input {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  padding: 0;
+  accent-color: #7a4b00;
+}
+
+.receiverHint {
+  grid-column: 1 / -1;
+  margin: -0.2rem 0 0;
+  font-size: 0.8rem;
 }
 
 .noteField,
@@ -146,10 +200,10 @@
 .checklist {
   display: grid;
   gap: 0.3rem;
-  padding: 0.75rem;
-  border-radius: 10px;
+  padding: 0.7rem;
+  border-radius: 9px;
   background: rgb(255 255 255 / 75%);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
 }
 
 .primaryButton,
@@ -158,9 +212,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 40px;
-  padding: 0.6rem 0.85rem;
-  border-radius: 10px;
+  min-height: 38px;
+  padding: 0.55rem 0.8rem;
+  border-radius: 9px;
   font-weight: 800;
   text-decoration: none;
   cursor: pointer;
@@ -192,7 +246,7 @@
   gap: 0.75rem;
   margin-bottom: 1rem;
   padding: 1rem;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #f0fdf4;
 }
 
@@ -212,9 +266,9 @@
 .movementList article {
   display: grid;
   gap: 0.4rem;
-  padding: 0.8rem;
+  padding: 0.75rem;
   border: 1px solid var(--border-subtle, #d9dee8);
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 .stopCard span {
@@ -268,14 +322,18 @@
   .columns,
   .summaryGrid,
   .dispatchForm,
-  .dispatchedSummary {
+  .dispatchedSummary,
+  .receiverChoice {
     grid-template-columns: 1fr;
   }
 
   .noteField,
   .checklist,
   .primaryButton,
-  .notice {
+  .notice,
+  .driverIdentity,
+  .receiverChoice,
+  .receiverHint {
     grid-column: auto;
   }
 

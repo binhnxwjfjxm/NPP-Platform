@@ -4,6 +4,7 @@ import { createIdempotencyKey } from '@npp/contracts';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import { StatusBadge } from '../../components/status-badge';
 import { WorkspaceTabPanel, WorkspaceTabs, type WorkspaceTabOption } from '../../components/workspace-tabs';
 import styles from '../delivery-orders/delivery-order-workspace.module.css';
 
@@ -354,7 +355,7 @@ export default function CustomerReturnWorkspace() {
               {returns.length === 0 ? <p className={styles.empty}>Chưa có phiếu hàng khách trả.</p> : null}
               {returns.map((item) => (
                 <button type="button" key={item.id} className={`${styles.queueItem} ${selectedReturnId === item.id ? styles.active : ''}`} onClick={() => void loadDetail(item.id)} data-testid={`customer-return-${item.id}`}>
-                  <span className={styles.queueTop}><strong>{item.number || 'Phiếu nháp'}</strong><em>{statusLabel(item.status)}</em></span>
+                  <span className={styles.queueTop}><strong>{item.number || 'Phiếu nháp'}</strong><StatusBadge status={item.status} label={statusLabel(item.status)} /></span>
                   <span>{item.customerCode} — {item.customerName}</span>
                   <small>{item.warehouseCode} · {item.lineCount ?? 0} dòng · Yêu cầu {formatQuantity(item.requestedBaseQuantity)}</small>
                 </button>
@@ -362,7 +363,7 @@ export default function CustomerReturnWorkspace() {
             </div>
             {selectedReturn ? (
               <div className={styles.builder}>
-                <div className={styles.detailHeader}><div><p className={styles.eyebrow}>{selectedReturn.number || 'Phiếu hàng khách trả nháp'}</p><h3>{selectedReturn.customerCode} — {selectedReturn.customerName}</h3><p>{selectedReturn.warehouseCode} — {selectedReturn.warehouseName}</p></div><span className={styles.status}>{statusLabel(selectedReturn.status)}</span></div>
+                <div className={styles.detailHeader}><div><p className={styles.eyebrow}>{selectedReturn.number || 'Phiếu hàng khách trả nháp'}</p><h3>{selectedReturn.customerCode} — {selectedReturn.customerName}</h3><p>{selectedReturn.warehouseCode} — {selectedReturn.warehouseName}</p></div><StatusBadge status={selectedReturn.status} label={statusLabel(selectedReturn.status)} /></div>
                 <div className={styles.lines}>
                   {(selectedReturn.lines ?? []).map((line) => (
                     <article key={line.id}><div><strong>{line.sku} — {line.itemName}</strong><span>{line.deliveryOrderNumber} · {line.locationCode || 'Không vị trí'} · Lô {line.lotCode || 'Không lô'}</span><small>{line.reasonCode}: {line.reasonNote}</small></div>{selectedReturn.status === 'draft' ? <label>Thực nhận<input inputMode="decimal" value={accepted[line.id] ?? ''} onChange={(event) => setAccepted((current) => ({ ...current, [line.id]: event.target.value }))} aria-label={`Thực nhận ${line.sku}`} /><small>Tối đa {formatQuantity(line.requestedBaseQuantity)} {line.unitCode}</small></label> : <strong>Nhận {formatQuantity(line.acceptedBaseQuantity)} {line.unitCode}</strong>}</article>

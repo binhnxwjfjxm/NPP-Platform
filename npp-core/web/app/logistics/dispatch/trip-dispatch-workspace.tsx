@@ -7,6 +7,7 @@ import { AppShell } from '../../components/app-shell';
 import styles from './trip-dispatch-workspace.module.css';
 
 type TripStatus = 'draft' | 'planned' | 'locked' | 'dispatched';
+type ReceiverMode = 'primary' | 'other';
 
 type TripListItem = {
   id: string;
@@ -111,6 +112,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 export default function TripDispatchWorkspace() {
   const [trips, setTrips] = useState<TripListItem[]>([]);
   const [selectedTrip, setSelectedTrip] = useState<DispatchTrip | null>(null);
+  const [receiverMode, setReceiverMode] = useState<ReceiverMode>('primary');
   const [receiverName, setReceiverName] = useState('');
   const [dispatchedAt, setDispatchedAt] = useState(localDateTimeValue());
   const [handoverNote, setHandoverNote] = useState('');
@@ -136,8 +138,12 @@ export default function TripDispatchWorkspace() {
 
   const loadTrip = useCallback(async (tripId: string) => {
     const trip = await requestJson<DispatchTrip>(`/api/logistics/trips/${tripId}/dispatch`);
+    const primaryReceiver = trip.driverName?.trim() || '';
+    const storedReceiver = trip.handoverReceiverName?.trim() || '';
+    const usesOtherReceiver = !primaryReceiver || Boolean(storedReceiver && storedReceiver !== primaryReceiver);
     setSelectedTrip(trip);
-    setReceiverName(trip.handoverReceiverName || trip.driverName || '');
+    setReceiverMode(usesOtherReceiver ? 'other' : 'primary');
+    setReceiverName(usesOtherReceiver ? storedReceiver : '');
     setDispatchedAt(trip.dispatchedAt ? localDateTimeValue(new Date(trip.dispatchedAt)) : localDateTimeValue());
     setHandoverNote(trip.handoverNote || '');
   }, []);
@@ -172,9 +178,13 @@ export default function TripDispatchWorkspace() {
 
   async function dispatchTrip() {
     if (!selectedTrip || selectedTrip.status !== 'locked') return;
-    const normalizedReceiver = receiverName.trim();
+    const normalizedReceiver = receiverMode === 'primary'
+      ? selectedTrip.driverName?.trim() || ''
+      : receiverName.trim();
     if (!normalizedReceiver || !dispatchedAt) {
-      setError('Cần nhập người nhận bàn giao và thời điểm xe xuất phát.');
+      setError(receiverMode === 'primary'
+        ? 'Chuyến cần có tài xế chính và thời điểm xe xuất phát.'
+        : 'Cần nhập người nhận bàn giao khác và thời điểm xe xuất phát.');
       return;
     }
     const scope = `${selectedTrip.id}:${dispatchedAt}:${normalizedReceiver}:${handoverNote.trim()}`;
@@ -206,6 +216,10 @@ export default function TripDispatchWorkspace() {
       setBusy(null);
     }
   }
+
+  const receiverReady = selectedTrip
+    ? receiverMode === 'primary' ? Boolean(selectedTrip.driverName?.trim()) : Boolean(receiverName.trim())
+    : false;
 
   return (
     <AppShell
@@ -267,22 +281,54 @@ export default function TripDispatchWorkspace() {
                 <div className={styles.summaryGrid}>
                   <div><span>Kho</span><strong>{selectedTrip.warehouseCode || selectedTrip.warehouseName || 'Kho được cấp quyền'}</strong></div>
                   <div><span>Xe</span><strong>{selectedTrip.licensePlate || selectedTrip.vehicleCode || '—'}</strong></div>
-                  <div><span>Tài xế</span><strong>{selectedTrip.driverName || selectedTrip.driverCode || '—'}</strong></div>
+                  <div><span>Tài xế chính</span><strong>{selectedTrip.driverName || selectedTrip.driverCode || '—'}</strong></div>
                   <div><span>Khối lượng việc</span><strong>{selectedTrip.stops.length} điểm · {assignmentCount} phiếu</strong></div>
                 </div>
 
                 {selectedTrip.status === 'locked' ? (
                   <div className={styles.dispatchForm} data-testid="dispatch-form">
-                    <label>
-                      Người nhận bàn giao
-                      <input
-                        value={receiverName}
-                        onChange={(event) => setReceiverName(event.target.value)}
-                        disabled={busy !== null}
-                        maxLength={256}
-                        data-testid="handover-receiver"
-                      />
-                    </label>
+                    <div className={styles.driverIdentity} data-testid="handover-primary-driver">
+                      <span>Tài xế chính đã chốt trong kế hoạch</span>
+                      <strong>{selectedTrip.driverCode ? `${selectedTrip.driverCode} · ` : ''}{selectedTrip.driverName || 'Chưa có tài xế chính'}</strong>
+                    </div>
+                    <div className={styles.receiverChoice} role="radiogroup" aria-label="Người nhận bàn giao thực tế">
+                      <label>
+                        <input
+                          type="radio"
+                          name="handover-receiver-mode"
+                          checked={receiverMode === 'primary'}
+                          onChange={() => setReceiverMode('primary')}
+                          disabled={busy !== null || !selectedTrip.driverName?.trim()}
+                          data-testid="handover-primary-mode"
+                        />
+                        Tài xế chính
+                      </label>
+                      <label>
+                        <input
+                          type="radio"
+                          name="handover-receiver-mode"
+                          checked={receiverMode === 'other'}
+                          onChange={() => setReceiverMode('other')}
+                          disabled={busy !== null}
+                          data-testid="handover-other-mode"
+                        />
+                        Người nhận khác
+                      </label>
+                    </div>
+                    {receiverMode === 'other' ? (
+                      <label>
+                        Người nhận bàn giao khác
+                        <input
+                          value={receiverName}
+                          onChange={(event) => setReceiverName(event.target.value)}
+                          disabled={busy !== null}
+                          maxLength={256}
+                          data-testid="handover-receiver"
+                        />
+                      </label>
+                    ) : (
+                      <p className={styles.receiverHint} data-testid="handover-primary-default">Người nhận bàn giao sẽ ghi nhận theo tài xế chính; không cần nhập lại tên.</p>
+                    )}
                     <label>
                       Thời điểm xe xuất phát
                       <input
@@ -313,7 +359,7 @@ export default function TripDispatchWorkspace() {
                       type="button"
                       className={styles.primaryButton}
                       onClick={dispatchTrip}
-                      disabled={busy !== null || !receiverName.trim() || !dispatchedAt}
+                      disabled={busy !== null || !receiverReady || !dispatchedAt}
                       data-testid="dispatch-trip-button"
                     >
                       {busy === 'dispatch' ? 'Đang bàn giao…' : 'Bàn giao và cho xe xuất phát'}

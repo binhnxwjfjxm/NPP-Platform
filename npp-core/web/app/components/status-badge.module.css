@@ -1,0 +1,49 @@
+.badge {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0.28rem 0.58rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 780;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.neutral {
+  border-color: #d8d2cc;
+  background: #f3f1ef;
+  color: #615852;
+}
+
+.info {
+  border-color: #b9d6ef;
+  background: #edf6fd;
+  color: #225b84;
+}
+
+.progress {
+  border-color: #c8c7ee;
+  background: #f0effd;
+  color: #4d4b92;
+}
+
+.warning {
+  border-color: #ebcf8a;
+  background: #fff7df;
+  color: #7a4b00;
+}
+
+.success {
+  border-color: #afd7bb;
+  background: #eff9f2;
+  color: #21633b;
+}
+
+.danger {
+  border-color: #ebb6b0;
+  background: #fff1f0;
+  color: #8a1c13;
+}

@@ -101,14 +101,18 @@ async function mockDispatchApis(page: Page, state: State) {
   });
 }
 
-test('kho bàn giao chuyến đã khóa, ghi Inventory OUT và chuyển sang read-only', async ({ page }) => {
-  const state: State = {
+function initialState(): State {
+  return {
     status: 'locked',
     dispatchedAt: null,
     receiverName: null,
     key: null,
     payload: null,
   };
+}
+
+test('kho mặc định bàn giao cho tài xế chính, ghi Inventory OUT và chuyển sang read-only', async ({ page }) => {
+  const state = initialState();
   await mockDispatchApis(page, state);
   await page.goto('/logistics/dispatch');
 
@@ -118,9 +122,12 @@ test('kho bàn giao chuyến đã khóa, ghi Inventory OUT và chuyển sang rea
 
   await page.getByTestId(`dispatch-trip-${tripId}`).click();
   await expect(page.getByTestId('dispatch-form')).toBeVisible();
+  await expect(page.getByTestId('handover-primary-driver')).toContainText('TX-01 · Nguyễn Văn Tài');
+  await expect(page.getByTestId('handover-primary-mode')).toBeChecked();
+  await expect(page.getByTestId('handover-primary-default')).toBeVisible();
+  await expect(page.getByTestId('handover-receiver')).toHaveCount(0);
   await expect(page.getByText('DO-202608-000010', { exact: false })).toBeVisible();
 
-  await page.getByTestId('handover-receiver').fill('Nguyễn Văn Tài');
   await page.getByTestId('dispatch-time').fill('2026-08-05T08:00');
   await page.getByTestId('dispatch-trip-button').click();
 
@@ -135,4 +142,19 @@ test('kho bàn giao chuyến đã khóa, ghi Inventory OUT và chuyển sang rea
   expect(state.key).not.toContain(':');
   expect(state.payload?.handoverReceiverName).toBe('Nguyễn Văn Tài');
   expect(String(state.payload?.dispatchedAt)).toMatch(/^2026-08-05T/);
+});
+
+test('kho chỉ nhập tên thủ công khi bàn giao cho người nhận khác', async ({ page }) => {
+  const state = initialState();
+  await mockDispatchApis(page, state);
+  await page.goto('/logistics/dispatch');
+
+  await page.getByTestId(`dispatch-trip-${tripId}`).click();
+  await page.getByTestId('handover-other-mode').check();
+  await expect(page.getByTestId('handover-receiver')).toBeVisible();
+  await page.getByTestId('handover-receiver').fill('Trần Văn Phụ');
+  await page.getByTestId('dispatch-time').fill('2026-08-05T08:00');
+  await page.getByTestId('dispatch-trip-button').click();
+
+  expect(state.payload?.handoverReceiverName).toBe('Trần Văn Phụ');
 });
