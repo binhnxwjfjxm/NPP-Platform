@@ -84,7 +84,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       ...(init?.headers || {}),
     },
-});
+  });
   const payload = await response.json().catch(() => ({})) as ApiEnvelope<T>;
   if (!response.ok || payload.data === undefined) {
     throw new Error(payload.error?.message || 'Không thực hiện được yêu cầu phiếu nhận hàng');
@@ -341,28 +341,22 @@ export default function GoodsReceiptWorkspace({
     if (detail) setSelectedGoodsReceipt(detail);
   }
 
-  async function openCreate() {
+  function openCreate() {
     setError(null);
     setNotice(null);
     if (!eligiblePurchaseOrders.length) {
       setError('Chưa có đơn đặt hàng nào ở trạng thái đã duyệt để tạo phiếu nhận hàng.');
       return;
     }
-    const purchaseOrder = await loadPurchaseOrderDetail(eligiblePurchaseOrders[0].id);
-    if (!purchaseOrder?.lines?.length) {
-      setError('Đơn đặt hàng được chọn chưa có dòng hàng hợp lệ.');
-      return;
-    }
-    const warehouseLocations = initialLocations.filter((location) => location.warehouse_id === purchaseOrder.warehouseId);
     setEditor({
       mode: 'create',
       receipt: null,
-      purchaseOrder,
-      purchaseOrderId: purchaseOrder.id,
+      purchaseOrder: null,
+      purchaseOrderId: '',
       receiptDate: todayLocal(),
       supplierDeliveryReference: '',
       note: '',
-      lines: purchaseOrder.lines.map((line) => buildDraftLineFromOrderLine(line, warehouseLocations)),
+      lines: [],
       loading: false,
     });
   }
@@ -402,21 +396,25 @@ export default function GoodsReceiptWorkspace({
   }
 
   async function refreshEditorPurchaseOrder(purchaseOrderId: string) {
-    if (!editor) return;
-    setEditor((current) => current ? { ...current, loading: true } : current);
+    if (!editor || editor.mode !== 'create' || !purchaseOrderId) return;
+    setEditor((current) => current?.mode === 'create'
+      ? { ...current, purchaseOrderId, purchaseOrder: null, lines: [], loading: true }
+      : current);
     const purchaseOrder = await loadPurchaseOrderDetail(purchaseOrderId);
     if (!purchaseOrder?.lines?.length) {
-      setEditor((current) => current ? { ...current, loading: false } : current);
+      setEditor((current) => current?.mode === 'create' && current.purchaseOrderId === purchaseOrderId
+        ? { ...current, loading: false }
+        : current);
+      if (purchaseOrder) setError('Đơn đặt hàng được chọn chưa có dòng hàng hợp lệ.');
       return;
     }
     const purchaseOrderLines = purchaseOrder.lines ?? [];
     const warehouseLocations = initialLocations.filter((location) => location.warehouse_id === purchaseOrder.warehouseId);
     setEditor((current) => {
-      if (!current) return current;
+      if (!current || current.mode !== 'create' || current.purchaseOrderId !== purchaseOrderId) return current;
       return {
         ...current,
         purchaseOrder,
-        purchaseOrderId,
         lines: purchaseOrderLines.map((line) => buildDraftLineFromOrderLine(line, warehouseLocations)),
         loading: false,
       };
@@ -578,7 +576,7 @@ export default function GoodsReceiptWorkspace({
         <button
           type="button"
           className={`${shellStyles.actionButton} ${shellStyles.actionButtonPrimary}`}
-          onClick={() => void openCreate()}
+          onClick={openCreate}
           data-testid="goods-receipt-create-button"
         >
           Tạo phiếu nhận hàng
@@ -735,9 +733,14 @@ export default function GoodsReceiptWorkspace({
                 <label>Đơn đặt hàng</label>
                 <select
                   value={editor.purchaseOrderId}
-                  onChange={(event) => void refreshEditorPurchaseOrder(event.target.value)}
+                  onChange={(event) => {
+                    const purchaseOrderId = event.currentTarget.value;
+                    void refreshEditorPurchaseOrder(purchaseOrderId);
+                  }}
                   disabled={editor.mode === 'edit' || editor.loading}
+                  data-testid="goods-receipt-purchase-order-select"
                 >
+                  {editor.mode === 'create' ? <option value="">Chọn đơn đặt hàng</option> : null}
                   {eligiblePurchaseOrders.map((purchaseOrder) => (
                     <option key={purchaseOrder.id} value={purchaseOrder.id}>
                       {purchaseOrder.number || 'Chưa cấp số'} - {purchaseOrder.supplierName}
@@ -934,7 +937,13 @@ export default function GoodsReceiptWorkspace({
 
             <div className={localStyles.modalActions}>
               <button type="button" className={styles.secondaryButton} onClick={() => setEditor(null)} disabled={editor.loading}>Hủy</button>
-              <button type="button" className={styles.primaryButton} onClick={() => void saveEditor()} disabled={editor.loading} data-testid="goods-receipt-save-button">
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => void saveEditor()}
+                disabled={editor.loading || !editor.purchaseOrder}
+                data-testid="goods-receipt-save-button"
+              >
                 {busyId ? 'Đang lưu…' : editor.mode === 'create' ? 'Tạo phiếu' : 'Lưu phiếu'}
               </button>
             </div>
