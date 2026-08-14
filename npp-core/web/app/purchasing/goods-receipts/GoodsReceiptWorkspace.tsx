@@ -33,6 +33,22 @@ type Props = {
 };
 
 type StatusFilter = GoodsReceiptStatus | 'all';
+type TrackingPolicy = {
+  baseVariantId: string;
+  lotTrackingMode: 'NONE' | 'REQUIRED';
+  expiryTrackingMode: 'NONE' | 'OPTIONAL' | 'REQUIRED';
+  locationRequired: boolean;
+};
+type TrackingRequirement = {
+  purchaseOrderLineId: string;
+  lineNumber: number;
+  sourceVariantId: string;
+  skuCode: string;
+  trackingPolicy: TrackingPolicy | null;
+};
+type GoodsReceiptLineWithTracking = NonNullable<GoodsReceipt['lines']>[number] & {
+  trackingPolicy?: TrackingPolicy | null;
+};
 type DraftLine = GoodsReceiptDraftLine & {
   purchaseOrderLineId: string;
   lineNumber: number;
@@ -47,6 +63,7 @@ type DraftLine = GoodsReceiptDraftLine & {
   finalizeLine: boolean;
   qualityReasonCode: string;
   qualityNote: string;
+  trackingPolicy: TrackingPolicy | null;
 };
 
 type PurchaseOrderLine = NonNullable<PurchaseOrder['lines']>[number];
@@ -119,7 +136,11 @@ function decimalPositive(value: string | null | undefined): boolean {
   return (decimalToScaled(normalizeDecimalInput(String(value ?? '0')), false) ?? 0n) > 0n;
 }
 
-function buildDraftLineFromOrderLine(line: PurchaseOrderLine, warehouseLocations: WarehouseLocation[]): DraftLine {
+function buildDraftLineFromOrderLine(
+  line: PurchaseOrderLine,
+  warehouseLocations: WarehouseLocation[],
+  trackingPolicy: TrackingPolicy | null,
+): DraftLine {
   const defaultLocation = warehouseLocations[0]?.id ?? '';
   const received = line.remainingQuantity ?? line.quantity;
   return {
@@ -144,10 +165,11 @@ function buildDraftLineFromOrderLine(line: PurchaseOrderLine, warehouseLocations
     expiryDate: '',
     supplierLotReference: '',
     note: '',
+    trackingPolicy,
   };
 }
 
-function buildDraftLineFromReceiptLine(line: NonNullable<GoodsReceipt['lines']>[number]): DraftLine {
+function buildDraftLineFromReceiptLine(line: GoodsReceiptLineWithTracking): DraftLine {
   return {
     purchaseOrderLineId: line.purchaseOrderLineId,
     lineNumber: line.lineNumber,
@@ -170,7 +192,37 @@ function buildDraftLineFromReceiptLine(line: NonNullable<GoodsReceipt['lines']>[
     expiryDate: line.expiryDate ?? '',
     supplierLotReference: line.supplierLotReference ?? '',
     note: line.note ?? '',
+    trackingPolicy: line.trackingPolicy ?? null,
   };
+}
+
+function trackingIssue(line: DraftLine): string | null {
+  if (!decimalPositive(line.acceptedQuantity)) return null;
+  const policy = line.trackingPolicy;
+  if (!policy) return `SKU ${line.skuCode} chưa được cấu hình quản lý lô/kho.`;
+  if (policy.locationRequired && !line.locationId.trim()) {
+    return `SKU ${line.skuCode} bắt buộc chọn vị trí kho.`;
+  }
+  if (policy.lotTrackingMode === 'REQUIRED' && !line.lotId.trim() && !line.lotCode.trim()) {
+    return `SKU ${line.skuCode} bắt buộc nhập Số lô.`;
+  }
+  if (policy.expiryTrackingMode === 'REQUIRED' && !line.lotId.trim() && !line.expiryDate.trim()) {
+    return `SKU ${line.skuCode} bắt buộc nhập Hạn sử dụng.`;
+  }
+  return null;
+}
+
+function needsTrackingGuidance(line: DraftLine): boolean {
+  const policy = line.trackingPolicy;
+  return Boolean(
+    policy
+      && decimalPositive(line.acceptedQuantity)
+      && (
+        policy.lotTrackingMode === 'REQUIRED'
+        || policy.expiryTrackingMode !== 'NONE'
+        || (policy.locationRequired && !line.locationId.trim())
+      ),
+  );
 }
 
 export default function GoodsReceiptWorkspace({
@@ -238,6 +290,7 @@ export default function GoodsReceiptWorkspace({
   const varianceAllowed = draftPolicy.variance;
   const purchaseOrderReadable = initialPurchaseOrderPermissionKeys.includes('core.purchase-order.read');
   const activePurchaseOrder = editor?.purchaseOrder ?? null;
+  const trackingGuidanceLines = editor?.lines.filter(needsTrackingGuidance) ?? [];
 
   useEffect(() => {
     if (selectedGoodsReceipt || pendingAction || editor) closeButtonRef.current?.focus();
@@ -374,16 +427,54 @@ export default function GoodsReceiptWorkspace({
       receiptDate: detail.receiptDate,
       supplierDeliveryReference: detail.supplierDeliveryReference ?? '',
       note: detail.note ?? '',
-      lines: (detail.lines ?? []).map(buildDraftLineFromReceiptLine),
+      lines: ((detail.lines ?? []) as GoodsReceiptLineWithTracking[]).map(buildDraftLineFromReceiptLine),
       loading: false,
     });
   }
 
-  function openAction(action: ActionName, goodsReceipt: GoodsReceipt) {
+  async function openAction(action: ActionName, goodsReceipt: GoodsReceipt) {
     setError(null);
     setNotice(null);
     setReverseReason('');
     setReverseDate(todayLocal());
+
+    if (action === 'post') {
+      const detail = await loadReceiptDetail(goodsReceipt);
+      if (!detail) return;
+      const draftLines = ((detail.lines ?? []) as GoodsReceiptLineWithTracking[]).map(buildDraftLineFromReceiptLine);
+      const missingPolicy = draftLines.find((line) => decimalPositive(line.acceptedQuantity) && !line.trackingPolicy);
+      if (missingPolicy) {
+        setError(`Chưa thể ghi sổ: SKU ${missingPolicy.skuCode} chưa được cấu hình quản lý lô/kho. Cần cấu hình mặt hàng trước, hệ thống chưa gửi yêu cầu Ghi sổ.`);
+        return;
+      }
+      const missingTracking = draftLines.map(trackingIssue).find((message): message is string => Boolean(message));
+      if (missingTracking) {
+        if (!initialPermissionKeys.includes('core.goods-receipt.update')) {
+          setError(`Chưa thể ghi sổ: ${missingTracking} Tài khoản hiện tại không có quyền sửa phiếu để bổ sung.`);
+          return;
+        }
+        const purchaseOrder = await loadPurchaseOrderDetail(detail.purchaseOrderId);
+        if (!purchaseOrder) return;
+        setSelectedGoodsReceipt(null);
+        setPendingAction(null);
+        setEditor({
+          mode: 'edit',
+          receipt: detail,
+          purchaseOrder,
+          purchaseOrderId: detail.purchaseOrderId,
+          receiptDate: detail.receiptDate,
+          supplierDeliveryReference: detail.supplierDeliveryReference ?? '',
+          note: detail.note ?? '',
+          lines: draftLines,
+          loading: false,
+        });
+        setError(`Chưa thể ghi sổ: ${missingTracking} Phiếu đã được mở để bổ sung. Nhập thông tin ở khung “Cần bổ sung trước khi ghi sổ”, lưu phiếu rồi Ghi sổ lại.`);
+        return;
+      }
+      setPendingAction({ action, goodsReceipt: detail });
+      return;
+    }
+
     setPendingAction({ action, goodsReceipt });
   }
 
@@ -408,14 +499,52 @@ export default function GoodsReceiptWorkspace({
       if (purchaseOrder) setError('Đơn đặt hàng được chọn chưa có dòng hàng hợp lệ.');
       return;
     }
+
+    let requirements: TrackingRequirement[];
+    try {
+      requirements = await requestJson<TrackingRequirement[]>(
+        `/api/goods-receipts/tracking-requirements?purchaseOrderId=${encodeURIComponent(purchaseOrderId)}`,
+      );
+    } catch (trackingError) {
+      setEditor((current) => current?.mode === 'create' && current.purchaseOrderId === purchaseOrderId
+        ? { ...current, purchaseOrder: null, lines: [], loading: false }
+        : current);
+      setError(trackingError instanceof Error
+        ? `Không tải được yêu cầu lô/kho của đơn đặt hàng: ${trackingError.message}`
+        : 'Không tải được yêu cầu lô/kho của đơn đặt hàng.');
+      return;
+    }
+
     const purchaseOrderLines = purchaseOrder.lines ?? [];
+    const requirementByLineId = new Map(requirements.map((requirement) => [requirement.purchaseOrderLineId, requirement]));
+    const incompleteRequirement = purchaseOrderLines.find((line) => !requirementByLineId.has(line.id));
+    if (incompleteRequirement) {
+      setEditor((current) => current?.mode === 'create' && current.purchaseOrderId === purchaseOrderId
+        ? { ...current, purchaseOrder: null, lines: [], loading: false }
+        : current);
+      setError(`Không xác định được yêu cầu lô/kho cho SKU ${incompleteRequirement.skuCode}. Chưa thể tạo phiếu nhận hàng.`);
+      return;
+    }
+    const missingPolicy = requirements.find((requirement) => !requirement.trackingPolicy);
+    if (missingPolicy) {
+      setEditor((current) => current?.mode === 'create' && current.purchaseOrderId === purchaseOrderId
+        ? { ...current, purchaseOrder: null, lines: [], loading: false }
+        : current);
+      setError(`SKU ${missingPolicy.skuCode} chưa được cấu hình quản lý lô/kho. Cần cấu hình mặt hàng trước khi tạo phiếu nhận hàng.`);
+      return;
+    }
+
     const warehouseLocations = initialLocations.filter((location) => location.warehouse_id === purchaseOrder.warehouseId);
     setEditor((current) => {
       if (!current || current.mode !== 'create' || current.purchaseOrderId !== purchaseOrderId) return current;
       return {
         ...current,
         purchaseOrder,
-        lines: purchaseOrderLines.map((line) => buildDraftLineFromOrderLine(line, warehouseLocations)),
+        lines: purchaseOrderLines.map((line) => buildDraftLineFromOrderLine(
+          line,
+          warehouseLocations,
+          requirementByLineId.get(line.id)?.trackingPolicy ?? null,
+        )),
         loading: false,
       };
     });
@@ -702,10 +831,10 @@ export default function GoodsReceiptWorkspace({
                           <button type="button" className={styles.secondaryButton} onClick={() => void openEdit(goodsReceipt)}>Sửa</button>
                         ) : null}
                         {goodsReceipt.status === 'draft' && initialPermissionKeys.includes('core.goods-receipt.post') ? (
-                          <button type="button" className={styles.primaryButton} onClick={() => openAction('post', goodsReceipt)}>Ghi sổ</button>
+                          <button type="button" className={styles.primaryButton} onClick={() => void openAction('post', goodsReceipt)}>Ghi sổ</button>
                         ) : null}
                         {goodsReceipt.status === 'posted' && initialPermissionKeys.includes('core.goods-receipt.reverse') ? (
-                          <button type="button" className={styles.primaryButton} onClick={() => openAction('reverse', goodsReceipt)}>Đảo phiếu</button>
+                          <button type="button" className={styles.primaryButton} onClick={() => void openAction('reverse', goodsReceipt)}>Đảo phiếu</button>
                         ) : null}
                       </div>
                     </td>
@@ -727,6 +856,12 @@ export default function GoodsReceiptWorkspace({
               </div>
               <button ref={closeButtonRef} type="button" className={styles.modalClose} onClick={() => setEditor(null)} disabled={editor.loading}>Đóng</button>
             </div>
+
+            {error ? (
+              <div className={`${styles.banner} ${styles.bannerError}`} role="alert" data-testid="goods-receipt-editor-error">
+                {error}
+              </div>
+            ) : null}
 
             <div className={localStyles.headerGrid}>
               <div className={styles.form}>
@@ -761,6 +896,86 @@ export default function GoodsReceiptWorkspace({
                 <input value={editor.note} onChange={(event) => setEditor((current) => current ? { ...current, note: event.target.value } : current)} disabled={editor.loading} />
               </div>
             </div>
+
+            {trackingGuidanceLines.length > 0 ? (
+              <section className={styles.tableSection} aria-label="Thông tin bắt buộc trước khi ghi sổ" data-testid="goods-receipt-tracking-panel">
+                <div className={styles.sectionHeader}>
+                  <div>
+                    <p className={styles.panelKicker}>Cần bổ sung trước khi ghi sổ</p>
+                    <h2>Lô, hạn sử dụng và vị trí kho</h2>
+                    <small>Có thể lưu nháp trước; các mục có dấu * phải đủ trước khi Ghi sổ.</small>
+                  </div>
+                </div>
+                <div className={localStyles.headerGrid}>
+                  {editor.lines.map((line, index) => {
+                    if (!needsTrackingGuidance(line) || !line.trackingPolicy) return null;
+                    const policy = line.trackingPolicy;
+                    const availableLocations = initialLocations.filter((location) => location.warehouse_id === editor.purchaseOrder?.warehouseId);
+                    return (
+                      <div key={`tracking-${line.purchaseOrderLineId}`} className={`${styles.form} ${localStyles.spanThree}`} data-testid={`goods-receipt-tracking-${line.purchaseOrderLineId}`}>
+                        <strong>{line.skuCode} — {line.itemName}</strong>
+                        {policy.locationRequired ? (
+                          <label>
+                            Vị trí kho *
+                            <select
+                              value={line.locationId}
+                              onChange={(event) => updateEditorLine(index, { locationId: event.target.value })}
+                              disabled={editor.loading}
+                            >
+                              <option value="">Chọn vị trí kho</option>
+                              {availableLocations.map((location) => (
+                                <option key={location.id} value={location.id}>{location.code} - {location.name}</option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
+                        {policy.lotTrackingMode === 'REQUIRED' ? (
+                          <label>
+                            Số lô *
+                            <input
+                              value={line.lotCode}
+                              onChange={(event) => updateEditorLine(index, { lotCode: event.target.value })}
+                              placeholder="Nhập số lô trên bao bì"
+                              maxLength={100}
+                              disabled={editor.loading || Boolean(line.lotId)}
+                              data-testid={`goods-receipt-lot-code-${line.purchaseOrderLineId}`}
+                            />
+                          </label>
+                        ) : null}
+                        {policy.lotTrackingMode === 'REQUIRED' ? (
+                          <label>
+                            Ngày sản xuất (nếu có)
+                            <input
+                              type="date"
+                              value={line.manufacturedDate}
+                              onChange={(event) => updateEditorLine(index, { manufacturedDate: event.target.value })}
+                              disabled={editor.loading || Boolean(line.lotId)}
+                            />
+                          </label>
+                        ) : null}
+                        {policy.expiryTrackingMode !== 'NONE' ? (
+                          <label>
+                            {policy.expiryTrackingMode === 'REQUIRED' ? 'Hạn sử dụng *' : 'Hạn sử dụng (nếu có)'}
+                            <input
+                              type="date"
+                              value={line.expiryDate}
+                              onChange={(event) => updateEditorLine(index, { expiryDate: event.target.value })}
+                              disabled={editor.loading || Boolean(line.lotId)}
+                              data-testid={`goods-receipt-expiry-${line.purchaseOrderLineId}`}
+                            />
+                          </label>
+                        ) : null}
+                        <small>
+                          {policy.lotTrackingMode === 'REQUIRED'
+                            ? 'Mặt hàng này bắt buộc có số lô trước khi ghi sổ.'
+                            : 'Mặt hàng này có yêu cầu theo dõi kho cần hoàn tất trước khi ghi sổ.'}
+                        </small>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
 
             <div className={localStyles.linesWrap}>
               <table className={localStyles.linesTable}>
@@ -1033,10 +1248,10 @@ export default function GoodsReceiptWorkspace({
                 <button type="button" className={styles.secondaryButton} onClick={() => void openEdit(selectedGoodsReceipt)} disabled={Boolean(busyId)}>Sửa nháp</button>
               ) : null}
               {selectedGoodsReceipt.status === 'draft' && initialPermissionKeys.includes('core.goods-receipt.post') ? (
-                <button type="button" className={styles.primaryButton} onClick={() => openAction('post', selectedGoodsReceipt)} disabled={Boolean(busyId)}>Ghi sổ</button>
+                <button type="button" className={styles.primaryButton} onClick={() => void openAction('post', selectedGoodsReceipt)} disabled={Boolean(busyId)}>Ghi sổ</button>
               ) : null}
               {selectedGoodsReceipt.status === 'posted' && initialPermissionKeys.includes('core.goods-receipt.reverse') ? (
-                <button type="button" className={styles.primaryButton} onClick={() => openAction('reverse', selectedGoodsReceipt)} disabled={Boolean(busyId)}>Đảo phiếu</button>
+                <button type="button" className={styles.primaryButton} onClick={() => void openAction('reverse', selectedGoodsReceipt)} disabled={Boolean(busyId)}>Đảo phiếu</button>
               ) : null}
             </div>
           </section>

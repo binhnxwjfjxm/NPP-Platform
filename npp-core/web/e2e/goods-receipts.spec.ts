@@ -1,52 +1,54 @@
-import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
+import { createIdempotencyKey } from '@npp/contracts';
+import { test, expect, type APIRequestContext } from '@playwright/test';
 
 function uniqueSuffix() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`.toUpperCase();
 }
 
-async function createFixture(request: APIRequestContext, suffix: string) {
-  const create = async (path: string, key: string, data: Record<string, unknown>) => {
-    const response = await request.post(path, { headers: { 'Idempotency-Key': key }, data });
-    expect(response.status()).toBe(201);
-    return (await response.json()).data;
-  };
+function key(operation: string) {
+  return createIdempotencyKey(`gr-e2e-${operation}`);
+}
 
-  const branch = await create('/api/organization/branches', `gr-branch-${suffix}`, {
+async function createResource(request: APIRequestContext, path: string, operation: string, data: Record<string, unknown>) {
+  const response = await request.post(path, { headers: { 'Idempotency-Key': key(operation) }, data });
+  expect(response.status()).toBe(201);
+  return (await response.json()).data;
+}
+
+async function createFixture(request: APIRequestContext) {
+  const suffix = uniqueSuffix();
+  const branch = await createResource(request, '/api/organization/branches', 'branch', {
     code: `GRB-${suffix}`,
     name: `Chi nhánh nhận hàng ${suffix}`,
-    address: `Địa chỉ ${suffix}`,
-    phone: '0901234567',
-    email: `gr-branch-${suffix.toLowerCase()}@example.com`,
   });
-  const warehouse = await create('/api/organization/warehouses', `gr-warehouse-${suffix}`, {
+  const warehouse = await createResource(request, '/api/organization/warehouses', 'warehouse', {
     branchId: branch.id,
     code: `GRW-${suffix}`,
     name: `Kho nhận hàng ${suffix}`,
     warehouseType: 'main',
   });
-  const location = await create('/api/organization/warehouse-locations', `gr-location-${suffix}`, {
+  const location = await createResource(request, '/api/organization/warehouse-locations', 'location', {
     warehouseId: warehouse.id,
     code: `GRL-${suffix}`,
     name: `Vị trí nhận hàng ${suffix}`,
     locationType: 'storage',
   });
-  const supplier = await create('/api/suppliers', `gr-supplier-${suffix}`, {
+  const supplier = await createResource(request, '/api/suppliers', 'supplier', {
     code: `GRS-${suffix}`,
     name: `Nhà cung cấp nhận hàng ${suffix}`,
-    taxId: `TAX-GR-${suffix}`,
-    avgDeliveryDays: 3,
+    avgDeliveryDays: 5,
   });
-  const unit = await create('/api/units', `gr-unit-${suffix}`, {
-    code: `GRE-${suffix}`,
-    name: `Đơn vị nhận ${suffix}`,
+  const unit = await createResource(request, '/api/units', 'unit', {
+    code: `GRU-${suffix}`,
+    name: `Đơn vị nhận hàng ${suffix}`,
     unitKind: 'COUNT',
     allowsFractional: true,
   });
-  const product = await create('/api/products', `gr-product-${suffix}`, {
+  const product = await createResource(request, '/api/products', 'product', {
     code: `GRP-${suffix}`,
     name: `Sản phẩm nhận hàng ${suffix}`,
   });
-  const variant = await create(`/api/products/${product.id}/variants`, `gr-variant-${suffix}`, {
+  const variant = await createResource(request, `/api/products/${product.id}/variants`, 'variant', {
     sku: `GRSKU-${suffix}`,
     name: `SKU nhận hàng ${suffix}`,
     variantKind: 'BASE',
@@ -66,7 +68,7 @@ async function createFixture(request: APIRequestContext, suffix: string) {
   expect(response.status()).toBe(200);
 
   response = await request.put(`/api/inventory/tracking-policies/${variant.id}`, {
-    headers: { 'Idempotency-Key': `gr-policy-${suffix}` },
+    headers: { 'Idempotency-Key': key('tracking-policy') },
     data: {
       baseVariantId: variant.id,
       lotTrackingMode: 'NONE',
@@ -76,62 +78,62 @@ async function createFixture(request: APIRequestContext, suffix: string) {
   });
   expect(response.status()).toBe(200);
 
-  const poCreate = await request.post('/api/purchase-orders', {
-    headers: { 'Idempotency-Key': `gr-po-create-${suffix}` },
+  response = await request.post('/api/purchase-orders', {
+    headers: { 'Idempotency-Key': key('purchase-order-create') },
     data: {
       supplierId: supplier.id,
       warehouseId: warehouse.id,
-      orderDate: '2026-07-29',
-      expectedDate: '2026-08-05',
+      orderDate: '2026-07-01',
+      expectedDate: '2026-07-05',
       supplierReference: `GR-PO-${suffix}`,
       currencyCode: 'VND',
-      note: 'PO phục vụ Browser E2E P5.2',
+      note: 'PO phục vụ Browser E2E nhận hàng',
       lines: [{
         variantId: variant.id,
         quantity: '10',
-        unitPrice: '10000',
+        unitPrice: '12000',
         discountAmount: '0',
         taxAmount: '0',
-        priceOverrideReason: 'Giá fixture phục vụ Browser E2E phiếu nhận hàng',
+        priceOverrideReason: 'Giá fixture Browser E2E',
       }],
     },
   });
-  expect(poCreate.status()).toBe(201);
-  const draftPurchaseOrder = (await poCreate.json()).data;
+  expect(response.status()).toBe(201);
+  const draftOrder = (await response.json()).data;
 
-  const submit = await request.post(`/api/purchase-orders/${draftPurchaseOrder.id}/submit`, {
-    headers: { 'Idempotency-Key': `gr-po-submit-${suffix}` },
-    data: { expectedRevision: draftPurchaseOrder.revision },
+  response = await request.post(`/api/purchase-orders/${draftOrder.id}/submit`, {
+    headers: { 'Idempotency-Key': key('purchase-order-submit') },
+    data: { expectedRevision: draftOrder.revision },
   });
-  expect(submit.status()).toBe(200);
-  const submittedPurchaseOrder = (await submit.json()).data;
+  expect(response.status()).toBe(200);
+  const submittedOrder = (await response.json()).data;
 
-  const approve = await request.post(`/api/purchase-orders/${draftPurchaseOrder.id}/approve`, {
-    headers: { 'Idempotency-Key': `gr-po-approve-${suffix}` },
-    data: { expectedRevision: submittedPurchaseOrder.revision },
+  response = await request.post(`/api/purchase-orders/${draftOrder.id}/approve`, {
+    headers: { 'Idempotency-Key': key('purchase-order-approve') },
+    data: { expectedRevision: submittedOrder.revision },
   });
-  expect(approve.status()).toBe(200);
-  const purchaseOrder = (await approve.json()).data;
+  expect(response.status()).toBe(200);
+  const purchaseOrder = (await response.json()).data;
+  expect(purchaseOrder.lines).toHaveLength(1);
 
-  return { warehouse, location, supplier, variant, purchaseOrder };
+  return { suffix, branch, warehouse, location, supplier, unit, product, variant, purchaseOrder };
 }
 
-async function openReceiptEditor(page: Page, purchaseOrderId: string, sku: string) {
+async function openReceiptEditor(page: import('@playwright/test').Page, purchaseOrderId: string, sku: string) {
   await page.getByTestId('goods-receipt-create-button').click();
   const editor = page.getByRole('dialog', { name: 'Phiếu nhận hàng nháp' });
   await expect(editor).toBeVisible();
-  await editor.locator('select').first().selectOption(purchaseOrderId);
-  await expect(editor.getByText(sku, { exact: true })).toBeVisible();
+  await editor.getByTestId('goods-receipt-purchase-order-select').selectOption(purchaseOrderId);
+  await expect(editor).toContainText(sku);
   return editor;
 }
 
 test.describe('Phiếu nhận hàng mua vào', () => {
   test('nhận một phần, nhận đủ, ghi sổ tồn kho và đảo phiếu', async ({ page, request }) => {
-    const suffix = uniqueSuffix();
-    const fixture = await createFixture(request, suffix);
-    const firstReference = `DELIVERY-1-${suffix}`;
-    const secondReference = `DELIVERY-2-${suffix}`;
-    const shortageReference = `DELIVERY-SHORT-${suffix}`;
+    const fixture = await createFixture(request);
+    const firstReference = `DELIVERY-1-${fixture.suffix}`;
+    const secondReference = `DELIVERY-2-${fixture.suffix}`;
+    const shortageReference = `DELIVERY-SHORT-${fixture.suffix}`;
 
     await page.goto('/purchasing/goods-receipts');
     await expect(page.getByTestId('goods-receipts-page')).toBeVisible();
@@ -229,7 +231,7 @@ test.describe('Phiếu nhận hàng mua vào', () => {
     editor = await openReceiptEditor(page, fixture.purchaseOrder.id, fixture.variant.sku);
     await editor.locator('input[inputmode="decimal"]').first().fill('8');
     await page.getByTestId('goods-receipt-save-button').click();
-    await expect(page.locator('[role="alert"]').filter({ hasText: /remaining/i })).toBeVisible();
+    await expect(editor.getByTestId('goods-receipt-editor-error')).toContainText(/remaining/i);
 
     await editor.locator('input[inputmode="decimal"]').nth(0).fill('2');
     await editor.getByRole('checkbox').check();
