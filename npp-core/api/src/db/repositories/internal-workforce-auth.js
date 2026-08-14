@@ -253,16 +253,18 @@ export async function loadUserAuthorization(client, { installationId, userId }) 
 }
 
 export async function loadInstallationOwnerScopes(client, { installationId }) {
+  // Installation-wide authorization includes inactive org records so historical documents
+  // remain visible after a branch or warehouse is retired.
   const [branches, warehouses] = await Promise.all([
     client.query(
       `SELECT id FROM shared.branches
-       WHERE installation_id = $1 AND is_active = true
+       WHERE installation_id = $1
        ORDER BY id`,
       [installationId],
     ),
     client.query(
       `SELECT id FROM shared.warehouses
-       WHERE installation_id = $1 AND is_active = true
+       WHERE installation_id = $1
        ORDER BY id`,
       [installationId],
     ),
@@ -399,20 +401,22 @@ export async function replaceSecurityOwnerBindings(client, {
 }
 
 export async function validateUserScopeIds(client, { installationId, scopes }) {
+  // A retired branch/warehouse remains a valid authorization scope for historical data.
+  // The installation boundary is the security boundary; operational activity is separate.
   const branchIds = [...new Set(scopes.branchIds)];
   const warehouseIds = [...new Set(scopes.warehouseIds)];
   const [branches, warehouses] = await Promise.all([
     branchIds.length
       ? client.query(
           `SELECT id FROM shared.branches
-           WHERE installation_id = $1 AND id = ANY($2::uuid[]) AND is_active = true`,
+           WHERE installation_id = $1 AND id = ANY($2::uuid[])`,
           [installationId, branchIds],
         )
       : Promise.resolve({ rows: [] }),
     warehouseIds.length
       ? client.query(
           `SELECT id FROM shared.warehouses
-           WHERE installation_id = $1 AND id = ANY($2::uuid[]) AND is_active = true`,
+           WHERE installation_id = $1 AND id = ANY($2::uuid[])`,
           [installationId, warehouseIds],
         )
       : Promise.resolve({ rows: [] }),
