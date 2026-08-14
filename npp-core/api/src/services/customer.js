@@ -4,6 +4,7 @@ import * as employeeRepo from '../db/repositories/employee.js';
 const CODE_PATTERN = /^[A-Z0-9_-]{1,64}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MONEY_PATTERN = /^\d{1,16}(?:\.\d{1,2})?$/;
+const LOCATION_URL_MAX_LENGTH = 2048;
 
 function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -28,6 +29,27 @@ function validateEmail(value) {
 
 function validatePhone(value) {
   return !value || /^[0-9\s\-+()]{5,20}$/.test(value);
+}
+
+function normalizeLocationUrl(value) {
+  const normalized = normalizeText(value);
+  if (!normalized) return { ok: true, value: null };
+  if (normalized.length > LOCATION_URL_MAX_LENGTH) {
+    return {
+      ok: false,
+      code: 'INVALID_LOCATION_URL',
+      message: `Location URL must not exceed ${LOCATION_URL_MAX_LENGTH} characters`,
+    };
+  }
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password) {
+      return { ok: false, code: 'INVALID_LOCATION_URL', message: 'Location URL must be an absolute HTTPS URL' };
+    }
+  } catch {
+    return { ok: false, code: 'INVALID_LOCATION_URL', message: 'Location URL must be an absolute HTTPS URL' };
+  }
+  return { ok: true, value: normalized };
 }
 
 function normalizeDateTime(value) {
@@ -403,6 +425,9 @@ export function validateCustomerAddressInput(payload) {
   const phone = normalizeText(payload.phone);
   if (!validatePhone(phone)) return { ok: false, code: 'INVALID_PHONE', message: 'Phone number format is invalid' };
 
+  const locationUrl = normalizeLocationUrl(payload.locationUrl);
+  if (!locationUrl.ok) return locationUrl;
+
   const addressLine1 = normalizeText(payload.addressLine1);
   if (!addressLine1 || addressLine1.length > 512) return { ok: false, code: 'INVALID_ADDRESS', message: 'Address line 1 is required and must not exceed 512 characters' };
 
@@ -433,6 +458,7 @@ export function validateCustomerAddressInput(payload) {
       label,
       recipientName: recipientName || null,
       phone: phone || null,
+      locationUrl: locationUrl.value,
       addressLine1,
       ...normalizedOptional,
       countryCode,
@@ -500,6 +526,7 @@ export async function updateCustomerAddress(client, {
     label: payload?.label ?? existing.label,
     recipientName: Object.prototype.hasOwnProperty.call(payload ?? {}, 'recipientName') ? payload.recipientName : existing.recipient_name ?? '',
     phone: Object.prototype.hasOwnProperty.call(payload ?? {}, 'phone') ? payload.phone : existing.phone ?? '',
+    locationUrl: Object.prototype.hasOwnProperty.call(payload ?? {}, 'locationUrl') ? payload.locationUrl : existing.location_url ?? '',
     addressLine1: payload?.addressLine1 ?? existing.address_line1,
     addressLine2: Object.prototype.hasOwnProperty.call(payload ?? {}, 'addressLine2') ? payload.addressLine2 : existing.address_line2 ?? '',
     ward: Object.prototype.hasOwnProperty.call(payload ?? {}, 'ward') ? payload.ward : existing.ward ?? '',

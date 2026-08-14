@@ -52,6 +52,7 @@ type AddressDraft = {
   label: string;
   recipientName: string;
   phone: string;
+  locationUrl: string;
   addressLine1: string;
   addressLine2: string;
   ward: string;
@@ -104,6 +105,7 @@ function emptyAddressDraft(): AddressDraft {
     label: '',
     recipientName: '',
     phone: '',
+    locationUrl: '',
     addressLine1: '',
     addressLine2: '',
     ward: '',
@@ -139,6 +141,21 @@ function money(value: string) {
     : value;
 }
 
+function locationUrlValidationMessage(value: string): string | null {
+  const normalized = value.trim();
+  if (!normalized) return null;
+  if (normalized.length > 2048) return 'Link định vị không được vượt quá 2048 ký tự.';
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password) {
+      return 'Link định vị phải là URL HTTPS hợp lệ.';
+    }
+  } catch {
+    return 'Link định vị phải là URL HTTPS hợp lệ.';
+  }
+  return null;
+}
+
 export default function CustomerWorkspace({ initialCustomers, initialGroups, initialProvinces, initialError = null }: Props) {
   const [customers, setCustomers] = useState(initialCustomers);
   const [groups, setGroups] = useState(initialGroups);
@@ -165,6 +182,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
   const addressCreateKey = useRef('');
 
   const normalizedSearch = normalizeSearch(search);
+  const addressLocationUrlError = locationUrlValidationMessage(addressDraft.locationUrl);
   const employeeFilterOptions = useMemo(() => {
     const assignedEmployeeIds = new Set<string>();
     for (const customer of customers) {
@@ -325,6 +343,10 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
   async function submitCustomer(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const current = customerEditor?.mode === 'edit' ? customers.find((item) => item.id === customerEditor.id) : null;
+    if (!current && addressLocationUrlError) {
+      setError(addressLocationUrlError);
+      return;
+    }
     let createdCustomer = pendingCreatedCustomer;
     setBusy('save-customer');
     setError(null);
@@ -380,6 +402,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
           label: addressDraft.label.trim(),
           recipientName: addressDraft.recipientName.trim() || customerDraft.name.trim(),
           phone: addressDraft.phone.trim() || customerDraft.phone.trim() || null,
+          locationUrl: addressDraft.locationUrl.trim() || null,
           addressLine1: addressDraft.addressLine1.trim(),
           addressLine2: addressDraft.addressLine2.trim() || null,
           ward: addressDraft.ward.trim() || null,
@@ -488,6 +511,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
       label: address.label,
       recipientName: address.recipient_name ?? '',
       phone: address.phone ?? '',
+      locationUrl: address.location_url ?? '',
       addressLine1: address.address_line1,
       addressLine2: address.address_line2 ?? '',
       ward: address.ward ?? '',
@@ -503,6 +527,10 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
   async function submitAddress(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!addressCustomerId) return;
+    if (addressLocationUrlError) {
+      setError(addressLocationUrlError);
+      return;
+    }
     const current = addressEditor?.mode === 'edit' ? addresses.find((item) => item.id === addressEditor.id) : null;
     setBusy('save-address');
     setError(null);
@@ -518,6 +546,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
             label: addressDraft.label.trim(),
             recipientName: addressDraft.recipientName.trim() || null,
             phone: addressDraft.phone.trim() || null,
+            locationUrl: addressDraft.locationUrl.trim() || null,
             addressLine1: addressDraft.addressLine1.trim(),
             addressLine2: addressDraft.addressLine2.trim() || null,
             ward: addressDraft.ward.trim() || null,
@@ -714,6 +743,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                       <label>Nhãn địa chỉ<input data-testid="customer-create-address-label-input" value={addressDraft.label} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, label: next })); }} required /></label>
                       <label>Người nhận<input value={addressDraft.recipientName} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, recipientName: next })); }} /></label>
                       <label>Điện thoại nhận hàng<input value={addressDraft.phone} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, phone: next })); }} /></label>
+                      <label className={customerStyles.fullWidth}>Link định vị<input data-testid="customer-create-location-url-input" type="url" inputMode="url" maxLength={2048} placeholder="https://maps.google.com/..." value={addressDraft.locationUrl} aria-invalid={Boolean(addressLocationUrlError)} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, locationUrl: next })); }} />{addressLocationUrlError ? <small role="alert">{addressLocationUrlError}</small> : <small>Dán link HTTPS từ ứng dụng bản đồ; không nhập tọa độ thủ công.</small>}</label>
                       <VietnamAdministrativeFields
                         initialProvinces={initialProvinces}
                         province={addressDraft.province}
@@ -731,7 +761,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                 </div>
                 <div className={styles.formActions}>
                   <button type="button" className={styles.secondaryButton} onClick={closeCustomerEditor} disabled={busy !== null}>Hủy</button>
-                  <button type="submit" className={joinClasses(styles.primaryButton, customerStyles.disabled, busy === 'save-customer' && customerStyles.loading)} disabled={busy !== null} data-testid="save-customer-button">
+                  <button type="submit" className={joinClasses(styles.primaryButton, customerStyles.disabled, busy === 'save-customer' && customerStyles.loading)} disabled={busy !== null || (customerEditor.mode === 'create' && Boolean(addressLocationUrlError))} data-testid="save-customer-button">
                     {busy === 'save-customer' ? 'Đang lưu…' : pendingCreatedCustomer ? 'Lưu lại địa chỉ' : customerEditor.mode === 'create' ? 'Lưu khách hàng và địa chỉ' : 'Lưu khách hàng'}
                   </button>
                 </div>
@@ -768,6 +798,8 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                       <article key={address.id} className={customerStyles.addressCard}>
                         <div className={customerStyles.addressHeader}><strong>{address.label}{address.is_default ? ' · Mặc định' : ''}</strong><span className={joinClasses(styles.statusPill, address.is_active ? styles.toneSuccess : styles.toneDanger)}>{address.is_active ? 'Hoạt động' : 'Ngừng'}</span></div>
                         <div className={customerStyles.addressMeta}>{[address.address_line1, address.address_line2, address.ward, address.district, address.province].filter(Boolean).join(', ')}</div>
+                        {address.phone ? <div className={customerStyles.addressMeta}>SĐT nhận hàng: {address.phone}</div> : null}
+                        {address.location_url ? <div className={customerStyles.addressMeta}><a href={address.location_url} target="_blank" rel="noreferrer">Mở link định vị</a></div> : <div className={customerStyles.addressMeta}>Chưa có link định vị</div>}
                         <div className={styles.rowActions}><button type="button" onClick={() => openAddressEdit(address)}>Sửa</button>{!address.is_default && address.is_active ? <button type="button" onClick={() => void patchAddress(address, { isDefault: true }, 'Đã đặt địa chỉ mặc định.')}>Đặt mặc định</button> : null}<button type="button" onClick={() => void patchAddress(address, { isActive: !address.is_active }, address.is_active ? 'Địa chỉ đã ngừng hoạt động.' : 'Địa chỉ đã được kích hoạt.')}>{address.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button></div>
                       </article>
                     ))}
@@ -782,6 +814,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                         <label>Người nhận<input value={addressDraft.recipientName} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, recipientName: next })); }} /></label>
                         <label>Điện thoại<input value={addressDraft.phone} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, phone: next })); }} /></label>
                         <label>Quốc gia<input value={addressDraft.countryCode} maxLength={2} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, countryCode: next })); }} /></label>
+                        <label className={customerStyles.fullWidth}>Link định vị<input data-testid="customer-address-location-url-input" type="url" inputMode="url" maxLength={2048} placeholder="https://maps.google.com/..." value={addressDraft.locationUrl} aria-invalid={Boolean(addressLocationUrlError)} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, locationUrl: next })); }} />{addressLocationUrlError ? <small role="alert">{addressLocationUrlError}</small> : <small>Dán link HTTPS từ ứng dụng bản đồ; không nhập tọa độ thủ công.</small>}</label>
                         <label className={customerStyles.fullWidth}>Số nhà, tên đường<input data-testid="customer-address-line1-input" value={addressDraft.addressLine1} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine1: next })); }} required /></label>
                         <label className={customerStyles.fullWidth}>Tòa nhà, tầng, phòng (nếu có)<input value={addressDraft.addressLine2} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, addressLine2: next })); }} /></label>
                         <VietnamAdministrativeFields
@@ -796,7 +829,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                         <label>Mã bưu chính<input value={addressDraft.postalCode} onChange={(event) => { const next = event.currentTarget.value; setAddressDraft((value) => ({ ...value, postalCode: next })); }} /></label>
                         <label className={joinClasses(customerStyles.inlineCheck, customerStyles.fullWidth)}><input type="checkbox" checked={addressDraft.isDefault} onChange={(event) => { const next = event.currentTarget.checked; setAddressDraft((value) => ({ ...value, isDefault: next })); }} />Đặt làm địa chỉ mặc định</label>
                       </div>
-                      <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => setAddressEditor(null)}>Hủy</button><button type="submit" className={joinClasses(styles.primaryButton, customerStyles.disabled, busy === 'save-address' && customerStyles.loading)} disabled={busy !== null}>{busy === 'save-address' ? 'Đang lưu…' : 'Lưu địa chỉ'}</button></div>
+                      <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => setAddressEditor(null)}>Hủy</button><button type="submit" className={joinClasses(styles.primaryButton, customerStyles.disabled, busy === 'save-address' && customerStyles.loading)} disabled={busy !== null || Boolean(addressLocationUrlError)}>{busy === 'save-address' ? 'Đang lưu…' : 'Lưu địa chỉ'}</button></div>
                     </form>
                   ) : <div className={customerStyles.empty}>Chọn “Thêm địa chỉ” hoặc “Sửa” để nhập thông tin.</div>}
                 </div>
