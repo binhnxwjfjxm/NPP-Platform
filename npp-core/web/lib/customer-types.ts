@@ -47,6 +47,7 @@ export type CustomerAddress = {
   province: string | null;
   postal_code: string | null;
   country_code: string;
+  location_url: string | null;
   is_default: boolean;
   is_active: boolean;
   created_at: string;

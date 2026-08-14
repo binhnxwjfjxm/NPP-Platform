@@ -10,7 +10,7 @@ const CUSTOMER_COLUMNS = `c.id, c.installation_id, c.code, c.name, c.group_id,
 
 const ADDRESS_COLUMNS = `id, installation_id, customer_id, label, recipient_name,
   phone, address_line1, address_line2, ward, district, province, postal_code,
-  country_code, is_default, is_active, created_at, updated_at, created_by, updated_by`;
+  country_code, location_url, is_default, is_active, created_at, updated_at, created_by, updated_by`;
 
 export async function insertCustomerGroup(client, {
   installationId,
@@ -414,6 +414,7 @@ export async function insertCustomerAddress(client, {
   province,
   postalCode,
   countryCode,
+  locationUrl,
   isDefault,
   createdBy,
 }) {
@@ -423,8 +424,8 @@ export async function insertCustomerAddress(client, {
     `INSERT INTO shared.customer_addresses
       (id, installation_id, customer_id, label, recipient_name, phone,
        address_line1, address_line2, ward, district, province, postal_code,
-       country_code, is_default, is_active, created_at, updated_at, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, true, $15, $16, $17, $18)
+       country_code, location_url, is_default, is_active, created_at, updated_at, created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, true, $16, $17, $18, $19)
      RETURNING ${ADDRESS_COLUMNS}`,
     [
       id,
@@ -440,6 +441,7 @@ export async function insertCustomerAddress(client, {
       province || null,
       postalCode || null,
       countryCode,
+      locationUrl || null,
       isDefault,
       now,
       now,
@@ -464,6 +466,7 @@ export async function updateCustomerAddress(client, {
   province,
   postalCode,
   countryCode,
+  locationUrl,
   isDefault,
   isActive,
   updatedBy,
@@ -481,14 +484,15 @@ export async function updateCustomerAddress(client, {
          province = $8,
          postal_code = $9,
          country_code = $10,
-         is_default = $11,
-         is_active = $12,
+         location_url = $11,
+         is_default = $12,
+         is_active = $13,
          updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
-         updated_by = $13
-     WHERE id = $14
-       AND customer_id = $15
-       AND installation_id = $16
-       AND updated_at = $17
+         updated_by = $14
+     WHERE id = $15
+       AND customer_id = $16
+       AND installation_id = $17
+       AND updated_at = $18
      RETURNING ${ADDRESS_COLUMNS}`,
     [
       label,
@@ -501,6 +505,7 @@ export async function updateCustomerAddress(client, {
       province || null,
       postalCode || null,
       countryCode,
+      locationUrl || null,
       isDefault,
       isActive,
       updatedBy,
