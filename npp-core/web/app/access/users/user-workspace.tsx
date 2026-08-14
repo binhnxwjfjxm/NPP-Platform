@@ -6,6 +6,7 @@ import { AppShell } from '../../components/app-shell';
 import styles from './user-workspace.module.css';
 import type { AccessRole, AccessUser } from '../../../lib/access-types';
 import type { Employee } from '../../../lib/employee-types';
+import type { Branch, Warehouse } from '../../../lib/organization-types';
 import { formatDateTime, matchTerm, normalizeSearch } from '../../../lib/organization-types';
 
 type FilterState = 'all' | 'active' | 'inactive';
@@ -17,11 +18,15 @@ type UserDraft = {
   password: string;
   isActive: boolean;
   roleIds: string[];
+  branchIds: string[];
+  warehouseIds: string[];
 };
 type Props = {
   initialUsers: AccessUser[];
   initialRoles: AccessRole[];
   initialEmployees: Employee[];
+  initialBranches: Branch[];
+  initialWarehouses: Warehouse[];
   initialError?: string | null;
 };
 type ApiEnvelope<T> = {
@@ -32,6 +37,14 @@ type CredentialResult = {
   userId: string;
   credentialUpdated: boolean;
   revokedSessionCount: number;
+};
+type ScopeResponse = {
+  userId: string;
+  scopes: {
+    branchIds: string[];
+    warehouseIds: string[];
+    territoryIds: string[];
+  };
 };
 
 class ApiRequestError extends Error {
@@ -52,7 +65,15 @@ function joinClasses(...values: Array<string | false | null | undefined>) {
 }
 
 function emptyDraft(): UserDraft {
-  return { loginName: '', employeeId: '', password: '', isActive: true, roleIds: [] };
+  return {
+    loginName: '',
+    employeeId: '',
+    password: '',
+    isActive: true,
+    roleIds: [],
+    branchIds: [],
+    warehouseIds: [],
+  };
 }
 
 function sortedIds(ids: string[]) {
@@ -109,11 +130,15 @@ export default function UserWorkspace({
   initialUsers,
   initialRoles,
   initialEmployees,
+  initialBranches,
+  initialWarehouses,
   initialError = null,
 }: Props) {
   const [users, setUsers] = useState(initialUsers);
   const [roles] = useState(initialRoles);
   const [employees] = useState(initialEmployees);
+  const [branches] = useState(initialBranches);
+  const [warehouses] = useState(initialWarehouses);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialError);
   const [notice, setNotice] = useState<string | null>(null);
@@ -131,6 +156,10 @@ export default function UserWorkspace({
   const roleMap = useMemo(
     () => new Map(roles.map((role) => [role.id, role])),
     [roles],
+  );
+  const branchMap = useMemo(
+    () => new Map(branches.map((branch) => [branch.id, branch])),
+    [branches],
   );
   const normalizedSearch = normalizeSearch(search);
 
@@ -181,6 +210,20 @@ export default function UserWorkspace({
       .sort((left, right) => left.name.localeCompare(right.name));
   }, [editingUser?.role_ids, roles]);
 
+  const selectableBranches = useMemo(() => {
+    const assigned = new Set(editingUser?.branch_ids ?? []);
+    return branches
+      .filter((branch) => branch.is_active || assigned.has(branch.id))
+      .sort((left, right) => left.code.localeCompare(right.code));
+  }, [branches, editingUser?.branch_ids]);
+
+  const selectableWarehouses = useMemo(() => {
+    const assigned = new Set(editingUser?.warehouse_ids ?? []);
+    return warehouses
+      .filter((warehouse) => warehouse.is_active || assigned.has(warehouse.id))
+      .sort((left, right) => left.code.localeCompare(right.code));
+  }, [editingUser?.warehouse_ids, warehouses]);
+
   async function reloadUsers(successMessage = 'Dữ liệu người dùng đã được tải lại.') {
     setBusy('reload');
     setError(null);
@@ -218,6 +261,8 @@ export default function UserWorkspace({
       password: '',
       isActive: user.is_active,
       roleIds: [...(user.role_ids ?? [])],
+      branchIds: [...(user.branch_ids ?? [])],
+      warehouseIds: [...(user.warehouse_ids ?? [])],
     });
     setEditor({ mode: 'edit', userId });
   }
@@ -239,6 +284,15 @@ export default function UserWorkspace({
     }));
   }
 
+  function toggleScope(kind: 'branchIds' | 'warehouseIds', id: string) {
+    setDraft((current) => ({
+      ...current,
+      [kind]: current[kind].includes(id)
+        ? current[kind].filter((currentId) => currentId !== id)
+        : [...current[kind], id],
+    }));
+  }
+
   function handleFailure(caught: unknown) {
     if (caught instanceof ApiRequestError && caught.code === 'CONFLICT') {
       setConflict(true);
@@ -249,10 +303,25 @@ export default function UserWorkspace({
     setError(caught instanceof Error ? caught.message : 'Lỗi không xác định');
   }
 
+  async function replaceScopes(userId: string) {
+    const payload = {
+      scopes: {
+        branchIds: sortedIds(draft.branchIds),
+        warehouseIds: sortedIds(draft.warehouseIds),
+        territoryIds: [],
+      },
+    };
+    return requestJson<ScopeResponse>(`/api/access/users/${userId}/scopes`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+      headers: { 'Idempotency-Key': keyFor('scopes', userId, payload) },
+    });
+  }
+
   async function provisionNewUser() {
     let created: AccessUser | null = null;
     try {
-      // New accounts stay disabled until role + credential provisioning finishes.
+      // New accounts stay disabled until role + credential + scope provisioning finishes.
       const createPayload = {
         loginName: draft.loginName,
         employeeId: draft.employeeId,
@@ -279,6 +348,13 @@ export default function UserWorkspace({
         body: JSON.stringify({ password: draft.password }),
       });
 
+      const savedScopes = await replaceScopes(created.id);
+      latest = {
+        ...latest,
+        branch_ids: savedScopes.scopes.branchIds,
+        warehouse_ids: savedScopes.scopes.warehouseIds,
+      };
+
       if (draft.isActive) {
         const statusPayload = {
           isActive: true,
@@ -292,7 +368,7 @@ export default function UserWorkspace({
       }
 
       setUsers((current) => mergeUser(current, latest));
-      setNotice('Đã tạo tài khoản, mật khẩu và vai trò. Nhân viên có thể đăng nhập bằng tên đăng nhập vừa cấp.');
+      setNotice('Đã tạo tài khoản, mật khẩu, vai trò và phạm vi chi nhánh/kho. Nhân viên có thể đăng nhập bằng tên đăng nhập vừa cấp.');
       setEditor(null);
       setDraft(emptyDraft());
     } catch (caught) {
@@ -309,7 +385,7 @@ export default function UserWorkspace({
       const message = caught instanceof Error ? caught.message : 'Không hoàn tất được việc cấp tài khoản';
       throw new ApiRequestError(
         'USER_PROVISIONING_INCOMPLETE',
-        `${message}. Tài khoản đã được giữ an toàn ở trạng thái hiện tại; biểu mẫu vẫn mở để hoàn tất vai trò, mật khẩu và kích hoạt.`,
+        `${message}. Tài khoản đã được giữ an toàn ở trạng thái hiện tại; biểu mẫu vẫn mở để hoàn tất vai trò, mật khẩu, phạm vi và kích hoạt.`,
       );
     }
   }
@@ -353,6 +429,19 @@ export default function UserWorkspace({
           body: JSON.stringify(rolesPayload),
           headers: { 'Idempotency-Key': keyFor('roles', original.id, rolesPayload) },
         });
+        setUsers((current) => current.map((user) => (user.id === latest.id ? latest : user)));
+        changed = true;
+      }
+
+      const scopesChanged = !sameIds(draft.branchIds, original.branch_ids ?? [])
+        || !sameIds(draft.warehouseIds, original.warehouse_ids ?? []);
+      if (!original.owner_kind && scopesChanged) {
+        const savedScopes = await replaceScopes(original.id);
+        latest = {
+          ...latest,
+          branch_ids: savedScopes.scopes.branchIds,
+          warehouse_ids: savedScopes.scopes.warehouseIds,
+        };
         setUsers((current) => current.map((user) => (user.id === latest.id ? latest : user)));
         changed = true;
       }
@@ -426,14 +515,14 @@ export default function UserWorkspace({
   return (
     <AppShell
       title="Người dùng"
-      subtitle="Quản lý tài khoản sử dụng hệ thống, liên kết nhân sự và phân quyền theo công việc."
+      subtitle="Quản lý tài khoản sử dụng hệ thống, liên kết nhân sự, vai trò và phạm vi chi nhánh/kho."
     >
       <main className={styles.page}>
         <header className={styles.header}>
           <div className={styles.headerText}>
             <p className={styles.kicker}>Nhân sự &amp; phân quyền</p>
             <h1 className={styles.title}>Người dùng</h1>
-            <p className={styles.subtitle}>Quản lý tài khoản sử dụng hệ thống, liên kết nhân sự và phân quyền theo công việc.</p>
+            <p className={styles.subtitle}>Quản lý tài khoản, vai trò và phạm vi dữ liệu chi nhánh/kho ngay trên cùng một màn hình.</p>
           </div>
           <div className={styles.headerActions}>
             <button className={styles.secondaryButton} type="button" onClick={() => reloadUsers()} disabled={busy !== null}>Tải lại</button>
@@ -459,7 +548,7 @@ export default function UserWorkspace({
         <section className={styles.tableSection}>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
-              <thead><tr><th>Tên đăng nhập</th><th>Nhân sự</th><th>Vai trò</th><th>Trạng thái</th><th>Cập nhật</th><th>Hành động</th></tr></thead>
+              <thead><tr><th>Tên đăng nhập</th><th>Nhân sự</th><th>Vai trò</th><th>Phạm vi kho</th><th>Trạng thái</th><th>Cập nhật</th><th>Hành động</th></tr></thead>
               <tbody>
                 {visibleUsers.map((user) => {
                   const employee = employeeMap.get(user.employee_id ?? '');
@@ -468,12 +557,13 @@ export default function UserWorkspace({
                     <td className={styles.loginName}>{user.login_name}</td>
                     <td><div className={styles.employeeCell}><strong>{employee?.full_name ?? user.employee_full_name ?? 'Không xác định'}</strong><span>{employee?.code ?? user.employee_code ?? ''}</span></div></td>
                     <td>{userRoles.length > 0 ? <div className={styles.roleList}>{userRoles.map((role) => <span key={role.id} className={styles.roleChip}>{role.name}</span>)}</div> : <span className={styles.muted}>Chưa gán vai trò</span>}</td>
+                    <td>{user.owner_kind ? <span className={styles.roleChip}>Toàn installation</span> : <span className={styles.muted}>{(user.warehouse_ids ?? []).length} kho · {(user.branch_ids ?? []).length} chi nhánh</span>}</td>
                     <td><span className={joinClasses(styles.statusBadge, user.is_active ? styles.active : styles.inactive)}>{user.is_active ? 'Hoạt động' : 'Không hoạt động'}</span></td>
                     <td>{formatDateTime(user.updated_at)}</td>
                     <td><div className={styles.rowActions}><button className={styles.secondaryButton} type="button" onClick={() => openEdit(user.id)} disabled={busy !== null}>Sửa</button><button className={user.is_active ? styles.dangerButton : styles.successButton} type="button" onClick={() => setToggleState({ userId: user.id, nextActive: !user.is_active })} disabled={busy !== null}>{user.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button></div></td>
                   </tr>;
                 })}
-                {visibleUsers.length === 0 && <tr><td colSpan={6} className={styles.emptyState}>Không có người dùng phù hợp.</td></tr>}
+                {visibleUsers.length === 0 && <tr><td colSpan={7} className={styles.emptyState}>Không có người dùng phù hợp.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -482,7 +572,7 @@ export default function UserWorkspace({
         {editor && <div className={styles.modalBackdrop} role="presentation">
           <section className={styles.modalPanel} role="dialog" aria-modal="true" aria-labelledby="user-editor-title">
             <header className={styles.modalHeader}>
-              <div><h2 id="user-editor-title">{editor.mode === 'create' ? 'Thêm người dùng' : 'Cập nhật người dùng'}</h2><p>{editor.mode === 'create' ? 'Chọn nhân sự, cấp tên đăng nhập, mật khẩu và vai trò trong một lần.' : 'Cập nhật vai trò, trạng thái hoặc đặt lại mật khẩu đăng nhập.'}</p></div>
+              <div><h2 id="user-editor-title">{editor.mode === 'create' ? 'Thêm người dùng' : 'Cập nhật người dùng'}</h2><p>{editor.mode === 'create' ? 'Chọn nhân sự, cấp tên đăng nhập, mật khẩu, vai trò và phạm vi dữ liệu trong một lần.' : 'Cập nhật vai trò, phạm vi chi nhánh/kho, trạng thái hoặc đặt lại mật khẩu đăng nhập.'}</p></div>
               <button className={styles.closeButton} type="button" onClick={closeEditor} aria-label="Đóng" disabled={busy !== null}>×</button>
             </header>
             <div className={styles.modalBody}>
@@ -505,6 +595,10 @@ export default function UserWorkspace({
                   setDraft((current) => ({ ...current, isActive }));
                 }} disabled={busy !== null}><option value="active">Hoạt động</option><option value="inactive">Không hoạt động</option></select></label>
                 <div className={styles.field}>Vai trò<div className={styles.checkboxGrid}>{selectableRoles.map((role) => { const assigned = draft.roleIds.includes(role.id); return <label key={role.id} className={styles.roleOption}><input type="checkbox" checked={assigned} onChange={() => toggleRole(role.id)} disabled={busy !== null} /><span><strong>{role.name}</strong>{!role.is_active && <small>Vai trò không hoạt động — bỏ chọn để thu hồi</small>}</span></label>; })}{selectableRoles.length === 0 && <span className={styles.muted}>Không có vai trò đang hoạt động.</span>}</div>{editor.mode === 'create' && <small>Chọn ít nhất một vai trò để tài khoản có quyền sử dụng app.</small>}</div>
+                {editingUser?.owner_kind ? <div className={styles.field}>Phạm vi dữ liệu<div className={styles.notice}><strong>Security Owner — toàn installation</strong><div>Owner luôn thấy toàn bộ chi nhánh/kho, kể cả kho ngưng hoạt động có lịch sử. Không giới hạn bằng user scope.</div></div></div> : <>
+                  <div className={styles.field}>Chi nhánh<div className={styles.checkboxGrid}>{selectableBranches.map((branch) => { const assigned = draft.branchIds.includes(branch.id); return <label key={branch.id} className={styles.roleOption}><input type="checkbox" checked={assigned} onChange={() => toggleScope('branchIds', branch.id)} disabled={busy !== null} /><span><strong>{branch.name}</strong><small>{branch.code}{!branch.is_active ? ' · ngưng hoạt động / lịch sử' : ''}</small></span></label>; })}{selectableBranches.length === 0 && <span className={styles.muted}>Không có chi nhánh để gán.</span>}</div></div>
+                  <div className={styles.field}>Kho dữ liệu<div className={styles.checkboxGrid}>{selectableWarehouses.map((warehouse) => { const assigned = draft.warehouseIds.includes(warehouse.id); const branch = branchMap.get(warehouse.branch_id); return <label key={warehouse.id} className={styles.roleOption}><input type="checkbox" checked={assigned} onChange={() => toggleScope('warehouseIds', warehouse.id)} disabled={busy !== null} /><span><strong>{warehouse.name}</strong><small>{warehouse.code}{branch ? ` · ${branch.name}` : ''}{!warehouse.is_active ? ' · ngưng hoạt động / lịch sử' : ''}</small></span></label>; })}{selectableWarehouses.length === 0 && <span className={styles.muted}>Không có kho để gán.</span>}</div><small>Không chọn kho nào = zero-scope: tài khoản vẫn đăng nhập được nhưng dữ liệu theo kho bị deny-by-default.</small></div>
+                </>}
               </div>
             </div>
             <footer className={styles.modalFooter}><button className={styles.secondaryButton} type="button" onClick={closeEditor} disabled={busy !== null}>Hủy</button><button className={styles.primaryButton} type="button" onClick={saveEditor} disabled={busy !== null || Boolean(createFormIncomplete) || Boolean(editPasswordInvalid)}>{busy === 'save' ? 'Đang lưu…' : editor.mode === 'create' ? 'Tạo tài khoản' : 'Lưu'}</button></footer>
@@ -514,7 +608,7 @@ export default function UserWorkspace({
         {toggleState && <div className={styles.modalBackdrop} role="presentation">
           <section className={joinClasses(styles.modalPanel, styles.confirmPanel)} role="dialog" aria-modal="true" aria-labelledby="toggle-user-title">
             <header className={styles.modalHeader}><div><h3 id="toggle-user-title">Xác nhận thay đổi trạng thái</h3></div><button className={styles.closeButton} type="button" onClick={() => setToggleState(null)} aria-label="Đóng" disabled={busy !== null}>×</button></header>
-            <div className={styles.modalBody}><p className={styles.confirmText}>{toggleState.nextActive ? 'Đưa người dùng này vào sử dụng? Nhân sự liên kết phải đang hoạt động.' : 'Ngừng sử dụng người dùng này? Các vai trò được giữ nguyên để có thể dùng lại khi cần.'}</p></div>
+            <div className={styles.modalBody}><p className={styles.confirmText}>{toggleState.nextActive ? 'Đưa người dùng này vào sử dụng? Nhân sự liên kết phải đang hoạt động.' : 'Ngừng sử dụng người dùng này? Các vai trò và phạm vi dữ liệu được giữ nguyên để có thể dùng lại khi cần.'}</p></div>
             <footer className={styles.modalFooter}><button className={styles.secondaryButton} type="button" onClick={() => setToggleState(null)} disabled={busy !== null}>Hủy</button><button className={toggleState.nextActive ? styles.successButton : styles.dangerButton} type="button" onClick={confirmToggle} disabled={busy !== null}>{busy === 'toggle' ? 'Đang xử lý…' : 'Xác nhận'}</button></footer>
           </section>
         </div>}
