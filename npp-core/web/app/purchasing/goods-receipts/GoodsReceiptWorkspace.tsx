@@ -291,10 +291,11 @@ export default function GoodsReceiptWorkspace({
   const purchaseOrderReadable = initialPurchaseOrderPermissionKeys.includes('core.purchase-order.read');
   const activePurchaseOrder = editor?.purchaseOrder ?? null;
   const trackingGuidanceLines = editor?.lines.filter(needsTrackingGuidance) ?? [];
+  const editorOpen = Boolean(editor);
 
   useEffect(() => {
-    if (selectedGoodsReceipt || pendingAction || editor) closeButtonRef.current?.focus();
-  }, [editor, pendingAction, selectedGoodsReceipt]);
+    if (selectedGoodsReceipt || pendingAction || editorOpen) closeButtonRef.current?.focus();
+  }, [editorOpen, pendingAction, selectedGoodsReceipt]);
 
   function upsertReceipt(goodsReceipt: GoodsReceipt) {
     refreshGeneration.current += 1;
