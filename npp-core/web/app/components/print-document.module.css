@@ -1,0 +1,55 @@
+.printAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid rgba(92, 69, 35, 0.24);
+  border-radius: 0.55rem;
+  background: rgba(255, 255, 255, 0.72);
+  color: inherit;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.printAction:hover {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.printAction:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.printSurface {
+  display: none;
+}
+
+@media print {
+  .printAction {
+    display: none !important;
+  }
+
+  .printSurface,
+  .printSurface * {
+    visibility: visible !important;
+  }
+
+  .printSurface {
+    display: block !important;
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    min-height: 100%;
+    background: #fff !important;
+    color: #000 !important;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 11mm 10mm 12mm;
+  }
+}

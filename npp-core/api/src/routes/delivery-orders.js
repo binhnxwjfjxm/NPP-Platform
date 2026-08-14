@@ -20,6 +20,7 @@ import {
   listCustomerReturnEligibility,
   listCustomerReturns,
 } from '../services/sales-delivery-inventory.js';
+import { executeManualDeliveryHandover } from '../services/sales-manual-delivery.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -361,22 +362,32 @@ export async function handleDeliveryOrderRoutes(req, res, options) {
   }
 
   const inventoryTransitionMatch = pathname.match(
-    /^\/api\/delivery-orders\/([^/]+)\/(pickup-handover|reverse-inventory-issue)$/,
+    /^\/api\/delivery-orders\/([^/]+)\/(pickup-handover|manual-handover|reverse-inventory-issue)$/,
   );
   if (inventoryTransitionMatch && method === 'POST') {
     const [, deliveryOrderId, action] = inventoryTransitionMatch;
-    const pickup = action === 'pickup-handover';
+    const permission = action === 'pickup-handover'
+      ? options.PERMISSIONS.coreDeliveryOrderPickupHandover
+      : action === 'manual-handover'
+        ? options.PERMISSIONS.coreDeliveryOrderManualHandover
+        : options.PERMISSIONS.coreDeliveryOrderReverseInventoryIssue;
     return executeMutation(req, res, options, {
-      permission: pickup
-        ? options.PERMISSIONS.coreDeliveryOrderPickupHandover
-        : options.PERMISSIONS.coreDeliveryOrderReverseInventoryIssue,
-      operation: ({ requestContext, payload, idempotencyKey }) => (pickup
-        ? executePickupHandover({
+      permission,
+      operation: ({ requestContext, payload, idempotencyKey }) => {
+        if (action === 'pickup-handover') {
+          return executePickupHandover({
             adapter: options.getPool(), requestContext, deliveryOrderId, payload, idempotencyKey,
-          })
-        : executeReverseDeliveryInventoryIssue({
+          });
+        }
+        if (action === 'manual-handover') {
+          return executeManualDeliveryHandover({
             adapter: options.getPool(), requestContext, deliveryOrderId, payload, idempotencyKey,
-          })),
+          });
+        }
+        return executeReverseDeliveryInventoryIssue({
+          adapter: options.getPool(), requestContext, deliveryOrderId, payload, idempotencyKey,
+        });
+      },
     });
   }
 

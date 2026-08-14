@@ -89,3 +89,21 @@ kbd {
   background: #aaa099;
   background-clip: padding-box;
 }
+
+/* Shared print foundation. Global page isolation belongs here rather than in a
+   CSS Module because Next.js requires CSS Module selectors to stay locally pure. */
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  body:has([data-print-surface]) * {
+    visibility: hidden !important;
+  }
+
+  body:has([data-print-surface]) [data-print-surface],
+  body:has([data-print-surface]) [data-print-surface] * {
+    visibility: visible !important;
+  }
+}

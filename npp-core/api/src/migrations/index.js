@@ -80,6 +80,10 @@ const CUSTOMER_MEDIA_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/079_customer_media.sql', import.meta.url),
   'utf8',
 );
+const MANUAL_DELIVERY_HANDOVER_SQL = readFileSync(
+  new URL('../../../../database/migrations/sales/080_manual_delivery_handover.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -117,6 +121,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '077_document_numbering_active_series', sql: DOCUMENT_NUMBERING_ACTIVE_SERIES_SQL }),
   Object.freeze({ id: '078_customer_address_location_url', sql: CUSTOMER_ADDRESS_LOCATION_URL_SQL }),
   Object.freeze({ id: '079_customer_media', sql: CUSTOMER_MEDIA_SQL }),
+  Object.freeze({ id: '080_manual_delivery_handover', sql: MANUAL_DELIVERY_HANDOVER_SQL }),
 ]);
 
 export { runMigrations };

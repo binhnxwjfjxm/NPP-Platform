@@ -73,6 +73,25 @@ async function mockDeliveryApis(page: Page, state: DeliveryState, mode: 'PICKUP'
       },
     }, 201);
   });
+  await page.route(`**/api/delivery-orders/${deliveryOrderId}/manual-handover`, async (route) => {
+    state.handoverKey = route.request().headers()['idempotency-key'] ?? null;
+    state.handoverBody = route.request().postDataJSON() as Record<string, unknown>;
+    state.status = 'handed_over';
+    state.movementId = '44444444-4444-4444-8444-444444444444';
+    state.receiverName = String(state.handoverBody.receiverName ?? '');
+    await fulfill(route, {
+      ok: true,
+      replayed: false,
+      issue: {
+        id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        deliveryOrderId,
+        status: 'POSTED',
+        issueSourceType: 'MANUAL_HANDOVER',
+        inventoryMovementId: state.movementId,
+      },
+      receivableDocument: { id: '55555555-5555-4555-8555-555555555555' },
+    }, 201);
+  });
   await page.route(`**/api/delivery-orders/${deliveryOrderId}`, (route) => fulfill(route, deliveryOrder(state, mode)));
   await page.route('**/api/delivery-orders?**', (route) => fulfill(route, [deliveryOrder(state, mode)]));
   await page.route('**/api/delivery-orders', (route) => fulfill(route, [deliveryOrder(state, mode)]));
@@ -97,7 +116,7 @@ test.describe('Phase 6D.4 Delivery Order inventory boundary', () => {
     await page.getByTestId('delivery-order-pickup-handover').click();
 
     await expect(page.getByTestId('delivery-order-notice')).toContainText('ghi xuất kho');
-    await expect(page.getByText('Đã bàn giao tại quầy', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Đã bàn giao', { exact: true }).first()).toBeVisible();
     expect(state.handoverKey).toMatch(/^delivery-order-pickup-handover-/);
     expect(state.handoverBody).toMatchObject({
       receiverName: 'Nguyễn Văn Nhận',
@@ -106,7 +125,7 @@ test.describe('Phase 6D.4 Delivery Order inventory boundary', () => {
     expect(String(state.handoverBody?.handedOverAt)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  test('DELIVERY chỉ chờ Logistics dispatch, không có nút xuất kho tay', async ({ page }) => {
+  test('DELIVERY có thể xác nhận giao thủ công và ghi fact bàn giao riêng', async ({ page }) => {
     const state: DeliveryState = {
       status: 'ready_to_dispatch',
       movementId: null,
@@ -117,10 +136,20 @@ test.describe('Phase 6D.4 Delivery Order inventory boundary', () => {
     await mockDeliveryApis(page, state, 'DELIVERY');
     await page.goto('/inventory/delivery-orders');
 
-    await expect(page.getByTestId('delivery-awaiting-trip')).toContainText('Chờ Logistics');
-    await expect(page.getByTestId('delivery-awaiting-trip')).toContainText('không được xuất kho tay');
-    await expect(page.getByTestId('delivery-order-pickup-handover')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /dispatch|xuất kho theo chuyến/i })).toHaveCount(0);
+    await expect(page.getByTestId('delivery-manual-handover-panel')).toContainText('giao thủ công');
+    await page.getByLabel('Người nhận giao thủ công').fill('Trần Minh Khách');
+    await page.getByLabel('Ghi chú giao thủ công').fill('Khách nhận trực tiếp ngoài chuyến');
+    await page.getByTestId('delivery-order-manual-handover').click();
+
+    await expect(page.getByTestId('delivery-order-notice')).toContainText('công nợ theo lượng thực giao');
+    await expect(page.getByText('Đã bàn giao', { exact: true }).first()).toBeVisible();
+    expect(state.handoverKey).toMatch(/^delivery-order-manual-handover-/);
+    expect(state.handoverKey).toMatch(/^[A-Za-z0-9._-]+$/);
+    expect(state.handoverBody).toMatchObject({
+      receiverName: 'Trần Minh Khách',
+      receiverNote: 'Khách nhận trực tiếp ngoài chuyến',
+    });
+    expect(String(state.handoverBody?.handedOverAt)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });
 

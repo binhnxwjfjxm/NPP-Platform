@@ -90,6 +90,7 @@ type EligibilityGroup = {
 };
 
 type DeliveryOrderTab = 'create' | 'manage';
+type DeliveryOrderAction = 'confirm' | 'cancel' | 'pickup-handover' | 'manual-handover' | 'reverse-inventory-issue';
 
 const DELIVERY_ORDER_TABS: readonly WorkspaceTabOption<DeliveryOrderTab>[] = [
   { id: 'create', label: 'Lập chứng từ' },
@@ -131,7 +132,7 @@ function statusLabel(value: DeliveryOrderStatus): string {
     draft: 'Nháp',
     ready_to_dispatch: 'Sẵn sàng bàn giao',
     dispatched: 'Đã xuất theo chuyến',
-    handed_over: 'Đã bàn giao tại quầy',
+    handed_over: 'Đã bàn giao',
     cancelled: 'Đã hủy',
   }[value];
 }
@@ -208,6 +209,7 @@ export default function DeliveryOrderWorkspace() {
   const [notice, setNotice] = useState<string | null>(null);
   const requestRef = useRef(0);
   const pickupAttemptAtRef = useRef<string | null>(null);
+  const manualAttemptAtRef = useRef<string | null>(null);
   const tabInitializedRef = useRef(false);
 
   const groups = useMemo(() => groupEligibility(eligibility), [eligibility]);
@@ -276,6 +278,7 @@ export default function DeliveryOrderWorkspace() {
       setReceiverNote('');
       setReversalReason('');
       pickupAttemptAtRef.current = null;
+      manualAttemptAtRef.current = null;
     } catch (loadError) {
       if (requestRef.current === requestNumber) setError(loadError instanceof Error ? loadError.message : 'Không tải được chi tiết chứng từ.');
     } finally {
@@ -310,18 +313,35 @@ export default function DeliveryOrderWorkspace() {
     } finally { setBusy(null); }
   }
 
-  async function transitionOrder(action: 'confirm' | 'cancel' | 'pickup-handover' | 'reverse-inventory-issue') {
+  async function transitionOrder(action: DeliveryOrderAction) {
     if (!selectedOrder) return;
     if (action === 'cancel' && !cancelReason.trim()) return setError('Nhập lý do hủy chứng từ nháp.');
     if (action === 'pickup-handover' && !receiverName.trim()) return setError('Nhập tên người nhận hàng tại quầy.');
+    if (action === 'manual-handover' && !receiverName.trim()) return setError('Nhập tên người nhận hàng giao thủ công.');
     if (action === 'reverse-inventory-issue' && !reversalReason.trim()) return setError('Nhập lý do đảo xuất kho.');
     let body: Record<string, unknown> = {};
     let fingerprint = selectedOrder.revision;
-    if (action === 'cancel') { body = { reason: cancelReason.trim() }; fingerprint = cancelReason.trim(); }
+    if (action === 'cancel') {
+      body = { reason: cancelReason.trim() };
+      fingerprint = cancelReason.trim();
+    }
     if (action === 'pickup-handover') {
       pickupAttemptAtRef.current ??= new Date().toISOString();
-      body = { receiverName: receiverName.trim(), receiverNote: receiverNote.trim() || undefined, handedOverAt: pickupAttemptAtRef.current };
+      body = {
+        receiverName: receiverName.trim(),
+        receiverNote: receiverNote.trim() || undefined,
+        handedOverAt: pickupAttemptAtRef.current,
+      };
       fingerprint = `${selectedOrder.revision}:${receiverName.trim()}:${pickupAttemptAtRef.current}`;
+    }
+    if (action === 'manual-handover') {
+      manualAttemptAtRef.current ??= new Date().toISOString();
+      body = {
+        receiverName: receiverName.trim(),
+        receiverNote: receiverNote.trim() || undefined,
+        handedOverAt: manualAttemptAtRef.current,
+      };
+      fingerprint = `${selectedOrder.revision}:${receiverName.trim()}:${manualAttemptAtRef.current}`;
     }
     if (action === 'reverse-inventory-issue') {
       body = { documentDate: localDate(), reasonCode: 'OPERATOR_CORRECTION', reasonNote: reversalReason.trim() };
@@ -338,10 +358,12 @@ export default function DeliveryOrderWorkspace() {
         confirm: 'Đã xác nhận chứng từ sẵn sàng bàn giao.',
         cancel: 'Đã hủy chứng từ nháp; phần packed đã trở lại hàng đợi.',
         'pickup-handover': 'Đã xác nhận bàn giao tại quầy và ghi xuất kho.',
+        'manual-handover': 'Đã xác nhận giao thủ công, ghi xuất kho và công nợ theo lượng thực giao.',
         'reverse-inventory-issue': 'Đã tạo movement đảo và đưa chứng từ về trạng thái sẵn sàng.',
       } as const;
       setNotice(messages[action]);
       pickupAttemptAtRef.current = null;
+      manualAttemptAtRef.current = null;
       if (action === 'cancel') setActiveTab('create');
       await loadAll(selectedOrder.id);
     } catch (operationError) {
@@ -352,13 +374,13 @@ export default function DeliveryOrderWorkspace() {
   useEffect(() => { void loadAll(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   return (
-    <AppShell kicker="Kho và giao nhận" title="Bàn giao giao nhận" subtitle="Lập chứng từ từ phần đã đóng gói; nhận tại quầy chỉ xuất kho khi xác nhận bàn giao vật lý.">
+    <AppShell kicker="Kho và giao nhận" title="Bàn giao giao nhận" subtitle="Lập chứng từ từ phần đã đóng gói; giao tận nơi có thể đi chuyến hoặc xác nhận giao thủ công theo đúng Delivery Order.">
       <div className={styles.page} data-testid="delivery-order-workspace">
         <section className={styles.hero}>
           <div>
             <p className={styles.eyebrow}>Ranh giới sau đóng gói</p>
             <h2>Hàng sẵn sàng lập chứng từ</h2>
-            <p>Giao tận nơi chỉ xuất kho khi Logistics dispatch chuyến. Nhận tại quầy xuất kho tại xác nhận bàn giao.</p>
+            <p>Giao tận nơi xuất kho khi Logistics dispatch chuyến hoặc khi nhân viên xác nhận giao thủ công. Nhận tại quầy xuất kho tại xác nhận bàn giao.</p>
           </div>
           <div className={styles.actions}>
             <Link href="/inventory/customer-returns" className={styles.secondaryButton} data-testid="customer-return-shortcut">Hàng khách trả</Link>
@@ -416,7 +438,7 @@ export default function DeliveryOrderWorkspace() {
 
         <WorkspaceTabPanel tabId="manage" activeTab={activeTab} idPrefix="delivery-order-workflow">
           <section className={styles.panel}>
-            <div className={styles.panelHeader}><div><h3>Delivery Orders</h3><p>Delivery chỉ nhận việc sau khi chứng từ được xác nhận.</p></div></div>
+            <div className={styles.panelHeader}><div><h3>Delivery Orders</h3><p>Delivery chỉ nhận việc sau khi chứng từ được xác nhận; giao thủ công được xác nhận trực tiếp tại Core.</p></div></div>
             <div className={styles.queue}>
               {orders.length === 0 ? <p className={styles.empty}>Chưa có Delivery Order.</p> : null}
               {orders.map((order) => (
@@ -446,7 +468,13 @@ export default function DeliveryOrderWorkspace() {
                 ) : null}
 
                 {selectedOrder.status === 'ready_to_dispatch' && selectedOrder.handoverMode === 'DELIVERY' ? (
-                  <div className={styles.notice} role="status" data-testid="delivery-awaiting-trip">Chờ Logistics lập và dispatch chuyến giao. NPP Operations không được xuất kho tay.</div>
+                  <div className={styles.actions} data-testid="delivery-manual-handover-panel">
+                    <p className={styles.notice}>Nếu đơn không đi chuyến Delivery, xác nhận giao thủ công tại đây. Hệ thống sẽ xuất đúng lượng trên Delivery Order và ghi công nợ từ cùng fact bàn giao.</p>
+                    <label className={styles.cancelField}>Người nhận hàng<input value={receiverName} onChange={(event) => setReceiverName(event.target.value)} maxLength={256} aria-label="Người nhận giao thủ công" /></label>
+                    <label className={styles.cancelField}>Ghi chú bàn giao<input value={receiverNote} onChange={(event) => setReceiverNote(event.target.value)} maxLength={2000} aria-label="Ghi chú giao thủ công" /></label>
+                    <button type="button" className={styles.primaryButton} onClick={() => void transitionOrder('manual-handover')} disabled={busy !== null} data-testid="delivery-order-manual-handover">{busy === 'manual-handover' ? 'Đang xác nhận...' : 'Xác nhận giao thủ công & xuất kho'}</button>
+                    <small>Đơn vẫn có thể được đưa vào chuyến Delivery nếu chưa xác nhận giao thủ công.</small>
+                  </div>
                 ) : null}
 
                 {selectedOrder.status === 'ready_to_dispatch' && selectedOrder.handoverMode === 'PICKUP' ? (

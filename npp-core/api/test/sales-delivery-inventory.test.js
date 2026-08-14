@@ -81,7 +81,7 @@ test('Phase 6D.4 migration locks issue, reversal, reservation and return lineage
   assert.match(service, /executeDeliveryDispatchInventoryIssue/);
   assert.match(service, /TRUSTED_LOGISTICS_SOURCE_REQUIRED/);
   assert.match(service, /core\.sales\.customer_return\.received/);
-  assert.match(route, /pickup-handover\|reverse-inventory-issue/);
+  assert.match(route, /pickup-handover\|manual-handover\|reverse-inventory-issue/);
   assert.doesNotMatch(route, /\/dispatch(?:'|\"|\/)/);
 });
 

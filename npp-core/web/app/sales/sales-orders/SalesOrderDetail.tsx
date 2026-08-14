@@ -1,6 +1,7 @@
 'use client';
 
 import type { SalesOrder } from '../../../lib/sales-order-types';
+import SalesOrderPrintSheet from './SalesOrderPrintSheet';
 import {
   activeVersion,
   collectionLabels,
@@ -57,7 +58,12 @@ export default function SalesOrderDetail(props: Props) {
           <h2>{order.customerName}</h2>
           <p>{order.customerCode} · Kho {order.warehouseName}</p>
         </div>
-        <span className={styles.statusPill}>{orderLabels[order.status] ?? order.status}</span>
+        <div className={styles.inlineActions}>
+          {current && order.number && ['confirmed', 'closed'].includes(order.status)
+            ? <SalesOrderPrintSheet order={order} version={current} />
+            : null}
+          <span className={styles.statusPill}>{orderLabels[order.status] ?? order.status}</span>
+        </div>
       </header>
 
       <div className={styles.statusGrid}>
