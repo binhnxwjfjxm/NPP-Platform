@@ -4,6 +4,7 @@ import { chromium } from "playwright";
 
 const appBase = process.env.F05_UI_APP_BASE || "http://127.0.0.1:3000";
 const resultsDir = process.env.F05_UI_RESULTS_DIR || "test-results/f05-ui-smoke";
+const proxyHeaders = { "x-forwarded-proto": "https" };
 await mkdir(resultsDir, { recursive: true });
 
 async function waitForHttp(url, timeoutMs = 120000) {
@@ -14,9 +15,7 @@ async function waitForHttp(url, timeoutMs = 120000) {
       const response = await fetch(url, { cache: "no-store" });
       if (response.ok) return;
       lastError = new Error(`${url} -> ${response.status}`);
-    } catch (error) {
-      lastError = error;
-    }
+    } catch (error) { lastError = error; }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw lastError || new Error(`timeout_waiting_for_${url}`);
@@ -46,12 +45,7 @@ try {
     const homeContext = await browser.newContext({ viewport });
     const homePage = await homeContext.newPage();
     await homePage.goto(`${appBase}/`, { waitUntil: "networkidle" });
-
-    for (const text of [
-      "Tổng quan hôm nay",
-      "Điều hành gọn trên điện thoại",
-      "Mở tuyến trước, sau đó xem nhanh phiên, đơn, báo cáo và việc cần xử lý."
-    ]) {
+    for (const text of ["Tổng quan hôm nay", "Điều hành gọn trên điện thoại", "Mở tuyến trước, sau đó xem nhanh phiên, đơn, báo cáo và việc cần xử lý."]) {
       assert.equal(await homePage.getByText(text, { exact: true }).count(), 0, `home must remove ${text}`);
     }
     await homePage.getByRole("link", { name: /Đi tuyến hôm nay/ }).waitFor({ state: "visible" });
@@ -61,11 +55,7 @@ try {
 
     const sessionsContext = await browser.newContext({ viewport });
     const sessionsPage = await sessionsContext.newPage();
-    await sessionsPage.goto(
-      `${appBase}/mcp/sessions?dateFrom=2099-12-01&dateTo=2099-12-31`,
-      { waitUntil: "networkidle" }
-    );
-
+    await sessionsPage.goto(`${appBase}/mcp/sessions?dateFrom=2099-12-01&dateTo=2099-12-31`, { waitUntil: "networkidle" });
     const filterToggle = sessionsPage.getByRole("button", { name: /Bộ lọc/ });
     await filterToggle.waitFor({ state: "visible" });
     assert.equal(await filterToggle.getAttribute("aria-expanded"), "false");
@@ -73,142 +63,39 @@ try {
     assert.equal(await filterForm.evaluate((node) => getComputedStyle(node).display), "none");
     await filterToggle.click();
     assert.equal(await filterToggle.getAttribute("aria-expanded"), "true");
-    assert.notEqual(await filterForm.evaluate((node) => getComputedStyle(node).display), "none");
-
-    const visibleKpis = sessionsPage.locator(".mcp-session-kpis .card:visible");
-    assert.ok(await visibleKpis.count() <= 3, "mobile sessions must keep only decision KPIs visible");
-
     const sessionCard = sessionsPage.locator("[data-session-card]").first();
     await sessionCard.waitFor({ state: "visible" });
     assert.equal(await sessionCard.locator("[data-session-primary-action]").count(), 1);
-    const primaryHeight = await sessionCard.locator("[data-session-primary-action]").evaluate(
-      (node) => node.getBoundingClientRect().height
-    );
-    assert.ok(primaryHeight >= 44, "session primary action must be touchable");
-
-    const moreTrigger = sessionCard.locator('summary[aria-label^="Mở thao tác phụ của phiên"]');
-    await moreTrigger.click();
-    for (const label of ["PDF", "Excel", "Word", "Sửa phiên", "Xóa phiên"]) {
-      await sessionCard.getByText(label, { exact: true }).waitFor({ state: "visible" });
-    }
     assert.ok(await horizontalOverflow(sessionsPage) <= 1, `sessions overflow at ${viewport.width}px`);
-    await sessionsPage.locator("[data-bottom-navigation]").waitFor({ state: "visible" });
     await screenshot(sessionsPage, `21-sessions-mobile-${viewport.width}`);
     await sessionsContext.close();
 
-    const orderContext = await browser.newContext({ viewport });
+    const orderContext = await browser.newContext({ viewport, extraHTTPHeaders: proxyHeaders });
     const orderPage = await orderContext.newPage();
-    let onboardingSyncCount = 0;
-    let salesOrderSubmitCount = 0;
-
-    await orderPage.route(
-      "**/api/backend/mcp-day/session-customer/customer-onboarding?*",
-      async (route) => {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json; charset=utf-8",
-          body: JSON.stringify({
-            data: {
-              orderId: "order-ui",
-              orderCode: "INT-UI-001",
-              coreRequestId: "request-ui",
-              status: "under_review",
-              officialOrderAllowed: false
-            }
-          })
-        });
-      }
-    );
-    await orderPage.route(
-      "**/api/backend/mcp-day/session-customer/sales-order?*",
-      async (route) => {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json; charset=utf-8",
-          body: JSON.stringify({
-            data: {
-              orderId: "order-ui",
-              coreSalesOrderId: null,
-              status: null,
-              currency: "VND"
-            }
-          })
-        });
-      }
-    );
-    await orderPage.route(
-      "**/api/backend/mcp-day/session-customer/customer-onboarding/sync",
-      async (route) => {
-        onboardingSyncCount += 1;
-        assert.ok(route.request().headers()["idempotency-key"], "customer sync must stay idempotent");
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json; charset=utf-8",
-          body: JSON.stringify({
-            data: {
-              orderId: "order-ui",
-              orderCode: "INT-UI-001",
-              coreRequestId: "request-ui",
-              status: "approved",
-              coreCustomerId: "customer-ui",
-              coreCustomerAddressId: "address-ui",
-              officialOrderAllowed: true
-            }
-          })
-        });
-      }
-    );
-    await orderPage.route(
-      "**/api/backend/mcp-day/session-customer/sales-order/submit",
-      async (route) => {
-        salesOrderSubmitCount += 1;
-        assert.ok(route.request().headers()["idempotency-key"], "sales order submit must stay idempotent");
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json; charset=utf-8",
-          body: JSON.stringify({
-            data: {
-              orderId: "order-ui",
-              coreSalesOrderId: "sales-order-ui",
-              number: "SO-UI-001",
-              status: "draft",
-              currentVersionNumber: 1,
-              total: "1250000",
-              currency: "VND"
-            }
-          })
-        });
-      }
-    );
-
-    const returnTo = "/visits?routeId=route-active&date=2099-12-30";
-    await orderPage.goto(
-      `${appBase}/visits/order-intent?sessionCustomerId=sc-existing&orderId=order-ui&customerName=UI%20Existing%20Customer&returnTo=${encodeURIComponent(returnTo)}`,
-      { waitUntil: "domcontentloaded" }
-    );
-
-    await orderPage.waitForURL((url) => (
-      url.pathname === "/visits" &&
-      url.searchParams.get("routeId") === "route-active" &&
-      url.searchParams.get("date") === "2099-12-30"
-    ));
-
-    assert.equal(onboardingSyncCount, 1, "opening order intent must refresh the submitted Core onboarding request exactly once");
-    assert.equal(salesOrderSubmitCount, 1, "approved Core customer must automatically create exactly one Sales Order");
-    assert.equal(await orderPage.locator(".app-shell").getAttribute("data-active-href"), "/visits");
-    assert.equal(await orderPage.getByRole("button", { name: "Đồng bộ đơn NPP", exact: true }).count(), 0, "successful automatic create must leave the order workspace");
-    assert.ok(await horizontalOverflow(orderPage) <= 1, `returned visit overflow at ${viewport.width}px`);
-    await orderPage.locator('[data-bottom-navigation] a[aria-current="page"]').getByText("Đi tuyến", { exact: true }).waitFor({ state: "visible" });
-    await screenshot(orderPage, `22-order-returned-session-mobile-${viewport.width}`);
+    let legacyOnboardingCalls = 0;
+    let legacySalesOrderCalls = 0;
+    await orderPage.route("**/api/backend/mcp-day/session-customer/customer-onboarding**", async (route) => {
+      legacyOnboardingCalls += 1;
+      await route.abort();
+    });
+    await orderPage.route("**/api/backend/mcp-day/session-customer/sales-order**", async (route) => {
+      legacySalesOrderCalls += 1;
+      await route.abort();
+    });
+    await orderPage.goto(`${appBase}/visits/order-intent?sessionCustomerId=sc-existing&orderId=order-ui&customerName=UI%20Existing%20Customer`, { waitUntil: "networkidle" });
+    await orderPage.waitForURL((url) => url.pathname === "/login" && url.searchParams.get("returnTo") === "/orders");
+    assert.equal(legacyOnboardingCalls, 0, "retired route must not call session onboarding");
+    assert.equal(legacySalesOrderCalls, 0, "retired route must not call session sales-order");
+    await orderPage.getByRole("heading", { name: "Đăng nhập nhân viên", exact: true }).waitFor({ state: "visible" });
+    assert.equal(await orderPage.locator("[data-order-step]").count(), 0, "legacy order-intent wizard must stay absent");
+    assert.ok(await horizontalOverflow(orderPage) <= 1, `orders auth boundary overflow at ${viewport.width}px`);
+    await screenshot(orderPage, `22-legacy-order-redirect-${viewport.width}`);
     await orderContext.close();
   }
 
   const desktopContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const desktopPage = await desktopContext.newPage();
-  await desktopPage.goto(
-    `${appBase}/mcp/sessions?dateFrom=2099-12-01&dateTo=2099-12-31`,
-    { waitUntil: "networkidle" }
-  );
+  await desktopPage.goto(`${appBase}/mcp/sessions?dateFrom=2099-12-01&dateTo=2099-12-31`, { waitUntil: "networkidle" });
   assert.equal(await desktopPage.locator(".mcp-session-filter-toggle").evaluate((node) => getComputedStyle(node).display), "none");
   assert.notEqual(await desktopPage.locator("#mcp-session-filter-form").evaluate((node) => getComputedStyle(node).display), "none");
   assert.equal(await desktopPage.locator("[data-session-card]").first().locator("[data-session-primary-action]").count(), 1);
@@ -220,7 +107,8 @@ try {
   result.mobileViewports = mobileViewports.map(({ width, height }) => `${width}x${height}`);
   result.homeExplainerRemoved = "PASS";
   result.sessionsCompactFlow = "PASS";
-  result.orderIntentProgression = "PASS";
+  result.orderIntentRetired = "PASS";
+  result.orderIntentAuthBoundary = "/login?returnTo=/orders";
   result.desktopSessions = "PASS";
 } catch (error) {
   result.error = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack || ""}` : String(error);

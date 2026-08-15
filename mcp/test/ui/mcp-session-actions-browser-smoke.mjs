@@ -70,10 +70,12 @@ try {
   await picker.getByRole("button", { name: "Lọc", exact: true }).click();
   await picker.getByRole("button", { name: /Trà UI Smoke/ }).first().waitFor({ state: "visible" });
   await picker.getByRole("button", { name: /Trà UI Smoke/ }).first().click();
-  await picker.getByRole("button", { name: "Thêm 1 mã vào đơn", exact: true }).click();
+  await picker.getByRole("button", { name: "Thêm 1 mã vào nhu cầu", exact: true }).click();
   await order.getByRole("button", { name: "Lưu nhu cầu mua", exact: true }).click();
-  await order.getByRole("button", { name: "Gửi đề nghị xác minh / mở mã", exact: true }).waitFor({ state: "visible" });
-  await order.getByText("Đã lưu nhu cầu mua trong MCP. Chưa gửi đề nghị sang Core.", { exact: true }).waitFor({ state: "visible" });
+  await order.getByText("Nhu cầu mua đã được ghi nhận để báo cáo. Phiên không mở / liên kết mã khách và không tạo Sales Order. Tạo đơn chính thức tại mục Đơn hàng sau khi khách đã liên kết Core.", { exact: true }).waitFor({ state: "visible" });
+  await order.getByText("Đã ghi nhận nhu cầu mua để báo cáo. Không mở mã khách và không tạo Sales Order từ phiên.", { exact: true }).waitFor({ state: "visible" });
+  assert.equal(await order.getByRole("button", { name: "Gửi đề nghị xác minh / mở mã", exact: true }).count(), 0);
+  assert.equal(await order.getByRole("button", { name: /Tiếp tục tạo đơn NPP/ }).count(), 0);
   result.orderIntentSavedWithoutCoreSideEffect = "PASS";
   await order.getByRole("button", { name: "Đóng", exact: true }).filter({ hasText: "Đóng" }).click();
   await order.waitFor({ state: "hidden" });
@@ -104,7 +106,8 @@ try {
     assert.ok(request.idempotencyKey, `${route} request must carry Idempotency-Key`);
     assert.equal(request.payload.sessionCustomerId, "sc-existing");
   }
-  assert.equal(mock.requests.some((item) => item.path.includes("customer-onboarding")), false, "saving an order intent must not submit customer onboarding automatically");
+  assert.equal(mock.requests.some((item) => item.path.includes("customer-onboarding")), false, "saving purchase demand must not submit customer onboarding automatically");
+  assert.equal(mock.requests.some((item) => item.path.includes("sales-order")), false, "saving purchase demand must not create a Core Sales Order automatically");
   assert.equal(mock.aggregates.orders.length, 1);
   assert.equal(mock.aggregates.tests.length, 1);
   assert.equal(mock.aggregates.reports.length, 1);

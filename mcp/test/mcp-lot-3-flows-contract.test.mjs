@@ -7,8 +7,8 @@ const styles = await readFile("src/app/mcp-lot-3-flows.css", "utf8");
 const sessionOwnerStyles = await readFile("src/app/mcp-sessions-owner-polish.css", "utf8");
 const home = await readFile("src/ui/shell/MobileHomeLaunchpad.tsx", "utf8");
 const visitsPage = await readFile("src/app/visits/page.tsx", "utf8");
-const orderPage = await readFile("src/app/visits/order-intent/page.tsx", "utf8");
-const orderPanel = await readFile("src/features/mcp/McpOfficialOrderPanel.tsx", "utf8");
+const legacyOrderPage = await readFile("src/app/visits/order-intent/page.tsx", "utf8");
+const ordersPage = await readFile("src/features/orders/McpCoreOrdersClient.tsx", "utf8");
 const visitSession = await readFile("src/features/mcp/McpSessionCompactViewFinal2.tsx", "utf8");
 const lineCard = await readFile("src/features/mcp/McpLineCard.tsx", "utf8");
 const sessions = await readFile("src/features/mcp/McpSessionsManagerSafe.tsx", "utf8");
@@ -23,40 +23,30 @@ test("home launchpad goes straight to actions without explanatory hero copy", ()
   assert.match(home, /mobile-home-quick-grid/);
 });
 
-test("order intent uses its exact route scope and one state-driven primary action area", () => {
-  assert.match(orderPage, /activeHref="\/visits\/order-intent"/);
-  for (const step of ["intent", "customer", "eligibility", "sales-order"]) {
-    assert.match(orderPanel, new RegExp(`data-order-step="${step}"`));
-  }
-  assert.match(orderPanel, /data-order-primary-action/);
-  assert.match(orderPanel, /Đồng bộ trạng thái khách/);
-  assert.match(orderPanel, /Tạo đơn nháp NPP/);
-  assert.match(orderPanel, /Đồng bộ đơn NPP/);
-  assert.match(orderPanel, /session-customer\.customer-onboarding\.sync/);
-  assert.doesNotMatch(orderPanel, forbiddenPhase6F);
+test("legacy order-intent route is retired into the canonical Orders workspace", () => {
+  assert.match(legacyOrderPage, /redirect\("\/orders"\)/);
+  assert.match(ordersPage, /\/api\/backend\/core-sales\/orders/);
+  assert.match(ordersPage, /createIdempotencyKey\("mcp\.sales-order\.create"\)/);
+  assert.match(ordersPage, /Nguồn MCP/);
 });
 
-test("approved Core customer leaves visit sheet for official order workspace", () => {
-  assert.match(visitSession, /customerOnboarding\?\.officialOrderAllowed === true/);
-  assert.match(visitSession, /Tiếp tục tạo đơn NPP/);
-  assert.match(visitSession, /onContinueOfficialOrder/);
-  assert.match(visitSession, /orderId:\s*orderIntentId/);
-  assert.match(visitSession, /returnTo/);
-  assert.match(visitSession, /router\.push\(`\/visits\/order-intent\?\$\{params\.toString\(\)\}`\)/);
+test("visit purchase-demand stays reporting-only and cannot open customer/order side effects", () => {
+  assert.match(visitSession, /Nhu cầu mua đã được ghi nhận để báo cáo/);
+  assert.match(visitSession, /Không mở mã khách và không tạo Sales Order từ phiên/);
+  assert.doesNotMatch(visitSession, /customer-onboarding\/submit|customer-onboarding\/sync|onContinueOfficialOrder|\/visits\/order-intent/);
+  assert.doesNotMatch(lineCard, /Đơn NPP|\/visits\/order-intent|usePathname|useSearchParams/);
 });
 
-test("visit flow keeps the current session reachable without changing business actions", () => {
+test("visit flow keeps the current session reachable without changing reporting actions", () => {
   assert.match(visitsPage, /loadMcpSessions/);
   assert.match(visitsPage, /activeSessions\.sessions\.length === 1/);
   assert.match(visitsPage, /activeSessions\.sessions\.length > 1/);
   assert.match(visitsPage, /redirect\("\/routes"\)/);
-  assert.match(lineCard, /returnTo/);
-  assert.match(lineCard, /usePathname/);
-  assert.match(lineCard, /useSearchParams/);
-  assert.match(orderPage, /safeVisitReturnTo/);
-  assert.match(orderPage, /returnTo=\{returnTo\}/);
-  assert.match(orderPanel, /router\.push\(returnTo\)/);
-  assert.doesNotMatch(orderPanel, /router\.back\(\)/);
+  assert.match(lineCard, /Nhu cầu/);
+  assert.match(lineCard, /Test/);
+  assert.match(lineCard, /Quan sát/);
+  assert.match(lineCard, /Theo dõi/);
+  assert.match(lineCard, /Bỏ qua/);
 });
 
 test("sessions collapses filters on mobile and keeps one primary action plus a secondary menu", () => {
@@ -92,12 +82,11 @@ test("sessions owner polish keeps three KPIs in one light row and filter chrome 
   assert.match(sessionOwnerStyles, /mcp-session-filter[\s\S]*background:\s*transparent/);
 });
 
-test("lot 3 CSS is route-scoped and keeps warm geometry", () => {
+test("lot 3 CSS keeps warm geometry without introducing a second order workspace", () => {
   const listIndex = layout.indexOf('import "./mobile-list-summaries.css";');
   const lot3Index = layout.indexOf('import "./mcp-lot-3-flows.css";');
   assert.ok(listIndex >= 0);
   assert.ok(lot3Index > listIndex);
-  assert.match(styles, /data-active-href="\/visits\/order-intent"/);
   assert.match(styles, /data-active-href="\/mcp\/sessions"/);
   assert.match(styles, /data-active-href="\/"/);
   assert.match(styles, /min-height:\s*46px/);
