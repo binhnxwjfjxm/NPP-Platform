@@ -93,8 +93,7 @@ export default function PickAllocationPanel({
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const fullPickByFingerprint = useRef(new Map<string, PendingMutation>());
-  const shortageByFingerprint = useRef(new Map<string, PendingMutation>());
+  const pendingByFingerprint = useRef(new Map<string, PendingMutation>());
   const completed = compareDigits(remainingScaled, '0') === 0;
 
   async function runMutation(url: string, pending: PendingMutation, successMessage: string) {
@@ -121,14 +120,19 @@ export default function PickAllocationPanel({
   async function submitFullPick() {
     if (completed) return;
     const logicalPayload = { quantity: remaining, reason: null };
-    const fingerprint = JSON.stringify({ demandId, allocationId: allocation.id, ...logicalPayload });
-    let pending = fullPickByFingerprint.current.get(fingerprint);
+    const fingerprint = JSON.stringify({
+      operation: 'full-pick',
+      demandId,
+      allocationId: allocation.id,
+      ...logicalPayload,
+    });
+    let pending = pendingByFingerprint.current.get(fingerprint);
     if (!pending) {
       pending = {
         key: createIdempotencyKey('fulfillment-pick'),
         body: JSON.stringify(logicalPayload),
       };
-      fullPickByFingerprint.current.set(fingerprint, pending);
+      pendingByFingerprint.current.set(fingerprint, pending);
     }
     await runMutation(
       `/api/picking/${encodeURIComponent(allocation.id)}`,
@@ -162,14 +166,19 @@ export default function PickAllocationPanel({
       observedQuantity: decimalFromScaledDigits(observedScaled),
       reason: reason.trim(),
     };
-    const fingerprint = JSON.stringify({ demandId, allocationId: allocation.id, ...logicalPayload });
-    let pending = shortageByFingerprint.current.get(fingerprint);
+    const fingerprint = JSON.stringify({
+      operation: 'shortage',
+      demandId,
+      allocationId: allocation.id,
+      ...logicalPayload,
+    });
+    let pending = pendingByFingerprint.current.get(fingerprint);
     if (!pending) {
       pending = {
         key: createIdempotencyKey('fulfillment-shortage'),
         body: JSON.stringify(logicalPayload),
       };
-      shortageByFingerprint.current.set(fingerprint, pending);
+      pendingByFingerprint.current.set(fingerprint, pending);
     }
     await runMutation(
       `/api/picking/${encodeURIComponent(allocation.id)}/shortage`,
@@ -201,7 +210,8 @@ export default function PickAllocationPanel({
             disabled={busy}
             onClick={submitFullPick}
           >
-            {busy ? 'Đang ghi…' : 'SOẠN ĐỦ'}
+            <span>SOẠN ĐỦ</span>
+            {busy ? <span aria-live="polite"> · Đang ghi…</span> : null}
           </button>
           <button
             className={styles.secondaryAction}
@@ -231,7 +241,7 @@ export default function PickAllocationPanel({
                 />
               </label>
               <label className={styles.field}>
-                Lý do thiếu / chênh lệch
+                Lý do chênh lệch / thiếu
                 <textarea
                   rows={2}
                   maxLength={1000}

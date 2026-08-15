@@ -13,16 +13,18 @@ const api = read('lib/fulfillment-api.ts');
 test('Lane C1 keeps SOẠN ĐỦ on canonical Core pick mutation', () => {
   assert.match(panel, />SOẠN ĐỦ</);
   assert.match(panel, /createIdempotencyKey\('fulfillment-pick'\)/);
-  assert.match(panel, /fullPickByFingerprint/);
+  assert.match(panel, /pendingByFingerprint/);
+  assert.match(panel, /operation: 'full-pick'/);
   assert.match(api, /fulfillment-allocations.*\/pick/s);
 });
 
 test('Lane C2 records fulfillment shortage and inventory observation as separate fields without balance adjustment', () => {
   assert.match(panel, /Số lượng thực lấy/);
   assert.match(panel, /Tồn thực tế quan sát tại vị trí\/lô/);
-  assert.match(panel, /Lý do thiếu \/ chênh lệch/);
+  assert.match(panel, /Lý do chênh lệch \/ thiếu/);
   assert.match(panel, /createIdempotencyKey\('fulfillment-shortage'\)/);
-  assert.match(panel, /shortageByFingerprint/);
+  assert.match(panel, /pendingByFingerprint/);
+  assert.match(panel, /operation: 'shortage'/);
   assert.match(shortageProxy, /actualPickedQuantity/);
   assert.match(shortageProxy, /observedQuantity/);
   assert.match(api, /\/shortage/);

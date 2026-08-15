@@ -9,6 +9,11 @@ import {
   listFulfillmentWorkQueue,
   suggestFulfillmentAllocation,
 } from '../services/sales-fulfillment-operations.js';
+import {
+  executeCloseFulfillmentPicking,
+  executeRecordFulfillmentShortage,
+  getFulfillmentPickingCloseState,
+} from '../services/sales-fulfillment-shortage.js';
 import { attachFulfillmentOrderTotals } from '../services/fulfillment-order-summary.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
@@ -336,6 +341,62 @@ export async function handleFulfillmentOperationRoutes(req, res, options) {
             idempotencyKey,
             payload,
           })),
+    });
+  }
+
+  const shortageMatch = pathname.match(
+    /^\/api\/inventory\/fulfillment-allocations\/([^/]+)\/shortage$/,
+  );
+  if (shortageMatch && method === 'POST') {
+    return executeMutation(req, res, options, {
+      permission: options.PERMISSIONS.coreFulfillmentPick,
+      operation: ({ requestContext, payload, idempotencyKey }) => executeRecordFulfillmentShortage({
+        adapter: options.getPool(),
+        requestContext,
+        allocationId: shortageMatch[1],
+        idempotencyKey,
+        payload,
+      }),
+    });
+  }
+
+  const closeStateMatch = pathname.match(
+    /^\/api\/inventory\/fulfillment-orders\/([^/]+)\/picking-close-state$/,
+  );
+  if (closeStateMatch && method === 'GET') {
+    try {
+      const requestContext = await authenticateAndAuthorize(
+        req,
+        res,
+        options,
+        options.PERMISSIONS.coreFulfillmentRead,
+      );
+      if (!requestContext) return true;
+      const result = await getFulfillmentPickingCloseState(options.getPool(), {
+        requestContext,
+        salesOrderId: closeStateMatch[1],
+      });
+      if (!result.ok) sendServiceError(res, result, options);
+      else writeSuccess(res, result, options);
+    } catch (error) {
+      sendUnexpectedError(res, error, options);
+    }
+    return true;
+  }
+
+  const closeMatch = pathname.match(
+    /^\/api\/inventory\/fulfillment-orders\/([^/]+)\/picking-close$/,
+  );
+  if (closeMatch && method === 'POST') {
+    return executeMutation(req, res, options, {
+      permission: options.PERMISSIONS.coreFulfillmentPick,
+      operation: ({ requestContext, payload, idempotencyKey }) => executeCloseFulfillmentPicking({
+        adapter: options.getPool(),
+        requestContext,
+        salesOrderId: closeMatch[1],
+        idempotencyKey,
+        payload,
+      }),
     });
   }
 

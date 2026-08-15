@@ -60,7 +60,7 @@ export async function getExactInventoryBalanceForUpdate(client, {
   lotId,
 }) {
   const result = await client.query(
-    `SELECT balance.*
+    `SELECT balance.on_hand_quantity
        FROM inventory.inventory_balances balance
       WHERE balance.installation_id = $1
         AND balance.warehouse_id = $2

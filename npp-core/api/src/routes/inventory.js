@@ -8,7 +8,6 @@ import { handleInventoryCostingPeriodRoutes } from './inventory-costing-periods.
 import { handleInventoryTrackingPolicyCandidateRoutes } from './inventory-tracking-policy-candidates.js';
 import { handleOpeningBalanceOperatorRoutes } from './opening-balance-operator.js';
 import { handleCodDriverRoutes } from './cod-driver.js';
-import { handleFulfillmentShortageRoutes } from './fulfillment-shortages.js';
 import { handleLogisticsRoutes } from './logistics.js';
 import { handleLogisticsAttemptRoutes } from './logistics-attempts.js';
 import { handleLogisticsDispatchRoutes } from './logistics-dispatch.js';
@@ -26,12 +25,6 @@ export async function handleInventoryRoutes(req, res, options) {
   }
   if (pathname.startsWith('/api/inventory/opening-balances/operator/')) {
     return handleOpeningBalanceOperatorRoutes(req, res, options);
-  }
-  if (
-    /^\/api\/inventory\/fulfillment-allocations\/[^/]+\/shortage$/.test(pathname)
-    || /^\/api\/inventory\/fulfillment-orders\/[^/]+\/picking-close(?:-state)?$/.test(pathname)
-  ) {
-    return handleFulfillmentShortageRoutes(req, res, options);
   }
   if (pathname === '/api/inventory/costing' || pathname.startsWith('/api/inventory/costing/')) {
     if (await handleInventoryCostingPeriodRoutes(req, res, options)) return true;

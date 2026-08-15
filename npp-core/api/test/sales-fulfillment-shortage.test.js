@@ -84,7 +84,11 @@ test('Lane C persists two independent shortage facts and never auto-adjusts inve
     'utf8',
   );
   const route = readFileSync(
-    new URL('../src/routes/fulfillment-shortages.js', import.meta.url),
+    new URL('../src/routes/fulfillment-operations.js', import.meta.url),
+    'utf8',
+  );
+  const inventoryRoute = readFileSync(
+    new URL('../src/routes/inventory.js', import.meta.url),
     'utf8',
   );
   const registry = readFileSync(new URL('../src/migrations/index.js', import.meta.url), 'utf8');
@@ -103,5 +107,7 @@ test('Lane C persists two independent shortage facts and never auto-adjusts inve
   assert.match(route, /fulfillment-allocations.*shortage/s);
   assert.match(route, /picking-close-state/);
   assert.match(route, /picking-close/);
+  assert.match(route, /sales-fulfillment-shortage/);
+  assert.doesNotMatch(inventoryRoute, /fulfillment-shortages/);
   assert.match(registry, /081_sales_fulfillment_shortage_discrepancy/);
 });
