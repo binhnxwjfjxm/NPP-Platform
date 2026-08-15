@@ -7,13 +7,15 @@ type LoginData = Readonly<{
   session: Readonly<{ expiresAt?: string }>;
 }>;
 
+type VerificationState = "owner_code_required";
+
 function redirect(location: string): NextResponse {
   return new NextResponse(null, { status: 303, headers: { Location: location, "Cache-Control": "no-store" } });
 }
 
-function loginError(returnTo: string, error: string, ownerCode = false) {
+function loginError(returnTo: string, error: string, state?: VerificationState) {
   const search = new URLSearchParams({ error });
-  if (ownerCode) search.set("state", "owner_code_required");
+  if (state) search.set("state", state);
   if (returnTo !== "/customers") search.set("returnTo", returnTo);
   return redirect(`/login?${search.toString()}`);
 }
@@ -35,9 +37,15 @@ export async function POST(request: NextRequest) {
   });
 
   if (!result.ok || !result.data?.token) {
-    if (result.code === "INTERNAL_AUTH_OWNER_CHALLENGE_REQUIRED") return loginError(returnTo, "owner_challenge_required", true);
-    if (result.code === "INTERNAL_AUTH_OWNER_CODE_INVALID") return loginError(returnTo, "owner_code_invalid", true);
-    if (result.code === "INTERNAL_AUTH_OWNER_CHALLENGE_UNAVAILABLE") return loginError(returnTo, "owner_challenge_unavailable", true);
+    if (result.code === "INTERNAL_AUTH_OWNER_CHALLENGE_REQUIRED") {
+      return loginError(returnTo, "owner_challenge_required", "owner_code_required");
+    }
+    if (result.code === "INTERNAL_AUTH_OWNER_CODE_INVALID") {
+      return loginError(returnTo, "owner_code_invalid", "owner_code_required");
+    }
+    if (result.code === "INTERNAL_AUTH_OWNER_CHALLENGE_UNAVAILABLE") {
+      return loginError(returnTo, "owner_challenge_unavailable", "owner_code_required");
+    }
     return loginError(returnTo, result.status >= 500 ? "auth_unavailable" : "invalid_credentials");
   }
 
