@@ -2,6 +2,7 @@ import type { ReactNode, SVGProps } from 'react';
 
 export type DeliveryIconName =
   | 'back'
+  | 'box'
   | 'guide'
   | 'home'
   | 'logout'
@@ -30,6 +31,13 @@ export function DeliveryIcon({ name, size = 22, ...props }: DeliveryIconProps) {
       <>
         <path d="m15 18-6-6 6-6" />
         <path d="M9 12h10" />
+      </>
+    ),
+    box: (
+      <>
+        <path d="m4 7 8-4 8 4-8 4z" />
+        <path d="M4 7v10l8 4 8-4V7" />
+        <path d="M12 11v10" />
       </>
     ),
     guide: (
