@@ -61,8 +61,10 @@ test('Lane D enforces downstream unwind order instead of lifecycle jumps', () =>
 });
 
 test('Lane D is one logical repo migration after Lane C', () => {
-  assert.match(registrySource, /index-through-081\.js/);
-  assert.match(registrySource, /id: '082_sales_fulfillment_reversal'/);
+  const laneCIndex = registrySource.indexOf("id: '081_sales_fulfillment_shortage_discrepancy'");
+  const laneDIndex = registrySource.indexOf("id: '082_sales_fulfillment_reversal'");
+  assert.ok(laneCIndex >= 0, 'Lane C migration must remain in the canonical registry');
+  assert.ok(laneDIndex > laneCIndex, 'Lane D migration must append after Lane C');
   assert.match(registrySource, /082_sales_fulfillment_reversal\.sql/);
   assert.match(registrySource, /082_logistics_trip_recovery\.sql/);
 });
