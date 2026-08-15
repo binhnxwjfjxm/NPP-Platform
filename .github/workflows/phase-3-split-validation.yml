@@ -140,7 +140,7 @@ jobs:
             exit 1
           fi
           printf '%s\n' "${files[@]}" > "artifacts/${PACK}/api-tests.txt"
-          node --test "${files[@]}" 2>&1 | tee "artifacts/${PACK}/api.log"
+          node --test --test-concurrency=1 "${files[@]}" 2>&1 | tee "artifacts/${PACK}/api.log"
 
       - name: Run pricing workbook audit
         if: matrix.pack == 'pricing'
