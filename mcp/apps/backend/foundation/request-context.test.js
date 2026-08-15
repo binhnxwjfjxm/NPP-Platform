@@ -124,6 +124,34 @@ test("server-owned resolver may attach an immutable employee principal", () => {
   assert.equal(Object.isFrozen(context.principal.permissions), true);
 });
 
+test("trusted Core workforce owner flag maps only to the MCP installation-owner role", () => {
+  const employeeId = "11111111-1111-4111-8111-111111111111";
+  const identity = ["v3", "owner", employeeId, encodeURIComponent("Owner"), "1"].join("|");
+  const context = authenticateRequestContext(
+    request(authenticatedHeaders({
+      authorization: `Basic ${Buffer.from(identity).toString("base64")}`,
+      "x-roles": "mcp.attacker"
+    })),
+    config
+  );
+  assert.equal(context.principal.employeeId, employeeId);
+  assert.deepEqual(context.principal.roles, ["mcp.installation-owner"]);
+  assert.equal(context.principal.authentication, "core-workforce-session");
+});
+
+test("legacy v2 workforce context remains accepted as non-owner", () => {
+  const employeeId = "11111111-1111-4111-8111-111111111111";
+  const identity = ["v2", "employee", employeeId, encodeURIComponent("Nhân viên")].join("|");
+  const context = authenticateRequestContext(
+    request(authenticatedHeaders({
+      authorization: `Basic ${Buffer.from(identity).toString("base64")}`
+    })),
+    config
+  );
+  assert.equal(context.principal.employeeId, employeeId);
+  assert.deepEqual(context.principal.roles, []);
+});
+
 test("partial actor metadata falls back while complete invalid metadata is rejected", () => {
   const partial = authenticateRequestContext(
     request(authenticatedHeaders({ "x-actor-id": "service:mcp-plan:outlet-media-cleanup" })),

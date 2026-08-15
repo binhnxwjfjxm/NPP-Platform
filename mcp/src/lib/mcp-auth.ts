@@ -9,6 +9,10 @@ export type McpWorkforceUser = {
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CORE_INSTALLATION_OWNER_ROLES = new Set([
+  "system:security-owner",
+  "system:implementation-owner"
+]);
 
 export function isMcpWorkforceUser(value: unknown): value is McpWorkforceUser {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -23,12 +27,17 @@ export function isMcpWorkforceUser(value: unknown): value is McpWorkforceUser {
     && typeof user.expiresAt === "string";
 }
 
+export function isMcpInstallationOwner(user: Pick<McpWorkforceUser, "roles">) {
+  return user.roles.some((role) => CORE_INSTALLATION_OWNER_ROLES.has(String(role || "").trim().toLowerCase()));
+}
+
 export function encodeMcpInternalAuthorization(user: McpWorkforceUser) {
   const identity = [
-    "v2",
+    "v3",
     user.username.trim(),
     user.employeeId.trim(),
-    encodeURIComponent(user.displayName.trim() || user.username.trim())
+    encodeURIComponent(user.displayName.trim() || user.username.trim()),
+    isMcpInstallationOwner(user) ? "1" : "0"
   ].join("|");
   return `Basic ${btoa(identity)}`;
 }
