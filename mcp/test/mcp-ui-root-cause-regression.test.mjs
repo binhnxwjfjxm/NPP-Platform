@@ -7,6 +7,9 @@ const route = await readFile("src/app/mcp-setting/page.tsx", "utf8");
 const groupRoute = await readFile("src/app/mcp-setting/groups/page.tsx", "utf8");
 const groupStyles = await readFile("src/app/mcp-setting/groups/page.module.css", "utf8");
 const canonicalSettingsPage = await readFile("src/features/mcp-settings/McpReportSettingsPage.tsx", "utf8");
+const loginPage = await readFile("src/app/login/page.tsx", "utf8");
+const loginRoute = await readFile("src/app/api/auth/login/route.ts", "utf8");
+const loginStyles = await readFile("src/app/login/login.module.css", "utf8");
 
 test("mobile browser chrome uses the canvas theme instead of creating a second brown bottom row", () => {
   assert.match(layout, /themeColor:\s*"#F7F3ED"/);
@@ -49,4 +52,32 @@ test("report setting group form is an accessible sheet and keeps idempotent muta
   assert.match(groupRoute, /operation: `report-setting-group\.\$\{method\.toLowerCase\(\)\}`/);
   assert.match(groupStyles, /\.cardActions button,[\s\S]*?min-height:\s*44px/);
   assert.match(groupStyles, /\.closeButton\s*\{[\s\S]*?width:\s*44px;[\s\S]*?height:\s*44px/);
+});
+
+test("MCP login matches the canonical two-stage Owner verification UI", () => {
+  assert.match(loginPage, /type VerificationState = "owner_code_required" \| "machine_code_required"/);
+  assert.match(loginPage, /parseVerificationState/);
+  assert.match(loginPage, /mode === "credentials"/);
+  assert.match(loginPage, /Xác minh thiết bị/);
+  assert.match(loginPage, /Đổi tài khoản/);
+  assert.match(loginPage, /formData\.set\("ownerCode", code\.trim\(\)\)/);
+  assert.match(loginPage, /credentials: "same-origin"/);
+  assert.doesNotMatch(loginPage, /Tài khoản Owner cần mã xác minh bổ sung/);
+  assert.doesNotMatch(loginPage, /localStorage|sessionStorage/);
+  assert.match(loginRoute, /search\.set\("state", state\)/);
+  assert.match(loginRoute, /INTERNAL_AUTH_OWNER_CHALLENGE_REQUIRED[\s\S]*"owner_code_required"/);
+  assert.match(loginRoute, /INTERNAL_AUTH_OWNER_CODE_INVALID[\s\S]*"owner_code_required"/);
+});
+
+test("MCP verification screen keeps credentials in memory and gives the same motion feedback as Admin and Delivery", () => {
+  assert.match(loginPage, /useState<LoginMode>/);
+  assert.match(loginPage, /formData\.set\("username", username\.trim\(\)\)/);
+  assert.match(loginPage, /formData\.set\("password", password\)/);
+  assert.match(loginPage, /submitState === "loading"/);
+  assert.match(loginPage, /submitState === "success"/);
+  assert.match(loginStyles, /@keyframes formOut/);
+  assert.match(loginStyles, /@keyframes verifyIn/);
+  assert.match(loginStyles, /@keyframes codeShake/);
+  assert.match(loginStyles, /@keyframes shieldPulse/);
+  assert.match(loginStyles, /prefers-reduced-motion/);
 });
