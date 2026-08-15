@@ -4,6 +4,7 @@ import { chromium } from "playwright";
 
 const appBase = process.env.F05_UI_APP_BASE || "http://127.0.0.1:3000";
 const resultsDir = process.env.F05_UI_RESULTS_DIR || "test-results/f05-ui-smoke";
+const proxyHeaders = { "x-forwarded-proto": "https" };
 await mkdir(resultsDir, { recursive: true });
 
 async function waitForHttp(url, timeoutMs = 120000) {
@@ -43,7 +44,7 @@ async function readDock(page) {
 
 await waitForHttp(`${appBase}/routes`);
 const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+const context = await browser.newContext({ viewport: { width: 390, height: 844 }, extraHTTPHeaders: proxyHeaders });
 const page = await context.newPage();
 const result = { MOBILE_DOCK_NAVIGATION: "FAIL" };
 
@@ -108,6 +109,7 @@ try {
   result.dockLabels = routeDock.values.map((item) => item.label);
   result.customerDestination = "/login";
   result.customerAuthGate = "PASS";
+  result.proxyHttpsBoundary = "PASS";
   result.entryRedirectStatus = visitResponse.status();
   result.noActiveDestination = "/routes";
   result.visitEscapeDestination = "/orders";
