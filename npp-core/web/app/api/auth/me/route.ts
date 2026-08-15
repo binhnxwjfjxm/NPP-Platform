@@ -6,7 +6,11 @@ type CurrentSession = Readonly<{
   employeeFullName?: string | null;
 }>;
 
-type MeData = Readonly<{ session?: CurrentSession | null }>;
+type MeData = Readonly<{
+  roles?: string[];
+  permissions?: string[];
+  session?: CurrentSession | null;
+}>;
 
 function noStoreJson(body: unknown, status = 200) {
   return NextResponse.json(body, {
@@ -40,6 +44,8 @@ export async function GET() {
     data: {
       employeeFullName: session?.employeeFullName?.trim() || null,
       loginName: session?.loginName?.trim() || null,
+      roles: Array.isArray(result.data?.roles) ? result.data.roles : [],
+      permissions: Array.isArray(result.data?.permissions) ? result.data.permissions : [],
     },
   });
 }

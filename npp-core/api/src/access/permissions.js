@@ -73,6 +73,10 @@ export const PERMISSIONS = Object.freeze({
   coreCodReconciliationRead: 'core.cod-reconciliation.read',
   coreCodReconciliationAccept: 'core.cod-reconciliation.accept',
   coreCodAdjustmentCreate: 'core.cod-adjustment.create',
+  coreBackupRead: 'core.backup.read',
+  coreBackupCreate: 'core.backup.create',
+  coreBackupDownload: 'core.backup.download',
+  coreDataDeletionAuthorize: 'core.data-deletion.authorize',
 });
 
 const INVENTORY_TRANSFER_RECEIPT_PERMISSION_CATALOG = Object.freeze([
@@ -164,6 +168,13 @@ const ACCOUNTING_PERMISSION_CATALOG = Object.freeze([
   ['coreCodAdjustmentCreate', 'Đối soát COD', 'Đảo hoặc điều chỉnh COD', 'Cho phép tạo reversal/adjustment append-only cho collection, bàn giao hoặc xác nhận COD.'],
 ].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true })));
 
+const BACKUP_PERMISSION_CATALOG = Object.freeze([
+  ['coreBackupRead', 'Dữ liệu & sao lưu', 'Xem bản sao lưu', 'Cho phép xem trạng thái và lịch sử bản sao lưu của installation hiện tại.'],
+  ['coreBackupCreate', 'Dữ liệu & sao lưu', 'Tạo bản sao lưu', 'Cho phép yêu cầu sao lưu toàn bộ dữ liệu canonical của installation hiện tại.'],
+  ['coreBackupDownload', 'Dữ liệu & sao lưu', 'Tải bản sao lưu', 'Cho phép cấp liên kết tải ngắn hạn cho artifact sao lưu đã xác minh.'],
+  ['coreDataDeletionAuthorize', 'Dữ liệu & sao lưu', 'Xác minh yêu cầu xóa dữ liệu', 'Cho phép tạo và xác minh Delete Intent đã được bảo vệ bằng backup VERIFIED và mã Owner.'],
+].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true })));
+
 export const PERMISSION_CATALOG = Object.freeze([
   ...BASE_PERMISSION_CATALOG,
   ...INVENTORY_TRANSFER_RECEIPT_PERMISSION_CATALOG,
@@ -173,6 +184,7 @@ export const PERMISSION_CATALOG = Object.freeze([
   ...REPORTING_PERMISSION_CATALOG,
   ...LOGISTICS_PERMISSION_CATALOG,
   ...ACCOUNTING_PERMISSION_CATALOG,
+  ...BACKUP_PERMISSION_CATALOG,
 ]);
 export const PERMISSION_REGISTRY = new Set(PERMISSION_CATALOG.map((entry) => entry.permissionKey));
 export function isKnownPermissionKey(value) { return typeof value === 'string' && PERMISSION_REGISTRY.has(value); }

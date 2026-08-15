@@ -45,6 +45,7 @@ import { handlePurchaseOrderRoutes } from './routes/purchase-orders.js';
 import { handleSalesOrderRoutes } from './routes/sales-orders.js';
 import { handleReportingRoutes } from './routes/reporting-sales-purchasing.js';
 import { handleCustomerReceivableRoutes } from './routes/customer-receivables.js';
+import { handleBackupRoutes } from './routes/backups.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const CORS_ALLOWED_HEADERS = 'authorization, content-type, idempotency-key, x-request-id';
@@ -436,6 +437,11 @@ export function createCoreApiServer(options = {}) {
       authorize,
       PERMISSIONS,
       createContext,
+      storageAdapter,
+      env: options.env,
+      ownerConfig: options.ownerConfig,
+      fetchImpl: options.fetchImpl,
+      backupRunner: options.backupRunner,
     };
 
     if (await handleEmployeeRoutes(req, res, routeContext)) return;
@@ -449,6 +455,7 @@ export function createCoreApiServer(options = {}) {
     if (await handleSalesOrderRoutes(req, res, routeContext)) return;
     if (await handleReportingRoutes(req, res, routeContext)) return;
     if (await handleCustomerReceivableRoutes(req, res, routeContext)) return;
+    if (await handleBackupRoutes(req, res, routeContext)) return;
     if (await handleGoodsReceiptRoutes(req, res, routeContext)) return;
     if (await handleSupplierReturnRoutes(req, res, routeContext)) return;
     if (await handleDocumentNumberingRoutes(req, res, routeContext)) return;
