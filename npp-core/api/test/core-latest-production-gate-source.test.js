@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process/promises';
+import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { promisify } from 'node:util';
 
+const execFileAsync = promisify(execFile);
 const scriptUrl = new URL('../scripts/core-latest-production-gate.sh', import.meta.url);
 const migrationRegistryUrl = new URL('../src/migrations/index.js', import.meta.url);
 
@@ -17,7 +19,7 @@ function extractPendingGuard(source) {
 }
 
 async function runPendingGuard(program, pending, expected) {
-  return execFile(process.execPath, ['--input-type=module', '-e', program], {
+  return execFileAsync(process.execPath, ['--input-type=module', '-e', program], {
     env: {
       ...process.env,
       PENDING_JSON: JSON.stringify(pending),
