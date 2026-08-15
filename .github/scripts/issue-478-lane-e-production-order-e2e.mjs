@@ -103,7 +103,7 @@ async function requestJson(label, url, init, expectedStatus, { retry = false } =
 function linkedFixture(items) {
   const candidates = items.filter((item) => (
     ["approved", "linked_existing"].includes(String(item?.status || ""))
-    && UUID_PATTERN.test(String(item?.routeCustomerId || ""))
+    && String(item?.routeCustomerId || "").trim().length > 0
     && UUID_PATTERN.test(String(item?.coreCustomerId || ""))
     && UUID_PATTERN.test(String(item?.coreCustomerAddressId || ""))
   ));

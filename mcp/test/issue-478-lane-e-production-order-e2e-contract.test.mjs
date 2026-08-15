@@ -41,6 +41,14 @@ test("container runtime preflight uses verified GitHub deploy evidence, never sl
   assert.doesNotMatch(workflow, /CORE_DEPLOYED_SHA/);
 });
 
+test("linked fixture respects MCP text outlet ids and UUID Core references", () => {
+  assert.match(script, /String\(item\?\.routeCustomerId \|\| ""\)\.trim\(\)\.length > 0/);
+  assert.doesNotMatch(script, /UUID_PATTERN\.test\(String\(item\?\.routeCustomerId/);
+  assert.match(script, /UUID_PATTERN\.test\(String\(item\?\.coreCustomerId \|\| ""\)\)/);
+  assert.match(script, /UUID_PATTERN\.test\(String\(item\?\.coreCustomerAddressId \|\| ""\)\)/);
+  assert.match(script, /linkCounts/);
+});
+
 test("smoke uses canonical keys and exercises MCP create -> Core read -> MCP reload", () => {
   assert.match(script, /createIdempotencyKey\(CREATE_OPERATION, randomUUID\(\)\)/);
   assert.match(script, /createIdempotencyKey\(CANCEL_OPERATION, randomUUID\(\)\)/);
@@ -70,5 +78,4 @@ test("retry keeps the same generated keys instead of minting per attempt", () =>
   assert.match(script, /headers: coreHeaders\(bootstrapToken, \{ idempotencyKey: cancelKey, json: true \}\)/);
   assert.match(script, /\{ retry: true \}/);
   assert.match(script, /retryableFailure = !status \|\| status >= 500/);
-  assert.match(script, /linkCounts/);
 });
