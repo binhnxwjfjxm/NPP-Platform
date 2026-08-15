@@ -19,8 +19,8 @@ test("Phase 6C production smoke is exact-command, read-only and secret-safe", ()
   assert.match(workflow, /\/api\/sales-orders\?limit=1&offset=0/);
   assert.match(workflow, /\/api\/core-sales\/products\/search\?q=&limit=1/);
   assert.match(workflow, /"table":"orders","select":"id","limit":1/);
-  assert.match(workflow, /MCP_ONBOARDING_EXISTING_PROJECTION/);
-  assert.match(workflow, /MCP_SALES_ORDER_EXISTING_PROJECTION/);
+  assert.match(workflow, /mcp_direct_orders_auth 401 TRUSTED_EMPLOYEE_REQUIRED/);
+  assert.match(workflow, /MCP_DIRECT_CORE_ORDERS_AUTH_BOUNDARY/);
   assert.match(workflow, /PRODUCTION_WRITE_SMOKE=not_exercised_no_owner_approved_fixture/);
   assert.doesNotMatch(workflow, /\/customer-onboarding\/submit/);
   assert.doesNotMatch(workflow, /\/customer-onboarding\/sync/);
@@ -32,16 +32,16 @@ test("Phase 6C production smoke is exact-command, read-only and secret-safe", ()
   assert.doesNotMatch(workflow, /echo\s+.*\$(?:mcp_backend_token|onboarding_token|sales_token)/i);
 });
 
-test("production smoke reports the exact failing read step without response bodies", () => {
+test("production smoke reports exact HTTP and deny-by-default error without response bodies", () => {
   assert.match(workflow, /SMOKE_STEP=\$label HTTP=\$\{status:-none\}/);
   assert.match(workflow, /SMOKE_HTTP_\$\{label\^\^\}/);
   assert.match(workflow, /SMOKE_FAILURE=\$code/);
   assert.match(workflow, /SMOKE_ERROR_CODE_\$\{label\^\^\}/);
+  assert.match(workflow, /request_error_json\(\)/);
   assert.match(workflow, /require_nonempty mcp_backend_token/);
   assert.match(workflow, /require_equal onboarding_base/);
-  assert.match(workflow, /assert_error_code onboarding_validation SESSION_CUSTOMER_ID_REQUIRED/);
-  assert.match(workflow, /assert_error_code sales_validation SESSION_CUSTOMER_ID_REQUIRED/);
-  assert.doesNotMatch(workflow, /assert_error_code .* session_customer_id_required/);
+  assert.match(workflow, /request_error_json mcp_direct_orders_auth 401 TRUSTED_EMPLOYEE_REQUIRED/);
+  assert.doesNotMatch(workflow, /request_json mcp_direct_orders 200/);
   assert.doesNotMatch(workflow, /cat "\$body"/);
   assert.doesNotMatch(workflow, /echo .*mcp_config/);
   assert.doesNotMatch(workflow, /echo .*onboarding_token/);
