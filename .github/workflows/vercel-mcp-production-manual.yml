@@ -90,6 +90,7 @@ jobs:
         shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          CORE_API_INTERNAL_URL: ${{ secrets.CORE_API_INTERNAL_URL }}
           BACKEND_API_BASE_URL: ${{ secrets.MCP_BACKEND_API_BASE_URL }}
           BACKEND_API_TOKEN: ${{ secrets.MCP_BACKEND_API_TOKEN }}
         run: |
@@ -101,6 +102,7 @@ jobs:
           import { appendFile, writeFile } from "node:fs/promises";
 
           const sources = [
+            ["CORE_API_INTERNAL_URL", "CORE_API_INTERNAL_URL"],
             ["BACKEND_API_BASE_URL", "MCP_BACKEND_API_BASE_URL"],
             ["BACKEND_API_TOKEN", "MCP_BACKEND_API_TOKEN"],
             ["MCP_LEGACY_ACTOR_ID", "workflow:MCP_LEGACY_ACTOR_ID"]
@@ -121,6 +123,23 @@ jobs:
             }
             if (!/^vcp_[A-Za-z0-9_-]+$/.test(vercelToken)) {
               throw new Error("invalid_vercel_token_format");
+            }
+            let coreUrl;
+            try {
+              coreUrl = new URL(values.CORE_API_INTERNAL_URL);
+            } catch {
+              throw new Error("invalid_core_api_internal_url");
+            }
+            if (coreUrl.protocol !== "https:" || coreUrl.username || coreUrl.password) {
+              throw new Error("invalid_core_api_internal_url");
+            }
+            const coreHealthResponse = await fetch(new URL("/health/live", coreUrl), {
+              method: "GET",
+              headers: { Accept: "application/json" },
+              signal: AbortSignal.timeout(15_000)
+            });
+            if (!coreHealthResponse.ok) {
+              throw new Error(`core_auth_health_failed:${coreHealthResponse.status}`);
             }
             if (!values.BACKEND_API_BASE_URL.startsWith("https://")) {
               throw new Error("backend_api_base_url_must_be_https");
@@ -169,8 +188,10 @@ jobs:
           } catch (error) {
             const rawCode = String(error?.message || "runtime_config_sync_failed");
             const safePatterns = [
-              /^missing_github_runtime_sources:[A-Z0-9_,]+$/,
+              /^missing_github_runtime_sources:[A-Z0-9_:,]+$/,
               /^invalid_vercel_token_format$/,
+              /^invalid_core_api_internal_url$/,
+              /^core_auth_health_failed:\d{3}$/,
               /^backend_api_base_url_must_be_https$/,
               /^backend_api_token_too_short$/,
               /^vercel_env_upsert_failed:\d{3}:[A-Za-z0-9_.-]+$/
@@ -329,6 +350,40 @@ jobs:
           echo "MCP smoke asset=$asset"
           curl --fail --location --silent --show-error --retry 3 --retry-delay 2 "$DEPLOYMENT_URL$asset" >/dev/null
 
+      - name: Smoke MCP login Core connectivity
+        shell: bash
+        env:
+          DEPLOYMENT_URL: ${{ env.MCP_PRODUCTION_URL }}
+        run: |
+          set -euo pipefail
+          headers_file="${RUNNER_TEMP}/mcp-auth-smoke-headers.txt"
+          status="$(curl --silent --show-error --connect-timeout 5 --max-time 20 \
+            --request POST \
+            --header 'Content-Type: application/x-www-form-urlencoded' \
+            --data-urlencode 'username=__mcp_auth_smoke_never_exists__' \
+            --data-urlencode 'password=not-a-real-password' \
+            --data-urlencode 'returnTo=/customers' \
+            --dump-header "$headers_file" \
+            --output /dev/null \
+            --write-out '%{http_code}' \
+            "$DEPLOYMENT_URL/api/auth/login" || true)"
+          test "$status" = "303"
+          location="$(awk 'BEGIN{IGNORECASE=1} /^location:/{sub(/^[^:]*:[[:space:]]*/,""); sub(/\r$/,""); print; exit}' "$headers_file")"
+          test -n "$location"
+          case "$location" in
+            *auth_unavailable*)
+              echo "MCP login cannot reach Core auth boundary" >&2
+              exit 1
+              ;;
+            *error=invalid_credentials*)
+              echo "MCP login reached Core auth boundary"
+              ;;
+            *)
+              echo "Unexpected MCP login smoke redirect" >&2
+              exit 1
+              ;;
+          esac
+
       - name: Record successful exact SHA
         shell: bash
         env:
@@ -337,4 +392,4 @@ jobs:
           set -euo pipefail
           echo "MCP_DEPLOYED_SHA=${{ steps.target.outputs.sha }}"
           echo "MCP_DEPLOYED_URL=${{ steps.deploy.outputs.url }}"
-          gh issue comment 5 --body "MCP Vercel production deploy succeeded for SHA ${{ steps.target.outputs.sha }} at ${{ steps.deploy.outputs.url }}."
+          gh issue comment 5 --body "MCP Vercel production deploy succeeded for SHA ${{ steps.target.outputs.sha }} at ${{ steps.deploy.outputs.url }}. Login connectivity smoke: passed."
