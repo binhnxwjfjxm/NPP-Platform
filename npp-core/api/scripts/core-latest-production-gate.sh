@@ -286,10 +286,19 @@ const expected = JSON.parse(process.env.EXPECTED_PENDING_JSON || '[]');
 if (!Array.isArray(pending) || !pending.every((item) => typeof item === 'string')) {
   throw new Error('invalid_pending_migration_shape');
 }
-const start = expected.length - pending.length;
-const allowed = start >= 0 && pending.every((item, index) => item === expected[start + index]);
-if (!allowed) {
-  throw new Error(`unexpected_pending_migrations:${JSON.stringify(pending)}`);
+if (!Array.isArray(expected) || !expected.every((item) => typeof item === 'string')) {
+  throw new Error('invalid_expected_migration_shape');
+}
+const positions = new Map(expected.map((item, index) => [item, index]));
+const seen = new Set();
+let previous = -1;
+for (const item of pending) {
+  const position = positions.get(item);
+  if (position === undefined || seen.has(item) || position <= previous) {
+    throw new Error(`unexpected_pending_migrations:${JSON.stringify(pending)}`);
+  }
+  seen.add(item);
+  previous = position;
 }
 NODE
 }
