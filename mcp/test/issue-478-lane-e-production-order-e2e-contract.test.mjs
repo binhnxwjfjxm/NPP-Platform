@@ -41,12 +41,33 @@ test("container runtime preflight uses verified GitHub deploy evidence, never sl
   assert.doesNotMatch(workflow, /CORE_DEPLOYED_SHA/);
 });
 
-test("linked fixture respects MCP text outlet ids and UUID Core references", () => {
+test("linked fixture classifies sanitized production projection state before selection", () => {
+  assert.match(script, /LINKED_STATUSES = new Set\(\["approved", "linked_existing"\]\)/);
   assert.match(script, /String\(item\?\.routeCustomerId \|\| ""\)\.trim\(\)\.length > 0/);
   assert.doesNotMatch(script, /UUID_PATTERN\.test\(String\(item\?\.routeCustomerId/);
   assert.match(script, /UUID_PATTERN\.test\(String\(item\?\.coreCustomerId \|\| ""\)\)/);
   assert.match(script, /UUID_PATTERN\.test\(String\(item\?\.coreCustomerAddressId \|\| ""\)\)/);
-  assert.match(script, /linkCounts/);
+  assert.match(script, /approvedOrLinked: linked\.length/);
+  assert.match(script, /withRouteId: withRouteId\.length/);
+  assert.match(script, /withCoreRefs: withCoreRefs\.length/);
+  assert.match(script, /validCoreRefs: validCoreRefs\.length/);
+  assert.match(script, /uniqueLinks: unique\.length/);
+  for (const code of [
+    "no_route_customer_fixture",
+    "no_approved_or_linked_customer_fixture",
+    "linked_customer_route_id_missing",
+    "linked_customer_core_refs_missing",
+    "linked_customer_core_refs_invalid",
+    "linked_customer_link_ambiguous"
+  ]) {
+    assert.match(script, new RegExp(code));
+  }
+  assert.match(script, /FIXTURE_TOTAL=\$\{fixtureDiagnostics\.total\}/);
+  assert.match(script, /FIXTURE_APPROVED_OR_LINKED=\$\{fixtureDiagnostics\.approvedOrLinked\}/);
+  assert.match(script, /FIXTURE_WITH_ROUTE_ID=\$\{fixtureDiagnostics\.withRouteId\}/);
+  assert.match(script, /FIXTURE_WITH_CORE_REFS=\$\{fixtureDiagnostics\.withCoreRefs\}/);
+  assert.match(script, /FIXTURE_VALID_CORE_REFS=\$\{fixtureDiagnostics\.validCoreRefs\}/);
+  assert.match(script, /FIXTURE_UNIQUE_LINKS=\$\{fixtureDiagnostics\.uniqueLinks\}/);
 });
 
 test("smoke uses canonical keys and exercises MCP create -> Core read -> MCP reload", () => {

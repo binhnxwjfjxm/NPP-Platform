@@ -9,6 +9,7 @@ const OWNER_DISPLAY_NAME = "Issue 478 Lane E Production Smoke";
 const CREATE_OPERATION = "mcp.sales-order.create";
 const CANCEL_OPERATION = "core.sales-order.cancel";
 const SMOKE_NOTE = "[SMOKE #478] Lane E MCP -> Core -> MCP production E2E";
+const LINKED_STATUSES = new Set(["approved", "linked_existing"]);
 
 function requiredEnv(name, { url = false } = {}) {
   const value = String(process.env[name] || "").trim();
@@ -101,23 +102,51 @@ async function requestJson(label, url, init, expectedStatus, { retry = false } =
 }
 
 function linkedFixture(items) {
-  const candidates = items.filter((item) => (
-    ["approved", "linked_existing"].includes(String(item?.status || ""))
-    && String(item?.routeCustomerId || "").trim().length > 0
-    && UUID_PATTERN.test(String(item?.coreCustomerId || ""))
+  const all = Array.isArray(items) ? items : [];
+  const linked = all.filter((item) => LINKED_STATUSES.has(String(item?.status || "")));
+  const withRouteId = linked.filter((item) => String(item?.routeCustomerId || "").trim().length > 0);
+  const withCoreRefs = withRouteId.filter((item) => (
+    String(item?.coreCustomerId || "").trim().length > 0
+    && String(item?.coreCustomerAddressId || "").trim().length > 0
+  ));
+  const validCoreRefs = withCoreRefs.filter((item) => (
+    UUID_PATTERN.test(String(item?.coreCustomerId || ""))
     && UUID_PATTERN.test(String(item?.coreCustomerAddressId || ""))
   ));
+
   const linkCounts = new Map();
-  for (const item of candidates) {
+  for (const item of validCoreRefs) {
     const key = `${String(item.coreCustomerId).toLowerCase()}|${String(item.coreCustomerAddressId).toLowerCase()}`;
     linkCounts.set(key, (linkCounts.get(key) || 0) + 1);
   }
-  const unique = candidates.filter((item) => {
+  const unique = validCoreRefs.filter((item) => {
     const key = `${String(item.coreCustomerId).toLowerCase()}|${String(item.coreCustomerAddressId).toLowerCase()}`;
     return linkCounts.get(key) === 1;
   });
+
+  const diagnostics = Object.freeze({
+    total: all.length,
+    approvedOrLinked: linked.length,
+    withRouteId: withRouteId.length,
+    withCoreRefs: withCoreRefs.length,
+    validCoreRefs: validCoreRefs.length,
+    uniqueLinks: unique.length
+  });
+
+  let failureCode = null;
+  if (all.length === 0) failureCode = "no_route_customer_fixture";
+  else if (linked.length === 0) failureCode = "no_approved_or_linked_customer_fixture";
+  else if (withRouteId.length === 0) failureCode = "linked_customer_route_id_missing";
+  else if (withCoreRefs.length === 0) failureCode = "linked_customer_core_refs_missing";
+  else if (validCoreRefs.length === 0) failureCode = "linked_customer_core_refs_invalid";
+  else if (unique.length === 0) failureCode = "linked_customer_link_ambiguous";
+
   const preferred = unique.find((item) => /(?:test|demo|smoke)/i.test(String(item?.customerName || "")));
-  return preferred || unique[0] || null;
+  return Object.freeze({
+    fixture: preferred || unique[0] || null,
+    diagnostics,
+    failureCode
+  });
 }
 
 function pricedVariant(items) {
@@ -158,6 +187,7 @@ async function run() {
   let coreReceived = false;
   let mcpReloaded = false;
   let cancelled = false;
+  let fixtureDiagnostics = null;
 
   try {
     const customerPayload = await requestJson(
@@ -166,8 +196,10 @@ async function run() {
       { method: "GET", headers: mcpHeaders() },
       200
     );
-    const fixture = linkedFixture(Array.isArray(customerPayload?.data?.items) ? customerPayload.data.items : []);
-    if (!fixture) throw businessError("no_linked_customer_fixture");
+    const selection = linkedFixture(Array.isArray(customerPayload?.data?.items) ? customerPayload.data.items : []);
+    fixtureDiagnostics = selection.diagnostics;
+    if (!selection.fixture) throw businessError(selection.failureCode || "no_linked_customer_fixture", selection.diagnostics);
+    const fixture = selection.fixture;
 
     const productPayload = await requestJson(
       "mcp_product_fixture",
@@ -281,6 +313,7 @@ async function run() {
     cleanupCancelled: cancelled,
     finalStatus: cancelled ? "cancelled" : "unknown",
     persistedTestOrder: cancelled ? "cancelled_audit_record" : "unknown",
+    fixtureDiagnostics,
     errorCode: primaryError?.code || cleanupError?.code || null,
     cleanupErrorCode: cleanupError?.code || null
   };
@@ -292,6 +325,14 @@ async function run() {
     `SMOKE_ORDER_CLEANUP_CANCEL=${cancelled ? "pass" : "fail"}`,
     `SMOKE_ORDER_FINAL_STATUS=${result.finalStatus}`,
     `SMOKE_ORDER_PERSISTENCE=${result.persistedTestOrder}`,
+    ...(fixtureDiagnostics ? [
+      `FIXTURE_TOTAL=${fixtureDiagnostics.total}`,
+      `FIXTURE_APPROVED_OR_LINKED=${fixtureDiagnostics.approvedOrLinked}`,
+      `FIXTURE_WITH_ROUTE_ID=${fixtureDiagnostics.withRouteId}`,
+      `FIXTURE_WITH_CORE_REFS=${fixtureDiagnostics.withCoreRefs}`,
+      `FIXTURE_VALID_CORE_REFS=${fixtureDiagnostics.validCoreRefs}`,
+      `FIXTURE_UNIQUE_LINKS=${fixtureDiagnostics.uniqueLinks}`
+    ] : []),
     `E2E_RESULT=${result.ok ? "pass" : "fail"}`,
     ...(result.errorCode ? [`E2E_ERROR_CODE=${result.errorCode}`] : []),
     ...(result.cleanupErrorCode ? [`E2E_CLEANUP_ERROR_CODE=${result.cleanupErrorCode}`] : [])
