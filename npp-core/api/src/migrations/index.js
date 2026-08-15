@@ -100,6 +100,10 @@ const LOGISTICS_TRIP_RECOVERY_SQL = readFileSync(
   new URL('../../../../database/migrations/logistics/082_logistics_trip_recovery.sql', import.meta.url),
   'utf8',
 );
+const BACKUP_DELETE_FOUNDATION_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/083_backup_delete_foundation.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -147,6 +151,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
       LOGISTICS_TRIP_RECOVERY_SQL,
     ].join('\n\n'),
   }),
+  Object.freeze({ id: '083_backup_delete_foundation', sql: BACKUP_DELETE_FOUNDATION_SQL }),
 ]);
 
 export { runMigrations };

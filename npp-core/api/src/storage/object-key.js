@@ -3,6 +3,7 @@ import { createStorageError, STORAGE_ERROR_CODES } from './errors.js';
 
 export const DEFAULT_STORAGE_NAMESPACES = Object.freeze([
   '_rehearsal',
+  'backups',
   'contracts',
   'documents',
   'exports',
