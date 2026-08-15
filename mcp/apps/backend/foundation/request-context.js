@@ -12,6 +12,7 @@ const ROLE_PATTERN = /^mcp\.[a-z0-9][a-z0-9._:-]{1,126}$/;
 const PERMISSION_PATTERN = /^mcp\.[a-z0-9][a-z0-9._:-]{1,126}$/;
 const SCOPE_PATTERN = /^mcp:[a-z0-9*][a-z0-9._:*-]{0,126}$/;
 const AUTHENTICATED_PROXY_REQUEST = Symbol("authenticated-proxy-request");
+const MCP_INSTALLATION_OWNER_ROLE = "mcp.installation-owner";
 
 function headerValue(req, name) {
   const value = req.headers[name];
@@ -137,15 +138,21 @@ function internalWorkforcePrincipal(req, config) {
   } catch {
     actorContextError("invalid_workforce_authorization", 401);
   }
-  const [version, username, employeeId, encodedDisplayName, ...extra] = decoded.split("|");
+
+  const parts = decoded.split("|");
+  const [version, username, employeeId, encodedDisplayName] = parts;
+  const ownerFlag = version === "v3" ? parts[4] : "0";
+  const expectedLength = version === "v3" ? 5 : 4;
   if (
-    version !== "v2" ||
+    !new Set(["v2", "v3"]).has(version) ||
+    parts.length !== expectedLength ||
     !String(username || "").trim() ||
     !EMPLOYEE_UUID_PATTERN.test(String(employeeId || "").trim()) ||
-    extra.length > 0
+    !new Set(["0", "1"]).has(ownerFlag)
   ) {
     actorContextError("invalid_workforce_authorization", 401);
   }
+
   let displayName = String(username).trim();
   try {
     displayName = decodeURIComponent(String(encodedDisplayName || "")) || displayName;
@@ -153,12 +160,16 @@ function internalWorkforcePrincipal(req, config) {
     actorContextError("invalid_workforce_authorization", 401);
   }
   const configured = config.servicePrincipal || {};
+  const roles = [
+    ...(configured.roles || []),
+    ...(ownerFlag === "1" ? [MCP_INSTALLATION_OWNER_ROLE] : [])
+  ];
   return {
     id: `user:${employeeId}`,
     type: "user",
     authentication: "core-workforce-session",
     employeeId,
-    roles: configured.roles || [],
+    roles,
     permissions: configured.permissions || [],
     scopes: configured.scopes || [],
     username: String(username).trim(),
