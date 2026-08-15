@@ -40,7 +40,9 @@ test("official MCP orders use only the direct canonical Core boundary; legacy or
   assert.match(ordersUi, /\/api\/backend\/core-sales\/orders/);
   assert.doesNotMatch(ordersUi, /sessionCustomerId|orderIntentId|unitPrice/);
   assert.match(lineCard, /line\.hasOrder \? "Đã có đơn" : "Có đơn"/);
-  assert.match(lineCard, /target = !line\.hasOrder/);
+  assert.match(lineCard, /\[hasOrder, setHasOrder\] = useState\(Boolean\(line\.hasOrder\)\)/);
+  assert.match(lineCard, /target = !hasOrder/);
+  assert.match(lineCard, /setHasOrder\(target\)[\s\S]*?orderSubmission\.current = null/);
   assert.doesNotMatch(visitSession, /customer-onboarding\/submit|customer-onboarding\/sync|Tiếp tục tạo đơn NPP|\/visits\/order-intent|Ghi nhận nhu cầu mua/);
   assert.doesNotMatch(lineCard, /Đơn NPP|\/visits\/order-intent/);
   assert.doesNotMatch(readonly, /Đơn NPP|\/visits\/order-intent/);
