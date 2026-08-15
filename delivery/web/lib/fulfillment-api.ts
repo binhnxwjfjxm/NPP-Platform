@@ -38,6 +38,24 @@ export type PickingWorkItem = Readonly<{
   updatedAt: string;
 }>;
 
+export type PickingCandidate = Readonly<{
+  rank: number;
+  warehouseId: string;
+  locationId: string | null;
+  locationCode: string | null;
+  locationName: string | null;
+  baseVariantId: string;
+  lotId: string | null;
+  lotCode: string | null;
+  expiryDate: string | null;
+  firstReceivedAt: string | null;
+  availableBaseQuantity: string;
+  allocationPolicy: string;
+  lotTrackingMode: string;
+  expiryTrackingMode: string;
+  locationRequired: boolean;
+}>;
+
 export type PickingAllocation = Readonly<{
   id: string;
   fulfillmentDemandId: string;
@@ -58,9 +76,24 @@ export type PickingDemandDetail = Readonly<{
   ok: true;
   demand: PickingWorkItem;
   remainingBaseQuantity: string;
-  candidates: readonly unknown[];
+  candidates: readonly PickingCandidate[];
   suggestedPlan: readonly unknown[];
   allocations: readonly PickingAllocation[];
+}>;
+
+export type PickingCloseState = Readonly<{
+  ok: true;
+  canCloseFull: boolean;
+  canClosePartial: boolean;
+  reasonCode: string | null;
+  orderedBaseQuantity: string;
+  allocatedBaseQuantity: string;
+  pickedBaseQuantity: string;
+  remainingBaseQuantity: string;
+  backorderedBaseQuantity: string;
+  shortageCount: number;
+  alternativeSources: readonly PickingCandidate[];
+  latestCloseMode: 'FULL' | 'PARTIAL' | null;
 }>;
 
 async function callCore<T>(
@@ -110,6 +143,14 @@ export function getPickingDemand(user: DeliveryUser, demandId: string): Promise<
   );
 }
 
+export function getPickingCloseState(user: DeliveryUser, salesOrderId: string): Promise<PickingCloseState> {
+  if (!UUID_PATTERN.test(salesOrderId)) throw new Error('INVALID_SALES_ORDER_ID');
+  return callCore<PickingCloseState>(
+    user,
+    `/api/inventory/fulfillment-orders/${encodeURIComponent(salesOrderId)}/picking-close-state`,
+  );
+}
+
 export function pickFulfillmentAllocation(
   user: DeliveryUser,
   allocationId: string,
@@ -119,6 +160,34 @@ export function pickFulfillmentAllocation(
   if (!UUID_PATTERN.test(allocationId)) throw new Error('INVALID_FULFILLMENT_ALLOCATION_ID');
   return callCore(user,
     `/api/inventory/fulfillment-allocations/${encodeURIComponent(allocationId)}/pick`,
+    { method: 'POST', body: JSON.stringify(payload) },
+    idempotencyKey,
+  );
+}
+
+export function recordFulfillmentShortage(
+  user: DeliveryUser,
+  allocationId: string,
+  payload: Readonly<{ actualPickedQuantity: string; observedQuantity: string; reason: string }>,
+  idempotencyKey: string,
+) {
+  if (!UUID_PATTERN.test(allocationId)) throw new Error('INVALID_FULFILLMENT_ALLOCATION_ID');
+  return callCore(user,
+    `/api/inventory/fulfillment-allocations/${encodeURIComponent(allocationId)}/shortage`,
+    { method: 'POST', body: JSON.stringify(payload) },
+    idempotencyKey,
+  );
+}
+
+export function closeFulfillmentPicking(
+  user: DeliveryUser,
+  salesOrderId: string,
+  payload: Readonly<{ mode: 'FULL' | 'PARTIAL' }>,
+  idempotencyKey: string,
+) {
+  if (!UUID_PATTERN.test(salesOrderId)) throw new Error('INVALID_SALES_ORDER_ID');
+  return callCore(user,
+    `/api/inventory/fulfillment-orders/${encodeURIComponent(salesOrderId)}/picking-close`,
     { method: 'POST', body: JSON.stringify(payload) },
     idempotencyKey,
   );

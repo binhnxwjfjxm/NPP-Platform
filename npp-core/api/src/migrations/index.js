@@ -84,6 +84,10 @@ const MANUAL_DELIVERY_HANDOVER_SQL = readFileSync(
   new URL('../../../../database/migrations/sales/080_manual_delivery_handover.sql', import.meta.url),
   'utf8',
 );
+const FULFILLMENT_SHORTAGE_DISCREPANCY_SQL = readFileSync(
+  new URL('../../../../database/migrations/sales/081_sales_fulfillment_shortage_discrepancy.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -122,6 +126,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '078_customer_address_location_url', sql: CUSTOMER_ADDRESS_LOCATION_URL_SQL }),
   Object.freeze({ id: '079_customer_media', sql: CUSTOMER_MEDIA_SQL }),
   Object.freeze({ id: '080_manual_delivery_handover', sql: MANUAL_DELIVERY_HANDOVER_SQL }),
+  Object.freeze({ id: '081_sales_fulfillment_shortage_discrepancy', sql: FULFILLMENT_SHORTAGE_DISCREPANCY_SQL }),
 ]);
 
 export { runMigrations };

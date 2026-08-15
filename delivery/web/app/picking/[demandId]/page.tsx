@@ -2,9 +2,15 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { authenticateDeliveryUser, deliverySetupPending } from '../../../lib/delivery-auth';
 import { deliveryCapabilitiesFromHeaders } from '../../../lib/delivery-capabilities';
-import { getPickingDemand } from '../../../lib/fulfillment-api';
+import {
+  getPickingCloseState,
+  getPickingDemand,
+  type PickingAllocation,
+  type PickingCandidate,
+} from '../../../lib/fulfillment-api';
 import { safeErrorMessage } from '../../../lib/presentation';
 import PickAllocationPanel from './pick-allocation-panel';
+import PickingClosePanel from './picking-close-panel';
 import styles from '../picking.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +18,46 @@ export const dynamic = 'force-dynamic';
 function quantity(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 3 }).format(parsed) : value;
+}
+
+function sameScope(
+  left: Readonly<{ locationId: string | null; lotId: string | null }>,
+  right: Readonly<{ locationId: string | null; lotId: string | null }>,
+) {
+  return left.locationId === right.locationId && left.lotId === right.lotId;
+}
+
+function remainingAllocation(allocation: PickingAllocation) {
+  return Math.max(
+    Number(allocation.allocatedBaseQuantity || 0) - Number(allocation.pickedBaseQuantity || 0),
+    0,
+  );
+}
+
+function alternativeSources(
+  current: PickingAllocation,
+  allocations: readonly PickingAllocation[],
+  candidates: readonly PickingCandidate[],
+) {
+  const fromAllocations = allocations
+    .filter((allocation) => allocation.id !== current.id && remainingAllocation(allocation) > 0)
+    .map((allocation) => ({
+      key: `allocation:${allocation.id}`,
+      locationLabel: allocation.locationCode || allocation.locationName || 'Không bắt buộc vị trí',
+      lotLabel: allocation.lotCode,
+      availableBaseQuantity: String(remainingAllocation(allocation)),
+    }));
+  const fromStock = candidates
+    .filter((candidate) => Number(candidate.availableBaseQuantity || 0) > 0)
+    .filter((candidate) => !sameScope(candidate, current))
+    .filter((candidate) => !allocations.some((allocation) => sameScope(candidate, allocation)))
+    .map((candidate) => ({
+      key: `stock:${candidate.locationId ?? 'none'}:${candidate.lotId ?? 'none'}`,
+      locationLabel: candidate.locationCode || candidate.locationName || 'Không bắt buộc vị trí',
+      lotLabel: candidate.lotCode,
+      availableBaseQuantity: candidate.availableBaseQuantity,
+    }));
+  return [...fromAllocations, ...fromStock];
 }
 
 export default async function PickingDetailPage({ params }: Readonly<{ params: { demandId: string } }>) {
@@ -30,8 +76,11 @@ export default async function PickingDetailPage({ params }: Readonly<{ params: {
 
   try {
     const detail = await getPickingDemand(user, params.demandId);
-    const { demand, allocations } = detail;
-    const fullyPicked = allocations.length > 0 && allocations.every((allocation) => Number(allocation.pickedBaseQuantity) >= Number(allocation.allocatedBaseQuantity));
+    const closeState = await getPickingCloseState(user, detail.demand.salesOrderId);
+    const { demand, allocations, candidates } = detail;
+    const fullyPicked = allocations.length > 0 && allocations.every(
+      (allocation) => Number(allocation.pickedBaseQuantity) >= Number(allocation.allocatedBaseQuantity),
+    );
     return (
       <main className="pageShell">
         <header className="appHeader deliveryPageHeader">
@@ -50,7 +99,7 @@ export default async function PickingDetailPage({ params }: Readonly<{ params: {
         </section>
 
         {fullyPicked ? (
-          <section className={styles.readyBanner}><strong>Đã soạn đủ</strong><p>Dữ liệu đã nằm trong Core Fulfillment. Bước đóng gói/hoàn tất tiếp tục theo state machine canonical, Delivery không tạo trạng thái riêng.</p></section>
+          <section className={styles.readyBanner}><strong>Đã soạn đủ mã này</strong><p>Dữ liệu pick đã nằm trong Core Fulfillment.</p></section>
         ) : null}
 
         {allocations.length ? (
@@ -60,6 +109,7 @@ export default async function PickingDetailPage({ params }: Readonly<{ params: {
                 allocation={allocation}
                 demandId={demand.fulfillmentDemandId}
                 unitCode={demand.unitCode}
+                alternativeSources={alternativeSources(allocation, allocations, candidates)}
                 key={allocation.id}
               />
             ))}
@@ -68,6 +118,7 @@ export default async function PickingDetailPage({ params }: Readonly<{ params: {
           <section className="stateCard"><strong>Chưa có phân bổ kho để soạn</strong><p>NPP Core cần tạo Fulfillment allocation trước. Delivery không tự tạo bảng, trạng thái hoặc phân bổ thay Core.</p></section>
         )}
 
+        <PickingClosePanel salesOrderId={demand.salesOrderId} state={closeState} />
         <Link className={styles.secondaryAction} href="/picking">Về danh sách soạn hàng</Link>
       </main>
     );
