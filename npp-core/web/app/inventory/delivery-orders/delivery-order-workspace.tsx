@@ -7,6 +7,7 @@ import { AppShell } from '../../components/app-shell';
 import { StatusBadge } from '../../components/status-badge';
 import { WorkspaceTabPanel, WorkspaceTabs, type WorkspaceTabOption } from '../../components/workspace-tabs';
 import styles from './delivery-order-workspace.module.css';
+import DeliveryOrderPrintDock from './DeliveryOrderPrintDock';
 
 type Eligibility = {
   fulfillmentAllocationId: string;
@@ -452,7 +453,7 @@ export default function DeliveryOrderWorkspace() {
 
             {selectedOrder ? (
               <div className={styles.builder}>
-                <div className={styles.detailHeader}><div><p className={styles.eyebrow}>{selectedOrder.number || 'Delivery Order nháp'}</p><h3>{selectedOrder.customerCode} — {selectedOrder.customerName}</h3><p>{selectedOrder.salesOrderNumber || 'Đơn bán hàng'} · {selectedOrder.warehouseCode}</p></div><StatusBadge status={selectedOrder.status} label={statusLabel(selectedOrder.status)} /></div>
+                <div className={styles.detailHeader}><div><p className={styles.eyebrow}>{selectedOrder.number || 'Delivery Order nháp'}</p><h3>{selectedOrder.customerCode} — {selectedOrder.customerName}</h3><p>{selectedOrder.salesOrderNumber || 'Đơn bán hàng'} · {selectedOrder.warehouseCode}</p></div><div className={styles.actions}><DeliveryOrderPrintDock order={selectedOrder} /><StatusBadge status={selectedOrder.status} label={statusLabel(selectedOrder.status)} /></div></div>
                 <div className={styles.lines}>
                   {(selectedOrder.lines ?? []).map((line) => (
                     <article key={line.id}><div><strong>{line.sku} — {line.itemName}</strong><span>{line.locationCode || 'Không vị trí'} · Lô {line.lotCode || 'Không lô'}</span></div><strong>{formatQuantity(line.deliveryBaseQuantity)} {line.unitCode}</strong></article>
