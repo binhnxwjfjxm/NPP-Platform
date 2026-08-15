@@ -18,15 +18,18 @@ test('same-origin gateways and routes forward sanitized conflict details', () =>
   assert.match(organizationRoute, /details: normalized\.details/);
 });
 
-test('product and organization workspaces show actionable deactivate conflict text', () => {
+test('product and organization workspaces show actionable deactivate conflict text without raw routes', () => {
   const productWorkspace = read('../app/products/product-workspace.tsx');
   const organizationWorkspace = read('../app/organization/organization-workspace.tsx');
 
   for (const source of [productWorkspace, organizationWorkspace]) {
     assert.match(source, /dependencyAwareErrorMessage/);
+    assert.match(source, /managementScreenLabel/);
     assert.match(source, /active_dependents/);
     assert.match(source, /stale_version/);
-    assert.match(source, /Mở màn hình xử lý/);
+    assert.match(source, /Mở \$\{managementScreenLabel/);
     assert.match(source, /Bấm Làm mới/);
+    assert.doesNotMatch(source, /Mở màn hình xử lý:/);
+    assert.doesNotMatch(source, /error\?\.message \|\| error\?\.code/);
   }
 });
