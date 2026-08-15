@@ -6,45 +6,22 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
 
-test("customer tab projects real route-customer fields from the backend read boundary", () => {
+test("customer tab reads canonical Core customers through the trusted employee-scoped boundary", () => {
   const page = read("src/features/accounts/AccountsPage.tsx");
-  const projection = read("src/features/accounts/accounts-from-route-customers.ts");
-  const types = read("src/features/accounts/accounts.types.ts");
-  const client = read("src/features/accounts/OutletsClientPage.tsx");
+  const loader = read("src/lib/api/customer-onboarding-data.ts");
+  const service = read("apps/backend/foundation/customer-verification.js");
 
-  assert.match(page, /loadRouteCustomersData\(\)/);
-  assert.match(page, /accountsFromRouteCustomers\(routeCustomersData\)/);
-  assert.match(page, /outletsData\.outlets/);
-  assert.doesNotMatch(page, /createApiClient/);
-  assert.doesNotMatch(page, /getRouteCustomersData\(\)/);
+  assert.match(page, /loadOwnedCoreCustomers\(\)/);
+  assert.match(page, /\/customers\/onboarding/);
+  assert.doesNotMatch(page, /loadRouteCustomersData\(\)/);
+  assert.doesNotMatch(page, /accountsFromRouteCustomers/);
 
-  assert.match(projection, /accountsFromRouteCustomers\(data: RouteCustomersData\): OutletsData/);
-  assert.match(projection, /routeCustomerId: customer\.id/);
-  assert.match(projection, /accountId: customer\.accountId \|\| null/);
-  assert.match(projection, /sortOrder: customer\.sortOrder/);
-  assert.match(projection, /status: toOutletStatus\(customer\.status\)/);
-  assert.match(projection, /gps: customer\.gps \|\| null/);
-  assert.match(projection, /note: customer\.note/);
-  assert.match(projection, /mapsUrl: mapsUrl\(customer\)/);
-  assert.match(projection, /label: "Có GPS"/);
-  assert.match(projection, /label: "Cần GPS"/);
-  assert.match(projection, /label: "Đang ẩn"/);
-
-  assert.match(types, /export type OutletItem/);
-  assert.match(types, /export type OutletsData/);
-  assert.match(client, /items: OutletItem\[\]/);
-  assert.match(client, /Tên, liên hệ, khu vực hoặc tuyến/);
-  assert.match(client, /Cần cập nhật GPS/);
-  assert.match(
-    client,
-    /status === "needs_gps" \? item\.status === "needs_gps" \|\| !item\.gps : item\.status === status/,
-    "Cần GPS filter must include every outlet counted by the KPI"
-  );
-
-  for (const inventedField of ["tier", "lastVisitDate", "lastOrderDate", "monthlyRevenue"]) {
-    assert.doesNotMatch(projection, new RegExp(`\\b${inventedField}\\b`), `customer projection must not invent ${inventedField}`);
-    assert.doesNotMatch(client, new RegExp(`\\b${inventedField}\\b`), `customer UI must not render ${inventedField}`);
-  }
+  assert.match(loader, /\/api\/core-customers/);
+  assert.match(service, /FROM mcp\.accounts/);
+  assert.match(service, /sales_owner = \$2/);
+  assert.match(service, /active = true/);
+  assert.match(service, /requireEmployee\(context\)/);
+  assert.doesNotMatch(page, /tier|lastVisitDate|lastOrderDate|monthlyRevenue/);
 });
 
 test("orders tab reads orders and customers through the backend provider", () => {

@@ -68,6 +68,14 @@ function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+function scopeList(value: MePayload["scopes"]): string[] {
+  if (Array.isArray(value)) return stringList(value);
+  if (value && typeof value === "object" && "warehouseIds" in value) {
+    return stringList(value.warehouseIds);
+  }
+  return [];
+}
+
 async function resolveSession(token: string): Promise<SessionState> {
   const baseUrl = coreBaseUrl();
   if (!baseUrl) return { state: "unavailable" };
@@ -89,9 +97,6 @@ async function resolveSession(token: string): Promise<SessionState> {
     if (!UUID_PATTERN.test(employeeId) || !/^[A-Za-z0-9._-]{2,128}$/.test(username) || !displayName || !payload?.data) {
       return { state: "invalid" };
     }
-    const scopes = Array.isArray(payload.data.scopes)
-      ? stringList(payload.data.scopes)
-      : stringList(payload.data.scopes?.warehouseIds);
     return {
       state: "active",
       user: {
@@ -100,7 +105,7 @@ async function resolveSession(token: string): Promise<SessionState> {
         employeeId,
         roles: stringList(payload.data.roles),
         permissions: stringList(payload.data.permissions),
-        scopes,
+        scopes: scopeList(payload.data.scopes),
         expiresAt: String(payload.data.session?.expiresAt || "")
       }
     };
