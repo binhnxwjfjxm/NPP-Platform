@@ -1,0 +1,462 @@
+name: Temporary document print detail UX fixer
+
+on:
+  push:
+    branches:
+      - agent/tmp-document-print-detail-ux-fix-runner
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact audited main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Verify audited main did not move
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "41f05a8c17e2d9267ab2e656cfd307bab417cd95"
+          test "$(git rev-parse origin/main)" = "41f05a8c17e2d9267ab2e656cfd307bab417cd95"
+      - name: Apply contextual print UX fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          from pathlib import Path
+          import re
+
+          def write(path, content):
+              Path(path).write_text(content.strip() + "\n", encoding="utf-8")
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one anchor, found {count}: {old[:100]!r}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          def remove_import_and_mount(path, component):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              text, imports = re.subn(rf"^import {component} from ['\"][^'\"]+['\"];\n", "", text, flags=re.M)
+              text, mounts = re.subn(rf"\n\s*<{component}(?:\s+[^>]*)?\s*/>", "", text)
+              if imports != 1 or mounts != 1:
+                  raise SystemExit(f"{path}: expected one {component} import/mount, got {imports}/{mounts}")
+              p.write_text(text, encoding="utf-8")
+
+          write('npp-core/web/app/purchasing/goods-receipts/GoodsReceiptPrintDock.tsx', r'''
+          'use client';
+
+          import BusinessDocumentPrint from '../../components/business-document-print';
+          import type { GoodsReceipt } from '../../../lib/goods-receipt-types';
+          import { GOODS_RECEIPT_STATUS_LABELS, formatGoodsReceiptDate } from '../../../lib/goods-receipt-types';
+          import { formatDecimalString } from '../../../lib/purchase-order-types';
+
+          export default function GoodsReceiptPrintDock({ receipt }: { receipt: GoodsReceipt | null }) {
+            if (!receipt?.documentNumber || receipt.status === 'draft') return null;
+            return (
+              <BusinessDocumentPrint
+                id={`goods-receipt-${receipt.id}`}
+                actionLabel="In"
+                title="PHIẾU NHẬN HÀNG"
+                subtitle="Chứng từ nhập hàng"
+                number={receipt.documentNumber}
+                status={GOODS_RECEIPT_STATUS_LABELS[receipt.status]}
+                meta={[
+                  { label: 'Nhà cung cấp', value: `${receipt.supplierCode} — ${receipt.supplierName}` },
+                  { label: 'Đơn đặt hàng', value: receipt.purchaseOrderNumber || '—' },
+                  { label: 'Kho nhận', value: `${receipt.warehouseCode} — ${receipt.warehouseName}` },
+                  { label: 'Ngày nhận', value: formatGoodsReceiptDate(receipt.receiptDate) },
+                  { label: 'Tham chiếu giao', value: receipt.supplierDeliveryReference || '—' },
+                  { label: 'Số dòng', value: formatDecimalString(String(receipt.lineCount)) },
+                ]}
+                columns={[
+                  { key: 'no', label: 'STT', align: 'center' },
+                  { key: 'item', label: 'Sản phẩm / SKU' },
+                  { key: 'received', label: 'Thực nhận', align: 'right' },
+                  { key: 'accepted', label: 'Chấp nhận', align: 'right' },
+                  { key: 'rejected', label: 'Loại', align: 'right' },
+                  { key: 'unit', label: 'ĐVT', align: 'center' },
+                  { key: 'lot', label: 'Lô / HSD' },
+                ]}
+                rows={(receipt.lines ?? []).map((line) => ({
+                  id: line.id,
+                  cells: {
+                    no: line.lineNumber,
+                    item: <><strong>{line.itemName}</strong><br />{line.skuCode}</>,
+                    received: formatDecimalString(line.receivedQuantity),
+                    accepted: formatDecimalString(line.acceptedQuantity),
+                    rejected: formatDecimalString(line.rejectedQuantity),
+                    unit: line.unitCode,
+                    lot: `${line.lotCode || '—'}${line.expiryDate ? ` · HSD ${line.expiryDate}` : ''}`,
+                  },
+                }))}
+                totals={[
+                  { label: 'Tổng thực nhận', value: formatDecimalString(receipt.receivedQuantityTotal) },
+                  { label: 'Tổng chấp nhận', value: formatDecimalString(receipt.acceptedQuantityTotal), emphasis: true },
+                  { label: 'Tổng loại', value: formatDecimalString(receipt.rejectedQuantityTotal) },
+                  { label: 'Chốt thiếu', value: formatDecimalString(receipt.shortageClosedQuantityTotal) },
+                ]}
+                note={receipt.note || undefined}
+                signatures={['Người giao', 'Thủ kho', 'Người kiểm nhận']}
+                testId="goods-receipt-print-sheet"
+              />
+            );
+          }
+          ''')
+
+          write('npp-core/web/app/accounting/customer-payments/CustomerPaymentPrintDock.tsx', r'''
+          'use client';
+
+          import BusinessDocumentPrint from '../../components/business-document-print';
+          import type { CustomerPayment } from '../../../lib/customer-payment-types';
+
+          function money(value: string, currencyCode: string) {
+            const normalized = String(value ?? '').trim();
+            const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(normalized);
+            if (!match) return `${normalized || '—'} ${currencyCode}`;
+            const fraction = (match[3] ?? '').replace(/0+$/, '');
+            const whole = match[2].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+            return `${match[1]}${whole}${fraction ? `,${fraction}` : ''} ${currencyCode}`;
+          }
+
+          function dateText(value: string | null | undefined) {
+            if (!value) return '—';
+            const parsed = new Date(value);
+            return Number.isNaN(parsed.getTime()) ? value : new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }).format(parsed);
+          }
+
+          function statusLabel(status: CustomerPayment['status']) {
+            return { open: 'Chưa phân bổ', partially_allocated: 'Đã phân bổ một phần', settled: 'Đã phân bổ hết', reversed: 'Đã đảo' }[status];
+          }
+
+          export default function CustomerPaymentPrintDock({ payment }: { payment: CustomerPayment | null }) {
+            if (!payment?.documentNumber) return null;
+            return (
+              <BusinessDocumentPrint
+                id={`customer-payment-${payment.id}`}
+                actionLabel="In"
+                title="PHIẾU THU"
+                subtitle="Chứng từ thu tiền khách hàng"
+                number={payment.documentNumber}
+                status={statusLabel(payment.status)}
+                size="A5"
+                meta={[
+                  { label: 'Khách hàng', value: `${payment.customerCode || '—'} — ${payment.customerName || '—'}`, full: true },
+                  { label: 'Kho nhận tiền', value: `${payment.warehouseCode || '—'} — ${payment.warehouseName || '—'}` },
+                  { label: 'Ngày thu', value: dateText(payment.paymentDate) },
+                  { label: 'Phương thức', value: payment.paymentMethod },
+                  { label: 'Tham chiếu', value: payment.externalReference || '—' },
+                  { label: 'Người ghi nhận', value: payment.postedBy || '—' },
+                ]}
+                totals={[
+                  { label: 'SỐ TIỀN ĐÃ NHẬN', value: money(payment.originalAmount, payment.currencyCode), emphasis: true },
+                  { label: 'Đã phân bổ', value: money(payment.allocatedAmount, payment.currencyCode) },
+                  { label: 'Còn chưa phân bổ', value: money(payment.remainingAmount, payment.currencyCode) },
+                ]}
+                note={payment.status === 'reversed' ? `ĐÃ ĐẢO${payment.reversalReason ? ` — ${payment.reversalReason}` : ''}` : payment.note || undefined}
+                signatures={['Người nộp tiền', 'Người lập phiếu', 'Thủ quỹ / Kế toán']}
+                testId="customer-payment-print-sheet"
+              />
+            );
+          }
+          ''')
+
+          write('npp-core/web/app/inventory/delivery-orders/DeliveryOrderPrintDock.tsx', r'''
+          'use client';
+
+          import { useState } from 'react';
+          import BusinessDocumentPrint from '../../components/business-document-print';
+
+          type DeliveryOrderStatus = 'draft' | 'ready_to_dispatch' | 'dispatched' | 'handed_over' | 'cancelled';
+          type PrintVariant = 'DELIVERY_ORDER' | 'PACKING_LIST';
+          type DeliveryOrder = {
+            id: string; number: string | null; salesOrderNumber: string | null; customerCode: string; customerName: string;
+            warehouseCode: string; warehouseName: string; handoverMode: 'DELIVERY' | 'PICKUP'; status: DeliveryOrderStatus;
+            destination?: Record<string, unknown> | null; requestedDeliveryDate?: string | null; collectionPolicy?: string | null; note?: string | null;
+            totalBaseQuantity?: string; lines?: Array<{ id: string; lineNumber?: number; locationCode: string | null; lotCode: string | null; expiryDate?: string | null; sku: string; itemName: string; unitCode: string; deliveryBaseQuantity: string }>;
+          };
+          const STATUS_LABEL: Record<DeliveryOrderStatus, string> = { draft: 'Nháp', ready_to_dispatch: 'Sẵn sàng bàn giao', dispatched: 'Đã xuất theo chuyến', handed_over: 'Đã bàn giao', cancelled: 'Đã hủy' };
+          const quantity = (value: string | null | undefined) => String(value ?? '0').replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
+          function dateText(value: string | null | undefined) { if (!value) return '—'; const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? value : new Intl.DateTimeFormat('vi-VN').format(parsed); }
+          function destinationText(value: Record<string, unknown> | null | undefined) { if (!value) return '—'; return [value.addressLine1, value.addressLine2, value.ward, value.district, value.province].map((item) => typeof item === 'string' ? item.trim() : '').filter(Boolean).join(', ') || '—'; }
+
+          export default function DeliveryOrderPrintDock({ order }: { order: DeliveryOrder | null }) {
+            const [variant, setVariant] = useState<PrintVariant>('DELIVERY_ORDER');
+            if (!order?.number || order.status === 'draft') return null;
+            const isPacking = variant === 'PACKING_LIST';
+            return (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.78rem' }}>
+                  Mẫu
+                  <select aria-label="Mẫu in giao nhận" value={variant} onChange={(event) => setVariant(event.target.value as PrintVariant)}>
+                    <option value="DELIVERY_ORDER">Phiếu giao hàng</option>
+                    <option value="PACKING_LIST">Phiếu đóng gói</option>
+                  </select>
+                </label>
+                <BusinessDocumentPrint
+                  id={`delivery-order-${order.id}-${variant}`}
+                  actionLabel="In"
+                  title={isPacking ? 'PHIẾU ĐÓNG GÓI' : 'PHIẾU GIAO HÀNG'}
+                  subtitle={isPacking ? 'Danh sách đóng gói' : 'Chứng từ giao nhận'}
+                  number={order.number}
+                  status={STATUS_LABEL[order.status]}
+                  meta={[
+                    { label: 'Đơn bán hàng', value: order.salesOrderNumber || '—' },
+                    { label: 'Khách hàng', value: `${order.customerCode} — ${order.customerName}` },
+                    { label: 'Kho xuất', value: `${order.warehouseCode} — ${order.warehouseName}` },
+                    { label: 'Hình thức', value: order.handoverMode === 'PICKUP' ? 'Khách nhận tại kho' : 'Giao đến khách' },
+                    { label: 'Ngày giao dự kiến', value: dateText(order.requestedDeliveryDate) },
+                    { label: 'Chính sách thu', value: order.collectionPolicy || '—' },
+                    { label: 'Địa chỉ giao', value: destinationText(order.destination), full: true },
+                  ]}
+                  columns={[
+                    { key: 'no', label: 'STT', align: 'center' }, { key: 'item', label: 'Sản phẩm / SKU' },
+                    { key: 'qty', label: 'Số lượng', align: 'right' }, { key: 'unit', label: 'ĐVT', align: 'center' },
+                    { key: 'lot', label: 'Lô / HSD' }, { key: 'location', label: 'Vị trí' },
+                  ]}
+                  rows={(order.lines ?? []).map((line, index) => ({ id: line.id, cells: { no: line.lineNumber ?? index + 1, item: <><strong>{line.itemName}</strong><br />{line.sku}</>, qty: quantity(line.deliveryBaseQuantity), unit: line.unitCode, lot: `${line.lotCode || '—'}${line.expiryDate ? ` · ${line.expiryDate}` : ''}`, location: line.locationCode || '—' } }))}
+                  totals={[{ label: isPacking ? 'Tổng SL đóng gói' : 'Tổng SL giao', value: quantity(order.totalBaseQuantity), emphasis: true }]}
+                  note={order.status === 'cancelled' ? 'ĐÃ HỦY' : order.note || undefined}
+                  signatures={isPacking ? ['Người đóng gói', 'Thủ kho', 'Người kiểm'] : ['Người giao', 'Khách hàng', 'Thủ kho']}
+                  testId={isPacking ? 'packing-list-print-sheet' : 'delivery-order-print-sheet'}
+                />
+              </span>
+            );
+          }
+          ''')
+
+          write('npp-core/web/app/inventory/transfers/TransferPrintDock.tsx', r'''
+          'use client';
+
+          import BusinessDocumentPrint from '../../components/business-document-print';
+          import { formatDate, formatQuantity } from '../../../lib/inventory-types';
+          import type { InventoryTransfer } from './transfer-workspace';
+
+          const STATUS_LABEL: Record<InventoryTransfer['status'], string> = { draft: 'Nháp', approved: 'Đã duyệt', dispatched: 'Đã xuất kho nguồn', cancelled: 'Đã hủy' };
+          export default function TransferPrintDock({ transfer }: { transfer: InventoryTransfer | null }) {
+            if (!transfer?.documentNumber || transfer.status === 'draft') return null;
+            return <BusinessDocumentPrint
+              id={`inventory-transfer-${transfer.id}`} actionLabel="In" title="PHIẾU CHUYỂN KHO" subtitle="Chứng từ điều chuyển tồn kho"
+              number={transfer.documentNumber} status={STATUS_LABEL[transfer.status]}
+              meta={[
+                { label: 'Kho xuất', value: `${transfer.sourceWarehouseCode} — ${transfer.sourceWarehouseName}` }, { label: 'Kho nhận', value: `${transfer.destinationWarehouseCode} — ${transfer.destinationWarehouseName}` },
+                { label: 'Ngày chuyển', value: formatDate(transfer.transferDate) }, { label: 'Ngày duyệt', value: formatDate(transfer.approvedAt) }, { label: 'Ngày xuất', value: formatDate(transfer.dispatchedAt) }, { label: 'Số dòng', value: transfer.lineCount },
+              ]}
+              columns={[{ key: 'no', label: 'STT', align: 'center' }, { key: 'item', label: 'Sản phẩm / SKU' }, { key: 'location', label: 'Vị trí / Lô' }, { key: 'qty', label: 'Số lượng', align: 'right' }, { key: 'unit', label: 'ĐVT', align: 'center' }, { key: 'base', label: 'SL cơ sở', align: 'right' }]}
+              rows={(transfer.lines ?? []).map((line) => ({ id: line.id, cells: { no: line.lineNumber, item: <><strong>{line.itemName}</strong><br />{line.sourceSku}</>, location: `${line.sourceLocationId || '—'} / ${line.lotCode || '—'}`, qty: formatQuantity(line.sourceQuantity), unit: line.sourceUnitCode, base: formatQuantity(line.baseQuantity) } }))}
+              totals={[{ label: 'Tổng SL cơ sở', value: formatQuantity(transfer.baseQuantityTotal), emphasis: true }]}
+              note={transfer.status === 'cancelled' ? `ĐÃ HỦY${transfer.cancellationReason ? ` — ${transfer.cancellationReason}` : ''}` : transfer.note || undefined}
+              signatures={['Người lập', 'Thủ kho xuất', 'Thủ kho nhận']} testId="inventory-transfer-print-sheet" />;
+          }
+          ''')
+
+          write('npp-core/web/app/inventory/stocktakes/StocktakePrintDock.tsx', r'''
+          'use client';
+
+          import BusinessDocumentPrint from '../../components/business-document-print';
+          import { formatDate, formatQuantity } from '../../../lib/inventory-types';
+          import type { Stocktake } from '../../../lib/stocktake-types';
+          import { STOCKTAKE_STATUS_LABELS } from '../../../lib/stocktake-types';
+
+          export default function StocktakePrintDock({ stocktake }: { stocktake: Stocktake | null }) {
+            if (!stocktake || stocktake.status === 'draft') return null;
+            return <BusinessDocumentPrint
+              id={`stocktake-${stocktake.id}`} actionLabel="In" title="PHIẾU KIỂM KÊ" subtitle="Chứng từ kiểm kê kho"
+              number={stocktake.stocktakeNumber} status={STOCKTAKE_STATUS_LABELS[stocktake.status]}
+              meta={[{ label: 'Kho', value: `${stocktake.warehouseCode} — ${stocktake.warehouseName}` }, { label: 'Vòng đếm', value: stocktake.currentRound }, { label: 'Số dòng', value: stocktake.lineCount }, { label: 'Ngày tạo', value: formatDate(stocktake.createdAt) }, { label: 'Ngày duyệt', value: formatDate(stocktake.approvedAt) }, { label: 'Ngày ghi sổ', value: formatDate(stocktake.postedAt) }]}
+              columns={[{ key: 'no', label: 'STT', align: 'center' }, { key: 'sku', label: 'SKU' }, { key: 'location', label: 'Vị trí / Lô' }, { key: 'expected', label: 'Theo sổ', align: 'right' }, { key: 'counted', label: 'Thực đếm', align: 'right' }, { key: 'delta', label: 'Chênh lệch', align: 'right' }, { key: 'unit', label: 'ĐVT', align: 'center' }]}
+              rows={(stocktake.lines ?? []).map((line) => ({ id: line.id, cells: { no: line.lineNumber, sku: line.sourceSku, location: `${line.locationCode || '—'} / ${line.lotCode || '—'}`, expected: formatQuantity(line.expectedBaseQuantity ?? '0'), counted: line.countedBaseQuantity == null ? '—' : formatQuantity(line.countedBaseQuantity), delta: line.finalDelta == null ? '—' : formatQuantity(line.finalDelta), unit: line.sourceUnitCode } }))}
+              note={stocktake.status === 'reversed' ? `ĐÃ ĐẢO${stocktake.reversalReason ? ` — ${stocktake.reversalReason}` : ''}` : stocktake.status === 'cancelled' ? `ĐÃ HỦY${stocktake.cancelReason ? ` — ${stocktake.cancelReason}` : ''}` : stocktake.note || undefined}
+              signatures={['Người kiểm kê', 'Thủ kho', 'Người duyệt']} testId="stocktake-print-sheet" />;
+          }
+          ''')
+
+          write('npp-core/web/app/logistics/dispatch/TripSheetPrintDock.tsx', r'''
+          'use client';
+
+          import BusinessDocumentPrint from '../../components/business-document-print';
+          type TripStatus = 'draft' | 'planned' | 'locked' | 'dispatched';
+          type DispatchTrip = { id: string; number: string; warehouseCode: string | null; warehouseName: string | null; vehicleCode: string | null; licensePlate: string | null; driverCode: string | null; driverName: string | null; plannedStartAt: string | null; status: TripStatus; handoverReceiverName: string | null; handoverNote: string | null; dispatchedAt: string | null; stops: readonly { id: string; sequence: number; assignments: readonly { assignmentId: string; deliveryOrderNumber: string | null; customerCode: string | null; customerName: string | null }[] }[] };
+          const STATUS_LABEL: Record<TripStatus, string> = { draft: 'Nháp', planned: 'Đã lập kế hoạch', locked: 'Chờ bàn giao', dispatched: 'Đã xuất phát' };
+          function dateTime(value: string | null) { if (!value) return '—'; const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('vi-VN'); }
+          export default function TripSheetPrintDock({ trip }: { trip: DispatchTrip | null }) {
+            if (!trip || !['locked', 'dispatched'].includes(trip.status)) return null;
+            const rows = trip.stops.flatMap((stop) => stop.assignments.map((assignment) => ({ id: assignment.assignmentId, cells: { stop: stop.sequence, order: assignment.deliveryOrderNumber || '—', customer: <><strong>{assignment.customerName || '—'}</strong><br />{assignment.customerCode || '—'}</> } })));
+            return <BusinessDocumentPrint id={`trip-sheet-${trip.id}`} actionLabel="In" title="PHIẾU CHUYẾN GIAO HÀNG" subtitle="Danh sách bàn giao chuyến" number={trip.number} status={STATUS_LABEL[trip.status]}
+              meta={[{ label: 'Kho xuất phát', value: `${trip.warehouseCode || '—'} — ${trip.warehouseName || '—'}` }, { label: 'Xe', value: trip.licensePlate || trip.vehicleCode || '—' }, { label: 'Tài xế', value: `${trip.driverCode || '—'} — ${trip.driverName || '—'}` }, { label: 'Dự kiến', value: dateTime(trip.plannedStartAt) }, { label: 'Xuất phát', value: dateTime(trip.dispatchedAt) }, { label: 'Người nhận bàn giao', value: trip.handoverReceiverName || trip.driverName || '—' }]}
+              columns={[{ key: 'stop', label: 'Điểm', align: 'center' }, { key: 'order', label: 'Phiếu giao' }, { key: 'customer', label: 'Khách hàng' }]} rows={rows}
+              totals={[{ label: 'Số điểm giao', value: trip.stops.length }, { label: 'Số phiếu bàn giao', value: rows.length, emphasis: true }]} note={trip.handoverNote || undefined}
+              signatures={['Điều phối', 'Thủ kho', 'Tài xế / Người nhận']} testId="trip-sheet-print-sheet" />;
+          }
+          ''')
+
+          write('npp-core/web/app/logistics/trip-reconciliation/TripReconciliationPrintDock.tsx', r'''
+          'use client';
+
+          import BusinessDocumentPrint from '../../components/business-document-print';
+          type ReconciliationLine = Readonly<{ assignmentId: string; stopSequence: number; deliveryOrderNumber: string | null; customerCode: string | null; customerName: string | null; attemptResult: 'delivered_full' | 'delivered_partial' | 'failed' | 'rescheduled' | null; sku: string; itemName: string; unitCode: string; lotCode: string | null; issuedBaseQuantity: string; deliveredBaseQuantity: string; returnedBaseQuantity: string; outstandingBaseQuantity: string }>;
+          type Reconciliation = Readonly<{ id: string; number: string; status: string; warehouseCode: string | null; warehouseName: string | null; licensePlate: string | null; driverName: string | null; canClose: boolean; closedAt: string | null; lines: readonly ReconciliationLine[]; receipts: readonly { id: string; receivedAt: string }[] }>;
+          const RESULT_LABELS: Record<NonNullable<ReconciliationLine['attemptResult']>, string> = { delivered_full: 'Giao đủ', delivered_partial: 'Giao một phần', failed: 'Không giao được', rescheduled: 'Hẹn giao lại' };
+          const quantity = (value: string) => value.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
+          function dateTime(value: string | null) { if (!value) return '—'; const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('vi-VN'); }
+          export default function TripReconciliationPrintDock({ reconciliation }: { reconciliation: Reconciliation | null }) {
+            if (!reconciliation) return null;
+            return <BusinessDocumentPrint id={`trip-reconciliation-${reconciliation.id}`} actionLabel="In" title="BIÊN BẢN ĐỐI SOÁT CHUYẾN" subtitle="Đối chiếu giao hàng và hàng quay về" number={reconciliation.number} status={reconciliation.status === 'closed' ? 'Đã đóng chuyến' : 'Đang đối soát'}
+              meta={[{ label: 'Kho', value: `${reconciliation.warehouseCode || '—'} — ${reconciliation.warehouseName || '—'}` }, { label: 'Xe', value: reconciliation.licensePlate || '—' }, { label: 'Tài xế', value: reconciliation.driverName || '—' }, { label: 'Số lần nhập hàng về', value: reconciliation.receipts.length }, { label: 'Thời điểm đóng', value: dateTime(reconciliation.closedAt) }, { label: 'Có thể đóng', value: reconciliation.canClose ? 'Có' : 'Chưa' }]}
+              columns={[{ key: 'stop', label: 'Điểm', align: 'center' }, { key: 'order', label: 'Phiếu giao' }, { key: 'customer', label: 'Khách hàng' }, { key: 'item', label: 'SKU / hàng hóa' }, { key: 'result', label: 'Kết quả' }, { key: 'issued', label: 'Xuất', align: 'right' }, { key: 'delivered', label: 'Đã giao', align: 'right' }, { key: 'returned', label: 'Đã về', align: 'right' }, { key: 'outstanding', label: 'Còn trên xe', align: 'right' }]}
+              rows={reconciliation.lines.map((line) => ({ id: `${line.assignmentId}-${line.sku}-${line.lotCode || ''}`, cells: { stop: line.stopSequence, order: line.deliveryOrderNumber || '—', customer: `${line.customerCode || '—'} — ${line.customerName || '—'}`, item: <><strong>{line.itemName}</strong><br />{line.sku}{line.lotCode ? ` · Lô ${line.lotCode}` : ''}</>, result: line.attemptResult ? RESULT_LABELS[line.attemptResult] : 'Chưa có kết quả', issued: `${quantity(line.issuedBaseQuantity)} ${line.unitCode}`, delivered: quantity(line.deliveredBaseQuantity), returned: quantity(line.returnedBaseQuantity), outstanding: quantity(line.outstandingBaseQuantity) } }))}
+              note={reconciliation.canClose ? 'Đã đối chiếu đủ điều kiện đóng chuyến.' : 'Còn hàng/chứng từ cần đối chiếu trước khi đóng chuyến.'}
+              signatures={['Điều phối', 'Thủ kho', 'Tài xế']} testId="trip-reconciliation-print-sheet" />;
+          }
+          ''')
+
+          pages = [
+            ('npp-core/web/app/purchasing/goods-receipts/page.tsx', 'GoodsReceiptPrintDock'),
+            ('npp-core/web/app/accounting/customer-payments/page.tsx', 'CustomerPaymentPrintDock'),
+            ('npp-core/web/app/inventory/delivery-orders/page.tsx', 'DeliveryOrderPrintDock'),
+            ('npp-core/web/app/inventory/transfers/page.tsx', 'TransferPrintDock'),
+            ('npp-core/web/app/inventory/stocktakes/page.tsx', 'StocktakePrintDock'),
+            ('npp-core/web/app/logistics/dispatch/page.tsx', 'TripSheetPrintDock'),
+            ('npp-core/web/app/logistics/trip-reconciliation/page.tsx', 'TripReconciliationPrintDock'),
+          ]
+          for page, component in pages:
+              remove_import_and_mount(page, component)
+
+          replace_once('npp-core/web/app/purchasing/goods-receipts/GoodsReceiptWorkspace.tsx',
+            "import localStyles from '../purchase-orders/purchase-orders.module.css';\n",
+            "import localStyles from '../purchase-orders/purchase-orders.module.css';\nimport GoodsReceiptPrintDock from './GoodsReceiptPrintDock';\n")
+          replace_once('npp-core/web/app/purchasing/goods-receipts/GoodsReceiptWorkspace.tsx',
+            '<button ref={closeButtonRef} type="button" className={styles.modalClose} onClick={() => setSelectedGoodsReceipt(null)}>Đóng</button>',
+            '<div className={styles.toolbarActions}>\n                <GoodsReceiptPrintDock receipt={selectedGoodsReceipt} />\n                <button ref={closeButtonRef} type="button" className={styles.modalClose} onClick={() => setSelectedGoodsReceipt(null)}>Đóng</button>\n              </div>')
+
+          replace_once('npp-core/web/app/accounting/customer-payments/customer-payment-workspace.tsx',
+            "import styles from '../supplier-payments/supplier-payments.module.css';\n",
+            "import styles from '../supplier-payments/supplier-payments.module.css';\nimport CustomerPaymentPrintDock from './CustomerPaymentPrintDock';\n")
+          replace_once('npp-core/web/app/accounting/customer-payments/customer-payment-workspace.tsx',
+            '<div className={styles.summary}><strong>{selected.documentNumber}</strong><span>{selected.customerCode} · {selected.customerName}</span><span>{money(selected.remainingAmount, selected.currencyCode)} chưa phân bổ</span></div>',
+            '<div className={styles.summary}><strong>{selected.documentNumber}</strong><span>{selected.customerCode} · {selected.customerName}</span><span>{money(selected.remainingAmount, selected.currencyCode)} chưa phân bổ</span></div>\n            <div className={styles.actions}><CustomerPaymentPrintDock payment={selected} /></div>')
+
+          replace_once('npp-core/web/app/inventory/delivery-orders/delivery-order-workspace.tsx',
+            "import styles from './delivery-order-workspace.module.css';\n",
+            "import styles from './delivery-order-workspace.module.css';\nimport DeliveryOrderPrintDock from './DeliveryOrderPrintDock';\n")
+          old = '<div className={styles.detailHeader}><div><p className={styles.eyebrow}>{selectedOrder.number || \'Delivery Order nháp\'}</p><h3>{selectedOrder.customerCode} — {selectedOrder.customerName}</h3><p>{selectedOrder.salesOrderNumber || \'Đơn bán hàng\'} · {selectedOrder.warehouseCode}</p></div><StatusBadge status={selectedOrder.status} label={statusLabel(selectedOrder.status)} /></div>'
+          new = '<div className={styles.detailHeader}><div><p className={styles.eyebrow}>{selectedOrder.number || \'Delivery Order nháp\'}</p><h3>{selectedOrder.customerCode} — {selectedOrder.customerName}</h3><p>{selectedOrder.salesOrderNumber || \'Đơn bán hàng\'} · {selectedOrder.warehouseCode}</p></div><div className={styles.actions}><DeliveryOrderPrintDock order={selectedOrder} /><StatusBadge status={selectedOrder.status} label={statusLabel(selectedOrder.status)} /></div></div>'
+          replace_once('npp-core/web/app/inventory/delivery-orders/delivery-order-workspace.tsx', old, new)
+
+          replace_once('npp-core/web/app/inventory/transfers/transfer-workspace.tsx',
+            "import styles from './transfer-workspace.module.css';\n",
+            "import styles from './transfer-workspace.module.css';\nimport TransferPrintDock from './TransferPrintDock';\n")
+          replace_once('npp-core/web/app/inventory/transfers/transfer-workspace.tsx',
+            '<button type="button" className={styles.textButton} onClick={() => { setSelected(null); setReceiptBundle(null); setShowReceiptForm(false); }}>Đóng</button>',
+            '<div style={{ display: \'flex\', alignItems: \'center\', gap: \'0.5rem\' }}>\n                <TransferPrintDock transfer={selected} />\n                <button type="button" className={styles.textButton} onClick={() => { setSelected(null); setReceiptBundle(null); setShowReceiptForm(false); }}>Đóng</button>\n              </div>')
+
+          replace_once('npp-core/web/app/inventory/stocktakes/stocktake-workspace.tsx',
+            "import styles from './stocktake-workspace.module.css';\n",
+            "import styles from './stocktake-workspace.module.css';\nimport StocktakePrintDock from './StocktakePrintDock';\n")
+          replace_once('npp-core/web/app/inventory/stocktakes/stocktake-workspace.tsx',
+            '<span className={`${styles.badge} ${statusTone(detail.status)}`}>{STOCKTAKE_STATUS_LABELS[detail.status]}</span>',
+            '<div style={{ display: \'flex\', alignItems: \'center\', gap: \'0.5rem\' }}><StocktakePrintDock stocktake={detail} /><span className={`${styles.badge} ${statusTone(detail.status)}`}>{STOCKTAKE_STATUS_LABELS[detail.status]}</span></div>')
+
+          replace_once('npp-core/web/app/logistics/dispatch/trip-dispatch-workspace.tsx',
+            "import styles from './trip-dispatch-workspace.module.css';\n",
+            "import styles from './trip-dispatch-workspace.module.css';\nimport TripSheetPrintDock from './TripSheetPrintDock';\n")
+          replace_once('npp-core/web/app/logistics/dispatch/trip-dispatch-workspace.tsx',
+            '<span className={styles.status} data-status={selectedTrip.status}>{statusLabel(selectedTrip.status)}</span>',
+            '<span style={{ display: \'inline-flex\', alignItems: \'center\', gap: \'0.5rem\' }}><TripSheetPrintDock trip={selectedTrip} /><span className={styles.status} data-status={selectedTrip.status}>{statusLabel(selectedTrip.status)}</span></span>')
+
+          replace_once('npp-core/web/app/logistics/trip-reconciliation/trip-reconciliation-workspace.tsx',
+            "import styles from './trip-reconciliation-workspace.module.css';\n",
+            "import styles from './trip-reconciliation-workspace.module.css';\nimport TripReconciliationPrintDock from './TripReconciliationPrintDock';\n")
+          replace_once('npp-core/web/app/logistics/trip-reconciliation/trip-reconciliation-workspace.tsx',
+            "{detail ? <span className={detail.canClose ? styles.ready : styles.pending}>{detail.canClose ? 'Đủ điều kiện đóng' : 'Còn việc cần xử lý'}</span> : null}",
+            "{detail ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><TripReconciliationPrintDock reconciliation={detail} /><span className={detail.canClose ? styles.ready : styles.pending}>{detail.canClose ? 'Đủ điều kiện đóng' : 'Còn việc cần xử lý'}</span></span> : null}")
+
+          write('npp-core/web/test/document-print-rollout.test.mjs', r'''
+          import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+
+          const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+          const printSource = read('app/components/print-document.tsx');
+          const printCss = read('app/components/print-document.module.css');
+          const globalCss = read('app/globals.css');
+          const businessPrint = read('app/components/business-document-print.tsx');
+          const poPrint = read('app/purchasing/purchase-orders/PurchaseOrderPrintSheet.tsx');
+          const grPrint = read('app/purchasing/goods-receipts/GoodsReceiptPrintDock.tsx');
+          const paymentPrint = read('app/accounting/customer-payments/CustomerPaymentPrintDock.tsx');
+          const deliveryPrint = read('app/inventory/delivery-orders/DeliveryOrderPrintDock.tsx');
+          const transferPrint = read('app/inventory/transfers/TransferPrintDock.tsx');
+          const stocktakePrint = read('app/inventory/stocktakes/StocktakePrintDock.tsx');
+          const tripPrint = read('app/logistics/dispatch/TripSheetPrintDock.tsx');
+          const reconciliationPrint = read('app/logistics/trip-reconciliation/TripReconciliationPrintDock.tsx');
+          const printModules = [businessPrint, poPrint, grPrint, paymentPrint, deliveryPrint, transferPrint, stocktakePrint, tripPrint, reconciliationPrint];
+          const contextualModules = [grPrint, paymentPrint, deliveryPrint, transferPrint, stocktakePrint, tripPrint, reconciliationPrint];
+
+          test('shared print foundation targets one document and supports A4/A5', () => {
+            assert.match(printSource, /targetId/); assert.match(printSource, /data-print-active/); assert.match(printSource, /data-printing/);
+            assert.match(printSource, /PrintPageSize = 'A4' \| 'A5'/); assert.match(printCss, /document-a4/); assert.match(printCss, /document-a5/);
+            assert.match(globalCss, /body\[data-printing='true'\]/); assert.doesNotMatch(globalCss, /body:has\(\[data-print-surface\]\)/);
+          });
+
+          test('rollout stays read-only and uses the shared business template', () => {
+            assert.match(businessPrint, /BusinessDocumentPrint/); assert.match(businessPrint, /Bản in từ NPP Operations/);
+            for (const source of printModules) { assert.doesNotMatch(source, /method:\s*['"]POST['"]/); assert.doesNotMatch(source, /method:\s*['"]PATCH['"]/); assert.doesNotMatch(source, /Idempotency-Key/); }
+          });
+
+          test('canonical print surfaces remain available', () => {
+            assert.match(poPrint, /ĐƠN ĐẶT HÀNG/); assert.match(grPrint, /PHIẾU NHẬN HÀNG/); assert.match(paymentPrint, /PHIẾU THU/); assert.match(paymentPrint, /size="A5"/);
+            assert.match(deliveryPrint, /PHIẾU GIAO HÀNG/); assert.match(deliveryPrint, /PHIẾU ĐÓNG GÓI/); assert.match(transferPrint, /PHIẾU CHUYỂN KHO/); assert.match(stocktakePrint, /PHIẾU KIỂM KÊ/); assert.match(tripPrint, /PHIẾU CHUYẾN GIAO HÀNG/); assert.match(reconciliationPrint, /BIÊN BẢN ĐỐI SOÁT CHUYẾN/);
+          });
+
+          test('detail-based print controls do not maintain a second selector/fetch state', () => {
+            for (const source of contextualModules) { assert.doesNotMatch(source, /DocumentPrintDock/); assert.doesNotMatch(source, /fetch\(/); assert.doesNotMatch(source, /selectedId/); }
+          });
+
+          test('every workspace with a detail surface mounts print on the opened canonical detail', () => {
+            assert.match(read('app/purchasing/goods-receipts/GoodsReceiptWorkspace.tsx'), /GoodsReceiptPrintDock receipt=\{selectedGoodsReceipt\}/);
+            assert.match(read('app/accounting/customer-payments/customer-payment-workspace.tsx'), /CustomerPaymentPrintDock payment=\{selected\}/);
+            assert.match(read('app/inventory/delivery-orders/delivery-order-workspace.tsx'), /DeliveryOrderPrintDock order=\{selectedOrder\}/);
+            assert.match(read('app/inventory/transfers/transfer-workspace.tsx'), /TransferPrintDock transfer=\{selected\}/);
+            assert.match(read('app/inventory/stocktakes/stocktake-workspace.tsx'), /StocktakePrintDock stocktake=\{detail\}/);
+            assert.match(read('app/logistics/dispatch/trip-dispatch-workspace.tsx'), /TripSheetPrintDock trip=\{selectedTrip\}/);
+            assert.match(read('app/logistics/trip-reconciliation/trip-reconciliation-workspace.tsx'), /TripReconciliationPrintDock reconciliation=\{detail\}/);
+          });
+
+          test('list pages no longer mount document-selector print docks below their workspaces', () => {
+            const pages = ['app/purchasing/goods-receipts/page.tsx','app/accounting/customer-payments/page.tsx','app/inventory/delivery-orders/page.tsx','app/inventory/transfers/page.tsx','app/inventory/stocktakes/page.tsx','app/logistics/dispatch/page.tsx','app/logistics/trip-reconciliation/page.tsx'];
+            for (const path of pages) assert.doesNotMatch(read(path), /PrintDock/);
+          });
+          ''')
+          PY
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify Core web
+        run: npm --workspace npp-core-web run verify
+      - name: Verify diff
+        run: git diff --check
+      - name: Publish one fix commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git checkout -b agent/document-print-detail-ux-fix
+          git add npp-core/web
+          git commit -m 'fix(core-web): print from opened document details'
+          test "$(git rev-list --count 41f05a8c17e2d9267ab2e656cfd307bab417cd95..HEAD)" = "1"
+          git push origin HEAD:refs/heads/agent/document-print-detail-ux-fix
