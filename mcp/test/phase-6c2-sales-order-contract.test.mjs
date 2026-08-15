@@ -64,7 +64,7 @@ test("MCP source orders stay visible in the canonical NPP Operations Sales Order
   const repository = read("../npp-core/api/src/db/repositories/sales-order.js");
   assert.match(workspace, /if \(order\.sourceType === 'MCP'\) return 'mcp'/);
   assert.match(workspace, /const \[source, setSource\] = useState<OrderSourceFilter>\('all'\)/);
-  assert.match(workspace, /<option value="mcp">MCP<\/option>/);
+  assert.match(workspace, /<option value="mcp">Nhân viên thị trường<\/option>/);
   assert.match(repository, /so\.source_type, so\.source_id, so\.source_outlet_id/);
   assert.doesNotMatch(repository, /source_type\s*(?:<>|!=)\s*['"]MCP['"]/i);
 });

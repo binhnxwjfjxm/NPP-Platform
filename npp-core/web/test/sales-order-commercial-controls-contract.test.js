@@ -60,7 +60,7 @@ test('manual order UI is wired for channel and commercial permissions', () => {
   assert.match(form, /canPriceOverride/);
   assert.match(form, /canDiscountOverride/);
   assert.match(form, /documentDiscountMode/);
-  assert.match(form, /Dùng giá ngoại lệ/);
+  assert.match(form, /Giá điều chỉnh thủ công/);
   assert.match(form, /Dùng lại giá hệ thống/);
   assert.match(form, /Chiết khấu bổ sung toàn đơn/);
   assert.doesNotMatch(form, /Kiểu CK thêm/);

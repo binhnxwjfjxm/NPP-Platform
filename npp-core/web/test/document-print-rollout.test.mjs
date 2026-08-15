@@ -65,7 +65,7 @@ test('purchase and sales documents omit zero discount and tax sections', () => {
 });
 
 test('canonical print surfaces remain available', () => {
-  assert.match(poPrint, /ĐƠN ĐẶT HÀNG/);
+  assert.match(poPrint, /ĐƠN MUA HÀNG/);
   assert.match(salesPrint, /ĐƠN BÁN HÀNG/);
   assert.match(grPrint, /PHIẾU NHẬN HÀNG/);
   assert.match(paymentPrint, /PHIẾU THU/);

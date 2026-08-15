@@ -9,7 +9,7 @@ test('shared navigation uses business grouping without fake system or unfinished
   assert.match(shell, /Danh mục nghiệp vụ/);
   assert.match(shell, /Tổ chức, đối tác, hàng hóa, giá và chứng từ/);
   assert.match(shell, /Nhân sự & phân quyền/);
-  assert.match(shell, /Hồ sơ, hiệu suất field, tài khoản và phạm vi truy cập/);
+  assert.match(shell, /Hồ sơ, hiệu suất thị trường, tài khoản và phạm vi truy cập/);
   assert.doesNotMatch(shell, /Đăng nhập sẽ được bổ sung|Hệ thống trực tuyến/);
 });
 
@@ -67,7 +67,7 @@ test('document numbering and pricing retain operational cards with office wordin
   assert.doesNotMatch(numbering, /NPP Document Numbering|Phase 3\.3F|Cấp số kiểm thử|Tạo khóa mới|Lịch sử bất biến|allocation thử nghiệm/);
 
   assert.match(pricing, /Kiểm tra giá áp dụng/);
-  assert.match(pricing, /Quá trình xác định giá/);
+  assert.match(pricing, /Chi tiết hình thành giá/);
   assert.match(pricing, /RESOLUTION_STEP_LABELS\[step\.kind\]/);
   assert.match(pricing, /SOURCE_LABELS\[item\.source_kind\]/);
   assert.doesNotMatch(pricing, /Ví dụ: bán lẻ|Priority càng lớn|giá không nằm trong code|Thử giá & giải thích|Trace áp giá|Mã rule ngoài|<strong>\{step\.kind\}<\/strong>/);
