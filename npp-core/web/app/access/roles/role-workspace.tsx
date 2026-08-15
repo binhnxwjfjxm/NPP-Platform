@@ -103,7 +103,7 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
     .filter((role) => {
       const matchesStatus = statusFilter === 'all' || (statusFilter === 'active' ? role.is_active : !role.is_active);
       const rolePermissionText = role.permission_keys.map((key) => permissionMap.get(key)?.label ?? key).join(' ');
-      const challengeText = role.web_login_challenge_required ? 'web pwa mã xác nhận' : 'web pwa mật khẩu';
+      const challengeText = role.web_login_challenge_required ? 'đăng nhập cần mã xác nhận' : 'đăng nhập bằng mật khẩu';
       const matchesText = !normalizedSearch || matchTerm(role.code, role.name, role.description, rolePermissionText, challengeText).includes(normalizedSearch);
       return matchesStatus && matchesText;
     })
@@ -243,7 +243,7 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
   );
 
   return (
-    <AppShell title="Vai trò & phân quyền" subtitle="Quản lý vai trò, trạng thái sử dụng và phạm vi quyền theo công việc." kicker="Phân quyền" actions={shellActions}>
+    <AppShell title="Vai trò và phân quyền" subtitle="Quản lý vai trò, trạng thái sử dụng và phạm vi quyền theo công việc." kicker="Phân quyền" actions={shellActions}>
       <section className={styles.page} data-testid="roles-page">
         {(error || notice) ? <div className={joinClasses(styles.banner, error ? styles.bannerError : styles.bannerSuccess)} role="status">{error ?? notice}</div> : null}
 
@@ -275,7 +275,7 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
                 {visibleRoles.length ? visibleRoles.map((role) => (
                   <tr key={role.id} data-testid={`role-row-${role.code}`}>
                     <td><code>{role.code}</code></td>
-                    <td><div className={styles.entityStack}><strong>{role.name}</strong><span>{role.description || 'Không có mô tả'}</span><span>{role.web_login_challenge_required ? 'Web/PWA: yêu cầu mã xác nhận' : 'Web/PWA: chỉ tài khoản và mật khẩu'}</span></div></td>
+                    <td><div className={styles.entityStack}><strong>{role.name}</strong><span>{role.description || 'Không có mô tả'}</span><span>{role.web_login_challenge_required ? 'Đăng nhập trên web/ứng dụng: cần mã xác nhận' : 'Đăng nhập trên web/ứng dụng: dùng mật khẩu'}</span></div></td>
                     <td className={styles.relationCell}><div className={styles.entityStack}><strong>{formatCompactNumber(role.permission_keys.length)} quyền</strong><span>{role.permission_keys.length ? `${role.permission_keys.slice(0, 2).map((key) => permissionMap.get(key)?.label ?? key).join(' · ')}${role.permission_keys.length > 2 ? ` · +${formatCompactNumber(role.permission_keys.length - 2)} quyền khác` : ''}` : 'Chưa gán quyền'}</span></div></td>
                     <td><span className={joinClasses(styles.statusPill, role.is_active ? styles.toneSuccess : styles.toneDanger)}>{role.is_active ? 'Đang hoạt động' : 'Ngừng hoạt động'}</span></td>
                     <td>{formatDateTime(role.updated_at)}</td>
@@ -311,8 +311,8 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
                     <label>Tên vai trò<input data-testid="role-name-input" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} required maxLength={256} /></label>
                     <label>Mô tả<textarea data-testid="role-description-input" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} maxLength={512} rows={5} /></label>
                     <label className={matrixStyles.inlineToggle}><input data-testid="role-active-toggle" type="checkbox" checked={draft.isActive} onChange={(event) => setDraft((current) => ({ ...current, isActive: event.target.checked }))} />Đang hoạt động</label>
-                    <label className={matrixStyles.inlineToggle}><input data-testid="role-web-login-challenge-toggle" type="checkbox" checked={draft.webLoginChallengeRequired} onChange={(event) => setDraft((current) => ({ ...current, webLoginChallengeRequired: event.target.checked }))} />Đăng nhập Web/PWA yêu cầu mã xác nhận của chủ sở hữu</label>
-                    <p>Mã xác nhận chỉ gửi tới hai Security Owner cố định. Role giao nhận hoặc field có thể để tắt; role kế toán hoặc nhạy cảm có thể bật.</p>
+                    <label className={matrixStyles.inlineToggle}><input data-testid="role-web-login-challenge-toggle" type="checkbox" checked={draft.webLoginChallengeRequired} onChange={(event) => setDraft((current) => ({ ...current, webLoginChallengeRequired: event.target.checked }))} />Yêu cầu mã xác nhận khi đăng nhập trên web/ứng dụng</label>
+                    <p>Mã xác nhận chỉ gửi tới các tài khoản quản trị bảo mật đã cấu hình. Vai trò giao nhận hoặc nhân viên thị trường có thể để tắt; vai trò kế toán hoặc có quyền nhạy cảm có thể bật.</p>
                     <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => setEditor(null)}>Hủy</button><button type="submit" className={styles.primaryButton} disabled={busy !== null}>{busy === 'save' ? 'Đang lưu…' : editor.mode === 'create' ? 'Tạo vai trò' : 'Lưu thay đổi'}</button></div>
                   </div>
 
