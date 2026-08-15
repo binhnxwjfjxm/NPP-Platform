@@ -21,6 +21,7 @@ test("Issue 478 production order smoke is exact-command and owner-guarded", () =
   assert.match(workflow, /git diff --quiet "\$mcp_deployed_sha" "\$SOURCE_SHA" -- mcp\/apps\/backend packages\/contracts/);
   assert.match(workflow, /MCP_APP_NAME: hung-phat-mcp/);
   assert.match(workflow, /CORE_APP_NAME: hung-phat/);
+  assert.match(workflow, /Install pinned Heroku CLI[\s\S]*working-directory: mcp[\s\S]*npm install --global --ignore-scripts heroku@11\.0\.0/);
   assert.doesNotMatch(workflow, /deploy-vercel|container:push|container:release|git push/);
 });
 

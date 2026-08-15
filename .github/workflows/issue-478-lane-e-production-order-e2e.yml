@@ -84,6 +84,7 @@ jobs:
 
       - name: Install pinned Heroku CLI
         shell: bash
+        working-directory: mcp
         run: |
           set -euo pipefail
           npm install --global --ignore-scripts heroku@11.0.0
