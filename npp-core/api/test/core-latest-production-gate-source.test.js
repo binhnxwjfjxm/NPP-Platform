@@ -1,9 +1,30 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process/promises';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const scriptUrl = new URL('../scripts/core-latest-production-gate.sh', import.meta.url);
 const migrationRegistryUrl = new URL('../src/migrations/index.js', import.meta.url);
+
+function extractPendingGuard(source) {
+  const startMarker = 'PENDING_JSON="$pending" EXPECTED_PENDING_JSON="$expected_pending_json" node --input-type=module <<\'NODE\'\n';
+  const start = source.indexOf(startMarker);
+  assert.ok(start >= 0, 'pending guard start marker must exist');
+  const programStart = start + startMarker.length;
+  const end = source.indexOf('\nNODE\n}', programStart);
+  assert.ok(end > programStart, 'pending guard end marker must exist');
+  return source.slice(programStart, end);
+}
+
+async function runPendingGuard(program, pending, expected) {
+  return execFile(process.execPath, ['--input-type=module', '-e', program], {
+    env: {
+      ...process.env,
+      PENDING_JSON: JSON.stringify(pending),
+      EXPECTED_PENDING_JSON: JSON.stringify(expected),
+    },
+  });
+}
 
 test('latest Core production gate derives protected pending migrations from the canonical registry', async () => {
   const [source, migrationRegistry] = await Promise.all([
@@ -20,6 +41,13 @@ test('latest Core production gate derives protected pending migrations from the 
   assert.match(migrationRegistry, /072_customer_portal_registration_onboarding/);
   assert.match(migrationRegistry, /073_internal_workforce_auth/);
   assert.match(migrationRegistry, /074_internal_web_login_challenge/);
+  assert.match(migrationRegistry, /082_sales_fulfillment_reversal/);
+  assert.match(migrationRegistry, /083_backup_delete_foundation/);
+  assert.ok(
+    migrationRegistry.indexOf("id: '082_sales_fulfillment_reversal'")
+      < migrationRegistry.indexOf("id: '083_backup_delete_foundation'"),
+    '082 must remain canonically before 083',
+  );
 
   for (const marker of [
     'assert_allowed_pending',
@@ -75,6 +103,10 @@ test('latest Core production gate derives protected pending migrations from the 
   assert.match(source, /FROM sales\.sales_order_version_lines/);
   assert.match(source, /test "\$HEROKU_APP_NAME" = "hung-phat"/);
   assert.match(source, /pending\.every/);
+  assert.match(source, /const positions = new Map\(expected\.map/);
+  assert.match(source, /const seen = new Set\(\)/);
+  assert.match(source, /position === undefined \|\| seen\.has\(item\) \|\| position <= previous/);
+  assert.doesNotMatch(source, /expected\.length - pending\.length/);
   assert.match(source, /migrationIdsInRange\(firstMigration, lastMigration\)/);
   assert.match(source, /verifyCatalog\([\s\S]*?, 46, 57\)/);
   assert.match(source, /verifyCatalog\([\s\S]*?, 58, 63\)/);
@@ -85,4 +117,61 @@ test('latest Core production gate derives protected pending migrations from the 
   assert.match(source, /CORE_PHASE_7_INVENTORY_SCHEMA=ready/);
   assert.match(source, /CORE_PHASE_8_REPORTING_SCHEMA=ready/);
   assert.doesNotMatch(source, /CORE_PHASE_6E_SCHEMA/);
+});
+
+test('latest Core production gate accepts canonical migration holes but rejects unknown, duplicate, or reordered pending IDs', async () => {
+  const source = await readFile(scriptUrl, 'utf8');
+  const program = extractPendingGuard(source);
+  const expected = [
+    '081_sales_fulfillment_shortage_discrepancy',
+    '082_sales_fulfillment_reversal',
+    '083_backup_delete_foundation',
+  ];
+
+  await assert.doesNotReject(
+    runPendingGuard(program, ['082_sales_fulfillment_reversal'], expected),
+    '082 must be allowed when later canonical 083 is already applied',
+  );
+  await assert.doesNotReject(
+    runPendingGuard(program, ['081_sales_fulfillment_shortage_discrepancy', '083_backup_delete_foundation'], expected),
+    'ordered canonical gaps must remain recoverable',
+  );
+  await assert.rejects(runPendingGuard(program, ['999_unknown_migration'], expected));
+  await assert.rejects(runPendingGuard(program, ['082_sales_fulfillment_reversal', '082_sales_fulfillment_reversal'], expected));
+  await assert.rejects(runPendingGuard(program, ['083_backup_delete_foundation', '082_sales_fulfillment_reversal'], expected));
+});
+
+test('latest Core production gate and workflow remain manual and assertive', async () => {
+  const source = await readFile(scriptUrl, 'utf8');
+  const workflow = await readFile(
+    new URL('../../../.github/workflows/heroku-core-latest-migrations-manual.yml', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(source, /CORE_MIGRATION_PENDING=/);
+  assert.match(source, /CORE_PHASE_6F_SCHEMA=/);
+  assert.match(source, /CORE_PHASE_7_INVENTORY_SCHEMA=/);
+  assert.match(source, /CORE_PHASE_8_REPORTING_SCHEMA=/);
+  assert.match(source, /CORE_RESTORE_REHEARSAL=success/);
+  assert.match(source, /CORE_PRODUCTION_PENDING=\[\]/);
+  assert.match(source, /CORE_PRODUCTION_RECONCILIATION=success/);
+  assert.match(workflow, /\/audit-heroku-core-latest-migrations/);
+  assert.match(workflow, /\/migrate-heroku-core-latest-production/);
+  assert.match(workflow, /github\.event\.comment\.user\.login == 'khuongbinhinfo-a11y'/);
+  assert.match(workflow, /EXPECTED_MAIN_SHA: \$\{\{ github\.event\.repository\.default_branch == 'main' && steps\.main_head\.outputs\.sha \|\| '' \}\}/);
+  assert.match(workflow, /git fetch --no-tags origin main/);
+  assert.match(workflow, /test "\$local_head" = "\$EXPECTED_MAIN_SHA"/);
+  assert.match(workflow, /test "\$remote_head" = "\$EXPECTED_MAIN_SHA"/);
+  assert.match(workflow, /npm test -- --test-name-pattern="latest Core production gate"/);
+  assert.match(workflow, /bash npp-core\/api\/scripts\/core-latest-production-gate\.sh/);
+  assert.match(workflow, /Publish sanitized migration evidence/);
+  assert.match(workflow, /issues\/262\/comments/);
+  assert.match(workflow, /POSTGRES_SERVICE_CONTAINER: pg17/);
+  assert.match(workflow, /CORE_API_INSTALL_ENV: \$\{\{ github\.event\.comment\.body == '\/migrate-heroku-core-latest-production' && 'production' \|\| 'test' \}\}/);
+  assert.match(workflow, /if \[ "\$CORE_API_INSTALL_ENV" = "production" \]/);
+  assert.match(workflow, /npm install --omit=dev --no-audit --no-fund/);
+  assert.match(workflow, /npm ci/);
+  assert.doesNotMatch(workflow, /curl -L .*node-v/);
+  assert.doesNotMatch(workflow, /Confirm latest migrations remain canonical/);
+  assert.doesNotMatch(workflow, /EXPECTED_HEAD_SHA:/);
 });
