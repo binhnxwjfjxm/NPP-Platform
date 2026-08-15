@@ -122,7 +122,7 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
     event.preventDefault();
 
     if (mode === 'machine_code_required') {
-      setError('Backend hiện chưa cung cấp contract xác minh thiết bị cho trạng thái này.');
+      setError('Hệ thống chưa hỗ trợ phương thức xác minh này. Vui lòng liên hệ quản trị tài khoản.');
       return;
     }
 
@@ -154,26 +154,26 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
       <section className={styles.card} aria-labelledby="npp-login-title">
         <div className={styles.brand}>
           <span className={styles.logoFrame}>
-            <img className={styles.logo} src={appLogoUrl} alt="Logo Hưng Phát Company" />
+            <img className={styles.logo} src={appLogoUrl} alt="Logo Hưng Phát" />
           </span>
           <div className={styles.brandText}>
-            <strong>Hưng Phát Company</strong>
-            <span>NPP Operations</span>
+            <strong>Hưng Phát</strong>
+            <span>Hệ thống điều hành NPP</span>
           </div>
         </div>
 
         <div className={styles.content}>
           {mode === 'credentials' ? (
             <div className={`${styles.loginStage} ${leavingCredentials ? styles.loginStageExit : ''}`}>
-              <p className={styles.eyebrow}>Welcome to Hung Phat Operations.</p>
+              <p className={styles.eyebrow}>Chào mừng đến hệ thống điều hành Hưng Phát.</p>
               <h1 className={styles.title} id="npp-login-title">Đăng nhập hệ thống</h1>
-              <p>Nhân viên dùng tên đăng nhập được cấp. Security/Implementation Owner có thể dùng email Owner đã đăng ký.</p>
+              <p>Nhân viên dùng tên đăng nhập được cấp. Tài khoản quản trị hệ thống có thể dùng email đã đăng ký.</p>
               {error ? <p className={styles.error} role="alert">{error}</p> : null}
 
               <form className={styles.form} action="/api/auth/login" method="post" onSubmit={handleCredentialsSubmit}>
                 <input type="hidden" name="returnTo" value={returnTo} />
                 <label className={styles.field}>
-                  <span>Tên đăng nhập hoặc email Owner</span>
+                  <span>Tên đăng nhập hoặc email quản trị</span>
                   <input
                     name="username"
                     autoComplete="username"
@@ -239,7 +239,7 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
               </form>
             </div>
           )}
-          <p className={styles.note}>Phiên đăng nhập gắn với đúng nhân viên, vai trò, quyền và phạm vi hiện tại trong NPP Core. Không truy cập được hệ thống? Vui lòng liên hệ người quản trị tài khoản nội bộ.</p>
+          <p className={styles.note}>Phiên đăng nhập gắn với đúng nhân viên, vai trò, quyền và phạm vi hiện tại trong hệ thống. Không truy cập được hệ thống? Vui lòng liên hệ người quản trị tài khoản nội bộ.</p>
         </div>
       </section>
     </main>
