@@ -103,7 +103,9 @@ try {
   await ordersLink.click();
   const ordersRequest = await ordersRequestPromise;
   assert.equal(ordersRequest.resourceType(), "document", "leaving a visit must use a fresh document navigation");
-  await page.waitForURL((url) => url.pathname === "/orders");
+  await page.waitForURL((url) => url.pathname === "/login");
+  await page.getByRole("heading", { name: "Đăng nhập nhân viên", exact: true }).waitFor({ state: "visible" });
+  assert.equal(new URL(page.url()).searchParams.get("returnTo"), "/orders", "protected orders entry must preserve the /orders return target");
 
   await page.screenshot({ path: `${resultsDir}/mobile-dock-navigation-final.png`, fullPage: true });
   result.dockLabels = routeDock.values.map((item) => item.label);
@@ -112,7 +114,9 @@ try {
   result.proxyHttpsBoundary = "PASS";
   result.entryRedirectStatus = visitResponse.status();
   result.noActiveDestination = "/routes";
-  result.visitEscapeDestination = "/orders";
+  result.visitEscapeDestination = "/login";
+  result.ordersAuthReturnTo = "/orders";
+  result.ordersAuthGate = "PASS";
   result.documentNavigation = "PASS";
   result.MOBILE_DOCK_NAVIGATION = "PASS";
 } catch (error) {

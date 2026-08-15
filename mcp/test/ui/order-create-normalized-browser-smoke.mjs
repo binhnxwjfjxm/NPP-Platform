@@ -45,7 +45,7 @@ assert.equal(await page.getByText(/Đơn giá tạm/).count(), 0, "direct flow m
 assert.equal(await page.getByText(/Khách nhập tay|Khách mới|Phiên \/ tuyến/).count(), 0, "direct flow must not depend on manual customer or session order-intent");
 
 const customerSelect = page.locator("select").first();
-await customerSelect.selectOption({ label: /UI Existing Customer/ });
+await customerSelect.selectOption({ label: "UI Existing Customer · KH-UI-001 · Tuyến phiên đang chạy" });
 await page.getByRole("button", { name: /Siro Hưng Phát/ }).first().click();
 await page.getByRole("button", { name: /Trà Lài Hưng Phát/ }).click();
 await page.getByText(/2 SKU/).waitFor({ state: "visible" });
