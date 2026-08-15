@@ -137,7 +137,7 @@ export default function BusinessDocumentPrint({
             ))}
           </footer>
 
-          <p className={styles.footer}>Bản in từ NPP Operations — dữ liệu lấy từ chứng từ canonical đang hiển thị, thao tác in không ghi nhận nghiệp vụ.</p>
+          <p className={styles.footer}>Bản in từ Hệ thống Công Ty — dữ liệu theo chứng từ đang hiển thị; thao tác in không làm thay đổi nghiệp vụ.</p>
         </article>
       </PrintSurface>
     </>

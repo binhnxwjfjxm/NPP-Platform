@@ -82,14 +82,14 @@ export async function middleware(request: NextRequest) {
     && forwardedProto !== 'https'
     && request.nextUrl.protocol !== 'https:'
   ) {
-    return deny(request, 503, 'NPP_HTTPS_REQUIRED', 'NPP Operations access requires HTTPS');
+    return deny(request, 503, 'NPP_HTTPS_REQUIRED', 'Hệ thống Công Ty yêu cầu kết nối HTTPS');
   }
 
   const token = request.cookies.get(NPP_SESSION_COOKIE)?.value?.trim();
   if (!token) {
     return browser(request)
       ? loginRedirect(request)
-      : deny(request, 401, 'UNAUTHORIZED', 'Authentication required');
+      : deny(request, 401, 'UNAUTHORIZED', 'Cần đăng nhập để tiếp tục');
   }
 
   const state = await sessionState(token);
@@ -98,14 +98,14 @@ export async function middleware(request: NextRequest) {
     return clearInvalidSession(
       browser(request)
         ? loginRedirect(request)
-        : deny(request, 401, 'UNAUTHORIZED', 'Authentication required'),
+        : deny(request, 401, 'UNAUTHORIZED', 'Cần đăng nhập để tiếp tục'),
     );
   }
   return deny(
     request,
     503,
     'NPP_AUTH_UNAVAILABLE',
-    'NPP Core authentication is temporarily unavailable',
+    'Hệ thống xác thực Công Ty đang tạm thời chưa sẵn sàng',
   );
 }
 

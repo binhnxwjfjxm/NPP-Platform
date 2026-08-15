@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
+import { createIdempotencyKey } from '@npp/contracts';
 import type {
   CustomerOnboardingAction,
   CustomerOnboardingRequestSummary,
@@ -61,13 +62,6 @@ function actionSuccess(action: CustomerOnboardingAction): string {
   return 'Đã hủy đề nghị.';
 }
 
-function createIdempotencyKey(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return `web-${crypto.randomUUID()}`;
-  }
-  return `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
 function fullAddress(address: CustomerAddress): string {
   return [address.address_line1, address.ward, address.district, address.province]
     .filter(Boolean)
@@ -105,7 +99,7 @@ export default function CustomerOnboardingReview({ requests, customers, portalOp
     value: string;
   } {
     const cacheKey = `${request.id}:${action}:${request.version}`;
-    const value = actionKeys.current[cacheKey] || createIdempotencyKey();
+    const value = actionKeys.current[cacheKey] || createIdempotencyKey('customer-onboarding-action');
     actionKeys.current[cacheKey] = value;
     return { cacheKey, value };
   }
@@ -366,7 +360,7 @@ export default function CustomerOnboardingReview({ requests, customers, portalOp
 
                   <section className={styles.actionPanel}>
                     <h3>Liên kết khách đã có</h3>
-                    <p>Chỉ dùng nhánh này khi điểm bán đã có mã khách trên Core.</p>
+                    <p>Chỉ dùng nhánh này khi điểm bán đã có mã khách Công Ty.</p>
                     <label>
                       Khách hàng
                       <select value={selectedCustomer} onChange={(event) => void chooseCustomer(request.id, event.target.value)}>

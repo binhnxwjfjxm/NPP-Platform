@@ -9,6 +9,16 @@ import { DataTable, type DataTableColumn } from "@/ui/table/DataTable";
 import type { AccountKpi, OutletItem, OutletStatus } from "./accounts.types";
 
 type StatusFilter = "all" | OutletStatus;
+type CustomerTab = "outlets" | "company";
+type CompanyCustomer = {
+  id: string;
+  customerCode: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  status: string;
+  updatedAt: string | null;
+};
 
 function normalized(value: string) {
   return value.trim().toLocaleLowerCase("vi-VN");
@@ -87,7 +97,8 @@ function OutletSheet({ item, onClose }: { item: OutletItem | null; onClose: () =
       description={item ? `${item.routeName} · ${item.area}` : undefined}
       footer={
         <div className="sheet-action-grid">
-          {item ? <a className="button primary" href={item.mapsUrl}>Di chuyển</a> : null}
+          {item ? <a className="button primary" href={`/customers/onboarding/${encodeURIComponent(item.routeCustomerId)}`}>Mở / liên kết mã</a> : null}
+          {item ? <a className="button" href={item.mapsUrl}>Di chuyển</a> : null}
           <button className="button" type="button" onClick={onClose}>Đóng</button>
         </div>
       }
@@ -118,7 +129,53 @@ function OutletSheet({ item, onClose }: { item: OutletItem | null; onClose: () =
   );
 }
 
-export function OutletsClientPage({ kpis, items }: { kpis: AccountKpi[]; items: OutletItem[] }) {
+function CompanyCustomers({ customers }: { customers: CompanyCustomer[] }) {
+  return (
+    <section className="card route-list-card" aria-label="Khách công ty đã mở hoặc liên kết mã">
+      <div className="route-list-heading">
+        <div>
+          <h2 className="panel-title">Khách công ty</h2>
+          <p className="page-subtitle">Chỉ gồm khách đã có mã công ty và thuộc nhân viên đang đăng nhập phụ trách.</p>
+        </div>
+        <span>{customers.length} khách</span>
+      </div>
+      <div className="grid">
+        {customers.map((customer) => (
+          <article className="card" key={customer.id} data-company-customer-card>
+            <div className="mobile-summary-head">
+              <div className="mobile-summary-title">
+                <span>{customer.customerCode || "Đã liên kết"}</span>
+                <h3>{customer.name}</h3>
+              </div>
+              <span className="mobile-summary-status summary-status-good">Đang hoạt động</span>
+            </div>
+            <div className="grid">
+              <div className="metric-row"><span>Điện thoại</span><strong>{customer.phone || "-"}</strong></div>
+              <div className="metric-row"><span>Email</span><strong>{customer.email || "-"}</strong></div>
+            </div>
+          </article>
+        ))}
+        {customers.length === 0 ? (
+          <div className="empty-inline">
+            <strong>Chưa có khách công ty</strong>
+            <p className="page-subtitle">Mở hoặc liên kết mã từ tab Điểm bán trước.</p>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+export function OutletsClientPage({
+  kpis,
+  items,
+  coreCustomers
+}: {
+  kpis: AccountKpi[];
+  items: OutletItem[];
+  coreCustomers: CompanyCustomer[];
+}) {
+  const [activeTab, setActiveTab] = useState<CustomerTab>("outlets");
   const [selected, setSelected] = useState<OutletItem | null>(null);
   const [query, setQuery] = useState("");
   const [route, setRoute] = useState("all");
@@ -145,67 +202,76 @@ export function OutletsClientPage({ kpis, items }: { kpis: AccountKpi[]; items: 
 
   return (
     <AppShell activeHref="/customers">
-      <PageHeader eyebrow="Khách" title="Điểm bán" subtitle="Tìm điểm bán, kiểm tra hồ sơ và mở chỉ đường theo dữ liệu tuyến hiện có.">
-        <span className="badge">{items.length} điểm bán</span>
+      <PageHeader eyebrow="Khách" title="Khách hàng" subtitle="Điểm bán MCP và khách công ty được tách rõ, không dùng khách công ty để thay mất dữ liệu tuyến.">
+        <span className="badge">{items.length} điểm bán · {coreCustomers.length} khách công ty</span>
       </PageHeader>
 
-      <section className="card route-guidance-card" aria-label="Tìm kiếm và lọc điểm bán">
-        <div className="grid route-secondary-grid">
-          <label className="form-field">
-            <small>Tìm điểm bán</small>
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tên, liên hệ, khu vực hoặc tuyến" type="search" />
-          </label>
-          <label className="form-field">
-            <small>Tuyến</small>
-            <select value={route} onChange={(event) => setRoute(event.target.value)}>
-              <option value="all">Tất cả tuyến</option>
-              {routes.map((routeName) => <option key={routeName} value={routeName}>{routeName}</option>)}
-            </select>
-          </label>
-          <label className="form-field">
-            <small>Trạng thái</small>
-            <select value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)}>
-              <option value="all">Tất cả trạng thái</option>
-              <option value="active">Đang trong tuyến</option>
-              <option value="needs_gps">Cần cập nhật GPS</option>
-              <option value="hidden">Đang ẩn</option>
-            </select>
-          </label>
-        </div>
-      </section>
+      <div className="mcp-status-chips" role="tablist" aria-label="Nhóm khách hàng">
+        <button className={activeTab === "outlets" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "outlets"} onClick={() => setActiveTab("outlets")}>Điểm bán <b>{items.length}</b></button>
+        <button className={activeTab === "company" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "company"} onClick={() => setActiveTab("company")}>Khách công ty <b>{coreCustomers.length}</b></button>
+      </div>
 
-      <section className="grid cards route-kpi-grid">
-        {kpis.map((row) => <KpiCard key={row.label} label={row.label} value={row.value} hint={row.hint} />)}
-      </section>
+      {activeTab === "outlets" ? (
+        <>
+          <section className="card route-guidance-card" aria-label="Tìm kiếm và lọc điểm bán">
+            <div className="grid route-secondary-grid">
+              <label className="form-field">
+                <small>Tìm điểm bán</small>
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tên, liên hệ, khu vực hoặc tuyến" type="search" />
+              </label>
+              <label className="form-field">
+                <small>Tuyến</small>
+                <select value={route} onChange={(event) => setRoute(event.target.value)}>
+                  <option value="all">Tất cả tuyến</option>
+                  {routes.map((routeName) => <option key={routeName} value={routeName}>{routeName}</option>)}
+                </select>
+              </label>
+              <label className="form-field">
+                <small>Trạng thái</small>
+                <select value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)}>
+                  <option value="all">Tất cả trạng thái</option>
+                  <option value="active">Đang trong tuyến</option>
+                  <option value="needs_gps">Cần cập nhật GPS</option>
+                  <option value="hidden">Đang ẩn</option>
+                </select>
+              </label>
+            </div>
+          </section>
 
-      <section className="hero-panel route-list-layout">
-        <div className="card route-list-card">
-          <div className="route-list-heading">
-            <h2 className="panel-title">Danh sách điểm bán</h2>
-            <span>{filteredItems.length}/{items.length} điểm bán</span>
-          </div>
+          <section className="grid cards route-kpi-grid">
+            {kpis.map((row) => <KpiCard key={row.label} label={row.label} value={row.value} hint={row.hint} />)}
+          </section>
 
-          <div className="route-desktop-table">
-            <DataTable columns={columns} rows={filteredItems} getRowKey={(row) => row.id} emptyMessage="Không có điểm bán phù hợp" />
-          </div>
+          <section className="hero-panel route-list-layout">
+            <div className="card route-list-card">
+              <div className="route-list-heading">
+                <h2 className="panel-title">Danh sách điểm bán</h2>
+                <span>{filteredItems.length}/{items.length} điểm bán</span>
+              </div>
 
-          <div className="route-mobile-list" aria-label="Danh sách điểm bán trên điện thoại">
-            {filteredItems.length
-              ? filteredItems.map((item) => <OutletMobileCard item={item} key={item.id} onSelect={setSelected} />)
-              : <div className="empty-inline">Không có điểm bán phù hợp</div>}
-          </div>
-        </div>
+              <div className="route-desktop-table">
+                <DataTable columns={columns} rows={filteredItems} getRowKey={(row) => row.id} emptyMessage="Không có điểm bán phù hợp" />
+              </div>
 
-        <div className="card route-secondary-card">
-          <h2 className="panel-title">Chất lượng hồ sơ</h2>
-          <div className="grid route-secondary-grid">
-            <div className="metric-row"><span>Cần cập nhật GPS</span><strong>{stats.needsGps}</strong></div>
-            <div className="metric-row"><span>Thiếu liên hệ</span><strong>{stats.missingContact}</strong></div>
-            <div className="metric-row"><span>Đang ẩn</span><strong>{stats.hidden}</strong></div>
-            <div className="metric-row"><span>Số tuyến</span><strong>{stats.routes}</strong></div>
-          </div>
-        </div>
-      </section>
+              <div className="route-mobile-list" aria-label="Danh sách điểm bán trên điện thoại">
+                {filteredItems.length
+                  ? filteredItems.map((item) => <OutletMobileCard item={item} key={item.id} onSelect={setSelected} />)
+                  : <div className="empty-inline">Không có điểm bán phù hợp</div>}
+              </div>
+            </div>
+
+            <div className="card route-secondary-card">
+              <h2 className="panel-title">Chất lượng hồ sơ</h2>
+              <div className="grid route-secondary-grid">
+                <div className="metric-row"><span>Cần cập nhật GPS</span><strong>{stats.needsGps}</strong></div>
+                <div className="metric-row"><span>Thiếu liên hệ</span><strong>{stats.missingContact}</strong></div>
+                <div className="metric-row"><span>Đang ẩn</span><strong>{stats.hidden}</strong></div>
+                <div className="metric-row"><span>Số tuyến</span><strong>{stats.routes}</strong></div>
+              </div>
+            </div>
+          </section>
+        </>
+      ) : <CompanyCustomers customers={coreCustomers} />}
 
       <OutletSheet item={selected} onClose={() => setSelected(null)} />
     </AppShell>

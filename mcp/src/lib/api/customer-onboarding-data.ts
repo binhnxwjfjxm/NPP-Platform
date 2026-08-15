@@ -81,3 +81,34 @@ export async function loadOwnedCoreCustomers(): Promise<CoreCustomerItem[]> {
   const data = await trustedBackendGet<{ customers?: CoreCustomerItem[] }>("/api/core-customers");
   return Array.isArray(data.customers) ? data.customers : [];
 }
+
+export type CoreSalesOrderLineItem = {
+  quantity?: string | number | null;
+};
+
+export type CoreSalesOrderVersionItem = {
+  versionNumber?: string | number | null;
+  total?: string | number | null;
+  createdAt?: string | null;
+  lines?: CoreSalesOrderLineItem[];
+};
+
+export type CoreSalesOrderItem = {
+  id: string;
+  number?: string | null;
+  status: string;
+  currentVersionNumber?: string | number | null;
+  sourceType?: string | null;
+  sourceOutletId?: string | null;
+  customerId?: string | null;
+  customerCode?: string | null;
+  customerName?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  versions?: CoreSalesOrderVersionItem[];
+};
+
+export async function loadOwnedCoreSalesOrders(): Promise<CoreSalesOrderItem[]> {
+  const data = await trustedBackendGet<CoreSalesOrderItem[]>("/api/core-sales/orders");
+  return Array.isArray(data) ? data : [];
+}

@@ -42,7 +42,8 @@ test('shared print action uses the light bronze-gold operation tone', () => {
 
 test('rollout stays read-only and uses the shared business template', () => {
   assert.match(businessPrint, /BusinessDocumentPrint/);
-  assert.match(businessPrint, /Bản in từ NPP Operations/);
+  assert.match(businessPrint, /Bản in từ Hệ thống Công Ty/);
+  assert.doesNotMatch(businessPrint, /NPP Operations|chứng từ canonical/);
   for (const source of printModules) {
     assert.doesNotMatch(source, /method:\s*['"]POST['"]/);
     assert.doesNotMatch(source, /method:\s*['"]PATCH['"]/);

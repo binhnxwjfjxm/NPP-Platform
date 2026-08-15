@@ -10,6 +10,6 @@ test('Sales Order workspace filters one canonical list by source lineage and sho
   assert.match(source, /CUSTOMER_PORTAL:/);
   assert.match(source, /order\.sourceType === 'MCP'/);
   assert.match(source, /order\.sourceType === 'API'/);
-  assert.match(source, /Nguồn \{salesOrderSourceLabel\(order\)\}/);
+  assert.match(source, /Nguồn \{salesOrderSourceLabel\(order\.sourceType, order\.sourceId\)\}/);
   assert.doesNotMatch(source, /customerOrders|mcpOrders|internalOrders/);
 });
