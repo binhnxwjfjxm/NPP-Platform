@@ -13,17 +13,53 @@ type Props = Readonly<{
 }>;
 
 type PendingPick = Readonly<{ key: string; body: string }>;
-const SCALE = 1_000_000_000_000n;
+const DECIMAL_SCALE = 12;
+const DECIMAL_PATTERN = /^(0|[1-9]\d{0,17})(?:\.(\d{1,12}))?$/;
 
-function scaled(value: string) {
-  const match = /^(0|[1-9]\d{0,17})(?:\.(\d{1,12}))?$/.exec(value.trim());
-  return match ? BigInt(match[1]) * SCALE + BigInt((match[2] ?? '').padEnd(12, '0')) : null;
+function scaledDigits(value: string) {
+  const match = DECIMAL_PATTERN.exec(value.trim());
+  if (!match) return null;
+  const digits = `${match[1]}${(match[2] ?? '').padEnd(DECIMAL_SCALE, '0')}`.replace(/^0+(?=\d)/, '');
+  return digits || '0';
 }
 
-function decimal(value: bigint) {
-  const whole = value / SCALE;
-  const fraction = String(value % SCALE).padStart(12, '0').replace(/0+$/, '');
-  return fraction ? `${whole}.${fraction}` : String(whole);
+function compareDigits(left: string, right: string) {
+  if (left.length !== right.length) return left.length > right.length ? 1 : -1;
+  if (left === right) return 0;
+  return left > right ? 1 : -1;
+}
+
+function subtractDigits(left: string, right: string) {
+  const width = Math.max(left.length, right.length);
+  const a = left.padStart(width, '0').split('').map(Number);
+  const b = right.padStart(width, '0').split('').map(Number);
+  const output = Array.from({ length: width }, () => 0);
+  let borrow = 0;
+  for (let index = width - 1; index >= 0; index -= 1) {
+    let digit = a[index] - borrow - b[index];
+    if (digit < 0) {
+      digit += 10;
+      borrow = 1;
+    } else {
+      borrow = 0;
+    }
+    output[index] = digit;
+  }
+  return output.join('').replace(/^0+(?=\d)/, '') || '0';
+}
+
+function decimalFromScaledDigits(value: string) {
+  const padded = value.padStart(DECIMAL_SCALE + 1, '0');
+  const whole = padded.slice(0, -DECIMAL_SCALE).replace(/^0+(?=\d)/, '') || '0';
+  const fraction = padded.slice(-DECIMAL_SCALE).replace(/0+$/, '');
+  return fraction ? `${whole}.${fraction}` : whole;
+}
+
+function remainingQuantity(allocatedValue: string, pickedValue: string) {
+  const allocated = scaledDigits(allocatedValue);
+  const picked = scaledDigits(pickedValue);
+  if (!allocated || !picked || compareDigits(allocated, picked) <= 0) return '0';
+  return decimalFromScaledDigits(subtractDigits(allocated, picked));
 }
 
 function display(value: string) {
@@ -33,22 +69,26 @@ function display(value: string) {
 
 export default function PickAllocationPanel({ allocation, demandId, unitCode }: Props) {
   const router = useRouter();
-  const allocated = scaled(allocation.allocatedBaseQuantity) ?? 0n;
-  const picked = scaled(allocation.pickedBaseQuantity) ?? 0n;
-  const remaining = allocated > picked ? allocated - picked : 0n;
-  const [quantity, setQuantity] = useState(() => decimal(remaining));
+  const remaining = useMemo(
+    () => remainingQuantity(allocation.allocatedBaseQuantity, allocation.pickedBaseQuantity),
+    [allocation.allocatedBaseQuantity, allocation.pickedBaseQuantity],
+  );
+  const remainingScaled = useMemo(() => scaledDigits(remaining) ?? '0', [remaining]);
+  const [quantity, setQuantity] = useState(remaining);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const pendingByFingerprint = useRef(new Map<string, PendingPick>());
-  const requested = useMemo(() => scaled(quantity), [quantity]);
-  const discrepancy = requested !== null && requested > 0n && requested < remaining;
-  const completed = remaining === 0n;
+  const requestedScaled = useMemo(() => scaledDigits(quantity), [quantity]);
+  const discrepancy = requestedScaled !== null
+    && compareDigits(requestedScaled, '0') > 0
+    && compareDigits(requestedScaled, remainingScaled) < 0;
+  const completed = compareDigits(remainingScaled, '0') === 0;
 
   async function submit() {
     setMessage('');
     if (completed) return;
-    if (requested === null || requested <= 0n || requested > remaining) {
+    if (requestedScaled === null || compareDigits(requestedScaled, '0') <= 0 || compareDigits(requestedScaled, remainingScaled) > 0) {
       setMessage('Số lượng soạn phải lớn hơn 0 và không vượt số còn lại.');
       return;
     }
@@ -58,7 +98,7 @@ export default function PickAllocationPanel({ allocation, demandId, unitCode }: 
     }
 
     const logicalPayload = {
-      quantity: decimal(requested),
+      quantity: decimalFromScaledDigits(requestedScaled),
       reason: discrepancy ? reason.trim() : null,
     };
     const fingerprint = JSON.stringify({ demandId, allocationId: allocation.id, ...logicalPayload });
