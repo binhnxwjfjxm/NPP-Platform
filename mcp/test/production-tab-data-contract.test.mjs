@@ -6,24 +6,29 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
 
-test("customer tab restores route outlets and adds employee-scoped company customers", () => {
+test("customer tab enforces route-owned outlets and scoped company customers", () => {
   const page = read("src/features/accounts/AccountsPage.tsx");
   const client = read("src/features/accounts/OutletsClientPage.tsx");
   const loader = read("src/lib/api/customer-onboarding-data.ts");
   const service = read("apps/backend/foundation/customer-verification.js");
+  const access = read("apps/backend/foundation/customer-route-access.js");
   const settings = read("src/features/settings/SettingsPage.tsx");
 
-  assert.match(page, /loadRouteCustomersData\(\)/);
+  assert.match(page, /loadOwnedRouteCustomersData\(\)/);
+  assert.doesNotMatch(page, /loadRouteCustomersData\(\)/);
   assert.match(page, /accountsFromRouteCustomers/);
   assert.match(page, /loadOwnedCoreCustomers\(\)/);
   assert.match(client, />Điểm bán/);
   assert.match(client, />Khách công ty/);
   assert.match(client, /\/customers\/onboarding\/\$\{encodeURIComponent\(item\.routeCustomerId\)\}/);
+  assert.match(loader, /\/api\/customer-verifications/);
   assert.match(loader, /\/api\/core-customers/);
-  assert.match(service, /FROM mcp\.accounts/);
-  assert.match(service, /sales_owner = \$2/);
-  assert.match(service, /active = true/);
-  assert.match(service, /requireEmployee\(context\)/);
+  assert.match(service, /listAccessibleCoreCustomers/);
+  assert.doesNotMatch(service, /FROM mcp\.accounts/);
+  assert.doesNotMatch(service, /sales_owner = \$2/);
+  assert.match(access, /route\.sales/);
+  assert.match(access, /mcp\.installation-owner/);
+  assert.doesNotMatch(access, /rc\.responsible_employee_id\s*=/);
   assert.doesNotMatch(page, /\/api\/auth\/logout/);
   assert.match(settings, /\/api\/auth\/logout/);
 });
