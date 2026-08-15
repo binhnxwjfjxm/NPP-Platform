@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createIdempotencyKey } from "../../../../packages/contracts/index.js";
 import { providerPersistence } from "./provider-runtime.js";
 import {
   coreOnboardingProjection,
@@ -34,6 +35,14 @@ function installationId(context) {
   const value = text(context?.installation?.id);
   if (!value) throw businessError("installation_id_required");
   return value;
+}
+
+function stableOperationUuid(value) {
+  const hex = createHash("sha256").update(String(value)).digest("hex").slice(0, 32).split("");
+  hex[12] = "5";
+  hex[16] = ((Number.parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
+  const joined = hex.join("");
+  return `${joined.slice(0, 8)}-${joined.slice(8, 12)}-${joined.slice(12, 16)}-${joined.slice(16, 20)}-${joined.slice(20)}`;
 }
 
 function localProjection(row) {
@@ -225,7 +234,10 @@ export async function submitCustomerOnboarding(body, context, config, options = 
     config,
     {
       fetchImpl: options.fetchImpl || fetch,
-      idempotencyKey: `mcp-customer-onboarding-${row.order_id}`
+      idempotencyKey: createIdempotencyKey(
+        "mcp.customer-onboarding.submit",
+        stableOperationUuid(row.order_id)
+      )
     }
   );
   return saveProjection(persistence, context, row, coreRequest, { submittedAt: new Date().toISOString(), fingerprint });

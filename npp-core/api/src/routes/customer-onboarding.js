@@ -9,7 +9,11 @@ import {
   withAuditOutboxTransaction,
 } from '../audit-outbox.js';
 import * as service from '../services/customer-onboarding.js';
+import * as fieldService from '../services/customer-onboarding-field.js';
 import * as optionsService from '../services/customer-onboarding-options.js';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MCP_EMPLOYEE_HEADER = 'x-npp-mcp-employee-id';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -32,6 +36,22 @@ function sendServiceError(res, result, options) {
   );
 }
 
+function headerValue(req, name) {
+  const value = req.headers?.[name];
+  return Array.isArray(value) ? String(value[0] ?? '').trim() : String(value ?? '').trim();
+}
+
+export function attachTrustedMcpEmployee(req, principal) {
+  const roles = Array.isArray(principal?.roles) ? principal.roles : [];
+  if (!roles.includes('mcp-onboarding-service')) return { ok: true, principal };
+  const employeeId = headerValue(req, MCP_EMPLOYEE_HEADER);
+  if (!employeeId) return { ok: true, principal };
+  if (!UUID_PATTERN.test(employeeId)) {
+    return { ok: false, code: 'UNAUTHORIZED', message: 'Trusted MCP employee identity is invalid' };
+  }
+  return { ok: true, principal: Object.freeze({ ...principal, employeeId }) };
+}
+
 async function authenticateAndAuthorize(req, res, options, permission) {
   const auth = options.authenticate(req, options.config);
   if (!auth.ok) {
@@ -39,9 +59,15 @@ async function authenticateAndAuthorize(req, res, options, permission) {
     sendError(res, apiError('UNAUTHORIZED', 'Authorization required', {}, false, 401), options.requestId, options.receivedAt);
     return null;
   }
+  const trusted = attachTrustedMcpEmployee(req, auth.principal);
+  if (!trusted.ok) {
+    res.setHeader('WWW-Authenticate', 'Bearer');
+    sendError(res, apiError(trusted.code, trusted.message, {}, false, 401), options.requestId, options.receivedAt);
+    return null;
+  }
   const requestContext = options.createContext({
     config: options.config,
-    principal: auth.principal,
+    principal: trusted.principal,
     requestId: options.requestId,
     receivedAt: options.receivedAt,
   });
@@ -234,6 +260,7 @@ export async function handleCustomerOnboardingRoutes(req, res, options) {
     }
     const payload = await readPayload(req, res, options);
     if (payload === null) return true;
+    const fieldProfile = String(payload?.triggerReason || '').trim().toUpperCase() === fieldService.FIELD_PROFILE_VERIFICATION;
     await executeMutation(req, res, options, {
       requestContext,
       route: collectionPath,
@@ -241,11 +268,9 @@ export async function handleCustomerOnboardingRoutes(req, res, options) {
       idempotencyKey: key.key,
       action: 'submitted',
       statusCode: 201,
-      mutate: (client) => service.submitRequest(client, {
-        requestContext,
-        payload,
-        idempotencyKey: key.key,
-      }),
+      mutate: (client) => fieldProfile
+        ? fieldService.submitFieldProfileRequest(client, { requestContext, payload, idempotencyKey: key.key })
+        : service.submitRequest(client, { requestContext, payload, idempotencyKey: key.key }),
     });
     return true;
   }

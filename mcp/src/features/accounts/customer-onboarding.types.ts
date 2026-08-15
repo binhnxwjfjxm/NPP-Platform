@@ -10,13 +10,9 @@ export type CustomerOnboardingStatus =
 export type CustomerOnboardingQueueStatus = "not_submitted" | CustomerOnboardingStatus;
 
 export type CustomerOnboardingQueueItem = {
-  orderId: string;
-  orderCode: string | null;
-  sessionCustomerId: string;
-  sessionId: string | null;
-  routeId: string | null;
+  routeCustomerId: string;
+  routeId: string;
   routeName: string | null;
-  sessionDate: string | null;
   customerName: string;
   phone: string | null;
   area: string | null;
@@ -25,6 +21,7 @@ export type CustomerOnboardingQueueItem = {
   coreRequestId: string | null;
   coreCustomerId: string | null;
   coreCustomerAddressId: string | null;
+  coreCustomerCode: string | null;
   reviewReason: string | null;
   submittedAt: string | null;
   lastSyncedAt: string | null;

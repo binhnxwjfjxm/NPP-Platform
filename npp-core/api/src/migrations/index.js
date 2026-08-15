@@ -104,6 +104,10 @@ const BACKUP_DELETE_FOUNDATION_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/083_backup_delete_foundation.sql', import.meta.url),
   'utf8',
 );
+const MCP_FIELD_PROFILE_VERIFICATION_SQL = readFileSync(
+  new URL('../../../../database/migrations/sales/084_mcp_field_profile_verification.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -152,6 +156,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
     ].join('\n\n'),
   }),
   Object.freeze({ id: '083_backup_delete_foundation', sql: BACKUP_DELETE_FOUNDATION_SQL }),
+  Object.freeze({ id: '084_mcp_field_profile_verification', sql: MCP_FIELD_PROFILE_VERIFICATION_SQL }),
 ]);
 
 export { runMigrations };

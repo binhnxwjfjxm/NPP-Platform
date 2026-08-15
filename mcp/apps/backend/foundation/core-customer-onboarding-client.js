@@ -25,7 +25,7 @@ function configured(config) {
   return boundary;
 }
 
-function requestHeaders(boundary, requestContext, { idempotencyKey = null } = {}) {
+function requestHeaders(boundary, requestContext, { idempotencyKey = null, employeeId = null } = {}) {
   const headers = {
     Accept: "application/json",
     "Content-Type": "application/json",
@@ -33,10 +33,12 @@ function requestHeaders(boundary, requestContext, { idempotencyKey = null } = {}
     "X-Request-Id": requestContext.requestId
   };
   if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+  const trustedEmployeeId = String(employeeId || requestContext?.principal?.employeeId || "").trim();
+  if (trustedEmployeeId) headers["X-NPP-MCP-Employee-Id"] = trustedEmployeeId;
   return headers;
 }
 
-async function coreRequest(config, requestContext, path, init, { fetchImpl = fetch } = {}) {
+async function coreRequest(config, requestContext, path, init, { fetchImpl = fetch, employeeId = null } = {}) {
   const boundary = configured(config);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), boundary.timeoutMs);
@@ -46,7 +48,7 @@ async function coreRequest(config, requestContext, path, init, { fetchImpl = fet
     const { idempotencyKey, ...requestInit } = init;
     response = await fetchImpl(`${boundary.baseUrl}${path}`, {
       ...requestInit,
-      headers: requestHeaders(boundary, requestContext, { idempotencyKey }),
+      headers: requestHeaders(boundary, requestContext, { idempotencyKey, employeeId }),
       signal: controller.signal
     });
   } catch (error) {

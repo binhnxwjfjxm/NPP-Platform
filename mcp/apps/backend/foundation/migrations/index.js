@@ -37,6 +37,10 @@ const MCP_CUSTOMER_MEDIA_LINK_SQL = readFileSync(
   new URL("./sql/009_mcp_customer_media_link.sql", import.meta.url),
   "utf8"
 );
+const MCP_CUSTOMER_VERIFICATION_SQL = readFileSync(
+  new URL("./sql/010_mcp_customer_verification.sql", import.meta.url),
+  "utf8"
+);
 
 export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_001_write_foundation", sql: MCP_WRITE_FOUNDATION_SQL }),
@@ -47,7 +51,8 @@ export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_006_customer_onboarding_sync", sql: MCP_CUSTOMER_ONBOARDING_SYNC_SQL }),
   Object.freeze({ id: "mcp_007_core_sales_order_sync", sql: MCP_CORE_SALES_ORDER_SYNC_SQL }),
   Object.freeze({ id: "mcp_008_legacy_report_settings_seed", sql: MCP_LEGACY_REPORT_SETTINGS_SEED_SQL }),
-  Object.freeze({ id: "mcp_009_customer_media_link", sql: MCP_CUSTOMER_MEDIA_LINK_SQL })
+  Object.freeze({ id: "mcp_009_customer_media_link", sql: MCP_CUSTOMER_MEDIA_LINK_SQL }),
+  Object.freeze({ id: "mcp_010_customer_verification", sql: MCP_CUSTOMER_VERIFICATION_SQL })
 ]);
 
 const MCP_READ_MODELS = Object.freeze([
@@ -223,57 +228,29 @@ export async function migrationVerifyWithAdapter(adapter, migrations = MCP_MIGRA
     outboxTable: await tableExists(adapter, "outbox_events"),
     runtimeGrantFunction: await functionExists(adapter, "shared.grant_mcp_runtime_access(name)"),
     profileMediaLimitFunction: await functionExists(adapter, "mcp.enforce_outlet_media_limit()"),
-    idempotencyScopeConstraint: await constraintExists(
-      adapter,
-      "idempotency_records",
-      "mcp_idempotency_records_scope_key"
-    ),
-    idempotencyStateConstraint: await constraintExists(
-      adapter,
-      "idempotency_records",
-      "mcp_idempotency_records_state_shape"
-    ),
-    outboxStateConstraint: await constraintExists(
-      adapter,
-      "outbox_events",
-      "mcp_outbox_events_published_shape"
-    ),
-    auditAppendOnlyTrigger: await triggerExists(
-      adapter,
-      "audit_events",
-      "mcp_audit_events_append_only"
-    ),
-    profileMediaLimitTrigger: await triggerExists(
-      adapter,
-      "mcp_outlet_media",
-      "mcp_outlet_media_limit"
-    ),
-    sessionVisitedCounterTrigger: await triggerExists(
-      adapter,
-      "mcp_session_customers",
-      "mcp_session_customers_visited_counter"
-    ),
+    idempotencyScopeConstraint: await constraintExists(adapter, "idempotency_records", "mcp_idempotency_records_scope_key"),
+    idempotencyStateConstraint: await constraintExists(adapter, "idempotency_records", "mcp_idempotency_records_state_shape"),
+    outboxStateConstraint: await constraintExists(adapter, "outbox_events", "mcp_outbox_events_published_shape"),
+    auditAppendOnlyTrigger: await triggerExists(adapter, "audit_events", "mcp_audit_events_append_only"),
+    profileMediaLimitTrigger: await triggerExists(adapter, "mcp_outlet_media", "mcp_outlet_media_limit"),
+    sessionVisitedCounterTrigger: await triggerExists(adapter, "mcp_session_customers", "mcp_session_customers_visited_counter"),
     customerOnboardingRequestColumn: await columnExists(adapter, "orders", "customer_onboarding_request_id"),
     customerOnboardingStatusColumn: await columnExists(adapter, "orders", "customer_onboarding_status"),
     customerOnboardingFingerprintColumn: await columnExists(adapter, "orders", "customer_onboarding_fingerprint"),
-    customerOnboardingShapeConstraint: await constraintExists(
-      adapter,
-      "orders",
-      "mcp_orders_customer_onboarding_shape"
-    ),
+    customerOnboardingShapeConstraint: await constraintExists(adapter, "orders", "mcp_orders_customer_onboarding_shape"),
     customerOnboardingRequestIndex: await indexExists(adapter, "mcp_orders_customer_onboarding_request_unique"),
     coreSalesOrderIdColumn: await columnExists(adapter, "orders", "core_sales_order_id"),
     coreSalesOrderStatusColumn: await columnExists(adapter, "orders", "core_sales_order_status"),
     coreSalesOrderFingerprintColumn: await columnExists(adapter, "orders", "core_sales_order_fingerprint"),
-    coreSalesOrderShapeConstraint: await constraintExists(
-      adapter,
-      "orders",
-      "mcp_orders_core_sales_order_shape"
-    ),
+    coreSalesOrderShapeConstraint: await constraintExists(adapter, "orders", "mcp_orders_core_sales_order_shape"),
     coreSalesOrderUniqueIndex: await indexExists(adapter, "mcp_orders_core_sales_order_unique"),
     routeCustomerCoreCustomerIdColumn: await columnExists(adapter, "mcp_route_customers", "core_customer_id"),
     routeCustomerCoreAddressIdColumn: await columnExists(adapter, "mcp_route_customers", "core_customer_address_id"),
     routeCustomerCoreLinkageTrigger: await triggerExists(adapter, "orders", "mcp_orders_route_customer_core_linkage"),
+    routeCustomerResponsibleEmployeeColumn: await columnExists(adapter, "mcp_route_customers", "responsible_employee_id"),
+    routeCustomerVerificationOperationColumn: await columnExists(adapter, "mcp_route_customers", "customer_verification_operation_id"),
+    routeCustomerVerificationKeyColumn: await columnExists(adapter, "mcp_route_customers", "customer_verification_idempotency_key"),
+    routeCustomerVerificationShapeConstraint: await constraintExists(adapter, "mcp_route_customers", "mcp_route_customers_verification_shape_check"),
     outletMediaSharedRegistryTrigger: await triggerExists(adapter, "mcp_outlet_media", "mcp_outlet_media_shared_registry"),
     reportSettingGroupKeyIndex: await indexExists(adapter, "mcp_report_settings_group_key_unique"),
     outboxPendingIndex: await indexExists(adapter, "mcp_outbox_events_pending_available_idx"),
