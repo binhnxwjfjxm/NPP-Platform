@@ -49,10 +49,11 @@ test("orders tab restores management UI and merges canonical owned Core orders i
   assert.match(client, /label: "Cần xử lý"/);
   assert.match(client, /label: "Doanh số đặt hàng"/);
   assert.match(client, /label: "Tổng quan"/);
+  assert.match(client, /onCreated=\{\(orderCode\) => \{[\s\S]*router\.refresh\(\)/);
   assert.match(loader, /\/api\/backend\/customer-verifications/);
   assert.match(loader, /approved/);
   assert.match(loader, /linked_existing/);
-  assert.match(loader, /router\.refresh\(\)/);
+  assert.doesNotMatch(loader, /router\.refresh\(\)/);
   assert.match(sheet, /\/api\/backend\/core-sales\/orders/);
   assert.match(sheet, /createIdempotencyKey\("mcp\.sales-order\.create"\)/);
   assert.doesNotMatch(sheet, /\/api\/backend\/orders/);
