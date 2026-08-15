@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createIdempotencyKey } from '@npp/contracts';
 import { AppShell } from '../components/app-shell';
 import styles from './inventory-workspace.module.css';
 import {
@@ -130,6 +131,7 @@ export default function InventoryScopedWorkspace({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialError);
   const [notice, setNotice] = useState<Notice>(null);
+  const policyKeys = useRef(new Map<string, string>());
 
   const normalizedSearch = normalizeSearch(search);
   const filteredBalances = useMemo(() => balances.filter((balance) => !normalizedSearch || matchTerm(
@@ -220,6 +222,14 @@ export default function InventoryScopedWorkspace({
     } : emptyPolicyDraft(baseVariantId));
   }
 
+  function policyOperationKey(identity: string) {
+    const existing = policyKeys.current.get(identity);
+    if (existing) return existing;
+    const created = createIdempotencyKey('inventory-policy-save');
+    policyKeys.current.set(identity, created);
+    return created;
+  }
+
   async function savePolicy() {
     if (!policyDraft.baseVariantId) {
       setError('Hãy chọn SKU trước khi lưu chính sách.');
@@ -228,19 +238,21 @@ export default function InventoryScopedWorkspace({
     setBusy('policy-save');
     setError(null);
     setNotice(null);
+    const body = {
+      baseVariantId: policyDraft.baseVariantId,
+      lotTrackingMode: policyDraft.lotTrackingMode,
+      expiryTrackingMode: policyDraft.expiryTrackingMode,
+      locationRequired: policyDraft.locationRequired,
+      ...(policyDraft.expectedVersion ? { expectedVersion: Number(policyDraft.expectedVersion) } : {}),
+    };
+    const identity = JSON.stringify(body);
     try {
-      const body = {
-        baseVariantId: policyDraft.baseVariantId,
-        lotTrackingMode: policyDraft.lotTrackingMode,
-        expiryTrackingMode: policyDraft.expiryTrackingMode,
-        locationRequired: policyDraft.locationRequired,
-        ...(policyDraft.expectedVersion ? { expectedVersion: Number(policyDraft.expectedVersion) } : {}),
-      };
       const saved = await requestJson<InventoryTrackingPolicy>(`/api/inventory/tracking-policies/${policyDraft.baseVariantId}`, {
         method: 'PUT',
-        headers: { 'Idempotency-Key': `policy-${policyDraft.baseVariantId}-${Date.now()}` },
+        headers: { 'Idempotency-Key': policyOperationKey(identity) },
         body: JSON.stringify(body),
       });
+      policyKeys.current.delete(identity);
       const candidate = candidates.find((item) => item.base_variant_id === policyDraft.baseVariantId);
       const nextPolicy = enrichedPolicy(saved, candidate);
       setPolicies((current) => [...current.filter((item) => item.base_variant_id !== nextPolicy.base_variant_id), nextPolicy]
@@ -330,7 +342,7 @@ export default function InventoryScopedWorkspace({
           <section className={styles.section} data-testid="inventory-lots-section">
             <div className={styles.tableWrap}>
               <table className={styles.table}>
-                <thead><tr><th>SKU</th><th>Lô</th><th>Hạn dùng</th><th>Ngày SX</th><th>Tham chiếu NCC</th><th>Tạo lúc</th></tr></thead>
+                <thead><tr><th>SKU</th><th>Lô</th><th>Hạn dùng</th><th>Ngày SX</th><th>Tham chiếu nhà cung cấp</th><th>Tạo lúc</th></tr></thead>
                 <tbody>
                   {filteredLots.length === 0 ? tableEmpty('Chưa có lô hàng nào.', 6) : filteredLots.map((lot) => (
                     <tr key={lot.id}>
@@ -355,15 +367,14 @@ export default function InventoryScopedWorkspace({
                 <h3 className={styles.panelTitle}>Danh sách chính sách</h3>
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
-                    <thead><tr><th>SKU</th><th>Lô</th><th>Hạn dùng</th><th>Vị trí</th><th>Phiên bản</th><th></th></tr></thead>
+                    <thead><tr><th>SKU</th><th>Lô</th><th>Hạn dùng</th><th>Vị trí</th><th></th></tr></thead>
                     <tbody>
-                      {filteredPolicies.length === 0 ? tableEmpty('Chưa có chính sách lô.', 6) : filteredPolicies.map((policy) => (
+                      {filteredPolicies.length === 0 ? tableEmpty('Chưa có chính sách lô.', 5) : filteredPolicies.map((policy) => (
                         <tr key={policy.base_variant_id}>
                           <td><div className={styles.mono}>{policy.base_sku}</div><div className={styles.subtle}>{policy.product_code} · {policy.product_name}</div></td>
                           <td><span className={styles.pill}>{lotTrackingLabel(policy.lot_tracking_mode)}</span></td>
                           <td><span className={styles.pill}>{expiryTrackingLabel(policy.expiry_tracking_mode)}</span></td>
                           <td>{policy.location_required ? 'Bắt buộc' : 'Không bắt buộc'}</td>
-                          <td className={styles.mono}>{String(policy.version)}</td>
                           <td><button type="button" className={styles.miniButton} onClick={() => choosePolicyCandidate(policy.base_variant_id)}>Sửa</button></td>
                         </tr>
                       ))}

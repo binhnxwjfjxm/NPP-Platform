@@ -26,7 +26,7 @@ export default function PurchaseOrderPrintSheet({ purchaseOrder }: { purchaseOrd
     <BusinessDocumentPrint
       id={printId}
       actionLabel="In"
-      title="ĐƠN ĐẶT HÀNG"
+      title="ĐƠN MUA HÀNG"
       subtitle="Chứng từ mua hàng"
       number={purchaseOrder.number || 'CHƯA CẤP SỐ'}
       status={PURCHASE_ORDER_STATUS_LABELS[purchaseOrder.status]}
@@ -35,7 +35,7 @@ export default function PurchaseOrderPrintSheet({ purchaseOrder }: { purchaseOrd
         { label: 'Kho nhận', value: `${purchaseOrder.warehouseCode} — ${purchaseOrder.warehouseName}` },
         { label: 'Ngày đặt', value: formatPurchaseOrderDate(purchaseOrder.placedAt) },
         { label: 'Dự kiến nhận', value: formatPurchaseOrderDate(purchaseOrder.expectedAt) },
-        { label: 'Tham chiếu NCC', value: purchaseOrder.supplierReference || '—' },
+        { label: 'Tham chiếu nhà cung cấp', value: purchaseOrder.supplierReference || '—' },
         { label: 'Tiền tệ', value: purchaseOrder.currency },
       ]}
       columns={[

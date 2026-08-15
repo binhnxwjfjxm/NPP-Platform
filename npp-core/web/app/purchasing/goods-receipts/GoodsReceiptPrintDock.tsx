@@ -17,7 +17,7 @@ export default function GoodsReceiptPrintDock({ receipt }: { receipt: GoodsRecei
       status={GOODS_RECEIPT_STATUS_LABELS[receipt.status]}
       meta={[
         { label: 'Nhà cung cấp', value: `${receipt.supplierCode} — ${receipt.supplierName}` },
-        { label: 'Đơn đặt hàng', value: receipt.purchaseOrderNumber || '—' },
+        { label: 'Đơn mua hàng', value: receipt.purchaseOrderNumber || '—' },
         { label: 'Kho nhận', value: `${receipt.warehouseCode} — ${receipt.warehouseName}` },
         { label: 'Ngày nhận', value: formatGoodsReceiptDate(receipt.receiptDate) },
         { label: 'Tham chiếu giao', value: receipt.supplierDeliveryReference || '—' },

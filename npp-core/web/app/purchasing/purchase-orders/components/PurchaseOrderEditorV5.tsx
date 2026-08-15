@@ -83,7 +83,7 @@ export default function PurchaseOrderEditorV5(props: Props) {
   ), [permissionState.keys, props.purchaseOrder]);
 
   if (!permissionState.loaded) {
-    return <div role="status" aria-live="polite">Đang kiểm tra quyền truy cập đơn đặt hàng…</div>;
+    return <div role="status" aria-live="polite">Đang kiểm tra quyền truy cập đơn mua hàng…</div>;
   }
 
   return (

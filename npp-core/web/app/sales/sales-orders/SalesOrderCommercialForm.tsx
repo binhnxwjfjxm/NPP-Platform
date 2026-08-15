@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Customer, CustomerAddress } from '../../../lib/customer-types';
 import type { Product } from '../../../lib/product-types';
 import type { Warehouse } from '../../../lib/organization-types';
+import { pricingPolicyLabel, pricingResolutionReasonLabel } from '../../../lib/business-language';
 import type {
   SalesOrder,
   SalesOrderCollectionPolicy,
@@ -203,18 +204,21 @@ function estimateLine(line: LineDraft, discount: bigint): EstimatedLine {
 }
 
 function pricingLabel(step: SalesPriceStep): string {
-  if (step.kind === 'RESOLUTION') return 'Dấu vết giá đã khóa';
-  if (step.kind === 'BASE') return `Giá nền · ${step.priceListCode ?? 'BASE'}`;
-  if (step.kind === 'MANUAL_OVERRIDE') return 'Giá ngoại lệ';
-  if (step.kind === 'SKIPPED') return `Bỏ qua · ${step.priceListCode ?? step.reason ?? 'quy tắc'}`;
+  if (step.kind === 'RESOLUTION') return 'Chi tiết hình thành giá';
+  if (step.kind === 'BASE') return step.priceListCode ? `Giá nền · ${step.priceListCode}` : 'Giá nền';
+  if (step.kind === 'MANUAL_OVERRIDE') return 'Giá điều chỉnh thủ công';
+  if (step.kind === 'SKIPPED') {
+    const reason = pricingResolutionReasonLabel(step.reason);
+    return `Không áp dụng${step.priceListCode ? ` · ${step.priceListCode}` : ''}${reason ? ` · ${reason}` : ''}`;
+  }
   const adjustment = {
     FIXED_PRICE: 'Giá cố định',
     PERCENT_DISCOUNT: 'Giảm %',
     AMOUNT_DISCOUNT: 'Giảm tiền',
     PERCENT_MARKUP: 'Tăng %',
     AMOUNT_MARKUP: 'Tăng tiền',
-  }[step.adjustmentType ?? ''] ?? step.adjustmentType ?? 'Điều chỉnh';
-  return `${step.priceListCode ?? step.priceListType ?? 'Chính sách'} · ${adjustment}`;
+  }[step.adjustmentType ?? ''] ?? 'Điều chỉnh';
+  return `${pricingPolicyLabel(step.priceListCode, step.priceListType)} · ${adjustment}`;
 }
 
 function pricingSummary(line: LineDraft): string {
@@ -222,7 +226,7 @@ function pricingSummary(line: LineDraft): string {
   if (applied.length === 0) return 'Giá nền';
   const labels = applied
     .slice(0, 2)
-    .map((step) => step.priceListCode ?? step.priceListType ?? 'Chính sách');
+    .map((step) => pricingPolicyLabel(step.priceListCode, step.priceListType));
   return `${labels.join(' · ')}${applied.length > 2 ? ` · ${applied.length} chính sách` : ''}`;
 }
 
@@ -680,9 +684,9 @@ export default function SalesOrderCommercialForm(props: Props) {
     if (lines.some((line) => line.resolvingPrice)) return 'Hệ thống đang tính giá, hãy đợi hoàn tất';
     if (lines.some((line) => line.priceError || !line.pricingFingerprint)) return 'Có dòng hàng chưa phân giải được giá bán';
     if (lines.some((line) => line.manualUnitPriceMinor && (!canPriceOverride || !/^\d+$/.test(line.manualUnitPriceMinor) || !line.manualReason.trim()))) {
-      return 'Giá ngoại lệ cần đúng quyền, giá bán cuối hợp lệ và lý do riêng từng dòng';
+      return 'Giá điều chỉnh thủ công cần đúng quyền, giá bán cuối hợp lệ và lý do riêng từng dòng';
     }
-    if (!taxReady) return 'Chưa tải được chính sách thuế mặc định từ Core';
+    if (!taxReady) return 'Chưa tải được chính sách thuế mặc định từ Công Ty';
     if (!estimate.valid) return 'Chiết khấu bổ sung không hợp lệ hoặc vượt tiền hàng';
     if (estimate.discount > 0n && (!canDiscountOverride || !documentDiscountReason.trim())) {
       return 'Chiết khấu bổ sung toàn đơn cần đúng quyền và lý do';
@@ -779,7 +783,7 @@ export default function SalesOrderCommercialForm(props: Props) {
         setPricingAt(effectiveAt);
         setConfirmKey(mutationKey(`sales-${props.mode}-confirm`));
         await repriceAll(effectiveAt);
-        onError('Giá hệ thống đã thay đổi; cần review trước khi lưu.');
+        onError('Giá hệ thống đã thay đổi; cần kiểm tra lại trước khi lưu.');
       } else {
         if (error instanceof SalesOrderUiError && !error.retryable) {
           setSaveKey(mutationKey(`sales-${props.mode}-save`));
@@ -806,7 +810,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       <section className={styles.orderEditorModal} role="dialog" aria-modal="true" aria-label="Biểu mẫu đơn bán hàng">
         <header className={styles.modalHeader}>
           <div>
-            <p className={styles.eyebrow}>Bán hàng · Điều khiển thương mại</p>
+            <p className={styles.eyebrow}>Bán hàng · Chính sách thương mại</p>
             <h2>{props.mode === 'create' ? 'Tạo đơn bán hàng' : props.mode === 'amendment' ? `Sửa bản điều chỉnh ${version?.versionNumber}` : 'Sửa đơn bán hàng nháp'}</h2>
           </div>
           <button type="button" className={styles.closeButton} onClick={requestClose} aria-label="Đóng">×</button>
@@ -868,7 +872,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                 </div>
               )}
             </div>
-            <p className={styles.keyboardHint}>Gõ để tìm, ↑↓ để chọn, Enter để thêm. Core tự chọn bảng giá theo khách, kênh, SKU, số lượng và hiệu lực.</p>
+            <p className={styles.keyboardHint}>Gõ để tìm, ↑↓ để chọn, Enter để thêm. Công Ty tự chọn bảng giá theo khách, kênh, SKU, số lượng và hiệu lực.</p>
           </section>
 
           <section className={styles.orderLines} aria-label="Hàng hóa trong đơn">
@@ -899,13 +903,13 @@ export default function SalesOrderCommercialForm(props: Props) {
                   <div className={styles.inlineActions}>
                     <strong>{line.resolvingPrice ? 'Đang tính…' : vnd(finalUnitPrice(line))}</strong>
                     {!line.manualUnitPriceMinor && canPriceOverride && (
-                      <button type="button" className={styles.linkButton} aria-label={`Dùng giá ngoại lệ cho ${line.sku}`} onClick={() => enableManualPrice(index)}>Giá ngoại lệ</button>
+                      <button type="button" className={styles.linkButton} aria-label={`Dùng giá điều chỉnh thủ công cho ${line.sku}`} onClick={() => enableManualPrice(index)}>Giá điều chỉnh thủ công</button>
                     )}
                     {line.manualUnitPriceMinor && (
                       <button type="button" className={styles.linkButton} aria-label={`Dùng lại giá hệ thống cho ${line.sku}`} onClick={() => useSystemPrice(index)}>Giá hệ thống</button>
                     )}
                   </div>
-                  {line.manualUnitPriceMinor && <small className={styles.manualBadge}>Giá ngoại lệ</small>}
+                  {line.manualUnitPriceMinor && <small className={styles.manualBadge}>Giá điều chỉnh thủ công</small>}
                 </div>
                 <div className={styles.priceCell}><span>Tiền hàng dự kiến</span><strong>{vnd(grossMinor(line))}</strong></div>
                 <button type="button" className={styles.removeLineButton} onClick={() => { setLines((current) => current.filter((_, itemIndex) => itemIndex !== index)); markDirty(); }}>Xóa</button>
@@ -913,7 +917,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                 {line.manualUnitPriceMinor && (
                   <div className={styles.manualPriceEditor}>
                     <label><span>Giá bán cuối *</span><input inputMode="numeric" value={line.manualUnitPriceMinor} onChange={(event) => { const value = event.target.value.replace(/\D/g, ''); setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, manualUnitPriceMinor: value } : item)); markDirty(); }} /></label>
-                    <label><span>Lý do giá ngoại lệ *</span><input value={line.manualReason} maxLength={500} onChange={(event) => { const value = event.target.value; setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, manualReason: value } : item)); markDirty(); }} placeholder="Lý do riêng cho SKU này" /></label>
+                    <label><span>Lý do điều chỉnh giá *</span><input value={line.manualReason} maxLength={500} onChange={(event) => { const value = event.target.value; setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, manualReason: value } : item)); markDirty(); }} placeholder="Lý do riêng cho SKU này" /></label>
                     <p>Giá hệ thống để đối chiếu: <strong>{vnd(line.systemUnitPriceMinor)}</strong></p>
                   </div>
                 )}
@@ -923,10 +927,10 @@ export default function SalesOrderCommercialForm(props: Props) {
                   hidden={expandedLineId !== line.variantId}
                 >
                   <div className={styles.priceTrace}>
-                    {line.priceSteps.length === 0 && <span>Core sẽ tái phân giải khi lưu.</span>}
-                    {line.priceSteps.filter((step) => step.kind !== 'RESOLUTION').map((step, stepIndex) => <div key={`${step.kind}-${stepIndex}`}><span>{pricingLabel(step)}{step.reason ? ` · ${step.reason}` : ''}</span><b>{step.afterUnitPriceMinor ? vnd(step.afterUnitPriceMinor) : '—'}</b></div>)}
+                    {line.priceSteps.length === 0 && <span>Công Ty sẽ tính lại giá khi lưu.</span>}
+                    {line.priceSteps.filter((step) => step.kind !== 'RESOLUTION').map((step, stepIndex) => <div key={`${step.kind}-${stepIndex}`}><span>{pricingLabel(step)}</span><b>{step.afterUnitPriceMinor ? vnd(step.afterUnitPriceMinor) : '—'}</b></div>)}
                     <div><span>Ngữ cảnh</span><b>{customerMode === 'WALK_IN' ? 'Khách vãng lai' : 'Khách/nhóm khách'} · {entrySettings?.salesChannels.find((channel) => channel.id === salesChannelId)?.code ?? 'Chưa chọn kênh'}</b></div>
-                    <div><span>Thuế Core · {line.taxMode === 'INCLUSIVE' ? 'Giá đã gồm thuế' : 'Giá chưa gồm thuế'} · {line.taxRate}%</span><b>Tính lại sau phân bổ CK đơn</b></div>
+                    <div><span>Thuế Công Ty · {line.taxMode === 'INCLUSIVE' ? 'Giá đã gồm thuế' : 'Giá chưa gồm thuế'} · {line.taxRate}%</span><b>Tính lại sau phân bổ chiết khấu đơn</b></div>
                   </div>
                 </div>
               </article>
@@ -938,7 +942,7 @@ export default function SalesOrderCommercialForm(props: Props) {
 
         <footer className={styles.orderEditorFooter}>
           <section className={styles.documentDiscountPanel} aria-label="Chiết khấu bổ sung toàn đơn">
-            <div><span>Promotion/bảng giá</span><strong>Đã phản ánh trong giá hệ thống</strong></div>
+            <div><span>Khuyến mãi / bảng giá</span><strong>Đã phản ánh trong giá hệ thống</strong></div>
             {canDiscountOverride ? (
               <>
                 <label><span>Chiết khấu bổ sung toàn đơn</span><select data-testid="document-discount-mode" value={documentDiscountMode} onChange={(event) => { const mode = event.target.value as SalesOrderDocumentDiscountMode; setDocumentDiscountMode(mode); if (mode === 'NONE') { setDocumentDiscountValue('0'); setDocumentDiscountReason(''); } markDirty(); }}><option value="NONE">Không áp dụng</option><option value="PERCENT">Phần trăm</option><option value="TOTAL_AMOUNT">Tổng tiền VND</option></select></label>

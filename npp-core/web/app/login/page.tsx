@@ -158,7 +158,7 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
           </span>
           <div className={styles.brandText}>
             <strong>Hưng Phát</strong>
-            <span>Hệ thống điều hành NPP</span>
+            <span>Hệ thống điều hành Công Ty</span>
           </div>
         </div>
 
@@ -239,7 +239,7 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
               </form>
             </div>
           )}
-          <p className={styles.note}>Phiên đăng nhập gắn với đúng nhân viên, vai trò, quyền và phạm vi hiện tại trong hệ thống. Không truy cập được hệ thống? Vui lòng liên hệ người quản trị tài khoản nội bộ.</p>
+          <p className={styles.note}>Phiên đăng nhập gắn với đúng nhân viên, vai trò, quyền và phạm vi hiện tại trong Công Ty. Không truy cập được hệ thống? Vui lòng liên hệ người quản trị tài khoản nội bộ.</p>
         </div>
       </section>
     </main>

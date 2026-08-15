@@ -13,18 +13,18 @@ const INTERNAL_VERIFICATION_PERMISSIONS = new Set([
 ]);
 
 export const ROLE_PRESETS: readonly RolePreset[] = Object.freeze([
-  { id: 'owner-admin', label: 'Owner / Admin', description: 'Gợi ý toàn bộ quyền nghiệp vụ hiện có; vẫn có thể bỏ từng quyền trước khi lưu.' },
+  { id: 'owner-admin', label: 'Quản trị hệ thống', description: 'Gợi ý toàn bộ quyền nghiệp vụ hiện có; vẫn có thể bỏ từng quyền trước khi lưu.' },
   { id: 'manager-auditor', label: 'Quản lý / Kiểm soát', description: 'Gợi ý quyền đọc và báo cáo để quan sát, đối soát, không mặc định cấp quyền ghi.' },
-  { id: 'sales-manager', label: 'Quản lý bán hàng', description: 'Đơn bán hàng, khách hàng, giá, onboarding và báo cáo bán hàng.' },
+  { id: 'sales-manager', label: 'Quản lý bán hàng', description: 'Đơn bán hàng, khách hàng, giá, đề nghị mở mã khách và báo cáo bán hàng.' },
   { id: 'sales-rep', label: 'Nhân viên bán hàng', description: 'Đọc dữ liệu bán hàng, tạo/sửa đơn nháp và gửi đề nghị mở mã khách.' },
-  { id: 'purchasing', label: 'Mua hàng', description: 'Nhà cung cấp, bảng giá mua, đơn mua, nhận hàng và trả nhà cung cấp.' },
+  { id: 'purchasing', label: 'Mua hàng', description: 'Nhà cung cấp, bảng giá mua, đơn mua hàng, nhận hàng và trả nhà cung cấp.' },
   { id: 'warehouse-manager', label: 'Quản lý kho', description: 'Tồn kho, chuyển kho, kiểm kê, điều chỉnh, giá vốn và chuẩn bị hàng.' },
   { id: 'warehouse-operator', label: 'Nhân viên kho', description: 'Đọc kho, soạn/đóng gói, nhận chuyển kho và ghi số đếm kiểm kê.' },
-  { id: 'accounting', label: 'Kế toán AR / AP', description: 'Phải thu, phải trả, thanh toán, phân bổ, COD và báo cáo công nợ.' },
+  { id: 'accounting', label: 'Kế toán phải thu / phải trả', description: 'Phải thu, phải trả, thanh toán, phân bổ, thu hộ khi giao hàng (COD) và báo cáo công nợ.' },
   { id: 'dispatcher', label: 'Điều phối giao hàng', description: 'Tuyến, xe, tài xế, lập/xếp chuyến và điều phối xuất phát.' },
-  { id: 'driver-delivery', label: 'Tài xế / Giao hàng', description: 'Chuyến được giao, kết quả giao, POD và thu/bàn giao COD.' },
-  { id: 'mcp-field', label: 'MCP Field / Field Sales', description: 'Đọc catalog/khách, gửi onboarding và intake đơn Core theo phạm vi field.' },
-  { id: 'logistics-manager', label: 'Quản lý logistics', description: 'Toàn bộ điều phối, giao nhận, đối soát chuyến và báo cáo logistics/COD.' },
+  { id: 'driver-delivery', label: 'Tài xế / Giao hàng', description: 'Chuyến được giao, kết quả giao, bằng chứng giao hàng và thu/bàn giao COD.' },
+  { id: 'mcp-field', label: 'Nhân viên thị trường', description: 'Đọc danh mục và khách hàng, gửi đề nghị mở mã khách và tiếp nhận đơn Công Ty theo phạm vi được giao.' },
+  { id: 'logistics-manager', label: 'Quản lý giao vận', description: 'Toàn bộ điều phối, giao nhận, đối soát chuyến và báo cáo giao vận/COD.' },
 ]);
 
 function isReadLike(key: string) {

@@ -1,43 +1,44 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { createIdempotencyKey } from '@npp/contracts';
 
 function uniqueReference() {
   return `E2E-PO-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`.toUpperCase();
 }
 
 async function createPurchaseOrderFixture(request: APIRequestContext, suffix: string) {
-  const create = async (path: string, key: string, data: Record<string, unknown>) => {
-    const response = await request.post(path, { headers: { 'Idempotency-Key': key }, data });
+  const create = async (path: string, scope: string, data: Record<string, unknown>) => {
+    const response = await request.post(path, { headers: { 'Idempotency-Key': createIdempotencyKey(scope) }, data });
     expect(response.status()).toBe(201);
     return (await response.json()).data;
   };
 
-  const branch = await create('/api/organization/branches', `po-branch-${suffix}`, {
+  const branch = await create('/api/organization/branches', 'purchase-order-e2e-branch', {
     code: `POB-${suffix}`,
     name: `Chi nhánh PO ${suffix}`,
   });
-  const warehouse = await create('/api/organization/warehouses', `po-warehouse-${suffix}`, {
+  const warehouse = await create('/api/organization/warehouses', 'purchase-order-e2e-warehouse', {
     branchId: branch.id,
     code: `POW-${suffix}`,
     name: `Kho PO ${suffix}`,
     warehouseType: 'main',
   });
-  const supplier = await create('/api/suppliers', `po-supplier-${suffix}`, {
+  const supplier = await create('/api/suppliers', 'purchase-order-e2e-supplier', {
     code: `NCC-${suffix}`,
     name: `Nhà cung cấp PO ${suffix}`,
     taxId: `TAX-${suffix}`,
     avgDeliveryDays: 7,
   });
-  const unit = await create('/api/units', `po-unit-${suffix}`, {
+  const unit = await create('/api/units', 'purchase-order-e2e-unit', {
     code: `POU-${suffix}`,
     name: `Túi PO ${suffix}`,
     unitKind: 'PACKAGE',
     allowsFractional: false,
   });
-  const product = await create('/api/products', `po-product-${suffix}`, {
+  const product = await create('/api/products', 'purchase-order-e2e-product', {
     code: `POP-${suffix}`,
     name: `Sản phẩm PO ${suffix}`,
   });
-  const variant = await create(`/api/products/${product.id}/variants`, `po-variant-${suffix}`, {
+  const variant = await create(`/api/products/${product.id}/variants`, 'purchase-order-e2e-variant', {
     sku: `POSKU-${suffix}`,
     name: `SKU PO ${suffix}`,
     variantKind: 'BASE',
@@ -59,7 +60,7 @@ async function createPurchaseOrderFixture(request: APIRequestContext, suffix: st
   return { warehouse, supplier, variant };
 }
 
-test.describe('Đơn đặt hàng nhà cung cấp', () => {
+test.describe('Đơn mua hàng nhà cung cấp', () => {
   test('tạo, sửa, gửi duyệt, duyệt, xem chi tiết và hủy đơn', async ({ page, request }) => {
     const supplierReference = uniqueReference();
     const suffix = supplierReference.replace(/[^A-Z0-9]/g, '').slice(-12);
@@ -67,11 +68,11 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
 
     await page.goto('/purchasing/purchase-orders');
     await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Đơn đặt hàng', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Đơn mua hàng', exact: true })).toBeVisible();
     await expect(page.getByTestId('nav-purchase-orders')).toBeVisible();
 
     await page.getByTestId('purchase-order-create-button').click();
-    const editor = page.getByRole('dialog', { name: 'Đơn đặt hàng mới' });
+    const editor = page.getByRole('dialog', { name: 'Đơn mua hàng mới' });
     await expect(editor).toBeVisible();
     await expect(editor.getByRole('tab', { name: 'Tìm nhanh' })).toBeVisible();
     await expect(editor.getByRole('tab', { name: 'Chọn từ danh mục' })).toBeVisible();
@@ -92,18 +93,18 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
 
     const line = editor.locator('article').filter({ hasText: fixture.variant.sku }).first();
     await expect(line).toBeVisible();
-    await line.getByRole('button', { name: 'Nhập tay', exact: true }).click();
+    await line.getByRole('button', { name: 'Nhập thủ công', exact: true }).click();
     const decimalInputs = line.locator('input[inputmode="decimal"]');
     await decimalInputs.nth(0).fill('2');
     await decimalInputs.nth(1).fill('10000');
     await line.locator('select').selectOption('PERCENT');
     await decimalInputs.nth(2).fill('10');
     await decimalInputs.nth(3).fill('8');
-    await line.getByRole('textbox', { name: 'Lý do nhập tay giá', exact: true }).fill('Giá thỏa thuận dùng cho Browser E2E Phase 5.7');
+    await line.getByRole('textbox', { name: 'Lý do nhập giá thủ công', exact: true }).fill('Giá thỏa thuận dùng cho Browser E2E Phase 5.7');
     await expect(line).toContainText('19.440 VND');
     await page.getByTestId('purchase-order-save').click();
     await expect(editor).toHaveCount(0);
-    await expect(page.getByText('Đã tạo đơn đặt hàng nháp.')).toBeVisible();
+    await expect(page.getByText('Đã tạo đơn mua hàng nháp.')).toBeVisible();
 
     await page.getByTestId('purchase-order-search').fill(supplierReference);
     const row = page.getByTestId('purchase-orders-table').locator('tbody tr').filter({ hasText: supplierReference });
@@ -117,16 +118,16 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     await editLine.locator('input[inputmode="decimal"]').nth(0).fill('3');
     await page.getByTestId('purchase-order-save').click();
     await expect(editDialog).toHaveCount(0);
-    await expect(page.getByText('Đã cập nhật đơn đặt hàng nháp.')).toBeVisible();
+    await expect(page.getByText('Đã cập nhật đơn mua hàng nháp.')).toBeVisible();
 
     await row.getByRole('button', { name: 'Gửi duyệt', exact: true }).click();
     await page.getByTestId('purchase-order-submit-confirm').click();
-    await expect(page.getByText('Đơn đặt hàng đã được gửi duyệt.')).toBeVisible();
+    await expect(page.getByText('Đơn mua hàng đã được gửi duyệt.')).toBeVisible();
     await expect(row).toContainText('Chờ duyệt');
 
     await row.getByRole('button', { name: 'Duyệt', exact: true }).click();
     await page.getByTestId('purchase-order-approve-confirm').click();
-    await expect(page.getByText(/Đơn đặt hàng đã được duyệt với số PO-/)).toBeVisible();
+    await expect(page.getByText(/Đơn mua hàng đã được duyệt với số PO-/)).toBeVisible();
     await expect(row).toContainText('Đã duyệt');
     await expect(row).toContainText(/PO-\d{6}-\d{6}/);
 
@@ -140,7 +141,7 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     const cancelDialog = page.getByRole('dialog', { name: 'Hủy đơn' });
     await cancelDialog.getByRole('textbox', { name: 'Lý do hủy', exact: true }).fill('Hủy để kiểm thử lifecycle P5.1');
     await page.getByTestId('purchase-order-cancel-confirm').click();
-    await expect(page.getByText('Đơn đặt hàng đã được hủy.')).toBeVisible();
+    await expect(page.getByText('Đơn mua hàng đã được hủy.')).toBeVisible();
     await expect(row).toContainText('Đã hủy');
 
     await page.setViewportSize({ width: 390, height: 844 });
@@ -156,7 +157,7 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
 
     await page.goto('/purchasing/purchase-orders');
     await page.getByTestId('purchase-order-create-button').click();
-    const editor = page.getByRole('dialog', { name: 'Đơn đặt hàng mới' });
+    const editor = page.getByRole('dialog', { name: 'Đơn mua hàng mới' });
     const skuSearch = editor.getByRole('combobox', { name: /^Từ khóa sản phẩm hoặc SKU/ });
     await skuSearch.fill('A');
     await page.waitForTimeout(500);
@@ -171,7 +172,7 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
   test('cập nhật dữ liệu không hiểu products rỗng là danh mục rỗng khi dùng live SKU search', async ({ page }) => {
     await page.goto('/purchasing/purchase-orders');
     await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Đơn đặt hàng', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Đơn mua hàng', exact: true })).toBeVisible();
 
     await page.route('**/api/purchase-orders/bootstrap', async (route) => {
       const response = await route.fetch();
@@ -221,7 +222,7 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
     await page.getByTestId('purchase-order-create-button').click();
 
-    const editor = page.getByRole('dialog', { name: 'Đơn đặt hàng mới' });
+    const editor = page.getByRole('dialog', { name: 'Đơn mua hàng mới' });
     await expect(editor).toBeVisible();
     await editor.getByRole('combobox', { name: 'Trạng thái SKU', exact: true }).selectOption('setup');
     await editor.getByRole('combobox', { name: /^Từ khóa sản phẩm hoặc SKU/ }).fill('SKU-THIEU-DV');
@@ -256,7 +257,7 @@ test.describe('Đơn đặt hàng nhà cung cấp', () => {
     await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
     await page.getByTestId('purchase-order-create-button').click();
 
-    const editor = page.getByRole('dialog', { name: 'Đơn đặt hàng mới' });
+    const editor = page.getByRole('dialog', { name: 'Đơn mua hàng mới' });
     await expect(editor).toBeVisible();
     await editor.getByRole('combobox', { name: /^Từ khóa sản phẩm hoặc SKU/ }).fill('SKU-LOI-KY-THUAT');
     await expect(editor.getByRole('alert')).toContainText('chưa được cập nhật đồng bộ');

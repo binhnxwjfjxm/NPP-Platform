@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createIdempotencyKey } from '@npp/contracts';
 import type { Supplier } from '../../../../lib/supplier-types';
 import type { Product } from '../../../../lib/product-types';
 import type { Warehouse } from '../../../../lib/organization-types';
@@ -197,7 +198,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
       ? normalizePurchaseOrderSkuSearchFailure(base)
       : {
           code: base.code || 'PURCHASE_ORDER_REQUEST_FAILED',
-          message: base.message || 'Không thực hiện được yêu cầu đơn đặt hàng.',
+          message: base.message || 'Không thực hiện được yêu cầu đơn mua hàng.',
           statusCode: base.statusCode || 500,
           retryable: base.retryable === true,
         };
@@ -221,7 +222,7 @@ function discountModeLabel(value: string | null | undefined) {
 }
 
 function sourceLabel(line: EditorLine) {
-  if (line.manualOverride || line.priceSource === 'MANUAL_OVERRIDE') return 'Giá nhập tay';
+  if (line.manualOverride || line.priceSource === 'MANUAL_OVERRIDE') return 'Giá nhập thủ công';
   if (line.priceStatus === 'RESOLVED') return 'Giá nhà cung cấp';
   return 'Chưa có giá mua';
 }
@@ -272,7 +273,7 @@ export default function PurchaseOrderEditorV4({
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [attemptKey, setAttemptKey] = useState(() => `po-${crypto.randomUUID()}`);
+  const [attemptKey, setAttemptKey] = useState(() => createIdempotencyKey('purchase-order-save'));
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -308,7 +309,7 @@ export default function PurchaseOrderEditorV4({
 
   const requestClose = useCallback(() => {
     if (busy) return;
-    if (dirty && !window.confirm('Đơn đặt hàng có thay đổi chưa lưu. Đóng và bỏ các thay đổi này?')) return;
+    if (dirty && !window.confirm('Đơn mua hàng có thay đổi chưa lưu. Đóng và bỏ các thay đổi này?')) return;
     onClose();
   }, [busy, dirty, onClose]);
 
@@ -349,7 +350,7 @@ export default function PurchaseOrderEditorV4({
 
   function markChanged() {
     setDirty(true);
-    setAttemptKey(`po-${crypto.randomUUID()}`);
+    setAttemptKey(createIdempotencyKey('purchase-order-save'));
     setError(null);
   }
 
@@ -651,7 +652,7 @@ export default function PurchaseOrderEditorV4({
     if (!supplierId) return setError('Vui lòng chọn nhà cung cấp trước khi thêm dữ liệu.');
     const valid = bulkPreview.filter((row) => row.errors.length === 0 && row.option?.eligibility.selectable && !row.resolutionError);
     const includesManualPrice = canOverridePrice && valid.some((row) => positiveDecimal(row.unitPrice));
-    if (includesManualPrice && !bulkOverrideReason.trim()) return setError('Vui lòng nhập lý do áp dụng giá nhập tay cho dữ liệu nhập nhiều dòng.');
+    if (includesManualPrice && !bulkOverrideReason.trim()) return setError('Vui lòng nhập lý do áp dụng giá nhập thủ công cho dữ liệu nhập nhiều dòng.');
     const base = valid.map((row): EditorLine => {
       const line = editorLineFromOption(row.option as PurchaseOrderSkuSearchOption);
       const manual = includesManualPrice && positiveDecimal(row.unitPrice);
@@ -682,7 +683,7 @@ export default function PurchaseOrderEditorV4({
     if (!warehouseId) return 'Vui lòng chọn kho nhận.';
     if (!orderDate) return 'Vui lòng chọn ngày đặt hàng.';
     if (expectedDate && expectedDate < orderDate) return 'Ngày dự kiến nhận không được trước ngày đặt hàng.';
-    if (lines.length === 0) return 'Đơn đặt hàng phải có ít nhất một dòng SKU.';
+    if (lines.length === 0) return 'Đơn mua hàng phải có ít nhất một dòng SKU.';
     const seen = new Set<string>();
     for (let index = 0; index < lines.length; index += 1) {
       const line = lines[index];
@@ -690,11 +691,11 @@ export default function PurchaseOrderEditorV4({
       seen.add(line.variantId);
       if (!positiveDecimal(line.quantity)) return `Số lượng dòng ${index + 1} phải lớn hơn 0.`;
       if (line.manualOverride) {
-        if (!canOverridePrice) return `Dòng ${index + 1}: không có quyền nhập tay giá mua.`;
-        if (!positiveDecimal(line.unitPrice)) return `Dòng ${index + 1}: giá nhập tay phải lớn hơn 0.`;
+        if (!canOverridePrice) return `Dòng ${index + 1}: không có quyền nhập thủ công giá mua.`;
+        if (!positiveDecimal(line.unitPrice)) return `Dòng ${index + 1}: giá nhập thủ công phải lớn hơn 0.`;
         if (!line.priceOverrideReason.trim()) return `Dòng ${index + 1}: phải nhập lý do thay giá mua.`;
       } else if (line.priceStatus !== 'RESOLVED') {
-        return `Dòng ${index + 1}: chưa có giá mua hợp lệ. Hãy thiết lập bảng giá mua hoặc dùng quyền nhập tay.`;
+        return `Dòng ${index + 1}: chưa có giá mua hợp lệ. Hãy thiết lập bảng giá mua hoặc dùng quyền nhập thủ công.`;
       }
     }
     return null;
@@ -744,7 +745,7 @@ export default function PurchaseOrderEditorV4({
       setDirty(false);
       onSaved(saved);
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Không lưu được đơn đặt hàng.');
+      setError(failure instanceof Error ? failure.message : 'Không lưu được đơn mua hàng.');
     } finally {
       setBusy(false);
     }
@@ -754,7 +755,7 @@ export default function PurchaseOrderEditorV4({
     <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) requestClose(); }}>
       <section ref={dialogRef} className={localStyles.dialog} role="dialog" aria-modal="true" aria-labelledby="purchase-order-editor-title">
         <header className={localStyles.dialogHeader}>
-          <div><p className={styles.panelKicker}>{mode === 'create' ? 'Tạo mới' : 'Chỉnh sửa bản nháp'}</p><h3 id="purchase-order-editor-title">{mode === 'create' ? 'Đơn đặt hàng mới' : purchaseOrder?.number || 'Đơn chưa cấp số'}</h3></div>
+          <div><p className={styles.panelKicker}>{mode === 'create' ? 'Tạo mới' : 'Chỉnh sửa bản nháp'}</p><h3 id="purchase-order-editor-title">{mode === 'create' ? 'Đơn mua hàng mới' : purchaseOrder?.number || 'Đơn chưa cấp số'}</h3></div>
           <button ref={closeButtonRef} type="button" className={styles.modalClose} onClick={requestClose} disabled={busy}>Đóng</button>
         </header>
 
@@ -763,7 +764,7 @@ export default function PurchaseOrderEditorV4({
             {error ? <div className={`${styles.banner} ${styles.bannerError}`} role="alert">{error}</div> : null}
 
             <section className={localStyles.section}>
-              <div className={localStyles.sectionTitle}><h4>Thông tin đặt hàng</h4><span>Chọn nhà cung cấp trước để hệ thống phân giải đúng giá mua.</span></div>
+              <div className={localStyles.sectionTitle}><h4>Thông tin mua hàng</h4><span>Chọn nhà cung cấp trước để hệ thống xác định đúng giá mua.</span></div>
               <div className={localStyles.headerGrid}>
                 <label>Nhà cung cấp<select value={supplierId} onChange={(event) => { markChanged(); setSupplierId(event.target.value); }}><option value="">Chọn nhà cung cấp</option>{activeSuppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.code} — {supplier.name}</option>)}</select></label>
                 <label>Kho nhận<select value={warehouseId} onChange={(event) => { markChanged(); setWarehouseId(event.target.value); }}><option value="">Chọn kho nhận</option>{activeWarehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} — {warehouse.name}</option>)}</select></label>
@@ -776,7 +777,7 @@ export default function PurchaseOrderEditorV4({
 
             <section className={localStyles.section}>
               <div className={localStyles.sectionTitle}><h4>Thêm SKU</h4><span>Giá bán nền không được dùng trong luồng này.</span></div>
-              <div className={localStyles.modeTabs} role="tablist" aria-label="Cách thêm dòng đặt hàng">
+              <div className={localStyles.modeTabs} role="tablist" aria-label="Cách thêm dòng mua hàng">
                 <button type="button" role="tab" aria-selected={entryMode === 'quick'} className={entryMode === 'quick' ? localStyles.modeTabActive : localStyles.modeTab} onClick={() => { setEntryMode('quick'); setError(null); }}>Tìm nhanh</button>
                 <button type="button" role="tab" aria-selected={entryMode === 'browse'} className={entryMode === 'browse' ? localStyles.modeTabActive : localStyles.modeTab} onClick={() => { setEntryMode('browse'); setError(null); }}>Chọn từ danh mục</button>
                 <button type="button" role="tab" aria-selected={entryMode === 'bulk'} className={entryMode === 'bulk' ? localStyles.modeTabActive : localStyles.modeTab} onClick={() => { setEntryMode('bulk'); setError(null); }}>Nhập nhiều dòng</button>
@@ -808,18 +809,18 @@ export default function PurchaseOrderEditorV4({
               </div> : null}
 
               {entryMode === 'bulk' ? <div className={localStyles.modePanel}>
-                <div className={localStyles.bulkIntro}><div><strong>Nhập nhiều dòng theo 3 bước</strong><span>Chọn tệp hoặc dán dữ liệu → Kiểm tra SKU → Thêm dòng và tự phân giải giá mua</span></div><button type="button" className={styles.secondaryButton} onClick={() => void downloadTemplate()}>Tải mẫu XLSX</button></div>
+                <div className={localStyles.bulkIntro}><div><strong>Nhập nhiều dòng theo 3 bước</strong><span>Chọn tệp hoặc dán dữ liệu → Kiểm tra SKU → Thêm dòng và tự xác định giá mua</span></div><button type="button" className={styles.secondaryButton} onClick={() => void downloadTemplate()}>Tải mẫu XLSX</button></div>
                 <div className={localStyles.bulkTabs}><button type="button" className={bulkSourceMode === 'file' ? localStyles.modeTabActive : localStyles.modeTab} onClick={() => setBulkSourceMode('file')}>Chọn tệp</button><button type="button" className={bulkSourceMode === 'paste' ? localStyles.modeTabActive : localStyles.modeTab} onClick={() => setBulkSourceMode('paste')}>Dán từ Excel</button></div>
                 {bulkSourceMode === 'file' ? <label className={localStyles.fileDrop}>Chọn tệp XLSX, CSV, TSV hoặc TXT<input type="file" accept=".xlsx,.csv,.tsv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/tab-separated-values,text/plain" onChange={(event) => void handleBulkFile(event.target.files?.[0] ?? null)} /><span>Tối đa 2 MB. Giá để trống sẽ dùng bảng giá mua.</span></label> : <label>Dán bảng từ Excel<textarea value={bulkText} onChange={(event) => { setBulkText(event.target.value); setBulkPreview([]); }} rows={7} placeholder={'SKU\tSố lượng\tĐơn giá\tKiểu chiết khấu\tGiá trị chiết khấu\tThuế %\tGhi chú'} /></label>}
-                {canOverridePrice ? <label className={priceStyles.bulkReason}>Lý do nhập tay giá cho các dòng có đơn giá<input value={bulkOverrideReason} maxLength={1000} onChange={(event) => setBulkOverrideReason(event.target.value)} placeholder="Ví dụ: Giá thương lượng riêng theo báo giá…" /></label> : null}
+                {canOverridePrice ? <label className={priceStyles.bulkReason}>Lý do nhập giá thủ công cho các dòng có đơn giá<input value={bulkOverrideReason} maxLength={1000} onChange={(event) => setBulkOverrideReason(event.target.value)} placeholder="Ví dụ: Giá thương lượng riêng theo báo giá…" /></label> : null}
                 <div className={localStyles.bulkActions}><button type="button" className={styles.secondaryButton} onClick={() => void checkBulkRows()} disabled={bulkResolving || !bulkText.trim()}>{bulkResolving ? 'Đang kiểm tra…' : 'Kiểm tra dữ liệu'}</button><button type="button" className={styles.primaryButton} onClick={() => void addBulkRows()} disabled={validBulkCount === 0}>Thêm {validBulkCount || ''} dòng hợp lệ</button></div>
                 {bulkPreview.length ? <div className={localStyles.previewWrap}><table className={localStyles.previewTable}><thead><tr><th>Dòng</th><th>SKU</th><th>Số lượng</th>{canReadPrice ? <><th>Đơn giá</th><th>Chiết khấu</th><th>Thuế</th></> : null}<th>Kết quả</th></tr></thead><tbody>{bulkPreview.map((row) => { const messages = [...row.errors, ...(row.resolutionError ? [row.resolutionError] : [])]; return <tr key={row.rowNumber}><td>{row.rowNumber}</td><td>{row.sku || '—'}</td><td>{row.quantity || '—'}</td>{canReadPrice ? <><td>{row.unitPrice || 'Tự áp giá'}</td><td>{discountModeLabel(row.discountMode)} · {row.discountValue}</td><td>{row.taxRate}%</td></> : null}<td className={messages.length ? localStyles.previewError : localStyles.previewSuccess}>{messages.length ? messages.join(' ') : `Hợp lệ: ${row.option?.sku ?? ''}`}</td></tr>; })}</tbody></table></div> : null}
               </div> : null}
             </section>
 
             <section className={localStyles.section} aria-labelledby="po-lines-title">
-              <div className={localStyles.sectionTitle}><h4 id="po-lines-title">Dòng đặt hàng</h4><span>{lines.length} SKU trong bản nháp</span></div>
-              <div className={localStyles.lineList}>{lines.length === 0 ? <p className={localStyles.empty}>Chưa có SKU trong đơn đặt hàng.</p> : lines.map((line, index) => <article key={line.key} className={localStyles.lineCard}>
+              <div className={localStyles.sectionTitle}><h4 id="po-lines-title">Dòng mua hàng</h4><span>{lines.length} SKU trong bản nháp</span></div>
+              <div className={localStyles.lineList}>{lines.length === 0 ? <p className={localStyles.empty}>Chưa có SKU trong đơn mua hàng.</p> : lines.map((line, index) => <article key={line.key} className={localStyles.lineCard}>
                 <div className={localStyles.lineHeading}><div><strong>{line.sku}</strong><span>{line.name}</span></div><button type="button" className={styles.secondaryButton} onClick={() => { markChanged(); setLines((current) => current.filter((item) => item.key !== line.key)); }}>Xóa dòng</button></div>
                 <div className={localStyles.lineFields}>
                   <label>Số lượng<input value={line.quantity} inputMode="decimal" onChange={(event) => updateDecimalLine(line.key, 'quantity', event.target.value)} onBlur={() => handleQuantityBlur(line)} /></label>
@@ -828,14 +829,14 @@ export default function PurchaseOrderEditorV4({
                   {canReadPrice ? <div className={priceStyles.priceRow}>
                     <label>Đơn giá mua<input value={line.unitPrice} inputMode="decimal" readOnly={!line.manualOverride} onChange={(event) => updateDecimalLine(line.key, 'unitPrice', event.target.value)} onBlur={() => formatLineDecimal(line.key, 'unitPrice', '')} /></label>
                     <div className={priceStyles.priceStatus}><span className={sourceClass(line)}>{line.resolvingPrice ? 'Đang kiểm tra…' : sourceLabel(line)}</span><strong>{line.priceStatus === 'RESOLVED' || line.manualOverride ? formatPurchaseOrderAmount(line.unitPrice, purchaseOrder?.currency || 'VND') : 'Chưa có giá'}</strong></div>
-                    <div className={priceStyles.priceActions}>{canOverridePrice && !line.manualOverride ? <button type="button" className={styles.secondaryButton} onClick={() => enableManualOverride(line)}>Nhập tay</button> : null}{line.manualOverride ? <button type="button" className={styles.secondaryButton} onClick={() => void useSupplierPrice(line)}>Dùng giá NCC</button> : <button type="button" className={styles.secondaryButton} onClick={() => void refreshLinePrice(line.key)}>Áp lại giá</button>}</div>
-                    <p className={priceStyles.priceHelp}>{line.manualOverride ? 'Giá này chỉ áp dụng cho PO hiện tại và không sửa bảng giá mua.' : 'Giá được phân giải theo nhà cung cấp, SKU, đơn vị, số lượng và ngày đặt.'}</p>
+                    <div className={priceStyles.priceActions}>{canOverridePrice && !line.manualOverride ? <button type="button" className={styles.secondaryButton} onClick={() => enableManualOverride(line)}>Nhập thủ công</button> : null}{line.manualOverride ? <button type="button" className={styles.secondaryButton} onClick={() => void useSupplierPrice(line)}>Dùng giá nhà cung cấp</button> : <button type="button" className={styles.secondaryButton} onClick={() => void refreshLinePrice(line.key)}>Áp lại giá</button>}</div>
+                    <p className={priceStyles.priceHelp}>{line.manualOverride ? 'Giá này chỉ áp dụng cho đơn mua hàng hiện tại và không sửa bảng giá mua.' : 'Giá được xác định theo nhà cung cấp, SKU, đơn vị, số lượng và ngày đặt.'}</p>
                   </div> : <div className={priceStyles.quantityOnly}><span>Giá mua được xử lý theo quyền của bộ phận mua hàng và không được gửi về trình duyệt này.</span><strong className={line.priceStatus === 'RESOLVED' ? priceStyles.resolved : priceStyles.notFound}>{line.resolvingPrice ? 'Đang kiểm tra' : line.priceStatus === 'RESOLVED' ? 'Đã áp dụng giá mua' : 'Chưa có giá mua'}</strong></div>}
                   {canReadPrice && line.manualOverride ? <>
                     <label>Kiểu chiết khấu<select value={line.discountMode} onChange={(event) => updateLine(line.key, { discountMode: event.target.value as PurchaseOrderDiscountMode })}><option value="PERCENT">% tiền hàng</option><option value="PER_UNIT">Giảm mỗi đơn vị</option><option value="TOTAL_AMOUNT">Giảm tổng dòng</option></select></label>
                     <label>Giá trị chiết khấu<input value={line.discountValue} inputMode="decimal" onChange={(event) => updateDecimalLine(line.key, 'discountValue', event.target.value)} onBlur={() => formatLineDecimal(line.key, 'discountValue', '0')} /></label>
                     <label>Thuế suất %<input value={line.taxRate} inputMode="decimal" onChange={(event) => updateDecimalLine(line.key, 'taxRate', event.target.value)} onBlur={() => formatLineDecimal(line.key, 'taxRate', '0')} /></label>
-                    <label className={priceStyles.overrideReason}>Lý do nhập tay giá<input value={line.priceOverrideReason} maxLength={1000} onChange={(event) => updateLine(line.key, { priceOverrideReason: event.target.value })} placeholder="Bắt buộc: nêu báo giá hoặc thỏa thuận áp dụng cho đơn này" /></label>
+                    <label className={priceStyles.overrideReason}>Lý do nhập giá thủ công<input value={line.priceOverrideReason} maxLength={1000} onChange={(event) => updateLine(line.key, { priceOverrideReason: event.target.value })} placeholder="Bắt buộc: nêu báo giá hoặc thỏa thuận áp dụng cho đơn này" /></label>
                   </> : null}
                   {canReadPrice ? <div className={localStyles.amountField}><span>Thành tiền dự kiến</span><strong>{formatPurchaseOrderAmount(totals.lineTotals[index], purchaseOrder?.currency || 'VND')}</strong></div> : null}
                   <label className={localStyles.lineNote}>Ghi chú dòng<input value={line.note} maxLength={2000} onChange={(event) => updateLine(line.key, { note: event.target.value })} /></label>
@@ -843,7 +844,7 @@ export default function PurchaseOrderEditorV4({
               </article>)}</div>
             </section>
 
-            {canReadPrice ? <section className={localStyles.totals} aria-label="Tổng tiền đơn đặt hàng"><div><span>Tiền hàng</span><strong>{formatPurchaseOrderAmount(totals.subtotal, purchaseOrder?.currency || 'VND')}</strong></div><div><span>Chiết khấu</span><strong>{formatPurchaseOrderAmount(totals.discountTotal, purchaseOrder?.currency || 'VND')}</strong></div><div><span>Thuế</span><strong>{formatPurchaseOrderAmount(totals.taxTotal, purchaseOrder?.currency || 'VND')}</strong></div><div><span>Tổng cộng</span><strong>{formatPurchaseOrderAmount(totals.total, purchaseOrder?.currency || 'VND')}</strong></div></section> : null}
+            {canReadPrice ? <section className={localStyles.totals} aria-label="Tổng tiền đơn mua hàng"><div><span>Tiền hàng</span><strong>{formatPurchaseOrderAmount(totals.subtotal, purchaseOrder?.currency || 'VND')}</strong></div><div><span>Chiết khấu</span><strong>{formatPurchaseOrderAmount(totals.discountTotal, purchaseOrder?.currency || 'VND')}</strong></div><div><span>Thuế</span><strong>{formatPurchaseOrderAmount(totals.taxTotal, purchaseOrder?.currency || 'VND')}</strong></div><div><span>Tổng cộng</span><strong>{formatPurchaseOrderAmount(totals.total, purchaseOrder?.currency || 'VND')}</strong></div></section> : null}
           </div>
 
           <footer className={localStyles.dialogFooter}><button type="button" className={styles.secondaryButton} onClick={requestClose} disabled={busy}>Hủy thao tác</button><button type="submit" data-testid="purchase-order-save" className={styles.primaryButton} disabled={busy}>{busy ? 'Đang lưu…' : mode === 'create' ? 'Lưu đơn nháp' : 'Lưu thay đổi'}</button></footer>
