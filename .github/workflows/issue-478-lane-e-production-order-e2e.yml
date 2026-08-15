@@ -1,0 +1,197 @@
+name: Issue 478 Lane E production order E2E
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/issue-478-lane-e-production-order-e2e.yml
+      - .github/scripts/issue-478-lane-e-production-order-e2e.mjs
+      - mcp/test/issue-478-lane-e-production-order-e2e-contract.test.mjs
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-478-lane-e-production-order-e2e
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate guarded production smoke contract
+        run: node --test mcp/test/issue-478-lane-e-production-order-e2e-contract.test.mjs
+
+  smoke:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 478 &&
+      github.event.comment.body == '/smoke-issue-478-lane-e-order-production' &&
+      (
+        github.actor == 'binhnxwjfjxm' ||
+        github.actor == 'khuongbinhinfo-a11y'
+      )
+    permissions:
+      contents: read
+      issues: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DEPLOY_REF: main
+      CORE_APP_NAME: hung-phat
+      MCP_APP_NAME: hung-phat-mcp
+
+    steps:
+      - name: Validate exact command
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/smoke-issue-478-lane-e-order-production'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pinned Heroku CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global --ignore-scripts heroku@11.0.0
+          heroku --version | grep -F 'heroku/11.0.0' >/dev/null
+
+      - name: Run guarded MCP -> Core -> MCP production order smoke
+        id: e2e
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          app_url() {
+            local app="$1"
+            curl --fail --silent --show-error \
+              -H 'Accept: application/vnd.heroku+json; version=3' \
+              -H "Authorization: Bearer $HEROKU_API_KEY" \
+              "https://api.heroku.com/apps/$app" \
+              | jq -r '.web_url // empty' \
+              | sed 's:/*$::'
+          }
+
+          deployed_sha() {
+            local app="$1"
+            local release slug_id
+            release="$(heroku releases --json -a "$app" | jq -r '.[0].version // empty')"
+            test -n "$release"
+            slug_id="$(
+              curl --fail --silent --show-error \
+                -H 'Accept: application/vnd.heroku+json; version=3' \
+                -H "Authorization: Bearer $HEROKU_API_KEY" \
+                "https://api.heroku.com/apps/$app/releases/$release" \
+                | jq -r '.slug.id // empty'
+            )"
+            test -n "$slug_id"
+            curl --fail --silent --show-error \
+              -H 'Accept: application/vnd.heroku+json; version=3' \
+              -H "Authorization: Bearer $HEROKU_API_KEY" \
+              "https://api.heroku.com/apps/$app/slugs/$slug_id" \
+              | jq -r '.commit // empty'
+          }
+
+          core_url="$(app_url "$CORE_APP_NAME")"
+          mcp_url="$(app_url "$MCP_APP_NAME")"
+          test -n "$core_url"
+          test -n "$mcp_url"
+
+          mcp_deployed_sha="$(deployed_sha "$MCP_APP_NAME")"
+          core_deployed_sha="$(deployed_sha "$CORE_APP_NAME")"
+          test -n "$mcp_deployed_sha"
+          test -n "$core_deployed_sha"
+          git cat-file -e "${mcp_deployed_sha}^{commit}"
+          git merge-base --is-ancestor "$mcp_deployed_sha" "$SOURCE_SHA"
+          git diff --quiet "$mcp_deployed_sha" "$SOURCE_SHA" -- mcp/apps/backend packages/contracts
+
+          mcp_config="$(heroku config -a "$MCP_APP_NAME" --json)"
+          core_config="$(heroku config -a "$CORE_APP_NAME" --json)"
+
+          mcp_backend_token="$(jq -r '.BACKEND_API_TOKEN // empty' <<<"$mcp_config")"
+          core_sales_base="$(jq -r '.CORE_SALES_API_BASE_URL // empty' <<<"$mcp_config" | sed 's:/*$::')"
+          core_sales_token="$(jq -r '.CORE_SALES_API_TOKEN // empty' <<<"$mcp_config")"
+          default_warehouse_id="$(jq -r '.CORE_SALES_DEFAULT_WAREHOUSE_ID // empty' <<<"$mcp_config")"
+          service_permissions="$(jq -r '.MCP_SERVICE_PERMISSIONS // empty' <<<"$mcp_config")"
+          service_scopes="$(jq -r '.MCP_SERVICE_SCOPES // empty' <<<"$mcp_config")"
+          core_bootstrap_token="$(jq -r '.BACKEND_API_TOKEN // empty' <<<"$core_config")"
+
+          for value in "$mcp_backend_token" "$core_sales_token" "$core_bootstrap_token"; do
+            test -n "$value"
+            echo "::add-mask::$value"
+          done
+          test "$core_sales_base" = "$core_url"
+          test -n "$default_warehouse_id"
+          grep -Fq 'mcp.sales-order.read' <<<"$service_permissions"
+          grep -Fq 'mcp.sales-order.create' <<<"$service_permissions"
+          if ! grep -Fq 'mcp:*' <<<"$service_scopes"; then
+            grep -Fq "mcp:warehouse:$default_warehouse_id" <<<"$service_scopes"
+          fi
+
+          MCP_URL="$mcp_url" \
+          CORE_URL="$core_url" \
+          MCP_BACKEND_TOKEN="$mcp_backend_token" \
+          CORE_SALES_TOKEN="$core_sales_token" \
+          CORE_BOOTSTRAP_TOKEN="$core_bootstrap_token" \
+          node .github/scripts/issue-478-lane-e-production-order-e2e.mjs
+
+          {
+            echo "SOURCE_SHA=$SOURCE_SHA"
+            echo "MCP_DEPLOYED_SHA=$mcp_deployed_sha"
+            echo "CORE_DEPLOYED_SHA=$core_deployed_sha"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish sanitized evidence to Issue 478
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          evidence="$(mktemp)"
+          {
+            echo "## Issue #478 Lane E production Sales Order E2E — ${OPERATION_STATUS}"
+            echo
+            cat "$GITHUB_STEP_SUMMARY"
+            echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
+          } > "$evidence"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/478/comments" \
+            -f body="$(cat "$evidence")" >/dev/null
+          rm -f "$evidence"
