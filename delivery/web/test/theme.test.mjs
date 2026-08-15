@@ -36,10 +36,10 @@ test('Delivery is a stable mobile application shell with one scroll region and c
   assert.match(frame, /deliveryAppTopBar/);
   assert.match(frame, /aria-label="Điều hướng chính"/);
   assert.match(frame, /href="\/" icon="route" label="Chuyến"/);
+  assert.match(frame, /capabilities\.canPickWithWarehouse[\s\S]*?href="\/picking" icon="box" label="Soạn hàng"/);
   assert.match(frame, /href="\/custody" icon="wallet" label="Tiền đang giữ"/);
   assert.match(frame, /<span>Tài khoản<\/span>/);
   assert.match(frame, /aria-label="Đồng bộ dữ liệu"/);
-  assert.doesNotMatch(frame, /label="Soạn hàng"/);
   assert.doesNotMatch(frame, /deliveryDockPrimary/);
   assert.match(experience, /height:\s*100dvh/);
   assert.match(mobileApp, /grid-template-rows:\s*auto minmax\(0, 1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
