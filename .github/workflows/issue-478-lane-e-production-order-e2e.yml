@@ -42,6 +42,7 @@ jobs:
       )
     permissions:
       contents: read
+      actions: read
       issues: write
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -49,6 +50,8 @@ jobs:
       DEPLOY_REF: main
       CORE_APP_NAME: hung-phat
       MCP_APP_NAME: hung-phat-mcp
+      EXPECTED_MCP_RUNTIME_SHA: 219327e91579e5a6addd11b828cd7eefdedda887
+      EXPECTED_MCP_DEPLOY_RUN_ID: '31897853364'
 
     steps:
       - name: Validate exact command
@@ -76,6 +79,33 @@ jobs:
           sha="$(git rev-parse HEAD)"
           test "$sha" = "$(git rev-parse origin/main)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Verify deployed MCP runtime evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          expected_run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_MCP_DEPLOY_RUN_ID")"
+          test "$(jq -r '.name // empty' <<<"$expected_run")" = 'Manual Heroku MCP production deploy'
+          test "$(jq -r '.path // empty' <<<"$expected_run")" = '.github/workflows/heroku-mcp-backend-manual.yml'
+          test "$(jq -r '.event // empty' <<<"$expected_run")" = 'issue_comment'
+          test "$(jq -r '.conclusion // empty' <<<"$expected_run")" = 'success'
+          test "$(jq -r '.head_branch // empty' <<<"$expected_run")" = 'main'
+          test "$(jq -r '.head_sha // empty' <<<"$expected_run")" = "$EXPECTED_MCP_RUNTIME_SHA"
+
+          latest_successful_run_id="$(
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/heroku-mcp-backend-manual.yml/runs?status=success&branch=main&per_page=1" \
+              --jq '.workflow_runs[0].id // empty'
+          )"
+          test -n "$latest_successful_run_id"
+          test "$latest_successful_run_id" = "$EXPECTED_MCP_DEPLOY_RUN_ID"
+
+          git cat-file -e "${EXPECTED_MCP_RUNTIME_SHA}^{commit}"
+          git merge-base --is-ancestor "$EXPECTED_MCP_RUNTIME_SHA" "$SOURCE_SHA"
+          git diff --quiet "$EXPECTED_MCP_RUNTIME_SHA" "$SOURCE_SHA" -- mcp/apps/backend packages/contracts
 
       - name: Setup Node 20
         uses: actions/setup-node@v4
@@ -109,38 +139,10 @@ jobs:
               | sed 's:/*$::'
           }
 
-          deployed_sha() {
-            local app="$1"
-            local release slug_id
-            release="$(heroku releases --json -a "$app" | jq -r '.[0].version // empty')"
-            test -n "$release"
-            slug_id="$(
-              curl --fail --silent --show-error \
-                -H 'Accept: application/vnd.heroku+json; version=3' \
-                -H "Authorization: Bearer $HEROKU_API_KEY" \
-                "https://api.heroku.com/apps/$app/releases/$release" \
-                | jq -r '.slug.id // empty'
-            )"
-            test -n "$slug_id"
-            curl --fail --silent --show-error \
-              -H 'Accept: application/vnd.heroku+json; version=3' \
-              -H "Authorization: Bearer $HEROKU_API_KEY" \
-              "https://api.heroku.com/apps/$app/slugs/$slug_id" \
-              | jq -r '.commit // empty'
-          }
-
           core_url="$(app_url "$CORE_APP_NAME")"
           mcp_url="$(app_url "$MCP_APP_NAME")"
           test -n "$core_url"
           test -n "$mcp_url"
-
-          mcp_deployed_sha="$(deployed_sha "$MCP_APP_NAME")"
-          core_deployed_sha="$(deployed_sha "$CORE_APP_NAME")"
-          test -n "$mcp_deployed_sha"
-          test -n "$core_deployed_sha"
-          git cat-file -e "${mcp_deployed_sha}^{commit}"
-          git merge-base --is-ancestor "$mcp_deployed_sha" "$SOURCE_SHA"
-          git diff --quiet "$mcp_deployed_sha" "$SOURCE_SHA" -- mcp/apps/backend packages/contracts
 
           mcp_config="$(heroku config -a "$MCP_APP_NAME" --json)"
           core_config="$(heroku config -a "$CORE_APP_NAME" --json)"
@@ -174,8 +176,8 @@ jobs:
 
           {
             echo "SOURCE_SHA=$SOURCE_SHA"
-            echo "MCP_DEPLOYED_SHA=$mcp_deployed_sha"
-            echo "CORE_DEPLOYED_SHA=$core_deployed_sha"
+            echo "MCP_RUNTIME_SOURCE_SHA=$EXPECTED_MCP_RUNTIME_SHA"
+            echo "MCP_RUNTIME_DEPLOY_RUN_ID=$EXPECTED_MCP_DEPLOY_RUN_ID"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish sanitized evidence to Issue 478
