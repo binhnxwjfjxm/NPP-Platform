@@ -159,7 +159,7 @@ test('latest Core production gate and workflow remain manual and assertive', asy
   assert.match(source, /CORE_PRODUCTION_RECONCILIATION=success/);
   assert.match(workflow, /\/audit-heroku-core-latest-migrations/);
   assert.match(workflow, /\/migrate-heroku-core-latest-production/);
-  assert.match(workflow, /github\.event\.comment\.user\.login == 'khuongbinhinfo-a11y'/);
+  assert.match(workflow, /contains\(fromJSON\('\["binhnxwjfjxm","khuongbinhinfo-a11y"\]'\), github\.actor\)/);
   assert.match(workflow, /EXPECTED_MAIN_SHA: \$\{\{ github\.event\.repository\.default_branch == 'main' && steps\.main_head\.outputs\.sha \|\| '' \}\}/);
   assert.match(workflow, /git fetch --no-tags origin main/);
   assert.match(workflow, /test "\$local_head" = "\$EXPECTED_MAIN_SHA"/);
