@@ -166,7 +166,7 @@ test.describe('Phiếu nhận hàng mua vào', () => {
     await expect(receiptDetail).toContainText('Thùng bị móp');
     await expect(receiptDetail).toContainText('3');
     await expect(receiptDetail).toContainText('1');
-    await receiptDetail.getByRole('button').first().click();
+    await receiptDetail.getByRole('button', { name: 'Đóng', exact: true }).click();
 
     await page.getByTestId('goods-receipt-search').fill('');
     editor = await openReceiptEditor(page, fixture.purchaseOrder.id, fixture.variant.sku);
