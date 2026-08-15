@@ -63,10 +63,10 @@ await page.getByRole("textbox", { name: "Ghi chú đơn", exact: true }).fill("G
 await page.getByRole("button", { name: "Tạo đơn", exact: true }).click();
 
 await page.getByText(/Đã tạo SO-MCP-0001\./).waitFor({ state: "visible" });
-await page.getByText("SO-MCP-0001", { exact: true }).waitFor({ state: "visible" });
+await page.getByText(/^SO-MCP-0001 · /).waitFor({ state: "visible" });
 await page.reload({ waitUntil: "networkidle" });
 await page.getByRole("heading", { name: "Trung tâm đơn hàng", exact: true }).waitFor({ state: "visible" });
-await page.getByText("SO-MCP-0001", { exact: true }).waitFor({ state: "visible" });
+await page.getByText(/^SO-MCP-0001 · /).waitFor({ state: "visible" });
 
 const stateResponse = await fetch(`${mockBase}/__direct-state`, { cache: "no-store" });
 assert.equal(stateResponse.status, 200);
