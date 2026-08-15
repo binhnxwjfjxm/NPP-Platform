@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   return proxyBackendRequest(
     request,
-    "/api/mcp-day/session-customer/order",
+    "/api/mcp-day/session-customer/result",
     "POST"
   );
 }

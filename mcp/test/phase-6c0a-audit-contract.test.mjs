@@ -73,6 +73,7 @@ test("the active UI chain remains distinct from legacy and dead-code findings", 
   const entry = await readFile(mcpUrl("src/features/mcp/MCPPageEntryReportReady.tsx"), "utf8");
   const compact = await readFile(mcpUrl("src/features/mcp/McpSessionCompactView.tsx"), "utf8");
   const finalView = await readFile(mcpUrl("src/features/mcp/McpSessionCompactViewFinal2.tsx"), "utf8");
+  const lineCard = await readFile(mcpUrl("src/features/mcp/McpLineCard.tsx"), "utf8");
 
   assert.match(visits, /from "@\/features\/mcp\/MCPPage"/);
   assert.match(pageExport, /MCPPageEntryReportReady/);
@@ -80,9 +81,13 @@ test("the active UI chain remains distinct from legacy and dead-code findings", 
   assert.match(compact, /McpSessionCompactViewFinal2/);
   assert.match(finalView, /idempotentMutationFetch/);
 
-  for (const action of ["order", "test", "report", "followup", "status", "checkin"]) {
+  for (const action of ["test", "report", "followup", "status", "checkin"]) {
     assert.match(finalView, new RegExp(`session-customer\\/${action}`));
   }
+  assert.match(lineCard, /session-customer\/result/);
+  assert.match(lineCard, /session-customer\.result\.record/);
+  assert.doesNotMatch(finalView, /session-customer\/order/);
+  assert.doesNotMatch(lineCard, /session-customer\/order/);
 });
 
 test("the active Next proxy and gateway retain the current strangler boundary", async () => {
