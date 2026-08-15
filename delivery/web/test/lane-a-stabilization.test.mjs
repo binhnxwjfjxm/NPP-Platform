@@ -24,14 +24,13 @@ test('Lane A1 derives navigation capabilities from trusted Core /me permissions 
   assert.match(capabilities, /canPickWithWarehouse/);
 });
 
-test('Lane A1 keeps only real app-level dock destinations and leaves synchronization in the top bar', () => {
+test('Lane A1 keeps real app-level dock destinations and synchronization in the top bar', () => {
   assert.match(frame, /href="\/" icon="route" label="Chuyến"/);
   assert.match(frame, /href="\/custody" icon="wallet" label="Tiền đang giữ"/);
   assert.match(frame, /<span>Tài khoản<\/span>/);
   assert.match(frame, /aria-label="Đồng bộ dữ liệu"/);
   assert.doesNotMatch(frame, /href=\{onTrip \? '#route-section'/);
   assert.doesNotMatch(frame, /#cod-section|#active-trip|#delivery-guide/);
-  assert.doesNotMatch(frame, /label="Soạn hàng"/);
 });
 
 test('Lane A2 exposes canonical custody through a real app route and bottom sheet backed by Core COD overview', () => {

@@ -35,17 +35,32 @@ export default function DeliveryAppFrame({
   const onLogin = pathname === '/login';
   const onTrip = pathname.startsWith('/trips/');
   const onCustody = pathname.startsWith('/custody');
+  const onPicking = pathname.startsWith('/picking');
+  const onPickingDetail = /^\/picking\/[^/]+$/.test(pathname);
   const appLogoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim()
     || '/logo-transparent.png';
 
   if (onLogin) return children;
 
+  const routeMode = onTrip ? 'trip' : onCustody ? 'custody' : onPicking ? 'picking' : 'home';
+  const pageTitle = onTrip
+    ? 'Chi tiết chuyến'
+    : onCustody
+      ? 'Tiền đang giữ'
+      : onPicking
+        ? 'Soạn hàng'
+        : 'Chuyến hôm nay';
+
   return (
-    <div className="deliveryAppFrame" data-delivery-app-frame data-route-mode={onTrip ? 'trip' : onCustody ? 'custody' : 'home'}>
+    <div className="deliveryAppFrame" data-delivery-app-frame data-route-mode={routeMode}>
       <header className="deliveryAppTopBar">
         <div className="deliveryAppIdentity">
-          {onTrip ? (
-            <Link className="deliveryTopButton deliveryBackButton" href="/" aria-label="Về danh sách chuyến">
+          {onTrip || onPickingDetail ? (
+            <Link
+              className="deliveryTopButton deliveryBackButton"
+              href={onPickingDetail ? '/picking' : '/'}
+              aria-label={onPickingDetail ? 'Về danh sách soạn hàng' : 'Về danh sách chuyến'}
+            >
               <DeliveryIcon name="back" size={22} />
             </Link>
           ) : (
@@ -55,7 +70,7 @@ export default function DeliveryAppFrame({
           )}
           <span className="deliveryAppTitle">
             <small>Hưng Phát Delivery</small>
-            <strong>{onTrip ? 'Chi tiết chuyến' : onCustody ? 'Tiền đang giữ' : 'Chuyến hôm nay'}</strong>
+            <strong>{pageTitle}</strong>
           </span>
         </div>
         <div className="deliveryTopActions">
@@ -74,12 +89,14 @@ export default function DeliveryAppFrame({
 
       <nav className="deliveryAppDock" aria-label="Điều hướng chính">
         {capabilities.canViewTrips ? (
-          <DockLinkItem href="/" icon="route" label="Chuyến" active={!onCustody} />
+          <DockLinkItem href="/" icon="route" label="Chuyến" active={!onCustody && !onPicking} />
+        ) : null}
+        {capabilities.canPickWithWarehouse ? (
+          <DockLinkItem href="/picking" icon="box" label="Soạn hàng" active={onPicking} />
         ) : null}
         {capabilities.canViewTrips && capabilities.canViewCustody ? (
           <DockLinkItem href="/custody" icon="wallet" label="Tiền đang giữ" active={onCustody} />
         ) : null}
-        {/* Lane B owns the first real picking route. Lane A intentionally renders no dead Soạn hàng tab. */}
         <details className="deliveryDockAccount">
           <summary className="deliveryDockItem deliveryDockAccountTrigger" aria-label="Mở menu tài khoản">
             <DeliveryIcon name="user" size={22} />
