@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { createIdempotencyKey } from '@npp/contracts';
 import { AppShell } from '../../components/app-shell';
 import shellStyles from '../../components/app-shell.module.css';
 import styles from '../../organization/organization.module.css';
@@ -94,6 +95,7 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
   const [draft, setDraft] = useState<RoleDraft>(emptyDraft());
   const [selectedPermissionKeys, setSelectedPermissionKeys] = useState<string[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState('');
+  const mutationKeys = useRef(new Map<string, string>());
 
   const normalizedSearch = normalizeSearch(search);
   const permissionGroups = useMemo(() => groupPermissions(permissions), [permissions]);
@@ -113,6 +115,14 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
     const active = roles.filter((role) => role.is_active).length;
     return { total: roles.length, active, inactive: roles.length - active, permissions: permissions.length };
   }, [permissions.length, roles]);
+
+  function operationKey(scope: string) {
+    const existing = mutationKeys.current.get(scope);
+    if (existing) return existing;
+    const next = createIdempotencyKey('role-mutation');
+    mutationKeys.current.set(scope, next);
+    return next;
+  }
 
   async function loadAll(successMessage = 'Danh mục vai trò đã được cập nhật.') {
     setBusy('load');
@@ -195,13 +205,15 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
       permissionKeys: selectedPermissionKeys,
       ...(current ? { expectedUpdatedAt: current.updated_at } : {}),
     };
+    const scope = `save|${current?.id ?? 'create'}|${JSON.stringify(payload)}`;
     try {
       const path = current ? `/api/access/roles/${current.id}` : '/api/access/roles';
       await requestJson<AccessRole>(path, {
         method: current ? 'PATCH' : 'POST',
-        headers: { 'Idempotency-Key': `web-${crypto.randomUUID()}` },
+        headers: { 'Idempotency-Key': operationKey(scope) },
         body: JSON.stringify(payload),
       });
+      mutationKeys.current.delete(scope);
       setEditor(null);
       await loadAll(current ? 'Vai trò đã được cập nhật.' : 'Đã tạo vai trò mới.');
     } catch (saveError) {
@@ -217,12 +229,15 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
     setBusy('toggle');
     setError(null);
     setNotice(null);
+    const payload = { isActive: toggleState.nextActive, expectedUpdatedAt: role.updated_at };
+    const scope = `toggle|${role.id}|${JSON.stringify(payload)}`;
     try {
       await requestJson<AccessRole>(`/api/access/roles/${role.id}`, {
         method: 'PATCH',
-        headers: { 'Idempotency-Key': `web-${crypto.randomUUID()}` },
-        body: JSON.stringify({ isActive: toggleState.nextActive, expectedUpdatedAt: role.updated_at }),
+        headers: { 'Idempotency-Key': operationKey(scope) },
+        body: JSON.stringify(payload),
       });
+      mutationKeys.current.delete(scope);
       setToggleState(null);
       await loadAll(toggleState.nextActive ? 'Vai trò đã được kích hoạt.' : 'Vai trò đã được ngừng hoạt động.');
     } catch (toggleError) {
