@@ -99,7 +99,7 @@ export default async function PickingDetailPage({ params }: Readonly<{ params: {
         </section>
 
         {fullyPicked ? (
-          <section className={styles.readyBanner}><strong>Đã soạn đủ mã này</strong><p>Dữ liệu pick đã nằm trong Core Fulfillment.</p></section>
+          <section className={styles.readyBanner}><strong>Đã soạn đủ mã này</strong><p>Dữ liệu pick đã nằm trong Core Fulfillment. Bước đóng gói/hoàn tất tiếp tục theo state machine canonical, Delivery không tạo trạng thái riêng.</p></section>
         ) : null}
 
         {allocations.length ? (
