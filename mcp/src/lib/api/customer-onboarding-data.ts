@@ -3,12 +3,50 @@ import "server-only";
 import { headers } from "next/headers";
 import type { CustomerOnboardingQueueItem } from "@/features/accounts/customer-onboarding.types";
 import { backendApiBaseUrl, backendApiRequestHeaders } from "@/lib/api/backend-proxy";
+import { encodeMcpInternalAuthorization } from "@/lib/mcp-auth";
+import { readMcpSessionToken, requestMcpInternalAuth } from "@/lib/internal-auth-client";
 
 type Envelope<T> = { data?: T; error?: { code?: string; message?: string } };
 
+type WorkforceMePayload = Readonly<{
+  employeeId?: string;
+  roles?: readonly string[];
+  permissions?: readonly string[];
+  scopes?: readonly string[] | Readonly<{ warehouseIds?: readonly string[] }>;
+  session?: Readonly<{ loginName?: string; employeeFullName?: string; expiresAt?: string }>;
+}>;
+
+const EMPLOYEE_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+async function workforceAuthorizationFromSession(): Promise<string | null> {
+  const token = readMcpSessionToken();
+  if (!token) return null;
+
+  const result = await requestMcpInternalAuth<WorkforceMePayload>("/api/internal-auth/me", {
+    method: "GET",
+    token
+  });
+  const employeeId = String(result.data?.employeeId || "").trim();
+  const username = String(result.data?.session?.loginName || "").trim();
+  const displayName = String(result.data?.session?.employeeFullName || "").trim();
+  if (!result.ok || !result.data || !EMPLOYEE_UUID_PATTERN.test(employeeId) || !username || !displayName) {
+    return null;
+  }
+
+  return encodeMcpInternalAuthorization({
+    username,
+    displayName,
+    employeeId,
+    roles: [],
+    permissions: [],
+    scopes: [],
+    expiresAt: String(result.data.session?.expiresAt || "")
+  });
+}
+
 async function trustedBackendGet<T>(path: string): Promise<T> {
   const incoming = headers();
-  const authorization = incoming.get("authorization");
+  const authorization = incoming.get("authorization") || await workforceAuthorizationFromSession();
   const request = new Request("http://mcp.local/customer-boundary", {
     headers: authorization ? { authorization } : {}
   });

@@ -1,7 +1,7 @@
 import http from "node:http";
 import { corsHeaders, resolveCorsOrigin } from "./cors.js";
 import { canonicalErrorPayload, canonicalSuccessPayload, normalizeApiPayload, parseJsonPayload } from "./api-contract.js";
-import { authenticateProxy, buildRequestContext, forwardedContextHeaders, normalizeRequestId } from "./request-context.js";
+import { authenticateRequestContext, forwardedContextHeaders, normalizeRequestId } from "./request-context.js";
 import { handleReadApi } from "./read-api.js";
 
 const LIVE_PATHS = new Set(["/", "/health/live"]);
@@ -107,8 +107,7 @@ export function createFoundationGateway(config, { persistence, legacyHandlers = 
       if (LIVE_PATHS.has(url.pathname)) { json(res, 200, canonicalSuccessPayload(liveData(config), { requestId, receivedAt }), requestId, origin); return; }
       if (READY_PATHS.has(url.pathname)) { json(res, 200, canonicalSuccessPayload(await readyData(config, persistence), { requestId, receivedAt }), requestId, origin); return; }
 
-      authenticateProxy(req, config);
-      const context = buildRequestContext(req, config);
+      const context = authenticateRequestContext(req, config);
       req.foundationContext = context;
 
       const readApi = await handleReadApi(req, url, context, config, { persistence });
