@@ -54,17 +54,25 @@ function normalizeSearch(value: string) {
   return value.trim().toLowerCase();
 }
 
+function managementScreenLabel(path?: string): string {
+  if (!path) return 'màn hình nghiệp vụ liên quan';
+  if (path.startsWith('/products')) return 'Danh mục sản phẩm';
+  if (path.startsWith('/pricing')) return 'Giá bán và khuyến mãi';
+  if (path.startsWith('/inventory')) return 'Tồn kho';
+  return 'màn hình nghiệp vụ liên quan';
+}
+
 function dependencyAwareErrorMessage(error: { message?: string; code?: string; details?: unknown } | undefined, fallback: string): string {
   const details = error?.details as { conflictType?: string; dependency?: { label?: string; count?: number; managementPath?: string }; managementPath?: string; action?: string } | undefined;
-  const base = error?.message || error?.code || fallback;
+  const base = error?.message || fallback;
   if (!details || typeof details !== 'object') return base;
   if (details.conflictType === 'active_dependents' && details.dependency) {
     const count = Number.isFinite(Number(details.dependency.count)) ? Number(details.dependency.count) : 0;
     const summary = count > 0 ? `${details.dependency.label ?? 'Phụ thuộc đang hoạt động'}: ${count}.` : `${details.dependency.label ?? 'Phụ thuộc đang hoạt động'}.`;
-    return `${base} ${summary} Mở màn hình xử lý: ${details.dependency.managementPath ?? details.managementPath ?? '/products'}`;
+    return `${base} ${summary} Mở ${managementScreenLabel(details.dependency.managementPath ?? details.managementPath)} để xử lý.`;
   }
   if (details.conflictType === 'stale_version') return `${base} Bấm Làm mới rồi thực hiện lại thao tác.`;
-  if (details.managementPath) return `${base} Mở màn hình xử lý: ${details.managementPath}`;
+  if (details.managementPath) return `${base} Mở ${managementScreenLabel(details.managementPath)} để xử lý.`;
   return base;
 }
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -76,7 +84,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     throw new Error('Phản hồi máy chủ không hợp lệ');
   }
   if (!response.ok || !Object.prototype.hasOwnProperty.call(payload, 'data')) {
-    throw new Error(payload.error?.message || payload.error?.code || 'Yêu cầu không thành công');
+    throw new Error(dependencyAwareErrorMessage(payload.error, 'Yêu cầu không thành công'));
   }
   return payload.data as T;
 }
