@@ -119,6 +119,10 @@ function OutletSheet({ item, onClose }: { item: OutletItem | null; onClose: () =
             <div className="metric-row"><span>Mã nguồn</span><strong>{item.accountId || item.routeCustomerId}</strong></div>
           </div>
           {item.note ? <div className="sheet-note-card"><h3>Ghi chú tuyến</h3><p>{item.note}</p></div> : null}
+          <div className="sheet-note-card">
+            <h3>Dữ liệu đang hiển thị</h3>
+            <p>Hồ sơ này chỉ dùng dữ liệu điểm bán trong tuyến: tên, liên hệ, khu vực, thứ tự, trạng thái và GPS. Chưa ghép doanh số hoặc lịch sử đơn theo tên điểm bán.</p>
+          </div>
         </div>
       ) : null}
     </BottomSheet>

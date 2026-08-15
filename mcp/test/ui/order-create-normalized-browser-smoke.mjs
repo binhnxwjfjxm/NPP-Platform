@@ -56,8 +56,8 @@ await page.getByRole("button", { name: /Thêm Siro Hưng Phát, Dâu/ }).click()
 await page.getByRole("button", { name: /Thêm Trà Lài Hưng Phát/ }).click();
 
 await page.getByRole("button", { name: "Xem lại đơn", exact: true }).click();
-await page.getByText(/2 dòng · 2 sản phẩm/).first().waitFor({ state: "visible" });
 const siroCartItem = page.locator("article").filter({ hasText: "Siro Hưng Phát" }).filter({ hasText: "Số lượng" });
+await siroCartItem.locator('input[type="number"]').waitFor({ state: "visible" });
 await siroCartItem.locator('input[type="number"]').fill("3");
 await page.getByRole("textbox", { name: "Ghi chú đơn", exact: true }).fill("Giao giờ hành chính");
 await page.getByRole("button", { name: "Tạo đơn", exact: true }).click();
