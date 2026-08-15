@@ -7,6 +7,7 @@ export type PrintPageSize = 'A4' | 'A5';
 
 function clearPrintState() {
   document.body.removeAttribute('data-printing');
+  document.querySelectorAll('[data-print-root="true"]').forEach((element) => element.remove());
   document.querySelectorAll('[data-print-active="true"]').forEach((element) => {
     element.removeAttribute('data-print-active');
   });
@@ -27,14 +28,26 @@ export function PrintAction({
       : surfaces.length === 1 ? surfaces[0] : null;
     if (!target) return;
 
-    target.setAttribute('data-print-active', 'true');
+    const printRoot = document.createElement('div');
+    printRoot.setAttribute('data-print-root', 'true');
+    const printable = target.cloneNode(true) as HTMLElement;
+    printable.setAttribute('data-print-active', 'true');
+    printRoot.appendChild(printable);
+    document.body.appendChild(printRoot);
     document.body.setAttribute('data-printing', 'true');
+
     const cleanup = () => {
       window.removeEventListener('afterprint', cleanup);
       clearPrintState();
     };
     window.addEventListener('afterprint', cleanup, { once: true });
-    window.print();
+
+    try {
+      window.print();
+    } catch (error) {
+      cleanup();
+      throw error;
+    }
   }
 
   return (

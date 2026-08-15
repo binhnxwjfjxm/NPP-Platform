@@ -139,11 +139,21 @@
 }
 
 @media print {
-  .table tr,
+  .sheet {
+    orphans: 3;
+    widows: 3;
+  }
+
+  .header,
+  .metaGrid,
   .summary,
   .note,
   .signatures {
     break-inside: avoid;
+  }
+
+  .table tr {
+    break-inside: avoid-page;
   }
 
   .table thead {

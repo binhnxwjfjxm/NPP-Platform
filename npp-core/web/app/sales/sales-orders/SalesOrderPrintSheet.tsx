@@ -29,6 +29,11 @@ function dateText(value: string | null | undefined): string {
     : new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }).format(parsed);
 }
 
+function isZeroAmount(value: string | number | null | undefined) {
+  const normalized = String(value ?? '').trim();
+  return /^[-+]?0+(?:\.0+)?$/.test(normalized);
+}
+
 export default function SalesOrderPrintSheet({
   order,
   version,
@@ -42,6 +47,11 @@ export default function SalesOrderPrintSheet({
   const displayPhone = version.customerMode === 'WALK_IN'
     ? version.walkInPhone
     : textValue(version.customerAddress?.phone);
+  const lines = version.lines ?? [];
+  const showDiscount = !isZeroAmount(version.discountTotal)
+    || lines.some((line) => !isZeroAmount(line.discountAmount));
+  const showTax = !isZeroAmount(version.taxTotal)
+    || lines.some((line) => !isZeroAmount(line.taxAmount));
 
   return (
     <>
@@ -78,20 +88,20 @@ export default function SalesOrderPrintSheet({
                 <th>Sản phẩm / SKU</th>
                 <th className={styles.right}>Số lượng</th>
                 <th className={styles.right}>Đơn giá</th>
-                <th className={styles.right}>CK</th>
-                <th className={styles.right}>Thuế</th>
+                {showDiscount ? <th className={styles.right}>CK</th> : null}
+                {showTax ? <th className={styles.right}>Thuế</th> : null}
                 <th className={styles.right}>Thành tiền</th>
               </tr>
             </thead>
             <tbody>
-              {(version.lines ?? []).map((line) => (
+              {lines.map((line) => (
                 <tr key={line.id}>
                   <td>{line.lineNumber}</td>
                   <td><strong>{line.itemName}</strong><small>{line.sku}</small></td>
                   <td className={styles.right}>{line.quantity} {line.unitCode}</td>
                   <td className={styles.right}>{formatMoney(line.unitPrice)}</td>
-                  <td className={styles.right}>{formatMoney(line.discountAmount)}</td>
-                  <td className={styles.right}>{formatMoney(line.taxAmount)}</td>
+                  {showDiscount ? <td className={styles.right}>{formatMoney(line.discountAmount)}</td> : null}
+                  {showTax ? <td className={styles.right}>{formatMoney(line.taxAmount)}</td> : null}
                   <td className={styles.right}><strong>{formatMoney(line.lineTotal)}</strong></td>
                 </tr>
               ))}
@@ -100,8 +110,8 @@ export default function SalesOrderPrintSheet({
 
           <section className={styles.summary}>
             <div><span>Tạm tính</span><strong>{formatMoney(version.subtotal)} ₫</strong></div>
-            <div><span>Chiết khấu</span><strong>{formatMoney(version.discountTotal)} ₫</strong></div>
-            <div><span>Thuế</span><strong>{formatMoney(version.taxTotal)} ₫</strong></div>
+            {showDiscount ? <div><span>Chiết khấu</span><strong>{formatMoney(version.discountTotal)} ₫</strong></div> : null}
+            {showTax ? <div><span>Thuế</span><strong>{formatMoney(version.taxTotal)} ₫</strong></div> : null}
             <div className={styles.total}><span>TỔNG CỘNG</span><strong>{formatMoney(version.total)} ₫</strong></div>
           </section>
 
