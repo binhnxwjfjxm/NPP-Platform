@@ -1,5 +1,5 @@
-import { OrdersPage } from "@/features/orders/OrdersPage";
+import { McpCoreOrdersPage } from "@/features/orders/McpCoreOrdersPage";
 
 export default function Page() {
-  return <OrdersPage />;
+  return <McpCoreOrdersPage />;
 }

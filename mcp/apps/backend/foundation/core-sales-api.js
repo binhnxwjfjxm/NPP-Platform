@@ -5,6 +5,10 @@ import {
   submitSalesOrder,
   syncSalesOrder
 } from "./sales-order-sync.js";
+import {
+  createDirectMcpSalesOrder,
+  listDirectMcpSalesOrders
+} from "./direct-sales-orders.js";
 
 const MAX_JSON_BODY_BYTES = 256 * 1024;
 const MAX_VERIFIED_VARIANTS = 50;
@@ -155,6 +159,20 @@ async function loadProductVariants(productId, url, context, config, fetchImpl) {
   return response(await mapCatalogOptions(verified.filter(Boolean), context, config, fetchImpl));
 }
 
+async function loadDirectOrders(context, config, fetchImpl) {
+  authorizeCoreSales(context, config, CORE_SALES_READ_PERMISSION);
+  return response(await listDirectMcpSalesOrders(context, config, { fetchImpl }));
+}
+
+async function saveDirectOrder(req, context, config, fetchImpl) {
+  authorizeCoreSales(context, config, CORE_SALES_CREATE_PERMISSION);
+  const body = await readJsonBody(req);
+  return response(await createDirectMcpSalesOrder(body, context, config, {
+    fetchImpl,
+    idempotencyKey: context.idempotencyKey
+  }), 201);
+}
+
 async function loadSalesOrder(url, context, config, fetchImpl) {
   authorizeCoreSales(context, config, CORE_SALES_READ_PERMISSION);
   return response(await getSalesOrderProjection({
@@ -186,6 +204,13 @@ export async function handleCoreSalesApi(req, url, context, config, { fetchImpl 
   const variantsMatch = pathname.match(/^\/api\/core-sales\/products\/([^/]+)\/variants$/);
   if (method === "GET" && variantsMatch) {
     return loadProductVariants(decodeURIComponent(variantsMatch[1]), url, context, config, fetchImpl);
+  }
+
+  if (pathname === "/api/core-sales/orders" && method === "GET") {
+    return loadDirectOrders(context, config, fetchImpl);
+  }
+  if (pathname === "/api/core-sales/orders" && method === "POST") {
+    return saveDirectOrder(req, context, config, fetchImpl);
   }
 
   if (method === "GET" && pathname === "/api/mcp-day/session-customer/sales-order") {

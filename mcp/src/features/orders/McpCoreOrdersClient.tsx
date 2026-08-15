@@ -1,0 +1,386 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CustomerOnboardingQueueItem } from "@/features/accounts/customer-onboarding.types";
+import { createIdempotencyKey, idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
+import { PageHeader } from "@/ui/layout/PageHeader";
+import { AppShell } from "@/ui/shell/AppShell";
+import styles from "./McpCoreOrdersClient.module.css";
+
+type CatalogItem = {
+  productId: string;
+  variantId: string;
+  name: string;
+  sku?: string | null;
+  variantName?: string | null;
+  sellUnit?: string | null;
+  price?: number | null;
+};
+
+type CartItem = CatalogItem & { quantity: number };
+
+type CoreOrder = {
+  id: string;
+  number?: string | null;
+  status: "draft" | "confirmed" | "cancelled" | "closed";
+  sourceType: string;
+  sourceId?: string | null;
+  sourceOutletId?: string | null;
+  customerId: string;
+  customerCode?: string | null;
+  customerName?: string | null;
+  salesChannelCode?: string | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+};
+
+type SubmissionRef = {
+  fingerprint: string;
+  key: string;
+};
+
+const money = new Intl.NumberFormat("vi-VN", {
+  style: "currency",
+  currency: "VND",
+  maximumFractionDigits: 0
+});
+
+function apiErrorMessage(payload: unknown, fallback: string) {
+  if (!payload || typeof payload !== "object") return fallback;
+  const value = payload as { error?: string | { message?: string }; detail?: string; message?: string };
+  if (typeof value.error === "string" && value.error.trim()) return value.error;
+  if (value.error && typeof value.error === "object" && value.error.message?.trim()) return value.error.message;
+  return value.detail || value.message || fallback;
+}
+
+function normalizeCatalog(value: unknown): CatalogItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => item as Partial<CatalogItem>)
+    .filter((item) => item.productId && item.variantId && item.name)
+    .map((item) => ({
+      productId: String(item.productId),
+      variantId: String(item.variantId),
+      name: String(item.name),
+      sku: item.sku ?? null,
+      variantName: item.variantName ?? null,
+      sellUnit: item.sellUnit ?? null,
+      price: item.price === null || item.price === undefined || !Number.isFinite(Number(item.price))
+        ? null
+        : Number(item.price)
+    }));
+}
+
+function statusLabel(status: CoreOrder["status"]) {
+  if (status === "draft") return "Nháp";
+  if (status === "confirmed") return "Đã xác nhận";
+  if (status === "cancelled") return "Đã hủy";
+  return "Hoàn tất";
+}
+
+function customerLabel(customer: CustomerOnboardingQueueItem) {
+  const coreCode = customer.coreCustomerCode ? ` · ${customer.coreCustomerCode}` : "";
+  return `${customer.customerName}${coreCode} · ${customer.routeName || "MCP"}`;
+}
+
+export function McpCoreOrdersClient({
+  linkedCustomers,
+  initialError = null
+}: {
+  linkedCustomers: CustomerOnboardingQueueItem[];
+  initialError?: string | null;
+}) {
+  const [customerKey, setCustomerKey] = useState("");
+  const [search, setSearch] = useState("");
+  const [products, setProducts] = useState<CatalogItem[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [note, setNote] = useState("");
+  const [orders, setOrders] = useState<CoreOrder[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [loadingOrders, setLoadingOrders] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(initialError);
+  const submissionRef = useRef<SubmissionRef | null>(null);
+
+  const customerOptions = useMemo(() => {
+    const unique = new Map<string, CustomerOnboardingQueueItem>();
+    for (const customer of linkedCustomers) {
+      if (!customer.coreCustomerId || !customer.coreCustomerAddressId) continue;
+      const key = `${customer.coreCustomerId}:${customer.coreCustomerAddressId}`;
+      if (!unique.has(key)) unique.set(key, customer);
+    }
+    return [...unique.entries()];
+  }, [linkedCustomers]);
+
+  const selectedCustomer = customerOptions.find(([key]) => key === customerKey)?.[1] || null;
+
+  const loadOrders = useCallback(async () => {
+    setLoadingOrders(true);
+    try {
+      const response = await fetch("/api/backend/core-sales/orders", {
+        cache: "no-store",
+        headers: { Accept: "application/json" }
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(apiErrorMessage(payload, "Không tải được đơn MCP từ Core"));
+      const data = (payload as { data?: unknown }).data;
+      setOrders(Array.isArray(data) ? data as CoreOrder[] : []);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Không tải được đơn MCP từ Core");
+    } finally {
+      setLoadingOrders(false);
+    }
+  }, []);
+
+  const loadProducts = useCallback(async (query: string) => {
+    setLoadingProducts(true);
+    try {
+      const params = new URLSearchParams({ q: query.trim(), limit: "50" });
+      const response = await fetch(`/api/products/search?${params.toString()}`, {
+        cache: "no-store",
+        headers: { Accept: "application/json" }
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(apiErrorMessage(payload, "Không tải được sản phẩm Core"));
+      setProducts(normalizeCatalog((payload as { data?: unknown }).data));
+    } catch (error) {
+      setProducts([]);
+      setMessage(error instanceof Error ? error.message : "Không tải được sản phẩm Core");
+    } finally {
+      setLoadingProducts(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadOrders();
+  }, [loadOrders]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadProducts(search), 250);
+    return () => window.clearTimeout(timer);
+  }, [loadProducts, search]);
+
+  function addProduct(product: CatalogItem) {
+    setCart((current) => {
+      const existing = current.find((item) => item.variantId === product.variantId);
+      if (existing) {
+        return current.map((item) => item.variantId === product.variantId
+          ? { ...item, quantity: item.quantity + 1 }
+          : item);
+      }
+      return [...current, { ...product, quantity: 1 }];
+    });
+  }
+
+  function changeQuantity(variantId: string, quantity: number) {
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setCart((current) => current.filter((item) => item.variantId !== variantId));
+      return;
+    }
+    setCart((current) => current.map((item) => item.variantId === variantId
+      ? { ...item, quantity: Math.max(1, Math.trunc(quantity)) }
+      : item));
+  }
+
+  async function submit() {
+    if (!selectedCustomer?.coreCustomerId || !selectedCustomer.coreCustomerAddressId) {
+      setMessage("Chỉ tạo đơn cho khách đã mở / liên kết mã Core.");
+      return;
+    }
+    if (cart.length === 0) {
+      setMessage("Chọn ít nhất một sản phẩm.");
+      return;
+    }
+
+    const body = {
+      customerId: selectedCustomer.coreCustomerId,
+      customerAddressId: selectedCustomer.coreCustomerAddressId,
+      note: note.trim() || undefined,
+      lines: cart.map((item) => ({
+        variantId: item.variantId,
+        quantity: String(item.quantity),
+        note: [item.name, item.variantName, item.sku].filter(Boolean).join(" · ") || undefined
+      }))
+    };
+    const fingerprint = JSON.stringify(body);
+    if (!submissionRef.current || submissionRef.current.fingerprint !== fingerprint) {
+      submissionRef.current = {
+        fingerprint,
+        key: createIdempotencyKey("mcp.sales-order.create")
+      };
+    }
+
+    setSaving(true);
+    setMessage(null);
+    try {
+      const response = await idempotentMutationFetch(
+        "/api/backend/core-sales/orders",
+        {
+          method: "POST",
+          cache: "no-store",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        },
+        {
+          operation: "mcp.sales-order.create",
+          key: submissionRef.current.key
+        }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(apiErrorMessage(payload, "Không tạo được đơn bán hàng Core"));
+      const order = (payload as { data?: CoreOrder }).data;
+      submissionRef.current = null;
+      setCart([]);
+      setNote("");
+      setMessage(`Đã tạo đơn Core${order?.number ? ` ${order.number}` : ""}. Giá và chính sách thương mại đã do Core phân giải.`);
+      await loadOrders();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Không tạo được đơn bán hàng Core");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const estimatedTotal = cart.reduce((sum, item) => (
+    sum + (item.price ?? 0) * item.quantity
+  ), 0);
+
+  return (
+    <AppShell activeHref="/orders">
+      <PageHeader
+        eyebrow="MCP → Core"
+        title="Đơn hàng MCP"
+        subtitle="Tạo Sales Order chính thức trực tiếp trong Core cho khách đã mở / liên kết mã. Có mua/Có đơn trong phiên chỉ là dữ liệu báo cáo."
+      >
+        <button className="button" type="button" disabled={loadingOrders} onClick={() => void loadOrders()}>
+          {loadingOrders ? "Đang tải..." : "Làm mới đơn Core"}
+        </button>
+      </PageHeader>
+
+      {message ? <section className={`card ${styles.message}`} role="status">{message}</section> : null}
+
+      <section className={`card ${styles.createCard}`}>
+        <div className={styles.sectionHeading}>
+          <div>
+            <span className="page-eyebrow">Tạo đơn chính thức</span>
+            <h2>Khách đã liên kết Core</h2>
+          </div>
+          <small>Browser không gửi giá, nhân viên hay chính sách thương mại.</small>
+        </div>
+
+        <label className={styles.field}>
+          <span>Khách hàng</span>
+          <select
+            value={customerKey}
+            disabled={saving}
+            onChange={(event) => {
+              setCustomerKey(event.target.value);
+              setCart([]);
+              submissionRef.current = null;
+            }}
+          >
+            <option value="">Chọn khách đã mở / liên kết mã</option>
+            {customerOptions.map(([key, customer]) => (
+              <option key={key} value={key}>{customerLabel(customer)}</option>
+            ))}
+          </select>
+        </label>
+
+        {customerOptions.length === 0 ? (
+          <p className={styles.empty}>Chưa có khách đủ điều kiện. Mở / liên kết mã khách trước khi tạo đơn.</p>
+        ) : null}
+
+        <div className={styles.catalogGrid}>
+          <div>
+            <label className={styles.field}>
+              <span>Sản phẩm Core</span>
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Tìm tên hoặc SKU"
+                disabled={saving}
+              />
+            </label>
+            <div className={styles.productList}>
+              {loadingProducts ? <p>Đang tải sản phẩm...</p> : null}
+              {!loadingProducts && products.map((product) => (
+                <button
+                  className={styles.productRow}
+                  type="button"
+                  key={product.variantId}
+                  disabled={!selectedCustomer || saving}
+                  onClick={() => addProduct(product)}
+                >
+                  <span>
+                    <strong>{product.name}</strong>
+                    <small>{[product.variantName, product.sellUnit, product.sku].filter(Boolean).join(" · ")}</small>
+                  </span>
+                  <b>{product.price === null || product.price === undefined ? "Core sẽ phân giải giá" : money.format(product.price)}</b>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className={styles.cart}>
+            <div className={styles.sectionHeading}>
+              <div><h3>Đơn đang tạo</h3><small>{cart.length} SKU</small></div>
+              <strong>{estimatedTotal > 0 ? `Tham khảo ${money.format(estimatedTotal)}` : "Giá do Core quyết định"}</strong>
+            </div>
+            {cart.length === 0 ? <p className={styles.empty}>Chưa chọn sản phẩm.</p> : null}
+            {cart.map((item) => (
+              <div className={styles.cartRow} key={item.variantId}>
+                <span><strong>{item.name}</strong><small>{item.sku || item.variantName || "SKU Core"}</small></span>
+                <input
+                  type="number"
+                  min="1"
+                  inputMode="numeric"
+                  value={item.quantity}
+                  disabled={saving}
+                  onChange={(event) => changeQuantity(item.variantId, Number(event.target.value))}
+                  aria-label={`Số lượng ${item.name}`}
+                />
+              </div>
+            ))}
+            <label className={styles.field}>
+              <span>Ghi chú đơn</span>
+              <textarea value={note} disabled={saving} onChange={(event) => setNote(event.target.value)} rows={3} />
+            </label>
+            <p className={styles.commercialNote}>
+              Giá hiển thị chỉ để tham khảo. Khi tạo đơn, Core tự xác nhận SKU, đơn vị, giá, thuế, kênh bán và các rule thương mại.
+            </p>
+            <button className="button primary" type="button" disabled={saving || !selectedCustomer || cart.length === 0} onClick={() => void submit()}>
+              {saving ? "Đang tạo đơn Core..." : "Tạo Sales Order trong Core"}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className={`card ${styles.ordersCard}`}>
+        <div className={styles.sectionHeading}>
+          <div>
+            <span className="page-eyebrow">Canonical Core</span>
+            <h2>Đơn MCP của tôi</h2>
+          </div>
+          <small>Chỉ hiển thị đơn source MCP thuộc các điểm bán đang phụ trách.</small>
+        </div>
+        {loadingOrders ? <p>Đang tải đơn...</p> : null}
+        {!loadingOrders && orders.length === 0 ? <p className={styles.empty}>Chưa có Sales Order MCP chính thức.</p> : null}
+        <div className={styles.orderList}>
+          {orders.map((order) => (
+            <article className={styles.orderRow} key={order.id}>
+              <div>
+                <span className={styles.sourceBadge}>MCP</span>
+                <strong>{order.number || "Đơn Core nháp"}</strong>
+                <small>{order.customerCode || order.customerName || order.customerId}</small>
+              </div>
+              <div>
+                <b>{statusLabel(order.status)}</b>
+                <small>{order.salesChannelCode ? `Kênh ${order.salesChannelCode}` : "Kênh MCP"}</small>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    </AppShell>
+  );
+}

@@ -1,0 +1,111 @@
+.message {
+  margin-bottom: 16px;
+}
+
+.createCard,
+.ordersCard {
+  display: grid;
+  gap: 16px;
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sectionHeading h2,
+.sectionHeading h3 {
+  margin: 4px 0 0;
+}
+
+.sectionHeading small,
+.field span,
+.productRow small,
+.cartRow small,
+.orderRow small,
+.commercialNote,
+.empty {
+  color: var(--muted, #667085);
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field select,
+.field input,
+.field textarea,
+.cartRow input {
+  width: 100%;
+}
+
+.catalogGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 18px;
+}
+
+.productList,
+.orderList,
+.cart {
+  display: grid;
+  gap: 10px;
+}
+
+.productRow,
+.orderRow,
+.cartRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border, #d0d5dd);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--surface, #fff);
+}
+
+.productRow {
+  text-align: left;
+}
+
+.productRow span,
+.cartRow span,
+.orderRow > div {
+  display: grid;
+  gap: 3px;
+}
+
+.cartRow input {
+  max-width: 84px;
+}
+
+.commercialNote {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.sourceBadge {
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .catalogGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sectionHeading,
+  .orderRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

@@ -178,6 +178,21 @@ export async function resolveCoreBasePrice(variantId, requestContext, config, op
   });
 }
 
+export async function listCoreSalesOrders(requestContext, config, options = {}) {
+  const limit = Math.max(1, Math.min(1000, Number(options.limit) || 1000));
+  const offset = Math.max(0, Number(options.offset) || 0);
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const data = await coreRequest(
+    config,
+    requestContext,
+    `/api/sales-orders?${params.toString()}`,
+    { method: "GET" },
+    options
+  );
+  if (!Array.isArray(data)) throw integrationError("core_sales_orders_response_invalid", 502, null, true);
+  return Object.freeze(data.map(assertCoreOrder));
+}
+
 export async function createCoreSalesOrder(payload, requestContext, config, options = {}) {
   const idempotencyKey = String(options.idempotencyKey || "").trim();
   if (!idempotencyKey) throw integrationError("core_sales_idempotency_key_required", 400);

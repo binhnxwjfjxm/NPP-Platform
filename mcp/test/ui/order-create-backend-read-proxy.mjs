@@ -3,12 +3,46 @@ import http from "node:http";
 const port = Number(process.env.ORDER_CREATE_PROXY_PORT || 3110);
 const upstreamBase = String(process.env.ORDER_CREATE_UPSTREAM_BASE || "http://127.0.0.1:3111").replace(/\/+$/, "");
 
+const linkedCustomers = [
+  {
+    routeCustomerId: "44444444-4444-4444-8444-444444444444",
+    routeId: "route-active",
+    routeName: "Tuyến phiên đang chạy",
+    customerName: "UI Existing Customer",
+    phone: "0900000001",
+    area: "Bình Đại",
+    address: "12 Đường Browser Smoke",
+    status: "linked_existing",
+    coreRequestId: "88888888-8888-4888-8888-888888888888",
+    coreCustomerId: "22222222-2222-4222-8222-222222222222",
+    coreCustomerAddressId: "33333333-3333-4333-8333-333333333333",
+    coreCustomerCode: "KH-UI-001",
+    reviewReason: null,
+    submittedAt: new Date().toISOString(),
+    lastSyncedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+];
+
+const directState = {
+  attempts: [],
+  orders: []
+};
+
 function json(response, status, payload) {
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store"
   });
   response.end(JSON.stringify(payload));
+}
+
+function envelope(request, data) {
+  return {
+    data,
+    requestId: String(request.headers["x-request-id"] || "order-ui-read"),
+    receivedAt: new Date().toISOString()
+  };
 }
 
 async function readBody(request) {
@@ -113,6 +147,66 @@ const server = http.createServer(async (request, response) => {
   const url = new URL(request.url || "/", `http://${request.headers.host || `127.0.0.1:${port}`}`);
   try {
     const requestBody = await readBody(request);
+
+    if (request.method === "GET" && url.pathname === "/api/internal-auth/me") {
+      return json(response, 200, envelope(request, {
+        employeeId: "11111111-1111-4111-8111-111111111111",
+        roles: ["mcp.sales"],
+        permissions: ["mcp.sales-order.read", "mcp.sales-order.create"],
+        scopes: ["warehouse:66666666-6666-4666-8666-666666666666"],
+        session: {
+          loginName: "sale.ui",
+          employeeFullName: "Sale UI",
+          expiresAt: "2099-12-31T23:59:59.000Z"
+        }
+      }));
+    }
+    if (request.method === "GET" && url.pathname === "/__direct-state") {
+      return json(response, 200, directState);
+    }
+    if (request.method === "POST" && url.pathname === "/__direct-reset") {
+      directState.attempts = [];
+      directState.orders = [];
+      return json(response, 200, { ok: true });
+    }
+    if (request.method === "GET" && url.pathname === "/api/customer-verifications") {
+      return json(response, 200, envelope(request, { items: linkedCustomers }));
+    }
+    if (request.method === "GET" && url.pathname === "/api/core-sales/orders") {
+      return json(response, 200, envelope(request, directState.orders));
+    }
+    if (request.method === "POST" && url.pathname === "/api/core-sales/orders") {
+      const payload = requestBody.length ? JSON.parse(requestBody.toString("utf8")) : {};
+      const key = String(request.headers["idempotency-key"] || "");
+      directState.attempts.push({ key, payload });
+      if (!key) {
+        return json(response, 400, { error: { code: "missing_idempotency_key", message: "missing_idempotency_key" } });
+      }
+      const sameKeyAttempts = directState.attempts.filter((attempt) => attempt.key === key);
+      if (sameKeyAttempts.length === 1) {
+        return json(response, 503, { error: { code: "temporary_core_failure", message: "temporary_core_failure" } });
+      }
+      let order = directState.orders.find((item) => item.sourceId === key);
+      if (!order) {
+        order = {
+          id: "99999999-9999-4999-8999-999999999999",
+          number: "SO-MCP-0001",
+          status: "draft",
+          sourceType: "MCP",
+          sourceId: key,
+          sourceOutletId: linkedCustomers[0].routeCustomerId,
+          customerId: payload.customerId,
+          customerCode: linkedCustomers[0].coreCustomerCode,
+          customerName: linkedCustomers[0].customerName,
+          salesChannelCode: "MCP",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        directState.orders.unshift(order);
+      }
+      return json(response, 201, envelope(request, order));
+    }
+
     if (request.method === "POST" && url.pathname === "/api/read") {
       const payload = requestBody.length ? JSON.parse(requestBody.toString("utf8")) : {};
       const rows = await backendReadRows(String(payload.table || ""));
