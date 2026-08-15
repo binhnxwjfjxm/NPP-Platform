@@ -32,7 +32,6 @@ async function horizontalOverflow(page) {
 
 await waitForHttp(`${appBase}/`);
 await waitForHttp(`${appBase}/routes`);
-await waitForHttp(`${appBase}/customers`);
 await waitForHttp(`${appBase}/plans`);
 const browser = await chromium.launch({ headless: true });
 const result = { F05_APP_SHELL_THEME_SMOKE: "FAIL" };
@@ -71,15 +70,6 @@ try {
 
   const listSpecs = [
     {
-      path: "/customers",
-      card: "[data-outlet-mobile-card]",
-      title: "UI Existing Customer",
-      action: /Mở hồ sơ/,
-      dialogName: "UI Existing Customer",
-      detailLabels: ["Trạng thái hồ sơ", "Người liên hệ", "Tuyến", "Cập nhật GPS"],
-      forbiddenCardText: ["Đơn gần nhất", "Doanh số tháng", "Ghé gần nhất", "Hạng A"]
-    },
-    {
       path: "/plans",
       card: "[data-plan-mobile-card]",
       title: "Ghé lại xác nhận nhu cầu trưng bày",
@@ -106,10 +96,8 @@ try {
       for (const hiddenText of spec.forbiddenCardText) {
         assert.equal(await card.getByText(hiddenText, { exact: true }).count(), 0, `${spec.path} mobile card must not render ${hiddenText}`);
       }
-      if (spec.path === "/plans") {
-        await card.getByText("Quá hạn", { exact: true }).waitFor({ state: "visible" });
-        await card.getByText("Ưu tiên Cao", { exact: true }).waitFor({ state: "visible" });
-      }
+      await card.getByText("Quá hạn", { exact: true }).waitFor({ state: "visible" });
+      await card.getByText("Ưu tiên Cao", { exact: true }).waitFor({ state: "visible" });
 
       const action = card.getByRole("button", { name: spec.action });
       const actionHeight = await action.evaluate((node) => node.getBoundingClientRect().height);
@@ -120,13 +108,6 @@ try {
       await dialog.waitFor({ state: "visible" });
       for (const label of spec.detailLabels) {
         await dialog.getByText(label, { exact: true }).waitFor({ state: "visible" });
-      }
-      if (spec.path === "/customers") {
-        for (const inventedLabel of ["Đơn gần nhất", "Doanh số tháng", "Ghé gần nhất", "Hạng A"]) {
-          assert.equal(await dialog.getByText(inventedLabel, { exact: true }).count(), 0, `customer dialog must not invent ${inventedLabel}`);
-        }
-        const directions = dialog.getByRole("link", { name: "Di chuyển", exact: true });
-        assert.match(String(await directions.getAttribute("href")), /^https:\/\/www\.google\.com\/maps\//);
       }
       await listPage.keyboard.press("Escape");
       await dialog.waitFor({ state: "hidden" });
@@ -222,7 +203,8 @@ try {
     await screenshot(page, "19-business-form-theme");
 
     result.F05_APP_SHELL_THEME_SMOKE = "PASS";
-    result.sections = ["home", "customers", "plans", "routes", "business", "session"];
+    result.sections = ["home", "plans", "routes", "business", "session"];
+    result.customerAuthCoverage = "delegated-to-customers-page-browser-smoke";
     result.mobileViewports = mobileViewports.map(({ width, height }) => `${width}x${height}`);
     result.homeLayout = "PASS";
     result.mobileListSummaries = "PASS";

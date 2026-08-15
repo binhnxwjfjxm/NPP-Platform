@@ -7,6 +7,7 @@ import {
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 const ACTOR_ID_PATTERN = /^(service|user):[A-Za-z0-9][A-Za-z0-9._:-]{2,126}$/;
 const EMPLOYEE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$/;
+const EMPLOYEE_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ROLE_PATTERN = /^mcp\.[a-z0-9][a-z0-9._:-]{1,126}$/;
 const PERMISSION_PATTERN = /^mcp\.[a-z0-9][a-z0-9._:-]{1,126}$/;
 const SCOPE_PATTERN = /^mcp:[a-z0-9*][a-z0-9._:*-]{0,126}$/;
@@ -41,10 +42,10 @@ function safeEqual(left, right) {
   return timingSafeEqual(a, b);
 }
 
-function actorContextError(code) {
+function actorContextError(code, statusCode = 400) {
   const error = new Error(code);
   error.code = code;
-  error.statusCode = 400;
+  error.statusCode = statusCode;
   throw error;
 }
 
@@ -127,6 +128,44 @@ export function normalizePrincipal(value, config) {
   });
 }
 
+function internalWorkforcePrincipal(req, config) {
+  const authorization = headerValue(req, "authorization");
+  if (!authorization || !authorization.toLowerCase().startsWith("basic ")) return null;
+  let decoded;
+  try {
+    decoded = Buffer.from(authorization.slice(6).trim(), "base64").toString("utf8");
+  } catch {
+    actorContextError("invalid_workforce_authorization", 401);
+  }
+  const [version, username, employeeId, encodedDisplayName, ...extra] = decoded.split("|");
+  if (
+    version !== "v2" ||
+    !String(username || "").trim() ||
+    !EMPLOYEE_UUID_PATTERN.test(String(employeeId || "").trim()) ||
+    extra.length > 0
+  ) {
+    actorContextError("invalid_workforce_authorization", 401);
+  }
+  let displayName = String(username).trim();
+  try {
+    displayName = decodeURIComponent(String(encodedDisplayName || "")) || displayName;
+  } catch {
+    actorContextError("invalid_workforce_authorization", 401);
+  }
+  const configured = config.servicePrincipal || {};
+  return {
+    id: `user:${employeeId}`,
+    type: "user",
+    authentication: "core-workforce-session",
+    employeeId,
+    roles: configured.roles || [],
+    permissions: configured.permissions || [],
+    scopes: configured.scopes || [],
+    username: String(username).trim(),
+    displayName
+  };
+}
+
 export function authenticateProxy(req, config) {
   const token = headerValue(req, "x-backend-token");
   if (!token || !safeEqual(token, config.backendApiToken)) {
@@ -170,7 +209,8 @@ export function buildRequestContext(req, config, { principal } = {}) {
 
 export function authenticateRequestContext(req, config, options = {}) {
   authenticateProxy(req, config);
-  return buildRequestContext(req, config, options);
+  const principal = options.principal || internalWorkforcePrincipal(req, config) || undefined;
+  return buildRequestContext(req, config, { ...options, principal });
 }
 
 export function forwardedContextHeaders(context) {

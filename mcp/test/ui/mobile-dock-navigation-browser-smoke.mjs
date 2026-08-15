@@ -4,6 +4,7 @@ import { chromium } from "playwright";
 
 const appBase = process.env.F05_UI_APP_BASE || "http://127.0.0.1:3000";
 const resultsDir = process.env.F05_UI_RESULTS_DIR || "test-results/f05-ui-smoke";
+const proxyHeaders = { "x-forwarded-proto": "https" };
 await mkdir(resultsDir, { recursive: true });
 
 async function waitForHttp(url, timeoutMs = 120000) {
@@ -43,7 +44,7 @@ async function readDock(page) {
 
 await waitForHttp(`${appBase}/routes`);
 const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+const context = await browser.newContext({ viewport: { width: 390, height: 844 }, extraHTTPHeaders: proxyHeaders });
 const page = await context.newPage();
 const result = { MOBILE_DOCK_NAVIGATION: "FAIL" };
 
@@ -72,13 +73,9 @@ try {
   await routeDock.dock.getByRole("link", { name: "Khách", exact: true }).click();
   const customerRequest = await customerRequestPromise;
   assert.equal(customerRequest.resourceType(), "document", "Khách must open with document navigation");
-  await page.waitForURL((url) => url.pathname === "/customers");
-  const customerDock = await readDock(page);
-  assert.equal(
-    await customerDock.dock.getByRole("link", { name: "Khách", exact: true }).getAttribute("aria-current"),
-    "page",
-    "/customers must mark Khách active"
-  );
+  await page.waitForURL((url) => url.pathname === "/login");
+  await page.getByRole("heading", { name: "Đăng nhập nhân viên", exact: true }).waitFor({ state: "visible" });
+  assert.equal(new URL(page.url()).searchParams.get("returnTo"), null, "default customer entry must use the safe /customers return target");
 
   await page.goto(`${appBase}/routes`, { waitUntil: "networkidle" });
   const dock = (await readDock(page)).dock;
@@ -110,7 +107,9 @@ try {
 
   await page.screenshot({ path: `${resultsDir}/mobile-dock-navigation-final.png`, fullPage: true });
   result.dockLabels = routeDock.values.map((item) => item.label);
-  result.customerDestination = "/customers";
+  result.customerDestination = "/login";
+  result.customerAuthGate = "PASS";
+  result.proxyHttpsBoundary = "PASS";
   result.entryRedirectStatus = visitResponse.status();
   result.noActiveDestination = "/routes";
   result.visitEscapeDestination = "/orders";

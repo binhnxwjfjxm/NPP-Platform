@@ -1,5 +1,16 @@
 CREATE SCHEMA IF NOT EXISTS shared;
 
+CREATE TABLE IF NOT EXISTS shared.employees (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  installation_id text NOT NULL,
+  code text NOT NULL,
+  full_name text NOT NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT shared_employees_installation_id_id_unique UNIQUE (installation_id, id)
+);
+
 CREATE TABLE IF NOT EXISTS shared.customers (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   installation_id text NOT NULL,

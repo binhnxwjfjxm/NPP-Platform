@@ -6,7 +6,7 @@ import {
   submitCoreCustomerOnboarding
 } from "./core-customer-onboarding-client.js";
 
-const context = { requestId: "request_core_onboarding_12345678" };
+const context = { requestId: "request_core_onboarding_12345678", principal: { employeeId: "11111111-1111-4111-8111-111111111111" } };
 const config = {
   coreOnboarding: {
     configured: true,
@@ -29,7 +29,7 @@ function coreResponse(overrides = {}) {
   };
 }
 
-test("MCP Core onboarding client exposes submit/read only with server credentials", async () => {
+test("MCP Core onboarding client exposes submit/read only with server credentials and trusted employee context", async () => {
   const calls = [];
   const fetchImpl = async (url, init) => {
     calls.push({ url: String(url), init });
@@ -38,12 +38,13 @@ test("MCP Core onboarding client exposes submit/read only with server credential
       headers: { "Content-Type": "application/json" }
     });
   };
+  const canonicalKey = "mcp.customer-onboarding.submit-11111111-1111-4111-8111-111111111111";
 
   await submitCoreCustomerOnboarding(
     { sourceSystem: "MCP", sourceDemandReference: "order-1" },
     context,
     config,
-    { fetchImpl, idempotencyKey: "mcp-customer-onboarding-order-1" }
+    { fetchImpl, idempotencyKey: canonicalKey }
   );
   await readCoreCustomerOnboarding("onboarding-1", context, config, { fetchImpl });
 
@@ -51,7 +52,8 @@ test("MCP Core onboarding client exposes submit/read only with server credential
   assert.equal(calls[0].url, "https://core.example.com/api/customer-onboarding-requests");
   assert.equal(calls[0].init.method, "POST");
   assert.equal(calls[0].init.headers.Authorization, "Bearer core-onboarding-token-0123456789");
-  assert.equal(calls[0].init.headers["Idempotency-Key"], "mcp-customer-onboarding-order-1");
+  assert.equal(calls[0].init.headers["Idempotency-Key"], canonicalKey);
+  assert.equal(calls[0].init.headers["X-NPP-MCP-Employee-Id"], context.principal.employeeId);
   assert.equal(calls[1].url, "https://core.example.com/api/customer-onboarding-requests/onboarding-1");
   assert.equal(calls[1].init.method, "GET");
   assert.equal(calls.some((call) => /review|approve|link-existing|reject/.test(call.url)), false);

@@ -38,7 +38,8 @@ const EXPECTED_MIGRATIONS = [
   "mcp_006_customer_onboarding_sync",
   "mcp_007_core_sales_order_sync",
   "mcp_008_legacy_report_settings_seed",
-  "mcp_009_customer_media_link"
+  "mcp_009_customer_media_link",
+  "mcp_010_customer_verification"
 ];
 
 test("MCP migrations use a unique registry namespace and apply once in one locked transaction", async () => {
@@ -61,6 +62,7 @@ test("MCP migrations use a unique registry namespace and apply once in one locke
   assert.equal(adapter.calls.some((call) => call.text.includes("customer_onboarding_request_id")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("core_sales_order_id")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("mcp_orders_route_customer_core_linkage")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("customer_verification_operation_id")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("Exact source counts: 7 groups, 53 items")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("ON DELETE CASCADE")), true);
 
@@ -262,6 +264,21 @@ test("MCP customer media linkage migration is canonical and reuses R2 objects", 
   assert.match(sql, /sync_route_customer_media_to_shared/);
   assert.match(sql, /source_app = 'MCP'/);
   assert.doesNotMatch(sql, /CREATE\s+TABLE\s+shared\.customer_media/i);
+});
+
+test("MCP customer verification migration is canonical and persists standalone employee-scoped operation state", () => {
+  const sql = MCP_MIGRATIONS[9].sql;
+  const canonicalSql = readFileSync(
+    new URL("../../../../../database/migrations/mcp/010_mcp_customer_verification.sql", import.meta.url),
+    "utf8"
+  );
+  assert.equal(sql, canonicalSql);
+  assert.match(sql, /responsible_employee_id uuid NULL/);
+  assert.match(sql, /customer_verification_operation_id uuid NULL/);
+  assert.match(sql, /customer_verification_idempotency_key text NULL/);
+  assert.match(sql, /mcp_route_customers_verification_shape_check/);
+  assert.match(sql, /REFERENCES shared\.employees/);
+  assert.doesNotMatch(sql, /CREATE\s+TABLE\s+shared\.employees/i);
 });
 
 test("migration failure rolls back and preserves the original error", async () => {

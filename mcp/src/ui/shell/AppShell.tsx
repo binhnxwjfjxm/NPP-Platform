@@ -17,7 +17,7 @@ function NavLinks({ activeHref, items }: { activeHref: string; items: NavItem[] 
       {items.map((item) => {
         const isActive = item.href === activeHref;
         return (
-          <Link className={isActive ? "sidebar-link active" : "sidebar-link"} href={item.href} key={item.href} prefetch>
+          <Link className={isActive ? "sidebar-link active" : "sidebar-link"} href={item.href} key={item.href} prefetch={false}>
             <span className="nav-icon" aria-hidden="true"><NavIcon name={item.icon} width="20" height="20" /></span>
             <span className="nav-label">{item.label}</span>
           </Link>
@@ -41,7 +41,7 @@ export function AppShell({ children, activeHref = "/" }: AppShellProps) {
             </div>
           </div>
           <NavLinks activeHref={activeHref} items={SIDEBAR_NAV_ITEMS} />
-          <Link className={activeHref === "/settings" ? "sidebar-link active utility-link" : "sidebar-link utility-link"} href="/settings" prefetch>
+          <Link className={activeHref === "/settings" ? "sidebar-link active utility-link" : "sidebar-link utility-link"} href="/settings" prefetch={false}>
             <span className="nav-icon" aria-hidden="true"><NavIcon name={SETTINGS_NAV_ITEM.icon} width="20" height="20" /></span><span>Cài đặt ứng dụng</span>
           </Link>
           <div className="sidebar-footer">MCP-Plan · Quản lý phân phối</div>
