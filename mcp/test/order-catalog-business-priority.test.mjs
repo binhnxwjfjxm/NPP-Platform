@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const sheet = await readFile(new URL("../src/features/orders/OrderCreateSheet.tsx", import.meta.url), "utf8");
+const sheet = await readFile(new URL("../src/features/orders/CoreOrderCreateSheet.tsx", import.meta.url), "utf8");
 const priority = await readFile(new URL("../src/features/orders/order-catalog-priority.ts", import.meta.url), "utf8");
 
 test("order category filter follows distributor business priority instead of alphabetic order", () => {

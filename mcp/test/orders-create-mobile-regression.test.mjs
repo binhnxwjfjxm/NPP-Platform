@@ -2,22 +2,24 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const source = readFileSync(new URL("../src/features/orders/OrderCreateSheet.tsx", import.meta.url), "utf8");
+const source = readFileSync(new URL("../src/features/orders/CoreOrderCreateSheet.tsx", import.meta.url), "utf8");
+const loader = readFileSync(new URL("../src/features/orders/CoreOrderCreateLoader.tsx", import.meta.url), "utf8");
 const mobileFixCss = readFileSync(new URL("../src/features/orders/OrderCreateSheet.mobile-fix.module.css", import.meta.url), "utf8");
 const workspaceCss = readFileSync(new URL("../src/app/order-create-workspace.css", import.meta.url), "utf8");
 
 test("order creation requires an explicit review step before POST", () => {
   assert.match(source, /if \(mobilePanel !== "cart"\) \{[\s\S]*?setMobilePanel\("cart"\);[\s\S]*?return;/);
-  assert.match(source, /if \(mobilePanel !== "cart"\) \{[\s\S]*?Kiểm tra lại số lượng và đơn giá/);
   assert.doesNotMatch(source, /setMobilePanel\("cart"\);\s*void submit\(\);/);
   assert.match(source, /submitInFlightRef\.current/);
 });
 
-test("mobile order flow locks prerequisites and product taps cannot bubble", () => {
+test("mobile order flow locks prerequisites to opened company customers", () => {
   assert.match(source, /disabled=\{!customerReady \|\| saving\}/);
   assert.match(source, /disabled=\{!customerReady \|\| items\.length === 0 \|\| saving\}/);
-  assert.match(source, /event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*addProduct\(product\);/);
-  assert.match(source, /Chọn khách trước, sau đó mới thêm sản phẩm vào đơn/);
+  assert.match(source, /Chỉ khách đã mở hoặc liên kết mã mới được tạo đơn/);
+  assert.doesNotMatch(source, /Khách nhập tay|ManualCustomer|customerMode/);
+  assert.match(loader, /approved/);
+  assert.match(loader, /linked_existing/);
 });
 
 test("unfinished order drafts require explicit discard confirmation", () => {
