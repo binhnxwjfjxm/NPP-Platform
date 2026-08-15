@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { CustomerOnboardingQueueItem } from "@/features/accounts/customer-onboarding.types";
 import { BottomSheet } from "@/ui/overlay/BottomSheet";
 import { CoreOrderCreateSheet } from "./CoreOrderCreateSheet";
@@ -35,6 +36,7 @@ export function CoreOrderCreateLoader({
   onClose: () => void;
   onCreated: (orderCode: string) => void;
 }) {
+  const router = useRouter();
   const [linkedCustomers, setLinkedCustomers] = useState<CustomerOnboardingQueueItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +95,10 @@ export function CoreOrderCreateLoader({
       open={open}
       linkedCustomers={linkedCustomers}
       onClose={onClose}
-      onCreated={onCreated}
+      onCreated={(orderCode) => {
+        onCreated(orderCode);
+        router.refresh();
+      }}
     />
   );
 }

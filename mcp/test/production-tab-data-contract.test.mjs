@@ -28,17 +28,23 @@ test("customer tab restores route outlets and adds employee-scoped company custo
   assert.match(settings, /\/api\/auth\/logout/);
 });
 
-test("orders tab restores legacy management UI while create uses the direct Core boundary", () => {
+test("orders tab restores management UI and merges canonical owned Core orders into the feed", () => {
   const routePage = read("src/app/orders/page.tsx");
   const page = read("src/features/orders/OrdersPage.tsx");
   const client = read("src/features/orders/OrdersClientPage.tsx");
   const loader = read("src/features/orders/CoreOrderCreateLoader.tsx");
   const sheet = read("src/features/orders/CoreOrderCreateSheet.tsx");
   const ordersLoader = read("src/lib/api/orders-data.ts");
+  const trustedLoader = read("src/lib/api/customer-onboarding-data.ts");
+  const directService = read("apps/backend/foundation/direct-sales-orders.js");
 
   assert.match(routePage, /OrdersPage/);
   assert.doesNotMatch(routePage, /McpCoreOrdersPage/);
   assert.match(page, /loadOrdersResult\(\)/);
+  assert.match(page, /loadOwnedCoreSalesOrders\(\)/);
+  assert.match(page, /loadCustomerOnboardingQueue\(\)/);
+  assert.match(page, /currentVersion\(order\)/);
+  assert.match(page, /coreCodes/);
   assert.match(client, /label: "Đơn hàng"/);
   assert.match(client, /label: "Cần xử lý"/);
   assert.match(client, /label: "Doanh số đặt hàng"/);
@@ -46,9 +52,14 @@ test("orders tab restores legacy management UI while create uses the direct Core
   assert.match(loader, /\/api\/backend\/customer-verifications/);
   assert.match(loader, /approved/);
   assert.match(loader, /linked_existing/);
+  assert.match(loader, /router\.refresh\(\)/);
   assert.match(sheet, /\/api\/backend\/core-sales\/orders/);
   assert.match(sheet, /createIdempotencyKey\("mcp\.sales-order\.create"\)/);
   assert.doesNotMatch(sheet, /\/api\/backend\/orders/);
+  assert.match(trustedLoader, /loadOwnedCoreSalesOrders/);
+  assert.match(trustedLoader, /\/api\/core-sales\/orders/);
+  assert.match(directService, /readCoreSalesOrder/);
+  assert.match(directService, /ORDER_DETAIL_CONCURRENCY/);
   assert.match(ordersLoader, /backendReadRows<Row>\("orders"/);
   assert.match(ordersLoader, /backendReadRows<Row>\("order_items"/);
 });
