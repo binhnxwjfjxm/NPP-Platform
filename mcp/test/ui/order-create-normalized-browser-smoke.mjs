@@ -25,7 +25,7 @@ async function waitForHttp(url, timeoutMs = 120_000) {
   throw lastError || new Error(`timeout_waiting_for_${url}`);
 }
 
-await waitForHttp(`${appBase}/orders`);
+await waitForHttp(`${appBase}/`);
 await waitForHttp(`${mockBase}/__direct-state`);
 await fetch(`${mockBase}/__direct-reset`, { method: "POST" });
 
