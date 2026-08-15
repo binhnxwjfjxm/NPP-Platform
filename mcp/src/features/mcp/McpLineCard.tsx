@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { McpDayLine } from "@/features/mcp-day/mcp-day.types";
 import { createIdempotencyKey, idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
@@ -99,8 +99,14 @@ export function McpLineCard({
   const [actionsOpen, setActionsOpen] = useState(false);
   const [orderBusy, setOrderBusy] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
+  const [hasOrder, setHasOrder] = useState(Boolean(line.hasOrder));
   const orderSubmission = useRef<{ target: boolean; key: string } | null>(null);
   const openLegacySheet = () => onOpen(line);
+  const displayLine: McpDayLine = { ...line, hasOrder };
+
+  useEffect(() => {
+    setHasOrder(Boolean(line.hasOrder));
+  }, [line.hasOrder]);
 
   function openProfile(focus: "detail" | "media") {
     requestMcpCustomerProfile({ line, focus, fallback: openLegacySheet });
@@ -108,7 +114,7 @@ export function McpLineCard({
 
   async function toggleHasOrder() {
     if (orderBusy) return;
-    const target = !line.hasOrder;
+    const target = !hasOrder;
     if (!orderSubmission.current || orderSubmission.current.target !== target) {
       orderSubmission.current = {
         target,
@@ -132,6 +138,7 @@ export function McpLineCard({
       );
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(mutationError(payload));
+      setHasOrder(target);
       orderSubmission.current = null;
       router.refresh();
     } catch (error) {
@@ -158,7 +165,7 @@ export function McpLineCard({
     <article className={`${styles.card} ${statusClass(line.status)} ${checkinEnabled ? "" : styles.withoutCheckin}`} data-mcp-session-card="true">
       <button className={styles.main} type="button" onClick={() => openProfile("detail")}>
         <span className={styles.index}>{line.sortOrder || "–"}</span>
-        <span className={styles.identity}><span className={styles.identityHead}><strong>{line.accountName}</strong><span className={styles.badge}>{statusLabel(line.status)}</span></span><small>{line.area} · {sourceLabel(line.source)}</small><span className={styles.summary}>{resultSummary(line)}</span></span>
+        <span className={styles.identity}><span className={styles.identityHead}><strong>{line.accountName}</strong><span className={styles.badge}>{statusLabel(line.status)}</span></span><small>{line.area} · {sourceLabel(line.source)}</small><span className={styles.summary}>{resultSummary(displayLine)}</span></span>
       </button>
       <div className={styles.primaryRow} data-session-primary-actions="4">
         {onToggleCheckin ? <button className={`${styles.checkin} ${line.checkedIn ? styles.checkinActive : ""}`} type="button" aria-pressed={line.checkedIn === true} aria-label={line.checkedIn ? `Bỏ check-in tại ${line.accountName}` : `Check-in vị trí hiện tại tại ${line.accountName}`} title={line.checkedIn ? `Đã check-in lúc ${checkinTime(line.checkinAt)}. Bấm lần nữa để bỏ check-in nếu thao tác nhầm` : "Chỉ lấy vị trí hiện tại khi bấm nút này"} disabled={checkinBusy} onClick={() => onToggleCheckin(line)}><ActionIcon name="checkin" /><span>{checkinBusy ? "Đang xử lý" : line.checkedIn ? "Đã check-in" : "Check-in"}</span></button> : null}
@@ -166,7 +173,7 @@ export function McpLineCard({
         <button className={styles.iconButton} type="button" onClick={() => openProfile("media")} aria-label={`Xem hoặc bổ sung ảnh cho ${line.accountName}`} title="Xem, chụp hoặc chọn ảnh điểm bán"><ActionIcon name="photo" /><span>Ảnh</span></button>
         <button className={`${styles.iconButton} ${styles.actionsTrigger} ${actionsOpen ? styles.actionsTriggerActive : ""}`} type="button" aria-expanded={actionsOpen} aria-controls={actionMenuId} onClick={() => setActionsOpen((open) => !open)}><ActionIcon name="menu" /><span>Thao tác</span></button>
       </div>
-      {actionsOpen ? <div className={styles.actionMenu} id={actionMenuId} data-customer-action-menu="open"><div className={styles.actions} aria-label={`Thao tác với ${line.accountName}`} data-customer-action-count="5" role="group">{actionItems(line).map((item) => <button className={styles.action} type="button" key={item.action} onClick={() => runAction(item.action)} disabled={item.action === "order" && orderBusy} aria-pressed={item.action === "order" ? line.hasOrder : undefined}><ActionIcon name={item.icon} /><span>{item.action === "order" && orderBusy ? "Đang xử lý" : item.label}</span></button>)}</div></div> : null}
+      {actionsOpen ? <div className={styles.actionMenu} id={actionMenuId} data-customer-action-menu="open"><div className={styles.actions} aria-label={`Thao tác với ${line.accountName}`} data-customer-action-count="5" role="group">{actionItems(displayLine).map((item) => <button className={styles.action} type="button" key={item.action} onClick={() => runAction(item.action)} disabled={item.action === "order" && orderBusy} aria-pressed={item.action === "order" ? hasOrder : undefined}><ActionIcon name={item.icon} /><span>{item.action === "order" && orderBusy ? "Đang xử lý" : item.label}</span></button>)}</div></div> : null}
       {orderError ? <small role="alert">{orderError}</small> : null}
     </article>
   );
