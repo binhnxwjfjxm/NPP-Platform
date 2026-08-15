@@ -140,7 +140,6 @@ try {
 
     const routes = [
       ["home", "/"],
-      ["customers", "/customers"],
       ["plans", "/plans"],
       ["sessions", "/mcp/sessions?dateFrom=2099-12-01&dateTo=2099-12-31"],
     ];
@@ -256,7 +255,8 @@ try {
 
   result.MCP_UI_LOT_4_SMOKE = "PASS";
   result.mobileViewports = mobileViewports.map(({ width, height }) => `${width}x${height}`);
-  result.sixScreenNoOverflow = "PASS";
+  result.screenNoOverflow = "PASS";
+  result.customerAuthCoverage = "delegated-to-customers-page-browser-smoke";
   result.groupSheetAccessibility = "PASS";
   result.groupFocusTrap = "PASS";
   result.groupMutationIdempotency = "PASS";

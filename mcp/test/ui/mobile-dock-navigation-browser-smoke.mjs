@@ -72,13 +72,9 @@ try {
   await routeDock.dock.getByRole("link", { name: "Khách", exact: true }).click();
   const customerRequest = await customerRequestPromise;
   assert.equal(customerRequest.resourceType(), "document", "Khách must open with document navigation");
-  await page.waitForURL((url) => url.pathname === "/customers");
-  const customerDock = await readDock(page);
-  assert.equal(
-    await customerDock.dock.getByRole("link", { name: "Khách", exact: true }).getAttribute("aria-current"),
-    "page",
-    "/customers must mark Khách active"
-  );
+  await page.waitForURL((url) => url.pathname === "/login");
+  await page.getByRole("heading", { name: "Đăng nhập nhân viên", exact: true }).waitFor({ state: "visible" });
+  assert.equal(new URL(page.url()).searchParams.get("returnTo"), null, "default customer entry must use the safe /customers return target");
 
   await page.goto(`${appBase}/routes`, { waitUntil: "networkidle" });
   const dock = (await readDock(page)).dock;
@@ -110,7 +106,8 @@ try {
 
   await page.screenshot({ path: `${resultsDir}/mobile-dock-navigation-final.png`, fullPage: true });
   result.dockLabels = routeDock.values.map((item) => item.label);
-  result.customerDestination = "/customers";
+  result.customerDestination = "/login";
+  result.customerAuthGate = "PASS";
   result.entryRedirectStatus = visitResponse.status();
   result.noActiveDestination = "/routes";
   result.visitEscapeDestination = "/orders";
