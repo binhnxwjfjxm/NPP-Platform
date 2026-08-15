@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createIdempotencyKey } from '@npp/contracts';
 import { AppShell } from '../../components/app-shell';
 import styles from './trip-planning-workspace.module.css';
 
@@ -87,9 +88,9 @@ function validateMaster(resource: 'routes' | 'vehicles', draft: MasterDraft): Fi
 
 function serverFieldErrors(code?: string): FieldErrors {
   if (code === 'INVALID_LOGISTICS_ROUTE') return { 'route.warehouseId': 'Chọn kho áp dụng hợp lệ cho tuyến.' };
-  if (code === 'INVALID_VEHICLE') return { 'vehicle.code': 'Kiểm tra mã xe theo hợp đồng API.', 'vehicle.licensePlate': 'Kiểm tra biển số theo hợp đồng API.', 'vehicle.vehicleType': 'Kiểm tra loại xe theo hợp đồng API.' };
+  if (code === 'INVALID_VEHICLE') return { 'vehicle.code': 'Mã xe không hợp lệ.', 'vehicle.licensePlate': 'Kiểm tra lại biển số xe.', 'vehicle.vehicleType': 'Loại xe không hợp lệ.' };
   if (code === 'INVALID_DRIVER_PROFILE') return { 'driver.employeeId': 'Bắt buộc chọn nhân sự hợp lệ cho tài xế.' };
-  if (code === 'DRIVER_EMPLOYEE_NOT_AVAILABLE') return { 'driver.employeeId': 'Nhân sự không còn hoạt động hoặc không thuộc installation hiện tại.', 'trip.primaryDriverId': 'Tài xế phải liên kết với nhân sự đang hoạt động.' };
+  if (code === 'DRIVER_EMPLOYEE_NOT_AVAILABLE') return { 'driver.employeeId': 'Nhân sự không còn hoạt động hoặc không thuộc đơn vị hiện tại.', 'trip.primaryDriverId': 'Tài xế phải liên kết với nhân sự đang hoạt động.' };
   if (code === 'DRIVER_EMPLOYEE_ALREADY_LINKED') return { 'driver.employeeId': 'Nhân sự này đã có hồ sơ tài xế đang hoạt động.' };
   if (code === 'DELIVERY_ROUTE_WAREHOUSE_MISMATCH' || code === 'DELIVERY_ROUTE_NOT_AVAILABLE') return { 'trip.deliveryRouteId': 'Tuyến không thuộc kho xuất phát đã chọn.' };
   if (code === 'INVALID_DELIVERY_TRIP') return { 'trip.warehouseId': 'Chọn kho hợp lệ trong phạm vi được cấp quyền.', 'trip.plannedStartAt': 'Kiểm tra thời gian dự kiến.' };
@@ -125,7 +126,7 @@ export default function TripPlanningWorkspace() {
   const idempotencyKey = useCallback((scope: string) => {
     const existing = operationKeys.current.get(scope);
     if (existing) return existing;
-    const next = `web-logistics-${crypto.randomUUID()}`.replace(/[^A-Za-z0-9._-]/g, '_');
+    const next = createIdempotencyKey('web-logistics');
     operationKeys.current.set(scope, next);
     return next;
   }, []);
@@ -437,7 +438,7 @@ export default function TripPlanningWorkspace() {
             <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>{assignmentTrip.number}</p><h3>Phiếu sẵn sàng cùng kho</h3></div><button type="button" className={styles.primaryButton} onClick={assignSelectedOrders} disabled={busy !== null || selectedDeliveryOrderIds.length === 0} data-testid="assign-selected-orders">Gán {selectedDeliveryOrderIds.length} đơn</button></div>
             {selectedEligible.map((order) => <label className={styles.readyItem} key={order.id}>
               <span><strong>{businessNumber(order.number, 'Thiếu mã phiếu giao')}</strong><small>{order.customerCode} · {order.customerName}</small><small>{formatQuantity(order.totalBaseQuantity)} · {order.lineCount} dòng</small></span>
-              <input type="checkbox" checked={selectedDeliveryOrderIds.includes(order.id)} onChange={() => toggleDeliveryOrder(order)} disabled={busy !== null || !order.number} aria-label={order.number ? `Chọn ${order.number}` : 'Phiếu giao thiếu mã canonical'} />
+              <input type="checkbox" checked={selectedDeliveryOrderIds.includes(order.id)} onChange={() => toggleDeliveryOrder(order)} disabled={busy !== null || !order.number} aria-label={order.number ? `Chọn ${order.number}` : 'Phiếu giao chưa có mã'} />
             </label>)}
             {!selectedEligible.length ? <p className={styles.empty}>Không còn phiếu giao đủ điều kiện trong kho của chuyến này.</p> : null}
           </div> : <p className={styles.empty}>Chọn tuyến trước, sau đó chọn chuyến để tích nhiều phiếu giao.</p>}
