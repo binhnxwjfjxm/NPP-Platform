@@ -181,8 +181,11 @@ test('backup route requires a dedicated BACKUP_R2_BUCKET and does not silently r
   assert.match(source, /samePublicBucket/);
 });
 
-test('delete foundation migration creates authorization gate only and contains no purge execution SQL', async () => {
-  const source = await readFile(new URL('../../../database/migrations/shared/082_backup_delete_foundation.sql', import.meta.url), 'utf8');
+test('delete foundation migration is registered as 083, creates authorization gate only, and contains no purge execution SQL', async () => {
+  const source = await readFile(new URL('../../../database/migrations/shared/083_backup_delete_foundation.sql', import.meta.url), 'utf8');
+  const migrationRegistrySource = await readFile(new URL('../src/migrations/index.js', import.meta.url), 'utf8');
+  assert.match(migrationRegistrySource, /083_backup_delete_foundation/);
+  assert.doesNotMatch(migrationRegistrySource, /082_backup_delete_foundation/);
   assert.match(source, /CREATE TABLE IF NOT EXISTS shared\.data_deletion_intents/);
   assert.match(source, /core\.data-deletion\.authorize/);
   assert.doesNotMatch(source, /TRUNCATE\s+/i);
