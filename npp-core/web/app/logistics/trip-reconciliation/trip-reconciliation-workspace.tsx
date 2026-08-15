@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import styles from './trip-reconciliation-workspace.module.css';
+import TripReconciliationPrintDock from './TripReconciliationPrintDock';
 
 type TripListItem = Readonly<{
   id: string;
@@ -304,7 +305,7 @@ export default function TripReconciliationWorkspace() {
           <section className={styles.panel}>
             <div className={styles.heading}>
               <div><p>Đối chiếu số lượng</p><h2>{detail?.number || 'Chưa chọn chuyến'}</h2></div>
-              {detail ? <span className={detail.canClose ? styles.ready : styles.pending}>{detail.canClose ? 'Đủ điều kiện đóng' : 'Còn việc cần xử lý'}</span> : null}
+              {detail ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><TripReconciliationPrintDock reconciliation={detail} /><span className={detail.canClose ? styles.ready : styles.pending}>{detail.canClose ? 'Đủ điều kiện đóng' : 'Còn việc cần xử lý'}</span></span> : null}
             </div>
 
             {!detail ? <p className={styles.empty}>{busy ? 'Đang tải…' : 'Chọn chuyến bên trái để xem chi tiết.'}</p> : (

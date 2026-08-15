@@ -5,7 +5,6 @@ import { loadStocktakePermissionKeys } from '../../../lib/stocktake-context';
 import { listStocktakes, listStocktakeWarehouses, normalizeStocktakeGatewayError } from '../../../lib/stocktake-gateway';
 import type { Stocktake } from '../../../lib/stocktake-types';
 import StocktakeWorkspace from './stocktake-workspace';
-import StocktakePrintDock from './StocktakePrintDock';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +38,6 @@ export default async function StocktakesPage() {
         initialError={initialError}
         initialLookupError={lookupError}
       />
-      <StocktakePrintDock initialStocktakes={stocktakes} />
     </>
   );
 }
