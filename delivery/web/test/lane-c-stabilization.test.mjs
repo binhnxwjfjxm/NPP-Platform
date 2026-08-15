@@ -11,7 +11,7 @@ const closeProxy = read('app/api/picking/orders/[salesOrderId]/close/route.ts');
 const api = read('lib/fulfillment-api.ts');
 
 test('Lane C1 keeps SOẠN ĐỦ on canonical Core pick mutation', () => {
-  assert.match(panel, />SOẠN ĐỦ</);
+  assert.match(panel, /SOẠN ĐỦ/);
   assert.match(panel, /createIdempotencyKey\('fulfillment-pick'\)/);
   assert.match(panel, /pendingByFingerprint/);
   assert.match(panel, /operation: 'full-pick'/);

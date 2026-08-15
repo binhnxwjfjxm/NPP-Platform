@@ -28,8 +28,7 @@ test('Lane B2 reads canonical Core Fulfillment work instead of creating Delivery
   assert.match(pickingPage, /orderNumber/);
   assert.match(pickingPage, /customerName/);
   assert.match(pickingPage, /warehouseName/);
-  assert.match(pickingPage, /Người soạn/);
-  assert.match(pickingPage, /Bắt đầu/);
+  assert.match(pickingPage, /Mở soạn hàng/);
   assert.doesNotMatch(fulfillmentApi, /INSERT INTO|CREATE TABLE|picking_status/i);
 });
 

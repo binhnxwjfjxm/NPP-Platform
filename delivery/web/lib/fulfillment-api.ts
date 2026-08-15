@@ -179,6 +179,20 @@ export function recordFulfillmentShortage(
   );
 }
 
+export function reversePickFulfillmentAllocation(
+  user: DeliveryUser,
+  allocationId: string,
+  payload: Readonly<{ quantity: string; reason: string }>,
+  idempotencyKey: string,
+) {
+  if (!UUID_PATTERN.test(allocationId)) throw new Error('INVALID_FULFILLMENT_ALLOCATION_ID');
+  return callCore(user,
+    `/api/inventory/fulfillment-allocations/${encodeURIComponent(allocationId)}/reverse-pick`,
+    { method: 'POST', body: JSON.stringify(payload) },
+    idempotencyKey,
+  );
+}
+
 export function closeFulfillmentPicking(
   user: DeliveryUser,
   salesOrderId: string,
