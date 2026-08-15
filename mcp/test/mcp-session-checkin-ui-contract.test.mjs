@@ -25,7 +25,7 @@ test("GPS is captured only by the first manual click and never automatically reu
 
 test("Có đơn is a direct reversible fact toggle; only real reporting actions open compact sheets", async () => {
   const view = await source("src/features/mcp/McpSessionCompactViewFinal2.tsx"); const card = await source("src/features/mcp/McpLineCard.tsx"); const sheet = await source("src/ui/overlay/BottomSheet.tsx"); const css = await source("src/features/mcp/McpSessionPopupCompact.module.css");
-  assert.match(card, /target = !line\.hasOrder/); assert.match(card, /line\.hasOrder \? "Đã có đơn" : "Có đơn"/); assert.match(card, /\/api\/backend\/mcp-day\/session-customer\/result/); assert.match(card, /session-customer\.result\.record/);
+  assert.match(card, /\[hasOrder, setHasOrder\] = useState\(Boolean\(line\.hasOrder\)\)/); assert.match(card, /target = !hasOrder/); assert.match(card, /setHasOrder\(target\)[\s\S]*?orderSubmission\.current = null/); assert.match(card, /actionItems\(displayLine\)/); assert.match(card, /resultSummary\(displayLine\)/); assert.match(card, /line\.hasOrder \? "Đã có đơn" : "Có đơn"/); assert.match(card, /\/api\/backend\/mcp-day\/session-customer\/result/); assert.match(card, /session-customer\.result\.record/);
   assert.doesNotMatch(view, /Ghi nhận nhu cầu mua|Lưu nhu cầu mua|ProductPicker|OrderFields/); assert.doesNotMatch(view, /onAction\(line, "order"\)/); assert.match(view, /variant="compact"/); assert.match(sheet, /variant\?: "default" \| "compact"/); assert.match(css, /\.footer :global\(\.button\)[\s\S]*?min-height:\s*34px/);
 });
 
