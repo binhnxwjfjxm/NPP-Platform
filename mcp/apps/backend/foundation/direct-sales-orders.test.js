@@ -96,7 +96,8 @@ test("direct MCP order fails closed when linked customer is outside trusted empl
   );
 });
 
-test("direct MCP order list only exposes canonical MCP orders for owned source outlets", async () => {
+test("direct MCP order list filters owned outlets before loading canonical Core detail", async () => {
+  const readIds = [];
   const orders = await listDirectMcpSalesOrders(context, config, {
     persistence: persistence([ownedRow()]),
     coreClient: {
@@ -104,8 +105,27 @@ test("direct MCP order list only exposes canonical MCP orders for owned source o
         { id: "owned", sourceType: "MCP", sourceOutletId: routeCustomerId },
         { id: "other-mcp", sourceType: "MCP", sourceOutletId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
         { id: "manual", sourceType: "MANUAL", sourceOutletId: routeCustomerId }
-      ]
+      ],
+      read: async (id) => {
+        readIds.push(id);
+        return {
+          id,
+          number: "SO-MCP-0001",
+          status: "draft",
+          sourceType: "MCP",
+          sourceOutletId: routeCustomerId,
+          currentVersionNumber: "1",
+          versions: [{
+            versionNumber: "1",
+            total: "385000",
+            lines: [{ quantity: "3" }, { quantity: "1" }]
+          }]
+        };
+      }
     }
   });
+  assert.deepEqual(readIds, ["owned"]);
   assert.deepEqual(orders.map((order) => order.id), ["owned"]);
+  assert.equal(orders[0].versions[0].total, "385000");
+  assert.equal(orders[0].versions[0].lines.length, 2);
 });

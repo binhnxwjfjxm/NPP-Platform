@@ -465,6 +465,7 @@ export function OrdersClientPage({
           setCreateOpen(false);
           setNotice(`Đã tạo ${orderCode}.`);
           setNoticeDetail("Danh sách đang được làm mới từ dữ liệu live.");
+          router.refresh();
         }}
       />
     </AppShell>

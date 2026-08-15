@@ -6,35 +6,63 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
 
-test("customer tab reads canonical Core customers through the trusted employee-scoped boundary", () => {
+test("customer tab restores route outlets and adds employee-scoped company customers", () => {
   const page = read("src/features/accounts/AccountsPage.tsx");
+  const client = read("src/features/accounts/OutletsClientPage.tsx");
   const loader = read("src/lib/api/customer-onboarding-data.ts");
   const service = read("apps/backend/foundation/customer-verification.js");
+  const settings = read("src/features/settings/SettingsPage.tsx");
 
+  assert.match(page, /loadRouteCustomersData\(\)/);
+  assert.match(page, /accountsFromRouteCustomers/);
   assert.match(page, /loadOwnedCoreCustomers\(\)/);
-  assert.match(page, /\/customers\/onboarding/);
-  assert.doesNotMatch(page, /loadRouteCustomersData\(\)/);
-  assert.doesNotMatch(page, /accountsFromRouteCustomers/);
-
+  assert.match(client, />Điểm bán/);
+  assert.match(client, />Khách công ty/);
+  assert.match(client, /\/customers\/onboarding\/\$\{encodeURIComponent\(item\.routeCustomerId\)\}/);
   assert.match(loader, /\/api\/core-customers/);
   assert.match(service, /FROM mcp\.accounts/);
   assert.match(service, /sales_owner = \$2/);
   assert.match(service, /active = true/);
   assert.match(service, /requireEmployee\(context\)/);
-  assert.doesNotMatch(page, /tier|lastVisitDate|lastOrderDate|monthlyRevenue/);
+  assert.doesNotMatch(page, /\/api\/auth\/logout/);
+  assert.match(settings, /\/api\/auth\/logout/);
 });
 
-test("orders tab reads orders and customers through the backend provider", () => {
+test("orders tab restores management UI and merges canonical owned Core orders into the feed", () => {
+  const routePage = read("src/app/orders/page.tsx");
   const page = read("src/features/orders/OrdersPage.tsx");
-  const loader = read("src/lib/api/orders-data.ts");
+  const client = read("src/features/orders/OrdersClientPage.tsx");
+  const loader = read("src/features/orders/CoreOrderCreateLoader.tsx");
+  const sheet = read("src/features/orders/CoreOrderCreateSheet.tsx");
+  const ordersLoader = read("src/lib/api/orders-data.ts");
+  const trustedLoader = read("src/lib/api/customer-onboarding-data.ts");
+  const directService = read("apps/backend/foundation/direct-sales-orders.js");
 
+  assert.match(routePage, /OrdersPage/);
+  assert.doesNotMatch(routePage, /McpCoreOrdersPage/);
   assert.match(page, /loadOrdersResult\(\)/);
-  assert.match(page, /getRouteCustomersData: loadRouteCustomersData/);
-  assert.match(page, /api\.getRouteCustomersData\(\)/);
-  assert.doesNotMatch(page, /createApiClient/);
-  assert.match(loader, /backendReadRows<Row>\("orders"/);
-  assert.match(loader, /backendReadRows<Row>\("order_items"/);
-  assert.doesNotMatch(loader, /\/api\/orders/);
+  assert.match(page, /loadOwnedCoreSalesOrders\(\)/);
+  assert.match(page, /loadCustomerOnboardingQueue\(\)/);
+  assert.match(page, /currentVersion\(order\)/);
+  assert.match(page, /coreCodes/);
+  assert.match(client, /label: "Đơn hàng"/);
+  assert.match(client, /label: "Cần xử lý"/);
+  assert.match(client, /label: "Doanh số đặt hàng"/);
+  assert.match(client, /label: "Tổng quan"/);
+  assert.match(client, /onCreated=\{\(orderCode\) => \{[\s\S]*router\.refresh\(\)/);
+  assert.match(loader, /\/api\/backend\/customer-verifications/);
+  assert.match(loader, /approved/);
+  assert.match(loader, /linked_existing/);
+  assert.doesNotMatch(loader, /router\.refresh\(\)/);
+  assert.match(sheet, /\/api\/backend\/core-sales\/orders/);
+  assert.match(sheet, /createIdempotencyKey\("mcp\.sales-order\.create"\)/);
+  assert.doesNotMatch(sheet, /\/api\/backend\/orders/);
+  assert.match(trustedLoader, /loadOwnedCoreSalesOrders/);
+  assert.match(trustedLoader, /\/api\/core-sales\/orders/);
+  assert.match(directService, /readCoreSalesOrder/);
+  assert.match(directService, /ORDER_DETAIL_CONCURRENCY/);
+  assert.match(ordersLoader, /backendReadRows<Row>\("orders"/);
+  assert.match(ordersLoader, /backendReadRows<Row>\("order_items"/);
 });
 
 test("action plan reads followups through the backend provider", () => {

@@ -39,25 +39,34 @@ await context.addCookies([{
 }]);
 
 await page.goto(`${appBase}/orders`, { waitUntil: "networkidle" });
-await page.getByRole("heading", { name: "Đơn hàng MCP", exact: true }).waitFor({ state: "visible" });
-await page.getByText(/Có mua\/Có đơn trong phiên chỉ là dữ liệu báo cáo/).waitFor({ state: "visible" });
-assert.equal(await page.getByText(/Đơn giá tạm/).count(), 0, "direct flow must not expose browser price authority");
-assert.equal(await page.getByText(/Khách nhập tay|Khách mới|Phiên \/ tuyến/).count(), 0, "direct flow must not depend on manual customer or session order-intent");
+await page.getByRole("heading", { name: "Trung tâm đơn hàng", exact: true }).waitFor({ state: "visible" });
+for (const tab of ["Đơn hàng", "Cần xử lý", "Doanh số đặt hàng", "Tổng quan"]) {
+  await page.getByRole("tab", { name: new RegExp(`^${tab}`) }).waitFor({ state: "visible" });
+}
+await page.getByRole("button", { name: "+ Tạo đơn", exact: true }).click();
+await page.getByRole("dialog", { name: "Tạo đơn hàng", exact: true }).waitFor({ state: "visible" });
+await page.getByText("1. Chọn khách công ty", { exact: true }).waitFor({ state: "visible" });
+assert.equal(await page.getByText(/Đơn giá tạm/).count(), 0, "Core flow must not expose browser price authority");
+assert.equal(await page.getByText(/Khách nhập tay|Khách mới|Phiên \/ tuyến/).count(), 0, "Core flow must not depend on manual customer or session order-intent");
+assert.equal(await page.getByText(/Mở \/ liên kết mã/).count(), 0, "order form must not open/link customers as a side effect");
 
-const customerSelect = page.locator("select").first();
-await customerSelect.selectOption({ label: "UI Existing Customer · KH-UI-001 · Tuyến phiên đang chạy" });
-await page.getByRole("button", { name: /Siro Hưng Phát/ }).first().click();
-await page.getByRole("button", { name: /Trà Lài Hưng Phát/ }).click();
-await page.getByText(/2 SKU/).waitFor({ state: "visible" });
+await page.getByRole("radio", { name: /UI Existing Customer/ }).click();
+await page.getByRole("button", { name: /Tiếp tục với UI Existing Customer/ }).click();
+await page.getByRole("button", { name: /Thêm Siro Hưng Phát, Dâu/ }).click();
+await page.getByRole("button", { name: /Thêm Trà Lài Hưng Phát/ }).click();
 
-const quantityInput = page.getByLabel("Số lượng Siro Hưng Phát").first();
-await quantityInput.fill("3");
-await page.locator("textarea").fill("Giao giờ hành chính");
-await page.getByRole("button", { name: "Tạo Sales Order trong Core", exact: true }).click();
+await page.getByRole("button", { name: "Xem lại đơn", exact: true }).click();
+const siroCartItem = page.locator("article").filter({ hasText: "Siro Hưng Phát" }).filter({ hasText: "Số lượng" });
+await siroCartItem.locator('input[type="number"]').waitFor({ state: "visible" });
+await siroCartItem.locator('input[type="number"]').fill("3");
+await page.getByRole("textbox", { name: "Ghi chú đơn", exact: true }).fill("Giao giờ hành chính");
+await page.getByRole("button", { name: "Tạo đơn", exact: true }).click();
 
-await page.getByText(/Đã tạo đơn Core SO-MCP-0001/).waitFor({ state: "visible" });
-await page.getByText("SO-MCP-0001", { exact: true }).waitFor({ state: "visible" });
-await page.getByText("MCP", { exact: true }).last().waitFor({ state: "visible" });
+await page.getByText(/Đã tạo SO-MCP-0001\./).waitFor({ state: "visible" });
+await page.getByText(/^SO-MCP-0001 · /).waitFor({ state: "visible" });
+await page.reload({ waitUntil: "networkidle" });
+await page.getByRole("heading", { name: "Trung tâm đơn hàng", exact: true }).waitFor({ state: "visible" });
+await page.getByText(/^SO-MCP-0001 · /).waitFor({ state: "visible" });
 
 const stateResponse = await fetch(`${mockBase}/__direct-state`, { cache: "no-store" });
 assert.equal(stateResponse.status, 200);
@@ -76,12 +85,14 @@ for (const forbidden of ["unitPrice", "sales", "employeeId", "routeCustomerId", 
 assert.equal(state.orders.length, 1, "retry must still create exactly one canonical Core order");
 assert.equal(state.orders[0].sourceType, "MCP");
 
-await page.screenshot({ path: `${resultsDir}/issue-558-direct-order.png`, fullPage: true });
+await page.screenshot({ path: `${resultsDir}/restored-order-center-core-create.png`, fullPage: true });
 await context.close();
 await browser.close();
 
 console.log(JSON.stringify({
   status: "PASS",
+  restoredOrderCenter: true,
+  canonicalOrderSurvivesReload: true,
   idempotencyAttempts: state.attempts.length,
   canonicalOrders: state.orders.length
 }, null, 2));

@@ -2,13 +2,15 @@ import { isValidIdempotencyKey, normalizeIdempotencyKey } from "../../../../pack
 import { providerPersistence } from "./provider-runtime.js";
 import {
   createCoreSalesOrder,
-  listCoreSalesOrders
+  listCoreSalesOrders,
+  readCoreSalesOrder
 } from "./core-sales-client.js";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const POSITIVE_DECIMAL_PATTERN = /^(?:0*[1-9]\d{0,13})(?:\.\d{1,6})?$|^0+\.0*[1-9]\d{0,5}$/;
 const ALLOWED_BODY_KEYS = new Set(["customerId", "customerAddressId", "lines", "note"]);
 const ALLOWED_LINE_KEYS = new Set(["variantId", "quantity", "note"]);
+const ORDER_DETAIL_CONCURRENCY = 6;
 
 const BUSINESS_MESSAGES = Object.freeze({
   trusted_employee_required: "Cần đăng nhập bằng tài khoản nhân viên MCP.",
@@ -141,10 +143,26 @@ async function resolveOwnedLink(persistence, context, customerId, customerAddres
   return rows[0];
 }
 
+async function mapWithConcurrency(items, limit, worker) {
+  if (items.length === 0) return [];
+  const results = new Array(items.length);
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
+
 function coreClient(options) {
   return options.coreClient || {
     create: createCoreSalesOrder,
-    list: listCoreSalesOrders
+    list: listCoreSalesOrders,
+    read: readCoreSalesOrder
   };
 }
 
@@ -186,13 +204,21 @@ export async function listDirectMcpSalesOrders(context, config, options = {}) {
     ))
   );
   if (ownedOutletIds.size === 0) return Object.freeze([]);
-  const orders = await coreClient(options).list(context, config, {
+
+  const client = coreClient(options);
+  const orders = await client.list(context, config, {
     fetchImpl: options.fetchImpl || fetch,
     limit: 1000
   });
-  return Object.freeze(orders.filter((order) => (
+  const ownedOrders = orders.filter((order) => (
     order?.sourceType === "MCP"
     && order?.sourceOutletId
     && ownedOutletIds.has(String(order.sourceOutletId))
-  )));
+  ));
+  const detailed = await mapWithConcurrency(
+    ownedOrders,
+    ORDER_DETAIL_CONCURRENCY,
+    (order) => client.read(order.id, context, config, { fetchImpl: options.fetchImpl || fetch })
+  );
+  return Object.freeze(detailed);
 }
