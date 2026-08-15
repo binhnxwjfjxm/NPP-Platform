@@ -114,6 +114,6 @@ test('central data exchange is persistent navigation and preserves direct tab de
 test('Phase 10.4 page is reachable from Vietnamese import/export history', () => {
   const history = read('app/operations/import-export-history/page.tsx');
   assert.match(history, /href="\/operations\/data-exchange"/);
-  assert.match(history, /Nhập \/ xuất dữ liệu & báo giá/);
-  assert.match(history, /Lịch sử nhập \/ xuất dữ liệu/);
+  assert.match(history, /Nhập\/xuất dữ liệu và báo giá/);
+  assert.match(history, /Lịch sử nhập\/xuất dữ liệu/);
 });

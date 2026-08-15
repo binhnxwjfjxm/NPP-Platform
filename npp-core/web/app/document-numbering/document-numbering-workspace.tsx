@@ -246,9 +246,9 @@ export default function DocumentNumberingWorkspace() {
       setAllocationKey(createIdempotencyKey('document-number-reference'));
       setNotice(saved.replayed
         ? 'Thao tác trước đã hoàn tất; hệ thống hiển thị lại đúng số đã cấp'
-        : 'Đã cấp số kiểm tra và lưu vào lịch sử');
+        : 'Đã cấp số tham chiếu và lưu vào lịch sử');
     } catch (value) {
-      setError(value instanceof Error ? value.message : 'Không thể kiểm tra cấp số');
+      setError(value instanceof Error ? value.message : 'Không thể cấp số tham chiếu');
     } finally {
       setBusy(false);
     }
@@ -325,7 +325,7 @@ export default function DocumentNumberingWorkspace() {
           <section className={styles.detailGrid} data-testid="number-series-detail">
             <div className={styles.panel}>
               <div className={styles.sectionHeader}>
-                <div><span className={styles.eyebrow}>Kiểm tra cấp số</span><h3>{selected.name}</h3><small>{documentTypeLabel(selected.document_type)}</small></div>
+                <div><span className={styles.eyebrow}>Cấp số tham chiếu</span><h3>{selected.name}</h3><small>{documentTypeLabel(selected.document_type)}</small></div>
                 <span className={selected.is_active ? styles.activeBadge : styles.inactiveBadge}>{selected.is_active ? 'Đang sử dụng' : 'Đã ngừng'}</span>
               </div>
               <p className={styles.warning}>
@@ -342,7 +342,7 @@ export default function DocumentNumberingWorkspace() {
                   onClick={() => void allocateReferenceNumber()}
                   data-testid="allocate-test-number-button"
                 >
-                  Kiểm tra cấp số
+                  Cấp số tham chiếu
                 </button>
               </div>
               {lastAllocation ? (
