@@ -88,6 +88,10 @@ const FULFILLMENT_SHORTAGE_DISCREPANCY_SQL = readFileSync(
   new URL('../../../../database/migrations/sales/081_sales_fulfillment_shortage_discrepancy.sql', import.meta.url),
   'utf8',
 );
+const BACKUP_DELETE_FOUNDATION_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/083_backup_delete_foundation.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -127,6 +131,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '079_customer_media', sql: CUSTOMER_MEDIA_SQL }),
   Object.freeze({ id: '080_manual_delivery_handover', sql: MANUAL_DELIVERY_HANDOVER_SQL }),
   Object.freeze({ id: '081_sales_fulfillment_shortage_discrepancy', sql: FULFILLMENT_SHORTAGE_DISCREPANCY_SQL }),
+  Object.freeze({ id: '083_backup_delete_foundation', sql: BACKUP_DELETE_FOUNDATION_SQL }),
 ]);
 
 export { runMigrations };
