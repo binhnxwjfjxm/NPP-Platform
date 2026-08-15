@@ -23,7 +23,7 @@ type BackupJob = {
 };
 type DeleteIntent = { id: string; status: string; backupJobId: string; challengeExpiresAt?: string; ownerRecipientCount?: number; authorizedAt?: string; purgeExecuted?: boolean };
 type Envelope<T> = { data?: T; error?: { code?: string; message?: string; retryable?: boolean; details?: unknown } };
-type CurrentUser = { roles?: string[]; permissions?: string[] };
+type BackupAccess = { canCreateBackup: boolean; canDownloadBackup: boolean; canAuthorizeDeletion: boolean };
 
 const STAGES = [
   ['QUEUED', 'Xếp hàng'],
@@ -37,7 +37,6 @@ const STAGES = [
   ['VERIFIED', 'Đã xác minh'],
 ] as const;
 const ACTIVE = new Set<string>(STAGES.slice(0, -1).map(([status]) => status));
-const OWNER_ROLES = new Set(['system:security-owner', 'system:implementation-owner']);
 
 function formatDate(value?: string | null) {
   if (!value) return '—';
@@ -62,7 +61,7 @@ function progress(status: string) {
 
 export default function DataBackupWorkspace() {
   const [jobs, setJobs] = useState<BackupJob[]>([]);
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [access, setAccess] = useState<BackupAccess | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [backupConfirmOpen, setBackupConfirmOpen] = useState(false);
@@ -75,12 +74,9 @@ export default function DataBackupWorkspace() {
 
   const activeJob = useMemo(() => jobs.find((job) => ACTIVE.has(job.status)) ?? null, [jobs]);
   const latestVerified = useMemo(() => jobs.find((job) => job.status === 'VERIFIED') ?? null, [jobs]);
-  const roles = currentUser?.roles ?? [];
-  const permissions = currentUser?.permissions ?? [];
-  const isOwner = roles.some((role) => OWNER_ROLES.has(role));
-  const canCreateBackup = isOwner && permissions.includes('core.backup.create');
-  const canDownloadBackup = isOwner && permissions.includes('core.backup.download');
-  const canAuthorizeDeletion = isOwner && permissions.includes('core.data-deletion.authorize');
+  const canCreateBackup = access?.canCreateBackup === true;
+  const canDownloadBackup = access?.canDownloadBackup === true;
+  const canAuthorizeDeletion = access?.canAuthorizeDeletion === true;
 
   function keyFor(intent: string) {
     const current = mutationKeys.current.get(intent);
@@ -116,12 +112,12 @@ export default function DataBackupWorkspace() {
 
   async function refresh() {
     try {
-      const [data, user] = await Promise.all([
+      const [data, capabilities] = await Promise.all([
         request<BackupJob[]>('/api/backups'),
-        request<CurrentUser>('/api/auth/me'),
+        request<BackupAccess>('/api/backups/access'),
       ]);
       setJobs(data);
-      setCurrentUser(user);
+      setAccess(capabilities);
       setError('');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Không tải được lịch sử sao lưu');
