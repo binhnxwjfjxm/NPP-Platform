@@ -4,6 +4,7 @@ import { chromium } from "playwright";
 
 const appBase = process.env.F05_UI_APP_BASE || "http://127.0.0.1:3000";
 const resultsDir = process.env.F05_UI_RESULTS_DIR || "test-results/f05-ui-smoke";
+const proxyHeaders = { "x-forwarded-proto": "https" };
 await mkdir(resultsDir, { recursive: true });
 
 async function waitForHttp(url, timeoutMs = 120000) {
@@ -33,19 +34,6 @@ async function assertShell(page, routeName, mobile) {
   assert.equal(await page.getByText("404: This page could not be found.", { exact: true }).count(), 0, `${routeName} must not render 404`);
   assert.ok(await horizontalOverflow(page) <= 1, `${routeName} must not overflow horizontally`);
   if (mobile) await page.locator("[data-bottom-navigation]").waitFor({ state: "visible" });
-}
-
-async function mockCanonicalOrders(page) {
-  await page.route("**/api/backend/core-sales/orders", async (route) => {
-    if (route.request().method() === "GET") {
-      await route.fulfill({ status: 200, contentType: "application/json; charset=utf-8", body: JSON.stringify({ data: [] }) });
-      return;
-    }
-    await route.fallback();
-  });
-  await page.route("**/api/backend/customer-verifications**", async (route) => {
-    await route.fulfill({ status: 200, contentType: "application/json; charset=utf-8", body: JSON.stringify({ data: [] }) });
-  });
 }
 
 const groupFixture = [
@@ -86,12 +74,14 @@ try {
     let legacyCalls = 0;
     await page.route("**/api/backend/mcp-day/session-customer/customer-onboarding**", async (route) => { legacyCalls += 1; await route.abort(); });
     await page.route("**/api/backend/mcp-day/session-customer/sales-order**", async (route) => { legacyCalls += 1; await route.abort(); });
-    await mockCanonicalOrders(page);
-    await page.goto(`${appBase}/visits/order-intent?sessionCustomerId=sc-existing&orderId=order-lot-4&customerName=UI%20Lot%204`, { waitUntil: "domcontentloaded" });
-    await page.waitForURL((url) => url.pathname === "/orders");
-    await assertShell(page, `canonical orders redirect at ${viewport.width}px`, true);
+    await page.setExtraHTTPHeaders(proxyHeaders);
+    await page.goto(`${appBase}/visits/order-intent?sessionCustomerId=sc-existing&orderId=order-lot-4&customerName=UI%20Lot%204`, { waitUntil: "networkidle" });
+    await page.waitForURL((url) => url.pathname === "/login" && url.searchParams.get("returnTo") === "/orders");
     assert.equal(legacyCalls, 0, "retired order-intent route must not call legacy APIs");
+    await page.getByRole("heading", { name: "Đăng nhập nhân viên", exact: true }).waitFor({ state: "visible" });
     assert.equal(await page.locator("[data-order-step]").count(), 0);
+    assert.ok(await horizontalOverflow(page) <= 1, `canonical order auth boundary must not overflow at ${viewport.width}px`);
+    await page.setExtraHTTPHeaders({});
 
     const mutationLog = [];
     await mockGroups(page, mutationLog);
@@ -152,6 +142,7 @@ try {
   result.mobileViewports = mobileViewports.map(({ width, height }) => `${width}x${height}`);
   result.screenNoOverflow = "PASS";
   result.orderIntentRetired = "PASS";
+  result.orderIntentAuthBoundary = "/login?returnTo=/orders";
   result.groupSheetAccessibility = "PASS";
   result.groupFocusTrap = "PASS";
   result.groupMutationIdempotency = "PASS";

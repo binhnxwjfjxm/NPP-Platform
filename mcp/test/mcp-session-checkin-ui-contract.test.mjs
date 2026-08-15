@@ -12,7 +12,7 @@ function cssRule(sourceText, selector) {
   return match[1];
 }
 
-test("session card keeps check-in and every existing action behind compact controls", async () => {
+test("session card keeps check-in and reporting actions behind compact controls without legacy official-order CTA", async () => {
   const card = await source("src/features/mcp/McpLineCard.tsx");
   const css = await source("src/features/mcp/McpLineCard.module.css");
 
@@ -21,8 +21,9 @@ test("session card keeps check-in and every existing action behind compact contr
   for (const action of ["order", "test", "market_report", "follow_up", "skip"]) {
     assert.match(card, new RegExp(`action: "${action}"`));
   }
-  assert.match(card, /line\.orderId \?/);
-  assert.match(card, /Đơn NPP/);
+  assert.doesNotMatch(card, /line\.orderId \?/);
+  assert.doesNotMatch(card, /Đơn NPP/);
+  assert.doesNotMatch(card, /\/visits\/order-intent/);
   assert.match(card, /data-session-primary-actions="4"/);
   assert.match(card, /data-customer-directions="true"/);
   assert.match(card, /<span>Di chuyển<\/span>/);

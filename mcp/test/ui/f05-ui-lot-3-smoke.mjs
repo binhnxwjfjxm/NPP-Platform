@@ -4,6 +4,7 @@ import { chromium } from "playwright";
 
 const appBase = process.env.F05_UI_APP_BASE || "http://127.0.0.1:3000";
 const resultsDir = process.env.F05_UI_RESULTS_DIR || "test-results/f05-ui-smoke";
+const proxyHeaders = { "x-forwarded-proto": "https" };
 await mkdir(resultsDir, { recursive: true });
 
 async function waitForHttp(url, timeoutMs = 120000) {
@@ -26,19 +27,6 @@ async function horizontalOverflow(page) {
 
 async function screenshot(page, name) {
   await page.screenshot({ path: `${resultsDir}/${name}.png`, fullPage: true });
-}
-
-async function mockCanonicalOrders(page) {
-  await page.route("**/api/backend/core-sales/orders", async (route) => {
-    if (route.request().method() === "GET") {
-      await route.fulfill({ status: 200, contentType: "application/json; charset=utf-8", body: JSON.stringify({ data: [] }) });
-      return;
-    }
-    await route.fallback();
-  });
-  await page.route("**/api/backend/customer-verifications**", async (route) => {
-    await route.fulfill({ status: 200, contentType: "application/json; charset=utf-8", body: JSON.stringify({ data: [] }) });
-  });
 }
 
 await waitForHttp(`${appBase}/`);
@@ -82,7 +70,7 @@ try {
     await screenshot(sessionsPage, `21-sessions-mobile-${viewport.width}`);
     await sessionsContext.close();
 
-    const orderContext = await browser.newContext({ viewport });
+    const orderContext = await browser.newContext({ viewport, extraHTTPHeaders: proxyHeaders });
     const orderPage = await orderContext.newPage();
     let legacyOnboardingCalls = 0;
     let legacySalesOrderCalls = 0;
@@ -94,14 +82,13 @@ try {
       legacySalesOrderCalls += 1;
       await route.abort();
     });
-    await mockCanonicalOrders(orderPage);
-    await orderPage.goto(`${appBase}/visits/order-intent?sessionCustomerId=sc-existing&orderId=order-ui&customerName=UI%20Existing%20Customer`, { waitUntil: "domcontentloaded" });
-    await orderPage.waitForURL((url) => url.pathname === "/orders");
+    await orderPage.goto(`${appBase}/visits/order-intent?sessionCustomerId=sc-existing&orderId=order-ui&customerName=UI%20Existing%20Customer`, { waitUntil: "networkidle" });
+    await orderPage.waitForURL((url) => url.pathname === "/login" && url.searchParams.get("returnTo") === "/orders");
     assert.equal(legacyOnboardingCalls, 0, "retired route must not call session onboarding");
     assert.equal(legacySalesOrderCalls, 0, "retired route must not call session sales-order");
-    await orderPage.locator(".app-shell").waitFor({ state: "visible" });
-    assert.equal(await orderPage.locator(".app-shell").getAttribute("data-active-href"), "/orders");
-    assert.ok(await horizontalOverflow(orderPage) <= 1, `orders overflow at ${viewport.width}px`);
+    await orderPage.getByRole("heading", { name: "Đăng nhập nhân viên", exact: true }).waitFor({ state: "visible" });
+    assert.equal(await orderPage.locator("[data-order-step]").count(), 0, "legacy order-intent wizard must stay absent");
+    assert.ok(await horizontalOverflow(orderPage) <= 1, `orders auth boundary overflow at ${viewport.width}px`);
     await screenshot(orderPage, `22-legacy-order-redirect-${viewport.width}`);
     await orderContext.close();
   }
@@ -121,6 +108,7 @@ try {
   result.homeExplainerRemoved = "PASS";
   result.sessionsCompactFlow = "PASS";
   result.orderIntentRetired = "PASS";
+  result.orderIntentAuthBoundary = "/login?returnTo=/orders";
   result.desktopSessions = "PASS";
 } catch (error) {
   result.error = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack || ""}` : String(error);
