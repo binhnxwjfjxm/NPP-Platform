@@ -36,7 +36,7 @@ const STAGES = [
   ['VERIFYING_R2', 'Xác minh R2'],
   ['VERIFIED', 'Đã xác minh'],
 ] as const;
-const ACTIVE = new Set(STAGES.slice(0, -1).map(([status]) => status));
+const ACTIVE = new Set<string>(STAGES.slice(0, -1).map(([status]) => status));
 const OWNER_ROLES = new Set(['system:security-owner', 'system:implementation-owner']);
 
 function formatDate(value?: string | null) {
