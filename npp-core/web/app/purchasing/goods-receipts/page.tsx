@@ -1,5 +1,4 @@
 import GoodsReceiptWorkspace from './GoodsReceiptWorkspace';
-import GoodsReceiptPrintDock from './GoodsReceiptPrintDock';
 import type { GoodsReceipt } from '../../../lib/goods-receipt-types';
 import type { PurchaseOrder } from '../../../lib/purchase-order-types';
 import type { Warehouse, WarehouseLocation } from '../../../lib/organization-types';
@@ -47,7 +46,6 @@ export default async function GoodsReceiptsPage() {
         initialError={initialError}
         initialLookupError={initialLookupError}
       />
-      <GoodsReceiptPrintDock initialReceipts={initialReceipts} />
     </>
   );
 }

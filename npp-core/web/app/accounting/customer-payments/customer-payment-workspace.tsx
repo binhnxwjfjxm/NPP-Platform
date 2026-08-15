@@ -11,6 +11,7 @@ import type {
   ReceivableAllocationTarget,
 } from '../../../lib/customer-payment-types';
 import styles from '../supplier-payments/supplier-payments.module.css';
+import CustomerPaymentPrintDock from './CustomerPaymentPrintDock';
 
 type Props = {
   initialPayments: CustomerPayment[];
@@ -373,6 +374,7 @@ export default function CustomerPaymentWorkspace({
           <h2>Chi tiết và phân bổ</h2>
           {!selected ? <p>Chọn một phiếu thu để xem chi tiết.</p> : <>
             <div className={styles.summary}><strong>{selected.documentNumber}</strong><span>{selected.customerCode} · {selected.customerName}</span><span>{money(selected.remainingAmount, selected.currencyCode)} chưa phân bổ</span></div>
+            <div className={styles.actions}><CustomerPaymentPrintDock payment={selected} /></div>
 
             {selected.status !== 'reversed' && (selectedRemaining ?? 0n) > 0n ? <form className={styles.allocationForm} onSubmit={allocateSelectedPayment} data-testid="customer-payment-allocation-form">
               <label>Ngày phân bổ<input type="date" required value={allocationDate} onChange={(event) => setAllocationDate(event.target.value)} /></label>

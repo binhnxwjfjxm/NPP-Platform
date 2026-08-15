@@ -12,6 +12,7 @@ import {
 } from '../../../lib/inventory-types';
 import type { WarehouseLocation } from '../../../lib/organization-types';
 import styles from './transfer-workspace.module.css';
+import TransferPrintDock from './TransferPrintDock';
 
 export type InventoryTransferLine = {
   id: string;
@@ -759,7 +760,10 @@ export default function TransferWorkspace({
                 <h2 id="transfer-detail-title">{selected.documentNumber || 'Phiếu chuyển kho nháp'}</h2>
                 <p>{selected.sourceWarehouseCode} → {selected.destinationWarehouseCode} · {formatDate(selected.transferDate)}</p>
               </div>
-              <button type="button" className={styles.textButton} onClick={() => { setSelected(null); setReceiptBundle(null); setShowReceiptForm(false); }}>Đóng</button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <TransferPrintDock transfer={selected} />
+                <button type="button" className={styles.textButton} onClick={() => { setSelected(null); setReceiptBundle(null); setShowReceiptForm(false); }}>Đóng</button>
+              </div>
             </div>
 
             <div className={styles.detailFacts}>

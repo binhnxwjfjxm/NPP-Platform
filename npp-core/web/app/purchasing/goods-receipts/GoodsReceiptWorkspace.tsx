@@ -6,6 +6,7 @@ import { AppShell } from '../../components/app-shell';
 import shellStyles from '../../components/app-shell.module.css';
 import styles from '../../organization/organization.module.css';
 import localStyles from '../purchase-orders/purchase-orders.module.css';
+import GoodsReceiptPrintDock from './GoodsReceiptPrintDock';
 import type { PurchaseOrder } from '../../../lib/purchase-order-types';
 import type { GoodsReceipt, GoodsReceiptDraftLine, GoodsReceiptStatus } from '../../../lib/goods-receipt-types';
 import {
@@ -1175,7 +1176,10 @@ export default function GoodsReceiptWorkspace({
                 <p className={styles.panelKicker}>Chi tiết phiếu nhận hàng</p>
                 <h3 id="goods-receipt-detail-title">{selectedGoodsReceipt.documentNumber || 'Phiếu chưa cấp số'}</h3>
               </div>
-              <button ref={closeButtonRef} type="button" className={styles.modalClose} onClick={() => setSelectedGoodsReceipt(null)}>Đóng</button>
+              <div className={styles.toolbarActions}>
+                <GoodsReceiptPrintDock receipt={selectedGoodsReceipt} />
+                <button ref={closeButtonRef} type="button" className={styles.modalClose} onClick={() => setSelectedGoodsReceipt(null)}>Đóng</button>
+              </div>
             </div>
             <div className={localStyles.detailGrid}>
               <div className={localStyles.detailItem}><span>Trạng thái</span><strong>{GOODS_RECEIPT_STATUS_LABELS[selectedGoodsReceipt.status]}</strong></div>

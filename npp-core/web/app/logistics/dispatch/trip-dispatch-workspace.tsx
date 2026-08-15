@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createIdempotencyKey } from '@npp/contracts';
 import { AppShell } from '../../components/app-shell';
 import styles from './trip-dispatch-workspace.module.css';
+import TripSheetPrintDock from './TripSheetPrintDock';
 
 type TripStatus = 'draft' | 'planned' | 'locked' | 'dispatched';
 type ReceiverMode = 'primary' | 'other';
@@ -272,7 +273,7 @@ export default function TripDispatchWorkspace() {
                 <h2 id="dispatch-detail-heading">{selectedTrip?.number || 'Chọn một chuyến'}</h2>
               </div>
               {selectedTrip ? (
-                <span className={styles.status} data-status={selectedTrip.status}>{statusLabel(selectedTrip.status)}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><TripSheetPrintDock trip={selectedTrip} /><span className={styles.status} data-status={selectedTrip.status}>{statusLabel(selectedTrip.status)}</span></span>
               ) : null}
             </div>
 

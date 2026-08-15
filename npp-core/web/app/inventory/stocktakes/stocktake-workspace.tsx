@@ -18,6 +18,7 @@ import {
   type StocktakeStatus,
 } from '../../../lib/stocktake-types';
 import styles from './stocktake-workspace.module.css';
+import StocktakePrintDock from './StocktakePrintDock';
 
 type WarehouseOption = { id: string; code: string; name: string };
 
@@ -357,7 +358,7 @@ export default function StocktakeWorkspace({
                     <h2>{detail.stocktakeNumber}</h2>
                     <p>{detail.note || 'Không có ghi chú'}</p>
                   </div>
-                  <span className={`${styles.badge} ${statusTone(detail.status)}`}>{STOCKTAKE_STATUS_LABELS[detail.status]}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><StocktakePrintDock stocktake={detail} /><span className={`${styles.badge} ${statusTone(detail.status)}`}>{STOCKTAKE_STATUS_LABELS[detail.status]}</span></div>
                 </header>
 
                 {actionButtons}

@@ -9,8 +9,19 @@ import {
   PURCHASE_ORDER_STATUS_LABELS,
 } from '../../../lib/purchase-order-types';
 
+function isZeroAmount(value: string | number | null | undefined) {
+  const normalized = String(value ?? '').trim();
+  return /^[-+]?0+(?:\.0+)?$/.test(normalized);
+}
+
 export default function PurchaseOrderPrintSheet({ purchaseOrder }: { purchaseOrder: PurchaseOrder }) {
   const printId = `purchase-order-${purchaseOrder.id}`;
+  const lines = purchaseOrder.lines ?? [];
+  const showDiscount = !isZeroAmount(purchaseOrder.discountTotal)
+    || lines.some((line) => !isZeroAmount(line.discountAmount));
+  const showTax = !isZeroAmount(purchaseOrder.taxTotal)
+    || lines.some((line) => !isZeroAmount(line.taxAmount));
+
   return (
     <BusinessDocumentPrint
       id={printId}
@@ -33,11 +44,11 @@ export default function PurchaseOrderPrintSheet({ purchaseOrder }: { purchaseOrd
         { key: 'qty', label: 'Số lượng', align: 'right' },
         { key: 'unit', label: 'ĐVT', align: 'center' },
         { key: 'price', label: 'Đơn giá', align: 'right' },
-        { key: 'discount', label: 'CK', align: 'right' },
-        { key: 'tax', label: 'Thuế', align: 'right' },
+        ...(showDiscount ? [{ key: 'discount', label: 'CK', align: 'right' as const }] : []),
+        ...(showTax ? [{ key: 'tax', label: 'Thuế', align: 'right' as const }] : []),
         { key: 'total', label: 'Thành tiền', align: 'right' },
       ]}
-      rows={(purchaseOrder.lines ?? []).map((line) => ({
+      rows={lines.map((line) => ({
         id: line.id,
         cells: {
           no: line.lineNumber,
@@ -52,8 +63,8 @@ export default function PurchaseOrderPrintSheet({ purchaseOrder }: { purchaseOrd
       }))}
       totals={[
         { label: 'Tiền hàng', value: formatPurchaseOrderAmount(purchaseOrder.subtotal, purchaseOrder.currency) },
-        { label: 'Chiết khấu', value: formatPurchaseOrderAmount(purchaseOrder.discountTotal, purchaseOrder.currency) },
-        { label: 'Thuế', value: formatPurchaseOrderAmount(purchaseOrder.taxTotal, purchaseOrder.currency) },
+        ...(showDiscount ? [{ label: 'Chiết khấu', value: formatPurchaseOrderAmount(purchaseOrder.discountTotal, purchaseOrder.currency) }] : []),
+        ...(showTax ? [{ label: 'Thuế', value: formatPurchaseOrderAmount(purchaseOrder.taxTotal, purchaseOrder.currency) }] : []),
         { label: 'TỔNG CỘNG', value: formatPurchaseOrderAmount(purchaseOrder.total, purchaseOrder.currency), emphasis: true },
       ]}
       note={purchaseOrder.note || undefined}
