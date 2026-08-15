@@ -11,6 +11,7 @@ import { handleCodDriverRoutes } from './cod-driver.js';
 import { handleLogisticsRoutes } from './logistics.js';
 import { handleLogisticsAttemptRoutes } from './logistics-attempts.js';
 import { handleLogisticsDispatchRoutes } from './logistics-dispatch.js';
+import { handleLogisticsRecoveryRoutes } from './logistics-recovery.js';
 import { handleLogisticsDriverRoutes } from './logistics-driver.js';
 import { handleLogisticsPodRoutes } from './logistics-pod.js';
 import { handleLogisticsReconciliationRoutes } from './logistics-reconciliation.js';
@@ -57,6 +58,9 @@ export async function handleInventoryRoutes(req, res, options) {
   }
   if (/^\/api\/logistics\/trips\/[^/]+\/attempts$/.test(pathname)) {
     return handleLogisticsAttemptRoutes(req, res, options);
+  }
+  if (pathname.startsWith('/api/logistics/trips/')) {
+    if (await handleLogisticsRecoveryRoutes(req, res, options)) return true;
   }
   if (/^\/api\/logistics\/trips\/[^/]+\/dispatch$/.test(pathname)) {
     return handleLogisticsDispatchRoutes(req, res, options);
