@@ -2,6 +2,7 @@ import http from "node:http";
 
 const port = Number(process.env.ORDER_CREATE_PROXY_PORT || 3110);
 const upstreamBase = String(process.env.ORDER_CREATE_UPSTREAM_BASE || "http://127.0.0.1:3111").replace(/\/+$/, "");
+const fixtureNow = "2099-12-30T12:00:00.000Z";
 
 const linkedCustomers = [
   {
@@ -18,9 +19,9 @@ const linkedCustomers = [
     coreCustomerAddressId: "33333333-3333-4333-8333-333333333333",
     coreCustomerCode: "KH-UI-001",
     reviewReason: null,
-    submittedAt: new Date().toISOString(),
-    lastSyncedAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    submittedAt: fixtureNow,
+    lastSyncedAt: fixtureNow,
+    updatedAt: fixtureNow
   }
 ];
 
@@ -192,6 +193,7 @@ const server = http.createServer(async (request, response) => {
           id: "99999999-9999-4999-8999-999999999999",
           number: "SO-MCP-0001",
           status: "draft",
+          currentVersionNumber: "1",
           sourceType: "MCP",
           sourceId: key,
           sourceOutletId: linkedCustomers[0].routeCustomerId,
@@ -199,8 +201,17 @@ const server = http.createServer(async (request, response) => {
           customerCode: linkedCustomers[0].coreCustomerCode,
           customerName: linkedCustomers[0].customerName,
           salesChannelCode: "MCP",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          createdAt: fixtureNow,
+          updatedAt: fixtureNow,
+          versions: [{
+            versionNumber: "1",
+            total: "385000",
+            createdAt: fixtureNow,
+            lines: [
+              { quantity: "3" },
+              { quantity: "1" }
+            ]
+          }]
         };
         directState.orders.unshift(order);
       }
