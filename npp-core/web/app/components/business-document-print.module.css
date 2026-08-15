@@ -177,5 +177,24 @@
   .sheet {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
+    orphans: 3;
+    widows: 3;
+  }
+
+  .header,
+  .metaGrid,
+  .summary,
+  .note,
+  .signatures,
+  .footer {
+    break-inside: avoid;
+  }
+
+  .table thead {
+    display: table-header-group;
+  }
+
+  .table tr {
+    break-inside: avoid-page;
   }
 }
