@@ -77,11 +77,16 @@ test("MCP deploy checks out main, installs in mcp and runs Vercel CLI from monor
   assert.doesNotMatch(mcpWorkflow, /heroku container:push|heroku container:release|git push heroku/);
 });
 
-test("MCP deploy reads only dedicated GitHub runtime sources and reports exact missing names", () => {
+test("MCP deploy keeps MCP runtime sources dedicated and resolves shared Core auth read-only", () => {
   assert.match(mcpWorkflow, /^\s{2}issues: write$/m);
   assert.match(mcpWorkflow, /secrets\.MCP_BACKEND_API_BASE_URL/);
   assert.match(mcpWorkflow, /secrets\.MCP_BACKEND_API_TOKEN/);
   assert.match(mcpWorkflow, /MCP_LEGACY_ACTOR_ID: service:mcp-plan:mcp-v1/);
+  assert.match(mcpWorkflow, /CORE_HEROKU_APP_NAME: hung-phat/);
+  assert.match(mcpWorkflow, /HEROKU_API_KEY: \$\{\{ secrets\.HEROKU_API_KEY \}\}/);
+  assert.match(mcpWorkflow, /SECRET_CORE_API_INTERNAL_URL: \$\{\{ secrets\.CORE_API_INTERNAL_URL \}\}/);
+  assert.match(mcpWorkflow, /api\.heroku\.com\/apps\/\$CORE_HEROKU_APP_NAME/);
+  assert.match(mcpWorkflow, /runtime_source="heroku-core"/);
   assert.match(mcpWorkflow, /missing_github_runtime_sources/);
   assert.match(mcpWorkflow, /MCP_BACKEND_API_BASE_URL/);
   assert.match(mcpWorkflow, /MCP_BACKEND_API_TOKEN/);
@@ -101,8 +106,8 @@ test("MCP deploy reads only dedicated GitHub runtime sources and reports exact m
 
   assert.doesNotMatch(mcpWorkflow, /LEGACY_RUNTIME_SOURCE_PROJECT_ID/);
   assert.doesNotMatch(mcpWorkflow, /vercel@latest env pull/);
-  assert.doesNotMatch(mcpWorkflow, /HEROKU_API_KEY/);
   assert.doesNotMatch(mcpWorkflow, /heroku apps:info|heroku config/);
+  assert.doesNotMatch(mcpWorkflow, /api\.heroku\.com\/apps\/\$CORE_HEROKU_APP_NAME\/config-vars/);
   assert.doesNotMatch(mcpWorkflow, /MCP_SUPABASE_URL/);
   assert.doesNotMatch(mcpWorkflow, /MCP_SUPABASE_ANON_KEY/);
   assert.doesNotMatch(mcpWorkflow, /SUPABASE_SERVICE_ROLE_KEY/);
@@ -148,6 +153,9 @@ test("MCP deploy separates protected exact-host reachability from public-domain 
   assert.match(mcpWorkflow, /html\.match\(/);
   assert.ok(mcpWorkflow.includes("\\/_next\\/static\\/"));
   assert.match(mcpWorkflow, /MCP smoke asset=/);
+  assert.match(mcpWorkflow, /Smoke MCP login Core connectivity/);
+  assert.match(mcpWorkflow, /error=invalid_credentials/);
+  assert.match(mcpWorkflow, /auth_unavailable/);
   assert.match(mcpWorkflow, /MCP_DEPLOYED_SHA=/);
   assert.match(mcpWorkflow, /MCP_DEPLOYED_URL=/);
 });

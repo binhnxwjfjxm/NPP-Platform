@@ -30,6 +30,7 @@ jobs:
       VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
       VERCEL_PROJECT_ID: prj_854SWdJeDEOPezAvvTZzTaRvZUSq
       CORE_VERCEL_PROJECT_ID: prj_vFEAzoxesLqNJIfD8uF4q1kytpvk
+      CORE_HEROKU_APP_NAME: hung-phat
       DEPLOY_REF: main
       MCP_ROOT_DIRECTORY: mcp
       MCP_PRODUCTION_URL: https://mcp.nguyenlieuhungphat.com
@@ -43,6 +44,7 @@ jobs:
           test "$VERCEL_PROJECT_ID" = "prj_854SWdJeDEOPezAvvTZzTaRvZUSq"
           test "$VERCEL_PROJECT_ID" != "$CORE_VERCEL_PROJECT_ID"
           test "$MCP_PRODUCTION_URL" = "https://mcp.nguyenlieuhungphat.com"
+          test "$CORE_HEROKU_APP_NAME" = "hung-phat"
           test "$MCP_LEGACY_ACTOR_ID" = "service:mcp-plan:mcp-v1"
 
       - name: Validate Issue #5 trigger comment
@@ -85,12 +87,53 @@ jobs:
         working-directory: mcp
         run: npm ci
 
+      - name: Resolve MCP Core auth runtime
+        id: core-runtime
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          SECRET_CORE_API_INTERNAL_URL: ${{ secrets.CORE_API_INTERNAL_URL }}
+        run: |
+          set -euo pipefail
+          core_url="${SECRET_CORE_API_INTERNAL_URL:-}"
+          runtime_source="github-secrets"
+          if [ -z "$core_url" ]; then
+            runtime_source="heroku-core"
+            test -n "${HEROKU_API_KEY:-}"
+            app_json="$(curl --fail --silent --show-error \
+              -H 'Accept: application/vnd.heroku+json; version=3' \
+              -H "Authorization: Bearer $HEROKU_API_KEY" \
+              "https://api.heroku.com/apps/$CORE_HEROKU_APP_NAME")"
+            core_url="$(printf '%s' "$app_json" | jq -r '.web_url // empty')"
+            core_url="${core_url%/}"
+          fi
+          test -n "$core_url"
+          CORE_URL="$core_url" node --input-type=module <<'NODE'
+          const url = new URL(process.env.CORE_URL);
+          if (url.protocol !== 'https:' || url.username || url.password) {
+            throw new Error('invalid_core_api_internal_url');
+          }
+          NODE
+          core_health="$(curl --silent --show-error --connect-timeout 5 --max-time 15 \
+            --output /dev/null --write-out '%{http_code}' "$core_url/health/live" || true)"
+          if [ "$core_health" != "200" ]; then
+            echo "core_auth_health_failed:${core_health:-000}" >&2
+            exit 1
+          fi
+          echo "::add-mask::$core_url"
+          marker="MCP_CORE_API_INTERNAL_URL_${RANDOM}_${RANDOM}"
+          {
+            echo "CORE_API_INTERNAL_URL<<$marker"
+            echo "$core_url"
+            echo "$marker"
+          } >> "$GITHUB_ENV"
+          echo "source=$runtime_source" >> "$GITHUB_OUTPUT"
+
       - name: Synchronize guarded MCP runtime configuration
         id: runtime-config
         shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          CORE_API_INTERNAL_URL: ${{ secrets.CORE_API_INTERNAL_URL }}
           BACKEND_API_BASE_URL: ${{ secrets.MCP_BACKEND_API_BASE_URL }}
           BACKEND_API_TOKEN: ${{ secrets.MCP_BACKEND_API_TOKEN }}
         run: |
@@ -102,7 +145,7 @@ jobs:
           import { appendFile, writeFile } from "node:fs/promises";
 
           const sources = [
-            ["CORE_API_INTERNAL_URL", "CORE_API_INTERNAL_URL"],
+            ["CORE_API_INTERNAL_URL", "resolved:CORE_API_INTERNAL_URL"],
             ["BACKEND_API_BASE_URL", "MCP_BACKEND_API_BASE_URL"],
             ["BACKEND_API_TOKEN", "MCP_BACKEND_API_TOKEN"],
             ["MCP_LEGACY_ACTOR_ID", "workflow:MCP_LEGACY_ACTOR_ID"]
@@ -132,14 +175,6 @@ jobs:
             }
             if (coreUrl.protocol !== "https:" || coreUrl.username || coreUrl.password) {
               throw new Error("invalid_core_api_internal_url");
-            }
-            const coreHealthResponse = await fetch(new URL("/health/live", coreUrl), {
-              method: "GET",
-              headers: { Accept: "application/json" },
-              signal: AbortSignal.timeout(15_000)
-            });
-            if (!coreHealthResponse.ok) {
-              throw new Error(`core_auth_health_failed:${coreHealthResponse.status}`);
             }
             if (!values.BACKEND_API_BASE_URL.startsWith("https://")) {
               throw new Error("backend_api_base_url_must_be_https");
@@ -191,7 +226,6 @@ jobs:
               /^missing_github_runtime_sources:[A-Z0-9_:,]+$/,
               /^invalid_vercel_token_format$/,
               /^invalid_core_api_internal_url$/,
-              /^core_auth_health_failed:\d{3}$/,
               /^backend_api_base_url_must_be_https$/,
               /^backend_api_token_too_short$/,
               /^vercel_env_upsert_failed:\d{3}:[A-Za-z0-9_.-]+$/
@@ -392,4 +426,4 @@ jobs:
           set -euo pipefail
           echo "MCP_DEPLOYED_SHA=${{ steps.target.outputs.sha }}"
           echo "MCP_DEPLOYED_URL=${{ steps.deploy.outputs.url }}"
-          gh issue comment 5 --body "MCP Vercel production deploy succeeded for SHA ${{ steps.target.outputs.sha }} at ${{ steps.deploy.outputs.url }}. Login connectivity smoke: passed."
+          gh issue comment 5 --body "MCP Vercel production deploy succeeded for SHA ${{ steps.target.outputs.sha }} at ${{ steps.deploy.outputs.url }}. Core auth runtime source: ${{ steps.core-runtime.outputs.source }}. Login connectivity smoke: passed."
