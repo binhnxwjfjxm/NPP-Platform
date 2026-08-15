@@ -13,6 +13,15 @@
   background: rgba(250, 248, 245, 0.96);
   box-shadow: 0 10px 30px rgba(48, 35, 26, 0.12);
   backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.dock button,
+.dock a,
+.dock select,
+.dock input,
+.dock textarea {
+  pointer-events: auto;
 }
 
 .selector {

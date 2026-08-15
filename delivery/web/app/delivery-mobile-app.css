@@ -28,10 +28,17 @@
 }
 
 .deliveryAppMark {
+  overflow: hidden;
   border: 1px solid rgba(255, 244, 225, 0.25);
-  background: linear-gradient(145deg, #c48a36, #8c570d);
+  background: #fffaf2;
   color: #fffdf8;
   box-shadow: 0 9px 20px rgba(31, 18, 11, 0.28);
+}
+
+.deliveryAppLogo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
 }
 
 .deliveryAppTitle small {
@@ -178,7 +185,7 @@
 }
 
 .deliveryAppDock {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
   align-items: stretch;
   gap: 5px;
   min-height: calc(64px + env(safe-area-inset-bottom));

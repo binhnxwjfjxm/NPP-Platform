@@ -6,6 +6,15 @@ const password = 'delivery-test-password';
 const fullName = 'Nguyễn Văn Tài';
 const legacyToken = 'delivery-core-test-token-000000';
 const sessionToken = 'nppusr.10000000-0000-4000-8000-000000000099.deliverytestsessiontoken00000000000000000000';
+const driverPermissions = Object.freeze([
+  'core.delivery-trip.driver-read',
+  'core.delivery-attempt.read',
+  'core.delivery-attempt.record',
+  'core.cod-collection.read',
+  'core.cod-collection.record',
+  'core.cod-handover.read',
+  'core.cod-handover.create',
+]);
 
 function json(res, status, payload) {
   res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
@@ -47,7 +56,7 @@ const server = http.createServer(async (req, res) => {
           employeeId,
           employeeFullName: fullName,
           roles: ['delivery-driver'],
-          permissions: ['logistics.driver.delivery.read'],
+          permissions: driverPermissions,
           scopes: { branchIds: [], warehouseIds: ['20000000-0000-4000-8000-000000000001'], territoryIds: [] },
           ownerKind: null,
         },
@@ -66,7 +75,7 @@ const server = http.createServer(async (req, res) => {
         actorId: 'user:10000000-0000-4000-8000-000000000098',
         employeeId,
         roles: ['delivery-driver'],
-        permissions: ['logistics.driver.delivery.read'],
+        permissions: driverPermissions,
         scopes: { branchIds: [], warehouseIds: ['20000000-0000-4000-8000-000000000001'], territoryIds: [] },
         sourceApp: 'delivery-web',
         session: {
