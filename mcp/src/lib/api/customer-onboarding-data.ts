@@ -94,11 +94,15 @@ export async function loadCustomerOnboardingQueue(): Promise<CustomerOnboardingQ
   return Array.isArray(data.items) ? data.items : [];
 }
 
+function optionalNumber(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function routeCustomerStatus(item: RouteCustomerBoundaryItem): RouteCustomerStatus {
   if (item.active === false) return "hidden";
-  const lat = Number(item.geoLat);
-  const lng = Number(item.geoLng);
-  return Number.isFinite(lat) && Number.isFinite(lng) ? "active" : "needs_gps";
+  return optionalNumber(item.geoLat) != null && optionalNumber(item.geoLng) != null ? "active" : "needs_gps";
 }
 
 export async function loadOwnedRouteCustomersData(): Promise<RouteCustomersData> {
@@ -106,15 +110,15 @@ export async function loadOwnedRouteCustomersData(): Promise<RouteCustomersData>
   const items = Array.isArray(data.items) ? data.items : [];
   const customers: RouteCustomerItem[] = items
     .map((item) => {
-      const lat = Number(item.geoLat);
-      const lng = Number(item.geoLng);
-      const accuracy = Number(item.geoAccuracy);
-      const hasGps = Number.isFinite(lat) && Number.isFinite(lng);
+      const lat = optionalNumber(item.geoLat);
+      const lng = optionalNumber(item.geoLng);
+      const accuracy = optionalNumber(item.geoAccuracy);
+      const hasGps = lat != null && lng != null;
       const gps = hasGps
         ? {
             lat,
             lng,
-            ...(Number.isFinite(accuracy) ? { accuracyMeters: accuracy } : {}),
+            ...(accuracy == null ? {} : { accuracyMeters: accuracy }),
             updatedAt: String(item.geoCapturedAt || item.updatedAt || "")
           }
         : undefined;
