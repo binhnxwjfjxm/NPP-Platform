@@ -49,8 +49,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --prune --no-tags origin \
-            '+refs/heads/main:refs/remotes/origin/main'
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
           test "$(git rev-parse --is-shallow-repository)" = "false"
           sha="$(git rev-parse HEAD)"
           test "$sha" = "$(git rev-parse origin/main)"
@@ -127,19 +126,6 @@ jobs:
             printf '%s' "$status"
           }
 
-          assert_error_code() {
-            local label="$1"
-            local expected="$2"
-            local body="$workdir/$label.json"
-            local actual
-            actual="$(jq -r '.error.code // empty' "$body")"
-            if [ "$actual" != "$expected" ]; then
-              echo "SMOKE_ERROR_CODE_${label^^}=${actual:-missing}" >> "$GITHUB_STEP_SUMMARY"
-              fail_smoke "${label}_error_code_mismatch"
-              return 1
-            fi
-          }
-
           core_url="$(app_url "$CORE_APP_NAME")"
           mcp_url="$(app_url "$MCP_APP_NAME")"
           require_nonempty core_url "$core_url"
@@ -156,95 +142,21 @@ jobs:
           require_nonempty onboarding_token "$onboarding_token"
           require_nonempty sales_base "$sales_base"
           require_nonempty sales_token "$sales_token"
-          for value in "$mcp_backend_token" "$onboarding_token" "$sales_token"; do
-            echo "::add-mask::$value"
-          done
+          for value in "$mcp_backend_token" "$onboarding_token" "$sales_token"; do echo "::add-mask::$value"; done
           require_equal onboarding_base "$onboarding_base" "$core_url"
           require_equal sales_base "$sales_base" "$core_url"
 
           core_live="$(request_json core_live 200 "$core_url/health/live")"
           core_ready="$(request_json core_ready 200 "$core_url/health/ready")"
-          core_onboarding="$(request_json core_onboarding 200 \
-            -H "Authorization: Bearer $onboarding_token" \
-            -H 'Accept: application/json' \
-            "$onboarding_base/api/customer-onboarding-requests?limit=1&offset=0")"
-          core_sku="$(request_json core_sku 200 \
-            -H "Authorization: Bearer $sales_token" \
-            -H 'Accept: application/json' \
-            "$sales_base/api/sales-orders/sku-search?search=&limit=1&offset=0")"
-          core_orders="$(request_json core_orders 200 \
-            -H "Authorization: Bearer $sales_token" \
-            -H 'Accept: application/json' \
-            "$sales_base/api/sales-orders?limit=1&offset=0")"
+          core_onboarding="$(request_json core_onboarding 200 -H "Authorization: Bearer $onboarding_token" -H 'Accept: application/json' "$onboarding_base/api/customer-onboarding-requests?limit=1&offset=0")"
+          core_sku="$(request_json core_sku 200 -H "Authorization: Bearer $sales_token" -H 'Accept: application/json' "$sales_base/api/sales-orders/sku-search?search=&limit=1&offset=0")"
+          core_orders="$(request_json core_orders 200 -H "Authorization: Bearer $sales_token" -H 'Accept: application/json' "$sales_base/api/sales-orders?limit=1&offset=0")"
 
           mcp_live="$(request_json mcp_live 200 "$mcp_url/health/live")"
           mcp_ready="$(request_json mcp_ready 200 "$mcp_url/health/ready")"
-          mcp_db_read="$(request_json mcp_db_read 200 \
-            -X POST \
-            -H "X-Backend-Token: $mcp_backend_token" \
-            -H 'Accept: application/json' \
-            -H 'Content-Type: application/json' \
-            --data '{"table":"orders","select":"id","limit":1}' \
-            "$mcp_url/api/read")"
-          mcp_product_proxy="$(request_json mcp_product_proxy 200 \
-            -H "X-Backend-Token: $mcp_backend_token" \
-            -H 'Accept: application/json' \
-            "$mcp_url/api/core-sales/products/search?q=&limit=1")"
-
-          onboarding_validation="$(request_json onboarding_validation 400 \
-            -H "X-Backend-Token: $mcp_backend_token" \
-            -H 'Accept: application/json' \
-            "$mcp_url/api/mcp-day/session-customer/customer-onboarding")"
-          assert_error_code onboarding_validation SESSION_CUSTOMER_ID_REQUIRED
-
-          sales_validation="$(request_json sales_validation 400 \
-            -H "X-Backend-Token: $mcp_backend_token" \
-            -H 'Accept: application/json' \
-            "$mcp_url/api/mcp-day/session-customer/sales-order")"
-          assert_error_code sales_validation SESSION_CUSTOMER_ID_REQUIRED
-
-          existing_projection() {
-            local integration_column="$1"
-            local endpoint="$2"
-            local prefix="$3"
-            request_json "${prefix}_candidate" 200 \
-              -X POST \
-              -H "X-Backend-Token: $mcp_backend_token" \
-              -H 'Accept: application/json' \
-              -H 'Content-Type: application/json' \
-              --data "{\"table\":\"orders\",\"select\":\"id\",\"filters\":{\"$integration_column\":\"is.not.null\"},\"limit\":1}" \
-              "$mcp_url/api/read" >/dev/null
-            local order_id
-            order_id="$(jq -r '.data[0].id // empty' "$workdir/${prefix}_candidate.json")"
-            if [ -z "$order_id" ]; then
-              echo "not_exercised_no_existing_fixture"
-              return 0
-            fi
-            request_json "${prefix}_session" 200 \
-              -X POST \
-              -H "X-Backend-Token: $mcp_backend_token" \
-              -H 'Accept: application/json' \
-              -H 'Content-Type: application/json' \
-              --data "$(jq -nc --arg orderId "$order_id" '{table:"mcp_session_customers",select:"id,order_id",filters:{order_id:("eq." + $orderId)},limit:1}')" \
-              "$mcp_url/api/read" >/dev/null
-            local session_customer_id
-            session_customer_id="$(jq -r '.data[0].id // empty' "$workdir/${prefix}_session.json")"
-            if [ -z "$session_customer_id" ]; then
-              echo "not_exercised_no_existing_fixture"
-              return 0
-            fi
-            local encoded_session encoded_order
-            encoded_session="$(jq -rn --arg value "$session_customer_id" '$value|@uri')"
-            encoded_order="$(jq -rn --arg value "$order_id" '$value|@uri')"
-            request_json "${prefix}_projection" 200 \
-              -H "X-Backend-Token: $mcp_backend_token" \
-              -H 'Accept: application/json' \
-              "$mcp_url$endpoint?sessionCustomerId=$encoded_session&orderId=$encoded_order" >/dev/null
-            echo "pass"
-          }
-
-          onboarding_projection="$(existing_projection customer_onboarding_request_id /api/mcp-day/session-customer/customer-onboarding onboarding)"
-          sales_projection="$(existing_projection core_sales_order_id /api/mcp-day/session-customer/sales-order sales)"
+          mcp_db_read="$(request_json mcp_db_read 200 -X POST -H "X-Backend-Token: $mcp_backend_token" -H 'Accept: application/json' -H 'Content-Type: application/json' --data '{"table":"orders","select":"id","limit":1}' "$mcp_url/api/read")"
+          mcp_product_proxy="$(request_json mcp_product_proxy 200 -H "X-Backend-Token: $mcp_backend_token" -H 'Accept: application/json' "$mcp_url/api/core-sales/products/search?q=&limit=1")"
+          mcp_direct_orders="$(request_json mcp_direct_orders 200 -H "X-Backend-Token: $mcp_backend_token" -H 'Accept: application/json' "$mcp_url/api/core-sales/orders")"
 
           {
             echo "SOURCE_SHA=${{ steps.source.outputs.sha }}"
@@ -257,10 +169,8 @@ jobs:
             echo "MCP_HEALTH_READY=$mcp_ready"
             echo "MCP_DATABASE_READ=$mcp_db_read"
             echo "MCP_CORE_PRODUCT_PROXY=$mcp_product_proxy"
-            echo "MCP_ONBOARDING_ROUTE_VALIDATION=$onboarding_validation"
-            echo "MCP_SALES_ORDER_ROUTE_VALIDATION=$sales_validation"
-            echo "MCP_ONBOARDING_EXISTING_PROJECTION=$onboarding_projection"
-            echo "MCP_SALES_ORDER_EXISTING_PROJECTION=$sales_projection"
+            echo "MCP_DIRECT_CORE_ORDERS=$mcp_direct_orders"
+            echo "LEGACY_SESSION_ORDER_ROUTES=retired"
             echo "PRODUCTION_WRITE_SMOKE=not_exercised_no_owner_approved_fixture"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -279,9 +189,5 @@ jobs:
             cat "$GITHUB_STEP_SUMMARY"
             echo "GITHUB_RUN_ID=$GITHUB_RUN_ID"
           } > "$evidence_file"
-          gh api \
-            --method POST \
-            "repos/$GITHUB_REPOSITORY/issues/189/comments" \
-            -f body="$(cat "$evidence_file")" \
-            >/dev/null
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/189/comments" -f body="$(cat "$evidence_file")" >/dev/null
           rm -f "$evidence_file"

@@ -24,7 +24,7 @@ function requestContext({ permissions = ["mcp.sales-order.read", "mcp.sales-orde
   return {
     requestId: "req_core_sales_api",
     auth: { authenticated: true },
-    principal: { id: "service:npp-a:mcp", permissions, scopes }
+    principal: { id: "service:npp-a:mcp", employeeId: "employee-a", permissions, scopes }
   };
 }
 
@@ -70,30 +70,19 @@ test("Core Sales product search enriches canonical SKU/unit data with Core BASE 
       fetchImpl: async (url, init) => {
         const parsed = new URL(url);
         calls.push({ url: parsed, init });
-        if (parsed.pathname === "/api/sales-orders/sku-search") {
-          return jsonResponse(200, { data: [skuOption()] });
-        }
+        if (parsed.pathname === "/api/sales-orders/sku-search") return jsonResponse(200, { data: [skuOption()] });
         if (parsed.pathname === "/api/pricing/resolve") {
           const body = JSON.parse(init.body);
           assert.equal(body.variantId, variantA);
           assert.equal(body.quantity, "1");
           assert.equal(body.currencyCode, "VND");
           assert.ok(body.priceAt);
-          return jsonResponse(200, {
-            data: {
-              variantId: variantA,
-              currencyCode: "VND",
-              priceAt: body.priceAt,
-              baseUnitPriceMinor: "125000",
-              finalUnitPriceMinor: "99000"
-            }
-          });
+          return jsonResponse(200, { data: { variantId: variantA, currencyCode: "VND", priceAt: body.priceAt, baseUnitPriceMinor: "125000", finalUnitPriceMinor: "99000" } });
         }
         throw new Error(`unexpected_url:${url}`);
       }
     }
   );
-
   assert.equal(result.statusCode, 200);
   assert.equal(result.payload.data[0].catalogSource, "NPP_CORE");
   assert.equal(result.payload.data[0].sellUnit, "GOI");
@@ -110,20 +99,13 @@ test("missing Core BASE price stays null without falling back to a legacy MCP pr
     new URL("http://mcp.local/api/core-sales/products/search?q=tea"),
     requestContext(),
     config,
-    {
-      fetchImpl: async (url) => {
-        const parsed = new URL(url);
-        if (parsed.pathname === "/api/sales-orders/sku-search") {
-          return jsonResponse(200, { data: [skuOption({ legacyPrice: 1 })] });
-        }
-        if (parsed.pathname === "/api/pricing/resolve") {
-          return jsonResponse(409, { error: { code: "BASE_PRICE_NOT_FOUND", message: "No BASE price is configured" } });
-        }
-        throw new Error(`unexpected_url:${url}`);
-      }
-    }
+    { fetchImpl: async (url) => {
+      const parsed = new URL(url);
+      if (parsed.pathname === "/api/sales-orders/sku-search") return jsonResponse(200, { data: [skuOption({ legacyPrice: 1 })] });
+      if (parsed.pathname === "/api/pricing/resolve") return jsonResponse(409, { error: { code: "BASE_PRICE_NOT_FOUND", message: "No BASE price is configured" } });
+      throw new Error(`unexpected_url:${url}`);
+    } }
   );
-
   assert.equal(result.statusCode, 200);
   assert.equal(result.payload.data[0].price, null);
 });
@@ -135,16 +117,12 @@ test("Core pricing infrastructure failure is surfaced instead of masquerading as
       new URL("http://mcp.local/api/core-sales/products/search?q=tea"),
       requestContext(),
       config,
-      {
-        fetchImpl: async (url) => {
-          const parsed = new URL(url);
-          if (parsed.pathname === "/api/sales-orders/sku-search") return jsonResponse(200, { data: [skuOption()] });
-          if (parsed.pathname === "/api/pricing/resolve") {
-            return jsonResponse(503, { error: { code: "PRICING_STORAGE_UNAVAILABLE", message: "Pricing unavailable" } });
-          }
-          throw new Error(`unexpected_url:${url}`);
-        }
-      }
+      { fetchImpl: async (url) => {
+        const parsed = new URL(url);
+        if (parsed.pathname === "/api/sales-orders/sku-search") return jsonResponse(200, { data: [skuOption()] });
+        if (parsed.pathname === "/api/pricing/resolve") return jsonResponse(503, { error: { code: "PRICING_STORAGE_UNAVAILABLE", message: "Pricing unavailable" } });
+        throw new Error(`unexpected_url:${url}`);
+      } }
     ),
     (error) => error.code === "PRICING_STORAGE_UNAVAILABLE" && error.statusCode === 502 && error.publicRetryable === true
   );
@@ -164,33 +142,15 @@ test("product variant route reads exact NPP product and rechecks only eligible S
       ] });
     }
     const parsed = new URL(url);
-    if (parsed.pathname === "/api/sales-orders/sku-search" && parsed.searchParams.get("search") === "SKU-A") {
-      return jsonResponse(200, { data: [skuOption({ productName: "Sản phẩm A", unitId: "unit-a", unitCode: "CAI" })] });
-    }
+    if (parsed.pathname === "/api/sales-orders/sku-search" && parsed.searchParams.get("search") === "SKU-A") return jsonResponse(200, { data: [skuOption({ productName: "Sản phẩm A", unitId: "unit-a", unitCode: "CAI" })] });
     if (parsed.pathname === "/api/pricing/resolve") {
       const body = JSON.parse(init.body);
       assert.equal(body.variantId, variantA);
-      return jsonResponse(200, {
-        data: {
-          variantId: variantA,
-          currencyCode: "VND",
-          priceAt: body.priceAt,
-          baseUnitPriceMinor: "88000",
-          finalUnitPriceMinor: "88000"
-        }
-      });
+      return jsonResponse(200, { data: { variantId: variantA, currencyCode: "VND", priceAt: body.priceAt, baseUnitPriceMinor: "88000", finalUnitPriceMinor: "88000" } });
     }
     throw new Error(`unexpected_url:${url}`);
   };
-
-  const result = await handleCoreSalesApi(
-    { method: "GET" },
-    new URL(`http://mcp.local/api/core-sales/products/${productId}/variants`),
-    requestContext(),
-    config,
-    { fetchImpl }
-  );
-
+  const result = await handleCoreSalesApi({ method: "GET" }, new URL(`http://mcp.local/api/core-sales/products/${productId}/variants`), requestContext(), config, { fetchImpl });
   assert.equal(result.statusCode, 200);
   assert.deepEqual(result.payload.data.map((item) => item.variantId), [variantA]);
   assert.equal(result.payload.data[0].price, 88000);
@@ -199,56 +159,36 @@ test("product variant route reads exact NPP product and rechecks only eligible S
   assert.equal(calls.filter((url) => url.includes("/api/pricing/resolve")).length, 1);
 });
 
-test("Core Sales routes deny missing permission or warehouse scope", async () => {
-  for (const path of [
-    "/api/mcp-day/session-customer/sales-order/submit",
-    "/api/mcp-day/session-customer/sales-order/sync"
-  ]) {
-    await assert.rejects(
-      () => handleCoreSalesApi(
-        request("POST", "{}"),
-        new URL(`http://mcp.local${path}`),
-        requestContext({ permissions: [], scopes: [] }),
-        config
-      ),
-      (error) => error.statusCode === 403 && error.code === "permission_denied"
-    );
-  }
-
+test("direct Core Sales routes deny missing permission or warehouse scope", async () => {
   await assert.rejects(
-    () => handleCoreSalesApi(
-      { method: "GET" },
-      new URL("http://mcp.local/api/core-sales/products/search"),
-      requestContext({ permissions: ["mcp.sales-order.read"], scopes: [] }),
-      config
-    ),
+    () => handleCoreSalesApi(request("POST", "{}"), new URL("http://mcp.local/api/core-sales/orders"), requestContext({ permissions: [], scopes: [] }), config),
+    (error) => error.statusCode === 403 && error.code === "permission_denied"
+  );
+  await assert.rejects(
+    () => handleCoreSalesApi({ method: "GET" }, new URL("http://mcp.local/api/core-sales/orders"), requestContext({ permissions: ["mcp.sales-order.read"], scopes: [] }), config),
+    (error) => error.statusCode === 403 && error.code === "scope_denied"
+  );
+  await assert.rejects(
+    () => handleCoreSalesApi({ method: "GET" }, new URL("http://mcp.local/api/core-sales/products/search"), requestContext({ permissions: ["mcp.sales-order.read"], scopes: [] }), config),
     (error) => error.statusCode === 403 && error.code === "scope_denied"
   );
 });
 
-test("unmatched routes pass through and malformed mutation bodies fail before service calls", async () => {
-  assert.equal(
-    await handleCoreSalesApi({ method: "GET" }, new URL("http://mcp.local/api/products/search"), requestContext(), config),
-    null
-  );
-
+test("legacy session-customer Sales Order routes are retired and malformed direct mutations fail before service calls", async () => {
+  for (const path of [
+    "/api/mcp-day/session-customer/sales-order",
+    "/api/mcp-day/session-customer/sales-order/submit",
+    "/api/mcp-day/session-customer/sales-order/sync"
+  ]) {
+    assert.equal(await handleCoreSalesApi({ method: path.endsWith("sales-order") ? "GET" : "POST" }, new URL(`http://mcp.local${path}`), requestContext(), config), null);
+  }
+  assert.equal(await handleCoreSalesApi({ method: "GET" }, new URL("http://mcp.local/api/products/search"), requestContext(), config), null);
   await assert.rejects(
-    () => handleCoreSalesApi(
-      request("POST", "{"),
-      new URL("http://mcp.local/api/mcp-day/session-customer/sales-order/submit"),
-      requestContext(),
-      config
-    ),
+    () => handleCoreSalesApi(request("POST", "{"), new URL("http://mcp.local/api/core-sales/orders"), requestContext(), config),
     (error) => error.statusCode === 400 && error.message === "invalid_json_body"
   );
-
   await assert.rejects(
-    () => handleCoreSalesApi(
-      request("POST", "x".repeat(256 * 1024 + 1)),
-      new URL("http://mcp.local/api/mcp-day/session-customer/sales-order/submit"),
-      requestContext(),
-      config
-    ),
+    () => handleCoreSalesApi(request("POST", "x".repeat(256 * 1024 + 1)), new URL("http://mcp.local/api/core-sales/orders"), requestContext(), config),
     (error) => error.statusCode === 413 && error.message === "request_body_too_large"
   );
 });

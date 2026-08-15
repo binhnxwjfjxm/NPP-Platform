@@ -1,11 +1,6 @@
 import { authorizeCommand } from "./authorization.js";
 import { listCoreProductVariants, resolveCoreBasePrice, searchCoreSalesSkus } from "./core-sales-client.js";
 import {
-  getSalesOrderProjection,
-  submitSalesOrder,
-  syncSalesOrder
-} from "./sales-order-sync.js";
-import {
   createDirectMcpSalesOrder,
   listDirectMcpSalesOrders
 } from "./direct-sales-orders.js";
@@ -149,11 +144,7 @@ async function loadProductVariants(productId, url, context, config, fetchImpl) {
     .filter((variant) => variantMatchesSearch(variant, search))
     .slice(0, MAX_VERIFIED_VARIANTS);
   const verified = await mapWithConcurrency(candidates, VARIANT_CHECK_CONCURRENCY, async (variant) => {
-    const options = await searchCoreSalesSkus(variant.sku, context, config, {
-      fetchImpl,
-      limit: 10,
-      offset: 0
-    });
+    const options = await searchCoreSalesSkus(variant.sku, context, config, { fetchImpl, limit: 10, offset: 0 });
     return options.find((item) => item.id === variant.id && item.productId === productId) || null;
   });
   return response(await mapCatalogOptions(verified.filter(Boolean), context, config, fetchImpl));
@@ -171,26 +162,6 @@ async function saveDirectOrder(req, context, config, fetchImpl) {
     fetchImpl,
     idempotencyKey: context.idempotencyKey
   }), 201);
-}
-
-async function loadSalesOrder(url, context, config, fetchImpl) {
-  authorizeCoreSales(context, config, CORE_SALES_READ_PERMISSION);
-  return response(await getSalesOrderProjection({
-    sessionCustomerId: url.searchParams.get("sessionCustomerId") || url.searchParams.get("session_customer_id"),
-    orderId: url.searchParams.get("orderId") || url.searchParams.get("order_id")
-  }, context, config, { fetchImpl }));
-}
-
-async function saveSalesOrderSubmission(req, context, config, fetchImpl) {
-  authorizeCoreSales(context, config, CORE_SALES_CREATE_PERMISSION);
-  const body = await readJsonBody(req);
-  return response(await submitSalesOrder(body, context, config, { fetchImpl }));
-}
-
-async function saveSalesOrderSync(req, context, config, fetchImpl) {
-  authorizeCoreSales(context, config, CORE_SALES_READ_PERMISSION);
-  const body = await readJsonBody(req);
-  return response(await syncSalesOrder(body, context, config, { fetchImpl }));
 }
 
 export async function handleCoreSalesApi(req, url, context, config, { fetchImpl = fetch } = {}) {
@@ -211,16 +182,6 @@ export async function handleCoreSalesApi(req, url, context, config, { fetchImpl 
   }
   if (pathname === "/api/core-sales/orders" && method === "POST") {
     return saveDirectOrder(req, context, config, fetchImpl);
-  }
-
-  if (method === "GET" && pathname === "/api/mcp-day/session-customer/sales-order") {
-    return loadSalesOrder(url, context, config, fetchImpl);
-  }
-  if (method === "POST" && pathname === "/api/mcp-day/session-customer/sales-order/submit") {
-    return saveSalesOrderSubmission(req, context, config, fetchImpl);
-  }
-  if (method === "POST" && pathname === "/api/mcp-day/session-customer/sales-order/sync") {
-    return saveSalesOrderSync(req, context, config, fetchImpl);
   }
 
   return null;

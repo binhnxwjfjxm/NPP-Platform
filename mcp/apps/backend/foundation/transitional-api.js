@@ -35,11 +35,6 @@ import {
   prepareOutletMediaUpload
 } from "./outlet-media.js";
 import { loadOutletCustomerProfile } from "./outlet-media-read.js";
-import {
-  getCustomerOnboardingProjection,
-  submitCustomerOnboarding,
-  syncCustomerOnboarding
-} from "./customer-onboarding-sync.js";
 
 const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024;
 const OUTLET_MEDIA_CLEANUP_ACTOR = "service:mcp-plan:outlet-media-cleanup";
@@ -157,23 +152,6 @@ async function saveSessionCustomerReport(req, context, config, fetchImpl) {
 async function saveSessionCustomerFollowup(req, context, config, fetchImpl) {
   const body = await readJsonBody(req);
   return mutationResponse(await createSessionCustomerFollowup(body, context, config, { fetchImpl }));
-}
-
-async function loadCustomerOnboarding(url, context, config, fetchImpl) {
-  return response({ data: await getCustomerOnboardingProjection({
-    sessionCustomerId: url.searchParams.get("sessionCustomerId") || url.searchParams.get("session_customer_id"),
-    orderId: url.searchParams.get("orderId") || url.searchParams.get("order_id")
-  }, context, config, { fetchImpl }) });
-}
-
-async function saveCustomerOnboardingSubmission(req, context, config, fetchImpl) {
-  const body = await readJsonBody(req);
-  return response({ data: await submitCustomerOnboarding(body, context, config, { fetchImpl }) });
-}
-
-async function saveCustomerOnboardingSync(req, context, config, fetchImpl) {
-  const body = await readJsonBody(req);
-  return response({ data: await syncCustomerOnboarding(body, context, config, { fetchImpl }) });
 }
 
 async function saveOpenRouteSession(req, context, config, fetchImpl) {
@@ -312,12 +290,8 @@ export async function handleTransitionalApi(req, url, context, config, { fetchIm
   if (method === "POST" && pathname === "/api/mcp-day/session-customer/status") return saveSessionCustomerStatus(req, context, config, fetchImpl);
 
   const sessionLifecycle = pathname.match(/^\/api\/mcp-sessions\/([^/]+)$/);
-  if (sessionLifecycle && method === "PATCH") {
-    return saveRouteSessionUpdate(req, decodePathId(sessionLifecycle[1], "invalid_session_id"), context, config, fetchImpl);
-  }
-  if (sessionLifecycle && method === "DELETE") {
-    return removeEmptyRouteSession(decodePathId(sessionLifecycle[1], "invalid_session_id"), context, config, fetchImpl);
-  }
+  if (sessionLifecycle && method === "PATCH") return saveRouteSessionUpdate(req, decodePathId(sessionLifecycle[1], "invalid_session_id"), context, config, fetchImpl);
+  if (sessionLifecycle && method === "DELETE") return removeEmptyRouteSession(decodePathId(sessionLifecycle[1], "invalid_session_id"), context, config, fetchImpl);
 
   if (method === "POST" && pathname === "/api/mcp-day/session-customer/result") return saveSessionCustomerResult(req, context, config, fetchImpl);
   if (method === "POST" && pathname === "/api/mcp-day/session-customer/add") return saveAddedSessionCustomer(req, context, config, fetchImpl);
@@ -327,8 +301,6 @@ export async function handleTransitionalApi(req, url, context, config, { fetchIm
   if (method === "POST" && pathname === "/api/mcp-day/session-customer/test") return saveSessionCustomerTest(req, context, config, fetchImpl);
   if (method === "POST" && pathname === "/api/mcp-day/session-customer/report") return saveSessionCustomerReport(req, context, config, fetchImpl);
   if (method === "POST" && pathname === "/api/mcp-day/session-customer/followup") return saveSessionCustomerFollowup(req, context, config, fetchImpl);
-  if (method === "POST" && pathname === "/api/mcp-day/session-customer/customer-onboarding/submit") return saveCustomerOnboardingSubmission(req, context, config, fetchImpl);
-  if (method === "POST" && pathname === "/api/mcp-day/session-customer/customer-onboarding/sync") return saveCustomerOnboardingSync(req, context, config, fetchImpl);
   if (method === "POST" && pathname === "/api/mcp-session-report") return saveSessionReportSnapshot(req, context, config, fetchImpl);
   if (method === "POST" && pathname === "/api/mcp-session-report/ai-result") return saveSessionReportAi(req, context, config, fetchImpl);
   if (method === "POST" && pathname === "/api/field-checks/result") return saveFieldCheckResult(req, context, config, fetchImpl);
@@ -348,7 +320,6 @@ export async function handleTransitionalApi(req, url, context, config, { fetchIm
     if (routeDelete) return removeRoute(decodePathId(routeDelete[1], "invalid_route_id"), context, config, fetchImpl);
   }
 
-  if (method === "GET" && pathname === "/api/mcp-day/session-customer/customer-onboarding") return loadCustomerOnboarding(url, context, config, fetchImpl);
   if (method === "GET" && pathname === "/api/outlet-media/customer-profile") return loadOutletCustomer(url, context, config, fetchImpl);
   if (method === "GET" && pathname === "/api/mcp-report-templates") return loadReportTemplates(config, fetchImpl);
   if (method === "GET" && pathname === "/api/products/search") return searchProducts(url, config, fetchImpl);

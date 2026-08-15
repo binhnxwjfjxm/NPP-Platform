@@ -73,19 +73,12 @@ test("standalone verification persists on route customer and uses canonical idem
   assert.equal(verification.includes("mcp-customer-onboarding-${"), false);
 });
 
-test("legacy order projection remains isolated for the later order-boundary cutover", () => {
-  const migration = source("apps/backend/foundation/migrations/sql/006_mcp_customer_onboarding_sync.sql");
-  const sync = source("apps/backend/foundation/customer-onboarding-sync.js");
-  for (const column of [
-    "customer_onboarding_request_id",
-    "customer_onboarding_status",
-    "customer_onboarding_fingerprint",
-    "core_customer_id",
-    "core_customer_address_id"
-  ]) {
-    assert.match(migration, new RegExp(column));
-    assert.match(sync, new RegExp(column));
-  }
-  assert.equal(sync.includes("raw_payload = jsonb_set"), false);
-  assert.match(sync, /createIdempotencyKey\(/);
+test("legacy session-order onboarding is retired from the active MCP runtime", () => {
+  const transitionalApi = source("apps/backend/foundation/transitional-api.js");
+  const visitSession = source("src/features/mcp/McpSessionCompactViewFinal2.tsx");
+  const legacyPage = source("src/app/visits/order-intent/page.tsx");
+  assert.doesNotMatch(transitionalApi, /\/api\/mcp-day\/session-customer\/customer-onboarding/);
+  assert.doesNotMatch(visitSession, /customer-onboarding\/submit|customer-onboarding\/sync|getCustomerOnboarding|CustomerOnboardingStatusCard/);
+  assert.match(visitSession, /Nhu cầu mua đã được ghi nhận để báo cáo/);
+  assert.match(legacyPage, /redirect\("\/orders"\)/);
 });

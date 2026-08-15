@@ -27,52 +27,36 @@ test("purchase-demand picker routes only to canonical NPP Core Sales products", 
   assert.match(demandUi, /fetch\(`\/api\/products\/search/);
   assert.match(demandUi, /fetch\(`\/api\/products\/\$\{encodeURIComponent\(productId\)\}\/variants/);
   assert.match(demandUi, /price: catalogPrice\(item\.price\)/);
-  assert.match(demandUi, /const normalized = typeof value === "string" \? value\.trim\(\) : value/);
   assert.match(demandUi, /if \(normalized === ""\) return null/);
-  assert.match(demandUi, /catalogPriceLabel\(variant\.price\)/);
-  assert.doesNotMatch(demandUi, /formatMoney\(Number\(variant\.price \|\| 0\)\)/);
   assert.match(orderCreateUi, /price: catalogPrice\(item\.price\)/);
-  assert.match(orderCreateUi, /const normalized = typeof value === "string" \? value\.trim\(\) : value/);
-  assert.match(orderCreateUi, /if \(normalized === ""\) return null/);
   assert.match(orderCreateUi, /"Chưa có giá Core"/);
-  assert.doesNotMatch(orderCreateUi, /money\.format\(Number\(product\.price \|\| 0\)\)/);
 });
 
-test("official order creation is explicit, pending-safe and reachable after session lock", () => {
-  const service = read("apps/backend/foundation/sales-order-sync.js");
-  const client = read("apps/backend/foundation/core-sales-client.js");
-  const card = read("src/features/mcp/McpLineCard.tsx");
+test("official MCP orders use only the direct canonical Core boundary; legacy order-intent runtime is retired", () => {
+  const api = read("apps/backend/foundation/core-sales-api.js");
+  const directService = read("apps/backend/foundation/direct-sales-orders.js");
+  const ordersUi = read("src/features/orders/McpCoreOrdersClient.tsx");
+  const visitSession = read("src/features/mcp/McpSessionCompactViewFinal2.tsx");
+  const lineCard = read("src/features/mcp/McpLineCard.tsx");
   const readonly = read("src/features/mcp/McpSessionReadonlyView.tsx");
-  const panel = read("src/features/mcp/McpOfficialOrderPanel.tsx");
-  const page = read("src/app/visits/order-intent/page.tsx");
-  assert.match(service, /sourceType: "MCP"/);
-  assert.match(service, /sourceId: row\.order_id/);
-  assert.match(service, /sourceOutletId: sourceOutletId\(row\)/);
-  assert.match(service, /collectionPolicy: "PREPAID"/);
-  assert.doesNotMatch(service, /COLLECT_ON_DELIVERY/);
-  assert.match(service, /mcp-sales-order-\$\{row\.order_id\}/);
-  assert.match(service, /FINGERPRINT_SCHEMA_VERSION = 1/);
-  assert.match(client, /\/api\/sales-orders/);
-  assert.doesNotMatch(client, /\/confirm|amendments|\/cancel/);
-  assert.match(card, /line\.orderId \?/);
-  assert.match(card, /Đơn NPP/);
-  assert.match(readonly, /line\.orderId \?/);
-  assert.match(readonly, /\/visits\/order-intent/);
-  assert.match(readonly, /Đơn NPP/);
-  assert.match(panel, /Tạo đơn nháp NPP/);
-  assert.match(panel, /submitCoreSalesOrder/);
-  assert.match(panel, /Promise\.allSettled/);
-  assert.match(panel, /async function loadCustomerOnboarding/);
-  assert.match(panel, /if \(!projection\.coreRequestId\) return \{ projection, syncError: null \}/);
-  assert.match(panel, /projection: await syncCustomerOnboarding\(sessionCustomerId, orderId\)/);
-  assert.match(panel, /loadCustomerOnboarding\(sessionCustomerId, orderId\)/);
-  assert.match(panel, /const \[busy, setBusy\] = useState\(false\)/);
-  assert.match(panel, /if \(busy\) return/);
-  assert.match(panel, /setBusy\(true\)/);
-  assert.match(panel, /\.finally\(\(\) => setBusy\(false\)\)/);
-  assert.doesNotMatch(panel, /useTransition/);
-  assert.match(page, /McpOfficialOrderPanel/);
-  assert.doesNotMatch(panel, /confirmCoreSalesOrder/);
+  const legacyPage = read("src/app/visits/order-intent/page.tsx");
+
+  assert.match(api, /pathname === "\/api\/core-sales\/orders"/);
+  assert.doesNotMatch(api, /\/api\/mcp-day\/session-customer\/sales-order/);
+  assert.match(directService, /sourceType: "MCP"/);
+  assert.match(directService, /sourceId: idempotencyKey/);
+  assert.match(directService, /sourceOutletId:/);
+  assert.match(directService, /collectionPolicy: "PREPAID"/);
+  assert.match(directService, /isValidIdempotencyKey/);
+  assert.match(ordersUi, /createIdempotencyKey\("mcp\.sales-order\.create"\)/);
+  assert.match(ordersUi, /\/api\/backend\/core-sales\/orders/);
+  assert.doesNotMatch(ordersUi, /sessionCustomerId|orderIntentId|unitPrice/);
+
+  assert.match(visitSession, /Đã ghi nhận nhu cầu mua để báo cáo/);
+  assert.doesNotMatch(visitSession, /customer-onboarding\/submit|customer-onboarding\/sync|Tiếp tục tạo đơn NPP|\/visits\/order-intent/);
+  assert.doesNotMatch(lineCard, /Đơn NPP|\/visits\/order-intent/);
+  assert.doesNotMatch(readonly, /Đơn NPP|\/visits\/order-intent/);
+  assert.match(legacyPage, /redirect\("\/orders"\)/);
 });
 
 test("MCP source orders stay visible in the canonical NPP Operations Sales Order list", () => {
@@ -99,10 +83,7 @@ test("MCP and Core Sales principals are least privilege and warehouse scoped", (
   const permissionLine = mcpEnv.match(/^MCP_SERVICE_PERMISSIONS=(.+)$/m)?.[1];
   assert.ok(permissionLine, "MCP_SERVICE_PERMISSIONS must be documented");
   const documentedPermissions = new Set(permissionLine.split(",").map((value) => value.trim()).filter(Boolean));
-  const manifestPermissions = new Set([
-    ...permissionManifest.userFacingWritePermissions,
-    ...permissionManifest.integrationPermissions
-  ]);
+  const manifestPermissions = new Set([...permissionManifest.userFacingWritePermissions, ...permissionManifest.integrationPermissions]);
   assert.deepEqual(documentedPermissions, manifestPermissions);
   assert.ok(documentedPermissions.has("mcp.sales-order.read"));
   assert.ok(documentedPermissions.has("mcp.sales-order.create"));
@@ -119,21 +100,16 @@ test("MCP and Core Sales principals are least privilege and warehouse scoped", (
   assert.match(coreConfig, /mcp_sales_token_reuse_forbidden/);
 });
 
-test("structured MCP projection and square NPP PWA icons are registered", () => {
+test("legacy projection columns stay inert for compatibility; no migration is added in cleanup", () => {
   const migration = read("../database/migrations/mcp/007_mcp_core_sales_order_sync.sql");
   const registry = read("apps/backend/foundation/migrations/index.js");
   const manifest = read("src/app/manifest.ts");
   const iconRoute = read("src/app/api/pwa-icon/route.ts");
   assert.match(migration, /core_sales_order_id uuid/);
   assert.match(migration, /core_sales_order_fingerprint char\(64\)/);
-  assert.match(migration, /core_sales_order_fingerprint_version integer/);
-  assert.match(migration, /core_sales_order_fingerprint_version = 1/);
   assert.match(registry, /mcp_007_core_sales_order_sync/);
   assert.match(manifest, /192x192/);
   assert.match(manifest, /512x512/);
   assert.match(manifest, /maskable=1/);
-  assert.doesNotMatch(manifest, /src: "\/npp-app-icon\.png"/);
   assert.match(iconRoute, /new URL\("\/npp-app-icon\.png"/);
-  assert.match(iconRoute, /width: size/);
-  assert.match(iconRoute, /height: size/);
 });

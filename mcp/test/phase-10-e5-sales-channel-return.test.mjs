@@ -16,8 +16,14 @@ test("E5 maps MCP source to the canonical active MCP sales channel before generi
   assert.match(entry, /Chưa cấu hình kênh bán hàng \$\{canonicalSourceChannelCode\} đang hoạt động/);
 });
 
-test("E5 returns to the exact visit session only after Core returns an official order id", () => {
-  const panel = read("src/features/mcp/McpOfficialOrderPanel.tsx");
-  assert.match(panel, /const projection = await submitCoreSalesOrder\(sessionCustomerId, orderId\);[\s\S]*?if \(!projection\.coreSalesOrderId\) throw new Error\("Core chưa trả về mã đơn bán hàng"\);[\s\S]*?router\.push\(returnTo\);/);
-  assert.doesNotMatch(panel, /salesChannelId|Hãy chọn kênh bán hàng/);
+test("E5 official order now uses the direct MCP order workspace and never returns through order-intent", () => {
+  const directService = read("apps/backend/foundation/direct-sales-orders.js");
+  const ordersUi = read("src/features/orders/McpCoreOrdersClient.tsx");
+  const legacyPage = read("src/app/visits/order-intent/page.tsx");
+  assert.match(directService, /sourceType: "MCP"/);
+  assert.match(directService, /sourceId: idempotencyKey/);
+  assert.match(ordersUi, /\/api\/backend\/core-sales\/orders/);
+  assert.match(ordersUi, /createIdempotencyKey\("mcp\.sales-order\.create"\)/);
+  assert.doesNotMatch(ordersUi, /salesChannelId|Hãy chọn kênh bán hàng/);
+  assert.match(legacyPage, /redirect\("\/orders"\)/);
 });
