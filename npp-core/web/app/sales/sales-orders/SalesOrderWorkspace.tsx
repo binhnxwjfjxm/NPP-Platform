@@ -26,6 +26,12 @@ function sourceBucket(order: SalesOrder): Exclude<OrderSourceFilter, 'all'> {
   return 'internal';
 }
 
+function sourceLabel(order: SalesOrder): string {
+  if (order.sourceType === 'MCP') return 'MCP';
+  if (order.sourceType === 'API' && order.sourceId?.startsWith('CUSTOMER_PORTAL:')) return 'Khách hàng';
+  return 'Nội bộ';
+}
+
 function orderCardStatus(order: SalesOrder): string {
   const orderStatus = orderLabels[order.status] ?? order.status;
   if (order.status !== 'confirmed') return orderStatus;
@@ -230,6 +236,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                   <div className={styles.orderCardTop}><strong>{order.number ?? 'Đơn nháp chưa cấp số'}</strong><span>{orderCardStatus(order)}</span></div>
                   <b>{order.customerCode} — {order.customerName}</b>
                   <div className={styles.orderCardMeta}>
+                    <small>Nguồn {sourceLabel(order)}</small>
                     <small>Kho {order.warehouseCode} · {collectionLabels[order.collectionPolicy]}</small>
                     <small>Kênh {order.salesChannelCode ?? 'chưa snapshot'}{order.salesChannelName ? ` — ${order.salesChannelName}` : ''}</small>
                     <small>Cập nhật {formatVietnamDateTime(order.updatedAt)}</small>

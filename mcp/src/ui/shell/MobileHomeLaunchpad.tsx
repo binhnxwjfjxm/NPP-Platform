@@ -19,7 +19,7 @@ export function MobileHomeLaunchpad() {
         </Link>
         <nav className="mobile-home-quick-grid" aria-label="Lối tắt tổng quan">
           {QUICK_LINKS.map((item) => (
-            <Link href={item.href} key={item.href} prefetch>
+            <Link href={item.href} key={item.href} prefetch={item.href !== "/orders"}>
               <span aria-hidden="true">{item.icon}</span>
               <strong>{item.label}</strong>
             </Link>

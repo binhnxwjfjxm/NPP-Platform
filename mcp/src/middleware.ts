@@ -54,7 +54,8 @@ function coreBaseUrl(): string | null {
   try {
     const url = new URL(raw);
     if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;
-    if (process.env.NODE_ENV === "production" && url.protocol !== "https:") return null;
+    const loopback = new Set(["127.0.0.1", "localhost", "::1"]).has(url.hostname);
+    if (process.env.NODE_ENV === "production" && url.protocol !== "https:" && !loopback) return null;
     url.pathname = url.pathname.replace(/\/$/, "");
     url.search = "";
     url.hash = "";
@@ -147,7 +148,9 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     "/customers/:path*",
+    "/orders/:path*",
     "/api/backend/customer-verifications/:path*",
-    "/api/backend/core-customers/:path*"
+    "/api/backend/core-customers/:path*",
+    "/api/backend/core-sales/orders/:path*"
   ]
 };
