@@ -2,7 +2,7 @@
 
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
 import { PrintAction, PrintSurface } from '../../components/print-document';
-import { collectionLabels, formatMoney } from './sales-order-ui';
+import { collectionLabels, formatMoney, formatQuantity } from './sales-order-ui';
 import styles from './sales-order-print.module.css';
 
 function textValue(value: unknown): string {
@@ -98,7 +98,7 @@ export default function SalesOrderPrintSheet({
                 <tr key={line.id}>
                   <td>{line.lineNumber}</td>
                   <td><strong>{line.itemName}</strong><small>{line.sku}</small></td>
-                  <td className={styles.right}>{line.quantity} {line.unitCode}</td>
+                  <td className={styles.right}>{formatQuantity(line.quantity)} {line.unitCode}</td>
                   <td className={styles.right}>{formatMoney(line.unitPrice)}</td>
                   {showDiscount ? <td className={styles.right}>{formatMoney(line.discountAmount)}</td> : null}
                   {showTax ? <td className={styles.right}>{formatMoney(line.taxAmount)}</td> : null}

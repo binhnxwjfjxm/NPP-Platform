@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell-core';
-import type { InventoryBalance } from '../../../lib/inventory-types';
+import { formatQuantity, type InventoryBalance } from '../../../lib/inventory-types';
 import type { Warehouse, WarehouseLocation } from '../../../lib/organization-types';
 import {
   adjustmentKindLabels,
@@ -194,12 +194,12 @@ export default function InventoryAdjustmentWorkspace({
             <option value="">Chọn kho</option>{warehouses.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
           <label>Dòng tồn nguồn<select value={draft.sourceKey} onChange={(event) => setDraft({ ...draft, sourceKey: event.target.value })}>
             <option value="">Chọn vị trí / SKU / lô</option>{sourceBalances.map((item) => <option key={keyForBalance(item)} value={keyForBalance(item)}>
-              {item.location_code} — {item.base_sku}{item.lot_code ? ` / ${item.lot_code}` : ''} — khả dụng {item.available_quantity}
+              {item.location_code} — {item.base_sku}{item.lot_code ? ` / ${item.lot_code}` : ''} — khả dụng {formatQuantity(item.available_quantity)}
             </option>)}</select></label>
           {destinationType ? <label>Vị trí đích<select value={draft.destinationLocationId} onChange={(event) => setDraft({ ...draft, destinationLocationId: event.target.value })}>
             <option value="">Chọn vị trí {destinationType === 'quarantine' ? 'cách ly' : 'hư hỏng'}</option>
             {destinationLocations.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label> : null}
-          <label>Số lượng không dấu<input inputMode="decimal" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity: event.target.value })} placeholder="0.000000" /></label>
+          <label>Số lượng không dấu<input inputMode="decimal" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity: event.target.value })} placeholder="0" /></label>
           <label>Lý do<select value={draft.reasonCode} onChange={(event) => setDraft({ ...draft, reasonCode: event.target.value })}>
             <option value="">Chọn lý do</option>{availableReasons.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}</select></label>
           <label className={styles.fullWidth}>Ghi chú lý do<textarea value={draft.reasonNote} onChange={(event) => setDraft({ ...draft, reasonNote: event.target.value })} rows={3} /></label>
@@ -240,7 +240,7 @@ export default function InventoryAdjustmentWorkspace({
               <div className={styles.lines}>{selected.lines?.map((line) => <article key={line.id} className={styles.lineCard}>
                 <strong>{line.sourceSku}{line.lotCode ? ` · Lô ${line.lotCode}` : ''}</strong>
                 <span>{line.sourceLocationCode} → {line.destinationLocationCode ?? (selected.adjustmentDirection === 'IN' ? 'Tăng tại vị trí' : 'Ra khỏi tồn')}</span>
-                <small>Số lượng {line.quantity} {line.sourceUnitCode} · cơ sở {line.baseQuantity}</small>
+                <small>Số lượng {formatQuantity(line.quantity)} {line.sourceUnitCode} · cơ sở {formatQuantity(line.baseQuantity)}</small>
               </article>)}</div>
             </>}
           </div>

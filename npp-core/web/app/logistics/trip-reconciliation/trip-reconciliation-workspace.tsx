@@ -4,6 +4,7 @@ import { createIdempotencyKey } from '@npp/contracts';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import { formatExactDecimal } from '../../../lib/decimal-display.js';
 import styles from './trip-reconciliation-workspace.module.css';
 import TripReconciliationPrintDock from './TripReconciliationPrintDock';
 
@@ -491,10 +492,10 @@ export default function TripReconciliationWorkspace() {
                         <tr key={line.inventoryIssueLineId}>
                           <td><strong>{line.deliveryOrderNumber || line.deliveryOrderId.slice(0, 8)}</strong><small>{line.sku} · {line.itemName}<br />{line.locationCode || 'Vị trí gốc'}{line.lotCode ? ` · Lô ${line.lotCode}` : ''}</small></td>
                           <td>{line.attemptResult ? RESULT_LABELS[line.attemptResult] : 'Chưa có kết quả'}</td>
-                          <td>{line.issuedBaseQuantity}</td>
-                          <td>{line.deliveredBaseQuantity}</td>
-                          <td>{line.returnedBaseQuantity}</td>
-                          <td><strong>{line.outstandingBaseQuantity}</strong></td>
+                          <td>{formatExactDecimal(line.issuedBaseQuantity)}</td>
+                          <td>{formatExactDecimal(line.deliveredBaseQuantity)}</td>
+                          <td>{formatExactDecimal(line.returnedBaseQuantity)}</td>
+                          <td><strong>{formatExactDecimal(line.outstandingBaseQuantity)}</strong></td>
                         </tr>
                       ))}
                     </tbody>
@@ -515,7 +516,7 @@ export default function TripReconciliationWorkspace() {
                         <p>Nhập số lượng kho thực nhận. Hệ thống chỉ cho đóng chuyến khi hàng còn trên xe về 0.</p>
                         {outstandingLines.map((line) => (
                           <label key={line.inventoryIssueLineId} className={styles.quantityRow}>
-                            <span>{line.sku} · còn {line.outstandingBaseQuantity} {line.unitCode}</span>
+                            <span>{line.sku} · còn {formatExactDecimal(line.outstandingBaseQuantity)} {line.unitCode}</span>
                             <input
                               inputMode="decimal"
                               aria-label={`Số lượng nhận lại ${line.sku}`}
