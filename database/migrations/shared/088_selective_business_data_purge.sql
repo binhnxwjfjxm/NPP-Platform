@@ -1,5 +1,5 @@
--- Issue #562 Part 4: controlled selective business-data purge metadata.
--- Purge execution is application-controlled; this migration only persists target/result state.
+-- Issue #562 Part 4: controlled selective business-data purge metadata and audit purge guard.
+-- Purge execution remains application-controlled; this migration never deletes business data.
 
 ALTER TABLE shared.data_deletion_intents
   ADD COLUMN IF NOT EXISTS target_code text NOT NULL DEFAULT 'ALL_BUSINESS_DATA',
@@ -34,3 +34,26 @@ ALTER TABLE shared.data_deletion_intents
 
 CREATE INDEX IF NOT EXISTS data_deletion_intents_purge_status_idx
   ON shared.data_deletion_intents (installation_id, status, created_at DESC);
+
+-- Audit stays append-only for ordinary application traffic. The only DELETE exception is
+-- the same database transaction that has already moved a deletion intent to PURGING for
+-- the audit row's installation. PURGING is never an externally committed intermediate
+-- state in the application purge flow, so concurrent sessions cannot use this exception.
+CREATE OR REPLACE FUNCTION shared.prevent_core_audit_record_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF TG_OP = 'DELETE'
+     AND EXISTS (
+       SELECT 1
+       FROM shared.data_deletion_intents intent
+       WHERE intent.installation_id = OLD.installation_id
+         AND intent.status = 'PURGING'
+     ) THEN
+    RETURN OLD;
+  END IF;
+
+  RAISE EXCEPTION 'core_audit_records_are_append_only';
+END;
+$$;
