@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 const WINDOWS_RELEASE = Object.freeze({
   version: '0.1.4',
-  downloadUrl: 'https://pub-53ec351640ea49ff8d5f5105c98006b4.r2.dev/core/windows/stable/Hung-Phat-Desktop-0.1.4-Setup.exe',
+  downloadUrl: 'https://pub-381648426a2447a7a5edd970ca02d14e.r2.dev/core/windows/stable/Hung-Phat-Desktop-0.1.4-Setup.exe',
 });
 
 export default function DesktopAppPage() {
