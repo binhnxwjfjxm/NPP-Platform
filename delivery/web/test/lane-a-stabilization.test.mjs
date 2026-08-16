@@ -9,6 +9,8 @@ const layout = read('app/layout.tsx');
 const middleware = read('middleware.ts');
 const capabilities = read('lib/delivery-capabilities.ts');
 const custodyPage = read('app/custody/page.tsx');
+const pickingPage = read('app/picking/page.tsx');
+const pickingApi = read('app/api/picking/[allocationId]/route.ts');
 const handover = read('app/trips/[tripId]/cod-handover-panel.tsx');
 
 test('Lane A1 derives navigation capabilities from trusted Core /me permissions and warehouse scope', () => {
@@ -16,12 +18,22 @@ test('Lane A1 derives navigation capabilities from trusted Core /me permissions 
   assert.match(middleware, /core\.cod-collection\.read/);
   assert.match(middleware, /core\.cod-collection\.record/);
   assert.match(middleware, /core\.cod-handover\.create/);
+  assert.match(middleware, /core\.fulfillment\.read/);
   assert.match(middleware, /core\.fulfillment\.pick/);
-  assert.match(middleware, /warehouseIds\.length > 0/);
+  assert.match(
+    middleware,
+    /permissions\.has\(CORE_PERMISSIONS\.readFulfillment\)\s*&&\s*permissions\.has\(CORE_PERMISSIONS\.pickFulfillment\)\s*&&\s*warehouseIds\.length > 0/,
+  );
   assert.match(middleware, /applyCapabilityHeaders/);
   assert.match(middleware, /headers\.delete\(name\)/);
   assert.match(layout, /deliveryCapabilitiesFromHeaders\(headers\(\)\)/);
   assert.match(capabilities, /canPickWithWarehouse/);
+});
+
+test('Lane A1 applies the same picking capability to dock, direct page access and picking mutations', () => {
+  assert.match(frame, /capabilities\.canPickWithWarehouse/);
+  assert.match(pickingPage, /!capabilities\.canPickWithWarehouse/);
+  assert.match(pickingApi, /deliveryCapabilitiesFromHeaders\(request\.headers\)\.canPickWithWarehouse/);
 });
 
 test('Lane A1 keeps real app-level dock destinations and synchronization in the top bar', () => {
