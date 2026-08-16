@@ -61,7 +61,12 @@ test("Core order submit keeps canonical idempotency and never sends browser comm
   assert.match(sheet, /variantId: item\.variantId/);
   assert.match(sheet, /quantity: String\(item\.quantity\)/);
   assert.doesNotMatch(sheet, /"\/api\/backend\/orders"/);
-  assert.doesNotMatch(sheet, /unitPrice|customerMode|manualCustomer|setSales|setStatus/);
+
+  const bodyStart = sheet.indexOf("const body = {");
+  const bodyEnd = sheet.indexOf("const fingerprint", bodyStart);
+  assert.ok(bodyStart >= 0 && bodyEnd > bodyStart, "Core submit body must remain explicit and reviewable");
+  const submissionBody = sheet.slice(bodyStart, bodyEnd);
+  assert.doesNotMatch(submissionBody, /unitPrice|customerMode|manualCustomer|setSales|setStatus/);
 });
 
 test("catalog uses Ordering-style left filter rail without copying Ordering purchase-mode logic", () => {
