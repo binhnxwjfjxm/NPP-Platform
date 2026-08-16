@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { deriveIdempotencyKey } from '../idempotency-derived.js';
 import * as repository from '../db/repositories/customer-payment.js';
 import * as documentNumberRepository from '../db/repositories/document-numbering.js';
 import { allocateDocumentNumber } from './document-numbering.js';
@@ -375,7 +376,7 @@ export async function createCustomerPayment(client, {
   const numberResult = await allocateDocumentNumber(client, {
     installationId: requestContext.installationId,
     seriesId: series.id,
-    idempotencyKey: `customer-payment:${idempotencyKey}`,
+    idempotencyKey: deriveIdempotencyKey('customer-payment-number', idempotencyKey),
     payload: {
       documentDate: paymentDate,
       metadata: {
