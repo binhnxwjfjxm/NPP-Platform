@@ -162,20 +162,33 @@
 
 .unitRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 32px;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  grid-template-rows: auto auto;
   align-items: center;
-  gap: 8px;
+  gap: 2px 8px;
   min-width: 0;
   min-height: 43px;
   border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
   padding: 7px 1px;
 }
 
-.unitCopy,
-.unitPrice {
+.unitCopy {
   display: grid;
+  grid-column: 1;
+  grid-row: 1;
   gap: 1px;
   min-width: 0;
+}
+
+.unitPrice {
+  display: flex;
+  grid-column: 1;
+  grid-row: 2;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 5px;
+  min-width: 0;
+  text-align: left;
 }
 
 .unitCopy strong,
@@ -197,11 +210,6 @@
   font-size: 8px;
 }
 
-.unitPrice {
-  justify-items: end;
-  text-align: right;
-}
-
 .unitPrice strong {
   color: var(--brand-strong);
   font-size: 10px;
@@ -219,30 +227,61 @@
 
 .unitAdd {
   display: grid;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
   width: 30px;
   height: 30px;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--brand-strong) 35%, var(--line));
+  border: 1px solid var(--brand-strong);
   border-radius: 50%;
-  background: #fff;
-  color: var(--brand-strong);
+  background: var(--brand-strong);
+  color: #fff;
   padding: 0;
-  font-size: 19px;
-  font-weight: 500;
+  font-size: 0;
   line-height: 1;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--brand-strong) 24%, transparent);
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
 
+.unitAdd > span {
+  position: relative;
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+
+.unitAdd > span::before,
+.unitAdd > span::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 2px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+
+.unitAdd > span::before {
+  width: 12px;
+  height: 2px;
+}
+
+.unitAdd > span::after {
+  width: 2px;
+  height: 12px;
+}
+
 .unitAdd:hover:not(:disabled),
 .unitAdd:focus-visible {
-  border-color: var(--brand-strong);
-  background: var(--brand-soft, #f3f7ed);
+  border-color: color-mix(in srgb, var(--brand-strong) 88%, #000);
+  background: color-mix(in srgb, var(--brand-strong) 88%, #000);
 }
 
 .unitAdd:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--brand-strong) 22%, transparent);
-  outline-offset: 1px;
+  outline: 2px solid color-mix(in srgb, var(--brand-strong) 26%, transparent);
+  outline-offset: 2px;
 }
 
 .unitAdd:active:not(:disabled) {
@@ -296,8 +335,8 @@
   }
 
   .unitRow {
-    grid-template-columns: minmax(0, 1fr) auto 30px;
-    gap: 6px;
+    grid-template-columns: minmax(0, 1fr) 30px;
+    gap: 2px 6px;
     min-height: 42px;
     padding-block: 6px;
   }
@@ -334,13 +373,25 @@
   }
 
   .unitRow {
-    grid-template-columns: minmax(0, 1fr) auto 28px;
-    gap: 4px;
+    grid-template-columns: minmax(0, 1fr) 28px;
+    gap: 2px 4px;
   }
 
   .unitAdd {
     width: 27px;
     height: 27px;
-    font-size: 17px;
+  }
+
+  .unitAdd > span {
+    width: 11px;
+    height: 11px;
+  }
+
+  .unitAdd > span::before {
+    width: 11px;
+  }
+
+  .unitAdd > span::after {
+    height: 11px;
   }
 }
