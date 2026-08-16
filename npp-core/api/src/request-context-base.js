@@ -159,10 +159,12 @@ export function createMcpOnboardingPrincipal(config) {
   });
 }
 
-export function createMcpSalesPrincipal(config) {
-  if (!config.mcpSalesApiToken) return null;
+export function createMcpSalesPrincipal(config, employeeId) {
+  const normalizedEmployeeId = String(employeeId ?? '').trim().toLowerCase();
+  if (!config.mcpSalesApiToken || !UUID_PATTERN.test(normalizedEmployeeId)) return null;
   return normalizePrincipal({
     actorId: config.mcpSalesActorId,
+    employeeId: normalizedEmployeeId,
     roles: ['mcp-sales-order-service'],
     permissions: [
       PERMISSIONS.coreProductRead,
@@ -228,7 +230,11 @@ export function authenticateRequest(req, config) {
       : { ok: false, code: 'UNAUTHORIZED', statusCode: 401 };
   }
   if (config.mcpSalesApiToken && tokenMatches(candidate, config.mcpSalesApiToken)) {
-    return { ok: true, principal: createMcpSalesPrincipal(config) };
+    const employeeId = String(req.headers['x-npp-mcp-employee-id'] ?? '').trim();
+    const principal = createMcpSalesPrincipal(config, employeeId);
+    return principal
+      ? { ok: true, principal }
+      : { ok: false, code: 'UNAUTHORIZED', statusCode: 401 };
   }
   if (config.mcpOnboardingApiToken && tokenMatches(candidate, config.mcpOnboardingApiToken)) {
     return { ok: true, principal: createMcpOnboardingPrincipal(config) };

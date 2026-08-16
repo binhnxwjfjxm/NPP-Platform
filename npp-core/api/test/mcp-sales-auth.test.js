@@ -9,6 +9,7 @@ import {
 } from '../src/request-context.js';
 
 const WAREHOUSE_ID = '11111111-1111-4111-8111-111111111111';
+const EMPLOYEE_ID = '22222222-2222-4222-8222-222222222222';
 
 function config() {
   return loadConfig({
@@ -31,8 +32,9 @@ function config() {
 
 test('dedicated MCP Sales token can read canonical products and BASE prices and create/read draft orders only', () => {
   const appConfig = config();
-  const principal = createMcpSalesPrincipal(appConfig);
+  const principal = createMcpSalesPrincipal(appConfig, EMPLOYEE_ID);
   assert.equal(principal.actorId, 'service:mcp-sales-order');
+  assert.equal(principal.employeeId, EMPLOYEE_ID);
   assert.deepEqual(principal.scopes.warehouseIds, [WAREHOUSE_ID]);
   assert.deepEqual([...principal.permissions].sort(), [
     PERMISSIONS.coreProductRead,
@@ -51,13 +53,33 @@ test('dedicated MCP Sales token can read canonical products and BASE prices and 
   assert.equal(requirePermission({ permissions: principal.permissions }, PERMISSIONS.coreSalesOrderCancel).ok, false);
 });
 
-test('MCP Sales token authenticates separately and incomplete/reused config fails closed', () => {
+test('MCP Sales token authenticates separately with trusted employee context and incomplete/reused config fails closed', () => {
   const appConfig = config();
-  const result = authenticateRequest({ headers: { authorization: `Bearer ${appConfig.mcpSalesApiToken}` } }, appConfig);
+  const result = authenticateRequest({
+    headers: {
+      authorization: `Bearer ${appConfig.mcpSalesApiToken}`,
+      'x-npp-mcp-employee-id': EMPLOYEE_ID,
+    },
+  }, appConfig);
   assert.equal(result.ok, true);
   assert.equal(result.principal.sourceApp, 'mcp-plan-backend');
+  assert.equal(result.principal.employeeId, EMPLOYEE_ID);
   assert.equal(result.principal.roles.includes('mcp-sales-order-service'), true);
   assert.equal(result.principal.permissions.includes(PERMISSIONS.coreCustomerWrite), false);
+
+  assert.deepEqual(
+    authenticateRequest({ headers: { authorization: `Bearer ${appConfig.mcpSalesApiToken}` } }, appConfig),
+    { ok: false, code: 'UNAUTHORIZED', statusCode: 401 },
+  );
+  assert.deepEqual(
+    authenticateRequest({
+      headers: {
+        authorization: `Bearer ${appConfig.mcpSalesApiToken}`,
+        'x-npp-mcp-employee-id': 'route-customer-1',
+      },
+    }, appConfig),
+    { ok: false, code: 'UNAUTHORIZED', statusCode: 401 },
+  );
 
   assert.throws(
     () => loadConfig({

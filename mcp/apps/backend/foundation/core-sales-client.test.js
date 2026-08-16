@@ -15,6 +15,7 @@ const customerId = "33333333-3333-4333-8333-333333333333";
 const addressId = "44444444-4444-4444-8444-444444444444";
 const productId = "55555555-5555-4555-8555-555555555555";
 const variantId = "66666666-6666-4666-8666-666666666666";
+const employeeId = "77777777-7777-4777-8777-777777777777";
 const config = {
   coreSales: {
     configured: true,
@@ -24,7 +25,7 @@ const config = {
     timeoutMs: 5000
   }
 };
-const context = { requestId: "req_sales_client" };
+const context = { requestId: "req_sales_client", principal: { employeeId } };
 
 function jsonResponse(status, data) {
   return {
@@ -43,16 +44,17 @@ function order(overrides = {}) {
     sourceType: "MCP",
     sourceId: "order_1",
     sourceOutletId: "route_customer_1",
+    sourceEmployeeId: employeeId,
     customerId,
     customerAddressId: addressId,
     currency: "VND",
     updatedAt: "2026-08-03T00:00:00.000Z",
-    versions: [{ versionNumber: "1", total: "125000", currency: "VND" }],
+    versions: [{ versionNumber: "1", total: "125000", currency: "VND", sourceEmployeeId: employeeId }],
     ...overrides
   };
 }
 
-test("Core Sales SKU search uses dedicated server token", async () => {
+test("Core Sales SKU search uses dedicated server token and trusted employee header", async () => {
   let seen;
   const result = await searchCoreSalesSkus("tra xanh", context, config, {
     limit: 20,
@@ -66,6 +68,18 @@ test("Core Sales SKU search uses dedicated server token", async () => {
   assert.match(seen.url, /search=tra\+xanh/);
   assert.equal(seen.init.headers.Authorization, `Bearer ${config.coreSales.apiToken}`);
   assert.equal(seen.init.headers["X-Request-Id"], context.requestId);
+  assert.equal(seen.init.headers["X-NPP-MCP-Employee-Id"], employeeId);
+});
+
+test("Core Sales boundary fails closed without trusted employee context", async () => {
+  await assert.rejects(
+    () => searchCoreSalesSkus("tea", { requestId: "req_missing_employee" }, config),
+    (error) => error.code === "core_sales_employee_context_required" && error.statusCode === 400
+  );
+  await assert.rejects(
+    () => searchCoreSalesSkus("tea", { requestId: "req_bad_employee", principal: { employeeId: "route-1" } }, config),
+    (error) => error.code === "core_sales_employee_context_invalid" && error.statusCode === 400
+  );
 });
 
 test("Core product variants use exact canonical route and reject path-shaped IDs", async () => {
@@ -140,11 +154,15 @@ test("Core Sales create sends deterministic idempotency header and maps draft", 
   assert.equal(created.status, "draft");
   assert.equal(seen.url, "https://core.example.test/api/sales-orders");
   assert.equal(seen.init.headers["Idempotency-Key"], "mcp-sales-order-order_1");
+  assert.equal(seen.init.headers["X-NPP-MCP-Employee-Id"], employeeId);
   assert.equal(JSON.parse(seen.init.body).sourceType, "MCP");
+  assert.equal("employeeId" in JSON.parse(seen.init.body), false);
+  assert.equal("sourceEmployeeId" in JSON.parse(seen.init.body), false);
 
   const projection = coreSalesOrderProjection(created);
   assert.equal(projection.total, "125000");
   assert.equal(projection.currentVersionNumber, 1);
+  assert.equal(projection.sourceEmployeeId, employeeId);
 });
 
 test("Core Sales read uses canonical detail endpoint and passes through business conflicts", async () => {
