@@ -1,6 +1,7 @@
 import { normalizeIdempotencyProviderError } from "./idempotency.js";
 import { providerPersistence } from "./provider-runtime.js";
 import { supabaseRpc } from "./supabase-adapter.js";
+import { syncCoreCustomerAddressLocation } from "./core-customer-location-client.js";
 
 function text(value) {
   const normalized = String(value ?? "").trim();
@@ -77,9 +78,55 @@ function normalizeMutationError(error) {
   return error;
 }
 
+function postgresPersistence(config, options) {
+  if (options?.persistence) return options.persistence;
+  return config?.persistence?.provider === "postgresql" ? providerPersistence() : null;
+}
+
+async function loadCoreLocationLink(routeCustomerId, context, config, options) {
+  const persistence = postgresPersistence(config, options);
+  if (!persistence) return null;
+  await persistence.assertReady?.();
+  return persistence.withTransaction(async (client) => {
+    const result = await client.query(
+      `SELECT core_customer_id, core_customer_address_id, core_onboarding_status
+       FROM mcp.mcp_route_customers
+       WHERE installation_id = $1 AND id = $2 AND active IS TRUE
+       LIMIT 1`,
+      [context.installation.id, routeCustomerId]
+    );
+    const row = result.rows?.[0];
+    if (!row) {
+      const error = new Error("route_customer_not_found");
+      error.code = "route_customer_not_found";
+      error.providerMessage = "route_customer_not_found";
+      error.statusCode = 404;
+      throw error;
+    }
+    if (!["approved", "linked_existing"].includes(String(row.core_onboarding_status || "").trim())) return null;
+    const customerId = text(row.core_customer_id);
+    const addressId = text(row.core_customer_address_id);
+    return customerId && addressId ? Object.freeze({ customerId, addressId }) : null;
+  });
+}
+
+async function syncLinkedCoreLocation(routeCustomerId, locationUrl, context, config, options) {
+  const link = await loadCoreLocationLink(routeCustomerId, context, config, options);
+  if (!link) return null;
+  return syncCoreCustomerAddressLocation(
+    { ...link, locationUrl },
+    context,
+    config,
+    {
+      fetchImpl: options?.coreFetchImpl,
+      idempotencyKey: context.idempotencyKey
+    }
+  );
+}
+
 async function syncActiveSessionCustomerIdentity(routeCustomerId, context, config, options) {
-  if (config?.persistence?.provider !== "postgresql" && !options?.persistence) return;
-  const persistence = options?.persistence || providerPersistence();
+  const persistence = postgresPersistence(config, options);
+  if (!persistence) return;
   await persistence.withTransaction(async (client) => {
     await client.query(
       `UPDATE mcp.mcp_session_customers AS session_customer
@@ -132,6 +179,7 @@ export async function updateRouteCustomer(routeCustomerIdInput, body, context, c
   if (geoLng !== null && (geoLng < -180 || geoLng > 180)) badRequest("invalid_geo_lng");
   if (geoAccuracy !== null && geoAccuracy < 0) badRequest("invalid_geo_accuracy");
 
+  const hasLocationUpdate = hasAny(body, ["googleMapsUrl", "google_maps_url", "geoLat", "geo_lat", "geoLng", "geo_lng"]);
   const suppliedMapsUrl = optionalText(body, ["googleMapsUrl", "google_maps_url"]);
   const googleMapsUrl = suppliedMapsUrl || (
     geoLat !== null && geoLng !== null
@@ -140,6 +188,10 @@ export async function updateRouteCustomer(routeCustomerIdInput, body, context, c
   );
 
   try {
+    if (hasLocationUpdate) {
+      await syncLinkedCoreLocation(routeCustomerId, googleMapsUrl, context, config, options);
+    }
+
     const result = await supabaseRpc(config, "mcp_idempotent_update_route_customer", {
       p_route_customer_id: routeCustomerId,
       p_customer_name: optionalText(body, ["customerName", "customer_name", "accountName", "account_name", "name"]),
@@ -162,3 +214,8 @@ export async function updateRouteCustomer(routeCustomerIdInput, body, context, c
     throw normalizeMutationError(error);
   }
 }
+
+export const routeCustomerUpdateInternals = Object.freeze({
+  loadCoreLocationLink,
+  syncLinkedCoreLocation,
+});

@@ -9,7 +9,7 @@ const config = {
 
 const context = {
   requestId: "request-route-customer-update-12345678",
-  idempotencyKey: "route-customer.update:12345678",
+  idempotencyKey: "route-customer.update-12345678",
   receivedAt: "2026-07-19T13:00:00.000Z",
   installation: { id: "installation-a", nppCode: "NPP-A" },
   actor: { id: "service:npp-a:mcp-v1", type: "service", authentication: "backend-token" }
@@ -72,6 +72,65 @@ test("route-customer update sends the full canonical 13-field contract and trust
   assert.equal(args.p_context.idempotencyKey, context.idempotencyKey);
   assert.equal(args.p_context.installationId, "installation-a");
   assert.equal(args.p_context.actorId, "service:npp-a:mcp-v1");
+});
+
+test("linked route-customer location writes canonical Core first and reuses the original idempotency key", async () => {
+  const order = [];
+  const providerCalls = [];
+  const coreCalls = [];
+  const customerId = "11111111-1111-4111-8111-111111111111";
+  const addressId = "22222222-2222-4222-8222-222222222222";
+  const linkedPersistence = {
+    async withTransaction(work) {
+      return work({
+        async query(sql, params) {
+          if (String(sql).includes("SELECT core_customer_id")) {
+            return { rows: [{
+              core_customer_id: customerId,
+              core_customer_address_id: addressId,
+              core_onboarding_status: "approved"
+            }] };
+          }
+          return { rowCount: 1, rows: [] };
+        }
+      });
+    }
+  };
+  const coreFetchImpl = async (url, init) => {
+    order.push("core");
+    coreCalls.push({ url: String(url), init });
+    return new Response(JSON.stringify({
+      data: { customerId, addressId, locationUrl: "https://www.google.com/maps/search/?api=1&query=10.755,106.667" }
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  const fetchImpl = async (url, init) => {
+    order.push("mcp");
+    return provider(providerCalls)(url, init);
+  };
+
+  await updateRouteCustomer("route-customer-1", {
+    geoLat: 10.755,
+    geoLng: 106.667
+  }, context, {
+    ...config,
+    persistence: { provider: "postgresql" },
+    coreSales: {
+      configured: true,
+      baseUrl: "https://core.example.com",
+      apiToken: "core-service-token",
+      timeoutMs: 1000
+    }
+  }, { fetchImpl, coreFetchImpl, persistence: linkedPersistence });
+
+  assert.deepEqual(order.slice(0, 2), ["core", "mcp"]);
+  assert.equal(coreCalls.length, 1);
+  assert.equal(new URL(coreCalls[0].url).pathname, "/api/internal/mcp/customer-address-location");
+  assert.equal(coreCalls[0].init.headers["Idempotency-Key"], context.idempotencyKey);
+  assert.deepEqual(JSON.parse(coreCalls[0].init.body), {
+    customerId,
+    addressId,
+    locationUrl: "https://www.google.com/maps/search/?api=1&query=10.755,106.667"
+  });
 });
 
 test("PostgreSQL route-customer update reconciles identity into mutable active-session snapshots only", async () => {

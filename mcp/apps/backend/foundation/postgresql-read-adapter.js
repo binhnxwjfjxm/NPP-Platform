@@ -25,6 +25,7 @@ const READ_TABLES = new Set([
   "route_customers",
   "mcp_outlet_media"
 ]);
+const CANONICAL_LOCATION_COLUMN = "__canonical_google_maps_url";
 
 function text(value) {
   const normalized = String(value ?? "").trim();
@@ -75,6 +76,46 @@ function boundedInteger(value, fallback, maximum) {
   return Math.max(0, Math.min(Math.trunc(parsed), maximum));
 }
 
+function readSource(table) {
+  if (table !== "mcp_route_customers") return `"mcp".${quoteIdentifier(table)}`;
+  return `(
+    SELECT route_customer.*,
+           CASE
+             WHEN route_customer.core_onboarding_status IN ('approved', 'linked_existing')
+              AND route_customer.core_customer_id IS NOT NULL
+              AND route_customer.core_customer_address_id IS NOT NULL
+              AND customer_address.is_active IS TRUE
+             THEN customer_address.location_url
+             ELSE route_customer.google_maps_url
+           END AS "${CANONICAL_LOCATION_COLUMN}"
+    FROM "mcp"."mcp_route_customers" AS route_customer
+    LEFT JOIN "shared"."customer_addresses" AS customer_address
+      ON customer_address.installation_id = route_customer.installation_id
+     AND customer_address.customer_id = route_customer.core_customer_id
+     AND customer_address.id = route_customer.core_customer_address_id
+  ) AS "mcp_route_customers"`;
+}
+
+function selectedColumns(table, selectRaw) {
+  if (!selectRaw || selectRaw === "*") return "*";
+  const selected = selectRaw.split(",").map((item) => quoteIdentifier(item.trim())).join(", ");
+  return table === "mcp_route_customers"
+    ? `${selected}, "${CANONICAL_LOCATION_COLUMN}"`
+    : selected;
+}
+
+function canonicalizeRouteCustomerRows(table, rows) {
+  if (table !== "mcp_route_customers") return rows;
+  return rows.map((row) => {
+    const canonicalLocation = Object.prototype.hasOwnProperty.call(row, CANONICAL_LOCATION_COLUMN)
+      ? row[CANONICAL_LOCATION_COLUMN]
+      : row.google_maps_url;
+    const result = { ...row, google_maps_url: canonicalLocation ?? null };
+    delete result[CANONICAL_LOCATION_COLUMN];
+    return result;
+  });
+}
+
 export async function postgresqlRead(config, resource, { method = "GET" } = {}) {
   if (String(method).toUpperCase() !== "GET") fail("postgresql_rest_write_not_implemented", 503);
   const installationId = text(config.installationId);
@@ -85,9 +126,7 @@ export async function postgresqlRead(config, resource, { method = "GET" } = {}) 
   if (!READ_TABLES.has(table)) fail("invalid_read_table");
 
   const selectRaw = text(url.searchParams.get("select"));
-  const columns = !selectRaw || selectRaw === "*"
-    ? "*"
-    : selectRaw.split(",").map((item) => quoteIdentifier(item.trim())).join(", ");
+  const columns = selectedColumns(table, selectRaw);
 
   const params = [installationId];
   const clauses = [
@@ -111,11 +150,17 @@ export async function postgresqlRead(config, resource, { method = "GET" } = {}) 
   const offset = boundedInteger(url.searchParams.get("offset"), 0, Number.MAX_SAFE_INTEGER);
   params.push(limit, offset);
 
-  const sql = `SELECT ${columns} FROM "mcp".${quoteIdentifier(table)} WHERE ${clauses.join(" AND ")}${order} LIMIT $${params.length - 1} OFFSET $${params.length}`;
+  const sql = `SELECT ${columns} FROM ${readSource(table)} WHERE ${clauses.join(" AND ")}${order} LIMIT $${params.length - 1} OFFSET $${params.length}`;
   const persistence = providerPersistence();
   await persistence.assertReady();
   return persistence.withTransaction(async (client) => {
     const result = await client.query(sql, params);
-    return result.rows || [];
+    return canonicalizeRouteCustomerRows(table, result.rows || []);
   });
 }
+
+export const postgresqlReadInternals = Object.freeze({
+  CANONICAL_LOCATION_COLUMN,
+  readSource,
+  canonicalizeRouteCustomerRows,
+});
