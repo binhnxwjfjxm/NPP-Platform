@@ -1,0 +1,346 @@
+.searchBar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.resetButton {
+  min-width: 48px;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--muted);
+  padding: 0 9px;
+  font-size: 10px;
+  font-weight: 900;
+  touch-action: manipulation;
+}
+
+.resetButton:disabled {
+  opacity: 0.4;
+}
+
+.catalogLayout {
+  display: grid;
+  grid-template-columns: 142px minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.filterRail {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-right: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  padding: 2px 7px 2px 0;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.filterHeading {
+  padding: 1px 5px 2px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.filterDivider {
+  height: 1px;
+  flex: 0 0 auto;
+  margin: 3px 2px;
+  background: color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.filterSection {
+  display: grid;
+  gap: 3px;
+}
+
+.filterSection > small {
+  overflow: hidden;
+  padding: 2px 5px 0;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filterButton {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  padding: 5px 6px;
+  font-size: 9px;
+  font-weight: 850;
+  text-align: left;
+  touch-action: manipulation;
+}
+
+.filterButton > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filterButton:hover:not(:disabled),
+.filterButton:focus-visible {
+  background: color-mix(in srgb, var(--brand-soft, #f3f7ed) 65%, transparent);
+  color: var(--text);
+}
+
+.filterButton:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand-strong) 24%, transparent);
+  outline-offset: -1px;
+}
+
+.filterActive {
+  background: var(--brand-soft, #f3f7ed);
+  color: var(--brand-strong);
+}
+
+.filterIcon {
+  display: grid;
+  width: 15px;
+  height: 15px;
+  place-items: center;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.filterDot {
+  width: 6px;
+  height: 6px;
+  justify-self: center;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+.resultsPane {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.productResults {
+  display: grid;
+  grid-auto-flow: row;
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 7px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.unitRows {
+  display: grid;
+  min-width: 0;
+}
+
+.unitRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 32px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 43px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  padding: 7px 1px;
+}
+
+.unitCopy,
+.unitPrice {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.unitCopy strong,
+.unitCopy small,
+.unitPrice strong,
+.unitPrice small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unitCopy strong {
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.unitCopy small {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.unitPrice {
+  justify-items: end;
+  text-align: right;
+}
+
+.unitPrice strong {
+  color: var(--brand-strong);
+  font-size: 10px;
+}
+
+.unitPrice small {
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.unitRow[data-selected="true"] .unitCopy > strong {
+  color: var(--brand-strong);
+}
+
+.unitAdd {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--brand-strong) 35%, var(--line));
+  border-radius: 50%;
+  background: #fff;
+  color: var(--brand-strong);
+  padding: 0;
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.unitAdd:hover:not(:disabled),
+.unitAdd:focus-visible {
+  border-color: var(--brand-strong);
+  background: var(--brand-soft, #f3f7ed);
+}
+
+.unitAdd:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand-strong) 22%, transparent);
+  outline-offset: 1px;
+}
+
+.unitAdd:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.unitAdd:disabled,
+.filterButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (max-width: 900px) {
+  .catalogLayout {
+    grid-template-columns: 100px minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .filterRail {
+    padding-right: 5px;
+  }
+
+  .filterHeading {
+    padding-inline: 4px;
+    font-size: 7px;
+  }
+
+  .filterSection > small {
+    padding-inline: 4px;
+    font-size: 7px;
+  }
+
+  .filterButton {
+    grid-template-columns: 11px minmax(0, 1fr);
+    gap: 4px;
+    min-height: 30px;
+    border-radius: 7px;
+    padding: 4px;
+    font-size: 8px;
+  }
+
+  .filterIcon {
+    width: 11px;
+    height: 11px;
+    font-size: 10px;
+  }
+
+  .filterDot {
+    width: 5px;
+    height: 5px;
+  }
+
+  .unitRow {
+    grid-template-columns: minmax(0, 1fr) auto 30px;
+    gap: 6px;
+    min-height: 42px;
+    padding-block: 6px;
+  }
+
+  .unitCopy strong {
+    font-size: 10px;
+  }
+
+  .unitCopy small,
+  .unitPrice small {
+    font-size: 7px;
+  }
+
+  .unitPrice strong {
+    font-size: 9px;
+  }
+
+  .unitAdd {
+    width: 29px;
+    height: 29px;
+  }
+}
+
+@media (max-width: 420px) {
+  .catalogLayout {
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .filterButton {
+    grid-template-columns: 9px minmax(0, 1fr);
+    min-height: 29px;
+    padding-inline: 3px;
+  }
+
+  .unitRow {
+    grid-template-columns: minmax(0, 1fr) auto 28px;
+    gap: 4px;
+  }
+
+  .unitAdd {
+    width: 27px;
+    height: 27px;
+    font-size: 17px;
+  }
+}
