@@ -28,7 +28,7 @@ test('web application page only offers the Windows installer, not desktop update
 
   assert.match(desktopPage, /Phiên bản \{WINDOWS_RELEASE\.version\}/);
   assert.match(desktopPage, /Tải ứng dụng Windows/);
-  assert.match(desktopPage, /Hung-Phat-Desktop-0\.1\.3-Setup\.exe/);
+  assert.match(desktopPage, /Hung-Phat-Desktop-0\.1\.4-Setup\.exe/);
   assert.match(desktopPage, /thực hiện trực tiếp bên trong ứng dụng máy tính/);
   assert.doesNotMatch(desktopPage, />\s*Kiểm tra cập nhật\s*</);
   assert.doesNotMatch(desktopPage, />\s*Cập nhật ngay\s*</);
