@@ -35,6 +35,13 @@ function orderCardStatus(order: SalesOrder): string {
   return orderStatus;
 }
 
+function orderCardTone(order: SalesOrder): string {
+  if (order.status === 'confirmed' && ['backordered', 'partially_reserved'].includes(order.fulfillmentStatus)) {
+    return 'waiting';
+  }
+  return order.status;
+}
+
 export default function SalesOrderWorkspace({ initialBootstrap }: { initialBootstrap: SalesOrderBootstrap }) {
   const [orders, setOrders] = useState(initialBootstrap.salesOrders);
   const [selected, setSelected] = useState<SalesOrder | null>(null);
@@ -228,7 +235,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                   disabled={loadingId === order.id}
                   onClick={() => loadOrder(order.id)}
                 >
-                  <div className={styles.orderCardTop}><strong>{order.number ?? 'Đơn nháp chưa cấp số'}</strong><span>{orderCardStatus(order)}</span></div>
+                  <div className={styles.orderCardTop}><strong>{order.number ?? 'Đơn nháp chưa cấp số'}</strong><span data-sales-order-tone={orderCardTone(order)}>{orderCardStatus(order)}</span></div>
                   <b>{order.customerCode} — {order.customerName}</b>
                   <div className={styles.orderCardMeta}>
                     <small>Nguồn {salesOrderSourceLabel(order.sourceType, order.sourceId)}</small>
