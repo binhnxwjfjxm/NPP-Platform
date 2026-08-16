@@ -109,12 +109,13 @@ async function callCore<T>(
   if (idempotencyKey !== undefined && (!normalizedIdempotencyKey || !isValidIdempotencyKey(normalizedIdempotencyKey))) {
     throw new Error('INVALID_IDEMPOTENCY_KEY');
   }
+  const requestId = `delivery-web-picking-${crypto.randomUUID()}`;
   const response = await fetch(`${deliveryCoreBaseUrl()}${path}`, {
     ...init,
     cache: 'no-store',
     headers: {
       Authorization: `Bearer ${requireDeliverySessionToken()}`,
-      'x-request-id': `delivery-web-picking-${crypto.randomUUID()}`,
+      'x-request-id': requestId,
       Accept: 'application/json',
       ...(init.body ? { 'Content-Type': 'application/json' } : {}),
       ...(normalizedIdempotencyKey ? { 'Idempotency-Key': normalizedIdempotencyKey } : {}),
@@ -123,9 +124,17 @@ async function callCore<T>(
   });
   const body = await response.json().catch(() => null) as (SuccessEnvelope<T> & { error?: { code?: string; message?: string } }) | null;
   if (!response.ok || !body || !('data' in body)) {
-    const error = new Error(body?.error?.message || body?.error?.code || 'DELIVERY_FULFILLMENT_REQUEST_FAILED') as CoreError;
+    const errorCode = body?.error?.code;
+    console.error(JSON.stringify({
+      event: 'delivery_core_fulfillment_request_failed',
+      endpoint: path.split('?')[0],
+      status: response.status,
+      code: errorCode ?? null,
+      requestId,
+    }));
+    const error = new Error(body?.error?.message || errorCode || 'DELIVERY_FULFILLMENT_REQUEST_FAILED') as CoreError;
     error.status = response.status;
-    error.code = body?.error?.code;
+    error.code = errorCode;
     throw error;
   }
   return body.data;
