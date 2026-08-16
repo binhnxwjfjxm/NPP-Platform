@@ -5,8 +5,8 @@ import styles from '../settings.module.css';
 export const dynamic = 'force-dynamic';
 
 const WINDOWS_RELEASE = Object.freeze({
-  version: '0.1.3',
-  downloadUrl: 'https://pub-53ec351640ea49ff8d5f5105c98006b4.r2.dev/core/windows/stable/Hung-Phat-Desktop-0.1.3-Setup.exe',
+  version: '0.1.4',
+  downloadUrl: 'https://pub-53ec351640ea49ff8d5f5105c98006b4.r2.dev/core/windows/stable/Hung-Phat-Desktop-0.1.4-Setup.exe',
 });
 
 export default function DesktopAppPage() {
