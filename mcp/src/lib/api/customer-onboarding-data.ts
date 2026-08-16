@@ -2,6 +2,11 @@ import "server-only";
 
 import { headers } from "next/headers";
 import type { CustomerOnboardingQueueItem } from "@/features/accounts/customer-onboarding.types";
+import type {
+  RouteCustomerItem,
+  RouteCustomerStatus,
+  RouteCustomersData
+} from "@/features/mcp/route-customers.types";
 import { backendApiBaseUrl, backendApiRequestHeaders } from "@/lib/api/backend-proxy";
 import { encodeMcpInternalAuthorization } from "@/lib/mcp-auth";
 import { readMcpSessionToken, requestMcpInternalAuth } from "@/lib/internal-auth-client";
@@ -16,7 +21,29 @@ type WorkforceMePayload = Readonly<{
   session?: Readonly<{ loginName?: string; employeeFullName?: string; expiresAt?: string }>;
 }>;
 
+type RouteCustomerBoundaryItem = CustomerOnboardingQueueItem & Readonly<{
+  customerId?: string | null;
+  routeSales?: string | null;
+  note?: string | null;
+  sortOrder?: number | null;
+  active?: boolean | null;
+  geoLat?: number | null;
+  geoLng?: number | null;
+  geoAccuracy?: number | null;
+  geoCapturedAt?: string | null;
+}>;
+
 const EMPLOYEE_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function scopeList(value: WorkforceMePayload["scopes"]): string[] {
+  if (Array.isArray(value)) return stringList(value);
+  if (value && typeof value === "object" && "warehouseIds" in value) return stringList(value.warehouseIds);
+  return [];
+}
 
 async function workforceAuthorizationFromSession(): Promise<string | null> {
   const token = readMcpSessionToken();
@@ -37,9 +64,9 @@ async function workforceAuthorizationFromSession(): Promise<string | null> {
     username,
     displayName,
     employeeId,
-    roles: [],
-    permissions: [],
-    scopes: [],
+    roles: stringList(result.data.roles),
+    permissions: stringList(result.data.permissions),
+    scopes: scopeList(result.data.scopes),
     expiresAt: String(result.data.session?.expiresAt || "")
   });
 }
@@ -65,6 +92,65 @@ async function trustedBackendGet<T>(path: string): Promise<T> {
 export async function loadCustomerOnboardingQueue(): Promise<CustomerOnboardingQueueItem[]> {
   const data = await trustedBackendGet<{ items?: CustomerOnboardingQueueItem[] }>("/api/customer-verifications");
   return Array.isArray(data.items) ? data.items : [];
+}
+
+function optionalNumber(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function routeCustomerStatus(item: RouteCustomerBoundaryItem): RouteCustomerStatus {
+  if (item.active === false) return "hidden";
+  return optionalNumber(item.geoLat) != null && optionalNumber(item.geoLng) != null ? "active" : "needs_gps";
+}
+
+export async function loadOwnedRouteCustomersData(): Promise<RouteCustomersData> {
+  const data = await trustedBackendGet<{ items?: RouteCustomerBoundaryItem[] }>("/api/customer-verifications");
+  const items = Array.isArray(data.items) ? data.items : [];
+  const customers: RouteCustomerItem[] = items
+    .map((item) => {
+      const lat = optionalNumber(item.geoLat);
+      const lng = optionalNumber(item.geoLng);
+      const accuracy = optionalNumber(item.geoAccuracy);
+      const hasGps = lat != null && lng != null;
+      const gps = hasGps
+        ? {
+            lat,
+            lng,
+            ...(accuracy == null ? {} : { accuracyMeters: accuracy }),
+            updatedAt: String(item.geoCapturedAt || item.updatedAt || "")
+          }
+        : undefined;
+      const note = [item.address, item.note].map((value) => String(value || "").trim()).filter(Boolean).join(" · ");
+      return {
+        id: item.routeCustomerId,
+        routeId: item.routeId,
+        routeName: item.routeName || "Tuyến chưa xác định",
+        accountId: String(item.customerId || item.coreCustomerId || item.routeCustomerId),
+        accountName: item.customerName || "Điểm bán chưa đặt tên",
+        contactName: item.phone || "",
+        area: item.area || "Chưa cập nhật khu vực",
+        sortOrder: Number(item.sortOrder || 0),
+        status: routeCustomerStatus(item),
+        ...(gps ? { gps } : {}),
+        note
+      } satisfies RouteCustomerItem;
+    })
+    .filter((item) => item.id && item.routeId);
+
+  const active = customers.filter((customer) => customer.status === "active").length;
+  const needsGps = customers.filter((customer) => customer.status === "needs_gps").length;
+  const hidden = customers.filter((customer) => customer.status === "hidden").length;
+  return {
+    kpis: [
+      { label: "Tổng điểm bán", value: customers.length, hint: "Trong các tuyến được phép xem" },
+      { label: "Đang hoạt động", value: active, hint: "Đủ vị trí" },
+      { label: "Cần GPS", value: needsGps, hint: "Cần bổ sung vị trí" },
+      { label: "Đang ẩn", value: hidden, hint: "Không đưa vào phiên mới" }
+    ],
+    customers
+  };
 }
 
 export type CoreCustomerItem = {

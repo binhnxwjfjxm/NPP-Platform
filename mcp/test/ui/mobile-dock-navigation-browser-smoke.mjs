@@ -42,6 +42,28 @@ async function readDock(page) {
   return { dock, links, values };
 }
 
+async function verifyDockMotion(page, dock, links) {
+  const indicator = dock.locator(".mobile-app-dock-indicator");
+  await indicator.waitFor({ state: "visible" });
+  const seen = [];
+  for (let index = 0; index < await links.count(); index += 1) {
+    await links.nth(index).dispatchEvent("pointerdown", { pointerType: "touch" });
+    await page.waitForFunction(
+      ({ targetIndex }) => document.querySelector('[data-bottom-navigation="true"]')?.style.getPropertyValue("--mobile-dock-index").trim() === String(targetIndex),
+      { targetIndex: index }
+    );
+    seen.push(Number(await dock.evaluate((node) => node.style.getPropertyValue("--mobile-dock-index").trim())));
+    await links.nth(index).dispatchEvent("pointercancel", { pointerType: "touch" });
+  }
+  assert.deepEqual(seen, [0, 1, 2, 3, 4], "dock intent indicator must traverse all five destinations without intercepting navigation");
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const reducedTransition = await indicator.evaluate((node) => getComputedStyle(node).transitionDuration);
+  assert.ok(reducedTransition.split(",").every((value) => value.trim() === "0s"), `reduced motion must disable dock transition; got ${reducedTransition}`);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  return seen;
+}
+
 await waitForHttp(`${appBase}/routes`);
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 390, height: 844 }, extraHTTPHeaders: proxyHeaders });
@@ -66,6 +88,7 @@ try {
   for (const item of routeDock.values) {
     assert.equal(item.documentNavigation, "true", "every dock destination must remain a document-level escape");
   }
+  const motionIndices = await verifyDockMotion(page, routeDock.dock, routeDock.links);
 
   const customerRequestPromise = page.waitForRequest((request) => {
     return request.isNavigationRequest() && pathname(request.url()) === "/customers";
@@ -109,6 +132,8 @@ try {
 
   await page.screenshot({ path: `${resultsDir}/mobile-dock-navigation-final.png`, fullPage: true });
   result.dockLabels = routeDock.values.map((item) => item.label);
+  result.motionIndices = motionIndices;
+  result.reducedMotion = "PASS";
   result.customerDestination = "/login";
   result.customerAuthGate = "PASS";
   result.proxyHttpsBoundary = "PASS";

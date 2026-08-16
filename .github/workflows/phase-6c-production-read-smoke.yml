@@ -126,6 +126,33 @@ jobs:
             printf '%s' "$status"
           }
 
+          request_error_json() {
+            local label="$1"
+            local expected_status="$2"
+            local expected_code="$3"
+            shift 3
+            local body="$workdir/$label.json"
+            local status error_code
+            status="$(curl --silent --show-error --connect-timeout 10 --max-time 45 --output "$body" --write-out '%{http_code}' "$@" || true)"
+            error_code="$(jq -r '.error.code // empty' "$body" 2>/dev/null || true)"
+            echo "SMOKE_STEP=$label HTTP=${status:-none}" >&2
+            echo "SMOKE_HTTP_${label^^}=${status:-none}" >> "$GITHUB_STEP_SUMMARY"
+            echo "SMOKE_ERROR_CODE_${label^^}=${error_code:-none}" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$status" != "$expected_status" ]; then
+              fail_smoke "${label}_http_${status:-none}_expected_$expected_status"
+              return 1
+            fi
+            if [ "$error_code" != "$expected_code" ]; then
+              fail_smoke "${label}_error_${error_code:-none}_expected_$expected_code"
+              return 1
+            fi
+            if ! jq -e . "$body" >/dev/null 2>&1; then
+              fail_smoke "${label}_invalid_json"
+              return 1
+            fi
+            printf '%s:%s' "$status" "$error_code"
+          }
+
           core_url="$(app_url "$CORE_APP_NAME")"
           mcp_url="$(app_url "$MCP_APP_NAME")"
           require_nonempty core_url "$core_url"
@@ -156,7 +183,7 @@ jobs:
           mcp_ready="$(request_json mcp_ready 200 "$mcp_url/health/ready")"
           mcp_db_read="$(request_json mcp_db_read 200 -X POST -H "X-Backend-Token: $mcp_backend_token" -H 'Accept: application/json' -H 'Content-Type: application/json' --data '{"table":"orders","select":"id","limit":1}' "$mcp_url/api/read")"
           mcp_product_proxy="$(request_json mcp_product_proxy 200 -H "X-Backend-Token: $mcp_backend_token" -H 'Accept: application/json' "$mcp_url/api/core-sales/products/search?q=&limit=1")"
-          mcp_direct_orders="$(request_json mcp_direct_orders 200 -H "X-Backend-Token: $mcp_backend_token" -H 'Accept: application/json' "$mcp_url/api/core-sales/orders")"
+          mcp_direct_orders_auth="$(request_error_json mcp_direct_orders_auth 401 TRUSTED_EMPLOYEE_REQUIRED -H "X-Backend-Token: $mcp_backend_token" -H 'Accept: application/json' "$mcp_url/api/core-sales/orders")"
 
           {
             echo "SOURCE_SHA=${{ steps.source.outputs.sha }}"
@@ -169,7 +196,7 @@ jobs:
             echo "MCP_HEALTH_READY=$mcp_ready"
             echo "MCP_DATABASE_READ=$mcp_db_read"
             echo "MCP_CORE_PRODUCT_PROXY=$mcp_product_proxy"
-            echo "MCP_DIRECT_CORE_ORDERS=$mcp_direct_orders"
+            echo "MCP_DIRECT_CORE_ORDERS_AUTH_BOUNDARY=$mcp_direct_orders_auth"
             echo "LEGACY_SESSION_ORDER_ROUTES=retired"
             echo "PRODUCTION_WRITE_SMOKE=not_exercised_no_owner_approved_fixture"
           } >> "$GITHUB_STEP_SUMMARY"

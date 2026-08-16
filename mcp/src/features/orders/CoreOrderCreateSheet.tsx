@@ -9,6 +9,7 @@ import {
   compareCatalogProducts,
   groupCatalogCategories
 } from "./order-catalog-priority";
+import catalogStyles from "./OrderCatalogQuick.module.css";
 import styles from "./OrderCreateSheet.module.css";
 
 type MobilePanel = "customer" | "catalog" | "cart";
@@ -115,11 +116,25 @@ function variantSecondaryLabel(item: ProductCatalogItem) {
   const values = [item.sellUnit, pack, item.sku]
     .map((value) => String(value || "").trim())
     .filter((value) => value && normalizeText(value) !== primary);
-  return Array.from(new Set(values)).join(" · ") || "Chạm để thêm vào đơn";
+  return Array.from(new Set(values)).join(" · ") || "Quy cách bán";
 }
 
 function variantLabel(item: ProductCatalogItem) {
   return [variantPrimaryLabel(item), variantSecondaryLabel(item)].filter(Boolean).join(" · ");
+}
+
+function purchaseUnitLabel(item: ProductCatalogItem) {
+  const sellingUnit = normalizeText(item.sellUnit);
+  if (/\b(thung|case|carton)\b/.test(sellingUnit)) return "Thùng";
+  return "Lẻ";
+}
+
+function purchaseUnitDetail(item: ProductCatalogItem) {
+  const unitLabel = normalizeText(purchaseUnitLabel(item));
+  const values = [variantPrimaryLabel(item), item.sellUnit, item.packUnit && item.packQuantity ? `${item.packUnit} ${item.packQuantity}` : null, item.sku]
+    .map((value) => String(value || "").trim())
+    .filter((value) => value && normalizeText(value) !== unitLabel);
+  return Array.from(new Set(values)).join(" · ");
 }
 
 function mergeOptions(current: string[], next: Array<string | null | undefined>) {
@@ -148,7 +163,10 @@ function groupCatalog(products: ProductCatalogItem[]): ProductGroup[] {
   return Array.from(groups.values())
     .map((group) => ({
       ...group,
-      variants: [...group.variants].sort((left, right) => variantPrimaryLabel(left).localeCompare(variantPrimaryLabel(right), "vi"))
+      variants: [...group.variants].sort((left, right) => {
+        const unit = purchaseUnitLabel(left).localeCompare(purchaseUnitLabel(right), "vi");
+        return unit || variantPrimaryLabel(left).localeCompare(variantPrimaryLabel(right), "vi");
+      })
     }))
     .sort(compareCatalogProducts);
 }
@@ -283,8 +301,8 @@ export function CoreOrderCreateSheet({
 
   function announceQuantity(product: ProductCatalogItem, nextQuantity: number) {
     setAddedNotice(nextQuantity > 0
-      ? `${product.name} · ${variantPrimaryLabel(product)}: ${nextQuantity} trong đơn`
-      : `${product.name} · ${variantPrimaryLabel(product)}: đã bỏ khỏi đơn`);
+      ? `${product.name} · ${purchaseUnitLabel(product)}: ${nextQuantity} trong đơn`
+      : `${product.name} · ${purchaseUnitLabel(product)}: đã bỏ khỏi đơn`);
     if (addedNoticeTimerRef.current !== null) window.clearTimeout(addedNoticeTimerRef.current);
     addedNoticeTimerRef.current = window.setTimeout(() => setAddedNotice(""), 1800);
   }
@@ -313,16 +331,6 @@ export function CoreOrderCreateSheet({
     }));
   }
 
-  function toggleCatalogProduct(product: ProductCatalogItem) {
-    const selectedQuantity = selectedQuantityByVariant.get(product.variantId) || 0;
-    if (selectedQuantity > 0) {
-      decreaseProduct(product.variantId);
-      announceQuantity(product, selectedQuantity - 1);
-      return;
-    }
-    addProduct(product);
-  }
-
   function updateQuantity(variantId: string, value: number) {
     setItems((current) => current.map((item) => item.variantId === variantId
       ? { ...item, quantity: Math.max(1, Math.trunc(value) || 1) }
@@ -333,6 +341,14 @@ export function CoreOrderCreateSheet({
     setProductSearch("");
     setProductCategory("");
     setProductBrand("");
+  }
+
+  function selectCategory(category: string) {
+    setProductCategory((current) => current === category ? "" : category);
+  }
+
+  function selectBrand(brand: string) {
+    setProductBrand((current) => current === brand ? "" : brand);
   }
 
   function requestPanel(nextPanel: MobilePanel) {
@@ -493,7 +509,7 @@ export function CoreOrderCreateSheet({
             <span>1. Khách</span><small>{customerReady ? "Đã chọn" : "Bắt buộc"}</small>
           </button>
           <button type="button" data-active={mobilePanel === "catalog" ? "true" : "false"} onClick={() => requestPanel("catalog")} disabled={!customerReady || saving}>
-            <span>2. Sản phẩm</span><small>{productGroups.length} nhãn · {products.length} vị</small>
+            <span>2. Sản phẩm</span><small>{productGroups.length} sản phẩm · {products.length} lựa chọn</small>
           </button>
           <button type="button" data-active={mobilePanel === "cart" ? "true" : "false"} onClick={() => requestPanel("cart")} disabled={!customerReady || items.length === 0 || saving}>
             <span>3. Đơn</span><small>{totalQuantity} sản phẩm</small>
@@ -559,88 +575,133 @@ export function CoreOrderCreateSheet({
 
           <section className={`${styles.section} ${styles.catalogSection}`}>
             <div className={styles.sectionHead}>
-              <div><strong>2. Chọn sản phẩm và vị</strong><small>Giữ cách chọn sản phẩm cũ; giá hiển thị chỉ để tham khảo</small></div>
-              <span className={styles.resultCount} aria-live="polite">{loadingProducts ? "Đang tìm..." : `${productGroups.length} sản phẩm · ${products.length} vị`}</span>
+              <div><strong>2. Chọn sản phẩm</strong><small>Một sản phẩm một card; lẻ và thùng nằm trên các dòng phẳng trong cùng card</small></div>
+              <span className={styles.resultCount} aria-live="polite">{loadingProducts ? "Đang tìm..." : `${productGroups.length} sản phẩm · ${products.length} lựa chọn`}</span>
             </div>
 
-            <div className={styles.searchToolbar}>
+            <div className={catalogStyles.searchBar}>
               <label className={`${styles.compactField} ${styles.searchField}`}>
                 <span>Tìm sản phẩm</span>
-                <input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="Tên, nhãn, SKU, vị, dung tích..." disabled={saving} />
+                <input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="Tên, nhãn, SKU, quy cách..." disabled={saving} />
               </label>
-              <button className={styles.toolButton} type="button" onClick={() => void loadProducts(productSearch, productCategory, productBrand)} disabled={saving || loadingProducts}>Lọc</button>
-              <button className={styles.toolButton} type="button" onClick={clearProductFilters} disabled={saving || (!productSearch && !productCategory && !productBrand)}>Xóa</button>
-            </div>
-
-            <div className={styles.filterRow}>
-              <label className={styles.compactField}>
-                <span>Nhóm hàng</span>
-                <select value={productCategory} onChange={(event) => setProductCategory(event.target.value)} disabled={saving}>
-                  <option value="">Tất cả nhóm</option>
-                  {categorySections.map((section) => (
-                    <optgroup key={section.key} label={section.label}>
-                      {section.categories.map((category) => <option key={category} value={category}>{category}</option>)}
-                    </optgroup>
-                  ))}
-                </select>
-              </label>
-              <label className={styles.compactField}>
-                <span>Nhãn hàng</span>
-                <select value={productBrand} onChange={(event) => setProductBrand(event.target.value)} disabled={saving}>
-                  <option value="">Tất cả nhãn</option>
-                  {brandOptions.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
-                </select>
-              </label>
+              <button className={catalogStyles.resetButton} type="button" onClick={clearProductFilters} disabled={saving || (!productSearch && !productCategory && !productBrand)} aria-label="Xóa bộ lọc sản phẩm">Xóa</button>
             </div>
 
             {addedNotice ? <p className={styles.addedNotice} aria-live="assertive">✓ {addedNotice}</p> : null}
             {message && mobilePanel === "catalog" ? <p className={styles.message}>{message}</p> : null}
             {productError ? <p className={styles.message}>{productError}</p> : null}
 
-            <div className={styles.productResults} aria-label="Kết quả tìm sản phẩm" data-order-product-list>
-              {loadingProducts && products.length === 0 ? <p className={styles.emptyState}>Đang tải danh mục sản phẩm...</p> : null}
-              {!loadingProducts && products.length === 0 && !productError ? <p className={styles.emptyState}>Không tìm thấy sản phẩm. Thử xóa bớt bộ lọc hoặc tìm bằng SKU.</p> : null}
-              {productGroups.map((group) => {
-                const groupQuantity = group.variants.reduce((sum, variant) => sum + (selectedQuantityByVariant.get(variant.variantId) || 0), 0);
-                const family = catalogFamilyLabel(group.productId, group.category);
-                const choiceCount = group.variants.length > 1 ? `${group.variants.length} vị / quy cách` : "1 quy cách";
-                return (
-                  <article key={group.productId} className={`${styles.productCard} ${groupQuantity ? styles.productCardSelected : ""}`} data-family={family}>
-                    <header className={styles.productHeader}>
-                      <div className={styles.productIdentity}>
-                        <small>{[family, group.category, group.brand].filter(Boolean).join(" · ")}</small>
-                        <strong>{group.name}</strong>
-                      </div>
-                      <span>{groupQuantity ? `${groupQuantity} đã chọn` : choiceCount}</span>
-                    </header>
-                    <div className={styles.variantGrid}>
-                      {group.variants.map((product) => {
-                        const selectedQuantity = selectedQuantityByVariant.get(product.variantId) || 0;
-                        const primaryLabel = variantPrimaryLabel(product);
-                        const secondaryLabel = variantSecondaryLabel(product);
-                        return (
-                          <button
-                            type="button"
-                            key={product.variantId}
-                            className={`${styles.variantButton} ${selectedQuantity ? styles.variantSelected : ""}`}
-                            onClick={() => toggleCatalogProduct(product)}
-                            disabled={!customerReady || saving}
-                            aria-label={selectedQuantity ? `Giảm ${product.name}, ${primaryLabel} trong đơn` : `Thêm ${product.name}, ${primaryLabel} vào đơn`}
-                            title={`${product.name} · ${primaryLabel} · ${secondaryLabel}`}
-                          >
-                            <span className={styles.variantName}>{primaryLabel}</span>
-                            <small>{secondaryLabel}</small>
-                            <span className={styles.variantFooter}>
-                              <strong>{catalogPriceLabel(product.price)}</strong>
-                              <em>{selectedQuantity ? `${selectedQuantity} trong đơn · chạm để giảm` : "+ Thêm"}</em>
-                            </span>
-                          </button>
-                        );
-                      })}
+            <div className={catalogStyles.catalogLayout}>
+              <aside className={catalogStyles.filterRail} aria-label="Bộ lọc sản phẩm MCP" data-order-filter-rail>
+                <button
+                  type="button"
+                  className={`${catalogStyles.filterButton} ${!productCategory && !productBrand ? catalogStyles.filterActive : ""}`}
+                  onClick={() => {
+                    setProductCategory("");
+                    setProductBrand("");
+                  }}
+                  disabled={saving}
+                >
+                  <span className={catalogStyles.filterIcon} aria-hidden="true">▦</span>
+                  <span>Tất cả</span>
+                </button>
+
+                {categorySections.length ? <>
+                  <div className={catalogStyles.filterDivider} />
+                  <span className={catalogStyles.filterHeading}>Nhóm sản phẩm</span>
+                  {categorySections.map((section) => (
+                    <div className={catalogStyles.filterSection} key={section.key}>
+                      <small>{section.label}</small>
+                      {section.categories.map((category) => (
+                        <button
+                          type="button"
+                          className={`${catalogStyles.filterButton} ${productCategory === category ? catalogStyles.filterActive : ""}`}
+                          key={category}
+                          onClick={() => selectCategory(category)}
+                          title={category}
+                          disabled={saving}
+                        >
+                          <span className={catalogStyles.filterDot} aria-hidden="true" />
+                          <span>{category}</span>
+                        </button>
+                      ))}
                     </div>
-                  </article>
-                );
-              })}
+                  ))}
+                </> : null}
+
+                {brandOptions.length ? <>
+                  <div className={catalogStyles.filterDivider} />
+                  <span className={catalogStyles.filterHeading}>Nhãn hàng</span>
+                  <div className={catalogStyles.filterSection}>
+                    {brandOptions.map((brand) => (
+                      <button
+                        type="button"
+                        className={`${catalogStyles.filterButton} ${productBrand === brand ? catalogStyles.filterActive : ""}`}
+                        key={brand}
+                        onClick={() => selectBrand(brand)}
+                        title={brand}
+                        disabled={saving}
+                      >
+                        <span className={catalogStyles.filterDot} aria-hidden="true" />
+                        <span>{brand}</span>
+                      </button>
+                    ))}
+                  </div>
+                </> : null}
+              </aside>
+
+              <div className={catalogStyles.resultsPane}>
+                <div className={catalogStyles.productResults} aria-label="Kết quả tìm sản phẩm" data-order-product-list>
+                  {loadingProducts && products.length === 0 ? <p className={styles.emptyState}>Đang tải danh mục sản phẩm...</p> : null}
+                  {!loadingProducts && products.length === 0 && !productError ? <p className={styles.emptyState}>Không tìm thấy sản phẩm. Thử xóa bớt bộ lọc hoặc tìm bằng SKU.</p> : null}
+                  {productGroups.map((group) => {
+                    const groupQuantity = group.variants.reduce((sum, variant) => sum + (selectedQuantityByVariant.get(variant.variantId) || 0), 0);
+                    const family = catalogFamilyLabel(group.productId, group.category);
+                    const choiceCount = group.variants.length > 1 ? `${group.variants.length} lựa chọn` : "1 lựa chọn";
+                    return (
+                      <article key={group.productId} className={`${styles.productCard} ${groupQuantity ? styles.productCardSelected : ""}`} data-family={family} data-order-product-card>
+                        <header className={styles.productHeader}>
+                          <div className={styles.productIdentity}>
+                            <small>{[family, group.category, group.brand].filter(Boolean).join(" · ")}</small>
+                            <strong>{group.name}</strong>
+                          </div>
+                          <span>{groupQuantity ? `${groupQuantity} đã chọn` : choiceCount}</span>
+                        </header>
+
+                        <div className={catalogStyles.unitRows}>
+                          {group.variants.map((product) => {
+                            const selectedQuantity = selectedQuantityByVariant.get(product.variantId) || 0;
+                            const unitLabel = purchaseUnitLabel(product);
+                            const unitDetail = purchaseUnitDetail(product);
+                            return (
+                              <div className={catalogStyles.unitRow} data-selected={selectedQuantity ? "true" : "false"} key={product.variantId}>
+                                <div className={catalogStyles.unitCopy}>
+                                  <strong>{unitLabel}</strong>
+                                  {unitDetail ? <small>{unitDetail}</small> : null}
+                                </div>
+                                <div className={catalogStyles.unitPrice}>
+                                  <strong>{catalogPriceLabel(product.price)}</strong>
+                                  {selectedQuantity ? <small>{selectedQuantity} trong đơn</small> : null}
+                                </div>
+                                <button
+                                  type="button"
+                                  className={catalogStyles.unitAdd}
+                                  onClick={() => addProduct(product)}
+                                  disabled={!customerReady || saving}
+                                  aria-label={`Thêm ${product.name}, ${variantPrimaryLabel(product)} · ${unitLabel} vào đơn`}
+                                  title={`${product.name} · ${unitLabel} · ${unitDetail || variantPrimaryLabel(product)}`}
+                                >
+                                  <span aria-hidden="true">+</span>
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </section>
         </div>
@@ -652,14 +713,14 @@ export function CoreOrderCreateSheet({
               <b className={styles.cartTotal}>{totalLabel}</b>
             </div>
             <div className={styles.itemList}>
-              {items.length === 0 ? <p className={styles.emptyState}>Chưa có sản phẩm. Mở tab Sản phẩm và chọn vị ngay trong card.</p> : null}
+              {items.length === 0 ? <p className={styles.emptyState}>Chưa có sản phẩm. Mở tab Sản phẩm và bấm + ở đúng quy cách cần lấy.</p> : null}
               {items.map((item) => (
                 <article key={item.variantId} className={styles.cartItem}>
                   <div className={styles.itemHead}>
                     <div className={styles.itemIdentity}>
                       <small>{[item.brand, item.category].filter(Boolean).join(" · ") || "Sản phẩm"}</small>
                       <strong>{item.name}</strong>
-                      <span className={styles.variantBadge}>{variantPrimaryLabel(item)}</span>
+                      <span className={styles.variantBadge}>{purchaseUnitLabel(item)} · {variantPrimaryLabel(item)}</span>
                     </div>
                     <button className={styles.removeItem} type="button" onClick={() => setItems((current) => current.filter((candidate) => candidate.variantId !== item.variantId))} disabled={saving} aria-label={`Xóa ${item.name}, ${variantPrimaryLabel(item)}`}>×</button>
                   </div>

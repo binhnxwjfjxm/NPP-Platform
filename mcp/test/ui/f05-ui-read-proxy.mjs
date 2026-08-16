@@ -175,6 +175,20 @@ function orderItemRows() {
   ];
 }
 
+function workforceMe() {
+  return {
+    employeeId: "11111111-1111-4111-8111-111111111111",
+    roles: ["sales"],
+    permissions: ["sales.orders.read"],
+    scopes: [],
+    session: {
+      loginName: "sales.ui",
+      employeeFullName: "Sales UI",
+      expiresAt: "2099-12-31T23:59:59.000Z"
+    }
+  };
+}
+
 async function readTable(table) {
   if (table === "mcp_routes") {
     const data = await upstreamJson("/api/routes/data");
@@ -234,6 +248,15 @@ async function forward(request, response, url) {
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url || "/", `http://${request.headers.host || `127.0.0.1:${port}`}`);
   try {
+    if (request.method === "GET" && url.pathname === "/api/internal-auth/me") {
+      return json(response, 200, { data: workforceMe() });
+    }
+    if (request.method === "GET" && url.pathname === "/api/customer-verifications") {
+      return json(response, 200, { data: { items: [] } });
+    }
+    if (request.method === "GET" && url.pathname === "/api/core-sales/orders") {
+      return json(response, 200, { data: [] });
+    }
     if (request.method === "POST" && url.pathname === "/api/read") {
       const payload = await readJson(request);
       const data = await readTable(String(payload.table || ""));

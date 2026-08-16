@@ -1,5 +1,6 @@
 import { isValidIdempotencyKey, normalizeIdempotencyKey } from "../../../../packages/contracts/index.js";
 import { providerPersistence } from "./provider-runtime.js";
+import { listAccessibleCoreCustomerLinks } from "./customer-route-access.js";
 import {
   createCoreSalesOrder,
   listCoreSalesOrders,
@@ -19,7 +20,7 @@ const BUSINESS_MESSAGES = Object.freeze({
   invalid_order_payload: "Dữ liệu tạo đơn MCP không hợp lệ.",
   browser_commercial_authority_forbidden: "MCP chỉ được gửi khách, địa chỉ, sản phẩm, số lượng và ghi chú; giá và chính sách thương mại do Core quyết định.",
   core_customer_reference_required: "Chỉ được tạo đơn cho khách đã mở / liên kết mã Core.",
-  core_customer_not_owned: "Khách hàng không thuộc phạm vi phụ trách của nhân viên đang đăng nhập.",
+  core_customer_not_owned: "Khách hàng không thuộc phạm vi tuyến của nhân viên đang đăng nhập.",
   core_customer_link_ambiguous: "Khách hàng đang liên kết với nhiều điểm bán MCP; cần làm rõ liên kết trước khi tạo đơn.",
   order_lines_required: "Đơn phải có ít nhất một sản phẩm.",
   invalid_order_quantity: "Số lượng sản phẩm không hợp lệ."
@@ -44,18 +45,6 @@ function requireUuid(value, code) {
   const normalized = text(value)?.toLowerCase();
   if (!normalized || !UUID_PATTERN.test(normalized)) throw businessError(code);
   return normalized;
-}
-
-function requireEmployee(context) {
-  const employeeId = text(context?.principal?.employeeId)?.toLowerCase();
-  if (!employeeId || !UUID_PATTERN.test(employeeId)) throw businessError("trusted_employee_required", 401);
-  return employeeId;
-}
-
-function installationId(context) {
-  const value = text(context?.installation?.id);
-  if (!value) throw businessError("installation_id_required");
-  return value;
 }
 
 function canonicalIdempotencyKey(value) {
@@ -102,32 +91,12 @@ function normalizeSubmission(body) {
 }
 
 async function ownedRouteCustomers(client, context) {
-  const employeeId = requireEmployee(context);
-  const result = await client.query(
-    `SELECT rc.id AS route_customer_id,
-            rc.core_customer_id,
-            rc.core_customer_address_id
-       FROM mcp.mcp_route_customers AS rc
-       JOIN shared.customers AS customer
-         ON customer.installation_id = rc.installation_id
-        AND customer.id::text = rc.core_customer_id
-        AND customer.is_active = true
-        AND customer.responsible_employee_id = $2::uuid
-       JOIN shared.customer_addresses AS address
-         ON address.installation_id = customer.installation_id
-        AND address.customer_id = customer.id
-        AND address.id::text = rc.core_customer_address_id
-        AND address.is_active = true
-      WHERE rc.installation_id = $1
-        AND rc.active = true
-        AND rc.responsible_employee_id = $2::uuid
-        AND rc.core_onboarding_status IN ('approved', 'linked_existing')
-        AND rc.core_customer_id IS NOT NULL
-        AND rc.core_customer_address_id IS NOT NULL
-      ORDER BY rc.id`,
-    [installationId(context), employeeId]
-  );
-  return result.rows || [];
+  try {
+    return await listAccessibleCoreCustomerLinks(client, context);
+  } catch (error) {
+    if (error?.code === "trusted_employee_required") throw businessError("trusted_employee_required", 401);
+    throw error;
+  }
 }
 
 async function resolveOwnedLink(persistence, context, customerId, customerAddressId) {

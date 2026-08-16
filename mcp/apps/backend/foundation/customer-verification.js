@@ -6,17 +6,23 @@ import {
   readCoreCustomerOnboarding,
   submitCoreCustomerOnboarding
 } from "./core-customer-onboarding-client.js";
+import {
+  listAccessibleCoreCustomers,
+  listAccessibleRouteCustomers,
+  loadAccessibleRouteCustomer,
+  requireWorkforceEmployee
+} from "./customer-route-access.js";
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const FIELD_PROFILE_VERIFICATION = "FIELD_PROFILE_VERIFICATION";
 
 const BUSINESS_MESSAGES = Object.freeze({
   trusted_employee_required: "Cần đăng nhập bằng tài khoản nhân viên MCP.",
   employee_inactive: "Nhân viên MCP không còn hoạt động.",
   route_customer_id_required: "Thiếu điểm bán cần xác minh.",
-  route_customer_not_found: "Không tìm thấy điểm bán thuộc phạm vi của nhân viên này.",
-  route_customer_not_owned: "Điểm bán không thuộc nhân viên đang đăng nhập.",
-  route_customer_owner_unresolved: "Chưa xác định được nhân viên phụ trách duy nhất cho điểm bán này.",
+  route_customer_not_found: "Điểm bán không còn tồn tại hoặc đã được gỡ khỏi installation.",
+  route_customer_not_owned: "Phân công tuyến đã thay đổi; điểm bán không còn thuộc phạm vi phụ trách.",
+  route_sales_unassigned: "Tuyến của điểm bán chưa được phân công nhân viên phụ trách.",
+  route_sales_ambiguous: "Phân công tuyến đang trùng hoặc chưa xác định được duy nhất một nhân viên.",
   customer_name_required: "Điểm bán chưa có tên.",
   customer_address_required: "Cần bổ sung địa chỉ điểm bán trước khi gửi đề nghị xác minh / mở mã.",
   core_onboarding_not_submitted: "Điểm bán này chưa được gửi sang Core để xác minh.",
@@ -31,15 +37,16 @@ function businessError(code, statusCode = 400) {
   return error;
 }
 
+function asBusinessError(error) {
+  if (error?.code && BUSINESS_MESSAGES[error.code]) {
+    error.publicMessage = BUSINESS_MESSAGES[error.code];
+  }
+  return error;
+}
+
 function text(value) {
   const normalized = String(value ?? "").trim();
   return normalized || null;
-}
-
-function requireEmployee(context) {
-  const employeeId = text(context?.principal?.employeeId);
-  if (!employeeId || !UUID_PATTERN.test(employeeId)) throw businessError("trusted_employee_required", 401);
-  return employeeId;
 }
 
 function installationId(context) {
@@ -52,72 +59,12 @@ function fingerprint(payload) {
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
-function routeSalesMatchesEmployee(row) {
-  const sales = text(row.route_sales)?.toLowerCase();
-  if (!sales) return false;
-  return sales === text(row.employee_name)?.toLowerCase() || sales === text(row.employee_code)?.toLowerCase();
-}
-
-function assertOwnedRow(row, employeeId) {
-  if (!row) throw businessError("route_customer_not_found", 404);
-  if (row.employee_active !== true) throw businessError("employee_inactive", 403);
-  const owner = text(row.responsible_employee_id);
-  if (owner && owner !== employeeId) throw businessError("route_customer_not_owned", 403);
-  if (!owner && (!routeSalesMatchesEmployee(row) || Number(row.route_employee_matches || 0) !== 1)) {
-    throw businessError("route_customer_owner_unresolved", 409);
+async function loadOwnedRouteCustomer(client, context, routeCustomerId, options = {}) {
+  try {
+    return await loadAccessibleRouteCustomer(client, context, routeCustomerId, options);
+  } catch (error) {
+    throw asBusinessError(error);
   }
-}
-
-async function loadOwnedRouteCustomer(client, context, routeCustomerId, { forUpdate = false, claim = false } = {}) {
-  const employeeId = requireEmployee(context);
-  const result = await client.query(
-    `SELECT
-       rc.*,
-       route.route_name,
-       route.sales AS route_sales,
-       employee.code AS employee_code,
-       employee.full_name AS employee_name,
-       employee.is_active AS employee_active,
-       (
-         SELECT count(*)::integer
-         FROM shared.employees AS other_employee
-         WHERE other_employee.installation_id = rc.installation_id
-           AND other_employee.is_active = true
-           AND (
-             lower(btrim(other_employee.full_name)) = lower(btrim(COALESCE(route.sales, '')))
-             OR upper(btrim(other_employee.code)) = upper(btrim(COALESCE(route.sales, '')))
-           )
-       ) AS route_employee_matches
-     FROM mcp.mcp_route_customers AS rc
-     JOIN mcp.mcp_routes AS route
-       ON route.installation_id = rc.installation_id
-      AND route.id = rc.route_id
-     JOIN shared.employees AS employee
-       ON employee.installation_id = rc.installation_id
-      AND employee.id = $3::uuid
-     WHERE rc.installation_id = $1
-       AND rc.id = $2
-       AND rc.active = true
-     ${forUpdate ? "FOR UPDATE OF rc" : ""}`,
-    [installationId(context), routeCustomerId, employeeId]
-  );
-  const row = result.rows?.[0];
-  assertOwnedRow(row, employeeId);
-  if (claim && !row.responsible_employee_id) {
-    const claimed = await client.query(
-      `UPDATE mcp.mcp_route_customers
-       SET responsible_employee_id = $3::uuid,
-           updated_at = now()
-       WHERE installation_id = $1
-         AND id = $2
-         AND responsible_employee_id IS NULL
-       RETURNING responsible_employee_id`,
-      [installationId(context), routeCustomerId, employeeId]
-    );
-    if (!claimed.rows?.[0]) throw businessError("route_customer_not_owned", 409);
-    row.responsible_employee_id = employeeId;
-  }
-  return row;
 }
 
 function submissionFromRouteCustomer(row) {
@@ -154,10 +101,19 @@ function localProjection(row) {
     routeCustomerId: row.id,
     routeId: row.route_id,
     routeName: text(row.route_name),
+    routeSales: text(row.route_sales),
+    customerId: text(row.customer_id),
     customerName: row.customer_name,
     phone: text(row.phone),
     area: text(row.area),
     address: text(row.address),
+    note: text(row.note),
+    sortOrder: Number(row.sort_order || 0),
+    active: row.active !== false,
+    geoLat: row.geo_lat == null ? null : Number(row.geo_lat),
+    geoLng: row.geo_lng == null ? null : Number(row.geo_lng),
+    geoAccuracy: row.geo_accuracy == null ? null : Number(row.geo_accuracy),
+    geoCapturedAt: row.geo_captured_at || null,
     status: text(row.core_onboarding_status) || "not_submitted",
     coreRequestId: text(row.core_onboarding_request_id),
     coreCustomerId: text(row.core_customer_id),
@@ -172,7 +128,7 @@ function localProjection(row) {
 
 async function prepareSubmission(persistence, context, routeCustomerId) {
   return persistence.withTransaction(async (client) => {
-    const row = await loadOwnedRouteCustomer(client, context, routeCustomerId, { forUpdate: true, claim: true });
+    const row = await loadOwnedRouteCustomer(client, context, routeCustomerId, { forUpdate: true });
     const currentPayload = submissionFromRouteCustomer(row);
     const currentFingerprint = fingerprint(currentPayload);
     const storedFingerprint = text(row.customer_verification_fingerprint);
@@ -209,9 +165,8 @@ async function prepareSubmission(persistence, context, routeCustomerId) {
 
 async function saveCoreProjection(persistence, context, routeCustomerId, coreRequest) {
   const core = coreOnboardingProjection(coreRequest);
-  const employeeId = requireEmployee(context);
   return persistence.withTransaction(async (client) => {
-    await loadOwnedRouteCustomer(client, context, routeCustomerId, { forUpdate: true, claim: false });
+    await loadOwnedRouteCustomer(client, context, routeCustomerId, { forUpdate: true });
     const now = new Date().toISOString();
     const result = await client.query(
       `UPDATE mcp.mcp_route_customers AS rc
@@ -234,7 +189,6 @@ async function saveCoreProjection(persistence, context, routeCustomerId, coreReq
            customer_onboarding_review_reason = $7,
            customer_verification_submitted_at = COALESCE(rc.customer_verification_submitted_at, $8::timestamptz),
            last_core_sync_at = $8::timestamptz,
-           responsible_employee_id = $9::uuid,
            updated_at = now()
        WHERE rc.installation_id = $1 AND rc.id = $2
        RETURNING rc.*`,
@@ -246,8 +200,7 @@ async function saveCoreProjection(persistence, context, routeCustomerId, coreReq
         core.coreCustomerId,
         core.coreCustomerAddressId,
         core.reviewReason,
-        now,
-        employeeId
+        now
       ]
     );
     const row = result.rows?.[0];
@@ -268,7 +221,7 @@ export async function submitCustomerVerification(body, context, config, options 
   if (prepared.alreadySubmitted) {
     return syncCustomerVerification({ routeCustomerId }, context, config, options);
   }
-  const employeeId = requireEmployee(context);
+  const employeeId = requireWorkforceEmployee(context);
   const coreRequest = await submitCoreCustomerOnboarding(
     prepared.payload,
     context,
@@ -293,90 +246,39 @@ export async function syncCustomerVerification(body, context, config, options = 
     coreRequestId,
     context,
     config,
-    { fetchImpl: options.fetchImpl || fetch, employeeId: requireEmployee(context) }
+    { fetchImpl: options.fetchImpl || fetch, employeeId: requireWorkforceEmployee(context) }
   );
   return saveCoreProjection(persistence, context, routeCustomerId, coreRequest);
 }
 
 export async function listCustomerVerifications(context, options = {}) {
-  const employeeId = requireEmployee(context);
   const persistence = options.persistence || providerPersistence();
   return persistence.withTransaction(async (client) => {
-    const result = await client.query(
-      `SELECT
-         rc.*,
-         route.route_name,
-         route.sales AS route_sales,
-         employee.code AS employee_code,
-         employee.full_name AS employee_name,
-         employee.is_active AS employee_active,
-         (
-           SELECT count(*)::integer
-           FROM shared.employees AS other_employee
-           WHERE other_employee.installation_id = rc.installation_id
-             AND other_employee.is_active = true
-             AND (
-               lower(btrim(other_employee.full_name)) = lower(btrim(COALESCE(route.sales, '')))
-               OR upper(btrim(other_employee.code)) = upper(btrim(COALESCE(route.sales, '')))
-             )
-         ) AS route_employee_matches
-       FROM mcp.mcp_route_customers AS rc
-       JOIN mcp.mcp_routes AS route
-         ON route.installation_id = rc.installation_id
-        AND route.id = rc.route_id
-       JOIN shared.employees AS employee
-         ON employee.installation_id = rc.installation_id
-        AND employee.id = $2::uuid
-        AND employee.is_active = true
-       WHERE rc.installation_id = $1
-         AND rc.active = true
-         AND (
-           rc.responsible_employee_id = $2::uuid
-           OR (
-             rc.responsible_employee_id IS NULL
-             AND (
-               lower(btrim(employee.full_name)) = lower(btrim(COALESCE(route.sales, '')))
-               OR upper(btrim(employee.code)) = upper(btrim(COALESCE(route.sales, '')))
-             )
-             AND (
-               SELECT count(*)
-               FROM shared.employees AS other_employee
-               WHERE other_employee.installation_id = rc.installation_id
-                 AND other_employee.is_active = true
-                 AND (
-                   lower(btrim(other_employee.full_name)) = lower(btrim(COALESCE(route.sales, '')))
-                   OR upper(btrim(other_employee.code)) = upper(btrim(COALESCE(route.sales, '')))
-                 )
-             ) = 1
-           )
-         )
-       ORDER BY route.route_name, rc.sort_order, rc.customer_name, rc.id`,
-      [installationId(context), employeeId]
-    );
-    return Object.freeze((result.rows || []).map(localProjection));
+    try {
+      const rows = await listAccessibleRouteCustomers(client, context);
+      return Object.freeze(rows.map(localProjection));
+    } catch (error) {
+      throw asBusinessError(error);
+    }
   });
 }
 
 export async function listOwnedCoreCustomers(context, options = {}) {
-  const employeeId = requireEmployee(context);
   const persistence = options.persistence || providerPersistence();
   return persistence.withTransaction(async (client) => {
-    const result = await client.query(
-      `SELECT id, customer_code, name, account_name, phone, email, status, active, sales_owner, note, updated_at
-       FROM mcp.accounts
-       WHERE installation_id = $1
-         AND active = true
-         AND sales_owner = $2
-       ORDER BY name, customer_code, id`,
-      [installationId(context), employeeId]
-    );
-    return Object.freeze((result.rows || []).map((row) => Object.freeze({
+    let rows;
+    try {
+      rows = await listAccessibleCoreCustomers(client, context);
+    } catch (error) {
+      throw asBusinessError(error);
+    }
+    return Object.freeze(rows.map((row) => Object.freeze({
       id: row.id,
       customerCode: row.customer_code,
-      name: row.name || row.account_name,
+      name: row.name,
       phone: text(row.phone),
       email: text(row.email),
-      status: row.status,
+      status: row.is_active === false ? "inactive" : "active",
       updatedAt: row.updated_at || null
     })));
   });

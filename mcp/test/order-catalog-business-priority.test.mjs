@@ -17,8 +17,8 @@ test("order category filter follows distributor business priority instead of alp
   assert.match(priority, /categories: \["Mì cay", "Đông lạnh", "Bánh tráng"\]/);
   assert.match(sheet, /const categorySections = useMemo\(\(\) => groupCatalogCategories\(categoryOptions\)/);
   assert.match(sheet, /categorySections\.map\(\(section\) => \(/);
-  assert.match(sheet, /<optgroup key=\{section\.key\} label=\{section\.label\}>/);
-  assert.doesNotMatch(sheet, /categoryOptions\.map\(\(category\)/);
+  assert.match(sheet, /section\.categories\.map\(\(category\) => \(/);
+  assert.doesNotMatch(sheet, /<select value=\{productCategory\}/);
 });
 
 test("catalog cards sort tea-milk products first and spicy-noodle products next", () => {
@@ -32,10 +32,13 @@ test("catalog cards sort tea-milk products first and spicy-noodle products next"
   assert.match(sheet, /data-family=\{family\}/);
 });
 
-test("product choices replace meaningless default labels with selling-unit context", () => {
+test("product choices keep the exact Core variant while presenting flat selling-unit rows", () => {
   assert.match(sheet, /normalizeText\(rawVariant\) === "mac dinh" \? "" : rawVariant/);
-  assert.match(sheet, /return variant \|\| size \|\| item\.sellUnit \|\| item\.sku \|\| "Quy cách chuẩn"/);
-  assert.match(sheet, /"Chạm để thêm vào đơn"/);
-  assert.match(sheet, /const choiceCount = group\.variants\.length > 1 \? `\$\{group\.variants\.length\} vị \/ quy cách` : "1 quy cách"/);
-  assert.match(sheet, /title=\{`\$\{product\.name\} · \$\{primaryLabel\} · \$\{secondaryLabel\}`\}/);
+  assert.match(sheet, /function purchaseUnitLabel\(item: ProductCatalogItem\)/);
+  assert.match(sheet, /return "Thùng"/);
+  assert.match(sheet, /return "Lẻ"/);
+  assert.match(sheet, /group\.variants\.map\(\(product\) => \{/);
+  assert.match(sheet, /onClick=\{\(\) => addProduct\(product\)\}/);
+  assert.match(sheet, /variantId: item\.variantId/);
+  assert.doesNotMatch(sheet, /styles\.variantButton|styles\.variantGrid/);
 });
