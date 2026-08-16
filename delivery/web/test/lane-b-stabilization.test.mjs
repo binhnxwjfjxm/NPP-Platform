@@ -14,9 +14,13 @@ const fulfillmentApi = read('lib/fulfillment-api.ts');
 const coreFulfillment = read('../../npp-core/api/src/services/sales-fulfillment-operations.js');
 const coreRoute = read('../../npp-core/api/src/routes/fulfillment-operations.js');
 
-test('Lane B1 renders Soạn hàng only from pick permission plus warehouse-scoped capability', () => {
+test('Lane B1 renders Soạn hàng only from read + pick permissions plus warehouse-scoped capability', () => {
+  assert.match(middleware, /readFulfillment: 'core\.fulfillment\.read'/);
   assert.match(middleware, /pickFulfillment: 'core\.fulfillment\.pick'/);
-  assert.match(middleware, /permissions\.has\(CORE_PERMISSIONS\.pickFulfillment\) && warehouseIds\.length > 0/);
+  assert.match(
+    middleware,
+    /permissions\.has\(CORE_PERMISSIONS\.readFulfillment\)\s*&&\s*permissions\.has\(CORE_PERMISSIONS\.pickFulfillment\)\s*&&\s*warehouseIds\.length > 0/,
+  );
   assert.match(frame, /capabilities\.canPickWithWarehouse/);
   assert.match(frame, /href="\/picking" icon="box" label="Soạn hàng"/);
   assert.match(pickingPage, /!capabilities\.canPickWithWarehouse/);

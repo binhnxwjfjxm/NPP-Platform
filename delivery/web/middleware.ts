@@ -11,6 +11,7 @@ const CORE_PERMISSIONS = Object.freeze({
   viewCustody: 'core.cod-collection.read',
   recordCod: 'core.cod-collection.record',
   createCodHandover: 'core.cod-handover.create',
+  readFulfillment: 'core.fulfillment.read',
   pickFulfillment: 'core.fulfillment.pick',
 });
 
@@ -90,7 +91,9 @@ function deriveCapabilities(payload: MePayload): DeliveryCapabilities {
     canViewCustody: permissions.has(CORE_PERMISSIONS.viewCustody),
     canRecordCod: permissions.has(CORE_PERMISSIONS.recordCod),
     canCreateCodHandover: permissions.has(CORE_PERMISSIONS.createCodHandover),
-    canPickWithWarehouse: permissions.has(CORE_PERMISSIONS.pickFulfillment) && warehouseIds.length > 0,
+    canPickWithWarehouse: permissions.has(CORE_PERMISSIONS.readFulfillment)
+      && permissions.has(CORE_PERMISSIONS.pickFulfillment)
+      && warehouseIds.length > 0,
   });
 }
 
