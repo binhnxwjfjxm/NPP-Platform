@@ -89,20 +89,35 @@ export async function getTechnicalBackupAccess(client, { installationId, challen
   return result.rows[0] ?? null;
 }
 
-export async function finalizeSystemBackupJob(client, { installationId, jobId, dump, verifiedAt }) {
+export async function finalizeSystemBackupJob(client, {
+  installationId,
+  jobId,
+  dump,
+  manifest,
+  verifiedAt,
+}) {
   const result = await client.query(
     `UPDATE shared.backup_jobs
         SET status = 'VERIFIED', include_xlsx = false,
             dump_object_key = $3, dump_size = $4, dump_sha256 = $5,
             csv_object_key = NULL, csv_size = NULL, csv_sha256 = NULL,
             xlsx_object_key = NULL, xlsx_size = NULL, xlsx_sha256 = NULL,
-            manifest_object_key = NULL, manifest_sha256 = NULL,
+            manifest_object_key = $6, manifest_sha256 = $7,
             dataset_count = 0, total_row_count = 0,
-            verified_at = $6, completed_at = $6,
+            verified_at = $8, completed_at = $8,
             failure_code = NULL, failure_message_safe = NULL, updated_at = now()
       WHERE installation_id = $1 AND id = $2
       RETURNING *`,
-    [installationId, jobId, dump.key, dump.size, dump.sha256, verifiedAt],
+    [
+      installationId,
+      jobId,
+      dump.key,
+      dump.size,
+      dump.sha256,
+      manifest.key,
+      manifest.sha256,
+      verifiedAt,
+    ],
   );
   return result.rows[0] ?? null;
 }

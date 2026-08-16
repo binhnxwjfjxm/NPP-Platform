@@ -78,31 +78,35 @@ test('migration 087 adds technical access state without destructive database SQL
   assert.ok(previous >= 0 && current > previous);
 });
 
-test('Issue 562 Part 1 runner creates only a verified custom dump', async () => {
+test('Issue 562 system backup keeps one custom dump and adds only the technical restore manifest', async () => {
   const runner = await readFile(new URL('../src/services/backup-runner.js', import.meta.url), 'utf8');
   const repository = await readFile(new URL('../src/db/repositories/system-backup.js', import.meta.url), 'utf8');
   assert.match(runner, /--format=custom/);
+  assert.equal((runner.match(/--format=custom/g) ?? []).length, 1);
   assert.match(runner, /PG_RESTORE_BIN/);
   assert.match(runner, /\['--list', dumpPath\]/);
-  assert.match(runner, /checksumSha256/);
+  assert.match(runner, /collectRestoreSnapshotMetadata/);
+  assert.match(runner, /createSystemRestoreManifest/);
+  assert.match(runner, /serializeSystemRestoreManifest/);
   assert.match(runner, /VERIFYING_R2/);
   assert.match(runner, /purpose: 'SYSTEM_BACKUP'/);
   assert.doesNotMatch(runner, /discoverBackupDatasets/);
   assert.doesNotMatch(runner, /buildCsvBundle/);
   assert.doesNotMatch(runner, /buildMultiSheetXlsx/);
-  assert.doesNotMatch(runner, /manifestPayload/);
   assert.match(repository, /csv_object_key = NULL/);
   assert.match(repository, /xlsx_object_key = NULL/);
-  assert.match(repository, /manifest_object_key = NULL/);
+  assert.match(repository, /manifest_object_key = \$6/);
+  assert.match(repository, /manifest_sha256 = \$7/);
 });
 
-test('technical unlock gates the full system backup area and never replaces delete verification', async () => {
+test('technical unlock gates system backup and restore package, and never replaces delete verification', async () => {
   const routes = await readFile(new URL('../src/routes/backups.js', import.meta.url), 'utf8');
   assert.match(routes, /x-technical-backup-unlock/);
   assert.match(routes, /requireTechnicalBackupAccess/);
   assert.match(routes, /includeXlsx: false/);
-  assert.match(routes, /artifactType\.toLowerCase\(\) === 'database'/);
-  assert.match(routes, /Sao lưu hệ thống chỉ cung cấp file \.dump/);
+  assert.match(routes, /SYSTEM_BACKUP_ARTIFACT_TYPES/);
+  assert.match(routes, /\['database', 'manifest'\]/);
+  assert.match(routes, /tệp \.dump và tệp thông tin khôi phục/);
 
   const listStart = routes.indexOf("if (isBackupRoot && method === 'GET')");
   const createStart = routes.indexOf("if (isBackupRoot && method === 'POST')");
@@ -111,6 +115,7 @@ test('technical unlock gates the full system backup area and never replaces dele
   assert.ok(listStart >= 0 && createStart > listStart && detailStart > createStart && downloadStart > detailStart);
   assert.match(routes.slice(listStart, createStart), /technicalAccessOrError/);
   assert.match(routes.slice(detailStart, downloadStart), /technicalAccessOrError/);
+  assert.match(routes.slice(downloadStart), /technicalAccessOrError/);
 
   const deleteStart = routes.indexOf("if (isDeleteRoot && method === 'POST')");
   const deleteEnd = routes.indexOf("if (deleteVerifyMatch && method === 'POST')");

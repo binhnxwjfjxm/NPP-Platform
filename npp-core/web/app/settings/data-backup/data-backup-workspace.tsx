@@ -14,6 +14,7 @@ type BackupJob = {
   startedAt?: string | null;
   completedAt?: string | null;
   snapshotAt?: string | null;
+  schemaVersion?: string | null;
   verifiedAt?: string | null;
   includeXlsx: boolean;
   datasetCount: number;
@@ -28,6 +29,7 @@ type BackupAccess = { canReadBackup: boolean; canCreateBackup: boolean; canDownl
 type TechnicalAccess = { unlocked: boolean; expiresAt: string | null };
 type TechnicalChallenge = { id: string; challengeExpiresAt: string; recipient: string };
 type RequestFailure = Error & { retryable?: boolean; statusCode?: number };
+type BackupArtifactType = 'database' | 'manifest';
 
 const TECHNICAL_RECIPIENT = 'khuongbinh.info@gmail.com';
 const NO_BACKUP_ACCESS: BackupAccess = {
@@ -221,16 +223,16 @@ export default function DataBackupWorkspace() {
     } finally { setBusyAction(''); }
   }
 
-  async function download(job: BackupJob) {
+  async function download(job: BackupJob, artifactType: BackupArtifactType) {
     if (!canDownloadBackup) return;
     if (!technicalAccess.unlocked) {
       await requestTechnicalUnlock();
       return;
     }
-    const intent = `backup.download.${job.id}.database`;
+    const intent = `backup.download.${job.id}.${artifactType}`;
     setBusyAction(intent); setError(''); setSuccess('');
     try {
-      const data = await mutate<{ url: string; expiresIn: number }>(intent, `/api/backups/${job.id}/download`, { artifactType: 'database' });
+      const data = await mutate<{ url: string; expiresIn: number }>(intent, `/api/backups/${job.id}/download`, { artifactType });
       window.location.assign(data.url);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Không tạo được liên kết tải bản sao lưu');
@@ -264,7 +266,7 @@ export default function DataBackupWorkspace() {
 
   const currentStage = activeJob ? STAGES.findIndex(([key]) => key === activeJob.status) : -1;
 
-  return <AppShell title="Dữ liệu & sao lưu" subtitle="Xuất số liệu doanh nghiệp, sao lưu kỹ thuật và bảo vệ thao tác dữ liệu quan trọng.">
+  return <AppShell title="Dữ liệu & sao lưu" subtitle="Xuất số liệu doanh nghiệp, sao lưu kỹ thuật, di chuyển và khôi phục dữ liệu quan trọng.">
     <SettingsTabs active="data-backup" />
     <div className={styles.stack}>
       {error ? <div className={styles.error} role="alert">{error}</div> : null}
@@ -276,15 +278,12 @@ export default function DataBackupWorkspace() {
             <p className={styles.eyebrow}>SỐ LIỆU DOANH NGHIỆP</p>
             <h2>Excel nghiệp vụ</h2>
           </div>
-          <button
-            className={styles.primary}
-            onClick={() => window.location.assign('/api/reporting/business-export')}
-          >
+          <button className={styles.primary} onClick={() => window.location.assign('/api/reporting/business-export')}>
             XUẤT SỐ LIỆU
           </button>
         </div>
         <p>Xuất một file Excel dễ đọc, chỉ gồm các nghiệp vụ người dùng được cấp quyền xem như khách hàng, sản phẩm, tồn kho, đơn hàng, công nợ, giao hàng, nhân viên và MCP.</p>
-        <p className={styles.muted}>File này không chứa dữ liệu kỹ thuật, tài khoản, phân quyền, phiên đăng nhập, chống trùng, migration, nhật ký hệ thống hoặc bản sao lưu thô.</p>
+        <p className={styles.muted}>File này không chứa dữ liệu kỹ thuật, tài khoản, phân quyền, phiên đăng nhập, thông tin kiểm soát nội bộ, lịch sử thay đổi cấu trúc, nhật ký hệ thống hoặc bản sao lưu thô.</p>
       </section>
 
       <section className={styles.hero}>
@@ -292,7 +291,7 @@ export default function DataBackupWorkspace() {
           <p className={styles.eyebrow}>SAO LƯU HỆ THỐNG 🔒</p>
           {technicalAccess.unlocked ? <>
             <h2>Bản kỹ thuật PostgreSQL</h2>
-            <p>File <strong>.dump</strong> dùng để khôi phục toàn bộ hệ thống khi cần. Đây không phải file số liệu dành cho người dùng đọc.</p>
+            <p>File <strong>.dump</strong> là dữ liệu khôi phục chính. Mỗi bản mới có thêm tệp thông tin kỹ thuật để phục vụ di chuyển và đối soát.</p>
           </> : <>
             <h2>Khu vực kỹ thuật</h2>
             <p>Nhập mã xác nhận để mở chức năng sao lưu hệ thống.</p>
@@ -301,7 +300,7 @@ export default function DataBackupWorkspace() {
         {technicalAccess.unlocked ? <div className={styles.heroMeta}>
           <span><b>Bản gần nhất</b>{latestVerified ? formatDate(latestVerified.verifiedAt) : 'Chưa có'}</span>
           <span><b>Kho lưu</b>{latestVerified ? 'R2 riêng tư' : '—'}</span>
-          <span><b>Trạng thái</b>{latestVerified ? 'VERIFIED' : 'Chưa có'}</span>
+          <span><b>Trạng thái</b>{latestVerified ? 'Đã xác minh' : 'Chưa có'}</span>
         </div> : null}
         {canUseTechnicalArea ? technicalAccess.unlocked
           ? <button className={styles.primary} disabled={!canCreateBackup || Boolean(activeJob) || busyAction === 'backup'} onClick={() => setBackupConfirmOpen(true)}>
@@ -317,7 +316,7 @@ export default function DataBackupWorkspace() {
           {technicalAccess.unlocked ? <strong>Hết hạn: {formatDate(technicalAccess.expiresAt)}</strong> : null}
         </div>
         <p>Mã mở khóa chỉ được gửi tới <strong>{TECHNICAL_RECIPIENT}</strong>. Người dùng không thể đổi địa chỉ nhận mã.</p>
-        <p className={styles.muted}>Mã này mở toàn bộ khu vực sao lưu hệ thống. Xóa dữ liệu luôn dùng bước xác nhận riêng.</p>
+        <p className={styles.muted}>Mã này mở toàn bộ khu vực sao lưu và khôi phục kỹ thuật. Xóa dữ liệu luôn dùng bước xác nhận riêng.</p>
       </section> : null}
 
       {technicalAccess.unlocked && activeJob ? <section className={styles.progressCard} aria-live="polite">
@@ -328,15 +327,33 @@ export default function DataBackupWorkspace() {
       </section> : null}
 
       {canReadBackup && technicalAccess.unlocked ? <section className={styles.panel}>
+        <div className={styles.sectionTitle}>
+          <div><p className={styles.eyebrow}>DI CHUYỂN & KHÔI PHỤC 🔒</p><h2>Gói chuyển hệ thống</h2></div>
+          {latestVerified?.artifacts.manifest && canDownloadBackup ? <button className={styles.secondary} onClick={() => void download(latestVerified, 'manifest')} disabled={Boolean(busyAction)}>TẢI TỆP THÔNG TIN</button> : null}
+        </div>
+        <p>Một gói khôi phục gồm đúng <strong>một file .dump</strong> và <strong>một tệp thông tin khôi phục</strong> của cùng thời điểm dữ liệu. Tệp thông tin không phải bản sao dữ liệu thứ hai.</p>
+        {latestVerified ? <>
+          <div className={styles.heroMeta}>
+            <span><b>Thời điểm dữ liệu</b>{formatDate(latestVerified.snapshotAt)}</span>
+            <span><b>Thông tin cấu trúc</b>{latestVerified.schemaVersion ? 'Đã ghi nhận' : 'Chưa có'}</span>
+            <span><b>Tệp khôi phục</b>{latestVerified.artifacts.manifest ? 'Sẵn sàng' : 'Chưa có'}</span>
+          </div>
+          {latestVerified.artifacts.manifest ? <p className={styles.muted}>Tệp thông tin ghi nhận phiên bản cấu trúc, danh sách thay đổi cấu trúc, mã kiểm tra file .dump và số dòng đối soát để phục vụ chuyển sang máy chủ khác.</p> : <p className={styles.muted}>Bản sao lưu gần nhất được tạo trước khi có gói di chuyển. Hãy tạo một bản sao lưu hệ thống mới để có đủ file .dump và tệp thông tin đi kèm.</p>}
+        </> : <p className={styles.muted}>Chưa có bản sao lưu đã xác minh để tạo gói di chuyển.</p>}
+      </section> : null}
+
+      {canReadBackup && technicalAccess.unlocked ? <section className={styles.panel}>
         <div className={styles.sectionTitle}><div><p className={styles.eyebrow}>LỊCH SỬ SAO LƯU HỆ THỐNG</p><h2>Các bản đã tạo</h2></div><button className={styles.secondary} onClick={() => void refresh()} disabled={loading}>Làm mới</button></div>
         {loading ? <p className={styles.muted}>Đang tải...</p> : jobs.length === 0 ? <p className={styles.muted}>Chưa có lịch sử sao lưu.</p> : <div className={styles.history}>
           {jobs.map((job) => <article key={job.id} className={styles.historyCard}>
             <div><strong>{formatDate(job.requestedAt)}</strong><span className={job.status === 'FAILED' ? styles.failed : job.status === 'VERIFIED' ? styles.verified : styles.running}>{statusLabel(job.status)}</span></div>
             <p>Thời điểm dữ liệu: {formatDate(job.snapshotAt)} · File .dump: {formatBytes(job.artifacts.databaseDump?.size)}</p>
-            {job.artifacts.databaseDump?.sha256 ? <p>SHA-256: {job.artifacts.databaseDump.sha256}</p> : null}
+            {job.artifacts.databaseDump?.sha256 ? <p>SHA-256 file .dump: {job.artifacts.databaseDump.sha256}</p> : null}
+            {job.artifacts.manifest?.sha256 ? <p>SHA-256 tệp thông tin khôi phục: {job.artifacts.manifest.sha256}</p> : null}
             {job.failureMessage ? <p className={styles.failedText}>{job.failureMessage}</p> : null}
             {job.status === 'VERIFIED' && canDownloadBackup ? <div className={styles.downloads}>
-              <button onClick={() => void download(job)} disabled={Boolean(busyAction)}>TẢI .DUMP</button>
+              <button onClick={() => void download(job, 'database')} disabled={Boolean(busyAction)}>TẢI .DUMP</button>
+              {job.artifacts.manifest ? <button onClick={() => void download(job, 'manifest')} disabled={Boolean(busyAction)}>TẢI TỆP THÔNG TIN</button> : null}
             </div> : null}
           </article>)}
         </div>}
@@ -345,8 +362,8 @@ export default function DataBackupWorkspace() {
       {canAuthorizeDeletion ? <section className={styles.danger}>
         <p className={styles.eyebrow}>VÙNG NGUY HIỂM</p>
         <h2>Xóa dữ liệu</h2>
-        <p>Yêu cầu xóa chỉ được xác nhận khi có bản sao lưu VERIFIED phù hợp. Bước xác nhận xóa là một quy trình riêng, không dùng phiên mở Khu vực kỹ thuật.</p>
-        {!technicalAccess.unlocked ? <p className={styles.muted}>Mở Khu vực kỹ thuật để chọn bản sao lưu VERIFIED trước khi yêu cầu xóa.</p> : null}
+        <p>Yêu cầu xóa chỉ được xác nhận khi có bản sao lưu đã xác minh phù hợp. Bước xác nhận xóa là một quy trình riêng, không dùng phiên mở Khu vực kỹ thuật.</p>
+        {!technicalAccess.unlocked ? <p className={styles.muted}>Mở Khu vực kỹ thuật để chọn bản sao lưu đã xác minh trước khi yêu cầu xóa.</p> : null}
         <button className={styles.dangerButton} onClick={() => { setDeleteOpen(true); setDeleteIntent(null); setDeleteCode(''); }} disabled={!latestVerified}>XÓA DỮ LIỆU</button>
         <p className={styles.muted}>Hiện tại hệ thống mới xác nhận yêu cầu xóa; chưa thực hiện xóa dữ liệu tự động.</p>
       </section> : null}
@@ -355,7 +372,7 @@ export default function DataBackupWorkspace() {
     {backupConfirmOpen && canCreateBackup && technicalAccess.unlocked ? <div className={styles.overlay} role="dialog" aria-modal="true" aria-labelledby="backup-confirm-title">
       <div className={styles.modal}>
         <p className={styles.eyebrow}>XÁC NHẬN</p><h2 id="backup-confirm-title">Tạo bản sao lưu hệ thống?</h2>
-        <ul><li>Tạo file sao lưu PostgreSQL (.dump)</li><li>Kiểm tra cấu trúc file khôi phục</li><li>Tính mã kiểm tra SHA-256</li><li>Lưu vào kho R2 riêng tư</li><li>Đối chiếu kích thước và mã kiểm tra trước khi đánh dấu VERIFIED</li></ul>
+        <ul><li>Tạo đúng một file sao lưu PostgreSQL (.dump)</li><li>Kiểm tra cấu trúc file khôi phục</li><li>Ghi nhận phiên bản cấu trúc và số dòng đối soát</li><li>Tạo tệp thông tin khôi phục đi cùng file .dump</li><li>Tính mã kiểm tra SHA-256 cho cả hai tệp</li><li>Lưu vào kho R2 riêng tư và đối chiếu trước khi đánh dấu đã xác minh</li></ul>
         <div className={styles.modalActions}><button className={styles.secondary} onClick={() => setBackupConfirmOpen(false)}>HỦY</button><button className={styles.primary} onClick={() => void startBackup()} disabled={busyAction === 'backup'}>XÁC NHẬN SAO LƯU</button></div>
       </div>
     </div> : null}
