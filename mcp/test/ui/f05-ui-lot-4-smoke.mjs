@@ -134,9 +134,9 @@ try {
   await desktopTable.waitFor({ state: "visible" });
   assert.equal(await desktopTable.locator("table tbody tr").count(), 2);
   await desktopPage.goto(`${appBase}/actions`, { waitUntil: "domcontentloaded" });
-  assert.equal(new URL(desktopPage.url()).pathname, "/plans");
+  await desktopPage.waitForURL((url) => url.pathname === "/plans");
   await desktopPage.goto(`${appBase}/mcp/settings`, { waitUntil: "domcontentloaded" });
-  assert.equal(new URL(desktopPage.url()).pathname, "/mcp-setting");
+  await desktopPage.waitForURL((url) => url.pathname === "/mcp-setting");
   await desktopContext.close();
 
   result.MCP_UI_LOT_4_SMOKE = "PASS";
