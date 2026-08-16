@@ -4,16 +4,24 @@ import { readFileSync } from "node:fs";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("E5 maps MCP source to the canonical active MCP sales channel before generic default", () => {
+test("E5 maps MCP source to its canonical system sales channel before generic default", () => {
   const entry = read("../npp-core/api/src/services/sales-order-entry.js");
-  assert.match(entry, /SOURCE_CHANNEL_CODE_BY_TYPE = Object\.freeze\(\{ MCP: 'MCP' \}\)/);
-  assert.match(entry, /sourceChannelCode\(normalized\.payload\)/);
-  assert.match(entry, /commercialRepository\.listActiveSalesChannels/);
-  assert.match(entry, /String\(channel\.code \?\? ''\)\.trim\(\)\.toUpperCase\(\) === canonicalSourceChannelCode/);
-  const sourceIndex = entry.indexOf("const canonicalSourceChannelCode = sourceChannelCode(normalized.payload)");
+  const repository = read("../npp-core/api/src/db/repositories/system-sales-channel.js");
+
+  assert.match(entry, /SOURCE_CHANNEL_BY_TYPE = Object\.freeze/);
+  assert.match(entry, /code: 'MCP'/);
+  assert.match(entry, /sourceChannelDefinition\(normalized\.payload\)/);
+  assert.match(entry, /systemSalesChannelRepository\.ensureSystemSalesChannel/);
+  assert.match(entry, /actorId: args\.requestContext\.actorId/);
+  assert.match(entry, /Kênh bán hàng \$\{canonicalSourceChannel\.code\} đang ngừng hoạt động/);
+
+  const sourceIndex = entry.indexOf("const canonicalSourceChannel = sourceChannelDefinition(normalized.payload)");
   const defaultIndex = entry.indexOf("commercialRepository.getDefaultSalesChannelId", sourceIndex);
   assert.ok(sourceIndex >= 0 && defaultIndex > sourceIndex, "MCP source channel must resolve before generic default");
-  assert.match(entry, /Chưa cấu hình kênh bán hàng \$\{canonicalSourceChannelCode\} đang hoạt động/);
+
+  assert.match(repository, /ON CONFLICT \(installation_id, code\) DO NOTHING/);
+  assert.match(repository, /if \(existing\) return existing/);
+  assert.doesNotMatch(repository, /UPDATE shared\.sales_channels[\s\S]*is_active\s*=\s*true/i);
 });
 
 test("E5 official order now uses the direct MCP order workspace and never returns through order-intent", () => {
