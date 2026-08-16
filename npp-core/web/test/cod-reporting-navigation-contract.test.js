@@ -8,7 +8,7 @@ test('Phase 8.6 exposes COD reporting in Accounting without a global Reporting m
   const page = source('../app/accounting/cod-reporting/page.tsx');
   const workspace = source('../app/components/cod-reporting-workspace.tsx');
   assert.match(shell, /\/accounting\/cod-reporting/);
-  assert.match(shell, /COD & đối soát/);
+  assert.match(shell, /COD và đối soát/);
   assert.match(page, /CodReportingWorkspace/);
   assert.match(workspace, /cod-reporting-workspace/);
   assert.doesNotMatch(shell, /title:\s*'Reporting'/);
