@@ -72,7 +72,7 @@ jobs:
           url="$(npx --yes vercel@latest deploy --prod --token="${{ secrets.VERCEL_TOKEN }}")"
           test -n "$url"
           echo "url=$url" >> "$GITHUB_OUTPUT"
-      - name: Smoke test deployment URL
+      - name: Smoke test production alias
         shell: bash
         env: { DEPLOYMENT_URL: '${{ env.PRODUCTION_URL }}' }
         run: |
@@ -90,13 +90,30 @@ jobs:
           assert_status /organization 302 307 401
           assert_status /api/customers 401
           assert_status /api/access/permissions 401
-          html="$(curl --fail --silent --show-error --retry 5 --retry-delay 5 "$DEPLOYMENT_URL/login")"
-          printf '%s' "$html" | grep -F 'Welcome to Hung Phat Operations.' >/dev/null
-          css_asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.css' | head -n 1)"
-          js_asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.js' | head -n 1)"
-          test -n "$css_asset"; test -n "$js_asset"
-          curl --fail --silent --show-error "$DEPLOYMENT_URL$css_asset" >/dev/null
-          curl --fail --silent --show-error "$DEPLOYMENT_URL$js_asset" >/dev/null
+
+          smoke_login_assets() {
+            local html css_asset js_asset
+            html="$(curl --fail --silent --show-error "$DEPLOYMENT_URL/login")" || return 1
+            printf '%s' "$html" | grep -F 'Hệ thống điều hành Công Ty' >/dev/null || return 1
+            css_asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.css' | head -n 1)" || return 1
+            js_asset="$(printf '%s' "$html" | grep -oE '/_next/static/[^" ]+\.js' | head -n 1)" || return 1
+            test -n "$css_asset" && test -n "$js_asset" || return 1
+            curl --fail --silent --show-error "$DEPLOYMENT_URL$css_asset" >/dev/null || return 1
+            curl --fail --silent --show-error "$DEPLOYMENT_URL$js_asset" >/dev/null || return 1
+          }
+
+          smoke_ok=0
+          for attempt in {1..12}; do
+            if smoke_login_assets; then
+              smoke_ok=1
+              break
+            fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
+          done
+          if [ "$smoke_ok" -ne 1 ]; then
+            echo "Production alias did not converge to a coherent login page and static assets." >&2
+            exit 1
+          fi
       - name: Record successful exact SHA
         shell: bash
         env: { TARGET_SHA: '${{ steps.target.outputs.sha }}', DEPLOYED_URL: '${{ steps.deploy.outputs.url }}' }
