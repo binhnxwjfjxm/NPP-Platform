@@ -221,7 +221,7 @@ test.describe('Core web route smoke', () => {
     await expect(row).toBeVisible();
     await expect(row).toContainText(initialName);
     await expect(row).toContainText('2 quyền');
-    await expect(row).toContainText('Đang hoạt động');
+    await expect(row).toContainText('Đang sử dụng');
 
     await page.getByTestId('roles-search-input').fill(roleCode);
     await expect(row).toBeVisible();
@@ -249,7 +249,7 @@ test.describe('Core web route smoke', () => {
 
     await page.getByTestId(`toggle-role-${roleCode}`).click();
     await page.getByRole('button', { name: 'Xác nhận' }).click();
-    await expect(row).toContainText('Ngừng hoạt động');
+    await expect(row).toContainText('Ngừng sử dụng');
 
     await page.getByTestId('roles-status-filter').selectOption('inactive');
     await expect(row).toBeVisible();
@@ -257,7 +257,7 @@ test.describe('Core web route smoke', () => {
     await page.getByTestId(`toggle-role-${roleCode}`).click();
     await page.getByRole('button', { name: 'Xác nhận' }).click();
     await page.getByTestId('roles-status-filter').selectOption('all');
-    await expect(row).toContainText('Đang hoạt động');
+    await expect(row).toContainText('Đang sử dụng');
 
     await page.getByTestId(`edit-role-${roleCode}`).click();
     await page.getByTestId('role-name-input').fill(`${updatedName} chờ xung đột`);
