@@ -10,6 +10,7 @@ const variantB = "44444444-4444-4444-8444-444444444444";
 const variantC = "55555555-5555-4555-8555-555555555555";
 const variantD = "66666666-6666-4666-8666-666666666666";
 const variantE = "77777777-7777-4777-8777-777777777777";
+const employeeId = "99999999-9999-4999-8999-999999999999";
 const config = {
   coreSales: {
     configured: true,
@@ -24,7 +25,7 @@ function requestContext({ permissions = ["mcp.sales-order.read", "mcp.sales-orde
   return {
     requestId: "req_core_sales_api",
     auth: { authenticated: true },
-    principal: { id: "service:npp-a:mcp", employeeId: "employee-a", permissions, scopes }
+    principal: { id: "service:npp-a:mcp", employeeId, permissions, scopes }
   };
 }
 

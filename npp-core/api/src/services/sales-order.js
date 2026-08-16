@@ -2,6 +2,7 @@ import * as legacy from './sales-order-legacy.js';
 import * as pricingService from './pricing.js';
 import * as fulfillmentService from './sales-fulfillment.js';
 import * as commercialRepository from '../db/repositories/sales-order-commercial.js';
+import * as sourceEmployeeRepository from '../db/repositories/sales-order-provenance.js';
 import {
   allocateLargestRemainder,
   canonicalPricingFingerprint,
@@ -19,6 +20,19 @@ const SCALE = 1_000_000n;
 
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
+}
+
+function sourceEmployeeContext(requestContext, payload) {
+  const sourceType = String(payload?.sourceType ?? 'MANUAL').trim().toUpperCase();
+  if (sourceType !== 'MCP') return { ok: true, employeeId: null };
+  if (!Array.isArray(requestContext?.roles) || !requestContext.roles.includes('mcp-sales-order-service')) {
+    return failure('MCP_SOURCE_CONTEXT_REQUIRED', 'Đơn MCP chỉ được tạo từ ngữ cảnh máy chủ MCP đã xác thực.');
+  }
+  const employeeId = String(requestContext?.employeeId ?? '').trim().toLowerCase();
+  if (!UUID_PATTERN.test(employeeId)) {
+    return failure('MCP_SOURCE_EMPLOYEE_REQUIRED', 'Thiếu ngữ cảnh nhân viên MCP đã xác thực.');
+  }
+  return { ok: true, employeeId };
 }
 
 function hasPermission(requestContext, permission) {
@@ -297,6 +311,24 @@ function mergeCommercialFacts(salesOrder, facts) {
   });
 }
 
+function mergeSourceEmployeeFacts(salesOrder, facts) {
+  if (!salesOrder) return salesOrder;
+  const versionFacts = new Map(
+    (facts?.versions ?? []).map((version) => [String(version.version_number), version.source_employee_id ?? null]),
+  );
+  const versions = Array.isArray(salesOrder.versions)
+    ? salesOrder.versions.map((version) => Object.freeze({
+        ...version,
+        sourceEmployeeId: versionFacts.get(String(version.versionNumber)) ?? null,
+      }))
+    : salesOrder.versions;
+  return Object.freeze({
+    ...salesOrder,
+    sourceEmployeeId: facts?.order?.source_employee_id ?? null,
+    versions,
+  });
+}
+
 function mergeFulfillmentProjection(salesOrder, fulfillment) {
   if (!salesOrder) return salesOrder;
   return Object.freeze({
@@ -308,7 +340,7 @@ function mergeFulfillmentProjection(salesOrder, fulfillment) {
 
 async function enrichResult(client, requestContext, result) {
   if (!result?.ok || !result.salesOrder?.id) return result;
-  const [facts, fulfillment] = await Promise.all([
+  const [facts, fulfillment, sourceEmployeeFacts] = await Promise.all([
     commercialRepository.loadCommercialFacts(client, {
       installationId: requestContext.installationId,
       salesOrderId: result.salesOrder.id,
@@ -317,11 +349,18 @@ async function enrichResult(client, requestContext, result) {
       requestContext,
       salesOrderId: result.salesOrder.id,
     }),
+    sourceEmployeeRepository.loadSourceEmployeeFacts(client, {
+      installationId: requestContext.installationId,
+      salesOrderId: result.salesOrder.id,
+    }),
   ]);
   return Object.freeze({
     ...result,
     salesOrder: mergeFulfillmentProjection(
-      mergeCommercialFacts(result.salesOrder, facts),
+      mergeSourceEmployeeFacts(
+        mergeCommercialFacts(result.salesOrder, facts),
+        sourceEmployeeFacts,
+      ),
       fulfillment,
     ),
   });
@@ -365,12 +404,40 @@ export async function getSalesOrder(client, input) {
 }
 
 export async function createSalesOrder(client, { requestContext, payload }) {
+  const sourceEmployee = sourceEmployeeContext(requestContext, payload);
+  if (!sourceEmployee.ok) return sourceEmployee;
+  if (sourceEmployee.employeeId) {
+    const activeEmployee = await sourceEmployeeRepository.getActiveSourceEmployee(client, {
+      installationId: requestContext.installationId,
+      employeeId: sourceEmployee.employeeId,
+    });
+    if (!activeEmployee) {
+      return failure('MCP_SOURCE_EMPLOYEE_INVALID', 'Nhân viên MCP không còn hiệu lực trong Công Ty.');
+    }
+  }
+
   const prepared = await prepareCommercialPayload(client, { requestContext, payload });
   if (!prepared.ok) return prepared;
   const result = await legacy.createSalesOrder(client, {
     requestContext: prepared.legacyRequestContext,
     payload: prepared.legacyPayload,
   });
+  if (!result.ok) return result;
+  if (sourceEmployee.employeeId) {
+    const provenanceApplied = await sourceEmployeeRepository.setInitialSourceEmployeeSnapshot(client, {
+      installationId: requestContext.installationId,
+      salesOrderId: result.salesOrder.id,
+      versionNumber: 1,
+      employeeId: sourceEmployee.employeeId,
+    });
+    if (!provenanceApplied) {
+      return failure(
+        'MCP_SOURCE_EMPLOYEE_SNAPSHOT_FAILED',
+        'Không thể ghi nhận nhân viên nguồn cho đơn MCP.',
+        true,
+      );
+    }
+  }
   return applySnapshotAndReload(client, {
     requestContext,
     result,
@@ -411,6 +478,19 @@ export async function createSalesOrderAmendment(client, { requestContext, id, pa
   if (!result.ok) return result;
   const draft = result.salesOrder.versions?.find((version) => version.status === 'draft');
   const toVersionNumber = Number(draft?.versionNumber ?? fromVersionNumber + 1);
+  const provenanceCopied = await sourceEmployeeRepository.copySourceEmployeeSnapshotToDraft(client, {
+    installationId: requestContext.installationId,
+    salesOrderId: id,
+    fromVersionNumber,
+    toVersionNumber,
+  });
+  if (!provenanceCopied) {
+    return failure(
+      'SALES_ORDER_SOURCE_EMPLOYEE_SNAPSHOT_FAILED',
+      'Không thể sao chép nguồn nhân viên sang phiên bản điều chỉnh.',
+      true,
+    );
+  }
   const copied = await commercialRepository.copyCommercialSnapshotToDraft(client, {
     installationId: requestContext.installationId,
     salesOrderId: id,

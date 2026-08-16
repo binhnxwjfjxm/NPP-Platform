@@ -22,11 +22,27 @@ function configured(config) {
   return boundary;
 }
 
+function requiredUuid(value, missingCode, invalidCode) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) throw integrationError(missingCode, 400);
+  if (!UUID_PATTERN.test(normalized)) throw integrationError(invalidCode, 400);
+  return normalized;
+}
+
+function trustedEmployeeId(requestContext) {
+  return requiredUuid(
+    requestContext?.principal?.employeeId,
+    "core_sales_employee_context_required",
+    "core_sales_employee_context_invalid"
+  );
+}
+
 function requestHeaders(boundary, requestContext, { idempotencyKey = null } = {}) {
   const headers = {
     Accept: "application/json",
     Authorization: `Bearer ${boundary.apiToken}`,
-    "X-Request-Id": requestContext.requestId
+    "X-Request-Id": requestContext.requestId,
+    "X-NPP-MCP-Employee-Id": trustedEmployeeId(requestContext)
   };
   if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
   return headers;
@@ -94,13 +110,6 @@ function assertCoreOrder(order) {
   return order;
 }
 
-function requiredUuid(value, missingCode, invalidCode) {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (!normalized) throw integrationError(missingCode, 400);
-  if (!UUID_PATTERN.test(normalized)) throw integrationError(invalidCode, 400);
-  return normalized;
-}
-
 export function coreSalesOrderProjection(order) {
   const normalized = assertCoreOrder(order);
   const version = currentVersion(normalized);
@@ -114,6 +123,7 @@ export function coreSalesOrderProjection(order) {
     sourceType: String(normalized.sourceType || ""),
     sourceId: normalized.sourceId || null,
     sourceOutletId: normalized.sourceOutletId || null,
+    sourceEmployeeId: normalized.sourceEmployeeId || version?.sourceEmployeeId || null,
     customerId: normalized.customerId || null,
     customerAddressId: normalized.customerAddressId || version?.customerAddressId || null,
     updatedAt: normalized.updatedAt || null
