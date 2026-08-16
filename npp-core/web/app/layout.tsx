@@ -5,6 +5,7 @@ import './ui-polish.css';
 import './components/lot3-ui-overrides.css';
 import './issue-107-purchase-order-layout.css';
 import './hung-phat-warm-gold.css';
+import './core-office-density.css';
 
 const beVietnamPro = Be_Vietnam_Pro({
   subsets: ['latin', 'vietnamese'],

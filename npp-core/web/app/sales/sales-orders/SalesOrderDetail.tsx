@@ -62,7 +62,7 @@ export default function SalesOrderDetail(props: Props) {
           {current && order.number && ['confirmed', 'closed'].includes(order.status)
             ? <SalesOrderPrintSheet order={order} version={current} />
             : null}
-          <span className={styles.statusPill}>{orderLabels[order.status] ?? order.status}</span>
+          <span className={styles.statusPill} data-sales-order-tone={order.status}>{orderLabels[order.status] ?? order.status}</span>
         </div>
       </header>
 
@@ -128,7 +128,7 @@ export default function SalesOrderDetail(props: Props) {
             {(current.lines ?? []).map((line) => (
               <div className={styles.lineRow} key={line.id}>
                 <span><b>{line.sku}</b><small>{line.itemName}</small></span>
-                <span>{line.quantity} {line.unitCode}</span>
+                <span>{formatQuantity(line.quantity)} {line.unitCode}</span>
                 <span>{formatMoney(line.unitPrice)} ₫</span>
                 <span>{formatMoney(line.lineTotal)} ₫</span>
               </div>

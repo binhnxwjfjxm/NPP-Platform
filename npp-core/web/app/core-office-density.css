@@ -1,0 +1,55 @@
+/* Công Ty: thu gọn typography để nhìn được nhiều thông tin hơn trên một màn hình.
+   Chỉ thay đổi scale chữ/layout rem; các min-height vùng bấm đang dùng px vẫn giữ nguyên. */
+html {
+  font-size: 80%;
+}
+
+body {
+  font-size: 11.2px;
+}
+
+/* Trạng thái Đơn bán: dùng màu nhất quán để nhận biết nhanh trong danh sách/chi tiết. */
+html body [data-sales-order-tone] {
+  border: 1px solid transparent;
+}
+
+html body [data-sales-order-tone='draft'] {
+  border-color: #e7d39a;
+  background: #fff7dc;
+  color: #755500;
+}
+
+html body [data-sales-order-tone='confirmed'] {
+  border-color: #add8c5;
+  background: #e9f6ef;
+  color: #155c46;
+}
+
+html body [data-sales-order-tone='waiting'] {
+  border-color: #efc996;
+  background: #fff1df;
+  color: #8a4d0f;
+}
+
+html body [data-sales-order-tone='cancelled'] {
+  border-color: #efb8b2;
+  background: #fff0ee;
+  color: #9f2520;
+}
+
+html body [data-sales-order-tone='closed'] {
+  border-color: #c8d4df;
+  background: #edf3f8;
+  color: #3d566b;
+}
+
+/* Chứng từ in giữ cỡ chữ chuẩn, không bị ảnh hưởng bởi mật độ giao diện trên màn hình. */
+@media print {
+  html {
+    font-size: 100%;
+  }
+
+  body {
+    font-size: 14px;
+  }
+}
