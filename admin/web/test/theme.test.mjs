@@ -38,7 +38,7 @@ test('Admin behaves like a four-destination mobile app while preserving iPhone s
   assert.doesNotMatch(layout, /statusBarStyle:\s*'black-translucent'/);
   assert.match(layout, /viewportFit:\s*'cover'/);
   assert.match(shell, /className="adminBottomNav"/);
-  for (const label of ['Tổng quan', 'Phê duyệt', 'Cảnh báo', 'Báo cáo']) assert.match(shell, new RegExp(`label: '${label}'`));
+  for (const label of ['Tổng quan', 'Đề xuất', 'Cảnh báo', 'Báo cáo']) assert.match(shell, new RegExp(`label: '${label}'`));
   assert.doesNotMatch(shell, /label: 'Menu'/);
   assert.match(mobileApp, /grid-template-rows:\s*auto minmax\(0, 1fr\) auto/);
   assert.match(mobileApp, /@media \(max-width: 760px\) and \(display-mode: standalone\)/);
