@@ -200,7 +200,8 @@ async function authenticateAndAuthorize(req, res, options, permission) {
     requestId: options.requestId,
     receivedAt: options.receivedAt,
   });
-  if (!options.authorize(requestContext, permission).ok) {
+  const acceptedPermissions = Array.isArray(permission) ? permission : [permission];
+  if (!acceptedPermissions.some((candidate) => options.authorize(requestContext, candidate).ok)) {
     sendError(
       res,
       apiError('PERMISSION_DENIED', 'Permission denied', {}, false, 403),
@@ -251,7 +252,7 @@ export async function handleFulfillmentOperationRoutes(req, res, options) {
         req,
         res,
         options,
-        options.PERMISSIONS.coreFulfillmentRead,
+        [options.PERMISSIONS.coreFulfillmentRead, options.PERMISSIONS.coreFulfillmentPick],
       );
       if (!requestContext) return true;
       const url = new URL(`http://localhost${req.url}`);
@@ -285,7 +286,7 @@ export async function handleFulfillmentOperationRoutes(req, res, options) {
         req,
         res,
         options,
-        options.PERMISSIONS.coreFulfillmentRead,
+        [options.PERMISSIONS.coreFulfillmentRead, options.PERMISSIONS.coreFulfillmentPick],
       );
       if (!requestContext) return true;
       const result = await suggestFulfillmentAllocation(options.getPool(), {
@@ -369,7 +370,7 @@ export async function handleFulfillmentOperationRoutes(req, res, options) {
         req,
         res,
         options,
-        options.PERMISSIONS.coreFulfillmentRead,
+        [options.PERMISSIONS.coreFulfillmentRead, options.PERMISSIONS.coreFulfillmentPick],
       );
       if (!requestContext) return true;
       const result = await getFulfillmentPickingCloseState(options.getPool(), {
