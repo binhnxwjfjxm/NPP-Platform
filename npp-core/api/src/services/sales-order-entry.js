@@ -1,10 +1,17 @@
 import * as legacy from './sales-order-entry-legacy.js';
 import * as commercialRepository from '../db/repositories/sales-order-commercial.js';
+import * as systemSalesChannelRepository from '../db/repositories/system-sales-channel.js';
 
 export * from './sales-order-entry-legacy.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const SOURCE_CHANNEL_CODE_BY_TYPE = Object.freeze({ MCP: 'MCP' });
+const SOURCE_CHANNEL_BY_TYPE = Object.freeze({
+  MCP: Object.freeze({
+    code: 'MCP',
+    name: 'MCP',
+    description: 'Kênh hệ thống nhận đơn từ ứng dụng MCP.',
+  }),
+});
 
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
@@ -15,9 +22,9 @@ function hasPermission(requestContext, permission) {
     && requestContext.permissions.includes(permission);
 }
 
-function sourceChannelCode(payload) {
+function sourceChannelDefinition(payload) {
   const sourceType = String(payload?.sourceType ?? '').trim().toUpperCase();
-  return SOURCE_CHANNEL_CODE_BY_TYPE[sourceType] ?? null;
+  return SOURCE_CHANNEL_BY_TYPE[sourceType] ?? null;
 }
 
 export async function getSalesOrderEntrySettings(client, { requestContext }) {
@@ -64,18 +71,23 @@ export async function normalizeSalesOrderEntryPayload(client, args) {
     normalized.payload.salesChannelId ?? args.payload?.salesChannelId ?? '',
   ).trim();
   if (!salesChannelId) {
-    const canonicalSourceChannelCode = sourceChannelCode(normalized.payload);
-    if (canonicalSourceChannelCode) {
-      const channels = await commercialRepository.listActiveSalesChannels(client, {
+    const canonicalSourceChannel = sourceChannelDefinition(normalized.payload);
+    if (canonicalSourceChannel) {
+      const sourceChannel = await systemSalesChannelRepository.ensureSystemSalesChannel(client, {
         installationId,
+        ...canonicalSourceChannel,
+        actorId: args.requestContext.actorId,
       });
-      const sourceChannel = channels.find((channel) => (
-        String(channel.code ?? '').trim().toUpperCase() === canonicalSourceChannelCode
-      ));
       if (!sourceChannel) {
         return failure(
           'SALES_CHANNEL_NOT_FOUND',
-          `Chưa cấu hình kênh bán hàng ${canonicalSourceChannelCode} đang hoạt động`,
+          `Không thể khởi tạo kênh bán hàng ${canonicalSourceChannel.code}`,
+        );
+      }
+      if (sourceChannel.is_active !== true) {
+        return failure(
+          'SALES_CHANNEL_NOT_FOUND',
+          `Kênh bán hàng ${canonicalSourceChannel.code} đang ngừng hoạt động`,
         );
       }
       salesChannelId = sourceChannel.id;
