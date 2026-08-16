@@ -24,20 +24,25 @@ type BackupJob = {
 };
 type DeleteIntent = { id: string; status: string; backupJobId: string; challengeExpiresAt?: string; ownerRecipientCount?: number; authorizedAt?: string; purgeExecuted?: boolean };
 type Envelope<T> = { data?: T; error?: { code?: string; message?: string; retryable?: boolean; details?: unknown } };
-type BackupAccess = { canCreateBackup: boolean; canDownloadBackup: boolean; canAuthorizeDeletion: boolean };
+type BackupAccess = { canReadBackup: boolean; canCreateBackup: boolean; canDownloadBackup: boolean; canAuthorizeDeletion: boolean };
+type TechnicalAccess = { unlocked: boolean; expiresAt: string | null };
+type TechnicalChallenge = { id: string; challengeExpiresAt: string; recipient: string };
 
+const TECHNICAL_RECIPIENT = 'khuongbinh.info@gmail.com';
 const STAGES = [
   ['QUEUED', 'Xếp hàng'],
-  ['SNAPSHOTTING', 'Chuẩn bị snapshot'],
-  ['DUMPING_DATABASE', 'Xuất database'],
-  ['EXPORTING_DATASETS', 'Tạo CSV / Excel'],
-  ['BUILDING_ARCHIVE', 'Đóng gói dữ liệu'],
-  ['HASHING', 'Tính checksum'],
-  ['UPLOADING_R2', 'Upload R2'],
-  ['VERIFYING_R2', 'Xác minh R2'],
+  ['SNAPSHOTTING', 'Chốt thời điểm dữ liệu'],
+  ['DUMPING_DATABASE', 'Tạo file .dump'],
+  ['HASHING', 'Tính SHA-256'],
+  ['UPLOADING_R2', 'Lưu lên kho sao lưu'],
+  ['VERIFYING_R2', 'Đối chiếu bản đã lưu'],
   ['VERIFIED', 'Đã xác minh'],
 ] as const;
-const ACTIVE = new Set<string>(STAGES.slice(0, -1).map(([status]) => status));
+const ACTIVE = new Set<string>([
+  ...STAGES.slice(0, -1).map(([status]) => status),
+  'EXPORTING_DATASETS',
+  'BUILDING_ARCHIVE',
+]);
 
 function formatDate(value?: string | null) {
   if (!value) return '—';
@@ -53,18 +58,25 @@ function formatBytes(value?: number) {
   return `${size.toLocaleString('vi-VN', { maximumFractionDigits: unit ? 1 : 0 })} ${units[unit]}`;
 }
 function statusLabel(status: string) {
+  if (status === 'EXPORTING_DATASETS' || status === 'BUILDING_ARCHIVE') return 'Đang hoàn tất bản sao lưu cũ';
   return STAGES.find(([key]) => key === status)?.[1] ?? (status === 'FAILED' ? 'Thất bại' : status);
 }
 function progress(status: string) {
   const index = STAGES.findIndex(([key]) => key === status);
-  return index < 0 ? 0 : Math.round((index / (STAGES.length - 1)) * 100);
+  if (index >= 0) return Math.round((index / (STAGES.length - 1)) * 100);
+  return ACTIVE.has(status) ? 55 : 0;
 }
 
 export default function DataBackupWorkspace() {
   const [jobs, setJobs] = useState<BackupJob[]>([]);
   const [access, setAccess] = useState<BackupAccess | null>(null);
+  const [technicalAccess, setTechnicalAccess] = useState<TechnicalAccess>({ unlocked: false, expiresAt: null });
+  const [technicalChallenge, setTechnicalChallenge] = useState<TechnicalChallenge | null>(null);
+  const [technicalCode, setTechnicalCode] = useState('');
+  const [unlockOpen, setUnlockOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [backupConfirmOpen, setBackupConfirmOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteIntent, setDeleteIntent] = useState<DeleteIntent | null>(null);
@@ -75,9 +87,11 @@ export default function DataBackupWorkspace() {
 
   const activeJob = useMemo(() => jobs.find((job) => ACTIVE.has(job.status)) ?? null, [jobs]);
   const latestVerified = useMemo(() => jobs.find((job) => job.status === 'VERIFIED') ?? null, [jobs]);
+  const canReadBackup = access?.canReadBackup === true;
   const canCreateBackup = access?.canCreateBackup === true;
   const canDownloadBackup = access?.canDownloadBackup === true;
   const canAuthorizeDeletion = access?.canAuthorizeDeletion === true;
+  const canUseTechnicalArea = canReadBackup && (canCreateBackup || canDownloadBackup);
 
   function keyFor(intent: string) {
     const current = mutationKeys.current.get(intent);
@@ -113,15 +127,22 @@ export default function DataBackupWorkspace() {
 
   async function refresh() {
     try {
-      const [data, capabilities] = await Promise.all([
-        request<BackupJob[]>('/api/backups'),
-        request<BackupAccess>('/api/backups/access'),
-      ]);
-      setJobs(data);
+      const capabilities = await request<BackupAccess>('/api/backups/access');
       setAccess(capabilities);
+      if (capabilities.canReadBackup) {
+        const [data, unlocked] = await Promise.all([
+          request<BackupJob[]>('/api/backups'),
+          request<TechnicalAccess>('/api/backups/technical-access'),
+        ]);
+        setJobs(data);
+        setTechnicalAccess(unlocked);
+      } else {
+        setJobs([]);
+        setTechnicalAccess({ unlocked: false, expiresAt: null });
+      }
       setError('');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Không tải được lịch sử sao lưu');
+      setError(cause instanceof Error ? cause.message : 'Không tải được thông tin sao lưu');
     } finally {
       setLoading(false);
     }
@@ -134,45 +155,83 @@ export default function DataBackupWorkspace() {
     return () => window.clearInterval(timer);
   }, [activeJob?.id, activeJob?.status]);
 
-  async function startBackup() {
-    if (!canCreateBackup) return;
-    setBusyAction('backup'); setError('');
+  async function requestTechnicalUnlock() {
+    if (!canUseTechnicalArea) return;
+    setBusyAction('technical.challenge'); setError(''); setSuccess('');
     try {
-      const job = await mutate<BackupJob>('backup.create', '/api/backups', { includeXlsx: true });
-      setBackupConfirmOpen(false);
-      setJobs((current) => [job, ...current.filter((item) => item.id !== job.id)]);
-      await refresh();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Không tạo được bản sao lưu'); }
-    finally { setBusyAction(''); }
+      const challenge = await mutate<TechnicalChallenge>('technical-backup.challenge', '/api/backups/technical-access', {});
+      setTechnicalChallenge(challenge);
+      setTechnicalCode('');
+      setUnlockOpen(true);
+      setSuccess(`Mã mở khóa đã được gửi tới ${TECHNICAL_RECIPIENT}.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không gửi được mã mở khóa');
+    } finally { setBusyAction(''); }
   }
 
-  async function download(job: BackupJob, artifactType: 'database' | 'csv' | 'xlsx' | 'manifest') {
-    if (!canDownloadBackup) return;
-    const intent = `backup.download.${job.id}.${artifactType}`;
-    setBusyAction(intent); setError('');
+  async function verifyTechnicalUnlock() {
+    if (!technicalChallenge || !/^\d{6}$/.test(technicalCode)) return;
+    const intent = `technical-backup.verify.${technicalChallenge.id}`;
+    setBusyAction(intent); setError(''); setSuccess('');
     try {
-      const data = await mutate<{ url: string; expiresIn: number }>(intent, `/api/backups/${job.id}/download`, { artifactType });
+      const unlocked = await mutate<TechnicalAccess>(intent, `/api/backups/technical-access/${technicalChallenge.id}/verify`, { code: technicalCode });
+      setTechnicalAccess(unlocked);
+      setTechnicalCode('');
+      setUnlockOpen(false);
+      setSuccess(`Khu vực kỹ thuật đã mở đến ${formatDate(unlocked.expiresAt)}.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Mã mở khóa không hợp lệ');
+    } finally { setBusyAction(''); }
+  }
+
+  async function startBackup() {
+    if (!canCreateBackup || !technicalAccess.unlocked) return;
+    setBusyAction('backup'); setError(''); setSuccess('');
+    try {
+      const job = await mutate<BackupJob>('backup.create', '/api/backups', {});
+      setBackupConfirmOpen(false);
+      setJobs((current) => [job, ...current.filter((item) => item.id !== job.id)]);
+      setSuccess('Đã tiếp nhận yêu cầu sao lưu hệ thống.');
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không tạo được bản sao lưu hệ thống');
+      await refresh();
+    } finally { setBusyAction(''); }
+  }
+
+  async function download(job: BackupJob) {
+    if (!canDownloadBackup) return;
+    if (!technicalAccess.unlocked) {
+      await requestTechnicalUnlock();
+      return;
+    }
+    const intent = `backup.download.${job.id}.database`;
+    setBusyAction(intent); setError(''); setSuccess('');
+    try {
+      const data = await mutate<{ url: string; expiresIn: number }>(intent, `/api/backups/${job.id}/download`, { artifactType: 'database' });
       window.location.assign(data.url);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Không tạo được liên kết tải'); }
-    finally { setBusyAction(''); }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không tạo được liên kết tải bản sao lưu');
+      await refresh();
+    } finally { setBusyAction(''); }
   }
 
   async function requestDeleteChallenge() {
     if (!canAuthorizeDeletion) return;
-    if (!latestVerified) { setError('Cần một bản backup VERIFIED trước khi xác minh xóa dữ liệu'); return; }
+    if (!latestVerified) { setError('Cần một bản sao lưu VERIFIED trước khi xác minh xóa dữ liệu'); return; }
     const intentKey = `data-deletion.create.${latestVerified.id}`;
-    setBusyAction(intentKey); setError('');
+    setBusyAction(intentKey); setError(''); setSuccess('');
     try {
       const intent = await mutate<DeleteIntent>(intentKey, '/api/data-deletions', { backupJobId: latestVerified.id, reason: deleteReason });
       setDeleteIntent(intent);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Không gửi được mã xác nhận Owner'); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Không gửi được mã xác nhận xóa dữ liệu'); }
     finally { setBusyAction(''); }
   }
 
   async function verifyDeleteChallenge() {
     if (!deleteIntent || !canAuthorizeDeletion) return;
     const intentKey = `data-deletion.verify.${deleteIntent.id}`;
-    setBusyAction(intentKey); setError('');
+    setBusyAction(intentKey); setError(''); setSuccess('');
     try {
       const intent = await mutate<DeleteIntent>(intentKey, `/api/data-deletions/${deleteIntent.id}/verify`, { code: deleteCode });
       setDeleteIntent(intent);
@@ -183,65 +242,88 @@ export default function DataBackupWorkspace() {
 
   const currentStage = activeJob ? STAGES.findIndex(([key]) => key === activeJob.status) : -1;
 
-  return <AppShell title="Dữ liệu & sao lưu" subtitle="Backup toàn bộ, kiểm tra tính toàn vẹn và bảo vệ yêu cầu xóa dữ liệu.">
+  return <AppShell title="Dữ liệu & sao lưu" subtitle="Sao lưu hệ thống, kiểm tra tính toàn vẹn và bảo vệ thao tác dữ liệu quan trọng.">
     <SettingsTabs active="data-backup" />
     <div className={styles.stack}>
       {error ? <div className={styles.error} role="alert">{error}</div> : null}
+      {success ? <div className={styles.success} role="status">{success}</div> : null}
 
       <section className={styles.hero}>
         <div>
-          <p className={styles.eyebrow}>SAO LƯU DỮ LIỆU</p>
-          <h2>Bản sao lưu gần nhất</h2>
-          <p>{latestVerified ? formatDate(latestVerified.verifiedAt) : 'Chưa có bản VERIFIED'}</p>
+          <p className={styles.eyebrow}>SAO LƯU HỆ THỐNG 🔒</p>
+          <h2>Bản kỹ thuật PostgreSQL</h2>
+          <p>File <strong>.dump</strong> dùng để khôi phục toàn bộ hệ thống khi cần. Đây không phải file số liệu dành cho người dùng đọc.</p>
         </div>
         <div className={styles.heroMeta}>
-          <span><b>R2</b>{latestVerified ? '✓ Đã xác minh' : '—'}</span>
-          <span><b>Checksum</b>{latestVerified ? '✓ Hợp lệ' : '—'}</span>
+          <span><b>Bản gần nhất</b>{latestVerified ? formatDate(latestVerified.verifiedAt) : 'Chưa có'}</span>
+          <span><b>Kho lưu</b>{latestVerified ? 'R2 riêng tư' : '—'}</span>
           <span><b>Trạng thái</b>{latestVerified ? 'VERIFIED' : 'Chưa có'}</span>
         </div>
-        {canCreateBackup ? <button className={styles.primary} disabled={Boolean(activeJob) || busyAction === 'backup'} onClick={() => setBackupConfirmOpen(true)}>
-          {activeJob ? 'ĐANG SAO LƯU' : 'SAO LƯU TOÀN BỘ'}
-        </button> : null}
+        {canUseTechnicalArea ? technicalAccess.unlocked
+          ? <button className={styles.primary} disabled={!canCreateBackup || Boolean(activeJob) || busyAction === 'backup'} onClick={() => setBackupConfirmOpen(true)}>
+            {activeJob ? 'ĐANG SAO LƯU' : 'TẠO BẢN SAO LƯU'}
+          </button>
+          : <button className={styles.primary} disabled={busyAction === 'technical.challenge'} onClick={() => void requestTechnicalUnlock()}>MỞ KHU VỰC KỸ THUẬT</button>
+          : null}
       </section>
+
+      {canReadBackup ? <section className={styles.panel}>
+        <div className={styles.sectionTitle}>
+          <div><p className={styles.eyebrow}>KHU VỰC KỸ THUẬT</p><h2>{technicalAccess.unlocked ? 'Đang mở' : 'Đang khóa'}</h2></div>
+          {technicalAccess.unlocked ? <strong>Hết hạn: {formatDate(technicalAccess.expiresAt)}</strong> : null}
+        </div>
+        <p>Mã mở khóa chỉ được gửi tới <strong>{TECHNICAL_RECIPIENT}</strong>. Người dùng không thể đổi địa chỉ nhận mã.</p>
+        <p className={styles.muted}>Mã này chỉ mở thao tác tạo/tải bản sao lưu kỹ thuật. Xóa dữ liệu luôn dùng bước xác nhận riêng.</p>
+      </section> : null}
 
       {activeJob ? <section className={styles.progressCard} aria-live="polite">
         <div className={styles.progressHeader}><div><p className={styles.eyebrow}>ĐANG SAO LƯU</p><h3>{statusLabel(activeJob.status)}</h3></div><strong>{progress(activeJob.status)}%</strong></div>
         <div className={styles.progressTrack}><span style={{ width: `${progress(activeJob.status)}%` }} /></div>
         <div className={styles.steps}>{STAGES.slice(0, -1).map(([key, label], index) => <span key={key} className={index <= currentStage ? styles.stepDone : ''}>● {label}</span>)}</div>
-        <p className={styles.muted}>Có thể đóng màn hình này; backup job tiếp tục chạy ở backend và sẽ hiện lại khi quay lại.</p>
+        <p className={styles.muted}>Có thể rời màn hình này; tiến trình vẫn tiếp tục và trạng thái sẽ được cập nhật khi quay lại.</p>
       </section> : null}
 
-      <section className={styles.panel}>
-        <div className={styles.sectionTitle}><div><p className={styles.eyebrow}>LỊCH SỬ SAO LƯU</p><h2>Các lần sao lưu</h2></div><button className={styles.secondary} onClick={() => void refresh()} disabled={loading}>Làm mới</button></div>
+      {canReadBackup ? <section className={styles.panel}>
+        <div className={styles.sectionTitle}><div><p className={styles.eyebrow}>LỊCH SỬ SAO LƯU HỆ THỐNG</p><h2>Các bản đã tạo</h2></div><button className={styles.secondary} onClick={() => void refresh()} disabled={loading}>Làm mới</button></div>
         {loading ? <p className={styles.muted}>Đang tải...</p> : jobs.length === 0 ? <p className={styles.muted}>Chưa có lịch sử sao lưu.</p> : <div className={styles.history}>
           {jobs.map((job) => <article key={job.id} className={styles.historyCard}>
             <div><strong>{formatDate(job.requestedAt)}</strong><span className={job.status === 'FAILED' ? styles.failed : job.status === 'VERIFIED' ? styles.verified : styles.running}>{statusLabel(job.status)}</span></div>
-            <p>Snapshot: {formatDate(job.snapshotAt)} · {job.datasetCount.toLocaleString('vi-VN')} tập dữ liệu · {job.totalRowCount.toLocaleString('vi-VN')} dòng</p>
+            <p>Thời điểm dữ liệu: {formatDate(job.snapshotAt)} · File .dump: {formatBytes(job.artifacts.databaseDump?.size)}</p>
+            {job.artifacts.databaseDump?.sha256 ? <p>SHA-256: {job.artifacts.databaseDump.sha256}</p> : null}
             {job.failureMessage ? <p className={styles.failedText}>{job.failureMessage}</p> : null}
             {job.status === 'VERIFIED' && canDownloadBackup ? <div className={styles.downloads}>
-              <button onClick={() => void download(job, 'database')} disabled={Boolean(busyAction)}>DB {formatBytes(job.artifacts.databaseDump?.size)}</button>
-              <button onClick={() => void download(job, 'csv')} disabled={Boolean(busyAction)}>ZIP CSV {formatBytes(job.artifacts.csvZip?.size)}</button>
-              {job.artifacts.xlsx ? <button onClick={() => void download(job, 'xlsx')} disabled={Boolean(busyAction)}>Excel {formatBytes(job.artifacts.xlsx?.size)}</button> : null}
-              <button onClick={() => void download(job, 'manifest')} disabled={Boolean(busyAction)}>Manifest</button>
+              <button onClick={() => void download(job)} disabled={Boolean(busyAction)}>{technicalAccess.unlocked ? 'TẢI .DUMP' : 'MỞ KHÓA ĐỂ TẢI'}</button>
             </div> : null}
           </article>)}
         </div>}
-      </section>
+      </section> : null}
 
       {canAuthorizeDeletion ? <section className={styles.danger}>
         <p className={styles.eyebrow}>VÙNG NGUY HIỂM</p>
         <h2>Xóa dữ liệu</h2>
-        <p>Backend chỉ mở gate khi có backup VERIFIED còn đủ mới. Sau đó cùng một mã xác nhận được gửi tới toàn bộ email Owner đã cấu hình.</p>
+        <p>Yêu cầu xóa chỉ được xác nhận khi có bản sao lưu VERIFIED phù hợp. Bước xác nhận xóa là một quy trình riêng, không dùng phiên mở Khu vực kỹ thuật.</p>
         <button className={styles.dangerButton} onClick={() => { setDeleteOpen(true); setDeleteIntent(null); setDeleteCode(''); }} disabled={!latestVerified}>XÓA DỮ LIỆU</button>
-        <p className={styles.muted}>Phase này xác minh và audit Delete Intent; purge production chưa được thực thi tự động.</p>
+        <p className={styles.muted}>Hiện tại hệ thống mới xác nhận yêu cầu xóa; chưa thực hiện xóa dữ liệu tự động.</p>
       </section> : null}
     </div>
 
-    {backupConfirmOpen && canCreateBackup ? <div className={styles.overlay} role="dialog" aria-modal="true" aria-labelledby="backup-confirm-title">
+    {backupConfirmOpen && canCreateBackup && technicalAccess.unlocked ? <div className={styles.overlay} role="dialog" aria-modal="true" aria-labelledby="backup-confirm-title">
       <div className={styles.modal}>
-        <p className={styles.eyebrow}>XÁC NHẬN</p><h2 id="backup-confirm-title">Sao lưu toàn bộ dữ liệu?</h2>
-        <ul><li>Database restore dump</li><li>ZIP nhiều CSV</li><li>Excel nhiều sheet</li><li>SHA-256 + manifest</li><li>Upload R2 private + verify</li></ul>
+        <p className={styles.eyebrow}>XÁC NHẬN</p><h2 id="backup-confirm-title">Tạo bản sao lưu hệ thống?</h2>
+        <ul><li>Tạo file sao lưu PostgreSQL (.dump)</li><li>Kiểm tra cấu trúc file khôi phục</li><li>Tính mã kiểm tra SHA-256</li><li>Lưu vào kho R2 riêng tư</li><li>Đối chiếu kích thước và mã kiểm tra trước khi đánh dấu VERIFIED</li></ul>
         <div className={styles.modalActions}><button className={styles.secondary} onClick={() => setBackupConfirmOpen(false)}>HỦY</button><button className={styles.primary} onClick={() => void startBackup()} disabled={busyAction === 'backup'}>XÁC NHẬN SAO LƯU</button></div>
+      </div>
+    </div> : null}
+
+    {unlockOpen && technicalChallenge ? <div className={styles.overlay} role="dialog" aria-modal="true" aria-labelledby="technical-unlock-title">
+      <div className={styles.modal}>
+        <p className={styles.eyebrow}>KHU VỰC KỸ THUẬT</p><h2 id="technical-unlock-title">Nhập mã mở khóa</h2>
+        <p>Mã đã gửi duy nhất tới <strong>{TECHNICAL_RECIPIENT}</strong> và hết hạn lúc {formatDate(technicalChallenge.challengeExpiresAt)}.</p>
+        <label className={styles.field}>Mã 6 số<input inputMode="numeric" autoComplete="one-time-code" value={technicalCode} maxLength={6} onChange={(event) => setTechnicalCode(event.currentTarget.value.replace(/\D/g, '').slice(0, 6))} /></label>
+        <div className={styles.modalActions}>
+          <button className={styles.secondary} onClick={() => { setUnlockOpen(false); setTechnicalCode(''); }}>HỦY</button>
+          <button className={styles.primary} onClick={() => void verifyTechnicalUnlock()} disabled={!/^\d{6}$/.test(technicalCode) || Boolean(busyAction)}>MỞ KHÓA</button>
+        </div>
       </div>
     </div> : null}
 
@@ -249,20 +331,17 @@ export default function DataBackupWorkspace() {
       <div className={styles.modal}>
         <p className={styles.dangerEyebrow}>XÓA DỮ LIỆU</p><h2 id="delete-title">Xác minh yêu cầu xóa</h2>
         {!deleteIntent ? <>
-          <p>Backup bảo vệ: <strong>{latestVerified?.id ?? '—'}</strong></p>
-          <label className={styles.field}>Lý do (không bắt buộc)<textarea value={deleteReason} onChange={(event) => setDeleteReason(event.currentTarget.value)} maxLength={1000} /></label>
-          <p className={styles.muted}>Bước tiếp theo chỉ gửi mã đến toàn bộ Owner và tạo Delete Intent. Không tự xóa dữ liệu.</p>
-          <div className={styles.modalActions}><button className={styles.secondary} onClick={() => setDeleteOpen(false)}>HỦY</button><button className={styles.dangerButton} onClick={() => void requestDeleteChallenge()} disabled={Boolean(busyAction)}>GỬI MÃ OWNER</button></div>
+          <p>Bản sao lưu bảo vệ: <strong>{latestVerified?.id ?? '—'}</strong></p>
+          <p className={styles.muted}>Xác nhận xóa dùng mã riêng; phiên mở Khu vực kỹ thuật không thay thế bước này.</p>
+          <label className={styles.field}>Lý do<textarea value={deleteReason} maxLength={1000} onChange={(event) => setDeleteReason(event.currentTarget.value)} /></label>
+          <div className={styles.modalActions}><button className={styles.secondary} onClick={() => setDeleteOpen(false)}>HỦY</button><button className={styles.dangerButton} onClick={() => void requestDeleteChallenge()} disabled={Boolean(busyAction)}>GỬI MÃ XÁC NHẬN</button></div>
         </> : deleteIntent.status === 'AUTHORIZED' ? <>
-          <div className={styles.success}>✓ Yêu cầu xóa đã được Owner xác minh</div>
-          <p>Backup liên kết: <strong>{deleteIntent.backupJobId}</strong></p>
-          <p>Trạng thái: <strong>AUTHORIZED</strong></p>
-          <p className={styles.muted}>Không có purge tự động trong phase này; authorization đã được audit và có thể làm gate cho task xóa dữ liệu sau.</p>
-          <div className={styles.modalActions}><button className={styles.primary} onClick={() => setDeleteOpen(false)}>ĐÓNG</button></div>
+          <div className={styles.success}>Yêu cầu xóa đã được xác minh. Chưa có thao tác xóa dữ liệu nào được thực hiện.</div>
+          <div className={styles.modalActions}><button className={styles.secondary} onClick={() => setDeleteOpen(false)}>ĐÓNG</button></div>
         </> : <>
-          <p>Mã đã được gửi tới <strong>{deleteIntent.ownerRecipientCount ?? 0} email Owner</strong>. Hết hạn: {formatDate(deleteIntent.challengeExpiresAt)}</p>
-          <label className={styles.field}>Mã xác nhận<input inputMode="numeric" autoComplete="one-time-code" value={deleteCode} onChange={(event) => setDeleteCode(event.currentTarget.value.replace(/\D/g, '').slice(0, 6))} maxLength={6} /></label>
-          <div className={styles.modalActions}><button className={styles.secondary} onClick={() => setDeleteOpen(false)}>ĐÓNG</button><button className={styles.dangerButton} onClick={() => void verifyDeleteChallenge()} disabled={deleteCode.length !== 6 || Boolean(busyAction)}>XÁC MINH MÃ</button></div>
+          <p>Mã xác nhận xóa đã được gửi theo chính sách xác nhận hiện tại. Hết hạn: {formatDate(deleteIntent.challengeExpiresAt)}</p>
+          <label className={styles.field}>Mã 6 số<input inputMode="numeric" autoComplete="one-time-code" value={deleteCode} maxLength={6} onChange={(event) => setDeleteCode(event.currentTarget.value.replace(/\D/g, '').slice(0, 6))} /></label>
+          <div className={styles.modalActions}><button className={styles.secondary} onClick={() => setDeleteOpen(false)}>HỦY</button><button className={styles.dangerButton} onClick={() => void verifyDeleteChallenge()} disabled={!/^\d{6}$/.test(deleteCode) || Boolean(busyAction)}>XÁC NHẬN</button></div>
         </>}
       </div>
     </div> : null}

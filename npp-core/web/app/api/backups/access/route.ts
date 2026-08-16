@@ -43,6 +43,7 @@ export async function GET() {
 
   return noStoreJson({
     data: {
+      canReadBackup: isOwner && permissions.includes('core.backup.read'),
       canCreateBackup: isOwner && permissions.includes('core.backup.create'),
       canDownloadBackup: isOwner && permissions.includes('core.backup.download'),
       canAuthorizeDeletion: isOwner && permissions.includes('core.data-deletion.authorize'),

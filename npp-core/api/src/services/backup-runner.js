@@ -1,20 +1,14 @@
 import { spawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { buildR2ObjectKey } from '../storage/object-key.js';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
-import {
-  buildCsvBundle,
-  buildMultiSheetXlsx,
-  discoverBackupDatasets,
-  exportDataset,
-  fileMetadata,
-  sanitizeSheetName,
-} from '../backup/artifacts.js';
+import { fileMetadata } from '../backup/artifacts.js';
 import * as repo from '../db/repositories/backup.js';
+import { finalizeSystemBackupJob } from '../db/repositories/system-backup.js';
 
 const DUMP_SNAPSHOT_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 
@@ -27,14 +21,13 @@ function publicFailure(error) {
     ['BACKUP_STORAGE_UNAVAILABLE', 'Kho lưu trữ backup chưa sẵn sàng'],
     ['BACKUP_STORAGE_PUBLIC_BUCKET_FORBIDDEN', 'Backup yêu cầu R2 private; bucket public không được phép'],
     ['BACKUP_DUMP_FAILED', 'Không tạo được bản phục hồi PostgreSQL'],
-    ['BACKUP_DATA_EXPORT_FAILED', 'Không xuất được dữ liệu đối soát'],
-    ['BACKUP_ARCHIVE_FAILED', 'Không tạo được gói dữ liệu backup'],
+    ['BACKUP_DUMP_VERIFY_FAILED', 'Bản phục hồi PostgreSQL tạo ra không hợp lệ'],
     ['BACKUP_STORAGE_UPLOAD_FAILED', 'Không tải được bản backup lên R2'],
     ['BACKUP_STORAGE_VERIFY_FAILED', 'Không xác minh được bản backup trên R2'],
     ['BACKUP_CHECKSUM_MISMATCH', 'Checksum bản backup không khớp'],
   ]);
   const code = known.has(error?.code) ? error.code : 'BACKUP_JOB_FAILED';
-  return { code, message: known.get(code) ?? 'Sao lưu dữ liệu không thành công' };
+  return { code, message: known.get(code) ?? 'Sao lưu hệ thống không thành công' };
 }
 
 function backupError(code, cause = null) {
@@ -59,6 +52,25 @@ function pgDumpEnvironment(config) {
   };
 }
 
+async function runPgTool(executable, args, env, failureCode, spawnImpl = spawn) {
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    const child = spawnImpl(executable, args, { env, stdio: ['ignore', 'ignore', 'pipe'] });
+    child.once('error', () => {
+      if (settled) return;
+      settled = true;
+      reject(backupError(failureCode));
+    });
+    child.stderr?.resume();
+    child.once('close', (code) => {
+      if (settled) return;
+      settled = true;
+      if (code === 0) resolve();
+      else reject(backupError(failureCode));
+    });
+  });
+}
+
 async function runPgDump(config, snapshotId, outputPath, spawnImpl = spawn) {
   if (!DUMP_SNAPSHOT_PATTERN.test(snapshotId)) throw backupError('BACKUP_DUMP_FAILED');
   const executable = String(process.env.PG_DUMP_BIN ?? 'pg_dump').trim() || 'pg_dump';
@@ -69,25 +81,12 @@ async function runPgDump(config, snapshotId, outputPath, spawnImpl = spawn) {
     `--snapshot=${snapshotId}`,
     `--file=${outputPath}`,
   ];
-  await new Promise((resolve, reject) => {
-    let settled = false;
-    const child = spawnImpl(executable, args, {
-      env: pgDumpEnvironment(config),
-      stdio: ['ignore', 'ignore', 'pipe'],
-    });
-    child.once('error', () => {
-      if (settled) return;
-      settled = true;
-      reject(backupError('BACKUP_DUMP_FAILED'));
-    });
-    child.stderr?.resume();
-    child.once('close', (code) => {
-      if (settled) return;
-      settled = true;
-      if (code === 0) resolve();
-      else reject(backupError('BACKUP_DUMP_FAILED'));
-    });
-  });
+  await runPgTool(executable, args, pgDumpEnvironment(config), 'BACKUP_DUMP_FAILED', spawnImpl);
+}
+
+async function verifyPgDumpArchive(config, dumpPath, spawnImpl = spawn) {
+  const executable = String(process.env.PG_RESTORE_BIN ?? 'pg_restore').trim() || 'pg_restore';
+  await runPgTool(executable, ['--list', dumpPath], pgDumpEnvironment(config), 'BACKUP_DUMP_VERIFY_FAILED', spawnImpl);
 }
 
 async function verifyUploaded(storageAdapter, installationId, artifact) {
@@ -106,18 +105,19 @@ async function verifyUploaded(storageAdapter, installationId, artifact) {
   }
 }
 
-async function uploadArtifact(storageAdapter, installationId, artifact, contentType) {
+async function uploadDump(storageAdapter, installationId, artifact) {
   try {
     await storageAdapter.putObject({
       installationId,
       key: artifact.key,
       body: createReadStream(artifact.filePath),
-      contentType,
+      contentType: 'application/octet-stream',
       contentLength: artifact.size,
       checksumSha256: artifact.sha256,
       cacheControl: 'private, no-store',
       metadata: {
         'backup-job-id': artifact.jobId,
+        'artifact-type': 'postgresql-custom-dump',
         sha256: artifact.sha256,
       },
     });
@@ -130,13 +130,7 @@ function artifactKey(installationId, filename, now) {
   return buildR2ObjectKey({ installationId, namespace: 'backups', filename, now, uuid: randomUUID() });
 }
 
-export function createBackupRunner({
-  pool,
-  storageAdapter,
-  config,
-  now = () => new Date(),
-  spawnImpl = spawn,
-} = {}) {
+export function createBackupRunner({ pool, storageAdapter, config, now = () => new Date(), spawnImpl = spawn } = {}) {
   if (!pool?.connect || !pool?.query || !config) throw new Error('BACKUP_RUNNER_CONFIG_INVALID');
 
   async function run(jobId) {
@@ -149,6 +143,7 @@ export function createBackupRunner({
     try {
       if (!storageAdapter) throw backupError('BACKUP_STORAGE_UNAVAILABLE');
       if (config.r2PublicBaseUrl) throw backupError('BACKUP_STORAGE_PUBLIC_BUCKET_FORBIDDEN');
+
       await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
       transactionOpen = true;
       const snapshotResult = await client.query("SELECT pg_export_snapshot() AS snapshot_id, transaction_timestamp() AS snapshot_at");
@@ -166,87 +161,28 @@ export function createBackupRunner({
       });
 
       const stamp = safeTimestamp(snapshotAt);
-      const dumpPath = path.join(tempDir, `npp-full-${stamp}.dump`);
+      const dumpPath = path.join(tempDir, `hung-phat-system-${stamp}.dump`);
       await runPgDump(config, snapshotId, dumpPath, spawnImpl);
-
-      await repo.updateBackupStatus(pool, { installationId: config.installationId, jobId, status: 'EXPORTING_DATASETS' });
-      const registry = await discoverBackupDatasets(client);
-      const sheetNames = new Set();
-      const datasets = [];
-      let index = 0;
-      for (const dataset of registry) {
-        index += 1;
-        const safeBase = dataset.key.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 140);
-        const csvPath = path.join(tempDir, `${String(index).padStart(4, '0')}-${safeBase}.csv`);
-        const xlsxSheetPath = job.include_xlsx
-          ? path.join(tempDir, `${String(index).padStart(4, '0')}-${safeBase}.xml`)
-          : null;
-        const sheetName = job.include_xlsx ? sanitizeSheetName(dataset.key, sheetNames) : null;
-        datasets.push(await exportDataset(client, dataset, { csvPath, xlsxSheetPath, sheetName }));
-      }
+      await verifyPgDumpArchive(config, dumpPath, spawnImpl);
       await client.query('COMMIT');
       transactionOpen = false;
 
-      await repo.updateBackupStatus(pool, { installationId: config.installationId, jobId, status: 'BUILDING_ARCHIVE' });
-      const csvPath = path.join(tempDir, `npp-data-${stamp}.zip`);
-      const csvMeta = await buildCsvBundle(csvPath, { jobId, snapshotAt, datasets });
-      let xlsxMeta = null;
-      let xlsxPath = null;
-      if (job.include_xlsx) {
-        xlsxPath = path.join(tempDir, `npp-data-${stamp}.xlsx`);
-        xlsxMeta = await buildMultiSheetXlsx(xlsxPath, datasets);
-      }
-
       await repo.updateBackupStatus(pool, { installationId: config.installationId, jobId, status: 'HASHING' });
       const dumpMeta = await fileMetadata(dumpPath);
-      const totalRowCount = datasets.reduce((sum, dataset) => sum + dataset.rowCount, 0);
-      const dump = { ...dumpMeta, jobId, key: artifactKey(config.installationId, path.basename(dumpPath), now()) };
-      const csv = { ...csvMeta, filePath: csvPath, jobId, key: artifactKey(config.installationId, path.basename(csvPath), now()) };
-      const xlsx = xlsxMeta && xlsxPath
-        ? { ...xlsxMeta, filePath: xlsxPath, jobId, key: artifactKey(config.installationId, path.basename(xlsxPath), now()) }
-        : null;
+      const dump = {
+        ...dumpMeta,
+        jobId,
+        filePath: dumpPath,
+        key: artifactKey(config.installationId, path.basename(dumpPath), now()),
+      };
 
       await repo.updateBackupStatus(pool, { installationId: config.installationId, jobId, status: 'UPLOADING_R2' });
-      await uploadArtifact(storageAdapter, config.installationId, dump, 'application/octet-stream');
-      await uploadArtifact(storageAdapter, config.installationId, csv, 'application/zip');
-      if (xlsx) await uploadArtifact(storageAdapter, config.installationId, xlsx, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      await uploadDump(storageAdapter, config.installationId, dump);
 
       await repo.updateBackupStatus(pool, { installationId: config.installationId, jobId, status: 'VERIFYING_R2' });
       await verifyUploaded(storageAdapter, config.installationId, dump);
-      await verifyUploaded(storageAdapter, config.installationId, csv);
-      if (xlsx) await verifyUploaded(storageAdapter, config.installationId, xlsx);
 
       const verifiedAt = now().toISOString();
-      const manifestPayload = {
-        backupJobId: jobId,
-        installationId: config.installationId,
-        createdAt: job.requested_at,
-        createdBy: job.requested_by,
-        snapshotAt,
-        verifiedAt,
-        sourceApp: job.source_app,
-        databaseEngine: 'PostgreSQL',
-        schemaVersion,
-        migrationIds,
-        status: 'VERIFIED',
-        files: [
-          { name: path.basename(dump.filePath), type: 'database_dump', size: dump.size, sha256: dump.sha256, objectKey: dump.key },
-          { name: path.basename(csv.filePath), type: 'csv_bundle', size: csv.size, sha256: csv.sha256, objectKey: csv.key },
-          ...(xlsx ? [{ name: path.basename(xlsx.filePath), type: 'xlsx', size: xlsx.size, sha256: xlsx.sha256, objectKey: xlsx.key }] : []),
-        ],
-        datasets: datasets.map(({ key, rowCount, sha256 }) => ({ key, rowCount, sha256 })),
-      };
-      const manifestPath = path.join(tempDir, 'manifest.json');
-      await writeFile(manifestPath, `${JSON.stringify(manifestPayload, null, 2)}\n`, { flag: 'wx' });
-      const manifestMeta = await fileMetadata(manifestPath);
-      const manifest = {
-        ...manifestMeta,
-        jobId,
-        key: artifactKey(config.installationId, `manifest-${stamp}.json`, now()),
-      };
-      await uploadArtifact(storageAdapter, config.installationId, manifest, 'application/json');
-      await verifyUploaded(storageAdapter, config.installationId, manifest);
-
       const auditContext = {
         installationId: config.installationId,
         actorId: job.requested_by,
@@ -257,16 +193,10 @@ export function createBackupRunner({
       const finalized = await withAuditOutboxTransaction({
         adapter: pool,
         mutate: async (auditClient) => {
-          await repo.replaceBackupDatasets(auditClient, { jobId, datasets });
-          const completed = await repo.finalizeBackupJob(auditClient, {
+          const completed = await finalizeSystemBackupJob(auditClient, {
             installationId: config.installationId,
             jobId,
             dump,
-            csv,
-            xlsx,
-            manifest,
-            datasetCount: datasets.length,
-            totalRowCount,
             verifiedAt,
           });
           await insertAuditRecord(auditClient, buildAuditRecord({
@@ -276,17 +206,15 @@ export function createBackupRunner({
             resourceId: jobId,
             afterData: {
               status: 'VERIFIED',
+              purpose: 'SYSTEM_BACKUP',
               snapshotAt,
               verifiedAt,
               schemaVersion,
-              datasetCount: datasets.length,
-              totalRowCount,
               r2Verified: true,
-              artifacts: {
-                databaseDump: { size: dump.size, sha256: dump.sha256 },
-                csvZip: { size: csv.size, sha256: csv.sha256 },
-                xlsx: xlsx ? { size: xlsx.size, sha256: xlsx.sha256 } : null,
-                manifest: { size: manifest.size, sha256: manifest.sha256 },
+              artifact: {
+                type: 'postgresql_custom_dump',
+                size: dump.size,
+                sha256: dump.sha256,
               },
             },
           }));
@@ -321,7 +249,7 @@ export function createBackupRunner({
             action: 'backup_failed',
             resourceType: 'backup_job',
             resourceId: jobId,
-            afterData: { status: 'FAILED', failureCode: failure.code },
+            afterData: { status: 'FAILED', purpose: 'SYSTEM_BACKUP', failureCode: failure.code },
           }));
           return { jobFailed: true };
         },

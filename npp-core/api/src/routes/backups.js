@@ -11,9 +11,16 @@ import {
   listBackupJobs,
   verifyDeletionIntent,
 } from '../services/backup.js';
+import {
+  getTechnicalBackupAccessStatus,
+  requestTechnicalBackupChallenge,
+  requireTechnicalBackupAccess,
+  verifyTechnicalBackupChallenge,
+} from '../services/technical-backup-access.js';
 
 const UUID_PATTERN = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}';
 const DEFAULT_BACKUP_MAX_OBJECT_BYTES = 5 * 1024 * 1024 * 1024;
+const REQUIRED_BACKUP_R2_BUCKET = 'hung-phat-backups';
 
 function apiError(code, message, statusCode = 500, retryable = false, details = {}) {
   return { code, message, statusCode, retryable, details };
@@ -76,6 +83,9 @@ function resultEnvelope(result) {
   if (result.jobs) return result.jobs;
   if (result.download) return result.download;
   if (result.intent) return result.intent;
+  if (result.challenge) return result.challenge;
+  if (result.unlock) return result.unlock;
+  if (result.access) return result.access;
   return result;
 }
 
@@ -136,7 +146,9 @@ function resolveBackupStorageRuntime(options) {
   }
   const env = options.env ?? process.env;
   const backupBucket = text(env.BACKUP_R2_BUCKET);
-  if (!backupBucket || !options.config?.r2Enabled) return { adapter: null, config: options.config };
+  if (backupBucket !== REQUIRED_BACKUP_R2_BUCKET || !options.config?.r2Enabled) {
+    return { adapter: null, config: options.config };
+  }
   const samePublicBucket = backupBucket === options.config.r2Bucket && Boolean(options.config.r2PublicBaseUrl);
   const backupConfig = Object.freeze({
     ...options.config,
@@ -155,20 +167,83 @@ function createRunner(options, storageRuntime) {
   });
 }
 
+async function technicalAccessOrError(req, res, options, requestContext) {
+  const result = await requireTechnicalBackupAccess(options.getPool(), {
+    requestContext,
+    token: req.headers['x-technical-backup-unlock'],
+    env: options.env ?? process.env,
+  });
+  if (result.ok) return true;
+  sendError(res, apiError(result.code, result.message, result.statusCode, false, result.details), options.requestId, options.receivedAt);
+  return false;
+}
+
 export async function handleBackupRoutes(req, res, options) {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   const method = String(req.method ?? 'GET').toUpperCase();
   const backupMatch = new RegExp(`^/api/backups/(${UUID_PATTERN})$`).exec(url.pathname);
   const downloadMatch = new RegExp(`^/api/backups/(${UUID_PATTERN})/download$`).exec(url.pathname);
+  const technicalVerifyMatch = new RegExp(`^/api/backups/technical-access/challenges/(${UUID_PATTERN})/verify$`).exec(url.pathname);
   const deleteVerifyMatch = new RegExp(`^/api/data-deletions/(${UUID_PATTERN})/verify$`).exec(url.pathname);
   const isBackupRoot = url.pathname === '/api/backups';
+  const isTechnicalAccess = url.pathname === '/api/backups/technical-access';
+  const isTechnicalChallengeRoot = url.pathname === '/api/backups/technical-access/challenges';
   const isDeleteRoot = url.pathname === '/api/data-deletions';
-  if (!isBackupRoot && !backupMatch && !downloadMatch && !isDeleteRoot && !deleteVerifyMatch) return false;
+  if (!isBackupRoot && !backupMatch && !downloadMatch && !isTechnicalAccess && !isTechnicalChallengeRoot && !technicalVerifyMatch && !isDeleteRoot && !deleteVerifyMatch) return false;
 
   const storageRuntime = resolveBackupStorageRuntime(options);
 
+  if (isTechnicalAccess && method === 'GET') {
+    const requestContext = authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreBackupRead, { ownerOnly: true });
+    if (!requestContext) return true;
+    const result = await getTechnicalBackupAccessStatus(options.getPool(), {
+      requestContext,
+      token: req.headers['x-technical-backup-unlock'],
+      env: options.env ?? process.env,
+    });
+    sendSuccess(res, result.access, options.requestId, options.receivedAt);
+    return true;
+  }
+
+  if (isTechnicalChallengeRoot && method === 'POST') {
+    const requestContext = authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreBackupRead, { ownerOnly: true });
+    if (!requestContext) return true;
+    const body = await bodyOrError(req, res, options);
+    if (!body.ok) return true;
+    const payload = { purpose: 'SYSTEM_BACKUP' };
+    await executeIdempotent(req, res, options, requestContext, {
+      route: '/api/backups/technical-access/challenges',
+      payload,
+      process: () => requestTechnicalBackupChallenge(options.getPool(), {
+        requestContext,
+        env: options.env ?? process.env,
+        fetchImpl: options.fetchImpl ?? globalThis.fetch,
+      }),
+    });
+    return true;
+  }
+
+  if (technicalVerifyMatch && method === 'POST') {
+    const requestContext = authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreBackupRead, { ownerOnly: true });
+    if (!requestContext) return true;
+    const body = await bodyOrError(req, res, options);
+    if (!body.ok) return true;
+    const payload = { code: String(body.payload?.code ?? '') };
+    await executeIdempotent(req, res, options, requestContext, {
+      route: `/api/backups/technical-access/challenges/${technicalVerifyMatch[1]}/verify`,
+      payload,
+      process: () => verifyTechnicalBackupChallenge(options.getPool(), {
+        requestContext,
+        challengeId: technicalVerifyMatch[1],
+        code: payload.code,
+        env: options.env ?? process.env,
+      }),
+    });
+    return true;
+  }
+
   if (isBackupRoot && method === 'GET') {
-    const requestContext = authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreBackupRead);
+    const requestContext = authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreBackupRead, { ownerOnly: true });
     if (!requestContext) return true;
     const limit = Number(url.searchParams.get('limit') ?? 20);
     const result = await listBackupJobs(options.getPool(), { requestContext, limit });
@@ -183,17 +258,17 @@ export async function handleBackupRoutes(req, res, options) {
 
   if (isBackupRoot && method === 'POST') {
     const requestContext = authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreBackupCreate, { ownerOnly: true });
-    if (!requestContext) return true;
+    if (!requestContext || !(await technicalAccessOrError(req, res, options, requestContext))) return true;
     const body = await bodyOrError(req, res, options);
     if (!body.ok) return true;
-    const payload = { includeXlsx: body.payload?.includeXlsx !== false };
+    const payload = { purpose: 'SYSTEM_BACKUP' };
     const runner = createRunner(options, storageRuntime);
     await executeIdempotent(req, res, options, requestContext, {
       route: '/api/backups',
       payload,
       process: () => createBackupJob(options.getPool(), {
         requestContext,
-        includeXlsx: payload.includeXlsx,
+        includeXlsx: false,
         scheduleRun: (jobId) => setImmediate(() => { void runner.run(jobId); }),
       }),
     });
@@ -201,7 +276,7 @@ export async function handleBackupRoutes(req, res, options) {
   }
 
   if (backupMatch && method === 'GET') {
-    const requestContext = authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreBackupRead);
+    const requestContext = authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreBackupRead, { ownerOnly: true });
     if (!requestContext) return true;
     const result = await getBackupJob(options.getPool(), { installationId: requestContext.installationId, jobId: backupMatch[1] });
     if (!result.ok) sendError(res, apiError(result.code, result.message, result.statusCode, false, result.details), options.requestId, options.receivedAt);
@@ -214,19 +289,27 @@ export async function handleBackupRoutes(req, res, options) {
 
   if (downloadMatch && method === 'POST') {
     const requestContext = authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreBackupDownload, { ownerOnly: true });
-    if (!requestContext) return true;
+    if (!requestContext || !(await technicalAccessOrError(req, res, options, requestContext))) return true;
     const body = await bodyOrError(req, res, options);
     if (!body.ok) return true;
     const payload = { artifactType: String(body.payload?.artifactType ?? '') };
     await executeIdempotent(req, res, options, requestContext, {
       route: `/api/backups/${downloadMatch[1]}/download`,
       payload,
-      process: () => createBackupDownload(options.getPool(), storageRuntime.adapter, {
-        requestContext,
-        jobId: downloadMatch[1],
-        artifactType: payload.artifactType,
-        expiresIn: Math.min(300, options.config.r2PresignedUrlMaxSeconds),
-      }),
+      process: () => payload.artifactType.toLowerCase() === 'database'
+        ? createBackupDownload(options.getPool(), storageRuntime.adapter, {
+          requestContext,
+          jobId: downloadMatch[1],
+          artifactType: 'database',
+          expiresIn: Math.min(300, options.config.r2PresignedUrlMaxSeconds),
+        })
+        : Promise.resolve({
+          ok: false,
+          code: 'BACKUP_ARTIFACT_TYPE_UNAVAILABLE',
+          statusCode: 404,
+          message: 'Sao lưu hệ thống chỉ cung cấp file .dump',
+          details: {},
+        }),
     });
     return true;
   }
