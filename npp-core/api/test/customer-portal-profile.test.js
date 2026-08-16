@@ -29,3 +29,13 @@ test('customer portal profile edit exposes optimistic versions and cannot mutate
   assert.doesNotMatch(profileSource, /salesChannelId\s*:/);
   assert.doesNotMatch(profileSource, /isActive\s*:/);
 });
+
+test('customer portal profile carries the canonical address location URL through the existing profile mutation', () => {
+  assert.match(profileSource, /locationUrl: row\.location_url \?\? ''/);
+  assert.match(
+    profileSource,
+    /locationUrl: Object\.prototype\.hasOwnProperty\.call\(addressInput, 'locationUrl'\) \? addressInput\.locationUrl : currentAddress\.locationUrl/,
+  );
+  assert.doesNotMatch(profileSource, /latitude\s*:/);
+  assert.doesNotMatch(profileSource, /longitude\s*:/);
+});
