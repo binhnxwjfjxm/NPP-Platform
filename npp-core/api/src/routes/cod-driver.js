@@ -218,8 +218,18 @@ async function executeMutation(req, res, options, {
 export async function handleCodDriverRoutes(req, res, options) {
   const url = new URL(`http://localhost${req.url}`);
   const pathname = url.pathname;
-  if (!pathname.startsWith('/api/logistics/driver/trips/')) return false;
+  const custodyPath = pathname === '/api/logistics/driver/cod-custody';
+  if (!custodyPath && !pathname.startsWith('/api/logistics/driver/trips/')) return false;
   const method = String(req.method ?? 'GET').toUpperCase();
+
+  if (custodyPath && method === 'GET') {
+    const requestContext = await authenticateDriver(req, res, options, options.PERMISSIONS.coreCodCollectionRead);
+    if (!requestContext) return true;
+    const result = await service.listDriverCodCustodyTripIds(options.getPool(), { requestContext });
+    if (!result.ok) sendServiceError(res, result, options);
+    else sendSuccess(res, { tripIds: result.tripIds }, options.requestId, options.receivedAt);
+    return true;
+  }
 
   const overviewMatch = pathname.match(/^\/api\/logistics\/driver\/trips\/([^/]+)\/cod$/);
   if (overviewMatch && method === 'GET') {

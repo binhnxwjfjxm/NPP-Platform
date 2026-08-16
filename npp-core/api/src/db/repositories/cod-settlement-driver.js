@@ -50,12 +50,45 @@ export async function getDriverTrip(client, {
       WHERE trip.installation_id = $1
         AND trip.id = $2
         AND trip.primary_driver_id = $3
-        AND trip.status = 'dispatched'
+        AND trip.status IN ('dispatched', 'closed')
         AND trip.warehouse_id = ANY($4::uuid[])
         ${forUpdate ? 'FOR UPDATE OF trip' : ''}`,
     [installationId, tripId, driverProfileId, warehouseIds],
   );
   return result.rows[0] ?? null;
+}
+
+export async function listDriverCustodyTripIds(client, {
+  installationId,
+  driverProfileId,
+  warehouseIds,
+}) {
+  const result = await client.query(
+    `SELECT collection.trip_id,
+            max(collection.collected_at) AS latest_collected_at
+       FROM accounting.cod_collections collection
+       JOIN accounting.cod_collection_custody custody
+         ON custody.installation_id = collection.installation_id
+        AND custody.collection_id = collection.id
+       JOIN logistics.delivery_trips trip
+         ON trip.installation_id = collection.installation_id
+        AND trip.id = collection.trip_id
+       LEFT JOIN accounting.cod_collection_reversals reversal
+         ON reversal.installation_id = collection.installation_id
+        AND reversal.collection_id = collection.id
+      WHERE collection.installation_id = $1
+        AND collection.driver_profile_id = $2
+        AND collection.warehouse_id = ANY($3::uuid[])
+        AND trip.primary_driver_id = $2
+        AND trip.status IN ('dispatched', 'closed')
+        AND collection.collection_method = 'CASH'
+        AND reversal.id IS NULL
+        AND custody.custody_remaining_amount > 0
+      GROUP BY collection.trip_id
+      ORDER BY max(collection.collected_at) DESC, collection.trip_id DESC`,
+    [installationId, driverProfileId, warehouseIds],
+  );
+  return result.rows;
 }
 
 export async function getCollectionLineageForDriver(client, {
@@ -268,7 +301,7 @@ export async function listDriverCodAssignments(client, {
       WHERE trip.installation_id = $1
         AND trip.id = $2
         AND trip.primary_driver_id = $3
-        AND trip.status = 'dispatched'
+        AND trip.status IN ('dispatched', 'closed')
         AND trip.warehouse_id = ANY($4::uuid[])
       ORDER BY stop.stop_sequence, assignment.assigned_at, assignment.id`,
     [installationId, tripId, driverProfileId, warehouseIds],
