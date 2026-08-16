@@ -186,6 +186,7 @@ export const config = {
     "/orders/:path*",
     "/routes/:path*",
     "/mcp-setting/:path*",
+    "/api/products/:path*",
     "/api/backend/:path*",
     "/api/routes/:path*",
     "/api/route-customers/:path*",
