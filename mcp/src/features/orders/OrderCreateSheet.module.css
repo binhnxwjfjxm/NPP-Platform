@@ -405,6 +405,11 @@
   font-weight: 700;
 }
 
+.catalogSection .searchField > span,
+.catalogSection .sectionHead small {
+  display: none;
+}
+
 .toolButton {
   min-width: 54px;
   min-height: 38px;
@@ -610,9 +615,21 @@
   text-align: center;
 }
 
+.cartSection {
+  gap: 6px;
+}
+
+.cartSection .sectionHead {
+  align-items: center;
+}
+
+.cartSection .sectionHead small {
+  display: none;
+}
+
 .cartTotal {
   color: var(--brand-strong);
-  font-size: 15px;
+  font-size: 13px;
   white-space: nowrap;
 }
 
@@ -621,7 +638,7 @@
   grid-auto-flow: row;
   grid-auto-rows: max-content;
   align-content: start;
-  gap: 7px;
+  gap: 5px;
   min-height: 0;
   flex: 1 1 auto;
   overflow-y: auto;
@@ -632,51 +649,49 @@
 
 .cartItem {
   display: grid;
-  gap: 8px;
+  gap: 5px;
   border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fff;
-  padding: 9px;
+  padding: 7px 8px;
 }
 
 .itemHead {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
 .itemIdentity {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 5px;
   min-width: 0;
 }
 
-.itemIdentity > small,
+.itemIdentity > small {
+  display: none;
+}
+
 .itemIdentity > strong {
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.itemIdentity > small {
-  color: var(--muted);
-  font-size: 8px;
-}
-
-.itemIdentity > strong {
-  font-size: 11px;
-}
-
 .variantBadge {
-  justify-self: start;
   max-width: 100%;
   overflow: hidden;
   border-radius: 999px;
   background: var(--brand-soft, #f3f7ed);
   color: var(--brand-strong);
-  padding: 3px 7px;
-  font-size: 9px;
+  padding: 2px 6px;
+  font-size: 8px;
   font-weight: 900;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -684,40 +699,45 @@
 
 .removeItem {
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
   place-items: center;
   flex: 0 0 auto;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   background: #fff3ed;
   color: #a63824;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 900;
 }
 
 .itemControls {
   display: grid;
-  grid-template-columns: minmax(122px, 0.9fr) minmax(108px, 0.9fr) auto;
-  align-items: end;
-  gap: 7px;
+  grid-template-columns: minmax(108px, 0.82fr) minmax(92px, 0.75fr) auto;
+  align-items: center;
+  gap: 5px;
 }
 
 .quantityBlock,
 .priceField,
 .lineTotal {
   display: grid;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
+}
+
+.quantityBlock > span,
+.lineTotal > span {
+  font-size: 9px;
 }
 
 .quantityControl {
   display: grid;
-  grid-template-columns: 36px minmax(42px, 1fr) 36px;
-  min-height: 38px;
+  grid-template-columns: 30px minmax(38px, 1fr) 30px;
+  min-height: 32px;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: 8px;
   background: #fff;
 }
 
@@ -725,17 +745,17 @@
   border: 0;
   background: var(--surface-subtle, #f7f4ef);
   color: var(--text);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 900;
 }
 
 .quantityControl input {
-  min-height: 36px;
+  min-height: 30px;
   border: 0;
   border-right: 1px solid var(--line);
   border-left: 1px solid var(--line);
   border-radius: 0;
-  padding: 0 3px;
+  padding: 0 2px;
   text-align: center;
 }
 
@@ -745,13 +765,13 @@
 
 .lineTotal {
   justify-items: end;
-  padding-bottom: 7px;
+  padding-bottom: 0;
   white-space: nowrap;
 }
 
 .lineTotal strong {
   color: var(--brand-strong);
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .finalSection {
@@ -803,54 +823,91 @@
   .workspace {
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(0, 1fr);
-    gap: 6px;
+    gap: 5px;
     height: 100%;
     overflow: hidden;
     font-size: 11px;
   }
 
   .mobileTabs {
+    position: relative;
     display: grid;
     grid-row: 1;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 4px;
-    border-radius: 12px;
-    background: var(--surface-subtle, #f7f4ef);
-    padding: 4px;
+    gap: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+    border-radius: 0;
+    background: transparent;
+    padding: 0 4px;
   }
 
   .mobileTabs button {
-    display: grid;
-    gap: 1px;
-    min-height: 46px;
+    position: relative;
+    display: flex;
+    min-width: 0;
+    min-height: 30px;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
     border: 0;
-    border-radius: 9px;
+    border-radius: 0;
     background: transparent;
     color: var(--muted);
-    padding: 5px 4px;
+    padding: 3px 4px 5px;
     font-weight: 900;
+    opacity: 0.68;
+  }
+
+  .mobileTabs button::after {
+    position: absolute;
+    right: 10px;
+    bottom: -1px;
+    left: 10px;
+    height: 2px;
+    border-radius: 999px;
+    background: transparent;
+    content: "";
   }
 
   .mobileTabs button:disabled {
     cursor: not-allowed;
-    opacity: 0.45;
+    opacity: 0.34;
   }
 
   .mobileTabs button span {
-    font-size: 11px;
-  }
-
-  .mobileTabs button small {
     overflow: hidden;
-    font-size: 8px;
+    font-size: 10px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
+  .mobileTabs button small {
+    display: none;
+  }
+
   .mobileTabs button[data-active="true"] {
-    background: #fff;
+    background: color-mix(in srgb, var(--brand-soft, #f3f7ed) 58%, transparent);
     color: var(--brand-strong);
-    box-shadow: var(--shadow), var(--ring-soft);
+    box-shadow: none;
+    opacity: 1;
+  }
+
+  .mobileTabs button[data-active="true"]::after {
+    background: var(--brand-strong);
+  }
+
+  .workspace[data-mobile-panel="catalog"] .mobileTabs button:first-child,
+  .workspace[data-mobile-panel="cart"] .mobileTabs button:nth-child(-n + 2) {
+    background: color-mix(in srgb, var(--brand-soft, #f3f7ed) 30%, transparent);
+    color: var(--text);
+    opacity: 0.9;
+  }
+
+  .workspace[data-mobile-panel="catalog"] .mobileTabs button:first-child span::before,
+  .workspace[data-mobile-panel="cart"] .mobileTabs button:nth-child(-n + 2) span::before {
+    margin-right: 3px;
+    color: var(--brand-strong);
+    content: "✓";
   }
 
   .leftPane,
@@ -1044,16 +1101,37 @@
     gap: 1px;
   }
 
+  .cartItem {
+    gap: 4px;
+    padding: 6px 7px;
+  }
+
   .itemControls {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(116px, 0.88fr) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: center;
+    gap: 2px 8px;
+  }
+
+  .quantityBlock {
+    grid-row: 1 / span 2;
+    grid-column: 1;
   }
 
   .lineTotal {
-    grid-column: 1 / -1;
+    grid-column: 2;
     display: flex;
+    min-width: 0;
     align-items: center;
     justify-content: space-between;
+    gap: 6px;
     padding: 0;
+  }
+
+  .lineTotal strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .primaryAction {
@@ -1067,15 +1145,15 @@
   }
 
   .mobileTabs {
-    gap: 2px;
-    border-radius: 8px;
-    padding: 2px;
+    gap: 0;
+    border-radius: 0;
+    padding: 0 2px;
   }
 
   .mobileTabs button {
-    min-height: 30px;
-    border-radius: 6px;
-    padding: 2px 4px;
+    min-height: 26px;
+    border-radius: 0;
+    padding: 2px 3px 4px;
   }
 
   .mobileTabs button span {
@@ -1084,8 +1162,7 @@
   }
 
   .mobileTabs button small {
-    font-size: 7px;
-    line-height: 1;
+    display: none;
   }
 
   .section {
