@@ -27,8 +27,15 @@ type Envelope<T> = { data?: T; error?: { code?: string; message?: string; retrya
 type BackupAccess = { canReadBackup: boolean; canCreateBackup: boolean; canDownloadBackup: boolean; canAuthorizeDeletion: boolean };
 type TechnicalAccess = { unlocked: boolean; expiresAt: string | null };
 type TechnicalChallenge = { id: string; challengeExpiresAt: string; recipient: string };
+type RequestFailure = Error & { retryable?: boolean; statusCode?: number };
 
 const TECHNICAL_RECIPIENT = 'khuongbinh.info@gmail.com';
+const NO_BACKUP_ACCESS: BackupAccess = {
+  canReadBackup: false,
+  canCreateBackup: false,
+  canDownloadBackup: false,
+  canAuthorizeDeletion: false,
+};
 const STAGES = [
   ['QUEUED', 'Xếp hàng'],
   ['SNAPSHOTTING', 'Chốt thời điểm dữ liệu'],
@@ -104,8 +111,13 @@ export default function DataBackupWorkspace() {
   async function request<T>(url: string, init?: RequestInit): Promise<T> {
     const response = await fetch(url, { cache: 'no-store', ...init });
     const payload = await response.json().catch(() => null) as Envelope<T> | null;
-    if (!payload) throw Object.assign(new Error('Phản hồi máy chủ không hợp lệ'), { retryable: false });
-    if (!response.ok) throw Object.assign(new Error(payload.error?.message || 'Thao tác không thành công'), { retryable: payload.error?.retryable === true });
+    if (!payload) throw Object.assign(new Error('Phản hồi máy chủ không hợp lệ'), { retryable: false, statusCode: response.status });
+    if (!response.ok) {
+      throw Object.assign(
+        new Error(payload.error?.message || 'Thao tác không thành công'),
+        { retryable: payload.error?.retryable === true, statusCode: response.status },
+      );
+    }
     return payload.data as T;
   }
 
@@ -120,7 +132,7 @@ export default function DataBackupWorkspace() {
       mutationKeys.current.delete(intent);
       return result;
     } catch (cause) {
-      if (!(cause as { retryable?: boolean })?.retryable) mutationKeys.current.delete(intent);
+      if (!(cause as RequestFailure)?.retryable) mutationKeys.current.delete(intent);
       throw cause;
     }
   }
@@ -143,7 +155,14 @@ export default function DataBackupWorkspace() {
       }
       setError('');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Không tải được thông tin sao lưu');
+      if ((cause as RequestFailure)?.statusCode === 403) {
+        setAccess(NO_BACKUP_ACCESS);
+        setJobs([]);
+        setTechnicalAccess({ unlocked: false, expiresAt: null });
+        setError('');
+      } else {
+        setError(cause instanceof Error ? cause.message : 'Không tải được thông tin sao lưu');
+      }
     } finally {
       setLoading(false);
     }
@@ -245,11 +264,28 @@ export default function DataBackupWorkspace() {
 
   const currentStage = activeJob ? STAGES.findIndex(([key]) => key === activeJob.status) : -1;
 
-  return <AppShell title="Dữ liệu & sao lưu" subtitle="Sao lưu hệ thống, kiểm tra tính toàn vẹn và bảo vệ thao tác dữ liệu quan trọng.">
+  return <AppShell title="Dữ liệu & sao lưu" subtitle="Xuất số liệu doanh nghiệp, sao lưu kỹ thuật và bảo vệ thao tác dữ liệu quan trọng.">
     <SettingsTabs active="data-backup" />
     <div className={styles.stack}>
       {error ? <div className={styles.error} role="alert">{error}</div> : null}
       {success ? <div className={styles.success} role="status">{success}</div> : null}
+
+      <section className={styles.panel}>
+        <div className={styles.sectionTitle}>
+          <div>
+            <p className={styles.eyebrow}>SỐ LIỆU DOANH NGHIỆP</p>
+            <h2>Excel nghiệp vụ</h2>
+          </div>
+          <button
+            className={styles.primary}
+            onClick={() => window.location.assign('/api/reporting/business-export')}
+          >
+            XUẤT SỐ LIỆU
+          </button>
+        </div>
+        <p>Xuất một file Excel dễ đọc, chỉ gồm các nghiệp vụ người dùng được cấp quyền xem như khách hàng, sản phẩm, tồn kho, đơn hàng, công nợ, giao hàng, nhân viên và MCP.</p>
+        <p className={styles.muted}>File này không chứa dữ liệu kỹ thuật, tài khoản, phân quyền, phiên đăng nhập, chống trùng, migration, nhật ký hệ thống hoặc bản sao lưu thô.</p>
+      </section>
 
       <section className={styles.hero}>
         <div>

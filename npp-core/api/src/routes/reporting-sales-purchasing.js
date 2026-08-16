@@ -1,3 +1,5 @@
+import { createReadStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 import { sendError, sendSuccess } from '../http-utils.js';
 import {
   ensureWarehouseScopes,
@@ -19,6 +21,7 @@ import {
   normalizeAuditHistoryFilters,
   normalizeImportExportHistoryFilters,
 } from './reporting-operations.js';
+import { createBusinessDataExport } from '../services/business-data-export.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -73,6 +76,7 @@ function reportingFamily(pathname) {
   if (pathname === '/api/reporting/audit-history') return 'audit-history';
   if (pathname === '/api/reporting/import-export-history') return 'import-export-history';
   if (pathname === '/api/reporting/control-tower') return 'control-tower';
+  if (pathname === '/api/reporting/business-export') return 'business-export';
   return null;
 }
 
@@ -84,6 +88,7 @@ function reportingPermission(options, family) {
   if (family === 'gross-margin') return options.PERMISSIONS.coreReportingGrossMarginRead;
   if (family === 'logistics') return options.PERMISSIONS.coreReportingLogisticsRead;
   if (family === 'cod') return options.PERMISSIONS.coreReportingCodRead;
+  if (family === 'business-export') return options.PERMISSIONS.coreReportingExport;
   if (family === 'audit-history' || family === 'import-export-history') return options.PERMISSIONS.coreReportingAuditHistoryRead;
   if (family === 'control-tower') return options.PERMISSIONS.coreReportingControlTowerRead;
   return options.PERMISSIONS.coreReportingEmployeeMcpRead;
@@ -96,6 +101,65 @@ function sendNormalizedError(res, normalized, options) {
     options.requestId,
     options.receivedAt,
   );
+}
+
+async function streamBusinessExport(req, res, options, requestContext) {
+  const warehouseIds = Array.isArray(requestContext.scopes?.warehouseIds)
+    ? requestContext.scopes.warehouseIds
+    : [];
+  let artifact = null;
+  try {
+    const mcpPermission = options.PERMISSIONS.coreReportingEmployeeMcpRead;
+    const canReadMcp = Boolean(mcpPermission && options.authorize(requestContext, mcpPermission).ok);
+    const mcpScope = canReadMcp
+      ? await resolveEmployeeMcpScope(options.getPool(), requestContext)
+      : null;
+    artifact = await createBusinessDataExport(options.getPool(), {
+      requestContext,
+      warehouseIds,
+      mcpEmployeeCode: mcpScope?.ok ? mcpScope.employeeCode : null,
+      canReadPermission: (permissionName) => {
+        const permission = options.PERMISSIONS[permissionName];
+        if (!permission || !options.authorize(requestContext, permission).ok) return false;
+        if (permissionName === 'coreReportingEmployeeMcpRead') return mcpScope?.ok === true;
+        return true;
+      },
+    });
+    res.statusCode = 200;
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('Content-Type', artifact.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${artifact.filename}"`);
+    res.setHeader('Content-Length', String(artifact.size));
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    await pipeline(createReadStream(artifact.filePath), res);
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'business_data_export_failed',
+      requestId: options.requestId,
+      errorName: error?.name ?? null,
+      errorCode: typeof error?.code === 'string' ? error.code : null,
+    }));
+    if (!res.headersSent) {
+      sendError(
+        res,
+        apiError(
+          'BUSINESS_DATA_EXPORT_FAILED',
+          'Không xuất được số liệu doanh nghiệp',
+          {},
+          true,
+          503,
+        ),
+        options.requestId,
+        options.receivedAt,
+      );
+    } else if (!res.destroyed) {
+      res.destroy(error instanceof Error ? error : undefined);
+    }
+  } finally {
+    if (artifact?.cleanup) {
+      try { await artifact.cleanup(); } catch {}
+    }
+  }
 }
 
 export async function handleReportingRoutes(req, res, options) {
@@ -119,6 +183,11 @@ export async function handleReportingRoutes(req, res, options) {
     warehouseScoped,
   );
   if (!requestContext) return true;
+
+  if (family === 'business-export') {
+    await streamBusinessExport(req, res, options, requestContext);
+    return true;
+  }
 
   if (historyFamily) {
     const period = normalizeFilters({ from: url.searchParams.get('from'), to: url.searchParams.get('to'), warehouseId: null }, new Date(options.receivedAt));
