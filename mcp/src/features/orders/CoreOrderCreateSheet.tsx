@@ -688,7 +688,7 @@ export function CoreOrderCreateSheet({
                                   className={catalogStyles.unitAdd}
                                   onClick={() => addProduct(product)}
                                   disabled={!customerReady || saving}
-                                  aria-label={`Thêm ${product.name}, ${unitLabel} vào đơn`}
+                                  aria-label={`Thêm ${product.name}, ${variantPrimaryLabel(product)} · ${unitLabel} vào đơn`}
                                   title={`${product.name} · ${unitLabel} · ${unitDetail || variantPrimaryLabel(product)}`}
                                 >
                                   <span aria-hidden="true">+</span>
