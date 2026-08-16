@@ -130,12 +130,13 @@ export default function DataBackupWorkspace() {
       const capabilities = await request<BackupAccess>('/api/backups/access');
       setAccess(capabilities);
       if (capabilities.canReadBackup) {
-        const [data, unlocked] = await Promise.all([
-          request<BackupJob[]>('/api/backups'),
-          request<TechnicalAccess>('/api/backups/technical-access'),
-        ]);
-        setJobs(data);
+        const unlocked = await request<TechnicalAccess>('/api/backups/technical-access');
         setTechnicalAccess(unlocked);
+        if (unlocked.unlocked) {
+          setJobs(await request<BackupJob[]>('/api/backups'));
+        } else {
+          setJobs([]);
+        }
       } else {
         setJobs([]);
         setTechnicalAccess({ unlocked: false, expiresAt: null });
@@ -175,7 +176,9 @@ export default function DataBackupWorkspace() {
     setBusyAction(intent); setError(''); setSuccess('');
     try {
       const unlocked = await mutate<TechnicalAccess>(intent, `/api/backups/technical-access/${technicalChallenge.id}/verify`, { code: technicalCode });
+      const data = await request<BackupJob[]>('/api/backups');
       setTechnicalAccess(unlocked);
+      setJobs(data);
       setTechnicalCode('');
       setUnlockOpen(false);
       setSuccess(`Khu vực kỹ thuật đã mở đến ${formatDate(unlocked.expiresAt)}.`);
@@ -251,14 +254,19 @@ export default function DataBackupWorkspace() {
       <section className={styles.hero}>
         <div>
           <p className={styles.eyebrow}>SAO LƯU HỆ THỐNG 🔒</p>
-          <h2>Bản kỹ thuật PostgreSQL</h2>
-          <p>File <strong>.dump</strong> dùng để khôi phục toàn bộ hệ thống khi cần. Đây không phải file số liệu dành cho người dùng đọc.</p>
+          {technicalAccess.unlocked ? <>
+            <h2>Bản kỹ thuật PostgreSQL</h2>
+            <p>File <strong>.dump</strong> dùng để khôi phục toàn bộ hệ thống khi cần. Đây không phải file số liệu dành cho người dùng đọc.</p>
+          </> : <>
+            <h2>Khu vực kỹ thuật</h2>
+            <p>Nhập mã xác nhận để mở chức năng sao lưu hệ thống.</p>
+          </>}
         </div>
-        <div className={styles.heroMeta}>
+        {technicalAccess.unlocked ? <div className={styles.heroMeta}>
           <span><b>Bản gần nhất</b>{latestVerified ? formatDate(latestVerified.verifiedAt) : 'Chưa có'}</span>
           <span><b>Kho lưu</b>{latestVerified ? 'R2 riêng tư' : '—'}</span>
           <span><b>Trạng thái</b>{latestVerified ? 'VERIFIED' : 'Chưa có'}</span>
-        </div>
+        </div> : null}
         {canUseTechnicalArea ? technicalAccess.unlocked
           ? <button className={styles.primary} disabled={!canCreateBackup || Boolean(activeJob) || busyAction === 'backup'} onClick={() => setBackupConfirmOpen(true)}>
             {activeJob ? 'ĐANG SAO LƯU' : 'TẠO BẢN SAO LƯU'}
@@ -273,17 +281,17 @@ export default function DataBackupWorkspace() {
           {technicalAccess.unlocked ? <strong>Hết hạn: {formatDate(technicalAccess.expiresAt)}</strong> : null}
         </div>
         <p>Mã mở khóa chỉ được gửi tới <strong>{TECHNICAL_RECIPIENT}</strong>. Người dùng không thể đổi địa chỉ nhận mã.</p>
-        <p className={styles.muted}>Mã này chỉ mở thao tác tạo/tải bản sao lưu kỹ thuật. Xóa dữ liệu luôn dùng bước xác nhận riêng.</p>
+        <p className={styles.muted}>Mã này mở toàn bộ khu vực sao lưu hệ thống. Xóa dữ liệu luôn dùng bước xác nhận riêng.</p>
       </section> : null}
 
-      {activeJob ? <section className={styles.progressCard} aria-live="polite">
+      {technicalAccess.unlocked && activeJob ? <section className={styles.progressCard} aria-live="polite">
         <div className={styles.progressHeader}><div><p className={styles.eyebrow}>ĐANG SAO LƯU</p><h3>{statusLabel(activeJob.status)}</h3></div><strong>{progress(activeJob.status)}%</strong></div>
         <div className={styles.progressTrack}><span style={{ width: `${progress(activeJob.status)}%` }} /></div>
         <div className={styles.steps}>{STAGES.slice(0, -1).map(([key, label], index) => <span key={key} className={index <= currentStage ? styles.stepDone : ''}>● {label}</span>)}</div>
         <p className={styles.muted}>Có thể rời màn hình này; tiến trình vẫn tiếp tục và trạng thái sẽ được cập nhật khi quay lại.</p>
       </section> : null}
 
-      {canReadBackup ? <section className={styles.panel}>
+      {canReadBackup && technicalAccess.unlocked ? <section className={styles.panel}>
         <div className={styles.sectionTitle}><div><p className={styles.eyebrow}>LỊCH SỬ SAO LƯU HỆ THỐNG</p><h2>Các bản đã tạo</h2></div><button className={styles.secondary} onClick={() => void refresh()} disabled={loading}>Làm mới</button></div>
         {loading ? <p className={styles.muted}>Đang tải...</p> : jobs.length === 0 ? <p className={styles.muted}>Chưa có lịch sử sao lưu.</p> : <div className={styles.history}>
           {jobs.map((job) => <article key={job.id} className={styles.historyCard}>
@@ -292,7 +300,7 @@ export default function DataBackupWorkspace() {
             {job.artifacts.databaseDump?.sha256 ? <p>SHA-256: {job.artifacts.databaseDump.sha256}</p> : null}
             {job.failureMessage ? <p className={styles.failedText}>{job.failureMessage}</p> : null}
             {job.status === 'VERIFIED' && canDownloadBackup ? <div className={styles.downloads}>
-              <button onClick={() => void download(job)} disabled={Boolean(busyAction)}>{technicalAccess.unlocked ? 'TẢI .DUMP' : 'MỞ KHÓA ĐỂ TẢI'}</button>
+              <button onClick={() => void download(job)} disabled={Boolean(busyAction)}>TẢI .DUMP</button>
             </div> : null}
           </article>)}
         </div>}
@@ -302,6 +310,7 @@ export default function DataBackupWorkspace() {
         <p className={styles.eyebrow}>VÙNG NGUY HIỂM</p>
         <h2>Xóa dữ liệu</h2>
         <p>Yêu cầu xóa chỉ được xác nhận khi có bản sao lưu VERIFIED phù hợp. Bước xác nhận xóa là một quy trình riêng, không dùng phiên mở Khu vực kỹ thuật.</p>
+        {!technicalAccess.unlocked ? <p className={styles.muted}>Mở Khu vực kỹ thuật để chọn bản sao lưu VERIFIED trước khi yêu cầu xóa.</p> : null}
         <button className={styles.dangerButton} onClick={() => { setDeleteOpen(true); setDeleteIntent(null); setDeleteCode(''); }} disabled={!latestVerified}>XÓA DỮ LIỆU</button>
         <p className={styles.muted}>Hiện tại hệ thống mới xác nhận yêu cầu xóa; chưa thực hiện xóa dữ liệu tự động.</p>
       </section> : null}

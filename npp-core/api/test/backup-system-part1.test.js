@@ -96,13 +96,22 @@ test('Issue 562 Part 1 runner creates only a verified custom dump', async () => 
   assert.match(repository, /manifest_object_key = NULL/);
 });
 
-test('technical unlock gates create and download but never replaces delete verification', async () => {
+test('technical unlock gates the full system backup area and never replaces delete verification', async () => {
   const routes = await readFile(new URL('../src/routes/backups.js', import.meta.url), 'utf8');
   assert.match(routes, /x-technical-backup-unlock/);
   assert.match(routes, /requireTechnicalBackupAccess/);
   assert.match(routes, /includeXlsx: false/);
   assert.match(routes, /artifactType\.toLowerCase\(\) === 'database'/);
   assert.match(routes, /Sao lưu hệ thống chỉ cung cấp file \.dump/);
+
+  const listStart = routes.indexOf("if (isBackupRoot && method === 'GET')");
+  const createStart = routes.indexOf("if (isBackupRoot && method === 'POST')");
+  const detailStart = routes.indexOf("if (backupMatch && method === 'GET')");
+  const downloadStart = routes.indexOf("if (downloadMatch && method === 'POST')");
+  assert.ok(listStart >= 0 && createStart > listStart && detailStart > createStart && downloadStart > detailStart);
+  assert.match(routes.slice(listStart, createStart), /technicalAccessOrError/);
+  assert.match(routes.slice(detailStart, downloadStart), /technicalAccessOrError/);
+
   const deleteStart = routes.indexOf("if (isDeleteRoot && method === 'POST')");
   const deleteEnd = routes.indexOf("if (deleteVerifyMatch && method === 'POST')");
   assert.ok(deleteStart >= 0 && deleteEnd > deleteStart);

@@ -244,7 +244,7 @@ export async function handleBackupRoutes(req, res, options) {
 
   if (isBackupRoot && method === 'GET') {
     const requestContext = authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreBackupRead, { ownerOnly: true });
-    if (!requestContext) return true;
+    if (!requestContext || !(await technicalAccessOrError(req, res, options, requestContext))) return true;
     const limit = Number(url.searchParams.get('limit') ?? 20);
     const result = await listBackupJobs(options.getPool(), { requestContext, limit });
     const queued = result.jobs.filter((job) => job.status === 'QUEUED');
@@ -277,7 +277,7 @@ export async function handleBackupRoutes(req, res, options) {
 
   if (backupMatch && method === 'GET') {
     const requestContext = authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreBackupRead, { ownerOnly: true });
-    if (!requestContext) return true;
+    if (!requestContext || !(await technicalAccessOrError(req, res, options, requestContext))) return true;
     const result = await getBackupJob(options.getPool(), { installationId: requestContext.installationId, jobId: backupMatch[1] });
     if (!result.ok) sendError(res, apiError(result.code, result.message, result.statusCode, false, result.details), options.requestId, options.receivedAt);
     else {
