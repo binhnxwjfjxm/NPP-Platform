@@ -61,9 +61,10 @@ try {
     await filterToggle.waitFor({ state: "visible" });
     assert.equal(await filterToggle.getAttribute("aria-expanded"), "false");
     const filterForm = sessionsPage.locator("#mcp-session-filter-form");
-    assert.equal(await filterForm.evaluate((node) => getComputedStyle(node).display), "none");
+    await filterForm.waitFor({ state: "hidden" });
     await filterToggle.click();
     assert.equal(await filterToggle.getAttribute("aria-expanded"), "true");
+    await filterForm.waitFor({ state: "visible" });
     const sessionCard = sessionsPage.locator("[data-session-card]").first();
     await sessionCard.waitFor({ state: "visible" });
     assert.equal(await sessionCard.locator("[data-session-primary-action]").count(), 1);
@@ -97,8 +98,8 @@ try {
   const desktopContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const desktopPage = await desktopContext.newPage();
   await desktopPage.goto(`${appBase}/mcp/sessions?dateFrom=2099-12-01&dateTo=2099-12-31`, { waitUntil: "domcontentloaded" });
-  assert.equal(await desktopPage.locator(".mcp-session-filter-toggle").evaluate((node) => getComputedStyle(node).display), "none");
-  assert.notEqual(await desktopPage.locator("#mcp-session-filter-form").evaluate((node) => getComputedStyle(node).display), "none");
+  await desktopPage.locator(".mcp-session-filter-toggle").waitFor({ state: "hidden" });
+  await desktopPage.locator("#mcp-session-filter-form").waitFor({ state: "visible" });
   assert.equal(await desktopPage.locator("[data-session-card]").first().locator("[data-session-primary-action]").count(), 1);
   assert.ok(await horizontalOverflow(desktopPage) <= 1, "sessions desktop must not overflow");
   await screenshot(desktopPage, "23-sessions-desktop");

@@ -91,7 +91,7 @@ try {
     const mobileList = page.locator("section[aria-label='Danh sách nhóm lựa chọn']");
     await mobileList.waitFor({ state: "visible" });
     await mobileList.getByText("Sản phẩm đang dùng", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(await page.locator("section[aria-label='Bảng nhóm lựa chọn']").evaluate((node) => getComputedStyle(node).display), "none");
+    await page.locator("section[aria-label='Bảng nhóm lựa chọn']").waitFor({ state: "hidden" });
 
     const addButton = page.getByRole("button", { name: "Thêm nhóm", exact: true }).first();
     assert.ok((await addButton.evaluate((node) => node.getBoundingClientRect().height)) >= 44, "add group action must be touchable");
@@ -129,7 +129,7 @@ try {
   await mockGroups(desktopPage, desktopMutationLog);
   await desktopPage.goto(`${appBase}/mcp-setting/groups`, { waitUntil: "domcontentloaded" });
   await assertShell(desktopPage, "report groups desktop", false);
-  assert.equal(await desktopPage.locator("section[aria-label='Danh sách nhóm lựa chọn']").evaluate((node) => getComputedStyle(node).display), "none");
+  await desktopPage.locator("section[aria-label='Danh sách nhóm lựa chọn']").waitFor({ state: "hidden" });
   const desktopTable = desktopPage.locator("section[aria-label='Bảng nhóm lựa chọn']");
   await desktopTable.waitFor({ state: "visible" });
   assert.equal(await desktopTable.locator("table tbody tr").count(), 2);
