@@ -9,6 +9,12 @@ import { BUSINESS_EXPORT_DEFINITIONS } from '../business-export/definitions.js';
 
 const FETCH_BATCH_SIZE = 500;
 
+const OPTIONAL_DOMAIN_RELATIONS = Object.freeze({
+  mcp_routes_outlets: Object.freeze(['mcp.mcp_routes', 'mcp.mcp_route_customers']),
+  mcp_orders: Object.freeze(['mcp.orders', 'mcp.order_items']),
+  mcp_market_reports: Object.freeze(['mcp.market_reports']),
+});
+
 const OFFICE_VALUE_COLUMNS = new Set([
   'status', 'source_type', 'delivery_mode', 'collection_policy', 'document_type',
   'movement_type', 'source_document_type', 'direction', 'payment_method',
@@ -214,6 +220,18 @@ async function exportDefinition(client, definition, tempDirectory, definitionInd
   }
 }
 
+async function optionalDomainAvailable(client, definition) {
+  const relations = OPTIONAL_DOMAIN_RELATIONS[definition.key];
+  if (!relations) return true;
+  const result = await client.query(
+    `SELECT required.relation_name,
+            to_regclass(required.relation_name) IS NOT NULL AS available
+       FROM unnest($1::text[]) AS required(relation_name)`,
+    [relations],
+  );
+  return result.rows.length === relations.length && result.rows.every((row) => row.available === true);
+}
+
 function normalizedWarehouseIds(requestContext, warehouseIds) {
   const source = Array.isArray(warehouseIds)
     ? warehouseIds
@@ -258,6 +276,8 @@ export async function createBusinessDataExport(pool, {
       const allowed = definition.permissions.every((permissionName) => canReadPermission(permissionName));
       if (!allowed) continue;
       if (definition.warehouseScoped && scopedWarehouseIds.length === 0) continue;
+      if (definition.mcpScoped && !mcpEmployeeCode) continue;
+      if (!(await optionalDomainAvailable(client, definition))) continue;
       const exported = await exportDefinition(
         client,
         definition,

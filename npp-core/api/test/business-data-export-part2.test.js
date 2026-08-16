@@ -66,10 +66,12 @@ test('Issue #562 Part 2 uses only curated business worksheets and normal permiss
   assert.match(service, /REPEATABLE READ READ ONLY/);
   assert.match(service, /FETCH FORWARD/);
   assert.match(service, /buildMultiSheetXlsx/);
+  assert.match(service, /to_regclass/);
+  assert.match(service, /definition\.mcpScoped && !mcpEmployeeCode/);
   assert.doesNotMatch(service, /discoverBackupDatasets|information_schema|pg_catalog/);
 });
 
-test('Issue #562 Part 2 compiles every curated query on migrated PostgreSQL and builds readable XLSX', async () => {
+test('Issue #562 Part 2 compiles available curated queries, skips unavailable MCP domain, and builds readable XLSX', async () => {
   const actor = 'test:business-export';
   const branchId = randomUUID();
   const warehouseId = randomUUID();
@@ -103,7 +105,7 @@ test('Issue #562 Part 2 compiles every curated query on migrated PostgreSQL and 
       scopes: { branchIds: [], warehouseIds: [warehouseId], territoryIds: [] },
     },
     warehouseIds: [warehouseId],
-    mcpEmployeeCode: null,
+    mcpEmployeeCode: `NV_${suffix}`,
     canReadPermission: () => true,
   });
 
