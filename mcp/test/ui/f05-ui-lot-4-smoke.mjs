@@ -67,7 +67,7 @@ try {
     const context = await browser.newContext({ viewport });
     const page = await context.newPage();
     for (const [name, path] of [["home", "/"], ["plans", "/plans"], ["sessions", "/mcp/sessions?dateFrom=2099-12-01&dateTo=2099-12-31"]]) {
-      await page.goto(`${appBase}${path}`, { waitUntil: "networkidle" });
+      await page.goto(`${appBase}${path}`, { waitUntil: "domcontentloaded" });
       await assertShell(page, `${name} at ${viewport.width}px`, true);
     }
 
@@ -75,7 +75,7 @@ try {
     await page.route("**/api/backend/mcp-day/session-customer/customer-onboarding**", async (route) => { legacyCalls += 1; await route.abort(); });
     await page.route("**/api/backend/mcp-day/session-customer/sales-order**", async (route) => { legacyCalls += 1; await route.abort(); });
     await page.setExtraHTTPHeaders(proxyHeaders);
-    await page.goto(`${appBase}/visits/order-intent?sessionCustomerId=sc-existing&orderId=order-lot-4&customerName=UI%20Lot%204`, { waitUntil: "networkidle" });
+    await page.goto(`${appBase}/visits/order-intent?sessionCustomerId=sc-existing&orderId=order-lot-4&customerName=UI%20Lot%204`, { waitUntil: "domcontentloaded" });
     await page.waitForURL((url) => url.pathname === "/login" && url.searchParams.get("returnTo") === "/orders");
     assert.equal(legacyCalls, 0, "retired order-intent route must not call legacy APIs");
     await page.getByRole("heading", { name: "Đăng nhập nhân viên", exact: true }).waitFor({ state: "visible" });
@@ -85,7 +85,7 @@ try {
 
     const mutationLog = [];
     await mockGroups(page, mutationLog);
-    await page.goto(`${appBase}/mcp-setting/groups`, { waitUntil: "networkidle" });
+    await page.goto(`${appBase}/mcp-setting/groups`, { waitUntil: "domcontentloaded" });
     await assertShell(page, `report groups at ${viewport.width}px`, true);
     const mobileList = page.locator("section[aria-label='Danh sách nhóm lựa chọn']");
     await mobileList.waitFor({ state: "visible" });
@@ -126,15 +126,15 @@ try {
   const desktopPage = await desktopContext.newPage();
   const desktopMutationLog = [];
   await mockGroups(desktopPage, desktopMutationLog);
-  await desktopPage.goto(`${appBase}/mcp-setting/groups`, { waitUntil: "networkidle" });
+  await desktopPage.goto(`${appBase}/mcp-setting/groups`, { waitUntil: "domcontentloaded" });
   await assertShell(desktopPage, "report groups desktop", false);
   assert.equal(await desktopPage.locator("section[aria-label='Danh sách nhóm lựa chọn']").evaluate((node) => getComputedStyle(node).display), "none");
   const desktopTable = desktopPage.locator("section[aria-label='Bảng nhóm lựa chọn']");
   await desktopTable.waitFor({ state: "visible" });
   assert.equal(await desktopTable.locator("table tbody tr").count(), 2);
-  await desktopPage.goto(`${appBase}/actions`, { waitUntil: "networkidle" });
+  await desktopPage.goto(`${appBase}/actions`, { waitUntil: "domcontentloaded" });
   assert.equal(new URL(desktopPage.url()).pathname, "/plans");
-  await desktopPage.goto(`${appBase}/mcp/settings`, { waitUntil: "networkidle" });
+  await desktopPage.goto(`${appBase}/mcp/settings`, { waitUntil: "domcontentloaded" });
   assert.equal(new URL(desktopPage.url()).pathname, "/mcp-setting");
   await desktopContext.close();
 

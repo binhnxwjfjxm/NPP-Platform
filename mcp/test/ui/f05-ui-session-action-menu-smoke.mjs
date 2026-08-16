@@ -31,7 +31,7 @@ const context = await browser.newContext({ viewport: { width: 390, height: 844 }
 const page = await context.newPage();
 
 try {
-  await page.goto(visitUrl, { waitUntil: "networkidle" });
+  await page.goto(visitUrl, { waitUntil: "domcontentloaded" });
 
   const directionsButton = page.locator('[data-customer-directions="true"]').first();
   await directionsButton.waitFor({ state: "visible" });
@@ -45,7 +45,7 @@ try {
   await directionsButton.click({ noWaitAfter: true });
   const mapsRequest = await mapsRequestPromise;
   assert.match(mapsRequest.url(), /^https:\/\/www\.google\.com\/maps\//, "Di chuyển must navigate to Google Maps from one tap");
-  await page.goto(visitUrl, { waitUntil: "networkidle" });
+  await page.goto(visitUrl, { waitUntil: "domcontentloaded" });
 
   const appMenuButton = page.getByRole("button", { name: "Mở menu ứng dụng", exact: true });
   await appMenuButton.waitFor({ state: "visible" });

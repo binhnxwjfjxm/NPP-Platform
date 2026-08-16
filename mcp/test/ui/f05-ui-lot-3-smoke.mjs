@@ -44,7 +44,7 @@ try {
   for (const viewport of mobileViewports) {
     const homeContext = await browser.newContext({ viewport });
     const homePage = await homeContext.newPage();
-    await homePage.goto(`${appBase}/`, { waitUntil: "networkidle" });
+    await homePage.goto(`${appBase}/`, { waitUntil: "domcontentloaded" });
     for (const text of ["Tổng quan hôm nay", "Điều hành gọn trên điện thoại", "Mở tuyến trước, sau đó xem nhanh phiên, đơn, báo cáo và việc cần xử lý."]) {
       assert.equal(await homePage.getByText(text, { exact: true }).count(), 0, `home must remove ${text}`);
     }
@@ -55,7 +55,7 @@ try {
 
     const sessionsContext = await browser.newContext({ viewport });
     const sessionsPage = await sessionsContext.newPage();
-    await sessionsPage.goto(`${appBase}/mcp/sessions?dateFrom=2099-12-01&dateTo=2099-12-31`, { waitUntil: "networkidle" });
+    await sessionsPage.goto(`${appBase}/mcp/sessions?dateFrom=2099-12-01&dateTo=2099-12-31`, { waitUntil: "domcontentloaded" });
     const filterToggle = sessionsPage.getByRole("button", { name: /Bộ lọc/ });
     await filterToggle.waitFor({ state: "visible" });
     assert.equal(await filterToggle.getAttribute("aria-expanded"), "false");
@@ -82,7 +82,7 @@ try {
       legacySalesOrderCalls += 1;
       await route.abort();
     });
-    await orderPage.goto(`${appBase}/visits/order-intent?sessionCustomerId=sc-existing&orderId=order-ui&customerName=UI%20Existing%20Customer`, { waitUntil: "networkidle" });
+    await orderPage.goto(`${appBase}/visits/order-intent?sessionCustomerId=sc-existing&orderId=order-ui&customerName=UI%20Existing%20Customer`, { waitUntil: "domcontentloaded" });
     await orderPage.waitForURL((url) => url.pathname === "/login" && url.searchParams.get("returnTo") === "/orders");
     assert.equal(legacyOnboardingCalls, 0, "retired route must not call session onboarding");
     assert.equal(legacySalesOrderCalls, 0, "retired route must not call session sales-order");
@@ -95,7 +95,7 @@ try {
 
   const desktopContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const desktopPage = await desktopContext.newPage();
-  await desktopPage.goto(`${appBase}/mcp/sessions?dateFrom=2099-12-01&dateTo=2099-12-31`, { waitUntil: "networkidle" });
+  await desktopPage.goto(`${appBase}/mcp/sessions?dateFrom=2099-12-01&dateTo=2099-12-31`, { waitUntil: "domcontentloaded" });
   assert.equal(await desktopPage.locator(".mcp-session-filter-toggle").evaluate((node) => getComputedStyle(node).display), "none");
   assert.notEqual(await desktopPage.locator("#mcp-session-filter-form").evaluate((node) => getComputedStyle(node).display), "none");
   assert.equal(await desktopPage.locator("[data-session-card]").first().locator("[data-session-primary-action]").count(), 1);

@@ -40,7 +40,7 @@ async function verifyProtectedOrdersEntry(browser, width, height) {
     extraHTTPHeaders: proxyHeaders
   });
   const page = await context.newPage();
-  await page.goto(`${appBase}/orders`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/orders`, { waitUntil: "domcontentloaded" });
 
   assert.equal(new URL(page.url()).pathname, "/login", `${width}px: protected /orders must redirect to login without a workforce session`);
   assert.equal(new URL(page.url()).searchParams.get("returnTo"), "/orders", `${width}px: login must preserve /orders return target`);
@@ -82,7 +82,7 @@ async function verifyAuthenticatedOrdersMotion(browser, width, height) {
   });
   await context.addCookies([{ name: "hp_mcp_session", value: "ui-smoke-session", url: appBase }]);
   const page = await context.newPage();
-  await page.goto(`${appBase}/orders`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/orders`, { waitUntil: "domcontentloaded" });
   assert.equal(new URL(page.url()).pathname, "/orders", `${width}px: authenticated orders smoke must enter /orders`);
 
   const rail = page.getByRole("tablist", { name: "Phân tích và xử lý đơn hàng" });
@@ -148,7 +148,7 @@ async function verifyAuthenticatedOrdersMotion(browser, width, height) {
   await page.waitForFunction(() => new URL(window.location.href).searchParams.get("view") === null);
   assert.equal(await page.getByRole("tab", { name: /^Đơn hàng/ }).getAttribute("aria-selected"), "true", "browser forward restores orders tab");
 
-  await page.goto(`${appBase}/orders?view=sales`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/orders?view=sales`, { waitUntil: "domcontentloaded" });
   assert.equal(await page.getByRole("tab", { name: /^Doanh số đặt hàng/ }).getAttribute("aria-selected"), "true", "deep link must select sales view");
 
   await page.emulateMedia({ reducedMotion: "reduce" });

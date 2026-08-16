@@ -71,7 +71,7 @@ const page = await context.newPage();
 const result = { MOBILE_DOCK_NAVIGATION: "FAIL" };
 
 try {
-  await page.goto(`${appBase}/routes`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/routes`, { waitUntil: "domcontentloaded" });
   const routeDock = await readDock(page);
   assert.equal(routeDock.values.length, 5, "mobile dock must keep five top-level destinations");
   assert.deepEqual(
@@ -100,7 +100,7 @@ try {
   await page.getByRole("heading", { name: "Đăng nhập nhân viên", exact: true }).waitFor({ state: "visible" });
   assert.equal(new URL(page.url()).searchParams.get("returnTo"), null, "default customer entry must use the safe /customers return target");
 
-  await page.goto(`${appBase}/routes`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/routes`, { waitUntil: "domcontentloaded" });
   const dock = (await readDock(page)).dock;
   const visitLink = dock.getByRole("link", { name: "Đi tuyến", exact: true });
   const visitResponsePromise = page.waitForResponse((response) => {
@@ -116,7 +116,7 @@ try {
   await page.waitForURL((url) => url.pathname === "/routes");
   assert.equal(pathname(page.url()), "/routes", "no active session must land on route preparation");
 
-  await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "domcontentloaded" });
   assert.equal(pathname(page.url()), "/visits", "active visit setup must remain on /visits");
   const sessionDock = (await readDock(page)).dock;
   const ordersLink = sessionDock.getByRole("link", { name: "Đơn", exact: true });

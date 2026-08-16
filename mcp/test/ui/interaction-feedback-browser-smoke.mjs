@@ -39,7 +39,7 @@ try {
     });
   });
   const webPage = await webContext.newPage();
-  await webPage.goto(`${appBase}/settings`, { waitUntil: "networkidle" });
+  await webPage.goto(`${appBase}/settings`, { waitUntil: "domcontentloaded" });
   await webPage.locator("[data-app-top-bar]").getByText("Cài đặt ứng dụng", { exact: true }).waitFor({ state: "visible" });
 
   const feedbackSwitch = webPage.getByRole("switch", { name: "Phản hồi rung", exact: true });
@@ -62,7 +62,7 @@ try {
   await webPage.keyboard.press("Escape");
   assert.equal(await webPage.evaluate(() => window.__feedbackEvents.length), disabledCount, "disabled feedback must not vibrate");
 
-  await webPage.reload({ waitUntil: "networkidle" });
+  await webPage.reload({ waitUntil: "domcontentloaded" });
   const persistedSwitch = webPage.getByRole("switch", { name: "Phản hồi rung", exact: true });
   assert.equal(await persistedSwitch.getAttribute("aria-checked"), "false", "preference must survive reload");
   await persistedSwitch.click();
@@ -100,7 +100,7 @@ try {
     });
   });
   const nativePage = await nativeContext.newPage();
-  await nativePage.goto(`${appBase}/settings`, { waitUntil: "networkidle" });
+  await nativePage.goto(`${appBase}/settings`, { waitUntil: "domcontentloaded" });
   await nativePage.getByRole("button", { name: "Mở menu ứng dụng", exact: true }).click();
   const nativeEvents = await nativePage.evaluate(() => window.__feedbackEvents);
   assert.ok(nativeEvents.some((event) => event.channel === "capacitor"), "Capacitor Haptics must be used in native runtime");

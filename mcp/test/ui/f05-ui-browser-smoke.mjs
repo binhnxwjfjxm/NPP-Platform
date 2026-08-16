@@ -96,7 +96,7 @@ async function screenshot(page, name) {
 async function routeWithoutActiveSession(browser) {
   await resetMock();
   const page = await browser.newPage();
-  await page.goto(`${appBase}/routes`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/routes`, { waitUntil: "domcontentloaded" });
   await selectRoute(page, "UI Smoke No Active");
   const draft = await openCustomerDraft(page, "UI Route Only No Session");
   const preflight = await submitInitialCustomerDraft(page, draft);
@@ -117,7 +117,7 @@ async function routeWithoutActiveSession(browser) {
 async function routeWithActiveSessionInclude(browser) {
   await resetMock();
   const page = await browser.newPage();
-  await page.goto(`${appBase}/routes`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/routes`, { waitUntil: "domcontentloaded" });
   await selectRoute(page, "UI Smoke Active");
   const draft = await openCustomerDraft(page, "UI Include Active Session");
   const preflight = await submitInitialCustomerDraft(page, draft);
@@ -147,7 +147,7 @@ async function routeWithActiveSessionInclude(browser) {
 async function routeWithActiveSessionRouteOnly(browser) {
   await resetMock();
   const page = await browser.newPage();
-  await page.goto(`${appBase}/routes`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/routes`, { waitUntil: "domcontentloaded" });
   await selectRoute(page, "UI Smoke Active");
   const draft = await openCustomerDraft(page, "UI Active Route Only");
   const preflight = await submitInitialCustomerDraft(page, draft);
@@ -169,7 +169,7 @@ async function routeWithActiveSessionRouteOnly(browser) {
 async function reusedCustomerCopy(browser) {
   await resetMock();
   const page = await browser.newPage();
-  await page.goto(`${appBase}/routes`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/routes`, { waitUntil: "domcontentloaded" });
   await selectRoute(page, "UI Smoke Active");
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -199,7 +199,7 @@ async function reusedCustomerCopy(browser) {
 async function sessionAddCustomer(browser) {
   await resetMock();
   const page = await browser.newPage();
-  await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Thêm khách vào phiên và tuyến", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Thêm khách", exact: true });
   await dialog.waitFor({ state: "visible" });
@@ -224,7 +224,7 @@ async function unifiedMobileMenu(browser) {
   await resetMock();
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
-  await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "domcontentloaded" });
 
   const appMenuTrigger = page.getByRole("button", { name: "Mở menu ứng dụng", exact: true });
   await appMenuTrigger.waitFor({ state: "visible" });
@@ -277,7 +277,7 @@ async function manualCheckin(browser) {
     viewport: { width: 430, height: 932 }
   });
   const page = await context.newPage();
-  await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Check-in vị trí hiện tại tại UI Existing Customer", exact: true }).click();
   await page.getByText(/Đã check-in vị trí hiện tại tại UI Existing Customer/).waitFor({ state: "visible" });
 

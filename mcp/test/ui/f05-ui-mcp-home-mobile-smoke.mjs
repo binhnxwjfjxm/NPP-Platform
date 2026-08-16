@@ -40,7 +40,7 @@ try {
   for (const viewport of mobileViewports) {
     const context = await browser.newContext({ viewport });
     const page = await context.newPage();
-    await page.goto(`${appBase}/mcp`, { waitUntil: "networkidle" });
+    await page.goto(`${appBase}/mcp`, { waitUntil: "domcontentloaded" });
 
     const mobileFlow = page.locator('[data-mcp-mobile-flow="true"]');
     await mobileFlow.waitFor({ state: "visible" });
@@ -76,7 +76,7 @@ try {
 
   const desktopContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const desktopPage = await desktopContext.newPage();
-  await desktopPage.goto(`${appBase}/mcp`, { waitUntil: "networkidle" });
+  await desktopPage.goto(`${appBase}/mcp`, { waitUntil: "domcontentloaded" });
   assert.equal(await desktopPage.locator('[data-mcp-mobile-flow="true"]').evaluate((node) => getComputedStyle(node).display), "none");
   await desktopPage.locator('[data-mcp-desktop-flow="true"]').waitFor({ state: "visible" });
   const desktopModules = desktopPage.locator('[data-mcp-desktop-flow="true"] section[aria-label="Chức năng MCP"] a');
