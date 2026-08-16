@@ -8,7 +8,7 @@ const serverPage = await readFile(new URL("../src/features/orders/OrdersPage.tsx
 const compatibilitySheet = await readFile(new URL("../src/features/orders/OrderCreateSheet.tsx", import.meta.url), "utf8");
 const loader = await readFile(new URL("../src/features/orders/CoreOrderCreateLoader.tsx", import.meta.url), "utf8");
 const sheet = await readFile(new URL("../src/features/orders/CoreOrderCreateSheet.tsx", import.meta.url), "utf8");
-const sheetStyles = await readFile(new URL("../src/features/orders/OrderCreateSheet.module.css", import.meta.url), "utf8");
+const catalogStyles = await readFile(new URL("../src/features/orders/OrderCatalogQuick.module.css", import.meta.url), "utf8");
 const catalogPriority = await readFile(new URL("../src/features/orders/order-catalog-priority.ts", import.meta.url), "utf8");
 const workspaceStyles = await readFile(new URL("../src/app/order-create-workspace.css", import.meta.url), "utf8");
 const bottomSheet = await readFile(new URL("../src/ui/overlay/BottomSheet.tsx", import.meta.url), "utf8");
@@ -64,14 +64,29 @@ test("Core order submit keeps canonical idempotency and never sends browser comm
   assert.doesNotMatch(sheet, /unitPrice|customerMode|manualCustomer|setSales|setStatus/);
 });
 
-test("catalog keeps the established grouped distributor UX and tap-to-adjust behavior", () => {
-  assert.match(sheet, /function groupCatalog\(products: ProductCatalogItem\[\]\)/);
+test("catalog uses Ordering-style left filter rail without copying Ordering purchase-mode logic", () => {
+  assert.match(sheet, /data-order-filter-rail/);
+  assert.match(sheet, /Nhóm sản phẩm/);
+  assert.match(sheet, /Nhãn hàng/);
+  assert.match(sheet, /selectCategory\(category\)/);
+  assert.match(sheet, /selectBrand\(brand\)/);
+  assert.doesNotMatch(sheet, /Mua lẻ|Mua thùng|purchaseMode/);
+  assert.match(catalogStyles, /\.catalogLayout\s*\{[\s\S]*grid-template-columns:\s*142px minmax\(0, 1fr\)/);
+  assert.match(catalogStyles, /\.filterRail\s*\{/);
+});
+
+test("each MCP product stays one card with flat Lẻ-Thùng rows and compact plus action", () => {
   assert.match(sheet, /productGroups\.map\(\(group\)/);
-  assert.match(sheet, /group\.variants\.map\(\(product\)/);
-  assert.match(sheet, /toggleCatalogProduct\(product\)/);
-  assert.match(sheet, /decreaseProduct\(product\.variantId\)/);
-  assert.match(sheet, /addProduct\(item\)/);
-  assert.match(sheetStyles, /\.variantGrid \{[\s\S]*grid-template-columns: repeat\(auto-fit, minmax\(150px, 1fr\)\)/);
+  assert.match(sheet, /<article key=\{group\.productId\}[\s\S]*data-order-product-card/);
+  assert.match(sheet, /group\.variants\.map\(\(product\) => \{/);
+  assert.match(sheet, /purchaseUnitLabel\(product\)/);
+  assert.match(sheet, /className=\{catalogStyles\.unitRow\}/);
+  assert.match(sheet, /className=\{catalogStyles\.unitAdd\}/);
+  assert.match(sheet, /onClick=\{\(\) => addProduct\(product\)\}/);
+  assert.match(sheet, /<span aria-hidden="true">\+<\/span>/);
+  assert.doesNotMatch(sheet, /styles\.variantGrid|styles\.variantButton|\+ Thêm/);
+  assert.match(catalogStyles, /\.unitRow\s*\{[\s\S]*border-top:/);
+  assert.doesNotMatch(catalogStyles.match(/\.unitRow\s*\{[\s\S]*?\}/)?.[0] ?? "", /border-radius|background:/);
   const milkTeaIndex = catalogPriority.indexOf('label: "Nguyên liệu trà sữa"');
   const spicyIndex = catalogPriority.indexOf('label: "Mì cay & đồ ăn"');
   const packagingIndex = catalogPriority.indexOf('label: "Bao bì & dụng cụ"');
