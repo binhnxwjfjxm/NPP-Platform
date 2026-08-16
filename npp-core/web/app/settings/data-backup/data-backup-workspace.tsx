@@ -3,6 +3,7 @@
 import { createIdempotencyKey } from '@npp/contracts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell-core';
+import SettingsTabs from '../settings-tabs';
 import styles from './data-backup.module.css';
 
 type Artifact = { size?: number; sha256?: string } | null;
@@ -183,6 +184,7 @@ export default function DataBackupWorkspace() {
   const currentStage = activeJob ? STAGES.findIndex(([key]) => key === activeJob.status) : -1;
 
   return <AppShell title="Dữ liệu & sao lưu" subtitle="Backup toàn bộ, kiểm tra tính toàn vẹn và bảo vệ yêu cầu xóa dữ liệu.">
+    <SettingsTabs active="data-backup" />
     <div className={styles.stack}>
       {error ? <div className={styles.error} role="alert">{error}</div> : null}
 
