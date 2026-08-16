@@ -151,24 +151,88 @@
 }
 
 @media (max-width: 560px) {
+  :global(.app-shell[data-active-href="/orders"] .page-header) {
+    grid-template-rows: auto 46px;
+  }
+
+  :global(.app-shell[data-active-href="/orders"] .page-header-actions) {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-flow: column;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    height: 46px;
+    min-height: 46px;
+    overflow: visible;
+  }
+
+  :global(.app-shell[data-active-href="/orders"] .page-header-actions > *) {
+    min-width: 0;
+    max-width: 100%;
+  }
+
   .tabRail {
+    --orders-tab-offset: 0%;
+    position: relative;
+    isolation: isolate;
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 4px;
+    gap: 0;
     overflow-x: hidden;
     padding: 4px;
     border-radius: 14px;
   }
 
+  .tabRail:has(> .tabActive:nth-child(2)) {
+    --orders-tab-offset: 100%;
+  }
+
+  .tabRail:has(> .tabActive:nth-child(3)) {
+    --orders-tab-offset: 200%;
+  }
+
+  .tabRail:has(> .tabActive:nth-child(4)) {
+    --orders-tab-offset: 300%;
+  }
+
+  .tabRail::before {
+    position: absolute;
+    z-index: 0;
+    top: 4px;
+    bottom: 4px;
+    left: 4px;
+    width: calc(25% - 2px);
+    border: 1px solid rgba(117, 71, 6, 0.28);
+    border-radius: 10px;
+    background: linear-gradient(145deg, rgba(245, 232, 211, 0.96), rgba(255, 255, 255, 0.98));
+    box-shadow: 0 8px 18px rgba(72, 54, 34, 0.08);
+    content: "";
+    pointer-events: none;
+    transform: translate3d(var(--orders-tab-offset), 0, 0);
+    transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 140ms ease;
+    will-change: transform;
+  }
+
   .tab,
   .tabActive {
+    position: relative;
+    z-index: 1;
     width: 100%;
     min-width: 0;
     min-height: 58px;
     gap: 0;
+    border-color: transparent;
     border-radius: 10px;
+    background: transparent;
+    box-shadow: none;
     padding: 6px 3px;
     text-align: center;
+  }
+
+  .tab:hover,
+  .tab:focus-visible {
+    background: transparent;
   }
 
   .tab strong,
@@ -186,6 +250,10 @@
   .tab small,
   .tabActive small {
     display: none;
+  }
+
+  .viewPanel {
+    animation: orders-view-enter 145ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
 
   .attentionRail {
@@ -210,5 +278,27 @@
 
   .overviewGrid.overviewGrid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@keyframes orders-view-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 4px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabRail::before {
+    transition: none !important;
+    will-change: auto;
+  }
+
+  .viewPanel {
+    animation: none !important;
   }
 }

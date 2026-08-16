@@ -73,6 +73,7 @@ jobs:
         env:
           BACKEND_API_BASE_URL: http://127.0.0.1:3110
           BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
+          CORE_API_INTERNAL_URL: http://127.0.0.1:3110
           MCP_LEGACY_ACTOR_ID: service:ci:mcp-v1
         run: npm run build
 
@@ -80,6 +81,7 @@ jobs:
         env:
           BACKEND_API_BASE_URL: http://127.0.0.1:3110
           BACKEND_API_TOKEN: 0123456789abcdef0123456789abcdef
+          CORE_API_INTERNAL_URL: http://127.0.0.1:3110
           MCP_LEGACY_ACTOR_ID: service:ci:mcp-v1
           F05_UI_RESULTS_DIR: test-results/f05-ui-smoke
         run: |

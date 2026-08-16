@@ -161,7 +161,7 @@ test("mobile dock is attached translucent glass with a warm brown tint", () => {
   assert.match(geometry, /background:\s*linear-gradient\(/);
   assert.match(geometry, /rgba\(255, 253, 248, 0\.72\)/);
   assert.match(geometry, /rgba\(239, 222, 195, 0\.62\)/);
-  assert.match(geometry, /backdrop-filter:\s*blur\(22px\) saturate\(1\.3\)/);
+  assert.match(geometry, /backdrop-filter:\s*blur\(10px\) saturate\(1\.08\)\s*!important/);
   assert.match(geometry, /background:\s*rgba\(152, 96, 15, 0\.12\)/);
 });
 
