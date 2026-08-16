@@ -107,9 +107,9 @@ async function verifyAuthenticatedOrdersMotion(browser, width, height) {
   const transforms = [await pseudoTransform(rail)];
 
   const sequence = [
-    { label: "Cần xử lý", view: "attention", actions: 1 },
+    { label: "Cần xử lý", view: "attention", actions: 0 },
     { label: "Doanh số đặt hàng", view: "sales", actions: 2 },
-    { label: "Tổng quan", view: "overview", actions: 1 },
+    { label: "Tổng quan", view: "overview", actions: 0 },
     { label: "Đơn hàng", view: null, actions: 3 }
   ];
 
