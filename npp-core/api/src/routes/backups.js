@@ -11,6 +11,7 @@ import {
   listBackupJobs,
   verifyDeletionIntent,
 } from '../services/backup.js';
+import { executeDeletionIntent } from '../services/business-data-purge.js';
 import {
   getTechnicalBackupAccessStatus,
   requestTechnicalBackupChallenge,
@@ -186,11 +187,12 @@ export async function handleBackupRoutes(req, res, options) {
   const downloadMatch = new RegExp(`^/api/backups/(${UUID_PATTERN})/download$`).exec(url.pathname);
   const technicalVerifyMatch = new RegExp(`^/api/backups/technical-access/challenges/(${UUID_PATTERN})/verify$`).exec(url.pathname);
   const deleteVerifyMatch = new RegExp(`^/api/data-deletions/(${UUID_PATTERN})/verify$`).exec(url.pathname);
+  const deleteExecuteMatch = new RegExp(`^/api/data-deletions/(${UUID_PATTERN})/execute$`).exec(url.pathname);
   const isBackupRoot = url.pathname === '/api/backups';
   const isTechnicalAccess = url.pathname === '/api/backups/technical-access';
   const isTechnicalChallengeRoot = url.pathname === '/api/backups/technical-access/challenges';
   const isDeleteRoot = url.pathname === '/api/data-deletions';
-  if (!isBackupRoot && !backupMatch && !downloadMatch && !isTechnicalAccess && !isTechnicalChallengeRoot && !technicalVerifyMatch && !isDeleteRoot && !deleteVerifyMatch) return false;
+  if (!isBackupRoot && !backupMatch && !downloadMatch && !isTechnicalAccess && !isTechnicalChallengeRoot && !technicalVerifyMatch && !isDeleteRoot && !deleteVerifyMatch && !deleteExecuteMatch) return false;
 
   const storageRuntime = resolveBackupStorageRuntime(options);
 
@@ -321,13 +323,18 @@ export async function handleBackupRoutes(req, res, options) {
     if (!requestContext) return true;
     const body = await bodyOrError(req, res, options);
     if (!body.ok) return true;
-    const payload = { backupJobId: String(body.payload?.backupJobId ?? ''), reason: String(body.payload?.reason ?? '') };
+    const payload = {
+      backupJobId: String(body.payload?.backupJobId ?? ''),
+      targetCode: String(body.payload?.targetCode ?? ''),
+      reason: String(body.payload?.reason ?? ''),
+    };
     await executeIdempotent(req, res, options, requestContext, {
       route: '/api/data-deletions',
       payload,
       process: () => createDeletionIntent(options.getPool(), {
         requestContext,
         backupJobId: payload.backupJobId,
+        targetCode: payload.targetCode,
         reason: payload.reason,
         env: options.env ?? process.env,
         ownerConfig: options.ownerConfig ?? null,
@@ -352,6 +359,23 @@ export async function handleBackupRoutes(req, res, options) {
         code: payload.code,
         env: options.env ?? process.env,
         ownerConfig: options.ownerConfig ?? null,
+      }),
+    });
+    return true;
+  }
+
+  if (deleteExecuteMatch && method === 'POST') {
+    const requestContext = authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreDataDeletionAuthorize, { ownerOnly: true });
+    if (!requestContext) return true;
+    const body = await bodyOrError(req, res, options);
+    if (!body.ok) return true;
+    const payload = { intentId: deleteExecuteMatch[1] };
+    await executeIdempotent(req, res, options, requestContext, {
+      route: `/api/data-deletions/${deleteExecuteMatch[1]}/execute`,
+      payload,
+      process: () => executeDeletionIntent(options.getPool(), {
+        requestContext,
+        intentId: deleteExecuteMatch[1],
       }),
     });
     return true;

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
 import * as repo from '../db/repositories/backup.js';
+import { normalizeBusinessPurgeTarget } from './business-data-purge.js';
 import {
   generateOwnerDeletionCode,
   hashOwnerDeletionCode,
@@ -171,6 +172,7 @@ export async function createBackupDownload(pool, storageAdapter, { requestContex
 export async function createDeletionIntent(pool, {
   requestContext,
   backupJobId,
+  targetCode,
   reason,
   env = process.env,
   ownerConfig = null,
@@ -178,14 +180,16 @@ export async function createDeletionIntent(pool, {
   now = () => new Date(),
 }) {
   if (!UUID_PATTERN.test(text(backupJobId))) return resultError('BACKUP_JOB_ID_INVALID', 400, 'Mã backup không hợp lệ');
+  const normalizedTargetCode = normalizeBusinessPurgeTarget(targetCode);
+  if (!normalizedTargetCode) return resultError('PURGE_TARGET_INVALID', 400, 'Mục dữ liệu cần xóa không hợp lệ');
   const backup = await repo.getBackupJob(pool, { installationId: requestContext.installationId, jobId: backupJobId });
   if (!backup) return resultError('BACKUP_JOB_NOT_FOUND', 404, 'Không tìm thấy bản backup');
   if (backup.status !== 'VERIFIED' || !backup.verified_at || !backup.snapshot_at) {
-    return resultError('DELETE_BACKUP_REQUIRED', 409, 'Cần một bản backup VERIFIED trước khi xác minh xóa dữ liệu');
+    return resultError('DELETE_BACKUP_REQUIRED', 409, 'Cần một bản sao lưu đã xác minh trước khi xác nhận xóa dữ liệu');
   }
   const snapshotAt = new Date(backup.snapshot_at);
   if (Number.isNaN(snapshotAt.getTime()) || now().getTime() - snapshotAt.getTime() > DELETE_BACKUP_MAX_AGE_MS) {
-    return resultError('DELETE_BACKUP_TOO_OLD', 409, 'Bản backup đã quá cũ cho yêu cầu xóa dữ liệu');
+    return resultError('DELETE_BACKUP_TOO_OLD', 409, 'Bản sao lưu bảo vệ đã quá cũ cho yêu cầu xóa dữ liệu');
   }
   const runtime = loadOwnerDeletionChallengeRuntime({ env, ownerConfig });
   if (!ownerDeletionRuntimeReady(runtime, fetchImpl)) {
@@ -202,6 +206,7 @@ export async function createDeletionIntent(pool, {
         id: intentId,
         installationId: requestContext.installationId,
         backupJobId,
+        targetCode: normalizedTargetCode,
         requestedBy: requestContext.actorId,
         sourceApp: requestContext.sourceApp,
         requestId: requestContext.requestId,
@@ -215,7 +220,7 @@ export async function createDeletionIntent(pool, {
         action: 'data_deletion_challenge_issued',
         resourceType: 'data_deletion_intent',
         resourceId: intentId,
-        afterData: { backupJobId, ownerRecipientCount: runtime.recipients.length, challengeExpiresAt: expiresAt },
+        afterData: { backupJobId, targetCode: normalizedTargetCode, ownerRecipientCount: runtime.recipients.length, challengeExpiresAt: expiresAt },
       }));
       return { intent };
     },
@@ -232,7 +237,7 @@ export async function createDeletionIntent(pool, {
           action: 'data_deletion_challenge_delivered',
           resourceType: 'data_deletion_intent',
           resourceId: intentId,
-          afterData: { backupJobId, ownerRecipientCount: runtime.recipients.length },
+          afterData: { backupJobId, targetCode: normalizedTargetCode, ownerRecipientCount: runtime.recipients.length },
         }));
         return { sent: true };
       },
@@ -248,7 +253,7 @@ export async function createDeletionIntent(pool, {
           action: 'data_deletion_challenge_delivery_failed',
           resourceType: 'data_deletion_intent',
           resourceId: intentId,
-          afterData: { backupJobId, ownerRecipientCount: runtime.recipients.length },
+          afterData: { backupJobId, targetCode: normalizedTargetCode, ownerRecipientCount: runtime.recipients.length },
         }));
         return { ok: true };
       },
@@ -262,6 +267,7 @@ export async function createDeletionIntent(pool, {
       id: transaction.intent.id,
       status: 'CHALLENGE_PENDING',
       backupJobId,
+      targetCode: normalizedTargetCode,
       challengeExpiresAt: expiresAt,
       ownerRecipientCount: runtime.recipients.length,
     },
@@ -286,7 +292,18 @@ export async function verifyDeletionIntent(pool, {
       const intent = await repo.lockDeletionIntent(client, { installationId: requestContext.installationId, intentId });
       if (!intent) return { ...resultError('DATA_DELETION_INTENT_NOT_FOUND', 404, 'Không tìm thấy yêu cầu xóa'), failed: true };
       if (intent.status === 'AUTHORIZED') {
-        return { ok: true, replayed: true, intent: { id: intent.id, status: 'AUTHORIZED', backupJobId: intent.backup_job_id, authorizedAt: intent.authorized_at, purgeExecuted: false } };
+        return {
+          ok: true,
+          replayed: true,
+          intent: {
+            id: intent.id,
+            status: 'AUTHORIZED',
+            backupJobId: intent.backup_job_id,
+            targetCode: intent.target_code,
+            authorizedAt: intent.authorized_at,
+            purgeExecuted: false,
+          },
+        };
       }
       if (intent.status !== 'CHALLENGE_PENDING') {
         return { ...resultError('DATA_DELETION_INTENT_NOT_ACTIVE', 409, 'Yêu cầu xóa không còn ở trạng thái chờ xác minh'), failed: true };
@@ -302,7 +319,7 @@ export async function verifyDeletionIntent(pool, {
           action: 'data_deletion_challenge_expired',
           resourceType: 'data_deletion_intent',
           resourceId: intentId,
-          afterData: { backupJobId: intent.backup_job_id, status: 'FAILED', failureCode: 'DATA_DELETION_CODE_EXPIRED' },
+          afterData: { backupJobId: intent.backup_job_id, targetCode: intent.target_code, status: 'FAILED', failureCode: 'DATA_DELETION_CODE_EXPIRED' },
         }));
         return { ...resultError('DATA_DELETION_CODE_EXPIRED', 410, 'Mã xác nhận đã hết hạn'), expectedAuditCount: 1 };
       }
@@ -320,6 +337,7 @@ export async function verifyDeletionIntent(pool, {
           resourceId: intentId,
           afterData: {
             backupJobId: intent.backup_job_id,
+            targetCode: intent.target_code,
             failedAttempts: Number(rejected?.challenge_failed_attempts ?? intent.challenge_failed_attempts ?? 0),
             status: rejected?.status ?? intent.status,
           },
@@ -336,9 +354,19 @@ export async function verifyDeletionIntent(pool, {
         action: 'data_deletion_authorized',
         resourceType: 'data_deletion_intent',
         resourceId: intentId,
-        afterData: { backupJobId: authorized.backup_job_id, authorizedAt: verifiedAt, purgeExecuted: false },
+        afterData: { backupJobId: authorized.backup_job_id, targetCode: authorized.target_code, authorizedAt: verifiedAt, purgeExecuted: false },
       }));
-      return { ok: true, intent: { id: intentId, status: 'AUTHORIZED', backupJobId: authorized.backup_job_id, authorizedAt: verifiedAt, purgeExecuted: false } };
+      return {
+        ok: true,
+        intent: {
+          id: intentId,
+          status: 'AUTHORIZED',
+          backupJobId: authorized.backup_job_id,
+          targetCode: authorized.target_code,
+          authorizedAt: verifiedAt,
+          purgeExecuted: false,
+        },
+      };
     },
   });
 }

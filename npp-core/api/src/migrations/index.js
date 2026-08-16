@@ -120,6 +120,10 @@ const TECHNICAL_BACKUP_ACCESS_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/087_technical_backup_access.sql', import.meta.url),
   'utf8',
 );
+const SELECTIVE_BUSINESS_DATA_PURGE_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/088_selective_business_data_purge.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -172,6 +176,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '085_mcp_sales_order_employee_provenance', sql: MCP_SALES_ORDER_EMPLOYEE_PROVENANCE_SQL }),
   Object.freeze({ id: '086_mcp_workforce_permission_catalog', sql: MCP_WORKFORCE_PERMISSION_CATALOG_SQL }),
   Object.freeze({ id: '087_technical_backup_access', sql: TECHNICAL_BACKUP_ACCESS_SQL }),
+  Object.freeze({ id: '088_selective_business_data_purge', sql: SELECTIVE_BUSINESS_DATA_PURGE_SQL }),
 ]);
 
 export { runMigrations };
