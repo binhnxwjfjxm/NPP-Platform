@@ -53,3 +53,13 @@ test('COD mutations use idempotency, audit/outbox and exact route scope', () => 
   assert.match(service, /reverseCustomerPayment/);
   assert.match(service, /COD_HANDOVER_EXCEEDS_CUSTODY/);
 });
+
+test('closed trips remain available for COD custody handover but cannot record new collection', () => {
+  const driverRepository = source('../src/db/repositories/cod-settlement-driver.js');
+  const driverRoute = source('../src/routes/cod-driver.js');
+  assert.match(driverRepository, /getDriverTrip[\s\S]*trip\.status IN \('dispatched', 'closed'\)/);
+  assert.match(driverRepository, /listDriverCustodyTripIds[\s\S]*custody\.custody_remaining_amount > 0/);
+  assert.match(driverRepository, /listDriverCodAssignments[\s\S]*trip\.status IN \('dispatched', 'closed'\)/);
+  assert.match(driverRepository, /getCollectionLineageForDriver[\s\S]*trip\.status = 'dispatched'/);
+  assert.match(driverRoute, /\/api\/logistics\/driver\/cod-custody/);
+});

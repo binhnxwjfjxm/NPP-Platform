@@ -77,9 +77,9 @@ test('tài xế đăng nhập một lần, reload vẫn giữ phiên và hoàn t
   const handover = page.getByTestId('cod-handover-panel');
   await expect(handover).toBeVisible();
   await handover.getByRole('button', { name: /Tiền đang giữ/ }).click();
-  const custodyDialog = page.getByRole('dialog').filter({ hasText: 'Tiền đang giữ / Bàn giao tiền' });
+  const custodyDialog = page.getByRole('dialog').filter({ hasText: 'Tiền đang giữ / Bàn giao cho Công Ty' });
   await expect(custodyDialog).toBeVisible();
-  await custodyDialog.getByRole('button', { name: 'Lập bàn giao COD' }).click();
+  await custodyDialog.getByRole('button', { name: 'Bàn giao tiền cho Công Ty' }).click();
   await expect(custodyDialog).toContainText('Không còn tiền mặt COD chờ bàn giao');
   await expect(custodyDialog).toContainText('submitted');
   await expect(page.getByText(/Delivery không sửa công nợ trực tiếp/)).toBeVisible();

@@ -48,6 +48,14 @@ async function callCore<T>(
   return body.data;
 }
 
+export async function listMyCodCustodyTripIds(user: DeliveryUser): Promise<readonly string[]> {
+  const payload = await callCore<{ tripIds: readonly string[] }>(user, '/api/logistics/driver/cod-custody');
+  if (!Array.isArray(payload.tripIds) || payload.tripIds.some((tripId) => typeof tripId !== 'string' || !UUID_PATTERN.test(tripId))) {
+    throw new Error('DELIVERY_CORE_INVALID_COD_CUSTODY_RESPONSE');
+  }
+  return Object.freeze([...payload.tripIds]);
+}
+
 export async function getMyCodOverview(user: DeliveryUser, tripId: string): Promise<DriverCodOverview> {
   if (!UUID_PATTERN.test(tripId)) throw new Error('INVALID_TRIP_ID');
   return callCore<DriverCodOverview>(user, `/api/logistics/driver/trips/${encodeURIComponent(tripId)}/cod`);

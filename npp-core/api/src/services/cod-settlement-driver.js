@@ -19,6 +19,20 @@ import {
   timestamp,
 } from './cod-settlement-shared.js';
 
+export async function listDriverCodCustodyTripIds(client, { requestContext }) {
+  const identity = await resolveDriver(client, requestContext, 'core.cod-collection.read');
+  if (!identity.ok) return identity;
+  const rows = await repository.listDriverCustodyTripIds(client, {
+    installationId: requestContext.installationId,
+    driverProfileId: identity.driver.id,
+    warehouseIds: identity.warehouseIds,
+  });
+  return Object.freeze({
+    ok: true,
+    tripIds: Object.freeze(rows.map((row) => row.trip_id)),
+  });
+}
+
 export async function getDriverCodOverview(client, { requestContext, tripId }) {
   if (!isUuid(tripId)) return failure('INVALID_TRIP_ID', 'Trip id is invalid');
   const identity = await resolveDriver(client, requestContext, 'core.cod-collection.read');

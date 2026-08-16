@@ -59,7 +59,7 @@ export default function CodHandoverPanel({ tripId, overview, canCreateHandover =
 
   async function submit() {
     setMessage('');
-    if (!canCreateHandover) { setMessage('Tài khoản hiện tại không có quyền lập bàn giao COD.'); return; }
+    if (!canCreateHandover) { setMessage('Tài khoản hiện tại không có quyền bàn giao COD.'); return; }
     if (!lines.length) { setMessage('Không có khoản tiền mặt nào để bàn giao.'); return; }
     if (different && !reason.trim()) { setMessage('Bàn giao thiếu, thừa hoặc một phần cần nhập lý do.'); return; }
 
@@ -91,7 +91,7 @@ export default function CodHandoverPanel({ tripId, overview, canCreateHandover =
       const body = await response.json().catch(() => null) as { data?: unknown; error?: { message?: string } } | null;
       if (!response.ok || !body?.data) throw new Error(body?.error?.message || 'Không lập được bàn giao COD.');
       pendingRef.current = null;
-      setMessage('Đã lập bàn giao COD, chờ kế toán xác nhận.');
+      setMessage('Đã bàn giao tiền, chờ Công Ty xác nhận thực nhận.');
       router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không lập được bàn giao COD.');
@@ -105,7 +105,7 @@ export default function CodHandoverPanel({ tripId, overview, canCreateHandover =
       <button className={styles.custodyTrigger} type="button" onClick={() => setOpen(true)}>
         <span>Tiền đang giữ</span>
         <strong>{money(overview.trip.custodyTotal)}</strong>
-        <small>Mở bàn giao và lịch sử COD</small>
+        <small>Bàn giao tiền cho Công Ty</small>
       </button>
 
       {open ? (
@@ -119,7 +119,7 @@ export default function CodHandoverPanel({ tripId, overview, canCreateHandover =
           >
             <header className={styles.sheetHeader}>
               <div>
-                <p>Tiền đang giữ / Bàn giao tiền</p>
+                <p>Tiền đang giữ / Bàn giao cho Công Ty</p>
                 <h3 id={`custody-title-${tripId}`}>{money(overview.trip.custodyTotal)}</h3>
               </div>
               <button className={styles.closeButton} type="button" onClick={() => setOpen(false)} aria-label="Đóng">×</button>
@@ -145,10 +145,10 @@ export default function CodHandoverPanel({ tripId, overview, canCreateHandover =
                   <textarea rows={2} maxLength={2000} value={note} onChange={(event) => setNote(event.target.value)} />
                 </label>
                 {message ? <p className={message.startsWith('Đã') ? styles.notice : styles.error} role="status">{message}</p> : null}
-                <button className={styles.button} type="button" disabled={busy} onClick={submit}>{busy ? 'Đang lập…' : 'Lập bàn giao COD'}</button>
+                <button className={styles.button} type="button" disabled={busy} onClick={submit}>{busy ? 'Đang bàn giao…' : 'Bàn giao tiền cho Công Ty'}</button>
               </>
             ) : cash.length ? (
-              <p className={styles.notice}>Tài khoản hiện tại chỉ được xem custody, chưa có quyền lập bàn giao.</p>
+              <p className={styles.notice}>Tài khoản hiện tại chỉ được xem tiền đang giữ, chưa có quyền bàn giao.</p>
             ) : (
               <p className={styles.notice}>Không còn tiền mặt COD chờ bàn giao.</p>
             )}
