@@ -104,7 +104,7 @@ test('Issue #562 Part 4 exposes only business-level purge targets and keeps purg
 
   const service = await readFile(new URL('../src/services/business-data-purge.js', import.meta.url), 'utf8');
   assert.match(service, /pg_constraint/);
-  assert.match(service, /DISABLE TRIGGER USER/);
+  assert.doesNotMatch(service, /DISABLE TRIGGER USER/);
   assert.match(service, /DELETE FROM/);
   assert.match(service, /core_audit_records/);
   assert.match(service, /core_outbox_events/);
@@ -170,6 +170,7 @@ test('Issue #562 Part 4 ALL purge removes business test data but keeps workforce
   assert.ok(!keys.has('shared.sales_channels'));
   assert.ok(!keys.has('shared.units_of_measure'));
   assert.ok(!keys.has('shared.document_number_series'));
+  assert.ok(!keys.has('inventory.inventory_adjustment_reasons'));
   if ((await pool.query(`SELECT to_regclass('mcp.mcp_report_settings') AS table_name`)).rows[0]?.table_name) {
     assert.ok(!keys.has('mcp.mcp_report_settings'));
     assert.ok(!keys.has('mcp.mcp_report_setting_groups'));
@@ -191,6 +192,7 @@ test('Issue #562 Part 4 ALL purge removes business test data but keeps workforce
   const settings = (await pool.query('SELECT walk_in_customer_id FROM shared.sales_order_settings WHERE installation_id = $1', [installationId])).rows[0];
   assert.ok(settings);
   assert.equal(settings.walk_in_customer_id, null);
+  assert.equal(Number((await pool.query(`SELECT count(*)::int AS count FROM inventory.inventory_adjustment_reasons WHERE code = 'MANUAL_COUNT_CORRECTION_IN'`)).rows[0].count), 1);
   assert.equal(Number((await pool.query('SELECT count(*)::int AS count FROM shared.backup_jobs WHERE installation_id = $1 AND id = $2 AND status = \'VERIFIED\'', [installationId, backupJobId])).rows[0].count), 1);
   assert.equal(Number((await pool.query(`SELECT count(*)::int AS count FROM shared.schema_migrations WHERE id = '088_selective_business_data_purge'`)).rows[0].count), 1);
   assert.equal(Number((await pool.query(`SELECT count(*)::int AS count FROM shared.core_audit_records WHERE installation_id = $1 AND action = 'test_business_marker'`, [installationId])).rows[0].count), 0);

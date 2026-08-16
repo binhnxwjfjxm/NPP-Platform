@@ -130,7 +130,7 @@ function eligibleBusinessTable(table) {
 
 function addSchemaRoots(roots, catalog, schemas) {
   for (const table of catalog.tables.values()) {
-    if (schemas.includes(table.schema) && !isProtectedMcpTable(table)) roots.add(table.key);
+    if (schemas.includes(table.schema) && table.hasInstallationId && !isProtectedMcpTable(table)) roots.add(table.key);
   }
 }
 function addSharedRoots(roots, catalog, names) {
@@ -235,15 +235,10 @@ async function neutralizeProtectedReferences(client, plan, installationId) {
 
 async function deleteTableRows(client, table, installationId) {
   const identifier = `${q(table.schema)}.${q(table.table)}`;
-  await client.query(`ALTER TABLE ${identifier} DISABLE TRIGGER USER`);
-  try {
-    const result = table.hasInstallationId
-      ? await client.query(`DELETE FROM ${identifier} WHERE installation_id = $1`, [installationId])
-      : await client.query(`DELETE FROM ${identifier}`);
-    return Number(result.rowCount ?? 0);
-  } finally {
-    await client.query(`ALTER TABLE ${identifier} ENABLE TRIGGER USER`);
-  }
+  const result = table.hasInstallationId
+    ? await client.query(`DELETE FROM ${identifier} WHERE installation_id = $1`, [installationId])
+    : await client.query(`DELETE FROM ${identifier}`);
+  return Number(result.rowCount ?? 0);
 }
 
 async function clearTechnicalResidue(client, { installationId, requestId }) {
