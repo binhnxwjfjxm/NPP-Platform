@@ -25,16 +25,35 @@ test('same-origin proxy preserves idempotency for reconciliation mutations', () 
   assert.match(proxySource, /transitionDeliveryTrip/);
 });
 
-test('workspace shows exact custody quantities and explicit warehouse receipt', () => {
+test('workspace keeps custody lifecycle and uses the shared idempotency contract', () => {
   assert.match(workspaceSource, /Đối soát cuối chuyến/);
   assert.match(workspaceSource, /outstandingBaseQuantity/);
   assert.match(workspaceSource, /returnedBaseQuantity/);
   assert.match(workspaceSource, /\/return-receipts/);
   assert.match(workspaceSource, /\/close/);
-  assert.match(workspaceSource, /Idempotency-Key/);
+  assert.match(workspaceSource, /import \{ createIdempotencyKey \} from '@npp\/contracts';/);
+  assert.match(workspaceSource, /createIdempotencyKey\('trip-reconciliation-receive'\)/);
+  assert.match(workspaceSource, /createIdempotencyKey\('trip-reconciliation-close'\)/);
+  assert.doesNotMatch(workspaceSource, /function freshKey|crypto\.randomUUID\(\)/);
   assert.match(workspaceSource, /Xác nhận nhập hàng về kho/);
   assert.match(workspaceSource, /Đóng chuyến đã đối soát/);
   assert.doesNotMatch(workspaceSource, /driverId|employeeId|DATABASE_URL|CORE_API_SERVER_TOKEN/);
+});
+
+test('workspace makes the four reconciliation steps and close blocker visible', () => {
+  assert.match(workspaceSource, /Chọn chuyến/);
+  assert.match(workspaceSource, /Kiểm tra chênh lệch/);
+  assert.match(workspaceSource, /Nhận hàng trả về/);
+  assert.match(workspaceSource, /Đóng chuyến/);
+  assert.match(workspaceSource, /Việc tiếp theo/);
+  assert.match(workspaceSource, /Dòng còn trên xe/);
+  assert.match(workspaceSource, /Chưa thể đóng:/);
+  assert.match(workspaceSource, /Cần đối soát/);
+  assert.match(workspaceSource, /Đủ điều kiện/);
+  assert.match(workspaceSource, /Đã đóng/);
+  assert.match(workspaceSource, /Lịch sử kho nhận lại/);
+  assert.match(workspaceSource, /Mã nhập kho:/);
+  assert.doesNotMatch(workspaceSource, /Movement:/);
 });
 
 test('persistent logistics navigation exposes reconciliation workspace', () => {
