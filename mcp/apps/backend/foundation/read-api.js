@@ -1,3 +1,5 @@
+import { requirePermission } from "./authorization.js";
+
 const SAFE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/;
 const RAW_FILTER_PREFIXES = ["eq.", "neq.", "gte.", "lte.", "lt.", "gt.", "ilike.", "like.", "is.", "in."];
 const MAX_READ_LIMIT = 50000;
@@ -32,10 +34,14 @@ const INSTALLATION_SCOPED_READ_TABLES = new Set([
   "mcp_report_settings",
   "mcp_route_customers",
   "mcp_route_sessions",
-  "mcp_routes",
   "mcp_session_customers",
   "mcp_session_reports",
   "mcp_visits"
+]);
+
+const READ_PERMISSION_BY_TABLE = new Map([
+  ["mcp_report_setting_groups", "mcp.report-setting.write"],
+  ["mcp_report_settings", "mcp.report-setting.write"]
 ]);
 
 function text(value) {
@@ -265,6 +271,8 @@ export async function handleReadApi(req, url, context, config, { persistence } =
 
   const body = await readJsonBody(req);
   const table = requiredTable(body.table);
+  const requiredPermission = READ_PERMISSION_BY_TABLE.get(table);
+  if (requiredPermission) requirePermission(context, requiredPermission);
   const query = buildReadQuery(table, body, context);
 
   await persistence.assertReady();

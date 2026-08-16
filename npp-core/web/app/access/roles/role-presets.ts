@@ -23,7 +23,7 @@ export const ROLE_PRESETS: readonly RolePreset[] = Object.freeze([
   { id: 'accounting', label: 'Kế toán phải thu / phải trả', description: 'Phải thu, phải trả, thanh toán, phân bổ, thu hộ khi giao hàng (COD) và báo cáo công nợ.' },
   { id: 'dispatcher', label: 'Điều phối giao hàng', description: 'Tuyến, xe, tài xế, lập/xếp chuyến và điều phối xuất phát.' },
   { id: 'driver-delivery', label: 'Tài xế / Giao hàng', description: 'Chuyến được giao, kết quả giao, bằng chứng giao hàng và thu/bàn giao COD.' },
-  { id: 'mcp-field', label: 'Nhân viên thị trường', description: 'Đọc danh mục và khách hàng, gửi đề nghị mở mã khách và tiếp nhận đơn Công Ty theo phạm vi được giao.' },
+  { id: 'mcp-field', label: 'Nhân viên thị trường', description: 'Đi tuyến, ghi nhận thị trường, mở mã khách và tạo đơn Công Ty theo phạm vi được giao; không có quyền cấu hình MCP.' },
   { id: 'logistics-manager', label: 'Quản lý giao vận', description: 'Toàn bộ điều phối, giao nhận, đối soát chuyến và báo cáo giao vận/COD.' },
 ]);
 
@@ -103,6 +103,9 @@ export function resolveRolePresetPermissionKeys(presetId: string, permissions: r
           'core.customer.read', 'core.product.read', 'core.price.read',
           'core.customer-onboarding.read', 'core.customer-onboarding.submit',
           'core.sales-order.read', 'core.sales-order.create',
+          'mcp.session.write', 'mcp.session-customer.write',
+          'mcp.order.write', 'mcp.test.write', 'mcp.report.write', 'mcp.followup.write',
+          'mcp.sales-order.read', 'mcp.sales-order.create',
         ]);
       case 'logistics-manager':
         return matchesAnyPrefix(key, [

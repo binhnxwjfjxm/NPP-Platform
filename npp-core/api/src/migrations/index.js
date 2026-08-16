@@ -112,6 +112,10 @@ const MCP_SALES_ORDER_EMPLOYEE_PROVENANCE_SQL = readFileSync(
   new URL('../../../../database/migrations/sales/085_mcp_sales_order_employee_provenance.sql', import.meta.url),
   'utf8',
 );
+const MCP_WORKFORCE_PERMISSION_CATALOG_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/086_mcp_workforce_permission_catalog.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -162,6 +166,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '083_backup_delete_foundation', sql: BACKUP_DELETE_FOUNDATION_SQL }),
   Object.freeze({ id: '084_mcp_field_profile_verification', sql: MCP_FIELD_PROFILE_VERIFICATION_SQL }),
   Object.freeze({ id: '085_mcp_sales_order_employee_provenance', sql: MCP_SALES_ORDER_EMPLOYEE_PROVENANCE_SQL }),
+  Object.freeze({ id: '086_mcp_workforce_permission_catalog', sql: MCP_WORKFORCE_PERMISSION_CATALOG_SQL }),
 ]);
 
 export { runMigrations };
