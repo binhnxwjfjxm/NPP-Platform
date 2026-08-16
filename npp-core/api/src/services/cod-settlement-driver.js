@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { deriveIdempotencyKey } from '../idempotency-derived.js';
 import * as repository from '../db/repositories/cod-settlement.js';
 import { createCustomerPayment } from './customer-payment.js';
 import {
@@ -138,7 +139,7 @@ export async function recordCodCollection(client, {
     const allocationAmount = received < expected ? received : expected;
     const paymentResult = await createCustomerPayment(client, {
       requestContext,
-      idempotencyKey: `codpay:${hash.slice(0, 48)}`,
+      idempotencyKey: deriveIdempotencyKey('cod-payment', hash),
       payload: {
         customerId: lineage.customer_id,
         warehouseId: lineage.warehouse_id,

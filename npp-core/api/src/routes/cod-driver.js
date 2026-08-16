@@ -65,6 +65,40 @@ function requireIdempotency(req) {
   }
 }
 
+function sanitizeCodTransactionError(error, { requestId, route, stage }) {
+  const raw = typeof error?.message === 'string' ? error.message : 'cod_transaction_failed';
+  const message = raw
+    .replace(/(?:postgres(?:ql)?|https?):\/\/\S+/gi, '[redacted-url]')
+    .replace(/(?:password|token|secret|api[_-]?key)\s*[=:]\s*\S+/gi, '$1=[redacted]')
+    .replace(/[\r\n\t]+/g, ' ')
+    .slice(0, 240);
+  return Object.freeze({
+    event: 'cod_transaction_failed',
+    requestId,
+    route,
+    stage,
+    name: typeof error?.name === 'string' ? error.name.slice(0, 80) : 'Error',
+    code: typeof error?.code === 'string' ? error.code.slice(0, 80) : null,
+    constraint: typeof error?.constraint === 'string' ? error.constraint.slice(0, 160) : null,
+    message,
+  });
+}
+
+function transactionExpectations(result) {
+  const count = result?.payment ? 2 : 1;
+  return Object.freeze({ expectedAuditCount: count, expectedOutboxCount: count });
+}
+
+function codTransactionFailure(error, options) {
+  console.error(JSON.stringify(sanitizeCodTransactionError(error, options)));
+  return Object.assign(new Error('cod_transaction_failed'), {
+    code: 'COD_TRANSACTION_FAILED',
+    publicMessage: 'Không thể ghi nhận giao dịch COD lúc này',
+    statusCode: 503,
+    retryable: true,
+  });
+}
+
 async function executeMutation(req, res, options, {
   requestContext,
   route,
@@ -88,57 +122,70 @@ async function executeMutation(req, res, options, {
       route,
       payload,
       onProcess: async () => {
-        const transaction = await withAuditOutboxTransaction({
-          adapter: options.getPool(),
-          mutate: async (client) => {
-            const result = await mutate(client, idempotency.key);
-            if (!result.ok) return { failed: true, result };
-            if (result.replayed) return { result };
-            const entity = result.collection ?? result.handover;
-            const resourceType = result.collection ? 'accounting.cod_collection' : 'accounting.cod_handover';
-            const audit = buildAuditRecord({
-              requestContext,
-              action,
-              resourceType,
-              resourceId: entity.id,
-              afterData: entity,
-              metadata: { route },
-            });
-            const outbox = buildOutboxEvent({
-              requestContext,
-              aggregateType: resourceType,
-              aggregateId: entity.id,
-              eventType: result.handover && Number(result.handover.differenceAmount ?? 0) !== 0
-                ? 'core.cod.discrepancy_recorded'
-                : eventType,
-              eventVersion: 1,
-              payload: entity,
-              metadata: { route },
-            });
-            await insertAuditRecord(client, audit);
-            await insertOutboxEvent(client, outbox);
-            if (result.payment) {
-              await insertAuditRecord(client, buildAuditRecord({
+        let transaction;
+        try {
+          transaction = await withAuditOutboxTransaction({
+            adapter: options.getPool(),
+            mutate: async (client) => {
+              const result = await mutate(client, idempotency.key);
+              if (!result.ok) return { failed: true, result };
+              if (result.replayed) return { result, replayed: true };
+              const entity = result.collection ?? result.handover;
+              const resourceType = result.collection ? 'accounting.cod_collection' : 'accounting.cod_handover';
+              const audit = buildAuditRecord({
                 requestContext,
-                action: 'accounting.customer_payment.create_from_cod',
-                resourceType: 'accounting.customer_payment',
-                resourceId: result.payment.id,
-                afterData: result.payment,
-                metadata: { codCollectionId: entity.id, route },
-              }));
-              await insertOutboxEvent(client, buildOutboxEvent({
+                action,
+                resourceType,
+                resourceId: entity.id,
+                afterData: entity,
+                metadata: { route },
+              });
+              const outbox = buildOutboxEvent({
                 requestContext,
-                aggregateType: 'accounting.customer_payment',
-                aggregateId: result.payment.id,
-                eventType: 'core.customer_payment.posted',
+                aggregateType: resourceType,
+                aggregateId: entity.id,
+                eventType: result.handover && Number(result.handover.differenceAmount ?? 0) !== 0
+                  ? 'core.cod.discrepancy_recorded'
+                  : eventType,
                 eventVersion: 1,
-                payload: result.payment,
-                metadata: { codCollectionId: entity.id, route },
-              }));
-            }
-            return { result, eventId: outbox.eventId };
-          },
-        });
+                payload: entity,
+                metadata: { route },
+              });
+              await insertAuditRecord(client, audit);
+              await insertOutboxEvent(client, outbox);
+              if (result.payment) {
+                await insertAuditRecord(client, buildAuditRecord({
+                  requestContext,
+                  action: 'accounting.customer_payment.create_from_cod',
+                  resourceType: 'accounting.customer_payment',
+                  resourceId: result.payment.id,
+                  afterData: result.payment,
+                  metadata: { codCollectionId: entity.id, route },
+                }));
+                await insertOutboxEvent(client, buildOutboxEvent({
+                  requestContext,
+                  aggregateType: 'accounting.customer_payment',
+                  aggregateId: result.payment.id,
+                  eventType: 'core.customer_payment.posted',
+                  eventVersion: 1,
+                  payload: result.payment,
+                  metadata: { codCollectionId: entity.id, route },
+                }));
+              }
+              return {
+                result,
+                eventId: outbox.eventId,
+                ...transactionExpectations(result),
+              };
+            },
+          });
+        } catch (error) {
+          throw codTransactionFailure(error, {
+            requestId: options.requestId,
+            route,
+            stage: 'audit-outbox-transaction',
+          });
+        }
         if (transaction.failed) {
           const result = transaction.result;
           return {
@@ -159,7 +206,12 @@ async function executeMutation(req, res, options, {
     res.setHeader('Cache-Control', 'no-store');
     sendJson(res, execution.response.statusCode, execution.response.body, execution.response.requestId ?? options.requestId, execution.response.contentType);
   } catch (error) {
-    sendError(res, apiError(error?.code ?? 'COD_TRANSACTION_FAILED', 'COD transaction failed', {}, true, error?.statusCode ?? 503), options.requestId, options.receivedAt);
+    console.error(JSON.stringify(sanitizeCodTransactionError(error, {
+      requestId: options.requestId,
+      route,
+      stage: 'idempotency-execution',
+    })));
+    sendError(res, apiError('COD_TRANSACTION_FAILED', 'Không thể ghi nhận giao dịch COD lúc này', {}, true, 503), options.requestId, options.receivedAt);
   }
 }
 
@@ -232,3 +284,8 @@ export async function handleCodDriverRoutes(req, res, options) {
 
   return false;
 }
+
+export const codDriverInternals = Object.freeze({
+  sanitizeCodTransactionError,
+  transactionExpectations,
+});
