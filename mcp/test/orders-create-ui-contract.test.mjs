@@ -92,6 +92,18 @@ test("each MCP product stays one card with flat Lẻ-Thùng rows and compact plu
   assert.doesNotMatch(sheet, /styles\.variantGrid|styles\.variantButton|\+ Thêm/);
   assert.match(catalogStyles, /\.unitRow\s*\{[\s\S]*border-top:/);
   assert.doesNotMatch(catalogStyles.match(/\.unitRow\s*\{[\s\S]*?\}/)?.[0] ?? "", /border-radius|background:/);
+
+  const addRule = catalogStyles.match(/\.unitAdd\s*\{([\s\S]*?)\}/)?.[1] ?? "";
+  assert.match(addRule, /width:\s*40px/);
+  assert.match(addRule, /height:\s*40px/);
+  assert.match(addRule, /border:\s*0/);
+  assert.match(addRule, /background:\s*transparent/);
+  assert.match(addRule, /color:\s*var\(--warning\)/);
+  assert.match(addRule, /box-shadow:\s*none/);
+  assert.doesNotMatch(addRule, /border-radius:\s*50%/);
+  assert.match(catalogStyles, /\.unitAdd > span\s*\{[\s\S]*font-size:\s*22px[\s\S]*font-weight:\s*950/);
+  assert.doesNotMatch(catalogStyles, /\.unitAdd > span::before|\.unitAdd > span::after/);
+
   const milkTeaIndex = catalogPriority.indexOf('label: "Nguyên liệu trà sữa"');
   const spicyIndex = catalogPriority.indexOf('label: "Mì cay & đồ ăn"');
   const packagingIndex = catalogPriority.indexOf('label: "Bao bì & dụng cụ"');
