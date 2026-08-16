@@ -410,7 +410,7 @@ export default function UserWorkspace({
         headers: { 'Idempotency-Key': keyFor('status', user.id, statusPayload) },
       });
       setUsers((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      setNotice(toggleState.nextActive ? 'Đã kích hoạt người dùng.' : 'Đã ngừng sử dụng người dùng.');
+      setNotice(toggleState.nextActive ? 'Đã đưa người dùng vào sử dụng.' : 'Đã ngừng sử dụng người dùng.');
       setToggleState(null);
     } catch (caught) {
       handleFailure(caught);
@@ -431,7 +431,7 @@ export default function UserWorkspace({
       <main className={styles.page}>
         <header className={styles.header}>
           <div className={styles.headerText}>
-            <p className={styles.kicker}>Nhân sự &amp; phân quyền</p>
+            <p className={styles.kicker}>Nhân sự và phân quyền</p>
             <h1 className={styles.title}>Người dùng</h1>
             <p className={styles.subtitle}>Quản lý tài khoản sử dụng hệ thống, liên kết nhân sự và phân quyền theo công việc.</p>
           </div>
@@ -444,15 +444,15 @@ export default function UserWorkspace({
         <section className={styles.summaryGrid} aria-label="Tổng quan người dùng">
           <article className={styles.summaryCard}><span>Tổng tài khoản</span><strong>{counts.total}</strong></article>
           <article className={styles.summaryCard}><span>Đang hoạt động</span><strong>{counts.active}</strong></article>
-          <article className={styles.summaryCard}><span>Không hoạt động</span><strong>{counts.inactive}</strong></article>
+          <article className={styles.summaryCard}><span>Ngừng sử dụng</span><strong>{counts.inactive}</strong></article>
         </section>
 
         {error && !editor && <div className={styles.errorNotice} role="alert">{error}</div>}
         {notice && <div className={styles.notice} role="status">{notice}</div>}
 
         <section className={styles.toolbar} aria-label="Bộ lọc người dùng">
-          <label className={styles.field}>Tìm kiếm<input type="search" value={search} onChange={(event) => setSearch(event.currentTarget.value)} placeholder="Tên đăng nhập, nhân sự hoặc vai trò" /></label>
-          <label className={styles.field}>Trạng thái<select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as FilterState)}><option value="all">Tất cả</option><option value="active">Đang hoạt động</option><option value="inactive">Không hoạt động</option></select></label>
+          <label className={styles.field}>Tìm kiếm<input type="search" value={search} onChange={(event) => setSearch(event.currentTarget.value)} placeholder="Ví dụ: an.nguyen, Nguyễn Văn An, Bán hàng" /></label>
+          <label className={styles.field}>Trạng thái<select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as FilterState)}><option value="all">Tất cả</option><option value="active">Đang hoạt động</option><option value="inactive">Ngừng sử dụng</option></select></label>
           <div className={styles.headerActions}><span className={styles.muted}>{visibleUsers.length} kết quả</span></div>
         </section>
 
@@ -468,7 +468,7 @@ export default function UserWorkspace({
                     <td className={styles.loginName}>{user.login_name}</td>
                     <td><div className={styles.employeeCell}><strong>{employee?.full_name ?? user.employee_full_name ?? 'Không xác định'}</strong><span>{employee?.code ?? user.employee_code ?? ''}</span></div></td>
                     <td>{userRoles.length > 0 ? <div className={styles.roleList}>{userRoles.map((role) => <span key={role.id} className={styles.roleChip}>{role.name}</span>)}</div> : <span className={styles.muted}>Chưa gán vai trò</span>}</td>
-                    <td><span className={joinClasses(styles.statusBadge, user.is_active ? styles.active : styles.inactive)}>{user.is_active ? 'Hoạt động' : 'Không hoạt động'}</span></td>
+                    <td><span className={joinClasses(styles.statusBadge, user.is_active ? styles.active : styles.inactive)}>{user.is_active ? 'Đang hoạt động' : 'Ngừng sử dụng'}</span></td>
                     <td>{formatDateTime(user.updated_at)}</td>
                     <td><div className={styles.rowActions}><button className={styles.secondaryButton} type="button" onClick={() => openEdit(user.id)} disabled={busy !== null}>Sửa</button><button className={user.is_active ? styles.dangerButton : styles.successButton} type="button" onClick={() => setToggleState({ userId: user.id, nextActive: !user.is_active })} disabled={busy !== null}>{user.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button></div></td>
                   </tr>;
@@ -491,8 +491,8 @@ export default function UserWorkspace({
                 <label className={styles.field}>Tên đăng nhập<input value={draft.loginName} onChange={(event) => {
                   const value = event.currentTarget.value;
                   setDraft((current) => ({ ...current, loginName: value }));
-                }} disabled={editor.mode === 'edit' || busy !== null} placeholder="vi-du.nguyen" autoComplete="off" /></label>
-                {editor.mode === 'create' ? <label className={styles.field}>Nhân sự đang hoạt động chưa có tài khoản<select value={draft.employeeId} onChange={(event) => {
+                }} disabled={editor.mode === 'edit' || busy !== null} placeholder="Ví dụ: an.nguyen" autoComplete="off" /></label>
+                {editor.mode === 'create' ? <label className={styles.field}>Nhân sự đang làm việc chưa có tài khoản<select value={draft.employeeId} onChange={(event) => {
                   const value = event.currentTarget.value;
                   setDraft((current) => ({ ...current, employeeId: value }));
                 }} disabled={busy !== null}><option value="">Chọn nhân sự</option>{eligibleEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name} — {employee.code}</option>)}</select></label> : <label className={styles.field}>Nhân sự liên kết<input value={`${editingUser?.employee_full_name ?? employeeMap.get(draft.employeeId)?.full_name ?? ''}${editingUser?.employee_code ? ` — ${editingUser.employee_code}` : employeeMap.get(draft.employeeId)?.code ? ` — ${employeeMap.get(draft.employeeId)?.code}` : ''}`} disabled /></label>}
@@ -503,8 +503,8 @@ export default function UserWorkspace({
                 <label className={styles.field}>Trạng thái sau khi cấp tài khoản<select value={draft.isActive ? 'active' : 'inactive'} onChange={(event) => {
                   const isActive = event.currentTarget.value === 'active';
                   setDraft((current) => ({ ...current, isActive }));
-                }} disabled={busy !== null}><option value="active">Hoạt động</option><option value="inactive">Không hoạt động</option></select></label>
-                <div className={styles.field}>Vai trò<div className={styles.checkboxGrid}>{selectableRoles.map((role) => { const assigned = draft.roleIds.includes(role.id); return <label key={role.id} className={styles.roleOption}><input type="checkbox" checked={assigned} onChange={() => toggleRole(role.id)} disabled={busy !== null} /><span><strong>{role.name}</strong>{!role.is_active && <small>Vai trò không hoạt động — bỏ chọn để thu hồi</small>}</span></label>; })}{selectableRoles.length === 0 && <span className={styles.muted}>Không có vai trò đang hoạt động.</span>}</div>{editor.mode === 'create' && <small>Chọn ít nhất một vai trò để tài khoản có quyền sử dụng app.</small>}</div>
+                }} disabled={busy !== null}><option value="active">Đang hoạt động</option><option value="inactive">Ngừng sử dụng</option></select></label>
+                <div className={styles.field}>Vai trò<div className={styles.checkboxGrid}>{selectableRoles.map((role) => { const assigned = draft.roleIds.includes(role.id); return <label key={role.id} className={styles.roleOption}><input type="checkbox" checked={assigned} onChange={() => toggleRole(role.id)} disabled={busy !== null} /><span><strong>{role.name}</strong>{!role.is_active && <small>Vai trò đã ngừng sử dụng — bỏ chọn để thu hồi</small>}</span></label>; })}{selectableRoles.length === 0 && <span className={styles.muted}>Không có vai trò đang sử dụng.</span>}</div>{editor.mode === 'create' && <small>Chọn ít nhất một vai trò để tài khoản có quyền sử dụng hệ thống.</small>}</div>
               </div>
             </div>
             <footer className={styles.modalFooter}><button className={styles.secondaryButton} type="button" onClick={closeEditor} disabled={busy !== null}>Hủy</button><button className={styles.primaryButton} type="button" onClick={saveEditor} disabled={busy !== null || Boolean(createFormIncomplete) || Boolean(editPasswordInvalid)}>{busy === 'save' ? 'Đang lưu…' : editor.mode === 'create' ? 'Tạo tài khoản' : 'Lưu'}</button></footer>
@@ -514,7 +514,7 @@ export default function UserWorkspace({
         {toggleState && <div className={styles.modalBackdrop} role="presentation">
           <section className={joinClasses(styles.modalPanel, styles.confirmPanel)} role="dialog" aria-modal="true" aria-labelledby="toggle-user-title">
             <header className={styles.modalHeader}><div><h3 id="toggle-user-title">Xác nhận thay đổi trạng thái</h3></div><button className={styles.closeButton} type="button" onClick={() => setToggleState(null)} aria-label="Đóng" disabled={busy !== null}>×</button></header>
-            <div className={styles.modalBody}><p className={styles.confirmText}>{toggleState.nextActive ? 'Đưa người dùng này vào sử dụng? Nhân sự liên kết phải đang hoạt động.' : 'Ngừng sử dụng người dùng này? Các vai trò được giữ nguyên để có thể dùng lại khi cần.'}</p></div>
+            <div className={styles.modalBody}><p className={styles.confirmText}>{toggleState.nextActive ? 'Đưa người dùng này vào sử dụng? Nhân sự liên kết phải đang làm việc.' : 'Ngừng sử dụng người dùng này? Các vai trò được giữ nguyên để có thể dùng lại khi cần.'}</p></div>
             <footer className={styles.modalFooter}><button className={styles.secondaryButton} type="button" onClick={() => setToggleState(null)} disabled={busy !== null}>Hủy</button><button className={toggleState.nextActive ? styles.successButton : styles.dangerButton} type="button" onClick={confirmToggle} disabled={busy !== null}>{busy === 'toggle' ? 'Đang xử lý…' : 'Xác nhận'}</button></footer>
           </section>
         </div>}

@@ -43,6 +43,46 @@ test('P0 Core UI keeps developer and infrastructure language off business surfac
   }
 });
 
+test('P2 Core UI keeps office wording and object-specific statuses consistent', () => {
+  const shell = read('app/components/app-shell-core.tsx');
+  const dashboard = read('app/dashboard/page.tsx');
+  const users = read('app/access/users/user-workspace.tsx');
+  const employees = read('app/access/employees/employee-workspace.tsx');
+  const roles = read('app/access/roles/role-workspace.tsx');
+  const suppliers = read('app/suppliers/supplier-workspace.tsx');
+  const products = read('app/products/product-workspace.tsx');
+  const dataExchange = read('app/operations/data-exchange/data-exchange-view.tsx');
+
+  assert.doesNotMatch(shell, /Giá bán & khuyến mãi|Vai trò & phân quyền|Điều chỉnh & xử lý tồn|Lập & xếp chuyến|Bàn giao & xuất phát|COD & đối soát|Nhập \/ xuất dữ liệu|Lịch sử nhập \/ xuất/);
+  assert.match(shell, /Giá bán và khuyến mãi/);
+  assert.match(shell, /Nhập\/xuất dữ liệu/);
+
+  assert.doesNotMatch(dashboard, /Bán hàng & khách hàng|Mua hàng & kho|Giao hàng & công nợ|Lập & xếp chuyến/);
+  assert.doesNotMatch(users, /Không hoạt động|có quyền sử dụng app|Nhân sự &amp; phân quyền/);
+  assert.match(users, /Đang hoạt động/);
+  assert.match(users, /Ngừng sử dụng/);
+
+  assert.doesNotMatch(employees, /Ngừng hoạt động|Kích hoạt nhân sự/);
+  assert.match(employees, /Đang làm việc/);
+  assert.match(employees, /Ngừng làm việc/);
+
+  assert.doesNotMatch(roles, /Ngừng hoạt động|Vai trò đã được kích hoạt/);
+  assert.match(roles, /Đang sử dụng/);
+  assert.match(roles, /Ngừng sử dụng/);
+
+  assert.doesNotMatch(suppliers, />Hoạt động<|Không hoạt động/);
+  assert.match(suppliers, /Đang hoạt động/);
+  assert.match(suppliers, /Ngừng sử dụng/);
+
+  assert.doesNotMatch(products, /Đơn vị &amp;|>Hoạt động<|>Ngừng</);
+  assert.match(products, /Mã hàng \(SKU\)/);
+  assert.match(products, /Đang sử dụng/);
+
+  assert.doesNotMatch(dataExchange, /Nhập \/ xuất|FIXED_PRICE|backend đối chiếu|định dạng kỹ thuật ở phía sau|Theo ngành \/ nhóm|Chọn kho \/ vị trí \/ SKU \/ lô/);
+  assert.match(dataExchange, /Nhập\/xuất dữ liệu và báo giá/);
+  assert.match(dataExchange, /Tệp chỉ cần Mã hàng \(SKU\) và Giá bán/);
+});
+
 test('touched mutation paths use the shared canonical idempotency generator and preserve retry keys', () => {
   const roles = read('app/access/roles/role-workspace.tsx');
   const numbering = read('app/document-numbering/document-numbering-workspace.tsx');

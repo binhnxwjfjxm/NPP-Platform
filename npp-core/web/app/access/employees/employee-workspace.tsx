@@ -241,7 +241,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
       loadSequence.current += 1;
       setEmployees((items) => upsertEmployee(items, saved));
       setToggleState(null);
-      setNotice(toggleState.nextActive ? 'Nhân sự đã được đưa vào sử dụng.' : 'Nhân sự đã ngừng làm việc.');
+      setNotice(toggleState.nextActive ? 'Nhân sự đã được đưa trở lại làm việc.' : 'Nhân sự đã ngừng làm việc.');
       setBusy(null);
       window.sessionStorage.setItem(EMPLOYEE_DIRECTORY_DIRTY_KEY, '1');
       router.refresh();
@@ -290,7 +290,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
           <article className={styles.summaryCard}>
             <span>Đang làm việc</span>
             <strong>{formatCompactNumber(counts.active)}</strong>
-            <small>{counts.inactive} hồ sơ đã ngừng hoạt động</small>
+            <small>{counts.inactive} hồ sơ đã ngừng làm việc</small>
           </article>
           <article className={styles.summaryCard}>
             <span>Đã phân công</span>
@@ -307,7 +307,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
               data-testid="employees-search-input"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Mã, họ tên, chức danh, liên hệ…"
+              placeholder="Ví dụ: NV001, Nguyễn Văn An, Kế toán"
             />
           </div>
           <div className={styles.toolbarFilter}>
@@ -320,7 +320,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
             >
               <option value="all">Tất cả trạng thái</option>
               <option value="active">Đang làm việc</option>
-              <option value="inactive">Ngừng hoạt động</option>
+              <option value="inactive">Ngừng làm việc</option>
             </select>
           </div>
           <div className={styles.toolbarFilter}>
@@ -385,7 +385,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                       </td>
                       <td>
                         <span className={joinClasses(styles.statusPill, employee.is_active ? styles.toneSuccess : styles.toneDanger)}>
-                          {employee.is_active ? 'Đang làm việc' : 'Ngừng hoạt động'}
+                          {employee.is_active ? 'Đang làm việc' : 'Ngừng làm việc'}
                         </span>
                       </td>
                       <td>{formatDateTime(employee.updated_at)}</td>
@@ -397,7 +397,7 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
                             data-testid={`toggle-employee-${employee.code}`}
                             onClick={() => setToggleState({ employeeId: employee.id, nextActive: !employee.is_active })}
                           >
-                            {employee.is_active ? 'Ngừng' : 'Kích hoạt'}
+                            {employee.is_active ? 'Ngừng làm việc' : 'Đưa trở lại làm việc'}
                           </button>
                         </div>
                       </td>
@@ -504,13 +504,13 @@ export default function EmployeeWorkspace({ initialEmployees, branches: initialB
               <div className={styles.modalHeader}>
                 <div>
                   <p className={styles.panelKicker}>Xác nhận trạng thái</p>
-                  <h3>{toggleState.nextActive ? 'Kích hoạt nhân sự' : 'Ngừng hoạt động'}</h3>
+                  <h3>{toggleState.nextActive ? 'Đưa trở lại làm việc' : 'Ngừng làm việc'}</h3>
                 </div>
               </div>
               <p className={styles.confirmText}>
                 {toggleState.nextActive
                   ? 'Hồ sơ sẽ được đưa trở lại trạng thái đang làm việc.'
-                  : 'Hồ sơ sẽ ngừng hoạt động nhưng vẫn được giữ lại để đối soát và liên kết lịch sử.'}
+                  : 'Hồ sơ sẽ chuyển sang trạng thái ngừng làm việc nhưng vẫn được giữ lại để đối soát và liên kết lịch sử.'}
               </p>
               <div className={styles.formActions}>
                 <button type="button" className={styles.secondaryButton} onClick={() => setToggleState(null)}>Hủy</button>

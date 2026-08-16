@@ -17,17 +17,17 @@ type ShortcutIcon = 'sales' | 'purchasing' | 'inventory' | 'logistics' | 'accoun
 const shortcutGroups = [
   {
     id: 'sales',
-    title: 'Bán hàng & khách hàng',
+    title: 'Bán hàng và khách hàng',
     items: [
       { href: '/management', label: 'Điều hành bán hàng', icon: 'sales' },
       { href: '/sales/sales-orders', label: 'Đơn bán hàng', icon: 'sales' },
       { href: '/customers', label: 'Khách hàng', icon: 'customer' },
-      { href: '/management/customer-onboarding', label: 'Mở / liên kết mã khách', icon: 'customer' },
+      { href: '/management/customer-onboarding', label: 'Mở/liên kết mã khách', icon: 'customer' },
     ],
   },
   {
     id: 'purchasing-inventory',
-    title: 'Mua hàng & kho',
+    title: 'Mua hàng và kho',
     items: [
       { href: '/purchasing/purchase-orders', label: 'Đơn mua hàng', icon: 'purchasing' },
       { href: '/purchasing/goods-receipts', label: 'Phiếu nhận hàng', icon: 'purchasing' },
@@ -37,10 +37,10 @@ const shortcutGroups = [
   },
   {
     id: 'logistics-accounting',
-    title: 'Giao hàng & công nợ',
+    title: 'Giao hàng và công nợ',
     items: [
       { href: '/inventory/delivery-orders', label: 'Phiếu giao hàng', icon: 'logistics' },
-      { href: '/logistics/trips', label: 'Lập & xếp chuyến', icon: 'logistics' },
+      { href: '/logistics/trips', label: 'Lập và xếp chuyến', icon: 'logistics' },
       { href: '/accounting/receivables', label: 'Công nợ phải thu', icon: 'accounting' },
       { href: '/accounting/customer-payments', label: 'Thu tiền khách hàng', icon: 'accounting' },
     ],
