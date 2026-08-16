@@ -271,12 +271,12 @@ test.describe('Sales Order commercial controls', () => {
     }
 
     const firstLine = dialog.getByTestId('sales-order-line-1');
-    await firstLine.getByRole('button', { name: /^Dùng giá ngoại lệ/ }).click();
+    await firstLine.getByRole('button', { name: /^Dùng giá điều chỉnh thủ công/ }).click();
     await firstLine.getByLabel('Giá bán cuối *').fill('8500');
-    await firstLine.getByLabel('Lý do giá ngoại lệ *').fill('Giá đã được quản lý duyệt cho E2E');
-    await expect(firstLine.getByText('Giá ngoại lệ', { exact: true })).toBeVisible();
+    await firstLine.getByLabel('Lý do điều chỉnh giá *').fill('Giá đã được quản lý duyệt cho E2E');
+    await expect(firstLine.getByText('Giá điều chỉnh thủ công', { exact: true })).toBeVisible();
     await firstLine.getByRole('button', { name: /^Dùng lại giá hệ thống/ }).click();
-    await expect(firstLine.getByRole('button', { name: /^Dùng giá ngoại lệ/ })).toBeVisible();
+    await expect(firstLine.getByRole('button', { name: /^Dùng giá điều chỉnh thủ công/ })).toBeVisible();
 
     await dialog.getByTestId('document-discount-mode').selectOption('PERCENT');
     await dialog.getByLabel('Tỷ lệ %').fill('5');
