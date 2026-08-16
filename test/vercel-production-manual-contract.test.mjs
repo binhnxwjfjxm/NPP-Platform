@@ -16,6 +16,11 @@ test('manual Vercel production workflow remains source deploy only', () => {
   assert.match(workflow, /\/deploy-vercel-production/);
   assert.match(workflow, /npx --yes vercel@latest deploy/);
   assert.match(workflow, /--prod/);
+  assert.match(workflow, /Smoke test production alias/);
+  assert.match(workflow, /smoke_login_assets/);
+  assert.match(workflow, /for attempt in \{1\.\.12\}/);
+  assert.match(workflow, /Hệ thống điều hành Công Ty/);
+  assert.doesNotMatch(workflow, /Welcome to Hung Phat Operations\./);
   assert.doesNotMatch(workflow, /startsWith\(github\.event\.comment\.body/);
   assert.doesNotMatch(workflow, /\bvercel build\b/);
   assert.doesNotMatch(workflow, /--prebuilt\b/);
