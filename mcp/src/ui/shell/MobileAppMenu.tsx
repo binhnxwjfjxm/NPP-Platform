@@ -14,6 +14,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
+import { useMcpAccess } from "@/lib/use-mcp-access";
 import { APP_MENU_GROUPS, navItemForHref } from "./navigation";
 import styles from "./MobileAppMenu.module.css";
 
@@ -162,9 +163,16 @@ function TopMenuPanel({ children, description, onClose, open, title }: TopMenuPa
   );
 }
 
+function requiredNavigationPermission(href: string) {
+  if (href === "/routes") return "mcp.route.write";
+  if (href === "/mcp-setting") return "mcp.report-setting.write";
+  return null;
+}
+
 function MobileAppMenuRoot({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const access = useMcpAccess();
   const [open, setOpen] = useState(false);
   const [registration, setRegistration] = useState<MobileAppMenuRegistration | null>(null);
 
@@ -176,6 +184,15 @@ function MobileAppMenuRoot({ children }: { children: ReactNode }) {
   }, []);
   const openMenu = useCallback(() => setOpen(true), []);
   const contextValue = useMemo(() => ({ register, openMenu, menuOpen: open }), [register, openMenu, open]);
+  const visibleGroups = useMemo(() => APP_MENU_GROUPS
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        const permission = requiredNavigationPermission(item.href);
+        return !permission || access.hasPermission(permission);
+      })
+    }))
+    .filter((group) => group.items.length > 0), [access]);
   const isSettings = pathname === "/settings";
 
   useEffect(() => {
@@ -210,7 +227,7 @@ function MobileAppMenuRoot({ children }: { children: ReactNode }) {
 
   const contextualItems = registration?.items || [];
   const title = registration?.title || "Menu MCP";
-  const description = registration?.description || "Chuyển phân hệ, mở tác vụ màn hình và cấu hình ứng dụng.";
+  const description = registration?.description || "Chuyển phân hệ, mở tác vụ màn hình và cài đặt ứng dụng.";
 
   return (
     <MobileAppMenuContext.Provider value={contextValue}>
@@ -242,7 +259,7 @@ function MobileAppMenuRoot({ children }: { children: ReactNode }) {
             </section>
           ) : null}
 
-          {APP_MENU_GROUPS.map((group) => (
+          {visibleGroups.map((group) => (
             <section className={styles.menuSection} aria-label={group.label} key={group.id}>
               <div className={styles.sectionHeading}><strong>{group.label}</strong></div>
               <div className={styles.navigationGrid}>
@@ -270,7 +287,7 @@ function MobileAppMenuRoot({ children }: { children: ReactNode }) {
             <span className={styles.menuIcon} aria-hidden="true">⚙</span>
             <span className={styles.menuCopy}>
               <strong>{isSettings ? "Đóng cài đặt" : "Cài đặt ứng dụng"}</strong>
-              <small>{isSettings ? "Quay lại màn hình trước." : "Cấu hình dữ liệu và hành vi ứng dụng."}</small>
+              <small>{isSettings ? "Quay lại màn hình trước." : "Tùy chọn hiển thị và hành vi của ứng dụng."}</small>
             </span>
             <span className={styles.menuChevron} aria-hidden="true">›</span>
           </button>

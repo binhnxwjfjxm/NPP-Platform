@@ -120,7 +120,7 @@ async function verifyContrast(page) {
 async function verifyMobile(browser) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
-  await page.goto(`${appBase}/routes`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/routes`, { waitUntil: "domcontentloaded" });
 
   const trigger = await verifySingleTrigger(page);
   const bottomNav = page.locator('[data-bottom-navigation="true"]');
@@ -223,7 +223,7 @@ async function verifyMobile(browser) {
 async function verifyDesktop(browser) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
-  await page.goto(`${appBase}/routes`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/routes`, { waitUntil: "domcontentloaded" });
 
   await verifySingleTrigger(page);
   assert.equal(await page.locator('[data-bottom-navigation="true"]').isVisible(), false, "bottom navigation must be hidden on desktop");

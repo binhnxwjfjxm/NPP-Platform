@@ -2,6 +2,7 @@ import http from "node:http";
 import { corsHeaders, resolveCorsOrigin } from "./cors.js";
 import { canonicalErrorPayload, canonicalSuccessPayload, normalizeApiPayload, parseJsonPayload } from "./api-contract.js";
 import { authenticateRequestContext, forwardedContextHeaders, normalizeRequestId } from "./request-context.js";
+import { withFoundationRequestContext } from "./request-context-store.js";
 import { handleReadApi } from "./read-api.js";
 
 const LIVE_PATHS = new Set(["/", "/health/live"]);
@@ -110,31 +111,33 @@ export function createFoundationGateway(config, { persistence, legacyHandlers = 
       const context = authenticateRequestContext(req, config);
       req.foundationContext = context;
 
-      const readApi = await handleReadApi(req, url, context, config, { persistence });
-      if (readApi) {
-        writeNormalized(res, normalizeApiPayload(readApi.payload, { status: readApi.statusCode, requestId: context.requestId, receivedAt: context.receivedAt }), context.requestId, origin);
-        return;
-      }
+      await withFoundationRequestContext(context, async () => {
+        const readApi = await handleReadApi(req, url, context, config, { persistence });
+        if (readApi) {
+          writeNormalized(res, normalizeApiPayload(readApi.payload, { status: readApi.statusCode, requestId: context.requestId, receivedAt: context.receivedAt }), context.requestId, origin);
+          return;
+        }
 
-      if (!legacyHandlers) {
-        await persistence.assertReady();
-        const error = new Error("provider_unavailable");
-        error.code = "PROVIDER_UNAVAILABLE";
-        error.statusCode = 503;
+        if (!legacyHandlers) {
+          await persistence.assertReady();
+          const error = new Error("provider_unavailable");
+          error.code = "PROVIDER_UNAVAILABLE";
+          error.statusCode = 503;
+          throw error;
+        }
+
+        const orderApi = await legacyHandlers.handleOrderApi(req, url, context, config);
+        if (orderApi) { writeNormalized(res, normalizeApiPayload(orderApi.payload, { status: orderApi.statusCode, requestId: context.requestId, receivedAt: context.receivedAt }), context.requestId, origin); return; }
+        const routeApi = await legacyHandlers.handleRouteApi(req, url, context, config);
+        if (routeApi) { writeNormalized(res, normalizeApiPayload(routeApi.payload, { status: routeApi.statusCode, requestId: context.requestId, receivedAt: context.receivedAt }), context.requestId, origin); return; }
+        const transitional = await legacyHandlers.handleTransitionalApi(req, url, context, config);
+        if (transitional) { writeNormalized(res, normalizeApiPayload(transitional.payload, { status: transitional.statusCode, requestId: context.requestId, receivedAt: context.receivedAt }), context.requestId, origin); return; }
+        if (legacyHandlers.proxyToLegacy) { await proxyToLegacy(req, res, url, context, origin, config); return; }
+        const error = new Error("not_found");
+        error.code = "NOT_FOUND";
+        error.statusCode = 404;
         throw error;
-      }
-
-      const orderApi = await legacyHandlers.handleOrderApi(req, url, context, config);
-      if (orderApi) { writeNormalized(res, normalizeApiPayload(orderApi.payload, { status: orderApi.statusCode, requestId: context.requestId, receivedAt: context.receivedAt }), context.requestId, origin); return; }
-      const routeApi = await legacyHandlers.handleRouteApi(req, url, context, config);
-      if (routeApi) { writeNormalized(res, normalizeApiPayload(routeApi.payload, { status: routeApi.statusCode, requestId: context.requestId, receivedAt: context.receivedAt }), context.requestId, origin); return; }
-      const transitional = await legacyHandlers.handleTransitionalApi(req, url, context, config);
-      if (transitional) { writeNormalized(res, normalizeApiPayload(transitional.payload, { status: transitional.statusCode, requestId: context.requestId, receivedAt: context.receivedAt }), context.requestId, origin); return; }
-      if (legacyHandlers.proxyToLegacy) { await proxyToLegacy(req, res, url, context, origin, config); return; }
-      const error = new Error("not_found");
-      error.code = "NOT_FOUND";
-      error.statusCode = 404;
-      throw error;
+      });
     } catch (error) {
       const status = Number(error?.statusCode || 500);
       const retryAfterSeconds = Number(error?.publicDetails?.retryAfterSeconds || 0);

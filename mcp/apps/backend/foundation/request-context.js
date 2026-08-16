@@ -89,6 +89,17 @@ function normalizedList(value, pattern, code) {
   return Object.freeze([...unique].sort());
 }
 
+function decodedList(value, pattern, code) {
+  try {
+    const parsed = JSON.parse(decodeURIComponent(String(value || "")));
+    if (!Array.isArray(parsed)) actorContextError("invalid_workforce_authorization", 401);
+    return normalizedList(parsed, pattern, code);
+  } catch (error) {
+    if (error?.code) throw error;
+    actorContextError("invalid_workforce_authorization", 401);
+  }
+}
+
 function defaultPrincipal(config) {
   const configured = config.servicePrincipal || {};
   return {
@@ -141,10 +152,11 @@ function internalWorkforcePrincipal(req, config) {
 
   const parts = decoded.split("|");
   const [version, username, employeeId, encodedDisplayName] = parts;
-  const ownerFlag = version === "v3" ? parts[4] : "0";
-  const expectedLength = version === "v3" ? 5 : 4;
+  const isV4 = version === "v4";
+  const ownerFlag = version === "v3" || isV4 ? parts[4] : "0";
+  const expectedLength = isV4 ? 7 : version === "v3" ? 5 : 4;
   if (
-    !new Set(["v2", "v3"]).has(version) ||
+    !new Set(["v2", "v3", "v4"]).has(version) ||
     parts.length !== expectedLength ||
     !String(username || "").trim() ||
     !EMPLOYEE_UUID_PATTERN.test(String(employeeId || "").trim()) ||
@@ -159,19 +171,24 @@ function internalWorkforcePrincipal(req, config) {
   } catch {
     actorContextError("invalid_workforce_authorization", 401);
   }
+
+  const workforcePermissions = isV4
+    ? decodedList(parts[5], PERMISSION_PATTERN, "invalid_principal_permission")
+    : [];
+  const workforceScopes = isV4
+    ? decodedList(parts[6], SCOPE_PATTERN, "invalid_principal_scope")
+    : [];
   const configured = config.servicePrincipal || {};
-  const roles = [
-    ...(configured.roles || []),
-    ...(ownerFlag === "1" ? [MCP_INSTALLATION_OWNER_ROLE] : [])
-  ];
+  const owner = ownerFlag === "1";
+
   return {
     id: `user:${employeeId}`,
     type: "user",
     authentication: "core-workforce-session",
     employeeId,
-    roles,
-    permissions: configured.permissions || [],
-    scopes: configured.scopes || [],
+    roles: owner ? [MCP_INSTALLATION_OWNER_ROLE] : [],
+    permissions: owner ? [...(configured.permissions || []), ...workforcePermissions] : workforcePermissions,
+    scopes: owner ? [...(configured.scopes || []), ...workforceScopes] : workforceScopes,
     username: String(username).trim(),
     displayName
   };

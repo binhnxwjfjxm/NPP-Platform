@@ -46,7 +46,7 @@ try {
   for (const viewport of mobileViewports) {
     const homeContext = await browser.newContext({ viewport });
     const homePage = await homeContext.newPage();
-    await homePage.goto(`${appBase}/`, { waitUntil: "networkidle" });
+    await homePage.goto(`${appBase}/`, { waitUntil: "domcontentloaded" });
 
     const launchpad = homePage.locator(".mobile-home-launchpad:visible");
     assert.equal(await launchpad.count(), 1, `home must show one launchpad at ${viewport.width}px`);
@@ -84,7 +84,7 @@ try {
     for (const spec of listSpecs) {
       const listContext = await browser.newContext({ viewport });
       const listPage = await listContext.newPage();
-      await listPage.goto(`${appBase}${spec.path}`, { waitUntil: "networkidle" });
+      await listPage.goto(`${appBase}${spec.path}`, { waitUntil: "domcontentloaded" });
 
       await listPage.locator(".page-header").waitFor({ state: "visible" });
       await listPage.locator(".route-mobile-list").waitFor({ state: "visible" });
@@ -123,14 +123,14 @@ try {
   const desktopContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const desktopPage = await desktopContext.newPage();
   for (const spec of listSpecs) {
-    await desktopPage.goto(`${appBase}${spec.path}`, { waitUntil: "networkidle" });
+    await desktopPage.goto(`${appBase}${spec.path}`, { waitUntil: "domcontentloaded" });
     await desktopPage.locator(".route-desktop-table .desktop-table").waitFor({ state: "visible" });
     assert.equal(await desktopPage.locator(".route-mobile-list").evaluate((node) => getComputedStyle(node).display), "none");
     const overflow = await horizontalOverflow(desktopPage);
     assert.ok(overflow <= 1, `${spec.path} desktop must not overflow horizontally; overflow=${overflow}`);
     await screenshot(desktopPage, `16-${spec.path.slice(1)}-desktop`);
   }
-  await desktopPage.goto(`${appBase}/actions`, { waitUntil: "networkidle" });
+  await desktopPage.goto(`${appBase}/actions`, { waitUntil: "domcontentloaded" });
   await desktopPage.waitForURL((url) => url.pathname === "/plans");
   await desktopContext.close();
 
@@ -138,7 +138,7 @@ try {
   const page = await context.newPage();
 
   try {
-    await page.goto(`${appBase}/routes`, { waitUntil: "networkidle" });
+    await page.goto(`${appBase}/routes`, { waitUntil: "domcontentloaded" });
     const shell = page.locator(".app-shell");
     assert.equal(await shell.getAttribute("data-shell-section"), "routes");
 
@@ -183,7 +183,7 @@ try {
     assert.equal(await page.locator(".app-shell").getAttribute("data-shell-section"), "routes");
     await page.locator("[data-app-top-bar]").getByText("Tuyến bán hàng", { exact: true }).waitFor({ state: "visible" });
 
-    await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "networkidle" });
+    await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "domcontentloaded" });
     assert.equal(await page.locator(".app-shell").getAttribute("data-shell-section"), "session");
     await page.locator("[data-app-top-bar]").getByText("Đi tuyến hôm nay", { exact: true }).waitFor({ state: "visible" });
     const customer = page.locator("article").filter({ hasText: "UI Existing Customer" }).first();

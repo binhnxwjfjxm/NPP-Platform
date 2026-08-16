@@ -178,12 +178,25 @@ function orderItemRows() {
 function workforceMe() {
   return {
     employeeId: "11111111-1111-4111-8111-111111111111",
-    roles: ["sales"],
-    permissions: ["sales.orders.read"],
+    roles: ["mcp.admin"],
+    permissions: [
+      "sales.orders.read",
+      "mcp.session.write",
+      "mcp.session-customer.write",
+      "mcp.order.write",
+      "mcp.test.write",
+      "mcp.report.write",
+      "mcp.followup.write",
+      "mcp.sales-order.read",
+      "mcp.sales-order.create",
+      "mcp.route.write",
+      "mcp.route-customer.write",
+      "mcp.report-setting.write"
+    ],
     scopes: [],
     session: {
-      loginName: "sales.ui",
-      employeeFullName: "Sales UI",
+      loginName: "admin.ui",
+      employeeFullName: "Admin UI",
       expiresAt: "2099-12-31T23:59:59.000Z"
     }
   };

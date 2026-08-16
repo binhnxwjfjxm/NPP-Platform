@@ -5,6 +5,7 @@ import { chromium } from "playwright";
 const appBase = process.env.F05_UI_APP_BASE || "http://127.0.0.1:3000";
 const resultsDir = process.env.F05_UI_RESULTS_DIR || "test-results/f05-ui-smoke";
 const proxyHeaders = { "x-forwarded-proto": "https" };
+const unauthenticatedHeaders = { ...proxyHeaders, "x-f05-auth-mode": "unauthenticated" };
 await mkdir(resultsDir, { recursive: true });
 
 async function waitForHttp(url, timeoutMs = 120000) {
@@ -67,30 +68,30 @@ try {
     const context = await browser.newContext({ viewport });
     const page = await context.newPage();
     for (const [name, path] of [["home", "/"], ["plans", "/plans"], ["sessions", "/mcp/sessions?dateFrom=2099-12-01&dateTo=2099-12-31"]]) {
-      await page.goto(`${appBase}${path}`, { waitUntil: "networkidle" });
+      await page.goto(`${appBase}${path}`, { waitUntil: "domcontentloaded" });
       await assertShell(page, `${name} at ${viewport.width}px`, true);
     }
 
     let legacyCalls = 0;
     await page.route("**/api/backend/mcp-day/session-customer/customer-onboarding**", async (route) => { legacyCalls += 1; await route.abort(); });
     await page.route("**/api/backend/mcp-day/session-customer/sales-order**", async (route) => { legacyCalls += 1; await route.abort(); });
-    await page.setExtraHTTPHeaders(proxyHeaders);
-    await page.goto(`${appBase}/visits/order-intent?sessionCustomerId=sc-existing&orderId=order-lot-4&customerName=UI%20Lot%204`, { waitUntil: "networkidle" });
+    await page.setExtraHTTPHeaders(unauthenticatedHeaders);
+    await page.goto(`${appBase}/visits/order-intent?sessionCustomerId=sc-existing&orderId=order-lot-4&customerName=UI%20Lot%204`, { waitUntil: "domcontentloaded" });
     await page.waitForURL((url) => url.pathname === "/login" && url.searchParams.get("returnTo") === "/orders");
     assert.equal(legacyCalls, 0, "retired order-intent route must not call legacy APIs");
     await page.getByRole("heading", { name: "Đăng nhập nhân viên", exact: true }).waitFor({ state: "visible" });
     assert.equal(await page.locator("[data-order-step]").count(), 0);
     assert.ok(await horizontalOverflow(page) <= 1, `canonical order auth boundary must not overflow at ${viewport.width}px`);
-    await page.setExtraHTTPHeaders({});
+    await page.setExtraHTTPHeaders(proxyHeaders);
 
     const mutationLog = [];
     await mockGroups(page, mutationLog);
-    await page.goto(`${appBase}/mcp-setting/groups`, { waitUntil: "networkidle" });
+    await page.goto(`${appBase}/mcp-setting/groups`, { waitUntil: "domcontentloaded" });
     await assertShell(page, `report groups at ${viewport.width}px`, true);
     const mobileList = page.locator("section[aria-label='Danh sách nhóm lựa chọn']");
     await mobileList.waitFor({ state: "visible" });
     await mobileList.getByText("Sản phẩm đang dùng", { exact: true }).waitFor({ state: "visible" });
-    assert.equal(await page.locator("section[aria-label='Bảng nhóm lựa chọn']").evaluate((node) => getComputedStyle(node).display), "none");
+    await page.locator("section[aria-label='Bảng nhóm lựa chọn']").waitFor({ state: "hidden" });
 
     const addButton = page.getByRole("button", { name: "Thêm nhóm", exact: true }).first();
     assert.ok((await addButton.evaluate((node) => node.getBoundingClientRect().height)) >= 44, "add group action must be touchable");
@@ -126,16 +127,16 @@ try {
   const desktopPage = await desktopContext.newPage();
   const desktopMutationLog = [];
   await mockGroups(desktopPage, desktopMutationLog);
-  await desktopPage.goto(`${appBase}/mcp-setting/groups`, { waitUntil: "networkidle" });
+  await desktopPage.goto(`${appBase}/mcp-setting/groups`, { waitUntil: "domcontentloaded" });
   await assertShell(desktopPage, "report groups desktop", false);
-  assert.equal(await desktopPage.locator("section[aria-label='Danh sách nhóm lựa chọn']").evaluate((node) => getComputedStyle(node).display), "none");
+  await desktopPage.locator("section[aria-label='Danh sách nhóm lựa chọn']").waitFor({ state: "hidden" });
   const desktopTable = desktopPage.locator("section[aria-label='Bảng nhóm lựa chọn']");
   await desktopTable.waitFor({ state: "visible" });
   assert.equal(await desktopTable.locator("table tbody tr").count(), 2);
-  await desktopPage.goto(`${appBase}/actions`, { waitUntil: "networkidle" });
-  assert.equal(new URL(desktopPage.url()).pathname, "/plans");
-  await desktopPage.goto(`${appBase}/mcp/settings`, { waitUntil: "networkidle" });
-  assert.equal(new URL(desktopPage.url()).pathname, "/mcp-setting");
+  await desktopPage.goto(`${appBase}/actions`, { waitUntil: "domcontentloaded" });
+  await desktopPage.waitForURL((url) => url.pathname === "/plans");
+  await desktopPage.goto(`${appBase}/mcp/settings`, { waitUntil: "domcontentloaded" });
+  await desktopPage.waitForURL((url) => url.pathname === "/mcp-setting");
   await desktopContext.close();
 
   result.MCP_UI_LOT_4_SMOKE = "PASS";

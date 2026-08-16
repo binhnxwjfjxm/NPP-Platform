@@ -110,7 +110,7 @@ await page.route("**/api/mcp-report-settings**", async (route) => {
 const evidence = {};
 
 try {
-  await page.goto(`${appBase}/mcp-setting`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/mcp-setting`, { waitUntil: "domcontentloaded" });
   await page.getByText("Đối thủ cũ", { exact: true }).waitFor({ state: "visible" });
 
   const main = page.locator("[data-app-scroll-region]");

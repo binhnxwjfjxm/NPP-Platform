@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { authorizeCommand } from "./authorization.js";
+import { currentFoundationRequestContext } from "./request-context-store.js";
 
 const COMMAND_PATTERN = /^mcp\.[a-z0-9][a-z0-9._:-]{1,126}$/;
 const EVENT_PATTERN = /^mcp\.[a-z0-9][a-z0-9._:-]{1,126}$/;
@@ -155,6 +156,7 @@ export async function executeWriteCommand({
   clock = () => new Date(),
   uuid = randomUUID
 }) {
+  context = currentFoundationRequestContext() || context;
   const command = requiredText(commandName, COMMAND_PATTERN, "invalid_command_name");
   const event = requiredText(eventType, EVENT_PATTERN, "invalid_event_type");
   const actor = authorizeCommand(context, { permission, scope });

@@ -91,10 +91,12 @@ jobs:
           MOCK_PID=$!
           node test/ui/f05-ui-read-proxy.mjs >test-results/f05-ui-smoke/read-proxy.log 2>&1 &
           PROXY_PID=$!
-          npm start -- -p 3000 >test-results/f05-ui-smoke/next.log 2>&1 &
+          npm start -- -p 3002 >test-results/f05-ui-smoke/next.log 2>&1 &
           APP_PID=$!
+          node test/ui/f05-ui-auth-proxy.mjs >test-results/f05-ui-smoke/auth-proxy.log 2>&1 &
+          AUTH_PROXY_PID=$!
           cleanup() {
-            kill "$APP_PID" "$PROXY_PID" "$MOCK_PID" 2>/dev/null || true
+            kill "$AUTH_PROXY_PID" "$APP_PID" "$PROXY_PID" "$MOCK_PID" 2>/dev/null || true
           }
           trap cleanup EXIT
           node test/ui/f05-ui-browser-smoke.mjs 2>&1 | tee test-results/f05-ui-smoke/browser-smoke.log
