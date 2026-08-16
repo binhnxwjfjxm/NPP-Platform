@@ -64,6 +64,8 @@ try {
 
   await webPage.reload({ waitUntil: "domcontentloaded" });
   const persistedSwitch = webPage.getByRole("switch", { name: "Phản hồi rung", exact: true });
+  await persistedSwitch.waitFor({ state: "visible" });
+  await webPage.waitForFunction(() => document.querySelector('[role="switch"][aria-label="Phản hồi rung"]')?.getAttribute("aria-checked") === "false");
   assert.equal(await persistedSwitch.getAttribute("aria-checked"), "false", "preference must survive reload");
   await persistedSwitch.click();
   assert.equal(await persistedSwitch.getAttribute("aria-checked"), "true");
