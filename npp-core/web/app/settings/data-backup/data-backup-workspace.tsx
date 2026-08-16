@@ -23,7 +23,20 @@ type BackupJob = {
   failureMessage?: string | null;
   artifacts: { databaseDump: Artifact; csvZip: Artifact; xlsx: Artifact; manifest: Artifact };
 };
-type DeleteIntent = { id: string; status: string; backupJobId: string; challengeExpiresAt?: string; ownerRecipientCount?: number; authorizedAt?: string; purgeExecuted?: boolean };
+type PurgeTargetCode = 'ALL_BUSINESS_DATA' | 'OPERATIONS_ONLY' | 'CUSTOMERS_AND_SALES' | 'SUPPLIERS_AND_PURCHASING' | 'PRODUCTS_AND_INVENTORY' | 'MCP_ONLY';
+type DeleteIntent = {
+  id: string;
+  status: string;
+  backupJobId: string;
+  targetCode: PurgeTargetCode;
+  challengeExpiresAt?: string;
+  ownerRecipientCount?: number;
+  authorizedAt?: string;
+  purgeExecuted?: boolean;
+  purgeStartedAt?: string | null;
+  purgeCompletedAt?: string | null;
+  purgeSummary?: { deletedRows?: number; affectedTableCount?: number } | null;
+};
 type Envelope<T> = { data?: T; error?: { code?: string; message?: string; retryable?: boolean; details?: unknown } };
 type BackupAccess = { canReadBackup: boolean; canCreateBackup: boolean; canDownloadBackup: boolean; canAuthorizeDeletion: boolean };
 type TechnicalAccess = { unlocked: boolean; expiresAt: string | null };
@@ -32,6 +45,14 @@ type RequestFailure = Error & { retryable?: boolean; statusCode?: number };
 type BackupArtifactType = 'database' | 'manifest';
 
 const TECHNICAL_RECIPIENT = 'khuongbinh.info@gmail.com';
+const PURGE_TARGETS: ReadonlyArray<{ code: PurgeTargetCode; label: string; description: string }> = [
+  { code: 'ALL_BUSINESS_DATA', label: 'Toàn bộ dữ liệu nghiệp vụ', description: 'Dùng khi dọn dữ liệu test để bàn giao. Giữ tài khoản đăng nhập, phân quyền, cấu hình tổ chức, cấu hình nền và bản sao lưu kỹ thuật.' },
+  { code: 'OPERATIONS_ONLY', label: 'Dữ liệu phát sinh', description: 'Xóa đơn hàng, kho, công nợ, giao hàng, báo cáo và hoạt động MCP; giữ danh mục khách hàng, nhà cung cấp và sản phẩm.' },
+  { code: 'CUSTOMERS_AND_SALES', label: 'Khách hàng & bán hàng', description: 'Xóa khách hàng và toàn bộ bán hàng, giao hàng, công nợ và dữ liệu phụ thuộc liên quan.' },
+  { code: 'SUPPLIERS_AND_PURCHASING', label: 'Nhà cung cấp & mua hàng', description: 'Xóa nhà cung cấp, mua hàng và dữ liệu phụ thuộc liên quan.' },
+  { code: 'PRODUCTS_AND_INVENTORY', label: 'Sản phẩm & kho', description: 'Xóa danh mục sản phẩm, bảng giá, tồn kho và các giao dịch phụ thuộc.' },
+  { code: 'MCP_ONLY', label: 'Dữ liệu MCP', description: 'Xóa tuyến, phiên, ghé điểm, báo cáo và dữ liệu hoạt động MCP; giữ cấu hình MCP và dữ liệu Công Ty.' },
+];
 const NO_BACKUP_ACCESS: BackupAccess = {
   canReadBackup: false,
   canCreateBackup: false,
@@ -75,6 +96,9 @@ function progress(status: string) {
   if (index >= 0) return Math.round((index / (STAGES.length - 1)) * 100);
   return ACTIVE.has(status) ? 55 : 0;
 }
+function purgeTarget(code: PurgeTargetCode) {
+  return PURGE_TARGETS.find((target) => target.code === code) ?? PURGE_TARGETS[0];
+}
 
 export default function DataBackupWorkspace() {
   const [jobs, setJobs] = useState<BackupJob[]>([]);
@@ -91,6 +115,7 @@ export default function DataBackupWorkspace() {
   const [deleteIntent, setDeleteIntent] = useState<DeleteIntent | null>(null);
   const [deleteCode, setDeleteCode] = useState('');
   const [deleteReason, setDeleteReason] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<PurgeTargetCode>('ALL_BUSINESS_DATA');
   const [busyAction, setBusyAction] = useState('');
   const mutationKeys = useRef(new Map<string, string>());
 
@@ -242,11 +267,15 @@ export default function DataBackupWorkspace() {
 
   async function requestDeleteChallenge() {
     if (!canAuthorizeDeletion) return;
-    if (!latestVerified) { setError('Cần một bản sao lưu VERIFIED trước khi xác minh xóa dữ liệu'); return; }
-    const intentKey = `data-deletion.create.${latestVerified.id}`;
+    if (!latestVerified) { setError('Cần một bản sao lưu đã xác minh trước khi xóa dữ liệu'); return; }
+    const intentKey = `data-deletion.create.${latestVerified.id}.${deleteTarget}`;
     setBusyAction(intentKey); setError(''); setSuccess('');
     try {
-      const intent = await mutate<DeleteIntent>(intentKey, '/api/data-deletions', { backupJobId: latestVerified.id, reason: deleteReason });
+      const intent = await mutate<DeleteIntent>(intentKey, '/api/data-deletions', {
+        backupJobId: latestVerified.id,
+        targetCode: deleteTarget,
+        reason: deleteReason,
+      });
       setDeleteIntent(intent);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Không gửi được mã xác nhận xóa dữ liệu'); }
     finally { setBusyAction(''); }
@@ -261,6 +290,18 @@ export default function DataBackupWorkspace() {
       setDeleteIntent(intent);
       setDeleteCode('');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Mã xác nhận không hợp lệ'); }
+    finally { setBusyAction(''); }
+  }
+
+  async function executeDelete() {
+    if (!deleteIntent || deleteIntent.status !== 'AUTHORIZED' || !canAuthorizeDeletion) return;
+    const intentKey = `data-deletion.execute.${deleteIntent.id}`;
+    setBusyAction(intentKey); setError(''); setSuccess('');
+    try {
+      const intent = await mutate<DeleteIntent>(intentKey, `/api/data-deletions/${deleteIntent.id}/execute`, {});
+      setDeleteIntent(intent);
+      setSuccess(`Đã xóa ${purgeTarget(intent.targetCode).label.toLowerCase()}. Bản sao lưu kỹ thuật vẫn được giữ nguyên.`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Không thể thực hiện xóa dữ liệu'); }
     finally { setBusyAction(''); }
   }
 
@@ -362,10 +403,10 @@ export default function DataBackupWorkspace() {
       {canAuthorizeDeletion ? <section className={styles.danger}>
         <p className={styles.eyebrow}>VÙNG NGUY HIỂM</p>
         <h2>Xóa dữ liệu</h2>
-        <p>Yêu cầu xóa chỉ được xác nhận khi có bản sao lưu đã xác minh phù hợp. Bước xác nhận xóa là một quy trình riêng, không dùng phiên mở Khu vực kỹ thuật.</p>
+        <p>Chọn đúng nhóm dữ liệu cần dọn. Hệ thống tự xử lý dữ liệu phụ thuộc để không làm hỏng quan hệ nghiệp vụ.</p>
         {!technicalAccess.unlocked ? <p className={styles.muted}>Mở Khu vực kỹ thuật để chọn bản sao lưu đã xác minh trước khi yêu cầu xóa.</p> : null}
-        <button className={styles.dangerButton} onClick={() => { setDeleteOpen(true); setDeleteIntent(null); setDeleteCode(''); }} disabled={!latestVerified}>XÓA DỮ LIỆU</button>
-        <p className={styles.muted}>Hiện tại hệ thống mới xác nhận yêu cầu xóa; chưa thực hiện xóa dữ liệu tự động.</p>
+        <button className={styles.dangerButton} onClick={() => { setDeleteOpen(true); setDeleteIntent(null); setDeleteCode(''); setDeleteReason(''); }} disabled={!latestVerified}>XÓA DỮ LIỆU</button>
+        <p className={styles.muted}>Chỉ xóa thật sau khi có bản sao lưu mới, nhập đúng mã xác nhận riêng và bấm xác nhận lần cuối.</p>
       </section> : null}
     </div>
 
@@ -391,19 +432,44 @@ export default function DataBackupWorkspace() {
 
     {deleteOpen && canAuthorizeDeletion ? <div className={styles.overlay} role="dialog" aria-modal="true" aria-labelledby="delete-title">
       <div className={styles.modal}>
-        <p className={styles.dangerEyebrow}>XÓA DỮ LIỆU</p><h2 id="delete-title">Xác minh yêu cầu xóa</h2>
+        <p className={styles.dangerEyebrow}>XÓA DỮ LIỆU</p><h2 id="delete-title">Dọn dữ liệu trước bàn giao</h2>
         {!deleteIntent ? <>
-          <p>Bản sao lưu bảo vệ: <strong>{latestVerified?.id ?? '—'}</strong></p>
-          <p className={styles.muted}>Xác nhận xóa dùng mã riêng; phiên mở Khu vực kỹ thuật không thay thế bước này.</p>
-          <label className={styles.field}>Lý do<textarea value={deleteReason} maxLength={1000} onChange={(event) => setDeleteReason(event.currentTarget.value)} /></label>
+          <p>Bản sao lưu bảo vệ: <strong>{latestVerified ? formatDate(latestVerified.verifiedAt) : '—'}</strong></p>
+          <p className={styles.muted}>Bản sao lưu phải được tạo và xác minh trong vòng 1 giờ trước khi thực hiện xóa.</p>
+          <label className={styles.field}>Phạm vi cần xóa
+            <select value={deleteTarget} onChange={(event) => setDeleteTarget(event.currentTarget.value as PurgeTargetCode)}>
+              {PURGE_TARGETS.map((target) => <option key={target.code} value={target.code}>{target.label}</option>)}
+            </select>
+          </label>
+          <div className={styles.warningBox}>
+            <strong>{purgeTarget(deleteTarget).label}</strong>
+            <p>{purgeTarget(deleteTarget).description}</p>
+          </div>
+          <p><strong>Luôn giữ:</strong> tài khoản đăng nhập, phân quyền, cấu hình chi nhánh/kho, cấu hình nền cần để hệ thống tiếp tục hoạt động, lịch sử cấu trúc và bản sao lưu kỹ thuật trên R2.</p>
+          <p className={styles.muted}>Nếu dữ liệu được chọn có dữ liệu phụ thuộc, hệ thống sẽ tự xóa phần phụ thuộc bắt buộc hoặc dừng an toàn; không để dữ liệu mồ côi.</p>
+          <label className={styles.field}>Lý do<textarea value={deleteReason} maxLength={1000} placeholder="Ví dụ: Dọn dữ liệu kiểm thử trước bàn giao" onChange={(event) => setDeleteReason(event.currentTarget.value)} /></label>
           <div className={styles.modalActions}><button className={styles.secondary} onClick={() => setDeleteOpen(false)}>HỦY</button><button className={styles.dangerButton} onClick={() => void requestDeleteChallenge()} disabled={Boolean(busyAction)}>GỬI MÃ XÁC NHẬN</button></div>
-        </> : deleteIntent.status === 'AUTHORIZED' ? <>
-          <div className={styles.success}>Yêu cầu xóa đã được xác minh. Chưa có thao tác xóa dữ liệu nào được thực hiện.</div>
+        </> : deleteIntent.status === 'PURGED' ? <>
+          <div className={styles.success}>Đã xóa dữ liệu thành công.</div>
+          <p><strong>Phạm vi:</strong> {purgeTarget(deleteIntent.targetCode).label}</p>
+          <p>Đã xóa {Number(deleteIntent.purgeSummary?.deletedRows ?? 0).toLocaleString('vi-VN')} bản ghi trong {Number(deleteIntent.purgeSummary?.affectedTableCount ?? 0).toLocaleString('vi-VN')} bảng nghiệp vụ.</p>
+          <p className={styles.muted}>Tài khoản, phân quyền, cấu hình nền và bản sao lưu kỹ thuật vẫn được giữ.</p>
           <div className={styles.modalActions}><button className={styles.secondary} onClick={() => setDeleteOpen(false)}>ĐÓNG</button></div>
+        </> : deleteIntent.status === 'AUTHORIZED' ? <>
+          <div className={styles.warningBox}>
+            <strong>Đã xác minh quyền xóa</strong>
+            <p>Phạm vi: {purgeTarget(deleteIntent.targetCode).label}. Bước tiếp theo sẽ xóa dữ liệu thật và không thể hoàn tác trong cơ sở dữ liệu hiện tại.</p>
+          </div>
+          <p>Bản sao lưu bảo vệ vẫn nằm trên R2 để khôi phục khi cần.</p>
+          <div className={styles.modalActions}>
+            <button className={styles.secondary} onClick={() => setDeleteOpen(false)} disabled={Boolean(busyAction)}>CHƯA XÓA</button>
+            <button className={styles.dangerButton} onClick={() => void executeDelete()} disabled={Boolean(busyAction)}>{busyAction.startsWith('data-deletion.execute.') ? 'ĐANG XÓA...' : 'XÓA DỮ LIỆU NGAY'}</button>
+          </div>
         </> : <>
+          <p>Phạm vi: <strong>{purgeTarget(deleteIntent.targetCode).label}</strong></p>
           <p>Mã xác nhận xóa đã được gửi theo chính sách xác nhận hiện tại. Hết hạn: {formatDate(deleteIntent.challengeExpiresAt)}</p>
           <label className={styles.field}>Mã 6 số<input inputMode="numeric" autoComplete="one-time-code" value={deleteCode} maxLength={6} onChange={(event) => setDeleteCode(event.currentTarget.value.replace(/\D/g, '').slice(0, 6))} /></label>
-          <div className={styles.modalActions}><button className={styles.secondary} onClick={() => setDeleteOpen(false)}>HỦY</button><button className={styles.dangerButton} onClick={() => void verifyDeleteChallenge()} disabled={!/^\d{6}$/.test(deleteCode) || Boolean(busyAction)}>XÁC NHẬN</button></div>
+          <div className={styles.modalActions}><button className={styles.secondary} onClick={() => setDeleteOpen(false)}>HỦY</button><button className={styles.dangerButton} onClick={() => void verifyDeleteChallenge()} disabled={!/^\d{6}$/.test(deleteCode) || Boolean(busyAction)}>XÁC NHẬN MÃ</button></div>
         </>}
       </div>
     </div> : null}

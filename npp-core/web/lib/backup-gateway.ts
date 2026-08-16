@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 import { requireNppWorkforceSessionToken } from './internal-auth-client';
 
 const REQUEST_TIMEOUT_MS = 30_000;
-const SAFE_PATH = /^\/(?:api\/backups(?:\/technical-access(?:\/challenges(?:\/[0-9a-f-]{36}\/verify)?)?|\/[0-9a-f-]{36}(?:\/download)?)?|api\/data-deletions(?:\/[0-9a-f-]{36}\/verify)?)$/i;
+const SAFE_PATH = /^\/(?:api\/backups(?:\/technical-access(?:\/challenges(?:\/[0-9a-f-]{36}\/verify)?)?|\/[0-9a-f-]{36}(?:\/download)?)?|api\/data-deletions(?:\/[0-9a-f-]{36}\/(?:verify|execute))?)$/i;
 export const TECHNICAL_BACKUP_UNLOCK_COOKIE = 'hp_technical_backup_unlock';
 
 type Envelope<T> = { data?: T; error?: { code?: string; message?: string; retryable?: boolean; details?: unknown } };

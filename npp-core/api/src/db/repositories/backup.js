@@ -193,8 +193,8 @@ export async function insertDeletionIntent(client, intent) {
   const result = await client.query(
     `INSERT INTO shared.data_deletion_intents (
       id, installation_id, backup_job_id, status, requested_by, source_app, request_id,
-      reason, challenge_code_hash, challenge_expires_at, owner_recipient_count
-    ) VALUES ($1,$2,$3,'CHALLENGE_PENDING',$4,$5,$6,$7,$8,$9,$10)
+      reason, challenge_code_hash, challenge_expires_at, owner_recipient_count, target_code
+    ) VALUES ($1,$2,$3,'CHALLENGE_PENDING',$4,$5,$6,$7,$8,$9,$10,$11)
     RETURNING *`,
     [
       intent.id,
@@ -207,6 +207,7 @@ export async function insertDeletionIntent(client, intent) {
       intent.challengeCodeHash,
       intent.challengeExpiresAt,
       intent.ownerRecipientCount,
+      intent.targetCode,
     ],
   );
   return result.rows[0];
@@ -227,7 +228,7 @@ export async function failDeletionIntent(client, { installationId, intentId, fai
   const result = await client.query(
     `UPDATE shared.data_deletion_intents
         SET status = 'FAILED', failure_code = $3, updated_at = now()
-      WHERE installation_id = $1 AND id = $2 AND status <> 'AUTHORIZED'
+      WHERE installation_id = $1 AND id = $2 AND status NOT IN ('AUTHORIZED','PURGING','PURGED')
       RETURNING *`,
     [installationId, intentId, failureCode],
   );
@@ -268,6 +269,28 @@ export async function authorizeDeletionIntent(client, { installationId, intentId
       WHERE installation_id = $1 AND id = $2 AND status = 'CHALLENGE_PENDING'
       RETURNING *`,
     [installationId, intentId, verifiedAt],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function markDeletionPurging(client, { installationId, intentId, startedAt }) {
+  const result = await client.query(
+    `UPDATE shared.data_deletion_intents
+        SET status = 'PURGING', purge_started_at = $3, updated_at = now()
+      WHERE installation_id = $1 AND id = $2 AND status = 'AUTHORIZED'
+      RETURNING *`,
+    [installationId, intentId, startedAt],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function completeDeletionPurge(client, { installationId, intentId, completedAt, summary }) {
+  const result = await client.query(
+    `UPDATE shared.data_deletion_intents
+        SET status = 'PURGED', purge_completed_at = $3, purge_summary = $4::jsonb, updated_at = now()
+      WHERE installation_id = $1 AND id = $2 AND status = 'PURGING'
+      RETURNING *`,
+    [installationId, intentId, completedAt, JSON.stringify(summary ?? {})],
   );
   return result.rows[0] ?? null;
 }
