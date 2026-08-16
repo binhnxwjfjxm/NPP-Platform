@@ -34,6 +34,7 @@ const INSTALLATION_SCOPED_READ_TABLES = new Set([
   "mcp_report_settings",
   "mcp_route_customers",
   "mcp_route_sessions",
+  "mcp_routes",
   "mcp_session_customers",
   "mcp_session_reports",
   "mcp_visits"

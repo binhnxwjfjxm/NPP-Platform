@@ -38,7 +38,7 @@ await context.addCookies([{
   url: appBase
 }]);
 
-await page.goto(`${appBase}/orders`, { waitUntil: "networkidle" });
+await page.goto(`${appBase}/orders`, { waitUntil: "domcontentloaded" });
 await page.getByRole("heading", { name: "Trung tâm đơn hàng", exact: true }).waitFor({ state: "visible" });
 for (const tab of ["Đơn hàng", "Cần xử lý", "Doanh số đặt hàng", "Tổng quan"]) {
   await page.getByRole("tab", { name: new RegExp(`^${tab}`) }).waitFor({ state: "visible" });
@@ -64,7 +64,7 @@ await page.getByRole("button", { name: "Tạo đơn", exact: true }).click();
 
 await page.getByText(/Đã tạo SO-MCP-0001\./).waitFor({ state: "visible" });
 await page.getByText(/^SO-MCP-0001 · /).waitFor({ state: "visible" });
-await page.reload({ waitUntil: "networkidle" });
+await page.reload({ waitUntil: "domcontentloaded" });
 await page.getByRole("heading", { name: "Trung tâm đơn hàng", exact: true }).waitFor({ state: "visible" });
 await page.getByText(/^SO-MCP-0001 · /).waitFor({ state: "visible" });
 
