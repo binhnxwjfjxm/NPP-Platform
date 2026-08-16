@@ -124,8 +124,8 @@ function variantLabel(item: ProductCatalogItem) {
 }
 
 function purchaseUnitLabel(item: ProductCatalogItem) {
-  const unitText = normalizeText([item.sellUnit, item.variantName, item.packUnit].filter(Boolean).join(" "));
-  if (/\b(thung|case|carton)\b/.test(unitText)) return "Thùng";
+  const sellingUnit = normalizeText(item.sellUnit);
+  if (/\b(thung|case|carton)\b/.test(sellingUnit)) return "Thùng";
   return "Lẻ";
 }
 
