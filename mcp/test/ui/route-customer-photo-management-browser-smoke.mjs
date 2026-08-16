@@ -184,7 +184,7 @@ await page.route("**/api/backend/outlet-media/**", async (route) => {
 });
 
 page.on("dialog", (dialog) => void dialog.accept());
-await page.goto(`${appBase}/routes`, { waitUntil: "networkidle" });
+await page.goto(`${appBase}/routes`, { waitUntil: "domcontentloaded" });
 
 const routeCard = page.locator("article.operational-list-card").filter({ hasText: "UI Smoke Active" }).first();
 await routeCard.getByRole("button", { name: "Chọn tuyến", exact: true }).click();

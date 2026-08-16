@@ -40,11 +40,13 @@ try {
   for (const viewport of mobileViewports) {
     const context = await browser.newContext({ viewport });
     const page = await context.newPage();
-    await page.goto(`${appBase}/mcp`, { waitUntil: "networkidle" });
+    await page.goto(`${appBase}/mcp`, { waitUntil: "domcontentloaded" });
 
     const mobileFlow = page.locator('[data-mcp-mobile-flow="true"]');
+    const desktopFlow = page.locator('[data-mcp-desktop-flow="true"]');
     await mobileFlow.waitFor({ state: "visible" });
-    assert.equal(await page.locator('[data-mcp-desktop-flow="true"]').evaluate((node) => getComputedStyle(node).display), "none");
+    await desktopFlow.waitFor({ state: "hidden" });
+    assert.equal(await desktopFlow.isVisible(), false, "desktop MCP flow must stay hidden at mobile breakpoints");
     assert.equal(await page.locator(".page-header:visible").count(), 0, "mobile MCP must not repeat the page header below the app bar");
 
     const primaryAction = mobileFlow.locator('[data-mcp-primary-action="true"]');
@@ -76,10 +78,13 @@ try {
 
   const desktopContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const desktopPage = await desktopContext.newPage();
-  await desktopPage.goto(`${appBase}/mcp`, { waitUntil: "networkidle" });
-  assert.equal(await desktopPage.locator('[data-mcp-mobile-flow="true"]').evaluate((node) => getComputedStyle(node).display), "none");
-  await desktopPage.locator('[data-mcp-desktop-flow="true"]').waitFor({ state: "visible" });
-  const desktopModules = desktopPage.locator('[data-mcp-desktop-flow="true"] section[aria-label="Chức năng MCP"] a');
+  await desktopPage.goto(`${appBase}/mcp`, { waitUntil: "domcontentloaded" });
+  const mobileFlow = desktopPage.locator('[data-mcp-mobile-flow="true"]');
+  const desktopFlow = desktopPage.locator('[data-mcp-desktop-flow="true"]');
+  await mobileFlow.waitFor({ state: "hidden" });
+  await desktopFlow.waitFor({ state: "visible" });
+  assert.equal(await mobileFlow.isVisible(), false, "mobile MCP flow must stay hidden at desktop breakpoints");
+  const desktopModules = desktopFlow.locator('section[aria-label="Chức năng MCP"] a');
   assert.equal(await desktopModules.count(), 4);
   assert.equal(await desktopModules.filter({ hasText: "Đi tuyến hôm nay" }).getAttribute("href"), "/visits");
   const desktopOverflow = await horizontalOverflow(desktopPage);

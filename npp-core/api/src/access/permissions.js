@@ -77,6 +77,17 @@ export const PERMISSIONS = Object.freeze({
   coreBackupCreate: 'core.backup.create',
   coreBackupDownload: 'core.backup.download',
   coreDataDeletionAuthorize: 'core.data-deletion.authorize',
+  mcpSessionWrite: 'mcp.session.write',
+  mcpSessionCustomerWrite: 'mcp.session-customer.write',
+  mcpOrderWrite: 'mcp.order.write',
+  mcpTestWrite: 'mcp.test.write',
+  mcpReportWrite: 'mcp.report.write',
+  mcpFollowupWrite: 'mcp.followup.write',
+  mcpSalesOrderRead: 'mcp.sales-order.read',
+  mcpSalesOrderCreate: 'mcp.sales-order.create',
+  mcpRouteWrite: 'mcp.route.write',
+  mcpRouteCustomerWrite: 'mcp.route-customer.write',
+  mcpReportSettingWrite: 'mcp.report-setting.write',
 });
 
 const INVENTORY_TRANSFER_RECEIPT_PERMISSION_CATALOG = Object.freeze([
@@ -123,6 +134,20 @@ const REPORTING_PERMISSION_CATALOG = Object.freeze([
   Object.freeze({ permissionKey: PERMISSIONS.coreReportingControlTowerRead, module: 'Điều hành quản lý', label: 'Xem Admin Control Tower', description: 'Cho phép đọc tập aggregate quản lý đã phê duyệt từ các contract báo cáo Phase 8 trong phạm vi được cấp; không cấp quyền xem toàn bộ chi tiết.', isSystem: true }),
   Object.freeze({ permissionKey: PERMISSIONS.coreReportingExport, module: 'Xuất báo cáo', label: 'Yêu cầu xuất báo cáo chính thức', description: 'Cho phép yêu cầu export canonical khi đồng thời có quyền đọc report-family tương ứng; quyền này không tự cấp quyền xem báo cáo.', isSystem: true }),
 ]);
+
+const MCP_PERMISSION_CATALOG = Object.freeze([
+  ['mcpSessionWrite', 'MCP hiện trường', 'Thực hiện phiên đi tuyến', 'Cho phép mở và cập nhật phiên đi tuyến theo phạm vi được giao.'],
+  ['mcpSessionCustomerWrite', 'MCP hiện trường', 'Cập nhật điểm bán trong phiên', 'Cho phép cập nhật trạng thái điểm bán thuộc phiên đi tuyến đang phụ trách.'],
+  ['mcpOrderWrite', 'MCP hiện trường', 'Ghi nhận đơn tại điểm bán', 'Cho phép ghi nhận nghiệp vụ đơn hàng tại điểm bán trong phiên MCP.'],
+  ['mcpTestWrite', 'MCP hiện trường', 'Ghi nhận kiểm tra tại điểm bán', 'Cho phép ghi nhận kết quả kiểm tra nghiệp vụ tại điểm bán.'],
+  ['mcpReportWrite', 'MCP hiện trường', 'Ghi báo cáo thị trường', 'Cho phép lập và cập nhật báo cáo thị trường trong phiên được giao.'],
+  ['mcpFollowupWrite', 'MCP hiện trường', 'Ghi việc cần theo dõi', 'Cho phép tạo và cập nhật việc cần theo dõi phát sinh từ hoạt động thị trường.'],
+  ['mcpSalesOrderRead', 'MCP bán hàng', 'Xem đơn Công Ty từ MCP', 'Cho phép MCP đọc đơn Công Ty theo phạm vi kho được cấp.'],
+  ['mcpSalesOrderCreate', 'MCP bán hàng', 'Tạo đơn Công Ty từ MCP', 'Cho phép MCP tạo đơn Công Ty cho khách đã mở mã theo phạm vi được cấp.'],
+  ['mcpRouteWrite', 'Cấu hình MCP', 'Quản lý tuyến cố định', 'Cho phép tạo, sửa và ngừng sử dụng tuyến bán hàng cố định.'],
+  ['mcpRouteCustomerWrite', 'Cấu hình MCP', 'Quản lý điểm bán trong tuyến', 'Cho phép thêm, sửa và loại điểm bán khỏi danh sách tuyến cố định.'],
+  ['mcpReportSettingWrite', 'Cấu hình MCP', 'Quản lý mẫu báo cáo thị trường', 'Cho phép thay đổi các lựa chọn dùng chung trong cấu hình báo cáo thị trường.'],
+].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true })));
 
 const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
   ['coreLogisticsRouteRead', 'Điều phối giao hàng', 'Xem tuyến giao hàng', 'Cho phép đọc tuyến giao hàng trong installation hiện tại.'],
@@ -182,6 +207,7 @@ export const PERMISSION_CATALOG = Object.freeze([
   ...INVENTORY_ADJUSTMENT_PERMISSION_CATALOG,
   ...INVENTORY_COST_PERMISSION_CATALOG,
   ...REPORTING_PERMISSION_CATALOG,
+  ...MCP_PERMISSION_CATALOG,
   ...LOGISTICS_PERMISSION_CATALOG,
   ...ACCOUNTING_PERMISSION_CATALOG,
   ...BACKUP_PERMISSION_CATALOG,
