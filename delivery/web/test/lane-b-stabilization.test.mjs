@@ -14,12 +14,12 @@ const fulfillmentApi = read('lib/fulfillment-api.ts');
 const coreFulfillment = read('../../npp-core/api/src/services/sales-fulfillment-operations.js');
 const coreRoute = read('../../npp-core/api/src/routes/fulfillment-operations.js');
 
-test('Lane B1 renders Soạn hàng only from read + pick permissions plus warehouse-scoped capability', () => {
-  assert.match(middleware, /readFulfillment: 'core\.fulfillment\.read'/);
+test('Lane B1 renders Soạn hàng from pick permission plus warehouse-scoped capability', () => {
   assert.match(middleware, /pickFulfillment: 'core\.fulfillment\.pick'/);
+  assert.doesNotMatch(middleware, /readFulfillment: 'core\.fulfillment\.read'/);
   assert.match(
     middleware,
-    /permissions\.has\(CORE_PERMISSIONS\.readFulfillment\)\s*&&\s*permissions\.has\(CORE_PERMISSIONS\.pickFulfillment\)\s*&&\s*warehouseIds\.length > 0/,
+    /permissions\.has\(CORE_PERMISSIONS\.pickFulfillment\)\s*&&\s*warehouseIds\.length > 0/,
   );
   assert.match(frame, /capabilities\.canPickWithWarehouse/);
   assert.match(frame, /href="\/picking" icon="box" label="Soạn hàng"/);
@@ -48,12 +48,14 @@ test('Lane B3 uses canonical demand/allocation detail and pick mutation', () => 
   assert.match(pickingDetail, /state machine canonical/);
 });
 
-test('Lane B4 keeps warehouse authorization server-side in canonical Core services', () => {
+test('Lane B4 keeps warehouse authorization server-side and lets pick permission read its own picking workflow', () => {
   assert.match(coreFulfillment, /warehouseIds\.filter/);
   assert.match(coreFulfillment, /WAREHOUSE_SCOPE_DENIED/);
   assert.match(coreFulfillment, /warehouseAllowed\(requestContext, demand\.warehouse_id\)/);
   assert.match(coreFulfillment, /warehouseAllowed\(requestContext, allocation\.warehouse_id\)/);
   assert.match(coreRoute, /coreFulfillmentPick/);
+  assert.match(coreRoute, /coreFulfillmentRead/);
+  assert.match(coreRoute, /Array\.isArray\(permission\)/);
   assert.match(pickingRoute, /canPickWithWarehouse/);
 });
 

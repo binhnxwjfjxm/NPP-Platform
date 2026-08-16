@@ -18,11 +18,11 @@ test('Lane A1 derives navigation capabilities from trusted Core /me permissions 
   assert.match(middleware, /core\.cod-collection\.read/);
   assert.match(middleware, /core\.cod-collection\.record/);
   assert.match(middleware, /core\.cod-handover\.create/);
-  assert.match(middleware, /core\.fulfillment\.read/);
   assert.match(middleware, /core\.fulfillment\.pick/);
+  assert.doesNotMatch(middleware, /readFulfillment: 'core\.fulfillment\.read'/);
   assert.match(
     middleware,
-    /permissions\.has\(CORE_PERMISSIONS\.readFulfillment\)\s*&&\s*permissions\.has\(CORE_PERMISSIONS\.pickFulfillment\)\s*&&\s*warehouseIds\.length > 0/,
+    /permissions\.has\(CORE_PERMISSIONS\.pickFulfillment\)\s*&&\s*warehouseIds\.length > 0/,
   );
   assert.match(middleware, /applyCapabilityHeaders/);
   assert.match(middleware, /headers\.delete\(name\)/);
