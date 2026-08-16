@@ -313,7 +313,7 @@ export async function createBusinessDataExport(pool, {
       { item: 'Thời điểm xuất', value: snapshotAt },
       { item: 'Định dạng', value: 'Excel (.xlsx)' },
       { item: 'Phạm vi', value: 'Chỉ dữ liệu nghiệp vụ người dùng được cấp quyền xem' },
-      { item: 'Ghi chú', value: 'Không chứa dữ liệu kỹ thuật, xác thực, phân quyền, chống trùng, migration hoặc nhật ký hệ thống' },
+      { item: 'Ghi chú', value: 'Không chứa dữ liệu kỹ thuật, xác thực, phân quyền, thông tin kiểm soát nội bộ, lịch sử thay đổi cấu trúc hoặc nhật ký hệ thống' },
       ...exportedSheets.map((sheet) => ({
         item: sheet.sheetName,
         value: `${sheet.rowCount.toLocaleString('vi-VN')} dòng`,

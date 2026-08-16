@@ -1,12 +1,17 @@
 import { spawn } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
 import { buildR2ObjectKey } from '../storage/object-key.js';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
 import { fileMetadata } from '../backup/artifacts.js';
+import {
+  collectRestoreSnapshotMetadata,
+  createSystemRestoreManifest,
+  serializeSystemRestoreManifest,
+} from '../backup/restore-manifest.js';
 import * as repo from '../db/repositories/backup.js';
 import { finalizeSystemBackupJob } from '../db/repositories/system-backup.js';
 
@@ -22,6 +27,7 @@ function publicFailure(error) {
     ['BACKUP_STORAGE_PUBLIC_BUCKET_FORBIDDEN', 'Backup yêu cầu R2 private; bucket public không được phép'],
     ['BACKUP_DUMP_FAILED', 'Không tạo được bản phục hồi PostgreSQL'],
     ['BACKUP_DUMP_VERIFY_FAILED', 'Bản phục hồi PostgreSQL tạo ra không hợp lệ'],
+    ['BACKUP_MANIFEST_BUILD_FAILED', 'Không tạo được thông tin phục vụ di chuyển và khôi phục'],
     ['BACKUP_STORAGE_UPLOAD_FAILED', 'Không tải được bản backup lên R2'],
     ['BACKUP_STORAGE_VERIFY_FAILED', 'Không xác minh được bản backup trên R2'],
     ['BACKUP_CHECKSUM_MISMATCH', 'Checksum bản backup không khớp'],
@@ -126,8 +132,33 @@ async function uploadDump(storageAdapter, installationId, artifact) {
   }
 }
 
+async function uploadManifest(storageAdapter, installationId, artifact) {
+  try {
+    await storageAdapter.putObject({
+      installationId,
+      key: artifact.key,
+      body: artifact.body,
+      contentType: 'application/json; charset=utf-8',
+      contentLength: artifact.size,
+      checksumSha256: artifact.sha256,
+      cacheControl: 'private, no-store',
+      metadata: {
+        'backup-job-id': artifact.jobId,
+        'artifact-type': 'system-restore-manifest',
+        sha256: artifact.sha256,
+      },
+    });
+  } catch (error) {
+    throw backupError('BACKUP_STORAGE_UPLOAD_FAILED', error);
+  }
+}
+
 function artifactKey(installationId, filename, now) {
   return buildR2ObjectKey({ installationId, namespace: 'backups', filename, now, uuid: randomUUID() });
+}
+
+function hashBuffer(buffer) {
+  return createHash('sha256').update(buffer).digest('hex');
 }
 
 export function createBackupRunner({ pool, storageAdapter, config, now = () => new Date(), spawnImpl = spawn } = {}) {
@@ -152,6 +183,7 @@ export function createBackupRunner({ pool, storageAdapter, config, now = () => n
       const migrationResult = await client.query('SELECT id FROM shared.schema_migrations ORDER BY id');
       const migrationIds = migrationResult.rows.map((row) => String(row.id));
       const schemaVersion = migrationIds.at(-1) ?? null;
+      const restoreSnapshotMetadata = await collectRestoreSnapshotMetadata(client);
       await repo.updateBackupStatus(pool, {
         installationId: config.installationId,
         jobId,
@@ -173,14 +205,40 @@ export function createBackupRunner({ pool, storageAdapter, config, now = () => n
         ...dumpMeta,
         jobId,
         filePath: dumpPath,
+        filename: path.basename(dumpPath),
         key: artifactKey(config.installationId, path.basename(dumpPath), now()),
       };
 
       await repo.updateBackupStatus(pool, { installationId: config.installationId, jobId, status: 'UPLOADING_R2' });
       await uploadDump(storageAdapter, config.installationId, dump);
-
       await repo.updateBackupStatus(pool, { installationId: config.installationId, jobId, status: 'VERIFYING_R2' });
       await verifyUploaded(storageAdapter, config.installationId, dump);
+
+      let manifestDocument;
+      try {
+        manifestDocument = createSystemRestoreManifest({
+          backupJobId: jobId,
+          installationId: config.installationId,
+          snapshotAt,
+          generatedAt: now().toISOString(),
+          schemaVersion,
+          migrationIds,
+          dump,
+          snapshotMetadata: restoreSnapshotMetadata,
+        });
+      } catch (error) {
+        throw backupError('BACKUP_MANIFEST_BUILD_FAILED', error);
+      }
+      const manifestBody = serializeSystemRestoreManifest(manifestDocument);
+      const manifest = {
+        jobId,
+        body: manifestBody,
+        size: manifestBody.length,
+        sha256: hashBuffer(manifestBody),
+        key: artifactKey(config.installationId, `hung-phat-system-${stamp}-manifest.json`, now()),
+      };
+      await uploadManifest(storageAdapter, config.installationId, manifest);
+      await verifyUploaded(storageAdapter, config.installationId, manifest);
 
       const verifiedAt = now().toISOString();
       const auditContext = {
@@ -197,6 +255,7 @@ export function createBackupRunner({ pool, storageAdapter, config, now = () => n
             installationId: config.installationId,
             jobId,
             dump,
+            manifest,
             verifiedAt,
           });
           await insertAuditRecord(auditClient, buildAuditRecord({
@@ -210,11 +269,23 @@ export function createBackupRunner({ pool, storageAdapter, config, now = () => n
               snapshotAt,
               verifiedAt,
               schemaVersion,
+              migrationCount: migrationIds.length,
               r2Verified: true,
-              artifact: {
-                type: 'postgresql_custom_dump',
-                size: dump.size,
-                sha256: dump.sha256,
+              artifacts: {
+                databaseDump: {
+                  type: 'postgresql_custom_dump',
+                  size: dump.size,
+                  sha256: dump.sha256,
+                },
+                moveRestoreManifest: {
+                  type: 'system_restore_manifest',
+                  size: manifest.size,
+                  sha256: manifest.sha256,
+                },
+              },
+              reconciliation: {
+                tableCount: restoreSnapshotMetadata.tableCount,
+                totalRows: restoreSnapshotMetadata.totalRows,
               },
             },
           }));

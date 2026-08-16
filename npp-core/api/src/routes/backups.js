@@ -21,6 +21,7 @@ import {
 const UUID_PATTERN = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}';
 const DEFAULT_BACKUP_MAX_OBJECT_BYTES = 5 * 1024 * 1024 * 1024;
 const REQUIRED_BACKUP_R2_BUCKET = 'hung-phat-backups';
+const SYSTEM_BACKUP_ARTIFACT_TYPES = Object.freeze(['database', 'manifest']);
 
 function apiError(code, message, statusCode = 500, retryable = false, details = {}) {
   return { code, message, statusCode, retryable, details };
@@ -292,22 +293,23 @@ export async function handleBackupRoutes(req, res, options) {
     if (!requestContext || !(await technicalAccessOrError(req, res, options, requestContext))) return true;
     const body = await bodyOrError(req, res, options);
     if (!body.ok) return true;
-    const payload = { artifactType: String(body.payload?.artifactType ?? '') };
+    const artifactType = String(body.payload?.artifactType ?? '').trim().toLowerCase();
+    const payload = { artifactType };
     await executeIdempotent(req, res, options, requestContext, {
       route: `/api/backups/${downloadMatch[1]}/download`,
       payload,
-      process: () => payload.artifactType.toLowerCase() === 'database'
+      process: () => SYSTEM_BACKUP_ARTIFACT_TYPES.includes(artifactType)
         ? createBackupDownload(options.getPool(), storageRuntime.adapter, {
           requestContext,
           jobId: downloadMatch[1],
-          artifactType: 'database',
+          artifactType: artifactType,
           expiresIn: Math.min(300, options.config.r2PresignedUrlMaxSeconds),
         })
         : Promise.resolve({
           ok: false,
           code: 'BACKUP_ARTIFACT_TYPE_UNAVAILABLE',
           statusCode: 404,
-          message: 'Sao lưu hệ thống chỉ cung cấp file .dump',
+          message: 'Bản sao lưu kỹ thuật chỉ cung cấp tệp .dump và tệp thông tin khôi phục',
           details: {},
         }),
     });
