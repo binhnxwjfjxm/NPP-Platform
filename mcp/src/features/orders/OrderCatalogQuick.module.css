@@ -162,7 +162,7 @@
 
 .unitRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 32px;
+  grid-template-columns: minmax(0, 1fr) 40px;
   grid-template-rows: auto auto;
   align-items: center;
   gap: 2px 8px;
@@ -230,62 +230,40 @@
   grid-column: 2;
   grid-row: 1 / span 2;
   align-self: center;
-  width: 30px;
-  height: 30px;
+  width: 40px;
+  height: 40px;
   place-items: center;
-  border: 1px solid var(--brand-strong);
-  border-radius: 50%;
-  background: var(--brand-strong);
-  color: #fff;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--warning);
   padding: 0;
-  font-size: 0;
   line-height: 1;
-  box-shadow: 0 2px 6px color-mix(in srgb, var(--brand-strong) 24%, transparent);
+  box-shadow: none;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
 
 .unitAdd > span {
-  position: relative;
   display: block;
-  width: 12px;
-  height: 12px;
+  color: currentColor;
+  font-size: 22px;
+  font-weight: 950;
+  line-height: 1;
+  transform: translateY(-1px);
 }
 
-.unitAdd > span::before,
-.unitAdd > span::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  border-radius: 2px;
-  background: currentColor;
-  transform: translate(-50%, -50%);
-}
-
-.unitAdd > span::before {
-  width: 12px;
-  height: 2px;
-}
-
-.unitAdd > span::after {
-  width: 2px;
-  height: 12px;
-}
-
-.unitAdd:hover:not(:disabled),
-.unitAdd:focus-visible {
-  border-color: color-mix(in srgb, var(--brand-strong) 88%, #000);
-  background: color-mix(in srgb, var(--brand-strong) 88%, #000);
+.unitAdd:hover:not(:disabled) {
+  color: color-mix(in srgb, var(--warning) 84%, #000);
 }
 
 .unitAdd:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--brand-strong) 26%, transparent);
-  outline-offset: 2px;
+  outline: 2px solid color-mix(in srgb, var(--warning) 36%, transparent);
+  outline-offset: -3px;
 }
 
 .unitAdd:active:not(:disabled) {
-  transform: scale(0.95);
+  transform: scale(0.92);
 }
 
 .unitAdd:disabled,
@@ -335,7 +313,7 @@
   }
 
   .unitRow {
-    grid-template-columns: minmax(0, 1fr) 30px;
+    grid-template-columns: minmax(0, 1fr) 40px;
     gap: 2px 6px;
     min-height: 42px;
     padding-block: 6px;
@@ -353,11 +331,6 @@
   .unitPrice strong {
     font-size: 9px;
   }
-
-  .unitAdd {
-    width: 29px;
-    height: 29px;
-  }
 }
 
 @media (max-width: 420px) {
@@ -373,25 +346,7 @@
   }
 
   .unitRow {
-    grid-template-columns: minmax(0, 1fr) 28px;
+    grid-template-columns: minmax(0, 1fr) 40px;
     gap: 2px 4px;
-  }
-
-  .unitAdd {
-    width: 27px;
-    height: 27px;
-  }
-
-  .unitAdd > span {
-    width: 11px;
-    height: 11px;
-  }
-
-  .unitAdd > span::before {
-    width: 11px;
-  }
-
-  .unitAdd > span::after {
-    height: 11px;
   }
 }

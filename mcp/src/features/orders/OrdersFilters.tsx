@@ -23,9 +23,10 @@ export function OrdersFilters({ filters, options, filteredOrders, totalOrders, t
   onReset: () => void;
 }) {
   const activeFilterCount = [filters.search, filters.routeName, filters.owner, filters.source, filters.status, filters.customer].filter(Boolean).length + (filters.period === DEFAULT_ORDER_FILTERS.period ? 0 : 1);
+  const hasSummaryActions = Boolean((!search && filters.search) || filters.customer || activeFilterCount);
   return (
     <section className={styles.filterPanel} aria-label="Bộ lọc đơn hàng">
-      {period ? <div className={styles.periodRow}><span>Khoảng dữ liệu</span><div>{(Object.keys(PERIOD_LABELS) as OrderPeriod[]).map((key) => <button key={key} type="button" aria-pressed={filters.period === key} onClick={() => onChange("period", key)}>{PERIOD_LABELS[key]}</button>)}</div><small>Tính lùi từ ngày dữ liệu mới nhất: {latestDate || "chưa có"}</small></div> : null}
+      {period ? <div className={styles.periodRow} aria-label={`Khoảng dữ liệu; ngày mới nhất ${latestDate || "chưa có"}`}><div>{(Object.keys(PERIOD_LABELS) as OrderPeriod[]).map((key) => <button key={key} type="button" aria-pressed={filters.period === key} onClick={() => onChange("period", key)}>{PERIOD_LABELS[key]}</button>)}</div></div> : null}
       <div className={styles.filterGrid}>
         {search ? <label className={styles.searchField}><span>Tìm nhanh</span><input value={filters.search} onChange={(event) => onChange("search", event.target.value)} placeholder="Mã đơn, khách, tuyến, nhân viên..." /></label> : null}
         <label><span>Tuyến</span><select value={filters.routeName} onChange={(event) => onChange("routeName", event.target.value)}><option value="">Tất cả tuyến</option>{options.routes.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
@@ -35,11 +36,11 @@ export function OrdersFilters({ filters, options, filteredOrders, totalOrders, t
       </div>
       <div className={styles.filterSummary}>
         <span><strong>{filteredOrders.length}</strong>/{totalOrders} đơn · {money.format(totalAmount)}</span>
-        <div>
+        {hasSummaryActions ? <div>
           {!search && filters.search ? <button type="button" onClick={() => onChange("search", "")}>Tìm: {filters.search} ×</button> : null}
           {filters.customer ? <button type="button" onClick={() => onChange("customer", "")}>Khách: {filters.customer} ×</button> : null}
-          {activeFilterCount ? <button type="button" onClick={onReset}>Xóa {activeFilterCount} bộ lọc</button> : <small>Chưa áp dụng bộ lọc bổ sung</small>}
-        </div>
+          {activeFilterCount ? <button type="button" onClick={onReset}>Xóa {activeFilterCount} bộ lọc</button> : null}
+        </div> : null}
       </div>
     </section>
   );
