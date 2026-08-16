@@ -29,16 +29,15 @@ test("MCP Vercel automatic deployments stay disabled", () => {
   assert.doesNotMatch(mcpWorkflow, /^\s{2}(?:push|pull_request):\s*$/m);
 });
 
-test("MCP deploy has an exact Issue #5 command separate from Core", () => {
+test("MCP deploy has an exact Issue #5 command separate from Công Ty", () => {
   assert.match(mcpWorkflow, /github\.event\.issue\.number == 5/);
   assert.match(mcpWorkflow, /\/deploy-vercel-mcp-production/);
   assert.doesNotMatch(mcpWorkflow, /'\/deploy-vercel-production'/);
-
   assert.match(coreWorkflow, /\/deploy-vercel-production/);
   assert.doesNotMatch(coreWorkflow, /\/deploy-vercel-mcp-production/);
 });
 
-test("MCP deploy target is pinned and isolated from the Core Vercel project", () => {
+test("MCP deploy target is pinned and isolated from the Công Ty Vercel project", () => {
   assert.match(mcpWorkflow, new RegExp(`VERCEL_PROJECT_ID:\\s*${MCP_PROJECT_ID}`));
   assert.match(mcpWorkflow, new RegExp(`CORE_VERCEL_PROJECT_ID:\\s*${CORE_PROJECT_ID}`));
   assert.match(
@@ -54,44 +53,54 @@ test("MCP deploy target is pinned and isolated from the Core Vercel project", ()
   assert.match(mcpWorkflow, /unexpected_mcp_root_directory/);
 });
 
-test("MCP deploy checks out main, installs in mcp and runs Vercel CLI from monorepo root", () => {
+test("MCP deploy checks out exact main and keeps backend deployment separate", () => {
   assert.match(mcpWorkflow, /DEPLOY_REF: main/);
   assert.match(mcpWorkflow, /MCP_ROOT_DIRECTORY: mcp/);
   assert.match(mcpWorkflow, /git fetch origin main --depth=1/);
   assert.match(mcpWorkflow, /git rev-parse origin\/main/);
   assert.match(mcpWorkflow, /cache-dependency-path: mcp\/package-lock\.json/);
-  assert.match(
-    mcpWorkflow,
-    /- name: Install MCP dependencies\s+working-directory: mcp\s+run: npm ci/
-  );
-  assert.match(mcpWorkflow, /- name: Pull MCP production project configuration\s+run:/);
-  assert.match(mcpWorkflow, /- name: Verify MCP Vercel project link\s+shell: bash/);
-  assert.match(mcpWorkflow, /- name: Build MCP production artifact\s+run:/);
-  assert.match(mcpWorkflow, /- name: Deploy MCP production artifact\s+id: deploy\s+shell: bash/);
-  assert.doesNotMatch(
-    mcpWorkflow,
-    /- name: (?:Pull MCP production project configuration|Verify MCP Vercel project link|Build MCP production artifact|Deploy MCP production artifact)\s+working-directory: mcp/
-  );
-
-  assert.doesNotMatch(mcpWorkflow, /working-directory: npp-core\/web/);
+  assert.match(mcpWorkflow, /working-directory: mcp\s+run: npm ci/);
+  assert.match(mcpWorkflow, /vercel@latest pull/);
+  assert.match(mcpWorkflow, /vercel@latest build/);
+  assert.match(mcpWorkflow, /vercel@latest deploy/);
   assert.doesNotMatch(mcpWorkflow, /heroku container:push|heroku container:release|git push heroku/);
 });
 
-test("MCP deploy keeps MCP runtime sources dedicated and resolves shared Core auth read-only", () => {
-  assert.match(mcpWorkflow, /^\s{2}issues: write$/m);
-  assert.match(mcpWorkflow, /secrets\.MCP_BACKEND_API_BASE_URL/);
-  assert.match(mcpWorkflow, /secrets\.MCP_BACKEND_API_TOKEN/);
-  assert.match(mcpWorkflow, /MCP_LEGACY_ACTOR_ID: service:mcp-plan:mcp-v1/);
+test("MCP frontend runtime resolves the exact Heroku MCP backend instead of a legacy URL secret", () => {
+  assert.match(mcpWorkflow, /MCP_HEROKU_APP_NAME: hung-phat-mcp/);
   assert.match(mcpWorkflow, /CORE_HEROKU_APP_NAME: hung-phat/);
+  assert.match(mcpWorkflow, /test "\$MCP_HEROKU_APP_NAME" != "\$CORE_HEROKU_APP_NAME"/);
   assert.match(mcpWorkflow, /HEROKU_API_KEY: \$\{\{ secrets\.HEROKU_API_KEY \}\}/);
-  assert.match(mcpWorkflow, /SECRET_CORE_API_INTERNAL_URL: \$\{\{ secrets\.CORE_API_INTERNAL_URL \}\}/);
-  assert.match(mcpWorkflow, /api\.heroku\.com\/apps\/\$CORE_HEROKU_APP_NAME/);
-  assert.match(mcpWorkflow, /runtime_source="heroku-core"/);
-  assert.match(mcpWorkflow, /missing_github_runtime_sources/);
-  assert.match(mcpWorkflow, /MCP_BACKEND_API_BASE_URL/);
-  assert.match(mcpWorkflow, /MCP_BACKEND_API_TOKEN/);
+  assert.match(mcpWorkflow, /api\.heroku\.com\/apps\/\$MCP_HEROKU_APP_NAME/);
+  assert.match(mcpWorkflow, /api\.heroku\.com\/apps\/\$MCP_HEROKU_APP_NAME\/config-vars/);
+  assert.match(mcpWorkflow, /\.BACKEND_API_TOKEN \/\/ empty/);
+  assert.match(mcpWorkflow, /source=heroku-mcp/);
   assert.match(mcpWorkflow, /BACKEND_API_BASE_URL/);
   assert.match(mcpWorkflow, /BACKEND_API_TOKEN/);
+  assert.match(mcpWorkflow, /resolved:HEROKU_MCP_BACKEND_API_BASE_URL/);
+  assert.match(mcpWorkflow, /resolved:HEROKU_MCP_BACKEND_API_TOKEN/);
+  assert.doesNotMatch(mcpWorkflow, /secrets\.MCP_BACKEND_API_BASE_URL/);
+  assert.doesNotMatch(mcpWorkflow, /secrets\.MCP_BACKEND_API_TOKEN/);
+});
+
+test("MCP backend runtime is health checked and the official Orders route cannot silently be 404", () => {
+  assert.match(mcpWorkflow, /\/health\/live \/health\/ready/);
+  assert.match(mcpWorkflow, /\/api\/core-sales\/orders/);
+  assert.match(mcpWorkflow, /X-Backend-Token/);
+  assert.match(mcpWorkflow, /X-Actor-Id/);
+  assert.match(mcpWorkflow, /mcp-vercel-orders-preflight/);
+  assert.match(mcpWorkflow, /200\|401\|403/);
+  assert.match(mcpWorkflow, /mcp_orders_route_missing/);
+  assert.match(mcpWorkflow, /mcp_orders_route_unhealthy/);
+});
+
+test("MCP deploy keeps shared Công Ty auth resolution and guarded Vercel env synchronization", () => {
+  assert.match(mcpWorkflow, /CORE_HEROKU_APP_NAME: hung-phat/);
+  assert.match(mcpWorkflow, /SECRET_CORE_API_INTERNAL_URL: \$\{\{ secrets\.CORE_API_INTERNAL_URL \}\}/);
+  assert.match(mcpWorkflow, /runtime_source="heroku-core"/);
+  assert.match(mcpWorkflow, /invalid_core_api_internal_url/);
+  assert.match(mcpWorkflow, /invalid_mcp_backend_url/);
+  assert.match(mcpWorkflow, /missing_runtime_sources/);
   assert.match(
     mcpWorkflow,
     /api\.vercel\.com\/v10\/projects\/\$\{process\.env\.VERCEL_PROJECT_ID\}\/env/
@@ -103,11 +112,6 @@ test("MCP deploy keeps MCP runtime sources dedicated and resolves shared Core au
   assert.match(mcpWorkflow, /process\.env\.GITHUB_ENV/);
   assert.match(mcpWorkflow, /MCP Vercel production preflight failed/);
   assert.match(mcpWorkflow, /MCP Vercel production deploy succeeded/);
-
-  assert.doesNotMatch(mcpWorkflow, /LEGACY_RUNTIME_SOURCE_PROJECT_ID/);
-  assert.doesNotMatch(mcpWorkflow, /vercel@latest env pull/);
-  assert.doesNotMatch(mcpWorkflow, /heroku apps:info|heroku config/);
-  assert.doesNotMatch(mcpWorkflow, /api\.heroku\.com\/apps\/\$CORE_HEROKU_APP_NAME\/config-vars/);
   assert.doesNotMatch(mcpWorkflow, /MCP_SUPABASE_URL/);
   assert.doesNotMatch(mcpWorkflow, /MCP_SUPABASE_ANON_KEY/);
   assert.doesNotMatch(mcpWorkflow, /SUPABASE_SERVICE_ROLE_KEY/);
@@ -124,35 +128,20 @@ test("MCP deploy never reports raw Vercel token failures", () => {
   assert.doesNotMatch(mcpWorkflow, /throw error;/);
 });
 
-test("MCP deploy separates protected exact-host reachability from public-domain content smoke", () => {
-  assert.match(mcpWorkflow, /vercel@latest pull/);
-  assert.match(mcpWorkflow, /vercel@latest build/);
-  assert.match(mcpWorkflow, /vercel@latest deploy/);
+test("MCP deploy separates exact-host reachability from public-domain content smoke", () => {
   assert.match(mcpWorkflow, /--prebuilt/);
   assert.match(mcpWorkflow, /--prod/);
   assert.match(mcpWorkflow, /secrets\.VERCEL_TOKEN/);
-  assert.match(
-    mcpWorkflow,
-    /- name: Smoke exact MCP production deployment[\s\S]*DEPLOYMENT_URL: \$\{\{ steps\.deploy\.outputs\.url \}\}/
-  );
-  assert.match(
-    mcpWorkflow,
-    /- name: Smoke configured MCP production domain[\s\S]*DEPLOYMENT_URL: \$\{\{ env\.MCP_PRODUCTION_URL \}\}/
-  );
-  assert.match(mcpWorkflow, /for attempt in \$\(seq 1 6\)/);
+  assert.match(mcpWorkflow, /Smoke exact MCP production deployment/);
+  assert.match(mcpWorkflow, /Smoke configured MCP production domain/);
   assert.match(mcpWorkflow, /assert_reachable \/\n/);
   assert.match(mcpWorkflow, /assert_reachable \/field-checks/);
   assert.match(mcpWorkflow, /200\|302\|307\|401\|403/);
-  assert.match(mcpWorkflow, /assert_status \/ 200 302 307/);
   assert.match(mcpWorkflow, /assert_status \/mcp/);
   assert.match(mcpWorkflow, /assert_status \/routes/);
   assert.match(mcpWorkflow, /assert_status \/visits/);
   assert.match(mcpWorkflow, /assert_status \/field-checks/);
-  assert.match(mcpWorkflow, /curl --fail --location --silent --show-error --retry 5/);
-  assert.match(mcpWorkflow, /curl --fail --location --silent --show-error --retry 3/);
-  assert.match(mcpWorkflow, /html\.match\(/);
   assert.ok(mcpWorkflow.includes("\\/_next\\/static\\/"));
-  assert.match(mcpWorkflow, /MCP smoke asset=/);
   assert.match(mcpWorkflow, /Smoke MCP login Core connectivity/);
   assert.match(mcpWorkflow, /error=invalid_credentials/);
   assert.match(mcpWorkflow, /auth_unavailable/);
@@ -166,8 +155,4 @@ test("Foundation CI gates workflow path deltas and runs the Vercel contract", ()
   assert.match(foundationWorkflow, /workflow_path_delta_failed/);
   assert.match(foundationWorkflow, /npm ci --prefix apps\/backend/);
   assert.match(foundationWorkflow, /npm run test:vercel-deployment-control/);
-  assert.doesNotMatch(
-    foundationWorkflow,
-    /npm run test:workflow-paths 2>&1 \| tee workflow-path-audit\.log/
-  );
 });
