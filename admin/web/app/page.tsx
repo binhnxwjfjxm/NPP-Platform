@@ -43,7 +43,7 @@ export default async function AdminOverviewPage() {
       {!data ? <p className="warning compactWarning" role="alert">Dữ liệu tổng hợp tạm thời chưa sẵn sàng.</p> : null}
       {data?.warnings.length ? <p className="warning compactWarning" role="alert">Một số nguồn dữ liệu đang chưa đầy đủ.</p> : null}
 
-      <section className="metricGrid appMetricGrid" aria-label="KPI quản trị">
+      <section className="metricGrid appMetricGrid" aria-label="Chỉ số quản trị">
         <article className="card metricCard"><span className="iconBubble"><AdminIcon name="clipboard" /></span><div className="metricCopy"><span>Đơn bán hiệu lực</span><strong>{text(sales, 'effectiveOrderCount')}</strong></div></article>
         <article className="card metricCard"><span className="iconBubble"><AdminIcon name="warehouse" /></span><div className="metricCopy"><span>SKU đang có tồn</span><strong>{text(inventory, 'stockedSkuCount')}</strong></div></article>
         <article className="card metricCard"><span className="iconBubble"><AdminIcon name="exception" /></span><div className="metricCopy"><span>Giao thất bại</span><strong>{text(logistics, 'failedCount')}</strong></div></article>
@@ -51,22 +51,22 @@ export default async function AdminOverviewPage() {
       </section>
 
       <p className="sectionEyebrow">Nhịp quản trị</p>
-      <section className="overviewDecisionStrip" aria-label="Tóm tắt quyết định và cảnh báo">
-        <div><span>Chờ phê duyệt</span><strong>{pendingApprovals.length}</strong><small>{urgentApprovals.length} ưu tiên cao</small></div>
+      <section className="overviewDecisionStrip" aria-label="Tóm tắt đề xuất và cảnh báo">
+        <div><span>Chờ quyết định</span><strong>{pendingApprovals.length}</strong><small>{urgentApprovals.length} ưu tiên cao</small></div>
         <div><span>Cảnh báo mở</span><strong>{activeAlerts.length}</strong><small>{highAlerts.length} mức cao</small></div>
         <div><span>Điều hành</span><strong>{executiveReport?.current ?? '—'}</strong><small>{executiveReport?.delta ?? 'Chưa có so sánh'}</small></div>
       </section>
-      <p className="adminPreviewNotice overviewPreviewNotice">Phê duyệt, cảnh báo và báo cáo bên dưới đang dùng dữ liệu mẫu frontend để chốt trải nghiệm; KPI vận hành phía trên vẫn lấy từ nguồn tổng hợp hiện có.</p>
+      <p className="adminPreviewNotice overviewPreviewNotice">Đề xuất, cảnh báo và báo cáo bên dưới đang dùng dữ liệu minh họa; các chỉ số vận hành phía trên vẫn lấy từ nguồn tổng hợp hiện có.</p>
 
       <p className="sectionEyebrow">Ưu tiên hôm nay</p>
       <section className="overviewFocusList" aria-label="Việc cần chú ý hôm nay">
-        {priorityApproval ? <Link className="card overviewFocusItem" href={`/approvals/${priorityApproval.id}`}><span className="rowIcon"><AdminIcon name="check" size={19} /></span><span><small>Phê duyệt</small><strong>{priorityApproval.title}</strong><em>{priorityApproval.impact}</em></span><AdminIcon name="chevronRight" size={17} /></Link> : null}
+        {priorityApproval ? <Link className="card overviewFocusItem" href={`/approvals/${priorityApproval.id}`}><span className="rowIcon"><AdminIcon name="check" size={19} /></span><span><small>Đề xuất</small><strong>{priorityApproval.title}</strong><em>{priorityApproval.impact}</em></span><AdminIcon name="chevronRight" size={17} /></Link> : null}
         {priorityAlert ? <Link className="card overviewFocusItem" href={`/alerts/${priorityAlert.id}`}><span className="rowIcon"><AdminIcon name="exception" size={19} /></span><span><small>Cảnh báo</small><strong>{priorityAlert.title}</strong><em>{priorityAlert.actual} · Ngưỡng {priorityAlert.threshold}</em></span><AdminIcon name="chevronRight" size={17} /></Link> : null}
       </section>
 
       <p className="sectionEyebrow">Trung tâm quản trị</p>
       <section className="adminOverviewActions" aria-label="Đi tới trung tâm quản trị">
-        <Link className="card adminOverviewAction" href="/approvals"><span className="rowIcon"><AdminIcon name="check" size={20} /></span><span><strong>Phê duyệt</strong><small>{pendingApprovals.length} đề xuất chờ quyết định · {urgentApprovals.length} ưu tiên cao</small></span><AdminIcon name="chevronRight" size={17} /></Link>
+        <Link className="card adminOverviewAction" href="/approvals"><span className="rowIcon"><AdminIcon name="check" size={20} /></span><span><strong>Đề xuất</strong><small>{pendingApprovals.length} đề xuất chờ quyết định · {urgentApprovals.length} ưu tiên cao</small></span><AdminIcon name="chevronRight" size={17} /></Link>
         <Link className="card adminOverviewAction" href="/alerts"><span className="rowIcon"><AdminIcon name="exception" size={20} /></span><span><strong>Cảnh báo</strong><small>{activeAlerts.length} cảnh báo đang hoạt động · {highAlerts.length} mức cao</small></span><AdminIcon name="chevronRight" size={17} /></Link>
         <Link className="card adminOverviewAction" href="/reports"><span className="rowIcon"><AdminIcon name="document" size={20} /></span><span><strong>Báo cáo</strong><small>Điều hành {executiveReport?.current ?? '—'} · {executiveReport?.delta ?? 'chưa có so sánh'}</small></span><AdminIcon name="chevronRight" size={17} /></Link>
       </section>

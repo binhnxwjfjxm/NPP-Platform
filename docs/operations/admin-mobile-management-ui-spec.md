@@ -1,346 +1,132 @@
-# Admin MCP/NPP — Mobile Management UI Specification
+# Admin MCP/NPP — đặc tả quản trị mobile
 
-> Status: **ACTIVE — OWNER LOCKED**  
-> Date: **2026-08-11**  
-> Scope: **Admin MCP/NPP frontend**  
-> Source: `admin/web/**`  
-> Runtime: independent Vercel frontend, shared Core backend and shared Core workforce authentication  
-> Integration in this phase: **frontend information architecture and UI contract only; no new backend, database, migration or production rollout**
+> Trạng thái: **ACTIVE — OWNER LOCKED**  
+> Cập nhật: **2026-08-16 — Issue #606 / Lô 1**  
+> Phạm vi Lô 1: `admin/web/**`, tài liệu và test bảo vệ.  
+> **Không migration. Không đổi backend. Không deploy production.**
 
 ---
 
-## 1. Product role
+## 1. Vai trò sản phẩm
 
-Admin MCP/NPP is an independent management application for managers/owners to:
+Admin MCP/NPP là ứng dụng dành cho chủ doanh nghiệp và quản lý cấp cao. Ứng dụng chỉ có ba nhiệm vụ:
 
-- see management-level summaries from Core and MCP;
-- receive and prioritize rule-based alerts;
-- review proposals or exceptions that require management authority;
-- approve, reject or request more information when a decision is required;
-- review management reports and trends;
-- see the evidence, reason, source, requester and audit history behind a decision.
+1. đọc số liệu quản trị từ tổng quan đến chi tiết cần thiết;
+2. giám sát hoạt động hiện trường MCP;
+3. xử lý **Đề xuất** khi một việc thật sự cần quyết định cấp quản lý.
 
-Admin is **not** a smaller copy of NPP Operations and is **not** a shortcut page that sends the manager back to Core for normal work.
+Admin không phải bản sao của Công Ty và không nhận các thao tác hằng ngày của Sales Admin, kế toán, kho, giao nhận hoặc nhân viên MCP.
 
-The target experience is:
+Các việc sau tiếp tục thuộc ứng dụng Công Ty hoặc ứng dụng nghiệp vụ tương ứng:
 
-```text
-management signal
--> understand impact
--> inspect evidence/context
--> make or defer a decision
--> retain decision history
-```
+- tạo/chỉnh sửa đơn thông thường;
+- mở hoặc liên kết mã khách thường ngày;
+- thu tiền, phân bổ công nợ, ghi sổ kế toán;
+- nhập/xuất/chuyển kho, kiểm kê và xử lý tồn kho thường ngày;
+- điều phối/giao hàng thường ngày;
+- thực hiện tuyến, check-in và nhập dữ liệu hiện trường MCP.
 
-The application must answer three management questions quickly:
-
-1. What needs my decision?
-2. What is abnormal or risky?
-3. How is the business performing?
+Admin chỉ đọc, giám sát, cảnh báo và quyết định khi có việc vượt ngưỡng/thẩm quyền được đẩy lên.
 
 ---
 
-## 2. Runtime and authority boundary
+## 2. Ranh giới runtime và dữ liệu
 
-### 2.1 Frontend boundary
-
-Admin remains its own frontend application:
-
-```text
-admin/web/**
--> Vercel project: admin-mcp-npp
--> production domain: admin.nguyenlieuhungphat.com
-```
-
-Its UI, navigation, page structure and mobile interaction model are independent from NPP Operations.
-
-### 2.2 Backend boundary
-
-Admin does **not** gain a separate business backend.
-
-Target runtime:
+Luồng chuẩn:
 
 ```text
 Admin frontend
-    -> Core backend
-        -> shared PostgreSQL installation
+-> gateway phía máy chủ của Admin
+-> API/reporting-management của Công Ty
+-> PostgreSQL dùng chung của installation
 ```
 
-Admin must not connect directly to PostgreSQL and must not introduce a frontend database client.
+Nguyên tắc bắt buộc:
 
-MCP information needed by Admin must be exposed through an approved backend contract. The frontend must not bypass Core/MCP domain ownership merely to build a dashboard.
-
-### 2.3 Authentication boundary
-
-Admin uses the same workforce identity/authentication authority as Core.
-
-The Admin frontend may keep its own secure session cookie implementation for the frontend boundary, but the identity and session validity remain Core-owned and are verified against Core authentication contracts.
-
-Do not create:
-
-- an Admin-only user database;
-- a second username/password authority;
-- a separate Owner identity model;
-- a parallel permission source of truth.
-
-Admin authorization must later be enforced by backend permissions/scopes appropriate to management actions.
+- frontend Admin không kết nối PostgreSQL trực tiếp;
+- frontend không tự tính lại KPI làm nguồn sự thật thứ hai;
+- Admin dùng cùng workforce identity và quyền do Công Ty quản lý;
+- mỗi màn đọc dữ liệu phải fail closed theo quyền/phạm vi;
+- không coi dữ liệu minh họa hiện tại là dữ liệu vận hành thật;
+- thông tin MCP phải đi qua contract đọc được phía máy chủ, không lấy trực tiếp từ trình duyệt MCP.
 
 ---
 
-## 3. What Admin must not become
+## 3. IA cấp cao — đúng 4 mục
 
-Admin must not contain normal daily operational CRUD copied from Core.
-
-Do not move these workflows into Admin merely because a manager can view their data:
-
-- create/edit normal Sales Orders;
-- normal purchasing or Goods Receipt processing;
-- stock receipt, issue, transfer or stocktake posting;
-- master-data maintenance;
-- routine customer creation/linking;
-- route execution, MCP check-in or field data capture;
-- routine delivery execution;
-- normal accounting posting/allocation work.
-
-A management tab named `Kho`, `Công nợ` or `Giao vận` means management visibility, risk, trend, alert or approval context. It does not mean the Core operational screen is duplicated inside Admin.
-
----
-
-## 4. Mobile-first interaction model
-
-Admin is a **mobile-first management application**.
-
-The primary design target is a phone viewport and one-handed use. Desktop may use the same information architecture with more width, but desktop must not dictate the mobile layout.
-
-### 4.1 Primary navigation
-
-Use a fixed four-item bottom navigation:
+Thanh điều hướng chính cố định:
 
 ```text
-Tổng quan | Phê duyệt | Cảnh báo | Báo cáo
+Tổng quan | Đề xuất | Cảnh báo | Báo cáo
 ```
 
-Rules:
+Không thêm mục thứ năm. Không đưa thao tác Công Ty thường ngày vào thanh này.
 
-- four primary destinations only;
-- no sidebar as the primary navigation;
-- no `Menu` item in the bottom navigation;
-- profile/settings/logout live in a secondary account/menu surface;
-- navigation labels stay short and management-oriented.
+### Route trong Lô 1
 
-### 4.2 Secondary navigation inside each main screen
+- `Tổng quan` -> `/`
+- `Đề xuất` -> tạm giữ `/approvals`
+- `Cảnh báo` -> `/alerts`
+- `Báo cáo` -> `/reports`
 
-Each main screen may contain a compact set of **icon-tabs**.
-
-An icon-tab is a clearly separate business destination inside the current module:
-
-```text
-[icon]
-Label
-badge/count when useful
-```
-
-Rules:
-
-- icon + short label;
-- badge only when it represents actionable quantity or meaningful status;
-- selecting a tab changes the related content inside the module;
-- do not build deep nested menus;
-- do not use horizontally wide desktop tables as the primary mobile interaction;
-- prefer cards, prioritized lists, compact KPI blocks and full-screen/mobile detail views.
-
-### 4.3 Page rhythm
-
-Default screen structure:
-
-```text
-compact header
--> icon-tabs when the module has subdomains
--> status/summary strip when needed
--> primary content
--> sticky or bottom actions only when the current item is actionable
--> fixed app bottom navigation
-```
-
-Each screen must have one primary purpose.
+`/approvals` chỉ là route kỹ thuật kế thừa. Từ Lô 1 toàn bộ chữ người dùng phải là **Đề xuất**. Việc chuyển route sang `/proposals` chỉ thực hiện cùng lifecycle thật ở Lô 5 để tránh đổi route trước dữ liệu/migration.
 
 ---
 
-## 5. Main information architecture
+## 4. Bản đồ nguồn dữ liệu theo 4 mục
 
-The Admin frontend has four primary screens.
+### 4.1 Tổng quan
 
-## 5.1 Tổng quan
+Nguồn đang có thật: `GET /api/reporting/control-tower` qua `admin/web/lib/control-tower.ts`.
 
-Purpose: give management a concise cross-domain view of what requires attention now.
+Control Tower phải tiếp tục tái sử dụng các họ báo cáo hiện có, không viết SQL/KPI riêng cho Admin:
 
-This is not a separate operational module and must not become a collection of external links to NPP Operations.
+- bán hàng;
+- mua hàng;
+- tồn kho;
+- công nợ;
+- lãi gộp;
+- nhân viên/MCP;
+- giao hàng;
+- COD/đối soát.
 
-Recommended content:
+Nếu một họ dữ liệu không đọc được thì hiển thị trạng thái thiếu dữ liệu của riêng họ; không biến giá trị thiếu thành `0`.
 
-- proposals waiting for decision;
-- critical/high alerts;
-- sales/revenue summary;
-- gross margin summary;
-- receivable risk summary;
-- inventory risk summary;
-- delivery/COD summary;
-- MCP activity/market summary;
-- trend versus the previous comparable period;
-- data freshness/availability status when a source is incomplete.
+### 4.2 Đề xuất
 
-Priority blocks should lead directly to the corresponding Admin approval, alert or report context.
+Lô 1 chỉ khóa UX/IA. Dữ liệu hiện tại trong `approval-fixtures.ts` là minh họa, chưa phải nguồn vận hành.
 
-The Overview page is implemented after the three management modules are structurally stable so it can summarize real Admin concepts instead of inventing disconnected cards.
+Nguồn đích ở Lô 5 là các đề xuất được tạo từ Công Ty hoặc MCP khi:
 
----
+- vượt thẩm quyền người thao tác;
+- vượt ngưỡng quản trị;
+- là ngoại lệ cần chủ/quản lý quyết định;
+- có đủ người gửi, lý do, tác động, bằng chứng và lịch sử.
 
-## 5.2 Trung tâm phê duyệt
-
-Purpose: one management decision workspace for proposals/exceptions that truly require higher authority.
-
-### Icon-tabs
-
-Initial frontend taxonomy:
+Không đưa hàng đợi duyệt kế toán/kho thường ngày vào Admin. Nhóm hiển thị Lô 1:
 
 ```text
 Tất cả
 Thương mại
 Khách hàng & công nợ
-Kho
-Giao vận & COD
+Ngoại lệ vận hành
 MCP
 Lịch sử
 ```
 
-The exact backend event/type mapping is deferred to the integration phase, but the frontend taxonomy is locked as the management-facing structure.
+`Ngoại lệ vận hành` chỉ chứa việc đã vượt ngưỡng/thẩm quyền cấp quản lý; không phải màn duyệt kho, COD hay giao vận hằng ngày.
 
-### Approval list item
+### 4.3 Cảnh báo
 
-Each item should expose enough information for prioritization without opening detail:
+Lô 1 giữ UI hiện có và khóa ngôn ngữ. Dữ liệu đang có là minh họa.
 
-- proposal type;
-- source: Core or MCP;
-- requester;
-- affected customer/order/entity when applicable;
-- value or impact when applicable;
-- reason for escalation;
-- priority/severity;
-- submitted time and waiting age;
-- current decision state.
+Lô 4B mới tạo nguồn cảnh báo thật gồm rule definition + alert instance + lifecycle/history. Cảnh báo không đồng nghĩa với Đề xuất. Một cảnh báo chỉ sinh Đề xuất khi nghiệp vụ thật sự cần quyết định cấp quản lý.
 
-### Approval detail
+### 4.4 Báo cáo
 
-Mobile detail must present information in this order:
+Nguồn đích là các họ reporting hiện hữu của Công Ty, không phải số liệu được hard-code trong Admin.
 
-```text
-Decision summary
--> business impact
--> reason / rule / threshold
--> proposal data
--> evidence or supporting context
--> requester and source
--> history / audit timeline
--> decision actions
-```
-
-Standard management actions:
-
-```text
-Phê duyệt
-Yêu cầu bổ sung
-Từ chối
-```
-
-A specific proposal type may support fewer actions if the backend lifecycle requires it. The frontend must never invent an action that does not exist in the canonical backend lifecycle.
-
-### Decision UX rules
-
-- actions must identify exactly what will be decided;
-- rejection and request-for-information flows must capture an appropriate reason when required;
-- do not hide material impact behind another application;
-- do not approve from a one-line list item without opening sufficient context for consequential decisions;
-- completed decisions move to history and retain audit context.
-
----
-
-## 5.3 Trung tâm cảnh báo theo rule
-
-Purpose: show abnormal conditions generated from explicit management rules or thresholds.
-
-An alert is **not automatically an approval**.
-
-Alerts inform and prioritize. A separate approval item is created only when the business lifecycle requires a management decision.
-
-### Icon-tabs
-
-Initial frontend taxonomy:
-
-```text
-Tổng hợp
-Kinh doanh
-Công nợ
-Kho
-Giao vận
-MCP
-Quy tắc
-Lịch sử
-```
-
-### Alert item
-
-Every actionable alert should show:
-
-- alert title;
-- severity;
-- source/domain;
-- observed value;
-- configured rule/threshold when applicable;
-- affected entity;
-- first/last detected time;
-- current state.
-
-### Severity language
-
-Use management-facing Vietnamese labels:
-
-```text
-Nghiêm trọng
-Cao
-Cần chú ý
-Thông tin
-```
-
-Avoid vague state text such as `Ổn`, `Cần xem` or unexplained dashes when a clearer business status is available.
-
-### Rule screen
-
-The frontend may define and prototype a `Quy tắc` screen in this UI phase so information architecture is stable.
-
-Backend persistence, evaluation engine, schedules and rule ownership are explicitly deferred.
-
-The UI contract for a future rule should be able to express at least:
-
-- rule name;
-- business domain;
-- measured metric/event;
-- condition/threshold;
-- severity;
-- scope;
-- enabled/disabled state;
-- notification/escalation target where later supported.
-
-No frontend-only rule may be presented as a real enforced production rule before backend integration exists.
-
----
-
-## 5.4 Báo cáo quản trị Core/MCP
-
-Purpose: management reporting, not operational CRUD reporting copied from Core.
-
-### Icon-tabs
-
-Initial frontend taxonomy:
+Nhóm quản trị:
 
 ```text
 Điều hành
@@ -350,195 +136,177 @@ Kho
 Giao vận & COD
 MCP / thị trường
 Nhân sự / hiệu suất
-Phê duyệt & cảnh báo
+Đề xuất & cảnh báo
 ```
 
-### Report interaction
+Lô 2 thay dữ liệu minh họa bằng số liệu thật. Lô 3 bổ sung drill-down quản trị từ tổng -> kênh -> nhân viên -> khách -> chứng từ.
 
-Reports should be readable on mobile through:
+---
 
-- headline KPIs;
-- compact comparisons;
-- trend charts;
-- ranked lists/top exceptions;
-- short management summaries;
-- drill-in to an Admin report detail when needed.
+## 5. Bản đồ quyền đọc hiện có
 
-Avoid using a wide data table as the only way to understand a report.
+Admin không tự tạo quyền mới trong frontend. Các quyền reporting đã tồn tại và phải được tái sử dụng đúng phạm vi:
 
-### Time filters
+| Nguồn | Quyền hiện có |
+|---|---|
+| Tổng quan quản trị | `core.reporting.control-tower.read` |
+| Bán hàng | `core.reporting.sales.read` |
+| Mua hàng | `core.reporting.purchasing.read` |
+| Tồn kho | `core.reporting.inventory.read` |
+| Công nợ | `core.reporting.aging.read` |
+| Lãi gộp | `core.reporting.gross-margin.read` |
+| Nhân viên / MCP | `core.reporting.employee-mcp.read` |
+| Giao hàng | `core.reporting.logistics.read` |
+| COD / đối soát | `core.reporting.cod.read` |
+| Lịch sử vận hành | `core.reporting.audit-history.read` |
+| Xuất báo cáo | `core.reporting.export` + quyền đọc họ báo cáo tương ứng |
 
-Default period controls:
+Quyền `core.reporting.control-tower.read` chỉ cho phép đọc tập tổng hợp quản trị. Nó không tự cấp quyền xem mọi chi tiết. Khi drill-down sang dữ liệu chi tiết ở Lô 3, endpoint đích phải kiểm lại quyền/phạm vi của chính dữ liệu đó.
+
+Quyền dành riêng cho lifecycle **Đề xuất** và **Cảnh báo** chưa được phép bịa tên ở Lô 1. Lô 4/5 phải audit registry, khóa quyền deny-by-default và migration tương ứng trước khi mở thao tác thật.
+
+---
+
+## 6. Đề xuất — ngôn ngữ và UX
+
+Màn người dùng gọi là **Trung tâm đề xuất**.
+
+Mỗi dòng cần tối thiểu:
+
+- loại đề xuất;
+- nguồn `Công Ty` hoặc `MCP`;
+- người gửi;
+- đối tượng/chứng từ liên quan;
+- tác động;
+- lý do;
+- mức ưu tiên;
+- thời gian chờ;
+- trạng thái.
+
+Chi tiết hiển thị theo thứ tự:
 
 ```text
-Hôm nay
-7 ngày
-Tháng này
-Quý này
-Tùy chọn
+Tóm tắt quyết định
+-> Tác động
+-> Lý do / điều kiện vượt ngưỡng
+-> Dữ liệu và bằng chứng
+-> Người gửi và nguồn
+-> Lịch sử
+-> Hành động
 ```
 
-Where meaningful, show comparison with the previous equivalent period.
-
-### Core/MCP separation
-
-A report may combine Core and MCP information at management level, but the UI should keep source lineage understandable. Combined metrics must not imply that MCP owns Core business facts or vice versa.
-
----
-
-## 6. Professional product language
-
-Admin UI copy is written for management users, not developers.
-
-Do not expose implementation vocabulary such as:
-
-- phase numbers;
-- canonical contract;
-- backend boundary;
-- drill-down;
-- provider terminology;
-- database or API wording;
-- internal migration language;
-- developer-only authorization terminology.
-
-Poor UI copy:
+Từ người dùng chuẩn:
 
 ```text
-Phase 8.7 · Control Tower
-Cảnh báo & drill-down
-Backend phân loại ngoại lệ riêng
-Ranh giới duyệt ngoại lệ
+Đồng ý
+Yêu cầu bổ sung
+Từ chối
 ```
 
-Target UI copy:
+Trong Lô 1 các nút vẫn disabled vì lifecycle thật thuộc Lô 5. Không tạo endpoint giả để làm nút hoạt động.
+
+---
+
+## 7. Cảnh báo và giám sát MCP
+
+Cảnh báo dùng ngôn ngữ văn phòng:
+
+- `Quy tắc`, không dùng `Rule` trên giao diện;
+- `Dữ liệu minh họa`, không dùng `frontend fixture`;
+- không hiện `backend`, `API`, `production`, `phase`, `contract` cho người dùng.
+
+Đối với MCP, source hiện tại xác nhận báo cáo đã có các cấp:
 
 ```text
-7 đề xuất đang chờ quyết định
-3 khoản công nợ đã vượt ngưỡng cảnh báo
-Tỷ lệ giao thất bại tăng so với kỳ trước
-Đề xuất điều chỉnh giá vượt chính sách
+nhân viên -> tuyến -> phiên -> số điểm dự kiến/đã ghé/check-in/đơn
 ```
 
-Copy rules:
+Check-in hiện lưu:
 
-- concise;
-- factual;
-- professional Vietnamese;
-- state the business event and impact;
-- use the same term for the same concept across all screens;
-- avoid slang and engineering language.
+- latitude;
+- longitude;
+- accuracy;
+- thời điểm;
+- nguồn tọa độ.
+
+Nhưng hiện **chưa có kết luận server-side về khoảng cách giữa vị trí check-in và tọa độ điểm bán**. Vì vậy:
+
+- `checked_in=true` không được trình bày như bằng chứng “đúng vị trí”;
+- Lô 4A mới xây dựng phép đối chiếu GPS và kết luận sai lệch;
+- Lô 4B mới dùng kết quả đó để tạo cảnh báo thật nếu đạt điều kiện cảnh báo.
 
 ---
 
-## 7. Data-state UX
+## 8. Ngôn ngữ văn phòng toàn Admin
 
-Frontend must explicitly design these states for every major module:
+Quy tắc bắt buộc cho chữ người dùng:
+
+- khi `Core` hoặc `NPP` mang nghĩa doanh nghiệp -> dùng **Công Ty**;
+- giữ `MCP` vì đây là tên ứng dụng/kênh nghiệp vụ;
+- không lộ từ dev nếu người dùng không cần biết: `frontend`, `backend`, `API`, `canonical`, `fixture`, `phase`, `contract`, `production`;
+- dùng cùng một thuật ngữ cho cùng một khái niệm trên Tổng quan, Đề xuất, Cảnh báo và Báo cáo;
+- câu chữ ngắn, thực tế, nêu sự kiện và tác động.
+
+Tên kỹ thuật trong code, biến môi trường, permission key và tài liệu kỹ thuật được giữ nguyên khi cần chính xác; quy tắc trên áp dụng cho user-facing copy.
+
+---
+
+## 9. Trạng thái dữ liệu
+
+Mỗi module phải phân biệt rõ:
 
 ```text
-loading
-empty
-partial data
-error/unavailable
-normal
-warning
-critical
-permission denied
+đang tải
+không có dữ liệu
+dữ liệu chưa đầy đủ
+không thể tải dữ liệu
+bình thường
+cần chú ý
+nghiêm trọng
+không có quyền
 ```
 
-Rules:
-
-- empty state means there is genuinely nothing to show;
-- unavailable data must not be presented as zero;
-- partial data must identify that the view is incomplete;
-- error text must be user-facing and must not expose raw provider/database details;
-- mock/demo data used during frontend construction must be visibly isolated from production data adapters and must not masquerade as live business data.
+Không coi dữ liệu thiếu là `0`. Không dùng dữ liệu minh họa để ra quyết định thật.
 
 ---
 
-## 8. Frontend implementation sequence
+## 10. Thứ tự 7 lô của Issue #606
 
-Implementation after this specification is approved/merged:
+1. **Lô 1 — IA + ranh giới + ngôn ngữ**: `admin/web/**` + docs/tests, **không migration**.
+2. **Lô 2 — Báo cáo thật**: nối các reporting family hiện có, dự kiến **không migration** nếu source audit không phát hiện thiếu schema.
+3. **Lô 3 — Drill-down tổng -> kênh -> nhân viên -> khách -> chứng từ**: ưu tiên reuse reporting/read APIs, dự kiến **không migration**.
+4. **Lô 4 — Giám sát MCP + GPS + Cảnh báo thật**: 4A có thể không migration nếu chỉ bổ sung derived read model; 4B gần như chắc chắn **có migration** cho rule/alert lifecycle.
+5. **Lô 5 — Đề xuất thật**: lifecycle + audit/outbox/idempotency + quyền, **có migration**.
+6. **Lô 6 — Tổng quan thật**: tổng hợp từ Báo cáo/Cảnh báo/Đề xuất đã ổn định, **không migration riêng** trừ khi audit phát hiện thiếu source bắt buộc.
+7. **Lô 7 — tích hợp, responsive, regression, runtime gate**: **không migration riêng**.
 
-### Stage A — Replace the old Admin shell
-
-- replace current `Tổng hợp / Ngoại lệ / Menu` navigation;
-- introduce `Tổng quan / Phê duyệt / Cảnh báo / Báo cáo`;
-- remove `Menu` from bottom navigation;
-- create the reusable mobile header, icon-tab and screen primitives;
-- remove the current UX dependency on opening NPP Operations for normal Admin exploration.
-
-### Stage B — Approval Center first
-
-Build the full frontend interaction model for:
-
-- icon-tabs;
-- list;
-- status/badges;
-- mobile detail;
-- decision action presentation;
-- history.
-
-Use frontend fixtures/adapters where backend contracts do not yet exist. Do not create fake production mutation endpoints.
-
-### Stage C — Rule-based Alert Center
-
-Build alert list/detail, severity model, history and rule-management UI shell without claiming backend rule persistence exists.
-
-### Stage D — Core/MCP Management Reports
-
-Build the reporting navigation, KPI/report layouts, filters and mobile chart/list structure.
-
-### Stage E — Overview
-
-Build Overview from the stable concepts of Approval, Alert and Reporting so the home screen reflects real management priorities.
+Không gộp cả 7 lô vào một PR.
 
 ---
 
-## 9. Existing Admin UI migration rule
+## 11. Gate Lô 1
 
-The current Admin UI is a legacy implementation relative to this specification.
+Lô 1 chỉ đạt khi:
 
-The migration is a **replacement/refactor**, not an additive second UI beside the old one.
-
-During implementation:
-
-- obsolete routes, labels, navigation and tests must be updated or removed deliberately;
-- do not preserve an old screen only to avoid changing a regression test;
-- update regression tests to enforce this specification instead of the old `drill into NPP Operations` model;
-- keep valid authentication/security behavior unless a separate task explicitly changes it;
-- do not change backend, database or production deployment as a side effect of the UI refactor.
-
----
-
-## 10. Acceptance gate for the frontend redesign
-
-The Admin frontend redesign is structurally correct only when all of the following are true:
-
-1. Mobile is the primary interaction model.
-2. Bottom navigation is exactly the four management destinations.
-3. Each main management module uses clear icon-tabs for smaller business areas where needed.
-4. Admin can understand approvals, alerts and reports without being routinely redirected to NPP Operations.
-5. No normal Core operational CRUD is duplicated in Admin.
-6. UI language is professional business Vietnamese and does not expose developer terminology.
-7. Approval and alert are separate concepts.
-8. Core/MCP data lineage remains understandable.
-9. Admin continues to use the shared Core backend and Core workforce authentication authority.
-10. Backend/DB integration work is performed only after the frontend business/UI model is approved.
+1. current `main` đã được audit ngay trước khi tạo branch;
+2. thanh điều hướng đúng 4 mục `Tổng quan | Đề xuất | Cảnh báo | Báo cáo`;
+3. không còn mô tả Admin như nơi duyệt công việc kế toán/kho thường ngày;
+4. nhóm Đề xuất không còn tab `Kho` hoặc `Giao vận & COD` như hàng đợi tác nghiệp;
+5. user-facing source dùng `Công Ty` thay cho `Core` khi mang nghĩa doanh nghiệp;
+6. user-facing copy không lộ thuật ngữ dev nêu tại mục 8;
+7. giữ nguyên route `/approvals` trong Lô 1, không kéo migration/lifecycle Lô 5 về sớm;
+8. không sửa backend/database/migration;
+9. exact-head CI hoàn tất xanh trước khi được phép merge;
+10. không deploy production trong Lô 1 nếu Owner chưa ra lệnh rõ.
 
 ---
 
-## 11. Deferred integration work
+## 12. Git / runtime boundary
 
-This specification intentionally does not implement or claim completion of:
-
-- canonical approval APIs for every proposal type;
-- rule storage/evaluation engine;
-- alert persistence;
-- new management reporting contracts;
-- MCP-to-Admin aggregation contracts;
-- backend authorization changes;
-- database schema changes;
-- migrations;
-- production deployment.
-
-Those items are follow-up integration work after the frontend product structure is stable.
+- Branch riêng: `agent/<task>` từ current `main`.
+- Không force-push.
+- Một exact SHA phải chạy xong toàn bộ CI; gom lỗi rồi mới sửa một batch tiếp theo nếu cần.
+- Ngay trước merge phải kiểm `main` lần nữa và sync nếu có merge song song.
+- Chỉ thay `admin/web/**` thì không tự deploy Heroku backend.
+- Auto Deploy vẫn OFF.
+- Merge, deploy và migration production đều cần lệnh riêng của Owner.
