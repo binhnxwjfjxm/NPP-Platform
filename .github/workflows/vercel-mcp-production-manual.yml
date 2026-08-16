@@ -366,7 +366,9 @@ jobs:
 
           assert_status / 200 302 307
           assert_status /mcp 200 302 307
-          assert_status /routes 200 302 307
+          # Raw curl does not advertise a browser navigation; an unauthenticated
+          # request to the admin-only route must fail closed under the Lô 5 gate.
+          assert_status /routes 401
           assert_status /visits 200 302 307
           assert_status /field-checks 200 302 307
 
