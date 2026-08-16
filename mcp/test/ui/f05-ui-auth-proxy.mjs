@@ -4,14 +4,30 @@ const port = Number(process.env.F05_UI_AUTH_PROXY_PORT || 3000);
 const upstreamPort = Number(process.env.F05_UI_NEXT_PORT || 3002);
 const fixturePort = Number(process.env.F05_UI_READ_PROXY_PORT || 3110);
 const sessionCookie = "hp_mcp_session=ci-f05-session";
+const authModeHeader = "x-f05-auth-mode";
 
-function withSessionCookie(value) {
-  const kept = String(value || "")
+function withoutSessionCookie(value) {
+  return String(value || "")
     .split(";")
     .map((item) => item.trim())
     .filter(Boolean)
     .filter((item) => !item.toLowerCase().startsWith("hp_mcp_session="));
-  return [...kept, sessionCookie].join("; ");
+}
+
+function withSessionCookie(value) {
+  return [...withoutSessionCookie(value), sessionCookie].join("; ");
+}
+
+function isUnauthenticatedFixture(request) {
+  return String(request.headers[authModeHeader] || "").trim().toLowerCase() === "unauthenticated";
+}
+
+function denyFixtureAccess(response) {
+  response.writeHead(401, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store"
+  });
+  response.end(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "Authentication required" } }));
 }
 
 function proxyFixtureAccess(request, response) {
@@ -43,15 +59,24 @@ function proxyFixtureAccess(request, response) {
 
 const server = http.createServer((request, response) => {
   const url = new URL(request.url || "/", `http://${request.headers.host || `127.0.0.1:${port}`}`);
+  const unauthenticated = isUnauthenticatedFixture(request);
+
   if (request.method === "GET" && url.pathname === "/api/auth/me") {
+    if (unauthenticated) {
+      denyFixtureAccess(response);
+      return;
+    }
     proxyFixtureAccess(request, response);
     return;
   }
 
   const headers = { ...request.headers };
+  delete headers[authModeHeader];
   headers.host = `127.0.0.1:${upstreamPort}`;
   headers["x-forwarded-proto"] = "https";
-  headers.cookie = withSessionCookie(headers.cookie);
+  headers.cookie = unauthenticated
+    ? withoutSessionCookie(headers.cookie).join("; ")
+    : withSessionCookie(headers.cookie);
 
   const upstream = http.request({
     hostname: "127.0.0.1",
@@ -61,12 +86,14 @@ const server = http.createServer((request, response) => {
     headers
   }, (upstreamResponse) => {
     const responseHeaders = { ...upstreamResponse.headers };
-    const existing = responseHeaders["set-cookie"];
-    const cookies = Array.isArray(existing) ? existing : existing ? [existing] : [];
-    responseHeaders["set-cookie"] = [
-      ...cookies,
-      `${sessionCookie}; Path=/; HttpOnly; SameSite=Lax`
-    ];
+    if (!unauthenticated) {
+      const existing = responseHeaders["set-cookie"];
+      const cookies = Array.isArray(existing) ? existing : existing ? [existing] : [];
+      responseHeaders["set-cookie"] = [
+        ...cookies,
+        `${sessionCookie}; Path=/; HttpOnly; SameSite=Lax`
+      ];
+    }
     response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
     upstreamResponse.pipe(response);
   });

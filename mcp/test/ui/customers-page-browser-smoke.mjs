@@ -5,6 +5,7 @@ import { chromium } from "playwright";
 const appBase = process.env.F05_UI_APP_BASE || "http://127.0.0.1:3000";
 const resultsDir = process.env.F05_UI_RESULTS_DIR || "test-results/f05-ui-smoke";
 const proxyHeaders = { "x-forwarded-proto": "https" };
+const unauthenticatedHeaders = { ...proxyHeaders, "x-f05-auth-mode": "unauthenticated" };
 await mkdir(resultsDir, { recursive: true });
 
 async function waitForHttp(url, timeoutMs = 120_000) {
@@ -35,7 +36,7 @@ async function verifyNoHorizontalOverflow(page, label) {
 }
 
 async function verifyProtectedPage(browser, { viewport, path, expectedReturnTo, screenshotName }) {
-  const context = await browser.newContext({ viewport, extraHTTPHeaders: proxyHeaders });
+  const context = await browser.newContext({ viewport, extraHTTPHeaders: unauthenticatedHeaders });
   const page = await context.newPage();
   await page.goto(`${appBase}${path}`, { waitUntil: "domcontentloaded" });
   await page.waitForURL((url) => url.pathname === "/login");
@@ -53,7 +54,7 @@ async function verifyProtectedPage(browser, { viewport, path, expectedReturnTo, 
 }
 
 async function verifyProtectedApi(browser, path) {
-  const context = await browser.newContext({ extraHTTPHeaders: proxyHeaders });
+  const context = await browser.newContext({ extraHTTPHeaders: unauthenticatedHeaders });
   const response = await context.request.get(`${appBase}${path}`, { failOnStatusCode: false });
   assert.equal(response.status(), 401, `${path} must deny unauthenticated access`);
   const payload = await response.json();

@@ -5,6 +5,7 @@ import { chromium } from "playwright";
 const appBase = process.env.F05_UI_APP_BASE || "http://127.0.0.1:3000";
 const resultsDir = process.env.F05_UI_RESULTS_DIR || "test-results/f05-ui-smoke";
 const proxyHeaders = { "x-forwarded-proto": "https" };
+const unauthenticatedHeaders = { ...proxyHeaders, "x-f05-auth-mode": "unauthenticated" };
 await mkdir(resultsDir, { recursive: true });
 
 async function waitForHttp(url, timeoutMs = 120000) {
@@ -70,7 +71,7 @@ try {
     await screenshot(sessionsPage, `21-sessions-mobile-${viewport.width}`);
     await sessionsContext.close();
 
-    const orderContext = await browser.newContext({ viewport, extraHTTPHeaders: proxyHeaders });
+    const orderContext = await browser.newContext({ viewport, extraHTTPHeaders: unauthenticatedHeaders });
     const orderPage = await orderContext.newPage();
     let legacyOnboardingCalls = 0;
     let legacySalesOrderCalls = 0;

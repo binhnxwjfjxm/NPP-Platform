@@ -5,6 +5,7 @@ import { chromium } from "playwright";
 const appBase = process.env.F05_UI_APP_BASE || "http://127.0.0.1:3000";
 const resultsDir = process.env.F05_UI_RESULTS_DIR || "test-results/f05-ui-smoke";
 const proxyHeaders = { "x-forwarded-proto": "https" };
+const unauthenticatedHeaders = { ...proxyHeaders, "x-f05-auth-mode": "unauthenticated" };
 await mkdir(resultsDir, { recursive: true });
 
 async function waitForHttp(url, timeoutMs = 120000) {
@@ -90,6 +91,7 @@ try {
   }
   const motionIndices = await verifyDockMotion(page, routeDock.dock, routeDock.links);
 
+  await page.setExtraHTTPHeaders(unauthenticatedHeaders);
   const customerRequestPromise = page.waitForRequest((request) => {
     return request.isNavigationRequest() && pathname(request.url()) === "/customers";
   });
@@ -100,6 +102,7 @@ try {
   await page.getByRole("heading", { name: "Đăng nhập nhân viên", exact: true }).waitFor({ state: "visible" });
   assert.equal(new URL(page.url()).searchParams.get("returnTo"), null, "default customer entry must use the safe /customers return target");
 
+  await page.setExtraHTTPHeaders(proxyHeaders);
   await page.goto(`${appBase}/routes`, { waitUntil: "domcontentloaded" });
   const dock = (await readDock(page)).dock;
   const visitLink = dock.getByRole("link", { name: "Đi tuyến", exact: true });
@@ -120,6 +123,7 @@ try {
   assert.equal(pathname(page.url()), "/visits", "active visit setup must remain on /visits");
   const sessionDock = (await readDock(page)).dock;
   const ordersLink = sessionDock.getByRole("link", { name: "Đơn", exact: true });
+  await page.setExtraHTTPHeaders(unauthenticatedHeaders);
   const ordersRequestPromise = page.waitForRequest((request) => {
     return request.isNavigationRequest() && pathname(request.url()) === "/orders";
   });

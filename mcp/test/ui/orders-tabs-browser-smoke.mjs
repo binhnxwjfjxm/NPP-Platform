@@ -5,6 +5,7 @@ import { chromium } from "playwright";
 const appBase = process.env.F05_UI_APP_BASE || "http://127.0.0.1:3000";
 const resultsDir = process.env.F05_UI_RESULTS_DIR || "test-results/f05-ui-smoke";
 const proxyHeaders = { "x-forwarded-proto": "https" };
+const unauthenticatedHeaders = { ...proxyHeaders, "x-f05-auth-mode": "unauthenticated" };
 await mkdir(resultsDir, { recursive: true });
 
 async function waitForHttp(url, timeoutMs = 120000) {
@@ -37,7 +38,7 @@ async function verifyNoBodyOverflow(page, label) {
 async function verifyProtectedOrdersEntry(browser, width, height) {
   const context = await browser.newContext({
     viewport: { width, height },
-    extraHTTPHeaders: proxyHeaders
+    extraHTTPHeaders: unauthenticatedHeaders
   });
   const page = await context.newPage();
   await page.goto(`${appBase}/orders`, { waitUntil: "domcontentloaded" });
