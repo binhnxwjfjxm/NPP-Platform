@@ -113,7 +113,6 @@ test("linked route-customer location writes canonical Core first and reuses the 
     geoLng: 106.667
   }, context, {
     ...config,
-    persistence: { provider: "postgresql" },
     coreSales: {
       configured: true,
       baseUrl: "https://core.example.com",
