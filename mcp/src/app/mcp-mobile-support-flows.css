@@ -163,3 +163,26 @@
     border-radius: 12px;
   }
 }
+
+@media (max-width: 560px) {
+  .app-shell[data-active-href="/orders"] .page-header {
+    grid-template-rows: auto 46px;
+  }
+
+  .app-shell[data-active-href="/orders"] .page-header-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-flow: column;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    height: 46px;
+    min-height: 46px;
+    overflow: visible;
+  }
+
+  .app-shell[data-active-href="/orders"] .page-header-actions > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
