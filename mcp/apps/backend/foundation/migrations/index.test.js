@@ -39,7 +39,8 @@ const EXPECTED_MIGRATIONS = [
   "mcp_007_core_sales_order_sync",
   "mcp_008_legacy_report_settings_seed",
   "mcp_009_customer_media_link",
-  "mcp_010_customer_verification"
+  "mcp_010_customer_verification",
+  "mcp_011_legacy_customer_linkage_repair"
 ];
 
 test("MCP migrations use a unique registry namespace and apply once in one locked transaction", async () => {
@@ -62,6 +63,7 @@ test("MCP migrations use a unique registry namespace and apply once in one locke
   assert.equal(adapter.calls.some((call) => call.text.includes("customer_onboarding_request_id")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("core_sales_order_id")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("mcp_orders_route_customer_core_linkage")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("resolve_order_route_customer_id")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("customer_verification_operation_id")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("Exact source counts: 7 groups, 53 items")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("ON DELETE CASCADE")), true);
@@ -279,6 +281,30 @@ test("MCP customer verification migration is canonical and persists standalone e
   assert.match(sql, /mcp_route_customers_verification_shape_check/);
   assert.match(sql, /REFERENCES shared\.employees/);
   assert.doesNotMatch(sql, /CREATE\s+TABLE\s+shared\.employees/i);
+});
+
+test("MCP legacy customer linkage repair resolves session identity and fails closed on conflicts", () => {
+  const sql = MCP_MIGRATIONS[10].sql;
+  const canonicalSql = readFileSync(
+    new URL("../../../../../database/migrations/mcp/011_mcp_legacy_customer_linkage_repair.sql", import.meta.url),
+    "utf8"
+  );
+  assert.equal(sql, canonicalSql);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION mcp\.resolve_order_route_customer_id/);
+  assert.match(sql, /p_source_type = 'session_customer'/);
+  assert.match(sql, /FROM mcp\.mcp_session_customers AS session_customer/);
+  assert.match(sql, /session_customer\.route_customer_id/);
+  assert.match(sql, /mcp_order_route_customer_identity_conflict/);
+  assert.match(sql, /mcp_legacy_customer_linkage_conflict/);
+  assert.match(sql, /mcp_existing_route_customer_linkage_conflict/);
+  assert.match(sql, /mcp_legacy_core_customer_missing/);
+  assert.match(sql, /mcp_legacy_customer_linkage_repair_failed/);
+  assert.match(sql, /count\(DISTINCT core_customer_id\) > 1/);
+  assert.match(sql, /count\(DISTINCT core_customer_address_id\) > 1/);
+  assert.match(sql, /IS DISTINCT FROM latest\.core_customer_id/);
+  assert.match(sql, /IS DISTINCT FROM latest\.core_customer_address_id/);
+  assert.match(sql, /REVOKE ALL ON FUNCTION mcp\.resolve_order_route_customer_id/);
+  assert.doesNotMatch(sql, /customer_name|phone\s*=/i);
 });
 
 test("migration failure rolls back and preserves the original error", async () => {
