@@ -84,8 +84,10 @@ function readSource(table) {
              WHEN route_customer.core_onboarding_status IN ('approved', 'linked_existing')
               AND route_customer.core_customer_id IS NOT NULL
               AND route_customer.core_customer_address_id IS NOT NULL
-              AND customer_address.is_active IS TRUE
-             THEN customer_address.location_url
+             THEN CASE
+               WHEN customer_address.is_active IS TRUE THEN customer_address.location_url
+               ELSE NULL
+             END
              ELSE route_customer.google_maps_url
            END AS "${CANONICAL_LOCATION_COLUMN}"
     FROM "mcp"."mcp_route_customers" AS route_customer
@@ -98,8 +100,9 @@ function readSource(table) {
 
 function selectedColumns(table, selectRaw) {
   if (!selectRaw || selectRaw === "*") return "*";
-  const selected = selectRaw.split(",").map((item) => quoteIdentifier(item.trim())).join(", ");
-  return table === "mcp_route_customers"
+  const names = selectRaw.split(",").map((item) => item.trim());
+  const selected = names.map((item) => quoteIdentifier(item)).join(", ");
+  return table === "mcp_route_customers" && names.includes("google_maps_url")
     ? `${selected}, "${CANONICAL_LOCATION_COLUMN}"`
     : selected;
 }
@@ -107,10 +110,8 @@ function selectedColumns(table, selectRaw) {
 function canonicalizeRouteCustomerRows(table, rows) {
   if (table !== "mcp_route_customers") return rows;
   return rows.map((row) => {
-    const canonicalLocation = Object.prototype.hasOwnProperty.call(row, CANONICAL_LOCATION_COLUMN)
-      ? row[CANONICAL_LOCATION_COLUMN]
-      : row.google_maps_url;
-    const result = { ...row, google_maps_url: canonicalLocation ?? null };
+    if (!Object.prototype.hasOwnProperty.call(row, CANONICAL_LOCATION_COLUMN)) return row;
+    const result = { ...row, google_maps_url: row[CANONICAL_LOCATION_COLUMN] ?? null };
     delete result[CANONICAL_LOCATION_COLUMN];
     return result;
   });
@@ -162,5 +163,6 @@ export async function postgresqlRead(config, resource, { method = "GET" } = {}) 
 export const postgresqlReadInternals = Object.freeze({
   CANONICAL_LOCATION_COLUMN,
   readSource,
+  selectedColumns,
   canonicalizeRouteCustomerRows,
 });
