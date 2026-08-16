@@ -9,6 +9,7 @@ import {
   listFulfillmentWorkQueue,
   suggestFulfillmentAllocation,
 } from '../services/sales-fulfillment-operations.js';
+import { executeAllocateFulfillmentOrder } from '../services/sales-fulfillment-order-allocation.js';
 import {
   executeCloseFulfillmentPicking,
   executeRecordFulfillmentShortage,
@@ -311,6 +312,22 @@ export async function handleFulfillmentOperationRoutes(req, res, options) {
         adapter: options.getPool(),
         requestContext,
         demandId: allocateMatch[1],
+        idempotencyKey,
+        payload,
+      }),
+    });
+  }
+
+  const allocateOrderMatch = pathname.match(
+    /^\/api\/inventory\/fulfillment-orders\/([^/]+)\/allocate$/,
+  );
+  if (allocateOrderMatch && method === 'POST') {
+    return executeMutation(req, res, options, {
+      permission: options.PERMISSIONS.coreFulfillmentAllocate,
+      operation: ({ requestContext, payload, idempotencyKey }) => executeAllocateFulfillmentOrder({
+        adapter: options.getPool(),
+        requestContext,
+        salesOrderId: allocateOrderMatch[1],
         idempotencyKey,
         payload,
       }),
