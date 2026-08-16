@@ -1,22 +1,23 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { createIdempotencyKey } from '@npp/contracts';
 
 async function createFixture(request: APIRequestContext, suffix: string) {
   const productResponse = await request.post('/api/products', {
-    headers: { 'Idempotency-Key': `pricing-product-${suffix}` },
+    headers: { 'Idempotency-Key': createIdempotencyKey('pricing-e2e-product') },
     data: { code: `P-${suffix}`, name: `Sản phẩm giá ${suffix}` },
   });
   expect(productResponse.status()).toBe(201);
   const product = (await productResponse.json()).data;
 
   const variantResponse = await request.post(`/api/products/${product.id}/variants`, {
-    headers: { 'Idempotency-Key': `pricing-variant-${suffix}` },
+    headers: { 'Idempotency-Key': createIdempotencyKey('pricing-e2e-variant') },
     data: { sku: `SKU-${suffix}`, name: `SKU giá ${suffix}`, variantKind: 'BASE', isInventoryBase: true, isSellable: true },
   });
   expect(variantResponse.status()).toBe(201);
   const variant = (await variantResponse.json()).data;
 
   const unitResponse = await request.post('/api/units', {
-    headers: { 'Idempotency-Key': `pricing-unit-${suffix}` },
+    headers: { 'Idempotency-Key': createIdempotencyKey('pricing-e2e-unit') },
     data: { code: `EA-${suffix}`, name: `Đơn vị ${suffix}`, unitKind: 'COUNT', allowsFractional: false },
   });
   expect(unitResponse.status()).toBe(201);
@@ -30,7 +31,7 @@ async function createFixture(request: APIRequestContext, suffix: string) {
 }
 
 test.describe('Giá bán và khuyến mãi', () => {
-  test('quản trị giá nền, giá kênh, phân giải và override thủ công', async ({ page, request }) => {
+  test('quản trị giá nền, giá kênh, kiểm tra giá và điều chỉnh thủ công', async ({ page, request }) => {
     const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
     const fixture = await createFixture(request, suffix);
     const channelCode = `VENUE-${suffix}`;
@@ -39,7 +40,7 @@ test.describe('Giá bán và khuyến mãi', () => {
 
     await page.goto('/pricing');
     await expect(page.getByTestId('pricing-page')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Giá bán & khuyến mãi', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Giá bán và khuyến mãi', exact: true })).toBeVisible();
 
     await page.getByTestId('add-sales-channel-button').click();
     await expect(page.getByTestId('pricing-channel-modal')).toBeVisible();
@@ -94,7 +95,7 @@ test.describe('Giá bán và khuyến mãi', () => {
     await expect(page.getByTestId('pricing-step-base')).toBeVisible();
     await expect(page.getByTestId('pricing-step-rule')).toBeVisible();
 
-    await page.getByLabel('Giá điều chỉnh trực tiếp (₫)').fill('7777');
+    await page.getByLabel('Giá điều chỉnh thủ công (₫)').fill('7777');
     await page.getByLabel('Lý do điều chỉnh').fill('Giá được quản lý duyệt');
     await page.getByTestId('resolve-price-button').click();
     await expect(page.getByTestId('resolved-unit-price')).toContainText('7.777');

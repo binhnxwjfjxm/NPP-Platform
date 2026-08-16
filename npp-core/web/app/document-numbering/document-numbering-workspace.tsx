@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { createIdempotencyKey } from '@npp/contracts';
 import { AppShell } from '../components/app-shell';
 import Modal from '../components/modal';
 import type {
@@ -71,13 +72,9 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     error?: { code?: string; message?: string };
   };
   if (!response.ok || !Object.prototype.hasOwnProperty.call(payload, 'data')) {
-    throw new Error(payload.error?.message || payload.error?.code || 'Yêu cầu không thành công');
+    throw new Error(payload.error?.message || 'Yêu cầu không thành công');
   }
   return payload.data as T;
-}
-
-function requestKey(prefix: string) {
-  return `${prefix}-${crypto.randomUUID()}`;
 }
 
 export default function DocumentNumberingWorkspace() {
@@ -90,7 +87,8 @@ export default function DocumentNumberingWorkspace() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<DocumentNumberSeries | null>(null);
   const [documentDate, setDocumentDate] = useState(todayInVietnam());
-  const [allocationKey, setAllocationKey] = useState(() => requestKey('reference-number'));
+  const [seriesCreateKey, setSeriesCreateKey] = useState(() => createIdempotencyKey('document-number-series-create'));
+  const [allocationKey, setAllocationKey] = useState(() => createIdempotencyKey('document-number-reference'));
   const [lastAllocation, setLastAllocation] = useState<DocumentNumberAllocation | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -152,6 +150,7 @@ export default function DocumentNumberingWorkspace() {
   function openCreate() {
     setEditing(null);
     setForm(EMPTY_FORM);
+    setSeriesCreateKey(createIdempotencyKey('document-number-series-create'));
     setShowForm(true);
     setError(null);
     setNotice(null);
@@ -192,11 +191,12 @@ export default function DocumentNumberingWorkspace() {
           })
         : await requestJson<DocumentNumberSeries>('/api/document-number-series', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestKey('number-rule') },
+            headers: { 'Content-Type': 'application/json', 'Idempotency-Key': seriesCreateKey },
             body: JSON.stringify(body),
           });
       setShowForm(false);
       setEditing(saved);
+      setSeriesCreateKey(createIdempotencyKey('document-number-series-create'));
       const refreshed = await loadSeries(saved.id);
       if (refreshed) await loadHistory(refreshed.id);
       setNotice(editing ? 'Đã cập nhật quy tắc đánh số' : 'Đã tạo quy tắc đánh số');
@@ -243,8 +243,9 @@ export default function DocumentNumberingWorkspace() {
       await loadHistory(selected.id);
       const refreshed = await loadSeries(selected.id);
       if (refreshed) setSelected(refreshed);
+      setAllocationKey(createIdempotencyKey('document-number-reference'));
       setNotice(saved.replayed
-        ? 'Yêu cầu này đã được xử lý trước đó; hệ thống trả lại đúng số đã cấp'
+        ? 'Thao tác trước đã hoàn tất; hệ thống hiển thị lại đúng số đã cấp'
         : 'Đã cấp số tham chiếu và lưu vào lịch sử');
     } catch (value) {
       setError(value instanceof Error ? value.message : 'Không thể cấp số tham chiếu');
@@ -266,7 +267,7 @@ export default function DocumentNumberingWorkspace() {
           <div>
             <span className={styles.eyebrow}>Thiết lập quy tắc</span>
             <h2>Quy tắc đánh số dùng chung</h2>
-            <p>Mỗi loại chứng từ chỉ có một quy tắc đang sử dụng. Mã kỹ thuật do hệ thống quản lý tự động.</p>
+            <p>Mỗi loại chứng từ chỉ có một quy tắc đang sử dụng. Hệ thống tự liên kết cấu hình cần thiết.</p>
           </div>
           <button type="button" className={styles.primaryButton} onClick={openCreate} data-testid="add-number-series-button">
             Thêm quy tắc
@@ -332,20 +333,16 @@ export default function DocumentNumberingWorkspace() {
               </p>
               <div className={styles.formGrid}>
                 <label>Ngày chứng từ<input type="date" value={documentDate} onChange={(event) => setDocumentDate(event.target.value)} data-testid="allocation-date-input" /></label>
-                <label>Mã yêu cầu<input value={allocationKey} onChange={(event) => setAllocationKey(event.target.value)} data-testid="allocation-key-input" /></label>
               </div>
               <div className={styles.actionsBar}>
                 <button
                   type="button"
                   className={styles.primaryButton}
-                  disabled={busy || !selected.is_active || !documentDate || !allocationKey.trim()}
+                  disabled={busy || !selected.is_active || !documentDate}
                   onClick={() => void allocateReferenceNumber()}
                   data-testid="allocate-test-number-button"
                 >
                   Cấp số tham chiếu
-                </button>
-                <button type="button" className={styles.secondaryButton} onClick={() => setAllocationKey(requestKey('reference-number'))}>
-                  Tạo mã yêu cầu mới
                 </button>
               </div>
               {lastAllocation ? (
@@ -398,7 +395,7 @@ export default function DocumentNumberingWorkspace() {
         <Modal
           open={showForm}
           title={editing ? `Sửa ${editing.name}` : 'Tạo quy tắc đánh số'}
-          description="Chọn loại chứng từ và cấu hình cách hiển thị số. Mã kỹ thuật được hệ thống tự quản lý."
+          description="Chọn loại chứng từ và cấu hình cách hiển thị số. Hệ thống tự liên kết cấu hình cần thiết."
           onClose={closeForm}
           testId="number-series-modal"
           size="large"

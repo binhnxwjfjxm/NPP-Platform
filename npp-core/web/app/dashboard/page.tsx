@@ -17,19 +17,19 @@ type ShortcutIcon = 'sales' | 'purchasing' | 'inventory' | 'logistics' | 'accoun
 const shortcutGroups = [
   {
     id: 'sales',
-    title: 'Bán hàng & khách hàng',
+    title: 'Bán hàng và khách hàng',
     items: [
       { href: '/management', label: 'Điều hành bán hàng', icon: 'sales' },
       { href: '/sales/sales-orders', label: 'Đơn bán hàng', icon: 'sales' },
       { href: '/customers', label: 'Khách hàng', icon: 'customer' },
-      { href: '/management/customer-onboarding', label: 'Mở / liên kết mã khách', icon: 'customer' },
+      { href: '/management/customer-onboarding', label: 'Mở/liên kết mã khách', icon: 'customer' },
     ],
   },
   {
     id: 'purchasing-inventory',
-    title: 'Mua hàng & kho',
+    title: 'Mua hàng và kho',
     items: [
-      { href: '/purchasing/purchase-orders', label: 'Đơn đặt hàng', icon: 'purchasing' },
+      { href: '/purchasing/purchase-orders', label: 'Đơn mua hàng', icon: 'purchasing' },
       { href: '/purchasing/goods-receipts', label: 'Phiếu nhận hàng', icon: 'purchasing' },
       { href: '/inventory/fulfillment', label: 'Chuẩn bị hàng', icon: 'inventory' },
       { href: '/inventory/balances', label: 'Tra cứu tồn kho', icon: 'inventory' },
@@ -37,10 +37,10 @@ const shortcutGroups = [
   },
   {
     id: 'logistics-accounting',
-    title: 'Giao hàng & công nợ',
+    title: 'Giao hàng và công nợ',
     items: [
       { href: '/inventory/delivery-orders', label: 'Phiếu giao hàng', icon: 'logistics' },
-      { href: '/logistics/trips', label: 'Lập & xếp chuyến', icon: 'logistics' },
+      { href: '/logistics/trips', label: 'Lập và xếp chuyến', icon: 'logistics' },
       { href: '/accounting/receivables', label: 'Công nợ phải thu', icon: 'accounting' },
       { href: '/accounting/customer-payments', label: 'Thu tiền khách hàng', icon: 'accounting' },
     ],
@@ -144,7 +144,7 @@ export default async function DashboardPage() {
       <main className={styles.page} data-testid="dashboard-launchpad-page">
         {initialError ? (
           <div className={styles.dataNotice} role="status" data-testid="dashboard-kpi-stale">
-            KPI cơ cấu chưa cập nhật: {initialError}. Các lối tắt nghiệp vụ vẫn sử dụng bình thường.
+            Chỉ số cơ cấu chưa cập nhật: {initialError}. Các lối tắt nghiệp vụ vẫn sử dụng bình thường.
           </div>
         ) : null}
 
@@ -182,7 +182,7 @@ export default async function DashboardPage() {
         </DashboardOperations>
 
         <p className={styles.sourceNote}>
-          Chỉ số cơ cấu: {formatCompactNumber(metrics.reduce((sum, metric) => sum + metric.active, 0))} điểm đang hoạt động. Các card đo lường chỉ hiển thị dữ liệu reporting canonical mà tài khoản hiện tại được phép đọc.
+          Chỉ số cơ cấu: {formatCompactNumber(metrics.reduce((sum, metric) => sum + metric.active, 0))} điểm đang hoạt động. Các thẻ đo lường chỉ hiển thị dữ liệu báo cáo mà tài khoản hiện tại được phép đọc.
         </p>
       </main>
     </AppShell>

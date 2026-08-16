@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createIdempotencyKey } from '@npp/contracts';
 import { AppShell } from '../components/app-shell';
 import shellStyles from '../components/app-shell.module.css';
 import styles from './organization.module.css';
@@ -149,17 +150,26 @@ function entitySearchText(
   return matchTerm(branch.code, branch.name, relationText);
 }
 
+function managementScreenLabel(path?: string): string {
+  if (!path) return 'màn hình nghiệp vụ liên quan';
+  if (path.startsWith('/products')) return 'Danh mục sản phẩm';
+  if (path.startsWith('/organization/branches')) return 'Danh mục chi nhánh';
+  if (path.startsWith('/organization/warehouses')) return 'Danh mục kho hàng';
+  if (path.startsWith('/organization/locations')) return 'Danh mục vị trí kho';
+  return 'màn hình nghiệp vụ liên quan';
+}
+
 function dependencyAwareErrorMessage(error: { message?: string; code?: string; details?: unknown } | undefined, fallback: string): string {
   const details = error?.details as { conflictType?: string; dependency?: { label?: string; count?: number; managementPath?: string }; managementPath?: string; action?: string } | undefined;
-  const base = error?.message || error?.code || fallback;
+  const base = error?.message || fallback;
   if (!details || typeof details !== 'object') return base;
   if (details.conflictType === 'active_dependents' && details.dependency) {
     const count = Number.isFinite(Number(details.dependency.count)) ? Number(details.dependency.count) : 0;
     const summary = count > 0 ? `${details.dependency.label ?? 'Phụ thuộc đang hoạt động'}: ${count}.` : `${details.dependency.label ?? 'Phụ thuộc đang hoạt động'}.`;
-    return `${base} ${summary} Mở màn hình xử lý: ${details.dependency.managementPath ?? details.managementPath ?? '/products'}`;
+    return `${base} ${summary} Mở ${managementScreenLabel(details.dependency.managementPath ?? details.managementPath)} để xử lý.`;
   }
   if (details.conflictType === 'stale_version') return `${base} Bấm Làm mới rồi thực hiện lại thao tác.`;
-  if (details.managementPath) return `${base} Mở màn hình xử lý: ${details.managementPath}`;
+  if (details.managementPath) return `${base} Mở ${managementScreenLabel(details.managementPath)} để xử lý.`;
   return base;
 }
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -212,6 +222,7 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
   const [warehouseDraft, setWarehouseDraft] = useState<WarehouseFormState>(emptyWarehouseForm());
   const [locationDraft, setLocationDraft] = useState<LocationFormState>(emptyLocationForm());
   const [toggleState, setToggleState] = useState<ToggleState>(null);
+  const mutationKeys = useRef(new Map<string, string>());
 
   const branchMap = useMemo(() => new Map(branches.map((branch) => [branch.id, branch])), [branches]);
   const warehouseMap = useMemo(() => new Map(warehouses.map((warehouse) => [warehouse.id, warehouse])), [warehouses]);
@@ -478,19 +489,27 @@ export default function OrganizationWorkspace({ scope, title, subtitle, initialD
     setBusy(`${mode}-${resourceLabel}`);
     setError(null);
     setNotice(null);
+    const operationScope = `${resourceLabel}|${path}|${JSON.stringify(payload)}`;
 
     try {
+      let idempotencyKey: string | undefined;
+      if (mode === 'create') {
+        idempotencyKey = mutationKeys.current.get(operationScope);
+        if (!idempotencyKey) {
+          idempotencyKey = createIdempotencyKey('organization-create');
+          mutationKeys.current.set(operationScope, idempotencyKey);
+        }
+      }
       const options: RequestInit = {
         method: mode === 'create' ? 'POST' : 'PATCH',
-        headers: mode === 'create'
-          ? { 'Idempotency-Key': `web-${crypto.randomUUID()}` }
-          : undefined,
+        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
         body: JSON.stringify(mode === 'create'
           ? payload
           : { ...payload, expectedUpdatedAt }),
       };
 
       await requestJson(path, options);
+      if (mode === 'create') mutationKeys.current.delete(operationScope);
       await loadAll();
       setEditor(null);
       setNotice(initialNotice(mode === 'create' ? 'Đã tạo mới thành công.' : 'Đã cập nhật thành công.'));

@@ -7,15 +7,15 @@ const wrapperSource = readFileSync(new URL('../app/components/app-shell.tsx', im
 
 const expectedItems = [
   ['/inventory/delivery-orders', 'Phiếu giao hàng', 'nav-delivery-orders'],
-  ['/logistics/trips', 'Lập & xếp chuyến', 'nav-logistics-trips'],
-  ['/logistics/dispatch', 'Bàn giao & xuất phát', 'nav-logistics-dispatch'],
+  ['/logistics/trips', 'Lập và xếp chuyến', 'nav-logistics-trips'],
+  ['/logistics/dispatch', 'Bàn giao và xuất phát', 'nav-logistics-dispatch'],
   ['/logistics/delivery-attempts', 'Kết quả lần giao', 'nav-logistics-delivery-attempts'],
   ['/logistics/trip-reconciliation', 'Đối soát cuối chuyến', 'nav-logistics-trip-reconciliation'],
   ['/inventory/customer-returns', 'Hàng khách trả', 'nav-customer-returns'],
 ];
 
 test('NPP exposes the complete delivery workflow in one persistent left navigation group', () => {
-  assert.match(coreShellSource, /title: 'Giao nhận & điều phối'/);
+  assert.match(coreShellSource, /title: 'Giao nhận và điều phối'/);
   assert.match(coreShellSource, /testId: 'logistics-menu-toggle'/);
 
   for (const [href, label, testId] of expectedItems) {

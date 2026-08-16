@@ -217,7 +217,6 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
           }),
         });
       }
-
       setEditor(null);
       setDraft(emptySupplierDraft());
       resetCreateState();
@@ -263,11 +262,11 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
         {notice ? <p className={styles.notice}>{notice}</p> : null}
 
         <section className={styles.toolbar}>
-          <input data-testid="suppliers-search-input" type="search" placeholder="Tìm theo mã, tên, mã số thuế hoặc tài khoản" value={search} onChange={(event) => setSearch(event.target.value)} />
+          <input data-testid="suppliers-search-input" type="search" placeholder="Ví dụ: NCC001, Công ty Minh Anh, 0312345678" value={search} onChange={(event) => setSearch(event.target.value)} />
           <select data-testid="suppliers-status-filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as FilterState)}>
             <option value="all">Tất cả trạng thái</option>
-            <option value="active">Hoạt động</option>
-            <option value="inactive">Không hoạt động</option>
+            <option value="active">Đang hoạt động</option>
+            <option value="inactive">Ngừng sử dụng</option>
           </select>
           <button type="button" onClick={() => void loadAll()} disabled={busy !== null}>Cập nhật dữ liệu</button>
         </section>
@@ -276,7 +275,7 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
           <table><thead><tr><th>Mã</th><th>Tên nhà cung cấp</th><th>Mã số thuế</th><th>Ngân hàng</th><th>Giao hàng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
             <tbody>{visibleSuppliers.map((supplier) => (
               <tr key={supplier.id} data-testid={`supplier-row-${supplier.code}`}>
-                <td className={styles.code}>{supplier.code}</td><td>{supplier.name}</td><td>{supplier.tax_id || '—'}</td><td>{supplier.bank_name || supplier.bank_account || '—'}</td><td>{supplier.avg_delivery_days === null ? '—' : `${supplier.avg_delivery_days} ngày`}</td><td><span className={supplier.is_active ? styles.active : styles.inactive}>{supplier.is_active ? 'Hoạt động' : 'Không hoạt động'}</span></td>
+                <td className={styles.code}>{supplier.code}</td><td>{supplier.name}</td><td>{supplier.tax_id || '—'}</td><td>{supplier.bank_name || supplier.bank_account || '—'}</td><td>{supplier.avg_delivery_days === null ? '—' : `${supplier.avg_delivery_days} ngày`}</td><td><span className={supplier.is_active ? styles.active : styles.inactive}>{supplier.is_active ? 'Đang hoạt động' : 'Ngừng sử dụng'}</span></td>
                 <td className={styles.actions}><button data-testid={`edit-supplier-${supplier.code}`} type="button" onClick={() => openEdit(supplier)} disabled={busy !== null}>Sửa</button><button type="button" onClick={() => void toggleSupplier(supplier)} disabled={busy !== null}>{supplier.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button></td>
               </tr>
             ))}</tbody>

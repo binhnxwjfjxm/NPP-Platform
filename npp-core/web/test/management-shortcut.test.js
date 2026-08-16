@@ -9,7 +9,7 @@ const managementSource = readFileSync(new URL('../app/management/page.tsx', impo
 test('NPP keeps all daily sales work inside the Sales navigation group', () => {
   assert.match(coreShellSource, /href: '\/management', label: 'Điều hành bán hàng'/);
   assert.match(coreShellSource, /href: '\/sales\/sales-orders', label: 'Đơn bán hàng'/);
-  assert.match(coreShellSource, /href: '\/management\/customer-onboarding', label: 'Mở \/ liên kết mã khách'/);
+  assert.match(coreShellSource, /href: '\/management\/customer-onboarding', label: 'Mở\/liên kết mã khách'/);
   assert.match(coreShellSource, /testId: 'nav-sales-operations'/);
   assert.match(coreShellSource, /testId: 'nav-customer-onboarding'/);
   assert.match(coreShellSource, /pathname\.startsWith\('\/management'\)/);
@@ -18,7 +18,7 @@ test('NPP keeps all daily sales work inside the Sales navigation group', () => {
 
 test('customer onboarding stays only in the Sales navigation group', () => {
   assert.match(coreShellSource, /href: '\/customers', label: 'Khách hàng'/);
-  assert.match(coreShellSource, /href: '\/management\/customer-onboarding', label: 'Mở \/ liên kết mã khách', icon: 'user', testId: 'nav-customer-onboarding'/);
+  assert.match(coreShellSource, /href: '\/management\/customer-onboarding', label: 'Mở\/liên kết mã khách', icon: 'user', testId: 'nav-customer-onboarding'/);
   assert.equal((coreShellSource.match(/href: '\/management\/customer-onboarding'/g) || []).length, 1);
   assert.doesNotMatch(coreShellSource, /Yêu cầu mở mã khách hàng/);
   assert.doesNotMatch(coreShellSource, /nav-customer-onboarding-from-customers/);

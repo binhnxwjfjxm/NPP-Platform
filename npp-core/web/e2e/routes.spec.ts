@@ -60,7 +60,7 @@ test.describe('Core web route smoke', () => {
   test('login page loads cleanly in Vietnamese', async ({ page }) => {
     await expectHealthyRoute(page, '/login');
     await expect(page.getByRole('heading', { name: 'Đăng nhập hệ thống', exact: true })).toBeVisible();
-    await expect(page.getByText('Hưng Phát Company')).toBeVisible();
+    await expect(page.getByText('Hưng Phát', { exact: true })).toBeVisible();
     expectNoSensitiveData(await page.content());
   });
 
@@ -69,7 +69,7 @@ test.describe('Core web route smoke', () => {
     await expect(page.getByTestId('dashboard-launchpad-page')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Tổng quan điều hành', exact: true })).toBeVisible();
     await expect(page.getByTestId('dashboard-shortcut-purchasing-goods-receipts')).toHaveAttribute('href', '/purchasing/goods-receipts');
-    await expect(page.getByText('Hưng Phát Company')).toBeVisible();
+    await expect(page.getByText('Hưng Phát', { exact: true })).toBeVisible();
     await expect(page.getByTestId('app-sidebar')).toHaveCSS('position', 'fixed');
     expectNoSensitiveData(await page.content());
     expectNoEnglishMainFlow(await page.locator('body').innerText());
@@ -178,7 +178,7 @@ test.describe('Core web route smoke', () => {
 
     await expectHealthyRoute(page, '/access/roles');
     await expect(page.getByTestId('roles-page')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Vai trò & phân quyền', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Vai trò và phân quyền', exact: true })).toBeVisible();
     await expect(page.getByTestId('access-menu-toggle')).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByTestId('nav-roles')).toBeVisible();
     expectNoSensitiveData(await page.content());
@@ -195,7 +195,7 @@ test.describe('Core web route smoke', () => {
 
     await page.goto('/access/roles');
     await expect(page.getByTestId('roles-page')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Vai trò & phân quyền', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Vai trò và phân quyền', exact: true })).toBeVisible();
 
     await page.getByTestId('roles-topbar-create-button').click();
     const editorDialog = page.getByRole('dialog');
@@ -221,7 +221,7 @@ test.describe('Core web route smoke', () => {
     await expect(row).toBeVisible();
     await expect(row).toContainText(initialName);
     await expect(row).toContainText('2 quyền');
-    await expect(row).toContainText('Đang hoạt động');
+    await expect(row).toContainText('Đang sử dụng');
 
     await page.getByTestId('roles-search-input').fill(roleCode);
     await expect(row).toBeVisible();
@@ -249,7 +249,7 @@ test.describe('Core web route smoke', () => {
 
     await page.getByTestId(`toggle-role-${roleCode}`).click();
     await page.getByRole('button', { name: 'Xác nhận' }).click();
-    await expect(row).toContainText('Ngừng hoạt động');
+    await expect(row).toContainText('Ngừng sử dụng');
 
     await page.getByTestId('roles-status-filter').selectOption('inactive');
     await expect(row).toBeVisible();
@@ -257,7 +257,7 @@ test.describe('Core web route smoke', () => {
     await page.getByTestId(`toggle-role-${roleCode}`).click();
     await page.getByRole('button', { name: 'Xác nhận' }).click();
     await page.getByTestId('roles-status-filter').selectOption('all');
-    await expect(row).toContainText('Đang hoạt động');
+    await expect(row).toContainText('Đang sử dụng');
 
     await page.getByTestId(`edit-role-${roleCode}`).click();
     await page.getByTestId('role-name-input').fill(`${updatedName} chờ xung đột`);

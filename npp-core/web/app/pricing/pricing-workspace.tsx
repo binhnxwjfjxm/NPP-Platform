@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AppShell } from '../components/app-shell';
 import Modal from '../components/modal';
+import { pricingResolutionReasonLabel } from '../../lib/business-language';
 import type {
   PriceAdjustmentType,
   PriceList,
@@ -77,22 +78,14 @@ const SOURCE_LABELS: Record<PriceListItem['source_kind'], string> = {
   ADMIN: 'Nhập trực tiếp', IMPORT: 'Nhập từ tệp', CODE: 'Thiết lập tự động',
 };
 const RESOLUTION_STEP_LABELS: Record<PricingResolution['steps'][number]['kind'], string> = {
-  BASE: 'Giá cơ sở', RULE: 'Mức giá được áp dụng', SKIPPED: 'Mức giá không được áp dụng', MANUAL_OVERRIDE: 'Điều chỉnh trực tiếp',
+  BASE: 'Giá nền', RULE: 'Mức giá được áp dụng', SKIPPED: 'Mức giá không được áp dụng', MANUAL_OVERRIDE: 'Giá điều chỉnh thủ công',
 };
-const RESOLUTION_REASON_LABELS: Record<string, string> = {
-  LOWER_PRIORITY_EXCLUSIVE: 'Đã có mức ưu tiên cao hơn được áp dụng',
-};
-
-function resolutionReasonLabel(reason?: string) {
-  if (!reason) return '';
-  return RESOLUTION_REASON_LABELS[reason] || reason;
-}
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: 'no-store', ...init });
   const payload = await response.json().catch(() => ({})) as { data?: T; error?: { message?: string; code?: string } };
   if (!response.ok || !Object.prototype.hasOwnProperty.call(payload, 'data')) {
-    throw new Error(payload.error?.message || payload.error?.code || 'Yêu cầu không thành công');
+    throw new Error(payload.error?.message || 'Yêu cầu không thành công');
   }
   return payload.data as T;
 }
@@ -497,10 +490,10 @@ export default function PricingWorkspace() {
   }, [listForm.listType]);
 
   return (
-    <AppShell title="Giá bán & khuyến mãi" subtitle="Quản lý giá bán theo hàng hóa, kênh bán, nhóm khách hàng, khách hàng và chương trình áp dụng.">
+    <AppShell title="Giá bán và khuyến mãi" subtitle="Quản lý giá bán theo hàng hóa, kênh bán, nhóm khách hàng, khách hàng và chương trình áp dụng.">
       <div className={styles.workspace} data-testid="pricing-page">
         <div className={styles.tabs} role="tablist">
-          {([['channels', 'Kênh bán'], ['lists', 'Bảng giá & chương trình'], ['items', 'Giá theo SKU'], ['resolver', 'Kiểm tra giá áp dụng']] as const).map(([value, label]) => (
+          {([['channels', 'Kênh bán'], ['lists', 'Bảng giá và chương trình'], ['items', 'Giá theo SKU'], ['resolver', 'Kiểm tra giá áp dụng']] as const).map(([value, label]) => (
             <button key={value} type="button" className={tab === value ? styles.tabActive : styles.tab} onClick={() => changeTab(value)} data-testid={`pricing-${value}-tab`}>
               {label}
             </button>
@@ -540,7 +533,7 @@ export default function PricingWorkspace() {
         {tab === 'lists' ? (
           <section>
             <div className={styles.sectionHeader}>
-              <div><h2>Bảng giá & chương trình</h2><p>Thứ tự ưu tiên lớn hơn được xét trước. Mọi mức giá được quản lý trực tiếp trên hệ thống.</p></div>
+              <div><h2>Bảng giá và chương trình</h2><p>Thứ tự ưu tiên lớn hơn được xét trước. Mọi mức giá được quản lý trực tiếp trên hệ thống.</p></div>
               <button className={styles.secondaryButton} type="button" onClick={() => openListCreate()} data-testid="add-price-list-button">Tạo mới</button>
             </div>
             <div className={styles.tableWrapper}>
@@ -629,7 +622,7 @@ export default function PricingWorkspace() {
                 <label>Kênh<select value={resolver.channelId} onChange={(event) => setResolver({ ...resolver, channelId: event.target.value })} data-testid="resolver-channel-select"><option value="">Không chọn</option>{channels.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
                 <label>Nhóm khách<select value={resolver.customerGroupId} onChange={(event) => setResolver({ ...resolver, customerGroupId: event.target.value })}><option value="">Theo khách hàng đã chọn / để trống</option>{groups.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
                 <label>Khách hàng<select value={resolver.customerId} onChange={(event) => setResolver({ ...resolver, customerId: event.target.value })}><option value="">Không chọn</option>{customers.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.code} — {row.name}</option>)}</select></label>
-                <label>Giá điều chỉnh trực tiếp (₫)<input inputMode="numeric" value={resolver.manualPrice} onChange={(event) => setResolver({ ...resolver, manualPrice: event.target.value.replace(/\D/g, '') })} /></label>
+                <label>Giá điều chỉnh thủ công (₫)<input inputMode="numeric" value={resolver.manualPrice} onChange={(event) => setResolver({ ...resolver, manualPrice: event.target.value.replace(/\D/g, '') })} /></label>
                 <label>Lý do điều chỉnh<input value={resolver.manualReason} onChange={(event) => setResolver({ ...resolver, manualReason: event.target.value })} /></label>
               </div>
               <button type="button" className={styles.primaryButton} disabled={busy || !resolver.variantId} onClick={() => void simulate()} data-testid="resolve-price-button">Xem giá áp dụng</button>
@@ -641,11 +634,11 @@ export default function PricingWorkspace() {
                   <div><span>Giá cuối</span><strong data-testid="resolved-unit-price">{money(resolution.finalUnitPriceMinor)}</strong></div>
                   <div><span>Thành tiền</span><strong data-testid="resolved-line-total">{money(resolution.lineTotalMinor)}</strong></div>
                 </div>
-                <h3>Quá trình xác định giá</h3>
+                <h3>Chi tiết hình thành giá</h3>
                 <ol className={styles.trace}>
                   {resolution.steps.map((step, index) => (
                     <li key={`${step.kind}-${step.itemId ?? index}`} data-testid={`pricing-step-${step.kind.toLowerCase()}`}>
-                      <strong>{RESOLUTION_STEP_LABELS[step.kind]}</strong> {step.priceListCode ? `· ${step.priceListCode}` : ''} {step.adjustmentType ? `· ${ADJUSTMENT_LABELS[step.adjustmentType]}` : ''} {step.reason ? `· ${resolutionReasonLabel(step.reason)}` : ''}
+                      <strong>{RESOLUTION_STEP_LABELS[step.kind]}</strong> {step.priceListCode ? `· ${step.priceListCode}` : ''} {step.adjustmentType ? `· ${ADJUSTMENT_LABELS[step.adjustmentType]}` : ''} {step.reason ? `· ${pricingResolutionReasonLabel(step.reason)}` : ''}
                       <span>{step.beforeUnitPriceMinor ? money(step.beforeUnitPriceMinor) : ''}{step.afterUnitPriceMinor ? ` → ${money(step.afterUnitPriceMinor)}` : ''}</span>
                     </li>
                   ))}

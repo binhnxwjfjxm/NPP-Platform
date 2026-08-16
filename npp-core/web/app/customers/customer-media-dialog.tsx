@@ -139,7 +139,7 @@ export default function CustomerMediaDialog({ customer, onClose }: Props) {
         <div className={styles.panelHeader}>
           <div>
             <h2>{media.length}/{maxPhotos} ảnh</h2>
-            <p className={customerStyles.muted}>MCP và Core dùng chung một bộ ảnh R2; ảnh MCP vẫn do MCP quản lý.</p>
+            <p className={customerStyles.muted}>MCP Thị trường và Công Ty dùng chung một bộ ảnh khách hàng; ảnh từ MCP Thị trường vẫn được quản lý tại nguồn.</p>
           </div>
           <label className={styles.primaryButton} aria-disabled={busy || media.length >= maxPhotos}>
             {busy ? 'Đang xử lý…' : 'Thêm ảnh'}
@@ -167,7 +167,7 @@ export default function CustomerMediaDialog({ customer, onClose }: Props) {
                 />
               ) : <div className={customerStyles.empty}>Ảnh tạm thời chưa xem được.</div>}
               <div className={customerStyles.addressMeta}>
-                {item.sourceApp === 'MCP' ? 'Nguồn: MCP hiện trường' : 'Nguồn: Core'}
+                {item.sourceApp === 'MCP' ? 'Nguồn: MCP Thị trường' : 'Nguồn: Công Ty'}
                 {item.capturedAt ? ` · ${new Date(item.capturedAt).toLocaleString('vi-VN')}` : ''}
               </div>
             </article>

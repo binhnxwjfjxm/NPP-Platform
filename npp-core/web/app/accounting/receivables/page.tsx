@@ -44,6 +44,28 @@ function sourceLabel(source: ReceivableDocument['sourceDocumentType']) {
   return source === 'PICKUP_HANDOVER' ? 'Nhận tại quầy' : 'Giao hàng';
 }
 
+function collectionPolicyLabel(policy: ReceivableDocument['collectionPolicy']) {
+  return {
+    PREPAID: 'Thanh toán trước',
+    COLLECT_ON_DELIVERY: 'Thu tiền khi giao',
+    COLLECT_AFTER_DELIVERY: 'Thu sau khi giao',
+    CREDIT_TERMS: 'Bán chịu theo điều khoản',
+  }[policy] ?? 'Theo thỏa thuận thanh toán';
+}
+
+function ledgerEntryLabel(entryType: string) {
+  const labels: Record<string, string> = {
+    SALE_POST: 'Phát sinh công nợ',
+    SALE_REVERSE: 'Đảo công nợ',
+    CUSTOMER_PAYMENT_POST: 'Ghi nhận thu tiền',
+    CUSTOMER_PAYMENT_REVERSE: 'Đảo phiếu thu',
+  };
+  if (labels[entryType]) return labels[entryType];
+  if (entryType.includes('REFUND')) return 'Hoàn tiền khách hàng';
+  if (entryType.includes('RETURN') || entryType.includes('CREDIT')) return 'Điều chỉnh giảm công nợ';
+  return 'Bút toán công nợ';
+}
+
 export default async function ReceivablesPage({ searchParams }: PageProps) {
   const requestId = resolveReceivableRequestId(null);
   const selectedId = first(searchParams?.id);
@@ -182,7 +204,7 @@ export default async function ReceivablesPage({ searchParams }: PageProps) {
               </div>
               <div className={styles.detailItem}>
                 <span className={styles.muted}>Đơn bán hàng</span>
-                <strong>{detail.salesOrderNumber ?? detail.salesOrderId}</strong>
+                <strong>{detail.salesOrderNumber ?? 'Chưa có số chứng từ'}</strong>
               </div>
               <div className={styles.detailItem}>
                 <span className={styles.muted}>Giá trị phát sinh</span>
@@ -194,7 +216,7 @@ export default async function ReceivablesPage({ searchParams }: PageProps) {
               </div>
               <div className={styles.detailItem}>
                 <span className={styles.muted}>Chính sách thu tiền</span>
-                <strong>{detail.collectionPolicy}</strong>
+                <strong>{collectionPolicyLabel(detail.collectionPolicy)}</strong>
               </div>
               <div className={styles.detailItem}>
                 <span className={styles.muted}>Trạng thái</span>
@@ -240,7 +262,6 @@ export default async function ReceivablesPage({ searchParams }: PageProps) {
                     <th>Thời điểm</th>
                     <th>Loại bút toán</th>
                     <th>Nguồn</th>
-                    <th>Yêu cầu</th>
                     <th className={styles.amount}>Số tiền</th>
                   </tr>
                 </thead>
@@ -248,9 +269,8 @@ export default async function ReceivablesPage({ searchParams }: PageProps) {
                   {detail.ledgerEntries.map((entry) => (
                     <tr key={entry.id}>
                       <td>{entry.occurredAt}</td>
-                      <td>{entry.entryType}</td>
+                      <td>{ledgerEntryLabel(entry.entryType)}</td>
                       <td>{sourceLabel(detail.sourceDocumentType)}</td>
-                      <td>{entry.requestId}</td>
                       <td className={styles.amount}>{money(entry.amount, detail.currencyCode)}</td>
                     </tr>
                   ))}

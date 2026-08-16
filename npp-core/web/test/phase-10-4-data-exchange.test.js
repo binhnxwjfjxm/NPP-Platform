@@ -51,11 +51,12 @@ test('routine fixed-price file is exactly SKU plus selling price for active pric
   assert.match(actions, /SKU \$\{sku\} bị lặp trong file/);
   assert.match(actions, /if \(!list\.is_active\) throw new Error\('Bảng giá\/chương trình đã ngừng sử dụng\.'\)/);
   assert.doesNotMatch(actions, /chỉ áp dụng cho bảng giá nền/);
-  assert.match(view, /File chỉ cần đúng 2 cột/);
-  assert.match(view, /Bảng giá nền cần cập nhật \/ chương trình CTKM/);
+  assert.match(view, /File chỉ cần 2 cột/);
+  assert.match(view, /Bảng giá hoặc chương trình cần cập nhật/);
   assert.match(view, /priceLists\.filter\(\(list\) => list\.is_active\)/);
   assert.doesNotMatch(view, /list\.is_active && list\.list_type === 'BASE'/);
-  assert.match(view, /Dòng tương ứng đã có thì cập nhật; chưa có thì tạo FIXED_PRICE mới/);
+  assert.match(view, /SKU đã có giá sẽ được cập nhật; SKU chưa có giá sẽ được thêm mới/);
+  assert.doesNotMatch(view, /FIXED_PRICE/);
 });
 
 test('SKU-keyed price updates preserve quotation lineage', () => {
@@ -104,16 +105,16 @@ test('central data exchange is persistent navigation and preserves direct tab de
   const wrapper = read('app/components/app-shell.tsx');
   assert.match(shell, /href="\/operations\/data-exchange"/);
   assert.match(shell, /data-testid="nav-data-exchange"/);
-  assert.match(shell, /Nhập \/ xuất dữ liệu/);
+  assert.match(shell, /Nhập\/xuất dữ liệu/);
   assert.doesNotMatch(wrapper, /usePathname/);
   assert.match(workspace, /useSearchParams/);
   assert.match(workspace, /searchParams\.get\('tab'\)/);
-  assert.match(view, /title="Nhập \/ xuất dữ liệu & báo giá"/);
+  assert.match(view, /title="Nhập\/xuất dữ liệu và báo giá"/);
 });
 
 test('Phase 10.4 page is reachable from Vietnamese import/export history', () => {
   const history = read('app/operations/import-export-history/page.tsx');
   assert.match(history, /href="\/operations\/data-exchange"/);
-  assert.match(history, /Nhập \/ xuất dữ liệu & báo giá/);
-  assert.match(history, /Lịch sử nhập \/ xuất dữ liệu/);
+  assert.match(history, /Nhập\/xuất dữ liệu và báo giá/);
+  assert.match(history, /Lịch sử nhập\/xuất dữ liệu/);
 });

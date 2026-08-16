@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { createIdempotencyKey } from '@npp/contracts';
 import { AppShell } from '../../components/app-shell';
 import shellStyles from '../../components/app-shell.module.css';
 import styles from '../../organization/organization.module.css';
@@ -94,6 +95,7 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
   const [draft, setDraft] = useState<RoleDraft>(emptyDraft());
   const [selectedPermissionKeys, setSelectedPermissionKeys] = useState<string[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState('');
+  const mutationKeys = useRef(new Map<string, string>());
 
   const normalizedSearch = normalizeSearch(search);
   const permissionGroups = useMemo(() => groupPermissions(permissions), [permissions]);
@@ -103,7 +105,7 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
     .filter((role) => {
       const matchesStatus = statusFilter === 'all' || (statusFilter === 'active' ? role.is_active : !role.is_active);
       const rolePermissionText = role.permission_keys.map((key) => permissionMap.get(key)?.label ?? key).join(' ');
-      const challengeText = role.web_login_challenge_required ? 'web pwa mã xác nhận' : 'web pwa mật khẩu';
+      const challengeText = role.web_login_challenge_required ? 'đăng nhập cần mã xác nhận' : 'đăng nhập bằng mật khẩu';
       const matchesText = !normalizedSearch || matchTerm(role.code, role.name, role.description, rolePermissionText, challengeText).includes(normalizedSearch);
       return matchesStatus && matchesText;
     })
@@ -113,6 +115,14 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
     const active = roles.filter((role) => role.is_active).length;
     return { total: roles.length, active, inactive: roles.length - active, permissions: permissions.length };
   }, [permissions.length, roles]);
+
+  function operationKey(scope: string) {
+    const existing = mutationKeys.current.get(scope);
+    if (existing) return existing;
+    const next = createIdempotencyKey('role-mutation');
+    mutationKeys.current.set(scope, next);
+    return next;
+  }
 
   async function loadAll(successMessage = 'Danh mục vai trò đã được cập nhật.') {
     setBusy('load');
@@ -195,13 +205,15 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
       permissionKeys: selectedPermissionKeys,
       ...(current ? { expectedUpdatedAt: current.updated_at } : {}),
     };
+    const scope = `save|${current?.id ?? 'create'}|${JSON.stringify(payload)}`;
     try {
       const path = current ? `/api/access/roles/${current.id}` : '/api/access/roles';
       await requestJson<AccessRole>(path, {
         method: current ? 'PATCH' : 'POST',
-        headers: { 'Idempotency-Key': `web-${crypto.randomUUID()}` },
+        headers: { 'Idempotency-Key': operationKey(scope) },
         body: JSON.stringify(payload),
       });
+      mutationKeys.current.delete(scope);
       setEditor(null);
       await loadAll(current ? 'Vai trò đã được cập nhật.' : 'Đã tạo vai trò mới.');
     } catch (saveError) {
@@ -217,14 +229,17 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
     setBusy('toggle');
     setError(null);
     setNotice(null);
+    const payload = { isActive: toggleState.nextActive, expectedUpdatedAt: role.updated_at };
+    const scope = `toggle|${role.id}|${JSON.stringify(payload)}`;
     try {
       await requestJson<AccessRole>(`/api/access/roles/${role.id}`, {
         method: 'PATCH',
-        headers: { 'Idempotency-Key': `web-${crypto.randomUUID()}` },
-        body: JSON.stringify({ isActive: toggleState.nextActive, expectedUpdatedAt: role.updated_at }),
+        headers: { 'Idempotency-Key': operationKey(scope) },
+        body: JSON.stringify(payload),
       });
+      mutationKeys.current.delete(scope);
       setToggleState(null);
-      await loadAll(toggleState.nextActive ? 'Vai trò đã được kích hoạt.' : 'Vai trò đã được ngừng hoạt động.');
+      await loadAll(toggleState.nextActive ? 'Vai trò đã được đưa vào sử dụng.' : 'Vai trò đã ngừng sử dụng.');
     } catch (toggleError) {
       setError(toggleError instanceof Error ? toggleError.message : 'Không cập nhật được trạng thái vai trò');
       setBusy(null);
@@ -243,25 +258,25 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
   );
 
   return (
-    <AppShell title="Vai trò & phân quyền" subtitle="Quản lý vai trò, trạng thái sử dụng và phạm vi quyền theo công việc." kicker="Phân quyền" actions={shellActions}>
+    <AppShell title="Vai trò và phân quyền" subtitle="Quản lý vai trò, trạng thái sử dụng và phạm vi quyền theo công việc." kicker="Phân quyền" actions={shellActions}>
       <section className={styles.page} data-testid="roles-page">
         {(error || notice) ? <div className={joinClasses(styles.banner, error ? styles.bannerError : styles.bannerSuccess)} role="status">{error ?? notice}</div> : null}
 
         <section className={styles.summaryGrid} aria-label="Số liệu vai trò">
           <article className={styles.summaryCard}><span>Tổng vai trò</span><strong>{formatCompactNumber(counts.total)}</strong><small>Toàn bộ vai trò đang được quản lý</small></article>
-          <article className={styles.summaryCard}><span>Đang hoạt động</span><strong>{formatCompactNumber(counts.active)}</strong><small>{counts.inactive} vai trò đang ngừng hoạt động</small></article>
+          <article className={styles.summaryCard}><span>Đang sử dụng</span><strong>{formatCompactNumber(counts.active)}</strong><small>{counts.inactive} vai trò đã ngừng sử dụng</small></article>
           <article className={styles.summaryCard}><span>Danh mục quyền</span><strong>{formatCompactNumber(counts.permissions)}</strong><small>Danh mục quyền có thể phân công cho vai trò</small></article>
         </section>
 
         <section className={styles.toolbar}>
           <div className={styles.toolbarSearch}>
             <label htmlFor="roles-search">Tìm kiếm vai trò</label>
-            <input id="roles-search" data-testid="roles-search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Mã, tên, mô tả, quyền…" />
+            <input id="roles-search" data-testid="roles-search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ví dụ: Bán hàng, kế toán, duyệt đơn" />
           </div>
           <div className={styles.toolbarFilter}>
             <label htmlFor="roles-status">Trạng thái</label>
             <select id="roles-status" data-testid="roles-status-filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as FilterState)}>
-              <option value="all">Tất cả trạng thái</option><option value="active">Đang hoạt động</option><option value="inactive">Ngừng hoạt động</option>
+              <option value="all">Tất cả trạng thái</option><option value="active">Đang sử dụng</option><option value="inactive">Ngừng sử dụng</option>
             </select>
           </div>
         </section>
@@ -275,9 +290,9 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
                 {visibleRoles.length ? visibleRoles.map((role) => (
                   <tr key={role.id} data-testid={`role-row-${role.code}`}>
                     <td><code>{role.code}</code></td>
-                    <td><div className={styles.entityStack}><strong>{role.name}</strong><span>{role.description || 'Không có mô tả'}</span><span>{role.web_login_challenge_required ? 'Web/PWA: yêu cầu mã xác nhận' : 'Web/PWA: chỉ tài khoản và mật khẩu'}</span></div></td>
+                    <td><div className={styles.entityStack}><strong>{role.name}</strong><span>{role.description || 'Không có mô tả'}</span><span>{role.web_login_challenge_required ? 'Đăng nhập trên web/ứng dụng: cần mã xác nhận' : 'Đăng nhập trên web/ứng dụng: dùng mật khẩu'}</span></div></td>
                     <td className={styles.relationCell}><div className={styles.entityStack}><strong>{formatCompactNumber(role.permission_keys.length)} quyền</strong><span>{role.permission_keys.length ? `${role.permission_keys.slice(0, 2).map((key) => permissionMap.get(key)?.label ?? key).join(' · ')}${role.permission_keys.length > 2 ? ` · +${formatCompactNumber(role.permission_keys.length - 2)} quyền khác` : ''}` : 'Chưa gán quyền'}</span></div></td>
-                    <td><span className={joinClasses(styles.statusPill, role.is_active ? styles.toneSuccess : styles.toneDanger)}>{role.is_active ? 'Đang hoạt động' : 'Ngừng hoạt động'}</span></td>
+                    <td><span className={joinClasses(styles.statusPill, role.is_active ? styles.toneSuccess : styles.toneDanger)}>{role.is_active ? 'Đang sử dụng' : 'Ngừng sử dụng'}</span></td>
                     <td>{formatDateTime(role.updated_at)}</td>
                     <td><div className={styles.rowActions}>
                       <button type="button" data-testid={`edit-role-${role.code}`} onClick={() => openEdit(role.id)}>Chỉnh sửa</button>
@@ -310,9 +325,9 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
                     <label>Mã vai trò<input data-testid="role-code-input" value={draft.code} onChange={(event) => setDraft((current) => ({ ...current, code: event.target.value }))} disabled={editor.mode === 'edit'} required maxLength={64} /></label>
                     <label>Tên vai trò<input data-testid="role-name-input" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} required maxLength={256} /></label>
                     <label>Mô tả<textarea data-testid="role-description-input" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} maxLength={512} rows={5} /></label>
-                    <label className={matrixStyles.inlineToggle}><input data-testid="role-active-toggle" type="checkbox" checked={draft.isActive} onChange={(event) => setDraft((current) => ({ ...current, isActive: event.target.checked }))} />Đang hoạt động</label>
-                    <label className={matrixStyles.inlineToggle}><input data-testid="role-web-login-challenge-toggle" type="checkbox" checked={draft.webLoginChallengeRequired} onChange={(event) => setDraft((current) => ({ ...current, webLoginChallengeRequired: event.target.checked }))} />Đăng nhập Web/PWA yêu cầu mã xác nhận của chủ sở hữu</label>
-                    <p>Mã xác nhận chỉ gửi tới hai Security Owner cố định. Role giao nhận hoặc field có thể để tắt; role kế toán hoặc nhạy cảm có thể bật.</p>
+                    <label className={matrixStyles.inlineToggle}><input data-testid="role-active-toggle" type="checkbox" checked={draft.isActive} onChange={(event) => setDraft((current) => ({ ...current, isActive: event.target.checked }))} />Đang sử dụng</label>
+                    <label className={matrixStyles.inlineToggle}><input data-testid="role-web-login-challenge-toggle" type="checkbox" checked={draft.webLoginChallengeRequired} onChange={(event) => setDraft((current) => ({ ...current, webLoginChallengeRequired: event.target.checked }))} />Yêu cầu mã xác nhận khi đăng nhập trên web/ứng dụng</label>
+                    <p>Mã xác nhận chỉ gửi tới các tài khoản quản trị bảo mật đã cấu hình. Vai trò giao nhận hoặc nhân viên thị trường có thể để tắt; vai trò kế toán hoặc có quyền nhạy cảm có thể bật.</p>
                     <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => setEditor(null)}>Hủy</button><button type="submit" className={styles.primaryButton} disabled={busy !== null}>{busy === 'save' ? 'Đang lưu…' : editor.mode === 'create' ? 'Tạo vai trò' : 'Lưu thay đổi'}</button></div>
                   </div>
 
@@ -341,7 +356,7 @@ export default function RoleWorkspace({ initialRoles, permissions: initialPermis
           <div className={styles.modalBackdrop} role="presentation" onClick={() => setToggleState(null)}>
             <div className={joinClasses(styles.modal, styles.confirmModal)} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
               <div className={styles.modalHeader}><div><p className={styles.panelKicker}>Xác nhận trạng thái</p><h3>{toggleState.nextActive ? 'Đưa vai trò vào sử dụng' : 'Ngừng sử dụng vai trò'}</h3></div></div>
-              <p className={styles.confirmText}>{toggleState.nextActive ? 'Vai trò sẽ trở lại trạng thái đang hoạt động.' : 'Vai trò sẽ ngừng hoạt động nhưng vẫn được giữ lại để đối soát và lịch sử chứng từ.'}</p>
+              <p className={styles.confirmText}>{toggleState.nextActive ? 'Vai trò sẽ trở lại trạng thái đang sử dụng.' : 'Vai trò sẽ ngừng sử dụng nhưng vẫn được giữ lại để đối soát và lịch sử chứng từ.'}</p>
               <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => setToggleState(null)}>Hủy</button><button type="button" className={styles.primaryButton} onClick={() => void confirmToggle()} disabled={busy !== null}>Xác nhận</button></div>
             </div>
           </div>

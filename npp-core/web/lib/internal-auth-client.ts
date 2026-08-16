@@ -69,7 +69,7 @@ export async function requestNppInternalAuth<T>(
       ok: false,
       status: 503,
       code,
-      message: 'Kết nối NPP Core chưa được cấu hình',
+      message: 'Kết nối Hệ thống Công Ty chưa được cấu hình',
       retryable: false,
     };
   }
@@ -95,7 +95,7 @@ export async function requestNppInternalAuth<T>(
         ok: false,
         status: 502,
         code: 'NPP_CORE_RESPONSE_INVALID',
-        message: 'Phản hồi từ NPP Core không hợp lệ',
+        message: 'Phản hồi từ Hệ thống Công Ty không hợp lệ',
       };
     }
     if (!response.ok) {
@@ -103,7 +103,7 @@ export async function requestNppInternalAuth<T>(
         ok: false,
         status: response.status,
         code: payload.error?.code || 'NPP_CORE_REQUEST_FAILED',
-        message: payload.error?.message || 'Yêu cầu tới NPP Core không thành công',
+        message: payload.error?.message || 'Yêu cầu tới Hệ thống Công Ty không thành công',
         retryable: payload.error?.retryable === true,
       };
     }
@@ -112,7 +112,7 @@ export async function requestNppInternalAuth<T>(
         ok: false,
         status: 502,
         code: 'NPP_CORE_RESPONSE_INVALID',
-        message: 'Phản hồi từ NPP Core không hợp lệ',
+        message: 'Phản hồi từ Hệ thống Công Ty không hợp lệ',
       };
     }
     return { ok: true, status: response.status, data: payload.data as T };
@@ -121,7 +121,7 @@ export async function requestNppInternalAuth<T>(
       ok: false,
       status: 503,
       code: 'NPP_CORE_UNAVAILABLE',
-      message: 'NPP Core tạm thời chưa sẵn sàng',
+      message: 'Hệ thống Công Ty tạm thời chưa sẵn sàng',
       retryable: true,
     };
   } finally {

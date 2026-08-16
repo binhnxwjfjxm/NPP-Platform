@@ -48,6 +48,6 @@ test.describe('Danh mục nhà cung cấp', () => {
 
     await supplierRow.getByRole('button', { name: 'Ngừng sử dụng', exact: true }).click();
     await page.getByTestId('suppliers-status-filter').selectOption('inactive');
-    await expect(supplierRow).toContainText('Không hoạt động');
+    await expect(supplierRow).toContainText('Ngừng sử dụng');
   });
 });

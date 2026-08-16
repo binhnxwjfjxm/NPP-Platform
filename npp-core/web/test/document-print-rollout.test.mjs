@@ -42,7 +42,8 @@ test('shared print action uses the light bronze-gold operation tone', () => {
 
 test('rollout stays read-only and uses the shared business template', () => {
   assert.match(businessPrint, /BusinessDocumentPrint/);
-  assert.match(businessPrint, /Bản in từ NPP Operations/);
+  assert.match(businessPrint, /Bản in từ Hệ thống Công Ty/);
+  assert.doesNotMatch(businessPrint, /NPP Operations|chứng từ canonical/);
   for (const source of printModules) {
     assert.doesNotMatch(source, /method:\s*['"]POST['"]/);
     assert.doesNotMatch(source, /method:\s*['"]PATCH['"]/);
@@ -65,7 +66,7 @@ test('purchase and sales documents omit zero discount and tax sections', () => {
 });
 
 test('canonical print surfaces remain available', () => {
-  assert.match(poPrint, /ĐƠN ĐẶT HÀNG/);
+  assert.match(poPrint, /ĐƠN MUA HÀNG/);
   assert.match(salesPrint, /ĐƠN BÁN HÀNG/);
   assert.match(grPrint, /PHIẾU NHẬN HÀNG/);
   assert.match(paymentPrint, /PHIẾU THU/);

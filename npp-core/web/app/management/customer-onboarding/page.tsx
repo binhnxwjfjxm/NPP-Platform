@@ -133,9 +133,9 @@ export default async function CustomerOnboardingReviewPage() {
 
   return (
     <AppShell
-      kicker="Công việc hằng ngày của Sales Admin"
+      kicker="Công việc hằng ngày của Bộ phận bán hàng"
       title="Tạo hoặc liên kết mã khách hàng"
-      subtitle="Xem thông tin điểm bán và quyết định tạo mã mới, liên kết khách có sẵn hoặc yêu cầu bổ sung ngay trong NPP Operations."
+      subtitle="Xem thông tin điểm bán và quyết định tạo mã mới, liên kết khách có sẵn hoặc yêu cầu bổ sung ngay trong Hệ thống Công Ty."
       actions={<Link href="/management">Quay lại công việc hằng ngày</Link>}
     >
       {requests.error ? <p role="alert">{requests.error}</p> : null}

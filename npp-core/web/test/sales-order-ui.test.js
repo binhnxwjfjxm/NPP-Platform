@@ -59,7 +59,7 @@ test('canonical form activates product-first commercial entry with walk-in and q
   assert.match(formSource, /Giá hệ thống/);
   assert.match(formSource, /Giá bán cuối/);
   assert.match(formSource, /aria-expanded=\{expandedLineId === line\.variantId\}/);
-  assert.match(formSource, /Dùng giá ngoại lệ/);
+  assert.match(formSource, /Giá điều chỉnh thủ công/);
   assert.match(formSource, /Dùng lại giá hệ thống/);
   assert.match(formSource, /Chiết khấu bổ sung toàn đơn/);
   assert.match(formSource, /Lưu và xác nhận/);
@@ -84,7 +84,7 @@ test('confirm price mismatch recovers the exact form-owned committed draft inste
 
 test('tax remains Core-owned and is summarized after document discount allocation', () => {
   assert.match(formSource, /\/api\/sales-orders\/entry-settings/);
-  assert.match(formSource, /Thuế Core/);
+  assert.match(formSource, /Thuế Công Ty/);
   assert.match(formSource, /Thuế sau phân bổ/);
   assert.match(formSource, /Tổng thanh toán dự kiến/);
   assert.doesNotMatch(formSource, />Cách tính thuế</);

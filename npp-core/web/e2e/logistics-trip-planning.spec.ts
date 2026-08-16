@@ -158,7 +158,7 @@ test('Gán chuyến đi đúng Tuyến → Chuyến → tích nhiều đơn → 
   await expect(page.getByText('DO-202608-000010', { exact: true })).toBeVisible();
   await expect(page.getByText('DO-202608-000011', { exact: true })).toBeVisible();
   await expect(page.getByText('Thiếu mã phiếu giao', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('Phiếu giao thiếu mã canonical')).toBeDisabled();
+  await expect(page.getByLabel('Phiếu giao chưa có mã')).toBeDisabled();
 
   await page.getByLabel('Chọn DO-202608-000010').check();
   await page.getByLabel('Chọn DO-202608-000011').check();
@@ -250,7 +250,7 @@ test('vehicle và driver dùng đúng contract; driver bắt buộc chọn canon
   await page.getByLabel('Loại xe').fill('Xe tải');
   await page.getByTestId('create-vehicle').click();
   await expect(page.getByText('Vehicle payload is invalid')).toBeVisible();
-  await expect(page.getByText('Kiểm tra biển số theo hợp đồng API.')).toBeVisible();
+  await expect(page.getByText('Kiểm tra lại biển số xe.')).toBeVisible();
   expect(vehiclePayload).toEqual({ code: 'XE-02', licensePlate: '51C-99999', vehicleType: 'Xe tải' });
 
   await expect(page.getByLabel('Mã tài xế')).toHaveCount(0);

@@ -70,14 +70,14 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
     });
     const payload = await response.json().catch(() => null) as CoreEnvelope | null;
     if (!payload) {
-      return errorResponse(requestId, 502, 'NPP_CORE_RESPONSE_INVALID', 'Phản hồi từ NPP Core không hợp lệ');
+      return errorResponse(requestId, 502, 'NPP_CORE_RESPONSE_INVALID', 'Phản hồi từ Hệ thống Công Ty không hợp lệ');
     }
     return NextResponse.json(payload, {
       status: response.status,
       headers: responseHeaders(payload.requestId || requestId),
     });
   } catch {
-    return errorResponse(requestId, 503, 'NPP_CORE_UNAVAILABLE', 'NPP Core tạm thời chưa sẵn sàng', true);
+    return errorResponse(requestId, 503, 'NPP_CORE_UNAVAILABLE', 'Hệ thống Công Ty tạm thời chưa sẵn sàng', true);
   } finally {
     clearTimeout(timeout);
   }

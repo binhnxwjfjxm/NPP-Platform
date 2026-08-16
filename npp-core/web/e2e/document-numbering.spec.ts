@@ -7,7 +7,6 @@ function suffix() {
 test('document numbering admin uses system identity, enforces one active series and preserves format lock', async ({ page }) => {
   const id = suffix();
   const name = `Hóa đơn E2E ${id}`;
-  const key = `e2e-number-${id}`;
 
   await page.goto('/document-numbering');
   await expect(page.getByTestId('document-numbering-page')).toBeVisible();
@@ -40,16 +39,20 @@ test('document numbering admin uses system identity, enforces one active series 
   const detail = page.getByTestId('number-series-detail');
   await expect(detail).toBeVisible();
   await page.getByTestId('allocation-date-input').fill('2026-07-27');
-  await page.getByTestId('allocation-key-input').fill(key);
+  await expect(page.getByTestId('allocation-key-input')).toHaveCount(0);
   await page.getByTestId('allocate-test-number-button').click();
 
-  const expectedNumber = 'IV-202607-000001';
-  await expect(page.getByTestId('allocation-result')).toContainText(expectedNumber);
-  await expect(page.getByTestId(`allocation-row-${expectedNumber}`)).toBeVisible();
+  const firstNumber = 'IV-202607-000001';
+  await expect(page.getByTestId('allocation-result')).toContainText(firstNumber);
+  await expect(page.getByTestId(`allocation-row-${firstNumber}`)).toBeVisible();
   await expect(detail.getByText('Số tiếp theo', { exact: true }).locator('..')).toContainText('2');
 
   await page.getByTestId('allocate-test-number-button').click();
-  await expect(page.getByTestId(`allocation-row-${expectedNumber}`)).toHaveCount(1);
+  const secondNumber = 'IV-202607-000002';
+  await expect(page.getByTestId('allocation-result')).toContainText(secondNumber);
+  await expect(page.getByTestId(`allocation-row-${firstNumber}`)).toHaveCount(1);
+  await expect(page.getByTestId(`allocation-row-${secondNumber}`)).toHaveCount(1);
+  await expect(detail.getByText('Số tiếp theo', { exact: true }).locator('..')).toContainText('3');
 
   await row.getByRole('button', { name: 'Sửa' }).click();
   await expect(page.getByTestId('number-prefix-input')).toBeDisabled();

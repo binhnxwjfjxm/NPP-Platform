@@ -10,6 +10,7 @@ import {
 } from '../../lib/customer-onboarding-gateway';
 import { listSalesOrders, resolveSalesOrderRequestId } from '../../lib/sales-order-gateway';
 import type { SalesOrder } from '../../lib/sales-order-types';
+import { salesOrderSourceLabel } from '../../lib/business-language';
 import styles from './management.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -66,7 +67,7 @@ function onboardingStatus(status: string): string {
   if (status === 'submitted') return 'Mới gửi';
   if (status === 'under_review') return 'Đang xem xét';
   if (status === 'need_more_info') return 'Cần bổ sung';
-  return status;
+  return 'Trạng thái khác';
 }
 
 function organizationMetric(
@@ -117,7 +118,7 @@ export default async function ManagementPage() {
     >
       <div className={styles.page} data-testid="management-overview-page">
         <p className={styles.notice}>
-          Đây là trung tâm điều hành bán hàng chung. Mọi nguồn đơn đi vào cùng một hàng đợi để Sales Admin, CS và kế toán xử lý; chỉ ngoại lệ vượt quyền mới chuyển lên Admin cấp quản lý.
+          Đây là trung tâm điều hành bán hàng chung. Mọi nguồn đơn đi vào cùng một hàng đợi để bộ phận bán hàng, chăm sóc khách hàng và kế toán xử lý; chỉ ngoại lệ vượt quyền mới chuyển lên quản lý phụ trách.
         </p>
 
         <section className={styles.summaryGrid} aria-label="Tóm tắt vận hành">
@@ -159,7 +160,7 @@ export default async function ManagementPage() {
                     <strong>{order.customerName || order.walkInDisplayName || 'Khách chưa đặt tên'}</strong>
                     <span className={styles.badge}>Chờ xác nhận</span>
                   </div>
-                  <span className={styles.meta}>{order.warehouseName} · {order.sourceType}</span>
+                  <span className={styles.meta}>{order.warehouseName} · {salesOrderSourceLabel(order.sourceType, order.sourceId)}</span>
                   <small>Cập nhật {formatDateTime(order.updatedAt)}</small>
                 </li>
               ))}

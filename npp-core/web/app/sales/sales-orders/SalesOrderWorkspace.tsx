@@ -5,6 +5,7 @@ import { AppShell } from '../../components/app-shell-core';
 import type { SalesOrderBootstrap } from '../../../lib/sales-order-bootstrap';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
 import { SALES_ORDER_PERMISSION_KEYS } from '../../../lib/sales-order-permissions';
+import { salesOrderSourceLabel } from '../../../lib/business-language';
 import SalesOrderDetail from './SalesOrderDetail';
 import SalesOrderForm, { type SalesOrderFormMode } from './SalesOrderForm';
 import {
@@ -26,14 +27,8 @@ function sourceBucket(order: SalesOrder): Exclude<OrderSourceFilter, 'all'> {
   return 'internal';
 }
 
-function sourceLabel(order: SalesOrder): string {
-  if (order.sourceType === 'MCP') return 'MCP';
-  if (order.sourceType === 'API' && order.sourceId?.startsWith('CUSTOMER_PORTAL:')) return 'Khách hàng';
-  return 'Nội bộ';
-}
-
 function orderCardStatus(order: SalesOrder): string {
-  const orderStatus = orderLabels[order.status] ?? order.status;
+  const orderStatus = orderLabels[order.status] ?? 'Trạng thái khác';
   if (order.status !== 'confirmed') return orderStatus;
   if (order.fulfillmentStatus === 'backordered') return `${orderStatus} · Chờ hàng`;
   if (order.fulfillmentStatus === 'partially_reserved') return `${orderStatus} · Chờ hàng một phần`;
@@ -217,7 +212,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         <div className={styles.toolbar}>
           <label><span>Tìm đơn</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Số đơn, khách hoặc kênh bán" /></label>
           <label><span>Trạng thái</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Tất cả</option><option value="draft">Nháp</option><option value="confirmed">Đã xác nhận</option><option value="cancelled">Đã hủy</option><option value="closed">Đã hoàn tất</option></select></label>
-          <label><span>Nguồn</span><select value={source} onChange={(event) => setSource(event.target.value as OrderSourceFilter)}><option value="all">Tất cả</option><option value="internal">Nội bộ</option><option value="mcp">MCP</option><option value="customer">Khách hàng</option></select></label>
+          <label><span>Nguồn</span><select value={source} onChange={(event) => setSource(event.target.value as OrderSourceFilter)}><option value="all">Tất cả</option><option value="internal">Công Ty</option><option value="mcp">Nhân viên thị trường</option><option value="customer">Khách hàng</option></select></label>
           <button type="button" onClick={() => void refreshOrders(true)} disabled={refreshing}>{refreshing ? 'Đang làm mới…' : 'Làm mới'}</button>
         </div>
 
@@ -236,9 +231,9 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                   <div className={styles.orderCardTop}><strong>{order.number ?? 'Đơn nháp chưa cấp số'}</strong><span>{orderCardStatus(order)}</span></div>
                   <b>{order.customerCode} — {order.customerName}</b>
                   <div className={styles.orderCardMeta}>
-                    <small>Nguồn {sourceLabel(order)}</small>
-                    <small>Kho {order.warehouseCode} · {collectionLabels[order.collectionPolicy]}</small>
-                    <small>Kênh {order.salesChannelCode ?? 'chưa snapshot'}{order.salesChannelName ? ` — ${order.salesChannelName}` : ''}</small>
+                    <small>Nguồn {salesOrderSourceLabel(order.sourceType, order.sourceId)}</small>
+                    <small>Kho {order.warehouseCode} · {collectionLabels[order.collectionPolicy] ?? 'Theo thỏa thuận thanh toán'}</small>
+                    <small>Kênh {order.salesChannelCode ?? 'chưa xác định'}{order.salesChannelName ? ` — ${order.salesChannelName}` : ''}</small>
                     <small>Cập nhật {formatVietnamDateTime(order.updatedAt)}</small>
                   </div>
                 </button>

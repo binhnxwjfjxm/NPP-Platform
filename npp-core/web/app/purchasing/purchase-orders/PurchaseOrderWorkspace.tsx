@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createIdempotencyKey } from '@npp/contracts';
 import { AppShell } from '../../components/app-shell';
 import shellStyles from '../../components/app-shell.module.css';
 import styles from '../../organization/organization.module.css';
@@ -53,7 +54,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const payload = await response.json().catch(() => ({})) as ApiEnvelope<T>;
   if (!response.ok || payload.data === undefined) {
-    throw new Error(payload.error?.message || 'Không thực hiện được yêu cầu đơn đặt hàng');
+    throw new Error(payload.error?.message || 'Không thực hiện được yêu cầu đơn mua hàng');
   }
   return payload.data;
 }
@@ -181,7 +182,7 @@ export default function PurchaseOrderWorkspace({
         setNotice(successMessage);
       }
     } catch (loadError) {
-      const message = loadError instanceof Error ? loadError.message : 'Không tải được danh sách đơn đặt hàng';
+      const message = loadError instanceof Error ? loadError.message : 'Không tải được danh sách đơn mua hàng';
       setOrderListState((current) => current === 'unknown' ? 'unknown' : 'stale');
       setOrderListError(message);
     } finally {
@@ -195,7 +196,7 @@ export default function PurchaseOrderWorkspace({
     try {
       return await requestJson<PurchaseOrder>(`/api/purchase-orders/${purchaseOrder.id}`);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Không tải được chi tiết đơn đặt hàng');
+      setError(loadError instanceof Error ? loadError.message : 'Không tải được chi tiết đơn mua hàng');
       return null;
     } finally {
       setBusyId(null);
@@ -245,7 +246,7 @@ export default function PurchaseOrderWorkspace({
     const identity = `${action}:${purchaseOrder.id}:${purchaseOrder.revision}`;
     const existing = actionKeys.current.get(identity);
     if (existing) return existing;
-    const key = `po-${action}-${crypto.randomUUID()}`;
+    const key = createIdempotencyKey(`purchase-order-${action}`);
     actionKeys.current.set(identity, key);
     return key;
   }
@@ -278,13 +279,13 @@ export default function PurchaseOrderWorkspace({
       setCancellationReason('');
       setNotice(
         action === 'submit'
-          ? 'Đơn đặt hàng đã được gửi duyệt.'
+          ? 'Đơn mua hàng đã được gửi duyệt.'
           : action === 'approve'
-            ? `Đơn đặt hàng đã được duyệt với số ${updated.number}.`
-            : 'Đơn đặt hàng đã được hủy.',
+            ? `Đơn mua hàng đã được duyệt với số ${updated.number}.`
+            : 'Đơn mua hàng đã được hủy.',
       );
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : 'Không cập nhật được trạng thái đơn đặt hàng');
+      setError(actionError instanceof Error ? actionError.message : 'Không cập nhật được trạng thái đơn mua hàng');
     } finally {
       setBusyId(null);
     }
@@ -295,7 +296,7 @@ export default function PurchaseOrderWorkspace({
       <button
         type="button"
         className={shellStyles.actionButton}
-        onClick={() => void loadAll('Danh sách đơn đặt hàng và dữ liệu tạo đơn đã được cập nhật.')}
+        onClick={() => void loadAll('Danh sách đơn mua hàng và dữ liệu tạo đơn đã được cập nhật.')}
         disabled={loadingList}
         data-testid="purchase-order-refresh-button"
       >
@@ -309,7 +310,7 @@ export default function PurchaseOrderWorkspace({
           disabled={!lookupReady}
           data-testid="purchase-order-create-button"
         >
-          Tạo đơn đặt hàng
+          Tạo đơn mua hàng
         </button>
       ) : null}
     </>
@@ -317,7 +318,7 @@ export default function PurchaseOrderWorkspace({
 
   return (
     <AppShell
-      title="Đơn đặt hàng"
+      title="Đơn mua hàng"
       subtitle="Tạo, gửi duyệt và phê duyệt nhu cầu mua từ nhà cung cấp trước khi nhận hàng."
       kicker="Mua hàng"
       actions={shellActions}
@@ -327,8 +328,8 @@ export default function PurchaseOrderWorkspace({
         {orderListError ? (
           <div className={`${styles.banner} ${styles.bannerError}`} role="alert" data-testid="purchase-order-data-state-banner">
             {orderListState === 'stale'
-              ? `Không cập nhật được danh sách đơn đặt hàng. Đang giữ dữ liệu từ lần tải thành công gần nhất. ${orderListError}`
-              : `Chưa xác định được danh sách đơn đặt hàng hiện tại. ${orderListError}`}
+              ? `Không cập nhật được danh sách đơn mua hàng. Đang giữ dữ liệu từ lần tải thành công gần nhất. ${orderListError}`
+              : `Chưa xác định được danh sách đơn mua hàng hiện tại. ${orderListError}`}
           </div>
         ) : null}
         {lookupMessage ? <div className={`${styles.banner} ${styles.bannerError}`} role="alert">{lookupMessage}</div> : null}
@@ -343,7 +344,7 @@ export default function PurchaseOrderWorkspace({
         ) : null}
         {notice ? <div className={`${styles.banner} ${styles.bannerSuccess}`} role="status">{notice}</div> : null}
 
-        <section className={styles.summaryGrid} aria-label="Số liệu đơn đặt hàng">
+        <section className={styles.summaryGrid} aria-label="Số liệu đơn mua hàng">
           <article className={styles.summaryCard}>
             <span>Tổng đơn</span><strong data-testid="purchase-order-total-count">{countValue(counts.total)}</strong><small>{listStateHint || 'Trong phạm vi kho được cấp'}</small>
           </article>
@@ -355,7 +356,7 @@ export default function PurchaseOrderWorkspace({
           </article>
         </section>
 
-        <section className={styles.toolbar} aria-label="Bộ lọc đơn đặt hàng">
+        <section className={styles.toolbar} aria-label="Bộ lọc đơn mua hàng">
           <div className={styles.toolbarSearch}>
             <label htmlFor="purchase-order-search">Tìm kiếm</label>
             <input id="purchase-order-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Số đơn, nhà cung cấp, kho nhận hoặc mã hàng…" data-testid="purchase-order-search" />
@@ -371,7 +372,7 @@ export default function PurchaseOrderWorkspace({
 
         <section className={styles.tableSection}>
           <div className={styles.sectionHeader}>
-            <div><p className={styles.panelKicker}>Danh sách mua hàng</p><h2>Đơn đặt hàng nhà cung cấp</h2></div>
+            <div><p className={styles.panelKicker}>Danh sách mua hàng</p><h2>Đơn mua hàng nhà cung cấp</h2></div>
             <span className={styles.panelChip} data-testid="purchase-order-list-count">
               {orderListState === 'unknown'
                 ? 'Chưa xác định'
@@ -393,7 +394,7 @@ export default function PurchaseOrderWorkspace({
             <div className={styles.emptyState} data-testid="purchase-order-list-unavailable">
               {orderListState === 'stale'
                 ? 'Lần tải thành công gần nhất không có đơn; lần cập nhật hiện tại thất bại nên chưa thể khẳng định danh sách hiện tại đang rỗng.'
-                : 'Chưa xác định được danh sách đơn đặt hàng hiện tại. Hãy cập nhật dữ liệu để thử lại.'}
+                : 'Chưa xác định được danh sách đơn mua hàng hiện tại. Hãy cập nhật dữ liệu để thử lại.'}
             </div>
           )}
         </section>
@@ -410,7 +411,7 @@ export default function PurchaseOrderWorkspace({
           onSaved={(purchaseOrder) => {
             upsertOrder(purchaseOrder);
             setEditor(null);
-            setNotice(editor.mode === 'create' ? 'Đã tạo đơn đặt hàng nháp.' : 'Đã cập nhật đơn đặt hàng nháp.');
+            setNotice(editor.mode === 'create' ? 'Đã tạo đơn mua hàng nháp.' : 'Đã cập nhật đơn mua hàng nháp.');
           }}
         />
       ) : null}
@@ -419,7 +420,7 @@ export default function PurchaseOrderWorkspace({
         <div className={styles.modalBackdrop} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeDetail(); }} onKeyDown={(event) => { if (event.key === 'Escape') closeDetail(); }}>
           <section className={`${styles.modal} ${localStyles.detailModal}`} role="dialog" aria-modal="true" aria-labelledby="purchase-order-detail-title">
             <div className={styles.modalHeader}>
-              <div><p className={styles.panelKicker}>Chi tiết đơn đặt hàng</p><h3 id="purchase-order-detail-title">{selectedPurchaseOrder.number || 'Đơn chưa cấp số'}</h3></div>
+              <div><p className={styles.panelKicker}>Chi tiết đơn mua hàng</p><h3 id="purchase-order-detail-title">{selectedPurchaseOrder.number || 'Đơn chưa cấp số'}</h3></div>
               <button ref={closeButtonRef} type="button" className={styles.modalClose} onClick={closeDetail}>Đóng</button>
             </div>
             <div className={localStyles.detailGrid}>
@@ -428,7 +429,7 @@ export default function PurchaseOrderWorkspace({
               <div className={localStyles.detailItem}><span>Kho nhận</span><strong>{selectedPurchaseOrder.warehouseCode} — {selectedPurchaseOrder.warehouseName}</strong></div>
               <div className={localStyles.detailItem}><span>Ngày đặt</span><strong>{formatPurchaseOrderDate(selectedPurchaseOrder.placedAt)}</strong></div>
               <div className={localStyles.detailItem}><span>Dự kiến nhận</span><strong>{formatPurchaseOrderDate(selectedPurchaseOrder.expectedAt)}</strong></div>
-              <div className={localStyles.detailItem}><span>Tham chiếu NCC</span><strong>{selectedPurchaseOrder.supplierReference || 'Không có'}</strong></div>
+              <div className={localStyles.detailItem}><span>Tham chiếu nhà cung cấp</span><strong>{selectedPurchaseOrder.supplierReference || 'Không có'}</strong></div>
               <div className={localStyles.detailItem}><span>Số phiếu nhận</span><strong>{formatDecimalString(String(selectedPurchaseOrder.receiptCount ?? 0))}</strong></div>
               <div className={localStyles.detailItem}><span>Thực nhận</span><strong>{formatDecimalString(selectedPurchaseOrder.receivedQuantityTotal ?? '0')}</strong></div>
               <div className={localStyles.detailItem}><span>Chấp nhận</span><strong>{formatDecimalString(selectedPurchaseOrder.acceptedQuantityTotal ?? '0')}</strong></div>
@@ -446,7 +447,7 @@ export default function PurchaseOrderWorkspace({
               {!receiptSummaryLoading && !receiptSummaryError && selectedReceipts.length === 0 ? <p>Chưa có phiếu nhận hàng.</p> : null}
               {selectedReceipts.length > 0 ? (
                 <table className={localStyles.linesTable} data-testid="purchase-order-receipts-table">
-                  <thead><tr><th>Số phiếu</th><th>Ngày nhận</th><th>Trạng thái</th><th>Tham chiếu NCC</th><th>Số lượng nhận</th></tr></thead>
+                  <thead><tr><th>Số phiếu</th><th>Ngày nhận</th><th>Trạng thái</th><th>Tham chiếu nhà cung cấp</th><th>Số lượng nhận</th></tr></thead>
                   <tbody>
                     {selectedReceipts.map((receipt) => (
                       <tr key={receipt.id}>

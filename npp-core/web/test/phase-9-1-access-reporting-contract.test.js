@@ -39,8 +39,8 @@ test('9.1 authorization remains deny-by-default on the backend registry', () => 
 test('9.1 Employee MCP performance uses five UI tabs over the single Phase 8.4 source', () => {
   const workspace = source('../app/components/employee-mcp-reporting-workspace.tsx');
 
-  for (const label of ['Tổng quan', 'Tuyến & phiên', 'Điểm bán / lượt ghé', 'Nhu cầu & đơn hàng', 'Hiệu quả hoạt động']) {
-    assert.match(workspace, new RegExp(label.replace(/[&/]/g, (value) => `\\${value}`)));
+  for (const label of ['Tổng quan', 'Tuyến và phiên', 'Điểm bán và lượt ghé', 'Nhu cầu và đơn hàng', 'Hiệu quả hoạt động']) {
+    assert.match(workspace, new RegExp(label));
   }
 
   assert.equal((workspace.match(/fetch\(`\/api\/reporting\/employee-mcp/g) ?? []).length, 1);
@@ -49,7 +49,7 @@ test('9.1 Employee MCP performance uses five UI tabs over the single Phase 8.4 s
   assert.match(workspace, /activeTab === 'outlets'/);
   assert.match(workspace, /activeTab === 'orders'/);
   assert.match(workspace, /activeTab === 'effectiveness'/);
-  assert.match(workspace, /Dùng lại planned\/visited\/check-in\/visit facts từ contract Phase 8\.4/);
-  assert.match(workspace, /Order intent, onboarding và Core Sales Order cùng lấy từ lineage Phase 8\.4 hiện hữu/);
+  assert.match(workspace, /Tổng hợp kế hoạch, điểm đã ghé và số lần ghi nhận hoạt động thực tế/);
+  assert.match(workspace, /Theo dõi từ nhu cầu mua, đề nghị mở mã khách đến đơn Công Ty chính thức/);
   assert.doesNotMatch(workspace, /\/api\/reporting\/employee-mcp\/(?:routes|sessions|outlets|orders)/);
 });

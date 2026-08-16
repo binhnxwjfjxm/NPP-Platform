@@ -59,14 +59,14 @@ const organizationItems: NavItem[] = [
   { href: '/customers', label: 'Khách hàng', icon: 'user', testId: 'nav-customers' },
   { href: '/suppliers', label: 'Nhà cung cấp', icon: 'user', testId: 'nav-suppliers' },
   { href: '/products', label: 'Danh mục sản phẩm', icon: 'panel', testId: 'nav-products' },
-  { href: '/pricing', label: 'Giá bán & khuyến mãi', icon: 'panel', testId: 'nav-pricing' },
+  { href: '/pricing', label: 'Giá bán và khuyến mãi', icon: 'panel', testId: 'nav-pricing' },
   { href: '/document-numbering', label: 'Số chứng từ', icon: 'panel', testId: 'nav-document-numbering' },
 ];
 
 const accessItems: NavItem[] = [
-  { href: '/access/roles', label: 'Vai trò & phân quyền', icon: 'panel', testId: 'nav-roles' },
+  { href: '/access/roles', label: 'Vai trò và phân quyền', icon: 'panel', testId: 'nav-roles' },
   { href: '/access/employees', label: 'Danh mục nhân sự', icon: 'user', testId: 'nav-employees' },
-  { href: '/access/employees/performance', label: 'Hiệu suất nhân viên / MCP', icon: 'dashboard', testId: 'nav-employee-mcp-reporting' },
+  { href: '/access/employees/performance', label: 'Hiệu suất nhân viên thị trường', icon: 'dashboard', testId: 'nav-employee-mcp-reporting' },
   { href: '/access/users', label: 'Người dùng', icon: 'user', testId: 'nav-users' },
 ];
 
@@ -75,7 +75,7 @@ const inventoryItems: NavItem[] = [
   { href: '/inventory/fulfillment', label: 'Chuẩn bị hàng', icon: 'panel', testId: 'nav-inventory-fulfillment' },
   { href: '/inventory/transfers', label: 'Chuyển kho', icon: 'panel', testId: 'nav-inventory-transfers' },
   { href: '/inventory/stocktakes', label: 'Kiểm kê kho', icon: 'panel', testId: 'nav-inventory-stocktakes' },
-  { href: '/inventory/adjustments', label: 'Điều chỉnh & xử lý tồn', icon: 'panel', testId: 'nav-inventory-adjustments' },
+  { href: '/inventory/adjustments', label: 'Điều chỉnh và xử lý tồn', icon: 'panel', testId: 'nav-inventory-adjustments' },
   { href: '/inventory/costing', label: 'Giá vốn tồn kho', icon: 'accounting', testId: 'nav-inventory-costing' },
   { href: '/inventory/balances', label: 'Tra cứu tồn kho', icon: 'panel', testId: 'nav-inventory-balances' },
   { href: '/inventory/tracking-policies', label: 'Chính sách lô', icon: 'panel', testId: 'nav-inventory-policies' },
@@ -86,8 +86,8 @@ const inventoryItems: NavItem[] = [
 const logisticsItems: NavItem[] = [
   { href: '/logistics/reporting', label: 'Hiệu suất giao hàng', icon: 'dashboard', testId: 'nav-logistics-reporting' },
   { href: '/inventory/delivery-orders', label: 'Phiếu giao hàng', icon: 'truck', testId: 'nav-delivery-orders' },
-  { href: '/logistics/trips', label: 'Lập & xếp chuyến', icon: 'truck', testId: 'nav-logistics-trips' },
-  { href: '/logistics/dispatch', label: 'Bàn giao & xuất phát', icon: 'truck', testId: 'nav-logistics-dispatch' },
+  { href: '/logistics/trips', label: 'Lập và xếp chuyến', icon: 'truck', testId: 'nav-logistics-trips' },
+  { href: '/logistics/dispatch', label: 'Bàn giao và xuất phát', icon: 'truck', testId: 'nav-logistics-dispatch' },
   { href: '/logistics/delivery-attempts', label: 'Kết quả lần giao', icon: 'truck', testId: 'nav-logistics-delivery-attempts' },
   { href: '/logistics/trip-reconciliation', label: 'Đối soát cuối chuyến', icon: 'truck', testId: 'nav-logistics-trip-reconciliation' },
   { href: '/inventory/customer-returns', label: 'Hàng khách trả', icon: 'truck', testId: 'nav-customer-returns' },
@@ -98,20 +98,20 @@ const salesItems: NavItem[] = [
   { href: '/sales/gross-margin', label: 'Lãi gộp', icon: 'accounting', testId: 'nav-gross-margin-reporting' },
   { href: '/management', label: 'Điều hành bán hàng', icon: 'panel', testId: 'nav-sales-operations' },
   { href: '/sales/sales-orders', label: 'Đơn bán hàng', icon: 'panel', testId: 'nav-sales-orders' },
-  { href: '/management/customer-onboarding', label: 'Mở / liên kết mã khách', icon: 'user', testId: 'nav-customer-onboarding' },
+  { href: '/management/customer-onboarding', label: 'Mở/liên kết mã khách', icon: 'user', testId: 'nav-customer-onboarding' },
 ];
 
 const purchasingItems: NavItem[] = [
   { href: '/purchasing/reporting', label: 'Báo cáo mua hàng', icon: 'dashboard', testId: 'nav-purchasing-reporting' },
-  { href: '/purchasing/purchase-orders', label: 'Đơn đặt hàng', icon: 'panel', testId: 'nav-purchase-orders' },
+  { href: '/purchasing/purchase-orders', label: 'Đơn mua hàng', icon: 'panel', testId: 'nav-purchase-orders' },
   { href: '/purchasing/purchase-prices', label: 'Bảng giá mua', icon: 'panel', testId: 'nav-purchase-prices' },
   { href: '/purchasing/goods-receipts', label: 'Phiếu nhận hàng', icon: 'panel', testId: 'nav-goods-receipts' },
-  { href: '/purchasing/supplier-returns', label: 'Phiếu trả NCC', icon: 'panel', testId: 'nav-supplier-returns' },
+  { href: '/purchasing/supplier-returns', label: 'Phiếu trả nhà cung cấp', icon: 'panel', testId: 'nav-supplier-returns' },
 ];
 
 const accountingItems: NavItem[] = [
   { href: '/accounting/aging', label: 'Tuổi nợ', icon: 'dashboard', testId: 'nav-aging-reporting' },
-  { href: '/accounting/cod-reporting', label: 'COD & đối soát', icon: 'dashboard', testId: 'nav-cod-reporting' },
+  { href: '/accounting/cod-reporting', label: 'COD và đối soát', icon: 'dashboard', testId: 'nav-cod-reporting' },
   { href: '/accounting/receivables', label: 'Công nợ phải thu', icon: 'accounting', testId: 'nav-receivables' },
   { href: '/accounting/customer-payments', label: 'Thu tiền khách hàng', icon: 'accounting', testId: 'nav-customer-payments' },
   { href: '/accounting/customer-return-credits', label: 'Điều chỉnh công nợ hàng trả', icon: 'accounting', testId: 'nav-customer-return-credits' },
@@ -246,22 +246,22 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
   return <div className={`${styles.shell} ${collapsed ? styles.shellCollapsed : ''}`} data-collapsed={collapsed ? 'true' : 'false'}>
     <aside className={`${styles.sidebar} ${mobileOpen ? styles.sidebarOpen : ''}`} aria-label="Điều hướng chính" data-testid="app-sidebar">
       <div className={styles.brandRow}>
-        <Link href="/dashboard" className={styles.brand} aria-label="Hưng Phát Company - Trang tổng quan"><span className={styles.logoFrame}><img src={logoUrl} alt="Logo Hưng Phát Company" className={styles.logo} /></span><span className={styles.brandText}><strong>Hưng Phát Company</strong><small>NPP Operations</small></span></Link>
+        <Link href="/dashboard" className={styles.brand} aria-label="Hưng Phát - Trang tổng quan"><span className={styles.logoFrame}><img src={logoUrl} alt="Logo Hưng Phát" className={styles.logo} /></span><span className={styles.brandText}><strong>Hưng Phát</strong><small>Công Ty</small></span></Link>
         <button type="button" className={styles.collapseButton} onClick={toggleCollapsed} aria-label={collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'} title={collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'} data-testid="sidebar-collapse-button"><Icon name="panel" /></button>
       </div>
       <div ref={navScrollRef} className={styles.navScroll} data-testid="sidebar-nav-scroll"><nav className={styles.nav}>
         <p className={styles.navLabel}>Điều hành</p><Link href="/dashboard" className={`${styles.navItem} ${pathname === '/dashboard' ? styles.navItemActive : ''}`} data-testid="nav-dashboard" title={collapsed ? 'Tổng quan điều hành' : undefined}><span className={styles.navIcon}><Icon name="dashboard" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Tổng quan điều hành</span><span className={styles.navHint}>Thông tin tổng hợp phục vụ điều hành</span></span></Link>
         {renderGroup({ sectionLabel: 'Danh mục quản lý', title: 'Danh mục nghiệp vụ', hint: 'Tổ chức, đối tác, hàng hóa, giá và chứng từ', icon: 'organization', active: isOrganizationPath(pathname), open: organizationOpen, setOpen: setOrganizationOpen, testId: 'organization-menu-toggle', children: organizationChildren })}
-        {renderGroup({ sectionLabel: 'Tồn kho & lô hàng', title: 'Tồn kho & lô hàng', hint: 'Chuẩn bị hàng, chuyển kho, số lượng tồn, lô, hạn dùng và tồn đầu kỳ', icon: 'panel', active: isInventoryPath(pathname), open: inventoryOpen, setOpen: setInventoryOpen, testId: 'inventory-menu-toggle', children: inventoryChildren })}
-        {renderGroup({ sectionLabel: 'Giao nhận & điều phối', title: 'Giao nhận & điều phối', hint: 'Phiếu giao, chuyến xe, kết quả giao, đối soát và hàng trả', icon: 'truck', active: isLogisticsPath(pathname), open: logisticsOpen, setOpen: setLogisticsOpen, testId: 'logistics-menu-toggle', children: logisticsChildren })}
+        {renderGroup({ sectionLabel: 'Tồn kho và lô hàng', title: 'Tồn kho và lô hàng', hint: 'Chuẩn bị hàng, chuyển kho, số lượng tồn, lô, hạn dùng và tồn đầu kỳ', icon: 'panel', active: isInventoryPath(pathname), open: inventoryOpen, setOpen: setInventoryOpen, testId: 'inventory-menu-toggle', children: inventoryChildren })}
+        {renderGroup({ sectionLabel: 'Giao nhận và điều phối', title: 'Giao nhận và điều phối', hint: 'Phiếu giao, chuyến xe, kết quả giao, đối soát và hàng trả', icon: 'truck', active: isLogisticsPath(pathname), open: logisticsOpen, setOpen: setLogisticsOpen, testId: 'logistics-menu-toggle', children: logisticsChildren })}
         {renderGroup({ sectionLabel: 'Bán hàng', title: 'Bán hàng', hint: 'Đơn nhiều nguồn, mã khách và vòng đời thương mại', icon: 'panel', active: isSalesPath(pathname), open: salesOpen, setOpen: setSalesOpen, testId: 'sales-menu-toggle', children: salesChildren })}
-        {renderGroup({ sectionLabel: 'Mua hàng', title: 'Mua hàng', hint: 'Đơn đặt hàng và phiếu nhận hàng', icon: 'panel', active: pathname.startsWith('/purchasing'), open: purchasingOpen, setOpen: setPurchasingOpen, testId: 'purchasing-menu-toggle', children: purchasingChildren })}
-        {renderGroup({ sectionLabel: 'Kế toán & công nợ', title: 'Kế toán & công nợ', hint: 'Tuổi nợ, phải thu, thu tiền, hàng trả, phải trả và thanh toán nhà cung cấp', icon: 'accounting', active: pathname.startsWith('/accounting'), open: accountingOpen, setOpen: setAccountingOpen, testId: 'accounting-menu-toggle', children: accountingChildren })}
-        <p className={styles.navLabel}>Vận hành hệ thống</p><Link href="/operations/data-exchange" className={`${styles.navItem} ${pathname === '/operations/data-exchange' ? styles.navItemActive : ''}`} data-testid="nav-data-exchange" title={collapsed ? 'Nhập / xuất dữ liệu' : undefined}><span className={styles.navIcon}><Icon name="panel" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Nhập / xuất dữ liệu</span><span className={styles.navHint}>Sản phẩm, giá bán, kiểm kê, báo giá và biến động kho</span></span></Link>
+        {renderGroup({ sectionLabel: 'Mua hàng', title: 'Mua hàng', hint: 'Đơn mua hàng và phiếu nhận hàng', icon: 'panel', active: pathname.startsWith('/purchasing'), open: purchasingOpen, setOpen: setPurchasingOpen, testId: 'purchasing-menu-toggle', children: purchasingChildren })}
+        {renderGroup({ sectionLabel: 'Kế toán và công nợ', title: 'Kế toán và công nợ', hint: 'Tuổi nợ, phải thu, thu tiền, hàng trả, phải trả và thanh toán nhà cung cấp', icon: 'accounting', active: pathname.startsWith('/accounting'), open: accountingOpen, setOpen: setAccountingOpen, testId: 'accounting-menu-toggle', children: accountingChildren })}
+        <p className={styles.navLabel}>Vận hành hệ thống</p><Link href="/operations/data-exchange" className={`${styles.navItem} ${pathname === '/operations/data-exchange' ? styles.navItemActive : ''}`} data-testid="nav-data-exchange" title={collapsed ? 'Nhập/xuất dữ liệu' : undefined}><span className={styles.navIcon}><Icon name="panel" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Nhập/xuất dữ liệu</span><span className={styles.navHint}>Sản phẩm, giá bán, kiểm kê, báo giá và biến động kho</span></span></Link>
         <Link href="/operations/audit-history" className={`${styles.navItem} ${pathname === '/operations/audit-history' ? styles.navItemActive : ''}`} data-testid="nav-audit-history" title={collapsed ? 'Lịch sử thay đổi' : undefined}><span className={styles.navIcon}><Icon name="dashboard" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Lịch sử thay đổi</span><span className={styles.navHint}>Tra cứu thay đổi và dấu vết vận hành</span></span></Link>
-        <Link href="/operations/import-export-history" className={`${styles.navItem} ${pathname === '/operations/import-export-history' ? styles.navItemActive : ''}`} data-testid="nav-import-export-history" title={collapsed ? 'Lịch sử nhập / xuất' : undefined}><span className={styles.navIcon}><Icon name="panel" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Lịch sử nhập / xuất</span><span className={styles.navHint}>Theo dõi các lần nhập và xuất dữ liệu</span></span></Link>
+        <Link href="/operations/import-export-history" className={`${styles.navItem} ${pathname === '/operations/import-export-history' ? styles.navItemActive : ''}`} data-testid="nav-import-export-history" title={collapsed ? 'Lịch sử nhập/xuất' : undefined}><span className={styles.navIcon}><Icon name="panel" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Lịch sử nhập/xuất</span><span className={styles.navHint}>Theo dõi các lần nhập và xuất dữ liệu</span></span></Link>
         <Link href="/settings" className={`${styles.navItem} ${pathname.startsWith('/settings') ? styles.navItemActive : ''}`} data-testid="nav-settings" title={collapsed ? 'Cài đặt' : undefined}><span className={styles.navIcon}><Icon name="panel" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Cài đặt</span><span className={styles.navHint}>Dữ liệu, sao lưu và thiết lập hệ thống</span></span></Link>
-        {renderGroup({ sectionLabel: 'Quản trị hệ thống', title: 'Nhân sự & phân quyền', hint: 'Hồ sơ, hiệu suất field, tài khoản và phạm vi truy cập', icon: 'user', active: pathname.startsWith('/access'), open: accessOpen, setOpen: setAccessOpen, testId: 'access-menu-toggle', children: accessChildren, stableMotion: true })}
+        {renderGroup({ sectionLabel: 'Quản trị hệ thống', title: 'Nhân sự và phân quyền', hint: 'Hồ sơ, hiệu suất thị trường, tài khoản và phạm vi truy cập', icon: 'user', active: pathname.startsWith('/access'), open: accessOpen, setOpen: setAccessOpen, testId: 'access-menu-toggle', children: accessChildren, stableMotion: true })}
       </nav></div>
       <div className={styles.sidebarFooter}>
         <div className={styles.userPlaceholder} title={collapsed ? currentUserName : undefined} data-testid="sidebar-current-user">
