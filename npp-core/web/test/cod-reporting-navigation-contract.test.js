@@ -49,3 +49,13 @@ test('Phase 8.6 keeps operational drill-down, current-state warning and office-l
   assert.doesNotMatch(workspace, /Current queue|due_at|COD canonical|Customer settlement|driver cash custody|Số acceptance|Variance|Lifecycle mismatch|surfaced/);
   assert.doesNotMatch(workspace, /Xuất CSV|exportCsv|download=/);
 });
+
+test('COD accounting data does not block normal reporting tabs and loads when its tab opens', () => {
+  const page = source('../app/accounting/cod-reporting/page.tsx');
+  const reconciliation = source('../app/accounting/cod-reconciliation/cod-reconciliation-workspace.tsx');
+  assert.match(page, /if \(initialTab === 'accounting'\)/);
+  assert.match(page, /listCodHandovers<.*>\(requestId, \{ limit: 1000 \}\)/);
+  assert.match(reconciliation, /useEffect\(\(\) => \{/);
+  assert.match(reconciliation, /if \(initialHandovers\.length \|\| initialError\) return;/);
+  assert.match(reconciliation, /void refresh\(\)/);
+});
