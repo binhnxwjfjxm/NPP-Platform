@@ -2,6 +2,7 @@ export type SalesOrderStatus = 'draft' | 'confirmed' | 'cancelled' | 'closed';
 export type SalesOrderVersionStatus = 'draft' | 'confirmed' | 'superseded' | 'cancelled';
 export type SalesOrderCollectionPolicy = 'PREPAID' | 'COLLECT_ON_DELIVERY' | 'COLLECT_AFTER_DELIVERY' | 'CREDIT_TERMS';
 export type SalesOrderDeliveryMode = 'DELIVERY' | 'PICKUP';
+export type SalesOrderDeliveryExecutionMode = 'TRIP' | 'MANUAL';
 export type SalesOrderSourceType = 'MANUAL' | 'IMPORT' | 'API' | 'MCP';
 export type SalesOrderCustomerMode = 'EXISTING' | 'WALK_IN';
 export type SalesOrderTaxMode = 'EXCLUSIVE' | 'INCLUSIVE';
@@ -93,6 +94,7 @@ export type SalesOrderVersion = {
   salesChannelCode: string | null;
   salesChannelName: string | null;
   deliveryMode: SalesOrderDeliveryMode;
+  deliveryExecutionMode?: SalesOrderDeliveryExecutionMode | null;
   sourceType: SalesOrderSourceType;
   sourceId: string | null;
   sourceOutletId: string | null;
@@ -178,6 +180,7 @@ export type SalesOrder = {
   salesChannelCode: string | null;
   salesChannelName: string | null;
   deliveryMode: SalesOrderDeliveryMode;
+  deliveryExecutionMode?: SalesOrderDeliveryExecutionMode | null;
   collectionPolicy: SalesOrderCollectionPolicy;
   fulfillmentStatus: SalesOrderFulfillmentStatus;
   fulfillment?: SalesOrderFulfillmentProjection | null;
@@ -273,6 +276,7 @@ export type SalesOrderDraftPayload = {
   salesChannelId: string;
   pricingAt?: string;
   deliveryMode: SalesOrderDeliveryMode;
+  deliveryExecutionMode?: SalesOrderDeliveryExecutionMode;
   collectionPolicy: SalesOrderCollectionPolicy;
   currency: 'VND';
   requestedDeliveryDate?: string;

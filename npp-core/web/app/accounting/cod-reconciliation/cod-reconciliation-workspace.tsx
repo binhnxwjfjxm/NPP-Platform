@@ -27,14 +27,6 @@ function money(value: string) {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 6 }).format(Number(value));
 }
 
-function formatVietnamTimestamp(value: string) {
-  const source = new Date(value);
-  if (Number.isNaN(source.getTime())) return value;
-  const local = new Date(source.getTime() + 7 * 60 * 60 * 1000);
-  const two = (part: number) => String(part).padStart(2, '0');
-  return `${two(local.getUTCDate())}/${two(local.getUTCMonth() + 1)}/${local.getUTCFullYear()}, ${two(local.getUTCHours())}:${two(local.getUTCMinutes())}`;
-}
-
 function statusLabel(status: CodHandover['status']) {
   return {
     submitted: 'Chờ xác nhận',
@@ -161,7 +153,7 @@ export default function CodReconciliationWorkspace({ initialHandovers, initialEr
               <tbody>
                 {handovers.map((handover) => (
                   <tr key={handover.id} className={selectedId === handover.id ? styles.selected : undefined}>
-                    <td><button className={styles.linkButton} disabled={busy} onClick={() => select(handover.id)}>{handover.tripNumber || handover.tripId}</button><br /><span>{formatVietnamTimestamp(handover.handedOverAt)}</span></td>
+                    <td><button className={styles.linkButton} disabled={busy} onClick={() => select(handover.id)}>{handover.tripNumber || handover.tripId}</button><br /><span>{new Date(handover.handedOverAt).toLocaleString('vi-VN')}</span></td>
                     <td>{handover.driverCode}<br /><span>{handover.driverName}</span></td>
                     <td>{handover.warehouseCode}<br /><span>{handover.warehouseName}</span></td>
                     <td className={styles.amount}>{money(handover.handedOverTotal)}</td>

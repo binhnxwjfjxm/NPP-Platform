@@ -9,6 +9,7 @@ import type {
   SalesOrder,
   SalesOrderCollectionPolicy,
   SalesOrderCustomerMode,
+  SalesOrderDeliveryExecutionMode,
   SalesOrderDocumentDiscountMode,
   SalesOrderDraftPayload,
   SalesOrderEntrySettings,
@@ -26,7 +27,7 @@ import {
 } from './sales-order-ui';
 import styles from './sales-orders.module.css';
 
-export type SalesOrderFormMode = 'create' | 'draft' | 'amendment';
+export type SalesOrderFormMode = 'create' | 'draft' | 'amendment' | 'manual-edit';
 
 const SEARCH_DELAY_MS = 260;
 const SEARCH_PAGE_SIZE = 30;
@@ -249,6 +250,9 @@ export default function SalesOrderCommercialForm(props: Props) {
   const [warehouseId, setWarehouseId] = useState(version?.warehouseId ?? '');
   const [salesChannelId, setSalesChannelId] = useState(version?.salesChannelId ?? '');
   const [deliveryMode, setDeliveryMode] = useState(version?.deliveryMode ?? 'DELIVERY');
+  const [deliveryExecutionMode, setDeliveryExecutionMode] = useState<SalesOrderDeliveryExecutionMode | null>(
+    version?.deliveryMode === 'PICKUP' ? null : (version?.deliveryExecutionMode ?? 'TRIP'),
+  );
   const [collectionPolicy, setCollectionPolicy] = useState<SalesOrderCollectionPolicy>(version?.collectionPolicy ?? 'COLLECT_ON_DELIVERY');
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState(version?.requestedDeliveryDate ?? '');
   const [note, setNote] = useState(version?.note ?? '');
@@ -431,6 +435,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       setAddressId('');
       setAddresses([]);
       setDeliveryMode('PICKUP');
+      setDeliveryExecutionMode(null);
       if (!['PREPAID', 'COLLECT_ON_DELIVERY'].includes(collectionPolicy)) {
         setCollectionPolicy('COLLECT_ON_DELIVERY');
       }
@@ -678,6 +683,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     if (customerMode === 'WALK_IN' && !['PREPAID', 'COLLECT_ON_DELIVERY'].includes(collectionPolicy)) {
       return 'Khách vãng lai không được bán chịu hoặc giao trước thu sau';
     }
+    if (deliveryMode === 'DELIVERY' && !deliveryExecutionMode) return 'Hãy chọn hình thức giao nhận';
     if (deliveryMode === 'DELIVERY' && !addressId) return 'Hãy chọn địa chỉ giao hàng';
     if (lines.length === 0) return 'Đơn bán hàng phải có ít nhất một SKU';
     if (lines.some((line) => !parseScaled(line.quantity, false))) return 'Số lượng hàng hóa chưa hợp lệ';
@@ -707,6 +713,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       salesChannelId,
       pricingAt,
       deliveryMode,
+      ...(deliveryMode === 'DELIVERY' ? { deliveryExecutionMode: deliveryExecutionMode ?? 'TRIP' } : {}),
       collectionPolicy,
       currency: 'VND',
       ...(requestedDeliveryDate ? { requestedDeliveryDate } : {}),
@@ -739,13 +746,16 @@ export default function SalesOrderCommercialForm(props: Props) {
       let path = '/api/sales-orders';
       let method = 'POST';
       let draftPayload = payload();
-      const recovery = committedDraftRef.current
+      const recovery = props.mode === 'manual-edit' ? null : committedDraftRef.current
         ? draftRecoveryTarget(
           committedDraftRef.current,
           props.mode === 'amendment' ? version?.versionNumber : null,
         )
         : null;
-      if (recovery) {
+      if (props.mode === 'manual-edit') {
+        path = `/api/sales-orders/${props.orderId}/manual-edit`;
+        method = 'PUT';
+      } else if (recovery) {
         path = recovery.path;
         method = 'PUT';
         draftPayload = { ...draftPayload, expectedRevision: recovery.expectedRevision };
@@ -761,9 +771,9 @@ export default function SalesOrderCommercialForm(props: Props) {
         headers: { 'Idempotency-Key': saveKey },
         body: JSON.stringify(draftPayload),
       });
-      committedDraftRef.current = savedOrder;
+      if (props.mode !== 'manual-edit') committedDraftRef.current = savedOrder;
       setSaveKey(mutationKey(`sales-${props.mode}-save`));
-      if (confirmAfter) {
+      if (confirmAfter && props.mode !== 'manual-edit') {
         const confirmPath = props.mode === 'amendment'
           ? `/api/sales-orders/${savedOrder.id}/amendments/${version?.versionNumber}/confirm`
           : `/api/sales-orders/${savedOrder.id}/confirm`;
@@ -781,7 +791,11 @@ export default function SalesOrderCommercialForm(props: Props) {
         setPricingMismatch('Giá hệ thống đã thay đổi. Hệ thống đã tính lại; hãy xem từng dòng rồi lưu lại.');
         const effectiveAt = new Date().toISOString();
         setPricingAt(effectiveAt);
-        setConfirmKey(mutationKey(`sales-${props.mode}-confirm`));
+        if (props.mode === 'manual-edit') {
+          setSaveKey(mutationKey('sales-manual-edit-save'));
+        } else {
+          setConfirmKey(mutationKey(`sales-${props.mode}-confirm`));
+        }
         await repriceAll(effectiveAt);
         onError('Giá hệ thống đã thay đổi; cần kiểm tra lại trước khi lưu.');
       } else {
@@ -801,9 +815,12 @@ export default function SalesOrderCommercialForm(props: Props) {
     setQuickAddressKey(mutationKey('sales-quick-address'));
     setCustomerMode('EXISTING');
     setDeliveryMode('DELIVERY');
+    setDeliveryExecutionMode('TRIP');
     setQuickOpen(true);
     markDirty();
   }
+
+  const deliveryChoice = deliveryMode === 'PICKUP' ? 'PICKUP' : (deliveryExecutionMode ?? 'TRIP');
 
   return (
     <div className={styles.modalBackdrop} role="presentation">
@@ -811,7 +828,13 @@ export default function SalesOrderCommercialForm(props: Props) {
         <header className={styles.modalHeader}>
           <div>
             <p className={styles.eyebrow}>Bán hàng · Chính sách thương mại</p>
-            <h2>{props.mode === 'create' ? 'Tạo đơn bán hàng' : props.mode === 'amendment' ? `Sửa bản điều chỉnh ${version?.versionNumber}` : 'Sửa đơn bán hàng nháp'}</h2>
+            <h2>{props.mode === 'create'
+              ? 'Tạo đơn bán hàng'
+              : props.mode === 'manual-edit'
+                ? 'Sửa đơn'
+                : props.mode === 'amendment'
+                  ? `Sửa bản điều chỉnh ${version?.versionNumber}`
+                  : 'Sửa đơn bán hàng nháp'}</h2>
           </div>
           <button type="button" className={styles.closeButton} onClick={requestClose} aria-label="Đóng">×</button>
         </header>
@@ -838,7 +861,17 @@ export default function SalesOrderCommercialForm(props: Props) {
 
             <label className={styles.salesChannelField}><span>Kênh bán *</span><select data-testid="sales-channel-select" value={salesChannelId} onChange={(event) => { setSalesChannelId(event.target.value); markDirty(); }}><option value="">Chọn kênh bán</option>{entrySettings?.salesChannels.map((channel) => <option key={channel.id} value={channel.id}>{channel.code} — {channel.name}</option>)}</select></label>
             <label><span>Kho xuất *</span><select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); markDirty(); }}><option value="">Chọn kho</option>{props.warehouses.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}</select></label>
-            <label><span>Nhận hàng</span><select value={deliveryMode} disabled={customerMode === 'WALK_IN'} onChange={(event) => { setDeliveryMode(event.target.value as 'DELIVERY' | 'PICKUP'); markDirty(); }}><option value="DELIVERY">Giao đến khách</option><option value="PICKUP">Nhận tại kho</option></select></label>
+            <label><span>Hình thức giao nhận</span><select value={deliveryChoice} disabled={customerMode === 'WALK_IN'} onChange={(event) => {
+              const value = event.target.value;
+              if (value === 'PICKUP') {
+                setDeliveryMode('PICKUP');
+                setDeliveryExecutionMode(null);
+              } else {
+                setDeliveryMode('DELIVERY');
+                setDeliveryExecutionMode(value as SalesOrderDeliveryExecutionMode);
+              }
+              markDirty();
+            }}><option value="TRIP">Giao theo chuyến</option><option value="MANUAL">Giao thủ công</option><option value="PICKUP">Khách nhận tại kho</option></select></label>
             <label><span>Thu tiền</span><select value={collectionPolicy} onChange={(event) => { setCollectionPolicy(event.target.value as SalesOrderCollectionPolicy); markDirty(); }}><option value="COLLECT_ON_DELIVERY">Thu khi giao/nhận</option><option value="PREPAID">Đã trả trước</option>{customerMode === 'EXISTING' && <><option value="COLLECT_AFTER_DELIVERY">Giao trước, thu sau</option><option value="CREDIT_TERMS">Bán chịu theo hạn mức</option></>}</select></label>
             <label><span>Ngày cần hàng</span><input type="date" value={requestedDeliveryDate} onChange={(event) => { setRequestedDeliveryDate(event.target.value); markDirty(); }} /></label>
             {deliveryMode === 'DELIVERY' && customerMode === 'EXISTING' && <label className={styles.addressField}><span>Địa chỉ giao hàng *</span><select value={addressId} onChange={(event) => { setAddressId(event.target.value); markDirty(); }}><option value="">Chọn địa chỉ</option>{addresses.map((item) => <option key={item.id} value={item.id}>{item.label} — {item.address_line1}, {item.ward ?? ''}, {item.province ?? ''}</option>)}</select></label>}
@@ -961,8 +994,14 @@ export default function SalesOrderCommercialForm(props: Props) {
           </section>
           <div className={styles.footerActions}>
             <button type="button" onClick={requestClose}>Đóng</button>
-            <button type="button" className={styles.primaryButton} disabled={busy} onClick={() => void save(false)}>{busy ? 'Đang lưu…' : 'Lưu nháp'}</button>
-            {props.canConfirm && <button type="button" className={styles.confirmButton} disabled={busy} onClick={() => void save(true)}>Lưu và xác nhận</button>}
+            {props.mode === 'manual-edit' ? (
+              <button type="button" className={styles.primaryButton} disabled={busy} onClick={() => void save(false)}>{busy ? 'Đang lưu…' : 'Lưu thay đổi'}</button>
+            ) : (
+              <>
+                <button type="button" className={styles.primaryButton} disabled={busy} onClick={() => void save(false)}>{busy ? 'Đang lưu…' : 'Lưu nháp'}</button>
+                {props.canConfirm && <button type="button" className={styles.confirmButton} disabled={busy} onClick={() => void save(true)}>Lưu và xác nhận</button>}
+              </>
+            )}
           </div>
         </footer>
       </section>

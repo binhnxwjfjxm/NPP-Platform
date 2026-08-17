@@ -278,6 +278,20 @@ async function finishMediaDelete(client, config, args) {
     [installationId, mediaId, succeeded, text(args.p_error), json(args.p_context || {})]
   );
   if (!result.rows?.[0]) throw providerError("outlet_media_not_found", 404);
+  if (succeeded) {
+    await client.query(
+      `UPDATE shared.customer_media
+       SET status = 'deleted',
+           object_key = NULL,
+           updated_by = $3,
+           updated_at = now()
+       WHERE installation_id = $1
+         AND source_app = 'MCP'
+         AND source_media_id = $2
+         AND status <> 'deleted'`,
+      [installationId, mediaId, text(object(args.p_context).actorId)]
+    );
+  }
   return result.rows[0];
 }
 

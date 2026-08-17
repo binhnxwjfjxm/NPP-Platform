@@ -23,7 +23,8 @@ const READ_TABLES = new Set([
   "products",
   "product_variants",
   "route_customers",
-  "mcp_outlet_media"
+  "mcp_outlet_media",
+  "customer_media"
 ]);
 const CANONICAL_LOCATION_COLUMN = "__canonical_google_maps_url";
 
@@ -77,6 +78,7 @@ function boundedInteger(value, fallback, maximum) {
 }
 
 function readSource(table) {
+  if (table === "customer_media") return `"shared"."customer_media"`;
   if (table !== "mcp_route_customers") return `"mcp".${quoteIdentifier(table)}`;
   return `(
     SELECT route_customer.*,
@@ -93,8 +95,8 @@ function readSource(table) {
     FROM "mcp"."mcp_route_customers" AS route_customer
     LEFT JOIN "shared"."customer_addresses" AS customer_address
       ON customer_address.installation_id = route_customer.installation_id
-     AND customer_address.customer_id = route_customer.core_customer_id
-     AND customer_address.id = route_customer.core_customer_address_id
+     AND customer_address.customer_id::text = route_customer.core_customer_id
+     AND customer_address.id::text = route_customer.core_customer_address_id
   ) AS "mcp_route_customers"`;
 }
 

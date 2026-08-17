@@ -74,7 +74,8 @@ function isDraftSave(path: string, method: string): boolean {
   if (method === 'POST' && path === '/api/sales-orders') return true;
   if (method !== 'PUT') return false;
   return /^\/api\/sales-orders\/[^/]+\/draft$/.test(path)
-    || /^\/api\/sales-orders\/[^/]+\/amendments\/[^/]+\/draft$/.test(path);
+    || /^\/api\/sales-orders\/[^/]+\/amendments\/[^/]+\/draft$/.test(path)
+    || /^\/api\/sales-orders\/[^/]+\/manual-edit$/.test(path);
 }
 
 function isConfirm(path: string, method: string): boolean {
@@ -147,6 +148,14 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
 
 export function mutationKey(prefix: string): string {
   return createIdempotencyKey(prefix);
+}
+
+export function deliveryMethodLabel(value: {
+  deliveryMode: string;
+  deliveryExecutionMode?: string | null;
+}): string {
+  if (value.deliveryMode === 'PICKUP') return 'Khách nhận tại kho';
+  return value.deliveryExecutionMode === 'MANUAL' ? 'Giao thủ công' : 'Giao theo chuyến';
 }
 
 export function formatMoney(value: string | number | null | undefined): string {

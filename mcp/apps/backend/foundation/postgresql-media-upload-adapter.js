@@ -72,6 +72,71 @@ async function optionalSession(client, installationId, sessionId) {
   return row;
 }
 
+async function linkedCustomer(client, installationId, coreCustomerId) {
+  if (!text(coreCustomerId)) return null;
+  const result = await client.query(
+    `SELECT id, is_active
+     FROM shared.customers
+     WHERE installation_id = $1 AND id::text = $2
+     FOR UPDATE`,
+    [installationId, text(coreCustomerId)]
+  );
+  const row = result.rows?.[0];
+  if (!row) fail("linked_customer_not_found", 409);
+  if (row.is_active !== true) fail("linked_customer_inactive", 409);
+  return row;
+}
+
+async function reserveSharedCustomerMedia(client, {
+  installationId,
+  customerId,
+  mediaId,
+  routeCustomerId,
+  sessionId,
+  clientUploadId,
+  objectKey,
+  mimeType,
+  expectedByteSize,
+  actorId
+}) {
+  await client.query(
+    `INSERT INTO shared.customer_media (
+       id, installation_id, customer_id, source_app, source_media_id,
+       source_route_customer_id, source_session_id, client_upload_id,
+       object_key, mime_type, expected_byte_size, status,
+       captured_by, captured_at, created_by, updated_by
+     ) VALUES ($1, $2, $3, 'MCP', $4, $5, $6, $7, $8, $9, $10, 'pending',
+       $11, now(), $11, $11)`,
+    [
+      randomUUID(), installationId, customerId, mediaId, routeCustomerId,
+      sessionId, clientUploadId, objectKey, mimeType, expectedByteSize, actorId
+    ]
+  );
+}
+
+async function syncSharedCustomerMediaReady(client, installationId, media, actorId) {
+  await client.query(
+    `UPDATE shared.customer_media
+     SET actual_byte_size = $3,
+         width = $4,
+         height = $5,
+         etag = $6,
+         status = 'ready',
+         updated_at = now(),
+         updated_by = $7
+     WHERE installation_id = $1
+       AND source_app = 'MCP'
+       AND source_media_id = $2
+       AND status IN ('pending', 'ready')`,
+    [
+      installationId, media.id, Number(media.actual_byte_size),
+      media.width == null ? null : Number(media.width),
+      media.height == null ? null : Number(media.height),
+      text(media.etag), actorId
+    ]
+  );
+}
+
 async function prepare(client, config, args) {
   const installationId = installation(config, args);
   const routeCustomerId = text(args.p_route_customer_id);
@@ -117,19 +182,33 @@ async function prepare(client, config, args) {
     return row;
   }
 
-  const active = await client.query(
-    `SELECT count(*)::integer AS count
-     FROM mcp.mcp_outlet_media
-     WHERE installation_id = $1
-       AND route_customer_id = $2
-       AND status IN ('pending', 'ready', 'deleting', 'delete_failed')`,
-    [installationId, routeCustomerId]
-  );
-  if (Number(active.rows?.[0]?.count || 0) >= 3) fail("outlet_media_limit_reached", 409);
+  const sharedCustomer = await linkedCustomer(client, installationId, customer.core_customer_id);
+  if (sharedCustomer) {
+    const active = await client.query(
+      `SELECT count(*)::integer AS count
+       FROM shared.customer_media
+       WHERE installation_id = $1
+         AND customer_id = $2
+         AND status IN ('pending', 'ready')`,
+      [installationId, sharedCustomer.id]
+    );
+    if (Number(active.rows?.[0]?.count || 0) >= 3) fail("outlet_media_limit_reached", 409);
+  } else {
+    const active = await client.query(
+      `SELECT count(*)::integer AS count
+       FROM mcp.mcp_outlet_media
+       WHERE installation_id = $1
+         AND route_customer_id = $2
+         AND status IN ('pending', 'ready', 'deleting', 'delete_failed')`,
+      [installationId, routeCustomerId]
+    );
+    if (Number(active.rows?.[0]?.count || 0) >= 3) fail("outlet_media_limit_reached", 409);
+  }
 
   const id = `mom_${randomUUID().replaceAll("-", "")}`;
   const extension = mimeType === "image/webp" ? "webp" : mimeType === "image/png" ? "png" : "jpg";
   const objectKey = `mcp-plan/outlets/${safeSegment(installationId)}/${safeSegment(routeCustomerId)}/${id}.${extension}`;
+  const actorId = text(object(args.p_context).actorId);
   const inserted = await client.query(
     `INSERT INTO mcp.mcp_outlet_media (
        id, installation_id, route_customer_id, session_id, object_key,
@@ -141,10 +220,24 @@ async function prepare(client, config, args) {
     [
       id, installationId, routeCustomerId, sessionId, objectKey,
       mimeType, expectedByteSize, clientUploadId,
-      text(object(args.p_context).actorId), lat, lng, accuracy,
+      actorId, lat, lng, accuracy,
       json(args.p_context || {})
     ]
   );
+  if (sharedCustomer) {
+    await reserveSharedCustomerMedia(client, {
+      installationId,
+      customerId: sharedCustomer.id,
+      mediaId: id,
+      routeCustomerId,
+      sessionId,
+      clientUploadId,
+      objectKey,
+      mimeType,
+      expectedByteSize,
+      actorId
+    });
+  }
   return inserted.rows[0];
 }
 
@@ -161,7 +254,11 @@ async function finalize(client, config, args) {
   );
   const row = selected.rows?.[0];
   if (!row) fail("outlet_media_not_found", 404);
-  if (row.status === "ready") return row;
+  const actorId = text(object(args.p_context).actorId);
+  if (row.status === "ready") {
+    await syncSharedCustomerMediaReady(client, installationId, row, actorId);
+    return row;
+  }
   if (row.status !== "pending") fail("outlet_media_not_pending", 409);
 
   const contentType = text(args.p_content_type)?.toLowerCase();
@@ -189,6 +286,7 @@ async function finalize(client, config, args) {
       json(args.p_context || {})
     ]
   );
+  await syncSharedCustomerMediaReady(client, installationId, updated.rows[0], actorId);
   return updated.rows[0];
 }
 

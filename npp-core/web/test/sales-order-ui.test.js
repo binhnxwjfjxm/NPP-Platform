@@ -31,7 +31,7 @@ test('Sales Order workspace exposes lifecycle actions and commercial permissions
   assert.match(workspaceSource, /canQuickCreateCustomer/);
   assert.match(workspaceSource, /canPriceOverride/);
   assert.match(workspaceSource, /canDiscountOverride/);
-  assert.match(workspaceSource, /canConfirm=\{formMode === 'amendment' \? canAmend : canConfirm\}/);
+  assert.match(workspaceSource, /canConfirm=\{formMode === 'manual-edit' \? false : formMode === 'amendment' \? canAmend : canConfirm\}/);
   assert.match(workspaceSource, /\/confirm/);
   assert.match(workspaceSource, /\/amendments/);
   assert.match(workspaceSource, /\/cancel/);
