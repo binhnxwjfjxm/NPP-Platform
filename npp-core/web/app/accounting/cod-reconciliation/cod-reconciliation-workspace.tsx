@@ -1,7 +1,7 @@
 'use client';
 
 import { createIdempotencyKey } from '@npp/contracts';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CodHandover } from '../../../lib/cod-reconciliation-types';
 import styles from '../supplier-payments/supplier-payments.module.css';
 
@@ -81,6 +81,15 @@ export default function CodReconciliationWorkspace({ initialHandovers, initialEr
     setDetail(nextDetail);
     setAcceptedAmount(decimal(scaled(nextDetail.handedOverTotal) + scaled(nextDetail.unattributedExcessAmount)));
   }
+
+  useEffect(() => {
+    if (initialHandovers.length || initialError) return;
+    setBusy(true);
+    setMessage('');
+    void refresh()
+      .catch((error) => setMessage(error instanceof Error ? error.message : 'Không tải được bàn giao COD'))
+      .finally(() => setBusy(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function select(id: string) {
     setBusy(true); setMessage('');
