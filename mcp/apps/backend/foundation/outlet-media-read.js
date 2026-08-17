@@ -60,9 +60,14 @@ function mediaProfile(row, r2) {
   const objectKey = text(row.object_key);
   if (!objectKey) fail("outlet_media_object_key_missing", 500);
   const signed = presignR2Get(r2, objectKey, { expiresSeconds: VIEW_URL_TTL_SECONDS });
+  const sourceApp = text(row.source_app) || "MCP";
+  const id = sourceApp === "MCP"
+    ? text(row.source_media_id) || text(row.id)
+    : text(row.id);
   return {
-    id: text(row.id),
-    sessionId: text(row.session_id),
+    id,
+    sourceApp,
+    sessionId: text(row.source_session_id) || text(row.session_id),
     mediaType: text(row.media_type) || "storefront",
     mimeType: text(row.mime_type),
     byteSize: number(row.actual_byte_size),
@@ -88,21 +93,31 @@ export async function loadOutletCustomerProfile(routeCustomerId, context, config
   if (!id) fail("route_customer_id_required");
 
   const customerQuery = [
-    "mcp_route_customers?select=id,route_id,customer_id,customer_name,phone,area,address,sort_order,active,note,created_at,updated_at,geo_lat,geo_lng,geo_accuracy,geo_captured_at,geo_source,google_maps_url,sync_status",
+    "mcp_route_customers?select=id,route_id,customer_id,customer_name,phone,area,address,sort_order,active,note,created_at,updated_at,geo_lat,geo_lng,geo_accuracy,geo_captured_at,geo_source,google_maps_url,sync_status,core_customer_id",
     `id=eq.${encodeURIComponent(id)}`,
     "limit=1"
   ].join("&");
   const customer = rows(await supabaseRest(config, customerQuery, { fetchImpl }))[0] || null;
   if (!customer) fail("route_customer_not_found", 404);
 
-  const mediaQuery = [
-    "mcp_outlet_media?select=id,session_id,object_key,media_type,mime_type,actual_byte_size,width,height,status,captured_by,captured_at,geo_lat,geo_lng,geo_accuracy,created_at,updated_at",
-    `installation_id=eq.${encodeURIComponent(context.installation.id)}`,
-    `route_customer_id=eq.${encodeURIComponent(id)}`,
-    "status=eq.ready",
-    "order=captured_at.desc",
-    "limit=3"
-  ].join("&");
+  const coreCustomerId = text(customer.core_customer_id);
+  const mediaQuery = coreCustomerId
+    ? [
+        "customer_media?select=id,source_app,source_media_id,source_session_id,object_key,mime_type,actual_byte_size,width,height,status,captured_by,captured_at,created_at,updated_at",
+        `installation_id=eq.${encodeURIComponent(context.installation.id)}`,
+        `customer_id=eq.${encodeURIComponent(coreCustomerId)}`,
+        "status=eq.ready",
+        "order=captured_at.desc",
+        "limit=3"
+      ].join("&")
+    : [
+        "mcp_outlet_media?select=id,session_id,object_key,media_type,mime_type,actual_byte_size,width,height,status,captured_by,captured_at,geo_lat,geo_lng,geo_accuracy,created_at,updated_at",
+        `installation_id=eq.${encodeURIComponent(context.installation.id)}`,
+        `route_customer_id=eq.${encodeURIComponent(id)}`,
+        "status=eq.ready",
+        "order=captured_at.desc",
+        "limit=3"
+      ].join("&");
   const mediaRows = rows(await supabaseRest(config, mediaQuery, { fetchImpl }));
   const r2 = mediaRows.length ? requireR2(config) : null;
 
