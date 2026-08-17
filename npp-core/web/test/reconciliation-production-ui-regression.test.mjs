@@ -25,11 +25,12 @@ test('COD overview metric numbers have their own rows instead of running into he
   assert.doesNotMatch(workspace, /Current queue|due_at|COD canonical/);
 });
 
-test('COD accounting confirmation is a reporting tab, while the legacy route is only a compatibility redirect', () => {
+test('COD accounting confirmation is a reporting tab, while the legacy route redirects before React render', () => {
   const reporting = source('../app/components/cod-reporting-workspace.tsx');
-  const legacyPage = source('../app/accounting/cod-reconciliation/page.tsx');
+  const nextConfig = source('../next.config.mjs');
 
   assert.match(reporting, /\{ id: 'accounting', label: 'Kế toán xác nhận' \}/);
   assert.match(reporting, /<CodReconciliationWorkspace/);
-  assert.match(legacyPage, /redirect\('\/accounting\/cod-reporting\?tab=accounting'\)/);
+  assert.match(nextConfig, /source: '\/accounting\/cod-reconciliation'/);
+  assert.match(nextConfig, /destination: '\/accounting\/cod-reporting\?tab=accounting'/);
 });

@@ -4,13 +4,14 @@ import fs from 'node:fs';
 
 const read = (path) => fs.readFileSync(new URL(path, import.meta.url), 'utf8');
 
-test('COD accounting confirmation lives inside the COD reconciliation tabs and the old route redirects', () => {
-  const legacyPage = read('../app/accounting/cod-reconciliation/page.tsx');
+test('COD accounting confirmation lives inside the COD reconciliation tabs and the old route redirects before React render', () => {
+  const nextConfig = read('../next.config.mjs');
   const reportingPage = read('../app/accounting/cod-reporting/page.tsx');
   const reportingWorkspace = read('../app/components/cod-reporting-workspace.tsx');
   const workspace = read('../app/accounting/cod-reconciliation/cod-reconciliation-workspace.tsx');
 
-  assert.match(legacyPage, /redirect\('\/accounting\/cod-reporting\?tab=accounting'\)/);
+  assert.match(nextConfig, /source: '\/accounting\/cod-reconciliation'/);
+  assert.match(nextConfig, /destination: '\/accounting\/cod-reporting\?tab=accounting'/);
   assert.match(reportingPage, /listCodHandovers/);
   assert.match(reportingWorkspace, /\{ id: 'accounting', label: 'Kế toán xác nhận' \}/);
   assert.match(reportingWorkspace, /<CodReconciliationWorkspace initialHandovers=\{initialHandovers\}/);
