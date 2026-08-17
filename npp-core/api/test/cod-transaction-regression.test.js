@@ -6,6 +6,7 @@ import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import { withAuditOutboxTransaction } from '../src/audit-outbox.js';
 import { deriveIdempotencyKey } from '../src/idempotency-derived.js';
 import { codDriverInternals } from '../src/routes/cod-driver.js';
+import { codReconciliationInternals } from '../src/routes/cod-reconciliation.js';
 
 const requestContext = Object.freeze({
   installationId: 'installation-cod-regression',
@@ -53,6 +54,21 @@ test('COD audit/outbox transaction declares two facts when customer payment is c
     codDriverInternals.transactionExpectations({ payment: null }),
     { expectedAuditCount: 1, expectedOutboxCount: 1 },
   );
+});
+
+test('COD reconciliation transaction declares every audit/outbox fact and preserves replay marker', () => {
+  assert.deepEqual(
+    codReconciliationInternals.transactionExpectations({ paymentEvents: [] }),
+    { expectedAuditCount: 1, expectedOutboxCount: 1 },
+  );
+  assert.deepEqual(
+    codReconciliationInternals.transactionExpectations({ paymentEvents: [{ id: 'a' }, { id: 'b' }] }),
+    { expectedAuditCount: 3, expectedOutboxCount: 3 },
+  );
+
+  const route = source('../src/routes/cod-reconciliation.js');
+  assert.match(route, /if \(result\.replayed\) return \{ result, replayed: true \};/);
+  assert.match(route, /return \{ result, \.\.\.transactionExpectations\(result\) \};/);
 });
 
 test('audit/outbox guard commits an explicitly declared two-audit two-outbox COD transaction', async () => {
