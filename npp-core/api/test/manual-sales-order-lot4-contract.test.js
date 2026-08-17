@@ -1,0 +1,60 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const service = readFileSync(new URL('../src/services/sales-manual-completion.js', import.meta.url), 'utf8');
+const route = readFileSync(new URL('../src/routes/manual-sales-orders.js', import.meta.url), 'utf8');
+const routesIndex = readFileSync(new URL('../src/routes/customer-receivables.js', import.meta.url), 'utf8');
+const migration = readFileSync(new URL('../../../database/migrations/accounting/090_manual_sales_order_receivable.sql', import.meta.url), 'utf8');
+const migrationsIndex = readFileSync(new URL('../src/migrations/index.js', import.meta.url), 'utf8');
+const paymentRepository = readFileSync(new URL('../src/db/repositories/customer-payment.js', import.meta.url), 'utf8');
+const receivableRepository = readFileSync(new URL('../src/db/repositories/customer-receivable.js', import.meta.url), 'utf8');
+
+test('Lô 4 hoàn thành đơn độc lập với xuất kho và tiền / nợ', () => {
+  assert.match(service, /export async function completeManualSalesOrder/);
+  assert.match(service, /SET status = 'closed'/);
+  assert.match(service, /delivery_status = 'delivered'/);
+  assert.match(service, /fulfillment_status !== 'issued'/);
+  assert.doesNotMatch(service, /postServerOwnedSalesMovement/);
+  assert.doesNotMatch(service, /inventory\.inventory_balances/);
+});
+
+test('Lô 4 ghi nhận trả đủ, trả một phần hoặc nợ toàn bộ bằng sổ công nợ chuẩn', () => {
+  assert.match(service, /sourceDocumentType = 'MANUAL_SALES_ORDER'/);
+  assert.match(service, /receivableRepository\.insertReceivableDocument/);
+  assert.match(service, /receivableRepository\.insertReceivableLedgerEntry/);
+  assert.match(service, /customerPaymentService\.createCustomerPayment/);
+  assert.match(service, /paid > total/);
+  assert.match(service, /paid > 0n/);
+  assert.match(service, /paidAmount \?\? '0'/);
+  assert.match(service, /deriveIdempotencyKey\('manual-sales-payment', idempotencyKey\)/);
+  assert.match(service, /IDEMPOTENCY_KEY_PATTERN/);
+  assert.match(service, /insertAuditRecord/);
+  assert.match(service, /insertOutboxEvent/);
+});
+
+test('Lô 4 route giữ transaction, idempotency và quyền hiện có', () => {
+  assert.match(route, /complete\|settlement/);
+  assert.match(route, /coreSalesOrderConfirm/);
+  assert.match(route, /coreCustomerPaymentCreate/);
+  assert.match(route, /executeRequestWithIdempotency/);
+  assert.match(route, /withAuditOutboxTransaction/);
+  assert.match(routesIndex, /handleManualSalesOrderRoutes/);
+});
+
+test('migration 090 hỗ trợ công nợ trực tiếp từ đơn Giao thủ công', () => {
+  assert.match(migration, /MANUAL_SALES_ORDER/);
+  assert.match(migration, /ALTER COLUMN delivery_order_line_id DROP NOT NULL/);
+  assert.match(migration, /ALTER COLUMN inventory_issue_line_id DROP NOT NULL/);
+  assert.match(migration, /delivery_order_id IS NULL/);
+  assert.match(migration, /sync_manual_sales_order_settlement_status/);
+  assert.match(migration, /WHEN 'partially_allocated' THEN 'partially_paid'/);
+  assert.match(migration, /WHEN 'settled' THEN 'paid'/);
+  assert.match(migrationsIndex, /090_manual_sales_order_receivable/);
+});
+
+test('công nợ Giao thủ công vẫn xuất hiện trong màn công nợ và phân bổ tiền', () => {
+  assert.match(paymentRepository, /LEFT JOIN sales\.delivery_orders delivery_order/);
+  const leftJoinCount = (receivableRepository.match(/LEFT JOIN sales\.delivery_orders delivery_order/g) ?? []).length;
+  assert.ok(leftJoinCount >= 2, 'chi tiết và danh sách công nợ phải cho phép không có Delivery Order');
+});
