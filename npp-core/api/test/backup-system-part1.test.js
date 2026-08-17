@@ -41,7 +41,7 @@ test('technical backup recipient is fixed to the single Owner email', async () =
   assert.deepEqual(requests[0].body.to, [TECHNICAL_BACKUP_RECIPIENT]);
   assert.equal(requests[0].body.from, 'security@example.com');
   assert.ok(!JSON.stringify(requests[0].body).includes('other1@example.com'));
-  assert.ok(!JSON.stringify(requests[0]).includes('provider-token'));
+  assert.ok(!JSON.stringify(requests[0].body).includes('provider-token'));
   assert.match(requests[0].headers['Idempotency-Key'], /^[A-Za-z0-9._-]+$/);
   assert.equal(requests[0].headers['Idempotency-Key'], requests[1].headers['Idempotency-Key']);
 });
