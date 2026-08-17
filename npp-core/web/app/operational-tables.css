@@ -1,0 +1,211 @@
+/*
+ * Chuẩn trình bày dùng chung cho các bảng vận hành Công Ty.
+ * Giữ đủ tên sản phẩm/SKU, căn số thống nhất và ưu tiên cuộn ngang
+ * trên khung hẹp thay vì ép cột tới mức mất thông tin.
+ */
+
+body [data-testid='fulfillment-product-table'] {
+  min-width: 780px;
+}
+
+body [data-testid='fulfillment-product-table'] > div,
+body [data-testid='fulfillment-product-table'] > button {
+  grid-template-columns: minmax(260px, 2fr) repeat(4, minmax(88px, 0.55fr)) minmax(132px, 0.85fr);
+  grid-template-rows: auto auto;
+  column-gap: 12px;
+  min-height: 54px;
+  padding-block: 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+body [data-testid='fulfillment-product-table'] > button > strong {
+  grid-column: 1;
+  grid-row: 1;
+  overflow: visible;
+  line-height: 1.35;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body [data-testid='fulfillment-product-table'] > button > span:nth-child(2) {
+  grid-column: 1;
+  grid-row: 2;
+  overflow: visible;
+  color: var(--office-muted);
+  font-family: var(--font-mono), monospace;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body [data-testid='fulfillment-product-table'] > button > span:nth-child(3) {
+  grid-column: 2;
+}
+
+body [data-testid='fulfillment-product-table'] > button > span:nth-child(4) {
+  grid-column: 3;
+}
+
+body [data-testid='fulfillment-product-table'] > button > span:nth-child(5) {
+  grid-column: 4;
+}
+
+body [data-testid='fulfillment-product-table'] > button > span:nth-child(6) {
+  grid-column: 5;
+}
+
+body [data-testid='fulfillment-product-table'] > button > span:nth-child(n + 3):nth-child(-n + 6) {
+  grid-row: 1 / span 2;
+  align-self: center;
+  justify-self: stretch;
+  padding-right: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+body [data-testid='fulfillment-product-table'] > button > em {
+  grid-column: 6;
+  grid-row: 1 / span 2;
+  align-self: center;
+  justify-self: start;
+  overflow: visible;
+  max-width: 100%;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(23, 98, 72, 0.08);
+  line-height: 1.25;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+body [data-testid='fulfillment-product-table'] > div {
+  grid-template-rows: 1fr;
+  min-height: 34px;
+  padding-block: 0;
+}
+
+body [data-testid='fulfillment-product-table'] > div > span:nth-child(1) {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: 0;
+}
+
+body [data-testid='fulfillment-product-table'] > div > span:nth-child(1)::after {
+  content: 'Sản phẩm / SKU';
+  font-size: 0.7rem;
+}
+
+body [data-testid='fulfillment-product-table'] > div > span:nth-child(2) {
+  display: none;
+}
+
+body [data-testid='fulfillment-product-table'] > div > span:nth-child(3) {
+  grid-column: 2;
+  font-size: 0;
+  text-align: right;
+}
+
+body [data-testid='fulfillment-product-table'] > div > span:nth-child(3)::after {
+  content: 'Đặt / ĐVT';
+  font-size: 0.7rem;
+}
+
+body [data-testid='fulfillment-product-table'] > div > span:nth-child(4) {
+  grid-column: 3;
+}
+
+body [data-testid='fulfillment-product-table'] > div > span:nth-child(5) {
+  grid-column: 4;
+}
+
+body [data-testid='fulfillment-product-table'] > div > span:nth-child(6) {
+  grid-column: 5;
+}
+
+body [data-testid='fulfillment-product-table'] > div > span:nth-child(7) {
+  grid-column: 6;
+  text-align: left;
+}
+
+body [data-testid='fulfillment-product-table'] > div > span:nth-child(n + 3):nth-child(-n + 6) {
+  text-align: right;
+}
+
+body [data-testid='inventory-balances-page'] table {
+  min-width: 980px;
+  table-layout: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+body [data-testid='inventory-balances-page'] th:first-child,
+body [data-testid='inventory-balances-page'] td:first-child {
+  min-width: 190px;
+}
+
+body [data-testid='inventory-balances-page'] th:nth-child(2),
+body [data-testid='inventory-balances-page'] td:nth-child(2) {
+  min-width: 280px;
+  white-space: normal;
+}
+
+body [data-testid='inventory-balances-page'] td:nth-child(2) > div:first-child {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body [data-testid='inventory-balances-page'] th:nth-child(n + 5):nth-child(-n + 7),
+body [data-testid='inventory-balances-page'] td:nth-child(n + 5):nth-child(-n + 7) {
+  min-width: 124px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+body [data-testid='inventory-balances-page'] th:last-child,
+body [data-testid='inventory-balances-page'] td:last-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
+body [data-testid='trip-reconciliation-workspace'] table {
+  min-width: 860px;
+  table-layout: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+body [data-testid='trip-reconciliation-workspace'] th:first-child,
+body [data-testid='trip-reconciliation-workspace'] td:first-child {
+  min-width: 300px;
+  text-align: left;
+}
+
+body [data-testid='trip-reconciliation-workspace'] td:first-child small {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body [data-testid='trip-reconciliation-workspace'] th:nth-child(2),
+body [data-testid='trip-reconciliation-workspace'] td:nth-child(2) {
+  min-width: 140px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+body [data-testid='trip-reconciliation-workspace'] th:nth-child(n + 3):nth-child(-n + 6),
+body [data-testid='trip-reconciliation-workspace'] td:nth-child(n + 3):nth-child(-n + 6) {
+  min-width: 96px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  body [data-testid='fulfillment-product-table'] {
+    min-width: 740px;
+  }
+
+  body [data-testid='inventory-balances-page'] table,
+  body [data-testid='trip-reconciliation-workspace'] table {
+    width: max-content;
+    max-width: none;
+  }
+}
