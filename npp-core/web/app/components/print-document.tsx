@@ -16,9 +16,11 @@ function clearPrintState() {
 export function PrintAction({
   label = 'In',
   targetId,
+  onPrint,
 }: {
   label?: string;
   targetId?: string;
+  onPrint?: () => void;
 }) {
   function print() {
     clearPrintState();
@@ -44,6 +46,7 @@ export function PrintAction({
 
     try {
       window.print();
+      onPrint?.();
     } catch (error) {
       cleanup();
       throw error;

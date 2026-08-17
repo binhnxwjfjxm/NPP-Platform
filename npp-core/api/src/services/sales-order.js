@@ -17,6 +17,7 @@ export * from './sales-order-legacy.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MONEY_PATTERN = /^(?:0|[1-9]\d{0,18})$/;
+const ZERO_DECIMAL_PATTERN = /^[+-]?0+(?:\.0+)?$/;
 const SCALE = 1_000_000n;
 const DELIVERY_EXECUTION_MODES = new Set(['TRIP', 'MANUAL']);
 
@@ -84,6 +85,26 @@ function mergeDetailedOrder(order, rows) {
       ?? fallbackExecutionMode(order.deliveryMode, null),
     versions: Array.isArray(versions) ? Object.freeze(versions) : versions,
   });
+}
+
+function manualQuickEditGuard(order) {
+  if (!order || order.status !== 'confirmed') {
+    return failure('INVALID_STATUS_TRANSITION', 'Chỉ đơn đã Chốt mới được sửa trực tiếp.');
+  }
+  if (order.deliveryMode !== 'DELIVERY' || order.deliveryExecutionMode !== 'MANUAL') {
+    return failure(
+      'MANUAL_DELIVERY_EDIT_NOT_AVAILABLE',
+      'Sửa trực tiếp sau Chốt chỉ áp dụng cho đơn Giao thủ công.',
+    );
+  }
+  const issued = String(order.fulfillment?.totals?.issuedBaseQuantity ?? '0').trim();
+  if (!ZERO_DECIMAL_PATTERN.test(issued || '0')) {
+    return failure(
+      'SALES_ORDER_HAS_EXECUTION_FACTS',
+      'Đơn đã Xuất kho nên không thể sửa trực tiếp. Hãy dùng nghiệp vụ điều chỉnh phù hợp.',
+    );
+  }
+  return Object.freeze({ ok: true });
 }
 
 function sourceEmployeeContext(requestContext, payload) {
@@ -645,6 +666,47 @@ export async function createSalesOrderAmendment(client, { requestContext, id, pa
   );
 }
 
+export async function quickEditManualSalesOrder(client, {
+  requestContext,
+  id,
+  payload,
+  idempotencyKey,
+}) {
+  const before = await getSalesOrder(client, { requestContext, id });
+  if (!before.ok) return before;
+  const guard = manualQuickEditGuard(before.salesOrder);
+  if (!guard.ok) return guard;
+
+  const amendment = await createSalesOrderAmendment(client, {
+    requestContext,
+    id,
+    payload: { reason: 'Sửa đơn trước Xuất kho' },
+  });
+  if (!amendment.ok) return amendment;
+  const draft = amendment.salesOrder.versions?.find((version) => version.status === 'draft');
+  if (!draft) {
+    return failure('SALES_ORDER_DRAFT_NOT_FOUND', 'Không tạo được bản lưu nội bộ để sửa đơn.', true);
+  }
+
+  const updated = await updateSalesOrderDraft(client, {
+    requestContext,
+    id,
+    versionNumber: Number(draft.versionNumber),
+    payload: {
+      ...payload,
+      expectedRevision: draft.revision,
+    },
+  });
+  if (!updated.ok) return updated;
+
+  return confirmSalesOrder(client, {
+    requestContext,
+    id,
+    versionNumber: Number(draft.versionNumber),
+    idempotencyKey,
+  });
+}
+
 async function verifyDraftPricing(client, {
   requestContext,
   id,
@@ -774,4 +836,5 @@ export const salesOrderDeliveryExecutionInternals = Object.freeze({
   normalizeDeliveryExecution,
   fallbackExecutionMode,
   mergeDetailedOrder,
+  manualQuickEditGuard,
 });

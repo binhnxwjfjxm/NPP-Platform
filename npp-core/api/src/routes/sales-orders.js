@@ -29,6 +29,7 @@ function statusFor(code) {
     || code === 'INVALID_STATUS_TRANSITION'
     || code === 'AMENDMENT_DRAFT_EXISTS'
     || code === 'SALES_ORDER_HAS_EXECUTION_FACTS'
+    || code === 'MANUAL_DELIVERY_EDIT_NOT_AVAILABLE'
   ) return 409;
   return 400;
 }
@@ -158,6 +159,7 @@ function eventTypeFor(action) {
     create_amendment: 'sales.sales_order.amendment_created',
     update_amendment: 'sales.sales_order.amendment_updated',
     confirm_amendment: 'sales.sales_order.amendment_confirmed',
+    manual_quick_edit: 'sales.sales_order.manual_quick_edited',
     cancel: 'sales.sales_order.cancelled',
   }[action];
 }
@@ -480,7 +482,7 @@ export async function handleSalesOrderRoutes(req, res, options) {
   }
 
   const itemMatch = pathname.match(
-    /^\/api\/sales-orders\/([^/]+)(?:\/(draft|confirm|amendments|cancel))?$/,
+    /^\/api\/sales-orders\/([^/]+)(?:\/(draft|confirm|amendments|manual-edit|cancel))?$/,
   );
   if (!itemMatch) {
     sendError(
@@ -593,6 +595,40 @@ export async function handleSalesOrderRoutes(req, res, options) {
         id,
         payload,
       }),
+    });
+    return true;
+  }
+
+  if (action === 'manual-edit' && method === 'PUT') {
+    const context = await authenticateAndAuthorize(
+      req,
+      res,
+      options,
+      options.PERMISSIONS.coreSalesOrderAmend,
+    );
+    if (!context) return true;
+    const payload = await readPayload(req, res, options);
+    if (payload === null) return true;
+    await executeIdempotentMutation(req, res, options, {
+      requestContext: context,
+      route: `/api/sales-orders/${id}/manual-edit`,
+      payload: { ...payload, id },
+      action: 'manual_quick_edit',
+      resourceId: id,
+      mutate: async (client, key) => {
+        const normalized = await entryService.normalizeSalesOrderEntryPayload(client, {
+          requestContext: context,
+          payload,
+          salesOrderId: id,
+        });
+        if (!normalized.ok) return normalized;
+        return service.quickEditManualSalesOrder(client, {
+          requestContext: context,
+          id,
+          payload: normalized.payload,
+          idempotencyKey: key,
+        });
+      },
     });
     return true;
   }
