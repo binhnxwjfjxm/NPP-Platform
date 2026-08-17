@@ -186,8 +186,8 @@ export default function ManualSalesOrderSettlement({
         </small>
       )}
 
-      {notice ? <div className={styles.success}>{notice}</div> : null}
-      {error ? <div className={styles.error}>{error}</div> : null}
+      {notice ? <div className={`${styles.banner} ${styles.bannerSuccess}`}>{notice}</div> : null}
+      {error ? <div className={`${styles.banner} ${styles.bannerError}`}>{error}</div> : null}
     </div>
   );
 }
