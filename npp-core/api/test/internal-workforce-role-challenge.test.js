@@ -16,15 +16,17 @@ test('role editor exposes an explicit Web/PWA login challenge toggle', async () 
   assert.match(source, /webLoginChallengeRequired/);
 });
 
-test('production challenge uses one bounded Cloudflare request to the authenticating employee email after DB transaction', async () => {
+test('production challenge uses one bounded Resend request to the authenticating employee email after DB transaction', async () => {
   const source = await readFile(new URL('../src/internal-workforce-auth.js', import.meta.url), 'utf8');
-  assert.match(source, /AbortSignal\.timeout\(CHALLENGE_EMAIL_TIMEOUT_MS\)/);
-  assert.match(source, /identity\.employee_email/);
-  assert.match(source, /to:\s*\[recipient\]/);
-  assert.match(source, /from:\s*\{\s*address:\s*runtime\.from,\s*name:\s*'Hưng Phát Security'\s*\}/s);
-  assert.match(source, /recipientCount:\s*1/);
-  assert.match(source, /không dùng cho ngân hàng/i);
-  assert.match(source, /INTERNAL_AUTH_OWNER_CHALLENGE_REQUIRED/);
+  const resendSource = await readFile(new URL('../src/email/resend.js', import.meta.url), 'utf8');
+  assert.match(source, /sendResendEmail/);
+  assert.match(source, /challengeId/);
+  assert.doesNotMatch(source, /CLOUDFLARE_EMAIL_API_TOKEN/);
+  assert.match(resendSource, /RESEND_API_KEY/);
+  assert.match(resendSource, /https:\/\/api\.resend\.com\/emails/);
+  assert.match(resendSource, /AbortSignal\.timeout\(runtime\.timeoutMs\)/);
+  assert.match(resendSource, /['"]Idempotency-Key['"]/);
+  assert.match(resendSource, /createIdempotencyKey/);
   const transactionStart = source.indexOf('const transactionResult = await withAuditOutboxTransaction');
   const deliveryStart = source.indexOf('if (transactionResult.challengeDelivery)');
   assert.ok(transactionStart >= 0 && deliveryStart > transactionStart);
