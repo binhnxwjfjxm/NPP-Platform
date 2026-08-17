@@ -228,31 +228,11 @@ export async function insertReceivableDocument(client, values) {
        $1,$2,$3,$4,$5,$6,$7,$8,'DEBIT',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,0,$20,'open',$21,'runtime',$22,$23,$22,$22,$23,$23
      )
      RETURNING *`,
-    [
-      values.id,
-      values.installationId,
-      values.customerId,
-      values.customerAddressId,
-      values.warehouseId,
-      values.salesOrderId,
-      values.salesOrderVersionId,
-      values.deliveryOrderId,
-      values.documentType,
-      values.sourceDocumentType,
-      values.sourceDocumentId,
-      values.sourceDocumentNumber,
-      values.sourceDocumentDate,
-      values.customerCodeSnapshot,
-      values.customerNameSnapshot,
-      values.warehouseCodeSnapshot,
-      values.warehouseNameSnapshot,
-      values.collectionPolicy,
-      values.currencyCode,
-      values.originalAmount,
-      values.sourceRevision,
-      values.postedAt,
-      values.actorId,
-    ],
+    [values.id,values.installationId,values.customerId,values.customerAddressId,values.warehouseId,
+      values.salesOrderId,values.salesOrderVersionId,values.deliveryOrderId,values.documentType,
+      values.sourceDocumentType,values.sourceDocumentId,values.sourceDocumentNumber,values.sourceDocumentDate,
+      values.customerCodeSnapshot,values.customerNameSnapshot,values.warehouseCodeSnapshot,values.warehouseNameSnapshot,
+      values.collectionPolicy,values.currencyCode,values.originalAmount,values.sourceRevision,values.postedAt,values.actorId],
   );
   return result.rows[0];
 }
@@ -269,27 +249,10 @@ export async function insertReceivableLine(client, values) {
      ) VALUES (
        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19
      ) RETURNING *`,
-    [
-      values.id,
-      values.installationId,
-      values.receivableDocumentId,
-      values.lineNumber,
-      values.salesOrderLineId,
-      values.deliveryOrderLineId,
-      values.deliveryAttemptLineId,
-      values.inventoryIssueLineId,
-      values.acceptedBaseQuantity,
-      values.salesLineBaseQuantitySnapshot,
-      values.skuSnapshot,
-      values.itemNameSnapshot,
-      values.unitCodeSnapshot,
-      values.grossAmount,
-      values.discountAmount,
-      values.taxAmount,
-      values.lineAmount,
-      values.createdAt,
-      values.actorId,
-    ],
+    [values.id,values.installationId,values.receivableDocumentId,values.lineNumber,values.salesOrderLineId,
+      values.deliveryOrderLineId,values.deliveryAttemptLineId,values.inventoryIssueLineId,values.acceptedBaseQuantity,
+      values.salesLineBaseQuantitySnapshot,values.skuSnapshot,values.itemNameSnapshot,values.unitCodeSnapshot,
+      values.grossAmount,values.discountAmount,values.taxAmount,values.lineAmount,values.createdAt,values.actorId],
   );
   return result.rows[0];
 }
@@ -305,32 +268,14 @@ export async function insertReceivableLedgerEntry(client, values) {
      ) VALUES (
        $1,$2,$3,$4,$5,'SALE_POST',$6,$7,$8,$9,$10,'open',$11,$12,$13,$14,$15::jsonb
      ) RETURNING *`,
-    [
-      values.id,
-      values.installationId,
-      values.receivableDocumentId,
-      values.customerId,
-      values.currencyCode,
-      values.amount,
-      values.sourceDocumentType,
-      values.sourceDocumentId,
-      values.sourceDocumentNumber,
-      values.sourceRevision,
-      values.actorId,
-      values.requestId,
-      values.sourceApp,
-      values.occurredAt,
-      JSON.stringify(values.metadata ?? {}),
-    ],
+    [values.id,values.installationId,values.receivableDocumentId,values.customerId,values.currencyCode,values.amount,
+      values.sourceDocumentType,values.sourceDocumentId,values.sourceDocumentNumber,values.sourceRevision,values.actorId,
+      values.requestId,values.sourceApp,values.occurredAt,JSON.stringify(values.metadata ?? {})],
   );
   return result.rows[0];
 }
 
-export async function getReceivableDocumentById(client, {
-  installationId,
-  id,
-  warehouseIds,
-}) {
+export async function getReceivableDocumentById(client, { installationId, id, warehouseIds }) {
   const result = await client.query(
     `SELECT document.*,
             customer.code AS customer_code,
@@ -339,35 +284,23 @@ export async function getReceivableDocumentById(client, {
             warehouse.name AS warehouse_name,
             sales_order.order_number AS sales_order_number,
             delivery_order.delivery_order_number,
-            COALESCE((
-              SELECT jsonb_agg(to_jsonb(line) ORDER BY line.line_number, line.id)
-                FROM accounting.receivable_document_lines line
-               WHERE line.installation_id = document.installation_id
-                 AND line.receivable_document_id = document.id
-            ), '[]'::jsonb) AS lines,
-            COALESCE((
-              SELECT jsonb_agg(to_jsonb(entry) ORDER BY entry.occurred_at, entry.id)
-                FROM accounting.receivable_ledger_entries entry
-               WHERE entry.installation_id = document.installation_id
-                 AND entry.receivable_document_id = document.id
-            ), '[]'::jsonb) AS ledger_entries
+            COALESCE((SELECT jsonb_agg(to_jsonb(line) ORDER BY line.line_number, line.id)
+              FROM accounting.receivable_document_lines line
+             WHERE line.installation_id = document.installation_id
+               AND line.receivable_document_id = document.id), '[]'::jsonb) AS lines,
+            COALESCE((SELECT jsonb_agg(to_jsonb(entry) ORDER BY entry.occurred_at, entry.id)
+              FROM accounting.receivable_ledger_entries entry
+             WHERE entry.installation_id = document.installation_id
+               AND entry.receivable_document_id = document.id), '[]'::jsonb) AS ledger_entries
        FROM accounting.receivable_documents document
-       JOIN shared.customers customer
-         ON customer.installation_id = document.installation_id
-        AND customer.id = document.customer_id
-       JOIN shared.warehouses warehouse
-         ON warehouse.installation_id = document.installation_id
-        AND warehouse.id = document.warehouse_id
-       JOIN sales.sales_orders sales_order
-         ON sales_order.installation_id = document.installation_id
-        AND sales_order.id = document.sales_order_id
-       JOIN sales.delivery_orders delivery_order
-         ON delivery_order.installation_id = document.installation_id
-        AND delivery_order.id = document.delivery_order_id
+       JOIN shared.customers customer ON customer.installation_id = document.installation_id AND customer.id = document.customer_id
+       JOIN shared.warehouses warehouse ON warehouse.installation_id = document.installation_id AND warehouse.id = document.warehouse_id
+       JOIN sales.sales_orders sales_order ON sales_order.installation_id = document.installation_id AND sales_order.id = document.sales_order_id
+       LEFT JOIN sales.delivery_orders delivery_order ON delivery_order.installation_id = document.installation_id AND delivery_order.id = document.delivery_order_id
       WHERE document.installation_id = $1
         AND document.id = $2::uuid
         AND document.warehouse_id = ANY($3::uuid[])`,
-    [installationId, id, warehouseIds],
+    [installationId,id,warehouseIds],
   );
   return result.rows[0] ?? null;
 }
@@ -392,45 +325,25 @@ export async function listReceivableDocuments(client, {
             sales_order.order_number AS sales_order_number,
             delivery_order.delivery_order_number
        FROM accounting.receivable_documents document
-       JOIN shared.customers customer
-         ON customer.installation_id = document.installation_id
-        AND customer.id = document.customer_id
-       JOIN shared.warehouses warehouse
-         ON warehouse.installation_id = document.installation_id
-        AND warehouse.id = document.warehouse_id
-       JOIN sales.sales_orders sales_order
-         ON sales_order.installation_id = document.installation_id
-        AND sales_order.id = document.sales_order_id
-       JOIN sales.delivery_orders delivery_order
-         ON delivery_order.installation_id = document.installation_id
-        AND delivery_order.id = document.delivery_order_id
+       JOIN shared.customers customer ON customer.installation_id = document.installation_id AND customer.id = document.customer_id
+       JOIN shared.warehouses warehouse ON warehouse.installation_id = document.installation_id AND warehouse.id = document.warehouse_id
+       JOIN sales.sales_orders sales_order ON sales_order.installation_id = document.installation_id AND sales_order.id = document.sales_order_id
+       LEFT JOIN sales.delivery_orders delivery_order ON delivery_order.installation_id = document.installation_id AND delivery_order.id = document.delivery_order_id
       WHERE document.installation_id = $1
         AND document.warehouse_id = ANY($2::uuid[])
         AND ($3::uuid IS NULL OR document.customer_id = $3::uuid)
         AND ($4::uuid IS NULL OR document.warehouse_id = $4::uuid)
         AND ($5::text IS NULL OR document.status = $5::text)
         AND ($6::text IS NULL OR document.source_document_type = $6::text)
-        AND (
-          $7::text IS NULL
+        AND ($7::text IS NULL
           OR document.source_document_number ILIKE '%' || $7 || '%'
           OR customer.code ILIKE '%' || $7 || '%'
           OR customer.name ILIKE '%' || $7 || '%'
           OR sales_order.order_number ILIKE '%' || $7 || '%'
-          OR delivery_order.delivery_order_number ILIKE '%' || $7 || '%'
-        )
+          OR COALESCE(delivery_order.delivery_order_number, '') ILIKE '%' || $7 || '%')
       ORDER BY document.source_document_date DESC, document.posted_at DESC, document.id
       LIMIT $8 OFFSET $9`,
-    [
-      installationId,
-      warehouseIds,
-      customerId,
-      warehouseId,
-      status,
-      sourceDocumentType,
-      search,
-      limit,
-      offset,
-    ],
+    [installationId,warehouseIds,customerId,warehouseId,status,sourceDocumentType,search,limit,offset],
   );
   return result.rows;
 }
@@ -480,30 +393,22 @@ export async function listCustomerReceivableBalances(client, {
             AND document.status IN ('open', 'partially_allocated')
        ) open_docs ON true
       WHERE ($3::uuid IS NULL OR scoped.customer_id = $3::uuid)
-        AND (
-          $4::text IS NULL
-          OR customer.code ILIKE '%' || $4 || '%'
-          OR customer.name ILIKE '%' || $4 || '%'
-        )
+        AND ($4::text IS NULL OR customer.code ILIKE '%' || $4 || '%' OR customer.name ILIKE '%' || $4 || '%')
       ORDER BY customer.code, scoped.currency_code
       LIMIT $5 OFFSET $6`,
-    [installationId, warehouseIds, customerId, search, limit, offset],
+    [installationId,warehouseIds,customerId,search,limit,offset],
   );
   return result.rows;
 }
 
-export async function getStoredBalance(client, {
-  installationId,
-  customerId,
-  currencyCode,
-}) {
+export async function getStoredBalance(client, { installationId, customerId, currencyCode }) {
   const result = await client.query(
     `SELECT *
        FROM accounting.customer_receivable_balances
       WHERE installation_id = $1
         AND customer_id = $2::uuid
         AND currency_code = $3`,
-    [installationId, customerId, currencyCode],
+    [installationId,customerId,currencyCode],
   );
   return result.rows[0] ?? null;
 }
