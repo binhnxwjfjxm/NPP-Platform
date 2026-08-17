@@ -17,7 +17,9 @@
 .heading h2, .sectionHeading h3, .nextActionCard h3, .actionBoxTitle h3 { margin: 0; }
 .heading h2 { font-size: 19px; }
 .heading button, .actionBox button, .nextActionCard button { min-height: 36px; border: 0; border-radius: 9px; padding: 8px 12px; background: var(--primary); color: white; font-weight: 700; cursor: pointer; }
-.heading button:disabled, .actionBox button:disabled, .nextActionCard button:disabled { opacity: .45; cursor: not-allowed; }
+.heading button:disabled, .nextActionCard button:disabled { opacity: .55; cursor: not-allowed; }
+.actionBox button { border: 1px solid var(--foreground); background: var(--foreground); color: var(--surface); }
+.actionBox button:disabled { opacity: 1; cursor: not-allowed; border: 1px solid var(--border); background: color-mix(in srgb, var(--foreground) 7%, var(--surface)); color: var(--foreground); box-shadow: none; }
 .actionBoxBlocked button:disabled { opacity: 1; border: 1px solid color-mix(in srgb, #f59e0b 52%, var(--border)); background: color-mix(in srgb, #f59e0b 12%, var(--surface)); color: var(--foreground); box-shadow: none; }
 .headingActions { display: inline-flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .linkButton, .primaryLink { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; box-sizing: border-box; border-radius: 9px; padding: 8px 12px; text-decoration: none; font-weight: 700; }

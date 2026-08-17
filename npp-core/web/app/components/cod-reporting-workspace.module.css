@@ -1,0 +1,17 @@
+.metricCard {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+}
+
+.metricLabel,
+.metricValue,
+.metricHint {
+  display: block;
+}
+
+.metricLabel,
+.metricValue,
+.metricHint {
+  margin: 0;
+}
