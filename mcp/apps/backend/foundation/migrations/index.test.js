@@ -40,7 +40,8 @@ const EXPECTED_MIGRATIONS = [
   "mcp_008_legacy_report_settings_seed",
   "mcp_009_customer_media_link",
   "mcp_010_customer_verification",
-  "mcp_011_legacy_customer_linkage_repair"
+  "mcp_011_legacy_customer_linkage_repair",
+  "mcp_012_report_settings_installation_repair"
 ];
 
 test("MCP migrations use a unique registry namespace and apply once in one locked transaction", async () => {
@@ -66,6 +67,7 @@ test("MCP migrations use a unique registry namespace and apply once in one locke
   assert.equal(adapter.calls.some((call) => call.text.includes("resolve_order_route_customer_id")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("customer_verification_operation_id")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("Exact source counts: 7 groups, 53 items")), true);
+  assert.equal(adapter.calls.some((call) => call.text.includes("mcp_report_settings_installation_repair_source_mismatch")), true);
   assert.equal(adapter.calls.some((call) => call.text.includes("ON DELETE CASCADE")), true);
 
   const status = await migrationStatusWithAdapter(adapter);
@@ -305,6 +307,26 @@ test("MCP legacy customer linkage repair resolves session identity and fails clo
   assert.match(sql, /IS DISTINCT FROM latest\.core_customer_address_id/);
   assert.match(sql, /REVOKE ALL ON FUNCTION mcp\.resolve_order_route_customer_id/);
   assert.doesNotMatch(sql, /customer_name|phone\s*=/i);
+});
+
+test("MCP report settings installation repair is canonical, bounded and non-destructive", () => {
+  const sql = MCP_MIGRATIONS[11].sql;
+  const canonicalSql = readFileSync(
+    new URL("../../../../../database/migrations/mcp/012_mcp_report_settings_installation_repair.sql", import.meta.url),
+    "utf8"
+  );
+  assert.equal(sql, canonicalSql);
+  assert.match(sql, /Source installation: mcp-plan-prod/);
+  assert.match(sql, /Target installation: npp-hung-phat/);
+  assert.match(sql, /Snapshot SHA-256: 90776e5fa02844fd59ac5519fa8d49697470d22e2c16d2a8f4966041b4ff889b/);
+  assert.match(sql, /v_source_group_count <> 7 OR v_source_item_count <> 53/);
+  assert.match(sql, /ON CONFLICT \(installation_id, group_key\) DO NOTHING/);
+  assert.match(sql, /ON CONFLICT \(installation_id, group_id, setting_key\) DO NOTHING/);
+  assert.match(sql, /v_missing_group_count <> 0 OR v_missing_item_count <> 0/);
+  const executableSql = sql.replace(/^\s*--.*$/gm, "");
+  assert.doesNotMatch(executableSql, /\b(?:UPDATE|DELETE|TRUNCATE)\b/i);
+  assert.doesNotMatch(executableSql, /mcp\.(?:mcp_routes|mcp_route_customers|mcp_route_sessions|mcp_session_customers|mcp_visits|mcp_followups)\b/i);
+  assert.doesNotMatch(sql, /postgresql:\/\/|SUPABASE_(?:ANON|SERVICE|SECRET|PUBLISHABLE)_KEY/i);
 });
 
 test("migration failure rolls back and preserves the original error", async () => {
