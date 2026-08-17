@@ -60,8 +60,9 @@ test('Issue #615 production fix keeps the final close action visible before opti
   const styles = read('npp-core/web/app/logistics/trip-reconciliation/trip-reconciliation-workspace.module.css');
   const workspace = read('npp-core/web/app/logistics/trip-reconciliation/trip-reconciliation-workspace.tsx');
 
-  assert.match(styles, /section\[id='trip-reconciliation-close'\] > button \{ order: 2; width: 100%; min-height: 48px;/);
-  assert.match(styles, /section\[id='trip-reconciliation-close'\] > label \{ order: 3; \}/);
+  assert.match(styles, /\.actionBox\[id='trip-reconciliation-close'\] > button \{ order: 2; width: 100%; min-height: 48px;/);
+  assert.match(styles, /\.actionBox\[id='trip-reconciliation-close'\] > label \{ order: 3; \}/);
+  assert.doesNotMatch(styles, /section\[id='trip-reconciliation-close'\]/);
   assert.match(workspace, /disabled=\{busy \|\| !detail\.canClose\}>Chốt đối soát & đóng chuyến<\/button>/);
   assert.match(workspace, /createIdempotencyKey\('trip-reconciliation-close'\)/);
 });
