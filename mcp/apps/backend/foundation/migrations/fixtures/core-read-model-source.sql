@@ -31,6 +31,31 @@ CREATE TABLE IF NOT EXISTS shared.customers (
   updated_by text NOT NULL DEFAULT 'fixture'
 );
 
+CREATE TABLE IF NOT EXISTS shared.customer_media (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  installation_id text NOT NULL,
+  customer_id uuid NOT NULL REFERENCES shared.customers(id) ON DELETE CASCADE,
+  source_app text NOT NULL,
+  source_media_id text,
+  source_route_customer_id text,
+  source_session_id text,
+  client_upload_id text,
+  object_key text,
+  mime_type text,
+  expected_byte_size bigint,
+  actual_byte_size bigint,
+  width integer,
+  height integer,
+  etag text,
+  status text NOT NULL DEFAULT 'pending',
+  captured_by text,
+  captured_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  created_by text NOT NULL DEFAULT 'fixture',
+  updated_by text NOT NULL DEFAULT 'fixture'
+);
+
 CREATE TABLE IF NOT EXISTS shared.products (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   installation_id text NOT NULL,
