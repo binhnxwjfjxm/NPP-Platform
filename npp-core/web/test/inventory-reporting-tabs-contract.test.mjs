@@ -13,12 +13,13 @@ test('inventory reporting keeps global context above six business tabs', () => {
   assert.match(workspace, /\{ id: 'movement', label: 'Luân chuyển' \}/);
   assert.match(workspace, /\{ id: 'slow-moving', label: 'Chậm luân chuyển' \}/);
   assert.match(workspace, /\{ id: 'lots', label: 'Lô & hạn dùng' \}/);
-  assert.match(workspace, /\{ id: 'exceptions', label: 'Ngoại lệ' \}/);
+  assert.match(workspace, /\{ id: 'exceptions', label: 'Cần kiểm tra' \}/);
   assert.match(workspace, /useState<InventoryReportTab>\('overview'\)/);
   assert.match(workspace, /<form className=\{styles\.filters\}/);
   assert.match(workspace, /<div className=\{styles\.cards\}>/);
   assert.match(workspace, /<div className=\{styles\.statusStrip\}>/);
   assert.match(workspace, /<WorkspaceTabs/);
+  assert.doesNotMatch(workspace, /label: 'Ngoại lệ'/);
 });
 
 test('inventory reporting renders only the selected detail panel and groups movement views together', () => {
@@ -33,9 +34,10 @@ test('inventory reporting renders only the selected detail panel and groups move
   )?.[0] ?? '';
 
   assert.match(movementPanel, /Nhập – xuất – tồn theo kỳ/);
-  assert.match(movementPanel, /Loại movement trong kỳ/);
+  assert.match(movementPanel, /Loại nghiệp vụ trong kỳ/);
   assert.match(movementPanel, /report\.periodFlow/);
   assert.match(movementPanel, /report\.movementTypes/);
+  assert.doesNotMatch(movementPanel, /Loại movement trong kỳ/);
 });
 
 test('inventory reporting preserves filter request, drill-down links and tab while refetching', () => {
