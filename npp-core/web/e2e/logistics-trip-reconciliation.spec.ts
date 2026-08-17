@@ -91,7 +91,8 @@ test('điều phối nhận hàng về kho rồi mới đóng chuyến', async (
   await expect(page.getByText('DO-202608-000010')).toBeVisible();
   await expect(page.getByText('Giao một phần')).toBeVisible();
   await expect(page.getByText('2.000000000000', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Đóng chuyến đã đối soát' })).toBeDisabled();
+  await expect(page.getByText('Chưa thể đóng: còn 1 dòng hàng trên xe chưa được kho nhận lại.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Chốt đối soát & đóng chuyến' })).toBeDisabled();
 
   const quantity = page.getByLabel('Số lượng nhận lại BOT-001');
   await expect(quantity).toHaveValue('2.000000000000');
@@ -101,9 +102,9 @@ test('điều phối nhận hàng về kho rồi mới đóng chuyến', async (
   await expect(page.getByRole('status')).toContainText('Đã ghi nhận hàng quay về kho');
   await expect(page.getByText('Đủ điều kiện đóng')).toBeVisible();
   await expect(page.getByText('Lịch sử kho nhận lại')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Đóng chuyến đã đối soát' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Chốt đối soát & đóng chuyến' })).toBeEnabled();
 
-  await page.getByRole('button', { name: 'Đóng chuyến đã đối soát' }).click();
+  await page.getByRole('button', { name: 'Chốt đối soát & đóng chuyến' }).click();
   await expect(page.getByRole('status')).toContainText('Chuyến đã được đóng');
   await expect(page.getByText(/Đã đóng chuyến lúc/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Xác nhận nhập hàng về kho' })).toHaveCount(0);
