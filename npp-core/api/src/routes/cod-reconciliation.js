@@ -77,6 +77,11 @@ async function readPayload(req, res, options) {
   }
 }
 
+function transactionExpectations(result) {
+  const count = 1 + (result?.paymentEvents?.length ?? 0);
+  return Object.freeze({ expectedAuditCount: count, expectedOutboxCount: count });
+}
+
 async function executeMutation(req, res, options, {
   requestContext,
   route,
@@ -101,41 +106,40 @@ async function executeMutation(req, res, options, {
           mutate: async (client) => {
             const result = await mutate(client);
             if (!result.ok) return { failed: true, result };
+            if (result.replayed) return { result, replayed: true };
             const entity = result.handover ?? result.collection ?? result.acceptance;
-            if (!result.replayed) {
+            await insertAuditRecord(client, buildAuditRecord({
+              requestContext, action, resourceType, resourceId: entity.id,
+              afterData: entity, metadata: { route },
+            }));
+            await insertOutboxEvent(client, buildOutboxEvent({
+              requestContext, aggregateType: resourceType, aggregateId: entity.id,
+              eventType: result.acceptance && Number(result.acceptance.differenceAmount ?? 0) !== 0
+                ? 'core.cod.discrepancy_recorded'
+                : eventType, eventVersion: 1, payload: entity, metadata: { route },
+            }));
+            for (const paymentEvent of result.paymentEvents ?? []) {
+              const isAllocation = Object.prototype.hasOwnProperty.call(paymentEvent, 'sourceReceivableDocumentId');
+              const paymentResource = isAllocation ? 'accounting.receivable_allocation' : 'accounting.customer_payment';
               await insertAuditRecord(client, buildAuditRecord({
-                requestContext, action, resourceType, resourceId: entity.id,
-                afterData: entity, metadata: { route },
+                requestContext,
+                action: isAllocation ? 'accounting.receivable_allocation.reverse_from_cod' : 'accounting.customer_payment.reverse_from_cod',
+                resourceType: paymentResource,
+                resourceId: paymentEvent.id,
+                afterData: paymentEvent,
+                metadata: { route, codCollectionId: result.collection?.id ?? null },
               }));
               await insertOutboxEvent(client, buildOutboxEvent({
-                requestContext, aggregateType: resourceType, aggregateId: entity.id,
-                eventType: result.acceptance && Number(result.acceptance.differenceAmount ?? 0) !== 0
-                  ? 'core.cod.discrepancy_recorded'
-                  : eventType, eventVersion: 1, payload: entity, metadata: { route },
+                requestContext,
+                aggregateType: paymentResource,
+                aggregateId: paymentEvent.id,
+                eventType: isAllocation ? 'core.receivable_allocation.reversed' : 'core.customer_payment.reversed',
+                eventVersion: 1,
+                payload: paymentEvent,
+                metadata: { route, codCollectionId: result.collection?.id ?? null },
               }));
-              for (const paymentEvent of result.paymentEvents ?? []) {
-                const isAllocation = Object.prototype.hasOwnProperty.call(paymentEvent, 'sourceReceivableDocumentId');
-                const paymentResource = isAllocation ? 'accounting.receivable_allocation' : 'accounting.customer_payment';
-                await insertAuditRecord(client, buildAuditRecord({
-                  requestContext,
-                  action: isAllocation ? 'accounting.receivable_allocation.reverse_from_cod' : 'accounting.customer_payment.reverse_from_cod',
-                  resourceType: paymentResource,
-                  resourceId: paymentEvent.id,
-                  afterData: paymentEvent,
-                  metadata: { route, codCollectionId: result.collection?.id ?? null },
-                }));
-                await insertOutboxEvent(client, buildOutboxEvent({
-                  requestContext,
-                  aggregateType: paymentResource,
-                  aggregateId: paymentEvent.id,
-                  eventType: isAllocation ? 'core.receivable_allocation.reversed' : 'core.customer_payment.reversed',
-                  eventVersion: 1,
-                  payload: paymentEvent,
-                  metadata: { route, codCollectionId: result.collection?.id ?? null },
-                }));
-              }
             }
-            return { result };
+            return { result, ...transactionExpectations(result) };
           },
         });
         if (transaction.failed) {
@@ -263,3 +267,5 @@ export async function handleCodReconciliationRoutes(req, res, options) {
   sendError(res, apiError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405), options.requestId, options.receivedAt);
   return true;
 }
+
+export const codReconciliationInternals = Object.freeze({ transactionExpectations });
