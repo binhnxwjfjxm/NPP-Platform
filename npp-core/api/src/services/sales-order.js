@@ -3,6 +3,7 @@ import * as pricingService from './pricing.js';
 import * as fulfillmentService from './sales-fulfillment.js';
 import * as commercialRepository from '../db/repositories/sales-order-commercial.js';
 import * as sourceEmployeeRepository from '../db/repositories/sales-order-provenance.js';
+import * as deliveryExecutionRepository from '../db/repositories/sales-order-delivery-execution.js';
 import {
   allocateLargestRemainder,
   canonicalPricingFingerprint,
@@ -17,9 +18,72 @@ export * from './sales-order-legacy.js';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MONEY_PATTERN = /^(?:0|[1-9]\d{0,18})$/;
 const SCALE = 1_000_000n;
+const DELIVERY_EXECUTION_MODES = new Set(['TRIP', 'MANUAL']);
 
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
+}
+
+function normalizeDeliveryExecution(payload) {
+  const deliveryMode = String(payload?.deliveryMode ?? 'DELIVERY').trim().toUpperCase();
+  const rawExecutionMode = payload?.deliveryExecutionMode;
+  const supplied = rawExecutionMode !== undefined
+    && rawExecutionMode !== null
+    && String(rawExecutionMode).trim() !== '';
+
+  if (deliveryMode === 'DELIVERY') {
+    const deliveryExecutionMode = supplied
+      ? String(rawExecutionMode).trim().toUpperCase()
+      : 'TRIP';
+    if (!DELIVERY_EXECUTION_MODES.has(deliveryExecutionMode)) {
+      return failure('INVALID_DELIVERY_EXECUTION_MODE', 'Hình thức giao nhận không hợp lệ.');
+    }
+    return Object.freeze({ ok: true, deliveryExecutionMode });
+  }
+
+  if (deliveryMode === 'PICKUP') {
+    if (supplied) {
+      return failure(
+        'DELIVERY_EXECUTION_MODE_NOT_APPLICABLE',
+        'Khách nhận tại kho không dùng hình thức giao theo chuyến hoặc giao thủ công.',
+      );
+    }
+    return Object.freeze({ ok: true, deliveryExecutionMode: null });
+  }
+
+  // Let the existing Sales Order validation own invalid broad delivery modes.
+  return Object.freeze({ ok: true, deliveryExecutionMode: null });
+}
+
+function fallbackExecutionMode(deliveryMode, deliveryExecutionMode) {
+  if (deliveryMode === 'PICKUP') return null;
+  return deliveryExecutionMode ?? 'TRIP';
+}
+
+function mergeDetailedOrder(order, rows) {
+  if (!order) return order;
+  const facts = new Map((rows ?? []).map((row) => [
+    String(row.version_number),
+    fallbackExecutionMode(row.delivery_mode, row.delivery_execution_mode),
+  ]));
+  const versions = Array.isArray(order.versions)
+    ? order.versions.map((version) => Object.freeze({
+        ...version,
+        deliveryExecutionMode: facts.has(String(version.versionNumber))
+          ? facts.get(String(version.versionNumber))
+          : fallbackExecutionMode(version.deliveryMode, null),
+      }))
+    : order.versions;
+  const current = Array.isArray(versions)
+    ? versions.find((version) => String(version.versionNumber) === String(order.currentVersionNumber))
+      ?? versions.at(-1)
+    : null;
+  return Object.freeze({
+    ...order,
+    deliveryExecutionMode: current?.deliveryExecutionMode
+      ?? fallbackExecutionMode(order.deliveryMode, null),
+    versions: Array.isArray(versions) ? Object.freeze(versions) : versions,
+  });
 }
 
 function sourceEmployeeContext(requestContext, payload) {
@@ -340,7 +404,7 @@ function mergeFulfillmentProjection(salesOrder, fulfillment) {
 
 async function enrichResult(client, requestContext, result) {
   if (!result?.ok || !result.salesOrder?.id) return result;
-  const [facts, fulfillment, sourceEmployeeFacts] = await Promise.all([
+  const [facts, fulfillment, sourceEmployeeFacts, deliveryExecutionFacts] = await Promise.all([
     commercialRepository.loadCommercialFacts(client, {
       installationId: requestContext.installationId,
       salesOrderId: result.salesOrder.id,
@@ -353,16 +417,21 @@ async function enrichResult(client, requestContext, result) {
       installationId: requestContext.installationId,
       salesOrderId: result.salesOrder.id,
     }),
+    deliveryExecutionRepository.listVersionDeliveryExecutionModes(client, {
+      installationId: requestContext.installationId,
+      salesOrderId: result.salesOrder.id,
+    }),
   ]);
+  const enrichedOrder = mergeFulfillmentProjection(
+    mergeSourceEmployeeFacts(
+      mergeCommercialFacts(result.salesOrder, facts),
+      sourceEmployeeFacts,
+    ),
+    fulfillment,
+  );
   return Object.freeze({
     ...result,
-    salesOrder: mergeFulfillmentProjection(
-      mergeSourceEmployeeFacts(
-        mergeCommercialFacts(result.salesOrder, facts),
-        sourceEmployeeFacts,
-      ),
-      fulfillment,
-    ),
+    salesOrder: mergeDetailedOrder(enrichedOrder, deliveryExecutionFacts),
   });
 }
 
@@ -396,7 +465,25 @@ async function applySnapshotAndReload(client, {
 }
 
 export async function listSalesOrders(client, input) {
-  return legacy.listSalesOrders(client, input);
+  const result = await legacy.listSalesOrders(client, input);
+  if (!result?.ok || !Array.isArray(result.salesOrders) || result.salesOrders.length === 0) return result;
+  const rows = await deliveryExecutionRepository.listCurrentDeliveryExecutionModes(client, {
+    installationId: input.requestContext.installationId,
+    salesOrderIds: result.salesOrders.map((order) => order.id),
+  });
+  const facts = new Map(rows.map((row) => [
+    row.sales_order_id,
+    fallbackExecutionMode(row.delivery_mode, row.delivery_execution_mode),
+  ]));
+  return Object.freeze({
+    ...result,
+    salesOrders: Object.freeze(result.salesOrders.map((order) => Object.freeze({
+      ...order,
+      deliveryExecutionMode: facts.has(order.id)
+        ? facts.get(order.id)
+        : fallbackExecutionMode(order.deliveryMode, null),
+    }))),
+  });
 }
 
 export async function getSalesOrder(client, input) {
@@ -404,6 +491,9 @@ export async function getSalesOrder(client, input) {
 }
 
 export async function createSalesOrder(client, { requestContext, payload }) {
+  const deliveryExecution = normalizeDeliveryExecution(payload);
+  if (!deliveryExecution.ok) return deliveryExecution;
+
   const sourceEmployee = sourceEmployeeContext(requestContext, payload);
   if (!sourceEmployee.ok) return sourceEmployee;
   if (sourceEmployee.employeeId) {
@@ -438,6 +528,19 @@ export async function createSalesOrder(client, { requestContext, payload }) {
       );
     }
   }
+  const executionApplied = await deliveryExecutionRepository.setVersionDeliveryExecutionMode(client, {
+    installationId: requestContext.installationId,
+    salesOrderId: result.salesOrder.id,
+    versionNumber: 1,
+    deliveryExecutionMode: deliveryExecution.deliveryExecutionMode,
+  });
+  if (!executionApplied) {
+    return failure(
+      'SALES_ORDER_DELIVERY_EXECUTION_SNAPSHOT_FAILED',
+      'Không thể lưu hình thức giao nhận của đơn.',
+      true,
+    );
+  }
   return applySnapshotAndReload(client, {
     requestContext,
     result,
@@ -452,6 +555,9 @@ export async function updateSalesOrderDraft(client, {
   versionNumber,
   payload,
 }) {
+  const deliveryExecution = normalizeDeliveryExecution(payload);
+  if (!deliveryExecution.ok) return deliveryExecution;
+
   const prepared = await prepareCommercialPayload(client, { requestContext, payload });
   if (!prepared.ok) return prepared;
   const result = await legacy.updateSalesOrderDraft(client, {
@@ -462,18 +568,33 @@ export async function updateSalesOrderDraft(client, {
   });
   if (!result.ok) return result;
   const draft = result.salesOrder.versions?.find((version) => version.status === 'draft');
+  const resolvedVersion = Number(versionNumber ?? draft?.versionNumber ?? result.salesOrder.currentVersionNumber);
+  const executionApplied = await deliveryExecutionRepository.setVersionDeliveryExecutionMode(client, {
+    installationId: requestContext.installationId,
+    salesOrderId: id,
+    versionNumber: resolvedVersion,
+    deliveryExecutionMode: deliveryExecution.deliveryExecutionMode,
+  });
+  if (!executionApplied) {
+    return failure(
+      'SALES_ORDER_DELIVERY_EXECUTION_SNAPSHOT_FAILED',
+      'Không thể lưu hình thức giao nhận của đơn.',
+      true,
+    );
+  }
   return applySnapshotAndReload(client, {
     requestContext,
     result,
-    versionNumber: Number(versionNumber ?? draft?.versionNumber ?? result.salesOrder.currentVersionNumber),
+    versionNumber: resolvedVersion,
     prepared,
   });
 }
 
 export async function createSalesOrderAmendment(client, { requestContext, id, payload }) {
-  const before = await legacy.getSalesOrder(client, { requestContext, id });
+  const before = await getSalesOrder(client, { requestContext, id });
   if (!before.ok) return before;
   const fromVersionNumber = Number(before.salesOrder.currentVersionNumber);
+  const sourceExecutionMode = before.salesOrder.deliveryExecutionMode;
   const result = await legacy.createSalesOrderAmendment(client, { requestContext, id, payload });
   if (!result.ok) return result;
   const draft = result.salesOrder.versions?.find((version) => version.status === 'draft');
@@ -501,6 +622,19 @@ export async function createSalesOrderAmendment(client, { requestContext, id, pa
     return failure(
       'SALES_ORDER_COMMERCIAL_SNAPSHOT_FAILED',
       'Amendment commercial snapshot could not be copied',
+      true,
+    );
+  }
+  const executionApplied = await deliveryExecutionRepository.setVersionDeliveryExecutionMode(client, {
+    installationId: requestContext.installationId,
+    salesOrderId: id,
+    versionNumber: toVersionNumber,
+    deliveryExecutionMode: fallbackExecutionMode(draft?.deliveryMode, sourceExecutionMode),
+  });
+  if (!executionApplied) {
+    return failure(
+      'SALES_ORDER_DELIVERY_EXECUTION_SNAPSHOT_FAILED',
+      'Không thể sao chép hình thức giao nhận sang bản điều chỉnh.',
       true,
     );
   }
@@ -635,3 +769,9 @@ export async function cancelSalesOrder(client, input) {
   if (!fulfillment.ok) return fulfillment;
   return enrichResult(client, input.requestContext, result);
 }
+
+export const salesOrderDeliveryExecutionInternals = Object.freeze({
+  normalizeDeliveryExecution,
+  fallbackExecutionMode,
+  mergeDetailedOrder,
+});

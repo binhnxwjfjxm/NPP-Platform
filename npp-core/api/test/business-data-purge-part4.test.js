@@ -94,7 +94,9 @@ test('Issue #562 Part 4 exposes only business-level purge targets and keeps purg
     'PRODUCTS_AND_INVENTORY',
     'MCP_ONLY',
   ]);
-  assert.equal(CORE_API_MIGRATIONS.at(-1)?.id, '088_selective_business_data_purge');
+  const registeredMigration = CORE_API_MIGRATIONS.find((entry) => entry.id === '088_selective_business_data_purge');
+  assert.ok(registeredMigration);
+  assert.doesNotMatch(registeredMigration.sql, /TRUNCATE|DROP\s+SCHEMA/i);
 
   const migration = await readFile(new URL('../../../database/migrations/shared/088_selective_business_data_purge.sql', import.meta.url), 'utf8');
   assert.match(migration, /target_code/);
