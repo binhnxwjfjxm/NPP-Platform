@@ -1,0 +1,124 @@
+name: Temporary read-only Owner email audit
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/audit-hgluckit-owner-email.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HEROKU_APP_NAME: hung-phat
+      TARGET_EMAIL: hgluckit@gmail.com
+    steps:
+      - name: Checkout audit head
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pinned Heroku CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global --ignore-scripts heroku@11.0.0
+          heroku --version | grep -F 'heroku/11.0.0' >/dev/null
+
+      - name: Read-only audit Owner identity and login challenge
+        shell: bash
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          set -euo pipefail
+          test "$HEROKU_APP_NAME" = 'hung-phat'
+          test "$TARGET_EMAIL" = 'hgluckit@gmail.com'
+          heroku run --no-tty --exit-code -a "$HEROKU_APP_NAME" -- \
+            bash -lc 'cd npp-core/api && TARGET_EMAIL="hgluckit@gmail.com" node --input-type=module <<'"'"'NODE'"'"'
+          import pg from "pg";
+          const { Pool } = pg;
+          const target = String(process.env.TARGET_EMAIL || "").trim().toLowerCase();
+          if (target !== "hgluckit@gmail.com") throw new Error("AUDIT_TARGET_INVALID");
+          const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+          try {
+            const identities = await pool.query(`
+              SELECT
+                u.id::text AS user_id,
+                u.login_name,
+                u.is_active AS user_active,
+                e.id::text AS employee_id,
+                e.full_name,
+                lower(e.email) AS employee_email,
+                e.is_active AS employee_active,
+                ob.owner_kind
+              FROM shared.users u
+              JOIN shared.employees e
+                ON e.installation_id = u.installation_id
+               AND e.id = u.employee_id
+              LEFT JOIN shared.security_owner_bindings ob
+                ON ob.installation_id = u.installation_id
+               AND ob.user_id = u.id
+              WHERE lower(e.email) = $1 OR lower(u.login_name) = $1
+              ORDER BY lower(e.email) = $1 DESC, u.id
+            `, [target]);
+
+            console.log(`AUDIT_IDENTITY_COUNT=${identities.rowCount}`);
+            for (const row of identities.rows) {
+              console.log(`AUDIT_IDENTITY=${JSON.stringify({
+                loginName: row.login_name,
+                employeeEmail: row.employee_email,
+                fullName: row.full_name,
+                userActive: row.user_active,
+                employeeActive: row.employee_active,
+                ownerKind: row.owner_kind || null,
+              })}`);
+            }
+
+            if (identities.rowCount === 1) {
+              const identity = identities.rows[0];
+              const audit = await pool.query(`
+                SELECT
+                  action,
+                  source_app,
+                  occurred_at,
+                  after_data ->> 'reasonCode' AS reason_code,
+                  after_data ->> 'recipientCount' AS recipient_count
+                FROM shared.core_audit_records
+                WHERE occurred_at >= now() - interval '7 days'
+                  AND (
+                    employee_id = $1
+                    OR after_data ->> 'userId' = $2
+                  )
+                  AND action IN (
+                    'login_challenge_issued',
+                    'login_challenge_delivery_failed',
+                    'login_challenge_verified',
+                    'login_denied',
+                    'login'
+                  )
+                ORDER BY occurred_at DESC
+                LIMIT 30
+              `, [identity.employee_id, identity.user_id]);
+              console.log(`AUDIT_EVENT_COUNT=${audit.rowCount}`);
+              for (const row of audit.rows) {
+                console.log(`AUDIT_EVENT=${JSON.stringify({
+                  action: row.action,
+                  sourceApp: row.source_app,
+                  occurredAt: row.occurred_at,
+                  reasonCode: row.reason_code || null,
+                  recipientCount: row.recipient_count || null,
+                })}`);
+              }
+            }
+          } finally {
+            await pool.end();
+          }
+          NODE'
