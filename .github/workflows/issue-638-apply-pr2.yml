@@ -1,0 +1,74 @@
+name: issue-638-resend-apply-pr2
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/issue-638-resend-email-provider
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply staged Resend migration with corrected matchers
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          source = Path('.github/workflows/issue-638-apply-resend.yml')
+          workflow = source.read_text(encoding='utf-8')
+          workflow = workflow.replace('sendLoginChallengeEmail\\\\(', 'sendLoginChallengeEmail\\(')
+          workflow = workflow.replace('sendTechnicalBackupAccessEmail\\\\(', 'sendTechnicalBackupAccessEmail\\(')
+          workflow = workflow.replace('sendOwnerDeletionChallengeEmail\\\\(', 'sendOwnerDeletionChallengeEmail\\(')
+          start_marker = "          python3 <<'PY'\n"
+          end_marker = "          PY\n"
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index(end_marker, start)
+          patch = workflow[start:end]
+          patch = '\n'.join(line[10:] if line.startswith('          ') else line for line in patch.splitlines()) + '\n'
+          exec(compile(patch, str(source), 'exec'), {})
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify backend
+        working-directory: npp-core/api
+        run: npm run verify
+
+      - name: Verify scope
+        shell: bash
+        run: |
+          test "$(git diff --name-only -- database/migrations | wc -l)" -eq 0
+          git diff --check
+
+      - name: Commit final changes and remove temporary workflows
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/issue-638-apply-resend.yml .github/workflows/issue-638-apply-pr.yml .github/workflows/issue-638-apply-pr2.yml
+          git add npp-core/api/src/email/resend.js \
+            npp-core/api/src/internal-workforce-auth.js \
+            npp-core/api/src/backup/technical-access.js \
+            npp-core/api/src/backup/owner-delete-challenge.js \
+            npp-core/api/src/services/technical-backup-access.js \
+            npp-core/api/src/services/backup.js \
+            npp-core/api/package.json \
+            npp-core/api/test/resend-email.test.js \
+            npp-core/api/test/backup-foundation.test.js
+          git commit -m 'fix(issue-638): switch transactional email provider to Resend'
+          git push origin agent/issue-638-resend-email-provider
