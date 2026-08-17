@@ -46,8 +46,7 @@ jobs:
           cat > "$script_file" <<'NODE'
           import pg from 'pg';
           const { Pool } = pg;
-          const target = String(process.env.TARGET_EMAIL || '').trim().toLowerCase();
-          if (target !== 'hgluckit@gmail.com') throw new Error('AUDIT_TARGET_INVALID');
+          const target = 'hgluckit@gmail.com';
           const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
           try {
             const identities = await pool.query(`
@@ -127,6 +126,5 @@ jobs:
           audit_b64="$(base64 -w0 "$script_file")"
           echo "::add-mask::$audit_b64"
           heroku run --no-tty --exit-code -a "$HEROKU_APP_NAME" \
-            -e "TARGET_EMAIL=$TARGET_EMAIL" \
             -e "AUDIT_SCRIPT_B64=$audit_b64" \
             -- bash -lc 'cd npp-core/api && printf "%s" "$AUDIT_SCRIPT_B64" | base64 -d > .tmp-owner-audit.mjs && node .tmp-owner-audit.mjs; status=$?; rm -f .tmp-owner-audit.mjs; exit $status'
