@@ -1,3 +1,4 @@
+import { handleManualSalesOrderRoutes } from './manual-sales-orders.js';
 import { handleSalesSettlementReconciliationRoutes } from './sales-settlement-reconciliation.js';
 import { handleCodReconciliationRoutes } from './cod-reconciliation.js';
 import { handleCustomerReturnCreditRoutes } from './customer-return-credits.js';
@@ -5,6 +6,7 @@ import { handleCustomerPaymentRoutes } from './customer-payments.js';
 import { handleCustomerReceivableCoreRoutes } from './customer-receivables-core.js';
 
 export async function handleCustomerReceivableRoutes(req, res, options) {
+  if (await handleManualSalesOrderRoutes(req, res, options)) return true;
   if (await handleSalesSettlementReconciliationRoutes(req, res, options)) return true;
   if (await handleCodReconciliationRoutes(req, res, options)) return true;
   if (await handleCustomerReturnCreditRoutes(req, res, options)) return true;
