@@ -1,8 +1,9 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
 import { PrintAction, PrintSurface } from '../../components/print-document';
-import { collectionLabels, formatMoney, formatQuantity } from './sales-order-ui';
+import { collectionLabels, deliveryMethodLabel, formatMoney, formatQuantity } from './sales-order-ui';
 import styles from './sales-order-print.module.css';
 
 function textValue(value: unknown): string {
@@ -52,10 +53,36 @@ export default function SalesOrderPrintSheet({
     || lines.some((line) => !isZeroAmount(line.discountAmount));
   const showTax = !isZeroAmount(version.taxTotal)
     || lines.some((line) => !isZeroAmount(line.taxAmount));
+  const printKey = `sales-order:last-print:${order.id}`;
+  const printFingerprint = `${order.id}:${version.id}:${version.revision}`;
+  const [changedAfterPrint, setChangedAfterPrint] = useState(false);
+
+  useEffect(() => {
+    try {
+      const previous = window.localStorage.getItem(printKey);
+      setChangedAfterPrint(Boolean(previous && previous !== printFingerprint));
+    } catch {
+      setChangedAfterPrint(false);
+    }
+  }, [printFingerprint, printKey]);
+
+  function recordPrint() {
+    try {
+      window.localStorage.setItem(printKey, printFingerprint);
+      setChangedAfterPrint(false);
+    } catch {
+      // Việc lưu dấu lần in chỉ phục vụ nhắc người dùng, không ảnh hưởng nghiệp vụ.
+    }
+  }
 
   return (
     <>
-      <PrintAction label="In đơn" />
+      <div>
+        <PrintAction label="In đơn" onPrint={recordPrint} />
+        {changedAfterPrint ? (
+          <small role="status">Đơn đã thay đổi sau lần in gần nhất. Hãy in lại nếu cần.</small>
+        ) : null}
+      </div>
       <PrintSurface>
         <article className={styles.sheet} data-testid="sales-order-print-sheet">
           <header className={styles.header}>
@@ -76,7 +103,7 @@ export default function SalesOrderPrintSheet({
             <div><span>Ngày đơn</span><strong>{dateText(version.confirmedAt ?? version.createdAt)}</strong></div>
             <div className={styles.full}><span>Địa chỉ</span><strong>{addressText(version.customerAddress)}</strong></div>
             <div><span>Kho</span><strong>{version.warehouseCode} — {version.warehouseName}</strong></div>
-            <div><span>Hình thức giao</span><strong>{version.deliveryMode === 'PICKUP' ? 'Khách nhận tại kho' : 'Giao đến khách'}</strong></div>
+            <div><span>Hình thức giao nhận</span><strong>{deliveryMethodLabel(version)}</strong></div>
             <div><span>Thanh toán</span><strong>{collectionLabels[version.collectionPolicy] ?? version.collectionPolicy}</strong></div>
             <div><span>Ngày giao dự kiến</span><strong>{dateText(version.requestedDeliveryDate)}</strong></div>
           </section>

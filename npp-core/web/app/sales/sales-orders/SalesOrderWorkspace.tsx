@@ -30,6 +30,7 @@ function sourceBucket(order: SalesOrder): Exclude<OrderSourceFilter, 'all'> {
 function orderCardStatus(order: SalesOrder): string {
   const orderStatus = orderLabels[order.status] ?? 'Trạng thái khác';
   if (order.status !== 'confirmed') return orderStatus;
+  if (order.deliveryExecutionMode === 'MANUAL') return `${orderStatus} · Giao thủ công`;
   if (order.fulfillmentStatus === 'backordered') return `${orderStatus} · Chờ hàng`;
   if (order.fulfillmentStatus === 'partially_reserved') return `${orderStatus} · Chờ hàng một phần`;
   return orderStatus;
@@ -262,6 +263,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
             onCancellationReason={setCancellationReason}
             onEditDraft={() => openForm('draft', activeVersion(selected))}
             onEditAmendment={() => openForm('amendment', pendingVersion(selected))}
+            onEditManual={() => openForm('manual-edit', activeVersion(selected))}
             onConfirm={() => action('confirm')}
             onCreateAmendment={() => action('amend')}
             onConfirmAmendment={() => action('confirm-amendment')}
@@ -278,19 +280,22 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
           customers={initialBootstrap.customers}
           warehouses={initialBootstrap.warehouses}
           products={initialBootstrap.products}
-          canConfirm={formMode === 'amendment' ? canAmend : canConfirm}
+          canConfirm={formMode === 'manual-edit' ? false : formMode === 'amendment' ? canAmend : canConfirm}
           canQuickCreateCustomer={canQuickCreateCustomer}
           canPriceOverride={canPriceOverride}
           canDiscountOverride={canDiscountOverride}
           onClose={() => setFormMode(null)}
           onError={handleFormError}
           onSaved={(order) => {
+            const savedMode = formMode;
             mergeOrder(order);
             setFormMode(null);
             setError(null);
-            setNotice(order.status === 'confirmed'
-              ? 'Đã lưu, xác nhận và cấp số đơn bán hàng'
-              : formMode === 'create' ? 'Đã tạo đơn bán hàng nháp' : 'Đã lưu phiên bản nháp');
+            setNotice(savedMode === 'manual-edit'
+              ? 'Đã lưu thay đổi đơn giao thủ công'
+              : order.status === 'confirmed'
+                ? 'Đã lưu, xác nhận và cấp số đơn bán hàng'
+                : savedMode === 'create' ? 'Đã tạo đơn bán hàng nháp' : 'Đã lưu phiên bản nháp');
           }}
         />
       )}
