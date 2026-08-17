@@ -64,6 +64,11 @@
 .actionBox textarea { min-height: 68px; resize: vertical; }
 .quantityRow { grid-template-columns: 1fr minmax(110px, 150px); align-items: center; }
 .blockReason { display: block; width: fit-content; max-width: 100%; padding: 7px 9px; border-left: 3px solid #f59e0b; background: color-mix(in srgb, #f59e0b 8%, var(--surface)); color: #92400e; font-weight: 700; line-height: 1.4; }
+section[id='trip-reconciliation-close'] > .actionBoxTitle { order: 0; }
+section[id='trip-reconciliation-close'] > p,
+section[id='trip-reconciliation-close'] > .blockReason { order: 1; }
+section[id='trip-reconciliation-close'] > button { order: 2; width: 100%; min-height: 48px; font-size: 15px; }
+section[id='trip-reconciliation-close'] > label { order: 3; }
 .closedCard { display: grid; gap: 4px; margin-top: 14px; padding: 12px 2px 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; }
 .closedCard span { color: var(--muted); }
 .receipts { display: grid; gap: 0; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
