@@ -31,6 +31,15 @@ test('COD accounting mutations reuse the canonical idempotency generator and tri
   assert.doesNotMatch(workspace, /padStart\(6, '0'\)\}`/);
 });
 
+test('COD accounting handover timestamp is deterministic between server render and browser hydration', () => {
+  const workspace = read('../app/accounting/cod-reconciliation/cod-reconciliation-workspace.tsx');
+
+  assert.match(workspace, /function formatVietnamTimestamp/);
+  assert.match(workspace, /getUTCDate\(\)/);
+  assert.match(workspace, /formatVietnamTimestamp\(handover\.handedOverAt\)/);
+  assert.doesNotMatch(workspace, /handover\.handedOverAt\)\.toLocaleString/);
+});
+
 test('NPP COD gateway is server-only and forwards the workforce session only on the server', () => {
   const gateway = read('../lib/cod-reconciliation-gateway.ts');
   const route = read('../app/api/cod-reconciliation/[id]/accept/route.ts');
