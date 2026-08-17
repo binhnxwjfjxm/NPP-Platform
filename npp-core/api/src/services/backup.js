@@ -226,7 +226,7 @@ export async function createDeletionIntent(pool, {
     },
   });
   try {
-    await sendOwnerDeletionChallengeEmail(fetchImpl, runtime, { code, sourceApp: requestContext.sourceApp });
+    await sendOwnerDeletionChallengeEmail(fetchImpl, runtime, { code, sourceApp: requestContext.sourceApp, intentId });
     const delivery = await withAuditOutboxTransaction({
       adapter: pool,
       mutate: async (client) => {

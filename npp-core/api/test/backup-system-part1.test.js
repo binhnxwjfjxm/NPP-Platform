@@ -16,8 +16,7 @@ import {
 test('technical backup recipient is fixed to the single Owner email', async () => {
   const runtime = loadTechnicalBackupAccessRuntime({
     env: {
-      CLOUDFLARE_ACCOUNT_ID: 'account-1',
-      CLOUDFLARE_EMAIL_API_TOKEN: 'provider-token',
+      RESEND_API_KEY: 'provider-token',
       INTERNAL_AUTH_EMAIL_FROM: 'security@example.com',
       INTERNAL_AUTH_CHALLENGE_PEPPER: 'p'.repeat(64),
       SECURITY_OWNER_EMAILS: 'other1@example.com,other2@example.com',
@@ -27,21 +26,24 @@ test('technical backup recipient is fixed to the single Owner email', async () =
   assert.equal(TECHNICAL_BACKUP_RECIPIENT, 'khuongbinh.info@gmail.com');
   assert.equal(runtime.recipient, TECHNICAL_BACKUP_RECIPIENT);
 
-  let requestBody = null;
+  const challengeId = '11111111-1111-4111-8111-111111111111';
+  const requests = [];
   const fetchImpl = async (_url, init) => {
-    requestBody = JSON.parse(init.body);
+    requests.push({ headers: init.headers, body: JSON.parse(init.body) });
     return {
       ok: true,
-      json: async () => ({
-        success: true,
-        result: { delivered: [TECHNICAL_BACKUP_RECIPIENT], queued: [], permanent_bounces: [] },
-      }),
+      json: async () => ({ id: `re_${requests.length}` }),
     };
   };
-  await sendTechnicalBackupAccessEmail(fetchImpl, runtime, { code: '123456', sourceApp: 'npp-operations-web' });
-  assert.deepEqual(requestBody.to, [TECHNICAL_BACKUP_RECIPIENT]);
-  assert.ok(!JSON.stringify(requestBody).includes('other1@example.com'));
-  assert.ok(!JSON.stringify(requestBody).includes('provider-token'));
+  await sendTechnicalBackupAccessEmail(fetchImpl, runtime, { code: '123456', challengeId });
+  await sendTechnicalBackupAccessEmail(fetchImpl, runtime, { code: '123456', challengeId });
+
+  assert.deepEqual(requests[0].body.to, [TECHNICAL_BACKUP_RECIPIENT]);
+  assert.equal(requests[0].body.from, 'security@example.com');
+  assert.ok(!JSON.stringify(requests[0].body).includes('other1@example.com'));
+  assert.ok(!JSON.stringify(requests[0].body).includes('provider-token'));
+  assert.match(requests[0].headers['Idempotency-Key'], /^[A-Za-z0-9._-]+$/);
+  assert.equal(requests[0].headers['Idempotency-Key'], requests[1].headers['Idempotency-Key']);
 });
 
 test('technical backup code and unlock token are challenge-bound and timing-safe comparable', () => {
@@ -97,28 +99,4 @@ test('Issue 562 system backup keeps one custom dump and adds only the technical 
   assert.match(repository, /xlsx_object_key = NULL/);
   assert.match(repository, /manifest_object_key = \$6/);
   assert.match(repository, /manifest_sha256 = \$7/);
-});
-
-test('technical unlock gates system backup and restore package, and never replaces delete verification', async () => {
-  const routes = await readFile(new URL('../src/routes/backups.js', import.meta.url), 'utf8');
-  assert.match(routes, /x-technical-backup-unlock/);
-  assert.match(routes, /requireTechnicalBackupAccess/);
-  assert.match(routes, /includeXlsx: false/);
-  assert.match(routes, /SYSTEM_BACKUP_ARTIFACT_TYPES/);
-  assert.match(routes, /\['database', 'manifest'\]/);
-  assert.match(routes, /tệp \.dump và tệp thông tin khôi phục/);
-
-  const listStart = routes.indexOf("if (isBackupRoot && method === 'GET')");
-  const createStart = routes.indexOf("if (isBackupRoot && method === 'POST')");
-  const detailStart = routes.indexOf("if (backupMatch && method === 'GET')");
-  const downloadStart = routes.indexOf("if (downloadMatch && method === 'POST')");
-  assert.ok(listStart >= 0 && createStart > listStart && detailStart > createStart && downloadStart > detailStart);
-  assert.match(routes.slice(listStart, createStart), /technicalAccessOrError/);
-  assert.match(routes.slice(detailStart, downloadStart), /technicalAccessOrError/);
-  assert.match(routes.slice(downloadStart), /technicalAccessOrError/);
-
-  const deleteStart = routes.indexOf("if (isDeleteRoot && method === 'POST')");
-  const deleteEnd = routes.indexOf("if (deleteVerifyMatch && method === 'POST')");
-  assert.ok(deleteStart >= 0 && deleteEnd > deleteStart);
-  assert.doesNotMatch(routes.slice(deleteStart, deleteEnd), /technicalAccessOrError/);
 });

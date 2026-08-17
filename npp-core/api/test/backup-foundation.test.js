@@ -47,8 +47,7 @@ test('sheet names are Excel-safe, <=31 chars and unique', () => {
 test('delete challenge uses all unique Owner emails and never exposes provider credential in payload', async () => {
   const runtime = loadOwnerDeletionChallengeRuntime({
     env: {
-      CLOUDFLARE_ACCOUNT_ID: 'account-1',
-      CLOUDFLARE_EMAIL_API_TOKEN: 'secret-provider-token',
+      RESEND_API_KEY: 're_test_only',
       INTERNAL_AUTH_EMAIL_FROM: 'security@example.com',
       INTERNAL_AUTH_CHALLENGE_PEPPER: 'x'.repeat(64),
     },
@@ -63,14 +62,14 @@ test('delete challenge uses all unique Owner emails and never exposes provider c
     requestBody = JSON.parse(init.body);
     return {
       ok: true,
-      json: async () => ({ success: true, result: { delivered: runtime.recipients, queued: [], permanent_bounces: [] } }),
+      json: async () => ({ id: 'email-123' }),
     };
   };
-  const sent = await sendOwnerDeletionChallengeEmail(fetchImpl, runtime, { code: '123456', sourceApp: 'npp-operations' });
+  const sent = await sendOwnerDeletionChallengeEmail(fetchImpl, runtime, { code: '123456', sourceApp: 'npp-operations', intentId: '33333333-3333-4333-8333-333333333333' });
   assert.equal(sent.recipientCount, 3);
   assert.deepEqual(requestBody.to, runtime.recipients);
-  assert.deepEqual(requestBody.from, { address: 'security@example.com', name: 'Hưng Phát Security' });
-  assert.ok(!JSON.stringify(requestBody).includes('secret-provider-token'));
+  assert.equal(requestBody.from, 'security@example.com');
+  assert.ok(!JSON.stringify(requestBody).includes('re_test_only'));
 });
 
 test('delete code HMAC is intent-bound and timing-safe comparable', () => {
@@ -120,8 +119,7 @@ test('CSV export neutralizes spreadsheet formula injection for string cells', as
 test('Owner challenge fails closed unless every configured Owner is accepted', async () => {
   const runtime = loadOwnerDeletionChallengeRuntime({
     env: {
-      CLOUDFLARE_ACCOUNT_ID: 'account-1',
-      CLOUDFLARE_EMAIL_API_TOKEN: 'provider-token',
+      RESEND_API_KEY: 're_test_only',
       INTERNAL_AUTH_EMAIL_FROM: 'security@example.com',
       INTERNAL_AUTH_CHALLENGE_PEPPER: 'x'.repeat(64),
     },
@@ -131,11 +129,11 @@ test('Owner challenge fails closed unless every configured Owner is accepted', a
     },
   });
   const fetchImpl = async () => ({
-    ok: true,
-    json: async () => ({ success: true, result: { delivered: ['owner1@example.com', 'owner2@example.com'], queued: [], permanent_bounces: [] } }),
+    ok: false,
+    json: async () => ({ error: { message: 'rejected' } }),
   });
   await assert.rejects(
-    sendOwnerDeletionChallengeEmail(fetchImpl, runtime, { code: '123456', sourceApp: 'npp-operations-web' }),
+    sendOwnerDeletionChallengeEmail(fetchImpl, runtime, { code: '123456', sourceApp: 'npp-operations-web', intentId: '33333333-3333-4333-8333-333333333333' }),
     /DATA_DELETION_CHALLENGE_DELIVERY_FAILED/,
   );
 });

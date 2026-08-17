@@ -26,8 +26,7 @@ function productionConfig() {
 
 function challengeEnv() {
   return {
-    CLOUDFLARE_ACCOUNT_ID: '0123456789abcdef0123456789abcdef',
-    CLOUDFLARE_EMAIL_API_TOKEN: 'test-cloudflare-token',
+    RESEND_API_KEY: 're_test_only',
     INTERNAL_AUTH_EMAIL_FROM: 'security@example.test',
     INTERNAL_AUTH_CHALLENGE_PEPPER: 'a'.repeat(64),
     INTERNAL_WEB_CHALLENGE_TTL_SECONDS: '300',
@@ -126,19 +125,7 @@ test('production OTP targets only the authenticating employee canonical email', 
   let outbound = null;
   const fetchImpl = async (_url, options) => {
     outbound = JSON.parse(options.body);
-    return {
-      ok: true,
-      async json() {
-        return {
-          success: true,
-          result: {
-            delivered: outbound.to,
-            queued: [],
-            permanent_bounces: [],
-          },
-        };
-      },
-    };
+    return { ok: true, json: async () => ({ id: 'email-123' }) };
   };
 
   const { result, pool } = await issueChallenge(
@@ -152,10 +139,7 @@ test('production OTP targets only the authenticating employee canonical email', 
   assert.deepEqual(outbound.to, ['employee.canonical@example.test']);
   assert.equal(outbound.to.includes('owner1@example.test'), false);
   assert.equal(outbound.to.includes('owner2@example.test'), false);
-  assert.deepEqual(outbound.from, {
-    address: 'security@example.test',
-    name: 'Hưng Phát Security',
-  });
+  assert.equal(outbound.from, 'security@example.test');
   assert.match(outbound.text, /không dùng cho ngân hàng/i);
 
   const issuedAudit = pool.queries.find(({ sql, values }) => (
@@ -170,19 +154,7 @@ test('temporary Implementation Owner receives the challenge at their own canonic
   let outbound = null;
   const fetchImpl = async (_url, options) => {
     outbound = JSON.parse(options.body);
-    return {
-      ok: true,
-      async json() {
-        return {
-          success: true,
-          result: {
-            delivered: outbound.to,
-            queued: [],
-            permanent_bounces: [],
-          },
-        };
-      },
-    };
+    return { ok: true, json: async () => ({ id: 'email-123' }) };
   };
 
   const { result } = await issueChallenge(fetchImpl, {}, 'TEMPORARY', 'Implementation@example.test');
@@ -191,20 +163,11 @@ test('temporary Implementation Owner receives the challenge at their own canonic
   assert.deepEqual(outbound.to, ['implementation@example.test']);
 });
 
-test('production OTP fails closed when the authenticating employee recipient is not delivered or queued', async () => {
+test('production OTP fails closed when Resend rejects the email request', async () => {
   const state = {};
   const fetchImpl = async () => ({
-    ok: true,
-    async json() {
-      return {
-        success: true,
-        result: {
-          delivered: [],
-          queued: [],
-          permanent_bounces: [],
-        },
-      };
-    },
+    ok: false,
+    json: async () => ({ error: { message: 'rejected' } }),
   });
 
   const { result } = await issueChallenge(fetchImpl, state);
@@ -214,24 +177,12 @@ test('production OTP fails closed when the authenticating employee recipient is 
   assert.equal(state.cancelled, 1);
 });
 
-test('production OTP fails closed on a permanent bounce for the authenticating employee', async () => {
+test('production OTP fails closed when Resend returns no message id', async () => {
   const state = {};
-  const fetchImpl = async (_url, options) => {
-    const outbound = JSON.parse(options.body);
-    return {
-      ok: true,
-      async json() {
-        return {
-          success: true,
-          result: {
-            delivered: outbound.to,
-            queued: [],
-            permanent_bounces: outbound.to,
-          },
-        };
-      },
-    };
-  };
+  const fetchImpl = async () => ({
+    ok: true,
+    json: async () => ({}),
+  });
 
   const { result } = await issueChallenge(fetchImpl, state);
   assert.equal(result.ok, false);
