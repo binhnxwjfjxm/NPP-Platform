@@ -63,7 +63,7 @@ export async function requestTechnicalBackupChallenge(pool, {
   });
 
   try {
-    await sendTechnicalBackupAccessEmail(fetchImpl, runtime, { code, sourceApp: requestContext.sourceApp });
+    await sendTechnicalBackupAccessEmail(fetchImpl, runtime, { code, challengeId });
     const delivery = await withAuditOutboxTransaction({
       adapter: pool,
       mutate: async (client) => {

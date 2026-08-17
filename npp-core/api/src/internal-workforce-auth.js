@@ -8,6 +8,7 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import { promisify } from 'node:util';
+import { loadResendEmailRuntime, resendEmailRuntimeReady, sendResendEmail } from './email/resend.js';
 import { PERMISSION_REGISTRY } from './access/permissions.js';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from './audit-outbox.js';
 import * as defaultRepo from './db/repositories/internal-workforce-auth.js';
@@ -89,9 +90,7 @@ function boundedInteger(value, fallback, min, max) {
 
 function loadEmailChallengeRuntime(env = process.env) {
   return Object.freeze({
-    accountId: text(env.CLOUDFLARE_ACCOUNT_ID),
-    apiToken: text(env.CLOUDFLARE_EMAIL_API_TOKEN),
-    from: text(env.INTERNAL_AUTH_EMAIL_FROM),
+    ...loadResendEmailRuntime({ env }),
     pepper: text(env.INTERNAL_AUTH_CHALLENGE_PEPPER),
     ttlSeconds: boundedInteger(env.INTERNAL_WEB_CHALLENGE_TTL_SECONDS, DEFAULT_CHALLENGE_TTL_SECONDS, 60, 900),
     maxAttempts: boundedInteger(env.INTERNAL_WEB_CHALLENGE_MAX_ATTEMPTS, DEFAULT_CHALLENGE_MAX_ATTEMPTS, 1, 10),
@@ -115,48 +114,21 @@ function normalizeChallengeRecipient(value) {
 
 function validEmailChallengeRuntime(runtime, recipientEmail, fetchImpl) {
   return Boolean(
-    runtime.accountId
-    && runtime.apiToken
-    && EMAIL_PATTERN.test(runtime.from)
+    resendEmailRuntimeReady(runtime, fetchImpl)
     && runtime.pepper.length >= 32
     && normalizeChallengeRecipient(recipientEmail)
-    && typeof fetchImpl === 'function'
   );
 }
 
-async function sendLoginChallengeEmail(fetchImpl, runtime, { recipientEmail, code, sourceApp }) {
-  const endpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(runtime.accountId)}/email/sending/send`;
+async function sendLoginChallengeEmail(fetchImpl, runtime, { recipientEmail, code, sourceApp, challengeId }) {
   const subject = 'Mã xác nhận đăng nhập hệ thống Hưng Phát';
   const textBody = `Có yêu cầu đăng nhập Web/PWA vào hệ thống Hưng Phát (${sourceApp}). Mã xác nhận: ${code}. Mã hết hạn sau ${Math.ceil(runtime.ttlSeconds / 60)} phút. Mã này chỉ dùng cho đăng nhập hệ thống Hưng Phát, không dùng cho ngân hàng, thanh toán hoặc giao dịch tài chính. Nếu không phải yêu cầu của bạn, không cung cấp mã này.`;
   const htmlBody = `<p>Có yêu cầu đăng nhập Web/PWA vào hệ thống Hưng Phát (${sourceApp}).</p><p>Mã xác nhận: <strong>${code}</strong></p><p>Mã hết hạn sau ${Math.ceil(runtime.ttlSeconds / 60)} phút.</p><p>Mã này chỉ dùng cho đăng nhập hệ thống Hưng Phát, không dùng cho ngân hàng, thanh toán hoặc giao dịch tài chính.</p><p>Nếu không phải yêu cầu của bạn, không cung cấp mã này.</p>`;
   const recipient = normalizeChallengeRecipient(recipientEmail);
   if (!recipient) throw new Error('INTERNAL_AUTH_EMAIL_SEND_FAILED');
-  const response = await fetchImpl(endpoint, {
-    method: 'POST',
-    signal: AbortSignal.timeout(CHALLENGE_EMAIL_TIMEOUT_MS),
-    headers: {
-      Authorization: `Bearer ${runtime.apiToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      to: [recipient],
-      from: { address: runtime.from, name: 'Hưng Phát Security' },
-      subject,
-      text: textBody,
-      html: htmlBody,
-    }),
-  });
-  if (!response?.ok) throw new Error('INTERNAL_AUTH_EMAIL_SEND_FAILED');
-  const payload = await response.json().catch(() => null);
-  const result = payload?.result;
-  const accepted = new Set([
-    ...(Array.isArray(result?.delivered) ? result.delivered : []),
-    ...(Array.isArray(result?.queued) ? result.queued : []),
-  ].map((email) => String(email).toLowerCase()));
-  const permanentBounces = Array.isArray(result?.permanent_bounces) ? result.permanent_bounces : [];
-  if (!payload?.success || permanentBounces.length > 0 || !accepted.has(recipient)) {
-    throw new Error('INTERNAL_AUTH_EMAIL_SEND_FAILED');
-  }
+  try {
+    await sendResendEmail(fetchImpl, runtime, { to: [recipient], subject, text: textBody, html: htmlBody, operation: 'login-challenge-email', entityId: challengeId });
+  } catch { throw new Error('INTERNAL_AUTH_EMAIL_SEND_FAILED'); }
 }
 
 export function internalWebChallengeRequired(authorization = {}, config = {}) {
@@ -590,6 +562,7 @@ export function createInternalWorkforceAuthenticator({
           recipientEmail: transactionResult.challengeDelivery.recipientEmail,
           code: transactionResult.challengeDelivery.code,
           sourceApp: transactionResult.challengeDelivery.sourceApp,
+          challengeId: transactionResult.challengeDelivery.challengeId,
         });
       } catch {
         try {

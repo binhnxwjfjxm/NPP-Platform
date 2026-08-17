@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { loadResendEmailRuntime, resendEmailRuntimeReady, sendResendEmail } from '../email/resend.js';
 
 export const TECHNICAL_BACKUP_RECIPIENT = 'khuongbinh.info@gmail.com';
 
@@ -23,9 +24,7 @@ function safeEqualHex(leftValue, rightValue) {
 
 export function loadTechnicalBackupAccessRuntime({ env = process.env } = {}) {
   return Object.freeze({
-    accountId: text(env.CLOUDFLARE_ACCOUNT_ID),
-    apiToken: text(env.CLOUDFLARE_EMAIL_API_TOKEN),
-    from: text(env.INTERNAL_AUTH_EMAIL_FROM),
+    ...loadResendEmailRuntime({ env }),
     pepper: text(env.INTERNAL_AUTH_CHALLENGE_PEPPER),
     challengeTtlSeconds: boundedInteger(
       env.TECHNICAL_BACKUP_CHALLENGE_TTL_SECONDS,
@@ -51,12 +50,9 @@ export function loadTechnicalBackupAccessRuntime({ env = process.env } = {}) {
 
 export function technicalBackupAccessRuntimeReady(runtime, fetchImpl = globalThis.fetch) {
   return Boolean(
-    runtime?.accountId
-    && runtime?.apiToken
-    && EMAIL_PATTERN.test(runtime?.from ?? '')
+    resendEmailRuntimeReady(runtime, fetchImpl)
     && runtime?.pepper?.length >= 32
     && runtime?.recipient === TECHNICAL_BACKUP_RECIPIENT
-    && typeof fetchImpl === 'function'
   );
 }
 
@@ -98,38 +94,14 @@ export function technicalBackupUnlockTokenMatches(expectedHash, actualHash) {
   return safeEqualHex(expectedHash, actualHash);
 }
 
-export async function sendTechnicalBackupAccessEmail(fetchImpl, runtime, { code }) {
+export async function sendTechnicalBackupAccessEmail(fetchImpl, runtime, { code, challengeId }) {
   if (!technicalBackupAccessRuntimeReady(runtime, fetchImpl)) throw new Error('TECHNICAL_BACKUP_ACCESS_UNAVAILABLE');
-  const endpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(runtime.accountId)}/email/sending/send`;
   const minutes = Math.ceil(runtime.challengeTtlSeconds / 60);
   const subject = 'Mã mở khóa Khu vực kỹ thuật Hưng Phát';
   const bodyText = `Có yêu cầu mở Khu vực kỹ thuật sao lưu hệ thống Công Ty. Mã xác nhận: ${code}. Mã hết hạn sau ${minutes} phút. Mã này chỉ dùng cho sao lưu kỹ thuật; không dùng để xác nhận xóa dữ liệu.`;
   const bodyHtml = `<p>Có yêu cầu mở <strong>Khu vực kỹ thuật sao lưu hệ thống Công Ty</strong>.</p><p>Mã xác nhận: <strong>${code}</strong></p><p>Mã hết hạn sau ${minutes} phút.</p><p>Mã này chỉ dùng cho sao lưu kỹ thuật; không dùng để xác nhận xóa dữ liệu.</p>`;
-  const response = await fetchImpl(endpoint, {
-    method: 'POST',
-    signal: AbortSignal.timeout(EMAIL_TIMEOUT_MS),
-    headers: {
-      Authorization: `Bearer ${runtime.apiToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      to: [TECHNICAL_BACKUP_RECIPIENT],
-      from: { address: runtime.from, name: 'Hưng Phát Security' },
-      subject,
-      text: bodyText,
-      html: bodyHtml,
-    }),
-  });
-  if (!response?.ok) throw new Error('TECHNICAL_BACKUP_CHALLENGE_DELIVERY_FAILED');
-  const payload = await response.json().catch(() => null);
-  const result = payload?.result;
-  const accepted = new Set([
-    ...(Array.isArray(result?.delivered) ? result.delivered : []),
-    ...(Array.isArray(result?.queued) ? result.queued : []),
-  ].map((email) => String(email).trim().toLowerCase()));
-  const permanentBounces = Array.isArray(result?.permanent_bounces) ? result.permanent_bounces : [];
-  if (!payload?.success || permanentBounces.length > 0 || !accepted.has(TECHNICAL_BACKUP_RECIPIENT)) {
-    throw new Error('TECHNICAL_BACKUP_CHALLENGE_DELIVERY_FAILED');
-  }
-  return Object.freeze({ recipient: TECHNICAL_BACKUP_RECIPIENT });
+  try {
+    await sendResendEmail(fetchImpl, runtime, { to: [TECHNICAL_BACKUP_RECIPIENT], subject, text: bodyText, html: bodyHtml, operation: 'technical-backup-challenge-email', entityId: challengeId });
+    return Object.freeze({ recipient: TECHNICAL_BACKUP_RECIPIENT });
+  } catch { throw new Error('TECHNICAL_BACKUP_CHALLENGE_DELIVERY_FAILED'); }
 }
