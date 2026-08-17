@@ -83,6 +83,22 @@ export async function getInventoryBalance(client, {
             balance.base_variant_id,
             base.sku AS base_sku,
             base.name AS base_variant_name,
+            base.product_id,
+            product.code AS product_code,
+            product.name AS product_name,
+            base.unit_id AS base_unit_id,
+            base.conversion_to_base AS base_conversion_to_base,
+            base_unit.code AS base_unit_code,
+            base_unit.name AS base_unit_name,
+            base_unit.symbol AS base_unit_symbol,
+            package_variant.package_variant_id,
+            package_variant.package_sku,
+            package_variant.package_variant_name,
+            package_variant.package_unit_id,
+            package_variant.package_unit_code,
+            package_variant.package_unit_name,
+            package_variant.package_unit_symbol,
+            package_variant.package_conversion_to_base,
             balance.lot_id,
             lot.lot_code,
             lot.expiry_date,
@@ -102,6 +118,36 @@ export async function getInventoryBalance(client, {
        JOIN shared.product_variants base
          ON base.installation_id = balance.installation_id
         AND base.id = balance.base_variant_id
+       JOIN shared.products product
+         ON product.installation_id = base.installation_id
+        AND product.id = base.product_id
+       LEFT JOIN shared.units_of_measure base_unit
+         ON base_unit.installation_id = base.installation_id
+        AND base_unit.id = base.unit_id
+       LEFT JOIN LATERAL (
+         SELECT packaging.id AS package_variant_id,
+                packaging.sku AS package_sku,
+                packaging.name AS package_variant_name,
+                packaging.unit_id AS package_unit_id,
+                package_unit.code AS package_unit_code,
+                package_unit.name AS package_unit_name,
+                package_unit.symbol AS package_unit_symbol,
+                packaging.conversion_to_base AS package_conversion_to_base
+           FROM shared.product_variants packaging
+           JOIN shared.units_of_measure package_unit
+             ON package_unit.installation_id = packaging.installation_id
+            AND package_unit.id = packaging.unit_id
+          WHERE packaging.installation_id = base.installation_id
+            AND packaging.product_id = base.product_id
+            AND packaging.id <> base.id
+            AND packaging.is_active = true
+            AND packaging.conversion_to_base IS NOT NULL
+            AND packaging.conversion_to_base > 1
+          ORDER BY CASE WHEN package_unit.unit_kind = 'PACKAGE' THEN 0 ELSE 1 END,
+                   packaging.conversion_to_base DESC,
+                   packaging.sku ASC
+          LIMIT 1
+       ) package_variant ON true
        LEFT JOIN inventory.inventory_lots lot
          ON lot.installation_id = balance.installation_id
         AND lot.id = balance.lot_id
@@ -134,6 +180,22 @@ export async function listInventoryBalances(client, {
             balance.base_variant_id,
             base.sku AS base_sku,
             base.name AS base_variant_name,
+            base.product_id,
+            product.code AS product_code,
+            product.name AS product_name,
+            base.unit_id AS base_unit_id,
+            base.conversion_to_base AS base_conversion_to_base,
+            base_unit.code AS base_unit_code,
+            base_unit.name AS base_unit_name,
+            base_unit.symbol AS base_unit_symbol,
+            package_variant.package_variant_id,
+            package_variant.package_sku,
+            package_variant.package_variant_name,
+            package_variant.package_unit_id,
+            package_variant.package_unit_code,
+            package_variant.package_unit_name,
+            package_variant.package_unit_symbol,
+            package_variant.package_conversion_to_base,
             balance.lot_id,
             lot.lot_code,
             lot.expiry_date,
@@ -153,6 +215,36 @@ export async function listInventoryBalances(client, {
        JOIN shared.product_variants base
          ON base.installation_id = balance.installation_id
         AND base.id = balance.base_variant_id
+       JOIN shared.products product
+         ON product.installation_id = base.installation_id
+        AND product.id = base.product_id
+       LEFT JOIN shared.units_of_measure base_unit
+         ON base_unit.installation_id = base.installation_id
+        AND base_unit.id = base.unit_id
+       LEFT JOIN LATERAL (
+         SELECT packaging.id AS package_variant_id,
+                packaging.sku AS package_sku,
+                packaging.name AS package_variant_name,
+                packaging.unit_id AS package_unit_id,
+                package_unit.code AS package_unit_code,
+                package_unit.name AS package_unit_name,
+                package_unit.symbol AS package_unit_symbol,
+                packaging.conversion_to_base AS package_conversion_to_base
+           FROM shared.product_variants packaging
+           JOIN shared.units_of_measure package_unit
+             ON package_unit.installation_id = packaging.installation_id
+            AND package_unit.id = packaging.unit_id
+          WHERE packaging.installation_id = base.installation_id
+            AND packaging.product_id = base.product_id
+            AND packaging.id <> base.id
+            AND packaging.is_active = true
+            AND packaging.conversion_to_base IS NOT NULL
+            AND packaging.conversion_to_base > 1
+          ORDER BY CASE WHEN package_unit.unit_kind = 'PACKAGE' THEN 0 ELSE 1 END,
+                   packaging.conversion_to_base DESC,
+                   packaging.sku ASC
+          LIMIT 1
+       ) package_variant ON true
        LEFT JOIN inventory.inventory_lots lot
          ON lot.installation_id = balance.installation_id
         AND lot.id = balance.lot_id
