@@ -124,6 +124,10 @@ const SELECTIVE_BUSINESS_DATA_PURGE_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/088_selective_business_data_purge.sql', import.meta.url),
   'utf8',
 );
+const SALES_DELIVERY_EXECUTION_MODE_SQL = readFileSync(
+  new URL('../../../../database/migrations/sales/089_sales_delivery_execution_mode.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -177,6 +181,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '086_mcp_workforce_permission_catalog', sql: MCP_WORKFORCE_PERMISSION_CATALOG_SQL }),
   Object.freeze({ id: '087_technical_backup_access', sql: TECHNICAL_BACKUP_ACCESS_SQL }),
   Object.freeze({ id: '088_selective_business_data_purge', sql: SELECTIVE_BUSINESS_DATA_PURGE_SQL }),
+  Object.freeze({ id: '089_sales_delivery_execution_mode', sql: SALES_DELIVERY_EXECUTION_MODE_SQL }),
 ]);
 
 export { runMigrations };

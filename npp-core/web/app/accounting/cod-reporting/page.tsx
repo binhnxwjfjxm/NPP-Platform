@@ -21,17 +21,19 @@ export default async function CodReportingPage({ searchParams }: Props) {
   const initialTab: CodReportTab = COD_REPORT_TABS.has(requestedTab as CodReportTab)
     ? requestedTab as CodReportTab
     : 'custody';
-  const requestId = resolveCodRequestId(null);
   let handovers: CodHandover[] = [];
   let codError: string | null = null;
 
-  try {
-    handovers = await listCodHandovers<CodHandover>(requestId, { limit: 1000 });
-    if (handovers[0]) {
-      handovers = [await getCodHandover<CodHandover>(handovers[0].id, requestId), ...handovers.slice(1)];
+  if (initialTab === 'accounting') {
+    const requestId = resolveCodRequestId(null);
+    try {
+      handovers = await listCodHandovers<CodHandover>(requestId, { limit: 1000 });
+      if (handovers[0]) {
+        handovers = [await getCodHandover<CodHandover>(handovers[0].id, requestId), ...handovers.slice(1)];
+      }
+    } catch {
+      codError = 'Dữ liệu kế toán xác nhận COD chưa tải được. Hãy cập nhật lại trang trước khi thao tác.';
     }
-  } catch {
-    codError = 'Dữ liệu kế toán xác nhận COD chưa tải được. Hãy cập nhật lại trang trước khi thao tác.';
   }
 
   return (
