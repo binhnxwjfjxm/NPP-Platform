@@ -70,6 +70,58 @@ function balanceScopeLabel(balance: InventoryBalance): string {
   );
 }
 
+function unitLabel(name: string | null, symbol: string | null, code: string | null): string {
+  return String(name || symbol || code || '').trim();
+}
+
+function baseUnitLabel(balance: InventoryBalance): string {
+  return unitLabel(balance.base_unit_name, balance.base_unit_symbol, balance.base_unit_code);
+}
+
+function packageUnitLabel(balance: InventoryBalance): string {
+  return unitLabel(balance.package_unit_name, balance.package_unit_symbol, balance.package_unit_code);
+}
+
+function canonicalQuantityLabel(value: string, balance: InventoryBalance): string {
+  const unit = baseUnitLabel(balance);
+  return joinValues(formatQuantity(value), unit).replace(' · ', ' ');
+}
+
+function packageRuleLabel(balance: InventoryBalance): string | null {
+  const baseUnit = baseUnitLabel(balance);
+  const packageUnit = packageUnitLabel(balance);
+  const conversion = balance.package_conversion_to_base;
+  if (!baseUnit || !packageUnit || !conversion || quantityToScaled(conversion) <= QUANTITY_SCALE) return null;
+  return `Quy cách: 1 ${packageUnit} = ${formatQuantity(conversion)} ${baseUnit}`;
+}
+
+function packageBreakdown(value: string, balance: InventoryBalance): string | null {
+  const baseUnit = baseUnitLabel(balance);
+  const packageUnit = packageUnitLabel(balance);
+  const conversion = balance.package_conversion_to_base;
+  if (!baseUnit || !packageUnit || !conversion) return null;
+
+  const quantityScaled = quantityToScaled(value);
+  const conversionScaled = quantityToScaled(conversion);
+  if (quantityScaled <= 0n || conversionScaled <= QUANTITY_SCALE || quantityScaled < conversionScaled) return null;
+
+  const packageCount = quantityScaled / conversionScaled;
+  const remainder = quantityScaled % conversionScaled;
+  const packageText = `${packageCount} ${packageUnit}`;
+  if (remainder === 0n) return packageText;
+  return `${packageText} + ${formatQuantity(scaledToQuantity(remainder))} ${baseUnit}`;
+}
+
+function InventoryQuantity({ balance, value }: { balance: InventoryBalance; value: string }) {
+  const breakdown = packageBreakdown(value, balance);
+  return (
+    <div>
+      <div className={styles.mono}>{canonicalQuantityLabel(value, balance)}</div>
+      {breakdown ? <div className={styles.subtle}>{breakdown}</div> : null}
+    </div>
+  );
+}
+
 async function requestJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { cache: 'no-store', headers: { Accept: 'application/json' } });
   const payload = (await response.json().catch(() => ({}))) as RequestEnvelope<T>;
@@ -90,12 +142,18 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
 
   const normalizedSearch = normalizeSearch(search);
   const filteredBalances = useMemo(() => balances.filter((balance) => !normalizedSearch || matchTerm(
+    balance.product_name,
+    balance.product_code,
     balance.warehouse_code,
     balance.warehouse_name,
     balance.location_code,
     balance.location_name,
     balance.base_sku,
     balance.base_variant_name,
+    balance.base_unit_code,
+    balance.base_unit_name,
+    balance.package_unit_code,
+    balance.package_unit_name,
     balance.lot_code,
     balance.expiry_date,
   ).includes(normalizedSearch)), [balances, normalizedSearch]);
@@ -157,10 +215,10 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
           <div className={styles.heroControls}>
             <div className={styles.toolbar}>
               <input
-                aria-label="Tìm theo kho, vị trí, SKU hoặc lô"
+                aria-label="Tìm theo sản phẩm, SKU, kho, vị trí hoặc lô"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Tìm theo kho, vị trí, SKU hoặc lô"
+                placeholder="Tìm theo sản phẩm, SKU, kho, vị trí hoặc lô"
                 className={styles.searchInput}
                 data-testid="inventory-balances-search-input"
               />
@@ -180,44 +238,56 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
             <div className={styles.tableWrap}>
               <table className={styles.table}>
                 <thead>
-                  <tr><th>Kho / vị trí</th><th>SKU</th><th>Lô</th><th>Hạn dùng</th><th>Tồn thực</th><th>Đã giữ</th><th>Khả dụng</th><th></th></tr>
+                  <tr><th>Kho / vị trí</th><th>Sản phẩm / SKU</th><th>Lô</th><th>Hạn dùng</th><th>Tồn kho</th><th>Đã giữ cho đơn</th><th>Có thể xuất</th><th></th></tr>
                 </thead>
                 <tbody>
                   {filteredBalances.length === 0 ? (
-                    <tr><td colSpan={8} className={styles.subtle}>Chưa có số dư tồn kho.</td></tr>
-                  ) : filteredBalances.map((balance) => (
-                    <tr key={balanceKey(balance)} data-testid={`inventory-balance-${balanceKey(balance)}`}>
-                      <td>
-                        <div>{balance.warehouse_code} · {balance.warehouse_name}</div>
-                        <div className={styles.subtle}>{joinValues(balance.location_code, balance.location_name) || 'Không vị trí'}</div>
-                      </td>
-                      <td><div className={styles.mono}>{balance.base_sku}</div><div className={styles.subtle}>{balance.base_variant_name}</div></td>
-                      <td className={styles.mono}>{balance.lot_code ?? '—'}</td>
-                      <td>{formatDate(balance.expiry_date)}</td>
-                      <td className={styles.mono}>{formatQuantity(balance.on_hand_quantity)}</td>
-                      <td className={styles.mono}>{formatQuantity(balance.reserved_quantity)}</td>
-                      <td className={styles.mono}>{formatQuantity(balance.available_quantity)}</td>
-                      <td><button type="button" className={styles.miniButton} onClick={() => loadDrillDown(balance)}>Xem chi tiết</button></td>
-                    </tr>
-                  ))}
+                    <tr><td colSpan={8} className={styles.subtle}>Chưa có dữ liệu tồn kho.</td></tr>
+                  ) : filteredBalances.map((balance) => {
+                    const packageRule = packageRuleLabel(balance);
+                    return (
+                      <tr key={balanceKey(balance)} data-testid={`inventory-balance-${balanceKey(balance)}`}>
+                        <td>
+                          <div>{balance.warehouse_code} · {balance.warehouse_name}</div>
+                          <div className={styles.subtle}>{joinValues(balance.location_code, balance.location_name) || 'Không vị trí'}</div>
+                        </td>
+                        <td>
+                          <div><strong>{balance.product_name}</strong></div>
+                          <div className={styles.mono}>{balance.base_sku}</div>
+                          {balance.base_variant_name ? <div className={styles.subtle}>{balance.base_variant_name}</div> : null}
+                          {packageRule ? <div className={styles.subtle}>{packageRule}</div> : null}
+                        </td>
+                        <td className={styles.mono}>{balance.lot_code ?? '—'}</td>
+                        <td>{formatDate(balance.expiry_date)}</td>
+                        <td><InventoryQuantity balance={balance} value={balance.on_hand_quantity} /></td>
+                        <td><InventoryQuantity balance={balance} value={balance.reserved_quantity} /></td>
+                        <td><InventoryQuantity balance={balance} value={balance.available_quantity} /></td>
+                        <td><button type="button" className={styles.miniButton} onClick={() => loadDrillDown(balance)}>Xem chi tiết</button></td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
 
             <aside className={styles.panel} data-testid="inventory-drilldown-panel">
-              <h3 className={styles.panelTitle}>Lịch sử đúng kho / vị trí / lô</h3>
-              {!selectedBalance ? <p className={styles.subtle}>Chọn một dòng số dư để xem lịch sử.</p> : (
+              <h3 className={styles.panelTitle}>Lịch sử tồn kho theo vị trí / lô</h3>
+              {!selectedBalance ? <p className={styles.subtle}>Chọn một dòng tồn kho để xem lịch sử.</p> : (
                 <div className={styles.stack}>
                   <div className={styles.banner} data-testid="inventory-selected-scope">
                     <strong>{selectedBalance.warehouse_code} — {selectedBalance.warehouse_name}</strong>
                     <div className={styles.subtle}>{balanceScopeLabel(selectedBalance)}</div>
+                    <div><strong>{selectedBalance.product_name}</strong></div>
                     <div className={styles.mono}>{selectedBalance.base_sku}{selectedBalance.base_variant_name ? ` · ${selectedBalance.base_variant_name}` : ''}</div>
-                    <div>Tồn của dòng đang chọn: <strong>{formatQuantity(selectedBalance.on_hand_quantity)}</strong></div>
-                    <div>Tổng SKU tại kho: <strong>{formatQuantity(sameSkuWarehouseTotal)}</strong></div>
+                    {packageRuleLabel(selectedBalance) ? <div className={styles.subtle}>{packageRuleLabel(selectedBalance)}</div> : null}
+                    <div>Tồn của dòng đang chọn:</div>
+                    <InventoryQuantity balance={selectedBalance} value={selectedBalance.on_hand_quantity} />
+                    <div>Tổng tồn SKU tại kho:</div>
+                    <InventoryQuantity balance={selectedBalance} value={sameSkuWarehouseTotal} />
                   </div>
 
                   <div>
-                    <strong>Phân rã cùng SKU trong kho</strong>
+                    <strong>Chi tiết cùng SKU trong kho</strong>
                     <div className={styles.rowActions} data-testid="inventory-lot-breakdown">
                       {sameSkuAtWarehouse.map((balance) => (
                         <button
@@ -227,14 +297,14 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                           onClick={() => loadDrillDown(balance)}
                           disabled={busy === `drill-${balanceKey(balance)}`}
                         >
-                          {balanceScopeLabel(balance)} · {formatQuantity(balance.on_hand_quantity)}
+                          {balanceScopeLabel(balance)} · {canonicalQuantityLabel(balance.on_hand_quantity, balance)}
                         </button>
                       ))}
                     </div>
                   </div>
 
                   <p className={styles.subtle}>
-                    Lịch sử bên dưới chỉ lọc đúng kho, vị trí và lô đang chọn. Số tổng của SKU có thể gồm nhiều lô hoặc nhiều vị trí khác nhau.
+                    Lịch sử bên dưới chỉ lọc đúng kho, vị trí và lô đang chọn. Tổng tồn của SKU có thể gồm nhiều lô hoặc nhiều vị trí khác nhau.
                   </p>
 
                   {drillDown.length === 0 ? <p className={styles.subtle}>Chưa có giao dịch nào được tải cho phạm vi này.</p> : (
@@ -242,7 +312,7 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                       <div key={line.id ?? `${line.movement_id}-${line.base_quantity_delta}`} className={styles.banner}>
                         <div className={styles.rowActions}>
                           <span className={styles.pill}>{movementDirectionLabel(line.direction)}</span>
-                          <span className={styles.pill}>{formatQuantity(line.base_quantity_delta)}</span>
+                          <span className={styles.pill}>{canonicalQuantityLabel(line.base_quantity_delta, selectedBalance)}</span>
                         </div>
                         <div className={styles.subtle}>
                           <div>{`Kho ${selectedBalance.warehouse_code} · ${balanceScopeLabel(selectedBalance)}`}</div>

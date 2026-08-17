@@ -50,6 +50,22 @@ export type InventoryBalance = {
   base_variant_id: string;
   base_sku: string;
   base_variant_name: string | null;
+  product_id: string;
+  product_code: string;
+  product_name: string;
+  base_unit_id: string | null;
+  base_conversion_to_base: string | null;
+  base_unit_code: string | null;
+  base_unit_name: string | null;
+  base_unit_symbol: string | null;
+  package_variant_id: string | null;
+  package_sku: string | null;
+  package_variant_name: string | null;
+  package_unit_id: string | null;
+  package_unit_code: string | null;
+  package_unit_name: string | null;
+  package_unit_symbol: string | null;
+  package_conversion_to_base: string | null;
   lot_id: string | null;
   lot_code: string | null;
   expiry_date: string | null;
@@ -128,7 +144,7 @@ export const INVENTORY_Lot_TRACKING_MODES = ['NONE', 'REQUIRED'] as const;
 export const INVENTORY_EXPIRY_TRACKING_MODES = ['NONE', 'OPTIONAL', 'REQUIRED'] as const;
 
 export const inventoryTabs = [
-  { href: '/inventory/balances', label: 'Tra cứu tồn kho', hint: 'Số lượng hiện tại, đang giữ, khả dụng và vị trí hàng' },
+  { href: '/inventory/balances', label: 'Tra cứu tồn kho', hint: 'Tồn kho, số đã giữ cho đơn, số có thể xuất và vị trí hàng' },
   { href: '/inventory/tracking-policies', label: 'Chính sách quản lý lô', hint: 'Quy định lô, hạn sử dụng và vị trí hàng' },
   { href: '/inventory/lots', label: 'Lô hàng', hint: 'Mã lô, ngày sản xuất và hạn sử dụng' },
   { href: '/inventory/opening-balances', label: 'Thiết lập tồn đầu kỳ', hint: 'Dùng một lần khi bắt đầu hoặc chuyển dữ liệu cũ' },

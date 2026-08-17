@@ -8,12 +8,12 @@ const salesWorkspace = await readFile(new URL('../app/sales/sales-orders/SalesOr
 
 test('inventory balance drill-down makes exact lot scope and warehouse SKU total explicit', () => {
   assert.match(inventoryPage, /InventoryBalancesWorkspace/);
-  assert.match(inventoryWorkspace, /Lịch sử đúng kho \/ vị trí \/ lô/);
-  assert.match(inventoryWorkspace, /Tổng SKU tại kho/);
-  assert.match(inventoryWorkspace, /Phân rã cùng SKU trong kho/);
+  assert.match(inventoryWorkspace, /Lịch sử tồn kho theo vị trí \/ lô/);
+  assert.match(inventoryWorkspace, /Tổng tồn SKU tại kho/);
+  assert.match(inventoryWorkspace, /Chi tiết cùng SKU trong kho/);
   assert.match(inventoryWorkspace, /warehouseId: balance\.warehouse_id/);
   assert.match(inventoryWorkspace, /if \(balance\.lot_id\) params\.set\('lotId', balance\.lot_id\)/);
-  assert.match(inventoryWorkspace, /Số tổng của SKU có thể gồm nhiều lô hoặc nhiều vị trí khác nhau/);
+  assert.match(inventoryWorkspace, /Tổng tồn của SKU có thể gồm nhiều lô hoặc nhiều vị trí khác nhau/);
 });
 
 test('sales order list refreshes canonical data and keeps backordered confirmed orders visible', () => {
