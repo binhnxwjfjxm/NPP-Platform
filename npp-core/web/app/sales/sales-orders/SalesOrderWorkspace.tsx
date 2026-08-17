@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell-core';
 import type { SalesOrderBootstrap } from '../../../lib/sales-order-bootstrap';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
@@ -58,6 +58,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const [formVersion, setFormVersion] = useState<SalesOrderVersion | null>(null);
   const [amendmentReason, setAmendmentReason] = useState('');
   const [cancellationReason, setCancellationReason] = useState('');
+  const stockIssueKeyRef = useRef<{ orderId: string; key: string } | null>(null);
 
   const permissions = useMemo(() => new Set(initialBootstrap.permissionKeys), [initialBootstrap.permissionKeys]);
   const canCreate = permissions.has(SALES_ORDER_PERMISSION_KEYS.create);
@@ -65,6 +66,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const canConfirm = permissions.has(SALES_ORDER_PERMISSION_KEYS.confirm);
   const canAmend = permissions.has(SALES_ORDER_PERMISSION_KEYS.amend);
   const canCancel = permissions.has(SALES_ORDER_PERMISSION_KEYS.cancel);
+  const canIssueStock = permissions.has(SALES_ORDER_PERMISSION_KEYS.issueInventory);
   const canPriceOverride = permissions.has(SALES_ORDER_PERMISSION_KEYS.priceOverride);
   const canDiscountOverride = permissions.has(SALES_ORDER_PERMISSION_KEYS.discountOverride);
   const canQuickCreateCustomer = permissions.has(SALES_ORDER_PERMISSION_KEYS.customerWrite);
@@ -145,7 +147,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
     setError(null);
   }
 
-  async function action(kind: 'confirm' | 'amend' | 'confirm-amendment' | 'cancel') {
+  async function action(kind: 'confirm' | 'amend' | 'confirm-amendment' | 'issue-stock' | 'cancel') {
     if (!selected) return;
     setBusy(true);
     setError(null);
@@ -177,6 +179,21 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
           body: JSON.stringify({}),
         });
         setNotice('Đã xác nhận bản điều chỉnh; lịch sử cũ được giữ nguyên');
+      } else if (kind === 'issue-stock') {
+        const current = activeVersion(selected);
+        if (!current) throw new Error('Không tìm thấy phiên bản đơn đang hiệu lực');
+        const existing = stockIssueKeyRef.current;
+        const key = existing?.orderId === selected.id
+          ? existing.key
+          : mutationKey('sales-manual-stock-issue');
+        stockIssueKeyRef.current = { orderId: selected.id, key };
+        order = await apiRequest<SalesOrder>(`/api/sales-orders/${selected.id}/issue-stock`, {
+          method: 'POST',
+          headers: { 'Idempotency-Key': key },
+          body: JSON.stringify({ expectedRevision: current.revision }),
+        });
+        stockIssueKeyRef.current = null;
+        setNotice('Đã Xuất kho đơn Giao thủ công');
       } else {
         if (!cancellationReason.trim()) throw new Error('Hãy nhập lý do hủy');
         order = await apiRequest<SalesOrder>(`/api/sales-orders/${selected.id}/cancel`, {
@@ -257,6 +274,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
             canConfirm={canConfirm}
             canAmend={canAmend}
             canCancel={canCancel}
+            canIssueStock={canIssueStock}
             amendmentReason={amendmentReason}
             cancellationReason={cancellationReason}
             onAmendmentReason={setAmendmentReason}
@@ -267,6 +285,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
             onConfirm={() => action('confirm')}
             onCreateAmendment={() => action('amend')}
             onConfirmAmendment={() => action('confirm-amendment')}
+            onIssueStock={() => action('issue-stock')}
             onCancel={() => action('cancel')}
           />
         </div>

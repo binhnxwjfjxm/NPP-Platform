@@ -11,6 +11,7 @@ import {
 import * as warehouseRepository from '../db/repositories/warehouse.js';
 import * as service from '../services/sales-order.js';
 import * as entryService from '../services/sales-order-entry.js';
+import * as manualStockIssueService from '../services/sales-manual-stock-issue.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -160,6 +161,7 @@ function eventTypeFor(action) {
     update_amendment: 'sales.sales_order.amendment_updated',
     confirm_amendment: 'sales.sales_order.amendment_confirmed',
     manual_quick_edit: 'sales.sales_order.manual_quick_edited',
+    manual_stock_issue: 'sales.sales_order.manual_stock_issued',
     cancel: 'sales.sales_order.cancelled',
   }[action];
 }
@@ -482,7 +484,7 @@ export async function handleSalesOrderRoutes(req, res, options) {
   }
 
   const itemMatch = pathname.match(
-    /^\/api\/sales-orders\/([^/]+)(?:\/(draft|confirm|amendments|manual-edit|cancel))?$/,
+    /^\/api\/sales-orders\/([^/]+)(?:\/(draft|confirm|amendments|manual-edit|issue-stock|cancel))?$/,
   );
   if (!itemMatch) {
     sendError(
@@ -629,6 +631,32 @@ export async function handleSalesOrderRoutes(req, res, options) {
           idempotencyKey: key,
         });
       },
+    });
+    return true;
+  }
+
+  if (action === 'issue-stock' && method === 'POST') {
+    const context = await authenticateAndAuthorize(
+      req,
+      res,
+      options,
+      options.PERMISSIONS.coreDeliveryOrderIssueInventory,
+    );
+    if (!context) return true;
+    const payload = await readPayload(req, res, options);
+    if (payload === null) return true;
+    await executeIdempotentMutation(req, res, options, {
+      requestContext: context,
+      route: `/api/sales-orders/${id}/issue-stock`,
+      payload: { ...payload, id },
+      action: 'manual_stock_issue',
+      resourceId: id,
+      mutate: (client, key) => manualStockIssueService.issueManualSalesOrderStock(client, {
+        requestContext: context,
+        id,
+        expectedRevision: payload.expectedRevision,
+        idempotencyKey: key,
+      }),
     });
     return true;
   }

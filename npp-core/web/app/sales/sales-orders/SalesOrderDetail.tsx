@@ -23,6 +23,7 @@ type Props = {
   canConfirm: boolean;
   canAmend: boolean;
   canCancel: boolean;
+  canIssueStock: boolean;
   amendmentReason: string;
   cancellationReason: string;
   onAmendmentReason: (value: string) => void;
@@ -33,6 +34,7 @@ type Props = {
   onConfirm: () => void;
   onCreateAmendment: () => void;
   onConfirmAmendment: () => void;
+  onIssueStock: () => void;
   onCancel: () => void;
 };
 
@@ -174,10 +176,24 @@ export default function SalesOrderDetail(props: Props) {
             {props.canConfirm && <button type="button" className={styles.primaryButton} disabled={props.busy} onClick={props.onConfirm}>Xác nhận &amp; cấp số</button>}
           </div>
         )}
-        {order.status === 'confirmed' && isManual && !amendment && props.canAmend && (
+        {order.status === 'confirmed' && isManual && !amendment && (props.canAmend || props.canIssueStock) && (
           <div>
-            <button type="button" className={styles.primaryButton} disabled={props.busy || hasIssued} onClick={props.onEditManual}>Sửa đơn</button>
-            {hasIssued ? <small>Đơn đã Xuất kho nên không thể sửa trực tiếp.</small> : null}
+            <div className={styles.inlineActions}>
+              {props.canAmend && (
+                <button type="button" disabled={props.busy || hasIssued} onClick={props.onEditManual}>Sửa đơn</button>
+              )}
+              {props.canIssueStock && (
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={props.busy || hasIssued}
+                  onClick={props.onIssueStock}
+                >
+                  {hasIssued ? 'Đã xuất kho' : 'Xuất kho'}
+                </button>
+              )}
+            </div>
+            {hasIssued ? <small>Đơn đã Xuất kho nên không thể sửa hoặc xuất lại.</small> : null}
           </div>
         )}
         {order.status === 'confirmed' && !isManual && !amendment && props.canAmend && (

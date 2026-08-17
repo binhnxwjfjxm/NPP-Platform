@@ -46,7 +46,7 @@ test('confirmed manual order uses one direct Sửa đơn action without exposing
   assert.match(detail, />Sửa đơn<\/button>/);
   assert.match(detail, /!isManual && order\.versions/);
   assert.match(detail, /!isManual && amendment/);
-  assert.match(detail, /Đơn đã Xuất kho nên không thể sửa trực tiếp/);
+  assert.match(detail, /Đơn đã Xuất kho nên không thể sửa hoặc xuất lại/);
   assert.match(ui, /manual-edit/);
 });
 
