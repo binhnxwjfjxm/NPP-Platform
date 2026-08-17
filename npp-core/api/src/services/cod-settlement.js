@@ -10,6 +10,7 @@ import { normalizeHandoverPayload } from './cod-settlement-driver.js';
 
 export {
   getDriverCodOverview,
+  listDriverCodCustodyTripIds,
   recordCodCollection,
   createCodHandover,
 } from './cod-settlement-driver.js';

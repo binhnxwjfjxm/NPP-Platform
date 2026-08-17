@@ -48,7 +48,8 @@ export async function handleInventoryRoutes(req, res, options) {
       || /^\/api\/logistics\/trips\/[^/]+\/attempts\/[^/]+\/pod$/.test(pathname)) {
     return handleLogisticsPodRoutes(req, res, options);
   }
-  if (/^\/api\/logistics\/driver\/trips\/[^/]+\/(cod|cod-handovers)$/.test(pathname)
+  if (pathname === '/api/logistics/driver/cod-custody'
+      || /^\/api\/logistics\/driver\/trips\/[^/]+\/(cod|cod-handovers)$/.test(pathname)
       || /^\/api\/logistics\/driver\/trips\/[^/]+\/assignments\/[^/]+\/cod-collections$/.test(pathname)) {
     return handleCodDriverRoutes(req, res, options);
   }
