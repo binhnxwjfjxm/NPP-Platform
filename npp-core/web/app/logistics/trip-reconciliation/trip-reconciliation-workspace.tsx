@@ -217,8 +217,8 @@ export default function TripReconciliationWorkspace() {
     }
     if (detail.canClose) {
       return {
-        title: 'Đủ điều kiện đóng chuyến',
-        description: 'Hàng trên xe đã về 0 và hệ thống xác nhận đủ điều kiện. Kiểm tra lần cuối rồi đóng chuyến.',
+        title: 'Đủ điều kiện chốt đối soát & đóng chuyến',
+        description: 'Hàng trên xe đã về 0 và hệ thống xác nhận đủ điều kiện. Kiểm tra lần cuối rồi chốt đối soát và đóng chuyến.',
         action: 'close' as const,
       };
     }
@@ -474,7 +474,7 @@ export default function TripReconciliationWorkspace() {
                       <Link className={styles.primaryLink} href="/logistics/delivery-attempts">Mở kết quả lần giao</Link>
                     ) : null}
                     {nextStep.action === 'close' ? (
-                      <button type="button" onClick={() => scrollToSection('trip-reconciliation-close')}>Đi đến đóng chuyến</button>
+                      <button type="button" onClick={() => scrollToSection('trip-reconciliation-close')}>Đi đến chốt đối soát</button>
                     ) : null}
                   </div>
                 </section>
@@ -542,14 +542,14 @@ export default function TripReconciliationWorkspace() {
                     className={`${styles.actionBox} ${detail.canClose ? styles.actionBoxActive : styles.actionBoxBlocked}`}
                   >
                     <div className={styles.actionBoxTitle}>
-                      <div><p>Bước 4</p><h3>Đóng chuyến</h3></div>
+                      <div><p>Bước 4</p><h3>Chốt đối soát & đóng chuyến</h3></div>
                       <span>{detail.canClose ? 'Sẵn sàng' : 'Chưa đủ điều kiện'}</span>
                     </div>
-                    <p>Đóng chuyến chỉ khi mọi phiếu đã có kết quả và toàn bộ số lượng đã giao hoặc đã về kho.</p>
+                    <p>Chỉ chốt khi mọi phiếu đã có kết quả và toàn bộ số lượng đã giao hoặc đã về kho.</p>
+                    {closeBlockedReason ? <small className={styles.blockReason}>{closeBlockedReason}</small> : null}
                     <label>Thời điểm đóng<input type="datetime-local" value={closeAt} onChange={(event) => setCloseAt(event.target.value)} /></label>
                     <label>Ghi chú<textarea value={closeNote} onChange={(event) => setCloseNote(event.target.value)} maxLength={2000} /></label>
-                    <button type="button" onClick={submitClose} disabled={busy || !detail.canClose}>Đóng chuyến đã đối soát</button>
-                    {closeBlockedReason ? <small className={styles.blockReason}>{closeBlockedReason}</small> : null}
+                    <button type="button" onClick={submitClose} disabled={busy || !detail.canClose}>Chốt đối soát & đóng chuyến</button>
                   </section>
                 ) : (
                   <div className={styles.closedCard}>

@@ -36,7 +36,7 @@ test('workspace keeps custody lifecycle and uses the shared idempotency contract
   assert.match(workspaceSource, /createIdempotencyKey\('trip-reconciliation-close'\)/);
   assert.doesNotMatch(workspaceSource, /function freshKey|crypto\.randomUUID\(\)/);
   assert.match(workspaceSource, /Xác nhận nhập hàng về kho/);
-  assert.match(workspaceSource, /Đóng chuyến đã đối soát/);
+  assert.match(workspaceSource, /Chốt đối soát & đóng chuyến/);
   assert.doesNotMatch(workspaceSource, /driverId|employeeId|DATABASE_URL|CORE_API_SERVER_TOKEN/);
 });
 
