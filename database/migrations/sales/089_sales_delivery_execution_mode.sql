@@ -5,12 +5,41 @@
 ALTER TABLE sales.sales_order_versions
   ADD COLUMN IF NOT EXISTS delivery_execution_mode text NULL;
 
+-- Existing confirmed/superseded versions are immutable to normal application writes.
+-- Migration 089 is introducing a new historical fact, so backfill it under the
+-- table owner's migration transaction without weakening the runtime guard afterwards.
+ALTER TABLE sales.sales_order_versions
+  DISABLE TRIGGER sales_order_versions_immutable;
+
 UPDATE sales.sales_order_versions
 SET delivery_execution_mode = CASE
   WHEN delivery_mode = 'DELIVERY' THEN 'TRIP'
   ELSE NULL
 END
 WHERE delivery_execution_mode IS NULL;
+
+ALTER TABLE sales.sales_order_versions
+  ENABLE TRIGGER sales_order_versions_immutable;
+
+CREATE OR REPLACE FUNCTION sales.guard_sales_order_delivery_execution_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF OLD.version_status <> 'draft'
+     AND NEW.delivery_execution_mode IS DISTINCT FROM OLD.delivery_execution_mode THEN
+    RAISE EXCEPTION 'sales_order_version_locked';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sales_order_versions_delivery_execution_immutable
+  ON sales.sales_order_versions;
+CREATE TRIGGER sales_order_versions_delivery_execution_immutable
+BEFORE UPDATE OF delivery_execution_mode
+ON sales.sales_order_versions
+FOR EACH ROW EXECUTE FUNCTION sales.guard_sales_order_delivery_execution_mutation();
 
 CREATE OR REPLACE FUNCTION sales.normalize_sales_order_delivery_execution_mode()
 RETURNS trigger

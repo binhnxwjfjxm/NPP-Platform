@@ -60,6 +60,11 @@ test('migration 089 backfills legacy delivery orders and guards trip assignment'
   assert.ok(migration);
   assert.match(migration.sql, /delivery_execution_mode IN \('TRIP', 'MANUAL'\)/);
   assert.match(migration.sql, /WHEN delivery_mode = 'DELIVERY' THEN 'TRIP'/);
+  assert.match(migration.sql, /DISABLE TRIGGER sales_order_versions_immutable/);
+  assert.match(migration.sql, /ENABLE TRIGGER sales_order_versions_immutable/);
+  assert.match(migration.sql, /guard_sales_order_delivery_execution_mutation/);
+  assert.match(migration.sql, /OLD\.version_status <> 'draft'/);
+  assert.match(migration.sql, /NEW\.delivery_execution_mode IS DISTINCT FROM OLD\.delivery_execution_mode/);
   assert.match(migration.sql, /logistics_assignment_delivery_execution_denied/);
   assert.match(migration.sql, /delivery_order\.sales_order_version_id/);
 });
