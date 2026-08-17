@@ -218,7 +218,7 @@ export default function CodReconciliationWorkspace({ initialHandovers, initialEr
                 {(!selected.acceptance || selected.acceptance.reversalId) && selected.status !== 'reversed' ? <button disabled={busy} onClick={reverseHandover}>Đảo bàn giao</button> : null}
               </div>
             </>
-          ) : null}
+          )}
         </section>
       </div>
     </div>
