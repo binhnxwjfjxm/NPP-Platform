@@ -1,0 +1,3 @@
+GitHub connector smoke test.
+Created intentionally as a harmless file on a test branch.
+Date: 2026-08-17
