@@ -1,30 +1,7 @@
-import Link from 'next/link';
-import { AppShell } from '../../components/app-shell';
-import { getCodHandover, listCodHandovers, resolveCodRequestId } from '../../../lib/cod-reconciliation-gateway';
-import type { CodHandover } from '../../../lib/cod-reconciliation-types';
-import CodReconciliationWorkspace from './cod-reconciliation-workspace';
-import styles from './cod-reconciliation-page.module.css';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CodReconciliationPage() {
-  const requestId = resolveCodRequestId(null);
-  let handovers: CodHandover[] = [];
-  let error: string | null = null;
-  try {
-    handovers = await listCodHandovers<CodHandover>(requestId, { limit: 1000 });
-    if (handovers[0]) handovers = [await getCodHandover<CodHandover>(handovers[0].id, requestId), ...handovers.slice(1)];
-  } catch {
-    error = 'Dữ liệu đối soát COD chưa tải được. Hãy cập nhật lại trang trước khi thao tác.';
-  }
-  return (
-    <AppShell
-      title="Đối soát COD"
-      subtitle="Tách rõ tiền khách đã trả, tiền tài xế đang giữ, tiền đã bàn giao và số công ty thực nhận."
-      kicker="Kế toán bán hàng"
-      actions={<Link className={styles.actionLink} href="/accounting/reconciliation">Báo cáo đối soát tổng hợp</Link>}
-    >
-      <CodReconciliationWorkspace initialHandovers={handovers} initialError={error} />
-    </AppShell>
-  );
+export default function CodReconciliationPage() {
+  redirect('/accounting/cod-reporting?tab=accounting');
 }

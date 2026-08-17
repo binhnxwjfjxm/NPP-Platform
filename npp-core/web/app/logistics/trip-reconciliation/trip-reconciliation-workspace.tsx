@@ -258,7 +258,7 @@ export default function TripReconciliationWorkspace() {
     setQuantities(Object.fromEntries(
       next.lines
         .filter((line) => isPositiveQuantity(line.outstandingBaseQuantity))
-        .map((line) => [line.inventoryIssueLineId, line.outstandingBaseQuantity]),
+        .map((line) => [line.inventoryIssueLineId, formatExactDecimal(line.outstandingBaseQuantity)]),
     ));
   }, []);
 

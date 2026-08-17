@@ -1,6 +1,7 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { createIdempotencyKey } from '@npp/contracts';
+import { useEffect, useRef, useState } from 'react';
 import type { CodHandover } from '../../../lib/cod-reconciliation-types';
 import styles from '../supplier-payments/supplier-payments.module.css';
 
@@ -18,7 +19,8 @@ function scaled(value: string) {
 function decimal(value: bigint) {
   const negative = value < 0n;
   const absolute = negative ? -value : value;
-  return `${negative ? '-' : ''}${absolute / SCALE}.${String(absolute % SCALE).padStart(6, '0')}`;
+  const fraction = String(absolute % SCALE).padStart(6, '0').replace(/0+$/, '');
+  return `${negative ? '-' : ''}${absolute / SCALE}${fraction ? `.${fraction}` : ''}`;
 }
 
 function money(value: string) {
@@ -64,7 +66,7 @@ export default function CodReconciliationWorkspace({ initialHandovers, initialEr
     const slot = `${prefix}:${JSON.stringify(payload)}`;
     const existing = keys.current.get(slot);
     if (existing) return { slot, key: existing };
-    const key = `${prefix}-${crypto.randomUUID()}`;
+    const key = createIdempotencyKey(prefix);
     keys.current.set(slot, key);
     return { slot, key };
   }
@@ -79,6 +81,15 @@ export default function CodReconciliationWorkspace({ initialHandovers, initialEr
     setDetail(nextDetail);
     setAcceptedAmount(decimal(scaled(nextDetail.handedOverTotal) + scaled(nextDetail.unattributedExcessAmount)));
   }
+
+  useEffect(() => {
+    if (initialHandovers.length || initialError) return;
+    setBusy(true);
+    setMessage('');
+    void refresh()
+      .catch((error) => setMessage(error instanceof Error ? error.message : 'Không tải được bàn giao COD'))
+      .finally(() => setBusy(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function select(id: string) {
     setBusy(true); setMessage('');

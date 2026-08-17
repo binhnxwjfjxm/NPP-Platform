@@ -2,8 +2,11 @@
 
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import type { CodHandover } from '../../lib/cod-reconciliation-types';
 import type { CodReportingDashboard } from '../../lib/cod-reporting-types';
+import CodReconciliationWorkspace from '../accounting/cod-reconciliation/cod-reconciliation-workspace';
 import { AppShell } from './app-shell';
+import metricStyles from './cod-reporting-workspace.module.css';
 import {
   WorkspaceTabPanel,
   WorkspaceTabs,
@@ -12,17 +15,56 @@ import {
 import styles from './inventory-reporting-workspace.module.css';
 
 type ApiEnvelope<T> = Readonly<{ data?: T; error?: { message?: string } }>;
-type CodReportTab = 'custody' | 'collections' | 'handover' | 'promises' | 'exceptions';
+type CodReportTab = 'custody' | 'collections' | 'handover' | 'accounting' | 'promises' | 'exceptions';
+type Props = Readonly<{
+  initialHandovers: CodHandover[];
+  initialCodError: string | null;
+  initialTab?: CodReportTab;
+}>;
 
 const COD_TABS: readonly WorkspaceTabOption<CodReportTab>[] = Object.freeze([
   { id: 'custody', label: 'Tài xế giữ tiền' },
   { id: 'collections', label: 'Thu trong kỳ' },
   { id: 'handover', label: 'Bàn giao & kế toán' },
+  { id: 'accounting', label: 'Kế toán xác nhận' },
   { id: 'promises', label: 'Hẹn thu quá hạn' },
-  { id: 'exceptions', label: 'Ngoại lệ' },
+  { id: 'exceptions', label: 'Cần kiểm tra' },
 ]);
 
 const COD_TAB_PREFIX = 'cod-reporting';
+
+const COLLECTION_METHOD_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  cash: 'Tiền mặt',
+  cod: 'Thu khi giao hàng',
+  cash_on_delivery: 'Thu khi giao hàng',
+  bank_transfer: 'Chuyển khoản',
+  transfer: 'Chuyển khoản',
+});
+
+const COLLECTION_STATUS_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  pending: 'Chờ thu',
+  promised: 'Đã hẹn thu',
+  collected: 'Đã thu',
+  partially_collected: 'Thu một phần',
+  reversed: 'Đã hoàn tác',
+  waived: 'Không thu',
+});
+
+const RECONCILIATION_STATUS_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  submitted: 'Chờ xác nhận',
+  reconciled: 'Đã khớp',
+  discrepancy: 'Có chênh lệch',
+  reversed: 'Đã hoàn tác',
+  acceptance_reversed: 'Đã hoàn tác xác nhận',
+  matched: 'Đã khớp',
+  mismatch: 'Cần kiểm tra',
+  unresolved: 'Chưa xử lý',
+});
+
+function officeLabel(value: string | null | undefined, labels: Readonly<Record<string, string>>) {
+  const normalized = String(value ?? '').trim();
+  return labels[normalized] ?? normalized.replace(/[_-]+/g, ' ');
+}
 
 function count(value: string | null | undefined) {
   const normalized = String(value ?? '0').trim();
@@ -61,14 +103,14 @@ function custodyAmountList(rows: readonly { currencyCode: string; custodyRemaini
     : '0';
 }
 
-export default function CodReportingWorkspace() {
+export default function CodReportingWorkspace({ initialHandovers, initialCodError, initialTab = 'custody' }: Props) {
   const [report, setReport] = useState<CodReportingDashboard | null>(null);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<CodReportTab>('custody');
+  const [activeTab, setActiveTab] = useState<CodReportTab>(initialTab);
 
   const load = useCallback(async (next = { from, to, warehouseId }) => {
     setBusy(true);
@@ -94,6 +136,7 @@ export default function CodReportingWorkspace() {
   }, [from, to, warehouseId]);
 
   useEffect(() => { void load({ from: '', to: '', warehouseId: '' }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -115,12 +158,11 @@ export default function CodReportingWorkspace() {
 
   return (
     <AppShell
-      title="COD & đối soát vận hành"
-      subtitle="Theo dõi tiền khách đã trả, tiền tài xế đang giữ, bàn giao và kế toán tiếp nhận từ cùng nguồn COD canonical."
+      title="COD & đối soát"
+      subtitle="Theo dõi tiền khách đã trả, tiền tài xế đang giữ, bàn giao và kế toán tiếp nhận từ cùng một nguồn dữ liệu COD chính thức."
     >
       <div className={styles.workspace} data-testid="cod-reporting-workspace">
         <div className={styles.headerActions}>
-          <Link className={styles.linkButton} href="/accounting/cod-reconciliation">Mở màn xử lý COD</Link>
           <Link className={styles.linkButton} href="/accounting/reconciliation">Đối soát tổng hợp</Link>
         </div>
 
@@ -146,30 +188,30 @@ export default function CodReportingWorkspace() {
         </form>
 
         <p className={styles.notice}>
-          Khoản tiền mặt tài xế đang giữ là <strong>snapshot hiện tại</strong> và không bị che bởi kỳ báo cáo. Từ/đến ngày chỉ áp dụng cho hoạt động thu, bàn giao và kế toán tiếp nhận.
+          Khoản tiền tài xế đang giữ là <strong>số liệu hiện tại</strong> và không bị giới hạn bởi kỳ báo cáo. Từ/đến ngày chỉ áp dụng cho hoạt động thu, bàn giao và kế toán tiếp nhận.
         </p>
         {error ? <p className={styles.error}>{error}</p> : null}
 
         <section className={styles.cards} aria-label="Tổng quan COD">
-          <article className={styles.card}>
-            <span className={styles.cardLabel}>Khoản tiền mặt đang ở tài xế</span>
-            <strong className={styles.cardValue}>{count(custodyCount)}</strong>
-            <small className={styles.cardHint}>{custodyAmountList(report?.currentSnapshot.custodyByCurrency ?? [])}</small>
+          <article className={`${styles.card} ${metricStyles.metricCard}`}>
+            <span className={`${styles.cardLabel} ${metricStyles.metricLabel}`}>Khoản tiền tài xế đang giữ</span>
+            <strong className={`${styles.cardValue} ${metricStyles.metricValue}`}>{count(custodyCount)}</strong>
+            <small className={`${styles.cardHint} ${metricStyles.metricHint}`}>{custodyAmountList(report?.currentSnapshot.custodyByCurrency ?? [])}</small>
           </article>
-          <article className={styles.card}>
-            <span className={styles.cardLabel}>Bàn giao chờ kế toán nhận</span>
-            <strong className={styles.cardValue}>{count(pendingCount)}</strong>
-            <small className={styles.cardHint}>Current queue, không bị che bởi kỳ báo cáo</small>
+          <article className={`${styles.card} ${metricStyles.metricCard}`}>
+            <span className={`${styles.cardLabel} ${metricStyles.metricLabel}`}>Bàn giao chờ kế toán nhận</span>
+            <strong className={`${styles.cardValue} ${metricStyles.metricValue}`}>{count(pendingCount)}</strong>
+            <small className={`${styles.cardHint} ${metricStyles.metricHint}`}>Đang chờ kế toán xác nhận</small>
           </article>
-          <article className={styles.card}>
-            <span className={styles.cardLabel}>Lời hẹn thu đã quá hạn</span>
-            <strong className={styles.cardValue}>{count(String(report?.currentSnapshot.overduePromises.length ?? 0))}</strong>
-            <small className={styles.cardHint}>Chưa thu tiền, due_at đã qua</small>
+          <article className={`${styles.card} ${metricStyles.metricCard}`}>
+            <span className={`${styles.cardLabel} ${metricStyles.metricLabel}`}>Lời hẹn thu đã quá hạn</span>
+            <strong className={`${styles.cardValue} ${metricStyles.metricValue}`}>{count(String(report?.currentSnapshot.overduePromises.length ?? 0))}</strong>
+            <small className={`${styles.cardHint} ${metricStyles.metricHint}`}>Chưa thu tiền và đã quá ngày hẹn</small>
           </article>
-          <article className={styles.card}>
-            <span className={styles.cardLabel}>Ngoại lệ / chênh lệch</span>
-            <strong className={styles.cardValue}>{count(exceptionCount)}</strong>
-            <small className={styles.cardHint}>Không tự sửa hoặc gộp số liệu</small>
+          <article className={`${styles.card} ${metricStyles.metricCard}`}>
+            <span className={`${styles.cardLabel} ${metricStyles.metricLabel}`}>Cần kiểm tra / chênh lệch</span>
+            <strong className={`${styles.cardValue} ${metricStyles.metricValue}`}>{count(exceptionCount)}</strong>
+            <small className={`${styles.cardHint} ${metricStyles.metricHint}`}>Tách riêng để đối chiếu, không tự gộp số liệu</small>
           </article>
         </section>
 
@@ -178,17 +220,17 @@ export default function CodReportingWorkspace() {
           activeTab={activeTab}
           onChange={setActiveTab}
           idPrefix={COD_TAB_PREFIX}
-          label="Chi tiết COD và đối soát vận hành"
+          label="Chi tiết COD và đối soát"
         />
 
         <WorkspaceTabPanel tabId="custody" activeTab={activeTab} idPrefix={COD_TAB_PREFIX}>
           <section className={styles.section} data-testid="cod-custody-panel">
             <div className={styles.sectionHeader}>
-              <div><h2>Tiền mặt đang ở tài xế</h2><p>Customer settlement và driver cash custody là hai trục riêng.</p></div>
+              <div><h2>Tiền mặt đang ở tài xế</h2><p>Trạng thái khách đã thanh toán và tiền tài xế đang giữ được theo dõi riêng.</p></div>
             </div>
             <div className={styles.tableWrap}>
               <table className={styles.table}>
-                <thead><tr><th>Tài xế</th><th>Currency</th><th className={styles.numeric}>Số collection</th><th className={styles.numeric}>Đang giữ</th><th>Cũ nhất</th></tr></thead>
+                <thead><tr><th>Tài xế</th><th>Loại tiền</th><th className={styles.numeric}>Số khoản thu</th><th className={styles.numeric}>Đang giữ</th><th>Cũ nhất</th></tr></thead>
                 <tbody>
                   {report?.currentSnapshot.custodyByDriver.map((row) => (
                     <tr key={`${row.driverProfileId}-${row.currencyCode}`}>
@@ -209,17 +251,17 @@ export default function CodReportingWorkspace() {
         <WorkspaceTabPanel tabId="collections" activeTab={activeTab} idPrefix={COD_TAB_PREFIX}>
           <section className={styles.section} data-testid="cod-collections-panel">
             <div className={styles.sectionHeader}>
-              <div><h2>Hoạt động thu trong kỳ</h2><p>Tách theo currency, phương thức và trạng thái; không cộng chéo currency.</p></div>
+              <div><h2>Hoạt động thu trong kỳ</h2><p>Tách theo loại tiền, phương thức và trạng thái; không cộng gộp khác loại tiền.</p></div>
             </div>
             <div className={styles.tableWrap}>
               <table className={styles.table}>
-                <thead><tr><th>Currency</th><th>Phương thức</th><th>Trạng thái</th><th className={styles.numeric}>Số lượt</th><th className={styles.numeric}>Phải thu</th><th className={styles.numeric}>Đã nhận</th></tr></thead>
+                <thead><tr><th>Loại tiền</th><th>Phương thức</th><th>Trạng thái</th><th className={styles.numeric}>Số lượt</th><th className={styles.numeric}>Phải thu</th><th className={styles.numeric}>Đã nhận</th></tr></thead>
                 <tbody>
                   {report?.activity.collections.map((row) => (
                     <tr key={`${row.currencyCode}-${row.collectionMethod}-${row.collectionStatus}`}>
                       <td>{row.currencyCode}</td>
-                      <td>{row.collectionMethod}</td>
-                      <td>{row.collectionStatus}</td>
+                      <td>{officeLabel(row.collectionMethod, COLLECTION_METHOD_LABELS)}</td>
+                      <td>{officeLabel(row.collectionStatus, COLLECTION_STATUS_LABELS)}</td>
                       <td className={styles.numeric}>{count(row.collectionCount)}</td>
                       <td className={styles.numeric}>{money(row.expectedAmount, row.currencyCode)}</td>
                       <td className={styles.numeric}>{money(row.receivedAmount, row.currencyCode)}</td>
@@ -235,11 +277,11 @@ export default function CodReportingWorkspace() {
         <WorkspaceTabPanel tabId="handover" activeTab={activeTab} idPrefix={COD_TAB_PREFIX}>
           <section className={styles.section} data-testid="cod-handovers-period-panel">
             <div className={styles.sectionHeader}>
-              <div><h2>Bàn giao trong kỳ</h2><p>Số bàn giao và chênh lệch bàn giao theo từng currency.</p></div>
+              <div><h2>Bàn giao trong kỳ</h2><p>Số bàn giao và chênh lệch bàn giao theo từng loại tiền.</p></div>
             </div>
             <div className={styles.tableWrap}>
               <table className={styles.table}>
-                <thead><tr><th>Currency</th><th className={styles.numeric}>Số bàn giao</th><th className={styles.numeric}>Đã khai bàn giao</th><th className={styles.numeric}>Chênh lệch bàn giao</th></tr></thead>
+                <thead><tr><th>Loại tiền</th><th className={styles.numeric}>Số bàn giao</th><th className={styles.numeric}>Đã khai bàn giao</th><th className={styles.numeric}>Chênh lệch bàn giao</th></tr></thead>
                 <tbody>
                   {report?.activity.handovers.map((row) => (
                     <tr key={`handover-${row.currencyCode}`}>
@@ -257,11 +299,11 @@ export default function CodReportingWorkspace() {
 
           <section className={styles.section} data-testid="cod-acceptances-period-panel">
             <div className={styles.sectionHeader}>
-              <div><h2>Kế toán tiếp nhận trong kỳ</h2><p>Số acceptance, tiền công ty đã nhận và variance theo từng currency.</p></div>
+              <div><h2>Kế toán tiếp nhận trong kỳ</h2><p>Số lần kế toán nhận, tiền Công Ty đã nhận và chênh lệch theo từng loại tiền.</p></div>
             </div>
             <div className={styles.tableWrap}>
               <table className={styles.table}>
-                <thead><tr><th>Currency</th><th className={styles.numeric}>Số lần tiếp nhận</th><th className={styles.numeric}>Đã tiếp nhận</th><th className={styles.numeric}>Variance</th></tr></thead>
+                <thead><tr><th>Loại tiền</th><th className={styles.numeric}>Số lần tiếp nhận</th><th className={styles.numeric}>Đã tiếp nhận</th><th className={styles.numeric}>Chênh lệch</th></tr></thead>
                 <tbody>
                   {report?.activity.acceptances.map((row) => (
                     <tr key={`acceptance-${row.currencyCode}`}>
@@ -279,15 +321,15 @@ export default function CodReportingWorkspace() {
 
           <section className={styles.section} data-testid="cod-pending-handovers-panel">
             <div className={styles.sectionHeader}>
-              <div><h2>Bàn giao chờ kế toán tiếp nhận</h2><p>Đây là tiền đã rời custody tài xế nhưng chưa có acceptance hiện hành.</p></div>
+              <div><h2>Bàn giao chờ kế toán tiếp nhận</h2><p>Đây là tiền tài xế đã bàn giao nhưng kế toán chưa xác nhận tiếp nhận.</p></div>
             </div>
             <div className={styles.tableWrap}>
               <table className={styles.table}>
-                <thead><tr><th>Chuyến / tài xế</th><th>Kho</th><th>Currency</th><th className={styles.numeric}>Chờ nhận</th><th>Bàn giao lúc</th></tr></thead>
+                <thead><tr><th>Chuyến / tài xế</th><th>Kho</th><th>Loại tiền</th><th className={styles.numeric}>Chờ nhận</th><th>Bàn giao lúc</th></tr></thead>
                 <tbody>
                   {report?.currentSnapshot.pendingHandovers.map((row) => (
                     <tr key={row.handoverId}>
-                      <td><Link href="/accounting/cod-reconciliation">{row.tripNumber} · {row.driverCode}</Link></td>
+                      <td><Link href="/accounting/cod-reporting?tab=accounting">{row.tripNumber} · {row.driverCode}</Link></td>
                       <td>{row.warehouseCode}</td>
                       <td>{row.currencyCode}</td>
                       <td className={styles.numeric}>{money(row.pendingAcceptanceAmount, row.currencyCode)}</td>
@@ -299,6 +341,10 @@ export default function CodReportingWorkspace() {
               </table>
             </div>
           </section>
+        </WorkspaceTabPanel>
+
+        <WorkspaceTabPanel tabId="accounting" activeTab={activeTab} idPrefix={COD_TAB_PREFIX}>
+          <CodReconciliationWorkspace initialHandovers={initialHandovers} initialError={initialCodError} />
         </WorkspaceTabPanel>
 
         <WorkspaceTabPanel tabId="promises" activeTab={activeTab} idPrefix={COD_TAB_PREFIX}>
@@ -329,7 +375,7 @@ export default function CodReportingWorkspace() {
         <WorkspaceTabPanel tabId="exceptions" activeTab={activeTab} idPrefix={COD_TAB_PREFIX}>
           <section className={styles.section} data-testid="cod-exceptions-panel">
             <div className={styles.sectionHeader}>
-              <div><h2>Chênh lệch & ngoại lệ cần xử lý</h2><p>Lifecycle mismatch và handover không xác định được đúng một currency đều được surfaced, không đoán.</p></div>
+              <div><h2>Cần kiểm tra và chênh lệch</h2><p>Các trường hợp lệch trạng thái hoặc không xác định được một loại tiền duy nhất được tách riêng để kiểm tra, không tự suy đoán.</p></div>
             </div>
             <div className={styles.tableWrap}>
               <table className={styles.table}>
@@ -337,29 +383,29 @@ export default function CodReportingWorkspace() {
                 <tbody>
                   {report?.currentSnapshot.discrepancies.map((row) => (
                     <tr key={`discrepancy-${row.handoverId}`}>
-                      <td>Handover discrepancy</td>
-                      <td><Link href="/accounting/cod-reconciliation">{row.tripNumber} · {row.driverCode}</Link></td>
+                      <td>Chênh lệch bàn giao</td>
+                      <td><Link href="/accounting/cod-reporting?tab=accounting">{row.tripNumber} · {row.driverCode}</Link></td>
                       <td>{row.warehouseCode}</td>
-                      <td>{money(row.varianceAmount, row.currencyCode)} · {row.projectionStatus}</td>
+                      <td>{money(row.varianceAmount, row.currencyCode)} · {officeLabel(row.projectionStatus, RECONCILIATION_STATUS_LABELS)}</td>
                     </tr>
                   ))}
                   {report?.exceptions.lifecycle.map((row) => (
                     <tr key={`lifecycle-${row.anomalyType}-${row.sourceId}`}>
-                      <td>{row.anomalyType}</td>
+                      <td>{officeLabel(row.anomalyType, RECONCILIATION_STATUS_LABELS)}</td>
                       <td><Link href="/accounting/reconciliation">{row.sourceNumber}</Link></td>
                       <td>{row.warehouseId}</td>
-                      <td>{row.reconciliationStatus}</td>
+                      <td>{officeLabel(row.reconciliationStatus, RECONCILIATION_STATUS_LABELS)}</td>
                     </tr>
                   ))}
                   {report?.exceptions.currencyLineage.map((row) => (
                     <tr key={`currency-${row.handoverId}`}>
-                      <td>Currency lineage</td>
-                      <td><Link href="/accounting/cod-reconciliation">{row.tripNumber} · {row.driverCode}</Link></td>
+                      <td>Không xác định loại tiền</td>
+                      <td><Link href="/accounting/cod-reporting?tab=accounting">{row.tripNumber} · {row.driverCode}</Link></td>
                       <td>{row.warehouseCode}</td>
-                      <td>{row.currencyCount} currency trên handover — không đưa vào tổng tiền</td>
+                      <td>{row.currencyCount} loại tiền trong một bàn giao — không đưa vào tổng tiền</td>
                     </tr>
                   ))}
-                  {exceptionCount === '0' && !busy ? <tr><td colSpan={4} className={styles.empty}>Không có ngoại lệ COD hiện tại.</td></tr> : null}
+                  {exceptionCount === '0' && !busy ? <tr><td colSpan={4} className={styles.empty}>Không có trường hợp COD cần kiểm tra hiện tại.</td></tr> : null}
                 </tbody>
               </table>
             </div>

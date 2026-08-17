@@ -14,7 +14,7 @@ test('Phase 8.6 exposes COD reporting in Accounting without a global Reporting m
   assert.doesNotMatch(shell, /title:\s*'Reporting'/);
 });
 
-test('Phase 8.6 gateway is server-only GET and reporting workspace stays read-only', () => {
+test('Phase 8.6 gateway is server-only GET and reporting workspace keeps report loading read-only', () => {
   const gateway = source('../lib/cod-reporting-gateway.ts');
   const route = source('../app/api/reporting/cod/route.ts');
   const workspace = source('../app/components/cod-reporting-workspace.tsx');
@@ -40,11 +40,22 @@ test('Phase 8.6 renders period collection, handover and acceptance activity with
   assert.doesNotMatch(workspace, /reduce\([^\n]*activity\.(handovers|acceptances)/);
 });
 
-test('Phase 8.6 keeps real operational drill-down and snapshot-period warning', () => {
+test('Phase 8.6 keeps operational drill-down, current-state warning and office-language copy', () => {
   const workspace = source('../app/components/cod-reporting-workspace.tsx');
-  assert.match(workspace, /\/accounting\/cod-reconciliation/);
+  assert.match(workspace, /\/accounting\/cod-reporting\?tab=accounting/);
   assert.match(workspace, /\/accounting\/reconciliation/);
-  assert.match(workspace, /snapshot hiện tại/);
-  assert.match(workspace, /không bị che bởi kỳ báo cáo/);
+  assert.match(workspace, /số liệu hiện tại/);
+  assert.match(workspace, /không bị giới hạn bởi kỳ báo cáo/);
+  assert.doesNotMatch(workspace, /Current queue|due_at|COD canonical|Customer settlement|driver cash custody|Số acceptance|Variance|Lifecycle mismatch|surfaced/);
   assert.doesNotMatch(workspace, /Xuất CSV|exportCsv|download=/);
+});
+
+test('COD accounting data does not block normal reporting tabs and loads when its tab opens', () => {
+  const page = source('../app/accounting/cod-reporting/page.tsx');
+  const reconciliation = source('../app/accounting/cod-reconciliation/cod-reconciliation-workspace.tsx');
+  assert.match(page, /if \(initialTab === 'accounting'\)/);
+  assert.match(page, /listCodHandovers<.*>\(requestId, \{ limit: 1000 \}\)/);
+  assert.match(reconciliation, /useEffect\(\(\) => \{/);
+  assert.match(reconciliation, /if \(initialHandovers\.length \|\| initialError\) return;/);
+  assert.match(reconciliation, /void refresh\(\)/);
 });
