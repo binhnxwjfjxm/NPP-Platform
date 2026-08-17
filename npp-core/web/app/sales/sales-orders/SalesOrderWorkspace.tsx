@@ -67,6 +67,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const canAmend = permissions.has(SALES_ORDER_PERMISSION_KEYS.amend);
   const canCancel = permissions.has(SALES_ORDER_PERMISSION_KEYS.cancel);
   const canIssueStock = permissions.has(SALES_ORDER_PERMISSION_KEYS.issueInventory);
+  const canSettle = permissions.has(SALES_ORDER_PERMISSION_KEYS.recordCustomerPayment);
   const canPriceOverride = permissions.has(SALES_ORDER_PERMISSION_KEYS.priceOverride);
   const canDiscountOverride = permissions.has(SALES_ORDER_PERMISSION_KEYS.discountOverride);
   const canQuickCreateCustomer = permissions.has(SALES_ORDER_PERMISSION_KEYS.customerWrite);
@@ -275,6 +276,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
             canAmend={canAmend}
             canCancel={canCancel}
             canIssueStock={canIssueStock}
+            canSettle={canSettle}
             amendmentReason={amendmentReason}
             cancellationReason={cancellationReason}
             onAmendmentReason={setAmendmentReason}
@@ -286,6 +288,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
             onCreateAmendment={() => action('amend')}
             onConfirmAmendment={() => action('confirm-amendment')}
             onIssueStock={() => action('issue-stock')}
+            onManualOrderUpdated={mergeOrder}
             onCancel={() => action('cancel')}
           />
         </div>
