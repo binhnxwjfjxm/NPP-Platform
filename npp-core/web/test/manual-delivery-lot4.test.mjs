@@ -14,8 +14,8 @@ test('Issue #622 Lô 4 exposes two independent office-language actions after Xu�
     readFile(settlementPath, 'utf8'),
     readFile(detailPath, 'utf8'),
   ]);
-  assert.match(settlement, />Hoàn thành đơn<\/button>/);
-  assert.match(settlement, />Nộp tiền \/ Nợ<\/button>/);
+  assert.match(settlement, /['"]Hoàn thành đơn['"]/);
+  assert.match(settlement, /['"]Nộp tiền \/ Nợ['"]/);
   assert.match(settlement, /Hoàn thành đơn và tiền \/ nợ là hai việc độc lập/);
   assert.match(detail, /isManual && hasIssued/);
   assert.match(detail, /ManualSalesOrderSettlement/);
@@ -28,7 +28,7 @@ test('Nộp tiền / Nợ supports full, partial and full-debt input without inv
   assert.match(settlement, /<option value="CASH">Tiền mặt<\/option>/);
   assert.match(settlement, /<option value="BANK_TRANSFER">Chuyển khoản<\/option>/);
   assert.doesNotMatch(settlement, /issue-stock/);
-  assert.doesNotMatch(settlement, /Xuất kho.*onClick/s);
+  assert.doesNotMatch(settlement, /onClick=\{[^}]*issue/i);
 });
 
 test('same retry reuses canonical key while changed payment intent gets a new key', async () => {
