@@ -103,6 +103,7 @@ jobs:
         run: npm --workspace npp-core-web run verify 2>&1 | tee phase-6b2-web.log
 
       - name: Run Sales Order commercial Chromium gate
+        working-directory: npp-core/web
         run: |
           docker run --rm \
             --network host \
