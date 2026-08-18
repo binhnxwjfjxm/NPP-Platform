@@ -1,5 +1,5 @@
 import { PERMISSIONS } from '../access/permissions.js';
-import { searchManualInboundDocuments } from '../db/repositories/manual-inbound-history.js';
+import { getManualInboundHistoryDetail, searchManualInboundDocuments } from '../db/repositories/manual-inbound-history.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const INBOUND_TYPES = new Set(['MANUAL_RECEIPT', 'OFF_DOCUMENT_CUSTOMER_RETURN', 'RECOVERY', 'OTHER']);
@@ -71,5 +71,44 @@ export async function searchManualInboundHistory(client, {
       reversalDate: document.reversal_document_date ? String(document.reversal_document_date).slice(0, 10) : null,
       reversalNote: document.reversal_reason_note ?? null,
     }))),
+  });
+}
+
+export async function readManualInboundHistoryDetail(client, { requestContext, documentId }) {
+  if (!hasPermission(requestContext, PERMISSIONS.coreInventoryManualInboundRead)) {
+    return failure('PERMISSION_DENIED', 'Không có quyền xem Nhập kho thủ công.', 403);
+  }
+  const warehouseIds = allowedWarehouseIds(requestContext);
+  if (warehouseIds.length === 0) return failure('WAREHOUSE_SCOPE_DENIED', 'Chưa được cấp phạm vi kho.', 403);
+  const normalizedDocumentId = String(documentId ?? '').trim();
+  if (!UUID_PATTERN.test(normalizedDocumentId)) {
+    return failure('INVALID_MANUAL_INBOUND_ID', 'Chứng từ nhập kho không hợp lệ.');
+  }
+
+  const rows = await getManualInboundHistoryDetail(client, {
+    installationId: requestContext.installationId,
+    warehouseIds,
+    documentId: normalizedDocumentId,
+  });
+  if (!rows.length) return failure('MANUAL_INBOUND_NOT_FOUND', 'Không tìm thấy chứng từ nhập kho trong phạm vi được cấp.', 404);
+  const first = rows[0];
+  return Object.freeze({
+    ok: true,
+    detail: Object.freeze({
+      documentId: first.document_id,
+      documentDate: String(first.document_date).slice(0, 10),
+      referenceNumber: first.reference_number ?? null,
+      warehouseCode: first.warehouse_code,
+      warehouseName: first.warehouse_name,
+      lines: Object.freeze(rows.map((row) => Object.freeze({
+        baseVariantId: row.base_variant_id,
+        sku: row.sku,
+        productName: row.product_name ?? null,
+        baseUnitCode: row.base_unit_code ?? null,
+        quantityBefore: row.quantity_before,
+        quantityDelta: row.quantity_delta,
+        quantityAfter: row.quantity_after,
+      }))),
+    }),
   });
 }

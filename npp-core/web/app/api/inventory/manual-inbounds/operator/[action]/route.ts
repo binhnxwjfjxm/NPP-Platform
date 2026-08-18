@@ -5,6 +5,7 @@ import {
   listManualInboundOperatorWarehouses,
   normalizeManualInboundOperatorGatewayError,
   previewManualInboundOperator,
+  readManualInboundOperatorHistoryDetail,
   resolveManualInboundOperatorRequestId,
   reverseManualInboundOperator,
   searchManualInboundOperatorHistory,
@@ -60,6 +61,12 @@ export async function GET(
         referenceNumber: request.nextUrl.searchParams.get('referenceNumber'),
         requestId,
       }), requestId);
+    }
+    if (params.action === 'history-detail') {
+      return success(
+        await readManualInboundOperatorHistoryDetail(request.nextUrl.searchParams.get('documentId') ?? '', requestId),
+        requestId,
+      );
     }
     return NextResponse.json({
       error: { code: 'METHOD_NOT_ALLOWED', message: 'Thao tác này không hỗ trợ tải dữ liệu', retryable: false },
