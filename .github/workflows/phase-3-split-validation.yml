@@ -164,7 +164,9 @@ jobs:
 
       - name: Install Chromium
         working-directory: npp-core/web
-        run: npx playwright install --with-deps chromium
+        run: |
+          sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#https://archive.ubuntu.com/ubuntu/#g' /etc/apt/sources.list.d/ubuntu.sources
+          npx playwright install --with-deps chromium
 
       - name: Discover and run isolated Chromium tests
         shell: bash
@@ -306,7 +308,9 @@ jobs:
           FOUNDATION_R2_TEST_ENABLED: "false"
       - name: Install Chromium
         working-directory: npp-core/web
-        run: npx playwright install --with-deps chromium
+        run: |
+          sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#https://archive.ubuntu.com/ubuntu/#g' /etc/apt/sources.list.d/ubuntu.sources
+          npx playwright install --with-deps chromium
       - name: Run combined master-data Chromium flows
         run: npm --prefix npp-core/web run test:e2e -- e2e/customers.spec.ts e2e/suppliers.spec.ts e2e/products.spec.ts e2e/pricing.spec.ts e2e/document-numbering.spec.ts
       - name: Record cross-domain acceptance metadata
