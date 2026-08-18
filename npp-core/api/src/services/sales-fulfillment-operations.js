@@ -262,9 +262,6 @@ export async function suggestFulfillmentAllocation(client, { requestContext, dem
   const ordered = parseQuantity(loaded.demand.ordered_base_quantity) ?? 0n;
   const allocated = parseQuantity(loaded.demand.allocated_base_quantity) ?? 0n;
   const remaining = ordered > allocated ? ordered - allocated : 0n;
-  const heldRemaining = Math.max
-    ? null
-    : null;
   const reserved = parseQuantity(loaded.demand.reserved_base_quantity) ?? 0n;
   const held = reserved > allocated ? reserved - allocated : 0n;
   const plan = buildAutoPlan(loaded.candidates, held);
@@ -470,6 +467,12 @@ export async function executeAllocateFulfillmentDemand({
       if (!loaded.ok) return { failed: loaded };
       const ordered = parseQuantity(loaded.demand.ordered_base_quantity) ?? 0n;
       const allocatedBefore = parseQuantity(loaded.demand.allocated_base_quantity) ?? 0n;
+      if (allocatedBefore >= ordered) {
+        return { failed: failure(
+          'FULFILLMENT_DEMAND_ALREADY_ALLOCATED',
+          'No reserved quantity remains to allocate',
+        ) };
+      }
 
       if (mode === 'AUTO' || mode === 'QUANTITY') {
         const target = mode === 'AUTO'

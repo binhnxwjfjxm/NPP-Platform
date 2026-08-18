@@ -41,6 +41,10 @@ AS $$
 DECLARE
   write_context text := current_setting('npp.sales_fulfillment_write_context', true);
 BEGIN
+  IF write_context NOT IN ('fulfillment_service', 'delivery_issue_service', 'fulfillment_hold_service') THEN
+    RAISE EXCEPTION 'sales_fulfillment_demand_write_requires_service_context';
+  END IF;
+
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'sales_fulfillment_demands_cannot_be_deleted';
   END IF;
@@ -52,11 +56,11 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  IF OLD.state <> 'ACTIVE' THEN
-    RAISE EXCEPTION 'sales_fulfillment_demand_terminal_state_is_immutable';
-  END IF;
-
   IF write_context = 'fulfillment_hold_service' THEN
+    IF OLD.state <> 'ACTIVE' THEN
+      RAISE EXCEPTION 'sales_fulfillment_demand_terminal_state_is_immutable';
+    END IF;
+
     IF NEW.id IS DISTINCT FROM OLD.id
        OR NEW.installation_id IS DISTINCT FROM OLD.installation_id
        OR NEW.sales_order_id IS DISTINCT FROM OLD.sales_order_id
@@ -109,6 +113,23 @@ BEGIN
      OR NEW.created_at IS DISTINCT FROM OLD.created_at
      OR NEW.created_by IS DISTINCT FROM OLD.created_by THEN
     RAISE EXCEPTION 'sales_fulfillment_demand_immutable_fields_cannot_change';
+  END IF;
+
+  IF write_context = 'delivery_issue_service' THEN
+    IF NEW.allocated_base_quantity IS DISTINCT FROM OLD.allocated_base_quantity
+       OR NEW.picked_base_quantity IS DISTINCT FROM OLD.picked_base_quantity
+       OR NEW.packed_base_quantity IS DISTINCT FROM OLD.packed_base_quantity
+       OR NEW.cancelled_base_quantity IS DISTINCT FROM OLD.cancelled_base_quantity
+       OR NEW.state IS DISTINCT FROM OLD.state
+       OR NEW.issued_base_quantity < 0
+       OR NEW.issued_base_quantity > NEW.packed_base_quantity THEN
+      RAISE EXCEPTION 'sales_fulfillment_issue_projection_invalid';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF OLD.state <> 'ACTIVE' THEN
+    RAISE EXCEPTION 'sales_fulfillment_demand_terminal_state_is_immutable';
   END IF;
 
   IF NEW.allocated_base_quantity < OLD.allocated_base_quantity

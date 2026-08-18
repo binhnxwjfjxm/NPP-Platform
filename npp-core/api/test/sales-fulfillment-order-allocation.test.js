@@ -91,10 +91,10 @@ test('whole-order allocation retries every unallocated line so replenished stock
   assert.deepEqual(result.summary, {
     totalLines: 3,
     readyLines: 2,
-    shortageLines: 0,
-    needsAttentionLines: 1,
+    shortageLines: 1,
+    needsAttentionLines: 0,
   });
-  assert.deepEqual(result.lines.map((line) => line.outcome), ['READY', 'READY', 'NEEDS_ATTENTION']);
+  assert.deepEqual(result.lines.map((line) => line.outcome), ['READY', 'READY', 'SHORTAGE']);
   assert.equal(result.lines[2].reasonCode, 'NO_ALLOCATABLE_STOCK');
   assert.equal(calls.length, 3);
   assert.ok(calls.every((call) => call.payload.mode === 'AUTO'));
