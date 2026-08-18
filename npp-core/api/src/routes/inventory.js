@@ -8,6 +8,7 @@ import { handleInventoryCostingPeriodRoutes } from './inventory-costing-periods.
 import { handleInventoryTrackingPolicyCandidateRoutes } from './inventory-tracking-policy-candidates.js';
 import { handleOpeningBalanceOperatorRoutes } from './opening-balance-operator.js';
 import { handleManualInboundRoutes } from './manual-inbound.js';
+import { handleInventoryHoldRoutes } from './inventory-holds.js';
 import { handleCodDriverRoutes } from './cod-driver.js';
 import { handleLogisticsRoutes } from './logistics.js';
 import { handleLogisticsAttemptRoutes } from './logistics-attempts.js';
@@ -22,6 +23,9 @@ import { handleWarehouseSelectorRoutes } from './warehouse-selectors.js';
 // remain owned by inventory-core.js; this wrapper adds transfer, stocktake, adjustment and Logistics namespaces.
 export async function handleInventoryRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
+  if (pathname === '/api/inventory/holds') {
+    return handleInventoryHoldRoutes(req, res, options);
+  }
   if (pathname === '/api/inventory/tracking-policies/candidates') {
     return handleInventoryTrackingPolicyCandidateRoutes(req, res, options);
   }
