@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import type { SalesOrder } from '../../../lib/sales-order-types';
-import { apiRequest, formatMoney, mutationKey } from './sales-order-ui';
+import { activeVersion, apiRequest, formatMoney, mutationKey } from './sales-order-ui';
 import styles from './sales-orders.module.css';
 
 type StableMutation = {
@@ -42,6 +42,7 @@ export default function ManualSalesOrderSettlement({
   const [error, setError] = useState<string | null>(null);
   const completeKeyRef = useRef<StableMutation | null>(null);
   const settlementKeyRef = useRef<StableMutation | null>(null);
+  const currentVersion = activeVersion(order);
 
   useEffect(() => {
     setPaidAmount('0');
@@ -151,7 +152,7 @@ export default function ManualSalesOrderSettlement({
               placeholder="0"
             />
           </label>
-          <small>Tổng đơn: {formatMoney(order.total)} {order.currency}. Nhập 0 nếu ghi nợ toàn bộ.</small>
+          <small>Tổng đơn: {formatMoney(currentVersion?.total)} {order.currency}. Nhập 0 nếu ghi nợ toàn bộ.</small>
           <label>
             Hình thức nhận tiền
             <select
