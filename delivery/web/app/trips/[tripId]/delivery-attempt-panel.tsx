@@ -1,9 +1,10 @@
 'use client';
 
 import { createIdempotencyKey } from '@npp/contracts';
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type {
+  DeliveryAttemptLine,
   DeliveryAttemptResult,
   RecordDeliveryAttemptPayload,
   TripAssignment,
@@ -32,6 +33,10 @@ const REASONS = [
   ['OTHER', 'Lý do khác'],
 ] as const;
 
+const QUANTITY_PATTERN = /^(0|[1-9]\d{0,17})(?:\.(\d{1,12}))?$/;
+const QUANTITY_SCALE = BigInt('1000000000000');
+const ZERO_QUANTITY = BigInt(0);
+
 function localDateTimeValue(date: Date): string {
   const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
   return shifted.toISOString().slice(0, 16);
@@ -46,6 +51,39 @@ function formatDateTime(value: string | null): string {
 function quantityText(value: string): string {
   const normalized = value.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
   return normalized || '0';
+}
+
+function parseQuantity(value: string): bigint | null {
+  const normalized = value.trim();
+  const match = QUANTITY_PATTERN.exec(normalized);
+  if (!match) return null;
+  return BigInt(match[1]) * QUANTITY_SCALE + BigInt((match[2] ?? '').padEnd(12, '0'));
+}
+
+function formatScaledQuantity(value: bigint): string {
+  const whole = value / QUANTITY_SCALE;
+  const fraction = String(value % QUANTITY_SCALE).padStart(12, '0').replace(/0+$/, '');
+  return fraction ? `${whole}.${fraction}` : String(whole);
+}
+
+function remainingQuantity(issued: string, delivered: string): string | null {
+  const issuedValue = parseQuantity(issued);
+  const deliveredValue = parseQuantity(delivered);
+  if (issuedValue === null || deliveredValue === null || deliveredValue > issuedValue) return null;
+  return formatScaledQuantity(issuedValue - deliveredValue);
+}
+
+function baseUnitLabel(line: DeliveryAttemptLine): string {
+  return line.baseUnitCode || 'đơn vị tồn';
+}
+
+function unitRelationship(line: DeliveryAttemptLine): string | null {
+  if (!line.unitCode || !line.baseUnitCode || !line.conversionToBase) return null;
+  const conversion = quantityText(line.conversionToBase);
+  if (line.unitCode === line.baseUnitCode && conversion === '1') {
+    return `Đơn vị giao: ${line.baseUnitCode}`;
+  }
+  return `Quy cách: 1 ${line.unitCode} = ${conversion} ${line.baseUnitCode}`;
 }
 
 export default function DeliveryAttemptPanel({ tripId, assignment }: Props) {
@@ -64,11 +102,6 @@ export default function DeliveryAttemptPanel({ tripId, assignment }: Props) {
   const [message, setMessage] = useState('');
   const keys = useRef(new Map<string, string>());
 
-  const totalIssued = useMemo(
-    () => assignment.lines.reduce((total, line) => total + Number(line.issuedBaseQuantity), 0),
-    [assignment.lines],
-  );
-
   function operationKey(signature: string): string {
     const existing = keys.current.get(signature);
     if (existing) return existing;
@@ -84,6 +117,11 @@ export default function DeliveryAttemptPanel({ tripId, assignment }: Props) {
       setError('Phiếu chưa có dữ liệu hàng đã xuất kho để đối chiếu.');
       return;
     }
+    if ((result === 'delivered_full' || result === 'delivered_partial')
+      && assignment.lines.some((line) => !line.baseUnitCode || !line.conversionToBase)) {
+      setError('Có mặt hàng chưa xác định được quy cách hoặc đơn vị tồn. Vui lòng báo kho kiểm tra trước khi ghi giao.');
+      return;
+    }
     if ((result === 'failed' || result === 'rescheduled') && !reasonCode) {
       setError('Cần chọn lý do.');
       return;
@@ -91,6 +129,22 @@ export default function DeliveryAttemptPanel({ tripId, assignment }: Props) {
     if (result === 'rescheduled' && !rescheduledFor) {
       setError('Cần chọn thời điểm giao lại.');
       return;
+    }
+
+    if (result === 'delivered_partial') {
+      for (const line of assignment.lines) {
+        const entered = quantities[line.inventoryIssueLineId] || '0';
+        const delivered = parseQuantity(entered);
+        const issued = parseQuantity(line.issuedBaseQuantity);
+        if (delivered === null || issued === null || delivered > issued) {
+          setError(`Số thực giao của ${line.itemName || line.sku || 'mặt hàng'} không hợp lệ.`);
+          return;
+        }
+        if (!line.baseUnitAllowsFractional && delivered % QUANTITY_SCALE !== ZERO_QUANTITY) {
+          setError(`Số thực giao của ${line.itemName || line.sku || 'mặt hàng'} phải là số nguyên theo đơn vị ${baseUnitLabel(line)}.`);
+          return;
+        }
+      }
     }
 
     const payload: RecordDeliveryAttemptPayload = {
@@ -166,14 +220,23 @@ export default function DeliveryAttemptPanel({ tripId, assignment }: Props) {
             {assignment.attempt.note ? <p>Ghi chú: {assignment.attempt.note}</p> : null}
             {assignment.lines.some((line) => line.deliveredBaseQuantity !== null) ? (
               <ul className={styles.recordedLines}>
-                {assignment.lines.map((line) => (
-                  <li key={line.inventoryIssueLineId}>
-                    <span>{line.itemName || line.sku || 'Mặt hàng'}</span>
-                    <strong>
-                      {quantityText(line.deliveredBaseQuantity || '0')} / {quantityText(line.issuedBaseQuantity)} {line.unitCode || ''}
-                    </strong>
-                  </li>
-                ))}
+                {assignment.lines.map((line) => {
+                  const delivered = line.deliveredBaseQuantity || '0';
+                  const remaining = remainingQuantity(line.issuedBaseQuantity, delivered);
+                  const relationship = unitRelationship(line);
+                  return (
+                    <li key={line.inventoryIssueLineId}>
+                      <span>
+                        {line.itemName || line.sku || 'Mặt hàng'}
+                        {relationship ? <small>{relationship}</small> : null}
+                      </span>
+                      <strong>
+                        Đã giao {quantityText(delivered)} / {quantityText(line.issuedBaseQuantity)} {baseUnitLabel(line)}
+                      </strong>
+                      {remaining !== null ? <small>Còn trên xe: {remaining} {baseUnitLabel(line)}</small> : null}
+                    </li>
+                  );
+                })}
               </ul>
             ) : null}
             <p className={styles.terminalNotice}>Kết quả đã khóa và chỉ đọc.</p>
@@ -220,25 +283,32 @@ export default function DeliveryAttemptPanel({ tripId, assignment }: Props) {
 
             {result === 'delivered_partial' ? (
               <div className={styles.lineEditor}>
-                <p>Nhập số thực giao trên từng dòng. Tổng phải lớn hơn 0 và nhỏ hơn hàng đã xuất.</p>
-                {assignment.lines.map((line) => (
-                  <label key={line.inventoryIssueLineId}>
-                    <span>
-                      <strong>{line.itemName || line.sku || 'Mặt hàng'}</strong>
-                      <small>Đã xuất: {quantityText(line.issuedBaseQuantity)} {line.unitCode || ''}</small>
-                    </span>
-                    <input
-                      inputMode="decimal"
-                      value={quantities[line.inventoryIssueLineId] || '0'}
-                      onChange={(event) => setQuantities((current) => ({
-                        ...current,
-                        [line.inventoryIssueLineId]: event.target.value,
-                      }))}
-                      aria-label={`Số thực giao ${line.itemName || line.sku || ''}`}
-                    />
-                  </label>
-                ))}
-                <small>Tổng hàng đã xuất tham chiếu: {totalIssued.toLocaleString('vi-VN')}</small>
+                <p>Nhập số khách thực nhận theo đơn vị tồn hiển thị ở từng dòng.</p>
+                {assignment.lines.map((line) => {
+                  const entered = quantities[line.inventoryIssueLineId] || '0';
+                  const remaining = remainingQuantity(line.issuedBaseQuantity, entered);
+                  const relationship = unitRelationship(line);
+                  return (
+                    <label key={line.inventoryIssueLineId}>
+                      <span>
+                        <strong>{line.itemName || line.sku || 'Mặt hàng'}</strong>
+                        {relationship ? <small>{relationship}</small> : null}
+                        <small>Đã xuất: {quantityText(line.issuedBaseQuantity)} {baseUnitLabel(line)}</small>
+                      </span>
+                      <input
+                        inputMode={line.baseUnitAllowsFractional ? 'decimal' : 'numeric'}
+                        value={entered}
+                        onChange={(event) => setQuantities((current) => ({
+                          ...current,
+                          [line.inventoryIssueLineId]: event.target.value,
+                        }))}
+                        aria-label={`Số thực giao ${line.itemName || line.sku || ''} theo ${baseUnitLabel(line)}`}
+                      />
+                      <small>Đơn vị nhập: {baseUnitLabel(line)}</small>
+                      {remaining !== null ? <small>Còn trên xe: {remaining} {baseUnitLabel(line)}</small> : null}
+                    </label>
+                  );
+                })}
               </div>
             ) : null}
 

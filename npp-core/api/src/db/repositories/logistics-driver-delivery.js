@@ -186,7 +186,17 @@ export async function listDriverTripStops(client, { installationId, tripId }) {
                         'inventoryIssueLineId', issue_line.id,
                         'sku', delivery_line.sku_snapshot,
                         'itemName', delivery_line.item_name_snapshot,
-                        'unitCode', delivery_line.unit_code_snapshot,
+                        'unitCode', sales_line.unit_code_snapshot,
+                        'conversionToBase', sales_line.conversion_to_base::text,
+                        'baseUnitCode', COALESCE(
+                          base_unit.code,
+                          CASE
+                            WHEN sales_line.variant_id = issue_line.base_variant_id
+                              THEN sales_line.unit_code_snapshot
+                            ELSE NULL
+                          END
+                        ),
+                        'baseUnitAllowsFractional', COALESCE(base_unit.allows_fractional, false),
                         'issuedBaseQuantity', issue_line.issued_base_quantity::text,
                         'deliveredBaseQuantity', attempt_line.delivered_base_quantity::text
                       ) ORDER BY delivery_line.line_number, issue_line.id
@@ -195,6 +205,15 @@ export async function listDriverTripStops(client, { installationId, tripId }) {
                       JOIN sales.delivery_order_lines delivery_line
                         ON delivery_line.installation_id = issue_line.installation_id
                        AND delivery_line.id = issue_line.delivery_order_line_id
+                      JOIN sales.sales_order_version_lines sales_line
+                        ON sales_line.installation_id = delivery_line.installation_id
+                       AND sales_line.id = delivery_line.sales_order_line_id
+                      LEFT JOIN shared.product_variants base_variant
+                        ON base_variant.installation_id = issue_line.installation_id
+                       AND base_variant.id = issue_line.base_variant_id
+                      LEFT JOIN shared.units_of_measure base_unit
+                        ON base_unit.installation_id = base_variant.installation_id
+                       AND base_unit.id = base_variant.unit_id
                       LEFT JOIN logistics.delivery_attempt_lines attempt_line
                         ON attempt_line.installation_id = issue_line.installation_id
                        AND attempt_line.attempt_id = attempt.id
@@ -286,15 +305,36 @@ export async function listAttemptIssueLines(client, { installationId, inventoryI
   const result = await client.query(
     `SELECT issue_line.id AS inventory_issue_line_id,
             issue_line.delivery_order_line_id,
+            issue_line.base_variant_id,
             issue_line.issued_base_quantity,
             delivery_line.line_number,
             delivery_line.sku_snapshot,
             delivery_line.item_name_snapshot,
-            delivery_line.unit_code_snapshot
+            sales_line.variant_id AS sales_variant_id,
+            sales_line.unit_code_snapshot,
+            sales_line.conversion_to_base,
+            COALESCE(
+              base_unit.code,
+              CASE
+                WHEN sales_line.variant_id = issue_line.base_variant_id
+                  THEN sales_line.unit_code_snapshot
+                ELSE NULL
+              END
+            ) AS base_unit_code,
+            COALESCE(base_unit.allows_fractional, false) AS base_unit_allows_fractional
        FROM sales.delivery_order_inventory_issue_lines issue_line
        JOIN sales.delivery_order_lines delivery_line
          ON delivery_line.installation_id = issue_line.installation_id
         AND delivery_line.id = issue_line.delivery_order_line_id
+       JOIN sales.sales_order_version_lines sales_line
+         ON sales_line.installation_id = delivery_line.installation_id
+        AND sales_line.id = delivery_line.sales_order_line_id
+       LEFT JOIN shared.product_variants base_variant
+         ON base_variant.installation_id = issue_line.installation_id
+        AND base_variant.id = issue_line.base_variant_id
+       LEFT JOIN shared.units_of_measure base_unit
+         ON base_unit.installation_id = base_variant.installation_id
+        AND base_unit.id = base_variant.unit_id
       WHERE issue_line.installation_id = $1
         AND issue_line.issue_id = $2
       ORDER BY delivery_line.line_number, issue_line.id
@@ -332,11 +372,33 @@ export async function listAttemptLines(client, { installationId, attemptId }) {
             delivery_line.line_number,
             delivery_line.sku_snapshot,
             delivery_line.item_name_snapshot,
-            delivery_line.unit_code_snapshot
+            sales_line.unit_code_snapshot,
+            sales_line.conversion_to_base,
+            COALESCE(
+              base_unit.code,
+              CASE
+                WHEN sales_line.variant_id = issue_line.base_variant_id
+                  THEN sales_line.unit_code_snapshot
+                ELSE NULL
+              END
+            ) AS base_unit_code,
+            COALESCE(base_unit.allows_fractional, false) AS base_unit_allows_fractional
        FROM logistics.delivery_attempt_lines line
        JOIN sales.delivery_order_lines delivery_line
          ON delivery_line.installation_id = line.installation_id
         AND delivery_line.id = line.delivery_order_line_id
+       JOIN sales.sales_order_version_lines sales_line
+         ON sales_line.installation_id = delivery_line.installation_id
+        AND sales_line.id = delivery_line.sales_order_line_id
+       JOIN sales.delivery_order_inventory_issue_lines issue_line
+         ON issue_line.installation_id = line.installation_id
+        AND issue_line.id = line.inventory_issue_line_id
+       LEFT JOIN shared.product_variants base_variant
+         ON base_variant.installation_id = issue_line.installation_id
+        AND base_variant.id = issue_line.base_variant_id
+       LEFT JOIN shared.units_of_measure base_unit
+         ON base_unit.installation_id = base_variant.installation_id
+        AND base_unit.id = base_variant.unit_id
       WHERE line.installation_id = $1
         AND line.attempt_id = $2
       ORDER BY delivery_line.line_number, line.inventory_issue_line_id`,

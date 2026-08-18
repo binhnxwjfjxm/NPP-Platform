@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import {
   buildAuditRecord,
   buildOutboxEvent,
@@ -9,7 +10,6 @@ import * as repository from '../db/repositories/logistics-driver-delivery.js';
 import { postReceivableFromDeliveryAttempt } from './customer-receivable.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const REASON_PATTERN = /^[A-Z0-9][A-Z0-9._-]{0,63}$/;
 const QUANTITY_PATTERN = /^(0|[1-9]\d{0,17})(?:\.(\d{1,12}))?$/;
 const SCALE = 1_000_000_000_000n;
@@ -67,6 +67,31 @@ function formatQuantity(value) {
   return `${whole}.${fraction}`;
 }
 
+function validateDeliveryBaseQuantity(source, quantity) {
+  const conversion = parseQuantity(String(source?.conversion_to_base ?? ''));
+  const baseUnitCode = text(source?.base_unit_code, 32);
+  if (conversion === null || conversion <= 0n || !baseUnitCode) {
+    return failure(
+      'DELIVERY_ATTEMPT_UNIT_CONTRACT_INVALID',
+      'Không thể xác định quy cách và đơn vị tồn của dòng hàng. Vui lòng kiểm tra lại sản phẩm trước khi giao.',
+      false,
+      { inventoryIssueLineId: source?.inventory_issue_line_id ?? null },
+    );
+  }
+  if (source?.base_unit_allows_fractional !== true && quantity % SCALE !== 0n) {
+    return failure(
+      'DELIVERY_ATTEMPT_BASE_UNIT_FRACTION_NOT_ALLOWED',
+      `Số thực giao phải là số nguyên theo đơn vị ${baseUnitCode}.`,
+      false,
+      {
+        inventoryIssueLineId: source?.inventory_issue_line_id ?? null,
+        baseUnitCode,
+      },
+    );
+  }
+  return null;
+}
+
 function mapAttemptLine(row) {
   return Object.freeze({
     id: row.id,
@@ -75,6 +100,9 @@ function mapAttemptLine(row) {
     sku: row.sku_snapshot ?? null,
     itemName: row.item_name_snapshot ?? null,
     unitCode: row.unit_code_snapshot ?? null,
+    conversionToBase: row.conversion_to_base == null ? null : String(row.conversion_to_base),
+    baseUnitCode: row.base_unit_code ?? null,
+    baseUnitAllowsFractional: row.base_unit_allows_fractional === true,
     issuedBaseQuantity: String(row.issued_base_quantity),
     deliveredBaseQuantity: String(row.delivered_base_quantity),
   });
@@ -104,6 +132,9 @@ function mapAssignmentLine(value) {
     sku: value.sku ?? null,
     itemName: value.itemName ?? null,
     unitCode: value.unitCode ?? null,
+    conversionToBase: value.conversionToBase == null ? null : String(value.conversionToBase),
+    baseUnitCode: value.baseUnitCode ?? null,
+    baseUnitAllowsFractional: value.baseUnitAllowsFractional === true,
     issuedBaseQuantity: String(value.issuedBaseQuantity),
     deliveredBaseQuantity: value.deliveredBaseQuantity == null
       ? null
@@ -335,7 +366,7 @@ function normalizeAttemptPayload(payload) {
 }
 
 function eventKey(idempotencyKey, assignmentId) {
-  return `delivery-attempt:${payloadHash({ idempotencyKey, assignmentId }).slice(0, 48)}`;
+  return `delivery-attempt-${payloadHash({ idempotencyKey, assignmentId }).slice(0, 48)}`;
 }
 
 function knownDatabaseFailure(error) {
@@ -368,7 +399,7 @@ export async function recordDriverDeliveryAttempt({
 }) {
   if (!UUID_PATTERN.test(String(tripId ?? ''))) return failure('INVALID_TRIP_ID', 'Trip id is invalid');
   if (!UUID_PATTERN.test(String(assignmentId ?? ''))) return failure('INVALID_ASSIGNMENT_ID', 'Assignment id is invalid');
-  if (!IDEMPOTENCY_PATTERN.test(String(idempotencyKey ?? ''))) {
+  if (!IDEMPOTENCY_KEY_PATTERN.test(String(idempotencyKey ?? ''))) {
     return failure('INVALID_IDEMPOTENCY_KEY', 'Idempotency key must use 1-128 safe characters');
   }
   const parsed = normalizeAttemptPayload(payload);
@@ -449,11 +480,31 @@ export async function recordDriverDeliveryAttempt({
       return failure('DELIVERY_ATTEMPT_SOURCE_LINES_REQUIRED', 'Inventory OUT source lines were not found');
     }
 
+    const issuedByLine = new Map();
+    for (const source of sourceLines) {
+      const issued = parseQuantity(String(source.issued_base_quantity));
+      if (issued === null || issued <= 0n) {
+        await client.query('ROLLBACK');
+        return failure(
+          'DELIVERY_ATTEMPT_SOURCE_QUANTITY_INVALID',
+          'Số lượng đã xuất của dòng hàng không hợp lệ. Vui lòng kiểm tra lại phiếu xuất.',
+          false,
+          { inventoryIssueLineId: source.inventory_issue_line_id },
+        );
+      }
+      const contractError = validateDeliveryBaseQuantity(source, issued);
+      if (contractError) {
+        await client.query('ROLLBACK');
+        return contractError;
+      }
+      issuedByLine.set(source.inventory_issue_line_id, issued);
+    }
+
     let attemptLines = [];
     if (normalized.result === 'delivered_full') {
       attemptLines = sourceLines.map((source) => Object.freeze({
         source,
-        delivered: parseQuantity(String(source.issued_base_quantity)),
+        delivered: issuedByLine.get(source.inventory_issue_line_id),
       }));
     } else if (normalized.result === 'delivered_partial') {
       if (normalized.lines.length !== sourceLines.length) {
@@ -461,23 +512,28 @@ export async function recordDriverDeliveryAttempt({
         return failure('DELIVERY_ATTEMPT_PARTIAL_LINE_SET_MISMATCH', 'Partial delivery must include every Inventory OUT line');
       }
       const requested = new Map(normalized.lines.map((line) => [line.inventoryIssueLineId, line.quantity]));
-      let deliveredTotal = 0n;
-      let issuedTotal = 0n;
+      let hasDeliveredQuantity = false;
+      let hasRemainingQuantity = false;
       attemptLines = [];
       for (const source of sourceLines) {
-        const issued = parseQuantity(String(source.issued_base_quantity));
+        const issued = issuedByLine.get(source.inventory_issue_line_id);
         const delivered = requested.get(source.inventory_issue_line_id);
-        if (issued === null || delivered === undefined || delivered > issued) {
+        if (issued === undefined || delivered === undefined || delivered > issued) {
           await client.query('ROLLBACK');
           return failure('DELIVERY_ATTEMPT_QUANTITY_EXCEEDS_ISSUED', 'Delivered quantity exceeds Inventory OUT');
         }
-        deliveredTotal += delivered;
-        issuedTotal += issued;
+        const contractError = validateDeliveryBaseQuantity(source, delivered);
+        if (contractError) {
+          await client.query('ROLLBACK');
+          return contractError;
+        }
+        if (delivered > 0n) hasDeliveredQuantity = true;
+        if (delivered < issued) hasRemainingQuantity = true;
         attemptLines.push(Object.freeze({ source, delivered }));
       }
-      if (deliveredTotal <= 0n || deliveredTotal >= issuedTotal) {
+      if (!hasDeliveredQuantity || !hasRemainingQuantity) {
         await client.query('ROLLBACK');
-        return failure('DELIVERY_ATTEMPT_PARTIAL_QUANTITY_INVALID', 'Partial delivery must be greater than zero and less than Inventory OUT');
+        return failure('DELIVERY_ATTEMPT_PARTIAL_QUANTITY_INVALID', 'Partial delivery must include delivered and remaining quantity');
       }
     }
 
@@ -517,14 +573,19 @@ export async function recordDriverDeliveryAttempt({
         actorId: requestContext.actorId,
       }));
     }
-
-    const snapshotLines = insertedLines.map((line) => ({
-      ...line,
-      line_number: sourceLines.find((source) => source.inventory_issue_line_id === line.inventory_issue_line_id)?.line_number,
-      sku_snapshot: sourceLines.find((source) => source.inventory_issue_line_id === line.inventory_issue_line_id)?.sku_snapshot,
-      item_name_snapshot: sourceLines.find((source) => source.inventory_issue_line_id === line.inventory_issue_line_id)?.item_name_snapshot,
-      unit_code_snapshot: sourceLines.find((source) => source.inventory_issue_line_id === line.inventory_issue_line_id)?.unit_code_snapshot,
-    }));
+    const snapshotLines = insertedLines.map((line) => {
+      const source = sourceLines.find((candidate) => candidate.inventory_issue_line_id === line.inventory_issue_line_id);
+      return {
+        ...line,
+        line_number: source?.line_number,
+        sku_snapshot: source?.sku_snapshot,
+        item_name_snapshot: source?.item_name_snapshot,
+        unit_code_snapshot: source?.unit_code_snapshot,
+        conversion_to_base: source?.conversion_to_base,
+        base_unit_code: source?.base_unit_code,
+        base_unit_allows_fractional: source?.base_unit_allows_fractional === true,
+      };
+    });
     const snapshot = mapAttempt(inserted, snapshotLines);
 
     if (normalized.result === 'delivered_full' || normalized.result === 'delivered_partial') {
@@ -617,6 +678,7 @@ export const logisticsDriverDeliveryInternals = Object.freeze({
   payloadHash,
   parseQuantity,
   formatQuantity,
+  validateDeliveryBaseQuantity,
   normalizeAttemptPayload,
   eventKey,
 });
