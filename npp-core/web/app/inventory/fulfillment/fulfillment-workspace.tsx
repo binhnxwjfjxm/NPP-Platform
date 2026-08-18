@@ -151,6 +151,7 @@ type StatusFilter = 'all' | 'waiting' | 'allocated' | 'picking' | 'packing';
 const SCALE = 1_000_000_000_000n;
 const IDEMPOTENCY_INTENT_CACHE_LIMIT = 256;
 const idempotencyKeys = new Map<string, string>();
+const QUANTITY_PATTERN = /^(0|[1-9]\d{0,17})(?:\.\d{1,12})?$/;
 
 function parseQuantity(value: string): bigint {
   const [whole = '0', fraction = ''] = String(value ?? '0').split('.');
@@ -307,7 +308,7 @@ export default function FulfillmentWorkspace() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<SuggestionDetail | null>(null);
   const [orderAllocationResult, setOrderAllocationResult] = useState<OrderAllocationResult | null>(null);
-  const [allocationQuantity, setAllocationQuantity] = useState('');
+  const [allocationQuantities, setAllocationQuantities] = useState<Record<string, string>>({});
   const [search, setSearch] = useState('');
   const [channelFilter, setChannelFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -417,7 +418,6 @@ export default function FulfillmentWorkspace() {
     setBusy(`detail-${demandId}`);
     setError(null);
     setSelectedId(demandId);
-    setAllocationQuantity('');
     try {
       const next = await requestJson<SuggestionDetail>(
         `/api/inventory/fulfillment-demands/${demandId}/suggestions`,
@@ -479,45 +479,45 @@ export default function FulfillmentWorkspace() {
     }
   }
 
-  async function allocateSelected(mode: 'AUTO' | 'QUANTITY') {
-    if (!selectedId || !detail || !selectedWork) return;
-    const unallocated = quantityDifference(selectedWork.orderedBaseQuantity, selectedWork.allocatedBaseQuantity);
+  async function allocateItem(item: WorkItem, mode: 'AUTO' | 'QUANTITY') {
+    const demandId = item.fulfillmentDemandId;
+    const unallocated = quantityDifference(item.orderedBaseQuantity, item.allocatedBaseQuantity);
     if (parseQuantity(unallocated) <= 0n) return;
-    const quantity = allocationQuantity.trim();
+    const quantity = String(allocationQuantities[demandId] ?? '').trim();
     if (mode === 'QUANTITY') {
-      if (!/^(0|[1-9]\d{0,17})(?:\.\d{1,12})?$/.test(quantity) || parseQuantity(quantity) <= 0n) {
+      if (!QUANTITY_PATTERN.test(quantity) || parseQuantity(quantity) <= 0n) {
         setError('Nhập số lượng phân bổ lớn hơn 0.');
         return;
       }
       if (parseQuantity(quantity) > parseQuantity(unallocated)) {
-        setError(`Số lượng phân bổ không được vượt ${formatQuantity(unallocated)} ${selectedWork.baseUnitCode}.`);
+        setError(`Số lượng phân bổ không được vượt ${formatQuantity(unallocated)} ${item.baseUnitCode}.`);
         return;
       }
     }
     const fingerprint = mode === 'AUTO'
-      ? `${selectedWork.orderedBaseQuantity}:${selectedWork.allocatedBaseQuantity}:full`
-      : `${selectedWork.allocatedBaseQuantity}:${quantity}`;
-    setBusy('allocate');
+      ? `${item.orderedBaseQuantity}:${item.allocatedBaseQuantity}:full`
+      : `${item.allocatedBaseQuantity}:${quantity}`;
+    setBusy(`allocate-${demandId}`);
     setError(null);
     setNotice(null);
     try {
       await requestJson(
-        `/api/inventory/fulfillment-demands/${selectedId}/allocate`,
+        `/api/inventory/fulfillment-demands/${demandId}/allocate`,
         {
           method: 'POST',
           headers: {
-            'Idempotency-Key': keyFor('allocate', selectedId, fingerprint),
+            'Idempotency-Key': keyFor('allocate', demandId, fingerprint),
           },
           body: JSON.stringify(mode === 'AUTO'
             ? { mode: 'AUTO' }
             : { mode: 'QUANTITY', quantity }),
         },
       );
-      setAllocationQuantity('');
+      setAllocationQuantities((current) => ({ ...current, [demandId]: '' }));
       setNotice(mode === 'AUTO'
-        ? 'Đã phân bổ tối đa cho phần đơn còn cần.'
-        : `Đã phân bổ ${formatQuantity(quantity)} ${selectedWork.baseUnitCode}.`);
-      await loadWork(selectedId);
+        ? `Đã phân bổ tối đa cho ${item.sku}.`
+        : `Đã phân bổ ${formatQuantity(quantity)} ${item.baseUnitCode} cho ${item.sku}.`);
+      await loadWork(demandId);
     } catch (operationError) {
       setError(operationError instanceof Error ? operationError.message : 'Không phân bổ được hàng.');
     } finally {
@@ -723,35 +723,73 @@ export default function FulfillmentWorkspace() {
                   <div className={styles.sectionHeading}>
                     <div>
                       <h4>Sản phẩm trong đơn</h4>
-                      <p>Số khách đặt được giữ nguyên; Kho xử lý theo đơn vị quy đổi chuẩn.</p>
+                      <p>Nhập số lượng và phân bổ ngay trên từng dòng; số tồn chỉ để quan sát quyết định.</p>
                     </div>
                     <span>{selectedOrder.items.length} dòng</span>
                   </div>
                   <div className={styles.tableScroll}>
                     <div className={styles.productTable} data-testid="fulfillment-product-table">
                       <div className={`${styles.productRow} ${styles.tableHeader}`} aria-hidden="true">
-                        <span>Sản phẩm</span><span>SKU</span><span>Khách đặt → Kho</span><span>Đã phân bổ</span><span>Còn cần</span><span>Soạn</span><span>Trạng thái</span>
+                        <span>Sản phẩm / SKU</span><span>Khách đặt → Kho</span><span>Đã PB</span><span>Còn cần</span><span>Tồn thực tế</span><span>Đơn khác giữ</span><span>Khả dụng</span><span>SL PB</span><span>Thao tác</span><span>Trạng thái</span>
                       </div>
                       {selectedOrder.items.map((item) => {
                         const orderOutcome = orderAllocationLineMap.get(item.fulfillmentDemandId);
+                        const remaining = quantityDifference(item.orderedBaseQuantity, item.allocatedBaseQuantity);
+                        const rowBusy = busy === `allocate-${item.fulfillmentDemandId}`;
+                        const quantity = allocationQuantities[item.fulfillmentDemandId] ?? '';
                         return (
-                          <button
-                            type="button"
+                          <div
                             key={item.fulfillmentDemandId}
                             className={`${styles.productRow} ${selectedId === item.fulfillmentDemandId ? styles.productRowActive : ''}`}
                             onClick={() => void loadDetail(item.fulfillmentDemandId)}
                             data-testid={`fulfillment-product-${item.fulfillmentDemandId}`}
                           >
-                            <strong>{item.itemName}</strong>
-                            <span>{item.sku}</span>
+                            <span><strong>{item.itemName}</strong><small>{item.sku}</small></span>
                             <span>{orderedQuantityLabel(item)}</span>
                             <span>{formatQuantity(item.allocatedBaseQuantity)} {item.baseUnitCode}</span>
-                            <span>{formatQuantity(quantityDifference(item.orderedBaseQuantity, item.allocatedBaseQuantity))} {item.baseUnitCode}</span>
-                            <span>{formatQuantity(item.pickedBaseQuantity)} {item.baseUnitCode}</span>
+                            <span>{formatQuantity(remaining)} {item.baseUnitCode}</span>
+                            <span>{formatQuantity(item.warehouseOnHandBaseQuantity)} {item.baseUnitCode}</span>
+                            <span>{formatQuantity(item.warehouseHeldByOthersBaseQuantity)} {item.baseUnitCode}</span>
+                            <span>{formatQuantity(item.warehouseAvailableBaseQuantity)} {item.baseUnitCode}</span>
+                            <input
+                              inputMode="decimal"
+                              value={quantity}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={(event) => setAllocationQuantities((current) => ({
+                                ...current,
+                                [item.fulfillmentDemandId]: event.target.value,
+                              }))}
+                              placeholder={item.baseUnitCode}
+                              aria-label={`Số lượng phân bổ ${item.sku}`}
+                              disabled={busy !== null || parseQuantity(remaining) <= 0n}
+                              data-testid={`fulfillment-allocation-quantity-${item.fulfillmentDemandId}`}
+                            />
+                            <span className={styles.rowActions} onClick={(event) => event.stopPropagation()}>
+                              <button
+                                type="button"
+                                className={styles.secondaryButton}
+                                onClick={() => void allocateItem(item, 'QUANTITY')}
+                                disabled={busy !== null || parseQuantity(remaining) <= 0n || quantity.trim() === ''}
+                                data-testid={`fulfillment-allocate-quantity-${item.fulfillmentDemandId}`}
+                              >
+                                {rowBusy ? '...' : 'PB'}
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.primaryButton}
+                                onClick={() => void allocateItem(item, 'AUTO')}
+                                disabled={busy !== null || parseQuantity(remaining) <= 0n}
+                                data-testid={selectedId === item.fulfillmentDemandId
+                                  ? 'fulfillment-auto-allocate'
+                                  : `fulfillment-auto-allocate-${item.fulfillmentDemandId}`}
+                              >
+                                {rowBusy ? '...' : 'PB đủ'}
+                              </button>
+                            </span>
                             <em title={orderOutcome?.message}>
                               {orderOutcome ? orderAllocationOutcomeLabel(orderOutcome.outcome) : statusLabel(item.fulfillmentStatus)}
                             </em>
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -761,7 +799,7 @@ export default function FulfillmentWorkspace() {
                 <section className={styles.processSection} data-testid="fulfillment-selected-product">
                   <div className={styles.processHeader}>
                     <div>
-                      <span>Đang xử lý sản phẩm</span>
+                      <span>Chi tiết sản phẩm</span>
                       <h4>{selectedWork.itemName}</h4>
                       <p>
                         {selectedWork.sku}
@@ -779,43 +817,6 @@ export default function FulfillmentWorkspace() {
                     <span>Cần <strong>{formatQuantity(selectedWork.orderedBaseQuantity)} {selectedWork.baseUnitCode}</strong></span>
                     <span>Đã phân bổ <strong>{formatQuantity(selectedWork.allocatedBaseQuantity)} {selectedWork.baseUnitCode}</strong></span>
                     <span>Còn cần phân bổ <strong>{formatQuantity(quantityDifference(selectedWork.orderedBaseQuantity, selectedWork.allocatedBaseQuantity))} {selectedWork.baseUnitCode}</strong></span>
-                  </div>
-
-                  <div className={styles.allocateToolbar}>
-                    <div>
-                      <strong>Chọn số lượng muốn phân bổ</strong>
-                      <span>Phần chưa phân bổ không bị giữ cho đơn này, nên vẫn có thể dùng cho đơn khác.</span>
-                    </div>
-                    <div className={styles.rowActions}>
-                      <input
-                        className={styles.search}
-                        inputMode="decimal"
-                        value={allocationQuantity}
-                        onChange={(event) => setAllocationQuantity(event.target.value)}
-                        placeholder={`Số lượng (${selectedWork.baseUnitCode})`}
-                        aria-label="Số lượng muốn phân bổ"
-                        disabled={busy !== null}
-                        data-testid="fulfillment-allocation-quantity"
-                      />
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={() => void allocateSelected('QUANTITY')}
-                        disabled={busy !== null || parseQuantity(quantityDifference(selectedWork.orderedBaseQuantity, selectedWork.allocatedBaseQuantity)) <= 0n}
-                        data-testid="fulfillment-allocate-quantity"
-                      >
-                        Phân bổ
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.primaryButton}
-                        onClick={() => void allocateSelected('AUTO')}
-                        disabled={busy !== null || parseQuantity(quantityDifference(selectedWork.orderedBaseQuantity, selectedWork.allocatedBaseQuantity)) <= 0n}
-                        data-testid="fulfillment-auto-allocate"
-                      >
-                        {busy === 'allocate' ? 'Đang phân bổ...' : 'Phân bổ đủ'}
-                      </button>
-                    </div>
                   </div>
 
                   <section className={styles.subsection}>
