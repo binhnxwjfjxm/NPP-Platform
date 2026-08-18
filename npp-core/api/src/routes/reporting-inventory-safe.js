@@ -2,6 +2,7 @@ import {
   inventoryReport as inventoryReportUnsafe,
   normalizeSlowDays,
 } from './reporting-inventory.js';
+import { listWarehouseBusinessHoldSummary } from '../services/inventory-business-holds.js';
 
 const IDENTIFIER_CHAR = /[A-Za-z0-9_$]/;
 const DOLLAR_QUOTE_START = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/;
@@ -111,8 +112,80 @@ function exactBindingAdapter(adapter) {
   });
 }
 
-export function inventoryReport(adapter, ...args) {
-  return inventoryReportUnsafe(exactBindingAdapter(adapter), ...args);
+function holdKey(warehouseId, baseVariantId) {
+  return `${warehouseId}:${baseVariantId}`;
+}
+
+async function applyBusinessHoldReadModel(adapter, requestContext, warehouseIds, report) {
+  const holds = await listWarehouseBusinessHoldSummary(adapter, {
+    installationId: requestContext.installationId,
+    warehouseIds,
+    warehouseId: report.filters?.warehouseId ?? null,
+  });
+  const holdByScope = new Map(holds.map((hold) => [
+    holdKey(hold.warehouseId, hold.baseVariantId),
+    hold,
+  ]));
+
+  const currentPositions = (report.currentPositions ?? []).map((row) => {
+    const hold = holdByScope.get(holdKey(row.warehouseId, row.variantId));
+    if (!hold) return row;
+    return Object.freeze({
+      ...row,
+      onHandQuantity: hold.onHandBaseQuantity,
+      reservedQuantity: hold.heldBaseQuantity,
+      availableQuantity: hold.availableBaseQuantity,
+    });
+  });
+
+  const slowMoving = (report.slowMoving ?? []).map((row) => {
+    const hold = holdByScope.get(holdKey(row.warehouseId, row.variantId));
+    if (!hold) return row;
+    return Object.freeze({
+      ...row,
+      onHandQuantity: hold.onHandBaseQuantity,
+      reservedQuantity: hold.heldBaseQuantity,
+      availableQuantity: hold.availableBaseQuantity,
+    });
+  });
+
+  const reservedCountByWarehouse = new Map();
+  let reservedPositionCount = 0;
+  for (const hold of holds) {
+    if (Number(hold.heldBaseQuantity) <= 0) continue;
+    reservedPositionCount += 1;
+    reservedCountByWarehouse.set(
+      hold.warehouseId,
+      (reservedCountByWarehouse.get(hold.warehouseId) ?? 0) + 1,
+    );
+  }
+
+  const warehouseSummary = (report.warehouseSummary ?? []).map((row) => Object.freeze({
+    ...row,
+    reservedSkuCount: String(reservedCountByWarehouse.get(row.warehouseId) ?? 0),
+  }));
+
+  return Object.freeze({
+    ...report,
+    basis: Object.freeze({
+      ...(report.basis ?? {}),
+      currentAvailability: 'Tồn thực tế trừ toàn bộ lượng đang giữ có hiệu lực của đơn, gồm phần đã phân bổ và phần đã Chốt chưa phân bổ.',
+    }),
+    summary: Object.freeze({
+      ...(report.summary ?? {}),
+      reservedPositionCount: String(reservedPositionCount),
+    }),
+    warehouseSummary: Object.freeze(warehouseSummary),
+    currentPositions: Object.freeze(currentPositions),
+    slowMoving: Object.freeze(slowMoving),
+  });
+}
+
+export async function inventoryReport(adapter, ...args) {
+  const exactAdapter = exactBindingAdapter(adapter);
+  const report = await inventoryReportUnsafe(exactAdapter, ...args);
+  const [requestContext, , warehouseIds] = args;
+  return applyBusinessHoldReadModel(exactAdapter, requestContext, warehouseIds, report);
 }
 
 export { normalizeSlowDays };
@@ -122,4 +195,5 @@ export const reportingInventoryBindingInternals = Object.freeze({
   exactReportingQueryValues,
   exactBindingAdapter,
   reportingPlaceholderTokens,
+  applyBusinessHoldReadModel,
 });
