@@ -119,8 +119,8 @@ test('per-line allocation is operated directly from the product table', () => {
   assert.match(workspace, /allocationQuantities/);
   assert.match(workspace, /allocateItem\(item, 'QUANTITY'\)/);
   assert.match(workspace, /allocateItem\(item, 'AUTO'\)/);
-  assert.match(workspace, />PB</);
-  assert.match(workspace, />PB đủ</);
+  assert.match(workspace, /'PB'/);
+  assert.match(workspace, /'PB đủ'/);
   assert.doesNotMatch(workspace, /Chọn số lượng muốn phân bổ/);
 });
 
