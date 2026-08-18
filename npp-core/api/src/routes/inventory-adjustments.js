@@ -252,15 +252,22 @@ async function executeIdempotentMutation(req, res, options, {
       },
     });
 
-    sendJson(res, execution.statusCode, execution.body, {
-      'content-type': execution.contentType,
-      'x-request-id': execution.requestId,
+    sendJson(res, execution.response.statusCode, execution.response.body, {
+      'content-type': execution.response.contentType,
+      'x-request-id': execution.response.requestId,
       ...(execution.replayed ? { 'idempotent-replay': 'true' } : {}),
     });
-  } catch {
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'inventory_adjustment_operation_failed',
+      requestId: options.requestId,
+      action,
+      errorName: error?.name ?? null,
+      errorCode: typeof error?.code === 'string' ? error.code : null,
+    }));
     sendError(
       res,
-      apiError('INVENTORY_ADJUSTMENT_OPERATION_FAILED', 'Inventory adjustment operation failed', {}, true, 503),
+      apiError('INVENTORY_ADJUSTMENT_OPERATION_FAILED', 'Không thể hoàn tất thao tác điều chỉnh tồn.', {}, true, 503),
       options.requestId,
       options.receivedAt,
     );
