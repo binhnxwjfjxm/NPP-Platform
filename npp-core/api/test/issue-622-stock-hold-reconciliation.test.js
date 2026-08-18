@@ -30,11 +30,13 @@ test('held-order breakdown does not double count allocation-backed quantity', ()
   assert.doesNotMatch(source, /demand\.reserved_base_quantity \+ demand\.allocated_base_quantity/);
 });
 
-test('held-order breakdown can exclude the current order and stays warehouse/base scoped', () => {
+test('held-order breakdown excludes current order from both exact and demand holds', () => {
   const source = read('../src/services/inventory-business-holds.js');
   assert.match(source, /demand\.warehouse_id = \$2/);
   assert.match(source, /demand\.base_variant_id = \$3/);
   assert.match(source, /demand\.sales_order_id <> \$4::uuid/);
+  assert.match(source, /demand\.sales_order_id = \$4::uuid/);
+  assert.match(source, /inventory_scope\.exact_held_quantity - excluded_exact\.quantity/);
   assert.match(source, /demand\.state = 'ACTIVE'/);
 });
 
@@ -59,6 +61,19 @@ test('package Sales SKU resolves through product identity to one active inventor
   assert.match(service, /row\.base_variant_ids\.length !== 1/);
   assert.match(service, /baseVariantId: row\.base_variant_ids\[0\]/);
   assert.doesNotMatch(service, /TDOTDOT|TDOTDO/);
+});
+
+test('all three user surfaces expose the same held-order eye drill-down', () => {
+  const inventory = read('../../web/app/components/inventory-reporting-workspace.tsx');
+  const sales = read('../../web/app/sales/sales-orders/SalesOrderDetail.tsx');
+  const fulfillment = read('../../web/app/inventory/fulfillment/fulfillment-workspace.tsx');
+
+  assert.match(inventory, /StockHoldBreakdown/);
+  assert.match(inventory, /title="Xem các đơn đang giữ hàng"/);
+  assert.match(sales, /excludeSalesOrderId=\{order\.id\}/);
+  assert.match(sales, /title="Xem các đơn khác đang giữ hàng"/);
+  assert.match(fulfillment, /excludeSalesOrderId=\{item\.salesOrderId\}/);
+  assert.match(fulfillment, /Kho xử lý: <strong>\{selectedOrder\.warehouseCode\} — \{selectedOrder\.warehouseName\}<\/strong>/);
 });
 
 test('manual delivery remains outside preparation queue', () => {
