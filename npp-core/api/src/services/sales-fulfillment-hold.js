@@ -68,23 +68,36 @@ export async function loadDemandHoldAvailability(client, {
          AND other.state = 'ACTIVE'
          AND other.id <> $2
      )
-     SELECT greatest(
-       inventory_scope.on_hand
-       - inventory_scope.exact_reserved
-       - other_fulfillment.warehouse_reserved,
-       0
-     )::numeric(30,12)::text AS free_quantity
+     SELECT
+       inventory_scope.on_hand::numeric(30,12)::text AS on_hand_quantity,
+       greatest(
+         inventory_scope.exact_reserved + other_fulfillment.warehouse_reserved,
+         0
+       )::numeric(30,12)::text AS total_held_quantity,
+       greatest(
+         inventory_scope.on_hand
+         - inventory_scope.exact_reserved
+         - other_fulfillment.warehouse_reserved,
+         0
+       )::numeric(30,12)::text AS free_quantity
      FROM inventory_scope CROSS JOIN other_fulfillment`,
     [installationId, demandId, demand.warehouse_id, demand.base_variant_id],
   );
 
   const allocated = parseHoldQuantity(demand.allocated_base_quantity) ?? 0n;
+  const onHand = parseHoldQuantity(availabilityResult.rows?.[0]?.on_hand_quantity) ?? 0n;
+  const totalHeld = parseHoldQuantity(availabilityResult.rows?.[0]?.total_held_quantity) ?? 0n;
   const free = parseHoldQuantity(availabilityResult.rows?.[0]?.free_quantity) ?? 0n;
+  const availableForDemand = allocated + free;
+  const heldByOthers = onHand > availableForDemand ? onHand - availableForDemand : 0n;
   return Object.freeze({
     demand,
+    onHandBaseQuantity: formatHoldQuantity(onHand),
+    heldByOthersBaseQuantity: formatHoldQuantity(heldByOthers),
+    totalHeldBaseQuantity: formatHoldQuantity(totalHeld),
     freeBaseQuantity: formatHoldQuantity(free),
-    capacityBaseQuantity: formatHoldQuantity(free),
-    holdCapacityBaseQuantity: formatHoldQuantity(allocated + free),
+    capacityBaseQuantity: formatHoldQuantity(availableForDemand),
+    holdCapacityBaseQuantity: formatHoldQuantity(availableForDemand),
   });
 }
 
@@ -233,6 +246,8 @@ export async function reconcileDemandHold(client, {
     targetBaseQuantity: formatHoldQuantity(requestedTarget),
     reservedBaseQuantity: formatHoldQuantity(reserved),
     backorderedBaseQuantity: formatHoldQuantity(backordered),
+    onHandBaseQuantity: loaded.onHandBaseQuantity,
+    heldByOthersBaseQuantity: loaded.heldByOthersBaseQuantity,
     freeBaseQuantity: loaded.freeBaseQuantity,
   });
 }
