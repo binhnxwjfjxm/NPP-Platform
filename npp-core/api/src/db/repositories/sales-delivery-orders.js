@@ -35,7 +35,8 @@ export async function listEligiblePackedAllocations(client, {
        allocation.packed_base_quantity,
        allocation.state AS allocation_state,
        orders.order_number,
-       orders.delivery_mode,
+       version.delivery_mode,
+       version.delivery_execution_mode,
        orders.delivery_status,
        orders.requested_delivery_date,
        version.customer_id,
@@ -94,6 +95,10 @@ export async function listEligiblePackedAllocations(client, {
        AND allocation.warehouse_id = ANY($2::uuid[])
        AND allocation.packed_base_quantity > 0
        AND allocation.packed_base_quantity > COALESCE(claimed.claimed_base_quantity, 0)
+       AND NOT (
+         version.delivery_mode = 'DELIVERY'
+         AND COALESCE(version.delivery_execution_mode, 'TRIP') = 'MANUAL'
+       )
        AND ($3::uuid IS NULL OR allocation.sales_order_id = $3)
      ORDER BY orders.requested_delivery_date ASC NULLS LAST,
               allocation.created_at ASC,
@@ -112,7 +117,8 @@ export async function getEligibleAllocationForUpdate(client, { installationId, a
        allocation.*,
        orders.status AS sales_order_status,
        orders.order_number,
-       orders.delivery_mode,
+       version.delivery_mode,
+       version.delivery_execution_mode,
        orders.delivery_status,
        orders.requested_delivery_date,
        version.version_status,
@@ -168,6 +174,10 @@ export async function getEligibleAllocationForUpdate(client, { installationId, a
       ) claimed ON true
      WHERE allocation.installation_id = $1
        AND allocation.id = $2
+       AND NOT (
+         version.delivery_mode = 'DELIVERY'
+         AND COALESCE(version.delivery_execution_mode, 'TRIP') = 'MANUAL'
+       )
      FOR UPDATE OF allocation`,
     [installationId, allocationId],
   );

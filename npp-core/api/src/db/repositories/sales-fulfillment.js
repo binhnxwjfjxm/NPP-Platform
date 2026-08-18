@@ -231,17 +231,24 @@ export async function loadFulfillmentProjection(client, {
     ),
     client.query(
       `SELECT
-         id, sales_order_version_id, sales_order_line_id, line_number,
-         warehouse_id, sales_variant_id, base_variant_id, sku_snapshot,
-         ordered_base_quantity, reserved_base_quantity,
-         backordered_base_quantity, allocated_base_quantity,
-         picked_base_quantity, packed_base_quantity, issued_base_quantity,
-         cancelled_base_quantity, state, created_at, updated_at
-       FROM sales.sales_order_fulfillment_demands
-       WHERE installation_id = $1
-         AND sales_order_id = $2
-         AND state = 'ACTIVE'
-       ORDER BY line_number ASC`,
+         demand.id, demand.sales_order_version_id, demand.sales_order_line_id, demand.line_number,
+         demand.warehouse_id, demand.sales_variant_id, demand.base_variant_id, demand.sku_snapshot,
+         demand.ordered_base_quantity, demand.reserved_base_quantity,
+         demand.backordered_base_quantity, demand.allocated_base_quantity,
+         demand.picked_base_quantity, demand.packed_base_quantity, demand.issued_base_quantity,
+         demand.cancelled_base_quantity, demand.state, demand.created_at, demand.updated_at,
+         base_unit.code AS base_unit_code
+       FROM sales.sales_order_fulfillment_demands demand
+       JOIN shared.product_variants base_variant
+         ON base_variant.installation_id = demand.installation_id
+        AND base_variant.id = demand.base_variant_id
+       JOIN shared.units_of_measure base_unit
+         ON base_unit.installation_id = base_variant.installation_id
+        AND base_unit.id = base_variant.unit_id
+       WHERE demand.installation_id = $1
+         AND demand.sales_order_id = $2
+         AND demand.state = 'ACTIVE'
+       ORDER BY demand.line_number ASC`,
       [installationId, salesOrderId],
     ),
     getFulfillmentSettings(client, { installationId }),

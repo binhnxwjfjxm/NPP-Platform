@@ -129,6 +129,7 @@ export type SalesOrderFulfillmentLine = {
   salesVariantId: string;
   baseVariantId: string;
   sku: string;
+  baseUnitCode: string;
   orderedBaseQuantity: string;
   reservedBaseQuantity: string;
   backorderedBaseQuantity: string;
@@ -137,6 +138,9 @@ export type SalesOrderFulfillmentLine = {
   packedBaseQuantity: string;
   issuedBaseQuantity: string;
   cancelledBaseQuantity: string;
+  warehouseOnHandBaseQuantity: string | null;
+  warehouseHeldByOthersBaseQuantity: string | null;
+  warehouseAvailableBaseQuantity: string | null;
   state: 'ACTIVE' | 'SUPERSEDED' | 'CANCELLED' | 'COMPLETED';
   createdAt: string;
   updatedAt: string;
