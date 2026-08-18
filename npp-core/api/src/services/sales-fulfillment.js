@@ -1,4 +1,5 @@
 import * as repository from '../db/repositories/sales-fulfillment.js';
+import { loadDemandHoldAvailability } from './sales-fulfillment-hold.js';
 
 const QUANTITY_PATTERN = /^(0|[1-9]\d{0,17})(?:\.(\d{1,12}))?$/;
 const SCALE = 1_000_000_000_000n;
@@ -48,28 +49,35 @@ async function lockActiveSalesOrderDemands(client, installationId, salesOrderId)
   );
 }
 
-function mapProjection(projection) {
-  const lines = projection.lines.map((line) => Object.freeze({
-    id: line.id,
-    salesOrderVersionId: line.sales_order_version_id,
-    salesOrderLineId: line.sales_order_line_id,
-    lineNumber: Number(line.line_number),
-    warehouseId: line.warehouse_id,
-    salesVariantId: line.sales_variant_id,
-    baseVariantId: line.base_variant_id,
-    sku: line.sku_snapshot,
-    orderedBaseQuantity: String(line.ordered_base_quantity),
-    reservedBaseQuantity: String(line.reserved_base_quantity),
-    backorderedBaseQuantity: String(line.backordered_base_quantity),
-    allocatedBaseQuantity: String(line.allocated_base_quantity),
-    pickedBaseQuantity: String(line.picked_base_quantity),
-    packedBaseQuantity: String(line.packed_base_quantity),
-    issuedBaseQuantity: String(line.issued_base_quantity),
-    cancelledBaseQuantity: String(line.cancelled_base_quantity),
-    state: line.state,
-    createdAt: line.created_at,
-    updatedAt: line.updated_at,
-  }));
+function mapProjection(projection, availabilityByDemand = new Map()) {
+  const lines = projection.lines.map((line) => {
+    const availability = availabilityByDemand.get(line.id) ?? null;
+    return Object.freeze({
+      id: line.id,
+      salesOrderVersionId: line.sales_order_version_id,
+      salesOrderLineId: line.sales_order_line_id,
+      lineNumber: Number(line.line_number),
+      warehouseId: line.warehouse_id,
+      salesVariantId: line.sales_variant_id,
+      baseVariantId: line.base_variant_id,
+      sku: line.sku_snapshot,
+      baseUnitCode: line.base_unit_code,
+      orderedBaseQuantity: String(line.ordered_base_quantity),
+      reservedBaseQuantity: String(line.reserved_base_quantity),
+      backorderedBaseQuantity: String(line.backordered_base_quantity),
+      allocatedBaseQuantity: String(line.allocated_base_quantity),
+      pickedBaseQuantity: String(line.picked_base_quantity),
+      packedBaseQuantity: String(line.packed_base_quantity),
+      issuedBaseQuantity: String(line.issued_base_quantity),
+      cancelledBaseQuantity: String(line.cancelled_base_quantity),
+      warehouseOnHandBaseQuantity: availability?.onHandBaseQuantity ?? null,
+      warehouseHeldByOthersBaseQuantity: availability?.heldByOthersBaseQuantity ?? null,
+      warehouseAvailableBaseQuantity: availability?.capacityBaseQuantity ?? null,
+      state: line.state,
+      createdAt: line.created_at,
+      updatedAt: line.updated_at,
+    });
+  });
 
   const totals = lines.reduce((sum, line) => ({
     ordered: sum.ordered + parseQuantity(line.orderedBaseQuantity),
@@ -200,7 +208,15 @@ export async function loadSalesOrderFulfillment(client, {
     installationId: requestContext.installationId,
     salesOrderId,
   });
-  return mapProjection(projection);
+  const availability = await Promise.all(projection.lines.map(async (line) => [
+    line.id,
+    await loadDemandHoldAvailability(client, {
+      installationId: requestContext.installationId,
+      demandId: line.id,
+      forUpdate: false,
+    }),
+  ]));
+  return mapProjection(projection, new Map(availability));
 }
 
 export async function replaceSalesOrderFulfillmentDemand(client, {
