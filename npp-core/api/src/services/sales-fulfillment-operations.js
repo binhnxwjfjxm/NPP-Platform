@@ -1,4 +1,5 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
+import { createIdempotencyKey } from '@npp/contracts';
 import {
   buildAuditRecord,
   buildOutboxEvent,
@@ -7,6 +8,12 @@ import {
   withAuditOutboxTransaction,
 } from '../audit-outbox.js';
 import * as repository from '../db/repositories/sales-fulfillment-operations.js';
+import {
+  formatHoldQuantity,
+  loadDemandHoldAvailability,
+  parseHoldQuantity,
+  reconcileDemandHold,
+} from './sales-fulfillment-hold.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const QUANTITY_PATTERN = /^(0|[1-9]\d{0,17})(?:\.(\d{1,12}))?$/;
@@ -35,8 +42,19 @@ function payloadHash(value) {
   return createHash('sha256').update(JSON.stringify(canonicalize(value))).digest('hex');
 }
 
+function deterministicUuid(value) {
+  const bytes = Buffer.from(createHash('sha256').update(value).digest().subarray(0, 16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function childIdempotencyKey(operationKey, index) {
-  return `sales-fulfillment:${payloadHash({ operationKey, index }).slice(0, 48)}`;
+  return createIdempotencyKey(
+    'sales-fulfillment-child',
+    deterministicUuid(`${operationKey}|${index}`),
+  );
 }
 
 function parseQuantity(value) {
@@ -104,6 +122,13 @@ function mapAllocation(row) {
 }
 
 function mapWorkRow(row) {
+  const ordered = String(row.ordered_base_quantity);
+  const allocated = String(row.allocated_base_quantity);
+  const unallocated = formatQuantity(
+    (parseQuantity(ordered) ?? 0n) > (parseQuantity(allocated) ?? 0n)
+      ? (parseQuantity(ordered) ?? 0n) - (parseQuantity(allocated) ?? 0n)
+      : 0n,
+  );
   return Object.freeze({
     fulfillmentDemandId: row.fulfillment_demand_id,
     salesOrderId: row.sales_order_id,
@@ -123,10 +148,11 @@ function mapWorkRow(row) {
     sku: row.sku_snapshot,
     unitCode: row.unit_code_snapshot,
     baseVariantId: row.base_variant_id,
-    orderedBaseQuantity: String(row.ordered_base_quantity),
+    orderedBaseQuantity: ordered,
     reservedBaseQuantity: String(row.reserved_base_quantity),
     backorderedBaseQuantity: String(row.backordered_base_quantity),
-    allocatedBaseQuantity: String(row.allocated_base_quantity),
+    allocatedBaseQuantity: allocated,
+    unallocatedBaseQuantity: unallocated,
     pickedBaseQuantity: String(row.picked_base_quantity),
     packedBaseQuantity: String(row.packed_base_quantity),
     allocationCount: Number(row.allocation_count),
@@ -181,7 +207,18 @@ export async function listFulfillmentWorkQueue(client, {
     limit: Math.min(Math.max(Number(limit) || 200, 1), 1000),
     offset: Math.max(Number(offset) || 0, 0),
   });
-  return Object.freeze({ ok: true, work: Object.freeze(rows.map(mapWorkRow)) });
+  const work = [];
+  for (const row of rows) {
+    const availability = await loadDemandHoldAvailability(client, {
+      installationId: requestContext.installationId,
+      demandId: row.fulfillment_demand_id,
+    });
+    work.push(Object.freeze({
+      ...mapWorkRow(row),
+      warehouseAvailableBaseQuantity: availability?.capacityBaseQuantity ?? '0.000000000000',
+    }));
+  }
+  return Object.freeze({ ok: true, work: Object.freeze(work) });
 }
 
 async function loadDemandAndCandidates(client, { requestContext, demandId, forUpdate = false }) {
@@ -222,18 +259,29 @@ export async function suggestFulfillmentAllocation(client, { requestContext, dem
   }
   const loaded = await loadDemandAndCandidates(client, { requestContext, demandId });
   if (!loaded.ok) return loaded;
-  const reserved = parseQuantity(loaded.demand.reserved_base_quantity);
-  const allocated = parseQuantity(loaded.demand.allocated_base_quantity);
-  const remaining = reserved - allocated;
-  const plan = buildAutoPlan(loaded.candidates, remaining);
+  const ordered = parseQuantity(loaded.demand.ordered_base_quantity) ?? 0n;
+  const allocated = parseQuantity(loaded.demand.allocated_base_quantity) ?? 0n;
+  const remaining = ordered > allocated ? ordered - allocated : 0n;
+  const heldRemaining = Math.max
+    ? null
+    : null;
+  const reserved = parseQuantity(loaded.demand.reserved_base_quantity) ?? 0n;
+  const held = reserved > allocated ? reserved - allocated : 0n;
+  const plan = buildAutoPlan(loaded.candidates, held);
   const allocations = await repository.listDemandAllocations(client, {
+    installationId: requestContext.installationId,
+    demandId,
+  });
+  const availability = await loadDemandHoldAvailability(client, {
     installationId: requestContext.installationId,
     demandId,
   });
   return Object.freeze({
     ok: true,
     demand: mapWorkRow({ ...loaded.demand, fulfillment_demand_id: loaded.demand.id, allocation_count: allocations.length }),
-    remainingBaseQuantity: formatQuantity(remaining > 0n ? remaining : 0n),
+    remainingBaseQuantity: formatQuantity(remaining),
+    heldRemainingBaseQuantity: formatQuantity(held),
+    warehouseAvailableBaseQuantity: availability?.capacityBaseQuantity ?? '0.000000000000',
     candidates: loaded.candidates,
     suggestedPlan: plan.map((item) => Object.freeze({
       ...item,
@@ -334,6 +382,10 @@ function allocationSnapshot(demand, allocations) {
     itemName: demand.item_name_snapshot,
     warehouseId: demand.warehouse_id,
     warehouseCode: demand.warehouse_code_snapshot,
+    orderedBaseQuantity: String(demand.ordered_base_quantity),
+    allocationTargetBaseQuantity: String(
+      demand.allocation_target_base_quantity ?? demand.ordered_base_quantity,
+    ),
     reservedBaseQuantity: String(demand.reserved_base_quantity),
     allocatedBaseQuantity: allocations.reduce(
       (sum, item) => formatQuantity(parseQuantity(sum) + parseQuantity(item.allocatedBaseQuantity)),
@@ -353,7 +405,21 @@ export async function executeAllocateFulfillmentDemand({
   if (!hasPermission(requestContext, 'core.fulfillment.allocate')) {
     return failure('PERMISSION_DENIED', 'Permission core.fulfillment.allocate is required');
   }
-  const operationPayload = Object.freeze({ demandId, mode: String(payload?.mode ?? 'AUTO').toUpperCase(), payload });
+  const mode = String(payload?.mode ?? 'AUTO').trim().toUpperCase();
+  const requestedQuantity = mode === 'QUANTITY' ? parseQuantity(payload?.quantity) : null;
+  if (mode === 'QUANTITY' && (requestedQuantity === null || requestedQuantity <= 0n)) {
+    return failure('INVALID_ALLOCATION_QUANTITY', 'Số lượng phân bổ phải lớn hơn 0.');
+  }
+  if (!['AUTO', 'QUANTITY', 'MANUAL'].includes(mode)) {
+    return failure('INVALID_ALLOCATION_MODE', 'Allocation mode must be AUTO, QUANTITY or MANUAL');
+  }
+
+  const operationPayload = Object.freeze({
+    demandId,
+    mode,
+    quantity: requestedQuantity === null ? null : formatQuantity(requestedQuantity),
+    payload,
+  });
   const hash = payloadHash(operationPayload);
   const transaction = await withAuditOutboxTransaction({
     adapter,
@@ -396,29 +462,52 @@ export async function executeAllocateFulfillmentDemand({
         });
       }
 
-      const loaded = await loadDemandAndCandidates(client, {
+      let loaded = await loadDemandAndCandidates(client, {
         requestContext,
         demandId,
         forUpdate: true,
       });
       if (!loaded.ok) return { failed: loaded };
-      const reserved = parseQuantity(loaded.demand.reserved_base_quantity);
-      const allocated = parseQuantity(loaded.demand.allocated_base_quantity);
-      const remaining = reserved - allocated;
-      if (remaining <= 0n) {
-        return { failed: failure('FULFILLMENT_DEMAND_ALREADY_ALLOCATED', 'No reserved quantity remains to allocate') };
+      const ordered = parseQuantity(loaded.demand.ordered_base_quantity) ?? 0n;
+      const allocatedBefore = parseQuantity(loaded.demand.allocated_base_quantity) ?? 0n;
+
+      if (mode === 'AUTO' || mode === 'QUANTITY') {
+        const target = mode === 'AUTO'
+          ? ordered
+          : allocatedBefore + requestedQuantity;
+        if (target > ordered) {
+          return { failed: failure(
+            'ALLOCATION_EXCEEDS_ORDER_DEMAND',
+            'Số lượng phân bổ vượt phần đơn còn cần.',
+          ) };
+        }
+        const hold = await reconcileDemandHold(client, {
+          installationId: requestContext.installationId,
+          demandId,
+          actorId: requestContext.actorId,
+          targetBaseQuantity: formatHoldQuantity(target),
+        });
+        if (!hold.ok) return { failed: hold };
+        loaded = Object.freeze({ ...loaded, demand: { ...loaded.demand, ...hold.demand } });
       }
 
-      const mode = operationPayload.mode;
+      const reserved = parseHoldQuantity(loaded.demand.reserved_base_quantity) ?? 0n;
+      const allocated = parseQuantity(loaded.demand.allocated_base_quantity) ?? 0n;
+      const remaining = reserved - allocated;
+      if (remaining <= 0n) {
+        return { failed: failure(
+          'NO_ALLOCATABLE_STOCK',
+          'Hiện chưa có thêm hàng có thể phân bổ cho dòng này.',
+        ) };
+      }
+
       let plan;
-      if (mode === 'AUTO') {
+      if (mode === 'AUTO' || mode === 'QUANTITY') {
         plan = buildAutoPlan(loaded.candidates, remaining);
-      } else if (mode === 'MANUAL') {
+      } else {
         const manual = buildManualPlan(payload, loaded.candidates, requestContext, remaining);
         if (!manual.ok) return { failed: manual };
         plan = manual.plan;
-      } else {
-        return { failed: failure('INVALID_ALLOCATION_MODE', 'Allocation mode must be AUTO or MANUAL') };
       }
       if (plan.length === 0) {
         return { failed: failure('NO_ALLOCATABLE_STOCK', 'No active non-expired location/lot has allocatable stock') };
@@ -458,8 +547,8 @@ export async function executeAllocateFulfillmentDemand({
           return { failed: failure('ALLOCATION_EXCEEDS_RESERVED_DEMAND', 'Concurrent allocation exhausted the remaining reserved demand', true) };
         }
 
-        const allocationId = randomUUID();
-        const reservationId = randomUUID();
+        const allocationId = deterministicUuid(`${idempotencyKey}|allocation|${index + 1}`);
+        const reservationId = deterministicUuid(`${idempotencyKey}|reservation|${index + 1}`);
         const childKey = childIdempotencyKey(idempotencyKey, index + 1);
         const reservation = await repository.insertInventoryReservation(client, {
           id: reservationId,
@@ -523,7 +612,10 @@ export async function executeAllocateFulfillmentDemand({
           actorId: requestContext.actorId,
           requestId: requestContext.requestId,
           sourceApp: requestContext.sourceApp,
-          idempotencyKey: `${childKey}:event`,
+          idempotencyKey: createIdempotencyKey(
+            'sales-fulfillment-event',
+            deterministicUuid(`${idempotencyKey}|event|${index + 1}`),
+          ),
           payloadHash: hash,
           reason: item.manualOverrideReason,
           metadata: { allocationPolicy: item.allocationPolicy, policyRank: item.policyRank },
@@ -536,8 +628,12 @@ export async function executeAllocateFulfillmentDemand({
         installationId: requestContext.installationId,
         demandId,
       });
+      const refreshedDemand = await repository.getActiveDemandForUpdate(client, {
+        installationId: requestContext.installationId,
+        demandId,
+      });
       const allAllocations = allAllocationRows.map(mapAllocation);
-      const snapshot = allocationSnapshot(loaded.demand, allAllocations);
+      const snapshot = allocationSnapshot(refreshedDemand ?? loaded.demand, allAllocations);
       const audit = buildAuditRecord({
         requestContext,
         action: 'sales.fulfillment.allocate',
@@ -718,6 +814,8 @@ export const fulfillmentOperationInternals = Object.freeze({
   parseQuantity,
   formatQuantity,
   payloadHash,
+  deterministicUuid,
+  childIdempotencyKey,
   buildAutoPlan,
   buildManualPlan,
   mapAllocation,

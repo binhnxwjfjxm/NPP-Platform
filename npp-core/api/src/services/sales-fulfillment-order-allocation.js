@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { createIdempotencyKey } from '@npp/contracts';
 import {
   executeAllocateFulfillmentDemand,
   fulfillmentOperationInternals,
@@ -5,8 +7,7 @@ import {
 import * as repository from '../db/repositories/sales-fulfillment-order-allocation.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const SAFE_INTERNAL_KEY_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
-const { parseQuantity, formatQuantity, payloadHash } = fulfillmentOperationInternals;
+const { parseQuantity, formatQuantity } = fulfillmentOperationInternals;
 
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
@@ -33,41 +34,47 @@ function positiveDifference(left, right) {
   return difference > 0n ? difference : 0n;
 }
 
+function deterministicUuid(value) {
+  const bytes = Buffer.from(createHash('sha256').update(value).digest().subarray(0, 16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function orderDemandIdempotencyKey(operationKey, demandId) {
-  const digest = payloadHash({ operationKey, demandId }).slice(0, 48);
-  const key = `sales.fulfillment.order.${digest}`;
-  if (!SAFE_INTERNAL_KEY_PATTERN.test(key)) {
-    throw new Error('FULFILLMENT_ORDER_CHILD_IDEMPOTENCY_KEY_INVALID');
-  }
-  return key;
+  return createIdempotencyKey(
+    'sales-fulfillment-order',
+    deterministicUuid(`${operationKey}|${demandId}`),
+  );
 }
 
 function lineMessage(outcome, reasonCode) {
   if (outcome === 'READY') {
-    return 'Đủ hàng và đã phân bổ, có thể chuyển sang soạn hàng.';
+    return 'Đã phân bổ đủ số lượng đơn cần.';
   }
   if (outcome === 'SHORTAGE') {
-    return 'Phần hàng đã giữ đã phân bổ; dòng này vẫn còn thiếu hàng.';
+    return 'Kho hiện chưa đủ để phân bổ hết số lượng đơn cần.';
   }
   if (reasonCode === 'NO_ALLOCATABLE_STOCK') {
-    return 'Chưa có vị trí/lô phù hợp cho phần hàng đã giữ; cần xử lý riêng.';
+    return 'Hiện chưa có thêm hàng phù hợp để phân bổ.';
   }
-  return 'Dòng hàng còn phần chưa phân bổ; cần xử lý riêng.';
+  return 'Dòng hàng vẫn còn số lượng chưa phân bổ.';
 }
 
 function buildOrderAllocationLine(demand, {
   allocatedBaseQuantity = demand.allocated_base_quantity,
   reasonCode = null,
 } = {}) {
-  const reserved = parseQuantity(demand.reserved_base_quantity) ?? 0n;
+  const ordered = parseQuantity(demand.ordered_base_quantity) ?? 0n;
   const allocated = parseQuantity(allocatedBaseQuantity) ?? 0n;
   const backordered = parseQuantity(demand.backordered_base_quantity) ?? 0n;
-  const remaining = positiveDifference(reserved, allocated);
-  const outcome = remaining > 0n || reasonCode
-    ? 'NEEDS_ATTENTION'
-    : backordered > 0n
+  const remaining = positiveDifference(ordered, allocated);
+  const outcome = remaining === 0n
+    ? 'READY'
+    : backordered > 0n || reasonCode === 'NO_ALLOCATABLE_STOCK'
       ? 'SHORTAGE'
-      : 'READY';
+      : 'NEEDS_ATTENTION';
 
   return Object.freeze({
     fulfillmentDemandId: demand.id,
@@ -76,7 +83,8 @@ function buildOrderAllocationLine(demand, {
     sku: demand.sku_snapshot,
     itemName: demand.item_name_snapshot,
     unitCode: demand.unit_code_snapshot,
-    reservedBaseQuantity: formatQuantity(reserved),
+    orderedBaseQuantity: formatQuantity(ordered),
+    reservedBaseQuantity: formatQuantity(parseQuantity(demand.reserved_base_quantity) ?? 0n),
     allocatedBaseQuantity: formatQuantity(allocated),
     remainingToAllocateBaseQuantity: formatQuantity(remaining),
     shortageBaseQuantity: formatQuantity(backordered),
@@ -155,7 +163,12 @@ export async function executeAllocateFulfillmentOrder({
 
     if (result.ok) {
       replayed = replayed && result.replayed === true;
-      lines.push(buildOrderAllocationLine(demand, {
+      const refreshed = await getDemand(adapter, {
+        installationId: requestContext.installationId,
+        salesOrderId,
+        demandId: demand.id,
+      });
+      lines.push(buildOrderAllocationLine(refreshed ?? demand, {
         allocatedBaseQuantity: result.allocation.allocatedBaseQuantity,
       }));
       continue;
@@ -163,7 +176,12 @@ export async function executeAllocateFulfillmentOrder({
 
     if (result.code === 'NO_ALLOCATABLE_STOCK') {
       replayed = false;
-      lines.push(buildOrderAllocationLine(demand, { reasonCode: result.code }));
+      const refreshed = await getDemand(adapter, {
+        installationId: requestContext.installationId,
+        salesOrderId,
+        demandId: demand.id,
+      });
+      lines.push(buildOrderAllocationLine(refreshed ?? demand, { reasonCode: result.code }));
       continue;
     }
 

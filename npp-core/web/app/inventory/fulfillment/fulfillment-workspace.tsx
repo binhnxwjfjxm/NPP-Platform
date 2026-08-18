@@ -34,6 +34,8 @@ type WorkItem = {
   reservedBaseQuantity: string;
   backorderedBaseQuantity: string;
   allocatedBaseQuantity: string;
+  unallocatedBaseQuantity: string;
+  warehouseAvailableBaseQuantity: string;
   pickedBaseQuantity: string;
   packedBaseQuantity: string;
   allocationCount: number;
@@ -70,6 +72,8 @@ type Allocation = {
 
 type SuggestionDetail = {
   remainingBaseQuantity: string;
+  heldRemainingBaseQuantity: string;
+  warehouseAvailableBaseQuantity: string;
   candidates: Candidate[];
   suggestedPlan: Array<{
     locationId: string | null;
@@ -88,6 +92,7 @@ type OrderAllocationLineResult = {
   sku: string;
   itemName: string;
   unitCode: string;
+  orderedBaseQuantity: string;
   reservedBaseQuantity: string;
   allocatedBaseQuantity: string;
   remainingToAllocateBaseQuantity: string;
@@ -192,8 +197,8 @@ function formatDate(value: string | null): string {
 
 function statusLabel(value: string): string {
   const labels: Record<string, string> = {
-    backordered: 'Chờ hàng',
-    partially_reserved: 'Giữ một phần',
+    backordered: 'Chờ thêm hàng',
+    partially_reserved: 'Có hàng một phần',
     reserved: 'Chờ phân bổ',
     partially_allocated: 'Phân bổ một phần',
     allocated: 'Đã phân bổ',
@@ -206,9 +211,9 @@ function statusLabel(value: string): string {
 }
 
 function orderAllocationOutcomeLabel(value: OrderAllocationLineResult['outcome']): string {
-  if (value === 'READY') return 'Đủ để soạn';
-  if (value === 'SHORTAGE') return 'Thiếu hàng';
-  return 'Cần xử lý riêng';
+  if (value === 'READY') return 'Đã phân bổ đủ';
+  if (value === 'SHORTAGE') return 'Chưa đủ hàng';
+  return 'Chưa phân bổ hết';
 }
 
 function statusBucket(value: string): Exclude<StatusFilter, 'all'> | 'other' {
@@ -287,6 +292,7 @@ export default function FulfillmentWorkspace() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<SuggestionDetail | null>(null);
   const [orderAllocationResult, setOrderAllocationResult] = useState<OrderAllocationResult | null>(null);
+  const [allocationQuantity, setAllocationQuantity] = useState('');
   const [search, setSearch] = useState('');
   const [channelFilter, setChannelFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -310,7 +316,7 @@ export default function FulfillmentWorkspace() {
     (selectedOrderAllocationResult?.lines ?? []).map((line) => [line.fulfillmentDemandId, line] as const),
   ), [selectedOrderAllocationResult]);
   const canAllocateSelectedOrder = useMemo(() => selectedOrder?.items.some(
-    (item) => parseQuantity(item.reservedBaseQuantity) > parseQuantity(item.allocatedBaseQuantity),
+    (item) => parseQuantity(item.orderedBaseQuantity) > parseQuantity(item.allocatedBaseQuantity),
   ) ?? false, [selectedOrder]);
   const channelOptions = useMemo(() => {
     const options = new Map<string, string>();
@@ -396,6 +402,7 @@ export default function FulfillmentWorkspace() {
     setBusy(`detail-${demandId}`);
     setError(null);
     setSelectedId(demandId);
+    setAllocationQuantity('');
     try {
       const next = await requestJson<SuggestionDetail>(
         `/api/inventory/fulfillment-demands/${demandId}/suggestions`,
@@ -425,7 +432,7 @@ export default function FulfillmentWorkspace() {
   async function autoAllocateOrder() {
     if (!selectedOrder) return;
     const fingerprint = selectedOrder.items
-      .map((item) => `${item.fulfillmentDemandId}.${item.reservedBaseQuantity}.${item.allocatedBaseQuantity}`)
+      .map((item) => `${item.fulfillmentDemandId}.${item.orderedBaseQuantity}.${item.allocatedBaseQuantity}`)
       .join('_');
     setBusy('allocate-order');
     setError(null);
@@ -444,8 +451,8 @@ export default function FulfillmentWorkspace() {
       setOrderAllocationResult(result);
       setNotice(
         `Phân bổ toàn đơn: ${result.summary.readyLines} dòng đủ, `
-        + `${result.summary.shortageLines} dòng thiếu, `
-        + `${result.summary.needsAttentionLines} dòng cần xử lý riêng.`,
+        + `${result.summary.shortageLines} dòng chưa đủ hàng, `
+        + `${result.summary.needsAttentionLines} dòng chưa phân bổ hết.`,
       );
       const focusLine = result.lines.find((line) => line.outcome === 'NEEDS_ATTENTION')
         ?? result.lines.find((line) => line.outcome === 'SHORTAGE');
@@ -457,9 +464,24 @@ export default function FulfillmentWorkspace() {
     }
   }
 
-  async function autoAllocate() {
-    if (!selectedId || !detail) return;
-    const remainingFingerprint = detail.remainingBaseQuantity;
+  async function allocateSelected(mode: 'AUTO' | 'QUANTITY') {
+    if (!selectedId || !detail || !selectedWork) return;
+    const unallocated = quantityDifference(selectedWork.orderedBaseQuantity, selectedWork.allocatedBaseQuantity);
+    if (parseQuantity(unallocated) <= 0n) return;
+    const quantity = allocationQuantity.trim();
+    if (mode === 'QUANTITY') {
+      if (!/^(0|[1-9]\d{0,17})(?:\.\d{1,12})?$/.test(quantity) || parseQuantity(quantity) <= 0n) {
+        setError('Nhập số lượng phân bổ lớn hơn 0.');
+        return;
+      }
+      if (parseQuantity(quantity) > parseQuantity(unallocated)) {
+        setError(`Số lượng phân bổ không được vượt ${formatQuantity(unallocated)} ${selectedWork.unitCode}.`);
+        return;
+      }
+    }
+    const fingerprint = mode === 'AUTO'
+      ? `${selectedWork.orderedBaseQuantity}:${selectedWork.allocatedBaseQuantity}:full`
+      : `${selectedWork.allocatedBaseQuantity}:${quantity}`;
     setBusy('allocate');
     setError(null);
     setNotice(null);
@@ -469,12 +491,17 @@ export default function FulfillmentWorkspace() {
         {
           method: 'POST',
           headers: {
-            'Idempotency-Key': keyFor('allocate', selectedId, remainingFingerprint),
+            'Idempotency-Key': keyFor('allocate', selectedId, fingerprint),
           },
-          body: JSON.stringify({ mode: 'AUTO' }),
+          body: JSON.stringify(mode === 'AUTO'
+            ? { mode: 'AUTO' }
+            : { mode: 'QUANTITY', quantity }),
         },
       );
-      setNotice('Đã phân bổ phần hàng còn lại vào vị trí/lô phù hợp.');
+      setAllocationQuantity('');
+      setNotice(mode === 'AUTO'
+        ? 'Đã phân bổ tối đa cho phần đơn còn cần.'
+        : `Đã phân bổ ${formatQuantity(quantity)} ${selectedWork.unitCode}.`);
       await loadWork(selectedId);
     } catch (operationError) {
       setError(operationError instanceof Error ? operationError.message : 'Không phân bổ được hàng.');
@@ -533,7 +560,7 @@ export default function FulfillmentWorkspace() {
     <AppShell
       kicker="Kho và hoàn tất đơn"
       title="Chuẩn bị hàng"
-      subtitle="Chọn đơn, phân bổ toàn đơn theo chính sách kho; chỉ mở từng sản phẩm khi có ngoại lệ hoặc cần thao tác chi tiết."
+      subtitle="Phân bổ số lượng phù hợp cho từng đơn; phần chưa phân bổ vẫn để dành cho quyết định tiếp theo."
     >
       <div className={styles.page} data-testid="fulfillment-workspace">
         <div className={styles.topBar}>
@@ -570,22 +597,14 @@ export default function FulfillmentWorkspace() {
               <div className={styles.filters} aria-label="Bộ lọc đơn">
                 <label>
                   <span>Kênh bán</span>
-                  <select
-                    value={channelFilter}
-                    onChange={(event) => setChannelFilter(event.target.value)}
-                    data-testid="fulfillment-filter-channel"
-                  >
+                  <select value={channelFilter} onChange={(event) => setChannelFilter(event.target.value)} data-testid="fulfillment-filter-channel">
                     <option value="all">Tất cả kênh</option>
                     {channelOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>
                 </label>
                 <label>
                   <span>Trạng thái</span>
-                  <select
-                    value={statusFilter}
-                    onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-                    data-testid="fulfillment-filter-status"
-                  >
+                  <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)} data-testid="fulfillment-filter-status">
                     <option value="all">Tất cả</option>
                     <option value="waiting">Chờ phân bổ</option>
                     <option value="allocated">Đã phân bổ</option>
@@ -595,22 +614,12 @@ export default function FulfillmentWorkspace() {
                 </label>
                 <label>
                   <span>Kho</span>
-                  <select
-                    value={warehouseFilter}
-                    onChange={(event) => setWarehouseFilter(event.target.value)}
-                    data-testid="fulfillment-filter-warehouse"
-                  >
+                  <select value={warehouseFilter} onChange={(event) => setWarehouseFilter(event.target.value)} data-testid="fulfillment-filter-warehouse">
                     <option value="all">Tất cả kho</option>
                     {warehouseOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>
                 </label>
-                <button
-                  type="button"
-                  className={styles.clearFilters}
-                  onClick={resetFilters}
-                  disabled={!hasFilters}
-                  data-testid="fulfillment-filter-reset"
-                >
+                <button type="button" className={styles.clearFilters} onClick={resetFilters} disabled={!hasFilters} data-testid="fulfillment-filter-reset">
                   Xóa lọc
                 </button>
               </div>
@@ -674,13 +683,13 @@ export default function FulfillmentWorkspace() {
 
                 <div className={styles.allocateToolbar} data-testid="fulfillment-order-allocation">
                   <div>
-                    <strong>Phân bổ toàn đơn theo chính sách kho</strong>
-                    <span>Hệ thống tự áp dụng FEFO/FIFO cho mọi dòng đủ điều kiện; chỉ mở từng SKU khi có ngoại lệ.</span>
+                    <strong>Phân bổ toàn đơn</strong>
+                    <span>Phân bổ tối đa theo hàng đang có và thứ tự lô của Kho.</span>
                     {selectedOrderAllocationResult ? (
                       <span data-testid="fulfillment-order-allocation-summary">
                         {selectedOrderAllocationResult.summary.readyLines} dòng đủ · {' '}
-                        {selectedOrderAllocationResult.summary.shortageLines} dòng thiếu · {' '}
-                        {selectedOrderAllocationResult.summary.needsAttentionLines} dòng cần xử lý riêng
+                        {selectedOrderAllocationResult.summary.shortageLines} dòng chưa đủ hàng · {' '}
+                        {selectedOrderAllocationResult.summary.needsAttentionLines} dòng chưa phân bổ hết
                       </span>
                     ) : null}
                   </div>
@@ -691,7 +700,7 @@ export default function FulfillmentWorkspace() {
                     disabled={!canAllocateSelectedOrder || busy !== null}
                     data-testid="fulfillment-auto-allocate-order"
                   >
-                    {busy === 'allocate-order' ? 'Đang phân bổ toàn đơn...' : 'Phân bổ toàn đơn'}
+                    {busy === 'allocate-order' ? 'Đang phân bổ...' : 'Phân bổ toàn đơn'}
                   </button>
                 </div>
 
@@ -699,14 +708,14 @@ export default function FulfillmentWorkspace() {
                   <div className={styles.sectionHeading}>
                     <div>
                       <h4>Sản phẩm trong đơn</h4>
-                      <p>Phân bổ toàn đơn là thao tác chính; chọn từng dòng khi cần xử lý ngoại lệ hoặc xem chi tiết.</p>
+                      <p>Nhìn nhanh số cần, số đã phân bổ và phần còn lại.</p>
                     </div>
                     <span>{selectedOrder.items.length} dòng</span>
                   </div>
                   <div className={styles.tableScroll}>
                     <div className={styles.productTable} data-testid="fulfillment-product-table">
                       <div className={`${styles.productRow} ${styles.tableHeader}`} aria-hidden="true">
-                        <span>Sản phẩm</span><span>SKU</span><span>Đặt</span><span>Phân bổ</span><span>Soạn</span><span>Đóng gói</span><span>Trạng thái</span>
+                        <span>Sản phẩm</span><span>SKU</span><span>Cần</span><span>Đã phân bổ</span><span>Chưa phân bổ</span><span>Soạn</span><span>Trạng thái</span>
                       </div>
                       {selectedOrder.items.map((item) => {
                         const orderOutcome = orderAllocationLineMap.get(item.fulfillmentDemandId);
@@ -722,8 +731,8 @@ export default function FulfillmentWorkspace() {
                             <span>{item.sku}</span>
                             <span>{formatQuantity(item.orderedBaseQuantity)} {item.unitCode}</span>
                             <span>{formatQuantity(item.allocatedBaseQuantity)}</span>
+                            <span>{formatQuantity(quantityDifference(item.orderedBaseQuantity, item.allocatedBaseQuantity))}</span>
                             <span>{formatQuantity(item.pickedBaseQuantity)}</span>
-                            <span>{formatQuantity(item.packedBaseQuantity)}</span>
                             <em title={orderOutcome?.message}>
                               {orderOutcome ? orderAllocationOutcomeLabel(orderOutcome.outcome) : statusLabel(item.fulfillmentStatus)}
                             </em>
@@ -744,34 +753,53 @@ export default function FulfillmentWorkspace() {
                     <strong className={styles.status}>{statusLabel(selectedWork.fulfillmentStatus)}</strong>
                   </div>
 
-                  <div className={styles.progressStrip}>
-                    <span>Đặt <strong>{formatQuantity(selectedWork.orderedBaseQuantity)}</strong></span>
-                    <span>Đã giữ <strong>{formatQuantity(selectedWork.reservedBaseQuantity)}</strong></span>
-                    <span>Còn thiếu <strong>{formatQuantity(selectedWork.backorderedBaseQuantity)}</strong></span>
-                    <span>Phân bổ <strong>{formatQuantity(selectedWork.allocatedBaseQuantity)}</strong></span>
-                    <span>Soạn <strong>{formatQuantity(selectedWork.pickedBaseQuantity)}</strong></span>
-                    <span>Đóng gói <strong>{formatQuantity(selectedWork.packedBaseQuantity)}</strong></span>
+                  <div className={styles.progressStrip} data-testid="fulfillment-allocation-metrics">
+                    <span>Cần <strong>{formatQuantity(selectedWork.orderedBaseQuantity)}</strong></span>
+                    <span>Đã phân bổ <strong>{formatQuantity(selectedWork.allocatedBaseQuantity)}</strong></span>
+                    <span>Chưa phân bổ <strong>{formatQuantity(quantityDifference(selectedWork.orderedBaseQuantity, selectedWork.allocatedBaseQuantity))}</strong></span>
+                    <span>Kho có thể dùng <strong>{formatQuantity(detail?.warehouseAvailableBaseQuantity ?? selectedWork.warehouseAvailableBaseQuantity)}</strong></span>
                   </div>
 
                   <div className={styles.allocateToolbar}>
                     <div>
-                      <strong>Còn {formatQuantity(detail?.remainingBaseQuantity ?? '0')} {selectedWork.unitCode} cần phân bổ</strong>
-                      <span>Chỉ xử lý theo từng sản phẩm khi cần kiểm tra chi tiết vị trí/lô hoặc giải quyết ngoại lệ.</span>
+                      <strong>Chọn số lượng muốn phân bổ</strong>
+                      <span>Phần chưa phân bổ không bị giữ cho đơn này, nên vẫn có thể dùng cho đơn khác.</span>
                     </div>
-                    <button
-                      type="button"
-                      className={styles.primaryButton}
-                      onClick={autoAllocate}
-                      disabled={!detail || parseQuantity(detail.remainingBaseQuantity) <= 0n || busy !== null}
-                      data-testid="fulfillment-auto-allocate"
-                    >
-                      {busy === 'allocate' ? 'Đang phân bổ...' : 'Phân bổ phần còn lại'}
-                    </button>
+                    <div className={styles.rowActions}>
+                      <input
+                        className={styles.search}
+                        inputMode="decimal"
+                        value={allocationQuantity}
+                        onChange={(event) => setAllocationQuantity(event.target.value)}
+                        placeholder="Số lượng"
+                        aria-label="Số lượng muốn phân bổ"
+                        disabled={busy !== null}
+                        data-testid="fulfillment-allocation-quantity"
+                      />
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => void allocateSelected('QUANTITY')}
+                        disabled={busy !== null || parseQuantity(quantityDifference(selectedWork.orderedBaseQuantity, selectedWork.allocatedBaseQuantity)) <= 0n}
+                        data-testid="fulfillment-allocate-quantity"
+                      >
+                        Phân bổ
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.primaryButton}
+                        onClick={() => void allocateSelected('AUTO')}
+                        disabled={busy !== null || parseQuantity(quantityDifference(selectedWork.orderedBaseQuantity, selectedWork.allocatedBaseQuantity)) <= 0n}
+                        data-testid="fulfillment-auto-allocate"
+                      >
+                        {busy === 'allocate' ? 'Đang phân bổ...' : 'Phân bổ đủ'}
+                      </button>
+                    </div>
                   </div>
 
                   <section className={styles.subsection}>
                     <div className={styles.sectionHeading}>
-                      <div><h4>Vị trí có thể lấy</h4><p>Tham khảo trước khi phân bổ.</p></div>
+                      <div><h4>Vị trí có thể lấy</h4><p>Hệ thống vẫn tự ưu tiên lô/vị trí đúng chính sách Kho.</p></div>
                       <span>{detail?.candidates.length ?? 0} vị trí</span>
                     </div>
                     <div className={styles.tableScroll}>
@@ -794,7 +822,7 @@ export default function FulfillmentWorkspace() {
 
                   <section className={styles.subsection}>
                     <div className={styles.sectionHeading}>
-                      <div><h4>Phân bổ và thao tác</h4><p>Soạn, đóng gói theo từng vị trí/lô đã phân bổ.</p></div>
+                      <div><h4>Hàng đã phân bổ</h4><p>Soạn và đóng gói theo đúng phần đã phân bổ.</p></div>
                       <span>{detail?.allocations.length ?? 0} dòng</span>
                     </div>
                     <div className={styles.tableScroll}>

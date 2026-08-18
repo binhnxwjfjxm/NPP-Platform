@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { createIdempotencyKey, IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import { postServerOwnedSalesMovement } from './sales-inventory-ledger.js';
 import { getSalesOrder } from './sales-order.js';
+import { reconcileDemandHold } from './sales-fulfillment-hold.js';
 
 const SCALE = 1_000_000_000_000n;
 
@@ -259,7 +260,7 @@ export async function issueManualSalesOrderStock(client, {
     );
   }
 
-  const demands = await lockDemands(client, {
+  let demands = await lockDemands(client, {
     installationId: requestContext.installationId,
     salesOrderId: id,
   });
@@ -292,6 +293,19 @@ export async function issueManualSalesOrderStock(client, {
       'Đơn đã có dữ liệu xử lý kho khác, không thể Xuất kho theo luồng Giao thủ công',
     );
   }
+
+  const refreshedDemands = [];
+  for (const demand of demands) {
+    const hold = await reconcileDemandHold(client, {
+      installationId: requestContext.installationId,
+      demandId: demand.id,
+      actorId: requestContext.actorId,
+      targetBaseQuantity: demand.ordered_base_quantity,
+    });
+    if (!hold.ok) return hold;
+    refreshedDemands.push({ ...demand, ...hold.demand });
+  }
+  demands = refreshedDemands;
 
   for (const demand of demands) {
     const ordered = parseQuantity(demand.ordered_base_quantity);

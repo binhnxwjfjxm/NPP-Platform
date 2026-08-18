@@ -13,6 +13,7 @@ const DEMAND_TWO = '11111111-1111-4111-8111-222222222222';
 const DEMAND_THREE = '11111111-1111-4111-8111-333333333333';
 
 function demand(id, lineNumber, {
+  ordered = '3.000000000000',
   reserved = '3.000000000000',
   allocated = '0.000000000000',
   backordered = '0.000000000000',
@@ -26,6 +27,7 @@ function demand(id, lineNumber, {
     sku_snapshot: `SKU-${lineNumber}`,
     item_name_snapshot: `Sản phẩm ${lineNumber}`,
     unit_code_snapshot: 'THUNG',
+    ordered_base_quantity: ordered,
     reserved_base_quantity: reserved,
     allocated_base_quantity: allocated,
     backordered_base_quantity: backordered,
@@ -43,17 +45,19 @@ function requestContext(warehouseIds = [WAREHOUSE_ID]) {
   };
 }
 
-test('whole-order allocation classifies ready, shortage and attention without frontend fan-out', async () => {
+test('whole-order allocation retries every unallocated line so replenished stock is not left stale', async () => {
   const demands = [
     demand(DEMAND_ONE, 1),
     demand(DEMAND_TWO, 2, {
+      ordered: '3.000000000000',
       reserved: '2.000000000000',
       allocated: '2.000000000000',
       backordered: '1.000000000000',
     }),
-    demand(DEMAND_THREE, 3, { reserved: '4.000000000000' }),
+    demand(DEMAND_THREE, 3, { ordered: '4.000000000000', reserved: '4.000000000000' }),
   ];
   const calls = [];
+  const refreshed = new Map(demands.map((item) => [item.id, item]));
   const result = await executeAllocateFulfillmentOrder({
     adapter: {},
     requestContext: requestContext(),
@@ -62,17 +66,23 @@ test('whole-order allocation classifies ready, shortage and attention without fr
     payload: { mode: 'AUTO' },
     dependencies: {
       listDemands: async () => demands,
-      getDemand: async () => null,
+      getDemand: async (_adapter, { demandId }) => refreshed.get(demandId) ?? null,
       allocateDemand: async (args) => {
         calls.push(args);
+        if (args.demandId === DEMAND_TWO) {
+          refreshed.set(DEMAND_TWO, demand(DEMAND_TWO, 2, {
+            ordered: '3.000000000000',
+            reserved: '3.000000000000',
+            allocated: '3.000000000000',
+            backordered: '0.000000000000',
+          }));
+          return { ok: true, replayed: false, allocation: { allocatedBaseQuantity: '3.000000000000' } };
+        }
         if (args.demandId === DEMAND_THREE) {
           return { ok: false, code: 'NO_ALLOCATABLE_STOCK', message: 'none', retryable: false };
         }
-        return {
-          ok: true,
-          replayed: false,
-          allocation: { allocatedBaseQuantity: '3.000000000000' },
-        };
+        refreshed.set(DEMAND_ONE, demand(DEMAND_ONE, 1, { allocated: '3.000000000000' }));
+        return { ok: true, replayed: false, allocation: { allocatedBaseQuantity: '3.000000000000' } };
       },
     },
   });
@@ -80,18 +90,16 @@ test('whole-order allocation classifies ready, shortage and attention without fr
   assert.equal(result.ok, true);
   assert.deepEqual(result.summary, {
     totalLines: 3,
-    readyLines: 1,
-    shortageLines: 1,
+    readyLines: 2,
+    shortageLines: 0,
     needsAttentionLines: 1,
   });
-  assert.deepEqual(result.lines.map((line) => line.outcome), ['READY', 'SHORTAGE', 'NEEDS_ATTENTION']);
+  assert.deepEqual(result.lines.map((line) => line.outcome), ['READY', 'READY', 'NEEDS_ATTENTION']);
   assert.equal(result.lines[2].reasonCode, 'NO_ALLOCATABLE_STOCK');
-  assert.equal(calls.length, 2);
-  assert.equal(calls[0].payload.mode, 'AUTO');
-  assert.equal(calls[1].payload.mode, 'AUTO');
-  assert.notEqual(calls[0].idempotencyKey, calls[1].idempotencyKey);
-  assert.match(calls[0].idempotencyKey, /^[A-Za-z0-9._-]{1,128}$/);
-  assert.match(calls[1].idempotencyKey, /^[A-Za-z0-9._-]{1,128}$/);
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every((call) => call.payload.mode === 'AUTO'));
+  assert.equal(new Set(calls.map((call) => call.idempotencyKey)).size, 3);
+  for (const call of calls) assert.match(call.idempotencyKey, /^[A-Za-z0-9._-]{1,128}$/);
 });
 
 test('whole-order child idempotency key is deterministic per demand and safe', () => {
@@ -102,6 +110,7 @@ test('whole-order child idempotency key is deterministic per demand and safe', (
   assert.equal(first, retry);
   assert.notEqual(first, anotherLine);
   assert.match(first, /^[A-Za-z0-9._-]{1,128}$/);
+  assert.doesNotMatch(first, /:/);
 });
 
 test('whole-order allocation fails closed before writes when any line is outside warehouse scope', async () => {
@@ -122,7 +131,7 @@ test('whole-order allocation fails closed before writes when any line is outside
   assert.equal(writes, 0);
 });
 
-test('Lô 2 exposes one whole-order command and keeps line allocation as the canonical backend primitive', () => {
+test('whole-order command keeps line allocation as the canonical backend primitive', () => {
   const route = readFileSync(new URL('../src/routes/fulfillment-operations.js', import.meta.url), 'utf8');
   const service = readFileSync(new URL('../src/services/sales-fulfillment-order-allocation.js', import.meta.url), 'utf8');
   const repository = readFileSync(new URL('../src/db/repositories/sales-fulfillment-order-allocation.js', import.meta.url), 'utf8');
@@ -135,6 +144,8 @@ test('Lô 2 exposes one whole-order command and keeps line allocation as the can
   assert.match(route, /executeAllocateFulfillmentOrder/);
   assert.match(service, /executeAllocateFulfillmentDemand/);
   assert.match(service, /for \(const demand of demands\)/);
+  assert.match(service, /ordered_base_quantity/);
+  assert.match(repository, /demand\.ordered_base_quantity/);
   assert.match(repository, /demand\.sales_order_id = \$2/);
   assert.match(gateway, /allocateFulfillmentOrder/);
   assert.match(gateway, /\/fulfillment-orders\/\$\{id\}\/allocate/);
