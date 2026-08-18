@@ -7,6 +7,12 @@ import {
   postManualInbound,
   reverseManualInbound,
 } from '../services/manual-inbound.js';
+import {
+  listManualInboundLocationOptions,
+  listManualInboundWarehouseOptions,
+  previewManualInbound,
+  validateManualInboundPostInventoryPolicy,
+} from '../services/manual-inbound-preparation.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -75,6 +81,41 @@ export async function handleManualInboundRoutes(req, res, options) {
   const method = String(req.method ?? 'GET').toUpperCase();
 
   try {
+    if (url.pathname === '/api/inventory/manual-inbounds/operator/warehouses' && method === 'GET') {
+      const result = await listManualInboundWarehouseOptions(options.getPool(), { requestContext });
+      if (!result.ok) {
+        sendError(res, apiError(result.code, result.message, result.details ?? {}, result.retryable, statusFor(result)), options.requestId, options.receivedAt);
+        return true;
+      }
+      writeSuccess(res, result.warehouses, options);
+      return true;
+    }
+
+    if (url.pathname === '/api/inventory/manual-inbounds/operator/locations' && method === 'GET') {
+      const result = await listManualInboundLocationOptions(options.getPool(), {
+        requestContext,
+        warehouseId: url.searchParams.get('warehouseId'),
+      });
+      if (!result.ok) {
+        sendError(res, apiError(result.code, result.message, result.details ?? {}, result.retryable, statusFor(result)), options.requestId, options.receivedAt);
+        return true;
+      }
+      writeSuccess(res, { warehouse: result.warehouse, locations: result.locations }, options);
+      return true;
+    }
+
+    if (url.pathname === '/api/inventory/manual-inbounds/operator/preview' && method === 'POST') {
+      const payload = await readPayload(req, res, options);
+      if (payload === null) return true;
+      const result = await previewManualInbound(options.getPool(), { requestContext, payload });
+      if (!result.ok) {
+        sendError(res, apiError(result.code, result.message, result.details ?? {}, result.retryable, statusFor(result)), options.requestId, options.receivedAt);
+        return true;
+      }
+      writeSuccess(res, result.preview, options);
+      return true;
+    }
+
     if (url.pathname === '/api/inventory/manual-inbounds' && method === 'GET') {
       const result = await listManualInbounds(options.getPool(), {
         requestContext,
@@ -97,6 +138,14 @@ export async function handleManualInboundRoutes(req, res, options) {
       }
       const payload = await readPayload(req, res, options);
       if (payload === null) return true;
+      const policy = await validateManualInboundPostInventoryPolicy(options.getPool(), {
+        requestContext,
+        rows: payload?.rows,
+      });
+      if (!policy.ok) {
+        sendError(res, apiError(policy.code, policy.message, policy.details ?? {}, policy.retryable, statusFor(policy)), options.requestId, options.receivedAt);
+        return true;
+      }
       const result = await postManualInbound({
         adapter: options.getPool(),
         requestContext,
