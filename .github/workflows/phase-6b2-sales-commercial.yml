@@ -31,12 +31,15 @@ jobs:
   verify:
     name: Exact commercial vertical slice
     runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.0-noble
+      options: --user 1001
     timeout-minutes: 30
     defaults:
       run:
         shell: bash
     env:
-      E2E_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/npp_phase_6b2
+      E2E_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/npp_phase_6b2
       E2E_BACKEND_API_TOKEN: ci-phase-6b2-token-not-a-production-secret
 
     services:
@@ -46,8 +49,6 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: npp_phase_6b2
-        ports:
-          - 5432:5432
         options: >-
           --health-cmd "pg_isready -U postgres -d npp_phase_6b2"
           --health-interval 5s
@@ -101,10 +102,6 @@ jobs:
 
       - name: Verify Core web commercial contracts
         run: npm --workspace npp-core-web run verify 2>&1 | tee phase-6b2-web.log
-
-      - name: Install Chromium
-        working-directory: npp-core/web
-        run: npx playwright install --with-deps chromium
 
       - name: Run Sales Order commercial Chromium gate
         working-directory: npp-core/web
