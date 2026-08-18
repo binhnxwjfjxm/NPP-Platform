@@ -9,6 +9,7 @@ const {
   formatQuantity,
   buildAutoPlan,
   buildManualPlan,
+  childIdempotencyKey,
 } = fulfillmentOperationInternals;
 
 test('fulfillment route module is loadable', () => {
@@ -45,6 +46,16 @@ test('auto allocation consumes candidates in deterministic policy order', () => 
   assert.equal(formatQuantity(plan[1].quantityScaled), '5.000000000000');
   assert.equal(plan[0].policyRank, 1);
   assert.equal(plan[1].policyRank, 2);
+});
+
+test('allocation child idempotency uses the shared safe contract and is deterministic', () => {
+  const first = childIdempotencyKey('fulfillment.retry', 1);
+  const retry = childIdempotencyKey('fulfillment.retry', 1);
+  const next = childIdempotencyKey('fulfillment.retry', 2);
+  assert.equal(first, retry);
+  assert.notEqual(first, next);
+  assert.match(first, /^[A-Za-z0-9._-]{1,128}$/);
+  assert.doesNotMatch(first, /:/);
 });
 
 test('manual allocation requires override permission and reason', () => {
@@ -159,12 +170,15 @@ test('Phase 6D.2 migration locks exact reservation, lifecycle and monotonic proj
   assert.match(serviceSource, /requestedByScope/);
   assert.match(serviceSource, /warehouseAllowed\(requestContext, replayDemand\.warehouse_id\)/);
   assert.match(serviceSource, /warehouseAllowed\(requestContext, replayAllocation\.warehouse_id\)/);
+  assert.match(serviceSource, /mode === 'QUANTITY'/);
+  assert.match(serviceSource, /reconcileDemandHold/);
   assert.match(registry, /043_sales_fulfillment_allocation_pick_pack/);
+  assert.match(registry, /092_sales_shared_stock_hold/);
   assert.doesNotMatch(registry, /044_sales_fulfillment_allocation/);
   assert.doesNotMatch(registry, /045_sales_fulfillment_allocation/);
 });
 
-test('warehouse API, web proxy and NPP navigation keep fulfillment inside Inventory', () => {
+test('warehouse API and Công Ty UI keep allocation simple while preserving warehouse execution', () => {
   const inventoryRoutes = readFileSync(new URL('../src/routes/inventory.js', import.meta.url), 'utf8');
   const fulfillmentRoutes = readFileSync(new URL('../src/routes/fulfillment-operations.js', import.meta.url), 'utf8');
   const gateway = readFileSync(new URL('../../web/lib/inventory-gateway.ts', import.meta.url), 'utf8');
@@ -195,9 +209,11 @@ test('warehouse API, web proxy and NPP navigation keep fulfillment inside Invent
   assert.match(workspace, /role="alert"/);
   assert.match(workspace, /role="status"/);
   assert.match(workspace, /aria-label="Tìm đơn, khách hàng hoặc SKU"/);
-  assert.match(workspace, /remainingFingerprint/);
-  assert.doesNotMatch(workspace, /Date\.now\(\)/);
-  assert.match(workspace, /Phân bổ phần còn lại/);
+  assert.match(workspace, /Chưa phân bổ/);
+  assert.match(workspace, /Kho có thể dùng/);
+  assert.match(workspace, /Số lượng muốn phân bổ/);
+  assert.match(workspace, /Phân bổ đủ/);
+  assert.match(workspace, /mode: 'QUANTITY'/);
   assert.match(workspace, /Soạn/);
   assert.match(workspace, /Đóng gói/);
   assert.doesNotMatch(workspace, /tài xế|chuyến xe|\bPOD\b|\bCOD\b/i);
