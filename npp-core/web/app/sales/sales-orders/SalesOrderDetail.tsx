@@ -1,6 +1,7 @@
 'use client';
 
 import type { SalesOrder } from '../../../lib/sales-order-types';
+import ManualSalesOrderSettlement from './ManualSalesOrderSettlement';
 import SalesOrderPrintSheet from './SalesOrderPrintSheet';
 import {
   activeVersion,
@@ -24,6 +25,7 @@ type Props = {
   canAmend: boolean;
   canCancel: boolean;
   canIssueStock: boolean;
+  canSettle: boolean;
   amendmentReason: string;
   cancellationReason: string;
   onAmendmentReason: (value: string) => void;
@@ -35,6 +37,7 @@ type Props = {
   onCreateAmendment: () => void;
   onConfirmAmendment: () => void;
   onIssueStock: () => void;
+  onManualOrderUpdated: (order: SalesOrder) => void;
   onCancel: () => void;
 };
 
@@ -196,13 +199,21 @@ export default function SalesOrderDetail(props: Props) {
             {hasIssued ? <small>Đơn đã Xuất kho nên không thể sửa hoặc xuất lại.</small> : null}
           </div>
         )}
+        {isManual && hasIssued && ['confirmed', 'closed'].includes(order.status) && (
+          <ManualSalesOrderSettlement
+            order={order}
+            canComplete={props.canConfirm}
+            canSettle={props.canSettle}
+            onUpdated={props.onManualOrderUpdated}
+          />
+        )}
         {order.status === 'confirmed' && !isManual && !amendment && props.canAmend && (
           <div className={styles.reasonRow}>
             <input value={props.amendmentReason} onChange={(event) => props.onAmendmentReason(event.target.value)} placeholder="Lý do điều chỉnh" />
             <button type="button" disabled={props.busy} onClick={props.onCreateAmendment}>Tạo bản điều chỉnh</button>
           </div>
         )}
-        {['draft', 'confirmed'].includes(order.status) && props.canCancel && (
+        {['draft', 'confirmed'].includes(order.status) && props.canCancel && (!isManual || !hasIssued) && (
           <div className={styles.reasonRow}>
             <input value={props.cancellationReason} onChange={(event) => props.onCancellationReason(event.target.value)} placeholder="Lý do hủy đơn" />
             <button type="button" className={styles.dangerButton} disabled={props.busy} onClick={props.onCancel}>Hủy đơn</button>

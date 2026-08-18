@@ -10,4 +10,5 @@ export const SALES_ORDER_PERMISSION_KEYS = Object.freeze({
   creditOverride: 'core.sales-order.credit.override',
   customerWrite: 'core.customer.write',
   issueInventory: 'core.delivery-order.issue-inventory',
+  recordCustomerPayment: 'core.customer-payment.create',
 });
