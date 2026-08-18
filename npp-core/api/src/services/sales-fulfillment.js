@@ -118,6 +118,15 @@ function normalizeInputRows(rows, requestContext) {
 
   const normalized = [];
   for (const row of rows) {
+    if (row.is_inventory_managed === false) continue;
+    if (row.is_inventory_managed !== true) {
+      return failure(
+        'INVENTORY_MANAGEMENT_POLICY_REQUIRED',
+        'Each Sales line must resolve an explicit inventory-management policy',
+        false,
+        { line: Number(row.line_number), salesVariantId: row.sales_variant_id },
+      );
+    }
     if (!warehouseAllowed(requestContext, row.warehouse_id)) {
       return failure(
         'WAREHOUSE_SCOPE_DENIED',
@@ -127,7 +136,7 @@ function normalizeInputRows(rows, requestContext) {
     if (!Array.isArray(row.base_variant_ids) || row.base_variant_ids.length !== 1) {
       return failure(
         'INVENTORY_BASE_VARIANT_REQUIRED',
-        'Each Sales SKU must resolve to exactly one active inventory-base variant',
+        'Each inventory-managed Sales SKU must resolve to exactly one active inventory-base variant',
         false,
         { line: Number(row.line_number), salesVariantId: row.sales_variant_id },
       );
@@ -186,6 +195,7 @@ export function allocateWarehouseDemand(lines, availableQuantity, allowBackorder
 }
 
 function fulfillmentStatus({ reserved, backordered }) {
+  if (reserved === 0n && backordered === 0n) return 'fulfilled';
   if (backordered === 0n) return 'reserved';
   if (reserved === 0n) return 'backordered';
   return 'partially_reserved';
