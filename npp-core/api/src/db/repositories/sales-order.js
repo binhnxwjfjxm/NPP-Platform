@@ -9,77 +9,53 @@ const ORDER_COLUMNS = `so.id, so.installation_id, so.order_number, so.order_numb
   CASE
     WHEN so.delivery_status IN ('returned', 'cancelled') THEN so.delivery_status
     WHEN so.delivery_mode = 'PICKUP' THEN 'not_required'
-    WHEN EXISTS (
-      SELECT 1
-        FROM sales.delivery_orders delivery_order
-       WHERE delivery_order.installation_id = so.installation_id
-         AND delivery_order.sales_order_id = so.id
-         AND delivery_order.status <> 'cancelled'
-    ) AND NOT EXISTS (
-      SELECT 1
-        FROM sales.delivery_orders delivery_order
-       WHERE delivery_order.installation_id = so.installation_id
-         AND delivery_order.sales_order_id = so.id
-         AND delivery_order.status <> 'cancelled'
-         AND NOT EXISTS (
-           SELECT 1
-             FROM logistics.delivery_attempts attempt
-            WHERE attempt.installation_id = delivery_order.installation_id
-              AND attempt.delivery_order_id = delivery_order.id
-              AND attempt.result = 'delivered_full'
-         )
-    ) THEN 'delivered'
-    WHEN EXISTS (
-      SELECT 1
-        FROM sales.delivery_orders delivery_order
-        JOIN logistics.delivery_attempts attempt
-          ON attempt.installation_id = delivery_order.installation_id
-         AND attempt.delivery_order_id = delivery_order.id
-       WHERE delivery_order.installation_id = so.installation_id
-         AND delivery_order.sales_order_id = so.id
-         AND delivery_order.status <> 'cancelled'
-         AND attempt.result IN ('delivered_full', 'delivered_partial')
-    ) THEN 'partially_delivered'
-    WHEN EXISTS (
-      SELECT 1
-        FROM sales.delivery_orders delivery_order
-        JOIN logistics.delivery_attempts attempt
-          ON attempt.installation_id = delivery_order.installation_id
-         AND attempt.delivery_order_id = delivery_order.id
-       WHERE delivery_order.installation_id = so.installation_id
-         AND delivery_order.sales_order_id = so.id
-         AND delivery_order.status <> 'cancelled'
-         AND attempt.result = 'rescheduled'
-    ) THEN 'rescheduled'
-    WHEN EXISTS (
-      SELECT 1
-        FROM sales.delivery_orders delivery_order
-        JOIN logistics.delivery_attempts attempt
-          ON attempt.installation_id = delivery_order.installation_id
-         AND attempt.delivery_order_id = delivery_order.id
-       WHERE delivery_order.installation_id = so.installation_id
-         AND delivery_order.sales_order_id = so.id
-         AND delivery_order.status <> 'cancelled'
-         AND attempt.result = 'failed'
-    ) THEN 'failed'
-    WHEN EXISTS (
-      SELECT 1
-        FROM sales.delivery_orders delivery_order
-        JOIN logistics.trip_dispatch_items dispatch_item
-          ON dispatch_item.installation_id = delivery_order.installation_id
-         AND dispatch_item.delivery_order_id = delivery_order.id
-       WHERE delivery_order.installation_id = so.installation_id
-         AND delivery_order.sales_order_id = so.id
-         AND delivery_order.status <> 'cancelled'
-    ) THEN 'dispatched'
-    WHEN EXISTS (
-      SELECT 1
-        FROM sales.delivery_orders delivery_order
-       WHERE delivery_order.installation_id = so.installation_id
-         AND delivery_order.sales_order_id = so.id
-         AND delivery_order.status = 'ready_to_dispatch'
-    ) THEN 'ready_to_dispatch'
-    ELSE so.delivery_status
+    ELSE COALESCE((
+      SELECT CASE
+        WHEN expected.expected_base_quantity > 0
+         AND delivery.delivered_base_quantity >= expected.expected_base_quantity THEN 'delivered'
+        WHEN delivery.delivered_base_quantity > 0 THEN 'partially_delivered'
+        WHEN delivery.has_rescheduled THEN 'rescheduled'
+        WHEN delivery.has_failed THEN 'failed'
+        WHEN delivery.has_dispatched THEN 'dispatched'
+        WHEN delivery.has_ready_to_dispatch THEN 'ready_to_dispatch'
+        ELSE so.delivery_status
+      END
+      FROM (
+        SELECT COALESCE(sum(line.base_quantity), 0)::numeric(30,12) AS expected_base_quantity
+          FROM sales.sales_order_versions version
+          JOIN sales.sales_order_version_lines line
+            ON line.installation_id = version.installation_id
+           AND line.sales_order_version_id = version.id
+         WHERE version.installation_id = so.installation_id
+           AND version.sales_order_id = so.id
+           AND version.version_number = so.current_version_number
+      ) expected
+      CROSS JOIN (
+        SELECT COALESCE(sum(
+                 CASE WHEN attempt.result IN ('delivered_full', 'delivered_partial')
+                   THEN attempt_line.delivered_base_quantity
+                   ELSE 0::numeric
+                 END
+               ), 0)::numeric(30,12) AS delivered_base_quantity,
+               COALESCE(bool_or(attempt.result = 'rescheduled'), false) AS has_rescheduled,
+               COALESCE(bool_or(attempt.result = 'failed'), false) AS has_failed,
+               COALESCE(bool_or(dispatch_item.id IS NOT NULL), false) AS has_dispatched,
+               COALESCE(bool_or(delivery_order.status = 'ready_to_dispatch'), false) AS has_ready_to_dispatch
+          FROM sales.delivery_orders delivery_order
+          LEFT JOIN logistics.delivery_attempts attempt
+            ON attempt.installation_id = delivery_order.installation_id
+           AND attempt.delivery_order_id = delivery_order.id
+          LEFT JOIN logistics.delivery_attempt_lines attempt_line
+            ON attempt_line.installation_id = attempt.installation_id
+           AND attempt_line.attempt_id = attempt.id
+          LEFT JOIN logistics.trip_dispatch_items dispatch_item
+            ON dispatch_item.installation_id = delivery_order.installation_id
+           AND dispatch_item.delivery_order_id = delivery_order.id
+         WHERE delivery_order.installation_id = so.installation_id
+           AND delivery_order.sales_order_id = so.id
+           AND delivery_order.status <> 'cancelled'
+      ) delivery
+    ), so.delivery_status)
   END AS delivery_status,
   so.settlement_status, so.currency_code, so.requested_delivery_date, so.note, so.revision,
   so.confirmed_at, so.confirmed_by, so.cancelled_at, so.cancelled_by, so.cancellation_reason,

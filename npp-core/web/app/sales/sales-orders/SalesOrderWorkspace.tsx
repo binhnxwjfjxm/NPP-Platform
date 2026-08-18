@@ -51,6 +51,7 @@ function orderLane(order: SalesOrder): Exclude<OrderLaneFilter, 'all'> {
 function orderWorkStage(order: SalesOrder): OrderWorkStage {
   if (order.status === 'cancelled' || order.deliveryStatus === 'cancelled') return 'cancelled';
   if (order.status === 'closed' || order.deliveryStatus === 'delivered') return 'completed';
+  if (order.deliveryStatus === 'returned') return 'active';
   if (
     ['ready_to_dispatch', 'dispatched', 'partially_delivered', 'failed', 'rescheduled'].includes(order.deliveryStatus)
     || String(order.fulfillmentStatus) === 'issued'
@@ -313,7 +314,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
 
         <section className={styles.summaryGrid} aria-label="Tổng hợp đơn bán hàng">
           <article><strong>{orders.length}</strong><span>Tổng số đơn</span></article>
-          <article><strong>{allStageCounts.active + allStageCounts.preparing}</strong><span>Đang xử lý</span></article>
+          <article><strong>{allStageCounts.active}</strong><span>Đang xử lý</span></article>
           <article><strong>{allStageCounts.waiting_delivery}</strong><span>Chờ giao</span></article>
           <article><strong>{allStageCounts.completed}</strong><span>Đã hoàn thành</span></article>
         </section>

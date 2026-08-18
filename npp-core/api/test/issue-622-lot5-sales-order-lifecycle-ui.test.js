@@ -12,20 +12,21 @@ async function source(path) {
   return readFile(path, 'utf8');
 }
 
-test('Issue #622 Lô 5 reads delivery outcome from canonical delivery attempts', async () => {
+test('Issue #622 Lô 5 reconciles delivery outcome from delivered base quantity', async () => {
   const repository = await source(repositoryPath);
 
-  assert.match(repository, /FROM logistics\.delivery_attempts attempt/);
-  assert.match(repository, /attempt\.result = 'delivered_full'/);
+  assert.match(repository, /FROM sales\.sales_order_versions version/);
+  assert.match(repository, /sum\(line\.base_quantity\)/);
+  assert.match(repository, /FROM sales\.delivery_orders delivery_order/);
+  assert.match(repository, /LEFT JOIN logistics\.delivery_attempts attempt/);
+  assert.match(repository, /LEFT JOIN logistics\.delivery_attempt_lines attempt_line/);
   assert.match(repository, /attempt\.result IN \('delivered_full', 'delivered_partial'\)/);
-  assert.match(repository, /THEN 'partially_delivered'/);
+  assert.match(repository, /delivery\.delivered_base_quantity >= expected\.expected_base_quantity THEN 'delivered'/);
+  assert.match(repository, /delivery\.delivered_base_quantity > 0 THEN 'partially_delivered'/);
   assert.match(repository, /attempt\.result = 'rescheduled'/);
   assert.match(repository, /attempt\.result = 'failed'/);
-  assert.match(repository, /JOIN logistics\.trip_dispatch_items dispatch_item/);
+  assert.match(repository, /LEFT JOIN logistics\.trip_dispatch_items dispatch_item/);
   assert.match(repository, /so\.delivery_status IN \('returned', 'cancelled'\)/);
-
-  // Full delivery is only projected when every active Delivery Order is fully delivered.
-  assert.match(repository, /AND NOT EXISTS \([\s\S]*delivery_order\.status <> 'cancelled'[\s\S]*AND NOT EXISTS \([\s\S]*attempt\.result = 'delivered_full'/);
 });
 
 test('Issue #622 Lô 5 keeps one Sales Orders page and groups work by business stage', async () => {
@@ -36,11 +37,11 @@ test('Issue #622 Lô 5 keeps one Sales Orders page and groups work by business s
   }
   assert.match(workspace, /useState<OrderWorkStage>\('active'\)/);
   assert.match(workspace, /order\.status === 'closed' \|\| order\.deliveryStatus === 'delivered'/);
+  assert.match(workspace, /order\.deliveryStatus === 'returned'\) return 'active'/);
   assert.match(workspace, /order\.deliveryStatus === 'delivered'\) return 'Đã giao'/);
   assert.match(workspace, /order\.deliveryStatus === 'partially_delivered'\) return 'Đã giao một phần'/);
   assert.match(workspace, /order\.deliveryStatus === 'dispatched'\) return 'Đang giao'/);
 
-  // The page and its fixed create action remain the same surface.
   assert.match(workspace, /title="Đơn bán hàng"/);
   assert.match(workspace, /actions=\{canCreate \? <button[^>]*>Tạo đơn bán hàng<\/button> : null\}/);
 });
