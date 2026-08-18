@@ -107,8 +107,8 @@ INSERT INTO shared.permission_catalog (
 ) VALUES
   ('core.inventory-manual-inbound.read', 'Kho', 'Xem nhập kho thủ công', 'Cho phép xem chứng từ nhập kho thủ công trong phạm vi kho được cấp.', true, now()),
   ('core.inventory-manual-inbound.prepare', 'Kho', 'Chuẩn bị nhập kho thủ công', 'Cho phép chuẩn bị và kiểm tra dữ liệu chứng từ nhập kho thủ công trước khi xác nhận.', true, now()),
-  ('core.inventory-manual-inbound.post', 'Kho', 'Xác nhận nhập kho thủ công', 'Cho phép xác nhận chứng từ và ghi Inventory IN chuẩn vào sổ kho.', true, now()),
-  ('core.inventory-manual-inbound.reverse', 'Kho', 'Đảo nhập kho thủ công', 'Cho phép đảo chứng từ nhập kho thủ công đã ghi sổ bằng movement đảo có truy vết.', true, now())
+  ('core.inventory-manual-inbound.post', 'Kho', 'Xác nhận nhập kho thủ công', 'Cho phép xác nhận chứng từ và ghi hàng vào sổ kho chuẩn.', true, now()),
+  ('core.inventory-manual-inbound.reverse', 'Kho', 'Đảo nhập kho thủ công', 'Cho phép đảo chứng từ nhập kho thủ công đã ghi sổ bằng chứng từ đảo có truy vết.', true, now())
 ON CONFLICT (permission_key) DO UPDATE
 SET module = EXCLUDED.module,
     label = EXCLUDED.label,
