@@ -36,6 +36,7 @@ export async function getConfirmedFulfillmentInput(client, {
        line.sku_snapshot,
        line.base_quantity AS ordered_base_quantity,
        selected_variant.product_id,
+       product.is_inventory_managed,
        ARRAY(
          SELECT base_variant.id
            FROM shared.product_variants base_variant
@@ -57,6 +58,9 @@ export async function getConfirmedFulfillmentInput(client, {
       JOIN shared.product_variants selected_variant
         ON selected_variant.installation_id = line.installation_id
        AND selected_variant.id = line.variant_id
+      JOIN shared.products product
+        ON product.installation_id = selected_variant.installation_id
+       AND product.id = selected_variant.product_id
      WHERE so.installation_id = $1
        AND so.id = $2
        AND so.status = 'confirmed'
