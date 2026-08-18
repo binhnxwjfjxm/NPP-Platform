@@ -1,6 +1,7 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { createIdempotencyKey } from '@npp/contracts';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import { readSpreadsheetRows } from '../../../lib/spreadsheet-reader';
 import styles from './manual-inbound-workspace.module.css';
@@ -49,9 +50,22 @@ type PreviewResult = {
     attentionRowCount: number;
   };
 };
+type HistoryDocument = {
+  id: string;
+  inboundType: InboundType;
+  warehouseCode: string;
+  warehouseName: string;
+  documentDate: string;
+  referenceNumber: string | null;
+  note: string | null;
+  createdAt: string;
+  status: 'POSTED' | 'REVERSED';
+  reversalDate: string | null;
+  reversalNote: string | null;
+};
 type Envelope<T> = { data?: T; error?: { message?: string; code?: string } };
 type ResolvedItem = { sku: string; productName?: string; sourceUnitCode?: string };
-
+type PendingMutation = { key: string; body: string };
 type InboundType = 'MANUAL_RECEIPT' | 'OFF_DOCUMENT_CUSTOMER_RETURN' | 'RECOVERY' | 'OTHER';
 
 const ADMIN_CONFIGURATION_CODES = new Set([
@@ -71,7 +85,7 @@ const INBOUND_TYPES: Array<{ value: InboundType; label: string }> = [
 
 const HEADER_ALIASES: Record<string, keyof DraftRow> = {
   sku: 'sku',
-  'SKU': 'sku',
+  SKU: 'sku',
   sourceQuantity: 'sourceQuantity',
   'Số lượng': 'sourceQuantity',
   unitCost: 'unitCost',
@@ -153,6 +167,15 @@ function formatCost(value: string | undefined) {
   return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(number);
 }
 
+function inboundTypeLabel(value: InboundType) {
+  return INBOUND_TYPES.find((item) => item.value === value)?.label ?? value;
+}
+
+function displayDate(value: string | null | undefined) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value ?? ''));
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '—';
+}
+
 export default function ManualInboundWorkspace() {
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [locations, setLocations] = useState<LocationOption[]>([]);
@@ -164,10 +187,20 @@ export default function ManualInboundWorkspace() {
   const [rows, setRows] = useState<DraftRow[]>([emptyRow()]);
   const [filename, setFilename] = useState('');
   const [preview, setPreview] = useState<PreviewResult | null>(null);
+  const [previewDirty, setPreviewDirty] = useState(false);
   const [resolvedItems, setResolvedItems] = useState<Record<number, ResolvedItem>>({});
-  const [busy, setBusy] = useState<'warehouses' | 'locations' | 'file' | 'preview' | null>(null);
+  const [busy, setBusy] = useState<'warehouses' | 'locations' | 'file' | 'preview' | 'confirm' | null>(null);
   const [message, setMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
+  const [history, setHistory] = useState<HistoryDocument[]>([]);
+  const [historyType, setHistoryType] = useState<'' | InboundType>('');
+  const [historyReference, setHistoryReference] = useState('');
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [historyMessage, setHistoryMessage] = useState('');
+  const [reverseDraft, setReverseDraft] = useState<{ documentId: string; label: string; documentDate: string; reasonNote: string } | null>(null);
+  const [reverseBusy, setReverseBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const pendingConfirm = useRef<PendingMutation | null>(null);
+  const pendingReverse = useRef<PendingMutation | null>(null);
 
   const errorsByLine = useMemo(() => {
     const map = new Map<number, Array<{ code: string; message: string }>>();
@@ -177,8 +210,30 @@ export default function ManualInboundWorkspace() {
     return map;
   }, [preview]);
 
+  function operatorPayload() {
+    return {
+      warehouseId,
+      inboundType,
+      documentDate,
+      referenceNumber: referenceNumber.trim() || null,
+      note: note.trim() || null,
+      rows: rows.map((row) => ({
+        sku: row.sku.trim(),
+        sourceQuantity: row.sourceQuantity.trim(),
+        unitCost: row.unitCost.trim() || null,
+        locationCode: row.locationCode.trim() || null,
+        lotCode: row.lotCode.trim() || null,
+        manufacturedDate: row.manufacturedDate || null,
+        expiryDate: row.expiryDate || null,
+        supplierLotReference: row.supplierLotReference.trim() || null,
+      })),
+    };
+  }
+
   function invalidate() {
     setPreview(null);
+    setPreviewDirty(false);
+    pendingConfirm.current = null;
     setMessage(null);
   }
 
@@ -197,8 +252,29 @@ export default function ManualInboundWorkspace() {
   function updateSourceLines(lineNumbers: number[], patch: Partial<DraftRow>) {
     const indexes = new Set(lineNumbers.map((line) => line - 1));
     setRows((current) => current.map((row, index) => indexes.has(index) ? { ...row, ...patch } : row));
-    setPreview(null);
-    setMessage({ kind: 'info', text: 'Đã bổ sung thông tin. Kiểm tra lại dữ liệu để cập nhật kết quả.' });
+    setPreview((current) => current ? {
+      ...current,
+      rows: current.rows.map((row) => row.sourceLineNumbers.some((line) => lineNumbers.includes(line)) ? { ...row, ...patch } : row),
+    } : current);
+    setPreviewDirty(true);
+    pendingConfirm.current = null;
+    setMessage({ kind: 'info', text: 'Đã bổ sung thông tin. Bấm “Kiểm tra dữ liệu” lại trước khi xác nhận nhập.' });
+  }
+
+  async function loadHistory(type = historyType, reference = historyReference) {
+    setHistoryBusy(true);
+    setHistoryMessage('');
+    try {
+      const query = new URLSearchParams();
+      if (type) query.set('inboundType', type);
+      if (reference.trim()) query.set('referenceNumber', reference.trim());
+      const data = await requestJson<HistoryDocument[]>(`/api/inventory/manual-inbounds/operator/history?${query.toString()}`);
+      setHistory(data);
+    } catch (error) {
+      setHistoryMessage(error instanceof Error ? error.message : 'Không tải được lịch sử nhập kho.');
+    } finally {
+      setHistoryBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -212,13 +288,18 @@ export default function ManualInboundWorkspace() {
       })
       .catch((error) => { if (active) setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Không tải được danh sách kho.' }); })
       .finally(() => { if (active) setBusy(null); });
+    void loadHistory('', '');
     return () => { active = false; };
+    // History is loaded once with empty filters; later searches are explicit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     let active = true;
     setLocations([]);
     setPreview(null);
+    setPreviewDirty(false);
+    pendingConfirm.current = null;
     if (!warehouseId) return () => { active = false; };
     setBusy('locations');
     requestJson<{ warehouse: WarehouseOption; locations: LocationOption[] }>(`/api/inventory/manual-inbounds/operator/locations?warehouseId=${encodeURIComponent(warehouseId)}`)
@@ -231,6 +312,8 @@ export default function ManualInboundWorkspace() {
   async function chooseFile(file: File) {
     setBusy('file');
     setPreview(null);
+    setPreviewDirty(false);
+    pendingConfirm.current = null;
     setMessage(null);
     try {
       const parsed = rowsFromSheet(await readSpreadsheetRows(file));
@@ -258,26 +341,12 @@ export default function ManualInboundWorkspace() {
     setBusy('preview');
     setMessage(null);
     setPreview(null);
+    setPreviewDirty(false);
+    pendingConfirm.current = null;
     try {
       const result = await requestJson<PreviewResult>('/api/inventory/manual-inbounds/operator/preview', {
         method: 'POST',
-        body: JSON.stringify({
-          warehouseId,
-          inboundType,
-          documentDate,
-          referenceNumber: referenceNumber.trim() || null,
-          note: note.trim() || null,
-          rows: rows.map((row) => ({
-            sku: row.sku.trim(),
-            sourceQuantity: row.sourceQuantity.trim(),
-            unitCost: row.unitCost.trim() || null,
-            locationCode: row.locationCode.trim() || null,
-            lotCode: row.lotCode.trim() || null,
-            manufacturedDate: row.manufacturedDate || null,
-            expiryDate: row.expiryDate || null,
-            supplierLotReference: row.supplierLotReference.trim() || null,
-          })),
-        }),
+        body: JSON.stringify(operatorPayload()),
       });
       setPreview(result);
       const nextResolved: Record<number, ResolvedItem> = {};
@@ -295,8 +364,8 @@ export default function ManualInboundWorkspace() {
       setMessage({
         kind: 'info',
         text: result.ready
-          ? 'Dữ liệu đã sẵn sàng. Việc kiểm tra này chưa làm thay đổi tồn kho.'
-          : 'Còn dòng cần xử lý. Việc kiểm tra này chưa làm thay đổi tồn kho.',
+          ? 'Dữ liệu đã sẵn sàng. Kiểm tra chưa làm thay đổi tồn kho.'
+          : 'Còn dòng cần xử lý. Kiểm tra chưa làm thay đổi tồn kho.',
       });
     } catch (error) {
       setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Không kiểm tra được dữ liệu.' });
@@ -305,15 +374,104 @@ export default function ManualInboundWorkspace() {
     }
   }
 
+  async function confirmInbound() {
+    if (!preview?.ready || previewDirty) {
+      setMessage({ kind: 'error', text: 'Hãy kiểm tra lại để tất cả dòng ở trạng thái Sẵn sàng trước khi xác nhận nhập.' });
+      return;
+    }
+    let pending = pendingConfirm.current;
+    if (!pending) {
+      pending = {
+        key: createIdempotencyKey('manual-inbound-confirm'),
+        body: JSON.stringify(operatorPayload()),
+      };
+      pendingConfirm.current = pending;
+    }
+    setBusy('confirm');
+    setMessage(null);
+    try {
+      await requestJson('/api/inventory/manual-inbounds/operator/confirm', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': pending.key },
+        body: pending.body,
+      });
+      pendingConfirm.current = null;
+      setRows([emptyRow()]);
+      setResolvedItems({});
+      setFilename('');
+      setReferenceNumber('');
+      setNote('');
+      setPreview(null);
+      setPreviewDirty(false);
+      setMessage({ kind: 'info', text: 'Đã xác nhận nhập kho. Tồn kho đã được cập nhật theo sổ kho.' });
+      await loadHistory();
+    } catch (error) {
+      setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Không xác nhận được nhập kho.' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function openReverse(document: HistoryDocument) {
+    pendingReverse.current = null;
+    setReverseDraft({
+      documentId: document.id,
+      label: document.referenceNumber || `${inboundTypeLabel(document.inboundType)} · ${displayDate(document.documentDate)}`,
+      documentDate: '',
+      reasonNote: '',
+    });
+  }
+
+  async function submitReverse() {
+    if (!reverseDraft) return;
+    if (!reverseDraft.documentDate) {
+      setHistoryMessage('Chọn ngày đảo chứng từ.');
+      return;
+    }
+    if (!reverseDraft.reasonNote.trim()) {
+      setHistoryMessage('Nhập lý do đảo chứng từ.');
+      return;
+    }
+    let pending = pendingReverse.current;
+    if (!pending) {
+      pending = {
+        key: createIdempotencyKey('manual-inbound-reverse'),
+        body: JSON.stringify({
+          documentId: reverseDraft.documentId,
+          documentDate: reverseDraft.documentDate,
+          reasonNote: reverseDraft.reasonNote.trim(),
+        }),
+      };
+      pendingReverse.current = pending;
+    }
+    setReverseBusy(true);
+    setHistoryMessage('');
+    try {
+      await requestJson('/api/inventory/manual-inbounds/operator/reverse', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': pending.key },
+        body: pending.body,
+      });
+      pendingReverse.current = null;
+      setReverseDraft(null);
+      setHistoryMessage('Đã đảo chứng từ. Sổ kho giữ nguyên lịch sử và đã ghi bút toán đảo.');
+      await loadHistory();
+    } catch (error) {
+      setHistoryMessage(error instanceof Error ? error.message : 'Không đảo được chứng từ.');
+    } finally {
+      setReverseBusy(false);
+    }
+  }
+
   return <AppShell
     title="Nhập kho thủ công"
-    subtitle="Chuẩn bị dữ liệu hàng vào kho theo chứng từ thực tế, không thay thế quy trình Mua hàng."
+    subtitle="Ghi nhận hàng thực tế vào Kho mà vẫn giữ đúng sổ kho, giá vốn và lịch sử chứng từ."
     kicker="Kho"
   >
     <div className={styles.stack}>
       <section className={styles.notice}>
-        <strong>Kiểm tra trước, chưa ghi tồn.</strong>
-        <span>Dữ liệu chỉ được đối chiếu SKU, kho, lô, hạn dùng, vị trí và giá vốn ở bước này.</span>
+        <strong>Kiểm tra trước khi xác nhận.</strong>
+        <span>Chỉ thao tác “XÁC NHẬN NHẬP” mới làm thay đổi tồn kho.</span>
       </section>
 
       <section className={styles.card}>
@@ -366,7 +524,7 @@ export default function ManualInboundWorkspace() {
       {preview ? <section className={styles.card}>
         <div className={styles.sectionHeading}>
           <div><h2>Kết quả kiểm tra</h2><p>{preview.totals.readyRowCount} dòng sẵn sàng · {preview.totals.attentionRowCount} dòng cần xử lý · Tổng số lượng {preview.totals.sourceQuantityTotal}</p></div>
-          <span className={preview.ready ? styles.readyBadge : styles.attentionBadge}>{preview.ready ? 'Sẵn sàng' : 'Cần xử lý'}</span>
+          <span className={preview.ready && !previewDirty ? styles.readyBadge : styles.attentionBadge}>{preview.ready && !previewDirty ? 'Sẵn sàng' : previewDirty ? 'Cần kiểm tra lại' : 'Cần xử lý'}</span>
         </div>
         {preview.totals.mergedDuplicateCount > 0 ? <p className={styles.mergeNote}>Đã gộp {preview.totals.mergedDuplicateCount} dòng trùng cùng SKU, vị trí, lô và giá vốn để kiểm tra dễ hơn.</p> : null}
         <div className={styles.previewTableWrap}>
@@ -380,36 +538,60 @@ export default function ManualInboundWorkspace() {
               const showExpiry = row.requiredFields.includes('EXPIRY') || errorCodes.has('EXPIRY_NOT_ALLOWED') || errorCodes.has('LOT_EXPIRY_MISMATCH');
               const showCost = row.requiredFields.includes('COST');
               const statusLabel = previewStatusLabel(row, rowErrors);
-              return <Fragment key={`${row.lineNumber}-${row.sku}`}>
-                <tr key={`${row.lineNumber}-${row.sku}`} className={row.status === 'READY' ? styles.previewReadyRow : styles.previewAttentionRow}>
-                  <td><strong>{row.sku}</strong>{row.sourceLineNumbers.length > 1 ? <small>Gộp {row.sourceLineNumbers.length} dòng</small> : null}</td>
-                  <td>{row.productName || '—'}</td>
-                  <td>{row.sourceUnitCode || '—'}</td>
-                  <td>{row.sourceQuantity}</td>
-                  <td>{row.warehouseCode || '—'}</td>
-                  <td>{row.locationCode || (row.locationRequired ? 'Cần chọn' : 'Không bắt buộc')}</td>
-                  <td>{row.lotTrackingMode === 'REQUIRED' ? (row.lotCode || 'Cần nhập') : 'Không quản lý'}</td>
-                  <td>{row.expiryTrackingMode === 'REQUIRED' ? (row.expiryDate || 'Cần nhập') : row.expiryTrackingMode === 'OPTIONAL' ? (row.expiryDate || 'Tùy chọn') : 'Không quản lý'}</td>
-                  <td>{row.unitCost ? `${formatCost(row.unitCost)} đ${row.costSource === 'CURRENT' ? ' · hiện hành' : ''}` : 'Cần nhập'}</td>
-                  <td><span className={row.status === 'READY' ? styles.readyBadge : styles.attentionBadge}>{statusLabel}</span></td>
-                </tr>
-                {showLocation || showLot || showExpiry || showCost || rowErrors.length ? <tr key={`${row.lineNumber}-${row.sku}-detail`} className={styles.previewDetailRow}><td colSpan={10}>
-                  {showLocation || showLot || showExpiry || showCost ? <div className={styles.correctionGrid}>
-                    {showLocation ? <label><span>Vị trí kho</span><select value={row.locationCode || ''} onChange={(event) => updateSourceLines(row.sourceLineNumbers, { locationCode: event.target.value })}><option value="">Không chọn</option>{locations.map((location) => <option key={location.id} value={location.code}>{location.code} — {location.name}</option>)}</select></label> : null}
-                    {showLot ? <label><span>Mã lô</span><input value={row.lotCode || ''} onChange={(event) => updateSourceLines(row.sourceLineNumbers, { lotCode: event.target.value, ...(errorCodes.has('LOT_NOT_ALLOWED') ? { expiryDate: '', manufacturedDate: '', supplierLotReference: '' } : {}) })} placeholder={errorCodes.has('LOT_NOT_ALLOWED') ? 'Xóa mã lô để tiếp tục' : 'Nhập mã lô'} /></label> : null}
-                    {showExpiry ? <label><span>Hạn sử dụng</span><input type="date" value={row.expiryDate || ''} onChange={(event) => updateSourceLines(row.sourceLineNumbers, { expiryDate: event.target.value })} /></label> : null}
-                    {showCost ? <label><span>Giá vốn</span><input inputMode="decimal" value={row.unitCost || ''} onChange={(event) => updateSourceLines(row.sourceLineNumbers, { unitCost: event.target.value })} placeholder="Nhập giá vốn" /></label> : null}
-                    {errorCodes.has('LOT_NOT_ALLOWED') ? <button type="button" className={styles.secondary} onClick={() => updateSourceLines(row.sourceLineNumbers, { lotCode: '', expiryDate: '', manufacturedDate: '', supplierLotReference: '' })}>Bỏ thông tin lô</button> : null}
-                    {errorCodes.has('EXPIRY_NOT_ALLOWED') ? <button type="button" className={styles.secondary} onClick={() => updateSourceLines(row.sourceLineNumbers, { expiryDate: '' })}>Bỏ hạn sử dụng</button> : null}
-                  </div> : null}
-                  {rowErrors.length ? <ul className={styles.errorList}>{rowErrors.map((error) => <li key={`${error.code}-${error.message}`}>{error.message}</li>)}</ul> : null}
-                </td></tr> : null}
-              </Fragment>;
+              const errorTitle = rowErrors.map((error) => error.message).join('\n');
+              const selectedLocation = locations.some((location) => location.code === row.locationCode) ? (row.locationCode || '') : '';
+              return <tr key={`${row.lineNumber}-${row.sku}`} className={row.status === 'READY' && !previewDirty ? styles.previewReadyRow : styles.previewAttentionRow}>
+                <td><strong>{row.sku}</strong>{row.sourceLineNumbers.length > 1 ? <small>Gộp {row.sourceLineNumbers.length} dòng</small> : null}</td>
+                <td>{row.productName || '—'}</td>
+                <td>{row.sourceUnitCode || '—'}</td>
+                <td>{row.sourceQuantity}</td>
+                <td>{row.warehouseCode || '—'}</td>
+                <td>{showLocation ? <div className={styles.inlineEditor}><span className={styles.requiredMark} aria-label="Bắt buộc">*</span><select aria-label={`Vị trí ${row.sku}`} value={selectedLocation} onChange={(event) => updateSourceLines(row.sourceLineNumbers, { locationCode: event.target.value })}><option value="">Chọn vị trí</option>{locations.map((location) => <option key={location.id} value={location.code}>{location.code} — {location.name}</option>)}</select></div> : (row.locationCode || (row.locationRequired ? '—' : 'Không bắt buộc'))}</td>
+                <td>{errorCodes.has('LOT_NOT_ALLOWED') ? <button type="button" className={styles.inlineAction} onClick={() => updateSourceLines(row.sourceLineNumbers, { lotCode: '', expiryDate: '', manufacturedDate: '', supplierLotReference: '' })}>Bỏ mã lô</button> : showLot ? <div className={styles.inlineEditor}><span className={styles.requiredMark} aria-label="Bắt buộc">*</span><input aria-label={`Mã lô ${row.sku}`} value={row.lotCode || ''} onChange={(event) => updateSourceLines(row.sourceLineNumbers, { lotCode: event.target.value })} placeholder="Nhập mã lô" /></div> : row.lotTrackingMode === 'REQUIRED' ? (row.lotCode || '—') : 'Không quản lý'}</td>
+                <td>{errorCodes.has('EXPIRY_NOT_ALLOWED') ? <button type="button" className={styles.inlineAction} onClick={() => updateSourceLines(row.sourceLineNumbers, { expiryDate: '' })}>Bỏ HSD</button> : showExpiry ? <div className={styles.inlineEditor}>{row.requiredFields.includes('EXPIRY') ? <span className={styles.requiredMark} aria-label="Bắt buộc">*</span> : null}<input aria-label={`Hạn sử dụng ${row.sku}`} type="date" value={row.expiryDate || ''} onChange={(event) => updateSourceLines(row.sourceLineNumbers, { expiryDate: event.target.value })} /></div> : row.expiryTrackingMode === 'OPTIONAL' ? (row.expiryDate || 'Tùy chọn') : row.expiryTrackingMode === 'REQUIRED' ? (row.expiryDate || '—') : 'Không quản lý'}</td>
+                <td>{showCost ? <div className={styles.inlineEditor}><span className={styles.requiredMark} aria-label="Bắt buộc">*</span><input aria-label={`Giá vốn ${row.sku}`} inputMode="decimal" value={row.unitCost || ''} onChange={(event) => updateSourceLines(row.sourceLineNumbers, { unitCost: event.target.value })} placeholder="Nhập giá vốn" /></div> : row.unitCost ? `${formatCost(row.unitCost)} đ${row.costSource === 'CURRENT' ? ' · hiện hành' : ''}` : '—'}</td>
+                <td><span title={errorTitle || undefined} className={row.status === 'READY' && !previewDirty ? styles.readyBadge : styles.attentionBadge}>{previewDirty && row.status === 'READY' ? 'Kiểm tra lại' : statusLabel}</span></td>
+              </tr>;
             })}</tbody>
           </table>
         </div>
-        <div className={styles.previewFooter}><strong>Chưa làm thay đổi tồn kho.</strong><span>Khi dữ liệu còn thiếu, bổ sung ngay tại dòng rồi bấm “Kiểm tra dữ liệu” lại.</span></div>
+        <div className={styles.previewFooter}>
+          <div>{previewDirty ? <><strong>Cần kiểm tra lại.</strong><span> Các ô đã được bổ sung nhưng chưa đối chiếu lại.</span></> : preview.ready ? <><strong>Dữ liệu đã sẵn sàng.</strong><span> Chưa làm thay đổi tồn kho.</span></> : <><strong>Chưa làm thay đổi tồn kho.</strong><span> Bổ sung trực tiếp tại ô có dấu * đỏ.</span></>}</div>
+          <div className={styles.actions}>
+            {previewDirty ? <button type="button" className={styles.secondary} onClick={() => void checkData()} disabled={busy === 'preview'}>Kiểm tra lại</button> : null}
+            <button type="button" className={styles.primary} onClick={() => void confirmInbound()} disabled={!preview.ready || previewDirty || busy === 'confirm'}>{busy === 'confirm' ? 'Đang xác nhận…' : 'XÁC NHẬN NHẬP'}</button>
+          </div>
+        </div>
       </section> : null}
+
+      <section className={styles.card}>
+        <div className={styles.sectionHeading}><div><h2>Lịch sử nhập kho thủ công</h2><p>Tra cứu theo loại nhập hoặc số chứng từ tham chiếu; chứng từ đã ghi sổ chỉ sửa sai bằng thao tác đảo.</p></div></div>
+        <div className={styles.historyFilters}>
+          <label><span>Loại nhập</span><select value={historyType} onChange={(event) => setHistoryType(event.target.value as '' | InboundType)}><option value="">Tất cả</option>{INBOUND_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+          <label><span>Số chứng từ tham chiếu</span><input value={historyReference} maxLength={160} onChange={(event) => setHistoryReference(event.target.value)} placeholder="Nhập số cần tìm" /></label>
+          <button type="button" className={styles.secondary} onClick={() => void loadHistory()} disabled={historyBusy}>{historyBusy ? 'Đang tìm…' : 'Tìm'}</button>
+        </div>
+        {historyMessage ? <p className={styles.historyMessage}>{historyMessage}</p> : null}
+        <div className={styles.historyTableWrap}>
+          <table className={styles.historyTable}>
+            <thead><tr><th>Ngày</th><th>Loại nhập</th><th>Số tham chiếu</th><th>Kho</th><th>Trạng thái</th><th /></tr></thead>
+            <tbody>{history.length ? history.map((document) => <tr key={document.id}>
+              <td>{displayDate(document.documentDate)}</td>
+              <td>{inboundTypeLabel(document.inboundType)}</td>
+              <td>{document.referenceNumber || '—'}</td>
+              <td>{document.warehouseCode} — {document.warehouseName}</td>
+              <td><span className={document.status === 'POSTED' ? styles.readyBadge : styles.reversedBadge}>{document.status === 'POSTED' ? 'Đã nhập' : 'Đã đảo'}</span>{document.reversalDate ? <small>Ngày đảo {displayDate(document.reversalDate)}</small> : null}</td>
+              <td>{document.status === 'POSTED' ? <button type="button" className={styles.textButton} onClick={() => openReverse(document)}>Đảo chứng từ</button> : null}</td>
+            </tr>) : <tr><td colSpan={6} className={styles.emptyState}>{historyBusy ? 'Đang tải…' : 'Chưa có chứng từ phù hợp.'}</td></tr>}</tbody>
+          </table>
+        </div>
+        {reverseDraft ? <div className={styles.reversePanel}>
+          <div><strong>Đảo chứng từ: {reverseDraft.label}</strong><p>Hệ thống sẽ ghi bút toán đảo, không xóa lịch sử nhập kho cũ.</p></div>
+          <label><span>Ngày đảo *</span><input type="date" value={reverseDraft.documentDate} onChange={(event) => { pendingReverse.current = null; setReverseDraft((current) => current ? { ...current, documentDate: event.target.value } : current); }} /></label>
+          <label className={styles.reverseReason}><span>Lý do *</span><input value={reverseDraft.reasonNote} maxLength={2000} onChange={(event) => { pendingReverse.current = null; setReverseDraft((current) => current ? { ...current, reasonNote: event.target.value } : current); }} placeholder="Nêu rõ lý do cần đảo chứng từ" /></label>
+          <div className={styles.actions}><button type="button" className={styles.secondary} onClick={() => { pendingReverse.current = null; setReverseDraft(null); }}>Hủy</button><button type="button" className={styles.primary} disabled={reverseBusy} onClick={() => void submitReverse()}>{reverseBusy ? 'Đang đảo…' : 'Xác nhận đảo'}</button></div>
+        </div> : null}
+      </section>
     </div>
   </AppShell>;
 }

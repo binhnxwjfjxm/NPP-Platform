@@ -4,8 +4,6 @@ import test from 'node:test';
 
 const workspace = await readFile(new URL('../app/inventory/manual-inbounds/manual-inbound-workspace.tsx', import.meta.url), 'utf8');
 const spreadsheet = await readFile(new URL('../lib/spreadsheet-reader.ts', import.meta.url), 'utf8');
-const proxy = await readFile(new URL('../app/api/inventory/manual-inbounds/operator/[action]/route.ts', import.meta.url), 'utf8');
-const gateway = await readFile(new URL('../lib/manual-inbound-operator-gateway.ts', import.meta.url), 'utf8');
 const navigation = await readFile(new URL('../app/components/app-shell-core.tsx', import.meta.url), 'utf8');
 
 test('Nhập kho thủ công nằm trong Kho với ngôn ngữ nghiệp vụ', () => {
@@ -34,15 +32,12 @@ test('preview dùng bảng nghiệp vụ rõ cột và phân biệt dữ liệu 
   assert.match(workspace, /dòng cần xử lý/);
 });
 
-test('Lô 2 hỗ trợ nhập trực tiếp và Excel xlsx\/CSV nhưng chưa có thao tác ghi tồn', () => {
+test('Lô 2 vẫn giữ bước nhập trực tiếp và Excel xlsx\/CSV trước khi ghi tồn', () => {
   assert.match(workspace, /accept="\.xlsx,\.csv"/);
   assert.match(spreadsheet, /DecompressionStream/);
   assert.match(spreadsheet, /xl\/workbook\.xml/);
   assert.match(workspace, /Kiểm tra dữ liệu/);
   assert.match(workspace, /Chưa làm thay đổi tồn kho/);
-  assert.doesNotMatch(workspace, /XÁC NHẬN NHẬP/);
-  assert.doesNotMatch(gateway, /Idempotency-Key/);
-  assert.doesNotMatch(proxy, /Idempotency-Key/);
 });
 
 test('giao diện chỉ hỏi dữ liệu bổ sung sau kết quả kiểm tra', () => {

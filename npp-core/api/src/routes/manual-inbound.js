@@ -7,6 +7,8 @@ import {
   postManualInbound,
   reverseManualInbound,
 } from '../services/manual-inbound.js';
+import { confirmManualInbound } from '../services/manual-inbound-confirmation.js';
+import { searchManualInboundHistory } from '../services/manual-inbound-history.js';
 import {
   listManualInboundLocationOptions,
   listManualInboundWarehouseOptions,
@@ -104,6 +106,22 @@ export async function handleManualInboundRoutes(req, res, options) {
       return true;
     }
 
+    if (url.pathname === '/api/inventory/manual-inbounds/operator/history' && method === 'GET') {
+      const result = await searchManualInboundHistory(options.getPool(), {
+        requestContext,
+        inboundType: url.searchParams.get('inboundType'),
+        referenceNumber: url.searchParams.get('referenceNumber'),
+        limit: url.searchParams.get('limit') ?? 100,
+        offset: url.searchParams.get('offset') ?? 0,
+      });
+      if (!result.ok) {
+        sendError(res, apiError(result.code, result.message, result.details ?? {}, result.retryable, statusFor(result)), options.requestId, options.receivedAt);
+        return true;
+      }
+      writeSuccess(res, result.documents, options);
+      return true;
+    }
+
     if (url.pathname === '/api/inventory/manual-inbounds/operator/preview' && method === 'POST') {
       const payload = await readPayload(req, res, options);
       if (payload === null) return true;
@@ -113,6 +131,28 @@ export async function handleManualInboundRoutes(req, res, options) {
         return true;
       }
       writeSuccess(res, result.preview, options);
+      return true;
+    }
+
+    if (url.pathname === '/api/inventory/manual-inbounds/operator/confirm' && method === 'POST') {
+      const idempotencyKey = readIdempotencyKey(req);
+      if (!idempotencyKey) {
+        sendError(res, apiError('INVALID_IDEMPOTENCY_KEY', 'Idempotency-Key không hợp lệ.', {}, false, 400), options.requestId, options.receivedAt);
+        return true;
+      }
+      const payload = await readPayload(req, res, options);
+      if (payload === null) return true;
+      const result = await confirmManualInbound({
+        adapter: options.getPool(),
+        requestContext,
+        idempotencyKey,
+        payload,
+      });
+      if (!result.ok) {
+        sendError(res, apiError(result.code, result.message, result.details ?? {}, result.retryable, statusFor(result)), options.requestId, options.receivedAt);
+        return true;
+      }
+      writeSuccess(res, { document: result.document, movement: result.movement, replayed: result.replayed }, options, result.replayed ? 200 : 201);
       return true;
     }
 

@@ -1,4 +1,5 @@
 import 'server-only';
+import { isValidIdempotencyKey, normalizeIdempotencyKey } from '@npp/contracts';
 import { randomUUID } from 'node:crypto';
 import { nppCoreBaseUrl, requireNppWorkforceSessionToken } from './internal-auth-client';
 
@@ -39,16 +40,31 @@ export function normalizeManualInboundOperatorGatewayError(error: unknown) {
     );
 }
 
+function requireMutationKey(value: string | null | undefined) {
+  const normalized = normalizeIdempotencyKey(value);
+  if (!normalized || !isValidIdempotencyKey(normalized)) {
+    throw new ManualInboundOperatorGatewayError(
+      'INVALID_IDEMPOTENCY_KEY',
+      'Khóa chống trùng yêu cầu không hợp lệ',
+      400,
+      false,
+    );
+  }
+  return normalized;
+}
+
 async function requestCore<T>({
   path,
   method,
   requestId,
   body,
+  idempotencyKey,
 }: {
   path: string;
   method: 'GET' | 'POST';
   requestId: string;
   body?: unknown;
+  idempotencyKey?: string | null;
 }): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -62,6 +78,7 @@ async function requestCore<T>({
         Accept: 'application/json',
         'x-request-id': requestId,
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(idempotencyKey ? { 'Idempotency-Key': requireMutationKey(idempotencyKey) } : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
@@ -122,11 +139,69 @@ export function listManualInboundOperatorLocations<T>(warehouseId: string, reque
   });
 }
 
+export function searchManualInboundOperatorHistory<T>({
+  inboundType,
+  referenceNumber,
+  requestId,
+}: {
+  inboundType?: string | null;
+  referenceNumber?: string | null;
+  requestId: string;
+}): Promise<T> {
+  const query = new URLSearchParams();
+  const type = String(inboundType ?? '').trim();
+  const reference = String(referenceNumber ?? '').trim();
+  if (type) query.set('inboundType', type);
+  if (reference) query.set('referenceNumber', reference);
+  query.set('limit', '100');
+  return requestCore<T>({
+    path: `/api/inventory/manual-inbounds/operator/history?${query.toString()}`,
+    method: 'GET',
+    requestId,
+  });
+}
+
 export function previewManualInboundOperator<T>(body: unknown, requestId: string): Promise<T> {
   return requestCore<T>({
     path: '/api/inventory/manual-inbounds/operator/preview',
     method: 'POST',
     requestId,
     body,
+  });
+}
+
+export function confirmManualInboundOperator<T>(body: unknown, requestId: string, idempotencyKey: string | null): Promise<T> {
+  return requestCore<T>({
+    path: '/api/inventory/manual-inbounds/operator/confirm',
+    method: 'POST',
+    requestId,
+    body,
+    idempotencyKey: requireMutationKey(idempotencyKey),
+  });
+}
+
+export function reverseManualInboundOperator<T>({
+  documentId,
+  documentDate,
+  reasonNote,
+  requestId,
+  idempotencyKey,
+}: {
+  documentId: string;
+  documentDate: string;
+  reasonNote: string;
+  requestId: string;
+  idempotencyKey: string | null;
+}): Promise<T> {
+  return requestCore<T>({
+    path: `/api/inventory/manual-inbounds/${encodeURIComponent(String(documentId ?? '').trim())}/reverse`,
+    method: 'POST',
+    requestId,
+    idempotencyKey: requireMutationKey(idempotencyKey),
+    body: {
+      documentDate: String(documentDate ?? '').trim(),
+      reasonCode: 'MANUAL_INBOUND_CORRECTION',
+      reasonNote: String(reasonNote ?? '').trim(),
+    },
   });
 }

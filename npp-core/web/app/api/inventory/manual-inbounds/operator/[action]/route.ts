@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  confirmManualInboundOperator,
   listManualInboundOperatorLocations,
   listManualInboundOperatorWarehouses,
   normalizeManualInboundOperatorGatewayError,
   previewManualInboundOperator,
   resolveManualInboundOperatorRequestId,
+  reverseManualInboundOperator,
+  searchManualInboundOperatorHistory,
 } from '../../../../../../lib/manual-inbound-operator-gateway';
 
 function headers(requestId: string) {
@@ -51,6 +54,13 @@ export async function GET(
         requestId,
       );
     }
+    if (params.action === 'history') {
+      return success(await searchManualInboundOperatorHistory({
+        inboundType: request.nextUrl.searchParams.get('inboundType'),
+        referenceNumber: request.nextUrl.searchParams.get('referenceNumber'),
+        requestId,
+      }), requestId);
+    }
     return NextResponse.json({
       error: { code: 'METHOD_NOT_ALLOWED', message: 'Thao tác này không hỗ trợ tải dữ liệu', retryable: false },
       requestId,
@@ -65,7 +75,7 @@ export async function POST(
   { params }: { params: { action: string } },
 ) {
   const requestId = resolveManualInboundOperatorRequestId(request.headers.get('x-request-id'));
-  if (params.action !== 'preview') {
+  if (!['preview', 'confirm', 'reverse'].includes(params.action)) {
     return NextResponse.json({
       error: { code: 'METHOD_NOT_ALLOWED', message: 'Thao tác này không hỗ trợ gửi dữ liệu', retryable: false },
       requestId,
@@ -79,7 +89,21 @@ export async function POST(
     }, { status: 400, headers: headers(requestId) });
   }
   try {
-    return success(await previewManualInboundOperator(body, requestId), requestId);
+    if (params.action === 'preview') {
+      return success(await previewManualInboundOperator(body, requestId), requestId);
+    }
+    const idempotencyKey = request.headers.get('Idempotency-Key');
+    if (params.action === 'confirm') {
+      return success(await confirmManualInboundOperator(body, requestId, idempotencyKey), requestId);
+    }
+    const reversal = body as { documentId?: string; documentDate?: string; reasonNote?: string };
+    return success(await reverseManualInboundOperator({
+      documentId: reversal.documentId ?? '',
+      documentDate: reversal.documentDate ?? '',
+      reasonNote: reversal.reasonNote ?? '',
+      requestId,
+      idempotencyKey,
+    }), requestId);
   } catch (error) {
     return failure(error, requestId);
   }
