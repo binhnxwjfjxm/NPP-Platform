@@ -161,6 +161,15 @@ export function searchManualInboundOperatorHistory<T>({
   });
 }
 
+export function readManualInboundOperatorHistoryDetail<T>(documentId: string, requestId: string): Promise<T> {
+  const query = new URLSearchParams({ documentId: String(documentId ?? '').trim() });
+  return requestCore<T>({
+    path: `/api/inventory/manual-inbounds/operator/history-detail?${query.toString()}`,
+    method: 'GET',
+    requestId,
+  });
+}
+
 export function previewManualInboundOperator<T>(body: unknown, requestId: string): Promise<T> {
   return requestCore<T>({
     path: '/api/inventory/manual-inbounds/operator/preview',

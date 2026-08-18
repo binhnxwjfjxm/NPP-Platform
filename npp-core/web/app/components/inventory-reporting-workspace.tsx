@@ -61,6 +61,9 @@ const INVENTORY_TABS: readonly WorkspaceTabOption<InventoryReportTab>[] = Object
 ]);
 
 const INVENTORY_TAB_PREFIX = 'inventory-reporting';
+const QUANTITY_SCALE = 1_000_000_000_000n;
+const QUANTITY_SCALE_DIGITS = 12;
+const QUANTITY_PATTERN = /^(-?)(\d+)(?:\.(\d{1,12}))?$/;
 
 const MOVEMENT_LABELS: Readonly<Record<string, string>> = Object.freeze({
   OPENING_BALANCE: 'Tồn đầu kỳ',
@@ -190,6 +193,35 @@ function productUnitLabel(label: InventoryProductLabel | undefined) {
     return `ĐVT: ${baseUnit} · 1 ${packageUnit} = ${formatDecimal(label.package_conversion_to_base)} ${baseUnit}`;
   }
   return `ĐVT: ${baseUnit}`;
+}
+
+function quantityToScaled(value: string | null | undefined) {
+  const match = QUANTITY_PATTERN.exec(String(value ?? '').trim());
+  if (!match) return null;
+  const sign = match[1] === '-' ? -1n : 1n;
+  const whole = BigInt(match[2]);
+  const fraction = BigInt((match[3] ?? '').padEnd(QUANTITY_SCALE_DIGITS, '0'));
+  return sign * (whole * QUANTITY_SCALE + fraction);
+}
+
+function scaledToQuantity(value: bigint) {
+  const sign = value < 0n ? '-' : '';
+  const absolute = value < 0n ? -value : value;
+  const whole = absolute / QUANTITY_SCALE;
+  const fraction = (absolute % QUANTITY_SCALE).toString().padStart(QUANTITY_SCALE_DIGITS, '0').replace(/0+$/, '');
+  return `${sign}${whole}${fraction ? `.${fraction}` : ''}`;
+}
+
+function packageBreakdown(label: InventoryProductLabel | undefined, quantity: string | null | undefined) {
+  const packageUnit = firstText(label?.package_unit_name, label?.package_unit_symbol, label?.package_unit_code);
+  const baseUnit = firstText(label?.base_unit_name, label?.base_unit_symbol, label?.base_unit_code);
+  const scaledQuantity = quantityToScaled(quantity);
+  const scaledConversion = quantityToScaled(label?.package_conversion_to_base);
+  if (!packageUnit || !baseUnit || scaledQuantity === null || scaledConversion === null || scaledConversion <= QUANTITY_SCALE || scaledQuantity < scaledConversion) return '—';
+  const packageCount = scaledQuantity / scaledConversion;
+  const remainder = scaledQuantity % scaledConversion;
+  if (remainder === 0n) return `${packageCount} ${packageUnit}`;
+  return `${packageCount} ${packageUnit} + ${formatDecimal(scaledToQuantity(remainder))} ${baseUnit}`;
 }
 
 async function requestReport(filters: Filters): Promise<InventoryReportingDashboard> {
@@ -425,12 +457,13 @@ export function InventoryReportingWorkspace() {
                 </div>
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
-                    <thead><tr><th>Kho</th><th>Sản phẩm / mã hàng</th><th className={styles.numeric}>Tồn kho</th><th className={styles.numeric}>Đã giữ</th><th className={styles.numeric}>Có thể xuất</th><th className={styles.numeric}>Giá trị</th><th className={styles.numeric}>Giá bình quân</th><th>Tình trạng giá vốn</th></tr></thead>
+                    <thead><tr><th>Kho</th><th>Sản phẩm / mã hàng</th><th className={styles.numeric}>Tồn kho</th><th>Quy đổi</th><th className={styles.numeric}>Đã giữ</th><th className={styles.numeric}>Có thể xuất</th><th className={styles.numeric}>Giá trị</th><th className={styles.numeric}>Giá bình quân</th><th>Tình trạng giá vốn</th></tr></thead>
                     <tbody>
                       {report.currentPositions.map((row) => (
                         <tr key={`${row.warehouseId}:${row.variantId}`}>
                           <td>{row.warehouseCode}</td><td>{renderProduct(row.variantId, row.sku)}</td>
                           <td className={styles.numeric}>{formatDecimal(row.onHandQuantity)}</td>
+                          <td>{packageBreakdown(productByVariant.get(row.variantId), row.onHandQuantity)}</td>
                           <td className={styles.numeric}>{formatDecimal(row.reservedQuantity)}</td>
                           <td className={styles.numeric}>{formatDecimal(row.availableQuantity)}</td>
                           <td className={styles.numeric}>{row.inventoryValue === null ? '—' : formatMoney(row.inventoryValue)}</td>
@@ -438,7 +471,7 @@ export function InventoryReportingWorkspace() {
                           <td><span className={row.costingStatus === 'COSTED' ? styles.statusGood : styles.statusBad}>{costingStatusLabel(row.costingStatus)}</span></td>
                         </tr>
                       ))}
-                      {!report.currentPositions.length ? <tr><td className={styles.empty} colSpan={8}>Không có vị thế tồn hiện tại.</td></tr> : null}
+                      {!report.currentPositions.length ? <tr><td className={styles.empty} colSpan={9}>Không có vị thế tồn hiện tại.</td></tr> : null}
                     </tbody>
                   </table>
                 </div>

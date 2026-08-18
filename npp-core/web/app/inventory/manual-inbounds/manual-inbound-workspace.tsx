@@ -63,6 +63,22 @@ type HistoryDocument = {
   reversalDate: string | null;
   reversalNote: string | null;
 };
+type HistoryMovementDetail = {
+  documentId: string;
+  documentDate: string;
+  referenceNumber: string | null;
+  warehouseCode: string;
+  warehouseName: string;
+  lines: Array<{
+    baseVariantId: string;
+    sku: string;
+    productName: string | null;
+    baseUnitCode: string | null;
+    quantityBefore: string;
+    quantityDelta: string;
+    quantityAfter: string;
+  }>;
+};
 type Envelope<T> = { data?: T; error?: { message?: string; code?: string } };
 type ResolvedItem = { sku: string; productName?: string; sourceUnitCode?: string };
 type PendingMutation = { key: string; body: string };
@@ -167,6 +183,12 @@ function formatCost(value: string | undefined) {
   return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(number);
 }
 
+function formatQuantity(value: string | undefined) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return value || '0';
+  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 6 }).format(number);
+}
+
 function inboundTypeLabel(value: InboundType) {
   return INBOUND_TYPES.find((item) => item.value === value)?.label ?? value;
 }
@@ -196,6 +218,9 @@ export default function ManualInboundWorkspace() {
   const [historyReference, setHistoryReference] = useState('');
   const [historyBusy, setHistoryBusy] = useState(false);
   const [historyMessage, setHistoryMessage] = useState('');
+  const [historyDetail, setHistoryDetail] = useState<HistoryMovementDetail | null>(null);
+  const [historyDetailBusy, setHistoryDetailBusy] = useState(false);
+  const [historyDetailError, setHistoryDetailError] = useState('');
   const [reverseDraft, setReverseDraft] = useState<{ documentId: string; label: string; documentDate: string; reasonNote: string } | null>(null);
   const [reverseBusy, setReverseBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -274,6 +299,21 @@ export default function ManualInboundWorkspace() {
       setHistoryMessage(error instanceof Error ? error.message : 'Không tải được lịch sử nhập kho.');
     } finally {
       setHistoryBusy(false);
+    }
+  }
+
+  async function openHistoryDetail(document: HistoryDocument) {
+    setHistoryDetail(null);
+    setHistoryDetailError('');
+    setHistoryDetailBusy(true);
+    try {
+      const query = new URLSearchParams({ documentId: document.id });
+      const data = await requestJson<HistoryMovementDetail>(`/api/inventory/manual-inbounds/operator/history-detail?${query.toString()}`);
+      setHistoryDetail(data);
+    } catch (error) {
+      setHistoryDetailError(error instanceof Error ? error.message : 'Không tải được biến động tồn của chứng từ.');
+    } finally {
+      setHistoryDetailBusy(false);
     }
   }
 
@@ -581,7 +621,7 @@ export default function ManualInboundWorkspace() {
               <td>{document.referenceNumber || '—'}</td>
               <td>{document.warehouseCode} — {document.warehouseName}</td>
               <td><span className={document.status === 'POSTED' ? styles.readyBadge : styles.reversedBadge}>{document.status === 'POSTED' ? 'Đã nhập' : 'Đã đảo'}</span>{document.reversalDate ? <small>Ngày đảo {displayDate(document.reversalDate)}</small> : null}</td>
-              <td>{document.status === 'POSTED' ? <button type="button" className={styles.textButton} onClick={() => openReverse(document)}>Đảo chứng từ</button> : null}</td>
+              <td><div className={styles.actions}><button type="button" className={styles.textButton} onClick={() => void openHistoryDetail(document)}>Xem biến động</button>{document.status === 'POSTED' ? <button type="button" className={styles.textButton} onClick={() => openReverse(document)}>Đảo chứng từ</button> : null}</div></td>
             </tr>) : <tr><td colSpan={6} className={styles.emptyState}>{historyBusy ? 'Đang tải…' : 'Chưa có chứng từ phù hợp.'}</td></tr>}</tbody>
           </table>
         </div>
@@ -592,6 +632,15 @@ export default function ManualInboundWorkspace() {
           <div className={styles.actions}><button type="button" className={styles.secondary} onClick={() => { pendingReverse.current = null; setReverseDraft(null); }}>Hủy</button><button type="button" className={styles.primary} disabled={reverseBusy} onClick={() => void submitReverse()}>{reverseBusy ? 'Đang đảo…' : 'Xác nhận đảo'}</button></div>
         </div> : null}
       </section>
+
+      {(historyDetailBusy || historyDetail || historyDetailError) ? <div role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) { setHistoryDetail(null); setHistoryDetailError(''); } }} style={{ position: 'fixed', inset: 0, zIndex: 80, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(24, 20, 17, .38)' }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="manual-inbound-movement-title" style={{ width: 'min(920px, 96vw)', maxHeight: '82vh', overflow: 'auto', borderRadius: 14, border: '1px solid #ded8d2', background: '#fff', boxShadow: '0 24px 70px rgba(32, 24, 19, .2)', padding: 18 }}>
+          <div className={styles.sectionHeading}><div><h2 id="manual-inbound-movement-title">Biến động tồn theo chứng từ</h2><p>{historyDetail ? `${historyDetail.warehouseCode} — ${historyDetail.warehouseName} · ${displayDate(historyDetail.documentDate)}${historyDetail.referenceNumber ? ` · ${historyDetail.referenceNumber}` : ''}` : 'Chỉ hiển thị các mã hàng có trên chứng từ này.'}</p></div><button type="button" className={styles.secondary} onClick={() => { setHistoryDetail(null); setHistoryDetailError(''); }}>Đóng</button></div>
+          {historyDetailBusy ? <p className={styles.historyMessage}>Đang tải biến động tồn…</p> : null}
+          {historyDetailError ? <p className={styles.historyMessage}>{historyDetailError}</p> : null}
+          {historyDetail ? <div className={styles.historyTableWrap}><table className={styles.historyTable}><thead><tr><th>Sản phẩm / SKU</th><th>ĐVT</th><th>Tồn trước</th><th>Biến động</th><th>Tồn sau</th></tr></thead><tbody>{historyDetail.lines.map((line) => <tr key={line.baseVariantId}><td><strong>{line.productName || line.sku}</strong><small>{line.sku}</small></td><td>{line.baseUnitCode || '—'}</td><td>{formatQuantity(line.quantityBefore)}</td><td><strong>+{formatQuantity(line.quantityDelta)}</strong></td><td><strong>{formatQuantity(line.quantityAfter)}</strong></td></tr>)}</tbody></table></div> : null}
+        </section>
+      </div> : null}
     </div>
   </AppShell>;
 }
