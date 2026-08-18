@@ -1,5 +1,6 @@
 'use client';
 
+import { createIdempotencyKey } from '@npp/contracts';
 import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell-core';
 import { formatQuantity, type InventoryBalance } from '../../../lib/inventory-types';
@@ -82,7 +83,7 @@ export default function InventoryAdjustmentWorkspace({
   function stableKey(signature: string): string {
     const current = idempotencyKeys.current.get(signature);
     if (current) return current;
-    const next = `web_inventory_adjustment_${crypto.randomUUID()}`;
+    const next = createIdempotencyKey('inventory-adjustment');
     idempotencyKeys.current.set(signature, next);
     return next;
   }
@@ -179,7 +180,7 @@ export default function InventoryAdjustmentWorkspace({
 
   return (
     <AppShell title="Điều chỉnh & xử lý tồn" kicker="Tồn kho & lô hàng"
-      subtitle="Điều chỉnh thủ công, chuyển cách ly/hư hỏng và tiêu hủy qua luồng duyệt, ghi sổ append-only." actions={actions}>
+      subtitle="Điều chỉnh thủ công, chuyển cách ly/hư hỏng và tiêu hủy qua luồng duyệt, ghi sổ có truy vết." actions={actions}>
       {error ? <div className={styles.error} role="alert">{error}</div> : null}
       {message ? <div className={styles.success} role="status">{message}</div> : null}
 
@@ -224,7 +225,7 @@ export default function InventoryAdjustmentWorkspace({
               </button>)}
           </div>
           <div className={styles.detail}>
-            {!selected ? <p className={styles.empty}>Chọn một phiếu để xem lineage và thao tác theo trạng thái.</p> : <>
+            {!selected ? <p className={styles.empty}>Chọn một phiếu để xem nguồn phát sinh và thao tác theo trạng thái.</p> : <>
               <div className={styles.sectionHeader}><div><p className={styles.eyebrow}>{adjustmentStatusLabels[selected.status]}</p><h2>{selected.adjustmentNumber}</h2>
                 <p>{adjustmentKindLabels[selected.documentKind]} · {selected.reasonLabel ?? selected.reasonCode}</p></div>
                 <div className={styles.actionRow} data-testid="inventory-adjustment-document-actions">
@@ -234,8 +235,8 @@ export default function InventoryAdjustmentWorkspace({
                   {selected.status === 'POSTED' ? <button className={styles.dangerButton} onClick={() => transition('reverse')} disabled={busy}>Đảo phiếu</button> : null}
                 </div>
               </div>
-              <dl className={styles.meta}><div><dt>Kho</dt><dd>{selected.warehouseCode} — {selected.warehouseName}</dd></div><div><dt>Revision</dt><dd>{selected.revision}</dd></div>
-                <div><dt>Movement</dt><dd>{selected.inventoryMovementId ?? 'Chưa ghi sổ'}</dd></div><div><dt>Người tạo</dt><dd>{selected.createdBy}</dd></div></dl>
+              <dl className={styles.meta}><div><dt>Kho</dt><dd>{selected.warehouseCode} — {selected.warehouseName}</dd></div><div><dt>Phiên bản</dt><dd>{selected.revision}</dd></div>
+                <div><dt>Bút toán kho</dt><dd>{selected.inventoryMovementId ?? 'Chưa ghi sổ'}</dd></div><div><dt>Người tạo</dt><dd>{selected.createdBy}</dd></div></dl>
               <p className={styles.note}>{selected.reasonNote}</p>
               <div className={styles.lines}>{selected.lines?.map((line) => <article key={line.id} className={styles.lineCard}>
                 <strong>{line.sourceSku}{line.lotCode ? ` · Lô ${line.lotCode}` : ''}</strong>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { transitionStocktake } from '../../../../../../lib/stocktake-gateway';
+import { normalizeStocktakeGatewayError, transitionStocktake } from '../../../../../../lib/stocktake-gateway';
 import { errorResponse, readJsonBody, requestIdFrom, responseHeaders } from '../../../_shared';
 
 export const dynamic = 'force-dynamic';
@@ -36,6 +36,6 @@ export async function POST(
     );
     return NextResponse.json({ data, requestId }, { status: 200, headers: responseHeaders(requestId) });
   } catch (error) {
-    return errorResponse(error, requestId);
+    return errorResponse(error, requestId, normalizeStocktakeGatewayError);
   }
 }
