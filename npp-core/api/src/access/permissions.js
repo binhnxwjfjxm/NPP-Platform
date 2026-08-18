@@ -23,6 +23,10 @@ export const PERMISSIONS = Object.freeze({
   coreInventoryAdjustmentPost: 'core.inventory-adjustment.post',
   coreInventoryAdjustmentCancel: 'core.inventory-adjustment.cancel',
   coreInventoryAdjustmentReverse: 'core.inventory-adjustment.reverse',
+  coreInventoryManualInboundRead: 'core.inventory-manual-inbound.read',
+  coreInventoryManualInboundPrepare: 'core.inventory-manual-inbound.prepare',
+  coreInventoryManualInboundPost: 'core.inventory-manual-inbound.post',
+  coreInventoryManualInboundReverse: 'core.inventory-manual-inbound.reverse',
   coreInventoryCostRead: 'core.inventory-cost.read',
   coreInventoryCostRebuild: 'core.inventory-cost.rebuild',
   coreInventoryCostReconcile: 'core.inventory-cost.reconcile',
@@ -117,6 +121,13 @@ const INVENTORY_ADJUSTMENT_PERMISSION_CATALOG = Object.freeze([
   ['coreInventoryAdjustmentReverse', 'Kho', 'Đảo phiếu xử lý tồn kho', 'Cho phép đảo movement khi chưa có movement phát sinh sau đó trên exact scope.'],
 ].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true })));
 
+const MANUAL_INBOUND_PERMISSION_CATALOG = Object.freeze([
+  ['coreInventoryManualInboundRead', 'Kho', 'Xem nhập kho thủ công', 'Cho phép xem chứng từ nhập kho thủ công trong phạm vi kho được cấp.'],
+  ['coreInventoryManualInboundPrepare', 'Kho', 'Chuẩn bị nhập kho thủ công', 'Cho phép chuẩn bị và kiểm tra dữ liệu chứng từ nhập kho thủ công trước khi xác nhận.'],
+  ['coreInventoryManualInboundPost', 'Kho', 'Xác nhận nhập kho thủ công', 'Cho phép xác nhận chứng từ và ghi hàng vào sổ kho chuẩn.'],
+  ['coreInventoryManualInboundReverse', 'Kho', 'Đảo nhập kho thủ công', 'Cho phép đảo chứng từ nhập kho thủ công đã ghi sổ bằng chứng từ đảo có truy vết.'],
+].map(([key, module, label, description]) => Object.freeze({ permissionKey: PERMISSIONS[key], module, label, description, isSystem: true })));
+
 const INVENTORY_COST_PERMISSION_CATALOG = Object.freeze([
   ['coreInventoryCostRead', 'Kho', 'Xem giá vốn tồn kho', 'Cho phép đọc số lượng, giá trị, giá bình quân và cost fact trong phạm vi kho được cấp.'],
   ['coreInventoryCostRebuild', 'Kho', 'Dựng lại giá vốn tồn kho', 'Cho phép dựng lại moving-average cost facts và projection từ inventory ledger bất biến.'],
@@ -205,6 +216,7 @@ export const PERMISSION_CATALOG = Object.freeze([
   ...INVENTORY_TRANSFER_RECEIPT_PERMISSION_CATALOG,
   ...STOCKTAKE_PERMISSION_CATALOG,
   ...INVENTORY_ADJUSTMENT_PERMISSION_CATALOG,
+  ...MANUAL_INBOUND_PERMISSION_CATALOG,
   ...INVENTORY_COST_PERMISSION_CATALOG,
   ...REPORTING_PERMISSION_CATALOG,
   ...MCP_PERMISSION_CATALOG,
