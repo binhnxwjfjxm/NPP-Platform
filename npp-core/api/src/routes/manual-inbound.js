@@ -8,7 +8,7 @@ import {
   reverseManualInbound,
 } from '../services/manual-inbound.js';
 import { confirmManualInbound } from '../services/manual-inbound-confirmation.js';
-import { searchManualInboundHistory } from '../services/manual-inbound-history.js';
+import { readManualInboundHistoryDetail, searchManualInboundHistory } from '../services/manual-inbound-history.js';
 import {
   listManualInboundLocationOptions,
   listManualInboundWarehouseOptions,
@@ -119,6 +119,19 @@ export async function handleManualInboundRoutes(req, res, options) {
         return true;
       }
       writeSuccess(res, result.documents, options);
+      return true;
+    }
+
+    if (url.pathname === '/api/inventory/manual-inbounds/operator/history-detail' && method === 'GET') {
+      const result = await readManualInboundHistoryDetail(options.getPool(), {
+        requestContext,
+        documentId: url.searchParams.get('documentId'),
+      });
+      if (!result.ok) {
+        sendError(res, apiError(result.code, result.message, result.details ?? {}, result.retryable, statusFor(result)), options.requestId, options.receivedAt);
+        return true;
+      }
+      writeSuccess(res, result.detail, options);
       return true;
     }
 
