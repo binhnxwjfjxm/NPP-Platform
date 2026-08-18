@@ -65,11 +65,15 @@ export async function listFulfillmentWork(client, {
        version.customer_name_snapshot,
        version.warehouse_code_snapshot,
        version.warehouse_name_snapshot,
+       version.delivery_mode,
+       version.delivery_execution_mode,
        demand.sales_order_version_id,
        demand.sales_order_line_id,
        demand.line_number,
        line.item_name_snapshot,
-       line.unit_code_snapshot,
+       line.ordered_quantity AS ordered_sales_quantity,
+       line.unit_code_snapshot AS ordered_unit_code,
+       base_unit.code AS base_unit_code,
        demand.sku_snapshot,
        demand.warehouse_id,
        demand.base_variant_id,
@@ -92,6 +96,12 @@ export async function listFulfillmentWork(client, {
       JOIN sales.sales_order_version_lines line
         ON line.installation_id = demand.installation_id
        AND line.id = demand.sales_order_line_id
+      JOIN shared.product_variants base_variant
+        ON base_variant.installation_id = demand.installation_id
+       AND base_variant.id = demand.base_variant_id
+      JOIN shared.units_of_measure base_unit
+        ON base_unit.installation_id = base_variant.installation_id
+       AND base_unit.id = base_variant.unit_id
       LEFT JOIN LATERAL (
         SELECT count(*) AS allocation_count
           FROM sales.sales_order_fulfillment_allocations allocation
@@ -101,6 +111,16 @@ export async function listFulfillmentWork(client, {
      WHERE demand.installation_id = $1
        AND demand.state = 'ACTIVE'
        AND orders.status = 'confirmed'
+       AND orders.fulfillment_status IN (
+         'backordered', 'partially_reserved', 'reserved',
+         'partially_allocated', 'allocated',
+         'partially_picked', 'picked',
+         'partially_packed', 'packed'
+       )
+       AND NOT (
+         version.delivery_mode = 'DELIVERY'
+         AND COALESCE(version.delivery_execution_mode, 'TRIP') = 'MANUAL'
+       )
        AND demand.warehouse_id = ANY($2::uuid[])
        AND ($3::text IS NULL OR orders.fulfillment_status = $3)
      ORDER BY
@@ -126,8 +146,12 @@ export async function getActiveDemandForUpdate(client, { installationId, demandI
        version.customer_name_snapshot,
        version.warehouse_code_snapshot,
        version.warehouse_name_snapshot,
+       version.delivery_mode,
+       version.delivery_execution_mode,
        line.item_name_snapshot,
-       line.unit_code_snapshot,
+       line.ordered_quantity AS ordered_sales_quantity,
+       line.unit_code_snapshot AS ordered_unit_code,
+       base_unit.code AS base_unit_code,
        COALESCE(policy.lot_tracking_mode, 'NONE') AS lot_tracking_mode,
        COALESCE(policy.expiry_tracking_mode, 'NONE') AS expiry_tracking_mode,
        COALESCE(policy.location_required, false) AS location_required
@@ -141,12 +165,22 @@ export async function getActiveDemandForUpdate(client, { installationId, demandI
       JOIN sales.sales_order_version_lines line
         ON line.installation_id = demand.installation_id
        AND line.id = demand.sales_order_line_id
+      JOIN shared.product_variants base_variant
+        ON base_variant.installation_id = demand.installation_id
+       AND base_variant.id = demand.base_variant_id
+      JOIN shared.units_of_measure base_unit
+        ON base_unit.installation_id = base_variant.installation_id
+       AND base_unit.id = base_variant.unit_id
       LEFT JOIN inventory.product_tracking_policies policy
         ON policy.installation_id = demand.installation_id
        AND policy.base_variant_id = demand.base_variant_id
      WHERE demand.installation_id = $1
        AND demand.id = $2
        AND demand.state = 'ACTIVE'
+       AND NOT (
+         version.delivery_mode = 'DELIVERY'
+         AND COALESCE(version.delivery_execution_mode, 'TRIP') = 'MANUAL'
+       )
      FOR UPDATE OF demand`,
     [installationId, demandId],
   );
