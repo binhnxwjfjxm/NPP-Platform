@@ -5,6 +5,8 @@ import { manualInboundPreparationInternals } from '../src/services/manual-inboun
 
 const preparationSource = await readFile(new URL('../src/services/manual-inbound-preparation.js', import.meta.url), 'utf8');
 const routeSource = await readFile(new URL('../src/routes/manual-inbound.js', import.meta.url), 'utf8');
+const migrationIndexSource = await readFile(new URL('../src/migrations/index.js', import.meta.url), 'utf8');
+const inventoryPolicyMigration = await readFile(new URL('../../../database/migrations/shared/093_product_inventory_management_policy.sql', import.meta.url), 'utf8');
 
 const warehouseId = '11111111-1111-4111-8111-111111111111';
 
@@ -37,10 +39,15 @@ test('Lô 2 giữ semantic loại Khác bắt buộc ghi chú', () => {
   assert.equal(result.code, 'MANUAL_INBOUND_NOTE_REQUIRED');
 });
 
-test('Lô 2 preview là read-only và fail-closed theo chính sách quản lý tồn', () => {
-  assert.match(preparationSource, /information_schema\.columns/);
+test('Issue #633 có nguồn chính sách quản lý tồn canonical, mặc định giữ hành vi dữ liệu hiện hữu', () => {
+  assert.match(inventoryPolicyMigration, /ADD COLUMN IF NOT EXISTS is_inventory_managed boolean/);
+  assert.match(inventoryPolicyMigration, /SET DEFAULT true/);
+  assert.match(inventoryPolicyMigration, /SET NOT NULL/);
+  assert.match(migrationIndexSource, /093_product_inventory_management_policy/);
+});
+
+test('Lô 2 preview là read-only và chặn mã hàng không quản lý tồn', () => {
   assert.match(preparationSource, /is_inventory_managed/);
-  assert.match(preparationSource, /INVENTORY_POLICY_UNAVAILABLE/);
   assert.match(preparationSource, /SKU_NOT_INVENTORY_MANAGED/);
   assert.match(preparationSource, /inventory_cost_balances/);
   assert.match(preparationSource, /product_tracking_policies/);
