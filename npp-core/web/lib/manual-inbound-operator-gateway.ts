@@ -123,27 +123,15 @@ async function requestCore<T>({
 }
 
 export function listManualInboundOperatorWarehouses<T>(requestId: string): Promise<T> {
-  return requestCore<T>({
-    path: '/api/inventory/manual-inbounds/operator/warehouses',
-    method: 'GET',
-    requestId,
-  });
+  return requestCore<T>({ path: '/api/inventory/manual-inbounds/operator/warehouses', method: 'GET', requestId });
 }
 
 export function listManualInboundOperatorLocations<T>(warehouseId: string, requestId: string): Promise<T> {
   const query = new URLSearchParams({ warehouseId: String(warehouseId ?? '').trim() });
-  return requestCore<T>({
-    path: `/api/inventory/manual-inbounds/operator/locations?${query.toString()}`,
-    method: 'GET',
-    requestId,
-  });
+  return requestCore<T>({ path: `/api/inventory/manual-inbounds/operator/locations?${query.toString()}`, method: 'GET', requestId });
 }
 
-export function searchManualInboundOperatorHistory<T>({
-  inboundType,
-  referenceNumber,
-  requestId,
-}: {
+export function searchManualInboundOperatorHistory<T>({ inboundType, referenceNumber, requestId }: {
   inboundType?: string | null;
   referenceNumber?: string | null;
   requestId: string;
@@ -154,39 +142,23 @@ export function searchManualInboundOperatorHistory<T>({
   if (type) query.set('inboundType', type);
   if (reference) query.set('referenceNumber', reference);
   query.set('limit', '100');
-  return requestCore<T>({
-    path: `/api/inventory/manual-inbounds/operator/history?${query.toString()}`,
-    method: 'GET',
-    requestId,
-  });
+  return requestCore<T>({ path: `/api/inventory/manual-inbounds/operator/history?${query.toString()}`, method: 'GET', requestId });
+}
+
+export function readManualInboundOperatorHistoryDetail<T>(documentId: string, requestId: string): Promise<T> {
+  const query = new URLSearchParams({ documentId: String(documentId ?? '').trim() });
+  return requestCore<T>({ path: `/api/inventory/manual-inbounds/operator/history-detail?${query.toString()}`, method: 'GET', requestId });
 }
 
 export function previewManualInboundOperator<T>(body: unknown, requestId: string): Promise<T> {
-  return requestCore<T>({
-    path: '/api/inventory/manual-inbounds/operator/preview',
-    method: 'POST',
-    requestId,
-    body,
-  });
+  return requestCore<T>({ path: '/api/inventory/manual-inbounds/operator/preview', method: 'POST', requestId, body });
 }
 
 export function confirmManualInboundOperator<T>(body: unknown, requestId: string, idempotencyKey: string | null): Promise<T> {
-  return requestCore<T>({
-    path: '/api/inventory/manual-inbounds/operator/confirm',
-    method: 'POST',
-    requestId,
-    body,
-    idempotencyKey: requireMutationKey(idempotencyKey),
-  });
+  return requestCore<T>({ path: '/api/inventory/manual-inbounds/operator/confirm', method: 'POST', requestId, body, idempotencyKey: requireMutationKey(idempotencyKey) });
 }
 
-export function reverseManualInboundOperator<T>({
-  documentId,
-  documentDate,
-  reasonNote,
-  requestId,
-  idempotencyKey,
-}: {
+export function reverseManualInboundOperator<T>({ documentId, documentDate, reasonNote, requestId, idempotencyKey }: {
   documentId: string;
   documentDate: string;
   reasonNote: string;
@@ -198,10 +170,6 @@ export function reverseManualInboundOperator<T>({
     method: 'POST',
     requestId,
     idempotencyKey: requireMutationKey(idempotencyKey),
-    body: {
-      documentDate: String(documentDate ?? '').trim(),
-      reasonCode: 'MANUAL_INBOUND_CORRECTION',
-      reasonNote: String(reasonNote ?? '').trim(),
-    },
+    body: { documentDate: String(documentDate ?? '').trim(), reasonCode: 'MANUAL_INBOUND_CORRECTION', reasonNote: String(reasonNote ?? '').trim() },
   });
 }

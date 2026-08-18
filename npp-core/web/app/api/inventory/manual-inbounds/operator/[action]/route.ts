@@ -5,6 +5,7 @@ import {
   listManualInboundOperatorWarehouses,
   normalizeManualInboundOperatorGatewayError,
   previewManualInboundOperator,
+  readManualInboundOperatorHistoryDetail,
   resolveManualInboundOperatorRequestId,
   reverseManualInboundOperator,
   searchManualInboundOperatorHistory,
@@ -39,20 +40,14 @@ async function jsonBody(request: NextRequest) {
   }
 }
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { action: string } },
-) {
+export async function GET(request: NextRequest, { params }: { params: { action: string } }) {
   const requestId = resolveManualInboundOperatorRequestId(request.headers.get('x-request-id'));
   try {
     if (params.action === 'warehouses') {
       return success(await listManualInboundOperatorWarehouses(requestId), requestId);
     }
     if (params.action === 'locations') {
-      return success(
-        await listManualInboundOperatorLocations(request.nextUrl.searchParams.get('warehouseId') ?? '', requestId),
-        requestId,
-      );
+      return success(await listManualInboundOperatorLocations(request.nextUrl.searchParams.get('warehouseId') ?? '', requestId), requestId);
     }
     if (params.action === 'history') {
       return success(await searchManualInboundOperatorHistory({
@@ -60,6 +55,9 @@ export async function GET(
         referenceNumber: request.nextUrl.searchParams.get('referenceNumber'),
         requestId,
       }), requestId);
+    }
+    if (params.action === 'history-detail') {
+      return success(await readManualInboundOperatorHistoryDetail(request.nextUrl.searchParams.get('documentId') ?? '', requestId), requestId);
     }
     return NextResponse.json({
       error: { code: 'METHOD_NOT_ALLOWED', message: 'Thao tác này không hỗ trợ tải dữ liệu', retryable: false },
@@ -70,10 +68,7 @@ export async function GET(
   }
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { action: string } },
-) {
+export async function POST(request: NextRequest, { params }: { params: { action: string } }) {
   const requestId = resolveManualInboundOperatorRequestId(request.headers.get('x-request-id'));
   if (!['preview', 'confirm', 'reverse'].includes(params.action)) {
     return NextResponse.json({
@@ -89,13 +84,9 @@ export async function POST(
     }, { status: 400, headers: headers(requestId) });
   }
   try {
-    if (params.action === 'preview') {
-      return success(await previewManualInboundOperator(body, requestId), requestId);
-    }
+    if (params.action === 'preview') return success(await previewManualInboundOperator(body, requestId), requestId);
     const idempotencyKey = request.headers.get('Idempotency-Key');
-    if (params.action === 'confirm') {
-      return success(await confirmManualInboundOperator(body, requestId, idempotencyKey), requestId);
-    }
+    if (params.action === 'confirm') return success(await confirmManualInboundOperator(body, requestId, idempotencyKey), requestId);
     const reversal = body as { documentId?: string; documentDate?: string; reasonNote?: string };
     return success(await reverseManualInboundOperator({
       documentId: reversal.documentId ?? '',
