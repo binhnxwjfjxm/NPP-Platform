@@ -211,7 +211,7 @@ test('warehouse API and Công Ty UI keep allocation simple while preserving ware
   assert.match(workspace, /aria-label="Tìm đơn, khách hàng hoặc SKU"/);
   assert.match(workspace, /Chưa phân bổ/);
   assert.match(workspace, /Khả dụng cho đơn này/);
-  assert.match(workspace, /Số lượng muốn phân bổ/);
+  assert.match(workspace, /Số lượng phân bổ/);
   assert.match(workspace, /Phân bổ đủ/);
   assert.match(workspace, /mode: 'QUANTITY'/);
   assert.match(workspace, /Soạn/);
