@@ -1,6 +1,7 @@
 'use client';
 
 import type { SalesOrder, SalesOrderFulfillmentLine } from '../../../lib/sales-order-types';
+import { StockHoldBreakdown } from '../../components/stock-hold-breakdown';
 import ManualSalesOrderSettlement from './ManualSalesOrderSettlement';
 import SalesOrderPrintSheet from './SalesOrderPrintSheet';
 import {
@@ -174,7 +175,19 @@ export default function SalesOrderDetail(props: Props) {
                   <span><b>{line.sku}</b><small>{line.itemName}</small></span>
                   <span>{formatQuantity(line.quantity)} {line.unitCode}</span>
                   <span>{stockValue(stock, stock?.warehouseOnHandBaseQuantity)}</span>
-                  <span>{stockValue(stock, stock?.warehouseHeldByOthersBaseQuantity)}</span>
+                  <span>
+                    {stockValue(stock, stock?.warehouseHeldByOthersBaseQuantity)}
+                    {stock?.warehouseId && stock?.baseVariantId ? (
+                      <StockHoldBreakdown
+                        warehouseId={stock.warehouseId}
+                        baseVariantId={stock.baseVariantId}
+                        excludeSalesOrderId={order.id}
+                        displayedHeldQuantity={stock.warehouseHeldByOthersBaseQuantity}
+                        baseUnitCode={stock.baseUnitCode}
+                        title="Xem các đơn khác đang giữ hàng"
+                      />
+                    ) : null}
+                  </span>
                   <span>{stockValue(stock, stock?.warehouseAvailableBaseQuantity)}</span>
                   <span>{formatMoney(line.unitPrice)} ₫</span>
                   <span>{formatMoney(line.lineTotal)} ₫</span>

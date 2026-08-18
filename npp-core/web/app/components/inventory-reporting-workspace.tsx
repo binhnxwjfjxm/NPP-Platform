@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from './app-shell';
+import { StockHoldBreakdown } from './stock-hold-breakdown';
 import type { InventoryReportingDashboard } from '../../lib/inventory-reporting-types';
 import {
   WorkspaceTabPanel,
@@ -464,7 +465,16 @@ export function InventoryReportingWorkspace() {
                           <td>{row.warehouseCode}</td><td>{renderProduct(row.variantId, row.sku)}</td>
                           <td className={styles.numeric}>{formatDecimal(row.onHandQuantity)}</td>
                           <td>{packageBreakdown(productByVariant.get(row.variantId), row.onHandQuantity)}</td>
-                          <td className={styles.numeric}>{formatDecimal(row.reservedQuantity)}</td>
+                          <td className={styles.numeric}>
+                            {formatDecimal(row.reservedQuantity)}
+                            <StockHoldBreakdown
+                              warehouseId={row.warehouseId}
+                              baseVariantId={row.variantId}
+                              displayedHeldQuantity={row.reservedQuantity}
+                              baseUnitCode={productByVariant.get(row.variantId)?.base_unit_code}
+                              title="Xem các đơn đang giữ hàng"
+                            />
+                          </td>
                           <td className={styles.numeric}>{formatDecimal(row.availableQuantity)}</td>
                           <td className={styles.numeric}>{row.inventoryValue === null ? '—' : formatMoney(row.inventoryValue)}</td>
                           <td className={styles.numeric}>{row.averageUnitCost === null ? '—' : formatMoney(row.averageUnitCost)}</td>

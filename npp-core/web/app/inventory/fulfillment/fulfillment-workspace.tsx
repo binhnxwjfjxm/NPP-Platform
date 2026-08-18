@@ -3,6 +3,7 @@
 import { createIdempotencyKey } from '@npp/contracts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import { StockHoldBreakdown } from '../../components/stock-hold-breakdown';
 import styles from './fulfillment-workspace.module.css';
 
 type WorkItem = {
@@ -723,7 +724,7 @@ export default function FulfillmentWorkspace() {
                   <div className={styles.sectionHeading}>
                     <div>
                       <h4>Sản phẩm trong đơn</h4>
-                      <p>Nhập số lượng và phân bổ ngay trên từng dòng; số tồn chỉ để quan sát quyết định.</p>
+                      <p>Kho xử lý: <strong>{selectedOrder.warehouseCode} — {selectedOrder.warehouseName}</strong> · Nhập số lượng và phân bổ ngay trên từng dòng.</p>
                     </div>
                     <span>{selectedOrder.items.length} dòng</span>
                   </div>
@@ -749,7 +750,17 @@ export default function FulfillmentWorkspace() {
                             <span>{formatQuantity(item.allocatedBaseQuantity)} {item.baseUnitCode}</span>
                             <span>{formatQuantity(remaining)} {item.baseUnitCode}</span>
                             <span>{formatQuantity(item.warehouseOnHandBaseQuantity)} {item.baseUnitCode}</span>
-                            <span>{formatQuantity(item.warehouseHeldByOthersBaseQuantity)} {item.baseUnitCode}</span>
+                            <span onClick={(event) => event.stopPropagation()}>
+                              {formatQuantity(item.warehouseHeldByOthersBaseQuantity)} {item.baseUnitCode}
+                              <StockHoldBreakdown
+                                warehouseId={item.warehouseId}
+                                baseVariantId={item.baseVariantId}
+                                excludeSalesOrderId={item.salesOrderId}
+                                displayedHeldQuantity={item.warehouseHeldByOthersBaseQuantity}
+                                baseUnitCode={item.baseUnitCode}
+                                title="Xem các đơn khác đang giữ hàng"
+                              />
+                            </span>
                             <span>{formatQuantity(item.warehouseAvailableBaseQuantity)} {item.baseUnitCode}</span>
                             <input
                               inputMode="decimal"
@@ -812,7 +823,7 @@ export default function FulfillmentWorkspace() {
 
                   <div className={styles.progressStrip} data-testid="fulfillment-allocation-metrics">
                     <span>Tồn thực tế <strong>{formatQuantity(detail?.warehouseOnHandBaseQuantity ?? selectedWork.warehouseOnHandBaseQuantity)} {selectedWork.baseUnitCode}</strong></span>
-                    <span>Đơn khác đang giữ <strong>{formatQuantity(detail?.warehouseHeldByOthersBaseQuantity ?? selectedWork.warehouseHeldByOthersBaseQuantity)} {selectedWork.baseUnitCode}</strong></span>
+                    <span>Đơn khác đang giữ <strong>{formatQuantity(detail?.warehouseHeldByOthersBaseQuantity ?? selectedWork.warehouseHeldByOthersBaseQuantity)} {selectedWork.baseUnitCode}</strong><StockHoldBreakdown warehouseId={selectedWork.warehouseId} baseVariantId={selectedWork.baseVariantId} excludeSalesOrderId={selectedWork.salesOrderId} displayedHeldQuantity={detail?.warehouseHeldByOthersBaseQuantity ?? selectedWork.warehouseHeldByOthersBaseQuantity} baseUnitCode={selectedWork.baseUnitCode} title="Xem các đơn khác đang giữ hàng" /></span>
                     <span>Khả dụng cho đơn này <strong>{formatQuantity(detail?.warehouseAvailableBaseQuantity ?? selectedWork.warehouseAvailableBaseQuantity)} {selectedWork.baseUnitCode}</strong></span>
                     <span>Cần <strong>{formatQuantity(selectedWork.orderedBaseQuantity)} {selectedWork.baseUnitCode}</strong></span>
                     <span>Đã phân bổ <strong>{formatQuantity(selectedWork.allocatedBaseQuantity)} {selectedWork.baseUnitCode}</strong></span>
