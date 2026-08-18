@@ -102,13 +102,19 @@ jobs:
       - name: Verify Core web commercial contracts
         run: npm --workspace npp-core-web run verify 2>&1 | tee phase-6b2-web.log
 
-      - name: Install Chromium
-        working-directory: npp-core/web
-        run: npx playwright install --with-deps chromium
-
       - name: Run Sales Order commercial Chromium gate
         working-directory: npp-core/web
-        run: npx playwright test --project=sales-order-commercial 2>&1 | tee ../../phase-6b2-browser.log
+        run: |
+          docker run --rm \
+            --network host \
+            --ipc host \
+            --env CI \
+            --env E2E_DATABASE_URL \
+            --env E2E_BACKEND_API_TOKEN \
+            --volume "$GITHUB_WORKSPACE:/work" \
+            --workdir /work/npp-core/web \
+            mcr.microsoft.com/playwright:v1.62.0-noble \
+            bash -lc 'npx playwright test --project=sales-order-commercial 2>&1 | tee ../../phase-6b2-browser.log'
 
       - name: Upload Phase 6B.2 diagnostics
         if: always()
