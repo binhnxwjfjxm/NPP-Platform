@@ -21,7 +21,7 @@ test('fulfillment table groups product name and SKU without squeezing operationa
   assert.match(fulfillment, /data-testid="fulfillment-product-table"/);
   assert.match(fulfillment, /<strong>\{item\.itemName\}<\/strong>/);
   assert.match(fulfillment, /<span>\{item\.sku\}<\/span>/);
-  assert.match(fulfillment, /formatQuantity\(item\.orderedBaseQuantity\).*item\.unitCode/);
+  assert.match(fulfillment, /orderedQuantityLabel\(item\)/);
 
   assert.match(operationalStyles, /content:\s*'Sản phẩm \/ SKU'/);
   assert.match(operationalStyles, /content:\s*'Đặt \/ ĐVT'/);

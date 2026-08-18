@@ -136,6 +136,8 @@ function mapWorkRow(row) {
     fulfillmentStatus: row.fulfillment_status,
     requestedDeliveryDate: row.requested_delivery_date,
     sourceType: row.source_type,
+    deliveryMode: row.delivery_mode ?? null,
+    deliveryExecutionMode: row.delivery_execution_mode ?? null,
     customerCode: row.customer_code_snapshot,
     customerName: row.customer_name_snapshot,
     warehouseId: row.warehouse_id,
@@ -146,7 +148,10 @@ function mapWorkRow(row) {
     lineNumber: Number(row.line_number),
     itemName: row.item_name_snapshot,
     sku: row.sku_snapshot,
-    unitCode: row.unit_code_snapshot,
+    unitCode: row.ordered_unit_code,
+    orderedQuantity: String(row.ordered_sales_quantity ?? row.ordered_base_quantity),
+    orderedUnitCode: row.ordered_unit_code,
+    baseUnitCode: row.base_unit_code ?? row.ordered_unit_code,
     baseVariantId: row.base_variant_id,
     orderedBaseQuantity: ordered,
     reservedBaseQuantity: String(row.reserved_base_quantity),
@@ -215,6 +220,8 @@ export async function listFulfillmentWorkQueue(client, {
     });
     work.push(Object.freeze({
       ...mapWorkRow(row),
+      warehouseOnHandBaseQuantity: availability?.onHandBaseQuantity ?? '0.000000000000',
+      warehouseHeldByOthersBaseQuantity: availability?.heldByOthersBaseQuantity ?? '0.000000000000',
       warehouseAvailableBaseQuantity: availability?.capacityBaseQuantity ?? '0.000000000000',
     }));
   }
@@ -278,6 +285,8 @@ export async function suggestFulfillmentAllocation(client, { requestContext, dem
     demand: mapWorkRow({ ...loaded.demand, fulfillment_demand_id: loaded.demand.id, allocation_count: allocations.length }),
     remainingBaseQuantity: formatQuantity(remaining),
     heldRemainingBaseQuantity: formatQuantity(held),
+    warehouseOnHandBaseQuantity: availability?.onHandBaseQuantity ?? '0.000000000000',
+    warehouseHeldByOthersBaseQuantity: availability?.heldByOthersBaseQuantity ?? '0.000000000000',
     warehouseAvailableBaseQuantity: availability?.capacityBaseQuantity ?? '0.000000000000',
     candidates: loaded.candidates,
     suggestedPlan: plan.map((item) => Object.freeze({
