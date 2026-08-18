@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getStocktake } from '../../../../../lib/stocktake-gateway';
+import { getStocktake, normalizeStocktakeGatewayError } from '../../../../../lib/stocktake-gateway';
 import { errorResponse, requestIdFrom, responseHeaders } from '../../_shared';
 
 export const dynamic = 'force-dynamic';
@@ -11,6 +11,6 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const data = await getStocktake<unknown>(id, requestId);
     return NextResponse.json({ data, requestId }, { status: 200, headers: responseHeaders(requestId) });
   } catch (error) {
-    return errorResponse(error, requestId);
+    return errorResponse(error, requestId, normalizeStocktakeGatewayError);
   }
 }

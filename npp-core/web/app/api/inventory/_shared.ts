@@ -1,10 +1,22 @@
 import { NextResponse } from 'next/server';
 import { normalizeInventoryGatewayError, resolveInventoryRequestId } from '../../../lib/inventory-gateway';
 
+type GatewayErrorNormalizer = (error: unknown) => {
+  code: string;
+  publicMessage: string;
+  statusCode: number;
+  retryable: boolean;
+  details: unknown;
+};
+
 export const responseHeaders = (requestId: string) => ({ 'Cache-Control': 'no-store', 'x-request-id': requestId });
 
-export function errorResponse(error: unknown, requestId: string) {
-  const normalized = normalizeInventoryGatewayError(error);
+export function errorResponse(
+  error: unknown,
+  requestId: string,
+  normalizeError: GatewayErrorNormalizer = normalizeInventoryGatewayError,
+) {
+  const normalized = normalizeError(error);
   return NextResponse.json(
     {
       error: {
