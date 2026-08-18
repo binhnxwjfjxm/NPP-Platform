@@ -96,11 +96,11 @@ export type Stocktake = {
 
 export const STOCKTAKE_STATUS_LABELS: Record<StocktakeStatus, string> = {
   draft: 'Đang đếm',
-  counted: 'Đã hoàn tất đếm',
+  counted: 'Chờ gửi duyệt',
   submitted: 'Chờ duyệt',
-  recount_required: 'Cần đếm lại',
-  approved: 'Đã duyệt',
-  posted: 'Đã ghi sổ',
+  recount_required: 'Yêu cầu đếm lại',
+  approved: 'Chờ cập nhật tồn',
+  posted: 'Hoàn tất',
   cancelled: 'Đã hủy',
-  reversed: 'Đã đảo ghi sổ',
+  reversed: 'Đã hoàn tác',
 };

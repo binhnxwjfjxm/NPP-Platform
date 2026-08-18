@@ -55,11 +55,20 @@ export type InventoryAdjustment = {
   reversalMovementId: string | null;
   createdAt: string;
   createdBy: string;
+  updatedAt?: string;
+  updatedBy?: string | null;
   submittedAt: string | null;
+  submittedBy?: string | null;
   approvedAt: string | null;
+  approvedBy?: string | null;
   postedAt: string | null;
+  postedBy?: string | null;
   cancelledAt: string | null;
+  cancelledBy?: string | null;
+  cancelReason?: string | null;
   reversedAt: string | null;
+  reversedBy?: string | null;
+  reversalReason?: string | null;
   lineCount: number;
   lines?: AdjustmentLine[];
 };
@@ -72,6 +81,10 @@ export const adjustmentKindLabels: Record<AdjustmentKind, string> = {
 };
 
 export const adjustmentStatusLabels: Record<AdjustmentStatus, string> = {
-  DRAFT: 'Nháp', SUBMITTED: 'Chờ duyệt', APPROVED: 'Đã duyệt', POSTED: 'Đã ghi sổ',
-  CANCELLED: 'Đã hủy', REVERSED: 'Đã đảo',
+  DRAFT: 'Lập phiếu',
+  SUBMITTED: 'Chờ duyệt',
+  APPROVED: 'Chờ cập nhật tồn',
+  POSTED: 'Hoàn tất',
+  CANCELLED: 'Đã hủy',
+  REVERSED: 'Đã hoàn tác',
 };
