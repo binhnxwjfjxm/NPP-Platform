@@ -29,12 +29,17 @@ type WorkItem = {
   itemName: string;
   sku: string;
   unitCode: string;
+  orderedQuantity: string;
+  orderedUnitCode: string;
+  baseUnitCode: string;
   baseVariantId: string;
   orderedBaseQuantity: string;
   reservedBaseQuantity: string;
   backorderedBaseQuantity: string;
   allocatedBaseQuantity: string;
   unallocatedBaseQuantity: string;
+  warehouseOnHandBaseQuantity: string;
+  warehouseHeldByOthersBaseQuantity: string;
   warehouseAvailableBaseQuantity: string;
   pickedBaseQuantity: string;
   packedBaseQuantity: string;
@@ -73,6 +78,8 @@ type Allocation = {
 type SuggestionDetail = {
   remainingBaseQuantity: string;
   heldRemainingBaseQuantity: string;
+  warehouseOnHandBaseQuantity: string;
+  warehouseHeldByOthersBaseQuantity: string;
   warehouseAvailableBaseQuantity: string;
   candidates: Candidate[];
   suggestedPlan: Array<{
@@ -164,6 +171,14 @@ function formatQuantity(value: string): string {
   return normalized.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
 }
 
+function orderedQuantityLabel(item: WorkItem): string {
+  const ordered = `${formatQuantity(item.orderedQuantity)} ${item.orderedUnitCode}`;
+  const base = `${formatQuantity(item.orderedBaseQuantity)} ${item.baseUnitCode}`;
+  return item.orderedUnitCode === item.baseUnitCode && item.orderedQuantity === item.orderedBaseQuantity
+    ? base
+    : `${ordered} → ${base}`;
+}
+
 function moneyNumber(value: string | null): number {
   if (value === null || value === undefined || String(value).trim() === '') return 0;
   const amount = Number(value);
@@ -238,9 +253,9 @@ function groupBySalesOrder(items: WorkItem[]): OrderGroup[] {
       orderSubtotal: item.orderSubtotal,
       orderDiscountTotal: item.orderDiscountTotal,
       orderTaxTotal: item.orderTaxTotal,
-      orderTotal: item.orderTotal,
       salesChannelCode: item.salesChannelCode,
       salesChannelName: item.salesChannelName,
+      orderTotal: item.orderTotal,
       fulfillmentStatus: item.fulfillmentStatus,
       customerCode: item.customerCode,
       customerName: item.customerName,
@@ -475,7 +490,7 @@ export default function FulfillmentWorkspace() {
         return;
       }
       if (parseQuantity(quantity) > parseQuantity(unallocated)) {
-        setError(`Số lượng phân bổ không được vượt ${formatQuantity(unallocated)} ${selectedWork.unitCode}.`);
+        setError(`Số lượng phân bổ không được vượt ${formatQuantity(unallocated)} ${selectedWork.baseUnitCode}.`);
         return;
       }
     }
@@ -501,7 +516,7 @@ export default function FulfillmentWorkspace() {
       setAllocationQuantity('');
       setNotice(mode === 'AUTO'
         ? 'Đã phân bổ tối đa cho phần đơn còn cần.'
-        : `Đã phân bổ ${formatQuantity(quantity)} ${selectedWork.unitCode}.`);
+        : `Đã phân bổ ${formatQuantity(quantity)} ${selectedWork.baseUnitCode}.`);
       await loadWork(selectedId);
     } catch (operationError) {
       setError(operationError instanceof Error ? operationError.message : 'Không phân bổ được hàng.');
@@ -708,14 +723,14 @@ export default function FulfillmentWorkspace() {
                   <div className={styles.sectionHeading}>
                     <div>
                       <h4>Sản phẩm trong đơn</h4>
-                      <p>Nhìn nhanh số cần, số đã phân bổ và phần còn lại.</p>
+                      <p>Số khách đặt được giữ nguyên; Kho xử lý theo đơn vị quy đổi chuẩn.</p>
                     </div>
                     <span>{selectedOrder.items.length} dòng</span>
                   </div>
                   <div className={styles.tableScroll}>
                     <div className={styles.productTable} data-testid="fulfillment-product-table">
                       <div className={`${styles.productRow} ${styles.tableHeader}`} aria-hidden="true">
-                        <span>Sản phẩm</span><span>SKU</span><span>Cần</span><span>Đã phân bổ</span><span>Chưa phân bổ</span><span>Soạn</span><span>Trạng thái</span>
+                        <span>Sản phẩm</span><span>SKU</span><span>Khách đặt → Kho</span><span>Đã phân bổ</span><span>Còn cần</span><span>Soạn</span><span>Trạng thái</span>
                       </div>
                       {selectedOrder.items.map((item) => {
                         const orderOutcome = orderAllocationLineMap.get(item.fulfillmentDemandId);
@@ -729,10 +744,10 @@ export default function FulfillmentWorkspace() {
                           >
                             <strong>{item.itemName}</strong>
                             <span>{item.sku}</span>
-                            <span>{formatQuantity(item.orderedBaseQuantity)} {item.unitCode}</span>
-                            <span>{formatQuantity(item.allocatedBaseQuantity)}</span>
-                            <span>{formatQuantity(quantityDifference(item.orderedBaseQuantity, item.allocatedBaseQuantity))}</span>
-                            <span>{formatQuantity(item.pickedBaseQuantity)}</span>
+                            <span>{orderedQuantityLabel(item)}</span>
+                            <span>{formatQuantity(item.allocatedBaseQuantity)} {item.baseUnitCode}</span>
+                            <span>{formatQuantity(quantityDifference(item.orderedBaseQuantity, item.allocatedBaseQuantity))} {item.baseUnitCode}</span>
+                            <span>{formatQuantity(item.pickedBaseQuantity)} {item.baseUnitCode}</span>
                             <em title={orderOutcome?.message}>
                               {orderOutcome ? orderAllocationOutcomeLabel(orderOutcome.outcome) : statusLabel(item.fulfillmentStatus)}
                             </em>
@@ -748,16 +763,22 @@ export default function FulfillmentWorkspace() {
                     <div>
                       <span>Đang xử lý sản phẩm</span>
                       <h4>{selectedWork.itemName}</h4>
-                      <p>{selectedWork.sku} · Đơn vị {selectedWork.unitCode}</p>
+                      <p>
+                        {selectedWork.sku}
+                        {' · Khách đặt '}{formatQuantity(selectedWork.orderedQuantity)} {selectedWork.orderedUnitCode}
+                        {' · Kho xử lý '}{formatQuantity(selectedWork.orderedBaseQuantity)} {selectedWork.baseUnitCode}
+                      </p>
                     </div>
                     <strong className={styles.status}>{statusLabel(selectedWork.fulfillmentStatus)}</strong>
                   </div>
 
                   <div className={styles.progressStrip} data-testid="fulfillment-allocation-metrics">
-                    <span>Cần <strong>{formatQuantity(selectedWork.orderedBaseQuantity)}</strong></span>
-                    <span>Đã phân bổ <strong>{formatQuantity(selectedWork.allocatedBaseQuantity)}</strong></span>
-                    <span>Chưa phân bổ <strong>{formatQuantity(quantityDifference(selectedWork.orderedBaseQuantity, selectedWork.allocatedBaseQuantity))}</strong></span>
-                    <span>Kho có thể dùng <strong>{formatQuantity(detail?.warehouseAvailableBaseQuantity ?? selectedWork.warehouseAvailableBaseQuantity)}</strong></span>
+                    <span>Tồn thực tế <strong>{formatQuantity(detail?.warehouseOnHandBaseQuantity ?? selectedWork.warehouseOnHandBaseQuantity)} {selectedWork.baseUnitCode}</strong></span>
+                    <span>Đơn khác đang giữ <strong>{formatQuantity(detail?.warehouseHeldByOthersBaseQuantity ?? selectedWork.warehouseHeldByOthersBaseQuantity)} {selectedWork.baseUnitCode}</strong></span>
+                    <span>Khả dụng cho đơn này <strong>{formatQuantity(detail?.warehouseAvailableBaseQuantity ?? selectedWork.warehouseAvailableBaseQuantity)} {selectedWork.baseUnitCode}</strong></span>
+                    <span>Cần <strong>{formatQuantity(selectedWork.orderedBaseQuantity)} {selectedWork.baseUnitCode}</strong></span>
+                    <span>Đã phân bổ <strong>{formatQuantity(selectedWork.allocatedBaseQuantity)} {selectedWork.baseUnitCode}</strong></span>
+                    <span>Còn cần phân bổ <strong>{formatQuantity(quantityDifference(selectedWork.orderedBaseQuantity, selectedWork.allocatedBaseQuantity))} {selectedWork.baseUnitCode}</strong></span>
                   </div>
 
                   <div className={styles.allocateToolbar}>
@@ -771,7 +792,7 @@ export default function FulfillmentWorkspace() {
                         inputMode="decimal"
                         value={allocationQuantity}
                         onChange={(event) => setAllocationQuantity(event.target.value)}
-                        placeholder="Số lượng"
+                        placeholder={`Số lượng (${selectedWork.baseUnitCode})`}
                         aria-label="Số lượng muốn phân bổ"
                         disabled={busy !== null}
                         data-testid="fulfillment-allocation-quantity"
@@ -811,7 +832,7 @@ export default function FulfillmentWorkspace() {
                           <div className={styles.locationRow} key={`${candidate.locationId ?? 'none'}-${candidate.lotId ?? 'none'}`}>
                             <strong>{candidate.locationCode || 'Chưa có vị trí'}</strong>
                             <span>{candidate.lotCode || 'Không theo lô'}</span>
-                            <span>{formatQuantity(candidate.availableBaseQuantity)} {selectedWork.unitCode}</span>
+                            <span>{formatQuantity(candidate.availableBaseQuantity)} {selectedWork.baseUnitCode}</span>
                             <span>{candidate.expiryDate ? `HSD ${formatDate(candidate.expiryDate)}` : `Nhập ${formatDate(candidate.firstReceivedAt)}`}</span>
                           </div>
                         ))}
@@ -839,9 +860,9 @@ export default function FulfillmentWorkspace() {
                                 <strong>{allocation.locationCode || 'Chưa có vị trí'}</strong>
                                 <small>{allocation.lotCode || 'Không theo lô'}{allocation.expiryDate ? ` · HSD ${formatDate(allocation.expiryDate)}` : ''}</small>
                               </div>
-                              <span>{formatQuantity(allocation.allocatedBaseQuantity)}</span>
-                              <span>{formatQuantity(allocation.pickedBaseQuantity)}</span>
-                              <span>{formatQuantity(allocation.packedBaseQuantity)}</span>
+                              <span>{formatQuantity(allocation.allocatedBaseQuantity)} {selectedWork.baseUnitCode}</span>
+                              <span>{formatQuantity(allocation.pickedBaseQuantity)} {selectedWork.baseUnitCode}</span>
+                              <span>{formatQuantity(allocation.packedBaseQuantity)} {selectedWork.baseUnitCode}</span>
                               <em>{allocation.state === 'COMPLETED' ? 'Đã đóng gói' : 'Đang xử lý'}</em>
                               <div className={styles.rowActions}>
                                 <button
@@ -850,7 +871,7 @@ export default function FulfillmentWorkspace() {
                                   disabled={parseQuantity(pickRemaining) <= 0n || busy !== null}
                                   onClick={() => void updateProgress(allocation, 'pick')}
                                 >
-                                  {busy === `pick-${allocation.id}` ? 'Đang xác nhận...' : `Soạn ${formatQuantity(pickRemaining)}`}
+                                  {busy === `pick-${allocation.id}` ? 'Đang xác nhận...' : `Soạn ${formatQuantity(pickRemaining)} ${selectedWork.baseUnitCode}`}
                                 </button>
                                 <button
                                   type="button"
@@ -858,7 +879,7 @@ export default function FulfillmentWorkspace() {
                                   disabled={parseQuantity(packRemaining) <= 0n || busy !== null}
                                   onClick={() => void updateProgress(allocation, 'pack')}
                                 >
-                                  {busy === `pack-${allocation.id}` ? 'Đang xác nhận...' : `Đóng gói ${formatQuantity(packRemaining)}`}
+                                  {busy === `pack-${allocation.id}` ? 'Đang xác nhận...' : `Đóng gói ${formatQuantity(packRemaining)} ${selectedWork.baseUnitCode}`}
                                 </button>
                               </div>
                             </div>
