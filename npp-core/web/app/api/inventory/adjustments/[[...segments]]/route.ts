@@ -4,6 +4,7 @@ import {
   getInventoryAdjustment,
   listInventoryAdjustmentReasons,
   listInventoryAdjustments,
+  normalizeInventoryAdjustmentGatewayError,
   transitionInventoryAdjustment,
 } from '../../../../../lib/inventory-adjustment-gateway';
 import { errorResponse, readJsonBody, requestIdFrom, responseHeaders } from '../../_shared';
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest, context: Context) {
     else return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Không tìm thấy đường dẫn', retryable: false, details: {} }, requestId },
       { status: 404, headers: responseHeaders(requestId) });
     return NextResponse.json({ data, requestId }, { status: 200, headers: responseHeaders(requestId) });
-  } catch (error) { return errorResponse(error, requestId); }
+  } catch (error) { return errorResponse(error, requestId, normalizeInventoryAdjustmentGatewayError); }
 }
 
 export async function POST(request: NextRequest, context: Context) {
@@ -45,5 +46,5 @@ export async function POST(request: NextRequest, context: Context) {
     } else return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Không tìm thấy đường dẫn', retryable: false, details: {} }, requestId },
       { status: 404, headers: responseHeaders(requestId) });
     return NextResponse.json({ data, requestId }, { status, headers: responseHeaders(requestId) });
-  } catch (error) { return errorResponse(error, requestId); }
+  } catch (error) { return errorResponse(error, requestId, normalizeInventoryAdjustmentGatewayError); }
 }

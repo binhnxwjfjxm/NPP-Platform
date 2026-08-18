@@ -5,6 +5,10 @@ import { readFileSync } from 'node:fs';
 const workspace = readFileSync(new URL('../app/inventory/stocktakes/stocktake-workspace.tsx', import.meta.url), 'utf8');
 const page = readFileSync(new URL('../app/inventory/stocktakes/page.tsx', import.meta.url), 'utf8');
 const gateway = readFileSync(new URL('../lib/stocktake-gateway.ts', import.meta.url), 'utf8');
+const route = readFileSync(new URL('../app/api/inventory/stocktakes/route.ts', import.meta.url), 'utf8');
+const detailRoute = readFileSync(new URL('../app/api/inventory/stocktakes/[id]/route.ts', import.meta.url), 'utf8');
+const actionRoute = readFileSync(new URL('../app/api/inventory/stocktakes/[id]/[action]/route.ts', import.meta.url), 'utf8');
+const sharedRoute = readFileSync(new URL('../app/api/inventory/_shared.ts', import.meta.url), 'utf8');
 const nav = readFileSync(new URL('../app/components/app-shell-core.tsx', import.meta.url), 'utf8');
 
 test('stocktake UI keeps blind count and PageHeader actions', () => {
@@ -17,7 +21,8 @@ test('stocktake UI keeps blind count and PageHeader actions', () => {
   assert.match(workspace, /Duyệt kết quả/);
   assert.match(workspace, /Ghi sổ chênh lệch/);
   assert.doesNotMatch(workspace, /Date\.now\(\)/);
-  assert.match(workspace, /crypto\.randomUUID\(\)/);
+  assert.match(workspace, /createIdempotencyKey\(`stocktake-\$\{action\}`\)/);
+  assert.doesNotMatch(workspace, /crypto\.randomUUID\(\)/);
 });
 
 test('stocktake page uses canonical scoped warehouse master independently from balances', () => {
@@ -36,4 +41,12 @@ test('stocktake page uses real Core gateway and is discoverable in Inventory nav
   assert.match(gateway, /\/api\/inventory\/stocktakes/);
   assert.match(nav, /\/inventory\/stocktakes/);
   assert.match(nav, /nav-inventory-stocktakes/);
+});
+
+test('stocktake proxy preserves stocktake gateway status instead of collapsing errors to 503', () => {
+  assert.match(sharedRoute, /normalizeError: GatewayErrorNormalizer = normalizeInventoryGatewayError/);
+  for (const source of [route, detailRoute, actionRoute]) {
+    assert.match(source, /normalizeStocktakeGatewayError/);
+    assert.match(source, /errorResponse\(error, requestId, normalizeStocktakeGatewayError\)/);
+  }
 });

@@ -1,5 +1,6 @@
 'use client';
 
+import { createIdempotencyKey } from '@npp/contracts';
 import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import {
@@ -106,7 +107,7 @@ export default function StocktakeWorkspace({
     const mapKey = `${action}:${id}:${revision}`;
     const existing = idempotencyKeys.current.get(mapKey);
     if (existing) return existing;
-    const created = `web-stocktake-${action}-${crypto.randomUUID()}`;
+    const created = createIdempotencyKey(`stocktake-${action}`);
     idempotencyKeys.current.set(mapKey, created);
     return created;
   }
@@ -265,7 +266,7 @@ export default function StocktakeWorkspace({
     <AppShell
       kicker="Tồn kho & lô hàng"
       title="Kiểm kê kho"
-      subtitle="Đếm mù, đếm lại có lịch sử, duyệt tách người và ghi sổ chênh lệch qua Inventory Ledger."
+      subtitle="Đếm mù, đếm lại có lịch sử, duyệt tách người và ghi chênh lệch vào sổ kho."
       actions={can(STOCKTAKE_PERMISSION_KEYS.create) ? (
         <button type="button" className={styles.primaryButton} onClick={() => setShowCreate((value) => !value)}>
           {showCreate ? 'Đóng tạo mới' : 'Tạo đợt kiểm kê'}
@@ -277,7 +278,7 @@ export default function StocktakeWorkspace({
           <section className={styles.createPanel} aria-labelledby="create-stocktake-title">
             <div>
               <h2 id="create-stocktake-title">Tạo đợt kiểm kê</h2>
-              <p>Chọn exact vị trí, SKU cơ sở và lô. Số tồn hệ thống không hiển thị cho người đếm.</p>
+              <p>Chọn đúng vị trí, SKU cơ sở và lô. Số tồn hệ thống không hiển thị cho người đếm.</p>
             </div>
             <label>
               Kho kiểm kê
@@ -420,7 +421,7 @@ export default function StocktakeWorkspace({
                 <dl className={styles.meta}>
                   <div><dt>Người gửi</dt><dd>{detail.submittedBy || '—'}</dd></div>
                   <div><dt>Người duyệt</dt><dd>{detail.approvedBy || '—'}</dd></div>
-                  <div><dt>Movement</dt><dd>{detail.inventoryMovementId || 'Không tạo movement'}</dd></div>
+                  <div><dt>Bút toán kho</dt><dd>{detail.inventoryMovementId || 'Không phát sinh bút toán'}</dd></div>
                   <div><dt>Cập nhật</dt><dd>{formatDateTime(detail.updatedAt)}</dd></div>
                 </dl>
               </>

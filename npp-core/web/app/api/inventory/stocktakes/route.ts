@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createStocktake, listStocktakes } from '../../../../lib/stocktake-gateway';
+import { createStocktake, listStocktakes, normalizeStocktakeGatewayError } from '../../../../lib/stocktake-gateway';
 import { errorResponse, readJsonBody, requestIdFrom, responseHeaders } from '../_shared';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     const data = await listStocktakes<unknown>(requestId, request.nextUrl.searchParams);
     return NextResponse.json({ data, requestId }, { status: 200, headers: responseHeaders(requestId) });
   } catch (error) {
-    return errorResponse(error, requestId);
+    return errorResponse(error, requestId, normalizeStocktakeGatewayError);
   }
 }
 
@@ -27,6 +27,6 @@ export async function POST(request: NextRequest) {
     const data = await createStocktake<unknown>(requestId, body, request.headers.get('idempotency-key'));
     return NextResponse.json({ data, requestId }, { status: 201, headers: responseHeaders(requestId) });
   } catch (error) {
-    return errorResponse(error, requestId);
+    return errorResponse(error, requestId, normalizeStocktakeGatewayError);
   }
 }
