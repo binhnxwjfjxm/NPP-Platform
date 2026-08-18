@@ -106,18 +106,92 @@ export async function listWarehouseBusinessHoldSummary(client, {
   })));
 }
 
+async function loadScopedBusinessHoldSummary(client, {
+  installationId,
+  warehouseId,
+  baseVariantId,
+  excludeSalesOrderId,
+}) {
+  const result = await client.query(
+    `WITH inventory_scope AS (
+       SELECT
+         COALESCE(sum(balance.on_hand_quantity), 0)::numeric(30,12) AS on_hand_quantity,
+         COALESCE(sum(balance.reserved_quantity), 0)::numeric(30,12) AS exact_held_quantity
+       FROM inventory.inventory_balances balance
+       WHERE balance.installation_id = $1
+         AND balance.warehouse_id = $2
+         AND balance.base_variant_id = $3
+     ), excluded_exact AS (
+       SELECT COALESCE(sum(reservation.quantity), 0)::numeric(30,12) AS quantity
+       FROM sales.sales_order_fulfillment_allocations allocation
+       JOIN sales.sales_order_fulfillment_demands demand
+         ON demand.installation_id = allocation.installation_id
+        AND demand.id = allocation.fulfillment_demand_id
+       JOIN inventory.inventory_reservations reservation
+         ON reservation.installation_id = allocation.installation_id
+        AND reservation.id = allocation.inventory_reservation_id
+        AND reservation.state = 'ACTIVE'
+       WHERE allocation.installation_id = $1
+         AND allocation.warehouse_id = $2
+         AND allocation.base_variant_id = $3
+         AND $4::uuid IS NOT NULL
+         AND demand.sales_order_id = $4::uuid
+     ), demand_scope AS (
+       SELECT COALESCE(sum(greatest(
+         demand.reserved_base_quantity - demand.allocated_base_quantity,
+         0::numeric
+       )), 0)::numeric(30,12) AS quantity
+       FROM sales.sales_order_fulfillment_demands demand
+       WHERE demand.installation_id = $1
+         AND demand.warehouse_id = $2
+         AND demand.base_variant_id = $3
+         AND demand.state = 'ACTIVE'
+         AND ($4::uuid IS NULL OR demand.sales_order_id <> $4::uuid)
+     )
+     SELECT
+       inventory_scope.on_hand_quantity::numeric(30,12)::text AS on_hand_quantity,
+       greatest(
+         inventory_scope.exact_held_quantity - excluded_exact.quantity,
+         0::numeric
+       )::numeric(30,12)::text AS exact_held_quantity,
+       demand_scope.quantity::numeric(30,12)::text AS demand_held_quantity,
+       greatest(
+         inventory_scope.exact_held_quantity - excluded_exact.quantity,
+         0::numeric
+       )::numeric(30,12) + demand_scope.quantity::numeric(30,12) AS held_quantity,
+       greatest(
+         inventory_scope.on_hand_quantity
+         - greatest(inventory_scope.exact_held_quantity - excluded_exact.quantity, 0::numeric)
+         - demand_scope.quantity,
+         0::numeric
+       )::numeric(30,12)::text AS available_quantity
+     FROM inventory_scope CROSS JOIN excluded_exact CROSS JOIN demand_scope`,
+    [installationId, warehouseId, baseVariantId, excludeSalesOrderId],
+  );
+  const row = result.rows?.[0] ?? {};
+  return Object.freeze({
+    warehouseId,
+    baseVariantId,
+    onHandBaseQuantity: String(row.on_hand_quantity ?? '0.000000000000'),
+    exactHeldBaseQuantity: String(row.exact_held_quantity ?? '0.000000000000'),
+    demandHeldBaseQuantity: String(row.demand_held_quantity ?? '0.000000000000'),
+    heldBaseQuantity: String(row.held_quantity ?? '0.000000000000'),
+    availableBaseQuantity: String(row.available_quantity ?? '0.000000000000'),
+  });
+}
+
 export async function loadWarehouseBusinessHoldBreakdown(client, {
   installationId,
   warehouseId,
   baseVariantId,
   excludeSalesOrderId = null,
 }) {
-  const [summaryRows, breakdownResult] = await Promise.all([
-    listWarehouseBusinessHoldSummary(client, {
+  const [summary, breakdownResult] = await Promise.all([
+    loadScopedBusinessHoldSummary(client, {
       installationId,
-      warehouseIds: [warehouseId],
       warehouseId,
       baseVariantId,
+      excludeSalesOrderId,
     }),
     client.query(
       `WITH exact_by_demand AS (
@@ -191,16 +265,6 @@ export async function loadWarehouseBusinessHoldBreakdown(client, {
       [installationId, warehouseId, baseVariantId, excludeSalesOrderId],
     ),
   ]);
-
-  const summary = summaryRows[0] ?? Object.freeze({
-    warehouseId,
-    baseVariantId,
-    onHandBaseQuantity: '0.000000000000',
-    exactHeldBaseQuantity: '0.000000000000',
-    demandHeldBaseQuantity: '0.000000000000',
-    heldBaseQuantity: '0.000000000000',
-    availableBaseQuantity: '0.000000000000',
-  });
 
   return Object.freeze({
     ...summary,
