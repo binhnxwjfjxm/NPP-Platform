@@ -76,6 +76,7 @@ const inventoryItems: NavItem[] = [
   { href: '/inventory/transfers', label: 'Chuyển kho', icon: 'panel', testId: 'nav-inventory-transfers' },
   { href: '/inventory/stocktakes', label: 'Kiểm kê kho', icon: 'panel', testId: 'nav-inventory-stocktakes' },
   { href: '/inventory/adjustments', label: 'Điều chỉnh và xử lý tồn', icon: 'panel', testId: 'nav-inventory-adjustments' },
+  { href: '/inventory/manual-inbounds', label: 'Nhập kho thủ công', icon: 'panel', testId: 'nav-inventory-manual-inbound' },
   { href: '/inventory/costing', label: 'Giá vốn tồn kho', icon: 'accounting', testId: 'nav-inventory-costing' },
   { href: '/inventory/balances', label: 'Tra cứu tồn kho', icon: 'panel', testId: 'nav-inventory-balances' },
   { href: '/inventory/tracking-policies', label: 'Chính sách lô', icon: 'panel', testId: 'nav-inventory-policies' },

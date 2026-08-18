@@ -132,6 +132,10 @@ const MANUAL_SALES_ORDER_RECEIVABLE_SQL = readFileSync(
   new URL('../../../../database/migrations/accounting/090_manual_sales_order_receivable.sql', import.meta.url),
   'utf8',
 );
+const MANUAL_INBOUND_FOUNDATION_SQL = readFileSync(
+  new URL('../../../../database/migrations/inventory/091_manual_inbound_foundation.sql', import.meta.url),
+  'utf8',
+);
 const SALES_SHARED_STOCK_HOLD_SQL = readFileSync(
   new URL('../../../../database/migrations/sales/092_sales_shared_stock_hold.sql', import.meta.url),
   'utf8',
@@ -191,6 +195,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '088_selective_business_data_purge', sql: SELECTIVE_BUSINESS_DATA_PURGE_SQL }),
   Object.freeze({ id: '089_sales_delivery_execution_mode', sql: SALES_DELIVERY_EXECUTION_MODE_SQL }),
   Object.freeze({ id: '090_manual_sales_order_receivable', sql: MANUAL_SALES_ORDER_RECEIVABLE_SQL }),
+  Object.freeze({ id: '091_manual_inbound_foundation', sql: MANUAL_INBOUND_FOUNDATION_SQL }),
   Object.freeze({ id: '092_sales_shared_stock_hold', sql: SALES_SHARED_STOCK_HOLD_SQL }),
 ]);
 
