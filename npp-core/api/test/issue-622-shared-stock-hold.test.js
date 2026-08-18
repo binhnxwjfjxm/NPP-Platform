@@ -39,7 +39,42 @@ test('manual delivery rechecks current stock hold before deciding shortage', () 
   assert.match(source, /targetBaseQuantity: demand\.ordered_base_quantity/);
 });
 
-test('quantity allocation exposes selected quantity and full allocation without policy override', () => {
+test('current demand is not counted as stock held by other orders', () => {
+  const hold = readFileSync(
+    new URL('../src/services/sales-fulfillment-hold.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(hold, /other\.id <> \$2/);
+  assert.match(hold, /const availableForDemand = allocated \+ free/);
+  assert.match(hold, /const heldByOthers = onHand > availableForDemand/);
+  assert.match(hold, /capacityBaseQuantity: formatHoldQuantity\(availableForDemand\)/);
+});
+
+test('manual quick edit replaces the active hold instead of stacking stale demand', () => {
+  const orderService = readFileSync(new URL('../src/services/sales-order.js', import.meta.url), 'utf8');
+  const fulfillmentService = readFileSync(new URL('../src/services/sales-fulfillment.js', import.meta.url), 'utf8');
+  const fulfillmentRepository = readFileSync(new URL('../src/db/repositories/sales-fulfillment.js', import.meta.url), 'utf8');
+  assert.match(orderService, /quickEditManualSalesOrder/);
+  assert.match(orderService, /return confirmSalesOrder/);
+  assert.match(fulfillmentService, /supersedeActiveDemands/);
+  assert.match(fulfillmentService, /replaceSalesOrderFulfillmentDemand/);
+  assert.match(fulfillmentRepository, /demand\.sales_order_id <> \$4/);
+});
+
+test('preparation queue excludes manual delivery and orders outside preparation lifecycle', () => {
+  const repository = readFileSync(
+    new URL('../src/db/repositories/sales-fulfillment-operations.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(repository, /orders\.fulfillment_status IN/);
+  assert.match(repository, /partially_packed', 'packed'/);
+  assert.match(repository, /version\.delivery_mode = 'DELIVERY'/);
+  assert.match(repository, /COALESCE\(version\.delivery_execution_mode, 'TRIP'\) = 'MANUAL'/);
+  assert.match(repository, /line\.ordered_quantity AS ordered_sales_quantity/);
+  assert.match(repository, /base_unit\.code AS base_unit_code/);
+});
+
+test('quantity allocation exposes exact stock context and units without frontend conversion', () => {
   const service = readFileSync(
     new URL('../src/services/sales-fulfillment-operations.js', import.meta.url),
     'utf8',
@@ -51,8 +86,14 @@ test('quantity allocation exposes selected quantity and full allocation without 
   assert.match(service, /mode === 'QUANTITY'/);
   assert.match(service, /allocatedBefore \+ requestedQuantity/);
   assert.match(service, /reconcileDemandHold/);
-  assert.match(workspace, /Số lượng muốn phân bổ/);
-  assert.match(workspace, /Phân bổ đủ/);
-  assert.match(workspace, /Chưa phân bổ/);
-  assert.match(workspace, /Kho có thể dùng/);
+  assert.match(service, /warehouseOnHandBaseQuantity/);
+  assert.match(service, /warehouseHeldByOthersBaseQuantity/);
+  assert.match(service, /baseUnitCode/);
+  assert.match(workspace, /Khách đặt → Kho/);
+  assert.match(workspace, /Tồn thực tế/);
+  assert.match(workspace, /Đơn khác đang giữ/);
+  assert.match(workspace, /Khả dụng cho đơn này/);
+  assert.match(workspace, /Còn cần phân bổ/);
+  assert.match(workspace, /orderedQuantityLabel/);
+  assert.doesNotMatch(workspace, /conversionFactor|conversion_to_base|\*\s*12/);
 });
