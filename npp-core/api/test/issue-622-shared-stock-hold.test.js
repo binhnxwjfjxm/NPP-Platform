@@ -74,6 +74,19 @@ test('preparation queue excludes manual delivery and orders outside preparation 
   assert.match(repository, /base_unit\.code AS base_unit_code/);
 });
 
+test('manual delivery cannot enter dispatch eligibility or delivery-order creation path', () => {
+  const repository = readFileSync(
+    new URL('../src/db/repositories/sales-delivery-orders.js', import.meta.url),
+    'utf8',
+  );
+  const manualGuards = repository.match(
+    /COALESCE\(version\.delivery_execution_mode, 'TRIP'\) = 'MANUAL'/g,
+  ) ?? [];
+  assert.ok(manualGuards.length >= 2, 'manual delivery must be blocked in list and mutation lookup');
+  assert.match(repository, /version\.delivery_mode = 'DELIVERY'/);
+  assert.match(repository, /version\.delivery_execution_mode/);
+});
+
 test('quantity allocation exposes exact stock context and units without frontend conversion', () => {
   const service = readFileSync(
     new URL('../src/services/sales-fulfillment-operations.js', import.meta.url),
@@ -96,4 +109,41 @@ test('quantity allocation exposes exact stock context and units without frontend
   assert.match(workspace, /Còn cần phân bổ/);
   assert.match(workspace, /orderedQuantityLabel/);
   assert.doesNotMatch(workspace, /conversionFactor|conversion_to_base|\*\s*12/);
+});
+
+test('per-line allocation is operated directly from the product table', () => {
+  const workspace = readFileSync(
+    new URL('../../web/app/inventory/fulfillment/fulfillment-workspace.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(workspace, /allocationQuantities/);
+  assert.match(workspace, /allocateItem\(item, 'QUANTITY'\)/);
+  assert.match(workspace, /allocateItem\(item, 'AUTO'\)/);
+  assert.match(workspace, />PB</);
+  assert.match(workspace, />PB đủ</);
+  assert.doesNotMatch(workspace, /Chọn số lượng muốn phân bổ/);
+});
+
+test('sales order detail shows canonical stock observation for every sales flow', () => {
+  const fulfillmentService = readFileSync(
+    new URL('../src/services/sales-fulfillment.js', import.meta.url),
+    'utf8',
+  );
+  const fulfillmentRepository = readFileSync(
+    new URL('../src/db/repositories/sales-fulfillment.js', import.meta.url),
+    'utf8',
+  );
+  const detail = readFileSync(
+    new URL('../../web/app/sales/sales-orders/SalesOrderDetail.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(fulfillmentService, /loadDemandHoldAvailability/);
+  assert.match(fulfillmentService, /warehouseOnHandBaseQuantity/);
+  assert.match(fulfillmentService, /warehouseHeldByOthersBaseQuantity/);
+  assert.match(fulfillmentService, /warehouseAvailableBaseQuantity/);
+  assert.match(fulfillmentRepository, /base_unit\.code AS base_unit_code/);
+  assert.match(detail, /Tồn thực tế/);
+  assert.match(detail, /Đơn khác đang giữ/);
+  assert.match(detail, /Khả dụng cho đơn này/);
+  assert.match(detail, /sales-order-stock-observation/);
 });
