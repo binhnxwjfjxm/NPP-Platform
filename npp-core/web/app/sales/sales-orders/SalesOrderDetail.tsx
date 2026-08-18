@@ -1,6 +1,6 @@
 'use client';
 
-import type { SalesOrder } from '../../../lib/sales-order-types';
+import type { SalesOrder, SalesOrderFulfillmentLine } from '../../../lib/sales-order-types';
 import ManualSalesOrderSettlement from './ManualSalesOrderSettlement';
 import SalesOrderPrintSheet from './SalesOrderPrintSheet';
 import {
@@ -46,6 +46,14 @@ function hasIssuedQuantity(value: string | null | undefined): boolean {
   return !/^[+-]?0+(?:\.0+)?$/.test(normalized || '0');
 }
 
+function stockValue(
+  line: SalesOrderFulfillmentLine | undefined,
+  value: string | null | undefined,
+): string {
+  if (!line || value === null || value === undefined) return '—';
+  return `${formatQuantity(value)} ${line.baseUnitCode}`;
+}
+
 export default function SalesOrderDetail(props: Props) {
   const { order } = props;
   if (!order) {
@@ -62,9 +70,16 @@ export default function SalesOrderDetail(props: Props) {
   const current = activeVersion(order);
   const amendment = pendingVersion(order);
   const fulfillment = order.fulfillment;
+  const stockBySalesOrderLineId = new Map(
+    (fulfillment?.lines ?? []).map((line) => [line.salesOrderLineId, line] as const),
+  );
   const isManual = current?.deliveryMode === 'DELIVERY'
     && current.deliveryExecutionMode === 'MANUAL';
   const hasIssued = hasIssuedQuantity(fulfillment?.totals.issuedBaseQuantity);
+  const lineGrid = {
+    gridTemplateColumns: 'minmax(180px,1.45fr) minmax(84px,.55fr) repeat(3,minmax(116px,.72fr)) minmax(100px,.7fr) minmax(110px,.75fr)',
+    minWidth: '980px',
+  } as const;
 
   return (
     <section className={styles.detailPanel}>
@@ -148,16 +163,24 @@ export default function SalesOrderDetail(props: Props) {
             <span>Chiết khấu <b>{formatMoney(current.discountTotal)} ₫</b></span>
             <span>Thuế <b>{formatMoney(current.taxTotal)} ₫</b></span>
           </div>
-          <div className={styles.linesTable}>
-            <div className={styles.lineHeader}><span>SKU</span><span>SL</span><span>Đơn giá</span><span>Thành tiền</span></div>
-            {(current.lines ?? []).map((line) => (
-              <div className={styles.lineRow} key={line.id}>
-                <span><b>{line.sku}</b><small>{line.itemName}</small></span>
-                <span>{formatQuantity(line.quantity)} {line.unitCode}</span>
-                <span>{formatMoney(line.unitPrice)} ₫</span>
-                <span>{formatMoney(line.lineTotal)} ₫</span>
-              </div>
-            ))}
+          <div className={styles.linesTable} data-testid="sales-order-stock-observation">
+            <div className={styles.lineHeader} style={lineGrid}>
+              <span>SKU</span><span>SL</span><span>Tồn thực tế</span><span>Đơn khác đang giữ</span><span>Khả dụng cho đơn này</span><span>Đơn giá</span><span>Thành tiền</span>
+            </div>
+            {(current.lines ?? []).map((line) => {
+              const stock = stockBySalesOrderLineId.get(line.id);
+              return (
+                <div className={styles.lineRow} style={lineGrid} key={line.id}>
+                  <span><b>{line.sku}</b><small>{line.itemName}</small></span>
+                  <span>{formatQuantity(line.quantity)} {line.unitCode}</span>
+                  <span>{stockValue(stock, stock?.warehouseOnHandBaseQuantity)}</span>
+                  <span>{stockValue(stock, stock?.warehouseHeldByOthersBaseQuantity)}</span>
+                  <span>{stockValue(stock, stock?.warehouseAvailableBaseQuantity)}</span>
+                  <span>{formatMoney(line.unitPrice)} ₫</span>
+                  <span>{formatMoney(line.lineTotal)} ₫</span>
+                </div>
+              );
+            })}
           </div>
         </article>
       )}
