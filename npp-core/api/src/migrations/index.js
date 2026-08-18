@@ -140,6 +140,10 @@ const SALES_SHARED_STOCK_HOLD_SQL = readFileSync(
   new URL('../../../../database/migrations/sales/092_sales_shared_stock_hold.sql', import.meta.url),
   'utf8',
 );
+const PRODUCT_INVENTORY_MANAGEMENT_POLICY_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/093_product_inventory_management_policy.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -197,6 +201,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '090_manual_sales_order_receivable', sql: MANUAL_SALES_ORDER_RECEIVABLE_SQL }),
   Object.freeze({ id: '091_manual_inbound_foundation', sql: MANUAL_INBOUND_FOUNDATION_SQL }),
   Object.freeze({ id: '092_sales_shared_stock_hold', sql: SALES_SHARED_STOCK_HOLD_SQL }),
+  Object.freeze({ id: '093_product_inventory_management_policy', sql: PRODUCT_INVENTORY_MANAGEMENT_POLICY_SQL }),
 ]);
 
 export { runMigrations };
