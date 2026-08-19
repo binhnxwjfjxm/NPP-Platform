@@ -62,6 +62,8 @@ export function createBootstrapPrincipal(config) {
       PERMISSIONS.corePriceWrite,
       PERMISSIONS.coreDocumentNumberRead,
       PERMISSIONS.coreDocumentNumberWrite,
+      PERMISSIONS.corePrintTemplateRead,
+      PERMISSIONS.corePrintTemplateManage,
       PERMISSIONS.coreInventoryRead,
       PERMISSIONS.coreInventoryPost,
       PERMISSIONS.coreInventoryReverse,

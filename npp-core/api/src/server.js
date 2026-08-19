@@ -39,6 +39,7 @@ import { handleSupplierRoutes } from './routes/suppliers.js';
 import { handleProductRoutes } from './routes/products.js';
 import { handleProductUnitRoutes } from './routes/product-units.js';
 import { handleDocumentNumberingRoutes } from './routes/document-numbering.js';
+import { handleDocumentPrintTemplateRoutes } from './routes/document-print-templates.js';
 import { handleInventoryRoutes } from './routes/inventory.js';
 import { handleGoodsReceiptRoutes } from './routes/goods-receipts.js';
 import { handleSupplierReturnRoutes } from './routes/supplier-returns.js';
@@ -461,6 +462,7 @@ export function createCoreApiServer(options = {}) {
     if (await handleGoodsReceiptRoutes(req, res, routeContext)) return;
     if (await handleSupplierReturnRoutes(req, res, routeContext)) return;
     if (await handleDocumentNumberingRoutes(req, res, routeContext)) return;
+    if (await handleDocumentPrintTemplateRoutes(req, res, routeContext)) return;
     if (await handleInventoryRoutes(req, res, routeContext)) return;
     if (await handleProductUnitRoutes(req, res, routeContext)) return;
     if (await handleProductRoutes(req, res, routeContext)) return;

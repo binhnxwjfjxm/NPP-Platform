@@ -84,6 +84,8 @@ test('CI workflows expose the bounded PostgreSQL 17 client installation before r
 
   assert.match(installer, /--connect-timeout 15/);
   assert.match(installer, /--retry 3/);
+  assert.match(installer, /Dir::Etc::sourcelist='sources\.list\.d\/pgdg\.list'/);
+  assert.match(installer, /APT_TIMEOUT_SECONDS=240/);
   assert.match(installer, /Acquire::https::Timeout=30/);
   assert.match(coreWorkflow, /Install PostgreSQL 17 client tools[\s\S]*install-postgresql-client-17\.sh[\s\S]*Run migration rehearsal/);
   assert.match(phaseThreeWorkflow, /Install PostgreSQL 17 client tools[\s\S]*install-postgresql-client-17\.sh[\s\S]*Run grouped migration apply, rerun and verification/);

@@ -31,27 +31,29 @@ export default function DeliveryOrderPrintDock({ order }: { order: DeliveryOrder
       </label>
       <BusinessDocumentPrint
         id={`delivery-order-${order.id}-${variant}`}
+        documentType="DELIVERY_ORDER"
+        templateCode={isPacking ? 'packing-list' : 'standard'}
         actionLabel="In"
         title={isPacking ? 'PHIẾU ĐÓNG GÓI' : 'PHIẾU GIAO HÀNG'}
         subtitle={isPacking ? 'Danh sách đóng gói' : 'Chứng từ giao nhận'}
         number={order.number}
         status={STATUS_LABEL[order.status]}
         meta={[
-          { label: 'Đơn bán hàng', value: order.salesOrderNumber || '—' },
-          { label: 'Khách hàng', value: `${order.customerCode} — ${order.customerName}` },
-          { label: 'Kho xuất', value: `${order.warehouseCode} — ${order.warehouseName}` },
-          { label: 'Hình thức', value: order.handoverMode === 'PICKUP' ? 'Khách nhận tại kho' : 'Giao đến khách' },
-          { label: 'Ngày giao dự kiến', value: dateText(order.requestedDeliveryDate) },
-          { label: 'Chính sách thu', value: order.collectionPolicy || '—' },
-          { label: 'Địa chỉ giao', value: destinationText(order.destination), full: true },
+          { key: 'sales_order', label: 'Đơn bán hàng', value: order.salesOrderNumber || '—' },
+          { key: 'customer', label: 'Khách hàng', value: `${order.customerCode} — ${order.customerName}` },
+          { key: 'warehouse', label: 'Kho xuất', value: `${order.warehouseCode} — ${order.warehouseName}` },
+          { key: 'handover_mode', label: 'Hình thức', value: order.handoverMode === 'PICKUP' ? 'Khách nhận tại kho' : 'Giao đến khách' },
+          { key: 'requested_delivery_date', label: 'Ngày giao dự kiến', value: dateText(order.requestedDeliveryDate) },
+          { key: 'collection_policy', label: 'Chính sách thu', value: order.collectionPolicy || '—' },
+          { key: 'destination', label: 'Địa chỉ giao', value: destinationText(order.destination), full: true },
         ]}
         columns={[
-          { key: 'no', label: 'STT', align: 'center' }, { key: 'item', label: 'Sản phẩm / SKU' },
-          { key: 'qty', label: 'Số lượng', align: 'right' }, { key: 'unit', label: 'ĐVT', align: 'center' },
-          { key: 'lot', label: 'Lô / HSD' }, { key: 'location', label: 'Vị trí' },
+          { key: 'no', fieldKey: 'line_no', label: 'STT', align: 'center' }, { key: 'item', fieldKey: 'line_item', label: 'Sản phẩm / SKU' },
+          { key: 'qty', fieldKey: 'line_quantity', label: 'Số lượng', align: 'right' }, { key: 'unit', fieldKey: 'line_unit', label: 'ĐVT', align: 'center' },
+          { key: 'lot', fieldKey: 'line_lot', label: 'Lô / HSD' }, { key: 'location', fieldKey: 'line_location', label: 'Vị trí' },
         ]}
         rows={(order.lines ?? []).map((line, index) => ({ id: line.id, cells: { no: line.lineNumber ?? index + 1, item: <><strong>{line.itemName}</strong><br />{line.sku}</>, qty: quantity(line.deliveryBaseQuantity), unit: line.unitCode, lot: `${line.lotCode || '—'}${line.expiryDate ? ` · ${line.expiryDate}` : ''}`, location: line.locationCode || '—' } }))}
-        totals={[{ label: isPacking ? 'Tổng SL đóng gói' : 'Tổng SL giao', value: quantity(order.totalBaseQuantity), emphasis: true }]}
+        totals={[{ key: 'total_quantity', label: isPacking ? 'Tổng SL đóng gói' : 'Tổng SL giao', value: quantity(order.totalBaseQuantity), emphasis: true }]}
         note={order.status === 'cancelled' ? 'ĐÃ HỦY' : order.note || undefined}
         signatures={isPacking ? ['Người đóng gói', 'Thủ kho', 'Người kiểm'] : ['Người giao', 'Khách hàng', 'Thủ kho']}
         testId={isPacking ? 'packing-list-print-sheet' : 'delivery-order-print-sheet'}
