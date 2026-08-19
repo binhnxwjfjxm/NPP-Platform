@@ -32,7 +32,19 @@ test('Nộp tiền / Nợ supports full debt, partial payment and full payment a
   assert.match(settlement, /Nhập 0 nếu ghi nợ toàn bộ/);
   assert.match(settlement, /debtOnly/);
   assert.match(settlement, /Khoản phải thu của đơn được giữ nguyên/);
+  assert.match(settlement, />\s*Nộp đủ\s*</);
+  assert.match(settlement, /order\.receivableRemainingAmount/);
+  assert.match(settlement, /setPaidAmount\(editableAmount\(remainingAmount\)\)/);
+  assert.match(settlement, /onChange=\{\(event\) => setPaidAmount\(event\.target\.value\)\}/);
   assert.doesNotMatch(settlement, /issue-stock/);
+});
+
+test('manual receipt can record an optional remitting employee without replacing the actor', async () => {
+  const settlement = await readFile(settlementPath, 'utf8');
+  assert.match(settlement, /customer-payments\/remitting-employees/);
+  assert.match(settlement, /Nhân viên nộp tiền \(không bắt buộc\)/);
+  assert.match(settlement, /remittingEmployeeId \? \{ remittingEmployeeId \} : \{\}/);
+  assert.match(settlement, /fingerprint = `\$\{order\.revision\}\|\$\{normalizedAmount\}\|\$\{paymentMethod\}\|\$\{remittingEmployeeId\}`/);
 });
 
 test('same retry reuses canonical key while changed payment intent gets a new key', async () => {

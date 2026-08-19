@@ -39,8 +39,8 @@ function statusLabel(status: ReceivableDocument['status']) {
   return {
     open: 'Còn phải thu',
     partially_allocated: 'Đã thu một phần',
-    settled: 'Đã tất toán',
-    reversed: 'Đã đảo',
+    settled: 'Đã thu đủ',
+    reversed: 'Đã hủy',
   }[status];
 }
 
@@ -60,9 +60,9 @@ function collectionPolicyLabel(policy: ReceivableDocument['collectionPolicy']) {
 function ledgerEntryLabel(entryType: string) {
   const labels: Record<string, string> = {
     SALE_POST: 'Phát sinh công nợ',
-    SALE_REVERSE: 'Đảo công nợ',
+    SALE_REVERSE: 'Điều chỉnh giảm công nợ',
     CUSTOMER_PAYMENT_POST: 'Ghi nhận thu tiền',
-    CUSTOMER_PAYMENT_REVERSE: 'Đảo phiếu thu',
+    CUSTOMER_PAYMENT_REVERSE: 'Hủy phiếu thu',
   };
   if (labels[entryType]) return labels[entryType];
   if (entryType.includes('REFUND')) return 'Hoàn tiền khách hàng';
@@ -116,7 +116,7 @@ export default async function ReceivablesPage({ searchParams }: PageProps) {
             <p className={styles.value}>{money(String(totalOpen))}</p>
           </article>
           <article className={styles.card}>
-            <span className={styles.muted}>Chứng từ còn phải thu</span>
+            <span className={styles.muted}>Đơn còn phải thu</span>
             <p className={styles.value}>{openDocuments}</p>
           </article>
         </section>
@@ -158,18 +158,18 @@ export default async function ReceivablesPage({ searchParams }: PageProps) {
         </section>
 
         <section className={styles.card}>
-          <h2>Chứng từ phát sinh công nợ</h2>
+          <h2>Đơn hàng cần thu</h2>
           <div className={styles.tableWrap}>
             <table className={styles.table} data-testid="receivables-table">
               <thead>
                 <tr>
                   <BusinessTableSequenceHeader />
-                  <th>Nguồn phát sinh</th>
+                  <th>Nghiệp vụ</th>
                   <th>Khách hàng</th>
                   <th>Đơn bán / Phiếu giao</th>
                   <th>Kho</th>
                   <th>Trạng thái</th>
-                  <th className={styles.amount}>Giá trị</th>
+                  <th className={styles.amount}>Tổng tiền</th>
                   <th className={styles.amount}>Còn phải thu</th>
                 </tr>
               </thead>

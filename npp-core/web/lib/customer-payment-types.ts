@@ -54,9 +54,16 @@ export type CustomerPayment = {
   paymentMethod: string;
   externalReference: string | null;
   note: string | null;
+  remittingEmployeeId: string | null;
+  remittingEmployeeCode: string | null;
+  remittingEmployeeName: string | null;
   originalAmount: string;
   allocatedAmount: string;
   remainingAmount: string;
+  relatedDocumentNumbers: string[];
+  relatedSalesOrderNumbers: string[];
+  relatedReceivableCount: number;
+  relatedRemainingAmount: string;
   status: CustomerPaymentStatus;
   revision: string;
   postedAt: string;
@@ -102,7 +109,14 @@ export type CustomerPaymentDraft = {
   currencyCode: string;
   paymentMethod: string;
   amount: string;
+  remittingEmployeeId?: string;
   externalReference?: string;
   note?: string;
   allocations?: CustomerPaymentAllocationDraft[];
+};
+
+export type RemittingEmployeeOption = {
+  id: string;
+  code: string;
+  fullName: string;
 };

@@ -414,6 +414,7 @@ export async function settleManualSalesOrder(client, {
       amount: scaledToDecimal(paid),
       externalReference: payload?.externalReference ?? undefined,
       note: payload?.note ?? undefined,
+      remittingEmployeeId: payload?.remittingEmployeeId ?? undefined,
       allocations: [{
         receivableDocumentId: receivable.id,
         amount: scaledToDecimal(paid),

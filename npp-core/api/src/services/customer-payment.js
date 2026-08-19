@@ -142,9 +142,20 @@ function mapPayment(row) {
     paymentMethod: row.payment_method,
     externalReference: row.external_reference ?? null,
     note: row.note ?? null,
+    remittingEmployeeId: row.remitting_employee_id ?? null,
+    remittingEmployeeCode: row.remitting_employee_code_snapshot ?? null,
+    remittingEmployeeName: row.remitting_employee_name_snapshot ?? null,
     originalAmount: String(row.original_amount),
     allocatedAmount: String(row.allocated_amount),
     remainingAmount: String(row.remaining_amount),
+    relatedDocumentNumbers: Object.freeze(
+      Array.isArray(row.related_document_numbers) ? row.related_document_numbers : [],
+    ),
+    relatedSalesOrderNumbers: Object.freeze(
+      Array.isArray(row.related_sales_order_numbers) ? row.related_sales_order_numbers : [],
+    ),
+    relatedReceivableCount: Number(row.related_receivable_count ?? 0),
+    relatedRemainingAmount: String(row.related_remaining_amount ?? 0),
     status: row.status,
     revision: String(row.revision),
     postedAt: timestamp(row.posted_at),
@@ -327,6 +338,7 @@ export async function createCustomerPayment(client, {
   const currencyCode = text(payload?.currencyCode, 3)?.toUpperCase() ?? null;
   const paymentMethod = text(payload?.paymentMethod, 64)?.toUpperCase() ?? null;
   const amount = decimalToScaled(payload?.amount);
+  const remittingEmployeeId = text(payload?.remittingEmployeeId, 64);
   const externalReference = payload?.externalReference == null || payload.externalReference === ''
     ? null
     : text(payload.externalReference, 256);
@@ -348,6 +360,9 @@ export async function createCustomerPayment(client, {
   if (amount === null) {
     return failure('INVALID_PAYMENT_AMOUNT', 'amount must be a positive decimal with at most six fractional digits');
   }
+  if (payload?.remittingEmployeeId && !isUuid(remittingEmployeeId)) {
+    return failure('INVALID_REMITTING_EMPLOYEE_ID', 'Mã nhân viên nộp tiền không hợp lệ');
+  }
   if (payload?.externalReference && !externalReference) {
     return failure('INVALID_EXTERNAL_REFERENCE', 'externalReference must not exceed 256 characters');
   }
@@ -363,6 +378,19 @@ export async function createCustomerPayment(client, {
     return failure('CUSTOMER_NOT_FOUND', 'Active customer was not found');
   }
   if (!context.warehouse_active) return failure('WAREHOUSE_NOT_FOUND', 'Active warehouse was not found');
+
+  const remittingEmployee = remittingEmployeeId
+    ? await repository.getActiveRemittingEmployee(client, {
+        installationId: requestContext.installationId,
+        employeeId: remittingEmployeeId,
+      })
+    : null;
+  if (remittingEmployeeId && !remittingEmployee) {
+    return failure(
+      'REMITTING_EMPLOYEE_NOT_FOUND',
+      'Không tìm thấy nhân viên nộp tiền đang hoạt động',
+    );
+  }
 
   const series = await documentNumberRepository.getDocumentNumberSeriesByCode(client, {
     installationId: requestContext.installationId,
@@ -412,6 +440,9 @@ export async function createCustomerPayment(client, {
     amount: scaledToDecimal(amount),
     externalReference,
     note,
+    remittingEmployeeId: remittingEmployee?.id ?? null,
+    remittingEmployeeCodeSnapshot: remittingEmployee?.code ?? null,
+    remittingEmployeeNameSnapshot: remittingEmployee?.full_name ?? null,
     postedAt,
     actorId: requestContext.actorId,
   });
@@ -433,6 +464,7 @@ export async function createCustomerPayment(client, {
       warehouseId,
       paymentMethod,
       externalReference,
+      remittingEmployeeId: remittingEmployee?.id ?? null,
       postingOrigin: 'runtime',
     },
   });
@@ -504,6 +536,25 @@ export async function listCustomerPayments(client, input) {
   return Object.freeze({
     ok: true,
     customerPayments: Object.freeze(rows.map(mapPayment)),
+  });
+}
+
+export async function listRemittingEmployees(client, { requestContext }) {
+  const scopes = warehouseScopeIds(requestContext);
+  if (!scopes.length) {
+    return failure('WAREHOUSE_SCOPE_DENIED', 'At least one authorized warehouse is required');
+  }
+  const rows = await repository.listActiveRemittingEmployees(client, {
+    installationId: requestContext.installationId,
+    limit: 1000,
+  });
+  return Object.freeze({
+    ok: true,
+    employees: Object.freeze(rows.map((row) => Object.freeze({
+      id: row.id,
+      code: row.code,
+      fullName: row.full_name,
+    }))),
   });
 }
 

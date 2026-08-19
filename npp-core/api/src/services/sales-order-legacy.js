@@ -219,6 +219,7 @@ function mapOrder(order, versions = undefined) {
     fulfillmentStatus: order.fulfillment_status,
     deliveryStatus: order.delivery_status,
     settlementStatus: order.settlement_status,
+    receivableRemainingAmount: String(order.receivable_remaining_amount ?? 0),
     currency: order.currency_code,
     requestedDeliveryDate: storedDateOnly(order.requested_delivery_date),
     note: order.note ?? null,

@@ -1,4 +1,48 @@
 import { randomUUID } from 'node:crypto';
+import * as employeeRepository from './employee.js';
+
+function paymentLinksJoin(scopeParameter) {
+  return `LEFT JOIN LATERAL (
+    SELECT COALESCE(
+             array_agg(link.target_document_number ORDER BY link.target_document_number),
+             ARRAY[]::text[]
+           ) AS related_document_numbers,
+           COALESCE(
+             array_agg(link.sales_order_number ORDER BY link.sales_order_number)
+               FILTER (WHERE link.sales_order_number IS NOT NULL),
+             ARRAY[]::text[]
+           ) AS related_sales_order_numbers,
+           count(*) FILTER (WHERE link.is_active)::integer AS related_receivable_count,
+           COALESCE(
+             sum(link.remaining_amount) FILTER (WHERE link.is_active),
+             0
+           )::numeric(20,6) AS related_remaining_amount
+      FROM (
+        SELECT target.id,
+               target.source_document_number AS target_document_number,
+               target.remaining_amount,
+               sales_order.order_number AS sales_order_number,
+               bool_or(reversal.id IS NULL) AS is_active
+          FROM accounting.receivable_allocations allocation
+          JOIN accounting.receivable_documents target
+            ON target.installation_id = allocation.installation_id
+           AND target.id = allocation.target_receivable_document_id
+          LEFT JOIN accounting.receivable_allocation_reversals reversal
+            ON reversal.installation_id = allocation.installation_id
+           AND reversal.allocation_id = allocation.id
+          LEFT JOIN sales.sales_orders sales_order
+            ON sales_order.installation_id = target.installation_id
+           AND sales_order.id = target.sales_order_id
+         WHERE allocation.installation_id = document.installation_id
+           AND allocation.source_receivable_document_id = document.id
+           AND target.warehouse_id = ANY(${scopeParameter}::uuid[])
+         GROUP BY target.id,
+                  target.source_document_number,
+                  target.remaining_amount,
+                  sales_order.order_number
+      ) link
+  ) payment_link ON true`;
+}
 
 export async function setReceivableWriteContext(client) {
   await client.query(
@@ -26,6 +70,23 @@ export async function getCustomerAndWarehouse(client, { installationId, customer
   return result.rows?.[0] ?? null;
 }
 
+export async function getActiveRemittingEmployee(client, { installationId, employeeId }) {
+  const employee = await employeeRepository.getEmployeeByIdForInstallationForShare(client, {
+    installationId,
+    id: employeeId,
+  });
+  return employee?.is_active ? employee : null;
+}
+
+export async function listActiveRemittingEmployees(client, { installationId, limit = 1000 }) {
+  return employeeRepository.listEmployeesForInstallation(client, {
+    installationId,
+    active: true,
+    limit,
+    offset: 0,
+  });
+}
+
 export async function insertCustomerPayment(client, input) {
   const result = await client.query(
     `INSERT INTO accounting.receivable_documents (
@@ -37,16 +98,20 @@ export async function insertCustomerPayment(client, input) {
        collection_policy, currency_code, original_amount, allocated_amount,
        remaining_amount, status, source_revision, posting_origin, posted_at,
        posted_by, revision, created_at, updated_at, created_by, updated_by,
-       document_number_allocation_id, payment_method, external_reference, note
+       document_number_allocation_id, payment_method, external_reference, note,
+       remitting_employee_id, remitting_employee_code_snapshot,
+       remitting_employee_name_snapshot
      ) VALUES (
        $1,$2,$3,NULL,$4,NULL,NULL,NULL,'CREDIT','CUSTOMER_PAYMENT',
        'CUSTOMER_PAYMENT',$1,$5,$6,$7,$8,$9,$10,NULL,$11,$12,0,$12,
-       'open',1,'runtime',$13,$14,1,$13,$13,$14,$14,$15,$16,$17,$18
+       'open',1,'runtime',$13,$14,1,$13,$13,$14,$14,$15,$16,$17,$18,
+       $19,$20,$21
      ) RETURNING *`,
     [input.id,input.installationId,input.customerId,input.warehouseId,input.documentNumber,input.paymentDate,
       input.customerCodeSnapshot,input.customerNameSnapshot,input.warehouseCodeSnapshot,input.warehouseNameSnapshot,
       input.currencyCode,input.amount,input.postedAt,input.actorId,input.documentNumberAllocationId,input.paymentMethod,
-      input.externalReference,input.note],
+      input.externalReference,input.note,input.remittingEmployeeId,input.remittingEmployeeCodeSnapshot,
+      input.remittingEmployeeNameSnapshot],
   );
   return result.rows[0];
 }
@@ -73,10 +138,15 @@ export async function insertCustomerPaymentLedgerEntry(client, input) {
 export async function listCustomerPayments(client, { installationId, warehouseIds, customerId = null, warehouseId = null, status = null, currencyCode = null, search = null, limit = 100, offset = 0 }) {
   const result = await client.query(
     `SELECT document.*, customer.code AS customer_code, customer.name AS customer_name,
-            warehouse.code AS warehouse_code, warehouse.name AS warehouse_name
+            warehouse.code AS warehouse_code, warehouse.name AS warehouse_name,
+            payment_link.related_document_numbers,
+            payment_link.related_sales_order_numbers,
+            payment_link.related_receivable_count,
+            payment_link.related_remaining_amount
        FROM accounting.receivable_documents document
        JOIN shared.customers customer ON customer.installation_id = document.installation_id AND customer.id = document.customer_id
        JOIN shared.warehouses warehouse ON warehouse.installation_id = document.installation_id AND warehouse.id = document.warehouse_id
+       ${paymentLinksJoin('$2')}
       WHERE document.installation_id = $1
         AND document.document_type = 'CUSTOMER_PAYMENT'
         AND document.warehouse_id = ANY($2::uuid[])
@@ -97,10 +167,15 @@ export async function listCustomerPayments(client, { installationId, warehouseId
 export async function getCustomerPaymentById(client, { installationId, id, warehouseIds, forUpdate = false }) {
   const result = await client.query(
     `SELECT document.*, customer.code AS customer_code, customer.name AS customer_name,
-            warehouse.code AS warehouse_code, warehouse.name AS warehouse_name
+            warehouse.code AS warehouse_code, warehouse.name AS warehouse_name,
+            payment_link.related_document_numbers,
+            payment_link.related_sales_order_numbers,
+            payment_link.related_receivable_count,
+            payment_link.related_remaining_amount
        FROM accounting.receivable_documents document
        JOIN shared.customers customer ON customer.installation_id = document.installation_id AND customer.id = document.customer_id
        JOIN shared.warehouses warehouse ON warehouse.installation_id = document.installation_id AND warehouse.id = document.warehouse_id
+       ${paymentLinksJoin('$3')}
       WHERE document.installation_id = $1 AND document.id = $2::uuid
         AND document.document_type = 'CUSTOMER_PAYMENT' AND document.warehouse_id = ANY($3::uuid[])
       ${forUpdate ? 'FOR UPDATE OF document' : ''}`,

@@ -14,6 +14,10 @@ const hardening = readFileSync(
   new URL('../../../database/migrations/accounting/054_customer_payment_allocation_hardening.sql', import.meta.url),
   'utf8',
 );
+const officeFlowMigration = readFileSync(
+  new URL('../../../database/migrations/accounting/097_customer_payment_remitting_employee.sql', import.meta.url),
+  'utf8',
+);
 const migrationRegistry = apiSource('src/migrations/index.js');
 const permissions = apiSource('src/access/permissions.js');
 const requestContext = apiSource('src/request-context.js');
@@ -74,6 +78,20 @@ test('migration 054 is registered after receivable ledger migration 053', () => 
   assert.match(migrationRegistry, /054_customer_payment_allocation_hardening\.sql/);
 });
 
+test('migration 097 stores the optional remitting employee as an immutable payment snapshot', () => {
+  const position096 = migrationRegistry.indexOf('096_sales_order_unwind_locked_trip');
+  const position097 = migrationRegistry.indexOf('097_customer_payment_remitting_employee');
+  assert.ok(position096 >= 0);
+  assert.ok(position097 > position096);
+  assert.match(officeFlowMigration, /remitting_employee_id uuid NULL/);
+  assert.match(officeFlowMigration, /FOREIGN KEY \(installation_id, remitting_employee_id\)/);
+  assert.match(officeFlowMigration, /document_type = 'CUSTOMER_PAYMENT'/);
+  assert.match(officeFlowMigration, /remitting_employee_code_snapshot IS NOT NULL/);
+  assert.match(officeFlowMigration, /remitting_employee_name_snapshot IS NOT NULL/);
+  assert.match(officeFlowMigration, /NEW\.remitting_employee_id IS DISTINCT FROM OLD\.remitting_employee_id/);
+  assert.match(officeFlowMigration, /VALIDATE CONSTRAINT receivable_documents_remitting_employee_fk/);
+});
+
 test('customer payment API exposes create read allocate and compensating reversal only', () => {
   assert.match(routes, /pathname === '\/api\/customer-payments'/);
   assert.match(routes, /const allocationCreate = pathname\.match/);
@@ -84,8 +102,20 @@ test('customer payment API exposes create read allocate and compensating reversa
   assert.match(routes, /service\.reverseReceivableAllocation/);
   assert.match(routes, /executeRequestWithIdempotency/);
   assert.match(routes, /withAuditOutboxTransaction/);
+  assert.match(routes, /pathname === '\/api\/customer-payments\/remitting-employees'/);
+  assert.match(routes, /service\.listRemittingEmployees/);
   assert.doesNotMatch(routes, /paid\s*=\s*true/i);
   assert.doesNotMatch(routes, /refund|write[-_ ]?off|\bcod\b/i);
+});
+
+test('payment history reads current receivable debt and keeps the remitting employee separate', () => {
+  assert.match(repository, /getActiveRemittingEmployee/);
+  assert.match(repository, /remitting_employee_code_snapshot/);
+  assert.match(repository, /sum\(link\.remaining_amount\)/);
+  assert.match(repository, /related_remaining_amount/);
+  assert.match(service, /remittingEmployeeId: row\.remitting_employee_id/);
+  assert.match(service, /relatedRemainingAmount: String\(row\.related_remaining_amount/);
+  assert.match(service, /REMITTING_EMPLOYEE_NOT_FOUND/);
 });
 
 test('payment service permits cross-warehouse allocation only through authorized scopes', () => {

@@ -1,15 +1,35 @@
 'use client';
 
-import { useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import type { RemittingEmployeeOption } from '../../../lib/customer-payment-types';
 import type { SalesOrder } from '../../../lib/sales-order-types';
 import { activeVersion, apiRequest, formatMoney, mutationKey } from './sales-order-ui';
 import styles from './sales-orders.module.css';
+import settlementStyles from './manual-sales-order-settlement.module.css';
 
 type StableMutation = {
   orderId: string;
   fingerprint: string;
   key: string;
 };
+
+type EmployeeEnvelope = {
+  data?: RemittingEmployeeOption[];
+  error?: { message?: string };
+};
+
+function editableAmount(value: string | null | undefined) {
+  return String(value ?? '0').replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
+}
+
+function searchText(value: unknown) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/đ/gi, 'd')
+    .toLocaleLowerCase('vi-VN')
+    .trim();
+}
 
 function stableKey(
   ref: MutableRefObject<StableMutation | null>,
@@ -37,6 +57,9 @@ export default function ManualSalesOrderSettlement({
 }) {
   const [paidAmount, setPaidAmount] = useState('0');
   const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [remittingEmployeeId, setRemittingEmployeeId] = useState('');
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [remittingEmployees, setRemittingEmployees] = useState<RemittingEmployeeOption[]>([]);
   const [busy, setBusy] = useState<'complete' | 'settlement' | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,15 +70,46 @@ export default function ManualSalesOrderSettlement({
   useEffect(() => {
     setPaidAmount('0');
     setPaymentMethod('CASH');
+    setRemittingEmployeeId('');
+    setEmployeeSearch('');
     setNotice(null);
     setError(null);
     completeKeyRef.current = null;
     settlementKeyRef.current = null;
   }, [order.id]);
 
+  useEffect(() => {
+    if (!canSettle) return undefined;
+    const controller = new AbortController();
+    void fetch('/api/customer-payments/remitting-employees', {
+      cache: 'no-store',
+      signal: controller.signal,
+    }).then(async (response) => {
+      const payload = await response.json() as EmployeeEnvelope;
+      if (!response.ok || !Array.isArray(payload.data)) {
+        throw new Error(payload.error?.message || 'Không tải được danh sách nhân viên nộp tiền');
+      }
+      setRemittingEmployees(payload.data);
+    }).catch((caught) => {
+      if (caught instanceof DOMException && caught.name === 'AbortError') return;
+      setRemittingEmployees([]);
+    });
+    return () => controller.abort();
+  }, [canSettle]);
+
   const completionAvailable = order.status === 'confirmed';
   const settlementAvailable = order.status === 'closed'
     && ['pending', 'partially_paid'].includes(order.settlementStatus);
+  const remainingAmount = order.receivableRemainingAmount || currentVersion?.total || '0';
+  const visibleRemittingEmployees = useMemo(() => {
+    const query = searchText(employeeSearch);
+    if (!query) return remittingEmployees;
+    return remittingEmployees.filter((employee) => (
+      employee.id === remittingEmployeeId
+      || searchText(employee.code).includes(query)
+      || searchText(employee.fullName).includes(query)
+    ));
+  }, [employeeSearch, remittingEmployeeId, remittingEmployees]);
 
   async function completeOrder() {
     const fingerprint = String(order.revision);
@@ -88,7 +142,7 @@ export default function ManualSalesOrderSettlement({
   async function recordSettlement() {
     const normalizedAmount = paidAmount.trim();
     const debtOnly = /^0(?:\.0+)?$/.test(normalizedAmount);
-    const fingerprint = `${order.revision}|${normalizedAmount}|${paymentMethod}`;
+    const fingerprint = `${order.revision}|${normalizedAmount}|${paymentMethod}|${remittingEmployeeId}`;
     setBusy('settlement');
     setNotice(null);
     setError(null);
@@ -107,10 +161,13 @@ export default function ManualSalesOrderSettlement({
           expectedRevision: order.revision,
           paidAmount: normalizedAmount,
           ...(debtOnly ? {} : { paymentMethod }),
+          ...(remittingEmployeeId ? { remittingEmployeeId } : {}),
         }),
       });
       settlementKeyRef.current = null;
       setPaidAmount('0');
+      setRemittingEmployeeId('');
+      setEmployeeSearch('');
       onUpdated(updated);
       setNotice(debtOnly
         ? 'Đã ghi nhận nợ toàn bộ. Khoản phải thu của đơn được giữ nguyên.'
@@ -123,7 +180,7 @@ export default function ManualSalesOrderSettlement({
   }
 
   return (
-    <div className={styles.reasonRow}>
+    <div className={`${styles.reasonRow} ${settlementStyles.settlementPanel}`}>
       <strong>Hoàn thành đơn và Nộp tiền / Nợ</strong>
       <small>Xuất kho đã xong. Hoàn thành đơn ghi nhận doanh số và khoản phải thu; tiền thu hoặc nợ được xử lý riêng.</small>
 
@@ -142,19 +199,56 @@ export default function ManualSalesOrderSettlement({
         </button>
       </div>
 
+      <div className={settlementStyles.amountField}>
+        <label htmlFor={`manual-settlement-amount-${order.id}`}>
+          Số tiền thực nộp / đã thu
+        </label>
+        <div className={settlementStyles.amountRow}>
+          <input
+            id={`manual-settlement-amount-${order.id}`}
+            value={paidAmount}
+            inputMode="decimal"
+            disabled={!canSettle || !settlementAvailable || busy !== null}
+            onChange={(event) => setPaidAmount(event.target.value)}
+            placeholder="Nhập 0 nếu ghi nợ toàn bộ"
+          />
+          <button
+            type="button"
+            className={settlementStyles.fullPaymentButton}
+            disabled={!canSettle || !settlementAvailable || busy !== null}
+            onClick={() => setPaidAmount(editableAmount(remainingAmount))}
+          >
+            Nộp đủ
+          </button>
+        </div>
+      </div>
+      <small>
+        Giá trị đơn: {formatMoney(currentVersion?.total)} {order.currency}. Còn phải thu: {formatMoney(remainingAmount)} {order.currency}. Nhập 0 để ghi nợ toàn bộ; phần chưa thu tiếp tục là công nợ khách hàng.
+      </small>
       <label>
-        Số tiền thực nộp / đã thu
+        Tìm nhân viên nộp tiền
         <input
-          value={paidAmount}
-          inputMode="decimal"
+          value={employeeSearch}
           disabled={!canSettle || !settlementAvailable || busy !== null}
-          onChange={(event) => setPaidAmount(event.target.value)}
-          placeholder="Nhập 0 nếu ghi nợ toàn bộ"
+          onChange={(event) => setEmployeeSearch(event.target.value)}
+          placeholder="Nhập mã hoặc tên nhân viên"
         />
       </label>
-      <small>
-        Giá trị đơn: {formatMoney(currentVersion?.total)} {order.currency}. Nhập 0 để ghi nợ toàn bộ; phần chưa thu tiếp tục là công nợ khách hàng.
-      </small>
+      <label>
+        Nhân viên nộp tiền (không bắt buộc)
+        <select
+          value={remittingEmployeeId}
+          disabled={!canSettle || !settlementAvailable || busy !== null}
+          onChange={(event) => setRemittingEmployeeId(event.target.value)}
+        >
+          <option value="">Không chọn nhân viên</option>
+          {visibleRemittingEmployees.map((employee) => (
+            <option key={employee.id} value={employee.id}>
+              {employee.code} · {employee.fullName}
+            </option>
+          ))}
+        </select>
+      </label>
       <label>
         Hình thức nhận tiền
         <select

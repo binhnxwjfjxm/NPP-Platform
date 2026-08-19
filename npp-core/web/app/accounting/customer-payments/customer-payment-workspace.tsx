@@ -13,6 +13,7 @@ import type {
   CustomerPaymentDraft,
   ReceivableAllocation,
   ReceivableAllocationTarget,
+  RemittingEmployeeOption,
 } from '../../../lib/customer-payment-types';
 import styles from '../supplier-payments/supplier-payments.module.css';
 import CustomerPaymentPrintDock from './CustomerPaymentPrintDock';
@@ -22,6 +23,7 @@ type Props = {
   initialTargets: ReceivableAllocationTarget[];
   customers: Customer[];
   warehouses: Warehouse[];
+  remittingEmployees: RemittingEmployeeOption[];
   initialPaymentDate: string;
   initialError: string | null;
 };
@@ -57,11 +59,25 @@ function money(value: string, currencyCode = 'VND') {
 
 function statusLabel(status: CustomerPayment['status']) {
   return {
-    open: 'Chưa phân bổ',
-    partially_allocated: 'Đã phân bổ một phần',
-    settled: 'Đã phân bổ hết',
-    reversed: 'Đã đảo',
+    open: 'Chưa gắn với đơn',
+    partially_allocated: 'Đã ghi một phần',
+    settled: 'Đã ghi nhận',
+    reversed: 'Đã hủy',
   }[status];
+}
+
+function searchText(value: unknown) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/đ/gi, 'd')
+    .toLocaleLowerCase('vi-VN')
+    .trim();
+}
+
+function includesSearch(query: string, ...values: unknown[]) {
+  const normalized = searchText(query);
+  return !normalized || values.some((value) => searchText(value).includes(normalized));
 }
 
 async function readResponse<T>(response: Response): Promise<T> {
@@ -104,6 +120,7 @@ export default function CustomerPaymentWorkspace({
   initialTargets,
   customers,
   warehouses,
+  remittingEmployees,
   initialPaymentDate,
   initialError,
 }: Props) {
@@ -113,6 +130,9 @@ export default function CustomerPaymentWorkspace({
   const [detail, setDetail] = useState<CustomerPayment | null>(initialPayments[0] ?? null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(initialError ?? '');
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [orderSearch, setOrderSearch] = useState('');
+  const [existingOrderSearch, setExistingOrderSearch] = useState('');
   const [paymentForm, setPaymentForm] = useState<CustomerPaymentDraft>({
     customerId: customers[0]?.id ?? '',
     warehouseId: warehouses[0]?.id ?? '',
@@ -120,6 +140,7 @@ export default function CustomerPaymentWorkspace({
     currencyCode: 'VND',
     paymentMethod: 'BANK_TRANSFER',
     amount: '',
+    remittingEmployeeId: '',
     externalReference: '',
     note: '',
   });
@@ -148,12 +169,41 @@ export default function CustomerPaymentWorkspace({
     && (decimalToScaled(target.remainingAmount) ?? 0n) > 0n
   )), [targets, paymentForm.customerId, paymentForm.currencyCode]);
 
+  const matchingCustomers = useMemo(() => customers.filter((customer) => (
+    includesSearch(customerSearch, customer.code, customer.name)
+  )), [customers, customerSearch]);
+
+  const visibleCustomers = useMemo(() => {
+    const selectedCustomer = customers.find((customer) => customer.id === paymentForm.customerId);
+    return selectedCustomer && !matchingCustomers.some((customer) => customer.id === selectedCustomer.id)
+      ? [selectedCustomer, ...matchingCustomers]
+      : matchingCustomers;
+  }, [customers, matchingCustomers, paymentForm.customerId]);
+
+  const visibleCreateTargets = useMemo(() => createTargets.filter((target) => includesSearch(
+    orderSearch,
+    target.salesOrderNumber,
+    target.deliveryOrderNumber,
+    target.documentNumber,
+    target.warehouseCode,
+    target.warehouseName,
+  )), [createTargets, orderSearch]);
+
   const existingTargets = useMemo(() => targets.filter((target) => (
     selected
     && target.customerId === selected.customerId
     && target.currencyCode === selected.currencyCode
     && (decimalToScaled(target.remainingAmount) ?? 0n) > 0n
   )), [targets, selected]);
+
+  const visibleExistingTargets = useMemo(() => existingTargets.filter((target) => includesSearch(
+    existingOrderSearch,
+    target.salesOrderNumber,
+    target.deliveryOrderNumber,
+    target.documentNumber,
+    target.warehouseCode,
+    target.warehouseName,
+  )), [existingOrderSearch, existingTargets]);
 
   const createRows = allocationRows(createAmounts, createTargets);
   const createTotal = allocationTotal(createRows);
@@ -197,6 +247,7 @@ export default function CustomerPaymentWorkspace({
   async function selectPayment(id: string) {
     setSelectedId(id);
     setExistingAmounts({});
+    setExistingOrderSearch('');
     setMessage('');
     try {
       const response = await fetch(`/api/customer-payments/${id}`, { cache: 'no-store' });
@@ -209,7 +260,7 @@ export default function CustomerPaymentWorkspace({
   async function createPayment(event: React.FormEvent) {
     event.preventDefault();
     if (paymentAmount === null || paymentAmount <= 0n || !createAllocationValid) {
-      setMessage('Kiểm tra số tiền thu và tổng phân bổ trước khi ghi nhận.');
+      setMessage('Kiểm tra số tiền thu và tổng tiền ghi cho đơn trước khi lưu.');
       return;
     }
     const payload: CustomerPaymentDraft = {
@@ -248,7 +299,7 @@ export default function CustomerPaymentWorkspace({
   async function allocateSelectedPayment(event: React.FormEvent) {
     event.preventDefault();
     if (!selected || !existingAllocationValid) {
-      setMessage('Chọn ít nhất một khoản nợ và kiểm tra tổng phân bổ.');
+      setMessage('Chọn ít nhất một đơn còn nợ và kiểm tra tổng tiền đã nhập.');
       return;
     }
     const payload = { allocationDate, allocations: existingRows };
@@ -265,9 +316,9 @@ export default function CustomerPaymentWorkspace({
       mutationKeys.current.delete(mutation.slot);
       setExistingAmounts({});
       await refresh(updated.id);
-      setMessage(`Đã phân bổ ${money(scaledToDecimal(existingTotal), selected.currencyCode)} vào ${existingRows.length} khoản nợ.`);
+      setMessage(`Đã ghi ${money(scaledToDecimal(existingTotal), selected.currencyCode)} vào ${existingRows.length} khoản nợ.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không phân bổ được tiền thu.');
+      setMessage(error instanceof Error ? error.message : 'Không ghi được tiền thu vào đơn.');
     } finally {
       setBusy(false);
     }
@@ -276,7 +327,7 @@ export default function CustomerPaymentWorkspace({
   async function reverseAllocation(allocation: ReceivableAllocation) {
     const reason = reversalReason.trim();
     if (!reason) {
-      setMessage('Nhập lý do đảo trước khi thực hiện.');
+      setMessage('Nhập lý do hủy trước khi thực hiện.');
       return;
     }
     const payload = { reason };
@@ -292,9 +343,9 @@ export default function CustomerPaymentWorkspace({
       await readResponse<ReceivableAllocation>(response);
       mutationKeys.current.delete(mutation.slot);
       await refresh(selectedId);
-      setMessage('Đã đảo phân bổ công nợ.');
+      setMessage('Đã hủy phần tiền ghi vào đơn.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không đảo được phân bổ.');
+      setMessage(error instanceof Error ? error.message : 'Không hủy được phần tiền đã ghi vào đơn.');
     } finally {
       setBusy(false);
     }
@@ -303,7 +354,7 @@ export default function CustomerPaymentWorkspace({
   async function reversePayment() {
     const reason = reversalReason.trim();
     if (!selected || !reason) {
-      setMessage('Chọn phiếu và nhập lý do đảo trước khi thực hiện.');
+      setMessage('Chọn phiếu và nhập lý do hủy trước khi thực hiện.');
       return;
     }
     const payload = { reason };
@@ -319,9 +370,9 @@ export default function CustomerPaymentWorkspace({
       const reversed = await readResponse<CustomerPayment>(response);
       mutationKeys.current.delete(mutation.slot);
       await refresh(reversed.id);
-      setMessage(`Đã đảo phiếu thu ${reversed.documentNumber}.`);
+      setMessage(`Đã hủy phiếu thu ${reversed.documentNumber}.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không đảo được phiếu thu.');
+      setMessage(error instanceof Error ? error.message : 'Không hủy được phiếu thu.');
     } finally {
       setBusy(false);
     }
@@ -340,58 +391,423 @@ export default function CustomerPaymentWorkspace({
       {message ? <div className={styles.notice} role="status">{message}</div> : null}
 
       <section className={styles.card}>
-        <h2>Ghi nhận tiền khách trả</h2>
+        <h2>Lập phiếu thu khách hàng</h2>
         <form className={styles.formGrid} onSubmit={createPayment} data-testid="customer-payment-form">
-          <label>Khách hàng<select value={paymentForm.customerId} required onChange={(event) => { setPaymentForm({ ...paymentForm, customerId: event.target.value }); setCreateAmounts({}); }}><option value="">Chọn khách hàng</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.code} · {customer.name}</option>)}</select></label>
-          <label>Kho nhận tiền<select value={paymentForm.warehouseId} required onChange={(event) => setPaymentForm({ ...paymentForm, warehouseId: event.target.value })}><option value="">Chọn kho</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} · {warehouse.name}</option>)}</select></label>
-          <label>Ngày thu<input type="date" required value={paymentForm.paymentDate} onChange={(event) => setPaymentForm({ ...paymentForm, paymentDate: event.target.value })} /></label>
-          <label>Số tiền đã nhận<input inputMode="decimal" required value={paymentForm.amount} placeholder="0" onChange={(event) => setPaymentForm({ ...paymentForm, amount: event.target.value })} /></label>
-          <label>Phương thức<select value={paymentForm.paymentMethod} onChange={(event) => setPaymentForm({ ...paymentForm, paymentMethod: event.target.value })}><option value="BANK_TRANSFER">Chuyển khoản</option><option value="CASH">Tiền mặt</option><option value="OTHER">Khác</option></select></label>
-          <label>Tham chiếu ngân hàng<input value={paymentForm.externalReference ?? ''} maxLength={256} onChange={(event) => setPaymentForm({ ...paymentForm, externalReference: event.target.value })} /></label>
-          <label className={styles.wide}>Ghi chú<textarea value={paymentForm.note ?? ''} maxLength={4000} onChange={(event) => setPaymentForm({ ...paymentForm, note: event.target.value })} /></label>
+          <label>
+            Tìm khách hàng
+            <input
+              data-testid="customer-payment-customer-search"
+              value={customerSearch}
+              onChange={(event) => setCustomerSearch(event.target.value)}
+              placeholder="Nhập mã hoặc tên khách"
+            />
+            <small>{matchingCustomers.length}/{customers.length} khách hàng phù hợp</small>
+          </label>
+          <label>
+            Khách hàng
+            <select
+              value={paymentForm.customerId}
+              required
+              onChange={(event) => {
+                setPaymentForm({ ...paymentForm, customerId: event.target.value });
+                setCreateAmounts({});
+                setOrderSearch('');
+              }}
+            >
+              <option value="">Chọn khách hàng</option>
+              {visibleCustomers.map((customer) => (
+                <option key={customer.id} value={customer.id}>
+                  {customer.code} · {customer.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Nhân viên nộp tiền (không bắt buộc)
+            <select
+              value={paymentForm.remittingEmployeeId ?? ''}
+              onChange={(event) => setPaymentForm({
+                ...paymentForm,
+                remittingEmployeeId: event.target.value,
+              })}
+            >
+              <option value="">Không chọn nhân viên</option>
+              {remittingEmployees.map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.code} · {employee.fullName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Đơn vị nhận tiền
+            <select
+              value={paymentForm.warehouseId}
+              required
+              onChange={(event) => setPaymentForm({
+                ...paymentForm,
+                warehouseId: event.target.value,
+              })}
+            >
+              <option value="">Chọn đơn vị</option>
+              {warehouses.map((warehouse) => (
+                <option key={warehouse.id} value={warehouse.id}>
+                  {warehouse.code} · {warehouse.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Ngày thu
+            <input
+              type="date"
+              required
+              value={paymentForm.paymentDate}
+              onChange={(event) => setPaymentForm({
+                ...paymentForm,
+                paymentDate: event.target.value,
+              })}
+            />
+          </label>
+          <label>
+            Số tiền thực nhận
+            <input
+              inputMode="decimal"
+              required
+              value={paymentForm.amount}
+              placeholder="0"
+              onChange={(event) => setPaymentForm({
+                ...paymentForm,
+                amount: event.target.value,
+              })}
+            />
+          </label>
+          <label>
+            Hình thức nhận tiền
+            <select
+              value={paymentForm.paymentMethod}
+              onChange={(event) => setPaymentForm({
+                ...paymentForm,
+                paymentMethod: event.target.value,
+              })}
+            >
+              <option value="BANK_TRANSFER">Chuyển khoản</option>
+              <option value="CASH">Tiền mặt</option>
+              <option value="OTHER">Khác</option>
+            </select>
+          </label>
+          <label>
+            Mã giao dịch ngân hàng
+            <input
+              value={paymentForm.externalReference ?? ''}
+              maxLength={256}
+              onChange={(event) => setPaymentForm({
+                ...paymentForm,
+                externalReference: event.target.value,
+              })}
+            />
+          </label>
+          <label className={styles.wide}>
+            Ghi chú
+            <textarea
+              value={paymentForm.note ?? ''}
+              maxLength={4000}
+              onChange={(event) => setPaymentForm({
+                ...paymentForm,
+                note: event.target.value,
+              })}
+            />
+          </label>
 
           <div className={styles.wide}>
-            <h3>Phân bổ ngay vào công nợ (không bắt buộc)</h3>
-            <div className={styles.tableWrap}>
+            <div className={styles.sectionHeading}>
+              <div>
+                <h3>Chọn đơn cần ghi nhận thanh toán</h3>
+                <small>Không bắt buộc nếu chưa xác định đơn hàng.</small>
+              </div>
+              <label className={styles.compactSearch}>
+                Tìm đơn hàng
+                <input
+                  data-testid="customer-payment-order-search"
+                  value={orderSearch}
+                  onChange={(event) => setOrderSearch(event.target.value)}
+                  placeholder="Số đơn hoặc phiếu giao"
+                />
+                <small>{visibleCreateTargets.length}/{createTargets.length} đơn</small>
+              </label>
+            </div>
+            <div className={`${styles.tableWrap} ${styles.targetTableWrap}`}>
               <table className={styles.table} data-testid="customer-payment-create-allocation-table">
-                <thead><tr><th>Chứng từ</th><th>Kho</th><th className={styles.amount}>Còn nợ</th><th className={styles.amount}>Phân bổ</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>Đơn hàng / Phiếu giao</th>
+                    <th>Đơn vị</th>
+                    <th className={styles.amount}>Còn phải thu</th>
+                    <th className={styles.amount}>Thu lần này</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {createTargets.map((target) => <tr key={target.id}><td>{target.documentNumber}<br /><span>{target.sourceDocumentDate}</span></td><td>{target.warehouseCode}<br /><span>{target.warehouseName}</span></td><td className={styles.amount}>{money(target.remainingAmount, target.currencyCode)}</td><td className={styles.amount}><input aria-label={`Phân bổ ${target.documentNumber}`} inputMode="decimal" value={createAmounts[target.id] ?? ''} onChange={(event) => setCreateAmount(target.id, event.target.value)} placeholder="0" /></td></tr>)}
-                  {!createTargets.length ? <tr><td colSpan={4}>Khách hàng chưa có khoản nợ mở cùng loại tiền.</td></tr> : null}
+                  {visibleCreateTargets.map((target) => (
+                    <tr key={target.id}>
+                      <td>
+                        {target.salesOrderNumber || target.documentNumber}
+                        <br />
+                        <span>{target.documentNumber} · {target.sourceDocumentDate}</span>
+                      </td>
+                      <td>{target.warehouseCode}<br /><span>{target.warehouseName}</span></td>
+                      <td className={styles.amount}>{money(target.remainingAmount, target.currencyCode)}</td>
+                      <td className={styles.amount}>
+                        <input
+                          aria-label={`Thu lần này ${target.documentNumber}`}
+                          inputMode="decimal"
+                          value={createAmounts[target.id] ?? ''}
+                          onChange={(event) => setCreateAmount(target.id, event.target.value)}
+                          placeholder="0"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                  {!createTargets.length ? (
+                    <tr><td colSpan={4}>Khách hàng chưa có đơn còn phải thu.</td></tr>
+                  ) : null}
+                  {createTargets.length > 0 && !visibleCreateTargets.length ? (
+                    <tr><td colSpan={4}>Không tìm thấy đơn phù hợp.</td></tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>
-            <p>Tổng phân bổ: <strong>{money(scaledToDecimal(createTotal), paymentForm.currencyCode)}</strong>. Phần còn lại sẽ là tiền chưa phân bổ.</p>
+            <p>
+              Tổng tiền ghi cho đơn: <strong>{money(scaledToDecimal(createTotal), paymentForm.currencyCode)}</strong>.
+              {' '}Phần còn lại là tiền chưa gắn với đơn.
+            </p>
           </div>
 
-          <button type="submit" disabled={busy || paymentAmount === null || paymentAmount <= 0n || !createAllocationValid}>Ghi nhận phiếu thu</button>
+          <button
+            type="submit"
+            disabled={busy || paymentAmount === null || paymentAmount <= 0n || !createAllocationValid}
+          >
+            Lưu phiếu thu
+          </button>
         </form>
       </section>
 
-      <div className={styles.columns}>
+      <div className={`${styles.columns} ${styles.customerColumns}`}>
         <section className={styles.card}>
-          <h2>Phiếu thu khách hàng</h2>
-          <div className={styles.tableWrap}><table className={styles.table} data-testid="customer-payments-table"><thead><tr><BusinessTableSequenceHeader /><th>Số phiếu</th><th>Khách hàng</th><th className={styles.amount}>Số tiền</th><th>Trạng thái</th></tr></thead><tbody>{payments.map((payment, rowIndex) => <tr key={payment.id} className={payment.id === selectedId ? styles.selected : undefined}><BusinessTableSequenceCell rowIndex={rowIndex} /><td><button type="button" className={styles.linkButton} onClick={() => selectPayment(payment.id)}>{payment.documentNumber}</button><br /><span>{payment.paymentDate}</span></td><td>{payment.customerCode}<br /><span>{payment.customerName}</span></td><td className={styles.amount}>{money(payment.originalAmount, payment.currencyCode)}<br /><span>Còn {money(payment.remainingAmount, payment.currencyCode)}</span></td><td>{statusLabel(payment.status)}</td></tr>)}{!payments.length ? <tr><td colSpan={5}>Chưa có phiếu thu.</td></tr> : null}</tbody></table></div>
+          <h2>Lịch sử thu tiền</h2>
+          <div className={styles.tableWrap}>
+            <table className={styles.table} data-testid="customer-payments-table">
+              <thead>
+                <tr>
+                  <BusinessTableSequenceHeader />
+                  <th>Số phiếu</th>
+                  <th>Nhân viên nộp</th>
+                  <th>Khách hàng</th>
+                  <th>Đơn hàng</th>
+                  <th className={styles.amount}>Số tiền thu</th>
+                  <th className={styles.amount}>Còn phải thu</th>
+                  <th>Kết quả</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((payment, rowIndex) => (
+                  <tr
+                    key={payment.id}
+                    className={payment.id === selectedId ? styles.selected : undefined}
+                  >
+                    <BusinessTableSequenceCell rowIndex={rowIndex} />
+                    <td>
+                      <button
+                        type="button"
+                        className={styles.linkButton}
+                        onClick={() => selectPayment(payment.id)}
+                      >
+                        {payment.documentNumber}
+                      </button>
+                      <br />
+                      <span>{payment.paymentDate}</span>
+                    </td>
+                    <td>
+                      {payment.remittingEmployeeCode || '—'}
+                      <br />
+                      <span>{payment.remittingEmployeeName || 'Không ghi nhận'}</span>
+                    </td>
+                    <td>{payment.customerCode}<br /><span>{payment.customerName}</span></td>
+                    <td>
+                      {payment.relatedSalesOrderNumbers.length
+                        ? payment.relatedSalesOrderNumbers.join(', ')
+                        : 'Chưa gắn với đơn'}
+                    </td>
+                    <td className={styles.amount}>
+                      {money(payment.originalAmount, payment.currencyCode)}
+                    </td>
+                    <td className={styles.amount}>
+                      {payment.relatedReceivableCount > 0
+                        ? money(payment.relatedRemainingAmount, payment.currencyCode)
+                        : '—'}
+                    </td>
+                    <td>{statusLabel(payment.status)}</td>
+                  </tr>
+                ))}
+                {!payments.length ? <tr><td colSpan={8}>Chưa có phiếu thu.</td></tr> : null}
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <section className={styles.card} data-testid="customer-payment-detail">
-          <h2>Chi tiết và phân bổ</h2>
+          <h2>Chi tiết phiếu thu</h2>
           {!selected ? <p>Chọn một phiếu thu để xem chi tiết.</p> : <>
-            <div className={styles.summary}><strong>{selected.documentNumber}</strong><span>{selected.customerCode} · {selected.customerName}</span><span>{money(selected.remainingAmount, selected.currencyCode)} chưa phân bổ</span></div>
+            <div className={styles.summary}>
+              <strong>{selected.documentNumber}</strong>
+              <span>{selected.customerCode} · {selected.customerName}</span>
+              <span>
+                Nhân viên nộp: {selected.remittingEmployeeName
+                  ? `${selected.remittingEmployeeCode} · ${selected.remittingEmployeeName}`
+                  : 'Không ghi nhận'}
+              </span>
+              <span>
+                Tiền chưa gắn với đơn: {money(selected.remainingAmount, selected.currencyCode)}
+              </span>
+            </div>
             <div className={styles.actions}><CustomerPaymentPrintDock payment={selected} /></div>
 
-            {selected.status !== 'reversed' && (selectedRemaining ?? 0n) > 0n ? <form className={styles.allocationForm} onSubmit={allocateSelectedPayment} data-testid="customer-payment-allocation-form">
-              <label>Ngày phân bổ<input type="date" required value={allocationDate} onChange={(event) => setAllocationDate(event.target.value)} /></label>
-              <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>Khoản nợ</th><th>Kho</th><th className={styles.amount}>Còn nợ</th><th className={styles.amount}>Phân bổ</th></tr></thead><tbody>{existingTargets.map((target) => <tr key={target.id}><td>{target.documentNumber}<br /><span>{target.sourceDocumentDate}</span></td><td>{target.warehouseCode}</td><td className={styles.amount}>{money(target.remainingAmount, target.currencyCode)}</td><td className={styles.amount}><input aria-label={`Phân bổ thêm ${target.documentNumber}`} inputMode="decimal" value={existingAmounts[target.id] ?? ''} onChange={(event) => setExistingAmount(target.id, event.target.value)} placeholder="0" /></td></tr>)}{!existingTargets.length ? <tr><td colSpan={4}>Không còn khoản nợ phù hợp để phân bổ.</td></tr> : null}</tbody></table></div>
-              <p>Tổng phân bổ thêm: <strong>{money(scaledToDecimal(existingTotal), selected.currencyCode)}</strong></p>
-              <button type="submit" disabled={busy || !existingAllocationValid}>Phân bổ các khoản đã nhập</button>
-            </form> : null}
+            {selected.status !== 'reversed' && (selectedRemaining ?? 0n) > 0n ? (
+              <form
+                className={`${styles.allocationForm} ${styles.customerAllocationForm}`}
+                onSubmit={allocateSelectedPayment}
+                data-testid="customer-payment-allocation-form"
+              >
+                <h3>Ghi tiền vào đơn</h3>
+                <div className={styles.detailFilters}>
+                  <label>
+                    Ngày ghi nhận
+                    <input
+                      type="date"
+                      required
+                      value={allocationDate}
+                      onChange={(event) => setAllocationDate(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Tìm đơn hàng
+                    <input
+                      value={existingOrderSearch}
+                      onChange={(event) => setExistingOrderSearch(event.target.value)}
+                      placeholder="Số đơn hoặc phiếu giao"
+                    />
+                  </label>
+                </div>
+                <div className={`${styles.tableWrap} ${styles.targetTableWrap}`}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Đơn hàng / Phiếu giao</th>
+                        <th>Đơn vị</th>
+                        <th className={styles.amount}>Còn phải thu</th>
+                        <th className={styles.amount}>Thu lần này</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleExistingTargets.map((target) => (
+                        <tr key={target.id}>
+                          <td>
+                            {target.salesOrderNumber || target.documentNumber}
+                            <br />
+                            <span>{target.documentNumber} · {target.sourceDocumentDate}</span>
+                          </td>
+                          <td>{target.warehouseCode}</td>
+                          <td className={styles.amount}>{money(target.remainingAmount, target.currencyCode)}</td>
+                          <td className={styles.amount}>
+                            <input
+                              aria-label={`Thu thêm ${target.documentNumber}`}
+                              inputMode="decimal"
+                              value={existingAmounts[target.id] ?? ''}
+                              onChange={(event) => setExistingAmount(target.id, event.target.value)}
+                              placeholder="0"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                      {!existingTargets.length ? (
+                        <tr><td colSpan={4}>Không còn đơn phù hợp để ghi nhận tiền.</td></tr>
+                      ) : null}
+                      {existingTargets.length > 0 && !visibleExistingTargets.length ? (
+                        <tr><td colSpan={4}>Không tìm thấy đơn phù hợp.</td></tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+                <p>
+                  Tổng tiền ghi thêm: <strong>{money(scaledToDecimal(existingTotal), selected.currencyCode)}</strong>
+                </p>
+                <button type="submit" disabled={busy || !existingAllocationValid}>
+                  Ghi các khoản đã nhập
+                </button>
+              </form>
+            ) : null}
 
-            <label className={styles.reason}>Lý do đảo<textarea value={reversalReason} maxLength={2000} onChange={(event) => setReversalReason(event.target.value)} placeholder="Bắt buộc khi đảo phân bổ hoặc phiếu thu" /></label>
-            <div className={styles.actions}><button type="button" disabled={busy || selected.status === 'reversed' || hasActiveAllocations || hasAllocatedAmount} onClick={reversePayment}>Đảo phiếu thu</button></div>
+            <label className={styles.reason}>
+              Lý do hủy
+              <textarea
+                value={reversalReason}
+                maxLength={2000}
+                onChange={(event) => setReversalReason(event.target.value)}
+                placeholder="Bắt buộc khi hủy phần ghi nhận hoặc phiếu thu"
+              />
+            </label>
+            <div className={styles.actions}>
+              <button
+                type="button"
+                disabled={busy || selected.status === 'reversed' || hasActiveAllocations || hasAllocatedAmount}
+                onClick={reversePayment}
+              >
+                Hủy phiếu thu
+              </button>
+            </div>
 
-            <h3>Lịch sử phân bổ</h3>
-            <div className={styles.tableWrap}><table className={styles.table} data-testid="customer-payment-allocations-table"><thead><tr><th>Chứng từ đích</th><th>Kho</th><th>Ngày</th><th className={styles.amount}>Số tiền</th><th>Trạng thái</th><th /></tr></thead><tbody>{selected.allocations.map((allocation) => <tr key={allocation.id}><td>{allocation.targetDocumentNumber}</td><td>{warehouses.find((warehouse) => warehouse.id === allocation.targetWarehouseId)?.code ?? allocation.targetWarehouseId}</td><td>{allocation.allocationDate}</td><td className={styles.amount}>{money(allocation.amount, selected.currencyCode)}</td><td>{allocation.reversed ? 'Đã đảo' : 'Hiệu lực'}</td><td>{!allocation.reversed ? <button type="button" disabled={busy} onClick={() => reverseAllocation(allocation)}>Đảo</button> : null}</td></tr>)}{!selected.allocations.length ? <tr><td colSpan={6}>Chưa có phân bổ.</td></tr> : null}</tbody></table></div>
+            <h3>Lịch sử ghi tiền vào đơn</h3>
+            <div className={styles.tableWrap}>
+              <table className={styles.table} data-testid="customer-payment-allocations-table">
+                <thead>
+                  <tr>
+                    <th>Đơn hàng / Khoản phải thu</th>
+                    <th>Đơn vị</th>
+                    <th>Ngày</th>
+                    <th className={styles.amount}>Số tiền</th>
+                    <th>Kết quả</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {selected.allocations.map((allocation) => (
+                    <tr key={allocation.id}>
+                      <td>{allocation.targetDocumentNumber}</td>
+                      <td>
+                        {warehouses.find((warehouse) => warehouse.id === allocation.targetWarehouseId)?.code
+                          ?? allocation.targetWarehouseId}
+                      </td>
+                      <td>{allocation.allocationDate}</td>
+                      <td className={styles.amount}>{money(allocation.amount, selected.currencyCode)}</td>
+                      <td>{allocation.reversed ? 'Đã hủy' : 'Đã ghi nhận'}</td>
+                      <td>
+                        {!allocation.reversed ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => reverseAllocation(allocation)}
+                          >
+                            Hủy ghi nhận
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                  {!selected.allocations.length ? (
+                    <tr><td colSpan={6}>Chưa ghi tiền vào đơn nào.</td></tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
           </>}
         </section>
       </div>

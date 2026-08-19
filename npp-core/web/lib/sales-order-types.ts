@@ -190,6 +190,7 @@ export type SalesOrder = {
   fulfillment?: SalesOrderFulfillmentProjection | null;
   deliveryStatus: string;
   settlementStatus: string;
+  receivableRemainingAmount: string;
   currency: 'VND';
   requestedDeliveryDate: string | null;
   note: string | null;

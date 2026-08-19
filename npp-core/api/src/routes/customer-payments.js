@@ -322,6 +322,23 @@ export async function handleCustomerPaymentRoutes(req, res, options) {
       return true;
     }
 
+    if (pathname === '/api/customer-payments/remitting-employees' && method === 'GET') {
+      const requestContext = await authenticateAndAuthorize(
+        req,
+        res,
+        options,
+        options.PERMISSIONS.coreCustomerPaymentCreate,
+      );
+      if (!requestContext) return true;
+      const result = await service.listRemittingEmployees(options.getPool(), { requestContext });
+      if (!result.ok) {
+        sendServiceError(res, result, options);
+        return true;
+      }
+      sendSuccess(res, result.employees, options.requestId, options.receivedAt);
+      return true;
+    }
+
     if (pathname === '/api/customer-payments' && method === 'POST') {
       const requestContext = await authenticateAndAuthorize(
         req,

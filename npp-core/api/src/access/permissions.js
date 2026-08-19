@@ -189,11 +189,11 @@ const LOGISTICS_PERMISSION_CATALOG = Object.freeze([
 
 const ACCOUNTING_PERMISSION_CATALOG = Object.freeze([
   ['coreReceivableRead', 'Công nợ khách hàng', 'Xem công nợ khách hàng', 'Cho phép đọc số dư, chứng từ và sổ chi tiết công nợ khách hàng trong phạm vi kho được cấp.'],
-  ['coreCustomerPaymentRead', 'Thu tiền khách hàng', 'Xem phiếu thu khách hàng', 'Cho phép đọc phiếu thu và lịch sử phân bổ trong phạm vi kho được cấp.'],
+  ['coreCustomerPaymentRead', 'Thu tiền khách hàng', 'Xem phiếu thu khách hàng', 'Cho phép đọc phiếu thu và lịch sử ghi tiền vào đơn trong phạm vi kho được cấp.'],
   ['coreCustomerPaymentCreate', 'Thu tiền khách hàng', 'Ghi nhận tiền khách trả', 'Cho phép ghi nhận tiền mặt hoặc chuyển khoản đã thực nhận từ khách hàng.'],
-  ['coreCustomerPaymentReverse', 'Thu tiền khách hàng', 'Đảo phiếu thu khách hàng', 'Cho phép đảo phiếu thu chưa còn phân bổ đang hiệu lực, với lý do bắt buộc.'],
-  ['coreReceivableAllocationCreate', 'Công nợ khách hàng', 'Phân bổ tiền vào công nợ', 'Cho phép phân bổ một phiếu thu vào một hoặc nhiều chứng từ phải thu trong phạm vi được cấp.'],
-  ['coreReceivableAllocationReverse', 'Công nợ khách hàng', 'Đảo phân bổ công nợ', 'Cho phép đảo một phân bổ bằng chứng từ đảo bất biến.'],
+  ['coreCustomerPaymentReverse', 'Thu tiền khách hàng', 'Hủy phiếu thu khách hàng', 'Cho phép hủy phiếu thu không còn khoản nào đang ghi vào đơn, với lý do bắt buộc.'],
+  ['coreReceivableAllocationCreate', 'Công nợ khách hàng', 'Ghi tiền thu vào công nợ', 'Cho phép ghi một phiếu thu vào một hoặc nhiều khoản phải thu trong phạm vi được cấp.'],
+  ['coreReceivableAllocationReverse', 'Công nợ khách hàng', 'Hủy phần tiền đã ghi', 'Cho phép hủy phần tiền đã ghi và lưu đầy đủ lịch sử điều chỉnh.'],
   ['coreCustomerReturnCreditRead', 'Điều chỉnh công nợ khách hàng', 'Xem credit hàng khách trả', 'Cho phép đọc credit phát sinh từ Customer Return đã được kho nhận trong phạm vi kho.'],
   ['coreCustomerReturnCreditAllocate', 'Điều chỉnh công nợ khách hàng', 'Phân bổ credit hàng khách trả', 'Cho phép phân bổ phần credit chưa dùng vào khoản phải thu hợp lệ.'],
   ['coreCustomerReturnCreditReverse', 'Điều chỉnh công nợ khách hàng', 'Đảo credit hàng khách trả', 'Cho phép đảo credit bằng bút toán bù sau khi hoàn tiền liên quan đã được đảo.'],

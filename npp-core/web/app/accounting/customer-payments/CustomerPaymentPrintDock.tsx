@@ -19,7 +19,20 @@ function dateText(value: string | null | undefined) {
 }
 
 function statusLabel(status: CustomerPayment['status']) {
-  return { open: 'Chưa phân bổ', partially_allocated: 'Đã phân bổ một phần', settled: 'Đã phân bổ hết', reversed: 'Đã đảo' }[status];
+  return {
+    open: 'Chưa gắn với đơn',
+    partially_allocated: 'Đã ghi một phần',
+    settled: 'Đã ghi nhận',
+    reversed: 'Đã hủy',
+  }[status];
+}
+
+function paymentMethodLabel(method: string) {
+  return {
+    CASH: 'Tiền mặt',
+    BANK_TRANSFER: 'Chuyển khoản',
+    OTHER: 'Khác',
+  }[method] ?? 'Khác';
 }
 
 export default function CustomerPaymentPrintDock({ payment }: { payment: CustomerPayment | null }) {
@@ -35,18 +48,24 @@ export default function CustomerPaymentPrintDock({ payment }: { payment: Custome
       size="A5"
       meta={[
         { label: 'Khách hàng', value: `${payment.customerCode || '—'} — ${payment.customerName || '—'}`, full: true },
-        { label: 'Kho nhận tiền', value: `${payment.warehouseCode || '—'} — ${payment.warehouseName || '—'}` },
+        { label: 'Đơn vị nhận tiền', value: `${payment.warehouseCode || '—'} — ${payment.warehouseName || '—'}` },
         { label: 'Ngày thu', value: dateText(payment.paymentDate) },
-        { label: 'Phương thức', value: payment.paymentMethod },
-        { label: 'Tham chiếu', value: payment.externalReference || '—' },
+        { label: 'Hình thức nhận tiền', value: paymentMethodLabel(payment.paymentMethod) },
+        { label: 'Mã giao dịch ngân hàng', value: payment.externalReference || '—' },
+        {
+          label: 'Nhân viên nộp tiền',
+          value: payment.remittingEmployeeName
+            ? `${payment.remittingEmployeeCode || '—'} — ${payment.remittingEmployeeName}`
+            : '—',
+        },
         { label: 'Người ghi nhận', value: payment.postedBy || '—' },
       ]}
       totals={[
         { label: 'SỐ TIỀN ĐÃ NHẬN', value: money(payment.originalAmount, payment.currencyCode), emphasis: true },
-        { label: 'Đã phân bổ', value: money(payment.allocatedAmount, payment.currencyCode) },
-        { label: 'Còn chưa phân bổ', value: money(payment.remainingAmount, payment.currencyCode) },
+        { label: 'Đã ghi vào đơn', value: money(payment.allocatedAmount, payment.currencyCode) },
+        { label: 'Chưa gắn với đơn', value: money(payment.remainingAmount, payment.currencyCode) },
       ]}
-      note={payment.status === 'reversed' ? `ĐÃ ĐẢO${payment.reversalReason ? ` — ${payment.reversalReason}` : ''}` : payment.note || undefined}
+      note={payment.status === 'reversed' ? `ĐÃ HỦY${payment.reversalReason ? ` — ${payment.reversalReason}` : ''}` : payment.note || undefined}
       signatures={['Người nộp tiền', 'Người lập phiếu', 'Thủ quỹ / Kế toán']}
       testId="customer-payment-print-sheet"
     />
