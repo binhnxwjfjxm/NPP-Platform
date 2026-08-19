@@ -5,7 +5,58 @@ const ORDER_COLUMNS = `so.id, so.installation_id, so.order_number, so.order_numb
   so.customer_id, c.code AS customer_code, c.name AS customer_name,
   so.customer_mode, so.walk_in_display_name, so.walk_in_phone,
   so.customer_address_id, so.warehouse_id, w.code AS warehouse_code, w.name AS warehouse_name,
-  so.delivery_mode, so.collection_policy, so.fulfillment_status, so.delivery_status,
+  so.delivery_mode, so.collection_policy, so.fulfillment_status,
+  CASE
+    WHEN so.delivery_status IN ('returned', 'cancelled') THEN so.delivery_status
+    WHEN so.delivery_mode = 'PICKUP' THEN 'not_required'
+    ELSE COALESCE((
+      SELECT CASE
+        WHEN expected.expected_base_quantity > 0
+         AND delivery.delivered_base_quantity >= expected.expected_base_quantity THEN 'delivered'
+        WHEN delivery.delivered_base_quantity > 0 THEN 'partially_delivered'
+        WHEN delivery.has_rescheduled THEN 'rescheduled'
+        WHEN delivery.has_failed THEN 'failed'
+        WHEN delivery.has_dispatched THEN 'dispatched'
+        WHEN delivery.has_ready_to_dispatch THEN 'ready_to_dispatch'
+        ELSE so.delivery_status
+      END
+      FROM (
+        SELECT COALESCE(sum(line.base_quantity), 0)::numeric(30,12) AS expected_base_quantity
+          FROM sales.sales_order_versions version
+          JOIN sales.sales_order_version_lines line
+            ON line.installation_id = version.installation_id
+           AND line.sales_order_version_id = version.id
+         WHERE version.installation_id = so.installation_id
+           AND version.sales_order_id = so.id
+           AND version.version_number = so.current_version_number
+      ) expected
+      CROSS JOIN (
+        SELECT COALESCE(sum(
+                 CASE WHEN attempt.result IN ('delivered_full', 'delivered_partial')
+                   THEN attempt_line.delivered_base_quantity
+                   ELSE 0::numeric
+                 END
+               ), 0)::numeric(30,12) AS delivered_base_quantity,
+               COALESCE(bool_or(attempt.result = 'rescheduled'), false) AS has_rescheduled,
+               COALESCE(bool_or(attempt.result = 'failed'), false) AS has_failed,
+               COALESCE(bool_or(dispatch_item.id IS NOT NULL), false) AS has_dispatched,
+               COALESCE(bool_or(delivery_order.status = 'ready_to_dispatch'), false) AS has_ready_to_dispatch
+          FROM sales.delivery_orders delivery_order
+          LEFT JOIN logistics.delivery_attempts attempt
+            ON attempt.installation_id = delivery_order.installation_id
+           AND attempt.delivery_order_id = delivery_order.id
+          LEFT JOIN logistics.delivery_attempt_lines attempt_line
+            ON attempt_line.installation_id = attempt.installation_id
+           AND attempt_line.attempt_id = attempt.id
+          LEFT JOIN logistics.trip_dispatch_items dispatch_item
+            ON dispatch_item.installation_id = delivery_order.installation_id
+           AND dispatch_item.delivery_order_id = delivery_order.id
+         WHERE delivery_order.installation_id = so.installation_id
+           AND delivery_order.sales_order_id = so.id
+           AND delivery_order.status <> 'cancelled'
+      ) delivery
+    ), so.delivery_status)
+  END AS delivery_status,
   so.settlement_status, so.currency_code, so.requested_delivery_date, so.note, so.revision,
   so.confirmed_at, so.confirmed_by, so.cancelled_at, so.cancelled_by, so.cancellation_reason,
   so.created_at, so.updated_at, so.created_by, so.updated_by`;
