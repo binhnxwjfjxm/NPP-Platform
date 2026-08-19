@@ -130,16 +130,22 @@ export async function releasePreExecutionAllocations(client, {
 }) {
   const intent = releaseIntent(intentName);
   await repository.setManualEditReleaseWriteContexts(client);
+  if (await repository.hasPhysicalExecutionFacts(client, {
+    installationId: requestContext.installationId,
+    salesOrderId,
+  })) {
+    return failure(intent.blockedCode, intent.blockedMessage);
+  }
+
   const allocations = await allocationRepository.listOrderAllocationsForUpdate(client, {
     installationId: requestContext.installationId,
     salesOrderId,
   });
-  const active = allocations.filter((allocation) => allocation.state === 'ACTIVE');
-  if (active.length === 0) return Object.freeze({ ok: true, released: Object.freeze([]) });
-
-  if (active.some(releaseBlocked)) {
+  if (allocations.some(releaseBlocked)) {
     return failure(intent.blockedCode, intent.blockedMessage);
   }
+  const active = allocations.filter((allocation) => allocation.state === 'ACTIVE');
+  if (active.length === 0) return Object.freeze({ ok: true, released: Object.freeze([]) });
 
   const released = [];
   for (const allocation of active) {
