@@ -77,6 +77,7 @@ export async function hasActiveAllocationFacts(client, { installationId, salesOr
         WHERE demand.installation_id = $1
           AND demand.sales_order_id = $2
           AND demand.state = 'ACTIVE'
+          AND allocation.state <> 'RELEASED'
      ) AS blocked`,
     [installationId, salesOrderId],
   );

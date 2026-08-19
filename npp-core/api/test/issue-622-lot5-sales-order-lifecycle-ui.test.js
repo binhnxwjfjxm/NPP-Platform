@@ -32,15 +32,16 @@ test('Issue #622 Lô 5 reconciles delivery outcome from delivered base quantity'
 test('Issue #622 Lô 5 keeps one Sales Orders page and groups work by business stage', async () => {
   const workspace = await source(workspacePath);
 
-  for (const label of ['Đang xử lý', 'Đang chuẩn bị', 'Chờ giao', 'Đã hoàn thành', 'Hủy']) {
+  for (const label of ['Tất cả trạng thái', 'Đang xử lý', 'Đang chuẩn bị', 'Chờ giao', 'Đã hoàn thành', 'Hủy']) {
     assert.match(workspace, new RegExp(label));
   }
-  assert.match(workspace, /useState<OrderWorkStage>\('active'\)/);
+  assert.match(workspace, /useState<OrderWorkStage>\('all'\)/);
   assert.match(workspace, /order\.status === 'closed' \|\| order\.deliveryStatus === 'delivered'/);
   assert.match(workspace, /order\.deliveryStatus === 'returned'\) return 'active'/);
-  assert.match(workspace, /order\.deliveryStatus === 'delivered'\) return 'Đã giao'/);
-  assert.match(workspace, /order\.deliveryStatus === 'partially_delivered'\) return 'Đã giao một phần'/);
-  assert.match(workspace, /order\.deliveryStatus === 'dispatched'\) return 'Đang giao'/);
+  assert.match(workspace, /order\.deliveryStatus === 'delivered'\) status = 'Đã giao'/);
+  assert.match(workspace, /order\.deliveryStatus === 'partially_delivered'\) status = 'Đã giao một phần'/);
+  assert.match(workspace, /order\.deliveryStatus === 'dispatched'\) status = 'Đang giao'/);
+  assert.match(workspace, /return `\$\{status\} · \$\{orderLaneLabel\(order\)\}`/);
 
   assert.match(workspace, /title="Đơn bán hàng"/);
   assert.match(workspace, /actions=\{canCreate \?/);

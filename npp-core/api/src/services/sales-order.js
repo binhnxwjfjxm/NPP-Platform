@@ -1,6 +1,7 @@
 import * as legacy from './sales-order-legacy.js';
 import * as pricingService from './pricing.js';
 import * as fulfillmentService from './sales-fulfillment.js';
+import * as manualEditReleaseService from './sales-fulfillment-allocation-release.js';
 import * as commercialRepository from '../db/repositories/sales-order-commercial.js';
 import * as sourceEmployeeRepository from '../db/repositories/sales-order-provenance.js';
 import * as deliveryExecutionRepository from '../db/repositories/sales-order-delivery-execution.js';
@@ -52,7 +53,6 @@ function normalizeDeliveryExecution(payload) {
     return Object.freeze({ ok: true, deliveryExecutionMode: null });
   }
 
-  // Let the existing Sales Order validation own invalid broad delivery modes.
   return Object.freeze({ ok: true, deliveryExecutionMode: null });
 }
 
@@ -97,11 +97,16 @@ function manualQuickEditGuard(order) {
       'Sửa trực tiếp sau Chốt chỉ áp dụng cho đơn Giao thủ công.',
     );
   }
-  const issued = String(order.fulfillment?.totals?.issuedBaseQuantity ?? '0').trim();
-  if (!ZERO_DECIMAL_PATTERN.test(issued || '0')) {
+  const totals = order.fulfillment?.totals ?? {};
+  const physicalExecutionStarted = [
+    totals.pickedBaseQuantity,
+    totals.packedBaseQuantity,
+    totals.issuedBaseQuantity,
+  ].some((value) => !ZERO_DECIMAL_PATTERN.test(String(value ?? '0').trim() || '0'));
+  if (physicalExecutionStarted) {
     return failure(
       'SALES_ORDER_HAS_EXECUTION_FACTS',
-      'Đơn đã Xuất kho nên không thể sửa trực tiếp. Hãy dùng nghiệp vụ điều chỉnh phù hợp.',
+      'Đơn đã bắt đầu soạn, đóng gói hoặc Xuất kho nên không thể sửa trực tiếp.',
     );
   }
   return Object.freeze({ ok: true });
@@ -748,6 +753,13 @@ export async function quickEditManualSalesOrder(client, {
   if (!before.ok) return before;
   const guard = manualQuickEditGuard(before.salesOrder);
   if (!guard.ok) return guard;
+
+  const released = await manualEditReleaseService.releaseManualEditAllocations(client, {
+    requestContext,
+    salesOrderId: id,
+    idempotencyKey,
+  });
+  if (!released.ok) return released;
 
   const amendment = await createSalesOrderAmendment(client, {
     requestContext,

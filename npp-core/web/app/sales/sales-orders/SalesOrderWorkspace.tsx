@@ -19,10 +19,12 @@ import {
 import styles from './sales-orders.module.css';
 
 type OrderSourceFilter = 'all' | 'internal' | 'mcp' | 'customer';
-type OrderWorkStage = 'active' | 'preparing' | 'waiting_delivery' | 'completed' | 'cancelled';
+type OrderWorkStage = 'all' | 'active' | 'preparing' | 'waiting_delivery' | 'completed' | 'cancelled';
+type ResolvedOrderWorkStage = Exclude<OrderWorkStage, 'all'>;
 type OrderLaneFilter = 'all' | 'counter' | 'manual' | 'trip';
 
 const WORK_STAGE_OPTIONS: ReadonlyArray<Readonly<{ value: OrderWorkStage; label: string }>> = [
+  { value: 'all', label: 'Tất cả trạng thái' },
   { value: 'active', label: 'Đang xử lý' },
   { value: 'preparing', label: 'Đang chuẩn bị' },
   { value: 'waiting_delivery', label: 'Chờ giao' },
@@ -37,6 +39,14 @@ const LANE_OPTIONS: ReadonlyArray<Readonly<{ value: OrderLaneFilter; label: stri
   { value: 'trip', label: 'Giao theo chuyến' },
 ];
 
+const WORK_STAGE_LABELS: Readonly<Record<ResolvedOrderWorkStage, string>> = Object.freeze({
+  active: 'Đang xử lý',
+  preparing: 'Đang chuẩn bị',
+  waiting_delivery: 'Chờ giao',
+  completed: 'Đã hoàn thành',
+  cancelled: 'Hủy',
+});
+
 function sourceBucket(order: SalesOrder): Exclude<OrderSourceFilter, 'all'> {
   if (order.sourceType === 'MCP') return 'mcp';
   if (order.sourceType === 'API' && order.sourceId?.startsWith('CUSTOMER_PORTAL:')) return 'customer';
@@ -48,7 +58,14 @@ function orderLane(order: SalesOrder): Exclude<OrderLaneFilter, 'all'> {
   return order.deliveryExecutionMode === 'MANUAL' ? 'manual' : 'trip';
 }
 
-function orderWorkStage(order: SalesOrder): OrderWorkStage {
+function orderLaneLabel(order: SalesOrder): string {
+  const lane = orderLane(order);
+  if (lane === 'counter') return 'Mua tại quầy';
+  if (lane === 'manual') return 'Giao thủ công';
+  return 'Giao theo chuyến';
+}
+
+function orderWorkStage(order: SalesOrder): ResolvedOrderWorkStage {
   if (order.status === 'cancelled' || order.deliveryStatus === 'cancelled') return 'cancelled';
   if (order.status === 'closed' || order.deliveryStatus === 'delivered') return 'completed';
   if (order.deliveryStatus === 'returned') return 'active';
@@ -64,23 +81,22 @@ function orderWorkStage(order: SalesOrder): OrderWorkStage {
 }
 
 function orderCardStatus(order: SalesOrder): string {
-  if (order.status === 'cancelled' || order.deliveryStatus === 'cancelled') return 'Đã hủy';
-  if (order.status === 'closed') return 'Đã hoàn thành';
-  if (order.deliveryStatus === 'delivered') return 'Đã giao';
-  if (order.deliveryStatus === 'partially_delivered') return 'Đã giao một phần';
-  if (order.deliveryStatus === 'dispatched') return 'Đang giao';
-  if (order.deliveryStatus === 'ready_to_dispatch') return 'Chờ giao';
-  if (order.deliveryStatus === 'rescheduled') return 'Hẹn giao lại';
-  if (order.deliveryStatus === 'failed') return 'Giao chưa thành công';
-  if (order.deliveryStatus === 'returned') return 'Đã trả hàng';
-  if (String(order.fulfillmentStatus) === 'issued') {
-    return order.deliveryExecutionMode === 'MANUAL' ? 'Đã xuất kho · Giao thủ công' : 'Đã xuất kho';
-  }
-  if (order.fulfillmentStatus === 'backordered') return 'Chờ hàng';
-  if (order.fulfillmentStatus === 'partially_reserved') return 'Chờ hàng một phần';
-  if (orderWorkStage(order) === 'preparing') return 'Đang chuẩn bị';
-  if (order.status === 'draft') return 'Nháp';
-  return order.deliveryExecutionMode === 'MANUAL' ? 'Đang xử lý · Giao thủ công' : 'Đang xử lý';
+  let status = 'Đang xử lý';
+  if (order.status === 'cancelled' || order.deliveryStatus === 'cancelled') status = 'Đã hủy';
+  else if (order.status === 'closed') status = 'Đã hoàn thành';
+  else if (order.deliveryStatus === 'delivered') status = 'Đã giao';
+  else if (order.deliveryStatus === 'partially_delivered') status = 'Đã giao một phần';
+  else if (order.deliveryStatus === 'dispatched') status = 'Đang giao';
+  else if (order.deliveryStatus === 'ready_to_dispatch') status = 'Chờ giao';
+  else if (order.deliveryStatus === 'rescheduled') status = 'Hẹn giao lại';
+  else if (order.deliveryStatus === 'failed') status = 'Giao chưa thành công';
+  else if (order.deliveryStatus === 'returned') status = 'Đã trả hàng';
+  else if (String(order.fulfillmentStatus) === 'issued') status = 'Đã xuất kho';
+  else if (order.fulfillmentStatus === 'backordered') status = 'Chờ hàng';
+  else if (order.fulfillmentStatus === 'partially_reserved') status = 'Chờ hàng một phần';
+  else if (orderWorkStage(order) === 'preparing') status = 'Đang chuẩn bị';
+  else if (order.status === 'draft') return 'Nháp';
+  return `${status} · ${orderLaneLabel(order)}`;
 }
 
 function orderCardTone(order: SalesOrder): string {
@@ -107,6 +123,19 @@ function matchesSearch(order: SalesOrder, term: string): boolean {
     .some((value) => String(value).toLocaleLowerCase('vi').includes(term));
 }
 
+function stageCountsFor(orders: SalesOrder[]) {
+  const counts: Record<OrderWorkStage, number> = {
+    all: orders.length,
+    active: 0,
+    preparing: 0,
+    waiting_delivery: 0,
+    completed: 0,
+    cancelled: 0,
+  };
+  for (const order of orders) counts[orderWorkStage(order)] += 1;
+  return counts;
+}
+
 export default function SalesOrderWorkspace({ initialBootstrap }: { initialBootstrap: SalesOrderBootstrap }) {
   const [orders, setOrders] = useState(initialBootstrap.salesOrders);
   const [selected, setSelected] = useState<SalesOrder | null>(null);
@@ -116,7 +145,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialBootstrap.errors.orders);
   const [search, setSearch] = useState('');
-  const [workStage, setWorkStage] = useState<OrderWorkStage>('active');
+  const [workStage, setWorkStage] = useState<OrderWorkStage>('all');
   const [lane, setLane] = useState<OrderLaneFilter>('all');
   const [source, setSource] = useState<OrderSourceFilter>('all');
   const [formMode, setFormMode] = useState<SalesOrderFormMode | null>(null);
@@ -170,32 +199,13 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
     });
   }, [orders, search, source, lane]);
 
-  const stageCounts = useMemo(() => {
-    const counts: Record<OrderWorkStage, number> = {
-      active: 0,
-      preparing: 0,
-      waiting_delivery: 0,
-      completed: 0,
-      cancelled: 0,
-    };
-    for (const order of scopedOrders) counts[orderWorkStage(order)] += 1;
-    return counts;
-  }, [scopedOrders]);
-
-  const allStageCounts = useMemo(() => {
-    const counts: Record<OrderWorkStage, number> = {
-      active: 0,
-      preparing: 0,
-      waiting_delivery: 0,
-      completed: 0,
-      cancelled: 0,
-    };
-    for (const order of orders) counts[orderWorkStage(order)] += 1;
-    return counts;
-  }, [orders]);
+  const stageCounts = useMemo(() => stageCountsFor(scopedOrders), [scopedOrders]);
+  const allStageCounts = useMemo(() => stageCountsFor(orders), [orders]);
 
   const filtered = useMemo(
-    () => scopedOrders.filter((order) => orderWorkStage(order) === workStage),
+    () => workStage === 'all'
+      ? scopedOrders
+      : scopedOrders.filter((order) => orderWorkStage(order) === workStage),
     [scopedOrders, workStage],
   );
 
@@ -319,34 +329,42 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
           <article><strong>{allStageCounts.completed}</strong><span>Đã hoàn thành</span></article>
         </section>
 
-        <div className={styles.inlineActions} role="tablist" aria-label="Tiến độ đơn bán hàng">
-          {WORK_STAGE_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="tab"
-              aria-selected={workStage === option.value}
-              className={workStage === option.value ? styles.segmentActive : styles.segment}
-              onClick={() => setWorkStage(option.value)}
-            >
-              {option.label} · {stageCounts[option.value]}
-            </button>
-          ))}
-        </div>
+        <section className={styles.filterPanel} aria-label="Bộ lọc đơn bán hàng">
+          <div className={styles.filterGroup}>
+            <span className={styles.filterLabel}>Hình thức giao</span>
+            <div className={styles.filterChips} aria-label="Hình thức giao">
+              {LANE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={lane === option.value}
+                  className={lane === option.value ? styles.segmentActive : styles.segment}
+                  onClick={() => setLane(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-        <div className={styles.inlineActions} aria-label="Hình thức phục vụ đơn bán hàng">
-          {LANE_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              aria-pressed={lane === option.value}
-              className={lane === option.value ? styles.segmentActive : styles.segment}
-              onClick={() => setLane(option.value)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+          <div className={styles.filterGroup}>
+            <span className={styles.filterLabel}>Trạng thái</span>
+            <div className={styles.filterChips} role="tablist" aria-label="Trạng thái đơn bán hàng">
+              {WORK_STAGE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={workStage === option.value}
+                  className={workStage === option.value ? styles.segmentActive : styles.segment}
+                  onClick={() => setWorkStage(option.value)}
+                >
+                  {option.label} · {stageCounts[option.value]}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
 
         <div className={styles.toolbar}>
           <label><span>Tìm đơn</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Số đơn, khách hoặc kênh bán" /></label>
@@ -422,13 +440,22 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
           onError={handleFormError}
           onSaved={(order) => {
             const savedMode = formMode;
+            const savedStage = orderWorkStage(order);
+            const savedLane = orderLane(order);
+            const stageMovedOut = workStage !== 'all' && workStage !== savedStage;
+            const laneMovedOut = lane !== 'all' && lane !== savedLane;
             mergeOrder(order);
+            if (stageMovedOut) setWorkStage('all');
+            if (laneMovedOut) setLane('all');
             setFormMode(null);
             setError(null);
+            const locationNote = stageMovedOut || laneMovedOut
+              ? ` · Đơn hiện ở ${WORK_STAGE_LABELS[savedStage]} · ${orderLaneLabel(order)}; đã mở Tất cả để không mất khỏi danh sách.`
+              : '';
             setNotice(savedMode === 'manual-edit'
-              ? 'Đã lưu thay đổi đơn giao thủ công'
+              ? `Đã lưu thay đổi đơn Giao thủ công${locationNote}`
               : order.status === 'confirmed'
-                ? 'Đã lưu, xác nhận và cấp số đơn bán hàng'
+                ? `Đã lưu, xác nhận và cấp số đơn bán hàng${locationNote}`
                 : savedMode === 'create' ? 'Đã tạo đơn bán hàng nháp' : 'Đã lưu phiên bản nháp');
           }}
         />
