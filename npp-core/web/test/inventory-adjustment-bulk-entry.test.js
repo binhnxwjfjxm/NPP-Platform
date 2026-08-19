@@ -46,8 +46,12 @@ test('bulk adjustment sheet enforces row limit and required columns', () => {
   assert.throws(() => parseBulkInventoryAdjustmentSheet(oversized), /tối đa 200 dòng/i);
 });
 
+test('bulk adjustment template stays minimal while parser keeps optional scope columns', () => {
+  assert.equal(bulkInventoryAdjustmentTemplateCsv(), '\uFEFFSKU,Tồn thực tế\n');
+  assert.doesNotMatch(bulkInventoryAdjustmentTemplateCsv(), /Vị trí|Lô/);
+});
+
 test('bulk adjustment UI follows the compact file-import workflow and stays usable for hundreds of rows', () => {
-  assert.match(bulkInventoryAdjustmentTemplateCsv(), /SKU,Tồn thực tế,Vị trí,Lô/);
   assert.match(bulkUiSource, /Các bước điều chỉnh tồn hàng loạt/);
   assert.match(bulkUiSource, /Tải mẫu Excel\/CSV/);
   assert.match(bulkUiSource, /Chọn tệp đã điền/);
@@ -61,7 +65,21 @@ test('bulk adjustment UI follows the compact file-import workflow and stays usab
   assert.doesNotMatch(bulkUiSource, /styles\.lineCard/);
 });
 
-test('bulk adjustment preview remains read-only and confirmation keeps canonical idempotency', () => {
+test('bulk preview supports inline policy-driven lot and exact-location completion', () => {
+  assert.match(bulkUiSource, /Tệp tối thiểu chỉ cần/);
+  assert.match(bulkUiSource, /Lô<\/strong> chỉ bắt buộc với hàng quản lý lô/);
+  assert.match(bulkUiSource, /Vị trí \*/);
+  assert.match(bulkUiSource, /Lô \*/);
+  assert.match(bulkUiSource, /updateScopeValue/);
+  assert.match(bulkUiSource, /Chọn lô/);
+  assert.match(bulkUiSource, /Chọn vị trí/);
+  assert.match(bulkUiSource, /Tự điền vì chỉ có một lô hợp lệ/);
+  assert.match(bulkUiSource, /Tự điền vì chỉ có một vị trí hợp lệ/);
+  assert.match(bulkUiSource, /Cần kiểm tra lại/);
+  assert.match(bulkUiSource, /scopeOptions/);
+});
+
+test('bulk adjustment preview keeps inventory read-only and confirmation keeps canonical idempotency', () => {
   assert.match(bulkUiSource, /Tồn hệ thống/);
   assert.match(bulkUiSource, /Tồn thực tế/);
   assert.match(bulkUiSource, /Hệ thống vẫn kiểm tra toàn bộ/);

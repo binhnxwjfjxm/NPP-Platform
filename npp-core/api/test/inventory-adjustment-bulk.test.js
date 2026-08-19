@@ -18,11 +18,24 @@ function row(overrides = {}) {
   };
 }
 
+function balance({ locationCode = 'A01', locationName = 'Kệ A', lotCode = null } = {}) {
+  return {
+    base_variant_id: 'base-variant',
+    location_id: `${locationCode}-id`,
+    location_code: locationCode,
+    location_name: locationName,
+    lot_id: lotCode ? `${lotCode}-id` : null,
+    lot_code: lotCode,
+    on_hand_quantity: '10.000000000000',
+  };
+}
+
 test('bulk input treats actual stock as final quantity and accepts zero', () => {
   const result = inventoryAdjustmentBulkInternals.normalizeBulkRows({ warehouseId, rows: [row()] });
   assert.equal(result.ok, true);
   assert.equal(result.rows[0].actualQuantity, '0');
   assert.equal(result.rows[0].actualScaled6, 0n);
+  assert.equal(result.rows[0].lotCode, null);
 });
 
 test('bulk input flags duplicate SKU scope before preview', () => {
@@ -32,6 +45,55 @@ test('bulk input flags duplicate SKU scope before preview', () => {
   });
   assert.equal(result.ok, true);
   assert.ok(result.rows.every((item) => item.errors.some((error) => error.code === 'DUPLICATE_ROW')));
+});
+
+test('bulk scope auto-fills the sole valid required lot instead of asking for a file column', () => {
+  const input = { ...row({ actualQuantity: '8', locationCode: null, lotCode: null }), actualScaled6: 8n };
+  const source = { lot_tracking_mode: 'REQUIRED' };
+  const resolved = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, source, [
+    balance({ locationCode: 'A01', lotCode: 'LO-001' }),
+  ]);
+  assert.equal(resolved.lotCode, 'LO-001');
+  assert.equal(resolved.locationCode, 'A01');
+  assert.equal(resolved.lotAutoFilled, true);
+  assert.equal(resolved.locationAutoFilled, true);
+  assert.equal(resolved.requiresLotSelection, false);
+  assert.equal(resolved.requiresLocationSelection, false);
+});
+
+test('bulk scope requires a user lot choice when tracking policy has multiple valid lots', () => {
+  const input = { ...row({ actualQuantity: '8', locationCode: null, lotCode: null }), actualScaled6: 8n };
+  const source = { lot_tracking_mode: 'REQUIRED' };
+  const resolved = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, source, [
+    balance({ locationCode: 'A01', lotCode: 'LO-001' }),
+    balance({ locationCode: 'A01', lotCode: 'LO-002' }),
+  ]);
+  assert.equal(resolved.locationCode, 'A01');
+  assert.equal(resolved.locationAutoFilled, true);
+  assert.equal(resolved.lotCode, null);
+  assert.equal(resolved.requiresLotSelection, true);
+  assert.equal(resolved.requiresLocationSelection, false);
+  assert.deepEqual(resolved.scopeOptions.map((item) => item.lotCode), ['LO-001', 'LO-002']);
+});
+
+test('bulk scope requires location only when exact scope is still ambiguous', () => {
+  const input = { ...row({ actualQuantity: '8', locationCode: null, lotCode: null }), actualScaled6: 8n };
+  const requiredLot = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, { lot_tracking_mode: 'REQUIRED' }, [
+    balance({ locationCode: 'A01', lotCode: 'LO-001' }),
+    balance({ locationCode: 'B01', lotCode: 'LO-001' }),
+  ]);
+  assert.equal(requiredLot.lotCode, 'LO-001');
+  assert.equal(requiredLot.lotAutoFilled, true);
+  assert.equal(requiredLot.locationCode, null);
+  assert.equal(requiredLot.requiresLocationSelection, true);
+
+  const noLotTracking = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, { lot_tracking_mode: 'NONE' }, [
+    balance({ locationCode: 'A01', lotCode: null }),
+  ]);
+  assert.equal(noLotTracking.lotRequired, false);
+  assert.equal(noLotTracking.requiresLotSelection, false);
+  assert.equal(noLotTracking.locationCode, 'A01');
+  assert.equal(noLotTracking.requiresLocationSelection, false);
 });
 
 test('bulk delta uses exact conversion and falls back to base unit for break-pack differences', () => {
@@ -49,7 +111,7 @@ test('bulk delta uses exact conversion and falls back to base unit for break-pac
   assert.deepEqual(twoPieces, { sourceVariantId: 'base-variant', quantity: '2', unitCode: 'CHAI' });
 });
 
-test('bulk preview is read-only and confirm reuses canonical adjustment creation', () => {
+test('bulk preview is read-only for inventory and confirm reuses canonical adjustment creation', () => {
   assert.match(routeSource, /bulk-preview/);
   assert.match(routeSource, /bulk-confirm/);
   assert.match(routeSource, /executeRequestWithIdempotency/);
@@ -58,6 +120,9 @@ test('bulk preview is read-only and confirm reuses canonical adjustment creation
   assert.match(bulkSource, /currentScopeVersions/);
   assert.match(bulkSource, /lock:\s*true/);
   assert.match(bulkSource, /createAdjustment/);
+  assert.match(bulkSource, /LOT_SELECTION_REQUIRED/);
+  assert.match(bulkSource, /LOCATION_SELECTION_REQUIRED/);
+  assert.doesNotMatch(bulkSource, /Hãy bổ sung cột Lô/);
   assert.match(bulkSource, /DUPLICATE_STOCK_SCOPE/);
   assert.doesNotMatch(bulkSource, /UPDATE\s+inventory\.inventory_balances/i);
   assert.doesNotMatch(bulkSource, /INSERT\s+INTO\s+inventory\.inventory_balances/i);
