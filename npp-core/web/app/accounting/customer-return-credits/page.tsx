@@ -38,14 +38,14 @@ export default async function CustomerReturnCreditsPage() {
       const detail = await getCustomerReturnCredit<CustomerReturnCredit>(credits[0].id, requestId);
       credits = [detail, ...credits.slice(1)];
     } catch {
-      error ??= 'Không tải được chi tiết credit đầu tiên. Hãy chọn lại chứng từ trước khi thao tác.';
+      error ??= 'Không tải được chi tiết khoản giảm công nợ đầu tiên. Hãy chọn lại chứng từ trước khi thao tác.';
     }
   }
 
   return (
     <AppShell
       title="Điều chỉnh công nợ hàng trả"
-      subtitle="Credit chỉ phát sinh khi kho đã nhận Customer Return; phần chưa dùng có thể phân bổ hoặc hoàn tiền bằng chứng từ riêng."
+      subtitle="Khoản giảm công nợ chỉ phát sinh khi kho đã nhận phiếu hàng khách trả; phần chưa sử dụng có thể phân bổ hoặc hoàn tiền bằng chứng từ riêng."
       kicker="Kế toán bán hàng"
     >
       <CustomerReturnCreditWorkspace

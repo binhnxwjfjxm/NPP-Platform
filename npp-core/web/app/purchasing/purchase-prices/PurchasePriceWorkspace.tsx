@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from '../../components/business-table-sequence';
 import type { Supplier } from '../../../lib/supplier-types';
 import type {
   PurchaseOrderSkuSearchOption,
@@ -385,10 +389,11 @@ export default function PurchasePriceWorkspace() {
           {visiblePrices.length === 0 ? <div className={styles.empty}>{loading ? 'Đang tải bảng giá mua…' : 'Chưa có giá mua phù hợp bộ lọc.'}</div> : (
             <div className={styles.tableWrap}>
               <table className={styles.table}>
-                <thead><tr><th>Nhà cung cấp</th><th>SKU</th><th>Đơn vị</th><th>Giá mua</th><th>Từ SL</th><th>Hiệu lực</th><th>Mã NCC</th><th>Trạng thái</th><th></th></tr></thead>
+                <thead><tr><BusinessTableSequenceHeader /><th>Nhà cung cấp</th><th>SKU</th><th>Đơn vị</th><th>Giá mua</th><th>Từ SL</th><th>Hiệu lực</th><th>Mã NCC</th><th>Trạng thái</th><th></th></tr></thead>
                 <tbody>
-                  {visiblePrices.map((price) => (
+                  {visiblePrices.map((price, rowIndex) => (
                     <tr key={price.id}>
+                      <BusinessTableSequenceCell rowIndex={rowIndex} />
                       <td><div className={styles.priceIdentity}><div><strong>{price.supplierCode}</strong><span>{price.supplierName}</span></div></div></td>
                       <td><div className={styles.priceIdentity}><div><strong>{price.sku}</strong><span>{price.productCode} · {price.productName}</span></div></div></td>
                       <td>{price.unitCode}</td>

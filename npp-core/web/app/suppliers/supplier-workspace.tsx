@@ -2,6 +2,10 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../components/app-shell';
+import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from '../components/business-table-sequence';
 import VietnamAdministrativeFields from '../components/vietnam-administrative-fields';
 import styles from './suppliers.module.css';
 import type { Supplier } from '../../lib/supplier-types';
@@ -272,10 +276,10 @@ export default function SupplierWorkspace({ initialSuppliers, initialError = nul
         </section>
 
         <section className={styles.tableCard}>
-          <table><thead><tr><th>Mã</th><th>Tên nhà cung cấp</th><th>Mã số thuế</th><th>Ngân hàng</th><th>Giao hàng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-            <tbody>{visibleSuppliers.map((supplier) => (
+          <table><thead><tr><BusinessTableSequenceHeader /><th>Mã</th><th>Tên nhà cung cấp</th><th>Mã số thuế</th><th>Ngân hàng</th><th>Giao hàng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+            <tbody>{visibleSuppliers.map((supplier, rowIndex) => (
               <tr key={supplier.id} data-testid={`supplier-row-${supplier.code}`}>
-                <td className={styles.code}>{supplier.code}</td><td>{supplier.name}</td><td>{supplier.tax_id || '—'}</td><td>{supplier.bank_name || supplier.bank_account || '—'}</td><td>{supplier.avg_delivery_days === null ? '—' : `${supplier.avg_delivery_days} ngày`}</td><td><span className={supplier.is_active ? styles.active : styles.inactive}>{supplier.is_active ? 'Đang hoạt động' : 'Ngừng sử dụng'}</span></td>
+                <BusinessTableSequenceCell rowIndex={rowIndex} /><td className={styles.code}>{supplier.code}</td><td>{supplier.name}</td><td>{supplier.tax_id || '—'}</td><td>{supplier.bank_name || supplier.bank_account || '—'}</td><td>{supplier.avg_delivery_days === null ? '—' : `${supplier.avg_delivery_days} ngày`}</td><td><span className={supplier.is_active ? styles.active : styles.inactive}>{supplier.is_active ? 'Đang hoạt động' : 'Ngừng sử dụng'}</span></td>
                 <td className={styles.actions}><button data-testid={`edit-supplier-${supplier.code}`} type="button" onClick={() => openEdit(supplier)} disabled={busy !== null}>Sửa</button><button type="button" onClick={() => void toggleSupplier(supplier)} disabled={busy !== null}>{supplier.is_active ? 'Ngừng sử dụng' : 'Đưa vào sử dụng'}</button></td>
               </tr>
             ))}</tbody>

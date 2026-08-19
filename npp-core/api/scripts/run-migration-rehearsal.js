@@ -11,6 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const CLIENT_INSTALLER = fileURLToPath(new URL('./install-postgresql-client-17.sh', import.meta.url));
 const POSTGRESQL_17_BIN = '/usr/lib/postgresql/17/bin';
 const POSTGRESQL_17_DUMP = `${POSTGRESQL_17_BIN}/pg_dump`;
+export const POSTGRES_CLIENT_INSTALL_TIMEOUT_MS = 6 * 60 * 1000;
 
 function isTruthy(value) {
   return ['1', 'true', 'yes'].includes(String(value ?? '').trim().toLowerCase());
@@ -53,26 +54,33 @@ export function buildRehearsalEnv(env = process.env) {
   return result;
 }
 
-export function ensureCompatiblePostgresClient(env = process.env) {
+export function ensureCompatiblePostgresClient(env = process.env, spawnCommand = spawnSync) {
   if (!isSafeEphemeralCiTarget(env)) return Object.freeze({ installed: false, reason: 'target_not_whitelisted' });
 
-  const current = spawnSync(POSTGRESQL_17_DUMP, ['--version'], { env, encoding: 'utf8' });
+  const current = spawnCommand(POSTGRESQL_17_DUMP, ['--version'], { env, encoding: 'utf8' });
   const versionText = current.status === 0 ? current.stdout : '';
   if (!shouldInstallPostgres17Client(env, versionText)) {
     return Object.freeze({ installed: false, reason: 'client_17_available' });
   }
 
-  const installation = spawnSync('bash', [CLIENT_INSTALLER], {
+  const installation = spawnCommand('bash', [CLIENT_INSTALLER], {
     env,
     stdio: 'inherit',
+    timeout: POSTGRES_CLIENT_INSTALL_TIMEOUT_MS,
+    killSignal: 'SIGTERM',
   });
+  if (installation.error?.code === 'ETIMEDOUT' || installation.signal === 'SIGTERM') {
+    const error = new Error('PostgreSQL 17 client installation timed out for the whitelisted CI rehearsal target');
+    error.code = 'postgresql_client_17_install_timeout';
+    throw error;
+  }
   if (installation.error || installation.status !== 0) {
     const error = new Error('PostgreSQL 17 client installation failed for the whitelisted CI rehearsal target');
     error.code = 'postgresql_client_17_install_failed';
     throw error;
   }
 
-  const verified = spawnSync(POSTGRESQL_17_DUMP, ['--version'], { env, encoding: 'utf8' });
+  const verified = spawnCommand(POSTGRESQL_17_DUMP, ['--version'], { env, encoding: 'utf8' });
   if (verified.status !== 0 || postgresClientMajor(verified.stdout) !== 17) {
     const error = new Error('PostgreSQL 17 client verification failed after installation');
     error.code = 'postgresql_client_17_verification_failed';

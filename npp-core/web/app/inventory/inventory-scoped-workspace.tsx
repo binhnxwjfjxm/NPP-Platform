@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createIdempotencyKey } from '@npp/contracts';
 import { AppShell } from '../components/app-shell';
+import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from '../components/business-table-sequence';
 import styles from './inventory-workspace.module.css';
 import {
   formatDate,
@@ -305,10 +309,11 @@ export default function InventoryScopedWorkspace({
             <div className={styles.gridTwo}>
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
-                  <thead><tr><th>Kho / vị trí</th><th>SKU</th><th>Lô</th><th>Hạn dùng</th><th>Tồn thực</th><th>Đã giữ</th><th>Khả dụng</th><th></th></tr></thead>
+                  <thead><tr><BusinessTableSequenceHeader /><th>Kho / vị trí</th><th>SKU</th><th>Lô</th><th>Hạn dùng</th><th>Tồn thực</th><th>Đã giữ</th><th>Khả dụng</th><th></th></tr></thead>
                   <tbody>
-                    {filteredBalances.length === 0 ? tableEmpty('Chưa có số dư tồn kho.') : filteredBalances.map((balance) => (
+                    {filteredBalances.length === 0 ? tableEmpty('Chưa có số dư tồn kho.', 9) : filteredBalances.map((balance, rowIndex) => (
                       <tr key={balanceKey(balance)}>
+                        <BusinessTableSequenceCell rowIndex={rowIndex} />
                         <td><div>{balance.warehouse_code} · {balance.warehouse_name}</div><div className={styles.subtle}>{joinValues(balance.location_code, balance.location_name)}</div></td>
                         <td><div className={styles.mono}>{balance.base_sku}</div><div className={styles.subtle}>{balance.base_variant_name}</div></td>
                         <td className={styles.mono}>{balance.lot_code ?? '—'}</td>
@@ -342,10 +347,11 @@ export default function InventoryScopedWorkspace({
           <section className={styles.section} data-testid="inventory-lots-section">
             <div className={styles.tableWrap}>
               <table className={styles.table}>
-                <thead><tr><th>SKU</th><th>Lô</th><th>Hạn dùng</th><th>Ngày SX</th><th>Tham chiếu nhà cung cấp</th><th>Tạo lúc</th></tr></thead>
+                <thead><tr><BusinessTableSequenceHeader /><th>SKU</th><th>Lô</th><th>Hạn dùng</th><th>Ngày SX</th><th>Tham chiếu nhà cung cấp</th><th>Tạo lúc</th></tr></thead>
                 <tbody>
-                  {filteredLots.length === 0 ? tableEmpty('Chưa có lô hàng nào.', 6) : filteredLots.map((lot) => (
+                  {filteredLots.length === 0 ? tableEmpty('Chưa có lô hàng nào.', 7) : filteredLots.map((lot, rowIndex) => (
                     <tr key={lot.id}>
+                      <BusinessTableSequenceCell rowIndex={rowIndex} />
                       <td><div className={styles.mono}>{lot.base_sku}</div><div className={styles.subtle}>{lot.product_code} · {lot.product_name}</div></td>
                       <td><div className={styles.mono}>{lot.lot_code}</div><div className={styles.subtle}>{lot.normalized_lot_code}</div></td>
                       <td>{formatDate(lot.expiry_date)}</td>

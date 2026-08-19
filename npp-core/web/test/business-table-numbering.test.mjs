@@ -17,12 +17,18 @@ const rolloutPaths = [
   'app/purchasing/purchase-orders/components/PurchaseOrderList.tsx',
   'app/purchasing/goods-receipts/GoodsReceiptWorkspace.tsx',
   'app/purchasing/supplier-returns/SupplierReturnWorkspace.tsx',
+  'app/purchasing/purchase-prices/PurchasePriceWorkspace.tsx',
   'app/accounting/payables/page.tsx',
   'app/accounting/receivables/page.tsx',
   'app/accounting/customer-payments/customer-payment-workspace.tsx',
   'app/accounting/supplier-payments/supplier-payment-workspace.tsx',
+  'app/accounting/customer-return-credits/customer-return-credit-workspace.tsx',
   'app/inventory/balances/inventory-balances-workspace.tsx',
   'app/inventory/manual-inbounds/manual-inbound-workspace.tsx',
+  'app/inventory/inventory-scoped-workspace.tsx',
+  'app/customers/customer-workspace.tsx',
+  'app/suppliers/supplier-workspace.tsx',
+  'app/products/product-workspace.tsx',
 ];
 
 test('business table numbering is one-based and continues across pages', () => {
@@ -77,11 +83,40 @@ test('primary business list tables use the shared STT convention', () => {
   assert.match(supplierReturns, /visibleItems\.map\(\(supplierReturn, rowIndex\)/);
   assert.match(supplierReturns, /BusinessTableSequenceCell rowIndex=\{rowIndex\}/);
 
-  const inventoryBalances = read(rolloutPaths[7]);
+  const purchasePrices = read(rolloutPaths[3]);
+  assert.match(purchasePrices, /visiblePrices\.map\(\(price, rowIndex\)/);
+  assert.match(purchasePrices, /BusinessTableSequenceCell rowIndex=\{rowIndex\}/);
+
+  const returnCredits = read(rolloutPaths[8]);
+  assert.match(returnCredits, /credits\.map\(\(credit, rowIndex\)/);
+  assert.match(returnCredits, /BusinessTableSequenceCell rowIndex=\{rowIndex\}/);
+  assert.match(returnCredits, /createIdempotencyKey\('customer-return-credit'\)/);
+  assert.doesNotMatch(returnCredits, /Credit từ hàng khách trả/);
+  assert.doesNotMatch(returnCredits, /Customer Return đã nhận/);
+
+  const inventoryBalances = read(rolloutPaths[9]);
   assert.match(inventoryBalances, /filteredBalances\.map\(\(balance, rowIndex\)/);
   assert.match(inventoryBalances, /BusinessTableSequenceCell rowIndex=\{rowIndex\}/);
 
-  const manualInboundHistory = read(rolloutPaths[8]);
+  const manualInboundHistory = read(rolloutPaths[10]);
   assert.match(manualInboundHistory, /history\.map\(\(document, rowIndex\)/);
   assert.match(manualInboundHistory, /BusinessTableSequenceCell rowIndex=\{rowIndex\}/);
+
+  const scopedInventory = read(rolloutPaths[11]);
+  assert.match(scopedInventory, /filteredBalances\.map\(\(balance, rowIndex\)/);
+  assert.match(scopedInventory, /filteredLots\.map\(\(lot, rowIndex\)/);
+
+  const customers = read(rolloutPaths[12]);
+  assert.match(customers, /visibleCustomers\.map\(\(customer, rowIndex\)/);
+  assert.match(customers, /groups\.map\(\(group, rowIndex\)/);
+
+  const suppliers = read(rolloutPaths[13]);
+  assert.match(suppliers, /visibleSuppliers\.map\(\(supplier, rowIndex\)/);
+  assert.match(suppliers, /BusinessTableSequenceCell rowIndex=\{rowIndex\}/);
+
+  const products = read(rolloutPaths[14]);
+  assert.match(products, /visibleProducts\.map\(\(product, rowIndex\)/);
+  assert.match(products, /variants\.map\(\(variant, rowIndex\)/);
+  assert.match(products, /categories\.map\(\(category, rowIndex\)/);
+  assert.match(products, /brands\.map\(\(brand, rowIndex\)/);
 });
