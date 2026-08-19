@@ -92,6 +92,27 @@ function parseScaled(value: string, allowZero = true): bigint | null {
   return !allowZero && scaled === 0n ? null : scaled;
 }
 
+export function compactQuantity(value: string | number | null | undefined): string {
+  const normalized = String(value ?? '').trim();
+  if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(normalized)) return normalized;
+  const [whole, fraction = ''] = normalized.split('.');
+  const compactFraction = fraction.replace(/0+$/, '');
+  return compactFraction ? `${whole}.${compactFraction}` : whole;
+}
+
+function formatScaledQuantity(value: bigint): string {
+  const whole = value / SCALE;
+  const fraction = String(value % SCALE).padStart(6, '0').replace(/0+$/, '');
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
+function stepQuantity(value: string, direction: -1 | 1): string {
+  const current = parseScaled(compactQuantity(value), false);
+  if (current === null) return direction > 0 ? '1' : compactQuantity(value);
+  const next = current + BigInt(direction) * SCALE;
+  return next > 0n ? formatScaledQuantity(next) : compactQuantity(value);
+}
+
 function halfUp(numerator: bigint, denominator: bigint): bigint {
   return (numerator + denominator / 2n) / denominator;
 }
@@ -122,7 +143,7 @@ function versionLines(version?: SalesOrderVersion | null): LineDraft[] {
     sku: line.sku,
     name: line.itemName,
     unitCode: line.unitCode,
-    quantity: line.quantity,
+    quantity: compactQuantity(line.quantity),
     taxMode: line.taxMode,
     taxRate: line.taxRate,
     baseUnitPriceMinor: line.baseUnitPrice ?? line.unitPrice,
@@ -579,6 +600,22 @@ export default function SalesOrderCommercialForm(props: Props) {
     }
   }
 
+  function changeQuantity(index: number, direction: -1 | 1) {
+    setLines((current) => current.map((item, itemIndex) => itemIndex === index ? {
+      ...item,
+      quantity: stepQuantity(item.quantity, direction),
+      priceError: null,
+    } : item));
+    markDirty();
+  }
+
+  function compactLineQuantity(index: number) {
+    setLines((current) => current.map((item, itemIndex) => itemIndex === index ? {
+      ...item,
+      quantity: compactQuantity(item.quantity),
+    } : item));
+  }
+
   function enableManualPrice(index: number) {
     if (!canPriceOverride) return;
     setLines((current) => current.map((line, itemIndex) => itemIndex === index ? {
@@ -725,7 +762,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       ...(estimate.discount > 0n ? { documentDiscountReason: documentDiscountReason.trim() } : {}),
       lines: lines.map((line) => ({
         variantId: line.variantId,
-        quantity: line.quantity,
+        quantity: compactQuantity(line.quantity),
         taxMode: line.taxMode,
         taxRate: line.taxRate,
         expectedSystemUnitPriceMinor: line.systemUnitPriceMinor,
@@ -929,7 +966,24 @@ export default function SalesOrderCommercialForm(props: Props) {
                   </div>
                   {line.priceError && <small className={styles.ineligible}>{line.priceError}</small>}
                 </div>
-                <label><span>SL</span><input inputMode="decimal" value={line.quantity} onChange={(event) => { const value = event.target.value; setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: value, priceError: null } : item)); markDirty(); }} /></label>
+                <div className={styles.quantityCell}>
+                  <span>SL</span>
+                  <div className={styles.quantityStepper}>
+                    <button type="button" className={styles.quantityMinus} aria-label={`Giảm số lượng ${line.sku}`} onClick={() => changeQuantity(index, -1)}>−</button>
+                    <input
+                      aria-label={`Số lượng ${line.sku}`}
+                      inputMode="decimal"
+                      value={line.quantity}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: value, priceError: null } : item));
+                        markDirty();
+                      }}
+                      onBlur={() => compactLineQuantity(index)}
+                    />
+                    <button type="button" className={styles.quantityPlus} aria-label={`Tăng số lượng ${line.sku}`} onClick={() => changeQuantity(index, 1)}>+</button>
+                  </div>
+                </div>
                 <div className={styles.priceCell}><span>Giá nền</span><strong>{line.resolvingPrice ? 'Đang tính…' : vnd(line.baseUnitPriceMinor)}</strong></div>
                 <div className={styles.priceCell}><span>Giá hệ thống</span><strong>{line.resolvingPrice ? 'Đang tính…' : vnd(line.systemUnitPriceMinor)}</strong><small>{pricingSummary(line)}</small></div>
                 <div className={styles.priceCell}>
