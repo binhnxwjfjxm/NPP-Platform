@@ -11,6 +11,7 @@ const bulkUiSource = readFileSync(
   new URL('../app/inventory/adjustments/bulk/bulk-workspace.tsx', import.meta.url),
   'utf8',
 );
+const tabsSource = readFileSync(new URL('../app/inventory/adjustments/adjustment-tabs.tsx', import.meta.url), 'utf8');
 const gatewaySource = readFileSync(new URL('../lib/inventory-adjustment-gateway.ts', import.meta.url), 'utf8');
 
 test('bulk adjustment sheet accepts minimum SKU and actual-stock columns', () => {
@@ -63,6 +64,19 @@ test('bulk adjustment UI follows the compact file-import workflow and stays usab
   assert.match(bulkUiSource, /bulk-adjustment-import-table/);
   assert.match(bulkUiSource, /bulk-adjustment-preview-table/);
   assert.doesNotMatch(bulkUiSource, /styles\.lineCard/);
+});
+
+test('bulk adjustment stays under Điều chỉnh tồn and returns to the created document', () => {
+  assert.match(bulkUiSource, /title="Điều chỉnh tồn"/);
+  assert.match(bulkUiSource, /<InventoryAdjustmentTabs active="bulk" \/>/);
+  assert.match(tabsSource, /Phiếu điều chỉnh/);
+  assert.match(tabsSource, /Điều chỉnh thủ công/);
+  assert.match(tabsSource, /Điều chỉnh hàng loạt/);
+  assert.match(bulkUiSource, /const firstCreated = result\.adjustments\[0\]/);
+  assert.match(bulkUiSource, /adjustment: firstCreated\.id/);
+  assert.match(bulkUiSource, /created: numbers/);
+  assert.match(bulkUiSource, /window\.location\.assign\(`\/inventory\/adjustments\?\$\{targetParams\.toString\(\)\}`\)/);
+  assert.match(bulkUiSource, /chuyển sang tab Phiếu điều chỉnh và mở phiếu vừa tạo/);
 });
 
 test('bulk preview supports inline policy-driven lot and exact-location completion', () => {

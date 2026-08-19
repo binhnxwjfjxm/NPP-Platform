@@ -1,7 +1,6 @@
 'use client';
 
 import { createIdempotencyKey } from '@npp/contracts';
-import Link from 'next/link';
 import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../../components/app-shell-core';
 import { formatQuantity } from '../../../../lib/inventory-types';
@@ -16,6 +15,7 @@ import { readSpreadsheetRows } from '../../../../lib/spreadsheet-reader';
 import type { AdjustmentReason, InventoryAdjustment } from '../../../../lib/inventory-adjustment-types';
 import type { Warehouse } from '../../../../lib/organization-types';
 import fileStyles from '../../opening-balances/opening-balance-csv-workspace.module.css';
+import { InventoryAdjustmentTabs } from '../adjustment-tabs';
 import styles from '../workspace.module.css';
 
 type Props = {
@@ -279,7 +279,16 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
       setPreview(result.preview);
       setPreviewStale(false);
       const numbers = result.adjustments.map((item) => item.adjustmentNumber).join(', ');
-      setMessage(`Đã lập ${result.adjustments.length} phiếu: ${numbers}. Tồn kho chưa thay đổi; kiểm tra phiếu rồi Gửi duyệt theo quy trình hiện tại.`);
+      const firstCreated = result.adjustments[0];
+      if (firstCreated) {
+        const targetParams = new URLSearchParams({
+          adjustment: firstCreated.id,
+          created: numbers,
+        });
+        window.location.assign(`/inventory/adjustments?${targetParams.toString()}`);
+        return;
+      }
+      setMessage('Không có phiếu mới cần lập vì dữ liệu không còn chênh lệch.');
     } catch (cause) {
       setPreview(null);
       setPreviewStale(false);
@@ -307,11 +316,11 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
 
   return (
     <AppShell
-      title="Điều chỉnh tồn hàng loạt"
+      title="Điều chỉnh tồn"
       kicker="Tồn kho & lô hàng"
-      subtitle="Nhập Tồn thực tế từ tệp, kiểm tra chênh lệch rồi lập phiếu Điều chỉnh tồn chuẩn. Bước kiểm tra không làm thay đổi tồn kho."
-      actions={<Link className={styles.secondaryButton} href="/inventory/adjustments">Về Điều chỉnh tồn</Link>}
+      subtitle="Quản lý phiếu điều chỉnh, lập điều chỉnh thủ công hoặc nhập hàng loạt trong cùng một nơi. Tồn kho chỉ thay đổi ở bước Cập nhật tồn kho."
     >
+      <InventoryAdjustmentTabs active="bulk" />
       <main className={fileStyles.page} data-testid="bulk-inventory-adjustment-page">
         {error ? <div className={fileStyles.error} role="alert">{error}</div> : null}
         {message ? <div className={fileStyles.success} role="status">{message}</div> : null}
@@ -348,7 +357,7 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
         </section>
 
         <section className={fileStyles.card} aria-labelledby="bulk-adjustment-info-title">
-          <h2 id="bulk-adjustment-info-title">Thông tin điều chỉnh</h2>
+          <h2 id="bulk-adjustment-info-title">Thông tin điều chỉnh hàng loạt</h2>
           <div className={fileStyles.formGrid}>
             <label>
               <span>Kho *</span>
@@ -554,7 +563,7 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
                 <textarea value={reasonNote} onChange={(event) => { setReasonNote(event.target.value); pendingConfirm.current = null; }} rows={3} placeholder="Ví dụ: Đối chiếu tồn thực tế cuối ngày" />
               </label>
             </div>
-            <p className={fileStyles.helper}>Sau khi lập phiếu, tồn kho vẫn chưa thay đổi. Tiếp tục Gửi duyệt → Duyệt → Cập nhật tồn kho theo luồng Điều chỉnh tồn hiện tại.</p>
+            <p className={fileStyles.helper}>Sau khi lập phiếu, hệ thống chuyển sang tab Phiếu điều chỉnh và mở phiếu vừa tạo. Tồn kho vẫn chưa thay đổi; tiếp tục Gửi duyệt → Duyệt → Cập nhật tồn kho.</p>
             <div className={styles.actionRow}>
               <button type="button" className={styles.primaryButton} onClick={() => void confirm()} disabled={confirmDisabled}>
                 {busy === 'confirm' ? 'Đang lập phiếu…' : 'Lập phiếu điều chỉnh'}

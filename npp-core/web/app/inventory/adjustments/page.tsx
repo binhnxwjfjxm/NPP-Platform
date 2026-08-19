@@ -13,8 +13,14 @@ import InventoryAdjustmentWorkspace from './workspace';
 
 export const dynamic = 'force-dynamic';
 
-export default async function InventoryAdjustmentsPage() {
-  const headerStore = await headers();
+type PageSearchParams = Promise<{
+  tab?: string;
+  adjustment?: string;
+  created?: string;
+}>;
+
+export default async function InventoryAdjustmentsPage({ searchParams }: { searchParams: PageSearchParams }) {
+  const [{ tab, adjustment, created }, headerStore] = await Promise.all([searchParams, headers()]);
   const requestId = resolveInventoryAdjustmentRequestId(headerStore.get('x-request-id'));
   let adjustments: InventoryAdjustment[] = [];
   let reasons: AdjustmentReason[] = [];
@@ -37,6 +43,15 @@ export default async function InventoryAdjustmentsPage() {
   } catch (error) {
     initialError = error instanceof Error ? error.message : 'Không tải được dữ liệu xử lý tồn kho';
   }
-  return <InventoryAdjustmentWorkspace initialAdjustments={adjustments} reasons={reasons} balances={balances}
-    warehouses={warehouses} locations={locations} initialError={initialError} />;
+  return <InventoryAdjustmentWorkspace
+    initialAdjustments={adjustments}
+    reasons={reasons}
+    balances={balances}
+    warehouses={warehouses}
+    locations={locations}
+    initialError={initialError}
+    initialTab={tab === 'manual' ? 'manual' : 'documents'}
+    initialAdjustmentId={adjustment?.trim() || null}
+    createdSummary={created?.trim() || null}
+  />;
 }
