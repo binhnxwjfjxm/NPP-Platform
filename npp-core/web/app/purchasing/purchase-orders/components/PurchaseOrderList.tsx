@@ -8,6 +8,10 @@ import {
   purchaseOrderActionPolicy,
   PURCHASE_ORDER_STATUS_LABELS,
 } from '../../../../lib/purchase-order-types';
+import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from '../../../components/business-table-sequence';
 import styles from '../../../organization/organization.module.css';
 import PurchaseOrderPrintSheet from '../PurchaseOrderPrintSheet';
 
@@ -15,6 +19,7 @@ type Props = {
   purchaseOrders: PurchaseOrder[];
   permissionKeys: readonly string[];
   busyId: string | null;
+  rowNumberOffset?: number;
   onView: (purchaseOrder: PurchaseOrder) => void;
   onEdit: (purchaseOrder: PurchaseOrder) => void;
   onSubmit: (purchaseOrder: PurchaseOrder) => void;
@@ -32,6 +37,7 @@ export default function PurchaseOrderList({
   purchaseOrders,
   permissionKeys,
   busyId,
+  rowNumberOffset = 0,
   onView,
   onEdit,
   onSubmit,
@@ -51,6 +57,7 @@ export default function PurchaseOrderList({
       <table className={styles.table} data-testid="purchase-orders-table">
         <thead>
           <tr>
+            <BusinessTableSequenceHeader />
             <th>Số đơn</th>
             <th>Ngày đặt</th>
             <th>Nhà cung cấp</th>
@@ -63,11 +70,12 @@ export default function PurchaseOrderList({
           </tr>
         </thead>
         <tbody>
-          {purchaseOrders.map((purchaseOrder) => {
+          {purchaseOrders.map((purchaseOrder, rowIndex) => {
             const policy = purchaseOrderActionPolicy(purchaseOrder.status, permissionKeys);
             const disabled = busyId === purchaseOrder.id;
             return (
               <tr key={purchaseOrder.id} data-testid={`purchase-order-row-${purchaseOrder.id}`}>
+                <BusinessTableSequenceCell rowIndex={rowIndex} offset={rowNumberOffset} />
                 <td>
                   <div className={styles.entityStack}>
                     <strong>{purchaseOrder.number || 'Chưa cấp số'}</strong>

@@ -1,6 +1,10 @@
 import Link from 'next/link';
 import { AppShell } from '../../components/app-shell';
 import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from '../../components/business-table-sequence';
+import {
   getReceivable,
   listReceivableBalances,
   listReceivables,
@@ -123,6 +127,7 @@ export default async function ReceivablesPage({ searchParams }: PageProps) {
             <table className={styles.table} data-testid="receivable-balances-table">
               <thead>
                 <tr>
+                  <BusinessTableSequenceHeader />
                   <th>Khách hàng</th>
                   <th>Tiền tệ</th>
                   <th className={styles.amount}>Số dư</th>
@@ -131,8 +136,9 @@ export default async function ReceivablesPage({ searchParams }: PageProps) {
                 </tr>
               </thead>
               <tbody>
-                {balances.map((item) => (
+                {balances.map((item, rowIndex) => (
                   <tr key={`${item.customerId}-${item.currencyCode}`}>
+                    <BusinessTableSequenceCell rowIndex={rowIndex} />
                     <td>
                       <strong>{item.customerCode}</strong><br />
                       <span className={styles.muted}>{item.customerName}</span>
@@ -144,7 +150,7 @@ export default async function ReceivablesPage({ searchParams }: PageProps) {
                   </tr>
                 ))}
                 {!balances.length ? (
-                  <tr><td colSpan={5} className={styles.muted}>Chưa có số dư công nợ khách hàng.</td></tr>
+                  <tr><td colSpan={6} className={styles.muted}>Chưa có số dư công nợ khách hàng.</td></tr>
                 ) : null}
               </tbody>
             </table>
@@ -157,6 +163,7 @@ export default async function ReceivablesPage({ searchParams }: PageProps) {
             <table className={styles.table} data-testid="receivables-table">
               <thead>
                 <tr>
+                  <BusinessTableSequenceHeader />
                   <th>Nguồn phát sinh</th>
                   <th>Khách hàng</th>
                   <th>Đơn bán / Phiếu giao</th>
@@ -167,8 +174,9 @@ export default async function ReceivablesPage({ searchParams }: PageProps) {
                 </tr>
               </thead>
               <tbody>
-                {documents.map((item) => (
+                {documents.map((item, rowIndex) => (
                   <tr key={item.id}>
+                    <BusinessTableSequenceCell rowIndex={rowIndex} />
                     <td>
                       <Link className={styles.link} href={`/accounting/receivables?id=${item.id}`}>
                         {sourceLabel(item.sourceDocumentType)}
@@ -184,7 +192,7 @@ export default async function ReceivablesPage({ searchParams }: PageProps) {
                   </tr>
                 ))}
                 {!documents.length ? (
-                  <tr><td colSpan={7} className={styles.muted}>Chưa phát sinh chứng từ công nợ khách hàng.</td></tr>
+                  <tr><td colSpan={8} className={styles.muted}>Chưa phát sinh chứng từ công nợ khách hàng.</td></tr>
                 ) : null}
               </tbody>
             </table>
