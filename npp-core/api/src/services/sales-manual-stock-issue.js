@@ -7,7 +7,8 @@ import { reconcileDemandHold } from './sales-fulfillment-hold.js';
 const SCALE = 1_000_000_000_000n;
 
 function failure(code, message, retryable = false, details = {}) {
-  return Object.freeze({ ok: false, code, message, retryable, details });
+  const effectiveRetryable = code === 'MANUAL_STOCK_ISSUE_SHORTAGE' ? true : retryable;
+  return Object.freeze({ ok: false, code, message, retryable: effectiveRetryable, details });
 }
 
 function parseQuantity(value) {

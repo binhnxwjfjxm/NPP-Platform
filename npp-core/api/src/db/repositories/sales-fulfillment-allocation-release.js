@@ -10,6 +10,28 @@ export async function setManualEditReleaseWriteContexts(client) {
   );
 }
 
+export async function hasPhysicalExecutionFacts(client, {
+  installationId,
+  salesOrderId,
+}) {
+  const result = await client.query(
+    `SELECT EXISTS (
+       SELECT 1
+         FROM sales.sales_order_fulfillment_demands demand
+        WHERE demand.installation_id = $1
+          AND demand.sales_order_id = $2
+          AND demand.state = 'ACTIVE'
+          AND (
+            demand.picked_base_quantity <> 0
+            OR demand.packed_base_quantity <> 0
+            OR demand.issued_base_quantity <> 0
+          )
+     ) AS blocked`,
+    [installationId, salesOrderId],
+  );
+  return result.rows[0]?.blocked === true;
+}
+
 export async function releaseAllocation(client, {
   installationId,
   allocationId,

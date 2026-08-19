@@ -87,7 +87,7 @@ test('clean reserved-only order may change delivery execution lane', () => {
   assert.equal(result.ok, true);
 });
 
-test('delivery execution change is blocked after warehouse or delivery execution starts', () => {
+test('allocated-only order may change lane, but physical or delivery execution blocks', () => {
   const baseOrder = {
     status: 'confirmed',
     deliveryMode: 'DELIVERY',
@@ -115,8 +115,14 @@ test('delivery execution change is blocked after warehouse or delivery execution
     ...baseOrder,
     fulfillment: { totals: { ...baseOrder.fulfillment.totals, allocatedBaseQuantity: '1' } },
   }, target, cleanFacts);
-  assert.equal(allocated.ok, false);
-  assert.equal(allocated.code, 'DELIVERY_EXECUTION_CHANGE_BLOCKED');
+  assert.equal(allocated.ok, true);
+
+  const picked = deliveryExecutionTransitionGuard({
+    ...baseOrder,
+    fulfillment: { totals: { ...baseOrder.fulfillment.totals, pickedBaseQuantity: '1' } },
+  }, target, cleanFacts);
+  assert.equal(picked.ok, false);
+  assert.equal(picked.code, 'DELIVERY_EXECUTION_CHANGE_BLOCKED');
 
   const deliveryOrder = deliveryExecutionTransitionGuard(baseOrder, target, {
     ...cleanFacts,
