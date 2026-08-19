@@ -6,8 +6,11 @@ import { getPool, closePool } from '../src/db/pool.js';
 import {
   confirmSalesOrder,
   createSalesOrder,
+  getSalesOrder,
   quickEditManualSalesOrder,
 } from '../src/services/sales-order.js';
+import { issueManualSalesOrderStock } from '../src/services/sales-manual-stock-issue.js';
+import { completeManualSalesOrder } from '../src/services/sales-manual-completion.js';
 
 function testConfig() {
   return loadConfig({
@@ -229,7 +232,7 @@ async function demandRows(client, installationId, salesOrderId) {
   return result.rows;
 }
 
-test('Giao thủ công sửa thực tế được thêm/xóa SKU trước Xuất kho và giữ nguyên nguồn đơn', async () => {
+test('Giao thủ công sửa SKU, Xuất kho và Hoàn tất giao giữ nguồn đơn và ghi nhận công nợ', async () => {
   const config = testConfig();
   const pool = getPool(config);
   try {
@@ -320,6 +323,64 @@ test('Giao thủ công sửa thực tế được thêm/xóa SKU trước Xuất
         [config.installationId, created.salesOrder.id],
       );
       assert.deepEqual(held.rows, [{ base_variant_id: fixture.secondVariantId, held: '3.000000000000' }]);
+
+      const issued = await issueManualSalesOrderStock(client, {
+        requestContext: { ...context, requestId: `req-${randomUUID()}` },
+        id: created.salesOrder.id,
+        expectedRevision: removedCurrent.revision,
+        idempotencyKey: `manual-stock-issue.${randomUUID()}`,
+      });
+      assert.equal(issued.ok, true, JSON.stringify(issued));
+
+      const afterIssue = await getSalesOrder(client, {
+        requestContext: { ...context, requestId: `req-${randomUUID()}` },
+        id: created.salesOrder.id,
+      });
+      assert.equal(afterIssue.ok, true, JSON.stringify(afterIssue));
+      assert.equal(afterIssue.salesOrder.fulfillmentStatus, 'issued');
+
+      const completed = await completeManualSalesOrder(client, {
+        requestContext: { ...context, requestId: `req-${randomUUID()}` },
+        id: created.salesOrder.id,
+        expectedRevision: afterIssue.salesOrder.revision,
+      });
+      assert.equal(completed.ok, true, JSON.stringify(completed));
+
+      const accountingState = await client.query(
+        `SELECT sales_order.status,
+                sales_order.delivery_status,
+                sales_order.settlement_status,
+                receivable.source_document_type,
+                receivable.original_amount::text,
+                receivable.remaining_amount::text,
+                receivable.status AS receivable_status,
+                (
+                  SELECT count(*)::int
+                    FROM accounting.receivable_documents payment
+                   WHERE payment.installation_id = sales_order.installation_id
+                     AND payment.customer_id = receivable.customer_id
+                     AND payment.source_document_type = 'CUSTOMER_PAYMENT'
+                ) AS payment_documents
+           FROM sales.sales_orders sales_order
+           JOIN accounting.receivable_documents receivable
+             ON receivable.installation_id = sales_order.installation_id
+            AND receivable.source_document_type = 'MANUAL_SALES_ORDER'
+            AND receivable.source_document_id = sales_order.id
+          WHERE sales_order.installation_id = $1
+            AND sales_order.id = $2::uuid`,
+        [config.installationId, created.salesOrder.id],
+      );
+      assert.equal(accountingState.rows.length, 1);
+      assert.deepEqual(accountingState.rows[0], {
+        status: 'closed',
+        delivery_status: 'delivered',
+        settlement_status: 'pending',
+        source_document_type: 'MANUAL_SALES_ORDER',
+        original_amount: '60000.000000',
+        remaining_amount: '60000.000000',
+        receivable_status: 'open',
+        payment_documents: 0,
+      });
 
       await client.query('ROLLBACK');
     } finally {
