@@ -41,7 +41,7 @@ test('Lô 2 vẫn giữ bước nhập trực tiếp và Excel xlsx\/CSV trướ
 });
 
 test('giao diện chỉ hỏi dữ liệu bổ sung sau kết quả kiểm tra', () => {
-  const coreTable = workspace.indexOf('<thead><tr><th>#</th><th>SKU *</th><th>Tên sản phẩm</th><th>ĐVT</th><th>Số lượng *</th><th>Giá vốn</th>');
+  const coreTable = workspace.indexOf('<thead><tr><BusinessTableSequenceHeader /><th>SKU *</th><th>Tên sản phẩm</th><th>ĐVT</th><th>Số lượng *</th><th>Giá vốn</th>');
   const conditionalFields = workspace.indexOf("row.requiredFields.includes('LOCATION')");
   assert.ok(coreTable > 0 && conditionalFields > coreTable);
   for (const field of ["'LOCATION'", "'LOT'", "'EXPIRY'", "'COST'"]) assert.match(workspace, new RegExp(field));
