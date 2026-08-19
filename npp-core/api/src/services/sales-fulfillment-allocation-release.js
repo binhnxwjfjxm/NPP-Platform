@@ -6,6 +6,27 @@ import * as repository from '../db/repositories/sales-fulfillment-allocation-rel
 
 const ZERO_DECIMAL_PATTERN = /^[+-]?0+(?:\.0+)?$/;
 
+const RELEASE_INTENTS = Object.freeze({
+  'manual-edit': Object.freeze({
+    operation: 'manual-sales-order-edit',
+    reason: 'Sửa đơn Giao thủ công trước khi xử lý hàng',
+    blockedCode: 'MANUAL_DELIVERY_EDIT_NOT_AVAILABLE',
+    blockedMessage: 'Đơn đã bắt đầu soạn, đóng gói hoặc giao hàng nên không thể sửa trực tiếp.',
+  }),
+  amendment: Object.freeze({
+    operation: 'sales-order-amendment',
+    reason: 'Điều chỉnh đơn trước khi xử lý hàng',
+    blockedCode: 'SALES_ORDER_AMENDMENT_BLOCKED',
+    blockedMessage: 'Đơn đã bắt đầu soạn, đóng gói hoặc giao hàng nên không thể xác nhận thay đổi.',
+  }),
+  cancel: Object.freeze({
+    operation: 'sales-order-cancel',
+    reason: 'Hủy đơn trước khi xử lý hàng',
+    blockedCode: 'SALES_ORDER_CANCEL_BLOCKED',
+    blockedMessage: 'Đơn đã bắt đầu soạn, đóng gói hoặc giao hàng nên không thể hủy trực tiếp.',
+  }),
+});
+
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
 }
@@ -29,10 +50,18 @@ function deterministicUuid(value) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-function childIdempotencyKey(parentKey, allocationId) {
+function releaseIntent(intentName) {
+  return RELEASE_INTENTS[intentName] ?? RELEASE_INTENTS['manual-edit'];
+}
+
+function childIdempotencyKey(parentKey, allocationId, intentName = 'manual-edit') {
+  const legacyManualEdit = intentName === 'manual-edit';
+  const seed = legacyManualEdit
+    ? `${parentKey}|${allocationId}`
+    : `${parentKey}|${allocationId}|${intentName}`;
   return createIdempotencyKey(
-    'sales-manual-edit-release',
-    deterministicUuid(`${parentKey}|${allocationId}`),
+    legacyManualEdit ? 'sales-manual-edit-release' : 'sales-pre-execution-release',
+    deterministicUuid(seed),
   );
 }
 
@@ -51,6 +80,7 @@ async function releaseInventoryReservation(client, {
   reservation,
   allocation,
   occurredAt,
+  intent,
 }) {
   const updated = await inventoryReservationRepository.updateReservationState(client, {
     installationId: requestContext.installationId,
@@ -61,7 +91,7 @@ async function releaseInventoryReservation(client, {
   if (!updated) {
     return failure(
       'FULFILLMENT_ALLOCATION_RELEASE_CONFLICT',
-      'Phân bổ hàng đã thay đổi trong lúc sửa đơn. Hãy tải lại rồi thử lại.',
+      'Phân bổ hàng đã thay đổi trong lúc cập nhật đơn. Hãy tải lại rồi thử lại.',
       true,
     );
   }
@@ -69,7 +99,7 @@ async function releaseInventoryReservation(client, {
   const hash = payloadHash({
     reservationId: reservation.id,
     transition: 'RELEASE_TO_RELEASED',
-    reason: 'Sửa đơn Giao thủ công trước khi xử lý hàng',
+    reason: intent.reason,
     allocationId: allocation.id,
   });
   await inventoryReservationRepository.insertReservationEvent(client, {
@@ -83,8 +113,8 @@ async function releaseInventoryReservation(client, {
     payloadHash: hash,
     occurredAt,
     metadata: {
-      action: 'manual-sales-order-edit',
-      reason: 'Sửa đơn Giao thủ công trước khi xử lý hàng',
+      action: intent.operation,
+      reason: intent.reason,
       salesOrderId: allocation.sales_order_id,
       allocationId: allocation.id,
     },
@@ -92,11 +122,13 @@ async function releaseInventoryReservation(client, {
   return Object.freeze({ ok: true, reservation: updated });
 }
 
-export async function releaseManualEditAllocations(client, {
+export async function releasePreExecutionAllocations(client, {
   requestContext,
   salesOrderId,
   idempotencyKey,
+  intentName = 'manual-edit',
 }) {
+  const intent = releaseIntent(intentName);
   await repository.setManualEditReleaseWriteContexts(client);
   const allocations = await allocationRepository.listOrderAllocationsForUpdate(client, {
     installationId: requestContext.installationId,
@@ -106,10 +138,7 @@ export async function releaseManualEditAllocations(client, {
   if (active.length === 0) return Object.freeze({ ok: true, released: Object.freeze([]) });
 
   if (active.some(releaseBlocked)) {
-    return failure(
-      'MANUAL_DELIVERY_EDIT_NOT_AVAILABLE',
-      'Đơn đã bắt đầu soạn, đóng gói hoặc giao hàng nên không thể sửa trực tiếp.',
-    );
+    return failure(intent.blockedCode, intent.blockedMessage);
   }
 
   const released = [];
@@ -141,6 +170,7 @@ export async function releaseManualEditAllocations(client, {
       reservation,
       allocation,
       occurredAt,
+      intent,
     });
     if (!reservationResult.ok) return reservationResult;
 
@@ -152,18 +182,18 @@ export async function releaseManualEditAllocations(client, {
     if (!allocationAfter) {
       return failure(
         'FULFILLMENT_ALLOCATION_RELEASE_CONFLICT',
-        'Phân bổ hàng đã thay đổi trong lúc sửa đơn. Hãy tải lại rồi thử lại.',
+        'Phân bổ hàng đã thay đổi trong lúc cập nhật đơn. Hãy tải lại rồi thử lại.',
         true,
         { allocationId: allocation.id },
       );
     }
 
-    const operationKey = childIdempotencyKey(idempotencyKey, allocation.id);
+    const operationKey = childIdempotencyKey(idempotencyKey, allocation.id, intentName);
     const hash = payloadHash({
       allocationId: allocation.id,
       eventType: 'RELEASED',
       quantity: String(allocation.allocated_base_quantity),
-      reason: 'Sửa đơn Giao thủ công trước khi xử lý hàng',
+      reason: intent.reason,
     });
     await allocationRepository.insertAllocationEvent(client, {
       installationId: requestContext.installationId,
@@ -175,8 +205,8 @@ export async function releaseManualEditAllocations(client, {
       sourceApp: requestContext.sourceApp,
       idempotencyKey: operationKey,
       payloadHash: hash,
-      reason: 'Sửa đơn Giao thủ công trước khi xử lý hàng',
-      metadata: { salesOrderId, operation: 'manual-sales-order-edit' },
+      reason: intent.reason,
+      metadata: { salesOrderId, operation: intent.operation },
       occurredAt,
     });
     released.push(Object.freeze({ allocation: allocationAfter, reservation: reservationResult.reservation }));
@@ -185,9 +215,14 @@ export async function releaseManualEditAllocations(client, {
   return Object.freeze({ ok: true, released: Object.freeze(released) });
 }
 
+export function releaseManualEditAllocations(client, input) {
+  return releasePreExecutionAllocations(client, { ...input, intentName: 'manual-edit' });
+}
+
 export const manualEditAllocationReleaseInternals = Object.freeze({
   deterministicUuid,
   childIdempotencyKey,
   releaseBlocked,
   payloadHash,
+  releaseIntent,
 });
