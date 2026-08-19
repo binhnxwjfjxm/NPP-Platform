@@ -93,18 +93,17 @@ async function seedFixture(pool, installationId) {
     `INSERT INTO shared.products
       (id, installation_id, code, name, is_orderable, is_active, created_by, updated_by)
      VALUES
-      ($1,$3,$4,$5,true,true,$9,$9),
-      ($2,$3,$6,$7,true,true,$9,$9)`,
+      ($1,$2,$3,$4,true,true,$5,$5),
+      ($6,$2,$7,$8,true,true,$5,$5)`,
     [
       firstProductId,
-      secondProductId,
       installationId,
       `P1-${suffix}`,
       `Sản phẩm 1 ${suffix}`,
+      actor,
+      secondProductId,
       `P2-${suffix}`,
       `Sản phẩm 2 ${suffix}`,
-      null,
-      actor,
     ],
   );
   await pool.query(
