@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import {
   buildAuditRecord,
   buildOutboxEvent,
@@ -6,6 +7,7 @@ import {
   insertOutboxEvent,
   withAuditOutboxTransaction,
 } from '../audit-outbox.js';
+import { deriveIdempotencyKey } from '../idempotency-derived.js';
 import * as documentNumberRepository from '../db/repositories/document-numbering.js';
 import * as deliveryOrderRepository from '../db/repositories/sales-delivery-orders.js';
 import * as repository from '../db/repositories/sales-delivery-inventory.js';
@@ -15,7 +17,6 @@ import { postServerOwnedSalesMovement } from './sales-inventory-ledger.js';
 import { postReceivableFromPickupHandover } from './customer-receivable.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const QUANTITY_PATTERN = /^(0|[1-9]\d{0,17})(?:\.(\d{1,12}))?$/;
 const CODE_PATTERN = /^[A-Z0-9_.-]{1,64}$/;
 const SCALE = 1_000_000_000_000n;
@@ -79,7 +80,7 @@ function warehouseAllowed(requestContext, warehouseId) {
 }
 
 function validateIdempotencyKey(value) {
-  return IDEMPOTENCY_PATTERN.test(String(value ?? ''))
+  return IDEMPOTENCY_KEY_PATTERN.test(String(value ?? ''))
     ? null
     : failure('INVALID_IDEMPOTENCY_KEY', 'Idempotency key must use 1-128 safe characters');
 }
@@ -398,7 +399,7 @@ async function executeIssue({
             sourceDocumentType: 'DELIVERY_ORDER',
             sourceDocumentId: deliveryOrderId,
             sourceLineId: issueLineId,
-            idempotencyKey: `${idempotencyKey}:consume:${index + 1}`.slice(0, 128),
+            idempotencyKey: deriveIdempotencyKey(`delivery-issue-consume-${index + 1}`, idempotencyKey),
             payloadHash: payloadHash(adjustmentPayload),
             actorId: requestContext.actorId,
             requestId: requestContext.requestId,
@@ -411,7 +412,7 @@ async function executeIssue({
         const documentDate = timestampDateOnly(normalizedOccurredAt);
         const movementResult = await postServerOwnedSalesMovement(client, {
           requestContext,
-          idempotencyKey: `delivery-issue:${idempotencyKey}`.slice(0, 128),
+          idempotencyKey: deriveIdempotencyKey('delivery-issue-movement', idempotencyKey),
           payload: {
             movementType: 'SALES_DELIVERY_ISSUE',
             direction: 'OUT',
@@ -678,7 +679,7 @@ export async function executeReverseDeliveryInventoryIssue({
         if (!before.ok) return { failed: before };
         const reversal = await reverseInventoryMovement(client, {
           requestContext,
-          idempotencyKey: `delivery-reversal:${idempotencyKey}`.slice(0, 128),
+          idempotencyKey: deriveIdempotencyKey('delivery-issue-reversal', idempotencyKey),
           movementId: issue.inventory_movement_id,
           payload: { documentDate, reasonCode, reasonNote },
         });
@@ -707,7 +708,7 @@ export async function executeReverseDeliveryInventoryIssue({
             sourceDocumentType: 'DELIVERY_ORDER_REVERSAL',
             sourceDocumentId: deliveryOrderId,
             sourceLineId: line.id,
-            idempotencyKey: `${idempotencyKey}:restore:${index + 1}`.slice(0, 128),
+            idempotencyKey: deriveIdempotencyKey(`delivery-issue-restore-${index + 1}`, idempotencyKey),
             payloadHash: payloadHash(adjustmentPayload),
             actorId: requestContext.actorId,
             requestId: requestContext.requestId,
@@ -1352,7 +1353,10 @@ async function executeCustomerReturnTransition({
           numberAllocation = await allocateDocumentNumber(client, {
             installationId: requestContext.installationId,
             seriesId: series.id,
-            idempotencyKey: `customer-return:${customerReturnId}:receive:${idempotencyKey}`.slice(0, 128),
+            idempotencyKey: deriveIdempotencyKey(
+              'customer-return-number',
+              `${customerReturnId}.${idempotencyKey}`,
+            ),
             payload: { documentDate: receiveInput.documentDate, metadata: { customerReturnId } },
             actorId: requestContext.actorId,
             requestId: requestContext.requestId,
@@ -1361,7 +1365,7 @@ async function executeCustomerReturnTransition({
           if (!numberAllocation.ok) return { failed: numberAllocation };
           const movement = await postServerOwnedSalesMovement(client, {
             requestContext,
-            idempotencyKey: `customer-return:${idempotencyKey}`.slice(0, 128),
+            idempotencyKey: deriveIdempotencyKey('customer-return-movement', idempotencyKey),
             payload: {
               movementType: 'SALES_CUSTOMER_RETURN',
               direction: 'IN',

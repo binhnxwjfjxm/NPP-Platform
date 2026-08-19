@@ -33,6 +33,21 @@ test('Delivery dispatch inventory issue requires a trusted Logistics source', as
   assert.equal(result.code, 'TRUSTED_LOGISTICS_SOURCE_REQUIRED');
 });
 
+test('Delivery inventory child operations use the shared canonical idempotency generator', () => {
+  const service = readFileSync(new URL('../src/services/sales-delivery-inventory.js', import.meta.url), 'utf8');
+  assert.match(service, /import \{ IDEMPOTENCY_KEY_PATTERN \} from '@npp\/contracts'/);
+  assert.match(service, /import \{ deriveIdempotencyKey \} from '\.\.\/idempotency-derived\.js'/);
+  for (const operation of [
+    'delivery-issue-movement',
+    'delivery-issue-reversal',
+    'customer-return-number',
+    'customer-return-movement',
+  ]) {
+    assert.match(service, new RegExp(`deriveIdempotencyKey\\(\\s*'${operation}'`));
+  }
+  assert.doesNotMatch(service, /idempotencyKey:\s*`[^`]*:/);
+});
+
 test('Customer Return input rejects duplicate origins and over-precision', () => {
   const invalidCreate = salesDeliveryInventoryInternals.validateCreateReturnPayload({
     lines: [

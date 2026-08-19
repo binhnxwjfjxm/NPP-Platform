@@ -237,6 +237,12 @@ export async function listTripStops(client, { installationId, tripId }) {
       WHERE stop.installation_id = $1 AND stop.trip_id = $2
       GROUP BY stop.id
       HAVING count(assignment.id) > 0
+          OR NOT EXISTS (
+            SELECT 1
+              FROM logistics.trip_order_assignments historical_assignment
+             WHERE historical_assignment.installation_id = stop.installation_id
+               AND historical_assignment.trip_stop_id = stop.id
+          )
       ORDER BY stop.stop_sequence, stop.id`,
     [installationId, tripId],
   );
