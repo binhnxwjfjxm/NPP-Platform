@@ -74,9 +74,9 @@ test('execution unwind covers pre-delivery trip, inventory and warehouse state b
   assert.match(unwindSource, /recoveryUnassign/);
   assert.match(unwindSource, /reverseInventoryMovement/);
   assert.match(unwindSource, /INVENTORY_ISSUE_REVERSED/);
-  assert.match(unwindSource, /fulfillment_reversal_service/);
+  assert.match(unwindSource, /setFulfillmentReversalWriteContexts/);
   assert.match(unwindSource, /fulfillment_release_service/);
-  assert.match(unwindSource, /delivery_issue_service/);
+  assert.match(unwindSource, /setDeliveryIssueWriteContext/);
   assert.match(unwindSource, /Đơn đã giao khách/);
 });
 
