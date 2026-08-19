@@ -2,6 +2,7 @@ import * as legacy from './sales-order-legacy.js';
 import * as pricingService from './pricing.js';
 import * as fulfillmentService from './sales-fulfillment.js';
 import * as manualEditReleaseService from './sales-fulfillment-allocation-release.js';
+import * as salesOrderRepository from '../db/repositories/sales-order.js';
 import * as commercialRepository from '../db/repositories/sales-order-commercial.js';
 import * as sourceEmployeeRepository from '../db/repositories/sales-order-provenance.js';
 import * as deliveryExecutionRepository from '../db/repositories/sales-order-delivery-execution.js';
@@ -18,7 +19,6 @@ export * from './sales-order-legacy.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MONEY_PATTERN = /^(?:0|[1-9]\d{0,18})$/;
-const ZERO_DECIMAL_PATTERN = /^[+-]?0+(?:\.0+)?$/;
 const SCALE = 1_000_000n;
 const DELIVERY_EXECUTION_MODES = new Set(['TRIP', 'MANUAL']);
 
@@ -97,29 +97,12 @@ function manualQuickEditGuard(order) {
       'Sửa trực tiếp sau Chốt chỉ áp dụng cho đơn Giao thủ công.',
     );
   }
-  const totals = order.fulfillment?.totals ?? {};
-  const physicalExecutionStarted = [
-    totals.pickedBaseQuantity,
-    totals.packedBaseQuantity,
-    totals.issuedBaseQuantity,
-  ].some((value) => !ZERO_DECIMAL_PATTERN.test(String(value ?? '0').trim() || '0'));
-  if (physicalExecutionStarted) {
-    return failure(
-      'SALES_ORDER_HAS_EXECUTION_FACTS',
-      'Đơn đã bắt đầu soạn, đóng gói hoặc Xuất kho nên không thể sửa trực tiếp.',
-    );
-  }
   return Object.freeze({ ok: true });
 }
 
 function deliveryExecutionLane(value) {
   if (value?.deliveryMode === 'PICKUP') return 'PICKUP';
   return fallbackExecutionMode(value?.deliveryMode, value?.deliveryExecutionMode);
-}
-
-function nonZeroQuantity(value) {
-  const normalized = String(value ?? '0').trim();
-  return !ZERO_DECIMAL_PATTERN.test(normalized || '0');
 }
 
 function deliveryExecutionTransitionGuard(order, targetVersion, facts) {
@@ -130,24 +113,10 @@ function deliveryExecutionTransitionGuard(order, targetVersion, facts) {
     return Object.freeze({ ok: true });
   }
 
-  const totals = order.fulfillment?.totals ?? {};
-  const warehouseExecutionStarted = [
-    totals.pickedBaseQuantity,
-    totals.packedBaseQuantity,
-    totals.issuedBaseQuantity,
-  ].some(nonZeroQuantity);
-  const deliveryArtifactsExist = Number(facts?.active_delivery_orders ?? 0) > 0
-    || Number(facts?.posted_inventory_issues ?? 0) > 0
-    || Number(facts?.trip_dispatch_items ?? 0) > 0
-    || Number(facts?.delivery_attempts ?? 0) > 0;
-  const deliveryStatusClean = ['pending', 'not_required'].includes(
-    String(facts?.delivery_status ?? order.deliveryStatus ?? 'pending'),
-  );
-
-  if (warehouseExecutionStarted || deliveryArtifactsExist || !deliveryStatusClean) {
+  if (Number(facts?.delivery_attempts ?? 0) > 0) {
     return failure(
       'DELIVERY_EXECUTION_CHANGE_BLOCKED',
-      'Đơn đã bắt đầu xử lý kho hoặc giao hàng. Hãy hoàn tất hoặc hủy phần xử lý đang mở trước khi đổi cách giao.',
+      'Đơn đã có kết quả giao khách. Cần xử lý thu hồi hoặc hoàn hàng trước khi đổi cách giao.',
       false,
       {
         from: deliveryExecutionLane(order),
@@ -756,7 +725,7 @@ export async function quickEditManualSalesOrder(client, {
   const amendment = await createSalesOrderAmendment(client, {
     requestContext,
     id,
-    payload: { reason: 'Sửa đơn trước Xuất kho' },
+    payload: { reason: 'Sửa đơn trước khi giao khách' },
   });
   if (!amendment.ok) return amendment;
   const draft = amendment.salesOrder.versions?.find((version) => version.status === 'draft');
@@ -927,6 +896,15 @@ export async function cancelSalesOrder(client, input) {
     id: input.id,
   });
   if (!before.ok) return before;
+
+  const reason = String(input.payload?.reason ?? '').trim();
+  if (!reason || reason.length > 1000) {
+    return failure('CANCELLATION_REASON_REQUIRED', 'Vui lòng nhập lý do hủy đơn, tối đa 1000 ký tự.');
+  }
+  if (!['draft', 'confirmed'].includes(before.salesOrder.status)) {
+    return failure('INVALID_STATUS_TRANSITION', 'Đơn ở trạng thái hiện tại không thể hủy trực tiếp.');
+  }
+
   if (before.salesOrder.status === 'confirmed') {
     const released = await manualEditReleaseService.releasePreExecutionAllocations(client, {
       requestContext: input.requestContext,
@@ -937,13 +915,25 @@ export async function cancelSalesOrder(client, input) {
     if (!released.ok) return released;
   }
 
-  const result = await legacy.cancelSalesOrder(client, input);
-  if (!result.ok) return result;
+  const cancelledId = await salesOrderRepository.cancelSalesOrder(client, {
+    installationId: input.requestContext.installationId,
+    salesOrderId: input.id,
+    reason,
+    actorId: input.requestContext.actorId,
+  });
+  if (!cancelledId) {
+    return failure('CANCEL_CONFLICT', 'Đơn đã thay đổi trong lúc hủy. Hãy tải lại rồi thử lại.', true);
+  }
+
   const fulfillment = await fulfillmentService.cancelSalesOrderFulfillmentDemand(client, {
     requestContext: input.requestContext,
     salesOrderId: input.id,
   });
   if (!fulfillment.ok) return fulfillment;
+  const result = await legacy.getSalesOrder(client, {
+    requestContext: input.requestContext,
+    id: input.id,
+  });
   return enrichResult(client, input.requestContext, result);
 }
 
