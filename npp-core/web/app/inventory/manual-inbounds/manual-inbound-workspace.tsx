@@ -3,6 +3,10 @@
 import { createIdempotencyKey } from '@npp/contracts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from '../../components/business-table-sequence';
 import { readSpreadsheetRows } from '../../../lib/spreadsheet-reader';
 import styles from './manual-inbound-workspace.module.css';
 
@@ -614,15 +618,16 @@ export default function ManualInboundWorkspace() {
         {historyMessage ? <p className={styles.historyMessage}>{historyMessage}</p> : null}
         <div className={styles.historyTableWrap}>
           <table className={styles.historyTable}>
-            <thead><tr><th>Ngày</th><th>Loại nhập</th><th>Số tham chiếu</th><th>Kho</th><th>Trạng thái</th><th /></tr></thead>
-            <tbody>{history.length ? history.map((document) => <tr key={document.id}>
+            <thead><tr><BusinessTableSequenceHeader /><th>Ngày</th><th>Loại nhập</th><th>Số tham chiếu</th><th>Kho</th><th>Trạng thái</th><th /></tr></thead>
+            <tbody>{history.length ? history.map((document, rowIndex) => <tr key={document.id}>
+              <BusinessTableSequenceCell rowIndex={rowIndex} />
               <td>{displayDate(document.documentDate)}</td>
               <td>{inboundTypeLabel(document.inboundType)}</td>
               <td>{document.referenceNumber || '—'}</td>
               <td>{document.warehouseCode} — {document.warehouseName}</td>
               <td><span className={document.status === 'POSTED' ? styles.readyBadge : styles.reversedBadge}>{document.status === 'POSTED' ? 'Đã nhập' : 'Đã đảo'}</span>{document.reversalDate ? <small>Ngày đảo {displayDate(document.reversalDate)}</small> : null}</td>
               <td><div className={styles.actions}><button type="button" className={styles.textButton} onClick={() => void openHistoryDetail(document)}>Xem biến động</button>{document.status === 'POSTED' ? <button type="button" className={styles.textButton} onClick={() => openReverse(document)}>Đảo chứng từ</button> : null}</div></td>
-            </tr>) : <tr><td colSpan={6} className={styles.emptyState}>{historyBusy ? 'Đang tải…' : 'Chưa có chứng từ phù hợp.'}</td></tr>}</tbody>
+            </tr>) : <tr><td colSpan={7} className={styles.emptyState}>{historyBusy ? 'Đang tải…' : 'Chưa có chứng từ phù hợp.'}</td></tr>}</tbody>
           </table>
         </div>
         {reverseDraft ? <div className={styles.reversePanel}>

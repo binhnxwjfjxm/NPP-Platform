@@ -3,6 +3,10 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from '../../components/business-table-sequence';
 import shellStyles from '../../components/app-shell.module.css';
 import styles from '../../organization/organization.module.css';
 import localStyles from '../purchase-orders/purchase-orders.module.css';
@@ -610,6 +614,7 @@ export default function SupplierReturnWorkspace({
             <table className={localStyles.linesTable} data-testid="supplier-returns-table">
               <thead>
                 <tr>
+                  <BusinessTableSequenceHeader />
                   <th>Số phiếu</th>
                   <th>Nhà cung cấp</th>
                   <th>Kho</th>
@@ -621,11 +626,12 @@ export default function SupplierReturnWorkspace({
                 </tr>
               </thead>
               <tbody>
-                {visibleItems.map((supplierReturn) => {
+                {visibleItems.map((supplierReturn, rowIndex) => {
                   const policy = supplierReturnActionPolicy(supplierReturn.status, initialPermissionKeys);
                   const disabled = busyId === supplierReturn.id;
                   return (
                     <tr key={supplierReturn.id} data-testid={`supplier-return-row-${supplierReturn.id}`}>
+                      <BusinessTableSequenceCell rowIndex={rowIndex} />
                       <td>
                         <div className={localStyles.lineIdentity}>
                           <strong>{supplierReturn.documentNumber || 'Chưa cấp số'}</strong>

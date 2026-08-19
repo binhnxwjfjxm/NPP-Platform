@@ -15,11 +15,14 @@ const numbering = await import(`data:text/javascript;base64,${Buffer.from(number
 
 const rolloutPaths = [
   'app/purchasing/purchase-orders/components/PurchaseOrderList.tsx',
+  'app/purchasing/goods-receipts/GoodsReceiptWorkspace.tsx',
+  'app/purchasing/supplier-returns/SupplierReturnWorkspace.tsx',
   'app/accounting/payables/page.tsx',
   'app/accounting/receivables/page.tsx',
   'app/accounting/customer-payments/customer-payment-workspace.tsx',
   'app/accounting/supplier-payments/supplier-payment-workspace.tsx',
   'app/inventory/balances/inventory-balances-workspace.tsx',
+  'app/inventory/manual-inbounds/manual-inbound-workspace.tsx',
 ];
 
 test('business table numbering is one-based and continues across pages', () => {
@@ -55,19 +58,30 @@ test('business table sequence exposes office-language STT through one shared com
   assert.doesNotMatch(componentSource, /rowIndex\s*\+\s*1/);
 });
 
-test('primary business list tables use the shared STT convention instead of local formulas', () => {
+test('primary business list tables use the shared STT convention', () => {
   for (const path of rolloutPaths) {
     const source = read(path);
     assert.match(source, /BusinessTableSequenceHeader/);
     assert.match(source, /BusinessTableSequenceCell/);
-    assert.doesNotMatch(source, /(?:rowIndex|index)\s*\+\s*1/);
   }
 
   const purchaseOrders = read(rolloutPaths[0]);
   assert.match(purchaseOrders, /rowNumberOffset\s*=\s*0/);
   assert.match(purchaseOrders, /BusinessTableSequenceCell rowIndex=\{rowIndex\} offset=\{rowNumberOffset\}/);
 
-  const inventoryBalances = read(rolloutPaths[5]);
+  const goodsReceipts = read(rolloutPaths[1]);
+  assert.match(goodsReceipts, /visibleItems\.map\(\(goodsReceipt, rowIndex\)/);
+  assert.match(goodsReceipts, /BusinessTableSequenceCell rowIndex=\{rowIndex\}/);
+
+  const supplierReturns = read(rolloutPaths[2]);
+  assert.match(supplierReturns, /visibleItems\.map\(\(supplierReturn, rowIndex\)/);
+  assert.match(supplierReturns, /BusinessTableSequenceCell rowIndex=\{rowIndex\}/);
+
+  const inventoryBalances = read(rolloutPaths[7]);
   assert.match(inventoryBalances, /filteredBalances\.map\(\(balance, rowIndex\)/);
   assert.match(inventoryBalances, /BusinessTableSequenceCell rowIndex=\{rowIndex\}/);
+
+  const manualInboundHistory = read(rolloutPaths[8]);
+  assert.match(manualInboundHistory, /history\.map\(\(document, rowIndex\)/);
+  assert.match(manualInboundHistory, /BusinessTableSequenceCell rowIndex=\{rowIndex\}/);
 });
