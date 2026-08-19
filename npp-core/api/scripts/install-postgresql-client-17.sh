@@ -3,7 +3,7 @@ set -euo pipefail
 
 PG17_BIN=/usr/lib/postgresql/17/bin
 NETWORK_TIMEOUT_SECONDS=90
-APT_TIMEOUT_SECONDS=120
+APT_TIMEOUT_SECONDS=240
 
 if [[ -x "${PG17_BIN}/pg_dump" && -x "${PG17_BIN}/pg_restore" ]]; then
   "${PG17_BIN}/pg_dump" --version | grep -Eq ' 17([.]|$)'
@@ -37,6 +37,9 @@ echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] h
 echo 'Refreshing the PostgreSQL package index'
 sudo timeout --foreground --kill-after=15s "${APT_TIMEOUT_SECONDS}s" \
   apt-get \
+  -o Dir::Etc::sourcelist='sources.list.d/pgdg.list' \
+  -o Dir::Etc::sourceparts='-' \
+  -o APT::Get::List-Cleanup='0' \
   -o Acquire::Retries=3 \
   -o Acquire::http::Timeout=30 \
   -o Acquire::https::Timeout=30 \
