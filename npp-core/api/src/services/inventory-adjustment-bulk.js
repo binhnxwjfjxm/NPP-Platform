@@ -235,6 +235,103 @@ async function loadLotMap(client, installationId, baseVariantIds, lotCodes) {
   return map;
 }
 
+function sameCode(left, right) {
+  return String(left ?? '').trim().toUpperCase() === String(right ?? '').trim().toUpperCase();
+}
+
+function scopeOptions(candidates) {
+  const seen = new Set();
+  const options = [];
+  for (const candidate of candidates ?? []) {
+    const locationCode = String(candidate.location_code ?? '').trim().toUpperCase();
+    if (!locationCode) continue;
+    const lotCode = candidate.lot_code ? String(candidate.lot_code).trim().toUpperCase() : null;
+    const key = `${locationCode}\u001f${lotCode ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    options.push(Object.freeze({
+      locationCode,
+      locationName: candidate.location_name ?? null,
+      lotCode,
+    }));
+  }
+  return Object.freeze(options);
+}
+
+function uniqueCodes(candidates, field) {
+  const seen = new Set();
+  const values = [];
+  for (const candidate of candidates ?? []) {
+    const raw = candidate?.[field];
+    if (raw === undefined || raw === null || String(raw).trim() === '') continue;
+    const value = String(raw).trim().toUpperCase();
+    if (seen.has(value)) continue;
+    seen.add(value);
+    values.push(value);
+  }
+  return values;
+}
+
+function resolveScopeSelection(row, source, balanceCandidates = []) {
+  const candidates = Array.isArray(balanceCandidates) ? balanceCandidates : [];
+  const lotRequired = source?.lot_tracking_mode === 'REQUIRED';
+  const scopeRequired = row.actualScaled6 !== 0n || candidates.length > 0;
+  let locationCode = row.locationCode ?? null;
+  let lotCode = row.lotCode ?? null;
+  let locationAutoFilled = false;
+  let lotAutoFilled = false;
+
+  if (lotRequired && !lotCode) {
+    const lotCandidates = locationCode
+      ? candidates.filter((item) => sameCode(item.location_code, locationCode))
+      : candidates;
+    const lotCodes = uniqueCodes(lotCandidates, 'lot_code');
+    if (lotCodes.length === 1) {
+      [lotCode] = lotCodes;
+      lotAutoFilled = true;
+    }
+  }
+
+  if (!locationCode) {
+    const locationCandidates = lotCode
+      ? candidates.filter((item) => sameCode(item.lot_code, lotCode))
+      : candidates;
+    const locationCodes = uniqueCodes(locationCandidates, 'location_code');
+    if (locationCodes.length === 1) {
+      [locationCode] = locationCodes;
+      locationAutoFilled = true;
+    }
+  }
+
+  if (lotRequired && !lotCode) {
+    const lotCandidates = locationCode
+      ? candidates.filter((item) => sameCode(item.location_code, locationCode))
+      : candidates;
+    const lotCodes = uniqueCodes(lotCandidates, 'lot_code');
+    if (lotCodes.length === 1) {
+      [lotCode] = lotCodes;
+      lotAutoFilled = true;
+    }
+  }
+
+  let filteredCandidates = candidates;
+  if (locationCode) filteredCandidates = filteredCandidates.filter((item) => sameCode(item.location_code, locationCode));
+  if (lotCode) filteredCandidates = filteredCandidates.filter((item) => sameCode(item.lot_code, lotCode));
+
+  return Object.freeze({
+    locationCode,
+    lotCode,
+    lotRequired,
+    scopeRequired,
+    locationAutoFilled,
+    lotAutoFilled,
+    requiresLocationSelection: scopeRequired && !locationCode,
+    requiresLotSelection: scopeRequired && lotRequired && !lotCode,
+    scopeOptions: scopeOptions(candidates),
+    candidates: Object.freeze([...filteredCandidates]),
+  });
+}
+
 function canonicalQuantityForDelta(deltaScaled12, source) {
   const absolute = deltaScaled12 < 0n ? -deltaScaled12 : deltaScaled12;
   if (absolute === 0n) return null;
@@ -308,6 +405,14 @@ function previewRow(row, source, scope, currentScaled12) {
     locationName: scope?.location_name ?? null,
     lotId: scope?.lot_id ?? null,
     lotCode: scope?.lot_code ?? row.lotCode,
+    lotTrackingMode: source?.lot_tracking_mode ?? 'NONE',
+    lotRequired: Boolean(row.lotRequired),
+    scopeRequired: Boolean(row.scopeRequired),
+    requiresLocationSelection: Boolean(row.requiresLocationSelection),
+    requiresLotSelection: Boolean(row.requiresLotSelection),
+    locationAutoFilled: Boolean(row.locationAutoFilled),
+    lotAutoFilled: Boolean(row.lotAutoFilled),
+    scopeOptions: row.scopeOptions ?? Object.freeze([]),
     baseVariantId: source?.base_variant_id ?? null,
     canonicalSourceVariantId: canonical?.sourceVariantId ?? null,
     canonicalQuantity: canonical?.quantity ?? null,
@@ -368,54 +473,108 @@ async function prepareBulkAdjustment(client, { requestContext, payload, lockScop
     if (source && (!source.base_variant_id || !source.base_unit_id || !source.source_unit_id)) {
       rowErrors.push({ code: 'SKU_INVENTORY_SETUP_INCOMPLETE', message: `Dòng ${row.lineNumber}: SKU chưa được thiết lập đầy đủ cho tồn kho.` });
     }
-    if (source?.lot_tracking_mode === 'REQUIRED' && !row.lotCode) {
-      rowErrors.push({ code: 'LOT_REQUIRED', message: `Dòng ${row.lineNumber}: Sản phẩm theo dõi lô. Hãy bổ sung cột Lô.` });
-    }
 
     let scope = null;
+    let selection = Object.freeze({
+      locationCode: row.locationCode,
+      lotCode: row.lotCode,
+      lotRequired: false,
+      scopeRequired: false,
+      locationAutoFilled: false,
+      lotAutoFilled: false,
+      requiresLocationSelection: false,
+      requiresLotSelection: false,
+      scopeOptions: Object.freeze([]),
+      candidates: Object.freeze([]),
+    });
+
     if (source?.base_variant_id) {
-      let candidates = balanceMap.get(source.base_variant_id) ?? [];
-      if (row.locationCode) candidates = candidates.filter((item) => String(item.location_code ?? '').trim().toUpperCase() === row.locationCode);
-      if (row.lotCode) candidates = candidates.filter((item) => String(item.lot_code ?? '').trim().toUpperCase() === row.lotCode);
-      if (candidates.length === 1) {
-        scope = candidates[0];
-      } else if (candidates.length > 1) {
+      const balanceCandidates = balanceMap.get(source.base_variant_id) ?? [];
+      selection = resolveScopeSelection(row, source, balanceCandidates);
+
+      if (selection.requiresLotSelection) {
+        rowErrors.push({
+          code: 'LOT_SELECTION_REQUIRED',
+          message: `Dòng ${row.lineNumber}: Sản phẩm quản lý lô. Hãy chọn Lô * tại Xem trước.`,
+        });
+      }
+      if (selection.requiresLocationSelection) {
+        rowErrors.push({
+          code: 'LOCATION_SELECTION_REQUIRED',
+          message: `Dòng ${row.lineNumber}: Có nhiều hoặc chưa có Vị trí xác định. Hãy chọn Vị trí * tại Xem trước.`,
+        });
+      }
+
+      if (selection.candidates.length === 1) {
+        scope = selection.candidates[0];
+      } else if (selection.candidates.length > 1
+          && !selection.requiresLotSelection
+          && !selection.requiresLocationSelection) {
         rowErrors.push({
           code: 'STOCK_SCOPE_AMBIGUOUS',
-          message: `Dòng ${row.lineNumber}: SKU có nhiều Lô/Vị trí. Hãy bổ sung đủ cột Lô và Vị trí để xác định dòng tồn.`,
+          message: `Dòng ${row.lineNumber}: Có nhiều dòng tồn cùng phù hợp. Hãy kiểm tra lại Lô/Vị trí và chính sách theo dõi của sản phẩm.`,
         });
-      } else if (row.locationCode) {
-        const location = locationMap.get(row.locationCode) ?? null;
-        if (!location) {
-          rowErrors.push({ code: 'LOCATION_NOT_FOUND', message: `Dòng ${row.lineNumber}: Không tìm thấy Vị trí ${row.locationCode} trong kho đã chọn.` });
-        } else {
-          let lot = null;
-          if (row.lotCode) {
-            lot = lotMap.get(`${source.base_variant_id}\u001f${row.lotCode}`) ?? null;
-            if (!lot) rowErrors.push({ code: 'LOT_NOT_FOUND', message: `Dòng ${row.lineNumber}: Không tìm thấy Lô ${row.lotCode} của SKU này.` });
-          }
-          if (!row.lotCode || lot) {
-            scope = {
-              base_variant_id: source.base_variant_id,
-              location_id: location.id,
-              location_code: location.code,
-              location_name: location.name,
-              lot_id: lot?.id ?? null,
-              lot_code: lot?.lot_code ?? null,
-              on_hand_quantity: '0',
-            };
-          }
+      }
+
+      if (!scope && row.locationCode && !locationMap.get(row.locationCode)) {
+        rowErrors.push({ code: 'LOCATION_NOT_FOUND', message: `Dòng ${row.lineNumber}: Không tìm thấy Vị trí ${row.locationCode} trong kho đã chọn.` });
+      }
+      if (!scope && row.lotCode && !lotMap.get(`${source.base_variant_id}\u001f${row.lotCode}`)) {
+        rowErrors.push({ code: 'LOT_NOT_FOUND', message: `Dòng ${row.lineNumber}: Không tìm thấy Lô ${row.lotCode} của SKU này.` });
+      }
+
+      if (!scope
+          && !selection.requiresLotSelection
+          && !selection.requiresLocationSelection
+          && selection.locationCode) {
+        const location = locationMap.get(selection.locationCode) ?? null;
+        const lot = selection.lotCode
+          ? (lotMap.get(`${source.base_variant_id}\u001f${selection.lotCode}`) ?? null)
+          : null;
+        const locationWasEntered = Boolean(row.locationCode);
+        const lotWasEntered = Boolean(row.lotCode);
+        const locationValid = !locationWasEntered || Boolean(location);
+        const lotValid = !lotWasEntered || Boolean(lot);
+        if (locationValid && lotValid && location) {
+          scope = {
+            base_variant_id: source.base_variant_id,
+            location_id: location.id,
+            location_code: location.code,
+            location_name: location.name,
+            lot_id: lot?.id ?? null,
+            lot_code: lot?.lot_code ?? null,
+            on_hand_quantity: '0',
+          };
         }
-      } else if (row.actualScaled6 === 0n && candidates.length === 0) {
-        scope = null;
-      } else {
+      }
+
+      if (!scope
+          && row.actualScaled6 !== 0n
+          && !selection.requiresLotSelection
+          && !selection.requiresLocationSelection
+          && rowErrors.length === row.errors.length) {
         rowErrors.push({
           code: 'STOCK_SCOPE_NOT_FOUND',
-          message: `Dòng ${row.lineNumber}: Chưa xác định được dòng tồn. Hãy bổ sung cột Vị trí${source?.lot_tracking_mode === 'REQUIRED' ? ' và Lô' : ''}.`,
+          message: `Dòng ${row.lineNumber}: Chưa xác định được dòng tồn. Hãy chọn Lô/Vị trí cần thiết tại Xem trước.`,
         });
       }
     }
-    return { ...row, errors: rowErrors, source, scope };
+
+    return {
+      ...row,
+      locationCode: selection.locationCode,
+      lotCode: selection.lotCode,
+      lotRequired: selection.lotRequired,
+      scopeRequired: selection.scopeRequired,
+      requiresLocationSelection: selection.requiresLocationSelection,
+      requiresLotSelection: selection.requiresLotSelection,
+      locationAutoFilled: selection.locationAutoFilled,
+      lotAutoFilled: selection.lotAutoFilled,
+      scopeOptions: selection.scopeOptions,
+      errors: rowErrors,
+      source,
+      scope,
+    };
   });
 
   const scopeCounts = new Map();
@@ -562,5 +721,6 @@ export const inventoryAdjustmentBulkInternals = Object.freeze({
   parseScaled,
   formatScaled,
   normalizeBulkRows,
+  resolveScopeSelection,
   canonicalQuantityForDelta,
 });

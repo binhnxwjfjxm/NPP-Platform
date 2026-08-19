@@ -46,5 +46,5 @@ export function parseBulkInventoryAdjustmentSheet(sheet) {
 }
 
 export function bulkInventoryAdjustmentTemplateCsv() {
-  return '\uFEFFSKU,Tồn thực tế,Vị trí,Lô\n';
+  return '\uFEFFSKU,Tồn thực tế\n';
 }

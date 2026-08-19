@@ -25,6 +25,11 @@ type Props = {
 };
 
 type PreviewError = { code: string; message: string };
+type ScopeOption = {
+  locationCode: string;
+  locationName: string | null;
+  lotCode: string | null;
+};
 type PreviewRow = {
   lineNumber: number;
   sku: string;
@@ -41,6 +46,14 @@ type PreviewRow = {
   locationCode: string | null;
   locationName: string | null;
   lotCode: string | null;
+  lotTrackingMode: string;
+  lotRequired: boolean;
+  scopeRequired: boolean;
+  requiresLocationSelection: boolean;
+  requiresLotSelection: boolean;
+  locationAutoFilled: boolean;
+  lotAutoFilled: boolean;
+  scopeOptions: ScopeOption[];
   status: 'READY' | 'NEEDS_ATTENTION';
   errors: PreviewError[];
 };
@@ -61,6 +74,8 @@ type PreviewResult = {
 type ConfirmResult = { adjustments: InventoryAdjustment[]; preview: PreviewResult };
 type Envelope<T> = { data?: T; error?: { code?: string; message?: string } };
 type PendingConfirm = { signature: string; key: string };
+
+type ScopeField = 'locationCode' | 'lotCode';
 
 const DISPLAY_ROW_LIMIT = 100;
 const DISPLAY_ERROR_LIMIT = 20;
@@ -100,11 +115,34 @@ function directionLabel(direction: PreviewRow['direction']) {
   return 'Không chênh lệch';
 }
 
-function scopeLabel(row: PreviewRow) {
-  const location = row.locationCode
-    ? `${row.locationCode}${row.locationName ? ` — ${row.locationName}` : ''}`
-    : 'Chưa xác định vị trí';
-  return `${location} · ${row.lotCode ? `Lô ${row.lotCode}` : 'Không lô'}`;
+function sameCode(left: string | null | undefined, right: string | null | undefined) {
+  return String(left ?? '').trim().toUpperCase() === String(right ?? '').trim().toUpperCase();
+}
+
+function lotChoices(options: ScopeOption[], locationCode: string) {
+  const seen = new Set<string>();
+  const choices: string[] = [];
+  for (const option of options) {
+    if (locationCode && !sameCode(option.locationCode, locationCode)) continue;
+    const code = String(option.lotCode ?? '').trim().toUpperCase();
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    choices.push(code);
+  }
+  return choices;
+}
+
+function locationChoices(options: ScopeOption[], lotCode: string) {
+  const seen = new Set<string>();
+  const choices: Array<{ code: string; name: string | null }> = [];
+  for (const option of options) {
+    if (lotCode && !sameCode(option.lotCode, lotCode)) continue;
+    const code = String(option.locationCode ?? '').trim().toUpperCase();
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    choices.push({ code, name: option.locationName ?? null });
+  }
+  return choices;
 }
 
 export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, initialError }: Props) {
@@ -121,6 +159,7 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
   const [rows, setRows] = useState<BulkInventoryAdjustmentInputRow[]>([]);
   const [filename, setFilename] = useState('');
   const [preview, setPreview] = useState<PreviewResult | null>(null);
+  const [previewStale, setPreviewStale] = useState(false);
   const [increaseReasonCode, setIncreaseReasonCode] = useState('');
   const [decreaseReasonCode, setDecreaseReasonCode] = useState('');
   const [reasonNote, setReasonNote] = useState('');
@@ -129,10 +168,23 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
   const [message, setMessage] = useState<string | null>(null);
   const pendingConfirm = useRef<PendingConfirm | null>(null);
   const confirmSectionRef = useRef<HTMLElement>(null);
+  const inputRowsByLine = useMemo(() => new Map(rows.map((row) => [row.lineNumber, row])), [rows]);
 
   function invalidatePreview() {
     setPreview(null);
+    setPreviewStale(false);
     setMessage(null);
+    pendingConfirm.current = null;
+  }
+
+  function updateScopeValue(lineNumber: number, field: ScopeField, value: string) {
+    const normalized = value.trim().toUpperCase();
+    setRows((current) => current.map((row) => row.lineNumber === lineNumber
+      ? { ...row, [field]: normalized }
+      : row));
+    setPreviewStale(true);
+    setError(null);
+    setMessage('Đã cập nhật Lô/Vị trí. Bấm “Kiểm tra tệp” để đối chiếu lại trước khi lập phiếu.');
     pendingConfirm.current = null;
   }
 
@@ -147,6 +199,7 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
       setRows(parsed);
       setFilename(file.name);
       setPreview(null);
+      setPreviewStale(false);
       setIncreaseReasonCode('');
       setDecreaseReasonCode('');
       setReasonNote('');
@@ -158,6 +211,7 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
       setRows([]);
       setFilename('');
       setPreview(null);
+      setPreviewStale(false);
       setError(cause instanceof Error ? cause.message : 'Không đọc được tệp đã chọn.');
     } finally {
       setBusy(null);
@@ -176,6 +230,7 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
         body: JSON.stringify({ warehouseId, rows }),
       });
       setPreview(result);
+      setPreviewStale(false);
       pendingConfirm.current = null;
       if (result.ready) {
         const changed = result.totals.increaseRowCount + result.totals.decreaseRowCount;
@@ -183,10 +238,11 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
           ? `Đã kiểm tra toàn bộ ${result.totals.inputRowCount} dòng. Có ${changed} dòng chênh lệch; dùng bước 4 để đi tới lập phiếu.`
           : 'Tất cả dòng đang khớp tồn hệ thống. Không cần lập phiếu điều chỉnh.');
       } else {
-        setMessage(`Có ${result.totals.attentionRowCount} dòng cần xử lý trước khi lập phiếu. Tồn kho chưa thay đổi.`);
+        setMessage(`Có ${result.totals.attentionRowCount} dòng cần xử lý. Bổ sung Lô/Vị trí ngay tại Xem trước nếu được yêu cầu, rồi kiểm tra lại. Tồn kho chưa thay đổi.`);
       }
     } catch (cause) {
       setPreview(null);
+      setPreviewStale(false);
       setError(cause instanceof Error ? cause.message : 'Không kiểm tra được dữ liệu.');
     } finally {
       setBusy(null);
@@ -194,6 +250,7 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
   }
 
   async function confirm() {
+    if (previewStale) return setError('Lô/Vị trí vừa thay đổi. Hãy bấm “Kiểm tra tệp” trước khi lập phiếu.');
     if (!preview?.ready) return setError('Hãy kiểm tra tệp và xử lý hết các dòng cần chú ý trước khi lập phiếu.');
     if (preview.totals.increaseRowCount > 0 && !increaseReasonCode) return setError('Hãy chọn lý do cho các dòng tăng tồn.');
     if (preview.totals.decreaseRowCount > 0 && !decreaseReasonCode) return setError('Hãy chọn lý do cho các dòng giảm tồn.');
@@ -220,10 +277,12 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
       });
       pendingConfirm.current = null;
       setPreview(result.preview);
+      setPreviewStale(false);
       const numbers = result.adjustments.map((item) => item.adjustmentNumber).join(', ');
       setMessage(`Đã lập ${result.adjustments.length} phiếu: ${numbers}. Tồn kho chưa thay đổi; kiểm tra phiếu rồi Gửi duyệt theo quy trình hiện tại.`);
     } catch (cause) {
       setPreview(null);
+      setPreviewStale(false);
       setError(cause instanceof Error ? cause.message : 'Không lập được phiếu điều chỉnh. Hãy kiểm tra tệp lại.');
     } finally {
       setBusy(null);
@@ -232,6 +291,7 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
 
   const hasChanges = Boolean(preview && (preview.totals.increaseRowCount + preview.totals.decreaseRowCount > 0));
   const confirmDisabled = busy !== null
+    || previewStale
     || !preview?.ready
     || !hasChanges
     || (preview.totals.increaseRowCount > 0 && !increaseReasonCode)
@@ -241,7 +301,7 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
   const totalCount = preview?.rows.length ?? rows.length;
 
   function goToConfirm() {
-    if (!preview?.ready || !hasChanges) return;
+    if (previewStale || !preview?.ready || !hasChanges) return;
     confirmSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -281,7 +341,7 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
           </article>
           <article>
             <strong>4</strong><span>Lập phiếu</span>
-            <button type="button" onClick={goToConfirm} disabled={busy !== null || !preview?.ready || !hasChanges}>
+            <button type="button" onClick={goToConfirm} disabled={busy !== null || previewStale || !preview?.ready || !hasChanges}>
               Đi tới lập phiếu
             </button>
           </article>
@@ -307,7 +367,7 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
             </label>
           </div>
           <p className={fileStyles.helper}>
-            Hai cột bắt buộc: <strong>SKU</strong> và <strong>Tồn thực tế</strong>. Nếu SKU có nhiều lô hoặc vị trí, bổ sung <strong>Lô</strong> và <strong>Vị trí</strong>. Mỗi lần xử lý tối đa {MAX_BULK_INVENTORY_ADJUSTMENT_ROWS} dòng.
+            Tệp tối thiểu chỉ cần <strong>SKU</strong> và <strong>Tồn thực tế</strong>. <strong>Lô</strong> chỉ bắt buộc với hàng quản lý lô; <strong>Vị trí</strong> chỉ bắt buộc khi cần xác định chính xác dòng tồn. Nếu chỉ có một lựa chọn hợp lệ, hệ thống tự điền tại Xem trước. Mỗi lần xử lý tối đa {MAX_BULK_INVENTORY_ADJUSTMENT_ROWS} dòng.
           </p>
         </section>
 
@@ -318,7 +378,9 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
               <p>{rows.length ? `${rows.length} dòng trong ${filename}` : 'Chưa có dữ liệu để xem trước.'}</p>
             </div>
             {preview
-              ? <span className={preview.ready ? fileStyles.badgeOk : fileStyles.badgeError}>{preview.ready ? 'Đã kiểm tra' : `${preview.totals.attentionRowCount} dòng cần xử lý`}</span>
+              ? <span className={previewStale || !preview.ready ? fileStyles.badgeError : fileStyles.badgeOk}>
+                  {previewStale ? 'Cần kiểm tra lại' : preview.ready ? 'Đã kiểm tra' : `${preview.totals.attentionRowCount} dòng cần xử lý`}
+                </span>
               : rows.length ? <span className={fileStyles.badgeOk}>Sẵn sàng kiểm tra</span> : null}
           </div>
 
@@ -341,33 +403,92 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
               </table>
             ) : (
               <table data-testid="bulk-adjustment-preview-table">
-                <thead><tr><th>Dòng</th><th>SKU</th><th>Tên hàng</th><th>Phạm vi tồn</th><th>Tồn hệ thống</th><th>Tồn thực tế</th><th>Chênh lệch</th><th>Kết quả</th><th>Trạng thái</th></tr></thead>
+                <thead><tr><th>Dòng</th><th>SKU</th><th>Tên hàng</th><th>Vị trí *</th><th>Lô *</th><th>Tồn hệ thống</th><th>Tồn thực tế</th><th>Chênh lệch</th><th>Kết quả</th><th>Trạng thái</th></tr></thead>
                 <tbody>
-                  {preview.rows.slice(0, DISPLAY_ROW_LIMIT).map((row) => (
-                    <tr key={`${row.lineNumber}-${row.sku}`}>
-                      <td>{row.lineNumber}</td>
-                      <td><strong>{row.sku || '—'}</strong>{row.productCode ? <div className={fileStyles.policyHint}>{row.productCode}</div> : null}</td>
-                      <td>{row.productName || 'Chưa xác định sản phẩm'}</td>
-                      <td>{scopeLabel(row)}</td>
-                      <td>{row.currentBaseQuantity === null ? 'Chưa xác định' : `${formatQuantity(row.currentBaseQuantity)} ${row.baseUnitCode || ''}`}</td>
-                      <td>
-                        {formatQuantity(row.enteredQuantity)} {row.enteredUnitCode || ''}
-                        {row.enteredUnitCode && row.baseUnitCode && row.enteredUnitCode !== row.baseUnitCode && row.actualBaseQuantity !== null
-                          ? <div className={fileStyles.policyHint}>= {formatQuantity(row.actualBaseQuantity)} {row.baseUnitCode}</div>
-                          : null}
-                      </td>
-                      <td>{row.deltaBaseQuantity === null ? 'Chưa xác định' : `${formatSignedExactDecimal(row.deltaBaseQuantity)} ${row.baseUnitCode || ''}`}</td>
-                      <td>{directionLabel(row.direction)}</td>
-                      <td>{row.status === 'READY'
-                        ? <span className={fileStyles.badgeOk}>Sẵn sàng</span>
-                        : <span className={fileStyles.rowError}>{row.errors[0]?.message || 'Cần xử lý'}</span>}</td>
-                    </tr>
-                  ))}
+                  {preview.rows.slice(0, DISPLAY_ROW_LIMIT).map((row) => {
+                    const inputRow = inputRowsByLine.get(row.lineNumber);
+                    const locationValue = String(inputRow?.locationCode || row.locationCode || '').trim().toUpperCase();
+                    const lotValue = String(inputRow?.lotCode || row.lotCode || '').trim().toUpperCase();
+                    const availableLots = lotChoices(row.scopeOptions, locationValue);
+                    const availableLocations = locationChoices(row.scopeOptions, lotValue);
+                    return (
+                      <tr key={`${row.lineNumber}-${row.sku}`}>
+                        <td>{row.lineNumber}</td>
+                        <td><strong>{row.sku || '—'}</strong>{row.productCode ? <div className={fileStyles.policyHint}>{row.productCode}</div> : null}</td>
+                        <td>{row.productName || 'Chưa xác định sản phẩm'}</td>
+                        <td>
+                          {row.scopeRequired || locationValue ? (
+                            availableLocations.length > 0 ? (
+                              <>
+                                <select
+                                  aria-label={`Vị trí dòng ${row.lineNumber}`}
+                                  value={locationValue}
+                                  onChange={(event) => updateScopeValue(row.lineNumber, 'locationCode', event.target.value)}
+                                >
+                                  <option value="">Chọn vị trí</option>
+                                  {availableLocations.map((item) => (
+                                    <option key={item.code} value={item.code}>{item.code}{item.name ? ` — ${item.name}` : ''}</option>
+                                  ))}
+                                </select>
+                                {row.locationAutoFilled && !inputRow?.locationCode ? <div className={fileStyles.policyHint}>Tự điền vì chỉ có một vị trí hợp lệ</div> : null}
+                              </>
+                            ) : (
+                              <input
+                                aria-label={`Vị trí dòng ${row.lineNumber}`}
+                                value={locationValue}
+                                placeholder="Nhập vị trí"
+                                onChange={(event) => updateScopeValue(row.lineNumber, 'locationCode', event.target.value)}
+                              />
+                            )
+                          ) : 'Không cần'}
+                        </td>
+                        <td>
+                          {row.lotRequired ? (
+                            availableLots.length > 0 ? (
+                              <>
+                                <select
+                                  aria-label={`Lô dòng ${row.lineNumber}`}
+                                  value={lotValue}
+                                  onChange={(event) => updateScopeValue(row.lineNumber, 'lotCode', event.target.value)}
+                                >
+                                  <option value="">Chọn lô</option>
+                                  {availableLots.map((code) => <option key={code} value={code}>{code}</option>)}
+                                </select>
+                                {row.lotAutoFilled && !inputRow?.lotCode ? <div className={fileStyles.policyHint}>Tự điền vì chỉ có một lô hợp lệ</div> : null}
+                              </>
+                            ) : (
+                              <input
+                                aria-label={`Lô dòng ${row.lineNumber}`}
+                                value={lotValue}
+                                placeholder="Nhập lô"
+                                onChange={(event) => updateScopeValue(row.lineNumber, 'lotCode', event.target.value)}
+                              />
+                            )
+                          ) : lotValue || 'Không yêu cầu'}
+                        </td>
+                        <td>{row.currentBaseQuantity === null ? 'Chưa xác định' : `${formatQuantity(row.currentBaseQuantity)} ${row.baseUnitCode || ''}`}</td>
+                        <td>
+                          {formatQuantity(row.enteredQuantity)} {row.enteredUnitCode || ''}
+                          {row.enteredUnitCode && row.baseUnitCode && row.enteredUnitCode !== row.baseUnitCode && row.actualBaseQuantity !== null
+                            ? <div className={fileStyles.policyHint}>= {formatQuantity(row.actualBaseQuantity)} {row.baseUnitCode}</div>
+                            : null}
+                        </td>
+                        <td>{row.deltaBaseQuantity === null ? 'Chưa xác định' : `${formatSignedExactDecimal(row.deltaBaseQuantity)} ${row.baseUnitCode || ''}`}</td>
+                        <td>{directionLabel(row.direction)}</td>
+                        <td>{previewStale
+                          ? <span className={fileStyles.rowError}>Cần kiểm tra lại</span>
+                          : row.status === 'READY'
+                            ? <span className={fileStyles.badgeOk}>Sẵn sàng</span>
+                            : <span className={fileStyles.rowError}>{row.errors[0]?.message || 'Cần xử lý'}</span>}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
           </div>
 
+          {preview ? <p className={fileStyles.helper}>* Lô chỉ bắt buộc với hàng quản lý lô. Vị trí chỉ bắt buộc khi dòng điều chỉnh cần một phạm vi tồn chính xác.</p> : null}
           {totalCount > DISPLAY_ROW_LIMIT ? (
             <p className={fileStyles.helper}>Đang hiển thị {displayCount}/{totalCount} dòng để màn hình gọn. Hệ thống vẫn kiểm tra toàn bộ {totalCount} dòng trong tệp.</p>
           ) : null}
@@ -401,7 +522,7 @@ export default function BulkInventoryAdjustmentWorkspace({ reasons, warehouses, 
           </article>
         </section>
 
-        {preview?.ready && hasChanges ? (
+        {preview?.ready && !previewStale && hasChanges ? (
           <section ref={confirmSectionRef} className={fileStyles.card} aria-labelledby="bulk-adjustment-confirm-title">
             <div className={fileStyles.cardHeader}>
               <div>
