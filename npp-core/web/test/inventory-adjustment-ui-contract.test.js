@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const page = readFileSync(new URL('../app/inventory/adjustments/page.tsx', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('../app/inventory/adjustments/workspace.tsx', import.meta.url), 'utf8');
+const tabs = readFileSync(new URL('../app/inventory/adjustments/adjustment-tabs.tsx', import.meta.url), 'utf8');
 const gateway = readFileSync(new URL('../lib/inventory-adjustment-gateway.ts', import.meta.url), 'utf8');
 const types = readFileSync(new URL('../lib/inventory-adjustment-types.ts', import.meta.url), 'utf8');
 const workflowErrors = readFileSync(new URL('../lib/inventory-workflow-errors.ts', import.meta.url), 'utf8');
@@ -25,8 +26,20 @@ test('adjustment screen lives under Inventory and keeps mutation actions in acti
   assert.doesNotMatch(workspace, /Date\.now\(\)/);
 });
 
+test('Điều chỉnh tồn is the parent workspace with three clear child tabs', () => {
+  assert.match(workspace, /title="Điều chỉnh tồn"/);
+  assert.match(tabs, /aria-label="Chức năng Điều chỉnh tồn"/);
+  assert.match(tabs, /Phiếu điều chỉnh/);
+  assert.match(tabs, /Điều chỉnh thủ công/);
+  assert.match(tabs, /Điều chỉnh hàng loạt/);
+  assert.match(tabs, /\/inventory\/adjustments\?tab=manual/);
+  assert.match(tabs, /\/inventory\/adjustments\/bulk/);
+  assert.match(workspace, /activeTab === 'manual'/);
+  assert.match(workspace, /activeTab === 'documents'/);
+});
+
 test('adjustment UI presents the office workflow and one final stock update step', () => {
-  assert.match(workspace, /Lập phiếu điều chỉnh/);
+  assert.match(workspace, /Lập phiếu điều chỉnh thủ công/);
   assert.match(workspace, /Gửi duyệt/);
   assert.match(workspace, />Duyệt</);
   assert.match(workspace, /Cập nhật tồn kho/);
@@ -52,6 +65,14 @@ test('adjustment UI separates source, product, lot, location and quantity effect
   assert.match(workspace, /Tồn sau điều chỉnh/);
   assert.match(workspace, /addExactDecimal\(loadedOnHand, delta\)/);
   assert.match(workspace, /canPreviewResult/);
+});
+
+test('adjustment page can reopen a just-created document without changing business lifecycle', () => {
+  assert.match(page, /searchParams/);
+  assert.match(page, /initialAdjustmentId=\{adjustment\?\.trim\(\) \|\| null\}/);
+  assert.match(page, /createdSummary=\{created\?\.trim\(\) \|\| null\}/);
+  assert.match(workspace, /openDetail\(initialAdjustmentId, true\)/);
+  assert.match(workspace, /Đang mở phiếu vừa lập để kiểm tra và Gửi duyệt/);
 });
 
 test('adjustment errors translate self approval and never expose raw backend messages', () => {
