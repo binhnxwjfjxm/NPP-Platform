@@ -374,6 +374,9 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
+      - name: Install PostgreSQL 17 client tools
+        timeout-minutes: 8
+        run: bash npp-core/api/scripts/install-postgresql-client-17.sh
       - name: Run grouped migration apply, rerun and verification
         shell: bash
         run: |

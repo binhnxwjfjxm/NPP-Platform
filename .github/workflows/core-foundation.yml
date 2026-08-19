@@ -131,8 +131,9 @@ jobs:
       - name: Install workspaces
         run: npm --prefix .. ci
 
-      - name: Install PostgreSQL client tools
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Install PostgreSQL 17 client tools
+        timeout-minutes: 8
+        run: bash ./api/scripts/install-postgresql-client-17.sh
 
       - name: Run migration rehearsal
         env:
