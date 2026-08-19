@@ -10,8 +10,8 @@ import {
   normalizePurchaseOrderSkuSearchFailure,
 } from '../lib/purchase-order-sku-entry.js';
 
-test('requires at least two characters for quick search', () => {
-  assert.equal(MIN_PURCHASE_ORDER_SKU_SEARCH_LENGTH, 2);
+test('searches from the first character', () => {
+  assert.equal(MIN_PURCHASE_ORDER_SKU_SEARCH_LENGTH, 1);
 });
 
 test('remaps legacy missing-order response from dedicated SKU search', () => {

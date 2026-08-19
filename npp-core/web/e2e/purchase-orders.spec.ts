@@ -148,7 +148,7 @@ test.describe('Đơn mua hàng nhà cung cấp', () => {
     await expect(page.getByTestId('purchase-orders-page')).toBeVisible();
   });
 
-  test('không gửi yêu cầu live search khi từ khóa chưa đủ hai ký tự', async ({ page }) => {
+  test('gửi yêu cầu live search từ ký tự đầu tiên', async ({ page }) => {
     let requestCount = 0;
     await page.route('**/api/purchase-orders/sku-search**', async (route) => {
       requestCount += 1;
@@ -159,12 +159,8 @@ test.describe('Đơn mua hàng nhà cung cấp', () => {
     await page.getByTestId('purchase-order-create-button').click();
     const editor = page.getByRole('dialog', { name: 'Đơn mua hàng mới' });
     const skuSearch = editor.getByRole('combobox', { name: /^Từ khóa sản phẩm hoặc SKU/ });
+    await expect(editor.getByText('Nhập ít nhất 1 ký tự để tìm.')).toBeVisible();
     await skuSearch.fill('A');
-    await page.waitForTimeout(500);
-    expect(requestCount).toBe(0);
-    await expect(editor.getByText('Nhập ít nhất 2 ký tự để tìm.')).toBeVisible();
-
-    await skuSearch.fill('AB');
     await expect.poll(() => requestCount).toBe(1);
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });

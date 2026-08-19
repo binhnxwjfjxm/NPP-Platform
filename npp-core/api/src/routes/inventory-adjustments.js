@@ -10,6 +10,7 @@ import {
 } from '../audit-outbox.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
 import * as adjustmentService from '../services/inventory-adjustment.js';
+import * as adjustmentBulkService from '../services/inventory-adjustment-bulk.js';
 
 const PERMISSIONS = Object.freeze({
   read: 'core.inventory-adjustment.read',
@@ -160,6 +161,18 @@ function eventTypeFor(action) {
   }[action];
 }
 
+function adjustmentMetadata(adjustment) {
+  return {
+    status: adjustment.status,
+    adjustmentNumber: adjustment.adjustmentNumber,
+    warehouseId: adjustment.warehouseId,
+    documentKind: adjustment.documentKind,
+    revision: adjustment.revision,
+    inventoryMovementId: adjustment.inventoryMovementId,
+    reversalMovementId: adjustment.reversalMovementId,
+  };
+}
+
 async function executeIdempotentMutation(req, res, options, {
   requestContext,
   route,
@@ -190,15 +203,7 @@ async function executeIdempotentMutation(req, res, options, {
             const result = await mutate(client, keyResult.key);
             if (!result.ok) return { result, failed: true };
             const adjustment = result.adjustment;
-            const metadata = {
-              status: adjustment.status,
-              adjustmentNumber: adjustment.adjustmentNumber,
-              warehouseId: adjustment.warehouseId,
-              documentKind: adjustment.documentKind,
-              revision: adjustment.revision,
-              inventoryMovementId: adjustment.inventoryMovementId,
-              reversalMovementId: adjustment.reversalMovementId,
-            };
+            const metadata = adjustmentMetadata(adjustment);
             await insertAuditRecord(client, buildAuditRecord({
               requestContext,
               action,
@@ -274,6 +279,111 @@ async function executeIdempotentMutation(req, res, options, {
   }
 }
 
+async function executeIdempotentBulkConfirm(req, res, options, { requestContext, payload }) {
+  const keyResult = requireIdempotency(req);
+  if (!keyResult.ok) {
+    sendError(res, apiError(keyResult.code, keyResult.message, {}, false, 400), options.requestId, options.receivedAt);
+    return;
+  }
+  try {
+    const execution = await options.executeRequestWithIdempotency({
+      idempotencyStore: options.idempotencyStore,
+      req,
+      requestContext,
+      requestId: options.requestId,
+      receivedAt: options.receivedAt,
+      route: 'POST /api/inventory/adjustments/bulk-confirm',
+      payload,
+      onProcess: async () => {
+        const transactionResult = await withAuditOutboxTransaction({
+          adapter: options.getPool(),
+          mutate: async (client) => {
+            const result = await adjustmentBulkService.confirmBulkAdjustment(client, { requestContext, payload });
+            if (!result.ok) return { result, failed: true };
+            const eventIds = [];
+            for (const adjustment of result.adjustments) {
+              const metadata = { ...adjustmentMetadata(adjustment), source: 'bulk_actual_stock_file' };
+              await insertAuditRecord(client, buildAuditRecord({
+                requestContext,
+                action: 'create',
+                resourceType: 'inventory_adjustment',
+                resourceId: adjustment.id,
+                afterData: adjustment,
+                metadata,
+              }));
+              const outboxEvent = buildOutboxEvent({
+                requestContext,
+                aggregateType: 'inventory.adjustment',
+                aggregateId: adjustment.id,
+                eventType: eventTypeFor('create'),
+                eventVersion: 1,
+                payload: adjustment,
+                metadata,
+              });
+              await insertOutboxEvent(client, outboxEvent);
+              eventIds.push(outboxEvent.eventId);
+            }
+            return {
+              adjustments: result.adjustments,
+              preview: result.preview,
+              eventId: eventIds[0],
+              expectedAuditCount: result.adjustments.length,
+              expectedOutboxCount: result.adjustments.length,
+            };
+          },
+        });
+        if (transactionResult.failed) {
+          const result = transactionResult.result;
+          return {
+            statusCode: statusFor(result.code),
+            contentType: 'application/json',
+            requestId: options.requestId,
+            body: {
+              error: {
+                code: result.code,
+                message: result.message,
+                details: result.details ?? {},
+                retryable: Boolean(result.retryable),
+              },
+              requestId: options.requestId,
+            },
+          };
+        }
+        return {
+          statusCode: 201,
+          contentType: 'application/json',
+          requestId: options.requestId,
+          body: createSuccessEnvelope({
+            adjustments: transactionResult.adjustments,
+            preview: transactionResult.preview,
+          }, {
+            requestId: options.requestId,
+            receivedAt: options.receivedAt,
+          }),
+        };
+      },
+    });
+    sendJson(res, execution.response.statusCode, execution.response.body, {
+      'content-type': execution.response.contentType,
+      'x-request-id': execution.response.requestId,
+      ...(execution.replayed ? { 'idempotent-replay': 'true' } : {}),
+    });
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'inventory_adjustment_bulk_operation_failed',
+      requestId: options.requestId,
+      errorName: error?.name ?? null,
+      errorCode: typeof error?.code === 'string' ? error.code : null,
+    }));
+    sendError(
+      res,
+      apiError('INVENTORY_ADJUSTMENT_BULK_OPERATION_FAILED', 'Không thể lập phiếu điều chỉnh tồn hàng loạt.', {}, true, 503),
+      options.requestId,
+      options.receivedAt,
+    );
+  }
+}
+
 export async function handleInventoryAdjustmentRoutes(req, res, options) {
   const url = new URL(`http://localhost${req.url}`);
   const pathname = url.pathname;
@@ -316,6 +426,26 @@ export async function handleInventoryAdjustmentRoutes(req, res, options) {
         options.receivedAt,
       );
     }
+    return true;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/inventory/adjustments/bulk-preview') {
+    const requestContext = await authenticateAndAuthorize(req, res, options, PERMISSIONS.read);
+    if (!requestContext) return true;
+    const payload = await readPayload(req, res, options);
+    if (payload === null) return true;
+    const result = await adjustmentBulkService.previewBulkAdjustment(options.getPool(), { requestContext, payload });
+    if (!result.ok) sendServiceError(res, result, options);
+    else sendSuccess(res, result.preview, options.requestId, options.receivedAt);
+    return true;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/inventory/adjustments/bulk-confirm') {
+    const requestContext = await authenticateAndAuthorize(req, res, options, PERMISSIONS.create);
+    if (!requestContext) return true;
+    const payload = await readPayload(req, res, options);
+    if (payload === null) return true;
+    await executeIdempotentBulkConfirm(req, res, options, { requestContext, payload });
     return true;
   }
 
