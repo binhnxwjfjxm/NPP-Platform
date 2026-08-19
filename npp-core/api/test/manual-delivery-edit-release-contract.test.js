@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { CORE_API_MIGRATIONS } from '../src/migrations/index.js';
 import { salesOrderDeliveryExecutionInternals } from '../src/services/sales-order.js';
 import { manualEditAllocationReleaseInternals } from '../src/services/sales-fulfillment-allocation-release.js';
@@ -10,6 +11,10 @@ const {
   unwindIdempotencyKey,
   releaseBlocked,
 } = manualEditAllocationReleaseInternals;
+const unwindSource = readFileSync(
+  new URL('../src/services/sales-order-execution-unwind.js', import.meta.url),
+  'utf8',
+);
 
 function manualOrder(totals) {
   return {
@@ -63,6 +68,18 @@ test('unwind child idempotency keys use canonical safe contract', () => {
   }
 });
 
+test('execution unwind covers pre-delivery trip, inventory and warehouse state before edit/cancel', () => {
+  assert.match(unwindSource, /hasDeliveryAttempts/);
+  assert.match(unwindSource, /markTripRecovered/);
+  assert.match(unwindSource, /recoveryUnassign/);
+  assert.match(unwindSource, /reverseInventoryMovement/);
+  assert.match(unwindSource, /INVENTORY_ISSUE_REVERSED/);
+  assert.match(unwindSource, /fulfillment_reversal_service/);
+  assert.match(unwindSource, /fulfillment_release_service/);
+  assert.match(unwindSource, /delivery_issue_service/);
+  assert.match(unwindSource, /Đơn đã giao khách/);
+});
+
 test('migration 094 makes RELEASED allocation terminal and excludes it from execution facts', () => {
   const migration = CORE_API_MIGRATIONS.find((entry) => entry.id === '094_manual_delivery_allocation_release');
   assert.ok(migration);
@@ -72,4 +89,16 @@ test('migration 094 makes RELEASED allocation terminal and excludes it from exec
   assert.match(migration.sql, /fulfillment_release_service/);
   assert.match(migration.sql, /sales_fulfillment_release_blocked_by_delivery_order/);
   assert.match(migration.sql, /FILTER \(WHERE allocation\.state <> 'RELEASED'\)/);
+});
+
+test('migration 096 permits only locked pre-dispatch trip unwind and keeps normal trip guards', () => {
+  const migration = CORE_API_MIGRATIONS.find((entry) => entry.id === '096_sales_order_unwind_locked_trip');
+  assert.ok(migration);
+  assert.match(migration.sql, /sales_order_unwind_service/);
+  assert.match(migration.sql, /OLD\.status <> 'locked' OR NEW\.status <> 'draft'/);
+  assert.match(migration.sql, /OLD\.dispatch_id IS NOT NULL OR OLD\.dispatched_at IS NOT NULL/);
+  assert.match(migration.sql, /delivery_trips_sales_order_unwind_guard/);
+  assert.match(migration.sql, /trip_order_assignments_sales_order_unwind_guard/);
+  assert.match(migration.sql, /EXECUTE FUNCTION logistics\.guard_trip_header_write\(\)/);
+  assert.match(migration.sql, /EXECUTE FUNCTION logistics\.guard_trip_child_write\(\)/);
 });
