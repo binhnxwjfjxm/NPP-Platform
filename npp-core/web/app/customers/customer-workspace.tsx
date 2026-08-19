@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../components/app-shell';
+import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from '../components/business-table-sequence';
 import shellStyles from '../components/app-shell.module.css';
 import styles from '../organization/organization.module.css';
 import customerStyles from './customers.module.css';
@@ -665,10 +669,11 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
               <div className={styles.panelHeader}><div><p className={styles.panelKicker}>Danh sách</p><h2>Khách hàng</h2></div><span className={styles.panelChip}>{visibleCustomers.length} khách hàng</span></div>
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
-                  <thead><tr><th>Mã / tên</th><th>Nhóm / phụ trách</th><th>Liên hệ</th><th>Thanh toán</th><th>Trạng thái</th><th>Hành động</th></tr></thead>
+                  <thead><tr><BusinessTableSequenceHeader /><th>Mã / tên</th><th>Nhóm / phụ trách</th><th>Liên hệ</th><th>Thanh toán</th><th>Trạng thái</th><th>Hành động</th></tr></thead>
                   <tbody>
-                    {visibleCustomers.map((customer) => (
+                    {visibleCustomers.map((customer, rowIndex) => (
                       <tr key={customer.id} data-testid={`customer-row-${customer.code}`}>
+                        <BusinessTableSequenceCell rowIndex={rowIndex} />
                         <td><div className={styles.entityStack}><strong className={customerStyles.code}>{customer.code}</strong><span>{customer.name}</span><span>{customer.tax_code || 'Chưa có mã số thuế'}</span></div></td>
                         <td><div className={styles.entityStack}><strong>{customer.group_name || 'Chưa phân nhóm'}</strong><span>{customer.responsible_employee_name || 'Chưa giao phụ trách'}</span></div></td>
                         <td><div className={styles.entityStack}><strong>{customer.phone || '—'}</strong><span>{customer.email || '—'}</span></div></td>
@@ -681,7 +686,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                         </td>
                       </tr>
                     ))}
-                    {visibleCustomers.length === 0 ? <tr><td colSpan={6} className={customerStyles.empty}>Không có khách hàng phù hợp.</td></tr> : null}
+                    {visibleCustomers.length === 0 ? <tr><td colSpan={7} className={customerStyles.empty}>Không có khách hàng phù hợp.</td></tr> : null}
                   </tbody>
                 </table>
               </div>
@@ -692,10 +697,11 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
             <div className={styles.panelHeader}><div><p className={styles.panelKicker}>Phân loại</p><h2>Nhóm khách hàng</h2></div><span className={styles.panelChip}>{groups.length} nhóm</span></div>
             <div className={styles.tableWrap}>
               <table className={styles.table}>
-                <thead><tr><th>Mã</th><th>Tên</th><th>Mô tả</th><th>Trạng thái</th><th>Hành động</th></tr></thead>
+                <thead><tr><BusinessTableSequenceHeader /><th>Mã</th><th>Tên</th><th>Mô tả</th><th>Trạng thái</th><th>Hành động</th></tr></thead>
                 <tbody>
-                  {groups.map((group) => (
+                  {groups.map((group, rowIndex) => (
                     <tr key={group.id} data-testid={`customer-group-row-${group.code}`}>
+                      <BusinessTableSequenceCell rowIndex={rowIndex} />
                       <td className={customerStyles.code}>{group.code}</td><td>{group.name}</td><td>{group.description || '—'}</td>
                       <td><span className={joinClasses(styles.statusPill, group.is_active ? styles.toneSuccess : styles.toneDanger)}>{group.is_active ? 'Đang hoạt động' : 'Không hoạt động'}</span></td>
                       <td className={styles.rowActions}>
@@ -704,7 +710,7 @@ export default function CustomerWorkspace({ initialCustomers, initialGroups, ini
                       </td>
                     </tr>
                   ))}
-                  {groups.length === 0 ? <tr><td colSpan={5} className={customerStyles.empty}>Chưa có nhóm khách hàng.</td></tr> : null}
+                  {groups.length === 0 ? <tr><td colSpan={6} className={customerStyles.empty}>Chưa có nhóm khách hàng.</td></tr> : null}
                 </tbody>
               </table>
             </div>
