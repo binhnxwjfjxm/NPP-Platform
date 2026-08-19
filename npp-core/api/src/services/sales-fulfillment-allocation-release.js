@@ -3,9 +3,10 @@ import { createIdempotencyKey } from '@npp/contracts';
 import * as allocationRepository from '../db/repositories/sales-fulfillment-reversal.js';
 import * as inventoryReservationRepository from '../db/repositories/inventory-reservations.js';
 import * as repository from '../db/repositories/sales-fulfillment-allocation-release.js';
-import * as deliveryOrderRepository from '../db/repositories/sales-delivery-orders.js';
-import * as deliveryReversalRepository from '../db/repositories/sales-delivery-order-reversal.js';
-import { reverseInventoryMovement } from './inventory-ledger-core.js';
+import {
+  unwindIdempotencyKey,
+  unwindSalesOrderExecution,
+} from './sales-order-execution-unwind.js';
 
 const ZERO_DECIMAL_PATTERN = /^[+-]?0+(?:\.0+)?$/;
 
@@ -14,19 +15,19 @@ const RELEASE_INTENTS = Object.freeze({
     operation: 'manual-sales-order-edit',
     reason: 'Hoàn tác xử lý để sửa đơn Giao thủ công',
     blockedCode: 'MANUAL_DELIVERY_EDIT_NOT_AVAILABLE',
-    blockedMessage: 'Đơn đang trên chuyến giao hoặc đã có giao nhận thực tế. Cần thu hồi hoặc hoàn hàng trước khi sửa đơn.',
+    blockedMessage: 'Đơn đã có giao nhận thực tế. Cần xử lý thu hồi hoặc hoàn hàng trước khi sửa đơn.',
   }),
   amendment: Object.freeze({
     operation: 'sales-order-amendment',
     reason: 'Hoàn tác xử lý để điều chỉnh đơn',
     blockedCode: 'SALES_ORDER_AMENDMENT_BLOCKED',
-    blockedMessage: 'Đơn đang trên chuyến giao hoặc đã có giao nhận thực tế. Cần thu hồi hoặc hoàn hàng trước khi điều chỉnh.',
+    blockedMessage: 'Đơn đã có giao nhận thực tế. Cần xử lý thu hồi hoặc hoàn hàng trước khi điều chỉnh.',
   }),
   cancel: Object.freeze({
     operation: 'sales-order-cancel',
     reason: 'Hoàn tác xử lý để hủy đơn trước khi giao khách',
     blockedCode: 'SALES_ORDER_CANCEL_BLOCKED',
-    blockedMessage: 'Đơn đang trên chuyến giao hoặc đã có giao nhận thực tế. Cần thu hồi hoặc hoàn hàng trước khi hủy.',
+    blockedMessage: 'Đơn đã có giao nhận thực tế. Cần xử lý thu hồi hoặc hoàn hàng trước khi hủy.',
   }),
 });
 
@@ -68,13 +69,6 @@ function childIdempotencyKey(parentKey, allocationId, intentName = 'manual-edit'
   );
 }
 
-function unwindIdempotencyKey(parentKey, operation, targetId) {
-  return createIdempotencyKey(
-    'sales-order-unwind',
-    deterministicUuid(`${parentKey}|${operation}|${targetId}`),
-  );
-}
-
 function isZero(value) {
   return ZERO_DECIMAL_PATTERN.test(String(value ?? '0').trim() || '0');
 }
@@ -83,298 +77,6 @@ function releaseBlocked(allocation) {
   return !isZero(allocation.picked_base_quantity)
     || !isZero(allocation.packed_base_quantity)
     || !isZero(allocation.claimed_base_quantity);
-}
-
-async function listOpenDeliveryOrdersForUpdate(client, { installationId, salesOrderId }) {
-  const result = await client.query(
-    `SELECT delivery_order.id,
-            delivery_order.status,
-            delivery_order.warehouse_id,
-            delivery_order.revision
-       FROM sales.delivery_orders delivery_order
-      WHERE delivery_order.installation_id = $1
-        AND delivery_order.sales_order_id = $2
-        AND delivery_order.status <> 'cancelled'
-      ORDER BY delivery_order.created_at ASC, delivery_order.id ASC
-      FOR UPDATE OF delivery_order`,
-    [installationId, salesOrderId],
-  );
-  return result.rows ?? [];
-}
-
-async function unwindDeliveryOrders(client, {
-  requestContext,
-  salesOrderId,
-  idempotencyKey,
-  intent,
-}) {
-  const deliveryOrders = await listOpenDeliveryOrdersForUpdate(client, {
-    installationId: requestContext.installationId,
-    salesOrderId,
-  });
-  const unwound = [];
-
-  for (const deliveryOrder of deliveryOrders) {
-    const childKey = unwindIdempotencyKey(idempotencyKey, 'delivery-order', deliveryOrder.id);
-    const hash = payloadHash({
-      deliveryOrderId: deliveryOrder.id,
-      operation: intent.operation,
-      reason: intent.reason,
-    });
-    const occurredAt = requestContext.receivedAt ?? new Date().toISOString();
-
-    if (deliveryOrder.status === 'draft') {
-      await deliveryOrderRepository.setDeliveryOrderWriteContext(client);
-      const cancelled = await deliveryOrderRepository.cancelDeliveryOrder(client, {
-        installationId: requestContext.installationId,
-        deliveryOrderId: deliveryOrder.id,
-        reason: intent.reason,
-        actorId: requestContext.actorId,
-      });
-      if (!cancelled) {
-        return failure(
-          'DELIVERY_ORDER_CANCEL_CONFLICT',
-          'Phiếu giao đã thay đổi trong lúc hoàn tác. Hãy tải lại đơn rồi thử lại.',
-          true,
-          { deliveryOrderId: deliveryOrder.id },
-        );
-      }
-      await deliveryOrderRepository.insertDeliveryOrderEvent(client, {
-        installationId: requestContext.installationId,
-        deliveryOrderId: deliveryOrder.id,
-        eventType: 'CANCELLED',
-        idempotencyKey: childKey,
-        payloadHash: hash,
-        actorId: requestContext.actorId,
-        requestId: requestContext.requestId,
-        sourceApp: requestContext.sourceApp,
-        reason: intent.reason,
-        metadata: { salesOrderId, operation: intent.operation },
-        occurredAt,
-      });
-      unwound.push(Object.freeze({ id: deliveryOrder.id, from: 'draft', to: 'cancelled' }));
-      continue;
-    }
-
-    if (deliveryOrder.status === 'ready_to_dispatch') {
-      await deliveryReversalRepository.setDeliveryReversalWriteContext(client);
-      const blockers = await deliveryReversalRepository.getReleaseBlockers(client, {
-        installationId: requestContext.installationId,
-        deliveryOrderId: deliveryOrder.id,
-      });
-      if (blockers.has_active_inventory_issue || blockers.has_active_trip_assignment) {
-        return failure(intent.blockedCode, intent.blockedMessage, false, {
-          deliveryOrderId: deliveryOrder.id,
-          activeInventoryIssue: Boolean(blockers.has_active_inventory_issue),
-          activeTripAssignment: Boolean(blockers.has_active_trip_assignment),
-        });
-      }
-      const released = await deliveryReversalRepository.releaseDeliveryOrderForReversal(client, {
-        installationId: requestContext.installationId,
-        deliveryOrderId: deliveryOrder.id,
-        reason: intent.reason,
-        actorId: requestContext.actorId,
-        occurredAt,
-      });
-      if (!released) {
-        return failure(
-          'DELIVERY_ORDER_REVERSAL_CONFLICT',
-          'Phiếu giao đã thay đổi trong lúc hoàn tác. Hãy tải lại đơn rồi thử lại.',
-          true,
-          { deliveryOrderId: deliveryOrder.id },
-        );
-      }
-      await deliveryReversalRepository.insertDeliveryOrderEvent(client, {
-        installationId: requestContext.installationId,
-        deliveryOrderId: deliveryOrder.id,
-        idempotencyKey: childKey,
-        payloadHash: hash,
-        actorId: requestContext.actorId,
-        requestId: requestContext.requestId,
-        sourceApp: requestContext.sourceApp,
-        reason: intent.reason,
-        metadata: { salesOrderId, operation: intent.operation },
-        occurredAt,
-      });
-      unwound.push(Object.freeze({ id: deliveryOrder.id, from: 'ready_to_dispatch', to: 'cancelled' }));
-      continue;
-    }
-
-    return failure(intent.blockedCode, intent.blockedMessage, false, {
-      deliveryOrderId: deliveryOrder.id,
-      deliveryOrderStatus: deliveryOrder.status,
-    });
-  }
-
-  if (unwound.length > 0) {
-    await deliveryOrderRepository.refreshSalesOrderDeliveryStatus(client, {
-      installationId: requestContext.installationId,
-      salesOrderId,
-      actorId: requestContext.actorId,
-    });
-  }
-  return Object.freeze({ ok: true, deliveryOrders: Object.freeze(unwound) });
-}
-
-async function listActiveManualIssueMovementsForUpdate(client, {
-  installationId,
-  salesOrderId,
-}) {
-  const result = await client.query(
-    `SELECT movement.id, movement.document_date
-       FROM inventory.inventory_movements movement
-      WHERE movement.installation_id = $1
-        AND movement.movement_type = 'SALES_DELIVERY_ISSUE'
-        AND movement.source_domain = 'SALES'
-        AND movement.source_document_type = 'SALES_ORDER'
-        AND movement.source_document_id = $2
-        AND movement.reason_code = 'MANUAL_SALES_ORDER_STOCK_ISSUE'
-        AND NOT EXISTS (
-          SELECT 1
-            FROM inventory.inventory_movements reversal
-           WHERE reversal.installation_id = movement.installation_id
-             AND reversal.reversal_of_movement_id = movement.id
-        )
-      ORDER BY movement.posted_at ASC, movement.id ASC
-      FOR UPDATE OF movement`,
-    [installationId, salesOrderId],
-  );
-  return result.rows ?? [];
-}
-
-async function unwindManualStockIssues(client, {
-  requestContext,
-  salesOrderId,
-  idempotencyKey,
-  intent,
-}) {
-  const movements = await listActiveManualIssueMovementsForUpdate(client, {
-    installationId: requestContext.installationId,
-    salesOrderId,
-  });
-  const reversed = [];
-  const documentDate = String(requestContext.receivedAt ?? new Date().toISOString()).slice(0, 10);
-
-  for (const movement of movements) {
-    const reversal = await reverseInventoryMovement(client, {
-      requestContext,
-      idempotencyKey: unwindIdempotencyKey(idempotencyKey, 'manual-stock-issue', movement.id),
-      movementId: movement.id,
-      payload: {
-        documentDate,
-        reasonCode: 'SALES_ORDER_UNWIND',
-        reasonNote: intent.reason,
-      },
-    });
-    if (!reversal.ok) {
-      return failure(
-        reversal.code,
-        reversal.message,
-        Boolean(reversal.retryable),
-        { ...(reversal.details ?? {}), movementId: movement.id },
-      );
-    }
-    reversed.push(Object.freeze({ movementId: movement.id, reversalMovementId: reversal.movement.id }));
-  }
-  return Object.freeze({ ok: true, movements: Object.freeze(reversed) });
-}
-
-async function reverseAllocationProgress(client, {
-  requestContext,
-  salesOrderId,
-  idempotencyKey,
-  intent,
-}) {
-  await allocationRepository.setFulfillmentReversalWriteContexts(client);
-  const allocations = await allocationRepository.listOrderAllocationsForUpdate(client, {
-    installationId: requestContext.installationId,
-    salesOrderId,
-  });
-  const reversed = [];
-
-  for (const original of allocations) {
-    if (original.state === 'RELEASED') continue;
-    if (!isZero(original.claimed_base_quantity)) {
-      return failure(intent.blockedCode, intent.blockedMessage, false, {
-        allocationId: original.id,
-        claimedBaseQuantity: String(original.claimed_base_quantity),
-      });
-    }
-
-    let current = original;
-    if (!isZero(current.packed_base_quantity)) {
-      const quantity = String(current.packed_base_quantity);
-      const updated = await allocationRepository.decrementAllocationProgress(client, {
-        installationId: requestContext.installationId,
-        allocationId: current.id,
-        kind: 'PACK',
-        quantity,
-        actorId: requestContext.actorId,
-      });
-      if (!updated) {
-        return failure(
-          'FULFILLMENT_PACK_REVERSAL_CONFLICT',
-          'Số lượng đóng gói đã thay đổi trong lúc hoàn tác. Hãy tải lại đơn rồi thử lại.',
-          true,
-          { allocationId: current.id },
-        );
-      }
-      const eventKey = unwindIdempotencyKey(idempotencyKey, 'pack', current.id);
-      await allocationRepository.insertAllocationEvent(client, {
-        installationId: requestContext.installationId,
-        allocationId: current.id,
-        eventType: 'PACK_REVERSED',
-        quantity,
-        actorId: requestContext.actorId,
-        requestId: requestContext.requestId,
-        sourceApp: requestContext.sourceApp,
-        idempotencyKey: eventKey,
-        payloadHash: payloadHash({ allocationId: current.id, eventType: 'PACK_REVERSED', quantity, reason: intent.reason }),
-        reason: intent.reason,
-        metadata: { salesOrderId, operation: intent.operation },
-        occurredAt: requestContext.receivedAt ?? new Date().toISOString(),
-      });
-      reversed.push(Object.freeze({ allocationId: current.id, kind: 'PACK', quantity }));
-      current = updated;
-    }
-
-    if (!isZero(current.picked_base_quantity)) {
-      const quantity = String(current.picked_base_quantity);
-      const updated = await allocationRepository.decrementAllocationProgress(client, {
-        installationId: requestContext.installationId,
-        allocationId: current.id,
-        kind: 'PICK',
-        quantity,
-        actorId: requestContext.actorId,
-      });
-      if (!updated) {
-        return failure(
-          'FULFILLMENT_PICK_REVERSAL_CONFLICT',
-          'Số lượng đã soạn đã thay đổi trong lúc hoàn tác. Hãy tải lại đơn rồi thử lại.',
-          true,
-          { allocationId: current.id },
-        );
-      }
-      const eventKey = unwindIdempotencyKey(idempotencyKey, 'pick', current.id);
-      await allocationRepository.insertAllocationEvent(client, {
-        installationId: requestContext.installationId,
-        allocationId: current.id,
-        eventType: 'PICK_REVERSED',
-        quantity,
-        actorId: requestContext.actorId,
-        requestId: requestContext.requestId,
-        sourceApp: requestContext.sourceApp,
-        idempotencyKey: eventKey,
-        payloadHash: payloadHash({ allocationId: current.id, eventType: 'PICK_REVERSED', quantity, reason: intent.reason }),
-        reason: intent.reason,
-        metadata: { salesOrderId, operation: intent.operation },
-        occurredAt: requestContext.receivedAt ?? new Date().toISOString(),
-      });
-      reversed.push(Object.freeze({ allocationId: current.id, kind: 'PICK', quantity }));
-    }
-  }
-
-  return Object.freeze({ ok: true, reversed: Object.freeze(reversed) });
 }
 
 async function releaseInventoryReservation(client, {
@@ -522,30 +224,13 @@ export async function releasePreExecutionAllocations(client, {
   intentName = 'manual-edit',
 }) {
   const intent = releaseIntent(intentName);
-
-  const delivery = await unwindDeliveryOrders(client, {
+  const execution = await unwindSalesOrderExecution(client, {
     requestContext,
     salesOrderId,
     idempotencyKey,
     intent,
   });
-  if (!delivery.ok) return delivery;
-
-  const manualIssue = await unwindManualStockIssues(client, {
-    requestContext,
-    salesOrderId,
-    idempotencyKey,
-    intent,
-  });
-  if (!manualIssue.ok) return manualIssue;
-
-  const progress = await reverseAllocationProgress(client, {
-    requestContext,
-    salesOrderId,
-    idempotencyKey,
-    intent,
-  });
-  if (!progress.ok) return progress;
+  if (!execution.ok) return execution;
 
   const released = await releaseRemainingAllocations(client, {
     requestContext,
@@ -558,9 +243,9 @@ export async function releasePreExecutionAllocations(client, {
 
   return Object.freeze({
     ok: true,
-    deliveryOrders: delivery.deliveryOrders,
-    reversedManualIssues: manualIssue.movements,
-    reversedProgress: progress.reversed,
+    deliveryOrders: execution.deliveryOrders,
+    reversedManualIssues: execution.reversedManualIssues,
+    reversedProgress: execution.reversedProgress,
     released: released.released,
   });
 }
