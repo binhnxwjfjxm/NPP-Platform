@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { TripAssignment } from '../../../lib/types';
+import type { DeliveryAttemptLine, TripAssignment } from '../../../lib/types';
 import MobileActionDialog from './mobile-action-dialog';
 import styles from './delivery-order-detail-dialog.module.css';
 
@@ -19,10 +19,19 @@ function money(value: string | null | undefined, currencyCode: string | null | u
 }
 
 function quantity(value: string | null | undefined) {
-  const number = Number(value ?? 0);
-  return Number.isFinite(number)
-    ? new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 3 }).format(number)
-    : value || '0';
+  if (!value) return '0';
+  return value.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1') || '0';
+}
+
+function baseUnitLabel(line: DeliveryAttemptLine): string {
+  return line.baseUnitCode || 'đơn vị tồn';
+}
+
+function unitRelationship(line: DeliveryAttemptLine): string | null {
+  if (!line.unitCode || !line.baseUnitCode || !line.conversionToBase) return null;
+  const conversion = quantity(line.conversionToBase);
+  if (line.unitCode === line.baseUnitCode && conversion === '1') return null;
+  return `1 ${line.unitCode} = ${conversion} ${line.baseUnitCode}`;
 }
 
 export default function DeliveryOrderDetailDialog({ assignment }: Props) {
@@ -45,21 +54,29 @@ export default function DeliveryOrderDetailDialog({ assignment }: Props) {
         </section>
 
         <div className={styles.items}>
-          {assignment.lines.length ? assignment.lines.map((line) => (
-            <article className={styles.item} key={line.inventoryIssueLineId}>
-              <div>
-                <strong>{line.itemName || line.sku || 'Mặt hàng'}</strong>
-                <span>{[line.sku, line.unitCode].filter(Boolean).join(' · ')}</span>
-              </div>
-              <div className={styles.price}>
-                <span>
-                  {quantity(line.issuedUnitQuantity ?? line.issuedBaseQuantity)} {line.unitCode || ''}
-                  {line.unitPrice ? ` × ${money(line.unitPrice, assignment.currencyCode)}` : ''}
-                </span>
-                <strong>{line.lineAmount ? money(line.lineAmount, assignment.currencyCode) : '—'}</strong>
-              </div>
-            </article>
-          )) : (
+          {assignment.lines.length ? assignment.lines.map((line) => {
+            const relationship = unitRelationship(line);
+            return (
+              <article className={styles.item} key={line.inventoryIssueLineId}>
+                <div>
+                  <strong>{line.itemName || line.sku || 'Mặt hàng'}</strong>
+                  <span>{[line.sku, line.unitCode ? `Bán theo ${line.unitCode}` : null].filter(Boolean).join(' · ')}</span>
+                  {relationship ? <span>Quy cách: {relationship}</span> : null}
+                </div>
+                <div className={styles.price}>
+                  {line.issuedUnitQuantity !== null && line.issuedUnitQuantity !== undefined && line.unitCode ? (
+                    <span>
+                      {quantity(line.issuedUnitQuantity)} {line.unitCode}
+                      {line.unitPrice ? ` × ${money(line.unitPrice, assignment.currencyCode)}` : ''}
+                    </span>
+                  ) : (
+                    <span>Đã xuất: {quantity(line.issuedBaseQuantity)} {baseUnitLabel(line)}</span>
+                  )}
+                  <strong>{line.lineAmount ? money(line.lineAmount, assignment.currencyCode) : '—'}</strong>
+                </div>
+              </article>
+            );
+          }) : (
             <p className={styles.empty}>Chưa có dữ liệu hàng xuất kho để đối chiếu.</p>
           )}
         </div>

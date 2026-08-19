@@ -17,6 +17,9 @@ export type DeliveryAttemptLine = Readonly<{
   sku: string | null;
   itemName: string | null;
   unitCode: string | null;
+  conversionToBase: string | null;
+  baseUnitCode: string | null;
+  baseUnitAllowsFractional: boolean;
   issuedBaseQuantity: string;
   deliveredBaseQuantity: string | null;
   issuedUnitQuantity?: string | null;

@@ -55,7 +55,9 @@ const assignmentFixtures = new Map([
     lines: [{
       deliveryOrderLineId: '96000000-0000-4000-8000-000000000001',
       inventoryIssueLineId: issueLineOneId,
-      sku: 'BOT-01', itemName: 'Bột nguyên liệu A', unitCode: 'BAO', issuedBaseQuantity: '3.000000000000',
+      sku: 'BOT-01', itemName: 'Bột nguyên liệu A', unitCode: 'BAO',
+      conversionToBase: '1.000000', baseUnitCode: 'BAO', baseUnitAllowsFractional: false,
+      issuedBaseQuantity: '3.000000000000',
     }],
   }],
   [assignmentTwoId, {
@@ -72,7 +74,9 @@ const assignmentFixtures = new Map([
     lines: [{
       deliveryOrderLineId: '96000000-0000-4000-8000-000000000002',
       inventoryIssueLineId: issueLineTwoId,
-      sku: 'BOT-02', itemName: 'Bột nguyên liệu B', unitCode: 'BAO', issuedBaseQuantity: '2.000000000000',
+      sku: 'BOT-02', itemName: 'Bột nguyên liệu B', unitCode: 'BAO',
+      conversionToBase: '1.000000', baseUnitCode: 'BAO', baseUnitAllowsFractional: false,
+      issuedBaseQuantity: '2.000000000000',
     }],
   }],
 ]);
