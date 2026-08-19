@@ -695,7 +695,7 @@ export function unassignDeliveryOrder(args) {
         deliveryOrderId, actorId: args.requestContext.actorId, reason,
       });
       if (!assignment) return failure('TRIP_ASSIGNMENT_NOT_FOUND', 'Active trip assignment was not found');
-      await repository.deleteEmptyStop(client, {
+      await repository.deleteUnreferencedStop(client, {
         installationId: args.requestContext.installationId, stopId: assignment.trip_stop_id,
       });
       return { ok: true, metadata: { deliveryOrderId, stopId: assignment.trip_stop_id } };

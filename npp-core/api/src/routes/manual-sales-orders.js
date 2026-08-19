@@ -10,6 +10,7 @@ import {
   insertOutboxEvent,
   withAuditOutboxTransaction,
 } from '../audit-outbox.js';
+import { auditOutboxEffect, transactionExpectations } from '../audit-outbox-effects.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
 import { getSalesOrder } from '../services/sales-order.js';
 import {
@@ -224,8 +225,10 @@ async function executeMutation(req, res, options, {
             return {
               failed: false,
               result: afterResult,
-              expectedAuditCount: 1,
-              expectedOutboxCount: 1,
+              ...transactionExpectations(
+                auditOutboxEffect(1, 1),
+                result.auditOutboxEffect,
+              ),
             };
           },
         });

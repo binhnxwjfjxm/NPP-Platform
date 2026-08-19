@@ -237,7 +237,7 @@ async function reopenAndUnassignPreDispatch(client, {
   });
 
   await setTripPlanningWriteContext(client);
-  await tripPlanningRepository.deleteEmptyStop(client, {
+  await tripPlanningRepository.deleteUnreferencedStop(client, {
     installationId: requestContext.installationId,
     stopId: assignment.trip_stop_id,
   });

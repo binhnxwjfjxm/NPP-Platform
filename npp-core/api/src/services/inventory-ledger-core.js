@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import {
   buildAuditRecord,
   buildOutboxEvent,
@@ -10,7 +11,6 @@ import * as lotRepository from '../db/repositories/inventory-lots.js';
 import * as repository from '../db/repositories/inventory-ledger.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const IDEMPOTENCY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const DECIMAL_PATTERN = /^(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
 const CODE_PATTERN = /^[A-Z0-9_.-]{1,64}$/;
 const SCALE_6 = 1_000_000n;
@@ -222,7 +222,7 @@ async function replayOrMismatch(client, { installationId, idempotencyKey, hash }
 }
 
 function validateIdempotencyKey(value) {
-  return typeof value === 'string' && IDEMPOTENCY_PATTERN.test(value)
+  return typeof value === 'string' && IDEMPOTENCY_KEY_PATTERN.test(value)
     ? null
     : failure('INVALID_IDEMPOTENCY_KEY', 'idempotencyKey must contain 1-128 safe characters');
 }

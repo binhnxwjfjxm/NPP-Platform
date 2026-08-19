@@ -4,11 +4,14 @@ import { Readable } from 'node:stream';
 import test from 'node:test';
 import { CORE_API_MIGRATIONS } from '../src/migrations/index.js';
 import { handleManualSalesOrderRoutes, manualSalesOrderRouteInternals } from '../src/routes/manual-sales-orders.js';
+import { salesOrderRouteInternals } from '../src/routes/sales-orders.js';
 import { hasPhysicalExecutionFacts } from '../src/db/repositories/sales-fulfillment-allocation-release.js';
 import { manualEditAllocationReleaseInternals } from '../src/services/sales-fulfillment-allocation-release.js';
 
 const salesOrderServiceSource = readFileSync(new URL('../src/services/sales-order.js', import.meta.url), 'utf8');
+const salesOrderRouteSource = readFileSync(new URL('../src/routes/sales-orders.js', import.meta.url), 'utf8');
 const stockIssueSource = readFileSync(new URL('../src/services/sales-manual-stock-issue.js', import.meta.url), 'utf8');
+const manualCompletionSource = readFileSync(new URL('../src/services/sales-manual-completion.js', import.meta.url), 'utf8');
 const workspaceSource = readFileSync(
   new URL('../../web/app/sales/sales-orders/SalesOrderWorkspace.tsx', import.meta.url),
   'utf8',
@@ -69,6 +72,13 @@ test('confirmed amendment, manual edit and cancel share the pre-execution releas
   );
 });
 
+test('cancel passes the canonical request idempotency key into the shared unwind', () => {
+  assert.match(salesOrderRouteSource, /mutate: \(client, key\) => service\.cancelSalesOrder/);
+  assert.match(salesOrderRouteSource, /idempotencyKey: key/);
+  assert.match(salesOrderServiceSource, /IDEMPOTENCY_KEY_PATTERN\.test\(String\(input\.idempotencyKey/);
+  assert.doesNotMatch(salesOrderServiceSource, /idempotencyKey: input\.idempotencyKey \?\? input\.id/);
+});
+
 test('shortage remains the same operation but is re-evaluated on retry', () => {
   assert.match(
     stockIssueSource,
@@ -77,6 +87,13 @@ test('shortage remains the same operation but is re-evaluated on retry', () => {
   assert.match(workspaceSource, /type StockIssueKeyState = Readonly<\{ orderId: string; stateKey: string; key: string \}>/);
   assert.match(workspaceSource, /existing\?\.orderId === selected\.id && existing\.stateKey === actionStateKey/);
   assert.match(workspaceSource, /stockIssueKeyRef\.current = \{ orderId: selected\.id, stateKey: actionStateKey, key \}/);
+});
+
+test('Nộp tiền/Nợ accepts full debt without creating a customer payment', () => {
+  assert.match(manualCompletionSource, /decimalToScaled\(payload\?\.paidAmount, \{ allowZero: true \}\)/);
+  assert.match(manualCompletionSource, /if \(paid === 0n\)/);
+  assert.match(manualCompletionSource, /customerPayment: null/);
+  assert.match(manualCompletionSource, /auditOutboxEffect: auditOutboxEffect\(\)/);
 });
 
 test('order operation errors are scoped to the selected business state', () => {
@@ -160,4 +177,21 @@ test('sanitizer never exposes database connection strings', () => {
   assert.equal(safe.code, '23502');
   assert.doesNotMatch(safe.message, /alice:password/);
   assert.match(safe.message, /\[redacted\]/);
+});
+
+test('Sales Order transaction log keeps request and PostgreSQL constraint but redacts secrets', () => {
+  const error = Object.assign(
+    new Error('delete failed at postgresql://alice:password@db.example.test/app token=secret-value'),
+    { code: '23503', constraint: 'trip_order_assignments_stop_fk' },
+  );
+  const safe = salesOrderRouteInternals.sanitizedUnexpectedError(error, {
+    requestId: 'req-cancel-1',
+    action: 'cancel',
+    resourceId: '11111111-1111-4111-8111-111111111111',
+    route: '/api/sales-orders/11111111-1111-4111-8111-111111111111/cancel',
+  });
+  assert.equal(safe.requestId, 'req-cancel-1');
+  assert.equal(safe.code, '23503');
+  assert.equal(safe.constraint, 'trip_order_assignments_stop_fk');
+  assert.doesNotMatch(safe.message, /alice:password|secret-value/);
 });
