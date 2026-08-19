@@ -352,13 +352,19 @@ export async function getPortalOrder(client, { requestContext, membership, order
   return Object.freeze({ ok: true, order: mapPortalOrder(loaded.salesOrder), salesOrder: loaded.salesOrder });
 }
 
-export async function cancelPortalOrder(client, { requestContext, membership, orderId }) {
+export async function cancelPortalOrder(client, {
+  requestContext,
+  membership,
+  orderId,
+  idempotencyKey,
+}) {
   if (membership.allow_cancel !== true) return failure('CUSTOMER_PORTAL_CANCEL_FORBIDDEN', 'Tài khoản này không được phép hủy đơn.', 403);
   const current = await getPortalOrder(client, { requestContext, membership, orderId });
   if (!current.ok) return current;
   const cancelled = await salesOrderService.cancelSalesOrder(client, {
     requestContext,
     id: orderId,
+    idempotencyKey,
     payload: { reason: 'Khách hàng hủy trên Customer Ordering' },
   });
   if (!cancelled.ok) return cancelled;

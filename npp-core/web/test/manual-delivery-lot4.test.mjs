@@ -9,27 +9,29 @@ const workspacePath = fileURLToPath(new URL('../app/sales/sales-orders/SalesOrde
 const permissionsPath = fileURLToPath(new URL('../lib/sales-order-permissions.ts', import.meta.url));
 const gatewayPath = fileURLToPath(new URL('../lib/manual-sales-order-gateway.ts', import.meta.url));
 
-test('Issue #622 separates Hoàn tất giao from collecting customer money', async () => {
+test('Issue #622 separates Hoàn thành đơn from Nộp tiền / Nợ', async () => {
   const [settlement, detail] = await Promise.all([
     readFile(settlementPath, 'utf8'),
     readFile(detailPath, 'utf8'),
   ]);
-  assert.match(settlement, /['"]Hoàn tất giao['"]/);
-  assert.match(settlement, /['"]Ghi nhận tiền thu['"]/);
-  assert.match(settlement, /Hoàn tất giao ghi nhận doanh số và khoản phải thu; thu tiền là bước riêng/);
+  assert.match(settlement, /['"]Hoàn thành đơn['"]/);
+  assert.match(settlement, /['"]Nộp tiền \/ Nợ['"]/);
+  assert.match(settlement, /Hoàn thành đơn ghi nhận doanh số và khoản phải thu; tiền thu hoặc nợ được xử lý riêng/);
   assert.match(detail, /isManual && hasIssued/);
   assert.match(detail, /ManualSalesOrderSettlement/);
 });
 
-test('collecting money requires a positive amount after delivery completion and supports remaining debt', async () => {
+test('Nộp tiền / Nợ supports full debt, partial payment and full payment after completion', async () => {
   const settlement = await readFile(settlementPath, 'utf8');
-  assert.match(settlement, /paidAmount.*useState\(''\)/s);
+  assert.match(settlement, /paidAmount.*useState\('0'\)/s);
   assert.match(settlement, /order\.status === 'closed'/);
   assert.match(settlement, /\['pending', 'partially_paid'\]\.includes/);
-  assert.match(settlement, /Phần chưa thu tiếp tục là công nợ khách hàng/);
+  assert.match(settlement, /phần chưa thu tiếp tục là công nợ khách hàng/);
   assert.match(settlement, /<option value="CASH">Tiền mặt<\/option>/);
   assert.match(settlement, /<option value="BANK_TRANSFER">Chuyển khoản<\/option>/);
-  assert.doesNotMatch(settlement, /Nhập 0 nếu ghi nợ toàn bộ/);
+  assert.match(settlement, /Nhập 0 nếu ghi nợ toàn bộ/);
+  assert.match(settlement, /debtOnly/);
+  assert.match(settlement, /Khoản phải thu của đơn được giữ nguyên/);
   assert.doesNotMatch(settlement, /issue-stock/);
 });
 

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { Readable } from 'node:stream';
 import { loadConfig } from '../src/config.js';
 import { getPool, closePool } from '../src/db/pool.js';
 import {
@@ -11,6 +12,52 @@ import {
 } from '../src/services/sales-order.js';
 import { issueManualSalesOrderStock } from '../src/services/sales-manual-stock-issue.js';
 import { completeManualSalesOrder } from '../src/services/sales-manual-completion.js';
+import { handleManualSalesOrderRoutes } from '../src/routes/manual-sales-orders.js';
+
+function responseCapture() {
+  return {
+    statusCode: null,
+    headers: {},
+    body: '',
+    setHeader(name, value) {
+      this.headers[String(name).toLowerCase()] = value;
+    },
+    writeHead(statusCode, headers = {}) {
+      this.statusCode = statusCode;
+      for (const [name, value] of Object.entries(headers)) this.headers[String(name).toLowerCase()] = value;
+    },
+    end(body = '') {
+      this.body = String(body);
+    },
+  };
+}
+
+async function invokeManualRoute({ pool, context, id, action, payload, key, requestId }) {
+  const req = Readable.from([JSON.stringify(payload)]);
+  req.url = `/api/manual-sales-orders/${id}/${action}`;
+  req.method = 'POST';
+  req.headers = { 'idempotency-key': key };
+  const res = responseCapture();
+  await handleManualSalesOrderRoutes(req, res, {
+    config: {},
+    requestId,
+    receivedAt: context.receivedAt,
+    PERMISSIONS: {
+      coreSalesOrderConfirm: 'core.sales-order.confirm',
+      coreCustomerPaymentCreate: 'core.customer-payment.create',
+    },
+    authenticate: () => ({ ok: true, principal: { id: context.actorId } }),
+    authorize: () => ({ ok: true }),
+    createContext: () => Object.freeze({ ...context, requestId }),
+    getPool: () => pool,
+    idempotencyStore: {},
+    executeRequestWithIdempotency: async ({ onProcess }) => ({
+      response: await onProcess(),
+      replayed: false,
+    }),
+  });
+  return Object.freeze({ statusCode: res.statusCode, body: JSON.parse(res.body) });
+}
 
 function testConfig() {
   return loadConfig({
@@ -232,7 +279,7 @@ async function demandRows(client, installationId, salesOrderId) {
   return result.rows;
 }
 
-test('Giao thủ công sửa SKU, Xuất kho và Hoàn tất giao giữ nguồn đơn và ghi nhận công nợ', async () => {
+test('Giao thủ công sửa SKU, Xuất kho và Hoàn thành đơn giữ nguồn đơn và ghi nhận công nợ', async () => {
   const config = testConfig();
   const pool = getPool(config);
   try {
@@ -386,6 +433,153 @@ test('Giao thủ công sửa SKU, Xuất kho và Hoàn tất giao giữ nguồn 
     } finally {
       client.release();
     }
+  } finally {
+    await closePool();
+  }
+});
+
+test('route Hoàn thành đơn và Nộp tiền/Nợ cộng đủ dấu vết của Bán hàng và Kế toán', async () => {
+  const config = testConfig();
+  const pool = getPool(config);
+  try {
+    const fixture = await seedFixture(pool, config.installationId);
+    const context = requestContext(
+      config.installationId,
+      fixture.warehouseId,
+      `req-prepare-${randomUUID()}`,
+    );
+    const client = await pool.connect();
+    let orderId;
+    try {
+      await client.query('BEGIN');
+      const created = await createSalesOrder(client, {
+        requestContext: context,
+        payload: payload(fixture, [{ variantId: fixture.firstVariantId, quantity: '2' }]),
+      });
+      assert.equal(created.ok, true, JSON.stringify(created));
+      orderId = created.salesOrder.id;
+      const confirmed = await confirmSalesOrder(client, {
+        requestContext: context,
+        id: orderId,
+        versionNumber: 1,
+        idempotencyKey: `confirm.${randomUUID()}`,
+      });
+      assert.equal(confirmed.ok, true, JSON.stringify(confirmed));
+      const issued = await issueManualSalesOrderStock(client, {
+        requestContext: context,
+        id: orderId,
+        expectedRevision: confirmed.salesOrder.revision,
+        idempotencyKey: `manual-stock-issue.${randomUUID()}`,
+      });
+      assert.equal(issued.ok, true, JSON.stringify(issued));
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const issuedOrder = await getSalesOrder(pool, { requestContext: context, id: orderId });
+    const completeRequestId = `req-complete-${randomUUID()}`;
+    const completed = await invokeManualRoute({
+      pool,
+      context,
+      id: orderId,
+      action: 'complete',
+      payload: { expectedRevision: issuedOrder.salesOrder.revision },
+      key: `manual-complete.${randomUUID()}`,
+      requestId: completeRequestId,
+    });
+    assert.equal(completed.statusCode, 200, JSON.stringify(completed.body));
+    assert.equal(completed.body.data.status, 'closed');
+    assert.equal(completed.body.data.deliveryStatus, 'delivered');
+    assert.equal(completed.body.data.settlementStatus, 'pending');
+
+    const completionEffects = await pool.query(
+      `SELECT
+         (SELECT count(*)::int FROM shared.core_audit_records
+           WHERE installation_id = $1 AND request_id = $2) AS audit_count,
+         (SELECT count(*)::int FROM shared.core_outbox_events
+           WHERE installation_id = $1 AND request_id = $2) AS outbox_count,
+         (SELECT count(*)::int FROM accounting.receivable_documents
+           WHERE installation_id = $1
+             AND source_document_type = 'MANUAL_SALES_ORDER'
+             AND source_document_id = $3::uuid) AS receivable_count`,
+      [config.installationId, completeRequestId, orderId],
+    );
+    assert.deepEqual(completionEffects.rows[0], {
+      audit_count: 2,
+      outbox_count: 2,
+      receivable_count: 1,
+    });
+
+    const completedOrder = await getSalesOrder(pool, { requestContext: context, id: orderId });
+    const debtRequestId = `req-debt-${randomUUID()}`;
+    const debtOnly = await invokeManualRoute({
+      pool,
+      context,
+      id: orderId,
+      action: 'settlement',
+      payload: {
+        expectedRevision: completedOrder.salesOrder.revision,
+        paidAmount: '0',
+      },
+      key: `manual-debt.${randomUUID()}`,
+      requestId: debtRequestId,
+    });
+    assert.equal(debtOnly.statusCode, 200, JSON.stringify(debtOnly.body));
+    assert.equal(debtOnly.body.data.settlementStatus, 'pending');
+    const debtEffects = await pool.query(
+      `SELECT
+         (SELECT count(*)::int FROM shared.core_audit_records
+           WHERE installation_id = $1 AND request_id = $2) AS audit_count,
+         (SELECT count(*)::int FROM shared.core_outbox_events
+           WHERE installation_id = $1 AND request_id = $2) AS outbox_count,
+         (SELECT count(*)::int FROM accounting.receivable_documents
+           WHERE installation_id = $1
+             AND source_document_type = 'CUSTOMER_PAYMENT') AS payment_count`,
+      [config.installationId, debtRequestId],
+    );
+    assert.deepEqual(debtEffects.rows[0], {
+      audit_count: 1,
+      outbox_count: 1,
+      payment_count: 0,
+    });
+
+    const settlementRequestId = `req-settlement-${randomUUID()}`;
+    const settled = await invokeManualRoute({
+      pool,
+      context,
+      id: orderId,
+      action: 'settlement',
+      payload: {
+        expectedRevision: completedOrder.salesOrder.revision,
+        paidAmount: '5000',
+        paymentMethod: 'CASH',
+      },
+      key: `manual-settlement.${randomUUID()}`,
+      requestId: settlementRequestId,
+    });
+    assert.equal(settled.statusCode, 200, JSON.stringify(settled.body));
+    assert.equal(settled.body.data.settlementStatus, 'partially_paid');
+
+    const settlementEffects = await pool.query(
+      `SELECT
+         (SELECT count(*)::int FROM shared.core_audit_records
+           WHERE installation_id = $1 AND request_id = $2) AS audit_count,
+         (SELECT count(*)::int FROM shared.core_outbox_events
+           WHERE installation_id = $1 AND request_id = $2) AS outbox_count,
+         (SELECT count(*)::int FROM accounting.receivable_documents
+           WHERE installation_id = $1
+             AND source_document_type = 'CUSTOMER_PAYMENT') AS payment_count`,
+      [config.installationId, settlementRequestId],
+    );
+    assert.deepEqual(settlementEffects.rows[0], {
+      audit_count: 2,
+      outbox_count: 2,
+      payment_count: 1,
+    });
   } finally {
     await closePool();
   }

@@ -282,7 +282,13 @@ async function executeIdempotentMutation(req, res, options, {
       execution.response.requestId ?? options.requestId,
       execution.response.contentType,
     );
-  } catch {
+  } catch (error) {
+    console.error(JSON.stringify(sanitizedUnexpectedError(error, {
+      requestId: options.requestId,
+      action,
+      resourceId,
+      route,
+    })));
     sendError(
       res,
       apiError('SALES_ORDER_TRANSACTION_FAILED', 'Sales Order transaction failed', {}, true, 503),
@@ -290,6 +296,27 @@ async function executeIdempotentMutation(req, res, options, {
       options.receivedAt,
     );
   }
+}
+
+function sanitizedUnexpectedError(error, { requestId, action, resourceId, route }) {
+  const rawMessage = typeof error?.message === 'string'
+    ? error.message
+    : 'Unknown Sales Order error';
+  return Object.freeze({
+    event: 'sales_order_unexpected_error',
+    requestId,
+    action,
+    salesOrderId: resourceId,
+    route,
+    name: typeof error?.name === 'string' ? error.name.slice(0, 80) : 'Error',
+    code: typeof error?.code === 'string' ? error.code.slice(0, 80) : null,
+    constraint: typeof error?.constraint === 'string' ? error.constraint.slice(0, 160) : null,
+    message: rawMessage
+      .replace(/(?:postgres(?:ql)?|https?):\/\/\S+/gi, '[redacted-url]')
+      .replace(/(?:password|token|secret|api[_-]?key)\s*[=:]\s*\S+/gi, '$1=[redacted]')
+      .replace(/[\r\n\t]+/g, ' ')
+      .slice(0, 240),
+  });
 }
 
 export async function handleSalesOrderRoutes(req, res, options) {
@@ -677,10 +704,11 @@ export async function handleSalesOrderRoutes(req, res, options) {
       payload: { ...payload, id },
       action: 'cancel',
       resourceId: id,
-      mutate: (client) => service.cancelSalesOrder(client, {
+      mutate: (client, key) => service.cancelSalesOrder(client, {
         requestContext: context,
         id,
         payload,
+        idempotencyKey: key,
       }),
     });
     return true;
@@ -694,3 +722,7 @@ export async function handleSalesOrderRoutes(req, res, options) {
   );
   return true;
 }
+
+export const salesOrderRouteInternals = Object.freeze({
+  sanitizedUnexpectedError,
+});

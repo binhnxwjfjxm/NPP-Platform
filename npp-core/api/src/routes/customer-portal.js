@@ -553,7 +553,12 @@ export async function handleCustomerPortalRoutes(req, res, options) {
           const result = await withAuditOutboxTransaction({
             adapter: options.getPool(),
             mutate: async (client) => {
-              const cancelled = await service.cancelPortalOrder(client, { requestContext, membership, orderId: cancelMatch[1] });
+              const cancelled = await service.cancelPortalOrder(client, {
+                requestContext,
+                membership,
+                orderId: cancelMatch[1],
+                idempotencyKey: key.key,
+              });
               if (!cancelled.ok) return rollbackBusinessFailure(cancelled);
               await auditMutation(client, { requestContext, action: 'customer_portal_cancel', eventType: 'sales.sales_order.customer_portal_cancelled', order: cancelled.order });
               return auditedBusinessSuccess(cancelled);

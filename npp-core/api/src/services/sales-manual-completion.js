@@ -7,6 +7,7 @@ import {
   insertAuditRecord,
   insertOutboxEvent,
 } from '../audit-outbox.js';
+import { auditOutboxEffect } from '../audit-outbox-effects.js';
 import * as receivableRepository from '../db/repositories/customer-receivable.js';
 import * as customerPaymentService from './customer-payment.js';
 
@@ -110,7 +111,7 @@ function validateManualIssued(source, requestContext) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Đơn nằm ngoài phạm vi kho được cấp quyền');
   }
   if (source.fulfillment_status !== 'issued') {
-    return failure('MANUAL_ORDER_NOT_ISSUED', 'Hãy Xuất kho trước khi Hoàn tất giao');
+    return failure('MANUAL_ORDER_NOT_ISSUED', 'Hãy Xuất kho trước khi Hoàn thành đơn');
   }
   return Object.freeze({ ok: true });
 }
@@ -297,10 +298,10 @@ export async function completeManualSalesOrder(client, {
   const valid = validateManualIssued(source, requestContext);
   if (!valid.ok) return valid;
   if (source.status === 'closed') {
-    return failure('MANUAL_ORDER_ALREADY_COMPLETED', 'Đơn đã Hoàn tất giao, không thể hoàn tất lần hai');
+    return failure('MANUAL_ORDER_ALREADY_COMPLETED', 'Đơn đã hoàn thành, không thể hoàn thành lần hai');
   }
   if (source.status !== 'confirmed') {
-    return failure('MANUAL_ORDER_COMPLETE_NOT_AVAILABLE', 'Chỉ đơn đã Chốt và Xuất kho mới được Hoàn tất giao');
+    return failure('MANUAL_ORDER_COMPLETE_NOT_AVAILABLE', 'Chỉ đơn đã Chốt và Xuất kho mới được Hoàn thành đơn');
   }
   const conflict = checkRevision(source, expectedRevision);
   if (conflict) return conflict;
@@ -310,10 +311,12 @@ export async function completeManualSalesOrder(client, {
   if (total === null) return failure('MANUAL_ORDER_TOTAL_INVALID', 'Tổng tiền đơn không hợp lệ');
 
   let receivable = null;
+  let accountingEffect = auditOutboxEffect();
   if (total > 0n) {
     const posted = await postReceivable(client, { requestContext, source });
     if (!posted.ok) return posted;
     receivable = posted.receivable;
+    if (!posted.replayed) accountingEffect = auditOutboxEffect(1, 1);
   }
 
   const updated = await client.query(
@@ -333,7 +336,7 @@ export async function completeManualSalesOrder(client, {
   if (!updated.rows?.length) {
     return failure('MANUAL_ORDER_CONFLICT', 'Đơn đã thay đổi. Hãy tải lại trước khi tiếp tục');
   }
-  return Object.freeze({ ok: true, action: 'complete', receivable });
+  return Object.freeze({ ok: true, action: 'complete', receivable, auditOutboxEffect: accountingEffect });
 }
 
 export async function settleManualSalesOrder(client, {
@@ -354,7 +357,7 @@ export async function settleManualSalesOrder(client, {
   const valid = validateManualIssued(source, requestContext);
   if (!valid.ok) return valid;
   if (source.status !== 'closed') {
-    return failure('MANUAL_ORDER_SETTLEMENT_NOT_AVAILABLE', 'Hãy Hoàn tất giao trước khi ghi nhận tiền thu');
+    return failure('MANUAL_ORDER_SETTLEMENT_NOT_AVAILABLE', 'Hãy Hoàn thành đơn trước khi ghi nhận tiền thu hoặc nợ');
   }
   if (source.settlement_status === 'paid') {
     return failure('MANUAL_ORDER_ALREADY_SETTLED', 'Đơn đã thanh toán đủ');
@@ -375,15 +378,25 @@ export async function settleManualSalesOrder(client, {
 
   const { decimalToScaled, scaledToDecimal } = customerPaymentService.customerPaymentInternals;
   const remaining = decimalToScaled(receivable.remaining_amount, { allowZero: true });
-  const paid = decimalToScaled(payload?.paidAmount);
+  const paid = decimalToScaled(payload?.paidAmount, { allowZero: true });
   if (remaining === null || remaining <= 0n) {
     return failure('MANUAL_ORDER_ALREADY_SETTLED', 'Đơn đã thanh toán đủ');
   }
   if (paid === null) {
-    return failure('INVALID_PAYMENT_AMOUNT', 'Số tiền thu phải lớn hơn 0');
+    return failure('INVALID_PAYMENT_AMOUNT', 'Số tiền thực thu không hợp lệ');
   }
   if (paid > remaining) {
     return failure('PAYMENT_EXCEEDS_ORDER_TOTAL', 'Số tiền thu không được lớn hơn số tiền khách còn nợ');
+  }
+
+  if (paid === 0n) {
+    return Object.freeze({
+      ok: true,
+      action: 'settlement',
+      receivable,
+      customerPayment: null,
+      auditOutboxEffect: auditOutboxEffect(),
+    });
   }
 
   const paymentMethod = String(payload?.paymentMethod ?? '').trim().toUpperCase();
@@ -416,5 +429,6 @@ export async function settleManualSalesOrder(client, {
     action: 'settlement',
     receivable,
     customerPayment,
+    auditOutboxEffect: auditOutboxEffect(1, 1),
   });
 }

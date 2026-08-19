@@ -236,6 +236,7 @@ export async function listTripStops(client, { installationId, tripId }) {
         AND delivery_order.id = assignment.delivery_order_id
       WHERE stop.installation_id = $1 AND stop.trip_id = $2
       GROUP BY stop.id
+      HAVING count(assignment.id) > 0
       ORDER BY stop.stop_sequence, stop.id`,
     [installationId, tripId],
   );
@@ -377,7 +378,7 @@ export async function unassignDeliveryOrder(client, values) {
   return result.rows[0] ?? null;
 }
 
-export async function deleteEmptyStop(client, { installationId, stopId }) {
+export async function deleteUnreferencedStop(client, { installationId, stopId }) {
   await client.query(
     `DELETE FROM logistics.trip_stops stop
       WHERE stop.installation_id = $1 AND stop.id = $2
@@ -385,7 +386,6 @@ export async function deleteEmptyStop(client, { installationId, stopId }) {
           SELECT 1 FROM logistics.trip_order_assignments assignment
            WHERE assignment.installation_id = stop.installation_id
              AND assignment.trip_stop_id = stop.id
-             AND assignment.unassigned_at IS NULL
         )`,
     [installationId, stopId],
   );

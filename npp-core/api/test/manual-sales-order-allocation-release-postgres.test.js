@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { Readable } from 'node:stream';
 import { loadConfig } from '../src/config.js';
 import { getPool, closePool } from '../src/db/pool.js';
 import {
@@ -9,6 +10,25 @@ import {
   quickEditManualSalesOrder,
 } from '../src/services/sales-order.js';
 import * as fulfillmentRepository from '../src/db/repositories/sales-fulfillment-operations.js';
+import {
+  executePackFulfillmentAllocation,
+  executePickFulfillmentAllocation,
+} from '../src/services/sales-fulfillment-operations.js';
+import { handleSalesOrderRoutes } from '../src/routes/sales-orders.js';
+import {
+  executeConfirmDeliveryOrder,
+  executeCreateDeliveryOrder,
+} from '../src/services/sales-delivery-orders.js';
+import {
+  assignDeliveryOrder,
+  createDeliveryRoute,
+  createDeliveryTrip,
+  createDriverProfile,
+  createVehicle,
+  lockDeliveryTrip,
+  planDeliveryTrip,
+} from '../src/services/logistics-trip-planning.js';
+import { dispatchDeliveryTrip } from '../src/services/logistics-trip-dispatch.js';
 
 function configForTest() {
   return loadConfig({
@@ -33,7 +53,14 @@ function context(installationId, warehouseId, requestId) {
     requestId,
     receivedAt: '2026-08-19T04:00:00.000Z',
     roles: Object.freeze(['sales-operator']),
-    permissions: Object.freeze([]),
+    permissions: Object.freeze([
+      'core.fulfillment.pick',
+      'core.fulfillment.pack',
+      'core.delivery-order.create',
+      'core.delivery-order.confirm',
+      'core.delivery-trip.dispatch',
+      'core.delivery-order.issue-inventory',
+    ]),
     scopes: Object.freeze({
       branchIds: Object.freeze([]),
       warehouseIds: Object.freeze([warehouseId]),
@@ -168,7 +195,7 @@ async function seed(client, installationId) {
   };
 }
 
-function orderPayload(fixture, lines) {
+function orderPayload(fixture, lines, deliveryExecutionMode = 'MANUAL') {
   return {
     sourceType: 'MANUAL',
     customerId: fixture.customerId,
@@ -176,7 +203,7 @@ function orderPayload(fixture, lines) {
     warehouseId: fixture.warehouseId,
     salesChannelId: fixture.channelId,
     deliveryMode: 'DELIVERY',
-    deliveryExecutionMode: 'MANUAL',
+    deliveryExecutionMode,
     collectionPolicy: 'COLLECT_ON_DELIVERY',
     currency: 'VND',
     lines: lines.map(({ variantId, quantity }) => ({
@@ -188,6 +215,48 @@ function orderPayload(fixture, lines) {
       taxRate: '0',
     })),
   };
+}
+
+function responseCapture() {
+  return {
+    statusCode: null,
+    headers: {},
+    body: '',
+    setHeader(name, value) {
+      this.headers[String(name).toLowerCase()] = value;
+    },
+    writeHead(statusCode, headers = {}) {
+      this.statusCode = statusCode;
+      for (const [name, value] of Object.entries(headers)) this.headers[String(name).toLowerCase()] = value;
+    },
+    end(body = '') {
+      this.body = String(body);
+    },
+  };
+}
+
+async function invokeCancelRoute(pool, requestContext, orderId, reason, key) {
+  const req = Readable.from([JSON.stringify({ reason })]);
+  req.url = `/api/sales-orders/${orderId}/cancel`;
+  req.method = 'POST';
+  req.headers = { 'idempotency-key': key };
+  const res = responseCapture();
+  await handleSalesOrderRoutes(req, res, {
+    config: {},
+    requestId: requestContext.requestId,
+    receivedAt: requestContext.receivedAt,
+    PERMISSIONS: { coreSalesOrderCancel: 'core.sales-order.cancel' },
+    authenticate: () => ({ ok: true, principal: { id: requestContext.actorId } }),
+    authorize: () => ({ ok: true }),
+    createContext: () => requestContext,
+    getPool: () => pool,
+    idempotencyStore: {},
+    executeRequestWithIdempotency: async ({ onProcess }) => ({
+      response: await onProcess(),
+      replayed: false,
+    }),
+  });
+  return Object.freeze({ statusCode: res.statusCode, body: JSON.parse(res.body) });
 }
 
 async function activeDemand(client, installationId, salesOrderId, baseVariantId) {
@@ -285,6 +354,192 @@ async function seedExactAllocation(client, installationId, requestContext, deman
     occurredAt,
   });
   return { allocationId, reservationId };
+}
+
+async function prepareExecutionOrder(pool, installationId, fixture, label, executionMode = 'TRIP') {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const requestContext = context(installationId, fixture.warehouseId, `req-${label}-${randomUUID()}`);
+    const created = await createSalesOrder(client, {
+      requestContext,
+      payload: orderPayload(
+        fixture,
+        [{ variantId: fixture.firstVariantId, quantity: '1' }],
+        executionMode,
+      ),
+    });
+    assert.equal(created.ok, true, JSON.stringify(created));
+    const confirmed = await confirmSalesOrder(client, {
+      requestContext,
+      id: created.salesOrder.id,
+      versionNumber: 1,
+      idempotencyKey: `confirm.${randomUUID()}`,
+    });
+    assert.equal(confirmed.ok, true, JSON.stringify(confirmed));
+    const demand = await activeDemand(
+      client,
+      installationId,
+      created.salesOrder.id,
+      fixture.firstVariantId,
+    );
+    const exact = await seedExactAllocation(client, installationId, requestContext, demand);
+    await client.query('COMMIT');
+    return Object.freeze({
+      requestContext,
+      orderId: created.salesOrder.id,
+      allocationId: exact.allocationId,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function progressAllocation(pool, prepared, state) {
+  if (state === 'picked' || state === 'packed') {
+    const picked = await executePickFulfillmentAllocation({
+      adapter: pool,
+      requestContext: prepared.requestContext,
+      allocationId: prepared.allocationId,
+      idempotencyKey: `pick.${randomUUID()}`,
+      payload: { quantity: '1' },
+    });
+    assert.equal(picked.ok, true, JSON.stringify(picked));
+  }
+  if (state === 'packed') {
+    const packed = await executePackFulfillmentAllocation({
+      adapter: pool,
+      requestContext: prepared.requestContext,
+      allocationId: prepared.allocationId,
+      idempotencyKey: `pack.${randomUUID()}`,
+      payload: { quantity: '1' },
+    });
+    assert.equal(packed.ok, true, JSON.stringify(packed));
+  }
+}
+
+async function prepareTrip(pool, fixture, prepared, label, dispatched) {
+  await progressAllocation(pool, prepared, 'packed');
+  const driverEmployeeId = randomUUID();
+  await pool.query(
+    `INSERT INTO shared.employees
+      (id, installation_id, code, full_name, job_title, phone, is_active, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,'Tài xế','0900000000',true,$5,$5)`,
+    [
+      driverEmployeeId,
+      prepared.requestContext.installationId,
+      `TX-${label}`,
+      `Tài xế ${label}`,
+      prepared.requestContext.actorId,
+    ],
+  );
+  const delivery = await executeCreateDeliveryOrder({
+    adapter: pool,
+    requestContext: prepared.requestContext,
+    idempotencyKey: `delivery-create.${randomUUID()}`,
+    payload: {
+      lines: [{ fulfillmentAllocationId: prepared.allocationId, quantity: '1' }],
+    },
+  });
+  assert.equal(delivery.ok, true, JSON.stringify(delivery));
+  const deliveryOrderId = delivery.deliveryOrder.id;
+  const confirmed = await executeConfirmDeliveryOrder({
+    adapter: pool,
+    requestContext: prepared.requestContext,
+    deliveryOrderId,
+    idempotencyKey: `delivery-confirm.${randomUUID()}`,
+    payload: {},
+  });
+  assert.equal(confirmed.ok, true, JSON.stringify(confirmed));
+
+  const route = await createDeliveryRoute({
+    adapter: pool,
+    requestContext: prepared.requestContext,
+    payload: {
+      code: `TUYEN-${label}`,
+      name: `Tuyến ${label}`,
+      defaultWarehouseId: fixture.warehouseId,
+    },
+  });
+  assert.equal(route.ok, true, JSON.stringify(route));
+  const vehicle = await createVehicle({
+    adapter: pool,
+    requestContext: prepared.requestContext,
+    payload: {
+      code: `XE-${label}`,
+      licensePlate: `51C-${randomUUID().slice(0, 5)}`,
+      vehicleType: 'Xe tải',
+    },
+  });
+  assert.equal(vehicle.ok, true, JSON.stringify(vehicle));
+  const driver = await createDriverProfile({
+    adapter: pool,
+    requestContext: prepared.requestContext,
+    payload: {
+      code: `TX-${label}`,
+      name: `Tài xế ${label}`,
+      employeeId: driverEmployeeId,
+      licenseReference: `B2-${label}`,
+    },
+  });
+  assert.equal(driver.ok, true, JSON.stringify(driver));
+  const trip = await createDeliveryTrip({
+    adapter: pool,
+    requestContext: prepared.requestContext,
+    idempotencyKey: `trip-create.${randomUUID()}`,
+    payload: {
+      warehouseId: fixture.warehouseId,
+      deliveryRouteId: route.delivery_route.id,
+      vehicleId: vehicle.vehicle.id,
+      primaryDriverId: driver.driver_profile.id,
+      plannedStartAt: '2026-08-20T01:00:00.000Z',
+      note: `Chuyến ${label}`,
+    },
+  });
+  assert.equal(trip.ok, true, JSON.stringify(trip));
+  const tripId = trip.trip.id;
+  const assigned = await assignDeliveryOrder({
+    adapter: pool,
+    requestContext: prepared.requestContext,
+    tripId,
+    idempotencyKey: `trip-assign.${randomUUID()}`,
+    payload: { deliveryOrderId },
+  });
+  assert.equal(assigned.ok, true, JSON.stringify(assigned));
+  const planned = await planDeliveryTrip({
+    adapter: pool,
+    requestContext: prepared.requestContext,
+    tripId,
+    idempotencyKey: `trip-plan.${randomUUID()}`,
+    payload: {},
+  });
+  assert.equal(planned.ok, true, JSON.stringify(planned));
+  const locked = await lockDeliveryTrip({
+    adapter: pool,
+    requestContext: prepared.requestContext,
+    tripId,
+    idempotencyKey: `trip-lock.${randomUUID()}`,
+    payload: {},
+  });
+  assert.equal(locked.ok, true, JSON.stringify(locked));
+  if (dispatched) {
+    const dispatch = await dispatchDeliveryTrip({
+      adapter: pool,
+      requestContext: prepared.requestContext,
+      tripId,
+      idempotencyKey: `trip-dispatch.${randomUUID()}`,
+      payload: {
+        dispatchedAt: '2026-08-19T10:05:00.000Z',
+        handoverReceiverName: 'Tài xế kiểm thử',
+        handoverNote: 'Bàn giao đủ hàng',
+      },
+    });
+    assert.equal(dispatch.ok, true, JSON.stringify(dispatch));
+  }
+  return Object.freeze({ deliveryOrderId, tripId });
 }
 
 test('Giao thủ công giải phóng phân bổ chưa xử lý rồi cho bớt SKU mà không 409', async () => {
@@ -410,6 +665,132 @@ test('Giao thủ công giải phóng phân bổ chưa xử lý rồi cho bớt S
     throw error;
   } finally {
     client.release();
+    await closePool();
+  }
+});
+
+test('route Hủy hoàn tác đủ giữ hàng, soạn hàng, đóng gói và chuyến chưa giao khách', async () => {
+  const config = configForTest();
+  const pool = getPool(config);
+  try {
+    const seedClient = await pool.connect();
+    let fixture;
+    try {
+      await seedClient.query('BEGIN');
+      fixture = await seed(seedClient, config.installationId);
+      await seedClient.query('COMMIT');
+    } catch (error) {
+      await seedClient.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      seedClient.release();
+    }
+
+    for (const state of ['held', 'picked', 'packed']) {
+      const prepared = await prepareExecutionOrder(
+        pool,
+        config.installationId,
+        fixture,
+        state,
+      );
+      await progressAllocation(pool, prepared, state);
+      const cancelled = await invokeCancelRoute(
+        pool,
+        prepared.requestContext,
+        prepared.orderId,
+        `Hủy ca ${state}`,
+        `cancel-${state}.${randomUUID()}`,
+      );
+      assert.equal(cancelled.statusCode, 200, JSON.stringify(cancelled.body));
+      assert.equal(cancelled.body.data.status, 'cancelled');
+      const stateResult = await pool.query(
+        `SELECT orders.status,
+                demand.state AS demand_state,
+                allocation.state AS allocation_state,
+                reservation.state AS reservation_state,
+                allocation.picked_base_quantity::text AS picked,
+                allocation.packed_base_quantity::text AS packed
+           FROM sales.sales_orders orders
+           JOIN sales.sales_order_fulfillment_demands demand
+             ON demand.installation_id = orders.installation_id
+            AND demand.sales_order_id = orders.id
+           JOIN sales.sales_order_fulfillment_allocations allocation
+             ON allocation.installation_id = demand.installation_id
+            AND allocation.fulfillment_demand_id = demand.id
+           JOIN inventory.inventory_reservations reservation
+             ON reservation.installation_id = allocation.installation_id
+            AND reservation.id = allocation.inventory_reservation_id
+          WHERE orders.installation_id = $1 AND orders.id = $2::uuid`,
+        [config.installationId, prepared.orderId],
+      );
+      assert.deepEqual(stateResult.rows[0], {
+        status: 'cancelled',
+        demand_state: 'CANCELLED',
+        allocation_state: 'RELEASED',
+        reservation_state: 'RELEASED',
+        picked: '0.000000000000',
+        packed: '0.000000000000',
+      });
+    }
+
+    for (const dispatched of [false, true]) {
+      const label = dispatched ? 'DA-XUAT-PHAT' : 'DA-KHOA';
+      const prepared = await prepareExecutionOrder(
+        pool,
+        config.installationId,
+        fixture,
+        label,
+      );
+      const trip = await prepareTrip(pool, fixture, prepared, label, dispatched);
+      const cancelled = await invokeCancelRoute(
+        pool,
+        prepared.requestContext,
+        prepared.orderId,
+        `Hủy ca ${label}`,
+        `cancel-${label}.${randomUUID()}`,
+      );
+      assert.equal(cancelled.statusCode, 200, JSON.stringify(cancelled.body));
+      const tripState = await pool.query(
+        `SELECT orders.status,
+                delivery_order.status AS delivery_order_status,
+                delivery_trip.status AS trip_status,
+                assignment.unassigned_at IS NOT NULL AS unassigned,
+                stop.id IS NOT NULL AS stop_history_retained,
+                issue.status AS issue_status
+           FROM sales.sales_orders orders
+           JOIN sales.delivery_orders delivery_order
+             ON delivery_order.installation_id = orders.installation_id
+            AND delivery_order.sales_order_id = orders.id
+           JOIN logistics.trip_order_assignments assignment
+             ON assignment.installation_id = delivery_order.installation_id
+            AND assignment.delivery_order_id = delivery_order.id
+           JOIN logistics.delivery_trips delivery_trip
+             ON delivery_trip.installation_id = assignment.installation_id
+            AND delivery_trip.id = assignment.trip_id
+           JOIN logistics.trip_stops stop
+             ON stop.installation_id = assignment.installation_id
+            AND stop.id = assignment.trip_stop_id
+           LEFT JOIN logistics.trip_dispatch_items dispatch_item
+             ON dispatch_item.installation_id = assignment.installation_id
+            AND dispatch_item.assignment_id = assignment.id
+           LEFT JOIN sales.delivery_order_inventory_issues issue
+             ON issue.installation_id = dispatch_item.installation_id
+            AND issue.id = dispatch_item.inventory_issue_id
+          WHERE orders.installation_id = $1
+            AND orders.id = $2::uuid
+            AND delivery_trip.id = $3::uuid`,
+        [config.installationId, prepared.orderId, trip.tripId],
+      );
+      assert.deepEqual(tripState.rows[0], {
+        status: 'cancelled',
+        delivery_order_status: 'cancelled',
+        trip_status: dispatched ? 'recovered' : 'draft',
+        unassigned: true,
+        stop_history_retained: true,
+        issue_status: dispatched ? 'REVERSED' : null,
+      });
+    }
+  } finally {
     await closePool();
   }
 });

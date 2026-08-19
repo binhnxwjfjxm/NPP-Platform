@@ -1,3 +1,4 @@
+import { IDEMPOTENCY_KEY_PATTERN } from '@npp/contracts';
 import * as legacy from './sales-order-legacy.js';
 import * as pricingService from './pricing.js';
 import * as fulfillmentService from './sales-fulfillment.js';
@@ -891,6 +892,9 @@ export async function confirmSalesOrder(client, {
 }
 
 export async function cancelSalesOrder(client, input) {
+  if (!IDEMPOTENCY_KEY_PATTERN.test(String(input.idempotencyKey ?? ''))) {
+    return failure('INVALID_IDEMPOTENCY_KEY', 'Khóa chống ghi trùng không hợp lệ.');
+  }
   const before = await getSalesOrder(client, {
     requestContext: input.requestContext,
     id: input.id,
@@ -909,7 +913,7 @@ export async function cancelSalesOrder(client, input) {
     const released = await manualEditReleaseService.releasePreExecutionAllocations(client, {
       requestContext: input.requestContext,
       salesOrderId: input.id,
-      idempotencyKey: input.idempotencyKey ?? input.id,
+      idempotencyKey: input.idempotencyKey,
       intentName: 'cancel',
     });
     if (!released.ok) return released;
