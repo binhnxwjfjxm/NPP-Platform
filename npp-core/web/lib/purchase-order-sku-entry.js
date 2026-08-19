@@ -1,4 +1,4 @@
-export const MIN_PURCHASE_ORDER_SKU_SEARCH_LENGTH = 2;
+export const MIN_PURCHASE_ORDER_SKU_SEARCH_LENGTH = 1;
 
 export const PURCHASE_ORDER_SKU_FILTERS = Object.freeze({
   eligible: 'eligible',

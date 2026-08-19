@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  confirmBulkInventoryAdjustment,
   createInventoryAdjustment,
   getInventoryAdjustment,
   listInventoryAdjustmentReasons,
   listInventoryAdjustments,
   normalizeInventoryAdjustmentGatewayError,
+  previewBulkInventoryAdjustment,
   transitionInventoryAdjustment,
 } from '../../../../../lib/inventory-adjustment-gateway';
 import { errorResponse, readJsonBody, requestIdFrom, responseHeaders } from '../../_shared';
@@ -41,6 +43,10 @@ export async function POST(request: NextRequest, context: Context) {
     let status = 200;
     if (segments.length === 0) {
       data = await createInventoryAdjustment<unknown>(requestId, body, key); status = 201;
+    } else if (segments.length === 1 && segments[0] === 'bulk-preview') {
+      data = await previewBulkInventoryAdjustment<unknown>(requestId, body);
+    } else if (segments.length === 1 && segments[0] === 'bulk-confirm') {
+      data = await confirmBulkInventoryAdjustment<unknown>(requestId, body, key); status = 201;
     } else if (segments.length === 2 && ['submit', 'approve', 'post', 'cancel', 'reverse'].includes(segments[1])) {
       data = await transitionInventoryAdjustment<unknown>(segments[0], segments[1] as 'submit' | 'approve' | 'post' | 'cancel' | 'reverse', requestId, body, key);
     } else return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Không tìm thấy đường dẫn', retryable: false, details: {} }, requestId },
