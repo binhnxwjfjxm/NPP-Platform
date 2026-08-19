@@ -373,10 +373,11 @@ export default function InventoryScopedWorkspace({
                 <h3 className={styles.panelTitle}>Danh sách chính sách</h3>
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
-                    <thead><tr><th>SKU</th><th>Lô</th><th>Hạn dùng</th><th>Vị trí</th><th></th></tr></thead>
+                    <thead><tr><BusinessTableSequenceHeader /><th>SKU</th><th>Lô</th><th>Hạn dùng</th><th>Vị trí</th><th></th></tr></thead>
                     <tbody>
-                      {filteredPolicies.length === 0 ? tableEmpty('Chưa có chính sách lô.', 5) : filteredPolicies.map((policy) => (
+                      {filteredPolicies.length === 0 ? tableEmpty('Chưa có chính sách lô.', 6) : filteredPolicies.map((policy, rowIndex) => (
                         <tr key={policy.base_variant_id}>
+                          <BusinessTableSequenceCell rowIndex={rowIndex} />
                           <td><div className={styles.mono}>{policy.base_sku}</div><div className={styles.subtle}>{policy.product_code} · {policy.product_name}</div></td>
                           <td><span className={styles.pill}>{lotTrackingLabel(policy.lot_tracking_mode)}</span></td>
                           <td><span className={styles.pill}>{expiryTrackingLabel(policy.expiry_tracking_mode)}</span></td>

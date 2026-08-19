@@ -3,6 +3,7 @@
 import { createIdempotencyKey } from '@npp/contracts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import { BusinessSequenceNumber } from '../../components/business-table-sequence';
 import { StockHoldBreakdown } from '../../components/stock-hold-breakdown';
 import styles from './fulfillment-workspace.module.css';
 
@@ -642,7 +643,7 @@ export default function FulfillmentWorkspace() {
             </div>
             <div className={styles.orderList}>
               {filteredGroups.length === 0 ? <p className={styles.empty}>Không có đơn hàng phù hợp.</p> : null}
-              {filteredGroups.map((group) => (
+              {filteredGroups.map((group, rowIndex) => (
                 <button
                   type="button"
                   key={group.salesOrderId}
@@ -652,7 +653,7 @@ export default function FulfillmentWorkspace() {
                 >
                   <span className={styles.orderIdentity}>
                     <span className={styles.orderPrimary}>
-                      <strong>{group.orderNumber || 'Đơn chưa có số'}</strong>
+                      <strong><BusinessSequenceNumber rowIndex={rowIndex} /> {group.orderNumber || 'Đơn chưa có số'}</strong>
                       <em>{statusLabel(group.fulfillmentStatus)}</em>
                     </span>
                     <small>{group.customerName}</small>
@@ -731,9 +732,9 @@ export default function FulfillmentWorkspace() {
                   <div className={styles.tableScroll}>
                     <div className={styles.productTable} data-testid="fulfillment-product-table">
                       <div className={`${styles.productRow} ${styles.tableHeader}`} aria-hidden="true">
-                        <span>Sản phẩm / SKU</span><span>Khách đặt → Kho</span><span>Đã PB</span><span>Còn cần</span><span>Tồn thực tế</span><span>Đơn khác giữ</span><span>Khả dụng</span><span>SL PB</span><span>Thao tác</span><span>Trạng thái</span>
+                        <span>STT / Sản phẩm / SKU</span><span>Khách đặt → Kho</span><span>Đã PB</span><span>Còn cần</span><span>Tồn thực tế</span><span>Đơn khác giữ</span><span>Khả dụng</span><span>SL PB</span><span>Thao tác</span><span>Trạng thái</span>
                       </div>
-                      {selectedOrder.items.map((item) => {
+                      {selectedOrder.items.map((item, rowIndex) => {
                         const orderOutcome = orderAllocationLineMap.get(item.fulfillmentDemandId);
                         const remaining = quantityDifference(item.orderedBaseQuantity, item.allocatedBaseQuantity);
                         const rowBusy = busy === `allocate-${item.fulfillmentDemandId}`;
@@ -745,7 +746,7 @@ export default function FulfillmentWorkspace() {
                             onClick={() => void loadDetail(item.fulfillmentDemandId)}
                             data-testid={`fulfillment-product-${item.fulfillmentDemandId}`}
                           >
-                            <span><strong>{item.itemName}</strong><small>{item.sku}</small></span>
+                            <span><BusinessSequenceNumber rowIndex={rowIndex} /> <strong>{item.itemName}</strong><small>{item.sku}</small></span>
                             <span>{orderedQuantityLabel(item)}</span>
                             <span>{formatQuantity(item.allocatedBaseQuantity)} {item.baseUnitCode}</span>
                             <span>{formatQuantity(remaining)} {item.baseUnitCode}</span>
@@ -838,11 +839,11 @@ export default function FulfillmentWorkspace() {
                     <div className={styles.tableScroll}>
                       <div className={styles.locationTable}>
                         <div className={`${styles.locationRow} ${styles.tableHeader}`} aria-hidden="true">
-                          <span>Vị trí</span><span>Lô</span><span>Khả dụng</span><span>Hạn dùng / nhập đầu</span>
+                          <span>STT / Vị trí</span><span>Lô</span><span>Khả dụng</span><span>Hạn dùng / nhập đầu</span>
                         </div>
-                        {(detail?.candidates ?? []).slice(0, 12).map((candidate) => (
+                        {(detail?.candidates ?? []).slice(0, 12).map((candidate, rowIndex) => (
                           <div className={styles.locationRow} key={`${candidate.locationId ?? 'none'}-${candidate.lotId ?? 'none'}`}>
-                            <strong>{candidate.locationCode || 'Chưa có vị trí'}</strong>
+                            <strong><BusinessSequenceNumber rowIndex={rowIndex} /> {candidate.locationCode || 'Chưa có vị trí'}</strong>
                             <span>{candidate.lotCode || 'Không theo lô'}</span>
                             <span>{formatQuantity(candidate.availableBaseQuantity)} {selectedWork.baseUnitCode}</span>
                             <span>{candidate.expiryDate ? `HSD ${formatDate(candidate.expiryDate)}` : `Nhập ${formatDate(candidate.firstReceivedAt)}`}</span>
@@ -861,15 +862,15 @@ export default function FulfillmentWorkspace() {
                     <div className={styles.tableScroll}>
                       <div className={styles.allocationTable}>
                         <div className={`${styles.allocationRow} ${styles.tableHeader}`} aria-hidden="true">
-                          <span>Vị trí / lô</span><span>Phân bổ</span><span>Soạn</span><span>Đóng gói</span><span>Trạng thái</span><span>Thao tác</span>
+                          <span>STT / Vị trí / lô</span><span>Phân bổ</span><span>Soạn</span><span>Đóng gói</span><span>Trạng thái</span><span>Thao tác</span>
                         </div>
-                        {(detail?.allocations ?? []).map((allocation) => {
+                        {(detail?.allocations ?? []).map((allocation, rowIndex) => {
                           const pickRemaining = quantityDifference(allocation.allocatedBaseQuantity, allocation.pickedBaseQuantity);
                           const packRemaining = quantityDifference(allocation.pickedBaseQuantity, allocation.packedBaseQuantity);
                           return (
                             <div className={styles.allocationRow} key={allocation.id} data-testid={`fulfillment-allocation-${allocation.id}`}>
                               <div>
-                                <strong>{allocation.locationCode || 'Chưa có vị trí'}</strong>
+                                <strong><BusinessSequenceNumber rowIndex={rowIndex} /> {allocation.locationCode || 'Chưa có vị trí'}</strong>
                                 <small>{allocation.lotCode || 'Không theo lô'}{allocation.expiryDate ? ` · HSD ${formatDate(allocation.expiryDate)}` : ''}</small>
                               </div>
                               <span>{formatQuantity(allocation.allocatedBaseQuantity)} {selectedWork.baseUnitCode}</span>

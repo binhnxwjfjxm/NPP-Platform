@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import { BusinessSequenceNumber } from '../../components/business-table-sequence';
 import {
   formatDate,
   formatDateTime,
@@ -776,9 +777,9 @@ export default function TransferWorkspace({
             </div>
 
             <div className={styles.detailLineGrid}>
-              {(selected.lines ?? []).map((line) => (
+              {(selected.lines ?? []).map((line, rowIndex) => (
                 <article className={styles.detailLineCard} key={line.id}>
-                  <div><strong>{line.sourceSku}</strong><span>{line.itemName}</span></div>
+                  <div><strong><BusinessSequenceNumber rowIndex={rowIndex} /> {line.sourceSku}</strong><span>{line.itemName}</span></div>
                   <dl>
                     <div><dt>Số lượng xuất</dt><dd>{formatQuantity(line.sourceQuantity)} {line.sourceUnitCode}</dd></div>
                     <div><dt>Lô</dt><dd>{line.lotCode || 'Không lô'}</dd></div>
@@ -814,9 +815,9 @@ export default function TransferWorkspace({
                 </div>
 
                 <div className={styles.resolutionGrid}>
-                  {receiptBundle.resolution.map((line) => (
+                  {receiptBundle.resolution.map((line, rowIndex) => (
                     <article className={styles.resolutionCard} key={line.transferLineId}>
-                      <div className={styles.cardTop}><strong>{line.sourceSku}</strong><span>{line.sourceUnitCode}</span></div>
+                      <div className={styles.cardTop}><strong><BusinessSequenceNumber rowIndex={rowIndex} /> {line.sourceSku}</strong><span>{line.sourceUnitCode}</span></div>
                       <p>{line.itemName}{line.lotCode ? ` · lô ${line.lotCode}` : ''}</p>
                       <dl>
                         <div><dt>Đã xuất</dt><dd>{formatQuantity(line.dispatchedQuantity)}</dd></div>
@@ -841,14 +842,14 @@ export default function TransferWorkspace({
                       <label className={`${styles.field} ${styles.fullWidth}`}><span>Ghi chú lần nhận</span><textarea rows={2} value={receiptNote} onChange={(event) => setReceiptNote(event.target.value)} /></label>
                     </div>
                     <div className={styles.receiptLineList}>
-                      {receiptBundle.resolution.map((resolution) => {
+                      {receiptBundle.resolution.map((resolution, rowIndex) => {
                         const draft = receiptLines.find((line) => line.transferLineId === resolution.transferLineId);
                         if (!draft) return null;
                         const updateLine = (patch: Partial<ReceiptDraftLine>) => setReceiptLines((current) => current.map((line) => line.transferLineId === resolution.transferLineId ? { ...line, ...patch } : line));
                         return (
                           <article className={styles.receiptLineEditor} key={resolution.transferLineId}>
                             <div className={styles.receiptLineTitle}>
-                              <strong>{resolution.sourceSku} · {resolution.itemName}</strong>
+                              <strong><BusinessSequenceNumber rowIndex={rowIndex} /> {resolution.sourceSku} · {resolution.itemName}</strong>
                               <span>Còn đi đường {formatQuantity(resolution.remainingQuantity)} {resolution.sourceUnitCode}</span>
                             </div>
                             <label className={styles.field}>
@@ -889,9 +890,9 @@ export default function TransferWorkspace({
                             <span className={receipt.reversal ? styles.reversedBadge : styles.statusBadge}>{receipt.reversal ? 'Đã đảo' : 'Có hiệu lực'}</span>
                           </div>
                           <div className={styles.receiptLineSummary}>
-                            {receipt.lines.map((line) => (
+                            {receipt.lines.map((line, rowIndex) => (
                               <div key={line.id}>
-                                <strong>{line.sourceSku}</strong>
+                                <strong><BusinessSequenceNumber rowIndex={rowIndex} /> {line.sourceSku}</strong>
                                 <span>Đạt {formatQuantity(line.acceptedQuantity)} · Hư {formatQuantity(line.damagedQuantity)} · Thừa {formatQuantity(line.overQuantity)}</span>
                                 <small>{line.destinationLocationCode ? `Vị trí ${line.destinationLocationCode}` : 'Không nhập tồn'}{line.note ? ` · ${line.note}` : ''}</small>
                               </div>
@@ -935,10 +936,10 @@ export default function TransferWorkspace({
 
         {!showCreate && !selected ? mode === 'transfers' ? (
           <section className={styles.cardGrid} aria-label="Danh sách phiếu chuyển kho">
-            {filteredTransfers.length === 0 ? <div className={styles.emptyState}>Chưa có phiếu phù hợp bộ lọc.</div> : filteredTransfers.map((transfer) => (
+            {filteredTransfers.length === 0 ? <div className={styles.emptyState}>Chưa có phiếu phù hợp bộ lọc.</div> : filteredTransfers.map((transfer, rowIndex) => (
               <button type="button" className={styles.transferCard} key={transfer.id} onClick={() => openDetail(transfer.id)} disabled={busy === `detail-${transfer.id}`}>
                 <div className={styles.cardTop}><span className={styles.statusBadge}>{statusLabel(transfer)}</span><time>{formatDate(transfer.transferDate)}</time></div>
-                <strong>{transfer.documentNumber || 'Phiếu nháp chưa cấp số'}</strong>
+                <strong><BusinessSequenceNumber rowIndex={rowIndex} /> {transfer.documentNumber || 'Phiếu nháp chưa cấp số'}</strong>
                 <p>{transfer.sourceWarehouseCode} → {transfer.destinationWarehouseCode}</p>
                 <dl><div><dt>Số dòng</dt><dd>{transfer.lineCount}</dd></div><div><dt>Lượng cơ sở</dt><dd>{formatQuantity(transfer.baseQuantityTotal)}</dd></div></dl>
               </button>
@@ -946,10 +947,10 @@ export default function TransferWorkspace({
           </section>
         ) : (
           <section className={styles.cardGrid} aria-label="Hàng đang đi đường">
-            {filteredInTransit.length === 0 ? <div className={styles.emptyState}>Không có hàng đang đi đường phù hợp bộ lọc.</div> : filteredInTransit.map((line) => (
+            {filteredInTransit.length === 0 ? <div className={styles.emptyState}>Không có hàng đang đi đường phù hợp bộ lọc.</div> : filteredInTransit.map((line, rowIndex) => (
               <button type="button" className={styles.transferCard} key={line.transferLineId} onClick={() => openDetail(line.transferId)}>
                 <div className={styles.cardTop}><span className={styles.statusBadge}>Đang đi đường</span><time>{formatDateTime(line.dispatchedAt)}</time></div>
-                <strong>{line.sourceSku} · {line.itemName}</strong>
+                <strong><BusinessSequenceNumber rowIndex={rowIndex} /> {line.sourceSku} · {line.itemName}</strong>
                 <p>{line.sourceWarehouseCode} → {line.destinationWarehouseCode}</p>
                 <dl><div><dt>Số phiếu</dt><dd>{line.documentNumber}</dd></div><div><dt>Còn lại</dt><dd>{formatQuantity(line.sourceQuantity)} {line.sourceUnitCode}</dd></div><div><dt>Lô</dt><dd>{line.lotCode || 'Không lô'}</dd></div></dl>
               </button>

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell-core';
+import { BusinessSequenceNumber } from '../../components/business-table-sequence';
 import type { SalesOrderBootstrap } from '../../../lib/sales-order-bootstrap';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
 import { SALES_ORDER_PERMISSION_KEYS } from '../../../lib/sales-order-permissions';
@@ -443,7 +444,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
           <section className={styles.listPanel} aria-label="Danh sách đơn bán hàng">
             <header className={styles.panelHeading}><div><h2>Danh sách đơn</h2><p>{filtered.length} kết quả</p></div></header>
             <div className={styles.orderList}>
-              {filtered.map((order) => (
+              {filtered.map((order, rowIndex) => (
                 <button
                   type="button"
                   key={order.id}
@@ -451,7 +452,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
                   disabled={loadingId === order.id}
                   onClick={() => loadOrder(order.id)}
                 >
-                  <div className={styles.orderCardTop}><strong>{order.number ?? 'Đơn nháp chưa cấp số'}</strong><span data-sales-order-tone={orderCardTone(order)}>{orderCardStatus(order)}</span></div>
+                  <div className={styles.orderCardTop}><div className={styles.orderCardNumber}><BusinessSequenceNumber rowIndex={rowIndex} className={styles.orderSequence} /><strong>{order.number ?? 'Đơn nháp chưa cấp số'}</strong></div><span data-sales-order-tone={orderCardTone(order)}>{orderCardStatus(order)}</span></div>
                   <b>{order.customerCode} — {order.customerName}</b>
                   <div className={styles.orderCardMeta}>
                     <small>Nguồn {salesOrderSourceLabel(order.sourceType, order.sourceId)}</small>

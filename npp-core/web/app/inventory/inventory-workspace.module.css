@@ -115,6 +115,10 @@
 .pillWarning { background: rgba(180, 111, 31, 0.12); color: #95520d; }
 .pillDanger { background: rgba(168, 55, 35, 0.12); color: #8d2917; }
 .stack { display: grid; gap: 10px; }
+.balanceSection { display: grid; gap: 14px; }
+.balanceLayout { display: grid; gap: 14px; }
+.balanceTableWrap { border-radius: 14px; background: #fff; }
+.balanceDetailPanel { padding: 14px; border-radius: 14px; }
 .gridTwo { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.9fr); gap: 14px; }
 .panel { display: grid; align-content: start; gap: 12px; padding: 16px; border: 1px solid rgba(52, 32, 24, 0.08); border-radius: 18px; background: #fffdfb; }
 .panelTitle { margin: 0; color: #2f2925; font-size: 1rem; font-weight: 840; }

@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { createIdempotencyKey } from '@npp/contracts';
+import { BusinessSequenceNumber } from '../../components/business-table-sequence';
 import type {
   CustomerOnboardingAction,
   CustomerOnboardingRequestSummary,
@@ -247,7 +248,7 @@ export default function CustomerOnboardingReview({ requests, customers, portalOp
       ) : null}
 
       <div className={styles.list}>
-        {requests.map((request) => {
+        {requests.map((request, rowIndex) => {
           const reason = reasonByRequest[request.id] || '';
           const selectedCustomer = customerByRequest[request.id] || '';
           const selectedAddress = addressByRequest[request.id] || '';
@@ -263,7 +264,7 @@ export default function CustomerOnboardingReview({ requests, customers, portalOp
             <article className={styles.card} key={request.id}>
               <header className={styles.cardHeader}>
                 <div>
-                  <h2>{request.proposedCustomer.name}</h2>
+              <h2><BusinessSequenceNumber rowIndex={rowIndex} /> {request.proposedCustomer.name}</h2>
                   <p>{request.proposedCustomer.phone || 'Chưa có số điện thoại'}</p>
                 </div>
                 <span className={styles.badge}>{statusLabel(request.status)}</span>

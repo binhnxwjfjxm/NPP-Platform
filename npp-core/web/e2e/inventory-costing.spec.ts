@@ -10,7 +10,7 @@ test('inventory costing workspace exposes period lock and reconciliation surface
   await expect(page.getByRole('button', { name: /Chờ xử lý/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /Điều chỉnh giá/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /Bất thường/i })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Cost facts/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Dữ liệu giá vốn/i })).toBeVisible();
   await page.getByRole('button', { name: /Kỳ giá vốn/i }).click();
-  await expect(page.getByText(/snapshot bất biến/i)).toBeVisible();
+  await expect(page.getByText(/bản chốt không sửa/i)).toBeVisible();
 });

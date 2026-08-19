@@ -3,6 +3,10 @@
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from './app-shell';
+import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from './business-table-sequence';
 import { StockHoldBreakdown } from './stock-hold-breakdown';
 import type { InventoryReportingDashboard } from '../../lib/inventory-reporting-types';
 import {
@@ -431,10 +435,11 @@ export function InventoryReportingWorkspace() {
                 </div>
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
-                    <thead><tr><th>Kho</th><th className={styles.numeric}>Mã hàng có tồn</th><th className={styles.numeric}>Mã hàng có giữ</th><th className={styles.numeric}>Giá trị (đ)</th><th className={styles.numeric}>Cần kiểm tra</th><th>Cập nhật tồn</th></tr></thead>
+                    <thead><tr><BusinessTableSequenceHeader /><th>Kho</th><th className={styles.numeric}>Mã hàng có tồn</th><th className={styles.numeric}>Mã hàng có giữ</th><th className={styles.numeric}>Giá trị (đ)</th><th className={styles.numeric}>Cần kiểm tra</th><th>Cập nhật tồn</th></tr></thead>
                     <tbody>
-                      {report.warehouseSummary.map((row) => (
+                      {report.warehouseSummary.map((row, rowIndex) => (
                         <tr key={row.warehouseId}>
+                          <BusinessTableSequenceCell rowIndex={rowIndex} />
                           <td><strong>{row.warehouseCode}</strong><br />{row.warehouseName}</td>
                           <td className={styles.numeric}>{formatDecimal(row.stockedSkuCount, 0)}</td>
                           <td className={styles.numeric}>{formatDecimal(row.reservedSkuCount, 0)}</td>
@@ -443,7 +448,7 @@ export function InventoryReportingWorkspace() {
                           <td>{formatDateTime(row.quantityProjectedThrough)}</td>
                         </tr>
                       ))}
-                      {!report.warehouseSummary.length ? <tr><td className={styles.empty} colSpan={6}>Chưa có dữ liệu tồn trong phạm vi.</td></tr> : null}
+                      {!report.warehouseSummary.length ? <tr><td className={styles.empty} colSpan={7}>Chưa có dữ liệu tồn trong phạm vi.</td></tr> : null}
                     </tbody>
                   </table>
                 </div>
@@ -458,10 +463,11 @@ export function InventoryReportingWorkspace() {
                 </div>
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
-                    <thead><tr><th>Kho</th><th>Sản phẩm / mã hàng</th><th className={styles.numeric}>Tồn kho</th><th>Quy đổi</th><th className={styles.numeric}>Đã giữ</th><th className={styles.numeric}>Có thể xuất</th><th className={styles.numeric}>Giá trị</th><th className={styles.numeric}>Giá bình quân</th><th>Tình trạng giá vốn</th></tr></thead>
+                    <thead><tr><BusinessTableSequenceHeader /><th>Kho</th><th>Sản phẩm / mã hàng</th><th className={styles.numeric}>Tồn kho</th><th>Quy đổi</th><th className={styles.numeric}>Đã giữ</th><th className={styles.numeric}>Có thể xuất</th><th className={styles.numeric}>Giá trị</th><th className={styles.numeric}>Giá bình quân</th><th>Tình trạng giá vốn</th></tr></thead>
                     <tbody>
-                      {report.currentPositions.map((row) => (
+                      {report.currentPositions.map((row, rowIndex) => (
                         <tr key={`${row.warehouseId}:${row.variantId}`}>
+                          <BusinessTableSequenceCell rowIndex={rowIndex} />
                           <td>{row.warehouseCode}</td><td>{renderProduct(row.variantId, row.sku)}</td>
                           <td className={styles.numeric}>{formatDecimal(row.onHandQuantity)}</td>
                           <td>{packageBreakdown(productByVariant.get(row.variantId), row.onHandQuantity)}</td>
@@ -481,7 +487,7 @@ export function InventoryReportingWorkspace() {
                           <td><span className={row.costingStatus === 'COSTED' ? styles.statusGood : styles.statusBad}>{costingStatusLabel(row.costingStatus)}</span></td>
                         </tr>
                       ))}
-                      {!report.currentPositions.length ? <tr><td className={styles.empty} colSpan={9}>Không có vị thế tồn hiện tại.</td></tr> : null}
+                      {!report.currentPositions.length ? <tr><td className={styles.empty} colSpan={10}>Không có vị thế tồn hiện tại.</td></tr> : null}
                     </tbody>
                   </table>
                 </div>
@@ -493,10 +499,11 @@ export function InventoryReportingWorkspace() {
                 <div className={styles.sectionHeader}><div><h2>Nhập – xuất – tồn theo kỳ</h2><p>{report.filters.from} → {report.filters.to}. Số lượng chỉ so sánh trong cùng mã hàng; nguồn là sổ nhập xuất kho không sửa ngược.</p></div></div>
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
-                    <thead><tr><th>Kho</th><th>Sản phẩm / mã hàng</th><th className={styles.numeric}>Đầu kỳ</th><th className={styles.numeric}>Nhập</th><th className={styles.numeric}>Xuất</th><th className={styles.numeric}>Cuối kỳ</th><th className={styles.numeric}>Dòng nghiệp vụ</th></tr></thead>
+                    <thead><tr><BusinessTableSequenceHeader /><th>Kho</th><th>Sản phẩm / mã hàng</th><th className={styles.numeric}>Đầu kỳ</th><th className={styles.numeric}>Nhập</th><th className={styles.numeric}>Xuất</th><th className={styles.numeric}>Cuối kỳ</th><th className={styles.numeric}>Dòng nghiệp vụ</th></tr></thead>
                     <tbody>
-                      {report.periodFlow.map((row) => (
+                      {report.periodFlow.map((row, rowIndex) => (
                         <tr key={`${row.warehouseId}:${row.variantId}`}>
+                          <BusinessTableSequenceCell rowIndex={rowIndex} />
                           <td>{row.warehouseCode}</td><td>{renderProduct(row.variantId, row.sku)}</td>
                           <td className={styles.numeric}>{formatDecimal(row.openingQuantity)}</td>
                           <td className={styles.numeric}>{formatDecimal(row.inboundQuantity)}</td>
@@ -505,7 +512,7 @@ export function InventoryReportingWorkspace() {
                           <td className={styles.numeric}>{formatDecimal(row.movementLineCount, 0)}</td>
                         </tr>
                       ))}
-                      {!report.periodFlow.length ? <tr><td className={styles.empty} colSpan={7}>Không có phát sinh trong kỳ và không có số dư cuối kỳ.</td></tr> : null}
+                      {!report.periodFlow.length ? <tr><td className={styles.empty} colSpan={8}>Không có phát sinh trong kỳ và không có số dư cuối kỳ.</td></tr> : null}
                     </tbody>
                   </table>
                 </div>
@@ -515,12 +522,12 @@ export function InventoryReportingWorkspace() {
                 <div className={styles.sectionHeader}><div><h2>Loại nghiệp vụ trong kỳ</h2><p>Đếm chứng từ, dòng và mã hàng theo từng loại nghiệp vụ kho.</p></div></div>
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
-                    <thead><tr><th>Loại nghiệp vụ</th><th className={styles.numeric}>Chứng từ</th><th className={styles.numeric}>Dòng</th><th className={styles.numeric}>Mã hàng</th></tr></thead>
+                    <thead><tr><BusinessTableSequenceHeader /><th>Loại nghiệp vụ</th><th className={styles.numeric}>Chứng từ</th><th className={styles.numeric}>Dòng</th><th className={styles.numeric}>Mã hàng</th></tr></thead>
                     <tbody>
-                      {report.movementTypes.map((row) => (
-                        <tr key={row.movementType}><td>{movementTypeLabel(row.movementType)}</td><td className={styles.numeric}>{row.movementCount}</td><td className={styles.numeric}>{row.movementLineCount}</td><td className={styles.numeric}>{row.skuCount}</td></tr>
+                      {report.movementTypes.map((row, rowIndex) => (
+                        <tr key={row.movementType}><BusinessTableSequenceCell rowIndex={rowIndex} /><td>{movementTypeLabel(row.movementType)}</td><td className={styles.numeric}>{row.movementCount}</td><td className={styles.numeric}>{row.movementLineCount}</td><td className={styles.numeric}>{row.skuCount}</td></tr>
                       ))}
-                      {!report.movementTypes.length ? <tr><td className={styles.empty} colSpan={4}>Không có nghiệp vụ kho trong kỳ.</td></tr> : null}
+                      {!report.movementTypes.length ? <tr><td className={styles.empty} colSpan={5}>Không có nghiệp vụ kho trong kỳ.</td></tr> : null}
                     </tbody>
                   </table>
                 </div>
@@ -532,10 +539,11 @@ export function InventoryReportingWorkspace() {
                 <div className={styles.sectionHeader}><div><h2>Hàng chậm luân chuyển</h2><p>Hàng còn tồn và không phát sinh xuất kho trong {report.filters.slowDays} ngày gần nhất; mặt hàng chưa từng xuất được ghi riêng.</p></div></div>
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
-                    <thead><tr><th>Kho</th><th>Sản phẩm / mã hàng</th><th className={styles.numeric}>Tồn kho</th><th className={styles.numeric}>Có thể xuất</th><th>Lần xuất cuối</th><th className={styles.numeric}>Số ngày</th><th className={styles.numeric}>Giá trị (đ)</th></tr></thead>
+                    <thead><tr><BusinessTableSequenceHeader /><th>Kho</th><th>Sản phẩm / mã hàng</th><th className={styles.numeric}>Tồn kho</th><th className={styles.numeric}>Có thể xuất</th><th>Lần xuất cuối</th><th className={styles.numeric}>Số ngày</th><th className={styles.numeric}>Giá trị (đ)</th></tr></thead>
                     <tbody>
-                      {report.slowMoving.map((row) => (
+                      {report.slowMoving.map((row, rowIndex) => (
                         <tr key={`${row.warehouseId}:${row.variantId}`}>
+                          <BusinessTableSequenceCell rowIndex={rowIndex} />
                           <td>{row.warehouseCode}</td><td>{renderProduct(row.variantId, row.sku)}</td>
                           <td className={styles.numeric}>{formatDecimal(row.onHandQuantity)}</td>
                           <td className={styles.numeric}>{formatDecimal(row.availableQuantity)}</td>
@@ -544,7 +552,7 @@ export function InventoryReportingWorkspace() {
                           <td className={styles.numeric}>{row.inventoryValueVnd === null ? '—' : formatMoney(row.inventoryValueVnd)}</td>
                         </tr>
                       ))}
-                      {!report.slowMoving.length ? <tr><td className={styles.empty} colSpan={7}>Không có mã hàng chậm luân chuyển theo ngưỡng đã chọn.</td></tr> : null}
+                      {!report.slowMoving.length ? <tr><td className={styles.empty} colSpan={8}>Không có mã hàng chậm luân chuyển theo ngưỡng đã chọn.</td></tr> : null}
                     </tbody>
                   </table>
                 </div>
@@ -559,10 +567,11 @@ export function InventoryReportingWorkspace() {
                 </div>
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
-                    <thead><tr><th>Kho</th><th>Sản phẩm / mã hàng</th><th>Lô</th><th>Ngày sản xuất</th><th>Hạn dùng</th><th className={styles.numeric}>Tồn kho</th><th className={styles.numeric}>Có thể xuất</th><th>Trạng thái</th></tr></thead>
+                    <thead><tr><BusinessTableSequenceHeader /><th>Kho</th><th>Sản phẩm / mã hàng</th><th>Lô</th><th>Ngày sản xuất</th><th>Hạn dùng</th><th className={styles.numeric}>Tồn kho</th><th className={styles.numeric}>Có thể xuất</th><th>Trạng thái</th></tr></thead>
                     <tbody>
-                      {report.expiryLots.map((row) => (
+                      {report.expiryLots.map((row, rowIndex) => (
                         <tr key={`${row.warehouseId}:${row.lotId}`}>
+                          <BusinessTableSequenceCell rowIndex={rowIndex} />
                           <td>{row.warehouseCode}</td><td>{renderProduct(row.variantId, row.sku)}</td><td>{row.lotCode}</td>
                           <td>{row.manufacturedDate ?? '—'}{row.manufacturedAgeDays ? ` (${row.manufacturedAgeDays} ngày)` : ''}</td>
                           <td>{row.expiryDate ?? '—'}</td>
@@ -571,7 +580,7 @@ export function InventoryReportingWorkspace() {
                           <td><span className={expiryClass(row.expiryBucket)}>{expiryLabel(row.expiryBucket)}</span></td>
                         </tr>
                       ))}
-                      {!report.expiryLots.length ? <tr><td className={styles.empty} colSpan={8}>Không có lô còn hàng trong phạm vi.</td></tr> : null}
+                      {!report.expiryLots.length ? <tr><td className={styles.empty} colSpan={9}>Không có lô còn hàng trong phạm vi.</td></tr> : null}
                     </tbody>
                   </table>
                 </div>
@@ -586,10 +595,11 @@ export function InventoryReportingWorkspace() {
                 </div>
                 <div className={styles.tableWrap}>
                   <table className={styles.table}>
-                    <thead><tr><th>Kho</th><th>Sản phẩm / mã hàng</th><th className={styles.numeric}>Số lượng sổ kho</th><th className={styles.numeric}>Số lượng tính giá</th><th className={styles.numeric}>Chênh lệch</th><th>Trạng thái</th><th className={styles.numeric}>Số cảnh báo</th></tr></thead>
+                    <thead><tr><BusinessTableSequenceHeader /><th>Kho</th><th>Sản phẩm / mã hàng</th><th className={styles.numeric}>Số lượng sổ kho</th><th className={styles.numeric}>Số lượng tính giá</th><th className={styles.numeric}>Chênh lệch</th><th>Trạng thái</th><th className={styles.numeric}>Số cảnh báo</th></tr></thead>
                     <tbody>
-                      {report.exceptions.map((row) => (
+                      {report.exceptions.map((row, rowIndex) => (
                         <tr key={`${row.warehouseId}:${row.variantId}`}>
+                          <BusinessTableSequenceCell rowIndex={rowIndex} />
                           <td>{row.warehouseCode}</td><td>{renderProduct(row.variantId, row.sku)}</td>
                           <td className={styles.numeric}>{formatDecimal(row.ledgerQuantity)}</td>
                           <td className={styles.numeric}>{formatDecimal(row.costingQuantity)}</td>
@@ -598,7 +608,7 @@ export function InventoryReportingWorkspace() {
                           <td className={styles.numeric}>{formatDecimal(row.anomalyCount, 0)}</td>
                         </tr>
                       ))}
-                      {!report.exceptions.length ? <tr><td className={styles.empty} colSpan={7}>Không có chênh lệch giá vốn hiện tại.</td></tr> : null}
+                      {!report.exceptions.length ? <tr><td className={styles.empty} colSpan={8}>Không có chênh lệch giá vốn hiện tại.</td></tr> : null}
                     </tbody>
                   </table>
                 </div>

@@ -6,6 +6,7 @@ import type { Product } from '../../../lib/product-types';
 import type { Warehouse } from '../../../lib/organization-types';
 import { pricingPolicyLabel, pricingResolutionReasonLabel } from '../../../lib/business-language';
 import { MIN_PRODUCT_SEARCH_LENGTH } from '../../../lib/product-search-contract';
+import { BusinessSequenceNumber } from '../../components/business-table-sequence';
 import type {
   SalesOrder,
   SalesOrderCollectionPolicy,
@@ -947,9 +948,10 @@ export default function SalesOrderCommercialForm(props: Props) {
           </section>
 
           <section className={styles.orderLines} aria-label="Hàng hóa trong đơn">
-            <header className={styles.lineTableHeader}><span>Hàng hóa</span><span>Số lượng</span><span>Giá nền</span><span>Giá hệ thống</span><span>Giá cuối</span><span>Thành tiền</span><span /></header>
+            <header className={styles.lineTableHeader}><span>STT</span><span>Hàng hóa</span><span>Số lượng</span><span>Giá nền</span><span>Giá hệ thống</span><span>Giá cuối</span><span>Thành tiền</span><span /></header>
             {lines.map((line, index) => (
               <article className={styles.orderLineCard} key={line.variantId} data-testid={`sales-order-line-${index + 1}`}>
+                <BusinessSequenceNumber rowIndex={index} className={styles.lineSequence} />
                 <div className={styles.lineIdentity}>
                   <strong>{line.sku} — {line.name}</strong>
                   <div className={styles.inlineActions}>

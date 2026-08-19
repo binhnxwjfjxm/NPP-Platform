@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { AppShell } from '../components/app-shell';
+import { BusinessSequenceNumber } from '../components/business-table-sequence';
 import { loadOrganizationSnapshotWithStatus } from '../../lib/organization-snapshot';
 import { createEmptyOrganizationSnapshot, formatDateTime } from '../../lib/organization-types';
 import type { OrganizationResourceKey } from '../../lib/organization-types';
@@ -154,10 +155,10 @@ export default async function ManagementPage() {
             {orders.error ? <p className={styles.error} role="alert">{orders.error}</p> : null}
             {orders.data.length === 0 && !orders.error ? <p className={styles.empty}>Không có đơn nháp trong danh sách gần nhất.</p> : null}
             <ul className={styles.list}>
-              {orders.data.map((order) => (
+              {orders.data.map((order, rowIndex) => (
                 <li className={styles.item} key={order.id}>
                   <div className={styles.itemTop}>
-                    <strong>{order.customerName || order.walkInDisplayName || 'Khách chưa đặt tên'}</strong>
+                    <strong><BusinessSequenceNumber rowIndex={rowIndex} /> {order.customerName || order.walkInDisplayName || 'Khách chưa đặt tên'}</strong>
                     <span className={styles.badge}>Chờ xác nhận</span>
                   </div>
                   <span className={styles.meta}>{order.warehouseName} · {salesOrderSourceLabel(order.sourceType, order.sourceId)}</span>
@@ -178,10 +179,10 @@ export default async function ManagementPage() {
             {onboarding.error ? <p className={styles.error} role="alert">{onboarding.error}</p> : null}
             {onboarding.data.length === 0 && !onboarding.error ? <p className={styles.empty}>Không có đề nghị đang chờ trong danh sách gần nhất.</p> : null}
             <ul className={styles.list}>
-              {onboarding.data.map((request) => (
+              {onboarding.data.map((request, rowIndex) => (
                 <li className={styles.item} key={request.id}>
                   <div className={styles.itemTop}>
-                    <strong>{request.proposedCustomer.name}</strong>
+                    <strong><BusinessSequenceNumber rowIndex={rowIndex} /> {request.proposedCustomer.name}</strong>
                     <span className={styles.badge}>{onboardingStatus(request.status)}</span>
                   </div>
                   <span className={styles.meta}>

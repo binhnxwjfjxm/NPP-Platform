@@ -2,6 +2,7 @@
 
 import type { SalesOrder, SalesOrderFulfillmentLine } from '../../../lib/sales-order-types';
 import { StockHoldBreakdown } from '../../components/stock-hold-breakdown';
+import { BusinessSequenceNumber } from '../../components/business-table-sequence';
 import ManualSalesOrderSettlement from './ManualSalesOrderSettlement';
 import SalesOrderPrintSheet from './SalesOrderPrintSheet';
 import {
@@ -78,8 +79,8 @@ export default function SalesOrderDetail(props: Props) {
     && current.deliveryExecutionMode === 'MANUAL';
   const hasIssued = hasIssuedQuantity(fulfillment?.totals.issuedBaseQuantity);
   const lineGrid = {
-    gridTemplateColumns: 'minmax(180px,1.45fr) minmax(84px,.55fr) repeat(3,minmax(116px,.72fr)) minmax(100px,.7fr) minmax(110px,.75fr)',
-    minWidth: '980px',
+    gridTemplateColumns: '48px minmax(180px,1.45fr) minmax(84px,.55fr) repeat(3,minmax(116px,.72fr)) minmax(100px,.7fr) minmax(110px,.75fr)',
+    minWidth: '1030px',
   } as const;
 
   return (
@@ -136,10 +137,11 @@ export default function SalesOrderDetail(props: Props) {
           </div>
           <div className={styles.linesTable}>
             <div className={styles.lineHeader}>
-              <span>SKU</span><span>Nhu cầu</span><span>Đã giữ</span><span>Còn thiếu</span>
+              <span>STT</span><span>SKU</span><span>Nhu cầu</span><span>Đã giữ</span><span>Còn thiếu</span>
             </div>
-            {fulfillment.lines.map((line) => (
+            {fulfillment.lines.map((line, rowIndex) => (
               <div className={styles.lineRow} key={line.id}>
+                <BusinessSequenceNumber rowIndex={rowIndex} className={styles.lineSequence} />
                 <span><b>{line.sku}</b><small>Dòng đơn {line.lineNumber}</small></span>
                 <span>{formatQuantity(line.orderedBaseQuantity)}</span>
                 <span>{formatQuantity(line.reservedBaseQuantity)}</span>
@@ -166,12 +168,13 @@ export default function SalesOrderDetail(props: Props) {
           </div>
           <div className={styles.linesTable} data-testid="sales-order-stock-observation">
             <div className={styles.lineHeader} style={lineGrid}>
-              <span>SKU</span><span>SL</span><span>Tồn thực tế</span><span>Đơn khác đang giữ</span><span>Khả dụng cho đơn này</span><span>Đơn giá</span><span>Thành tiền</span>
+              <span>STT</span><span>SKU</span><span>SL</span><span>Tồn thực tế</span><span>Đơn khác đang giữ</span><span>Khả dụng cho đơn này</span><span>Đơn giá</span><span>Thành tiền</span>
             </div>
-            {(current.lines ?? []).map((line) => {
+            {(current.lines ?? []).map((line, rowIndex) => {
               const stock = stockBySalesOrderLineId.get(line.id);
               return (
                 <div className={styles.lineRow} style={lineGrid} key={line.id}>
+                  <BusinessSequenceNumber rowIndex={rowIndex} className={styles.lineSequence} />
                   <span><b>{line.sku}</b><small>{line.itemName}</small></span>
                   <span>{formatQuantity(line.quantity)} {line.unitCode}</span>
                   <span>{stockValue(stock, stock?.warehouseOnHandBaseQuantity)}</span>

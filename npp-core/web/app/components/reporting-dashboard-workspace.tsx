@@ -3,6 +3,10 @@
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from './app-shell';
+import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from './business-table-sequence';
 import type {
   ReportingDashboard,
   ReportingFamily,
@@ -291,21 +295,23 @@ export function ReportingDashboardWorkspace({ family }: { family: ReportingFamil
             <table>
               <thead>
                 <tr>
+                  <BusinessTableSequenceHeader />
                   <th>Tiền tệ</th>
                   <th>Chứng từ hiệu lực</th>
                   <th>Giá trị</th>
                 </tr>
               </thead>
               <tbody>
-                {report?.currencyTotals.map((row) => (
+                {report?.currencyTotals.map((row, rowIndex) => (
                   <tr key={row.currencyCode}>
+                    <BusinessTableSequenceCell rowIndex={rowIndex} />
                     <td><strong>{row.currencyCode}</strong></td>
                     <td>{row.documentCount}</td>
                     <td>{formatMoney(row.totalValue, row.currencyCode)}</td>
                   </tr>
                 ))}
                 {!busy && !report?.currencyTotals.length ? (
-                  <tr><td colSpan={3} className={styles.empty}>Không có giá trị hiệu lực trong kỳ.</td></tr>
+                  <tr><td colSpan={4} className={styles.empty}>Không có giá trị hiệu lực trong kỳ.</td></tr>
                 ) : null}
               </tbody>
             </table>
@@ -345,6 +351,7 @@ export function ReportingDashboardWorkspace({ family }: { family: ReportingFamil
             <table>
               <thead>
                 <tr>
+                  <BusinessTableSequenceHeader />
                   <th>Ngày</th>
                   <th>Tiền tệ</th>
                   <th>Số chứng từ</th>
@@ -352,8 +359,9 @@ export function ReportingDashboardWorkspace({ family }: { family: ReportingFamil
                 </tr>
               </thead>
               <tbody>
-                {report?.dailyTrend.map((row) => (
+                {report?.dailyTrend.map((row, rowIndex) => (
                   <tr key={`${row.businessDate}-${row.currencyCode}`}>
+                    <BusinessTableSequenceCell rowIndex={rowIndex} />
                     <td>{row.businessDate}</td>
                     <td>{row.currencyCode}</td>
                     <td>{row.documentCount}</td>
@@ -361,7 +369,7 @@ export function ReportingDashboardWorkspace({ family }: { family: ReportingFamil
                   </tr>
                 ))}
                 {!busy && !report?.dailyTrend.length ? (
-                  <tr><td colSpan={4} className={styles.empty}>Không có dữ liệu xu hướng trong kỳ.</td></tr>
+                  <tr><td colSpan={5} className={styles.empty}>Không có dữ liệu xu hướng trong kỳ.</td></tr>
                 ) : null}
               </tbody>
             </table>
@@ -380,6 +388,7 @@ export function ReportingDashboardWorkspace({ family }: { family: ReportingFamil
               <table>
                 <thead>
                   <tr>
+                    <BusinessTableSequenceHeader />
                     <th>{entityLabel(family)}</th>
                     <th>Tiền tệ</th>
                     <th>Chứng từ</th>
@@ -387,8 +396,9 @@ export function ReportingDashboardWorkspace({ family }: { family: ReportingFamil
                   </tr>
                 </thead>
                 <tbody>
-                  {report?.topEntities.map((row) => (
+                  {report?.topEntities.map((row, rowIndex) => (
                     <tr key={`${row.currencyCode}-${row.entityId}`}>
+                      <BusinessTableSequenceCell rowIndex={rowIndex} />
                       <td>
                         <Link href={`${route}?search=${encodeURIComponent(row.entityCode)}`}>
                           <strong>{row.entityCode}</strong>
@@ -401,7 +411,7 @@ export function ReportingDashboardWorkspace({ family }: { family: ReportingFamil
                     </tr>
                   ))}
                   {!busy && !report?.topEntities.length ? (
-                    <tr><td colSpan={4} className={styles.empty}>Chưa có dữ liệu xếp hạng.</td></tr>
+                    <tr><td colSpan={5} className={styles.empty}>Chưa có dữ liệu xếp hạng.</td></tr>
                   ) : null}
                 </tbody>
               </table>
@@ -419,6 +429,7 @@ export function ReportingDashboardWorkspace({ family }: { family: ReportingFamil
               <table>
                 <thead>
                   <tr>
+                    <BusinessTableSequenceHeader />
                     <th>SKU</th>
                     <th>SL cơ sở</th>
                     <th>Giá trị</th>
@@ -426,8 +437,9 @@ export function ReportingDashboardWorkspace({ family }: { family: ReportingFamil
                   </tr>
                 </thead>
                 <tbody>
-                  {report?.topSkus.map((row) => (
+                  {report?.topSkus.map((row, rowIndex) => (
                     <tr key={`${row.currencyCode}-${row.variantId}`}>
+                      <BusinessTableSequenceCell rowIndex={rowIndex} />
                       <td>
                         <strong>{row.sku}</strong>
                         <small>{row.itemName} · {row.currencyCode}</small>
@@ -442,7 +454,7 @@ export function ReportingDashboardWorkspace({ family }: { family: ReportingFamil
                     </tr>
                   ))}
                   {!busy && !report?.topSkus.length ? (
-                    <tr><td colSpan={4} className={styles.empty}>Chưa có dữ liệu SKU.</td></tr>
+                    <tr><td colSpan={5} className={styles.empty}>Chưa có dữ liệu SKU.</td></tr>
                   ) : null}
                 </tbody>
               </table>

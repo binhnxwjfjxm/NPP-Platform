@@ -19,6 +19,7 @@ test('issue 615 lot 4 loads one shared operational table presentation contract',
 
 test('fulfillment table keeps product identity, stock context and inline allocation readable', () => {
   assert.match(fulfillment, /data-testid="fulfillment-product-table"/);
+  assert.match(fulfillment, /BusinessSequenceNumber rowIndex=\{rowIndex\}/);
   assert.match(fulfillment, /<strong>\{item\.itemName\}<\/strong><small>\{item\.sku\}<\/small>/);
   assert.match(fulfillment, /orderedQuantityLabel\(item\)/);
   assert.match(fulfillment, /Sản phẩm \/ SKU/);
@@ -45,7 +46,7 @@ test('inventory and trip reconciliation keep product identity readable and numer
   assert.match(inventoryBalances, /balance\.base_sku/);
   assert.match(inventoryBalances, /<InventoryQuantity balance=\{balance\} value=\{balance\.on_hand_quantity\}/);
   assert.match(operationalStyles, /inventory-balances-page'\] table[\s\S]*min-width:\s*980px/);
-  assert.match(operationalStyles, /inventory-balances-page'\] td:nth-child\(n \+ 5\):nth-child\(-n \+ 7\)[\s\S]*text-align:\s*right/);
+  assert.match(operationalStyles, /inventory-balances-page'\] td:nth-child\(n \+ 6\):nth-child\(-n \+ 8\)[\s\S]*text-align:\s*right/);
 
   assert.match(reconciliation, /\{line\.sku\} · \{line\.itemName\}/);
   assert.match(reconciliation, /formatExactDecimal\(line\.issuedBaseQuantity\)/);
