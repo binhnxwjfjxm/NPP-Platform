@@ -57,7 +57,16 @@ const ORDER_COLUMNS = `so.id, so.installation_id, so.order_number, so.order_numb
       ) delivery
     ), so.delivery_status)
   END AS delivery_status,
-  so.settlement_status, so.currency_code, so.requested_delivery_date, so.note, so.revision,
+  so.settlement_status,
+  COALESCE((
+    SELECT sum(receivable.remaining_amount)::numeric(20,6)
+      FROM accounting.receivable_documents receivable
+     WHERE receivable.installation_id = so.installation_id
+       AND receivable.sales_order_id = so.id
+       AND receivable.direction = 'DEBIT'
+       AND receivable.status <> 'reversed'
+  ), 0)::numeric(20,6) AS receivable_remaining_amount,
+  so.currency_code, so.requested_delivery_date, so.note, so.revision,
   so.confirmed_at, so.confirmed_by, so.cancelled_at, so.cancelled_by, so.cancellation_reason,
   so.created_at, so.updated_at, so.created_by, so.updated_by`;
 

@@ -1,0 +1,68 @@
+.settlementPanel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  gap: 10px 14px;
+  align-items: flex-end;
+}
+
+.settlementPanel > strong,
+.settlementPanel > small,
+.settlementPanel > div {
+  grid-column: 1 / -1;
+}
+
+.settlementPanel > label,
+.amountField {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.amountField label {
+  color: inherit;
+  font: inherit;
+}
+
+.settlementPanel select {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 10px;
+  border: 1px solid #d8dce2;
+  border-radius: 9px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+}
+
+.amountRow {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 8px;
+  align-items: stretch;
+  flex: 1;
+  min-width: min(100%, 320px);
+}
+
+.amountRow input {
+  min-width: 0 !important;
+}
+
+.fullPaymentButton {
+  min-width: 92px;
+  border-color: #78ad9b !important;
+  background: #edf8f4 !important;
+  color: #155c46 !important;
+}
+
+@media (max-width: 520px) {
+  .settlementPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .amountRow {
+    grid-template-columns: 1fr;
+  }
+}

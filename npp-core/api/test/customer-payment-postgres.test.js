@@ -33,6 +33,7 @@ async function seed(pool, installationId) {
     warehouseB: randomUUID(),
     customerId: randomUUID(),
     customerAddressId: randomUUID(),
+    remittingEmployeeId: randomUUID(),
     targetA: randomUUID(),
     targetB: randomUUID(),
   };
@@ -88,6 +89,20 @@ async function seed(pool, installationId) {
          is_active, created_by, updated_by
        ) VALUES ($1,$2,$3,$4,0,0,true,$5,$5)`,
       [ids.customerId, installationId, `CUS-${code}`, `Khách hàng ${code}`, actor],
+    );
+    await client.query(
+      `INSERT INTO shared.employees (
+         id, installation_id, code, full_name, branch_id,
+         is_active, created_by, updated_by
+       ) VALUES ($1,$2,$3,$4,$5,true,$6,$6)`,
+      [
+        ids.remittingEmployeeId,
+        installationId,
+        `NV-${code}`,
+        `Nhân viên ${code}`,
+        ids.branchId,
+        actor,
+      ],
     );
     await client.query(
       `INSERT INTO shared.customer_addresses (
@@ -225,6 +240,16 @@ test('Phase 6F.2 records, multi-allocates, serializes and reverses customer paym
 
     server = await startServer({ config });
     const baseUrl = `http://${config.host}:${config.port}`;
+    let result = await readResponse(fetch(`${baseUrl}/api/customer-payments/remitting-employees`, {
+      headers: { Authorization: `Bearer ${config.backendApiToken}` },
+    }));
+    assert.equal(result.response.status, 200, JSON.stringify(result.body));
+    assert.deepEqual(result.body.data, [{
+      id: fixture.remittingEmployeeId,
+      code: `NV-${fixture.code}`,
+      fullName: `Nhân viên ${fixture.code}`,
+    }]);
+
     const createKey = `customer-payment-${randomUUID()}`;
     const createPayload = {
       customerId: fixture.customerId,
@@ -233,6 +258,7 @@ test('Phase 6F.2 records, multi-allocates, serializes and reverses customer paym
       currencyCode: 'VND',
       paymentMethod: 'BANK_TRANSFER',
       amount: '150',
+      remittingEmployeeId: fixture.remittingEmployeeId,
       externalReference: `BANK-${fixture.code}`,
       note: 'Một phiếu thu phân bổ qua hai kho',
       allocations: [
@@ -241,7 +267,7 @@ test('Phase 6F.2 records, multi-allocates, serializes and reverses customer paym
       ],
     };
 
-    let result = await readResponse(fetch(`${baseUrl}/api/customer-payments`, {
+    result = await readResponse(fetch(`${baseUrl}/api/customer-payments`, {
       method: 'POST',
       headers: headers(config, createKey),
       body: JSON.stringify(createPayload),
@@ -255,7 +281,31 @@ test('Phase 6F.2 records, multi-allocates, serializes and reverses customer paym
     assert.equal(payment.remainingAmount, '0.000000');
     assert.equal(payment.status, 'settled');
     assert.equal(payment.allocations.length, 2);
+    assert.equal(payment.remittingEmployeeId, fixture.remittingEmployeeId);
+    assert.equal(payment.remittingEmployeeCode, `NV-${fixture.code}`);
+    assert.equal(payment.remittingEmployeeName, `Nhân viên ${fixture.code}`);
+    assert.equal(payment.relatedReceivableCount, 2);
+    assert.equal(payment.relatedRemainingAmount, '150.000000');
+    assert.deepEqual(payment.relatedDocumentNumbers, [
+      `REC-A-${fixture.code}`,
+      `REC-B-${fixture.code}`,
+    ]);
     assert.equal(await customerBalance(pool, installationId, fixture.customerId), '150.000000');
+
+    await pool.query(
+      `UPDATE shared.employees
+          SET full_name = $3,
+              updated_at = now(),
+              updated_by = 'test:employee-rename'
+        WHERE installation_id = $1 AND id = $2::uuid`,
+      [installationId, fixture.remittingEmployeeId, `Tên mới ${fixture.code}`],
+    );
+    const detailAfterRename = await readResponse(fetch(
+      `${baseUrl}/api/customer-payments/${payment.id}`,
+      { headers: { Authorization: `Bearer ${config.backendApiToken}` } },
+    ));
+    assert.equal(detailAfterRename.response.status, 200, JSON.stringify(detailAfterRename.body));
+    assert.equal(detailAfterRename.body.data.remittingEmployeeName, `Nhân viên ${fixture.code}`);
 
     result = await readResponse(fetch(`${baseUrl}/api/customer-payments`, {
       method: 'POST',

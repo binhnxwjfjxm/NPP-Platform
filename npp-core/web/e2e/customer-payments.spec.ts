@@ -62,7 +62,7 @@ async function createCustomerThroughWorkspace(page: import('@playwright/test').P
   return { customerCode, customerName };
 }
 
-test('customer payment workspace records unapplied cash and reverses by compensation', async ({ page, request }) => {
+test('customer payment workspace records money not yet linked to an order and permits cancellation', async ({ page, request }) => {
   const code = suffix();
   const warehouse = await createWarehouse(request, code);
   const customer = await createCustomerThroughWorkspace(page, code);
@@ -72,34 +72,36 @@ test('customer payment workspace records unapplied cash and reverses by compensa
   await expect(page.getByTestId('nav-customer-payments')).toBeVisible();
 
   const form = page.getByTestId('customer-payment-form');
+  await form.getByTestId('customer-payment-customer-search').fill(customer.customerCode);
   await form.getByLabel('Khách hàng').selectOption({
     label: `${customer.customerCode} · ${customer.customerName}`,
   });
-  await form.getByLabel('Kho nhận tiền').selectOption(warehouse.id);
-  await form.getByLabel('Số tiền đã nhận').fill('60000');
-  await form.getByLabel('Tham chiếu ngân hàng').fill(`BANK-${code}`);
-  await form.getByLabel('Ghi chú').fill('Phiếu thu chưa phân bổ từ Browser E2E Phase 6F.2');
-  await form.getByRole('button', { name: 'Ghi nhận phiếu thu' }).click();
+  await expect(form.getByTestId('customer-payment-order-search')).toBeVisible();
+  await form.getByLabel('Đơn vị nhận tiền').selectOption(warehouse.id);
+  await form.getByLabel('Số tiền thực nhận').fill('60000');
+  await form.getByLabel('Mã giao dịch ngân hàng').fill(`BANK-${code}`);
+  await form.getByLabel('Ghi chú').fill('Phiếu thu chưa gắn với đơn từ kiểm thử trình duyệt');
+  await form.getByRole('button', { name: 'Lưu phiếu thu' }).click();
 
   await expect(page.getByRole('status')).toContainText('Đã ghi nhận phiếu thu CP-');
   const paymentTable = page.getByTestId('customer-payments-table');
   const paymentRow = paymentTable.locator('tbody tr').filter({ hasText: customer.customerCode });
   await expect(paymentRow).toHaveCount(1);
   await expect(paymentRow).toContainText('60.000');
-  await expect(paymentRow).toContainText('Chưa phân bổ');
+  await expect(paymentRow).toContainText('Chưa gắn với đơn');
   await paymentRow.getByRole('button', { name: /^CP-/ }).click();
 
   const detail = page.getByTestId('customer-payment-detail');
   await expect(detail).toContainText(customer.customerCode);
-  await expect(detail).toContainText('60.000 VND chưa phân bổ');
-  await expect(page.getByTestId('customer-payment-allocations-table')).toContainText('Chưa có phân bổ');
+  await expect(detail).toContainText('Tiền chưa gắn với đơn: 60.000 VND');
+  await expect(page.getByTestId('customer-payment-allocations-table')).toContainText('Chưa ghi tiền vào đơn nào');
 
-  const reverseButton = detail.getByRole('button', { name: 'Đảo phiếu thu' });
+  const reverseButton = detail.getByRole('button', { name: 'Hủy phiếu thu' });
   await expect(reverseButton).toBeEnabled();
-  await detail.getByLabel('Lý do đảo').fill('Đảo phiếu thu chưa phân bổ trong Browser E2E');
+  await detail.getByLabel('Lý do hủy').fill('Hủy phiếu thu chưa gắn với đơn trong kiểm thử trình duyệt');
   await reverseButton.click();
 
-  await expect(page.getByRole('status')).toContainText('Đã đảo phiếu thu CP-');
-  await expect(detail).toContainText('Đã đảo');
+  await expect(page.getByRole('status')).toContainText('Đã hủy phiếu thu CP-');
+  await expect(detail).toContainText('Đã hủy');
   await expect(reverseButton).toBeDisabled();
 });

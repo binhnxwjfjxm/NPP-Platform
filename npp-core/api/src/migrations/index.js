@@ -156,6 +156,10 @@ const SALES_ORDER_UNWIND_LOCKED_TRIP_SQL = readFileSync(
   new URL('../../../../database/migrations/logistics/096_sales_order_unwind_locked_trip.sql', import.meta.url),
   'utf8',
 );
+const CUSTOMER_PAYMENT_REMITTING_EMPLOYEE_SQL = readFileSync(
+  new URL('../../../../database/migrations/accounting/097_customer_payment_remitting_employee.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -220,6 +224,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
     sql: MANUAL_SALES_ORDER_RECEIVABLE_DELIVERY_ORDER_NULLABLE_SQL,
   }),
   Object.freeze({ id: '096_sales_order_unwind_locked_trip', sql: SALES_ORDER_UNWIND_LOCKED_TRIP_SQL }),
+  Object.freeze({
+    id: '097_customer_payment_remitting_employee',
+    sql: CUSTOMER_PAYMENT_REMITTING_EMPLOYEE_SQL,
+  }),
 ]);
 
 export { runMigrations };

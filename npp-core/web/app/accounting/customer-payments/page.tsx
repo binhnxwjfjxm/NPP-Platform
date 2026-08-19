@@ -6,11 +6,13 @@ import type { Warehouse } from '../../../lib/organization-types';
 import {
   getCustomerPayment,
   listCustomerPayments,
+  listCustomerPaymentRemittingEmployees,
   listCustomerPaymentTargets,
   resolveCustomerPaymentRequestId,
 } from '../../../lib/customer-payment-gateway';
 import type {
   CustomerPayment,
+  RemittingEmployeeOption,
   ReceivableAllocationTarget,
 } from '../../../lib/customer-payment-types';
 import CustomerPaymentWorkspace from './customer-payment-workspace';
@@ -31,7 +33,13 @@ function localDate() {
 export default async function CustomerPaymentsPage() {
   const requestId = resolveCustomerPaymentRequestId(null);
   const customerRequestId = resolveCustomerRequestId(null);
-  const [paymentsResult, targetsResult, customersResult, organizationResult] = await Promise.allSettled([
+  const [
+    paymentsResult,
+    targetsResult,
+    customersResult,
+    organizationResult,
+    employeesResult,
+  ] = await Promise.allSettled([
     listCustomerPayments<CustomerPayment>(requestId, { limit: 1000 }),
     listCustomerPaymentTargets<ReceivableAllocationTarget>(requestId),
     listAllCustomers<Customer>(
@@ -39,6 +47,7 @@ export default async function CustomerPaymentsPage() {
       new URLSearchParams({ active: 'true', limit: '1000' }),
     ),
     loadOrganizationSnapshot(),
+    listCustomerPaymentRemittingEmployees<RemittingEmployeeOption>(requestId),
   ]);
 
   let error = [paymentsResult, targetsResult, customersResult, organizationResult]
@@ -63,7 +72,7 @@ export default async function CustomerPaymentsPage() {
   return (
     <AppShell
       title="Thu tiền khách hàng"
-      subtitle="Ghi nhận tiền đã nhận, phân bổ một lần vào nhiều khoản nợ và đảo nghiệp vụ bằng lịch sử bất biến."
+      subtitle="Lập phiếu thu, ghi tiền vào đúng đơn hàng và theo dõi số khách còn phải trả."
       kicker="Kế toán bán hàng"
     >
       <CustomerPaymentWorkspace
@@ -73,8 +82,11 @@ export default async function CustomerPaymentsPage() {
           ? customersResult.value.filter((customer) => customer.is_active)
           : []}
         warehouses={warehouses}
+        remittingEmployees={employeesResult.status === 'fulfilled' ? employeesResult.value : []}
         initialPaymentDate={localDate()}
-        initialError={error}
+        initialError={employeesResult.status === 'rejected'
+          ? error ?? 'Chưa tải được danh sách nhân viên nộp tiền. Vẫn có thể lập phiếu mà không chọn nhân viên.'
+          : error}
       />
     </AppShell>
   );
