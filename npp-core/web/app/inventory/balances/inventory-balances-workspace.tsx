@@ -2,6 +2,10 @@
 
 import { useMemo, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from '../../components/business-table-sequence';
 import styles from '../inventory-workspace.module.css';
 import {
   formatDate,
@@ -238,15 +242,16 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
             <div className={styles.tableWrap}>
               <table className={styles.table}>
                 <thead>
-                  <tr><th>Kho / vị trí</th><th>Sản phẩm / SKU</th><th>Lô</th><th>Hạn dùng</th><th>Tồn kho</th><th>Đã giữ cho đơn</th><th>Có thể xuất</th><th></th></tr>
+                  <tr><BusinessTableSequenceHeader /><th>Kho / vị trí</th><th>Sản phẩm / SKU</th><th>Lô</th><th>Hạn dùng</th><th>Tồn kho</th><th>Đã giữ cho đơn</th><th>Có thể xuất</th><th></th></tr>
                 </thead>
                 <tbody>
                   {filteredBalances.length === 0 ? (
-                    <tr><td colSpan={8} className={styles.subtle}>Chưa có dữ liệu tồn kho.</td></tr>
-                  ) : filteredBalances.map((balance) => {
+                    <tr><td colSpan={9} className={styles.subtle}>Chưa có dữ liệu tồn kho.</td></tr>
+                  ) : filteredBalances.map((balance, rowIndex) => {
                     const packageRule = packageRuleLabel(balance);
                     return (
                       <tr key={balanceKey(balance)} data-testid={`inventory-balance-${balanceKey(balance)}`}>
+                        <BusinessTableSequenceCell rowIndex={rowIndex} />
                         <td>
                           <div>{balance.warehouse_code} · {balance.warehouse_name}</div>
                           <div className={styles.subtle}>{joinValues(balance.location_code, balance.location_name) || 'Không vị trí'}</div>

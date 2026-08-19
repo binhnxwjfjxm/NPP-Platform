@@ -1,6 +1,10 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
+import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from '../../components/business-table-sequence';
 import type { Customer } from '../../../lib/customer-types';
 import type { Warehouse } from '../../../lib/organization-types';
 import type {
@@ -367,7 +371,7 @@ export default function CustomerPaymentWorkspace({
       <div className={styles.columns}>
         <section className={styles.card}>
           <h2>Phiếu thu khách hàng</h2>
-          <div className={styles.tableWrap}><table className={styles.table} data-testid="customer-payments-table"><thead><tr><th>Số phiếu</th><th>Khách hàng</th><th className={styles.amount}>Số tiền</th><th>Trạng thái</th></tr></thead><tbody>{payments.map((payment) => <tr key={payment.id} className={payment.id === selectedId ? styles.selected : undefined}><td><button type="button" className={styles.linkButton} onClick={() => selectPayment(payment.id)}>{payment.documentNumber}</button><br /><span>{payment.paymentDate}</span></td><td>{payment.customerCode}<br /><span>{payment.customerName}</span></td><td className={styles.amount}>{money(payment.originalAmount, payment.currencyCode)}<br /><span>Còn {money(payment.remainingAmount, payment.currencyCode)}</span></td><td>{statusLabel(payment.status)}</td></tr>)}{!payments.length ? <tr><td colSpan={4}>Chưa có phiếu thu.</td></tr> : null}</tbody></table></div>
+          <div className={styles.tableWrap}><table className={styles.table} data-testid="customer-payments-table"><thead><tr><BusinessTableSequenceHeader /><th>Số phiếu</th><th>Khách hàng</th><th className={styles.amount}>Số tiền</th><th>Trạng thái</th></tr></thead><tbody>{payments.map((payment, rowIndex) => <tr key={payment.id} className={payment.id === selectedId ? styles.selected : undefined}><BusinessTableSequenceCell rowIndex={rowIndex} /><td><button type="button" className={styles.linkButton} onClick={() => selectPayment(payment.id)}>{payment.documentNumber}</button><br /><span>{payment.paymentDate}</span></td><td>{payment.customerCode}<br /><span>{payment.customerName}</span></td><td className={styles.amount}>{money(payment.originalAmount, payment.currencyCode)}<br /><span>Còn {money(payment.remainingAmount, payment.currencyCode)}</span></td><td>{statusLabel(payment.status)}</td></tr>)}{!payments.length ? <tr><td colSpan={5}>Chưa có phiếu thu.</td></tr> : null}</tbody></table></div>
         </section>
 
         <section className={styles.card} data-testid="customer-payment-detail">

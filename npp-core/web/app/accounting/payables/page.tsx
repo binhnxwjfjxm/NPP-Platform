@@ -1,5 +1,9 @@
 import Link from 'next/link';
 import { AppShell } from '../../components/app-shell';
+import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from '../../components/business-table-sequence';
 import { getPayable, listPayableBalances, listPayables, resolvePayableRequestId } from '../../../lib/payable-gateway';
 import type { PayableDocument, SupplierPayableBalance } from '../../../lib/payable-types';
 import styles from './payables.module.css';
@@ -48,16 +52,16 @@ export default async function PayablesPage({ searchParams }: PageProps) {
         <section className={styles.card}>
           <h2>Số dư theo nhà cung cấp</h2>
           <div className={styles.tableWrap}><table className={styles.table} data-testid="payable-balances-table">
-            <thead><tr><th>Nhà cung cấp</th><th>Tiền tệ</th><th className={styles.amount}>Số dư</th><th className={styles.amount}>Còn mở</th><th className={styles.amount}>Quá hạn</th></tr></thead>
-            <tbody>{balances.map((item)=><tr key={`${item.supplierId}-${item.currencyCode}`}><td><strong>{item.supplierCode}</strong><br/><span className={styles.muted}>{item.supplierName}</span></td><td>{item.currencyCode}</td><td className={styles.amount}>{money(item.balance,item.currencyCode)}</td><td className={styles.amount}>{money(item.openAmount,item.currencyCode)}</td><td className={styles.amount}>{money(item.overdueAmount,item.currencyCode)}</td></tr>)}{!balances.length?<tr><td colSpan={5} className={styles.muted}>Chưa có số dư công nợ.</td></tr>:null}</tbody>
+            <thead><tr><BusinessTableSequenceHeader /><th>Nhà cung cấp</th><th>Tiền tệ</th><th className={styles.amount}>Số dư</th><th className={styles.amount}>Còn mở</th><th className={styles.amount}>Quá hạn</th></tr></thead>
+            <tbody>{balances.map((item,rowIndex)=><tr key={`${item.supplierId}-${item.currencyCode}`}><BusinessTableSequenceCell rowIndex={rowIndex} /><td><strong>{item.supplierCode}</strong><br/><span className={styles.muted}>{item.supplierName}</span></td><td>{item.currencyCode}</td><td className={styles.amount}>{money(item.balance,item.currencyCode)}</td><td className={styles.amount}>{money(item.openAmount,item.currencyCode)}</td><td className={styles.amount}>{money(item.overdueAmount,item.currencyCode)}</td></tr>)}{!balances.length?<tr><td colSpan={6} className={styles.muted}>Chưa có số dư công nợ.</td></tr>:null}</tbody>
           </table></div>
         </section>
 
         <section className={styles.card}>
           <h2>Chứng từ công nợ</h2>
           <div className={styles.tableWrap}><table className={styles.table} data-testid="payables-table">
-            <thead><tr><th>Chứng từ nguồn</th><th>Nhà cung cấp</th><th>Kho</th><th>Hạn thanh toán</th><th>Trạng thái</th><th className={styles.amount}>Giá trị</th></tr></thead>
-            <tbody>{documents.map((item)=><tr key={item.id}><td><Link className={styles.link} href={`/accounting/payables?id=${item.id}`}>{item.sourceDocumentNumber}</Link><br/><span className={styles.muted}>{item.sourceDocumentDate}</span></td><td>{item.supplierCode}<br/><span className={styles.muted}>{item.supplierName}</span></td><td>{item.warehouseCode}<br/><span className={styles.muted}>{item.warehouseName}</span></td><td>{item.dueDate}<br/><span className={styles.muted}>{item.paymentMethod} · {item.paymentTermDays} ngày</span></td><td><span className={styles.badge}>{statusLabel(item.status)}</span></td><td className={`${styles.amount} ${item.direction==='DEBIT'?styles.debit:styles.credit}`}>{money(item.signedOriginalAmount,item.currencyCode)}</td></tr>)}{!documents.length?<tr><td colSpan={6} className={styles.muted}>Chưa phát sinh chứng từ công nợ.</td></tr>:null}</tbody>
+            <thead><tr><BusinessTableSequenceHeader /><th>Chứng từ nguồn</th><th>Nhà cung cấp</th><th>Kho</th><th>Hạn thanh toán</th><th>Trạng thái</th><th className={styles.amount}>Giá trị</th></tr></thead>
+            <tbody>{documents.map((item,rowIndex)=><tr key={item.id}><BusinessTableSequenceCell rowIndex={rowIndex} /><td><Link className={styles.link} href={`/accounting/payables?id=${item.id}`}>{item.sourceDocumentNumber}</Link><br/><span className={styles.muted}>{item.sourceDocumentDate}</span></td><td>{item.supplierCode}<br/><span className={styles.muted}>{item.supplierName}</span></td><td>{item.warehouseCode}<br/><span className={styles.muted}>{item.warehouseName}</span></td><td>{item.dueDate}<br/><span className={styles.muted}>{item.paymentMethod} · {item.paymentTermDays} ngày</span></td><td><span className={styles.badge}>{statusLabel(item.status)}</span></td><td className={`${styles.amount} ${item.direction==='DEBIT'?styles.debit:styles.credit}`}>{money(item.signedOriginalAmount,item.currencyCode)}</td></tr>)}{!documents.length?<tr><td colSpan={7} className={styles.muted}>Chưa phát sinh chứng từ công nợ.</td></tr>:null}</tbody>
           </table></div>
         </section>
 

@@ -3,6 +3,10 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from '../../components/business-table-sequence';
 import shellStyles from '../../components/app-shell.module.css';
 import styles from '../../organization/organization.module.css';
 import localStyles from '../purchase-orders/purchase-orders.module.css';
@@ -801,6 +805,7 @@ export default function GoodsReceiptWorkspace({
             <table className={localStyles.linesTable} data-testid="goods-receipts-table">
               <thead>
                 <tr>
+                  <BusinessTableSequenceHeader />
                   <th>Số phiếu</th>
                   <th>Đơn đặt hàng</th>
                   <th>Kho nhận</th>
@@ -812,8 +817,9 @@ export default function GoodsReceiptWorkspace({
                 </tr>
               </thead>
               <tbody>
-                {visibleItems.map((goodsReceipt) => (
+                {visibleItems.map((goodsReceipt, rowIndex) => (
                   <tr key={goodsReceipt.id}>
+                    <BusinessTableSequenceCell rowIndex={rowIndex} />
                     <td>
                       <div className={localStyles.lineIdentity}>
                         <strong>{goodsReceipt.documentNumber || 'Chưa cấp số'}</strong>
