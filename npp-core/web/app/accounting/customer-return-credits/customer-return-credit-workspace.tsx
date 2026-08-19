@@ -1,6 +1,11 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
+import { createIdempotencyKey } from '@npp/contracts';
+import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from '../../components/business-table-sequence';
 import type { ReceivableAllocationTarget } from '../../../lib/customer-payment-types';
 import type {
   CustomerRefund,
@@ -45,6 +50,12 @@ function statusLabel(status: CustomerReturnCredit['status']) {
     settled: 'Đã dùng hết',
     reversed: 'Đã đảo',
   }[status];
+}
+
+function refundMethodLabel(method: string) {
+  if (method === 'BANK_TRANSFER') return 'Chuyển khoản';
+  if (method === 'CASH') return 'Tiền mặt';
+  return 'Phương thức khác';
 }
 
 async function readResponse<T>(response: Response): Promise<T> {
@@ -134,7 +145,7 @@ export default function CustomerReturnCreditWorkspace({
     const slot = `${prefix}:${JSON.stringify(payload)}`;
     const existing = mutationKeys.current.get(slot);
     if (existing) return { key: existing, slot };
-    const key = `${prefix}-${crypto.randomUUID()}`;
+    const key = createIdempotencyKey('customer-return-credit');
     mutationKeys.current.set(slot, key);
     return { key, slot };
   }
@@ -178,7 +189,7 @@ export default function CustomerReturnCreditWorkspace({
         reason: '',
       }));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không tải được credit hàng trả');
+      setMessage(error instanceof Error ? error.message : 'Không tải được khoản giảm công nợ từ hàng khách trả');
     } finally {
       setBusy(false);
     }
@@ -203,9 +214,9 @@ export default function CustomerReturnCreditWorkspace({
       mutationKeys.current.delete(mutation.slot);
       setAllocationAmounts({});
       await refresh(selected.id);
-      setMessage('Đã phân bổ credit vào công nợ.');
+      setMessage('Đã phân bổ khoản giảm công nợ.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không phân bổ được credit');
+      setMessage(error instanceof Error ? error.message : 'Không phân bổ được khoản giảm công nợ');
     } finally {
       setBusy(false);
     }
@@ -233,7 +244,7 @@ export default function CustomerReturnCreditWorkspace({
         reason: '',
       }));
       await refresh(selected.id);
-      setMessage('Đã ghi nhận hoàn tiền từ phần credit chưa sử dụng.');
+      setMessage('Đã ghi nhận hoàn tiền từ phần chưa sử dụng.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không ghi nhận được hoàn tiền');
     } finally {
@@ -270,7 +281,7 @@ export default function CustomerReturnCreditWorkspace({
 
   async function reverseCredit() {
     if (!selected || !reversalReason.trim()) {
-      setMessage('Cần nhập lý do trước khi đảo credit hàng trả.');
+      setMessage('Cần nhập lý do trước khi đảo khoản giảm công nợ hàng trả.');
       return;
     }
     const payload = { reason: reversalReason.trim() };
@@ -289,9 +300,9 @@ export default function CustomerReturnCreditWorkspace({
       mutationKeys.current.delete(mutation.slot);
       setReversalReason('');
       await refresh(selected.id);
-      setMessage('Đã đảo credit hàng trả bằng bút toán bù.');
+      setMessage('Đã đảo khoản giảm công nợ hàng trả bằng bút toán bù.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không đảo được credit hàng trả');
+      setMessage(error instanceof Error ? error.message : 'Không đảo được khoản giảm công nợ hàng trả');
     } finally {
       setBusy(false);
     }
@@ -302,13 +313,14 @@ export default function CustomerReturnCreditWorkspace({
       {message ? <div className={styles.notice} role="status">{message}</div> : null}
       <div className={styles.columns}>
         <section className={styles.card}>
-          <h2>Credit từ hàng khách trả</h2>
+          <h2>Khoản giảm công nợ từ hàng khách trả</h2>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
-              <thead><tr><th>Phiếu trả</th><th>Khách hàng</th><th>Kho</th><th className={styles.amount}>Giá trị</th><th className={styles.amount}>Còn dùng</th><th>Trạng thái</th></tr></thead>
+              <thead><tr><BusinessTableSequenceHeader /><th>Phiếu trả</th><th>Khách hàng</th><th>Kho</th><th className={styles.amount}>Giá trị</th><th className={styles.amount}>Còn dùng</th><th>Trạng thái</th></tr></thead>
               <tbody>
-                {credits.map((credit) => (
+                {credits.map((credit, rowIndex) => (
                   <tr key={credit.id} className={selectedId === credit.id ? styles.selected : undefined}>
+                    <BusinessTableSequenceCell rowIndex={rowIndex} />
                     <td><button type="button" className={styles.linkButton} disabled={busy} onClick={() => selectCredit(credit.id)}>{credit.returnNumber}</button></td>
                     <td>{credit.customerCode}<br /><span>{credit.customerName}</span></td>
                     <td>{credit.warehouseCode}<br /><span>{credit.warehouseName}</span></td>
@@ -317,7 +329,7 @@ export default function CustomerReturnCreditWorkspace({
                     <td>{statusLabel(credit.status)}</td>
                   </tr>
                 ))}
-                {!credits.length ? <tr><td colSpan={6}>Chưa có Customer Return đã nhận phát sinh credit công nợ.</td></tr> : null}
+                {!credits.length ? <tr><td colSpan={7}>Chưa có phiếu hàng khách trả đã nhận phát sinh khoản giảm công nợ.</td></tr> : null}
               </tbody>
             </table>
           </div>
@@ -329,7 +341,7 @@ export default function CustomerReturnCreditWorkspace({
             <>
               <div className={styles.summary}>
                 <strong>{selected.returnNumber} · {selected.customerCode} — {selected.customerName}</strong>
-                <span>Credit gốc: {money(selected.originalAmount, selected.currencyCode)}</span>
+                <span>Giá trị ban đầu: {money(selected.originalAmount, selected.currencyCode)}</span>
                 <span>Đã sử dụng: {money(selected.allocatedAmount, selected.currencyCode)}</span>
                 <span>Chưa sử dụng: {money(selected.remainingAmount, selected.currencyCode)}</span>
                 <span>Kho nhận: {selected.warehouseCode} — {selected.warehouseName}</span>
@@ -338,7 +350,7 @@ export default function CustomerReturnCreditWorkspace({
               <h3>Dòng hàng đã nhận</h3>
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
-                  <thead><tr><th>Hàng hóa</th><th>Chứng từ nguồn</th><th className={styles.amount}>SL nhận</th><th className={styles.amount}>Credit</th></tr></thead>
+                  <thead><tr><th>Hàng hóa</th><th>Chứng từ nguồn</th><th className={styles.amount}>SL nhận</th><th className={styles.amount}>Giá trị giảm</th></tr></thead>
                   <tbody>
                     {(selected.lines ?? []).map((line) => (
                       <tr key={line.id}>
@@ -354,7 +366,7 @@ export default function CustomerReturnCreditWorkspace({
 
               {selected.status !== 'reversed' && (decimalToScaled(selected.remainingAmount) ?? 0n) > 0n ? (
                 <>
-                  <h3>Phân bổ phần credit còn lại</h3>
+                  <h3>Phân bổ khoản giảm công nợ còn lại</h3>
                   <form className={styles.allocationForm} onSubmit={submitAllocation} data-testid="customer-return-credit-allocation-form">
                     <label>Ngày phân bổ<input type="date" value={allocationDate} onChange={(event) => setAllocationDate(event.target.value)} /></label>
                     <div className={styles.wide}>
@@ -375,7 +387,7 @@ export default function CustomerReturnCreditWorkspace({
                         </table>
                       </div>
                     </div>
-                    <button type="submit" disabled={busy || !allocationsValid}>Phân bổ credit</button>
+                    <button type="submit" disabled={busy || !allocationsValid}>Phân bổ công nợ</button>
                   </form>
 
                   <h3>Hoàn tiền từ phần chưa sử dụng</h3>
@@ -399,23 +411,23 @@ export default function CustomerReturnCreditWorkspace({
                     {(selected.refunds ?? []).map((refund) => (
                       <tr key={refund.id}>
                         <td>{refund.refundNumber}<br /><span>{refund.externalReference}</span></td>
-                        <td>{refund.refundMethod}<br /><span>{refund.destinationReference}</span></td>
+                        <td>{refundMethodLabel(refund.refundMethod)}<br /><span>{refund.destinationReference}</span></td>
                         <td className={styles.amount}>{money(refund.amount, refund.currencyCode)}</td>
                         <td>{refund.reversalId ? 'Đã đảo' : 'Đã hoàn'}</td>
                         <td>{!refund.reversalId ? <button type="button" disabled={busy || !reversalReason.trim()} onClick={() => reverseRefund(refund)}>Đảo hoàn tiền</button> : null}</td>
                       </tr>
                     ))}
-                    {!selected.refunds?.length ? <tr><td colSpan={5}>Chưa có hoàn tiền từ credit này.</td></tr> : null}
+                    {!selected.refunds?.length ? <tr><td colSpan={5}>Chưa có hoàn tiền từ khoản giảm công nợ này.</td></tr> : null}
                   </tbody>
                 </table>
               </div>
 
-              <label className={styles.reason}>Lý do đảo<textarea value={reversalReason} onChange={(event) => setReversalReason(event.target.value)} placeholder="Bắt buộc khi đảo credit hoặc hoàn tiền" /></label>
+              <label className={styles.reason}>Lý do đảo<textarea value={reversalReason} onChange={(event) => setReversalReason(event.target.value)} placeholder="Bắt buộc khi đảo khoản giảm công nợ hoặc hoàn tiền" /></label>
               <div className={styles.actions}>
-                <button type="button" disabled={busy || selected.status === 'reversed' || hasActiveRefund || !reversalReason.trim()} onClick={reverseCredit}>Đảo credit hàng trả</button>
+                <button type="button" disabled={busy || selected.status === 'reversed' || hasActiveRefund || !reversalReason.trim()} onClick={reverseCredit}>Đảo khoản giảm công nợ hàng trả</button>
               </div>
             </>
-          ) : <p>Chọn một credit để xem chi tiết.</p>}
+          ) : <p>Chọn một khoản giảm công nợ để xem chi tiết.</p>}
         </section>
       </div>
     </div>
