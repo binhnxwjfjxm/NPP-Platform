@@ -3,6 +3,7 @@
 import { createIdempotencyKey } from '@npp/contracts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell-core';
+import { BusinessSequenceNumber } from '../../components/business-table-sequence';
 import { formatQuantity, type InventoryBalance } from '../../../lib/inventory-types';
 import {
   addExactDecimal,
@@ -477,14 +478,14 @@ export default function InventoryAdjustmentWorkspace({
 
           <div className={styles.layout}>
             <div className={styles.list} aria-label="Danh sách phiếu điều chỉnh tồn">
-              {adjustments.length === 0 ? <p className={styles.empty}>Chưa có phiếu phù hợp.</p> : adjustments.map((item) => (
+              {adjustments.length === 0 ? <p className={styles.empty}>Chưa có phiếu phù hợp.</p> : adjustments.map((item, rowIndex) => (
                 <button
                   key={item.id}
                   type="button"
                   className={`${styles.listItem} ${selected?.id === item.id ? styles.active : ''}`}
                   onClick={() => openDetail(item.id)}
                 >
-                  <strong>{item.adjustmentNumber}</strong>
+                  <strong><BusinessSequenceNumber rowIndex={rowIndex} /> {item.adjustmentNumber}</strong>
                   <span>{adjustmentKindLabels[item.documentKind]}</span>
                   <small>{item.warehouseCode ?? item.warehouseName ?? 'Kho'} · {adjustmentStatusLabels[item.status]} · {formatDate(item.createdAt)}</small>
                 </button>
@@ -562,7 +563,7 @@ export default function InventoryAdjustmentWorkspace({
                     ) : null}
 
                   <div className={styles.lines}>
-                    {selected.lines?.map((line) => {
+                    {selected.lines?.map((line, rowIndex) => {
                       const balance = balances.find((item) => balanceMatchesLine(item, line)) ?? null;
                       const delta = sourceDelta(selected, line);
                       const loadedOnHand = balance?.on_hand_quantity ?? null;
@@ -573,7 +574,7 @@ export default function InventoryAdjustmentWorkspace({
                       const productName = balance?.product_name || balance?.base_variant_name || line.sourceSku;
                       return (
                         <article key={line.id} className={styles.lineCard}>
-                          <strong>{productName}</strong>
+                          <strong><BusinessSequenceNumber rowIndex={rowIndex} /> {productName}</strong>
                           <span>Sản phẩm: {line.sourceSku}</span>
                           <span>Lô: {line.lotCode || 'Không lô'}</span>
                           <span>Vị trí: {line.sourceLocationCode || 'Không vị trí'}{line.sourceLocationName ? ` · ${line.sourceLocationName}` : ''}</span>

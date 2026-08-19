@@ -4,6 +4,11 @@ import { createIdempotencyKey } from '@npp/contracts';
 import { useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
 import {
+  BusinessSequenceNumber,
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from '../../components/business-table-sequence';
+import {
   formatDate,
   formatDateTime,
   formatQuantity,
@@ -459,7 +464,7 @@ export default function StocktakeWorkspace({
 
         <div className={styles.workspace}>
           <section className={styles.listPanel} aria-label="Danh sách kiểm kê">
-            {filtered.length ? filtered.map((stocktake) => (
+            {filtered.length ? filtered.map((stocktake, rowIndex) => (
               <button
                 type="button"
                 key={stocktake.id}
@@ -467,7 +472,7 @@ export default function StocktakeWorkspace({
                 onClick={() => { setSelectedId(stocktake.id); loadDetail(stocktake.id); }}
               >
                 <span className={styles.listHeader}>
-                  <strong>{stocktake.stocktakeNumber}</strong>
+                  <span><BusinessSequenceNumber rowIndex={rowIndex} /> <strong>{stocktake.stocktakeNumber}</strong></span>
                   <span className={`${styles.badge} ${statusTone(stocktake.status)}`}>{STOCKTAKE_STATUS_LABELS[stocktake.status]}</span>
                 </span>
                 <span>{stocktake.warehouseCode} · {stocktake.warehouseName}</span>
@@ -512,6 +517,7 @@ export default function StocktakeWorkspace({
                   <table>
                     <thead>
                       <tr>
+                        <BusinessTableSequenceHeader />
                         <th>Sản phẩm</th>
                         <th>Lô</th>
                         <th>Vị trí</th>
@@ -522,10 +528,11 @@ export default function StocktakeWorkspace({
                       </tr>
                     </thead>
                     <tbody>
-                      {(detail.lines ?? []).map((line) => {
+                      {(detail.lines ?? []).map((line, rowIndex) => {
                         const difference = stocktakeDifference(line);
                         return (
                           <tr key={line.id}>
+                            <BusinessTableSequenceCell rowIndex={rowIndex} />
                             <td>
                               <strong>{productNameByVariant.get(line.baseVariantId) || line.baseSku}</strong>
                               <small>{line.baseSku}</small>

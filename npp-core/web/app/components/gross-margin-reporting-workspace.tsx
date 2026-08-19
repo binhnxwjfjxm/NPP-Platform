@@ -5,6 +5,10 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import type { GrossMarginDashboard } from '../../lib/finance-reporting-types';
 import { AppShell } from './app-shell';
 import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from './business-table-sequence';
+import {
   WorkspaceTabPanel,
   WorkspaceTabs,
   type WorkspaceTabOption,
@@ -108,7 +112,7 @@ export function GrossMarginReportingWorkspace() {
   return (
     <AppShell
       title="Lãi gộp"
-      subtitle="Đối chiếu doanh thu thuần đã ghi nhận với cost fact MWA_V1 theo exact inventory lineage; Customer Return đã nhận được đảo cả doanh thu và COGS."
+      subtitle="Đối chiếu doanh thu thuần đã ghi nhận với dữ liệu giá vốn bình quân theo chuỗi chứng từ kho; hàng khách trả đã nhận được đảo cả doanh thu và giá vốn hàng bán."
       kicker="Bán hàng"
       actions={actions}
     >
@@ -128,11 +132,11 @@ export function GrossMarginReportingWorkspace() {
           <div className={styles.cards}>
             <article className={styles.card}><p className={styles.cardLabel}>Doanh thu thuần so sánh được</p><p className={styles.cardValue}>{money(report.summary.netRevenueVnd)}</p><p className={styles.cardHint}>Không gồm VAT; đã trừ discount và đảo Customer Return.</p></article>
             <article className={styles.card}><p className={styles.cardLabel}>Giá vốn</p><p className={styles.cardValue}>{money(report.summary.cogsVnd)}</p><p className={styles.cardHint}>Phase 7 MWA_V1 theo exact movement line.</p></article>
-            <article className={styles.card}><p className={styles.cardLabel}>Lãi gộp</p><p className={styles.cardValue}>{money(report.summary.grossMarginVnd)}</p><p className={styles.cardHint}>Doanh thu thuần − COGS.</p></article>
+            <article className={styles.card}><p className={styles.cardLabel}>Lãi gộp</p><p className={styles.cardValue}>{money(report.summary.grossMarginVnd)}</p><p className={styles.cardHint}>Doanh thu thuần − Giá vốn hàng bán.</p></article>
             <article className={styles.card}><p className={styles.cardLabel}>Biên lãi gộp</p><p className={styles.cardValue}>{percent(report.summary.grossMarginPercent)}</p><p className={styles.cardHint}>Chỉ trên các dòng VND có cost fact hợp lệ.</p></article>
           </div>
 
-          <div className={styles.notice}><strong>Đối soát:</strong> {report.summary.comparableLineCount ?? '0'}/{report.summary.eventLineCount ?? '0'} dòng so sánh được · thiếu lineage {report.summary.missingLineageCount ?? '0'} · thiếu cost {report.summary.missingCostCount ?? '0'} · cost anomaly {report.summary.costAnomalyCount ?? '0'} · non-VND {report.summary.nonVndCount ?? '0'}.</div>
+          <div className={styles.notice}><strong>Đối soát:</strong> {report.summary.comparableLineCount ?? '0'}/{report.summary.eventLineCount ?? '0'} dòng so sánh được · thiếu liên kết chứng từ {report.summary.missingLineageCount ?? '0'} · thiếu giá vốn {report.summary.missingCostCount ?? '0'} · bất thường giá vốn {report.summary.costAnomalyCount ?? '0'} · chưa quy đổi VND {report.summary.nonVndCount ?? '0'}.</div>
 
           <WorkspaceTabs
             tabs={GROSS_MARGIN_TABS}
@@ -144,22 +148,22 @@ export function GrossMarginReportingWorkspace() {
 
           <WorkspaceTabPanel tabId="customers" activeTab={activeTab} idPrefix={GROSS_MARGIN_TAB_PREFIX}>
             <section className={styles.section} data-testid="gross-margin-customers-panel">
-              <div className={styles.sectionHeader}><div><h2>Theo khách hàng</h2><p>Nhóm theo customer ID ổn định; tên/mã chỉ dùng để hiển thị.</p></div></div>
-              <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>Khách hàng</th><th className={styles.numeric}>Doanh thu</th><th className={styles.numeric}>COGS</th><th className={styles.numeric}>Lãi gộp</th><th className={styles.numeric}>Biên</th></tr></thead><tbody>{report.topCustomers.map((row) => <tr key={row.customerId}><td><strong>{row.customerCode}</strong><br />{row.customerName}</td><td className={styles.numeric}>{money(row.netRevenueVnd)}</td><td className={styles.numeric}>{money(row.cogsVnd)}</td><td className={styles.numeric}>{money(row.grossMarginVnd)}</td><td className={styles.numeric}>{percent(row.grossMarginPercent)}</td></tr>)}{!report.topCustomers.length ? <tr><td className={styles.empty} colSpan={5}>Chưa có dòng lãi gộp so sánh được.</td></tr> : null}</tbody></table></div>
+              <div className={styles.sectionHeader}><div><h2>Theo khách hàng</h2><p>Nhóm theo mã khách hàng ổn định; tên và mã chỉ dùng để hiển thị.</p></div></div>
+              <div className={styles.tableWrap}><table className={styles.table}><thead><tr><BusinessTableSequenceHeader /><th>Khách hàng</th><th className={styles.numeric}>Doanh thu</th><th className={styles.numeric}>Giá vốn hàng bán</th><th className={styles.numeric}>Lãi gộp</th><th className={styles.numeric}>Biên</th></tr></thead><tbody>{report.topCustomers.map((row, rowIndex) => <tr key={row.customerId}><BusinessTableSequenceCell rowIndex={rowIndex} /><td><strong>{row.customerCode}</strong><br />{row.customerName}</td><td className={styles.numeric}>{money(row.netRevenueVnd)}</td><td className={styles.numeric}>{money(row.cogsVnd)}</td><td className={styles.numeric}>{money(row.grossMarginVnd)}</td><td className={styles.numeric}>{percent(row.grossMarginPercent)}</td></tr>)}{!report.topCustomers.length ? <tr><td className={styles.empty} colSpan={6}>Chưa có dòng lãi gộp so sánh được.</td></tr> : null}</tbody></table></div>
             </section>
           </WorkspaceTabPanel>
 
           <WorkspaceTabPanel tabId="skus" activeTab={activeTab} idPrefix={GROSS_MARGIN_TAB_PREFIX}>
             <section className={styles.section} data-testid="gross-margin-skus-panel">
-              <div className={styles.sectionHeader}><div><h2>Theo SKU</h2><p>Nhóm theo base variant ID để không tách sai do snapshot tên.</p></div><Link className={styles.linkButton} href="/inventory/costing">Mở giá vốn</Link></div>
-              <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>SKU</th><th className={styles.numeric}>Doanh thu</th><th className={styles.numeric}>COGS</th><th className={styles.numeric}>Lãi gộp</th><th className={styles.numeric}>Biên</th></tr></thead><tbody>{report.topSkus.map((row) => <tr key={row.variantId}><td><strong>{row.sku}</strong></td><td className={styles.numeric}>{money(row.netRevenueVnd)}</td><td className={styles.numeric}>{money(row.cogsVnd)}</td><td className={styles.numeric}>{money(row.grossMarginVnd)}</td><td className={styles.numeric}>{percent(row.grossMarginPercent)}</td></tr>)}{!report.topSkus.length ? <tr><td className={styles.empty} colSpan={5}>Chưa có dữ liệu.</td></tr> : null}</tbody></table></div>
+              <div className={styles.sectionHeader}><div><h2>Theo SKU</h2><p>Nhóm theo mã SKU chuẩn để không tách sai khi tên hàng thay đổi.</p></div><Link className={styles.linkButton} href="/inventory/costing">Mở giá vốn</Link></div>
+              <div className={styles.tableWrap}><table className={styles.table}><thead><tr><BusinessTableSequenceHeader /><th>SKU</th><th className={styles.numeric}>Doanh thu</th><th className={styles.numeric}>Giá vốn hàng bán</th><th className={styles.numeric}>Lãi gộp</th><th className={styles.numeric}>Biên</th></tr></thead><tbody>{report.topSkus.map((row, rowIndex) => <tr key={row.variantId}><BusinessTableSequenceCell rowIndex={rowIndex} /><td><strong>{row.sku}</strong></td><td className={styles.numeric}>{money(row.netRevenueVnd)}</td><td className={styles.numeric}>{money(row.cogsVnd)}</td><td className={styles.numeric}>{money(row.grossMarginVnd)}</td><td className={styles.numeric}>{percent(row.grossMarginPercent)}</td></tr>)}{!report.topSkus.length ? <tr><td className={styles.empty} colSpan={6}>Chưa có dữ liệu.</td></tr> : null}</tbody></table></div>
             </section>
           </WorkspaceTabPanel>
 
           <WorkspaceTabPanel tabId="exceptions" activeTab={activeTab} idPrefix={GROSS_MARGIN_TAB_PREFIX}>
             <section className={styles.section} data-testid="gross-margin-exceptions-panel">
-              <div className={styles.sectionHeader}><div><h2>Dòng chưa đủ điều kiện tính lãi gộp</h2><p>Không tự suy đoán giá vốn hoặc quy đổi tiền tệ; các dòng này bị loại khỏi KPI và hiện rõ nguyên nhân.</p></div></div>
-              <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>Ngày</th><th>Chứng từ</th><th>Kho</th><th>SKU</th><th>Khách hàng</th><th>Nguyên nhân</th></tr></thead><tbody>{report.exceptions.map((row) => <tr key={`${row.eventKind}:${row.sourceLineId}`}><td>{row.documentDate}</td><td>{row.eventKind === 'RETURN' ? 'Trả hàng · ' : ''}{row.documentNumber}</td><td>{row.warehouseCode}</td><td>{row.sku}</td><td>{row.customerCode}</td><td>{exceptionLabel(row.exceptionCode)}</td></tr>)}{!report.exceptions.length ? <tr><td className={styles.empty} colSpan={6}>Không có ngoại lệ trong kỳ.</td></tr> : null}</tbody></table></div>
+              <div className={styles.sectionHeader}><div><h2>Dòng chưa đủ điều kiện tính lãi gộp</h2><p>Không tự suy đoán giá vốn hoặc quy đổi tiền tệ; các dòng này chưa tính vào chỉ tiêu tổng hợp và hiện rõ nguyên nhân.</p></div></div>
+              <div className={styles.tableWrap}><table className={styles.table}><thead><tr><BusinessTableSequenceHeader /><th>Ngày</th><th>Chứng từ</th><th>Kho</th><th>SKU</th><th>Khách hàng</th><th>Nguyên nhân</th></tr></thead><tbody>{report.exceptions.map((row, rowIndex) => <tr key={`${row.eventKind}:${row.sourceLineId}`}><BusinessTableSequenceCell rowIndex={rowIndex} /><td>{row.documentDate}</td><td>{row.eventKind === 'RETURN' ? 'Trả hàng · ' : ''}{row.documentNumber}</td><td>{row.warehouseCode}</td><td>{row.sku}</td><td>{row.customerCode}</td><td>{exceptionLabel(row.exceptionCode)}</td></tr>)}{!report.exceptions.length ? <tr><td className={styles.empty} colSpan={7}>Không có ngoại lệ trong kỳ.</td></tr> : null}</tbody></table></div>
             </section>
           </WorkspaceTabPanel>
         </> : null}

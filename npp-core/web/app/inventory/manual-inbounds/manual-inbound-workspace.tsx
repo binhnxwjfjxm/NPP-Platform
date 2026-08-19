@@ -541,12 +541,12 @@ export default function ManualInboundWorkspace() {
         {filename ? <p className={styles.fileName}>Tệp đang dùng: <strong>{filename}</strong></p> : null}
         <div className={styles.tableWrap}>
           <table className={styles.table}>
-            <thead><tr><th>#</th><th>SKU *</th><th>Tên sản phẩm</th><th>ĐVT</th><th>Số lượng *</th><th>Giá vốn</th><th /></tr></thead>
+            <thead><tr><BusinessTableSequenceHeader /><th>SKU *</th><th>Tên sản phẩm</th><th>ĐVT</th><th>Số lượng *</th><th>Giá vốn</th><th /></tr></thead>
             <tbody>{rows.map((row, index) => {
               const resolved = resolvedItems[index + 1];
               const matches = resolved?.sku === row.sku.trim().toUpperCase();
               return <tr key={index}>
-                <td>{index + 1}</td>
+                <BusinessTableSequenceCell rowIndex={index} />
                 <td><input aria-label={`SKU dòng ${index + 1}`} value={row.sku} onChange={(event) => updateRow(index, { sku: event.target.value })} placeholder="VD: SP001" /></td>
                 <td className={styles.readOnlyCell}>{matches ? (resolved.productName || '—') : 'Kiểm tra để nhận diện'}</td>
                 <td className={styles.unitCell}>{matches ? (resolved.sourceUnitCode || '—') : '—'}</td>
@@ -573,8 +573,8 @@ export default function ManualInboundWorkspace() {
         {preview.totals.mergedDuplicateCount > 0 ? <p className={styles.mergeNote}>Đã gộp {preview.totals.mergedDuplicateCount} dòng trùng cùng SKU, vị trí, lô và giá vốn để kiểm tra dễ hơn.</p> : null}
         <div className={styles.previewTableWrap}>
           <table className={styles.previewTable}>
-            <thead><tr><th>SKU</th><th>Tên sản phẩm</th><th>ĐVT</th><th>Số lượng</th><th>Kho</th><th>Vị trí</th><th>Lô</th><th>HSD</th><th>Giá vốn</th><th>Trạng thái</th></tr></thead>
-            <tbody>{preview.rows.map((row) => {
+            <thead><tr><BusinessTableSequenceHeader /><th>SKU</th><th>Tên sản phẩm</th><th>ĐVT</th><th>Số lượng</th><th>Kho</th><th>Vị trí</th><th>Lô</th><th>HSD</th><th>Giá vốn</th><th>Trạng thái</th></tr></thead>
+            <tbody>{preview.rows.map((row, rowIndex) => {
               const rowErrors = errorsByLine.get(row.lineNumber) ?? [];
               const errorCodes = new Set(rowErrors.map((error) => error.code));
               const showLocation = row.requiredFields.includes('LOCATION') || errorCodes.has('LOCATION_NOT_FOUND');
@@ -585,6 +585,7 @@ export default function ManualInboundWorkspace() {
               const errorTitle = rowErrors.map((error) => error.message).join('\n');
               const selectedLocation = locations.some((location) => location.code === row.locationCode) ? (row.locationCode || '') : '';
               return <tr key={`${row.lineNumber}-${row.sku}`} className={row.status === 'READY' && !previewDirty ? styles.previewReadyRow : styles.previewAttentionRow}>
+                <BusinessTableSequenceCell rowIndex={rowIndex} />
                 <td><strong>{row.sku}</strong>{row.sourceLineNumbers.length > 1 ? <small>Gộp {row.sourceLineNumbers.length} dòng</small> : null}</td>
                 <td>{row.productName || '—'}</td>
                 <td>{row.sourceUnitCode || '—'}</td>
@@ -643,7 +644,7 @@ export default function ManualInboundWorkspace() {
           <div className={styles.sectionHeading}><div><h2 id="manual-inbound-movement-title">Biến động tồn theo chứng từ</h2><p>{historyDetail ? `${historyDetail.warehouseCode} — ${historyDetail.warehouseName} · ${displayDate(historyDetail.documentDate)}${historyDetail.referenceNumber ? ` · ${historyDetail.referenceNumber}` : ''}` : 'Chỉ hiển thị các mã hàng có trên chứng từ này.'}</p></div><button type="button" className={styles.secondary} onClick={() => { setHistoryDetail(null); setHistoryDetailError(''); }}>Đóng</button></div>
           {historyDetailBusy ? <p className={styles.historyMessage}>Đang tải biến động tồn…</p> : null}
           {historyDetailError ? <p className={styles.historyMessage}>{historyDetailError}</p> : null}
-          {historyDetail ? <div className={styles.historyTableWrap}><table className={styles.historyTable}><thead><tr><th>Sản phẩm / SKU</th><th>ĐVT</th><th>Tồn trước</th><th>Biến động</th><th>Tồn sau</th></tr></thead><tbody>{historyDetail.lines.map((line) => <tr key={line.baseVariantId}><td><strong>{line.productName || line.sku}</strong><small>{line.sku}</small></td><td>{line.baseUnitCode || '—'}</td><td>{formatQuantity(line.quantityBefore)}</td><td><strong>+{formatQuantity(line.quantityDelta)}</strong></td><td><strong>{formatQuantity(line.quantityAfter)}</strong></td></tr>)}</tbody></table></div> : null}
+          {historyDetail ? <div className={styles.historyTableWrap}><table className={styles.historyTable}><thead><tr><BusinessTableSequenceHeader /><th>Sản phẩm / SKU</th><th>ĐVT</th><th>Tồn trước</th><th>Biến động</th><th>Tồn sau</th></tr></thead><tbody>{historyDetail.lines.map((line, rowIndex) => <tr key={line.baseVariantId}><BusinessTableSequenceCell rowIndex={rowIndex} /><td><strong>{line.productName || line.sku}</strong><small>{line.sku}</small></td><td>{line.baseUnitCode || '—'}</td><td>{formatQuantity(line.quantityBefore)}</td><td><strong>+{formatQuantity(line.quantityDelta)}</strong></td><td><strong>{formatQuantity(line.quantityAfter)}</strong></td></tr>)}</tbody></table></div> : null}
         </section>
       </div> : null}
     </div>

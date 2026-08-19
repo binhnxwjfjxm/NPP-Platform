@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { BusinessSequenceNumber } from './business-table-sequence';
 
 type HoldOrder = Readonly<{
   salesOrderId: string;
@@ -158,7 +159,7 @@ export function StockHoldBreakdown({
                       style={{ border: '1px solid rgba(0,0,0,.12)', borderRadius: 8, padding: 10 }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                        <strong>{order.orderNumber}</strong>
+                        <strong><BusinessSequenceNumber rowIndex={index} /> {order.orderNumber}</strong>
                         <strong>{formatQuantity(order.heldBaseQuantity)} {order.baseUnitCode || unit}</strong>
                       </div>
                       <div style={{ marginTop: 4 }}>{order.customerName || 'Khách hàng'}</div>

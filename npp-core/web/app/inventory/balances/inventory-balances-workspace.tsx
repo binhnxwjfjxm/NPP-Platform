@@ -137,7 +137,7 @@ async function requestJson<T>(path: string): Promise<T> {
 
 export default function InventoryBalancesWorkspace({ title, subtitle, initialSnapshot, initialError = null }: Props) {
   const [balances, setBalances] = useState(initialSnapshot.balances);
-  const [selectedBalance, setSelectedBalance] = useState<InventoryBalance | null>(initialSnapshot.balances[0] ?? null);
+  const [selectedBalance, setSelectedBalance] = useState<InventoryBalance | null>(null);
   const [drillDown, setDrillDown] = useState<InventoryMovementLine[]>([]);
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
@@ -183,8 +183,8 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
       const next = await requestJson<InventoryBalance[]>('/api/inventory/balances?limit=500');
       setBalances(next);
       setSelectedBalance((current) => current
-        ? next.find((item) => balanceKey(item) === balanceKey(current)) ?? next[0] ?? null
-        : next[0] ?? null);
+        ? next.find((item) => balanceKey(item) === balanceKey(current)) ?? null
+        : null);
       setNotice({ kind: 'success', message: 'Dữ liệu tồn kho đã được làm mới.' });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Không tải được dữ liệu tồn kho');
@@ -237,9 +237,9 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
           {notice ? <div className={`${styles.banner} ${notice.kind === 'success' ? styles.bannerSuccess : styles.bannerError}`}>{notice.message}</div> : null}
         </section>
 
-        <section className={styles.section} data-testid="inventory-balances-section">
-          <div className={styles.gridTwo}>
-            <div className={styles.tableWrap}>
+        <section className={styles.balanceSection} data-testid="inventory-balances-section">
+          <div className={styles.balanceLayout}>
+            <div className={`${styles.tableWrap} ${styles.balanceTableWrap}`}>
               <table className={styles.table}>
                 <thead>
                   <tr><BusinessTableSequenceHeader /><th>Kho / vị trí</th><th>Sản phẩm / SKU</th><th>Lô</th><th>Hạn dùng</th><th>Tồn kho</th><th>Đã giữ cho đơn</th><th>Có thể xuất</th><th></th></tr>
@@ -275,10 +275,9 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
               </table>
             </div>
 
-            <aside className={styles.panel} data-testid="inventory-drilldown-panel">
+            {selectedBalance ? <aside className={`${styles.panel} ${styles.balanceDetailPanel}`} data-testid="inventory-drilldown-panel">
               <h3 className={styles.panelTitle}>Lịch sử tồn kho theo vị trí / lô</h3>
-              {!selectedBalance ? <p className={styles.subtle}>Chọn một dòng tồn kho để xem lịch sử.</p> : (
-                <div className={styles.stack}>
+              <div className={styles.stack}>
                   <div className={styles.banner} data-testid="inventory-selected-scope">
                     <strong>{selectedBalance.warehouse_code} — {selectedBalance.warehouse_name}</strong>
                     <div className={styles.subtle}>{balanceScopeLabel(selectedBalance)}</div>
@@ -327,9 +326,8 @@ export default function InventoryBalancesWorkspace({ title, subtitle, initialSna
                       </div>
                     ))}</div>
                   )}
-                </div>
-              )}
-            </aside>
+              </div>
+            </aside> : null}
           </div>
         </section>
       </div>

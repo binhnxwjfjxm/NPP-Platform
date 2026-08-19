@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AppShell } from '../../components/app-shell';
+import {
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from '../../components/business-table-sequence';
 import { formatDateTime, type OpeningBalanceImport } from '../../../lib/inventory-types';
 import styles from './opening-balance-csv-workspace.module.css';
 
@@ -434,7 +438,7 @@ export default function OpeningBalanceCsvWorkspace({ initialImports, initialErro
 
       <section className={styles.gridTwo}>
         <article className={styles.card}><h2>Kết quả kiểm tra</h2>{!validation ? <p className={styles.empty}>Chưa kiểm tra tệp hoặc dữ liệu vừa được chỉnh sửa.</p> : validation.rowErrors.length ? <ul className={styles.errorList}>{validation.rowErrors.map((item) => <li key={`${item.lineNumber}-${item.code}`}>Dòng {item.lineNumber + 1}: {item.message}</li>)}</ul> : <div className={styles.summary}><strong>{validation.totals.rowCount} dòng hợp lệ</strong><span>Tổng số lượng theo đơn vị nhập: {displayQuantity(validation.totals.sourceQuantityTotal)}</span><span>Quy đổi tồn kho: {displayQuantity(validation.totals.baseQuantityTotal)}</span><span>Kho: {selectedWarehouse ? `${selectedWarehouse.code} — ${selectedWarehouse.name}` : '—'}</span></div>}</article>
-        <article className={styles.card}><h2>Lịch sử nhập tồn đầu kỳ</h2><div className={styles.tableWrap}><table><thead><tr><th>Mã đợt</th><th>Tệp nguồn</th><th>Số dòng</th><th>Thời gian</th></tr></thead><tbody>{imports.length === 0 ? <tr><td colSpan={4} className={styles.empty}>Chưa có lần nhập nào.</td></tr> : imports.map((item) => <tr key={item.id}><td>{item.source_key}</td><td>{item.source_filename || '—'}</td><td>{item.row_count}</td><td>{formatDateTime(item.created_at)}</td></tr>)}</tbody></table></div></article>
+        <article className={styles.card}><h2>Lịch sử nhập tồn đầu kỳ</h2><div className={styles.tableWrap}><table><thead><tr><BusinessTableSequenceHeader /><th>Mã đợt</th><th>Tệp nguồn</th><th>Số dòng</th><th>Thời gian</th></tr></thead><tbody>{imports.length === 0 ? <tr><td colSpan={5} className={styles.empty}>Chưa có lần nhập nào.</td></tr> : imports.map((item, rowIndex) => <tr key={item.id}><BusinessTableSequenceCell rowIndex={rowIndex} /><td>{item.source_key}</td><td>{item.source_filename || '—'}</td><td>{item.row_count}</td><td>{formatDateTime(item.created_at)}</td></tr>)}</tbody></table></div></article>
       </section>
     </main>
   </AppShell>;

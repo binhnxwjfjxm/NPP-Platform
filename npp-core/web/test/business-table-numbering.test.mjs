@@ -26,6 +26,11 @@ const rolloutPaths = [
   'app/inventory/balances/inventory-balances-workspace.tsx',
   'app/inventory/manual-inbounds/manual-inbound-workspace.tsx',
   'app/inventory/inventory-scoped-workspace.tsx',
+  'app/components/inventory-reporting-workspace.tsx',
+  'app/components/gross-margin-reporting-workspace.tsx',
+  'app/components/reporting-dashboard-workspace.tsx',
+  'app/inventory/costing/workspace.tsx',
+  'app/inventory/opening-balances/opening-balance-csv-workspace.tsx',
   'app/customers/customer-workspace.tsx',
   'app/suppliers/supplier-workspace.tsx',
   'app/products/product-workspace.tsx',
@@ -61,6 +66,8 @@ test('business table sequence exposes office-language STT through one shared com
   assert.match(componentSource, /BUSINESS_TABLE_SEQUENCE_HEADER/);
   assert.match(componentSource, /aria-label="Số thứ tự"/);
   assert.match(componentSource, /businessTableRowNumber\(rowIndex, offset\)/);
+  assert.match(componentSource, /BusinessSequenceNumber/);
+  assert.match(componentSource, /data-business-sequence/);
   assert.doesNotMatch(componentSource, /rowIndex\s*\+\s*1/);
 });
 
@@ -106,17 +113,35 @@ test('primary business list tables use the shared STT convention', () => {
   assert.match(scopedInventory, /filteredBalances\.map\(\(balance, rowIndex\)/);
   assert.match(scopedInventory, /filteredLots\.map\(\(lot, rowIndex\)/);
 
-  const customers = read(rolloutPaths[12]);
+  const customers = read(rolloutPaths[17]);
   assert.match(customers, /visibleCustomers\.map\(\(customer, rowIndex\)/);
   assert.match(customers, /groups\.map\(\(group, rowIndex\)/);
 
-  const suppliers = read(rolloutPaths[13]);
+  const suppliers = read(rolloutPaths[18]);
   assert.match(suppliers, /visibleSuppliers\.map\(\(supplier, rowIndex\)/);
   assert.match(suppliers, /BusinessTableSequenceCell rowIndex=\{rowIndex\}/);
 
-  const products = read(rolloutPaths[14]);
+  const products = read(rolloutPaths[19]);
   assert.match(products, /visibleProducts\.map\(\(product, rowIndex\)/);
   assert.match(products, /variants\.map\(\(variant, rowIndex\)/);
   assert.match(products, /categories\.map\(\(category, rowIndex\)/);
   assert.match(products, /brands\.map\(\(brand, rowIndex\)/);
+});
+
+test('sales order and inventory operations keep their visible sequence on the shared generator', () => {
+  const salesOrders = read('app/sales/sales-orders/SalesOrderWorkspace.tsx');
+  const salesOrderDetail = read('app/sales/sales-orders/SalesOrderDetail.tsx');
+  const salesOrderForm = read('app/sales/sales-orders/SalesOrderCommercialForm.tsx');
+  const holds = read('app/components/stock-hold-breakdown.tsx');
+  const fulfillment = read('app/inventory/fulfillment/fulfillment-workspace.tsx');
+  const transfers = read('app/inventory/transfers/transfer-workspace.tsx');
+
+  assert.match(salesOrders, /filtered\.map\(\(order, rowIndex\)/);
+  assert.match(salesOrders, /BusinessSequenceNumber rowIndex=\{rowIndex\}/);
+  assert.match(salesOrderDetail, /fulfillment\.lines\.map\(\(line, rowIndex\)/);
+  assert.match(salesOrderDetail, /\(current\.lines \?\? \[\]\)\.map\(\(line, rowIndex\)/);
+  assert.match(salesOrderForm, /BusinessSequenceNumber rowIndex=\{index\}/);
+  assert.match(holds, /BusinessSequenceNumber rowIndex=\{index\}/);
+  assert.match(fulfillment, /selectedOrder\.items\.map\(\(item, rowIndex\)/);
+  assert.match(transfers, /filteredTransfers\.map\(\(transfer, rowIndex\)/);
 });

@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell';
+import {
+  BusinessSequenceNumber,
+  BusinessTableSequenceCell,
+  BusinessTableSequenceHeader,
+} from '../../components/business-table-sequence';
 import type {
   InventoryCostAdjustmentEvent,
   InventoryCostAnomaly,
@@ -176,7 +181,7 @@ export default function InventoryCostingWorkspace({
         body: JSON.stringify({}),
       });
       await refresh();
-      setNotice(`Đã dựng ${result.run.factCount} cost fact; ${result.anomalyCount} dòng cần xử lý.`);
+      setNotice(`Đã tổng hợp ${result.run.factCount} dòng giá vốn; ${result.anomalyCount} dòng cần xử lý.`);
       setRebuildKey(`web-costing-rebuild-${crypto.randomUUID()}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Không dựng lại được giá vốn tồn kho');
@@ -242,7 +247,7 @@ export default function InventoryCostingWorkspace({
           </div>
           <div className={styles.runMeta}>
             <span>{openPeriod ? `Kỳ mở ${openPeriod.periodStart} → ${openPeriod.periodEnd}` : 'Chưa có kỳ giá vốn đang mở'}</span>
-            <span>{run ? `Run ${run.id.slice(0, 8)} · ${new Date(run.completedAt).toLocaleString('vi-VN')}` : 'Chưa có projection'}</span>
+            <span>{run ? `Lần tổng hợp ${run.id.slice(0, 8)} · ${new Date(run.completedAt).toLocaleString('vi-VN')}` : 'Chưa có dữ liệu giá vốn tổng hợp'}</span>
           </div>
         </section>
 
@@ -254,7 +259,7 @@ export default function InventoryCostingWorkspace({
             ['discrepancies', 'Chờ xử lý'],
             ['adjustments', 'Điều chỉnh giá'],
             ['anomalies', 'Bất thường'],
-            ['facts', 'Cost facts'],
+            ['facts', 'Dữ liệu giá vốn'],
           ] as const).map(([value, label]) => (
             <button
               key={value}
@@ -271,15 +276,16 @@ export default function InventoryCostingWorkspace({
 
         {tab === 'balances' ? (
           <section className={styles.tableWrap}>
-            <table><thead><tr><th>Kho</th><th>SKU</th><th>Số lượng</th><th>Giá trị tồn</th><th>Giá bình quân</th><th>Trạng thái</th></tr></thead>
-              <tbody>{balances.map((item) => (
+            <table><thead><tr><BusinessTableSequenceHeader /><th>Kho</th><th>SKU</th><th>Số lượng</th><th>Giá trị tồn</th><th>Giá bình quân</th><th>Trạng thái</th></tr></thead>
+              <tbody>{balances.map((item, rowIndex) => (
                 <tr key={`${item.warehouseId}:${item.baseVariantId}`}>
+                  <BusinessTableSequenceCell rowIndex={rowIndex} />
                   <td>{item.warehouseCode ?? item.warehouseName ?? item.warehouseId}</td>
                   <td>{item.baseSku ?? item.baseVariantId}</td>
                   <td>{trimDecimal(item.quantity)}</td><td>{moneyVnd(item.inventoryValue)}</td>
                   <td>{moneyVnd(item.averageUnitCost)}</td><td><span className={styles.badge}>{statusLabel(item.status)}</span></td>
                 </tr>
-              ))}{balances.length === 0 ? <tr><td colSpan={6} className={styles.empty}>Chưa có projection giá vốn.</td></tr> : null}</tbody>
+              ))}{balances.length === 0 ? <tr><td colSpan={7} className={styles.empty}>Chưa có dữ liệu giá vốn tổng hợp.</td></tr> : null}</tbody>
             </table>
           </section>
         ) : null}
@@ -288,7 +294,7 @@ export default function InventoryCostingWorkspace({
           <div className={styles.stack}>
             <section className={styles.runCard}>
               <strong>{openPeriod ? `Kỳ ${openPeriod.periodStart} đang mở` : `Kỳ kế tiếp: ${suggestedPeriodStart}`}</strong>
-              <p>Khi đóng kỳ, hệ thống dựng lại phần lịch sử còn mở, chặn nếu còn anomaly/lệch đối soát và lưu snapshot bất biến.</p>
+              <p>Khi đóng kỳ, Công Ty tổng hợp lại phần lịch sử còn mở, chặn nếu còn bất thường hoặc chênh lệch đối soát và lưu bản chốt không sửa.</p>
               <div>
                 {openPeriod ? (
                   <button type="button" className={styles.primary} disabled={busy} onClick={() => mutatePeriod('close', openPeriod.periodStart)} data-testid="inventory-costing-period-close">Khóa kỳ sau đối soát</button>
@@ -297,38 +303,38 @@ export default function InventoryCostingWorkspace({
                 )}
               </div>
             </section>
-            <section className={styles.tableWrap}><table><thead><tr><th>Kỳ</th><th>Trạng thái</th><th>Snapshot</th><th>Mở bởi</th><th>Đóng bởi</th></tr></thead>
-              <tbody>{periods.map((item) => <tr key={item.id}><td>{item.periodStart} → {item.periodEnd}</td><td><span className={styles.badge}>{statusLabel(item.status)}</span></td><td>{item.status === 'CLOSED' ? `${item.snapshotPoolCount} pool` : '—'}</td><td>{item.openedBy}</td><td>{item.closedBy ?? '—'}</td></tr>)}
-              {periods.length === 0 ? <tr><td colSpan={5} className={styles.empty}>Chưa mở kỳ giá vốn đầu tiên.</td></tr> : null}</tbody></table></section>
+            <section className={styles.tableWrap}><table><thead><tr><BusinessTableSequenceHeader /><th>Kỳ</th><th>Trạng thái</th><th>Bản chốt</th><th>Mở bởi</th><th>Đóng bởi</th></tr></thead>
+              <tbody>{periods.map((item, rowIndex) => <tr key={item.id}><BusinessTableSequenceCell rowIndex={rowIndex} /><td>{item.periodStart} → {item.periodEnd}</td><td><span className={styles.badge}>{statusLabel(item.status)}</span></td><td>{item.status === 'CLOSED' ? `${item.snapshotPoolCount} nhóm dữ liệu` : '—'}</td><td>{item.openedBy}</td><td>{item.closedBy ?? '—'}</td></tr>)}
+              {periods.length === 0 ? <tr><td colSpan={6} className={styles.empty}>Chưa mở kỳ giá vốn đầu tiên.</td></tr> : null}</tbody></table></section>
           </div>
         ) : null}
 
         {tab === 'reconciliation' ? (
-          <section className={styles.tableWrap}><table><thead><tr><th>Kho</th><th>SKU</th><th>Ledger</th><th>Costing</th><th>Chênh lệch</th><th>Kết quả</th></tr></thead>
-            <tbody>{reconciliation.map((item) => <tr key={`${item.warehouseId}:${item.baseVariantId}`}><td>{item.warehouseCode ?? item.warehouseId}</td><td>{item.baseSku ?? item.baseVariantId}</td><td>{trimDecimal(item.ledgerQuantity)}</td><td>{trimDecimal(item.costingQuantity)}</td><td>{trimDecimal(item.quantityDifference)}</td><td><span className={styles.badge}>{statusLabel(item.reconciliationStatus)}</span></td></tr>)}
-            {reconciliation.length === 0 ? <tr><td colSpan={6} className={styles.empty}>Chưa có dữ liệu đối soát.</td></tr> : null}</tbody></table></section>
+          <section className={styles.tableWrap}><table><thead><tr><BusinessTableSequenceHeader /><th>Kho</th><th>SKU</th><th>Sổ kho</th><th>Giá vốn</th><th>Chênh lệch</th><th>Kết quả</th></tr></thead>
+            <tbody>{reconciliation.map((item, rowIndex) => <tr key={`${item.warehouseId}:${item.baseVariantId}`}><BusinessTableSequenceCell rowIndex={rowIndex} /><td>{item.warehouseCode ?? item.warehouseId}</td><td>{item.baseSku ?? item.baseVariantId}</td><td>{trimDecimal(item.ledgerQuantity)}</td><td>{trimDecimal(item.costingQuantity)}</td><td>{trimDecimal(item.quantityDifference)}</td><td><span className={styles.badge}>{statusLabel(item.reconciliationStatus)}</span></td></tr>)}
+            {reconciliation.length === 0 ? <tr><td colSpan={7} className={styles.empty}>Chưa có dữ liệu đối soát.</td></tr> : null}</tbody></table></section>
         ) : null}
 
         {tab === 'discrepancies' ? (
-          <section className={styles.lines}>{discrepancies.map((item) => <article className={styles.line} key={item.id}><div><strong>{item.code}</strong> <span className={styles.badge}>{statusLabel(item.status)}</span></div><p>{item.message}</p><small>{item.warehouseCode ?? item.warehouseId} · {item.baseSku ?? item.baseVariantId} · {item.inventoryMovementLineId ? `movement line ${item.inventoryMovementLineId.slice(0, 8)}` : item.costAdjustmentEventId ? `cost event ${item.costAdjustmentEventId.slice(0, 8)}` : item.stableKey}</small></article>)}
-          {discrepancies.length === 0 ? <div className={styles.empty}>Không có discrepancy giá vốn.</div> : null}</section>
+          <section className={styles.lines}>{discrepancies.map((item, rowIndex) => <article className={styles.line} key={item.id}><BusinessSequenceNumber rowIndex={rowIndex} /><div><strong>{item.code}</strong> <span className={styles.badge}>{statusLabel(item.status)}</span></div><p>{item.message}</p><small>{item.warehouseCode ?? item.warehouseId} · {item.baseSku ?? item.baseVariantId} · {item.inventoryMovementLineId ? `Dòng sổ kho ${item.inventoryMovementLineId.slice(0, 8)}` : item.costAdjustmentEventId ? `Sự kiện giá vốn ${item.costAdjustmentEventId.slice(0, 8)}` : item.stableKey}</small></article>)}
+          {discrepancies.length === 0 ? <div className={styles.empty}>Không có chênh lệch giá vốn.</div> : null}</section>
         ) : null}
 
         {tab === 'adjustments' ? (
-          <section className={styles.tableWrap}><table><thead><tr><th>Ngày ghi nhận</th><th>Kho / SKU</th><th>Loại</th><th>SL</th><th>Giá trị</th><th>Nguồn</th></tr></thead>
-            <tbody>{adjustments.map((item) => <tr key={item.id}><td>{item.postingDate}</td><td>{item.warehouseCode ?? item.warehouseId}<br />{item.baseSku ?? item.baseVariantId}</td><td>{item.eventType}</td><td>{trimDecimal(item.quantityDelta)}</td><td>{moneyVnd(item.valueDelta)}</td><td>{item.sourceDocumentType}<br />{item.sourceDocumentId}</td></tr>)}
-            {adjustments.length === 0 ? <tr><td colSpan={6} className={styles.empty}>Chưa có landed cost, price variance hoặc forward correction.</td></tr> : null}</tbody></table></section>
+          <section className={styles.tableWrap}><table><thead><tr><BusinessTableSequenceHeader /><th>Ngày ghi nhận</th><th>Kho / SKU</th><th>Loại</th><th>SL</th><th>Giá trị</th><th>Nguồn</th></tr></thead>
+            <tbody>{adjustments.map((item, rowIndex) => <tr key={item.id}><BusinessTableSequenceCell rowIndex={rowIndex} /><td>{item.postingDate}</td><td>{item.warehouseCode ?? item.warehouseId}<br />{item.baseSku ?? item.baseVariantId}</td><td>{item.eventType}</td><td>{trimDecimal(item.quantityDelta)}</td><td>{moneyVnd(item.valueDelta)}</td><td>{item.sourceDocumentType}<br />{item.sourceDocumentId}</td></tr>)}
+            {adjustments.length === 0 ? <tr><td colSpan={7} className={styles.empty}>Chưa có điều chỉnh giá vốn.</td></tr> : null}</tbody></table></section>
         ) : null}
 
         {tab === 'anomalies' ? (
-          <section className={styles.lines}>{anomalies.map((item) => <article className={styles.line} key={item.id}><div><strong>{item.code}</strong><span>{item.warehouseCode} · {item.baseSku}</span></div><p>{item.message}</p><small>Movement {item.inventoryMovementId.slice(0, 8)} · line {item.inventoryMovementLineId.slice(0, 8)}</small></article>)}
-          {anomalies.length === 0 ? <div className={styles.empty}>Không có anomaly nguồn giá.</div> : null}</section>
+          <section className={styles.lines}>{anomalies.map((item, rowIndex) => <article className={styles.line} key={item.id}><BusinessSequenceNumber rowIndex={rowIndex} /><div><strong>{item.code}</strong><span>{item.warehouseCode} · {item.baseSku}</span></div><p>{item.message}</p><small>Chứng từ kho {item.inventoryMovementId.slice(0, 8)} · dòng {item.inventoryMovementLineId.slice(0, 8)}</small></article>)}
+          {anomalies.length === 0 ? <div className={styles.empty}>Không có bất thường về nguồn giá.</div> : null}</section>
         ) : null}
 
         {tab === 'facts' ? (
-          <section className={styles.tableWrap}><table><thead><tr><th>Thời điểm</th><th>Kho / SKU</th><th>Loại</th><th>SL</th><th>Đơn giá</th><th>Giá trị</th><th>Nguồn</th></tr></thead>
-            <tbody>{facts.map((item) => <tr key={item.id}><td>{new Date(item.movementPostedAt).toLocaleString('vi-VN')}</td><td>{item.warehouseCode ?? item.warehouseId}<br />{item.baseSku ?? item.baseVariantId}</td><td>{item.eventType}</td><td>{trimDecimal(item.quantityDelta)}</td><td>{moneyVnd(item.unitCost)}</td><td>{moneyVnd(item.valueDelta)}</td><td>{item.sourceCostType}<br />{item.sourceDocumentNumber ?? item.sourceLineReference ?? '—'}</td></tr>)}
-            {facts.length === 0 ? <tr><td colSpan={7} className={styles.empty}>Chưa có cost fact.</td></tr> : null}</tbody></table></section>
+          <section className={styles.tableWrap}><table><thead><tr><BusinessTableSequenceHeader /><th>Thời điểm</th><th>Kho / SKU</th><th>Loại</th><th>SL</th><th>Đơn giá</th><th>Giá trị</th><th>Nguồn</th></tr></thead>
+            <tbody>{facts.map((item, rowIndex) => <tr key={item.id}><BusinessTableSequenceCell rowIndex={rowIndex} /><td>{new Date(item.movementPostedAt).toLocaleString('vi-VN')}</td><td>{item.warehouseCode ?? item.warehouseId}<br />{item.baseSku ?? item.baseVariantId}</td><td>{item.eventType}</td><td>{trimDecimal(item.quantityDelta)}</td><td>{moneyVnd(item.unitCost)}</td><td>{moneyVnd(item.valueDelta)}</td><td>{item.sourceCostType}<br />{item.sourceDocumentNumber ?? item.sourceLineReference ?? '—'}</td></tr>)}
+            {facts.length === 0 ? <tr><td colSpan={8} className={styles.empty}>Chưa có dữ liệu giá vốn.</td></tr> : null}</tbody></table></section>
         ) : null}
       </div>
     </AppShell>

@@ -20,7 +20,7 @@ test('costing workspace exposes rebuild and drill-down tabs', () => {
   assert.match(workspace, /Giá trị tồn/);
   assert.match(workspace, /Đối soát/);
   assert.match(workspace, /Bất thường/);
-  assert.match(workspace, /Cost facts/);
+  assert.match(workspace, /Dữ liệu giá vốn/);
   assert.match(workspace, /MWA_V1/);
   assert.match(workspace, /idempotency-key/i);
   assert.doesNotMatch(workspace, /inventory_balances/);
