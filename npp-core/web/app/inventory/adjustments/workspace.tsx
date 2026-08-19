@@ -1,7 +1,7 @@
 'use client';
 
 import { createIdempotencyKey } from '@npp/contracts';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '../../components/app-shell-core';
 import { formatQuantity, type InventoryBalance } from '../../../lib/inventory-types';
 import {
@@ -22,6 +22,7 @@ import {
   type AdjustmentReason,
   type InventoryAdjustment,
 } from '../../../lib/inventory-adjustment-types';
+import { InventoryAdjustmentTabs, type InventoryAdjustmentTab } from './adjustment-tabs';
 import styles from './workspace.module.css';
 
 type Props = {
@@ -31,6 +32,9 @@ type Props = {
   warehouses: Warehouse[];
   locations: WarehouseLocation[];
   initialError: string | null;
+  initialTab: InventoryAdjustmentTab;
+  initialAdjustmentId: string | null;
+  createdSummary: string | null;
 };
 
 type Draft = {
@@ -118,17 +122,22 @@ export default function InventoryAdjustmentWorkspace({
   warehouses,
   locations,
   initialError,
+  initialTab,
+  initialAdjustmentId,
+  createdSummary,
 }: Props) {
   const [adjustments, setAdjustments] = useState(initialAdjustments);
   const [selected, setSelected] = useState<InventoryAdjustment | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
+  const [activeTab, setActiveTab] = useState<InventoryAdjustmentTab>(initialTab);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [statusFilter, setStatusFilter] = useState('');
   const [kindFilter, setKindFilter] = useState('');
   const [actionReason, setActionReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initialError);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(createdSummary
+    ? `Đã lập ${createdSummary}. Đang mở phiếu vừa lập để kiểm tra và Gửi duyệt.`
+    : null);
   const idempotencyKeys = useRef(new Map<string, string>());
   const detailRequest = useRef(0);
 
@@ -180,12 +189,12 @@ export default function InventoryAdjustmentWorkspace({
     }
   }
 
-  async function openDetail(id: string) {
+  async function openDetail(id: string, preserveMessage = false) {
     const requestSequence = detailRequest.current + 1;
     detailRequest.current = requestSequence;
     setBusy(true);
     setError(null);
-    setMessage(null);
+    if (!preserveMessage) setMessage(null);
     setActionReason('');
     try {
       const next = await requestJson<InventoryAdjustment>(`/api/inventory/adjustments/${id}`);
@@ -198,6 +207,13 @@ export default function InventoryAdjustmentWorkspace({
       if (detailRequest.current === requestSequence) setBusy(false);
     }
   }
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+    if (!initialAdjustmentId) return;
+    setActiveTab('documents');
+    void openDetail(initialAdjustmentId, true);
+  }, [initialAdjustmentId, initialTab]);
 
   async function createDocument() {
     if (!selectedBalance || !draft.reasonCode || !draft.reasonNote.trim() || !draft.quantity.trim()) {
@@ -238,7 +254,8 @@ export default function InventoryAdjustmentWorkspace({
       clearKey(`create:${signature}`);
       setAdjustments((items) => [created, ...items]);
       setSelected(created);
-      setShowCreate(false);
+      setActiveTab('documents');
+      window.history.replaceState(null, '', '/inventory/adjustments');
       setDraft(emptyDraft);
       setMessage(`Đã lập ${created.adjustmentNumber}. Kiểm tra lại phiếu rồi chọn Gửi duyệt.`);
     } catch (cause) {
@@ -289,33 +306,30 @@ export default function InventoryAdjustmentWorkspace({
     }
   }
 
-  const actions = (
+  const actions = activeTab === 'documents' ? (
     <div className={styles.headerActions} data-testid="inventory-adjustment-page-actions">
       <button className={styles.secondaryButton} type="button" onClick={() => refresh()} disabled={busy}>Làm mới</button>
-      <button className={styles.secondaryButton} type="button" onClick={() => window.location.assign('/inventory/adjustments/bulk')} disabled={busy}>Điều chỉnh hàng loạt</button>
-      <button className={styles.primaryButton} type="button" onClick={() => setShowCreate((value) => !value)} disabled={busy}>
-        {showCreate ? 'Đóng lập phiếu' : 'Lập phiếu điều chỉnh'}
-      </button>
     </div>
-  );
+  ) : undefined;
 
   return (
     <AppShell
-      title="Điều chỉnh & xử lý tồn"
+      title="Điều chỉnh tồn"
       kicker="Tồn kho & lô hàng"
-      subtitle="Lập phiếu tăng, giảm hoặc xử lý tồn có lý do; gửi duyệt rồi cập nhật tồn kho ở bước cuối."
+      subtitle="Quản lý phiếu điều chỉnh, lập điều chỉnh thủ công hoặc nhập hàng loạt trong cùng một nơi. Tồn kho chỉ thay đổi ở bước Cập nhật tồn kho."
       actions={actions}
     >
+      <InventoryAdjustmentTabs active={activeTab} />
       {error ? <div className={styles.error} role="alert">{error}</div> : null}
       {message ? <div className={styles.success} role="status">{message}</div> : null}
 
-      {showCreate ? (
+      {activeTab === 'manual' ? (
         <section className={styles.panel} aria-labelledby="create-adjustment-title">
           <div className={styles.sectionHeader}>
             <div>
-              <p className={styles.eyebrow}>Lập phiếu</p>
-              <h2 id="create-adjustment-title">Lập phiếu xử lý tồn kho</h2>
-              <p>Đây là yêu cầu chủ động tăng, giảm hoặc xử lý tồn có lý do; không phải phiếu kiểm kê.</p>
+              <p className={styles.eyebrow}>Điều chỉnh thủ công</p>
+              <h2 id="create-adjustment-title">Lập phiếu điều chỉnh thủ công</h2>
+              <p>Chủ động tăng, giảm hoặc xử lý tồn có lý do. Đây không phải phiếu kiểm kê.</p>
             </div>
           </div>
           <div className={styles.formGrid}>
@@ -415,167 +429,178 @@ export default function InventoryAdjustmentWorkspace({
             </p>
           ) : null}
           <div className={styles.actionRow}>
-            <button type="button" className={styles.secondaryButton} onClick={() => setShowCreate(false)}>Đóng</button>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => {
+                setActiveTab('documents');
+                window.history.replaceState(null, '', '/inventory/adjustments');
+              }}
+            >
+              Đóng
+            </button>
             <button type="button" className={styles.primaryButton} onClick={createDocument} disabled={busy}>Lập phiếu</button>
           </div>
         </section>
       ) : null}
 
-      <section className={styles.panel}>
-        <div className={styles.filters}>
-          <label>
-            Trạng thái
-            <select
-              value={statusFilter}
-              onChange={(event) => {
-                setStatusFilter(event.target.value);
-                refresh(event.target.value, kindFilter);
-              }}
-            >
-              <option value="">Tất cả</option>
-              {Object.entries(adjustmentStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-          <label>
-            Loại phiếu
-            <select
-              value={kindFilter}
-              onChange={(event) => {
-                setKindFilter(event.target.value);
-                refresh(statusFilter, event.target.value);
-              }}
-            >
-              <option value="">Tất cả</option>
-              {Object.entries(adjustmentKindLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-        </div>
-
-        <div className={styles.layout}>
-          <div className={styles.list} aria-label="Danh sách phiếu xử lý tồn kho">
-            {adjustments.length === 0 ? <p className={styles.empty}>Chưa có phiếu phù hợp.</p> : adjustments.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`${styles.listItem} ${selected?.id === item.id ? styles.active : ''}`}
-                onClick={() => openDetail(item.id)}
+      {activeTab === 'documents' ? (
+        <section className={styles.panel}>
+          <div className={styles.filters}>
+            <label>
+              Trạng thái
+              <select
+                value={statusFilter}
+                onChange={(event) => {
+                  setStatusFilter(event.target.value);
+                  refresh(event.target.value, kindFilter);
+                }}
               >
-                <strong>{item.adjustmentNumber}</strong>
-                <span>{adjustmentKindLabels[item.documentKind]}</span>
-                <small>{item.warehouseCode ?? item.warehouseName ?? 'Kho'} · {adjustmentStatusLabels[item.status]} · {formatDate(item.createdAt)}</small>
-              </button>
-            ))}
+                <option value="">Tất cả</option>
+                {Object.entries(adjustmentStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            <label>
+              Loại phiếu
+              <select
+                value={kindFilter}
+                onChange={(event) => {
+                  setKindFilter(event.target.value);
+                  refresh(statusFilter, event.target.value);
+                }}
+              >
+                <option value="">Tất cả</option>
+                {Object.entries(adjustmentKindLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
           </div>
 
-          <div className={styles.detail}>
-            {!selected ? <p className={styles.empty}>Chọn một phiếu để xem nguồn, số lượng và bước cần làm tiếp theo.</p> : (
-              <>
-                <div className={styles.sectionHeader}>
-                  <div>
-                    <p className={styles.eyebrow}>{adjustmentStatusLabels[selected.status]}</p>
-                    <h2>{selected.adjustmentNumber}</h2>
-                    <p>{adjustmentKindLabels[selected.documentKind]} · {selected.reasonLabel ?? selected.reasonCode}</p>
-                  </div>
-                  <div className={styles.actionRow} data-testid="inventory-adjustment-document-actions">
-                    {selected.status === 'DRAFT' ? (
-                      <>
-                        <button className={styles.secondaryButton} onClick={() => transition('cancel')} disabled={busy}>Hủy</button>
-                        <button className={styles.primaryButton} onClick={() => transition('submit')} disabled={busy}>Gửi duyệt</button>
-                      </>
-                    ) : null}
-                    {selected.status === 'SUBMITTED' ? (
-                      <>
-                        <button className={styles.secondaryButton} onClick={() => transition('cancel')} disabled={busy}>Hủy</button>
-                        <button className={styles.primaryButton} onClick={() => transition('approve')} disabled={busy}>Duyệt</button>
-                      </>
-                    ) : null}
-                    {selected.status === 'APPROVED' ? (
-                      <>
-                        <button className={styles.secondaryButton} onClick={() => transition('cancel')} disabled={busy}>Hủy</button>
-                        <button className={styles.primaryButton} onClick={() => transition('post')} disabled={busy}>Cập nhật tồn kho</button>
-                      </>
-                    ) : null}
-                    {selected.status === 'POSTED' ? (
-                      <button className={styles.dangerButton} onClick={() => transition('reverse')} disabled={busy}>Hoàn tác phiếu</button>
-                    ) : null}
-                  </div>
-                </div>
+          <div className={styles.layout}>
+            <div className={styles.list} aria-label="Danh sách phiếu điều chỉnh tồn">
+              {adjustments.length === 0 ? <p className={styles.empty}>Chưa có phiếu phù hợp.</p> : adjustments.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`${styles.listItem} ${selected?.id === item.id ? styles.active : ''}`}
+                  onClick={() => openDetail(item.id)}
+                >
+                  <strong>{item.adjustmentNumber}</strong>
+                  <span>{adjustmentKindLabels[item.documentKind]}</span>
+                  <small>{item.warehouseCode ?? item.warehouseName ?? 'Kho'} · {adjustmentStatusLabels[item.status]} · {formatDate(item.createdAt)}</small>
+                </button>
+              ))}
+            </div>
 
-                <p>{workflowHint(selected)}</p>
-                <dl className={styles.meta}>
-                  <div><dt>Kho</dt><dd>{selected.warehouseCode} — {selected.warehouseName}</dd></div>
-                  <div><dt>Nguồn</dt><dd>{adjustmentSourceLabel(selected)}</dd></div>
-                  <div><dt>Người lập</dt><dd>{officeActorLabel(selected.createdBy, 'Người lập')}</dd></div>
-                  <div>
-                    <dt>Người gửi</dt>
-                    <dd>{officeActorLabel(selected.submittedBy, 'Người gửi')}{selected.submittedAt ? ` · ${formatDate(selected.submittedAt)}` : ''}</dd>
+            <div className={styles.detail}>
+              {!selected ? <p className={styles.empty}>Chọn một phiếu để xem nguồn, số lượng và bước cần làm tiếp theo.</p> : (
+                <>
+                  <div className={styles.sectionHeader}>
+                    <div>
+                      <p className={styles.eyebrow}>{adjustmentStatusLabels[selected.status]}</p>
+                      <h2>{selected.adjustmentNumber}</h2>
+                      <p>{adjustmentKindLabels[selected.documentKind]} · {selected.reasonLabel ?? selected.reasonCode}</p>
+                    </div>
+                    <div className={styles.actionRow} data-testid="inventory-adjustment-document-actions">
+                      {selected.status === 'DRAFT' ? (
+                        <>
+                          <button className={styles.secondaryButton} onClick={() => transition('cancel')} disabled={busy}>Hủy</button>
+                          <button className={styles.primaryButton} onClick={() => transition('submit')} disabled={busy}>Gửi duyệt</button>
+                        </>
+                      ) : null}
+                      {selected.status === 'SUBMITTED' ? (
+                        <>
+                          <button className={styles.secondaryButton} onClick={() => transition('cancel')} disabled={busy}>Hủy</button>
+                          <button className={styles.primaryButton} onClick={() => transition('approve')} disabled={busy}>Duyệt</button>
+                        </>
+                      ) : null}
+                      {selected.status === 'APPROVED' ? (
+                        <>
+                          <button className={styles.secondaryButton} onClick={() => transition('cancel')} disabled={busy}>Hủy</button>
+                          <button className={styles.primaryButton} onClick={() => transition('post')} disabled={busy}>Cập nhật tồn kho</button>
+                        </>
+                      ) : null}
+                      {selected.status === 'POSTED' ? (
+                        <button className={styles.dangerButton} onClick={() => transition('reverse')} disabled={busy}>Hoàn tác phiếu</button>
+                      ) : null}
+                    </div>
                   </div>
-                  <div>
-                    <dt>Người duyệt</dt>
-                    <dd>{officeActorLabel(selected.approvedBy, 'Người duyệt')}{selected.approvedAt ? ` · ${formatDate(selected.approvedAt)}` : ''}</dd>
+
+                  <p>{workflowHint(selected)}</p>
+                  <dl className={styles.meta}>
+                    <div><dt>Kho</dt><dd>{selected.warehouseCode} — {selected.warehouseName}</dd></div>
+                    <div><dt>Nguồn</dt><dd>{adjustmentSourceLabel(selected)}</dd></div>
+                    <div><dt>Người lập</dt><dd>{officeActorLabel(selected.createdBy, 'Người lập')}</dd></div>
+                    <div>
+                      <dt>Người gửi</dt>
+                      <dd>{officeActorLabel(selected.submittedBy, 'Người gửi')}{selected.submittedAt ? ` · ${formatDate(selected.submittedAt)}` : ''}</dd>
+                    </div>
+                    <div>
+                      <dt>Người duyệt</dt>
+                      <dd>{officeActorLabel(selected.approvedBy, 'Người duyệt')}{selected.approvedAt ? ` · ${formatDate(selected.approvedAt)}` : ''}</dd>
+                    </div>
+                    <div>
+                      <dt>Cập nhật tồn kho</dt>
+                      <dd>{selected.postedAt ? `Đã hoàn tất · ${formatDate(selected.postedAt)}` : selected.status === 'APPROVED' ? 'Chưa cập nhật' : 'Chưa đến bước cập nhật tồn'}</dd>
+                    </div>
+                  </dl>
+
+                  <p className={styles.note}>{selected.reasonNote}</p>
+
+                  {(selected.status === 'DRAFT'
+                    || selected.status === 'SUBMITTED'
+                    || selected.status === 'APPROVED'
+                    || selected.status === 'POSTED') ? (
+                      <label className={styles.fullWidth}>
+                        Lý do hủy hoặc hoàn tác
+                        <textarea
+                          value={actionReason}
+                          onChange={(event) => setActionReason(event.target.value)}
+                          rows={2}
+                          placeholder="Chỉ nhập khi hủy hoặc hoàn tác phiếu"
+                        />
+                      </label>
+                    ) : null}
+
+                  <div className={styles.lines}>
+                    {selected.lines?.map((line) => {
+                      const balance = balances.find((item) => balanceMatchesLine(item, line)) ?? null;
+                      const delta = sourceDelta(selected, line);
+                      const loadedOnHand = balance?.on_hand_quantity ?? null;
+                      const canPreviewResult = ['DRAFT', 'SUBMITTED', 'APPROVED'].includes(selected.status);
+                      const after = canPreviewResult && loadedOnHand !== null
+                        ? addExactDecimal(loadedOnHand, delta)
+                        : null;
+                      const productName = balance?.product_name || balance?.base_variant_name || line.sourceSku;
+                      return (
+                        <article key={line.id} className={styles.lineCard}>
+                          <strong>{productName}</strong>
+                          <span>Sản phẩm: {line.sourceSku}</span>
+                          <span>Lô: {line.lotCode || 'Không lô'}</span>
+                          <span>Vị trí: {line.sourceLocationCode || 'Không vị trí'}{line.sourceLocationName ? ` · ${line.sourceLocationName}` : ''}</span>
+                          {line.destinationLocationCode ? <span>Vị trí nhận: {line.destinationLocationCode}{line.destinationLocationName ? ` · ${line.destinationLocationName}` : ''}</span> : null}
+                          {canPreviewResult ? (
+                            <span>
+                              Tồn hiện tại {loadedOnHand === null ? 'Chưa tải được' : formatQuantity(loadedOnHand)}
+                              {' → '}Điều chỉnh {formatSignedExactDecimal(delta)}
+                              {' → '}Tồn sau điều chỉnh {after === null ? 'Chưa tải được' : formatQuantity(after)}
+                            </span>
+                          ) : (
+                            <span>
+                              Điều chỉnh {formatSignedExactDecimal(delta)}
+                              {' · '}{selected.status === 'POSTED' ? 'Tồn kho đã cập nhật' : selected.status === 'REVERSED' ? 'Đã hoàn tác cập nhật tồn' : 'Không làm thay đổi tồn kho'}
+                            </span>
+                          )}
+                          <small>Số lượng phiếu {formatQuantity(line.quantity)} {line.sourceUnitCode} · Quy đổi tồn {formatQuantity(line.baseQuantity)}</small>
+                        </article>
+                      );
+                    })}
                   </div>
-                  <div>
-                    <dt>Cập nhật tồn kho</dt>
-                    <dd>{selected.postedAt ? `Đã hoàn tất · ${formatDate(selected.postedAt)}` : selected.status === 'APPROVED' ? 'Chưa cập nhật' : 'Chưa đến bước cập nhật tồn'}</dd>
-                  </div>
-                </dl>
-
-                <p className={styles.note}>{selected.reasonNote}</p>
-
-                {(selected.status === 'DRAFT'
-                  || selected.status === 'SUBMITTED'
-                  || selected.status === 'APPROVED'
-                  || selected.status === 'POSTED') ? (
-                    <label className={styles.fullWidth}>
-                      Lý do hủy hoặc hoàn tác
-                      <textarea
-                        value={actionReason}
-                        onChange={(event) => setActionReason(event.target.value)}
-                        rows={2}
-                        placeholder="Chỉ nhập khi hủy hoặc hoàn tác phiếu"
-                      />
-                    </label>
-                  ) : null}
-
-                <div className={styles.lines}>
-                  {selected.lines?.map((line) => {
-                    const balance = balances.find((item) => balanceMatchesLine(item, line)) ?? null;
-                    const delta = sourceDelta(selected, line);
-                    const loadedOnHand = balance?.on_hand_quantity ?? null;
-                    const canPreviewResult = ['DRAFT', 'SUBMITTED', 'APPROVED'].includes(selected.status);
-                    const after = canPreviewResult && loadedOnHand !== null
-                      ? addExactDecimal(loadedOnHand, delta)
-                      : null;
-                    const productName = balance?.product_name || balance?.base_variant_name || line.sourceSku;
-                    return (
-                      <article key={line.id} className={styles.lineCard}>
-                        <strong>{productName}</strong>
-                        <span>Sản phẩm: {line.sourceSku}</span>
-                        <span>Lô: {line.lotCode || 'Không lô'}</span>
-                        <span>Vị trí: {line.sourceLocationCode || 'Không vị trí'}{line.sourceLocationName ? ` · ${line.sourceLocationName}` : ''}</span>
-                        {line.destinationLocationCode ? <span>Vị trí nhận: {line.destinationLocationCode}{line.destinationLocationName ? ` · ${line.destinationLocationName}` : ''}</span> : null}
-                        {canPreviewResult ? (
-                          <span>
-                            Tồn hiện tại {loadedOnHand === null ? 'Chưa tải được' : formatQuantity(loadedOnHand)}
-                            {' → '}Điều chỉnh {formatSignedExactDecimal(delta)}
-                            {' → '}Tồn sau điều chỉnh {after === null ? 'Chưa tải được' : formatQuantity(after)}
-                          </span>
-                        ) : (
-                          <span>
-                            Điều chỉnh {formatSignedExactDecimal(delta)}
-                            {' · '}{selected.status === 'POSTED' ? 'Tồn kho đã cập nhật' : selected.status === 'REVERSED' ? 'Đã hoàn tác cập nhật tồn' : 'Không làm thay đổi tồn kho'}
-                          </span>
-                        )}
-                        <small>Số lượng phiếu {formatQuantity(line.quantity)} {line.sourceUnitCode} · Quy đổi tồn {formatQuantity(line.baseQuantity)}</small>
-                      </article>
-                    );
-                  })}
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
     </AppShell>
   );
 }
