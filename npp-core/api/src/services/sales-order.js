@@ -132,7 +132,6 @@ function deliveryExecutionTransitionGuard(order, targetVersion, facts) {
 
   const totals = order.fulfillment?.totals ?? {};
   const warehouseExecutionStarted = [
-    totals.allocatedBaseQuantity,
     totals.pickedBaseQuantity,
     totals.packedBaseQuantity,
     totals.issuedBaseQuantity,
@@ -754,13 +753,6 @@ export async function quickEditManualSalesOrder(client, {
   const guard = manualQuickEditGuard(before.salesOrder);
   if (!guard.ok) return guard;
 
-  const released = await manualEditReleaseService.releaseManualEditAllocations(client, {
-    requestContext,
-    salesOrderId: id,
-    idempotencyKey,
-  });
-  if (!released.ok) return released;
-
   const amendment = await createSalesOrderAmendment(client, {
     requestContext,
     id,
@@ -788,6 +780,7 @@ export async function quickEditManualSalesOrder(client, {
     id,
     versionNumber: Number(draft.versionNumber),
     idempotencyKey,
+    preExecutionReleaseIntent: 'manual-edit',
   });
 }
 
@@ -874,6 +867,7 @@ export async function confirmSalesOrder(client, {
   id,
   versionNumber,
   idempotencyKey,
+  preExecutionReleaseIntent = 'amendment',
 }) {
   const existing = await getSalesOrder(client, { requestContext, id });
   if (!existing.ok) return existing;
@@ -898,6 +892,19 @@ export async function confirmSalesOrder(client, {
     versionNumber: resolvedVersion,
   });
   if (!verified.ok) return verified;
+
+  const replacingConfirmedVersion = existing.salesOrder.status === 'confirmed'
+    && Number(existing.salesOrder.currentVersionNumber) !== resolvedVersion;
+  if (replacingConfirmedVersion) {
+    const released = await manualEditReleaseService.releasePreExecutionAllocations(client, {
+      requestContext,
+      salesOrderId: id,
+      idempotencyKey: idempotencyKey ?? id,
+      intentName: preExecutionReleaseIntent,
+    });
+    if (!released.ok) return released;
+  }
+
   const result = await legacy.confirmSalesOrder(client, {
     requestContext,
     id,
@@ -915,6 +922,21 @@ export async function confirmSalesOrder(client, {
 }
 
 export async function cancelSalesOrder(client, input) {
+  const before = await getSalesOrder(client, {
+    requestContext: input.requestContext,
+    id: input.id,
+  });
+  if (!before.ok) return before;
+  if (before.salesOrder.status === 'confirmed') {
+    const released = await manualEditReleaseService.releasePreExecutionAllocations(client, {
+      requestContext: input.requestContext,
+      salesOrderId: input.id,
+      idempotencyKey: input.idempotencyKey ?? input.id,
+      intentName: 'cancel',
+    });
+    if (!released.ok) return released;
+  }
+
   const result = await legacy.cancelSalesOrder(client, input);
   if (!result.ok) return result;
   const fulfillment = await fulfillmentService.cancelSalesOrderFulfillmentDemand(client, {
