@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import type { SalesOrder, SalesOrderVersion } from '../../../lib/sales-order-types';
-import { PrintAction, PrintSurface } from '../../components/print-document';
+import BusinessDocumentPrint from '../../components/business-document-print';
 import { collectionLabels, deliveryMethodLabel, formatMoney, formatQuantity } from './sales-order-ui';
-import styles from './sales-order-print.module.css';
 
 function textValue(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -76,81 +75,58 @@ export default function SalesOrderPrintSheet({
   }
 
   return (
-    <>
-      <div>
-        <PrintAction label="In đơn" onPrint={recordPrint} />
-        {changedAfterPrint ? (
-          <small role="status">Đơn đã thay đổi sau lần in gần nhất. Hãy in lại nếu cần.</small>
-        ) : null}
-      </div>
-      <PrintSurface>
-        <article className={styles.sheet} data-testid="sales-order-print-sheet">
-          <header className={styles.header}>
-            <div>
-              <strong className={styles.brand}>HƯNG PHÁT</strong>
-              <p>Chứng từ bán hàng</p>
-            </div>
-            <div className={styles.titleBlock}>
-              <h1>ĐƠN BÁN HÀNG</h1>
-              <p>Số: <strong>{order.number ?? 'BẢN NHÁP'}</strong></p>
-            </div>
-          </header>
-
-          <section className={styles.metaGrid}>
-            <div><span>Khách hàng</span><strong>{displayCustomer}</strong></div>
-            <div><span>Mã khách</span><strong>{version.customerCode}</strong></div>
-            <div><span>Điện thoại</span><strong>{displayPhone || '—'}</strong></div>
-            <div><span>Ngày đơn</span><strong>{dateText(version.confirmedAt ?? version.createdAt)}</strong></div>
-            <div className={styles.full}><span>Địa chỉ</span><strong>{addressText(version.customerAddress)}</strong></div>
-            <div><span>Kho</span><strong>{version.warehouseCode} — {version.warehouseName}</strong></div>
-            <div><span>Hình thức giao nhận</span><strong>{deliveryMethodLabel(version)}</strong></div>
-            <div><span>Thanh toán</span><strong>{collectionLabels[version.collectionPolicy] ?? version.collectionPolicy}</strong></div>
-            <div><span>Ngày giao dự kiến</span><strong>{dateText(version.requestedDeliveryDate)}</strong></div>
-          </section>
-
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>STT</th>
-                <th>Sản phẩm / SKU</th>
-                <th className={styles.right}>Số lượng</th>
-                <th className={styles.right}>Đơn giá</th>
-                {showDiscount ? <th className={styles.right}>CK</th> : null}
-                {showTax ? <th className={styles.right}>Thuế</th> : null}
-                <th className={styles.right}>Thành tiền</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line) => (
-                <tr key={line.id}>
-                  <td>{line.lineNumber}</td>
-                  <td><strong>{line.itemName}</strong><small>{line.sku}</small></td>
-                  <td className={styles.right}>{formatQuantity(line.quantity)} {line.unitCode}</td>
-                  <td className={styles.right}>{formatMoney(line.unitPrice)}</td>
-                  {showDiscount ? <td className={styles.right}>{formatMoney(line.discountAmount)}</td> : null}
-                  {showTax ? <td className={styles.right}>{formatMoney(line.taxAmount)}</td> : null}
-                  <td className={styles.right}><strong>{formatMoney(line.lineTotal)}</strong></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <section className={styles.summary}>
-            <div><span>Tạm tính</span><strong>{formatMoney(version.subtotal)} ₫</strong></div>
-            {showDiscount ? <div><span>Chiết khấu</span><strong>{formatMoney(version.discountTotal)} ₫</strong></div> : null}
-            {showTax ? <div><span>Thuế</span><strong>{formatMoney(version.taxTotal)} ₫</strong></div> : null}
-            <div className={styles.total}><span>TỔNG CỘNG</span><strong>{formatMoney(version.total)} ₫</strong></div>
-          </section>
-
-          {version.note ? <section className={styles.note}><strong>Ghi chú:</strong> {version.note}</section> : null}
-
-          <footer className={styles.signatures}>
-            <div><strong>Người lập</strong><span>(Ký, ghi rõ họ tên)</span></div>
-            <div><strong>Kho giao hàng</strong><span>(Ký, ghi rõ họ tên)</span></div>
-            <div><strong>Khách hàng</strong><span>(Ký, ghi rõ họ tên)</span></div>
-          </footer>
-        </article>
-      </PrintSurface>
-    </>
+    <div>
+      <BusinessDocumentPrint
+        id={`sales-order-${order.id}-${version.id}`}
+        documentType="SALES_ORDER"
+        actionLabel="In đơn"
+        onPrint={recordPrint}
+        title="ĐƠN BÁN HÀNG"
+        subtitle="Chứng từ bán hàng"
+        number={order.number ?? 'BẢN NHÁP'}
+        meta={[
+          { key: 'customer', label: 'Khách hàng', value: displayCustomer },
+          { key: 'customer_code', label: 'Mã khách', value: version.customerCode },
+          { key: 'phone', label: 'Điện thoại', value: displayPhone || '—' },
+          { key: 'document_date', label: 'Ngày đơn', value: dateText(version.confirmedAt ?? version.createdAt) },
+          { key: 'address', label: 'Địa chỉ', value: addressText(version.customerAddress), full: true },
+          { key: 'warehouse', label: 'Kho', value: `${version.warehouseCode} — ${version.warehouseName}` },
+          { key: 'delivery_method', label: 'Hình thức giao nhận', value: deliveryMethodLabel(version) },
+          { key: 'collection_policy', label: 'Thanh toán', value: collectionLabels[version.collectionPolicy] ?? version.collectionPolicy },
+          { key: 'requested_delivery_date', label: 'Ngày giao dự kiến', value: dateText(version.requestedDeliveryDate) },
+        ]}
+        columns={[
+          { key: 'no', fieldKey: 'line_no', label: 'STT', align: 'center' },
+          { key: 'item', fieldKey: 'line_item', label: 'Sản phẩm / SKU' },
+          { key: 'quantity', fieldKey: 'line_quantity', label: 'Số lượng', align: 'right' },
+          { key: 'unitPrice', fieldKey: 'line_unit_price', label: 'Đơn giá', align: 'right' },
+          ...(showDiscount ? [{ key: 'discount', fieldKey: 'line_discount', label: 'CK', align: 'right' as const }] : []),
+          ...(showTax ? [{ key: 'tax', fieldKey: 'line_tax', label: 'Thuế', align: 'right' as const }] : []),
+          { key: 'total', fieldKey: 'line_total', label: 'Thành tiền', align: 'right' },
+        ]}
+        rows={lines.map((line) => ({
+          id: line.id,
+          cells: {
+            no: line.lineNumber,
+            item: <><strong>{line.itemName}</strong><br />{line.sku}</>,
+            quantity: `${formatQuantity(line.quantity)} ${line.unitCode}`,
+            unitPrice: formatMoney(line.unitPrice),
+            discount: formatMoney(line.discountAmount),
+            tax: formatMoney(line.taxAmount),
+            total: <strong>{formatMoney(line.lineTotal)}</strong>,
+          },
+        }))}
+        totals={[
+          { key: 'total_subtotal', label: 'Tạm tính', value: `${formatMoney(version.subtotal)} ₫` },
+          ...(showDiscount ? [{ key: 'total_discount', label: 'Chiết khấu', value: `${formatMoney(version.discountTotal)} ₫` }] : []),
+          ...(showTax ? [{ key: 'total_tax', label: 'Thuế', value: `${formatMoney(version.taxTotal)} ₫` }] : []),
+          { key: 'total_total', label: 'TỔNG CỘNG', value: `${formatMoney(version.total)} ₫`, emphasis: true },
+        ]}
+        note={version.note || undefined}
+        signatures={['Người lập', 'Kho giao hàng', 'Khách hàng']}
+        testId="sales-order-print-sheet"
+      />
+      {changedAfterPrint ? <small role="status">Đơn đã thay đổi sau lần in gần nhất. Hãy in lại nếu cần.</small> : null}
+    </div>
   );
 }

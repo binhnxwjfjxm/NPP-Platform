@@ -49,6 +49,7 @@ test('rollout stays read-only and uses the shared business template', () => {
     assert.doesNotMatch(source, /method:\s*['"]PATCH['"]/);
     assert.doesNotMatch(source, /Idempotency-Key/);
   }
+  assert.match(businessPrint, /\/api\/document-print-templates/);
 });
 
 test('purchase and sales documents omit zero discount and tax sections', () => {
@@ -59,10 +60,9 @@ test('purchase and sales documents omit zero discount and tax sections', () => {
   }
   assert.match(poPrint, /showDiscount \? \[\{ key: 'discount'/);
   assert.match(poPrint, /showTax \? \[\{ key: 'tax'/);
-  assert.match(salesPrint, /showDiscount \? <th[^>]*>CK<\/th> : null/);
-  assert.match(salesPrint, /showTax \? <th[^>]*>Thuế<\/th> : null/);
-  assert.match(salesPrint, /showDiscount \? <div><span>Chiết khấu<\/span>/);
-  assert.match(salesPrint, /showTax \? <div><span>Thuế<\/span>/);
+  assert.match(salesPrint, /showDiscount \? \[\{ key: 'discount'/);
+  assert.match(salesPrint, /showTax \? \[\{ key: 'tax'/);
+  assert.match(salesPrint, /documentType="SALES_ORDER"/);
 });
 
 test('canonical print surfaces remain available', () => {
@@ -77,6 +77,9 @@ test('canonical print surfaces remain available', () => {
   assert.match(stocktakePrint, /PHIẾU KIỂM KÊ/);
   assert.match(tripPrint, /PHIẾU CHUYẾN GIAO HÀNG/);
   assert.match(reconciliationPrint, /BIÊN BẢN ĐỐI SOÁT CHUYẾN/);
+  for (const source of [poPrint, salesPrint, grPrint, paymentPrint, deliveryPrint, transferPrint, stocktakePrint, tripPrint, reconciliationPrint]) {
+    assert.match(source, /documentType=/);
+  }
 });
 
 test('detail-based print controls do not maintain a second selector/fetch state', () => {

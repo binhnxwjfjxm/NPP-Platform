@@ -57,7 +57,9 @@ test('printing stays presentation-only and warns after the displayed order chang
   ]);
 
   assert.match(print, /Đơn đã thay đổi sau lần in gần nhất\. Hãy in lại nếu cần\./);
-  assert.match(print, /<PrintAction label="In đơn" onPrint=\{recordPrint\} \/>/);
+  assert.match(print, /<BusinessDocumentPrint/);
+  assert.match(print, /documentType="SALES_ORDER"/);
+  assert.match(print, /onPrint=\{recordPrint\}/);
   assert.match(print, /window\.localStorage\.setItem\(printKey, printFingerprint\)/);
   assert.match(printAction, /window\.print\(\)/);
   assert.match(printAction, /onPrint\?\.\(\)/);

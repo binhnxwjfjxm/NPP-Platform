@@ -1,10 +1,12 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { PrintAction, PrintSurface, type PrintPageSize } from './print-document';
+import type { DocumentPrintTemplate } from '../../lib/document-print-template-types';
 import styles from './business-document-print.module.css';
 
 export type BusinessDocumentMeta = {
+  key: string;
   label: string;
   value: ReactNode;
   full?: boolean;
@@ -12,6 +14,7 @@ export type BusinessDocumentMeta = {
 
 export type BusinessDocumentColumn = {
   key: string;
+  fieldKey?: string;
   label: string;
   align?: 'left' | 'center' | 'right';
 };
@@ -22,6 +25,7 @@ export type BusinessDocumentRow = {
 };
 
 export type BusinessDocumentTotal = {
+  key: string;
   label: string;
   value: ReactNode;
   emphasis?: boolean;
@@ -29,6 +33,8 @@ export type BusinessDocumentTotal = {
 
 export default function BusinessDocumentPrint({
   id,
+  documentType,
+  templateCode = 'standard',
   actionLabel = 'In',
   title,
   subtitle = 'Chứng từ nghiệp vụ',
@@ -42,8 +48,11 @@ export default function BusinessDocumentPrint({
   signatures = ['Người lập', 'Bộ phận liên quan', 'Đối tác / Khách hàng'],
   size = 'A4',
   testId,
+  onPrint,
 }: {
   id: string;
+  documentType?: string;
+  templateCode?: string;
   actionLabel?: string;
   title: string;
   subtitle?: string;
@@ -57,11 +66,35 @@ export default function BusinessDocumentPrint({
   signatures?: string[];
   size?: PrintPageSize;
   testId?: string;
+  onPrint?: () => void;
 }) {
+  const [template, setTemplate] = useState<DocumentPrintTemplate | null>(null);
+  const defaultKeys = new Set(['status', ...meta.map((item) => item.key), ...columns.map((item) => item.fieldKey ?? item.key), ...totals.map((item) => item.key), 'note', 'signatures']);
+
+  useEffect(() => {
+    setTemplate(null);
+    if (!documentType) return undefined;
+    let active = true;
+    void fetch('/api/document-print-templates', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const payload = await response.json() as { data?: DocumentPrintTemplate[] };
+        return payload.data?.find((item) => item.documentType === documentType && item.templateCode === templateCode) ?? null;
+      })
+      .then((next) => { if (active) setTemplate(next); })
+      .catch(() => { if (active) setTemplate(null); });
+    return () => { active = false; };
+  }, [documentType, templateCode]);
+
+  const visibleKeys = template ? new Set(template.visibleFieldKeys) : defaultKeys;
+  const visibleMeta = meta.filter((item) => visibleKeys.has(item.key));
+  const visibleColumns = columns.filter((item) => visibleKeys.has(item.fieldKey ?? item.key));
+  const visibleTotals = totals.filter((item) => visibleKeys.has(item.key));
+
   return (
     <>
-      <PrintAction label={actionLabel} targetId={id} />
-      <PrintSurface id={id} size={size}>
+      <PrintAction label={actionLabel} targetId={id} onPrint={onPrint} />
+      <PrintSurface id={id} size={template?.pageSize ?? size}>
         <article className={styles.sheet} data-testid={testId}>
           <header className={styles.header}>
             <div className={styles.brandBlock}>
@@ -71,24 +104,24 @@ export default function BusinessDocumentPrint({
             <div className={styles.titleBlock}>
               <h1>{title}</h1>
               <p>Số: <strong>{number}</strong></p>
-              {status ? <span className={styles.status}>{status}</span> : null}
+              {status && visibleKeys.has('status') ? <span className={styles.status}>{status}</span> : null}
             </div>
           </header>
 
           <section className={styles.metaGrid}>
-            {meta.map((item, index) => (
-              <div key={`${item.label}-${index}`} className={`${styles.metaItem} ${item.full ? styles.full : ''}`}>
+            {visibleMeta.map((item) => (
+              <div key={item.key} className={`${styles.metaItem} ${item.full ? styles.full : ''}`}>
                 <span>{item.label}</span>
                 <strong>{item.value}</strong>
               </div>
             ))}
           </section>
 
-          {columns.length && rows.length ? (
+          {visibleColumns.length && rows.length ? (
             <table className={styles.table}>
               <thead>
                 <tr>
-                  {columns.map((column) => (
+                  {visibleColumns.map((column) => (
                     <th
                       key={column.key}
                       className={column.align === 'right' ? styles.right : column.align === 'center' ? styles.center : undefined}
@@ -101,7 +134,7 @@ export default function BusinessDocumentPrint({
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.id}>
-                    {columns.map((column) => (
+                    {visibleColumns.map((column) => (
                       <td
                         key={column.key}
                         className={column.align === 'right' ? styles.right : column.align === 'center' ? styles.center : undefined}
@@ -115,10 +148,10 @@ export default function BusinessDocumentPrint({
             </table>
           ) : null}
 
-          {totals.length ? (
+          {visibleTotals.length ? (
             <section className={styles.summary}>
-              {totals.map((total, index) => (
-                <div key={`${total.label}-${index}`} className={`${styles.summaryRow} ${total.emphasis ? styles.emphasis : ''}`}>
+              {visibleTotals.map((total) => (
+                <div key={total.key} className={`${styles.summaryRow} ${total.emphasis ? styles.emphasis : ''}`}>
                   <span>{total.label}</span>
                   <strong>{total.value}</strong>
                 </div>
@@ -126,16 +159,16 @@ export default function BusinessDocumentPrint({
             </section>
           ) : null}
 
-          {note ? <section className={styles.note}><strong>Ghi chú:</strong> {note}</section> : null}
+          {note && visibleKeys.has('note') ? <section className={styles.note}><strong>Ghi chú:</strong> {note}</section> : null}
 
-          <footer className={styles.signatures}>
+          {visibleKeys.has('signatures') ? <footer className={styles.signatures}>
             {signatures.map((signature) => (
               <div key={signature}>
                 <strong>{signature}</strong>
                 <span>(Ký, ghi rõ họ tên)</span>
               </div>
             ))}
-          </footer>
+          </footer> : null}
 
           <p className={styles.footer}>Bản in từ Hệ thống Công Ty — dữ liệu theo chứng từ đang hiển thị; thao tác in không làm thay đổi nghiệp vụ.</p>
         </article>

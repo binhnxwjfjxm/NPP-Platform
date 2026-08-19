@@ -25,28 +25,29 @@ export default function PurchaseOrderPrintSheet({ purchaseOrder }: { purchaseOrd
   return (
     <BusinessDocumentPrint
       id={printId}
+      documentType="PURCHASE_ORDER"
       actionLabel="In"
       title="ĐƠN MUA HÀNG"
       subtitle="Chứng từ mua hàng"
       number={purchaseOrder.number || 'CHƯA CẤP SỐ'}
       status={PURCHASE_ORDER_STATUS_LABELS[purchaseOrder.status]}
       meta={[
-        { label: 'Nhà cung cấp', value: `${purchaseOrder.supplierCode} — ${purchaseOrder.supplierName}` },
-        { label: 'Kho nhận', value: `${purchaseOrder.warehouseCode} — ${purchaseOrder.warehouseName}` },
-        { label: 'Ngày đặt', value: formatPurchaseOrderDate(purchaseOrder.placedAt) },
-        { label: 'Dự kiến nhận', value: formatPurchaseOrderDate(purchaseOrder.expectedAt) },
-        { label: 'Tham chiếu nhà cung cấp', value: purchaseOrder.supplierReference || '—' },
-        { label: 'Tiền tệ', value: purchaseOrder.currency },
+        { key: 'supplier', label: 'Nhà cung cấp', value: `${purchaseOrder.supplierCode} — ${purchaseOrder.supplierName}` },
+        { key: 'warehouse', label: 'Kho nhận', value: `${purchaseOrder.warehouseCode} — ${purchaseOrder.warehouseName}` },
+        { key: 'ordered_date', label: 'Ngày đặt', value: formatPurchaseOrderDate(purchaseOrder.placedAt) },
+        { key: 'expected_date', label: 'Dự kiến nhận', value: formatPurchaseOrderDate(purchaseOrder.expectedAt) },
+        { key: 'supplier_reference', label: 'Tham chiếu nhà cung cấp', value: purchaseOrder.supplierReference || '—' },
+        { key: 'currency', label: 'Tiền tệ', value: purchaseOrder.currency },
       ]}
       columns={[
-        { key: 'no', label: 'STT', align: 'center' },
-        { key: 'item', label: 'Sản phẩm / SKU' },
-        { key: 'qty', label: 'Số lượng', align: 'right' },
-        { key: 'unit', label: 'ĐVT', align: 'center' },
-        { key: 'price', label: 'Đơn giá', align: 'right' },
-        ...(showDiscount ? [{ key: 'discount', label: 'CK', align: 'right' as const }] : []),
-        ...(showTax ? [{ key: 'tax', label: 'Thuế', align: 'right' as const }] : []),
-        { key: 'total', label: 'Thành tiền', align: 'right' },
+        { key: 'no', fieldKey: 'line_no', label: 'STT', align: 'center' },
+        { key: 'item', fieldKey: 'line_item', label: 'Sản phẩm / SKU' },
+        { key: 'qty', fieldKey: 'line_quantity', label: 'Số lượng', align: 'right' },
+        { key: 'unit', fieldKey: 'line_unit', label: 'ĐVT', align: 'center' },
+        { key: 'price', fieldKey: 'line_unit_price', label: 'Đơn giá', align: 'right' },
+        ...(showDiscount ? [{ key: 'discount', fieldKey: 'line_discount', label: 'CK', align: 'right' as const }] : []),
+        ...(showTax ? [{ key: 'tax', fieldKey: 'line_tax', label: 'Thuế', align: 'right' as const }] : []),
+        { key: 'total', fieldKey: 'line_total', label: 'Thành tiền', align: 'right' },
       ]}
       rows={lines.map((line) => ({
         id: line.id,
@@ -62,10 +63,10 @@ export default function PurchaseOrderPrintSheet({ purchaseOrder }: { purchaseOrd
         },
       }))}
       totals={[
-        { label: 'Tiền hàng', value: formatPurchaseOrderAmount(purchaseOrder.subtotal, purchaseOrder.currency) },
-        ...(showDiscount ? [{ label: 'Chiết khấu', value: formatPurchaseOrderAmount(purchaseOrder.discountTotal, purchaseOrder.currency) }] : []),
-        ...(showTax ? [{ label: 'Thuế', value: formatPurchaseOrderAmount(purchaseOrder.taxTotal, purchaseOrder.currency) }] : []),
-        { label: 'TỔNG CỘNG', value: formatPurchaseOrderAmount(purchaseOrder.total, purchaseOrder.currency), emphasis: true },
+        { key: 'total_subtotal', label: 'Tiền hàng', value: formatPurchaseOrderAmount(purchaseOrder.subtotal, purchaseOrder.currency) },
+        ...(showDiscount ? [{ key: 'total_discount', label: 'Chiết khấu', value: formatPurchaseOrderAmount(purchaseOrder.discountTotal, purchaseOrder.currency) }] : []),
+        ...(showTax ? [{ key: 'total_tax', label: 'Thuế', value: formatPurchaseOrderAmount(purchaseOrder.taxTotal, purchaseOrder.currency) }] : []),
+        { key: 'total_total', label: 'TỔNG CỘNG', value: formatPurchaseOrderAmount(purchaseOrder.total, purchaseOrder.currency), emphasis: true },
       ]}
       note={purchaseOrder.note || undefined}
       signatures={['Người lập', 'Người duyệt', 'Nhà cung cấp']}

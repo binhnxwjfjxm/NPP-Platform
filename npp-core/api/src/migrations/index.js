@@ -160,6 +160,10 @@ const CUSTOMER_PAYMENT_REMITTING_EMPLOYEE_SQL = readFileSync(
   new URL('../../../../database/migrations/accounting/097_customer_payment_remitting_employee.sql', import.meta.url),
   'utf8',
 );
+const DOCUMENT_PRINT_TEMPLATE_SETTINGS_SQL = readFileSync(
+  new URL('../../../../database/migrations/shared/098_document_print_template_settings.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -227,6 +231,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '097_customer_payment_remitting_employee',
     sql: CUSTOMER_PAYMENT_REMITTING_EMPLOYEE_SQL,
+  }),
+  Object.freeze({
+    id: '098_document_print_template_settings',
+    sql: DOCUMENT_PRINT_TEMPLATE_SETTINGS_SQL,
   }),
 ]);
 
