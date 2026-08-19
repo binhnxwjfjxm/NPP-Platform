@@ -1,3 +1,5 @@
+'use strict';
+
 import { createSuccessEnvelope } from '@npp/contracts';
 import { sendError, sendJson } from '../http-utils.js';
 import { normalizeIdempotencyKey, readJsonBody } from '../idempotency.js';
@@ -219,7 +221,12 @@ async function executeMutation(req, res, options, {
               after: afterResult.salesOrder,
               action,
             });
-            return { failed: false, result: afterResult };
+            return {
+              failed: false,
+              result: afterResult,
+              expectedAuditCount: 1,
+              expectedOutboxCount: 1,
+            };
           },
         });
         const result = transaction.result;
