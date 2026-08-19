@@ -276,7 +276,7 @@ async function findDemand(baseUrl, config, salesOrderId) {
   return demand;
 }
 
-test('Phase 6D.2 hardening proves FIFO, blocks lifecycle transitions and serializes concurrent allocation', async () => {
+test('Phase 6D.2 hardening proves FIFO, protects direct lifecycle transitions, releases pre-execution cancellation and serializes concurrent allocation', async () => {
   const config = loadConfig(testEnv());
   const pool = getPool(config);
   let server;
@@ -357,21 +357,24 @@ test('Phase 6D.2 hardening proves FIFO, blocks lifecycle transitions and seriali
     const cancel = await fetchJson(fetch(`${baseUrl}/api/sales-orders/${firstOrder.id}/cancel`, {
       method: 'POST',
       headers: authHeaders(config, `cancel-${randomUUID()}`),
-      body: JSON.stringify({ reason: 'Không được hủy sau khi kho đã phân bổ' }),
+      body: JSON.stringify({ reason: 'Hủy trước khi xử lý hàng' }),
     }));
-    assert.ok(cancel.response.status >= 400, JSON.stringify(cancel.body));
+    assert.equal(cancel.response.status, 200, JSON.stringify(cancel.body));
     const lifecycleEvidence = await pool.query(
       `SELECT
          (SELECT status FROM sales.sales_orders WHERE installation_id=$1 AND id=$2) AS order_status,
          (SELECT state FROM sales.sales_order_fulfillment_demands WHERE installation_id=$1 AND id=$3) AS demand_state,
          (SELECT count(*)::int FROM inventory.inventory_reservations
-           WHERE installation_id=$1 AND source_document_type='SALES_FULFILLMENT_ALLOCATION' AND state='ACTIVE') AS active_reservations`,
+           WHERE installation_id=$1 AND source_document_type='SALES_FULFILLMENT_ALLOCATION' AND state='ACTIVE') AS active_reservations,
+         (SELECT count(*)::int FROM sales.sales_order_fulfillment_allocations
+           WHERE installation_id=$1 AND sales_order_id=$2 AND state='RELEASED') AS released_allocations`,
       [config.installationId, firstOrder.id, firstDemand.fulfillmentDemandId],
     );
     assert.deepEqual(lifecycleEvidence.rows[0], {
-      order_status: 'confirmed',
-      demand_state: 'ACTIVE',
-      active_reservations: 1,
+      order_status: 'cancelled',
+      demand_state: 'CANCELLED',
+      active_reservations: 0,
+      released_allocations: 1,
     });
 
     const secondOrder = await createConfirmedOrder(baseUrl, config, master, '2');
