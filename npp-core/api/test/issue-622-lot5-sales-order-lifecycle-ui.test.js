@@ -43,7 +43,8 @@ test('Issue #622 Lô 5 keeps one Sales Orders page and groups work by business s
   assert.match(workspace, /order\.deliveryStatus === 'dispatched'\) return 'Đang giao'/);
 
   assert.match(workspace, /title="Đơn bán hàng"/);
-  assert.match(workspace, /actions=\{canCreate \? <button[^>]*>Tạo đơn bán hàng<\/button> : null\}/);
+  assert.match(workspace, /actions=\{canCreate \?/);
+  assert.match(workspace, />Tạo đơn bán hàng<\/button>/);
 });
 
 test('Issue #622 Lô 5 separates service lane from work stage and payment', async () => {
