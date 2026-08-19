@@ -4,6 +4,8 @@ import { readJsonBody, normalizeIdempotencyKey } from '../idempotency.js';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
 import * as service from '../services/document-print-templates.js';
 
+const OWNER_ROLES = new Set(['system:security-owner', 'system:implementation-owner']);
+
 function error(code, message, retryable = false, statusCode = 400) {
   return { code, message, details: {}, retryable, statusCode };
 }
@@ -27,19 +29,18 @@ function requireIdempotency(req) {
   }
 }
 
+function canManagePrintTemplates(context) {
+  const roles = Array.isArray(context.requestContext?.roles) ? context.requestContext.roles : [];
+  if (roles.some((role) => OWNER_ROLES.has(role))) return { ok: true };
+  return context.authorize(context.requestContext, context.PERMISSIONS.corePrintTemplateManage);
+}
+
 export async function handleDocumentPrintTemplateRoutes(req, res, options) {
   const pathname = new URL(`http://localhost${req.url}`).pathname;
   if (!(pathname === '/api/document-print-templates' || pathname.startsWith('/api/document-print-templates/'))) return false;
   const method = String(req.method ?? 'GET').toUpperCase();
   const context = options;
-  const permission = context.authorize(
-    context.requestContext,
-    method === 'GET' ? context.PERMISSIONS.corePrintTemplateRead : context.PERMISSIONS.corePrintTemplateManage,
-  );
-  if (!permission.ok) {
-    sendError(res, error(permission.code, permission.message, false, permission.statusCode ?? 403), context.requestId, context.receivedAt);
-    return true;
-  }
+
   if (pathname === '/api/document-print-templates' && method === 'GET') {
     try {
       const result = await service.listDocumentPrintTemplates(context.getPool(), { installationId: context.requestContext.installationId });
@@ -49,8 +50,16 @@ export async function handleDocumentPrintTemplateRoutes(req, res, options) {
     }
     return true;
   }
+
   const match = pathname.match(/^\/api\/document-print-templates\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
   if (!match || method !== 'PATCH') return false;
+
+  const permission = canManagePrintTemplates(context);
+  if (!permission.ok) {
+    sendError(res, error(permission.code, permission.message, false, permission.statusCode ?? 403), context.requestId, context.receivedAt);
+    return true;
+  }
+
   const idempotency = requireIdempotency(req);
   if (!idempotency.ok) {
     sendError(res, error(idempotency.code, idempotency.message, false, 400), context.requestId, context.receivedAt);

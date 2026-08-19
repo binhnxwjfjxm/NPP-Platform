@@ -85,6 +85,82 @@ async function insertAuthorizedIntent({ installationId, backupJobId, targetCode,
   return id;
 }
 
+async function insertApprovedPurchaseOrderFixture(installationId, actor) {
+  const branchId = randomUUID();
+  const warehouseId = randomUUID();
+  const supplierId = randomUUID();
+  const unitId = randomUUID();
+  const productId = randomUUID();
+  const variantId = randomUUID();
+  const purchaseOrderId = randomUUID();
+  const purchaseOrderLineId = randomUUID();
+  const suffix = randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase();
+
+  await pool.query(
+    `INSERT INTO shared.branches
+      (id, installation_id, code, name, is_active, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,true,$5,$5)`,
+    [branchId, installationId, `BR-${suffix}`, `Chi nhánh ${suffix}`, actor],
+  );
+  await pool.query(
+    `INSERT INTO shared.warehouses
+      (id, installation_id, branch_id, code, name, warehouse_type, is_active, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,$5,'main',true,$6,$6)`,
+    [warehouseId, installationId, branchId, `WH-${suffix}`, `Kho ${suffix}`, actor],
+  );
+  await pool.query(
+    `INSERT INTO shared.suppliers
+      (id, installation_id, code, name, is_active, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,true,$5,$5)`,
+    [supplierId, installationId, `SUP-${suffix}`, `Nhà cung cấp ${suffix}`, actor],
+  );
+  await pool.query(
+    `INSERT INTO shared.units_of_measure
+      (id, installation_id, code, name, unit_kind, allows_fractional, is_active, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,'COUNT',true,true,$5,$5)`,
+    [unitId, installationId, `EA${suffix.slice(0, 4)}`, `Đơn vị ${suffix}`, actor],
+  );
+  await pool.query(
+    `INSERT INTO shared.products
+      (id, installation_id, code, name, is_orderable, is_active, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,true,true,$5,$5)`,
+    [productId, installationId, `PR-${suffix}`, `Sản phẩm ${suffix}`, actor],
+  );
+  await pool.query(
+    `INSERT INTO shared.product_variants
+      (id, installation_id, product_id, sku, name, variant_kind,
+       is_inventory_base, is_sellable, is_catalog_visible, is_active,
+       unit_id, conversion_to_base, is_purchasable, created_by, updated_by)
+     VALUES ($1,$2,$3,$4,$5,'BASE',true,true,true,true,$6,1,true,$7,$7)`,
+    [variantId, installationId, productId, `SKU-${suffix}`, `SKU ${suffix}`, unitId, actor],
+  );
+  await pool.query(
+    `INSERT INTO purchasing.purchase_orders (
+      id, installation_id, supplier_id, warehouse_id, status, order_date,
+      currency_code, subtotal, discount_total, tax_total, total, created_by, updated_by
+    ) VALUES ($1,$2,$3,$4,'draft',CURRENT_DATE,'VND',100,0,0,100,$5,$5)`,
+    [purchaseOrderId, installationId, supplierId, warehouseId, actor],
+  );
+  await pool.query(
+    `INSERT INTO purchasing.purchase_order_lines (
+      id, installation_id, purchase_order_id, line_number, variant_id,
+      sku_snapshot, item_name_snapshot, unit_id, unit_code_snapshot,
+      conversion_to_base, ordered_quantity, base_quantity, unit_price,
+      discount_amount, tax_amount, line_total, created_by, updated_by
+    ) VALUES ($1,$2,$3,1,$4,$5,$6,$7,$8,1,1,1,100,0,0,100,$9,$9)`,
+    [purchaseOrderLineId, installationId, purchaseOrderId, variantId, `SKU-${suffix}`, `SKU ${suffix}`, unitId, `EA${suffix.slice(0, 4)}`, actor],
+  );
+  await pool.query(
+    `UPDATE purchasing.purchase_orders
+        SET status='approved', document_number=$3, submitted_at=now(), submitted_by=$4,
+            approved_at=now(), approved_by=$4, updated_at=now(), updated_by=$4
+      WHERE installation_id=$1 AND id=$2`,
+    [installationId, purchaseOrderId, `PO-${suffix}`, actor],
+  );
+
+  return { branchId, warehouseId, supplierId, unitId, productId, variantId, purchaseOrderId, purchaseOrderLineId };
+}
+
 test('Issue #562 Part 4 exposes only business-level purge targets and keeps purge out of migration SQL', async () => {
   assert.deepEqual(Object.keys(BUSINESS_PURGE_TARGETS), [
     'ALL_BUSINESS_DATA',
@@ -98,6 +174,14 @@ test('Issue #562 Part 4 exposes only business-level purge targets and keeps purg
   assert.ok(registeredMigration);
   assert.doesNotMatch(registeredMigration.sql, /TRUNCATE|DROP\s+SCHEMA/i);
 
+  const guardedDeleteMigration = CORE_API_MIGRATIONS.find((entry) => entry.id === '099_business_purge_guarded_delete');
+  assert.ok(guardedDeleteMigration);
+  assert.match(guardedDeleteMigration.sql, /business_purge_delete_allowed/);
+  assert.match(guardedDeleteMigration.sql, /npp\.business_purge_intent_id/);
+  assert.match(guardedDeleteMigration.sql, /guard_purchase_order_line_mutation/);
+  assert.match(guardedDeleteMigration.sql, /guard_payable_document_mutation/);
+  assert.doesNotMatch(guardedDeleteMigration.sql, /DISABLE\s+TRIGGER|session_replication_role|TRUNCATE/i);
+
   const migration = await readFile(new URL('../../../database/migrations/shared/088_selective_business_data_purge.sql', import.meta.url), 'utf8');
   assert.match(migration, /target_code/);
   assert.match(migration, /'PURGING'/);
@@ -110,6 +194,8 @@ test('Issue #562 Part 4 exposes only business-level purge targets and keeps purg
   assert.match(service, /DELETE FROM/);
   assert.match(service, /core_audit_records/);
   assert.match(service, /core_outbox_events/);
+  assert.match(service, /set_config\('npp\.business_purge_intent_id'/);
+  assert.match(service, /PURGE_EXECUTION_BLOCKED/);
   assert.doesNotMatch(service, /TRUNCATE|DROP\s+SCHEMA/i);
 
   const routes = await readFile(new URL('../src/routes/backups.js', import.meta.url), 'utf8');
@@ -204,6 +290,31 @@ test('Issue #562 Part 4 ALL purge removes business test data but keeps workforce
   assert.equal(replay.ok, true);
   assert.equal(replay.replayed, true);
   assert.equal(replay.intent.status, 'PURGED');
+});
+
+test('supplier and purchasing purge deletes an approved purchase order without weakening normal immutability', async () => {
+  const installationId = `purge-supplier-${randomUUID()}`;
+  const actor = 'test:owner';
+  const fixedNow = new Date();
+  const fixture = await insertApprovedPurchaseOrderFixture(installationId, actor);
+
+  await assert.rejects(
+    pool.query('DELETE FROM purchasing.purchase_order_lines WHERE installation_id=$1 AND id=$2', [installationId, fixture.purchaseOrderLineId]),
+    (error) => error?.code === 'P0001',
+  );
+
+  const backupJobId = await insertVerifiedBackup(installationId, actor, new Date(fixedNow.getTime() - 60_000));
+  const intentId = await insertAuthorizedIntent({ installationId, backupJobId, targetCode: 'SUPPLIERS_AND_PURCHASING', actor });
+  const result = await executeDeletionIntent(pool, { requestContext: context(installationId), intentId, now: () => fixedNow });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.intent.status, 'PURGED');
+  assert.equal(result.intent.targetCode, 'SUPPLIERS_AND_PURCHASING');
+  assert.equal(Number((await pool.query('SELECT count(*)::int AS count FROM purchasing.purchase_order_lines WHERE installation_id=$1 AND id=$2', [installationId, fixture.purchaseOrderLineId])).rows[0].count), 0);
+  assert.equal(Number((await pool.query('SELECT count(*)::int AS count FROM purchasing.purchase_orders WHERE installation_id=$1 AND id=$2', [installationId, fixture.purchaseOrderId])).rows[0].count), 0);
+  assert.equal(Number((await pool.query('SELECT count(*)::int AS count FROM shared.suppliers WHERE installation_id=$1 AND id=$2', [installationId, fixture.supplierId])).rows[0].count), 0);
+  assert.equal(Number((await pool.query('SELECT count(*)::int AS count FROM shared.branches WHERE installation_id=$1 AND id=$2', [installationId, fixture.branchId])).rows[0].count), 1);
+  assert.equal(Number((await pool.query('SELECT count(*)::int AS count FROM shared.products WHERE installation_id=$1 AND id=$2', [installationId, fixture.productId])).rows[0].count), 1);
 });
 
 test('Issue #562 Part 4 operations-only target preserves business master data', async () => {
