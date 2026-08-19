@@ -35,6 +35,7 @@ test('bulk input treats actual stock as final quantity and accepts zero', () => 
   assert.equal(result.ok, true);
   assert.equal(result.rows[0].actualQuantity, '0');
   assert.equal(result.rows[0].actualScaled6, 0n);
+  assert.equal(result.rows[0].lotCode, null);
 });
 
 test('bulk input flags duplicate SKU scope before preview', () => {
@@ -47,7 +48,7 @@ test('bulk input flags duplicate SKU scope before preview', () => {
 });
 
 test('bulk scope auto-fills the sole valid required lot instead of asking for a file column', () => {
-  const input = { ...row({ actualQuantity: '8', locationCode: '', lotCode: '' }), actualScaled6: 8n };
+  const input = { ...row({ actualQuantity: '8', locationCode: null, lotCode: null }), actualScaled6: 8n };
   const source = { lot_tracking_mode: 'REQUIRED' };
   const resolved = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, source, [
     balance({ locationCode: 'A01', lotCode: 'LO-001' }),
@@ -61,7 +62,7 @@ test('bulk scope auto-fills the sole valid required lot instead of asking for a 
 });
 
 test('bulk scope requires a user lot choice when tracking policy has multiple valid lots', () => {
-  const input = { ...row({ actualQuantity: '8', locationCode: '', lotCode: '' }), actualScaled6: 8n };
+  const input = { ...row({ actualQuantity: '8', locationCode: null, lotCode: null }), actualScaled6: 8n };
   const source = { lot_tracking_mode: 'REQUIRED' };
   const resolved = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, source, [
     balance({ locationCode: 'A01', lotCode: 'LO-001' }),
@@ -76,7 +77,7 @@ test('bulk scope requires a user lot choice when tracking policy has multiple va
 });
 
 test('bulk scope requires location only when exact scope is still ambiguous', () => {
-  const input = { ...row({ actualQuantity: '8', locationCode: '', lotCode: '' }), actualScaled6: 8n };
+  const input = { ...row({ actualQuantity: '8', locationCode: null, lotCode: null }), actualScaled6: 8n };
   const requiredLot = inventoryAdjustmentBulkInternals.resolveScopeSelection(input, { lot_tracking_mode: 'REQUIRED' }, [
     balance({ locationCode: 'A01', lotCode: 'LO-001' }),
     balance({ locationCode: 'B01', lotCode: 'LO-001' }),
