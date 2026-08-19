@@ -10,7 +10,7 @@ const { manualQuickEditGuard } = salesOrderDeliveryExecutionInternals;
 const servicePath = fileURLToPath(new URL('../src/services/sales-order.js', import.meta.url));
 const routePath = fileURLToPath(new URL('../src/routes/sales-orders.js', import.meta.url));
 
-test('manual quick edit is allowed only for confirmed manual delivery before inventory issue', () => {
+test('manual quick edit is allowed for confirmed manual delivery and leaves unwind to the transaction service', () => {
   assert.deepEqual(manualQuickEditGuard({
     status: 'confirmed',
     deliveryMode: 'DELIVERY',
@@ -33,8 +33,7 @@ test('manual quick edit is allowed only for confirmed manual delivery before inv
     deliveryExecutionMode: 'MANUAL',
     fulfillment: { totals: { issuedBaseQuantity: '1.000000' } },
   });
-  assert.equal(issued.ok, false);
-  assert.equal(issued.code, 'SALES_ORDER_HAS_EXECUTION_FACTS');
+  assert.equal(issued.ok, true);
 });
 
 test('manual quick edit stays one canonical transaction and keeps audit history internally', async () => {
@@ -48,7 +47,8 @@ test('manual quick edit stays one canonical transaction and keeps audit history 
   assert.match(serviceSource, /updateSalesOrderDraft\(client/);
   assert.match(serviceSource, /expectedRevision: draft\.revision/);
   assert.match(serviceSource, /return confirmSalesOrder\(client/);
-  assert.match(serviceSource, /reason: 'Sửa đơn trước Xuất kho'/);
+  assert.match(serviceSource, /reason: 'Sửa đơn trước khi giao khách'/);
+  assert.match(serviceSource, /preExecutionReleaseIntent: 'manual-edit'/);
 
   assert.match(routeSource, /manual_quick_edit: 'sales\.sales_order\.manual_quick_edited'/);
   assert.match(routeSource, /action === 'manual-edit' && method === 'PUT'/);

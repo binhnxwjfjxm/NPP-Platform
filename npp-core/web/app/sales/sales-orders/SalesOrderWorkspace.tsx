@@ -22,6 +22,13 @@ type OrderSourceFilter = 'all' | 'internal' | 'mcp' | 'customer';
 type OrderWorkStage = 'all' | 'active' | 'preparing' | 'waiting_delivery' | 'completed' | 'cancelled';
 type ResolvedOrderWorkStage = Exclude<OrderWorkStage, 'all'>;
 type OrderLaneFilter = 'all' | 'counter' | 'manual' | 'trip';
+type OrderOperationError = Readonly<{
+  orderId: string;
+  stateKey: string;
+  action: string;
+  message: string;
+}>;
+type StockIssueKeyState = Readonly<{ orderId: string; stateKey: string; key: string }>;
 
 const WORK_STAGE_OPTIONS: ReadonlyArray<Readonly<{ value: OrderWorkStage; label: string }>> = [
   { value: 'all', label: 'Tất cả trạng thái' },
@@ -136,6 +143,18 @@ function stageCountsFor(orders: SalesOrder[]) {
   return counts;
 }
 
+export function orderBusinessStateKey(order: SalesOrder): string {
+  const current = activeVersion(order);
+  return [
+    order.id,
+    String(order.currentVersionNumber ?? ''),
+    String(current?.revision ?? ''),
+    order.status,
+    String(order.fulfillmentStatus ?? ''),
+    String(order.deliveryStatus ?? ''),
+  ].join('|');
+}
+
 export default function SalesOrderWorkspace({ initialBootstrap }: { initialBootstrap: SalesOrderBootstrap }) {
   const [orders, setOrders] = useState(initialBootstrap.salesOrders);
   const [selected, setSelected] = useState<SalesOrder | null>(null);
@@ -144,6 +163,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialBootstrap.errors.orders);
+  const [operationError, setOperationError] = useState<OrderOperationError | null>(null);
   const [search, setSearch] = useState('');
   const [workStage, setWorkStage] = useState<OrderWorkStage>('all');
   const [lane, setLane] = useState<OrderLaneFilter>('all');
@@ -152,7 +172,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const [formVersion, setFormVersion] = useState<SalesOrderVersion | null>(null);
   const [amendmentReason, setAmendmentReason] = useState('');
   const [cancellationReason, setCancellationReason] = useState('');
-  const stockIssueKeyRef = useRef<{ orderId: string; key: string } | null>(null);
+  const stockIssueKeyRef = useRef<StockIssueKeyState | null>(null);
 
   const permissions = useMemo(() => new Set(initialBootstrap.permissionKeys), [initialBootstrap.permissionKeys]);
   const canCreate = permissions.has(SALES_ORDER_PERMISSION_KEYS.create);
@@ -166,10 +186,32 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   const canDiscountOverride = permissions.has(SALES_ORDER_PERMISSION_KEYS.discountOverride);
   const canQuickCreateCustomer = permissions.has(SALES_ORDER_PERMISSION_KEYS.customerWrite);
 
+  const selectedStateKey = selected ? orderBusinessStateKey(selected) : null;
+  const visibleOperationError = operationError
+    && selected
+    && operationError.orderId === selected.id
+    && operationError.stateKey === selectedStateKey
+    ? operationError.message
+    : null;
+  const visibleError = visibleOperationError ?? error;
+
+  useEffect(() => {
+    if (!operationError || !selected || operationError.orderId !== selected.id
+      || operationError.stateKey !== orderBusinessStateKey(selected)) {
+      if (operationError) setOperationError(null);
+    }
+    const stockIssue = stockIssueKeyRef.current;
+    if (stockIssue && selected?.id === stockIssue.orderId
+      && stockIssue.stateKey !== orderBusinessStateKey(selected)) {
+      stockIssueKeyRef.current = null;
+    }
+  }, [operationError, selected]);
+
   const refreshOrders = useCallback(async (showNotice: boolean) => {
     setRefreshing(true);
     if (showNotice) {
       setError(null);
+      setOperationError(null);
       setNotice(null);
     }
     try {
@@ -210,8 +252,23 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   );
 
   const handleFormError = useCallback((message: string) => {
-    setError(message || null);
-  }, []);
+    if (!message) {
+      setError(null);
+      setOperationError(null);
+      return;
+    }
+    if (selected) {
+      setError(null);
+      setOperationError(Object.freeze({
+        orderId: selected.id,
+        stateKey: orderBusinessStateKey(selected),
+        action: formMode ?? 'form',
+        message,
+      }));
+      return;
+    }
+    setError(message);
+  }, [formMode, selected]);
 
   function mergeOrder(order: SalesOrder) {
     setOrders((current) => {
@@ -226,6 +283,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
   async function loadOrder(id: string) {
     setLoadingId(id);
     setError(null);
+    setOperationError(null);
     try {
       mergeOrder(await apiRequest<SalesOrder>(`/api/sales-orders/${id}`));
     } catch (caught) {
@@ -240,12 +298,15 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
     setFormVersion(version);
     setNotice(null);
     setError(null);
+    setOperationError(null);
   }
 
   async function action(kind: 'confirm' | 'amend' | 'confirm-amendment' | 'issue-stock' | 'cancel') {
     if (!selected) return;
+    const actionStateKey = orderBusinessStateKey(selected);
     setBusy(true);
     setError(null);
+    setOperationError(null);
     setNotice(null);
     try {
       let order: SalesOrder;
@@ -278,10 +339,10 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         const current = activeVersion(selected);
         if (!current) throw new Error('Không tìm thấy phiên bản đơn đang hiệu lực');
         const existing = stockIssueKeyRef.current;
-        const key = existing?.orderId === selected.id
+        const key = existing?.orderId === selected.id && existing.stateKey === actionStateKey
           ? existing.key
           : mutationKey('sales-manual-stock-issue');
-        stockIssueKeyRef.current = { orderId: selected.id, key };
+        stockIssueKeyRef.current = { orderId: selected.id, stateKey: actionStateKey, key };
         order = await apiRequest<SalesOrder>(`/api/sales-orders/${selected.id}/issue-stock`, {
           method: 'POST',
           headers: { 'Idempotency-Key': key },
@@ -301,7 +362,13 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
       }
       mergeOrder(order);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Thao tác bán hàng không thành công');
+      const message = caught instanceof Error ? caught.message : 'Thao tác bán hàng không thành công';
+      setOperationError(Object.freeze({
+        orderId: selected.id,
+        stateKey: actionStateKey,
+        action: kind,
+        message,
+      }));
     } finally {
       setBusy(false);
     }
@@ -316,9 +383,9 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
       actions={canCreate ? <button className={styles.primaryButton} type="button" onClick={() => openForm('create')}>Tạo đơn bán hàng</button> : null}
     >
       <div className={styles.workspace}>
-        {(notice || error || warnings.length > 0) && (
-          <div className={`${styles.banner} ${error || warnings.length > 0 ? styles.bannerError : styles.bannerSuccess}`} role="status">
-            {error ?? notice ?? warnings.join(' · ')}
+        {(notice || visibleError || warnings.length > 0) && (
+          <div className={`${styles.banner} ${visibleError || warnings.length > 0 ? styles.bannerError : styles.bannerSuccess}`} role="status">
+            {visibleError ?? notice ?? warnings.join(' · ')}
           </div>
         )}
 
@@ -449,6 +516,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
             if (laneMovedOut) setLane('all');
             setFormMode(null);
             setError(null);
+            setOperationError(null);
             const locationNote = stageMovedOut || laneMovedOut
               ? ` · Đơn hiện ở ${WORK_STAGE_LABELS[savedStage]} · ${orderLaneLabel(order)}; đã mở Tất cả để không mất khỏi danh sách.`
               : '';

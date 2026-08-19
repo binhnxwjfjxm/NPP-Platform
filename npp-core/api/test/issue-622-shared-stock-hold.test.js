@@ -33,7 +33,7 @@ test('manual delivery rechecks current stock hold before deciding shortage', () 
     'utf8',
   );
   const refresh = source.indexOf('const hold = await reconcileDemandHold');
-  const shortage = source.indexOf("'MANUAL_STOCK_ISSUE_SHORTAGE'");
+  const shortage = source.indexOf("'MANUAL_STOCK_ISSUE_SHORTAGE'", refresh);
   assert.ok(refresh >= 0, 'manual issue must refresh the stock hold');
   assert.ok(shortage > refresh, 'shortage must be decided after current stock is reconciled');
   assert.match(source, /targetBaseQuantity: demand\.ordered_base_quantity/);

@@ -59,35 +59,7 @@ test('detailed Sales Order exposes version and current delivery execution mode',
   assert.deepEqual(merged.versions.map((version) => version.deliveryExecutionMode), ['TRIP', 'MANUAL']);
 });
 
-test('clean reserved-only order may change delivery execution lane', () => {
-  const result = deliveryExecutionTransitionGuard({
-    status: 'confirmed',
-    deliveryMode: 'DELIVERY',
-    deliveryExecutionMode: 'TRIP',
-    deliveryStatus: 'pending',
-    fulfillment: {
-      totals: {
-        reservedBaseQuantity: '5',
-        allocatedBaseQuantity: '0',
-        pickedBaseQuantity: '0',
-        packedBaseQuantity: '0',
-        issuedBaseQuantity: '0',
-      },
-    },
-  }, {
-    deliveryMode: 'DELIVERY',
-    deliveryExecutionMode: 'MANUAL',
-  }, {
-    delivery_status: 'pending',
-    active_delivery_orders: 0,
-    posted_inventory_issues: 0,
-    trip_dispatch_items: 0,
-    delivery_attempts: 0,
-  });
-  assert.equal(result.ok, true);
-});
-
-test('delivery execution change is blocked after warehouse or delivery execution starts', () => {
+test('reserved, allocated, picked and packed warehouse work may change lane because transaction unwinds it first', () => {
   const baseOrder = {
     status: 'confirmed',
     deliveryMode: 'DELIVERY',
@@ -95,6 +67,7 @@ test('delivery execution change is blocked after warehouse or delivery execution
     deliveryStatus: 'pending',
     fulfillment: {
       totals: {
+        reservedBaseQuantity: '5',
         allocatedBaseQuantity: '0',
         pickedBaseQuantity: '0',
         packedBaseQuantity: '0',
@@ -111,22 +84,41 @@ test('delivery execution change is blocked after warehouse or delivery execution
     delivery_attempts: 0,
   };
 
-  const allocated = deliveryExecutionTransitionGuard({
-    ...baseOrder,
-    fulfillment: { totals: { ...baseOrder.fulfillment.totals, allocatedBaseQuantity: '1' } },
-  }, target, cleanFacts);
-  assert.equal(allocated.ok, false);
-  assert.equal(allocated.code, 'DELIVERY_EXECUTION_CHANGE_BLOCKED');
+  for (const field of ['allocatedBaseQuantity', 'pickedBaseQuantity', 'packedBaseQuantity']) {
+    const result = deliveryExecutionTransitionGuard({
+      ...baseOrder,
+      fulfillment: { totals: { ...baseOrder.fulfillment.totals, [field]: '1' } },
+    }, target, cleanFacts);
+    assert.equal(result.ok, true, field);
+  }
 
   const deliveryOrder = deliveryExecutionTransitionGuard(baseOrder, target, {
     ...cleanFacts,
     active_delivery_orders: 1,
   });
-  assert.equal(deliveryOrder.ok, false);
-  assert.equal(deliveryOrder.code, 'DELIVERY_EXECUTION_CHANGE_BLOCKED');
+  assert.equal(deliveryOrder.ok, true);
 });
 
-test('transition facts lock the Sales Order and inspect all irreversible delivery artifacts', async () => {
+test('actual delivery attempt still blocks direct lane change', () => {
+  const order = {
+    status: 'confirmed',
+    deliveryMode: 'DELIVERY',
+    deliveryExecutionMode: 'TRIP',
+    deliveryStatus: 'dispatched',
+  };
+  const target = { deliveryMode: 'DELIVERY', deliveryExecutionMode: 'MANUAL' };
+  const result = deliveryExecutionTransitionGuard(order, target, {
+    delivery_status: 'dispatched',
+    active_delivery_orders: 1,
+    posted_inventory_issues: 1,
+    trip_dispatch_items: 1,
+    delivery_attempts: 1,
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'DELIVERY_EXECUTION_CHANGE_BLOCKED');
+});
+
+test('transition facts lock the Sales Order and inspect all delivery artifacts', async () => {
   let capturedSql = '';
   const client = {
     async query(sql) {

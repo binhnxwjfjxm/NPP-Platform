@@ -1,3 +1,5 @@
+'use strict';
+
 import { createSuccessEnvelope } from '@npp/contracts';
 import { sendError, sendJson } from '../http-utils.js';
 import { normalizeIdempotencyKey, readJsonBody } from '../idempotency.js';
@@ -159,6 +161,23 @@ async function writeSalesOrderAuditOutbox(client, { requestContext, before, afte
   }));
 }
 
+function sanitizedUnexpectedError(error, requestId, action, salesOrderId) {
+  const name = typeof error?.name === 'string' ? error.name.slice(0, 80) : 'Error';
+  const code = typeof error?.code === 'string' ? error.code.slice(0, 80) : null;
+  const message = typeof error?.message === 'string'
+    ? error.message.replace(/postgres(?:ql)?:\/\/\S+/gi, '[redacted]').slice(0, 240)
+    : 'Unknown manual Sales Order error';
+  return {
+    event: 'manual_sales_order_unexpected_error',
+    requestId,
+    action,
+    salesOrderId,
+    name,
+    code,
+    message,
+  };
+}
+
 async function executeMutation(req, res, options, {
   requestContext,
   id,
@@ -202,7 +221,12 @@ async function executeMutation(req, res, options, {
               after: afterResult.salesOrder,
               action,
             });
-            return { failed: false, result: afterResult };
+            return {
+              failed: false,
+              result: afterResult,
+              expectedAuditCount: 1,
+              expectedOutboxCount: 1,
+            };
           },
         });
         const result = transaction.result;
@@ -238,7 +262,13 @@ async function executeMutation(req, res, options, {
       execution.response.requestId ?? options.requestId,
       execution.response.contentType,
     );
-  } catch {
+  } catch (error) {
+    console.error(JSON.stringify(sanitizedUnexpectedError(
+      error,
+      options.requestId,
+      action,
+      id,
+    )));
     sendError(
       res,
       apiError('MANUAL_ORDER_TRANSACTION_UNAVAILABLE', 'Thao tác tạm thời chưa thực hiện được', {}, true, 503),
@@ -291,3 +321,8 @@ export async function handleManualSalesOrderRoutes(req, res, options) {
   });
   return true;
 }
+
+export const manualSalesOrderRouteInternals = Object.freeze({
+  statusFor,
+  sanitizedUnexpectedError,
+});
