@@ -5,6 +5,7 @@ import type { Customer, CustomerAddress } from '../../../lib/customer-types';
 import type { Product } from '../../../lib/product-types';
 import type { Warehouse } from '../../../lib/organization-types';
 import { pricingPolicyLabel, pricingResolutionReasonLabel } from '../../../lib/business-language';
+import { MIN_PRODUCT_SEARCH_LENGTH } from '../../../lib/product-search-contract';
 import type {
   SalesOrder,
   SalesOrderCollectionPolicy,
@@ -460,7 +461,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   useEffect(() => {
     const term = skuTerm.trim();
     setActiveSkuIndex(0);
-    if (term.length < 2) {
+    if (term.length < MIN_PRODUCT_SEARCH_LENGTH) {
       setSkuResults([]);
       return;
     }

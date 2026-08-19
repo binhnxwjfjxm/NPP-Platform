@@ -46,11 +46,25 @@ test('bulk adjustment sheet enforces row limit and required columns', () => {
   assert.throws(() => parseBulkInventoryAdjustmentSheet(oversized), /tối đa 200 dòng/i);
 });
 
-test('bulk adjustment UI keeps preview read-only and confirm idempotent', () => {
+test('bulk adjustment UI follows the compact file-import workflow and stays usable for hundreds of rows', () => {
   assert.match(bulkInventoryAdjustmentTemplateCsv(), /SKU,Tồn thực tế,Vị trí,Lô/);
-  assert.match(bulkUiSource, /Kiểm tra và xem trước/);
+  assert.match(bulkUiSource, /Các bước điều chỉnh tồn hàng loạt/);
+  assert.match(bulkUiSource, /Tải mẫu Excel\/CSV/);
+  assert.match(bulkUiSource, /Chọn tệp đã điền/);
+  assert.match(bulkUiSource, /Kiểm tra tệp/);
+  assert.match(bulkUiSource, /Đi tới lập phiếu/);
+  assert.match(bulkUiSource, /const DISPLAY_ROW_LIMIT = 100/);
+  assert.match(bulkUiSource, /rows\.slice\(0, DISPLAY_ROW_LIMIT\)/);
+  assert.match(bulkUiSource, /preview\.rows\.slice\(0, DISPLAY_ROW_LIMIT\)/);
+  assert.match(bulkUiSource, /bulk-adjustment-import-table/);
+  assert.match(bulkUiSource, /bulk-adjustment-preview-table/);
+  assert.doesNotMatch(bulkUiSource, /styles\.lineCard/);
+});
+
+test('bulk adjustment preview remains read-only and confirmation keeps canonical idempotency', () => {
   assert.match(bulkUiSource, /Tồn hệ thống/);
   assert.match(bulkUiSource, /Tồn thực tế/);
+  assert.match(bulkUiSource, /Hệ thống vẫn kiểm tra toàn bộ/);
   assert.match(bulkUiSource, /Tồn kho chưa thay đổi/);
   assert.match(bulkUiSource, /createIdempotencyKey\('inventory-adjustment-bulk'\)/);
   assert.match(gatewaySource, /previewBulkInventoryAdjustment/);
