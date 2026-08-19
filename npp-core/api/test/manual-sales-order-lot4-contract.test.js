@@ -10,8 +10,9 @@ const migrationsIndex = readFileSync(new URL('../src/migrations/index.js', impor
 const paymentRepository = readFileSync(new URL('../src/db/repositories/customer-payment.js', import.meta.url), 'utf8');
 const receivableRepository = readFileSync(new URL('../src/db/repositories/customer-receivable.js', import.meta.url), 'utf8');
 
-test('Lô 4 hoàn thành đơn độc lập với xuất kho và tiền / nợ', () => {
+test('Giao thủ công ghi nhận doanh số khi Hoàn tất giao, độc lập với tiền thu', () => {
   assert.match(service, /export async function completeManualSalesOrder/);
+  assert.match(service, /postReceivable\(client, \{ requestContext, source \}\)/);
   assert.match(service, /SET status = 'closed'/);
   assert.match(service, /delivery_status = 'delivered'/);
   assert.match(service, /fulfillment_status !== 'issued'/);
@@ -19,21 +20,25 @@ test('Lô 4 hoàn thành đơn độc lập với xuất kho và tiền / nợ',
   assert.doesNotMatch(service, /inventory\.inventory_balances/);
 });
 
-test('Lô 4 ghi nhận trả đủ, trả một phần hoặc nợ toàn bộ bằng sổ công nợ chuẩn', () => {
+test('thu tiền chỉ phân bổ vào khoản phải thu đã được tạo khi Hoàn tất giao', () => {
   assert.match(service, /sourceDocumentType = 'MANUAL_SALES_ORDER'/);
   assert.match(service, /receivableRepository\.insertReceivableDocument/);
   assert.match(service, /receivableRepository\.insertReceivableLedgerEntry/);
+  assert.match(service, /loadManualReceivable/);
+  assert.match(service, /\['pending', 'partially_paid'\]/);
+  assert.match(service, /decimalToScaled\(payload\?\.paidAmount\)/);
+  assert.match(service, /paid > remaining/);
   assert.match(service, /customerPaymentService\.createCustomerPayment/);
-  assert.match(service, /paid > total/);
-  assert.match(service, /paid > 0n/);
-  assert.match(service, /paidAmount \?\? '0'/);
   assert.match(service, /deriveIdempotencyKey\('manual-sales-payment', idempotencyKey\)/);
   assert.match(service, /IDEMPOTENCY_KEY_PATTERN/);
-  assert.match(service, /insertAuditRecord/);
-  assert.match(service, /insertOutboxEvent/);
+  assert.doesNotMatch(service, /paidAmount \?\? '0'/);
 });
 
-test('Lô 4 route giữ transaction, idempotency và quyền hiện có', () => {
+test('audit/outbox giữ cùng transaction và tách sự kiện doanh số khỏi tiền thu', () => {
+  assert.match(service, /postingOrigin: 'manual_sales_order_delivery_complete'/);
+  assert.match(service, /manual_sales_order_payment/);
+  assert.match(service, /insertAuditRecord/);
+  assert.match(service, /insertOutboxEvent/);
   assert.match(route, /complete\|settlement/);
   assert.match(route, /coreSalesOrderConfirm/);
   assert.match(route, /coreCustomerPaymentCreate/);
@@ -42,7 +47,7 @@ test('Lô 4 route giữ transaction, idempotency và quyền hiện có', () => 
   assert.match(routesIndex, /handleManualSalesOrderRoutes/);
 });
 
-test('migration 090 hỗ trợ công nợ trực tiếp từ đơn Giao thủ công', () => {
+test('migration 090 tiếp tục dùng sổ công nợ chuẩn, không cần schema riêng cho Giao thủ công', () => {
   assert.match(migration, /MANUAL_SALES_ORDER/);
   assert.match(migration, /ALTER COLUMN delivery_order_line_id DROP NOT NULL/);
   assert.match(migration, /ALTER COLUMN inventory_issue_line_id DROP NOT NULL/);
