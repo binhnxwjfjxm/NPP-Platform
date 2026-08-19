@@ -47,12 +47,28 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Verify Delivery frontend
         run: npm run verify
-      - name: Install Chromium and WebKit
-        run: npx playwright install --with-deps chromium webkit
       - name: Run Delivery Chromium mobile E2E
-        run: npx playwright test --project=chromium-mobile
+        run: |
+          docker run --rm \
+            --network host \
+            --ipc host \
+            --env CI \
+            --env CORE_API_INTERNAL_URL \
+            --volume "$GITHUB_WORKSPACE:/work" \
+            --workdir /work/delivery/web \
+            mcr.microsoft.com/playwright:v1.62.0-noble \
+            bash -lc 'npx playwright test --project=chromium-mobile'
       - name: Run Delivery WebKit viewport geometry
-        run: npx playwright test e2e/viewport-shell.spec.ts --project=webkit-iphone
+        run: |
+          docker run --rm \
+            --network host \
+            --ipc host \
+            --env CI \
+            --env CORE_API_INTERNAL_URL \
+            --volume "$GITHUB_WORKSPACE:/work" \
+            --workdir /work/delivery/web \
+            mcr.microsoft.com/playwright:v1.62.0-noble \
+            bash -lc 'npx playwright test e2e/viewport-shell.spec.ts --project=webkit-iphone'
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4

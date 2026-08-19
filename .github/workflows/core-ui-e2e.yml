@@ -93,12 +93,19 @@ jobs:
       - name: Verify Core web
         run: npm --workspace npp-core-web run verify
 
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-        working-directory: npp-core/web
-
       - name: Run browser E2E
-        run: npm run test:core-ui-e2e
+        working-directory: npp-core/web
+        run: |
+          docker run --rm \
+            --network host \
+            --ipc host \
+            --env CI \
+            --env E2E_DATABASE_URL \
+            --env E2E_BACKEND_API_TOKEN \
+            --volume "$GITHUB_WORKSPACE:/work" \
+            --workdir /work/npp-core/web \
+            mcr.microsoft.com/playwright:v1.62.0-noble \
+            bash -lc 'npm run test:e2e'
 
       - name: Publish browser summary
         if: always()
