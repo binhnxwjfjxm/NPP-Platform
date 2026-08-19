@@ -1,4 +1,6 @@
-export const MIN_PURCHASE_ORDER_SKU_SEARCH_LENGTH = 2;
+import { MIN_PRODUCT_SEARCH_LENGTH } from './product-search-contract.js';
+
+export const MIN_PURCHASE_ORDER_SKU_SEARCH_LENGTH = MIN_PRODUCT_SEARCH_LENGTH;
 
 export const PURCHASE_ORDER_SKU_FILTERS = Object.freeze({
   eligible: 'eligible',

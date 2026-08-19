@@ -292,6 +292,7 @@ export default function InventoryAdjustmentWorkspace({
   const actions = (
     <div className={styles.headerActions} data-testid="inventory-adjustment-page-actions">
       <button className={styles.secondaryButton} type="button" onClick={() => refresh()} disabled={busy}>Làm mới</button>
+      <button className={styles.secondaryButton} type="button" onClick={() => window.location.assign('/inventory/adjustments/bulk')} disabled={busy}>Điều chỉnh hàng loạt</button>
       <button className={styles.primaryButton} type="button" onClick={() => setShowCreate((value) => !value)} disabled={busy}>
         {showCreate ? 'Đóng lập phiếu' : 'Lập phiếu điều chỉnh'}
       </button>
