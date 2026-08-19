@@ -35,7 +35,7 @@ export default function ManualSalesOrderSettlement({
   canSettle: boolean;
   onUpdated: (order: SalesOrder) => void;
 }) {
-  const [paidAmount, setPaidAmount] = useState('0');
+  const [paidAmount, setPaidAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [busy, setBusy] = useState<'complete' | 'settlement' | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -45,7 +45,7 @@ export default function ManualSalesOrderSettlement({
   const currentVersion = activeVersion(order);
 
   useEffect(() => {
-    setPaidAmount('0');
+    setPaidAmount('');
     setPaymentMethod('CASH');
     setNotice(null);
     setError(null);
@@ -54,8 +54,8 @@ export default function ManualSalesOrderSettlement({
   }, [order.id]);
 
   const completionAvailable = order.status === 'confirmed';
-  const settlementAvailable = ['confirmed', 'closed'].includes(order.status)
-    && order.settlementStatus === 'not_due';
+  const settlementAvailable = order.status === 'closed'
+    && ['pending', 'partially_paid'].includes(order.settlementStatus);
 
   async function completeOrder() {
     const fingerprint = String(order.revision);
@@ -77,16 +77,16 @@ export default function ManualSalesOrderSettlement({
       });
       completeKeyRef.current = null;
       onUpdated(updated);
-      setNotice('Đã Hoàn thành đơn. Phần tiền / nợ vẫn được theo dõi riêng.');
+      setNotice('Đã Hoàn tất giao. Doanh số và khoản phải thu đã được ghi nhận; tiền thu theo dõi riêng.');
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Không Hoàn thành đơn được');
+      setError(caught instanceof Error ? caught.message : 'Không Hoàn tất giao được');
     } finally {
       setBusy(null);
     }
   }
 
   async function recordSettlement() {
-    const normalizedAmount = paidAmount.trim() || '0';
+    const normalizedAmount = paidAmount.trim();
     const fingerprint = `${order.revision}|${normalizedAmount}|${paymentMethod}`;
     setBusy('settlement');
     setNotice(null);
@@ -109,12 +109,11 @@ export default function ManualSalesOrderSettlement({
         }),
       });
       settlementKeyRef.current = null;
+      setPaidAmount('');
       onUpdated(updated);
-      setNotice(normalizedAmount === '0'
-        ? 'Đã ghi nhận toàn bộ giá trị đơn là nợ khách hàng.'
-        : 'Đã ghi nhận tiền thực nộp; phần còn lại (nếu có) là nợ khách hàng.');
+      setNotice('Đã ghi nhận tiền thu. Công nợ còn lại được tự động cập nhật.');
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Không ghi nhận tiền / nợ được');
+      setError(caught instanceof Error ? caught.message : 'Không ghi nhận tiền thu được');
     } finally {
       setBusy(null);
     }
@@ -123,7 +122,7 @@ export default function ManualSalesOrderSettlement({
   return (
     <div className={styles.reasonRow}>
       <strong>Hoàn tất Giao thủ công</strong>
-      <small>Xuất kho đã xong. Hoàn thành đơn và tiền / nợ là hai việc độc lập.</small>
+      <small>Xuất kho đã xong. Hoàn tất giao ghi nhận doanh số và khoản phải thu; thu tiền là bước riêng.</small>
 
       <div className={styles.inlineActions}>
         <button
@@ -133,26 +132,28 @@ export default function ManualSalesOrderSettlement({
           onClick={() => void completeOrder()}
         >
           {busy === 'complete'
-            ? 'Đang hoàn thành…'
+            ? 'Đang hoàn tất…'
             : order.status === 'closed'
-              ? 'Đã Hoàn thành đơn'
-              : 'Hoàn thành đơn'}
+              ? 'Đã Hoàn tất giao'
+              : 'Hoàn tất giao'}
         </button>
       </div>
 
       {settlementAvailable ? (
         <>
           <label>
-            Số tiền thực nộp
+            Số tiền thực thu
             <input
               value={paidAmount}
               inputMode="decimal"
               disabled={!canSettle || busy !== null}
               onChange={(event) => setPaidAmount(event.target.value)}
-              placeholder="0"
+              placeholder="Nhập số tiền thu"
             />
           </label>
-          <small>Tổng đơn: {formatMoney(currentVersion?.total)} {order.currency}. Nhập 0 nếu ghi nợ toàn bộ.</small>
+          <small>
+            Giá trị đơn: {formatMoney(currentVersion?.total)} {order.currency}. Phần chưa thu tiếp tục là công nợ khách hàng.
+          </small>
           <label>
             Hình thức nhận tiền
             <select
@@ -168,22 +169,22 @@ export default function ManualSalesOrderSettlement({
             <button
               type="button"
               className={styles.primaryButton}
-              disabled={!canSettle || busy !== null}
+              disabled={!canSettle || busy !== null || paidAmount.trim() === ''}
               onClick={() => void recordSettlement()}
             >
-              {busy === 'settlement' ? 'Đang ghi nhận…' : 'Nộp tiền / Nợ'}
+              {busy === 'settlement' ? 'Đang ghi nhận…' : 'Ghi nhận tiền thu'}
             </button>
           </div>
         </>
       ) : (
         <small>
-          Tiền / nợ: {order.settlementStatus === 'paid'
-            ? 'Đã thanh toán'
+          Thanh toán: {order.settlementStatus === 'paid'
+            ? 'Đã thanh toán đủ'
             : order.settlementStatus === 'partially_paid'
-              ? 'Đã thanh toán một phần'
+              ? 'Đã thu một phần, còn công nợ'
               : order.settlementStatus === 'pending'
-                ? 'Đang còn nợ'
-                : 'Đã ghi nhận'}.
+                ? 'Đang còn công nợ'
+                : 'Chưa phát sinh khoản phải thu'}.
         </small>
       )}
 

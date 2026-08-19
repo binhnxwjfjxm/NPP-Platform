@@ -82,6 +82,25 @@ async function loadLines(client, { installationId, salesOrderVersionId }) {
   return result.rows ?? [];
 }
 
+async function loadManualReceivable(client, { installationId, salesOrderId }) {
+  const result = await client.query(
+    `SELECT id,
+            source_document_date,
+            original_amount,
+            allocated_amount,
+            remaining_amount,
+            status,
+            revision
+       FROM accounting.receivable_documents
+      WHERE installation_id = $1
+        AND source_document_type = 'MANUAL_SALES_ORDER'
+        AND source_document_id = $2::uuid
+      FOR UPDATE`,
+    [installationId, salesOrderId],
+  );
+  return result.rows?.[0] ?? null;
+}
+
 function validateManualIssued(source, requestContext) {
   if (!source) return failure('SALES_ORDER_NOT_FOUND', 'Không tìm thấy đơn bán hàng');
   if (source.delivery_mode !== 'DELIVERY' || source.delivery_execution_mode !== 'MANUAL') {
@@ -91,7 +110,7 @@ function validateManualIssued(source, requestContext) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Đơn nằm ngoài phạm vi kho được cấp quyền');
   }
   if (source.fulfillment_status !== 'issued') {
-    return failure('MANUAL_ORDER_NOT_ISSUED', 'Hãy Xuất kho trước khi hoàn tất đơn hoặc ghi nhận tiền / nợ');
+    return failure('MANUAL_ORDER_NOT_ISSUED', 'Hãy Xuất kho trước khi Hoàn tất giao');
   }
   return Object.freeze({ ok: true });
 }
@@ -117,6 +136,7 @@ async function writeReceivableAuditOutbox(client, { requestContext, receivable }
     metadata: {
       sourceDocumentType: 'MANUAL_SALES_ORDER',
       salesOrderId: receivable.sales_order_id,
+      postingOrigin: 'manual_sales_order_delivery_complete',
     },
   }));
   await insertOutboxEvent(client, buildOutboxEvent({
@@ -126,7 +146,10 @@ async function writeReceivableAuditOutbox(client, { requestContext, receivable }
     eventType: 'accounting.receivable.manual_sales_order.posted',
     eventVersion: Number(receivable.revision ?? 1),
     payload: receivable,
-    metadata: { salesOrderId: receivable.sales_order_id },
+    metadata: {
+      salesOrderId: receivable.sales_order_id,
+      postingOrigin: 'manual_sales_order_delivery_complete',
+    },
   }));
 }
 
@@ -138,7 +161,7 @@ async function writePaymentAuditOutbox(client, { requestContext, customerPayment
     resourceId: customerPayment.id,
     beforeData: null,
     afterData: customerPayment,
-    metadata: { source: 'manual_sales_order_settlement' },
+    metadata: { source: 'manual_sales_order_payment' },
   }));
   await insertOutboxEvent(client, buildOutboxEvent({
     requestContext,
@@ -147,7 +170,7 @@ async function writePaymentAuditOutbox(client, { requestContext, customerPayment
     eventType: 'accounting.customer_payment.posted',
     eventVersion: 1,
     payload: customerPayment,
-    metadata: { source: 'manual_sales_order_settlement' },
+    metadata: { source: 'manual_sales_order_payment' },
   }));
 }
 
@@ -158,20 +181,24 @@ async function postReceivable(client, { requestContext, source }) {
     sourceDocumentType,
     sourceDocumentId: source.id,
   });
-  const existing = await receivableRepository.getReceivableDocumentBySource(client, {
+  const existing = await loadManualReceivable(client, {
     installationId: requestContext.installationId,
-    sourceDocumentType,
-    sourceDocumentId: source.id,
+    salesOrderId: source.id,
   });
   if (existing) {
-    return failure('MANUAL_ORDER_SETTLEMENT_CONFLICT', 'Đơn đã có chứng từ tiền / nợ, không thể ghi lần hai');
+    return Object.freeze({
+      ok: true,
+      receivable: existing,
+      documentDate: String(existing.source_document_date).slice(0, 10),
+      replayed: true,
+    });
   }
 
   const lines = await loadLines(client, {
     installationId: requestContext.installationId,
     salesOrderVersionId: source.sales_order_version_id,
   });
-  if (!lines.length) return failure('MANUAL_ORDER_NO_LINES', 'Đơn không có dòng hàng để ghi nhận công nợ');
+  if (!lines.length) return failure('MANUAL_ORDER_NO_LINES', 'Đơn không có dòng hàng để ghi nhận doanh số');
 
   await receivableRepository.lockSalesOrderLines(client, {
     installationId: requestContext.installationId,
@@ -251,11 +278,11 @@ async function postReceivable(client, { requestContext, source }) {
       salesOrderId: source.id,
       salesOrderVersionId: source.sales_order_version_id,
       warehouseId: source.warehouse_id,
-      postingOrigin: 'manual_sales_order_settlement',
+      postingOrigin: 'manual_sales_order_delivery_complete',
     },
   });
   await writeReceivableAuditOutbox(client, { requestContext, receivable });
-  return Object.freeze({ ok: true, receivable, documentDate });
+  return Object.freeze({ ok: true, receivable, documentDate, replayed: false });
 }
 
 export async function completeManualSalesOrder(client, {
@@ -270,18 +297,30 @@ export async function completeManualSalesOrder(client, {
   const valid = validateManualIssued(source, requestContext);
   if (!valid.ok) return valid;
   if (source.status === 'closed') {
-    return failure('MANUAL_ORDER_ALREADY_COMPLETED', 'Đơn đã Hoàn thành, không thể hoàn thành lần hai');
+    return failure('MANUAL_ORDER_ALREADY_COMPLETED', 'Đơn đã Hoàn tất giao, không thể hoàn tất lần hai');
   }
   if (source.status !== 'confirmed') {
-    return failure('MANUAL_ORDER_COMPLETE_NOT_AVAILABLE', 'Chỉ đơn đã Chốt và Xuất kho mới được Hoàn thành');
+    return failure('MANUAL_ORDER_COMPLETE_NOT_AVAILABLE', 'Chỉ đơn đã Chốt và Xuất kho mới được Hoàn tất giao');
   }
   const conflict = checkRevision(source, expectedRevision);
   if (conflict) return conflict;
+
+  const { decimalToScaled } = customerPaymentService.customerPaymentInternals;
+  const total = decimalToScaled(source.total, { allowZero: true });
+  if (total === null) return failure('MANUAL_ORDER_TOTAL_INVALID', 'Tổng tiền đơn không hợp lệ');
+
+  let receivable = null;
+  if (total > 0n) {
+    const posted = await postReceivable(client, { requestContext, source });
+    if (!posted.ok) return posted;
+    receivable = posted.receivable;
+  }
 
   const updated = await client.query(
     `UPDATE sales.sales_orders
         SET status = 'closed',
             delivery_status = 'delivered',
+            settlement_status = CASE WHEN $4 THEN 'paid' ELSE settlement_status END,
             revision = revision + 1,
             updated_at = now(),
             updated_by = $3
@@ -289,12 +328,12 @@ export async function completeManualSalesOrder(client, {
         AND id = $2::uuid
         AND status = 'confirmed'
       RETURNING id, revision`,
-    [requestContext.installationId, id, requestContext.actorId],
+    [requestContext.installationId, id, requestContext.actorId, total === 0n],
   );
   if (!updated.rows?.length) {
     return failure('MANUAL_ORDER_CONFLICT', 'Đơn đã thay đổi. Hãy tải lại trước khi tiếp tục');
   }
-  return Object.freeze({ ok: true, action: 'complete' });
+  return Object.freeze({ ok: true, action: 'complete', receivable });
 }
 
 export async function settleManualSalesOrder(client, {
@@ -314,72 +353,68 @@ export async function settleManualSalesOrder(client, {
   });
   const valid = validateManualIssued(source, requestContext);
   if (!valid.ok) return valid;
-  if (!['confirmed', 'closed'].includes(source.status)) {
-    return failure('MANUAL_ORDER_SETTLEMENT_NOT_AVAILABLE', 'Đơn chưa ở trạng thái được phép ghi nhận tiền / nợ');
+  if (source.status !== 'closed') {
+    return failure('MANUAL_ORDER_SETTLEMENT_NOT_AVAILABLE', 'Hãy Hoàn tất giao trước khi ghi nhận tiền thu');
   }
-  if (source.settlement_status !== 'not_due') {
-    return failure('MANUAL_ORDER_ALREADY_SETTLED', 'Đơn đã ghi nhận tiền / nợ, không thể ghi lần hai');
+  if (source.settlement_status === 'paid') {
+    return failure('MANUAL_ORDER_ALREADY_SETTLED', 'Đơn đã thanh toán đủ');
+  }
+  if (!['pending', 'partially_paid'].includes(source.settlement_status)) {
+    return failure('MANUAL_ORDER_SETTLEMENT_NOT_AVAILABLE', 'Đơn chưa có khoản phải thu để ghi nhận tiền');
   }
   const conflict = checkRevision(source, expectedRevision);
   if (conflict) return conflict;
 
+  const receivable = await loadManualReceivable(client, {
+    installationId: requestContext.installationId,
+    salesOrderId: id,
+  });
+  if (!receivable || !['open', 'partially_allocated'].includes(receivable.status)) {
+    return failure('MANUAL_ORDER_RECEIVABLE_NOT_FOUND', 'Không tìm thấy khoản phải thu đang mở của đơn');
+  }
+
   const { decimalToScaled, scaledToDecimal } = customerPaymentService.customerPaymentInternals;
-  const total = decimalToScaled(source.total, { allowZero: true });
-  const paid = decimalToScaled(payload?.paidAmount ?? '0', { allowZero: true });
-  if (total === null) return failure('MANUAL_ORDER_TOTAL_INVALID', 'Tổng tiền đơn không hợp lệ');
-  if (paid === null) return failure('INVALID_PAYMENT_AMOUNT', 'Số tiền thực nộp không hợp lệ');
-  if (paid > total) {
-    return failure('PAYMENT_EXCEEDS_ORDER_TOTAL', 'Số tiền thực nộp không được lớn hơn tổng tiền đơn');
+  const remaining = decimalToScaled(receivable.remaining_amount, { allowZero: true });
+  const paid = decimalToScaled(payload?.paidAmount);
+  if (remaining === null || remaining <= 0n) {
+    return failure('MANUAL_ORDER_ALREADY_SETTLED', 'Đơn đã thanh toán đủ');
+  }
+  if (paid === null) {
+    return failure('INVALID_PAYMENT_AMOUNT', 'Số tiền thu phải lớn hơn 0');
+  }
+  if (paid > remaining) {
+    return failure('PAYMENT_EXCEEDS_ORDER_TOTAL', 'Số tiền thu không được lớn hơn số tiền khách còn nợ');
   }
 
-  if (total === 0n) {
-    if (paid !== 0n) return failure('PAYMENT_EXCEEDS_ORDER_TOTAL', 'Đơn có tổng tiền bằng 0 nên không ghi nhận tiền nộp');
-    await client.query(
-      `UPDATE sales.sales_orders
-          SET settlement_status = 'paid',
-              updated_at = now(),
-              updated_by = $3
-        WHERE installation_id = $1
-          AND id = $2::uuid`,
-      [requestContext.installationId, id, requestContext.actorId],
-    );
-    return Object.freeze({ ok: true, action: 'settlement', receivable: null, customerPayment: null });
-  }
-
-  const posted = await postReceivable(client, { requestContext, source });
-  if (!posted.ok) return posted;
-
-  let customerPayment = null;
-  if (paid > 0n) {
-    const paymentMethod = String(payload?.paymentMethod ?? '').trim().toUpperCase();
-    if (!paymentMethod) return failure('PAYMENT_METHOD_REQUIRED', 'Hãy chọn hình thức nhận tiền');
-    const paymentResult = await customerPaymentService.createCustomerPayment(client, {
-      requestContext,
-      idempotencyKey: deriveIdempotencyKey('manual-sales-payment', idempotencyKey),
-      payload: {
-        customerId: source.customer_id,
-        warehouseId: source.warehouse_id,
-        paymentDate: posted.documentDate,
-        currencyCode: source.currency_code,
-        paymentMethod,
+  const paymentMethod = String(payload?.paymentMethod ?? '').trim().toUpperCase();
+  if (!paymentMethod) return failure('PAYMENT_METHOD_REQUIRED', 'Hãy chọn hình thức nhận tiền');
+  const paymentDate = vietnamDate(requestContext.receivedAt);
+  const paymentResult = await customerPaymentService.createCustomerPayment(client, {
+    requestContext,
+    idempotencyKey: deriveIdempotencyKey('manual-sales-payment', idempotencyKey),
+    payload: {
+      customerId: source.customer_id,
+      warehouseId: source.warehouse_id,
+      paymentDate,
+      currencyCode: source.currency_code,
+      paymentMethod,
+      amount: scaledToDecimal(paid),
+      externalReference: payload?.externalReference ?? undefined,
+      note: payload?.note ?? undefined,
+      allocations: [{
+        receivableDocumentId: receivable.id,
         amount: scaledToDecimal(paid),
-        externalReference: payload?.externalReference ?? undefined,
-        note: payload?.note ?? undefined,
-        allocations: [{
-          receivableDocumentId: posted.receivable.id,
-          amount: scaledToDecimal(paid),
-        }],
-      },
-    });
-    if (!paymentResult.ok) return paymentResult;
-    customerPayment = paymentResult.customerPayment;
-    await writePaymentAuditOutbox(client, { requestContext, customerPayment });
-  }
+      }],
+    },
+  });
+  if (!paymentResult.ok) return paymentResult;
+  const customerPayment = paymentResult.customerPayment;
+  await writePaymentAuditOutbox(client, { requestContext, customerPayment });
 
   return Object.freeze({
     ok: true,
     action: 'settlement',
-    receivable: posted.receivable,
+    receivable,
     customerPayment,
   });
 }

@@ -5,6 +5,9 @@ import {
   salesOrderDeliveryExecutionInternals,
 } from '../src/services/sales-order.js';
 import {
+  getDeliveryExecutionTransitionFacts,
+} from '../src/db/repositories/sales-order-delivery-execution.js';
+import {
   getDeliveryOrderForAssignment,
   listEligibleDeliveryOrders,
 } from '../src/db/repositories/logistics-trip-planning.js';
@@ -12,6 +15,7 @@ import {
 const {
   normalizeDeliveryExecution,
   mergeDetailedOrder,
+  deliveryExecutionTransitionGuard,
 } = salesOrderDeliveryExecutionInternals;
 
 test('delivery execution defaults DELIVERY to TRIP and accepts explicit MANUAL', () => {
@@ -53,6 +57,99 @@ test('detailed Sales Order exposes version and current delivery execution mode',
   ]);
   assert.equal(merged.deliveryExecutionMode, 'MANUAL');
   assert.deepEqual(merged.versions.map((version) => version.deliveryExecutionMode), ['TRIP', 'MANUAL']);
+});
+
+test('clean reserved-only order may change delivery execution lane', () => {
+  const result = deliveryExecutionTransitionGuard({
+    status: 'confirmed',
+    deliveryMode: 'DELIVERY',
+    deliveryExecutionMode: 'TRIP',
+    deliveryStatus: 'pending',
+    fulfillment: {
+      totals: {
+        reservedBaseQuantity: '5',
+        allocatedBaseQuantity: '0',
+        pickedBaseQuantity: '0',
+        packedBaseQuantity: '0',
+        issuedBaseQuantity: '0',
+      },
+    },
+  }, {
+    deliveryMode: 'DELIVERY',
+    deliveryExecutionMode: 'MANUAL',
+  }, {
+    delivery_status: 'pending',
+    active_delivery_orders: 0,
+    posted_inventory_issues: 0,
+    trip_dispatch_items: 0,
+    delivery_attempts: 0,
+  });
+  assert.equal(result.ok, true);
+});
+
+test('delivery execution change is blocked after warehouse or delivery execution starts', () => {
+  const baseOrder = {
+    status: 'confirmed',
+    deliveryMode: 'DELIVERY',
+    deliveryExecutionMode: 'TRIP',
+    deliveryStatus: 'pending',
+    fulfillment: {
+      totals: {
+        allocatedBaseQuantity: '0',
+        pickedBaseQuantity: '0',
+        packedBaseQuantity: '0',
+        issuedBaseQuantity: '0',
+      },
+    },
+  };
+  const target = { deliveryMode: 'DELIVERY', deliveryExecutionMode: 'MANUAL' };
+  const cleanFacts = {
+    delivery_status: 'pending',
+    active_delivery_orders: 0,
+    posted_inventory_issues: 0,
+    trip_dispatch_items: 0,
+    delivery_attempts: 0,
+  };
+
+  const allocated = deliveryExecutionTransitionGuard({
+    ...baseOrder,
+    fulfillment: { totals: { ...baseOrder.fulfillment.totals, allocatedBaseQuantity: '1' } },
+  }, target, cleanFacts);
+  assert.equal(allocated.ok, false);
+  assert.equal(allocated.code, 'DELIVERY_EXECUTION_CHANGE_BLOCKED');
+
+  const deliveryOrder = deliveryExecutionTransitionGuard(baseOrder, target, {
+    ...cleanFacts,
+    active_delivery_orders: 1,
+  });
+  assert.equal(deliveryOrder.ok, false);
+  assert.equal(deliveryOrder.code, 'DELIVERY_EXECUTION_CHANGE_BLOCKED');
+});
+
+test('transition facts lock the Sales Order and inspect all irreversible delivery artifacts', async () => {
+  let capturedSql = '';
+  const client = {
+    async query(sql) {
+      capturedSql = sql;
+      return { rows: [{
+        delivery_status: 'pending',
+        active_delivery_orders: 0,
+        posted_inventory_issues: 0,
+        trip_dispatch_items: 0,
+        delivery_attempts: 0,
+      }] };
+    },
+  };
+  const facts = await getDeliveryExecutionTransitionFacts(client, {
+    installationId: 'installation-1',
+    salesOrderId: '11111111-1111-4111-8111-111111111111',
+  });
+  assert.equal(facts.delivery_status, 'pending');
+  assert.match(capturedSql, /FOR UPDATE OF orders/);
+  assert.match(capturedSql, /sales\.delivery_orders/);
+  assert.match(capturedSql, /sales\.delivery_order_inventory_issues/);
+  assert.match(capturedSql, /logistics\.trip_dispatch_items/);
+  assert.match(capturedSql, /logistics\.delivery_attempts/);
 });
 
 test('migration 089 backfills legacy delivery orders and guards trip assignment', () => {

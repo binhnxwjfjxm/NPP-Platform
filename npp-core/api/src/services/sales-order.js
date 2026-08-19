@@ -107,6 +107,78 @@ function manualQuickEditGuard(order) {
   return Object.freeze({ ok: true });
 }
 
+function deliveryExecutionLane(value) {
+  if (value?.deliveryMode === 'PICKUP') return 'PICKUP';
+  return fallbackExecutionMode(value?.deliveryMode, value?.deliveryExecutionMode);
+}
+
+function nonZeroQuantity(value) {
+  const normalized = String(value ?? '0').trim();
+  return !ZERO_DECIMAL_PATTERN.test(normalized || '0');
+}
+
+function deliveryExecutionTransitionGuard(order, targetVersion, facts) {
+  if (!order || order.status !== 'confirmed' || !targetVersion) {
+    return Object.freeze({ ok: true });
+  }
+  if (deliveryExecutionLane(order) === deliveryExecutionLane(targetVersion)) {
+    return Object.freeze({ ok: true });
+  }
+
+  const totals = order.fulfillment?.totals ?? {};
+  const warehouseExecutionStarted = [
+    totals.allocatedBaseQuantity,
+    totals.pickedBaseQuantity,
+    totals.packedBaseQuantity,
+    totals.issuedBaseQuantity,
+  ].some(nonZeroQuantity);
+  const deliveryArtifactsExist = Number(facts?.active_delivery_orders ?? 0) > 0
+    || Number(facts?.posted_inventory_issues ?? 0) > 0
+    || Number(facts?.trip_dispatch_items ?? 0) > 0
+    || Number(facts?.delivery_attempts ?? 0) > 0;
+  const deliveryStatusClean = ['pending', 'not_required'].includes(
+    String(facts?.delivery_status ?? order.deliveryStatus ?? 'pending'),
+  );
+
+  if (warehouseExecutionStarted || deliveryArtifactsExist || !deliveryStatusClean) {
+    return failure(
+      'DELIVERY_EXECUTION_CHANGE_BLOCKED',
+      'Đơn đã bắt đầu xử lý kho hoặc giao hàng. Hãy hoàn tất hoặc hủy phần xử lý đang mở trước khi đổi cách giao.',
+      false,
+      {
+        from: deliveryExecutionLane(order),
+        to: deliveryExecutionLane(targetVersion),
+      },
+    );
+  }
+  return Object.freeze({ ok: true });
+}
+
+async function guardDeliveryExecutionTransition(client, {
+  requestContext,
+  salesOrder,
+  targetVersion,
+}) {
+  if (!salesOrder || salesOrder.status !== 'confirmed' || !targetVersion) {
+    return Object.freeze({ ok: true });
+  }
+  if (deliveryExecutionLane(salesOrder) === deliveryExecutionLane(targetVersion)) {
+    return Object.freeze({ ok: true });
+  }
+  const facts = await deliveryExecutionRepository.getDeliveryExecutionTransitionFacts(client, {
+    installationId: requestContext.installationId,
+    salesOrderId: salesOrder.id,
+  });
+  if (!facts) {
+    return failure(
+      'DELIVERY_EXECUTION_STATE_UNAVAILABLE',
+      'Không xác định được tình trạng xử lý giao hàng của đơn. Hãy tải lại rồi thử lại.',
+      true,
+    );
+  }
+  return deliveryExecutionTransitionGuard(salesOrder, targetVersion, facts);
+}
+
 function sourceEmployeeContext(requestContext, payload) {
   const sourceType = String(payload?.sourceType ?? 'MANUAL').trim().toUpperCase();
   if (sourceType !== 'MCP') return { ok: true, employeeId: null };
@@ -791,7 +863,7 @@ export async function confirmSalesOrder(client, {
   versionNumber,
   idempotencyKey,
 }) {
-  const existing = await legacy.getSalesOrder(client, { requestContext, id });
+  const existing = await getSalesOrder(client, { requestContext, id });
   if (!existing.ok) return existing;
   const draft = existing.salesOrder.versions?.find((version) => version.status === 'draft');
   const resolvedVersion = Number(
@@ -799,6 +871,15 @@ export async function confirmSalesOrder(client, {
       ?? draft?.versionNumber
       ?? existing.salesOrder.currentVersionNumber,
   );
+  const targetVersion = existing.salesOrder.versions?.find(
+    (version) => Number(version.versionNumber) === resolvedVersion,
+  );
+  const transition = await guardDeliveryExecutionTransition(client, {
+    requestContext,
+    salesOrder: existing.salesOrder,
+    targetVersion,
+  });
+  if (!transition.ok) return transition;
   const verified = await verifyDraftPricing(client, {
     requestContext,
     id,
@@ -837,4 +918,6 @@ export const salesOrderDeliveryExecutionInternals = Object.freeze({
   fallbackExecutionMode,
   mergeDetailedOrder,
   manualQuickEditGuard,
+  deliveryExecutionLane,
+  deliveryExecutionTransitionGuard,
 });

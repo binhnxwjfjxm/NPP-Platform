@@ -52,3 +52,53 @@ export async function listCurrentDeliveryExecutionModes(client, {
   );
   return result.rows;
 }
+
+export async function getDeliveryExecutionTransitionFacts(client, {
+  installationId,
+  salesOrderId,
+}) {
+  const result = await client.query(
+    `SELECT orders.delivery_status,
+            (
+              SELECT count(*)::int
+                FROM sales.delivery_orders delivery_order
+               WHERE delivery_order.installation_id = orders.installation_id
+                 AND delivery_order.sales_order_id = orders.id
+                 AND delivery_order.status <> 'cancelled'
+            ) AS active_delivery_orders,
+            (
+              SELECT count(*)::int
+                FROM sales.delivery_order_inventory_issues issue
+                JOIN sales.delivery_orders delivery_order
+                  ON delivery_order.installation_id = issue.installation_id
+                 AND delivery_order.id = issue.delivery_order_id
+               WHERE delivery_order.installation_id = orders.installation_id
+                 AND delivery_order.sales_order_id = orders.id
+                 AND issue.status = 'POSTED'
+            ) AS posted_inventory_issues,
+            (
+              SELECT count(*)::int
+                FROM logistics.trip_dispatch_items dispatch_item
+                JOIN sales.delivery_orders delivery_order
+                  ON delivery_order.installation_id = dispatch_item.installation_id
+                 AND delivery_order.id = dispatch_item.delivery_order_id
+               WHERE delivery_order.installation_id = orders.installation_id
+                 AND delivery_order.sales_order_id = orders.id
+            ) AS trip_dispatch_items,
+            (
+              SELECT count(*)::int
+                FROM logistics.delivery_attempts attempt
+                JOIN sales.delivery_orders delivery_order
+                  ON delivery_order.installation_id = attempt.installation_id
+                 AND delivery_order.id = attempt.delivery_order_id
+               WHERE delivery_order.installation_id = orders.installation_id
+                 AND delivery_order.sales_order_id = orders.id
+            ) AS delivery_attempts
+       FROM sales.sales_orders orders
+      WHERE orders.installation_id = $1
+        AND orders.id = $2::uuid
+      FOR UPDATE OF orders`,
+    [installationId, salesOrderId],
+  );
+  return result.rows[0] ?? null;
+}
