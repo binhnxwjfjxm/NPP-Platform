@@ -12,6 +12,7 @@ import {
   formatPurchaseOrderAmount,
 } from '../../../lib/purchase-order-types';
 import { formatDecimalForInput } from '../../../lib/purchase-order-line-entry';
+import { MIN_PRODUCT_SEARCH_LENGTH } from '../../../lib/product-search-contract';
 import styles from './purchase-prices.module.css';
 
 type ApiEnvelope<T> = {
@@ -151,7 +152,7 @@ export default function PurchasePriceWorkspace() {
 
   useEffect(() => {
     const term = skuTerm.trim();
-    if (!editor || term.length < 2 || selectedSku?.sku === term) {
+    if (!editor || term.length < MIN_PRODUCT_SEARCH_LENGTH || selectedSku?.sku === term) {
       setSkuResults([]);
       return undefined;
     }
