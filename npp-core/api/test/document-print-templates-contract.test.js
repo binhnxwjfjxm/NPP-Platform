@@ -7,7 +7,7 @@ import { DOCUMENT_PRINT_TEMPLATE_CATALOG, documentPrintTemplateInternals } from 
 
 const route = readFileSync(new URL('../src/routes/document-print-templates.js', import.meta.url), 'utf8');
 
-test('print template migration is registered once with installation scope and canonical permissions', () => {
+test('print template migration is registered once with installation scope and compatibility permissions', () => {
   const migration = CORE_API_MIGRATIONS.find((entry) => entry.id === '098_document_print_template_settings');
   assert.ok(migration);
   assert.match(migration.sql, /shared\.document_print_template_settings/);
@@ -33,9 +33,11 @@ test('print template catalog owns the defaults for sales, purchasing and operati
   assert.equal(documentPrintTemplateInternals.normalizePayload(sales, { resetToDefault: true, expectedUpdatedAt: 'not-a-date' }).code, 'INVALID_TEMPLATE_VERSION');
 });
 
-test('print template writes are authorized, idempotent and audited at the Core boundary', () => {
-  assert.match(route, /corePrintTemplateRead/);
+test('printing reads template configuration without a second print permission while configuration stays controlled', () => {
+  assert.doesNotMatch(route, /corePrintTemplateRead/);
   assert.match(route, /corePrintTemplateManage/);
+  assert.match(route, /system:security-owner/);
+  assert.match(route, /system:implementation-owner/);
   assert.match(route, /Cần có mã nhận diện yêu cầu \(Idempotency-Key\)/);
   assert.match(route, /executeRequestWithIdempotency/);
   assert.match(route, /withAuditOutboxTransaction/);
