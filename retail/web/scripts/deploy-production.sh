@@ -96,7 +96,7 @@ smoke_url="https://$RETAIL_DOMAIN"
 domain_ready=false
 for attempt in $(seq 1 12); do
   page="${RUNNER_TEMP}/retail-home.html"
-  code="$(curl --silent --show-error --connect-timeout 5 --max-time 15 \
+  code="$(curl --silent --show-error --location --connect-timeout 5 --max-time 15 \
     -H 'Accept: text/html' --output "$page" --write-out '%{http_code}' "$smoke_url/" || true)"
   health="$(curl --silent --show-error --connect-timeout 5 --max-time 15 \
     --output /dev/null --write-out '%{http_code}' "$smoke_url/api/health" || true)"
