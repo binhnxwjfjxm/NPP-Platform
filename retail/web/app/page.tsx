@@ -15,9 +15,12 @@ type Availability = { variantId: string; availabilityStatus: 'AVAILABLE' | 'UNAV
 type Bootstrap = { settings: Settings; warehouses: Warehouse[]; customers: Customer[]; categories: Category[]; orders: Order[] };
 type PricePreview = { finalUnitPriceMinor: string; lineTotalMinor: string; resolutionFingerprint?: string; channelCode?: string };
 type CachedPricePreview = PricePreview & { inputKey: string };
-type RetailTab = 'entry' | 'orders';
+type RetailTab = 'home' | 'entry' | 'orders' | 'account';
 type OrderFilter = 'all' | 'draft' | 'confirmed' | 'issued' | 'closed' | 'cancelled';
 type PaymentMethod = 'CASH' | 'BANK_TRANSFER';
+type PrintPaper = 'A4' | 'A5' | '80mm' | '58mm';
+type PrintTemplate = { documentType: string; templateCode: string; name: string; pageSize: 'A4' | 'A5'; visibleFieldKeys: string[]; fields: { key: string; label: string; defaultSelected: boolean }[]; isCustomized: boolean; updatedAt: string | null };
+type ApiErrorShape = { code?: string; message?: string; retryable?: boolean; details?: Record<string, unknown> };
 
 declare global {
   interface Window {
@@ -25,16 +28,33 @@ declare global {
   }
 }
 
+class RetailApiError extends Error {
+  readonly code: string;
+  readonly retryable: boolean;
+  readonly details: Record<string, unknown>;
+  readonly status: number;
+
+  constructor(error: ApiErrorShape | undefined, status: number) {
+    super(error?.message ?? 'Không thể thực hiện thao tác');
+    this.name = 'RetailApiError';
+    this.code = error?.code ?? 'RETAIL_REQUEST_FAILED';
+    this.retryable = error?.retryable === true;
+    this.details = error?.details ?? {};
+    this.status = status;
+  }
+}
+
 const money = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 });
 const PRODUCT_IMAGE_BASE = 'https://pub-7d2987fab97d4e3ebb2021a823973862.r2.dev/app-customer/products';
-const STOCK_ISSUED_FULFILLMENT_STATUSES = new Set(['partially_issued', 'issued', 'partially_fulfilled', 'fulfilled']);
+const STOCK_ISSUED_FULFILMENT_STATUSES = new Set(['partially_issued', 'issued', 'partially_fulfilled', 'fulfilled']);
+const STOCK_ISSUED_FULFILLMENT_STATUSES = STOCK_ISSUED_FULFILMENT_STATUSES;
 const linesOf = (order: Order | null) => order?.versions?.find((item) => item.versionNumber === order.currentVersionNumber)?.lines ?? order?.versions?.find((item) => item.status === 'draft')?.lines ?? order?.versions?.[0]?.lines ?? [];
 const cartFromOrder = (order: Order): CartLine[] => linesOf(order).map((line) => ({ id: line.variantId, productCode: line.sku, imageKey: null, productName: line.itemName, sku: line.sku, unitCode: line.unitCode, allowsFractional: null, quantity: line.quantity, taxMode: line.taxMode, taxRate: line.taxRate }));
 
 async function api<T>(path: string, init?: RequestInit) {
   const response = await fetch(path, { cache: 'no-store', ...init, headers: { Accept: 'application/json', ...(init?.headers ?? {}) } });
-  const payload = await response.json().catch(() => null) as { data?: T; error?: { message?: string } } | null;
-  if (!response.ok || payload?.error) throw new Error(payload?.error?.message ?? 'Không thể thực hiện thao tác');
+  const payload = await response.json().catch(() => null) as { data?: T; error?: ApiErrorShape } | null;
+  if (!response.ok || payload?.error) throw new RetailApiError(payload?.error, response.status);
   return payload?.data as T;
 }
 
@@ -56,7 +76,8 @@ function orderLabel(order: Order) {
   return 'Đang lập';
 }
 
-function availabilityLabel(row: Availability | undefined) {
+function availabilityLabel(row: Availability | undefined, loading = false) {
+  if (loading) return 'Đang tính';
   if (row?.availabilityStatus === 'NOT_APPLICABLE') return 'Không áp dụng';
   if (row?.availabilityStatus === 'UNAVAILABLE') return 'Chưa khả dụng';
   return row?.availableQuantity ?? 'Đang tải';
@@ -76,12 +97,28 @@ function dateLabel(value?: string) {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
 }
 
+function errorMessage(reason: unknown, fallback: string) {
+  return reason instanceof Error ? reason.message : fallback;
+}
+
+function isRevisionConflict(reason: unknown) {
+  if (!(reason instanceof RetailApiError)) return false;
+  return reason.code.includes('CONFLICT') || typeof reason.details.currentRevision === 'string';
+}
+
+function paperPageRule(paper: PrintPaper) {
+  if (paper === '80mm') return '80mm auto';
+  if (paper === '58mm') return '58mm auto';
+  return paper;
+}
+
 export default function RetailHomePage() {
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [order, setOrder] = useState<Order | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [available, setAvailable] = useState<Availability[]>([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
@@ -97,16 +134,20 @@ export default function RetailHomePage() {
   const [payment, setPayment] = useState(false);
   const [paid, setPaid] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
-  const [activeTab, setActiveTab] = useState<RetailTab>('entry');
+  const [activeTab, setActiveTab] = useState<RetailTab>('home');
   const [orderFilter, setOrderFilter] = useState<OrderFilter>('all');
   const [editPickup, setEditPickup] = useState(false);
   const [prices, setPrices] = useState<Record<string, CachedPricePreview>>({});
   const [lineImages, setLineImages] = useState<Record<string, string>>({});
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerMessage, setScannerMessage] = useState<string | null>(null);
+  const [printTemplate, setPrintTemplate] = useState<PrintTemplate | null>(null);
+  const [printOpen, setPrintOpen] = useState(false);
+  const [printPaper, setPrintPaper] = useState<PrintPaper>('A4');
   const filterTabs = useRef<HTMLDivElement>(null);
   const [marker, setMarker] = useState({ left: 0, width: 0 });
   const keys = useRef(new Map<string, string>());
+  const operationKeys = useRef(new Map<string, string>());
   const lastDraftFingerprint = useRef('');
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -118,6 +159,19 @@ export default function RetailHomePage() {
     keys.current.set(slot, next);
     return next;
   }, [order?.id, order?.revision]);
+
+  const operationKeyFor = useCallback((action: string, intent = 'default') => {
+    const slot = `${action}:${order?.id ?? 'new'}:${intent}`;
+    const existing = operationKeys.current.get(slot);
+    if (existing) return existing;
+    const next = createIdempotencyKey(`retail-${action}`);
+    operationKeys.current.set(slot, next);
+    return next;
+  }, [order?.id]);
+
+  const forgetOperationKey = useCallback((action: string, intent = 'default') => {
+    operationKeys.current.delete(`${action}:${order?.id ?? 'new'}:${intent}`);
+  }, [order?.id]);
 
   const refreshOrders = useCallback(async () => {
     const list = await api<Order[]>('/api/retail/orders?limit=100&offset=0');
@@ -219,9 +273,27 @@ export default function RetailHomePage() {
   }, [cart, customerId, customerMode, editPickup, keyFor, order, policy, prices, refreshOrders, warehouseId]);
 
   useEffect(() => {
-    if (!order?.id || ['closed', 'cancelled'].includes(order.status)) return;
+    if (!order?.id || ['closed', 'cancelled'].includes(order.status) || editPickup) return;
     void api<Availability[]>(`/api/retail/orders/${order.id}/availability`).then(setAvailable).catch((reason: Error) => setError(reason.message));
-  }, [order?.id, order?.revision, order?.status]);
+  }, [editPickup, order?.id, order?.revision, order?.status]);
+
+  useEffect(() => {
+    if (!editPickup || !order?.id || !warehouseId || !cart.length) return;
+    const controller = new AbortController();
+    setAvailabilityLoading(true);
+    setAvailable([]);
+    const timer = window.setTimeout(() => {
+      void api<Availability[]>('/api/retail/availability', {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ salesOrderId: order.id, warehouseId, variantIds: cart.map((line) => line.id) }),
+      }).then(setAvailable)
+        .catch((reason: unknown) => { if (!controller.signal.aborted) setError(errorMessage(reason, 'Chưa thể tính Khả dụng.')); })
+        .finally(() => { if (!controller.signal.aborted) setAvailabilityLoading(false); });
+    }, 220);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [cart, editPickup, order?.id, warehouseId]);
 
   useEffect(() => {
     const lines = linesOf(order);
@@ -305,6 +377,7 @@ export default function RetailHomePage() {
     if (orderFilter === 'confirmed') return item.status === 'confirmed' && !STOCK_ISSUED_FULFILLMENT_STATUSES.has(item.fulfillmentStatus);
     return item.status === orderFilter;
   });
+  const visiblePrintFields = new Set(printTemplate?.visibleFieldKeys ?? []);
 
   function updateCartQuantity(id: string, value: string, fractional: boolean | null) {
     lastDraftFingerprint.current = '';
@@ -357,25 +430,68 @@ export default function RetailHomePage() {
     if (!order || !editPickup) return;
     setBusy('save'); setError(null);
     try {
-      const next = await api<Order>(`/api/retail/orders/${order.id}/pickup-edit`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyFor('pickup-edit', JSON.stringify(cart.map((line) => [line.id, line.quantity]))) }, body: JSON.stringify(orderPayload(order.revision)) });
-      setOrder(next); setCart([]); setPrices({}); setEditPickup(false); setNotice('Đã lưu thay đổi đơn và giữ nguyên trạng thái Đã chốt.');
+      const fingerprint = JSON.stringify(cart.map((line) => [line.id, line.quantity]));
+      const next = await api<Order>(`/api/retail/orders/${order.id}/pickup-edit`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyFor('pickup-edit', fingerprint) },
+        body: JSON.stringify(orderPayload(order.revision)),
+      });
+      setOrder(next);
+      setCart([]);
+      setPrices({});
+      setEditPickup(false);
+      setNotice('Đã lưu thay đổi đơn và giữ nguyên trạng thái Đã chốt.');
+      void api<Order>(`/api/retail/orders/${next.id}`).then(setOrder).catch(() => undefined);
       void refreshOrders().catch(() => undefined);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Chưa thể lưu đơn.'); }
-    finally { setBusy(null); }
+    } catch (reason) {
+      if (isRevisionConflict(reason)) {
+        void api<Order>(`/api/retail/orders/${order.id}`).then((next) => {
+          setOrder(next);
+          setCart(cartFromOrder(next));
+          setNotice('Đơn vừa thay đổi ở nơi khác. Đã nạp dữ liệu mới nhất để anh kiểm tra lại.');
+        }).catch(() => undefined);
+      }
+      setError(errorMessage(reason, 'Chưa thể lưu đơn.'));
+    } finally { setBusy(null); }
   }
 
   async function action(kind: 'confirm' | 'issue-stock' | 'complete') {
     if (!order) return;
     setBusy(kind); setError(null);
     try {
-      const body = kind === 'confirm' ? {} : { expectedRevision: order.revision };
-      const next = await api<Order>(`/api/retail/orders/${order.id}/${kind}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyFor(kind) }, body: JSON.stringify(body) });
+      let source = order;
+      let idempotencyKey = keyFor(kind);
+      if (kind === 'issue-stock') {
+        idempotencyKey = operationKeyFor('issue-stock', 'current-order');
+        const latest = await api<Order>(`/api/retail/orders/${order.id}`);
+        setOrder(latest);
+        if (latest.revision !== order.revision) {
+          setNotice('Đơn vừa có thay đổi mới. Đã đồng bộ dữ liệu; kiểm tra lại rồi bấm Xuất kho.');
+          return;
+        }
+        source = latest;
+      }
+      const body = kind === 'confirm' ? {} : { expectedRevision: source.revision };
+      const next = await api<Order>(`/api/retail/orders/${source.id}/${kind}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify(body),
+      });
       setOrder(next);
       if (kind === 'confirm') setCart([]);
+      if (kind === 'issue-stock') forgetOperationKey('issue-stock', 'current-order');
       setNotice(kind === 'confirm' ? 'Đơn đã được chốt.' : kind === 'issue-stock' ? 'Đã xuất kho.' : 'Đơn đã hoàn thành.');
       void refreshOrders().catch(() => undefined);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Chưa thể thực hiện thao tác.'); }
-    finally { setBusy(null); }
+    } catch (reason) {
+      if (kind === 'issue-stock' && isRevisionConflict(reason)) {
+        forgetOperationKey('issue-stock', 'current-order');
+        void api<Order>(`/api/retail/orders/${order.id}`).then((next) => {
+          setOrder(next);
+          setNotice('Đơn vừa thay đổi. Đã nạp dữ liệu mới nhất; kiểm tra lại rồi bấm Xuất kho.');
+        }).catch(() => undefined);
+      }
+      setError(errorMessage(reason, 'Chưa thể thực hiện thao tác.'));
+    } finally { setBusy(null); }
   }
 
   async function settle(amount = paid) {
@@ -387,7 +503,7 @@ export default function RetailHomePage() {
       const next = await api<Order>(`/api/retail/orders/${order.id}/settlement`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keyFor('settlement', `${normalizedAmount}-${paymentMethod}`) }, body: JSON.stringify({ expectedRevision: order.revision, paidAmount: normalizedAmount, ...(debtOnly ? {} : { paymentMethod }) }) });
       setOrder(next); setPayment(false); setNotice(debtOnly ? 'Đã ghi nhận nợ.' : 'Đã ghi nhận tiền thu và cập nhật công nợ.');
       void refreshOrders().catch(() => undefined);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Chưa thể ghi nhận thanh toán.'); }
+    } catch (reason) { setError(errorMessage(reason, 'Chưa thể ghi nhận thanh toán.')); }
     finally { setBusy(null); }
   }
 
@@ -396,59 +512,8 @@ export default function RetailHomePage() {
     try {
       const next = await api<Order>(`/api/retail/orders/${id}`);
       setOrder(next); setCustomerMode(next.customerMode); setCustomerId(next.customerId); setWarehouseId(next.warehouseId); setPolicy(next.collectionPolicy); setCart(next.status === 'draft' ? cartFromOrder(next) : []); setEditPickup(false); setActiveTab('entry'); lastDraftFingerprint.current = '';
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Không thể tải đơn.'); }
+    } catch (reason) { setError(errorMessage(reason, 'Không thể tải đơn.')); }
   }
 
-  function beginPickupEdit() {
-    if (!order) return;
-    setCart(cartFromOrder(order));
-    setCustomerMode(order.customerMode);
-    setCustomerId(order.customerId);
-    setWarehouseId(order.warehouseId);
-    setPolicy(order.collectionPolicy);
-    setEditPickup(true);
-    setNotice('Có thể sửa đơn đến trước khi xuất kho.');
-  }
-
-  function resetEntry() {
-    setOrder(null); setCart([]); setPrices({}); setEditPickup(false); setAvailable([]); setNotice(null); setError(null); setActiveTab('entry'); lastDraftFingerprint.current = '';
-  }
-
-  const productPicture = (imageKey: string | undefined, label: string) => imageKey
-    ? <img className="product-photo" src={productImage(imageKey)} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
-    : <span className="product-symbol product-symbol-large" aria-hidden="true">{label.slice(0, 1)}</span>;
-
-  return (
-    <main className="retail-shell retail-lot7">
-      <header className="retail-header retail-topbar">
-        <button className="round-icon" type="button" aria-label="Quay lại" onClick={() => activeTab === 'orders' ? setActiveTab('entry') : window.history.back()}>‹</button>
-        <div className="retail-title"><p className="brand-kicker">HƯNG PHÁT</p><h1>{activeTab === 'orders' ? 'Đơn hàng' : order ? 'Chi tiết đơn' : 'Lên đơn'}</h1></div>
-        <button className="round-icon scanner-button" type="button" aria-label="Quét mã sản phẩm" onClick={() => { setOpen(true); setScannerMessage(null); setScannerOpen(true); }}>⌗</button>
-      </header>
-      {error ? <p className="notice error" role="alert">{error}</p> : null}{notice ? <p className="notice" role="status">{notice}</p> : null}
-
-      {activeTab === 'orders' ? <section className="orders-workspace" aria-label="Đơn Giao tại quầy">
-        <header className="orders-heading"><div><p className="section-kicker">GIAO TẠI QUẦY</p><h2>Đơn đã lập</h2></div><button className="text-action" type="button" onClick={() => void refreshOrders()}>Tải lại</button></header>
-        <div className="status-filter" role="tablist" aria-label="Lọc trạng thái đơn">{([{ id: 'all', label: 'Tất cả' }, { id: 'draft', label: 'Đang lập' }, { id: 'confirmed', label: 'Đã chốt' }, { id: 'issued', label: 'Đã xuất kho' }, { id: 'closed', label: 'Hoàn thành' }, { id: 'cancelled', label: 'Đã hủy' }] as { id: OrderFilter; label: string }[]).map((item) => <button type="button" role="tab" aria-selected={orderFilter === item.id} className={orderFilter === item.id ? 'active' : ''} key={item.id} onClick={() => setOrderFilter(item.id)}>{item.label}</button>)}</div>
-        <div className="order-history">{filteredOrders.map((item) => <button className="history-row" type="button" key={item.id} onClick={() => void openOrder(item.id)}><span className="history-icon">▤</span><span><strong>{item.number ?? 'Đơn nháp'}</strong><small>{item.customerName} · {item.warehouseName}</small><em>{dateLabel(item.updatedAt)}</em></span><b>{orderLabel(item)} ›</b></button>)}{filteredOrders.length === 0 ? <p className="empty-cart">Chưa có đơn phù hợp.</p> : null}</div>
-      </section> : <>
-        <section className="order-card retail-order-card">
-          {order ? <div className="order-identity"><span className="order-document" aria-hidden="true">▤</span><div><p className="section-kicker">ĐƠN BÁN HÀNG</p><h2>{order.number ?? 'Đơn đang lập'}</h2><p>{orderLabel(order)} · {dateLabel(order.updatedAt)}</p></div><div className="order-badges"><span className="mode-pill">{order.salesChannelName ?? order.salesChannelCode ?? 'Retail'}</span><span className="mode-pill">Giao tại quầy</span></div></div> : null}
-          {order && order.status !== 'cancelled' ? <ol className="order-timeline" aria-label="Tiến trình đơn hàng">{['Lên đơn', 'Đã chốt', 'Xuất kho', 'Hoàn thành'].map((step, index) => <li className={index <= stage ? 'complete' : ''} key={step}><span>{index < stage ? '✓' : index + 1}</span><strong>{step}</strong></li>)}</ol> : null}
-          {editable ? <div className="order-fields order-choice-cards compact-choice-cards"><label><span>Khách hàng</span><select value={customerMode} onChange={(event) => { lastDraftFingerprint.current = ''; setCustomerMode(event.target.value as 'WALK_IN' | 'EXISTING'); }}><option value="WALK_IN">Khách lẻ</option><option value="EXISTING">Khách hàng Công Ty</option></select></label><label><span>Kho bán</span><select value={warehouseId} onChange={(event) => { lastDraftFingerprint.current = ''; setWarehouseId(event.target.value); }}><option value="">Chọn kho</option>{boot?.warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></label>{customerMode === 'EXISTING' ? <label className="wide-choice"><span>Chọn khách hàng</span><select value={customerId} onChange={(event) => { lastDraftFingerprint.current = ''; setCustomerId(event.target.value); }}><option value="">Chọn khách hàng</option>{boot?.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.code} · {customer.name}</option>)}</select></label> : null}</div> : <div className="order-facts"><span>Khách hàng <strong>{order?.customerName}</strong></span><span>Kho bán <strong>{order?.warehouseName}</strong></span></div>}
-          {editable ? <button className="choose-products" type="button" onClick={() => setOpen(true)}><span aria-hidden="true">＋</span><strong>Chọn sản phẩm</strong><b aria-hidden="true">›</b></button> : null}
-          {editPickup ? <p className="edit-hint">Đơn đang được điều chỉnh. Lưu thay đổi sẽ tạo bản điều chỉnh và giữ trạng thái Đã chốt.</p> : null}
-          <div className="cart-list" aria-live="polite">{order && !editingDraft ? lineItems.map((line) => <article className="cart-row cart-row-saved compact-product-card" key={line.id}>{productPicture(lineImages[line.variantId], line.itemName)}<div className="line-main"><strong>{line.itemName}</strong><span>SKU: {line.sku}</span><em>{line.unitCode}</em><small>Khả dụng {availabilityLabel(byVariant.get(line.variantId))}</small></div><dl><div><dt>SL</dt><dd>{line.quantity}</dd></div><div><dt>Đơn giá</dt><dd>{money.format(Number(line.unitPrice))}</dd></div><div><dt>Thành tiền</dt><dd>{money.format(Number(line.lineTotal))}</dd></div></dl></article>) : cart.map((line) => <article className="cart-row editable compact-product-card" key={line.id}>{productPicture(line.imageKey ?? line.productCode, line.productName)}<div className="line-main"><strong>{line.productName}</strong><span>SKU: {line.sku}</span><em>{line.unitCode}</em><small>Khả dụng {order ? availabilityLabel(byVariant.get(line.id)) : 'Đang chuẩn bị'}</small></div><div className="quantity-stepper" aria-label={`Số lượng ${line.productName}`}><button type="button" onClick={() => updateCartQuantity(line.id, String(Number(line.quantity) - 1), line.allowsFractional)}>−</button><input inputMode="decimal" aria-label={`Nhập số lượng ${line.productName}`} value={line.quantity} onChange={(event) => updateCartQuantity(line.id, event.target.value, line.allowsFractional)} /><button type="button" onClick={() => updateCartQuantity(line.id, String(Number(line.quantity) + 1), line.allowsFractional)}>+</button></div><dl><div><dt>Đơn giá</dt><dd>{prices[line.id]?.inputKey === priceInputKey(line.id, line.quantity) ? money.format(Number(prices[line.id].finalUnitPriceMinor)) : 'Đang tính'}</dd></div><div><dt>Thành tiền</dt><dd>{prices[line.id]?.inputKey === priceInputKey(line.id, line.quantity) ? money.format(Number(prices[line.id].lineTotalMinor)) : '—'}</dd></div></dl><button className="remove-line" type="button" onClick={() => { lastDraftFingerprint.current = ''; setCart((rows) => rows.filter((row) => row.id !== line.id)); }} aria-label={`Xóa ${line.productName}`}>⌫</button></article>)}{(!order || editingDraft) && !cart.length ? <p className="empty-cart">Chưa có sản phẩm. Chọn nhiều sản phẩm rồi thêm vào đơn trong một lần.</p> : null}</div>
-          <footer className="order-total lot7-total"><div><span>Tạm tính</span><strong>{totalLabel}</strong></div><div><span>Giảm giá</span><strong>0 ₫</strong></div><div className="grand-total"><span>Tổng cộng</span><strong>{totalLabel}</strong></div></footer>
-        </section>
-        <section className="order-action-bar" aria-label="Thao tác đơn">{editPickup ? <button className="secondary-action" type="button" disabled={busy !== null} onClick={() => void savePickupEdit()}>{busy === 'save' ? 'Đang lưu…' : 'Lưu thay đổi'}</button> : null}{order ? <><button className="secondary-action" type="button" onClick={() => { window.print(); setNotice('Đã mở bản in. Việc in không thay đổi trạng thái đơn.'); }}>▣ In phiếu</button>{canEditPickup && !editPickup ? <button className="secondary-action" type="button" disabled={busy !== null} onClick={beginPickupEdit}>✎ Sửa đơn</button> : null}{order.status === 'draft' ? <button className="primary-action" disabled={busy !== null || !cart.length} onClick={() => void action('confirm')}>✓ Chốt đơn</button> : null}{order.status === 'confirmed' && !STOCK_ISSUED_FULFILLMENT_STATUSES.has(order.fulfillmentStatus) ? <button className="primary-action" disabled={busy !== null} onClick={() => void action('issue-stock')}>⌑ Xuất kho</button> : null}{order.status === 'confirmed' && STOCK_ISSUED_FULFILLMENT_STATUSES.has(order.fulfillmentStatus) ? <button className="primary-action" disabled={busy !== null} onClick={() => void action('complete')}>✓ Hoàn thành</button> : null}{order.status === 'closed' && order.settlementStatus !== 'paid' ? <button className="primary-action" disabled={busy !== null} onClick={() => { setPaid(order.receivableRemainingAmount ?? order.total); setPayment(true); }}>₫ Thu tiền / Nợ</button> : null}</> : cart.length ? <button className="primary-action" type="button" disabled>Đang chuẩn bị đơn…</button> : null}</section>
-      </>}
-
-      <nav className="bottom-nav" aria-label="Điều hướng Retail"><button type="button" className={activeTab === 'entry' ? 'active' : ''} onClick={() => setActiveTab('entry')}><span>＋</span>Lên đơn</button><button type="button" className={activeTab === 'orders' ? 'active' : ''} onClick={() => setActiveTab('orders')}><span>▤</span>Đơn hàng</button>{order ? <button type="button" className="nav-new" onClick={resetEntry}><span>＋</span>Đơn mới</button> : null}</nav>
-
-      {open ? <section className="product-sheet sheet-enter" role="dialog" aria-modal="true" aria-label="Chọn sản phẩm"><header className="sheet-header"><button className="round-icon" type="button" onClick={() => setOpen(false)} aria-label="Đóng">‹</button><div><h2>Chọn sản phẩm</h2></div><button className="round-icon scanner-button" type="button" aria-label="Quét mã sản phẩm" onClick={() => { setScannerMessage(null); setScannerOpen(true); }}>⌗</button></header><div className="search-box"><span aria-hidden="true">⌕</span><input className="product-search" autoFocus placeholder="Tìm tên, SKU, quy cách" value={search} onChange={(event) => setSearch(event.target.value)} /></div><div className="filter-tabs" ref={filterTabs} role="tablist" aria-label="Nhóm sản phẩm"><span className="filter-highlight" aria-hidden="true" style={{ transform: `translateX(${marker.left}px)`, width: marker.width }} />{[{ id: '', name: 'Tất cả' }, ...(boot?.categories ?? [])].map((category) => <button key={category.id || 'all'} className={categoryId === category.id ? 'active' : ''} type="button" role="tab" aria-selected={categoryId === category.id} onClick={() => setCategoryId(category.id)}>{category.name}</button>)}</div><div className="product-list">{products.map((product) => { const row = selected.get(product.id); const preview = prices[product.id]; const expectedKey = priceInputKey(product.id, row?.quantity ?? '1'); const price = preview?.inputKey === expectedKey ? preview : null; return <article className={`product-row lot7-product-row ${row ? 'selected' : ''}`} key={product.id}>{productPicture(product.imageKey ?? product.productCode, product.productName)}<div className="product-copy"><strong>{product.productName}</strong><small>SKU: {product.sku}</small><em>{product.unitCode}</em><b>{price ? money.format(Number(price.finalUnitPriceMinor)) : 'Đang tính giá'}</b></div>{row ? <div className="quantity-stepper"><button type="button" aria-label={`Giảm ${product.productName}`} onClick={() => adjustSelected(product, -1)}>−</button><output aria-label={`Số lượng tạm ${product.productName}`}>{row.quantity}</output><button type="button" aria-label={`Tăng ${product.productName}`} onClick={() => adjustSelected(product, 1)}>+</button></div> : <button className="add-product" type="button" aria-label={`Thêm ${product.productName}`} onClick={() => toggleProduct(product)}>+</button>}</article>; })}</div><button className="sheet-submit primary-action" type="button" disabled={!selected.size} onClick={addSelected}><span className="selection-count">{selected.size}</span> Thêm {selected.size} sản phẩm vào đơn <b aria-hidden="true">›</b></button></section> : null}
-      {scannerOpen ? <section className="dialog-backdrop" role="dialog" aria-modal="true" aria-label="Quét mã sản phẩm"><div className="scanner-dialog sheet-enter"><header><div><p className="section-kicker">QUÉT MÃ</p><h2>Đưa mã vào khung hình</h2></div><button className="text-action" type="button" onClick={() => setScannerOpen(false)}>Đóng</button></header>{scannerMessage ? <p className="notice error">{scannerMessage}</p> : <video className="scanner-video" ref={videoRef} autoPlay muted playsInline />}</div></section> : null}
-      {payment ? <section className="dialog-backdrop payment-screen" role="dialog" aria-modal="true" aria-label="Thu tiền"><div className="payment-dialog sheet-enter lot7-payment"><header><button className="round-icon" type="button" onClick={() => setPayment(false)} aria-label="Quay lại">‹</button><div><p className="section-kicker">THANH TOÁN</p><h2>Thu tiền / Nợ</h2></div><span /></header><div className="payment-summary"><span>Tổng thanh toán</span><strong>{money.format(Number(order?.receivableRemainingAmount ?? total))}</strong><div className="payment-balance"><span>Đã thu</span><b>{money.format(Math.max(0, total - Number(order?.receivableRemainingAmount ?? total)))}</b><span>Còn lại</span><b>{money.format(Number(order?.receivableRemainingAmount ?? total))}</b></div></div><div className="payment-methods"><button type="button" className={paymentMethod === 'CASH' ? 'active' : ''} onClick={() => setPaymentMethod('CASH')}>Tiền mặt</button><button type="button" className={paymentMethod === 'BANK_TRANSFER' ? 'active' : ''} onClick={() => setPaymentMethod('BANK_TRANSFER')}>Chuyển khoản</button></div><label>Nhập số tiền nhận<input inputMode="numeric" value={paid} onChange={(event) => setPaid(event.target.value)} /></label><div className="payment-presets">{[100000, Number(order?.receivableRemainingAmount ?? total), 150000, 200000].filter((value, index, values) => value > 0 && values.indexOf(value) === index).map((value) => <button type="button" key={value} onClick={() => setPaid(String(value))}>{money.format(value)}</button>)}</div><button className="debt-action" type="button" disabled={busy === 'settlement'} onClick={() => { setPaid('0'); void settle('0'); }}><span>Còn nợ</span><strong>{money.format(Number(order?.receivableRemainingAmount ?? total))}</strong><b>›</b></button><div className="payment-footer"><button className="secondary-action" type="button" disabled={busy === 'settlement'} onClick={() => { setPaid('0'); void settle('0'); }}>Ghi nợ</button><button className="primary-action" type="button" disabled={busy === 'settlement' || !paid.trim()} onClick={() => void settle()}>{busy === 'settlement' ? 'Đang ghi nhận…' : '✓ Hoàn tất thu tiền'}</button></div></div></section> : null}
-    </main>
-  );
-}
+  async function openPrintPreview() {
+    if (!order

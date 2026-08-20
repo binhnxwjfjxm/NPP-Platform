@@ -5,9 +5,13 @@ import test from 'node:test';
 const read = (path) => readFile(new URL('../' + path, import.meta.url), 'utf8');
 const readRepo = (path) => readFile(new URL('../../../' + path, import.meta.url), 'utf8');
 
-test('Lô 6 có tab Đơn hàng, thanh thao tác đáy và mở lại đơn Giao tại quầy', async () => {
+test('Lô 6 có điều hướng Retail, thanh thao tác đáy và mở lại đơn Giao tại quầy', async () => {
   const [page, styles] = await Promise.all([read('app/page.tsx'), read('app/globals.css')]);
-  assert.match(page, /type RetailTab = 'entry' \| 'orders'/);
+  assert.match(page, /type RetailTab = 'home' \| 'entry' \| 'orders' \| 'account'/);
+  assert.match(page, /Trang chủ/);
+  assert.match(page, /Lên đơn/);
+  assert.match(page, /Đơn hàng/);
+  assert.match(page, /Tài khoản/);
   assert.match(page, /Đơn đã lập/);
   assert.match(page, /api\/retail\/orders\?limit=100/);
   assert.match(page, /item\.deliveryMode === 'PICKUP'/);
