@@ -6,7 +6,7 @@ const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('Lô 5 có vầng sáng filter trượt, timeline và chuyển cảnh thống nhất', async () => {
   const [page, styles] = await Promise.all([read('app/page.tsx'), read('app/globals.css')]);
-  assert.match(page, /filterMarker/);
+  assert.match(page, /const \[marker, setMarker\]/);
   assert.match(page, /className="filter-highlight"/);
   assert.match(page, /order-timeline/);
   assert.match(page, /order\.status !== 'cancelled'/);

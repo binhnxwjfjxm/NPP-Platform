@@ -15,7 +15,7 @@ test('Lô 4 có giỏ hàng, chọn nhiều sản phẩm và chỉ một chỉ s
   assert.match(page, /item\.versionNumber\s*===\s*order\.currentVersionNumber/);
   assert.match(page, /setCustomerMode\(next\.customerMode\)/);
   assert.match(page, /setCustomerId\(next\.customerId\)/);
-  assert.match(page, /const seeded\s*=\s*current\.length\s*\?\s*current\s*:\s*order\?\.status\s*===\s*'draft'\s*\?\s*cartFromOrder\(order\)\s*:\s*current/);
+  assert.match(page, /order && \(order\.status === 'draft' \|\| editPickup\)\) seeded = cartFromOrder\(order\)/);
   assert.doesNotMatch(page, /Tồn thực tế|Đang giữ|Vị trí|Lô hàng/);
 });
 

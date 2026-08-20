@@ -125,6 +125,7 @@ export async function POST(request: NextRequest, { params }: { params: { segment
       const mapping: Record<string, { path: string; body: Record<string, unknown> }> = {
         confirm: { path: `/api/sales-orders/${orderId}/confirm`, body: {} },
         'issue-stock': { path: `/api/sales-orders/${orderId}/issue-stock`, body: { ...payload, mode: 'PICKUP' } },
+        'pickup-edit': { path: `/api/sales-orders/${orderId}/pickup-edit`, body: payload },
         complete: { path: `/api/pickup-sales-orders/${orderId}/complete`, body: payload },
         settlement: { path: `/api/pickup-sales-orders/${orderId}/settlement`, body: payload },
       };
@@ -143,11 +144,11 @@ export async function PUT(request: NextRequest, { params }: { params: { segments
   const id = requestId(request) ?? crypto.randomUUID();
   const path = parts(params);
   try {
-    if (path.length !== 3 || path[0] !== 'orders' || path[2] !== 'draft') {
+    if (path.length !== 3 || path[0] !== 'orders' || !['draft', 'pickup-edit'].includes(path[2])) {
       throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy chức năng yêu cầu', 404, false);
     }
     const result = await companyRequest<unknown>({
-      path: `/api/sales-orders/${salesOrderId(path[1])}/draft`,
+      path: `/api/sales-orders/${salesOrderId(path[1])}/${path[2]}`,
       method: 'PUT',
       body: await body(request),
       idempotencyKey: request.headers.get('idempotency-key'),

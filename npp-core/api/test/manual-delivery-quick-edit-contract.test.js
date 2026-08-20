@@ -6,7 +6,7 @@ import {
   salesOrderDeliveryExecutionInternals,
 } from '../src/services/sales-order.js';
 
-const { manualQuickEditGuard } = salesOrderDeliveryExecutionInternals;
+const { manualQuickEditGuard, pickupQuickEditGuard } = salesOrderDeliveryExecutionInternals;
 const servicePath = fileURLToPath(new URL('../src/services/sales-order.js', import.meta.url));
 const routePath = fileURLToPath(new URL('../src/routes/sales-orders.js', import.meta.url));
 
@@ -56,4 +56,39 @@ test('manual quick edit stays one canonical transaction and keeps audit history 
   assert.match(routeSource, /route: `\/api\/sales-orders\/\$\{id\}\/manual-edit`/);
   assert.match(routeSource, /service\.quickEditManualSalesOrder\(client/);
   assert.match(routeSource, /idempotencyKey: key/);
+});
+
+test('pickup quick edit stays available only before stock issue and has its own canonical route', async () => {
+  assert.deepEqual(pickupQuickEditGuard({
+    status: 'confirmed',
+    deliveryMode: 'PICKUP',
+    fulfillmentStatus: 'held',
+  }), { ok: true });
+
+  const issued = pickupQuickEditGuard({
+    status: 'confirmed',
+    deliveryMode: 'PICKUP',
+    fulfillmentStatus: 'issued',
+  });
+  assert.equal(issued.ok, false);
+  assert.equal(issued.code, 'PICKUP_EDIT_LOCKED');
+
+  const partiallyIssued = pickupQuickEditGuard({
+    status: 'confirmed',
+    deliveryMode: 'PICKUP',
+    fulfillmentStatus: 'partially_issued',
+  });
+  assert.equal(partiallyIssued.ok, false);
+  assert.equal(partiallyIssued.code, 'PICKUP_EDIT_LOCKED');
+
+  const [serviceSource, routeSource] = await Promise.all([
+    readFile(servicePath, 'utf8'),
+    readFile(routePath, 'utf8'),
+  ]);
+  assert.match(serviceSource, /export async function quickEditPickupSalesOrder/);
+  assert.match(serviceSource, /reason: 'Sửa đơn trước khi Xuất kho'/);
+  assert.match(serviceSource, /preExecutionReleaseIntent: 'pickup-edit'/);
+  assert.match(routeSource, /pickup_quick_edit: 'sales\.sales_order\.pickup_quick_edited'/);
+  assert.match(routeSource, /action === 'pickup-edit' && method === 'PUT'/);
+  assert.match(routeSource, /service\.quickEditPickupSalesOrder\(client/);
 });

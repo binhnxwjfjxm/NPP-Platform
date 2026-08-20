@@ -162,6 +162,7 @@ function eventTypeFor(action) {
     update_amendment: 'sales.sales_order.amendment_updated',
     confirm_amendment: 'sales.sales_order.amendment_confirmed',
     manual_quick_edit: 'sales.sales_order.manual_quick_edited',
+    pickup_quick_edit: 'sales.sales_order.pickup_quick_edited',
     manual_stock_issue: 'sales.sales_order.manual_stock_issued',
     pickup_stock_issue: 'sales.sales_order.pickup_stock_issued',
     cancel: 'sales.sales_order.cancelled',
@@ -513,7 +514,7 @@ export async function handleSalesOrderRoutes(req, res, options) {
   }
 
   const itemMatch = pathname.match(
-    /^\/api\/sales-orders\/([^/]+)(?:\/(draft|confirm|amendments|manual-edit|issue-stock|cancel))?$/,
+    /^\/api\/sales-orders\/([^/]+)(?:\/(draft|confirm|amendments|manual-edit|pickup-edit|issue-stock|cancel))?$/,
   );
   if (!itemMatch) {
     sendError(
@@ -654,6 +655,40 @@ export async function handleSalesOrderRoutes(req, res, options) {
         });
         if (!normalized.ok) return normalized;
         return service.quickEditManualSalesOrder(client, {
+          requestContext: context,
+          id,
+          payload: normalized.payload,
+          idempotencyKey: key,
+        });
+      },
+    });
+    return true;
+  }
+
+  if (action === 'pickup-edit' && method === 'PUT') {
+    const context = await authenticateAndAuthorize(
+      req,
+      res,
+      options,
+      options.PERMISSIONS.coreSalesOrderAmend,
+    );
+    if (!context) return true;
+    const payload = await readPayload(req, res, options);
+    if (payload === null) return true;
+    await executeIdempotentMutation(req, res, options, {
+      requestContext: context,
+      route: `/api/sales-orders/${id}/pickup-edit`,
+      payload: { ...payload, id },
+      action: 'pickup_quick_edit',
+      resourceId: id,
+      mutate: async (client, key) => {
+        const normalized = await entryService.normalizeSalesOrderEntryPayload(client, {
+          requestContext: context,
+          payload,
+          salesOrderId: id,
+        });
+        if (!normalized.ok) return normalized;
+        return service.quickEditPickupSalesOrder(client, {
           requestContext: context,
           id,
           payload: normalized.payload,
