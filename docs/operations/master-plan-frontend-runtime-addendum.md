@@ -3,20 +3,22 @@
 > Status: **ACTIVE — OWNER LOCKED**  
 > Original date: `2026-07-31`  
 > Phase 9.0 topology refresh: `2026-08-08`  
+> Retail topology refresh: `2026-08-20`  
 > Applies to: `NPP_PLATFORM_MASTER_PLAN.md`
 
-This addendum is the active frontend/runtime topology. Where the older Master Plan or the original version of this addendum conflicts with the verified Phase 9 topology, this file and the Phase 9 decision sources take precedence.
+This addendum is the active frontend/runtime topology. Where the older Master Plan or the original version of this addendum conflicts with the verified topology below, this file and the later owner-locked decision sources take precedence.
 
 ## 1. Frontend projects
 
-The installation has **six independent Vercel frontend projects** across two GitHub repositories.
+The installation has **seven independent Vercel frontend projects** across two GitHub repositories.
 
 ```text
 Repository: binhnxwjfjxm/NPP-Platform
 ├── MCP Field                         source: mcp/**
 ├── NPP Operations                    source: npp-core/web/**
 ├── Admin MCP/NPP                     source: admin/web/**
-└── Delivery                          source: delivery/web/**
+├── Delivery                          source: delivery/web/**
+└── Retail PWA                        source: retail/web/**
 
 Repository: binhnxwjfjxm/nguyenlieuhungphat
 ├── Public Website                    source: website/root app
@@ -25,7 +27,7 @@ Repository: binhnxwjfjxm/nguyenlieuhungphat
 
 Website and Customer Ordering share a repository but are **separate Vercel projects and separate deployment units**. Customer Ordering is not a route group inside the Website deployment.
 
-Live Vercel project/domain readback during Phase 9.0 observed:
+Current project/domain map after the Retail Lô 0 runtime decision:
 
 | Surface | Project | Production domain |
 | --- | --- | --- |
@@ -35,16 +37,17 @@ Live Vercel project/domain readback during Phase 9.0 observed:
 | MCP Field | `mcp-field` | `mcp.nguyenlieuhungphat.com` |
 | Admin MCP/NPP | `admin-mcp-npp` | `admin.nguyenlieuhungphat.com` |
 | Delivery | `npp-delivery` | `log.nguyenlieuhungphat.com` |
+| Retail PWA | `npp-retail` | `retail.nguyenlieuhungphat.com` |
 
-The current provider read tool does not expose root-directory or environment-variable values. Those values must be read back from the provider before any 9.7 mutation; do not infer them from this source map.
+Provider state must still be read back before each mutation. Source documentation never substitutes for provider truth.
 
 ### MCP Field
 
-Mobile/PWA for field employees: routes, outlets, visits/check-in, media, surveys/reports, route/session work and canonical Core integrations permitted by scope. It keeps its own mobile UX and backend boundary.
+Mobile/PWA for field employees: routes, outlets, visits/check-in, media, surveys/reports, route/session work and canonical Công Ty integrations permitted by scope. It keeps its own mobile UX and backend boundary.
 
 ### NPP Operations
 
-Internal operations surface for identity/access, master data, sales, purchasing, inventory, logistics, accounting and reporting. Core remains authoritative for internal identity, permissions/scopes and canonical business lifecycles.
+Internal operations surface for identity/access, master data, sales, purchasing, inventory, logistics, accounting and reporting. The Công Ty backend remains authoritative for internal identity, permissions/scopes and canonical business lifecycles.
 
 ### Admin MCP/NPP
 
@@ -52,7 +55,11 @@ Independent owner/management surface for summary, exceptions and limited approva
 
 ### Delivery
 
-Mobile/PWA for assigned trips/stops, dispatch handover, POD, actual delivery, failure/partial flows and permitted COD collection/handover work. It uses Core APIs rather than a separate Delivery business backend.
+Mobile/PWA for assigned trips/stops, dispatch handover, POD, actual delivery, failure/partial flows and permitted COD collection/handover work. It uses Công Ty APIs rather than a separate Delivery business backend.
+
+### Retail PWA
+
+Mobile-first counter-sales surface. Retail has no business backend, database, inventory ledger, receivable ledger or report store of its own. It calls the Công Ty API through server-side routes and uses canonical product, price, order, inventory, payment and receivable facts. Auto Deploy is locked OFF; source merge and production deployment remain separate operations.
 
 ### Website
 
@@ -60,43 +67,44 @@ Public website/content/catalog experience in `binhnxwjfjxm/nguyenlieuhungphat`.
 
 ### Customer Ordering
 
-External customer PWA in `customer-ordering/**`. Clerk authenticates external identity; Core will own customer/account membership and canonical catalog/order business authority. The current mock/local order adapter is replaced in Phase 9.2 through a server-side Customer Portal boundary; no Core server secret goes to the browser.
+External customer PWA in `customer-ordering/**`. Clerk authenticates external identity; the Công Ty backend owns customer/account membership and canonical catalog/order business authority. No server secret goes to the browser.
 
 ## 2. Backend services
 
 Frontend count does not change backend ownership:
 
 ```text
-Core API   -> Core-owned canonical business domains
-MCP API    -> MCP field domain + canonical Core integration
+Công Ty API -> canonical business domains
+MCP API     -> MCP field domain + canonical Công Ty integration
 ```
 
-Core and MCP deploy/release/smoke/rollback independently. Admin, Delivery, Website and Customer Ordering do not gain independent business authorities merely because they are separate frontends.
+The Công Ty and MCP backends deploy/release/smoke/rollback independently. Admin, Delivery, Retail, Website and Customer Ordering do not gain independent business authorities merely because they are separate frontends.
 
 ## 3. Database
 
 The target remains one PostgreSQL installation shared by domain schemas. No frontend connects directly to PostgreSQL.
 
-Actual production DB attachment/credential/role capability must be audited from provider truth before Phase 9.3 mutation; documentation must not claim least privilege that the provider/tier has not verified.
+Actual production DB attachment/credential/role capability must be audited from provider truth before database mutation; documentation must not claim least privilege that the provider/tier has not verified.
 
 ## 4. Deployment boundary
 
-Each of the six frontend projects is an independent deployment unit with its own project configuration, domain and environment boundary. Source merge does not imply production deployment.
+Each of the seven frontend projects is an independent deployment unit with its own project configuration, domain and environment boundary. Source merge does not imply production deployment.
 
 Provider rules remain:
 
 - Vercel Auto Deploy must remain OFF;
-- Core and MCP Heroku automatic deploy remain OFF;
+- Công Ty and MCP Heroku automatic deploy remain OFF;
 - frontend-only changes do not authorize backend deployment;
-- production mutation requires an explicit owner command.
+- production mutation requires an explicit owner command;
+- Retail production deploy uses its own exact manual command and never piggybacks another frontend deployment.
 
 ## 5. Current architecture summary
 
 ```text
-6 Vercel frontend projects
+7 Vercel frontend projects
 2 backend services
 1 shared PostgreSQL installation
 2 GitHub repositories
 ```
 
-Detailed Phase 9.0 evidence and unresolved provider gates are recorded in `docs/operations/phase-9-0-readiness-audit.md`.
+Detailed Phase 9.0 evidence and unresolved provider gates remain recorded in `docs/operations/phase-9-0-readiness-audit.md`. Retail execution and regression gates are tracked in Issue #675.
