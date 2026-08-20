@@ -32,6 +32,16 @@ test('Lô 6 cho sửa Giao tại quầy sau Chốt, nhưng khóa sau mọi trạ
   assert.match(salesRoute, /coreSalesOrderAmend/);
   assert.match(salesService, /partially_issued/);
   assert.match(salesService, /PICKUP_EDIT_LOCKED/);
+  assert.match(salesService, /String\(before\.salesOrder\.revision\) !== expectedRevision/);
+  assert.match(salesService, /REVISION_CONFLICT/);
+});
+
+test('Lô 6 chỉ dùng giá preview đúng đầu vào và không báo lỗi sau khi thao tác đã thành công', async () => {
+  const page = await read('app/page.tsx');
+  assert.match(page, /type CachedPricePreview = PricePreview & \{ inputKey: string \}/);
+  assert.match(page, /preview\?\.inputKey === priceInputKey\(line\.id, line\.quantity\)/);
+  assert.match(page, /void refreshOrders\(\)\.catch\(\(\) => undefined\)/);
+  assert.match(page, /setPrices\(\{\}\)/);
 });
 
 test('PWA dùng đúng icon Retail cho iPhone, manifest và cache mới', async () => {

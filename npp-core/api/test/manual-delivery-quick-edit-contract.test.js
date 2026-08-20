@@ -86,6 +86,9 @@ test('pickup quick edit stays available only before stock issue and has its own 
     readFile(routePath, 'utf8'),
   ]);
   assert.match(serviceSource, /export async function quickEditPickupSalesOrder/);
+  assert.match(serviceSource, /String\(payload\?\.expectedRevision \?\? ''\)\.trim\(\)/);
+  assert.match(serviceSource, /String\(before\.salesOrder\.revision\) !== expectedRevision/);
+  assert.match(serviceSource, /REVISION_CONFLICT/);
   assert.match(serviceSource, /reason: 'Sửa đơn trước khi Xuất kho'/);
   assert.match(serviceSource, /preExecutionReleaseIntent: 'pickup-edit'/);
   assert.match(routeSource, /pickup_quick_edit: 'sales\.sales_order\.pickup_quick_edited'/);

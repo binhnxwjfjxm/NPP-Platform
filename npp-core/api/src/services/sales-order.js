@@ -783,6 +783,13 @@ export async function quickEditPickupSalesOrder(client, {
   if (!before.ok) return before;
   const guard = pickupQuickEditGuard(before.salesOrder);
   if (!guard.ok) return guard;
+  const expectedRevision = String(payload?.expectedRevision ?? '').trim();
+  if (!expectedRevision) {
+    return failure('EXPECTED_REVISION_REQUIRED', 'Cần phiên bản hiện tại của đơn để sửa.');
+  }
+  if (String(before.salesOrder.revision) !== expectedRevision) {
+    return failure('REVISION_CONFLICT', 'Đơn đã được thay đổi ở yêu cầu khác. Hãy tải lại trước khi sửa.', true);
+  }
 
   const amendment = await createSalesOrderAmendment(client, {
     requestContext,
