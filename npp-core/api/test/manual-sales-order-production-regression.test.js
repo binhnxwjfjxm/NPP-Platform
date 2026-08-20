@@ -10,7 +10,8 @@ import { manualEditAllocationReleaseInternals } from '../src/services/sales-fulf
 
 const salesOrderServiceSource = readFileSync(new URL('../src/services/sales-order.js', import.meta.url), 'utf8');
 const salesOrderRouteSource = readFileSync(new URL('../src/routes/sales-orders.js', import.meta.url), 'utf8');
-const stockIssueSource = readFileSync(new URL('../src/services/sales-manual-stock-issue.js', import.meta.url), 'utf8');
+const manualStockIssueSource = readFileSync(new URL('../src/services/sales-manual-stock-issue.js', import.meta.url), 'utf8');
+const directStockIssueSource = readFileSync(new URL('../src/services/sales-direct-stock-issue.js', import.meta.url), 'utf8');
 const manualCompletionSource = readFileSync(new URL('../src/services/sales-manual-completion.js', import.meta.url), 'utf8');
 const workspaceSource = readFileSync(
   new URL('../../web/app/sales/sales-orders/SalesOrderWorkspace.tsx', import.meta.url),
@@ -80,10 +81,10 @@ test('cancel passes the canonical request idempotency key into the shared unwind
 });
 
 test('shortage remains the same operation but is re-evaluated on retry', () => {
-  assert.match(
-    stockIssueSource,
-    /code === 'MANUAL_STOCK_ISSUE_SHORTAGE' \? true : retryable/,
-  );
+  assert.match(manualStockIssueSource, /issueDirectSalesOrderStock/);
+  assert.match(manualStockIssueSource, /mode: 'MANUAL'/);
+  assert.match(directStockIssueSource, /errorPrefix: 'MANUAL_STOCK_ISSUE'/);
+  assert.match(directStockIssueSource, /suffix === 'SHORTAGE' \? true : retryable/);
   assert.match(workspaceSource, /type StockIssueKeyState = Readonly<\{ orderId: string; stateKey: string; key: string \}>/);
   assert.match(workspaceSource, /existing\?\.orderId === selected\.id && existing\.stateKey === actionStateKey/);
   assert.match(workspaceSource, /stockIssueKeyRef\.current = \{ orderId: selected\.id, stateKey: actionStateKey, key \}/);
