@@ -4,8 +4,20 @@ import { readFileSync } from 'node:fs';
 import { CORE_API_MIGRATIONS } from '../src/migrations/index.js';
 import { PERMISSION_REGISTRY, PERMISSIONS } from '../src/access/permissions.js';
 import { DOCUMENT_PRINT_TEMPLATE_CATALOG, documentPrintTemplateInternals } from '../src/services/document-print-templates.js';
+import { handleDocumentPrintTemplateRoutes } from '../src/routes/document-print-templates.js';
 
 const route = readFileSync(new URL('../src/routes/document-print-templates.js', import.meta.url), 'utf8');
+
+function responseRecorder() {
+  return {
+    headers: {},
+    statusCode: null,
+    body: null,
+    setHeader(name, value) { this.headers[name] = value; },
+    writeHead(statusCode, headers) { this.statusCode = statusCode; Object.assign(this.headers, headers); },
+    end(body = '') { this.body = body; },
+  };
+}
 
 test('print template migration is registered once with installation scope and compatibility permissions', () => {
   const migration = CORE_API_MIGRATIONS.find((entry) => entry.id === '098_document_print_template_settings');
@@ -36,6 +48,10 @@ test('print template catalog owns the defaults for sales, purchasing and operati
 test('printing reads template configuration without a second print permission while configuration stays controlled', () => {
   assert.doesNotMatch(route, /corePrintTemplateRead/);
   assert.match(route, /corePrintTemplateManage/);
+  assert.match(route, /authenticatePrintTemplateRequest/);
+  assert.match(route, /const requestContext = authenticatePrintTemplateRequest/);
+  assert.match(route, /installationId: requestContext\.installationId/);
+  assert.match(route, /requestContext,\n      requestId/);
   assert.match(route, /system:security-owner/);
   assert.match(route, /system:implementation-owner/);
   assert.match(route, /Cần có mã nhận diện yêu cầu \(Idempotency-Key\)/);
@@ -43,4 +59,31 @@ test('printing reads template configuration without a second print permission wh
   assert.match(route, /withAuditOutboxTransaction/);
   assert.match(route, /resourceType: 'document_print_template'/);
   assert.doesNotMatch(route, /DATABASE_URL|SUPABASE|R2_SECRET/);
+});
+
+test('print template read creates authenticated installation context before accessing storage', async () => {
+  const req = { url: '/api/document-print-templates', method: 'GET', headers: {} };
+  const res = responseRecorder();
+  let queriedInstallationId = null;
+  const handled = await handleDocumentPrintTemplateRoutes(req, res, {
+    config: {},
+    requestId: 'print-template-read',
+    receivedAt: '2026-08-20T00:00:00.000Z',
+    authenticate: () => ({ ok: true, principal: { subject: 'owner' } }),
+    createContext: () => ({ installationId: 'installation-a', actorId: 'owner', roles: [] }),
+    authorize: () => ({ ok: false, code: 'FORBIDDEN', message: 'Không có quyền', statusCode: 403 }),
+    PERMISSIONS,
+    getPool: () => ({
+      query: async (_sql, values) => {
+        queriedInstallationId = values?.[0] ?? null;
+        return { rows: [] };
+      },
+    }),
+  });
+
+  assert.equal(handled, true);
+  assert.equal(queriedInstallationId, 'installation-a');
+  assert.equal(res.statusCode, 200);
+  const payload = JSON.parse(res.body);
+  assert.equal(payload.data.length, DOCUMENT_PRINT_TEMPLATE_CATALOG.length);
 });
