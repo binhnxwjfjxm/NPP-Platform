@@ -1,7 +1,8 @@
 # Bản đồ frontend và tên miền Hưng Phát
 
 > Trạng thái: **ACTIVE — OWNER LOCKED**  
-> Ngày chốt: `2026-08-04`
+> Ngày chốt ban đầu: `2026-08-04`  
+> Cập nhật Retail: `2026-08-20`
 
 ## Phần này làm gì
 
@@ -9,41 +10,50 @@ Khóa địa chỉ truy cập, project triển khai và ranh giới nghiệp v�
 
 | Ứng dụng | Vercel project | Root source | Tên miền chính |
 |---|---|---|---|
-| Website + đặt hàng khách | `nguyenlieuhungphat` | repo website riêng | `nguyenlieuhungphat.com` |
-| NPP Operations | `npp-platform` | `npp-core/web` | `office.nguyenlieuhungphat.com` |
+| Website | `nguyenlieuhungphat` | repo website riêng | `nguyenlieuhungphat.com` |
+| Đặt hàng khách | `customer-ordering` | `customer-ordering` ở repo website | `sales.nguyenlieuhungphat.com` |
+| Vận hành Công Ty | `npp-platform` | `npp-core/web` | `office.nguyenlieuhungphat.com` |
 | MCP Field | `mcp-field` | `mcp` | `mcp.nguyenlieuhungphat.com` |
 | Admin MCP/NPP | `admin-mcp-npp` | `admin/web` | `admin.nguyenlieuhungphat.com` |
-| Giao hàng | chưa audit/tạo project | `delivery/web` | `log.nguyenlieuhungphat.com` |
+| Giao hàng | `npp-delivery` | `delivery/web` | `log.nguyenlieuhungphat.com` |
+| Bán tại quầy | `npp-retail` | `retail/web` | `retail.nguyenlieuhungphat.com` |
 
 ## URL Vercel và domain tùy chỉnh
 
-- `https://npp-platform.vercel.app` tiếp tục là URL hợp lệ của NPP Operations.
-- `office.nguyenlieuhungphat.com` được gắn thêm làm tên miền chính khi DNS/domain sẵn sàng; không được xóa URL Vercel hoặc coi domain là điều kiện để phát triển và kiểm tra source.
+- `https://npp-platform.vercel.app` tiếp tục là URL hợp lệ của ứng dụng Vận hành Công Ty.
+- `office.nguyenlieuhungphat.com` là tên miền chính của ứng dụng Vận hành Công Ty; URL `vercel.app` vẫn thuộc project tương ứng.
 - Admin dùng `NPP_OPERATIONS_URL` khi đã cấu hình; nếu chưa có thì chuyển về `https://npp-platform.vercel.app`.
 - Các alias `vercel.app` do Vercel tạo vẫn thuộc project tương ứng và không bị thay bằng subdomain tùy chỉnh.
-- Delivery đã có source tại `delivery/web`; trạng thái project, domain, DNS và production deploy phải audit riêng, không được suy ra từ source merge.
+- Giao hàng và Bán tại quầy là hai frontend độc lập; không dùng chung project Vercel và không deploy ké nhau.
 
 ## Ranh giới triển khai
 
 - Mỗi frontend có Vercel project, root build, biến môi trường, tên miền và lệnh production riêng.
-- Auto Deploy luôn tắt.
+- Auto Deploy luôn tắt bằng cấu hình source và được kiểm lại trước deploy.
 - Merge source không tự deploy production.
-- Admin và Delivery không có backend riêng; dùng các API NPP Core được kiểm soát.
+- Admin, Giao hàng và Bán tại quầy không có backend kinh doanh riêng; dùng API Công Ty qua boundary phía server.
 - Không frontend nào kết nối trực tiếp PostgreSQL.
-- Chỉ tạo/cấu hình project Delivery sau khi source merge, CI xanh và có lệnh rollout rõ; không tự tạo trong Phase 6E.3.
+- Bán tại quầy dùng project `npp-retail`, root `retail/web`; production chỉ được deploy bằng lệnh Retail riêng sau khi main và CI đã được kiểm lại.
+
+## Ranh giới Bán tại quầy
+
+- Retail chỉ là giao diện làm việc tại quầy; không tạo sản phẩm, giá, tồn kho, công nợ hoặc báo cáo riêng.
+- Browser không nhận `CORE_API_INTERNAL_URL` và không giữ server secret.
+- Các lô nghiệp vụ tiếp theo phải dùng Đơn bán hàng, tồn kho, thanh toán và công nợ canonical của Công Ty.
+- Giao tại quầy phải dùng engine trực tiếp dùng chung với Giao thủ công theo Issue #675; Lô 0 chỉ dựng runtime và khung kiểm thử, không thay đổi nghiệp vụ đó.
 
 ## Ranh giới Delivery frontend
 
-- Delivery chỉ đọc các chuyến `dispatched` được gán đúng cho tài xế đã xác thực trong Phase 6E.3.
-- Core token và ánh xạ tài khoản app sang `employeeId` chỉ tồn tại phía server của Delivery.
-- Delivery không dùng permission điều phối rộng và không được gọi planning/dispatch mutation.
-- Ghi kết quả giao, actual quantity, POD/GPS, dời lịch, hàng quay về kho và COD thuộc các slice tiếp theo.
+- Delivery chỉ đọc các chuyến được gán đúng cho tài xế đã xác thực theo quyền hiện hành.
+- Token Công Ty và ánh xạ tài khoản app sang `employeeId` chỉ tồn tại phía server của Delivery.
+- Delivery không dùng permission điều phối rộng và không được gọi planning/dispatch mutation ngoài phạm vi được cấp.
+- Ghi kết quả giao, actual quantity, POD/GPS, dời lịch, hàng quay về kho và COD phải đi qua API Công Ty canonical.
 
-## Ranh giới Admin MCP/NPP và NPP Operations
+## Ranh giới Admin MCP/NPP và ứng dụng Vận hành Công Ty
 
-### NPP Operations sở hữu công việc hằng ngày
+### Ứng dụng Vận hành Công Ty sở hữu công việc hằng ngày
 
-Các đường sau phải chạy trực tiếp trong NPP Operations, không chuyển tiếp sang Admin:
+Các đường sau phải chạy trực tiếp trong ứng dụng Vận hành Công Ty, không chuyển tiếp sang Admin:
 
 ```text
 /management
@@ -51,7 +61,7 @@ Các đường sau phải chạy trực tiếp trong NPP Operations, không chuy
 /sales/sales-orders
 ```
 
-Sales Admin, CS, kế toán công nợ và quản lý bán hàng dùng NPP để:
+Sales Admin, CS, kế toán công nợ và quản lý bán hàng dùng ứng dụng Vận hành Công Ty để:
 
 - kiểm tra và xác nhận đơn hàng thông thường;
 - theo dõi đơn nháp/chờ xác nhận;

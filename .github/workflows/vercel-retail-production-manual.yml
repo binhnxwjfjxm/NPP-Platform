@@ -1,0 +1,93 @@
+name: Manual Vercel Retail production deploy
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: vercel-retail-production-manual
+  cancel-in-progress: false
+
+jobs:
+  deploy-retail-production:
+    if: >-
+      github.event.issue.number == 5 &&
+      github.event.comment.body == '/deploy-vercel-retail-production' &&
+      contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DEPLOY_REF: main
+      VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      RETAIL_PROJECT_NAME: npp-retail
+      RETAIL_ROOT_DIRECTORY: retail/web
+      RETAIL_DOMAIN: retail.nguyenlieuhungphat.com
+      CORE_HEROKU_APP_NAME: hung-phat
+
+    steps:
+      - name: Validate exact Retail production command
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: test "${COMMENT_BODY:-}" = '/deploy-vercel-retail-production'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate Retail production guard
+        run: |
+          bash -n retail/web/scripts/deploy-production.sh
+          bash -n retail/web/scripts/bootstrap-project.sh
+          node --test retail/web/test/retail-runtime-contract.test.mjs
+
+      - name: Deploy exact Retail production
+        id: retail
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: bash retail/web/scripts/deploy-production.sh
+
+      - name: Publish sanitized Retail rollout evidence
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          body="$(cat <<EOT
+          ## Retail production rollout — ${OPERATION_STATUS}
+
+          - SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          - PROJECT_ID: ${{ steps.retail.outputs.project_id }}
+          - PROJECT_NAME: ${RETAIL_PROJECT_NAME}
+          - ROOT_DIRECTORY: ${RETAIL_ROOT_DIRECTORY}
+          - DEPLOYMENT_URL: ${{ steps.retail.outputs.deployment_url }}
+          - DOMAIN: https://${RETAIL_DOMAIN}
+          - DOMAIN_READY: ${{ steps.retail.outputs.domain_ready }}
+          - AUTO_DEPLOY: OFF
+          - GITHUB_RUN_ID: ${GITHUB_RUN_ID}
+          EOT
+          )"
+          gh issue comment 5 --body "$body"

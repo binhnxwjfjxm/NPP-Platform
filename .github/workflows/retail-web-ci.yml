@@ -1,0 +1,67 @@
+name: Retail frontend CI
+
+on:
+  pull_request:
+    paths:
+      - 'retail/web/**'
+      - 'package.json'
+      - 'docs/operations/master-plan-frontend-runtime-addendum.md'
+      - 'docs/operations/frontend-domain-map.md'
+      - '.github/workflows/retail-web-ci.yml'
+      - '.github/workflows/vercel-retail-production-manual.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'retail/web/**'
+      - 'package.json'
+      - 'docs/operations/master-plan-frontend-runtime-addendum.md'
+      - 'docs/operations/frontend-domain-map.md'
+      - '.github/workflows/retail-web-ci.yml'
+      - '.github/workflows/vercel-retail-production-manual.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap-retail-vercel:
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/retail-pwa-lot0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      RETAIL_PROJECT_NAME: npp-retail
+      RETAIL_ROOT_DIRECTORY: retail/web
+      RETAIL_DOMAIN: retail.nguyenlieuhungphat.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create and lock Retail Vercel project
+        id: bootstrap
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: bash retail/web/scripts/bootstrap-project.sh
+      - name: Report bootstrap boundary
+        run: |
+          echo "project=${{ steps.bootstrap.outputs.project_id }}"
+          echo "setup=${{ steps.bootstrap.outputs.setup_mode }}"
+          echo "auto_deploy=off"
+          echo "production_deploy=not_run"
+
+  verify-retail-web:
+    needs: [bootstrap-retail-vercel]
+    if: always() && !cancelled() && (needs.bootstrap-retail-vercel.result == 'success' || needs.bootstrap-retail-vercel.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: retail/web
+    env:
+      CORE_API_INTERNAL_URL: https://core.example.invalid
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Retail frontend dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify Retail frontend
+        run: npm run verify
