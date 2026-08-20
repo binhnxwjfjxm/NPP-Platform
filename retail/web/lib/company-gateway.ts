@@ -69,7 +69,12 @@ export function retailSessionCookieOptions(expiresAt?: string) {
 
 export function safeReturnTo(value: string | null | undefined) {
   const candidate = String(value ?? '').trim();
-  return candidate.startsWith('/') && !candidate.startsWith('//') ? candidate : '/';
+  return candidate.startsWith('/')
+    && !candidate.startsWith('//')
+    && !candidate.includes('\\')
+    && !/%(?:2f|5c)/i.test(candidate)
+    ? candidate
+    : '/';
 }
 
 export async function companyRequest<T>(options: {

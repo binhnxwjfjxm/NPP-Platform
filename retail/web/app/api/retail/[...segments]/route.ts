@@ -4,6 +4,7 @@ import { CompanyGatewayError, companyRequest } from '../../../../lib/company-gat
 export const dynamic = 'force-dynamic';
 
 type GatewayResponse = { data: unknown; requestId: string };
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function requestId(request: NextRequest) {
   return request.headers.get('x-request-id');
@@ -61,7 +62,14 @@ async function bootstrap(id: string): Promise<GatewayResponse> {
 }
 
 function parts(params: { segments: string[] }) {
-  return params.segments.map((part) => decodeURIComponent(part));
+  return params.segments.map((part) => String(part));
+}
+
+function salesOrderId(value: string | undefined) {
+  if (!value || !UUID_PATTERN.test(value)) {
+    throw new CompanyGatewayError('INVALID_ORDER_ID', 'Mã đơn bán hàng không hợp lệ', 400, false);
+  }
+  return value;
 }
 
 export async function GET(request: NextRequest, { params }: { params: { segments: string[] } }) {
@@ -84,11 +92,11 @@ export async function GET(request: NextRequest, { params }: { params: { segments
       return json(result.data, result.requestId);
     }
     if (path.length === 2 && path[0] === 'orders') {
-      const result = await companyRequest<unknown>({ path: `/api/sales-orders/${path[1]}`, requestId: id });
+      const result = await companyRequest<unknown>({ path: `/api/sales-orders/${salesOrderId(path[1])}`, requestId: id });
       return json(result.data, result.requestId);
     }
     if (path.length === 3 && path[0] === 'orders' && path[2] === 'availability') {
-      const result = await companyRequest<unknown>({ path: `/api/retail/sales-orders/${path[1]}/availability`, requestId: id });
+      const result = await companyRequest<unknown>({ path: `/api/retail/sales-orders/${salesOrderId(path[1])}/availability`, requestId: id });
       return json(result.data, result.requestId);
     }
     throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy chức năng yêu cầu', 404, false);
@@ -113,11 +121,12 @@ export async function POST(request: NextRequest, { params }: { params: { segment
     }
     if (path.length === 3 && path[0] === 'orders') {
       const action = path[2];
+      const orderId = salesOrderId(path[1]);
       const mapping: Record<string, { path: string; body: Record<string, unknown> }> = {
-        confirm: { path: `/api/sales-orders/${path[1]}/confirm`, body: {} },
-        'issue-stock': { path: `/api/sales-orders/${path[1]}/issue-stock`, body: { ...payload, mode: 'PICKUP' } },
-        complete: { path: `/api/pickup-sales-orders/${path[1]}/complete`, body: payload },
-        settlement: { path: `/api/pickup-sales-orders/${path[1]}/settlement`, body: payload },
+        confirm: { path: `/api/sales-orders/${orderId}/confirm`, body: {} },
+        'issue-stock': { path: `/api/sales-orders/${orderId}/issue-stock`, body: { ...payload, mode: 'PICKUP' } },
+        complete: { path: `/api/pickup-sales-orders/${orderId}/complete`, body: payload },
+        settlement: { path: `/api/pickup-sales-orders/${orderId}/settlement`, body: payload },
       };
       const target = mapping[action];
       if (!target) throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy thao tác yêu cầu', 404, false);
@@ -138,7 +147,7 @@ export async function PUT(request: NextRequest, { params }: { params: { segments
       throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy chức năng yêu cầu', 404, false);
     }
     const result = await companyRequest<unknown>({
-      path: `/api/sales-orders/${path[1]}/draft`,
+      path: `/api/sales-orders/${salesOrderId(path[1])}/draft`,
       method: 'PUT',
       body: await body(request),
       idempotencyKey: request.headers.get('idempotency-key'),

@@ -15,6 +15,7 @@ test('Lô 4 có giỏ hàng, chọn nhiều sản phẩm và chỉ một chỉ s
   assert.match(page, /item\.versionNumber===order\.currentVersionNumber/);
   assert.match(page, /setCustomerMode\(next\.customerMode\)/);
   assert.match(page, /setCustomerId\(next\.customerId\)/);
+  assert.match(page, /const seeded=current\.length\?current:order\?\.status==='draft'\?cartFromOrder\(order\):current/);
   assert.doesNotMatch(page, /Tồn thực tế|Đang giữ|Vị trí|Lô hàng/);
 });
 
@@ -28,10 +29,13 @@ test('Retail giữ Idempotency-Key qua shared contract và retry cùng thao tác
 test('gateway Retail chỉ gọi các capability Công Ty cố định và Xuất kho dùng PICKUP', async () => {
   const route = await read('app/api/retail/[...segments]/route.ts');
   assert.match(route, /\/api\/retail\/products/);
-  assert.match(route, /\/api\/retail\/sales-orders\/\$\{path\[1\]\}\/availability/);
+  assert.match(route, /\/api\/retail\/sales-orders\/\$\{salesOrderId\(path\[1\]\)\}\/availability/);
   assert.match(route, /mode: 'PICKUP'/);
-  assert.match(route, /\/api\/pickup-sales-orders\/\$\{path\[1\]\}\/complete/);
-  assert.match(route, /\/api\/pickup-sales-orders\/\$\{path\[1\]\}\/settlement/);
+  assert.match(route, /const UUID_PATTERN/);
+  assert.match(route, /salesOrderId\(path\[1\]\)/);
+  assert.doesNotMatch(route, /decodeURIComponent/);
+  assert.match(route, /\/api\/pickup-sales-orders\/\$\{orderId\}\/complete/);
+  assert.match(route, /\/api\/pickup-sales-orders\/\$\{orderId\}\/settlement/);
   assert.doesNotMatch(route, /CORE_API_INTERNAL_URL/);
 });
 
@@ -41,6 +45,14 @@ test('URL Công Ty và token chỉ nằm phía server', async () => {
   assert.match(gateway, /CORE_API_INTERNAL_URL/);
   assert.match(gateway, /Authorization: `Bearer \$\{workforceToken\(\)\}`/);
   assert.doesNotMatch(gateway, /NEXT_PUBLIC_CORE_API/);
+  assert.match(gateway, /!candidate\.includes\('\\\\'\)/);
+  assert.match(gateway, /%\(\?:2f\|5c\)/i);
+});
+
+test('đăng nhập Retail nhận được mã xác minh khi Công Ty yêu cầu', async () => {
+  const login = await read('app/login/page.tsx');
+  assert.match(login, /name="ownerCode"/);
+  assert.match(login, /one-time-code/);
 });
 
 test('route Core chọn pickup engine nhưng vẫn giữ wrapper Giao thủ công', async () => {

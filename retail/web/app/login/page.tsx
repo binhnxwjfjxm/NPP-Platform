@@ -4,7 +4,7 @@ import { FormEvent, useState } from 'react';
 
 function message(error?: string) {
   if (error === 'invalid_credentials') return 'Tên đăng nhập hoặc mật khẩu chưa đúng.';
-  if (error === 'owner_challenge_required') return 'Tài khoản này cần xác minh bổ sung tại ứng dụng Văn phòng.';
+  if (error === 'owner_challenge_required') return 'Công Ty đã gửi mã xác minh về địa chỉ đã đăng ký. Hãy nhập mã để tiếp tục.';
   if (error === 'company_unavailable') return 'Hệ thống Công Ty đang tạm thời chưa sẵn sàng.';
   return null;
 }
@@ -26,6 +26,7 @@ export default function LoginPage({ searchParams }: { searchParams?: { error?: s
     <input type="hidden" name="returnTo" value={returnTo} />
     <label>Tên đăng nhập<input name="username" autoComplete="username" required disabled={busy} /></label>
     <label>Mật khẩu<input name="password" type="password" autoComplete="current-password" required disabled={busy} /></label>
+    {searchParams?.error==='owner_challenge_required'?<label>Mã xác minh<input name="ownerCode" inputMode="numeric" autoComplete="one-time-code" required disabled={busy} /></label>:null}
     <button className="primary-action" type="submit" disabled={busy}>{busy ? 'Đang đăng nhập…' : 'Đăng nhập'}</button>
   </form></main>;
 }
