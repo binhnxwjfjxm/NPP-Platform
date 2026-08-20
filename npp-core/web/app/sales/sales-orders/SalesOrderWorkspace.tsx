@@ -302,7 +302,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
     setOperationError(null);
   }
 
-  async function action(kind: 'confirm' | 'amend' | 'confirm-amendment' | 'issue-stock' | 'cancel') {
+  async function action(kind: 'confirm' | 'amend' | 'confirm-amendment' | 'issue-stock' | 'cancel' | 'close-execution') {
     if (!selected) return;
     const actionStateKey = orderBusinessStateKey(selected);
     setBusy(true);
@@ -351,6 +351,15 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
         });
         stockIssueKeyRef.current = null;
         setNotice('Đã Xuất kho đơn Giao thủ công');
+      } else if (kind === 'close-execution') {
+        if (!cancellationReason.trim()) throw new Error('Hãy nhập lý do kết thúc phần chưa giao');
+        order = await apiRequest<SalesOrder>(`/api/sales-orders/${selected.id}/close-execution`, {
+          method: 'POST',
+          headers: { 'Idempotency-Key': mutationKey('sales-execution-close') },
+          body: JSON.stringify({ reason: cancellationReason.trim() }),
+        });
+        setCancellationReason('');
+        setNotice('Đã kết thúc phần chưa giao; lịch sử giao nhận được giữ nguyên');
       } else {
         if (!cancellationReason.trim()) throw new Error('Hãy nhập lý do hủy');
         order = await apiRequest<SalesOrder>(`/api/sales-orders/${selected.id}/cancel`, {
@@ -488,6 +497,7 @@ export default function SalesOrderWorkspace({ initialBootstrap }: { initialBoots
             onIssueStock={() => action('issue-stock')}
             onManualOrderUpdated={mergeOrder}
             onCancel={() => action('cancel')}
+            onCloseExecution={() => action('close-execution')}
           />
         </div>
       </div>

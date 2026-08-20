@@ -204,6 +204,11 @@ function knownDatabaseFailure(error) {
     ['inventory_negative_stock_denied', 'INSUFFICIENT_INVENTORY', 'Inventory is insufficient for this issue'],
     ['customer_return_quantity_exceeds_issued', 'CUSTOMER_RETURN_QUANTITY_CONFLICT', 'Customer return exceeds the remaining issued quantity'],
     ['customer_return_origin_mismatch', 'CUSTOMER_RETURN_ORIGIN_MISMATCH', 'Customer return source lineage is invalid'],
+    [
+      'customer_return_exceeds_posted_receivable_quantity',
+      'CUSTOMER_RETURN_RECEIVABLE_NOT_POSTED',
+      'Chưa thể nhận hàng khách trả vì phiếu giao chưa phát sinh công nợ. Nếu khách chưa nhận hàng, hãy nhập hàng về tại Đối soát cuối chuyến.',
+    ],
     ['receivable_documents_source_unique', 'RECEIVABLE_SOURCE_CONFLICT', 'Pickup handover already has a receivable document'],
     ['receivable_ledger_entries_source_type_unique', 'RECEIVABLE_SOURCE_CONFLICT', 'Pickup handover already has a receivable ledger entry'],
   ];
@@ -959,6 +964,18 @@ async function loadReturnSourceLineLocked(client, { installationId, issueLineId 
             delivery_line.item_name_snapshot,
             delivery_line.unit_code_snapshot,
             issue_line.issued_base_quantity,
+            EXISTS (
+              SELECT 1
+                FROM accounting.receivable_document_lines receivable_line
+                JOIN accounting.receivable_documents receivable_document
+                  ON receivable_document.installation_id = receivable_line.installation_id
+                 AND receivable_document.id = receivable_line.receivable_document_id
+               WHERE receivable_line.installation_id = issue_line.installation_id
+                 AND receivable_line.inventory_issue_line_id = issue_line.id
+                 AND receivable_document.direction = 'DEBIT'
+                 AND receivable_document.document_type IN ('SALE_DELIVERY', 'SALE_PICKUP')
+                 AND receivable_document.status <> 'reversed'
+            ) AS has_posted_receivable,
             COALESCE((
               SELECT sum(CASE
                 WHEN header.status = 'received' THEN COALESCE(receipt.accepted_base_quantity, 0)
@@ -1115,6 +1132,12 @@ export async function executeCreateCustomerReturn({ adapter, requestContext, ide
           if (!source || source.issue_status !== 'POSTED'
             || !['dispatched', 'handed_over'].includes(source.delivery_order_status)) {
             return { failed: failure('CUSTOMER_RETURN_SOURCE_NOT_ELIGIBLE', 'Issued source line is not eligible for return') };
+          }
+          if (!source.has_posted_receivable) {
+            return { failed: failure(
+              'CUSTOMER_RETURN_RECEIVABLE_NOT_POSTED',
+              'Chưa thể nhận hàng khách trả vì phiếu giao chưa phát sinh công nợ. Nếu khách chưa nhận hàng, hãy nhập hàng về tại Đối soát cuối chuyến.',
+            ) };
           }
           if (!warehouseAllowed(requestContext, source.warehouse_id)) {
             return { failed: failure('WAREHOUSE_SCOPE_DENIED', 'Return source is outside the current warehouse scope') };

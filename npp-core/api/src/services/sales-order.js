@@ -1009,6 +1009,46 @@ export async function cancelSalesOrder(client, input) {
   return enrichResult(client, input.requestContext, result);
 }
 
+export async function closeSalesOrderAfterExecution(client, input) {
+  if (!IDEMPOTENCY_KEY_PATTERN.test(String(input.idempotencyKey ?? ''))) {
+    return failure('INVALID_IDEMPOTENCY_KEY', 'Khóa chống ghi trùng không hợp lệ.');
+  }
+  const reason = String(input.payload?.reason ?? '').trim();
+  if (!reason || reason.length > 1000) {
+    return failure('EXECUTION_CLOSE_REASON_REQUIRED', 'Vui lòng nhập lý do kết thúc đơn, tối đa 1000 ký tự.');
+  }
+  const facts = await deliveryExecutionRepository.getSalesOrderExecutionCloseFacts(client, {
+    installationId: input.requestContext.installationId,
+    salesOrderId: input.id,
+  });
+  if (!facts) return failure('SALES_ORDER_NOT_FOUND', 'Không tìm thấy đơn bán hàng.');
+  if (facts.status !== 'confirmed') return failure('INVALID_STATUS_TRANSITION', 'Chỉ đơn đã xác nhận mới có thể kết thúc sau đối soát.');
+  if (Number(facts.delivery_attempts) < 1) {
+    return failure('SALES_ORDER_EXECUTION_CLOSE_NOT_ALLOWED', 'Đơn chưa có kết quả giao nhận thực tế nên không thể kết thúc theo quy trình này.');
+  }
+  if (Number(facts.open_trips) > 0) {
+    return failure('SALES_ORDER_EXECUTION_CLOSE_BLOCKED', 'Còn chuyến chưa được Công Ty đối soát và đóng.');
+  }
+  const released = await manualEditReleaseService.releaseUnexecutedAllocations(client, {
+    requestContext: input.requestContext,
+    salesOrderId: input.id,
+    idempotencyKey: input.idempotencyKey,
+  });
+  if (!released.ok) return released;
+  const closedId = await salesOrderRepository.closeSalesOrderAfterExecution(client, {
+    installationId: input.requestContext.installationId,
+    salesOrderId: input.id,
+    actorId: input.requestContext.actorId,
+  });
+  if (!closedId) return failure('SALES_ORDER_EXECUTION_CLOSE_CONFLICT', 'Đơn đã thay đổi trong lúc kết thúc. Hãy tải lại rồi thử lại.', true);
+  const fulfillment = await fulfillmentService.cancelSalesOrderFulfillmentDemand(client, {
+    requestContext: input.requestContext,
+    salesOrderId: input.id,
+  });
+  if (!fulfillment.ok) return fulfillment;
+  return enrichResult(client, input.requestContext, await legacy.getSalesOrder(client, { requestContext: input.requestContext, id: input.id }));
+}
+
 export const salesOrderDeliveryExecutionInternals = Object.freeze({
   normalizeDeliveryExecution,
   fallbackExecutionMode,
