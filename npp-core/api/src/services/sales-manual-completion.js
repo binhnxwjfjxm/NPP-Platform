@@ -11,6 +11,45 @@ import { auditOutboxEffect } from '../audit-outbox-effects.js';
 import * as receivableRepository from '../db/repositories/customer-receivable.js';
 import * as customerPaymentService from './customer-payment.js';
 
+const DIRECT_COMPLETION_MODES = Object.freeze({
+  MANUAL: Object.freeze({
+    key: 'MANUAL',
+    label: 'Giao thủ công',
+    deliveryMode: 'DELIVERY',
+    deliveryExecutionMode: 'MANUAL',
+    errorPrefix: 'MANUAL_ORDER',
+    sourceDocumentType: 'MANUAL_SALES_ORDER',
+    documentType: 'SALE_DELIVERY',
+    receivableAuditAction: 'post_manual_sales_order_receivable',
+    receivableEventType: 'accounting.receivable.manual_sales_order.posted',
+    postingOrigin: 'manual_sales_order_delivery_complete',
+    paymentNamespace: 'manual-sales-payment',
+    paymentSource: 'manual_sales_order_payment',
+  }),
+  PICKUP: Object.freeze({
+    key: 'PICKUP',
+    label: 'Giao tại quầy',
+    deliveryMode: 'PICKUP',
+    deliveryExecutionMode: null,
+    errorPrefix: 'PICKUP_ORDER',
+    sourceDocumentType: 'DIRECT_PICKUP_SALES_ORDER',
+    documentType: 'SALE_PICKUP',
+    receivableAuditAction: 'post_direct_pickup_sales_order_receivable',
+    receivableEventType: 'accounting.receivable.direct_pickup_sales_order.posted',
+    postingOrigin: 'direct_pickup_sales_order_complete',
+    paymentNamespace: 'pickup-sales-payment',
+    paymentSource: 'direct_pickup_sales_order_payment',
+  }),
+});
+
+function directCompletionMode(mode) {
+  return DIRECT_COMPLETION_MODES[String(mode ?? '').toUpperCase()] ?? null;
+}
+
+function directFailure(contract, suffix, message, retryable = false, details = {}) {
+  return failure(`${contract.errorPrefix}_${suffix}`, message, retryable, details);
+}
+
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
 }
@@ -83,7 +122,7 @@ async function loadLines(client, { installationId, salesOrderVersionId }) {
   return result.rows ?? [];
 }
 
-async function loadManualReceivable(client, { installationId, salesOrderId }) {
+async function loadDirectReceivable(client, { installationId, salesOrderId, sourceDocumentType }) {
   const result = await client.query(
     `SELECT id,
             source_document_date,
@@ -94,67 +133,69 @@ async function loadManualReceivable(client, { installationId, salesOrderId }) {
             revision
        FROM accounting.receivable_documents
       WHERE installation_id = $1
-        AND source_document_type = 'MANUAL_SALES_ORDER'
+        AND source_document_type = $3
         AND source_document_id = $2::uuid
       FOR UPDATE`,
-    [installationId, salesOrderId],
+    [installationId, salesOrderId, sourceDocumentType],
   );
   return result.rows?.[0] ?? null;
 }
 
-function validateManualIssued(source, requestContext) {
+function validateDirectIssued(source, requestContext, contract) {
   if (!source) return failure('SALES_ORDER_NOT_FOUND', 'Không tìm thấy đơn bán hàng');
-  if (source.delivery_mode !== 'DELIVERY' || source.delivery_execution_mode !== 'MANUAL') {
-    return failure('MANUAL_ORDER_ACTION_NOT_AVAILABLE', 'Thao tác này chỉ áp dụng cho đơn Giao thủ công');
+  if (source.delivery_mode !== contract.deliveryMode
+      || source.delivery_execution_mode !== contract.deliveryExecutionMode) {
+    return directFailure(contract, 'ACTION_NOT_AVAILABLE', `Thao tác này chỉ áp dụng cho đơn ${contract.label}`);
   }
   if (!warehouseAllowed(requestContext, source.warehouse_id)) {
     return failure('WAREHOUSE_SCOPE_DENIED', 'Đơn nằm ngoài phạm vi kho được cấp quyền');
   }
-  if (source.fulfillment_status !== 'issued') {
-    return failure('MANUAL_ORDER_NOT_ISSUED', 'Hãy Xuất kho trước khi Hoàn thành đơn');
+  if (!['issued', 'fulfilled'].includes(source.fulfillment_status)) {
+    return directFailure(contract, 'NOT_ISSUED', 'Hãy Xuất kho trước khi Hoàn thành đơn');
   }
   return Object.freeze({ ok: true });
 }
 
-function checkRevision(source, expectedRevision) {
+function checkRevision(source, expectedRevision, contract) {
   if (String(source.revision) === String(expectedRevision ?? '')) return null;
-  return failure(
-    'MANUAL_ORDER_CONFLICT',
+  return directFailure(
+    contract,
+    'CONFLICT',
     'Đơn đã thay đổi. Hãy tải lại trước khi tiếp tục',
     false,
     { currentRevision: String(source.revision) },
   );
 }
 
-async function writeReceivableAuditOutbox(client, { requestContext, receivable }) {
+async function writeReceivableAuditOutbox(client, { requestContext, receivable, contract }) {
   await insertAuditRecord(client, buildAuditRecord({
     requestContext,
-    action: 'post_manual_sales_order_receivable',
+    action: contract.receivableAuditAction,
     resourceType: 'accounting.receivable_document',
     resourceId: receivable.id,
     beforeData: null,
     afterData: receivable,
     metadata: {
-      sourceDocumentType: 'MANUAL_SALES_ORDER',
+      sourceDocumentType: contract.sourceDocumentType,
       salesOrderId: receivable.sales_order_id,
-      postingOrigin: 'manual_sales_order_delivery_complete',
+      postingOrigin: contract.postingOrigin,
     },
   }));
   await insertOutboxEvent(client, buildOutboxEvent({
     requestContext,
     aggregateType: 'accounting.receivable_document',
     aggregateId: receivable.id,
-    eventType: 'accounting.receivable.manual_sales_order.posted',
+    eventType: contract.receivableEventType,
     eventVersion: Number(receivable.revision ?? 1),
     payload: receivable,
     metadata: {
       salesOrderId: receivable.sales_order_id,
-      postingOrigin: 'manual_sales_order_delivery_complete',
+      postingOrigin: contract.postingOrigin,
     },
   }));
 }
 
-async function writePaymentAuditOutbox(client, { requestContext, customerPayment }) {
+async function writePaymentAuditOutbox(client, { requestContext, customerPayment, contract }) {
   await insertAuditRecord(client, buildAuditRecord({
     requestContext,
     action: 'create',
@@ -162,7 +203,7 @@ async function writePaymentAuditOutbox(client, { requestContext, customerPayment
     resourceId: customerPayment.id,
     beforeData: null,
     afterData: customerPayment,
-    metadata: { source: 'manual_sales_order_payment' },
+    metadata: { source: contract.paymentSource },
   }));
   await insertOutboxEvent(client, buildOutboxEvent({
     requestContext,
@@ -171,20 +212,21 @@ async function writePaymentAuditOutbox(client, { requestContext, customerPayment
     eventType: 'accounting.customer_payment.posted',
     eventVersion: 1,
     payload: customerPayment,
-    metadata: { source: 'manual_sales_order_payment' },
+    metadata: { source: contract.paymentSource },
   }));
 }
 
-async function postReceivable(client, { requestContext, source }) {
-  const sourceDocumentType = 'MANUAL_SALES_ORDER';
+async function postReceivable(client, { requestContext, source, contract }) {
+  const sourceDocumentType = contract.sourceDocumentType;
   await receivableRepository.lockReceivableSource(client, {
     installationId: requestContext.installationId,
     sourceDocumentType,
     sourceDocumentId: source.id,
   });
-  const existing = await loadManualReceivable(client, {
+  const existing = await loadDirectReceivable(client, {
     installationId: requestContext.installationId,
     salesOrderId: source.id,
+    sourceDocumentType,
   });
   if (existing) {
     return Object.freeze({
@@ -199,7 +241,7 @@ async function postReceivable(client, { requestContext, source }) {
     installationId: requestContext.installationId,
     salesOrderVersionId: source.sales_order_version_id,
   });
-  if (!lines.length) return failure('MANUAL_ORDER_NO_LINES', 'Đơn không có dòng hàng để ghi nhận doanh số');
+  if (!lines.length) return directFailure(contract, 'NO_LINES', 'Đơn không có dòng hàng để ghi nhận doanh số');
 
   await receivableRepository.lockSalesOrderLines(client, {
     installationId: requestContext.installationId,
@@ -219,7 +261,7 @@ async function postReceivable(client, { requestContext, source }) {
     salesOrderId: source.id,
     salesOrderVersionId: source.sales_order_version_id,
     deliveryOrderId: null,
-    documentType: 'SALE_DELIVERY',
+    documentType: contract.documentType,
     sourceDocumentType,
     sourceDocumentId: source.id,
     sourceDocumentNumber: source.order_number,
@@ -279,41 +321,44 @@ async function postReceivable(client, { requestContext, source }) {
       salesOrderId: source.id,
       salesOrderVersionId: source.sales_order_version_id,
       warehouseId: source.warehouse_id,
-      postingOrigin: 'manual_sales_order_delivery_complete',
+      postingOrigin: contract.postingOrigin,
     },
   });
-  await writeReceivableAuditOutbox(client, { requestContext, receivable });
+  await writeReceivableAuditOutbox(client, { requestContext, receivable, contract });
   return Object.freeze({ ok: true, receivable, documentDate, replayed: false });
 }
 
-export async function completeManualSalesOrder(client, {
+export async function completeDirectSalesOrder(client, {
   requestContext,
   id,
   expectedRevision,
+  mode,
 }) {
+  const contract = directCompletionMode(mode);
+  if (!contract) return failure('DIRECT_SALES_ORDER_MODE_INVALID', 'Hình thức hoàn thành đơn không hợp lệ');
   const source = await lockSource(client, {
     installationId: requestContext.installationId,
     salesOrderId: id,
   });
-  const valid = validateManualIssued(source, requestContext);
+  const valid = validateDirectIssued(source, requestContext, contract);
   if (!valid.ok) return valid;
   if (source.status === 'closed') {
-    return failure('MANUAL_ORDER_ALREADY_COMPLETED', 'Đơn đã hoàn thành, không thể hoàn thành lần hai');
+    return directFailure(contract, 'ALREADY_COMPLETED', 'Đơn đã hoàn thành, không thể hoàn thành lần hai');
   }
   if (source.status !== 'confirmed') {
-    return failure('MANUAL_ORDER_COMPLETE_NOT_AVAILABLE', 'Chỉ đơn đã Chốt và Xuất kho mới được Hoàn thành đơn');
+    return directFailure(contract, 'COMPLETE_NOT_AVAILABLE', 'Chỉ đơn đã Chốt và Xuất kho mới được Hoàn thành đơn');
   }
-  const conflict = checkRevision(source, expectedRevision);
+  const conflict = checkRevision(source, expectedRevision, contract);
   if (conflict) return conflict;
 
   const { decimalToScaled } = customerPaymentService.customerPaymentInternals;
   const total = decimalToScaled(source.total, { allowZero: true });
-  if (total === null) return failure('MANUAL_ORDER_TOTAL_INVALID', 'Tổng tiền đơn không hợp lệ');
+  if (total === null) return directFailure(contract, 'TOTAL_INVALID', 'Tổng tiền đơn không hợp lệ');
 
   let receivable = null;
   let accountingEffect = auditOutboxEffect();
   if (total > 0n) {
-    const posted = await postReceivable(client, { requestContext, source });
+    const posted = await postReceivable(client, { requestContext, source, contract });
     if (!posted.ok) return posted;
     receivable = posted.receivable;
     if (!posted.replayed) accountingEffect = auditOutboxEffect(1, 1);
@@ -334,18 +379,25 @@ export async function completeManualSalesOrder(client, {
     [requestContext.installationId, id, requestContext.actorId, total === 0n],
   );
   if (!updated.rows?.length) {
-    return failure('MANUAL_ORDER_CONFLICT', 'Đơn đã thay đổi. Hãy tải lại trước khi tiếp tục');
+    return directFailure(contract, 'CONFLICT', 'Đơn đã thay đổi. Hãy tải lại trước khi tiếp tục');
   }
   return Object.freeze({ ok: true, action: 'complete', receivable, auditOutboxEffect: accountingEffect });
 }
 
-export async function settleManualSalesOrder(client, {
+export async function completeManualSalesOrder(client, args) {
+  return completeDirectSalesOrder(client, { ...args, mode: 'MANUAL' });
+}
+
+export async function settleDirectSalesOrder(client, {
   requestContext,
   id,
   expectedRevision,
   payload,
   idempotencyKey,
+  mode,
 }) {
+  const contract = directCompletionMode(mode);
+  if (!contract) return failure('DIRECT_SALES_ORDER_MODE_INVALID', 'Hình thức ghi nhận tiền không hợp lệ');
   if (!IDEMPOTENCY_KEY_PATTERN.test(String(idempotencyKey ?? ''))) {
     return failure('INVALID_IDEMPOTENCY_KEY', 'Khóa chống ghi trùng không hợp lệ');
   }
@@ -354,33 +406,34 @@ export async function settleManualSalesOrder(client, {
     installationId: requestContext.installationId,
     salesOrderId: id,
   });
-  const valid = validateManualIssued(source, requestContext);
+  const valid = validateDirectIssued(source, requestContext, contract);
   if (!valid.ok) return valid;
   if (source.status !== 'closed') {
-    return failure('MANUAL_ORDER_SETTLEMENT_NOT_AVAILABLE', 'Hãy Hoàn thành đơn trước khi ghi nhận tiền thu hoặc nợ');
+    return directFailure(contract, 'SETTLEMENT_NOT_AVAILABLE', 'Hãy Hoàn thành đơn trước khi ghi nhận tiền thu hoặc nợ');
   }
   if (source.settlement_status === 'paid') {
-    return failure('MANUAL_ORDER_ALREADY_SETTLED', 'Đơn đã thanh toán đủ');
+    return directFailure(contract, 'ALREADY_SETTLED', 'Đơn đã thanh toán đủ');
   }
   if (!['pending', 'partially_paid'].includes(source.settlement_status)) {
-    return failure('MANUAL_ORDER_SETTLEMENT_NOT_AVAILABLE', 'Đơn chưa có khoản phải thu để ghi nhận tiền');
+    return directFailure(contract, 'SETTLEMENT_NOT_AVAILABLE', 'Đơn chưa có khoản phải thu để ghi nhận tiền');
   }
-  const conflict = checkRevision(source, expectedRevision);
+  const conflict = checkRevision(source, expectedRevision, contract);
   if (conflict) return conflict;
 
-  const receivable = await loadManualReceivable(client, {
+  const receivable = await loadDirectReceivable(client, {
     installationId: requestContext.installationId,
     salesOrderId: id,
+    sourceDocumentType: contract.sourceDocumentType,
   });
   if (!receivable || !['open', 'partially_allocated'].includes(receivable.status)) {
-    return failure('MANUAL_ORDER_RECEIVABLE_NOT_FOUND', 'Không tìm thấy khoản phải thu đang mở của đơn');
+    return directFailure(contract, 'RECEIVABLE_NOT_FOUND', 'Không tìm thấy khoản phải thu đang mở của đơn');
   }
 
   const { decimalToScaled, scaledToDecimal } = customerPaymentService.customerPaymentInternals;
   const remaining = decimalToScaled(receivable.remaining_amount, { allowZero: true });
   const paid = decimalToScaled(payload?.paidAmount, { allowZero: true });
   if (remaining === null || remaining <= 0n) {
-    return failure('MANUAL_ORDER_ALREADY_SETTLED', 'Đơn đã thanh toán đủ');
+    return directFailure(contract, 'ALREADY_SETTLED', 'Đơn đã thanh toán đủ');
   }
   if (paid === null) {
     return failure('INVALID_PAYMENT_AMOUNT', 'Số tiền thực thu không hợp lệ');
@@ -404,7 +457,7 @@ export async function settleManualSalesOrder(client, {
   const paymentDate = vietnamDate(requestContext.receivedAt);
   const paymentResult = await customerPaymentService.createCustomerPayment(client, {
     requestContext,
-    idempotencyKey: deriveIdempotencyKey('manual-sales-payment', idempotencyKey),
+    idempotencyKey: deriveIdempotencyKey(contract.paymentNamespace, idempotencyKey),
     payload: {
       customerId: source.customer_id,
       warehouseId: source.warehouse_id,
@@ -423,7 +476,7 @@ export async function settleManualSalesOrder(client, {
   });
   if (!paymentResult.ok) return paymentResult;
   const customerPayment = paymentResult.customerPayment;
-  await writePaymentAuditOutbox(client, { requestContext, customerPayment });
+  await writePaymentAuditOutbox(client, { requestContext, customerPayment, contract });
 
   return Object.freeze({
     ok: true,
@@ -433,3 +486,12 @@ export async function settleManualSalesOrder(client, {
     auditOutboxEffect: auditOutboxEffect(1, 1),
   });
 }
+
+export async function settleManualSalesOrder(client, args) {
+  return settleDirectSalesOrder(client, { ...args, mode: 'MANUAL' });
+}
+
+export const directSalesCompletionInternals = Object.freeze({
+  directCompletionMode,
+  validateDirectIssued,
+});

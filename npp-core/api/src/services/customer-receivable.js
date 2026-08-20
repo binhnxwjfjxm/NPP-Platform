@@ -522,7 +522,12 @@ export async function listReceivableDocuments(client, input) {
   const sourceDocumentType = input.sourceDocumentType == null || input.sourceDocumentType === ''
     ? null
     : String(input.sourceDocumentType).trim().toUpperCase();
-  if (sourceDocumentType && !new Set(['DELIVERY_ATTEMPT', 'PICKUP_HANDOVER']).has(sourceDocumentType)) {
+  if (sourceDocumentType && !new Set([
+    'DELIVERY_ATTEMPT',
+    'PICKUP_HANDOVER',
+    'MANUAL_SALES_ORDER',
+    'DIRECT_PICKUP_SALES_ORDER',
+  ]).has(sourceDocumentType)) {
     return failure('INVALID_SOURCE_DOCUMENT_TYPE', 'Invalid receivable source type');
   }
   const search = text(input.search, 256);

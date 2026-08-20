@@ -17,6 +17,29 @@ import {
   completeManualSalesOrder,
   settleManualSalesOrder,
 } from '../services/sales-manual-completion.js';
+import {
+  completePickupSalesOrder,
+  settlePickupSalesOrder,
+} from '../services/sales-pickup-completion.js';
+
+const DIRECT_SALES_ORDER_ROUTES = Object.freeze({
+  'manual-sales-orders': Object.freeze({
+    name: 'Giao thủ công',
+    complete: completeManualSalesOrder,
+    settle: settleManualSalesOrder,
+    auditPrefix: 'manual',
+    unexpectedEvent: 'manual_sales_order_unexpected_error',
+    unavailableCode: 'MANUAL_ORDER_TRANSACTION_UNAVAILABLE',
+  }),
+  'pickup-sales-orders': Object.freeze({
+    name: 'Giao tại quầy',
+    complete: completePickupSalesOrder,
+    settle: settlePickupSalesOrder,
+    auditPrefix: 'pickup',
+    unexpectedEvent: 'pickup_sales_order_unexpected_error',
+    unavailableCode: 'PICKUP_ORDER_TRANSACTION_UNAVAILABLE',
+  }),
+});
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -130,13 +153,19 @@ async function readPayload(req, res, options) {
   }
 }
 
-async function writeSalesOrderAuditOutbox(client, { requestContext, before, after, action }) {
+async function writeSalesOrderAuditOutbox(client, {
+  requestContext,
+  before,
+  after,
+  action,
+  contract,
+}) {
   const eventType = action === 'complete'
-    ? 'sales.sales_order.manual_completed'
-    : 'sales.sales_order.manual_settled';
+    ? `sales.sales_order.${contract.auditPrefix}_completed`
+    : `sales.sales_order.${contract.auditPrefix}_settled`;
   const auditAction = action === 'complete'
-    ? 'manual_complete'
-    : 'manual_settlement';
+    ? `${contract.auditPrefix}_complete`
+    : `${contract.auditPrefix}_settlement`;
   await insertAuditRecord(client, buildAuditRecord({
     requestContext,
     action: auditAction,
@@ -162,14 +191,14 @@ async function writeSalesOrderAuditOutbox(client, { requestContext, before, afte
   }));
 }
 
-function sanitizedUnexpectedError(error, requestId, action, salesOrderId) {
+function sanitizedUnexpectedError(error, requestId, action, salesOrderId, contract = DIRECT_SALES_ORDER_ROUTES['manual-sales-orders']) {
   const name = typeof error?.name === 'string' ? error.name.slice(0, 80) : 'Error';
   const code = typeof error?.code === 'string' ? error.code.slice(0, 80) : null;
   const message = typeof error?.message === 'string'
     ? error.message.replace(/postgres(?:ql)?:\/\/\S+/gi, '[redacted]').slice(0, 240)
-    : 'Unknown manual Sales Order error';
+    : `Unknown ${contract.name} Sales Order error`;
   return {
-    event: 'manual_sales_order_unexpected_error',
+    event: contract.unexpectedEvent,
     requestId,
     action,
     salesOrderId,
@@ -185,6 +214,8 @@ async function executeMutation(req, res, options, {
   action,
   payload,
   mutate,
+  routeBase,
+  contract,
 }) {
   const keyResult = requireIdempotency(req);
   if (!keyResult.ok) {
@@ -204,7 +235,7 @@ async function executeMutation(req, res, options, {
       requestContext,
       requestId: options.requestId,
       receivedAt: options.receivedAt,
-      route: `/api/manual-sales-orders/${id}/${action}`,
+      route: `/api/${routeBase}/${id}/${action}`,
       payload: { ...payload, id },
       onProcess: async () => {
         const transaction = await withAuditOutboxTransaction({
@@ -221,6 +252,7 @@ async function executeMutation(req, res, options, {
               before: beforeResult.salesOrder,
               after: afterResult.salesOrder,
               action,
+              contract,
             });
             return {
               failed: false,
@@ -271,10 +303,11 @@ async function executeMutation(req, res, options, {
       options.requestId,
       action,
       id,
+      contract,
     )));
     sendError(
       res,
-      apiError('MANUAL_ORDER_TRANSACTION_UNAVAILABLE', 'Thao tác tạm thời chưa thực hiện được', {}, true, 503),
+      apiError(contract.unavailableCode, 'Thao tác tạm thời chưa thực hiện được', {}, true, 503),
       options.requestId,
       options.receivedAt,
     );
@@ -283,9 +316,11 @@ async function executeMutation(req, res, options, {
 
 export async function handleManualSalesOrderRoutes(req, res, options) {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-  if (!url.pathname.startsWith('/api/manual-sales-orders/')) return false;
-  const match = url.pathname.match(/^\/api\/manual-sales-orders\/([^/]+)\/(complete|settlement)$/);
+  const match = url.pathname.match(/^\/api\/(manual-sales-orders|pickup-sales-orders)\/([^/]+)\/(complete|settlement)$/);
   if (!match) {
+    if (!['/api/manual-sales-orders/', '/api/pickup-sales-orders/'].some((prefix) => url.pathname.startsWith(prefix))) {
+      return false;
+    }
     sendError(res, apiError('NOT_FOUND', 'Không tìm thấy chức năng yêu cầu', {}, false, 404), options.requestId, options.receivedAt);
     return true;
   }
@@ -294,7 +329,8 @@ export async function handleManualSalesOrderRoutes(req, res, options) {
     return true;
   }
 
-  const [, id, action] = match;
+  const [, routeBase, id, action] = match;
+  const contract = DIRECT_SALES_ORDER_ROUTES[routeBase];
   const permission = action === 'complete'
     ? options.PERMISSIONS.coreSalesOrderConfirm
     : options.PERMISSIONS.coreCustomerPaymentCreate;
@@ -308,13 +344,15 @@ export async function handleManualSalesOrderRoutes(req, res, options) {
     id,
     action,
     payload,
+    routeBase,
+    contract,
     mutate: action === 'complete'
-      ? (client) => completeManualSalesOrder(client, {
+      ? (client) => contract.complete(client, {
           requestContext: context,
           id,
           expectedRevision: payload.expectedRevision,
         })
-      : (client, key) => settleManualSalesOrder(client, {
+      : (client, key) => contract.settle(client, {
           requestContext: context,
           id,
           expectedRevision: payload.expectedRevision,
@@ -328,4 +366,5 @@ export async function handleManualSalesOrderRoutes(req, res, options) {
 export const manualSalesOrderRouteInternals = Object.freeze({
   statusFor,
   sanitizedUnexpectedError,
+  DIRECT_SALES_ORDER_ROUTES,
 });

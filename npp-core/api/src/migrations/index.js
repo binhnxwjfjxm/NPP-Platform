@@ -168,6 +168,10 @@ const BUSINESS_PURGE_GUARDED_DELETE_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/099_business_purge_guarded_delete.sql', import.meta.url),
   'utf8',
 );
+const DIRECT_PICKUP_SALES_ORDER_RECEIVABLE_SQL = readFileSync(
+  new URL('../../../../database/migrations/accounting/100_direct_pickup_sales_order_receivable.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -243,6 +247,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '099_business_purge_guarded_delete',
     sql: BUSINESS_PURGE_GUARDED_DELETE_SQL,
+  }),
+  Object.freeze({
+    id: '100_direct_pickup_sales_order_receivable',
+    sql: DIRECT_PICKUP_SALES_ORDER_RECEIVABLE_SQL,
   }),
 ]);
 
