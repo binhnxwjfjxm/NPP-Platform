@@ -29,10 +29,25 @@ function requireIdempotency(req) {
   }
 }
 
-function canManagePrintTemplates(context) {
-  const roles = Array.isArray(context.requestContext?.roles) ? context.requestContext.roles : [];
+function canManagePrintTemplates(context, requestContext) {
+  const roles = Array.isArray(requestContext?.roles) ? requestContext.roles : [];
   if (roles.some((role) => OWNER_ROLES.has(role))) return { ok: true };
-  return context.authorize(context.requestContext, context.PERMISSIONS.corePrintTemplateManage);
+  return context.authorize(requestContext, context.PERMISSIONS.corePrintTemplateManage);
+}
+
+function authenticatePrintTemplateRequest(req, res, context) {
+  const auth = context.authenticate(req, context.config);
+  if (!auth?.ok) {
+    res.setHeader('WWW-Authenticate', 'Bearer');
+    sendError(res, error('UNAUTHORIZED', 'Cần đăng nhập', false, 401), context.requestId, context.receivedAt);
+    return null;
+  }
+  return context.createContext({
+    config: context.config,
+    principal: auth.principal,
+    requestId: context.requestId,
+    receivedAt: context.receivedAt,
+  });
 }
 
 export async function handleDocumentPrintTemplateRoutes(req, res, options) {
@@ -40,10 +55,12 @@ export async function handleDocumentPrintTemplateRoutes(req, res, options) {
   if (!(pathname === '/api/document-print-templates' || pathname.startsWith('/api/document-print-templates/'))) return false;
   const method = String(req.method ?? 'GET').toUpperCase();
   const context = options;
+  const requestContext = authenticatePrintTemplateRequest(req, res, context);
+  if (!requestContext) return true;
 
   if (pathname === '/api/document-print-templates' && method === 'GET') {
     try {
-      const result = await service.listDocumentPrintTemplates(context.getPool(), { installationId: context.requestContext.installationId });
+      const result = await service.listDocumentPrintTemplates(context.getPool(), { installationId: requestContext.installationId });
       sendSuccess(res, result.templates, context.requestId, context.receivedAt);
     } catch {
       sendError(res, error('PRINT_TEMPLATE_STORAGE_UNAVAILABLE', 'Cấu hình mẫu in tạm thời chưa sẵn sàng', true, 503), context.requestId, context.receivedAt);
@@ -54,7 +71,7 @@ export async function handleDocumentPrintTemplateRoutes(req, res, options) {
   const match = pathname.match(/^\/api\/document-print-templates\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
   if (!match || method !== 'PATCH') return false;
 
-  const permission = canManagePrintTemplates(context);
+  const permission = canManagePrintTemplates(context, requestContext);
   if (!permission.ok) {
     sendError(res, error(permission.code, permission.message, false, permission.statusCode ?? 403), context.requestId, context.receivedAt);
     return true;
@@ -76,7 +93,7 @@ export async function handleDocumentPrintTemplateRoutes(req, res, options) {
     const execution = await context.executeRequestWithIdempotency({
       idempotencyStore: context.idempotencyStore,
       req,
-      requestContext: context.requestContext,
+      requestContext,
       requestId: context.requestId,
       receivedAt: context.receivedAt,
       route: pathname,
@@ -86,15 +103,15 @@ export async function handleDocumentPrintTemplateRoutes(req, res, options) {
           adapter: context.getPool(),
           mutate: async (client) => {
             const result = await service.updateDocumentPrintTemplate(client, {
-              installationId: context.requestContext.installationId,
+              installationId: requestContext.installationId,
               documentType: match[1],
               templateCode: match[2],
               payload: body,
-              actorId: context.requestContext.actorId,
+              actorId: requestContext.actorId,
             });
             if (!result.ok) return { failed: result, skipAudit: true };
             await insertAuditRecord(client, buildAuditRecord({
-              requestContext: context.requestContext,
+              requestContext,
               action: result.reset ? 'reset' : 'update',
               resourceType: 'document_print_template',
               resourceId: `${result.template.documentType}:${result.template.templateCode}`,
