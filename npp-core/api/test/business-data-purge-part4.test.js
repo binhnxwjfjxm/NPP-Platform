@@ -182,6 +182,20 @@ test('Issue #562 Part 4 exposes only business-level purge targets and keeps purg
   assert.match(guardedDeleteMigration.sql, /guard_payable_document_mutation/);
   assert.doesNotMatch(guardedDeleteMigration.sql, /DISABLE\s+TRIGGER|session_replication_role|TRUNCATE/i);
 
+  const operationalGuards = CORE_API_MIGRATIONS.find((entry) => entry.id === '101_business_purge_operational_guards');
+  assert.ok(operationalGuards);
+  assert.match(operationalGuards.sql, /shared\.guard_business_purge_delete/);
+  for (const table of [
+    'inventory.inventory_movements',
+    'inventory.inventory_movement_lines',
+    'inventory.stocktake_lines',
+    'inventory.inventory_adjustments',
+    'accounting.receivable_documents',
+    'accounting.receivable_document_lines',
+    'accounting.receivable_ledger_entries',
+  ]) assert.match(operationalGuards.sql, new RegExp(table.replace('.', '\\.')));
+  assert.doesNotMatch(operationalGuards.sql, /DISABLE\s+TRIGGER|session_replication_role|TRUNCATE/i);
+
   const migration = await readFile(new URL('../../../database/migrations/shared/088_selective_business_data_purge.sql', import.meta.url), 'utf8');
   assert.match(migration, /target_code/);
   assert.match(migration, /'PURGING'/);

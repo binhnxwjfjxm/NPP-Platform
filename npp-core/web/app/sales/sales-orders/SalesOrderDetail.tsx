@@ -41,6 +41,7 @@ type Props = {
   onIssueStock: () => void;
   onManualOrderUpdated: (order: SalesOrder) => void;
   onCancel: () => void;
+  onCloseExecution: () => void;
 };
 
 function hasIssuedQuantity(value: string | null | undefined): boolean {
@@ -256,6 +257,12 @@ export default function SalesOrderDetail(props: Props) {
           <div className={styles.reasonRow}>
             <input value={props.cancellationReason} onChange={(event) => props.onCancellationReason(event.target.value)} placeholder="Lý do hủy đơn" />
             <button type="button" className={styles.dangerButton} disabled={props.busy} onClick={props.onCancel}>Hủy đơn</button>
+          </div>
+        )}
+        {order.status === 'confirmed' && !isManual && hasIssued && props.canCancel && (
+          <div className={styles.reasonRow}>
+            <input value={props.cancellationReason} onChange={(event) => props.onCancellationReason(event.target.value)} placeholder="Lý do kết thúc phần chưa giao" />
+            <button type="button" disabled={props.busy} onClick={props.onCloseExecution}>Kết thúc phần chưa giao</button>
           </div>
         )}
       </div>

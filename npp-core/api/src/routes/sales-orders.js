@@ -759,6 +759,24 @@ export async function handleSalesOrderRoutes(req, res, options) {
     return true;
   }
 
+  if (action === 'close-execution' && method === 'POST') {
+    const context = await authenticateAndAuthorize(req, res, options, options.PERMISSIONS.coreSalesOrderCancel);
+    if (!context) return true;
+    const payload = await readPayload(req, res, options);
+    if (payload === null) return true;
+    await executeIdempotentMutation(req, res, options, {
+      requestContext: context,
+      route: `/api/sales-orders/${id}/close-execution`,
+      payload: { ...payload, id },
+      action: 'close_execution',
+      resourceId: id,
+      mutate: (client, key) => service.closeSalesOrderAfterExecution(client, {
+        requestContext: context, id, payload, idempotencyKey: key,
+      }),
+    });
+    return true;
+  }
+
   sendError(
     res,
     apiError('METHOD_NOT_ALLOWED', 'Method not allowed', {}, false, 405),

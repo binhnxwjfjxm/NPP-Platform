@@ -102,3 +102,39 @@ export async function getDeliveryExecutionTransitionFacts(client, {
   );
   return result.rows[0] ?? null;
 }
+
+export async function getSalesOrderExecutionCloseFacts(client, {
+  installationId,
+  salesOrderId,
+}) {
+  const result = await client.query(
+    `SELECT orders.status,
+            (
+              SELECT count(*)::int
+                FROM logistics.delivery_attempts attempt
+                JOIN sales.delivery_orders delivery_order
+                  ON delivery_order.installation_id = attempt.installation_id
+                 AND delivery_order.id = attempt.delivery_order_id
+               WHERE delivery_order.installation_id = orders.installation_id
+                 AND delivery_order.sales_order_id = orders.id
+            ) AS delivery_attempts,
+            (
+              SELECT count(*)::int
+                FROM logistics.trip_order_assignments assignment
+                JOIN logistics.delivery_trips trip
+                  ON trip.installation_id = assignment.installation_id
+                 AND trip.id = assignment.trip_id
+                JOIN sales.delivery_orders delivery_order
+                  ON delivery_order.installation_id = assignment.installation_id
+                 AND delivery_order.id = assignment.delivery_order_id
+               WHERE assignment.installation_id = orders.installation_id
+                 AND delivery_order.sales_order_id = orders.id
+                 AND trip.status <> 'closed'
+            ) AS open_trips
+       FROM sales.sales_orders orders
+      WHERE orders.installation_id = $1 AND orders.id = $2
+      FOR UPDATE OF orders`,
+    [installationId, salesOrderId],
+  );
+  return result.rows[0] ?? null;
+}
