@@ -99,9 +99,9 @@ export default async function TripDetailPage({ params }: PageProps) {
           </div>
         ) : (
           <section className="nextStopCard completed" id="next-delivery-action">
-            <div className="nextStopTopline"><span>Tiến độ chuyến</span><b>Hoàn tất</b></div>
+            <div className="nextStopTopline"><span>Tiến độ chuyến</span><b>Chờ Công Ty đối soát</b></div>
             <h2>Đã ghi kết quả tất cả phiếu giao</h2>
-            <p className="nextStopAddress">Kiểm tra bằng chứng, tiền COD và bàn giao trước khi kết thúc công việc.</p>
+            <p className="nextStopAddress">Công Ty cần kiểm tra bằng chứng, tiền COD và hàng quay về trước khi đóng chuyến.</p>
           </section>
         )}
 

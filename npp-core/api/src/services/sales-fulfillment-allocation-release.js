@@ -223,6 +223,27 @@ async function releaseRemainingAllocations(client, {
   return Object.freeze({ ok: true, released: Object.freeze(released) });
 }
 
+export async function releaseUnexecutedAllocations(client, {
+  requestContext,
+  salesOrderId,
+  idempotencyKey,
+  intentName = 'execution-close',
+}) {
+  const intent = Object.freeze({
+    operation: 'sales-order-execution-close',
+    reason: 'Giải phóng phần hàng chưa giao khi kết thúc đơn sau đối soát',
+    blockedCode: 'SALES_ORDER_EXECUTION_CLOSE_BLOCKED',
+    blockedMessage: 'Vẫn còn phần hàng đã soạn hoặc đã xuất chưa được đối soát. Hãy hoàn tất đối soát chuyến trước.',
+  });
+  return releaseRemainingAllocations(client, {
+    requestContext,
+    salesOrderId,
+    idempotencyKey,
+    intentName,
+    intent,
+  });
+}
+
 export async function releasePreExecutionAllocations(client, {
   requestContext,
   salesOrderId,

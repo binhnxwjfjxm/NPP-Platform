@@ -67,6 +67,13 @@ test('Customer Return input rejects duplicate origins and over-precision', () =>
   assert.equal(invalidReceive.code, 'INVALID_RECEIPT_LINE');
 });
 
+test('Customer Return maps an unposted receivable to an actionable office message', () => {
+  const service = readFileSync(new URL('../src/services/sales-delivery-inventory.js', import.meta.url), 'utf8');
+  assert.match(service, /customer_return_exceeds_posted_receivable_quantity/);
+  assert.match(service, /CUSTOMER_RETURN_RECEIVABLE_NOT_POSTED/);
+  assert.match(service, /Đối soát cuối chuyến/);
+});
+
 test('Phase 6D.4 migration locks issue, reversal, reservation and return lineage', () => {
   const foundation = readFileSync(
     new URL('../../../database/migrations/sales/045_sales_inventory_issue_customer_return.sql', import.meta.url),

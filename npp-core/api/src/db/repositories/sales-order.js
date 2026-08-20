@@ -613,6 +613,18 @@ export async function cancelSalesOrder(client, data) {
   return result.rows[0].id;
 }
 
+export async function closeSalesOrderAfterExecution(client, data) {
+  const now = nowIso();
+  const result = await client.query(
+    `UPDATE sales.sales_orders
+        SET status='closed', revision=revision+1, updated_at=$1, updated_by=$2
+      WHERE installation_id=$3 AND id=$4 AND status='confirmed'
+      RETURNING id`,
+    [now, data.actorId, data.installationId, data.salesOrderId],
+  );
+  return result.rows[0]?.id ?? null;
+}
+
 export async function hasBlockingExecutionFacts(client, { installationId, salesOrderId }) {
   const knownRelations = [
     ['sales.delivery_orders', 'sales_order_id'],

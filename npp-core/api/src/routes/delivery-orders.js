@@ -46,6 +46,7 @@ function statusFor(code) {
     || code.endsWith('_NOT_DRAFT')
     || code.endsWith('_NOT_ALLOWED')
     || code.endsWith('_BLOCKED')
+    || code === 'CUSTOMER_RETURN_RECEIVABLE_NOT_POSTED'
   ) return 409;
   return 400;
 }
