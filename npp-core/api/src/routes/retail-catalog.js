@@ -1,3 +1,4 @@
+import { readJsonBody } from '../idempotency.js';
 import { sendError, sendSuccess } from '../http-utils.js';
 import * as retailCatalogService from '../services/retail-catalog.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
@@ -9,7 +10,8 @@ function apiError(code, message, details = {}, retryable = false, statusCode = 5
 function statusFor(code) {
   if (code === 'UNAUTHORIZED') return 401;
   if (code === 'FORBIDDEN' || code === 'WAREHOUSE_SCOPE_DENIED') return 403;
-  if (code === 'SALES_ORDER_NOT_FOUND') return 404;
+  if (['SALES_ORDER_NOT_FOUND', 'VARIANT_NOT_FOUND', 'SALES_CHANNEL_NOT_FOUND'].includes(code)) return 404;
+  if (['BASE_PRICE_NOT_FOUND', 'VARIANT_NOT_PRICEABLE'].includes(code)) return 409;
   return 400;
 }
 
@@ -80,11 +82,8 @@ function sendServiceError(res, result, options) {
 export async function handleRetailCatalogRoutes(req, res, options) {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   if (!url.pathname.startsWith('/api/retail/')) return false;
-  if (req.method !== 'GET') {
-    sendError(res, apiError('METHOD_NOT_ALLOWED', 'Phương thức yêu cầu không được hỗ trợ', {}, false, 405), options.requestId, options.receivedAt);
-    return true;
-  }
-  if (url.pathname === '/api/retail/products') {
+
+  if (url.pathname === '/api/retail/products' && req.method === 'GET') {
     const context = await authorize(req, res, options, options.PERMISSIONS.coreProductRead);
     if (!context) return true;
     try {
@@ -102,8 +101,32 @@ export async function handleRetailCatalogRoutes(req, res, options) {
     }
     return true;
   }
+
+  if (url.pathname === '/api/retail/price' && req.method === 'POST') {
+    const context = await authorize(req, res, options, options.PERMISSIONS.corePriceRead);
+    if (!context) return true;
+    let payload;
+    try {
+      payload = await readJsonBody(req);
+    } catch (error) {
+      sendError(res, apiError(error.code ?? 'INVALID_INPUT', error.publicMessage ?? 'Nội dung yêu cầu không hợp lệ', {}, false, error.statusCode ?? 400), options.requestId, options.receivedAt);
+      return true;
+    }
+    try {
+      const result = await retailCatalogService.resolveRetailPrice(options.getPool(), {
+        requestContext: context,
+        payload,
+      });
+      if (!result.ok) sendServiceError(res, result, options);
+      else sendSuccess(res, result.resolution, options.requestId, options.receivedAt);
+    } catch {
+      sendError(res, apiError('RETAIL_PRICE_UNAVAILABLE', 'Chưa thể tính giá bán', {}, true, 503), options.requestId, options.receivedAt);
+    }
+    return true;
+  }
+
   const availability = url.pathname.match(/^\/api\/retail\/sales-orders\/([^/]+)\/availability$/);
-  if (availability) {
+  if (availability && req.method === 'GET') {
     const context = await authorize(req, res, options, options.PERMISSIONS.coreSalesOrderRead);
     if (!context) return true;
     try {
@@ -116,6 +139,11 @@ export async function handleRetailCatalogRoutes(req, res, options) {
     } catch {
       sendError(res, apiError('RETAIL_AVAILABILITY_UNAVAILABLE', 'Chưa thể tải Khả dụng của đơn', {}, true, 503), options.requestId, options.receivedAt);
     }
+    return true;
+  }
+
+  if (!['GET', 'POST'].includes(req.method ?? '')) {
+    sendError(res, apiError('METHOD_NOT_ALLOWED', 'Phương thức yêu cầu không được hỗ trợ', {}, false, 405), options.requestId, options.receivedAt);
     return true;
   }
   sendError(res, apiError('NOT_FOUND', 'Không tìm thấy chức năng yêu cầu', {}, false, 404), options.requestId, options.receivedAt);

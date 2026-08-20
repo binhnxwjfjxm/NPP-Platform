@@ -1,9 +1,16 @@
 import * as salesOrderEntryService from './sales-order-entry.js';
+import * as pricingService from './pricing.js';
+import * as systemSalesChannelRepository from '../db/repositories/system-sales-channel.js';
 import { loadDemandHoldAvailability, parseHoldQuantity } from './sales-fulfillment-hold.js';
 import * as fulfillmentRepository from '../db/repositories/sales-fulfillment.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SCALE = 1_000_000_000_000n;
+const RETAIL_CHANNEL = Object.freeze({
+  code: 'RETAIL',
+  name: 'Retail',
+  description: 'Kênh hệ thống bán trực tiếp tại quầy.',
+});
 
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
@@ -25,6 +32,18 @@ function convertBaseToSalesQuantity(baseQuantity, conversionToBase) {
   const conversion = parseHoldQuantity(conversionToBase);
   if (base === null || conversion === null || conversion <= 0n) return null;
   return formatRetailQuantity((base * SCALE) / conversion);
+}
+
+async function ensureRetailChannel(client, requestContext) {
+  const channel = await systemSalesChannelRepository.ensureSystemSalesChannel(client, {
+    installationId: requestContext.installationId,
+    ...RETAIL_CHANNEL,
+    actorId: requestContext.actorId,
+  });
+  if (!channel || channel.is_active !== true) {
+    return failure('SALES_CHANNEL_NOT_FOUND', 'Kênh bán Retail chưa sẵn sàng');
+  }
+  return Object.freeze({ ok: true, channel });
 }
 
 async function loadOrderLines(client, { installationId, salesOrderId }) {
@@ -102,6 +121,7 @@ export async function searchRetailCatalog(client, {
       id: option.id,
       productId: option.productId,
       productCode: option.productCode,
+      imageKey: option.productCode,
       productName: option.productName,
       sku: option.sku,
       variantName: option.variantName,
@@ -111,6 +131,39 @@ export async function searchRetailCatalog(client, {
       unitName: option.unitName,
       allowsFractional: option.allowsFractional,
     }))),
+  });
+}
+
+export async function resolveRetailPrice(client, {
+  requestContext,
+  payload,
+}) {
+  if (!UUID_PATTERN.test(String(payload?.variantId ?? ''))) {
+    return failure('VARIANT_NOT_FOUND', 'Sản phẩm không hợp lệ');
+  }
+  const retailChannel = await ensureRetailChannel(client, requestContext);
+  if (!retailChannel.ok) return retailChannel;
+  const result = await pricingService.resolvePrice(client, {
+    installationId: requestContext.installationId,
+    payload: {
+      variantId: payload.variantId,
+      quantity: payload.quantity ?? '1',
+      currencyCode: 'VND',
+      channelId: retailChannel.channel.id,
+      ...(payload.customerId ? { customerId: payload.customerId } : {}),
+    },
+  });
+  if (!result.ok) return result;
+  return Object.freeze({
+    ok: true,
+    resolution: Object.freeze({
+      finalUnitPriceMinor: result.resolution.finalUnitPriceMinor,
+      lineTotalMinor: result.resolution.lineTotalMinor,
+      resolutionFingerprint: result.resolution.resolutionFingerprint,
+      channelId: retailChannel.channel.id,
+      channelCode: retailChannel.channel.code,
+      channelName: retailChannel.channel.name,
+    }),
   });
 }
 
@@ -174,4 +227,5 @@ export const retailCatalogInternals = Object.freeze({
   formatRetailQuantity,
   warehouseAllowed,
   loadOrderLines,
+  ensureRetailChannel,
 });
