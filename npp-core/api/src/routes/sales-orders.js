@@ -12,6 +12,7 @@ import * as warehouseRepository from '../db/repositories/warehouse.js';
 import * as service from '../services/sales-order.js';
 import * as entryService from '../services/sales-order-entry.js';
 import * as manualStockIssueService from '../services/sales-manual-stock-issue.js';
+import * as pickupStockIssueService from '../services/sales-pickup-stock-issue.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -162,6 +163,7 @@ function eventTypeFor(action) {
     confirm_amendment: 'sales.sales_order.amendment_confirmed',
     manual_quick_edit: 'sales.sales_order.manual_quick_edited',
     manual_stock_issue: 'sales.sales_order.manual_stock_issued',
+    pickup_stock_issue: 'sales.sales_order.pickup_stock_issued',
     cancel: 'sales.sales_order.cancelled',
   }[action];
 }
@@ -672,18 +674,26 @@ export async function handleSalesOrderRoutes(req, res, options) {
     if (!context) return true;
     const payload = await readPayload(req, res, options);
     if (payload === null) return true;
+    const pickup = String(payload?.mode ?? '').trim().toUpperCase() === 'PICKUP';
     await executeIdempotentMutation(req, res, options, {
       requestContext: context,
       route: `/api/sales-orders/${id}/issue-stock`,
       payload: { ...payload, id },
-      action: 'manual_stock_issue',
+      action: pickup ? 'pickup_stock_issue' : 'manual_stock_issue',
       resourceId: id,
-      mutate: (client, key) => manualStockIssueService.issueManualSalesOrderStock(client, {
+      mutate: (client, key) => (pickup
+        ? pickupStockIssueService.issuePickupSalesOrderStock(client, {
+            requestContext: context,
+            id,
+            expectedRevision: payload.expectedRevision,
+            idempotencyKey: key,
+          })
+        : manualStockIssueService.issueManualSalesOrderStock(client, {
         requestContext: context,
         id,
         expectedRevision: payload.expectedRevision,
         idempotencyKey: key,
-      }),
+        })),
     });
     return true;
   }

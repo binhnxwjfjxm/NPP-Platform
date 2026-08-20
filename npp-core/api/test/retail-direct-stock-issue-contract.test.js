@@ -42,6 +42,15 @@ test('PICKUP chỉ nhận đơn Giao tại quầy đã Chốt, manual contract v
   }), true);
 });
 
+test('API xuất kho chọn engine PICKUP theo contract, Giao thủ công vẫn là mặc định cũ', async () => {
+  const route = await read('src/routes/sales-orders.js');
+  assert.match(route, /sales-pickup-stock-issue/);
+  assert.match(route, /payload\?\.mode.*PICKUP/);
+  assert.match(route, /pickupStockIssueService\.issuePickupSalesOrderStock/);
+  assert.match(route, /action: pickup \? 'pickup_stock_issue' : 'manual_stock_issue'/);
+  assert.match(route, /manualStockIssueService\.issueManualSalesOrderStock/);
+});
+
 test('is_inventory_managed là policy thật của giữ hàng: false bỏ qua, thiếu policy fail closed', async () => {
   const [serviceSource, repositorySource, migration] = await Promise.all([
     read('src/services/sales-fulfillment.js'),
