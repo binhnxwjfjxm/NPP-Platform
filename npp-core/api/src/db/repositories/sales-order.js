@@ -345,7 +345,7 @@ export async function getSalesVariant(client, { installationId, id }) {
 }
 
 export async function searchSalesOrderSkuOptions(client, {
-  installationId, search, limit = 20, offset = 0,
+  installationId, search, categoryId = null, retailSearch = false, limit = 20, offset = 0,
 }) {
   const term = String(search ?? '').trim();
   const pattern = `%${term}%`;
@@ -367,6 +367,7 @@ export async function searchSalesOrderSkuOptions(client, {
        LIMIT 1
      ) primary_barcode ON true
      WHERE pv.installation_id = $1
+       AND ($4::uuid IS NULL OR p.category_id = $4::uuid)
        AND (
          $2 = ''
          OR pv.sku ILIKE $3
@@ -394,13 +395,15 @@ export async function searchSalesOrderSkuOptions(client, {
              AND exact_barcode.is_active = true
              AND exact_barcode.normalized_barcode = $2
          ) THEN 2
+         WHEN $5::boolean AND upper(pv.sku) LIKE $2 || '%' THEN 3
+         WHEN $5::boolean AND upper(p.code) LIKE $2 || '%' THEN 4
          ELSE 3
        END,
        p.code ASC,
        pv.sku ASC,
        pv.id ASC
-     LIMIT $4 OFFSET $5`,
-    [installationId, normalized, pattern, limit, offset],
+     LIMIT $6 OFFSET $7`,
+    [installationId, normalized, pattern, categoryId, retailSearch, limit, offset],
   );
   return result.rows;
 }

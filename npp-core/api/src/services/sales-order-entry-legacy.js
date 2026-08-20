@@ -234,6 +234,8 @@ function mapSkuOption(row, defaults) {
 export async function searchSalesOrderSkuOptions(client, {
   requestContext,
   search,
+  categoryId = null,
+  retailSearch = false,
   limit = 20,
   offset = 0,
 }) {
@@ -243,6 +245,8 @@ export async function searchSalesOrderSkuOptions(client, {
     repository.searchSalesOrderSkuOptions(client, {
       installationId: requestContext.installationId,
       search: term,
+      categoryId,
+      retailSearch,
       limit: Math.max(1, Math.min(50, Number(limit) || 20)),
       offset: Math.max(0, Number(offset) || 0),
     }),
