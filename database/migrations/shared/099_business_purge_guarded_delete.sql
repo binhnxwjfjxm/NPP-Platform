@@ -242,21 +242,20 @@ BEGIN
      OR NEW.external_reference IS DISTINCT FROM OLD.external_reference OR NEW.note IS DISTINCT FROM OLD.note
   THEN RAISE EXCEPTION 'payable_documents_are_immutable'; END IF;
 
-  IF OLD.status='reversed' THEN RAISE EXCEPTION 'invalid_payable_status_transition'; END IF;
-
-  IF NEW.allocated_amount IS DISTINCT FROM OLD.allocated_amount
-     OR NEW.remaining_amount IS DISTINCT FROM OLD.remaining_amount
-     OR (NEW.status IS DISTINCT FROM OLD.status AND NEW.status<>'reversed') THEN
-    IF NOT allocation_update_allowed THEN RAISE EXCEPTION 'payable_allocation_update_requires_function'; END IF;
-    IF NEW.allocated_amount<0 OR NEW.allocated_amount>NEW.original_amount
-       OR NEW.remaining_amount<>NEW.original_amount-NEW.allocated_amount
-       OR NEW.status<>accounting.payable_status_for_amounts(NEW.original_amount,NEW.allocated_amount) THEN
-      RAISE EXCEPTION 'invalid_payable_allocation_projection';
-    END IF;
+  IF OLD.status='reversed' THEN
+    RAISE EXCEPTION 'invalid_payable_status_transition';
   END IF;
 
+  -- A source-document reversal is a distinct, legitimate transition. It must be
+  -- validated before the allocation projector guard and does not require the
+  -- allocation service context.
   IF NEW.status='reversed' AND OLD.status<>'reversed' THEN
-    IF OLD.allocated_amount<>0 OR NEW.allocated_amount<>0 OR NEW.remaining_amount<>0 THEN
+    IF OLD.allocated_amount<>0
+       OR NEW.allocated_amount<>0
+       OR NEW.remaining_amount<>0
+       OR NEW.reversed_at IS NULL
+       OR NEW.reversed_by IS NULL
+       OR NEW.reversal_reason IS NULL THEN
       RAISE EXCEPTION 'payable_allocation_exists';
     END IF;
     IF EXISTS (
@@ -267,8 +266,20 @@ BEGIN
         AND (a.source_payable_document_id=OLD.id OR a.target_payable_document_id=OLD.id)
         AND r.id IS NULL
     ) THEN RAISE EXCEPTION 'payable_allocation_exists'; END IF;
-  ELSIF NEW.status IS DISTINCT FROM OLD.status AND NOT allocation_update_allowed THEN
-    RAISE EXCEPTION 'invalid_payable_status_transition';
+    RETURN NEW;
+  END IF;
+
+  IF NEW.allocated_amount IS DISTINCT FROM OLD.allocated_amount
+     OR NEW.remaining_amount IS DISTINCT FROM OLD.remaining_amount
+     OR NEW.status IS DISTINCT FROM OLD.status THEN
+    IF NOT allocation_update_allowed THEN
+      RAISE EXCEPTION 'payable_allocation_update_requires_function';
+    END IF;
+    IF NEW.allocated_amount<0 OR NEW.allocated_amount>NEW.original_amount
+       OR NEW.remaining_amount<>NEW.original_amount-NEW.allocated_amount
+       OR NEW.status<>accounting.payable_status_for_amounts(NEW.original_amount,NEW.allocated_amount) THEN
+      RAISE EXCEPTION 'invalid_payable_allocation_projection';
+    END IF;
   END IF;
   RETURN NEW;
 END;
