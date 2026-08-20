@@ -23,4 +23,4 @@ export function middleware(request: NextRequest) {
   return NextResponse.json({ error: { code: 'UNAUTHORIZED', message: 'Cần đăng nhập để tiếp tục', retryable: false } }, { status: 401, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export const config = { matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest).*)'] };
+export const config = { matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|pwa-icon-retail.png|sw.js).*)'] };

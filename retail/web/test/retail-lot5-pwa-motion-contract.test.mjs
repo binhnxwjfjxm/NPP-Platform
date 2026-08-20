@@ -26,8 +26,9 @@ test('Lô 5 chỉ cache static shell, không cache API hoặc mutation nghiệp 
 });
 
 test('Lô 5 đăng ký PWA và dùng icon Retail đã được cung cấp', async () => {
-  const [registration, manifest] = await Promise.all([read('app/pwa-registration.tsx'), read('app/manifest.ts')]);
+  const [registration, manifest, middleware] = await Promise.all([read('app/pwa-registration.tsx'), read('app/manifest.ts'), read('middleware.ts')]);
   assert.match(registration, /navigator\.serviceWorker\.register\('\/sw\.js'\)/);
   assert.match(manifest, /pwa-icon-retail\.png/);
   assert.match(manifest, /maskable/);
+  assert.match(middleware, /pwa-icon-retail\.png\|sw\.js/);
 });

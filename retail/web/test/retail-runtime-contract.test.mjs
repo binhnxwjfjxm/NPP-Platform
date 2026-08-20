@@ -33,6 +33,7 @@ test('production Retail chỉ chạy bằng lệnh issue chính xác và khóa �
   assert.doesNotMatch(workflow, /\npush:/);
   assert.match(script, /VERCEL_PROJECT_ID is required/);
   assert.match(script, /test "\$VERCEL_PROJECT_ID" = "\$project_id"/);
+  assert.match(script, /curl --silent --show-error --location/);
 });
 
 test('Retail giữ URL API Công Ty ở phía server', async () => {
