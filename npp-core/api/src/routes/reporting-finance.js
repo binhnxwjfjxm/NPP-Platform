@@ -223,7 +223,7 @@ export async function grossMarginReport(adapter, requestContext, filters, wareho
        AND fact.warehouse_id = ANY($2::uuid[])
        AND ($5::uuid IS NULL OR fact.warehouse_id = $5::uuid)
      ORDER BY fact.inventory_movement_line_id, run.completed_at DESC, fact.rebuild_run_id DESC
-  ), sales_events AS (
+  ), delivery_sales_events AS (
     SELECT 'SALE'::text AS event_kind,
            document.id AS accounting_document_id,
            document.source_document_number AS document_number,
@@ -251,6 +251,58 @@ export async function grossMarginReport(adapter, requestContext, filters, wareho
        AND document.warehouse_id = ANY($2::uuid[])
        AND ($5::uuid IS NULL OR document.warehouse_id = $5::uuid)
        AND document.direction = 'DEBIT'
+       AND document.source_document_type NOT IN ('MANUAL_SALES_ORDER', 'DIRECT_PICKUP_SALES_ORDER')
+       AND document.document_type IN ('SALE_DELIVERY','SALE_PICKUP')
+       AND document.status <> 'reversed'
+       AND document.source_document_date BETWEEN $3::date AND $4::date
+  ), direct_sales_events AS (
+    SELECT 'SALE'::text AS event_kind,
+           document.id AS accounting_document_id,
+           document.source_document_number AS document_number,
+           document.source_document_date AS document_date,
+           document.customer_id, document.customer_code_snapshot AS customer_code,
+           document.customer_name_snapshot AS customer_name,
+           document.warehouse_id, document.warehouse_code_snapshot AS warehouse_code,
+           movement_line.base_variant_id AS variant_id, line.sku_snapshot AS sku,
+           document.currency_code,
+           CASE WHEN movement_line.id IS NULL THEN (line.gross_amount - line.discount_amount)::numeric
+                ELSE round((line.gross_amount - line.discount_amount)
+                           * abs(movement_line.base_quantity_delta) / line.accepted_base_quantity, 6)::numeric END AS net_revenue,
+           CASE WHEN cost.status = 'COSTED' THEN -cost.value_delta ELSE NULL END::numeric AS cogs,
+           cost.status AS cost_status, cost.rebuild_run_id, cost.costing_completed_at,
+           line.id AS source_line_id,
+           movement_line.id AS costing_movement_line_id
+      FROM accounting.receivable_documents document
+      JOIN accounting.receivable_document_lines line
+        ON line.installation_id = document.installation_id
+       AND line.receivable_document_id = document.id
+      LEFT JOIN LATERAL (
+        SELECT direct_line.*
+          FROM inventory.inventory_movements movement
+          JOIN inventory.inventory_movement_lines direct_line
+            ON direct_line.installation_id = movement.installation_id
+           AND direct_line.movement_id = movement.id
+         WHERE movement.installation_id = document.installation_id
+           AND movement.source_document_type = 'SALES_ORDER'
+           AND movement.source_document_id = document.sales_order_id
+           AND movement.movement_type = 'SALES_DELIVERY_ISSUE'
+           AND direct_line.direction = 'OUT'
+           AND direct_line.metadata ->> 'salesOrderLineId' = line.sales_order_line_id::text
+           AND (
+             (document.source_document_type = 'MANUAL_SALES_ORDER'
+              AND direct_line.metadata ->> 'manualStockIssue' = 'true')
+             OR
+             (document.source_document_type = 'DIRECT_PICKUP_SALES_ORDER'
+              AND direct_line.metadata ->> 'pickupStockIssue' = 'true')
+           )
+      ) movement_line ON true
+      LEFT JOIN latest_cost cost
+        ON cost.inventory_movement_line_id = movement_line.id
+     WHERE document.installation_id = $1
+       AND document.warehouse_id = ANY($2::uuid[])
+       AND ($5::uuid IS NULL OR document.warehouse_id = $5::uuid)
+       AND document.direction = 'DEBIT'
+       AND document.source_document_type IN ('MANUAL_SALES_ORDER', 'DIRECT_PICKUP_SALES_ORDER')
        AND document.document_type IN ('SALE_DELIVERY','SALE_PICKUP')
        AND document.status <> 'reversed'
        AND document.source_document_date BETWEEN $3::date AND $4::date
@@ -294,7 +346,9 @@ export async function grossMarginReport(adapter, requestContext, filters, wareho
        AND adjustment_document.status <> 'reversed'
        AND adjustment_document.source_document_date BETWEEN $3::date AND $4::date
   ), events AS (
-    SELECT * FROM sales_events
+    SELECT * FROM delivery_sales_events
+    UNION ALL
+    SELECT * FROM direct_sales_events
     UNION ALL
     SELECT * FROM return_events
   ), classified AS (
@@ -396,7 +450,7 @@ export async function grossMarginReport(adapter, requestContext, filters, wareho
       revenue: 'recognized receivable lines, net of line discount and excluding tax; received customer returns reverse net revenue proportionally',
       cogs: 'latest Phase 7 MWA_V1 cost fact by exact inventory movement line; OUT is sign-reversed into positive COGS and return IN becomes negative COGS',
       comparableCurrency: 'VND only; non-VND sales are surfaced as exceptions and never mixed with VND cost',
-      lineage: 'receivable line -> delivery inventory issue line -> inventory movement line -> immutable cost fact; return credit -> return receipt movement line -> immutable cost fact',
+      lineage: 'receivable line -> delivery inventory issue line or direct Sales Order inventory movement line -> immutable cost fact; return credit -> return receipt movement line -> immutable cost fact',
     }),
     summary: mapRow(summary.rows?.[0] ?? {}),
     topCustomers: mapRows(topCustomers.rows),

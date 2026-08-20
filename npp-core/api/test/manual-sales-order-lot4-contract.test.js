@@ -12,26 +12,27 @@ const receivableRepository = readFileSync(new URL('../src/db/repositories/custom
 
 test('Giao thủ công ghi nhận doanh số khi Hoàn thành đơn, độc lập với tiền thu', () => {
   assert.match(service, /export async function completeManualSalesOrder/);
-  assert.match(service, /postReceivable\(client, \{ requestContext, source \}\)/);
+  assert.match(service, /postReceivable\(client, \{ requestContext, source, contract \}\)/);
   assert.match(service, /SET status = 'closed'/);
   assert.match(service, /delivery_status = 'delivered'/);
-  assert.match(service, /fulfillment_status !== 'issued'/);
+  assert.match(service, /\['issued', 'fulfilled'\]/);
   assert.doesNotMatch(service, /postServerOwnedSalesMovement/);
   assert.doesNotMatch(service, /inventory\.inventory_balances/);
 });
 
 test('Nộp tiền / Nợ chỉ phân bổ vào khoản phải thu đã tạo khi Hoàn thành đơn', () => {
-  assert.match(service, /sourceDocumentType = 'MANUAL_SALES_ORDER'/);
+  assert.match(service, /sourceDocumentType: 'MANUAL_SALES_ORDER'/);
   assert.match(service, /receivableRepository\.insertReceivableDocument/);
   assert.match(service, /receivableRepository\.insertReceivableLedgerEntry/);
-  assert.match(service, /loadManualReceivable/);
+  assert.match(service, /loadDirectReceivable/);
   assert.match(service, /\['pending', 'partially_paid'\]/);
   assert.match(service, /decimalToScaled\(payload\?\.paidAmount, \{ allowZero: true \}\)/);
   assert.match(service, /paid > remaining/);
   assert.match(service, /customerPaymentService\.createCustomerPayment/);
   assert.match(service, /if \(paid === 0n\)/);
   assert.match(service, /customerPayment: null/);
-  assert.match(service, /deriveIdempotencyKey\('manual-sales-payment', idempotencyKey\)/);
+  assert.match(service, /paymentNamespace: 'manual-sales-payment'/);
+  assert.match(service, /deriveIdempotencyKey\(contract\.paymentNamespace, idempotencyKey\)/);
   assert.match(service, /IDEMPOTENCY_KEY_PATTERN/);
   assert.doesNotMatch(service, /paidAmount \?\? '0'/);
 });
