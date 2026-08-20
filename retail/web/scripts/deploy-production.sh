@@ -8,6 +8,7 @@ cd "$REPO_ROOT"
 : "${VERCEL_TOKEN:?VERCEL_TOKEN is required}"
 : "${HEROKU_API_KEY:?HEROKU_API_KEY is required}"
 : "${VERCEL_ORG_ID:?VERCEL_ORG_ID is required}"
+: "${VERCEL_PROJECT_ID:?VERCEL_PROJECT_ID is required}"
 : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
 : "${GITHUB_ENV:?GITHUB_ENV is required}"
 
@@ -25,6 +26,7 @@ status="$(curl --silent --show-error --output "$project_json" --write-out '%{htt
 test "$status" = 200
 project_id="$(jq -r '.id // empty' "$project_json")"
 test -n "$project_id"
+test "$VERCEL_PROJECT_ID" = "$project_id"
 test "$(jq -r '.rootDirectory' "$project_json")" = "$RETAIL_ROOT_DIRECTORY"
 test "$(jq -r '.framework' "$project_json")" = nextjs
 

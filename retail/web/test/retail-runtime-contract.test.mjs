@@ -19,14 +19,20 @@ test('bootstrap chỉ tạo/cấu hình project và không deploy', async () => 
   assert.doesNotMatch(source, /vercel@[^\n]+ build/);
 });
 
-test('production Retail chỉ chạy bằng lệnh issue chính xác', async () => {
-  const workflow = await readRepo('.github/workflows/vercel-retail-production-manual.yml');
+test('production Retail chỉ chạy bằng lệnh issue chính xác và khóa đúng Vercel project', async () => {
+  const [workflow, script] = await Promise.all([
+    readRepo('.github/workflows/vercel-retail-production-manual.yml'),
+    read('scripts/deploy-production.sh'),
+  ]);
   assert.match(workflow, /github\.event\.issue\.number == 5/);
   assert.match(workflow, /github\.event\.comment\.body == '\/deploy-vercel-retail-production'/);
   assert.match(workflow, /DEPLOY_REF: main/);
+  assert.match(workflow, /VERCEL_PROJECT_ID: prj_1O9Ob6ZptSqZOBpxKbpn3Ujfm811/);
   assert.match(workflow, /RETAIL_ROOT_DIRECTORY: retail\/web/);
   assert.match(workflow, /RETAIL_PROJECT_NAME: npp-retail/);
   assert.doesNotMatch(workflow, /\npush:/);
+  assert.match(script, /VERCEL_PROJECT_ID is required/);
+  assert.match(script, /test "\$VERCEL_PROJECT_ID" = "\$project_id"/);
 });
 
 test('Retail giữ URL API Công Ty ở phía server', async () => {
