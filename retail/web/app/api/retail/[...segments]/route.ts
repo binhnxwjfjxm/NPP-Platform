@@ -116,7 +116,7 @@ export async function POST(request: NextRequest, { params }: { params: { segment
       return json(result.data, result.requestId, 201);
     }
     if (path.length === 1 && path[0] === 'price') {
-      const result = await companyRequest<unknown>({ path: '/api/pricing/resolve', method: 'POST', body: payload, requestId: id });
+      const result = await companyRequest<unknown>({ path: '/api/retail/price', method: 'POST', body: payload, requestId: id });
       return json(result.data, result.requestId);
     }
     if (path.length === 3 && path[0] === 'orders') {

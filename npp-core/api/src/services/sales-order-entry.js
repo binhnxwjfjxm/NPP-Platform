@@ -12,6 +12,11 @@ const SOURCE_CHANNEL_BY_TYPE = Object.freeze({
     description: 'Kênh hệ thống nhận đơn từ ứng dụng MCP.',
   }),
 });
+const RETAIL_CHANNEL = Object.freeze({
+  code: 'RETAIL',
+  name: 'Retail',
+  description: 'Kênh hệ thống bán trực tiếp tại quầy.',
+});
 
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
@@ -22,7 +27,10 @@ function hasPermission(requestContext, permission) {
     && requestContext.permissions.includes(permission);
 }
 
-function sourceChannelDefinition(payload) {
+function sourceChannelDefinition(payload, requestContext) {
+  if (String(requestContext?.sourceApp ?? '').trim().toLowerCase() === 'retail-web') {
+    return RETAIL_CHANNEL;
+  }
   const sourceType = String(payload?.sourceType ?? '').trim().toUpperCase();
   return SOURCE_CHANNEL_BY_TYPE[sourceType] ?? null;
 }
@@ -71,7 +79,7 @@ export async function normalizeSalesOrderEntryPayload(client, args) {
     normalized.payload.salesChannelId ?? args.payload?.salesChannelId ?? '',
   ).trim();
   if (!salesChannelId) {
-    const canonicalSourceChannel = sourceChannelDefinition(normalized.payload);
+    const canonicalSourceChannel = sourceChannelDefinition(normalized.payload, args.requestContext);
     if (canonicalSourceChannel) {
       const sourceChannel = await systemSalesChannelRepository.ensureSystemSalesChannel(client, {
         installationId,
@@ -125,3 +133,8 @@ export async function normalizeSalesOrderEntryPayload(client, args) {
     }),
   });
 }
+
+export const salesOrderEntryInternals = Object.freeze({
+  sourceChannelDefinition,
+  RETAIL_CHANNEL,
+});

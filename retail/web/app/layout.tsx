@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import './globals.css';
+import './retail-lot7.css';
 import { PwaRegistration } from './pwa-registration';
 
 export const metadata: Metadata = {
