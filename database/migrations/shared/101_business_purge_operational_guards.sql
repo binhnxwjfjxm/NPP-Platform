@@ -197,7 +197,12 @@ FOR EACH ROW EXECUTE FUNCTION shared.guard_business_purge_delete('customer_retur
 DROP TRIGGER IF EXISTS delivery_trips_write_guard ON logistics.delivery_trips;
 CREATE TRIGGER delivery_trips_write_guard
 BEFORE INSERT OR UPDATE ON logistics.delivery_trips
-FOR EACH ROW EXECUTE FUNCTION logistics.guard_trip_header_write();
+FOR EACH ROW
+WHEN (
+  current_setting('npp.logistics_write_context', true) IS DISTINCT FROM 'trip_recovery_service'
+  AND current_setting('npp.logistics_write_context', true) IS DISTINCT FROM 'sales_order_unwind_service'
+)
+EXECUTE FUNCTION logistics.guard_trip_header_write();
 CREATE TRIGGER delivery_trips_purge_delete_guard
 BEFORE DELETE ON logistics.delivery_trips
 FOR EACH ROW EXECUTE FUNCTION shared.guard_business_purge_delete('logistics_trip_is_immutable');
@@ -213,7 +218,12 @@ FOR EACH ROW EXECUTE FUNCTION shared.guard_business_purge_delete('logistics_trip
 DROP TRIGGER IF EXISTS trip_order_assignments_write_guard ON logistics.trip_order_assignments;
 CREATE TRIGGER trip_order_assignments_write_guard
 BEFORE INSERT OR UPDATE ON logistics.trip_order_assignments
-FOR EACH ROW EXECUTE FUNCTION logistics.guard_trip_child_write();
+FOR EACH ROW
+WHEN (
+  current_setting('npp.logistics_write_context', true) IS DISTINCT FROM 'trip_recovery_service'
+  AND current_setting('npp.logistics_write_context', true) IS DISTINCT FROM 'sales_order_unwind_service'
+)
+EXECUTE FUNCTION logistics.guard_trip_child_write();
 CREATE TRIGGER trip_order_assignments_purge_delete_guard
 BEFORE DELETE ON logistics.trip_order_assignments
 FOR EACH ROW EXECUTE FUNCTION shared.guard_business_purge_delete('logistics_trip_child_is_immutable');
