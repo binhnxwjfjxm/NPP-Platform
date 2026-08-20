@@ -17,6 +17,12 @@ const RELEASE_INTENTS = Object.freeze({
     blockedCode: 'MANUAL_DELIVERY_EDIT_NOT_AVAILABLE',
     blockedMessage: 'Đơn đã có giao nhận thực tế. Cần xử lý thu hồi hoặc hoàn hàng trước khi sửa đơn.',
   }),
+  'pickup-edit': Object.freeze({
+    operation: 'pickup-sales-order-edit',
+    reason: 'Hoàn tác giữ hàng để sửa đơn Giao tại quầy trước khi Xuất kho',
+    blockedCode: 'PICKUP_EDIT_LOCKED',
+    blockedMessage: 'Đơn đã có xử lý kho thực tế. Cần xử lý điều chỉnh theo quy trình Công Ty trước khi sửa đơn.',
+  }),
   amendment: Object.freeze({
     operation: 'sales-order-amendment',
     reason: 'Hoàn tác xử lý để điều chỉnh đơn',

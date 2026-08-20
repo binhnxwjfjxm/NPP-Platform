@@ -101,6 +101,25 @@ function manualQuickEditGuard(order) {
   return Object.freeze({ ok: true });
 }
 
+function pickupQuickEditGuard(order) {
+  if (!order || order.status !== 'confirmed') {
+    return failure('INVALID_STATUS_TRANSITION', 'Chỉ đơn đã Chốt mới được sửa trực tiếp.');
+  }
+  if (order.deliveryMode !== 'PICKUP') {
+    return failure(
+      'PICKUP_EDIT_NOT_AVAILABLE',
+      'Sửa trực tiếp sau Chốt chỉ áp dụng cho đơn Giao tại quầy.',
+    );
+  }
+  if (['partially_issued', 'issued', 'partially_fulfilled', 'fulfilled'].includes(order.fulfillmentStatus)) {
+    return failure(
+      'PICKUP_EDIT_LOCKED',
+      'Đơn đã Xuất kho không thể sửa trực tiếp. Hãy xử lý điều chỉnh theo quy trình Công Ty.',
+    );
+  }
+  return Object.freeze({ ok: true });
+}
+
 function deliveryExecutionLane(value) {
   if (value?.deliveryMode === 'PICKUP') return 'PICKUP';
   return fallbackExecutionMode(value?.deliveryMode, value?.deliveryExecutionMode);
@@ -754,6 +773,55 @@ export async function quickEditManualSalesOrder(client, {
   });
 }
 
+export async function quickEditPickupSalesOrder(client, {
+  requestContext,
+  id,
+  payload,
+  idempotencyKey,
+}) {
+  const before = await getSalesOrder(client, { requestContext, id });
+  if (!before.ok) return before;
+  const guard = pickupQuickEditGuard(before.salesOrder);
+  if (!guard.ok) return guard;
+  const expectedRevision = String(payload?.expectedRevision ?? '').trim();
+  if (!expectedRevision) {
+    return failure('EXPECTED_REVISION_REQUIRED', 'Cần phiên bản hiện tại của đơn để sửa.');
+  }
+  if (String(before.salesOrder.revision) !== expectedRevision) {
+    return failure('REVISION_CONFLICT', 'Đơn đã được thay đổi ở yêu cầu khác. Hãy tải lại trước khi sửa.', true);
+  }
+
+  const amendment = await createSalesOrderAmendment(client, {
+    requestContext,
+    id,
+    payload: { reason: 'Sửa đơn trước khi Xuất kho' },
+  });
+  if (!amendment.ok) return amendment;
+  const draft = amendment.salesOrder.versions?.find((version) => version.status === 'draft');
+  if (!draft) {
+    return failure('SALES_ORDER_DRAFT_NOT_FOUND', 'Không tạo được bản lưu nội bộ để sửa đơn.', true);
+  }
+
+  const updated = await updateSalesOrderDraft(client, {
+    requestContext,
+    id,
+    versionNumber: Number(draft.versionNumber),
+    payload: {
+      ...payload,
+      expectedRevision: draft.revision,
+    },
+  });
+  if (!updated.ok) return updated;
+
+  return confirmSalesOrder(client, {
+    requestContext,
+    id,
+    versionNumber: Number(draft.versionNumber),
+    idempotencyKey,
+    preExecutionReleaseIntent: 'pickup-edit',
+  });
+}
+
 async function verifyDraftPricing(client, {
   requestContext,
   id,
@@ -946,6 +1014,7 @@ export const salesOrderDeliveryExecutionInternals = Object.freeze({
   fallbackExecutionMode,
   mergeDetailedOrder,
   manualQuickEditGuard,
+  pickupQuickEditGuard,
   deliveryExecutionLane,
   deliveryExecutionTransitionGuard,
 });

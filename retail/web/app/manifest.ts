@@ -10,6 +10,9 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: '#f7faf7',
     theme_color: '#047a42',
     lang: 'vi',
-    icons: [{ src: '/pwa-icon-retail.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }],
+    icons: [
+      { src: '/pwa-icon-retail.png?v=2', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/pwa-icon-retail.png?v=2', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    ],
   };
 }
