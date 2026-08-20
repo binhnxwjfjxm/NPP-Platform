@@ -42,7 +42,8 @@ test('PWA dùng đúng icon Retail cho iPhone, manifest và cache mới', async 
   ]);
   assert.match(layout, /apple: \[\{ url: '\/pwa-icon-retail\.png\?v=2'/);
   assert.match(layout, /icon: \[\{ url: '\/pwa-icon-retail\.png\?v=2'/);
-  assert.match(manifest, /purpose: 'any maskable'/);
+  assert.match(manifest, /purpose: 'any'/);
+  assert.match(manifest, /purpose: 'maskable'/);
   assert.match(manifest, /pwa-icon-retail\.png\?v=2/);
   assert.match(serviceWorker, /hung-phat-retail-static-v2/);
 });
