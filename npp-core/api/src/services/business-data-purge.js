@@ -307,10 +307,18 @@ export async function executeDeletionIntent(pool, { requestContext, intentId, no
       const purging = await repo.markDeletionPurging(client, { installationId: requestContext.installationId, intentId, startedAt });
       if (!purging) return resultError('DATA_DELETION_NOT_AUTHORIZED', 409, 'Yêu cầu xóa không còn ở trạng thái được phép thực hiện');
 
-      await neutralizeProtectedReferences(client, plan, requestContext.installationId);
+      await client.query(`SELECT set_config('npp.business_purge_intent_id', $1, true)`, [intentId]);
       let deletedRows = 0;
-      for (const table of plan.tables) deletedRows += await deleteTableRows(client, table, requestContext.installationId);
-      deletedRows += await clearTechnicalResidue(client, { installationId: requestContext.installationId, requestId: requestContext.requestId });
+      try {
+        await neutralizeProtectedReferences(client, plan, requestContext.installationId);
+        for (const table of plan.tables) deletedRows += await deleteTableRows(client, table, requestContext.installationId);
+        deletedRows += await clearTechnicalResidue(client, { installationId: requestContext.installationId, requestId: requestContext.requestId });
+      } catch (error) {
+        if (error?.code === 'P0001') {
+          return resultError('PURGE_EXECUTION_BLOCKED', 409, 'Dữ liệu hiện tại đang có ràng buộc bảo vệ chưa hỗ trợ quy trình xóa an toàn');
+        }
+        throw error;
+      }
 
       const completedAt = now().toISOString();
       const summary = {
