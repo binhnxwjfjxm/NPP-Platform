@@ -7,8 +7,9 @@ export default function manifest(): MetadataRoute.Manifest {
     description: 'Ứng dụng bán tại quầy của Công Ty.',
     start_url: '/',
     display: 'standalone',
-    background_color: '#f5f7fb',
-    theme_color: '#10233f',
+    background_color: '#f7faf7',
+    theme_color: '#047a42',
     lang: 'vi',
+    icons: [{ src: '/pwa-icon-retail.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }],
   };
 }
