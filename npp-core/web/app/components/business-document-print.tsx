@@ -5,31 +5,10 @@ import { PrintAction, PrintSurface, type PrintPageSize } from './print-document'
 import type { DocumentPrintTemplate } from '../../lib/document-print-template-types';
 import styles from './business-document-print.module.css';
 
-export type BusinessDocumentMeta = {
-  key: string;
-  label: string;
-  value: ReactNode;
-  full?: boolean;
-};
-
-export type BusinessDocumentColumn = {
-  key: string;
-  fieldKey?: string;
-  label: string;
-  align?: 'left' | 'center' | 'right';
-};
-
-export type BusinessDocumentRow = {
-  id: string;
-  cells: Record<string, ReactNode>;
-};
-
-export type BusinessDocumentTotal = {
-  key: string;
-  label: string;
-  value: ReactNode;
-  emphasis?: boolean;
-};
+export type BusinessDocumentMeta = { key: string; label: string; value: ReactNode; full?: boolean };
+export type BusinessDocumentColumn = { key: string; fieldKey?: string; label: string; align?: 'left' | 'center' | 'right' };
+export type BusinessDocumentRow = { id: string; cells: Record<string, ReactNode> };
+export type BusinessDocumentTotal = { key: string; label: string; value: ReactNode; emphasis?: boolean };
 
 export default function BusinessDocumentPrint({
   id,
@@ -90,6 +69,9 @@ export default function BusinessDocumentPrint({
   const visibleMeta = meta.filter((item) => visibleKeys.has(item.key));
   const visibleColumns = columns.filter((item) => visibleKeys.has(item.fieldKey ?? item.key));
   const visibleTotals = totals.filter((item) => visibleKeys.has(item.key));
+  const displayTitle = template?.title?.trim() || title;
+  const displayHeading = template?.heading?.trim() || null;
+  const displaySubtitle = template?.subtitle?.trim() || subtitle;
 
   return (
     <>
@@ -97,80 +79,29 @@ export default function BusinessDocumentPrint({
       <PrintSurface id={id} size={template?.pageSize ?? size}>
         <article className={styles.sheet} data-testid={testId}>
           <header className={styles.header}>
-            <div className={styles.brandBlock}>
-              <strong className={styles.brand}>HƯNG PHÁT</strong>
-              <p>{subtitle}</p>
-            </div>
+            {displayHeading || displaySubtitle ? <div className={styles.brandBlock}>
+              {displayHeading ? <strong className={styles.brand}>{displayHeading}</strong> : null}
+              {displaySubtitle ? <p>{displaySubtitle}</p> : null}
+            </div> : null}
             <div className={styles.titleBlock}>
-              <h1>{title}</h1>
+              <h1>{displayTitle}</h1>
               <p>Số: <strong>{number}</strong></p>
               {status && visibleKeys.has('status') ? <span className={styles.status}>{status}</span> : null}
             </div>
           </header>
 
           <section className={styles.metaGrid}>
-            {visibleMeta.map((item) => (
-              <div key={item.key} className={`${styles.metaItem} ${item.full ? styles.full : ''}`}>
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
-              </div>
-            ))}
+            {visibleMeta.map((item) => <div key={item.key} className={`${styles.metaItem} ${item.full ? styles.full : ''}`}><span>{item.label}</span><strong>{item.value}</strong></div>)}
           </section>
 
-          {visibleColumns.length && rows.length ? (
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  {visibleColumns.map((column) => (
-                    <th
-                      key={column.key}
-                      className={column.align === 'right' ? styles.right : column.align === 'center' ? styles.center : undefined}
-                    >
-                      {column.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id}>
-                    {visibleColumns.map((column) => (
-                      <td
-                        key={column.key}
-                        className={column.align === 'right' ? styles.right : column.align === 'center' ? styles.center : undefined}
-                      >
-                        {row.cells[column.key] ?? '—'}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : null}
+          {visibleColumns.length && rows.length ? <table className={styles.table}>
+            <thead><tr>{visibleColumns.map((column) => <th key={column.key} className={column.align === 'right' ? styles.right : column.align === 'center' ? styles.center : undefined}>{column.label}</th>)}</tr></thead>
+            <tbody>{rows.map((row) => <tr key={row.id}>{visibleColumns.map((column) => <td key={column.key} className={column.align === 'right' ? styles.right : column.align === 'center' ? styles.center : undefined}>{row.cells[column.key] ?? '—'}</td>)}</tr>)}</tbody>
+          </table> : null}
 
-          {visibleTotals.length ? (
-            <section className={styles.summary}>
-              {visibleTotals.map((total) => (
-                <div key={total.key} className={`${styles.summaryRow} ${total.emphasis ? styles.emphasis : ''}`}>
-                  <span>{total.label}</span>
-                  <strong>{total.value}</strong>
-                </div>
-              ))}
-            </section>
-          ) : null}
-
+          {visibleTotals.length ? <section className={styles.summary}>{visibleTotals.map((total) => <div key={total.key} className={`${styles.summaryRow} ${total.emphasis ? styles.emphasis : ''}`}><span>{total.label}</span><strong>{total.value}</strong></div>)}</section> : null}
           {note && visibleKeys.has('note') ? <section className={styles.note}><strong>Ghi chú:</strong> {note}</section> : null}
-
-          {visibleKeys.has('signatures') ? <footer className={styles.signatures}>
-            {signatures.map((signature) => (
-              <div key={signature}>
-                <strong>{signature}</strong>
-                <span>(Ký, ghi rõ họ tên)</span>
-              </div>
-            ))}
-          </footer> : null}
-
-          <p className={styles.footer}>Bản in từ Hệ thống Công Ty — dữ liệu theo chứng từ đang hiển thị; thao tác in không làm thay đổi nghiệp vụ.</p>
+          {visibleKeys.has('signatures') ? <footer className={styles.signatures}>{signatures.map((signature) => <div key={signature}><strong>{signature}</strong><span>(Ký, ghi rõ họ tên)</span></div>)}</footer> : null}
         </article>
       </PrintSurface>
     </>

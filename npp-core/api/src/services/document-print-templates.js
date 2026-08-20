@@ -15,7 +15,7 @@ function template(documentType, templateCode, name, pageSize, fields) {
 
 const CATALOG = Object.freeze([
   template('SALES_ORDER', 'standard', 'Đơn bán hàng', 'A4', [
-    ['customer', 'Khách hàng'], ['customer_code', 'Mã khách'], ['phone', 'Điện thoại'], ['document_date', 'Ngày đơn'], ['address', 'Địa chỉ'], ['warehouse', 'Kho'], ['delivery_method', 'Hình thức giao nhận'], ['collection_policy', 'Thanh toán'], ['requested_delivery_date', 'Ngày giao dự kiến'], ['line_no', 'STT hàng hóa'], ['line_item', 'Hàng hóa / SKU'], ['line_quantity', 'Số lượng'], ['line_unit_price', 'Đơn giá'], ['line_discount', 'Chiết khấu'], ['line_tax', 'Thuế'], ['line_total', 'Thành tiền'], ['total_subtotal', 'Tạm tính'], ['total_discount', 'Tổng chiết khấu'], ['total_tax', 'Tổng thuế'], ['total_total', 'Tổng cộng'], ['note', 'Ghi chú'], ['signatures', 'Ký xác nhận'],
+    ['customer', 'Khách hàng'], ['customer_code', 'Mã khách'], ['phone', 'Điện thoại'], ['document_date', 'Ngày đơn'], ['address', 'Địa chỉ'], ['warehouse', 'Kho'], ['delivery_method', 'Hình thức giao nhận'], ['collection_policy', 'Thanh toán'], ['requested_delivery_date', 'Ngày giao dự kiến'], ['line_no', 'STT hàng hóa'], ['line_item', 'Hàng hóa / SKU'], ['line_quantity', 'Số lượng'], ['line_unit', 'Đơn vị tính'], ['line_unit_price', 'Đơn giá'], ['line_discount', 'Chiết khấu'], ['line_tax', 'Thuế'], ['line_total', 'Thành tiền'], ['total_subtotal', 'Tạm tính'], ['total_discount', 'Tổng chiết khấu'], ['total_tax', 'Tổng thuế'], ['total_total', 'Tổng cộng'], ['note', 'Ghi chú'], ['signatures', 'Ký xác nhận'],
   ]),
   template('PURCHASE_ORDER', 'standard', 'Đơn mua hàng', 'A4', [
     ['status', 'Tình trạng đơn'], ['supplier', 'Nhà cung cấp'], ['warehouse', 'Kho nhận'], ['ordered_date', 'Ngày đặt'], ['expected_date', 'Dự kiến nhận'], ['supplier_reference', 'Tham chiếu nhà cung cấp'], ['currency', 'Tiền tệ'], ['line_no', 'STT hàng hóa'], ['line_item', 'Hàng hóa / SKU'], ['line_quantity', 'Số lượng'], ['line_unit', 'Đơn vị tính'], ['line_unit_price', 'Đơn giá'], ['line_discount', 'Chiết khấu'], ['line_tax', 'Thuế'], ['line_total', 'Thành tiền'], ['total_subtotal', 'Tiền hàng'], ['total_discount', 'Tổng chiết khấu'], ['total_tax', 'Tổng thuế'], ['total_total', 'Tổng cộng'], ['note', 'Ghi chú'], ['signatures', 'Ký xác nhận'],
@@ -47,20 +47,18 @@ const CATALOG = Object.freeze([
 ]);
 
 const CATALOG_BY_KEY = new Map(CATALOG.map((item) => [`${item.documentType}:${item.templateCode}`, item]));
-
-function failure(code, message) {
-  return Object.freeze({ ok: false, code, message, retryable: false });
-}
-
-function lookup(documentType, templateCode) {
-  return CATALOG_BY_KEY.get(`${String(documentType ?? '').trim().toUpperCase()}:${String(templateCode ?? '').trim().toLowerCase()}`) ?? null;
+function failure(code, message) { return Object.freeze({ ok: false, code, message, retryable: false }); }
+function lookup(documentType, templateCode) { return CATALOG_BY_KEY.get(`${String(documentType ?? '').trim().toUpperCase()}:${String(templateCode ?? '').trim().toLowerCase()}`) ?? null; }
+function cleanOptionalText(value, maxLength) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  return text.length <= maxLength ? text : undefined;
 }
 
 function present(catalog, setting) {
   const allowed = new Set(catalog.fields.map((field) => field.key));
-  const selected = Array.isArray(setting?.visible_field_keys)
-    ? setting.visible_field_keys.filter((key) => allowed.has(key))
-    : catalog.fields.filter((field) => field.defaultSelected).map((field) => field.key);
+  const selected = Array.isArray(setting?.visible_field_keys) ? setting.visible_field_keys.filter((key) => allowed.has(key)) : catalog.fields.filter((field) => field.defaultSelected).map((field) => field.key);
   return Object.freeze({
     documentType: catalog.documentType,
     templateCode: catalog.templateCode,
@@ -68,28 +66,31 @@ function present(catalog, setting) {
     pageSize: setting?.page_size ?? catalog.pageSize,
     visibleFieldKeys: selected,
     fields: catalog.fields,
+    heading: setting?.heading ?? null,
+    title: setting?.title ?? catalog.name,
+    subtitle: setting?.subtitle ?? null,
     isCustomized: Boolean(setting),
     updatedAt: setting?.updated_at ?? null,
   });
 }
 
 function normalizePayload(catalog, payload) {
-  const expectedUpdatedAt = payload?.expectedUpdatedAt === null || payload?.expectedUpdatedAt === undefined
-    ? null
-    : new Date(String(payload.expectedUpdatedAt));
-  if (expectedUpdatedAt !== null && Number.isNaN(expectedUpdatedAt.getTime())) {
-    return failure('INVALID_TEMPLATE_VERSION', 'Phiên bản cấu hình mẫu in không hợp lệ');
-  }
+  const expectedUpdatedAt = payload?.expectedUpdatedAt === null || payload?.expectedUpdatedAt === undefined ? null : new Date(String(payload.expectedUpdatedAt));
+  if (expectedUpdatedAt !== null && Number.isNaN(expectedUpdatedAt.getTime())) return failure('INVALID_TEMPLATE_VERSION', 'Phiên bản cấu hình mẫu in không hợp lệ');
   if (payload?.resetToDefault === true) return Object.freeze({ expectedUpdatedAt: expectedUpdatedAt?.toISOString() ?? null, resetToDefault: true });
   const pageSize = String(payload?.pageSize ?? '').trim().toUpperCase();
   if (!PAGE_SIZES.has(pageSize)) return failure('INVALID_PAGE_SIZE', 'Khổ giấy chỉ có thể là A4 hoặc A5');
   if (!Array.isArray(payload?.visibleFieldKeys)) return failure('INVALID_PRINT_FIELDS', 'Danh sách mục in không hợp lệ');
   const allowed = new Set(catalog.fields.map((field) => field.key));
   const visibleFieldKeys = [...new Set(payload.visibleFieldKeys.map((value) => String(value ?? '').trim()))];
-  if (!visibleFieldKeys.length || visibleFieldKeys.some((key) => !FIELD_KEY_PATTERN.test(key) || !allowed.has(key))) {
-    return failure('INVALID_PRINT_FIELDS', 'Mẫu in phải có ít nhất một mục hợp lệ');
-  }
-  return Object.freeze({ pageSize, visibleFieldKeys, expectedUpdatedAt: expectedUpdatedAt?.toISOString() ?? null, resetToDefault: false });
+  if (!visibleFieldKeys.length || visibleFieldKeys.some((key) => !FIELD_KEY_PATTERN.test(key) || !allowed.has(key))) return failure('INVALID_PRINT_FIELDS', 'Mẫu in phải có ít nhất một mục hợp lệ');
+  const heading = cleanOptionalText(payload?.heading, 160);
+  const title = cleanOptionalText(payload?.title, 160);
+  const subtitle = cleanOptionalText(payload?.subtitle, 240);
+  if (heading === undefined) return failure('INVALID_PRINT_HEADING', 'Tiêu đề đầu phiếu không được vượt quá 160 ký tự');
+  if (title === undefined) return failure('INVALID_PRINT_TITLE', 'Tên chứng từ không được vượt quá 160 ký tự');
+  if (subtitle === undefined) return failure('INVALID_PRINT_SUBTITLE', 'Dòng phụ không được vượt quá 240 ký tự');
+  return Object.freeze({ pageSize, visibleFieldKeys, heading, title, subtitle, expectedUpdatedAt: expectedUpdatedAt?.toISOString() ?? null, resetToDefault: false });
 }
 
 export function listDocumentPrintTemplates(client, { installationId }) {
@@ -99,59 +100,35 @@ export function listDocumentPrintTemplates(client, { installationId }) {
   });
 }
 
-export async function updateDocumentPrintTemplate(client, {
-  installationId,
-  documentType,
-  templateCode,
-  payload,
-  actorId,
-}) {
+export async function updateDocumentPrintTemplate(client, { installationId, documentType, templateCode, payload, actorId }) {
   const catalog = lookup(documentType, templateCode);
   if (!catalog) return failure('PRINT_TEMPLATE_NOT_FOUND', 'Mẫu in không tồn tại');
   const normalized = normalizePayload(catalog, payload);
   if ('code' in normalized) return normalized;
-  const before = await repository.getDocumentPrintTemplateSetting(client, {
-    installationId,
-    documentType: catalog.documentType,
-    templateCode: catalog.templateCode,
-    forUpdate: true,
-  });
-  if (before && normalized.expectedUpdatedAt !== before.updated_at.toISOString()) {
-    return failure('CONFLICT', 'Mẫu in đã được thay đổi. Hãy tải lại trước khi lưu');
-  }
-  if (!before && normalized.expectedUpdatedAt !== null) {
-    return failure('CONFLICT', 'Mẫu in đã được thay đổi. Hãy tải lại trước khi lưu');
-  }
+  const before = await repository.getDocumentPrintTemplateSetting(client, { installationId, documentType: catalog.documentType, templateCode: catalog.templateCode, forUpdate: true });
+  if (before && normalized.expectedUpdatedAt !== before.updated_at.toISOString()) return failure('CONFLICT', 'Mẫu in đã được thay đổi. Hãy tải lại trước khi lưu');
+  if (!before && normalized.expectedUpdatedAt !== null) return failure('CONFLICT', 'Mẫu in đã được thay đổi. Hãy tải lại trước khi lưu');
   if (normalized.resetToDefault) {
     if (before) {
-      const removed = await repository.deleteDocumentPrintTemplateSetting(client, {
-        installationId,
-        documentType: catalog.documentType,
-        templateCode: catalog.templateCode,
-        expectedUpdatedAt: before.updated_at,
-      });
+      const removed = await repository.deleteDocumentPrintTemplateSetting(client, { installationId, documentType: catalog.documentType, templateCode: catalog.templateCode, expectedUpdatedAt: before.updated_at });
       if (!removed) return failure('CONFLICT', 'Mẫu in đã được thay đổi. Hãy tải lại trước khi lưu');
     }
     return Object.freeze({ ok: true, template: present(catalog, null), beforeData: before ? present(catalog, before) : null, reset: true });
   }
+  const data = {
+    installationId,
+    documentType: catalog.documentType,
+    templateCode: catalog.templateCode,
+    pageSize: normalized.pageSize,
+    visibleFieldKeys: normalized.visibleFieldKeys,
+    heading: normalized.heading,
+    title: normalized.title,
+    subtitle: normalized.subtitle,
+    actorId,
+  };
   const stored = before
-    ? await repository.updateDocumentPrintTemplateSetting(client, {
-      installationId,
-      documentType: catalog.documentType,
-      templateCode: catalog.templateCode,
-      pageSize: normalized.pageSize,
-      visibleFieldKeys: normalized.visibleFieldKeys,
-      actorId,
-      expectedUpdatedAt: before.updated_at,
-    })
-    : await repository.insertDocumentPrintTemplateSetting(client, {
-      installationId,
-      documentType: catalog.documentType,
-      templateCode: catalog.templateCode,
-      pageSize: normalized.pageSize,
-      visibleFieldKeys: normalized.visibleFieldKeys,
-      actorId,
-    });
+    ? await repository.updateDocumentPrintTemplateSetting(client, { ...data, expectedUpdatedAt: before.updated_at })
+    : await repository.insertDocumentPrintTemplateSetting(client, data);
   if (!stored) return failure('CONFLICT', 'Mẫu in đã được thay đổi. Hãy tải lại trước khi lưu');
   return Object.freeze({ ok: true, template: present(catalog, stored), beforeData: before ? present(catalog, before) : null, reset: false });
 }

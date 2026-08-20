@@ -60,118 +60,35 @@ const CUSTOMER_PORTAL_ORDER_INTAKE_SQL = readFileSync(new URL('../../../../datab
 const CUSTOMER_PORTAL_REGISTRATION_ONBOARDING_SQL = readFileSync(new URL('../../../../database/migrations/sales/072_customer_portal_registration_onboarding.sql', import.meta.url), 'utf8');
 const INTERNAL_WORKFORCE_AUTH_SQL = readFileSync(new URL('../../../../database/migrations/shared/073_internal_workforce_auth.sql', import.meta.url), 'utf8');
 const INTERNAL_WEB_LOGIN_CHALLENGE_SQL = readFileSync(new URL('../../../../database/migrations/shared/074_internal_web_login_challenge.sql', import.meta.url), 'utf8');
-const LOGISTICS_TRIP_STOP_REORDER_CONSTRAINT_SQL = readFileSync(
-  new URL('../../../../database/migrations/logistics/075_logistics_trip_stop_reorder_constraint.sql', import.meta.url),
-  'utf8',
-);
-const LOGISTICS_DRIVER_EMPLOYEE_INTEGRITY_SQL = readFileSync(
-  new URL('../../../../database/migrations/logistics/076_logistics_driver_employee_integrity.sql', import.meta.url),
-  'utf8',
-);
-const DOCUMENT_NUMBERING_ACTIVE_SERIES_SQL = readFileSync(
-  new URL('../../../../database/migrations/shared/077_document_numbering_active_series.sql', import.meta.url),
-  'utf8',
-);
-const CUSTOMER_ADDRESS_LOCATION_URL_SQL = readFileSync(
-  new URL('../../../../database/migrations/shared/078_customer_address_location_url.sql', import.meta.url),
-  'utf8',
-);
-const CUSTOMER_MEDIA_SQL = readFileSync(
-  new URL('../../../../database/migrations/shared/079_customer_media.sql', import.meta.url),
-  'utf8',
-);
-const MANUAL_DELIVERY_HANDOVER_SQL = readFileSync(
-  new URL('../../../../database/migrations/sales/080_manual_delivery_handover.sql', import.meta.url),
-  'utf8',
-);
-const FULFILLMENT_SHORTAGE_DISCREPANCY_SQL = readFileSync(
-  new URL('../../../../database/migrations/sales/081_sales_fulfillment_shortage_discrepancy.sql', import.meta.url),
-  'utf8',
-);
-const SALES_FULFILLMENT_REVERSAL_SQL = readFileSync(
-  new URL('../../../../database/migrations/sales/082_sales_fulfillment_reversal.sql', import.meta.url),
-  'utf8',
-);
-const SALES_DELIVERY_REVERSAL_HARDENING_SQL = readFileSync(
-  new URL('../../../../database/migrations/sales/082b_sales_delivery_reversal_hardening.sql', import.meta.url),
-  'utf8',
-);
-const LOGISTICS_TRIP_RECOVERY_SQL = readFileSync(
-  new URL('../../../../database/migrations/logistics/082_logistics_trip_recovery.sql', import.meta.url),
-  'utf8',
-);
-const BACKUP_DELETE_FOUNDATION_SQL = readFileSync(
-  new URL('../../../../database/migrations/shared/083_backup_delete_foundation.sql', import.meta.url),
-  'utf8',
-);
-const MCP_FIELD_PROFILE_VERIFICATION_SQL = readFileSync(
-  new URL('../../../../database/migrations/sales/084_mcp_field_profile_verification.sql', import.meta.url),
-  'utf8',
-);
-const MCP_SALES_ORDER_EMPLOYEE_PROVENANCE_SQL = readFileSync(
-  new URL('../../../../database/migrations/sales/085_mcp_sales_order_employee_provenance.sql', import.meta.url),
-  'utf8',
-);
-const MCP_WORKFORCE_PERMISSION_CATALOG_SQL = readFileSync(
-  new URL('../../../../database/migrations/shared/086_mcp_workforce_permission_catalog.sql', import.meta.url),
-  'utf8',
-);
-const TECHNICAL_BACKUP_ACCESS_SQL = readFileSync(
-  new URL('../../../../database/migrations/shared/087_technical_backup_access.sql', import.meta.url),
-  'utf8',
-);
-const SELECTIVE_BUSINESS_DATA_PURGE_SQL = readFileSync(
-  new URL('../../../../database/migrations/shared/088_selective_business_data_purge.sql', import.meta.url),
-  'utf8',
-);
-const SALES_DELIVERY_EXECUTION_MODE_SQL = readFileSync(
-  new URL('../../../../database/migrations/sales/089_sales_delivery_execution_mode.sql', import.meta.url),
-  'utf8',
-);
-const MANUAL_SALES_ORDER_RECEIVABLE_SQL = readFileSync(
-  new URL('../../../../database/migrations/accounting/090_manual_sales_order_receivable.sql', import.meta.url),
-  'utf8',
-);
-const MANUAL_INBOUND_FOUNDATION_SQL = readFileSync(
-  new URL('../../../../database/migrations/inventory/091_manual_inbound_foundation.sql', import.meta.url),
-  'utf8',
-);
-const SALES_SHARED_STOCK_HOLD_SQL = readFileSync(
-  new URL('../../../../database/migrations/sales/092_sales_shared_stock_hold.sql', import.meta.url),
-  'utf8',
-);
-const PRODUCT_INVENTORY_MANAGEMENT_POLICY_SQL = readFileSync(
-  new URL('../../../../database/migrations/shared/093_product_inventory_management_policy.sql', import.meta.url),
-  'utf8',
-);
-const MANUAL_DELIVERY_ALLOCATION_RELEASE_SQL = readFileSync(
-  new URL('../../../../database/migrations/sales/094_manual_delivery_allocation_release.sql', import.meta.url),
-  'utf8',
-);
-const MANUAL_SALES_ORDER_RECEIVABLE_DELIVERY_ORDER_NULLABLE_SQL = readFileSync(
-  new URL('../../../../database/migrations/accounting/095_manual_sales_order_receivable_delivery_order_nullable.sql', import.meta.url),
-  'utf8',
-);
-const SALES_ORDER_UNWIND_LOCKED_TRIP_SQL = readFileSync(
-  new URL('../../../../database/migrations/logistics/096_sales_order_unwind_locked_trip.sql', import.meta.url),
-  'utf8',
-);
-const CUSTOMER_PAYMENT_REMITTING_EMPLOYEE_SQL = readFileSync(
-  new URL('../../../../database/migrations/accounting/097_customer_payment_remitting_employee.sql', import.meta.url),
-  'utf8',
-);
-const DOCUMENT_PRINT_TEMPLATE_SETTINGS_SQL = readFileSync(
-  new URL('../../../../database/migrations/shared/098_document_print_template_settings.sql', import.meta.url),
-  'utf8',
-);
-const BUSINESS_PURGE_GUARDED_DELETE_SQL = readFileSync(
-  new URL('../../../../database/migrations/shared/099_business_purge_guarded_delete.sql', import.meta.url),
-  'utf8',
-);
-const DIRECT_PICKUP_SALES_ORDER_RECEIVABLE_SQL = readFileSync(
-  new URL('../../../../database/migrations/accounting/100_direct_pickup_sales_order_receivable.sql', import.meta.url),
-  'utf8',
-);
+const LOGISTICS_TRIP_STOP_REORDER_CONSTRAINT_SQL = readFileSync(new URL('../../../../database/migrations/logistics/075_logistics_trip_stop_reorder_constraint.sql', import.meta.url), 'utf8');
+const LOGISTICS_DRIVER_EMPLOYEE_INTEGRITY_SQL = readFileSync(new URL('../../../../database/migrations/logistics/076_logistics_driver_employee_integrity.sql', import.meta.url), 'utf8');
+const DOCUMENT_NUMBERING_ACTIVE_SERIES_SQL = readFileSync(new URL('../../../../database/migrations/shared/077_document_numbering_active_series.sql', import.meta.url), 'utf8');
+const CUSTOMER_ADDRESS_LOCATION_URL_SQL = readFileSync(new URL('../../../../database/migrations/shared/078_customer_address_location_url.sql', import.meta.url), 'utf8');
+const CUSTOMER_MEDIA_SQL = readFileSync(new URL('../../../../database/migrations/shared/079_customer_media.sql', import.meta.url), 'utf8');
+const MANUAL_DELIVERY_HANDOVER_SQL = readFileSync(new URL('../../../../database/migrations/sales/080_manual_delivery_handover.sql', import.meta.url), 'utf8');
+const FULFILLMENT_SHORTAGE_DISCREPANCY_SQL = readFileSync(new URL('../../../../database/migrations/sales/081_sales_fulfillment_shortage_discrepancy.sql', import.meta.url), 'utf8');
+const SALES_FULFILLMENT_REVERSAL_SQL = readFileSync(new URL('../../../../database/migrations/sales/082_sales_fulfillment_reversal.sql', import.meta.url), 'utf8');
+const SALES_DELIVERY_REVERSAL_HARDENING_SQL = readFileSync(new URL('../../../../database/migrations/sales/082b_sales_delivery_reversal_hardening.sql', import.meta.url), 'utf8');
+const LOGISTICS_TRIP_RECOVERY_SQL = readFileSync(new URL('../../../../database/migrations/logistics/082_logistics_trip_recovery.sql', import.meta.url), 'utf8');
+const BACKUP_DELETE_FOUNDATION_SQL = readFileSync(new URL('../../../../database/migrations/shared/083_backup_delete_foundation.sql', import.meta.url), 'utf8');
+const MCP_FIELD_PROFILE_VERIFICATION_SQL = readFileSync(new URL('../../../../database/migrations/sales/084_mcp_field_profile_verification.sql', import.meta.url), 'utf8');
+const MCP_SALES_ORDER_EMPLOYEE_PROVENANCE_SQL = readFileSync(new URL('../../../../database/migrations/sales/085_mcp_sales_order_employee_provenance.sql', import.meta.url), 'utf8');
+const MCP_WORKFORCE_PERMISSION_CATALOG_SQL = readFileSync(new URL('../../../../database/migrations/shared/086_mcp_workforce_permission_catalog.sql', import.meta.url), 'utf8');
+const TECHNICAL_BACKUP_ACCESS_SQL = readFileSync(new URL('../../../../database/migrations/shared/087_technical_backup_access.sql', import.meta.url), 'utf8');
+const SELECTIVE_BUSINESS_DATA_PURGE_SQL = readFileSync(new URL('../../../../database/migrations/shared/088_selective_business_data_purge.sql', import.meta.url), 'utf8');
+const SALES_DELIVERY_EXECUTION_MODE_SQL = readFileSync(new URL('../../../../database/migrations/sales/089_sales_delivery_execution_mode.sql', import.meta.url), 'utf8');
+const MANUAL_SALES_ORDER_RECEIVABLE_SQL = readFileSync(new URL('../../../../database/migrations/accounting/090_manual_sales_order_receivable.sql', import.meta.url), 'utf8');
+const MANUAL_INBOUND_FOUNDATION_SQL = readFileSync(new URL('../../../../database/migrations/inventory/091_manual_inbound_foundation.sql', import.meta.url), 'utf8');
+const SALES_SHARED_STOCK_HOLD_SQL = readFileSync(new URL('../../../../database/migrations/sales/092_sales_shared_stock_hold.sql', import.meta.url), 'utf8');
+const PRODUCT_INVENTORY_MANAGEMENT_POLICY_SQL = readFileSync(new URL('../../../../database/migrations/shared/093_product_inventory_management_policy.sql', import.meta.url), 'utf8');
+const MANUAL_DELIVERY_ALLOCATION_RELEASE_SQL = readFileSync(new URL('../../../../database/migrations/sales/094_manual_delivery_allocation_release.sql', import.meta.url), 'utf8');
+const MANUAL_SALES_ORDER_RECEIVABLE_DELIVERY_ORDER_NULLABLE_SQL = readFileSync(new URL('../../../../database/migrations/accounting/095_manual_sales_order_receivable_delivery_order_nullable.sql', import.meta.url), 'utf8');
+const SALES_ORDER_UNWIND_LOCKED_TRIP_SQL = readFileSync(new URL('../../../../database/migrations/logistics/096_sales_order_unwind_locked_trip.sql', import.meta.url), 'utf8');
+const CUSTOMER_PAYMENT_REMITTING_EMPLOYEE_SQL = readFileSync(new URL('../../../../database/migrations/accounting/097_customer_payment_remitting_employee.sql', import.meta.url), 'utf8');
+const DOCUMENT_PRINT_TEMPLATE_SETTINGS_SQL = readFileSync(new URL('../../../../database/migrations/shared/098_document_print_template_settings.sql', import.meta.url), 'utf8');
+const BUSINESS_PURGE_GUARDED_DELETE_SQL = readFileSync(new URL('../../../../database/migrations/shared/099_business_purge_guarded_delete.sql', import.meta.url), 'utf8');
+const DIRECT_PICKUP_SALES_ORDER_RECEIVABLE_SQL = readFileSync(new URL('../../../../database/migrations/accounting/100_direct_pickup_sales_order_receivable.sql', import.meta.url), 'utf8');
+const DOCUMENT_PRINT_TEMPLATE_HEADING_SQL = readFileSync(new URL('../../../../database/migrations/shared/101_document_print_template_heading.sql', import.meta.url), 'utf8');
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -211,14 +128,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '079_customer_media', sql: CUSTOMER_MEDIA_SQL }),
   Object.freeze({ id: '080_manual_delivery_handover', sql: MANUAL_DELIVERY_HANDOVER_SQL }),
   Object.freeze({ id: '081_sales_fulfillment_shortage_discrepancy', sql: FULFILLMENT_SHORTAGE_DISCREPANCY_SQL }),
-  Object.freeze({
-    id: '082_sales_fulfillment_reversal',
-    sql: [
-      SALES_FULFILLMENT_REVERSAL_SQL,
-      SALES_DELIVERY_REVERSAL_HARDENING_SQL,
-      LOGISTICS_TRIP_RECOVERY_SQL,
-    ].join('\n\n'),
-  }),
+  Object.freeze({ id: '082_sales_fulfillment_reversal', sql: [SALES_FULFILLMENT_REVERSAL_SQL, SALES_DELIVERY_REVERSAL_HARDENING_SQL, LOGISTICS_TRIP_RECOVERY_SQL].join('\n\n') }),
   Object.freeze({ id: '083_backup_delete_foundation', sql: BACKUP_DELETE_FOUNDATION_SQL }),
   Object.freeze({ id: '084_mcp_field_profile_verification', sql: MCP_FIELD_PROFILE_VERIFICATION_SQL }),
   Object.freeze({ id: '085_mcp_sales_order_employee_provenance', sql: MCP_SALES_ORDER_EMPLOYEE_PROVENANCE_SQL }),
@@ -231,27 +141,13 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '092_sales_shared_stock_hold', sql: SALES_SHARED_STOCK_HOLD_SQL }),
   Object.freeze({ id: '093_product_inventory_management_policy', sql: PRODUCT_INVENTORY_MANAGEMENT_POLICY_SQL }),
   Object.freeze({ id: '094_manual_delivery_allocation_release', sql: MANUAL_DELIVERY_ALLOCATION_RELEASE_SQL }),
-  Object.freeze({
-    id: '095_manual_sales_order_receivable_delivery_order_nullable',
-    sql: MANUAL_SALES_ORDER_RECEIVABLE_DELIVERY_ORDER_NULLABLE_SQL,
-  }),
+  Object.freeze({ id: '095_manual_sales_order_receivable_delivery_order_nullable', sql: MANUAL_SALES_ORDER_RECEIVABLE_DELIVERY_ORDER_NULLABLE_SQL }),
   Object.freeze({ id: '096_sales_order_unwind_locked_trip', sql: SALES_ORDER_UNWIND_LOCKED_TRIP_SQL }),
-  Object.freeze({
-    id: '097_customer_payment_remitting_employee',
-    sql: CUSTOMER_PAYMENT_REMITTING_EMPLOYEE_SQL,
-  }),
-  Object.freeze({
-    id: '098_document_print_template_settings',
-    sql: DOCUMENT_PRINT_TEMPLATE_SETTINGS_SQL,
-  }),
-  Object.freeze({
-    id: '099_business_purge_guarded_delete',
-    sql: BUSINESS_PURGE_GUARDED_DELETE_SQL,
-  }),
-  Object.freeze({
-    id: '100_direct_pickup_sales_order_receivable',
-    sql: DIRECT_PICKUP_SALES_ORDER_RECEIVABLE_SQL,
-  }),
+  Object.freeze({ id: '097_customer_payment_remitting_employee', sql: CUSTOMER_PAYMENT_REMITTING_EMPLOYEE_SQL }),
+  Object.freeze({ id: '098_document_print_template_settings', sql: DOCUMENT_PRINT_TEMPLATE_SETTINGS_SQL }),
+  Object.freeze({ id: '099_business_purge_guarded_delete', sql: BUSINESS_PURGE_GUARDED_DELETE_SQL }),
+  Object.freeze({ id: '100_direct_pickup_sales_order_receivable', sql: DIRECT_PICKUP_SALES_ORDER_RECEIVABLE_SQL }),
+  Object.freeze({ id: '101_document_print_template_heading', sql: DOCUMENT_PRINT_TEMPLATE_HEADING_SQL }),
 ]);
 
 export { runMigrations };

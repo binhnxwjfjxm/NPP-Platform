@@ -13,6 +13,9 @@ export type DocumentPrintTemplate = {
   pageSize: PrintPageSize;
   visibleFieldKeys: string[];
   fields: DocumentPrintTemplateField[];
+  heading?: string | null;
+  title?: string | null;
+  subtitle?: string | null;
   isCustomized: boolean;
   updatedAt: string | null;
 };

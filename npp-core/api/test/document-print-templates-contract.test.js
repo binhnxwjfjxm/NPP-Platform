@@ -10,16 +10,14 @@ const route = readFileSync(new URL('../src/routes/document-print-templates.js', 
 
 function responseRecorder() {
   return {
-    headers: {},
-    statusCode: null,
-    body: null,
+    headers: {}, statusCode: null, body: null,
     setHeader(name, value) { this.headers[name] = value; },
     writeHead(statusCode, headers) { this.statusCode = statusCode; Object.assign(this.headers, headers); },
     end(body = '') { this.body = body; },
   };
 }
 
-test('print template migration is registered once with installation scope and compatibility permissions', () => {
+test('print template migrations keep installation scope and add configurable headings', () => {
   const migration = CORE_API_MIGRATIONS.find((entry) => entry.id === '098_document_print_template_settings');
   assert.ok(migration);
   assert.match(migration.sql, /shared\.document_print_template_settings/);
@@ -27,21 +25,28 @@ test('print template migration is registered once with installation scope and co
   assert.match(migration.sql, /core\.print-template\.read/);
   assert.match(migration.sql, /core\.print-template\.manage/);
   assert.doesNotMatch(migration.sql, /shared\.role_permissions/);
+  const headingMigration = CORE_API_MIGRATIONS.find((entry) => entry.id === '101_document_print_template_heading');
+  assert.ok(headingMigration);
+  assert.match(headingMigration.sql, /ADD COLUMN IF NOT EXISTS heading/);
+  assert.match(headingMigration.sql, /ADD COLUMN IF NOT EXISTS title/);
+  assert.match(headingMigration.sql, /ADD COLUMN IF NOT EXISTS subtitle/);
   assert.ok(PERMISSION_REGISTRY.has(PERMISSIONS.corePrintTemplateRead));
   assert.ok(PERMISSION_REGISTRY.has(PERMISSIONS.corePrintTemplateManage));
 });
 
-test('print template catalog owns the defaults for sales, purchasing and operational forms', () => {
+test('print template catalog owns defaults and validates heading fields', () => {
   const keys = DOCUMENT_PRINT_TEMPLATE_CATALOG.map((item) => `${item.documentType}:${item.templateCode}`);
-  for (const expected of ['SALES_ORDER:standard', 'PURCHASE_ORDER:standard', 'GOODS_RECEIPT:standard', 'CUSTOMER_PAYMENT:standard', 'DELIVERY_ORDER:standard', 'DELIVERY_ORDER:packing-list', 'INVENTORY_TRANSFER:standard', 'STOCKTAKE:standard']) {
-    assert.ok(keys.includes(expected), expected);
-  }
+  for (const expected of ['SALES_ORDER:standard', 'PURCHASE_ORDER:standard', 'GOODS_RECEIPT:standard', 'CUSTOMER_PAYMENT:standard', 'DELIVERY_ORDER:standard', 'DELIVERY_ORDER:packing-list', 'INVENTORY_TRANSFER:standard', 'STOCKTAKE:standard']) assert.ok(keys.includes(expected), expected);
   const sales = documentPrintTemplateInternals.lookup('sales_order', 'standard');
   assert.ok(sales);
-  const valid = documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A4', visibleFieldKeys: ['customer', 'line_item', 'total_total'] });
-  assert.deepEqual(valid.visibleFieldKeys, ['customer', 'line_item', 'total_total']);
+  const valid = documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A4', visibleFieldKeys: ['customer', 'line_item', 'line_unit', 'total_total'], heading: 'NGUYÊN LIỆU TRÀ SỮA', title: 'PHIẾU XUẤT KHO', subtitle: 'Bán tại quầy' });
+  assert.deepEqual(valid.visibleFieldKeys, ['customer', 'line_item', 'line_unit', 'total_total']);
+  assert.equal(valid.heading, 'NGUYÊN LIỆU TRÀ SỮA');
+  assert.equal(valid.title, 'PHIẾU XUẤT KHO');
+  assert.equal(valid.subtitle, 'Bán tại quầy');
   assert.equal(documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A3', visibleFieldKeys: ['customer'] }).code, 'INVALID_PAGE_SIZE');
   assert.equal(documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A4', visibleFieldKeys: ['customer', 'not_allowed'] }).code, 'INVALID_PRINT_FIELDS');
+  assert.equal(documentPrintTemplateInternals.normalizePayload(sales, { pageSize: 'A4', visibleFieldKeys: ['customer'], heading: 'x'.repeat(161) }).code, 'INVALID_PRINT_HEADING');
   assert.equal(documentPrintTemplateInternals.normalizePayload(sales, { resetToDefault: true, expectedUpdatedAt: 'not-a-date' }).code, 'INVALID_TEMPLATE_VERSION');
 });
 
@@ -66,21 +71,13 @@ test('print template read creates authenticated installation context before acce
   const res = responseRecorder();
   let queriedInstallationId = null;
   const handled = await handleDocumentPrintTemplateRoutes(req, res, {
-    config: {},
-    requestId: 'print-template-read',
-    receivedAt: '2026-08-20T00:00:00.000Z',
+    config: {}, requestId: 'print-template-read', receivedAt: '2026-08-20T00:00:00.000Z',
     authenticate: () => ({ ok: true, principal: { subject: 'owner' } }),
     createContext: () => ({ installationId: 'installation-a', actorId: 'owner', roles: [] }),
     authorize: () => ({ ok: false, code: 'FORBIDDEN', message: 'Không có quyền', statusCode: 403 }),
     PERMISSIONS,
-    getPool: () => ({
-      query: async (_sql, values) => {
-        queriedInstallationId = values?.[0] ?? null;
-        return { rows: [] };
-      },
-    }),
+    getPool: () => ({ query: async (_sql, values) => { queriedInstallationId = values?.[0] ?? null; return { rows: [] }; } }),
   });
-
   assert.equal(handled, true);
   assert.equal(queriedInstallationId, 'installation-a');
   assert.equal(res.statusCode, 200);
