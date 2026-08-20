@@ -6,6 +6,7 @@ import * as fulfillmentRepository from '../db/repositories/sales-fulfillment.js'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SCALE = 1_000_000_000_000n;
+const NO_SALES_ORDER_ID = '00000000-0000-0000-0000-000000000000';
 const RETAIL_CHANNEL = Object.freeze({
   code: 'RETAIL',
   name: 'Retail',
@@ -96,6 +97,36 @@ async function loadOrderLines(client, { installationId, salesOrderId }) {
   return result.rows ?? [];
 }
 
+async function loadVariantAvailabilityInput(client, { installationId, variantId }) {
+  const result = await client.query(
+    `SELECT variant.id AS variant_id,
+            variant.sku,
+            variant.conversion_to_base,
+            product.name AS item_name,
+            product.is_inventory_managed,
+            ARRAY(
+              SELECT base_variant.id
+                FROM shared.product_variants base_variant
+               WHERE base_variant.installation_id = variant.installation_id
+                 AND base_variant.product_id = variant.product_id
+                 AND base_variant.is_inventory_base = true
+                 AND base_variant.is_active = true
+               ORDER BY base_variant.id
+            ) AS base_variant_ids
+       FROM shared.product_variants variant
+       JOIN shared.products product
+         ON product.installation_id = variant.installation_id
+        AND product.id = variant.product_id
+      WHERE variant.installation_id = $1
+        AND variant.id = $2::uuid
+        AND variant.is_active = true
+        AND product.is_active = true
+      LIMIT 1`,
+    [installationId, variantId],
+  );
+  return result.rows?.[0] ?? null;
+}
+
 export async function searchRetailCatalog(client, {
   requestContext,
   search,
@@ -167,6 +198,76 @@ export async function resolveRetailPrice(client, {
   });
 }
 
+export async function previewRetailAvailability(client, {
+  requestContext,
+  payload,
+}) {
+  const warehouseId = String(payload?.warehouseId ?? '').trim();
+  if (!UUID_PATTERN.test(warehouseId)) {
+    return failure('INVALID_WAREHOUSE_ID', 'Kho bán không hợp lệ');
+  }
+  if (!warehouseAllowed(requestContext, warehouseId)) {
+    return failure('WAREHOUSE_SCOPE_DENIED', 'Kho nằm ngoài phạm vi được cấp quyền');
+  }
+
+  const requestedVariantIds = Array.isArray(payload?.variantIds)
+    ? [...new Set(payload.variantIds.map((value) => String(value ?? '').trim()))]
+    : [];
+  if (!requestedVariantIds.length || requestedVariantIds.length > 100 || requestedVariantIds.some((id) => !UUID_PATTERN.test(id))) {
+    return failure('INVALID_VARIANT_IDS', 'Danh sách sản phẩm cần kiểm tra không hợp lệ');
+  }
+
+  let excludingSalesOrderId = NO_SALES_ORDER_ID;
+  const salesOrderId = payload?.salesOrderId === null || payload?.salesOrderId === undefined
+    ? null
+    : String(payload.salesOrderId).trim();
+  if (salesOrderId !== null) {
+    if (!UUID_PATTERN.test(salesOrderId)) return failure('INVALID_SALES_ORDER_ID', 'Đơn bán hàng không hợp lệ');
+    const sourceLines = await loadOrderLines(client, {
+      installationId: requestContext.installationId,
+      salesOrderId,
+    });
+    if (!sourceLines.length) return failure('SALES_ORDER_NOT_FOUND', 'Không tìm thấy đơn bán hàng');
+    if (!warehouseAllowed(requestContext, sourceLines[0].warehouse_id)) {
+      return failure('WAREHOUSE_SCOPE_DENIED', 'Đơn nằm ngoài phạm vi kho được cấp quyền');
+    }
+    if (String(sourceLines[0].warehouse_id) !== warehouseId) {
+      return failure('RETAIL_AVAILABILITY_WAREHOUSE_MISMATCH', 'Kho đang sửa phải trùng với kho của đơn');
+    }
+    excludingSalesOrderId = salesOrderId;
+  }
+
+  const availability = await Promise.all(requestedVariantIds.map(async (variantId) => {
+    const row = await loadVariantAvailabilityInput(client, {
+      installationId: requestContext.installationId,
+      variantId,
+    });
+    if (!row) {
+      return Object.freeze({ variantId, availabilityStatus: 'UNAVAILABLE', availableQuantity: null });
+    }
+    if (row.is_inventory_managed === false) {
+      return Object.freeze({ variantId, availabilityStatus: 'NOT_APPLICABLE', availableQuantity: null });
+    }
+    if (!Array.isArray(row.base_variant_ids) || row.base_variant_ids.length !== 1) {
+      return Object.freeze({ variantId, availabilityStatus: 'UNAVAILABLE', availableQuantity: null });
+    }
+    const baseAvailable = await fulfillmentRepository.getWarehouseAvailableQuantity(client, {
+      installationId: requestContext.installationId,
+      warehouseId,
+      baseVariantId: row.base_variant_ids[0],
+      excludingSalesOrderId,
+    });
+    const availableQuantity = convertBaseToSalesQuantity(baseAvailable, row.conversion_to_base);
+    return Object.freeze({
+      variantId,
+      availabilityStatus: availableQuantity === null ? 'UNAVAILABLE' : 'AVAILABLE',
+      availableQuantity,
+    });
+  }));
+
+  return Object.freeze({ ok: true, availability: Object.freeze(availability) });
+}
+
 export async function getRetailOrderAvailability(client, {
   requestContext,
   salesOrderId,
@@ -227,5 +328,6 @@ export const retailCatalogInternals = Object.freeze({
   formatRetailQuantity,
   warehouseAllowed,
   loadOrderLines,
+  loadVariantAvailabilityInput,
   ensureRetailChannel,
 });

@@ -87,6 +87,10 @@ export async function GET(request: NextRequest, { params }: { params: { segments
       });
       return json(result.data, result.requestId);
     }
+    if (path.length === 1 && path[0] === 'print-templates') {
+      const result = await companyRequest<unknown>({ path: '/api/document-print-templates', requestId: id });
+      return json(result.data, result.requestId);
+    }
     if (path.length === 1 && path[0] === 'orders') {
       const result = await companyRequest<unknown>({ path: `/api/sales-orders${query(request, ['limit', 'offset', 'status', 'search'])}`, requestId: id });
       return json(result.data, result.requestId);
@@ -117,6 +121,10 @@ export async function POST(request: NextRequest, { params }: { params: { segment
     }
     if (path.length === 1 && path[0] === 'price') {
       const result = await companyRequest<unknown>({ path: '/api/retail/price', method: 'POST', body: payload, requestId: id });
+      return json(result.data, result.requestId);
+    }
+    if (path.length === 1 && path[0] === 'availability') {
+      const result = await companyRequest<unknown>({ path: '/api/retail/availability', method: 'POST', body: payload, requestId: id });
       return json(result.data, result.requestId);
     }
     if (path.length === 3 && path[0] === 'orders') {
