@@ -9,13 +9,13 @@ test('Lô 4 có giỏ hàng, chọn nhiều sản phẩm và chỉ một chỉ s
   const page = await read('app/page.tsx');
   assert.match(page, /Chọn nhiều sản phẩm/);
   assert.match(page, /Thêm \{selected\.size\} sản phẩm vào đơn/);
-  assert.match(page, /Tất cả nhóm/);
+  assert.match(page, /Nhóm sản phẩm/);
   assert.match(page, /Khả dụng/);
   assert.match(page, /Không áp dụng/);
-  assert.match(page, /item\.versionNumber===order\.currentVersionNumber/);
+  assert.match(page, /item\.versionNumber\s*===\s*order\.currentVersionNumber/);
   assert.match(page, /setCustomerMode\(next\.customerMode\)/);
   assert.match(page, /setCustomerId\(next\.customerId\)/);
-  assert.match(page, /const seeded=current\.length\?current:order\?\.status==='draft'\?cartFromOrder\(order\):current/);
+  assert.match(page, /const seeded\s*=\s*current\.length\s*\?\s*current\s*:\s*order\?\.status\s*===\s*'draft'\s*\?\s*cartFromOrder\(order\)\s*:\s*current/);
   assert.doesNotMatch(page, /Tồn thực tế|Đang giữ|Vị trí|Lô hàng/);
 });
 
