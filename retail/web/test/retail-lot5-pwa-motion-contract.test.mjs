@@ -9,6 +9,8 @@ test('Lô 5 có vầng sáng filter trượt, timeline và chuyển cảnh thố
   assert.match(page, /filterMarker/);
   assert.match(page, /className="filter-highlight"/);
   assert.match(page, /order-timeline/);
+  assert.match(page, /order\.status !== 'cancelled'/);
+  assert.doesNotMatch(page, /vẫn có thể sửa đơn/);
   assert.match(page, /Lên đơn', 'Đã chốt', 'Xuất kho', 'Hoàn thành/);
   assert.match(styles, /\.filter-highlight[\s\S]*?transition: transform var\(--motion-page\)/);
   assert.match(styles, /\.sheet-enter[\s\S]*?sheet-in/);
