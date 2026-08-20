@@ -23,6 +23,7 @@ jobs:
     env:
       DEPLOY_REF: main
       VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      VERCEL_PROJECT_ID: prj_1O9Ob6ZptSqZOBpxKbpn3Ujfm811
       RETAIL_PROJECT_NAME: npp-retail
       RETAIL_ROOT_DIRECTORY: retail/web
       RETAIL_DOMAIN: retail.nguyenlieuhungphat.com
