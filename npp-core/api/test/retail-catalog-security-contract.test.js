@@ -13,7 +13,7 @@ test('Retail catalog tái sử dụng SKU search chuẩn nhưng không trả d�
   const service = source('../src/services/retail-catalog.js');
   const productResponse = service.slice(
     service.indexOf('products: Object.freeze'),
-    service.indexOf('export async function getRetailOrderAvailability'),
+    service.indexOf('export async function resolveRetailPrice'),
   );
   assert.match(service, /salesOrderEntryService\.searchSalesOrderSkuOptions/);
   assert.match(productResponse, /productCode/);

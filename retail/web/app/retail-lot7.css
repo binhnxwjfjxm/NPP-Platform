@@ -1,5 +1,5 @@
 /* Retail Lô 7 — visual acceptance theo mẫu mobile-first. */
-.retail-lot7 { max-width: 920px; background: #fff; }
+.retail-lot7 { max-width: 920px; background: #fff; padding-bottom: calc(190px + env(safe-area-inset-bottom)); }
 .retail-lot7 .retail-topbar { position: sticky; z-index: 4; top: 0; margin: -18px -16px 18px; padding: max(16px, env(safe-area-inset-top)) 16px 14px; border-bottom: 1px solid #e9eeeb; background: rgba(255,255,255,.96); backdrop-filter: blur(16px); }
 .retail-lot7 .retail-title .brand-kicker { display: none; }
 .retail-lot7 .retail-title h1 { font-size: 30px; }
@@ -10,6 +10,7 @@
 .retail-lot7 .choose-products { min-height: 76px; border-radius: 22px; margin: 18px 0 24px; background: #fff; box-shadow: 0 8px 25px rgba(20,60,37,.05); }
 .retail-lot7 .cart-list { gap: 12px; }
 .retail-lot7 .compact-product-card { grid-template-columns: 120px minmax(0,1fr) auto; min-height: 142px; border-radius: 24px; padding: 18px 22px; box-shadow: 0 8px 25px rgba(20,60,37,.05); }
+.retail-lot7 .product-visual { display: grid; width: 96px; min-height: 110px; place-items: center; justify-self: center; }
 .retail-lot7 .product-photo { width: 92px; height: 110px; object-fit: contain; justify-self: center; }
 .retail-lot7 .compact-product-card .product-symbol-large { width: 92px; height: 92px; border-radius: 22px; }
 .retail-lot7 .line-main strong { font-size: 21px; line-height: 1.2; }
@@ -25,8 +26,10 @@
 .retail-lot7 .lot7-total > div strong { font-size: 18px; color: #111; }
 .retail-lot7 .lot7-total .grand-total { margin-top: 4px; border-top: 1px dashed #d6ded9; padding-top: 13px; font-size: 20px; font-weight: 800; }
 .retail-lot7 .lot7-total .grand-total strong { font-size: 30px; color: var(--green-dark); }
-.retail-lot7 .order-action-bar { grid-template-columns: repeat(3,minmax(0,1fr)); }
-.retail-lot7 .order-action-bar .primary-action { min-width: 210px; }
+.retail-lot7 .order-action-bar { right: max(12px, calc((100vw - 920px)/2 + 12px)); left: max(12px, calc((100vw - 920px)/2 + 12px)); grid-template-columns: repeat(3,minmax(0,1fr)); }
+.retail-lot7 .order-action-bar > .primary-action:last-child:nth-child(odd) { grid-column: auto; }
+.retail-lot7 .order-action-bar .primary-action, .retail-lot7 .order-action-bar .secondary-action { min-width: 0; white-space: nowrap; }
+.retail-lot7 .bottom-nav button { min-width: 0; flex: 1; padding-right: 5px; padding-left: 5px; }
 .retail-lot7 .order-badges { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .retail-lot7 .product-sheet { background: #fff; }
 .retail-lot7 .lot7-product-row { grid-template-columns: 126px minmax(0,1fr) auto; min-height: 142px; border-radius: 24px; padding: 14px 20px; }
@@ -57,20 +60,85 @@
 .retail-login-card label { text-align: left; }
 .login-change-account { min-height: 46px; border: 0; background: transparent; color: var(--green-dark); font-weight: 800; cursor: pointer; }
 
+/* Sau Lô 7: Trang chủ, tài khoản và bản in riêng. */
+.retail-home { display: grid; gap: 18px; }
+.home-hero { border-radius: 28px; padding: 28px 24px; background: linear-gradient(145deg,#effaf3,#fff); box-shadow: 0 14px 34px rgba(20,60,37,.08); }
+.home-hero h2 { margin-bottom: 10px; font-size: clamp(28px,7vw,40px); }
+.home-hero p:last-child { margin: 0; color: var(--muted); line-height: 1.55; }
+.home-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.home-actions button { display: grid; gap: 7px; min-height: 150px; border: 1px solid #dfe9e2; border-radius: 24px; padding: 20px; background: #fff; color: var(--ink); text-align: left; box-shadow: 0 10px 28px rgba(20,60,37,.06); cursor: pointer; }
+.home-actions button > span { color: var(--green); font-size: 38px; }
+.home-actions strong { font-size: 20px; }
+.home-actions small { color: var(--muted); line-height: 1.4; }
+.account-workspace { display: grid; place-items: start center; }
+.account-card { width: min(100%,560px); border: 1px solid #e0e9e3; border-radius: 26px; padding: 28px; background: #fff; text-align: center; box-shadow: 0 12px 30px rgba(20,60,37,.06); }
+.account-icon { display: grid; width: 72px; height: 72px; place-items: center; margin: 0 auto 16px; border-radius: 24px; background: var(--green-soft); color: var(--green-dark); font-size: 34px; }
+.account-card p { color: var(--muted); line-height: 1.5; }
+.logout-action { width: 100%; margin-top: 12px; }
+
+.print-screen { position: fixed; z-index: 40; inset: 0; overflow: auto; padding: max(14px,env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); background: #edf1ee; }
+.print-toolbar { position: sticky; z-index: 2; top: 0; display: grid; grid-template-columns: 52px 1fr auto; align-items: center; gap: 12px; width: min(100%,920px); margin: 0 auto 12px; border-radius: 18px; padding: 10px 12px; background: rgba(255,255,255,.97); box-shadow: 0 10px 30px rgba(10,45,23,.12); }
+.print-toolbar > div { text-align: center; }
+.print-toolbar h2 { margin: 0; font-size: 20px; }
+.print-toolbar small { color: var(--muted); }
+.print-paper-picker { display: flex; width: min(100%,920px); align-items: end; justify-content: space-between; gap: 12px; margin: 0 auto 14px; }
+.print-paper-picker label { display: grid; gap: 5px; font-size: 12px; font-weight: 800; }
+.print-paper-picker select { min-height: 44px; border: 1px solid #cfdad3; border-radius: 12px; padding: 0 12px; background: #fff; }
+.print-paper-picker p { margin: 0; color: var(--muted); font-size: 12px; }
+.print-document { width: min(100%,794px); min-height: 560px; margin: 0 auto; padding: 28px; background: #fff; color: #111; box-shadow: 0 16px 42px rgba(0,0,0,.12); }
+.paper-a5 .print-document { width: min(100%,560px); }
+.paper-80 .print-document { width: 80mm; min-height: 0; padding: 5mm; box-shadow: 0 10px 30px rgba(0,0,0,.12); }
+.paper-58 .print-document { width: 58mm; min-height: 0; padding: 4mm; box-shadow: 0 10px 30px rgba(0,0,0,.12); }
+.print-document > header { border-bottom: 2px solid #111; padding-bottom: 14px; text-align: center; }
+.print-document > header p { margin: 0 0 4px; font-size: 12px; font-weight: 800; }
+.print-document > header h1 { margin: 0 0 5px; font-size: 24px; }
+.print-meta { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px 20px; margin: 16px 0; }
+.print-meta p { display: grid; grid-template-columns: auto 1fr; gap: 8px; margin: 0; font-size: 12px; }
+.print-meta span { color: #555; }
+.print-document table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.print-document th,.print-document td { border-bottom: 1px solid #ddd; padding: 8px 6px; text-align: right; vertical-align: top; }
+.print-document th:nth-child(1),.print-document td:nth-child(1),.print-document th:nth-child(2),.print-document td:nth-child(2) { text-align: left; }
+.print-document td strong,.print-document td small { display: block; }
+.print-document td small { margin-top: 3px; color: #555; }
+.print-document > footer { display: grid; gap: 7px; margin-top: 16px; }
+.print-document > footer p { display: flex; justify-content: space-between; gap: 12px; margin: 0; }
+.print-grand-total { border-top: 1px solid #111; padding-top: 8px; font-size: 18px; }
+.print-signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 32px; text-align: center; font-weight: 700; }
+.paper-80 .print-toolbar,.paper-58 .print-toolbar { max-width: 520px; }
+.paper-80 .print-meta,.paper-58 .print-meta { grid-template-columns: 1fr; }
+.paper-80 .print-document,.paper-58 .print-document { font-size: 10px; }
+.paper-80 .print-document > header h1,.paper-58 .print-document > header h1 { font-size: 17px; }
+.paper-80 .print-document th,.paper-80 .print-document td,.paper-58 .print-document th,.paper-58 .print-document td { padding: 5px 2px; font-size: 9px; }
+.paper-80 .print-signatures,.paper-58 .print-signatures { gap: 8px; margin-top: 22px; font-size: 10px; }
+
 @media (max-width: 640px) {
   .retail-lot7 .compact-choice-cards { grid-template-columns: 1fr 1fr; }
   .retail-lot7 .compact-product-card, .retail-lot7 .lot7-product-row { grid-template-columns: 78px minmax(0,1fr) auto; min-height: 116px; padding: 12px; }
+  .retail-lot7 .product-visual { width: 70px; min-height: 88px; }
   .retail-lot7 .product-photo, .retail-lot7 .lot7-product-row .product-photo { width: 70px; height: 88px; }
   .retail-lot7 .compact-product-card .product-symbol-large { width: 70px; height: 70px; }
   .retail-lot7 .line-main strong, .retail-lot7 .lot7-product-row .product-copy strong { font-size: 16px; }
   .retail-lot7 .compact-product-card .quantity-stepper { grid-column: 3; grid-row: 1 / span 2; align-self: center; grid-template-columns: 38px 44px 38px; min-height: 44px; }
   .retail-lot7 .compact-product-card .quantity-stepper input { width: 44px; }
-  .retail-lot7 .editable dl { grid-column: 2 / -1; display: flex; justify-content: flex-end; gap: 16px; }
-  .retail-lot7 .cart-row-saved dl { grid-column: 2 / -1; grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .retail-lot7 .editable dl { grid-column: 2 / -1; display: flex; justify-content: flex-end; gap: 16px; min-width: 0; }
+  .retail-lot7 .cart-row-saved dl { grid-column: 2 / -1; grid-template-columns: repeat(3,minmax(0,1fr)); min-width: 0; }
   .retail-lot7 .lot7-total .grand-total strong { font-size: 25px; }
-  .retail-lot7 .order-action-bar { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .retail-lot7 .order-action-bar .primary-action { min-width: 0; }
+  .retail-lot7 .order-action-bar { right: 8px; left: 8px; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; padding: 8px; }
+  .retail-lot7 .order-action-bar .primary-action, .retail-lot7 .order-action-bar .secondary-action { min-height: 48px; padding: 0 5px; font-size: 12px; }
+  .retail-lot7 .bottom-nav { padding-right: 4px; padding-left: 4px; }
+  .retail-lot7 .bottom-nav button { padding-right: 2px; padding-left: 2px; font-size: 10px; }
+  .home-actions { grid-template-columns: 1fr; }
+  .print-paper-picker { align-items: stretch; flex-direction: column; }
+  .print-document { padding: 18px; }
+  .print-meta { grid-template-columns: 1fr; }
   .lot7-payment { padding: max(16px, env(safe-area-inset-top)) 16px calc(110px + env(safe-area-inset-bottom)); }
   .lot7-payment .payment-summary > strong { font-size: 44px; }
   .payment-footer { right: 16px; left: 16px; }
+}
+
+@media print {
+  .retail-lot7 > :not(.print-screen) { display: none !important; }
+  .print-screen { position: static; overflow: visible; padding: 0; background: #fff; }
+  .print-toolbar,.print-paper-picker { display: none !important; }
+  .print-document,.paper-a5 .print-document,.paper-80 .print-document,.paper-58 .print-document { width: 100%; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
 }

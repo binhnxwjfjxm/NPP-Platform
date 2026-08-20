@@ -79,6 +79,15 @@ function sendServiceError(res, result, options) {
   sendError(res, apiError(result.code, result.message, result.details ?? {}, Boolean(result.retryable), statusFor(result.code)), options.requestId, options.receivedAt);
 }
 
+async function requestBody(req, res, options) {
+  try {
+    return await readJsonBody(req);
+  } catch (error) {
+    sendError(res, apiError(error.code ?? 'INVALID_INPUT', error.publicMessage ?? 'Nội dung yêu cầu không hợp lệ', {}, false, error.statusCode ?? 400), options.requestId, options.receivedAt);
+    return null;
+  }
+}
+
 export async function handleRetailCatalogRoutes(req, res, options) {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   if (!url.pathname.startsWith('/api/retail/')) return false;
@@ -105,13 +114,8 @@ export async function handleRetailCatalogRoutes(req, res, options) {
   if (url.pathname === '/api/retail/price' && req.method === 'POST') {
     const context = await authorize(req, res, options, options.PERMISSIONS.corePriceRead);
     if (!context) return true;
-    let payload;
-    try {
-      payload = await readJsonBody(req);
-    } catch (error) {
-      sendError(res, apiError(error.code ?? 'INVALID_INPUT', error.publicMessage ?? 'Nội dung yêu cầu không hợp lệ', {}, false, error.statusCode ?? 400), options.requestId, options.receivedAt);
-      return true;
-    }
+    const payload = await requestBody(req, res, options);
+    if (payload === null) return true;
     try {
       const result = await retailCatalogService.resolveRetailPrice(options.getPool(), {
         requestContext: context,
@@ -121,6 +125,24 @@ export async function handleRetailCatalogRoutes(req, res, options) {
       else sendSuccess(res, result.resolution, options.requestId, options.receivedAt);
     } catch {
       sendError(res, apiError('RETAIL_PRICE_UNAVAILABLE', 'Chưa thể tính giá bán', {}, true, 503), options.requestId, options.receivedAt);
+    }
+    return true;
+  }
+
+  if (url.pathname === '/api/retail/availability' && req.method === 'POST') {
+    const context = await authorize(req, res, options, options.PERMISSIONS.coreSalesOrderRead);
+    if (!context) return true;
+    const payload = await requestBody(req, res, options);
+    if (payload === null) return true;
+    try {
+      const result = await retailCatalogService.previewRetailAvailability(options.getPool(), {
+        requestContext: context,
+        payload,
+      });
+      if (!result.ok) sendServiceError(res, result, options);
+      else sendSuccess(res, result.availability, options.requestId, options.receivedAt);
+    } catch {
+      sendError(res, apiError('RETAIL_AVAILABILITY_UNAVAILABLE', 'Chưa thể tính Khả dụng', {}, true, 503), options.requestId, options.receivedAt);
     }
     return true;
   }
