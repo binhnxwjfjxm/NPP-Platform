@@ -28,12 +28,19 @@ test('shared stock hold migration separates order need from operator allocation 
 });
 
 test('manual delivery rechecks current stock hold before deciding shortage', () => {
-  const source = readFileSync(
+  const manualSource = readFileSync(
     new URL('../src/services/sales-manual-stock-issue.js', import.meta.url),
     'utf8',
   );
+  const source = readFileSync(
+    new URL('../src/services/sales-direct-stock-issue.js', import.meta.url),
+    'utf8',
+  );
   const refresh = source.indexOf('const hold = await reconcileDemandHold');
-  const shortage = source.indexOf("'MANUAL_STOCK_ISSUE_SHORTAGE'", refresh);
+  const shortage = source.indexOf("'SHORTAGE'", refresh);
+  assert.match(manualSource, /issueDirectSalesOrderStock/);
+  assert.match(manualSource, /mode: 'MANUAL'/);
+  assert.match(source, /errorPrefix: 'MANUAL_STOCK_ISSUE'/);
   assert.ok(refresh >= 0, 'manual issue must refresh the stock hold');
   assert.ok(shortage > refresh, 'shortage must be decided after current stock is reconciled');
   assert.match(source, /targetBaseQuantity: demand\.ordered_base_quantity/);
