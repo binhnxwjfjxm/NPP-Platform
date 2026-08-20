@@ -86,11 +86,16 @@ FOR EACH ROW EXECUTE FUNCTION shared.guard_business_purge_delete('receivable_his
 DROP TRIGGER IF EXISTS delivery_orders_write_guard ON sales.delivery_orders;
 CREATE TRIGGER delivery_orders_write_guard
 BEFORE INSERT OR UPDATE ON sales.delivery_orders
-FOR EACH ROW EXECUTE FUNCTION sales.guard_delivery_order_header_write();
+FOR EACH ROW
+WHEN (current_setting('npp.delivery_order_write_context', true)
+      IS DISTINCT FROM 'delivery_reversal_service')
+EXECUTE FUNCTION sales.guard_delivery_order_header_write();
 DROP TRIGGER IF EXISTS delivery_orders_reversal_guard ON sales.delivery_orders;
 CREATE TRIGGER delivery_orders_reversal_guard
 BEFORE UPDATE ON sales.delivery_orders
-FOR EACH ROW EXECUTE FUNCTION sales.guard_delivery_order_reversal_write();
+FOR EACH ROW
+WHEN (current_setting('npp.delivery_order_write_context', true) = 'delivery_reversal_service')
+EXECUTE FUNCTION sales.guard_delivery_order_reversal_write();
 CREATE TRIGGER delivery_orders_purge_delete_guard
 BEFORE DELETE ON sales.delivery_orders
 FOR EACH ROW EXECUTE FUNCTION shared.guard_business_purge_delete('delivery_order_delete_forbidden');
@@ -106,7 +111,10 @@ FOR EACH ROW EXECUTE FUNCTION shared.guard_business_purge_delete('delivery_order
 DROP TRIGGER IF EXISTS delivery_order_events_write_guard ON sales.delivery_order_events;
 CREATE TRIGGER delivery_order_events_write_guard
 BEFORE INSERT OR UPDATE ON sales.delivery_order_events
-FOR EACH ROW EXECUTE FUNCTION sales.guard_delivery_order_event_write();
+FOR EACH ROW
+WHEN (current_setting('npp.delivery_order_write_context', true)
+      IS DISTINCT FROM 'delivery_reversal_service')
+EXECUTE FUNCTION sales.guard_delivery_order_event_write();
 CREATE TRIGGER delivery_order_events_purge_delete_guard
 BEFORE DELETE ON sales.delivery_order_events
 FOR EACH ROW EXECUTE FUNCTION shared.guard_business_purge_delete('delivery_order_events_are_append_only');
@@ -240,7 +248,10 @@ FOR EACH ROW EXECUTE FUNCTION shared.guard_business_purge_delete('inventory_rese
 DROP TRIGGER IF EXISTS sales_order_fulfillment_demands_writer_guard ON sales.sales_order_fulfillment_demands;
 CREATE TRIGGER sales_order_fulfillment_demands_writer_guard
 BEFORE INSERT OR UPDATE ON sales.sales_order_fulfillment_demands
-FOR EACH ROW EXECUTE FUNCTION sales.guard_sales_order_fulfillment_demand_write();
+FOR EACH ROW
+WHEN (current_setting('npp.sales_fulfillment_write_context', true)
+      IS DISTINCT FROM 'fulfillment_reversal_service')
+EXECUTE FUNCTION sales.guard_sales_order_fulfillment_demand_write();
 DROP TRIGGER IF EXISTS sales_order_fulfillment_demands_reversal_guard ON sales.sales_order_fulfillment_demands;
 CREATE TRIGGER sales_order_fulfillment_demands_reversal_guard
 BEFORE INSERT OR UPDATE ON sales.sales_order_fulfillment_demands
