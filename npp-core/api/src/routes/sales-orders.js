@@ -514,7 +514,7 @@ export async function handleSalesOrderRoutes(req, res, options) {
   }
 
   const itemMatch = pathname.match(
-    /^\/api\/sales-orders\/([^/]+)(?:\/(draft|confirm|amendments|manual-edit|pickup-edit|issue-stock|cancel))?$/,
+    /^\/api\/sales-orders\/([^/]+)(?:\/(draft|confirm|amendments|manual-edit|pickup-edit|issue-stock|cancel|close-execution))?$/,
   );
   if (!itemMatch) {
     sendError(
