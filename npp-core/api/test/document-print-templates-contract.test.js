@@ -25,7 +25,7 @@ test('print template migrations keep installation scope and add configurable hea
   assert.match(migration.sql, /core\.print-template\.read/);
   assert.match(migration.sql, /core\.print-template\.manage/);
   assert.doesNotMatch(migration.sql, /shared\.role_permissions/);
-  const headingMigration = CORE_API_MIGRATIONS.find((entry) => entry.id === '101_document_print_template_heading');
+  const headingMigration = CORE_API_MIGRATIONS.find((entry) => entry.id === '102_document_print_template_heading');
   assert.ok(headingMigration);
   assert.match(headingMigration.sql, /ADD COLUMN IF NOT EXISTS heading/);
   assert.match(headingMigration.sql, /ADD COLUMN IF NOT EXISTS title/);
