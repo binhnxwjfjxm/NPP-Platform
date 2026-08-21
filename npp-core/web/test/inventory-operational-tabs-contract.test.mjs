@@ -50,6 +50,15 @@ test('customer return uses two workflow tabs and keeps receive/cancel together',
   assert.ok(statsIndex >= 0 && tabsIndex > statsIndex, 'summary stays above workflow tabs');
 });
 
+test('customer return sends an ineligible return to trip reconciliation with an actionable link', () => {
+  const workspace = source('../app/inventory/customer-returns/customer-return-workspace.tsx');
+
+  assert.match(workspace, /class CustomerReturnRequestError extends Error/);
+  assert.match(workspace, /CUSTOMER_RETURN_RECEIVABLE_NOT_POSTED/);
+  assert.match(workspace, /href="\/logistics\/trip-reconciliation"/);
+  assert.match(workspace, /Mở Đối soát cuối chuyến/);
+});
+
 test('tab switches are local UI state and do not refetch or reset the workflow', () => {
   const delivery = source('../app/inventory/delivery-orders/delivery-order-workspace.tsx');
   const returns = source('../app/inventory/customer-returns/customer-return-workspace.tsx');

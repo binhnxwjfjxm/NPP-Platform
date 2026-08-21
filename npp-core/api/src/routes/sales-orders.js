@@ -166,6 +166,7 @@ function eventTypeFor(action) {
     manual_stock_issue: 'sales.sales_order.manual_stock_issued',
     pickup_stock_issue: 'sales.sales_order.pickup_stock_issued',
     cancel: 'sales.sales_order.cancelled',
+    close_execution: 'sales.sales_order.execution_closed',
   }[action];
 }
 
@@ -514,7 +515,7 @@ export async function handleSalesOrderRoutes(req, res, options) {
   }
 
   const itemMatch = pathname.match(
-    /^\/api\/sales-orders\/([^/]+)(?:\/(draft|confirm|amendments|manual-edit|pickup-edit|issue-stock|cancel))?$/,
+    /^\/api\/sales-orders\/([^/]+)(?:\/(draft|confirm|amendments|manual-edit|pickup-edit|issue-stock|cancel|close-execution))?$/,
   );
   if (!itemMatch) {
     sendError(

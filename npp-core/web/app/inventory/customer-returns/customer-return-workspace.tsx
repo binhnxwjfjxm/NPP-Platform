@@ -72,7 +72,7 @@ type CustomerReturn = {
   lines?: CustomerReturnLine[];
 };
 
-type ApiEnvelope<T> = { data?: T; error?: { message?: string } };
+type ApiEnvelope<T> = { data?: T; error?: { code?: string; message?: string } };
 type CustomerReturnTab = 'create' | 'process';
 
 const CUSTOMER_RETURN_TABS: readonly WorkspaceTabOption<CustomerReturnTab>[] = [
@@ -83,6 +83,13 @@ const CUSTOMER_RETURN_TABS: readonly WorkspaceTabOption<CustomerReturnTab>[] = [
 const SCALE = 1_000_000_000_000n;
 const IDEMPOTENCY_INTENT_CACHE_LIMIT = 256;
 const idempotencyKeys = new Map<string, string>();
+
+class CustomerReturnRequestError extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message);
+    this.name = 'CustomerReturnRequestError';
+  }
+}
 
 function parseQuantity(value: string): bigint {
   const normalized = String(value ?? '').trim();
@@ -132,7 +139,10 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const envelope = await response.json().catch(() => ({})) as ApiEnvelope<T>;
   if (!response.ok || envelope.data === undefined) {
-    throw new Error(envelope.error?.message || 'Không thực hiện được thao tác hàng khách trả.');
+    throw new CustomerReturnRequestError(
+      String(envelope.error?.code ?? 'CUSTOMER_RETURN_REQUEST_FAILED'),
+      envelope.error?.message || 'Không thực hiện được thao tác hàng khách trả.',
+    );
   }
   return envelope.data;
 }
@@ -153,6 +163,7 @@ export default function CustomerReturnWorkspace() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [requiresTripReconciliation, setRequiresTripReconciliation] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const requestRef = useRef(0);
   const tabInitializedRef = useRef(false);
@@ -174,7 +185,7 @@ export default function CustomerReturnWorkspace() {
   async function loadAll(preferredReturnId?: string | null) {
     const requestNumber = requestRef.current + 1;
     requestRef.current = requestNumber;
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setRequiresTripReconciliation(false);
     try {
       const [nextEligibility, nextReturns] = await Promise.all([
         requestJson<ReturnEligibility[]>('/api/customer-returns/eligibility?limit=1000'),
@@ -208,7 +219,7 @@ export default function CustomerReturnWorkspace() {
   async function loadDetail(customerReturnId: string, parentRequest?: number) {
     const requestNumber = parentRequest ?? requestRef.current + 1;
     if (parentRequest === undefined) requestRef.current = requestNumber;
-    setBusy(`detail-${customerReturnId}`); setError(null); setSelectedReturnId(customerReturnId);
+    setBusy(`detail-${customerReturnId}`); setError(null); setRequiresTripReconciliation(false); setSelectedReturnId(customerReturnId);
     try {
       const detail = await requestJson<CustomerReturn>(`/api/customer-returns/${customerReturnId}`);
       if (requestRef.current !== requestNumber) return;
@@ -229,7 +240,7 @@ export default function CustomerReturnWorkspace() {
     }
     if (!reasonNote.trim()) { setError('Nhập lý do chi tiết của hàng khách trả.'); return; }
     const fingerprint = `${selectedEligibility.issueLineId}:${quantity}:${reasonCode}:${reasonNote.trim()}`;
-    setBusy('create'); setError(null); setNotice(null);
+    setBusy('create'); setError(null); setNotice(null); setRequiresTripReconciliation(false);
     try {
       const result = await requestJson<{ customerReturn: CustomerReturn }>('/api/customer-returns', {
         method: 'POST',
@@ -245,6 +256,10 @@ export default function CustomerReturnWorkspace() {
       await loadAll(result.customerReturn.id);
     } catch (operationError) {
       setError(operationError instanceof Error ? operationError.message : 'Không tạo được phiếu hàng khách trả.');
+      setRequiresTripReconciliation(
+        operationError instanceof CustomerReturnRequestError
+        && operationError.code === 'CUSTOMER_RETURN_RECEIVABLE_NOT_POSTED',
+      );
     } finally { setBusy(null); }
   }
 
@@ -272,7 +287,7 @@ export default function CustomerReturnWorkspace() {
       body = { reason: cancelReason.trim() };
       fingerprint = `${selectedReturn.revision}:${cancelReason.trim()}`;
     }
-    setBusy(action); setError(null); setNotice(null);
+    setBusy(action); setError(null); setNotice(null); setRequiresTripReconciliation(false);
     try {
       await requestJson(`/api/customer-returns/${selectedReturn.id}/${action}`, {
         method: 'POST',
@@ -308,7 +323,12 @@ export default function CustomerReturnWorkspace() {
           <article><strong>{counts.received}</strong><span>Đã nhận kho</span></article>
           <article><strong>{counts.cancelled}</strong><span>Đã hủy</span></article>
         </section>
-        {error ? <div className={styles.error} role="alert" data-testid="customer-return-error">{error}</div> : null}
+        {error ? (
+          <div className={styles.error} role="alert" data-testid="customer-return-error">
+            <div>{error}</div>
+            {requiresTripReconciliation ? <Link href="/logistics/trip-reconciliation">Mở Đối soát cuối chuyến</Link> : null}
+          </div>
+        ) : null}
         {notice ? <div className={styles.notice} role="status" data-testid="customer-return-notice">{notice}</div> : null}
 
         <WorkspaceTabs

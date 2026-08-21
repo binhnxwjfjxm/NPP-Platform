@@ -79,6 +79,10 @@ export default function SalesOrderDetail(props: Props) {
   const isManual = current?.deliveryMode === 'DELIVERY'
     && current.deliveryExecutionMode === 'MANUAL';
   const hasIssued = hasIssuedQuantity(fulfillment?.totals.issuedBaseQuantity);
+  const canCloseUnexecutedDelivery = order.status === 'confirmed'
+    && !isManual
+    && props.canCancel
+    && ['partially_delivered', 'failed'].includes(order.deliveryStatus);
   const lineGrid = {
     gridTemplateColumns: '48px minmax(180px,1.45fr) minmax(84px,.55fr) repeat(3,minmax(116px,.72fr)) minmax(100px,.7fr) minmax(110px,.75fr)',
     minWidth: '1030px',
@@ -259,7 +263,7 @@ export default function SalesOrderDetail(props: Props) {
             <button type="button" className={styles.dangerButton} disabled={props.busy} onClick={props.onCancel}>Hủy đơn</button>
           </div>
         )}
-        {order.status === 'confirmed' && !isManual && hasIssued && props.canCancel && (
+        {canCloseUnexecutedDelivery && (
           <div className={styles.reasonRow}>
             <input value={props.cancellationReason} onChange={(event) => props.onCancellationReason(event.target.value)} placeholder="Lý do kết thúc phần chưa giao" />
             <button type="button" disabled={props.busy} onClick={props.onCloseExecution}>Kết thúc phần chưa giao</button>
