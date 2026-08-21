@@ -52,7 +52,7 @@ async function mockReconciliationApis(
       customerCode: 'KH-001',
       customerName: 'Cửa hàng Minh Anh',
       attemptId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-      attemptResult: 'delivered_partial',
+      attemptResult: scenario.attemptResult,
       inventoryIssueLineId: issueLineId,
       sku: 'BOT-001',
       itemName: 'Bột nguyên liệu',
