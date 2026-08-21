@@ -5,6 +5,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const DELETE_BACKUP_MAX_AGE_MS = 60 * 60 * 1000;
 const DOMAIN_SCHEMAS = Object.freeze(['sales', 'purchasing', 'inventory', 'accounting', 'reporting', 'logistics', 'mcp']);
 const MCP_PROTECTED_TABLES = new Set(['mcp_report_setting_groups', 'mcp_report_settings']);
+const OPERATIONS_PRESERVED_TABLES = new Set(['inventory.product_tracking_policies']);
 const BUSINESS_SHARED_TABLES = new Set([
   'customer_groups',
   'customers',
@@ -42,7 +43,7 @@ export const BUSINESS_PURGE_TARGETS = Object.freeze({
   OPERATIONS_ONLY: Object.freeze({
     code: 'OPERATIONS_ONLY',
     label: 'Dữ liệu phát sinh',
-    description: 'Xóa đơn hàng, kho, công nợ, giao hàng, báo cáo và hoạt động MCP; giữ khách hàng, nhà cung cấp và danh mục sản phẩm.',
+    description: 'Xóa đơn hàng, kho, công nợ, giao hàng, báo cáo và hoạt động MCP; giữ khách hàng, nhà cung cấp, danh mục sản phẩm và cấu hình lô/hạn dùng của sản phẩm.',
   }),
   CUSTOMERS_AND_SALES: Object.freeze({
     code: 'CUSTOMERS_AND_SALES',
@@ -128,9 +129,14 @@ function eligibleBusinessTable(table) {
     || (table.schema === 'shared' && BUSINESS_SHARED_TABLES.has(table.table));
 }
 
-function addSchemaRoots(roots, catalog, schemas) {
+function addSchemaRoots(roots, catalog, schemas, excludedKeys = new Set()) {
   for (const table of catalog.tables.values()) {
-    if (schemas.includes(table.schema) && table.hasInstallationId && !isProtectedMcpTable(table)) roots.add(table.key);
+    if (
+      schemas.includes(table.schema)
+      && table.hasInstallationId
+      && !isProtectedMcpTable(table)
+      && !excludedKeys.has(table.key)
+    ) roots.add(table.key);
   }
 }
 function addSharedRoots(roots, catalog, names) {
@@ -146,7 +152,7 @@ function rootsForTarget(catalog, targetCode) {
     addSchemaRoots(roots, catalog, DOMAIN_SCHEMAS);
     addSharedRoots(roots, catalog, BUSINESS_SHARED_TABLES);
   } else if (targetCode === 'OPERATIONS_ONLY') {
-    addSchemaRoots(roots, catalog, DOMAIN_SCHEMAS);
+    addSchemaRoots(roots, catalog, DOMAIN_SCHEMAS, OPERATIONS_PRESERVED_TABLES);
     addSharedRoots(roots, catalog, OPERATION_SHARED_ROOTS);
   } else if (targetCode === 'CUSTOMERS_AND_SALES') {
     addSchemaRoots(roots, catalog, ['sales', 'logistics', 'reporting', 'mcp']);

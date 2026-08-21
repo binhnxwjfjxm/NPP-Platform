@@ -102,8 +102,8 @@ export async function updateProductVariant(client, {
          updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
          updated_by = $7
      WHERE id = $8 AND installation_id = $9`;
-  if (expectedUpdatedAt) {
-    query += ' AND updated_at = $10';
+  if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== null) {
+    query += ` AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $10::timestamptz)`;
     params.push(expectedUpdatedAt);
   }
   query += ' RETURNING id';
@@ -139,7 +139,7 @@ export async function updateVariantUnit(client, {
          updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
          updated_by = $9
      WHERE installation_id = $10 AND id = $11
-       AND ($12::timestamptz IS NULL OR updated_at = $12::timestamptz)
+       AND ($12::timestamptz IS NULL OR date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $12::timestamptz))
      RETURNING id`,
     [unitId, conversionToBase, Boolean(isPurchasable), netContentValue, netContentUomCode,
       sourceUnitLabel, sourcePackageDescription, unitSourceMetadata ?? {}, updatedBy,
