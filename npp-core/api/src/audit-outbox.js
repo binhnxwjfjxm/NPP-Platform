@@ -253,6 +253,7 @@ export async function withAuditOutboxTransaction({ adapter, mutate }) {
   const client = await adapter.connect();
   const writeState = { writeCount: 0, auditCount: 0, outboxCount: 0 };
   const trackedClient = createTrackedClient(client, writeState);
+  let destroyClient = false;
 
   try {
     await client.query('BEGIN');
@@ -307,10 +308,14 @@ export async function withAuditOutboxTransaction({ adapter, mutate }) {
     await client.query('COMMIT');
     return result;
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      destroyClient = true;
+    }
     console.error(JSON.stringify(sanitizeTransactionError(error)));
     throw error;
   } finally {
-    if (typeof client.release === 'function') await client.release();
+    if (typeof client.release === 'function') await client.release(destroyClient);
   }
 }
