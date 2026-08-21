@@ -20,7 +20,7 @@ test('retry Xuất kho giữ nguyên canonical Idempotency-Key khi chỉ đổi 
   const page = await readWorkspace();
   const conflict = page.slice(page.indexOf("if (kind === 'issue-stock' && isRevisionConflict"));
   assert.doesNotMatch(conflict.slice(0, conflict.indexOf('setError')), /forgetOperationKey/);
-  assert.match(page, /if \(kind === 'issue-stock'\) forgetOperationKey\('issue-stock', 'current-order'\)/);
+  assert.match(page, /if \(kind === 'issue-stock'\)\s*forgetOperationKey\('issue-stock', 'current-order'\)/);
   assert.match(page, /createIdempotencyKey\(`retail-\$\{action\}`\)/);
 });
 
@@ -51,7 +51,7 @@ test('thiếu Khả dụng được cảnh báo và chặn Chốt hoặc Xuất 
 test('xóa dòng giỏ rõ ràng, số lượng về 0 xóa dòng và không seed lại từ bản nháp cũ', async () => {
   const page = await readWorkspace();
   assert.match(page, /function removeCartLine/);
-  assert.match(page, /if \(normalized === '0'\) \{ removeCartLine\(id\); return; \}/);
+  assert.match(page, /if \(normalized === '0'\) \{\s*removeCartLine\(id\);\s*return;\s*\}/);
   assert.match(page, /aria-label={`Xóa \$\{line\.productName\} khỏi đơn`}/);
   assert.match(page, />Xóa<\/button>/);
   const addSelected = page.slice(page.indexOf('function addSelected()'), page.indexOf('function assertStockGate'));
