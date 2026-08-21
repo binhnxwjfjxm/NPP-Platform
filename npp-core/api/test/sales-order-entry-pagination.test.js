@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import * as repository from '../src/db/repositories/sales-order.js';
 import { searchSalesOrderSkuOptions } from '../src/services/sales-order-entry-legacy.js';
 
-function skuRow(index, selectable) {
+function eligibleRow(index) {
   return {
     id: `variant-${index}`,
     product_id: `product-${index}`,
@@ -12,7 +13,7 @@ function skuRow(index, selectable) {
     product_code: `P${String(index).padStart(3, '0')}`,
     product_name: `Sản phẩm ${index}`,
     product_is_active: true,
-    product_is_orderable: selectable,
+    product_is_orderable: true,
     variant_is_active: true,
     is_sellable: true,
     unit_id: `unit-${index}`,
@@ -25,46 +26,62 @@ function skuRow(index, selectable) {
   };
 }
 
-function fakeCatalogClient() {
-  const rows = Array.from({ length: 80 }, (_, index) => skuRow(index, index >= 40));
-  const catalogOffsets = [];
-  return {
-    catalogOffsets,
-    async query(sql, params) {
-      if (sql.includes('FROM shared.sales_order_settings settings')) {
-        return { rows: [{ default_tax_mode: 'EXCLUSIVE', default_tax_rate: '0' }] };
-      }
-      if (sql.includes('FROM shared.product_variants pv')) {
-        const limit = Number(params.at(-2));
-        const offset = Number(params.at(-1));
-        catalogOffsets.push(offset);
-        return { rows: rows.slice(offset, offset + limit) };
-      }
-      throw new Error(`Unexpected SQL in catalog pagination test: ${sql.slice(0, 80)}`);
-    },
-  };
-}
-
 const requestContext = { installationId: 'installation-test' };
 
-test('phân trang SKU tính sau khi loại các dòng chưa đủ điều kiện bán', async () => {
-  const client = fakeCatalogClient();
-  const result = await searchSalesOrderSkuOptions(client, {
-    requestContext,
+test('SQL loại SKU chưa đủ điều kiện bán trước LIMIT/OFFSET', async () => {
+  let captured = null;
+  const client = {
+    async query(statement, params) {
+      captured = { statement, params };
+      return { rows: [] };
+    },
+  };
+
+  await repository.searchSalesOrderSkuOptions(client, {
+    installationId: requestContext.installationId,
     search: '',
     retailSearch: true,
-    limit: 20,
-    offset: 0,
+    limit: 30,
+    offset: 60,
   });
 
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.skuOptions.map((row) => row.sku),
-    Array.from({ length: 20 }, (_, index) => `SKU${String(index + 40).padStart(3, '0')}`));
-  assert.deepEqual(client.catalogOffsets, [0, 50]);
+  assert.ok(captured);
+  const statement = captured.statement;
+  const limitIndex = statement.indexOf('LIMIT $6 OFFSET $7');
+  assert.ok(limitIndex > 0);
+  for (const condition of [
+    'p.is_active = true',
+    'p.is_orderable = true',
+    'pv.is_active = true',
+    'pv.is_sellable = true',
+    'pv.unit_id IS NOT NULL',
+    'u.is_active = true',
+    'pv.conversion_to_base IS NOT NULL',
+    'pv.conversion_to_base > 0',
+  ]) {
+    const conditionIndex = statement.indexOf(condition);
+    assert.ok(conditionIndex > 0, `Thiếu điều kiện ${condition}`);
+    assert.ok(conditionIndex < limitIndex, `${condition} phải đứng trước LIMIT/OFFSET`);
+  }
+  assert.equal(captured.params.at(-2), 30);
+  assert.equal(captured.params.at(-1), 60);
 });
 
-test('offset của trang tiếp theo áp dụng trên tập SKU hợp lệ, không áp dụng trên dòng thô', async () => {
-  const client = fakeCatalogClient();
+test('service chuyển đúng limit/offset đã chuẩn hóa và không quét lặp nhiều trang', async () => {
+  const catalogCalls = [];
+  const client = {
+    async query(statement, params) {
+      if (statement.includes('FROM shared.sales_order_settings settings')) {
+        return { rows: [{ default_tax_mode: 'EXCLUSIVE', default_tax_rate: '0' }] };
+      }
+      if (statement.includes('FROM shared.product_variants pv')) {
+        catalogCalls.push({ statement, params });
+        return { rows: Array.from({ length: 10 }, (_, index) => eligibleRow(index + 15)) };
+      }
+      throw new Error(`Unexpected SQL in catalog pagination test: ${statement.slice(0, 80)}`);
+    },
+  };
+
   const result = await searchSalesOrderSkuOptions(client, {
     requestContext,
     search: '',
@@ -74,7 +91,9 @@ test('offset của trang tiếp theo áp dụng trên tập SKU hợp lệ, khô
   });
 
   assert.equal(result.ok, true);
+  assert.equal(catalogCalls.length, 1);
+  assert.equal(catalogCalls[0].params.at(-2), 10);
+  assert.equal(catalogCalls[0].params.at(-1), 15);
   assert.deepEqual(result.skuOptions.map((row) => row.sku),
-    Array.from({ length: 10 }, (_, index) => `SKU${String(index + 55).padStart(3, '0')}`));
-  assert.deepEqual(client.catalogOffsets, [0, 50]);
+    Array.from({ length: 10 }, (_, index) => `SKU${String(index + 15).padStart(3, '0')}`));
 });

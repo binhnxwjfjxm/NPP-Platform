@@ -12,7 +12,8 @@ test('Chọn sản phẩm có phân trang thật và tải tiếp bằng offset 
   assert.match(page, /productQuery\(products\.length\)/);
   assert.match(page, /setProducts\(\(current\) =>/);
   assert.match(page, /setProductsHasMore\(page\.length === PRODUCT_PAGE_SIZE\)/);
-  assert.match(page, />Tải thêm sản phẩm<\/button>/);
+  assert.match(page, /onClick=\{\(\) => void loadMoreProducts\(\)\}/);
+  assert.match(page, /'Tải thêm sản phẩm'/);
 });
 
 test('đổi tìm kiếm hoặc nhóm sản phẩm reset về trang đầu thay vì nối dữ liệu cũ', async () => {
