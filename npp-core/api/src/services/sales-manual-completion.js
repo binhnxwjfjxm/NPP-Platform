@@ -407,10 +407,11 @@ export async function completeDirectSalesOrder(client, {
     if (!posted.replayed) accountingEffect = auditOutboxEffect(1, 1);
   }
 
+  const deliveryStatus = contract.deliveryMode === 'PICKUP' ? 'not_required' : 'delivered';
   const updated = await client.query(
     `UPDATE sales.sales_orders
         SET status = 'closed',
-            delivery_status = 'delivered',
+            delivery_status = $5,
             settlement_status = CASE WHEN $4 THEN 'paid' ELSE settlement_status END,
             revision = revision + 1,
             updated_at = now(),
@@ -419,7 +420,7 @@ export async function completeDirectSalesOrder(client, {
         AND id = $2::uuid
         AND status = 'confirmed'
       RETURNING id, revision`,
-    [requestContext.installationId, id, requestContext.actorId, total === 0n],
+    [requestContext.installationId, id, requestContext.actorId, total === 0n, deliveryStatus],
   );
   if (!updated.rows?.length) {
     return directFailure(contract, 'CONFLICT', 'Đơn đã thay đổi. Hãy tải lại trước khi tiếp tục');
