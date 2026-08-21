@@ -126,6 +126,14 @@ test('Sales Order detail preserves independent projections and shows reservation
   assert.match(uiSource, /currentVersionNumber/);
 });
 
+test('execution close is visible for completed partial or failed trip delivery, not a derived stock total', () => {
+  assert.match(detailSource, /const canCloseUnexecutedDelivery = order\.status === 'confirmed'/);
+  assert.match(detailSource, /\['partially_delivered', 'failed'\]\.includes\(order\.deliveryStatus\)/);
+  assert.match(detailSource, /\{canCloseUnexecutedDelivery && \(/);
+  assert.doesNotMatch(detailSource, /order\.status === 'confirmed' && !isManual && hasIssued && props\.canCancel/);
+  assert.match(detailSource, /Kết thúc phần chưa giao/);
+});
+
 test('same-origin Sales gateways proxy entry settings, SKU search and lifecycle mutations', () => {
   assert.match(gatewaySource, /CORE_API_INTERNAL_URL/);
   assert.match(gatewaySource, /requireNppWorkforceSessionToken/);
