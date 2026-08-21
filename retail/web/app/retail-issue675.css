@@ -1,0 +1,76 @@
+/* Issue #675 — compact Retail density and settings. Loaded after retail-lot7.css. */
+.retail-issue675 { padding-bottom: calc(158px + env(safe-area-inset-bottom)); }
+.retail-issue675 .retail-topbar { min-height: 56px; margin-bottom: 12px; padding-top: max(10px, env(safe-area-inset-top)); padding-bottom: 10px; }
+.retail-issue675 .retail-title h1 { margin: 0; font-size: 22px; line-height: 1.2; }
+.retail-issue675 .topbar-spacer { width: 44px; height: 44px; }
+.retail-issue675 .compact-home { gap: 12px; }
+.retail-issue675 .compact-home-heading { padding: 4px 2px 2px; }
+.retail-issue675 .compact-home-heading h2 { margin: 2px 0 0; font-size: 22px; }
+.retail-issue675 .compact-home-actions { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.retail-issue675 .compact-home-actions button { min-height: 104px; border-radius: 18px; padding: 14px; box-shadow: 0 5px 16px rgba(20,60,37,.05); }
+.retail-issue675 .compact-home-actions button > span { font-size: 26px; line-height: 1; }
+.retail-issue675 .compact-home-actions strong { font-size: 16px; }
+.retail-issue675 .compact-home-actions small { font-size: 12px; }
+.retail-issue675 .compact-choice-cards { gap: 10px; }
+.retail-issue675 .compact-choice-cards label { min-height: 66px; border-radius: 16px; padding: 9px 13px; }
+.retail-issue675 .choose-products { min-height: 58px; margin: 12px 0 14px; border-radius: 16px; }
+.retail-issue675 .cart-list { gap: 8px; }
+.retail-issue675 .compact-product-card { grid-template-columns: 78px minmax(0,1fr) auto; min-height: 100px; border-radius: 16px; padding: 11px 13px; box-shadow: 0 4px 14px rgba(20,60,37,.045); }
+.retail-issue675 .product-visual { width: 66px; min-height: 74px; }
+.retail-issue675 .product-photo { width: 64px; height: 76px; }
+.retail-issue675 .compact-product-card .product-symbol-large { width: 60px; height: 60px; border-radius: 15px; }
+.retail-issue675 .line-main strong { font-size: 16px; }
+.retail-issue675 .line-main span,.retail-issue675 .line-main em,.retail-issue675 .line-main small { font-size: 12px; }
+.retail-issue675 .compact-product-card .quantity-stepper { grid-template-columns: 38px 46px 38px; min-height: 40px; border-radius: 12px; }
+.retail-issue675 .compact-product-card .quantity-stepper input { width: 46px; font-size: 15px; }
+.retail-issue675 .compact-product-card dl { min-width: 160px; }
+.retail-issue675 .compact-product-card dl dt { font-size: 11px; }
+.retail-issue675 .compact-product-card dl dd,.retail-issue675 .compact-product-card dl div:last-child dd { font-size: 14px; }
+.retail-issue675 .remove-line { min-height: 34px; border: 1px solid #efcaca; border-radius: 10px; padding: 0 10px; background: #fff7f7; color: #b42318; font-size: 12px; font-weight: 800; cursor: pointer; }
+.retail-issue675 .stock-shortage { border: 1px solid #f0b7b2; background: #fffafa; }
+.retail-issue675 .shortage-text { color: #b42318 !important; font-weight: 800; }
+.retail-issue675 .stock-gate { margin: 8px 0 12px; border: 1px solid #dfe7e2; border-radius: 12px; padding: 10px 12px; background: #f7faf8; color: #526159; font-size: 13px; font-weight: 700; }
+.retail-issue675 .stock-gate.blocked { border-color: #efcaca; background: #fff7f7; color: #b42318; }
+.retail-issue675 .lot7-total { gap: 7px; margin-top: 10px; border-radius: 16px; padding: 12px 15px; }
+.retail-issue675 .lot7-total > div strong { font-size: 15px; }
+.retail-issue675 .lot7-total .grand-total { padding-top: 9px; font-size: 16px; }
+.retail-issue675 .lot7-total .grand-total strong { font-size: 22px; }
+.retail-issue675 .lot7-product-row { grid-template-columns: 84px minmax(0,1fr) auto; min-height: 102px; border-radius: 16px; padding: 10px 14px; }
+.retail-issue675 .lot7-product-row .product-photo { width: 68px; height: 80px; }
+.retail-issue675 .lot7-product-row .product-copy strong { font-size: 16px; }
+.retail-issue675 .lot7-product-row .product-copy b { font-size: 15px; }
+.retail-issue675 .sheet-submit { min-height: 56px; border-radius: 16px; font-size: 15px; }
+.retail-issue675 .scan-action { min-width: 72px; }
+.retail-issue675 .order-action-bar { gap: 8px; }
+.retail-issue675 .order-action-bar .primary-action,.retail-issue675 .order-action-bar .secondary-action { min-height: 46px; padding: 0 10px; font-size: 13px; }
+.settings-workspace { display: grid; gap: 14px; }
+.settings-heading h2 { margin: 2px 0 0; font-size: 22px; }
+.settings-list { display: grid; gap: 10px; }
+.settings-card { display: grid; gap: 14px; border: 1px solid #e1e9e4; border-radius: 16px; padding: 14px; background: #fff; box-shadow: 0 4px 14px rgba(20,60,37,.04); }
+.settings-card > div:first-child { display: flex; align-items: flex-start; gap: 11px; }
+.settings-card h3 { margin: 1px 0 4px; font-size: 16px; }
+.settings-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.settings-icon { display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; border-radius: 11px; background: var(--green-soft); color: var(--green-dark); font-weight: 800; }
+.settings-control,.template-editor > label { display: grid; gap: 6px; color: #39463f; font-size: 12px; font-weight: 800; }
+.settings-control select,.template-editor input { min-height: 42px; border: 1px solid #cfdad3; border-radius: 11px; padding: 0 12px; background: #fff; color: var(--ink); }
+.template-editor { display: grid; gap: 10px; }
+.template-editor fieldset { margin: 0; border: 1px solid #e1e9e4; border-radius: 12px; padding: 10px 12px; }
+.template-editor legend { padding: 0 5px; font-size: 12px; font-weight: 800; }
+.field-checks { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px 10px; max-height: 220px; overflow: auto; }
+.field-checks label { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+.settings-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.danger-card { border-color: #f0dddd; }
+.print-note { border-top: 1px dashed #ddd; padding-top: 8px; }
+@media (max-width: 640px) {
+  .retail-issue675 .compact-home-actions { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .retail-issue675 .compact-home-actions button { min-height: 92px; padding: 11px; }
+  .retail-issue675 .compact-home-actions small { display: none; }
+  .retail-issue675 .compact-product-card { grid-template-columns: 62px minmax(0,1fr) auto; padding: 9px 10px; }
+  .retail-issue675 .product-visual { width: 54px; min-height: 60px; }
+  .retail-issue675 .product-photo { width: 52px; height: 62px; }
+  .retail-issue675 .compact-product-card .product-symbol-large { width: 50px; height: 50px; }
+  .retail-issue675 .compact-product-card dl { min-width: 0; }
+  .retail-issue675 .remove-line { grid-column: 3; justify-self: end; }
+  .field-checks { grid-template-columns: 1fr; }
+  .settings-actions { grid-template-columns: 1fr; }
+}

@@ -8,8 +8,8 @@ const readWorkspace = async () => (await Promise.all([read('app/page.tsx'), read
 
 test('Lô 4 có giỏ hàng, chọn nhiều sản phẩm và chỉ một chỉ số Khả dụng', async () => {
   const page = await readWorkspace();
-  assert.match(page, /Chọn nhiều sản phẩm/); assert.match(page, /Thêm \{selected\.size\} sản phẩm vào đơn/); assert.match(page, /Nhóm sản phẩm/); assert.match(page, /Khả dụng/); assert.match(page, /Không áp dụng/);
-  assert.match(page, /item\.versionNumber === order\.currentVersionNumber/); assert.match(page, /setCustomerMode\(next\.customerMode\)/); assert.match(page, /setCustomerId\(next\.customerId\)/); assert.match(page, /order && \(order\.status === 'draft' \|\| editPickup\)\) seeded = cartFromOrder\(order\)/);
+  assert.match(page, /Chọn sản phẩm/); assert.match(page, /Thêm \{selected\.size\} sản phẩm vào đơn/); assert.match(page, /Nhóm sản phẩm/); assert.match(page, /Khả dụng/); assert.match(page, /Không áp dụng/);
+  assert.match(page, /item\.versionNumber === order\.currentVersionNumber/); assert.match(page, /setCustomerMode\(next\.customerMode\)/); assert.match(page, /setCustomerId\(next\.customerId\)/); assert.match(page, /setCart\(next\.status === 'draft' \? cartFromOrder\(next\) : \[\]\)/);
   assert.doesNotMatch(page, /Tồn thực tế|Đang giữ|Vị trí|Lô hàng/);
 });
 

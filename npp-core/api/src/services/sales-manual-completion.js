@@ -9,6 +9,7 @@ import {
 } from '../audit-outbox.js';
 import { auditOutboxEffect } from '../audit-outbox-effects.js';
 import * as receivableRepository from '../db/repositories/customer-receivable.js';
+import * as salesOrderRepository from '../db/repositories/sales-order.js';
 import * as customerPaymentService from './customer-payment.js';
 
 const DIRECT_COMPLETION_MODES = Object.freeze({
@@ -77,6 +78,7 @@ async function lockSource(client, { installationId, salesOrderId }) {
             version.id AS sales_order_version_id,
             version.version_number,
             version.customer_id,
+            version.customer_mode_snapshot,
             version.customer_address_id,
             version.warehouse_id,
             version.customer_code_snapshot,
@@ -125,6 +127,7 @@ async function loadLines(client, { installationId, salesOrderVersionId }) {
 async function loadDirectReceivable(client, { installationId, salesOrderId, sourceDocumentType }) {
   const result = await client.query(
     `SELECT id,
+            customer_id,
             source_document_date,
             original_amount,
             allocated_amount,
@@ -165,6 +168,40 @@ function checkRevision(source, expectedRevision, contract) {
     false,
     { currentRevision: String(source.revision) },
   );
+}
+
+async function resolveAccountingSource(client, { requestContext, source, contract }) {
+  if (source.customer_id) return Object.freeze({ ok: true, source });
+  if (String(source.customer_mode_snapshot ?? '').toUpperCase() !== 'WALK_IN') {
+    return directFailure(
+      contract,
+      'CUSTOMER_REQUIRED',
+      'Đơn thiếu khách hàng hợp lệ để ghi nhận công nợ',
+    );
+  }
+
+  const customer = await salesOrderRepository.ensureWalkInCustomer(client, {
+    installationId: requestContext.installationId,
+    actorId: requestContext.actorId,
+  });
+  if (!customer?.id) {
+    return directFailure(
+      contract,
+      'WALK_IN_CUSTOMER_UNAVAILABLE',
+      'Khách vãng lai của Công Ty chưa được cấu hình hợp lệ',
+    );
+  }
+
+  return Object.freeze({
+    ok: true,
+    source: Object.freeze({
+      ...source,
+      customer_id: customer.id,
+      customer_address_id: null,
+      customer_code_snapshot: String(source.customer_code_snapshot ?? '').trim() || customer.code,
+      customer_name_snapshot: String(source.customer_name_snapshot ?? '').trim() || customer.name,
+    }),
+  });
 }
 
 async function writeReceivableAuditOutbox(client, { requestContext, receivable, contract }) {
@@ -358,7 +395,13 @@ export async function completeDirectSalesOrder(client, {
   let receivable = null;
   let accountingEffect = auditOutboxEffect();
   if (total > 0n) {
-    const posted = await postReceivable(client, { requestContext, source, contract });
+    const accountingSource = await resolveAccountingSource(client, { requestContext, source, contract });
+    if (!accountingSource.ok) return accountingSource;
+    const posted = await postReceivable(client, {
+      requestContext,
+      source: accountingSource.source,
+      contract,
+    });
     if (!posted.ok) return posted;
     receivable = posted.receivable;
     if (!posted.replayed) accountingEffect = auditOutboxEffect(1, 1);
@@ -459,7 +502,7 @@ export async function settleDirectSalesOrder(client, {
     requestContext,
     idempotencyKey: deriveIdempotencyKey(contract.paymentNamespace, idempotencyKey),
     payload: {
-      customerId: source.customer_id,
+      customerId: receivable.customer_id,
       warehouseId: source.warehouse_id,
       paymentDate,
       currencyCode: source.currency_code,
@@ -494,4 +537,5 @@ export async function settleManualSalesOrder(client, args) {
 export const directSalesCompletionInternals = Object.freeze({
   directCompletionMode,
   validateDirectIssued,
+  resolveAccountingSource,
 });

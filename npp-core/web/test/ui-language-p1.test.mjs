@@ -58,7 +58,9 @@ test('P1 business language uses Công Ty for company-facing NPP/Core wording', (
   assert.match(onboardingPage, /Bộ phận bán hàng/);
   assert.match(onboardingPage, /Hệ thống Công Ty/);
   assert.match(onboardingReview, /mã khách Công Ty/);
-  assert.match(businessPrint, /Bản in từ Hệ thống Công Ty/);
+  assert.match(businessPrint, /const displayHeading = template\?\.heading\?\.trim\(\) \|\| null/);
+  assert.match(businessPrint, /const displaySubtitle = template\?\.subtitle\?\.trim\(\) \|\| subtitle/);
+  assert.doesNotMatch(businessPrint, /Bản in từ Hệ thống Công Ty/);
   assert.match(customerMedia, /MCP Thị trường và Công Ty/);
   assert.match(customerMedia, /Nguồn: Công Ty/);
   assert.doesNotMatch(userFacing, /Hệ thống điều hành NPP|NPP Operations|NPP Core|Hưng Phát Company|Đơn Core|Khách hàng Core|Giá Core|Sales Admin|Nguồn: Core|MCP hiện trường|mã khách trên Core|chứng từ canonical/);

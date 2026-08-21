@@ -79,7 +79,7 @@ export function safeReturnTo(value: string | null | undefined) {
 
 export async function companyRequest<T>(options: {
   path: string;
-  method?: 'GET' | 'POST' | 'PUT';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH';
   body?: unknown;
   idempotencyKey?: string | null;
   requestId?: string | null;
