@@ -5,6 +5,7 @@ const EXISTING_MODE = 'EXISTING';
 const CUSTOMER_MODES = new Set([WALK_IN_MODE, EXISTING_MODE]);
 const WALK_IN_COLLECTION_POLICIES = new Set(['PREPAID', 'COLLECT_ON_DELIVERY']);
 const TAX_MODES = new Set(['EXCLUSIVE', 'INCLUSIVE']);
+const SKU_SCAN_PAGE_SIZE = 50;
 
 function failure(code, message, retryable = false, details = {}) {
   return Object.freeze({ ok: false, code, message, retryable, details });
@@ -231,6 +232,39 @@ function mapSkuOption(row, defaults) {
   });
 }
 
+async function loadEligibleSkuPage(client, {
+  requestContext,
+  search,
+  categoryId,
+  retailSearch,
+  limit,
+  offset,
+}) {
+  const requestedLimit = Math.max(1, Math.min(50, Number(limit) || 20));
+  const requestedOffset = Math.max(0, Number(offset) || 0);
+  const neededEligibleRows = requestedOffset + requestedLimit;
+  const eligibleRows = [];
+  let rawOffset = 0;
+
+  while (eligibleRows.length < neededEligibleRows) {
+    const rows = await repository.searchSalesOrderSkuOptions(client, {
+      installationId: requestContext.installationId,
+      search,
+      categoryId,
+      retailSearch,
+      limit: SKU_SCAN_PAGE_SIZE,
+      offset: rawOffset,
+    });
+    if (!rows.length) break;
+
+    eligibleRows.push(...rows.filter((row) => evaluateSalesOrderSkuEligibility(row).selectable));
+    rawOffset += rows.length;
+    if (rows.length < SKU_SCAN_PAGE_SIZE) break;
+  }
+
+  return eligibleRows.slice(requestedOffset, neededEligibleRows);
+}
+
 export async function searchSalesOrderSkuOptions(client, {
   requestContext,
   search,
@@ -241,18 +275,17 @@ export async function searchSalesOrderSkuOptions(client, {
 }) {
   const term = String(search ?? '').trim();
   if (term.length > 256) return failure('INVALID_SEARCH', 'Từ khóa tìm hàng không được vượt quá 256 ký tự');
-  const [rows, settings] = await Promise.all([
-    repository.searchSalesOrderSkuOptions(client, {
-      installationId: requestContext.installationId,
+  const [eligible, settings] = await Promise.all([
+    loadEligibleSkuPage(client, {
+      requestContext,
       search: term,
       categoryId,
       retailSearch,
-      limit: Math.max(1, Math.min(50, Number(limit) || 20)),
-      offset: Math.max(0, Number(offset) || 0),
+      limit,
+      offset,
     }),
     repository.getSalesOrderSettings(client, { installationId: requestContext.installationId }),
   ]);
   const defaults = taxSettings(settings);
-  const eligible = rows.filter((row) => evaluateSalesOrderSkuEligibility(row).selectable);
   return Object.freeze({ ok: true, skuOptions: Object.freeze(eligible.map((row) => mapSkuOption(row, defaults))) });
 }
