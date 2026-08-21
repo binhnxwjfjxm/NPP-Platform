@@ -1,0 +1,226 @@
+/* Issue #675 — mobile polish sau nghiệm thu thực tế trên iPhone/PWA. */
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.retail-issue675,
+.retail-issue675 > *,
+.retail-issue675 .order-card,
+.retail-issue675 .cart-list,
+.retail-issue675 .cart-row,
+.retail-issue675 .orders-workspace,
+.retail-issue675 .settings-workspace {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.retail-issue675 {
+  width: 100%;
+  overflow-x: clip;
+}
+
+.retail-issue675 img,
+.retail-issue675 input,
+.retail-issue675 select,
+.retail-issue675 button {
+  max-width: 100%;
+}
+
+/* Topbar thấp hơn, nền xanh pastel và không vượt khỏi padding shell. */
+.retail-issue675 .retail-topbar {
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  min-height: 44px;
+  margin: -18px -16px 10px;
+  padding: max(8px, env(safe-area-inset-top)) 12px 7px;
+  border-bottom-color: #d7eadf;
+  background: rgba(238, 248, 242, .97);
+  box-shadow: 0 3px 12px rgba(20, 60, 37, .05);
+  backdrop-filter: blur(14px) saturate(125%);
+  -webkit-backdrop-filter: blur(14px) saturate(125%);
+}
+
+.retail-issue675 .retail-title h1 {
+  font-size: 19px;
+  line-height: 1.15;
+}
+
+.retail-issue675 .topbar-spacer,
+.retail-issue675 .round-icon {
+  width: 36px;
+  height: 36px;
+}
+
+.retail-issue675 .round-icon {
+  border-radius: 12px;
+  box-shadow: 0 3px 10px rgba(20, 60, 37, .05);
+  font-size: 25px;
+}
+
+/* CTA Chọn sản phẩm: icon, nhãn và chevron cùng trục. */
+.retail-issue675 .choose-products {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 11px;
+  min-height: 56px;
+  margin: 10px 0 12px;
+  border: 1px solid #9edbb5;
+  border-radius: 15px;
+  padding: 7px 13px;
+  background: linear-gradient(105deg, #ffffff, #f3fbf6);
+  box-shadow: 0 6px 16px rgba(20, 76, 43, .06);
+}
+
+.retail-issue675 .choose-products span {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.retail-issue675 .choose-products strong {
+  min-width: 0;
+  justify-self: start;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.retail-issue675 .choose-products b {
+  margin-left: 0;
+  justify-self: end;
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 500;
+}
+
+/* Xóa là pill gọn, có khoảng riêng và không đè nội dung/stepper. */
+.retail-issue675 .compact-product-card.editable {
+  position: relative;
+}
+
+.retail-issue675 .compact-product-card.editable .line-main {
+  padding-right: 58px;
+}
+
+.retail-issue675 .remove-line {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  width: auto;
+  height: 34px;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #f0c4c0;
+  border-radius: 11px;
+  padding: 0 11px;
+  background: #fff8f7;
+  color: #b42318;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 3px 9px rgba(180, 35, 24, .05);
+}
+
+.retail-issue675 .compact-product-card .quantity-stepper {
+  justify-self: end;
+}
+
+/* Thao tác cuối đơn: bỏ card chung, từng nút tự có chiều sâu. */
+.retail-issue675 .order-action-bar {
+  right: max(12px, env(safe-area-inset-right));
+  bottom: calc(86px + env(safe-area-inset-bottom));
+  left: max(12px, env(safe-area-inset-left));
+  display: flex;
+  width: auto;
+  max-width: 620px;
+  margin-inline: auto;
+  gap: 10px;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.retail-issue675 .order-action-bar > * {
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.retail-issue675 .order-action-bar .primary-action,
+.retail-issue675 .order-action-bar .secondary-action {
+  min-height: 52px;
+  border-radius: 16px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.retail-issue675 .order-action-bar .secondary-action {
+  border-color: #8dcea5;
+  background: rgba(255, 255, 255, .98);
+  box-shadow: 0 9px 22px rgba(20, 60, 37, .10);
+}
+
+.retail-issue675 .order-action-bar .primary-action {
+  box-shadow: 0 11px 24px rgba(5, 131, 70, .22);
+}
+
+/* Fixed navigation không được tạo bề ngang lớn hơn viewport. */
+.retail-issue675 .bottom-nav {
+  width: auto;
+  max-width: min(620px, calc(100% - 16px));
+}
+
+@media (max-width: 560px) {
+  .retail-issue675 .retail-topbar {
+    margin-right: -12px;
+    margin-left: -12px;
+  }
+
+  .retail-issue675 .compact-product-card.editable .line-main {
+    padding-right: 54px;
+  }
+
+  .retail-issue675 .remove-line {
+    top: 9px;
+    right: 9px;
+    height: 32px;
+    min-height: 32px;
+    padding-inline: 10px;
+  }
+
+  .retail-issue675 .order-action-bar {
+    right: max(10px, env(safe-area-inset-right));
+    left: max(10px, env(safe-area-inset-left));
+    gap: 9px;
+  }
+}
+
+@media (max-width: 390px) {
+  .retail-issue675 .order-action-bar .primary-action,
+  .retail-issue675 .order-action-bar .secondary-action {
+    min-height: 50px;
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+}
+
+@media print {
+  html,
+  body,
+  .retail-issue675 {
+    overflow-x: visible;
+  }
+}
