@@ -33,6 +33,86 @@ export function resolveCustomerPortalRuntimeConfig(config, env = process.env) {
   return config;
 }
 
+function sanitizedErrorMessage(error) {
+  return String(error instanceof Error ? error.message : error ?? 'unknown')
+    .replace(/(?:postgres(?:ql)?|https?):\/\/\S+/gi, '[redacted-url]')
+    .replace(/(?:password|token|secret|api[_-]?key)\s*[=:]\s*\S+/gi, '$1=[redacted]')
+    .replace(/[\r\n\t]+/g, ' ')
+    .slice(0, 240);
+}
+
+function runtimeErrorCode(error) {
+  return typeof error?.code === 'string' ? error.code.slice(0, 80) : null;
+}
+
+function isRetryableRuntimeError(error) {
+  const code = runtimeErrorCode(error);
+  return error?.retryable === true || (code ? RETRYABLE_ERROR_CODES.has(code) : false);
+}
+
+function safeRequestPath(req) {
+  try {
+    return new URL(req?.url ?? '/', 'http://127.0.0.1').pathname.slice(0, 240);
+  } catch {
+    return '/';
+  }
+}
+
+function runtimeRequestLog(error, requestId, pathName, event = 'core_request_unhandled_error') {
+  return Object.freeze({
+    event,
+    requestId,
+    path: pathName,
+    error: Object.freeze({
+      name: error instanceof Error ? String(error.name).slice(0, 80) : 'Error',
+      code: runtimeErrorCode(error),
+      message: sanitizedErrorMessage(error),
+    }),
+  });
+}
+
+function observeHttpStreamErrors(req, res, requestId, pathName) {
+  req.on('error', (error) => {
+    console.error(JSON.stringify(runtimeRequestLog(error, requestId, pathName, 'core_http_request_stream_error')));
+  });
+  res.on('error', (error) => {
+    console.error(JSON.stringify(runtimeRequestLog(error, requestId, pathName, 'core_http_response_stream_error')));
+  });
+}
+
+function sendRuntimeRequestFailure(res, error, requestId, receivedAt) {
+  if (res.destroyed || res.writableEnded) return;
+  const retryable = isRetryableRuntimeError(error);
+  const statusCode = retryable ? 503 : 500;
+  const payload = JSON.stringify({
+    error: {
+      code: 'RUNTIME_REQUEST_FAILED',
+      message: 'Yêu cầu tạm thời không thể xử lý. Vui lòng thử lại.',
+      details: {},
+      retryable,
+    },
+    requestId,
+    receivedAt,
+  });
+
+  try {
+    if (!res.headersSent) {
+      res.statusCode = statusCode;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      res.end(payload);
+      return;
+    }
+    res.end();
+  } catch {
+    try {
+      res.destroy();
+    } catch {
+      // Socket cleanup is best-effort after a response failure.
+    }
+  }
+}
+
 function unexpectedPortalResponse(error, requestId, pathName) {
   const code = typeof error?.code === 'string' ? error.code : null;
   const retryable = error?.retryable === true || (code ? RETRYABLE_ERROR_CODES.has(code) : false);
@@ -42,7 +122,7 @@ function unexpectedPortalResponse(error, requestId, pathName) {
     path: pathName,
     error: {
       name: error instanceof Error ? error.name : 'Error',
-      message: error instanceof Error ? error.message : String(error ?? 'unknown'),
+      message: sanitizedErrorMessage(error),
       code,
     },
   }));
@@ -93,11 +173,9 @@ export function createCustomerPortalAwareServer(options = {}) {
   const createContext = options.createRequestContext ?? createRequestContext;
   const authorize = options.requirePermission ?? requirePermission;
 
-  return http.createServer(async (req, res) => {
+  const handleRequest = async (req, res, requestId, receivedAt) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     if (url.pathname.startsWith('/api/customer-portal')) {
-      const receivedAt = new Date().toISOString();
-      const requestId = resolveRequestId(req.headers['x-request-id'], 'req');
       try {
         await handleCustomerPortalRoutes(req, res, {
           config: runtimeConfig,
@@ -123,8 +201,6 @@ export function createCustomerPortalAwareServer(options = {}) {
       return;
     }
 
-    const receivedAt = new Date().toISOString();
-    const requestId = resolveRequestId(req.headers['x-request-id'], 'req');
     let internalAuthResult = null;
     if (internalAuthConfig.enabled) {
       try {
@@ -155,7 +231,19 @@ export function createCustomerPortalAwareServer(options = {}) {
       return;
     }
 
-    return baseHandler(req, res);
+    await baseHandler(req, res);
+  };
+
+  return http.createServer((req, res) => {
+    const receivedAt = new Date().toISOString();
+    const requestId = resolveRequestId(req.headers['x-request-id'], 'req');
+    const pathName = safeRequestPath(req);
+    observeHttpStreamErrors(req, res, requestId, pathName);
+
+    void handleRequest(req, res, requestId, receivedAt).catch((error) => {
+      console.error(JSON.stringify(runtimeRequestLog(error, requestId, pathName)));
+      sendRuntimeRequestFailure(res, error, requestId, receivedAt);
+    });
   });
 }
 
