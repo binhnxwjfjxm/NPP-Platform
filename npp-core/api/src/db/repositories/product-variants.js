@@ -89,10 +89,9 @@ export async function updateProductVariant(client, {
   isCatalogVisible,
   isActive,
   updatedBy,
-  expectedUpdatedAt,
 }) {
-  const params = [name, variantKind, Boolean(isInventoryBase), Boolean(isSellable), Boolean(isCatalogVisible), Boolean(isActive), updatedBy, id, installationId];
-  let query = `UPDATE shared.product_variants
+  const result = await client.query(
+    `UPDATE shared.product_variants
      SET name = $1,
          variant_kind = $2,
          is_inventory_base = $3,
@@ -101,15 +100,10 @@ export async function updateProductVariant(client, {
          is_active = $6,
          updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
          updated_by = $7
-     WHERE id = $8 AND installation_id = $9`;
-  // Only caller-supplied ISO strings are concurrency tokens. Date instances come from
-  // the importer's internal database snapshot and must not become a stale-version gate.
-  if (typeof expectedUpdatedAt === 'string' && expectedUpdatedAt.trim()) {
-    query += ` AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $10::timestamptz)`;
-    params.push(expectedUpdatedAt);
-  }
-  query += ' RETURNING id';
-  const result = await client.query(query, params);
+     WHERE id = $8 AND installation_id = $9
+     RETURNING id`,
+    [name, variantKind, Boolean(isInventoryBase), Boolean(isSellable), Boolean(isCatalogVisible), Boolean(isActive), updatedBy, id, installationId],
+  );
   if (!result.rows[0]) return null;
   return getProductVariantByIdForInstallation(client, { id, installationId });
 }
