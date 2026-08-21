@@ -23,6 +23,17 @@ test('gateway Retail chỉ gọi capability Công Ty cố định và Xuất kho
   assert.match(route, /\/api\/retail\/products/); assert.match(route, /\/api\/retail\/sales-orders\/\$\{salesOrderId\(path\[1\]\)\}\/availability/); assert.match(route, /mode: 'PICKUP'/); assert.match(route, /const UUID_PATTERN/); assert.match(route, /salesOrderId\(path\[1\]\)/); assert.doesNotMatch(route, /decodeURIComponent/); assert.match(route, /\/api\/pickup-sales-orders\/\$\{orderId\}\/complete/); assert.match(route, /\/api\/pickup-sales-orders\/\$\{orderId\}\/settlement/); assert.doesNotMatch(route, /CORE_API_INTERNAL_URL/);
 });
 
+test('gateway Retail lấy tổng tiền từ phiên bản hiện tại và tải lại sau Hoàn thành', async () => {
+  const route = await read('app/api/retail/[...segments]/route.ts');
+  assert.match(route, /function normalizeOrderAmounts/);
+  assert.match(route, /version\.versionNumber/);
+  assert.match(route, /order\.currentVersionNumber/);
+  assert.match(route, /total: String\(current\.total \?\? order\.total \?\? '0'\)/);
+  assert.match(route, /if \(action === 'complete'\)/);
+  assert.match(route, /const reloaded = await companyRequest<unknown>\(\{ path: `\/api\/sales-orders\/\$\{orderId\}`/);
+  assert.match(route, /return json\(normalizeOrderAmounts\(reloaded\.data\), reloaded\.requestId\)/);
+});
+
 test('URL Công Ty và token chỉ nằm phía server', async () => {
   const gateway = await read('lib/company-gateway.ts');
   assert.match(gateway, /import 'server-only'/); assert.match(gateway, /CORE_API_INTERNAL_URL/); assert.match(gateway, /Authorization: `Bearer \$\{workforceToken\(\)\}`/); assert.doesNotMatch(gateway, /NEXT_PUBLIC_CORE_API/); assert.match(gateway, /!candidate\.includes\('\\\\'\)/); assert.match(gateway, /%\(\?:2f\|5c\)/i);

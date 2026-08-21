@@ -14,10 +14,18 @@ test('Giao thủ công ghi nhận doanh số khi Hoàn thành đơn, độc lậ
   assert.match(service, /export async function completeManualSalesOrder/);
   assert.match(service, /postReceivable\(client, \{ requestContext, source, contract \}\)/);
   assert.match(service, /SET status = 'closed'/);
-  assert.match(service, /delivery_status = 'delivered'/);
+  assert.match(service, /const deliveryStatus = contract\.deliveryMode === 'PICKUP' \? 'not_required' : 'delivered'/);
+  assert.match(service, /delivery_status = \$5/);
   assert.match(service, /\['issued', 'fulfilled'\]/);
   assert.doesNotMatch(service, /postServerOwnedSalesMovement/);
   assert.doesNotMatch(service, /inventory\.inventory_balances/);
+});
+
+test('Giao tại quầy Hoàn thành giữ delivery_status đúng constraint của PICKUP', () => {
+  assert.match(service, /PICKUP: Object\.freeze\(\{/);
+  assert.match(service, /deliveryMode: 'PICKUP'/);
+  assert.match(service, /const deliveryStatus = contract\.deliveryMode === 'PICKUP' \? 'not_required' : 'delivered'/);
+  assert.match(service, /\[requestContext\.installationId, id, requestContext\.actorId, total === 0n, deliveryStatus\]/);
 });
 
 test('Nộp tiền / Nợ chỉ phân bổ vào khoản phải thu đã tạo khi Hoàn thành đơn', () => {

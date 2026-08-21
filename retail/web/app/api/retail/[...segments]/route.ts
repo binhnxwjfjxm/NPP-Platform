@@ -4,6 +4,8 @@ import { CompanyGatewayError, companyRequest } from '../../../../lib/company-gat
 export const dynamic = 'force-dynamic';
 
 type GatewayResponse = { data: unknown; requestId: string };
+type OrderVersionAmounts = { versionNumber?: unknown; subtotal?: unknown; discountTotal?: unknown; taxTotal?: unknown; total?: unknown };
+type OrderWithVersions = { currentVersionNumber?: unknown; subtotal?: unknown; discountTotal?: unknown; taxTotal?: unknown; total?: unknown; versions?: OrderVersionAmounts[]; [key: string]: unknown };
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function requestId(request: NextRequest) { return request.headers.get('x-request-id'); }
@@ -31,6 +33,20 @@ async function bootstrap(id: string): Promise<GatewayResponse> {
 function parts(params: { segments: string[] }) { return params.segments.map((part) => String(part)); }
 function salesOrderId(value: string | undefined) { if (!value || !UUID_PATTERN.test(value)) throw new CompanyGatewayError('INVALID_ORDER_ID', 'Mã đơn bán hàng không hợp lệ', 400, false); return value; }
 function printTemplatePart(value: string | undefined, label: string) { if (!value || !/^[A-Za-z0-9_.-]{1,64}$/.test(value)) throw new CompanyGatewayError('INVALID_PRINT_TEMPLATE', `${label} không hợp lệ`, 400, false); return value; }
+function normalizeOrderAmounts(data: unknown) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+  const order = data as OrderWithVersions;
+  const versions = Array.isArray(order.versions) ? order.versions : [];
+  const current = versions.find((version) => String(version.versionNumber ?? '') === String(order.currentVersionNumber ?? '')) ?? versions[0];
+  if (!current) return data;
+  return {
+    ...order,
+    subtotal: String(current.subtotal ?? order.subtotal ?? '0'),
+    discountTotal: String(current.discountTotal ?? order.discountTotal ?? '0'),
+    taxTotal: String(current.taxTotal ?? order.taxTotal ?? '0'),
+    total: String(current.total ?? order.total ?? '0'),
+  };
+}
 
 export async function GET(request: NextRequest, { params }: { params: { segments: string[] } }) {
   const id = requestId(request) ?? crypto.randomUUID(); const path = parts(params);
@@ -39,7 +55,7 @@ export async function GET(request: NextRequest, { params }: { params: { segments
     if (path.length === 1 && path[0] === 'products') { const result = await companyRequest<unknown>({ path: `/api/retail/products${query(request, ['search', 'categoryId', 'limit', 'offset'])}`, requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 1 && path[0] === 'print-templates') { const result = await companyRequest<unknown>({ path: '/api/document-print-templates', requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 1 && path[0] === 'orders') { const result = await companyRequest<unknown>({ path: `/api/sales-orders${query(request, ['limit', 'offset', 'status', 'search'])}`, requestId: id }); return json(result.data, result.requestId); }
-    if (path.length === 2 && path[0] === 'orders') { const result = await companyRequest<unknown>({ path: `/api/sales-orders/${salesOrderId(path[1])}`, requestId: id }); return json(result.data, result.requestId); }
+    if (path.length === 2 && path[0] === 'orders') { const result = await companyRequest<unknown>({ path: `/api/sales-orders/${salesOrderId(path[1])}`, requestId: id }); return json(normalizeOrderAmounts(result.data), result.requestId); }
     if (path.length === 3 && path[0] === 'orders' && path[2] === 'availability') { const result = await companyRequest<unknown>({ path: `/api/retail/sales-orders/${salesOrderId(path[1])}/availability`, requestId: id }); return json(result.data, result.requestId); }
     throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy chức năng yêu cầu', 404, false);
   } catch (error) { return errorResponse(error, id); }
@@ -49,7 +65,7 @@ export async function POST(request: NextRequest, { params }: { params: { segment
   const id = requestId(request) ?? crypto.randomUUID(); const path = parts(params);
   try {
     const payload = await body(request); const key = request.headers.get('idempotency-key');
-    if (path.length === 1 && path[0] === 'orders') { const result = await companyRequest<unknown>({ path: '/api/sales-orders', method: 'POST', body: payload, idempotencyKey: key, requestId: id }); return json(result.data, result.requestId, 201); }
+    if (path.length === 1 && path[0] === 'orders') { const result = await companyRequest<unknown>({ path: '/api/sales-orders', method: 'POST', body: payload, idempotencyKey: key, requestId: id }); return json(normalizeOrderAmounts(result.data), result.requestId, 201); }
     if (path.length === 1 && path[0] === 'price') { const result = await companyRequest<unknown>({ path: '/api/retail/price', method: 'POST', body: payload, requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 1 && path[0] === 'availability') { const result = await companyRequest<unknown>({ path: '/api/retail/availability', method: 'POST', body: payload, requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 3 && path[0] === 'orders') {
@@ -62,7 +78,12 @@ export async function POST(request: NextRequest, { params }: { params: { segment
         settlement: { path: `/api/pickup-sales-orders/${orderId}/settlement`, body: payload },
       };
       const target = mapping[action]; if (!target) throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy thao tác yêu cầu', 404, false);
-      const result = await companyRequest<unknown>({ path: target.path, method: 'POST', body: target.body, idempotencyKey: key, requestId: id }); return json(result.data, result.requestId);
+      const result = await companyRequest<unknown>({ path: target.path, method: 'POST', body: target.body, idempotencyKey: key, requestId: id });
+      if (action === 'complete') {
+        const reloaded = await companyRequest<unknown>({ path: `/api/sales-orders/${orderId}`, requestId: result.requestId });
+        return json(normalizeOrderAmounts(reloaded.data), reloaded.requestId);
+      }
+      return json(normalizeOrderAmounts(result.data), result.requestId);
     }
     throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy chức năng yêu cầu', 404, false);
   } catch (error) { return errorResponse(error, id); }
@@ -73,7 +94,7 @@ export async function PUT(request: NextRequest, { params }: { params: { segments
   try {
     if (path.length !== 3 || path[0] !== 'orders' || !['draft', 'pickup-edit'].includes(path[2])) throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy chức năng yêu cầu', 404, false);
     const result = await companyRequest<unknown>({ path: `/api/sales-orders/${salesOrderId(path[1])}/${path[2]}`, method: 'PUT', body: await body(request), idempotencyKey: request.headers.get('idempotency-key'), requestId: id });
-    return json(result.data, result.requestId);
+    return json(normalizeOrderAmounts(result.data), result.requestId);
   } catch (error) { return errorResponse(error, id); }
 }
 
