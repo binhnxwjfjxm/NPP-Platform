@@ -196,8 +196,8 @@ export async function updateProduct(client, {
          updated_by = $10
      WHERE installation_id = $12
        AND (($11::uuid IS NOT NULL AND id = $11::uuid) OR ($11::uuid IS NULL AND code = $13))`;
-  if (typeof expectedUpdatedAt === 'string') {
-    query += ' AND updated_at = $14';
+  if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== null) {
+    query += ` AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $14::timestamptz)`;
     params.push(expectedUpdatedAt);
   }
   query += ' RETURNING id';
