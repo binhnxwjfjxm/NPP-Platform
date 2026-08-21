@@ -8,7 +8,7 @@ const readWorkspace = async () => (await Promise.all([read('app/page.tsx'), read
 
 test('Lô 6 có điều hướng Retail, thanh thao tác đáy và mở lại đơn Giao tại quầy', async () => {
   const [page, styles] = await Promise.all([readWorkspace(), read('app/globals.css')]);
-  assert.match(page, /type RetailTab = 'home' \| 'entry' \| 'orders' \| 'account'/); assert.match(page, /Trang chủ/); assert.match(page, /Lên đơn/); assert.match(page, /Đơn hàng/); assert.match(page, /Tài khoản/); assert.match(page, /Đơn đã lập/); assert.match(page, /api\/retail\/orders\?limit=100/); assert.match(page, /item\.deliveryMode === 'PICKUP'/); assert.match(page, /order-action-bar/); assert.match(page, /bottom-nav/); assert.match(styles, /\.order-action-bar \{ position: fixed/); assert.match(styles, /\.bottom-nav \{ position: fixed/);
+  assert.match(page, /type RetailTab = 'home' \| 'entry' \| 'orders' \| 'settings'/); assert.match(page, /Trang chủ/); assert.match(page, /Lên đơn/); assert.match(page, /Đơn hàng/); assert.match(page, /Cài đặt/); assert.match(page, /Đơn đã lập/); assert.match(page, /api\/retail\/orders\?limit=100/); assert.match(page, /item\.deliveryMode === 'PICKUP'/); assert.match(page, /order-action-bar/); assert.match(page, /bottom-nav/); assert.match(styles, /\.order-action-bar \{ position: fixed/); assert.match(styles, /\.bottom-nav \{ position: fixed/);
 });
 
 test('Lô 6 cho sửa Giao tại quầy sau Chốt, nhưng khóa sau mọi trạng thái đã Xuất kho', async () => {
