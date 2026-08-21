@@ -495,9 +495,9 @@ export async function importProducts(client, { installationId, payload, createdB
     let product;
     if (existing) {
       product = await productRepo.updateProduct(client, {
+        ...row,
         id: existing.id,
         installationId,
-        ...row,
         isOrderable: existing.is_orderable,
         isActive: existing.is_active,
         updatedBy: createdBy,
@@ -523,9 +523,9 @@ export async function importProducts(client, { installationId, payload, createdB
       if (current) {
         if (current.product_id !== product.id) return invalid('VARIANT_PRODUCT_MISMATCH', 'SKU belongs to a different product');
         const variant = await variantRepo.updateProductVariant(client, {
+          ...variantRow,
           id: current.id,
           installationId,
-          ...variantRow,
           updatedBy: createdBy,
           expectedUpdatedAt: current.updated_at,
         });
@@ -544,9 +544,9 @@ export async function importProducts(client, { installationId, payload, createdB
 
     existing = await productRepo.getProductByIdForInstallationForUpdate(client, { id: product.id, installationId });
     const finalized = await productRepo.updateProduct(client, {
+      ...row,
       id: product.id,
       installationId,
-      ...row,
       updatedBy: createdBy,
       expectedUpdatedAt: existing.updated_at,
     });
