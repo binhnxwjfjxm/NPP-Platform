@@ -51,6 +51,23 @@ function sanitizeTransactionError(error) {
   });
 }
 
+function sanitizeCheckedOutClientError(error) {
+  return Object.freeze({
+    ...sanitizeTransactionError(error),
+    event: 'database_checked_out_client_error',
+  });
+}
+
+function observeCheckedOutClientErrors(client, onError) {
+  if (!client || typeof client.on !== 'function') return () => {};
+  const handler = (error) => onError(error);
+  client.on('error', handler);
+  return () => {
+    if (typeof client.off === 'function') client.off('error', handler);
+    else if (typeof client.removeListener === 'function') client.removeListener('error', handler);
+  };
+}
+
 function requireString(value, errorCode) {
   if (typeof value !== 'string' || !value.trim()) throw new Error(errorCode);
   return value.trim();
@@ -254,6 +271,10 @@ export async function withAuditOutboxTransaction({ adapter, mutate }) {
   const writeState = { writeCount: 0, auditCount: 0, outboxCount: 0 };
   const trackedClient = createTrackedClient(client, writeState);
   let destroyClient = false;
+  const stopObservingClientErrors = observeCheckedOutClientErrors(client, (error) => {
+    destroyClient = true;
+    console.error(JSON.stringify(sanitizeCheckedOutClientError(error)));
+  });
 
   try {
     await client.query('BEGIN');
@@ -316,6 +337,7 @@ export async function withAuditOutboxTransaction({ adapter, mutate }) {
     console.error(JSON.stringify(sanitizeTransactionError(error)));
     throw error;
   } finally {
+    stopObservingClientErrors();
     if (typeof client.release === 'function') await client.release(destroyClient);
   }
 }
