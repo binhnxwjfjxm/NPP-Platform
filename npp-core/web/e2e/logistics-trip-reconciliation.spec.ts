@@ -17,7 +17,7 @@ type ReconciliationScenario = {
 async function mockReconciliationApis(
   page: Page,
   scenario: ReconciliationScenario = {
-    attemptResult: scenario.attemptResult,
+    attemptResult: 'delivered_partial',
     deliveredBaseQuantity: '1.000000000000',
     issuedBaseQuantity: '3.000000000000',
     outstandingBaseQuantity: '2.000000000000',
