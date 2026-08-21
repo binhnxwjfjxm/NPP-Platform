@@ -9,6 +9,8 @@ import {
 } from './sales-order-execution-unwind.js';
 
 const ZERO_DECIMAL_PATTERN = /^[+-]?0+(?:\.0+)?$/;
+const QUANTITY_PATTERN = /^(0|[1-9]\d{0,29})(?:\.(\d{1,12}))?$/;
+const QUANTITY_SCALE = 1_000_000_000_000n;
 
 const RELEASE_INTENTS = Object.freeze({
   'manual-edit': Object.freeze({
@@ -79,6 +81,14 @@ function isZero(value) {
   return ZERO_DECIMAL_PATTERN.test(String(value ?? '0').trim() || '0');
 }
 
+function parseBaseQuantity(value) {
+  const normalized = String(value ?? '').trim();
+  const match = QUANTITY_PATTERN.exec(normalized);
+  if (!match) return null;
+  return BigInt(match[1]) * QUANTITY_SCALE
+    + BigInt((match[2] ?? '').padEnd(12, '0'));
+}
+
 function releaseBlocked(allocation) {
   return !isZero(allocation.picked_base_quantity)
     || !isZero(allocation.packed_base_quantity)
@@ -139,7 +149,13 @@ async function releaseRemainingAllocations(client, {
   intentName,
   intent,
 }) {
-  await repository.setManualEditReleaseWriteContexts(client);
+  const executionClose = intentName === 'execution-close';
+  if (executionClose) {
+    await repository.setExecutionCloseReleaseWriteContexts(client);
+  } else {
+    await repository.setManualEditReleaseWriteContexts(client);
+  }
+
   const allocations = await allocationRepository.listOrderAllocationsForUpdate(client, {
     installationId: requestContext.installationId,
     salesOrderId,
@@ -147,10 +163,77 @@ async function releaseRemainingAllocations(client, {
   if (allocations.some((allocation) => allocation.state === 'ACTIVE' && releaseBlocked(allocation))) {
     return failure(intent.blockedCode, intent.blockedMessage);
   }
+
   const active = allocations.filter((allocation) => allocation.state === 'ACTIVE');
-  if (active.length === 0) return Object.freeze({ ok: true, released: Object.freeze([]) });
+  const completed = executionClose
+    ? allocations.filter((allocation) => allocation.state === 'COMPLETED')
+    : [];
+  if (active.length === 0 && completed.length === 0) {
+    return Object.freeze({ ok: true, released: Object.freeze([]) });
+  }
 
   const released = [];
+
+  for (const allocation of completed) {
+    const reservation = await inventoryReservationRepository.getReservationById(client, {
+      installationId: requestContext.installationId,
+      id: allocation.inventory_reservation_id,
+      forUpdate: true,
+    });
+    if (!reservation) {
+      return failure(
+        'FULFILLMENT_ALLOCATION_RESERVATION_CONFLICT',
+        'Phần hàng đã phân bổ không còn dữ liệu giữ kho tương ứng. Hãy tải lại đơn.',
+        true,
+        { allocationId: allocation.id },
+      );
+    }
+    if (reservation.state === 'CONSUMED' || reservation.state === 'RELEASED') continue;
+    if (reservation.state !== 'ACTIVE') {
+      return failure(
+        'SALES_ORDER_EXECUTION_CLOSE_BLOCKED',
+        'Phần hàng còn lại không ở trạng thái có thể kết thúc. Hãy kiểm tra lại xử lý kho.',
+        false,
+        { allocationId: allocation.id, reservationState: reservation.state },
+      );
+    }
+
+    const claimed = parseBaseQuantity(allocation.claimed_base_quantity);
+    const consumed = parseBaseQuantity(reservation.consumed_quantity);
+    const reserved = parseBaseQuantity(reservation.quantity);
+    if (claimed === null || consumed === null || reserved === null
+      || consumed > reserved || claimed > consumed) {
+      return failure(
+        'SALES_ORDER_EXECUTION_CLOSE_BLOCKED',
+        'Vẫn còn phần hàng đã lập chứng từ giao nhưng chưa xuất đủ. Hãy hoàn tất đối soát trước khi kết thúc đơn.',
+        false,
+        { allocationId: allocation.id },
+      );
+    }
+
+    await inventoryReservationRepository.lockReservationScope(client, {
+      installationId: requestContext.installationId,
+      warehouseId: reservation.warehouse_id,
+      locationId: reservation.location_id,
+      baseVariantId: reservation.base_variant_id,
+      lotId: reservation.lot_id,
+    });
+    const occurredAt = requestContext.receivedAt ?? new Date().toISOString();
+    const reservationResult = await releaseInventoryReservation(client, {
+      requestContext,
+      reservation,
+      allocation,
+      occurredAt,
+      intent,
+    });
+    if (!reservationResult.ok) return reservationResult;
+    released.push(Object.freeze({
+      allocation,
+      reservation: reservationResult.reservation,
+      reservationOnly: true,
+    }));
+  }
+
   for (const allocation of active) {
     const reservation = await inventoryReservationRepository.getReservationById(client, {
       installationId: requestContext.installationId,
@@ -288,4 +371,5 @@ export const manualEditAllocationReleaseInternals = Object.freeze({
   releaseBlocked,
   payloadHash,
   releaseIntent,
+  parseBaseQuantity,
 });
