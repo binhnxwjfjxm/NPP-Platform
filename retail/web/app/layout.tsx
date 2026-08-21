@@ -5,6 +5,7 @@ import './retail-lot7.css';
 import './retail-issue675.css';
 import './retail-mobile-polish.css';
 import './retail-home-polish.css';
+import './retail-final-polish.css';
 import { PwaRegistration } from './pwa-registration';
 
 export const metadata: Metadata = {

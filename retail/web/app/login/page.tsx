@@ -49,7 +49,14 @@ export default function LoginPage({ searchParams }: { searchParams?: { returnTo?
   }
 
   return <main className="login-page retail-login-page"><form className="login-card retail-login-card" onSubmit={submit}>
-    <img className="company-login-logo" src="/logo-transparent.png" alt="Hưng Phát" />
+    <img
+      className="company-login-logo"
+      src="/logo-transparent.png?v=20260821"
+      alt="Hưng Phát"
+      onError={(event) => {
+        if (!event.currentTarget.src.includes('pwa-icon-retail.png')) event.currentTarget.src = '/pwa-icon-retail.png?v=2';
+      }}
+    />
     <h1>Bán tại quầy</h1>
     {!challenge ? <>
       <p>Đăng nhập bằng tài khoản nhân viên được Công Ty cấp.</p>
