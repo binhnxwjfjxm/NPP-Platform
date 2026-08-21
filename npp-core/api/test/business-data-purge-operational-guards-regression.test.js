@@ -26,12 +26,16 @@ after(async () => { await closePool(); });
 const GUARDED_TABLES = Object.freeze([
   ['sales', 'sales_order_versions', 'sales_order_versions_immutable'],
   ['sales', 'sales_order_version_lines', 'sales_order_version_lines_draft_only'],
+  ['sales', 'sales_order_fulfillment_shortages', 'sales_order_fulfillment_shortages_guard'],
+  ['sales', 'sales_order_fulfillment_pick_closures', 'sales_order_fulfillment_pick_closures_guard'],
+  ['sales', 'sales_order_fulfillment_reversal_batches', 'sales_order_fulfillment_reversal_batches_write_guard'],
   ['accounting', 'receivable_allocations', 'receivable_allocations_write_guard'],
   ['accounting', 'receivable_allocation_reversals', 'receivable_allocation_reversals_write_guard'],
   ['accounting', 'customer_return_adjustment_lines', 'customer_return_adjustment_lines_write_guard'],
   ['accounting', 'customer_return_adjustment_reversals', 'customer_return_adjustment_reversals_write_guard'],
   ['accounting', 'customer_refunds', 'customer_refunds_write_guard'],
   ['accounting', 'customer_refund_reversals', 'customer_refund_reversals_write_guard'],
+  ['accounting', 'customer_receivable_balances', 'customer_receivable_balances_write_guard'],
   ['accounting', 'cod_collections', 'cod_collections_write_guard'],
   ['accounting', 'cod_collection_reversals', 'cod_collection_reversals_write_guard'],
   ['accounting', 'cod_cash_handovers', 'cod_cash_handovers_write_guard'],
@@ -43,6 +47,9 @@ const GUARDED_TABLES = Object.freeze([
   ['inventory', 'inventory_lots', 'inventory_lots_append_only'],
   ['inventory', 'opening_balance_imports', 'opening_balance_imports_append_only'],
   ['inventory', 'opening_balance_import_rows', 'opening_balance_import_rows_append_only'],
+  ['inventory', 'inventory_adjustment_posted_scopes', 'inventory_adjustment_posted_scope_guard'],
+  ['inventory', 'inventory_discrepancy_observations', 'inventory_discrepancy_observations_guard'],
+  ['inventory', 'inventory_reservation_issue_adjustments', 'inventory_reservation_issue_adjustments_write_guard'],
   ['inventory', 'inventory_transfers', 'inventory_transfers_locked_state_guard'],
   ['inventory', 'inventory_transfer_lines', 'inventory_transfer_lines_locked_state_guard'],
   ['inventory', 'inventory_transfer_receipts', 'inventory_transfer_receipts_append_only'],
@@ -60,11 +67,37 @@ const GUARDED_TABLES = Object.freeze([
   ['inventory', 'inventory_cost_adjustment_events', 'inventory_cost_adjustment_events_append_only'],
   ['inventory', 'manual_inbound_documents', 'manual_inbound_documents_append_only'],
   ['inventory', 'manual_inbound_document_lines', 'manual_inbound_document_lines_append_only'],
+  ['logistics', 'trip_return_receipts', 'trip_return_receipts_write_guard'],
+  ['logistics', 'trip_return_receipt_lines', 'trip_return_receipt_lines_write_guard'],
   ['mcp', 'audit_events', 'mcp_audit_events_append_only'],
+]);
+
+const CONTEXT_GUARDS = Object.freeze([
+  ['logistics', 'delivery_trips', 'delivery_trips_recovery_guard', 'trip_recovery_service', 'delivery_trips_purge_delete_guard'],
+  ['logistics', 'delivery_trips', 'delivery_trips_sales_order_unwind_guard', 'sales_order_unwind_service', 'delivery_trips_purge_delete_guard'],
+  ['logistics', 'trip_order_assignments', 'trip_order_assignments_recovery_guard', 'trip_recovery_service', 'trip_order_assignments_purge_delete_guard'],
+  ['logistics', 'trip_order_assignments', 'trip_order_assignments_sales_order_unwind_guard', 'sales_order_unwind_service', 'trip_order_assignments_purge_delete_guard'],
+  ['sales', 'delivery_order_events', 'delivery_order_events_reversal_guard', 'delivery_reversal_service', 'delivery_order_events_purge_delete_guard'],
 ]);
 
 function triggerKey(schemaName, tableName, triggerName) {
   return `${schemaName}.${tableName}.${triggerName}`;
+}
+
+async function loadDomainTriggers() {
+  return pool.query(`
+    SELECT ns.nspname AS schema_name,
+           rel.relname AS table_name,
+           trg.tgname AS trigger_name,
+           pg_get_triggerdef(trg.oid, true) AS trigger_definition,
+           pg_get_functiondef(proc.oid) AS function_definition
+      FROM pg_trigger trg
+      JOIN pg_class rel ON rel.oid = trg.tgrelid
+      JOIN pg_namespace ns ON ns.oid = rel.relnamespace
+      JOIN pg_proc proc ON proc.oid = trg.tgfoid
+     WHERE NOT trg.tgisinternal
+       AND ns.nspname IN ('sales', 'purchasing', 'inventory', 'accounting', 'reporting', 'logistics', 'mcp')
+  `);
 }
 
 test('business purge migration 105 keeps guarded delete explicit and registered', async () => {
@@ -78,25 +111,16 @@ test('business purge migration 105 keeps guarded delete explicit and registered'
   assert.match(sql, /business_purge_delete_allowed/);
   assert.match(sql, /guard_business_purge_delete/);
   for (const [schemaName, tableName] of GUARDED_TABLES) {
-    assert.match(sql, new RegExp(`['\"]${schemaName}['\"]\\s*,\\s*['\"]${tableName}['\"]`));
+    assert.match(sql, new RegExp(`['\\"]${schemaName}['\\"]\\s*,\\s*['\\"]${tableName}['\\"]`));
+  }
+  for (const [, , triggerName] of CONTEXT_GUARDS) {
+    assert.match(sql, new RegExp(`CREATE\\s+TRIGGER\\s+${triggerName}`, 'i'));
   }
   assert.doesNotMatch(sql, /DISABLE\s+TRIGGER|session_replication_role|TRUNCATE|DROP\s+SCHEMA/i);
 });
 
 test('migration 105 preserves ordinary guards and adds authorised purge delete guards', async () => {
-  const triggerRows = await pool.query(`
-    SELECT ns.nspname AS schema_name,
-           rel.relname AS table_name,
-           trg.tgname AS trigger_name,
-           pg_get_triggerdef(trg.oid, true) AS trigger_definition,
-           pg_get_functiondef(proc.oid) AS function_definition
-      FROM pg_trigger trg
-      JOIN pg_class rel ON rel.oid = trg.tgrelid
-      JOIN pg_namespace ns ON ns.oid = rel.relnamespace
-      JOIN pg_proc proc ON proc.oid = trg.tgfoid
-     WHERE NOT trg.tgisinternal
-       AND ns.nspname IN ('sales', 'purchasing', 'inventory', 'accounting', 'reporting', 'logistics', 'mcp')
-  `);
+  const triggerRows = await loadDomainTriggers();
   const byKey = new Map(triggerRows.rows.map((row) => [
     triggerKey(row.schema_name, row.table_name, row.trigger_name),
     row,
@@ -121,6 +145,27 @@ test('migration 105 preserves ordinary guards and adds authorised purge delete g
     assert.ok(purge, `${schemaName}.${tableName} must have an authorised purge DELETE guard`);
     assert.match(purge.trigger_definition, /BEFORE\s+DELETE\s+ON/i);
     assert.match(purge.trigger_definition, /shared\.business_purge_delete_allowed/i);
+    assert.match(purge.function_definition, /guard_business_purge_delete|business_purge_delete_allowed/i);
+  }
+});
+
+test('context-specific recovery, unwind and reversal guards leave DELETE to the table purge guard', async () => {
+  const triggerRows = await loadDomainTriggers();
+  const byKey = new Map(triggerRows.rows.map((row) => [
+    triggerKey(row.schema_name, row.table_name, row.trigger_name),
+    row,
+  ]));
+
+  for (const [schemaName, tableName, triggerName, writeContext, purgeTriggerName] of CONTEXT_GUARDS) {
+    const specialised = byKey.get(triggerKey(schemaName, tableName, triggerName));
+    assert.ok(specialised, `${schemaName}.${tableName} must retain ${triggerName}`);
+    assert.match(specialised.trigger_definition, /BEFORE\s+(?:INSERT\s+OR\s+UPDATE|UPDATE\s+OR\s+INSERT)\s+ON/i);
+    assert.doesNotMatch(specialised.trigger_definition, /DELETE/i);
+    assert.match(specialised.trigger_definition, new RegExp(writeContext));
+
+    const purge = byKey.get(triggerKey(schemaName, tableName, purgeTriggerName));
+    assert.ok(purge, `${schemaName}.${tableName} must retain ${purgeTriggerName}`);
+    assert.match(purge.trigger_definition, /BEFORE\s+DELETE\s+ON/i);
     assert.match(purge.function_definition, /guard_business_purge_delete|business_purge_delete_allowed/i);
   }
 });
