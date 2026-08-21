@@ -41,6 +41,60 @@ test('database pool absorbs idle client errors instead of leaving an unhandled e
   }
 });
 
+test('audit transaction absorbs checked-out client errors and destroys that connection on release', async () => {
+  let releasedWith = null;
+  let listenersAtRelease = null;
+  const calls = [];
+
+  class FakeClient extends EventEmitter {
+    async query(sql) {
+      calls.push(String(sql).trim());
+      return { rows: [] };
+    }
+
+    async release(destroy) {
+      listenersAtRelease = this.listenerCount('error');
+      releasedWith = destroy;
+    }
+  }
+
+  const client = new FakeClient();
+  const adapter = { connect: async () => client };
+  const messages = [];
+  const originalConsoleError = console.error;
+  console.error = (message) => messages.push(String(message));
+
+  try {
+    const result = await withAuditOutboxTransaction({
+      adapter,
+      mutate: async () => {
+        const error = Object.assign(
+          new Error('connection reset for postgresql://user:topsecret@database.example/npp'),
+          { code: 'ECONNRESET' },
+        );
+        assert.doesNotThrow(() => client.emit('error', error));
+        return { replayed: true };
+      },
+    });
+
+    assert.equal(result.replayed, true);
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.deepEqual(calls, ['BEGIN', 'COMMIT']);
+  assert.equal(releasedWith, true);
+  assert.equal(listenersAtRelease, 0);
+  assert.equal(client.listenerCount('error'), 0);
+  assert.equal(messages.length, 1);
+
+  const logEntry = JSON.parse(messages[0]);
+  assert.equal(logEntry.event, 'database_checked_out_client_error');
+  assert.equal(logEntry.code, 'ECONNRESET');
+  assert.equal(logEntry.message, 'connection reset for [redacted-url]');
+  assert.doesNotMatch(messages[0], /topsecret/);
+});
+
 test('audit transaction destroys a checked-out client when rollback cannot recover the connection', async () => {
   let releasedWith = null;
   const calls = [];
