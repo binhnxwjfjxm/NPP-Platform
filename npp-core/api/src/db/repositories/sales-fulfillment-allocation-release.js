@@ -10,6 +10,13 @@ export async function setManualEditReleaseWriteContexts(client) {
   );
 }
 
+export async function setExecutionCloseReleaseWriteContexts(client) {
+  await setManualEditReleaseWriteContexts(client);
+  await client.query(
+    "SELECT set_config('npp.sales_execution_close_release', 'true', true)",
+  );
+}
+
 export async function hasPhysicalExecutionFacts(client, {
   installationId,
   salesOrderId,
