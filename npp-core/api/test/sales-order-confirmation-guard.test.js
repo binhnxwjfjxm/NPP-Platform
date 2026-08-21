@@ -34,4 +34,5 @@ test('closing the unexecuted remainder is accepted by the Sales Order route befo
   );
   assert.match(routes, /action === 'close-execution' && method === 'POST'/);
   assert.match(routes, /route: `\/api\/sales-orders\/\$\{id\}\/close-execution`/);
+  assert.match(routes, /close_execution: 'sales\.sales_order\.execution_closed'/);
 });
