@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as productRepo from '../src/db/repositories/products.js';
 import * as variantRepo from '../src/db/repositories/product-variants.js';
+import * as productService from '../src/services/product.js';
 import { BUSINESS_PURGE_TARGETS, buildBusinessPurgePlan } from '../src/services/business-data-purge.js';
 
 function queryRecorder({ updateMatcher, id, row }) {
@@ -18,7 +19,7 @@ function queryRecorder({ updateMatcher, id, row }) {
   };
 }
 
-test('catalog optimistic updates keep caller tokens separate from importer database snapshots', async () => {
+test('SKU repository does not duplicate the locked service stale-version guard', async () => {
   const productId = '11111111-1111-4111-8111-111111111111';
   const variantId = '22222222-2222-4222-8222-222222222222';
   const installationId = 'regression-product-import';
@@ -49,14 +50,13 @@ test('catalog optimistic updates keep caller tokens separate from importer datab
   const productUpdate = product.calls.find((call) => call.sql.includes('UPDATE shared.products'));
   assert.ok(productUpdate);
   assert.match(productUpdate.sql, /date_trunc\('milliseconds', updated_at\) = date_trunc\('milliseconds', \$14::timestamptz\)/);
-  assert.equal(productUpdate.params.at(-1), expected);
 
-  const importSnapshotVariant = queryRecorder({
+  const variant = queryRecorder({
     updateMatcher: 'UPDATE shared.product_variants',
     id: variantId,
     row: { id: variantId, installation_id: installationId, product_id: productId, sku: 'SKU01' },
   });
-  const updatedFromSnapshot = await variantRepo.updateProductVariant(importSnapshotVariant.client, {
+  const updatedVariant = await variantRepo.updateProductVariant(variant.client, {
     id: variantId,
     installationId,
     name: 'SKU',
@@ -66,37 +66,51 @@ test('catalog optimistic updates keep caller tokens separate from importer datab
     isCatalogVisible: true,
     isActive: true,
     updatedBy: 'test:import',
-    expectedUpdatedAt: expected,
+    expectedUpdatedAt: expected.toISOString(),
   });
-  assert.ok(updatedFromSnapshot);
-  const snapshotUpdate = importSnapshotVariant.calls.find((call) => call.sql.includes('UPDATE shared.product_variants'));
-  assert.ok(snapshotUpdate);
-  assert.doesNotMatch(snapshotUpdate.sql, /\$10::timestamptz/);
-  assert.equal(snapshotUpdate.params.length, 9);
+  assert.ok(updatedVariant);
+  const variantUpdate = variant.calls.find((call) => call.sql.includes('UPDATE shared.product_variants'));
+  assert.ok(variantUpdate);
+  assert.doesNotMatch(variantUpdate.sql, /timestamptz/);
+  assert.equal(variantUpdate.params.length, 9);
 
-  const callerVariant = queryRecorder({
-    updateMatcher: 'UPDATE shared.product_variants',
-    id: variantId,
-    row: { id: variantId, installation_id: installationId, product_id: productId, sku: 'SKU01' },
-  });
-  const callerToken = expected.toISOString();
-  const updatedFromCallerToken = await variantRepo.updateProductVariant(callerVariant.client, {
-    id: variantId,
+  const staleCalls = [];
+  const staleClient = {
+    async query(sql, params = []) {
+      const text = String(sql);
+      staleCalls.push({ sql: text, params });
+      if (text.includes('FROM shared.products p') && text.includes('FOR UPDATE OF p')) {
+        return { rows: [{ id: productId, installation_id: installationId, is_active: true, is_orderable: false }] };
+      }
+      if (text.includes('FROM shared.product_variants pv') && text.includes('FOR UPDATE OF pv')) {
+        return { rows: [{
+          id: variantId,
+          installation_id: installationId,
+          product_id: productId,
+          sku: 'SKU01',
+          name: 'SKU',
+          variant_kind: 'BASE',
+          is_inventory_base: true,
+          is_sellable: true,
+          is_catalog_visible: true,
+          is_active: true,
+          updated_at: new Date('2026-08-21T12:40:43.123Z'),
+        }] };
+      }
+      throw new Error(`Unexpected query: ${text}`);
+    },
+  };
+  const stale = await productService.updateProductVariant(staleClient, {
+    productId,
+    variantId,
     installationId,
-    name: 'SKU',
-    variantKind: 'BASE',
-    isInventoryBase: true,
-    isSellable: true,
-    isCatalogVisible: true,
-    isActive: true,
+    payload: { name: 'SKU mới', expectedUpdatedAt: expected.toISOString() },
     updatedBy: 'test:user',
-    expectedUpdatedAt: callerToken,
   });
-  assert.ok(updatedFromCallerToken);
-  const callerUpdate = callerVariant.calls.find((call) => call.sql.includes('UPDATE shared.product_variants'));
-  assert.ok(callerUpdate);
-  assert.match(callerUpdate.sql, /date_trunc\('milliseconds', updated_at\) = date_trunc\('milliseconds', \$10::timestamptz\)/);
-  assert.equal(callerUpdate.params.at(-1), callerToken);
+  assert.equal(stale.ok, false);
+  assert.equal(stale.code, 'CONFLICT');
+  assert.equal(stale.details?.reason, 'EXPECTED_UPDATED_AT_MISMATCH');
+  assert.equal(staleCalls.some((call) => call.sql.includes('UPDATE shared.product_variants')), false);
 
   const unit = queryRecorder({
     updateMatcher: 'UPDATE shared.product_variants',
