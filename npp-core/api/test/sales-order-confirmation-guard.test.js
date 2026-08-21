@@ -26,3 +26,12 @@ test('Every Sales Order mutation is idempotent and returns its outbox event to t
   assert.match(routes, /executeIdempotentMutation\(req, res, options, \{[\s\S]*action: 'update_amendment'/);
   assert.match(routes, /MISSING_IDEMPOTENCY_KEY/);
 });
+
+test('closing the unexecuted remainder is accepted by the Sales Order route before lifecycle validation', () => {
+  assert.match(
+    routes,
+    /draft\|confirm\|amendments\|manual-edit\|pickup-edit\|issue-stock\|cancel\|close-execution/,
+  );
+  assert.match(routes, /action === 'close-execution' && method === 'POST'/);
+  assert.match(routes, /route: `\/api\/sales-orders\/\$\{id\}\/close-execution`/);
+});
