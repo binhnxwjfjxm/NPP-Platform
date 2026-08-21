@@ -18,7 +18,7 @@ function queryRecorder({ updateMatcher, id, row }) {
   };
 }
 
-test('catalog optimistic updates compare timestamps at JavaScript millisecond precision', async () => {
+test('catalog optimistic updates keep caller tokens separate from importer database snapshots', async () => {
   const productId = '11111111-1111-4111-8111-111111111111';
   const variantId = '22222222-2222-4222-8222-222222222222';
   const installationId = 'regression-product-import';
@@ -51,12 +51,36 @@ test('catalog optimistic updates compare timestamps at JavaScript millisecond pr
   assert.match(productUpdate.sql, /date_trunc\('milliseconds', updated_at\) = date_trunc\('milliseconds', \$14::timestamptz\)/);
   assert.equal(productUpdate.params.at(-1), expected);
 
-  const variant = queryRecorder({
+  const importSnapshotVariant = queryRecorder({
     updateMatcher: 'UPDATE shared.product_variants',
     id: variantId,
     row: { id: variantId, installation_id: installationId, product_id: productId, sku: 'SKU01' },
   });
-  const updatedVariant = await variantRepo.updateProductVariant(variant.client, {
+  const updatedFromSnapshot = await variantRepo.updateProductVariant(importSnapshotVariant.client, {
+    id: variantId,
+    installationId,
+    name: 'SKU',
+    variantKind: 'BASE',
+    isInventoryBase: true,
+    isSellable: true,
+    isCatalogVisible: true,
+    isActive: true,
+    updatedBy: 'test:import',
+    expectedUpdatedAt: expected,
+  });
+  assert.ok(updatedFromSnapshot);
+  const snapshotUpdate = importSnapshotVariant.calls.find((call) => call.sql.includes('UPDATE shared.product_variants'));
+  assert.ok(snapshotUpdate);
+  assert.doesNotMatch(snapshotUpdate.sql, /\$10::timestamptz/);
+  assert.equal(snapshotUpdate.params.length, 9);
+
+  const callerVariant = queryRecorder({
+    updateMatcher: 'UPDATE shared.product_variants',
+    id: variantId,
+    row: { id: variantId, installation_id: installationId, product_id: productId, sku: 'SKU01' },
+  });
+  const callerToken = expected.toISOString();
+  const updatedFromCallerToken = await variantRepo.updateProductVariant(callerVariant.client, {
     id: variantId,
     installationId,
     name: 'SKU',
@@ -66,13 +90,13 @@ test('catalog optimistic updates compare timestamps at JavaScript millisecond pr
     isCatalogVisible: true,
     isActive: true,
     updatedBy: 'test:user',
-    expectedUpdatedAt: expected,
+    expectedUpdatedAt: callerToken,
   });
-  assert.ok(updatedVariant);
-  const variantUpdate = variant.calls.find((call) => call.sql.includes('UPDATE shared.product_variants'));
-  assert.ok(variantUpdate);
-  assert.match(variantUpdate.sql, /date_trunc\('milliseconds', updated_at\) = date_trunc\('milliseconds', \$10::timestamptz\)/);
-  assert.equal(variantUpdate.params.at(-1), expected);
+  assert.ok(updatedFromCallerToken);
+  const callerUpdate = callerVariant.calls.find((call) => call.sql.includes('UPDATE shared.product_variants'));
+  assert.ok(callerUpdate);
+  assert.match(callerUpdate.sql, /date_trunc\('milliseconds', updated_at\) = date_trunc\('milliseconds', \$10::timestamptz\)/);
+  assert.equal(callerUpdate.params.at(-1), callerToken);
 
   const unit = queryRecorder({
     updateMatcher: 'UPDATE shared.product_variants',

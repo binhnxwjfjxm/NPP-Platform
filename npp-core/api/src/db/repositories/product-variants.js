@@ -102,7 +102,9 @@ export async function updateProductVariant(client, {
          updated_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), updated_at + interval '1 millisecond'),
          updated_by = $7
      WHERE id = $8 AND installation_id = $9`;
-  if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== null) {
+  // Only caller-supplied ISO strings are concurrency tokens. Date instances come from
+  // the importer's internal database snapshot and must not become a stale-version gate.
+  if (typeof expectedUpdatedAt === 'string' && expectedUpdatedAt.trim()) {
     query += ` AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $10::timestamptz)`;
     params.push(expectedUpdatedAt);
   }
