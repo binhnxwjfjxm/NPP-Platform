@@ -21,6 +21,7 @@ test('retry Xuất kho giữ nguyên canonical Idempotency-Key khi chỉ đổi 
   const conflict = page.slice(page.indexOf("if (kind === 'issue-stock' && isRevisionConflict"));
   assert.doesNotMatch(conflict.slice(0, conflict.indexOf('setError')), /forgetOperationKey/);
   assert.match(page, /if \(kind === 'issue-stock'\) forgetOperationKey\('issue-stock', 'current-order'\)/);
+  assert.match(page, /createIdempotencyKey\(`retail-\$\{action\}`\)/);
 });
 
 test('Khả dụng khi sửa đơn dùng preview theo kho và loại chính đơn hiện tại', async () => {
@@ -57,51 +58,59 @@ test('xóa dòng giỏ rõ ràng, số lượng về 0 xóa dòng và không see
   assert.doesNotMatch(addSelected, /cartFromOrder\(order\)/);
 });
 
-test('điều hướng Retail đúng bốn mục Trang chủ Lên đơn Đơn hàng Cài đặt', async () => {
+test('điều hướng Retail đúng bốn mục và Trang chủ không có nút quay lại', async () => {
   const page = await readWorkspace();
   assert.match(page, /type RetailTab = 'home' \| 'entry' \| 'orders' \| 'settings'/);
   assert.match(page, />Trang chủ<\/button>/);
   assert.match(page, />Lên đơn<\/button>/);
   assert.match(page, />Đơn hàng<\/button>/);
   assert.match(page, />Cài đặt<\/button>/);
+  assert.match(page, /activeTab === 'home' \? <span className="topbar-spacer"/);
   assert.doesNotMatch(page, /activeTab === 'account'/);
   assert.match(page, /action="\/api\/auth\/logout"/);
   assert.doesNotMatch(page, /window\.history\.back/);
 });
 
-test('Cài đặt tách Tài khoản Máy in Mẫu phiếu Đăng xuất và lưu khổ in theo thiết bị', async () => {
+test('Cài đặt dùng hàng có chevron và bottom sheet cho Tài khoản Máy in Mẫu phiếu Đăng xuất', async () => {
   const page = await readWorkspace();
-  assert.match(page, /<h3>Tài khoản<\/h3>/);
-  assert.match(page, /<h3>Máy in<\/h3>/);
-  assert.match(page, /<h3>Mẫu phiếu<\/h3>/);
-  assert.match(page, /<h3>Đăng xuất<\/h3>/);
+  assert.match(page, /className="settings-row"[^>]*>[\s\S]*?<strong>Tài khoản<\/strong>/);
+  assert.match(page, /<strong>Máy in<\/strong>/);
+  assert.match(page, /<strong>Mẫu phiếu<\/strong>/);
+  assert.match(page, /<strong>Đăng xuất<\/strong>/);
+  assert.match(page, /className="settings-sheet sheet-enter"/);
+  assert.match(page, />Hủy<\/button>/);
+  assert.match(page, />Thiết lập<\/button>/);
   assert.match(page, /PRINT_PAPER_STORAGE_KEY/);
   assert.match(page, /window\.localStorage\.setItem\(PRINT_PAPER_STORAGE_KEY/);
   assert.match(page, /Máy in Wi-Fi được chọn trong hộp thoại in của thiết bị/);
 });
 
-test('Mẫu phiếu dùng cấu hình Công Ty, hỗ trợ tiêu đề và field, không hard-code HƯNG PHÁT', async () => {
+test('Mẫu phiếu PATCH xong GET lại cấu hình Công Ty rồi mới áp dụng', async () => {
   const [page, gateway, service] = await Promise.all([
     readWorkspace(), read('app/api/retail/[...segments]/route.ts'), readRepo('npp-core/api/src/services/document-print-templates.js'),
   ]);
-  assert.match(page, /\/api\/retail\/print-templates/);
+  assert.match(page, /method: 'PATCH'/);
+  const save = page.slice(page.indexOf('async function savePrintTemplate'), page.indexOf('function togglePrintField'));
+  assert.match(save, /const refreshedTemplates = await loadPrintTemplates\(\)/);
+  assert.match(save, /applyTemplate\(persisted\)/);
   assert.match(page, /heading: templateHeading\.trim\(\) \|\| null/);
   assert.match(page, /visibleFieldKeys: printTemplate\.visibleFieldKeys/);
   assert.match(gateway, /\/api\/document-print-templates\/\$\{documentType\}\/\$\{templateCode\}/);
   assert.match(service, /heading: setting\?\.heading \?\? null/);
   assert.match(service, /title: setting\?\.title \?\? catalog\.name/);
   assert.doesNotMatch(page, /HƯNG PHÁT/);
-  const printSlice = page.slice(page.indexOf('className="print-document"'));
-  assert.doesNotMatch(printSlice, /productPicture|product-photo/);
 });
 
-test('Trang chủ và thẻ Retail có lớp compact riêng sau Issue 675', async () => {
-  const [page, css, layout] = await Promise.all([readWorkspace(), read('app/retail-issue675.css'), read('app/layout.tsx')]);
-  assert.match(page, /compact-home-actions/);
-  assert.doesNotMatch(page, /className="home-hero"/);
-  assert.match(css, /\.compact-home-actions button \{ min-height: 104px/);
-  assert.match(css, /\.compact-product-card \{ grid-template-columns: 78px/);
-  assert.match(layout, /import '\.\/retail-issue675\.css'/);
+test('Trang chủ hardening có hero chuẩn, tổng quan và đơn gần đây', async () => {
+  const [page, css] = await Promise.all([readWorkspace(), read('app/retail-issue675.css')]);
+  assert.match(page, /01-hero-nganh-hang\.webp/);
+  assert.match(page, /Tổng quan quầy bán/);
+  assert.match(page, /Doanh số hoàn thành/);
+  assert.match(page, /Đơn cần theo dõi/);
+  assert.match(css, /\.home-feature/);
+  assert.match(css, /\.home-metrics/);
+  assert.match(css, /retail-page-in/);
+  assert.match(css, /prefers-reduced-motion: reduce/);
 });
 
 test('topbar bỏ nút quét thô, quét mã nằm trong Chọn sản phẩm', async () => {
@@ -112,6 +121,14 @@ test('topbar bỏ nút quét thô, quét mã nằm trong Chọn sản phẩm', a
   assert.match(sheet, />Quét mã<\/button>/);
 });
 
+test('tiền VND không để phần thập phân rác ở ô thu tiền', async () => {
+  const page = await readWorkspace();
+  assert.match(page, /function normalizeVndInput/);
+  assert.match(page, /setPaid\(normalizeVndInput\(order\.receivableRemainingAmount \?\? order\.total\)\)/);
+  assert.match(page, /setPaid\(normalizeVndInput\(event\.target\.value\)\)/);
+  assert.match(page, /currency: 'VND', maximumFractionDigits: 0/);
+});
+
 test('in phiếu hỗ trợ A4 A5 80mm 58mm và không đưa ảnh vào chứng từ', async () => {
   const page = await readWorkspace();
   assert.match(page, /type PrintPaper = 'A4' \| 'A5' \| '80mm' \| '58mm'/);
@@ -120,11 +137,32 @@ test('in phiếu hỗ trợ A4 A5 80mm 58mm và không đưa ảnh vào chứng 
   assert.doesNotMatch(printSlice, /productPicture|product-photo/);
 });
 
-test('ảnh sản phẩm có fallback thật khi R2 lỗi', async () => {
-  const page = await readWorkspace();
+test('ảnh sản phẩm khóa vùng ảnh, fallback nằm dưới ảnh thật và không chồng chữ', async () => {
+  const [page, css] = await Promise.all([readWorkspace(), read('app/retail-issue675.css')]);
   assert.match(page, /className="product-visual"/);
   assert.match(page, /event\.currentTarget\.hidden = true/);
   assert.match(page, /product-fallback/);
+  assert.match(css, /\.product-photo,\n\.retail-issue675 \.product-fallback \{[\s\S]*position: absolute/);
+  assert.match(css, /\.product-photo \{ z-index: 2; object-fit: contain/);
+  assert.match(css, /\.product-fallback \{ z-index: 1/);
+});
+
+test('viewport Retail khóa zoom và giữ safe-area cho PWA', async () => {
+  const [layout, css] = await Promise.all([read('app/layout.tsx'), read('app/retail-issue675.css')]);
+  assert.match(layout, /export const viewport: Viewport/);
+  assert.match(layout, /maximumScale: 1/);
+  assert.match(layout, /userScalable: false/);
+  assert.match(layout, /viewportFit: 'cover'/);
+  assert.match(css, /env\(safe-area-inset-bottom\)/);
+});
+
+test('trạng thái đơn có tone riêng và interaction có focus pressed disabled', async () => {
+  const [page, css] = await Promise.all([readWorkspace(), read('app/retail-issue675.css')]);
+  assert.match(page, /statusTone\(item\)/);
+  for (const tone of ['draft', 'confirmed', 'issued', 'paid', 'debt', 'cancelled']) assert.match(css, new RegExp(`\\.status-${tone}`));
+  assert.match(css, /button:not\(:disabled\):active/);
+  assert.match(css, /button:focus-visible/);
+  assert.match(css, /button:disabled/);
 });
 
 test('lưu sửa thành công không bị báo thất bại chỉ vì bước GET đồng bộ sau đó lỗi', async () => {
