@@ -176,6 +176,10 @@ const BUSINESS_PURGE_OPERATIONAL_GUARDS_SQL = readFileSync(
   new URL('../../../../database/migrations/shared/101_business_purge_operational_guards.sql', import.meta.url),
   'utf8',
 );
+const SALES_ORDER_EXECUTION_CLOSE_FULFILLMENT_SQL = readFileSync(
+  new URL('../../../../database/migrations/sales/103_sales_order_execution_close_fulfillment.sql', import.meta.url),
+  'utf8',
+);
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -259,6 +263,10 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({
     id: '101_business_purge_operational_guards',
     sql: BUSINESS_PURGE_OPERATIONAL_GUARDS_SQL,
+  }),
+  Object.freeze({
+    id: '103_sales_order_execution_close_fulfillment',
+    sql: SALES_ORDER_EXECUTION_CLOSE_FULFILLMENT_SQL,
   }),
 ]);
 
