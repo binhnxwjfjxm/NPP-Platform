@@ -253,6 +253,5 @@ export async function searchSalesOrderSkuOptions(client, {
     repository.getSalesOrderSettings(client, { installationId: requestContext.installationId }),
   ]);
   const defaults = taxSettings(settings);
-  const eligible = rows.filter((row) => evaluateSalesOrderSkuEligibility(row).selectable);
-  return Object.freeze({ ok: true, skuOptions: Object.freeze(eligible.map((row) => mapSkuOption(row, defaults))) });
+  return Object.freeze({ ok: true, skuOptions: Object.freeze(rows.map((row) => mapSkuOption(row, defaults))) });
 }

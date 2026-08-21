@@ -367,6 +367,14 @@ export async function searchSalesOrderSkuOptions(client, {
        LIMIT 1
      ) primary_barcode ON true
      WHERE pv.installation_id = $1
+       AND p.is_active = true
+       AND p.is_orderable = true
+       AND pv.is_active = true
+       AND pv.is_sellable = true
+       AND pv.unit_id IS NOT NULL
+       AND u.is_active = true
+       AND pv.conversion_to_base IS NOT NULL
+       AND pv.conversion_to_base > 0
        AND ($4::uuid IS NULL OR p.category_id = $4::uuid)
        AND (
          $2 = ''
