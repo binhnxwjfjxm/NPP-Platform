@@ -302,12 +302,14 @@ function normalizeSource(payload) {
   const sourceType = String(payload?.sourceType ?? 'MANUAL').trim().toUpperCase();
   if (!SOURCE_TYPES.has(sourceType)) return failure('INVALID_SOURCE_TYPE', 'Source type is invalid');
   const sourceId = text(payload?.sourceId, 256, sourceType !== 'MANUAL');
-  const sourceOutletId = text(payload?.sourceOutletId, 256, sourceType === 'MCP');
+  const sourceOutletId = text(payload?.sourceOutletId, 256, false);
   if (sourceType === 'MANUAL' && (payload?.sourceId || payload?.sourceOutletId)) {
     return failure('INVALID_SOURCE_REFERENCE', 'Manual orders cannot contain external source identity');
   }
   if (sourceType !== 'MANUAL' && !sourceId) return failure('SOURCE_ID_REQUIRED', 'Source ID is required');
-  if (sourceType === 'MCP' && !sourceOutletId) return failure('SOURCE_OUTLET_ID_REQUIRED', 'MCP source outlet ID is required');
+  if (sourceType === 'MCP' && payload?.sourceOutletId && !sourceOutletId) {
+    return failure('INVALID_SOURCE_OUTLET', 'MCP source outlet reference is invalid');
+  }
   if (sourceType !== 'MCP' && payload?.sourceOutletId) return failure('INVALID_SOURCE_OUTLET', 'Source outlet is only valid for MCP orders');
   return { ok: true, sourceType, sourceId, sourceOutletId };
 }
