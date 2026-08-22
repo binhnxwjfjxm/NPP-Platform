@@ -1,6 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
-import { sendError, sendSuccess } from '../http-utils.js';
+import { sendError, sendJson, sendSuccess } from '../http-utils.js';
+import { readJsonBody } from '../idempotency.js';
 import {
   ensureWarehouseScopes,
   normalizeFilters,
@@ -12,6 +13,12 @@ import { purchasingReport } from './reporting-purchasing.js';
 import { inventoryReport, normalizeSlowDays } from './reporting-inventory-safe.js';
 import { agingReport, grossMarginReport } from './reporting-finance.js';
 import { employeeMcpReport, resolveEmployeeMcpScope } from './reporting-employee-mcp.js';
+import {
+  adminAlertsReport,
+  alertMutationResponse,
+  mcpSupervisionReport,
+  updateAdminAlertStatus,
+} from './reporting-mcp-alerts.js';
 import { logisticsReport } from './reporting-logistics.js';
 import { codReport } from './reporting-cod.js';
 import {
@@ -71,6 +78,8 @@ function reportingFamily(pathname) {
   if (pathname === '/api/reporting/aging') return 'aging';
   if (pathname === '/api/reporting/gross-margin') return 'gross-margin';
   if (pathname === '/api/reporting/employee-mcp') return 'employee-mcp';
+  if (pathname === '/api/reporting/mcp-supervision') return 'mcp-supervision';
+  if (pathname === '/api/reporting/admin-alerts' || pathname.startsWith('/api/reporting/admin-alerts/')) return 'admin-alerts';
   if (pathname === '/api/reporting/logistics') return 'logistics';
   if (pathname === '/api/reporting/cod') return 'cod';
   if (pathname === '/api/reporting/audit-history') return 'audit-history';
@@ -101,6 +110,30 @@ function sendNormalizedError(res, normalized, options) {
     options.requestId,
     options.receivedAt,
   );
+}
+
+function isMcpFamily(family) {
+  return family === 'employee-mcp' || family === 'mcp-supervision' || family === 'admin-alerts';
+}
+
+function alertIdFromPath(pathname) {
+  const prefix = '/api/reporting/admin-alerts/';
+  if (!pathname.startsWith(prefix)) return null;
+  const raw = pathname.slice(prefix.length);
+  if (!raw || raw.includes('/')) return null;
+  try {
+    const decoded = decodeURIComponent(raw);
+    return /^[A-Za-z0-9._-]{1,240}$/.test(decoded) ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
+function canManageAlerts(requestContext) {
+  const roles = Array.isArray(requestContext.roles) ? requestContext.roles : [];
+  return roles.includes('system:security-owner')
+    || roles.includes('system:implementation-owner')
+    || roles.includes('bootstrap');
 }
 
 async function streamBusinessExport(req, res, options, requestContext) {
@@ -162,19 +195,85 @@ async function streamBusinessExport(req, res, options, requestContext) {
   }
 }
 
+async function resolveMcpFieldScope(res, options, requestContext) {
+  const fieldScope = await resolveEmployeeMcpScope(options.getPool(), requestContext);
+  if (!fieldScope.ok) {
+    sendNormalizedError(res, fieldScope, options);
+    return null;
+  }
+  return fieldScope;
+}
+
+async function handleAlertMutation(req, res, options, requestContext, normalized, fieldScope, alertId) {
+  if (!canManageAlerts(requestContext)) {
+    sendError(res, apiError('FORBIDDEN', 'Tài khoản hiện tại không có quyền thay đổi trạng thái cảnh báo', {}, false, 403), options.requestId, options.receivedAt);
+    return;
+  }
+  if (!alertId) {
+    sendError(res, apiError('INVALID_ALERT_ID', 'Mã cảnh báo không hợp lệ', {}, false, 400), options.requestId, options.receivedAt);
+    return;
+  }
+  let payload;
+  try {
+    payload = await readJsonBody(req);
+  } catch (error) {
+    sendError(res, apiError(error.code, error.publicMessage, {}, false, error.statusCode), options.requestId, options.receivedAt);
+    return;
+  }
+  try {
+    const execution = await options.executeRequestWithIdempotency({
+      idempotencyStore: options.idempotencyStore,
+      req,
+      requestContext,
+      requestId: options.requestId,
+      receivedAt: options.receivedAt,
+      route: `/api/reporting/admin-alerts/${alertId}`,
+      payload,
+      onProcess: async () => alertMutationResponse(
+        await updateAdminAlertStatus({
+          adapter: options.getPool(),
+          requestContext,
+          alertId,
+          nextStatus: String(payload?.status ?? ''),
+          filters: normalized,
+          fieldScope,
+        }),
+        options.requestId,
+        options.receivedAt,
+      ),
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    sendJson(
+      res,
+      execution.response.statusCode,
+      execution.response.body,
+      execution.response.requestId ?? options.requestId,
+      execution.response.contentType,
+    );
+  } catch (error) {
+    if (error?.publicMessage && error?.statusCode) {
+      sendError(res, apiError(error.code ?? 'ALERT_UPDATE_FAILED', error.publicMessage, {}, Boolean(error.retryable), error.statusCode), options.requestId, options.receivedAt);
+      return;
+    }
+    sendError(res, apiError('ALERT_UPDATE_FAILED', 'Không thể cập nhật trạng thái cảnh báo', {}, true, 503), options.requestId, options.receivedAt);
+  }
+}
+
 export async function handleReportingRoutes(req, res, options) {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   const family = reportingFamily(url.pathname);
   if (!family) return false;
 
   const method = String(req.method ?? 'GET').toUpperCase();
-  if (method !== 'GET') {
-    sendError(res, apiError('METHOD_NOT_ALLOWED', 'Only GET is supported for reporting', {}, false, 405), options.requestId, options.receivedAt);
+  const alertId = family === 'admin-alerts' ? alertIdFromPath(url.pathname) : null;
+  const alertMutation = family === 'admin-alerts' && alertId !== null && method === 'POST';
+  if (method !== 'GET' && !alertMutation) {
+    sendError(res, apiError('METHOD_NOT_ALLOWED', 'Phương thức không được hỗ trợ', {}, false, 405), options.requestId, options.receivedAt);
     return true;
   }
 
   const historyFamily = family === 'audit-history' || family === 'import-export-history';
-  const warehouseScoped = family !== 'employee-mcp' && !historyFamily;
+  const warehouseScoped = !isMcpFamily(family) && !historyFamily;
   const requestContext = await authenticateAndAuthorize(
     req,
     res,
@@ -221,7 +320,7 @@ export async function handleReportingRoutes(req, res, options) {
     return true;
   }
 
-  if (family === 'employee-mcp'
+  if (isMcpFamily(family)
     && !requestContext.roles?.includes('bootstrap')
     && !requestContext.employeeId) {
     sendError(
@@ -249,7 +348,7 @@ export async function handleReportingRoutes(req, res, options) {
     return true;
   }
 
-  if (family === 'employee-mcp' && url.searchParams.has('warehouseId')) {
+  if (isMcpFamily(family) && url.searchParams.has('warehouseId')) {
     sendError(
       res,
       apiError(
@@ -295,6 +394,17 @@ export async function handleReportingRoutes(req, res, options) {
     }
   }
 
+  let fieldScope = null;
+  if (isMcpFamily(family)) {
+    fieldScope = await resolveMcpFieldScope(res, options, requestContext);
+    if (!fieldScope) return true;
+  }
+
+  if (alertMutation) {
+    await handleAlertMutation(req, res, options, requestContext, normalized, fieldScope, alertId);
+    return true;
+  }
+
   try {
     let report;
     if (family === 'sales') {
@@ -313,12 +423,11 @@ export async function handleReportingRoutes(req, res, options) {
       report = await codReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
     } else if (family === 'control-tower') {
       report = await controlTowerReport(options.getPool(), requestContext, normalized, warehouseScope.warehouseIds);
+    } else if (family === 'mcp-supervision') {
+      report = await mcpSupervisionReport(options.getPool(), requestContext, normalized, fieldScope);
+    } else if (family === 'admin-alerts') {
+      report = await adminAlertsReport(options.getPool(), requestContext, normalized, fieldScope);
     } else {
-      const fieldScope = await resolveEmployeeMcpScope(options.getPool(), requestContext);
-      if (!fieldScope.ok) {
-        sendNormalizedError(res, fieldScope, options);
-        return true;
-      }
       report = await employeeMcpReport(options.getPool(), requestContext, normalized, fieldScope);
     }
     res.setHeader('Cache-Control', 'no-store');
