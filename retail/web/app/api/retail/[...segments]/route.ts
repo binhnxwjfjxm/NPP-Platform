@@ -4,9 +4,35 @@ import { CompanyGatewayError, companyRequest } from '../../../../lib/company-gat
 export const dynamic = 'force-dynamic';
 
 type GatewayResponse = { data: unknown; requestId: string };
-type OrderVersionAmounts = { versionNumber?: unknown; subtotal?: unknown; discountTotal?: unknown; taxTotal?: unknown; total?: unknown };
-type OrderWithVersions = { currentVersionNumber?: unknown; subtotal?: unknown; discountTotal?: unknown; taxTotal?: unknown; total?: unknown; versions?: OrderVersionAmounts[]; [key: string]: unknown };
+type RetailProductLabel = {
+  variantId: string;
+  sku?: string | null;
+  variantName?: string | null;
+  productCode?: string | null;
+  productName?: string | null;
+  unitCode?: string | null;
+};
+type OrderLineShape = { variantId?: unknown; itemName?: unknown; [key: string]: unknown };
+type OrderVersionAmounts = {
+  versionNumber?: unknown;
+  subtotal?: unknown;
+  discountTotal?: unknown;
+  taxTotal?: unknown;
+  total?: unknown;
+  lines?: OrderLineShape[];
+};
+type OrderWithVersions = {
+  currentVersionNumber?: unknown;
+  number?: unknown;
+  subtotal?: unknown;
+  discountTotal?: unknown;
+  taxTotal?: unknown;
+  total?: unknown;
+  versions?: OrderVersionAmounts[];
+  [key: string]: unknown;
+};
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PRODUCT_LABEL_BATCH_SIZE = 100;
 
 function requestId(request: NextRequest) { return request.headers.get('x-request-id'); }
 function json(data: unknown, id: string, status = 200) { return NextResponse.json({ data, requestId: id }, { status, headers: { 'Cache-Control': 'no-store', 'x-request-id': id } }); }
@@ -47,6 +73,57 @@ function normalizeOrderAmounts(data: unknown) {
     total: String(current.total ?? order.total ?? '0'),
   };
 }
+function presentationOrderNumber(value: unknown) {
+  const number = String(value ?? '').trim();
+  return number || 'Đơn đang lập';
+}
+async function enrichRetailProductNames(data: unknown, id: string) {
+  const normalized = normalizeOrderAmounts(data);
+  if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) return normalized;
+  const order = normalized as OrderWithVersions;
+  const versions = Array.isArray(order.versions) ? order.versions : [];
+  const variantIds = [...new Set(versions.flatMap((version) =>
+    Array.isArray(version.lines)
+      ? version.lines.map((line) => String(line?.variantId ?? '').trim()).filter((variantId) => UUID_PATTERN.test(variantId))
+      : []
+  ))];
+  if (variantIds.length === 0) return { ...order, number: presentationOrderNumber(order.number) };
+
+  try {
+    const batches: string[][] = [];
+    for (let index = 0; index < variantIds.length; index += PRODUCT_LABEL_BATCH_SIZE) {
+      batches.push(variantIds.slice(index, index + PRODUCT_LABEL_BATCH_SIZE));
+    }
+    const responses = await Promise.all(batches.map((variantBatch) => companyRequest<RetailProductLabel[]>({
+      path: '/api/retail/product-labels',
+      method: 'POST',
+      body: { variantIds: variantBatch },
+      requestId: id,
+    })));
+    const labels = new Map(responses.flatMap((response) => response.data).map((label) => [label.variantId, label]));
+    return {
+      ...order,
+      number: presentationOrderNumber(order.number),
+      versions: versions.map((version) => ({
+        ...version,
+        lines: Array.isArray(version.lines) ? version.lines.map((line) => {
+          const variantId = String(line?.variantId ?? '').trim();
+          const label = labels.get(variantId);
+          const productName = String(label?.productName ?? '').trim();
+          return productName ? {
+            ...line,
+            itemName: productName,
+            retailProductName: productName,
+            retailVariantName: label?.variantName ?? null,
+            retailProductCode: label?.productCode ?? null,
+          } : line;
+        }) : version.lines,
+      })),
+    };
+  } catch {
+    return { ...order, number: presentationOrderNumber(order.number) };
+  }
+}
 
 export async function GET(request: NextRequest, { params }: { params: { segments: string[] } }) {
   const id = requestId(request) ?? crypto.randomUUID(); const path = parts(params);
@@ -55,7 +132,7 @@ export async function GET(request: NextRequest, { params }: { params: { segments
     if (path.length === 1 && path[0] === 'products') { const result = await companyRequest<unknown>({ path: `/api/retail/products${query(request, ['search', 'categoryId', 'limit', 'offset'])}`, requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 1 && path[0] === 'print-templates') { const result = await companyRequest<unknown>({ path: '/api/document-print-templates', requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 1 && path[0] === 'orders') { const result = await companyRequest<unknown>({ path: `/api/sales-orders${query(request, ['limit', 'offset', 'status', 'search'])}`, requestId: id }); return json(result.data, result.requestId); }
-    if (path.length === 2 && path[0] === 'orders') { const result = await companyRequest<unknown>({ path: `/api/sales-orders/${salesOrderId(path[1])}`, requestId: id }); return json(normalizeOrderAmounts(result.data), result.requestId); }
+    if (path.length === 2 && path[0] === 'orders') { const result = await companyRequest<unknown>({ path: `/api/sales-orders/${salesOrderId(path[1])}`, requestId: id }); return json(await enrichRetailProductNames(result.data, result.requestId), result.requestId); }
     if (path.length === 3 && path[0] === 'orders' && path[2] === 'availability') { const result = await companyRequest<unknown>({ path: `/api/retail/sales-orders/${salesOrderId(path[1])}/availability`, requestId: id }); return json(result.data, result.requestId); }
     throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy chức năng yêu cầu', 404, false);
   } catch (error) { return errorResponse(error, id); }
@@ -65,7 +142,10 @@ export async function POST(request: NextRequest, { params }: { params: { segment
   const id = requestId(request) ?? crypto.randomUUID(); const path = parts(params);
   try {
     const payload = await body(request); const key = request.headers.get('idempotency-key');
-    if (path.length === 1 && path[0] === 'orders') { const result = await companyRequest<unknown>({ path: '/api/sales-orders', method: 'POST', body: payload, idempotencyKey: key, requestId: id }); return json(normalizeOrderAmounts(result.data), result.requestId, 201); }
+    if (path.length === 1 && path[0] === 'orders') {
+      const result = await companyRequest<unknown>({ path: '/api/sales-orders', method: 'POST', body: payload, idempotencyKey: key, requestId: id });
+      return json(await enrichRetailProductNames(result.data, result.requestId), result.requestId, 201);
+    }
     if (path.length === 1 && path[0] === 'price') { const result = await companyRequest<unknown>({ path: '/api/retail/price', method: 'POST', body: payload, requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 1 && path[0] === 'availability') { const result = await companyRequest<unknown>({ path: '/api/retail/availability', method: 'POST', body: payload, requestId: id }); return json(result.data, result.requestId); }
     if (path.length === 3 && path[0] === 'orders') {
@@ -81,11 +161,11 @@ export async function POST(request: NextRequest, { params }: { params: { segment
       const result = await companyRequest<unknown>({ path: target.path, method: 'POST', body: target.body, idempotencyKey: key, requestId: id });
       if (action === 'complete') {
         const reloaded = await companyRequest<unknown>({ path: `/api/sales-orders/${orderId}`, requestId: result.requestId });
-        return json(normalizeOrderAmounts(reloaded.data), reloaded.requestId);
+        return json(await enrichRetailProductNames(reloaded.data, reloaded.requestId), reloaded.requestId);
       }
-      return json(normalizeOrderAmounts(result.data), result.requestId);
+      return json(await enrichRetailProductNames(result.data, result.requestId), result.requestId);
     }
-    throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy chức năng yêu cầu', 404, false);
+    throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy thao tác yêu cầu', 404, false);
   } catch (error) { return errorResponse(error, id); }
 }
 
@@ -94,7 +174,7 @@ export async function PUT(request: NextRequest, { params }: { params: { segments
   try {
     if (path.length !== 3 || path[0] !== 'orders' || !['draft', 'pickup-edit'].includes(path[2])) throw new CompanyGatewayError('NOT_FOUND', 'Không tìm thấy chức năng yêu cầu', 404, false);
     const result = await companyRequest<unknown>({ path: `/api/sales-orders/${salesOrderId(path[1])}/${path[2]}`, method: 'PUT', body: await body(request), idempotencyKey: request.headers.get('idempotency-key'), requestId: id });
-    return json(normalizeOrderAmounts(result.data), result.requestId);
+    return json(await enrichRetailProductNames(result.data, result.requestId), result.requestId);
   } catch (error) { return errorResponse(error, id); }
 }
 

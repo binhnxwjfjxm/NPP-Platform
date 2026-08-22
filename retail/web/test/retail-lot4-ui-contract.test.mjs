@@ -31,7 +31,7 @@ test('gateway Retail lấy tổng tiền từ phiên bản hiện tại và tả
   assert.match(route, /total: String\(current\.total \?\? order\.total \?\? '0'\)/);
   assert.match(route, /if \(action === 'complete'\)/);
   assert.match(route, /const reloaded = await companyRequest<unknown>\(\{ path: `\/api\/sales-orders\/\$\{orderId\}`/);
-  assert.match(route, /return json\(normalizeOrderAmounts\(reloaded\.data\), reloaded\.requestId\)/);
+  assert.match(route, /return json\(await enrichRetailProductNames\(reloaded\.data, reloaded\.requestId\), reloaded\.requestId\)/);
 });
 
 test('URL Công Ty và token chỉ nằm phía server', async () => {
