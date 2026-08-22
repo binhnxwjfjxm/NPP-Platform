@@ -101,7 +101,8 @@ test('Sales Order modal has one real vertical scroll owner and no desktop horizo
   assert.match(cssSource, /scrollbar-gutter:stable/);
   assert.match(cssSource, /grid-template-rows:auto minmax\(0,1fr\) auto/);
   assert.match(cssSource, /@media\(max-width:780px\)/);
-  assert.match(cssSource, /orderLineCard\{grid-template-columns:1fr 1fr/);
+  assert.match(cssSource, /orderLineCard\{grid-template-columns:48px minmax\(0,1fr\) 86px 126px/);
+  assert.match(cssSource, /orderLineCard\{grid-template-columns:48px 1fr/);
   assert.doesNotMatch(cssSource, /lineEntryGrid\{display:grid;grid-template-columns:1\.2fr 1\.2fr/);
 });
 

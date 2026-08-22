@@ -7,6 +7,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DECIMAL_PATTERN = /^(0|[1-9]\d{0,13})(?:\.(\d{1,6}))?$/;
 const INTEGER_PATTERN = /^[1-9]\d{0,18}$/;
+const MONEY_PATTERN = /^(?:0|[1-9]\d{0,18})$/;
 const SOURCE_TYPES = new Set(['MANUAL', 'IMPORT', 'API', 'MCP']);
 const COLLECTION_POLICIES = new Set(['PREPAID', 'COLLECT_ON_DELIVERY', 'COLLECT_AFTER_DELIVERY', 'CREDIT_TERMS']);
 const DELIVERY_MODES = new Set(['DELIVERY', 'PICKUP']);
@@ -446,11 +447,14 @@ async function prepareLines(client, { requestContext, header, payload }) {
     if (manualPrice !== null && !hasPermission(requestContext, 'core.sales-order.price.override')) {
       return failure('PRICE_OVERRIDE_FORBIDDEN', 'Price override permission is required', false, { line: index + 1 });
     }
+    if (manualPrice !== null && !MONEY_PATTERN.test(manualPrice)) {
+      return failure('INVALID_MONEY', 'Manual unit price must be a non-negative VND amount', false, { line: index + 1 });
+    }
     const manualReason = manualPrice === null ? null : text(input.manualReason, 500, true);
     if (manualPrice !== null && !manualReason) return failure('PRICE_OVERRIDE_REASON_REQUIRED', 'Price override reason is required', false, { line: index + 1 });
     if (manualReason) priceOverrideReason = priceOverrideReason ? `${priceOverrideReason}; ${manualReason}` : manualReason;
 
-    const price = await pricingService.resolvePrice(client, {
+    let price = await pricingService.resolvePrice(client, {
       installationId: requestContext.installationId,
       payload: {
         variantId: input.variantId,
@@ -463,6 +467,18 @@ async function prepareLines(client, { requestContext, header, payload }) {
         manualReason,
       },
     });
+    if (!price.ok && price.code === 'BASE_PRICE_NOT_FOUND' && manualPrice !== null) {
+      price = {
+        ok: true,
+        resolution: {
+          finalUnitPriceMinor: manualPrice,
+          steps: [
+            { kind: 'SKIPPED', reason: 'BASE_PRICE_NOT_FOUND' },
+            { kind: 'MANUAL_OVERRIDE', reason: manualReason, afterUnitPriceMinor: manualPrice },
+          ],
+        },
+      };
+    }
     if (!price.ok) return failure(price.code, price.message, price.retryable, { line: index + 1 });
     const unitPriceMinor = BigInt(price.resolution.finalUnitPriceMinor);
     const grossMinor = halfUp(quantity * unitPriceMinor, SCALE);
@@ -507,7 +523,7 @@ async function prepareLines(client, { requestContext, header, payload }) {
       lineNumber: index + 1,
       variantId: variant.id,
       sku: variant.sku,
-      itemName: variant.name,
+      itemName: variant.product_name,
       unitId: variant.unit_id,
       unitCode: variant.unit_code,
       conversionToBase: formatScaled(conversion),
