@@ -25,7 +25,7 @@ const BUSINESS_MESSAGES = Object.freeze({
   route_sales_ambiguous: "Phân công tuyến đang trùng hoặc chưa xác định được duy nhất một nhân viên.",
   customer_name_required: "Điểm bán chưa có tên.",
   customer_address_required: "Cần bổ sung địa chỉ điểm bán trước khi gửi đề nghị xác minh / mở mã.",
-  core_onboarding_not_submitted: "Điểm bán này chưa được gửi sang Core để xác minh.",
+  core_onboarding_not_submitted: "Điểm bán này chưa được gửi sang Công Ty để xác minh.",
   field_profile_payload_mismatch: "Thông tin điểm bán đã thay đổi sau khi gửi đề nghị. Hãy xử lý đề nghị hiện tại trước khi gửi lại."
 });
 
@@ -275,6 +275,7 @@ export async function listOwnedCoreCustomers(context, options = {}) {
     return Object.freeze(rows.map((row) => Object.freeze({
       id: row.id,
       customerCode: row.customer_code,
+      customerAddressId: text(row.customer_address_id),
       name: row.name,
       phone: text(row.phone),
       email: text(row.email),

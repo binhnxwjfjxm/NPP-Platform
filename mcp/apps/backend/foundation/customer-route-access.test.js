@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   isInstallationOwner,
   listAccessibleCoreCustomerLinks,
+  listAccessibleCoreCustomers,
   listAccessibleRouteCustomers,
   loadAccessibleRouteCustomer
 } from "./customer-route-access.js";
@@ -78,7 +79,7 @@ test("employee loses access when the route assignment changes", async () => {
   );
 });
 
-test("list and linked-customer queries carry the same owner flag and employee route boundary", async () => {
+test("route lists and linked outlet provenance remain route-scoped", async () => {
   const calls = [];
   const client = {
     query: async (sql, params) => {
@@ -95,4 +96,35 @@ test("list and linked-customer queries carry the same owner flag and employee ro
     assert.match(call.sql, /route\.sales/);
     assert.doesNotMatch(call.sql, /rc\.responsible_employee_id\s*=/);
   }
+});
+
+test("canonical Công Ty customers follow responsible employee and choose an active address", async () => {
+  const calls = [];
+  const client = {
+    query: async (sql, params) => {
+      calls.push({ sql, params });
+      return { rows: [] };
+    }
+  };
+  await listAccessibleCoreCustomers(client, context());
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].params, ["installation-a", employeeId, false]);
+  assert.match(calls[0].sql, /customer\.responsible_employee_id = \$2::uuid/);
+  assert.match(calls[0].sql, /LEFT JOIN LATERAL/);
+  assert.match(calls[0].sql, /customer_address\.is_active = true/);
+  assert.match(calls[0].sql, /customer_address\.is_default DESC/);
+});
+
+test("owner can access all canonical Công Ty customers without changing employer", async () => {
+  const calls = [];
+  const client = {
+    query: async (sql, params) => {
+      calls.push({ sql, params });
+      return { rows: [] };
+    }
+  };
+  await listAccessibleCoreCustomers(client, context({ owner: true }));
+  assert.deepEqual(calls[0].params, ["installation-a", employeeId, true]);
+  assert.match(calls[0].sql, /\$3::boolean = true OR customer\.responsible_employee_id = \$2::uuid/);
+  assert.doesNotMatch(calls[0].sql, /UPDATE shared\.customers/);
 });

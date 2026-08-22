@@ -1,20 +1,22 @@
-import { loadCustomerOnboardingQueue } from "@/lib/api/customer-onboarding-data";
+import { loadOwnedCoreCustomers } from "@/lib/api/customer-onboarding-data";
 import { McpCoreOrdersClient } from "./McpCoreOrdersClient";
 
 export async function McpCoreOrdersPage() {
   try {
-    const queue = await loadCustomerOnboardingQueue();
-    const linkedCustomers = queue.filter((item) => (
-      (item.status === "approved" || item.status === "linked_existing")
-      && Boolean(item.coreCustomerId)
-      && Boolean(item.coreCustomerAddressId)
-    ));
-    return <McpCoreOrdersClient linkedCustomers={linkedCustomers} />;
+    const customers = (await loadOwnedCoreCustomers())
+      .filter((item) => item.status === "active" && Boolean(item.customerAddressId))
+      .map((item) => ({
+        customerId: item.id,
+        customerAddressId: item.customerAddressId!,
+        customerCode: item.customerCode,
+        customerName: item.name
+      }));
+    return <McpCoreOrdersClient customers={customers} />;
   } catch (error) {
     return (
       <McpCoreOrdersClient
-        linkedCustomers={[]}
-        initialError={error instanceof Error ? error.message : "Không tải được khách đã liên kết Core"}
+        customers={[]}
+        initialError={error instanceof Error ? error.message : "Không tải được khách Công Ty đủ điều kiện tạo đơn"}
       />
     );
   }

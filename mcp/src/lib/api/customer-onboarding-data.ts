@@ -156,6 +156,7 @@ export async function loadOwnedRouteCustomersData(): Promise<RouteCustomersData>
 export type CoreCustomerItem = {
   id: string;
   customerCode: string;
+  customerAddressId: string | null;
   name: string;
   phone: string | null;
   email: string | null;

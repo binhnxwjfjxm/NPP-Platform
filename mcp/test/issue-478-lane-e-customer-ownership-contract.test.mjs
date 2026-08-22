@@ -6,18 +6,19 @@ function source(path) {
   return readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 }
 
-test("customer ownership is route-derived and opening a Core code never claims an outlet", () => {
+test("field outlet ownership stays route-derived while official customer authority follows Công Ty employer", () => {
   const access = source("apps/backend/foundation/customer-route-access.js");
   const verification = source("apps/backend/foundation/customer-verification.js");
   const directOrders = source("apps/backend/foundation/direct-sales-orders.js");
 
   assert.match(access, /route\.sales/);
   assert.match(access, /mcp\.installation-owner/);
+  assert.match(access, /customer\.responsible_employee_id = \$2::uuid/);
   assert.doesNotMatch(access, /rc\.responsible_employee_id\s*=/);
   assert.doesNotMatch(verification, /SET responsible_employee_id/);
   assert.doesNotMatch(verification, /responsible_employee_id = \$\d/);
+  assert.match(directOrders, /listAccessibleCoreCustomers/);
   assert.match(directOrders, /listAccessibleCoreCustomerLinks/);
-  assert.doesNotMatch(directOrders, /customer\.responsible_employee_id/);
 });
 
 test("Core owner role is propagated as a narrow installation-owner claim", () => {
