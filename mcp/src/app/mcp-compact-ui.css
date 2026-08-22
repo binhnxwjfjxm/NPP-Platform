@@ -100,6 +100,63 @@
   margin-top: 5px;
 }
 
+/* Owner-requested cleanup for the three primary mobile work screens. */
+.app-shell.app-shell[data-active-href="/customers"] .page-header.page-header .page-header-copy > .page-subtitle,
+.app-shell.app-shell[data-active-href="/orders"] .page-header.page-header .page-header-copy > .page-subtitle,
+.app-shell.app-shell[data-active-href="/routes"] .page-header.page-header .page-header-copy > .page-subtitle {
+  display: none;
+}
+
+.app-shell.app-shell[data-active-href="/routes"] [data-app-scroll-region] > .filter-bar.filter-bar {
+  display: none;
+}
+
+.app-shell.app-shell[data-active-href="/routes"] .dashboard-section.dashboard-section > .mcp-status-chips.mcp-status-chips {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.app-shell.app-shell[data-active-href="/routes"] .dashboard-section.dashboard-section > .mcp-status-chips.mcp-status-chips > button {
+  width: 100%;
+  min-width: 0;
+  justify-content: center;
+  text-align: center;
+  white-space: normal;
+}
+
+@media (max-width: 820px) {
+  .app-shell.app-shell[data-active-href="/orders"] [data-app-scroll-region] {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .app-shell.app-shell[data-active-href="/orders"] [data-app-scroll-region] > * {
+    order: 3;
+  }
+
+  .app-shell.app-shell[data-active-href="/orders"] .page-header.page-header {
+    display: contents;
+  }
+
+  .app-shell.app-shell[data-active-href="/orders"] .page-header-copy.page-header-copy {
+    order: 0;
+    margin: 0;
+    padding: 14px 14px 0;
+  }
+
+  .app-shell.app-shell[data-active-href="/orders"] nav[role="tablist"][aria-label="Phân tích và xử lý đơn hàng"] {
+    order: 1;
+    margin: 10px 14px 0;
+  }
+
+  .app-shell.app-shell[data-active-href="/orders"] .page-header-actions.page-header-actions {
+    order: 2;
+    margin: 10px 14px 12px;
+    padding: 0;
+  }
+}
+
 @media (max-width: 640px) {
   .mcp-gate-banner,
   .mcp-session-compact-head {
@@ -109,5 +166,18 @@
   .mcp-gate-banner span,
   .mcp-session-compact-head span {
     text-align: left;
+  }
+
+  .app-shell.app-shell[data-active-href="/routes"] .dashboard-section.dashboard-section > .mcp-status-chips.mcp-status-chips {
+    gap: 6px;
+  }
+
+  .app-shell.app-shell[data-active-href="/routes"] .dashboard-section.dashboard-section > .mcp-status-chips.mcp-status-chips > button {
+    min-height: 52px;
+    flex-wrap: wrap;
+    align-content: center;
+    padding: 6px 4px;
+    font-size: 11px;
+    line-height: 1.12;
   }
 }
