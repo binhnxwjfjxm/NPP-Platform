@@ -937,7 +937,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                 <div className={styles.skuResults} role="listbox">
                   {skuResults.map((option, index) => (
                     <button type="button" key={option.id} className={index === activeSkuIndex ? styles.skuResultActive : styles.skuResult} disabled={!option.eligibility.selectable} onMouseDown={(event) => event.preventDefault()} onClick={() => void addSku(option)}>
-                      <div><strong>{option.sku} — {option.variantName}</strong><span>{option.productCode} · {option.productName}</span></div>
+                      <div><strong>{option.productName}</strong><span>{option.productCode} · {option.sku} · {option.variantName}</span></div>
                       <div><b>{option.unitCode ?? 'Chưa có ĐVT'}</b>{option.barcode && <small>{option.barcode}</small>}<small className={option.eligibility.selectable ? styles.eligible : styles.ineligible}>{option.eligibility.message}</small></div>
                     </button>
                   ))}
