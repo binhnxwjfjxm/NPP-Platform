@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CustomerOnboardingQueueItem } from "@/features/accounts/customer-onboarding.types";
 import { createIdempotencyKey, idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
 import { BottomSheet } from "@/ui/overlay/BottomSheet";
 import {
@@ -13,6 +12,20 @@ import catalogStyles from "./OrderCatalogQuick.module.css";
 import styles from "./OrderCreateSheet.module.css";
 
 type MobilePanel = "customer" | "catalog" | "cart";
+
+export type OrderCustomerItem = {
+  id: string;
+  customerCode: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  status: string;
+  responsibleEmployeeId: string | null;
+  defaultAddressId: string | null;
+  defaultAddressLabel: string | null;
+  defaultAddressLine1: string | null;
+  updatedAt: string | null;
+};
 
 type ProductCatalogItem = {
   productId: string;
@@ -40,7 +53,7 @@ type ProductGroup = {
 type OrderDraftItem = ProductCatalogItem & { quantity: number };
 type SubmissionRef = { fingerprint: string; key: string };
 
-type CoreOrderResult = {
+type CompanyOrderResult = {
   id?: string | null;
   number?: string | null;
 };
@@ -78,7 +91,7 @@ function catalogPrice(value: unknown) {
 }
 
 function catalogPriceLabel(value?: number | null) {
-  return value === null || value === undefined ? "Core phân giải giá" : money.format(value);
+  return value === null || value === undefined ? "Công Ty xác định giá" : money.format(value);
 }
 
 function normalizeCatalogItems(value: unknown): ProductCatalogItem[] {
@@ -171,11 +184,11 @@ function groupCatalog(products: ProductCatalogItem[]): ProductGroup[] {
     .sort(compareCatalogProducts);
 }
 
-function uniqueLinkedCustomers(customers: CustomerOnboardingQueueItem[]) {
-  const unique = new Map<string, CustomerOnboardingQueueItem>();
+function uniqueOrderCustomers(customers: OrderCustomerItem[]) {
+  const unique = new Map<string, OrderCustomerItem>();
   for (const customer of customers) {
-    if (!customer.coreCustomerId || !customer.coreCustomerAddressId) continue;
-    const key = `${customer.coreCustomerId}:${customer.coreCustomerAddressId}`;
+    if (customer.status !== "active" || !customer.id || !customer.defaultAddressId) continue;
+    const key = `${customer.id}:${customer.defaultAddressId}`;
     if (!unique.has(key)) unique.set(key, customer);
   }
   return [...unique.values()];
@@ -183,12 +196,12 @@ function uniqueLinkedCustomers(customers: CustomerOnboardingQueueItem[]) {
 
 export function CoreOrderCreateSheet({
   open,
-  linkedCustomers,
+  customers: availableCustomers,
   onClose,
   onCreated
 }: {
   open: boolean;
-  linkedCustomers: CustomerOnboardingQueueItem[];
+  customers: OrderCustomerItem[];
   onClose: () => void;
   onCreated: (orderCode: string) => void;
 }) {
@@ -198,7 +211,7 @@ export function CoreOrderCreateSheet({
   const submissionRef = useRef<SubmissionRef | null>(null);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("customer");
   const [customerSearch, setCustomerSearch] = useState("");
-  const [routeCustomerId, setRouteCustomerId] = useState("");
+  const [customerId, setCustomerId] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [productCategory, setProductCategory] = useState("");
   const [productBrand, setProductBrand] = useState("");
@@ -213,16 +226,16 @@ export function CoreOrderCreateSheet({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const customers = useMemo(() => uniqueLinkedCustomers(linkedCustomers), [linkedCustomers]);
+  const customers = useMemo(() => uniqueOrderCustomers(availableCustomers), [availableCustomers]);
   const filteredCustomers = useMemo(() => {
     const query = normalizeText(customerSearch);
     if (!query) return customers;
     return customers.filter((customer) => normalizeText(
-      `${customer.customerName} ${customer.phone || ""} ${customer.area || ""} ${customer.routeName || ""} ${customer.coreCustomerCode || ""}`
+      `${customer.name} ${customer.phone || ""} ${customer.customerCode || ""} ${customer.defaultAddressLabel || ""} ${customer.defaultAddressLine1 || ""}`
     ).includes(query));
   }, [customerSearch, customers]);
-  const selectedCustomer = customers.find((customer) => customer.routeCustomerId === routeCustomerId) || null;
-  const customerReady = Boolean(selectedCustomer?.coreCustomerId && selectedCustomer.coreCustomerAddressId);
+  const selectedCustomer = customers.find((customer) => customer.id === customerId) || null;
+  const customerReady = Boolean(selectedCustomer?.id && selectedCustomer.defaultAddressId);
   const productGroups = useMemo(() => groupCatalog(products), [products]);
   const categorySections = useMemo(() => groupCatalogCategories(categoryOptions), [categoryOptions]);
   const selectedQuantityByVariant = useMemo(() => new Map(items.map((item) => [item.variantId, item.quantity])), [items]);
@@ -232,7 +245,7 @@ export function CoreOrderCreateSheet({
   const totalLabel = items.length === 0
     ? money.format(0)
     : hasUnknownPrice
-      ? "Giá do Core quyết định"
+      ? "Giá do Công Ty quyết định"
       : `Tham khảo ${money.format(estimatedTotal)}`;
   const readyToSubmit = customerReady && items.length > 0 && mobilePanel === "cart";
 
@@ -249,7 +262,7 @@ export function CoreOrderCreateSheet({
         headers: { Accept: "application/json" }
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(apiErrorMessage(payload, "Không tải được sản phẩm Core"));
+      if (!response.ok) throw new Error(apiErrorMessage(payload, "Không tải được sản phẩm Công Ty"));
       const nextProducts = normalizeCatalogItems((payload as { data?: unknown }).data);
       if (requestId !== productRequestRef.current) return;
       setProducts(nextProducts);
@@ -258,7 +271,7 @@ export function CoreOrderCreateSheet({
     } catch (error) {
       if (requestId !== productRequestRef.current) return;
       setProducts([]);
-      setProductError(error instanceof Error ? error.message : "Không tải được sản phẩm Core");
+      setProductError(error instanceof Error ? error.message : "Không tải được sản phẩm Công Ty");
     } finally {
       if (requestId === productRequestRef.current) setLoadingProducts(false);
     }
@@ -276,7 +289,7 @@ export function CoreOrderCreateSheet({
     }
     setMobilePanel("customer");
     setCustomerSearch("");
-    setRouteCustomerId("");
+    setCustomerId("");
     setProductSearch("");
     setProductCategory("");
     setProductBrand("");
@@ -309,7 +322,7 @@ export function CoreOrderCreateSheet({
 
   function addProduct(product: ProductCatalogItem) {
     if (!customerReady) {
-      setMessage("Chọn khách công ty trước khi thêm sản phẩm.");
+      setMessage("Chọn khách Công Ty trước khi thêm sản phẩm.");
       setMobilePanel("customer");
       return;
     }
@@ -353,7 +366,7 @@ export function CoreOrderCreateSheet({
 
   function requestPanel(nextPanel: MobilePanel) {
     if (nextPanel === "catalog" && !customerReady) {
-      setMessage("Bước 1: chọn một khách công ty đã mở mã.");
+      setMessage("Bước 1: chọn khách Công Ty.");
       setMobilePanel("customer");
       return;
     }
@@ -373,15 +386,15 @@ export function CoreOrderCreateSheet({
 
   function requestClose() {
     if (saving) return;
-    const hasDraft = Boolean(routeCustomerId || items.length || note.trim());
+    const hasDraft = Boolean(customerId || items.length || note.trim());
     if (hasDraft && !window.confirm("Đơn đang nhập chưa lưu. Đóng và bỏ nội dung này?")) return;
     onClose();
   }
 
   async function submit() {
     if (saving || submitInFlightRef.current) return;
-    if (!selectedCustomer?.coreCustomerId || !selectedCustomer.coreCustomerAddressId) {
-      setMessage("Chỉ tạo đơn cho khách đã mở / liên kết mã công ty.");
+    if (!selectedCustomer?.id || !selectedCustomer.defaultAddressId) {
+      setMessage("Chỉ tạo đơn cho khách Công Ty đang hoạt động và có địa chỉ giao hàng.");
       setMobilePanel("customer");
       return;
     }
@@ -397,8 +410,8 @@ export function CoreOrderCreateSheet({
     }
 
     const body = {
-      customerId: selectedCustomer.coreCustomerId,
-      customerAddressId: selectedCustomer.coreCustomerAddressId,
+      customerId: selectedCustomer.id,
+      customerAddressId: selectedCustomer.defaultAddressId,
       note: note.trim() || undefined,
       lines: items.map((item) => ({
         variantId: item.variantId,
@@ -431,15 +444,15 @@ export function CoreOrderCreateSheet({
           key: submissionRef.current.key
         }
       );
-      const payload = await response.json().catch(() => ({})) as { data?: CoreOrderResult; error?: unknown; detail?: string };
-      if (!response.ok) throw new Error(apiErrorMessage(payload, "Không tạo được đơn bán hàng Core"));
-      const orderCode = payload.data?.number || payload.data?.id || "đơn Core";
+      const payload = await response.json().catch(() => ({})) as { data?: CompanyOrderResult; error?: unknown; detail?: string };
+      if (!response.ok) throw new Error(apiErrorMessage(payload, "Không tạo được đơn bán hàng Công Ty"));
+      const orderCode = payload.data?.number || payload.data?.id || "đơn Công Ty";
       submissionRef.current = null;
       setItems([]);
       setNote("");
       onCreated(orderCode);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Không tạo được đơn bán hàng Core");
+      setMessage(error instanceof Error ? error.message : "Không tạo được đơn bán hàng Công Ty");
       setMobilePanel("cart");
     } finally {
       submitInFlightRef.current = false;
@@ -449,7 +462,7 @@ export function CoreOrderCreateSheet({
 
   function runPrimaryAction() {
     if (!customerReady) {
-      setMessage("Bước 1: chọn một khách công ty đã mở mã.");
+      setMessage("Bước 1: chọn khách Công Ty.");
       setMobilePanel("customer");
       return;
     }
@@ -466,7 +479,7 @@ export function CoreOrderCreateSheet({
     void submit();
   }
 
-  const customerDescription = selectedCustomer?.customerName || "Chưa chọn khách";
+  const customerDescription = selectedCustomer?.name || "Chưa chọn khách";
   const primaryLabel = !customerReady
     ? "Chọn khách"
     : items.length === 0
@@ -475,7 +488,7 @@ export function CoreOrderCreateSheet({
         ? "Tạo đơn"
         : "Xem lại đơn";
   const footerHint = message || (!customerReady
-    ? "Chỉ chọn khách công ty đã mở mã"
+    ? "Chọn khách Công Ty được phép bán"
     : items.length === 0
       ? "Đã chọn khách · chọn sản phẩm"
       : `${items.length} dòng · ${totalQuantity} sản phẩm`);
@@ -519,46 +532,46 @@ export function CoreOrderCreateSheet({
         <div className={styles.leftPane}>
           <section className={`${styles.section} ${styles.customerSection}`}>
             <div className={styles.sectionHead}>
-              <div><strong>1. Chọn khách công ty</strong><small>Chỉ khách đã mở hoặc liên kết mã mới được tạo đơn</small></div>
+              <div><strong>1. Chọn khách Công Ty</strong><small>Khách đang hoạt động, có địa chỉ và thuộc phạm vi được phép bán</small></div>
               {customerReady ? <span className={styles.selectionBadge}>Đã chọn</span> : null}
             </div>
 
             <div className={styles.customerPicker}>
               <label className={styles.compactField}>
-                <span>Tìm khách công ty</span>
-                <input value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder="Tên, SĐT, khu vực hoặc mã khách" disabled={saving} />
+                <span>Tìm khách Công Ty</span>
+                <input value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder="Tên, SĐT, địa chỉ hoặc mã khách" disabled={saving} />
               </label>
 
               {selectedCustomer ? (
                 <div className={styles.selectedCustomerSummary} aria-live="polite">
                   <span aria-hidden="true">✓</span>
-                  <div><strong>{selectedCustomer.customerName}</strong><small>{selectedCustomer.coreCustomerCode || "Đã liên kết"} · {selectedCustomer.routeName || "MCP"}</small></div>
-                  <button type="button" onClick={() => setRouteCustomerId("")} disabled={saving}>Đổi</button>
+                  <div><strong>{selectedCustomer.name}</strong><small>{selectedCustomer.customerCode || "Khách Công Ty"} · {selectedCustomer.defaultAddressLabel || selectedCustomer.defaultAddressLine1 || "Địa chỉ giao hàng"}</small></div>
+                  <button type="button" onClick={() => setCustomerId("")} disabled={saving}>Đổi</button>
                 </div>
               ) : null}
 
-              <div className={styles.customerList} role="radiogroup" aria-label="Chọn một khách công ty" data-order-customer-list>
-                {customers.length === 0 ? <p className={styles.emptyState}>Chưa có khách công ty. Mở / liên kết mã ở tab Khách trước khi tạo đơn.</p> : null}
+              <div className={styles.customerList} role="radiogroup" aria-label="Chọn một khách Công Ty" data-order-customer-list>
+                {customers.length === 0 ? <p className={styles.emptyState}>Chưa có khách Công Ty đủ điều kiện. Kiểm tra khách đang hoạt động và có địa chỉ giao hàng.</p> : null}
                 {customers.length > 0 && filteredCustomers.length === 0 ? <p className={styles.emptyState}>Không có khách phù hợp với từ khóa.</p> : null}
                 {filteredCustomers.map((customer) => (
                   <button
                     type="button"
                     role="radio"
-                    aria-checked={routeCustomerId === customer.routeCustomerId}
-                    key={customer.routeCustomerId}
-                    className={routeCustomerId === customer.routeCustomerId ? styles.selectedCustomer : ""}
+                    aria-checked={customerId === customer.id}
+                    key={customer.id}
+                    className={customerId === customer.id ? styles.selectedCustomer : ""}
                     onClick={() => {
-                      setRouteCustomerId(customer.routeCustomerId);
+                      setCustomerId(customer.id);
                       setMessage(null);
                       submissionRef.current = null;
                     }}
                     disabled={saving}
                   >
-                    <span className={styles.customerRadio} aria-hidden="true">{routeCustomerId === customer.routeCustomerId ? "✓" : ""}</span>
+                    <span className={styles.customerRadio} aria-hidden="true">{customerId === customer.id ? "✓" : ""}</span>
                     <span className={styles.customerCopy}>
-                      <strong>{customer.customerName}</strong>
-                      <span>{customer.phone || "Chưa có SĐT"} · {customer.area || "Chưa có khu vực"}</span>
-                      <small>{customer.coreCustomerCode || "Đã liên kết"} · {customer.routeName || "MCP"}</small>
+                      <strong>{customer.name}</strong>
+                      <span>{customer.phone || "Chưa có SĐT"} · {customer.defaultAddressLabel || customer.defaultAddressLine1 || "Địa chỉ giao hàng"}</span>
+                      <small>{customer.customerCode || "Khách Công Ty"} · Công Ty</small>
                     </span>
                   </button>
                 ))}
@@ -566,7 +579,7 @@ export function CoreOrderCreateSheet({
 
               <div className={styles.customerPickerFooter} data-order-customer-footer>
                 <button className={`${styles.customerContinue} button primary`} type="button" onClick={() => requestPanel("catalog")} disabled={!customerReady || saving}>
-                  Tiếp tục với {selectedCustomer?.customerName || "khách đã chọn"}
+                  Tiếp tục với {selectedCustomer?.name || "khách đã chọn"}
                 </button>
               </div>
             </div>
@@ -734,7 +747,7 @@ export function CoreOrderCreateSheet({
                       </div>
                     </div>
                     <div className={styles.lineTotal}><span>Giá tham khảo</span><strong>{catalogPriceLabel(item.price)}</strong></div>
-                    <div className={styles.lineTotal}><span>Tạm tính</span><strong>{item.price === null || item.price === undefined ? "Core quyết định" : money.format(item.price * item.quantity)}</strong></div>
+                    <div className={styles.lineTotal}><span>Tạm tính</span><strong>{item.price === null || item.price === undefined ? "Công Ty quyết định" : money.format(item.price * item.quantity)}</strong></div>
                   </div>
                 </article>
               ))}
@@ -742,7 +755,7 @@ export function CoreOrderCreateSheet({
           </section>
 
           <section className={`${styles.section} ${styles.finalSection}`}>
-            <div className={styles.sectionHead}><div><strong>3. Hoàn tất</strong><small>Core tự quyết định giá và chính sách thương mại</small></div></div>
+            <div className={styles.sectionHead}><div><strong>3. Hoàn tất</strong><small>Công Ty tự quyết định giá và chính sách thương mại</small></div></div>
             <label className={styles.compactField}><span>Ghi chú đơn</span><textarea value={note} onChange={(event) => setNote(event.target.value)} disabled={saving} /></label>
             {message && mobilePanel === "cart" ? <p className={styles.message}>{message}</p> : null}
           </section>
