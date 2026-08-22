@@ -1,31 +1,83 @@
 import Link from 'next/link';
+import { createIdempotencyKey } from '@npp/contracts';
 import { notFound } from 'next/navigation';
 import { AdminShell } from '../../admin-shell';
-import { approvalDomainLabel, approvalFixtures, approvalStateLabel } from '../approval-fixtures';
+import { CoreApiError } from '../../../lib/core-api';
+import { decideProposal } from '../actions';
+import {
+  formatProposalDateTime,
+  loadProposal,
+  proposalDomainLabel,
+  proposalSourceLabel,
+  proposalStateLabel,
+  proposalWaitingAge,
+} from '../proposal-data';
 
-export default function ApprovalDetailPage({ params }: { params: { approvalId: string } }) {
-  const item = approvalFixtures.find((candidate) => candidate.id === params.approvalId);
-  if (!item) notFound();
+export default async function ApprovalDetailPage({ params }: { params: { approvalId: string } }) {
+  let item;
+  try {
+    item = await loadProposal(params.approvalId);
+  } catch (error) {
+    if (error instanceof CoreApiError && error.statusCode === 404) notFound();
+    return (
+      <AdminShell activeSection="approvals" title="Chi tiết đề xuất" subtitle="Xem đầy đủ tác động, điều kiện và bằng chứng trước khi ra quyết định.">
+        <Link className="approvalBackLink" href="/approvals">← Quay lại danh sách</Link>
+        <div className="card approvalEmpty" role="status"><strong>Chưa tải được đề xuất.</strong><span>Vui lòng thử lại.</span></div>
+      </AdminShell>
+    );
+  }
+
+  const decisionKey = createIdempotencyKey('admin-proposal-decision');
 
   return (
     <AdminShell activeSection="approvals" title="Chi tiết đề xuất" subtitle="Xem đầy đủ tác động, điều kiện và bằng chứng trước khi ra quyết định.">
       <Link className="approvalBackLink" href="/approvals">← Quay lại danh sách</Link>
-      <p className="adminPreviewNotice">Dữ liệu minh họa. Các hành động quyết định chưa được mở.</p>
       <article className="approvalDetailHero card">
-        <div className="approvalListTopline"><span className={`approvalPriority is-${item.priority}`}>{item.priority === 'critical' ? 'Ưu tiên cao' : item.priority === 'high' ? 'Cần xử lý sớm' : 'Bình thường'}</span><span className={`approvalState is-${item.state}`}>{approvalStateLabel[item.state]}</span></div>
-        <p className="approvalDetailDomain">{approvalDomainLabel[item.domain]} · {item.source}</p>
+        <div className="approvalListTopline">
+          <span className={`approvalPriority is-${item.priority}`}>{item.priority === 'critical' ? 'Ưu tiên cao' : item.priority === 'high' ? 'Cần xử lý sớm' : 'Bình thường'}</span>
+          <span className={`approvalState is-${item.status}`}>{proposalStateLabel[item.status]}</span>
+        </div>
+        <p className="approvalDetailDomain">{proposalDomainLabel[item.domain]} · {proposalSourceLabel[item.source]}</p>
         <h2>{item.title}</h2>
         <strong className="approvalDetailImpact">{item.impact}</strong>
-        <p>{item.entity}</p>
+        <p>{item.entityLabel}</p>
       </article>
 
       <section className="approvalDetailSection card"><h3>Lý do đề xuất</h3><p>{item.reason}</p></section>
       <section className="approvalDetailSection card"><h3>Điều kiện liên quan</h3><p>{item.rule}</p></section>
-      <section className="approvalDetailSection card"><h3>Dữ liệu và bằng chứng</h3><div className="approvalEvidenceList">{item.evidence.map((entry) => <div key={entry}>{entry}</div>)}</div></section>
-      <section className="approvalDetailSection card"><h3>Người gửi & thời gian</h3><dl className="approvalDefinitionList"><div><dt>Người gửi</dt><dd>{item.requester}</dd></div><div><dt>Nguồn</dt><dd>{item.source}</dd></div><div><dt>Gửi lúc</dt><dd>{item.submittedAt}</dd></div><div><dt>Thời gian chờ</dt><dd>{item.waitingAge}</dd></div></dl></section>
-      <section className="approvalDetailSection card"><h3>Lịch sử</h3><div className="approvalTimeline">{item.history.map((event) => <div key={`${event.time}-${event.label}`}><span>{event.time}</span><strong>{event.label}</strong><small>{event.actor}</small></div>)}</div></section>
+      <section className="approvalDetailSection card"><h3>Dữ liệu và bằng chứng</h3><div className="approvalEvidenceList">{item.evidence.length ? item.evidence.map((entry) => <div key={entry}>{entry}</div>) : <div>Chưa có bằng chứng bổ sung.</div>}</div></section>
+      <section className="approvalDetailSection card">
+        <h3>Người gửi & thời gian</h3>
+        <dl className="approvalDefinitionList">
+          <div><dt>Người gửi</dt><dd>{item.requesterName}</dd></div>
+          <div><dt>Nguồn</dt><dd>{proposalSourceLabel[item.source]}</dd></div>
+          <div><dt>Gửi lúc</dt><dd>{formatProposalDateTime(item.createdAt)}</dd></div>
+          <div><dt>Thời gian chờ</dt><dd>{proposalWaitingAge(item)}</dd></div>
+        </dl>
+      </section>
+      {item.decisionNote ? <section className="approvalDetailSection card"><h3>Ghi chú quyết định</h3><p>{item.decisionNote}</p></section> : null}
+      <section className="approvalDetailSection card">
+        <h3>Lịch sử</h3>
+        <div className="approvalTimeline">
+          {item.history.length ? item.history.map((event) => (
+            <div key={event.id}><span>{formatProposalDateTime(event.occurredAt)}</span><strong>{proposalStateLabel[event.toStatus]}</strong><small>{event.actorLabel}{event.note ? ` · ${event.note}` : ''}</small></div>
+          )) : <div><span>—</span><strong>Chưa có lịch sử bổ sung</strong><small>Đề xuất đang được theo dõi.</small></div>}
+        </div>
+      </section>
 
-      {item.state === 'pending' ? <section className="approvalDecisionBar" aria-label="Hành động quyết định"><button type="button" disabled>Đồng ý</button><button type="button" disabled>Yêu cầu bổ sung</button><button type="button" disabled>Từ chối</button><small>Các hành động sẽ được mở khi luồng xử lý chính thức sẵn sàng.</small></section> : null}
+      {item.status === 'pending' ? (
+        <form action={decideProposal} className="approvalDecisionBar" aria-label="Hành động quyết định">
+          <input type="hidden" name="proposalId" value={item.id} />
+          <input type="hidden" name="idempotencyKey" value={decisionKey} />
+          <label style={{ display: 'grid', gap: '.35rem', flex: '1 1 100%' }}>
+            <span>Ghi chú quyết định</span>
+            <textarea name="note" rows={3} maxLength={2000} placeholder="Bắt buộc khi yêu cầu bổ sung hoặc từ chối" />
+          </label>
+          <button type="submit" name="decision" value="approved">Đồng ý</button>
+          <button type="submit" name="decision" value="needs-info">Yêu cầu bổ sung</button>
+          <button type="submit" name="decision" value="rejected">Từ chối</button>
+        </form>
+      ) : null}
     </AdminShell>
   );
 }

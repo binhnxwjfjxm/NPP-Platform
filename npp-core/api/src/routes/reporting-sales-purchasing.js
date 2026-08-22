@@ -14,6 +14,7 @@ import { agingReport, grossMarginReport } from './reporting-finance.js';
 import { employeeMcpReport, resolveEmployeeMcpScope } from './reporting-employee-mcp.js';
 import { adminAlertsReport, mcpSupervisionReport } from './reporting-mcp-alerts.js';
 import { handleAdminAlertMutation } from './reporting-admin-alert-mutations.js';
+import { handleManagementProposalRoutes } from './management-proposals.js';
 import { logisticsReport } from './reporting-logistics.js';
 import { codReport } from './reporting-cod.js';
 import {
@@ -193,6 +194,8 @@ async function resolveMcpFieldScope(res, options, requestContext) {
 }
 
 export async function handleReportingRoutes(req, res, options) {
+  if (await handleManagementProposalRoutes(req, res, options)) return true;
+
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   const family = reportingFamily(url.pathname);
   if (!family) return false;
