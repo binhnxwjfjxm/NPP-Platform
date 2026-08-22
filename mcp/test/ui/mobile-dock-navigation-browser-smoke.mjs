@@ -101,7 +101,7 @@ try {
 
   await page.evaluate(() => { window.__mcpNavigationMarker = "same-document"; });
   await routeDock.dock.getByRole("link", { name: "Khách", exact: true }).click();
-  await page.waitForURL((url) => url.pathname === "/customers");
+  await page.waitForFunction(() => window.location.pathname === "/customers");
   assert.equal(
     await page.evaluate(() => window.__mcpNavigationMarker),
     "same-document",
