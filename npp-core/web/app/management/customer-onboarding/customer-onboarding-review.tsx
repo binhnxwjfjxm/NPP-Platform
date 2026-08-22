@@ -12,10 +12,18 @@ import type {
 import type { Customer, CustomerAddress } from '../../../lib/customer-types';
 import styles from './customer-onboarding-review.module.css';
 
+export type CustomerOnboardingSourcePresentation = {
+  channelLabel: string;
+  broughtByLabel: string;
+  outletLabel: string | null;
+  reasonLabel: string;
+};
+
 type Props = {
   requests: CustomerOnboardingRequestSummary[];
   customers: Customer[];
   portalOptions: CustomerPortalActivationOptions;
+  sourcePresentationByRequest: Record<string, CustomerOnboardingSourcePresentation>;
 };
 
 type Feedback = { kind: 'success' | 'error'; text: string } | null;
@@ -79,7 +87,12 @@ function defaultSalesChannelId(options: CustomerPortalActivationOptions): string
   return options.salesChannels.length === 1 ? options.salesChannels[0].id : '';
 }
 
-export default function CustomerOnboardingReview({ requests, customers, portalOptions }: Props) {
+export default function CustomerOnboardingReview({
+  requests,
+  customers,
+  portalOptions,
+  sourcePresentationByRequest,
+}: Props) {
   const router = useRouter();
   const actionKeys = useRef<Record<string, string>>({});
   const busyRequests = useRef<Set<string>>(new Set());
@@ -258,13 +271,19 @@ export default function CustomerOnboardingReview({ requests, customers, portalOp
           const address = request.proposedCustomer.address;
           const isPortal = request.sourceSystem === 'CUSTOMER_PORTAL';
           const businessType = isPortal ? portalBusinessType(request) : '';
+          const sourcePresentation = sourcePresentationByRequest[request.id] || {
+            channelLabel: isPortal ? 'Ordering · Khách trực tiếp' : 'MCP Field',
+            broughtByLabel: isPortal ? 'Khách tự đăng ký' : 'Nhân viên MCP',
+            outletLabel: isPortal ? null : request.proposedCustomer.name,
+            reasonLabel: isPortal ? 'Đăng ký tài khoản đặt hàng' : 'Đề nghị mở / liên kết mã khách hàng',
+          };
           const isBusy = busyByRequest[request.id] === true;
           const addressLoading = addressLoadingByRequest[request.id] === true;
           return (
             <article className={styles.card} key={request.id}>
               <header className={styles.cardHeader}>
                 <div>
-              <h2><BusinessSequenceNumber rowIndex={rowIndex} /> {request.proposedCustomer.name}</h2>
+                  <h2><BusinessSequenceNumber rowIndex={rowIndex} /> {request.proposedCustomer.name}</h2>
                   <p>{request.proposedCustomer.phone || 'Chưa có số điện thoại'}</p>
                 </div>
                 <span className={styles.badge}>{statusLabel(request.status)}</span>
@@ -272,17 +291,11 @@ export default function CustomerOnboardingReview({ requests, customers, portalOp
 
               <dl className={styles.details}>
                 <div><dt>Địa chỉ</dt><dd>{[address.addressLine1, address.ward, address.district, address.province].filter(Boolean).join(', ')}</dd></div>
-                {isPortal ? (
-                  <>
-                    <div><dt>Nguồn</dt><dd>Ứng dụng khách hàng</dd></div>
-                    {businessType ? <div><dt>Mô hình quán</dt><dd>{businessType}</dd></div> : null}
-                  </>
-                ) : (
-                  <>
-                    <div><dt>Điểm bán nguồn</dt><dd>{request.sourceOutletId}</dd></div>
-                    <div><dt>Nhu cầu mua hàng</dt><dd>{request.sourceDemandReference}</dd></div>
-                  </>
-                )}
+                <div><dt>Nguồn</dt><dd>{sourcePresentation.channelLabel}</dd></div>
+                <div><dt>Người đưa về</dt><dd>{sourcePresentation.broughtByLabel}</dd></div>
+                {sourcePresentation.outletLabel ? <div><dt>Điểm bán</dt><dd>{sourcePresentation.outletLabel}</dd></div> : null}
+                <div><dt>Lý do gửi</dt><dd>{sourcePresentation.reasonLabel}</dd></div>
+                {businessType ? <div><dt>Mô hình quán</dt><dd>{businessType}</dd></div> : null}
                 <div><dt>Cập nhật</dt><dd>{formatUpdatedAt(request.updatedAt)}</dd></div>
                 {request.reviewReason ? <div><dt>Lý do gần nhất</dt><dd>{request.reviewReason}</dd></div> : null}
               </dl>

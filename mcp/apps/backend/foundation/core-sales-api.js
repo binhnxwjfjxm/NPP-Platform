@@ -9,6 +9,8 @@ const MAX_JSON_BODY_BYTES = 256 * 1024;
 const MAX_VERIFIED_VARIANTS = 50;
 const VARIANT_CHECK_CONCURRENCY = 5;
 const CATALOG_PRICE_CONCURRENCY = 4;
+const CATALOG_PAGE_SIZE = 50;
+const MAX_CATALOG_PAGES = 200;
 const CORE_SALES_READ_PERMISSION = "mcp.sales-order.read";
 const CORE_SALES_CREATE_PERMISSION = "mcp.sales-order.create";
 
@@ -121,18 +123,45 @@ async function mapCatalogOptions(options, context, config, fetchImpl) {
   });
 }
 
+async function loadCompleteCatalog(search, context, config, fetchImpl) {
+  const unique = new Map();
+  let offset = 0;
+  for (let page = 0; page < MAX_CATALOG_PAGES; page += 1) {
+    const batch = await searchCoreSalesSkus(search, context, config, {
+      fetchImpl,
+      limit: CATALOG_PAGE_SIZE,
+      offset
+    });
+    for (const item of batch) {
+      const key = String(item?.id || "").trim() || `${item?.productId || ""}:${item?.sku || ""}`;
+      if (!unique.has(key)) unique.set(key, item);
+    }
+    if (batch.length < CATALOG_PAGE_SIZE) return [...unique.values()];
+    offset += batch.length;
+  }
+  const error = new Error("core_sales_catalog_pagination_exceeded");
+  error.code = "core_sales_catalog_pagination_exceeded";
+  error.statusCode = 502;
+  error.publicMessage = "Danh mục sản phẩm Công Ty quá lớn để tải đầy đủ.";
+  error.publicRetryable = false;
+  throw error;
+}
+
 async function searchProducts(url, context, config, fetchImpl) {
   authorizeCoreSales(context, config, CORE_SALES_READ_PERMISSION);
-  const options = await searchCoreSalesSkus(
-    url.searchParams.get("q") || url.searchParams.get("search") || "",
-    context,
-    config,
-    {
-      fetchImpl,
-      limit: boundedLimit(url.searchParams.get("limit")),
-      offset: Math.max(0, Number(url.searchParams.get("offset")) || 0)
-    }
-  );
+  const search = url.searchParams.get("q") || url.searchParams.get("search") || "";
+  const options = url.searchParams.get("catalog") === "all"
+    ? await loadCompleteCatalog(search, context, config, fetchImpl)
+    : await searchCoreSalesSkus(
+      search,
+      context,
+      config,
+      {
+        fetchImpl,
+        limit: boundedLimit(url.searchParams.get("limit")),
+        offset: Math.max(0, Number(url.searchParams.get("offset")) || 0)
+      }
+    );
   return response(await mapCatalogOptions(options, context, config, fetchImpl));
 }
 
