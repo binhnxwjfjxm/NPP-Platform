@@ -66,7 +66,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams?: {
       {proposals ? (
         <section className="approvalList" aria-label="Danh sách đề xuất">
           {items.length ? items.map((item) => (
-            <Link key={item.id} className="card approvalListItem" href={`/approvals/${encodeURIComponent(item.id)}`}>
+            <Link key={item.id} className="card approvalListItem" href={`/approvals/${item.id}`}>
               <div className="approvalListTopline">
                 <span className={`approvalPriority is-${item.priority}`}>{priorityLabel(item.priority)}</span>
                 <span className={`approvalState is-${item.status}`}>{proposalStateLabel[item.status]}</span>
