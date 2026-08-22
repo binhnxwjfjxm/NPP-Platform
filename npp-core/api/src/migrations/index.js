@@ -94,6 +94,7 @@ const SALES_ORDER_EXECUTION_CLOSE_FULFILLMENT_SQL = readFileSync(new URL('../../
 const SALES_ORDER_EXECUTION_CLOSE_PARTIAL_RELEASE_SQL = readFileSync(new URL('../../../../database/migrations/sales/104_sales_order_execution_close_partial_release.sql', import.meta.url), 'utf8');
 const BUSINESS_PURGE_REMAINING_OPERATIONAL_GUARDS_SQL = readFileSync(new URL('../../../../database/migrations/shared/105_business_purge_remaining_operational_guards.sql', import.meta.url), 'utf8');
 const BUSINESS_PURGE_DOCUMENT_NUMBER_ALLOCATIONS_SQL = readFileSync(new URL('../../../../database/migrations/shared/106_business_purge_document_number_allocations.sql', import.meta.url), 'utf8');
+const MANAGEMENT_PROPOSALS_SQL = readFileSync(new URL('../../../../database/migrations/shared/108_management_proposals.sql', import.meta.url), 'utf8');
 
 export const CORE_API_MIGRATIONS = Object.freeze([
   ...CORE_API_MIGRATIONS_THROUGH_045,
@@ -158,6 +159,7 @@ export const CORE_API_MIGRATIONS = Object.freeze([
   Object.freeze({ id: '104_sales_order_execution_close_partial_release', sql: SALES_ORDER_EXECUTION_CLOSE_PARTIAL_RELEASE_SQL }),
   Object.freeze({ id: '105_business_purge_remaining_operational_guards', sql: BUSINESS_PURGE_REMAINING_OPERATIONAL_GUARDS_SQL }),
   Object.freeze({ id: '106_business_purge_document_number_allocations', sql: BUSINESS_PURGE_DOCUMENT_NUMBER_ALLOCATIONS_SQL }),
+  Object.freeze({ id: '108_management_proposals', sql: MANAGEMENT_PROPOSALS_SQL }),
 ]);
 
 export { runMigrations };
