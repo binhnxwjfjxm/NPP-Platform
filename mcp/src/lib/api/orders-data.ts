@@ -5,7 +5,6 @@ import { backendReadRows } from "@/lib/api/backend-read";
 import type { ApiResult, OrderDto } from "@/lib/api/api.types";
 
 type Row = Record<string, unknown>;
-
 type OrderItemAggregate = {
   skuCount: number;
   quantity: number;
@@ -52,18 +51,21 @@ function aggregateOrderItems(rows: Row[]) {
 }
 
 export async function loadOrdersResult(): Promise<ApiResult<OrderDto[]>> {
-  const [orderRowsRaw, itemRows] = await Promise.all([
-    backendReadRows<Row>("orders", {
-      order: "order_date.desc,created_at.desc",
-      limit: 5000
-    }),
-    backendReadRows<Row>("order_items", {
-      select: "order_id,quantity",
-      limit: 50000
-    })
-  ]);
-
+  const orderRowsRaw = await backendReadRows<Row>("orders", {
+    select: "id,order_code,order_date,created_at,customer_name,raw_payload,area,sales,source_type,subtotal,discount_total,grand_total,status",
+    order: "order_date.desc,created_at.desc",
+    limit: 5000
+  });
   const orderRows = withoutInternalSmokeRows(orderRowsRaw);
+  const orderIds = [...new Set(orderRows.map((row) => text(row.id)).filter(Boolean))];
+  const itemRows = orderIds.length
+    ? await backendReadRows<Row>("order_items", {
+        select: "order_id,quantity",
+        filters: { order_id: `in.(${orderIds.join(",")})` },
+        limit: 50000
+      })
+    : [];
+
   const itemTotals = aggregateOrderItems(itemRows);
   const data = orderRows
     .map((row) => {

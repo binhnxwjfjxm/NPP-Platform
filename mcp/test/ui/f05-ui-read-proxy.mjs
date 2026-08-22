@@ -267,6 +267,9 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/customer-verifications") {
       return json(response, 200, { data: { items: [] } });
     }
+    if (request.method === "GET" && url.pathname === "/api/core-customers") {
+      return json(response, 200, { data: { customers: [] } });
+    }
     if (request.method === "GET" && url.pathname === "/api/core-sales/orders") {
       return json(response, 200, { data: [] });
     }
