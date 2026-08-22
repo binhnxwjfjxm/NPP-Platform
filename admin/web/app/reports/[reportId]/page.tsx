@@ -7,6 +7,7 @@ import {
   reportDomainFromId,
 } from '../report-data';
 import { loadReportDrilldown, type DrilldownNode } from '../report-drilldown';
+import { McpSupervision } from '../mcp-supervision';
 import styles from '../report-center.module.css';
 
 function DrilldownNodeView({ node, depth = 0 }: { node: DrilldownNode; depth?: number }) {
@@ -39,7 +40,7 @@ export default async function ReportDetailPage({
   searchParams,
 }: {
   params: { reportId: string };
-  searchParams?: { period?: string };
+  searchParams?: { period?: string; view?: string };
 }) {
   const domain = reportDomainFromId(params.reportId);
   if (!domain) notFound();
@@ -98,6 +99,8 @@ export default async function ReportDetailPage({
           </div>
         </section>
       ) : null}
+
+      {item.domain === 'mcp' ? <McpSupervision period={period} viewInput={searchParams?.view} /> : null}
 
       {drilldown ? (
         <section className={`card ${styles.detailSection}`}>
