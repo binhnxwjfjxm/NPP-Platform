@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CustomerOnboardingQueueItem } from "@/features/accounts/customer-onboarding.types";
+import type { CoreCustomerItem } from "@/lib/api/customer-onboarding-data";
 import { createIdempotencyKey, idempotentMutationFetch } from "@/lib/api/idempotent-fetch";
 import { PageHeader } from "@/ui/layout/PageHeader";
 import { AppShell } from "@/ui/shell/AppShell";
@@ -78,16 +78,16 @@ function statusLabel(status: CoreOrder["status"]) {
   return "Hoàn tất";
 }
 
-function customerLabel(customer: CustomerOnboardingQueueItem) {
-  const coreCode = customer.coreCustomerCode ? ` · ${customer.coreCustomerCode}` : "";
-  return `${customer.customerName}${coreCode} · ${customer.routeName || "MCP"}`;
+function customerLabel(customer: CoreCustomerItem) {
+  const address = customer.defaultAddressLabel || customer.defaultAddressLine1;
+  return [customer.name, customer.customerCode, address].filter(Boolean).join(" · ");
 }
 
 export function McpCoreOrdersClient({
-  linkedCustomers,
+  customers,
   initialError = null
 }: {
-  linkedCustomers: CustomerOnboardingQueueItem[];
+  customers: CoreCustomerItem[];
   initialError?: string | null;
 }) {
   const [customerKey, setCustomerKey] = useState("");
@@ -103,14 +103,14 @@ export function McpCoreOrdersClient({
   const submissionRef = useRef<SubmissionRef | null>(null);
 
   const customerOptions = useMemo(() => {
-    const unique = new Map<string, CustomerOnboardingQueueItem>();
-    for (const customer of linkedCustomers) {
-      if (!customer.coreCustomerId || !customer.coreCustomerAddressId) continue;
-      const key = `${customer.coreCustomerId}:${customer.coreCustomerAddressId}`;
+    const unique = new Map<string, CoreCustomerItem>();
+    for (const customer of customers) {
+      if (!customer.id || !customer.defaultAddressId) continue;
+      const key = `${customer.id}:${customer.defaultAddressId}`;
       if (!unique.has(key)) unique.set(key, customer);
     }
     return [...unique.entries()];
-  }, [linkedCustomers]);
+  }, [customers]);
 
   const selectedCustomer = customerOptions.find(([key]) => key === customerKey)?.[1] || null;
 
@@ -122,11 +122,11 @@ export function McpCoreOrdersClient({
         headers: { Accept: "application/json" }
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(apiErrorMessage(payload, "Không tải được đơn MCP từ Core"));
+      if (!response.ok) throw new Error(apiErrorMessage(payload, "Không tải được đơn MCP từ Công Ty"));
       const data = (payload as { data?: unknown }).data;
       setOrders(Array.isArray(data) ? data as CoreOrder[] : []);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Không tải được đơn MCP từ Core");
+      setMessage(error instanceof Error ? error.message : "Không tải được đơn MCP từ Công Ty");
     } finally {
       setLoadingOrders(false);
     }
@@ -141,11 +141,11 @@ export function McpCoreOrdersClient({
         headers: { Accept: "application/json" }
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(apiErrorMessage(payload, "Không tải được sản phẩm Core"));
+      if (!response.ok) throw new Error(apiErrorMessage(payload, "Không tải được sản phẩm Công Ty"));
       setProducts(normalizeCatalog((payload as { data?: unknown }).data));
     } catch (error) {
       setProducts([]);
-      setMessage(error instanceof Error ? error.message : "Không tải được sản phẩm Core");
+      setMessage(error instanceof Error ? error.message : "Không tải được sản phẩm Công Ty");
     } finally {
       setLoadingProducts(false);
     }
@@ -183,8 +183,8 @@ export function McpCoreOrdersClient({
   }
 
   async function submit() {
-    if (!selectedCustomer?.coreCustomerId || !selectedCustomer.coreCustomerAddressId) {
-      setMessage("Chỉ tạo đơn cho khách đã mở / liên kết mã Core.");
+    if (!selectedCustomer?.id || !selectedCustomer.defaultAddressId) {
+      setMessage("Chỉ tạo đơn cho khách Công Ty đang hoạt động và có địa chỉ giao hàng.");
       return;
     }
     if (cart.length === 0) {
@@ -193,8 +193,8 @@ export function McpCoreOrdersClient({
     }
 
     const body = {
-      customerId: selectedCustomer.coreCustomerId,
-      customerAddressId: selectedCustomer.coreCustomerAddressId,
+      customerId: selectedCustomer.id,
+      customerAddressId: selectedCustomer.defaultAddressId,
       note: note.trim() || undefined,
       lines: cart.map((item) => ({
         variantId: item.variantId,
@@ -227,15 +227,15 @@ export function McpCoreOrdersClient({
         }
       );
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(apiErrorMessage(payload, "Không tạo được đơn bán hàng Core"));
+      if (!response.ok) throw new Error(apiErrorMessage(payload, "Không tạo được đơn bán hàng"));
       const order = (payload as { data?: CoreOrder }).data;
       submissionRef.current = null;
       setCart([]);
       setNote("");
-      setMessage(`Đã tạo đơn Core${order?.number ? ` ${order.number}` : ""}. Giá và chính sách thương mại đã do Core phân giải.`);
+      setMessage(`Đã tạo đơn${order?.number ? ` ${order.number}` : ""}. Giá và chính sách thương mại do Công Ty xác định.`);
       await loadOrders();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Không tạo được đơn bán hàng Core");
+      setMessage(error instanceof Error ? error.message : "Không tạo được đơn bán hàng");
     } finally {
       setSaving(false);
     }
@@ -248,12 +248,12 @@ export function McpCoreOrdersClient({
   return (
     <AppShell activeHref="/orders">
       <PageHeader
-        eyebrow="MCP → Core"
+        eyebrow="MCP → Công Ty"
         title="Đơn hàng MCP"
-        subtitle="Tạo Sales Order chính thức trực tiếp trong Core cho khách đã mở / liên kết mã. Có mua/Có đơn trong phiên chỉ là dữ liệu báo cáo."
+        subtitle="Tạo đơn chính thức cho khách Công Ty thuộc phạm vi phụ trách. Khách đã có trên Công Ty không cần mở mã lại."
       >
         <button className="button" type="button" disabled={loadingOrders} onClick={() => void loadOrders()}>
-          {loadingOrders ? "Đang tải..." : "Làm mới đơn Core"}
+          {loadingOrders ? "Đang tải..." : "Làm mới đơn"}
         </button>
       </PageHeader>
 
@@ -263,9 +263,9 @@ export function McpCoreOrdersClient({
         <div className={styles.sectionHeading}>
           <div>
             <span className="page-eyebrow">Tạo đơn chính thức</span>
-            <h2>Khách đã liên kết Core</h2>
+            <h2>Khách Công Ty được phép bán</h2>
           </div>
-          <small>Browser không gửi giá, nhân viên hay chính sách thương mại.</small>
+          <small>Giá và chính sách thương mại do Công Ty quyết định.</small>
         </div>
 
         <label className={styles.field}>
@@ -279,7 +279,7 @@ export function McpCoreOrdersClient({
               submissionRef.current = null;
             }}
           >
-            <option value="">Chọn khách đã mở / liên kết mã</option>
+            <option value="">Chọn khách hàng</option>
             {customerOptions.map(([key, customer]) => (
               <option key={key} value={key}>{customerLabel(customer)}</option>
             ))}
@@ -287,13 +287,13 @@ export function McpCoreOrdersClient({
         </label>
 
         {customerOptions.length === 0 ? (
-          <p className={styles.empty}>Chưa có khách đủ điều kiện. Mở / liên kết mã khách trước khi tạo đơn.</p>
+          <p className={styles.empty}>Chưa có khách Công Ty đủ điều kiện hoặc khách chưa có địa chỉ giao hàng.</p>
         ) : null}
 
         <div className={styles.catalogGrid}>
           <div>
             <label className={styles.field}>
-              <span>Sản phẩm Core</span>
+              <span>Sản phẩm Công Ty</span>
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
@@ -315,7 +315,7 @@ export function McpCoreOrdersClient({
                     <strong>{product.name}</strong>
                     <small>{[product.variantName, product.sellUnit, product.sku].filter(Boolean).join(" · ")}</small>
                   </span>
-                  <b>{product.price === null || product.price === undefined ? "Core sẽ phân giải giá" : money.format(product.price)}</b>
+                  <b>{product.price === null || product.price === undefined ? "Công Ty sẽ xác định giá" : money.format(product.price)}</b>
                 </button>
               ))}
             </div>
@@ -324,12 +324,12 @@ export function McpCoreOrdersClient({
           <div className={styles.cart}>
             <div className={styles.sectionHeading}>
               <div><h3>Đơn đang tạo</h3><small>{cart.length} SKU</small></div>
-              <strong>{estimatedTotal > 0 ? `Tham khảo ${money.format(estimatedTotal)}` : "Giá do Core quyết định"}</strong>
+              <strong>{estimatedTotal > 0 ? `Tham khảo ${money.format(estimatedTotal)}` : "Giá do Công Ty quyết định"}</strong>
             </div>
             {cart.length === 0 ? <p className={styles.empty}>Chưa chọn sản phẩm.</p> : null}
             {cart.map((item) => (
               <div className={styles.cartRow} key={item.variantId}>
-                <span><strong>{item.name}</strong><small>{item.sku || item.variantName || "SKU Core"}</small></span>
+                <span><strong>{item.name}</strong><small>{item.sku || item.variantName || "SKU"}</small></span>
                 <input
                   type="number"
                   min="1"
@@ -346,10 +346,10 @@ export function McpCoreOrdersClient({
               <textarea value={note} disabled={saving} onChange={(event) => setNote(event.target.value)} rows={3} />
             </label>
             <p className={styles.commercialNote}>
-              Giá hiển thị chỉ để tham khảo. Khi tạo đơn, Core tự xác nhận SKU, đơn vị, giá, thuế, kênh bán và các rule thương mại.
+              Giá hiển thị chỉ để tham khảo. Khi tạo đơn, Công Ty tự xác nhận SKU, đơn vị, giá, thuế và kênh bán.
             </p>
             <button className="button primary" type="button" disabled={saving || !selectedCustomer || cart.length === 0} onClick={() => void submit()}>
-              {saving ? "Đang tạo đơn Core..." : "Tạo Sales Order trong Core"}
+              {saving ? "Đang tạo đơn..." : "Tạo đơn bán hàng"}
             </button>
           </div>
         </div>
@@ -358,19 +358,19 @@ export function McpCoreOrdersClient({
       <section className={`card ${styles.ordersCard}`}>
         <div className={styles.sectionHeading}>
           <div>
-            <span className="page-eyebrow">Canonical Core</span>
+            <span className="page-eyebrow">Đơn từ MCP</span>
             <h2>Đơn MCP của tôi</h2>
           </div>
-          <small>Chỉ hiển thị đơn source MCP thuộc các điểm bán đang phụ trách.</small>
+          <small>Chỉ hiển thị đơn MCP của khách thuộc phạm vi phụ trách.</small>
         </div>
         {loadingOrders ? <p>Đang tải đơn...</p> : null}
-        {!loadingOrders && orders.length === 0 ? <p className={styles.empty}>Chưa có Sales Order MCP chính thức.</p> : null}
+        {!loadingOrders && orders.length === 0 ? <p className={styles.empty}>Chưa có đơn MCP chính thức.</p> : null}
         <div className={styles.orderList}>
           {orders.map((order) => (
             <article className={styles.orderRow} key={order.id}>
               <div>
                 <span className={styles.sourceBadge}>MCP</span>
-                <strong>{order.number || "Đơn Core nháp"}</strong>
+                <strong>{order.number || "Đơn nháp"}</strong>
                 <small>{order.customerCode || order.customerName || order.customerId}</small>
               </div>
               <div>

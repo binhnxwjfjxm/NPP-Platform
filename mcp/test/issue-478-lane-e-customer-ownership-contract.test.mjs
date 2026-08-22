@@ -6,21 +6,20 @@ function source(path) {
   return readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 }
 
-test("customer ownership is route-derived and opening a Core code never claims an outlet", () => {
+test("field outlets stay route-derived while canonical Công Ty customers use responsible employee", () => {
   const access = source("apps/backend/foundation/customer-route-access.js");
   const verification = source("apps/backend/foundation/customer-verification.js");
   const directOrders = source("apps/backend/foundation/direct-sales-orders.js");
 
   assert.match(access, /route\.sales/);
   assert.match(access, /mcp\.installation-owner/);
-  assert.doesNotMatch(access, /rc\.responsible_employee_id\s*=/);
+  assert.match(access, /customer\.responsible_employee_id = \$2::uuid/);
   assert.doesNotMatch(verification, /SET responsible_employee_id/);
   assert.doesNotMatch(verification, /responsible_employee_id = \$\d/);
-  assert.match(directOrders, /listAccessibleCoreCustomerLinks/);
-  assert.doesNotMatch(directOrders, /customer\.responsible_employee_id/);
+  assert.match(directOrders, /listAccessibleCoreCustomers/);
 });
 
-test("Core owner role is propagated as a narrow installation-owner claim", () => {
+test("Công Ty owner role is propagated as a narrow installation-owner claim", () => {
   const auth = source("src/lib/mcp-auth.ts");
   const loader = source("src/lib/api/customer-onboarding-data.ts");
   const context = source("apps/backend/foundation/request-context.js");
