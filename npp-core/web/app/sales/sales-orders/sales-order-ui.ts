@@ -84,6 +84,21 @@ function isConfirm(path: string, method: string): boolean {
     || /^\/api\/sales-orders\/[^/]+\/amendments\/[^/]+\/confirm$/.test(path);
 }
 
+function withMissingBasePricePreview(path: string, init: RequestInit): RequestInit {
+  if (path !== '/api/pricing/resolve' || methodOf(init) !== 'POST' || typeof init.body !== 'string') {
+    return init;
+  }
+  try {
+    const body = JSON.parse(init.body) as Record<string, unknown>;
+    return {
+      ...init,
+      body: JSON.stringify({ ...body, allowMissingBasePrice: true }),
+    };
+  } catch {
+    return init;
+  }
+}
+
 function validateDraftDiscountIntent(path: string, init: RequestInit): void {
   if (!isDraftSave(path, methodOf(init)) || typeof init.body !== 'string') return;
   let body: Record<string, unknown>;
@@ -120,18 +135,35 @@ export function draftRecoveryTarget(
 }
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const requestMethod = methodOf(init);
-  validateDraftDiscountIntent(path, init);
+  const requestInit = withMissingBasePricePreview(path, init);
+  const requestMethod = methodOf(requestInit);
+  validateDraftDiscountIntent(path, requestInit);
   const response = await fetch(path, {
-    ...init,
+    ...requestInit,
     cache: 'no-store',
     headers: {
       Accept: 'application/json',
-      ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      ...Object.fromEntries(new Headers(init.headers ?? {}).entries()),
+      ...(requestInit.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...Object.fromEntries(new Headers(requestInit.headers ?? {}).entries()),
     },
   });
   const payload = await response.json().catch(() => null) as ApiEnvelope<T> | null;
+  const previewState = path === '/api/pricing/resolve'
+    && response.ok
+    && payload?.data
+    && typeof payload.data === 'object'
+    && (payload.data as { resolutionStatus?: string }).resolutionStatus === 'MANUAL_PRICE_REQUIRED'
+    ? payload.data as { code?: string; message?: string }
+    : null;
+  if (previewState) {
+    throw new SalesOrderUiError(
+      previewState.code ?? 'BASE_PRICE_NOT_FOUND',
+      previewState.message ?? 'Chưa có giá Công Ty. Nhập giá bán cho dòng này để tiếp tục.',
+      false,
+      { manualPriceRequired: true },
+      response.status,
+    );
+  }
   if (!response.ok || !payload || !Object.prototype.hasOwnProperty.call(payload, 'data')) {
     const code = payload?.error?.code ?? 'SALES_ORDER_REQUEST_FAILED';
     const priceChangedConfirm = code === 'SALES_PRICE_CHANGED' && isConfirm(path, requestMethod);
