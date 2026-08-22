@@ -1,7 +1,6 @@
 import { createReadStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
-import { sendError, sendJson, sendSuccess } from '../http-utils.js';
-import { readJsonBody } from '../idempotency.js';
+import { sendError, sendSuccess } from '../http-utils.js';
 import {
   ensureWarehouseScopes,
   normalizeFilters,
@@ -13,12 +12,8 @@ import { purchasingReport } from './reporting-purchasing.js';
 import { inventoryReport, normalizeSlowDays } from './reporting-inventory-safe.js';
 import { agingReport, grossMarginReport } from './reporting-finance.js';
 import { employeeMcpReport, resolveEmployeeMcpScope } from './reporting-employee-mcp.js';
-import {
-  adminAlertsReport,
-  alertMutationResponse,
-  mcpSupervisionReport,
-  updateAdminAlertStatus,
-} from './reporting-mcp-alerts.js';
+import { adminAlertsReport, mcpSupervisionReport } from './reporting-mcp-alerts.js';
+import { handleAdminAlertMutation } from './reporting-admin-alert-mutations.js';
 import { logisticsReport } from './reporting-logistics.js';
 import { codReport } from './reporting-cod.js';
 import {
@@ -129,13 +124,6 @@ function alertIdFromPath(pathname) {
   }
 }
 
-function canManageAlerts(requestContext) {
-  const roles = Array.isArray(requestContext.roles) ? requestContext.roles : [];
-  return roles.includes('system:security-owner')
-    || roles.includes('system:implementation-owner')
-    || roles.includes('bootstrap');
-}
-
 async function streamBusinessExport(req, res, options, requestContext) {
   const warehouseIds = Array.isArray(requestContext.scopes?.warehouseIds)
     ? requestContext.scopes.warehouseIds
@@ -204,61 +192,6 @@ async function resolveMcpFieldScope(res, options, requestContext) {
   return fieldScope;
 }
 
-async function handleAlertMutation(req, res, options, requestContext, normalized, fieldScope, alertId) {
-  if (!canManageAlerts(requestContext)) {
-    sendError(res, apiError('FORBIDDEN', 'Tài khoản hiện tại không có quyền thay đổi trạng thái cảnh báo', {}, false, 403), options.requestId, options.receivedAt);
-    return;
-  }
-  if (!alertId) {
-    sendError(res, apiError('INVALID_ALERT_ID', 'Mã cảnh báo không hợp lệ', {}, false, 400), options.requestId, options.receivedAt);
-    return;
-  }
-  let payload;
-  try {
-    payload = await readJsonBody(req);
-  } catch (error) {
-    sendError(res, apiError(error.code, error.publicMessage, {}, false, error.statusCode), options.requestId, options.receivedAt);
-    return;
-  }
-  try {
-    const execution = await options.executeRequestWithIdempotency({
-      idempotencyStore: options.idempotencyStore,
-      req,
-      requestContext,
-      requestId: options.requestId,
-      receivedAt: options.receivedAt,
-      route: `/api/reporting/admin-alerts/${alertId}`,
-      payload,
-      onProcess: async () => alertMutationResponse(
-        await updateAdminAlertStatus({
-          adapter: options.getPool(),
-          requestContext,
-          alertId,
-          nextStatus: String(payload?.status ?? ''),
-          filters: normalized,
-          fieldScope,
-        }),
-        options.requestId,
-        options.receivedAt,
-      ),
-    });
-    res.setHeader('Cache-Control', 'no-store');
-    sendJson(
-      res,
-      execution.response.statusCode,
-      execution.response.body,
-      execution.response.requestId ?? options.requestId,
-      execution.response.contentType,
-    );
-  } catch (error) {
-    if (error?.publicMessage && error?.statusCode) {
-      sendError(res, apiError(error.code ?? 'ALERT_UPDATE_FAILED', error.publicMessage, {}, Boolean(error.retryable), error.statusCode), options.requestId, options.receivedAt);
-      return;
-    }
-    sendError(res, apiError('ALERT_UPDATE_FAILED', 'Không thể cập nhật trạng thái cảnh báo', {}, true, 503), options.requestId, options.receivedAt);
-  }
-}
-
 export async function handleReportingRoutes(req, res, options) {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   const family = reportingFamily(url.pathname);
@@ -273,7 +206,10 @@ export async function handleReportingRoutes(req, res, options) {
   }
 
   const historyFamily = family === 'audit-history' || family === 'import-export-history';
-  const warehouseScoped = !isMcpFamily(family) && !historyFamily;
+  const warehouseScoped = family !== 'employee-mcp'
+    && family !== 'mcp-supervision'
+    && family !== 'admin-alerts'
+    && !historyFamily;
   const requestContext = await authenticateAndAuthorize(
     req,
     res,
@@ -401,7 +337,15 @@ export async function handleReportingRoutes(req, res, options) {
   }
 
   if (alertMutation) {
-    await handleAlertMutation(req, res, options, requestContext, normalized, fieldScope, alertId);
+    await handleAdminAlertMutation({
+      req,
+      res,
+      options,
+      requestContext,
+      filters: normalized,
+      fieldScope,
+      alertId,
+    });
     return true;
   }
 
