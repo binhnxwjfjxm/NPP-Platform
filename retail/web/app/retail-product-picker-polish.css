@@ -1,0 +1,141 @@
+/* Retail product picker polish — compact mobile actions and aligned product rows. */
+
+/* Keep the outer action compact, centered and visually consistent with the raised Home actions. */
+.retail-issue675 .choose-products {
+  width: min(82%, 360px);
+  min-height: 58px;
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
+  justify-self: center;
+  margin: 10px auto 14px;
+  border: 0;
+  border-radius: 17px;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, #f5fcf7 0%, #eaf7ee 100%);
+  box-shadow:
+    0 9px 22px rgba(20, 93, 51, .12),
+    0 2px 5px rgba(15, 45, 29, .06),
+    inset 0 1px 0 rgba(255, 255, 255, .92);
+}
+
+.retail-issue675 .choose-products strong {
+  justify-self: center;
+  text-align: center;
+}
+
+.retail-issue675 .choose-products b {
+  width: 38px;
+  justify-self: center;
+  text-align: center;
+}
+
+.retail-issue675 .choose-products:active {
+  transform: translateY(2px);
+  box-shadow:
+    0 5px 12px rgba(20, 93, 51, .10),
+    inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+
+/* Product selection now relies on fast search only; category pills are intentionally removed from the UI. */
+.retail-issue675 .product-sheet .filter-tabs {
+  display: none !important;
+}
+
+.retail-issue675 .product-sheet .search-box {
+  margin-bottom: 10px;
+}
+
+.retail-issue675 .product-sheet .product-list {
+  gap: 8px;
+}
+
+/* Keep every product row self-contained: image, copy/price and action all stay inside the card. */
+.retail-issue675 .product-sheet .lot7-product-row {
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 94px;
+  overflow: hidden;
+  box-sizing: border-box;
+  border-radius: 15px;
+  padding: 10px 11px;
+}
+
+.retail-issue675 .product-sheet .lot7-product-row .product-visual {
+  width: 52px;
+  height: 64px;
+  align-self: center;
+}
+
+.retail-issue675 .product-sheet .lot7-product-row .product-copy {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.retail-issue675 .product-sheet .lot7-product-row .product-copy strong,
+.retail-issue675 .product-sheet .lot7-product-row .product-copy small,
+.retail-issue675 .product-sheet .lot7-product-row .product-copy em,
+.retail-issue675 .product-sheet .lot7-product-row .product-copy b {
+  position: static !important;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.retail-issue675 .product-sheet .lot7-product-row .product-copy strong {
+  white-space: nowrap;
+}
+
+.retail-issue675 .product-sheet .lot7-product-row .product-copy small {
+  color: #6b7770;
+  white-space: nowrap;
+}
+
+.retail-issue675 .product-sheet .lot7-product-row .product-copy em {
+  width: fit-content;
+  margin-top: 1px;
+  white-space: nowrap;
+}
+
+.retail-issue675 .product-sheet .lot7-product-row .product-copy b {
+  display: block;
+  margin-top: 2px;
+  color: var(--green-dark);
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.retail-issue675 .product-sheet .lot7-product-row .add-product {
+  align-self: center;
+  justify-self: end;
+  margin: 0;
+}
+
+.retail-issue675 .product-sheet .lot7-product-row .quantity-stepper {
+  align-self: center;
+  justify-self: end;
+  margin: 0;
+}
+
+@media (max-width: 480px) {
+  .retail-issue675 .choose-products {
+    width: min(84%, 340px);
+  }
+
+  .retail-issue675 .product-sheet .lot7-product-row {
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+    gap: 9px;
+    min-height: 90px;
+    padding: 9px 10px;
+  }
+
+  .retail-issue675 .product-sheet .lot7-product-row .product-visual {
+    width: 48px;
+    height: 60px;
+  }
+}
