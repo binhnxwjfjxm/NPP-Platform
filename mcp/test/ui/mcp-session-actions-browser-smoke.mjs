@@ -5,6 +5,7 @@ import { chromium } from "playwright";
 const appBase = process.env.MCP_ACTION_UI_APP_BASE || "http://127.0.0.1:3011";
 const mockBase = process.env.MCP_ACTION_UI_MOCK_BASE || "http://127.0.0.1:3110";
 const resultsDir = process.env.MCP_ACTION_UI_RESULTS_DIR || "test-results/mcp-session-actions";
+const proxyHeaders = { "x-forwarded-proto": "https" };
 await mkdir(resultsDir, { recursive: true });
 async function waitForHttp(url, timeoutMs = 120000) { const start = Date.now(); let error; while (Date.now() - start < timeoutMs) { try { const response = await fetch(url, { cache: "no-store" }); if (response.ok) return; error = new Error(`${url}:${response.status}`); } catch (next) { error = next; } await new Promise((resolve) => setTimeout(resolve, 500)); } throw error || new Error(`timeout:${url}`); }
 async function reset() { const response = await fetch(`${mockBase}/__reset`, { method: "POST" }); assert.equal(response.status, 200); }
@@ -15,9 +16,10 @@ async function saveAndWait(page, dialogName, saveName) { const dialog = page.get
 async function shot(page, name) { await page.screenshot({ path: `${resultsDir}/${name}.png`, fullPage: true }); }
 
 await waitForHttp(`${mockBase}/health`); await waitForHttp(`${appBase}/visits?routeId=route-active&date=2099-12-30`); await reset();
-const browser = await chromium.launch({ headless: true }); const context = await browser.newContext({ viewport: { width: 390, height: 844 } }); const page = await context.newPage(); const result = { MCP_SESSION_ACTION_UI_SMOKE: "FAIL" };
+const browser = await chromium.launch({ headless: true }); const context = await browser.newContext({ viewport: { width: 390, height: 844 }, extraHTTPHeaders: proxyHeaders }); await context.addCookies([{ name: "hp_mcp_session", value: "ui-smoke-session", url: appBase }]); const page = await context.newPage(); const result = { MCP_SESSION_ACTION_UI_SMOKE: "FAIL" };
 try {
-  await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "domcontentloaded" });
+  await card(page).waitFor({ state: "visible" });
   const tokens = await page.evaluate(() => { const style = getComputedStyle(document.documentElement); return { canvas: style.getPropertyValue("--npp-color-canvas").trim(), surface: style.getPropertyValue("--npp-color-surface").trim(), header: style.getPropertyValue("--npp-color-header").trim(), primary: style.getPropertyValue("--npp-color-primary").trim(), accent: style.getPropertyValue("--npp-color-accent").trim() }; });
   assert.deepEqual(tokens, { canvas: "#f7f5f1", surface: "#fff", header: "#5a3b20", primary: "#98600f", accent: "#b78333" }); await shot(page, "01-warm-theme-session");
   await openCardAction(page, "Có đơn");
