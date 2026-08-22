@@ -4,7 +4,6 @@ import { AdminShell } from './admin-shell';
 import { loadControlTower } from '@/lib/control-tower';
 import { approvalFixtures } from './approvals/approval-fixtures';
 import { adminAlerts } from './alerts/alert-preview-data';
-import { reportPreviews } from './reports/report-preview-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +33,12 @@ export default async function AdminOverviewPage() {
   const urgentApprovals = pendingApprovals.filter((item) => item.priority === 'critical');
   const activeAlerts = adminAlerts.filter((item) => item.status === 'active');
   const highAlerts = activeAlerts.filter((item) => item.severity === 'critical' || item.severity === 'high');
-  const executiveReport = reportPreviews.find((item) => item.id === 'executive-overview');
+  const executiveReportState = !data ? 'Chưa sẵn sàng' : data.warnings.length ? 'Chưa đầy đủ' : 'Bình thường';
+  const executiveReportNote = !data
+    ? 'Chưa tải được số liệu điều hành'
+    : data.warnings.length
+      ? `${data.warnings.length} nguồn cần kiểm tra`
+      : 'Số liệu Công Ty đã sẵn sàng';
   const priorityApproval = urgentApprovals[0] ?? pendingApprovals[0];
   const priorityAlert = activeAlerts.find((item) => item.severity === 'critical') ?? highAlerts[0] ?? activeAlerts[0];
 
@@ -54,9 +58,9 @@ export default async function AdminOverviewPage() {
       <section className="overviewDecisionStrip" aria-label="Tóm tắt đề xuất và cảnh báo">
         <div><span>Chờ quyết định</span><strong>{pendingApprovals.length}</strong><small>{urgentApprovals.length} ưu tiên cao</small></div>
         <div><span>Cảnh báo mở</span><strong>{activeAlerts.length}</strong><small>{highAlerts.length} mức cao</small></div>
-        <div><span>Điều hành</span><strong>{executiveReport?.current ?? '—'}</strong><small>{executiveReport?.delta ?? 'Chưa có so sánh'}</small></div>
+        <div><span>Điều hành</span><strong>{executiveReportState}</strong><small>{executiveReportNote}</small></div>
       </section>
-      <p className="adminPreviewNotice overviewPreviewNotice">Đề xuất, cảnh báo và báo cáo bên dưới đang dùng dữ liệu minh họa; các chỉ số vận hành phía trên vẫn lấy từ nguồn tổng hợp hiện có.</p>
+      <p className="adminPreviewNotice overviewPreviewNotice">Đề xuất và cảnh báo bên dưới vẫn dùng dữ liệu minh họa; Báo cáo đã lấy từ nguồn số liệu hiện có của Công Ty.</p>
 
       <p className="sectionEyebrow">Ưu tiên hôm nay</p>
       <section className="overviewFocusList" aria-label="Việc cần chú ý hôm nay">
@@ -68,7 +72,7 @@ export default async function AdminOverviewPage() {
       <section className="adminOverviewActions" aria-label="Đi tới trung tâm quản trị">
         <Link className="card adminOverviewAction" href="/approvals"><span className="rowIcon"><AdminIcon name="check" size={20} /></span><span><strong>Đề xuất</strong><small>{pendingApprovals.length} đề xuất chờ quyết định · {urgentApprovals.length} ưu tiên cao</small></span><AdminIcon name="chevronRight" size={17} /></Link>
         <Link className="card adminOverviewAction" href="/alerts"><span className="rowIcon"><AdminIcon name="exception" size={20} /></span><span><strong>Cảnh báo</strong><small>{activeAlerts.length} cảnh báo đang hoạt động · {highAlerts.length} mức cao</small></span><AdminIcon name="chevronRight" size={17} /></Link>
-        <Link className="card adminOverviewAction" href="/reports"><span className="rowIcon"><AdminIcon name="document" size={20} /></span><span><strong>Báo cáo</strong><small>Điều hành {executiveReport?.current ?? '—'} · {executiveReport?.delta ?? 'chưa có so sánh'}</small></span><AdminIcon name="chevronRight" size={17} /></Link>
+        <Link className="card adminOverviewAction" href="/reports"><span className="rowIcon"><AdminIcon name="document" size={20} /></span><span><strong>Báo cáo</strong><small>Điều hành: {executiveReportState} · số liệu Công Ty</small></span><AdminIcon name="chevronRight" size={17} /></Link>
       </section>
     </AdminShell>
   );
