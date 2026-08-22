@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { CustomerOnboardingQueueItem } from "@/features/accounts/customer-onboarding.types";
 import { BottomSheet } from "@/ui/overlay/BottomSheet";
-import { CoreOrderCreateSheet } from "./CoreOrderCreateSheet";
+import { CoreOrderCreateSheet, type OrderCustomerItem } from "./CoreOrderCreateSheet";
 
 type Envelope = {
-  data?: { items?: CustomerOnboardingQueueItem[] };
+  data?: { customers?: OrderCustomerItem[] };
   error?: string | { message?: string };
   detail?: string;
   message?: string;
@@ -18,11 +17,11 @@ function errorMessage(payload: Envelope, fallback: string) {
   return payload.detail || payload.message || fallback;
 }
 
-function linkedOnly(items: CustomerOnboardingQueueItem[]) {
+function eligibleCustomers(items: OrderCustomerItem[]) {
   return items.filter((item) => (
-    (item.status === "approved" || item.status === "linked_existing")
-    && Boolean(item.coreCustomerId)
-    && Boolean(item.coreCustomerAddressId)
+    item.status === "active"
+    && Boolean(item.id)
+    && Boolean(item.defaultAddressId)
   ));
 }
 
@@ -35,7 +34,7 @@ export function CoreOrderCreateLoader({
   onClose: () => void;
   onCreated: (orderCode: string) => void;
 }) {
-  const [linkedCustomers, setLinkedCustomers] = useState<CustomerOnboardingQueueItem[]>([]);
+  const [customers, setCustomers] = useState<OrderCustomerItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,22 +43,22 @@ export function CoreOrderCreateLoader({
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetch("/api/backend/customer-verifications", {
+    fetch("/api/backend/core-customers", {
       cache: "no-store",
       headers: { Accept: "application/json" }
     })
       .then(async (response) => {
         const payload = await response.json().catch(() => ({})) as Envelope;
-        if (!response.ok) throw new Error(errorMessage(payload, "Không tải được khách công ty"));
-        return linkedOnly(Array.isArray(payload.data?.items) ? payload.data.items : []);
+        if (!response.ok) throw new Error(errorMessage(payload, "Không tải được khách Công Ty"));
+        return eligibleCustomers(Array.isArray(payload.data?.customers) ? payload.data.customers : []);
       })
       .then((items) => {
-        if (!cancelled) setLinkedCustomers(items);
+        if (!cancelled) setCustomers(items);
       })
       .catch((cause) => {
         if (!cancelled) {
-          setLinkedCustomers([]);
-          setError(cause instanceof Error ? cause.message : "Không tải được khách công ty");
+          setCustomers([]);
+          setError(cause instanceof Error ? cause.message : "Không tải được khách Công Ty");
         }
       })
       .finally(() => {
@@ -76,12 +75,12 @@ export function CoreOrderCreateLoader({
         open={open}
         onClose={onClose}
         title="Tạo đơn hàng"
-        description="Chỉ khách đã mở hoặc liên kết mã mới được tạo đơn."
+        description="Chọn khách Công Ty đang hoạt động và có địa chỉ giao hàng."
         variant="workspace"
       >
         <div className="card">
-          <strong>{loading ? "Đang tải khách công ty..." : error}</strong>
-          <p className="page-subtitle">{error ? "Không mở form với dữ liệu khách chưa xác định." : "Đang lấy danh sách khách đủ điều kiện."}</p>
+          <strong>{loading ? "Đang tải khách Công Ty..." : error}</strong>
+          <p className="page-subtitle">{error ? "Không mở form với dữ liệu khách chưa xác định." : "Đang lấy danh sách khách được phép bán."}</p>
           {error ? <button className="button" type="button" onClick={onClose}>Đóng</button> : null}
         </div>
       </BottomSheet>
@@ -91,7 +90,7 @@ export function CoreOrderCreateLoader({
   return (
     <CoreOrderCreateSheet
       open={open}
-      linkedCustomers={linkedCustomers}
+      customers={customers}
       onClose={onClose}
       onCreated={onCreated}
     />

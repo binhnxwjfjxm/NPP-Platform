@@ -13,13 +13,16 @@ test("order creation requires an explicit review step before POST", () => {
   assert.match(source, /submitInFlightRef\.current/);
 });
 
-test("mobile order flow locks prerequisites to opened company customers", () => {
+test("mobile order flow locks prerequisites to active Công Ty customers with delivery addresses", () => {
   assert.match(source, /disabled=\{!customerReady \|\| saving\}/);
   assert.match(source, /disabled=\{!customerReady \|\| items\.length === 0 \|\| saving\}/);
-  assert.match(source, /Chỉ khách đã mở hoặc liên kết mã mới được tạo đơn/);
+  assert.match(source, /Khách đang hoạt động, có địa chỉ và thuộc phạm vi được phép bán/);
+  assert.doesNotMatch(source, /Chỉ khách đã mở|Mở \/ liên kết mã|đã mở mã/);
   assert.doesNotMatch(source, /Khách nhập tay|ManualCustomer|customerMode/);
-  assert.match(loader, /approved/);
-  assert.match(loader, /linked_existing/);
+  assert.match(loader, /\/api\/backend\/core-customers/);
+  assert.match(loader, /item\.status === "active"/);
+  assert.match(loader, /item\.defaultAddressId/);
+  assert.doesNotMatch(loader, /customer-verifications|approved|linked_existing/);
 });
 
 test("unfinished order drafts require explicit discard confirmation", () => {

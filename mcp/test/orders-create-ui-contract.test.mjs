@@ -27,16 +27,20 @@ test("orders route restores the existing order control center instead of replaci
   assert.match(page, /"\+ Tạo đơn"/);
 });
 
-test("create-order entry keeps the old workspace shell but loads only linked company customers", () => {
+test("create-order entry uses canonical Công Ty customers instead of requiring an MCP onboarding link", () => {
   assert.match(compatibilitySheet, /CoreOrderCreateLoader/);
-  assert.match(loader, /fetch\("\/api\/backend\/customer-verifications"/);
-  assert.match(loader, /item\.status === "approved" \|\| item\.status === "linked_existing"/);
-  assert.match(loader, /item\.coreCustomerId/);
-  assert.match(loader, /item\.coreCustomerAddressId/);
-  assert.match(sheet, /Chọn khách công ty/);
-  assert.match(sheet, /Chỉ khách đã mở hoặc liên kết mã mới được tạo đơn/);
+  assert.match(loader, /fetch\("\/api\/backend\/core-customers"/);
+  assert.match(loader, /item\.status === "active"/);
+  assert.match(loader, /item\.defaultAddressId/);
+  assert.match(loader, /payload\.data\?\.customers/);
+  assert.doesNotMatch(loader, /customer-verifications/);
+  assert.doesNotMatch(loader, /approved|linked_existing/);
+  assert.match(sheet, /Chọn khách Công Ty/);
+  assert.match(sheet, /Khách đang hoạt động, có địa chỉ và thuộc phạm vi được phép bán/);
+  assert.match(sheet, /Chưa có khách Công Ty đủ điều kiện/);
+  assert.doesNotMatch(sheet, /Chỉ khách đã mở|Mở \/ liên kết mã|đã mở mã/);
   assert.doesNotMatch(sheet, /Khách nhập tay|customerMode|ManualCustomer/);
-  assert.doesNotMatch(sheet, /Mở \/ liên kết mã.*href|customers\/onboarding/);
+  assert.doesNotMatch(sheet, /customers\/onboarding/);
 });
 
 test("restored create-order UI remains the fullscreen three-step mobile workspace", () => {
@@ -50,21 +54,21 @@ test("restored create-order UI remains the fullscreen three-step mobile workspac
   assert.match(workspaceStyles, /\.bottom-sheet-workspace\s*\{[\s\S]*height: 100% !important/);
 });
 
-test("Core order submit keeps canonical idempotency and never sends browser commercial authority", () => {
+test("Công Ty order submit keeps canonical idempotency and never sends browser commercial authority", () => {
   assert.match(sheet, /createIdempotencyKey\("mcp\.sales-order\.create"\)/);
   assert.match(sheet, /const fingerprint = JSON\.stringify\(body\)/);
   assert.match(sheet, /submissionRef\.current\.fingerprint !== fingerprint/);
   assert.match(sheet, /key: submissionRef\.current\.key/);
   assert.match(sheet, /"\/api\/backend\/core-sales\/orders"/);
-  assert.match(sheet, /customerId: selectedCustomer\.coreCustomerId/);
-  assert.match(sheet, /customerAddressId: selectedCustomer\.coreCustomerAddressId/);
+  assert.match(sheet, /customerId: selectedCustomer\.id/);
+  assert.match(sheet, /customerAddressId: selectedCustomer\.defaultAddressId/);
   assert.match(sheet, /variantId: item\.variantId/);
   assert.match(sheet, /quantity: String\(item\.quantity\)/);
   assert.doesNotMatch(sheet, /"\/api\/backend\/orders"/);
 
   const bodyStart = sheet.indexOf("const body = {");
   const bodyEnd = sheet.indexOf("const fingerprint", bodyStart);
-  assert.ok(bodyStart >= 0 && bodyEnd > bodyStart, "Core submit body must remain explicit and reviewable");
+  assert.ok(bodyStart >= 0 && bodyEnd > bodyStart, "Công Ty submit body must remain explicit and reviewable");
   const submissionBody = sheet.slice(bodyStart, bodyEnd);
   assert.doesNotMatch(submissionBody, /unitPrice|customerMode|manualCustomer|setSales|setStatus/);
 });
@@ -110,11 +114,12 @@ test("each MCP product stays one card with flat Lẻ-Thùng rows and compact plu
   assert.ok(milkTeaIndex > 0 && spicyIndex > milkTeaIndex && packagingIndex > spicyIndex);
 });
 
-test("draft close remains guarded and Core price is display-only", () => {
+test("draft close remains guarded and Công Ty price is display-only", () => {
   assert.match(sheet, /function requestClose\(\)/);
   assert.match(sheet, /window\.confirm\("Đơn đang nhập chưa lưu\. Đóng và bỏ nội dung này\?"\)/);
   assert.match(sheet, /onClose=\{requestClose\}/);
   assert.match(sheet, /Giá tham khảo/);
-  assert.match(sheet, /Core quyết định/);
+  assert.match(sheet, /Công Ty quyết định|Công Ty xác định giá/);
+  assert.doesNotMatch(sheet, /"[^"\n]*Core[^"\n]*"/);
   assert.doesNotMatch(sheet, /Đơn giá tạm|Nhập giá/);
 });
