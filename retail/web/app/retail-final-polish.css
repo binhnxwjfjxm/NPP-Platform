@@ -217,38 +217,24 @@
   font-size: 10px;
 }
 
-/* Printer settings: show the true browser boundary instead of implying a hidden connection. */
-.retail-issue675 .settings-list .settings-row:nth-child(2) small::after {
-  content: " · Máy in chọn khi bấm In";
-  color: #3f6c54;
-  font-weight: 700;
-}
-
-.settings-sheet-backdrop[aria-label="Máy in"] .settings-control {
+/* Print setup: mobile saves paper size only; the operating system chooses the actual printer. */
+.settings-sheet-backdrop[aria-label="Thiết lập in"] .settings-control {
   border: 1px solid #e1e9e4;
   border-radius: 14px;
   padding: 12px;
   background: #fafcfb;
 }
 
-.settings-sheet-backdrop[aria-label="Máy in"] .settings-help {
-  display: grid;
-  gap: 4px;
+.settings-sheet-backdrop[aria-label="Thiết lập in"] .settings-help {
   border: 1px solid #cfe3d6;
   border-radius: 14px;
   padding: 12px 13px;
   background: #f2faf5;
   color: #496157;
+  line-height: 1.45;
 }
 
-.settings-sheet-backdrop[aria-label="Máy in"] .settings-help::before {
-  content: "Máy in hiện tại · Chọn khi in";
-  color: #1b5f38;
-  font-size: 12px;
-  font-weight: 850;
-}
-
-/* Print preview: surface paper + printer status, then give the document title a proper hierarchy. */
+/* Print preview: paper choice stays visible without pretending Retail owns a printer connection. */
 .print-paper-picker {
   align-items: stretch;
 }
@@ -268,20 +254,52 @@
   line-height: 1.4;
 }
 
-.print-paper-picker p::before {
-  content: "Máy in · ";
-  margin-right: 3px;
-  color: #1f5e39;
-  font-weight: 850;
-}
-
+/* A4/A5: split the heading block and document identity into two balanced columns. */
 .print-document > header {
   display: grid;
-  justify-items: center;
   gap: 5px;
   border-bottom: 1px solid #202820;
   padding-bottom: 16px;
-  text-align: center;
+}
+
+.paper-a4 .print-document > header,
+.paper-a5 .print-document > header {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 28px;
+  row-gap: 6px;
+  align-items: start;
+  justify-items: stretch;
+  text-align: left;
+}
+
+.paper-a4 .print-document > header > p:first-child,
+.paper-a5 .print-document > header > p:first-child {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: end;
+}
+
+.paper-a4 .print-document > header h1,
+.paper-a5 .print-document > header h1 {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  text-align: right;
+}
+
+.paper-a4 .print-document > header h1 + p,
+.paper-a5 .print-document > header h1 + p {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: start;
+  text-align: left;
+}
+
+.paper-a4 .print-document > header small,
+.paper-a5 .print-document > header small {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
 }
 
 .print-document > header > p:first-child {
@@ -324,6 +342,22 @@
   font-weight: 800;
 }
 
+/* Thermal paper stays single-column and centered. */
+.paper-80 .print-document > header,
+.paper-58 .print-document > header {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  text-align: center;
+}
+
+.paper-80 .print-document > header > *,
+.paper-58 .print-document > header > * {
+  grid-column: 1 !important;
+  grid-row: auto !important;
+  justify-self: center !important;
+  text-align: center !important;
+}
+
 .paper-80 .print-document > header h1,
 .paper-58 .print-document > header h1 {
   font-size: 16px;
@@ -334,6 +368,37 @@
   min-height: 20px;
   padding: 2px 6px;
   font-size: 8px;
+}
+
+/* Printer test page exists only for the operating-system print dialog. */
+.printer-test-screen {
+  display: none;
+}
+
+.printer-test-document {
+  min-height: 0;
+}
+
+.printer-test-body {
+  display: grid;
+  gap: 8px;
+  padding: 24px 0 8px;
+  text-align: center;
+}
+
+.printer-test-body strong {
+  font-size: 18px;
+}
+
+.printer-test-body span {
+  color: #526158;
+  font-size: 11px;
+}
+
+@media print {
+  .printer-test-screen {
+    display: block !important;
+  }
 }
 
 @media (max-width: 560px) {
