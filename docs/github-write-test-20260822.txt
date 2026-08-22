@@ -1,0 +1,1 @@
+Harmless GitHub write test from ChatGPT on 2026-08-22. No runtime or production behavior is changed.
