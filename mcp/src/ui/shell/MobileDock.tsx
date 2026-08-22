@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type CSSProperties, type HTMLAttributes } from "react";
 import { NavIcon } from "./NavIcon";
@@ -13,6 +14,13 @@ function isItemActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   if (href === "/visits") return pathname === "/visits" || pathname.startsWith("/visits/") || pathname.startsWith("/mcp/sessions/");
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function isVisitFlow(pathname: string) {
+  return pathname === "/visits"
+    || pathname.startsWith("/visits/")
+    || pathname === "/mcp/sessions"
+    || pathname.startsWith("/mcp/sessions/");
 }
 
 export function MobileDock({ items, style, ...props }: MobileDockProps) {
@@ -33,24 +41,54 @@ export function MobileDock({ items, style, ...props }: MobileDockProps) {
         const active = isItemActive(pathname, item.href);
         const primary = item.href === "/visits";
         const intended = intentIndex === index;
+        const documentNavigation = primary || isVisitFlow(pathname);
+        const className = `mobile-app-dock-link bottom-nav-link${active ? " active" : ""}${primary ? " primary" : ""}`;
+        const content = (
+          <>
+            <span className="mobile-app-dock-icon nav-icon" aria-hidden="true"><NavIcon name={item.icon} width="22" height="22" /></span>
+            <span className="mobile-app-dock-label nav-label">{item.shortLabel}</span>
+          </>
+        );
+        const interactionProps = {
+          onBlur: () => setIntentIndex(null),
+          onFocus: () => setIntentIndex(index),
+          onPointerCancel: () => setIntentIndex(null),
+          onPointerDown: () => setIntentIndex(index)
+        };
+
+        if (documentNavigation) {
+          return (
+            <a
+              aria-current={active ? "page" : undefined}
+              className={className}
+              data-document-navigation="true"
+              data-interaction-feedback="selection"
+              data-motion-intent={intended ? "true" : undefined}
+              data-primary-action={primary ? "true" : undefined}
+              href={item.href}
+              key={item.href}
+              {...interactionProps}
+            >
+              {content}
+            </a>
+          );
+        }
+
         return (
-          <a
+          <Link
             aria-current={active ? "page" : undefined}
-            className={`mobile-app-dock-link bottom-nav-link${active ? " active" : ""}${primary ? " primary" : ""}`}
-            data-document-navigation="true"
+            className={className}
+            data-client-navigation="true"
             data-interaction-feedback="selection"
             data-motion-intent={intended ? "true" : undefined}
             data-primary-action={primary ? "true" : undefined}
             href={item.href}
             key={item.href}
-            onBlur={() => setIntentIndex(null)}
-            onFocus={() => setIntentIndex(index)}
-            onPointerCancel={() => setIntentIndex(null)}
-            onPointerDown={() => setIntentIndex(index)}
+            prefetch={false}
+            {...interactionProps}
           >
-            <span className="mobile-app-dock-icon nav-icon" aria-hidden="true"><NavIcon name={item.icon} width="22" height="22" /></span>
-            <span className="mobile-app-dock-label nav-label">{item.shortLabel}</span>
-          </a>
+            {content}
+          </Link>
         );
       })}
     </nav>

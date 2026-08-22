@@ -69,6 +69,8 @@ test("orders tab restores management UI and merges canonical owned Core orders i
   assert.match(directService, /ORDER_DETAIL_CONCURRENCY/);
   assert.match(ordersLoader, /backendReadRows<Row>\("orders"/);
   assert.match(ordersLoader, /backendReadRows<Row>\("order_items"/);
+  assert.match(ordersLoader, /filters: \{ order_id: `in\.\(\$\{orderIds\.join\(","\)\}\)` \}/);
+  assert.match(ordersLoader, /select: "id,order_code,order_date,created_at,customer_name,raw_payload,area,sales,source_type,subtotal,discount_total,grand_total,status"/);
 });
 
 test("action plan reads followups through the backend provider", () => {

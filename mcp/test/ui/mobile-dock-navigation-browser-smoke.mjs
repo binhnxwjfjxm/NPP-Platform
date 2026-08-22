@@ -37,7 +37,8 @@ async function readDock(page) {
     values.push({
       label: (await links.nth(index).innerText()).trim(),
       href: pathname(await links.nth(index).getAttribute("href")),
-      documentNavigation: await links.nth(index).getAttribute("data-document-navigation")
+      documentNavigation: await links.nth(index).getAttribute("data-document-navigation"),
+      clientNavigation: await links.nth(index).getAttribute("data-client-navigation")
     });
   }
   return { dock, links, values };
@@ -56,7 +57,7 @@ async function verifyDockMotion(page, dock, links) {
     seen.push(Number(await dock.evaluate((node) => node.style.getPropertyValue("--mobile-dock-index").trim())));
     await links.nth(index).dispatchEvent("pointercancel", { pointerType: "touch" });
   }
-  assert.deepEqual(seen, [0, 1, 2, 3, 4], "dock intent indicator must traverse all five destinations without intercepting navigation");
+  assert.deepEqual(seen, [0, 1, 2, 3, 4], "dock intent indicator must traverse all five destinations without delaying navigation");
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   const reducedTransition = await indicator.evaluate((node) => getComputedStyle(node).transitionDuration);
@@ -86,18 +87,31 @@ try {
     "mobile dock destinations must match the agreed routes"
   );
   assert.equal(routeDock.values.some((item) => item.href === "/routes"), false, "route management must leave the mobile dock");
-  for (const item of routeDock.values) {
-    assert.equal(item.documentNavigation, "true", "every dock destination must remain a document-level escape");
-  }
+  assert.deepEqual(
+    routeDock.values.map((item) => item.documentNavigation),
+    [null, "true", null, null, null],
+    "normal destinations must use client navigation while Đi tuyến keeps the document-level redirect boundary"
+  );
+  assert.deepEqual(
+    routeDock.values.map((item) => item.clientNavigation),
+    ["true", null, "true", "true", "true"],
+    "normal destinations must be marked as client navigation"
+  );
   const motionIndices = await verifyDockMotion(page, routeDock.dock, routeDock.links);
 
-  await page.setExtraHTTPHeaders(unauthenticatedHeaders);
-  const customerRequestPromise = page.waitForRequest((request) => {
-    return request.isNavigationRequest() && pathname(request.url()) === "/customers";
-  });
+  await page.evaluate(() => { window.__mcpNavigationMarker = "same-document"; });
   await routeDock.dock.getByRole("link", { name: "Khách", exact: true }).click();
-  const customerRequest = await customerRequestPromise;
-  assert.equal(customerRequest.resourceType(), "document", "Khách must open with document navigation");
+  await page.waitForURL((url) => url.pathname === "/customers");
+  assert.equal(
+    await page.evaluate(() => window.__mcpNavigationMarker),
+    "same-document",
+    "normal dock navigation must preserve the browser document instead of reloading the app"
+  );
+  const customerDock = await readDock(page);
+  assert.equal(customerDock.values.find((item) => item.href === "/orders")?.clientNavigation, "true");
+
+  await page.setExtraHTTPHeaders(unauthenticatedHeaders);
+  await page.goto(`${appBase}/customers`, { waitUntil: "domcontentloaded" });
   await page.waitForURL((url) => url.pathname === "/login");
   await page.getByRole("heading", { name: "Đăng nhập nhân viên", exact: true }).waitFor({ state: "visible" });
   assert.equal(new URL(page.url()).searchParams.get("returnTo"), null, "default customer entry must use the safe /customers return target");
@@ -121,8 +135,11 @@ try {
 
   await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "domcontentloaded" });
   assert.equal(pathname(page.url()), "/visits", "active visit setup must remain on /visits");
-  const sessionDock = (await readDock(page)).dock;
-  const ordersLink = sessionDock.getByRole("link", { name: "Đơn", exact: true });
+  const sessionDock = await readDock(page);
+  for (const item of sessionDock.values) {
+    assert.equal(item.documentNavigation, "true", "visit flow must retain a fresh-document escape for every dock destination");
+  }
+  const ordersLink = sessionDock.dock.getByRole("link", { name: "Đơn", exact: true });
   await page.setExtraHTTPHeaders(unauthenticatedHeaders);
   const ordersRequestPromise = page.waitForRequest((request) => {
     return request.isNavigationRequest() && pathname(request.url()) === "/orders";
@@ -138,6 +155,7 @@ try {
   result.dockLabels = routeDock.values.map((item) => item.label);
   result.motionIndices = motionIndices;
   result.reducedMotion = "PASS";
+  result.normalClientNavigation = "PASS";
   result.customerDestination = "/login";
   result.customerAuthGate = "PASS";
   result.proxyHttpsBoundary = "PASS";
@@ -146,7 +164,7 @@ try {
   result.visitEscapeDestination = "/login";
   result.ordersAuthReturnTo = "/orders";
   result.ordersAuthGate = "PASS";
-  result.documentNavigation = "PASS";
+  result.visitDocumentNavigation = "PASS";
   result.MOBILE_DOCK_NAVIGATION = "PASS";
 } catch (error) {
   result.error = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack || ""}` : String(error);
