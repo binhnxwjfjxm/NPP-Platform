@@ -45,9 +45,9 @@ for (const tab of ["Đơn hàng", "Cần xử lý", "Doanh số đặt hàng", "
 }
 await page.getByRole("button", { name: "+ Tạo đơn", exact: true }).click();
 await page.getByRole("dialog", { name: "Tạo đơn hàng", exact: true }).waitFor({ state: "visible" });
-await page.getByText("1. Chọn khách công ty", { exact: true }).waitFor({ state: "visible" });
-assert.equal(await page.getByText(/Đơn giá tạm/).count(), 0, "Core flow must not expose browser price authority");
-assert.equal(await page.getByText(/Khách nhập tay|Khách mới|Phiên \/ tuyến/).count(), 0, "Core flow must not depend on manual customer or session order-intent");
+await page.getByText("1. Chọn khách Công Ty", { exact: true }).waitFor({ state: "visible" });
+assert.equal(await page.getByText(/Đơn giá tạm/).count(), 0, "Công Ty flow must not expose browser price authority");
+assert.equal(await page.getByText(/Khách nhập tay|Khách mới|Phiên \/ tuyến/).count(), 0, "Công Ty flow must not depend on manual customer or session order-intent");
 assert.equal(await page.getByText(/Mở \/ liên kết mã/).count(), 0, "order form must not open/link customers as a side effect");
 
 await page.getByRole("radio", { name: /UI Existing Customer/ }).click();
@@ -82,10 +82,10 @@ assert.deepEqual(Object.keys(submitted.lines[0]).sort(), ["note", "quantity", "v
 for (const forbidden of ["unitPrice", "sales", "employeeId", "routeCustomerId", "sessionCustomerId", "status", "customerMode"]) {
   assert.equal(forbidden in submitted, false, `browser payload must not own ${forbidden}`);
 }
-assert.equal(state.orders.length, 1, "retry must still create exactly one canonical Core order");
+assert.equal(state.orders.length, 1, "retry must still create exactly one canonical Công Ty order");
 assert.equal(state.orders[0].sourceType, "MCP");
 
-await page.screenshot({ path: `${resultsDir}/restored-order-center-core-create.png`, fullPage: true });
+await page.screenshot({ path: `${resultsDir}/restored-order-center-company-create.png`, fullPage: true });
 await context.close();
 await browser.close();
 

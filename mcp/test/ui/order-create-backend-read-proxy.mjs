@@ -25,6 +25,22 @@ const linkedCustomers = [
   }
 ];
 
+const companyCustomers = [
+  {
+    id: "22222222-2222-4222-8222-222222222222",
+    customerCode: "KH-UI-001",
+    name: "UI Existing Customer",
+    phone: "0900000001",
+    email: null,
+    status: "active",
+    responsibleEmployeeId: "11111111-1111-4111-8111-111111111111",
+    defaultAddressId: "33333333-3333-4333-8333-333333333333",
+    defaultAddressLabel: "Giao hàng",
+    defaultAddressLine1: "12 Đường Browser Smoke",
+    updatedAt: fixtureNow
+  }
+];
+
 const directState = {
   attempts: [],
   orders: []
@@ -173,6 +189,9 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/customer-verifications") {
       return json(response, 200, envelope(request, { items: linkedCustomers }));
     }
+    if (request.method === "GET" && url.pathname === "/api/core-customers") {
+      return json(response, 200, envelope(request, { customers: companyCustomers }));
+    }
     if (request.method === "GET" && url.pathname === "/api/core-sales/orders") {
       return json(response, 200, envelope(request, directState.orders));
     }
@@ -189,6 +208,7 @@ const server = http.createServer(async (request, response) => {
       }
       let order = directState.orders.find((item) => item.sourceId === key);
       if (!order) {
+        const customer = companyCustomers.find((item) => item.id === payload.customerId) || companyCustomers[0];
         order = {
           id: "99999999-9999-4999-8999-999999999999",
           number: "SO-MCP-0001",
@@ -196,10 +216,10 @@ const server = http.createServer(async (request, response) => {
           currentVersionNumber: "1",
           sourceType: "MCP",
           sourceId: key,
-          sourceOutletId: linkedCustomers[0].routeCustomerId,
+          sourceOutletId: linkedCustomers[0]?.routeCustomerId || null,
           customerId: payload.customerId,
-          customerCode: linkedCustomers[0].coreCustomerCode,
-          customerName: linkedCustomers[0].customerName,
+          customerCode: customer.customerCode,
+          customerName: customer.name,
           salesChannelCode: "MCP",
           createdAt: fixtureNow,
           updatedAt: fixtureNow,
