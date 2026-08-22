@@ -7,6 +7,7 @@ import './retail-mobile-polish.css';
 import './retail-home-polish.css';
 import './retail-final-polish.css';
 import './retail-print-professional.css';
+import './retail-product-picker-polish.css';
 import { PwaRegistration } from './pwa-registration';
 
 export const metadata: Metadata = {
