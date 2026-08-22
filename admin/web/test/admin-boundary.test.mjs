@@ -38,16 +38,16 @@ test('alert center uses office language and Company/MCP lineage without producti
   assert.match(page,/alertRuleList/); assert.match(page,/Dữ liệu minh họa/); assert.match(detail,/Tín hiệu cảnh báo/); assert.match(detail,/Quy tắc liên quan/); assert.match(detail,/Hướng rà soát/); assert.match(detail,/Lịch sử tín hiệu/); assert.match(data,/source:'Công Ty'/); assert.match(data,/source:'MCP'/); assert.doesNotMatch(`${page}\n${detail}`, /frontend|backend|production|Stage|Mã rule|Tên rule|Rule đang/i); assert.match(css,/\.alertComparison/); assert.match(css,/\.alertSeverity\.is-critical/); assert.doesNotMatch(`${page}\n${detail}\n${data}`, /requestCore|fetch\(|method=['"]?(POST|PUT|PATCH|DELETE)|Idempotency-Key/);
 });
 
-test('management reports use office language and Company/MCP source context without production calls', async () => {
-  const [page, detail, data, css] = await Promise.all([read('app/reports/page.tsx'), read('app/reports/[reportId]/page.tsx'), read('app/reports/report-preview-data.ts'), read('app/reports/report-center.module.css')]);
-  for (const label of ['Hôm nay','7 ngày','Tháng này','Quý này','Kỳ hiện tại','Kỳ trước','Xu hướng kỳ','Nhận định quản trị']) assert.match(page,new RegExp(label));
-  assert.match(page,/\/reports\/\$\{item\.id\}/); assert.match(page,/Dữ liệu minh họa/); assert.match(detail,/Tóm tắt kỳ báo cáo/); assert.match(detail,/Chỉ số quản trị/); assert.match(detail,/Nguồn dữ liệu/); assert.match(data,/source:'Công Ty'/); assert.match(data,/source:'MCP'/); assert.match(data,/source:'Công Ty \+ MCP'/); assert.doesNotMatch(`${page}\n${detail}`, /frontend|backend|production|contract|phase/i); assert.match(css,/\.sparkBars/); assert.match(css,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/); assert.doesNotMatch(`${page}\n${detail}\n${data}`, /requestCore|fetch\(|method=['"]?(POST|PUT|PATCH|DELETE)|Idempotency-Key/);
+test('management reports use office language and server-side Company/MCP reporting sources', async () => {
+  const [page, detail, data, css] = await Promise.all([read('app/reports/page.tsx'), read('app/reports/[reportId]/page.tsx'), read('app/reports/report-data.ts'), read('app/reports/report-center.module.css')]);
+  for (const label of ['Hôm nay','7 ngày','Tháng này','Quý này','Xu hướng kỳ','Diễn biến từ số liệu thật','Điểm cần chú ý']) assert.match(page,new RegExp(label));
+  assert.match(page,/\/reports\/\$\{item\.id\}/); assert.doesNotMatch(page,/Dữ liệu minh họa|report-preview-data/); assert.match(detail,/Phạm vi số liệu/); assert.match(detail,/Chỉ số quản trị/); assert.match(detail,/Nguồn số liệu/); assert.match(data,/Công Ty/); assert.match(data,/MCP/); assert.match(data,/requestCore/); assert.match(data,/server-only/); assert.doesNotMatch(`${page}\n${detail}`, /frontend|backend|production|contract|phase/i); assert.match(css,/\.sparkBars/); assert.match(css,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/); assert.doesNotMatch(`${page}\n${detail}\n${data}`, /method=['"]?(POST|PUT|PATCH|DELETE)|Idempotency-Key/);
 });
 
-test('overview aggregates proposal, alert and report centers with office wording', async () => {
+test('overview aggregates proposal, alert and live report centers with office wording', async () => {
   const [overview, css] = await Promise.all([read('app/page.tsx'), read('app/admin-management-shell.css')]);
-  assert.match(overview, /approvalFixtures/); assert.match(overview, /adminAlerts/); assert.match(overview, /reportPreviews/);
-  for (const label of ['Nhịp quản trị','Chờ quyết định','Cảnh báo mở','Ưu tiên hôm nay','Trung tâm quản trị','Đề xuất']) assert.match(overview,new RegExp(label));
+  assert.match(overview, /approvalFixtures/); assert.match(overview, /adminAlerts/); assert.match(overview, /loadControlTower/); assert.match(overview, /executiveReportState/); assert.doesNotMatch(overview, /reportPreviews|reports\/report-preview-data/);
+  for (const label of ['Nhịp quản trị','Chờ quyết định','Cảnh báo mở','Ưu tiên hôm nay','Trung tâm quản trị','Đề xuất','Số liệu Công Ty']) assert.match(overview,new RegExp(label));
   assert.doesNotMatch(overview,/Phê duyệt|dữ liệu mẫu frontend/i); assert.match(overview,/overviewDecisionStrip/); assert.match(overview,/overviewFocusList/);
   assert.match(css,/grid-template-rows:auto minmax\(0,1fr\) auto/); assert.doesNotMatch(css,/grid-template-rows:auto minmax\(0,1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(css,/padding:5px 8px max\(5px,env\(safe-area-inset-bottom\)\)/); assert.match(css,/adminPageHeader h1\{font-size:1\.42rem/); assert.match(css,/\.adminBottomItem span\{font-size:\.58rem/);
