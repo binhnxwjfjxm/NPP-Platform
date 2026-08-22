@@ -16,7 +16,7 @@ async function saveAndWait(page, dialogName, saveName) { const dialog = page.get
 async function shot(page, name) { await page.screenshot({ path: `${resultsDir}/${name}.png`, fullPage: true }); }
 
 await waitForHttp(`${mockBase}/health`); await waitForHttp(`${appBase}/visits?routeId=route-active&date=2099-12-30`); await reset();
-const browser = await chromium.launch({ headless: true }); const context = await browser.newContext({ viewport: { width: 390, height: 844 } }); const page = await context.newPage(); await page.setExtraHTTPHeaders(proxyHeaders); const result = { MCP_SESSION_ACTION_UI_SMOKE: "FAIL" };
+const browser = await chromium.launch({ headless: true }); const context = await browser.newContext({ viewport: { width: 390, height: 844 }, extraHTTPHeaders: proxyHeaders }); await context.addCookies([{ name: "hp_mcp_session", value: "ui-smoke-session", url: appBase }]); const page = await context.newPage(); const result = { MCP_SESSION_ACTION_UI_SMOKE: "FAIL" };
 try {
   await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "domcontentloaded" });
   await card(page).waitFor({ state: "visible" });
