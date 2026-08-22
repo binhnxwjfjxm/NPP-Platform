@@ -274,7 +274,7 @@ test.describe('Sales Order commercial controls', () => {
     await firstLine.getByRole('button', { name: /^Dùng giá điều chỉnh thủ công/ }).click();
     await firstLine.getByLabel('Giá bán cuối *').fill('8500');
     await firstLine.getByLabel('Lý do điều chỉnh giá *').fill('Giá đã được quản lý duyệt cho E2E');
-    await expect(firstLine.getByText('Giá điều chỉnh thủ công', { exact: true })).toBeVisible();
+    await expect(firstLine.getByText('Giá nhập tay', { exact: true })).toBeVisible();
     await firstLine.getByRole('button', { name: /^Dùng lại giá hệ thống/ }).click();
     await expect(firstLine.getByRole('button', { name: /^Dùng giá điều chỉnh thủ công/ })).toBeVisible();
 
