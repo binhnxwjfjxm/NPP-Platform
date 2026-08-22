@@ -12,14 +12,14 @@ export function MobileHomeLaunchpad() {
   return (
     <section className="mobile-home-launchpad" aria-label="Tác nghiệp nhanh hôm nay">
       <div className="mobile-home-launchpad-actions">
-        <Link className="mobile-home-primary-action" href="/visits" prefetch>
+        <a className="mobile-home-primary-action" data-document-navigation="true" href="/visits">
           <span aria-hidden="true">◎</span>
           <span><strong>Đi tuyến hôm nay</strong><small>Mở danh sách điểm bán và tiếp tục phiên</small></span>
           <b aria-hidden="true">›</b>
-        </Link>
+        </a>
         <nav className="mobile-home-quick-grid" aria-label="Lối tắt tổng quan">
           {QUICK_LINKS.map((item) => (
-            <Link href={item.href} key={item.href} prefetch={item.href !== "/orders"}>
+            <Link href={item.href} key={item.href} prefetch={false}>
               <span aria-hidden="true">{item.icon}</span>
               <strong>{item.label}</strong>
             </Link>
