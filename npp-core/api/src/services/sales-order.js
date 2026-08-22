@@ -303,6 +303,9 @@ async function prepareCommercialPayload(client, { requestContext, payload }) {
     if (quantity === null) {
       return failure('INVALID_QUANTITY', 'Quantity is invalid', false, { line: index + 1 });
     }
+    const manual = manualOverride(input, requestContext, index + 1);
+    if (!manual.ok) return manual;
+
     const resolutionResult = await pricingService.resolvePrice(client, {
       installationId: requestContext.installationId,
       payload: {
@@ -311,20 +314,56 @@ async function prepareCommercialPayload(client, { requestContext, payload }) {
         channelId: salesChannelId,
       },
     });
+
+    let baseUnitPriceMinor;
+    let systemUnitPriceMinor;
+    let fingerprint;
+    let systemTrace;
     if (!resolutionResult.ok) {
-      return failure(
-        resolutionResult.code,
-        resolutionResult.message,
-        Boolean(resolutionResult.retryable),
-        { line: index + 1 },
+      if (resolutionResult.code !== 'BASE_PRICE_NOT_FOUND' || manual.value === null) {
+        return failure(
+          resolutionResult.code,
+          resolutionResult.message,
+          Boolean(resolutionResult.retryable),
+          { line: index + 1 },
+        );
+      }
+      const fallbackResolution = {
+        variantId: input.variantId,
+        currencyCode: normalizedPayload.currency ?? 'VND',
+        quantity: input.quantity,
+        channelId: salesChannelId,
+        customerGroupId: null,
+        customerId: String(normalizedPayload.customerMode ?? 'EXISTING').toUpperCase() === 'WALK_IN'
+          ? null
+          : (normalizedPayload.customerId ?? null),
+        baseUnitPriceMinor: '0',
+        systemUnitPriceMinor: '0',
+        finalUnitPriceMinor: '0',
+        steps: [{ kind: 'SKIPPED', reason: 'BASE_PRICE_NOT_FOUND' }],
+      };
+      fingerprint = canonicalPricingFingerprint(fallbackResolution);
+      baseUnitPriceMinor = '0';
+      systemUnitPriceMinor = '0';
+      systemTrace = Object.freeze([
+        ...fallbackResolution.steps,
+        Object.freeze({
+          kind: 'RESOLUTION',
+          resolutionFingerprint: fingerprint,
+          channelId: salesChannelId,
+        }),
+      ]);
+    } else {
+      const resolution = resolutionResult.resolution;
+      baseUnitPriceMinor = String(resolution.baseUnitPriceMinor);
+      systemUnitPriceMinor = String(
+        resolution.systemUnitPriceMinor ?? resolution.finalUnitPriceMinor,
       );
+      fingerprint = resolution.resolutionFingerprint
+        ?? canonicalPricingFingerprint({ ...resolution, systemUnitPriceMinor });
+      systemTrace = Object.freeze([...(resolution.steps ?? [])]);
     }
-    const resolution = resolutionResult.resolution;
-    const systemUnitPriceMinor = String(
-      resolution.systemUnitPriceMinor ?? resolution.finalUnitPriceMinor,
-    );
-    const fingerprint = resolution.resolutionFingerprint
-      ?? canonicalPricingFingerprint({ ...resolution, systemUnitPriceMinor });
+
     if (
       input.expectedSystemUnitPriceMinor !== undefined
       && String(input.expectedSystemUnitPriceMinor) !== systemUnitPriceMinor
@@ -360,8 +399,6 @@ async function prepareCommercialPayload(client, { requestContext, payload }) {
       );
     }
 
-    const manual = manualOverride(input, requestContext, index + 1);
-    if (!manual.ok) return manual;
     const finalUnitPriceMinor = manual.value ?? systemUnitPriceMinor;
     const grossMinor = halfUp(quantity * BigInt(finalUnitPriceMinor), SCALE);
     grossByLine.push(grossMinor);
@@ -369,10 +406,10 @@ async function prepareCommercialPayload(client, { requestContext, payload }) {
       lineNumber: index + 1,
       input,
       quantity,
-      baseUnitPriceMinor: String(resolution.baseUnitPriceMinor),
+      baseUnitPriceMinor,
       systemUnitPriceMinor,
       finalUnitPriceMinor,
-      systemTrace: Object.freeze([...(resolution.steps ?? [])]),
+      systemTrace,
       fingerprint,
       manualReason: manual.reason,
     }));
@@ -857,6 +894,9 @@ async function verifyDraftPricing(client, {
       },
     });
     if (!automatic.ok) {
+      if (automatic.code === 'BASE_PRICE_NOT_FOUND' && line.price_source === 'MANUAL_OVERRIDE') {
+        continue;
+      }
       changed.push({
         line: Number(line.line_number),
         variantId: line.variant_id,
