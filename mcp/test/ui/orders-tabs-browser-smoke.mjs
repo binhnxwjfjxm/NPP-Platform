@@ -67,8 +67,8 @@ async function railGeometry(rail) {
 }
 
 async function headerGeometry(page) {
-  const box = await page.locator(".page-header").boundingBox();
-  assert.ok(box, "orders header must have geometry");
+  const box = await page.locator(".page-header-copy").boundingBox();
+  assert.ok(box, "orders header copy must have geometry");
   return box;
 }
 
