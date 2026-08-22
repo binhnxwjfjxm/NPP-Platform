@@ -49,6 +49,10 @@ const MCP_REPORT_SETTINGS_INSTALLATION_REPAIR_SQL = readFileSync(
   new URL("./sql/012_mcp_report_settings_installation_repair.sql", import.meta.url),
   "utf8"
 );
+const MCP_CUSTOMER_VERIFICATION_REVIEW_REASON_SQL = readFileSync(
+  new URL("./sql/013_mcp_customer_verification_review_reason.sql", import.meta.url),
+  "utf8"
+);
 
 export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_001_write_foundation", sql: MCP_WRITE_FOUNDATION_SQL }),
@@ -62,7 +66,8 @@ export const MCP_MIGRATIONS = Object.freeze([
   Object.freeze({ id: "mcp_009_customer_media_link", sql: MCP_CUSTOMER_MEDIA_LINK_SQL }),
   Object.freeze({ id: "mcp_010_customer_verification", sql: MCP_CUSTOMER_VERIFICATION_SQL }),
   Object.freeze({ id: "mcp_011_legacy_customer_linkage_repair", sql: MCP_LEGACY_CUSTOMER_LINKAGE_REPAIR_SQL }),
-  Object.freeze({ id: "mcp_012_report_settings_installation_repair", sql: MCP_REPORT_SETTINGS_INSTALLATION_REPAIR_SQL })
+  Object.freeze({ id: "mcp_012_report_settings_installation_repair", sql: MCP_REPORT_SETTINGS_INSTALLATION_REPAIR_SQL }),
+  Object.freeze({ id: "mcp_013_customer_verification_review_reason", sql: MCP_CUSTOMER_VERIFICATION_REVIEW_REASON_SQL })
 ]);
 
 const MCP_READ_MODELS = Object.freeze([
@@ -261,6 +266,7 @@ export async function migrationVerifyWithAdapter(adapter, migrations = MCP_MIGRA
     routeCustomerResponsibleEmployeeColumn: await columnExists(adapter, "mcp_route_customers", "responsible_employee_id"),
     routeCustomerVerificationOperationColumn: await columnExists(adapter, "mcp_route_customers", "customer_verification_operation_id"),
     routeCustomerVerificationKeyColumn: await columnExists(adapter, "mcp_route_customers", "customer_verification_idempotency_key"),
+    routeCustomerVerificationReviewReasonColumn: await columnExists(adapter, "mcp_route_customers", "customer_onboarding_review_reason"),
     routeCustomerVerificationShapeConstraint: await constraintExists(adapter, "mcp_route_customers", "mcp_route_customers_verification_shape_check"),
     outletMediaSharedRegistryTrigger: await triggerExists(adapter, "mcp_outlet_media", "mcp_outlet_media_shared_registry"),
     reportSettingGroupKeyIndex: await indexExists(adapter, "mcp_report_settings_group_key_unique"),
