@@ -3,6 +3,7 @@ import { sendJson, sendSuccess, sendError } from '../http-utils.js';
 import { readJsonBody, normalizeIdempotencyKey } from '../idempotency.js';
 import { buildAuditRecord, insertAuditRecord, withAuditOutboxTransaction } from '../audit-outbox.js';
 import * as productService from '../services/product.js';
+import * as productCrudService from '../services/product-with-inventory-policy.js';
 
 const RESOURCES = Object.freeze({
   category: Object.freeze({
@@ -272,7 +273,7 @@ async function handleProducts(req, res, context, pathname) {
       return true;
     }
     try {
-      const result = await productService.listProducts(context.getPool(), { installationId: context.requestContext.installationId, ...query });
+      const result = await productCrudService.listProducts(context.getPool(), { installationId: context.requestContext.installationId, ...query });
       if (!result.ok) return sendServiceError(res, result, context), true;
       sendSuccess(res, result.products, context.requestId, context.receivedAt);
     } catch {
@@ -286,7 +287,7 @@ async function handleProducts(req, res, context, pathname) {
     await idempotentMutation(req, res, context, {
       route: pathname,
       body,
-      mutate: (client) => productService.createProduct(client, { installationId: context.requestContext.installationId, payload: body, createdBy: context.requestContext.actorId }),
+      mutate: (client) => productCrudService.createProduct(client, { installationId: context.requestContext.installationId, payload: body, createdBy: context.requestContext.actorId }),
       resourceType: 'product',
       entityKey: 'product',
       metadata: (entity) => ({ code: entity.code }),
@@ -335,7 +336,7 @@ async function handleProducts(req, res, context, pathname) {
   const detail = pathname.match(/^\/api\/products\/([^/]+)$/);
   if (detail && method === 'GET') {
     try {
-      const result = await productService.getProduct(context.getPool(), { installationId: context.requestContext.installationId, id: detail[1] });
+      const result = await productCrudService.getProduct(context.getPool(), { installationId: context.requestContext.installationId, id: detail[1] });
       if (!result.ok) return sendServiceError(res, result, context), true;
       sendSuccess(res, result.product, context.requestId, context.receivedAt);
     } catch {
@@ -347,7 +348,7 @@ async function handleProducts(req, res, context, pathname) {
     const body = await payload(req, res, context);
     if (body === null) return true;
     await patchMutation(res, context, {
-      mutate: (client) => productService.updateProduct(client, { id: detail[1], installationId: context.requestContext.installationId, payload: body, updatedBy: context.requestContext.actorId }),
+      mutate: (client) => productCrudService.updateProduct(client, { id: detail[1], installationId: context.requestContext.installationId, payload: body, updatedBy: context.requestContext.actorId }),
       resourceType: 'product',
       entityKey: 'product',
       metadata: (entity) => ({ code: entity.code }),

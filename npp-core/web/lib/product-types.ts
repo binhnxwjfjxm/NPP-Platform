@@ -37,6 +37,7 @@ export type Product = {
   notes: string | null;
   is_catalog_visible: boolean;
   is_orderable: boolean;
+  is_inventory_managed?: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -80,6 +81,7 @@ export type ProductForm = {
   notes: string;
   isCatalogVisible: boolean;
   isOrderable: boolean;
+  isInventoryManaged: boolean;
   isActive: boolean;
 };
 
