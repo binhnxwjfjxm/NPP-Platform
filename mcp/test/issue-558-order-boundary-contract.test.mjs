@@ -4,11 +4,13 @@ import test from "node:test";
 
 const clientUrl = new URL("../src/features/orders/McpCoreOrdersClient.tsx", import.meta.url);
 const serviceUrl = new URL("../apps/backend/foundation/direct-sales-orders.js", import.meta.url);
+const accessUrl = new URL("../apps/backend/foundation/customer-route-access.js", import.meta.url);
 
-test("Issue #558 phase 2 uses direct Core Sales Order boundary without order-intent authority", async () => {
-  const [client, service] = await Promise.all([
+test("Issue #558 phase 2 uses direct Công Ty Sales Order boundary without order-intent authority", async () => {
+  const [client, service, access] = await Promise.all([
     readFile(clientUrl, "utf8"),
-    readFile(serviceUrl, "utf8")
+    readFile(serviceUrl, "utf8"),
+    readFile(accessUrl, "utf8")
   ]);
 
   assert.match(client, /\/api\/backend\/core-sales\/orders/);
@@ -18,9 +20,10 @@ test("Issue #558 phase 2 uses direct Core Sales Order boundary without order-int
 
   assert.match(service, /sourceType:\s*"MCP"/);
   assert.match(service, /sourceId:\s*idempotencyKey/);
-  assert.match(service, /sourceOutletId:\s*String\(link\.route_customer_id\)/);
-  assert.match(service, /customer\.responsible_employee_id = \$2::uuid/);
-  assert.match(service, /address\.customer_id = customer\.id/);
+  assert.match(service, /sourceOutletId:\s*source\.routeCustomerId/);
+  assert.match(service, /listAccessibleCoreCustomers/);
+  assert.match(access, /customer\.responsible_employee_id = \$2::uuid/);
+  assert.match(access, /customer_address\.is_active = true/);
   assert.match(service, /browser_commercial_authority_forbidden/);
   assert.doesNotMatch(service, /mcp-sales-order-\$\{|unitPrice|manualUnitPrice/);
 });
