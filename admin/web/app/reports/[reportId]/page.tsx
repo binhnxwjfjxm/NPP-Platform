@@ -6,7 +6,33 @@ import {
   normalizeReportPeriod,
   reportDomainFromId,
 } from '../report-data';
+import { loadReportDrilldown, type DrilldownNode } from '../report-drilldown';
 import styles from '../report-center.module.css';
+
+function DrilldownNodeView({ node, depth = 0 }: { node: DrilldownNode; depth?: number }) {
+  return (
+    <details className={styles.drilldownNode} open={depth === 0}>
+      <summary>
+        <span>{node.label}</span>
+        <small>{node.summary}</small>
+      </summary>
+      <div className={styles.drilldownBody}>
+        {node.facts.length > 0 ? (
+          <div className={styles.detailRows}>
+            {node.facts.map((fact) => (
+              <div key={`${node.id}-${fact.label}`}><span>{fact.label}</span><strong>{fact.value}</strong></div>
+            ))}
+          </div>
+        ) : null}
+        {node.children.length > 0 ? (
+          <div className={styles.drilldownChildren}>
+            {node.children.map((child) => <DrilldownNodeView key={child.id} node={child} depth={depth + 1} />)}
+          </div>
+        ) : null}
+      </div>
+    </details>
+  );
+}
 
 export default async function ReportDetailPage({
   params,
@@ -19,7 +45,10 @@ export default async function ReportDetailPage({
   if (!domain) notFound();
 
   const period = normalizeReportPeriod(searchParams?.period);
-  const item = await loadReportPresentation(domain, period);
+  const [item, drilldown] = await Promise.all([
+    loadReportPresentation(domain, period),
+    loadReportDrilldown(domain, period),
+  ]);
 
   return (
     <AdminShell
@@ -67,6 +96,19 @@ export default async function ReportDetailPage({
               </div>
             ))}
           </div>
+        </section>
+      ) : null}
+
+      {drilldown ? (
+        <section className={`card ${styles.detailSection}`}>
+          <h3>{drilldown.title}</h3>
+          {drilldown.description ? <p className={styles.drilldownDescription}>{drilldown.description}</p> : null}
+          {drilldown.message ? <div className={styles.detailNote}>{drilldown.message}</div> : null}
+          {drilldown.nodes.length > 0 ? (
+            <div className={styles.drilldownTree}>
+              {drilldown.nodes.map((node) => <DrilldownNodeView key={node.id} node={node} />)}
+            </div>
+          ) : null}
         </section>
       ) : null}
 

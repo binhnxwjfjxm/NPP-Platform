@@ -144,7 +144,7 @@ function percent(numerator, denominator) {
 
 export async function employeeMcpReport(adapter, requestContext, filters, fieldScope) {
   const params = [requestContext.installationId, filters.from, filters.to, fieldScope.employeeCode];
-  const [summary, actors, routes, sessions, unmappedActors, counterMismatches] = await Promise.all([
+  const [summary, actors, routes, sessions, sessionCustomers, visits, unmappedActors, counterMismatches] = await Promise.all([
     adapter.query(
       `${SESSION_METRICS_CTE}
        SELECT count(*)::text AS session_count,
@@ -250,6 +250,75 @@ export async function employeeMcpReport(adapter, requestContext, filters, fieldS
     ),
     adapter.query(
       `${SESSION_METRICS_CTE}
+       SELECT customer.id AS session_customer_id,
+              customer.session_id,
+              session.session_date::text,
+              session.route_id,
+              session.route_code,
+              session.route_name,
+              session.sales_label,
+              session.employee_id,
+              session.employee_code,
+              session.employee_name,
+              customer.route_customer_id,
+              customer.customer_id,
+              customer.customer_name,
+              customer.account_name,
+              customer.area,
+              customer.address,
+              customer.sort_order::text,
+              customer.source,
+              customer.status,
+              customer.visit_status,
+              customer.status_reason,
+              customer.order_id AS order_intent_id,
+              customer.test_id,
+              customer.report_id,
+              customer.followup_count::text,
+              customer.checked_in,
+              customer.checkin_at,
+              customer.note
+         FROM scoped_sessions session
+         JOIN mcp.mcp_session_customers customer
+           ON customer.installation_id = $1
+          AND customer.session_id = session.session_id
+        ORDER BY session.session_date DESC, session.opened_at DESC NULLS LAST,
+                 customer.sort_order, customer.id
+        LIMIT 300`,
+      params,
+    ),
+    adapter.query(
+      `${SESSION_METRICS_CTE}
+       SELECT visit.id AS visit_id,
+              visit.session_id,
+              visit.session_customer_id,
+              session.session_date::text,
+              session.route_id,
+              session.route_code,
+              session.route_name,
+              session.sales_label,
+              session.employee_id,
+              session.employee_code,
+              session.employee_name,
+              visit.route_customer_id,
+              visit.customer_id,
+              visit.customer_name,
+              visit.visit_date::text,
+              visit.status,
+              visit.checkin_at,
+              visit.checkout_at,
+              visit.note,
+              visit.created_at
+         FROM scoped_sessions session
+         JOIN mcp.mcp_visits visit
+           ON visit.installation_id = $1
+          AND visit.session_id = session.session_id
+        ORDER BY COALESCE(visit.checkin_at, visit.created_at) DESC, visit.id DESC
+        LIMIT 400`,
+      params,
+    ),
+    adapter.query(
+      `${SESSION_METRICS_CTE}
        SELECT CASE WHEN sales_label IS NULL THEN 'MISSING_FIELD_ACTOR_CODE' ELSE 'UNMAPPED_EMPLOYEE_CODE' END AS exception_code,
               sales_label,
               count(*)::text AS session_count,
@@ -302,6 +371,8 @@ export async function employeeMcpReport(adapter, requestContext, filters, fieldS
     fieldActors: mapRows(actors.rows),
     routes: mapRows(routes.rows),
     sessions: mapRows(sessions.rows),
+    sessionCustomers: mapRows(sessionCustomers.rows),
+    visits: mapRows(visits.rows),
     dataQuality: Object.freeze({
       unmappedActors: mapRows(unmappedActors.rows),
       counterMismatches: mapRows(counterMismatches.rows),
