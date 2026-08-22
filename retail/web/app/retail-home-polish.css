@@ -24,26 +24,32 @@
 .retail-issue675 .compact-home-actions {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: stretch;
-  gap: 8px;
+  gap: 10px;
+  padding: 2px 0 6px;
 }
 
 .retail-issue675 .compact-home-actions button {
+  position: relative;
   display: flex;
   min-width: 0;
-  min-height: 86px;
+  min-height: 92px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  border: 1px solid #dce6df;
-  border-radius: 16px;
-  padding: 10px 8px;
-  background: #fff;
-  color: #24382d;
+  gap: 9px;
+  border: 0;
+  border-radius: 18px;
+  padding: 12px 8px;
+  background: linear-gradient(180deg, #ffffff 0%, #f4f6f5 100%);
+  color: #20362a;
   text-align: center;
-  box-shadow: 0 4px 12px rgba(37, 64, 49, .06);
+  box-shadow:
+    0 12px 24px rgba(25, 48, 35, .10),
+    0 3px 7px rgba(25, 48, 35, .07),
+    inset 0 1px 0 rgba(255, 255, 255, .95);
   cursor: pointer;
-  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background 120ms ease;
+  transform: translateY(0);
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
 }
 
 .retail-issue675 .compact-home-actions button::after {
@@ -51,34 +57,39 @@
 }
 
 .retail-issue675 .compact-home-actions button:first-child {
-  border-color: #88cca2;
-  background: #edf9f1;
+  background: linear-gradient(180deg, #effaf3 0%, #dff2e7 100%);
+  color: #163c27;
+  box-shadow:
+    0 14px 28px rgba(18, 105, 56, .17),
+    0 4px 9px rgba(18, 105, 56, .10),
+    inset 0 1px 0 rgba(255, 255, 255, .88);
 }
 
 .retail-issue675 .compact-home-actions button > span {
   display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
+  width: 36px;
+  height: 30px;
+  flex: 0 0 30px;
   place-items: center;
   border: 0;
-  border-radius: 11px;
-  background: #f0f6f2;
-  color: #21784a;
+  border-radius: 0;
+  background: transparent;
+  color: #397052;
   box-shadow: none;
   font-size: 0;
 }
 
 .retail-issue675 .compact-home-actions button:first-child > span {
-  background: #d8f0e1;
-  color: #11683b;
+  background: transparent;
+  color: #08713c;
 }
 
 .retail-issue675 .compact-home-actions button > span::before {
   content: "";
-  width: 19px;
-  height: 19px;
+  width: 22px;
+  height: 22px;
   background: currentColor;
+  filter: drop-shadow(0 2px 2px rgba(19, 75, 43, .12));
   -webkit-mask-position: center;
   mask-position: center;
   -webkit-mask-repeat: no-repeat;
@@ -105,7 +116,9 @@
 .retail-issue675 .compact-home-actions button strong {
   display: block;
   width: 100%;
+  color: inherit;
   font-size: 13px;
+  font-weight: 800;
   line-height: 1.2;
   letter-spacing: -.01em;
   text-align: center;
@@ -117,32 +130,46 @@
 
 @media (hover: hover) {
   .retail-issue675 .compact-home-actions button:hover {
-    border-color: #a9cdb8;
-    background: #f8fbf9;
-    box-shadow: 0 6px 16px rgba(37, 64, 49, .09);
+    transform: translateY(-2px);
+    background: linear-gradient(180deg, #ffffff 0%, #eef3f0 100%);
+    box-shadow:
+      0 16px 30px rgba(25, 48, 35, .13),
+      0 4px 9px rgba(25, 48, 35, .08),
+      inset 0 1px 0 rgba(255, 255, 255, .96);
   }
 
   .retail-issue675 .compact-home-actions button:first-child:hover {
-    border-color: #6fbd8d;
-    background: #e8f6ed;
+    background: linear-gradient(180deg, #effaf3 0%, #d8efdf 100%);
+    box-shadow:
+      0 17px 32px rgba(18, 105, 56, .20),
+      0 5px 10px rgba(18, 105, 56, .11),
+      inset 0 1px 0 rgba(255, 255, 255, .9);
   }
 }
 
 .retail-issue675 .compact-home-actions button:active {
-  transform: scale(.98);
-  box-shadow: 0 2px 7px rgba(37, 64, 49, .07);
+  transform: translateY(2px);
+  box-shadow:
+    0 5px 11px rgba(25, 48, 35, .10),
+    inset 0 1px 2px rgba(13, 42, 26, .06);
+}
+
+.retail-issue675 .compact-home-actions button:first-child:active {
+  box-shadow:
+    0 6px 13px rgba(18, 105, 56, .13),
+    inset 0 1px 2px rgba(13, 74, 36, .07);
 }
 
 .retail-issue675 .compact-home-actions button:focus-visible {
   outline: 3px solid rgba(18, 125, 67, .18);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
 
 @media (max-width: 390px) {
-  .retail-issue675 .compact-home-actions { gap: 7px; }
-  .retail-issue675 .compact-home-actions button { min-height: 82px; border-radius: 14px; padding: 9px 6px; }
-  .retail-issue675 .compact-home-actions button > span { width: 32px; height: 32px; flex-basis: 32px; border-radius: 10px; }
-  .retail-issue675 .compact-home-actions button > span::before { width: 18px; height: 18px; }
+  .retail-issue675 .compact-home-actions { gap: 8px; }
+  .retail-issue675 .compact-home-actions button { min-height: 88px; border-radius: 16px; padding: 11px 6px; }
+  .retail-issue675 .compact-home-actions button > span { width: 34px; height: 28px; flex-basis: 28px; }
+  .retail-issue675 .compact-home-actions button > span::before { width: 21px; height: 21px; }
   .retail-issue675 .compact-home-actions button strong { font-size: 12px; }
 }
 
