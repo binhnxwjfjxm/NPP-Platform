@@ -34,7 +34,7 @@ type StatusFilter = 'all' | 'active' | 'inactive';
 
 const EMPTY_PRODUCT: ProductForm = {
   code: '', name: '', catalogName: '', categoryId: '', brandId: '', description: '', notes: '',
-  isCatalogVisible: false, isOrderable: false, isActive: true,
+  isCatalogVisible: false, isOrderable: false, isInventoryManaged: true, isActive: true,
 };
 const EMPTY_CATEGORY: CategoryForm = {
   code: '', name: '', parentCategoryId: '', description: '', sortOrder: '0',
@@ -104,6 +104,7 @@ function productToForm(product: Product): ProductForm {
     notes: product.notes ?? '',
     isCatalogVisible: product.is_catalog_visible,
     isOrderable: product.is_orderable,
+    isInventoryManaged: product.is_inventory_managed !== false,
     isActive: product.is_active,
   };
 }
@@ -605,6 +606,7 @@ export default function ProductWorkspace({
           <div className={styles.checks}>
             <label><input type="checkbox" checked={productForm.isCatalogVisible} onChange={(event) => setProductForm({ ...productForm, isCatalogVisible: event.target.checked })} /> Hiển thị trong danh mục bán hàng</label>
             <label title={!activeSellableVariantExists && editingProduct ? 'Cần ít nhất một SKU đang sử dụng và được phép bán' : undefined}><input type="checkbox" checked={productForm.isOrderable} disabled={!editingProduct || !activeSellableVariantExists} onChange={(event) => setProductForm({ ...productForm, isOrderable: event.target.checked })} /> Cho phép đặt hàng</label>
+            <label title="Bỏ chọn cho hàng mua dùm hoặc hàng không theo dõi số lượng tồn."><input type="checkbox" checked={productForm.isInventoryManaged} onChange={(event) => setProductForm({ ...productForm, isInventoryManaged: event.target.checked })} data-testid="product-inventory-managed-input" /> Quản lý tồn kho</label>
             <label><input type="checkbox" checked={productForm.isActive} onChange={(event) => setProductForm({ ...productForm, isActive: event.target.checked })} /> Đang sử dụng</label>
           </div>
         </Modal>
