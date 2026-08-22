@@ -72,6 +72,13 @@ async function headerGeometry(page) {
   return box;
 }
 
+async function scrollMetrics(scrollRegion) {
+  return scrollRegion.evaluate((node) => ({
+    scrollTop: node.scrollTop,
+    maxScrollTop: Math.max(0, node.scrollHeight - node.clientHeight)
+  }));
+}
+
 async function pseudoTransform(rail) {
   return rail.evaluate((node) => getComputedStyle(node, "::before").transform);
 }
@@ -104,7 +111,10 @@ async function verifyAuthenticatedOrdersMotion(browser, width, height) {
   const scrollRegion = page.locator("[data-app-scroll-region]");
   await scrollRegion.evaluate((node) => { node.scrollTop = Math.min(36, Math.max(0, node.scrollHeight - node.clientHeight)); });
   const stableScrollTop = await scrollRegion.evaluate((node) => node.scrollTop);
+  let expectedScrollTop = stableScrollTop;
   const stableRail = await railGeometry(rail);
+  const stableRailContentY = stableRail.y + stableScrollTop;
+  const viewScrollTops = new Map([["default", stableScrollTop]]);
   const transforms = [await pseudoTransform(rail)];
 
   const sequence = [
@@ -124,13 +134,17 @@ async function verifyAuthenticatedOrdersMotion(browser, width, height) {
 
     const currentRail = await railGeometry(rail);
     const currentHeader = await headerGeometry(page);
+    const currentScroll = await scrollMetrics(scrollRegion);
+    const clampedExpectedScrollTop = Math.min(expectedScrollTop, currentScroll.maxScrollTop);
     assert.ok(closeEnough(currentRail.x, stableRail.x), `${step.label}: rail x must stay fixed`);
-    assert.ok(closeEnough(currentRail.y, stableRail.y), `${step.label}: rail y must stay fixed`);
+    assert.ok(closeEnough(currentRail.y + currentScroll.scrollTop, stableRailContentY), `${step.label}: rail content position must stay fixed`);
     assert.ok(closeEnough(currentRail.width, stableRail.width), `${step.label}: rail width must stay fixed`);
     assert.ok(closeEnough(currentRail.height, stableRail.height), `${step.label}: rail height must stay fixed`);
     assert.ok(closeEnough(currentHeader.height, initialHeader.height), `${step.label}: page header height must stay fixed`);
     assert.equal(await actions.locator(":scope > *").count(), step.actions, `${step.label}: action count should change without changing header geometry`);
-    assert.ok(closeEnough(await scrollRegion.evaluate((node) => node.scrollTop), stableScrollTop, 1), `${step.label}: tab navigation must preserve scroll`);
+    assert.ok(closeEnough(currentScroll.scrollTop, clampedExpectedScrollTop, 1), `${step.label}: tab navigation must preserve scroll unless shorter content clamps it`);
+    expectedScrollTop = currentScroll.scrollTop;
+    viewScrollTops.set(step.view || "default", currentScroll.scrollTop);
 
     const panel = page.getByRole("tabpanel");
     await panel.waitFor({ state: "visible" });
@@ -143,11 +157,12 @@ async function verifyAuthenticatedOrdersMotion(browser, width, height) {
   await page.goBack();
   await page.waitForFunction(() => new URL(window.location.href).searchParams.get("view") === "overview");
   assert.equal(await page.getByRole("tab", { name: /^Tổng quan/ }).getAttribute("aria-selected"), "true", "browser back restores overview tab");
-  assert.ok(closeEnough(await scrollRegion.evaluate((node) => node.scrollTop), stableScrollTop, 1), "browser back must preserve orders scroll");
+  assert.ok(closeEnough(await scrollRegion.evaluate((node) => node.scrollTop), viewScrollTops.get("overview") || 0, 1), "browser back restores the overview scroll position");
 
   await page.goForward();
   await page.waitForFunction(() => new URL(window.location.href).searchParams.get("view") === null);
   assert.equal(await page.getByRole("tab", { name: /^Đơn hàng/ }).getAttribute("aria-selected"), "true", "browser forward restores orders tab");
+  assert.ok(closeEnough(await scrollRegion.evaluate((node) => node.scrollTop), viewScrollTops.get("default") || 0, 1), "browser forward restores the orders scroll position");
 
   await page.goto(`${appBase}/orders?view=sales`, { waitUntil: "domcontentloaded" });
   assert.equal(await page.getByRole("tab", { name: /^Doanh số đặt hàng/ }).getAttribute("aria-selected"), "true", "deep link must select sales view");
