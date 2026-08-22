@@ -8,8 +8,12 @@ import {
   type CustomerPortalActivationOptions,
 } from '../../../lib/customer-onboarding-gateway';
 import { listAllCustomers, resolveCustomerRequestId } from '../../../lib/customer-gateway';
+import { listAllEmployees, resolveEmployeeRequestId } from '../../../lib/employee-gateway';
 import type { Customer } from '../../../lib/customer-types';
-import CustomerOnboardingReview from './customer-onboarding-review';
+import type { Employee } from '../../../lib/employee-types';
+import CustomerOnboardingReview, {
+  type CustomerOnboardingSourcePresentation,
+} from './customer-onboarding-review';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +24,11 @@ const EMPTY_PORTAL_OPTIONS: CustomerPortalActivationOptions = { warehouses: [], 
 type LoadResult<T> = {
   data: T;
   error: string | null;
+};
+
+type RequestSourceFields = {
+  requestedByEmployeeId?: string | null;
+  sourceMetadata?: unknown;
 };
 
 async function loadAllRequestsForStatus(status: string): Promise<CustomerOnboardingRequestSummary[]> {
@@ -107,6 +116,20 @@ async function loadActiveCustomers(): Promise<LoadResult<Customer[]>> {
   }
 }
 
+async function loadEmployees(): Promise<LoadResult<Employee[]>> {
+  try {
+    return {
+      data: await listAllEmployees<Employee>(resolveEmployeeRequestId(null)),
+      error: null,
+    };
+  } catch {
+    return {
+      data: [],
+      error: 'Không tải được tên nhân viên đưa khách về.',
+    };
+  }
+}
+
 async function loadPortalOptions(enabled: boolean): Promise<LoadResult<CustomerPortalActivationOptions>> {
   if (!enabled) return { data: EMPTY_PORTAL_OPTIONS, error: null };
   try {
@@ -122,13 +145,55 @@ async function loadPortalOptions(enabled: boolean): Promise<LoadResult<CustomerP
   }
 }
 
+function sourceMetadata(request: CustomerOnboardingRequestSummary): Record<string, unknown> {
+  const metadata = (request as CustomerOnboardingRequestSummary & RequestSourceFields).sourceMetadata;
+  return metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? metadata as Record<string, unknown>
+    : {};
+}
+
+function sourcePresentation(
+  request: CustomerOnboardingRequestSummary,
+  employeeById: Map<string, Employee>,
+): CustomerOnboardingSourcePresentation {
+  if (request.sourceSystem === 'CUSTOMER_PORTAL') {
+    return {
+      channelLabel: 'Ordering · Khách trực tiếp',
+      broughtByLabel: 'Khách tự đăng ký',
+      outletLabel: null,
+      reasonLabel: 'Đăng ký tài khoản đặt hàng',
+    };
+  }
+
+  const requestSource = request as CustomerOnboardingRequestSummary & RequestSourceFields;
+  const employee = requestSource.requestedByEmployeeId
+    ? employeeById.get(requestSource.requestedByEmployeeId)
+    : null;
+  const metadata = sourceMetadata(request);
+  const routeName = typeof metadata.routeName === 'string' ? metadata.routeName.trim() : '';
+
+  return {
+    channelLabel: 'MCP Field',
+    broughtByLabel: employee ? `${employee.code} — ${employee.full_name}` : 'Nhân viên MCP',
+    outletLabel: routeName || request.proposedCustomer.name,
+    reasonLabel: request.sourceDemandReference === 'FIELD_PROFILE_VERIFICATION'
+      ? 'Đề nghị mở / liên kết mã khách hàng'
+      : 'Đề nghị tạo mã để phục vụ đơn hàng',
+  };
+}
+
 export default async function CustomerOnboardingReviewPage() {
-  const [requests, customers] = await Promise.all([
+  const [requests, customers, employees] = await Promise.all([
     loadPendingRequests(),
     loadActiveCustomers(),
+    loadEmployees(),
   ]);
   const portalOptions = await loadPortalOptions(
     requests.data.some((request) => request.sourceSystem === 'CUSTOMER_PORTAL'),
+  );
+  const employeeById = new Map(employees.data.map((employee) => [employee.id, employee]));
+  const sourcePresentationByRequest = Object.fromEntries(
+    requests.data.map((request) => [request.id, sourcePresentation(request, employeeById)]),
   );
 
   return (
@@ -140,11 +205,13 @@ export default async function CustomerOnboardingReviewPage() {
     >
       {requests.error ? <p role="alert">{requests.error}</p> : null}
       {customers.error ? <p role="alert">{customers.error}</p> : null}
+      {employees.error ? <p role="alert">{employees.error}</p> : null}
       {portalOptions.error ? <p role="alert">{portalOptions.error}</p> : null}
       <CustomerOnboardingReview
         requests={requests.data}
         customers={customers.data}
         portalOptions={portalOptions.data}
+        sourcePresentationByRequest={sourcePresentationByRequest}
       />
     </AppShell>
   );
