@@ -1,6 +1,7 @@
 import { readJsonBody } from '../idempotency.js';
 import { sendError, sendSuccess } from '../http-utils.js';
 import * as retailCatalogService from '../services/retail-catalog.js';
+import * as retailProductLabelsService from '../services/retail-product-labels.js';
 import * as warehouseRepository from '../db/repositories/warehouse.js';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
@@ -107,6 +108,24 @@ export async function handleRetailCatalogRoutes(req, res, options) {
       else sendSuccess(res, result.products, options.requestId, options.receivedAt);
     } catch (error) {
       sendError(res, apiError(error.code ?? 'RETAIL_CATALOG_UNAVAILABLE', error.publicMessage ?? 'Chưa thể tải danh mục sản phẩm', {}, true, error.statusCode ?? 503), options.requestId, options.receivedAt);
+    }
+    return true;
+  }
+
+  if (url.pathname === '/api/retail/product-labels' && req.method === 'POST') {
+    const context = await authorize(req, res, options, options.PERMISSIONS.coreProductRead);
+    if (!context) return true;
+    const payload = await requestBody(req, res, options);
+    if (payload === null) return true;
+    try {
+      const result = await retailProductLabelsService.getRetailProductLabels(options.getPool(), {
+        requestContext: context,
+        payload,
+      });
+      if (!result.ok) sendServiceError(res, result, options);
+      else sendSuccess(res, result.labels, options.requestId, options.receivedAt);
+    } catch {
+      sendError(res, apiError('RETAIL_PRODUCT_LABELS_UNAVAILABLE', 'Chưa thể tải tên sản phẩm', {}, true, 503), options.requestId, options.receivedAt);
     }
     return true;
   }
