@@ -216,12 +216,25 @@ export async function resolvePrice(client, { installationId, payload }) {
   const automaticPayload = { ...payload };
   delete automaticPayload.manualUnitPriceMinor;
   delete automaticPayload.manualReason;
+  delete automaticPayload.allowMissingBasePrice;
 
   const automatic = await legacy.resolvePrice(client, {
     installationId,
     payload: automaticPayload,
   });
-  if (!automatic.ok) return automatic;
+  if (!automatic.ok) {
+    if (automatic.code === 'BASE_PRICE_NOT_FOUND' && payload?.allowMissingBasePrice === true) {
+      return {
+        ok: true,
+        resolution: {
+          resolutionStatus: 'MANUAL_PRICE_REQUIRED',
+          code: automatic.code,
+          message: 'Chưa có giá Công Ty. Nhập giá bán theo quyền được cấp để tiếp tục.',
+        },
+      };
+    }
+    return automatic;
+  }
 
   const systemResolution = {
     ...automatic.resolution,
