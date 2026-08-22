@@ -53,6 +53,7 @@ type LineDraft = {
   priceSteps: SalesPriceStep[];
   resolvingPrice: boolean;
   priceError: string | null;
+  pricingErrorCode: string | null;
 };
 
 type QuickCustomerDraft = {
@@ -155,11 +156,35 @@ function versionLines(version?: SalesOrderVersion | null): LineDraft[] {
     priceSteps: line.pricingTrace ?? [],
     resolvingPrice: false,
     priceError: null,
+    pricingErrorCode: null,
   }));
 }
 
 function finalUnitPrice(line: LineDraft): string {
   return line.manualUnitPriceMinor.trim() || line.systemUnitPriceMinor;
+}
+
+function hasValidManualPrice(line: LineDraft): boolean {
+  return /^\d+$/.test(line.manualUnitPriceMinor.trim()) && Boolean(line.manualReason.trim());
+}
+
+function automaticPriceText(line: LineDraft, value: string): string {
+  if (line.resolvingPrice) return 'Đang tính…';
+  if (!line.pricingFingerprint) return 'Chưa có';
+  return vnd(value);
+}
+
+function pricingErrorDetails(error: unknown): { code: string | null; message: string } {
+  if (error instanceof SalesOrderUiError && error.code === 'BASE_PRICE_NOT_FOUND') {
+    return {
+      code: error.code,
+      message: 'Chưa có giá Công Ty. Nhập giá bán cho dòng này để tiếp tục.',
+    };
+  }
+  return {
+    code: error instanceof SalesOrderUiError ? error.code : null,
+    message: error instanceof Error ? error.message : 'Không phân giải được giá',
+  };
 }
 
 function grossMinor(line: LineDraft): bigint {
@@ -246,6 +271,7 @@ function pricingLabel(step: SalesPriceStep): string {
 }
 
 function pricingSummary(line: LineDraft): string {
+  if (!line.pricingFingerprint) return 'Chưa có giá Công Ty';
   const applied = line.priceSteps.filter((step) => step.kind === 'RULE');
   if (applied.length === 0) return 'Giá nền';
   const labels = applied
@@ -282,6 +308,7 @@ export default function SalesOrderCommercialForm(props: Props) {
   const [showMore, setShowMore] = useState(Boolean(version?.note));
   const [lines, setLines] = useState<LineDraft[]>(versionLines(version));
   const [expandedLineId, setExpandedLineId] = useState<string | null>(null);
+  const [manualEditorLineId, setManualEditorLineId] = useState<string | null>(null);
   const linesRef = useRef(lines);
   const committedDraftRef = useRef<SalesOrder | null>(null);
   const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
@@ -390,7 +417,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     const snapshot = [...linesRef.current];
     if (snapshot.length === 0 || !channelId) return;
     const run = ++pricingRunRef.current;
-    setLines((current) => current.map((line) => ({ ...line, resolvingPrice: true, priceError: null })));
+    setLines((current) => current.map((line) => ({ ...line, resolvingPrice: true, priceError: null, pricingErrorCode: null })));
     const results = await Promise.all(snapshot.map(async (line) => {
       try {
         const resolution = await priceFor({
@@ -408,15 +435,18 @@ export default function SalesOrderCommercialForm(props: Props) {
           pricingFingerprint: resolution.resolutionFingerprint,
           priceSteps: resolution.steps,
           priceError: null,
+          pricingErrorCode: null,
         };
       } catch (error) {
+        const details = pricingErrorDetails(error);
         return {
           variantId: line.variantId,
           baseUnitPriceMinor: line.baseUnitPriceMinor,
           systemUnitPriceMinor: line.systemUnitPriceMinor,
-          pricingFingerprint: line.pricingFingerprint,
-          priceSteps: line.priceSteps,
-          priceError: error instanceof Error ? error.message : 'Không phân giải được giá',
+          pricingFingerprint: '',
+          priceSteps: [],
+          priceError: details.message,
+          pricingErrorCode: details.code,
         };
       }
     }));
@@ -540,7 +570,7 @@ export default function SalesOrderCommercialForm(props: Props) {
     const pending: LineDraft = {
       variantId: option.id,
       sku: option.sku,
-      name: option.variantName,
+      name: option.productName,
       unitCode: option.unitCode ?? '',
       quantity: '1',
       taxMode: option.defaultTaxMode,
@@ -553,6 +583,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       priceSteps: [],
       resolvingPrice: true,
       priceError: null,
+      pricingErrorCode: null,
     };
     setTaxReady(true);
     setLines((current) => [...current, pending]);
@@ -576,13 +607,21 @@ export default function SalesOrderCommercialForm(props: Props) {
         priceSteps: resolution.steps,
         resolvingPrice: false,
         priceError: null,
+        pricingErrorCode: null,
       } : line));
     } catch (error) {
+      const details = pricingErrorDetails(error);
       setLines((current) => current.map((line) => line.variantId === option.id ? {
         ...line,
+        pricingFingerprint: '',
+        priceSteps: [],
         resolvingPrice: false,
-        priceError: error instanceof Error ? error.message : 'Không phân giải được giá',
+        priceError: details.message,
+        pricingErrorCode: details.code,
       } : line));
+      if (details.code === 'BASE_PRICE_NOT_FOUND' && canPriceOverride) {
+        setManualEditorLineId(option.id);
+      }
     } finally {
       window.setTimeout(() => searchRef.current?.focus(), 0);
     }
@@ -605,7 +644,11 @@ export default function SalesOrderCommercialForm(props: Props) {
     setLines((current) => current.map((item, itemIndex) => itemIndex === index ? {
       ...item,
       quantity: stepQuantity(item.quantity, direction),
+      pricingFingerprint: '',
+      priceSteps: [],
       priceError: null,
+      pricingErrorCode: null,
+      resolvingPrice: true,
     } : item));
     markDirty();
   }
@@ -619,12 +662,26 @@ export default function SalesOrderCommercialForm(props: Props) {
 
   function enableManualPrice(index: number) {
     if (!canPriceOverride) return;
+    const target = linesRef.current[index];
+    if (!target) return;
     setLines((current) => current.map((line, itemIndex) => itemIndex === index ? {
       ...line,
-      manualUnitPriceMinor: line.systemUnitPriceMinor,
-      manualReason: '',
+      manualUnitPriceMinor: line.manualUnitPriceMinor || (line.pricingFingerprint ? line.systemUnitPriceMinor : ''),
     } : line));
+    setManualEditorLineId(target.variantId);
     markDirty();
+  }
+
+  function finishManualPrice(index: number) {
+    const line = linesRef.current[index];
+    if (!line || !/^\d+$/.test(line.manualUnitPriceMinor.trim())) {
+      return onError('Hãy nhập giá bán hợp lệ cho dòng hàng');
+    }
+    if (!line.manualReason.trim()) {
+      return onError('Hãy nhập lý do điều chỉnh giá');
+    }
+    setManualEditorLineId(null);
+    onError('');
   }
 
   function useSystemPrice(index: number) {
@@ -633,6 +690,7 @@ export default function SalesOrderCommercialForm(props: Props) {
       manualUnitPriceMinor: '',
       manualReason: '',
     } : line));
+    setManualEditorLineId(null);
     markDirty();
   }
 
@@ -727,8 +785,11 @@ export default function SalesOrderCommercialForm(props: Props) {
     if (lines.length === 0) return 'Đơn bán hàng phải có ít nhất một SKU';
     if (lines.some((line) => !parseScaled(line.quantity, false))) return 'Số lượng hàng hóa chưa hợp lệ';
     if (lines.some((line) => line.resolvingPrice)) return 'Hệ thống đang tính giá, hãy đợi hoàn tất';
-    if (lines.some((line) => line.priceError || !line.pricingFingerprint)) return 'Có dòng hàng chưa phân giải được giá bán';
-    if (lines.some((line) => line.manualUnitPriceMinor && (!canPriceOverride || !/^\d+$/.test(line.manualUnitPriceMinor) || !line.manualReason.trim()))) {
+    if (lines.some((line) => {
+      if (line.pricingFingerprint && !line.priceError) return false;
+      return line.pricingErrorCode !== 'BASE_PRICE_NOT_FOUND' || !hasValidManualPrice(line);
+    })) return 'Có dòng hàng chưa có giá bán hợp lệ';
+    if (lines.some((line) => line.manualUnitPriceMinor && (!canPriceOverride || !hasValidManualPrice(line)))) {
       return 'Giá điều chỉnh thủ công cần đúng quyền, giá bán cuối hợp lệ và lý do riêng từng dòng';
     }
     if (!taxReady) return 'Chưa tải được chính sách thuế mặc định từ Công Ty';
@@ -766,8 +827,10 @@ export default function SalesOrderCommercialForm(props: Props) {
         quantity: compactQuantity(line.quantity),
         taxMode: line.taxMode,
         taxRate: line.taxRate,
-        expectedSystemUnitPriceMinor: line.systemUnitPriceMinor,
-        expectedPricingFingerprint: line.pricingFingerprint,
+        ...(line.pricingFingerprint ? {
+          expectedSystemUnitPriceMinor: line.systemUnitPriceMinor,
+          expectedPricingFingerprint: line.pricingFingerprint,
+        } : {}),
         ...(line.manualUnitPriceMinor ? {
           manualUnitPriceMinor: line.manualUnitPriceMinor,
           manualReason: line.manualReason.trim(),
@@ -948,14 +1011,14 @@ export default function SalesOrderCommercialForm(props: Props) {
           </section>
 
           <section className={styles.orderLines} aria-label="Hàng hóa trong đơn">
-            <header className={styles.lineTableHeader}><span>STT</span><span>Hàng hóa</span><span>Số lượng</span><span>Giá nền</span><span>Giá hệ thống</span><span>Giá cuối</span><span>Thành tiền</span><span /></header>
+            <header className={styles.lineTableHeader}><span>STT</span><span>Hàng hóa</span><span>ĐVT</span><span>Số lượng</span><span>Giá nền</span><span>Giá hệ thống</span><span>Giá cuối</span><span>Thành tiền</span><span /></header>
             {lines.map((line, index) => (
               <article className={styles.orderLineCard} key={line.variantId} data-testid={`sales-order-line-${index + 1}`}>
                 <BusinessSequenceNumber rowIndex={index} className={styles.lineSequence} />
                 <div className={styles.lineIdentity}>
-                  <strong>{line.sku} — {line.name}</strong>
+                  <strong>{line.name}</strong>
                   <div className={styles.inlineActions}>
-                    <span>ĐVT {line.unitCode || '—'}</span>
+                    <span>SKU {line.sku}</span>
                     <button
                       type="button"
                       className={styles.linkButton}
@@ -966,8 +1029,13 @@ export default function SalesOrderCommercialForm(props: Props) {
                       {expandedLineId === line.variantId ? 'Ẩn chi tiết' : 'Chi tiết'}
                     </button>
                   </div>
-                  {line.priceError && <small className={styles.ineligible}>{line.priceError}</small>}
+                  {line.priceError && (
+                    <small className={line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' ? styles.priceNotice : styles.ineligible}>
+                      {line.priceError}{line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' && hasValidManualPrice(line) ? ' Đang dùng giá nhập tay.' : ''}
+                    </small>
+                  )}
                 </div>
+                <div className={styles.unitCell}><span>ĐVT</span><strong>{line.unitCode || '—'}</strong></div>
                 <div className={styles.quantityCell}>
                   <span>SL</span>
                   <div className={styles.quantityStepper}>
@@ -978,7 +1046,15 @@ export default function SalesOrderCommercialForm(props: Props) {
                       value={line.quantity}
                       onChange={(event) => {
                         const value = event.target.value;
-                        setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: value, priceError: null } : item));
+                        setLines((current) => current.map((item, itemIndex) => itemIndex === index ? {
+                          ...item,
+                          quantity: value,
+                          pricingFingerprint: '',
+                          priceSteps: [],
+                          priceError: null,
+                          pricingErrorCode: null,
+                          resolvingPrice: true,
+                        } : item));
                         markDirty();
                       }}
                       onBlur={() => compactLineQuantity(index)}
@@ -986,29 +1062,33 @@ export default function SalesOrderCommercialForm(props: Props) {
                     <button type="button" className={styles.quantityPlus} aria-label={`Tăng số lượng ${line.sku}`} onClick={() => changeQuantity(index, 1)}>+</button>
                   </div>
                 </div>
-                <div className={styles.priceCell}><span>Giá nền</span><strong>{line.resolvingPrice ? 'Đang tính…' : vnd(line.baseUnitPriceMinor)}</strong></div>
-                <div className={styles.priceCell}><span>Giá hệ thống</span><strong>{line.resolvingPrice ? 'Đang tính…' : vnd(line.systemUnitPriceMinor)}</strong><small>{pricingSummary(line)}</small></div>
+                <div className={styles.priceCell}><span>Giá nền</span><strong>{automaticPriceText(line, line.baseUnitPriceMinor)}</strong></div>
+                <div className={styles.priceCell}><span>Giá hệ thống</span><strong>{automaticPriceText(line, line.systemUnitPriceMinor)}</strong><small>{pricingSummary(line)}</small></div>
                 <div className={styles.priceCell}>
                   <span>Giá bán cuối</span>
                   <div className={styles.inlineActions}>
-                    <strong>{line.resolvingPrice ? 'Đang tính…' : vnd(finalUnitPrice(line))}</strong>
+                    <strong>{line.manualUnitPriceMinor ? vnd(line.manualUnitPriceMinor) : (line.pricingFingerprint ? automaticPriceText(line, line.systemUnitPriceMinor) : '—')}</strong>
                     {!line.manualUnitPriceMinor && canPriceOverride && (
-                      <button type="button" className={styles.linkButton} aria-label={`Dùng giá điều chỉnh thủ công cho ${line.sku}`} onClick={() => enableManualPrice(index)}>Giá điều chỉnh thủ công</button>
+                      <button type="button" className={styles.linkButton} aria-label={`Dùng giá điều chỉnh thủ công cho ${line.sku}`} onClick={() => enableManualPrice(index)}>Nhập giá bán</button>
                     )}
-                    {line.manualUnitPriceMinor && (
+                    {line.manualUnitPriceMinor && canPriceOverride && (
+                      <button type="button" className={styles.linkButton} aria-label={`Sửa giá điều chỉnh thủ công cho ${line.sku}`} onClick={() => setManualEditorLineId(line.variantId)}>Sửa giá</button>
+                    )}
+                    {line.manualUnitPriceMinor && line.pricingFingerprint && (
                       <button type="button" className={styles.linkButton} aria-label={`Dùng lại giá hệ thống cho ${line.sku}`} onClick={() => useSystemPrice(index)}>Giá hệ thống</button>
                     )}
                   </div>
-                  {line.manualUnitPriceMinor && <small className={styles.manualBadge}>Giá điều chỉnh thủ công</small>}
+                  {line.manualUnitPriceMinor && <small className={styles.manualBadge}>Giá nhập tay</small>}
                 </div>
                 <div className={styles.priceCell}><span>Tiền hàng dự kiến</span><strong>{vnd(grossMinor(line))}</strong></div>
-                <button type="button" className={styles.removeLineButton} onClick={() => { setLines((current) => current.filter((_, itemIndex) => itemIndex !== index)); markDirty(); }}>Xóa</button>
+                <button type="button" className={styles.removeLineButton} onClick={() => { setLines((current) => current.filter((_, itemIndex) => itemIndex !== index)); if (manualEditorLineId === line.variantId) setManualEditorLineId(null); markDirty(); }}>Xóa</button>
 
-                {line.manualUnitPriceMinor && (
+                {manualEditorLineId === line.variantId && (
                   <div className={styles.manualPriceEditor}>
                     <label><span>Giá bán cuối *</span><input inputMode="numeric" value={line.manualUnitPriceMinor} onChange={(event) => { const value = event.target.value.replace(/\D/g, ''); setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, manualUnitPriceMinor: value } : item)); markDirty(); }} /></label>
-                    <label><span>Lý do điều chỉnh giá *</span><input value={line.manualReason} maxLength={500} onChange={(event) => { const value = event.target.value; setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, manualReason: value } : item)); markDirty(); }} placeholder="Lý do riêng cho SKU này" /></label>
-                    <p>Giá hệ thống để đối chiếu: <strong>{vnd(line.systemUnitPriceMinor)}</strong></p>
+                    <label><span>Lý do điều chỉnh giá *</span><input value={line.manualReason} maxLength={500} onChange={(event) => { const value = event.target.value; setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, manualReason: value } : item)); markDirty(); }} placeholder="Ví dụ: Giá chợ theo ngày" /></label>
+                    <p>{line.pricingFingerprint ? <>Giá hệ thống để đối chiếu: <strong>{vnd(line.systemUnitPriceMinor)}</strong></> : <strong>Chưa có giá Công Ty</strong>}</p>
+                    <button type="button" className={styles.primaryButton} onClick={() => finishManualPrice(index)}>Xong</button>
                   </div>
                 )}
                 <div
@@ -1017,7 +1097,7 @@ export default function SalesOrderCommercialForm(props: Props) {
                   hidden={expandedLineId !== line.variantId}
                 >
                   <div className={styles.priceTrace}>
-                    {line.priceSteps.length === 0 && <span>Công Ty sẽ tính lại giá khi lưu.</span>}
+                    {line.priceSteps.length === 0 && <span>{line.pricingErrorCode === 'BASE_PRICE_NOT_FOUND' ? 'Dòng này đang chờ giá nhập tay.' : 'Công Ty sẽ tính lại giá khi lưu.'}</span>}
                     {line.priceSteps.filter((step) => step.kind !== 'RESOLUTION').map((step, stepIndex) => <div key={`${step.kind}-${stepIndex}`}><span>{pricingLabel(step)}</span><b>{step.afterUnitPriceMinor ? vnd(step.afterUnitPriceMinor) : '—'}</b></div>)}
                     <div><span>Ngữ cảnh</span><b>{customerMode === 'WALK_IN' ? 'Khách vãng lai' : 'Khách/nhóm khách'} · {entrySettings?.salesChannels.find((channel) => channel.id === salesChannelId)?.code ?? 'Chưa chọn kênh'}</b></div>
                     <div><span>Thuế Công Ty · {line.taxMode === 'INCLUSIVE' ? 'Giá đã gồm thuế' : 'Giá chưa gồm thuế'} · {line.taxRate}%</span><b>Tính lại sau phân bổ chiết khấu đơn</b></div>
