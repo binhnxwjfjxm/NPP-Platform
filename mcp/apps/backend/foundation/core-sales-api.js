@@ -14,6 +14,24 @@ const MAX_CATALOG_PAGES = 200;
 const CORE_SALES_READ_PERMISSION = "mcp.sales-order.read";
 const CORE_SALES_CREATE_PERMISSION = "mcp.sales-order.create";
 
+const BUSINESS_CATALOG_GROUPS = Object.freeze([
+  Object.freeze({
+    label: "Trà sữa",
+    terms: Object.freeze([
+      "tra sua", "nguyen lieu tra sua", "pha che", "tra", "sua", "siro", "syrup", "bot",
+      "topping", "duong", "sinh to", "trai cay", "mut", "milk foam", "milkfoam", "kem", "phu gia"
+    ])
+  }),
+  Object.freeze({ label: "Mì Cay", terms: Object.freeze(["mi cay", "my cay", "nguyen lieu mi cay", "nguyen lieu my cay"]) }),
+  Object.freeze({ label: "Đông Lạnh", terms: Object.freeze(["dong lanh", "thuc pham dong lanh"]) }),
+  Object.freeze({ label: "Ăn Vặt", terms: Object.freeze(["an vat", "banh trang", "snack", "do an vat", "do an", "do le"]) }),
+  Object.freeze({
+    label: "Bao Bì",
+    terms: Object.freeze(["bao bi", "bao ly", "ong hut", "muong", "nap", "ly nhua", "ly giay", "dung cu"])
+  })
+]);
+const BUSINESS_CATALOG_MATCH_ORDER = Object.freeze(["Mì Cay", "Đông Lạnh", "Ăn Vặt", "Bao Bì", "Trà sữa"]);
+
 function response(data, statusCode = 200) {
   return { statusCode, payload: { data, receivedAt: new Date().toISOString() } };
 }
@@ -30,6 +48,46 @@ function warehouseScope(config) {
 
 function authorizeCoreSales(context, config, permission) {
   return authorizeCommand(context, { permission, scope: warehouseScope(config) });
+}
+
+function normalizeCatalogText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function categoryIdentity(item) {
+  return [
+    item?.parentCategoryName,
+    item?.categoryName,
+    item?.parentCategoryCode,
+    item?.categoryCode
+  ].map(normalizeCatalogText).filter(Boolean);
+}
+
+function matchesCatalogTerm(value, term) {
+  return value === term || value.startsWith(`${term} `) || value.endsWith(` ${term}`) || value.includes(` ${term} `);
+}
+
+function catalogBusinessGroup(item) {
+  const identities = categoryIdentity(item);
+  const exactGroup = BUSINESS_CATALOG_GROUPS.find((group) => identities.includes(normalizeCatalogText(group.label)));
+  if (exactGroup) return exactGroup.label;
+
+  for (const label of BUSINESS_CATALOG_MATCH_ORDER) {
+    const group = BUSINESS_CATALOG_GROUPS.find((candidate) => candidate.label === label);
+    if (group && identities.some((identity) => group.terms.some((term) => matchesCatalogTerm(identity, term)))) return group.label;
+  }
+  return null;
+}
+
+function catalogBrand(item) {
+  return String(item?.brandName || item?.brandCode || "").trim() || null;
 }
 
 async function readJsonBody(req) {
@@ -57,13 +115,17 @@ async function readJsonBody(req) {
 }
 
 function mapSkuOption(item, price) {
+  const category = catalogBusinessGroup(item);
   return Object.freeze({
     productId: item.productId,
     variantId: item.id,
     name: item.productName,
-    brand: null,
-    category: null,
-    rawCategory: null,
+    brand: catalogBrand(item),
+    category,
+    rawCategory: item.categoryName || item.parentCategoryName || null,
+    categoryCode: item.categoryCode || null,
+    parentCategoryCode: item.parentCategoryCode || null,
+    parentCategoryName: item.parentCategoryName || null,
     sku: item.sku,
     variantName: item.variantName,
     sizeLabel: null,
@@ -147,6 +209,16 @@ async function loadCompleteCatalog(search, context, config, fetchImpl) {
   throw error;
 }
 
+function filterCatalogOptions(options, url) {
+  const requestedCategory = normalizeCatalogText(url.searchParams.get("category"));
+  const requestedBrand = normalizeCatalogText(url.searchParams.get("brand"));
+  return options.filter((item) => {
+    if (requestedCategory && normalizeCatalogText(catalogBusinessGroup(item)) !== requestedCategory) return false;
+    if (requestedBrand && normalizeCatalogText(catalogBrand(item)) !== requestedBrand) return false;
+    return true;
+  });
+}
+
 async function searchProducts(url, context, config, fetchImpl) {
   authorizeCoreSales(context, config, CORE_SALES_READ_PERMISSION);
   const search = url.searchParams.get("q") || url.searchParams.get("search") || "";
@@ -162,7 +234,7 @@ async function searchProducts(url, context, config, fetchImpl) {
         offset: Math.max(0, Number(url.searchParams.get("offset")) || 0)
       }
     );
-  return response(await mapCatalogOptions(options, context, config, fetchImpl));
+  return response(await mapCatalogOptions(filterCatalogOptions(options, url), context, config, fetchImpl));
 }
 
 async function loadProductVariants(productId, url, context, config, fetchImpl) {
