@@ -1,188 +1,112 @@
 # Phase 6 — Sales and MCP Customer Boundary Decisions
 
-> Status: **ACTIVE — UPDATED 2026-08-15**  
-> This revision supersedes the previous rule that Core customer verification required purchase demand/order intent and supersedes the legacy session/order-intent official-order flow.  
-> Active boundaries are now **standalone customer verification** and **direct canonical Core Sales Order creation**.  
-> This document does not authorize production migration, deployment, provider changes, merge or MCP cutover.
+> Status: **ACTIVE — UPDATED 2026-08-22**  
+> Active boundaries are standalone customer verification and direct canonical Công Ty Sales Order creation.  
+> Khách Công Ty đã tồn tại không phải mở / liên kết mã lại chỉ để tạo đơn.
 
-## 1. Locked product decision
+## 1. Quyết định sản phẩm
 
-MCP field outlets and Core canonical customers remain separate identities.
+Điểm bán MCP và khách Công Ty là hai danh tính khác nhau.
 
-`Thêm khách` remains a field-operation action only:
+`Thêm khách` vẫn là thao tác hiện trường: MCP lưu tuyến, điểm bán, phiên làm việc, GPS, hình ảnh và ghi chú; không tự tạo mã khách Công Ty.
 
-```text
-employee adds/keeps a field outlet
--> MCP stores route/session/GPS/media/notes
--> no hidden Core customer request
--> no official customer code is created automatically
-```
+`Mở / liên kết mã` chỉ dùng khi một điểm bán MCP cần tạo mới hoặc xác lập liên kết với khách Công Ty. Nó không phải điều kiện bắt buộc đối với khách Công Ty đã tồn tại và đã được phân công nhân viên.
 
-A separate explicit action **Mở / liên kết mã** may be used at any time for a sufficiently complete field outlet. It is **not dependent on purchase demand, `Có mua`, order intent, or an order**.
+## 2. Phạm vi dữ liệu
 
-```text
-MCP employee explicitly requests verification
--> MCP verifies trusted employee ownership of the field outlet
--> MCP sends FIELD_PROFILE_VERIFICATION to Core
--> Core reviews duplicate/master-data completeness
--> Core approves a new customer/address or links an existing customer/address
--> Core customer responsible_employee_id is the trusted MCP employee
--> MCP stores only Core request/link references
-```
+### MCP quản lý
 
-`Có mua` / `Có đơn` in the field session are reporting facts only. They must not create a customer request, order intent, redirect, or official Sales Order as a side effect.
+- tuyến và điểm bán hiện trường;
+- phiên làm việc, lượt ghé, GPS, hình ảnh, báo cáo và theo dõi;
+- trạng thái đề nghị mở / liên kết mã và các tham chiếu sang Công Ty;
+- giao diện tạo đơn từ MCP.
 
-## 2. Ownership
+### Công Ty quản lý
 
-### MCP owns
+- khách hàng và địa chỉ chính thức;
+- mã khách và trạng thái khách;
+- nhân viên phụ trách khách;
+- quy trình duyệt mở / liên kết mã;
+- sản phẩm, giá, chính sách thương mại và đơn bán hàng chính thức.
 
-- field routes and field outlets;
-- route/session execution, visits, GPS, media, tests, reports and follow-ups;
-- the explicit customer-verification projection and Core reference IDs;
-- employee-scoped MCP presentation/read flows;
-- the browser/API boundary that submits direct official-order intent to Core after validating linked-customer ownership.
+MCP không tự sửa nhân viên phụ trách của khách Công Ty.
 
-### NPP Core owns
+## 3. Quyền theo nhân viên
 
-- `shared.customers` and customer addresses;
-- customer codes and canonical customer status;
-- verification/review lifecycle;
-- responsible employee on canonical customers;
-- official products/prices/commercial rules and Sales Orders.
+Trình duyệt không được tự khai báo nhân viên có thẩm quyền. MCP lấy nhân viên từ phiên đăng nhập tin cậy.
 
-MCP must not write directly to canonical Core customer, sales, inventory, logistics or accounting tables.
+Với nhân viên thông thường, khách Công Ty được phép xem và tạo đơn phải có `shared.customers.responsible_employee_id` đúng bằng nhân viên đang đăng nhập và nhân viên đó còn hoạt động.
 
-## 3. Trusted employee boundary
+Tài khoản chủ hệ thống (`mcp.installation-owner`) có thể xem và thao tác khách trong toàn installation, nhưng việc tạo đơn không làm thay đổi nhân viên phụ trách của khách.
 
-Browser input is never trusted as employee authority.
+Quyền điểm bán hiện trường vẫn theo phân công tuyến; quyền khách Công Ty dùng nhân viên phụ trách trên dữ liệu Công Ty làm nguồn chuẩn.
 
-```text
-Core workforce login/session
--> MCP web middleware resolves the session
--> middleware replaces any browser Authorization value with an internal workforce identity
--> MCP backend derives principal.employeeId
--> MCP verifies field-outlet/customer ownership
--> MCP Core adapter forwards only the trusted identity/service boundary required by Core
-```
+## 4. Mở / liên kết mã
 
-A missing, inactive, ambiguous or mismatched employee fails closed.
+MCP gửi `FIELD_PROFILE_VERIFICATION` khi một điểm bán cần mở mới hoặc liên kết với khách Công Ty. Luồng này độc lập với đơn hàng.
 
-Canonical MCP customer lists read canonical customer data and are filtered by `responsible_employee_id = trusted employeeId`.
+Khách Công Ty đã tồn tại và đã được phân công đúng nhân viên không cần đi qua luồng này chỉ để bán hàng.
 
-## 4. Standalone verification contract
+## 5. Trạng thái duyệt
 
-Core endpoint remains:
+Trạng thái đề nghị gồm:
 
-```text
-POST /api/customer-onboarding-requests
-```
+`submitted`, `under_review`, `need_more_info`, `approved`, `linked_existing`, `rejected`, `cancelled`.
 
-Standalone MCP verification uses:
+Quyền duyệt thuộc Công Ty. MCP chỉ gửi và đọc trạng thái.
 
-```text
-source_system = MCP
-source_outlet_id = stable mcp_route_customers.id
-source_demand_reference = FIELD_PROFILE_VERIFICATION
-order_required = false
-trigger_reason = FIELD_PROFILE_VERIFICATION
-immutable proposed customer/address snapshot
-requested_by_employee_id = trusted employee context
-Idempotency-Key = shared canonical generator/contract
-```
+## 6. Liên kết điểm bán
 
-The same field outlet cannot silently switch employee ownership or reuse the same verification identity with a different immutable snapshot.
+Trạng thái xác minh của điểm bán được lưu trên `mcp.mcp_route_customers`.
 
-## 5. Core lifecycle and authority
+Khi điểm bán được duyệt hoặc liên kết, MCP lưu tham chiếu khách và địa chỉ Công Ty. Liên kết này có giá trị cho nguồn phát sinh, hình ảnh và nghiệp vụ hiện trường, nhưng không còn là điều kiện bắt buộc để một khách Công Ty đã hợp lệ được tạo đơn.
 
-Lifecycle remains:
+## 7. Giao diện khách hàng
+
+`/customers` hiển thị khách Công Ty theo phạm vi nhân viên phụ trách; tài khoản chủ hệ thống có thể xem toàn installation.
+
+`/customers/onboarding` hiển thị các điểm bán MCP và trạng thái mở / liên kết mã.
+
+Hai danh sách phục vụ hai mục đích khác nhau và không được ép khách Công Ty đã có phải mở mã lại.
+
+## 8. Tạo đơn chính thức
+
+Điều kiện đủ để tạo đơn từ MCP:
+
+- khách Công Ty đang hoạt động;
+- khách có địa chỉ giao hàng đang hoạt động;
+- với nhân viên thường: khách đang được Công Ty phân công đúng nhân viên đăng nhập;
+- với tài khoản chủ hệ thống: khách nằm trong cùng installation.
+
+Luồng chuẩn:
 
 ```text
-submitted
-under_review
-need_more_info
-approved
-linked_existing
-rejected
-cancelled
-```
-
-MCP service authority remains submit/read only. Review/approve/link/reject authority stays in Core.
-
-For `FIELD_PROFILE_VERIFICATION`, transition to `approved` or `linked_existing` must atomically guarantee an active canonical customer and trusted responsible employee.
-
-## 6. MCP customer projection
-
-Standalone verification state is stored on the stable field outlet (`mcp.mcp_route_customers`), not on `mcp.orders`.
-
-The projection includes the responsible employee, persisted operation/idempotency/fingerprint data and canonical Core onboarding/customer/address references. The canonical idempotency key and immutable payload are persisted before the outbound Core POST so a retry reuses the exact same key after transport failure.
-
-The former order-based onboarding projection may remain as historical columns/data until a separately approved schema retirement, but it is **inert**: active MCP runtime routes and UI do not read or mutate it.
-
-## 7. Customer UX
-
-`/customers` shows canonical Core customers assigned to the logged-in employee.
-
-`/customers/onboarding` shows the employee's field outlets and standalone verification states. No order/session IDs are required and the screen must not show a “continue order” CTA.
-
-## 8. Official Sales Order boundary
-
-Only a linked active Core customer/address may create an official Core Sales Order.
-
-Active MCP flow:
-
-```text
-linked Core customer/address
+khách Công Ty hợp lệ
 -> /orders
--> browser sends customerId + customerAddressId + variantId/quantity/note only
--> MCP backend validates trusted employee ownership
--> MCP backend calls canonical Core Sales Order API
--> Core resolves price, tax, sales channel and other commercial rules
--> canonical Sales Order is stored with sourceType=MCP
+-> MCP kiểm tra quyền theo nhân viên phụ trách và địa chỉ
+-> nếu có đúng một Điểm bán MCP đã liên kết thì giữ tham chiếu Điểm bán làm nguồn
+-> MCP gọi API đơn bán hàng Công Ty
+-> Công Ty xác định giá, thuế, kênh bán và chính sách thương mại
 ```
 
-Requirements:
+`sourceId` vẫn là định danh idempotency chuẩn. `sourceOutletId` là thông tin nguồn **tùy chọn**: chỉ ghi khi có một liên kết Điểm bán MCP rõ ràng. Không có `sourceOutletId` không được dùng để chặn khách Công Ty hợp lệ tạo đơn.
 
-- browser cannot supply employee authority, manual commercial price, sales channel or arbitrary unlinked customer authority;
-- `Idempotency-Key` uses the shared canonical generator/contract;
-- retry of the same logical create reuses the exact same key;
-- `sourceId` is the canonical idempotency identity and `sourceOutletId` is the owned field outlet identity;
-- Core Sales Orders UI shows source `MCP` in the existing Sales Order lifecycle.
+Retry cùng thao tác phải dùng lại đúng Idempotency-Key cũ.
 
-There is no second MCP order inbox/lifecycle.
+## 9. Luồng cũ
 
-## 9. Legacy order-intent retirement
+Luồng order-intent theo phiên cũ không còn là đường tạo đơn chính thức. `Có mua / Có đơn` chỉ là dữ liệu báo cáo và không tự tạo khách hoặc đơn.
 
-The following session/order-intent bridge is retired from active runtime:
+## 10. Điều kiện nghiệm thu
 
-```text
-sessionCustomerId + orderId
--> customer-onboarding submit/sync
--> /visits/order-intent wizard
--> session-customer sales-order submit/sync
-```
+- khách Công Ty import sẵn, đang hoạt động, có địa chỉ và đúng nhân viên phụ trách tạo đơn được ngay mà không mở mã lại;
+- nhân viên không tạo được đơn cho khách thuộc nhân viên khác;
+- tài khoản chủ hệ thống có thể thao tác toàn installation mà không đổi nhân viên phụ trách;
+- điểm bán MCP chưa có khách Công Ty vẫn dùng luồng mở / liên kết mã;
+- nếu đã có liên kết Điểm bán thì đơn giữ tham chiếu nguồn đó;
+- nếu chưa có liên kết Điểm bán thì đơn MCP vẫn hợp lệ với `sourceOutletId = NULL`;
+- giá và chính sách thương mại vẫn do Công Ty quyết định;
+- Idempotency-Key dùng generator/contract chuẩn và retry dùng lại cùng key;
+- CI đúng HEAD phải xanh trước merge.
 
-Rules after retirement:
-
-- `/visits/order-intent` only redirects old bookmarks to `/orders`;
-- session cards and closed-session views do not expose “Đơn NPP” links;
-- recording `Nhu cầu mua` remains a reporting fact and stops there;
-- MCP backend no longer exposes `/api/mcp-day/session-customer/customer-onboarding*` or `/api/mcp-day/session-customer/sales-order*` handlers;
-- old adapter/source files for those runtime paths are removed;
-- historical database columns/rows are not dropped in this cleanup, so **no migration is required**.
-
-## 10. Acceptance gate
-
-The boundary is accepted only when source and CI prove:
-
-- standalone verification works without purchase/order intent;
-- browser cannot supply trusted employee authority;
-- field outlet access is employee-scoped and fail-closed;
-- `Nhu cầu mua` has no Core side effect;
-- direct official orders require linked active Core customer/address;
-- Core resolves commercial authority;
-- canonical idempotency generator is used and retry reuses the exact key;
-- old session onboarding/order routes and wizard are unreachable/retired;
-- Core Sales Order UI clearly shows MCP source;
-- exact-head CI is green.
-
-Merge, production migration and deployment require separate explicit authorization.
+Merge, migration và deploy production vẫn cần lệnh riêng.

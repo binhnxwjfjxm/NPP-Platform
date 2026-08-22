@@ -160,6 +160,10 @@ export type CoreCustomerItem = {
   phone: string | null;
   email: string | null;
   status: string;
+  responsibleEmployeeId: string | null;
+  defaultAddressId: string | null;
+  defaultAddressLabel: string | null;
+  defaultAddressLine1: string | null;
   updatedAt: string | null;
 };
 

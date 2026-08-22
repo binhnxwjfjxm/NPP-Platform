@@ -1,6 +1,9 @@
 import { isValidIdempotencyKey, normalizeIdempotencyKey } from "../../../../packages/contracts/index.js";
 import { providerPersistence } from "./provider-runtime.js";
-import { listAccessibleCoreCustomerLinks } from "./customer-route-access.js";
+import {
+  listAccessibleCoreCustomerLinks,
+  listAccessibleCoreCustomers
+} from "./customer-route-access.js";
 import {
   createCoreSalesOrder,
   listCoreSalesOrders,
@@ -18,10 +21,10 @@ const BUSINESS_MESSAGES = Object.freeze({
   idempotency_key_required: "Thiếu Idempotency-Key cho thao tác tạo đơn.",
   invalid_idempotency_key: "Idempotency-Key không đúng canonical contract.",
   invalid_order_payload: "Dữ liệu tạo đơn MCP không hợp lệ.",
-  browser_commercial_authority_forbidden: "MCP chỉ được gửi khách, địa chỉ, sản phẩm, số lượng và ghi chú; giá và chính sách thương mại do Core quyết định.",
-  core_customer_reference_required: "Chỉ được tạo đơn cho khách đã mở / liên kết mã Core.",
-  core_customer_not_owned: "Khách hàng không thuộc phạm vi tuyến của nhân viên đang đăng nhập.",
-  core_customer_link_ambiguous: "Khách hàng đang liên kết với nhiều điểm bán MCP; cần làm rõ liên kết trước khi tạo đơn.",
+  browser_commercial_authority_forbidden: "MCP chỉ được gửi khách, địa chỉ, sản phẩm, số lượng và ghi chú; giá và chính sách thương mại do Công Ty quyết định.",
+  core_customer_reference_required: "Chỉ được tạo đơn cho khách Công Ty hợp lệ.",
+  core_customer_not_owned: "Khách hàng không thuộc phạm vi phụ trách của nhân viên đang đăng nhập.",
+  core_customer_address_not_available: "Khách hàng chưa có địa chỉ giao hàng đang hoạt động.",
   order_lines_required: "Đơn phải có ít nhất một sản phẩm.",
   invalid_order_quantity: "Số lượng sản phẩm không hợp lệ."
 });
@@ -90,26 +93,44 @@ function normalizeSubmission(body) {
   });
 }
 
-async function ownedRouteCustomers(client, context) {
+async function accessibleCoreCustomers(client, context) {
   try {
-    return await listAccessibleCoreCustomerLinks(client, context);
+    return await listAccessibleCoreCustomers(client, context);
   } catch (error) {
     if (error?.code === "trusted_employee_required") throw businessError("trusted_employee_required", 401);
     throw error;
   }
 }
 
-async function resolveOwnedLink(persistence, context, customerId, customerAddressId) {
-  const rows = await persistence.withTransaction(async (client) => {
-    const owned = await ownedRouteCustomers(client, context);
-    return owned.filter((row) => (
+async function resolveOrderCustomer(persistence, context, customerId, customerAddressId) {
+  return persistence.withTransaction(async (client) => {
+    const customers = await accessibleCoreCustomers(client, context);
+    const customer = customers.find((row) => String(row.id).toLowerCase() === customerId);
+    if (!customer) throw businessError("core_customer_not_owned", 403);
+
+    const addressResult = await client.query(
+      `SELECT address.id
+       FROM shared.customer_addresses AS address
+       WHERE address.installation_id = $1
+         AND address.customer_id = $2::uuid
+         AND address.id = $3::uuid
+         AND address.is_active = true
+       LIMIT 1`,
+      [context.installation.id, customerId, customerAddressId]
+    );
+    if (!addressResult.rows?.[0]) throw businessError("core_customer_address_not_available", 409);
+
+    const links = await listAccessibleCoreCustomerLinks(client, context);
+    const matchingLinks = links.filter((row) => (
       String(row.core_customer_id).toLowerCase() === customerId
       && String(row.core_customer_address_id).toLowerCase() === customerAddressId
     ));
+
+    return Object.freeze({
+      customer,
+      sourceOutletId: matchingLinks.length === 1 ? String(matchingLinks[0].route_customer_id) : null
+    });
   });
-  if (rows.length === 0) throw businessError("core_customer_not_owned", 403);
-  if (rows.length > 1) throw businessError("core_customer_link_ambiguous", 409);
-  return rows[0];
 }
 
 async function mapWithConcurrency(items, limit, worker) {
@@ -139,7 +160,7 @@ export async function createDirectMcpSalesOrder(body, context, config, options =
   const submission = normalizeSubmission(body);
   const idempotencyKey = canonicalIdempotencyKey(options.idempotencyKey);
   const persistence = options.persistence || providerPersistence();
-  const link = await resolveOwnedLink(
+  const target = await resolveOrderCustomer(
     persistence,
     context,
     submission.customerId,
@@ -155,7 +176,7 @@ export async function createDirectMcpSalesOrder(body, context, config, options =
     currency: "VND",
     sourceType: "MCP",
     sourceId: idempotencyKey,
-    sourceOutletId: String(link.route_customer_id),
+    ...(target.sourceOutletId ? { sourceOutletId: target.sourceOutletId } : {}),
     note: submission.note,
     lines: submission.lines
   });
@@ -167,12 +188,12 @@ export async function createDirectMcpSalesOrder(body, context, config, options =
 
 export async function listDirectMcpSalesOrders(context, config, options = {}) {
   const persistence = options.persistence || providerPersistence();
-  const ownedOutletIds = new Set(
+  const ownedCustomerIds = new Set(
     await persistence.withTransaction(async (client) => (
-      (await ownedRouteCustomers(client, context)).map((row) => String(row.route_customer_id))
+      (await accessibleCoreCustomers(client, context)).map((row) => String(row.id).toLowerCase())
     ))
   );
-  if (ownedOutletIds.size === 0) return Object.freeze([]);
+  if (ownedCustomerIds.size === 0) return Object.freeze([]);
 
   const client = coreClient(options);
   const orders = await client.list(context, config, {
@@ -181,8 +202,8 @@ export async function listDirectMcpSalesOrders(context, config, options = {}) {
   });
   const ownedOrders = orders.filter((order) => (
     order?.sourceType === "MCP"
-    && order?.sourceOutletId
-    && ownedOutletIds.has(String(order.sourceOutletId))
+    && order?.customerId
+    && ownedCustomerIds.has(String(order.customerId).toLowerCase())
   ));
   const detailed = await mapWithConcurrency(
     ownedOrders,

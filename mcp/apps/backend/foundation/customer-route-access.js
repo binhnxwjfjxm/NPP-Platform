@@ -173,29 +173,41 @@ export async function listAccessibleCoreCustomerLinks(client, context) {
 export async function listAccessibleCoreCustomers(client, context) {
   const employeeId = requireWorkforceEmployee(context);
   const result = await client.query(
-    `SELECT DISTINCT
+    `SELECT
        customer.id,
        customer.code AS customer_code,
        customer.name,
        customer.phone,
        customer.email,
        customer.is_active,
-       customer.updated_at
+       customer.responsible_employee_id,
+       customer.updated_at,
+       address.id AS default_address_id,
+       address.label AS default_address_label,
+       address.address_line1 AS default_address_line1
      FROM shared.customers AS customer
+     LEFT JOIN LATERAL (
+       SELECT candidate.id, candidate.label, candidate.address_line1
+       FROM shared.customer_addresses AS candidate
+       WHERE candidate.installation_id = customer.installation_id
+         AND candidate.customer_id = customer.id
+         AND candidate.is_active = true
+       ORDER BY candidate.is_default DESC, candidate.updated_at DESC, candidate.created_at DESC, candidate.id
+       LIMIT 1
+     ) AS address ON true
      WHERE customer.installation_id = $1
        AND customer.is_active = true
        AND (
          $3::boolean = true
-         OR EXISTS (
-           SELECT 1
-           FROM mcp.mcp_route_customers AS rc
-           JOIN mcp.mcp_routes AS route
-             ON route.installation_id = rc.installation_id
-            AND route.id = rc.route_id
-           WHERE rc.installation_id = customer.installation_id
-             AND rc.active = true
-             AND rc.core_customer_id = customer.id::text
-             AND (${EMPLOYEE_ACCESS})
+         OR (
+           customer.responsible_employee_id = $2::uuid
+           AND EXISTS (
+             SELECT 1
+             FROM shared.employees AS employee
+             WHERE employee.installation_id = customer.installation_id
+               AND employee.id = $2::uuid
+               AND employee.is_active = true
+           )
          )
        )
      ORDER BY customer.name, customer.code, customer.id`,

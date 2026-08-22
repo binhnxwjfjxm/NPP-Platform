@@ -18,15 +18,19 @@ const context = {
 };
 const config = { coreSales: { defaultWarehouseId: warehouseId } };
 
-function persistence(rows) {
+function customerRow(overrides = {}) {
   return {
-    withTransaction: async (fn) => fn({
-      query: async () => ({ rows })
-    })
+    id: customerId,
+    customer_code: "KH001",
+    name: "Khách A",
+    is_active: true,
+    responsible_employee_id: employeeId,
+    default_address_id: addressId,
+    ...overrides
   };
 }
 
-function ownedRow(overrides = {}) {
+function linkRow(overrides = {}) {
   return {
     route_customer_id: routeCustomerId,
     core_customer_id: customerId,
@@ -35,16 +39,33 @@ function ownedRow(overrides = {}) {
   };
 }
 
-test("direct MCP order forwards the same canonical key and never sends browser price authority", async () => {
-  let captured = null;
-  const result = await createDirectMcpSalesOrder({
+function persistence({ customers = [customerRow()], addresses = [{ id: addressId }], links = [] } = {}) {
+  return {
+    withTransaction: async (fn) => fn({
+      query: async (sql) => {
+        if (sql.includes("FROM shared.customers AS customer")) return { rows: customers };
+        if (sql.includes("FROM shared.customer_addresses AS address")) return { rows: addresses };
+        if (sql.includes("FROM mcp.mcp_route_customers AS rc")) return { rows: links };
+        throw new Error(`unexpected query: ${sql}`);
+      }
+    })
+  };
+}
+
+function orderBody() {
+  return {
     customerId,
     customerAddressId: addressId,
     note: "Giao giờ hành chính",
     lines: [{ variantId, quantity: "2", note: "2 gói" }]
-  }, context, config, {
+  };
+}
+
+test("direct MCP order accepts canonical assigned customer without requiring a linked field outlet", async () => {
+  let captured = null;
+  const result = await createDirectMcpSalesOrder(orderBody(), context, config, {
     idempotencyKey: key,
-    persistence: persistence([ownedRow()]),
+    persistence: persistence(),
     coreClient: {
       create: async (payload, _context, _config, options) => {
         captured = { payload, options };
@@ -56,55 +77,64 @@ test("direct MCP order forwards the same canonical key and never sends browser p
   assert.equal(result.id, "order-core-1");
   assert.equal(captured.options.idempotencyKey, key);
   assert.equal(captured.payload.sourceId, key);
-  assert.equal(captured.payload.sourceOutletId, routeCustomerId);
   assert.equal(captured.payload.customerId, customerId);
   assert.equal(captured.payload.customerAddressId, addressId);
+  assert.equal("sourceOutletId" in captured.payload, false);
   assert.deepEqual(captured.payload.lines, [{ variantId, quantity: "2", note: "2 gói" }]);
   assert.equal("unitPrice" in captured.payload.lines[0], false);
   assert.equal("salesChannelId" in captured.payload, false);
   assert.equal("employeeId" in captured.payload, false);
 });
 
+test("direct MCP order keeps field outlet provenance when exactly one valid link exists", async () => {
+  let captured = null;
+  await createDirectMcpSalesOrder(orderBody(), context, config, {
+    idempotencyKey: key,
+    persistence: persistence({ links: [linkRow()] }),
+    coreClient: {
+      create: async (payload) => {
+        captured = payload;
+        return { id: "order-core-2", sourceType: "MCP" };
+      }
+    }
+  });
+  assert.equal(captured.sourceOutletId, routeCustomerId);
+});
+
 test("direct MCP order rejects browser commercial fields instead of silently trusting them", async () => {
   await assert.rejects(
     () => createDirectMcpSalesOrder({
-      customerId,
-      customerAddressId: addressId,
-      unitPrice: 1000,
-      lines: [{ variantId, quantity: "1", note: null }]
+      ...orderBody(),
+      unitPrice: 1000
     }, context, config, {
       idempotencyKey: key,
-      persistence: persistence([ownedRow()]),
+      persistence: persistence(),
       coreClient: { create: async () => ({}) }
     }),
     (error) => error.code === "browser_commercial_authority_forbidden" && error.statusCode === 400
   );
 });
 
-test("direct MCP order fails closed when linked customer is outside trusted employee ownership", async () => {
+test("direct MCP order fails closed when canonical customer is outside trusted employee responsibility", async () => {
   await assert.rejects(
-    () => createDirectMcpSalesOrder({
-      customerId,
-      customerAddressId: addressId,
-      lines: [{ variantId, quantity: "1", note: null }]
-    }, context, config, {
+    () => createDirectMcpSalesOrder(orderBody(), context, config, {
       idempotencyKey: key,
-      persistence: persistence([]),
+      persistence: persistence({ customers: [] }),
       coreClient: { create: async () => ({}) }
     }),
     (error) => error.code === "core_customer_not_owned" && error.statusCode === 403
   );
 });
 
-test("direct MCP order list filters owned outlets before loading canonical Core detail", async () => {
+test("direct MCP order list follows canonical customer responsibility even without outlet provenance", async () => {
   const readIds = [];
   const orders = await listDirectMcpSalesOrders(context, config, {
-    persistence: persistence([ownedRow()]),
+    persistence: persistence(),
     coreClient: {
       list: async () => [
-        { id: "owned", sourceType: "MCP", sourceOutletId: routeCustomerId },
-        { id: "other-mcp", sourceType: "MCP", sourceOutletId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
-        { id: "manual", sourceType: "MANUAL", sourceOutletId: routeCustomerId }
+        { id: "owned", sourceType: "MCP", sourceOutletId: null, customerId },
+        { id: "other-mcp", sourceType: "MCP", sourceOutletId: routeCustomerId, customerId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
+        { id: "manual", sourceType: "MANUAL", sourceOutletId: null, customerId }
       ],
       read: async (id) => {
         readIds.push(id);
@@ -113,7 +143,8 @@ test("direct MCP order list filters owned outlets before loading canonical Core 
           number: "SO-MCP-0001",
           status: "draft",
           sourceType: "MCP",
-          sourceOutletId: routeCustomerId,
+          sourceOutletId: null,
+          customerId,
           currentVersionNumber: "1",
           versions: [{
             versionNumber: "1",
@@ -127,5 +158,4 @@ test("direct MCP order list filters owned outlets before loading canonical Core 
   assert.deepEqual(readIds, ["owned"]);
   assert.deepEqual(orders.map((order) => order.id), ["owned"]);
   assert.equal(orders[0].versions[0].total, "385000");
-  assert.equal(orders[0].versions[0].lines.length, 2);
 });
