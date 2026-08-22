@@ -77,7 +77,7 @@ test("action plan reads followups through the backend provider", () => {
 
   assert.match(page, /loadActionsData\(\)/);
   assert.doesNotMatch(page, /createApiClient/);
-  assert.match(page, /getActionsData\(\)/);
+  assert.doesNotMatch(page, /getActionsData\(\)/);
   assert.match(loader, /backendReadRows<Row>\("mcp_followups"/);
   assert.match(loader, /backendReadRows<Row>\("mcp_session_customers"/);
   assert.match(loader, /backendReadRows<Row>\("mcp_routes"/);
