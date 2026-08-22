@@ -44,7 +44,7 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
     filters.warehouseId,
   ];
 
-  const [summary, currencyTotals, statusBreakdown, dailyTrend, topEntities, topSkus] = await Promise.all([
+  const [summary, currencyTotals, statusBreakdown, dailyTrend, topEntities, topSkus, customers, documents] = await Promise.all([
     adapter.query(
       `${SALES_SCOPED_CTE}
        SELECT
@@ -171,6 +171,46 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
        ORDER BY currency_code, rank`,
       params,
     ),
+    adapter.query(
+      `${SALES_SCOPED_CTE}
+       SELECT
+         currency_code,
+         customer_id,
+         (array_agg(customer_code_snapshot ORDER BY confirmed_at DESC, id DESC))[1] AS customer_code,
+         (array_agg(customer_name_snapshot ORDER BY confirmed_at DESC, id DESC))[1] AS customer_name,
+         count(*)::text AS document_count,
+         COALESCE(sum(total), 0::numeric)::text AS total_value
+       FROM scoped
+       WHERE status IN ('confirmed','closed')
+       GROUP BY currency_code, customer_id
+       ORDER BY COALESCE(sum(total), 0::numeric) DESC,
+                (array_agg(customer_code_snapshot ORDER BY confirmed_at DESC, id DESC))[1] NULLS LAST,
+                customer_id NULLS LAST
+       LIMIT 100`,
+      params,
+    ),
+    adapter.query(
+      `${SALES_SCOPED_CTE}
+       SELECT
+         id AS sales_order_id,
+         order_number,
+         status,
+         fulfillment_status,
+         delivery_status,
+         settlement_status,
+         confirmed_at,
+         warehouse_id,
+         currency_code,
+         total::text AS total_value,
+         customer_id,
+         customer_code_snapshot AS customer_code,
+         customer_name_snapshot AS customer_name
+       FROM scoped
+       WHERE status IN ('confirmed','closed')
+       ORDER BY confirmed_at DESC, id DESC
+       LIMIT 200`,
+      params,
+    ),
   ]);
 
   return Object.freeze({
@@ -189,5 +229,7 @@ export async function salesReport(adapter, requestContext, filters, warehouseIds
     dailyTrend: mapRows(dailyTrend.rows),
     topEntities: mapRows(topEntities.rows),
     topSkus: mapRows(topSkus.rows),
+    customers: mapRows(customers.rows),
+    documents: mapRows(documents.rows),
   });
 }
