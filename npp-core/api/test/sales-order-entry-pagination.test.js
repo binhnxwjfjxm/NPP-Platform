@@ -78,6 +78,9 @@ test('service chuyển đúng limit/offset đã chuẩn hóa và không quét l�
         catalogCalls.push({ statement, params });
         return { rows: Array.from({ length: 10 }, (_, index) => eligibleRow(index + 15)) };
       }
+      if (statement.includes('FROM shared.products product')) {
+        return { rows: [] };
+      }
       throw new Error(`Unexpected SQL in catalog pagination test: ${statement.slice(0, 80)}`);
     },
   };

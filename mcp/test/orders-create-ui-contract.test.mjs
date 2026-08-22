@@ -108,10 +108,18 @@ test("each MCP product stays one card with flat Lẻ-Thùng rows and compact plu
   assert.match(catalogStyles, /\.unitAdd > span\s*\{[\s\S]*font-size:\s*22px[\s\S]*font-weight:\s*950/);
   assert.doesNotMatch(catalogStyles, /\.unitAdd > span::before|\.unitAdd > span::after/);
 
-  const milkTeaIndex = catalogPriority.indexOf('label: "Nguyên liệu trà sữa"');
-  const spicyIndex = catalogPriority.indexOf('label: "Mì cay & đồ ăn"');
-  const packagingIndex = catalogPriority.indexOf('label: "Bao bì & dụng cụ"');
-  assert.ok(milkTeaIndex > 0 && spicyIndex > milkTeaIndex && packagingIndex > spicyIndex);
+  const milkTeaIndex = catalogPriority.indexOf('"Trà sữa"');
+  const spicyIndex = catalogPriority.indexOf('"Mì Cay"');
+  const frozenIndex = catalogPriority.indexOf('"Đông Lạnh"');
+  const snackIndex = catalogPriority.indexOf('"Ăn Vặt"');
+  const packagingIndex = catalogPriority.indexOf('"Bao Bì"');
+  assert.ok(
+    milkTeaIndex > 0
+      && spicyIndex > milkTeaIndex
+      && frozenIndex > spicyIndex
+      && snackIndex > frozenIndex
+      && packagingIndex > snackIndex,
+  );
 });
 
 test("draft close remains guarded and Công Ty price is display-only", () => {

@@ -1,4 +1,5 @@
 import * as repository from '../db/repositories/sales-order.js';
+import * as productMetadataRepository from '../db/repositories/sales-order-product-metadata.js';
 
 const WALK_IN_MODE = 'WALK_IN';
 const EXISTING_MODE = 'EXISTING';
@@ -209,12 +210,21 @@ export function evaluateSalesOrderSkuEligibility(row) {
   return Object.freeze({ selectable: true, code: 'ELIGIBLE', message: 'Có thể chọn để bán.' });
 }
 
-function mapSkuOption(row, defaults) {
+function mapSkuOption(row, defaults, metadata = null) {
   return Object.freeze({
     id: row.id,
     productId: row.product_id,
     productCode: row.product_code,
     productName: row.product_name,
+    categoryId: metadata?.category_id ?? null,
+    categoryCode: metadata?.category_code ?? null,
+    categoryName: metadata?.category_name ?? null,
+    parentCategoryId: metadata?.parent_category_id ?? null,
+    parentCategoryCode: metadata?.parent_category_code ?? null,
+    parentCategoryName: metadata?.parent_category_name ?? null,
+    brandId: metadata?.brand_id ?? null,
+    brandCode: metadata?.brand_code ?? null,
+    brandName: metadata?.brand_name ?? null,
     sku: row.sku,
     variantName: row.name,
     barcode: row.barcode ?? null,
@@ -252,6 +262,14 @@ export async function searchSalesOrderSkuOptions(client, {
     }),
     repository.getSalesOrderSettings(client, { installationId: requestContext.installationId }),
   ]);
+  const metadataRows = await productMetadataRepository.listSalesOrderProductMetadata(client, {
+    installationId: requestContext.installationId,
+    productIds: rows.map((row) => row.product_id),
+  });
+  const metadataByProductId = new Map(metadataRows.map((row) => [row.product_id, row]));
   const defaults = taxSettings(settings);
-  return Object.freeze({ ok: true, skuOptions: Object.freeze(rows.map((row) => mapSkuOption(row, defaults))) });
+  return Object.freeze({
+    ok: true,
+    skuOptions: Object.freeze(rows.map((row) => mapSkuOption(row, defaults, metadataByProductId.get(row.product_id) ?? null))),
+  });
 }
