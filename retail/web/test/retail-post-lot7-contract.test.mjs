@@ -71,18 +71,20 @@ test('điều hướng Retail đúng bốn mục và Trang chủ không có nút
   assert.doesNotMatch(page, /window\.history\.back/);
 });
 
-test('Cài đặt dùng hàng có chevron và bottom sheet cho Tài khoản Máy in Mẫu phiếu Đăng xuất', async () => {
+test('Cài đặt dùng hàng có chevron và bottom sheet cho Tài khoản Thiết lập in Mẫu phiếu Đăng xuất', async () => {
   const page = await readWorkspace();
   assert.match(page, /className="settings-row"[^>]*>[\s\S]*?<strong>Tài khoản<\/strong>/);
-  assert.match(page, /<strong>Máy in<\/strong>/);
+  assert.match(page, /<strong>Thiết lập in<\/strong>/);
   assert.match(page, /<strong>Mẫu phiếu<\/strong>/);
   assert.match(page, /<strong>Đăng xuất<\/strong>/);
   assert.match(page, /className="settings-sheet sheet-enter"/);
-  assert.match(page, />Hủy<\/button>/);
-  assert.match(page, />Thiết lập<\/button>/);
+  assert.match(page, />In thử<\/button>/);
+  assert.match(page, />Lưu khổ giấy<\/button>/);
   assert.match(page, /PRINT_PAPER_STORAGE_KEY/);
   assert.match(page, /window\.localStorage\.setItem\(PRINT_PAPER_STORAGE_KEY/);
-  assert.match(page, /Máy in Wi-Fi được chọn trong hộp thoại in của thiết bị/);
+  assert.match(page, /điện thoại sẽ mở giao diện chọn máy in của thiết bị/);
+  assert.match(page, /Retail chỉ lưu khổ giấy, không giả trạng thái đã kết nối máy in/);
+  assert.doesNotMatch(page, /Máy in Wi-Fi được chọn trong hộp thoại in của thiết bị/);
 });
 
 test('Mẫu phiếu PATCH xong GET lại cấu hình Công Ty rồi mới áp dụng', async () => {
