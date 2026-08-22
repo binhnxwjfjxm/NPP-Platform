@@ -40,7 +40,8 @@ test('alert center uses office language and Company/MCP lineage without producti
 
 test('management reports use office language and server-side Company/MCP reporting sources', async () => {
   const [page, detail, data, css] = await Promise.all([read('app/reports/page.tsx'), read('app/reports/[reportId]/page.tsx'), read('app/reports/report-data.ts'), read('app/reports/report-center.module.css')]);
-  for (const label of ['Hôm nay','7 ngày','Tháng này','Quý này','Xu hướng kỳ','Diễn biến từ số liệu thật','Điểm cần chú ý']) assert.match(page,new RegExp(label));
+  for (const label of ['Hôm nay','7 ngày','Tháng này','Quý này']) assert.match(data,new RegExp(label));
+  for (const label of ['Xu hướng kỳ','Diễn biến từ số liệu thật','Điểm cần chú ý']) assert.match(page,new RegExp(label));
   assert.match(page,/\/reports\/\$\{item\.id\}/); assert.doesNotMatch(page,/Dữ liệu minh họa|report-preview-data/); assert.match(detail,/Phạm vi số liệu/); assert.match(detail,/Chỉ số quản trị/); assert.match(detail,/Nguồn số liệu/); assert.match(data,/Công Ty/); assert.match(data,/MCP/); assert.match(data,/requestCore/); assert.match(data,/server-only/); assert.doesNotMatch(`${page}\n${detail}`, /frontend|backend|production|contract|phase/i); assert.match(css,/\.sparkBars/); assert.match(css,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/); assert.doesNotMatch(`${page}\n${detail}\n${data}`, /method=['"]?(POST|PUT|PATCH|DELETE)|Idempotency-Key/);
 });
 
