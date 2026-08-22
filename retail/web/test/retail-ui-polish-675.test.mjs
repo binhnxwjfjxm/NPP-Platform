@@ -47,16 +47,28 @@ test('Nút thêm sản phẩm ngoài đơn và nút cộng trong danh sách có 
   assert.match(css, /place-items: center/);
 });
 
-test('Cài đặt Máy in nói rõ boundary chọn máy của hộp thoại hệ thống', async () => {
+test('Thiết lập in trên mobile chỉ lưu khổ giấy và có In thử thật qua giao diện in của thiết bị', async () => {
   const [workspace, css] = await Promise.all([
     read('app/retail-workspace.tsx'),
     read('app/retail-final-polish.css'),
   ]);
-  assert.match(workspace, /<strong>Máy in<\/strong>/);
-  assert.match(workspace, /Máy in Wi-Fi được chọn trong hộp thoại in của thiết bị/);
-  assert.match(css, /Máy in hiện tại · Chọn khi in/);
-  assert.match(css, /Máy in chọn khi bấm In/);
-  assert.doesNotMatch(css, /Đã kết nối/);
+  assert.match(workspace, /<strong>Thiết lập in<\/strong>/);
+  assert.match(workspace, /Khổ giấy mặc định/);
+  assert.match(workspace, /onClick=\{printTest\}>In thử<\/button>/);
+  assert.match(workspace, /function printTest\(\)/);
+  assert.match(workspace, /window\.print\(\)/);
+  assert.match(workspace, /Retail chỉ lưu khổ giấy, không giả trạng thái đã kết nối máy in/);
+  assert.doesNotMatch(workspace, /Máy in Wi-Fi được chọn trong hộp thoại in của thiết bị/);
+  assert.doesNotMatch(css, /Máy in hiện tại · Chọn khi in|Máy in chọn khi bấm In/);
+  assert.match(css, /\.printer-test-screen/);
+});
+
+test('A4 và A5 chia header phiếu hai bên, giấy nhiệt giữ một cột', async () => {
+  const css = await read('app/retail-final-polish.css');
+  assert.match(css, /\.paper-a4 \.print-document > header,[\s\S]*\.paper-a5 \.print-document > header \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/);
+  assert.match(css, /\.paper-a4 \.print-document > header h1,[\s\S]*text-align: right/);
+  assert.match(css, /\.paper-80 \.print-document > header,[\s\S]*\.paper-58 \.print-document > header \{[\s\S]*grid-template-columns: 1fr/);
+  assert.match(css, /\.paper-80 \.print-document > header > \*,[\s\S]*text-align: center !important/);
 });
 
 test('Tiêu đề đơn và phiếu in có hierarchy riêng thay vì header thô', async () => {
