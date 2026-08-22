@@ -17,7 +17,8 @@ async function shot(page, name) { await page.screenshot({ path: `${resultsDir}/$
 await waitForHttp(`${mockBase}/health`); await waitForHttp(`${appBase}/visits?routeId=route-active&date=2099-12-30`); await reset();
 const browser = await chromium.launch({ headless: true }); const context = await browser.newContext({ viewport: { width: 390, height: 844 } }); const page = await context.newPage(); const result = { MCP_SESSION_ACTION_UI_SMOKE: "FAIL" };
 try {
-  await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "networkidle" });
+  await page.goto(`${appBase}/visits?routeId=route-active&date=2099-12-30`, { waitUntil: "domcontentloaded" });
+  await card(page).waitFor({ state: "visible" });
   const tokens = await page.evaluate(() => { const style = getComputedStyle(document.documentElement); return { canvas: style.getPropertyValue("--npp-color-canvas").trim(), surface: style.getPropertyValue("--npp-color-surface").trim(), header: style.getPropertyValue("--npp-color-header").trim(), primary: style.getPropertyValue("--npp-color-primary").trim(), accent: style.getPropertyValue("--npp-color-accent").trim() }; });
   assert.deepEqual(tokens, { canvas: "#f7f5f1", surface: "#fff", header: "#5a3b20", primary: "#98600f", accent: "#b78333" }); await shot(page, "01-warm-theme-session");
   await openCardAction(page, "Có đơn");

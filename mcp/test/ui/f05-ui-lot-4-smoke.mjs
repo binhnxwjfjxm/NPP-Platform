@@ -99,8 +99,11 @@ try {
     const dialog = page.getByRole("dialog", { name: "Thêm nhóm" });
     await dialog.waitFor({ state: "visible" });
     assert.equal(await dialog.getAttribute("aria-modal"), "true");
+    const titleInput = dialog.getByLabel("Tên nhóm");
     const closeButton = dialog.getByRole("button", { name: "Đóng biểu mẫu nhóm" });
     const cancelButton = dialog.getByRole("button", { name: "Hủy" });
+    await titleInput.waitFor({ state: "visible" });
+    await page.waitForFunction(() => document.activeElement?.getAttribute("placeholder") === "Ví dụ: Sản phẩm đang dùng · Phụ gia");
     await closeButton.focus();
     await page.keyboard.press("Shift+Tab");
     assert.equal(await cancelButton.evaluate((node) => document.activeElement === node), true);
