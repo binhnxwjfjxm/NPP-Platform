@@ -27,14 +27,19 @@ test('Login dùng logo Công Ty có cache bust mới và fallback icon Retail', 
   assert.match(css, /visibility: visible !important/);
 });
 
-test('Thao tác nhanh Trang chủ căn giữa icon và chữ, không còn card màu trang trí lệch', async () => {
+test('Thao tác nhanh Trang chủ là card nổi không viền và icon không bị nhốt trong ô xám', async () => {
   const css = await read('app/retail-home-polish.css');
   assert.match(css, /\.compact-home-actions button \{[\s\S]*display: flex/);
   assert.match(css, /align-items: center/);
   assert.match(css, /justify-content: center/);
-  assert.match(css, /text-align: center/);
+  assert.match(css, /border: 0/);
+  assert.match(css, /box-shadow:[\s\S]*inset 0 1px 0/);
+  assert.match(css, /button:first-child \{[\s\S]*linear-gradient\(180deg, #effaf3 0%, #dff2e7 100%\)/);
+  assert.match(css, /button > span \{[\s\S]*background: transparent/);
+  assert.match(css, /button > span::before \{[\s\S]*filter: drop-shadow/);
+  assert.match(css, /button:active \{[\s\S]*translateY\(2px\)/);
   assert.match(css, /button::after \{[\s\S]*content: none/);
-  assert.doesNotMatch(css, /#e2f0fb|#eee6f9/);
+  assert.doesNotMatch(css, /border: 1px solid #dce6df|border-color: #88cca2|background: #f0f6f2|background: #d8f0e1/);
 });
 
 test('Nút thêm sản phẩm ngoài đơn và nút cộng trong danh sách có CTA rõ, icon cộng căn giữa', async () => {
