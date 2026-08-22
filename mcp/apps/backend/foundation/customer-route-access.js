@@ -173,31 +173,32 @@ export async function listAccessibleCoreCustomerLinks(client, context) {
 export async function listAccessibleCoreCustomers(client, context) {
   const employeeId = requireWorkforceEmployee(context);
   const result = await client.query(
-    `SELECT DISTINCT
+    `SELECT
        customer.id,
        customer.code AS customer_code,
        customer.name,
+       customer.responsible_employee_id,
        customer.phone,
        customer.email,
        customer.is_active,
-       customer.updated_at
+       customer.updated_at,
+       address.id AS customer_address_id
      FROM shared.customers AS customer
+     LEFT JOIN LATERAL (
+       SELECT customer_address.id
+       FROM shared.customer_addresses AS customer_address
+       WHERE customer_address.installation_id = customer.installation_id
+         AND customer_address.customer_id = customer.id
+         AND customer_address.is_active = true
+       ORDER BY customer_address.is_default DESC,
+                customer_address.label ASC,
+                customer_address.created_at ASC,
+                customer_address.id ASC
+       LIMIT 1
+     ) AS address ON true
      WHERE customer.installation_id = $1
        AND customer.is_active = true
-       AND (
-         $3::boolean = true
-         OR EXISTS (
-           SELECT 1
-           FROM mcp.mcp_route_customers AS rc
-           JOIN mcp.mcp_routes AS route
-             ON route.installation_id = rc.installation_id
-            AND route.id = rc.route_id
-           WHERE rc.installation_id = customer.installation_id
-             AND rc.active = true
-             AND rc.core_customer_id = customer.id::text
-             AND (${EMPLOYEE_ACCESS})
-         )
-       )
+       AND ($3::boolean = true OR customer.responsible_employee_id = $2::uuid)
      ORDER BY customer.name, customer.code, customer.id`,
     [customerAccessInstallationId(context), employeeId, isInstallationOwner(context)]
   );
