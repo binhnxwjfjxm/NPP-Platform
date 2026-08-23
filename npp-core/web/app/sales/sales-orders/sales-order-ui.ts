@@ -135,9 +135,9 @@ export function draftRecoveryTarget(
 }
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  validateDraftDiscountIntent(path, init);
   const requestInit = withMissingBasePricePreview(path, init);
   const requestMethod = methodOf(requestInit);
-  validateDraftDiscountIntent(path, requestInit);
   const response = await fetch(path, {
     ...requestInit,
     cache: 'no-store',
