@@ -28,6 +28,20 @@ function backDestination(returnTo?: string) {
   return { href: '/approvals', label: '← Quay lại danh sách' };
 }
 
+function entityTypeLabel(value: string) {
+  const labels: Record<string, string> = {
+    customer: 'Khách hàng',
+    'sales-order': 'Đơn bán hàng',
+    'purchase-order': 'Đơn mua hàng',
+    document: 'Chứng từ',
+    route: 'Tuyến',
+    employee: 'Nhân viên',
+    outlet: 'Điểm bán',
+    other: 'Khác',
+  };
+  return labels[value] || value;
+}
+
 export default async function ApprovalDetailPage({ params, searchParams }: { params: { approvalId: string }; searchParams?: { returnTo?: string } }) {
   const back = backDestination(searchParams?.returnTo);
   let item;
@@ -59,6 +73,15 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
         <p>{item.entityLabel}</p>
       </article>
 
+      <section className="approvalDetailSection card"><h3>Nội dung đề xuất</h3><p>{item.content}</p></section>
+      <section className="approvalDetailSection card">
+        <h3>Đối tượng liên quan</h3>
+        <dl className="approvalDefinitionList">
+          <div><dt>Loại</dt><dd>{entityTypeLabel(item.entityType)}</dd></div>
+          <div><dt>Tên</dt><dd>{item.entityLabel}</dd></div>
+          <div><dt>Mã tham chiếu</dt><dd>{item.entityId}</dd></div>
+        </dl>
+      </section>
       <section className="approvalDetailSection card"><h3>Lý do đề xuất</h3><p>{item.reason}</p></section>
       <section className="approvalDetailSection card"><h3>Điều kiện liên quan</h3><p>{item.rule}</p></section>
       <section className="approvalDetailSection card"><h3>Dữ liệu và bằng chứng</h3><div className="approvalEvidenceList">{item.evidence.length ? item.evidence.map((entry) => <div key={entry}>{entry}</div>) : <div>Chưa có bằng chứng bổ sung.</div>}</div></section>

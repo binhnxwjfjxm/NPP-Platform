@@ -16,10 +16,7 @@ import styles from './management.module.css';
 
 export const dynamic = 'force-dynamic';
 
-type LoadResult<T> = {
-  data: T;
-  error: string | null;
-};
+type LoadResult<T> = { data: T; error: string | null; };
 
 function publicError(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'publicMessage' in error) {
@@ -30,37 +27,18 @@ function publicError(error: unknown, fallback: string): string {
 }
 
 async function loadDraftOrders(): Promise<LoadResult<SalesOrder[]>> {
-  try {
-    return {
-      data: await listSalesOrders<SalesOrder>(resolveSalesOrderRequestId(null), {
-        status: 'draft',
-        limit: 20,
-      }),
-      error: null,
-    };
-  } catch (error) {
-    return { data: [], error: publicError(error, 'Không tải được đơn bán hàng đang chờ xác nhận') };
-  }
+  try { return { data: await listSalesOrders<SalesOrder>(resolveSalesOrderRequestId(null), { status: 'draft', limit: 20 }), error: null }; }
+  catch (error) { return { data: [], error: publicError(error, 'Không tải được đơn bán hàng đang chờ xác nhận') }; }
 }
 
 async function loadOnboardingQueue(): Promise<LoadResult<CustomerOnboardingRequestSummary[]>> {
   const statuses = ['submitted', 'under_review', 'need_more_info'] as const;
-  const results = await Promise.allSettled(statuses.map((status) => listCustomerOnboardingRequests({
-    requestId: resolveCustomerOnboardingRequestId(null),
-    status,
-    limit: 20,
-  })));
+  const results = await Promise.allSettled(statuses.map((status) => listCustomerOnboardingRequests({ requestId: resolveCustomerOnboardingRequestId(null), status, limit: 20 })));
   const requests = results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
   const failedCount = results.filter((result) => result.status === 'rejected').length;
   return {
-    data: requests
-      .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
-      .slice(0, 20),
-    error: failedCount === results.length
-      ? 'Không tải được danh sách đề nghị mở mã khách hàng'
-      : failedCount > 0
-        ? 'Một phần danh sách đề nghị mở mã khách hàng chưa tải được'
-        : null,
+    data: requests.sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()).slice(0, 20),
+    error: failedCount === results.length ? 'Không tải được danh sách đề nghị mở mã khách hàng' : failedCount > 0 ? 'Một phần danh sách đề nghị mở mã khách hàng chưa tải được' : null,
   };
 }
 
@@ -71,129 +49,48 @@ function onboardingStatus(status: string): string {
   return 'Trạng thái khác';
 }
 
-function organizationMetric(
-  unavailable: OrganizationResourceKey[],
-  resource: OrganizationResourceKey,
-  value: number,
-): number | string {
+function organizationMetric(unavailable: OrganizationResourceKey[], resource: OrganizationResourceKey, value: number): number | string {
   return unavailable.includes(resource) ? '—' : value;
 }
 
 function organizationLoadMessage(unavailable: OrganizationResourceKey[]): string | null {
   if (unavailable.length === 0) return null;
-  const labels: Record<OrganizationResourceKey, string> = {
-    branches: 'chi nhánh',
-    warehouses: 'kho',
-    locations: 'vị trí kho',
-  };
+  const labels: Record<OrganizationResourceKey, string> = { branches: 'chi nhánh', warehouses: 'kho', locations: 'vị trí kho' };
   return `Chưa tải được số liệu ${unavailable.map((resource) => labels[resource]).join(', ')}.`;
 }
 
 export default async function ManagementPage() {
   const [organizationResult, orders, onboarding] = await Promise.all([
-    loadOrganizationSnapshotWithStatus()
-      .then(({ snapshot, unavailable }) => ({
-        data: snapshot,
-        unavailable,
-        error: organizationLoadMessage(unavailable),
-      }))
-      .catch(() => ({
-        data: createEmptyOrganizationSnapshot(),
-        unavailable: ['branches', 'warehouses', 'locations'] as OrganizationResourceKey[],
-        error: 'Không tải được cơ cấu chi nhánh và kho',
-      })),
+    loadOrganizationSnapshotWithStatus().then(({ snapshot, unavailable }) => ({ data: snapshot, unavailable, error: organizationLoadMessage(unavailable) })).catch(() => ({ data: createEmptyOrganizationSnapshot(), unavailable: ['branches', 'warehouses', 'locations'] as OrganizationResourceKey[], error: 'Không tải được cơ cấu chi nhánh và kho' })),
     loadDraftOrders(),
     loadOnboardingQueue(),
   ]);
-
   const activeBranches = organizationResult.data.branches.filter((item) => item.is_active).length;
   const activeWarehouses = organizationResult.data.warehouses.filter((item) => item.is_active).length;
   const activeLocations = organizationResult.data.locations.filter((item) => item.is_active).length;
-
   return (
-    <AppShell
-      kicker="Điều hành bán hàng"
-      title="Tiếp nhận và xử lý nhu cầu bán hàng"
-      subtitle="Tập trung đơn và nhu cầu mua từ các nguồn, xử lý mã khách, kiểm tra và chuyển thành đơn bán hàng chính thức."
-      actions={<Link className={styles.link} href="/sales/sales-orders">Xem đơn bán hàng</Link>}
-    >
+    <AppShell kicker="Điều hành bán hàng" title="Tiếp nhận và xử lý nhu cầu bán hàng" subtitle="Tập trung đơn và nhu cầu mua từ các nguồn, xử lý mã khách, kiểm tra và chuyển thành đơn bán hàng chính thức." actions={<><Link className={styles.link} href="/management/proposals">Gửi Đề xuất</Link><Link className={styles.link} href="/sales/sales-orders">Xem đơn bán hàng</Link></>}>
       <div className={styles.page} data-testid="management-overview-page">
-        <p className={styles.notice}>
-          Đây là trung tâm điều hành bán hàng chung. Mọi nguồn đơn đi vào cùng một hàng đợi để bộ phận bán hàng, chăm sóc khách hàng và kế toán xử lý; chỉ ngoại lệ vượt quyền mới chuyển lên quản lý phụ trách.
-        </p>
-
+        <p className={styles.notice}>Đây là trung tâm điều hành bán hàng chung. Mọi nguồn đơn đi vào cùng một hàng đợi để bộ phận bán hàng, chăm sóc khách hàng và kế toán xử lý; chỉ ngoại lệ vượt quyền mới chuyển lên quản lý phụ trách bằng Phiếu Đề xuất.</p>
         <section className={styles.summaryGrid} aria-label="Tóm tắt vận hành">
-          <article className={styles.summaryCard}>
-            <strong>{organizationMetric(organizationResult.unavailable, 'branches', activeBranches)}</strong>
-            <span>Chi nhánh đang hoạt động</span>
-          </article>
-          <article className={styles.summaryCard}>
-            <strong>{organizationMetric(organizationResult.unavailable, 'warehouses', activeWarehouses)}</strong>
-            <span>Kho đang hoạt động</span>
-          </article>
-          <article className={styles.summaryCard}>
-            <strong>{organizationMetric(organizationResult.unavailable, 'locations', activeLocations)}</strong>
-            <span>Vị trí kho đang hoạt động</span>
-          </article>
-          <article className={styles.summaryCard}>
-            <strong>{orders.data.length + onboarding.data.length}</strong>
-            <span>Việc bán hàng đang chờ</span>
-          </article>
+          <article className={styles.summaryCard}><strong>{organizationMetric(organizationResult.unavailable, 'branches', activeBranches)}</strong><span>Chi nhánh đang hoạt động</span></article>
+          <article className={styles.summaryCard}><strong>{organizationMetric(organizationResult.unavailable, 'warehouses', activeWarehouses)}</strong><span>Kho đang hoạt động</span></article>
+          <article className={styles.summaryCard}><strong>{organizationMetric(organizationResult.unavailable, 'locations', activeLocations)}</strong><span>Vị trí kho đang hoạt động</span></article>
+          <article className={styles.summaryCard}><strong>{orders.data.length + onboarding.data.length}</strong><span>Việc bán hàng đang chờ</span></article>
         </section>
-
         {organizationResult.error ? <p className={styles.error} role="alert">{organizationResult.error}</p> : null}
-
         <section className={styles.queueGrid}>
           <article className={styles.queueCard}>
-            <header className={styles.queueHeader}>
-              <div>
-                <h2>Đơn chờ xác nhận</h2>
-                <p>Các đơn nháp từ những nguồn tiếp nhận cần kiểm tra và xác nhận thành đơn bán hàng chính thức.</p>
-              </div>
-              <Link className={styles.link} href="/sales/sales-orders">Mở màn xác nhận</Link>
-            </header>
+            <header className={styles.queueHeader}><div><h2>Đơn chờ xác nhận</h2><p>Các đơn nháp từ những nguồn tiếp nhận cần kiểm tra và xác nhận thành đơn bán hàng chính thức.</p></div><Link className={styles.link} href="/sales/sales-orders">Mở màn xác nhận</Link></header>
             {orders.error ? <p className={styles.error} role="alert">{orders.error}</p> : null}
             {orders.data.length === 0 && !orders.error ? <p className={styles.empty}>Không có đơn nháp trong danh sách gần nhất.</p> : null}
-            <ul className={styles.list}>
-              {orders.data.map((order, rowIndex) => (
-                <li className={styles.item} key={order.id}>
-                  <div className={styles.itemTop}>
-                    <strong><BusinessSequenceNumber rowIndex={rowIndex} /> {order.customerName || order.walkInDisplayName || 'Khách chưa đặt tên'}</strong>
-                    <span className={styles.badge}>Chờ xác nhận</span>
-                  </div>
-                  <span className={styles.meta}>{order.warehouseName} · {salesOrderSourceLabel(order.sourceType, order.sourceId)}</span>
-                  <small>Cập nhật {formatDateTime(order.updatedAt)}</small>
-                </li>
-              ))}
-            </ul>
+            <ul className={styles.list}>{orders.data.map((order, rowIndex) => <li className={styles.item} key={order.id}><div className={styles.itemTop}><strong><BusinessSequenceNumber rowIndex={rowIndex} /> {order.customerName || order.walkInDisplayName || 'Khách chưa đặt tên'}</strong><span className={styles.badge}>Chờ xác nhận</span></div><span className={styles.meta}>{order.warehouseName} · {salesOrderSourceLabel(order.sourceType, order.sourceId)}</span><small>Cập nhật {formatDateTime(order.updatedAt)}</small></li>)}</ul>
           </article>
-
           <article className={styles.queueCard}>
-            <header className={styles.queueHeader}>
-              <div>
-                <h2>Đề nghị mở hoặc liên kết mã khách</h2>
-                <p>Các điểm bán đã phát sinh nhu cầu mua và cần xử lý thành khách hàng chính thức.</p>
-              </div>
-              <Link className={styles.link} href="/management/customer-onboarding">Mở màn xử lý</Link>
-            </header>
+            <header className={styles.queueHeader}><div><h2>Đề nghị mở hoặc liên kết mã khách</h2><p>Các điểm bán đã phát sinh nhu cầu mua và cần xử lý thành khách hàng chính thức.</p></div><Link className={styles.link} href="/management/customer-onboarding">Mở màn xử lý</Link></header>
             {onboarding.error ? <p className={styles.error} role="alert">{onboarding.error}</p> : null}
             {onboarding.data.length === 0 && !onboarding.error ? <p className={styles.empty}>Không có đề nghị đang chờ trong danh sách gần nhất.</p> : null}
-            <ul className={styles.list}>
-              {onboarding.data.map((request, rowIndex) => (
-                <li className={styles.item} key={request.id}>
-                  <div className={styles.itemTop}>
-                    <strong><BusinessSequenceNumber rowIndex={rowIndex} /> {request.proposedCustomer.name}</strong>
-                    <span className={styles.badge}>{onboardingStatus(request.status)}</span>
-                  </div>
-                  <span className={styles.meta}>
-                    {request.proposedCustomer.address.addressLine1}
-                    {request.proposedCustomer.address.ward ? `, ${request.proposedCustomer.address.ward}` : ''}
-                    {request.proposedCustomer.address.province ? `, ${request.proposedCustomer.address.province}` : ''}
-                  </span>
-                  <small>Cập nhật {formatDateTime(request.updatedAt)}</small>
-                </li>
-              ))}
-            </ul>
+            <ul className={styles.list}>{onboarding.data.map((request, rowIndex) => <li className={styles.item} key={request.id}><div className={styles.itemTop}><strong><BusinessSequenceNumber rowIndex={rowIndex} /> {request.proposedCustomer.name}</strong><span className={styles.badge}>{onboardingStatus(request.status)}</span></div><span className={styles.meta}>{request.proposedCustomer.address.addressLine1}{request.proposedCustomer.address.ward ? `, ${request.proposedCustomer.address.ward}` : ''}{request.proposedCustomer.address.province ? `, ${request.proposedCustomer.address.province}` : ''}</span><small>Cập nhật {formatDateTime(request.updatedAt)}</small></li>)}</ul>
           </article>
         </section>
       </div>

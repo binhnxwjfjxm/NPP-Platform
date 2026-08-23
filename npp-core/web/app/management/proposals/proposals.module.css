@@ -1,0 +1,40 @@
+.page { display: grid; gap: 1rem; }
+.card { border: 1px solid var(--border, #d9dee8); border-radius: 16px; background: var(--surface, #fff); padding: 1rem; box-shadow: 0 8px 24px rgba(15, 23, 42, .05); }
+.sectionHeader { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 1rem; }
+.sectionHeader h2 { margin: .15rem 0 0; font-size: 1.15rem; }
+.eyebrow { margin: 0; font-size: .78rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #526078; }
+.sourceBadge, .status { border-radius: 999px; padding: .35rem .65rem; font-size: .78rem; font-weight: 700; background: #eef2f7; white-space: nowrap; }
+.form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .9rem; }
+.form label, .resubmit label { display: grid; gap: .35rem; font-size: .86rem; font-weight: 650; color: #273244; }
+.form input, .form textarea, .form select, .resubmit textarea { width: 100%; box-sizing: border-box; border: 1px solid #cfd6e2; border-radius: 10px; padding: .72rem .8rem; background: #fff; color: #172033; font: inherit; }
+.form textarea, .resubmit textarea { resize: vertical; }
+.full { grid-column: 1 / -1; }
+.primaryButton { min-height: 42px; border: 0; border-radius: 10px; padding: .7rem 1rem; font: inherit; font-weight: 750; cursor: pointer; background: #172033; color: #fff; }
+.secondaryLink { display: inline-flex; align-items: center; min-height: 40px; border: 1px solid #cfd6e2; border-radius: 10px; padding: 0 .85rem; color: inherit; text-decoration: none; font-weight: 700; }
+.success, .error { margin: 0; border-radius: 10px; padding: .8rem 1rem; font-weight: 650; }
+.success { background: #eef8f0; }
+.error { background: #fff0f0; }
+.empty { margin: .5rem 0 0; color: #64748b; }
+.list { display: grid; gap: .8rem; }
+.proposal { border-top: 1px solid #e7ebf1; padding-top: .9rem; }
+.proposal:first-child { border-top: 0; padding-top: 0; }
+.proposalTop { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.proposalTop h3 { margin: .2rem 0 0; font-size: 1rem; }
+.meta { color: #64748b; font-size: .8rem; }
+.content { margin: .65rem 0; white-space: pre-wrap; line-height: 1.55; }
+.details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; margin: 0; }
+.details div { display: grid; gap: .15rem; }
+.details dt { font-size: .76rem; color: #64748b; }
+.details dd { margin: 0; font-size: .86rem; }
+.decision { border-left: 3px solid #94a3b8; padding-left: .7rem; }
+.resubmit { display: grid; gap: .7rem; margin-top: .8rem; padding: .8rem; border-radius: 12px; background: #f8fafc; }
+.status_pending { background: #fff7df; }
+.status_needs_info { background: #eef3ff; }
+.status_approved { background: #eef8f0; }
+.status_rejected { background: #fff0f0; }
+@media (max-width: 720px) {
+  .form, .details { grid-template-columns: 1fr; }
+  .full { grid-column: auto; }
+  .sectionHeader, .proposalTop { align-items: stretch; flex-direction: column; }
+  .sourceBadge, .status { align-self: flex-start; }
+}

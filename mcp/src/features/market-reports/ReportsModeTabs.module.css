@@ -1,0 +1,22 @@
+.tabs {
+  display: flex;
+  gap: .5rem;
+  padding: .75rem 1rem 0;
+  background: var(--surface, #fff);
+  border-bottom: 1px solid rgba(15, 23, 42, .1);
+}
+.tab,
+.active {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.35rem;
+  padding: .45rem .9rem;
+  border-radius: .65rem .65rem 0 0;
+  text-decoration: none;
+  font-weight: 700;
+  color: inherit;
+}
+.active {
+  background: rgba(15, 23, 42, .08);
+}

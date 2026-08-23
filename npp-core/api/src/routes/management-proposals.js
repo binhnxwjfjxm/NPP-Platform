@@ -16,6 +16,10 @@ const SOURCES = new Set(['company', 'mcp']);
 const DOMAINS = new Set(['commercial', 'customer-debt', 'operations', 'mcp']);
 const PRIORITIES = new Set(['critical', 'high', 'normal']);
 const DECISIONS = new Set(['approved', 'needs-info', 'rejected']);
+const ENTITY_TYPES = new Set(['customer', 'sales-order', 'purchase-order', 'document', 'route', 'employee', 'outlet', 'other']);
+const COMPANY_SUBMIT_PERMISSION = 'core.management-proposal.submit';
+const MCP_SUBMIT_PERMISSION = 'mcp.report.write';
+const MCP_SERVICE_ROLE = 'mcp-sales-order-service';
 
 function apiError(code, message, details = {}, retryable = false, statusCode = 500) {
   return { code, message, details, retryable, statusCode };
@@ -32,23 +36,47 @@ function evidence(value) {
   return normalized.every(Boolean) ? normalized : null;
 }
 
+function roles(context) {
+  return Array.isArray(context.roles) ? context.roles : [];
+}
+
+function permissions(context) {
+  return Array.isArray(context.permissions) ? context.permissions : [];
+}
+
 function canManage(context) {
-  const roles = Array.isArray(context.roles) ? context.roles : [];
-  return roles.includes('bootstrap')
-    || roles.includes('system:security-owner')
-    || roles.includes('system:implementation-owner');
+  const currentRoles = roles(context);
+  return currentRoles.includes('bootstrap')
+    || currentRoles.includes('system:security-owner')
+    || currentRoles.includes('system:implementation-owner');
 }
 
 function canSubmit(context, source) {
   if (canManage(context)) return true;
+  if (source === 'company') return permissions(context).includes(COMPANY_SUBMIT_PERMISSION);
   if (source === 'mcp') {
-    return Array.isArray(context.permissions) && context.permissions.includes('mcp.report.write');
+    return permissions(context).includes(MCP_SUBMIT_PERMISSION)
+      || (roles(context).includes(MCP_SERVICE_ROLE) && Boolean(context.employeeId));
   }
   return false;
 }
 
+function canReadSource(context) {
+  return canManage(context) || canSubmit(context, 'company') || canSubmit(context, 'mcp');
+}
+
 function actorLabel(context, fallback) {
   return text(fallback, 240) || String(context.employeeId ?? context.actorId ?? 'Người dùng');
+}
+
+function ownsProposal(context, row) {
+  if (canManage(context)) return true;
+  if (!canSubmit(context, String(row.source))) return false;
+  if (context.employeeId) {
+    return row.requester_employee_id != null
+      && String(row.requester_employee_id) === String(context.employeeId);
+  }
+  return String(row.requester_actor_id) === String(context.actorId);
 }
 
 function parsePath(pathname) {
@@ -66,13 +94,15 @@ function normalizeCreate(payload) {
   const source = String(payload?.source ?? '').trim().toLowerCase();
   const domain = String(payload?.domain ?? '').trim().toLowerCase();
   const priority = String(payload?.priority ?? 'normal').trim().toLowerCase();
+  const entityType = String(payload?.entityType ?? '').trim().toLowerCase();
   const normalizedEvidence = evidence(payload?.evidence ?? []);
   const result = {
     source,
     domain,
     priority,
     title: text(payload?.title, 240),
-    entityType: text(payload?.entityType, 96),
+    content: text(payload?.content, 4000),
+    entityType,
     entityId: text(payload?.entityId, 240),
     entityLabel: text(payload?.entityLabel, 240),
     impact: text(payload?.impact, 1000),
@@ -81,10 +111,10 @@ function normalizeCreate(payload) {
     evidence: normalizedEvidence,
     requesterName: text(payload?.requesterName, 240),
   };
-  if (!SOURCES.has(source) || !DOMAINS.has(domain) || !PRIORITIES.has(priority)) return null;
-  if (source === 'mcp' && domain !== 'mcp') return null;
-  if (!result.title || !result.entityType || !result.entityId || !result.entityLabel
-    || !result.impact || !result.reason || !result.rule || !result.requesterName || !normalizedEvidence) return null;
+  if (!SOURCES.has(source) || !DOMAINS.has(domain) || !PRIORITIES.has(priority) || !ENTITY_TYPES.has(entityType)) return null;
+  if ((source === 'mcp') !== (domain === 'mcp')) return null;
+  if (!result.title || !result.content || !result.entityId || !result.entityLabel
+    || !result.impact || !result.reason || !result.rule || !normalizedEvidence) return null;
   return result;
 }
 
@@ -94,6 +124,7 @@ function publicProposal(row, history = []) {
     source: String(row.source),
     domain: String(row.domain),
     title: String(row.title),
+    content: String(row.content),
     entityType: String(row.entity_type),
     entityId: String(row.entity_id),
     entityLabel: String(row.entity_label),
@@ -142,24 +173,36 @@ async function authenticate(req, res, options) {
 }
 
 async function listProposals(adapter, context, url) {
-  const statuses = String(url.searchParams.get('status') ?? '').trim().toLowerCase();
+  const status = String(url.searchParams.get('status') ?? '').trim().toLowerCase();
   const domain = String(url.searchParams.get('domain') ?? '').trim().toLowerCase();
   const source = String(url.searchParams.get('source') ?? '').trim().toLowerCase();
-  if (statuses && !new Set(['pending', 'needs-info', 'approved', 'rejected']).has(statuses)) {
+  if (status && !new Set(['pending', 'needs-info', 'approved', 'rejected']).has(status)) {
     throw Object.assign(new Error('INVALID_PROPOSAL_FILTER'), { code: 'INVALID_PROPOSAL_FILTER', publicMessage: 'Bộ lọc trạng thái không hợp lệ', statusCode: 400 });
   }
   if (domain && !DOMAINS.has(domain)) throw Object.assign(new Error('INVALID_PROPOSAL_FILTER'), { code: 'INVALID_PROPOSAL_FILTER', publicMessage: 'Bộ lọc nhóm đề xuất không hợp lệ', statusCode: 400 });
   if (source && !SOURCES.has(source)) throw Object.assign(new Error('INVALID_PROPOSAL_FILTER'), { code: 'INVALID_PROPOSAL_FILTER', publicMessage: 'Bộ lọc nguồn đề xuất không hợp lệ', statusCode: 400 });
+
+  const manager = canManage(context);
+  const allowedSources = manager
+    ? ['company', 'mcp']
+    : ['company', 'mcp'].filter((candidate) => canSubmit(context, candidate));
+  const employeeId = context.employeeId ? String(context.employeeId) : '';
+  const actorId = String(context.actorId ?? '');
   const result = await adapter.query(
     `SELECT * FROM shared.management_proposals
       WHERE installation_id = $1
         AND ($2::text = '' OR status = $2)
         AND ($3::text = '' OR domain = $3)
         AND ($4::text = '' OR source = $4)
+        AND source = ANY($5::text[])
+        AND (
+          $6::boolean = true
+          OR (CASE WHEN $7::text <> '' THEN requester_employee_id::text = $7 ELSE requester_actor_id = $8 END)
+        )
       ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'needs-info' THEN 1 ELSE 2 END,
                updated_at DESC, id DESC
       LIMIT 500`,
-    [context.installationId, statuses, domain, source],
+    [context.installationId, status, domain, source, allowedSources, manager, employeeId, actorId],
   );
   return Object.freeze({ proposals: Object.freeze((result.rows ?? []).map((row) => publicProposal(row))) });
 }
@@ -170,7 +213,7 @@ async function loadDetail(adapter, context, id) {
     [context.installationId, id],
   );
   const row = result.rows?.[0];
-  if (!row) return null;
+  if (!row || !ownsProposal(context, row)) return null;
   const events = await adapter.query(
     `SELECT * FROM shared.management_proposal_events
       WHERE installation_id = $1 AND proposal_id = $2
@@ -184,22 +227,39 @@ function response(data, requestId, receivedAt, statusCode = 200) {
   return Object.freeze({ statusCode, contentType: 'application/json', requestId, body: createSuccessEnvelope(data, requestId, receivedAt) });
 }
 
+async function resolveRequesterName(client, context, requestedName) {
+  const managerSupplied = canManage(context) ? text(requestedName, 240) : null;
+  if (managerSupplied) return managerSupplied;
+  if (context.employeeId) {
+    const employee = await client.query(
+      `SELECT full_name FROM shared.employees
+        WHERE installation_id = $1 AND id = $2::uuid AND is_active = true
+        LIMIT 1`,
+      [context.installationId, context.employeeId],
+    );
+    const employeeName = text(employee.rows?.[0]?.full_name, 240);
+    if (employeeName) return employeeName;
+  }
+  return actorLabel(context, null);
+}
+
 async function createProposal(options, context, normalized) {
   const id = `proposal_${randomUUID()}`;
   return withAuditOutboxTransaction({
     adapter: options.getPool(),
     mutate: async (client) => {
+      const requesterName = await resolveRequesterName(client, context, normalized.requesterName);
       const created = await client.query(
         `INSERT INTO shared.management_proposals (
-          id, installation_id, source, domain, title, entity_type, entity_id, entity_label,
+          id, installation_id, source, domain, title, content, entity_type, entity_id, entity_label,
           impact, reason, rule_text, evidence, priority, status,
           requester_actor_id, requester_employee_id, requester_name
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,'pending',$14,$15,$16)
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,'pending',$15,$16,$17)
         RETURNING *`,
         [id, context.installationId, normalized.source, normalized.domain, normalized.title,
-          normalized.entityType, normalized.entityId, normalized.entityLabel, normalized.impact,
+          normalized.content, normalized.entityType, normalized.entityId, normalized.entityLabel, normalized.impact,
           normalized.reason, normalized.rule, JSON.stringify(normalized.evidence), normalized.priority,
-          context.actorId, context.employeeId ?? null, normalized.requesterName],
+          context.actorId, context.employeeId ?? null, requesterName],
       );
       await client.query(
         `INSERT INTO shared.management_proposal_events (
@@ -207,7 +267,7 @@ async function createProposal(options, context, normalized) {
           actor_id, employee_id, actor_label, note
         ) VALUES ($1,$2,$3,'submitted',NULL,'pending',$4,$5,$6,$7)`,
         [`proposal_event_${randomUUID()}`, context.installationId, id, context.actorId,
-          context.employeeId ?? null, actorLabel(context, normalized.requesterName), normalized.reason],
+          context.employeeId ?? null, requesterName, normalized.content],
       );
       const proposal = publicProposal(created.rows[0]);
       await insertAuditRecord(client, buildAuditRecord({
@@ -284,9 +344,10 @@ async function decideProposal(options, context, id, decision, note) {
 }
 
 async function resubmitProposal(options, context, id, payload) {
+  const nextContent = text(payload?.content, 4000);
   const nextReason = text(payload?.reason, 4000);
-  const nextEvidence = evidence(payload?.evidence);
-  if (!nextReason || !nextEvidence) throw Object.assign(new Error('PROPOSAL_RESUBMIT_INVALID'), { code: 'PROPOSAL_RESUBMIT_INVALID', publicMessage: 'Nội dung bổ sung không hợp lệ', statusCode: 400 });
+  const nextEvidence = evidence(payload?.evidence ?? []);
+  if (!nextContent || !nextReason || !nextEvidence) throw Object.assign(new Error('PROPOSAL_RESUBMIT_INVALID'), { code: 'PROPOSAL_RESUBMIT_INVALID', publicMessage: 'Nội dung bổ sung không hợp lệ', statusCode: 400 });
   return withAuditOutboxTransaction({
     adapter: options.getPool(),
     mutate: async (client) => {
@@ -297,17 +358,17 @@ async function resubmitProposal(options, context, id, payload) {
       const current = currentResult.rows?.[0];
       if (!current) throw Object.assign(new Error('PROPOSAL_NOT_FOUND'), { code: 'PROPOSAL_NOT_FOUND', publicMessage: 'Đề xuất không còn tồn tại', statusCode: 404 });
       if (current.status !== 'needs-info') throw Object.assign(new Error('PROPOSAL_STATUS_CONFLICT'), { code: 'PROPOSAL_STATUS_CONFLICT', publicMessage: 'Đề xuất không ở trạng thái chờ bổ sung', statusCode: 409 });
-      if (!canManage(context) && String(current.requester_actor_id) !== String(context.actorId)) {
+      if (!ownsProposal(context, current)) {
         throw Object.assign(new Error('FORBIDDEN'), { code: 'FORBIDDEN', publicMessage: 'Tài khoản hiện tại không được bổ sung đề xuất này', statusCode: 403 });
       }
       const updatedResult = await client.query(
         `UPDATE shared.management_proposals
-            SET status = 'pending', reason = $3, evidence = $4::jsonb,
+            SET status = 'pending', content = $3, reason = $4, evidence = $5::jsonb,
                 decision_note = NULL, decided_by_actor_id = NULL, decided_at = NULL,
                 version = version + 1, updated_at = now()
           WHERE installation_id = $1 AND id = $2
           RETURNING *`,
-        [context.installationId, id, nextReason, JSON.stringify(nextEvidence)],
+        [context.installationId, id, nextContent, nextReason, JSON.stringify(nextEvidence)],
       );
       await client.query(
         `INSERT INTO shared.management_proposal_events (
@@ -315,7 +376,7 @@ async function resubmitProposal(options, context, id, payload) {
           actor_id, employee_id, actor_label, note
         ) VALUES ($1,$2,$3,'resubmitted','needs-info','pending',$4,$5,$6,$7)`,
         [`proposal_event_${randomUUID()}`, context.installationId, id, context.actorId,
-          context.employeeId ?? null, actorLabel(context, current.requester_name), nextReason],
+          context.employeeId ?? null, actorLabel(context, current.requester_name), nextContent],
       );
       const after = publicProposal(updatedResult.rows[0]);
       await insertAuditRecord(client, buildAuditRecord({
@@ -375,8 +436,8 @@ export async function handleManagementProposalRoutes(req, res, options) {
   const method = String(req.method ?? 'GET').toUpperCase();
 
   if (method === 'GET') {
-    if (!canManage(context)) {
-      sendError(res, apiError('FORBIDDEN', 'Tài khoản hiện tại không có quyền xem đề xuất quản trị', {}, false, 403), options.requestId, options.receivedAt);
+    if (!canReadSource(context)) {
+      sendError(res, apiError('FORBIDDEN', 'Tài khoản hiện tại không có quyền xem đề xuất', {}, false, 403), options.requestId, options.receivedAt);
       return true;
     }
     try {
