@@ -4,7 +4,11 @@ import { salesReport } from './reporting-sales.js';
 import { purchasingReport } from './reporting-purchasing.js';
 import { inventoryReport } from './reporting-inventory.js';
 import { agingReport, grossMarginReport } from './reporting-finance.js';
-import { employeeMcpReport, resolveEmployeeMcpScope } from './reporting-employee-mcp.js';
+import { employeeMcpReport } from './reporting-employee-mcp.js';
+import {
+  requiresCanonicalEmployeeMcpScope,
+  resolveReportingMcpScope,
+} from './reporting-mcp-scope-policy.js';
 import { logisticsReport } from './reporting-logistics.js';
 import { codReport } from './reporting-cod.js';
 
@@ -267,9 +271,7 @@ function codManagementView(report) {
 }
 
 export async function controlTowerReport(adapter, requestContext, filters, warehouseIds) {
-  const canReadInstallationMcp = requestContext.roles?.includes('bootstrap') === true;
-  const hasEmployeeScope = typeof requestContext.employeeId === 'string' && requestContext.employeeId.trim().length > 0;
-  const fieldScopePromise = (!canReadInstallationMcp && !hasEmployeeScope)
+  const fieldScopePromise = requiresCanonicalEmployeeMcpScope(requestContext)
     ? Promise.resolve(Object.freeze({
       ok: false,
       code: 'EMPLOYEE_MCP_SCOPE_DENIED',
@@ -277,7 +279,7 @@ export async function controlTowerReport(adapter, requestContext, filters, wareh
       statusCode: 403,
       details: {},
     }))
-    : resolveEmployeeMcpScope(adapter, requestContext);
+    : resolveReportingMcpScope(adapter, requestContext);
   const loaders = [
     ['sales', () => salesReport(adapter, requestContext, filters, warehouseIds)],
     ['purchasing', () => purchasingReport(adapter, requestContext, filters, warehouseIds)],

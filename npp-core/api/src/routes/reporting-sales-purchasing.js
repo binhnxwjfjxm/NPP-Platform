@@ -11,7 +11,11 @@ import { salesReport } from './reporting-sales.js';
 import { purchasingReport } from './reporting-purchasing.js';
 import { inventoryReport, normalizeSlowDays } from './reporting-inventory-safe.js';
 import { agingReport, grossMarginReport } from './reporting-finance.js';
-import { employeeMcpReport, resolveEmployeeMcpScope } from './reporting-employee-mcp.js';
+import { employeeMcpReport } from './reporting-employee-mcp.js';
+import {
+  requiresCanonicalEmployeeMcpScope,
+  resolveReportingMcpScope,
+} from './reporting-mcp-scope-policy.js';
 import { adminAlertsReport, mcpSupervisionReport } from './reporting-mcp-alerts.js';
 import { handleAdminAlertMutation } from './reporting-admin-alert-mutations.js';
 import { handleManagementProposalRoutes } from './management-proposals.js';
@@ -134,7 +138,7 @@ async function streamBusinessExport(req, res, options, requestContext) {
     const mcpPermission = options.PERMISSIONS.coreReportingEmployeeMcpRead;
     const canReadMcp = Boolean(mcpPermission && options.authorize(requestContext, mcpPermission).ok);
     const mcpScope = canReadMcp
-      ? await resolveEmployeeMcpScope(options.getPool(), requestContext)
+      ? await resolveReportingMcpScope(options.getPool(), requestContext)
       : null;
     artifact = await createBusinessDataExport(options.getPool(), {
       requestContext,
@@ -185,7 +189,7 @@ async function streamBusinessExport(req, res, options, requestContext) {
 }
 
 async function resolveMcpFieldScope(res, options, requestContext) {
-  const fieldScope = await resolveEmployeeMcpScope(options.getPool(), requestContext);
+  const fieldScope = await resolveReportingMcpScope(options.getPool(), requestContext);
   if (!fieldScope.ok) {
     sendNormalizedError(res, fieldScope, options);
     return null;
@@ -259,9 +263,7 @@ export async function handleReportingRoutes(req, res, options) {
     return true;
   }
 
-  if (isMcpFamily(family)
-    && !requestContext.roles?.includes('bootstrap')
-    && !requestContext.employeeId) {
+  if (isMcpFamily(family) && requiresCanonicalEmployeeMcpScope(requestContext)) {
     sendError(
       res,
       apiError('EMPLOYEE_MCP_SCOPE_DENIED', 'Cần phạm vi nhân viên canonical để xem báo cáo MCP', {}, false, 403),
