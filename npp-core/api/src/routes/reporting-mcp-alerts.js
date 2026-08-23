@@ -122,13 +122,22 @@ function publicOutlet(row) {
 async function lifecycleRows(adapter, requestContext, alertIds) {
   if (!alertIds.length) return [];
   const result = await adapter.query(
-    `SELECT resource_id, after_data, actor_id, employee_id, occurred_at
-       FROM shared.core_audit_records
-      WHERE installation_id = $1
-        AND action = $2
-        AND resource_type = $3
-        AND resource_id = ANY($4::text[])
-      ORDER BY occurred_at ASC, audit_id ASC`,
+    `SELECT audit.resource_id,
+            audit.after_data,
+            audit.actor_id,
+            audit.employee_id,
+            employee.full_name AS actor_name,
+            employee.code AS actor_employee_code,
+            audit.occurred_at
+       FROM shared.core_audit_records audit
+       LEFT JOIN shared.employees employee
+         ON employee.installation_id = audit.installation_id
+        AND employee.id::text = audit.employee_id
+      WHERE audit.installation_id = $1
+        AND audit.action = $2
+        AND audit.resource_type = $3
+        AND audit.resource_id = ANY($4::text[])
+      ORDER BY audit.occurred_at ASC, audit.audit_id ASC`,
     [requestContext.installationId, ALERT_ACTION, ALERT_RESOURCE_TYPE, alertIds],
   );
   return result.rows ?? [];
@@ -142,10 +151,13 @@ function lifecycleState(rows, alertIds) {
     const status = text(row.after_data?.status);
     if (!ALERT_STATUSES.includes(status) || !states.has(id)) continue;
     states.set(id, status);
+    const actorName = nullableText(row.actor_name);
+    const actorCode = nullableText(row.actor_employee_code);
     history.get(id)?.push(Object.freeze({
       status,
       actorId: String(row.actor_id),
       employeeId: row.employee_id == null ? null : String(row.employee_id),
+      actorLabel: actorName ? (actorCode ? `${actorCode} · ${actorName}` : actorName) : text(row.actor_id, 'Hệ thống'),
       occurredAt: row.occurred_at,
     }));
   }
@@ -224,7 +236,7 @@ export async function updateAdminAlertStatus({ adapter, requestContext, alertId:
 
   return withAuditOutboxTransaction({
     adapter,
-    mutate: async (client, helpers) => {
+    mutate: async (client) => {
       const audit = buildAuditRecord({
         requestContext,
         action: ALERT_ACTION,
