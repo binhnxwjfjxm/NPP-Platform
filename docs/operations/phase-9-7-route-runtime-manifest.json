@@ -99,7 +99,7 @@
           "/document-numbering",
           "/access/roles",
           "/access/employees",
-          "/access/employees/performance",
+          "/settings/mcp-routes",
           "/access/users",
           "/inventory/reporting",
           "/inventory/fulfillment",
