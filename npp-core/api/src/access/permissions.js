@@ -39,6 +39,7 @@ export const PERMISSIONS = Object.freeze({
   coreReportingAuditHistoryRead: 'core.reporting.audit-history.read',
   coreReportingControlTowerRead: 'core.reporting.control-tower.read',
   coreReportingExport: 'core.reporting.export',
+  coreManagementProposalSubmit: 'core.management-proposal.submit',
   coreLogisticsRouteRead: 'core.logistics-route.read',
   coreLogisticsRouteManage: 'core.logistics-route.manage',
   coreVehicleRead: 'core.vehicle.read',
@@ -146,6 +147,16 @@ const REPORTING_PERMISSION_CATALOG = Object.freeze([
   Object.freeze({ permissionKey: PERMISSIONS.coreReportingExport, module: 'Xuất báo cáo', label: 'Yêu cầu xuất báo cáo chính thức', description: 'Cho phép yêu cầu export canonical khi đồng thời có quyền đọc report-family tương ứng; quyền này không tự cấp quyền xem báo cáo.', isSystem: true }),
 ]);
 
+const MANAGEMENT_PERMISSION_CATALOG = Object.freeze([
+  Object.freeze({
+    permissionKey: PERMISSIONS.coreManagementProposalSubmit,
+    module: 'Đề xuất quản trị',
+    label: 'Gửi đề xuất quản trị',
+    description: 'Cho phép nhân viên Công Ty gửi đề xuất lên Admin và đọc lại đúng đề xuất do mình tạo.',
+    isSystem: true,
+  }),
+]);
+
 const MCP_PERMISSION_CATALOG = Object.freeze([
   ['mcpSessionWrite', 'MCP hiện trường', 'Thực hiện phiên đi tuyến', 'Cho phép mở và cập nhật phiên đi tuyến theo phạm vi được giao.'],
   ['mcpSessionCustomerWrite', 'MCP hiện trường', 'Cập nhật điểm bán trong phiên', 'Cho phép cập nhật trạng thái điểm bán thuộc phiên đi tuyến đang phụ trách.'],
@@ -219,6 +230,7 @@ export const PERMISSION_CATALOG = Object.freeze([
   ...MANUAL_INBOUND_PERMISSION_CATALOG,
   ...INVENTORY_COST_PERMISSION_CATALOG,
   ...REPORTING_PERMISSION_CATALOG,
+  ...MANAGEMENT_PERMISSION_CATALOG,
   ...MCP_PERMISSION_CATALOG,
   ...LOGISTICS_PERMISSION_CATALOG,
   ...ACCOUNTING_PERMISSION_CATALOG,

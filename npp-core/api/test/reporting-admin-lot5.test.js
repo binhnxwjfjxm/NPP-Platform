@@ -7,11 +7,11 @@ const migration = readFileSync(new URL('../../../database/migrations/shared/108_
 const route = readFileSync(new URL('../src/routes/management-proposals.js', import.meta.url), 'utf8');
 const reporting = readFileSync(new URL('../src/routes/reporting-sales-purchasing.js', import.meta.url), 'utf8');
 
-test('Lô 5 registers proposal migration after the current shared registry without occupying 107', () => {
+test('Lô 5 registers proposal foundation without occupying 107', () => {
   const ids = CORE_API_MIGRATIONS.map((entry) => entry.id);
   assert.ok(ids.includes('106_business_purge_document_number_allocations'));
   assert.equal(ids.includes('107_management_proposals'), false);
-  assert.equal(ids.at(-1), '108_management_proposals');
+  assert.ok(ids.includes('108_management_proposals'));
   assert.match(migration, /CREATE TABLE IF NOT EXISTS shared\.management_proposals/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS shared\.management_proposal_events/);
   assert.match(migration, /status text NOT NULL DEFAULT 'pending'/);

@@ -20,6 +20,7 @@ export type ProposalItem = {
   source: ProposalSource;
   domain: ProposalDomain;
   title: string;
+  content: string;
   entityType: string;
   entityId: string;
   entityLabel: string;
@@ -91,6 +92,7 @@ function validProposal(value: unknown): value is ProposalItem {
     && SOURCES.has(String(row.source ?? ''))
     && DOMAINS.has(String(row.domain ?? ''))
     && typeof row.title === 'string'
+    && typeof row.content === 'string'
     && typeof row.entityType === 'string'
     && typeof row.entityId === 'string'
     && typeof row.entityLabel === 'string'
