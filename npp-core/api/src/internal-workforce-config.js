@@ -26,16 +26,21 @@ function normalizeEmailList(value) {
   return Object.freeze(emails);
 }
 
+const PERSISTENT_SESSION_TTL_SECONDS = 60 * 60 * 24 * 36_525;
+
 export function loadInternalWorkforceAuthConfig(env = process.env) {
   const nodeEnv = text(env.NODE_ENV) || 'development';
   const enabled = parseBoolean(env.INTERNAL_AUTH_ENABLED, false);
-  const sessionTtlSeconds = parsePositiveInteger(
+  const configuredSessionTtlSeconds = parsePositiveInteger(
     env.INTERNAL_SESSION_TTL_SECONDS,
     28_800,
     300,
     86_400,
     'INTERNAL_SESSION_TTL_INVALID',
   );
+  // Internal workforce login is persistent for the operational lifetime of the account.
+  // Logout/revocation, credential rotation and inactive account state remain the invalidation mechanisms.
+  const sessionTtlSeconds = Math.max(configuredSessionTtlSeconds, PERSISTENT_SESSION_TTL_SECONDS);
   const configuredWebOwnerChallengeRequired = parseBoolean(env.INTERNAL_WEB_OWNER_CHALLENGE_REQUIRED, true);
   // Every production Owner is a privileged account and must pass the Web/PWA challenge.
   // Role-level challenge policy remains independent for non-Owner workforce users.
