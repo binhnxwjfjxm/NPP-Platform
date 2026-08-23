@@ -291,7 +291,8 @@ test.describe('Sales Order price mismatch recovery', () => {
     await expect(dialog.getByTestId('sales-order-line-1')).toBeVisible();
 
     await dialog.getByRole('button', { name: 'Lưu và xác nhận', exact: true }).click();
-    await expect(dialog.getByRole('alert')).toContainText('Giá hệ thống đã thay đổi');
+    const pricingMismatchAlert = dialog.getByRole('alert').filter({ hasText: 'Hệ thống đã tính lại' });
+    await expect(pricingMismatchAlert).toContainText('Giá hệ thống đã thay đổi');
     await expect.poll(() => recovery.snapshot().confirmCount).toBe(1);
     expect(recovery.snapshot().createCount).toBe(1);
     expect(recovery.snapshot().updateCount).toBe(0);
