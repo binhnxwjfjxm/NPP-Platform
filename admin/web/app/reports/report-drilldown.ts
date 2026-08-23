@@ -215,12 +215,63 @@ function debtDrilldown(data: JsonRecord): ReportDrilldown {
   };
 }
 
+function locationLabel(value: string): string {
+  const labels: Record<string, string> = {
+    consistent: 'Phù hợp vùng sai số GPS',
+    review: 'Cần kiểm tra vị trí',
+    insufficient: 'Chưa đủ bằng chứng vị trí',
+    not_checked_in: 'Chưa check-in',
+  };
+  return labels[value] ?? 'Chưa đủ bằng chứng vị trí';
+}
+
+function coordinate(row: JsonRecord, latKey: string, lngKey: string): string {
+  const lat = optionalText(row, latKey);
+  const lng = optionalText(row, lngKey);
+  return lat && lng ? `${lat}, ${lng}` : 'Chưa có dữ liệu';
+}
+
+function meters(row: JsonRecord, key: string): string {
+  const value = optionalText(row, key);
+  return value ? `${value} m` : 'Chưa có dữ liệu';
+}
+
+function customerKey(row: JsonRecord, index: number): string {
+  return optionalText(row, 'routeCustomerId')
+    ?? optionalText(row, 'customerId')
+    ?? optionalText(row, 'customerName')
+    ?? `customer-${index}`;
+}
+
+function checkinNode(outlet: JsonRecord, index: number): DrilldownNode {
+  const checkedIn = bool(outlet, 'checkedIn');
+  const status = locationLabel(text(outlet, 'locationStatus', checkedIn ? 'insufficient' : 'not_checked_in'));
+  return {
+    id: `checkin-${optionalText(outlet, 'sessionCustomerId') ?? index}`,
+    label: 'Check-in',
+    summary: status,
+    facts: [
+      { label: 'Kết luận vị trí', value: status },
+      { label: 'Thời gian check-in', value: checkedIn ? dateTime(optionalText(outlet, 'checkinAt')) : 'Chưa check-in' },
+      { label: 'GPS điểm bán', value: coordinate(outlet, 'outletLat', 'outletLng') },
+      { label: 'Độ chính xác GPS điểm bán', value: meters(outlet, 'outletAccuracy') },
+      { label: 'Nguồn GPS điểm bán', value: text(outlet, 'outletGeoSource') },
+      { label: 'Ghi nhận vị trí điểm bán', value: dateTime(optionalText(outlet, 'outletGeoCapturedAt')) },
+      { label: 'GPS check-in', value: coordinate(outlet, 'checkinLat', 'checkinLng') },
+      { label: 'Độ chính xác GPS check-in', value: meters(outlet, 'checkinAccuracy') },
+      { label: 'Nguồn GPS check-in', value: text(outlet, 'checkinSource') },
+      { label: 'Khoảng cách', value: meters(outlet, 'distanceMeters') },
+      { label: 'Vùng sai số tổng', value: meters(outlet, 'uncertaintyMeters') },
+    ],
+    children: [],
+  };
+}
+
 function mcpDrilldown(data: JsonRecord): ReportDrilldown {
   const actors = rows(data.fieldActors);
   const routes = rows(data.routes);
   const sessions = rows(data.sessions);
-  const sessionCustomers = rows(data.sessionCustomers);
-  const visits = rows(data.visits);
+  const outlets = rows(data.outlets);
   const nodes = actors.map((actor, actorIndex) => {
     const key = actorKey(actor);
     const actorRoutes = routes.filter((route) => actorKey(route) === key);
@@ -235,64 +286,59 @@ function mcpDrilldown(data: JsonRecord): ReportDrilldown {
       children: actorRoutes.map((route, routeIndex) => {
         const routeId = optionalText(route, 'routeId');
         const routeSessions = sessions.filter((session) => optionalText(session, 'routeId') === routeId && actorKey(session) === key);
+        const sessionIds = new Set(routeSessions.map((session) => optionalText(session, 'sessionId')).filter((value): value is string => Boolean(value)));
+        const routeOutlets = outlets.filter((outlet) => {
+          const sessionId = optionalText(outlet, 'sessionId');
+          return sessionId !== null && sessionIds.has(sessionId);
+        });
+        const customerGroups = new Map<string, JsonRecord[]>();
+        routeOutlets.forEach((outlet, outletIndex) => {
+          const id = customerKey(outlet, outletIndex);
+          const current = customerGroups.get(id) ?? [];
+          current.push(outlet);
+          customerGroups.set(id, current);
+        });
+        const customerNodes = Array.from(customerGroups.entries()).map(([id, customerOutlets], customerIndex) => {
+          const first = customerOutlets[0] ?? {};
+          return {
+            id: `mcp-customer-${id}-${customerIndex}`,
+            label: text(first, 'customerName', 'Điểm bán chưa có tên'),
+            summary: `${customerOutlets.length} phiên · ${customerOutlets.filter((outlet) => bool(outlet, 'checkedIn')).length} check-in`,
+            facts: [
+              { label: 'Địa chỉ', value: text(first, 'address') },
+              { label: 'Hoạt động liên kết', value: customerOutlets.some((outlet) => bool(outlet, 'hasLinkedActivity')) ? 'Có ghi nhận' : 'Chưa ghi nhận' },
+            ],
+            children: customerOutlets.map((outlet, outletIndex) => {
+              const sessionId = optionalText(outlet, 'sessionId');
+              const session = routeSessions.find((candidate) => optionalText(candidate, 'sessionId') === sessionId) ?? {};
+              return {
+                id: `mcp-session-${sessionId ?? outletIndex}-${optionalText(outlet, 'sessionCustomerId') ?? outletIndex}`,
+                label: `Phiên ${text(outlet, 'sessionDate', text(session, 'sessionDate'))}`,
+                summary: `${stateLabel(text(outlet, 'visitStatus', 'pending'))} · ${locationLabel(text(outlet, 'locationStatus', 'not_checked_in'))}`,
+                facts: [
+                  { label: 'Trạng thái phiên', value: stateLabel(text(session, 'status', '')) },
+                  { label: 'Bắt đầu', value: dateTime(optionalText(session, 'openedAt')) },
+                  { label: 'Kết thúc', value: dateTime(optionalText(session, 'closedAt')) },
+                  { label: 'Trạng thái ghé', value: stateLabel(text(outlet, 'visitStatus', 'pending')) },
+                ],
+                children: [checkinNode(outlet, outletIndex)],
+              } satisfies DrilldownNode;
+            }),
+          } satisfies DrilldownNode;
+        });
         return {
           id: `route-${routeId ?? routeIndex}-${key}`,
           label: `${text(route, 'routeCode', 'Tuyến')} · ${text(route, 'routeName', 'Chưa có tên')}`,
           summary: `${text(route, 'sessionCount', '0')} phiên · ${text(route, 'visitedOutletCount', '0')} điểm đã ghé`,
           facts: [{ label: 'Khu vực', value: text(route, 'area') }],
-          children: routeSessions.map((session, sessionIndex) => {
-            const sessionId = optionalText(session, 'sessionId');
-            const outlets = sessionCustomers.filter((customer) => optionalText(customer, 'sessionId') === sessionId);
-            return {
-              id: `session-${sessionId ?? sessionIndex}`,
-              label: `Phiên ${text(session, 'sessionDate')}`,
-              summary: `${text(session, 'visitedOutletCount', '0')}/${text(session, 'plannedOutletCount', '0')} điểm đã ghé`,
-              facts: [
-                { label: 'Trạng thái', value: stateLabel(text(session, 'status', '')) },
-                { label: 'Bắt đầu', value: dateTime(optionalText(session, 'openedAt')) },
-                { label: 'Kết thúc', value: dateTime(optionalText(session, 'closedAt')) },
-              ],
-              children: outlets.map((outlet, outletIndex) => {
-                const sessionCustomerId = optionalText(outlet, 'sessionCustomerId');
-                const outletVisits = visits.filter((visit) => optionalText(visit, 'sessionCustomerId') === sessionCustomerId);
-                const activities = [
-                  optionalText(outlet, 'orderIntentId') ? 'Có nhu cầu đặt hàng' : null,
-                  optionalText(outlet, 'testId') ? 'Có ghi nhận dùng thử' : null,
-                  optionalText(outlet, 'reportId') ? 'Có báo cáo tại điểm bán' : null,
-                  Number(optionalText(outlet, 'followupCount') ?? 0) > 0 ? `${text(outlet, 'followupCount', '0')} việc cần theo dõi` : null,
-                ].filter((value): value is string => Boolean(value));
-                return {
-                  id: `outlet-${sessionCustomerId ?? outletIndex}`,
-                  label: text(outlet, 'customerName', 'Điểm bán chưa có tên'),
-                  summary: `${stateLabel(text(outlet, 'visitStatus', ''))}${bool(outlet, 'checkedIn') ? ' · Đã check-in' : ''}`,
-                  facts: [
-                    { label: 'Khu vực', value: text(outlet, 'area') },
-                    { label: 'Địa chỉ', value: text(outlet, 'address') },
-                    { label: 'Hoạt động', value: activities.length ? activities.join(' · ') : 'Chưa ghi nhận hoạt động tiếp theo' },
-                    { label: 'Check-in', value: bool(outlet, 'checkedIn') ? dateTime(optionalText(outlet, 'checkinAt')) : 'Chưa check-in' },
-                  ],
-                  children: outletVisits.map((visit, visitIndex) => ({
-                    id: `visit-${optionalText(visit, 'visitId') ?? visitIndex}`,
-                    label: 'Lượt ghé thực địa',
-                    summary: stateLabel(text(visit, 'status', '')),
-                    facts: [
-                      { label: 'Check-in', value: dateTime(optionalText(visit, 'checkinAt')) },
-                      { label: 'Rời điểm', value: dateTime(optionalText(visit, 'checkoutAt')) },
-                      { label: 'Ghi chú', value: text(visit, 'note', 'Không có ghi chú') },
-                    ],
-                    children: [],
-                  })),
-                };
-              }),
-            };
-          }),
-        };
+          children: customerNodes,
+        } satisfies DrilldownNode;
       }),
     } satisfies DrilldownNode;
   });
   return {
-    title: 'Nhân viên → tuyến → phiên → điểm bán',
-    description: 'Mở từng cấp để xem điểm bán đã ghé và hoạt động được ghi nhận trong phiên.',
+    title: 'Nhân viên → tuyến → khách → phiên → check-in',
+    description: 'Mở từng cấp để đối chiếu hoạt động thực địa và bằng chứng vị trí do hệ thống đánh giá.',
     nodes,
     message: nodes.length ? null : 'Không có dữ liệu nhân viên thị trường trong kỳ đang xem.',
   };
@@ -359,8 +405,8 @@ export async function loadReportDrilldown(domain: ReportDomain, period: ReportPe
     return result.data ? debtDrilldown(result.data) : { title: 'Đối tượng → chứng từ công nợ', description: '', nodes: [], message: result.message };
   }
   if (domain === 'mcp' || domain === 'people') {
-    const result = await source(withRange('/api/reporting/employee-mcp', period));
-    return result.data ? mcpDrilldown(result.data) : { title: 'Nhân viên → tuyến → phiên → điểm bán', description: '', nodes: [], message: result.message };
+    const result = await source(withRange('/api/reporting/mcp-supervision', period));
+    return result.data ? mcpDrilldown(result.data) : { title: 'Nhân viên → tuyến → khách → phiên → check-in', description: '', nodes: [], message: result.message };
   }
   if (domain === 'delivery-cod') {
     const result = await source(withRange('/api/reporting/logistics', period));

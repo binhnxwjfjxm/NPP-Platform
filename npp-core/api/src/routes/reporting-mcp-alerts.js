@@ -80,6 +80,12 @@ async function locationRows(adapter, requestContext, filters, fieldScope) {
   return result.rows ?? [];
 }
 
+function nullableText(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const normalized = String(value).trim();
+  return normalized || null;
+}
+
 function publicOutlet(row) {
   const location = assessLocation(row);
   return Object.freeze({
@@ -90,12 +96,22 @@ function publicOutlet(row) {
     employeeId: row.employee_id == null ? null : String(row.employee_id),
     employeeCode: text(row.employee_code, text(row.sales_label, '')),
     employeeName: text(row.employee_name, text(row.sales_label, 'Nhân viên chưa khớp hồ sơ')),
+    routeCustomerId: row.route_customer_id == null ? null : String(row.route_customer_id),
     customerId: row.customer_id == null ? null : String(row.customer_id),
     customerName: text(row.customer_name, 'Điểm bán chưa có tên'),
     address: text(row.address, 'Chưa có địa chỉ'),
     visitStatus: text(row.visit_status, 'pending'),
     checkedIn: row.checked_in === true,
     checkinAt: row.checkin_at ?? null,
+    checkinLat: nullableText(row.checkin_lat),
+    checkinLng: nullableText(row.checkin_lng),
+    checkinAccuracy: nullableText(row.checkin_accuracy),
+    checkinSource: nullableText(row.checkin_source),
+    outletLat: nullableText(row.outlet_lat),
+    outletLng: nullableText(row.outlet_lng),
+    outletAccuracy: nullableText(row.outlet_accuracy),
+    outletGeoCapturedAt: row.outlet_geo_captured_at ?? null,
+    outletGeoSource: nullableText(row.outlet_geo_source),
     locationStatus: location.status,
     distanceMeters: location.distanceMeters == null ? null : String(location.distanceMeters),
     uncertaintyMeters: location.uncertaintyMeters == null ? null : String(location.uncertaintyMeters),

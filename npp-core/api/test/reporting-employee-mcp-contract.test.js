@@ -67,16 +67,23 @@ test('8.4 report derives field performance from MCP child facts and exact conver
   assert.doesNotMatch(report, /parseFloat\(|parseInt\(|Number\(/);
 });
 
-test('8.4 route authenticates first, does not reuse warehouse scope, and rejects fake warehouse filtering', () => {
+test('8.4 employee and MCP supervision routes share fail-closed permission and canonical field scope', () => {
   const route = source('../src/routes/reporting-sales-purchasing.js');
   assert.match(route, /\/api\/reporting\/employee-mcp/);
+  assert.match(route, /\/api\/reporting\/mcp-supervision/);
   assert.match(route, /coreReportingEmployeeMcpRead/);
   assert.match(route, /warehouseScoped = family !== 'employee-mcp'/);
+  assert.match(route, /family !== 'mcp-supervision'/);
+  assert.match(route, /isMcpFamily\(family\)/);
+  assert.match(route, /EMPLOYEE_MCP_SCOPE_DENIED/);
   assert.match(route, /EMPLOYEE_MCP_WAREHOUSE_FILTER_UNSUPPORTED/);
   assert.match(route, /resolveEmployeeMcpScope/);
+  assert.match(route, /family === 'mcp-supervision'/);
   const handler = route.slice(route.indexOf('export async function handleReportingRoutes'));
   assert.ok(handler.indexOf('authenticateAndAuthorize') >= 0);
+  assert.ok(handler.indexOf('EMPLOYEE_MCP_SCOPE_DENIED') >= 0);
   assert.ok(handler.indexOf('EMPLOYEE_MCP_WAREHOUSE_FILTER_UNSUPPORTED') >= 0);
+  assert.ok(handler.indexOf('authenticateAndAuthorize') < handler.indexOf('EMPLOYEE_MCP_SCOPE_DENIED'));
   assert.ok(handler.indexOf('authenticateAndAuthorize') < handler.indexOf('EMPLOYEE_MCP_WAREHOUSE_FILTER_UNSUPPORTED'));
 });
 

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   assessLocation,
@@ -6,6 +7,8 @@ import {
   canTransitionAlertStatus,
   haversineMeters,
 } from '../src/routes/reporting-mcp-alert-rules.js';
+
+const mcpSupervisionRoutePath = new URL('../src/routes/reporting-mcp-alerts.js', import.meta.url);
 
 test('location assessment uses GPS distance plus recorded accuracy only', () => {
   const close = assessLocation({ checked_in: true, checkin_lat: 10, checkin_lng: 106, checkin_accuracy: 10, outlet_lat: 10.0001, outlet_lng: 106, outlet_accuracy: 5 });
@@ -28,6 +31,29 @@ test('MCP anomalies are review signals, not misconduct conclusions', () => {
   assert.ok(alerts.some((alert) => alert.ruleCode === 'MCP_LOCATION_OUTSIDE_ACCURACY'));
   assert.ok(alerts.some((alert) => alert.ruleCode === 'MCP_CHECKIN_WITHOUT_ACTIVITY'));
   assert.ok(alerts.every((alert) => !/gian lận|vi phạm|giả mạo/i.test(`${alert.summary} ${alert.recommendation}`)));
+});
+
+test('MCP supervision approved read contract exposes the full GPS evidence required by Admin', async () => {
+  const source = await readFile(mcpSupervisionRoutePath, 'utf8');
+
+  for (const field of [
+    'routeCustomerId',
+    'checkinLat',
+    'checkinLng',
+    'checkinAccuracy',
+    'checkinSource',
+    'outletLat',
+    'outletLng',
+    'outletAccuracy',
+    'outletGeoCapturedAt',
+    'outletGeoSource',
+    'locationStatus',
+    'distanceMeters',
+    'uncertaintyMeters',
+  ]) {
+    assert.match(source, new RegExp(`${field}:`));
+  }
+  assert.match(source, /outlets: Object\.freeze\(rows\.map\(publicOutlet\)\)/);
 });
 
 test('alert lifecycle is sequential and deny-by-default for skips', () => {
