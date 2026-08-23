@@ -4,6 +4,7 @@ import { AdminShell } from '../admin-shell';
 import {
   normalizeReportPeriod,
   reportPeriods,
+  resolveReportRange,
   type ReportDomain,
 } from './report-data';
 import { loadLotCPresentation } from './report-lot-c-data';
@@ -53,6 +54,14 @@ export default async function ReportsPage({
   if (selected !== 'debt') detailParams.set('period', period);
   if (warehouseId) detailParams.set('warehouseId', warehouseId);
   const detailQuery = detailParams.toString();
+  const exportParams = new URLSearchParams({ report: selected });
+  if (selected !== 'debt') {
+    const range = resolveReportRange(period);
+    exportParams.set('from', range.from);
+    exportParams.set('to', range.to);
+  }
+  if (warehouseId) exportParams.set('warehouseId', warehouseId);
+  const exportHref = `/reports/export?${exportParams.toString()}`;
 
   return (
     <AdminShell
@@ -158,6 +167,9 @@ export default async function ReportsPage({
         ))}
       </section>
 
+      <a className={`card ${styles.detailLink}`} href={exportHref}>
+        <span>Xuất báo cáo Excel</span><strong>↓</strong>
+      </a>
       <Link className={`card ${styles.detailLink}`} href={`/reports/${item.id}${detailQuery ? `?${detailQuery}` : ''}`}>
         <span>Xem báo cáo chi tiết</span><strong>→</strong>
       </Link>
