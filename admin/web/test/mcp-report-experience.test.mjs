@@ -14,7 +14,7 @@ test('MCP report uses a dedicated scalable management experience instead of the 
   assert.match(detail, /if \(domain === 'mcp'\)/);
   assert.match(detail, /title="Giám sát MCP"/);
   assert.match(detail, /<McpSupervision/);
-  assert.ok(detail.indexOf("if (domain === 'mcp')") < detail.indexOf('loadReportDrilldown(domain, period)'), 'MCP must bypass the generic nested drill-down');
+  assert.ok(detail.indexOf("if (domain === 'mcp')") < detail.indexOf('loadLotCDrilldown(domain, period, warehouseId)'), 'MCP must bypass the generic nested drill-down');
 
   for (const view of ['overview', 'people', 'person', 'routes', 'outlets', 'outlet', 'checkin', 'map', 'anomalies']) {
     assert.match(supervision, new RegExp(`'${view}'`));

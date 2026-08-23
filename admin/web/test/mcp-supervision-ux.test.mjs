@@ -15,7 +15,7 @@ test('MCP supervision uses flat large-data navigation instead of nested cards', 
   assert.match(detail, /if \(domain === 'mcp'\)/);
   assert.match(detail, /title="Giám sát MCP"/);
   assert.match(detail, /<McpSupervision/);
-  assert.ok(detail.indexOf("if (domain === 'mcp')") < detail.indexOf('loadReportDrilldown(domain, period)'), 'MCP must bypass the generic nested drill-down');
+  assert.ok(detail.indexOf("if (domain === 'mcp')") < detail.indexOf('loadLotCDrilldown(domain, period, warehouseId)'), 'MCP must bypass the generic nested drill-down');
 
   assert.match(supervision, /const PAGE_SIZE = 25/);
   for (const label of ['Tổng quan', 'Nhân viên', 'Tuyến', 'Điểm bán', 'Bất thường']) assert.match(supervision, new RegExp(label));

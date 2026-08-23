@@ -12,7 +12,7 @@ test('Admin report detail exposes management drill-down from existing reporting 
     readFile(drilldownPath, 'utf8'),
   ]);
 
-  assert.match(detail, /loadReportDrilldown/);
+  assert.match(detail, /loadLotCDrilldown/);
   assert.match(detail, /DrilldownNodeView/);
   assert.match(drilldown, /Khách hàng → đơn bán/);
   assert.match(drilldown, /Đối tượng → chứng từ công nợ/);
