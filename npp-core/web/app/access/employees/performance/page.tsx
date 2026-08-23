@@ -1,5 +1,5 @@
-import { EmployeeMcpReportingWorkspace } from '../../../components/employee-mcp-reporting-workspace';
+import { redirect } from 'next/navigation';
 
 export default function EmployeeMcpPerformancePage() {
-  return <EmployeeMcpReportingWorkspace />;
+  redirect('/settings/mcp-routes');
 }

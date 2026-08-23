@@ -66,7 +66,6 @@ const organizationItems: NavItem[] = [
 const accessItems: NavItem[] = [
   { href: '/access/roles', label: 'Vai trò và phân quyền', icon: 'panel', testId: 'nav-roles' },
   { href: '/access/employees', label: 'Danh mục nhân sự', icon: 'user', testId: 'nav-employees' },
-  { href: '/access/employees/performance', label: 'Hiệu suất nhân viên thị trường', icon: 'dashboard', testId: 'nav-employee-mcp-reporting' },
   { href: '/access/users', label: 'Người dùng', icon: 'user', testId: 'nav-users' },
 ];
 
@@ -121,6 +120,11 @@ const accountingItems: NavItem[] = [
   { href: '/accounting/supplier-payments', label: 'Thanh toán nhà cung cấp', icon: 'accounting', testId: 'nav-supplier-payments' },
 ];
 
+const settingsItems: NavItem[] = [
+  { href: '/settings', label: 'Thiết lập chung', icon: 'panel', testId: 'nav-settings' },
+  { href: '/settings/mcp-routes', label: 'MCP và tuyến', icon: 'dashboard', testId: 'nav-employee-mcp-reporting' },
+];
+
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, React.ReactNode> = {
     dashboard: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="4" rx="1.5" /><rect x="14" y="11" width="7" height="10" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /></>,
@@ -139,7 +143,7 @@ function Icon({ name }: { name: IconName }) {
 }
 
 function isActive(pathname: string, href: string): boolean {
-  if (href === '/organization' || href === '/management') return pathname === href;
+  if (href === '/organization' || href === '/management' || href === '/settings') return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -169,6 +173,7 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
   const [salesOpen, setSalesOpen] = useState(isSalesPath(pathname));
   const [purchasingOpen, setPurchasingOpen] = useState(pathname.startsWith('/purchasing'));
   const [accountingOpen, setAccountingOpen] = useState(pathname.startsWith('/accounting'));
+  const [settingsOpen, setSettingsOpen] = useState(pathname.startsWith('/settings'));
   const [accessOpen, setAccessOpen] = useState(pathname.startsWith('/access'));
 
   useEffect(() => { setCollapsed(window.localStorage.getItem('npp-core-sidebar-collapsed') === '1'); }, []);
@@ -193,6 +198,7 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
     if (isSalesPath(pathname)) setSalesOpen(true);
     if (pathname.startsWith('/purchasing')) setPurchasingOpen(true);
     if (pathname.startsWith('/accounting')) setAccountingOpen(true);
+    if (pathname.startsWith('/settings')) setSettingsOpen(true);
     if (pathname.startsWith('/access')) setAccessOpen(true);
     setMobileOpen(false);
   }, [pathname]);
@@ -203,6 +209,7 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
   const salesChildren = useMemo(() => salesItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
   const purchasingChildren = useMemo(() => purchasingItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
   const accountingChildren = useMemo(() => accountingItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
+  const settingsChildren = useMemo(() => settingsItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
   const accessChildren = useMemo(() => accessItems.map((item) => ({ ...item, active: isActive(pathname, item.href) })), [pathname]);
   const logoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim() || '/logo-transparent.png';
   const currentUserName = currentUser?.employeeFullName?.trim() || currentUser?.loginName?.trim() || 'Tài khoản người dùng';
@@ -262,8 +269,8 @@ export function AppShell({ title, subtitle, kicker = 'Hệ thống quản trị 
         <p className={styles.navLabel}>Vận hành hệ thống</p><Link href="/operations/data-exchange" className={`${styles.navItem} ${pathname === '/operations/data-exchange' ? styles.navItemActive : ''}`} data-testid="nav-data-exchange" title={collapsed ? 'Nhập/xuất dữ liệu' : undefined}><span className={styles.navIcon}><Icon name="panel" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Nhập/xuất dữ liệu</span><span className={styles.navHint}>Sản phẩm, giá bán, kiểm kê, báo giá và biến động kho</span></span></Link>
         <Link href="/operations/audit-history" className={`${styles.navItem} ${pathname === '/operations/audit-history' ? styles.navItemActive : ''}`} data-testid="nav-audit-history" title={collapsed ? 'Lịch sử thay đổi' : undefined}><span className={styles.navIcon}><Icon name="dashboard" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Lịch sử thay đổi</span><span className={styles.navHint}>Tra cứu thay đổi và dấu vết vận hành</span></span></Link>
         <Link href="/operations/import-export-history" className={`${styles.navItem} ${pathname === '/operations/import-export-history' ? styles.navItemActive : ''}`} data-testid="nav-import-export-history" title={collapsed ? 'Lịch sử nhập/xuất' : undefined}><span className={styles.navIcon}><Icon name="panel" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Lịch sử nhập/xuất</span><span className={styles.navHint}>Theo dõi các lần nhập và xuất dữ liệu</span></span></Link>
-        <Link href="/settings" className={`${styles.navItem} ${pathname.startsWith('/settings') ? styles.navItemActive : ''}`} data-testid="nav-settings" title={collapsed ? 'Cài đặt' : undefined}><span className={styles.navIcon}><Icon name="panel" /></span><span className={styles.navCopy}><span className={styles.navTitle}>Cài đặt</span><span className={styles.navHint}>Dữ liệu, sao lưu và thiết lập hệ thống</span></span></Link>
-        {renderGroup({ sectionLabel: 'Quản trị hệ thống', title: 'Nhân sự và phân quyền', hint: 'Hồ sơ, hiệu suất thị trường, tài khoản và phạm vi truy cập', icon: 'user', active: pathname.startsWith('/access'), open: accessOpen, setOpen: setAccessOpen, testId: 'access-menu-toggle', children: accessChildren, stableMotion: true })}
+        {renderGroup({ sectionLabel: 'Cài đặt', title: 'Cài đặt Công Ty', hint: 'Thiết lập chung, MCP và tuyến', icon: 'panel', active: pathname.startsWith('/settings'), open: settingsOpen, setOpen: setSettingsOpen, testId: 'settings-menu-toggle', children: settingsChildren })}
+        {renderGroup({ sectionLabel: 'Quản trị hệ thống', title: 'Nhân sự và phân quyền', hint: 'Hồ sơ, tài khoản, vai trò và phạm vi truy cập', icon: 'user', active: pathname.startsWith('/access'), open: accessOpen, setOpen: setAccessOpen, testId: 'access-menu-toggle', children: accessChildren, stableMotion: true })}
       </nav></div>
       <div className={styles.sidebarFooter}>
         <div className={styles.userPlaceholder} title={collapsed ? currentUserName : undefined} data-testid="sidebar-current-user">
