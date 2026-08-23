@@ -3,6 +3,7 @@ import { createIdempotencyKey } from '@npp/contracts';
 import { notFound } from 'next/navigation';
 import { AdminShell } from '../../admin-shell';
 import { CoreApiError } from '../../../lib/core-api';
+import { safeAdminReturnTo } from '../../../lib/admin-session';
 import { decideProposal } from '../actions';
 import {
   formatProposalDateTime,
@@ -13,7 +14,22 @@ import {
   proposalWaitingAge,
 } from '../proposal-data';
 
-export default async function ApprovalDetailPage({ params }: { params: { approvalId: string } }) {
+function proposalLoadMessage(error: unknown): string {
+  if (error instanceof CoreApiError && error.statusCode === 403) return 'Tài khoản hiện tại không có quyền xem đề xuất quản trị.';
+  if (error instanceof CoreApiError && error.statusCode === 401) return 'Phiên đăng nhập đã hết hiệu lực. Vui lòng đăng nhập lại.';
+  return 'Không thể tải đề xuất ở thời điểm hiện tại.';
+}
+
+function backDestination(returnTo?: string) {
+  const safeReturnTo = safeAdminReturnTo(returnTo);
+  if (returnTo && (safeReturnTo === '/' || safeReturnTo.startsWith('/?period='))) {
+    return { href: safeReturnTo, label: '← Quay lại Tổng quan' };
+  }
+  return { href: '/approvals', label: '← Quay lại danh sách' };
+}
+
+export default async function ApprovalDetailPage({ params, searchParams }: { params: { approvalId: string }; searchParams?: { returnTo?: string } }) {
+  const back = backDestination(searchParams?.returnTo);
   let item;
   try {
     item = await loadProposal(params.approvalId);
@@ -21,8 +37,8 @@ export default async function ApprovalDetailPage({ params }: { params: { approva
     if (error instanceof CoreApiError && error.statusCode === 404) notFound();
     return (
       <AdminShell activeSection="approvals" title="Chi tiết đề xuất" subtitle="Xem đầy đủ tác động, điều kiện và bằng chứng trước khi ra quyết định.">
-        <Link className="approvalBackLink" href="/approvals">← Quay lại danh sách</Link>
-        <div className="card approvalEmpty" role="status"><strong>Chưa tải được đề xuất.</strong><span>Vui lòng thử lại.</span></div>
+        <Link className="approvalBackLink" href={back.href}>{back.label}</Link>
+        <div className="card approvalEmpty" role="alert"><strong>{proposalLoadMessage(error)}</strong><span>Vui lòng thử lại sau.</span></div>
       </AdminShell>
     );
   }
@@ -31,7 +47,7 @@ export default async function ApprovalDetailPage({ params }: { params: { approva
 
   return (
     <AdminShell activeSection="approvals" title="Chi tiết đề xuất" subtitle="Xem đầy đủ tác động, điều kiện và bằng chứng trước khi ra quyết định.">
-      <Link className="approvalBackLink" href="/approvals">← Quay lại danh sách</Link>
+      <Link className="approvalBackLink" href={back.href}>{back.label}</Link>
       <article className="approvalDetailHero card">
         <div className="approvalListTopline">
           <span className={`approvalPriority is-${item.priority}`}>{item.priority === 'critical' ? 'Ưu tiên cao' : item.priority === 'high' ? 'Cần xử lý sớm' : 'Bình thường'}</span>

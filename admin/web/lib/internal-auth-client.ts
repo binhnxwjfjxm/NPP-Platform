@@ -67,25 +67,25 @@ export async function requestInternalAuth<T>(
       });
       const payload = await response.json().catch(() => null) as Envelope<T> | null;
       if (!payload) {
-        return { ok: false, status: 502, code: 'ADMIN_CORE_RESPONSE_INVALID', message: 'Phản hồi từ NPP Core không hợp lệ' };
+        return { ok: false, status: 502, code: 'ADMIN_CORE_RESPONSE_INVALID', message: 'Phản hồi từ hệ thống Công Ty không hợp lệ' };
       }
       if (!response.ok) {
         return {
           ok: false,
           status: response.status,
           code: payload.error?.code || 'ADMIN_CORE_REQUEST_FAILED',
-          message: payload.error?.message || 'Yêu cầu tới NPP Core không thành công',
+          message: payload.error?.message || 'Yêu cầu tới hệ thống Công Ty không thành công',
           retryable: payload.error?.retryable === true,
         };
       }
       if (!Object.prototype.hasOwnProperty.call(payload, 'data')) {
-        return { ok: false, status: 502, code: 'ADMIN_CORE_RESPONSE_INVALID', message: 'Phản hồi từ NPP Core không hợp lệ' };
+        return { ok: false, status: 502, code: 'ADMIN_CORE_RESPONSE_INVALID', message: 'Phản hồi từ hệ thống Công Ty không hợp lệ' };
       }
       return { ok: true, status: response.status, data: payload.data as T };
     } finally {
       clearTimeout(timeout);
     }
   } catch {
-    return { ok: false, status: 503, code: 'ADMIN_CORE_UNAVAILABLE', message: 'NPP Core tạm thời chưa sẵn sàng', retryable: true };
+    return { ok: false, status: 503, code: 'ADMIN_CORE_UNAVAILABLE', message: 'Hệ thống Công Ty tạm thời chưa sẵn sàng', retryable: true };
   }
 }

@@ -37,7 +37,7 @@ type Envelope<T> = {
 
 function requiredServerValue(name: 'CORE_API_INTERNAL_URL'): string {
   const value = process.env[name]?.trim();
-  if (!value) throw new CoreApiError('ADMIN_CORE_NOT_CONFIGURED', 'Kết nối NPP Core chưa được cấu hình', 503, false);
+  if (!value) throw new CoreApiError('ADMIN_CORE_NOT_CONFIGURED', 'Kết nối với hệ thống Công Ty chưa được cấu hình', 503, false);
   return value;
 }
 
@@ -46,13 +46,13 @@ function baseUrl(): string {
   try {
     url = new URL(requiredServerValue('CORE_API_INTERNAL_URL'));
   } catch {
-    throw new CoreApiError('ADMIN_CORE_NOT_CONFIGURED', 'Kết nối NPP Core chưa được cấu hình', 503, false);
+    throw new CoreApiError('ADMIN_CORE_NOT_CONFIGURED', 'Kết nối với hệ thống Công Ty chưa được cấu hình', 503, false);
   }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
-    throw new CoreApiError('ADMIN_CORE_NOT_CONFIGURED', 'Kết nối NPP Core chưa được cấu hình', 503, false);
+    throw new CoreApiError('ADMIN_CORE_NOT_CONFIGURED', 'Kết nối với hệ thống Công Ty chưa được cấu hình', 503, false);
   }
   if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') {
-    throw new CoreApiError('ADMIN_CORE_NOT_CONFIGURED', 'Kết nối NPP Core phải dùng HTTPS', 503, false);
+    throw new CoreApiError('ADMIN_CORE_NOT_CONFIGURED', 'Kết nối an toàn với hệ thống Công Ty chưa sẵn sàng', 503, false);
   }
   url.pathname = url.pathname.replace(/\/$/, '');
   url.search = '';
@@ -98,23 +98,23 @@ export async function requestCore<T>(
       ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
     });
     const payload = await response.json().catch(() => null) as Envelope<T> | null;
-    if (!payload) throw new CoreApiError('ADMIN_CORE_RESPONSE_INVALID', 'Phản hồi từ NPP Core không hợp lệ', 502, false);
+    if (!payload) throw new CoreApiError('ADMIN_CORE_RESPONSE_INVALID', 'Phản hồi từ hệ thống Công Ty không hợp lệ', 502, false);
     if (!response.ok) {
       throw new CoreApiError(
         payload.error?.code || 'ADMIN_CORE_REQUEST_FAILED',
-        payload.error?.message || 'Yêu cầu tới NPP Core không thành công',
+        payload.error?.message || 'Yêu cầu tới hệ thống Công Ty không thành công',
         response.status,
         payload.error?.retryable === true,
         payload.error?.details ?? {},
       );
     }
     if (!Object.prototype.hasOwnProperty.call(payload, 'data')) {
-      throw new CoreApiError('ADMIN_CORE_RESPONSE_INVALID', 'Phản hồi từ NPP Core không hợp lệ', 502, false);
+      throw new CoreApiError('ADMIN_CORE_RESPONSE_INVALID', 'Phản hồi từ hệ thống Công Ty không hợp lệ', 502, false);
     }
     return payload.data as T;
   } catch (error) {
     if (error instanceof CoreApiError) throw error;
-    throw new CoreApiError('ADMIN_CORE_UNAVAILABLE', 'NPP Core tạm thời chưa sẵn sàng', 503, true);
+    throw new CoreApiError('ADMIN_CORE_UNAVAILABLE', 'Hệ thống Công Ty tạm thời chưa sẵn sàng', 503, true);
   } finally {
     clearTimeout(timeout);
   }

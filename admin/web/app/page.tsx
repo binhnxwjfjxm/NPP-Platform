@@ -50,7 +50,8 @@ function overviewHref(period: ReportPeriod): string {
 }
 
 function reportDetailHref(reportId: string, period: ReportPeriod): string {
-  return `/reports/${reportId}?period=${encodeURIComponent(period)}`;
+  const params = new URLSearchParams({ period, returnTo: overviewHref(period) });
+  return `/reports/${reportId}?${params.toString()}`;
 }
 
 function proposalRank(item: ProposalItem): number {
@@ -111,6 +112,7 @@ export default async function AdminOverviewPage({ searchParams }: { searchParams
 
   const hasIncompletePrioritySources = proposals === null || Boolean(alertData.message);
   const grossMarginValue = metricText(grossMargin, 'grossMarginVnd');
+  const returnTo = encodeURIComponent(overviewHref(period));
 
   return (
     <AdminShell activeSection="overview" title="Tổng quan quản trị" subtitle="Tín hiệu ưu tiên, tình hình vận hành và các quyết định cần chú ý.">
@@ -144,8 +146,8 @@ export default async function AdminOverviewPage({ searchParams }: { searchParams
 
       <p className="sectionEyebrow">Ưu tiên hôm nay</p>
       <section className="overviewFocusList" aria-label="Việc cần chú ý hôm nay">
-        {priorityProposal ? <Link className="card overviewFocusItem" href={`/approvals/${encodeURIComponent(priorityProposal.id)}`}><span className="rowIcon"><AdminIcon name="check" size={19} /></span><span><small>Đề xuất</small><strong>{priorityProposal.title}</strong><em>{priorityProposal.impact}</em></span><AdminIcon name="chevronRight" size={17} /></Link> : null}
-        {priorityAlert ? <Link className="card overviewFocusItem" href={`/alerts/${encodeURIComponent(priorityAlert.id)}?period=${encodeURIComponent(period)}`}><span className="rowIcon"><AdminIcon name="exception" size={19} /></span><span><small>Cảnh báo</small><strong>{priorityAlert.title}</strong><em>{priorityAlert.actual} · Ngưỡng {priorityAlert.threshold}</em></span><AdminIcon name="chevronRight" size={17} /></Link> : null}
+        {priorityProposal ? <Link className="card overviewFocusItem" href={`/approvals/${encodeURIComponent(priorityProposal.id)}?returnTo=${returnTo}`}><span className="rowIcon"><AdminIcon name="check" size={19} /></span><span><small>Đề xuất</small><strong>{priorityProposal.title}</strong><em>{priorityProposal.impact}</em></span><AdminIcon name="chevronRight" size={17} /></Link> : null}
+        {priorityAlert ? <Link className="card overviewFocusItem" href={`/alerts/${encodeURIComponent(priorityAlert.id)}?period=${encodeURIComponent(period)}&returnTo=${returnTo}`}><span className="rowIcon"><AdminIcon name="exception" size={19} /></span><span><small>Cảnh báo</small><strong>{priorityAlert.title}</strong><em>{priorityAlert.actual} · Ngưỡng {priorityAlert.threshold}</em></span><AdminIcon name="chevronRight" size={17} /></Link> : null}
         {!priorityProposal && !priorityAlert ? <div className={`card ${styles.empty}`}><strong>{hasIncompletePrioritySources ? 'Chưa xác định đầy đủ việc ưu tiên.' : 'Không có việc ưu tiên đang mở.'}</strong><span>{hasIncompletePrioritySources ? 'Một số nguồn chưa sẵn sàng; xem cảnh báo phía trên để kiểm tra.' : 'Các nguồn đã tải hiện không có Đề xuất chờ quyết định hoặc Cảnh báo mở.'}</span></div> : null}
       </section>
 

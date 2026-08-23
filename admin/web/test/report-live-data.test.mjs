@@ -30,6 +30,8 @@ test('Admin reports use live Company reporting sources instead of preview fixtur
     '/api/reporting/logistics',
     '/api/reporting/cod',
     '/api/reporting/employee-mcp',
+    '/api/management-proposals',
+    '/api/reporting/admin-alerts',
   ]) {
     assert.match(data, new RegExp(endpoint.replaceAll('/', '\\/')));
   }
@@ -51,6 +53,7 @@ test('Admin reports preserve partial, forbidden and unavailable states without z
   assert.match(data, /statusCode === 403/);
   assert.match(data, /Dữ liệu chưa đầy đủ/);
   assert.match(data, /Không có quyền/);
-  assert.match(data, /Chưa có nguồn đề xuất chính thức/);
-  assert.match(data, /Không dùng dữ liệu mẫu/);
+  assert.match(data, /Đề xuất và cảnh báo quản trị của Công Ty/);
+  assert.match(data, /proposalSource\.ok \? String\(pending\) : 'Chưa có dữ liệu'/);
+  assert.match(data, /alertSource\.ok \? String\(openAlerts\) : 'Chưa có dữ liệu'/);
 });

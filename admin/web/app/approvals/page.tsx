@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { AdminIconTabs } from '../admin-icon-tabs';
 import { AdminShell } from '../admin-shell';
+import { CoreApiError } from '../../lib/core-api';
 import {
   loadProposals,
   proposalDomainLabel,
@@ -31,13 +32,20 @@ function matchesTab(item: ProposalItem, selected: string) {
   return item.domain === selected;
 }
 
+function proposalLoadMessage(error: unknown): string {
+  if (error instanceof CoreApiError && error.statusCode === 403) return 'Tài khoản hiện tại không có quyền xem đề xuất quản trị.';
+  if (error instanceof CoreApiError && error.statusCode === 401) return 'Phiên đăng nhập đã hết hiệu lực. Vui lòng đăng nhập lại.';
+  return 'Không thể tải danh sách đề xuất ở thời điểm hiện tại.';
+}
+
 export default async function ApprovalsPage({ searchParams }: { searchParams?: { tab?: string } }) {
   const selected = tabDefs.some((tab) => tab.key === searchParams?.tab) ? searchParams?.tab ?? 'all' : 'all';
   let proposals: ProposalItem[] | null = null;
+  let loadMessage: string | null = null;
   try {
     proposals = await loadProposals();
-  } catch {
-    proposals = null;
+  } catch (error) {
+    loadMessage = proposalLoadMessage(error);
   }
 
   const tabs = tabDefs.map((tab) => ({
@@ -60,7 +68,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams?: {
           <div><span>Ưu tiên cao</span><strong>{proposals.filter((item) => item.priority === 'critical' && item.status === 'pending').length}</strong></div>
         </section>
       ) : (
-        <div className="card approvalEmpty" role="status"><strong>Chưa tải được danh sách đề xuất.</strong><span>Vui lòng thử lại.</span></div>
+        <div className="card approvalEmpty" role="alert"><strong>{loadMessage ?? 'Không thể tải danh sách đề xuất.'}</strong><span>Vui lòng thử lại sau.</span></div>
       )}
 
       {proposals ? (
