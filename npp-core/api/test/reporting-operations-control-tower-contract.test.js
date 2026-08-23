@@ -178,6 +178,7 @@ test('Phase 8.7 control tower reuses Phase 8.1-8.6 report contracts and fails cl
   assert.match(operations, /codReport\(adapter, requestContext, filters, warehouseIds\)/);
   assert.match(operations, /Promise\.allSettled/);
   assert.match(operations, /EMPLOYEE_MCP_SCOPE_DENIED/);
-  assert.match(operations, /requestContext\.roles\?\.includes\('bootstrap'\)/);
+  assert.match(operations, /requiresCanonicalEmployeeMcpScope\(requestContext\)/);
+  assert.match(operations, /resolveReportingMcpScope\(adapter, requestContext\)/);
   assert.doesNotMatch(operations, /FROM\s+(sales|purchasing|inventory|accounting|logistics)\./i);
 });

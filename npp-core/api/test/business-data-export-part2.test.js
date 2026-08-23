@@ -59,7 +59,7 @@ test('Issue #562 Part 2 uses only curated business worksheets and normal permiss
   const route = await readFile(new URL('../src/routes/reporting-sales-purchasing.js', import.meta.url), 'utf8');
   assert.match(route, /\/api\/reporting\/business-export/);
   assert.match(route, /coreReportingExport/);
-  assert.match(route, /resolveEmployeeMcpScope/);
+  assert.match(route, /resolveReportingMcpScope/);
   assert.doesNotMatch(route, /technical-backup|technicalAccess|unlock/i);
 
   const service = await readFile(new URL('../src/services/business-data-export.js', import.meta.url), 'utf8');
