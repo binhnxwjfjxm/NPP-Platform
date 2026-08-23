@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { AdminShell } from '../../admin-shell';
+import { safeAdminReturnTo } from '../../../lib/admin-session';
 import {
   loadReportPresentation,
   normalizeReportPeriod,
@@ -35,12 +36,20 @@ function DrilldownNodeView({ node, depth = 0 }: { node: DrilldownNode; depth?: n
   );
 }
 
+function backDestination(domain: string, period: string, returnTo?: string) {
+  const safeReturnTo = safeAdminReturnTo(returnTo);
+  if (returnTo && (safeReturnTo === '/' || safeReturnTo.startsWith('/?period='))) {
+    return { href: safeReturnTo, label: '← Quay lại Tổng quan' };
+  }
+  return { href: `/reports?tab=${domain}&period=${encodeURIComponent(period)}`, label: '← Quay lại báo cáo' };
+}
+
 export default async function ReportDetailPage({
   params,
   searchParams,
 }: {
   params: { reportId: string };
-  searchParams?: { period?: string; view?: string };
+  searchParams?: { period?: string; view?: string; returnTo?: string };
 }) {
   const domain = reportDomainFromId(params.reportId);
   if (!domain) notFound();
@@ -50,6 +59,7 @@ export default async function ReportDetailPage({
     loadReportPresentation(domain, period),
     loadReportDrilldown(domain, period),
   ]);
+  const back = backDestination(item.domain, period, searchParams?.returnTo);
 
   return (
     <AdminShell
@@ -57,11 +67,8 @@ export default async function ReportDetailPage({
       title="Chi tiết báo cáo"
       subtitle="Bối cảnh và số liệu quản trị của báo cáo đã chọn."
     >
-      <Link
-        className={styles.backLink}
-        href={`/reports?tab=${item.domain}&period=${encodeURIComponent(period)}`}
-      >
-        ← Quay lại báo cáo
+      <Link className={styles.backLink} href={back.href}>
+        {back.label}
       </Link>
 
       <section className={`card ${styles.detailHero}`}>

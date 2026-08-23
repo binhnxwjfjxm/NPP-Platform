@@ -81,13 +81,13 @@ export async function middleware(request: NextRequest) {
 
   const forwardedProtocol = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
   if (process.env.NODE_ENV === 'production' && forwardedProtocol !== 'https' && request.nextUrl.protocol !== 'https:') {
-    return deny(request, 503, 'ADMIN_HTTPS_REQUIRED', 'Admin access requires HTTPS');
+    return deny(request, 503, 'ADMIN_HTTPS_REQUIRED', 'Kết nối an toàn đang không khả dụng');
   }
 
   const sessionToken = request.cookies.get(ADMIN_SESSION_COOKIE)?.value?.trim();
   if (!sessionToken) {
     if (isBrowserNavigation(request)) return loginRedirect(request);
-    return deny(request, 401, 'UNAUTHORIZED', 'Authentication required');
+    return deny(request, 401, 'UNAUTHORIZED', 'Cần đăng nhập');
   }
 
   const state = await sessionIsActive(sessionToken);
@@ -95,10 +95,10 @@ export async function middleware(request: NextRequest) {
   if (state === 'invalid') {
     const response = isBrowserNavigation(request)
       ? loginRedirect(request)
-      : deny(request, 401, 'UNAUTHORIZED', 'Authentication required');
+      : deny(request, 401, 'UNAUTHORIZED', 'Cần đăng nhập');
     return clearInvalidSession(response);
   }
-  return deny(request, 503, 'ADMIN_AUTH_UNAVAILABLE', 'NPP Core authentication is temporarily unavailable');
+  return deny(request, 503, 'ADMIN_AUTH_UNAVAILABLE', 'Hệ thống xác thực của Công Ty tạm thời chưa sẵn sàng');
 }
 
 export const config = {

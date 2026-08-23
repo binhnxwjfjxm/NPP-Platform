@@ -5,6 +5,7 @@ import './globals.css';
 import './hung-phat-warm-gold.css';
 import './admin-mobile-app.css';
 import './admin-management-shell.css';
+import './admin-closeout.css';
 
 export const metadata: Metadata = {
   title: 'Admin MCP/NPP — Hưng Phát',

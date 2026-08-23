@@ -20,8 +20,8 @@ function errorMessage(error?: string | null): string | null {
   if (!error || error === 'owner_challenge_required') return null;
   if (error === 'invalid_owner_code') return 'Mã xác minh chưa đúng. Vui lòng thử lại.';
   if (error === 'owner_challenge_unavailable') return 'Chưa thể gửi mã xác minh cho tài khoản này.';
-  if (error === 'core_unavailable' || error === 'core_response_invalid') return 'NPP Core tạm thời chưa sẵn sàng. Vui lòng thử lại.';
-  return 'Tên đăng nhập/email hoặc mật khẩu chưa đúng.';
+  if (error === 'core_unavailable' || error === 'core_response_invalid') return 'Hệ thống Công Ty tạm thời chưa sẵn sàng. Vui lòng thử lại.';
+  return 'Tên đăng nhập hoặc mật khẩu chưa đúng.';
 }
 
 function isCodeError(error?: string | null): boolean {
@@ -121,7 +121,7 @@ export default function AdminLoginPage({ searchParams }: LoginPageProps) {
     event.preventDefault();
 
     if (mode === 'machine_code_required') {
-      setError('Backend hiện chưa cung cấp contract xác minh thiết bị cho trạng thái này.');
+      setError('Chức năng xác minh thiết bị này chưa sẵn sàng. Vui lòng đổi tài khoản hoặc thử lại sau.');
       return;
     }
 
@@ -153,7 +153,7 @@ export default function AdminLoginPage({ searchParams }: LoginPageProps) {
       <section className={styles.card} aria-labelledby="admin-login-title">
         <header className={styles.brand}>
           <span className={styles.logoFrame}>
-            <img className={styles.logo} src={appLogoUrl} alt="Logo Hưng Phát Company" />
+            <img className={styles.logo} src={appLogoUrl} alt="Logo Hưng Phát" />
           </span>
           <span>
             <strong>Admin MCP/NPP</strong>
@@ -165,13 +165,13 @@ export default function AdminLoginPage({ searchParams }: LoginPageProps) {
           {mode === 'credentials' ? (
             <div className={`${styles.loginStage} ${leavingCredentials ? styles.loginStageExit : ''}`}>
               <h1 id="admin-login-title">Đăng nhập</h1>
-              <p>Đăng nhập bằng tài khoản nhân viên được cấp. Security/Implementation Owner có thể dùng email Owner đã đăng ký.</p>
+              <p>Đăng nhập bằng tài khoản nhân viên được cấp hoặc email quản trị đã đăng ký.</p>
               {error ? <p className={styles.error} role="alert">{error}</p> : null}
 
               <form className={styles.form} action="/api/auth/login" method="post" onSubmit={handleCredentialsSubmit}>
                 <input type="hidden" name="returnTo" value={returnTo} />
                 <label className={styles.field}>
-                  <span>Tên đăng nhập hoặc email Owner</span>
+                  <span>Tên đăng nhập hoặc email quản trị</span>
                   <input
                     name="username"
                     autoComplete="username"
@@ -237,7 +237,7 @@ export default function AdminLoginPage({ searchParams }: LoginPageProps) {
               </form>
             </div>
           )}
-          <p className={styles.note}>Phiên đăng nhập được giữ bằng cookie HttpOnly và được NPP Core xác minh lại.</p>
+          <p className={styles.note}>Phiên đăng nhập được bảo vệ và được hệ thống Công Ty xác minh lại.</p>
         </div>
       </section>
     </main>

@@ -123,8 +123,8 @@ export const reportDefinitions: Record<ReportDomain, ReportDefinition> = {
     domain: 'decisions',
     domainLabel: 'Đề xuất & cảnh báo',
     title: 'Đề xuất và cảnh báo',
-    summary: 'Khu vực dành cho đề xuất quản trị và cảnh báo đã được chuẩn hóa.',
-    source: 'Chưa có nguồn đề xuất chính thức',
+    summary: 'Theo dõi các đề xuất cần quyết định và cảnh báo quản trị đang mở.',
+    source: 'Đề xuất và cảnh báo quản trị của Công Ty',
   },
 };
 
@@ -631,16 +631,41 @@ function buildMcp(
   };
 }
 
-function buildDecisions(range: { from: string; to: string; label: string }): ReportPresentation {
-  const base = basePresentation('decisions', range, 'unavailable', null);
+function buildDecisions(
+  range: { from: string; to: string; label: string },
+  proposalSource: SourceResult,
+  alertSource: SourceResult,
+): ReportPresentation {
+  const proposalRows = proposalSource.ok ? rows(proposalSource.data.proposals) : [];
+  const alertRows = alertSource.ok ? rows(alertSource.data.alerts) : [];
+  const pending = proposalRows.filter((row) => stringValue(row, 'status') === 'pending').length;
+  const needsInfo = proposalRows.filter((row) => stringValue(row, 'status') === 'needs-info').length;
+  const openAlerts = alertRows.filter((row) => stringValue(row, 'status') !== 'resolved').length;
+  const highAlerts = alertRows.filter((row) => {
+    const severity = stringValue(row, 'severity');
+    return stringValue(row, 'status') !== 'resolved' && (severity === 'critical' || severity === 'high');
+  }).length;
+  const baseState = sourceState([proposalSource, alertSource]);
+  const state: ReportState = baseState === 'ready' && pending + needsInfo + openAlerts === 0 ? 'empty' : baseState;
+  const base = basePresentation('decisions', range, state, generatedAtOf(proposalSource, alertSource));
+  const highlights = failureHighlights([proposalSource, alertSource], ['Đề xuất', 'Cảnh báo']);
+  if (proposalSource.ok) highlights.push(`${pending} đề xuất chờ quyết định · ${needsInfo} đề xuất chờ bổ sung.`);
+  if (alertSource.ok) highlights.push(`${openAlerts} cảnh báo đang mở · ${highAlerts} cảnh báo mức cao.`);
+  if (!highlights.length) highlights.push('Đề xuất và cảnh báo đã được tải từ nguồn quản trị hiện tại.');
+  const totalOpen = proposalSource.ok && alertSource.ok ? String(pending + openAlerts) : 'Chưa đầy đủ';
   return {
     ...base,
-    primary: { label: 'Đề xuất chính thức', value: 'Chưa có dữ liệu' },
-    metrics: [],
+    primary: { label: 'Việc đang mở', value: totalOpen },
+    metrics: [
+      metric('Đề xuất chờ quyết định', proposalSource.ok ? String(pending) : 'Chưa có dữ liệu', 'Đề xuất đang chờ quản lý ra quyết định.'),
+      metric('Đề xuất chờ bổ sung', proposalSource.ok ? String(needsInfo) : 'Chưa có dữ liệu', 'Đề xuất đã yêu cầu bổ sung thông tin.'),
+      metric('Cảnh báo đang mở', alertSource.ok ? String(openAlerts) : 'Chưa có dữ liệu', 'Cảnh báo chưa ở trạng thái đã giải quyết.'),
+      metric('Cảnh báo mức cao', alertSource.ok ? String(highAlerts) : 'Chưa có dữ liệu', 'Cảnh báo nghiêm trọng hoặc mức cao đang mở.'),
+    ],
     trend: [],
     trendLabel: null,
-    trendNote: 'Chưa có nguồn đề xuất và cảnh báo chính thức để hiển thị.',
-    highlights: ['Không dùng dữ liệu mẫu để thay cho đề xuất hoặc cảnh báo thực tế.'],
+    trendNote: 'Đề xuất và cảnh báo là hai luồng khác nhau nên không gộp thành chuỗi diễn biến giả.',
+    highlights,
   };
 }
 
@@ -651,7 +676,13 @@ export function reportDomainFromId(reportId: string): ReportDomain | null {
 
 export async function loadReportPresentation(domain: ReportDomain, period: ReportPeriod): Promise<ReportPresentation> {
   const range = resolveReportRange(period);
-  if (domain === 'decisions') return buildDecisions(range);
+  if (domain === 'decisions') {
+    const [proposals, alerts] = await Promise.all([
+      loadSource('/api/management-proposals'),
+      loadSource(withRange('/api/reporting/admin-alerts', range)),
+    ]);
+    return buildDecisions(range, proposals, alerts);
+  }
   if (domain === 'executive') {
     const source = await loadSource(withRange('/api/reporting/control-tower', range));
     return buildExecutive(range, source);
