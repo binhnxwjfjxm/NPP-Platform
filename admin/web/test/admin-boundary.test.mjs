@@ -46,11 +46,16 @@ test('management reports use office language and server-side Company/MCP reporti
   assert.match(page,/\/reports\/\$\{item\.id\}/); assert.doesNotMatch(page,/Dữ liệu minh họa|report-preview-data/); assert.match(detail,/Phạm vi số liệu/); assert.match(detail,/Chỉ số quản trị/); assert.match(detail,/Nguồn số liệu/); assert.match(data,/Công Ty/); assert.match(data,/MCP/); assert.match(data,/requestCore/); assert.match(data,/server-only/); assert.doesNotMatch(`${page}\n${detail}`, /frontend|backend|production|contract|phase/i); assert.match(css,/\.sparkBars/); assert.match(css,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/); assert.doesNotMatch(`${page}\n${detail}\n${data}`, /method=['"]?(POST|PUT|PATCH|DELETE)|Idempotency-Key/);
 });
 
-test('overview aggregates proposal, alert and live report centers with office wording', async () => {
-  const [overview, css] = await Promise.all([read('app/page.tsx'), read('app/admin-management-shell.css')]);
-  assert.match(overview, /approvalFixtures/); assert.match(overview, /adminAlerts/); assert.match(overview, /loadControlTower/); assert.match(overview, /executiveReportState/); assert.doesNotMatch(overview, /reportPreviews|reports\/report-preview-data/);
-  for (const label of ['Nhịp quản trị','Chờ quyết định','Cảnh báo mở','Ưu tiên hôm nay','Trung tâm quản trị','Đề xuất','Số liệu Công Ty']) assert.match(overview,new RegExp(label));
-  assert.doesNotMatch(overview,/Phê duyệt|dữ liệu mẫu frontend/i); assert.match(overview,/overviewDecisionStrip/); assert.match(overview,/overviewFocusList/);
+test('overview uses live proposal alert and reporting sources with period drill-down', async () => {
+  const [overview, controlTower, css, overviewCss] = await Promise.all([read('app/page.tsx'), read('lib/control-tower.ts'), read('app/admin-management-shell.css'), read('app/overview.module.css')]);
+  assert.match(overview, /loadProposals/); assert.match(overview, /loadAlertCenter/); assert.match(overview, /loadControlTower\(range\)/); assert.match(overview, /reportPeriods\.map/); assert.match(overview, /resolveReportRange/); assert.match(overview, /executiveReportState/);
+  assert.doesNotMatch(overview, /approvalFixtures|adminAlerts|alert-preview-data|approval-fixtures|Dữ liệu minh họa|adminPreviewNotice/);
+  assert.match(controlTower, /URLSearchParams/); assert.match(controlTower, /\/api\/reporting\/control-tower\?/);
+  for (const label of ['Nhịp quản trị','Chờ quyết định','Cảnh báo mở','Ưu tiên hôm nay','Trung tâm quản trị','Đề xuất','Số liệu Công Ty','Chờ bổ sung']) assert.match(overview,new RegExp(label));
+  for (const reportId of ['sales-profit-summary','inventory-overview','delivery-cod-overview']) assert.match(overview,new RegExp(reportId));
+  assert.match(overview, /proposals === null/); assert.match(overview, /alertData\.message/); assert.match(overview, /Một số số liệu chưa đầy đủ/); assert.match(overview, /Không có việc ưu tiên đang mở/);
+  assert.doesNotMatch(overview,/Phê duyệt|dữ liệu mẫu frontend|backend|production|contract|phase/i); assert.match(overview,/overviewDecisionStrip/); assert.match(overview,/overviewFocusList/);
+  assert.match(overviewCss,/\.periodTabs/); assert.match(overviewCss,/\.metricLink/); assert.match(overviewCss,/@media\(min-width:761px\)/);
   assert.match(css,/grid-template-rows:auto minmax\(0,1fr\) auto/); assert.doesNotMatch(css,/grid-template-rows:auto minmax\(0,1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(css,/padding:5px 8px max\(5px,env\(safe-area-inset-bottom\)\)/); assert.match(css,/adminPageHeader h1\{font-size:1\.42rem/); assert.match(css,/\.adminBottomItem span\{font-size:\.58rem/);
 });
