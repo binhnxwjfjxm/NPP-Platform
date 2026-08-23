@@ -8,7 +8,7 @@ import {
   reportDomainFromId,
 } from '../report-data';
 import { loadReportDrilldown, type DrilldownNode } from '../report-drilldown';
-import { McpSupervision } from '../mcp-supervision';
+import { McpSupervision, type McpReportSearchParams } from '../mcp-supervision';
 import styles from '../report-center.module.css';
 
 function DrilldownNodeView({ node, depth = 0 }: { node: DrilldownNode; depth?: number }) {
@@ -44,22 +44,44 @@ function backDestination(domain: string, period: string, returnTo?: string) {
   return { href: `/reports?tab=${domain}&period=${encodeURIComponent(period)}`, label: '← Quay lại báo cáo' };
 }
 
+type DetailSearchParams = McpReportSearchParams & {
+  period?: string;
+};
+
 export default async function ReportDetailPage({
   params,
   searchParams,
 }: {
   params: { reportId: string };
-  searchParams?: { period?: string; view?: string; returnTo?: string };
+  searchParams?: DetailSearchParams;
 }) {
   const domain = reportDomainFromId(params.reportId);
   if (!domain) notFound();
 
   const period = normalizeReportPeriod(searchParams?.period);
+  const back = backDestination(domain, period, searchParams?.returnTo);
+
+  if (domain === 'mcp') {
+    return (
+      <AdminShell
+        activeSection="reports"
+        title="Giám sát MCP"
+        subtitle="Theo dõi nhân viên, tuyến, điểm bán, check-in GPS và các trường hợp cần chú ý."
+      >
+        <McpSupervision
+          period={period}
+          searchParams={searchParams}
+          backHref={back.href}
+          backLabel={back.label}
+        />
+      </AdminShell>
+    );
+  }
+
   const [item, drilldown] = await Promise.all([
     loadReportPresentation(domain, period),
     loadReportDrilldown(domain, period),
   ]);
-  const back = backDestination(item.domain, period, searchParams?.returnTo);
 
   return (
     <AdminShell
@@ -106,8 +128,6 @@ export default async function ReportDetailPage({
           </div>
         </section>
       ) : null}
-
-      {item.domain === 'mcp' ? <McpSupervision period={period} viewInput={searchParams?.view} /> : null}
 
       {drilldown ? (
         <section className={`card ${styles.detailSection}`}>

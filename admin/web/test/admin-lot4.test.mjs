@@ -7,7 +7,7 @@ const read = async (path) => readFile(new URL(path, root), 'utf8');
 
 test('Lô 4 MCP supervision stays server-side and does not infer misconduct', async () => {
   const [detail, supervision] = await Promise.all([read('app/reports/[reportId]/page.tsx'), read('app/reports/mcp-supervision.tsx')]);
-  for (const label of ['Tổng quan','Nhân viên','Tuyến','Khách đã ghé','Bất thường']) assert.match(supervision, new RegExp(label));
+  for (const label of ['Tổng quan','Nhân viên','Tuyến','Điểm bán','Bất thường']) assert.match(supervision, new RegExp(label));
   assert.match(detail, /McpSupervision/);
   assert.match(supervision, /\/api\/reporting\/mcp-supervision/);
   assert.match(supervision, /Cần kiểm tra vị trí/);
