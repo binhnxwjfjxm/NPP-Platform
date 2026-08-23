@@ -28,12 +28,25 @@ export type AdminControlTowerData = {
   warnings: Array<{ family: string; code: string }>;
 };
 
+export type AdminControlTowerRange = {
+  from: string;
+  to: string;
+  warehouseId?: string | null;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-export async function loadControlTower(): Promise<AdminControlTowerData> {
-  const data = await requestCore<unknown>('/api/reporting/control-tower');
+export async function loadControlTower(range?: AdminControlTowerRange): Promise<AdminControlTowerData> {
+  const query = new URLSearchParams();
+  if (range) {
+    query.set('from', range.from);
+    query.set('to', range.to);
+    if (range.warehouseId) query.set('warehouseId', range.warehouseId);
+  }
+  const path = query.size ? `/api/reporting/control-tower?${query.toString()}` : '/api/reporting/control-tower';
+  const data = await requestCore<unknown>(path);
   if (!isRecord(data)
     || !isRecord(data.management)
     || !isRecord(data.filters)
@@ -43,7 +56,7 @@ export async function loadControlTower(): Promise<AdminControlTowerData> {
     || !Array.isArray(data.warnings)
     || typeof data.generatedAt !== 'string'
     || typeof data.timezone !== 'string') {
-    throw new CoreApiError('ADMIN_CONTROL_TOWER_RESPONSE_INVALID', 'Dữ liệu Control Tower không hợp lệ', 502, false);
+    throw new CoreApiError('ADMIN_CONTROL_TOWER_RESPONSE_INVALID', 'Dữ liệu tổng hợp điều hành không hợp lệ', 502, false);
   }
   return data as unknown as AdminControlTowerData;
 }
