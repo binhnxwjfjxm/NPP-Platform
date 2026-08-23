@@ -77,7 +77,8 @@ test('8.4 employee and MCP supervision routes share fail-closed permission and c
   assert.match(route, /isMcpFamily\(family\)/);
   assert.match(route, /EMPLOYEE_MCP_SCOPE_DENIED/);
   assert.match(route, /EMPLOYEE_MCP_WAREHOUSE_FILTER_UNSUPPORTED/);
-  assert.match(route, /resolveEmployeeMcpScope/);
+  assert.match(route, /requiresCanonicalEmployeeMcpScope/);
+  assert.match(route, /resolveReportingMcpScope/);
   assert.match(route, /family === 'mcp-supervision'/);
   const handler = route.slice(route.indexOf('export async function handleReportingRoutes'));
   assert.ok(handler.indexOf('authenticateAndAuthorize') >= 0);
