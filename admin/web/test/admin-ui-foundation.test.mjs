@@ -56,3 +56,16 @@ test('Admin foundation keeps office UI hierarchy compact and responsive', async 
   assert.match(foundation, /@media \(max-width: 760px\)/);
   assert.doesNotMatch(foundation, /backend|canonical|fixture|payload|debug/i);
 });
+
+test('Admin mobile icon tabs stay vertically locked while swiping horizontally', async () => {
+  const foundation = await read('app/admin-foundation.css');
+
+  assert.match(foundation, /\.adminIconTabs\s*\{[\s\S]*overflow-x:\s*auto/);
+  assert.match(foundation, /\.adminIconTabs\s*\{[\s\S]*overflow-y:\s*hidden/);
+  assert.match(foundation, /\.adminIconTabs\s*\{[\s\S]*overscroll-behavior-x:\s*contain/);
+  assert.match(foundation, /\.adminIconTabs\s*\{[\s\S]*overscroll-behavior-y:\s*none/);
+  assert.match(foundation, /\.adminIconTabs\s*\{[\s\S]*touch-action:\s*pan-x pinch-zoom/);
+  assert.match(foundation, /\.adminIconTab\s*\{[\s\S]*height:\s*42px[\s\S]*max-height:\s*42px/);
+  assert.match(foundation, /@media \(max-width: 760px\)[\s\S]*\.adminIconTabs\s*\{[\s\S]*height:\s*41px[\s\S]*max-height:\s*41px/);
+  assert.match(foundation, /@media \(max-width: 760px\)[\s\S]*\.adminIconTab\s*\{[\s\S]*height:\s*40px[\s\S]*max-height:\s*40px/);
+});
