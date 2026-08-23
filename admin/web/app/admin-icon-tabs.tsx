@@ -11,7 +11,7 @@ export type AdminIconTab = {
 
 export function AdminIconTabs({ label, tabs }: { label: string; tabs: AdminIconTab[] }) {
   return (
-    <nav className="adminIconTabs" aria-label={label}>
+    <nav className="adminIconTabs" aria-label={label} data-admin-tabs>
       {tabs.map((tab) => (
         <Link
           key={tab.href}
@@ -19,7 +19,7 @@ export function AdminIconTabs({ label, tabs }: { label: string; tabs: AdminIconT
           className={tab.active ? 'adminIconTab isActive' : 'adminIconTab'}
           href={tab.href}
         >
-          <span className="adminIconTabGlyph"><AdminIcon name={tab.icon} size={22} /></span>
+          <span className="adminIconTabGlyph"><AdminIcon name={tab.icon} size={18} /></span>
           <span className="adminIconTabLabel">{tab.label}</span>
           {tab.badge ? <span className="adminIconTabBadge">{tab.badge}</span> : null}
         </Link>
