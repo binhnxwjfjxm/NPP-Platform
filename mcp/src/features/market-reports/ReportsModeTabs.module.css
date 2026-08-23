@@ -1,10 +1,15 @@
 .tabs {
   display: flex;
-  gap: .5rem;
-  padding: .75rem 1rem 0;
+  gap: .35rem;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 .75rem;
+  padding: .25rem;
   background: var(--surface, #fff);
-  border-bottom: 1px solid rgba(15, 23, 42, .1);
+  border: 1px solid rgba(15, 23, 42, .1);
+  border-radius: .85rem;
 }
+
 .tab,
 .active {
   display: inline-flex;
@@ -12,11 +17,23 @@
   justify-content: center;
   min-height: 2.35rem;
   padding: .45rem .9rem;
-  border-radius: .65rem .65rem 0 0;
+  border-radius: .65rem;
   text-decoration: none;
   font-weight: 700;
   color: inherit;
 }
+
 .active {
   background: rgba(15, 23, 42, .08);
+}
+
+@media (max-width: 640px) {
+  .tabs {
+    width: 100%;
+  }
+
+  .tab,
+  .active {
+    flex: 1;
+  }
 }
