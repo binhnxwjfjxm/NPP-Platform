@@ -42,8 +42,10 @@ test('Lô 7 distinguishes forbidden unavailable and empty states without fake ze
   assert.match(proposalDetail, /statusCode === 403/);
   assert.match(proposalDetail, /không có quyền xem đề xuất quản trị/);
 
-  assert.match(alertList, /unavailableTabs/);
-  assert.match(alertList, /Nguồn cảnh báo cho nhóm này chưa được mở/);
+  assert.match(alertList, /data\.domainAccess\[selectedDomain\]/);
+  assert.match(alertList, /!selectedAccess\.available/);
+  assert.match(alertList, /Chưa thể mở nhóm cảnh báo này/);
+  assert.doesNotMatch(alertList, /unavailableTabs/);
   assert.doesNotMatch(alertList, /badge:'0'|badge: '0'/);
   assert.match(alertList, /activeAlerts \? activeAlerts\.length : '—'/);
   assert.match(alertList, /sourceReady \? data\.rules\.length : '—'/);
