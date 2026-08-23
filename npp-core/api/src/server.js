@@ -46,6 +46,7 @@ import { handleGoodsReceiptRoutes } from './routes/goods-receipts.js';
 import { handleSupplierReturnRoutes } from './routes/supplier-returns.js';
 import { handlePurchaseOrderRoutes } from './routes/purchase-orders.js';
 import { handleSalesOrderRoutes } from './routes/sales-orders.js';
+import { handleAdminLotDRoutes } from './routes/reporting-admin-lot-d.js';
 import { handleReportingRoutes } from './routes/reporting-sales-purchasing.js';
 import { handleCustomerReceivableRoutes } from './routes/customer-receivables.js';
 import { handleBackupRoutes } from './routes/backups.js';
@@ -457,6 +458,7 @@ export function createCoreApiServer(options = {}) {
     if (await handleSupplierRoutes(req, res, routeContext)) return;
     if (await handlePurchaseOrderRoutes(req, res, routeContext)) return;
     if (await handleSalesOrderRoutes(req, res, routeContext)) return;
+    if (await handleAdminLotDRoutes(req, res, routeContext)) return;
     if (await handleReportingRoutes(req, res, routeContext)) return;
     if (await handleCustomerReceivableRoutes(req, res, routeContext)) return;
     if (await handleBackupRoutes(req, res, routeContext)) return;
