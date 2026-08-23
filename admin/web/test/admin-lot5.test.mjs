@@ -27,8 +27,10 @@ test('Lô 5 decisions keep office language and canonical idempotency contract', 
   assert.doesNotMatch(actions, /createIdempotencyKey|randomUUID|Date\.now/);
 });
 
-test('Lô 5 does not hide backend failure behind fake zero proposal counts', () => {
-  assert.match(listPage, /Chưa tải được danh sách đề xuất/);
-  assert.match(detailPage, /Chưa tải được đề xuất/);
+test('Lô 5 does not hide source or permission failure behind fake zero proposal counts', () => {
+  assert.match(listPage, /statusCode === 403/);
+  assert.match(listPage, /Không thể tải danh sách đề xuất/);
+  assert.match(detailPage, /statusCode === 403/);
+  assert.match(detailPage, /Không thể tải đề xuất/);
   assert.doesNotMatch(listPage, /proposals \?\? \[\]/);
 });

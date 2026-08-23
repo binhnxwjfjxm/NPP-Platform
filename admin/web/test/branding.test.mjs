@@ -8,7 +8,7 @@ const styleSource = readFileSync(new URL('../app/globals.css', import.meta.url),
 test('Admin displays the Hưng Phát logo with an environment override and safe fallback', () => {
   assert.match(shellSource, /NEXT_PUBLIC_APP_LOGO_URL/);
   assert.match(shellSource, /office\.nguyenlieuhungphat\.com\/logo-transparent\.png/);
-  assert.match(shellSource, /alt="Logo Hưng Phát Company"/);
+  assert.match(shellSource, /alt="Logo Hưng Phát"/);
   assert.match(shellSource, /className="brandLogoFrame"/);
   assert.match(styleSource, /\.brandLogoFrame/);
   assert.match(styleSource, /\.brandLogo/);
