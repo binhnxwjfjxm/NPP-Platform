@@ -9,38 +9,40 @@ test('MCP supervision uses flat large-data navigation instead of nested cards', 
   const [supervision, detail, css] = await Promise.all([
     read('app/reports/mcp-supervision.tsx'),
     read('app/reports/[reportId]/page.tsx'),
-    read('app/reports/report-center.module.css'),
+    read('app/reports/mcp-supervision.module.css'),
   ]);
 
-  assert.match(detail, /domain === 'mcp' \? Promise\.resolve\(null\) : loadReportDrilldown/);
+  assert.match(detail, /if \(domain === 'mcp'\)/);
   assert.match(detail, /title="Giám sát MCP"/);
-  assert.match(detail, /<McpSupervision period=\{period\} searchParams=\{searchParams\}/);
+  assert.match(detail, /<McpSupervision/);
+  assert.ok(detail.indexOf("if (domain === 'mcp')") < detail.indexOf('loadReportDrilldown(domain, period)'), 'MCP must bypass the generic nested drill-down');
 
   assert.match(supervision, /const PAGE_SIZE = 25/);
-  assert.match(supervision, /\['overview', 'people', 'routes', 'outlets', 'anomalies'\]/);
+  for (const label of ['Tổng quan', 'Nhân viên', 'Tuyến', 'Điểm bán', 'Bất thường']) assert.match(supervision, new RegExp(label));
   assert.match(supervision, /Xem chi tiết/);
   assert.match(supervision, /Xem điểm bán/);
   assert.match(supervision, /Xem chi tiết check-in/);
-  assert.match(supervision, /Vị trí đã ghi nhận/);
-  assert.match(supervision, /không phải định vị trực tiếp/);
+  assert.match(supervision, /Bản đồ tuyến/);
+  assert.match(supervision, /GPS.*đã ghi nhận/s);
+  assert.match(supervision, /chưa có định vị nhân viên theo thời gian thực/);
   assert.match(supervision, /name="q"/);
   assert.match(supervision, /name="status"/);
-  assert.match(supervision, /filteredOutlets\.slice\(\(page - 1\) \* PAGE_SIZE, page \* PAGE_SIZE\)/);
+  assert.match(supervision, /paginate\(filtered, requestedPage, PAGE_SIZE\)/);
   assert.doesNotMatch(supervision, /<details|drilldownChildren|drilldownNode/);
 
-  assert.match(css, /\.mcpRows\{/);
-  assert.match(css, /\.mcpRowActions a\{/);
-  assert.match(css, /\.mcpPagination\{/);
-  assert.match(css, /\.mcpMapPanel\{/);
+  assert.match(css, /\.listRow\{/);
+  assert.match(css, /\.rowActions/);
+  assert.match(css, /\.pagination\{/);
+  assert.match(css, /\.mapCanvas\{/);
 });
 
-test('MCP supervision remains read-only and does not invent unsupported realtime or media facts', async () => {
+test('MCP supervision remains read-only and does not invent unsupported realtime facts', async () => {
   const supervision = await read('app/reports/mcp-supervision.tsx');
 
   assert.match(supervision, /requestCore<unknown>/);
   assert.match(supervision, /\/api\/reporting\/mcp-supervision/);
   assert.doesNotMatch(supervision, /method:\s*['"]POST['"]|Idempotency-Key|executeRequestWithIdempotency/);
-  assert.match(supervision, /Không có trong báo cáo hiện tại/);
-  assert.match(supervision, /chưa cung cấp ảnh bằng chứng trong contract này/);
-  assert.doesNotMatch(supervision, /định vị thời gian thực|vị trí hiện tại của nhân viên/i);
+  assert.match(supervision, /Kết luận vị trí dựa trên tọa độ và độ chính xác GPS do hệ thống ghi nhận/);
+  assert.match(supervision, /Hệ thống hiện chưa có định vị nhân viên theo thời gian thực/);
+  assert.doesNotMatch(supervision, /vị trí hiện tại của nhân viên|đang đứng tại/i);
 });
