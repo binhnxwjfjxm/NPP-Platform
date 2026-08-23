@@ -98,7 +98,7 @@ export default async function AdminOverviewPage({ searchParams }: { searchParams
     ? 'Chưa tải được số liệu điều hành'
     : data.warnings.length
       ? `${data.warnings.length} nguồn cần kiểm tra`
-      : `Kỳ ${period} đã sẵn sàng`;
+      : `Số liệu Công Ty đã sẵn sàng · ${period}`;
 
   const sourceWarnings = [
     !data ? 'Chưa tải được số liệu điều hành của Công Ty.' : null,
