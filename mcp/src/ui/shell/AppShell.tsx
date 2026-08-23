@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
+import { ReportsModeTabs } from "@/features/market-reports/ReportsModeTabs";
 import { useMcpAccess } from "@/lib/use-mcp-access";
 import { FIELD_DOCK_ITEMS, SETTINGS_NAV_ITEM, SIDEBAR_NAV_ITEMS, shellSectionForHref, type NavItem } from "./navigation";
 import { AppTopBar, MobileAppMenuProvider } from "./MobileAppMenu";
@@ -65,6 +66,7 @@ export function AppShell({ children, activeHref = "/" }: AppShellProps) {
           <AppTopBar activeHref={activeHref} />
           <main className="main" data-app-scroll-region>
             {activeHref === "/" ? <MobileHomeLaunchpad /> : null}
+            {activeHref === "/reports" ? <Suspense fallback={null}><ReportsModeTabs /></Suspense> : null}
             {children}
           </main>
           <MobileDock items={BOTTOM_NAV_ITEMS} data-bottom-navigation="true" data-navigation-item-count={BOTTOM_NAV_ITEMS.length} />

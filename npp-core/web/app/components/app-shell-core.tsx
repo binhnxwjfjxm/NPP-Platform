@@ -98,6 +98,7 @@ const salesItems: NavItem[] = [
   { href: '/sales/reporting', label: 'Báo cáo bán hàng', icon: 'dashboard', testId: 'nav-sales-reporting' },
   { href: '/sales/gross-margin', label: 'Lãi gộp', icon: 'accounting', testId: 'nav-gross-margin-reporting' },
   { href: '/management', label: 'Điều hành bán hàng', icon: 'panel', testId: 'nav-sales-operations' },
+  { href: '/management/proposals', label: 'Đề xuất', icon: 'panel', testId: 'nav-management-proposals' },
   { href: '/sales/sales-orders', label: 'Đơn bán hàng', icon: 'panel', testId: 'nav-sales-orders' },
   { href: '/management/customer-onboarding', label: 'Mở/liên kết mã khách', icon: 'user', testId: 'nav-customer-onboarding' },
 ];
