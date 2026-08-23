@@ -51,7 +51,8 @@ test('overview uses live proposal alert and reporting sources with period drill-
   assert.match(overview, /loadProposals/); assert.match(overview, /loadAlertCenter/); assert.match(overview, /loadControlTower\(range\)/); assert.match(overview, /reportPeriods\.map/); assert.match(overview, /resolveReportRange/); assert.match(overview, /executiveReportState/);
   assert.doesNotMatch(overview, /approvalFixtures|adminAlerts|alert-preview-data|approval-fixtures|Dữ liệu minh họa|adminPreviewNotice/);
   assert.match(controlTower, /URLSearchParams/); assert.match(controlTower, /\/api\/reporting\/control-tower\?/);
-  for (const label of ['Nhịp quản trị','Chờ quyết định','Cảnh báo mở','Ưu tiên hôm nay','Trung tâm quản trị','Đề xuất','Số liệu Công Ty','Chờ bổ sung']) assert.match(overview,new RegExp(label));
+  for (const label of ['Nhịp quản trị','Chờ quyết định','Cảnh báo mở','Ưu tiên hôm nay','Trung tâm quản trị','Đề xuất','Số liệu Công Ty']) assert.match(overview,new RegExp(label));
+  assert.match(overview,/chờ bổ sung/i);
   for (const reportId of ['sales-profit-summary','inventory-overview','delivery-cod-overview']) assert.match(overview,new RegExp(reportId));
   assert.match(overview, /proposals === null/); assert.match(overview, /alertData\.message/); assert.match(overview, /Một số số liệu chưa đầy đủ/); assert.match(overview, /Không có việc ưu tiên đang mở/);
   assert.doesNotMatch(overview,/Phê duyệt|dữ liệu mẫu frontend|backend|production|contract|phase/i); assert.match(overview,/overviewDecisionStrip/); assert.match(overview,/overviewFocusList/);
