@@ -102,11 +102,12 @@ export default async function AdminOverviewPage({ searchParams }: { searchParams
     ? [...activeAlerts].sort((left, right) => alertRank(right) - alertRank(left) || Date.parse(right.detectedAt ?? '') - Date.parse(left.detectedAt ?? ''))[0]
     : undefined;
 
+  const reportWarningFamilies = new Set(data?.warnings.map((item) => item.family) ?? []);
   const executiveReportState = !data ? 'Chưa sẵn sàng' : data.warnings.length ? 'Chưa đầy đủ' : 'Bình thường';
   const executiveReportNote = !data
     ? 'Chưa tải được số liệu điều hành'
     : data.warnings.length
-      ? `${data.warnings.length} nguồn cần kiểm tra`
+      ? `${reportWarningFamilies.size} nguồn cần kiểm tra`
       : `Số liệu Công Ty đã sẵn sàng · ${period}`;
 
   const sourceWarnings = [
@@ -117,6 +118,12 @@ export default async function AdminOverviewPage({ searchParams }: { searchParams
     proposals === null ? 'Chưa tải được danh sách Đề xuất.' : null,
     alertData.message,
   ].filter((item): item is string => Boolean(item));
+  const affectedSourceKeys = new Set<string>();
+  if (!data) affectedSourceKeys.add('control-tower');
+  else reportWarningFamilies.forEach((family) => affectedSourceKeys.add(`report:${family}`));
+  if (proposals === null) affectedSourceKeys.add('proposals');
+  if (alertData.message) affectedSourceKeys.add('alerts');
+  const affectedSourceCount = affectedSourceKeys.size;
 
   const hasIncompletePrioritySources = proposals === null || Boolean(alertData.message);
   const grossMarginValue = metricText(grossMargin, 'grossMarginVnd');
@@ -183,10 +190,10 @@ export default async function AdminOverviewPage({ searchParams }: { searchParams
         />
         <AdminKpiCard
           label="Nguồn cần kiểm tra"
-          value={sourceWarnings.length}
-          note={sourceWarnings.length ? 'Có nguồn chưa sẵn sàng hoặc chưa đầy đủ' : 'Các nguồn đang sẵn sàng'}
+          value={affectedSourceCount}
+          note={affectedSourceCount ? 'Có nguồn chưa sẵn sàng hoặc chưa đầy đủ' : 'Các nguồn đang sẵn sàng'}
           icon="info"
-          tone={sourceWarnings.length ? 'attention' : 'success'}
+          tone={affectedSourceCount ? 'attention' : 'success'}
         />
       </AdminKpiGrid>
 

@@ -20,6 +20,12 @@ test('Lô 4 moves Tổng quan onto shared toolbar, KPI and state primitives', as
   assert.match(page, /loadControlTower\(range\)/);
   assert.match(page, /loadProposals\(\)/);
   assert.match(page, /loadAlertCenter\(period\)/);
+  assert.match(page, /const reportWarningFamilies = new Set\(data\?\.warnings\.map\(\(item\) => item\.family\) \?\? \[\]\)/);
+  assert.match(page, /reportWarningFamilies\.forEach\(\(family\) => affectedSourceKeys\.add\(`report:\$\{family\}`\)\)/);
+  assert.match(page, /if \(proposals === null\) affectedSourceKeys\.add\('proposals'\)/);
+  assert.match(page, /if \(alertData\.message\) affectedSourceKeys\.add\('alerts'\)/);
+  assert.match(page, /value=\{affectedSourceCount\}/);
+  assert.doesNotMatch(page, /label="Nguồn cần kiểm tra"[\s\S]{0,120}value=\{sourceWarnings\.length\}/);
   assert.doesNotMatch(page, /styles\.periodTabs|styles\.periodTab|styles\.periodActive|styles\.metricLink|overviewDecisionStrip/);
   assert.doesNotMatch(css, /\.periodTabs|\.periodTab|\.periodMeta|\.metricLink/);
   assert.doesNotMatch(interaction, /Kỳ tổng quan|Kỳ báo cáo|Lọc theo kho/);
