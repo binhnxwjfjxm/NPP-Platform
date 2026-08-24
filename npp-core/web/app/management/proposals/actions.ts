@@ -10,7 +10,9 @@ import {
   type ManagementProposalPriority,
 } from '../../../lib/management-proposal-gateway';
 
-export type ProposalActionState = { error: string | null };
+export type ProposalActionState = { error: string | null; idempotencyKey: string | null };
+
+const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 
 class ProposalFormError extends Error {
   constructor(public readonly publicMessage: string) { super(publicMessage); }
@@ -36,25 +38,45 @@ function evidence(formData: FormData) {
   return entries;
 }
 
-function actionError(error: unknown): ProposalActionState {
+function submittedIdempotencyKey(formData: FormData) {
+  const normalized = String(formData.get('idempotencyKey') ?? '').trim();
+  return IDEMPOTENCY_KEY_PATTERN.test(normalized) ? normalized : null;
+}
+
+function actionError(error: unknown, submittedKey: string | null): ProposalActionState {
   if (error instanceof ProposalFormError) {
-    return { error: error.publicMessage };
+    return { error: error.publicMessage, idempotencyKey: null };
   }
   if (error instanceof ManagementProposalGatewayError) {
-    if (error.statusCode === 403) return { error: 'Tài khoản hiện tại chưa được cấp quyền gửi Đề xuất.' };
-    if (error.statusCode === 409) return { error: 'Đề xuất đã thay đổi trạng thái. Vui lòng tải lại rồi thực hiện lại.' };
-    if (error.statusCode === 400 || error.statusCode === 422) return { error: error.publicMessage || 'Thông tin Đề xuất chưa hợp lệ.' };
+    if (error.statusCode === 403) return { error: 'Tài khoản hiện tại chưa được cấp quyền gửi Đề xuất.', idempotencyKey: null };
+    if (error.statusCode === 409) return { error: 'Đề xuất đã thay đổi trạng thái. Vui lòng tải lại rồi thực hiện lại.', idempotencyKey: null };
+    if (error.statusCode === 400 || error.statusCode === 422) return { error: error.publicMessage || 'Thông tin Đề xuất chưa hợp lệ.', idempotencyKey: null };
     if (error.retryable || error.statusCode >= 500) {
-      return { error: 'Chưa gửi được Đề xuất vì dịch vụ tạm thời chưa sẵn sàng. Nội dung vừa nhập vẫn được giữ; vui lòng thử lại.' };
+      return {
+        error: 'Chưa gửi được Đề xuất vì dịch vụ tạm thời chưa sẵn sàng. Nội dung vừa nhập vẫn được giữ; vui lòng thử lại.',
+        idempotencyKey: submittedKey,
+      };
     }
-    return { error: error.publicMessage || 'Chưa gửi được Đề xuất ở thời điểm hiện tại.' };
+    return { error: error.publicMessage || 'Chưa gửi được Đề xuất ở thời điểm hiện tại.', idempotencyKey: null };
   }
-  return { error: 'Chưa gửi được Đề xuất ở thời điểm hiện tại. Nội dung vừa nhập vẫn được giữ; vui lòng thử lại.' };
+  return {
+    error: 'Chưa gửi được Đề xuất ở thời điểm hiện tại. Nội dung vừa nhập vẫn được giữ; vui lòng thử lại.',
+    idempotencyKey: submittedKey,
+  };
+}
+
+function validatedIdempotencyKey(formData: FormData) {
+  const idempotencyKey = requiredValue(formData, 'idempotencyKey', 128);
+  if (!IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
+    throw new ProposalFormError('Yêu cầu gửi không hợp lệ. Vui lòng tải lại trang rồi thử lại.');
+  }
+  return idempotencyKey;
 }
 
 export async function createProposalAction(_previousState: ProposalActionState, formData: FormData): Promise<ProposalActionState> {
+  const submittedKey = submittedIdempotencyKey(formData);
   try {
-    const idempotencyKey = requiredValue(formData, 'idempotencyKey', 128);
+    const idempotencyKey = validatedIdempotencyKey(formData);
     await createManagementProposal({
       domain: (optionalValue(formData, 'domain', 32) || 'commercial') as ManagementProposalDomain,
       title: requiredValue(formData, 'title', 240),
@@ -69,14 +91,15 @@ export async function createProposalAction(_previousState: ProposalActionState, 
       priority: (optionalValue(formData, 'priority', 16) || 'normal') as ManagementProposalPriority,
     }, resolveManagementProposalRequestId(null), idempotencyKey);
   } catch (error) {
-    return actionError(error);
+    return actionError(error, submittedKey);
   }
   redirect('/management/proposals?sent=1');
 }
 
 export async function resubmitProposalAction(_previousState: ProposalActionState, formData: FormData): Promise<ProposalActionState> {
+  const submittedKey = submittedIdempotencyKey(formData);
   try {
-    const idempotencyKey = requiredValue(formData, 'idempotencyKey', 128);
+    const idempotencyKey = validatedIdempotencyKey(formData);
     await resubmitManagementProposal({
       id: requiredValue(formData, 'proposalId', 240),
       content: requiredValue(formData, 'content', 4000),
@@ -84,7 +107,7 @@ export async function resubmitProposalAction(_previousState: ProposalActionState
       evidence: evidence(formData),
     }, resolveManagementProposalRequestId(null), idempotencyKey);
   } catch (error) {
-    return actionError(error);
+    return actionError(error, submittedKey);
   }
   redirect('/management/proposals?resubmitted=1');
 }
