@@ -25,7 +25,7 @@ test('Admin exposes an installable standalone manifest with required icons', () 
   assert.doesNotMatch(manifest, /api\/pwa-icon/);
 });
 
-test('Admin layout advertises PWA metadata without disabling zoom', () => {
+test('Admin layout advertises PWA metadata and locks mobile page zoom', () => {
   assert.match(layout, /manifest:\s*'\/manifest\.webmanifest'/);
   assert.match(layout, /appleWebApp/);
   assert.match(layout, /mobile-web-app-capable/);
@@ -35,7 +35,9 @@ test('Admin layout advertises PWA metadata without disabling zoom', () => {
   assert.match(layout, /\/icons\/admin-180\.png/);
   assert.match(layout, /\/icons\/admin-192\.png/);
   assert.match(layout, /\/icons\/admin-512\.png/);
-  assert.doesNotMatch(layout, /api\/pwa-icon|maximumScale|userScalable/);
+  assert.match(layout, /maximumScale:\s*1/);
+  assert.match(layout, /userScalable:\s*false/);
+  assert.doesNotMatch(layout, /api\/pwa-icon/);
 });
 
 test('Admin approved source and derived PWA icons have exact dimensions', () => {
