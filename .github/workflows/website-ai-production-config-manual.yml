@@ -1,0 +1,377 @@
+name: Website AI production config gate
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: website-ai-production-config
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.number == 5 &&
+       github.event.comment.body == '/configure-website-ai-production' &&
+       contains(fromJSON('["binhnxwjfjxm","khuongbinhinfo-a11y"]'), github.actor))
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      DEPLOY_REF: main
+      HEROKU_APP_NAME: hung-phat
+      HEROKU_FORBIDDEN_APP_NAME: hung-phat-mcp
+      VERCEL_ORG_ID: team_hBA8rX68UHC8ogvREkOyQlJ2
+      VERCEL_PROJECT_ID: prj_rXqH83GFDHuEGUcQrrv82JBPWnjU
+      VERCEL_PROJECT_NAME: nguyenlieuhungphat
+      COMPANY_API_URL: https://hung-phat-945da1547594.herokuapp.com
+      WEBSITE_AI_ACTOR_ID: service:website-ai
+    steps:
+      - name: Validate exact issue command
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        env:
+          COMMENT_BODY: '${{ github.event.comment.body }}'
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/configure-website-ai-production'
+
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: '${{ env.DEPLOY_REF }}'
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact origin/main SHA
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          sha="$(git rev-parse HEAD)"
+          test "$sha" = "$(git rev-parse origin/main)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Audit and synchronize Website AI production configuration
+        id: config
+        shell: bash
+        env:
+          HEROKU_API_KEY: '${{ secrets.HEROKU_API_KEY }}'
+          VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}'
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { createSign, randomBytes, randomUUID } from 'node:crypto';
+
+          const {
+            HEROKU_API_KEY,
+            VERCEL_TOKEN,
+            HEROKU_APP_NAME,
+            HEROKU_FORBIDDEN_APP_NAME,
+            VERCEL_ORG_ID,
+            VERCEL_PROJECT_ID,
+            VERCEL_PROJECT_NAME,
+            COMPANY_API_URL,
+            WEBSITE_AI_ACTOR_ID,
+          } = process.env;
+
+          function required(value, name) {
+            if (!value) throw new Error(`${name}_missing`);
+            return value;
+          }
+
+          required(HEROKU_API_KEY, 'heroku_api_key');
+          required(VERCEL_TOKEN, 'vercel_token');
+          if (HEROKU_APP_NAME !== 'hung-phat' || HEROKU_APP_NAME === HEROKU_FORBIDDEN_APP_NAME) {
+            throw new Error('unexpected_heroku_target');
+          }
+          if (VERCEL_PROJECT_NAME !== 'nguyenlieuhungphat') throw new Error('unexpected_vercel_project_name');
+          if (!/^https:\/\/[^/]+$/.test(COMPANY_API_URL)) throw new Error('invalid_company_api_url');
+
+          const herokuHeaders = {
+            Accept: 'application/vnd.heroku+json; version=3',
+            Authorization: `Bearer ${HEROKU_API_KEY}`,
+            'Content-Type': 'application/json',
+          };
+          const vercelHeaders = {
+            Authorization: `Bearer ${VERCEL_TOKEN}`,
+            'Content-Type': 'application/json',
+          };
+
+          async function jsonRequest(url, options = {}) {
+            const response = await fetch(url, options);
+            const body = await response.json().catch(() => null);
+            if (!response.ok) {
+              const code = body?.error?.code || body?.id || 'unknown';
+              throw new Error(`provider_request_failed:${response.status}:${code}`);
+            }
+            return body;
+          }
+
+          const herokuApp = await jsonRequest(
+            `https://api.heroku.com/apps/${encodeURIComponent(HEROKU_APP_NAME)}`,
+            { headers: herokuHeaders },
+          );
+          if (herokuApp?.name !== HEROKU_APP_NAME) throw new Error('heroku_app_identity_mismatch');
+
+          const vercelProject = await jsonRequest(
+            `https://api.vercel.com/v9/projects/${encodeURIComponent(VERCEL_PROJECT_ID)}?teamId=${encodeURIComponent(VERCEL_ORG_ID)}`,
+            { headers: vercelHeaders },
+          );
+          if (vercelProject?.id !== VERCEL_PROJECT_ID || vercelProject?.name !== VERCEL_PROJECT_NAME) {
+            throw new Error('vercel_project_identity_mismatch');
+          }
+          if (vercelProject?.nodeVersion !== '24.x') throw new Error('website_node_runtime_not_24');
+
+          const herokuConfigUrl = `https://api.heroku.com/apps/${encodeURIComponent(HEROKU_APP_NAME)}/config-vars`;
+          const originalHerokuConfig = await jsonRequest(herokuConfigUrl, { headers: herokuHeaders });
+
+          async function fetchVercelProductionEnv() {
+            const url = new URL(`https://api.vercel.com/v9/projects/${encodeURIComponent(VERCEL_PROJECT_ID)}/env`);
+            url.searchParams.set('teamId', VERCEL_ORG_ID);
+            url.searchParams.set('decrypt', 'true');
+            url.searchParams.set('source', 'vercel-cli:pull');
+            const body = await jsonRequest(url, { headers: vercelHeaders });
+            const entries = Array.isArray(body) ? body : Array.isArray(body?.envs) ? body.envs : [];
+            return entries.filter((entry) => {
+              const targets = Array.isArray(entry?.target) ? entry.target : [entry?.target].filter(Boolean);
+              return targets.includes('production') && !entry?.gitBranch;
+            });
+          }
+
+          function envValue(entries, key) {
+            const matches = entries.filter((entry) => entry?.key === key);
+            if (matches.length === 0) return '';
+            const values = [...new Set(matches.map((entry) => typeof entry?.value === 'string' ? entry.value : ''))];
+            if (values.length !== 1) throw new Error(`conflicting_vercel_env:${key}`);
+            return values[0];
+          }
+
+          let vercelEnv = await fetchVercelProductionEnv();
+          const serviceAccountRaw = envValue(vercelEnv, 'GOOGLE_SERVICE_ACCOUNT_JSON');
+          if (!serviceAccountRaw) throw new Error('google_service_account_json_missing_in_vercel_production');
+
+          let serviceAccount;
+          try {
+            serviceAccount = JSON.parse(serviceAccountRaw);
+          } catch {
+            throw new Error('google_service_account_json_invalid');
+          }
+          if (!serviceAccount?.client_email || !serviceAccount?.private_key || !serviceAccount?.project_id) {
+            throw new Error('google_service_account_fields_missing');
+          }
+
+          const configuredProject = envValue(vercelEnv, 'GOOGLE_CLOUD_PROJECT');
+          const configuredLocation = envValue(vercelEnv, 'GOOGLE_CLOUD_LOCATION');
+          const configuredModel = envValue(vercelEnv, 'GEMINI_WEBSITE_MODEL');
+
+          function base64urlJson(value) {
+            return Buffer.from(JSON.stringify(value)).toString('base64url');
+          }
+          const now = Math.floor(Date.now() / 1000);
+          const unsigned = `${base64urlJson({ alg: 'RS256', typ: 'JWT' })}.${base64urlJson({
+            iss: serviceAccount.client_email,
+            scope: 'https://www.googleapis.com/auth/cloud-platform',
+            aud: 'https://oauth2.googleapis.com/token',
+            iat: now - 30,
+            exp: now + 3300,
+          })}`;
+          const signer = createSign('RSA-SHA256');
+          signer.update(unsigned);
+          signer.end();
+          const assertion = `${unsigned}.${signer.sign(serviceAccount.private_key).toString('base64url')}`;
+          const googleTokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+              assertion,
+            }),
+          });
+          const googleTokenBody = await googleTokenResponse.json().catch(() => null);
+          if (!googleTokenResponse.ok || !googleTokenBody?.access_token) {
+            throw new Error(`google_service_account_probe_failed:${googleTokenResponse.status}`);
+          }
+
+          const herokuToken = String(originalHerokuConfig?.WEBSITE_AI_API_TOKEN || '');
+          const vercelCompanyToken = envValue(vercelEnv, 'COMPANY_WEBSITE_AI_API_TOKEN');
+          let sharedToken = '';
+          if (herokuToken && vercelCompanyToken && herokuToken !== vercelCompanyToken) {
+            sharedToken = randomBytes(48).toString('base64url');
+          } else {
+            sharedToken = herokuToken || vercelCompanyToken || randomBytes(48).toString('base64url');
+          }
+          console.log(`::add-mask::${sharedToken}`);
+
+          const reservedTokens = [
+            originalHerokuConfig?.BACKEND_API_TOKEN,
+            originalHerokuConfig?.MCP_ONBOARDING_API_TOKEN,
+            originalHerokuConfig?.MCP_SALES_API_TOKEN,
+            originalHerokuConfig?.DELIVERY_FRONTEND_API_TOKEN,
+          ].filter(Boolean);
+          if (reservedTokens.includes(sharedToken)) {
+            sharedToken = randomBytes(48).toString('base64url');
+            console.log(`::add-mask::${sharedToken}`);
+          }
+
+          const existingActor = String(originalHerokuConfig?.WEBSITE_AI_ACTOR_ID || '');
+          const existingCompanyApiUrl = envValue(vercelEnv, 'COMPANY_API_URL').replace(/\/$/, '');
+
+          async function upsertVercelEnv(key, value, type) {
+            const endpoint = new URL(`https://api.vercel.com/v10/projects/${encodeURIComponent(VERCEL_PROJECT_ID)}/env`);
+            endpoint.searchParams.set('teamId', VERCEL_ORG_ID);
+            endpoint.searchParams.set('upsert', 'true');
+            await jsonRequest(endpoint, {
+              method: 'POST',
+              headers: vercelHeaders,
+              body: JSON.stringify([{
+                key,
+                value,
+                type,
+                target: ['production'],
+                comment: 'Website AI production contract',
+              }]),
+            });
+          }
+
+          if (existingCompanyApiUrl !== COMPANY_API_URL) {
+            await upsertVercelEnv('COMPANY_API_URL', COMPANY_API_URL, 'plain');
+          }
+          if (vercelCompanyToken !== sharedToken) {
+            await upsertVercelEnv('COMPANY_WEBSITE_AI_API_TOKEN', sharedToken, 'encrypted');
+          }
+          if (configuredProject !== serviceAccount.project_id) {
+            await upsertVercelEnv('GOOGLE_CLOUD_PROJECT', serviceAccount.project_id, 'plain');
+          }
+          if (configuredLocation !== 'global') {
+            await upsertVercelEnv('GOOGLE_CLOUD_LOCATION', 'global', 'plain');
+          }
+          if (configuredModel !== 'gemini-2.5-flash') {
+            await upsertVercelEnv('GEMINI_WEBSITE_MODEL', 'gemini-2.5-flash', 'plain');
+          }
+
+          const herokuPatch = {};
+          if (herokuToken !== sharedToken) herokuPatch.WEBSITE_AI_API_TOKEN = sharedToken;
+          if (existingActor !== WEBSITE_AI_ACTOR_ID) herokuPatch.WEBSITE_AI_ACTOR_ID = WEBSITE_AI_ACTOR_ID;
+
+          if (Object.keys(herokuPatch).length > 0) {
+            await jsonRequest(herokuConfigUrl, {
+              method: 'PATCH',
+              headers: herokuHeaders,
+              body: JSON.stringify(herokuPatch),
+            });
+          }
+
+          async function health(path) {
+            const deadline = Date.now() + 180_000;
+            let last = 0;
+            while (Date.now() < deadline) {
+              try {
+                const response = await fetch(`${COMPANY_API_URL}${path}`, { redirect: 'manual' });
+                last = response.status;
+                if (last === 200) return;
+              } catch {}
+              await new Promise((resolve) => setTimeout(resolve, 3000));
+            }
+            throw new Error(`company_health_failed:${path}:${last}`);
+          }
+
+          try {
+            await health('/health/live');
+            await health('/health/ready');
+          } catch (error) {
+            if (Object.keys(herokuPatch).length > 0) {
+              const rollback = {
+                WEBSITE_AI_API_TOKEN: herokuToken || null,
+                WEBSITE_AI_ACTOR_ID: existingActor || null,
+              };
+              await jsonRequest(herokuConfigUrl, {
+                method: 'PATCH',
+                headers: herokuHeaders,
+                body: JSON.stringify(rollback),
+              }).catch(() => {});
+            }
+            throw error;
+          }
+
+          const finalHerokuConfig = await jsonRequest(herokuConfigUrl, { headers: herokuHeaders });
+          if (finalHerokuConfig?.WEBSITE_AI_API_TOKEN !== sharedToken) {
+            throw new Error('heroku_website_ai_token_readback_failed');
+          }
+          if (finalHerokuConfig?.WEBSITE_AI_ACTOR_ID !== WEBSITE_AI_ACTOR_ID) {
+            throw new Error('heroku_website_ai_actor_readback_failed');
+          }
+
+          vercelEnv = await fetchVercelProductionEnv();
+          if (envValue(vercelEnv, 'COMPANY_API_URL').replace(/\/$/, '') !== COMPANY_API_URL) {
+            throw new Error('vercel_company_api_url_readback_failed');
+          }
+          if (envValue(vercelEnv, 'COMPANY_WEBSITE_AI_API_TOKEN') !== sharedToken) {
+            throw new Error('vercel_website_ai_token_readback_failed');
+          }
+          if (envValue(vercelEnv, 'GOOGLE_CLOUD_PROJECT') !== serviceAccount.project_id) {
+            throw new Error('vercel_google_cloud_project_readback_failed');
+          }
+          if (envValue(vercelEnv, 'GOOGLE_CLOUD_LOCATION') !== 'global') {
+            throw new Error('vercel_google_cloud_location_readback_failed');
+          }
+          if (envValue(vercelEnv, 'GEMINI_WEBSITE_MODEL') !== 'gemini-2.5-flash') {
+            throw new Error('vercel_gemini_model_readback_failed');
+          }
+
+          const probe = await fetch(`${COMPANY_API_URL}/api/ai/usage-events`, {
+            method: 'POST',
+            headers: {
+              authorization: `Bearer ${sharedToken}`,
+              'content-type': 'application/json; charset=utf-8',
+              'idempotency-key': randomUUID(),
+            },
+            body: '{}',
+          });
+          if (probe.status !== 400) {
+            throw new Error(`company_website_ai_auth_probe_unexpected_status:${probe.status}`);
+          }
+          const probeBody = await probe.json().catch(() => null);
+          const probeCode = probeBody?.error?.code || '';
+          if (!probeCode.startsWith('AI_USAGE_')) {
+            throw new Error(`company_website_ai_auth_probe_unexpected_code:${probeCode || 'missing'}`);
+          }
+
+          console.log('WEBSITE_AI_PRODUCTION_CONFIG=success');
+          console.log('GOOGLE_SERVICE_ACCOUNT_PROBE=success');
+          console.log('COMPANY_WEBSITE_AI_AUTH_PROBE=success');
+          console.log('COMPANY_HEALTH=success');
+          NODE
+
+      - name: Publish sanitized production configuration evidence
+        shell: bash
+        env:
+          GH_TOKEN: '${{ github.token }}'
+          TARGET_SHA: '${{ steps.target.outputs.sha }}'
+        run: |
+          set -euo pipefail
+          body="$(cat <<EOF
+          ## Website AI production config gate — success
+
+          WEBSITE_AI_PRODUCTION_CONFIG=success
+          GOOGLE_SERVICE_ACCOUNT_PROBE=success
+          COMPANY_WEBSITE_AI_AUTH_PROBE=success
+          COMPANY_HEALTH=success
+          SOURCE_SHA=$TARGET_SHA
+          GITHUB_RUN_ID=$GITHUB_RUN_ID
+          EOF
+          )"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/764/comments" -f body="$body" >/dev/null
