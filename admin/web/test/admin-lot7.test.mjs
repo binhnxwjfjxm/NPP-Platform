@@ -96,9 +96,10 @@ test('Lô 7 provides loading error not-found mobile and keyboard states', async 
   assert.doesNotMatch(errorPage, /error\.message|error\.stack|digest/);
   assert.match(notFound, /Không tìm thấy nội dung/);
   assert.match(notFound, /Về Tổng quan/);
-  assert.match(closeoutCss, /@media\(max-width:430px\)/);
-  assert.match(closeoutCss, /\.approvalDecisionBar\{position:static;grid-template-columns:1fr\}/);
-  assert.match(closeoutCss, /\.alertComparison\{grid-template-columns:1fr\}/);
+  assert.match(closeoutCss, /@media\s*\(max-width:\s*430px\)/);
+  assert.doesNotMatch(closeoutCss, /\.approvalDecisionBar/);
+  assert.match(closeoutCss, /\.adminRouteStateAction\s*\{[\s\S]*min-height:\s*44px/);
+  assert.match(closeoutCss, /\.alertComparison\s*\{[\s\S]*grid-template-columns:\s*1fr/);
   assert.match(focusCss, /button:focus-visible/);
   assert.match(focusCss, /a:focus-visible/);
   assert.match(focusCss, /summary:focus-visible/);

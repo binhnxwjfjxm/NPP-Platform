@@ -72,27 +72,39 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
     ? data.alerts.flatMap((alert) => alert.history.map((event) => ({ alert, event }))).sort((a, b) => Date.parse(b.event.occurredAt) - Date.parse(a.event.occurredAt))
     : [];
   const highCount = activeAlerts ? activeAlerts.filter((alert) => alert.severity === 'critical' || alert.severity === 'high').length : null;
+  const ruleDomainCount = sourceReady ? new Set(data.rules.map((rule) => rule.domainLabel)).size : null;
+  const highRuleCount = sourceReady ? data.rules.filter((rule) => rule.severity === 'critical' || rule.severity === 'high').length : null;
 
   return <AdminShell activeSection="alerts" title="Trung tâm cảnh báo" subtitle="Theo dõi tín hiệu bất thường từ dữ liệu quản trị thật.">
     <AdminIconTabs label="Nhóm cảnh báo" tabs={tabs} />
 
-    <AdminToolbar label="Kỳ cảnh báo">
-      {reportPeriods.map((candidate) => (
-        <AdminFilterChip
-          key={candidate}
-          href={alertHref(activeTab, candidate)}
-          label={candidate}
-          active={data.period === candidate}
-        />
-      ))}
-    </AdminToolbar>
+    {activeTab !== 'rules' ? (
+      <AdminToolbar label="Kỳ cảnh báo">
+        {reportPeriods.map((candidate) => (
+          <AdminFilterChip
+            key={candidate}
+            href={alertHref(activeTab, candidate)}
+            label={candidate}
+            active={data.period === candidate}
+          />
+        ))}
+      </AdminToolbar>
+    ) : null}
 
-    <AdminKpiGrid label="Tóm tắt cảnh báo">
-      <AdminKpiCard label="Đang hoạt động" value={activeAlerts ? activeAlerts.length : '—'} note="Chưa giải quyết" icon="exception" />
-      <AdminKpiCard label="Mức cao" value={highCount ?? '—'} note="Nghiêm trọng hoặc cao" icon="info" tone={highCount && highCount > 0 ? 'attention' : 'neutral'} />
-      <AdminKpiCard label="Quy tắc đang áp dụng" value={sourceReady ? data.rules.length : '—'} note="Nguồn dữ liệu chính thức" icon="clipboard" />
-      <AdminKpiCard label="Kỳ đang xem" value={data.period} note="Phạm vi cảnh báo" icon="document" />
-    </AdminKpiGrid>
+    {activeTab === 'rules' ? (
+      <AdminKpiGrid label="Tóm tắt quy tắc cảnh báo">
+        <AdminKpiCard label="Quy tắc đang áp dụng" value={sourceReady ? data.rules.length : '—'} note="Nguồn dữ liệu chính thức" icon="clipboard" />
+        <AdminKpiCard label="Quy tắc mức cao" value={highRuleCount ?? '—'} note="Nghiêm trọng hoặc cao" icon="info" tone={highRuleCount && highRuleCount > 0 ? 'attention' : 'neutral'} />
+        <AdminKpiCard label="Nhóm dữ liệu" value={ruleDomainCount ?? '—'} note="Có quy tắc đang áp dụng" icon="overview" />
+      </AdminKpiGrid>
+    ) : (
+      <AdminKpiGrid label="Tóm tắt cảnh báo">
+        <AdminKpiCard label="Đang hoạt động" value={activeAlerts ? activeAlerts.length : '—'} note="Chưa giải quyết" icon="exception" />
+        <AdminKpiCard label="Mức cao" value={highCount ?? '—'} note="Nghiêm trọng hoặc cao" icon="info" tone={highCount && highCount > 0 ? 'attention' : 'neutral'} />
+        <AdminKpiCard label="Quy tắc đang áp dụng" value={sourceReady ? data.rules.length : '—'} note="Nguồn dữ liệu chính thức" icon="clipboard" />
+        <AdminKpiCard label="Kỳ đang xem" value={data.period} note="Phạm vi cảnh báo" icon="document" />
+      </AdminKpiGrid>
+    )}
 
     {!sourceReady ? (
       <AdminStatePanel
