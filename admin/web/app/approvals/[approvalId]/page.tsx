@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { AdminShell } from '../../admin-shell';
 import { CoreApiError } from '../../../lib/core-api';
 import { safeAdminReturnTo } from '../../../lib/admin-session';
-import { decideProposal } from '../actions';
+import { ProposalDecisionDialog } from '../proposal-decision-dialog';
 import { formatProposalDateTime, loadProposal, proposalDomainLabel, proposalSourceLabel, proposalStateLabel, proposalWaitingAge } from '../proposal-data';
 
 function proposalLoadMessage(error: unknown): string {
@@ -30,11 +30,11 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
     if (error instanceof CoreApiError && error.statusCode === 404) notFound();
     return <AdminShell activeSection="approvals" title="Chi tiết đề xuất" subtitle="Xem nội dung và thông tin liên quan trước khi ra quyết định."><Link className="approvalBackLink" href={back.href}>{back.label}</Link><div className="card approvalEmpty" role="alert"><strong>{proposalLoadMessage(error)}</strong><span>Vui lòng thử lại sau.</span></div></AdminShell>;
   }
-  const decisionKey = createIdempotencyKey('admin-proposal-decision');
+  const decisionKey = item.status === 'pending' ? createIdempotencyKey('admin-proposal-decision') : null;
   const hasRelatedEntity = Boolean(item.entityLabel || item.entityId || item.entityType !== 'other');
   return <AdminShell activeSection="approvals" title="Chi tiết đề xuất" subtitle="Xem nội dung và thông tin liên quan trước khi ra quyết định.">
     <Link className="approvalBackLink" href={back.href}>{back.label}</Link>
-    <article className="approvalDetailHero card"><div className="approvalListTopline"><span className={`approvalPriority is-${item.priority}`}>{item.priority === 'critical' ? 'Ưu tiên cao' : item.priority === 'high' ? 'Cần xử lý sớm' : 'Bình thường'}</span><span className={`approvalState is-${item.status}`}>{proposalStateLabel[item.status]}</span></div><p className="approvalDetailDomain">{proposalDomainLabel[item.domain]} · {proposalSourceLabel[item.source]}</p><h2>{item.title}</h2>{item.impact ? <strong className="approvalDetailImpact">{item.impact}</strong> : null}{item.entityLabel ? <p>{item.entityLabel}</p> : null}</article>
+    <article className="approvalDetailHero card"><div className="approvalListTopline"><span className={`approvalPriority is-${item.priority}`}>{item.priority === 'critical' ? 'Ưu tiên cao' : item.priority === 'high' ? 'Cần xử lý sớm' : 'Bình thường'}</span><span className={`approvalState is-${item.status}`}>{proposalStateLabel[item.status]}</span></div><p className="approvalDetailDomain">{proposalDomainLabel[item.domain]} · {proposalSourceLabel[item.source]}</p><h2>{item.title}</h2>{item.impact ? <strong className="approvalDetailImpact">{item.impact}</strong> : null}{item.entityLabel ? <p>{item.entityLabel}</p> : null}{decisionKey ? <ProposalDecisionDialog proposalId={item.id} idempotencyKey={decisionKey} title={item.title} requesterName={item.requesterName}/> : null}</article>
     <section className="approvalDetailSection card"><h3>Nội dung đề xuất</h3><p>{item.content}</p></section>
     {hasRelatedEntity ? <section className="approvalDetailSection card"><h3>Đối tượng liên quan</h3><dl className="approvalDefinitionList"><div><dt>Loại</dt><dd>{entityTypeLabel(item.entityType)}</dd></div>{item.entityLabel ? <div><dt>Tên</dt><dd>{item.entityLabel}</dd></div> : null}{item.entityId ? <div><dt>Mã tham chiếu</dt><dd>{item.entityId}</dd></div> : null}</dl></section> : null}
     {item.reason ? <section className="approvalDetailSection card"><h3>Lý do / bối cảnh</h3><p>{item.reason}</p></section> : null}
@@ -43,6 +43,5 @@ export default async function ApprovalDetailPage({ params, searchParams }: { par
     <section className="approvalDetailSection card"><h3>Người gửi & thời gian</h3><dl className="approvalDefinitionList"><div><dt>Người gửi</dt><dd>{item.requesterName}</dd></div><div><dt>Nguồn</dt><dd>{proposalSourceLabel[item.source]}</dd></div><div><dt>Gửi lúc</dt><dd>{formatProposalDateTime(item.createdAt)}</dd></div><div><dt>Thời gian chờ</dt><dd>{proposalWaitingAge(item)}</dd></div></dl></section>
     {item.decisionNote ? <section className="approvalDetailSection card"><h3>Ghi chú quyết định</h3><p>{item.decisionNote}</p></section> : null}
     <section className="approvalDetailSection card"><h3>Lịch sử</h3><div className="approvalTimeline">{item.history.length ? item.history.map((event) => <div key={event.id}><span>{formatProposalDateTime(event.occurredAt)}</span><strong>{proposalStateLabel[event.toStatus]}</strong><small>{event.actorLabel}{event.note ? ` · ${event.note}` : ''}</small></div>) : <div><span>—</span><strong>Chưa có lịch sử bổ sung</strong><small>Đề xuất đang được theo dõi.</small></div>}</div></section>
-    {item.status === 'pending' ? <form action={decideProposal} className="approvalDecisionBar" aria-label="Hành động quyết định"><input type="hidden" name="proposalId" value={item.id}/><input type="hidden" name="idempotencyKey" value={decisionKey}/><label style={{ display: 'grid', gap: '.35rem', flex: '1 1 100%' }}><span>Ghi chú quyết định</span><textarea name="note" rows={3} maxLength={2000} placeholder="Bắt buộc khi yêu cầu bổ sung hoặc từ chối"/></label><button type="submit" name="decision" value="approved">Đồng ý</button><button type="submit" name="decision" value="needs-info">Yêu cầu bổ sung</button><button type="submit" name="decision" value="rejected">Từ chối</button></form> : null}
   </AdminShell>;
 }
