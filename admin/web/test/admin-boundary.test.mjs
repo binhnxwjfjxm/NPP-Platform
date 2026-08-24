@@ -27,9 +27,21 @@ test('admin main module shells keep management taxonomy without fake mutations',
   assert.doesNotMatch(`${proposals}\n${alerts}\n${reports}`, /requestCore|fetch\(|POST|PUT|PATCH|DELETE|Idempotency-Key/);
 });
 
-test('proposal center provides management context and live decision actions', async () => {
-  const [page, detail, fixtures, css] = await Promise.all([read('app/approvals/page.tsx'), read('app/approvals/[approvalId]/page.tsx'), read('app/approvals/approval-fixtures.ts'), read('app/admin-management-shell.css')]);
-  assert.match(page,/Trung tâm đề xuất/); assert.match(page,/Chờ quyết định/); assert.match(page,/Chờ bổ sung/); assert.match(page,/Ưu tiên cao/); assert.match(page,/approvalMetaGrid/); assert.match(page,/\/approvals\/\$\{item\.id\}/); assert.match(detail,/Lý do \/ bối cảnh/); assert.match(detail,/Điều kiện cần lưu ý/); assert.match(detail,/Dữ liệu và bằng chứng/); assert.match(detail,/item\.reason \?/); assert.match(detail,/item\.rule \?/); assert.match(detail,/item\.evidence\.length \?/); assert.match(detail,/hasRelatedEntity \?/); assert.match(detail,/Lịch sử/); assert.match(detail,/Đồng ý/); assert.match(detail,/Yêu cầu bổ sung/); assert.match(detail,/Từ chối/); assert.match(detail,/action=\{decideProposal\}/); assert.doesNotMatch(detail,/disabled/); assert.match(fixtures,/source: 'Công Ty'/); assert.match(fixtures,/source: 'MCP'/); assert.doesNotMatch(fixtures,/domain: 'inventory'|domain: 'delivery-cod'|source: 'Core'/); assert.match(css,/\.approvalDecisionBar/); assert.doesNotMatch(`${page}\n${detail}\n${fixtures}`, /requestCore|fetch\(|method=['"]?(POST|PUT|PATCH|DELETE)|Idempotency-Key/);
+test('proposal center keeps reading separate from the decision dialog', async () => {
+  const [page, detail, dialog, dialogCss, fixtures] = await Promise.all([
+    read('app/approvals/page.tsx'),
+    read('app/approvals/[approvalId]/page.tsx'),
+    read('app/approvals/proposal-decision-dialog.tsx'),
+    read('app/approvals/proposal-decision-dialog.module.css'),
+    read('app/approvals/approval-fixtures.ts'),
+  ]);
+  assert.match(page,/Trung tâm đề xuất/); assert.match(page,/Chờ quyết định/); assert.match(page,/Chờ bổ sung/); assert.match(page,/Ưu tiên cao/); assert.match(page,/approvalMetaGrid/); assert.match(page,/\/approvals\/\$\{item\.id\}/);
+  assert.match(detail,/Lý do \/ bối cảnh/); assert.match(detail,/Điều kiện cần lưu ý/); assert.match(detail,/Dữ liệu và bằng chứng/); assert.match(detail,/item\.reason \?/); assert.match(detail,/item\.rule \?/); assert.match(detail,/item\.evidence\.length \?/); assert.match(detail,/hasRelatedEntity \?/); assert.match(detail,/Lịch sử/); assert.match(detail,/ProposalDecisionDialog/); assert.doesNotMatch(detail,/approvalDecisionBar|<textarea|action=\{decideProposal\}/);
+  for (const label of ['Xem xét đề xuất','Đồng ý','Yêu cầu bổ sung','Từ chối','Ghi chú quyết định','Hủy']) assert.match(dialog,new RegExp(label));
+  assert.match(dialog,/showModal\(\)/); assert.match(dialog,/action=\{decideProposal\}/); assert.match(dialog,/aria-pressed/); assert.match(dialog,/required=\{noteRequired\}/); assert.match(dialog,/disabled=\{!decision\}/); assert.match(dialog,/Xác nhận đồng ý/); assert.match(dialog,/Gửi yêu cầu bổ sung/); assert.match(dialog,/Xác nhận từ chối/);
+  assert.match(dialogCss,/\.dialog::backdrop/); assert.match(dialogCss,/\.decisionGrid/); assert.match(dialogCss,/@media \(max-width: 640px\)/);
+  assert.match(fixtures,/source: 'Công Ty'/); assert.match(fixtures,/source: 'MCP'/); assert.doesNotMatch(fixtures,/domain: 'inventory'|domain: 'delivery-cod'|source: 'Core'/);
+  assert.doesNotMatch(`${page}\n${detail}\n${dialog}\n${fixtures}`, /requestCore|fetch\(|method=['"]?(POST|PUT|PATCH|DELETE)|Idempotency-Key/);
 });
 
 test('alert center uses live multi-domain data, canonical lifecycle and office language', async () => {
