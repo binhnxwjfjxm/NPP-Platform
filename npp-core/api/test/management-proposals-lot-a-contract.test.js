@@ -44,6 +44,8 @@ test('create, decision and resubmit stay on canonical idempotency plus audit/out
   assert.match(route, /management\.proposal\.decision-recorded/);
   assert.match(route, /management\.proposal\.resubmitted/);
   assert.match(route, /DECISIONS = new Set\(\['approved', 'needs-info', 'rejected'\]\)/);
+  assert.equal((route.match(/expectedOutboxCount:\s*1/g) ?? []).length, 3);
+  assert.equal((route.match(/return transactionResult\.proposal;/g) ?? []).length, 3);
 });
 
 test('proposal create requires only title/content while optional metadata remains bounded', () => {
