@@ -251,7 +251,7 @@ async function resolveRequesterName(client, context, requestedName) {
 
 async function createProposal(options, context, normalized) {
   const id = `proposal_${randomUUID()}`;
-  return withAuditOutboxTransaction({
+  const transactionResult = await withAuditOutboxTransaction({
     adapter: options.getPool(),
     mutate: async (client) => {
       const requesterName = await resolveRequesterName(client, context, normalized.requesterName);
@@ -291,13 +291,14 @@ async function createProposal(options, context, normalized) {
         eventType: 'management.proposal.submitted',
         payload: { proposalId: id, source: normalized.source, domain: normalized.domain, entityType: normalized.entityType, entityId: normalized.entityId },
       }));
-      return proposal;
+      return { proposal, expectedOutboxCount: 1 };
     },
   });
+  return transactionResult.proposal;
 }
 
 async function decideProposal(options, context, id, decision, note) {
-  return withAuditOutboxTransaction({
+  const transactionResult = await withAuditOutboxTransaction({
     adapter: options.getPool(),
     mutate: async (client) => {
       const currentResult = await client.query(
@@ -344,9 +345,10 @@ async function decideProposal(options, context, id, decision, note) {
         eventType: 'management.proposal.decision-recorded',
         payload: { proposalId: id, decision, source: current.source, domain: current.domain, entityType: current.entity_type, entityId: current.entity_id },
       }));
-      return after;
+      return { proposal: after, expectedOutboxCount: 1 };
     },
   });
+  return transactionResult.proposal;
 }
 
 async function resubmitProposal(options, context, id, payload) {
@@ -354,7 +356,7 @@ async function resubmitProposal(options, context, id, payload) {
   const nextReason = optionalText(payload?.reason, 4000);
   const nextEvidence = evidence(payload?.evidence ?? []);
   if (!nextContent || nextReason === null || nextEvidence === null) throw Object.assign(new Error('PROPOSAL_RESUBMIT_INVALID'), { code: 'PROPOSAL_RESUBMIT_INVALID', publicMessage: 'Nội dung bổ sung không hợp lệ', statusCode: 400 });
-  return withAuditOutboxTransaction({
+  const transactionResult = await withAuditOutboxTransaction({
     adapter: options.getPool(),
     mutate: async (client) => {
       const currentResult = await client.query(
@@ -401,9 +403,10 @@ async function resubmitProposal(options, context, id, payload) {
         eventType: 'management.proposal.resubmitted',
         payload: { proposalId: id, source: current.source, domain: current.domain, entityType: current.entity_type, entityId: current.entity_id },
       }));
-      return after;
+      return { proposal: after, expectedOutboxCount: 1 };
     },
   });
+  return transactionResult.proposal;
 }
 
 async function runIdempotent(req, res, options, context, route, payload, statusCode, process) {
