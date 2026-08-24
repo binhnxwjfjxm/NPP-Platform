@@ -30,6 +30,11 @@ function text(value, max = 1000) {
   return normalized && normalized.length <= max ? normalized : null;
 }
 
+function optionalText(value, max = 1000) {
+  const normalized = String(value ?? '').trim();
+  return normalized.length <= max ? normalized : null;
+}
+
 function evidence(value) {
   if (!Array.isArray(value) || value.length > 50) return null;
   const normalized = value.map((item) => text(item, 1000));
@@ -92,9 +97,10 @@ function parsePath(pathname) {
 
 function normalizeCreate(payload) {
   const source = String(payload?.source ?? '').trim().toLowerCase();
-  const domain = String(payload?.domain ?? '').trim().toLowerCase();
-  const priority = String(payload?.priority ?? 'normal').trim().toLowerCase();
-  const entityType = String(payload?.entityType ?? '').trim().toLowerCase();
+  const defaultDomain = source === 'mcp' ? 'mcp' : 'commercial';
+  const domain = String(payload?.domain ?? '').trim().toLowerCase() || defaultDomain;
+  const priority = String(payload?.priority ?? '').trim().toLowerCase() || 'normal';
+  const entityType = String(payload?.entityType ?? '').trim().toLowerCase() || 'other';
   const normalizedEvidence = evidence(payload?.evidence ?? []);
   const result = {
     source,
@@ -103,18 +109,18 @@ function normalizeCreate(payload) {
     title: text(payload?.title, 240),
     content: text(payload?.content, 4000),
     entityType,
-    entityId: text(payload?.entityId, 240),
-    entityLabel: text(payload?.entityLabel, 240),
-    impact: text(payload?.impact, 1000),
-    reason: text(payload?.reason, 4000),
-    rule: text(payload?.rule, 1000),
+    entityId: optionalText(payload?.entityId, 240),
+    entityLabel: optionalText(payload?.entityLabel, 240),
+    impact: optionalText(payload?.impact, 1000),
+    reason: optionalText(payload?.reason, 4000),
+    rule: optionalText(payload?.rule, 1000),
     evidence: normalizedEvidence,
     requesterName: text(payload?.requesterName, 240),
   };
   if (!SOURCES.has(source) || !DOMAINS.has(domain) || !PRIORITIES.has(priority) || !ENTITY_TYPES.has(entityType)) return null;
   if ((source === 'mcp') !== (domain === 'mcp')) return null;
-  if (!result.title || !result.content || !result.entityId || !result.entityLabel
-    || !result.impact || !result.reason || !result.rule || !normalizedEvidence) return null;
+  if (!result.title || !result.content || result.entityId === null || result.entityLabel === null
+    || result.impact === null || result.reason === null || result.rule === null || normalizedEvidence === null) return null;
   return result;
 }
 
@@ -126,11 +132,11 @@ function publicProposal(row, history = []) {
     title: String(row.title),
     content: String(row.content),
     entityType: String(row.entity_type),
-    entityId: String(row.entity_id),
-    entityLabel: String(row.entity_label),
-    impact: String(row.impact),
-    reason: String(row.reason),
-    rule: String(row.rule_text),
+    entityId: String(row.entity_id ?? ''),
+    entityLabel: String(row.entity_label ?? ''),
+    impact: String(row.impact ?? ''),
+    reason: String(row.reason ?? ''),
+    rule: String(row.rule_text ?? ''),
     evidence: Object.freeze(Array.isArray(row.evidence) ? row.evidence.map(String) : []),
     priority: String(row.priority),
     status: String(row.status),
@@ -345,9 +351,9 @@ async function decideProposal(options, context, id, decision, note) {
 
 async function resubmitProposal(options, context, id, payload) {
   const nextContent = text(payload?.content, 4000);
-  const nextReason = text(payload?.reason, 4000);
+  const nextReason = optionalText(payload?.reason, 4000);
   const nextEvidence = evidence(payload?.evidence ?? []);
-  if (!nextContent || !nextReason || !nextEvidence) throw Object.assign(new Error('PROPOSAL_RESUBMIT_INVALID'), { code: 'PROPOSAL_RESUBMIT_INVALID', publicMessage: 'Nội dung bổ sung không hợp lệ', statusCode: 400 });
+  if (!nextContent || nextReason === null || nextEvidence === null) throw Object.assign(new Error('PROPOSAL_RESUBMIT_INVALID'), { code: 'PROPOSAL_RESUBMIT_INVALID', publicMessage: 'Nội dung bổ sung không hợp lệ', statusCode: 400 });
   return withAuditOutboxTransaction({
     adapter: options.getPool(),
     mutate: async (client) => {

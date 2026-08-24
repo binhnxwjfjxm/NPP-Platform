@@ -16,6 +16,18 @@ test('Issue 606 Lô A keeps MCP proposal flow inside Báo cáo with two explicit
   assert.match(proposalPage, /Đề xuất của tôi/);
 });
 
+test('MCP proposal form requires only title/content and collapses supporting details', () => {
+  assert.match(proposalPage, /name="title"[^>]*required/);
+  assert.match(proposalPage, /name="content"[^>]*required/);
+  assert.match(proposalPage, /Thêm thông tin liên quan/);
+  assert.doesNotMatch(proposalPage, /name="entityId"[^>]*required/);
+  assert.doesNotMatch(proposalPage, /name="entityLabel"[^>]*required/);
+  assert.doesNotMatch(proposalPage, /name="impact"[^>]*required/);
+  assert.doesNotMatch(proposalPage, /name="reason"[^>]*required/);
+  assert.doesNotMatch(proposalPage, /name="rule"[^>]*required/);
+  assert.match(proposalPage, /message === "Đã xảy ra lỗi nội bộ\."/);
+});
+
 test('MCP browser mutations use the shared idempotent fetch helper and backend permission gate', () => {
   assert.match(proposalPage, /idempotentMutationFetch/);
   assert.match(proposalPage, /operation: "mcp-management-proposal"/);
@@ -27,5 +39,7 @@ test('MCP bridge returns decision state through the Company proposal API using t
   assert.match(bridge, /\?source=mcp/);
   assert.match(bridge, /X-NPP-MCP-Employee-Id/);
   assert.match(bridge, /source: 'mcp', domain: 'mcp'/);
+  assert.match(bridge, /UPSTREAM_UNAVAILABLE/);
+  assert.match(bridge, /UPSTREAM_TIMEOUT/);
   assert.doesNotMatch(bridge, /(?:INSERT INTO|UPDATE|DELETE FROM)\s+(?:shared|sales|accounting|inventory)\./i);
 });

@@ -80,14 +80,14 @@ export default async function ApprovalsPage({ searchParams }: { searchParams?: {
                 <span className={`approvalState is-${item.status}`}>{proposalStateLabel[item.status]}</span>
               </div>
               <h2>{item.title}</h2>
-              <p className="approvalEntity">{item.entityLabel}</p>
+              {item.entityLabel ? <p className="approvalEntity">{item.entityLabel}</p> : null}
               <div className="approvalMetaGrid">
                 <span><small>Nguồn</small><strong>{proposalSourceLabel[item.source]}</strong></span>
                 <span><small>Người gửi</small><strong>{item.requesterName}</strong></span>
-                <span><small>Tác động</small><strong>{item.impact}</strong></span>
+                {item.impact ? <span><small>Tác động</small><strong>{item.impact}</strong></span> : null}
                 <span><small>Thời gian chờ</small><strong>{proposalWaitingAge(item)}</strong></span>
               </div>
-              <p className="approvalReason">{item.reason}</p>
+              {item.reason ? <p className="approvalReason">{item.reason}</p> : null}
               <span className="approvalOpenLabel">Xem chi tiết · {proposalDomainLabel[item.domain]}</span>
             </Link>
           )) : <div className="card approvalEmpty"><strong>Không có đề xuất trong nhóm này.</strong><span>Chọn nhóm khác để tiếp tục.</span></div>}

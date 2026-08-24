@@ -17,7 +17,7 @@ function integrationError(code, statusCode = 502, details = null, retryable = fa
 function boundary(config) {
   const current = config?.coreSales;
   if (!current?.configured || !current.baseUrl || !current.apiToken) {
-    throw integrationError('core_management_proposal_not_configured', 503, null, false);
+    throw integrationError('UPSTREAM_UNAVAILABLE', 503, null, false);
   }
   return current;
 }
@@ -67,9 +67,9 @@ async function coreRequest(config, context, path, { method = 'GET', body, idempo
   } catch (error) {
     if (error?.code && error?.statusCode) throw error;
     if (error?.name === 'AbortError' || controller.signal.aborted) {
-      throw integrationError('core_management_proposal_timeout', 504, null, true);
+      throw integrationError('UPSTREAM_TIMEOUT', 504, null, true);
     }
-    throw integrationError('core_management_proposal_unavailable', 502, null, true);
+    throw integrationError('UPSTREAM_UNAVAILABLE', 502, null, true);
   } finally {
     clearTimeout(timeout);
   }
@@ -77,11 +77,13 @@ async function coreRequest(config, context, path, { method = 'GET', body, idempo
   if (!response.ok) {
     const coreCode = String(payload?.error?.code || '').trim() || 'core_management_proposal_request_failed';
     const publicMessage = String(payload?.error?.message || '').trim() || null;
-    const statusCode = BUSINESS_STATUS_CODES.has(response.status) ? response.status : 502;
-    throw integrationError(coreCode, statusCode, publicMessage ? { message: publicMessage } : null, response.status >= 500);
+    if (!BUSINESS_STATUS_CODES.has(response.status)) {
+      throw integrationError(response.status === 504 ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_UNAVAILABLE', response.status === 504 ? 504 : 502, null, response.status >= 500);
+    }
+    throw integrationError(coreCode, response.status, publicMessage ? { message: publicMessage } : null, false);
   }
   if (!payload || typeof payload !== 'object' || !Object.prototype.hasOwnProperty.call(payload, 'data')) {
-    throw integrationError('core_management_proposal_response_invalid', 502, null, true);
+    throw integrationError('UPSTREAM_RESPONSE_INVALID', 502, null, true);
   }
   return payload.data;
 }
