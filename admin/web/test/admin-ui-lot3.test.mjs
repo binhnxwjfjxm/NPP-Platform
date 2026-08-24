@@ -46,10 +46,9 @@ test('Lô 3 migrates alerts, rules and history to shared filters, KPI, badges an
   assert.doesNotMatch(page, /alertSummaryStrip|alertSeverity|alertStatus|alertEmpty|compactWarning/);
 });
 
-test('Lô 3 removes report-specific mobile rail patches after moving filters into AdminToolbar', async () => {
+test('shared mobile toolbar rails no longer need report or overview route-specific patches', async () => {
   const interaction = await read('app/admin-mobile-interaction.css');
 
   assert.match(interaction, /\.adminToolbarControls,[\s\S]*overflow-x:\s*auto/);
-  assert.match(interaction, /aria-label="Kỳ tổng quan"/);
-  assert.doesNotMatch(interaction, /Kỳ báo cáo|Lọc theo kho/);
+  assert.doesNotMatch(interaction, /Kỳ tổng quan|Kỳ báo cáo|Lọc theo kho/);
 });
