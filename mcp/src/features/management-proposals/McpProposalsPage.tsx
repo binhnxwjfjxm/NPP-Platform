@@ -102,7 +102,8 @@ async function readEnvelope(response: Response): Promise<Envelope> {
 }
 
 function publicError(payload: Envelope, fallback: string) {
-  return String(payload.error?.message || fallback);
+  const message = String(payload.error?.message || fallback);
+  return message === "Đã xảy ra lỗi nội bộ." ? `${fallback} lúc này. Vui lòng thử lại.` : message;
 }
 
 export function McpProposalsPage() {
@@ -156,14 +157,14 @@ export function McpProposalsPage() {
     const body = {
       title: String(values.get("title") || "").trim(),
       content: String(values.get("content") || "").trim(),
-      entityType: String(values.get("entityType") || "").trim(),
+      entityType: String(values.get("entityType") || "other").trim() || "other",
       entityId: String(values.get("entityId") || "").trim(),
       entityLabel: String(values.get("entityLabel") || "").trim(),
       impact: String(values.get("impact") || "").trim(),
       reason: String(values.get("reason") || "").trim(),
       rule: String(values.get("rule") || "").trim(),
       evidence,
-      priority: String(values.get("priority") || "normal").trim(),
+      priority: String(values.get("priority") || "normal").trim() || "normal",
     };
     setSaving(true);
     setError("");
@@ -222,7 +223,7 @@ export function McpProposalsPage() {
     <AppShell activeHref="/reports">
       <div className={styles.page}>
         <header className={styles.header}>
-          <div><span className={styles.kicker}>Báo cáo MCP</span><h1>Đề xuất</h1><p>Gửi nội dung cần Admin quyết định và theo dõi trạng thái ngay tại nguồn tạo.</p></div>
+          <div><span className={styles.kicker}>Báo cáo MCP</span><h1>Đề xuất</h1><p>Chỉ cần nêu rõ tiêu đề và nội dung cần Admin quyết định. Thông tin liên quan có thể bổ sung khi cần.</p></div>
           <button type="button" className={styles.secondaryButton} onClick={() => void load()} disabled={loading}>Làm mới</button>
         </header>
 
@@ -239,18 +240,24 @@ export function McpProposalsPage() {
           <section className={styles.card} role="alert"><strong>Chưa được cấp quyền gửi Đề xuất.</strong><p>Liên hệ quản trị quyền MCP để được cấp quyền phù hợp.</p></section>
         ) : (
           <form className={styles.card} onSubmit={submit}>
-            <div className={styles.sectionHeading}><div><h2>Phiếu Đề xuất mới</h2><p>Nhập nội dung cần quyết định và đối tượng liên quan.</p></div></div>
+            <div className={styles.sectionHeading}><div><h2>Phiếu Đề xuất mới</h2><p>Chỉ Tiêu đề và Nội dung đề xuất là bắt buộc.</p></div></div>
             <div className={styles.grid}>
-              <label><span>Tiêu đề</span><input name="title" maxLength={240} required placeholder="Ví dụ: Điều chỉnh chính sách chăm sóc tuyến A" /></label>
-              <label><span>Loại đối tượng</span><select name="entityType" defaultValue="route" required>{Object.entries(ENTITY_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-              <label><span>Mã tham chiếu</span><input name="entityId" maxLength={240} required placeholder="Mã tuyến, khách hàng, đơn hoặc chứng từ" /></label>
-              <label><span>Tên đối tượng</span><input name="entityLabel" maxLength={240} required placeholder="Tên dễ nhận biết" /></label>
-              <label><span>Mức ưu tiên</span><select name="priority" defaultValue="normal"><option value="normal">Bình thường</option><option value="high">Cần xử lý sớm</option><option value="critical">Ưu tiên cao</option></select></label>
-              <label className={styles.wide}><span>Nội dung đề xuất</span><textarea name="content" rows={5} maxLength={4000} required placeholder="Nêu rõ đề xuất cần Admin xem xét và quyết định." /></label>
-              <label className={styles.wide}><span>Lý do</span><textarea name="reason" rows={3} maxLength={4000} required /></label>
-              <label className={styles.wide}><span>Tác động dự kiến</span><textarea name="impact" rows={2} maxLength={1000} required /></label>
-              <label className={styles.wide}><span>Điều kiện liên quan</span><textarea name="rule" rows={2} maxLength={1000} required placeholder="Quy định, điều kiện hoặc giới hạn cần lưu ý" /></label>
-              <label className={styles.wide}><span>Bằng chứng / ghi chú</span><textarea name="evidence" rows={3} placeholder="Mỗi dòng một thông tin hoặc tham chiếu" /></label>
+              <label className={styles.wide}><span>Tiêu đề</span><input name="title" maxLength={240} required placeholder="Ví dụ: Xin hỗ trợ chính sách cho khách hàng A" /></label>
+              <label className={styles.wide}><span>Nội dung đề xuất</span><textarea name="content" rows={5} maxLength={4000} required placeholder="Nêu rõ việc cần Admin xem xét và quyết định." /></label>
+              <details className={`${styles.optionalDetails} ${styles.wide}`}>
+                <summary>Thêm thông tin liên quan <span>(không bắt buộc)</span></summary>
+                <p className={styles.optionalHint}>Chỉ bổ sung khi thông tin này giúp Admin hiểu hoặc kiểm tra đề xuất nhanh hơn.</p>
+                <div className={styles.optionalGrid}>
+                  <label><span>Liên quan đến</span><select name="entityType" defaultValue="other">{Object.entries(ENTITY_LABEL).map(([value, label]) => <option key={value} value={value}>{value === "other" ? "Khác / chưa xác định" : label}</option>)}</select></label>
+                  <label><span>Mức ưu tiên</span><select name="priority" defaultValue="normal"><option value="normal">Bình thường</option><option value="high">Cần xử lý sớm</option><option value="critical">Ưu tiên cao</option></select></label>
+                  <label><span>Mã liên quan (nếu có)</span><input name="entityId" maxLength={240} placeholder="Mã tuyến, khách hàng, đơn hoặc chứng từ" /></label>
+                  <label><span>Tên khách / tuyến / đơn (nếu có)</span><input name="entityLabel" maxLength={240} placeholder="Tên dễ nhận biết" /></label>
+                  <label className={styles.wide}><span>Lý do / bối cảnh</span><textarea name="reason" rows={3} maxLength={4000} /></label>
+                  <label className={styles.wide}><span>Tác động dự kiến</span><textarea name="impact" rows={2} maxLength={1000} /></label>
+                  <label className={styles.wide}><span>Điều kiện cần lưu ý</span><textarea name="rule" rows={2} maxLength={1000} placeholder="Quy định, điều kiện hoặc giới hạn nếu có" /></label>
+                  <label className={styles.wide}><span>Bằng chứng / ghi chú</span><textarea name="evidence" rows={3} maxLength={4000} placeholder="Mỗi dòng một thông tin hoặc nguồn kiểm tra" /></label>
+                </div>
+              </details>
             </div>
             <div className={styles.actions}><button type="submit" disabled={!access.loaded || !canWrite || saving}>{saving ? "Đang gửi…" : "Gửi Đề xuất"}</button></div>
           </form>
@@ -263,7 +270,7 @@ export function McpProposalsPage() {
           <div className={styles.list}>
             {items.map((item) => (
               <article className={styles.card} key={item.id}>
-                <div className={styles.itemTop}><div><span className={styles.meta}>{ENTITY_LABEL[item.entityType] || "Đối tượng"} · {item.entityLabel}</span><h3>{item.title}</h3></div><span className={styles.status}>{STATE_LABEL[item.status]}</span></div>
+                <div className={styles.itemTop}><div><span className={styles.meta}>{item.entityLabel ? `${ENTITY_LABEL[item.entityType] || "Đối tượng"} · ${item.entityLabel}` : "Đề xuất MCP"}</span><h3>{item.title}</h3></div><span className={styles.status}>{STATE_LABEL[item.status]}</span></div>
                 <p className={styles.content}>{item.content}</p>
                 <dl className={styles.details}><div><dt>Ưu tiên</dt><dd>{PRIORITY_LABEL[item.priority]}</dd></div><div><dt>Gửi lúc</dt><dd>{formatDateTime(item.createdAt)}</dd></div><div><dt>Cập nhật</dt><dd>{formatDateTime(item.updatedAt)}</dd></div></dl>
                 {item.decisionNote ? <div className={styles.decision}><strong>Phản hồi từ Admin</strong><p>{item.decisionNote}</p></div> : null}
@@ -271,8 +278,8 @@ export function McpProposalsPage() {
                   <form className={styles.resubmit} onSubmit={(event) => void resubmit(item, event)}>
                     <strong>Bổ sung theo yêu cầu</strong>
                     <label><span>Nội dung cập nhật</span><textarea name="content" rows={3} maxLength={4000} defaultValue={item.content} required /></label>
-                    <label><span>Lý do / giải trình</span><textarea name="reason" rows={2} maxLength={4000} defaultValue={item.reason} required /></label>
-                    <label><span>Bằng chứng / ghi chú</span><textarea name="evidence" rows={2} defaultValue={item.evidence.join("\n")} /></label>
+                    <label><span>Lý do / giải trình <small>(nếu cần)</small></span><textarea name="reason" rows={2} maxLength={4000} defaultValue={item.reason} /></label>
+                    <label><span>Bằng chứng / ghi chú <small>(nếu có)</small></span><textarea name="evidence" rows={2} maxLength={4000} defaultValue={item.evidence.join("\n")} /></label>
                     <div className={styles.actions}><button type="submit" disabled={saving}>Gửi lại</button></div>
                   </form>
                 ) : null}

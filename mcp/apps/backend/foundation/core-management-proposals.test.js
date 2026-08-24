@@ -66,7 +66,7 @@ test('MCP proposal bridge fails closed without trusted employee or idempotency c
   );
 });
 
-test('MCP proposal detail validates identifier and maps upstream auth failure as integration failure', async () => {
+test('MCP proposal detail validates identifier and converts service auth mismatch to safe upstream error', async () => {
   await assert.rejects(
     () => readCoreManagementProposal('../private', context, config),
     (error) => error.code === 'management_proposal_id_invalid' && error.statusCode === 400,
@@ -75,6 +75,16 @@ test('MCP proposal detail validates identifier and maps upstream auth failure as
     () => listCoreManagementProposals(context, config, {
       fetchImpl: async () => response(403, { error: { code: 'FORBIDDEN', message: 'service permission mismatch' } }),
     }),
-    (error) => error.code === 'FORBIDDEN' && error.statusCode === 502,
+    (error) => error.code === 'UPSTREAM_UNAVAILABLE' && error.statusCode === 502,
+  );
+});
+
+test('MCP proposal bridge exposes upstream 5xx as safe retryable service state instead of internal error', async () => {
+  await assert.rejects(
+    () => createCoreManagementProposal({ title: 'A', content: 'B' }, context, config, {
+      idempotencyKey: 'mcp-management-proposal-upstream-503',
+      fetchImpl: async () => response(503, { error: { code: 'MANAGEMENT_PROPOSAL_FAILED', message: 'database detail must stay private' } }),
+    }),
+    (error) => error.code === 'UPSTREAM_UNAVAILABLE' && error.statusCode === 502 && error.publicRetryable === true && !error.publicMessage,
   );
 });
