@@ -51,7 +51,7 @@ for forbidden in \
   test "$project_id" != "$forbidden"
 done
 
-settings_payload="$(jq -n --arg root "$RETAIL_ROOT_DIRECTORY" '{framework:"nextjs",rootDirectory:$root,nodeVersion:"20.x"}')"
+settings_payload="$(jq -n --arg root "$RETAIL_ROOT_DIRECTORY" '{framework:"nextjs",rootDirectory:$root,nodeVersion:"24.x"}')"
 status="$(curl --silent --show-error --output "$settings_json" --write-out '%{http_code}' \
   -X PATCH \
   -H "Authorization: Bearer $VERCEL_TOKEN" \
@@ -62,7 +62,7 @@ test "$status" = 200
 test "$(jq -r '.name' "$settings_json")" = "$RETAIL_PROJECT_NAME"
 test "$(jq -r '.rootDirectory' "$settings_json")" = "$RETAIL_ROOT_DIRECTORY"
 test "$(jq -r '.framework' "$settings_json")" = nextjs
-test "$(jq -r '.nodeVersion' "$settings_json")" = '20.x'
+test "$(jq -r '.nodeVersion' "$settings_json")" = '24.x'
 
 node --input-type=module <<'NODE'
 import { readFile } from 'node:fs/promises';

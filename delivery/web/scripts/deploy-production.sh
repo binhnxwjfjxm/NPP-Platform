@@ -85,7 +85,7 @@ for forbidden in "$CORE_PROJECT_ID" "$MCP_PROJECT_ID" "$ADMIN_PROJECT_ID" "$WEBS
   test "$project_id" != "$forbidden"
 done
 
-settings_payload="$(jq -n --arg root "$DELIVERY_ROOT_DIRECTORY" '{framework:"nextjs",rootDirectory:$root,nodeVersion:"20.x"}')"
+settings_payload="$(jq -n --arg root "$DELIVERY_ROOT_DIRECTORY" '{framework:"nextjs",rootDirectory:$root,nodeVersion:"24.x"}')"
 status="$(curl --silent --show-error --output "$settings_json" --write-out '%{http_code}' \
   -X PATCH \
   -H "Authorization: Bearer $VERCEL_TOKEN" \
@@ -95,6 +95,7 @@ status="$(curl --silent --show-error --output "$settings_json" --write-out '%{ht
 test "$status" = 200
 test "$(jq -r '.rootDirectory' "$settings_json")" = "$DELIVERY_ROOT_DIRECTORY"
 test "$(jq -r '.framework' "$settings_json")" = nextjs
+test "$(jq -r '.nodeVersion' "$settings_json")" = '24.x'
 node --input-type=module <<'NODE'
 import { readFile } from 'node:fs/promises';
 const config = JSON.parse(await readFile('delivery/web/vercel.json', 'utf8'));

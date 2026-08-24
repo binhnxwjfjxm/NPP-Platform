@@ -40,13 +40,16 @@ jobs:
       CORE_API_INTERNAL_URL: http://127.0.0.1:4011
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
       - name: Install Delivery frontend dependencies
         run: npm install --no-audit --no-fund
       - name: Verify Delivery frontend
         run: npm run verify
+      - name: Verify Node 24 runtime contract
+        run: node --test ../../npp-core/web/test/frontend-node24-runtime-contract.test.js
       - name: Run Delivery Chromium mobile E2E
         run: |
           docker run --rm \
