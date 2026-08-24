@@ -524,7 +524,7 @@ export async function buildAiUsageSummary(adapter, context, url) {
       ON account.installation_id = customer.installation_id
      AND account.customer_id = customer.id
     WHERE customer.installation_id = $1
-      AND customer.is_active = true
+      AND (customer.is_active = true OR lifetime.customer_id IS NOT NULL)
       AND ($4::text = '' OR customer.id = NULLIF($4::text, '')::uuid)
     ORDER BY COALESCE(filtered.period_usage_usd, 0) DESC, customer.name, customer.code`;
 
