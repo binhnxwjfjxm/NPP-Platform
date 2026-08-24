@@ -18,6 +18,7 @@ test('frontend Vercel runtimes use Node 24 while backend root stays on Node 20',
     retailCi,
     retailProduction,
     retailBootstrap,
+    retailScript,
   ] = await Promise.all([
     readJson('package.json'),
     readJson('npp-core/web/package.json'),
@@ -29,6 +30,7 @@ test('frontend Vercel runtimes use Node 24 while backend root stays on Node 20',
     readText('.github/workflows/retail-web-ci.yml'),
     readText('.github/workflows/vercel-retail-production-manual.yml'),
     readText('retail/web/scripts/bootstrap-project.sh'),
+    readText('retail/web/scripts/deploy-production.sh'),
   ]);
 
   assert.equal(rootPackage.engines?.node, '20.x');
@@ -46,18 +48,30 @@ test('frontend Vercel runtimes use Node 24 while backend root stays on Node 20',
   }
 
   assert.match(companyCi, /npm --prefix \.\. run verify:core-web/);
+  assert.match(companyProduction, /Configure and verify Vercel Node 24 runtime/);
+  assert.match(companyProduction, /nodeVersion: '24\.x'/);
+  assert.match(companyProduction, /method: 'PATCH'/);
+  assert.match(companyProduction, /company_vercel_runtime_readback_failed/);
+  assert.match(companyProduction, /project\?\.nodeVersion !== desired\.nodeVersion/);
+
   assert.match(deliveryScript, /nodeVersion:"24\.x"/);
   assert.match(deliveryScript, /\.nodeVersion' "\$settings_json"\)" = '24\.x'/);
+
   assert.match(retailBootstrap, /nodeVersion:"24\.x"/);
   assert.match(retailBootstrap, /\.nodeVersion' "\$settings_json"\)" = '24\.x'/);
+  assert.match(retailScript, /GITHUB_OUTPUT= bash retail\/web\/scripts\/bootstrap-project\.sh/);
+  assert.match(retailScript, /retail-runtime-readback\.json/);
+  assert.match(retailScript, /jq -r '\.nodeVersion' "\$runtime_readback_json"/);
 
   for (const [label, source] of [
+    ['Công Ty production workflow', companyProduction],
     ['Delivery CI', deliveryCi],
     ['Delivery production workflow', deliveryProduction],
     ['Delivery Vercel configuration', deliveryScript],
     ['Retail CI', retailCi],
     ['Retail production workflow', retailProduction],
-    ['Retail Vercel configuration', retailBootstrap],
+    ['Retail Vercel bootstrap', retailBootstrap],
+    ['Retail production deploy', retailScript],
   ]) {
     assert.doesNotMatch(source, /node-version:\s*20|nodeVersion:"20\.x"/, `${label} must not pin Node 20`);
   }
