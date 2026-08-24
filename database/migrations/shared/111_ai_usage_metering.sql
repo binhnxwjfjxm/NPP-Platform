@@ -129,6 +129,18 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION shared.prevent_ai_usage_event_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF TG_OP = 'DELETE' AND shared.business_purge_delete_allowed(OLD.installation_id) THEN
+    RETURN OLD;
+  END IF;
+  RAISE EXCEPTION 'AI usage rows are append-only';
+END;
+$$;
+
 DROP TRIGGER IF EXISTS ai_rate_cards_append_only ON shared.ai_rate_cards;
 CREATE TRIGGER ai_rate_cards_append_only
 BEFORE UPDATE OR DELETE ON shared.ai_rate_cards
@@ -137,7 +149,7 @@ FOR EACH ROW EXECUTE FUNCTION shared.prevent_ai_append_only_mutation();
 DROP TRIGGER IF EXISTS ai_usage_events_append_only ON shared.ai_usage_events;
 CREATE TRIGGER ai_usage_events_append_only
 BEFORE UPDATE OR DELETE ON shared.ai_usage_events
-FOR EACH ROW EXECUTE FUNCTION shared.prevent_ai_append_only_mutation();
+FOR EACH ROW EXECUTE FUNCTION shared.prevent_ai_usage_event_mutation();
 
 -- Standard global Agent Platform rate cards verified for the initial Lot A contract.
 -- Rows are immutable: future provider/model pricing must be added as a new version.

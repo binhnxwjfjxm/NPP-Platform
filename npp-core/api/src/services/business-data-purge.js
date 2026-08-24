@@ -11,6 +11,8 @@ const BUSINESS_SHARED_TABLES = new Set([
   'customers',
   'customer_addresses',
   'customer_media',
+  'ai_credit_accounts',
+  'ai_usage_events',
   'suppliers',
   'supplier_contacts',
   'supplier_addresses',
