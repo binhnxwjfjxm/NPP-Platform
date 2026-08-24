@@ -50,6 +50,7 @@ import { handleAdminLotDRoutes } from './routes/reporting-admin-lot-d.js';
 import { handleReportingRoutes } from './routes/reporting-sales-purchasing.js';
 import { handleCustomerReceivableRoutes } from './routes/customer-receivables.js';
 import { handleBackupRoutes } from './routes/backups.js';
+import { handleAiUsageRoutes } from './routes/ai-usage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const CORS_ALLOWED_HEADERS = 'authorization, content-type, idempotency-key, x-request-id';
@@ -462,6 +463,7 @@ export function createCoreApiServer(options = {}) {
     if (await handleReportingRoutes(req, res, routeContext)) return;
     if (await handleCustomerReceivableRoutes(req, res, routeContext)) return;
     if (await handleBackupRoutes(req, res, routeContext)) return;
+    if (await handleAiUsageRoutes(req, res, routeContext)) return;
     if (await handleGoodsReceiptRoutes(req, res, routeContext)) return;
     if (await handleSupplierReturnRoutes(req, res, routeContext)) return;
     if (await handleDocumentNumberingRoutes(req, res, routeContext)) return;

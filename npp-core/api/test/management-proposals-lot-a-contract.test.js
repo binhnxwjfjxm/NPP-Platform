@@ -16,7 +16,11 @@ const adminData = readFileSync(new URL('../../../admin/web/app/approvals/proposa
 const adminDetail = readFileSync(new URL('../../../admin/web/app/approvals/[approvalId]/page.tsx', import.meta.url), 'utf8');
 
 test('proposal migrations keep source round-trip and make optional details explicit in 110', () => {
-  assert.equal(CORE_API_MIGRATIONS.at(-1)?.id, '110_management_proposal_optional_details');
+  const migrationIds = CORE_API_MIGRATIONS.map((entry) => entry.id);
+  const sourceRoundTripIndex = migrationIds.indexOf('109_management_proposal_source_roundtrip');
+  const optionalDetailsIndex = migrationIds.indexOf('110_management_proposal_optional_details');
+  assert.ok(sourceRoundTripIndex >= 0);
+  assert.equal(optionalDetailsIndex, sourceRoundTripIndex + 1);
   assert.match(migration109, /ADD COLUMN IF NOT EXISTS content text/);
   assert.match(migration109, /core\.management-proposal\.submit/);
   assert.match(migration110, /ALTER COLUMN entity_id SET DEFAULT ''/);
