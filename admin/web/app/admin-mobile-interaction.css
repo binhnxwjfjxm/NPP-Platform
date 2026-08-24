@@ -33,19 +33,4 @@
     overscroll-behavior-y: none;
     touch-action: pan-x;
   }
-
-  /* Tổng quan chưa migrate ở Lô 3 nên kỳ xem của màn này vẫn là rail local.
-     Báo cáo và Cảnh báo đã chuyển sang AdminToolbar, không cần selector vá riêng. */
-  .adminAppMain nav[aria-label="Kỳ tổng quan"] {
-    box-sizing: border-box;
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
-    overscroll-behavior-x: contain;
-    overscroll-behavior-y: none;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-x;
-  }
 }

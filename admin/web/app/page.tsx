@@ -1,6 +1,14 @@
 import Link from 'next/link';
 import { AdminIcon } from './admin-icons';
 import { AdminShell } from './admin-shell';
+import {
+  AdminFilterChip,
+  AdminKpiCard,
+  AdminKpiGrid,
+  AdminStatePanel,
+  AdminStatusBadge,
+  AdminToolbar,
+} from './admin-ui-primitives';
 import { loadControlTower } from '@/lib/control-tower';
 import { loadProposals, type ProposalItem } from './approvals/proposal-data';
 import { loadAlertCenter, type AdminAlert } from './alerts/alert-data';
@@ -116,39 +124,84 @@ export default async function AdminOverviewPage({ searchParams }: { searchParams
 
   return (
     <AdminShell activeSection="overview" title="Tổng quan quản trị" subtitle="Tín hiệu ưu tiên, tình hình vận hành và các quyết định cần chú ý.">
-      {sourceWarnings.map((warning) => <p className="warning compactWarning" role="alert" key={warning}>{warning}</p>)}
-
-      <nav className={styles.periodTabs} aria-label="Kỳ tổng quan">
+      <AdminToolbar
+        label="Kỳ tổng quan"
+        actions={<AdminStatusBadge tone="info">{formatDate(range.from)} – {formatDate(range.to)}</AdminStatusBadge>}
+      >
         {reportPeriods.map((candidate) => (
-          <Link key={candidate} className={`${styles.periodTab} ${period === candidate ? styles.periodActive : ''}`} href={overviewHref(candidate)}>
-            {candidate}
-          </Link>
+          <AdminFilterChip
+            key={candidate}
+            href={overviewHref(candidate)}
+            label={candidate}
+            active={period === candidate}
+          />
         ))}
-      </nav>
-      <div className={styles.periodMeta} role="status">
-        <strong>{period}</strong>
-        <span>{formatDate(range.from)} – {formatDate(range.to)}</span>
-      </div>
+      </AdminToolbar>
 
-      <section className="metricGrid appMetricGrid" aria-label="Chỉ số quản trị">
-        <Link className={`card metricCard ${styles.metricLink}`} href={reportDetailHref('sales-profit-summary', period)}><span className="iconBubble"><AdminIcon name="clipboard" /></span><div className="metricCopy"><span>Đơn bán hiệu lực</span><strong>{metricText(sales, 'effectiveOrderCount')}</strong></div></Link>
-        <Link className={`card metricCard ${styles.metricLink}`} href={reportDetailHref('inventory-overview', period)}><span className="iconBubble"><AdminIcon name="warehouse" /></span><div className="metricCopy"><span>SKU đang có tồn</span><strong>{metricText(inventory, 'stockedSkuCount')}</strong></div></Link>
-        <Link className={`card metricCard ${styles.metricLink}`} href={reportDetailHref('delivery-cod-overview', period)}><span className="iconBubble"><AdminIcon name="exception" /></span><div className="metricCopy"><span>Giao thất bại</span><strong>{metricText(logistics, 'failedCount')}</strong></div></Link>
-        <Link className={`card metricCard ${styles.metricLink}`} href={reportDetailHref('sales-profit-summary', period)}><span className="iconBubble"><AdminIcon name="coin" /></span><div className="metricCopy"><span>Lãi gộp VND</span><strong>{grossMarginValue === '—' ? '—' : exactDecimal(grossMarginValue)}</strong></div></Link>
-      </section>
+      {sourceWarnings.length ? (
+        <AdminStatePanel
+          className={styles.sourceState}
+          title="Một số nguồn cần kiểm tra"
+          message={sourceWarnings.join(' ')}
+          tone="partial"
+          icon="info"
+        />
+      ) : null}
+
+      <AdminKpiGrid label="Chỉ số quản trị">
+        <AdminKpiCard label="Đơn bán hiệu lực" value={metricText(sales, 'effectiveOrderCount')} icon="clipboard" href={reportDetailHref('sales-profit-summary', period)} />
+        <AdminKpiCard label="SKU đang có tồn" value={metricText(inventory, 'stockedSkuCount')} icon="warehouse" href={reportDetailHref('inventory-overview', period)} />
+        <AdminKpiCard label="Giao thất bại" value={metricText(logistics, 'failedCount')} icon="exception" href={reportDetailHref('delivery-cod-overview', period)} />
+        <AdminKpiCard label="Lãi gộp VND" value={grossMarginValue === '—' ? '—' : exactDecimal(grossMarginValue)} icon="coin" href={reportDetailHref('sales-profit-summary', period)} />
+      </AdminKpiGrid>
 
       <p className="sectionEyebrow">Nhịp quản trị</p>
-      <section className="overviewDecisionStrip" aria-label="Tóm tắt đề xuất và cảnh báo">
-        <div><span>Chờ quyết định</span><strong>{proposals ? pendingProposals.length : '—'}</strong><small>{proposals ? `${urgentProposals.length} ưu tiên cao · ${needsInfoProposals.length} chờ bổ sung` : 'Chưa tải được'}</small></div>
-        <div><span>Cảnh báo mở</span><strong>{activeAlerts ? activeAlerts.length : '—'}</strong><small>{activeAlerts ? `${highAlerts.length} mức cao` : 'Chưa tải được'}</small></div>
-        <div><span>Điều hành</span><strong>{executiveReportState}</strong><small>{executiveReportNote}</small></div>
-      </section>
+      <AdminKpiGrid label="Tóm tắt đề xuất, cảnh báo và điều hành">
+        <AdminKpiCard
+          label="Chờ quyết định"
+          value={proposals ? pendingProposals.length : '—'}
+          note={proposals ? `${urgentProposals.length} ưu tiên cao · ${needsInfoProposals.length} chờ bổ sung` : 'Chưa tải được'}
+          icon="check"
+          href="/approvals"
+          tone={urgentProposals.length ? 'attention' : 'neutral'}
+        />
+        <AdminKpiCard
+          label="Cảnh báo mở"
+          value={activeAlerts ? activeAlerts.length : '—'}
+          note={activeAlerts ? `${highAlerts.length} mức cao` : 'Chưa tải được'}
+          icon="exception"
+          href="/alerts"
+          tone={highAlerts.length ? 'attention' : 'neutral'}
+        />
+        <AdminKpiCard
+          label="Điều hành"
+          value={executiveReportState}
+          note={executiveReportNote}
+          icon="overview"
+          href="/reports"
+          tone={!data || data.warnings.length ? 'attention' : 'success'}
+        />
+        <AdminKpiCard
+          label="Nguồn cần kiểm tra"
+          value={sourceWarnings.length}
+          note={sourceWarnings.length ? 'Có nguồn chưa sẵn sàng hoặc chưa đầy đủ' : 'Các nguồn đang sẵn sàng'}
+          icon="info"
+          tone={sourceWarnings.length ? 'attention' : 'success'}
+        />
+      </AdminKpiGrid>
 
       <p className="sectionEyebrow">Ưu tiên hôm nay</p>
       <section className="overviewFocusList" aria-label="Việc cần chú ý hôm nay">
         {priorityProposal ? <Link className="card overviewFocusItem" href={`/approvals/${encodeURIComponent(priorityProposal.id)}?returnTo=${returnTo}`}><span className="rowIcon"><AdminIcon name="check" size={19} /></span><span><small>Đề xuất</small><strong>{priorityProposal.title}</strong><em>{priorityProposal.impact}</em></span><AdminIcon name="chevronRight" size={17} /></Link> : null}
         {priorityAlert ? <Link className="card overviewFocusItem" href={`/alerts/${encodeURIComponent(priorityAlert.id)}?period=${encodeURIComponent(period)}&returnTo=${returnTo}`}><span className="rowIcon"><AdminIcon name="exception" size={19} /></span><span><small>Cảnh báo</small><strong>{priorityAlert.title}</strong><em>{priorityAlert.actual} · Ngưỡng {priorityAlert.threshold}</em></span><AdminIcon name="chevronRight" size={17} /></Link> : null}
-        {!priorityProposal && !priorityAlert ? <div className={`card ${styles.empty}`}><strong>{hasIncompletePrioritySources ? 'Chưa xác định đầy đủ việc ưu tiên.' : 'Không có việc ưu tiên đang mở.'}</strong><span>{hasIncompletePrioritySources ? 'Một số nguồn chưa sẵn sàng; xem cảnh báo phía trên để kiểm tra.' : 'Các nguồn đã tải hiện không có Đề xuất chờ quyết định hoặc Cảnh báo mở.'}</span></div> : null}
+        {!priorityProposal && !priorityAlert ? (
+          <AdminStatePanel
+            className={styles.focusState}
+            title={hasIncompletePrioritySources ? 'Chưa xác định đầy đủ việc ưu tiên.' : 'Không có việc ưu tiên đang mở.'}
+            message={hasIncompletePrioritySources ? 'Một số nguồn chưa sẵn sàng; xem trạng thái nguồn ở phía trên để kiểm tra.' : 'Các nguồn đã tải hiện không có Đề xuất chờ quyết định hoặc Cảnh báo mở.'}
+            tone={hasIncompletePrioritySources ? 'partial' : 'ok'}
+          />
+        ) : null}
       </section>
 
       <p className="sectionEyebrow">Trung tâm quản trị</p>

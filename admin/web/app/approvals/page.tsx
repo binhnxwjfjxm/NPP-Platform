@@ -1,6 +1,13 @@
 import Link from 'next/link';
 import { AdminIconTabs } from '../admin-icon-tabs';
 import { AdminShell } from '../admin-shell';
+import {
+  AdminKpiCard,
+  AdminKpiGrid,
+  AdminStatePanel,
+  AdminStatusBadge,
+  type AdminStatusTone,
+} from '../admin-ui-primitives';
 import { CoreApiError } from '../../lib/core-api';
 import {
   loadProposals,
@@ -24,6 +31,19 @@ function priorityLabel(priority: string) {
   if (priority === 'critical') return 'Ưu tiên cao';
   if (priority === 'high') return 'Cần xử lý sớm';
   return 'Bình thường';
+}
+
+function priorityTone(priority: string): AdminStatusTone {
+  if (priority === 'critical') return 'danger';
+  if (priority === 'high') return 'attention';
+  return 'neutral';
+}
+
+function proposalTone(status: ProposalItem['status']): AdminStatusTone {
+  if (status === 'approved') return 'success';
+  if (status === 'rejected') return 'danger';
+  if (status === 'needs-info') return 'info';
+  return 'attention';
 }
 
 function matchesTab(item: ProposalItem, selected: string) {
@@ -57,18 +77,26 @@ export default async function ApprovalsPage({ searchParams }: { searchParams?: {
   }));
 
   const items = proposals?.filter((item) => matchesTab(item, selected)) ?? [];
+  const selectedLabel = tabDefs.find((tab) => tab.key === selected)?.label ?? 'Tất cả';
 
   return (
     <AdminShell activeSection="approvals" title="Trung tâm đề xuất" subtitle="Tập trung các đề xuất thật sự cần quyết định cấp quản lý.">
       <AdminIconTabs label="Nhóm đề xuất" tabs={tabs} />
+
       {proposals ? (
-        <section className="approvalSummaryStrip" aria-label="Tóm tắt đề xuất">
-          <div><span>Chờ quyết định</span><strong>{proposals.filter((item) => item.status === 'pending').length}</strong></div>
-          <div><span>Chờ bổ sung</span><strong>{proposals.filter((item) => item.status === 'needs-info').length}</strong></div>
-          <div><span>Ưu tiên cao</span><strong>{proposals.filter((item) => item.priority === 'critical' && item.status === 'pending').length}</strong></div>
-        </section>
+        <AdminKpiGrid label="Tóm tắt đề xuất">
+          <AdminKpiCard label="Chờ quyết định" value={proposals.filter((item) => item.status === 'pending').length} note="Đang chờ xem xét" icon="check" />
+          <AdminKpiCard label="Chờ bổ sung" value={proposals.filter((item) => item.status === 'needs-info').length} note="Cần thêm thông tin" icon="info" />
+          <AdminKpiCard label="Ưu tiên cao" value={proposals.filter((item) => item.priority === 'critical' && item.status === 'pending').length} note="Cần chú ý trước" icon="exception" tone="attention" />
+          <AdminKpiCard label="Trong nhóm" value={items.length} note={selectedLabel} icon="document" />
+        </AdminKpiGrid>
       ) : (
-        <div className="card approvalEmpty" role="alert"><strong>{loadMessage ?? 'Không thể tải danh sách đề xuất.'}</strong><span>Vui lòng thử lại sau.</span></div>
+        <AdminStatePanel
+          title={loadMessage ?? 'Không thể tải danh sách đề xuất.'}
+          message="Vui lòng thử lại sau."
+          tone={loadMessage?.includes('không có quyền') ? 'forbidden' : 'error'}
+          icon="info"
+        />
       )}
 
       {proposals ? (
@@ -76,8 +104,8 @@ export default async function ApprovalsPage({ searchParams }: { searchParams?: {
           {items.length ? items.map((item) => (
             <Link key={item.id} className="card approvalListItem" href={`/approvals/${item.id}`}>
               <div className="approvalListTopline">
-                <span className={`approvalPriority is-${item.priority}`}>{priorityLabel(item.priority)}</span>
-                <span className={`approvalState is-${item.status}`}>{proposalStateLabel[item.status]}</span>
+                <AdminStatusBadge tone={priorityTone(item.priority)}>{priorityLabel(item.priority)}</AdminStatusBadge>
+                <AdminStatusBadge tone={proposalTone(item.status)}>{proposalStateLabel[item.status]}</AdminStatusBadge>
               </div>
               <h2>{item.title}</h2>
               {item.entityLabel ? <p className="approvalEntity">{item.entityLabel}</p> : null}
@@ -90,7 +118,13 @@ export default async function ApprovalsPage({ searchParams }: { searchParams?: {
               {item.reason ? <p className="approvalReason">{item.reason}</p> : null}
               <span className="approvalOpenLabel">Xem chi tiết · {proposalDomainLabel[item.domain]}</span>
             </Link>
-          )) : <div className="card approvalEmpty"><strong>Không có đề xuất trong nhóm này.</strong><span>Chọn nhóm khác để tiếp tục.</span></div>}
+          )) : (
+            <AdminStatePanel
+              title="Không có đề xuất trong nhóm này."
+              message="Chọn nhóm khác để tiếp tục."
+              tone="empty"
+            />
+          )}
         </section>
       ) : null}
     </AdminShell>
