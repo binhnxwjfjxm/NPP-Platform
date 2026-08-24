@@ -4,7 +4,7 @@ import { useFormState, useFormStatus } from 'react-dom';
 import { createProposalAction, resubmitProposalAction, type ProposalActionState } from './actions';
 import styles from './proposals.module.css';
 
-const INITIAL_STATE: ProposalActionState = { error: null };
+const INITIAL_STATE: ProposalActionState = { error: null, idempotencyKey: null };
 
 function SubmitButton({ label, pendingLabel }: { label: string; pendingLabel: string }) {
   const { pending } = useFormStatus();
@@ -13,9 +13,10 @@ function SubmitButton({ label, pendingLabel }: { label: string; pendingLabel: st
 
 export function ManagementProposalForm({ idempotencyKey }: { idempotencyKey: string }) {
   const [state, formAction] = useFormState(createProposalAction, INITIAL_STATE);
+  const activeIdempotencyKey = state.idempotencyKey ?? idempotencyKey;
   return (
     <form action={formAction} className={styles.form}>
-      <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+      <input type="hidden" name="idempotencyKey" value={activeIdempotencyKey} />
       <label className={styles.full}>Tiêu đề
         <input name="title" required maxLength={240} placeholder="Ví dụ: Xin điều chỉnh điều kiện thanh toán cho khách hàng A" />
       </label>
@@ -94,10 +95,11 @@ export function ManagementProposalResubmitForm({
   evidence: string[];
 }) {
   const [state, formAction] = useFormState(resubmitProposalAction, INITIAL_STATE);
+  const activeIdempotencyKey = state.idempotencyKey ?? idempotencyKey;
   return (
     <form action={formAction} className={styles.resubmit}>
       <input type="hidden" name="proposalId" value={proposalId} />
-      <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+      <input type="hidden" name="idempotencyKey" value={activeIdempotencyKey} />
       <label>Nội dung bổ sung
         <textarea name="content" defaultValue={content} required maxLength={4000} rows={4} />
       </label>
