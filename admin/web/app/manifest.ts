@@ -2,7 +2,7 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Admin MCP/NPP — Hưng Phát',
+    name: 'Admin Hưng Phát',
     short_name: 'Admin Hưng Phát',
     description: 'Ứng dụng tổng hợp và xử lý ngoại lệ dành cho chủ và quản lý Hưng Phát.',
     start_url: '/',

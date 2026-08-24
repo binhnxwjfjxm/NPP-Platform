@@ -10,9 +10,9 @@ import './admin-closeout.css';
 import './admin-mobile-interaction.css';
 
 export const metadata: Metadata = {
-  title: 'Admin MCP/NPP — Hưng Phát',
+  title: 'Admin Hưng Phát',
   description: 'Trung tâm điều hành dành cho chủ và quản lý Hưng Phát',
-  applicationName: 'Admin MCP/NPP',
+  applicationName: 'Admin Hưng Phát',
   manifest: '/manifest.webmanifest',
   icons: {
     icon: [

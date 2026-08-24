@@ -54,10 +54,10 @@ export function AdminShell({
     <div className="shell adminAppShell" data-admin-app-shell data-active-section={activeSection ?? 'secondary'}>
       <header className="topbar adminAppTopbar">
         <div className="topbarInner">
-          <Link className="brand" href="/" aria-label="Admin MCP/NPP - Tổng quan">
+          <Link className="brand" href="/" aria-label="Admin Hưng Phát - Tổng quan">
             <span className="brandLogoFrame"><img className="brandLogo" src={appLogoUrl} alt="Logo Hưng Phát" /></span>
             <span className="brandCopy">
-              <strong className="brandProductName">Admin MCP/NPP</strong>
+              <strong className="brandProductName">Admin Hưng Phát</strong>
               <span className="brandDescriptor">Theo dõi và quyết định quản trị</span>
               <small className="brandMobileEyebrow">Admin Hưng Phát</small>
               <strong className="brandScreenName">{title}</strong>
