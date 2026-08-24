@@ -7,6 +7,7 @@ import './admin-mobile-app.css';
 import './admin-management-shell.css';
 import './admin-foundation.css';
 import './admin-closeout.css';
+import './admin-mobile-interaction.css';
 
 export const metadata: Metadata = {
   title: 'Admin MCP/NPP — Hưng Phát',
@@ -27,7 +28,13 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  width: 'device-width', initialScale: 1, viewportFit: 'cover', colorScheme: 'light', themeColor: '#2b180b',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
+  colorScheme: 'light',
+  themeColor: '#2b180b',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

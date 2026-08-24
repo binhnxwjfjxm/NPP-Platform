@@ -1,0 +1,55 @@
+/* Shared mobile interaction constraints for Admin. Keeps horizontal rails inside the app viewport and prevents page zoom gestures. */
+@media (max-width: 760px) {
+  html,
+  body {
+    touch-action: pan-x pan-y;
+  }
+
+  .adminAppShell,
+  .adminAppMain,
+  .adminIconTabs,
+  .adminToolbar,
+  .adminToolbarControls,
+  .adminToolbarActions {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .adminIconTabs {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: none;
+    touch-action: pan-x;
+  }
+
+  .adminToolbarControls,
+  .adminToolbarActions {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: none;
+    touch-action: pan-x;
+  }
+
+  /* Remaining pre-Lô-3 period/warehouse subtab rails use local CSS modules.
+     Constrain those semantic rails at the shared interaction layer until they migrate. */
+  .adminAppMain :where(
+    nav[aria-label="Kỳ tổng quan"],
+    div[aria-label="Kỳ báo cáo"],
+    section[aria-label="Lọc theo kho"] > div
+  ) {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: none;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+  }
+}
