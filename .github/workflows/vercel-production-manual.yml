@@ -52,6 +52,42 @@ jobs:
         with: { node-version: 24, cache: npm }
       - name: Install workspace dependencies
         run: npm ci
+      - name: Configure and verify Vercel Node 24 runtime
+        shell: bash
+        env:
+          VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}'
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const endpoint = `https://api.vercel.com/v9/projects/${process.env.VERCEL_PROJECT_ID}?teamId=${process.env.VERCEL_ORG_ID}`;
+          const authorization = `Bearer ${process.env.VERCEL_TOKEN}`;
+          const desired = {
+            framework: 'nextjs',
+            rootDirectory: 'npp-core/web',
+            nodeVersion: '24.x',
+          };
+
+          const update = await fetch(endpoint, {
+            method: 'PATCH',
+            headers: { Authorization: authorization, 'Content-Type': 'application/json' },
+            body: JSON.stringify(desired),
+          });
+          const updateBody = await update.json().catch(() => null);
+          if (!update.ok) {
+            throw new Error(`company_vercel_runtime_update_failed:${update.status}:${updateBody?.error?.code || 'unknown'}`);
+          }
+
+          const readback = await fetch(endpoint, { headers: { Authorization: authorization } });
+          const project = await readback.json().catch(() => null);
+          if (!readback.ok) {
+            throw new Error(`company_vercel_runtime_readback_failed:${readback.status}:${project?.error?.code || 'unknown'}`);
+          }
+          if (project?.id !== process.env.VERCEL_PROJECT_ID) throw new Error(`unexpected_vercel_project:${project?.id}`);
+          if (project?.name !== 'npp-platform') throw new Error(`unexpected_vercel_project_name:${project?.name}`);
+          if (project?.framework !== desired.framework) throw new Error(`unexpected_vercel_framework:${project?.framework}`);
+          if (project?.rootDirectory !== desired.rootDirectory) throw new Error(`unexpected_root_directory:${project?.rootDirectory}`);
+          if (project?.nodeVersion !== desired.nodeVersion) throw new Error(`unexpected_vercel_node_version:${project?.nodeVersion}`);
+          NODE
       - name: Pull production project configuration
         run: npx --yes vercel@latest pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
       - name: Verify Vercel project link
@@ -120,3 +156,4 @@ jobs:
         run: |
           echo "DEPLOYED_SHA=$TARGET_SHA"
           echo "DEPLOYED_URL=$DEPLOYED_URL"
+          echo "VERCEL_NODE_VERSION=24.x"

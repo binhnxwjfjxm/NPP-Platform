@@ -30,6 +30,20 @@ test "$VERCEL_PROJECT_ID" = "$project_id"
 test "$(jq -r '.rootDirectory' "$project_json")" = "$RETAIL_ROOT_DIRECTORY"
 test "$(jq -r '.framework' "$project_json")" = nextjs
 
+# Production must configure the provider runtime on the exact verified project
+# before any Vercel pull/build. Bootstrap is configuration-only and does not deploy.
+GITHUB_OUTPUT= bash retail/web/scripts/bootstrap-project.sh
+runtime_readback_json="${RUNNER_TEMP}/retail-runtime-readback.json"
+status="$(curl --silent --show-error --output "$runtime_readback_json" --write-out '%{http_code}' \
+  -H "Authorization: Bearer $VERCEL_TOKEN" \
+  "https://api.vercel.com/v9/projects/$project_id?teamId=$VERCEL_ORG_ID")"
+test "$status" = 200
+test "$(jq -r '.id' "$runtime_readback_json")" = "$project_id"
+test "$(jq -r '.name' "$runtime_readback_json")" = "$RETAIL_PROJECT_NAME"
+test "$(jq -r '.rootDirectory' "$runtime_readback_json")" = "$RETAIL_ROOT_DIRECTORY"
+test "$(jq -r '.framework' "$runtime_readback_json")" = nextjs
+test "$(jq -r '.nodeVersion' "$runtime_readback_json")" = '24.x'
+
 node --input-type=module <<'NODE'
 import { readFile } from 'node:fs/promises';
 const config = JSON.parse(await readFile('retail/web/vercel.json', 'utf8'));
