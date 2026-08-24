@@ -2,12 +2,24 @@ import 'server-only';
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { AdminIconTabs } from '../admin-icon-tabs';
+import type { AdminIconName } from '../admin-icons';
+import {
+  AdminFilterChip,
+  AdminKpiCard,
+  AdminKpiGrid,
+  AdminStatePanel,
+  AdminStatusBadge,
+  AdminToolbar,
+  type AdminStatusTone,
+} from '../admin-ui-primitives';
 import { CoreApiError, requestCore } from '../../lib/core-api';
 import { resolveReportRange, reportPeriods, type ReportPeriod } from './report-data';
 import styles from './mcp-supervision.module.css';
 
 type Row = Record<string, unknown>;
-type View = 'overview' | 'people' | 'person' | 'routes' | 'outlets' | 'outlet' | 'checkin' | 'map' | 'anomalies';
+type RootView = 'overview' | 'people' | 'routes' | 'outlets' | 'anomalies';
+type View = RootView | 'person' | 'outlet' | 'checkin' | 'map';
 
 export type McpReportSearchParams = {
   view?: string;
@@ -225,7 +237,7 @@ function buildHref(
   return `?${params.toString()}`;
 }
 
-function parentView(view: View): 'overview' | 'people' | 'routes' | 'outlets' | 'anomalies' {
+function parentView(view: View): RootView {
   if (view === 'person') return 'people';
   if (view === 'map') return 'routes';
   if (view === 'outlet' || view === 'checkin') return 'outlets';
@@ -273,15 +285,15 @@ function initials(name: string): string {
   return parts.slice(-2).map((part) => part.charAt(0).toLocaleUpperCase('vi-VN')).join('');
 }
 
-function toneClass(tone: 'ok' | 'warn' | 'danger' | 'neutral'): string {
-  if (tone === 'ok') return styles.badgeOk;
-  if (tone === 'warn') return styles.badgeWarn;
-  if (tone === 'danger') return styles.badgeDanger;
-  return styles.badgeNeutral;
+function sharedStatusTone(tone: 'ok' | 'warn' | 'danger' | 'neutral'): AdminStatusTone {
+  if (tone === 'ok') return 'success';
+  if (tone === 'warn') return 'attention';
+  if (tone === 'danger') return 'danger';
+  return 'neutral';
 }
 
 function Badge({ label, tone = 'neutral' }: { label: string; tone?: 'ok' | 'warn' | 'danger' | 'neutral' }) {
-  return <span className={`${styles.badge} ${toneClass(tone)}`}>{label}</span>;
+  return <AdminStatusBadge tone={sharedStatusTone(tone)}>{label}</AdminStatusBadge>;
 }
 
 function Pagination({
@@ -313,7 +325,7 @@ function SearchBar({
   placeholder: string;
 }) {
   return (
-    <form className={styles.searchBar} method="get">
+    <form className={`adminToolbar ${styles.searchBar}`} method="get">
       <input type="hidden" name="period" value={period} />
       <input type="hidden" name="view" value={searchParams.view ?? 'overview'} />
       {searchParams.returnTo ? <input type="hidden" name="returnTo" value={searchParams.returnTo} /> : null}
@@ -381,12 +393,12 @@ export async function McpSupervision({
     return routes.find((route) => routeMatchesSession(route, session)) ?? null;
   };
 
-  const tabs: Array<{ view: 'overview' | 'people' | 'routes' | 'outlets' | 'anomalies'; label: string }> = [
-    { view: 'overview', label: 'Tổng quan' },
-    { view: 'people', label: 'Nhân viên' },
-    { view: 'routes', label: 'Tuyến' },
-    { view: 'outlets', label: 'Điểm bán' },
-    { view: 'anomalies', label: 'Bất thường' },
+  const tabs: Array<{ view: RootView; label: string; icon: AdminIconName }> = [
+    { view: 'overview', label: 'Tổng quan', icon: 'overview' },
+    { view: 'people', label: 'Nhân viên', icon: 'user' },
+    { view: 'routes', label: 'Tuyến', icon: 'truck' },
+    { view: 'outlets', label: 'Điểm bán', icon: 'branch' },
+    { view: 'anomalies', label: 'Bất thường', icon: 'exception' },
   ];
 
   const plannedOutletCount = sumRows(actors, 'plannedOutletCount');
@@ -410,53 +422,48 @@ export async function McpSupervision({
         <span className={styles.readOnlyNote}>Dữ liệu giám sát · chỉ xem</span>
       </div>
 
-      <nav className={styles.tabBar} aria-label="Báo cáo MCP">
-        {tabs.map((tab) => (
-          <Link
-            aria-current={rootView === tab.view ? 'page' : undefined}
-            className={`${styles.tab} ${rootView === tab.view ? styles.tabActive : ''}`}
-            href={buildHref(period, searchParams, {
-              view: tab.view,
-              actor: null,
-              route: null,
-              outlet: null,
-              q: null,
-              status: null,
-              page: null,
-            })}
-            key={tab.view}
-          >
-            {tab.label}
-          </Link>
-        ))}
-      </nav>
+      <AdminIconTabs
+        label="Báo cáo MCP"
+        tabs={tabs.map((tab) => ({
+          href: buildHref(period, searchParams, {
+            view: tab.view,
+            actor: null,
+            route: null,
+            outlet: null,
+            q: null,
+            status: null,
+            page: null,
+          }),
+          label: tab.label,
+          icon: tab.icon,
+          active: rootView === tab.view,
+        }))}
+      />
 
-      <div className={styles.periodBar}>
-        <span>Kỳ xem</span>
-        <div className={styles.periodChoices}>
-          {reportPeriods.map((candidate) => (
-            <Link
-              aria-current={candidate === period ? 'page' : undefined}
-              className={`${styles.periodChoice} ${candidate === period ? styles.periodChoiceActive : ''}`}
-              href={buildHref(candidate, searchParams, { page: null })}
-              key={candidate}
-            >
-              {candidate}
-            </Link>
-          ))}
-        </div>
-      </div>
+      <AdminToolbar label="Kỳ xem báo cáo MCP">
+        {reportPeriods.map((candidate) => (
+          <AdminFilterChip
+            active={candidate === period}
+            href={buildHref(candidate, searchParams, { page: null })}
+            key={candidate}
+            label={candidate}
+          />
+        ))}
+      </AdminToolbar>
     </>
   );
 
   if (result.message || !result.data) {
+    const forbidden = result.message?.includes('không có quyền') ?? false;
     return (
       <div className={styles.experience}>
         {top}
-        <section className={styles.emptyState} role="status">
-          <h2>Chưa thể mở giám sát MCP</h2>
-          <p>{result.message ?? 'Dữ liệu giám sát chưa sẵn sàng.'}</p>
-        </section>
+        <AdminStatePanel
+          icon="exception"
+          message={result.message ?? 'Dữ liệu giám sát chưa sẵn sàng.'}
+          title="Chưa thể mở giám sát MCP"
+          tone={forbidden ? 'forbidden' : 'error'}
+        />
       </div>
     );
   }
@@ -470,32 +477,37 @@ export async function McpSupervision({
     const reviewLocations = integer(text(summary, 'reviewLocationCount', '0'));
     content = (
       <>
-        <section className={styles.kpiGrid} aria-label="Chỉ số tổng quan MCP">
-          <Link className={styles.kpiCard} href={buildHref(period, searchParams, { view: 'people', page: null })}>
-            <span>Nhân viên</span>
-            <strong>{formattedNumber(integer(text(summary, 'employeeCount', '0')))}</strong>
-            <small>{actors.filter((actor) => integer(text(actor, 'sessionCount', '0')) > 0).length} có hoạt động</small>
-            <b>Xem nhân viên →</b>
-          </Link>
-          <Link className={styles.kpiCard} href={buildHref(period, searchParams, { view: 'routes', page: null })}>
-            <span>Tuyến</span>
-            <strong>{formattedNumber(integer(text(summary, 'routeCount', '0')))}</strong>
-            <small>{routes.filter((route) => integer(text(route, 'sessionCount', '0')) > 0).length} có phiên</small>
-            <b>Xem tuyến →</b>
-          </Link>
-          <Link className={styles.kpiCard} href={buildHref(period, searchParams, { view: 'outlets', page: null })}>
-            <span>Điểm kế hoạch</span>
-            <strong>{formattedNumber(plannedOutletCount)}</strong>
-            <small>Đã ghé {formattedNumber(plannedVisitedCount)} · {plannedCompletion}%</small>
-            <b>Xem điểm bán →</b>
-          </Link>
-          <Link className={`${styles.kpiCard} ${anomalyCount ? styles.kpiAttention : ''}`} href={buildHref(period, searchParams, { view: 'anomalies', page: null })}>
-            <span>Bất thường</span>
-            <strong>{formattedNumber(anomalyCount)}</strong>
-            <small>{reviewLocations} vị trí cần kiểm tra</small>
-            <b>Xem bất thường →</b>
-          </Link>
-        </section>
+        <AdminKpiGrid label="Chỉ số tổng quan MCP">
+          <AdminKpiCard
+            href={buildHref(period, searchParams, { view: 'people', page: null })}
+            icon="user"
+            label="Nhân viên"
+            note={`${actors.filter((actor) => integer(text(actor, 'sessionCount', '0')) > 0).length} có hoạt động · Xem nhân viên`}
+            value={formattedNumber(integer(text(summary, 'employeeCount', '0')))}
+          />
+          <AdminKpiCard
+            href={buildHref(period, searchParams, { view: 'routes', page: null })}
+            icon="truck"
+            label="Tuyến"
+            note={`${routes.filter((route) => integer(text(route, 'sessionCount', '0')) > 0).length} có phiên · Xem tuyến`}
+            value={formattedNumber(integer(text(summary, 'routeCount', '0')))}
+          />
+          <AdminKpiCard
+            href={buildHref(period, searchParams, { view: 'outlets', page: null })}
+            icon="branch"
+            label="Điểm kế hoạch"
+            note={`Đã ghé ${formattedNumber(plannedVisitedCount)} · ${plannedCompletion}% · Xem điểm bán`}
+            value={formattedNumber(plannedOutletCount)}
+          />
+          <AdminKpiCard
+            href={buildHref(period, searchParams, { view: 'anomalies', page: null })}
+            icon="exception"
+            label="Bất thường"
+            note={`${reviewLocations} vị trí cần kiểm tra · Xem bất thường`}
+            tone={anomalyCount ? 'attention' : 'neutral'}
+            value={formattedNumber(anomalyCount)}
+          />
+        </AdminKpiGrid>
 
         <section className={styles.surface}>
           <div className={styles.sectionHeading}>
@@ -589,11 +601,12 @@ export async function McpSupervision({
   if (view === 'person') {
     if (!selectedActor) {
       content = (
-        <section className={styles.emptyState}>
-          <h2>Không tìm thấy nhân viên</h2>
-          <p>Dữ liệu có thể đã thay đổi. Quay lại danh sách để chọn lại nhân viên.</p>
-          <Link className={styles.primaryAction} href={buildHref(period, searchParams, { view: 'people', actor: null, page: null })}>Quay lại danh sách nhân viên</Link>
-        </section>
+        <AdminStatePanel
+          actions={<Link className={styles.primaryAction} href={buildHref(period, searchParams, { view: 'people', actor: null, page: null })}>Quay lại danh sách nhân viên</Link>}
+          icon="user"
+          message="Dữ liệu có thể đã thay đổi. Quay lại danh sách để chọn lại nhân viên."
+          title="Không tìm thấy nhân viên"
+        />
       );
     } else {
       const key = actorKey(selectedActor);
@@ -769,7 +782,7 @@ export async function McpSupervision({
 
         <SearchBar period={period} searchParams={{ ...searchParams, view: 'outlets' }} placeholder="Tìm tên hoặc địa chỉ điểm bán" />
 
-        <nav className={styles.filterBar} aria-label="Lọc trạng thái điểm bán">
+        <AdminToolbar label="Lọc trạng thái điểm bán">
           {[
             ['all', 'Tất cả'],
             ['visited', 'Đã ghé'],
@@ -777,16 +790,14 @@ export async function McpSupervision({
             ['review', 'GPS cần kiểm tra'],
             ['insufficient', 'Thiếu bằng chứng'],
           ].map(([key, label]) => (
-            <Link
-              aria-current={status === key ? 'page' : undefined}
-              className={`${styles.filterChip} ${status === key ? styles.filterChipActive : ''}`}
+            <AdminFilterChip
+              active={status === key}
               href={buildHref(period, searchParams, { view: 'outlets', status: key === 'all' ? null : key, page: null })}
               key={key}
-            >
-              {label}
-            </Link>
+              label={label}
+            />
           ))}
-        </nav>
+        </AdminToolbar>
 
         <div className={styles.list}>
           {page.items.map((row) => {
@@ -821,11 +832,12 @@ export async function McpSupervision({
   if (view === 'outlet') {
     if (!selectedOutlet) {
       content = (
-        <section className={styles.emptyState}>
-          <h2>Không tìm thấy điểm bán</h2>
-          <p>Dữ liệu có thể đã thay đổi. Quay lại danh sách để chọn lại.</p>
-          <Link className={styles.primaryAction} href={buildHref(period, searchParams, { view: 'outlets', outlet: null, page: null })}>Quay lại danh sách điểm bán</Link>
-        </section>
+        <AdminStatePanel
+          actions={<Link className={styles.primaryAction} href={buildHref(period, searchParams, { view: 'outlets', outlet: null, page: null })}>Quay lại danh sách điểm bán</Link>}
+          icon="branch"
+          message="Dữ liệu có thể đã thay đổi. Quay lại danh sách để chọn lại."
+          title="Không tìm thấy điểm bán"
+        />
       );
     } else {
       const key = customerKey(selectedOutlet);
@@ -924,11 +936,12 @@ export async function McpSupervision({
   if (view === 'checkin') {
     if (!selectedOutlet) {
       content = (
-        <section className={styles.emptyState}>
-          <h2>Không tìm thấy dữ liệu check-in</h2>
-          <p>Dữ liệu có thể đã thay đổi. Quay lại danh sách điểm bán để chọn lại.</p>
-          <Link className={styles.primaryAction} href={buildHref(period, searchParams, { view: 'outlets', outlet: null })}>Quay lại điểm bán</Link>
-        </section>
+        <AdminStatePanel
+          actions={<Link className={styles.primaryAction} href={buildHref(period, searchParams, { view: 'outlets', outlet: null })}>Quay lại điểm bán</Link>}
+          icon="location"
+          message="Dữ liệu có thể đã thay đổi. Quay lại danh sách điểm bán để chọn lại."
+          title="Không tìm thấy dữ liệu check-in"
+        />
       );
     } else {
       const location = text(selectedOutlet, 'locationStatus', 'not_checked_in');
@@ -991,11 +1004,12 @@ export async function McpSupervision({
   if (view === 'map') {
     if (!selectedRoute) {
       content = (
-        <section className={styles.emptyState}>
-          <h2>Chưa chọn tuyến để xem bản đồ</h2>
-          <p>Chọn một tuyến trong danh sách để xem các vị trí GPS đã ghi nhận.</p>
-          <Link className={styles.primaryAction} href={buildHref(period, searchParams, { view: 'routes', route: null, page: null })}>Chọn tuyến</Link>
-        </section>
+        <AdminStatePanel
+          actions={<Link className={styles.primaryAction} href={buildHref(period, searchParams, { view: 'routes', route: null, page: null })}>Chọn tuyến</Link>}
+          icon="location"
+          message="Chọn một tuyến trong danh sách để xem các vị trí GPS đã ghi nhận."
+          title="Chưa chọn tuyến để xem bản đồ"
+        />
       );
     } else {
       const routeSessions = sessions.filter((session) => routeMatchesSession(selectedRoute, session));
@@ -1122,23 +1136,21 @@ export async function McpSupervision({
         </div>
 
         <SearchBar period={period} searchParams={{ ...searchParams, view: 'anomalies' }} placeholder="Tìm điểm bán, nhân viên hoặc tuyến" />
-        <nav className={styles.filterBar} aria-label="Lọc loại bất thường">
+        <AdminToolbar label="Lọc loại bất thường">
           {[
             ['all', 'Tất cả'],
             ['location', 'GPS / vị trí'],
             ['checkin', 'Thiếu check-in'],
             ['activity', 'Thiếu hoạt động'],
           ].map(([key, label]) => (
-            <Link
-              aria-current={group === key ? 'page' : undefined}
-              className={`${styles.filterChip} ${group === key ? styles.filterChipActive : ''}`}
+            <AdminFilterChip
+              active={group === key}
               href={buildHref(period, searchParams, { view: 'anomalies', status: key === 'all' ? null : key, page: null })}
               key={key}
-            >
-              {label}
-            </Link>
+              label={label}
+            />
           ))}
-        </nav>
+        </AdminToolbar>
 
         <div className={styles.list}>
           {page.items.map((row, index) => {

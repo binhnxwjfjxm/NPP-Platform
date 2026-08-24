@@ -44,12 +44,22 @@
 /* Business tabs: compact icon + label, never tile cards. */
 .adminIconTabs {
   display: flex;
+  align-items: stretch;
   gap: .2rem;
+  height: 43px;
+  min-height: 43px;
+  max-height: 43px;
   margin: 0 0 1rem;
   padding: 0 .05rem;
   overflow-x: auto;
+  overflow-y: hidden;
   border-bottom: 1px solid var(--admin-border);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: none;
+  scroll-snap-type: x proximity;
   scrollbar-width: none;
+  touch-action: pan-x pinch-zoom;
 }
 
 .adminIconTabs::-webkit-scrollbar { display: none; }
@@ -61,7 +71,10 @@
   align-items: center;
   justify-content: center;
   gap: .4rem;
+  box-sizing: border-box;
+  height: 42px;
   min-height: 42px;
+  max-height: 42px;
   padding: .48rem .68rem .5rem;
   border: 0;
   border-radius: 10px 10px 0 0;
@@ -70,6 +83,7 @@
   text-align: left;
   text-decoration: none;
   box-shadow: none;
+  scroll-snap-align: start;
   transition: background 140ms ease, color 140ms ease;
 }
 
@@ -337,8 +351,19 @@
   .adminPageHeader h1 { font-size: 1.42rem; }
   .adminPageHeader .pageSubtitle { font-size: .76rem; }
 
-  .adminIconTabs { margin-right: -2px; margin-left: -2px; }
-  .adminIconTab { min-height: 40px; padding: .46rem .6rem .48rem; }
+  .adminIconTabs {
+    height: 41px;
+    min-height: 41px;
+    max-height: 41px;
+    margin-right: -2px;
+    margin-left: -2px;
+  }
+  .adminIconTab {
+    height: 40px;
+    min-height: 40px;
+    max-height: 40px;
+    padding: .46rem .6rem .48rem;
+  }
   .adminIconTabLabel { font-size: .68rem; }
 
   .adminToolbar { align-items: stretch; flex-direction: column; }
