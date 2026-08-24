@@ -54,6 +54,15 @@ test('UI polish keeps mobile controls readable while preserving the locked viewp
   assert.match(interaction, /touch-action:\s*pan-x pan-y/);
 });
 
+test('mobile shell renders one primary navigation and removes duplicated page chrome', async () => {
+  const interaction = await read('app/admin-mobile-interaction.css');
+
+  assert.match(interaction, /\.adminAppTopbar \.adminPrimaryNav \{\s*display: none;/);
+  assert.match(interaction, /\.adminAppTopbar \.topbarInner \{\s*grid-template-columns: minmax\(0, 1fr\) auto;/);
+  assert.match(interaction, /\.adminPageHeader h1 \{[\s\S]*clip-path: inset\(50%\)/);
+  assert.match(interaction, /\.adminAppMain \.adminToolbar \{[\s\S]*border: 0;[\s\S]*background: transparent;/);
+});
+
 test('UI polish uses local Admin branding and removes proven dead shared CSS owners', async () => {
   const [shell, login, managementCss, closeoutCss] = await Promise.all([
     read('app/admin-shell.tsx'),
