@@ -1,8 +1,47 @@
-/* Shared mobile interaction constraints for Admin. Keeps horizontal rails inside the app viewport and prevents page zoom gestures. */
+/* Final mobile shell and interaction constraints for Admin. This file loads last so mobile visibility, rails and gesture rules cannot be reopened by older shared CSS. */
 @media (max-width: 760px) {
   html,
   body {
     touch-action: pan-x pan-y;
+  }
+
+  /* Mobile owns one primary navigation only: the bottom bar. */
+  .adminAppTopbar .adminPrimaryNav {
+    display: none;
+  }
+
+  .adminAppTopbar .topbarInner {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  /* The app bar already shows the screen name on mobile; keep the semantic h1 without repeating it visually. */
+  .adminPageHeader h1 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .adminPageHeader {
+    margin-bottom: .65rem;
+  }
+
+  .adminPageHeader .pageSubtitle {
+    margin-top: 0 !important;
+  }
+
+  /* Mobile filters/actions are rails, not another card nested inside the page. */
+  .adminAppMain .adminToolbar {
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
   }
 
   .adminAppShell,
