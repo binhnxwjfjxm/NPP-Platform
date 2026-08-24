@@ -6,6 +6,7 @@ import { normalizeIdempotencyKey, readJsonBody } from '../idempotency.js';
 const EVENTS_ROOT = '/api/ai/usage-events';
 const SUMMARY_ROOT = '/api/ai/usage-summary';
 const MANAGER_ROLES = new Set(['bootstrap', 'system:security-owner', 'system:implementation-owner']);
+const WEBSITE_AI_ROLE = 'website-ai-service';
 const SOURCES = new Set(['admin', 'website', 'ordering']);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_SLUG = /^[a-z0-9][a-z0-9._-]{0,95}$/;
@@ -75,7 +76,7 @@ export function normalizeAiUsagePayload(payload, receivedAt = new Date().toISOSt
   if (source === 'admin' && customerId !== null) {
     throw apiError('AI_USAGE_CUSTOMER_INVALID', 'Mức sử dụng AI nội bộ không gắn vào hạn mức khách hàng', {}, false, 400);
   }
-  if ((source === 'website' || source === 'ordering') && (!customerId || !UUID_PATTERN.test(customerId))) {
+  if (source === 'ordering' && (!customerId || !UUID_PATTERN.test(customerId))) {
     throw apiError('AI_USAGE_CUSTOMER_REQUIRED', 'Cần xác định khách hàng sử dụng AI', {}, false, 400);
   }
   if (customerId && !UUID_PATTERN.test(customerId)) {
@@ -127,6 +128,19 @@ function roles(context) {
 
 function canManageAiUsage(context) {
   return roles(context).some((role) => MANAGER_ROLES.has(role));
+}
+
+function isWebsiteAiService(context) {
+  return roles(context).includes(WEBSITE_AI_ROLE);
+}
+
+function canAttemptAiUsageWrite(context) {
+  return canManageAiUsage(context) || isWebsiteAiService(context);
+}
+
+export function canWriteAiUsage(context, usage) {
+  if (canManageAiUsage(context)) return true;
+  return isWebsiteAiService(context) && usage?.source === 'website';
 }
 
 function decimalRateToScaled(value) {
@@ -334,21 +348,11 @@ function parseListQuery(url) {
   const to = String(url.searchParams.get('to') ?? '').trim();
   const limitRaw = Number(url.searchParams.get('limit') ?? 100);
   const offsetRaw = Number(url.searchParams.get('offset') ?? 0);
-  if (source && !SOURCES.has(source)) {
-    throw apiError('AI_USAGE_FILTER_INVALID', 'Nguồn AI cần xem không hợp lệ', {}, false, 400);
-  }
-  if (model && !SAFE_MODEL.test(model)) {
-    throw apiError('AI_USAGE_FILTER_INVALID', 'Model AI cần xem không hợp lệ', {}, false, 400);
-  }
-  if (customerId && !UUID_PATTERN.test(customerId)) {
-    throw apiError('AI_USAGE_FILTER_INVALID', 'Mã khách hàng cần xem không hợp lệ', {}, false, 400);
-  }
-  if (from && !Number.isFinite(Date.parse(from))) {
-    throw apiError('AI_USAGE_FILTER_INVALID', 'Mốc thời gian bắt đầu không hợp lệ', {}, false, 400);
-  }
-  if (to && !Number.isFinite(Date.parse(to))) {
-    throw apiError('AI_USAGE_FILTER_INVALID', 'Mốc thời gian kết thúc không hợp lệ', {}, false, 400);
-  }
+  if (source && !SOURCES.has(source)) throw apiError('AI_USAGE_FILTER_INVALID', 'Nguồn AI cần xem không hợp lệ', {}, false, 400);
+  if (model && !SAFE_MODEL.test(model)) throw apiError('AI_USAGE_FILTER_INVALID', 'Model AI cần xem không hợp lệ', {}, false, 400);
+  if (customerId && !UUID_PATTERN.test(customerId)) throw apiError('AI_USAGE_FILTER_INVALID', 'Mã khách hàng cần xem không hợp lệ', {}, false, 400);
+  if (from && !Number.isFinite(Date.parse(from))) throw apiError('AI_USAGE_FILTER_INVALID', 'Mốc thời gian bắt đầu không hợp lệ', {}, false, 400);
+  if (to && !Number.isFinite(Date.parse(to))) throw apiError('AI_USAGE_FILTER_INVALID', 'Mốc thời gian kết thúc không hợp lệ', {}, false, 400);
   if (!Number.isInteger(limitRaw) || limitRaw < 1 || limitRaw > 500 || !Number.isInteger(offsetRaw) || offsetRaw < 0) {
     throw apiError('AI_USAGE_FILTER_INVALID', 'Phân trang mức sử dụng AI không hợp lệ', {}, false, 400);
   }
@@ -359,14 +363,7 @@ function parseListQuery(url) {
 }
 
 function filterParams(context, filter) {
-  return [
-    context.installationId,
-    filter.source,
-    filter.model,
-    filter.customerId,
-    filter.from,
-    filter.to,
-  ];
+  return [context.installationId, filter.source, filter.model, filter.customerId, filter.from, filter.to];
 }
 
 const FILTER_WHERE = `installation_id = $1
@@ -385,11 +382,7 @@ async function listUsage(adapter, context, url) {
       LIMIT $7 OFFSET $8`,
     [...filterParams(context, filter), filter.limit, filter.offset],
   );
-  return Object.freeze({
-    events: Object.freeze((result.rows ?? []).map(publicEvent)),
-    limit: filter.limit,
-    offset: filter.offset,
-  });
+  return Object.freeze({ events: Object.freeze((result.rows ?? []).map(publicEvent)), limit: filter.limit, offset: filter.offset });
 }
 
 function tokenTotals(row = {}) {
@@ -404,12 +397,7 @@ function tokenTotals(row = {}) {
 }
 
 function usageBreakdownRow(row, key) {
-  return Object.freeze({
-    [key]: String(row[key]),
-    eventCount: Number(row.event_count ?? 0),
-    ...tokenTotals(row),
-    usageUsd: String(row.usage_usd ?? '0'),
-  });
+  return Object.freeze({ [key]: String(row[key]), eventCount: Number(row.event_count ?? 0), ...tokenTotals(row), usageUsd: String(row.usage_usd ?? '0') });
 }
 
 function customerUsageRow(row) {
@@ -542,9 +530,7 @@ export async function buildAiUsageSummary(adapter, context, url) {
       `SELECT id FROM shared.customers WHERE installation_id = $1 AND id = $2::uuid LIMIT 1`,
       [context.installationId, filter.customerId],
     );
-    if (exists.rows?.length !== 1) {
-      throw apiError('AI_USAGE_CUSTOMER_NOT_FOUND', 'Khách hàng không tồn tại', {}, false, 404);
-    }
+    if (exists.rows?.length !== 1) throw apiError('AI_USAGE_CUSTOMER_NOT_FOUND', 'Khách hàng không tồn tại', {}, false, 404);
     credit = await customerCredit(adapter, context.installationId, filter.customerId);
   }
 
@@ -610,9 +596,7 @@ export async function handleAiUsageRoutes(req, res, options) {
       return true;
     }
     try {
-      const data = url.pathname === EVENTS_ROOT
-        ? await listUsage(adapter, context, url)
-        : await buildAiUsageSummary(adapter, context, url);
+      const data = url.pathname === EVENTS_ROOT ? await listUsage(adapter, context, url) : await buildAiUsageSummary(adapter, context, url);
       res.setHeader('Cache-Control', 'no-store');
       sendSuccess(res, data, options.requestId, options.receivedAt);
     } catch (error) {
@@ -625,7 +609,7 @@ export async function handleAiUsageRoutes(req, res, options) {
     sendError(res, apiError('METHOD_NOT_ALLOWED', 'Phương thức không được hỗ trợ', {}, false, 405), options.requestId, options.receivedAt);
     return true;
   }
-  if (!canManageAiUsage(context)) {
+  if (!canAttemptAiUsageWrite(context)) {
     sendError(res, apiError('FORBIDDEN', 'Tài khoản hiện tại không có quyền ghi mức sử dụng AI', {}, false, 403), options.requestId, options.receivedAt);
     return true;
   }
@@ -647,6 +631,11 @@ export async function handleAiUsageRoutes(req, res, options) {
     } else {
       sendPublicError(res, error, options, 'AI_USAGE_PAYLOAD_INVALID', 'Dữ liệu mức sử dụng AI không hợp lệ');
     }
+    return true;
+  }
+
+  if (!canWriteAiUsage(context, usage)) {
+    sendError(res, apiError('FORBIDDEN', 'Nguồn mức sử dụng AI không phù hợp với quyền của dịch vụ', {}, false, 403), options.requestId, options.receivedAt);
     return true;
   }
 

@@ -227,6 +227,21 @@ export function loadConfig(envInput) {
     ? parseUuidList(configuredMcpSalesWarehouseIds, 'MCP_SALES_WAREHOUSE_IDS')
     : Object.freeze([]);
 
+  const websiteAiApiToken = text(env.WEBSITE_AI_API_TOKEN);
+  const configuredWebsiteAiActorId = text(env.WEBSITE_AI_ACTOR_ID);
+  if (!websiteAiApiToken && configuredWebsiteAiActorId) {
+    fail('incomplete_website_ai_config', 'WEBSITE_AI_API_TOKEN is required when WEBSITE_AI_ACTOR_ID is configured');
+  }
+  if (websiteAiApiToken) {
+    validateNamedToken(websiteAiApiToken, 'WEBSITE_AI_API_TOKEN', nodeEnv);
+    if ([backendApiToken, mcpOnboardingApiToken, mcpSalesApiToken].includes(websiteAiApiToken)) {
+      fail('website_ai_token_reuse_forbidden', 'WEBSITE_AI_API_TOKEN must differ from other backend tokens');
+    }
+  }
+  const websiteAiActorId = websiteAiApiToken
+    ? validateServiceActorId(configuredWebsiteAiActorId, 'WEBSITE_AI_ACTOR_ID', nodeEnv, 'service:website-ai')
+    : '';
+
   const deliveryFrontendApiToken = text(env.DELIVERY_FRONTEND_API_TOKEN);
   const configuredDeliveryFrontendActorId = text(env.DELIVERY_FRONTEND_ACTOR_ID);
   const configuredDeliveryFrontendWarehouseIds = text(env.DELIVERY_FRONTEND_WAREHOUSE_IDS);
@@ -243,7 +258,7 @@ export function loadConfig(envInput) {
   }
   if (deliveryFrontendApiToken) {
     validateNamedToken(deliveryFrontendApiToken, 'DELIVERY_FRONTEND_API_TOKEN', nodeEnv);
-    if ([backendApiToken, mcpOnboardingApiToken, mcpSalesApiToken].includes(deliveryFrontendApiToken)) {
+    if ([backendApiToken, mcpOnboardingApiToken, mcpSalesApiToken, websiteAiApiToken].includes(deliveryFrontendApiToken)) {
       fail('delivery_frontend_token_reuse_forbidden', 'DELIVERY_FRONTEND_API_TOKEN must differ from other backend tokens');
     }
   }
@@ -301,6 +316,8 @@ export function loadConfig(envInput) {
     mcpSalesApiToken,
     mcpSalesActorId,
     mcpSalesWarehouseIds,
+    websiteAiApiToken,
+    websiteAiActorId,
     deliveryFrontendApiToken,
     deliveryFrontendActorId,
     deliveryFrontendWarehouseIds,
@@ -327,6 +344,7 @@ export function getSanitizedConfig(config) {
     mcpOnboardingConfigured: Boolean(config.mcpOnboardingApiToken),
     mcpSalesConfigured: Boolean(config.mcpSalesApiToken),
     mcpSalesWarehouseScopeCount: config.mcpSalesWarehouseIds.length,
+    websiteAiConfigured: Boolean(config.websiteAiApiToken),
     deliveryFrontendConfigured: Boolean(config.deliveryFrontendApiToken),
     deliveryFrontendWarehouseScopeCount: config.deliveryFrontendWarehouseIds.length,
     databaseSslMode: config.databaseSslMode,

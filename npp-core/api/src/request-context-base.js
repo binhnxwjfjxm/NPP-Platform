@@ -181,6 +181,16 @@ export function createMcpSalesPrincipal(config, employeeId) {
   });
 }
 
+export function createWebsiteAiPrincipal(config) {
+  if (!config.websiteAiApiToken) return null;
+  return normalizePrincipal({
+    actorId: config.websiteAiActorId,
+    roles: ['website-ai-service'],
+    permissions: [],
+    sourceApp: 'website',
+  });
+}
+
 export function createDeliveryFrontendPrincipal(config, employeeId) {
   if (!config.deliveryFrontendApiToken || !UUID_PATTERN.test(String(employeeId ?? ''))) return null;
   return normalizePrincipal({
@@ -240,6 +250,9 @@ export function authenticateRequest(req, config) {
   }
   if (config.mcpOnboardingApiToken && tokenMatches(candidate, config.mcpOnboardingApiToken)) {
     return { ok: true, principal: createMcpOnboardingPrincipal(config) };
+  }
+  if (config.websiteAiApiToken && tokenMatches(candidate, config.websiteAiApiToken)) {
+    return { ok: true, principal: createWebsiteAiPrincipal(config) };
   }
   if (tokenMatches(candidate, config.backendApiToken)) {
     return { ok: true, principal: createBootstrapPrincipal(config) };
