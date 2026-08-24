@@ -11,11 +11,23 @@ test('admin keeps standalone frontend with shared Core backend and auth', async 
 });
 
 test('admin shell exposes exactly four management destinations with proposal wording', async () => {
-  const [shell, tabs, css, overview] = await Promise.all([read('app/admin-shell.tsx'), read('app/admin-icon-tabs.tsx'), read('app/admin-management-shell.css'), read('app/page.tsx')]);
+  const [shell, tabs, managementCss, overview, mobileApp, foundation] = await Promise.all([
+    read('app/admin-shell.tsx'),
+    read('app/admin-icon-tabs.tsx'),
+    read('app/admin-management-shell.css'),
+    read('app/page.tsx'),
+    read('app/admin-mobile-app.css'),
+    read('app/admin-foundation.css'),
+  ]);
   for (const label of ['Tổng quan', 'Đề xuất', 'Cảnh báo', 'Báo cáo']) assert.match(shell, new RegExp(label));
   assert.doesNotMatch(shell, /label: 'Phê duyệt'/);
   assert.equal((shell.match(/section: '(overview|approvals|alerts|reports)'/g) ?? []).length, 4);
-  assert.match(shell, /href: '\/approvals'/); assert.match(shell, /href: '\/alerts'/); assert.match(shell, /href: '\/reports'/); assert.doesNotMatch(shell, /NPP_OPERATIONS_URL|NPP Operations/); assert.doesNotMatch(shell, /label="Menu"|section: 'menu'/); assert.match(tabs, /adminIconTabs/); assert.match(tabs, /adminIconTabBadge/); assert.match(css, /repeat\(4,minmax\(0,1fr\)\)/); assert.match(overview, /href="\/approvals"/); assert.match(overview, /href="\/alerts"/); assert.match(overview, /href="\/reports"/); assert.doesNotMatch(overview, /NPP_OPERATIONS_URL|npp-platform\.vercel\.app/);
+  assert.match(shell, /href: '\/approvals'/); assert.match(shell, /href: '\/alerts'/); assert.match(shell, /href: '\/reports'/); assert.doesNotMatch(shell, /NPP_OPERATIONS_URL|NPP Operations/); assert.doesNotMatch(shell, /label="Menu"|section: 'menu'/);
+  assert.match(tabs, /adminIconTabs/); assert.match(tabs, /adminIconTabBadge/);
+  assert.match(mobileApp, /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
+  assert.doesNotMatch(managementCss, /\.adminIconTabs|\.adminIconTab\b/);
+  assert.match(foundation, /\.adminIconTabs/);
+  assert.match(overview, /href="\/approvals"/); assert.match(overview, /href="\/alerts"/); assert.match(overview, /href="\/reports"/); assert.doesNotMatch(overview, /NPP_OPERATIONS_URL|npp-platform\.vercel\.app/);
 });
 
 test('admin main module shells keep management taxonomy without fake mutations', async () => {
@@ -59,17 +71,27 @@ test('management reports use office language and server-side Company/MCP reporti
 });
 
 test('overview uses live proposal alert and reporting sources with shared management layout', async () => {
-  const [overview, controlTower, css, overviewCss] = await Promise.all([read('app/page.tsx'), read('lib/control-tower.ts'), read('app/admin-management-shell.css'), read('app/overview.module.css')]);
+  const [overview, controlTower, managementCss, overviewCss, mobileApp, foundation] = await Promise.all([
+    read('app/page.tsx'),
+    read('lib/control-tower.ts'),
+    read('app/admin-management-shell.css'),
+    read('app/overview.module.css'),
+    read('app/admin-mobile-app.css'),
+    read('app/admin-foundation.css'),
+  ]);
   assert.match(overview, /loadProposals/); assert.match(overview, /loadAlertCenter/); assert.match(overview, /loadControlTower\(range\)/); assert.match(overview, /reportPeriods\.map/); assert.match(overview, /resolveReportRange/); assert.match(overview, /executiveReportState/);
   for (const primitive of ['AdminToolbar','AdminFilterChip','AdminKpiGrid','AdminKpiCard','AdminStatePanel','AdminStatusBadge']) assert.match(overview, new RegExp(`<${primitive}`));
   assert.doesNotMatch(overview, /approvalFixtures|adminAlerts|alert-preview-data|approval-fixtures|Dữ liệu minh họa|adminPreviewNotice/);
   assert.match(controlTower, /URLSearchParams/); assert.match(controlTower, /\/api\/reporting\/control-tower\?/);
-  for (const label of ['Nhịp quản trị','Chờ quyết định','Cảnh báo mở','Ưu tiên hôm nay','Trung tâm quản trị','Đề xuất','Số liệu Công Ty']) assert.match(overview,new RegExp(label));
+  for (const label of ['Nhịp quản trị','Chờ quyết định','Cảnh báo mở','Ưu tiên hôm nay','Đề xuất','Số liệu Công Ty']) assert.match(overview,new RegExp(label));
+  assert.doesNotMatch(overview, /Trung tâm quản trị|adminOverviewActions|adminOverviewAction/);
   assert.match(overview,/chờ bổ sung/i);
   for (const reportId of ['sales-profit-summary','inventory-overview','delivery-cod-overview']) assert.match(overview,new RegExp(reportId));
   assert.match(overview, /proposals === null/); assert.match(overview, /alertData\.message/); assert.match(overview, /Một số số liệu chưa đầy đủ/); assert.match(overview, /Không có việc ưu tiên đang mở/);
   assert.doesNotMatch(overview,/Phê duyệt|dữ liệu mẫu frontend|backend|production|contract|phase/i); assert.doesNotMatch(overview,/overviewDecisionStrip|styles\.periodTabs|styles\.metricLink/); assert.match(overview,/overviewFocusList/);
   assert.doesNotMatch(overviewCss,/\.periodTabs|\.metricLink|\.periodMeta/); assert.match(overviewCss,/\.sourceState/); assert.match(overviewCss,/\.focusState/);
-  assert.match(css,/grid-template-rows:auto minmax\(0,1fr\) auto/); assert.doesNotMatch(css,/grid-template-rows:auto minmax\(0,1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
-  assert.match(css,/padding:5px 8px max\(5px,env\(safe-area-inset-bottom\)\)/); assert.match(css,/adminPageHeader h1\{font-size:1\.42rem/); assert.match(css,/\.adminBottomItem span\{font-size:\.58rem/);
+  assert.match(mobileApp,/grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto/); assert.doesNotMatch(mobileApp,/grid-template-rows:\s*auto minmax\(0,\s*1fr\) calc\(64px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(mobileApp,/padding:\s*5px 8px max\(5px,\s*env\(safe-area-inset-bottom\)\)/);
+  assert.match(foundation,/\.adminPageHeader h1 \{ font-size: 1\.42rem; \}/); assert.match(foundation,/\.adminBottomItem span \{ font-size: \.68rem; \}/);
+  assert.doesNotMatch(managementCss, /adminOverviewActions|adminOverviewAction/);
 });
