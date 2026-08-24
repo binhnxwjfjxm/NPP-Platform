@@ -49,7 +49,7 @@ jobs:
       - name: Verify Delivery frontend
         run: npm run verify
       - name: Verify Node 24 runtime contract
-        run: node --test ../../test/frontend-node24-runtime-contract.test.mjs
+        run: node --test ../../npp-core/web/test/frontend-node24-runtime-contract.test.js
       - name: Run Delivery Chromium mobile E2E
         run: |
           docker run --rm \

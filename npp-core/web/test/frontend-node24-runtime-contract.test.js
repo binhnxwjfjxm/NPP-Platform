@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const repoRoot = new URL('../', import.meta.url);
+const repoRoot = new URL('../../../', import.meta.url);
 const readText = (path) => readFile(new URL(path, repoRoot), 'utf8');
 const readJson = async (path) => JSON.parse(await readText(path));
 
@@ -45,7 +45,7 @@ test('frontend Vercel runtimes use Node 24 while backend root stays on Node 20',
     assert.match(source, /node-version:\s*24/, `${label} must use Node 24`);
   }
 
-  assert.match(companyCi, /npm run verify:core-web/);
+  assert.match(companyCi, /npm --prefix \.\. run verify:core-web/);
   assert.match(deliveryScript, /nodeVersion:"24\.x"/);
   assert.match(deliveryScript, /\.nodeVersion' "\$settings_json"\)" = '24\.x'/);
   assert.match(retailBootstrap, /nodeVersion:"24\.x"/);

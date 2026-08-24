@@ -7,7 +7,6 @@ on:
       - 'packages/**'
       - 'package.json'
       - 'package-lock.json'
-      - 'test/frontend-node24-runtime-contract.test.mjs'
       - '.github/workflows/company-web-node24-compatibility.yml'
       - '.github/workflows/vercel-production-manual.yml'
   push:
@@ -17,7 +16,6 @@ on:
       - 'packages/**'
       - 'package.json'
       - 'package-lock.json'
-      - 'test/frontend-node24-runtime-contract.test.mjs'
       - '.github/workflows/company-web-node24-compatibility.yml'
       - '.github/workflows/vercel-production-manual.yml'
 
@@ -28,16 +26,18 @@ jobs:
   verify-company-web-node24:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: npp-core
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node 24
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
       - name: Verify runtime boundary
-        run: node --test test/frontend-node24-runtime-contract.test.mjs
+        run: node --test web/test/frontend-node24-runtime-contract.test.js
       - name: Install locked repository dependencies
-        run: npm ci
+        run: npm --prefix .. ci
       - name: Verify Công Ty frontend on Node 24
-        run: npm run verify:core-web
+        run: npm --prefix .. run verify:core-web
