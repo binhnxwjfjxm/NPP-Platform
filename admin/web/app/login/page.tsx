@@ -40,7 +40,7 @@ export default function AdminLoginPage({ searchParams }: LoginPageProps) {
   const [leavingCredentials, setLeavingCredentials] = useState(false);
   const [codeAttempt, setCodeAttempt] = useState(0);
   const appLogoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim()
-    || 'https://office.nguyenlieuhungphat.com/logo-transparent.png';
+    || '/icons/admin-192.png';
 
   function enterVerification(nextState: VerificationState, errorKey: string | null) {
     const nextError = errorMessage(errorKey);

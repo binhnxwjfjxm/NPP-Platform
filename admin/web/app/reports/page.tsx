@@ -9,6 +9,7 @@ import {
   AdminStatusBadge,
   AdminToolbar,
   type AdminStateTone,
+  type AdminStatusTone,
 } from '../admin-ui-primitives';
 import {
   normalizeReportPeriod,
@@ -48,6 +49,13 @@ function stateTone(state: ReportState): AdminStateTone {
   if (state === 'forbidden') return 'forbidden';
   if (state === 'error') return 'error';
   return 'empty';
+}
+
+function reportStatusTone(state: ReportState): AdminStatusTone {
+  if (state === 'ready') return 'success';
+  if (state === 'partial') return 'attention';
+  if (state === 'forbidden' || state === 'error') return 'danger';
+  return 'neutral';
 }
 
 export default async function ReportsPage({
@@ -142,7 +150,7 @@ export default async function ReportsPage({
         <div className={styles.comparison}>
           <small>{item.primary.label}</small>
           <strong>{item.primary.value}</strong>
-          <span className={styles.delta}>{item.stateLabel}</span>
+          <AdminStatusBadge tone={reportStatusTone(item.state)} className={styles.reportStatusBadge}>{item.stateLabel}</AdminStatusBadge>
           <small>Phạm vi thời gian</small>
           <b>{item.periodLabel}</b>
         </div>

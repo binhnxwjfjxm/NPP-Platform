@@ -352,19 +352,19 @@
   .adminPageHeader .pageSubtitle { font-size: .76rem; }
 
   .adminIconTabs {
-    height: 41px;
-    min-height: 41px;
-    max-height: 41px;
+    height: 45px;
+    min-height: 45px;
+    max-height: 45px;
     margin-right: -2px;
     margin-left: -2px;
   }
   .adminIconTab {
-    height: 40px;
-    min-height: 40px;
-    max-height: 40px;
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
     padding: .46rem .6rem .48rem;
   }
-  .adminIconTabLabel { font-size: .68rem; }
+  .adminIconTabLabel { font-size: .72rem; }
 
   .adminToolbar { align-items: stretch; flex-direction: column; }
   .adminToolbarControls,
@@ -372,14 +372,23 @@
   .adminToolbarControls::-webkit-scrollbar,
   .adminToolbarActions::-webkit-scrollbar { display: none; }
   .adminToolbarActions { justify-content: flex-start; }
+  .adminFilterChip { min-height: 44px; font-size: .72rem; }
+
+  .adminStatusBadge { min-height: 26px; font-size: .68rem; }
 
   .adminKpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .48rem; }
   .adminKpiCard { min-height: 84px; padding: .65rem; }
+  .adminKpiCopy > span { font-size: .7rem; }
+  .adminKpiCopy > small { font-size: .68rem; }
 
   .adminStatePanel { grid-template-columns: auto minmax(0, 1fr); }
+  .adminStateCopy strong { font-size: .8rem; }
+  .adminStateCopy > span { font-size: .72rem; }
   .adminStateActions { grid-column: 1 / -1; justify-content: flex-start; }
   .adminActionBarActions { justify-content: stretch; }
   .adminActionBarActions > * { flex: 1 1 140px; }
+
+  .adminBottomItem span { font-size: .68rem; }
 }
 
 @media (max-width: 430px) {

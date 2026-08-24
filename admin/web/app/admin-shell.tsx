@@ -49,7 +49,7 @@ export function AdminShell({
   children: ReactNode;
   contentWidth?: AdminContentWidth;
 }) {
-  const appLogoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim() || 'https://office.nguyenlieuhungphat.com/logo-transparent.png';
+  const appLogoUrl = process.env.NEXT_PUBLIC_APP_LOGO_URL?.trim() || '/icons/admin-192.png';
   return (
     <div className="shell adminAppShell" data-admin-app-shell data-active-section={activeSection ?? 'secondary'}>
       <header className="topbar adminAppTopbar">

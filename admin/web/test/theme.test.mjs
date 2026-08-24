@@ -7,6 +7,7 @@ const theme = read('app/hung-phat-warm-gold.css');
 const styles = read('app/globals.css');
 const mobileApp = read('app/admin-mobile-app.css');
 const managementShell = read('app/admin-management-shell.css');
+const foundation = read('app/admin-foundation.css');
 const layout = read('app/layout.tsx');
 const shell = read('app/admin-shell.tsx');
 
@@ -34,6 +35,7 @@ test('Admin keeps the approved warm-gold card geometry', () => {
 test('Admin behaves like a four-destination mobile app while preserving iPhone safe areas', () => {
   assert.match(layout, /import '\.\/admin-mobile-app\.css';/);
   assert.match(layout, /import '\.\/admin-management-shell\.css';/);
+  assert.match(layout, /import '\.\/admin-foundation\.css';/);
   assert.match(layout, /statusBarStyle:\s*'black'/);
   assert.doesNotMatch(layout, /statusBarStyle:\s*'black-translucent'/);
   assert.match(layout, /viewportFit:\s*'cover'/);
@@ -45,9 +47,10 @@ test('Admin behaves like a four-destination mobile app while preserving iPhone s
   assert.match(mobileApp, /height:\s*100vh/);
   assert.doesNotMatch(mobileApp, /100dvh|100svh/);
   assert.match(mobileApp, /padding:\s*calc\(7px \+ env\(safe-area-inset-top\)\)/);
-  assert.match(managementShell, /\.adminBottomNav\{grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
-  assert.match(managementShell, /\.adminIconTabs/);
-  assert.match(managementShell, /\.adminIconTab\.isActive/);
+  assert.match(mobileApp, /\.adminBottomNav\s*\{[\s\S]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.match(foundation, /\.adminIconTabs/);
+  assert.match(foundation, /\.adminIconTab\.isActive/);
+  assert.doesNotMatch(managementShell, /\.adminIconTabs|\.adminIconTab\b/);
   assert.match(mobileApp, /\.adminAppMain\s*\{[\s\S]*?overflow-y:\s*auto/);
 });
 

@@ -210,13 +210,6 @@ export default async function AdminOverviewPage({ searchParams }: { searchParams
           />
         ) : null}
       </section>
-
-      <p className="sectionEyebrow">Trung tâm quản trị</p>
-      <section className="adminOverviewActions" aria-label="Đi tới trung tâm quản trị">
-        <Link className="card adminOverviewAction" href="/approvals"><span className="rowIcon"><AdminIcon name="check" size={20} /></span><span><strong>Đề xuất</strong><small>{proposals ? `${pendingProposals.length} chờ quyết định · ${urgentProposals.length} ưu tiên cao` : 'Chưa tải được trạng thái Đề xuất'}</small></span><AdminIcon name="chevronRight" size={17} /></Link>
-        <Link className="card adminOverviewAction" href="/alerts"><span className="rowIcon"><AdminIcon name="exception" size={20} /></span><span><strong>Cảnh báo</strong><small>{activeAlerts ? `${activeAlerts.length} đang mở · ${highAlerts.length} mức cao` : 'Chưa tải được trạng thái Cảnh báo'}</small></span><AdminIcon name="chevronRight" size={17} /></Link>
-        <Link className="card adminOverviewAction" href="/reports"><span className="rowIcon"><AdminIcon name="document" size={20} /></span><span><strong>Báo cáo</strong><small>Điều hành: {executiveReportState} · số liệu Công Ty</small></span><AdminIcon name="chevronRight" size={17} /></Link>
-      </section>
     </AdminShell>
   );
 }

@@ -1,2 +1,82 @@
-.adminRouteState{display:grid;gap:.45rem;max-width:760px;margin:0 auto;padding:1rem}.adminRouteState h2,.adminRouteState p{margin:0}.adminRouteState h2{font-size:1rem}.adminRouteState p{color:var(--hp-muted,#70685f);font-size:.78rem;line-height:1.5}.adminRouteStateActions{display:flex;flex-wrap:wrap;gap:.55rem;margin-top:.35rem}.adminRouteStateAction{display:inline-flex;min-height:42px;align-items:center;justify-content:center;padding:0 .85rem;border:1px solid rgba(121,86,47,.18);border-radius:10px;background:#fffdf9;color:#754706;font-weight:800;text-decoration:none;cursor:pointer}.adminRouteStatePage{display:grid;min-height:100vh;place-items:center;padding:24px;background:var(--hp-canvas,#f7f5f1)}.adminRouteStatePage .adminRouteState{width:min(560px,100%)}
-@media(max-width:430px){.approvalDecisionBar{position:static;grid-template-columns:1fr}.approvalDecisionBar small{grid-column:1}.approvalDecisionBar form{display:grid;grid-column:1;gap:.45rem}.approvalDefinitionList>div{grid-template-columns:1fr;gap:.15rem}.alertComparison{grid-template-columns:1fr}.alertComparison>span{justify-self:center;transform:rotate(90deg)}.approvalSummaryStrip,.alertSummaryStrip,.overviewDecisionStrip{grid-template-columns:1fr}.adminIconTabs{grid-auto-columns:minmax(96px,1fr)}.adminRouteStateActions{display:grid;grid-template-columns:1fr}.adminRouteStateAction{width:100%}}
+.adminRouteState {
+  display: grid;
+  gap: .45rem;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.adminRouteState h2,
+.adminRouteState p {
+  margin: 0;
+}
+
+.adminRouteState h2 {
+  font-size: 1rem;
+}
+
+.adminRouteState p {
+  color: var(--hp-muted, #70685f);
+  font-size: .78rem;
+  line-height: 1.5;
+}
+
+.adminRouteStateActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .55rem;
+  margin-top: .35rem;
+}
+
+.adminRouteStateAction {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 .85rem;
+  border: 1px solid rgba(121, 86, 47, .18);
+  border-radius: 10px;
+  background: #fffdf9;
+  color: #754706;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.adminRouteStatePage {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background: var(--hp-canvas, #f7f5f1);
+}
+
+.adminRouteStatePage .adminRouteState {
+  width: min(560px, 100%);
+}
+
+@media (max-width: 430px) {
+  .approvalDefinitionList > div {
+    grid-template-columns: 1fr;
+    gap: .15rem;
+  }
+
+  .alertComparison {
+    grid-template-columns: 1fr;
+  }
+
+  .alertComparison > span {
+    justify-self: center;
+    transform: rotate(90deg);
+  }
+
+  .adminRouteStateActions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .adminRouteStateAction {
+    width: 100%;
+    min-height: 44px;
+  }
+}

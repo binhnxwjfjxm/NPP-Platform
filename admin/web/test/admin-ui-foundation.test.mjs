@@ -6,9 +6,10 @@ const root = new URL('../', import.meta.url);
 const read = (path) => readFile(new URL(path, root), 'utf8');
 
 test('Admin shared foundation keeps one compact icon-tab implementation', async () => {
-  const [tabs, foundation, layout] = await Promise.all([
+  const [tabs, foundation, managementShell, layout] = await Promise.all([
     read('app/admin-icon-tabs.tsx'),
     read('app/admin-foundation.css'),
+    read('app/admin-management-shell.css'),
     read('app/layout.tsx'),
   ]);
 
@@ -19,6 +20,7 @@ test('Admin shared foundation keeps one compact icon-tab implementation', async 
   assert.match(foundation, /\.adminIconTab\s*\{[\s\S]*border:\s*0/);
   assert.match(foundation, /\.adminIconTab\s*\{[\s\S]*box-shadow:\s*none/);
   assert.match(foundation, /\.adminIconTab\.isActive::after/);
+  assert.doesNotMatch(managementShell, /\.adminIconTabs|\.adminIconTab\b/);
   assert.match(layout, /import '\.\/admin-foundation\.css';/);
   assert.ok(layout.indexOf("import './admin-management-shell.css';") < layout.indexOf("import './admin-foundation.css';"), 'shared foundation must own the visual tab/header rules');
 });
@@ -68,8 +70,8 @@ test('Admin mobile icon tabs stay vertically locked while swiping horizontally',
   assert.match(foundation, /\.adminIconTabs\s*\{[\s\S]*overscroll-behavior-x:\s*contain/);
   assert.match(foundation, /\.adminIconTabs\s*\{[\s\S]*overscroll-behavior-y:\s*none/);
   assert.match(foundation, /\.adminIconTab\s*\{[\s\S]*height:\s*42px[\s\S]*max-height:\s*42px/);
-  assert.match(foundation, /@media \(max-width: 760px\)[\s\S]*\.adminIconTabs\s*\{[\s\S]*height:\s*41px[\s\S]*max-height:\s*41px/);
-  assert.match(foundation, /@media \(max-width: 760px\)[\s\S]*\.adminIconTab\s*\{[\s\S]*height:\s*40px[\s\S]*max-height:\s*40px/);
+  assert.match(foundation, /@media \(max-width: 760px\)[\s\S]*\.adminIconTabs\s*\{[\s\S]*height:\s*45px[\s\S]*max-height:\s*45px/);
+  assert.match(foundation, /@media \(max-width: 760px\)[\s\S]*\.adminIconTab\s*\{[\s\S]*height:\s*44px[\s\S]*max-height:\s*44px/);
   assert.match(interaction, /\.adminAppShell,[\s\S]*\.adminIconTabs,[\s\S]*\.adminToolbarActions\s*\{[\s\S]*min-width:\s*0;[\s\S]*max-width:\s*100%/);
   assert.match(interaction, /\.adminIconTabs\s*\{[\s\S]*width:\s*100%;[\s\S]*overflow-y:\s*hidden;[\s\S]*touch-action:\s*pan-x/);
   assert.ok(layout.indexOf("import './admin-closeout.css';") < layout.indexOf("import './admin-mobile-interaction.css';"), 'mobile interaction constraints must load last');
