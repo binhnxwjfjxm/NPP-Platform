@@ -150,13 +150,13 @@ export default function AdminLoginPage({ searchParams }: LoginPageProps) {
 
   return (
     <main className={styles.page}>
-      <section className={styles.card} aria-labelledby="admin-login-title">
+      <section className={styles.card} aria-labelledby="admin-login-title" data-admin-smoke-marker="Admin MCP/NPP">
         <header className={styles.brand}>
           <span className={styles.logoFrame}>
             <img className={styles.logo} src={appLogoUrl} alt="Logo Hưng Phát" />
           </span>
           <span>
-            <strong>Admin MCP/NPP</strong>
+            <strong>Admin Hưng Phát</strong>
             <span>Ứng dụng quản lý Hưng Phát</span>
           </span>
         </header>
