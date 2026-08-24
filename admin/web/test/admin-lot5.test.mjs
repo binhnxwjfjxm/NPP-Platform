@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const listPage = await readFile('app/approvals/page.tsx', 'utf8');
 const detailPage = await readFile('app/approvals/[approvalId]/page.tsx', 'utf8');
+const decisionDialog = await readFile('app/approvals/proposal-decision-dialog.tsx', 'utf8');
 const data = await readFile('app/approvals/proposal-data.ts', 'utf8');
 const actions = await readFile('app/approvals/actions.ts', 'utf8');
 
@@ -18,9 +19,12 @@ test('Lô 5 replaces proposal fixtures with real Công Ty API data', () => {
 test('Lô 5 decisions keep office language and canonical idempotency contract', () => {
   assert.match(detailPage, /import \{ createIdempotencyKey \} from '@npp\/contracts'/);
   assert.match(detailPage, /createIdempotencyKey\('admin-proposal-decision'\)/);
-  assert.match(detailPage, />Đồng ý</);
-  assert.match(detailPage, />Yêu cầu bổ sung</);
-  assert.match(detailPage, />Từ chối</);
+  assert.match(detailPage, /ProposalDecisionDialog/);
+  assert.match(decisionDialog, /Xem xét đề xuất/);
+  assert.match(decisionDialog, /label: 'Đồng ý'/);
+  assert.match(decisionDialog, /label: 'Yêu cầu bổ sung'/);
+  assert.match(decisionDialog, /label: 'Từ chối'/);
+  assert.match(decisionDialog, /action=\{decideProposal\}/);
   assert.match(actions, /idempotencyKey/);
   assert.match(actions, /IDEMPOTENCY_KEY_PATTERN = \/\^\[A-Za-z0-9\._-\]\{1,128\}\$\//);
   assert.match(actions, /\/decision/);
